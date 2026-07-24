@@ -23,7 +23,8 @@ module.exports = {
   Ferrite: defineEntity({
     role: 'material',
     description:
-      'Common dark-grey metal found in surface veins across temperate biomes. ' +
+      'Common dark-grey metal found in surface veins across temperate biomes, volcanic lava-tube edges, ' +
+      'and stabilised sections of void rifts. ' +
       'Abundant but brittle when thin; the backbone of early-game tooling.',
     goal: 'Serve as the entry-level metallic material, readily available to new players',
     fields: {
@@ -48,7 +49,7 @@ module.exports = {
         description: 'Imbue a refined ingot at an arcane forge to unlock enchanted state',
         rules: [
           'Ferrite holds weak enchantments only; magical capacity capped at 0.3',
-          'Enchanting consumes one aethermite shard as a catalyst',
+          'Enchanting consumes one enchanted aethermite shard as a catalyst',
         ],
         auth: { roles: ['maintainer'] },
       },
@@ -64,13 +65,25 @@ module.exports = {
     goal: 'Provide a mid-tier martial metal that counters magic-heavy builds',
     fields: {
       id:           { type: 'uuid', primaryKey: true },
-      state:        { type: 'enum', values: ['raw', 'refined', 'enchanted'] },
+      state:        { type: 'enum', values: ['unalloyed', 'refined', 'enchanted'] },
       density:      { type: 'decimal', description: 'g/cm³; governs item weight' },
       hardness:     { type: 'decimal', description: 'Mohs-equivalent scale 1–10' },
       conductivity: { type: 'decimal', description: 'Thermal conductivity rating 0–1' },
       magicAffinity: { type: 'decimal', description: 'Capacity to hold enchantment 0–1; deliberately low — anti-magic is an intrinsic structural trait, not a held enchantment' },
     },
-    stateMachine: materialStateMachine(),
+    stateMachine: {
+      field: 'state',
+      initial: 'unalloyed',
+      states: {
+        unalloyed: 'Raw component inputs assembled and ready for alloying — no veilsteel ore exists in the world',
+        refined:   'Alloyed ingot; ready for smithing into armour or weapons',
+        enchanted: { description: 'Void-attuned via voidite-catalyst binding; magical resistance is structural, not additive', terminal: true },
+      },
+      transitions: [
+        { from: 'unalloyed', to: 'refined',   trigger: 'refine' },
+        { from: 'refined',   to: 'enchanted', trigger: 'enchant' },
+      ],
+    },
     behaviors: {
       refine: {
         description: 'Alloy ferrite ingots and aethermite shards in a master forge',
@@ -123,6 +136,15 @@ module.exports = {
         rules: [
           'magicAffinity reaches 1.0; the material emits a faint glow',
           'Enchanted shards are consumed as single-use crafting components',
+        ],
+        auth: { roles: ['maintainer'] },
+      },
+      consume: {
+        description: 'Destroy an enchanted aethermite shard when it is spent as a crafting catalyst',
+        rules: [
+          'Only valid when state is enchanted',
+          'Consumption is triggered by the crafting system when the shard is used — the item is removed from inventory entirely',
+          'No partial consumption: the full shard is spent per catalyst use',
         ],
         auth: { roles: ['maintainer'] },
       },

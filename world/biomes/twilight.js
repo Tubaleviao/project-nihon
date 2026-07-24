@@ -15,6 +15,7 @@ module.exports = {
       avgTemperature: { type: 'decimal', description: '°C annual average; mild' },
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year; moderate' },
       soilFertility:  { type: 'decimal', description: '0–1; moderate; unusual flora' },
+      dayNightSpeed:  { type: 'decimal', description: 'Multiplier on the global day-night cycle (1 = normal); varies per tile; drives weather pattern selection and duskfiber luminosity' },
     },
     behaviors: {
       evaluateSpawn: {

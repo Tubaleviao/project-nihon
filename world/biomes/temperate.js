@@ -21,7 +21,6 @@ module.exports = {
         rules: [
           'Ferrite veins spawn in surface outcrops at weight 0.6',
           'Thornwood trees are the dominant wood source at weight 0.8',
-          'Ashite outcrops appear near stream banks at weight 0.3',
           'Creature: ForestBoar — placeholder until Phase 5 — spawn weight 0.7',
           'Creature: GraywolfPack — placeholder until Phase 5 — spawn weight 0.4',
         ],

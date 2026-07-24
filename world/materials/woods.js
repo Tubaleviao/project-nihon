@@ -63,10 +63,10 @@ module.exports = {
         auth: { roles: ['maintainer'] },
       },
       treat: {
-        description: 'Apply pine-tar resin or alchemical sealant to planed thornwood',
+        description: 'Apply pine-tar resin or alchemical sealant to planed thornwood, permanently sealing it',
         rules: [
           'Treated thornwood gains fire-resistance tier 1',
-          'Treatment must be reapplied every in-game season in open-air structures',
+          'Treatment is a one-time permanent process; the treated state is final — for structures requiring seasonal maintenance, use untreated planks and track durability externally',
         ],
         auth: { roles: ['maintainer'] },
       },
@@ -88,6 +88,7 @@ module.exports = {
       hardness:     { type: 'decimal', description: 'Janka equivalent 0–1; low but flexible' },
       conductivity: { type: 'decimal', description: 'Thermal conductivity 0–1' },
       magicAffinity: { type: 'decimal', description: 'Capacity to hold enchantment 0–1; moderate — bioluminescent nature enhances magical bonding' },
+      isLuminous:   { type: 'boolean', description: 'True when processed during twilight hours; false for daylight-hour standard thread; determines whether treating with moon-oil has any effect' },
     },
     stateMachine: fibreStateMachine(),
     behaviors: {
@@ -103,7 +104,8 @@ module.exports = {
         description: 'Infuse processed duskfiber with moon-oil to lock in bioluminescence',
         rules: [
           'Moon-oil is a rare alchemical reagent — one vial treats ten bundles',
-          'Treated luminous thread retains glow permanently; untreated fades after two in-game days',
+          'Treatment requires isLuminous = true; applying moon-oil to standard (non-luminous) thread is a no-op and wastes the reagent',
+          'Treated luminous thread retains glow permanently; untreated luminous thread fades after two in-game days',
         ],
         auth: { roles: ['maintainer'] },
       },
