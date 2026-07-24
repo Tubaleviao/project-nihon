@@ -50,7 +50,7 @@ module.exports = {
         description: 'Imbue a refined ingot at an arcane forge to unlock enchanted state',
         rules: [
           'Ferrite holds weak enchantments only; magical capacity capped at 0.3',
-          'Enchanting consumes one enchanted aethermite shard as a catalyst',
+          'Enchanting consumes one enchanted aethermite shard as a catalyst; Aethermite.consume is invoked on the spent shard — the shard transitions to consumed state and is removed from inventory entirely',
         ],
         auth: { roles: ['maintainer'] },
       },
@@ -90,7 +90,7 @@ module.exports = {
         description: 'Alloy ferrite ingots and aethermite shards in a master forge',
         rules: [
           'Requires Smithing: Journeyman',
-          'Three ferrite ingots and one refined aethermite shard yield one veilsteel ingot — the shard is an alloying input consumed as a crafting ingredient, not a catalyst; Aethermite.consume is not invoked',
+          'Three ferrite ingots and one refined aethermite shard (form = shard; aethermite dust is not accepted) yield one veilsteel ingot — the shard is an alloying input consumed as a crafting ingredient, not a catalyst; Aethermite.consume is not invoked',
           'Process collapses if forge temperature falls below threshold mid-smelt',
         ],
         auth: { roles: ['maintainer'] },
@@ -116,19 +116,35 @@ module.exports = {
     goal: 'Act as the universal enchanting catalyst and magical progression gate',
     fields: {
       id:           { type: 'uuid', primaryKey: true },
-      state:        { type: 'enum', values: ['raw', 'refined', 'enchanted'] },
+      state:        { type: 'enum', values: ['raw', 'refined', 'enchanted', 'consumed'] },
+      form:         { type: 'enum', values: ['dust', 'shard'], description: 'Output form from refining: dust (from grinding) or shard (from smelting); set at refine time; recipes specify which form is accepted — Veilsteel.refine requires shard' },
       density:      { type: 'decimal', description: 'g/cm³; governs item weight' },
       hardness:     { type: 'decimal', description: 'Mohs-equivalent scale 1–10' },
       conductivity: { type: 'decimal', description: 'Thermal conductivity rating 0–1' },
       magicAffinity: { type: 'decimal', description: 'Capacity to hold enchantment 0–1' },
     },
-    stateMachine: materialStateMachine(),
+    stateMachine: {
+      field: 'state',
+      initial: 'raw',
+      states: {
+        raw:      'Ore or unprocessed form; must be worked at an arcane forge',
+        refined:  'Processed form; either dust (ground) or shard (smelted) — see form field',
+        enchanted: 'Imbued with magical energy; emits faint glow; ready for use as a crafting catalyst',
+        consumed: { description: 'Spent as a crafting catalyst and removed from inventory; no further transitions', terminal: true },
+      },
+      transitions: [
+        { from: 'raw',       to: 'refined',   trigger: 'refine' },
+        { from: 'refined',   to: 'enchanted', trigger: 'enchant' },
+        { from: 'enchanted', to: 'consumed',  trigger: 'consume' },
+      ],
+    },
     behaviors: {
       refine: {
-        description: 'Grind raw ore into aethermite dust or smelt into shards at an arcane forge',
+        description: 'Grind raw ore into aethermite dust or smelt into shards at an arcane forge; the desired output form must be specified',
         rules: [
           'Requires Arcane Forging: Apprentice',
           'Raw ore must be worked at a player-built arcane forge — standard forges shatter it',
+          'Grinding produces dust (form = dust); smelting produces shards (form = shard); form is stamped on the item at refine time and cannot be changed afterward',
         ],
         auth: { roles: ['maintainer'] },
       },
@@ -136,14 +152,13 @@ module.exports = {
         description: 'Aethermite becomes a living enchantment vessel in its enchanted state',
         rules: [
           'magicAffinity reaches 1.0; the material emits a faint glow',
-          'Enchanted shards are consumed as single-use crafting components',
+          'Enchanted shards are consumed as single-use crafting components via Aethermite.consume',
         ],
         auth: { roles: ['maintainer'] },
       },
       consume: {
-        description: 'Destroy an enchanted aethermite shard when it is spent as a crafting catalyst',
+        description: 'Destroy an enchanted aethermite shard when it is spent as a crafting catalyst; transitions state to consumed',
         rules: [
-          'Only valid when state is enchanted',
           'Consumption is triggered by the crafting system when the shard is used — the item is removed from inventory entirely',
           'No partial consumption: the full shard is spent per catalyst use',
         ],
@@ -174,14 +189,14 @@ module.exports = {
         rules: [
           'Requires Void Smithing: Expert — an esoteric skill unlocked only via experimentation',
           'Raw voidite emits void pulses that corrupt nearby items; shielded forge room mandatory',
-          'One raw crystal yields one refined shard; failures may cause a void burst event',
+          'One raw crystal yields one refined shard; failures may cause a void burst event — surviving such a burst grants the voidBurstSurvivor flag regardless of tile location (same flag as VoidRift.applyHazards; either source is sufficient)',
         ],
         auth: { roles: ['maintainer'] },
       },
       enchant: {
         description: 'Void-attune a refined shard to its maximum magical capacity',
         rules: [
-          'Only players who have survived a void burst (voidBurstSurvivor flag, granted by VoidRift.applyHazards) may learn to enchant voidite',
+          'Only players who have survived a void burst (voidBurstSurvivor flag, granted by surviving any void burst — via VoidRift.applyHazards or Voidite.refine failure) may learn to enchant voidite',
           'Enchanted voidite cannot be stored in standard item bags without void-lining',
         ],
         auth: { roles: ['maintainer'] },

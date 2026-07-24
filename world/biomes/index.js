@@ -3,4 +3,14 @@ const volcanic  = require('./volcanic')
 const twilight  = require('./twilight')
 const voidrift  = require('./voidrift')
 
-module.exports = { ...temperate, ...volcanic, ...twilight, ...voidrift }
+function safeMerge(...sources) {
+  return sources.reduce((acc, src) => {
+    for (const key of Object.keys(src)) {
+      if (key in acc) throw new Error(`Duplicate biome entity key: "${key}"`)
+      acc[key] = src[key]
+    }
+    return acc
+  }, {})
+}
+
+module.exports = safeMerge(temperate, volcanic, twilight, voidrift)

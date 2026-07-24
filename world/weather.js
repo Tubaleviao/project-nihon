@@ -11,6 +11,9 @@ module.exports = {
       'Effects are gameplay-significant: rain douses fires, storms disable airships, ' +
       'blizzards slow movement and starve uninsulated settlements.',
     goal: 'Make weather a real logistical variable that drives construction, trade, and seasonal planning',
+    fields: {
+      id: { type: 'uuid', primaryKey: true },
+    },
     behaviors: {
       evaluateWeather: {
         description: 'Calculate the current weather state for a biome tile each in-game hour',

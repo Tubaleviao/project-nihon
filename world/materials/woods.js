@@ -106,7 +106,7 @@ module.exports = {
         description: 'Infuse processed duskfiber with moon-oil to lock in bioluminescence',
         rules: [
           'Moon-oil is a rare alchemical reagent — one vial treats ten bundles',
-          'Treatment requires isLuminous = true; the crafting system must reject the treat trigger on non-luminous thread — this guard is not encoded in the state machine and must be enforced at the application layer',
+          'Treatment requires isLuminous = true; the normalizer derives a machine-level guard from this rule — the crafting system must read isLuminous from stored state, never re-derive it from current time-of-day',
           'Treated luminous thread retains glow permanently; untreated luminous thread fades after two in-game days',
         ],
         auth: { roles: ['maintainer'] },
