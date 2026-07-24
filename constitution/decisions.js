@@ -2,7 +2,7 @@ const { defineEntity } = require('@newel/core')
 
 module.exports = {
   GodotEngine: defineEntity({
-    tags: ['entity'],
+    tags: ['decision'],
     description: 'Use Godot 4.x as the game client engine. Chosen for its open-source license, GDScript ergonomics, and strong 3D/networking support.',
     goal: 'Lock in the client technology so all rendering, physics, and scripting work targets a single platform',
     fields: {
@@ -37,7 +37,7 @@ module.exports = {
   }),
 
   OnePersistentWorld: defineEntity({
-    tags: ['entity'],
+    tags: ['decision'],
     description: 'A single persistent official world server. All players on the official server share one continuous world; no shards.',
     goal: 'Ensure the social fabric of a shared world rather than isolated parallel instances',
     fields: {
@@ -72,7 +72,7 @@ module.exports = {
   }),
 
   OfflinePlayerNpcs: defineEntity({
-    tags: ['entity'],
+    tags: ['decision'],
     description: 'Offline players may be represented in the world as configurable service NPCs, keeping shops and services running in their absence.',
     goal: 'Sustain a living world even when individual players are offline',
     fields: {
@@ -107,7 +107,7 @@ module.exports = {
   }),
 
   NoTeleportation: defineEntity({
-    tags: ['entity'],
+    tags: ['decision'],
     description: 'No teleportation; infrastructure replaces fast travel. Players build roads, trains, and airships to enable movement between regions.',
     goal: 'Make geography and logistics meaningful — travel cost drives player economy and politics',
     fields: {
@@ -142,7 +142,7 @@ module.exports = {
   }),
 
   MagicBalancedWithMartial: defineEntity({
-    tags: ['entity'],
+    tags: ['decision'],
     description: 'Magic and martial combat are balanced — no archetype dominates; each has unique trade-offs and counters.',
     goal: 'Ensure combat diversity and prevent a single dominant play-style',
     fields: {
@@ -177,7 +177,7 @@ module.exports = {
   }),
 
   DestructibleBuildings: defineEntity({
-    tags: ['entity'],
+    tags: ['decision'],
     description: 'Buildings are destructible through game systems (fire, siege, structural failure) — not by arbitrary designer flags.',
     goal: 'Make construction meaningful with real risk, driving defensive design and political consequences',
     fields: {
@@ -212,7 +212,7 @@ module.exports = {
   }),
 
   KnowledgeByExperimentation: defineEntity({
-    tags: ['entity'],
+    tags: ['decision'],
     description: 'Knowledge is discovered through experimentation — recipes, materials, and world secrets are not handed to players via tooltips or vendors.',
     goal: 'Make the act of discovery a core progression mechanic, not a reward after grinding',
     fields: {
@@ -247,7 +247,7 @@ module.exports = {
   }),
 
   FictionalMaterials: defineEntity({
-    tags: ['entity'],
+    tags: ['decision'],
     description: 'Fictional materials with unique properties replace real-world counterparts, giving the world consistent internal lore and design freedom.',
     goal: 'Decouple material design from real-world constraints while maintaining internal balance logic',
     fields: {
