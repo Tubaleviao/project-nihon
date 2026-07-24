@@ -2,6 +2,7 @@ const { defineEntity } = require('@newel/core')
 
 module.exports = {
   MonetizationRules: defineEntity({
+    role: 'system',
     description: 'Monetization policy for Project Nihon: fair, transparent, and never pay-to-win. Revenue funds official server infrastructure and ongoing open-source development.',
     goal: 'Sustain the project financially without compromising gameplay fairness or community trust',
     behaviors: {
