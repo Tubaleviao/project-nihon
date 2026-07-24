@@ -31,6 +31,7 @@ module.exports = {
         description: 'Apply persistent environmental hazards to players and structures in a volcanic tile',
         rules: [
           'Player structures take ongoing heat damage without ashite insulation',
+          'Ash-fall (evaluated by WeatherSystem.evaluateWeather on eruption days) reduces visibility by 50% and disables all outdoor forges; ash-fall is a weather event handled by the WeatherSystem, not a persistent biome hazard',
         ],
         auth: { roles: ['maintainer'] },
       },

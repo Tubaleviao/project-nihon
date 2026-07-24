@@ -1,6 +1,7 @@
 const { defineEntity } = require('@newel/core')
 
 // Shared state machine for every material: raw → refined → enchanted (terminal)
+// NOTE: state keys must be kept in sync with each consumer entity's `state` enum values — the normalizer does not reconcile them.
 function materialStateMachine() {
   return {
     field: 'state',
@@ -89,7 +90,7 @@ module.exports = {
         description: 'Alloy ferrite ingots and aethermite shards in a master forge',
         rules: [
           'Requires Smithing: Journeyman',
-          'Three ferrite ingots and one aethermite shard yield one veilsteel ingot',
+          'Three ferrite ingots and one refined aethermite shard yield one veilsteel ingot — the shard is an alloying input consumed as a crafting ingredient, not a catalyst; Aethermite.consume is not invoked',
           'Process collapses if forge temperature falls below threshold mid-smelt',
         ],
         auth: { roles: ['maintainer'] },
@@ -180,7 +181,7 @@ module.exports = {
       enchant: {
         description: 'Void-attune a refined shard to its maximum magical capacity',
         rules: [
-          'Only players who have survived a void burst may learn to enchant voidite',
+          'Only players who have survived a void burst (voidBurstSurvivor flag, granted by VoidRift.applyHazards) may learn to enchant voidite',
           'Enchanted voidite cannot be stored in standard item bags without void-lining',
         ],
         auth: { roles: ['maintainer'] },

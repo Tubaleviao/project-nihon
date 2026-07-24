@@ -15,7 +15,7 @@ module.exports = {
       evaluateWeather: {
         description: 'Calculate the current weather state for a biome tile each in-game hour',
         rules: [
-          'Base weather probability is derived from biome avgTemperature and avgRainfall',
+          'Base weather probability is derived from biome avgTemperature and avgRainfall — void rift tiles are excluded from this global calculation; see rule 6',
           'Player deforestation in temperate biomes increases drought probability by 5% per 100 felled tiles',
           'Player-built irrigation canals reduce drought probability by 3% per 50 canal segments',
           'Volcanic biomes always have ash-fall risk on eruption days regardless of other factors',

@@ -1,6 +1,7 @@
 const { defineEntity } = require('@newel/core')
 
 // Stone transitions: raw → dressed (cut to shape) → inscribed (rune-carved, terminal)
+// NOTE: state keys must be kept in sync with each consumer entity's `state` enum values — the normalizer does not reconcile them.
 function stoneStateMachine() {
   return {
     field: 'state',
@@ -8,7 +9,7 @@ function stoneStateMachine() {
     states: {
       raw:       'Rough quarried block; heavy but structurally sound',
       dressed:   'Cut and smoothed for construction or decorative use',
-      inscribed: { description: 'Rune-carved by a mason-arcanist; permanently enchanted', terminal: true },
+      inscribed: { description: 'Rune-carved by a mason-arcanist; permanently altered by rune-work — enchanted for ashite (ward runes), optically reconfigured for lumenfite (flux runes)', terminal: true },
     },
     transitions: [
       { from: 'raw',     to: 'dressed',   trigger: 'dress' },

@@ -1,5 +1,7 @@
 const { defineEntity } = require('@newel/core')
 
+// NOTE: state keys in each factory must be kept in sync with the consumer entity's `state` enum values — the normalizer does not reconcile them.
+
 // Lumber state machine: raw log → planed plank → treated (terminal).
 function lumberStateMachine() {
   return {
@@ -25,7 +27,7 @@ function fibreStateMachine() {
     states: {
       raw:       'Freshly stripped bark bundle; must be shredded before use',
       processed: 'Weavable thread bundle; ready for textile crafting and rope-making',
-      treated:   { description: 'Infused with alchemical reagent; bioluminescence locked in permanently', terminal: true },
+      treated:   { description: 'Infused with moon-oil alchemical reagent; bioluminescence permanently locked in — only reachable via luminous thread (isLuminous = true at process time)', terminal: true },
     },
     transitions: [
       { from: 'raw',       to: 'processed', trigger: 'process' },
@@ -88,7 +90,7 @@ module.exports = {
       hardness:     { type: 'decimal', description: 'Janka equivalent 0–1; low but flexible' },
       conductivity: { type: 'decimal', description: 'Thermal conductivity 0–1' },
       magicAffinity: { type: 'decimal', description: 'Capacity to hold enchantment 0–1; moderate — bioluminescent nature enhances magical bonding' },
-      isLuminous:   { type: 'boolean', description: 'True when processed during twilight hours; false for daylight-hour standard thread; determines whether treating with moon-oil has any effect' },
+      isLuminous:   { type: 'boolean', description: 'Stamped true at process time when processed during twilight hours, false otherwise; must be read as stored state at treat time — not re-derived from current time-of-day; determines whether moon-oil treatment is valid' },
     },
     stateMachine: fibreStateMachine(),
     behaviors: {
@@ -104,7 +106,7 @@ module.exports = {
         description: 'Infuse processed duskfiber with moon-oil to lock in bioluminescence',
         rules: [
           'Moon-oil is a rare alchemical reagent — one vial treats ten bundles',
-          'Treatment requires isLuminous = true; applying moon-oil to standard (non-luminous) thread is a no-op and wastes the reagent',
+          'Treatment requires isLuminous = true; the crafting system must reject the treat trigger on non-luminous thread — this guard is not encoded in the state machine and must be enforced at the application layer',
           'Treated luminous thread retains glow permanently; untreated luminous thread fades after two in-game days',
         ],
         auth: { roles: ['maintainer'] },

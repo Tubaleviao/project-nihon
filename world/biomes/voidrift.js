@@ -14,7 +14,7 @@ module.exports = {
       id:             { type: 'uuid', primaryKey: true },
       avgTemperature: { type: 'decimal', description: '°C; fluctuates wildly near active rifts' },
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year; negligible' },
-      soilFertility:  { type: 'decimal', const: 0, description: '0–1; always zero — nothing biological grows near rifts' },
+      soilFertility:  { type: 'decimal', description: '0–1; always zero — nothing biological grows near rifts' },
     },
     behaviors: {
       evaluateSpawn: {
@@ -31,7 +31,7 @@ module.exports = {
       applyHazards: {
         description: 'Apply persistent environmental hazards to players and structures in a void rift tile',
         rules: [
-          'Players accumulate void corruption at 1 point per minute without void-lined armour; void-lined armour is crafted from enchanted voidite thread or plate',
+          'Players accumulate void corruption at 1 point per minute without void-lined armour; void-lined armour is crafted from refined voidite plate',
           'Corruption above 80 triggers involuntary void-pulse AoE damaging nearby allies',
           'A void burst event (triggered by failed voidite refining or corruption overflow) is survivable; surviving one grants the player the voidBurstSurvivor flag required to learn enchanting voidite',
         ],
