@@ -7,7 +7,7 @@ const social      = require('./social')
 function safeMerge(...sources) {
   return sources.reduce((acc, src) => {
     for (const key of Object.keys(src)) {
-      if (key in acc) throw new Error(`Duplicate skill entity key: "${key}"`)
+      if (Object.hasOwn(acc, key)) throw new Error(`Duplicate skill entity key: "${key}"`)
       acc[key] = src[key]
     }
     return acc
