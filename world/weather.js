@@ -32,6 +32,7 @@ module.exports = {
           'Blizzard: player heat-loss rate tripled; uninsulated structures lose integrity at 1% per hour',
           'Ash-fall: visibility –50%; all outdoor forges temporarily disabled',
           'Fog: trade route visibility markers hidden; ambush risk elevated for caravans',
+          'Electrical-storm: player and creature movement speed –20%; metal armour wearers struck periodically for minor lightning damage',
           'Void-storm: void corruption accumulates 3× faster; all ley-line structures overcharge',
         ],
         auth: { roles: ['maintainer'] },

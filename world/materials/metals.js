@@ -43,7 +43,6 @@ module.exports = {
           'Two raw ferrite ore yield one refined ingot',
         ],
         auth: { roles: ['maintainer'] },
-        transitions: ['refine'],
       },
       enchant: {
         description: 'Imbue a refined ingot at an arcane forge to unlock enchanted state',
@@ -52,7 +51,6 @@ module.exports = {
           'Enchanting consumes one aethermite shard as a catalyst',
         ],
         auth: { roles: ['maintainer'] },
-        transitions: ['enchant'],
       },
     },
   }),
@@ -61,7 +59,7 @@ module.exports = {
   Veilsteel: defineEntity({
     role: 'material',
     description:
-      'Blue-black alloy smelted from ferrite and aethermite dust under high heat. ' +
+      'Blue-black alloy smelted from ferrite ingots and aethermite shards under high heat. ' +
       'Extremely hard but non-conductive; absorbs magical interference, making it ideal for anti-magic armor.',
     goal: 'Provide a mid-tier martial metal that counters magic-heavy builds',
     fields: {
@@ -70,19 +68,18 @@ module.exports = {
       density:      { type: 'decimal', description: 'g/cm³; governs item weight' },
       hardness:     { type: 'decimal', description: 'Mohs-equivalent scale 1–10' },
       conductivity: { type: 'decimal', description: 'Thermal conductivity rating 0–1' },
-      magicAffinity: { type: 'decimal', description: 'Capacity to hold enchantment 0–1' },
+      magicAffinity: { type: 'decimal', description: 'Magical interference resistance 0–1; higher means stronger anti-magic' },
     },
     stateMachine: materialStateMachine(),
     behaviors: {
       refine: {
-        description: 'Alloy ferrite ingots and aethermite dust in a master forge',
+        description: 'Alloy ferrite ingots and aethermite shards in a master forge',
         rules: [
           'Requires Smithing: Journeyman',
           'Three ferrite ingots and one aethermite shard yield one veilsteel ingot',
           'Process collapses if forge temperature falls below threshold mid-smelt',
         ],
         auth: { roles: ['maintainer'] },
-        transitions: ['refine'],
       },
       enchant: {
         description: 'Veilsteel resists conventional enchanting; only void-aligned spells bind',
@@ -91,7 +88,6 @@ module.exports = {
           'magicAffinity is capped at 0.15 even after enchanting',
         ],
         auth: { roles: ['maintainer'] },
-        transitions: ['enchant'],
       },
     },
   }),
@@ -121,7 +117,6 @@ module.exports = {
           'Raw ore must be worked at a player-built arcane forge — standard forges shatter it',
         ],
         auth: { roles: ['maintainer'] },
-        transitions: ['refine'],
       },
       enchant: {
         description: 'Aethermite becomes a living enchantment vessel in its enchanted state',
@@ -130,7 +125,6 @@ module.exports = {
           'Enchanted shards are consumed as single-use crafting components',
         ],
         auth: { roles: ['maintainer'] },
-        transitions: ['enchant'],
       },
     },
   }),
@@ -160,7 +154,6 @@ module.exports = {
           'One raw crystal yields one refined shard; failures may cause a void burst event',
         ],
         auth: { roles: ['maintainer'] },
-        transitions: ['refine'],
       },
       enchant: {
         description: 'Void-attune a refined shard to its maximum magical capacity',
@@ -169,7 +162,6 @@ module.exports = {
           'Enchanted voidite cannot be stored in standard item bags without void-lining',
         ],
         auth: { roles: ['maintainer'] },
-        transitions: ['enchant'],
       },
     },
   }),

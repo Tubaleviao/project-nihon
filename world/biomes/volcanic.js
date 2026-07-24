@@ -21,9 +21,15 @@ module.exports = {
         rules: [
           'Ashite is the dominant surface material at weight 0.9',
           'Aethermite veins near ley-line vents at weight 0.2 — higher near eruption events',
-          'Veilsteel ore in deep lava tubes at weight 0.1; requires tier-2 mining tools',
+          'Ferrite ore in deep lava tubes at weight 0.1; requires tier-2 mining tools',
           'Creature: LavaSluq — placeholder until Phase 5 — spawn weight 0.6',
           'Creature: CinderGargoyle — placeholder until Phase 5 — spawn weight 0.2',
+        ],
+        auth: { roles: ['maintainer'] },
+      },
+      applyHazards: {
+        description: 'Apply persistent environmental hazards to players and structures in a volcanic tile',
+        rules: [
           'Player structures take ongoing heat damage without ashite insulation',
         ],
         auth: { roles: ['maintainer'] },

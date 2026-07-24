@@ -21,10 +21,16 @@ module.exports = {
         description: 'Determine which materials and creatures spawn in a void rift tile',
         rules: [
           'Voidite crystals are abundant at weight 0.7 — but refining them here risks a void burst',
-          'Veilsteel ore appears at weight 0.3 in stabilised sections near the rift edge',
+          'Ferrite ore appears at weight 0.3 in stabilised sections near the rift edge',
           'No conventional wood or stone spawns within the rift boundary',
           'Creature: VoidSerpent — placeholder until Phase 5 — spawn weight 0.5',
           'Creature: RiftWarden — placeholder until Phase 5 — spawn weight 0.15',
+        ],
+        auth: { roles: ['maintainer'] },
+      },
+      applyHazards: {
+        description: 'Apply persistent environmental hazards to players and structures in a void rift tile',
+        rules: [
           'Players accumulate void corruption at 1 point per minute without void-lined armour',
           'Corruption above 80 triggers involuntary void-pulse AoE damaging nearby allies',
         ],

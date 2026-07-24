@@ -40,11 +40,10 @@ module.exports = {
       dress: {
         description: 'Cut and face raw ashite blocks at a player-built masonry bench',
         rules: [
-          'Two raw blocks yield three dressed blocks (lighter waste fraction)',
+          'Three raw blocks yield two dressed blocks (waste fraction removed during cutting)',
           'Ashite dust produced during dressing is an alchemical component',
         ],
         auth: { roles: ['maintainer'] },
-        transitions: ['dress'],
       },
       inscribe: {
         description: 'Carve runic patterns into dressed ashite to embed a permanent effect',
@@ -53,7 +52,6 @@ module.exports = {
           'Inscribed blocks must be placed in a structure before activation — free-standing runes are inert',
         ],
         auth: { roles: ['maintainer'] },
-        transitions: ['inscribe'],
       },
     },
   }),
@@ -83,7 +81,6 @@ module.exports = {
           'Poorly cut shards emit dim scattered light; precision cutting increases brightness radius',
         ],
         auth: { roles: ['maintainer'] },
-        transitions: ['dress'],
       },
       inscribe: {
         description: 'Engrave a flux rune to increase charge capacity or alter emission colour',
@@ -92,7 +89,6 @@ module.exports = {
           "Flux runes must be aligned with the crystal's natural axis or the shard shatters",
         ],
         auth: { roles: ['maintainer'] },
-        transitions: ['inscribe'],
       },
     },
   }),

@@ -1,7 +1,7 @@
 const { defineEntity } = require('@newel/core')
 
-// Woods transition from raw lumber → planed plank → treated (terminal).
-function woodStateMachine() {
+// Lumber state machine: raw log → planed plank → treated (terminal).
+function lumberStateMachine() {
   return {
     field: 'state',
     initial: 'raw',
@@ -9,6 +9,23 @@ function woodStateMachine() {
       raw:     'Freshly felled log; can be worked at a sawmill or hand-split',
       planed:  'Smooth plank or beam; ready for construction and basic crafting',
       treated: { description: 'Sealed and cured with resin or alchemy; weatherproof and fire-resistant', terminal: true },
+    },
+    transitions: [
+      { from: 'raw',    to: 'planed',  trigger: 'plane' },
+      { from: 'planed', to: 'treated', trigger: 'treat' },
+    ],
+  }
+}
+
+// Fibre state machine: raw bark → processed thread → treated (terminal).
+function fibreStateMachine() {
+  return {
+    field: 'state',
+    initial: 'raw',
+    states: {
+      raw:     'Freshly stripped bark bundle; must be shredded before use',
+      planed:  'Weavable thread bundle; ready for textile crafting and rope-making',
+      treated: { description: 'Infused with alchemical reagent; bioluminescence locked in permanently', terminal: true },
     },
     transitions: [
       { from: 'raw',    to: 'planed',  trigger: 'plane' },
@@ -35,7 +52,7 @@ module.exports = {
       conductivity: { type: 'decimal', description: 'Thermal conductivity 0–1; low for wood' },
       magicAffinity: { type: 'decimal', description: 'Resistance to enchantment 0–1' },
     },
-    stateMachine: woodStateMachine(),
+    stateMachine: lumberStateMachine(),
     behaviors: {
       plane: {
         description: 'Mill raw thornwood logs into planks at a player-built sawmill',
@@ -44,7 +61,6 @@ module.exports = {
           'Thornwood dulls blades faster than common lumber; tools degrade at 1.5× rate',
         ],
         auth: { roles: ['maintainer'] },
-        transitions: ['plane'],
       },
       treat: {
         description: 'Apply pine-tar resin or alchemical sealant to planed thornwood',
@@ -53,7 +69,6 @@ module.exports = {
           'Treatment must be reapplied every in-game season in open-air structures',
         ],
         auth: { roles: ['maintainer'] },
-        transitions: ['treat'],
       },
     },
   }),
@@ -74,7 +89,7 @@ module.exports = {
       conductivity: { type: 'decimal', description: 'Thermal conductivity 0–1' },
       magicAffinity: { type: 'decimal', description: 'Moderate affinity; glows faintly when near magic' },
     },
-    stateMachine: woodStateMachine(),
+    stateMachine: fibreStateMachine(),
     behaviors: {
       plane: {
         description: 'Shred bark strips into weavable duskfiber thread at a processing bench',
@@ -83,7 +98,6 @@ module.exports = {
           'Processing in daylight hours yields standard thread; twilight hours yield luminous thread',
         ],
         auth: { roles: ['maintainer'] },
-        transitions: ['plane'],
       },
       treat: {
         description: 'Infuse processed duskfiber with moon-oil to lock in bioluminescence',
@@ -92,7 +106,6 @@ module.exports = {
           'Treated luminous thread retains glow permanently; untreated fades after two in-game days',
         ],
         auth: { roles: ['maintainer'] },
-        transitions: ['treat'],
       },
     },
   }),
