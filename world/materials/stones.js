@@ -69,7 +69,7 @@ module.exports = {
       state:        { type: 'enum', values: ['raw', 'dressed', 'inscribed'] },
       density:      { type: 'decimal', description: 'g/cm³; moderate' },
       hardness:     { type: 'decimal', description: 'Mohs equivalent; brittle, shatters under impact' },
-      conductivity: { type: 'decimal', description: 'Conducts light energy, not heat' },
+      conductivity: { type: 'decimal', description: '0–1; conducts light energy, not heat' },
       magicAffinity: { type: 'decimal', description: 'High affinity for light-type enchantments' },
     },
     stateMachine: stoneStateMachine(),

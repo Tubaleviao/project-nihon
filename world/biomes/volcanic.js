@@ -22,7 +22,7 @@ module.exports = {
           'Ashite is the dominant surface material at weight 0.9',
           'Aethermite veins near ley-line vents at weight 0.2 — higher near eruption events',
           'Ferrite ore in deep lava tubes at weight 0.1; requires tier-2 mining tools',
-          'Creature: LavaSluq — placeholder until Phase 5 — spawn weight 0.6',
+          'Creature: LavaSlug — placeholder until Phase 5 — spawn weight 0.6',
           'Creature: CinderGargoyle — placeholder until Phase 5 — spawn weight 0.2',
         ],
         auth: { roles: ['maintainer'] },

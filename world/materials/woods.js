@@ -23,13 +23,13 @@ function fibreStateMachine() {
     field: 'state',
     initial: 'raw',
     states: {
-      raw:     'Freshly stripped bark bundle; must be shredded before use',
-      planed:  'Weavable thread bundle; ready for textile crafting and rope-making',
-      treated: { description: 'Infused with alchemical reagent; bioluminescence locked in permanently', terminal: true },
+      raw:       'Freshly stripped bark bundle; must be shredded before use',
+      processed: 'Weavable thread bundle; ready for textile crafting and rope-making',
+      treated:   { description: 'Infused with alchemical reagent; bioluminescence locked in permanently', terminal: true },
     },
     transitions: [
-      { from: 'raw',    to: 'planed',  trigger: 'plane' },
-      { from: 'planed', to: 'treated', trigger: 'treat' },
+      { from: 'raw',       to: 'processed', trigger: 'process' },
+      { from: 'processed', to: 'treated',   trigger: 'treat' },
     ],
   }
 }
@@ -83,7 +83,7 @@ module.exports = {
     goal: 'Flexible mid-tier material bridging woodworking and textile crafting with a magical flavour',
     fields: {
       id:           { type: 'uuid', primaryKey: true },
-      state:        { type: 'enum', values: ['raw', 'planed', 'treated'] },
+      state:        { type: 'enum', values: ['raw', 'processed', 'treated'] },
       density:      { type: 'decimal', description: 'g/cm³; extremely low — used as fibre not lumber' },
       hardness:     { type: 'decimal', description: 'Janka equivalent 0–1; low but flexible' },
       conductivity: { type: 'decimal', description: 'Thermal conductivity 0–1' },
@@ -91,7 +91,7 @@ module.exports = {
     },
     stateMachine: fibreStateMachine(),
     behaviors: {
-      plane: {
+      process: {
         description: 'Shred bark strips into weavable duskfiber thread at a processing bench',
         rules: [
           'Requires Woodworking: Apprentice or Textile: Apprentice — either suffices',
