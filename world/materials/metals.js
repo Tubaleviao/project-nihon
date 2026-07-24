@@ -68,7 +68,7 @@ module.exports = {
       density:      { type: 'decimal', description: 'g/cm³; governs item weight' },
       hardness:     { type: 'decimal', description: 'Mohs-equivalent scale 1–10' },
       conductivity: { type: 'decimal', description: 'Thermal conductivity rating 0–1' },
-      magicAffinity: { type: 'decimal', description: 'Magical interference resistance 0–1; higher means stronger anti-magic' },
+      magicAffinity: { type: 'decimal', description: 'Capacity to hold enchantment 0–1; deliberately low — anti-magic is an intrinsic structural trait, not a held enchantment' },
     },
     stateMachine: materialStateMachine(),
     behaviors: {

@@ -20,7 +20,7 @@ module.exports = {
       evaluateSpawn: {
         description: 'Determine which materials and creatures spawn in a twilight grove tile',
         rules: [
-          'Duskwood (duskfiber source) is dominant at weight 0.9',
+          'Duskfiber is the dominant wood material at weight 0.9',
           'Lumenfite crystals in exposed cave faces at weight 0.5',
           'Aethermite trace amounts at ley-line intersections at weight 0.15',
           'Creature: GlimmerFox — placeholder until Phase 5 — spawn weight 0.7',

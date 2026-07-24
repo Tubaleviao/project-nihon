@@ -50,7 +50,7 @@ module.exports = {
       density:      { type: 'decimal', description: 'g/cm³; heavier than most woods' },
       hardness:     { type: 'decimal', description: 'Janka hardness equivalent 0–1' },
       conductivity: { type: 'decimal', description: 'Thermal conductivity 0–1; low for wood' },
-      magicAffinity: { type: 'decimal', description: 'Resistance to enchantment 0–1' },
+      magicAffinity: { type: 'decimal', description: 'Capacity to hold enchantment 0–1; very low — dense wood resists magical binding' },
     },
     stateMachine: lumberStateMachine(),
     behaviors: {
@@ -87,7 +87,7 @@ module.exports = {
       density:      { type: 'decimal', description: 'g/cm³; extremely low — used as fibre not lumber' },
       hardness:     { type: 'decimal', description: 'Janka equivalent 0–1; low but flexible' },
       conductivity: { type: 'decimal', description: 'Thermal conductivity 0–1' },
-      magicAffinity: { type: 'decimal', description: 'Moderate affinity; glows faintly when near magic' },
+      magicAffinity: { type: 'decimal', description: 'Capacity to hold enchantment 0–1; moderate — bioluminescent nature enhances magical bonding' },
     },
     stateMachine: fibreStateMachine(),
     behaviors: {
