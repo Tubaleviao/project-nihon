@@ -1,0 +1,100 @@
+const { defineEntity } = require('@newel/core')
+
+// Woods transition from raw lumber → planed plank → treated (terminal).
+function woodStateMachine() {
+  return {
+    field: 'state',
+    initial: 'raw',
+    states: {
+      raw:     'Freshly felled log; can be worked at a sawmill or hand-split',
+      planed:  'Smooth plank or beam; ready for construction and basic crafting',
+      treated: { description: 'Sealed and cured with resin or alchemy; weatherproof and fire-resistant', terminal: true },
+    },
+    transitions: [
+      { from: 'raw',    to: 'planed',  trigger: 'plane' },
+      { from: 'planed', to: 'treated', trigger: 'treat' },
+    ],
+  }
+}
+
+module.exports = {
+
+  // ─── Thornwood ────────────────────────────────────────────────────────────
+  Thornwood: defineEntity({
+    role: 'material',
+    description:
+      'Dense, dark-veined wood from the Thornwood tree that grows in lowland forests. ' +
+      'Characterised by natural spike-like growths on its branches; commonly used for ' +
+      'weapon hafts, siege equipment, and defensive palisades.',
+    goal: 'Primary structural wood for early military and defensive constructions',
+    fields: {
+      id:           { type: 'uuid', primaryKey: true },
+      state:        { type: 'enum', values: ['raw', 'planed', 'treated'] },
+      density:      { type: 'decimal', description: 'g/cm³; heavier than most woods' },
+      hardness:     { type: 'decimal', description: 'Janka hardness equivalent 0–1' },
+      conductivity: { type: 'decimal', description: 'Thermal conductivity 0–1; low for wood' },
+      magicAffinity: { type: 'decimal', description: 'Resistance to enchantment 0–1' },
+    },
+    stateMachine: woodStateMachine(),
+    behaviors: {
+      plane: {
+        description: 'Mill raw thornwood logs into planks at a player-built sawmill',
+        rules: [
+          'Three raw logs yield five planks',
+          'Thornwood dulls blades faster than common lumber; tools degrade at 1.5× rate',
+        ],
+        auth: { roles: ['maintainer'] },
+        transitions: ['plane'],
+      },
+      treat: {
+        description: 'Apply pine-tar resin or alchemical sealant to planed thornwood',
+        rules: [
+          'Treated thornwood gains fire-resistance tier 1',
+          'Treatment must be reapplied every in-game season in open-air structures',
+        ],
+        auth: { roles: ['maintainer'] },
+        transitions: ['treat'],
+      },
+    },
+  }),
+
+  // ─── Duskfiber ────────────────────────────────────────────────────────────
+  Duskfiber: defineEntity({
+    role: 'material',
+    description:
+      'Fibrous bark harvested from the Duskwood trees that grow only in twilight biomes ' +
+      'where day and night cycle at unusual speeds. The fibers shimmer with faint ' +
+      'bioluminescence and are prized for light armour weaves and magical rope.',
+    goal: 'Flexible mid-tier material bridging woodworking and textile crafting with a magical flavour',
+    fields: {
+      id:           { type: 'uuid', primaryKey: true },
+      state:        { type: 'enum', values: ['raw', 'planed', 'treated'] },
+      density:      { type: 'decimal', description: 'g/cm³; extremely low — used as fibre not lumber' },
+      hardness:     { type: 'decimal', description: 'Janka equivalent 0–1; low but flexible' },
+      conductivity: { type: 'decimal', description: 'Thermal conductivity 0–1' },
+      magicAffinity: { type: 'decimal', description: 'Moderate affinity; glows faintly when near magic' },
+    },
+    stateMachine: woodStateMachine(),
+    behaviors: {
+      plane: {
+        description: 'Shred bark strips into weavable duskfiber thread at a processing bench',
+        rules: [
+          'Requires Woodworking: Apprentice or Textile: Apprentice — either suffices',
+          'Processing in daylight hours yields standard thread; twilight hours yield luminous thread',
+        ],
+        auth: { roles: ['maintainer'] },
+        transitions: ['plane'],
+      },
+      treat: {
+        description: 'Infuse processed duskfiber with moon-oil to lock in bioluminescence',
+        rules: [
+          'Moon-oil is a rare alchemical reagent — one vial treats ten bundles',
+          'Treated luminous thread retains glow permanently; untreated fades after two in-game days',
+        ],
+        auth: { roles: ['maintainer'] },
+        transitions: ['treat'],
+      },
+    },
+  }),
+
+}
