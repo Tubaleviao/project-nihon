@@ -10,16 +10,15 @@ module.exports = {
     },
     stateMachine: {
       field: 'status',
-      initial: 'accepted',
+      initial: 'proposed',
       states: {
         proposed:   'Decision is under community discussion',
         accepted:   'Decision is ratified and in effect',
         superseded: { description: 'Decision has been replaced by a newer decision', terminal: true },
       },
       transitions: [
-        { from: 'proposed',  to: 'accepted',   trigger: 'accept',    guard: 'Community vote must reach quorum' },
-        { from: 'accepted',  to: 'superseded', trigger: 'supersede', guard: 'A replacement decision must be accepted first' },
-        { from: 'proposed',  to: 'superseded', trigger: 'supersede', guard: 'A replacement decision must be accepted first' },
+        { from: 'proposed',              to: 'accepted',   trigger: 'accept' },
+        { from: ['proposed', 'accepted'], to: 'superseded', trigger: 'supersede' },
       ],
     },
     behaviors: {
@@ -45,16 +44,15 @@ module.exports = {
     },
     stateMachine: {
       field: 'status',
-      initial: 'accepted',
+      initial: 'proposed',
       states: {
         proposed:   'Decision is under community discussion',
         accepted:   'Decision is ratified and in effect',
         superseded: { description: 'Decision has been replaced by a newer decision', terminal: true },
       },
       transitions: [
-        { from: 'proposed',  to: 'accepted',   trigger: 'accept',    guard: 'Community vote must reach quorum' },
-        { from: 'accepted',  to: 'superseded', trigger: 'supersede', guard: 'A replacement decision must be accepted first' },
-        { from: 'proposed',  to: 'superseded', trigger: 'supersede', guard: 'A replacement decision must be accepted first' },
+        { from: 'proposed',              to: 'accepted',   trigger: 'accept' },
+        { from: ['proposed', 'accepted'], to: 'superseded', trigger: 'supersede' },
       ],
     },
     behaviors: {
@@ -80,16 +78,15 @@ module.exports = {
     },
     stateMachine: {
       field: 'status',
-      initial: 'accepted',
+      initial: 'proposed',
       states: {
         proposed:   'Decision is under community discussion',
         accepted:   'Decision is ratified and in effect',
         superseded: { description: 'Decision has been replaced by a newer decision', terminal: true },
       },
       transitions: [
-        { from: 'proposed',  to: 'accepted',   trigger: 'accept',    guard: 'Community vote must reach quorum' },
-        { from: 'accepted',  to: 'superseded', trigger: 'supersede', guard: 'A replacement decision must be accepted first' },
-        { from: 'proposed',  to: 'superseded', trigger: 'supersede', guard: 'A replacement decision must be accepted first' },
+        { from: 'proposed',              to: 'accepted',   trigger: 'accept' },
+        { from: ['proposed', 'accepted'], to: 'superseded', trigger: 'supersede' },
       ],
     },
     behaviors: {
@@ -115,16 +112,15 @@ module.exports = {
     },
     stateMachine: {
       field: 'status',
-      initial: 'accepted',
+      initial: 'proposed',
       states: {
         proposed:   'Decision is under community discussion',
         accepted:   'Decision is ratified and in effect',
         superseded: { description: 'Decision has been replaced by a newer decision', terminal: true },
       },
       transitions: [
-        { from: 'proposed',  to: 'accepted',   trigger: 'accept',    guard: 'Community vote must reach quorum' },
-        { from: 'accepted',  to: 'superseded', trigger: 'supersede', guard: 'A replacement decision must be accepted first' },
-        { from: 'proposed',  to: 'superseded', trigger: 'supersede', guard: 'A replacement decision must be accepted first' },
+        { from: 'proposed',              to: 'accepted',   trigger: 'accept' },
+        { from: ['proposed', 'accepted'], to: 'superseded', trigger: 'supersede' },
       ],
     },
     behaviors: {
@@ -150,16 +146,15 @@ module.exports = {
     },
     stateMachine: {
       field: 'status',
-      initial: 'accepted',
+      initial: 'proposed',
       states: {
         proposed:   'Decision is under community discussion',
         accepted:   'Decision is ratified and in effect',
         superseded: { description: 'Decision has been replaced by a newer decision', terminal: true },
       },
       transitions: [
-        { from: 'proposed',  to: 'accepted',   trigger: 'accept',    guard: 'Community vote must reach quorum' },
-        { from: 'accepted',  to: 'superseded', trigger: 'supersede', guard: 'A replacement decision must be accepted first' },
-        { from: 'proposed',  to: 'superseded', trigger: 'supersede', guard: 'A replacement decision must be accepted first' },
+        { from: 'proposed',              to: 'accepted',   trigger: 'accept' },
+        { from: ['proposed', 'accepted'], to: 'superseded', trigger: 'supersede' },
       ],
     },
     behaviors: {
@@ -185,16 +180,15 @@ module.exports = {
     },
     stateMachine: {
       field: 'status',
-      initial: 'accepted',
+      initial: 'proposed',
       states: {
         proposed:   'Decision is under community discussion',
         accepted:   'Decision is ratified and in effect',
         superseded: { description: 'Decision has been replaced by a newer decision', terminal: true },
       },
       transitions: [
-        { from: 'proposed',  to: 'accepted',   trigger: 'accept',    guard: 'Community vote must reach quorum' },
-        { from: 'accepted',  to: 'superseded', trigger: 'supersede', guard: 'A replacement decision must be accepted first' },
-        { from: 'proposed',  to: 'superseded', trigger: 'supersede', guard: 'A replacement decision must be accepted first' },
+        { from: 'proposed',              to: 'accepted',   trigger: 'accept' },
+        { from: ['proposed', 'accepted'], to: 'superseded', trigger: 'supersede' },
       ],
     },
     behaviors: {
@@ -220,16 +214,15 @@ module.exports = {
     },
     stateMachine: {
       field: 'status',
-      initial: 'accepted',
+      initial: 'proposed',
       states: {
         proposed:   'Decision is under community discussion',
         accepted:   'Decision is ratified and in effect',
         superseded: { description: 'Decision has been replaced by a newer decision', terminal: true },
       },
       transitions: [
-        { from: 'proposed',  to: 'accepted',   trigger: 'accept',    guard: 'Community vote must reach quorum' },
-        { from: 'accepted',  to: 'superseded', trigger: 'supersede', guard: 'A replacement decision must be accepted first' },
-        { from: 'proposed',  to: 'superseded', trigger: 'supersede', guard: 'A replacement decision must be accepted first' },
+        { from: 'proposed',              to: 'accepted',   trigger: 'accept' },
+        { from: ['proposed', 'accepted'], to: 'superseded', trigger: 'supersede' },
       ],
     },
     behaviors: {
@@ -255,16 +248,15 @@ module.exports = {
     },
     stateMachine: {
       field: 'status',
-      initial: 'accepted',
+      initial: 'proposed',
       states: {
         proposed:   'Decision is under community discussion',
         accepted:   'Decision is ratified and in effect',
         superseded: { description: 'Decision has been replaced by a newer decision', terminal: true },
       },
       transitions: [
-        { from: 'proposed',  to: 'accepted',   trigger: 'accept',    guard: 'Community vote must reach quorum' },
-        { from: 'accepted',  to: 'superseded', trigger: 'supersede', guard: 'A replacement decision must be accepted first' },
-        { from: 'proposed',  to: 'superseded', trigger: 'supersede', guard: 'A replacement decision must be accepted first' },
+        { from: 'proposed',              to: 'accepted',   trigger: 'accept' },
+        { from: ['proposed', 'accepted'], to: 'superseded', trigger: 'supersede' },
       ],
     },
     behaviors: {
