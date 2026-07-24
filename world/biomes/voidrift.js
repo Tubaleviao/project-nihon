@@ -3,7 +3,7 @@ const { defineEntity } = require('@newel/core')
 module.exports = {
 
   VoidRift: defineEntity({
-    role: 'biome',
+    tags: ['biome'],
     description:
       'Fractured terrain surrounding permanent rifts in the fabric of reality. ' +
       'Reality distortions warp physics: gravity is inconsistent, time stutters, ' +
@@ -14,7 +14,7 @@ module.exports = {
       id:             { type: 'uuid', primaryKey: true },
       avgTemperature: { type: 'decimal', description: '°C; fluctuates wildly near active rifts' },
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year; negligible' },
-      soilFertility:  { type: 'decimal', min: 0, max: 0, description: '0–1; always zero — nothing biological grows near rifts; tile generation must set this to 0 and reject any non-zero value' },
+      soilFertility:  { type: 'decimal', description: '0–1; always zero — nothing biological grows near rifts; tile generation must set this to 0 and reject any non-zero value' },
     },
     behaviors: {
       evaluateSpawn: {

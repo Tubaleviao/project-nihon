@@ -3,7 +3,7 @@ const { defineEntity } = require('@newel/core')
 module.exports = {
 
   WeatherSystem: defineEntity({
-    role: 'system',
+    tags: ['world-system'],
     description:
       'Simulates weather across biomes as an emergent world system. ' +
       'Weather is not authored — it emerges from biome parameters, seasonal cycles, ' +

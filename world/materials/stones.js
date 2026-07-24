@@ -22,7 +22,7 @@ module.exports = {
 
   // ─── Ashite ───────────────────────────────────────────────────────────────
   Ashite: defineEntity({
-    role: 'material',
+    tags: ['material'],
     description:
       'Pale grey volcanic rock formed from compressed volcanic ash. ' +
       'Lightweight for its volume and naturally insulating; the standard building stone ' +
@@ -59,7 +59,7 @@ module.exports = {
 
   // ─── Lumenfite ────────────────────────────────────────────────────────────
   Lumenfite: defineEntity({
-    role: 'material',
+    tags: ['material'],
     description:
       'Translucent crystalline mineral that absorbs ambient light during the day and ' +
       'releases it slowly at night. Found in shallow cave systems and cliff faces. ' +

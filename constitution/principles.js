@@ -2,7 +2,7 @@ const { defineEntity } = require('@newel/core')
 
 module.exports = {
   PlayersAreTheContent: defineEntity({
-    role: 'system',
+    tags: ['system'],
     description: 'Players are the content — there are no scripted quests; the world is shaped entirely by player action, economy, and politics.',
     behaviors: {
       enforce: {
@@ -17,7 +17,7 @@ module.exports = {
   }),
 
   FreedomComesFirst: defineEntity({
-    role: 'system',
+    tags: ['system'],
     description: 'Freedom comes first — players choose who to be, what to build, and how to play without imposed class or story restrictions.',
     behaviors: {
       enforce: {
@@ -32,7 +32,7 @@ module.exports = {
   }),
 
   TheWorldIsPersistent: defineEntity({
-    role: 'system',
+    tags: ['system'],
     description: 'The world is persistent — changes made by players endure; nothing resets without deliberate world-event mechanics.',
     behaviors: {
       enforce: {
@@ -47,7 +47,7 @@ module.exports = {
   }),
 
   SystemsOverScripts: defineEntity({
-    role: 'system',
+    tags: ['system'],
     description: 'Systems over scripts — dynamic simulation rules produce emergent outcomes rather than authored event sequences.',
     behaviors: {
       enforce: {
@@ -62,7 +62,7 @@ module.exports = {
   }),
 
   KnowledgeIsProgression: defineEntity({
-    role: 'system',
+    tags: ['system'],
     description: 'Knowledge is progression — players advance by discovering how the world works, not by grinding XP bars.',
     behaviors: {
       enforce: {
@@ -77,7 +77,7 @@ module.exports = {
   }),
 
   CivilizationIsPlayerMade: defineEntity({
-    role: 'system',
+    tags: ['system'],
     description: 'Civilization is player-made — towns, governments, economies, and infrastructure are built and maintained by players.',
     behaviors: {
       enforce: {
@@ -92,7 +92,7 @@ module.exports = {
   }),
 
   BelievableNotRealistic: defineEntity({
-    role: 'system',
+    tags: ['system'],
     description: 'Believable, not realistic — the world has internal consistency and lore logic rather than real-world physics fidelity.',
     behaviors: {
       enforce: {
@@ -107,7 +107,7 @@ module.exports = {
   }),
 
   EverythingHasTradeoffs: defineEntity({
-    role: 'system',
+    tags: ['system'],
     description: 'Everything has trade-offs — no dominant strategy; every choice sacrifices something.',
     behaviors: {
       enforce: {
@@ -122,7 +122,7 @@ module.exports = {
   }),
 
   CommunityOwnsTheFuture: defineEntity({
-    role: 'system',
+    tags: ['system'],
     description: 'Community owns the future — the game is open-source and its direction is shaped by contributor consensus.',
     behaviors: {
       enforce: {
@@ -137,7 +137,7 @@ module.exports = {
   }),
 
   NoPayToWin: defineEntity({
-    role: 'system',
+    tags: ['system'],
     description: 'No pay-to-win — monetary transactions never grant gameplay advantages over non-paying players.',
     behaviors: {
       enforce: {

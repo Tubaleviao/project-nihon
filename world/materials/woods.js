@@ -40,7 +40,7 @@ module.exports = {
 
   // ─── Thornwood ────────────────────────────────────────────────────────────
   Thornwood: defineEntity({
-    role: 'material',
+    tags: ['material'],
     description:
       'Dense, dark-veined wood from the Thornwood tree that grows in lowland forests. ' +
       'Characterised by natural spike-like growths on its branches; commonly used for ' +
@@ -77,7 +77,7 @@ module.exports = {
 
   // ─── Duskfiber ────────────────────────────────────────────────────────────
   Duskfiber: defineEntity({
-    role: 'material',
+    tags: ['material'],
     description:
       'Fibrous bark harvested from the Duskwood trees that grow only in twilight biomes ' +
       'where day and night cycle at unusual speeds. The fibers shimmer with faint ' +
@@ -106,7 +106,7 @@ module.exports = {
         description: 'Infuse processed duskfiber with moon-oil to lock in bioluminescence',
         rules: [
           'Moon-oil is a rare alchemical reagent — one vial treats ten bundles',
-          'Treatment requires isLuminous = true; the normalizer derives a machine-level guard from this rule — the crafting system must read isLuminous from stored state, never re-derive it from current time-of-day',
+          'Treatment requires isLuminous = true; this is a prose constraint — the crafting system must enforce it explicitly by reading isLuminous from stored state, never re-deriving it from current time-of-day',
           'Treated luminous thread retains glow permanently; untreated luminous thread fades after two in-game days',
         ],
         auth: { roles: ['maintainer'] },

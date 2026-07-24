@@ -3,7 +3,7 @@ const { defineEntity } = require('@newel/core')
 module.exports = {
 
   TemperateForest: defineEntity({
-    role: 'biome',
+    tags: ['biome'],
     description:
       'Broad mixed-leaf forests covering most mid-latitude landmass. ' +
       'Moderate rainfall, seasonal temperature shifts, and rich soil make this the ' +
@@ -30,7 +30,7 @@ module.exports = {
   }),
 
   TemperateGrassland: defineEntity({
-    role: 'biome',
+    tags: ['biome'],
     description:
       'Open rolling plains ideal for large settlements, agriculture, and mounted travel. ' +
       'Sparse tree cover means lumber is scarce but soil fertility is highest.',
