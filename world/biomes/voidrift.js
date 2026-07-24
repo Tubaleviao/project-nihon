@@ -3,7 +3,7 @@ const { defineEntity } = require('@newel/core')
 module.exports = {
 
   VoidRift: defineEntity({
-    role: 'biome',
+    tags: ['biome'],
     description:
       'Fractured terrain surrounding permanent rifts in the fabric of reality. ' +
       'Reality distortions warp physics: gravity is inconsistent, time stutters, ' +

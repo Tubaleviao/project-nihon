@@ -40,7 +40,7 @@ module.exports = {
 
   // ─── Thornwood ────────────────────────────────────────────────────────────
   Thornwood: defineEntity({
-    role: 'material',
+    tags: ['material'],
     description:
       'Dense, dark-veined wood from the Thornwood tree that grows in lowland forests. ' +
       'Characterised by natural spike-like growths on its branches; commonly used for ' +
@@ -77,7 +77,7 @@ module.exports = {
 
   // ─── Duskfiber ────────────────────────────────────────────────────────────
   Duskfiber: defineEntity({
-    role: 'material',
+    tags: ['material'],
     description:
       'Fibrous bark harvested from the Duskwood trees that grow only in twilight biomes ' +
       'where day and night cycle at unusual speeds. The fibers shimmer with faint ' +

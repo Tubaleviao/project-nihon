@@ -3,7 +3,7 @@ const { defineEntity } = require('@newel/core')
 module.exports = {
 
   VolcanicBadlands: defineEntity({
-    role: 'biome',
+    tags: ['biome'],
     description:
       'Barren, heat-scorched terrain surrounding active or dormant volcanic calderas. ' +
       'The surface is covered in ashite rock and cooled lava flows. ' +

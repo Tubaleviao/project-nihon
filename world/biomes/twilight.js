@@ -3,7 +3,7 @@ const { defineEntity } = require('@newel/core')
 module.exports = {
 
   TwilightGrove: defineEntity({
-    role: 'biome',
+    tags: ['biome'],
     description:
       'Eerie glades where day-night cycles run at an accelerated, unpredictable rate, ' +
       'bathing the land in perpetual half-light. Duskwood trees dominate the canopy; ' +

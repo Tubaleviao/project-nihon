@@ -22,7 +22,7 @@ module.exports = {
 
   // ─── Ferrite ──────────────────────────────────────────────────────────────
   Ferrite: defineEntity({
-    role: 'material',
+    tags: ['material'],
     description:
       'Common dark-grey metal found in surface veins across temperate biomes, volcanic lava-tube edges, ' +
       'and stabilised sections of void rifts. ' +
@@ -59,7 +59,7 @@ module.exports = {
 
   // ─── Veilsteel ────────────────────────────────────────────────────────────
   Veilsteel: defineEntity({
-    role: 'material',
+    tags: ['material'],
     description:
       'Blue-black alloy smelted from ferrite ingots and aethermite shards under high heat. ' +
       'Extremely hard but non-conductive; absorbs magical interference, making it ideal for anti-magic armor.',
@@ -108,7 +108,7 @@ module.exports = {
 
   // ─── Aethermite ───────────────────────────────────────────────────────────
   Aethermite: defineEntity({
-    role: 'material',
+    tags: ['material'],
     description:
       'Pale silver ore that hums faintly in the presence of active magic. ' +
       'Found deep underground near ley lines and in meteor craters. ' +
@@ -169,7 +169,7 @@ module.exports = {
 
   // ─── Voidite ──────────────────────────────────────────────────────────────
   Voidite: defineEntity({
-    role: 'material',
+    tags: ['material'],
     description:
       'Jet-black crystalline ore found only in void-touched biomes and deep rifts. ' +
       'Extremely rare, highly conductive of void-type magic; dangerously unstable in raw form.',
