@@ -1,4 +1,4 @@
-const { defineEntity, skillStateMachine } = require('./shared')
+const { defineEntity, skillStateMachine, SKILL_TIERS } = require('./shared')
 
 module.exports = {
 
@@ -11,10 +11,10 @@ module.exports = {
     goal: 'Gate melee combat power behind practiced investment',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
-      tier:     { type: 'enum', values: ['novice', 'apprentice', 'journeyman', 'expert', 'master'] },
+      tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'string', description: 'Skill domain: combat' },
+      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: combat' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {
@@ -50,10 +50,10 @@ module.exports = {
     goal: 'Gate ranged combat capability and enable non-combat uses like hunting and signal flares',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
-      tier:     { type: 'enum', values: ['novice', 'apprentice', 'journeyman', 'expert', 'master'] },
+      tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'string', description: 'Skill domain: combat' },
+      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: combat' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {
@@ -89,10 +89,10 @@ module.exports = {
     goal: 'Reward dedicated defenders and create a viable tank archetype',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
-      tier:     { type: 'enum', values: ['novice', 'apprentice', 'journeyman', 'expert', 'master'] },
+      tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'string', description: 'Skill domain: combat' },
+      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: combat' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {
@@ -128,10 +128,10 @@ module.exports = {
     goal: 'Provide a no-equipment combat path and enable creature-taming interactions',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
-      tier:     { type: 'enum', values: ['novice', 'apprentice', 'journeyman', 'expert', 'master'] },
+      tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'string', description: 'Skill domain: combat' },
+      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: combat' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {

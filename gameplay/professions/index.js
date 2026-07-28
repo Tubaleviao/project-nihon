@@ -1,5 +1,7 @@
 const { defineEntity } = require('@newel/core')
 
+const PROFESSION_STATUSES = ['locked', 'active', 'mastered']
+
 function professionStateMachine() {
   return {
     field: 'status',
@@ -16,7 +18,17 @@ function professionStateMachine() {
   }
 }
 
-module.exports = {
+function safeMerge(...sources) {
+  return sources.reduce((acc, src) => {
+    for (const key of Object.keys(src)) {
+      if (Object.hasOwn(acc, key)) throw new Error(`Duplicate profession entity key: "${key}"`)
+      acc[key] = src[key]
+    }
+    return acc
+  }, {})
+}
+
+const professions = {
 
   // ─── Blacksmith ───────────────────────────────────────────────────────────
   Blacksmith: defineEntity({
@@ -28,7 +40,7 @@ module.exports = {
     goal: 'Represent the mid-tier crafting profession that bridges mundane and magical metalwork',
     fields: {
       id:     { type: 'uuid', primaryKey: true },
-      status: { type: 'enum', values: ['locked', 'active', 'mastered'] },
+      status: { type: 'enum', values: PROFESSION_STATUSES },
     },
     relations: {
       smithing:     { name: 'smithing',     kind: 'hasOne', target: 'Smithing' },
@@ -61,7 +73,7 @@ module.exports = {
     goal: 'Represent the primary magic-focused profession with both offensive and item-craft capability',
     fields: {
       id:     { type: 'uuid', primaryKey: true },
-      status: { type: 'enum', values: ['locked', 'active', 'mastered'] },
+      status: { type: 'enum', values: PROFESSION_STATUSES },
     },
     relations: {
       elementalMagic: { name: 'elementalMagic', kind: 'hasOne', target: 'ElementalMagic' },
@@ -94,7 +106,7 @@ module.exports = {
     goal: 'Represent the hunting and wilderness-travel profession; bridge combat and exploration',
     fields: {
       id:     { type: 'uuid', primaryKey: true },
-      status: { type: 'enum', values: ['locked', 'active', 'mastered'] },
+      status: { type: 'enum', values: PROFESSION_STATUSES },
     },
     relations: {
       archery:    { name: 'archery',    kind: 'hasOne', target: 'Archery' },
@@ -129,7 +141,7 @@ module.exports = {
     goal: 'Represent the dedicated melee combat profession; pair with Arcanist for balanced group composition',
     fields: {
       id:     { type: 'uuid', primaryKey: true },
-      status: { type: 'enum', values: ['locked', 'active', 'mastered'] },
+      status: { type: 'enum', values: PROFESSION_STATUSES },
     },
     relations: {
       swordsmanship: { name: 'swordsmanship', kind: 'hasOne', target: 'Swordsmanship' },
@@ -162,7 +174,7 @@ module.exports = {
     goal: 'Create an economic niche for potion and catalyst production; link crafting and magic economies',
     fields: {
       id:     { type: 'uuid', primaryKey: true },
-      status: { type: 'enum', values: ['locked', 'active', 'mastered'] },
+      status: { type: 'enum', values: PROFESSION_STATUSES },
     },
     relations: {
       alchemy:      { name: 'alchemy',      kind: 'hasOne', target: 'Alchemy' },
@@ -195,7 +207,7 @@ module.exports = {
     goal: 'Make commerce a viable primary profession; enable the player-driven economy to function at scale',
     fields: {
       id:     { type: 'uuid', primaryKey: true },
-      status: { type: 'enum', values: ['locked', 'active', 'mastered'] },
+      status: { type: 'enum', values: PROFESSION_STATUSES },
     },
     relations: {
       trade:       { name: 'trade',       kind: 'hasOne', target: 'Trade' },
@@ -230,7 +242,7 @@ module.exports = {
     goal: 'Reward deep exploration investment; create a profession that opens the world for other players',
     fields: {
       id:     { type: 'uuid', primaryKey: true },
-      status: { type: 'enum', values: ['locked', 'active', 'mastered'] },
+      status: { type: 'enum', values: PROFESSION_STATUSES },
     },
     relations: {
       navigation:   { name: 'navigation',   kind: 'hasOne', target: 'Navigation' },
@@ -266,7 +278,7 @@ module.exports = {
     goal: 'Represent the highest-tier dual-path profession; reward players who explored dangerously',
     fields: {
       id:     { type: 'uuid', primaryKey: true },
-      status: { type: 'enum', values: ['locked', 'active', 'mastered'] },
+      status: { type: 'enum', values: PROFESSION_STATUSES },
     },
     relations: {
       voidMagic:    { name: 'voidMagic',    kind: 'hasOne', target: 'VoidMagic' },
@@ -292,3 +304,5 @@ module.exports = {
   }),
 
 }
+
+module.exports = safeMerge(professions)

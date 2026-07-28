@@ -1,4 +1,4 @@
-const { defineEntity, skillStateMachine } = require('./shared')
+const { defineEntity, skillStateMachine, SKILL_TIERS } = require('./shared')
 
 module.exports = {
 
@@ -11,10 +11,10 @@ module.exports = {
     goal: 'Gate faction interaction quality behind investment; make non-combat paths viable for territory acquisition',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
-      tier:     { type: 'enum', values: ['novice', 'apprentice', 'journeyman', 'expert', 'master'] },
+      tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'string', description: 'Skill domain: social' },
+      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: social' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {
@@ -50,10 +50,10 @@ module.exports = {
     goal: 'Reward commercial specialisation; make player economy roles viable and distinct from combat roles',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
-      tier:     { type: 'enum', values: ['novice', 'apprentice', 'journeyman', 'expert', 'master'] },
+      tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'string', description: 'Skill domain: social' },
+      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: social' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {
@@ -89,10 +89,10 @@ module.exports = {
     goal: 'Enable a social manipulation path; prevent combat from being the only solution to NPC obstacles',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
-      tier:     { type: 'enum', values: ['novice', 'apprentice', 'journeyman', 'expert', 'master'] },
+      tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'string', description: 'Skill domain: social' },
+      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: social' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {
@@ -128,10 +128,10 @@ module.exports = {
     goal: 'Create a dedicated support-combat role that scales with group size',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
-      tier:     { type: 'enum', values: ['novice', 'apprentice', 'journeyman', 'expert', 'master'] },
+      tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'string', description: 'Skill domain: social' },
+      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: social' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {

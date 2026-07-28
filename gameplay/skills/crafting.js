@@ -1,4 +1,4 @@
-const { defineEntity, skillStateMachine } = require('./shared')
+const { defineEntity, skillStateMachine, SKILL_TIERS } = require('./shared')
 
 module.exports = {
 
@@ -12,10 +12,10 @@ module.exports = {
     goal: 'Gate weapon and armor quality behind craft investment; make forges worth building',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
-      tier:     { type: 'enum', values: ['novice', 'apprentice', 'journeyman', 'expert', 'master'] },
+      tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'string', description: 'Skill domain: crafting' },
+      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: crafting' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {
@@ -51,10 +51,10 @@ module.exports = {
     goal: 'Gate construction quality and wooden equipment crafting behind dedicated investment',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
-      tier:     { type: 'enum', values: ['novice', 'apprentice', 'journeyman', 'expert', 'master'] },
+      tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'string', description: 'Skill domain: crafting' },
+      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: crafting' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {
@@ -90,10 +90,10 @@ module.exports = {
     goal: 'Gate consumable power and support ArcaneForging through reagent supply; reward experimentation',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
-      tier:     { type: 'enum', values: ['novice', 'apprentice', 'journeyman', 'expert', 'master'] },
+      tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'string', description: 'Skill domain: crafting' },
+      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: crafting' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {
@@ -130,10 +130,10 @@ module.exports = {
     goal: 'Gate magical material processing behind dedicated study; makes arcane forges economically critical',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
-      tier:     { type: 'enum', values: ['novice', 'apprentice', 'journeyman', 'expert', 'master'] },
+      tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'string', description: 'Skill domain: crafting' },
+      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: crafting' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {
@@ -170,10 +170,10 @@ module.exports = {
     goal: 'Act as the highest-tier crafting gate, accessible only to players who survive void exposure',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
-      tier:     { type: 'enum', values: ['novice', 'apprentice', 'journeyman', 'expert', 'master'] },
+      tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'string', description: 'Skill domain: crafting' },
+      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: crafting' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {
@@ -183,6 +183,11 @@ module.exports = {
           'XP threshold for the target tier must be met',
           'Skill is not tutored — only players with voidBurstSurvivor flag may unlock it',
         ],
+        auth: { roles: ['maintainer'] },
+      },
+      constructShieldedForge: {
+        description: 'Build or upgrade a void-shielded forge room that safely contains void energy during smithing',
+        rules: ['Requires Void Smithing: Apprentice'],
         auth: { roles: ['maintainer'] },
       },
       refineVoidite: {

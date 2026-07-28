@@ -1,4 +1,4 @@
-const { defineEntity, skillStateMachine } = require('./shared')
+const { defineEntity, skillStateMachine, SKILL_TIERS } = require('./shared')
 
 module.exports = {
 
@@ -11,10 +11,10 @@ module.exports = {
     goal: 'Make exploration economically meaningful and create a player-driven cartography market',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
-      tier:     { type: 'enum', values: ['novice', 'apprentice', 'journeyman', 'expert', 'master'] },
+      tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'string', description: 'Skill domain: exploration' },
+      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: exploration' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {
@@ -50,10 +50,10 @@ module.exports = {
     goal: 'Enable hunting professions and make the world feel inhabited and readable',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
-      tier:     { type: 'enum', values: ['novice', 'apprentice', 'journeyman', 'expert', 'master'] },
+      tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'string', description: 'Skill domain: exploration' },
+      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: exploration' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {
@@ -89,10 +89,10 @@ module.exports = {
     goal: 'Create a viable non-combat exploration and infiltration path',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
-      tier:     { type: 'enum', values: ['novice', 'apprentice', 'journeyman', 'expert', 'master'] },
+      tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'string', description: 'Skill domain: exploration' },
+      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: exploration' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {
@@ -128,10 +128,10 @@ module.exports = {
     goal: 'Make geography meaningful by rewarding players who invest in spatial knowledge',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
-      tier:     { type: 'enum', values: ['novice', 'apprentice', 'journeyman', 'expert', 'master'] },
+      tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'string', description: 'Skill domain: exploration' },
+      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: exploration' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {

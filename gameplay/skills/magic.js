@@ -1,4 +1,4 @@
-const { defineEntity, skillStateMachine } = require('./shared')
+const { defineEntity, skillStateMachine, SKILL_TIERS } = require('./shared')
 
 module.exports = {
 
@@ -12,10 +12,10 @@ module.exports = {
     goal: 'Provide the primary magic combat and utility path, balanced against melee in cost and effect',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
-      tier:     { type: 'enum', values: ['novice', 'apprentice', 'journeyman', 'expert', 'master'] },
+      tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'string', description: 'Skill domain: magic' },
+      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: magic' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {
@@ -52,10 +52,10 @@ module.exports = {
     goal: 'Provide a high-risk, high-reward magic path that counters anti-magic martial builds',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
-      tier:     { type: 'enum', values: ['novice', 'apprentice', 'journeyman', 'expert', 'master'] },
+      tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'string', description: 'Skill domain: magic' },
+      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: magic' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {
@@ -94,10 +94,10 @@ module.exports = {
     goal: 'Enable a support-focused magic path that remains viable without offensive output',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
-      tier:     { type: 'enum', values: ['novice', 'apprentice', 'journeyman', 'expert', 'master'] },
+      tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'string', description: 'Skill domain: magic' },
+      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: magic' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {
@@ -133,10 +133,13 @@ module.exports = {
     goal: 'Gate item enchantment behind combined magic and crafting investment; make enchanted gear feel earned',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
-      tier:     { type: 'enum', values: ['novice', 'apprentice', 'journeyman', 'expert', 'master'] },
+      tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'string', description: 'Skill domain: magic' },
+      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: magic' },
+    },
+    relations: {
+      voidSmithing: { name: 'voidSmithing', kind: 'hasOne', target: 'VoidSmithing' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {

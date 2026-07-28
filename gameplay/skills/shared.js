@@ -1,5 +1,7 @@
 const { defineEntity } = require('@newel/core')
 
+const SKILL_TIERS = ['novice', 'apprentice', 'journeyman', 'expert', 'master']
+
 function skillStateMachine() {
   return {
     field: 'tier',
@@ -20,4 +22,4 @@ function skillStateMachine() {
   }
 }
 
-module.exports = { defineEntity, skillStateMachine }
+module.exports = { defineEntity, skillStateMachine, SKILL_TIERS }
