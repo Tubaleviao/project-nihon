@@ -29,6 +29,33 @@ module.exports = {
     },
   }),
 
+  // ─── RecipeVeilsteelIngot ─────────────────────────────────────────────────
+  RecipeVeilsteelIngot: defineEntity({
+    tags: ['recipe'],
+    description: 'Smelt two raw veilsteel ore into one refined veilsteel ingot at a master forge.',
+    goal: 'Mid-tier smelting recipe; prerequisite step before any veilsteel gear can be crafted',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
+      yield:  { type: 'integer', description: 'Number of output items produced per craft' },
+    },
+    relations: {
+      inputVeilsteel: { name: 'inputVeilsteel', kind: 'hasOne', target: 'Veilsteel' },
+      output:         { name: 'output',         kind: 'hasOne', target: 'VeilsteelIngot' },
+    },
+    behaviors: {
+      craft: {
+        description: 'Execute the recipe at a master forge to produce veilsteel ingots',
+        rules: [
+          'Requires Smithing: Journeyman',
+          'Requires a master forge (ashite-lined)',
+          'Two raw veilsteel ore yield one refined ingot',
+        ],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
   // ─── RecipeFerriteShortSword ──────────────────────────────────────────────
   RecipeFerriteShortSword: defineEntity({
     tags: ['recipe'],
@@ -96,7 +123,7 @@ module.exports = {
       yield:  { type: 'integer', description: 'Number of output items produced per craft' },
     },
     relations: {
-      inputVeilsteel: { name: 'inputVeilsteel', kind: 'hasOne', target: 'VeilsteelLongsword' },
+      inputVeilsteel: { name: 'inputVeilsteel', kind: 'hasOne', target: 'VeilsteelIngot' },
       inputAshite:    { name: 'inputAshite',    kind: 'hasOne', target: 'AshiteBlock' },
       output:         { name: 'output',         kind: 'hasOne', target: 'VeilsteelLongsword' },
     },
@@ -125,7 +152,7 @@ module.exports = {
       yield:  { type: 'integer', description: 'Number of output items produced per craft' },
     },
     relations: {
-      inputVeilsteel: { name: 'inputVeilsteel', kind: 'hasOne', target: 'Veilsteel' },
+      inputVeilsteel: { name: 'inputVeilsteel', kind: 'hasOne', target: 'VeilsteelIngot' },
       inputFerrite:   { name: 'inputFerrite',   kind: 'hasOne', target: 'FerriteIngot' },
       output:         { name: 'output',         kind: 'hasOne', target: 'VeilsteelChestplate' },
     },

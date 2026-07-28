@@ -1,4 +1,4 @@
-const { defineEntity, RARITIES, itemStateMachine } = require('./shared')
+const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, consumableStateMachine } = require('./shared')
 
 module.exports = {
 
@@ -11,7 +11,7 @@ module.exports = {
     goal: 'Backbone crafting component; drives early-game trade and material loops',
     fields: {
       id:        { type: 'uuid', primaryKey: true },
-      condition: { type: 'enum', values: ['pristine', 'worn', 'damaged', 'broken'] },
+      condition: { type: 'enum', values: DURABILITY_STATES },
       weight:    { type: 'decimal', description: 'kg per ingot' },
       rarity:    { type: 'enum', values: RARITIES },
       stackable: { type: 'boolean', description: 'True; stacks up to 50 per slot' },
@@ -44,7 +44,7 @@ module.exports = {
     goal: 'Primary wood component; creates a lumber supply chain from Temperate Forest biomes',
     fields: {
       id:        { type: 'uuid', primaryKey: true },
-      condition: { type: 'enum', values: ['pristine', 'worn', 'damaged', 'broken'] },
+      condition: { type: 'enum', values: DURABILITY_STATES },
       weight:    { type: 'decimal', description: 'kg per plank' },
       rarity:    { type: 'enum', values: RARITIES },
       stackable: { type: 'boolean', description: 'True; stacks up to 30 per slot' },
@@ -77,7 +77,7 @@ module.exports = {
     goal: 'Lower-cost alchemical reagent derived from aethermite; drives arcane crafting economy',
     fields: {
       id:        { type: 'uuid', primaryKey: true },
-      condition: { type: 'enum', values: ['pristine', 'worn', 'damaged', 'broken'] },
+      condition: { type: 'enum', values: DURABILITY_STATES },
       weight:    { type: 'decimal', description: 'kg per unit' },
       rarity:    { type: 'enum', values: RARITIES },
       stackable: { type: 'boolean', description: 'True; stacks up to 99 per slot' },
@@ -86,7 +86,7 @@ module.exports = {
     relations: {
       aethermite: { name: 'aethermite', kind: 'hasOne', target: 'Aethermite' },
     },
-    stateMachine: itemStateMachine(),
+    stateMachine: consumableStateMachine(),
     behaviors: {
       degrade: {
         description: 'Potency dissipates if stored without magical containment',
@@ -96,6 +96,39 @@ module.exports = {
       repair: {
         description: 'Dissipated dust cannot be restored; only freshly ground dust retains full potency',
         rules: ['repair trigger is not applicable to aethermite dust'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
+  // ─── VeilsteelIngot ───────────────────────────────────────────────────────
+  VeilsteelIngot: defineEntity({
+    tags: ['item'],
+    description:
+      'Refined veilsteel bar smelted at a master forge from raw veilsteel ore. ' +
+      'The intermediate material required for all mid-tier veilsteel weapons and armour.',
+    goal: 'Mid-tier crafting component; creates a material processing step before veilsteel gear can be produced',
+    fields: {
+      id:        { type: 'uuid', primaryKey: true },
+      condition: { type: 'enum', values: DURABILITY_STATES },
+      weight:    { type: 'decimal', description: 'kg per ingot' },
+      rarity:    { type: 'enum', values: RARITIES },
+      stackable: { type: 'boolean', description: 'True; stacks up to 30 per slot' },
+      durability: { type: 'integer', description: 'Structural integrity; degrades only under deliberate stress' },
+    },
+    relations: {
+      veilsteel: { name: 'veilsteel', kind: 'hasOne', target: 'Veilsteel' },
+    },
+    stateMachine: itemStateMachine(),
+    behaviors: {
+      degrade: {
+        description: 'Ingot degrades only when used as a structural load-bearing component in a damaged building',
+        rules: ['Normal inventory storage never degrades an ingot'],
+        auth: { roles: ['maintainer'] },
+      },
+      repair: {
+        description: 'Re-smelt a degraded ingot back to pristine quality at a master forge',
+        rules: ['Requires a master forge; no additional materials consumed'],
         auth: { roles: ['maintainer'] },
       },
     },
@@ -111,7 +144,7 @@ module.exports = {
     goal: 'Construction component from volcanic biomes; creates supply dependency between biome specialists',
     fields: {
       id:        { type: 'uuid', primaryKey: true },
-      condition: { type: 'enum', values: ['pristine', 'worn', 'damaged', 'broken'] },
+      condition: { type: 'enum', values: DURABILITY_STATES },
       weight:    { type: 'decimal', description: 'kg per block' },
       rarity:    { type: 'enum', values: RARITIES },
       stackable: { type: 'boolean', description: 'True; stacks up to 20 per slot' },

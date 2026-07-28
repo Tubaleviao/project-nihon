@@ -1,4 +1,4 @@
-const { defineEntity, RARITIES, itemStateMachine } = require('./shared')
+const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine } = require('./shared')
 
 module.exports = {
 
@@ -11,7 +11,7 @@ module.exports = {
     goal: 'Entry-level head armour; accessible to any player who reaches Smithing: Novice',
     fields: {
       id:        { type: 'uuid', primaryKey: true },
-      condition: { type: 'enum', values: ['pristine', 'worn', 'damaged', 'broken'] },
+      condition: { type: 'enum', values: DURABILITY_STATES },
       weight:    { type: 'decimal', description: 'kg' },
       rarity:    { type: 'enum', values: RARITIES },
       stackable: { type: 'boolean', description: 'Always false for armour pieces' },
@@ -44,7 +44,7 @@ module.exports = {
     goal: 'Signature mid-tier armour for Warriors; counters mage-heavy group compositions',
     fields: {
       id:        { type: 'uuid', primaryKey: true },
-      condition: { type: 'enum', values: ['pristine', 'worn', 'damaged', 'broken'] },
+      condition: { type: 'enum', values: DURABILITY_STATES },
       weight:    { type: 'decimal', description: 'kg' },
       rarity:    { type: 'enum', values: RARITIES },
       stackable: { type: 'boolean', description: 'Always false for armour pieces' },
@@ -84,7 +84,7 @@ module.exports = {
     goal: 'Light armour option for Pathfinders and stealth-focused players; tradeoff: protection for concealment',
     fields: {
       id:        { type: 'uuid', primaryKey: true },
-      condition: { type: 'enum', values: ['pristine', 'worn', 'damaged', 'broken'] },
+      condition: { type: 'enum', values: DURABILITY_STATES },
       weight:    { type: 'decimal', description: 'kg' },
       rarity:    { type: 'enum', values: RARITIES },
       stackable: { type: 'boolean', description: 'Always false for armour pieces' },

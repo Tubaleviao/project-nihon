@@ -133,10 +133,11 @@ module.exports = defineFabric({
     AlchemyPotion: items.AlchemyPotion,
 
     // Gameplay — Items (components)
-    FerriteIngot:   items.FerriteIngot,
-    ThornwoodPlank: items.ThornwoodPlank,
-    AethermiteDust: items.AethermiteDust,
-    AshiteBlock:    items.AshiteBlock,
+    FerriteIngot:    items.FerriteIngot,
+    VeilsteelIngot:  items.VeilsteelIngot,
+    ThornwoodPlank:  items.ThornwoodPlank,
+    AethermiteDust:  items.AethermiteDust,
+    AshiteBlock:     items.AshiteBlock,
 
     // Gameplay — Items (magical)
     EnchantedAethermiteShard: items.EnchantedAethermiteShard,
@@ -145,6 +146,7 @@ module.exports = defineFabric({
 
     // Gameplay — Recipes (smithing)
     RecipeFerriteIngot:          recipes.RecipeFerriteIngot,
+    RecipeVeilsteelIngot:        recipes.RecipeVeilsteelIngot,
     RecipeFerriteShortSword:     recipes.RecipeFerriteShortSword,
     RecipeFerritePick:           recipes.RecipeFerritePick,
     RecipeVeilsteelLongsword:    recipes.RecipeVeilsteelLongsword,

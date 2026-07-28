@@ -1,4 +1,4 @@
-const { defineEntity, RARITIES, itemStateMachine } = require('./shared')
+const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine } = require('./shared')
 
 module.exports = {
 
@@ -11,7 +11,7 @@ module.exports = {
     goal: 'Primary enchanting catalyst; creates scarcity that balances the enchanting economy',
     fields: {
       id:        { type: 'uuid', primaryKey: true },
-      condition: { type: 'enum', values: ['pristine', 'worn', 'damaged', 'broken'] },
+      condition: { type: 'enum', values: DURABILITY_STATES },
       weight:    { type: 'decimal', description: 'kg per shard' },
       rarity:    { type: 'enum', values: RARITIES },
       stackable: { type: 'boolean', description: 'True; stacks up to 10 per slot' },
@@ -48,7 +48,7 @@ module.exports = {
     goal: 'Endgame magical item tying void material progression to knowledge-based unlocks',
     fields: {
       id:        { type: 'uuid', primaryKey: true },
-      condition: { type: 'enum', values: ['pristine', 'worn', 'damaged', 'broken'] },
+      condition: { type: 'enum', values: DURABILITY_STATES },
       weight:    { type: 'decimal', description: 'kg per tablet' },
       rarity:    { type: 'enum', values: RARITIES },
       stackable: { type: 'boolean', description: 'False; each tablet is unique' },
@@ -88,7 +88,7 @@ module.exports = {
     goal: 'Versatile magical utility item for Arcanists; drives demand for twilight-biome lumenfite',
     fields: {
       id:        { type: 'uuid', primaryKey: true },
-      condition: { type: 'enum', values: ['pristine', 'worn', 'damaged', 'broken'] },
+      condition: { type: 'enum', values: DURABILITY_STATES },
       weight:    { type: 'decimal', description: 'kg per orb' },
       rarity:    { type: 'enum', values: RARITIES },
       stackable: { type: 'boolean', description: 'True; stacks up to 5 per slot' },

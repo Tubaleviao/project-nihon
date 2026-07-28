@@ -72,6 +72,7 @@ module.exports = {
     },
     relations: {
       requiresTechBasicSmithing:        { name: 'requiresTechBasicSmithing',        kind: 'hasOne', target: 'TechBasicSmithing' },
+      unlocksRecipeVeilsteelIngot:      { name: 'unlocksRecipeVeilsteelIngot',      kind: 'hasOne', target: 'RecipeVeilsteelIngot' },
       unlocksRecipeVeilsteelLongsword:  { name: 'unlocksRecipeVeilsteelLongsword',  kind: 'hasOne', target: 'RecipeVeilsteelLongsword' },
       unlocksRecipeVeilsteelChestplate: { name: 'unlocksRecipeVeilsteelChestplate', kind: 'hasOne', target: 'RecipeVeilsteelChestplate' },
     },
@@ -109,7 +110,7 @@ module.exports = {
     },
     relations: {
       unlocksRecipeThornwoodPlank: { name: 'unlocksRecipeThornwoodPlank', kind: 'hasOne', target: 'RecipeThornwoodPlank' },
-      unlocksRecipeAshiteBlock:    { name: 'unlocksRecipeAshiteBlock',    kind: 'hasOne', target: 'RecipeAshiteBlock' },
+      unlocksRecipeCarpenterAxe:   { name: 'unlocksRecipeCarpenterAxe',   kind: 'hasOne', target: 'RecipeCarpenterAxe' },
     },
     stateMachine: technologyStateMachine(),
     behaviors: {
@@ -141,8 +142,8 @@ module.exports = {
     },
     relations: {
       requiresTechBasicCarpentry:  { name: 'requiresTechBasicCarpentry',  kind: 'hasOne', target: 'TechBasicCarpentry' },
-      unlocksRecipeCarpenterAxe:   { name: 'unlocksRecipeCarpenterAxe',   kind: 'hasOne', target: 'RecipeCarpenterAxe' },
       unlocksRecipeDuskfiberCloak: { name: 'unlocksRecipeDuskfiberCloak', kind: 'hasOne', target: 'RecipeDuskfiberCloak' },
+      unlocksRecipeAshiteBlock:    { name: 'unlocksRecipeAshiteBlock',    kind: 'hasOne', target: 'RecipeAshiteBlock' },
     },
     stateMachine: technologyStateMachine(),
     behaviors: {

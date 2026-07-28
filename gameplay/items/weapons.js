@@ -1,4 +1,4 @@
-const { defineEntity, RARITIES, itemStateMachine } = require('./shared')
+const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine } = require('./shared')
 
 module.exports = {
 
@@ -11,7 +11,7 @@ module.exports = {
     goal: 'Entry-level sidearm; every new player can craft one with basic smithing knowledge',
     fields: {
       id:        { type: 'uuid', primaryKey: true },
-      condition: { type: 'enum', values: ['pristine', 'worn', 'damaged', 'broken'] },
+      condition: { type: 'enum', values: DURABILITY_STATES },
       weight:    { type: 'decimal', description: 'kg' },
       rarity:    { type: 'enum', values: RARITIES },
       stackable: { type: 'boolean', description: 'Always false for weapons' },
@@ -47,7 +47,7 @@ module.exports = {
     goal: 'Mid-tier anti-mage weapon; demands Smithing investment to craft and Swordsmanship to use effectively',
     fields: {
       id:        { type: 'uuid', primaryKey: true },
-      condition: { type: 'enum', values: ['pristine', 'worn', 'damaged', 'broken'] },
+      condition: { type: 'enum', values: DURABILITY_STATES },
       weight:    { type: 'decimal', description: 'kg' },
       rarity:    { type: 'enum', values: RARITIES },
       stackable: { type: 'boolean', description: 'Always false for weapons' },
@@ -87,7 +87,7 @@ module.exports = {
     goal: 'Mid-tier ranged weapon bridging physical archery and magical combat',
     fields: {
       id:        { type: 'uuid', primaryKey: true },
-      condition: { type: 'enum', values: ['pristine', 'worn', 'damaged', 'broken'] },
+      condition: { type: 'enum', values: DURABILITY_STATES },
       weight:    { type: 'decimal', description: 'kg' },
       rarity:    { type: 'enum', values: RARITIES },
       stackable: { type: 'boolean', description: 'Always false for weapons' },
@@ -129,7 +129,7 @@ module.exports = {
     goal: 'Endgame sidearm for VoidTouched players; deliberately inaccessible without deep void progression',
     fields: {
       id:        { type: 'uuid', primaryKey: true },
-      condition: { type: 'enum', values: ['pristine', 'worn', 'damaged', 'broken'] },
+      condition: { type: 'enum', values: DURABILITY_STATES },
       weight:    { type: 'decimal', description: 'kg' },
       rarity:    { type: 'enum', values: RARITIES },
       stackable: { type: 'boolean', description: 'Always false for weapons' },

@@ -1,4 +1,4 @@
-const { defineEntity, RARITIES, itemStateMachine } = require('./shared')
+const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine } = require('./shared')
 
 module.exports = {
 
@@ -11,7 +11,7 @@ module.exports = {
     goal: 'Entry-level mining tool; gates ore gathering for new players',
     fields: {
       id:        { type: 'uuid', primaryKey: true },
-      condition: { type: 'enum', values: ['pristine', 'worn', 'damaged', 'broken'] },
+      condition: { type: 'enum', values: DURABILITY_STATES },
       weight:    { type: 'decimal', description: 'kg; affects carry capacity' },
       rarity:    { type: 'enum', values: RARITIES },
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory' },
@@ -48,7 +48,7 @@ module.exports = {
     goal: 'Mid-tier mining tool; required to extract deep-seam ores',
     fields: {
       id:        { type: 'uuid', primaryKey: true },
-      condition: { type: 'enum', values: ['pristine', 'worn', 'damaged', 'broken'] },
+      condition: { type: 'enum', values: DURABILITY_STATES },
       weight:    { type: 'decimal', description: 'kg; affects carry capacity' },
       rarity:    { type: 'enum', values: RARITIES },
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory' },
@@ -88,7 +88,7 @@ module.exports = {
     goal: 'Primary lumber-gathering tool; bridge between crafting and early combat',
     fields: {
       id:        { type: 'uuid', primaryKey: true },
-      condition: { type: 'enum', values: ['pristine', 'worn', 'damaged', 'broken'] },
+      condition: { type: 'enum', values: DURABILITY_STATES },
       weight:    { type: 'decimal', description: 'kg; affects carry capacity' },
       rarity:    { type: 'enum', values: RARITIES },
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory' },

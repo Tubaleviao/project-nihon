@@ -24,4 +24,22 @@ function itemStateMachine() {
   }
 }
 
-module.exports = { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine }
+function consumableStateMachine() {
+  return {
+    field: 'condition',
+    initial: 'pristine',
+    states: {
+      pristine: 'Full potency or freshness; ready for use',
+      worn:     'Reduced potency; still usable',
+      damaged:  'Significantly degraded; use with caution',
+      broken:   { description: 'Spoiled or fully depleted; cannot be used or repaired', terminal: true },
+    },
+    transitions: [
+      { from: 'pristine', to: 'worn',    trigger: 'degrade' },
+      { from: 'worn',     to: 'damaged', trigger: 'degrade' },
+      { from: 'damaged',  to: 'broken',  trigger: 'degrade' },
+    ],
+  }
+}
+
+module.exports = { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, consumableStateMachine }

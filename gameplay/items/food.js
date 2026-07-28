@@ -1,4 +1,4 @@
-const { defineEntity, RARITIES, itemStateMachine } = require('./shared')
+const { defineEntity, RARITIES, DURABILITY_STATES, consumableStateMachine } = require('./shared')
 
 module.exports = {
 
@@ -11,14 +11,14 @@ module.exports = {
     goal: 'Basic consumable food; encourages players to invest in agriculture as a supply chain',
     fields: {
       id:        { type: 'uuid', primaryKey: true },
-      condition: { type: 'enum', values: ['pristine', 'worn', 'damaged', 'broken'] },
+      condition: { type: 'enum', values: DURABILITY_STATES },
       weight:    { type: 'decimal', description: 'kg per unit' },
       rarity:    { type: 'enum', values: RARITIES },
       stackable: { type: 'boolean', description: 'True; stacks up to 20 per slot' },
       durability: { type: 'integer', description: 'Freshness; hits 0 when spoiled' },
     },
     relations: {},
-    stateMachine: itemStateMachine(),
+    stateMachine: consumableStateMachine(),
     behaviors: {
       degrade: {
         description: 'Food freshness degrades over real time',
@@ -46,14 +46,14 @@ module.exports = {
     goal: 'Primary consumable output of the Alchemist profession; creates a sustainable crafting economy',
     fields: {
       id:        { type: 'uuid', primaryKey: true },
-      condition: { type: 'enum', values: ['pristine', 'worn', 'damaged', 'broken'] },
+      condition: { type: 'enum', values: DURABILITY_STATES },
       weight:    { type: 'decimal', description: 'kg per flask' },
       rarity:    { type: 'enum', values: RARITIES },
       stackable: { type: 'boolean', description: 'True; stacks up to 10 per slot' },
       durability: { type: 'integer', description: 'Potency; degrades as the potion ages' },
     },
     relations: {},
-    stateMachine: itemStateMachine(),
+    stateMachine: consumableStateMachine(),
     behaviors: {
       degrade: {
         description: 'Potency degrades over time; condition worsens across in-game seasons',
