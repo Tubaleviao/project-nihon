@@ -8,6 +8,9 @@ const biomes       = require('./world/biomes')
 const weather      = require('./world/weather')
 const skills       = require('./gameplay/skills')
 const professions  = require('./gameplay/professions')
+const items        = require('./gameplay/items')
+const recipes      = require('./gameplay/recipes')
+const technology   = require('./gameplay/technology')
 
 module.exports = defineFabric({
   meta: {
@@ -108,5 +111,71 @@ module.exports = defineFabric({
     Merchant:    professions.Merchant,
     Pathfinder:  professions.Pathfinder,
     VoidTouched: professions.VoidTouched,
+
+    // Gameplay — Items (tools)
+    FerritePick:   items.FerritePick,
+    VeilsteelPick: items.VeilsteelPick,
+    CarpenterAxe:  items.CarpenterAxe,
+
+    // Gameplay — Items (weapons)
+    FerriteShortSword:  items.FerriteShortSword,
+    VeilsteelLongsword: items.VeilsteelLongsword,
+    AethermiteBow:      items.AethermiteBow,
+    VoiditeEdge:        items.VoiditeEdge,
+
+    // Gameplay — Items (armor)
+    FerriteHelmet:        items.FerriteHelmet,
+    VeilsteelChestplate:  items.VeilsteelChestplate,
+    DuskfiberCloak:       items.DuskfiberCloak,
+
+    // Gameplay — Items (food)
+    FieldRations:  items.FieldRations,
+    AlchemyPotion: items.AlchemyPotion,
+
+    // Gameplay — Items (components)
+    FerriteIngot:    items.FerriteIngot,
+    VeilsteelIngot:  items.VeilsteelIngot,
+    ThornwoodPlank:  items.ThornwoodPlank,
+    AethermiteDust:  items.AethermiteDust,
+    AshiteBlock:     items.AshiteBlock,
+
+    // Gameplay — Items (magical)
+    EnchantedAethermiteShard: items.EnchantedAethermiteShard,
+    VoidRuneTablet:           items.VoidRuneTablet,
+    LumenfiteOrb:             items.LumenfiteOrb,
+
+    // Gameplay — Recipes (smithing)
+    RecipeFerriteIngot:          recipes.RecipeFerriteIngot,
+    RecipeVeilsteelIngot:        recipes.RecipeVeilsteelIngot,
+    RecipeFerriteShortSword:     recipes.RecipeFerriteShortSword,
+    RecipeFerritePick:           recipes.RecipeFerritePick,
+    RecipeVeilsteelLongsword:    recipes.RecipeVeilsteelLongsword,
+    RecipeVeilsteelChestplate:   recipes.RecipeVeilsteelChestplate,
+
+    // Gameplay — Recipes (alchemy)
+    RecipeHealthPotion:     recipes.RecipeHealthPotion,
+    RecipeStaminaPotion:    recipes.RecipeStaminaPotion,
+    RecipeVoidResistPotion: recipes.RecipeVoidResistPotion,
+
+    // Gameplay — Recipes (arcane)
+    RecipeEnchantedAethermiteShard: recipes.RecipeEnchantedAethermiteShard,
+    RecipeAethermiteBow:            recipes.RecipeAethermiteBow,
+    RecipeLumenfiteOrb:             recipes.RecipeLumenfiteOrb,
+    RecipeVoidRuneTablet:           recipes.RecipeVoidRuneTablet,
+
+    // Gameplay — Recipes (carpentry)
+    RecipeThornwoodPlank: recipes.RecipeThornwoodPlank,
+    RecipeCarpenterAxe:   recipes.RecipeCarpenterAxe,
+    RecipeDuskfiberCloak: recipes.RecipeDuskfiberCloak,
+    RecipeAshiteBlock:    recipes.RecipeAshiteBlock,
+
+    // Gameplay — Technology
+    TechBasicSmithing:  technology.TechBasicSmithing,
+    TechMasterForge:    technology.TechMasterForge,
+    TechBasicCarpentry: technology.TechBasicCarpentry,
+    TechTextileWeaving: technology.TechTextileWeaving,
+    TechArcaneForging:  technology.TechArcaneForging,
+    TechAlchemy:        technology.TechAlchemy,
+    TechVoidMastery:    technology.TechVoidMastery,
   },
 })
