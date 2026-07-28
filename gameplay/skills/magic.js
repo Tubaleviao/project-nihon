@@ -138,9 +138,6 @@ module.exports = {
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
       category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: magic' },
     },
-    relations: {
-      voidSmithing: { name: 'voidSmithing', kind: 'hasOne', target: 'VoidSmithing' },
-    },
     stateMachine: skillStateMachine(),
     behaviors: {
       advanceTier: {

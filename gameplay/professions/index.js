@@ -18,16 +18,6 @@ function professionStateMachine() {
   }
 }
 
-function safeMerge(...sources) {
-  return sources.reduce((acc, src) => {
-    for (const key of Object.keys(src)) {
-      if (Object.hasOwn(acc, key)) throw new Error(`Duplicate profession entity key: "${key}"`)
-      acc[key] = src[key]
-    }
-    return acc
-  }, {})
-}
-
 const professions = {
 
   // ─── Blacksmith ───────────────────────────────────────────────────────────
@@ -305,4 +295,4 @@ const professions = {
 
 }
 
-module.exports = safeMerge(professions)
+module.exports = professions
