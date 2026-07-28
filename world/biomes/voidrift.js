@@ -16,6 +16,10 @@ module.exports = {
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year; negligible' },
       soilFertility:  { type: 'decimal', description: '0–1; always zero — nothing biological grows near rifts; tile generation must set this to 0 and reject any non-zero value' },
     },
+    relations: {
+      spawnVoidSerpent: { name: 'spawnVoidSerpent', kind: 'hasMany', target: 'VoidSerpent' },
+      spawnRiftWarden:  { name: 'spawnRiftWarden',  kind: 'hasOne',  target: 'RiftWarden' },
+    },
     behaviors: {
       evaluateSpawn: {
         description: 'Determine which materials and creatures spawn in a void rift tile',
@@ -23,8 +27,8 @@ module.exports = {
           'Voidite crystals are abundant at weight 0.7 — but refining them here risks a void burst',
           'Ferrite ore appears at weight 0.3 in stabilised sections near the rift edge',
           'No conventional wood or stone spawns within the rift boundary',
-          'Creature: VoidSerpent — placeholder until Phase 5 — spawn weight 0.5',
-          'Creature: RiftWarden — placeholder until Phase 5 — spawn weight 0.15',
+          'VoidSerpent spawn weight 0.5',
+          'RiftWarden: one instance per VoidRift zone; does not respawn until cooldown expires',
         ],
         auth: { roles: ['maintainer'] },
       },

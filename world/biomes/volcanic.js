@@ -15,6 +15,10 @@ module.exports = {
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year; near zero' },
       soilFertility:  { type: 'decimal', description: '0–1; near zero; no conventional farming' },
     },
+    relations: {
+      spawnLavaSlug:      { name: 'spawnLavaSlug',      kind: 'hasMany', target: 'LavaSlug' },
+      spawnCinderGargoyle: { name: 'spawnCinderGargoyle', kind: 'hasMany', target: 'CinderGargoyle' },
+    },
     behaviors: {
       evaluateSpawn: {
         description: 'Determine which materials and creatures spawn in a volcanic tile',
@@ -22,8 +26,8 @@ module.exports = {
           'Ashite is the dominant surface material at weight 0.9',
           'Aethermite veins near ley-line vents at weight 0.2 — higher near eruption events',
           'Ferrite ore in deep lava tubes at weight 0.1; requires tier-2 mining tools',
-          'Creature: LavaSlug — placeholder until Phase 5 — spawn weight 0.6',
-          'Creature: CinderGargoyle — placeholder until Phase 5 — spawn weight 0.2',
+          'LavaSlug spawn weight 0.6',
+          'CinderGargoyle spawn weight 0.2; weight increases to 0.6 during eruption events',
         ],
         auth: { roles: ['maintainer'] },
       },

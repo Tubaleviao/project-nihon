@@ -23,8 +23,8 @@ pnpm inspect    # list all entities by name
 | 1 | Constitution fabric | Done |
 | 2 | Materials and world primitives | Done |
 | 3 | Skills and professions | Done |
-| 4 | Items, recipes, and technology tree | Planned |
-| 5 | Creatures and combat systems | Planned |
+| 4 | Items, recipes, and technology tree | Done |
+| 5 | Creatures and combat systems | Done |
 | 6 | `generator-bible` integration | Planned |
 | 7 | `generator-godot` integration | Planned |
 | 8 | Public wiki | Planned |
@@ -62,6 +62,35 @@ Defines every player skill and how skills combine into professions.
 - Each skill follows a five-tier state machine: `novice → apprentice → journeyman → expert → master`
 - Professions declare required skills via relations and unlock when prerequisite tiers are met
 
+### Phase 4 — Items, recipes, and technology tree
+Models every craftable item, the recipes that produce them, and the technology progression that unlocks recipes.
+
+- `gameplay/items/` — 16 items across six categories:
+  - **Tools** — FerritePick, VeilsteelPick, CarpenterAxe
+  - **Weapons** — FerriteShortSword, VeilsteelLongsword, AethermiteBow, VoiditeEdge
+  - **Armor** — FerriteHelmet, VeilsteelChestplate, DuskfiberCloak
+  - **Food** — FieldRations, AlchemyPotion
+  - **Components** — FerriteIngot, VeilsteelIngot, ThornwoodPlank, AethermiteDust, AshiteBlock
+  - **Magical** — EnchantedAethermiteShard, VoidRuneTablet, LumenfiteOrb
+- `gameplay/recipes/` — 16 recipes across smithing, alchemy, arcane, and carpentry domains
+- `gameplay/technology/` — 7 technology nodes: BasicSmithing, MasterForge, BasicCarpentry, TextileWeaving, ArcaneForging, Alchemy, VoidMastery
+- Items follow a durability state machine: `pristine → worn → damaged → broken`
+- Technology nodes follow a research state machine: `locked → researching → unlocked`
+
+### Phase 5 — Creatures and combat systems
+Defines the world's fauna and the combat rules governing all player–creature and player–player interactions.
+
+- `world/creatures/` — 10 creatures across four biome families:
+  - **Temperate** — ForestBoar, GraywolfPack, SteppeBison, RidgeHawk
+  - **Volcanic** — LavaSlug, CinderGargoyle
+  - **Twilight** — GlimmerFox, VeilStalker
+  - **Void** — VoidSerpent, RiftWarden
+- Each creature has a complete state machine: `idle → alert → aggressive → fleeing → dead → respawning`
+- Creatures with taming interactions: GraywolfPack (wolf companion, Ranger flag), GlimmerFox (reagent harvest without killing)
+- `gameplay/combat.js` — CombatSystem entity with rules for hit calculation, critical strikes, status effects, magic interactions, structure damage, and PvP
+- All five biomes back-filled with real creature relations (placeholder strings removed)
+- Combat system rules fulfil the `MagicBalancedWithMartial` and `DestructibleBuildings` constitution decisions
+
 ---
 
 ## Project structure
@@ -74,11 +103,16 @@ constitution/
   monetization.js          # monetization rules
 world/
   materials/               # fictional materials (metals, woods, stones)
-  biomes/                  # biome definitions with spawn tables
+  biomes/                  # biome definitions with spawn tables and creature relations
   weather.js               # weather system
+  creatures/               # creature definitions by biome family
 gameplay/
   skills/                  # skill definitions by domain
   professions/             # profession definitions
+  items/                   # item definitions by category
+  recipes/                 # recipe definitions by crafting domain
+  technology/              # technology tree nodes
+  combat.js                # combat system rules
 ```
 
 ---

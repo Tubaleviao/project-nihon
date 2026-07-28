@@ -6,11 +6,13 @@ const monetization = require('./constitution/monetization')
 const materials    = require('./world/materials')
 const biomes       = require('./world/biomes')
 const weather      = require('./world/weather')
+const creatures    = require('./world/creatures')
 const skills       = require('./gameplay/skills')
 const professions  = require('./gameplay/professions')
 const items        = require('./gameplay/items')
 const recipes      = require('./gameplay/recipes')
 const technology   = require('./gameplay/technology')
+const combat       = require('./gameplay/combat')
 
 module.exports = defineFabric({
   meta: {
@@ -177,5 +179,26 @@ module.exports = defineFabric({
     TechArcaneForging:  technology.TechArcaneForging,
     TechAlchemy:        technology.TechAlchemy,
     TechVoidMastery:    technology.TechVoidMastery,
+
+    // World — Creatures (temperate)
+    ForestBoar:   creatures.ForestBoar,
+    GraywolfPack: creatures.GraywolfPack,
+    SteppeBison:  creatures.SteppeBison,
+    RidgeHawk:    creatures.RidgeHawk,
+
+    // World — Creatures (volcanic)
+    LavaSlug:       creatures.LavaSlug,
+    CinderGargoyle: creatures.CinderGargoyle,
+
+    // World — Creatures (twilight)
+    GlimmerFox:  creatures.GlimmerFox,
+    VeilStalker: creatures.VeilStalker,
+
+    // World — Creatures (void)
+    VoidSerpent: creatures.VoidSerpent,
+    RiftWarden:  creatures.RiftWarden,
+
+    // Gameplay — Combat system
+    CombatSystem: combat.CombatSystem,
   },
 })
