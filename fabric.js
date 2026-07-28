@@ -6,6 +6,8 @@ const monetization = require('./constitution/monetization')
 const materials    = require('./world/materials')
 const biomes       = require('./world/biomes')
 const weather      = require('./world/weather')
+const skills       = require('./gameplay/skills')
+const professions  = require('./gameplay/professions')
 
 module.exports = defineFabric({
   meta: {
@@ -65,5 +67,46 @@ module.exports = defineFabric({
 
     // World — Systems
     WeatherSystem: weather.WeatherSystem,
+
+    // Gameplay — Skills (combat)
+    Swordsmanship: skills.Swordsmanship,
+    Archery:       skills.Archery,
+    Shieldcraft:   skills.Shieldcraft,
+    Unarmed:       skills.Unarmed,
+
+    // Gameplay — Skills (crafting)
+    Smithing:      skills.Smithing,
+    Carpentry:     skills.Carpentry,
+    Alchemy:       skills.Alchemy,
+    ArcaneForging: skills.ArcaneForging,
+    VoidSmithing:  skills.VoidSmithing,
+
+    // Gameplay — Skills (magic)
+    ElementalMagic:   skills.ElementalMagic,
+    VoidMagic:        skills.VoidMagic,
+    RestorationMagic: skills.RestorationMagic,
+    Enchanting:       skills.Enchanting,
+
+    // Gameplay — Skills (exploration)
+    Cartography: skills.Cartography,
+    Tracking:    skills.Tracking,
+    Stealth:     skills.Stealth,
+    Navigation:  skills.Navigation,
+
+    // Gameplay — Skills (social)
+    Diplomacy:   skills.Diplomacy,
+    Trade:       skills.Trade,
+    Speechcraft: skills.Speechcraft,
+    Leadership:  skills.Leadership,
+
+    // Gameplay — Professions
+    Blacksmith:  professions.Blacksmith,
+    Arcanist:    professions.Arcanist,
+    Ranger:      professions.Ranger,
+    Warrior:     professions.Warrior,
+    Alchemist:   professions.Alchemist,
+    Merchant:    professions.Merchant,
+    Pathfinder:  professions.Pathfinder,
+    VoidTouched: professions.VoidTouched,
   },
 })
