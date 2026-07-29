@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, CREATURE_TIERS, AGGRESSION_LEVELS } = require('./shared')
+const { defineEntity, creatureStateMachine, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES } = require('./shared')
 
 module.exports = {
 
@@ -12,7 +12,7 @@ module.exports = {
     goal: 'Provide new players a safe, rewarding hunt that teaches basic combat loops',
     fields: {
       id:             { type: 'uuid', primaryKey: true },
-      state:          { type: 'enum', values: ['idle', 'alert', 'aggressive', 'fleeing', 'dead', 'respawning'] },
+      state:          { type: 'enum', values: CREATURE_STATES },
       tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier' },
       aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline' },
@@ -24,7 +24,7 @@ module.exports = {
         description: 'Detect a threat and transition from idle to alert',
         rules: [
           'Detects players within 8 tile radius',
-          'Transitions directly to aggressive if player is within 3 tiles of boarlet (juvenile)',
+          'Fires attack trigger directly from idle (no alert phase) if player is within 3 tiles of boarlet (juvenile)',
         ],
         auth: { roles: ['maintainer'] },
       },
@@ -77,7 +77,7 @@ module.exports = {
     goal: 'Introduce group AI tactics and the taming mechanic; reward skilled solo hunters over raw power',
     fields: {
       id:             { type: 'uuid', primaryKey: true },
-      state:          { type: 'enum', values: ['idle', 'alert', 'aggressive', 'fleeing', 'dead', 'respawning'] },
+      state:          { type: 'enum', values: CREATURE_STATES },
       tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier' },
       aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
       baseHp:         { type: 'integer', description: 'Hit points per wolf at tier baseline' },
@@ -124,7 +124,7 @@ module.exports = {
         rules: [
           'Requires Unarmed: Journeyman',
           'Player must approach the pup while unarmed; pup is flagged tameable after alpha death',
-          'Taming grants a wolf companion and the voidBurstSurvivor-equivalent flag wolfBondHolder required by the Ranger profession',
+          'Taming grants a wolf companion and sets the wolfBondHolder flag; Ranger profession requires this flag in addition to its skill prerequisites',
         ],
         auth: { roles: ['maintainer'] },
       },
@@ -151,7 +151,7 @@ module.exports = {
     goal: 'Provide a high-yield, high-risk hunt that rewards group play and rewarded preparation',
     fields: {
       id:             { type: 'uuid', primaryKey: true },
-      state:          { type: 'enum', values: ['idle', 'alert', 'aggressive', 'fleeing', 'dead', 'respawning'] },
+      state:          { type: 'enum', values: CREATURE_STATES },
       tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier' },
       aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline; high value' },
@@ -219,7 +219,7 @@ module.exports = {
     goal: 'Add environmental detail to the grasslands and give Archery players a reason to hunt without combat risk',
     fields: {
       id:             { type: 'uuid', primaryKey: true },
-      state:          { type: 'enum', values: ['idle', 'alert', 'aggressive', 'fleeing', 'dead', 'respawning'] },
+      state:          { type: 'enum', values: CREATURE_STATES },
       tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier' },
       aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline; low value' },

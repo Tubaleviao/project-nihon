@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, CREATURE_TIERS, AGGRESSION_LEVELS } = require('./shared')
+const { defineEntity, creatureStateMachine, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES } = require('./shared')
 
 module.exports = {
 
@@ -12,7 +12,7 @@ module.exports = {
     goal: 'Reward exploration and peaceful interaction; provide an alchemy reagent that does not require killing',
     fields: {
       id:             { type: 'uuid', primaryKey: true },
-      state:          { type: 'enum', values: ['idle', 'alert', 'aggressive', 'fleeing', 'dead', 'respawning'] },
+      state:          { type: 'enum', values: CREATURE_STATES },
       tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier' },
       aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline; low' },
@@ -90,7 +90,7 @@ module.exports = {
     goal: 'Challenge experienced players with a visibility-mechanic fight and reward knowledge-based preparation',
     fields: {
       id:             { type: 'uuid', primaryKey: true },
-      state:          { type: 'enum', values: ['idle', 'alert', 'aggressive', 'fleeing', 'dead', 'respawning'] },
+      state:          { type: 'enum', values: CREATURE_STATES },
       tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier' },
       aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline' },

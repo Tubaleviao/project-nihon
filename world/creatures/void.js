@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, CREATURE_TIERS, AGGRESSION_LEVELS } = require('./shared')
+const { defineEntity, creatureStateMachine, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES } = require('./shared')
 
 module.exports = {
 
@@ -8,12 +8,12 @@ module.exports = {
     description:
       'A massive serpentine entity born from void-rift energy given form. ' +
       'Its scales shift between physical and incorporeal, making conventional weapons unreliable. ' +
-      'Void-touched players deal full damage regardless of phase state. ' +
+      'VoidTouched players deal full damage regardless of phase state. ' +
       'Its shed scale fragments are the only material that can line a void-safe container.',
     goal: 'Gate endgame void-zone content behind the VoidTouched profession and team co-ordination',
     fields: {
       id:             { type: 'uuid', primaryKey: true },
-      state:          { type: 'enum', values: ['idle', 'alert', 'aggressive', 'fleeing', 'dead', 'respawning'] },
+      state:          { type: 'enum', values: CREATURE_STATES },
       tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier; highest tier' },
       aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline; very high' },
@@ -26,7 +26,7 @@ module.exports = {
         rules: [
           'Detects any player with void corruption above 10 within 20 tiles',
           'Detects any player regardless of stealth within 5 tiles',
-          'Aggression is immediate — no alert phase when corruption threshold is exceeded',
+          'When corruption threshold is exceeded, fires attack trigger directly from idle — no alert phase',
         ],
         auth: { roles: ['maintainer'] },
       },
@@ -35,7 +35,7 @@ module.exports = {
         rules: [
           'Bite: baseDamage + 20 void corruption to target; 50% physical damage reduction applies unless attacker is VoidTouched',
           'Tail sweep: half baseDamage in a 4-tile arc; knocks targets back 2 tiles',
-          'Every 3rd attack the serpent fully phases; all non-magical, non-void attacks pass through harmlessly for 2 seconds',
+          'Every 3rd attack the serpent fully phases for 2 seconds; all non-magical, non-void attacks pass through harmlessly — VoidTouched players deal full damage regardless',
         ],
         auth: { roles: ['maintainer'] },
       },
@@ -44,6 +44,7 @@ module.exports = {
         rules: [
           'Can only be pursued by players with VoidTouched profession into the rift boundary',
           'Regenerates 10 HP per second inside the rift boundary; cannot be damaged there',
+          'Once health is restored, fires attack trigger to re-engage any player still in range',
         ],
         auth: { roles: ['maintainer'] },
       },
@@ -87,36 +88,31 @@ module.exports = {
     goal: 'Serve as the ultimate endgame encounter; require guild-level preparation and sustained void knowledge',
     fields: {
       id:             { type: 'uuid', primaryKey: true },
-      state:          { type: 'enum', values: ['idle', 'alert', 'aggressive', 'fleeing', 'dead', 'respawning'] },
+      state:          { type: 'enum', values: ['idle', 'alert', 'aggressive', 'dead', 'respawning'] },
       tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier; highest tier' },
       aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline; extreme value' },
       baseDamage:     { type: 'integer', description: 'Damage per slam at tier baseline; extreme value' },
     },
-    stateMachine: creatureStateMachine(),
+    stateMachine: creatureStateMachine({ canFlee: false }),
     behaviors: {
       detect: {
         description: 'Detect intrusion into the innermost rift boundary',
         rules: [
           'Detects all players inside the innermost rift boundary zone unconditionally',
           'Cannot be avoided by stealth; rift proximity triggers detection',
-          'Immediately transitions to aggressive — no alert phase',
+          'Fires attack trigger directly from idle — no alert phase',
         ],
         auth: { roles: ['maintainer'] },
       },
       attack: {
         description: 'Ground slam pulse and void beam discharge',
         rules: [
-          'Ground slam: baseDamage in 6-tile radius; all targets knocked prone for 3 seconds',
+          'Ground slam: baseDamage in 6-tile radius; all targets knocked down (prone for 3 seconds)',
           'Void beam: 3× baseDamage in a straight 10-tile line; also adds 50 void corruption to each target hit',
           'Physical damage reduced by 90%; magical and void damage is fully effective',
           'VoidTouched players receive only 50% corruption from void beam (partial resistance)',
         ],
-        auth: { roles: ['maintainer'] },
-      },
-      flee: {
-        description: 'The Warden does not flee',
-        rules: ['Does not transition to fleeing state under any circumstances; fights to dead state'],
         auth: { roles: ['maintainer'] },
       },
       die: {

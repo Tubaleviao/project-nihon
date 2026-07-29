@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, CREATURE_TIERS, AGGRESSION_LEVELS } = require('./shared')
+const { defineEntity, creatureStateMachine, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES } = require('./shared')
 
 module.exports = {
 
@@ -12,7 +12,7 @@ module.exports = {
     goal: 'Teach players to respect environmental hazards; reward patience over aggression',
     fields: {
       id:             { type: 'uuid', primaryKey: true },
-      state:          { type: 'enum', values: ['idle', 'alert', 'aggressive', 'fleeing', 'dead', 'respawning'] },
+      state:          { type: 'enum', values: CREATURE_STATES },
       tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier' },
       aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline; very high due to shell armour' },
@@ -82,7 +82,7 @@ module.exports = {
     goal: 'Gate high-tier volcanic resources behind a skilled aerial combat challenge',
     fields: {
       id:             { type: 'uuid', primaryKey: true },
-      state:          { type: 'enum', values: ['idle', 'alert', 'aggressive', 'fleeing', 'dead', 'respawning'] },
+      state:          { type: 'enum', values: CREATURE_STATES },
       tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier' },
       aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline' },

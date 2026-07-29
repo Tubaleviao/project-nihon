@@ -111,6 +111,7 @@ const professions = {
           'Requires Archery: Journeyman',
           'Requires Tracking: Apprentice',
           'Requires Navigation: Apprentice',
+          'Player must hold wolfBondHolder flag — cannot be unlocked without taming a GraywolfPack pup',
         ],
         auth: { roles: ['maintainer'] },
       },
