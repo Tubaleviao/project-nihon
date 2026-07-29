@@ -40,7 +40,7 @@ module.exports = {
       applyStatusEffects: {
         description: 'Apply and tick status effects resulting from attacks or environmental sources',
         rules: [
-          'Burn (from LavaSlug slime spray): 5 damage per second for 8 seconds; extinguished by rain or water source',
+          'heat-burn (from LavaSlug slime spray): 5 damage per second for 8 seconds; extinguished by rain or water source',
           'Paralysis (from VeilStalker venom): 3-second immobilisation; 20% chance per hit; does not stack',
           'Void corruption (from VoidSerpent, RiftWarden, or void rift biome): accumulates as an integer; see VoidRift.applyHazards for overflow rules',
           'Knockback (from ForestBoar gore, SteppeBison charge): displaces target by 1–2 tiles; cannot exceed map boundary',

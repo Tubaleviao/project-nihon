@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES } = require('./shared')
+const { defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES } = require('./shared')
 
 module.exports = {
 
@@ -26,7 +26,7 @@ module.exports = {
         rules: [
           'Detects any player with void corruption above 10 within 20 tiles',
           'Detects any player regardless of stealth within 5 tiles',
-          'When corruption threshold is exceeded, fires attack trigger directly from idle — no alert phase',
+          'When corruption threshold is exceeded while idle, fires attack trigger immediately — skips the alert state for this path only',
         ],
         auth: { roles: ['maintainer'] },
       },
@@ -88,13 +88,13 @@ module.exports = {
     goal: 'Serve as the ultimate endgame encounter; require guild-level preparation and sustained void knowledge',
     fields: {
       id:             { type: 'uuid', primaryKey: true },
-      state:          { type: 'enum', values: ['idle', 'alert', 'aggressive', 'dead', 'respawning'] },
+      state:          { type: 'enum', values: creatureStateValues({ canFlee: false, skipAlert: true }) },
       tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier; highest tier' },
       aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline; extreme value' },
       baseDamage:     { type: 'integer', description: 'Damage per slam at tier baseline; extreme value' },
     },
-    stateMachine: creatureStateMachine({ canFlee: false }),
+    stateMachine: creatureStateMachine({ canFlee: false, skipAlert: true }),
     behaviors: {
       detect: {
         description: 'Detect intrusion into the innermost rift boundary',
