@@ -89,7 +89,7 @@ module.exports = {
         description: 'The lead wolf detects prey; pack transitions to alert simultaneously',
         rules: [
           'Lead wolf detects within 12 tile radius; pack shares the alert state instantly',
-          'Pack is aggressive from the start if player is carrying raw meat',
+          'Pack fires attack trigger directly from idle (no alert phase) if player is carrying raw meat',
         ],
         auth: { roles: ['maintainer'] },
       },

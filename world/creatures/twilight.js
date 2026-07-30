@@ -40,7 +40,7 @@ module.exports = {
       flee: {
         description: 'Dart into the undergrowth when threatened',
         rules: [
-          'Flees on detecting a drawn weapon within 6 tiles',
+          'On detecting a drawn weapon within 6 tiles: transitions idle → alert → fleeing immediately (skips aggressive)',
           'Extremely fast; outruns players without Tracking: Journeyman',
         ],
         auth: { roles: ['maintainer'] },

@@ -43,7 +43,7 @@ module.exports = {
           'heat-burn (from LavaSlug slime spray): 5 damage per second for 8 seconds; extinguished by rain or water source',
           'Paralysis (from VeilStalker venom): 3-second immobilisation; 20% chance per hit; does not stack',
           'Void corruption (from VoidSerpent, RiftWarden, or void rift biome): accumulates as an integer; see VoidRift.applyHazards for overflow rules',
-          'Knockback (from ForestBoar gore, SteppeBison charge): displaces target by 1–2 tiles; cannot exceed map boundary',
+          'Knockback (from ForestBoar gore): displaces target by 1 tile; cannot exceed map boundary',
           'Knockdown (from Unarmed.executeKnockdown, RiftWarden ground slam): prone state; target takes 1.5× damage from all sources until they stand',
           'Stagger (from Swordsmanship.executePowerStrike, Shieldcraft.executeShieldBash): interrupts current action; 1-second recovery',
           'Status effects are visible in the player HUD and accessible via the game API',

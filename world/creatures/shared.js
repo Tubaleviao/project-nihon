@@ -18,7 +18,7 @@ function creatureStateValues({ canFlee = true, skipAlert = false } = {}) {
 function creatureStateMachine({ canFlee = true, skipAlert = false } = {}) {
   const fleeTransitions = canFlee
     ? [
-        { from: 'alert',      to: 'fleeing', trigger: 'flee' },
+        ...(!skipAlert ? [{ from: 'alert', to: 'fleeing', trigger: 'flee' }] : []),
         { from: 'aggressive', to: 'fleeing', trigger: 'flee' },
         { from: 'fleeing',    to: 'dead',    trigger: 'die' },
         { from: 'fleeing',    to: 'idle',    trigger: 'calm' },

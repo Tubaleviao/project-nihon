@@ -5,11 +5,14 @@ const food       = require('./food')
 const components = require('./components')
 const magical    = require('./magical')
 
-module.exports = {
-  ...tools,
-  ...weapons,
-  ...armor,
-  ...food,
-  ...components,
-  ...magical,
+function safeMerge(...sources) {
+  return sources.reduce((acc, src) => {
+    for (const key of Object.keys(src)) {
+      if (Object.hasOwn(acc, key)) throw new Error(`Duplicate item entity key: "${key}"`)
+      acc[key] = src[key]
+    }
+    return acc
+  }, {})
 }
+
+module.exports = safeMerge(tools, weapons, armor, food, components, magical)
