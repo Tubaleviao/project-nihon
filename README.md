@@ -12,6 +12,7 @@ The entire game design bible — materials, skills, creatures, items, world syst
 pnpm install
 pnpm validate   # validate the fabric against the schema
 pnpm inspect    # list all entities by name
+pnpm generate   # generate the design bible into bible/
 ```
 
 ---
@@ -25,7 +26,7 @@ pnpm inspect    # list all entities by name
 | 3 | Skills and professions | Done |
 | 4 | Items, recipes, and technology tree | Done |
 | 5 | Creatures and combat systems | Done |
-| 6 | `generator-bible` integration | Planned |
+| 6 | `generator-bible` integration | Done |
 | 7 | `generator-godot` integration | Planned |
 | 8 | Public wiki | Planned |
 
@@ -91,12 +92,22 @@ Defines the world's fauna and the combat rules governing all player–creature a
 - All five biomes back-filled with real creature relations (placeholder strings removed)
 - Combat system rules fulfil the `MagicBalancedWithMartial` and `DestructibleBuildings` constitution decisions
 
+### Phase 6 — `generator-bible` integration
+Generates a static Markdown design bible from the fabric IR. Every entity becomes a dedicated page; an index groups them by concept type.
+
+- `@newel/generator-bible` — new Newel package that implements the `Generator` interface; outputs one Markdown page per entity plus a root index
+- `quoin.config.js` — wires `BibleGenerator` to the fabric and sets the output root
+- `bible/` — 117 entity pages + `bible/index.md`, browsable without a server
+- Each entity page includes: description, tags, fields table, relations table with cross-links, Mermaid state-machine diagram, and behaviors section
+- Run `pnpm generate` to regenerate after any fabric change
+
 ---
 
 ## Project structure
 
 ```
 fabric.js                  # root fabric entry point
+quoin.config.js            # generator config (BibleGenerator)
 constitution/
   principles.js            # ten core design principles
   decisions.js             # architecture decisions with state machines
@@ -113,6 +124,9 @@ gameplay/
   recipes/                 # recipe definitions by crafting domain
   technology/              # technology tree nodes
   combat.js                # combat system rules
+bible/                     # generated design bible (117 entity pages + index)
+  index.md                 # top-level index grouped by concept type
+  entities/                # one Markdown page per entity
 ```
 
 ---
