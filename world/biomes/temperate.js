@@ -15,14 +15,18 @@ module.exports = {
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year' },
       soilFertility:  { type: 'decimal', description: '0–1; affects crop growth rates' },
     },
+    relations: {
+      spawnForestBoar:   { name: 'spawnForestBoar',   kind: 'hasMany', target: 'ForestBoar' },
+      spawnGraywolfPack: { name: 'spawnGraywolfPack', kind: 'hasMany', target: 'GraywolfPack' },
+    },
     behaviors: {
       evaluateSpawn: {
         description: 'Determine which materials and creatures spawn in a generated forest tile',
         rules: [
           'Ferrite veins spawn in surface outcrops at weight 0.6',
           'Thornwood trees are the dominant wood source at weight 0.8',
-          'Creature: ForestBoar — placeholder until Phase 5 — spawn weight 0.7',
-          'Creature: GraywolfPack — placeholder until Phase 5 — spawn weight 0.4',
+          'ForestBoar spawn weight 0.7',
+          'GraywolfPack spawn weight 0.4',
         ],
         auth: { roles: ['maintainer'] },
       },
@@ -41,14 +45,18 @@ module.exports = {
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year' },
       soilFertility:  { type: 'decimal', description: '0–1; highest of all biomes' },
     },
+    relations: {
+      spawnSteppeBison: { name: 'spawnSteppeBison', kind: 'hasMany', target: 'SteppeBison' },
+      spawnRidgeHawk:   { name: 'spawnRidgeHawk',   kind: 'hasMany', target: 'RidgeHawk' },
+    },
     behaviors: {
       evaluateSpawn: {
         description: 'Determine which materials and creatures spawn in a generated grassland tile',
         rules: [
           'Ferrite veins in shallow subsurface deposits at weight 0.4',
           'Thornwood is rare; only isolated copses at weight 0.1',
-          'Creature: SteppeBison — placeholder until Phase 5 — spawn weight 0.8',
-          'Creature: RidgeHawk — placeholder until Phase 5 — spawn weight 0.5',
+          'SteppeBison spawn weight 0.8',
+          'RidgeHawk spawn weight 0.5',
         ],
         auth: { roles: ['maintainer'] },
       },

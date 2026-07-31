@@ -17,6 +17,10 @@ module.exports = {
       soilFertility:  { type: 'decimal', description: '0–1; moderate; unusual flora' },
       dayNightSpeed:  { type: 'decimal', description: 'Multiplier on the global day-night cycle (1 = normal); varies per tile; drives weather pattern selection and duskfiber luminosity' },
     },
+    relations: {
+      spawnGlimmerFox:  { name: 'spawnGlimmerFox',  kind: 'hasMany', target: 'GlimmerFox' },
+      spawnVeilStalker: { name: 'spawnVeilStalker', kind: 'hasMany', target: 'VeilStalker' },
+    },
     behaviors: {
       evaluateSpawn: {
         description: 'Determine which materials and creatures spawn in a twilight grove tile',
@@ -24,8 +28,8 @@ module.exports = {
           'Duskfiber is the dominant fibre material at weight 0.9',
           'Lumenfite crystals in exposed cave faces at weight 0.5',
           'Aethermite trace amounts at ley-line intersections at weight 0.15',
-          'Creature: GlimmerFox — placeholder until Phase 5 — spawn weight 0.7',
-          'Creature: VeilStalker — placeholder until Phase 5 — spawn weight 0.3',
+          'GlimmerFox spawn weight 0.7',
+          'VeilStalker spawn weight 0.3',
           'Day-night speed varies tile-to-tile; duskfiber thread luminosity varies accordingly',
         ],
         auth: { roles: ['maintainer'] },
