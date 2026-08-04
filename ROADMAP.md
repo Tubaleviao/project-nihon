@@ -158,7 +158,53 @@ bible.
 
 ---
 
-## Phase 7 — `generator-godot` integration
+## Phase 7 — Character system specification
+
+**Goal:** Produce a complete, actionable character system specification that
+covers visual customization, asset architecture, persistence, and multiplayer
+state — ready to guide engine implementation and art production.
+
+**Newel dependency:** None. This is a design phase.
+
+**Deliverables:**
+- `characters.md` — full character system specification covering:
+  - `SkeletonDefinition` taxonomy (humanoid, quadruped, bird, serpent, custom)
+  - Three customization dimensions: Shape, Composition, Appearance
+  - Bones vs. Sockets distinction and socket naming conventions
+  - Equipment Slot vs. Socket vs. Attachment State model
+  - Base body proportion parameters and their artistic bounds
+  - Equipment deformation modes (SKINNED, RIGID, HYBRID)
+  - Mesh hiding system
+  - Material system: Primary / Secondary / Accent masks, Metal, Emission, Wear
+  - Palette system design, including **explicit palette size decision**
+  - Per-instance material data approach (engine-agnostic)
+  - Pixel art texture guidelines: resolutions, Point filtering, UV mapping
+  - Texture Arrays and atlas strategy
+  - Persistence-as-recipe model for characters and equipment
+  - Multiplayer visual state synchronization
+  - Permanent vs. transient visual state separation
+  - LOD levels and composition simplification with `minLodLevel` per attachment
+  - Animation system placeholder (to be expanded in a dedicated spec)
+  - Data-driven content model
+  - Asset compatibility and semantic tag system
+  - Asset production pipeline checklist
+  - Optimization decision order
+
+**Open items to resolve before engine implementation:**
+- Final palette size (recommended starting point: 256 entries)
+- Animation system specification (state machines, blend trees, locomotion)
+- Hitbox category definitions
+
+**Acceptance criteria:**
+- Every section has enough detail to guide an implementation decision
+- Palette size is explicitly decided and documented
+- The asset pipeline checklist is complete and agreed upon by art and engineering
+- The animation system placeholder is acknowledged and a follow-up spec is
+  scheduled
+
+---
+
+## Phase 8 — `generator-godot` integration
 
 **Goal:** Generate Godot 4.x-ready resource files from the same fabric.
 
@@ -178,7 +224,7 @@ bible.
 
 ---
 
-## Phase 8 — Public wiki
+## Phase 9 — Public wiki
 
 **Goal:** Publish a player-facing wiki generated from the same fabric.
 
