@@ -129,6 +129,35 @@ module.exports = {
     },
   }),
 
+  // ─── AethermiteShard ──────────────────────────────────────────────────────
+  AethermiteShard: defineEntity({
+    tags: ['item'],
+    description:
+      'Raw aethermite refined into a crystalline shard at an arcane forge. ' +
+      'The solid form of processed aethermite; used as a smithing input for veilsteel alloying. ' +
+      'Not interchangeable with aethermite dust — the shard form retains structural integrity under forge heat.',
+    goal: 'Discrete shard form of refined aethermite; unambiguous input for the veilsteel alloying recipe',
+    fields: {
+      id:        { type: 'uuid', primaryKey: true },
+      condition: { type: 'enum', values: DURABILITY_STATES },
+      weight:    { type: 'decimal', description: 'kg per shard' },
+      rarity:    { type: 'enum', values: RARITIES },
+      stackable: { type: 'boolean', description: 'True; stacks up to 20 per slot' },
+      durability: { type: 'integer', description: 'Crystal integrity; shatters under standard forge temperatures — must be processed in an arcane forge' },
+    },
+    relations: {
+      aethermite: { name: 'aethermite', kind: 'hasOne', target: 'Aethermite' },
+    },
+    stateMachine: consumableStateMachine(),
+    behaviors: {
+      degrade: {
+        description: 'Shard integrity degrades under non-magical heat exposure',
+        rules: ['Stored in a standard forge area: degrades one tier per in-game day; safe in arcane storage'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
   // ─── AshiteBlock ──────────────────────────────────────────────────────────
   AshiteBlock: defineEntity({
     tags: ['item'],

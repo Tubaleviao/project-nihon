@@ -3,7 +3,7 @@
 
 **Tags:** `technology`
 
-Advanced forge construction and temperature-control techniques. Unlocks the master forge structure and veilsteel recipes. Requires basic smithing and a supply of ashite blocks.
+Advanced forge construction and temperature-control techniques. Unlocks the master forge structure and veilsteel recipes. Requires basic smithing and a supply of raw ashite ore.
 
 > **Goal:** Mid-tier smithing unlock; drives cross-biome supply chains (volcanic ashite to temperate smiths)
 
@@ -24,7 +24,6 @@ Advanced forge construction and temperature-control techniques. Unlocks the mast
 | `unlocksRecipeVeilsteelIngot` | hasOne | [RecipeVeilsteelIngot](recipeveilsteelingot.md) |  |
 | `unlocksRecipeVeilsteelLongsword` | hasOne | [RecipeVeilsteelLongsword](recipeveilsteellongsword.md) |  |
 | `unlocksRecipeVeilsteelChestplate` | hasOne | [RecipeVeilsteelChestplate](recipeveilsteelchestplate.md) |  |
-| `unlocksRecipeAshiteBlock` | hasOne | [RecipeAshiteBlock](recipeashiteblock.md) |  |
 
 ### State machine
 
@@ -33,7 +32,7 @@ Advanced forge construction and temperature-control techniques. Unlocks the mast
 ```mermaid
 stateDiagram-v2
   [*] --> locked
-  locked --> researching : beginResearch\n[Requires TechBasicSmithing: unlocked; Requires Smithing: Journeyman; Requires at least ten ashite blocks in settlement storage]
+  locked --> researching : beginResearch\n[Requires TechBasicSmithing: unlocked; Requires Smithing: Journeyman; Requires at least twenty raw ashite ore in settlement storage]
   researching --> unlocked : completeResearch\n[Research cost fully paid]
   unlocked --> [*]
 ```
@@ -46,7 +45,7 @@ stateDiagram-v2
 
 | From | To | Trigger | Guards | Effects |
 | ---- | --- | ------- | ------ | ------- |
-| `locked` | `researching` | `beginResearch` | Requires TechBasicSmithing: unlocked; Requires Smithing: Journeyman; Requires at least ten ashite blocks in settlement storage |  |
+| `locked` | `researching` | `beginResearch` | Requires TechBasicSmithing: unlocked; Requires Smithing: Journeyman; Requires at least twenty raw ashite ore in settlement storage |  |
 | `researching` | `unlocked` | `completeResearch` | Research cost fully paid |  |
 
 ## Behaviors
@@ -58,7 +57,7 @@ Commit resources to master forge research
 **Rules:**
 - Requires TechBasicSmithing: unlocked
 - Requires Smithing: Journeyman
-- Requires at least ten ashite blocks in settlement storage
+- Requires at least twenty raw ashite ore in settlement storage
 
 **Auth:** `maintainer`
 

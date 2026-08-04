@@ -20,7 +20,7 @@ Alloy three ferrite ingots and one refined aethermite shard into one veilsteel i
 | Name | Kind | Target | Foreign Key |
 | ---- | ---- | ------ | ----------- |
 | `inputFerrite` | hasOne | [FerriteIngot](ferriteingot.md) |  |
-| `inputAethermite` | hasOne | [Aethermite](aethermite.md) |  |
+| `inputAethermite` | hasOne | [AethermiteShard](aethermiteshard.md) |  |
 | `output` | hasOne | [VeilsteelIngot](veilsteelingot.md) |  |
 
 ## Behaviors

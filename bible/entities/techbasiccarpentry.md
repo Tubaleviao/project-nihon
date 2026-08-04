@@ -22,6 +22,7 @@ Foundation woodworking knowledge. Unlocks the carpentry bench, plank milling, an
 | ---- | ---- | ------ | ----------- |
 | `unlocksRecipeThornwoodPlank` | hasOne | [RecipeThornwoodPlank](recipethornwoodplank.md) |  |
 | `unlocksRecipeCarpenterAxe` | hasOne | [RecipeCarpenterAxe](recipecarpenteraxe.md) |  |
+| `unlocksRecipeAshiteBlock` | hasOne | [RecipeAshiteBlock](recipeashiteblock.md) |  |
 
 ### State machine
 

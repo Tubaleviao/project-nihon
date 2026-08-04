@@ -2,20 +2,18 @@ const { defineEntity } = require('@newel/core')
 
 const TECH_STATES = ['locked', 'researching', 'unlocked']
 
-function technologyStateMachine() {
-  return {
-    field: 'status',
-    initial: 'locked',
-    states: {
-      locked:      'Prerequisites not yet met; technology is not visible in the research interface',
-      researching: 'Player or guild has committed resources; research progresses over time',
-      unlocked:    { description: 'Research complete; all associated recipes and abilities are available', terminal: true },
-    },
-    transitions: [
-      { from: 'locked',      to: 'researching', trigger: 'beginResearch' },
-      { from: 'researching', to: 'unlocked',    trigger: 'completeResearch' },
-    ],
-  }
+const TECHNOLOGY_STATE_MACHINE = {
+  field: 'status',
+  initial: 'locked',
+  states: {
+    locked:      'Prerequisites not yet met; technology is not visible in the research interface',
+    researching: 'Player or guild has committed resources; research progresses over time',
+    unlocked:    { description: 'Research complete; all associated recipes and abilities are available', terminal: true },
+  },
+  transitions: [
+    { from: 'locked',      to: 'researching', trigger: 'beginResearch' },
+    { from: 'researching', to: 'unlocked',    trigger: 'completeResearch' },
+  ],
 }
 
 module.exports = {
@@ -38,7 +36,7 @@ module.exports = {
       unlocksRecipeFerriteShortSword: { name: 'unlocksRecipeFerriteShortSword', kind: 'hasOne', target: 'RecipeFerriteShortSword' },
       unlocksRecipeFerritePick:      { name: 'unlocksRecipeFerritePick',      kind: 'hasOne', target: 'RecipeFerritePick' },
     },
-    stateMachine: technologyStateMachine(),
+    stateMachine: TECHNOLOGY_STATE_MACHINE,
     behaviors: {
       beginResearch: {
         description: 'Commit resources to researching basic smithing',
@@ -62,7 +60,7 @@ module.exports = {
     description:
       'Advanced forge construction and temperature-control techniques. ' +
       'Unlocks the master forge structure and veilsteel recipes. ' +
-      'Requires basic smithing and a supply of ashite blocks.',
+      'Requires basic smithing and a supply of raw ashite ore.',
     goal: 'Mid-tier smithing unlock; drives cross-biome supply chains (volcanic ashite to temperate smiths)',
     fields: {
       id:     { type: 'uuid', primaryKey: true },
@@ -75,16 +73,15 @@ module.exports = {
       unlocksRecipeVeilsteelIngot:      { name: 'unlocksRecipeVeilsteelIngot',      kind: 'hasOne', target: 'RecipeVeilsteelIngot' },
       unlocksRecipeVeilsteelLongsword:  { name: 'unlocksRecipeVeilsteelLongsword',  kind: 'hasOne', target: 'RecipeVeilsteelLongsword' },
       unlocksRecipeVeilsteelChestplate: { name: 'unlocksRecipeVeilsteelChestplate', kind: 'hasOne', target: 'RecipeVeilsteelChestplate' },
-      unlocksRecipeAshiteBlock:         { name: 'unlocksRecipeAshiteBlock',         kind: 'hasOne', target: 'RecipeAshiteBlock' },
     },
-    stateMachine: technologyStateMachine(),
+    stateMachine: TECHNOLOGY_STATE_MACHINE,
     behaviors: {
       beginResearch: {
         description: 'Commit resources to master forge research',
         rules: [
           'Requires TechBasicSmithing: unlocked',
           'Requires Smithing: Journeyman',
-          'Requires at least ten ashite blocks in settlement storage',
+          'Requires at least twenty raw ashite ore in settlement storage',
         ],
         auth: { roles: ['maintainer'] },
       },
@@ -112,8 +109,9 @@ module.exports = {
     relations: {
       unlocksRecipeThornwoodPlank: { name: 'unlocksRecipeThornwoodPlank', kind: 'hasOne', target: 'RecipeThornwoodPlank' },
       unlocksRecipeCarpenterAxe:   { name: 'unlocksRecipeCarpenterAxe',   kind: 'hasOne', target: 'RecipeCarpenterAxe' },
+      unlocksRecipeAshiteBlock:    { name: 'unlocksRecipeAshiteBlock',    kind: 'hasOne', target: 'RecipeAshiteBlock' },
     },
-    stateMachine: technologyStateMachine(),
+    stateMachine: TECHNOLOGY_STATE_MACHINE,
     behaviors: {
       beginResearch: {
         description: 'Commit resources to basic carpentry research',
@@ -145,7 +143,7 @@ module.exports = {
       requiresTechBasicCarpentry:  { name: 'requiresTechBasicCarpentry',  kind: 'hasOne', target: 'TechBasicCarpentry' },
       unlocksRecipeDuskfiberCloak: { name: 'unlocksRecipeDuskfiberCloak', kind: 'hasOne', target: 'RecipeDuskfiberCloak' },
     },
-    stateMachine: technologyStateMachine(),
+    stateMachine: TECHNOLOGY_STATE_MACHINE,
     behaviors: {
       beginResearch: {
         description: 'Commit resources to textile weaving research',
@@ -183,7 +181,7 @@ module.exports = {
       unlocksRecipeAethermiteBow:           { name: 'unlocksRecipeAethermiteBow',           kind: 'hasOne', target: 'RecipeAethermiteBow' },
       unlocksRecipeLumenfiteOrb:            { name: 'unlocksRecipeLumenfiteOrb',            kind: 'hasOne', target: 'RecipeLumenfiteOrb' },
     },
-    stateMachine: technologyStateMachine(),
+    stateMachine: TECHNOLOGY_STATE_MACHINE,
     behaviors: {
       beginResearch: {
         description: 'Commit resources to arcane forging research',
@@ -219,7 +217,7 @@ module.exports = {
       unlocksRecipeHealthPotion:  { name: 'unlocksRecipeHealthPotion',  kind: 'hasOne', target: 'RecipeHealthPotion' },
       unlocksRecipeStaminaPotion: { name: 'unlocksRecipeStaminaPotion', kind: 'hasOne', target: 'RecipeStaminaPotion' },
     },
-    stateMachine: technologyStateMachine(),
+    stateMachine: TECHNOLOGY_STATE_MACHINE,
     behaviors: {
       beginResearch: {
         description: 'Commit resources to alchemy research',
@@ -256,7 +254,7 @@ module.exports = {
       unlocksRecipeVoidResistPotion:   { name: 'unlocksRecipeVoidResistPotion',   kind: 'hasOne', target: 'RecipeVoidResistPotion' },
       unlocksRecipeVoidRuneTablet:     { name: 'unlocksRecipeVoidRuneTablet',     kind: 'hasOne', target: 'RecipeVoidRuneTablet' },
     },
-    stateMachine: technologyStateMachine(),
+    stateMachine: TECHNOLOGY_STATE_MACHINE,
     behaviors: {
       beginResearch: {
         description: 'Begin reverse-engineering void techniques after direct void exposure',

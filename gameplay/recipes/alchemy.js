@@ -50,7 +50,7 @@ module.exports = {
       craft: {
         description: 'Brew at an alchemy bench',
         rules: [
-          'Requires Alchemy: Apprentice',
+          'Requires Alchemy: Novice',
           'Requires an alchemy bench',
           'One aethermite dust and root reagents yield one stamina potion',
         ],

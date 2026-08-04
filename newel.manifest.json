@@ -1,714 +1,720 @@
 {
-  "generatedAt": "2026-08-04T17:58:51.960Z",
-  "schemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e",
+  "generatedAt": "2026-08-04T19:42:21.515Z",
+  "schemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f",
   "files": [
     {
       "path": "bible/entities/playersarethecontent.md",
       "generator": "bible",
       "contentHash": "sha256:96363480ae5cc75cee8b5570b0460ec3cc76a70f3d6fbc49728d0a23f2076a26",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/freedomcomesfirst.md",
       "generator": "bible",
       "contentHash": "sha256:20b8b3eda7d5443175ea6a8bdd6f5c3c85137e60461b5a291c99fcaa1ed3801d",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/theworldispersistent.md",
       "generator": "bible",
       "contentHash": "sha256:3d0da1cea43a1bf8ce7c1db4aa5b5f37fb4dc45dd6ed87d201c70d7bda474914",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/systemsoverscripts.md",
       "generator": "bible",
       "contentHash": "sha256:518d13562739f0120cb1a96c49593a979e8c90106341540ec750ea00f2404c8a",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/knowledgeisprogression.md",
       "generator": "bible",
       "contentHash": "sha256:a5dcc9667f8aaeaf9c5ba861392ab05ce1a60bab8a61ff60e6c5e895a014083f",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/civilizationisplayermade.md",
       "generator": "bible",
       "contentHash": "sha256:f53e9e6d13c814e16e296974d9c532ad0173ae24a88aa2fd09fa4b6b8bea2c41",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/believablenotrealistic.md",
       "generator": "bible",
       "contentHash": "sha256:b73f21b9494c44adda8079548d31cb08c94a8c470b632e65af0280b23412d4a7",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/everythinghastradeoffs.md",
       "generator": "bible",
       "contentHash": "sha256:b8d977288b313af8957292cfc7ac19fc14cc4f1ce21f431b1f3d3c69b8afdbf9",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/communityownsthefuture.md",
       "generator": "bible",
       "contentHash": "sha256:2e5eddc180be4bf706c792d9ec8ba327cd74b58d0216f8f49f16224e4eac8bf4",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/nopaytowin.md",
       "generator": "bible",
       "contentHash": "sha256:715c6a839cf7ae22c6e35e351fb15f14605b54d019aad3f664c03977dde61adc",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/godotengine.md",
       "generator": "bible",
       "contentHash": "sha256:d8aa41a36cd76737aaa14e50fc97a6373cea0bf8622880cc3e0246ae7dab20f7",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/onepersistentworld.md",
       "generator": "bible",
       "contentHash": "sha256:5b1ef2ed38b990e1cb0b7dbef7b9db16f1b567f94de55f16fe961514f938dba4",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/offlineplayernpcs.md",
       "generator": "bible",
       "contentHash": "sha256:a2aacf228a3620cc574ded453ea6613087ede50430d7a320d7a6db097af163e5",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/noteleportation.md",
       "generator": "bible",
       "contentHash": "sha256:0b6cb7ed955496eb52a990dee26d3fece872cd9b69b70f4bde7cfd935747ee64",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/magicbalancedwithmartial.md",
       "generator": "bible",
       "contentHash": "sha256:d7a27dd958dd3a48008ac4c443c70445ebd4bd0da8942482a2ea044e1b1357a9",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/destructiblebuildings.md",
       "generator": "bible",
       "contentHash": "sha256:907578fc9569ad595ddd04a60310576f591e9a514f47ca9ecf283c5055ff9901",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/knowledgebyexperimentation.md",
       "generator": "bible",
       "contentHash": "sha256:2b2f01c6817678cfaf96453517a0d7e05534f70a40fda415186e588d1f4b6632",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/fictionalmaterials.md",
       "generator": "bible",
       "contentHash": "sha256:5f5f675d57cf91a68c26b9d09a14acbd5f2849e5332a080cd8844907e2e571f1",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/monetizationrules.md",
       "generator": "bible",
       "contentHash": "sha256:b503a98b08c1ce4fd23256cb7c6612460a20a9995493686e8d2d936a90774f3f",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/ferrite.md",
       "generator": "bible",
       "contentHash": "sha256:e0a25978cc2a54157511725b66ca5981e5e0d65a495bca03be995a839d7afcfe",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/veilsteel.md",
       "generator": "bible",
       "contentHash": "sha256:efcdaa28fdda7a3a60dd0b41d9a46864af432dc1f011342426f93891a88abb14",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/aethermite.md",
       "generator": "bible",
       "contentHash": "sha256:8b0769674e5c2e4184c61dd78b0fe5e930ccd2fc5c326730869da92292869e57",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/voidite.md",
       "generator": "bible",
       "contentHash": "sha256:c67280293b876faf0cc85a81a766d58e66fdceacc6787c34886e92cd95494bc5",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/thornwood.md",
       "generator": "bible",
       "contentHash": "sha256:ea3ad73fa74c1aa2732a9ccbe40adb417b2af3fd03ae0d83e6bfefabf5877f50",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/duskfiber.md",
       "generator": "bible",
       "contentHash": "sha256:2642eac1d252f0614553a699de1dd38bdb48c6a22b395924e4d8c9b76449c79e",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/ashite.md",
       "generator": "bible",
       "contentHash": "sha256:2ff292da335e254fe80a30f91b9733e082d8db7707bdfedcc6c63030011d0dc2",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/lumenfite.md",
       "generator": "bible",
       "contentHash": "sha256:26147d94e9e3ea3d9c393f0ee0d741711249a3af1013c07dec9e457513c3d246",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/temperateforest.md",
       "generator": "bible",
       "contentHash": "sha256:e4697ea4ab9c27a6489fa2afbb18f6af14e7daa91660474acef1366ad8ea0585",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/temperategrassland.md",
       "generator": "bible",
       "contentHash": "sha256:af2d4b207af2c42d3ae24b3d6ec5e499aed3f9f3e8fba1d8ce69d489a97eb08e",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/volcanicbadlands.md",
       "generator": "bible",
       "contentHash": "sha256:57080a2fb2cf3cffbbc7358f0c1f722791f03ba58a5d253312c14e88120a005a",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/twilightgrove.md",
       "generator": "bible",
       "contentHash": "sha256:9ce0d0f10879816556e32e8078a9871ec56b312afaca9873996bdd5dfc85e583",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/voidrift.md",
       "generator": "bible",
       "contentHash": "sha256:9ed894d3a31fb275d50b523b8df6d8b2e967ab4c5b4a9b5f856aed85c79ffcb4",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/weathersystem.md",
       "generator": "bible",
       "contentHash": "sha256:bcdb10c471850e6c789c87efa9e2a6a443205c476adf487457dd681fb4a56e16",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/swordsmanship.md",
       "generator": "bible",
       "contentHash": "sha256:95b08509fb0a814a1a1d0f70e1feea60338a803e989aa119398bb1387cf9f967",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/archery.md",
       "generator": "bible",
       "contentHash": "sha256:e32a5fc99847e49d3b8361e845aec4e16d39dce941ce35180da36d0e9dcf3ea7",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/shieldcraft.md",
       "generator": "bible",
       "contentHash": "sha256:19e67d0015a6dd9705cf52bf347ed6de290fa897d1610471f0ef067f2f1b234c",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/unarmed.md",
       "generator": "bible",
       "contentHash": "sha256:fd2b74b1990d213c0d8562e342b4bd680bdb4907cc53ebf42085f1fe512dad26",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/smithing.md",
       "generator": "bible",
       "contentHash": "sha256:1ed086362cbade075c142d4ef8787070860327f459d7b2d83e478742aadd55af",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/carpentry.md",
       "generator": "bible",
       "contentHash": "sha256:b4ec5f64f9f79316ec322321c50ebe4901f564cbe7fabb0927efd84a1ee3be70",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/alchemy.md",
       "generator": "bible",
       "contentHash": "sha256:b694bba0f1a87ffce39b76fdce535f829502cace367f34905040ab2371109157",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/arcaneforging.md",
       "generator": "bible",
       "contentHash": "sha256:9a0fa5b265684184ec85003f0f669beefe7a37cccfb80f8f5a184bd0dcef98fe",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/voidsmithing.md",
       "generator": "bible",
       "contentHash": "sha256:868018f897969ee6775c65e363d4f7b4ed909414b4217a9f2761f3f16dd4108b",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/elementalmagic.md",
       "generator": "bible",
       "contentHash": "sha256:5e8056293450e3cd02f2ccf91e3c9211c92ac6a00122fa2391e9b8c4846db721",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/voidmagic.md",
       "generator": "bible",
       "contentHash": "sha256:2945b231650a4b4c048f4f597bc91a3c3816eaa64b8b5edf00cafb7f8d5ac601",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/restorationmagic.md",
       "generator": "bible",
       "contentHash": "sha256:a57609c4711c1cd61c17a8edf3d62378a808e67f1d84fc155521b61517ddfb84",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/enchanting.md",
       "generator": "bible",
       "contentHash": "sha256:b31f7b8526e61601d342101894949f97d083d2b6aa17d943a517e385baee185d",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/cartography.md",
       "generator": "bible",
       "contentHash": "sha256:d1bdf3adb9bcf0f93e425a97ea3315973e04ef42cd2caa5ab9d52dc438dbbb20",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/tracking.md",
       "generator": "bible",
       "contentHash": "sha256:41975453244cd1737f4d5ae31be54ceb800f2cd6666d2171f36b13e179763cf6",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/stealth.md",
       "generator": "bible",
       "contentHash": "sha256:2d4462f97c34bffc1d280344d0a23457d71650d56266df0979d23628bc2459ed",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/navigation.md",
       "generator": "bible",
       "contentHash": "sha256:ebe72f6c7b4f12f834cb90b2d5eec478e9933f0369cb73eddb0bb412c5a33241",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/diplomacy.md",
       "generator": "bible",
       "contentHash": "sha256:7b2821253506b9eca2d049eafeca3e4062a0e6677c9cee6f342cd26187ad8912",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/trade.md",
       "generator": "bible",
       "contentHash": "sha256:576427d553c4636e80e923de257e2cdcf1454fb8a8704ac98b2ea1e79f3ca665",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/speechcraft.md",
       "generator": "bible",
       "contentHash": "sha256:8267af64621606fabeaa39ca6bc923e96bff5ead3e00410bc824d681d97f80fb",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/leadership.md",
       "generator": "bible",
       "contentHash": "sha256:f51b7977dc9315b6823f32a63fa5ddf2e3511846138312000a62df1ead4954c8",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/blacksmith.md",
       "generator": "bible",
       "contentHash": "sha256:160920a40a3b10faf21abec3fa574d00e8fe22f2c325a6045056140118797f22",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/arcanist.md",
       "generator": "bible",
       "contentHash": "sha256:fd53cc17aa2022340eb987b0842874742112dc0e1af61ac156a669fc8d136519",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/ranger.md",
       "generator": "bible",
-      "contentHash": "sha256:2829580693037e2b5d2db98d73096bfe32cbac736b8ebed1e58cc0699b951f68",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "contentHash": "sha256:0d52dd6221f94a71fdfc3fad2fbc10951312b7db367912eb22baacb4806be86c",
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/warrior.md",
       "generator": "bible",
       "contentHash": "sha256:8f7c1d9031dd92e1580ce971c033dca037bc0ea71e93b1c4bf5f95c2e0dcfc8f",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/alchemist.md",
       "generator": "bible",
       "contentHash": "sha256:0ecddcfbb788e312d9246658dd73bc162754fa632374ab98bb1793088278c9c4",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/merchant.md",
       "generator": "bible",
       "contentHash": "sha256:74e1263716e8f21b6a88f6b4be492150924aef424497aaa8f2b031901689380e",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/pathfinder.md",
       "generator": "bible",
       "contentHash": "sha256:edb6a8451ac9e1f2523d0382dab06aa7983a7bbebf331baac6e87b8bac6bcd64",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/voidtouched.md",
       "generator": "bible",
-      "contentHash": "sha256:1f422340d814bf3466cb0b0efb5afb9b97ce165c22dfb0ea81f5159c09f09306",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "contentHash": "sha256:944fadc60d55f1f4e45d0f6f2958560ecab17cf48b9f1e08d8e153e73c8522cb",
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/ferritepick.md",
       "generator": "bible",
       "contentHash": "sha256:5d44677fe0743a663dcd1291800c98d9fc37bf519fa9faeb3c911d0d93beeaa2",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/veilsteelpick.md",
       "generator": "bible",
       "contentHash": "sha256:e964322649972f5b21f1383309731e0ea2756b696353db3a27e9b4571d656363",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/carpenteraxe.md",
       "generator": "bible",
       "contentHash": "sha256:0668e18c25db68e7e3a0633523a2faa836c0b550c491d8039ade0bc1f866a74a",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/ferriteshortsword.md",
       "generator": "bible",
       "contentHash": "sha256:64f157ef98c2c1dca3673eab52fde7784347c437ddf61744530dadf6432f4438",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/veilsteellongsword.md",
       "generator": "bible",
       "contentHash": "sha256:12e169037111e254466b0e70b0647d9079951bf3634d4f318cee52fa77255c35",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/aethermitebow.md",
       "generator": "bible",
       "contentHash": "sha256:1ba1f9a625ecfb4eb86b1fea8c04366f5af54f3330d3d3ca98b7d3a9f4fb1b17",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/voiditeedge.md",
       "generator": "bible",
       "contentHash": "sha256:7d2fa8528c807c4e6b6ff1c80e56d21ee4d032682902f5c615513547d69103fa",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/ferritehelmet.md",
       "generator": "bible",
       "contentHash": "sha256:c7ce9b620138e570bd645b1da409fd2dc5b6ad3e1b0d2d73e0fd377a076e1ece",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/veilsteelchestplate.md",
       "generator": "bible",
       "contentHash": "sha256:8ef2bff4a563778d67f54acb16641c5e9e95c10aca71e84275e4acc12766d02a",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/duskfibercloak.md",
       "generator": "bible",
       "contentHash": "sha256:fce1a5d4722e65b3ae90d532a036f919c5484d1b0535fe0e1dda899b668caaf9",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/fieldrations.md",
       "generator": "bible",
       "contentHash": "sha256:57a7cf4b9a81146258264fea78caa74d476647cd37e7028f3f71db0361b3e8de",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/alchemypotion.md",
       "generator": "bible",
       "contentHash": "sha256:9a78d5f02b1a4f773a2154cf367c436411f7646fa77e16657a20a3981d3863f1",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/ferriteingot.md",
       "generator": "bible",
       "contentHash": "sha256:34fe1c6de5374bef121c400029d8bb8b3d78deb9f6bdcf5a75730b72d9c02bb1",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/veilsteelingot.md",
       "generator": "bible",
       "contentHash": "sha256:fc55c41c1a07b2daf9796d7e638d257e8571ccb347014876739158c880645e94",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/thornwoodplank.md",
       "generator": "bible",
       "contentHash": "sha256:34a3646c44587a8a1e7ac9d45ed19fa29043c422f442d114a54ec4582b8b7667",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/aethermitedust.md",
       "generator": "bible",
       "contentHash": "sha256:bca469fb68571025f51602b9fc25bb3c703e944eb83b0c4d48bcba031140327c",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+    },
+    {
+      "path": "bible/entities/aethermiteshard.md",
+      "generator": "bible",
+      "contentHash": "sha256:7d5609c03778276bebeae39dfed48bff9656a1f81d053232b784a409566e13bb",
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/ashiteblock.md",
       "generator": "bible",
       "contentHash": "sha256:800b412da00412283ea831c67fff3f28ba8dd9bb5c6a49333f12517003acd939",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/enchantedaethermiteshard.md",
       "generator": "bible",
       "contentHash": "sha256:cf235214f1a3a346dc5ae024a7ebfa2567c22f4e8183aebc8f6a94c5e08b2971",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/voidrunetablet.md",
       "generator": "bible",
       "contentHash": "sha256:4fd29691fbeb4a8cb2d862125a3992d76e18e5aa34035ca6580746a021c5bf3b",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/lumenfiteorb.md",
       "generator": "bible",
       "contentHash": "sha256:b762c22ca86126879d4d803cee67bb04014b07cdec646f417d90c0d1c0bd5ed8",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/recipeferriteingot.md",
       "generator": "bible",
       "contentHash": "sha256:6ec2e9ae9557f7c01d9d09b642f83e2ada772e25953580b73f587327f98f7630",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/recipeveilsteelingot.md",
       "generator": "bible",
-      "contentHash": "sha256:e53a8911bbf89fd617706123163f4a22620ab71bb03e61ae2b456703fe716a23",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "contentHash": "sha256:342e76fad4f6f6a447181fa2c259d311e7cc4601fcd8b033777265f25f10eed6",
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/recipeferriteshortsword.md",
       "generator": "bible",
       "contentHash": "sha256:0366b64496f2f2865ef7b30610c8b72b93f797a7664d6c4158d2dbe82528dcd5",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/recipeferritepick.md",
       "generator": "bible",
       "contentHash": "sha256:025ca0fd4a8e7aebb0d3449294ef79bb4cec5faadf21f67d2b1c59784aa910bc",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/recipeveilsteellongsword.md",
       "generator": "bible",
       "contentHash": "sha256:a543f2a94b2387e20d2f8e8d45298957bcf3df010740679863022b55fffd6e8e",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/recipeveilsteelchestplate.md",
       "generator": "bible",
       "contentHash": "sha256:d6428c8b035b154fb1c72c16c1bbe9aac48eaecee7bc428ec28324b5ed371389",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/recipehealthpotion.md",
       "generator": "bible",
       "contentHash": "sha256:8f2d98a6006f9e2717a070e87762abe845d05f451d6f9bd747b82cd17efdc4fc",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/recipestaminapotion.md",
       "generator": "bible",
-      "contentHash": "sha256:f3fbb59a3fa4252d1e3ebb3c87853b2d37d055f0d23a6469797c47d11da22ca5",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "contentHash": "sha256:bd38addc279992051caeffd0e94a4e577e3795bda9e5b2f540f6c08a0cd9573f",
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/recipevoidresistpotion.md",
       "generator": "bible",
       "contentHash": "sha256:1826cb41677c601e213b5cfafd220c9f1aa8ba9d3f749531f266154f31d8401c",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/recipeenchantedaethermiteshard.md",
       "generator": "bible",
       "contentHash": "sha256:6e161fa7a17969531204e44b2f475cc6fca946c5f80ebe1691b16158e6d88afe",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/recipeaethermitebow.md",
       "generator": "bible",
       "contentHash": "sha256:f79c31aa6fe65162b52a7d81be3663ef562c1607158803f7d000d89880bc95fd",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/recipelumenfiteorb.md",
       "generator": "bible",
       "contentHash": "sha256:b48bd6716342bd8dbb1d9d5a4e60dca7cd558b6198a842f817eb15ad85b1e260",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/recipevoidrunetablet.md",
       "generator": "bible",
       "contentHash": "sha256:eca0373106b52b9ee829f6e5e820e004a252a9e28db407b90fcfcda2cd60854f",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/recipethornwoodplank.md",
       "generator": "bible",
       "contentHash": "sha256:b008ac7b941c51f25b2fce819d837d6b6ffcf89436255569b4c4342b05d91681",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/recipecarpenteraxe.md",
       "generator": "bible",
       "contentHash": "sha256:9ca0c566415699984ca26e3fa8f556ec931e68060f51531189baf00e56392cc1",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/recipeduskfibercloak.md",
       "generator": "bible",
       "contentHash": "sha256:a940ffc03262dcaac9b1ee10173bb1e4463cd9a5d0c48a33764dcc4331b501bd",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/recipeashiteblock.md",
       "generator": "bible",
       "contentHash": "sha256:9c4c115db252dd5090912e20ad3384d1b3e0c0ab450f548731d6a57cc1de2134",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/techbasicsmithing.md",
       "generator": "bible",
       "contentHash": "sha256:f71b2952699f13fec67cd410ce707e77b0a6d50949993218d4dd73ea78b8be98",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/techmasterforge.md",
       "generator": "bible",
-      "contentHash": "sha256:5a16b8235956bfb548ca3f8c86ce3336d6fb1cf8dd0b1fe23b9da7b7c4c3a198",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "contentHash": "sha256:f9a39136fbe82f281c449e50ffa4730454d58ca7e3f13a5b961d631c7ecb447d",
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/techbasiccarpentry.md",
       "generator": "bible",
-      "contentHash": "sha256:da6f0cd581b7179e6bb61c6ae01f166bf26c3f92d69795987e4aa4106655b5be",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "contentHash": "sha256:6052d84e80f98ff07ac2b5acbc9e2d8ac7e7403bb55f6d5c068f7950de9aaba7",
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/techtextileweaving.md",
       "generator": "bible",
       "contentHash": "sha256:b395bc169dfaa48c9c790a5847a6feda804258fde3535c0fcb5483e33f2b2cd3",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/techarcaneforging.md",
       "generator": "bible",
       "contentHash": "sha256:74f8ff6d91a547dbd1818c454e207ae3add2738671b0aaa1c2571000e2344ca1",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/techalchemy.md",
       "generator": "bible",
       "contentHash": "sha256:cb6b4d751eb0be2952095be4752c555be9c23ffecb245e7b608b8ef904ac8ee7",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/techvoidmastery.md",
       "generator": "bible",
       "contentHash": "sha256:c73c98f312f6f3313f3397bbbc8c62e5c6a1d92ece266ec022d2699c83456fa5",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/forestboar.md",
       "generator": "bible",
       "contentHash": "sha256:ed1d2ff2a57249ad66de6ff660491940e637eb3cd3589c91357acfeebd4f2f5b",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/graywolfpack.md",
       "generator": "bible",
       "contentHash": "sha256:dc6b35b2ea5b8c162119f431d0dc0df75b53df103a65aefcb4e9524cc1082993",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/steppebison.md",
       "generator": "bible",
       "contentHash": "sha256:e1d0a649f0985d346c560aee39e01dcaf70cfe90ded74beb2ba71dbb3aa1974a",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/ridgehawk.md",
       "generator": "bible",
       "contentHash": "sha256:c6e126765c5f128e3552a91e65a923a9188a73a0552b9a5f1c27698e61315bce",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/lavaslug.md",
       "generator": "bible",
       "contentHash": "sha256:dd7e5395e1f88838a5885b263a924b23c0ad6a919ff2184aeeed7ee512a9f8f9",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/cindergargoyle.md",
       "generator": "bible",
       "contentHash": "sha256:028b57b940455f1323eb54fe88f6f8f2116e920c43910fc3520440096bf92386",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/glimmerfox.md",
       "generator": "bible",
       "contentHash": "sha256:51fd9dedd8e4dd8460fee55a0b67fa5e8903118d6b049b73e092b400183dfe99",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/veilstalker.md",
       "generator": "bible",
       "contentHash": "sha256:74c4f878f494109ea67a7e41438f9db93664cbdab712b43250eff98682c98440",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/voidserpent.md",
       "generator": "bible",
       "contentHash": "sha256:ba635c6c72319a162ec45ced8e9a7a6a409b660e90256af7e3db9d1f6857c949",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/riftwarden.md",
       "generator": "bible",
       "contentHash": "sha256:7851ebbd98ff3a36382b38ae3f94f4d89d433b1dda1c33d43bf63c48f7dd3fcc",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/entities/combatsystem.md",
       "generator": "bible",
       "contentHash": "sha256:1550ea709cb881c0fe41a9779567d7894d1e8cb673c3868e2aba8e3dc18be4ce",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     },
     {
       "path": "bible/index.md",
       "generator": "bible",
-      "contentHash": "sha256:c7690fc5f9e90b16a6ea10d66fe6813fb2943a9d2037c2637eafaed71ba64db2",
-      "fromSchemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e"
+      "contentHash": "sha256:869dab36619bcb184a65b97015c9b9b5e908bd3a4aa606ca056b51de3809ff27",
+      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
     }
   ]
 }

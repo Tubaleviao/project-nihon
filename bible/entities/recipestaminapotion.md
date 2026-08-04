@@ -29,7 +29,7 @@ Brew a stamina-restoring potion from aethermite dust and root reagents. Used by 
 Brew at an alchemy bench
 
 **Rules:**
-- Requires Alchemy: Apprentice
+- Requires Alchemy: Novice
 - Requires an alchemy bench
 - One aethermite dust and root reagents yield one stamina potion
 

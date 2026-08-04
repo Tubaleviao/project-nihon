@@ -21,6 +21,7 @@ A wilderness specialist who combines ranged combat with reading the environment.
 | `archery` | hasOne | [Archery](archery.md) |  |
 | `tracking` | hasOne | [Tracking](tracking.md) |  |
 | `navigation` | hasOne | [Navigation](navigation.md) |  |
+| `unarmed` | hasOne | [Unarmed](unarmed.md) |  |
 
 ### State machine
 

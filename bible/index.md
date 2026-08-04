@@ -41,6 +41,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 
 - [AethermiteBow](entities/aethermitebow.md) — Recurve bow with an aethermite-treated thornwood stave and duskfiber string
 - [AethermiteDust](entities/aethermitedust.md) — Fine powder ground from raw aethermite ore at an arcane forge
+- [AethermiteShard](entities/aethermiteshard.md) — Raw aethermite refined into a crystalline shard at an arcane forge
 - [AlchemyPotion](entities/alchemypotion.md) — Sealed glass flask containing an Alchemist-brewed reagent
 - [AshiteBlock](entities/ashiteblock.md) — Quarried ashite stone block cut to standard building dimensions
 - [CarpenterAxe](entities/carpenteraxe.md) — Felling axe with a weighted ferrite head and a duskfiber-wrapped thornwood handle

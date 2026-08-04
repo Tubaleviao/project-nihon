@@ -41,7 +41,7 @@ module.exports = {
     },
     relations: {
       inputFerrite:    { name: 'inputFerrite',    kind: 'hasOne', target: 'FerriteIngot' },
-      inputAethermite: { name: 'inputAethermite', kind: 'hasOne', target: 'Aethermite' },
+      inputAethermite: { name: 'inputAethermite', kind: 'hasOne', target: 'AethermiteShard' },
       output:          { name: 'output',          kind: 'hasOne', target: 'VeilsteelIngot' },
     },
     behaviors: {

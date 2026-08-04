@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES } = require('./shared')
+const { defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES } = require('./shared')
 
 module.exports = {
 
@@ -88,7 +88,7 @@ module.exports = {
     goal: 'Serve as the ultimate endgame encounter; require guild-level preparation and sustained void knowledge',
     fields: {
       id:             { type: 'uuid', primaryKey: true },
-      state:          { type: 'enum', values: Object.keys(creatureStateMachine({ canFlee: false, skipAlert: true }).states) },
+      state:          { type: 'enum', values: creatureStateValues({ canFlee: false, skipAlert: true }) },
       tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier; highest tier' },
       aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline; extreme value' },

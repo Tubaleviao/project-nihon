@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-04T17:58:51.960Z",
-  "schemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e",
+  "generatedAt": "2026-08-04T19:42:21.515Z",
+  "schemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -6984,6 +6984,11 @@
             "name": "navigation",
             "kind": "hasOne",
             "target": "Navigation"
+          },
+          "unarmed": {
+            "name": "unarmed",
+            "kind": "hasOne",
+            "target": "Unarmed"
           }
         },
         "behaviors": {
@@ -7570,7 +7575,7 @@
             "description": "Become available when both void-path skill tiers are reached",
             "rules": [
               "Requires Void Magic: Expert",
-              "Requires Void Smithing: Journeyman",
+              "Requires Void Smithing: Expert",
               "Player must hold voidBurstSurvivor flag — cannot be unlocked without surviving a void burst"
             ],
             "auth": {
@@ -7619,7 +7624,7 @@
               "trigger": "unlock",
               "guards": [
                 "Requires Void Magic: Expert",
-                "Requires Void Smithing: Journeyman",
+                "Requires Void Smithing: Expert",
                 "Player must hold voidBurstSurvivor flag — cannot be unlocked without surviving a void burst"
               ],
               "effects": []
@@ -10569,6 +10574,152 @@
         "pii": [],
         "gdpr": {}
       },
+      "AethermiteShard": {
+        "name": "AethermiteShard",
+        "tags": [
+          "item"
+        ],
+        "description": "Raw aethermite refined into a crystalline shard at an arcane forge. The solid form of processed aethermite; used as a smithing input for veilsteel alloying. Not interchangeable with aethermite dust — the shard form retains structural integrity under forge heat.",
+        "goal": "Discrete shard form of refined aethermite; unambiguous input for the veilsteel alloying recipe",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per shard",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; stacks up to 20 per slot",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Crystal integrity; shatters under standard forge temperatures — must be processed in an arcane forge",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          }
+        },
+        "relations": {
+          "aethermite": {
+            "name": "aethermite",
+            "kind": "hasOne",
+            "target": "Aethermite"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "Shard integrity degrades under non-magical heat exposure",
+            "rules": [
+              "Stored in a standard forge area: degrades one tier per in-game day; safe in arcane storage"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Full potency or freshness; ready for use",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Reduced potency; still usable",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; use with caution",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Spoiled or fully depleted; cannot be used or repaired",
+              "terminal": true
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Stored in a standard forge area: degrades one tier per in-game day; safe in arcane storage"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Stored in a standard forge area: degrades one tier per in-game day; safe in arcane storage"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Stored in a standard forge area: degrades one tier per in-game day; safe in arcane storage"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
       "AshiteBlock": {
         "name": "AshiteBlock",
         "tags": [
@@ -11445,7 +11596,7 @@
           "inputAethermite": {
             "name": "inputAethermite",
             "kind": "hasOne",
-            "target": "Aethermite"
+            "target": "AethermiteShard"
           },
           "output": {
             "name": "output",
@@ -11887,7 +12038,7 @@
             "name": "craft",
             "description": "Brew at an alchemy bench",
             "rules": [
-              "Requires Alchemy: Apprentice",
+              "Requires Alchemy: Novice",
               "Requires an alchemy bench",
               "One aethermite dust and root reagents yield one stamina potion"
             ],
@@ -12698,7 +12849,7 @@
         "tags": [
           "technology"
         ],
-        "description": "Advanced forge construction and temperature-control techniques. Unlocks the master forge structure and veilsteel recipes. Requires basic smithing and a supply of ashite blocks.",
+        "description": "Advanced forge construction and temperature-control techniques. Unlocks the master forge structure and veilsteel recipes. Requires basic smithing and a supply of raw ashite ore.",
         "goal": "Mid-tier smithing unlock; drives cross-biome supply chains (volcanic ashite to temperate smiths)",
         "fields": {
           "id": {
@@ -12757,11 +12908,6 @@
             "name": "unlocksRecipeVeilsteelChestplate",
             "kind": "hasOne",
             "target": "RecipeVeilsteelChestplate"
-          },
-          "unlocksRecipeAshiteBlock": {
-            "name": "unlocksRecipeAshiteBlock",
-            "kind": "hasOne",
-            "target": "RecipeAshiteBlock"
           }
         },
         "behaviors": {
@@ -12771,7 +12917,7 @@
             "rules": [
               "Requires TechBasicSmithing: unlocked",
               "Requires Smithing: Journeyman",
-              "Requires at least ten ashite blocks in settlement storage"
+              "Requires at least twenty raw ashite ore in settlement storage"
             ],
             "auth": {
               "roles": [
@@ -12820,7 +12966,7 @@
               "guards": [
                 "Requires TechBasicSmithing: unlocked",
                 "Requires Smithing: Journeyman",
-                "Requires at least ten ashite blocks in settlement storage"
+                "Requires at least twenty raw ashite ore in settlement storage"
               ],
               "effects": []
             },
@@ -12892,6 +13038,11 @@
             "name": "unlocksRecipeCarpenterAxe",
             "kind": "hasOne",
             "target": "RecipeCarpenterAxe"
+          },
+          "unlocksRecipeAshiteBlock": {
+            "name": "unlocksRecipeAshiteBlock",
+            "kind": "hasOne",
+            "target": "RecipeAshiteBlock"
           }
         },
         "behaviors": {
