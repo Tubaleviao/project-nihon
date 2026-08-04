@@ -56,13 +56,4 @@ Potency degrades over time; condition worsens across in-game seasons
 
 **Auth:** `maintainer`
 
-### `repair`
-
-Aged potions cannot be restored; brew a fresh batch instead
-
-**Rules:**
-- repair trigger is not applicable to potions — potency loss is irreversible
-
-**Auth:** `maintainer`
-
 

@@ -3,7 +3,7 @@
 
 **Tags:** `item`
 
-Refined veilsteel bar smelted at a master forge from raw veilsteel ore. The intermediate material required for all mid-tier veilsteel weapons and armour.
+Refined veilsteel bar alloyed in a master forge from ferrite ingots and an aethermite shard. The intermediate material required for all mid-tier veilsteel weapons and armour.
 
 > **Goal:** Mid-tier crafting component; creates a material processing step before veilsteel gear can be produced
 

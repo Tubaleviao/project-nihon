@@ -22,7 +22,6 @@ Fiber processing and loom construction techniques. Unlocks duskfiber weaving and
 | ---- | ---- | ------ | ----------- |
 | `requiresTechBasicCarpentry` | hasOne | [TechBasicCarpentry](techbasiccarpentry.md) |  |
 | `unlocksRecipeDuskfiberCloak` | hasOne | [RecipeDuskfiberCloak](recipeduskfibercloak.md) |  |
-| `unlocksRecipeAshiteBlock` | hasOne | [RecipeAshiteBlock](recipeashiteblock.md) |  |
 
 ### State machine
 

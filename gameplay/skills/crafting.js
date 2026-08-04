@@ -26,7 +26,7 @@ module.exports = {
       },
       craftBasicWeapon: {
         description: 'Forge a basic ferrite tool or weapon at a standard forge',
-        rules: ['Requires Smithing: Apprentice'],
+        rules: ['Requires Smithing: Novice'],
         auth: { roles: ['maintainer'] },
       },
       craftAlloyIngot: {
@@ -104,7 +104,7 @@ module.exports = {
       },
       brewBasicPotion: {
         description: 'Produce a minor healing or stamina potion from common reagents',
-        rules: ['Requires Alchemy: Apprentice'],
+        rules: ['Requires Alchemy: Novice'],
         auth: { roles: ['maintainer'] },
       },
       brewEnchantmentCatalyst: {
@@ -192,7 +192,7 @@ module.exports = {
       },
       refineVoidite: {
         description: 'Stabilise raw voidite in a shielded forge; failure may cause a void burst',
-        rules: ['Requires Void Smithing: Journeyman'],
+        rules: ['Requires Void Smithing: Expert'],
         auth: { roles: ['maintainer'] },
       },
       craftVoidlinedContainer: {

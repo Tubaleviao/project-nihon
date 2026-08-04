@@ -28,11 +28,6 @@ module.exports = {
         ],
         auth: { roles: ['maintainer'] },
       },
-      repair: {
-        description: 'Spoiled rations cannot be repaired; they must be discarded',
-        rules: ['repair trigger is not applicable to food items — condition: broken is terminal for consumables'],
-        auth: { roles: ['maintainer'] },
-      },
     },
   }),
 
@@ -61,11 +56,6 @@ module.exports = {
           'Potions stored in a cool, dark alchemist workshop degrade at half rate',
           'Broken-condition potions deal a mild poison effect instead of their intended benefit',
         ],
-        auth: { roles: ['maintainer'] },
-      },
-      repair: {
-        description: 'Aged potions cannot be restored; brew a fresh batch instead',
-        rules: ['repair trigger is not applicable to potions — potency loss is irreversible'],
         auth: { roles: ['maintainer'] },
       },
     },

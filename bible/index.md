@@ -54,7 +54,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [LumenfiteOrb](entities/lumenfiteorb.md) — A polished lumenfite sphere charged with stored magical energy by an Arcanist
 - [ThornwoodPlank](entities/thornwoodplank.md) — Rough-cut plank milled from thornwood logs
 - [VeilsteelChestplate](entities/veilsteelchestplate.md) — Full torso armour forged from veilsteel plates over a ferrite under-layer
-- [VeilsteelIngot](entities/veilsteelingot.md) — Refined veilsteel bar smelted at a master forge from raw veilsteel ore
+- [VeilsteelIngot](entities/veilsteelingot.md) — Refined veilsteel bar alloyed in a master forge from ferrite ingots and an aethermite shard
 - [VeilsteelLongsword](entities/veilsteellongsword.md) — Two-handed longsword of veilsteel
 - [VeilsteelPick](entities/veilsteelpick.md) — Heavy-duty pick smelted from veilsteel
 - [VoiditeEdge](entities/voiditeedge.md) — Jagged single-edged blade carved from a stabilised voidite shard
@@ -97,7 +97,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [RecipeStaminaPotion](entities/recipestaminapotion.md) — Brew a stamina-restoring potion from aethermite dust and root reagents
 - [RecipeThornwoodPlank](entities/recipethornwoodplank.md) — Mill two thornwood logs into three thornwood planks at a carpentry bench
 - [RecipeVeilsteelChestplate](entities/recipeveilsteelchestplate.md) — Forge a veilsteel chestplate from four veilsteel ingots and two ferrite ingots
-- [RecipeVeilsteelIngot](entities/recipeveilsteelingot.md) — Smelt two raw veilsteel ore into one refined veilsteel ingot at a master forge
+- [RecipeVeilsteelIngot](entities/recipeveilsteelingot.md) — Alloy three ferrite ingots and one refined aethermite shard into one veilsteel ingot at a master forge
 - [RecipeVeilsteelLongsword](entities/recipeveilsteellongsword.md) — Forge a veilsteel longsword from two veilsteel ingots and one ashite block at a master forge
 - [RecipeVoidResistPotion](entities/recipevoidresistpotion.md) — Brew a void-resist potion from refined voidite shard dust and aethermite dust
 - [RecipeVoidRuneTablet](entities/recipevoidrunetablet.md) — Etch stabilisation runes into a refined voidite slab at a void-shielded workshop

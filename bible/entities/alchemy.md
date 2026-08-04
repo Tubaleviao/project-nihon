@@ -62,7 +62,7 @@ Progress to the next mastery tier through accumulated alchemy XP
 Produce a minor healing or stamina potion from common reagents
 
 **Rules:**
-- Requires Alchemy: Apprentice
+- Requires Alchemy: Novice
 
 **Auth:** `maintainer`
 

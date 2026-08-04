@@ -93,11 +93,6 @@ module.exports = {
         rules: ['Stored in an enchanted container: no degradation; exposed to open air: degrades one tier per in-game week'],
         auth: { roles: ['maintainer'] },
       },
-      repair: {
-        description: 'Dissipated dust cannot be restored; only freshly ground dust retains full potency',
-        rules: ['repair trigger is not applicable to aethermite dust'],
-        auth: { roles: ['maintainer'] },
-      },
     },
   }),
 
@@ -105,7 +100,7 @@ module.exports = {
   VeilsteelIngot: defineEntity({
     tags: ['item'],
     description:
-      'Refined veilsteel bar smelted at a master forge from raw veilsteel ore. ' +
+      'Refined veilsteel bar alloyed in a master forge from ferrite ingots and an aethermite shard. ' +
       'The intermediate material required for all mid-tier veilsteel weapons and armour.',
     goal: 'Mid-tier crafting component; creates a material processing step before veilsteel gear can be produced',
     fields: {

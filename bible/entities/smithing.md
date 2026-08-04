@@ -62,7 +62,7 @@ Progress to the next mastery tier through accumulated smithing XP
 Forge a basic ferrite tool or weapon at a standard forge
 
 **Rules:**
-- Requires Smithing: Apprentice
+- Requires Smithing: Novice
 
 **Auth:** `maintainer`
 

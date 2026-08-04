@@ -72,7 +72,7 @@ Build or upgrade a void-shielded forge room that safely contains void energy dur
 Stabilise raw voidite in a shielded forge; failure may cause a void burst
 
 **Rules:**
-- Requires Void Smithing: Journeyman
+- Requires Void Smithing: Expert
 
 **Auth:** `maintainer`
 

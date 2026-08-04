@@ -56,13 +56,4 @@ Food freshness degrades over real time
 
 **Auth:** `maintainer`
 
-### `repair`
-
-Spoiled rations cannot be repaired; they must be discarded
-
-**Rules:**
-- repair trigger is not applicable to food items — condition: broken is terminal for consumables
-
-**Auth:** `maintainer`
-
 

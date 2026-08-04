@@ -61,13 +61,4 @@ Potency dissipates if stored without magical containment
 
 **Auth:** `maintainer`
 
-### `repair`
-
-Dissipated dust cannot be restored; only freshly ground dust retains full potency
-
-**Rules:**
-- repair trigger is not applicable to aethermite dust
-
-**Auth:** `maintainer`
-
 

@@ -3,9 +3,9 @@
 
 **Tags:** `recipe`
 
-Smelt two raw veilsteel ore into one refined veilsteel ingot at a master forge.
+Alloy three ferrite ingots and one refined aethermite shard into one veilsteel ingot at a master forge.
 
-> **Goal:** Mid-tier smelting recipe; prerequisite step before any veilsteel gear can be crafted
+> **Goal:** Mid-tier alloying recipe; prerequisite step before any veilsteel gear can be crafted
 
 ## Fields
 
@@ -19,19 +19,20 @@ Smelt two raw veilsteel ore into one refined veilsteel ingot at a master forge.
 
 | Name | Kind | Target | Foreign Key |
 | ---- | ---- | ------ | ----------- |
-| `inputVeilsteel` | hasOne | [Veilsteel](veilsteel.md) |  |
+| `inputFerrite` | hasOne | [FerriteIngot](ferriteingot.md) |  |
+| `inputAethermite` | hasOne | [Aethermite](aethermite.md) |  |
 | `output` | hasOne | [VeilsteelIngot](veilsteelingot.md) |  |
 
 ## Behaviors
 
 ### `craft`
 
-Execute the recipe at a master forge to produce veilsteel ingots
+Execute the alloying recipe at a master forge to produce veilsteel ingots
 
 **Rules:**
 - Requires Smithing: Journeyman
 - Requires a master forge (ashite-lined)
-- Two raw veilsteel ore yield one refined ingot
+- Three ferrite ingots and one refined aethermite shard (form = shard; dust is not accepted) yield one veilsteel ingot — the shard is consumed as a crafting ingredient, not a catalyst; Aethermite.consume is not invoked
 
 **Auth:** `maintainer`
 

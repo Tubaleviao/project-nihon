@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-07-31T18:57:11.288Z",
-  "schemaHash": "sha256:96efc5eb63e1f8cfca2bb11b17d50fc32ab50eab31bc8477036c10cbe5389a9b",
+  "generatedAt": "2026-08-04T17:58:51.960Z",
+  "schemaHash": "sha256:abcb684a80fa0be6672cdc29f47c0845ea158f5502e07c5bf9d9ed356714c80e",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -3577,7 +3577,7 @@
             "name": "craftBasicWeapon",
             "description": "Forge a basic ferrite tool or weapon at a standard forge",
             "rules": [
-              "Requires Smithing: Apprentice"
+              "Requires Smithing: Novice"
             ],
             "auth": {
               "roles": [
@@ -3955,7 +3955,7 @@
             "name": "brewBasicPotion",
             "description": "Produce a minor healing or stamina potion from common reagents",
             "rules": [
-              "Requires Alchemy: Apprentice"
+              "Requires Alchemy: Novice"
             ],
             "auth": {
               "roles": [
@@ -4346,7 +4346,7 @@
             "name": "refineVoidite",
             "description": "Stabilise raw voidite in a shielded forge; failure may cause a void burst",
             "rules": [
-              "Requires Void Smithing: Journeyman"
+              "Requires Void Smithing: Expert"
             ],
             "auth": {
               "roles": [
@@ -9661,18 +9661,6 @@
                 "maintainer"
               ]
             }
-          },
-          "repair": {
-            "name": "repair",
-            "description": "Spoiled rations cannot be repaired; they must be discarded",
-            "rules": [
-              "repair trigger is not applicable to food items — condition: broken is terminal for consumables"
-            ],
-            "auth": {
-              "roles": [
-                "maintainer"
-              ]
-            }
           }
         },
         "stateMachine": {
@@ -9811,18 +9799,6 @@
             "rules": [
               "Potions stored in a cool, dark alchemist workshop degrade at half rate",
               "Broken-condition potions deal a mild poison effect instead of their intended benefit"
-            ],
-            "auth": {
-              "roles": [
-                "maintainer"
-              ]
-            }
-          },
-          "repair": {
-            "name": "repair",
-            "description": "Aged potions cannot be restored; brew a fresh batch instead",
-            "rules": [
-              "repair trigger is not applicable to potions — potency loss is irreversible"
             ],
             "auth": {
               "roles": [
@@ -10082,7 +10058,7 @@
         "tags": [
           "item"
         ],
-        "description": "Refined veilsteel bar smelted at a master forge from raw veilsteel ore. The intermediate material required for all mid-tier veilsteel weapons and armour.",
+        "description": "Refined veilsteel bar alloyed in a master forge from ferrite ingots and an aethermite shard. The intermediate material required for all mid-tier veilsteel weapons and armour.",
         "goal": "Mid-tier crafting component; creates a material processing step before veilsteel gear can be produced",
         "fields": {
           "id": {
@@ -10527,18 +10503,6 @@
             "description": "Potency dissipates if stored without magical containment",
             "rules": [
               "Stored in an enchanted container: no degradation; exposed to open air: degrades one tier per in-game week"
-            ],
-            "auth": {
-              "roles": [
-                "maintainer"
-              ]
-            }
-          },
-          "repair": {
-            "name": "repair",
-            "description": "Dissipated dust cannot be restored; only freshly ground dust retains full potency",
-            "rules": [
-              "repair trigger is not applicable to aethermite dust"
             ],
             "auth": {
               "roles": [
@@ -11439,8 +11403,8 @@
         "tags": [
           "recipe"
         ],
-        "description": "Smelt two raw veilsteel ore into one refined veilsteel ingot at a master forge.",
-        "goal": "Mid-tier smelting recipe; prerequisite step before any veilsteel gear can be crafted",
+        "description": "Alloy three ferrite ingots and one refined aethermite shard into one veilsteel ingot at a master forge.",
+        "goal": "Mid-tier alloying recipe; prerequisite step before any veilsteel gear can be crafted",
         "fields": {
           "id": {
             "name": "id",
@@ -11473,10 +11437,15 @@
           }
         },
         "relations": {
-          "inputVeilsteel": {
-            "name": "inputVeilsteel",
+          "inputFerrite": {
+            "name": "inputFerrite",
             "kind": "hasOne",
-            "target": "Veilsteel"
+            "target": "FerriteIngot"
+          },
+          "inputAethermite": {
+            "name": "inputAethermite",
+            "kind": "hasOne",
+            "target": "Aethermite"
           },
           "output": {
             "name": "output",
@@ -11487,11 +11456,11 @@
         "behaviors": {
           "craft": {
             "name": "craft",
-            "description": "Execute the recipe at a master forge to produce veilsteel ingots",
+            "description": "Execute the alloying recipe at a master forge to produce veilsteel ingots",
             "rules": [
               "Requires Smithing: Journeyman",
               "Requires a master forge (ashite-lined)",
-              "Two raw veilsteel ore yield one refined ingot"
+              "Three ferrite ingots and one refined aethermite shard (form = shard; dust is not accepted) yield one veilsteel ingot — the shard is consumed as a crafting ingredient, not a catalyst; Aethermite.consume is not invoked"
             ],
             "auth": {
               "roles": [
@@ -12788,6 +12757,11 @@
             "name": "unlocksRecipeVeilsteelChestplate",
             "kind": "hasOne",
             "target": "RecipeVeilsteelChestplate"
+          },
+          "unlocksRecipeAshiteBlock": {
+            "name": "unlocksRecipeAshiteBlock",
+            "kind": "hasOne",
+            "target": "RecipeAshiteBlock"
           }
         },
         "behaviors": {
@@ -13044,11 +13018,6 @@
             "name": "unlocksRecipeDuskfiberCloak",
             "kind": "hasOne",
             "target": "RecipeDuskfiberCloak"
-          },
-          "unlocksRecipeAshiteBlock": {
-            "name": "unlocksRecipeAshiteBlock",
-            "kind": "hasOne",
-            "target": "RecipeAshiteBlock"
           }
         },
         "behaviors": {
