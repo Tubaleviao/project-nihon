@@ -2,18 +2,20 @@ const { defineEntity } = require('@newel/core')
 
 const PROFESSION_STATUSES = ['locked', 'active', 'mastered']
 
-const PROFESSION_STATE_MACHINE = {
-  field: 'status',
-  initial: 'locked',
-  states: {
-    locked:   'Prerequisite skill tiers not yet met',
-    active:   'Profession is available to the player; provides passive and active bonuses',
-    mastered: { description: 'All constituent skills are at master tier; highest-tier profession bonuses active', terminal: true },
-  },
-  transitions: [
-    { from: 'locked',  to: 'active',   trigger: 'unlock' },
-    { from: 'active',  to: 'mastered', trigger: 'master' },
-  ],
+function professionStateMachine() {
+  return {
+    field: 'status',
+    initial: 'locked',
+    states: {
+      locked:   'Prerequisite skill tiers not yet met',
+      active:   'Profession is available to the player; provides passive and active bonuses',
+      mastered: { description: 'All constituent skills are at master tier; highest-tier profession bonuses active', terminal: true },
+    },
+    transitions: [
+      { from: 'locked',  to: 'active',   trigger: 'unlock' },
+      { from: 'active',  to: 'mastered', trigger: 'master' },
+    ],
+  }
 }
 
 const professions = {
@@ -34,7 +36,7 @@ const professions = {
       smithing:     { name: 'smithing',     kind: 'hasOne', target: 'Smithing' },
       arcaneForging: { name: 'arcaneForging', kind: 'hasOne', target: 'ArcaneForging' },
     },
-    stateMachine: PROFESSION_STATE_MACHINE,
+    stateMachine: professionStateMachine(),
     behaviors: {
       unlock: {
         description: 'Become available when prerequisite crafting skill tiers are reached',
@@ -67,7 +69,7 @@ const professions = {
       elementalMagic: { name: 'elementalMagic', kind: 'hasOne', target: 'ElementalMagic' },
       enchanting:     { name: 'enchanting',     kind: 'hasOne', target: 'Enchanting' },
     },
-    stateMachine: PROFESSION_STATE_MACHINE,
+    stateMachine: professionStateMachine(),
     behaviors: {
       unlock: {
         description: 'Become available when prerequisite magic skill tiers are reached',
@@ -102,7 +104,7 @@ const professions = {
       navigation: { name: 'navigation', kind: 'hasOne', target: 'Navigation' },
       unarmed:    { name: 'unarmed',    kind: 'hasOne', target: 'Unarmed' },
     },
-    stateMachine: PROFESSION_STATE_MACHINE,
+    stateMachine: professionStateMachine(),
     behaviors: {
       unlock: {
         description: 'Become available when prerequisite exploration and combat skill tiers are reached',
@@ -116,7 +118,7 @@ const professions = {
       },
       master: {
         description: 'Achieve full mastery when all constituent skills reach master tier',
-        rules: ['Archery, Tracking, and Navigation must all be at master tier'],
+        rules: ['Archery, Tracking, Navigation, and Unarmed must all be at master tier'],
         auth: { roles: ['maintainer'] },
       },
     },
@@ -137,7 +139,7 @@ const professions = {
       swordsmanship: { name: 'swordsmanship', kind: 'hasOne', target: 'Swordsmanship' },
       shieldcraft:   { name: 'shieldcraft',   kind: 'hasOne', target: 'Shieldcraft' },
     },
-    stateMachine: PROFESSION_STATE_MACHINE,
+    stateMachine: professionStateMachine(),
     behaviors: {
       unlock: {
         description: 'Become available when prerequisite combat skill tiers are reached',
@@ -170,7 +172,7 @@ const professions = {
       alchemy:      { name: 'alchemy',      kind: 'hasOne', target: 'Alchemy' },
       arcaneForging: { name: 'arcaneForging', kind: 'hasOne', target: 'ArcaneForging' },
     },
-    stateMachine: PROFESSION_STATE_MACHINE,
+    stateMachine: professionStateMachine(),
     behaviors: {
       unlock: {
         description: 'Become available when prerequisite crafting skill tiers are reached',
@@ -204,7 +206,7 @@ const professions = {
       diplomacy:   { name: 'diplomacy',   kind: 'hasOne', target: 'Diplomacy' },
       speechcraft: { name: 'speechcraft', kind: 'hasOne', target: 'Speechcraft' },
     },
-    stateMachine: PROFESSION_STATE_MACHINE,
+    stateMachine: professionStateMachine(),
     behaviors: {
       unlock: {
         description: 'Become available when prerequisite social skill tiers are reached',
@@ -239,7 +241,7 @@ const professions = {
       cartography:  { name: 'cartography',  kind: 'hasOne', target: 'Cartography' },
       stealth:      { name: 'stealth',      kind: 'hasOne', target: 'Stealth' },
     },
-    stateMachine: PROFESSION_STATE_MACHINE,
+    stateMachine: professionStateMachine(),
     behaviors: {
       unlock: {
         description: 'Become available when prerequisite exploration skill tiers are reached',
@@ -274,7 +276,7 @@ const professions = {
       voidMagic:    { name: 'voidMagic',    kind: 'hasOne', target: 'VoidMagic' },
       voidSmithing: { name: 'voidSmithing', kind: 'hasOne', target: 'VoidSmithing' },
     },
-    stateMachine: PROFESSION_STATE_MACHINE,
+    stateMachine: professionStateMachine(),
     behaviors: {
       unlock: {
         description: 'Become available when both void-path skill tiers are reached',

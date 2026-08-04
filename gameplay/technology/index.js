@@ -2,18 +2,20 @@ const { defineEntity } = require('@newel/core')
 
 const TECH_STATES = ['locked', 'researching', 'unlocked']
 
-const TECHNOLOGY_STATE_MACHINE = {
-  field: 'status',
-  initial: 'locked',
-  states: {
-    locked:      'Prerequisites not yet met; technology is not visible in the research interface',
-    researching: 'Player or guild has committed resources; research progresses over time',
-    unlocked:    { description: 'Research complete; all associated recipes and abilities are available', terminal: true },
-  },
-  transitions: [
-    { from: 'locked',      to: 'researching', trigger: 'beginResearch' },
-    { from: 'researching', to: 'unlocked',    trigger: 'completeResearch' },
-  ],
+function technologyStateMachine() {
+  return {
+    field: 'status',
+    initial: 'locked',
+    states: {
+      locked:      'Prerequisites not yet met; technology is not visible in the research interface',
+      researching: 'Player or guild has committed resources; research progresses over time',
+      unlocked:    { description: 'Research complete; all associated recipes and abilities are available', terminal: true },
+    },
+    transitions: [
+      { from: 'locked',      to: 'researching', trigger: 'beginResearch' },
+      { from: 'researching', to: 'unlocked',    trigger: 'completeResearch' },
+    ],
+  }
 }
 
 module.exports = {
@@ -36,7 +38,7 @@ module.exports = {
       unlocksRecipeFerriteShortSword: { name: 'unlocksRecipeFerriteShortSword', kind: 'hasOne', target: 'RecipeFerriteShortSword' },
       unlocksRecipeFerritePick:      { name: 'unlocksRecipeFerritePick',      kind: 'hasOne', target: 'RecipeFerritePick' },
     },
-    stateMachine: TECHNOLOGY_STATE_MACHINE,
+    stateMachine: technologyStateMachine(),
     behaviors: {
       beginResearch: {
         description: 'Commit resources to researching basic smithing',
@@ -73,8 +75,9 @@ module.exports = {
       unlocksRecipeVeilsteelIngot:      { name: 'unlocksRecipeVeilsteelIngot',      kind: 'hasOne', target: 'RecipeVeilsteelIngot' },
       unlocksRecipeVeilsteelLongsword:  { name: 'unlocksRecipeVeilsteelLongsword',  kind: 'hasOne', target: 'RecipeVeilsteelLongsword' },
       unlocksRecipeVeilsteelChestplate: { name: 'unlocksRecipeVeilsteelChestplate', kind: 'hasOne', target: 'RecipeVeilsteelChestplate' },
+      unlocksRecipeAshiteBlock:         { name: 'unlocksRecipeAshiteBlock',         kind: 'hasOne', target: 'RecipeAshiteBlock' },
     },
-    stateMachine: TECHNOLOGY_STATE_MACHINE,
+    stateMachine: technologyStateMachine(),
     behaviors: {
       beginResearch: {
         description: 'Commit resources to master forge research',
@@ -109,9 +112,8 @@ module.exports = {
     relations: {
       unlocksRecipeThornwoodPlank: { name: 'unlocksRecipeThornwoodPlank', kind: 'hasOne', target: 'RecipeThornwoodPlank' },
       unlocksRecipeCarpenterAxe:   { name: 'unlocksRecipeCarpenterAxe',   kind: 'hasOne', target: 'RecipeCarpenterAxe' },
-      unlocksRecipeAshiteBlock:    { name: 'unlocksRecipeAshiteBlock',    kind: 'hasOne', target: 'RecipeAshiteBlock' },
     },
-    stateMachine: TECHNOLOGY_STATE_MACHINE,
+    stateMachine: technologyStateMachine(),
     behaviors: {
       beginResearch: {
         description: 'Commit resources to basic carpentry research',
@@ -143,7 +145,7 @@ module.exports = {
       requiresTechBasicCarpentry:  { name: 'requiresTechBasicCarpentry',  kind: 'hasOne', target: 'TechBasicCarpentry' },
       unlocksRecipeDuskfiberCloak: { name: 'unlocksRecipeDuskfiberCloak', kind: 'hasOne', target: 'RecipeDuskfiberCloak' },
     },
-    stateMachine: TECHNOLOGY_STATE_MACHINE,
+    stateMachine: technologyStateMachine(),
     behaviors: {
       beginResearch: {
         description: 'Commit resources to textile weaving research',
@@ -181,7 +183,7 @@ module.exports = {
       unlocksRecipeAethermiteBow:           { name: 'unlocksRecipeAethermiteBow',           kind: 'hasOne', target: 'RecipeAethermiteBow' },
       unlocksRecipeLumenfiteOrb:            { name: 'unlocksRecipeLumenfiteOrb',            kind: 'hasOne', target: 'RecipeLumenfiteOrb' },
     },
-    stateMachine: TECHNOLOGY_STATE_MACHINE,
+    stateMachine: technologyStateMachine(),
     behaviors: {
       beginResearch: {
         description: 'Commit resources to arcane forging research',
@@ -217,7 +219,7 @@ module.exports = {
       unlocksRecipeHealthPotion:  { name: 'unlocksRecipeHealthPotion',  kind: 'hasOne', target: 'RecipeHealthPotion' },
       unlocksRecipeStaminaPotion: { name: 'unlocksRecipeStaminaPotion', kind: 'hasOne', target: 'RecipeStaminaPotion' },
     },
-    stateMachine: TECHNOLOGY_STATE_MACHINE,
+    stateMachine: technologyStateMachine(),
     behaviors: {
       beginResearch: {
         description: 'Commit resources to alchemy research',
@@ -254,7 +256,7 @@ module.exports = {
       unlocksRecipeVoidResistPotion:   { name: 'unlocksRecipeVoidResistPotion',   kind: 'hasOne', target: 'RecipeVoidResistPotion' },
       unlocksRecipeVoidRuneTablet:     { name: 'unlocksRecipeVoidRuneTablet',     kind: 'hasOne', target: 'RecipeVoidRuneTablet' },
     },
-    stateMachine: TECHNOLOGY_STATE_MACHINE,
+    stateMachine: technologyStateMachine(),
     behaviors: {
       beginResearch: {
         description: 'Begin reverse-engineering void techniques after direct void exposure',
