@@ -102,6 +102,7 @@ const professions = {
       archery:    { name: 'archery',    kind: 'hasOne', target: 'Archery' },
       tracking:   { name: 'tracking',   kind: 'hasOne', target: 'Tracking' },
       navigation: { name: 'navigation', kind: 'hasOne', target: 'Navigation' },
+      unarmed:    { name: 'unarmed',    kind: 'hasOne', target: 'Unarmed' },
     },
     stateMachine: professionStateMachine(),
     behaviors: {
@@ -117,7 +118,7 @@ const professions = {
       },
       master: {
         description: 'Achieve full mastery when all constituent skills reach master tier',
-        rules: ['Archery, Tracking, and Navigation must all be at master tier'],
+        rules: ['Archery, Tracking, Navigation, and Unarmed must all be at master tier'],
         auth: { roles: ['maintainer'] },
       },
     },
@@ -281,7 +282,7 @@ const professions = {
         description: 'Become available when both void-path skill tiers are reached',
         rules: [
           'Requires Void Magic: Expert',
-          'Requires Void Smithing: Journeyman',
+          'Requires Void Smithing: Expert',
           'Player must hold voidBurstSurvivor flag — cannot be unlocked without surviving a void burst',
         ],
         auth: { roles: ['maintainer'] },

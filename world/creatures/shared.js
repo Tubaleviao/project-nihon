@@ -48,7 +48,6 @@ function creatureStateMachine({ canFlee = true, skipAlert = false } = {}) {
     transitions: [
       ...(skipAlert ? [{ from: 'idle', to: 'aggressive', trigger: 'detect' }] : []),
       ...alertTransitions,
-      { from: 'idle',       to: 'aggressive', trigger: 'attack' },
       { from: 'aggressive', to: 'dead',       trigger: 'die' },
       { from: 'aggressive', to: 'idle',       trigger: 'calm' },
       ...fleeTransitions,

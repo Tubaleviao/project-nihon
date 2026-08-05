@@ -32,24 +32,25 @@ module.exports = {
   // ─── RecipeVeilsteelIngot ─────────────────────────────────────────────────
   RecipeVeilsteelIngot: defineEntity({
     tags: ['recipe'],
-    description: 'Smelt two raw veilsteel ore into one refined veilsteel ingot at a master forge.',
-    goal: 'Mid-tier smelting recipe; prerequisite step before any veilsteel gear can be crafted',
+    description: 'Alloy three ferrite ingots and one refined aethermite shard into one veilsteel ingot at a master forge.',
+    goal: 'Mid-tier alloying recipe; prerequisite step before any veilsteel gear can be crafted',
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
       yield:  { type: 'integer', description: 'Number of output items produced per craft' },
     },
     relations: {
-      inputVeilsteel: { name: 'inputVeilsteel', kind: 'hasOne', target: 'Veilsteel' },
-      output:         { name: 'output',         kind: 'hasOne', target: 'VeilsteelIngot' },
+      inputFerrite:    { name: 'inputFerrite',    kind: 'hasOne', target: 'FerriteIngot' },
+      inputAethermite: { name: 'inputAethermite', kind: 'hasOne', target: 'AethermiteShard' },
+      output:          { name: 'output',          kind: 'hasOne', target: 'VeilsteelIngot' },
     },
     behaviors: {
       craft: {
-        description: 'Execute the recipe at a master forge to produce veilsteel ingots',
+        description: 'Execute the alloying recipe at a master forge to produce veilsteel ingots',
         rules: [
           'Requires Smithing: Journeyman',
           'Requires a master forge (ashite-lined)',
-          'Two raw veilsteel ore yield one refined ingot',
+          'Three ferrite ingots and one refined aethermite shard (form = shard; dust is not accepted) yield one veilsteel ingot — the shard is consumed as a crafting ingredient, not a catalyst; Aethermite.consume is not invoked',
         ],
         auth: { roles: ['maintainer'] },
       },

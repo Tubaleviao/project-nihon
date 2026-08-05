@@ -62,7 +62,7 @@ module.exports = {
     description:
       'Advanced forge construction and temperature-control techniques. ' +
       'Unlocks the master forge structure and veilsteel recipes. ' +
-      'Requires basic smithing and a supply of ashite blocks.',
+      'Requires basic smithing and a supply of raw ashite ore.',
     goal: 'Mid-tier smithing unlock; drives cross-biome supply chains (volcanic ashite to temperate smiths)',
     fields: {
       id:     { type: 'uuid', primaryKey: true },
@@ -75,6 +75,7 @@ module.exports = {
       unlocksRecipeVeilsteelIngot:      { name: 'unlocksRecipeVeilsteelIngot',      kind: 'hasOne', target: 'RecipeVeilsteelIngot' },
       unlocksRecipeVeilsteelLongsword:  { name: 'unlocksRecipeVeilsteelLongsword',  kind: 'hasOne', target: 'RecipeVeilsteelLongsword' },
       unlocksRecipeVeilsteelChestplate: { name: 'unlocksRecipeVeilsteelChestplate', kind: 'hasOne', target: 'RecipeVeilsteelChestplate' },
+      unlocksRecipeAshiteBlock:         { name: 'unlocksRecipeAshiteBlock',         kind: 'hasOne', target: 'RecipeAshiteBlock' },
     },
     stateMachine: technologyStateMachine(),
     behaviors: {
@@ -83,7 +84,7 @@ module.exports = {
         rules: [
           'Requires TechBasicSmithing: unlocked',
           'Requires Smithing: Journeyman',
-          'Requires at least ten ashite blocks in settlement storage',
+          'Requires at least twenty raw ashite ore in settlement storage',
         ],
         auth: { roles: ['maintainer'] },
       },
@@ -143,7 +144,6 @@ module.exports = {
     relations: {
       requiresTechBasicCarpentry:  { name: 'requiresTechBasicCarpentry',  kind: 'hasOne', target: 'TechBasicCarpentry' },
       unlocksRecipeDuskfiberCloak: { name: 'unlocksRecipeDuskfiberCloak', kind: 'hasOne', target: 'RecipeDuskfiberCloak' },
-      unlocksRecipeAshiteBlock:    { name: 'unlocksRecipeAshiteBlock',    kind: 'hasOne', target: 'RecipeAshiteBlock' },
     },
     stateMachine: technologyStateMachine(),
     behaviors: {

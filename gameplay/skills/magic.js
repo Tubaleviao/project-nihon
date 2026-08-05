@@ -159,7 +159,7 @@ module.exports = {
         description: 'Bind a void-aligned enchantment onto a voidite-core item using VoidSmithing co-processing',
         rules: [
           'Requires Enchanting: Expert',
-          'Requires Void Smithing: Journeyman',
+          'Requires Void Smithing: Expert',
         ],
         auth: { roles: ['maintainer'] },
       },

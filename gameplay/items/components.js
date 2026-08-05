@@ -93,11 +93,6 @@ module.exports = {
         rules: ['Stored in an enchanted container: no degradation; exposed to open air: degrades one tier per in-game week'],
         auth: { roles: ['maintainer'] },
       },
-      repair: {
-        description: 'Dissipated dust cannot be restored; only freshly ground dust retains full potency',
-        rules: ['repair trigger is not applicable to aethermite dust'],
-        auth: { roles: ['maintainer'] },
-      },
     },
   }),
 
@@ -105,7 +100,7 @@ module.exports = {
   VeilsteelIngot: defineEntity({
     tags: ['item'],
     description:
-      'Refined veilsteel bar smelted at a master forge from raw veilsteel ore. ' +
+      'Refined veilsteel bar alloyed in a master forge from ferrite ingots and an aethermite shard. ' +
       'The intermediate material required for all mid-tier veilsteel weapons and armour.',
     goal: 'Mid-tier crafting component; creates a material processing step before veilsteel gear can be produced',
     fields: {
@@ -129,6 +124,35 @@ module.exports = {
       repair: {
         description: 'Re-smelt a degraded ingot back to pristine quality at a master forge',
         rules: ['Requires a master forge; no additional materials consumed'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
+  // ─── AethermiteShard ──────────────────────────────────────────────────────
+  AethermiteShard: defineEntity({
+    tags: ['item'],
+    description:
+      'Raw aethermite refined into a crystalline shard at an arcane forge. ' +
+      'The solid form of processed aethermite; used as a smithing input for veilsteel alloying. ' +
+      'Not interchangeable with aethermite dust — the shard form retains structural integrity under forge heat.',
+    goal: 'Discrete shard form of refined aethermite; unambiguous input for the veilsteel alloying recipe',
+    fields: {
+      id:        { type: 'uuid', primaryKey: true },
+      condition: { type: 'enum', values: DURABILITY_STATES },
+      weight:    { type: 'decimal', description: 'kg per shard' },
+      rarity:    { type: 'enum', values: RARITIES },
+      stackable: { type: 'boolean', description: 'True; stacks up to 20 per slot' },
+      durability: { type: 'integer', description: 'Crystal integrity; shatters under standard forge temperatures — must be processed in an arcane forge' },
+    },
+    relations: {
+      aethermite: { name: 'aethermite', kind: 'hasOne', target: 'Aethermite' },
+    },
+    stateMachine: consumableStateMachine(),
+    behaviors: {
+      degrade: {
+        description: 'Shard integrity degrades under non-magical heat exposure',
+        rules: ['Stored in a standard forge area: degrades one tier per in-game day; safe in arcane storage'],
         auth: { roles: ['maintainer'] },
       },
     },

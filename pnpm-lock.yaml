@@ -11,6 +11,9 @@ importers:
       '@newel/core':
         specifier: file:../newel/packages/core
         version: file:../newel/packages/core
+      '@newel/generator-bible':
+        specifier: file:../newel/packages/generator-bible
+        version: file:../newel/packages/generator-bible
 
 packages:
 
@@ -175,6 +178,10 @@ packages:
     engines: {node: '>=20'}
     hasBin: true
 
+  '@newel/generator-bible@file:../newel/packages/generator-bible':
+    resolution: {directory: ../newel/packages/generator-bible, type: directory}
+    engines: {node: '>=20'}
+
   commander@12.1.0:
     resolution: {integrity: sha512-Vw8qHK3bZM9y/P10u3Vib8o/DdkvA2OtPtZvD871QKjy74Wj1WSKFILMPRPSdUSx5RFK1arlJzEtA4PkFgnbuA==}
     engines: {node: '>=18'}
@@ -278,6 +285,10 @@ snapshots:
     dependencies:
       commander: 12.1.0
       tsx: 4.23.1
+
+  '@newel/generator-bible@file:../newel/packages/generator-bible':
+    dependencies:
+      '@newel/core': file:../newel/packages/core
 
   commander@12.1.0: {}
 

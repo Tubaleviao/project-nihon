@@ -1,4 +1,5 @@
 const { defineFabric } = require('@newel/core')
+const { safeMerge } = require('./shared')
 
 const principles   = require('./constitution/principles')
 const decisions    = require('./constitution/decisions')
@@ -23,182 +24,155 @@ module.exports = defineFabric({
                  'This fabric encodes the game\'s design bible — materials, skills, items, creatures, ' +
                  'and world systems — as a single source of truth.',
   },
-  entities: {
+  entities: safeMerge('fabric',
     // Constitution — Principles
-    PlayersAreTheContent:    principles.PlayersAreTheContent,
-    FreedomComesFirst:       principles.FreedomComesFirst,
-    TheWorldIsPersistent:    principles.TheWorldIsPersistent,
-    SystemsOverScripts:      principles.SystemsOverScripts,
-    KnowledgeIsProgression:  principles.KnowledgeIsProgression,
-    CivilizationIsPlayerMade: principles.CivilizationIsPlayerMade,
-    BelievableNotRealistic:  principles.BelievableNotRealistic,
-    EverythingHasTradeoffs:  principles.EverythingHasTradeoffs,
-    CommunityOwnsTheFuture:  principles.CommunityOwnsTheFuture,
-    NoPayToWin:              principles.NoPayToWin,
-
-    // Constitution — Decisions
-    GodotEngine:               decisions.GodotEngine,
-    OnePersistentWorld:        decisions.OnePersistentWorld,
-    OfflinePlayerNpcs:         decisions.OfflinePlayerNpcs,
-    NoTeleportation:           decisions.NoTeleportation,
-    MagicBalancedWithMartial:  decisions.MagicBalancedWithMartial,
-    DestructibleBuildings:     decisions.DestructibleBuildings,
-    KnowledgeByExperimentation: decisions.KnowledgeByExperimentation,
-    FictionalMaterials:        decisions.FictionalMaterials,
-
-    // Constitution — Monetization
-    MonetizationRules: monetization.MonetizationRules,
-
-    // World — Materials (metals)
-    Ferrite:    materials.Ferrite,
-    Veilsteel:  materials.Veilsteel,
-    Aethermite: materials.Aethermite,
-    Voidite:    materials.Voidite,
-
-    // World — Materials (woods)
-    Thornwood:  materials.Thornwood,
-    Duskfiber:  materials.Duskfiber,
-
-    // World — Materials (stones)
-    Ashite:    materials.Ashite,
-    Lumenfite: materials.Lumenfite,
-
-    // World — Biomes
-    TemperateForest:    biomes.TemperateForest,
-    TemperateGrassland: biomes.TemperateGrassland,
-    VolcanicBadlands:   biomes.VolcanicBadlands,
-    TwilightGrove:      biomes.TwilightGrove,
-    VoidRift:           biomes.VoidRift,
-
-    // World — Systems
-    WeatherSystem: weather.WeatherSystem,
-
-    // Gameplay — Skills (combat)
-    Swordsmanship: skills.Swordsmanship,
-    Archery:       skills.Archery,
-    Shieldcraft:   skills.Shieldcraft,
-    Unarmed:       skills.Unarmed,
-
-    // Gameplay — Skills (crafting)
-    Smithing:      skills.Smithing,
-    Carpentry:     skills.Carpentry,
-    Alchemy:       skills.Alchemy,
-    ArcaneForging: skills.ArcaneForging,
-    VoidSmithing:  skills.VoidSmithing,
-
-    // Gameplay — Skills (magic)
-    ElementalMagic:   skills.ElementalMagic,
-    VoidMagic:        skills.VoidMagic,
-    RestorationMagic: skills.RestorationMagic,
-    Enchanting:       skills.Enchanting,
-
-    // Gameplay — Skills (exploration)
-    Cartography: skills.Cartography,
-    Tracking:    skills.Tracking,
-    Stealth:     skills.Stealth,
-    Navigation:  skills.Navigation,
-
-    // Gameplay — Skills (social)
-    Diplomacy:   skills.Diplomacy,
-    Trade:       skills.Trade,
-    Speechcraft: skills.Speechcraft,
-    Leadership:  skills.Leadership,
-
+    {
+      PlayersAreTheContent:    principles.PlayersAreTheContent,
+      FreedomComesFirst:       principles.FreedomComesFirst,
+      TheWorldIsPersistent:    principles.TheWorldIsPersistent,
+      SystemsOverScripts:      principles.SystemsOverScripts,
+      KnowledgeIsProgression:  principles.KnowledgeIsProgression,
+      CivilizationIsPlayerMade: principles.CivilizationIsPlayerMade,
+      BelievableNotRealistic:  principles.BelievableNotRealistic,
+      EverythingHasTradeoffs:  principles.EverythingHasTradeoffs,
+      CommunityOwnsTheFuture:  principles.CommunityOwnsTheFuture,
+      NoPayToWin:              principles.NoPayToWin,
+    },
+    // Constitution — Decisions + Monetization
+    {
+      GodotEngine:               decisions.GodotEngine,
+      OnePersistentWorld:        decisions.OnePersistentWorld,
+      OfflinePlayerNpcs:         decisions.OfflinePlayerNpcs,
+      NoTeleportation:           decisions.NoTeleportation,
+      MagicBalancedWithMartial:  decisions.MagicBalancedWithMartial,
+      DestructibleBuildings:     decisions.DestructibleBuildings,
+      KnowledgeByExperimentation: decisions.KnowledgeByExperimentation,
+      FictionalMaterials:        decisions.FictionalMaterials,
+      MonetizationRules:         monetization.MonetizationRules,
+    },
+    // World — Materials
+    {
+      Ferrite:    materials.Ferrite,
+      Veilsteel:  materials.Veilsteel,
+      Aethermite: materials.Aethermite,
+      Voidite:    materials.Voidite,
+      Thornwood:  materials.Thornwood,
+      Duskfiber:  materials.Duskfiber,
+      Ashite:     materials.Ashite,
+      Lumenfite:  materials.Lumenfite,
+    },
+    // World — Biomes + Systems
+    {
+      TemperateForest:    biomes.TemperateForest,
+      TemperateGrassland: biomes.TemperateGrassland,
+      VolcanicBadlands:   biomes.VolcanicBadlands,
+      TwilightGrove:      biomes.TwilightGrove,
+      VoidRift:           biomes.VoidRift,
+      WeatherSystem:      weather.WeatherSystem,
+    },
+    // Gameplay — Skills
+    {
+      Swordsmanship:   skills.Swordsmanship,
+      Archery:         skills.Archery,
+      Shieldcraft:     skills.Shieldcraft,
+      Unarmed:         skills.Unarmed,
+      Smithing:        skills.Smithing,
+      Carpentry:       skills.Carpentry,
+      Alchemy:         skills.Alchemy,
+      ArcaneForging:   skills.ArcaneForging,
+      VoidSmithing:    skills.VoidSmithing,
+      ElementalMagic:  skills.ElementalMagic,
+      VoidMagic:       skills.VoidMagic,
+      RestorationMagic: skills.RestorationMagic,
+      Enchanting:      skills.Enchanting,
+      Cartography:     skills.Cartography,
+      Tracking:        skills.Tracking,
+      Stealth:         skills.Stealth,
+      Navigation:      skills.Navigation,
+      Diplomacy:       skills.Diplomacy,
+      Trade:           skills.Trade,
+      Speechcraft:     skills.Speechcraft,
+      Leadership:      skills.Leadership,
+    },
     // Gameplay — Professions
-    Blacksmith:  professions.Blacksmith,
-    Arcanist:    professions.Arcanist,
-    Ranger:      professions.Ranger,
-    Warrior:     professions.Warrior,
-    Alchemist:   professions.Alchemist,
-    Merchant:    professions.Merchant,
-    Pathfinder:  professions.Pathfinder,
-    VoidTouched: professions.VoidTouched,
-
-    // Gameplay — Items (tools)
-    FerritePick:   items.FerritePick,
-    VeilsteelPick: items.VeilsteelPick,
-    CarpenterAxe:  items.CarpenterAxe,
-
-    // Gameplay — Items (weapons)
-    FerriteShortSword:  items.FerriteShortSword,
-    VeilsteelLongsword: items.VeilsteelLongsword,
-    AethermiteBow:      items.AethermiteBow,
-    VoiditeEdge:        items.VoiditeEdge,
-
-    // Gameplay — Items (armor)
-    FerriteHelmet:        items.FerriteHelmet,
-    VeilsteelChestplate:  items.VeilsteelChestplate,
-    DuskfiberCloak:       items.DuskfiberCloak,
-
-    // Gameplay — Items (food)
-    FieldRations:  items.FieldRations,
-    AlchemyPotion: items.AlchemyPotion,
-
-    // Gameplay — Items (components)
-    FerriteIngot:    items.FerriteIngot,
-    VeilsteelIngot:  items.VeilsteelIngot,
-    ThornwoodPlank:  items.ThornwoodPlank,
-    AethermiteDust:  items.AethermiteDust,
-    AshiteBlock:     items.AshiteBlock,
-
-    // Gameplay — Items (magical)
-    EnchantedAethermiteShard: items.EnchantedAethermiteShard,
-    VoidRuneTablet:           items.VoidRuneTablet,
-    LumenfiteOrb:             items.LumenfiteOrb,
-
-    // Gameplay — Recipes (smithing)
-    RecipeFerriteIngot:          recipes.RecipeFerriteIngot,
-    RecipeVeilsteelIngot:        recipes.RecipeVeilsteelIngot,
-    RecipeFerriteShortSword:     recipes.RecipeFerriteShortSword,
-    RecipeFerritePick:           recipes.RecipeFerritePick,
-    RecipeVeilsteelLongsword:    recipes.RecipeVeilsteelLongsword,
-    RecipeVeilsteelChestplate:   recipes.RecipeVeilsteelChestplate,
-
-    // Gameplay — Recipes (alchemy)
-    RecipeHealthPotion:     recipes.RecipeHealthPotion,
-    RecipeStaminaPotion:    recipes.RecipeStaminaPotion,
-    RecipeVoidResistPotion: recipes.RecipeVoidResistPotion,
-
-    // Gameplay — Recipes (arcane)
-    RecipeEnchantedAethermiteShard: recipes.RecipeEnchantedAethermiteShard,
-    RecipeAethermiteBow:            recipes.RecipeAethermiteBow,
-    RecipeLumenfiteOrb:             recipes.RecipeLumenfiteOrb,
-    RecipeVoidRuneTablet:           recipes.RecipeVoidRuneTablet,
-
-    // Gameplay — Recipes (carpentry)
-    RecipeThornwoodPlank: recipes.RecipeThornwoodPlank,
-    RecipeCarpenterAxe:   recipes.RecipeCarpenterAxe,
-    RecipeDuskfiberCloak: recipes.RecipeDuskfiberCloak,
-    RecipeAshiteBlock:    recipes.RecipeAshiteBlock,
-
+    {
+      Blacksmith:  professions.Blacksmith,
+      Arcanist:    professions.Arcanist,
+      Ranger:      professions.Ranger,
+      Warrior:     professions.Warrior,
+      Alchemist:   professions.Alchemist,
+      Merchant:    professions.Merchant,
+      Pathfinder:  professions.Pathfinder,
+      VoidTouched: professions.VoidTouched,
+    },
+    // Gameplay — Items
+    {
+      FerritePick:              items.FerritePick,
+      VeilsteelPick:            items.VeilsteelPick,
+      CarpenterAxe:             items.CarpenterAxe,
+      FerriteShortSword:        items.FerriteShortSword,
+      VeilsteelLongsword:       items.VeilsteelLongsword,
+      AethermiteBow:            items.AethermiteBow,
+      VoiditeEdge:              items.VoiditeEdge,
+      FerriteHelmet:            items.FerriteHelmet,
+      VeilsteelChestplate:      items.VeilsteelChestplate,
+      DuskfiberCloak:           items.DuskfiberCloak,
+      FieldRations:             items.FieldRations,
+      AlchemyPotion:            items.AlchemyPotion,
+      FerriteIngot:             items.FerriteIngot,
+      VeilsteelIngot:           items.VeilsteelIngot,
+      ThornwoodPlank:           items.ThornwoodPlank,
+      AethermiteDust:           items.AethermiteDust,
+      AethermiteShard:          items.AethermiteShard,
+      AshiteBlock:              items.AshiteBlock,
+      EnchantedAethermiteShard: items.EnchantedAethermiteShard,
+      VoidRuneTablet:           items.VoidRuneTablet,
+      LumenfiteOrb:             items.LumenfiteOrb,
+    },
+    // Gameplay — Recipes
+    {
+      RecipeFerriteIngot:              recipes.RecipeFerriteIngot,
+      RecipeVeilsteelIngot:            recipes.RecipeVeilsteelIngot,
+      RecipeFerriteShortSword:         recipes.RecipeFerriteShortSword,
+      RecipeFerritePick:               recipes.RecipeFerritePick,
+      RecipeVeilsteelLongsword:        recipes.RecipeVeilsteelLongsword,
+      RecipeVeilsteelChestplate:       recipes.RecipeVeilsteelChestplate,
+      RecipeHealthPotion:              recipes.RecipeHealthPotion,
+      RecipeStaminaPotion:             recipes.RecipeStaminaPotion,
+      RecipeVoidResistPotion:          recipes.RecipeVoidResistPotion,
+      RecipeEnchantedAethermiteShard:  recipes.RecipeEnchantedAethermiteShard,
+      RecipeAethermiteBow:             recipes.RecipeAethermiteBow,
+      RecipeLumenfiteOrb:              recipes.RecipeLumenfiteOrb,
+      RecipeVoidRuneTablet:            recipes.RecipeVoidRuneTablet,
+      RecipeThornwoodPlank:            recipes.RecipeThornwoodPlank,
+      RecipeCarpenterAxe:              recipes.RecipeCarpenterAxe,
+      RecipeDuskfiberCloak:            recipes.RecipeDuskfiberCloak,
+      RecipeAshiteBlock:               recipes.RecipeAshiteBlock,
+    },
     // Gameplay — Technology
-    TechBasicSmithing:  technology.TechBasicSmithing,
-    TechMasterForge:    technology.TechMasterForge,
-    TechBasicCarpentry: technology.TechBasicCarpentry,
-    TechTextileWeaving: technology.TechTextileWeaving,
-    TechArcaneForging:  technology.TechArcaneForging,
-    TechAlchemy:        technology.TechAlchemy,
-    TechVoidMastery:    technology.TechVoidMastery,
-
-    // World — Creatures (temperate)
-    ForestBoar:   creatures.ForestBoar,
-    GraywolfPack: creatures.GraywolfPack,
-    SteppeBison:  creatures.SteppeBison,
-    RidgeHawk:    creatures.RidgeHawk,
-
-    // World — Creatures (volcanic)
-    LavaSlug:       creatures.LavaSlug,
-    CinderGargoyle: creatures.CinderGargoyle,
-
-    // World — Creatures (twilight)
-    GlimmerFox:  creatures.GlimmerFox,
-    VeilStalker: creatures.VeilStalker,
-
-    // World — Creatures (void)
-    VoidSerpent: creatures.VoidSerpent,
-    RiftWarden:  creatures.RiftWarden,
-
+    {
+      TechBasicSmithing:  technology.TechBasicSmithing,
+      TechMasterForge:    technology.TechMasterForge,
+      TechBasicCarpentry: technology.TechBasicCarpentry,
+      TechTextileWeaving: technology.TechTextileWeaving,
+      TechArcaneForging:  technology.TechArcaneForging,
+      TechAlchemy:        technology.TechAlchemy,
+      TechVoidMastery:    technology.TechVoidMastery,
+    },
+    // World — Creatures
+    {
+      ForestBoar:     creatures.ForestBoar,
+      GraywolfPack:   creatures.GraywolfPack,
+      SteppeBison:    creatures.SteppeBison,
+      RidgeHawk:      creatures.RidgeHawk,
+      LavaSlug:       creatures.LavaSlug,
+      CinderGargoyle: creatures.CinderGargoyle,
+      GlimmerFox:     creatures.GlimmerFox,
+      VeilStalker:    creatures.VeilStalker,
+      VoidSerpent:    creatures.VoidSerpent,
+      RiftWarden:     creatures.RiftWarden,
+    },
     // Gameplay — Combat system
-    CombatSystem: combat.CombatSystem,
-  },
+    { CombatSystem: combat.CombatSystem },
+  ),
 })
