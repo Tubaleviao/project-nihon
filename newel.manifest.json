@@ -1,720 +1,2034 @@
 {
-  "generatedAt": "2026-08-04T19:42:21.515Z",
-  "schemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f",
+  "generatedAt": "2026-08-05T17:46:38.134Z",
+  "schemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3",
   "files": [
     {
       "path": "bible/entities/playersarethecontent.md",
       "generator": "bible",
       "contentHash": "sha256:96363480ae5cc75cee8b5570b0460ec3cc76a70f3d6fbc49728d0a23f2076a26",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/freedomcomesfirst.md",
       "generator": "bible",
       "contentHash": "sha256:20b8b3eda7d5443175ea6a8bdd6f5c3c85137e60461b5a291c99fcaa1ed3801d",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/theworldispersistent.md",
       "generator": "bible",
       "contentHash": "sha256:3d0da1cea43a1bf8ce7c1db4aa5b5f37fb4dc45dd6ed87d201c70d7bda474914",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/systemsoverscripts.md",
       "generator": "bible",
       "contentHash": "sha256:518d13562739f0120cb1a96c49593a979e8c90106341540ec750ea00f2404c8a",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/knowledgeisprogression.md",
       "generator": "bible",
       "contentHash": "sha256:a5dcc9667f8aaeaf9c5ba861392ab05ce1a60bab8a61ff60e6c5e895a014083f",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/civilizationisplayermade.md",
       "generator": "bible",
       "contentHash": "sha256:f53e9e6d13c814e16e296974d9c532ad0173ae24a88aa2fd09fa4b6b8bea2c41",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/believablenotrealistic.md",
       "generator": "bible",
       "contentHash": "sha256:b73f21b9494c44adda8079548d31cb08c94a8c470b632e65af0280b23412d4a7",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/everythinghastradeoffs.md",
       "generator": "bible",
       "contentHash": "sha256:b8d977288b313af8957292cfc7ac19fc14cc4f1ce21f431b1f3d3c69b8afdbf9",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/communityownsthefuture.md",
       "generator": "bible",
       "contentHash": "sha256:2e5eddc180be4bf706c792d9ec8ba327cd74b58d0216f8f49f16224e4eac8bf4",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/nopaytowin.md",
       "generator": "bible",
       "contentHash": "sha256:715c6a839cf7ae22c6e35e351fb15f14605b54d019aad3f664c03977dde61adc",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/godotengine.md",
       "generator": "bible",
       "contentHash": "sha256:d8aa41a36cd76737aaa14e50fc97a6373cea0bf8622880cc3e0246ae7dab20f7",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/onepersistentworld.md",
       "generator": "bible",
       "contentHash": "sha256:5b1ef2ed38b990e1cb0b7dbef7b9db16f1b567f94de55f16fe961514f938dba4",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/offlineplayernpcs.md",
       "generator": "bible",
       "contentHash": "sha256:a2aacf228a3620cc574ded453ea6613087ede50430d7a320d7a6db097af163e5",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/noteleportation.md",
       "generator": "bible",
       "contentHash": "sha256:0b6cb7ed955496eb52a990dee26d3fece872cd9b69b70f4bde7cfd935747ee64",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/magicbalancedwithmartial.md",
       "generator": "bible",
       "contentHash": "sha256:d7a27dd958dd3a48008ac4c443c70445ebd4bd0da8942482a2ea044e1b1357a9",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/destructiblebuildings.md",
       "generator": "bible",
       "contentHash": "sha256:907578fc9569ad595ddd04a60310576f591e9a514f47ca9ecf283c5055ff9901",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/knowledgebyexperimentation.md",
       "generator": "bible",
       "contentHash": "sha256:2b2f01c6817678cfaf96453517a0d7e05534f70a40fda415186e588d1f4b6632",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/fictionalmaterials.md",
       "generator": "bible",
       "contentHash": "sha256:5f5f675d57cf91a68c26b9d09a14acbd5f2849e5332a080cd8844907e2e571f1",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/monetizationrules.md",
       "generator": "bible",
       "contentHash": "sha256:b503a98b08c1ce4fd23256cb7c6612460a20a9995493686e8d2d936a90774f3f",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/ferrite.md",
       "generator": "bible",
       "contentHash": "sha256:e0a25978cc2a54157511725b66ca5981e5e0d65a495bca03be995a839d7afcfe",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/veilsteel.md",
       "generator": "bible",
       "contentHash": "sha256:efcdaa28fdda7a3a60dd0b41d9a46864af432dc1f011342426f93891a88abb14",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/aethermite.md",
       "generator": "bible",
       "contentHash": "sha256:8b0769674e5c2e4184c61dd78b0fe5e930ccd2fc5c326730869da92292869e57",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/voidite.md",
       "generator": "bible",
       "contentHash": "sha256:c67280293b876faf0cc85a81a766d58e66fdceacc6787c34886e92cd95494bc5",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/thornwood.md",
       "generator": "bible",
       "contentHash": "sha256:ea3ad73fa74c1aa2732a9ccbe40adb417b2af3fd03ae0d83e6bfefabf5877f50",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/duskfiber.md",
       "generator": "bible",
       "contentHash": "sha256:2642eac1d252f0614553a699de1dd38bdb48c6a22b395924e4d8c9b76449c79e",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/ashite.md",
       "generator": "bible",
       "contentHash": "sha256:2ff292da335e254fe80a30f91b9733e082d8db7707bdfedcc6c63030011d0dc2",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/lumenfite.md",
       "generator": "bible",
       "contentHash": "sha256:26147d94e9e3ea3d9c393f0ee0d741711249a3af1013c07dec9e457513c3d246",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/temperateforest.md",
       "generator": "bible",
       "contentHash": "sha256:e4697ea4ab9c27a6489fa2afbb18f6af14e7daa91660474acef1366ad8ea0585",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/temperategrassland.md",
       "generator": "bible",
       "contentHash": "sha256:af2d4b207af2c42d3ae24b3d6ec5e499aed3f9f3e8fba1d8ce69d489a97eb08e",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/volcanicbadlands.md",
       "generator": "bible",
       "contentHash": "sha256:57080a2fb2cf3cffbbc7358f0c1f722791f03ba58a5d253312c14e88120a005a",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/twilightgrove.md",
       "generator": "bible",
       "contentHash": "sha256:9ce0d0f10879816556e32e8078a9871ec56b312afaca9873996bdd5dfc85e583",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/voidrift.md",
       "generator": "bible",
-      "contentHash": "sha256:9ed894d3a31fb275d50b523b8df6d8b2e967ab4c5b4a9b5f856aed85c79ffcb4",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "contentHash": "sha256:b34c39fbc5854955e84de5308a83e79d70e115671c8170d9a55c67653de58fa7",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/weathersystem.md",
       "generator": "bible",
       "contentHash": "sha256:bcdb10c471850e6c789c87efa9e2a6a443205c476adf487457dd681fb4a56e16",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/swordsmanship.md",
       "generator": "bible",
       "contentHash": "sha256:95b08509fb0a814a1a1d0f70e1feea60338a803e989aa119398bb1387cf9f967",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/archery.md",
       "generator": "bible",
       "contentHash": "sha256:e32a5fc99847e49d3b8361e845aec4e16d39dce941ce35180da36d0e9dcf3ea7",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/shieldcraft.md",
       "generator": "bible",
       "contentHash": "sha256:19e67d0015a6dd9705cf52bf347ed6de290fa897d1610471f0ef067f2f1b234c",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/unarmed.md",
       "generator": "bible",
       "contentHash": "sha256:fd2b74b1990d213c0d8562e342b4bd680bdb4907cc53ebf42085f1fe512dad26",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/smithing.md",
       "generator": "bible",
       "contentHash": "sha256:1ed086362cbade075c142d4ef8787070860327f459d7b2d83e478742aadd55af",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/carpentry.md",
       "generator": "bible",
       "contentHash": "sha256:b4ec5f64f9f79316ec322321c50ebe4901f564cbe7fabb0927efd84a1ee3be70",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/alchemy.md",
       "generator": "bible",
       "contentHash": "sha256:b694bba0f1a87ffce39b76fdce535f829502cace367f34905040ab2371109157",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/arcaneforging.md",
       "generator": "bible",
       "contentHash": "sha256:9a0fa5b265684184ec85003f0f669beefe7a37cccfb80f8f5a184bd0dcef98fe",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/voidsmithing.md",
       "generator": "bible",
       "contentHash": "sha256:868018f897969ee6775c65e363d4f7b4ed909414b4217a9f2761f3f16dd4108b",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/elementalmagic.md",
       "generator": "bible",
       "contentHash": "sha256:5e8056293450e3cd02f2ccf91e3c9211c92ac6a00122fa2391e9b8c4846db721",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/voidmagic.md",
       "generator": "bible",
       "contentHash": "sha256:2945b231650a4b4c048f4f597bc91a3c3816eaa64b8b5edf00cafb7f8d5ac601",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/restorationmagic.md",
       "generator": "bible",
       "contentHash": "sha256:a57609c4711c1cd61c17a8edf3d62378a808e67f1d84fc155521b61517ddfb84",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/enchanting.md",
       "generator": "bible",
-      "contentHash": "sha256:b31f7b8526e61601d342101894949f97d083d2b6aa17d943a517e385baee185d",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "contentHash": "sha256:c4dc541ec50aa46e8fad73801f640761d8cd8df40cb5ad44f2b2f29a152b939a",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/cartography.md",
       "generator": "bible",
       "contentHash": "sha256:d1bdf3adb9bcf0f93e425a97ea3315973e04ef42cd2caa5ab9d52dc438dbbb20",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/tracking.md",
       "generator": "bible",
       "contentHash": "sha256:41975453244cd1737f4d5ae31be54ceb800f2cd6666d2171f36b13e179763cf6",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/stealth.md",
       "generator": "bible",
       "contentHash": "sha256:2d4462f97c34bffc1d280344d0a23457d71650d56266df0979d23628bc2459ed",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/navigation.md",
       "generator": "bible",
       "contentHash": "sha256:ebe72f6c7b4f12f834cb90b2d5eec478e9933f0369cb73eddb0bb412c5a33241",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/diplomacy.md",
       "generator": "bible",
       "contentHash": "sha256:7b2821253506b9eca2d049eafeca3e4062a0e6677c9cee6f342cd26187ad8912",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/trade.md",
       "generator": "bible",
       "contentHash": "sha256:576427d553c4636e80e923de257e2cdcf1454fb8a8704ac98b2ea1e79f3ca665",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/speechcraft.md",
       "generator": "bible",
       "contentHash": "sha256:8267af64621606fabeaa39ca6bc923e96bff5ead3e00410bc824d681d97f80fb",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/leadership.md",
       "generator": "bible",
       "contentHash": "sha256:f51b7977dc9315b6823f32a63fa5ddf2e3511846138312000a62df1ead4954c8",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/blacksmith.md",
       "generator": "bible",
       "contentHash": "sha256:160920a40a3b10faf21abec3fa574d00e8fe22f2c325a6045056140118797f22",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/arcanist.md",
       "generator": "bible",
       "contentHash": "sha256:fd53cc17aa2022340eb987b0842874742112dc0e1af61ac156a669fc8d136519",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/ranger.md",
       "generator": "bible",
-      "contentHash": "sha256:0d52dd6221f94a71fdfc3fad2fbc10951312b7db367912eb22baacb4806be86c",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "contentHash": "sha256:0cc10793a22464dedfb73a7254a193b553d9320e76d97f4ceb96fadb68755273",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/warrior.md",
       "generator": "bible",
       "contentHash": "sha256:8f7c1d9031dd92e1580ce971c033dca037bc0ea71e93b1c4bf5f95c2e0dcfc8f",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/alchemist.md",
       "generator": "bible",
       "contentHash": "sha256:0ecddcfbb788e312d9246658dd73bc162754fa632374ab98bb1793088278c9c4",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/merchant.md",
       "generator": "bible",
       "contentHash": "sha256:74e1263716e8f21b6a88f6b4be492150924aef424497aaa8f2b031901689380e",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/pathfinder.md",
       "generator": "bible",
       "contentHash": "sha256:edb6a8451ac9e1f2523d0382dab06aa7983a7bbebf331baac6e87b8bac6bcd64",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/voidtouched.md",
       "generator": "bible",
       "contentHash": "sha256:944fadc60d55f1f4e45d0f6f2958560ecab17cf48b9f1e08d8e153e73c8522cb",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/ferritepick.md",
       "generator": "bible",
       "contentHash": "sha256:5d44677fe0743a663dcd1291800c98d9fc37bf519fa9faeb3c911d0d93beeaa2",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/veilsteelpick.md",
       "generator": "bible",
       "contentHash": "sha256:e964322649972f5b21f1383309731e0ea2756b696353db3a27e9b4571d656363",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/carpenteraxe.md",
       "generator": "bible",
       "contentHash": "sha256:0668e18c25db68e7e3a0633523a2faa836c0b550c491d8039ade0bc1f866a74a",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/ferriteshortsword.md",
       "generator": "bible",
       "contentHash": "sha256:64f157ef98c2c1dca3673eab52fde7784347c437ddf61744530dadf6432f4438",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/veilsteellongsword.md",
       "generator": "bible",
       "contentHash": "sha256:12e169037111e254466b0e70b0647d9079951bf3634d4f318cee52fa77255c35",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/aethermitebow.md",
       "generator": "bible",
       "contentHash": "sha256:1ba1f9a625ecfb4eb86b1fea8c04366f5af54f3330d3d3ca98b7d3a9f4fb1b17",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/voiditeedge.md",
       "generator": "bible",
       "contentHash": "sha256:7d2fa8528c807c4e6b6ff1c80e56d21ee4d032682902f5c615513547d69103fa",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/ferritehelmet.md",
       "generator": "bible",
       "contentHash": "sha256:c7ce9b620138e570bd645b1da409fd2dc5b6ad3e1b0d2d73e0fd377a076e1ece",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/veilsteelchestplate.md",
       "generator": "bible",
       "contentHash": "sha256:8ef2bff4a563778d67f54acb16641c5e9e95c10aca71e84275e4acc12766d02a",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/duskfibercloak.md",
       "generator": "bible",
       "contentHash": "sha256:fce1a5d4722e65b3ae90d532a036f919c5484d1b0535fe0e1dda899b668caaf9",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/fieldrations.md",
       "generator": "bible",
       "contentHash": "sha256:57a7cf4b9a81146258264fea78caa74d476647cd37e7028f3f71db0361b3e8de",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/alchemypotion.md",
       "generator": "bible",
       "contentHash": "sha256:9a78d5f02b1a4f773a2154cf367c436411f7646fa77e16657a20a3981d3863f1",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/ferriteingot.md",
       "generator": "bible",
       "contentHash": "sha256:34fe1c6de5374bef121c400029d8bb8b3d78deb9f6bdcf5a75730b72d9c02bb1",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/veilsteelingot.md",
       "generator": "bible",
       "contentHash": "sha256:fc55c41c1a07b2daf9796d7e638d257e8571ccb347014876739158c880645e94",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/thornwoodplank.md",
       "generator": "bible",
       "contentHash": "sha256:34a3646c44587a8a1e7ac9d45ed19fa29043c422f442d114a54ec4582b8b7667",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/aethermitedust.md",
       "generator": "bible",
       "contentHash": "sha256:bca469fb68571025f51602b9fc25bb3c703e944eb83b0c4d48bcba031140327c",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/aethermiteshard.md",
       "generator": "bible",
       "contentHash": "sha256:7d5609c03778276bebeae39dfed48bff9656a1f81d053232b784a409566e13bb",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/ashiteblock.md",
       "generator": "bible",
       "contentHash": "sha256:800b412da00412283ea831c67fff3f28ba8dd9bb5c6a49333f12517003acd939",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/enchantedaethermiteshard.md",
       "generator": "bible",
       "contentHash": "sha256:cf235214f1a3a346dc5ae024a7ebfa2567c22f4e8183aebc8f6a94c5e08b2971",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/voidrunetablet.md",
       "generator": "bible",
       "contentHash": "sha256:4fd29691fbeb4a8cb2d862125a3992d76e18e5aa34035ca6580746a021c5bf3b",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/lumenfiteorb.md",
       "generator": "bible",
       "contentHash": "sha256:b762c22ca86126879d4d803cee67bb04014b07cdec646f417d90c0d1c0bd5ed8",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/recipeferriteingot.md",
       "generator": "bible",
       "contentHash": "sha256:6ec2e9ae9557f7c01d9d09b642f83e2ada772e25953580b73f587327f98f7630",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/recipeveilsteelingot.md",
       "generator": "bible",
       "contentHash": "sha256:342e76fad4f6f6a447181fa2c259d311e7cc4601fcd8b033777265f25f10eed6",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/recipeferriteshortsword.md",
       "generator": "bible",
       "contentHash": "sha256:0366b64496f2f2865ef7b30610c8b72b93f797a7664d6c4158d2dbe82528dcd5",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/recipeferritepick.md",
       "generator": "bible",
       "contentHash": "sha256:025ca0fd4a8e7aebb0d3449294ef79bb4cec5faadf21f67d2b1c59784aa910bc",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/recipeveilsteellongsword.md",
       "generator": "bible",
       "contentHash": "sha256:a543f2a94b2387e20d2f8e8d45298957bcf3df010740679863022b55fffd6e8e",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/recipeveilsteelchestplate.md",
       "generator": "bible",
       "contentHash": "sha256:d6428c8b035b154fb1c72c16c1bbe9aac48eaecee7bc428ec28324b5ed371389",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/recipehealthpotion.md",
       "generator": "bible",
       "contentHash": "sha256:8f2d98a6006f9e2717a070e87762abe845d05f451d6f9bd747b82cd17efdc4fc",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/recipestaminapotion.md",
       "generator": "bible",
       "contentHash": "sha256:bd38addc279992051caeffd0e94a4e577e3795bda9e5b2f540f6c08a0cd9573f",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/recipevoidresistpotion.md",
       "generator": "bible",
       "contentHash": "sha256:1826cb41677c601e213b5cfafd220c9f1aa8ba9d3f749531f266154f31d8401c",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/recipeenchantedaethermiteshard.md",
       "generator": "bible",
       "contentHash": "sha256:6e161fa7a17969531204e44b2f475cc6fca946c5f80ebe1691b16158e6d88afe",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/recipeaethermitebow.md",
       "generator": "bible",
       "contentHash": "sha256:f79c31aa6fe65162b52a7d81be3663ef562c1607158803f7d000d89880bc95fd",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/recipelumenfiteorb.md",
       "generator": "bible",
       "contentHash": "sha256:b48bd6716342bd8dbb1d9d5a4e60dca7cd558b6198a842f817eb15ad85b1e260",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/recipevoidrunetablet.md",
       "generator": "bible",
       "contentHash": "sha256:eca0373106b52b9ee829f6e5e820e004a252a9e28db407b90fcfcda2cd60854f",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/recipethornwoodplank.md",
       "generator": "bible",
       "contentHash": "sha256:b008ac7b941c51f25b2fce819d837d6b6ffcf89436255569b4c4342b05d91681",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/recipecarpenteraxe.md",
       "generator": "bible",
       "contentHash": "sha256:9ca0c566415699984ca26e3fa8f556ec931e68060f51531189baf00e56392cc1",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/recipeduskfibercloak.md",
       "generator": "bible",
       "contentHash": "sha256:a940ffc03262dcaac9b1ee10173bb1e4463cd9a5d0c48a33764dcc4331b501bd",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/recipeashiteblock.md",
       "generator": "bible",
       "contentHash": "sha256:9c4c115db252dd5090912e20ad3384d1b3e0c0ab450f548731d6a57cc1de2134",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/techbasicsmithing.md",
       "generator": "bible",
       "contentHash": "sha256:f71b2952699f13fec67cd410ce707e77b0a6d50949993218d4dd73ea78b8be98",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/techmasterforge.md",
       "generator": "bible",
-      "contentHash": "sha256:f9a39136fbe82f281c449e50ffa4730454d58ca7e3f13a5b961d631c7ecb447d",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "contentHash": "sha256:3a6f90966ff80151a6f20947c053735cb51cb062b90019495e3abb21ec33f034",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/techbasiccarpentry.md",
       "generator": "bible",
-      "contentHash": "sha256:6052d84e80f98ff07ac2b5acbc9e2d8ac7e7403bb55f6d5c068f7950de9aaba7",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "contentHash": "sha256:da6f0cd581b7179e6bb61c6ae01f166bf26c3f92d69795987e4aa4106655b5be",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/techtextileweaving.md",
       "generator": "bible",
       "contentHash": "sha256:b395bc169dfaa48c9c790a5847a6feda804258fde3535c0fcb5483e33f2b2cd3",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/techarcaneforging.md",
       "generator": "bible",
       "contentHash": "sha256:74f8ff6d91a547dbd1818c454e207ae3add2738671b0aaa1c2571000e2344ca1",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/techalchemy.md",
       "generator": "bible",
       "contentHash": "sha256:cb6b4d751eb0be2952095be4752c555be9c23ffecb245e7b608b8ef904ac8ee7",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/techvoidmastery.md",
       "generator": "bible",
       "contentHash": "sha256:c73c98f312f6f3313f3397bbbc8c62e5c6a1d92ece266ec022d2699c83456fa5",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/forestboar.md",
       "generator": "bible",
-      "contentHash": "sha256:ed1d2ff2a57249ad66de6ff660491940e637eb3cd3589c91357acfeebd4f2f5b",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "contentHash": "sha256:a202a302f86af3b37d500670fb428d82a60b04f1aab4e13044e6c25a5d0abc26",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/graywolfpack.md",
       "generator": "bible",
-      "contentHash": "sha256:dc6b35b2ea5b8c162119f431d0dc0df75b53df103a65aefcb4e9524cc1082993",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "contentHash": "sha256:22e20719646b1bc6eabc5dd845df1b737c296203b2e8e1e71e71a083e0e7b93d",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/steppebison.md",
       "generator": "bible",
-      "contentHash": "sha256:e1d0a649f0985d346c560aee39e01dcaf70cfe90ded74beb2ba71dbb3aa1974a",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "contentHash": "sha256:5a09cde66476cc6d75d8e617df929ee149d5fb537ca0d1c488291335f5f4776d",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/ridgehawk.md",
       "generator": "bible",
-      "contentHash": "sha256:c6e126765c5f128e3552a91e65a923a9188a73a0552b9a5f1c27698e61315bce",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "contentHash": "sha256:4e6cf8be99302001d4325491d8066732b29dd7227bf9fb48555638de0e31f663",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/lavaslug.md",
       "generator": "bible",
-      "contentHash": "sha256:dd7e5395e1f88838a5885b263a924b23c0ad6a919ff2184aeeed7ee512a9f8f9",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "contentHash": "sha256:b7007a873cb33615d958337afc49ae96621d53ebd12f0eeef1938bcb95e97e12",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/cindergargoyle.md",
       "generator": "bible",
-      "contentHash": "sha256:028b57b940455f1323eb54fe88f6f8f2116e920c43910fc3520440096bf92386",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "contentHash": "sha256:2ea986c6c2c994e74e6680d743a63d3ba09c29a3664f570b8f5ba3f52954e58e",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/glimmerfox.md",
       "generator": "bible",
-      "contentHash": "sha256:51fd9dedd8e4dd8460fee55a0b67fa5e8903118d6b049b73e092b400183dfe99",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "contentHash": "sha256:3397ea94a33ace25285d7a13b05db1434efa6fa9424724cec56bcfe679035359",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/veilstalker.md",
       "generator": "bible",
-      "contentHash": "sha256:74c4f878f494109ea67a7e41438f9db93664cbdab712b43250eff98682c98440",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "contentHash": "sha256:865ba9a321845da34118fb769bbff39c98d981ee8d0bad9fa3ab543318b0b020",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/voidserpent.md",
       "generator": "bible",
-      "contentHash": "sha256:ba635c6c72319a162ec45ced8e9a7a6a409b660e90256af7e3db9d1f6857c949",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "contentHash": "sha256:8aea5f4ba601d0935410a8c2e0ab763199480cb4d1ac7e7271083496dfb15a72",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/riftwarden.md",
       "generator": "bible",
-      "contentHash": "sha256:7851ebbd98ff3a36382b38ae3f94f4d89d433b1dda1c33d43bf63c48f7dd3fcc",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "contentHash": "sha256:dff17c9de3c9bd2512241e4de22433e5b8cc77e33f044c2dfbb2d9c6a21c3393",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/entities/combatsystem.md",
       "generator": "bible",
       "contentHash": "sha256:1550ea709cb881c0fe41a9779567d7894d1e8cb673c3868e2aba8e3dc18be4ce",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     },
     {
       "path": "bible/index.md",
       "generator": "bible",
       "contentHash": "sha256:869dab36619bcb184a65b97015c9b9b5e908bd3a4aa606ca056b51de3809ff27",
-      "fromSchemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f"
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/systems/playersarethecontent.tres",
+      "generator": "godot",
+      "contentHash": "sha256:a221cb8fc0d0ff8793a2379865f448672bead5ff6703b5e0238170fbfb38a975",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/systems/freedomcomesfirst.tres",
+      "generator": "godot",
+      "contentHash": "sha256:3ee76cceb1616475a639a039aefae4b64669652962b01c5fa9db10ef14be62b8",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/systems/theworldispersistent.tres",
+      "generator": "godot",
+      "contentHash": "sha256:be80e9cc171dd61ed19687297a978ce092aeb497491fb1727a4be5b515adf21c",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/systems/systemsoverscripts.tres",
+      "generator": "godot",
+      "contentHash": "sha256:28177eeed7766f053551110e231aa0e8e53484f1240f1b86a746aa1b62385d3d",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/systems/knowledgeisprogression.tres",
+      "generator": "godot",
+      "contentHash": "sha256:976963b5325c34f6fff203d6c71c6dbd963e973b31901d6b9237925299b80631",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/systems/civilizationisplayermade.tres",
+      "generator": "godot",
+      "contentHash": "sha256:33283a12c2128fcf08751c167fe930613a2407eaf4a1e4d0205a74692d762e6b",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/systems/believablenotrealistic.tres",
+      "generator": "godot",
+      "contentHash": "sha256:ca59f26ddaa91624bbee9f299765cda5ecb2d465cb27e685088121279d7798c2",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/systems/everythinghastradeoffs.tres",
+      "generator": "godot",
+      "contentHash": "sha256:28aba59c079f5e83b30b5b6d2a1f229f34a848f163e90e45acfbed05ab5268c5",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/systems/communityownsthefuture.tres",
+      "generator": "godot",
+      "contentHash": "sha256:9066c44e025cd1bca529021b401f23ba80a9b8840a227f25436f3513fda52e6c",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/systems/nopaytowin.tres",
+      "generator": "godot",
+      "contentHash": "sha256:4a2c0f68dfd883f3e7d0270ce871964daab8bd334756ffb2fb4e093cd84e8204",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/decisions/godotengine.tres",
+      "generator": "godot",
+      "contentHash": "sha256:407eb86b70bd0643c59f6aad9a36ede5ef6fe03034a8df275a90d6ad60b74bc2",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/decisions/godotengine.gd",
+      "generator": "godot",
+      "contentHash": "sha256:e4002f29d4c0ce21db2ef8a8cc5931a3aba40887af8fb2114a65f6bd3ab36cd9",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/decisions/onepersistentworld.tres",
+      "generator": "godot",
+      "contentHash": "sha256:e822257db921720ebad21caae7557eb1786f8cae3977bd526c2fb2d623931f33",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/decisions/onepersistentworld.gd",
+      "generator": "godot",
+      "contentHash": "sha256:a86e35505cd7b7d1bfbf44598e35126ffdbcdaeb8099db772e33110278bb5b0f",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/decisions/offlineplayernpcs.tres",
+      "generator": "godot",
+      "contentHash": "sha256:0795769d5dd70eef584a1c578806e2013e067a503a44d2638e292a7ae2e4eb3e",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/decisions/offlineplayernpcs.gd",
+      "generator": "godot",
+      "contentHash": "sha256:c49902822c4d4911e055c8a0747f4f24225ad3bfe05b1f293373ab9319ac86fb",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/decisions/noteleportation.tres",
+      "generator": "godot",
+      "contentHash": "sha256:1225ec302c3cf208dd621a214ead7fb3570bdb4dc42c8d2516f31bd238de241e",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/decisions/noteleportation.gd",
+      "generator": "godot",
+      "contentHash": "sha256:f66ad9cd26c205ceb2b3d69e98167d4a4089caee43848ca99824176583f71f0a",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/decisions/magicbalancedwithmartial.tres",
+      "generator": "godot",
+      "contentHash": "sha256:4f986d4daa6f6f5bc7022c2da51d378ff75af9dd50efef410d55c1fb3f2b459f",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/decisions/magicbalancedwithmartial.gd",
+      "generator": "godot",
+      "contentHash": "sha256:b195222f9c19a8966431da511de4d6dd15a620a6e11331e9f2698d3f2b8689da",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/decisions/destructiblebuildings.tres",
+      "generator": "godot",
+      "contentHash": "sha256:ef5d0f38687c8403888409f66a65f257bcaba4bb51bbd2ad36037fb684d25e39",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/decisions/destructiblebuildings.gd",
+      "generator": "godot",
+      "contentHash": "sha256:4e0fcff1db240e46470a164b8e57c8414312722ef9e712ff4f3b7337faa711d6",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/decisions/knowledgebyexperimentation.tres",
+      "generator": "godot",
+      "contentHash": "sha256:29d42a4c6e16797edb13ed24f016d3dca64a94ed804a47a7fc58bd1f904cdc8a",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/decisions/knowledgebyexperimentation.gd",
+      "generator": "godot",
+      "contentHash": "sha256:be93c0469b6a1b236740e8b43d32d3c1d3a7d5ce3f97ae0b550b39eb1b1d4a54",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/decisions/fictionalmaterials.tres",
+      "generator": "godot",
+      "contentHash": "sha256:721115f712d2d10e5f0d5c6b7cadc4d3a2e85f1048ff50ea38a246aa6869e7d8",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/decisions/fictionalmaterials.gd",
+      "generator": "godot",
+      "contentHash": "sha256:6f46cc8b1498999d83ad74c5fc14456c491fb413b48cf22791879f5ba328b6a8",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/systems/monetizationrules.tres",
+      "generator": "godot",
+      "contentHash": "sha256:20757caba5e0638a8d5c598d01ea1fe3766122a02ce1e986ae8e97a5c6f2f459",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/materials/ferrite.tres",
+      "generator": "godot",
+      "contentHash": "sha256:ed314e2d7ff8835d611ff7bea15ed2cc7b68a8f40b036447c8f5c146731d8b26",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/materials/ferrite.gd",
+      "generator": "godot",
+      "contentHash": "sha256:b2d288209b3dca47aa6f7e56a30d1678993a98a3619486f9627828c4e059c498",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/materials/veilsteel.tres",
+      "generator": "godot",
+      "contentHash": "sha256:3187adcb7df38a57c4fed293aa2599e68312cf76881c4bce668424ed2f42b14c",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/materials/veilsteel.gd",
+      "generator": "godot",
+      "contentHash": "sha256:c7e4436691dced339345727bcb1a98a3fc90ccfc255549c6cdde42bb8ce776dd",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/materials/aethermite.tres",
+      "generator": "godot",
+      "contentHash": "sha256:ed7b442e8501224a07655aa1646f6667b23e785ff1dbf094f8214c9f2673d175",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/materials/aethermite.gd",
+      "generator": "godot",
+      "contentHash": "sha256:443713d8b1d9889380084c662d9258ba0dbeffcd56e20578a89dfbdd135f46b9",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/materials/voidite.tres",
+      "generator": "godot",
+      "contentHash": "sha256:1a68f42b369ac55ab9475142ff4a6e797869b116c0cabf1aa4ca3d62ce0b7fe5",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/materials/voidite.gd",
+      "generator": "godot",
+      "contentHash": "sha256:4c3e63aa3164312809153597a8e13aa56ef1958c23e597b700d876924c6f9118",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/materials/thornwood.tres",
+      "generator": "godot",
+      "contentHash": "sha256:57aec6f22d5da802ff37e6600638af8d28d43b369f9edb5604d0d5a26edd0095",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/materials/thornwood.gd",
+      "generator": "godot",
+      "contentHash": "sha256:ea58cf9059b3bab29054c9166ecccaf00be8136614f64341fa0bf2635b4be15d",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/materials/duskfiber.tres",
+      "generator": "godot",
+      "contentHash": "sha256:f27c0e5d19d928ab1bae6c8ce79a5a5d4b8b03355a73628791e17232b83cf7ef",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/materials/duskfiber.gd",
+      "generator": "godot",
+      "contentHash": "sha256:ff6b4e50c5fc488ca8f34f0be61cfa4b5395bed92eb13655ae1faedb49a23c14",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/materials/ashite.tres",
+      "generator": "godot",
+      "contentHash": "sha256:5351123cb624f8a670371351ba10fb570ae4bb389e238700549c50f26a1fff0c",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/materials/ashite.gd",
+      "generator": "godot",
+      "contentHash": "sha256:261559ac463661feed9bd11adc8a253c67b2109f8b25e92ebb2ea379b3ecc672",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/materials/lumenfite.tres",
+      "generator": "godot",
+      "contentHash": "sha256:ad9784fbe08e1681e7bf37f9eb56258a65f3dbe745404f43c260167641595577",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/materials/lumenfite.gd",
+      "generator": "godot",
+      "contentHash": "sha256:725fcd28b000a4a96c2ac98808cec99888fb452239d5984adc34cc561068eb52",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/biomes/temperateforest.tres",
+      "generator": "godot",
+      "contentHash": "sha256:396c97dad963321fabe318409ad882802db7ac6a72def477ce6bcc6061680139",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/biomes/temperategrassland.tres",
+      "generator": "godot",
+      "contentHash": "sha256:5f2555051622304a7177164126a138921d527e97c0a59fb63d7768d8b050ce68",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/biomes/volcanicbadlands.tres",
+      "generator": "godot",
+      "contentHash": "sha256:e01fff106b8d0ec6d4199015f86635726be8ae27c0c8a69ad75658b5c64c7af2",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/biomes/twilightgrove.tres",
+      "generator": "godot",
+      "contentHash": "sha256:c64c017dc8e2fdf4f0691d2c13d29fd2b50121d6c82ff1b167145bd482799d14",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/biomes/voidrift.tres",
+      "generator": "godot",
+      "contentHash": "sha256:8a5fc3082bb954c23c4c495782adf7de2731e1518b9c239bcdaf700cae3dccee",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/world-systems/weathersystem.tres",
+      "generator": "godot",
+      "contentHash": "sha256:0429bf2e77da42160e2dbffac4df61a9e59614fe37ccde73bb5dc354a0d15a50",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/swordsmanship.tres",
+      "generator": "godot",
+      "contentHash": "sha256:0b85a62c1b3ae88b5f652b5fb2ab5e07d1a15021defc56c1d2375933afed3b61",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/swordsmanship.gd",
+      "generator": "godot",
+      "contentHash": "sha256:53956ac8ce1ebefe644be662e7867302f56de865dc6418cea4a4be829c0be004",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/archery.tres",
+      "generator": "godot",
+      "contentHash": "sha256:0b6f9e557b3c678d83de1908061cb4b06f8c6b2efe641311d50c8fb052fd5f6f",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/archery.gd",
+      "generator": "godot",
+      "contentHash": "sha256:1d2f2894bca71ca65a47bb3ae1630d9339fcd49f7900d050b1c4062f32e6152d",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/shieldcraft.tres",
+      "generator": "godot",
+      "contentHash": "sha256:b568fc1eb1882c1112dfee2d5552a1184a71e9f09f3d5a3469671ea30320a4d8",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/shieldcraft.gd",
+      "generator": "godot",
+      "contentHash": "sha256:89a35027e7c7273b62d351639c8e1d9376f498b01799e5e363708ea3a3a8ab62",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/unarmed.tres",
+      "generator": "godot",
+      "contentHash": "sha256:6c114bbe5a8c4feaf1e802293a7198af44887c275460e7558a72c60eadfe14b4",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/unarmed.gd",
+      "generator": "godot",
+      "contentHash": "sha256:dc562bad815c494552f52a6a97bdc7380697be5e4678d53a2d51b105194e9030",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/smithing.tres",
+      "generator": "godot",
+      "contentHash": "sha256:8a4e004a63e606897dd4776d907986ce0f31e811363c3672f7e98af487d21b7d",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/smithing.gd",
+      "generator": "godot",
+      "contentHash": "sha256:c6fb8032e6999d3fcaaae46e401f8d18d2de2433e6e01075ac20347ea35b2ba3",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/carpentry.tres",
+      "generator": "godot",
+      "contentHash": "sha256:f5e7faa29373fbdb8e6c80ef87ba8b01a3c383fd36086b5176dbbaa2f5e52bfc",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/carpentry.gd",
+      "generator": "godot",
+      "contentHash": "sha256:bf1573b5b112d585388cbbc694b15202529fe47a0fd413a32dc7e22ffdc30cef",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/alchemy.tres",
+      "generator": "godot",
+      "contentHash": "sha256:c9b99e414fbdb2555aa8f857a69f6af0dd4a0a61954c96133946810738b1b15e",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/alchemy.gd",
+      "generator": "godot",
+      "contentHash": "sha256:d3857dfeb3f267296d20a5550ea32074a7fb57819bb4c9ac287f5be723b69165",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/arcaneforging.tres",
+      "generator": "godot",
+      "contentHash": "sha256:aa22f556a2f14352e0feeed10fc8134777a337b8540937d4ed4a3bc2a7a1f3c8",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/arcaneforging.gd",
+      "generator": "godot",
+      "contentHash": "sha256:3c961aafafa1ac0c09328295ec764f157ae775d29581ae3b307853d30a24b8a1",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/voidsmithing.tres",
+      "generator": "godot",
+      "contentHash": "sha256:46a47603ee750f3f4694bb90f1b39ce378db33e3090498981ee485eac6954c95",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/voidsmithing.gd",
+      "generator": "godot",
+      "contentHash": "sha256:fc9bcab80981038d1f3184fcc7bf0d5105623a6291d2a380b6b634284a2ac21e",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/elementalmagic.tres",
+      "generator": "godot",
+      "contentHash": "sha256:d415ceb6188ef0ecbd3ae9942e1e5881ac2c6a3dee9e16e9aa2e1add7c9140bd",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/elementalmagic.gd",
+      "generator": "godot",
+      "contentHash": "sha256:159b9d0aa812bd7ed42f561c7d98d0463ee02ca45ba0be1e46dea593539237e6",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/voidmagic.tres",
+      "generator": "godot",
+      "contentHash": "sha256:13f7582d8ee0b1e8b90fc4f47c1347d0169a937a4c836f8a722b424944394e4d",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/voidmagic.gd",
+      "generator": "godot",
+      "contentHash": "sha256:d34d2c69fc890776db19833476a498aa97c4513e3877279ab6d45645572f3f98",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/restorationmagic.tres",
+      "generator": "godot",
+      "contentHash": "sha256:b58f84ce8aedf32bb0d98f182f6ca6efb94d6858cde5e73ff46d51e2fe57115b",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/restorationmagic.gd",
+      "generator": "godot",
+      "contentHash": "sha256:ff35c5118f4737bb392be7c98a6adec22c797597e9acbb5299f9d1cec5a484b4",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/enchanting.tres",
+      "generator": "godot",
+      "contentHash": "sha256:a561d474c2a94065a8398948bacbccaafff1796a787309d74b36e2f290ed67f8",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/enchanting.gd",
+      "generator": "godot",
+      "contentHash": "sha256:8e03379fc45a12c1bac16b9f3f9e7364ea90cd8740d7429e454575238f154d58",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/cartography.tres",
+      "generator": "godot",
+      "contentHash": "sha256:56ad4c949c6530c7d7648ab7d355acb730967809ca8abc8dcb4d411ce7a603b3",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/cartography.gd",
+      "generator": "godot",
+      "contentHash": "sha256:b159249c3709f9030780e8c0eb60a0c48bcab05b4f37a2978cb3d471e3da9af1",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/tracking.tres",
+      "generator": "godot",
+      "contentHash": "sha256:e8e60bfdde8c2c2f58c1c3b44e64d41264d6588be4b12ca9d79c40d677b194e9",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/tracking.gd",
+      "generator": "godot",
+      "contentHash": "sha256:ce6a0d1d3b79e5c536ca7172cca50ad7cab1f371bebe93b5d66aa763d61926b0",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/stealth.tres",
+      "generator": "godot",
+      "contentHash": "sha256:a56b1bb41b2995c902e1482cee05bbf2383dbb9c6ae9b030ab3eed70e2f2ba7f",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/stealth.gd",
+      "generator": "godot",
+      "contentHash": "sha256:7cc0f4ccc3c8f58cffc9eeea7b6e96cf3b0151459d925a19a03bf4c85be725dc",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/navigation.tres",
+      "generator": "godot",
+      "contentHash": "sha256:d16fb65e1dc9dea322df5a8d00e78f349a0e0c65b791a104800fa5afb5fff323",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/navigation.gd",
+      "generator": "godot",
+      "contentHash": "sha256:1c7cc5326084820d81ffd13081985cb697c70ac1627750761385e7c530a2bb51",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/diplomacy.tres",
+      "generator": "godot",
+      "contentHash": "sha256:70dbce85a5ecebaa8376eb27ddc7c0d5080db0ddf9d98bcfe7bec9459dfad4ea",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/diplomacy.gd",
+      "generator": "godot",
+      "contentHash": "sha256:040ce57b2387bd838b2b9c8037d28689d281505439e854757f7ff0a1a1793213",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/trade.tres",
+      "generator": "godot",
+      "contentHash": "sha256:3ccc1a1c6145e21f302569d084f6469b7cf6790a1d8b7e9251ade80f0b88a70c",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/trade.gd",
+      "generator": "godot",
+      "contentHash": "sha256:d6a374711eabcd62f3881c2fbe64b7062d0906da2c6326a194052b077cc69cd2",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/speechcraft.tres",
+      "generator": "godot",
+      "contentHash": "sha256:570d4109872dc7c419d51f921dab6963b65cc862c94279b57d6c324d817155b0",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/speechcraft.gd",
+      "generator": "godot",
+      "contentHash": "sha256:70caf6b63e2017d96baf0797339e10fb654a505828883158a28f6185cc3bce12",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/leadership.tres",
+      "generator": "godot",
+      "contentHash": "sha256:e2001f418cf147c8372fde0fb409e9193f10a1f8eef2aab3fb3d38fd4a0b1a2c",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/skills/leadership.gd",
+      "generator": "godot",
+      "contentHash": "sha256:358fe14f0410b508fd3c26467ddf0e5768e54911228347b6a537b3fc1d302fe8",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/professions/blacksmith.tres",
+      "generator": "godot",
+      "contentHash": "sha256:5c6d23b4c4463412372c888ef86d1809b4e637c020ad0685727a996d1c1a9bfb",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/professions/blacksmith.gd",
+      "generator": "godot",
+      "contentHash": "sha256:a63f1cec82f5918651e7360505fdfbe152779eba466e9e50764d402ba1fadf40",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/professions/arcanist.tres",
+      "generator": "godot",
+      "contentHash": "sha256:e2dad3983d0839640d08beca1c5f8d54d8318f16d4f9dfc6ff9047b8556d8203",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/professions/arcanist.gd",
+      "generator": "godot",
+      "contentHash": "sha256:81220a32092e5afbcd93c4409294d224434653205cec9510e6baa45358ef4d93",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/professions/ranger.tres",
+      "generator": "godot",
+      "contentHash": "sha256:3ad2f63e6d2cf95e047f8305b818583d41b447b01463c455b3362eddba0fd5df",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/professions/ranger.gd",
+      "generator": "godot",
+      "contentHash": "sha256:f4fe07725a698ec1e8ff30dedd54ca6ea7483e1297c489ef0bda6fbd11f49ccc",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/professions/warrior.tres",
+      "generator": "godot",
+      "contentHash": "sha256:229526aaed766ab7d0d20cd82cfbea0e09f907a79dd0ebbe8669c0a56247d731",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/professions/warrior.gd",
+      "generator": "godot",
+      "contentHash": "sha256:0bae2eb0fa64d7bc51b4132d33b40b3616fe3399cc6ba769482472ba6f5eb17b",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/professions/alchemist.tres",
+      "generator": "godot",
+      "contentHash": "sha256:e9c344b2911e3817b41037d4d8adb459f9c419a38f7bfd94016acc6e276961a8",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/professions/alchemist.gd",
+      "generator": "godot",
+      "contentHash": "sha256:c67c8e84f6a31a478f7239f557e86d498e29d82e7c158c329f3d2753032a76f0",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/professions/merchant.tres",
+      "generator": "godot",
+      "contentHash": "sha256:74e3aae98af895f63bc43756cb1ccda1ff387963f7acb61ea652b1b19a375ce4",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/professions/merchant.gd",
+      "generator": "godot",
+      "contentHash": "sha256:011f9c26255971d7c03c075baf062098b8067d4faee40f917186c7351e27f7f1",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/professions/pathfinder.tres",
+      "generator": "godot",
+      "contentHash": "sha256:7ed534c84d2f4f073a34574990a00151b5e2a310a45e488c667f636d4c13b43c",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/professions/pathfinder.gd",
+      "generator": "godot",
+      "contentHash": "sha256:a4b54bbc28ceb70d3e4c440c753561d6f403b119c744056094600cdd47fe26cb",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/professions/voidtouched.tres",
+      "generator": "godot",
+      "contentHash": "sha256:5331df4c8e19edd24d940c2bc6cbbef063cf0554a63dcaacffe84212510fa950",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/professions/voidtouched.gd",
+      "generator": "godot",
+      "contentHash": "sha256:bd43af8d76580720782bf772475a725fecd6d0cf696ede74c5644327285b4e8f",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/ferritepick.tres",
+      "generator": "godot",
+      "contentHash": "sha256:38be12318960c47240acbdcdf01282a66d33c31044b8e13fd0532fe0873a8562",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/ferritepick.gd",
+      "generator": "godot",
+      "contentHash": "sha256:6bfbb4f2e37e19092a9a1a9567f0850e19bafd4315dfc54a5c0ca831eec18567",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/veilsteelpick.tres",
+      "generator": "godot",
+      "contentHash": "sha256:97aa5fc483fd28eec315c50d85bcb3bb2aa4a4d7681bc2f9bc64b618da0b5196",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/veilsteelpick.gd",
+      "generator": "godot",
+      "contentHash": "sha256:8ff44a5b5f9a50ad16d6128dac4eaa5feaf2c8e801fc80a5fe40df0a74e78e73",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/carpenteraxe.tres",
+      "generator": "godot",
+      "contentHash": "sha256:980889a7fcaa790b3f02e06734eec30a6bbd2093284f5f1d125ae0cf81db3b13",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/carpenteraxe.gd",
+      "generator": "godot",
+      "contentHash": "sha256:163ff8af1cce57d7bd830609fbd9e1243eb54f76ba4f76118ae61a4e6059b802",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/ferriteshortsword.tres",
+      "generator": "godot",
+      "contentHash": "sha256:30f8f7efd191953092d4712f755d0100f5a5feaeb5e3bac4646cc3e283b49f35",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/ferriteshortsword.gd",
+      "generator": "godot",
+      "contentHash": "sha256:f803cb5c313eddd7aed75dc1fb11de1e6ce9126967d2ba55d6b276dff59e4eef",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/veilsteellongsword.tres",
+      "generator": "godot",
+      "contentHash": "sha256:bea0b6d288bbc831c9b8ece3509bf1f582a29d7c760a6db91024d97a9dbac942",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/veilsteellongsword.gd",
+      "generator": "godot",
+      "contentHash": "sha256:ec0a066d276b1c325d6666ef5192e52cdb1d8b113f811c2cd51eb7e1a16fa584",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/aethermitebow.tres",
+      "generator": "godot",
+      "contentHash": "sha256:e4b9305d61fa541f87283af4bdd97c8f767bc99e5d2d379f2240e12acde94b5f",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/aethermitebow.gd",
+      "generator": "godot",
+      "contentHash": "sha256:2ebf2317ff6543b01a1af11f6b83e89c9562ba0cac837f3dbabfe5c84b13bbed",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/voiditeedge.tres",
+      "generator": "godot",
+      "contentHash": "sha256:80b87150adb5fe49d1ba55723951f6f4555425a190cc745dd29d85525f866de3",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/voiditeedge.gd",
+      "generator": "godot",
+      "contentHash": "sha256:400549a13f9403935a9dce5f9dde5d6da1361674a0efce9c426a9a20ba638a80",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/ferritehelmet.tres",
+      "generator": "godot",
+      "contentHash": "sha256:ba8bec8c5a55f03aecf85951af932afe69fdce29762d40af7bed6dfcaecd7806",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/ferritehelmet.gd",
+      "generator": "godot",
+      "contentHash": "sha256:c1d266a103e2914072d0d2c0365ba60b74677d61a0c94b295e87c43174e521c6",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/veilsteelchestplate.tres",
+      "generator": "godot",
+      "contentHash": "sha256:ab41adab6651707941d803fd7afbacdfc50880a58dbd17d22ac97e174fed10ba",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/veilsteelchestplate.gd",
+      "generator": "godot",
+      "contentHash": "sha256:cfe2ec3a27ae6fa5d2368e2600bf762e0c8c3e25c634198e09dcbccbc9e1a733",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/duskfibercloak.tres",
+      "generator": "godot",
+      "contentHash": "sha256:7f194344bf666df23e74097bdb659121f2cc1243689bc9a8d0fa489cd0992941",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/duskfibercloak.gd",
+      "generator": "godot",
+      "contentHash": "sha256:0c026f32df503cf343c8e036d6d8e252da9aea0e600d7234e069ba55c15d7a31",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/fieldrations.tres",
+      "generator": "godot",
+      "contentHash": "sha256:79aad8a29a691c544692f66b845ac46185c60fdbb913650adafd142915ad65fa",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/fieldrations.gd",
+      "generator": "godot",
+      "contentHash": "sha256:40c50d7753321032a2adbbe610e404b7ed9589689e7af36ab21f621e37a5783e",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/alchemypotion.tres",
+      "generator": "godot",
+      "contentHash": "sha256:1e9b1dcc1556dc9a49842efc685b004bc05effe2e05d5a85afae63692e3f14e3",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/alchemypotion.gd",
+      "generator": "godot",
+      "contentHash": "sha256:1bebb92e86518b687dc8c71625b4ceaa731066833454adeddd8366553dded3e0",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/ferriteingot.tres",
+      "generator": "godot",
+      "contentHash": "sha256:1f9510eb6aaaca7b89984d355572802163cf48ddc772b8ace062fe56d79a5de4",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/ferriteingot.gd",
+      "generator": "godot",
+      "contentHash": "sha256:edad7d697a7a108147651ad1a39a5a39f591f6cc626d3ba974b0ca86a3794950",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/veilsteelingot.tres",
+      "generator": "godot",
+      "contentHash": "sha256:1f5ff1957de77736fcce560ffa4c6603cd2426ca998377e31a3a3f8d7bcfa5c4",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/veilsteelingot.gd",
+      "generator": "godot",
+      "contentHash": "sha256:025f7cc5f1c8d7d5c34aec42b92ef29938fe87516102619697ec68a0a96ae3eb",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/thornwoodplank.tres",
+      "generator": "godot",
+      "contentHash": "sha256:e2cf201e8a12452b7c0d9cb198d4405826ca8aea133f7dbbfa96f89aeb413df3",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/thornwoodplank.gd",
+      "generator": "godot",
+      "contentHash": "sha256:1b46d236731c1a1e64585bd6febd4bb83e084c2edaa85eae830c836118696788",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/aethermitedust.tres",
+      "generator": "godot",
+      "contentHash": "sha256:427f30f0b084f8b026e4d92824f9fb532c54084a2591277820d8efb6b3449e1a",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/aethermitedust.gd",
+      "generator": "godot",
+      "contentHash": "sha256:dfaa76b6c1dad241a0e8ea61f856419e6648dddfe467f70d7b9470e666f70657",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/aethermiteshard.tres",
+      "generator": "godot",
+      "contentHash": "sha256:213658c164ff1e86b55364b3242258303fdc145153352efd95393f41d94d94bb",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/aethermiteshard.gd",
+      "generator": "godot",
+      "contentHash": "sha256:64c0f7defb1dd3b2f8b2cace90ef3e262e284ab5e071d886cc8a55746f34f4cd",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/ashiteblock.tres",
+      "generator": "godot",
+      "contentHash": "sha256:cb1fe8e470e26b5c461e1bf53ac60bb46a6f7fad1407912df5eb5dcc237e3c4c",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/ashiteblock.gd",
+      "generator": "godot",
+      "contentHash": "sha256:4479f91aa2d15fbf464af0c3200507aa21fbfdd38bbece6afaebee56e322d990",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/enchantedaethermiteshard.tres",
+      "generator": "godot",
+      "contentHash": "sha256:433fe68b963bbd596c623ec2d4a34dbcf4749fd758f92886870cff466ca52dc6",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/enchantedaethermiteshard.gd",
+      "generator": "godot",
+      "contentHash": "sha256:1666fb6b003d184ef187f794542181bbb0c492a87cfd4448dde7902502a8684f",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/voidrunetablet.tres",
+      "generator": "godot",
+      "contentHash": "sha256:857d6a458cb1247d01dccf83261021a42a67173e8700c8117a9ab9bcc12bdf99",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/voidrunetablet.gd",
+      "generator": "godot",
+      "contentHash": "sha256:2bd34a89f2455ec5bc7141bf36bd4a1428d23bbab884fcf04b07c586c585d9ee",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/lumenfiteorb.tres",
+      "generator": "godot",
+      "contentHash": "sha256:8b990d69eb8c8888267550ffb37857390f44c6152758f9b9f66978e42c7dd6c5",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/items/lumenfiteorb.gd",
+      "generator": "godot",
+      "contentHash": "sha256:2d093b4ac88ecfeab075a8a7e6d5bb2a3148e12688eac029305a0bc3641bd9ed",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipeferriteingot.tres",
+      "generator": "godot",
+      "contentHash": "sha256:2031e646ef54317101a83907273dd0ec335f224103f565b7a928ce524b3ee601",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipeferriteingot.gd",
+      "generator": "godot",
+      "contentHash": "sha256:d9aca96e5f22ce151b66af1819770d475549d8f54c67212caf79df68929d12dd",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipeveilsteelingot.tres",
+      "generator": "godot",
+      "contentHash": "sha256:50bf151aff4ccddc8e6293eb794ffc33422fb4043a2db772ddc4c3841946e581",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipeveilsteelingot.gd",
+      "generator": "godot",
+      "contentHash": "sha256:30505aad9ee9afb48e47e1b923dd5ef7aae49ff6e4b9c12267ddd00358c07cd0",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipeferriteshortsword.tres",
+      "generator": "godot",
+      "contentHash": "sha256:c16e9453243747248ac4c8831346bc1c9cabb679ce5d185f205382fee1f17aaf",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipeferriteshortsword.gd",
+      "generator": "godot",
+      "contentHash": "sha256:6928319b230f1e178d277f97b1817eb71c64dc162c3e162bd7396fd9bfbf90b3",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipeferritepick.tres",
+      "generator": "godot",
+      "contentHash": "sha256:6c7f21697e1fd3797ee56e08bb018e7119d4dca898d6a068082a70ef35494ca5",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipeferritepick.gd",
+      "generator": "godot",
+      "contentHash": "sha256:968ae684106116d938a870fc5e481023f417da5ad691ba72d209cfbaa63221b1",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipeveilsteellongsword.tres",
+      "generator": "godot",
+      "contentHash": "sha256:0aba61ac3e780658b1283d10798e525dc1f3516b757ebc901d52829f320c0125",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipeveilsteellongsword.gd",
+      "generator": "godot",
+      "contentHash": "sha256:56b3a469a57515c9b8ac0a2117aa48152916e2e542f0914696f2808fce7cf1eb",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipeveilsteelchestplate.tres",
+      "generator": "godot",
+      "contentHash": "sha256:e5f3b442f1f9a67704f1b5fde062c34d4e13a4ee8ebfa5592c5f4c39a03902cf",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipeveilsteelchestplate.gd",
+      "generator": "godot",
+      "contentHash": "sha256:995ad09c80f2ff691c8a818ff8e22a90b479e47dfae66b1dd330878ac611f3e8",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipehealthpotion.tres",
+      "generator": "godot",
+      "contentHash": "sha256:39e6aad354e09340757e4f4459ff41337300ea0a1573e600fcc30755f06f16a4",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipehealthpotion.gd",
+      "generator": "godot",
+      "contentHash": "sha256:c7dee4ee51a30102234e88d570a7f9ad0aba1ddabe48cad25bc9b6b832761e1f",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipestaminapotion.tres",
+      "generator": "godot",
+      "contentHash": "sha256:ba7facf015e0e5ab2f2bde2ffc4c56e3f7031fabc3400fa19b69951d97c235bf",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipestaminapotion.gd",
+      "generator": "godot",
+      "contentHash": "sha256:c793ed2267e89d292c2f4aed8655537fd86343dd81913dc8a96ce18b8cded6cd",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipevoidresistpotion.tres",
+      "generator": "godot",
+      "contentHash": "sha256:929378ca8b54498dfc84067756cadb844ee5289592df7858ac855aea499495fd",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipevoidresistpotion.gd",
+      "generator": "godot",
+      "contentHash": "sha256:8cd2d4054c722857d1179c42112b60ff2f1c4b18d8a63e19e4e5109904cf33e5",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipeenchantedaethermiteshard.tres",
+      "generator": "godot",
+      "contentHash": "sha256:c25d4bd9cad1db038d52f8ac30c0e2fb3624291fa5cf5f9e846dce622a38526e",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipeenchantedaethermiteshard.gd",
+      "generator": "godot",
+      "contentHash": "sha256:7b673eeeccf22ca8458488597c5fb3c0ec8d4128cebb5ecf59739b766f9c985c",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipeaethermitebow.tres",
+      "generator": "godot",
+      "contentHash": "sha256:be5588d2aa7320996afd7e8314a1311ead788ca97d48d59cda623becfb581b1f",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipeaethermitebow.gd",
+      "generator": "godot",
+      "contentHash": "sha256:e0db08a3ad20359875f47c22d5d56b692472b1e06902e3a15fbf4480f29805ba",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipelumenfiteorb.tres",
+      "generator": "godot",
+      "contentHash": "sha256:4230fe4e8cc11336771ca9bdac625426b01ed95c1fb383fd89d5f8f561aca64b",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipelumenfiteorb.gd",
+      "generator": "godot",
+      "contentHash": "sha256:5a096f42566346c86675e60788d6cc029f00c06bdcd76f61e341e79416d1fa3f",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipevoidrunetablet.tres",
+      "generator": "godot",
+      "contentHash": "sha256:37614db1a5893912b532ffd9ec54fce3edce14bbc720d579d47d7a988347e23c",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipevoidrunetablet.gd",
+      "generator": "godot",
+      "contentHash": "sha256:1490cc8ba20baa3e75fee0d2d9bb606e0626c12f142a780e0ee07719a600c826",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipethornwoodplank.tres",
+      "generator": "godot",
+      "contentHash": "sha256:a01ee219f840786b3427be9f82ff05431ddbf199d4e0e06e74816440b90579be",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipethornwoodplank.gd",
+      "generator": "godot",
+      "contentHash": "sha256:0295e0fa2dabfdf1f8ca218754119307aa94884526da19b861b66d265c236033",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipecarpenteraxe.tres",
+      "generator": "godot",
+      "contentHash": "sha256:ec069d5086a0b5250e90a3524eb151c7274630c7b7e9cbc6f971f878433cabe1",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipecarpenteraxe.gd",
+      "generator": "godot",
+      "contentHash": "sha256:f2c0938d5362e58a34e77110bd87873667e11a6ad1171818bcf7b64c5652409c",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipeduskfibercloak.tres",
+      "generator": "godot",
+      "contentHash": "sha256:fec2ed05c425ebe11242c56bb67a17b63907bc13aa510b5e3bac485ce02ad5fb",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipeduskfibercloak.gd",
+      "generator": "godot",
+      "contentHash": "sha256:6331e25323a9a0846316b0745a88d525519080b75bba9ff52b0cfca3e36c1748",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipeashiteblock.tres",
+      "generator": "godot",
+      "contentHash": "sha256:1410a1f1ad200822d61157dea4374a46be67986fe9dec98459ef69a8d6cc6251",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/recipes/recipeashiteblock.gd",
+      "generator": "godot",
+      "contentHash": "sha256:6b39d988a83bcd8ac0e92ebc44c26e327bb77207cb19734b1545d96070151fbb",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/technologies/techbasicsmithing.tres",
+      "generator": "godot",
+      "contentHash": "sha256:4df4f760252cec9389789d00eed64857034a21e377b4b16a0e6399a59829bb51",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/technologies/techbasicsmithing.gd",
+      "generator": "godot",
+      "contentHash": "sha256:444cff8bb6f50103c9ca5a1867f0e72ea94b9e5c77b660374967c7532bd15e06",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/technologies/techmasterforge.tres",
+      "generator": "godot",
+      "contentHash": "sha256:fff9afa0205906037bb109f36c008866aad63a654ab1d9d75446cddd3b188a36",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/technologies/techmasterforge.gd",
+      "generator": "godot",
+      "contentHash": "sha256:d7f52d1e90570e625fbdc6a193c0034cf8383c6196844c7536691545a4d368cd",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/technologies/techbasiccarpentry.tres",
+      "generator": "godot",
+      "contentHash": "sha256:02b4d3d383be1217ad5ad47a8794d90a6ddbf9a8ed7664dfca33ac324ff0de0f",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/technologies/techbasiccarpentry.gd",
+      "generator": "godot",
+      "contentHash": "sha256:6e9f669ee7fac4aed95a68ccd1cca21b392b107d52e52d3845f7622d367271fa",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/technologies/techtextileweaving.tres",
+      "generator": "godot",
+      "contentHash": "sha256:7296ce8cbbfabbeae063e6fce899ddab66d809eb53d9c8dfc76430fa5fbae057",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/technologies/techtextileweaving.gd",
+      "generator": "godot",
+      "contentHash": "sha256:379609ab282f30540f59b418d991b16e16c563fbd6c61e94ba0c3165435aeba9",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/technologies/techarcaneforging.tres",
+      "generator": "godot",
+      "contentHash": "sha256:350b7cd212faeb62d9257936c8139bad280b01f8eb7286cd76ae2dda921602de",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/technologies/techarcaneforging.gd",
+      "generator": "godot",
+      "contentHash": "sha256:0945e8adcd62582a5fbddd55bce3dacfaeecd07ae81f42cfa09505f6a7ae883f",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/technologies/techalchemy.tres",
+      "generator": "godot",
+      "contentHash": "sha256:7985bb9ba36e2492f4ac93a5b54f9223d19067ab4b421b1e279cc8b39015466e",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/technologies/techalchemy.gd",
+      "generator": "godot",
+      "contentHash": "sha256:eed7422f799800fee14c7e4b296bb910d339ad20d3ba3b47d19504360a459891",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/technologies/techvoidmastery.tres",
+      "generator": "godot",
+      "contentHash": "sha256:6eb793c7464407b8bf61cec3644ea54de397a9f1933746dfe587a589dcf0d547",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/technologies/techvoidmastery.gd",
+      "generator": "godot",
+      "contentHash": "sha256:42a7e8f83ba139b0afdb0210a9c43947e058ca5b6b0806fe4626ea2807e176e2",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/creatures/forestboar.tres",
+      "generator": "godot",
+      "contentHash": "sha256:85dcbe16cb6fec4417b2c02593e100b8ef83b1ca58b8cdd6f17e2888b2d33788",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/creatures/forestboar.gd",
+      "generator": "godot",
+      "contentHash": "sha256:add151c4d1dfa2d214d173a6a3f48f47674aae95c853985f89e9172555c80fa1",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/creatures/graywolfpack.tres",
+      "generator": "godot",
+      "contentHash": "sha256:4195a446cc95f008c37464f508869029a2f3bb8f9f1effcb13939e07155e56d0",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/creatures/graywolfpack.gd",
+      "generator": "godot",
+      "contentHash": "sha256:115a5ac11321cfa4f7c47153ea812376928eee80dc1c8dcf37d68eb1aa272779",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/creatures/steppebison.tres",
+      "generator": "godot",
+      "contentHash": "sha256:dd66060e36bc7369120eaa4b78beae573eddbb20af518fb483cd9ed1fd0003c9",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/creatures/steppebison.gd",
+      "generator": "godot",
+      "contentHash": "sha256:45df5992b3519429162503e85b1f90bfd2a78bdb7581d1af85ade3f5bee47a18",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/creatures/ridgehawk.tres",
+      "generator": "godot",
+      "contentHash": "sha256:0a9a1382c08cf490ea03410f965008d82d9d4e47d88284905252c3311ce9450b",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/creatures/ridgehawk.gd",
+      "generator": "godot",
+      "contentHash": "sha256:0d467b6b453f9b6567fd157fbe264d05c17bc464a02a0c8a8fcca3c6ded4bb8a",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/creatures/lavaslug.tres",
+      "generator": "godot",
+      "contentHash": "sha256:9edb313a70e9b9cececb3ad321e5e00db6d914568b8ddf411f190f0611ea99bb",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/creatures/lavaslug.gd",
+      "generator": "godot",
+      "contentHash": "sha256:5fe7b6c1fd1b3cc33784d1189f0b32a02390013876697916d4c36532d9fc1dff",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/creatures/cindergargoyle.tres",
+      "generator": "godot",
+      "contentHash": "sha256:97e80861fa67f89a83ac55b81f3d102b0131f93630cf7897830f099b583f62de",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/creatures/cindergargoyle.gd",
+      "generator": "godot",
+      "contentHash": "sha256:4e56fa50bbbe652a850685850f3b79f22be700851913ce7500ad1dbbef8ccba3",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/creatures/glimmerfox.tres",
+      "generator": "godot",
+      "contentHash": "sha256:610d620ffbf924f5f1e36b8f1cc5389cea2d27b87e55d2080fedccb211f99173",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/creatures/glimmerfox.gd",
+      "generator": "godot",
+      "contentHash": "sha256:1985594f2338930f4d18e31b48fb33e2d0ac3e55b31ecd428fece10e984c2a2f",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/creatures/veilstalker.tres",
+      "generator": "godot",
+      "contentHash": "sha256:632aa3bdabca9908ed3204378b555005d3e40b7f2a5317df99fee0c3aeede617",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/creatures/veilstalker.gd",
+      "generator": "godot",
+      "contentHash": "sha256:3d9b28cc7bd5b1a22519ef9838d7cbcc6835877865caf70531550ea43642b07e",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/creatures/voidserpent.tres",
+      "generator": "godot",
+      "contentHash": "sha256:16ec9ef41465fe35c9f58f735ff1209fc0b3f739a642a0a3dda0f878f989bb7b",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/creatures/voidserpent.gd",
+      "generator": "godot",
+      "contentHash": "sha256:c58c29f2815779e2e90549ce01c82a24a221e9c15369fe53333f702fbaca2b29",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/creatures/riftwarden.tres",
+      "generator": "godot",
+      "contentHash": "sha256:286027a1960e8a6abc067b0b320382304cc6c12ab32b3ebac887205125db77d3",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/creatures/riftwarden.gd",
+      "generator": "godot",
+      "contentHash": "sha256:d46cc46f8bcc28373e4b90a527aa510f552fa4d3be9e2648ce03e61f2c01fe39",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/world-systems/combatsystem.tres",
+      "generator": "godot",
+      "contentHash": "sha256:9256333814e89c7bdc9cbf29982d1a585c2d191ca7082bdb2f72e419d0d4c5b8",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
+    },
+    {
+      "path": "godot/autoload/GameData.gd",
+      "generator": "godot",
+      "contentHash": "sha256:aa5c9427e16457ccc601222266125dcc62be30652498424705940645010c24a3",
+      "fromSchemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3"
     }
   ]
 }

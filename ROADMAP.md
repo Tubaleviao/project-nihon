@@ -204,23 +204,26 @@ state — ready to guide engine implementation and art production.
 
 ---
 
-## Phase 8 — `generator-godot` integration
+## Phase 8 — `generator-godot` integration ✅ Done
 
 **Goal:** Generate Godot 4.x-ready resource files from the same fabric.
 
-**Newel dependency:** Newel Phase 14 (`generator-godot`) must be released.
+**Newel dependency:** Newel Phase 14 (`generator-godot`) — implemented as part
+of this phase in `../newel/packages/generator-godot/`.
 
 **Deliverables:**
-- `quoin.config.ts` updated with `GodotGenerator`
-- `godot/` output folder with `.tres` files per item, material, creature
-- `godot/autoload/GameData.gd` singleton
-- State machine states available as GDScript enums
+- `quoin.config.js` updated with `GodotGenerator`
+- `godot/` output folder with `.tres` resource files per entity, grouped by tag
+- `godot/autoload/GameData.gd` singleton with typed `Dictionary` constants
+- GDScript enums (`.gd`) per entity that has enum fields or a state machine;
+  state machine states are exposed as the `State` enum
 
 **Acceptance criteria:**
-- Generated files load in a Godot 4.x project without errors
-- `GameData.ITEMS`, `GameData.CREATURES`, etc. are accessible at runtime
+- Generated files load in a Godot 4.x project without errors ✓
+- `GameData.ITEMS`, `GameData.CREATURES`, etc. are accessible at runtime ✓
+- State machine states available as GDScript enums ✓
 - Any IR change triggers drift detection (`pnpm check-drift`) before Godot
-  import
+  import ✓
 
 ---
 

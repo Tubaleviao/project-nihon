@@ -28,7 +28,6 @@ stateDiagram-v2
   idle --> alert : detect\n[Lead wolf detects within 12 tile radius; pack shares the alert state instantly; Pack fires attack trigger directly from idle (no alert phase) if player is carrying raw meat]
   alert --> aggressive : attack\n[Two wolves attempt to flank; remaining wolves attack the front; Flanking wolf deals 1.5× baseDamage if attack lands from behind]
   alert --> idle : calm\n[Pack returns to patrol route 60 seconds after losing target]
-  idle --> aggressive : attack\n[Two wolves attempt to flank; remaining wolves attack the front; Flanking wolf deals 1.5× baseDamage if attack lands from behind]
   aggressive --> dead : die\n[Each wolf dies independently; pack is considered dead when all wolves reach the dead state]
   aggressive --> idle : calm\n[Pack returns to patrol route 60 seconds after losing target]
   alert --> fleeing : flee\n[Surviving wolves flee independently; they do not regroup during the same spawn cycle]
@@ -54,7 +53,6 @@ stateDiagram-v2
 | `idle` | `alert` | `detect` | Lead wolf detects within 12 tile radius; pack shares the alert state instantly; Pack fires attack trigger directly from idle (no alert phase) if player is carrying raw meat |  |
 | `alert` | `aggressive` | `attack` | Two wolves attempt to flank; remaining wolves attack the front; Flanking wolf deals 1.5× baseDamage if attack lands from behind |  |
 | `alert` | `idle` | `calm` | Pack returns to patrol route 60 seconds after losing target |  |
-| `idle` | `aggressive` | `attack` | Two wolves attempt to flank; remaining wolves attack the front; Flanking wolf deals 1.5× baseDamage if attack lands from behind |  |
 | `aggressive` | `dead` | `die` | Each wolf dies independently; pack is considered dead when all wolves reach the dead state |  |
 | `aggressive` | `idle` | `calm` | Pack returns to patrol route 60 seconds after losing target |  |
 | `alert` | `fleeing` | `flee` | Surviving wolves flee independently; they do not regroup during the same spawn cycle |  |

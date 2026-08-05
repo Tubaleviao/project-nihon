@@ -31,7 +31,7 @@ A wilderness specialist who combines ranged combat with reading the environment.
 stateDiagram-v2
   [*] --> locked
   locked --> active : unlock\n[Requires Archery: Journeyman; Requires Tracking: Apprentice; Requires Navigation: Apprentice; Player must hold wolfBondHolder flag — requires taming a GraywolfPack pup, which in turn requires Unarmed: Journeyman]
-  active --> mastered : master\n[Archery, Tracking, and Navigation must all be at master tier]
+  active --> mastered : master\n[Archery, Tracking, Navigation, and Unarmed must all be at master tier]
   mastered --> [*]
 ```
 
@@ -44,7 +44,7 @@ stateDiagram-v2
 | From | To | Trigger | Guards | Effects |
 | ---- | --- | ------- | ------ | ------- |
 | `locked` | `active` | `unlock` | Requires Archery: Journeyman; Requires Tracking: Apprentice; Requires Navigation: Apprentice; Player must hold wolfBondHolder flag — requires taming a GraywolfPack pup, which in turn requires Unarmed: Journeyman |  |
-| `active` | `mastered` | `master` | Archery, Tracking, and Navigation must all be at master tier |  |
+| `active` | `mastered` | `master` | Archery, Tracking, Navigation, and Unarmed must all be at master tier |  |
 
 ## Behaviors
 
@@ -65,7 +65,7 @@ Become available when prerequisite exploration and combat skill tiers are reache
 Achieve full mastery when all constituent skills reach master tier
 
 **Rules:**
-- Archery, Tracking, and Navigation must all be at master tier
+- Archery, Tracking, Navigation, and Unarmed must all be at master tier
 
 **Auth:** `maintainer`
 

@@ -28,7 +28,6 @@ stateDiagram-v2
   idle --> alert : detect\n[Detects players within 8 tile radius; Fires attack trigger directly from idle (no alert phase) if player is within 3 tiles of boarlet (juvenile)]
   alert --> aggressive : attack\n[Gore deals baseDamage; knocks back target 1 tile; Charge requires 2-tile run-up; no knockback at close range]
   alert --> idle : calm\n[Alert-to-idle: 30 seconds without threat; fleeing-to-idle: reaches safe zone]
-  idle --> aggressive : attack\n[Gore deals baseDamage; knocks back target 1 tile; Charge requires 2-tile run-up; no knockback at close range]
   aggressive --> dead : die\n[Emits a death event consumed by the drop behavior; respawn timer begins immediately]
   aggressive --> idle : calm\n[Alert-to-idle: 30 seconds without threat; fleeing-to-idle: reaches safe zone]
   alert --> fleeing : flee\n[Flees toward dense undergrowth; loses aggro if player breaks line of sight for 10 seconds]
@@ -54,7 +53,6 @@ stateDiagram-v2
 | `idle` | `alert` | `detect` | Detects players within 8 tile radius; Fires attack trigger directly from idle (no alert phase) if player is within 3 tiles of boarlet (juvenile) |  |
 | `alert` | `aggressive` | `attack` | Gore deals baseDamage; knocks back target 1 tile; Charge requires 2-tile run-up; no knockback at close range |  |
 | `alert` | `idle` | `calm` | Alert-to-idle: 30 seconds without threat; fleeing-to-idle: reaches safe zone |  |
-| `idle` | `aggressive` | `attack` | Gore deals baseDamage; knocks back target 1 tile; Charge requires 2-tile run-up; no knockback at close range |  |
 | `aggressive` | `dead` | `die` | Emits a death event consumed by the drop behavior; respawn timer begins immediately |  |
 | `aggressive` | `idle` | `calm` | Alert-to-idle: 30 seconds without threat; fleeing-to-idle: reaches safe zone |  |
 | `alert` | `fleeing` | `flee` | Flees toward dense undergrowth; loses aggro if player breaks line of sight for 10 seconds |  |

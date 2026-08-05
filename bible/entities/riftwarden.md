@@ -26,7 +26,6 @@ An ancient construct of crystallised voidite that guards the innermost rift boun
 stateDiagram-v2
   [*] --> idle
   idle --> aggressive : detect\n[Detects all players inside the innermost rift boundary zone unconditionally; Cannot be avoided by stealth; rift proximity triggers detection; Fires attack trigger directly from idle — no alert phase]
-  idle --> aggressive : attack\n[Ground slam: baseDamage in 6-tile radius; all targets knocked down (prone for 3 seconds); Void beam: 3× baseDamage in a straight 10-tile line; also adds 50 void corruption to each target hit; Physical damage reduced by 90%; magical and void damage is fully effective; VoidTouched players receive only 50% corruption from void beam (partial resistance)]
   aggressive --> dead : die\n[Death emits a death event; shard fragments scatter in a 4-tile radius and must be individually collected]
   aggressive --> idle : calm\n[Returns to idle if all players leave the innermost rift boundary zone]
   dead --> respawning : respawn\n[Respawn cooldown: 120 in-game minutes (longest in the game); Only one Warden instance exists per VoidRift zone; does not multi-spawn]
@@ -43,7 +42,6 @@ stateDiagram-v2
 | From | To | Trigger | Guards | Effects |
 | ---- | --- | ------- | ------ | ------- |
 | `idle` | `aggressive` | `detect` | Detects all players inside the innermost rift boundary zone unconditionally; Cannot be avoided by stealth; rift proximity triggers detection; Fires attack trigger directly from idle — no alert phase |  |
-| `idle` | `aggressive` | `attack` | Ground slam: baseDamage in 6-tile radius; all targets knocked down (prone for 3 seconds); Void beam: 3× baseDamage in a straight 10-tile line; also adds 50 void corruption to each target hit; Physical damage reduced by 90%; magical and void damage is fully effective; VoidTouched players receive only 50% corruption from void beam (partial resistance) |  |
 | `aggressive` | `dead` | `die` | Death emits a death event; shard fragments scatter in a 4-tile radius and must be individually collected |  |
 | `aggressive` | `idle` | `calm` | Returns to idle if all players leave the innermost rift boundary zone |  |
 | `dead` | `respawning` | `respawn` | Respawn cooldown: 120 in-game minutes (longest in the game); Only one Warden instance exists per VoidRift zone; does not multi-spawn |  |

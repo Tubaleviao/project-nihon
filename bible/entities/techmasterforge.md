@@ -24,6 +24,7 @@ Advanced forge construction and temperature-control techniques. Unlocks the mast
 | `unlocksRecipeVeilsteelIngot` | hasOne | [RecipeVeilsteelIngot](recipeveilsteelingot.md) |  |
 | `unlocksRecipeVeilsteelLongsword` | hasOne | [RecipeVeilsteelLongsword](recipeveilsteellongsword.md) |  |
 | `unlocksRecipeVeilsteelChestplate` | hasOne | [RecipeVeilsteelChestplate](recipeveilsteelchestplate.md) |  |
+| `unlocksRecipeAshiteBlock` | hasOne | [RecipeAshiteBlock](recipeashiteblock.md) |  |
 
 ### State machine
 

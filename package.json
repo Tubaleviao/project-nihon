@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@newel/core": "file:../newel/packages/core",
-    "@newel/generator-bible": "file:../newel/packages/generator-bible"
+    "@newel/generator-bible": "file:../newel/packages/generator-bible",
+    "@newel/generator-godot": "file:../newel/packages/generator-godot"
   }
 }

@@ -81,7 +81,7 @@ Bind a void-aligned enchantment onto a voidite-core item using VoidSmithing co-p
 
 **Rules:**
 - Requires Enchanting: Expert
-- Requires Void Smithing: Journeyman
+- Requires Void Smithing: Expert
 
 **Auth:** `maintainer`
 
