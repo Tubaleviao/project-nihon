@@ -145,7 +145,7 @@ bible.
 **Newel dependency:** Newel Phase 12 (`generator-bible`) must be released.
 
 **Deliverables:**
-- `quoin.config.ts` wired up with `BibleGenerator`
+- `newel.config.js` wired up with `BibleGenerator`
 - `bible/` output folder committed to the repo as a generated artifact
 - Bible covers all phases: constitution, materials, biomes, skills, items,
   recipes, technology, creatures, combat
@@ -212,7 +212,7 @@ state — ready to guide engine implementation and art production.
 of this phase in `../newel/packages/generator-godot/`.
 
 **Deliverables:**
-- `quoin.config.js` updated with `GodotGenerator`
+- `newel.config.js` updated with `GodotGenerator`
 - `godot/` output folder with `.tres` resource files per entity, grouped by tag
 - `godot/autoload/GameData.gd` singleton with typed `Dictionary` constants
 - GDScript enums (`.gd`) per entity that has enum fields or a state machine;
@@ -234,7 +234,7 @@ of this phase in `../newel/packages/generator-godot/`.
 **Newel dependency:** Newel Phase 13 (`generator-wiki`) must be released.
 
 **Deliverables:**
-- `quoin.config.ts` updated with `WikiGenerator`
+- `newel.config.js` updated with `WikiGenerator`
 - Wiki deployed as a static site (VitePress or equivalent)
 - Internal design notes (rules, guards written as implementation details)
   suppressed via patches

@@ -1,0 +1,6 @@
+[gd_resource type="Resource" format=3]
+
+[resource]
+id = ""
+description = "Simulates weather across biomes as an emergent world system. Weather is not authored — it emerges from biome parameters, seasonal cycles, and player-built infrastructure (logging, irrigation, chimneys). Effects are gameplay-significant: rain douses fires, storms disable airships, blizzards slow movement and starve uninsulated settlements."
+tags = ["world-system"]

@@ -4,9 +4,9 @@
   "private": true,
   "description": "Open-source sandbox MMORPG — game design fabric powered by newel",
   "scripts": {
-    "validate": "quoin validate -s ./fabric.js",
-    "inspect":  "quoin inspect  -s ./fabric.js",
-    "generate": "quoin generate -c ./quoin.config.js"
+    "validate": "newel validate -s ./fabric.js",
+    "inspect":  "newel inspect  -s ./fabric.js",
+    "generate": "newel generate -c ./newel.config.js"
   },
   "dependencies": {
     "@newel/core": "file:../newel/packages/core",
