@@ -2,7 +2,7 @@
 class_name OfflinePlayerNpcsData
 extends Resource
 
-enum State {
+enum Status {
 	PROPOSED,
 	ACCEPTED,
 	SUPERSEDED,

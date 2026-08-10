@@ -2,7 +2,7 @@
 class_name MagicBalancedWithMartialData
 extends Resource
 
-enum State {
+enum Status {
 	PROPOSED,
 	ACCEPTED,
 	SUPERSEDED,

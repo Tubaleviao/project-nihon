@@ -2,7 +2,7 @@
 class_name FictionalMaterialsData
 extends Resource
 
-enum State {
+enum Status {
 	PROPOSED,
 	ACCEPTED,
 	SUPERSEDED,

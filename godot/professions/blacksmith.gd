@@ -2,7 +2,7 @@
 class_name BlacksmithData
 extends Resource
 
-enum State {
+enum Status {
 	LOCKED,
 	ACTIVE,
 	MASTERED,

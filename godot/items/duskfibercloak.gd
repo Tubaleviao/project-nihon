@@ -10,7 +10,7 @@ enum Rarity {
 	LEGENDARY,
 }
 
-enum State {
+enum Condition {
 	PRISTINE,
 	WORN,
 	DAMAGED,

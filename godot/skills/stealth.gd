@@ -16,7 +16,7 @@ enum Category {
 	SOCIAL,
 }
 
-enum State {
+enum Tier {
 	NOVICE,
 	APPRENTICE,
 	JOURNEYMAN,

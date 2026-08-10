@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-10T19:36:57.294Z",
-  "schemaHash": "sha256:44942346a42ae69215076291fe463fb223bd6d5b3704533a5554301a93ef71d8",
+  "generatedAt": "2026-08-10T20:50:39.612Z",
+  "schemaHash": "sha256:33ec23aeaffca2e3a3a25fd96b3b312c95911438f63307279dfdd009ae604e4e",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -2640,7 +2640,7 @@
               "Ferrite ore appears at weight 0.3 in stabilised sections near the rift edge",
               "No conventional wood or stone spawns within the rift boundary",
               "VoidSerpent spawn weight 0.5",
-              "RiftWarden: one instance per VoidRift zone; spawn weight 0.15; does not respawn until cooldown expires"
+              "RiftWarden: one instance per VoidRift zone; does not respawn until cooldown expires (no probabilistic spawn weight — singleton, managed by zone controller)"
             ],
             "auth": {
               "roles": [
@@ -13870,6 +13870,13 @@
               "effects": []
             },
             {
+              "from": "idle",
+              "to": "aggressive",
+              "trigger": "detect_direct",
+              "guards": [],
+              "effects": []
+            },
+            {
               "from": "alert",
               "to": "aggressive",
               "trigger": "attack",
@@ -14198,6 +14205,13 @@
                 "Lead wolf detects within 12 tile radius; pack shares the alert state instantly",
                 "Pack fires attack trigger directly from idle (no alert phase) if player is carrying raw meat"
               ],
+              "effects": []
+            },
+            {
+              "from": "idle",
+              "to": "aggressive",
+              "trigger": "detect_direct",
+              "guards": [],
               "effects": []
             },
             {
@@ -16470,6 +16484,13 @@
                 "Detects any player regardless of stealth within 5 tiles",
                 "When corruption threshold is exceeded while idle, fires attack trigger immediately — skips the alert state for this path only"
               ],
+              "effects": []
+            },
+            {
+              "from": "idle",
+              "to": "aggressive",
+              "trigger": "detect_direct",
+              "guards": [],
               "effects": []
             },
             {

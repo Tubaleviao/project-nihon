@@ -2,7 +2,7 @@
 class_name TechBasicSmithingData
 extends Resource
 
-enum State {
+enum Status {
 	LOCKED,
 	RESEARCHING,
 	UNLOCKED,

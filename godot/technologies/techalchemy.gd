@@ -2,7 +2,7 @@
 class_name TechAlchemyData
 extends Resource
 
-enum State {
+enum Status {
 	LOCKED,
 	RESEARCHING,
 	UNLOCKED,

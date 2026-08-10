@@ -2,7 +2,7 @@
 class_name TechBasicCarpentryData
 extends Resource
 
-enum State {
+enum Status {
 	LOCKED,
 	RESEARCHING,
 	UNLOCKED,

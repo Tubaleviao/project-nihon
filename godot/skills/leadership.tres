@@ -1,8 +1,14 @@
 [gd_resource type="Resource" format=3]
 
+[ext_resource type="Script" path="res://godot/skills/leadership.gd" id="1"]
+
 [resource]
+script = ExtResource("1")
 id = ""
+tier = 0
+xpCurve = 0
 maxLevel = 0
+category = 0
 state_machine_field = "tier"
 initial_state = "novice"
 description = "Inspiring and coordinating allies in combat and in civic roles. Grants persistent aura buffs to nearby party members and unlocks group command actions."

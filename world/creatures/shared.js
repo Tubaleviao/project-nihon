@@ -15,7 +15,9 @@ function creatureStateValues({ canFlee = true, skipAlert = false } = {}) {
 
 // canFlee: set to false for creatures whose design forbids the fleeing state (e.g. RiftWarden).
 // skipAlert: set to true for creatures that fire attack directly from idle on detection, bypassing alert (e.g. RiftWarden).
-function creatureStateMachine({ canFlee = true, skipAlert = false } = {}) {
+// conditionalAlertSkip: set to true when a creature has BOTH the normal idle→alert path AND a conditional
+//   idle→aggressive direct path (e.g. ForestBoar near boarlet, GraywolfPack when player carries raw meat).
+function creatureStateMachine({ canFlee = true, skipAlert = false, conditionalAlertSkip = false } = {}) {
   const fleeTransitions = canFlee
     ? [
         ...(!skipAlert ? [{ from: 'alert', to: 'fleeing', trigger: 'flee' }] : []),
@@ -30,6 +32,7 @@ function creatureStateMachine({ canFlee = true, skipAlert = false } = {}) {
     ? []
     : [
         { from: 'idle',  to: 'alert',      trigger: 'detect' },
+        ...(conditionalAlertSkip ? [{ from: 'idle', to: 'aggressive', trigger: 'detect_direct' }] : []),
         { from: 'alert', to: 'aggressive', trigger: 'attack' },
         { from: 'alert', to: 'idle',       trigger: 'calm' },
       ]

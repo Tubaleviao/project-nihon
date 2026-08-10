@@ -2,7 +2,7 @@
 class_name DestructibleBuildingsData
 extends Resource
 
-enum State {
+enum Status {
 	PROPOSED,
 	ACCEPTED,
 	SUPERSEDED,

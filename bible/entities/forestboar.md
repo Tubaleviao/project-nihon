@@ -26,6 +26,7 @@ A stout, bristle-furred boar that roots through the forest floor for tubers and 
 stateDiagram-v2
   [*] --> idle
   idle --> alert : detect\n[Detects players within 8 tile radius; Fires attack trigger directly from idle (no alert phase) if player is within 3 tiles of boarlet (juvenile)]
+  idle --> aggressive : detect_direct
   alert --> aggressive : attack\n[Gore deals baseDamage; knocks back target 1 tile; Charge requires 2-tile run-up; no knockback at close range]
   alert --> idle : calm\n[Alert-to-idle: 30 seconds without threat; fleeing-to-idle: reaches safe zone]
   aggressive --> dead : die\n[Emits a death event consumed by the drop behavior; respawn timer begins immediately]
@@ -51,6 +52,7 @@ stateDiagram-v2
 | From | To | Trigger | Guards | Effects |
 | ---- | --- | ------- | ------ | ------- |
 | `idle` | `alert` | `detect` | Detects players within 8 tile radius; Fires attack trigger directly from idle (no alert phase) if player is within 3 tiles of boarlet (juvenile) |  |
+| `idle` | `aggressive` | `detect_direct` |  |  |
 | `alert` | `aggressive` | `attack` | Gore deals baseDamage; knocks back target 1 tile; Charge requires 2-tile run-up; no knockback at close range |  |
 | `alert` | `idle` | `calm` | Alert-to-idle: 30 seconds without threat; fleeing-to-idle: reaches safe zone |  |
 | `aggressive` | `dead` | `die` | Emits a death event consumed by the drop behavior; respawn timer begins immediately |  |

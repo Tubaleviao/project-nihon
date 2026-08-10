@@ -2,7 +2,7 @@
 class_name AlchemistData
 extends Resource
 
-enum State {
+enum Status {
 	LOCKED,
 	ACTIVE,
 	MASTERED,

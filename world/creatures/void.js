@@ -19,7 +19,7 @@ module.exports = {
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline; very high' },
       baseDamage:     { type: 'integer', description: 'Damage per strike at tier baseline; very high' },
     },
-    stateMachine: creatureStateMachine(),
+    stateMachine: creatureStateMachine({ conditionalAlertSkip: true }),
     behaviors: {
       detect: {
         description: 'Sense void corruption accumulation in nearby players',

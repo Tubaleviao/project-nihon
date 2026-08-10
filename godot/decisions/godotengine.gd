@@ -2,7 +2,7 @@
 class_name GodotEngineData
 extends Resource
 
-enum State {
+enum Status {
 	PROPOSED,
 	ACCEPTED,
 	SUPERSEDED,

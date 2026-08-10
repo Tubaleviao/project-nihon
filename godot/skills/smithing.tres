@@ -1,8 +1,14 @@
 [gd_resource type="Resource" format=3]
 
+[ext_resource type="Script" path="res://godot/skills/smithing.gd" id="1"]
+
 [resource]
+script = ExtResource("1")
 id = ""
+tier = 0
+xpCurve = 0
 maxLevel = 0
+category = 0
 state_machine_field = "tier"
 initial_state = "novice"
 description = "Metalworking at a forge — shaping ingots into weapons, armor, and structural components. Covers hammer technique, heat management, and alloy timing. Required for ferrite tools early-game and veilsteel gear mid-game."

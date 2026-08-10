@@ -1,7 +1,11 @@
 [gd_resource type="Resource" format=3]
 
+[ext_resource type="Script" path="res://godot/recipes/recipethornwoodplank.gd" id="1"]
+
 [resource]
+script = ExtResource("1")
 id = ""
+domain = 0
 yield = 0
 description = "Mill two thornwood logs into three thornwood planks at a carpentry bench."
 tags = ["recipe"]
