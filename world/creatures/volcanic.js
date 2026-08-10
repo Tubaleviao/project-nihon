@@ -93,7 +93,7 @@ module.exports = {
       detect: {
         description: 'Wake from stone dormancy when eruption event begins or player enters caldera',
         rules: [
-          'Dormant during non-eruption periods; evaluateSpawn spawn weight increases 3× during eruption events',
+          'Dormant during non-eruption periods; spawn weight increases 3× during eruption events',
           'Detects any player within 15 tiles once active',
         ],
         auth: { roles: ['maintainer'] },

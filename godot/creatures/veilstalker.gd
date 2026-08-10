@@ -10,7 +10,7 @@ enum Tier {
 	TIER_5,
 }
 
-enum Aggressionlevel {
+enum AggressionLevel {
 	PASSIVE,
 	NEUTRAL,
 	AGGRESSIVE,

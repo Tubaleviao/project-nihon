@@ -2,7 +2,7 @@
 class_name UnarmedData
 extends Resource
 
-enum Xpcurve {
+enum XpCurve {
 	LINEAR,
 	QUADRATIC,
 	EXPONENTIAL,

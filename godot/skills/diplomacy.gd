@@ -2,7 +2,7 @@
 class_name DiplomacyData
 extends Resource
 
-enum Xpcurve {
+enum XpCurve {
 	LINEAR,
 	QUADRATIC,
 	EXPONENTIAL,

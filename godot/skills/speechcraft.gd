@@ -2,7 +2,7 @@
 class_name SpeechcraftData
 extends Resource
 
-enum Xpcurve {
+enum XpCurve {
 	LINEAR,
 	QUADRATIC,
 	EXPONENTIAL,

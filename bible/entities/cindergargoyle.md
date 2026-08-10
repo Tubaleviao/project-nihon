@@ -25,7 +25,7 @@ A winged, stone-skinned predator that nests in volcanic caldera walls. Awakens a
 ```mermaid
 stateDiagram-v2
   [*] --> idle
-  idle --> alert : detect\n[Dormant during non-eruption periods; evaluateSpawn spawn weight increases 3× during eruption events; Detects any player within 15 tiles once active]
+  idle --> alert : detect\n[Dormant during non-eruption periods; spawn weight increases 3× during eruption events; Detects any player within 15 tiles once active]
   alert --> aggressive : attack\n[Claw strike deals baseDamage; knocks target prone for 2 seconds; Cinder breath: 2× baseDamage in a 4-tile cone; ignites wooden structures on contact; Alternates between claw and breath; cannot use breath while airborne]
   alert --> idle : calm\n[Re-enters dormancy 5 in-game minutes after losing target if no eruption is active]
   aggressive --> dead : die\n[Death emits a death event; body crumbles over 5 seconds — loot available after crumble animation]
@@ -50,7 +50,7 @@ stateDiagram-v2
 
 | From | To | Trigger | Guards | Effects |
 | ---- | --- | ------- | ------ | ------- |
-| `idle` | `alert` | `detect` | Dormant during non-eruption periods; evaluateSpawn spawn weight increases 3× during eruption events; Detects any player within 15 tiles once active |  |
+| `idle` | `alert` | `detect` | Dormant during non-eruption periods; spawn weight increases 3× during eruption events; Detects any player within 15 tiles once active |  |
 | `alert` | `aggressive` | `attack` | Claw strike deals baseDamage; knocks target prone for 2 seconds; Cinder breath: 2× baseDamage in a 4-tile cone; ignites wooden structures on contact; Alternates between claw and breath; cannot use breath while airborne |  |
 | `alert` | `idle` | `calm` | Re-enters dormancy 5 in-game minutes after losing target if no eruption is active |  |
 | `aggressive` | `dead` | `die` | Death emits a death event; body crumbles over 5 seconds — loot available after crumble animation |  |
@@ -70,7 +70,7 @@ stateDiagram-v2
 Wake from stone dormancy when eruption event begins or player enters caldera
 
 **Rules:**
-- Dormant during non-eruption periods; evaluateSpawn spawn weight increases 3× during eruption events
+- Dormant during non-eruption periods; spawn weight increases 3× during eruption events
 - Detects any player within 15 tiles once active
 
 **Auth:** `maintainer`

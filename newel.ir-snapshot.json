@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-07T18:33:52.304Z",
-  "schemaHash": "sha256:2428847679847abaf49d107e1452e8aa2aa12da0b56a0e0700672b0404b2f3b3",
+  "generatedAt": "2026-08-10T19:36:57.294Z",
+  "schemaHash": "sha256:44942346a42ae69215076291fe463fb223bd6d5b3704533a5554301a93ef71d8",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -15350,7 +15350,7 @@
             "name": "detect",
             "description": "Wake from stone dormancy when eruption event begins or player enters caldera",
             "rules": [
-              "Dormant during non-eruption periods; evaluateSpawn spawn weight increases 3× during eruption events",
+              "Dormant during non-eruption periods; spawn weight increases 3× during eruption events",
               "Detects any player within 15 tiles once active"
             ],
             "auth": {
@@ -15478,7 +15478,7 @@
               "to": "alert",
               "trigger": "detect",
               "guards": [
-                "Dormant during non-eruption periods; evaluateSpawn spawn weight increases 3× during eruption events",
+                "Dormant during non-eruption periods; spawn weight increases 3× during eruption events",
                 "Detects any player within 15 tiles once active"
               ],
               "effects": []
