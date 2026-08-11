@@ -17,6 +17,9 @@ importers:
       '@newel/generator-godot':
         specifier: file:../newel/packages/generator-godot
         version: file:../newel/packages/generator-godot
+      '@newel/generator-wiki':
+        specifier: file:../newel/packages/generator-wiki
+        version: file:../newel/packages/generator-wiki
 
 packages:
 
@@ -189,6 +192,10 @@ packages:
     resolution: {directory: ../newel/packages/generator-godot, type: directory}
     engines: {node: '>=20'}
 
+  '@newel/generator-wiki@file:../newel/packages/generator-wiki':
+    resolution: {directory: ../newel/packages/generator-wiki, type: directory}
+    engines: {node: '>=20'}
+
   commander@12.1.0:
     resolution: {integrity: sha512-Vw8qHK3bZM9y/P10u3Vib8o/DdkvA2OtPtZvD871QKjy74Wj1WSKFILMPRPSdUSx5RFK1arlJzEtA4PkFgnbuA==}
     engines: {node: '>=18'}
@@ -298,6 +305,10 @@ snapshots:
       '@newel/core': file:../newel/packages/core
 
   '@newel/generator-godot@file:../newel/packages/generator-godot':
+    dependencies:
+      '@newel/core': file:../newel/packages/core
+
+  '@newel/generator-wiki@file:../newel/packages/generator-wiki':
     dependencies:
       '@newel/core': file:../newel/packages/core
 
