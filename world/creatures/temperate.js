@@ -18,7 +18,7 @@ module.exports = {
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline' },
       baseDamage:     { type: 'integer', description: 'Damage per standard attack at tier baseline' },
     },
-    stateMachine: creatureStateMachine(),
+    stateMachine: creatureStateMachine({ conditionalAlertSkip: true }),
     behaviors: {
       detect: {
         description: 'Detect a threat and transition from idle to alert',
@@ -83,7 +83,7 @@ module.exports = {
       baseHp:         { type: 'integer', description: 'Hit points per wolf at tier baseline' },
       baseDamage:     { type: 'integer', description: 'Damage per bite at tier baseline' },
     },
-    stateMachine: creatureStateMachine(),
+    stateMachine: creatureStateMachine({ conditionalAlertSkip: true }),
     behaviors: {
       detect: {
         description: 'The lead wolf detects prey; pack transitions to alert simultaneously',

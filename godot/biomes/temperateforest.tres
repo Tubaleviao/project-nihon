@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/biomes/temperateforest.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+avgTemperature = 0.0
+avgRainfall = 0.0
+soilFertility = 0.0
+description = "Broad mixed-leaf forests covering most mid-latitude landmass. Moderate rainfall, seasonal temperature shifts, and rich soil make this the most hospitable starting biome — also the most contested by player factions."
+tags = ["biome"]

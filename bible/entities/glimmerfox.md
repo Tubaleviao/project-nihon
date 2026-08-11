@@ -28,7 +28,6 @@ stateDiagram-v2
   idle --> alert : detect\n[Approaches players within 8 tiles who carry food items; Flees from players carrying drawn weapons; Reacts to sudden day-night cycle shifts by briefly freezing, then resuming patrol]
   alert --> aggressive : attack\n[Only attacks when cornered (no escape path available); Nip deals 1× baseDamage; immediately flees after attacking]
   alert --> idle : calm\n[Returns to idle 10 seconds after threat leaves detection range]
-  idle --> aggressive : attack\n[Only attacks when cornered (no escape path available); Nip deals 1× baseDamage; immediately flees after attacking]
   aggressive --> dead : die\n[Death emits a death event; loot appears at the fox's location]
   aggressive --> idle : calm\n[Returns to idle 10 seconds after threat leaves detection range]
   alert --> fleeing : flee\n[On detecting a drawn weapon within 6 tiles: transitions idle → alert → fleeing immediately (skips aggressive); Extremely fast; outruns players without Tracking: Journeyman]
@@ -54,7 +53,6 @@ stateDiagram-v2
 | `idle` | `alert` | `detect` | Approaches players within 8 tiles who carry food items; Flees from players carrying drawn weapons; Reacts to sudden day-night cycle shifts by briefly freezing, then resuming patrol |  |
 | `alert` | `aggressive` | `attack` | Only attacks when cornered (no escape path available); Nip deals 1× baseDamage; immediately flees after attacking |  |
 | `alert` | `idle` | `calm` | Returns to idle 10 seconds after threat leaves detection range |  |
-| `idle` | `aggressive` | `attack` | Only attacks when cornered (no escape path available); Nip deals 1× baseDamage; immediately flees after attacking |  |
 | `aggressive` | `dead` | `die` | Death emits a death event; loot appears at the fox's location |  |
 | `aggressive` | `idle` | `calm` | Returns to idle 10 seconds after threat leaves detection range |  |
 | `alert` | `fleeing` | `flee` | On detecting a drawn weapon within 6 tiles: transitions idle → alert → fleeing immediately (skips aggressive); Extremely fast; outruns players without Tracking: Journeyman |  |

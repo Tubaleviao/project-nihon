@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/biomes/temperategrassland.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+avgTemperature = 0.0
+avgRainfall = 0.0
+soilFertility = 0.0
+description = "Open rolling plains ideal for large settlements, agriculture, and mounted travel. Sparse tree cover means lumber is scarce but soil fertility is highest."
+tags = ["biome"]

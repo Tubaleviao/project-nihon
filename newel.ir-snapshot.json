@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-04T19:42:21.515Z",
-  "schemaHash": "sha256:c263b11d043983f66de2782099804f55590504ab5facbff5ba8a630c4bc59a1f",
+  "generatedAt": "2026-08-10T20:50:39.612Z",
+  "schemaHash": "sha256:33ec23aeaffca2e3a3a25fd96b3b312c95911438f63307279dfdd009ae604e4e",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -2640,7 +2640,7 @@
               "Ferrite ore appears at weight 0.3 in stabilised sections near the rift edge",
               "No conventional wood or stone spawns within the rift boundary",
               "VoidSerpent spawn weight 0.5",
-              "RiftWarden: one instance per VoidRift zone; does not respawn until cooldown expires"
+              "RiftWarden: one instance per VoidRift zone; does not respawn until cooldown expires (no probabilistic spawn weight — singleton, managed by zone controller)"
             ],
             "auth": {
               "roles": [
@@ -5124,7 +5124,7 @@
             "description": "Bind a void-aligned enchantment onto a voidite-core item using VoidSmithing co-processing",
             "rules": [
               "Requires Enchanting: Expert",
-              "Requires Void Smithing: Journeyman"
+              "Requires Void Smithing: Expert"
             ],
             "auth": {
               "roles": [
@@ -7011,7 +7011,7 @@
             "name": "master",
             "description": "Achieve full mastery when all constituent skills reach master tier",
             "rules": [
-              "Archery, Tracking, and Navigation must all be at master tier"
+              "Archery, Tracking, Navigation, and Unarmed must all be at master tier"
             ],
             "auth": {
               "roles": [
@@ -7058,7 +7058,7 @@
               "to": "mastered",
               "trigger": "master",
               "guards": [
-                "Archery, Tracking, and Navigation must all be at master tier"
+                "Archery, Tracking, Navigation, and Unarmed must all be at master tier"
               ],
               "effects": []
             }
@@ -12908,6 +12908,11 @@
             "name": "unlocksRecipeVeilsteelChestplate",
             "kind": "hasOne",
             "target": "RecipeVeilsteelChestplate"
+          },
+          "unlocksRecipeAshiteBlock": {
+            "name": "unlocksRecipeAshiteBlock",
+            "kind": "hasOne",
+            "target": "RecipeAshiteBlock"
           }
         },
         "behaviors": {
@@ -13038,11 +13043,6 @@
             "name": "unlocksRecipeCarpenterAxe",
             "kind": "hasOne",
             "target": "RecipeCarpenterAxe"
-          },
-          "unlocksRecipeAshiteBlock": {
-            "name": "unlocksRecipeAshiteBlock",
-            "kind": "hasOne",
-            "target": "RecipeAshiteBlock"
           }
         },
         "behaviors": {
@@ -13870,6 +13870,13 @@
               "effects": []
             },
             {
+              "from": "idle",
+              "to": "aggressive",
+              "trigger": "detect_direct",
+              "guards": [],
+              "effects": []
+            },
+            {
               "from": "alert",
               "to": "aggressive",
               "trigger": "attack",
@@ -13885,16 +13892,6 @@
               "trigger": "calm",
               "guards": [
                 "Alert-to-idle: 30 seconds without threat; fleeing-to-idle: reaches safe zone"
-              ],
-              "effects": []
-            },
-            {
-              "from": "idle",
-              "to": "aggressive",
-              "trigger": "attack",
-              "guards": [
-                "Gore deals baseDamage; knocks back target 1 tile",
-                "Charge requires 2-tile run-up; no knockback at close range"
               ],
               "effects": []
             },
@@ -14211,6 +14208,13 @@
               "effects": []
             },
             {
+              "from": "idle",
+              "to": "aggressive",
+              "trigger": "detect_direct",
+              "guards": [],
+              "effects": []
+            },
+            {
               "from": "alert",
               "to": "aggressive",
               "trigger": "attack",
@@ -14226,16 +14230,6 @@
               "trigger": "calm",
               "guards": [
                 "Pack returns to patrol route 60 seconds after losing target"
-              ],
-              "effects": []
-            },
-            {
-              "from": "idle",
-              "to": "aggressive",
-              "trigger": "attack",
-              "guards": [
-                "Two wolves attempt to flank; remaining wolves attack the front",
-                "Flanking wolf deals 1.5× baseDamage if attack lands from behind"
               ],
               "effects": []
             },
@@ -14554,16 +14548,6 @@
               "trigger": "calm",
               "guards": [
                 "Returns to idle 2 in-game minutes after losing threat"
-              ],
-              "effects": []
-            },
-            {
-              "from": "idle",
-              "to": "aggressive",
-              "trigger": "attack",
-              "guards": [
-                "Charge deals 3× baseDamage to first target in path; 1× to any behind",
-                "Charge cannot be performed on uphill terrain"
               ],
               "effects": []
             },
@@ -14889,17 +14873,6 @@
               "effects": []
             },
             {
-              "from": "idle",
-              "to": "aggressive",
-              "trigger": "attack",
-              "guards": [
-                "Dive-bomb deals 1× baseDamage",
-                "Against unarmoured hand slot: 30% chance to knock held item to ground (item not destroyed)",
-                "Against armoured players: no item knock; only damage applies"
-              ],
-              "effects": []
-            },
-            {
               "from": "aggressive",
               "to": "dead",
               "trigger": "die",
@@ -15221,17 +15194,6 @@
               "effects": []
             },
             {
-              "from": "idle",
-              "to": "aggressive",
-              "trigger": "attack",
-              "guards": [
-                "Slime applies a heat-burn status: 5 damage per second for 8 seconds",
-                "Hit players wearing non-ashite armour take 1.5× damage from burn",
-                "Slime coats the ground; affected tiles are impassable without fire resistance for 30 seconds"
-              ],
-              "effects": []
-            },
-            {
               "from": "aggressive",
               "to": "dead",
               "trigger": "die",
@@ -15402,7 +15364,7 @@
             "name": "detect",
             "description": "Wake from stone dormancy when eruption event begins or player enters caldera",
             "rules": [
-              "Dormant during non-eruption periods; evaluateSpawn spawn weight increases 3× during eruption events",
+              "Dormant during non-eruption periods; spawn weight increases 3× during eruption events",
               "Detects any player within 15 tiles once active"
             ],
             "auth": {
@@ -15530,7 +15492,7 @@
               "to": "alert",
               "trigger": "detect",
               "guards": [
-                "Dormant during non-eruption periods; evaluateSpawn spawn weight increases 3× during eruption events",
+                "Dormant during non-eruption periods; spawn weight increases 3× during eruption events",
                 "Detects any player within 15 tiles once active"
               ],
               "effects": []
@@ -15552,17 +15514,6 @@
               "trigger": "calm",
               "guards": [
                 "Re-enters dormancy 5 in-game minutes after losing target if no eruption is active"
-              ],
-              "effects": []
-            },
-            {
-              "from": "idle",
-              "to": "aggressive",
-              "trigger": "attack",
-              "guards": [
-                "Claw strike deals baseDamage; knocks target prone for 2 seconds",
-                "Cinder breath: 2× baseDamage in a 4-tile cone; ignites wooden structures on contact",
-                "Alternates between claw and breath; cannot use breath while airborne"
               ],
               "effects": []
             },
@@ -15905,16 +15856,6 @@
               "effects": []
             },
             {
-              "from": "idle",
-              "to": "aggressive",
-              "trigger": "attack",
-              "guards": [
-                "Only attacks when cornered (no escape path available)",
-                "Nip deals 1× baseDamage; immediately flees after attacking"
-              ],
-              "effects": []
-            },
-            {
               "from": "aggressive",
               "to": "dead",
               "trigger": "die",
@@ -16239,17 +16180,6 @@
               "effects": []
             },
             {
-              "from": "idle",
-              "to": "aggressive",
-              "trigger": "attack",
-              "guards": [
-                "Deals baseDamage; injects venom on hit — venom causes paralysis (3 seconds, 20% chance)",
-                "Paralysis prevents movement and action; does not stack",
-                "Must become visible for 1 second before striking; players can react during this window"
-              ],
-              "effects": []
-            },
-            {
               "from": "aggressive",
               "to": "dead",
               "trigger": "die",
@@ -16557,6 +16487,13 @@
               "effects": []
             },
             {
+              "from": "idle",
+              "to": "aggressive",
+              "trigger": "detect_direct",
+              "guards": [],
+              "effects": []
+            },
+            {
               "from": "alert",
               "to": "aggressive",
               "trigger": "attack",
@@ -16573,17 +16510,6 @@
               "trigger": "calm",
               "guards": [
                 "Enters dormancy 3 in-game minutes after losing all targets"
-              ],
-              "effects": []
-            },
-            {
-              "from": "idle",
-              "to": "aggressive",
-              "trigger": "attack",
-              "guards": [
-                "Bite: baseDamage + 20 void corruption to target; 50% physical damage reduction applies unless attacker is VoidTouched",
-                "Tail sweep: half baseDamage in a 4-tile arc; knocks targets back 2 tiles",
-                "Every 3rd attack the serpent fully phases for 2 seconds; all non-magical, non-void attacks pass through harmlessly — VoidTouched players deal full damage regardless"
               ],
               "effects": []
             },
@@ -16869,18 +16795,6 @@
                 "Detects all players inside the innermost rift boundary zone unconditionally",
                 "Cannot be avoided by stealth; rift proximity triggers detection",
                 "Fires attack trigger directly from idle — no alert phase"
-              ],
-              "effects": []
-            },
-            {
-              "from": "idle",
-              "to": "aggressive",
-              "trigger": "attack",
-              "guards": [
-                "Ground slam: baseDamage in 6-tile radius; all targets knocked down (prone for 3 seconds)",
-                "Void beam: 3× baseDamage in a straight 10-tile line; also adds 50 void corruption to each target hit",
-                "Physical damage reduced by 90%; magical and void damage is fully effective",
-                "VoidTouched players receive only 50% corruption from void beam (partial resistance)"
               ],
               "effects": []
             },

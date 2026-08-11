@@ -1,0 +1,8 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/systems/communityownsthefuture.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+description = "Community owns the future — the game is open-source and its direction is shaped by contributor consensus."
+tags = ["system"]

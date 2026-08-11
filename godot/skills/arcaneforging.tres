@@ -1,0 +1,15 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/skills/arcaneforging.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+tier = 0
+xpCurve = 0
+maxLevel = 0
+category = 0
+state_machine_field = "tier"
+initial_state = "novice"
+description = "Specialized metalworking at arcane forges that processes magical materials — primarily Aethermite — which shatter in standard forges. Prerequisite for all enchanted material production and catalyst crafting."
+tags = ["skill"]

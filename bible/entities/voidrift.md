@@ -34,7 +34,7 @@ Determine which materials and creatures spawn in a void rift tile
 - Ferrite ore appears at weight 0.3 in stabilised sections near the rift edge
 - No conventional wood or stone spawns within the rift boundary
 - VoidSerpent spawn weight 0.5
-- RiftWarden: one instance per VoidRift zone; does not respawn until cooldown expires
+- RiftWarden: one instance per VoidRift zone; does not respawn until cooldown expires (no probabilistic spawn weight — singleton, managed by zone controller)
 
 **Auth:** `maintainer`
 

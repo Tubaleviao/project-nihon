@@ -96,7 +96,7 @@ Defines the world's fauna and the combat rules governing all player–creature a
 Generates a static Markdown design bible from the fabric IR. Every entity becomes a dedicated page; an index groups them by concept type.
 
 - `@newel/generator-bible` — new Newel package that implements the `Generator` interface; outputs one Markdown page per entity plus a root index
-- `quoin.config.js` — wires `BibleGenerator` to the fabric and sets the output root
+- `newel.config.js` — wires `BibleGenerator` to the fabric and sets the output root
 - `bible/` — 117 entity pages + `bible/index.md`, browsable without a server
 - Each entity page includes: description, tags, fields table, relations table with cross-links, Mermaid state-machine diagram, and behaviors section
 - Run `pnpm generate` to regenerate after any fabric change
@@ -107,7 +107,7 @@ Generates a static Markdown design bible from the fabric IR. Every entity become
 
 ```
 fabric.js                  # root fabric entry point
-quoin.config.js            # generator config (BibleGenerator)
+newel.config.js            # generator config (BibleGenerator + GodotGenerator)
 constitution/
   principles.js            # ten core design principles
   decisions.js             # architecture decisions with state machines

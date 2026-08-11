@@ -28,7 +28,6 @@ stateDiagram-v2
   idle --> alert : detect\n[Detects vibration (galloping horses, explosions) within 20 tiles; Scent detection within 6 tiles regardless of stealth skill]
   alert --> aggressive : attack\n[Charge deals 3× baseDamage to first target in path; 1× to any behind; Charge cannot be performed on uphill terrain]
   alert --> idle : calm\n[Returns to idle 2 in-game minutes after losing threat]
-  idle --> aggressive : attack\n[Charge deals 3× baseDamage to first target in path; 1× to any behind; Charge cannot be performed on uphill terrain]
   aggressive --> dead : die\n[Emits a death event; surviving herd members do not reset their flee state until cooldown expires]
   aggressive --> idle : calm\n[Returns to idle 2 in-game minutes after losing threat]
   alert --> fleeing : flee\n[Entire herd flees together; players caught in stampede path take 2× baseDamage per second; Fleeing direction is always away from the original threat source]
@@ -54,7 +53,6 @@ stateDiagram-v2
 | `idle` | `alert` | `detect` | Detects vibration (galloping horses, explosions) within 20 tiles; Scent detection within 6 tiles regardless of stealth skill |  |
 | `alert` | `aggressive` | `attack` | Charge deals 3× baseDamage to first target in path; 1× to any behind; Charge cannot be performed on uphill terrain |  |
 | `alert` | `idle` | `calm` | Returns to idle 2 in-game minutes after losing threat |  |
-| `idle` | `aggressive` | `attack` | Charge deals 3× baseDamage to first target in path; 1× to any behind; Charge cannot be performed on uphill terrain |  |
 | `aggressive` | `dead` | `die` | Emits a death event; surviving herd members do not reset their flee state until cooldown expires |  |
 | `aggressive` | `idle` | `calm` | Returns to idle 2 in-game minutes after losing threat |  |
 | `alert` | `fleeing` | `flee` | Entire herd flees together; players caught in stampede path take 2× baseDamage per second; Fleeing direction is always away from the original threat source |  |

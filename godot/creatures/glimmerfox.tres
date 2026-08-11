@@ -1,0 +1,16 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/creatures/glimmerfox.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+state = 0
+tier = 0
+aggressionLevel = 0
+baseHp = 0
+baseDamage = 0
+state_machine_field = "state"
+initial_state = "idle"
+description = "A sleek, luminescent fox native to the Twilight Grove whose fur shifts in hue with the accelerated day-night cycle. Inherently curious and non-aggressive; actively approaches players carrying food. Its shed fur is harvested as a raw alchemical reagent that intensifies potion luminosity."
+tags = ["creature"]

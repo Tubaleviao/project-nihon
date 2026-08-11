@@ -1,0 +1,16 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/items/voiditeedge.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+condition = 0
+weight = 0.0
+rarity = 0
+stackable = false
+durability = 0
+state_machine_field = "condition"
+initial_state = "pristine"
+description = "Jagged single-edged blade carved from a stabilised voidite shard. The only weapon that deals true void damage — bypasses veilsteel armour entirely. Corrodes rapidly if the wielder has not undergone void exposure."
+tags = ["item"]

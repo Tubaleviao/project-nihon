@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/biomes/voidrift.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+avgTemperature = 0.0
+avgRainfall = 0.0
+soilFertility = 0.0
+description = "Fractured terrain surrounding permanent rifts in the fabric of reality. Reality distortions warp physics: gravity is inconsistent, time stutters, and unprotected players suffer void corruption over time. Voidite crystals are abundant here — and so is mortal danger."
+tags = ["biome"]

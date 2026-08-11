@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/biomes/volcanicbadlands.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+avgTemperature = 0.0
+avgRainfall = 0.0
+soilFertility = 0.0
+description = "Barren, heat-scorched terrain surrounding active or dormant volcanic calderas. The surface is covered in ashite rock and cooled lava flows. Harsh for survival but rich in rare metallic ores; a magnet for advanced crafters."
+tags = ["biome"]

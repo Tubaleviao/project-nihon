@@ -1,0 +1,16 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/creatures/steppebison.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+state = 0
+tier = 0
+aggressionLevel = 0
+baseHp = 0
+baseDamage = 0
+state_machine_field = "state"
+initial_state = "idle"
+description = "A massive, shaggy bison that grazes temperate grasslands in loose herds. Slow and passive unless provoked, but a stampede is lethal to unarmoured players. The primary large-game target for grassland settlements; bones are a key structural component."
+tags = ["creature"]

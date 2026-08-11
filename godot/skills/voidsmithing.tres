@@ -1,0 +1,15 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/skills/voidsmithing.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+tier = 0
+xpCurve = 0
+maxLevel = 0
+category = 0
+state_machine_field = "tier"
+initial_state = "novice"
+description = "Esoteric art of working with void-touched materials, primarily Voidite, inside a specially shielded forge room. Cannot be taught — must be discovered through experimentation. A player who survives a void burst during Voidite refining may unlock this skill."
+tags = ["skill"]

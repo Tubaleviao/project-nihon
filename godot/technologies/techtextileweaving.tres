@@ -1,0 +1,14 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/technologies/techtextileweaving.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+status = 0
+researchCost = 0
+tier = 0
+state_machine_field = "status"
+initial_state = "locked"
+description = "Fiber processing and loom construction techniques. Unlocks duskfiber weaving and the cloak recipe. Depends on basic carpentry for the loom frame."
+tags = ["technology"]

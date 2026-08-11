@@ -28,7 +28,6 @@ stateDiagram-v2
   idle --> alert : detect\n[Detection range: 6 tiles via ground vibration; 3 tiles via direct contact; Immune to sound-based detection suppression]
   alert --> aggressive : attack\n[Slime applies a heat-burn status: 5 damage per second for 8 seconds; Hit players wearing non-ashite armour take 1.5× damage from burn; Slime coats the ground; affected tiles are impassable without fire resistance for 30 seconds]
   alert --> idle : calm\n[Returns to idle 20 seconds after losing target]
-  idle --> aggressive : attack\n[Slime applies a heat-burn status: 5 damage per second for 8 seconds; Hit players wearing non-ashite armour take 1.5× damage from burn; Slime coats the ground; affected tiles are impassable without fire resistance for 30 seconds]
   aggressive --> dead : die\n[Death emits a death event; shell shards are scattered in a 2-tile radius]
   aggressive --> idle : calm\n[Returns to idle 20 seconds after losing target]
   alert --> fleeing : flee\n[Flees only if health drops below 10%; very slow movement speed; Cannot be followed into lava pools]
@@ -54,7 +53,6 @@ stateDiagram-v2
 | `idle` | `alert` | `detect` | Detection range: 6 tiles via ground vibration; 3 tiles via direct contact; Immune to sound-based detection suppression |  |
 | `alert` | `aggressive` | `attack` | Slime applies a heat-burn status: 5 damage per second for 8 seconds; Hit players wearing non-ashite armour take 1.5× damage from burn; Slime coats the ground; affected tiles are impassable without fire resistance for 30 seconds |  |
 | `alert` | `idle` | `calm` | Returns to idle 20 seconds after losing target |  |
-| `idle` | `aggressive` | `attack` | Slime applies a heat-burn status: 5 damage per second for 8 seconds; Hit players wearing non-ashite armour take 1.5× damage from burn; Slime coats the ground; affected tiles are impassable without fire resistance for 30 seconds |  |
 | `aggressive` | `dead` | `die` | Death emits a death event; shell shards are scattered in a 2-tile radius |  |
 | `aggressive` | `idle` | `calm` | Returns to idle 20 seconds after losing target |  |
 | `alert` | `fleeing` | `flee` | Flees only if health drops below 10%; very slow movement speed; Cannot be followed into lava pools |  |

@@ -1,0 +1,11 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/recipes/recipelumenfiteorb.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+domain = 0
+yield = 0
+description = "Polish a lumenfite stone into a charged spell-focus orb at an arcane forge."
+tags = ["recipe"]

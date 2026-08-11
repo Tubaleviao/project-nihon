@@ -1,0 +1,8 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/systems/believablenotrealistic.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+description = "Believable, not realistic — the world has internal consistency and lore logic rather than real-world physics fidelity."
+tags = ["system"]

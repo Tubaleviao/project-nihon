@@ -1,0 +1,15 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/skills/trade.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+tier = 0
+xpCurve = 0
+maxLevel = 0
+category = 0
+state_machine_field = "tier"
+initial_state = "novice"
+description = "Commercial acumen that improves buy/sell spreads with NPC vendors and enables merchant-tier operations like bulk deals, consignment, and market stalls."
+tags = ["skill"]
