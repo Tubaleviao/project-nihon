@@ -3,7 +3,7 @@ const { BibleGenerator } = require('@newel/generator-bible')
 const { GodotGenerator } = require('@newel/generator-godot')
 
 module.exports = defineConfig({
-  schema: './fabric.js',
+  schema: './fabric/index.js',
   output: '.',
   generators: [new BibleGenerator(), new GodotGenerator()],
 })
