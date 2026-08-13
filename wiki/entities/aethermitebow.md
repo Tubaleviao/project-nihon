@@ -34,12 +34,12 @@ Recurve bow with an aethermite-treated thornwood stave and duskfiber string. Arr
 ```mermaid
 stateDiagram-v2
   [*] --> pristine
-  pristine --> worn : degrade\n[String (duskfiber) degrades faster than the stave; tracked separately in durability; Firing in rain at damaged condition risks string snap]
-  worn --> damaged : degrade\n[String (duskfiber) degrades faster than the stave; tracked separately in durability; Firing in rain at damaged condition risks string snap]
-  damaged --> broken : degrade\n[String (duskfiber) degrades faster than the stave; tracked separately in durability; Firing in rain at damaged condition risks string snap]
-  broken --> pristine : repair\n[String repair  one duskfiber strand; Carpentry  Novice; Full stave repair  one thornwood plank and one aethermite dust; Arcane Forging  Apprentice]
-  damaged --> pristine : repair\n[String repair  one duskfiber strand; Carpentry  Novice; Full stave repair  one thornwood plank and one aethermite dust; Arcane Forging  Apprentice]
-  worn --> pristine : repair\n[String repair  one duskfiber strand; Carpentry  Novice; Full stave repair  one thornwood plank and one aethermite dust; Arcane Forging  Apprentice]
+  pristine --> worn : degrade [String (duskfiber) degrades faster than the stave; tracked separately in durability; Firing in rain at damaged condition risks string snap]
+  worn --> damaged : degrade [String (duskfiber) degrades faster than the stave; tracked separately in durability; Firing in rain at damaged condition risks string snap]
+  damaged --> broken : degrade [String (duskfiber) degrades faster than the stave; tracked separately in durability; Firing in rain at damaged condition risks string snap]
+  broken --> pristine : repair [String repair one duskfiber strand; Carpentry Novice; Full stave repair one thornwood plank and one aethermite dust; Arcane Forging Apprentice]
+  damaged --> pristine : repair [String repair one duskfiber strand; Carpentry Novice; Full stave repair one thornwood plank and one aethermite dust; Arcane Forging Apprentice]
+  worn --> pristine : repair [String repair one duskfiber strand; Carpentry Novice; Full stave repair one thornwood plank and one aethermite dust; Arcane Forging Apprentice]
 ```
 
 | State | Description |

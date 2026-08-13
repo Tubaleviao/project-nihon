@@ -31,8 +31,8 @@ Fiber processing and loom construction techniques. Unlocks duskfiber weaving and
 ```mermaid
 stateDiagram-v2
   [*] --> locked
-  locked --> researching : beginResearch\n[Requires TechBasicCarpentry  unlocked; Requires a duskfiber supply (Twilight Grove access)]
-  researching --> unlocked : completeResearch\n[Research cost fully paid]
+  locked --> researching : beginResearch [Requires TechBasicCarpentry unlocked; Requires a duskfiber supply (Twilight Grove access)]
+  researching --> unlocked : completeResearch [Research cost fully paid]
   unlocked --> [*]
 ```
 

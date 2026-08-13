@@ -33,12 +33,12 @@ Heavy-duty pick smelted from veilsteel. Cuts through hardstone formations that s
 ```mermaid
 stateDiagram-v2
   [*] --> pristine
-  pristine --> worn : degrade\n[Veilsteel degrades at half the rate of ferrite tools against standard rock; Against void-touched stone, degrades at standard rate]
-  worn --> damaged : degrade\n[Veilsteel degrades at half the rate of ferrite tools against standard rock; Against void-touched stone, degrades at standard rate]
-  damaged --> broken : degrade\n[Veilsteel degrades at half the rate of ferrite tools against standard rock; Against void-touched stone, degrades at standard rate]
-  broken --> pristine : repair\n[Requires Smithing  Journeyman; Repair costs one veilsteel ingot per condition tier restored]
-  damaged --> pristine : repair\n[Requires Smithing  Journeyman; Repair costs one veilsteel ingot per condition tier restored]
-  worn --> pristine : repair\n[Requires Smithing  Journeyman; Repair costs one veilsteel ingot per condition tier restored]
+  pristine --> worn : degrade [Veilsteel degrades at half the rate of ferrite tools against standard rock; Against void-touched stone, degrades at standard rate]
+  worn --> damaged : degrade [Veilsteel degrades at half the rate of ferrite tools against standard rock; Against void-touched stone, degrades at standard rate]
+  damaged --> broken : degrade [Veilsteel degrades at half the rate of ferrite tools against standard rock; Against void-touched stone, degrades at standard rate]
+  broken --> pristine : repair [Requires Smithing Journeyman; Repair costs one veilsteel ingot per condition tier restored]
+  damaged --> pristine : repair [Requires Smithing Journeyman; Repair costs one veilsteel ingot per condition tier restored]
+  worn --> pristine : repair [Requires Smithing Journeyman; Repair costs one veilsteel ingot per condition tier restored]
 ```
 
 | State | Description |

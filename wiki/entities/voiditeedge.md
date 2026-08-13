@@ -32,12 +32,12 @@ Jagged single-edged blade carved from a stabilised voidite shard. The only weapo
 ```mermaid
 stateDiagram-v2
   [*] --> pristine
-  pristine --> worn : degrade\n[Without voidBurstSurvivor flag the blade degrades at triple rate; Striking lumenfite surfaces causes a void crack — instant jump to damaged state]
-  worn --> damaged : degrade\n[Without voidBurstSurvivor flag the blade degrades at triple rate; Striking lumenfite surfaces causes a void crack — instant jump to damaged state]
-  damaged --> broken : degrade\n[Without voidBurstSurvivor flag the blade degrades at triple rate; Striking lumenfite surfaces causes a void crack — instant jump to damaged state]
-  broken --> pristine : repair\n[Requires Void Smithing  Expert; Repair costs one refined voidite shard; only the VoidTouched profession can attempt repair]
-  damaged --> pristine : repair\n[Requires Void Smithing  Expert; Repair costs one refined voidite shard; only the VoidTouched profession can attempt repair]
-  worn --> pristine : repair\n[Requires Void Smithing  Expert; Repair costs one refined voidite shard; only the VoidTouched profession can attempt repair]
+  pristine --> worn : degrade [Without voidBurstSurvivor flag the blade degrades at triple rate; Striking lumenfite surfaces causes a void crack — instant jump to damaged state]
+  worn --> damaged : degrade [Without voidBurstSurvivor flag the blade degrades at triple rate; Striking lumenfite surfaces causes a void crack — instant jump to damaged state]
+  damaged --> broken : degrade [Without voidBurstSurvivor flag the blade degrades at triple rate; Striking lumenfite surfaces causes a void crack — instant jump to damaged state]
+  broken --> pristine : repair [Requires Void Smithing Expert; Repair costs one refined voidite shard; only the VoidTouched profession can attempt repair]
+  damaged --> pristine : repair [Requires Void Smithing Expert; Repair costs one refined voidite shard; only the VoidTouched profession can attempt repair]
+  worn --> pristine : repair [Requires Void Smithing Expert; Repair costs one refined voidite shard; only the VoidTouched profession can attempt repair]
 ```
 
 | State | Description |

@@ -26,8 +26,8 @@ Pale grey volcanic rock formed from compressed volcanic ash. Lightweight for its
 ```mermaid
 stateDiagram-v2
   [*] --> raw
-  raw --> dressed : dress\n[Three raw blocks yield two dressed blocks (waste fraction removed during cutting); Ashite dust produced during dressing is an alchemical component]
-  dressed --> inscribed : inscribe\n[Ashite accepts heat-ward and cold-ward runes only; Inscribed blocks must be placed in a structure before activation — free-standing runes are inert]
+  raw --> dressed : dress [Three raw blocks yield two dressed blocks (waste fraction removed during cutting); Ashite dust produced during dressing is an alchemical component]
+  dressed --> inscribed : inscribe [Ashite accepts heat-ward and cold-ward runes only; Inscribed blocks must be placed in a structure before activation — free-standing runes are inert]
   inscribed --> [*]
 ```
 

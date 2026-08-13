@@ -26,9 +26,9 @@ Dried grain-and-herb ration pack prepared from temperate grassland crops. Restor
 ```mermaid
 stateDiagram-v2
   [*] --> pristine
-  pristine --> worn : degrade\n[Stored in a cold-cellar structure  degradation rate halved; When condition reaches broken the ration is spoiled and cannot be consumed]
-  worn --> damaged : degrade\n[Stored in a cold-cellar structure  degradation rate halved; When condition reaches broken the ration is spoiled and cannot be consumed]
-  damaged --> broken : degrade\n[Stored in a cold-cellar structure  degradation rate halved; When condition reaches broken the ration is spoiled and cannot be consumed]
+  pristine --> worn : degrade [Stored in a cold-cellar structure degradation rate halved; When condition reaches broken the ration is spoiled and cannot be consumed]
+  worn --> damaged : degrade [Stored in a cold-cellar structure degradation rate halved; When condition reaches broken the ration is spoiled and cannot be consumed]
+  damaged --> broken : degrade [Stored in a cold-cellar structure degradation rate halved; When condition reaches broken the ration is spoiled and cannot be consumed]
   broken --> [*]
 ```
 

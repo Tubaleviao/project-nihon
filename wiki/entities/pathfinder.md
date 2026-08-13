@@ -30,8 +30,8 @@ An expert scout and guide who can navigate any terrain invisibly, chart it accur
 ```mermaid
 stateDiagram-v2
   [*] --> locked
-  locked --> active : unlock\n[Requires Navigation  Journeyman; Requires Cartography  Journeyman; Requires Stealth  Apprentice]
-  active --> mastered : master\n[Navigation, Cartography, and Stealth must all be at master tier]
+  locked --> active : unlock [Requires Navigation Journeyman; Requires Cartography Journeyman; Requires Stealth Apprentice]
+  active --> mastered : master [Navigation, Cartography, and Stealth must all be at master tier]
   mastered --> [*]
 ```
 

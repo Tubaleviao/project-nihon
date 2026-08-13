@@ -29,8 +29,8 @@ Dedicated metalworker who has combined standard smithing with arcane forging tec
 ```mermaid
 stateDiagram-v2
   [*] --> locked
-  locked --> active : unlock\n[Requires Smithing  Journeyman; Requires Arcane Forging  Apprentice]
-  active --> mastered : master\n[Smithing and Arcane Forging must both be at master tier]
+  locked --> active : unlock [Requires Smithing Journeyman; Requires Arcane Forging Apprentice]
+  active --> mastered : master [Smithing and Arcane Forging must both be at master tier]
   mastered --> [*]
 ```
 

@@ -26,8 +26,8 @@ Jet-black crystalline ore found only in void-touched biomes and deep rifts. Extr
 ```mermaid
 stateDiagram-v2
   [*] --> raw
-  raw --> refined : refine\n[Requires Void Smithing  Expert — an esoteric skill unlocked only via experimentation; Raw voidite emits void pulses that corrupt nearby items; shielded forge room mandatory; One raw crystal yields one refined shard; failures may cause a void burst event — surviving such a burst grants the voidBurstSurvivor flag regardless of tile location (same flag as VoidRift.applyHazards; either source is sufficient)]
-  refined --> enchanted : enchant\n[Only players who have survived a void burst (voidBurstSurvivor flag, granted by surviving any void burst — via VoidRift.applyHazards or Voidite.refine failure) may learn to enchant voidite; Enchanted voidite cannot be stored in standard item bags without void-lining]
+  raw --> refined : refine [Requires Void Smithing Expert — an esoteric skill unlocked only via experimentation; Raw voidite emits void pulses that corrupt nearby items; shielded forge room mandatory; One raw crystal yields one refined shard; failures may cause a void burst event — surviving such a burst grants the voidBurstSurvivor flag regardless of tile location (same flag as VoidRift.applyHazards; either source is sufficient)]
+  refined --> enchanted : enchant [Only players who have survived a void burst (voidBurstSurvivor flag, granted by surviving any void burst — via VoidRift.applyHazards or Voidite.refine failure) may learn to enchant voidite; Enchanted voidite cannot be stored in standard item bags without void-lining]
   enchanted --> [*]
 ```
 

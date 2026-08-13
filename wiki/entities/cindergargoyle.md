@@ -26,18 +26,18 @@ A winged, stone-skinned predator that nests in volcanic caldera walls. Awakens a
 ```mermaid
 stateDiagram-v2
   [*] --> idle
-  idle --> alert : detect\n[Dormant during non-eruption periods; spawn weight increases 3× during eruption events; Detects any player within 15 tiles once active]
-  alert --> aggressive : attack\n[Claw strike deals baseDamage; knocks target prone for 2 seconds; Cinder breath  2× baseDamage in a 4-tile cone; ignites wooden structures on contact; Alternates between claw and breath; cannot use breath while airborne]
-  alert --> idle : calm\n[Re-enters dormancy 5 in-game minutes after losing target if no eruption is active]
-  aggressive --> dead : die\n[Death emits a death event; body crumbles over 5 seconds — loot available after crumble animation]
-  aggressive --> idle : calm\n[Re-enters dormancy 5 in-game minutes after losing target if no eruption is active]
-  alert --> fleeing : flee\n[Flies directly to the nearest caldera wall crevice; Regenerates 5 HP per second while roosted in caldera; cannot be targeted while in crevice]
-  aggressive --> fleeing : flee\n[Flies directly to the nearest caldera wall crevice; Regenerates 5 HP per second while roosted in caldera; cannot be targeted while in crevice]
-  fleeing --> dead : die\n[Death emits a death event; body crumbles over 5 seconds — loot available after crumble animation]
-  fleeing --> idle : calm\n[Re-enters dormancy 5 in-game minutes after losing target if no eruption is active]
-  fleeing --> aggressive : attack\n[Claw strike deals baseDamage; knocks target prone for 2 seconds; Cinder breath  2× baseDamage in a 4-tile cone; ignites wooden structures on contact; Alternates between claw and breath; cannot use breath while airborne]
-  dead --> respawning : respawn\n[Respawn cooldown  40 in-game minutes; Spawns dormant; only activates on next eruption or player proximity trigger]
-  respawning --> idle : calm\n[Re-enters dormancy 5 in-game minutes after losing target if no eruption is active]
+  idle --> alert : detect [Dormant during non-eruption periods; spawn weight increases 3× during eruption events; Detects any player within 15 tiles once active]
+  alert --> aggressive : attack [Claw strike deals baseDamage; knocks target prone for 2 seconds; Cinder breath 2× baseDamage in a 4-tile cone; ignites wooden structures on contact; Alternates between claw and breath; cannot use breath while airborne]
+  alert --> idle : calm [Re-enters dormancy 5 in-game minutes after losing target if no eruption is active]
+  aggressive --> dead : die [Death emits a death event; body crumbles over 5 seconds — loot available after crumble animation]
+  aggressive --> idle : calm [Re-enters dormancy 5 in-game minutes after losing target if no eruption is active]
+  alert --> fleeing : flee [Flies directly to the nearest caldera wall crevice; Regenerates 5 HP per second while roosted in caldera; cannot be targeted while in crevice]
+  aggressive --> fleeing : flee [Flies directly to the nearest caldera wall crevice; Regenerates 5 HP per second while roosted in caldera; cannot be targeted while in crevice]
+  fleeing --> dead : die [Death emits a death event; body crumbles over 5 seconds — loot available after crumble animation]
+  fleeing --> idle : calm [Re-enters dormancy 5 in-game minutes after losing target if no eruption is active]
+  fleeing --> aggressive : attack [Claw strike deals baseDamage; knocks target prone for 2 seconds; Cinder breath 2× baseDamage in a 4-tile cone; ignites wooden structures on contact; Alternates between claw and breath; cannot use breath while airborne]
+  dead --> respawning : respawn [Respawn cooldown 40 in-game minutes; Spawns dormant; only activates on next eruption or player proximity trigger]
+  respawning --> idle : calm [Re-enters dormancy 5 in-game minutes after losing target if no eruption is active]
 ```
 
 | State | Description |

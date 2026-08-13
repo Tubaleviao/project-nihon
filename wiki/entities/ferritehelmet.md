@@ -32,12 +32,12 @@ Simple open-faced helmet shaped from ferrite plate. Offers reliable head protect
 ```mermaid
 stateDiagram-v2
   [*] --> pristine
-  pristine --> worn : degrade\n[Critical hits degrade armour two condition steps instead of one]
-  worn --> damaged : degrade\n[Critical hits degrade armour two condition steps instead of one]
-  damaged --> broken : degrade\n[Critical hits degrade armour two condition steps instead of one]
-  broken --> pristine : repair\n[Requires one ferrite ingot; Smithing  Novice]
-  damaged --> pristine : repair\n[Requires one ferrite ingot; Smithing  Novice]
-  worn --> pristine : repair\n[Requires one ferrite ingot; Smithing  Novice]
+  pristine --> worn : degrade [Critical hits degrade armour two condition steps instead of one]
+  worn --> damaged : degrade [Critical hits degrade armour two condition steps instead of one]
+  damaged --> broken : degrade [Critical hits degrade armour two condition steps instead of one]
+  broken --> pristine : repair [Requires one ferrite ingot; Smithing Novice]
+  damaged --> pristine : repair [Requires one ferrite ingot; Smithing Novice]
+  worn --> pristine : repair [Requires one ferrite ingot; Smithing Novice]
 ```
 
 | State | Description |

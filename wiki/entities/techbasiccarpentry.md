@@ -31,8 +31,8 @@ Foundation woodworking knowledge. Unlocks the carpentry bench, plank milling, an
 ```mermaid
 stateDiagram-v2
   [*] --> locked
-  locked --> researching : beginResearch\n[No prerequisites; requires a stockpile of thornwood logs]
-  researching --> unlocked : completeResearch\n[Research cost fully paid]
+  locked --> researching : beginResearch [No prerequisites; requires a stockpile of thornwood logs]
+  researching --> unlocked : completeResearch [Research cost fully paid]
   unlocked --> [*]
 ```
 

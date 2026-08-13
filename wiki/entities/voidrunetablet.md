@@ -32,12 +32,12 @@ Flat voidite slab etched with stabilisation runes by a Void Smithing expert. Gra
 ```mermaid
 stateDiagram-v2
   [*] --> pristine
-  pristine --> worn : degrade\n[Each second inside a veilsteel-armoured structure degrades the tablet by one durability point; Condition broken means all runes are erased; the tablet reverts to an inert voidite slab]
-  worn --> damaged : degrade\n[Each second inside a veilsteel-armoured structure degrades the tablet by one durability point; Condition broken means all runes are erased; the tablet reverts to an inert voidite slab]
-  damaged --> broken : degrade\n[Each second inside a veilsteel-armoured structure degrades the tablet by one durability point; Condition broken means all runes are erased; the tablet reverts to an inert voidite slab]
-  broken --> pristine : repair\n[Requires Void Smithing  Expert; The VoidTouched profession is required to re-etch; runes cannot be restored by other professions]
-  damaged --> pristine : repair\n[Requires Void Smithing  Expert; The VoidTouched profession is required to re-etch; runes cannot be restored by other professions]
-  worn --> pristine : repair\n[Requires Void Smithing  Expert; The VoidTouched profession is required to re-etch; runes cannot be restored by other professions]
+  pristine --> worn : degrade [Each second inside a veilsteel-armoured structure degrades the tablet by one durability point; Condition broken means all runes are erased; the tablet reverts to an inert voidite slab]
+  worn --> damaged : degrade [Each second inside a veilsteel-armoured structure degrades the tablet by one durability point; Condition broken means all runes are erased; the tablet reverts to an inert voidite slab]
+  damaged --> broken : degrade [Each second inside a veilsteel-armoured structure degrades the tablet by one durability point; Condition broken means all runes are erased; the tablet reverts to an inert voidite slab]
+  broken --> pristine : repair [Requires Void Smithing Expert; The VoidTouched profession is required to re-etch; runes cannot be restored by other professions]
+  damaged --> pristine : repair [Requires Void Smithing Expert; The VoidTouched profession is required to re-etch; runes cannot be restored by other professions]
+  worn --> pristine : repair [Requires Void Smithing Expert; The VoidTouched profession is required to re-etch; runes cannot be restored by other professions]
 ```
 
 | State | Description |

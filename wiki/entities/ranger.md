@@ -31,8 +31,8 @@ A wilderness specialist who combines ranged combat with reading the environment.
 ```mermaid
 stateDiagram-v2
   [*] --> locked
-  locked --> active : unlock\n[Requires Archery  Journeyman; Requires Tracking  Apprentice; Requires Navigation  Apprentice; Player must hold wolfBondHolder flag — requires taming a GraywolfPack pup, which in turn requires Unarmed  Journeyman]
-  active --> mastered : master\n[Archery, Tracking, Navigation, and Unarmed must all be at master tier]
+  locked --> active : unlock [Requires Archery Journeyman; Requires Tracking Apprentice; Requires Navigation Apprentice; Player must hold wolfBondHolder flag — requires taming a GraywolfPack pup, which in turn requires Unarmed Journeyman]
+  active --> mastered : master [Archery, Tracking, Navigation, and Unarmed must all be at master tier]
   mastered --> [*]
 ```
 

@@ -32,12 +32,12 @@ A polished lumenfite sphere charged with stored magical energy by an Arcanist. S
 ```mermaid
 stateDiagram-v2
   [*] --> pristine
-  pristine --> worn : degrade\n[As a light source the charge depletes at a negligible rate; As a spell-focus amplifier each use costs 5 durability points]
-  worn --> damaged : degrade\n[As a light source the charge depletes at a negligible rate; As a spell-focus amplifier each use costs 5 durability points]
-  damaged --> broken : degrade\n[As a light source the charge depletes at a negligible rate; As a spell-focus amplifier each use costs 5 durability points]
-  broken --> pristine : repair\n[Requires Enchanting  Apprentice; Recharging costs one aethermite dust; restores 50 durability points]
-  damaged --> pristine : repair\n[Requires Enchanting  Apprentice; Recharging costs one aethermite dust; restores 50 durability points]
-  worn --> pristine : repair\n[Requires Enchanting  Apprentice; Recharging costs one aethermite dust; restores 50 durability points]
+  pristine --> worn : degrade [As a light source the charge depletes at a negligible rate; As a spell-focus amplifier each use costs 5 durability points]
+  worn --> damaged : degrade [As a light source the charge depletes at a negligible rate; As a spell-focus amplifier each use costs 5 durability points]
+  damaged --> broken : degrade [As a light source the charge depletes at a negligible rate; As a spell-focus amplifier each use costs 5 durability points]
+  broken --> pristine : repair [Requires Enchanting Apprentice; Recharging costs one aethermite dust; restores 50 durability points]
+  damaged --> pristine : repair [Requires Enchanting Apprentice; Recharging costs one aethermite dust; restores 50 durability points]
+  worn --> pristine : repair [Requires Enchanting Apprentice; Recharging costs one aethermite dust; restores 50 durability points]
 ```
 
 | State | Description |

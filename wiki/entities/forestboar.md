@@ -26,19 +26,19 @@ A stout, bristle-furred boar that roots through the forest floor for tubers and 
 ```mermaid
 stateDiagram-v2
   [*] --> idle
-  idle --> alert : detect\n[Detects players within 8 tile radius; Fires attack trigger directly from idle (no alert phase) if player is within 3 tiles of boarlet (juvenile)]
-  idle --> aggressive : detect_direct
-  alert --> aggressive : attack\n[Gore deals baseDamage; knocks back target 1 tile; Charge requires 2-tile run-up; no knockback at close range]
-  alert --> idle : calm\n[Alert-to-idle  30 seconds without threat; fleeing-to-idle  reaches safe zone]
-  aggressive --> dead : die\n[Emits a death event consumed by the drop behavior; respawn timer begins immediately]
-  aggressive --> idle : calm\n[Alert-to-idle  30 seconds without threat; fleeing-to-idle  reaches safe zone]
-  alert --> fleeing : flee\n[Flees toward dense undergrowth; loses aggro if player breaks line of sight for 10 seconds]
-  aggressive --> fleeing : flee\n[Flees toward dense undergrowth; loses aggro if player breaks line of sight for 10 seconds]
-  fleeing --> dead : die\n[Emits a death event consumed by the drop behavior; respawn timer begins immediately]
-  fleeing --> idle : calm\n[Alert-to-idle  30 seconds without threat; fleeing-to-idle  reaches safe zone]
-  fleeing --> aggressive : attack\n[Gore deals baseDamage; knocks back target 1 tile; Charge requires 2-tile run-up; no knockback at close range]
-  dead --> respawning : respawn\n[Respawn cooldown  5 in-game minutes; respawn point is the nearest ForestBoar spawn marker]
-  respawning --> idle : calm\n[Alert-to-idle  30 seconds without threat; fleeing-to-idle  reaches safe zone]
+  idle --> alert : detect [Detects players within 8 tile radius; Fires attack trigger directly from idle (no alert phase) if player is within 3 tiles of boarlet (juvenile)]
+  idle --> aggressive : detect [Detects players within 8 tile radius; Fires attack trigger directly from idle (no alert phase) if player is within 3 tiles of boarlet (juvenile)]
+  alert --> aggressive : attack [Gore deals baseDamage; knocks back target 1 tile; Charge requires 2-tile run-up; no knockback at close range]
+  alert --> idle : calm [Alert-to-idle 30 seconds without threat; fleeing-to-idle reaches safe zone]
+  aggressive --> dead : die [Emits a death event consumed by the drop behavior; respawn timer begins immediately]
+  aggressive --> idle : calm [Alert-to-idle 30 seconds without threat; fleeing-to-idle reaches safe zone]
+  alert --> fleeing : flee [Flees toward dense undergrowth; loses aggro if player breaks line of sight for 10 seconds]
+  aggressive --> fleeing : flee [Flees toward dense undergrowth; loses aggro if player breaks line of sight for 10 seconds]
+  fleeing --> dead : die [Emits a death event consumed by the drop behavior; respawn timer begins immediately]
+  fleeing --> idle : calm [Alert-to-idle 30 seconds without threat; fleeing-to-idle reaches safe zone]
+  fleeing --> aggressive : attack [Gore deals baseDamage; knocks back target 1 tile; Charge requires 2-tile run-up; no knockback at close range]
+  dead --> respawning : respawn [Respawn cooldown 5 in-game minutes; respawn point is the nearest ForestBoar spawn marker]
+  respawning --> idle : calm [Alert-to-idle 30 seconds without threat; fleeing-to-idle reaches safe zone]
 ```
 
 | State | Description |

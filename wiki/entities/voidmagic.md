@@ -25,10 +25,10 @@ Channelling of void energy — entropic, corrupting, and capable of bypassing co
 ```mermaid
 stateDiagram-v2
   [*] --> novice
-  novice --> apprentice : advanceTier\n[XP threshold for the target tier must be met; Skill is not tutored — only players with voidBurstSurvivor flag may unlock it]
-  apprentice --> journeyman : advanceTier\n[XP threshold for the target tier must be met; Skill is not tutored — only players with voidBurstSurvivor flag may unlock it]
-  journeyman --> expert : advanceTier\n[XP threshold for the target tier must be met; Skill is not tutored — only players with voidBurstSurvivor flag may unlock it]
-  expert --> master : advanceTier\n[XP threshold for the target tier must be met; Skill is not tutored — only players with voidBurstSurvivor flag may unlock it]
+  novice --> apprentice : advanceTier [XP threshold for the target tier must be met; Skill is not tutored — only players with voidBurstSurvivor flag may unlock it]
+  apprentice --> journeyman : advanceTier [XP threshold for the target tier must be met; Skill is not tutored — only players with voidBurstSurvivor flag may unlock it]
+  journeyman --> expert : advanceTier [XP threshold for the target tier must be met; Skill is not tutored — only players with voidBurstSurvivor flag may unlock it]
+  expert --> master : advanceTier [XP threshold for the target tier must be met; Skill is not tutored — only players with voidBurstSurvivor flag may unlock it]
   master --> [*]
 ```
 

@@ -33,12 +33,12 @@ Two-handed longsword of veilsteel. Heavy and slow but capable of cracking enchan
 ```mermaid
 stateDiagram-v2
   [*] --> pristine
-  pristine --> worn : degrade\n[Veilsteel is highly durable; degrades at half the rate of ferrite weapons; Void-type attacks corrode the blade faster]
-  worn --> damaged : degrade\n[Veilsteel is highly durable; degrades at half the rate of ferrite weapons; Void-type attacks corrode the blade faster]
-  damaged --> broken : degrade\n[Veilsteel is highly durable; degrades at half the rate of ferrite weapons; Void-type attacks corrode the blade faster]
-  broken --> pristine : repair\n[Requires Smithing  Journeyman; Repair costs one veilsteel ingot]
-  damaged --> pristine : repair\n[Requires Smithing  Journeyman; Repair costs one veilsteel ingot]
-  worn --> pristine : repair\n[Requires Smithing  Journeyman; Repair costs one veilsteel ingot]
+  pristine --> worn : degrade [Veilsteel is highly durable; degrades at half the rate of ferrite weapons; Void-type attacks corrode the blade faster]
+  worn --> damaged : degrade [Veilsteel is highly durable; degrades at half the rate of ferrite weapons; Void-type attacks corrode the blade faster]
+  damaged --> broken : degrade [Veilsteel is highly durable; degrades at half the rate of ferrite weapons; Void-type attacks corrode the blade faster]
+  broken --> pristine : repair [Requires Smithing Journeyman; Repair costs one veilsteel ingot]
+  damaged --> pristine : repair [Requires Smithing Journeyman; Repair costs one veilsteel ingot]
+  worn --> pristine : repair [Requires Smithing Journeyman; Repair costs one veilsteel ingot]
 ```
 
 | State | Description |

@@ -34,8 +34,8 @@ Advanced forge construction and temperature-control techniques. Unlocks the mast
 ```mermaid
 stateDiagram-v2
   [*] --> locked
-  locked --> researching : beginResearch\n[Requires TechBasicSmithing  unlocked; Requires Smithing  Journeyman; Requires at least twenty raw ashite ore in settlement storage]
-  researching --> unlocked : completeResearch\n[Research cost fully paid]
+  locked --> researching : beginResearch [Requires TechBasicSmithing unlocked; Requires Smithing Journeyman; Requires at least twenty raw ashite ore in settlement storage]
+  researching --> unlocked : completeResearch [Research cost fully paid]
   unlocked --> [*]
 ```
 

@@ -32,12 +32,12 @@ Standard single-edged blade forged from a refined ferrite ingot. Lightweight and
 ```mermaid
 stateDiagram-v2
   [*] --> pristine
-  pristine --> worn : degrade\n[Parrying another weapon degrades the blade faster than striking flesh; Striking veilsteel armour degrades the blade at three times normal rate]
-  worn --> damaged : degrade\n[Parrying another weapon degrades the blade faster than striking flesh; Striking veilsteel armour degrades the blade at three times normal rate]
-  damaged --> broken : degrade\n[Parrying another weapon degrades the blade faster than striking flesh; Striking veilsteel armour degrades the blade at three times normal rate]
-  broken --> pristine : repair\n[Requires one ferrite ingot; Smithing  Novice sufficient]
-  damaged --> pristine : repair\n[Requires one ferrite ingot; Smithing  Novice sufficient]
-  worn --> pristine : repair\n[Requires one ferrite ingot; Smithing  Novice sufficient]
+  pristine --> worn : degrade [Parrying another weapon degrades the blade faster than striking flesh; Striking veilsteel armour degrades the blade at three times normal rate]
+  worn --> damaged : degrade [Parrying another weapon degrades the blade faster than striking flesh; Striking veilsteel armour degrades the blade at three times normal rate]
+  damaged --> broken : degrade [Parrying another weapon degrades the blade faster than striking flesh; Striking veilsteel armour degrades the blade at three times normal rate]
+  broken --> pristine : repair [Requires one ferrite ingot; Smithing Novice sufficient]
+  damaged --> pristine : repair [Requires one ferrite ingot; Smithing Novice sufficient]
+  worn --> pristine : repair [Requires one ferrite ingot; Smithing Novice sufficient]
 ```
 
 | State | Description |

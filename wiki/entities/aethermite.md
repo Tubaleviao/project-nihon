@@ -27,9 +27,9 @@ Pale silver ore that hums faintly in the presence of active magic. Found deep un
 ```mermaid
 stateDiagram-v2
   [*] --> raw
-  raw --> refined : refine\n[Requires Arcane Forging  Apprentice; Raw ore must be worked at a player-built arcane forge — standard forges shatter it; Grinding produces dust (form = dust); smelting produces shards (form = shard); form is stamped on the item at refine time and cannot be changed afterward]
-  refined --> enchanted : enchant\n[magicAffinity reaches 1.0; the material emits a faint glow; Enchanted shards are consumed as single-use crafting components via Aethermite.consume]
-  enchanted --> consumed : consume\n[Consumption is triggered by the crafting system when the shard is used — the item is removed from inventory entirely; No partial consumption  the full shard is spent per catalyst use]
+  raw --> refined : refine [Requires Arcane Forging Apprentice; Raw ore must be worked at a player-built arcane forge — standard forges shatter it; Grinding produces dust (form = dust); smelting produces shards (form = shard); form is stamped on the item at refine time and cannot be changed afterward]
+  refined --> enchanted : enchant [magicAffinity reaches 1.0; the material emits a faint glow; Enchanted shards are consumed as single-use crafting components via Aethermite.consume]
+  enchanted --> consumed : consume [Consumption is triggered by the crafting system when the shard is used — the item is removed from inventory entirely; No partial consumption the full shard is spent per catalyst use]
   consumed --> [*]
 ```
 

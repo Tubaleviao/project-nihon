@@ -26,8 +26,8 @@ Common dark-grey metal found in surface veins across temperate biomes, volcanic 
 ```mermaid
 stateDiagram-v2
   [*] --> raw
-  raw --> refined : refine\n[Requires a functional forge structure; Two raw ferrite ore yield one refined ingot]
-  refined --> enchanted : enchant\n[Ferrite holds weak enchantments only; magical capacity capped at 0.3; Enchanting consumes one enchanted aethermite shard as a catalyst; Aethermite.consume is invoked on the spent shard — the shard transitions to consumed state and is removed from inventory entirely]
+  raw --> refined : refine [Requires a functional forge structure; Two raw ferrite ore yield one refined ingot]
+  refined --> enchanted : enchant [Ferrite holds weak enchantments only; magical capacity capped at 0.3; Enchanting consumes one enchanted aethermite shard as a catalyst; Aethermite.consume is invoked on the spent shard — the shard transitions to consumed state and is removed from inventory entirely]
   enchanted --> [*]
 ```
 

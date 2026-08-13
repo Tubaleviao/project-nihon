@@ -31,8 +31,8 @@ Basic alchemical knowledge. Unlocks the alchemy bench and foundational potion re
 ```mermaid
 stateDiagram-v2
   [*] --> locked
-  locked --> researching : beginResearch\n[No smithing prerequisite; requires an aethermite ore sample to begin]
-  researching --> unlocked : completeResearch\n[Research cost fully paid]
+  locked --> researching : beginResearch [No smithing prerequisite; requires an aethermite ore sample to begin]
+  researching --> unlocked : completeResearch [Research cost fully paid]
   unlocked --> [*]
 ```
 

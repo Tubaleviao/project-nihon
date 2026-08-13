@@ -26,18 +26,18 @@ A massive, shaggy bison that grazes temperate grasslands in loose herds. Slow an
 ```mermaid
 stateDiagram-v2
   [*] --> idle
-  idle --> alert : detect\n[Detects vibration (galloping horses, explosions) within 20 tiles; Scent detection within 6 tiles regardless of stealth skill]
-  alert --> aggressive : attack\n[Charge deals 3× baseDamage to first target in path; 1× to any behind; Charge cannot be performed on uphill terrain]
-  alert --> idle : calm\n[Returns to idle 2 in-game minutes after losing threat]
-  aggressive --> dead : die\n[Emits a death event; surviving herd members do not reset their flee state until cooldown expires]
-  aggressive --> idle : calm\n[Returns to idle 2 in-game minutes after losing threat]
-  alert --> fleeing : flee\n[Entire herd flees together; players caught in stampede path take 2× baseDamage per second; Fleeing direction is always away from the original threat source]
-  aggressive --> fleeing : flee\n[Entire herd flees together; players caught in stampede path take 2× baseDamage per second; Fleeing direction is always away from the original threat source]
-  fleeing --> dead : die\n[Emits a death event; surviving herd members do not reset their flee state until cooldown expires]
-  fleeing --> idle : calm\n[Returns to idle 2 in-game minutes after losing threat]
-  fleeing --> aggressive : attack\n[Charge deals 3× baseDamage to first target in path; 1× to any behind; Charge cannot be performed on uphill terrain]
-  dead --> respawning : respawn\n[Respawn cooldown  20 in-game minutes; herd respawns as a group]
-  respawning --> idle : calm\n[Returns to idle 2 in-game minutes after losing threat]
+  idle --> alert : detect [Detects vibration (galloping horses, explosions) within 20 tiles; Scent detection within 6 tiles regardless of stealth skill]
+  alert --> aggressive : attack [Charge deals 3× baseDamage to first target in path; 1× to any behind; Charge cannot be performed on uphill terrain]
+  alert --> idle : calm [Returns to idle 2 in-game minutes after losing threat]
+  aggressive --> dead : die [Emits a death event; surviving herd members do not reset their flee state until cooldown expires]
+  aggressive --> idle : calm [Returns to idle 2 in-game minutes after losing threat]
+  alert --> fleeing : flee [Entire herd flees together; players caught in stampede path take 2× baseDamage per second; Fleeing direction is always away from the original threat source]
+  aggressive --> fleeing : flee [Entire herd flees together; players caught in stampede path take 2× baseDamage per second; Fleeing direction is always away from the original threat source]
+  fleeing --> dead : die [Emits a death event; surviving herd members do not reset their flee state until cooldown expires]
+  fleeing --> idle : calm [Returns to idle 2 in-game minutes after losing threat]
+  fleeing --> aggressive : attack [Charge deals 3× baseDamage to first target in path; 1× to any behind; Charge cannot be performed on uphill terrain]
+  dead --> respawning : respawn [Respawn cooldown 20 in-game minutes; herd respawns as a group]
+  respawning --> idle : calm [Returns to idle 2 in-game minutes after losing threat]
 ```
 
 | State | Description |

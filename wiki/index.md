@@ -32,7 +32,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 
 - [DestructibleBuildings](entities/destructiblebuildings.md) — Buildings are destructible through game systems (fire, siege, structural failure) — not by arbitrary designer flags
 - [FictionalMaterials](entities/fictionalmaterials.md) — Fictional materials with unique properties replace real-world counterparts, giving the world consistent internal lore and design freedom
-- [GodotEngine](entities/godotengine.md) — Use Godot 4
+- [GodotEngine](entities/godotengine.md) — Use Godot 4.x as the game client engine
 - [KnowledgeByExperimentation](entities/knowledgebyexperimentation.md) — Knowledge is discovered through experimentation — recipes, materials, and world secrets are not handed to players via tooltips or vendors
 - [MagicBalancedWithMartial](entities/magicbalancedwithmartial.md) — Magic and martial combat are balanced — no archetype dominates; each has unique trade-offs and counters
 - [NoTeleportation](entities/noteleportation.md) — No teleportation; infrastructure replaces fast travel

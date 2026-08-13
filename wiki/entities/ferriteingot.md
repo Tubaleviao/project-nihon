@@ -32,12 +32,12 @@ Smelted ferrite bar ready for smithing. The most common crafting intermediate; u
 ```mermaid
 stateDiagram-v2
   [*] --> pristine
-  pristine --> worn : degrade\n[Normal inventory storage never degrades an ingot]
-  worn --> damaged : degrade\n[Normal inventory storage never degrades an ingot]
-  damaged --> broken : degrade\n[Normal inventory storage never degrades an ingot]
-  broken --> pristine : repair\n[Requires a forge; no additional materials consumed]
-  damaged --> pristine : repair\n[Requires a forge; no additional materials consumed]
-  worn --> pristine : repair\n[Requires a forge; no additional materials consumed]
+  pristine --> worn : degrade [Normal inventory storage never degrades an ingot]
+  worn --> damaged : degrade [Normal inventory storage never degrades an ingot]
+  damaged --> broken : degrade [Normal inventory storage never degrades an ingot]
+  broken --> pristine : repair [Requires a forge; no additional materials consumed]
+  damaged --> pristine : repair [Requires a forge; no additional materials consumed]
+  worn --> pristine : repair [Requires a forge; no additional materials consumed]
 ```
 
 | State | Description |

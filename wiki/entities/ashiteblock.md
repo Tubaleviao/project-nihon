@@ -32,12 +32,12 @@ Quarried ashite stone block cut to standard building dimensions. Dense volcanic 
 ```mermaid
 stateDiagram-v2
   [*] --> pristine
-  pristine --> worn : degrade\n[Normal use never degrades an ashite block]
-  worn --> damaged : degrade\n[Normal use never degrades an ashite block]
-  damaged --> broken : degrade\n[Normal use never degrades an ashite block]
-  broken --> pristine : repair\n[Requires Carpentry  Apprentice; ashite mortar (aethermite dust + ashite powder) consumed]
-  damaged --> pristine : repair\n[Requires Carpentry  Apprentice; ashite mortar (aethermite dust + ashite powder) consumed]
-  worn --> pristine : repair\n[Requires Carpentry  Apprentice; ashite mortar (aethermite dust + ashite powder) consumed]
+  pristine --> worn : degrade [Normal use never degrades an ashite block]
+  worn --> damaged : degrade [Normal use never degrades an ashite block]
+  damaged --> broken : degrade [Normal use never degrades an ashite block]
+  broken --> pristine : repair [Requires Carpentry Apprentice; ashite mortar (aethermite dust + ashite powder) consumed]
+  damaged --> pristine : repair [Requires Carpentry Apprentice; ashite mortar (aethermite dust + ashite powder) consumed]
+  worn --> pristine : repair [Requires Carpentry Apprentice; ashite mortar (aethermite dust + ashite powder) consumed]
 ```
 
 | State | Description |

@@ -26,18 +26,18 @@ A sleek, luminescent fox native to the Twilight Grove whose fur shifts in hue wi
 ```mermaid
 stateDiagram-v2
   [*] --> idle
-  idle --> alert : detect\n[Approaches players within 8 tiles who carry food items; Flees from players carrying drawn weapons; Reacts to sudden day-night cycle shifts by briefly freezing, then resuming patrol]
-  alert --> aggressive : attack\n[Only attacks when cornered (no escape path available); Nip deals 1× baseDamage; immediately flees after attacking]
-  alert --> idle : calm\n[Returns to idle 10 seconds after threat leaves detection range]
-  aggressive --> dead : die\n[Death emits a death event; loot appears at the fox's location]
-  aggressive --> idle : calm\n[Returns to idle 10 seconds after threat leaves detection range]
-  alert --> fleeing : flee\n[On detecting a drawn weapon within 6 tiles  transitions idle → alert → fleeing immediately (skips aggressive); Extremely fast; outruns players without Tracking  Journeyman]
-  aggressive --> fleeing : flee\n[On detecting a drawn weapon within 6 tiles  transitions idle → alert → fleeing immediately (skips aggressive); Extremely fast; outruns players without Tracking  Journeyman]
-  fleeing --> dead : die\n[Death emits a death event; loot appears at the fox's location]
-  fleeing --> idle : calm\n[Returns to idle 10 seconds after threat leaves detection range]
-  fleeing --> aggressive : attack\n[Only attacks when cornered (no escape path available); Nip deals 1× baseDamage; immediately flees after attacking]
-  dead --> respawning : respawn\n[Respawn cooldown  8 in-game minutes; ignores respawn if tamed instance is still alive in the tile]
-  respawning --> idle : calm\n[Returns to idle 10 seconds after threat leaves detection range]
+  idle --> alert : detect [Approaches players within 8 tiles who carry food items; Flees from players carrying drawn weapons; Reacts to sudden day-night cycle shifts by briefly freezing, then resuming patrol]
+  alert --> aggressive : attack [Only attacks when cornered (no escape path available); Nip deals 1× baseDamage; immediately flees after attacking]
+  alert --> idle : calm [Returns to idle 10 seconds after threat leaves detection range]
+  aggressive --> dead : die [Death emits a death event; loot appears at the fox's location]
+  aggressive --> idle : calm [Returns to idle 10 seconds after threat leaves detection range]
+  alert --> fleeing : flee [On detecting a drawn weapon within 6 tiles transitions idle → alert → fleeing immediately (skips aggressive); Extremely fast; outruns players without Tracking Journeyman]
+  aggressive --> fleeing : flee [On detecting a drawn weapon within 6 tiles transitions idle → alert → fleeing immediately (skips aggressive); Extremely fast; outruns players without Tracking Journeyman]
+  fleeing --> dead : die [Death emits a death event; loot appears at the fox's location]
+  fleeing --> idle : calm [Returns to idle 10 seconds after threat leaves detection range]
+  fleeing --> aggressive : attack [Only attacks when cornered (no escape path available); Nip deals 1× baseDamage; immediately flees after attacking]
+  dead --> respawning : respawn [Respawn cooldown 8 in-game minutes; ignores respawn if tamed instance is still alive in the tile]
+  respawning --> idle : calm [Returns to idle 10 seconds after threat leaves detection range]
 ```
 
 | State | Description |

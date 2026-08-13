@@ -26,11 +26,11 @@ An ancient construct of crystallised voidite that guards the innermost rift boun
 ```mermaid
 stateDiagram-v2
   [*] --> idle
-  idle --> aggressive : detect\n[Detects all players inside the innermost rift boundary zone unconditionally; Cannot be avoided by stealth; rift proximity triggers detection; Fires attack trigger directly from idle — no alert phase]
-  aggressive --> dead : die\n[Death emits a death event; shard fragments scatter in a 4-tile radius and must be individually collected]
-  aggressive --> idle : calm\n[Returns to idle if all players leave the innermost rift boundary zone]
-  dead --> respawning : respawn\n[Respawn cooldown  120 in-game minutes (longest in the game); Only one Warden instance exists per VoidRift zone; does not multi-spawn]
-  respawning --> idle : calm\n[Returns to idle if all players leave the innermost rift boundary zone]
+  idle --> aggressive : detect [Detects all players inside the innermost rift boundary zone unconditionally; Cannot be avoided by stealth; rift proximity triggers detection; Fires attack trigger directly from idle — no alert phase]
+  aggressive --> dead : die [Death emits a death event; shard fragments scatter in a 4-tile radius and must be individually collected]
+  aggressive --> idle : calm [Returns to idle if all players leave the innermost rift boundary zone]
+  dead --> respawning : respawn [Respawn cooldown 120 in-game minutes (longest in the game); Only one Warden instance exists per VoidRift zone; does not multi-spawn]
+  respawning --> idle : calm [Returns to idle if all players leave the innermost rift boundary zone]
 ```
 
 | State | Description |

@@ -32,9 +32,9 @@ Raw aethermite refined into a crystalline shard at an arcane forge. The solid fo
 ```mermaid
 stateDiagram-v2
   [*] --> pristine
-  pristine --> worn : degrade\n[Stored in a standard forge area  degrades one tier per in-game day; safe in arcane storage]
-  worn --> damaged : degrade\n[Stored in a standard forge area  degrades one tier per in-game day; safe in arcane storage]
-  damaged --> broken : degrade\n[Stored in a standard forge area  degrades one tier per in-game day; safe in arcane storage]
+  pristine --> worn : degrade [Stored in a standard forge area degrades one tier per in-game day; safe in arcane storage]
+  worn --> damaged : degrade [Stored in a standard forge area degrades one tier per in-game day; safe in arcane storage]
+  damaged --> broken : degrade [Stored in a standard forge area degrades one tier per in-game day; safe in arcane storage]
   broken --> [*]
 ```
 

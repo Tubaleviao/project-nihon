@@ -34,12 +34,12 @@ Felling axe with a weighted ferrite head and a duskfiber-wrapped thornwood handl
 ```mermaid
 stateDiagram-v2
   [*] --> pristine
-  pristine --> worn : degrade\n[Hardwood species (Duskfiber trees) degrade the axe faster than softwood]
-  worn --> damaged : degrade\n[Hardwood species (Duskfiber trees) degrade the axe faster than softwood]
-  damaged --> broken : degrade\n[Hardwood species (Duskfiber trees) degrade the axe faster than softwood]
-  broken --> pristine : repair\n[Repair costs one ferrite ingot; handle wrap (duskfiber) does not require replacement]
-  damaged --> pristine : repair\n[Repair costs one ferrite ingot; handle wrap (duskfiber) does not require replacement]
-  worn --> pristine : repair\n[Repair costs one ferrite ingot; handle wrap (duskfiber) does not require replacement]
+  pristine --> worn : degrade [Hardwood species (Duskfiber trees) degrade the axe faster than softwood]
+  worn --> damaged : degrade [Hardwood species (Duskfiber trees) degrade the axe faster than softwood]
+  damaged --> broken : degrade [Hardwood species (Duskfiber trees) degrade the axe faster than softwood]
+  broken --> pristine : repair [Repair costs one ferrite ingot; handle wrap (duskfiber) does not require replacement]
+  damaged --> pristine : repair [Repair costs one ferrite ingot; handle wrap (duskfiber) does not require replacement]
+  worn --> pristine : repair [Repair costs one ferrite ingot; handle wrap (duskfiber) does not require replacement]
 ```
 
 | State | Description |

@@ -32,12 +32,12 @@ A refined aethermite shard that has been fully imbued at an arcane forge. Emits 
 ```mermaid
 stateDiagram-v2
   [*] --> pristine
-  pristine --> worn : degrade\n[Exposed to sunlight  charge degrades one tier per in-game day]
-  worn --> damaged : degrade\n[Exposed to sunlight  charge degrades one tier per in-game day]
-  damaged --> broken : degrade\n[Exposed to sunlight  charge degrades one tier per in-game day]
-  broken --> pristine : repair\n[Requires Arcane Forging  Journeyman; Recharging costs one aethermite dust and restores condition to pristine]
-  damaged --> pristine : repair\n[Requires Arcane Forging  Journeyman; Recharging costs one aethermite dust and restores condition to pristine]
-  worn --> pristine : repair\n[Requires Arcane Forging  Journeyman; Recharging costs one aethermite dust and restores condition to pristine]
+  pristine --> worn : degrade [Exposed to sunlight charge degrades one tier per in-game day]
+  worn --> damaged : degrade [Exposed to sunlight charge degrades one tier per in-game day]
+  damaged --> broken : degrade [Exposed to sunlight charge degrades one tier per in-game day]
+  broken --> pristine : repair [Requires Arcane Forging Journeyman; Recharging costs one aethermite dust and restores condition to pristine]
+  damaged --> pristine : repair [Requires Arcane Forging Journeyman; Recharging costs one aethermite dust and restores condition to pristine]
+  worn --> pristine : repair [Requires Arcane Forging Journeyman; Recharging costs one aethermite dust and restores condition to pristine]
 ```
 
 | State | Description |

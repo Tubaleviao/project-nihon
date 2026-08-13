@@ -34,8 +34,8 @@ Magical metallurgy principles. Unlocks the arcane forge structure and all arcane
 ```mermaid
 stateDiagram-v2
   [*] --> locked
-  locked --> researching : beginResearch\n[Requires TechBasicSmithing  unlocked; Requires TechAlchemy  unlocked; Requires Arcane Forging  Apprentice]
-  researching --> unlocked : completeResearch\n[Research cost fully paid]
+  locked --> researching : beginResearch [Requires TechBasicSmithing unlocked; Requires TechAlchemy unlocked; Requires Arcane Forging Apprentice]
+  researching --> unlocked : completeResearch [Research cost fully paid]
   unlocked --> [*]
 ```
 

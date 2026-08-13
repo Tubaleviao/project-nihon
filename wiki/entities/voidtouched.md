@@ -29,8 +29,8 @@ A rare hybrid who has survived void exposure and mastered both its magic and its
 ```mermaid
 stateDiagram-v2
   [*] --> locked
-  locked --> active : unlock\n[Requires Void Magic  Expert; Requires Void Smithing  Expert; Player must hold voidBurstSurvivor flag — cannot be unlocked without surviving a void burst]
-  active --> mastered : master\n[Void Magic and Void Smithing must both be at master tier]
+  locked --> active : unlock [Requires Void Magic Expert; Requires Void Smithing Expert; Player must hold voidBurstSurvivor flag — cannot be unlocked without surviving a void burst]
+  active --> mastered : master [Void Magic and Void Smithing must both be at master tier]
   mastered --> [*]
 ```
 

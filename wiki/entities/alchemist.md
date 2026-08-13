@@ -29,8 +29,8 @@ A reagent crafter who supplements alchemy knowledge with arcane forging to produ
 ```mermaid
 stateDiagram-v2
   [*] --> locked
-  locked --> active : unlock\n[Requires Alchemy  Journeyman; Requires Arcane Forging  Apprentice]
-  active --> mastered : master\n[Alchemy and Arcane Forging must both be at master tier]
+  locked --> active : unlock [Requires Alchemy Journeyman; Requires Arcane Forging Apprentice]
+  active --> mastered : master [Alchemy and Arcane Forging must both be at master tier]
   mastered --> [*]
 ```
 

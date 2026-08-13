@@ -26,18 +26,18 @@ A slow-moving, magma-encrusted slug the size of a cart horse that grazes on ashi
 ```mermaid
 stateDiagram-v2
   [*] --> idle
-  idle --> alert : detect\n[Detection range  6 tiles via ground vibration; 3 tiles via direct contact; Immune to sound-based detection suppression]
-  alert --> aggressive : attack\n[Slime applies a heat-burn status  5 damage per second for 8 seconds; Hit players wearing non-ashite armour take 1.5× damage from burn; Slime coats the ground; affected tiles are impassable without fire resistance for 30 seconds]
-  alert --> idle : calm\n[Returns to idle 20 seconds after losing target]
-  aggressive --> dead : die\n[Death emits a death event; shell shards are scattered in a 2-tile radius]
-  aggressive --> idle : calm\n[Returns to idle 20 seconds after losing target]
-  alert --> fleeing : flee\n[Flees only if health drops below 10%; very slow movement speed; Cannot be followed into lava pools]
-  aggressive --> fleeing : flee\n[Flees only if health drops below 10%; very slow movement speed; Cannot be followed into lava pools]
-  fleeing --> dead : die\n[Death emits a death event; shell shards are scattered in a 2-tile radius]
-  fleeing --> idle : calm\n[Returns to idle 20 seconds after losing target]
-  fleeing --> aggressive : attack\n[Slime applies a heat-burn status  5 damage per second for 8 seconds; Hit players wearing non-ashite armour take 1.5× damage from burn; Slime coats the ground; affected tiles are impassable without fire resistance for 30 seconds]
-  dead --> respawning : respawn\n[Respawn cooldown  25 in-game minutes; spawns submerged in lava and surfaces after 30 seconds]
-  respawning --> idle : calm\n[Returns to idle 20 seconds after losing target]
+  idle --> alert : detect [Detection range 6 tiles via ground vibration; 3 tiles via direct contact; Immune to sound-based detection suppression]
+  alert --> aggressive : attack [Slime applies a heat-burn status 5 damage per second for 8 seconds; Hit players wearing non-ashite armour take 1.5× damage from burn; Slime coats the ground; affected tiles are impassable without fire resistance for 30 seconds]
+  alert --> idle : calm [Returns to idle 20 seconds after losing target]
+  aggressive --> dead : die [Death emits a death event; shell shards are scattered in a 2-tile radius]
+  aggressive --> idle : calm [Returns to idle 20 seconds after losing target]
+  alert --> fleeing : flee [Flees only if health drops below 10%; very slow movement speed; Cannot be followed into lava pools]
+  aggressive --> fleeing : flee [Flees only if health drops below 10%; very slow movement speed; Cannot be followed into lava pools]
+  fleeing --> dead : die [Death emits a death event; shell shards are scattered in a 2-tile radius]
+  fleeing --> idle : calm [Returns to idle 20 seconds after losing target]
+  fleeing --> aggressive : attack [Slime applies a heat-burn status 5 damage per second for 8 seconds; Hit players wearing non-ashite armour take 1.5× damage from burn; Slime coats the ground; affected tiles are impassable without fire resistance for 30 seconds]
+  dead --> respawning : respawn [Respawn cooldown 25 in-game minutes; spawns submerged in lava and surfaces after 30 seconds]
+  respawning --> idle : calm [Returns to idle 20 seconds after losing target]
 ```
 
 | State | Description |

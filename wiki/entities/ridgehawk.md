@@ -26,18 +26,18 @@ A keen-eyed raptor that nests on grassland ridges and hunts small game from alti
 ```mermaid
 stateDiagram-v2
   [*] --> idle
-  idle --> alert : detect\n[Visual detection range is 30 tiles while airborne, 8 tiles while perched; Cannot detect Stealth  Journeyman or higher players]
-  alert --> aggressive : attack\n[Dive-bomb deals 1× baseDamage; Against unarmoured hand slot  30% chance to knock held item to ground (item not destroyed); Against armoured players  no item knock; only damage applies]
-  alert --> idle : calm\n[Returns to idle 15 seconds after losing target]
-  aggressive --> dead : die\n[Bird falls to ground on death; loot available at the landing tile]
-  aggressive --> idle : calm\n[Returns to idle 15 seconds after losing target]
-  alert --> fleeing : flee\n[Immediately flees on taking any damage; re-engages only if nest is within 5 tiles]
-  aggressive --> fleeing : flee\n[Immediately flees on taking any damage; re-engages only if nest is within 5 tiles]
-  fleeing --> dead : die\n[Bird falls to ground on death; loot available at the landing tile]
-  fleeing --> idle : calm\n[Returns to idle 15 seconds after losing target]
-  fleeing --> aggressive : attack\n[Dive-bomb deals 1× baseDamage; Against unarmoured hand slot  30% chance to knock held item to ground (item not destroyed); Against armoured players  no item knock; only damage applies]
-  dead --> respawning : respawn\n[Respawn cooldown  10 in-game minutes]
-  respawning --> idle : calm\n[Returns to idle 15 seconds after losing target]
+  idle --> alert : detect [Visual detection range is 30 tiles while airborne, 8 tiles while perched; Cannot detect Stealth Journeyman or higher players]
+  alert --> aggressive : attack [Dive-bomb deals 1× baseDamage; Against unarmoured hand slot 30% chance to knock held item to ground (item not destroyed); Against armoured players no item knock; only damage applies]
+  alert --> idle : calm [Returns to idle 15 seconds after losing target]
+  aggressive --> dead : die [Bird falls to ground on death; loot available at the landing tile]
+  aggressive --> idle : calm [Returns to idle 15 seconds after losing target]
+  alert --> fleeing : flee [Immediately flees on taking any damage; re-engages only if nest is within 5 tiles]
+  aggressive --> fleeing : flee [Immediately flees on taking any damage; re-engages only if nest is within 5 tiles]
+  fleeing --> dead : die [Bird falls to ground on death; loot available at the landing tile]
+  fleeing --> idle : calm [Returns to idle 15 seconds after losing target]
+  fleeing --> aggressive : attack [Dive-bomb deals 1× baseDamage; Against unarmoured hand slot 30% chance to knock held item to ground (item not destroyed); Against armoured players no item knock; only damage applies]
+  dead --> respawning : respawn [Respawn cooldown 10 in-game minutes]
+  respawning --> idle : calm [Returns to idle 15 seconds after losing target]
 ```
 
 | State | Description |

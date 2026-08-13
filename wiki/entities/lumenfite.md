@@ -26,8 +26,8 @@ Translucent crystalline mineral that absorbs ambient light during the day and re
 ```mermaid
 stateDiagram-v2
   [*] --> raw
-  raw --> dressed : dress\n[Requires Masonry  Apprentice or Jewellery  Apprentice; Poorly cut shards emit dim scattered light; precision cutting increases brightness radius]
-  dressed --> inscribed : inscribe\n[Colour runes change emission spectrum but do not increase brightness; Flux runes must be aligned with the crystal's natural axis or the shard shatters]
+  raw --> dressed : dress [Requires Masonry Apprentice or Jewellery Apprentice; Poorly cut shards emit dim scattered light; precision cutting increases brightness radius]
+  dressed --> inscribed : inscribe [Colour runes change emission spectrum but do not increase brightness; Flux runes must be aligned with the crystal's natural axis or the shard shatters]
   inscribed --> [*]
 ```
 

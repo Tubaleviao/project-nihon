@@ -29,8 +29,8 @@ A frontline combatant who has mastered both offensive bladework and defensive sh
 ```mermaid
 stateDiagram-v2
   [*] --> locked
-  locked --> active : unlock\n[Requires Swordsmanship  Journeyman; Requires Shieldcraft  Apprentice]
-  active --> mastered : master\n[Swordsmanship and Shieldcraft must both be at master tier]
+  locked --> active : unlock [Requires Swordsmanship Journeyman; Requires Shieldcraft Apprentice]
+  active --> mastered : master [Swordsmanship and Shieldcraft must both be at master tier]
   mastered --> [*]
 ```
 

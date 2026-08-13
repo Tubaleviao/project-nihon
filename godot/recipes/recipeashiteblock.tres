@@ -1,7 +1,11 @@
 [gd_resource type="Resource" format=3]
 
+[ext_resource type="Script" path="res://godot/recipes/recipeashiteblock.gd" id="1"]
+
 [resource]
+script = ExtResource("1")
 id = ""
+domain = 0
 yield = 0
 description = "Cut and shape raw ashite stone into standard building blocks at a masonry bench."
 tags = ["recipe"]

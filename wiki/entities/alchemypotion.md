@@ -26,9 +26,9 @@ Sealed glass flask containing an Alchemist-brewed reagent. The specific effect d
 ```mermaid
 stateDiagram-v2
   [*] --> pristine
-  pristine --> worn : degrade\n[Potions stored in a cool, dark alchemist workshop degrade at half rate; Broken-condition potions deal a mild poison effect instead of their intended benefit]
-  worn --> damaged : degrade\n[Potions stored in a cool, dark alchemist workshop degrade at half rate; Broken-condition potions deal a mild poison effect instead of their intended benefit]
-  damaged --> broken : degrade\n[Potions stored in a cool, dark alchemist workshop degrade at half rate; Broken-condition potions deal a mild poison effect instead of their intended benefit]
+  pristine --> worn : degrade [Potions stored in a cool, dark alchemist workshop degrade at half rate; Broken-condition potions deal a mild poison effect instead of their intended benefit]
+  worn --> damaged : degrade [Potions stored in a cool, dark alchemist workshop degrade at half rate; Broken-condition potions deal a mild poison effect instead of their intended benefit]
+  damaged --> broken : degrade [Potions stored in a cool, dark alchemist workshop degrade at half rate; Broken-condition potions deal a mild poison effect instead of their intended benefit]
   broken --> [*]
 ```
 

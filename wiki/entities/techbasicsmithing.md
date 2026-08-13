@@ -32,8 +32,8 @@ Foundational metalworking knowledge. Unlocks the forge structure, ferrite smelti
 ```mermaid
 stateDiagram-v2
   [*] --> locked
-  locked --> researching : beginResearch\n[No prerequisites required; Research requires a campfire or forge in the player's settlement]
-  researching --> unlocked : completeResearch\n[Research cost fully paid; all related recipes become craftable]
+  locked --> researching : beginResearch [No prerequisites required; Research requires a campfire or forge in the player's settlement]
+  researching --> unlocked : completeResearch [Research cost fully paid; all related recipes become craftable]
   unlocked --> [*]
 ```
 

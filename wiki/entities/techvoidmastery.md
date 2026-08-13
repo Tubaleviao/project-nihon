@@ -33,8 +33,8 @@ Esoteric void-smithing and void-brewing techniques. Unlocks void-resist potion b
 ```mermaid
 stateDiagram-v2
   [*] --> locked
-  locked --> researching : beginResearch\n[Requires TechArcaneForging  unlocked; Requires TechAlchemy  unlocked; Player must hold voidBurstSurvivor flag; Cannot be initiated from a research interface — begins automatically on first successful Voidite.refine]
-  researching --> unlocked : completeResearch\n[Research cost fully paid; The VoidTouched profession is required to use the unlocked recipes]
+  locked --> researching : beginResearch [Requires TechArcaneForging unlocked; Requires TechAlchemy unlocked; Player must hold voidBurstSurvivor flag; Cannot be initiated from a research interface — begins automatically on first successful Voidite.refine]
+  researching --> unlocked : completeResearch [Research cost fully paid; The VoidTouched profession is required to use the unlocked recipes]
   unlocked --> [*]
 ```
 

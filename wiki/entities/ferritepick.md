@@ -33,12 +33,12 @@ Rough-hewn mining pick forged from ferrite ingots and a thornwood handle. The st
 ```mermaid
 stateDiagram-v2
   [*] --> pristine
-  pristine --> worn : degrade\n[Each mining action consumes durability points scaled by rock hardness]
-  worn --> damaged : degrade\n[Each mining action consumes durability points scaled by rock hardness]
-  damaged --> broken : degrade\n[Each mining action consumes durability points scaled by rock hardness]
-  broken --> pristine : repair\n[Requires a functional forge; Repair costs one ferrite ingot per condition tier restored]
-  damaged --> pristine : repair\n[Requires a functional forge; Repair costs one ferrite ingot per condition tier restored]
-  worn --> pristine : repair\n[Requires a functional forge; Repair costs one ferrite ingot per condition tier restored]
+  pristine --> worn : degrade [Each mining action consumes durability points scaled by rock hardness]
+  worn --> damaged : degrade [Each mining action consumes durability points scaled by rock hardness]
+  damaged --> broken : degrade [Each mining action consumes durability points scaled by rock hardness]
+  broken --> pristine : repair [Requires a functional forge; Repair costs one ferrite ingot per condition tier restored]
+  damaged --> pristine : repair [Requires a functional forge; Repair costs one ferrite ingot per condition tier restored]
+  worn --> pristine : repair [Requires a functional forge; Repair costs one ferrite ingot per condition tier restored]
 ```
 
 | State | Description |

@@ -33,12 +33,12 @@ Full torso armour forged from veilsteel plates over a ferrite under-layer. Excep
 ```mermaid
 stateDiagram-v2
   [*] --> pristine
-  pristine --> worn : degrade\n[Void-damage attacks bypass physical resistance and degrade veilsteel at double rate; Standard physical strikes degrade at half the rate of ferrite armour]
-  worn --> damaged : degrade\n[Void-damage attacks bypass physical resistance and degrade veilsteel at double rate; Standard physical strikes degrade at half the rate of ferrite armour]
-  damaged --> broken : degrade\n[Void-damage attacks bypass physical resistance and degrade veilsteel at double rate; Standard physical strikes degrade at half the rate of ferrite armour]
-  broken --> pristine : repair\n[Requires Smithing  Journeyman; Repair costs one veilsteel ingot and one ferrite ingot]
-  damaged --> pristine : repair\n[Requires Smithing  Journeyman; Repair costs one veilsteel ingot and one ferrite ingot]
-  worn --> pristine : repair\n[Requires Smithing  Journeyman; Repair costs one veilsteel ingot and one ferrite ingot]
+  pristine --> worn : degrade [Void-damage attacks bypass physical resistance and degrade veilsteel at double rate; Standard physical strikes degrade at half the rate of ferrite armour]
+  worn --> damaged : degrade [Void-damage attacks bypass physical resistance and degrade veilsteel at double rate; Standard physical strikes degrade at half the rate of ferrite armour]
+  damaged --> broken : degrade [Void-damage attacks bypass physical resistance and degrade veilsteel at double rate; Standard physical strikes degrade at half the rate of ferrite armour]
+  broken --> pristine : repair [Requires Smithing Journeyman; Repair costs one veilsteel ingot and one ferrite ingot]
+  damaged --> pristine : repair [Requires Smithing Journeyman; Repair costs one veilsteel ingot and one ferrite ingot]
+  worn --> pristine : repair [Requires Smithing Journeyman; Repair costs one veilsteel ingot and one ferrite ingot]
 ```
 
 | State | Description |

@@ -30,8 +30,8 @@ A commercial specialist who leverages trade acumen, diplomatic connections, and 
 ```mermaid
 stateDiagram-v2
   [*] --> locked
-  locked --> active : unlock\n[Requires Trade  Journeyman; Requires Diplomacy  Apprentice; Requires Speechcraft  Apprentice]
-  active --> mastered : master\n[Trade, Diplomacy, and Speechcraft must all be at master tier]
+  locked --> active : unlock [Requires Trade Journeyman; Requires Diplomacy Apprentice; Requires Speechcraft Apprentice]
+  active --> mastered : master [Trade, Diplomacy, and Speechcraft must all be at master tier]
   mastered --> [*]
 ```
 

@@ -1,8 +1,14 @@
 [gd_resource type="Resource" format=3]
 
+[ext_resource type="Script" path="res://godot/skills/alchemy.gd" id="1"]
+
 [resource]
+script = ExtResource("1")
 id = ""
+tier = 0
+xpCurve = 0
 maxLevel = 0
+category = 0
 state_machine_field = "tier"
 initial_state = "novice"
 description = "Brewing potions, reagents, poisons, and catalysts from raw materials. Discovery-driven: recipes are not shown until a player experiments with ingredient combinations."

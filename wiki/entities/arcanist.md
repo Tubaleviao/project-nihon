@@ -29,8 +29,8 @@ A practitioner who has married elemental control with enchanting craft, producin
 ```mermaid
 stateDiagram-v2
   [*] --> locked
-  locked --> active : unlock\n[Requires Elemental Magic  Journeyman; Requires Enchanting  Journeyman]
-  active --> mastered : master\n[Elemental Magic and Enchanting must both be at master tier]
+  locked --> active : unlock [Requires Elemental Magic Journeyman; Requires Enchanting Journeyman]
+  active --> mastered : master [Elemental Magic and Enchanting must both be at master tier]
   mastered --> [*]
 ```
 

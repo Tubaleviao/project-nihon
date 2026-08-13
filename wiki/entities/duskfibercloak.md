@@ -32,12 +32,12 @@ Hooded cloak woven from duskfiber bast. Provides minimal physical protection but
 ```mermaid
 stateDiagram-v2
   [*] --> pristine
-  pristine --> worn : degrade\n[Fire damage instantly jumps condition from worn to broken]
-  worn --> damaged : degrade\n[Fire damage instantly jumps condition from worn to broken]
-  damaged --> broken : degrade\n[Fire damage instantly jumps condition from worn to broken]
-  broken --> pristine : repair\n[Requires two duskfiber strands per condition tier restored; Carpentry  Apprentice]
-  damaged --> pristine : repair\n[Requires two duskfiber strands per condition tier restored; Carpentry  Apprentice]
-  worn --> pristine : repair\n[Requires two duskfiber strands per condition tier restored; Carpentry  Apprentice]
+  pristine --> worn : degrade [Fire damage instantly jumps condition from worn to broken]
+  worn --> damaged : degrade [Fire damage instantly jumps condition from worn to broken]
+  damaged --> broken : degrade [Fire damage instantly jumps condition from worn to broken]
+  broken --> pristine : repair [Requires two duskfiber strands per condition tier restored; Carpentry Apprentice]
+  damaged --> pristine : repair [Requires two duskfiber strands per condition tier restored; Carpentry Apprentice]
+  worn --> pristine : repair [Requires two duskfiber strands per condition tier restored; Carpentry Apprentice]
 ```
 
 | State | Description |

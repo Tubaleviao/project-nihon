@@ -26,8 +26,8 @@ Dense, dark-veined wood from the Thornwood tree that grows in lowland forests. C
 ```mermaid
 stateDiagram-v2
   [*] --> raw
-  raw --> planed : plane\n[Three raw logs yield five planks; Thornwood dulls blades faster than common lumber; tools degrade at 1.5× rate]
-  planed --> treated : treat\n[Treated thornwood gains fire-resistance tier 1; Treatment is a one-time permanent process; the treated state is final — for structures requiring seasonal maintenance, use untreated planks and track durability externally]
+  raw --> planed : plane [Three raw logs yield five planks; Thornwood dulls blades faster than common lumber; tools degrade at 1.5× rate]
+  planed --> treated : treat [Treated thornwood gains fire-resistance tier 1; Treatment is a one-time permanent process; the treated state is final — for structures requiring seasonal maintenance, use untreated planks and track durability externally]
   treated --> [*]
 ```
 

@@ -22,9 +22,9 @@ Buildings are destructible through game systems (fire, siege, structural failure
 ```mermaid
 stateDiagram-v2
   [*] --> proposed
-  proposed --> accepted : accept\n[Community vote must reach quorum]
-  proposed --> superseded : supersede\n[A replacement decision must be accepted first]
-  accepted --> superseded : supersede\n[A replacement decision must be accepted first]
+  proposed --> accepted : accept [Community vote must reach quorum]
+  proposed --> superseded : supersede [A replacement decision must be accepted first]
+  accepted --> superseded : supersede [A replacement decision must be accepted first]
   superseded --> [*]
 ```
 

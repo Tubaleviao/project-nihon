@@ -26,18 +26,18 @@ A lithe, shadowy predator that phases in and out of visibility in sync with the 
 ```mermaid
 stateDiagram-v2
   [*] --> idle
-  idle --> alert : detect\n[Invisible while idle and alert; visibility phase lasts 1 second before each attack; Detects players within 15 tiles; follows silently before initiating attack; Tracking  Expert can reveal a VeilStalker's approximate location via disturbed undergrowth]
-  alert --> aggressive : attack\n[Deals baseDamage; injects venom on hit — venom causes paralysis (3 seconds, 20% chance); Paralysis prevents movement and action; does not stack; Must become visible for 1 second before striking; players can react during this window]
-  alert --> idle : calm\n[Disengages and becomes invisible 20 seconds after losing target]
-  aggressive --> dead : die\n[Death emits a death event; body becomes visible and lootable for 30 seconds before fading]
-  aggressive --> idle : calm\n[Disengages and becomes invisible 20 seconds after losing target]
-  alert --> fleeing : flee\n[Instantly becomes invisible on fleeing; Breaks combat and repositions to 15+ tiles away before becoming trackable again]
-  aggressive --> fleeing : flee\n[Instantly becomes invisible on fleeing; Breaks combat and repositions to 15+ tiles away before becoming trackable again]
-  fleeing --> dead : die\n[Death emits a death event; body becomes visible and lootable for 30 seconds before fading]
-  fleeing --> idle : calm\n[Disengages and becomes invisible 20 seconds after losing target]
-  fleeing --> aggressive : attack\n[Deals baseDamage; injects venom on hit — venom causes paralysis (3 seconds, 20% chance); Paralysis prevents movement and action; does not stack; Must become visible for 1 second before striking; players can react during this window]
-  dead --> respawning : respawn\n[Respawn cooldown  18 in-game minutes; spawns invisible]
-  respawning --> idle : calm\n[Disengages and becomes invisible 20 seconds after losing target]
+  idle --> alert : detect [Invisible while idle and alert; visibility phase lasts 1 second before each attack; Detects players within 15 tiles; follows silently before initiating attack; Tracking Expert can reveal a VeilStalker's approximate location via disturbed undergrowth]
+  alert --> aggressive : attack [Deals baseDamage; injects venom on hit — venom causes paralysis (3 seconds, 20% chance); Paralysis prevents movement and action; does not stack; Must become visible for 1 second before striking; players can react during this window]
+  alert --> idle : calm [Disengages and becomes invisible 20 seconds after losing target]
+  aggressive --> dead : die [Death emits a death event; body becomes visible and lootable for 30 seconds before fading]
+  aggressive --> idle : calm [Disengages and becomes invisible 20 seconds after losing target]
+  alert --> fleeing : flee [Instantly becomes invisible on fleeing; Breaks combat and repositions to 15+ tiles away before becoming trackable again]
+  aggressive --> fleeing : flee [Instantly becomes invisible on fleeing; Breaks combat and repositions to 15+ tiles away before becoming trackable again]
+  fleeing --> dead : die [Death emits a death event; body becomes visible and lootable for 30 seconds before fading]
+  fleeing --> idle : calm [Disengages and becomes invisible 20 seconds after losing target]
+  fleeing --> aggressive : attack [Deals baseDamage; injects venom on hit — venom causes paralysis (3 seconds, 20% chance); Paralysis prevents movement and action; does not stack; Must become visible for 1 second before striking; players can react during this window]
+  dead --> respawning : respawn [Respawn cooldown 18 in-game minutes; spawns invisible]
+  respawning --> idle : calm [Disengages and becomes invisible 20 seconds after losing target]
 ```
 
 | State | Description |

@@ -1,5 +1,8 @@
 [gd_resource type="Resource" format=3]
 
+[ext_resource type="Script" path="res://godot/systems/everythinghastradeoffs.gd" id="1"]
+
 [resource]
+script = ExtResource("1")
 description = "Everything has trade-offs — no dominant strategy; every choice sacrifices something."
 tags = ["system"]

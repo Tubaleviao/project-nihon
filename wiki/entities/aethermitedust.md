@@ -32,9 +32,9 @@ Fine powder ground from raw aethermite ore at an arcane forge. Used as an enchan
 ```mermaid
 stateDiagram-v2
   [*] --> pristine
-  pristine --> worn : degrade\n[Stored in an enchanted container  no degradation; exposed to open air  degrades one tier per in-game week]
-  worn --> damaged : degrade\n[Stored in an enchanted container  no degradation; exposed to open air  degrades one tier per in-game week]
-  damaged --> broken : degrade\n[Stored in an enchanted container  no degradation; exposed to open air  degrades one tier per in-game week]
+  pristine --> worn : degrade [Stored in an enchanted container no degradation; exposed to open air degrades one tier per in-game week]
+  worn --> damaged : degrade [Stored in an enchanted container no degradation; exposed to open air degrades one tier per in-game week]
+  damaged --> broken : degrade [Stored in an enchanted container no degradation; exposed to open air degrades one tier per in-game week]
   broken --> [*]
 ```
 

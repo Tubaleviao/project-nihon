@@ -26,8 +26,8 @@ Blue-black alloy smelted from ferrite ingots and aethermite shards under high he
 ```mermaid
 stateDiagram-v2
   [*] --> unalloyed
-  unalloyed --> refined : refine\n[Requires Smithing  Journeyman; Three ferrite ingots and one refined aethermite shard (form = shard; aethermite dust is not accepted) yield one veilsteel ingot — the shard is an alloying input consumed as a crafting ingredient, not a catalyst; Aethermite.consume is not invoked; Process collapses if forge temperature falls below threshold mid-smelt]
-  refined --> enchanted : enchant\n[Only Voidite-catalyst enchantments succeed on veilsteel; magicAffinity is capped at 0.15 even after enchanting]
+  unalloyed --> refined : refine [Requires Smithing Journeyman; Three ferrite ingots and one refined aethermite shard (form = shard; aethermite dust is not accepted) yield one veilsteel ingot — the shard is an alloying input consumed as a crafting ingredient, not a catalyst; Aethermite.consume is not invoked; Process collapses if forge temperature falls below threshold mid-smelt]
+  refined --> enchanted : enchant [Only Voidite-catalyst enchantments succeed on veilsteel; magicAffinity is capped at 0.15 even after enchanting]
   enchanted --> [*]
 ```
 

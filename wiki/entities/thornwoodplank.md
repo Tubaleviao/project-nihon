@@ -32,12 +32,12 @@ Rough-cut plank milled from thornwood logs. Primary construction and crafting lu
 ```mermaid
 stateDiagram-v2
   [*] --> pristine
-  pristine --> worn : degrade\n[Planks stored indoors or in a covered workshop do not degrade]
-  worn --> damaged : degrade\n[Planks stored indoors or in a covered workshop do not degrade]
-  damaged --> broken : degrade\n[Planks stored indoors or in a covered workshop do not degrade]
-  broken --> pristine : repair\n[Requires Carpentry  Novice; no additional materials consumed]
-  damaged --> pristine : repair\n[Requires Carpentry  Novice; no additional materials consumed]
-  worn --> pristine : repair\n[Requires Carpentry  Novice; no additional materials consumed]
+  pristine --> worn : degrade [Planks stored indoors or in a covered workshop do not degrade]
+  worn --> damaged : degrade [Planks stored indoors or in a covered workshop do not degrade]
+  damaged --> broken : degrade [Planks stored indoors or in a covered workshop do not degrade]
+  broken --> pristine : repair [Requires Carpentry Novice; no additional materials consumed]
+  damaged --> pristine : repair [Requires Carpentry Novice; no additional materials consumed]
+  worn --> pristine : repair [Requires Carpentry Novice; no additional materials consumed]
 ```
 
 | State | Description |

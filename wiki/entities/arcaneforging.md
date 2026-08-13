@@ -25,10 +25,10 @@ Specialized metalworking at arcane forges that processes magical materials — p
 ```mermaid
 stateDiagram-v2
   [*] --> novice
-  novice --> apprentice : advanceTier\n[XP threshold for the target tier must be met]
-  apprentice --> journeyman : advanceTier\n[XP threshold for the target tier must be met]
-  journeyman --> expert : advanceTier\n[XP threshold for the target tier must be met]
-  expert --> master : advanceTier\n[XP threshold for the target tier must be met]
+  novice --> apprentice : advanceTier [XP threshold for the target tier must be met]
+  apprentice --> journeyman : advanceTier [XP threshold for the target tier must be met]
+  journeyman --> expert : advanceTier [XP threshold for the target tier must be met]
+  expert --> master : advanceTier [XP threshold for the target tier must be met]
   master --> [*]
 ```
 

@@ -27,8 +27,8 @@ Fibrous bark harvested from the Duskwood trees that grow only in twilight biomes
 ```mermaid
 stateDiagram-v2
   [*] --> raw
-  raw --> processed : process\n[Requires Woodworking  Apprentice or Textile  Apprentice — either suffices; Processing in daylight hours yields standard thread; twilight hours yield luminous thread]
-  processed --> treated : treat\n[Moon-oil is a rare alchemical reagent — one vial treats ten bundles; Treatment requires isLuminous = true; this is a prose constraint — the crafting system must enforce it explicitly by reading isLuminous from stored state, never re-deriving it from current time-of-day; Treated luminous thread retains glow permanently; untreated luminous thread fades after two in-game days]
+  raw --> processed : process [Requires Woodworking Apprentice or Textile Apprentice — either suffices; Processing in daylight hours yields standard thread; twilight hours yield luminous thread]
+  processed --> treated : treat [Moon-oil is a rare alchemical reagent — one vial treats ten bundles; Treatment requires isLuminous = true; this is a prose constraint — the crafting system must enforce it explicitly by reading isLuminous from stored state, never re-deriving it from current time-of-day; Treated luminous thread retains glow permanently; untreated luminous thread fades after two in-game days]
   treated --> [*]
 ```
 
