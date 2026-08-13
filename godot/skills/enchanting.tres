@@ -1,14 +1,8 @@
 [gd_resource type="Resource" format=3]
 
-[ext_resource type="Script" path="res://godot/skills/enchanting.gd" id="1"]
-
 [resource]
-script = ExtResource("1")
 id = ""
-tier = 0
-xpCurve = 0
 maxLevel = 0
-category = 0
 state_machine_field = "tier"
 initial_state = "novice"
 description = "Imbuing refined items and materials with persistent magical effects using aethermite catalysts. Enchanting strength and complexity scale with tier; requires ArcaneForging-produced components."

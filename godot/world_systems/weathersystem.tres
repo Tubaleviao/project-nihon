@@ -1,9 +1,6 @@
 [gd_resource type="Resource" format=3]
 
-[ext_resource type="Script" path="res://godot/world_systems/weathersystem.gd" id="1"]
-
 [resource]
-script = ExtResource("1")
 id = ""
 description = "Simulates weather across biomes as an emergent world system. Weather is not authored — it emerges from biome parameters, seasonal cycles, and player-built infrastructure (logging, irrigation, chimneys). Effects are gameplay-significant: rain douses fires, storms disable airships, blizzards slow movement and starve uninsulated settlements."
 tags = ["world-system"]

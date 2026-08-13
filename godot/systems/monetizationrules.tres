@@ -1,8 +1,5 @@
 [gd_resource type="Resource" format=3]
 
-[ext_resource type="Script" path="res://godot/systems/monetizationrules.gd" id="1"]
-
 [resource]
-script = ExtResource("1")
 description = "Monetization policy for Project Nihon: fair, transparent, and never pay-to-win. Revenue funds official server infrastructure and ongoing open-source development."
 tags = ["system"]

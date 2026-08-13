@@ -18,8 +18,8 @@ importers:
         specifier: ^0.0.1
         version: 0.0.1
       '@newel/generator-wiki':
-        specifier: ^0.0.1
-        version: 0.0.1
+        specifier: ^0.0.3
+        version: 0.0.3
 
 packages:
 
@@ -197,8 +197,8 @@ packages:
     resolution: {integrity: sha512-XjluRiMv2vmSrWhgMbx1xoG9CqAadLsByIaYlpp/GuYOgFaZBS+u8AUl0xMOeLmwHNHB4UYH4s69RGkv2uDV+A==}
     engines: {node: '>=20'}
 
-  '@newel/generator-wiki@0.0.1':
-    resolution: {integrity: sha512-fthfkA3118VcnP9njGJop2ffs83bMHv3m9fHZCYplXERP8UrTe8C8h/fBUcPpyNzfTNvFWK3+O6bGLC7gxS+2w==}
+  '@newel/generator-wiki@0.0.3':
+    resolution: {integrity: sha512-oPUm/XQzSkt0WpB3UKNjqbcHD9VvZjDdTRCkMVG4VaG7J1Q6JEMbj9+gVNVcfvhgXV/fxgAqvk+stJ3+VVsUbg==}
     engines: {node: '>=20'}
 
   commander@12.1.0:
@@ -318,9 +318,9 @@ snapshots:
     dependencies:
       '@newel/core': 0.2.0
 
-  '@newel/generator-wiki@0.0.1':
+  '@newel/generator-wiki@0.0.3':
     dependencies:
-      '@newel/core': 0.2.0
+      '@newel/core': 0.3.0
 
   commander@12.1.0: {}
 
