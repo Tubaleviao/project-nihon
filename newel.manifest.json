@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-13T20:12:12.714Z",
+  "generatedAt": "2026-08-13T22:08:15.899Z",
   "schemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01",
   "files": [
     {
@@ -1469,7 +1469,7 @@
     {
       "path": "godot/items/ferritepick.tres",
       "generator": "godot",
-      "contentHash": "sha256:4d3d4f71eed013c658bd41e8cf7033c9eb22ec79c7f3c724f9fd26796dbfe3dd",
+      "contentHash": "sha256:f0f681fa5b55c2b8a5fb3210c62cf6d2b1286c78d931ea31af2ee79d855bf8e9",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -1481,7 +1481,7 @@
     {
       "path": "godot/items/veilsteelpick.tres",
       "generator": "godot",
-      "contentHash": "sha256:577311e0a5c57dfe05f31338ef07354dc99153bacdd1f1d7eb6e3a9186cb9ba1",
+      "contentHash": "sha256:d53da32256f4592c32d94b37d4ac635280f9f150bac1cedb9099aa410002e428",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -1493,7 +1493,7 @@
     {
       "path": "godot/items/carpenteraxe.tres",
       "generator": "godot",
-      "contentHash": "sha256:3c96006817f81aa4252c1d85afc569e0c56dc1ace57dab4739912b2b2674245c",
+      "contentHash": "sha256:e700641d984cca2aa064f35535ed5dbef5d8fecfb4eb840de9ca26603fff9d63",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -1505,7 +1505,7 @@
     {
       "path": "godot/items/ferriteshortsword.tres",
       "generator": "godot",
-      "contentHash": "sha256:65e637eedef8354f2897d2f3a720bb11852c515f3d64292ecc690528a8e6928d",
+      "contentHash": "sha256:072b12d59d125a447e5041c15d9a47b51f5b8ac3e49fb59c41091278b5597f56",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -1517,7 +1517,7 @@
     {
       "path": "godot/items/veilsteellongsword.tres",
       "generator": "godot",
-      "contentHash": "sha256:d8bd451199eae77f678b0d0dee8a19bc41ebde9b5fe9886abda8dc1dd4398e6a",
+      "contentHash": "sha256:6ef59d81f81e1ae66303be1425f257db5a668ce08c3952969e12c628028bc310",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -1529,7 +1529,7 @@
     {
       "path": "godot/items/aethermitebow.tres",
       "generator": "godot",
-      "contentHash": "sha256:341e66b461b38d77d8a54248728756f8412b6bbc5cf5ff234e3dfd63ebda48f0",
+      "contentHash": "sha256:bfeb1a2ee2a4fe9a1a5e6122233f20f6942ae13ed56f91e0736abf85b7d39814",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -1541,7 +1541,7 @@
     {
       "path": "godot/items/voiditeedge.tres",
       "generator": "godot",
-      "contentHash": "sha256:e762b2f5e32a5e93869f01b9be455ad62a3366a5f150bd749f62bb2992237427",
+      "contentHash": "sha256:9216c77cb72dfd2d15cf95044b8ca5a7aca5b7469924be133866aaee377c008f",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -1553,7 +1553,7 @@
     {
       "path": "godot/items/ferritehelmet.tres",
       "generator": "godot",
-      "contentHash": "sha256:a5003f192461d1d9c0474b2896029b72261ec164b4cd40b78f3e5d8bd524c64d",
+      "contentHash": "sha256:979360c4065e4050d0e28c8e16d6cf4d4c52796dbe31fff7e1876782edf7853d",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -1565,7 +1565,7 @@
     {
       "path": "godot/items/veilsteelchestplate.tres",
       "generator": "godot",
-      "contentHash": "sha256:30cf89abde02145f7ac13e278eeb316ea66b0a0c50e0f359f5a9b42b8afc7c53",
+      "contentHash": "sha256:9dd8baf3a028e46334b89b80595bb5c2a4327ca0f5b8d6341d63a697ec8ca712",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -1577,7 +1577,7 @@
     {
       "path": "godot/items/duskfibercloak.tres",
       "generator": "godot",
-      "contentHash": "sha256:a02b998ea57c3a3dd956830b9dcfd3e563b3d40bec5664670a78d38fe39a8f69",
+      "contentHash": "sha256:e5ff918f718e422abe817de63ab6fdadd16fe0e67fe6e2ae32a71c498f0c3d50",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -1589,7 +1589,7 @@
     {
       "path": "godot/items/fieldrations.tres",
       "generator": "godot",
-      "contentHash": "sha256:39b885e72f0685386858dee70086e65c6bc73f9fc9dfc9a53779eaa52c20e806",
+      "contentHash": "sha256:3ebce4bd1b8954d8e6833e0a492eee1cdd166222ea0dcdc718bda11fd6964fba",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -1601,7 +1601,7 @@
     {
       "path": "godot/items/alchemypotion.tres",
       "generator": "godot",
-      "contentHash": "sha256:07debd1596b745fa4cce071f2b5bca14014a1b1d3842fc79cc5ae348eba4fd51",
+      "contentHash": "sha256:1117b19fcf457cbc8839ea05eb44ddf714f5ff0cdcd1384c0d45941c6f2479fa",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -1613,7 +1613,7 @@
     {
       "path": "godot/items/ferriteingot.tres",
       "generator": "godot",
-      "contentHash": "sha256:fb2165aa0a340a80bde3823c86d273754175046fc474e98661c0eac128398f33",
+      "contentHash": "sha256:74eade9a427f038952458968fd658a458e5e72e22bd7b413c489dbfea79c141c",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -1625,7 +1625,7 @@
     {
       "path": "godot/items/veilsteelingot.tres",
       "generator": "godot",
-      "contentHash": "sha256:2b6b0cba7921bc6def9af9b24639b2a6cadac891e7e47bb57729e03a07063d4d",
+      "contentHash": "sha256:645ea5f1859fda909b8430a22718106800bde846fb6d9de430af1da7db3f81c0",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -1637,7 +1637,7 @@
     {
       "path": "godot/items/thornwoodplank.tres",
       "generator": "godot",
-      "contentHash": "sha256:49589f3ada2117a049012634919de2c99b8a81476362a08b1d632163f7910b07",
+      "contentHash": "sha256:4dcae746493f2128aaf64b56e26ed64bd2d5636d6802a96a95e30db56a6131f2",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -1649,7 +1649,7 @@
     {
       "path": "godot/items/aethermitedust.tres",
       "generator": "godot",
-      "contentHash": "sha256:768d3aa2d2baa5bcdbb3a1b97ad6a7d8e2e209006fa0a7a92966be910df8213c",
+      "contentHash": "sha256:b1d8ca24a1120230c854e0e6efb5ebad5305f49bb920d0463c66f31c82172ce7",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -1661,7 +1661,7 @@
     {
       "path": "godot/items/aethermiteshard.tres",
       "generator": "godot",
-      "contentHash": "sha256:82013cc3d846a3c12c04c3d84dfc1d2dd6751b09ffe84e71f0e7a4f572e6e0cb",
+      "contentHash": "sha256:fe39c2ec929ffd2c2ec2cdea81c399c19e02f496def48177c5e0930bdc6131d2",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -1673,7 +1673,7 @@
     {
       "path": "godot/items/ashiteblock.tres",
       "generator": "godot",
-      "contentHash": "sha256:9464dfe60a36ec122a71872169765a6e73441695e2dcfe6a24136c0d6511859c",
+      "contentHash": "sha256:6dd0aae2e1cab2c4e5295fd7a3215f218fcf7372a8803b1538b15c6bc105d3ed",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -1685,7 +1685,7 @@
     {
       "path": "godot/items/enchantedaethermiteshard.tres",
       "generator": "godot",
-      "contentHash": "sha256:d21574ac5099e95fd3e5906895141f578a7187a7cf15ff23587261218bc91789",
+      "contentHash": "sha256:0d2f385a9e1d1ea628c91268bc02aa2565e1d046b83cf5b6356e4c5168b0babb",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -1697,7 +1697,7 @@
     {
       "path": "godot/items/voidrunetablet.tres",
       "generator": "godot",
-      "contentHash": "sha256:398418543c63de308eddb933ef4e37dd33115f8e1d43befbafb1260bd1ff3da7",
+      "contentHash": "sha256:5ce71a95818f2ec7329e0715644fb32831b0c2a521e9d432c0e70e3a4ef8c10a",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -1709,7 +1709,7 @@
     {
       "path": "godot/items/lumenfiteorb.tres",
       "generator": "godot",
-      "contentHash": "sha256:d56c3f5c50fa274037f358cefea9d7ff66952bb7a9b2c146c21c5254802fae91",
+      "contentHash": "sha256:6dbafcd366aa9a63c4db309bdecd46e031481a0bbba974041e5e370fb40c844c",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -2009,7 +2009,7 @@
     {
       "path": "godot/creatures/forestboar.tres",
       "generator": "godot",
-      "contentHash": "sha256:41479165b6d19e2f91fb7f989d5167197b3e8bef6524b779b812155ee1a0cb98",
+      "contentHash": "sha256:5e6ec9d9888494bf0894b3a328289250af71d1ac6d9ccbb3648238251707e0e1",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -2021,7 +2021,7 @@
     {
       "path": "godot/creatures/graywolfpack.tres",
       "generator": "godot",
-      "contentHash": "sha256:f6b52b4e17384c581d5db847f10fca8dd6b2290e8dc0b58d97f58471fe25fdf1",
+      "contentHash": "sha256:772dfc1b71f8ea81226bb53c23b3398a04eb688e9b8abe99620571fec0144cb4",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -2033,7 +2033,7 @@
     {
       "path": "godot/creatures/steppebison.tres",
       "generator": "godot",
-      "contentHash": "sha256:b486820c9b110cad7016eaa0554718b6ac3a2566f9ee7ddb05b9c44aca38b5d1",
+      "contentHash": "sha256:5a8d7cc349ee6953067fa91fa9199cfe179f554d18f9a795b5ea15a54eafb2e5",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -2045,7 +2045,7 @@
     {
       "path": "godot/creatures/ridgehawk.tres",
       "generator": "godot",
-      "contentHash": "sha256:b580c7542cd24da271e0e8cd0488118162c7e477a4158bdc93da4a556c951e4a",
+      "contentHash": "sha256:befcc9077393149cef80295ca970ec32f0eaba34558999dbda34c6b5e579240c",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -2057,7 +2057,7 @@
     {
       "path": "godot/creatures/lavaslug.tres",
       "generator": "godot",
-      "contentHash": "sha256:38cf629d1da73a5cec744af9316f8994d48d0bb9349ade0feeae01bd0951a0d6",
+      "contentHash": "sha256:abd402ad7a90cb579cbb1bcc18b12f19c70648c12c1f21920199eaf332c0e189",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -2069,7 +2069,7 @@
     {
       "path": "godot/creatures/cindergargoyle.tres",
       "generator": "godot",
-      "contentHash": "sha256:3447d2f3c41829ff58d224fa599dabf920cade2a722abf99508e09b3d8f67fed",
+      "contentHash": "sha256:1fc93414b4d318eb6f6a79003af0ab372ec81409e6fb039fc11528bdefe8b914",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -2081,7 +2081,7 @@
     {
       "path": "godot/creatures/glimmerfox.tres",
       "generator": "godot",
-      "contentHash": "sha256:baaefc8d80c5dc6997da20f3679c7cae011b4348a4d15790aaba6813c7de41e3",
+      "contentHash": "sha256:64b0ef0072c6ef6d41bfc5446a709cfdf36635bfd3e260c74b3b5f77845c8195",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -2093,7 +2093,7 @@
     {
       "path": "godot/creatures/veilstalker.tres",
       "generator": "godot",
-      "contentHash": "sha256:fb9709d9828459083e716e8708ad75f0192e213152aef33aa23c286830a198b1",
+      "contentHash": "sha256:d58e4e86474f64194e5c94ebb9fd425e4da17ebd7f762c9dd05cb44d159b0ceb",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -2105,7 +2105,7 @@
     {
       "path": "godot/creatures/voidserpent.tres",
       "generator": "godot",
-      "contentHash": "sha256:64e81b96be006e82c9fa6392670cc6369dcffa0cbe9c6e07b2541d3cafecef45",
+      "contentHash": "sha256:e6435bbd9aaf1a2787058248c3622aa01489c49f085937cf6b599dec97d51893",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {
@@ -2117,7 +2117,7 @@
     {
       "path": "godot/creatures/riftwarden.tres",
       "generator": "godot",
-      "contentHash": "sha256:eac2af8455c17e5ea48fdb688e79a0e1a00dfb779697f27b62913e214bcc3ec8",
+      "contentHash": "sha256:51d23b31ec7dd9480b3ae53055dbe161cd04742c68ca9ee78700c029bd756685",
       "fromSchemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01"
     },
     {

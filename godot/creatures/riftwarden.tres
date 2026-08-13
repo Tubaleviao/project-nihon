@@ -6,8 +6,8 @@
 script = ExtResource("1")
 id = ""
 state = 0
-tier = "5"
-aggressionLevel = "aggressive"
+tier = 4
+aggressionLevel = 2
 baseHp = 2000
 baseDamage = 90
 state_machine_field = "state"
