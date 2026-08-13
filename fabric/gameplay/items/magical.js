@@ -12,10 +12,10 @@ module.exports = {
     fields: {
       id:        { type: 'uuid', primaryKey: true },
       condition: { type: 'enum', values: DURABILITY_STATES },
-      weight:    { type: 'decimal', description: 'kg per shard' },
-      rarity:    { type: 'enum', values: RARITIES },
-      stackable: { type: 'boolean', description: 'True; stacks up to 10 per slot' },
-      durability: { type: 'integer', description: 'Charge level; 0 means the shard is spent' },
+      weight:    { type: 'decimal', description: 'kg per shard', defaultValue: 0.05 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'rare' },
+      stackable: { type: 'boolean', description: 'True; stacks up to 10 per slot', defaultValue: true },
+      durability: { type: 'integer', description: 'Charge level; 0 means the shard is spent', defaultValue: 50 },
     },
     relations: {
       aethermite: { name: 'aethermite', kind: 'hasOne', target: 'Aethermite' },
@@ -49,10 +49,10 @@ module.exports = {
     fields: {
       id:        { type: 'uuid', primaryKey: true },
       condition: { type: 'enum', values: DURABILITY_STATES },
-      weight:    { type: 'decimal', description: 'kg per tablet' },
-      rarity:    { type: 'enum', values: RARITIES },
-      stackable: { type: 'boolean', description: 'False; each tablet is unique' },
-      durability: { type: 'integer', description: 'Rune integrity; corrupts under anti-magic fields' },
+      weight:    { type: 'decimal', description: 'kg per tablet', defaultValue: 0.4 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'epic' },
+      stackable: { type: 'boolean', description: 'False; each tablet is unique', defaultValue: false },
+      durability: { type: 'integer', description: 'Rune integrity; corrupts under anti-magic fields', defaultValue: 200 },
     },
     relations: {
       voidite: { name: 'voidite', kind: 'hasOne', target: 'Voidite' },
@@ -89,10 +89,10 @@ module.exports = {
     fields: {
       id:        { type: 'uuid', primaryKey: true },
       condition: { type: 'enum', values: DURABILITY_STATES },
-      weight:    { type: 'decimal', description: 'kg per orb' },
-      rarity:    { type: 'enum', values: RARITIES },
-      stackable: { type: 'boolean', description: 'True; stacks up to 5 per slot' },
-      durability: { type: 'integer', description: 'Charge; depletes with use' },
+      weight:    { type: 'decimal', description: 'kg per orb', defaultValue: 0.15 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'rare' },
+      stackable: { type: 'boolean', description: 'True; stacks up to 5 per slot', defaultValue: true },
+      durability: { type: 'integer', description: 'Charge; depletes with use', defaultValue: 150 },
     },
     relations: {
       lumenfite: { name: 'lumenfite', kind: 'hasOne', target: 'Lumenfite' },

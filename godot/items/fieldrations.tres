@@ -6,10 +6,10 @@
 script = ExtResource("1")
 id = ""
 condition = 0
-weight = 0.0
-rarity = 0
-stackable = false
-durability = 0
+weight = 0.3
+rarity = "common"
+stackable = true
+durability = 100
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "Dried grain-and-herb ration pack prepared from temperate grassland crops. Restores a modest amount of stamina and prevents hunger debuff for several in-game hours."

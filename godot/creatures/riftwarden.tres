@@ -6,10 +6,10 @@
 script = ExtResource("1")
 id = ""
 state = 0
-tier = 0
-aggressionLevel = 0
-baseHp = 0
-baseDamage = 0
+tier = "5"
+aggressionLevel = "aggressive"
+baseHp = 2000
+baseDamage = 90
 state_machine_field = "state"
 initial_state = "idle"
 description = "An ancient construct of crystallised voidite that guards the innermost rift boundary. Moves slowly but is virtually immune to physical damage. Warden fragments are the rarest material in the game — a single Warden kill can supply a guild with enough voidite-grade components for weeks."

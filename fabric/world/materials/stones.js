@@ -31,10 +31,10 @@ module.exports = {
     fields: {
       id:           { type: 'uuid', primaryKey: true },
       state:        { type: 'enum', values: ['raw', 'dressed', 'inscribed'] },
-      density:      { type: 'decimal', description: 'g/cm³; notably light for a stone' },
-      hardness:     { type: 'decimal', description: 'Mohs equivalent 1–10' },
-      conductivity: { type: 'decimal', description: 'Thermal conductivity 0–1; low, good insulator' },
-      magicAffinity: { type: 'decimal', description: 'Capacity to hold enchantment 0–1; weak — accepts basic ward runes only' },
+      density:      { type: 'decimal', description: 'g/cm³; notably light for a stone', defaultValue: 1.8 },
+      hardness:     { type: 'decimal', description: 'Mohs equivalent 1–10', defaultValue: 3.5 },
+      conductivity: { type: 'decimal', description: 'Thermal conductivity 0–1; low, good insulator', defaultValue: 0.18 },
+      magicAffinity: { type: 'decimal', description: 'Capacity to hold enchantment 0–1; weak — accepts basic ward runes only', defaultValue: 0.15 },
     },
     stateMachine: stoneStateMachine(),
     behaviors: {
@@ -68,10 +68,10 @@ module.exports = {
     fields: {
       id:           { type: 'uuid', primaryKey: true },
       state:        { type: 'enum', values: ['raw', 'dressed', 'inscribed'] },
-      density:      { type: 'decimal', description: 'g/cm³; moderate' },
-      hardness:     { type: 'decimal', description: 'Mohs equivalent 1–10; brittle, shatters under impact' },
-      conductivity: { type: 'decimal', description: 'Thermal conductivity 0–1; near zero — poor heat conductor despite its light-energy affinity' },
-      magicAffinity: { type: 'decimal', description: 'Capacity to hold enchantment 0–1; high — specialised for light-type magic' },
+      density:      { type: 'decimal', description: 'g/cm³; moderate', defaultValue: 2.6 },
+      hardness:     { type: 'decimal', description: 'Mohs equivalent 1–10; brittle, shatters under impact', defaultValue: 4.0 },
+      conductivity: { type: 'decimal', description: 'Thermal conductivity 0–1; near zero — poor heat conductor despite its light-energy affinity', defaultValue: 0.02 },
+      magicAffinity: { type: 'decimal', description: 'Capacity to hold enchantment 0–1; high — specialised for light-type magic', defaultValue: 0.75 },
     },
     stateMachine: stoneStateMachine(),
     behaviors: {

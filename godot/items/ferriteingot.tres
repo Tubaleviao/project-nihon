@@ -6,10 +6,10 @@
 script = ExtResource("1")
 id = ""
 condition = 0
-weight = 0.0
-rarity = 0
-stackable = false
-durability = 0
+weight = 1.0
+rarity = "common"
+stackable = true
+durability = 200
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "Smelted ferrite bar ready for smithing. The most common crafting intermediate; used in tools, weapons, armour, and as a construction material for forges and workshops."

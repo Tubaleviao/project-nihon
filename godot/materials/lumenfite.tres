@@ -6,10 +6,10 @@
 script = ExtResource("1")
 id = ""
 state = 0
-density = 0.0
-hardness = 0.0
-conductivity = 0.0
-magicAffinity = 0.0
+density = 2.6
+hardness = 4.0
+conductivity = 0.02
+magicAffinity = 0.75
 state_machine_field = "state"
 initial_state = "raw"
 description = "Translucent crystalline mineral that absorbs ambient light during the day and releases it slowly at night. Found in shallow cave systems and cliff faces. Valued for lighting infrastructure without open flames."

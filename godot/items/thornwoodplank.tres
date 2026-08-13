@@ -6,10 +6,10 @@
 script = ExtResource("1")
 id = ""
 condition = 0
-weight = 0.0
-rarity = 0
-stackable = false
-durability = 0
+weight = 0.7
+rarity = "common"
+stackable = true
+durability = 150
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "Rough-cut plank milled from thornwood logs. Primary construction and crafting lumber; used in furniture, workshop frames, bows, handles, and basic structures."

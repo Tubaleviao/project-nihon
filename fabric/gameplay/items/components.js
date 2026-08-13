@@ -12,10 +12,10 @@ module.exports = {
     fields: {
       id:        { type: 'uuid', primaryKey: true },
       condition: { type: 'enum', values: DURABILITY_STATES },
-      weight:    { type: 'decimal', description: 'kg per ingot' },
-      rarity:    { type: 'enum', values: RARITIES },
-      stackable: { type: 'boolean', description: 'True; stacks up to 50 per slot' },
-      durability: { type: 'integer', description: 'Structural integrity; degrades only under deliberate stress' },
+      weight:    { type: 'decimal', description: 'kg per ingot', defaultValue: 1.0 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
+      stackable: { type: 'boolean', description: 'True; stacks up to 50 per slot', defaultValue: true },
+      durability: { type: 'integer', description: 'Structural integrity; degrades only under deliberate stress', defaultValue: 200 },
     },
     relations: {
       ferrite: { name: 'ferrite', kind: 'hasOne', target: 'Ferrite' },
@@ -45,10 +45,10 @@ module.exports = {
     fields: {
       id:        { type: 'uuid', primaryKey: true },
       condition: { type: 'enum', values: DURABILITY_STATES },
-      weight:    { type: 'decimal', description: 'kg per plank' },
-      rarity:    { type: 'enum', values: RARITIES },
-      stackable: { type: 'boolean', description: 'True; stacks up to 30 per slot' },
-      durability: { type: 'integer', description: 'Structural integrity' },
+      weight:    { type: 'decimal', description: 'kg per plank', defaultValue: 0.7 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
+      stackable: { type: 'boolean', description: 'True; stacks up to 30 per slot', defaultValue: true },
+      durability: { type: 'integer', description: 'Structural integrity', defaultValue: 150 },
     },
     relations: {
       thornwood: { name: 'thornwood', kind: 'hasOne', target: 'Thornwood' },
@@ -78,10 +78,10 @@ module.exports = {
     fields: {
       id:        { type: 'uuid', primaryKey: true },
       condition: { type: 'enum', values: DURABILITY_STATES },
-      weight:    { type: 'decimal', description: 'kg per unit' },
-      rarity:    { type: 'enum', values: RARITIES },
-      stackable: { type: 'boolean', description: 'True; stacks up to 99 per slot' },
-      durability: { type: 'integer', description: 'Magical potency; dissipates if stored poorly' },
+      weight:    { type: 'decimal', description: 'kg per unit', defaultValue: 0.02 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
+      stackable: { type: 'boolean', description: 'True; stacks up to 99 per slot', defaultValue: true },
+      durability: { type: 'integer', description: 'Magical potency; dissipates if stored poorly', defaultValue: 80 },
     },
     relations: {
       aethermite: { name: 'aethermite', kind: 'hasOne', target: 'Aethermite' },
@@ -106,10 +106,10 @@ module.exports = {
     fields: {
       id:        { type: 'uuid', primaryKey: true },
       condition: { type: 'enum', values: DURABILITY_STATES },
-      weight:    { type: 'decimal', description: 'kg per ingot' },
-      rarity:    { type: 'enum', values: RARITIES },
-      stackable: { type: 'boolean', description: 'True; stacks up to 30 per slot' },
-      durability: { type: 'integer', description: 'Structural integrity; degrades only under deliberate stress' },
+      weight:    { type: 'decimal', description: 'kg per ingot', defaultValue: 1.4 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
+      stackable: { type: 'boolean', description: 'True; stacks up to 30 per slot', defaultValue: true },
+      durability: { type: 'integer', description: 'Structural integrity; degrades only under deliberate stress', defaultValue: 200 },
     },
     relations: {
       veilsteel: { name: 'veilsteel', kind: 'hasOne', target: 'Veilsteel' },
@@ -140,10 +140,10 @@ module.exports = {
     fields: {
       id:        { type: 'uuid', primaryKey: true },
       condition: { type: 'enum', values: DURABILITY_STATES },
-      weight:    { type: 'decimal', description: 'kg per shard' },
-      rarity:    { type: 'enum', values: RARITIES },
-      stackable: { type: 'boolean', description: 'True; stacks up to 20 per slot' },
-      durability: { type: 'integer', description: 'Crystal integrity; shatters under standard forge temperatures — must be processed in an arcane forge' },
+      weight:    { type: 'decimal', description: 'kg per shard', defaultValue: 0.08 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
+      stackable: { type: 'boolean', description: 'True; stacks up to 20 per slot', defaultValue: true },
+      durability: { type: 'integer', description: 'Crystal integrity; shatters under standard forge temperatures — must be processed in an arcane forge', defaultValue: 60 },
     },
     relations: {
       aethermite: { name: 'aethermite', kind: 'hasOne', target: 'Aethermite' },
@@ -169,10 +169,10 @@ module.exports = {
     fields: {
       id:        { type: 'uuid', primaryKey: true },
       condition: { type: 'enum', values: DURABILITY_STATES },
-      weight:    { type: 'decimal', description: 'kg per block' },
-      rarity:    { type: 'enum', values: RARITIES },
-      stackable: { type: 'boolean', description: 'True; stacks up to 20 per slot' },
-      durability: { type: 'integer', description: 'Structural integrity' },
+      weight:    { type: 'decimal', description: 'kg per block', defaultValue: 3.5 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
+      stackable: { type: 'boolean', description: 'True; stacks up to 20 per slot', defaultValue: true },
+      durability: { type: 'integer', description: 'Structural integrity', defaultValue: 300 },
     },
     relations: {
       ashite: { name: 'ashite', kind: 'hasOne', target: 'Ashite' },

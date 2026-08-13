@@ -6,10 +6,10 @@
 script = ExtResource("1")
 id = ""
 condition = 0
-weight = 0.0
-rarity = 0
+weight = 0.6
+rarity = "uncommon"
 stackable = false
-durability = 0
+durability = 80
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "Hooded cloak woven from duskfiber bast. Provides minimal physical protection but grants a passive stealth bonus in low-light conditions and dampens magical signature detection."

@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-11T16:54:22.914Z",
-  "schemaHash": "sha256:33ec23aeaffca2e3a3a25fd96b3b312c95911438f63307279dfdd009ae604e4e",
+  "generatedAt": "2026-08-13T20:12:12.714Z",
+  "schemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -1163,7 +1163,8 @@
             "description": "g/cm³; governs item weight",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 7.2
           },
           "hardness": {
             "name": "hardness",
@@ -1171,7 +1172,8 @@
             "description": "Mohs-equivalent scale 1–10",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 4.5
           },
           "conductivity": {
             "name": "conductivity",
@@ -1179,7 +1181,8 @@
             "description": "Thermal conductivity rating 0–1",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.4
           },
           "magicAffinity": {
             "name": "magicAffinity",
@@ -1187,7 +1190,8 @@
             "description": "Capacity to hold enchantment 0–1",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.1
           }
         },
         "relations": {},
@@ -1298,7 +1302,8 @@
             "description": "g/cm³; governs item weight",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 8.1
           },
           "hardness": {
             "name": "hardness",
@@ -1306,7 +1311,8 @@
             "description": "Mohs-equivalent scale 1–10",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 7.8
           },
           "conductivity": {
             "name": "conductivity",
@@ -1314,7 +1320,8 @@
             "description": "Thermal conductivity rating 0–1",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.05
           },
           "magicAffinity": {
             "name": "magicAffinity",
@@ -1322,7 +1329,8 @@
             "description": "Capacity to hold enchantment 0–1; deliberately low — anti-magic is an intrinsic structural trait, not a held enchantment",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.05
           }
         },
         "relations": {},
@@ -1448,7 +1456,8 @@
             "description": "g/cm³; governs item weight",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 4.3
           },
           "hardness": {
             "name": "hardness",
@@ -1456,7 +1465,8 @@
             "description": "Mohs-equivalent scale 1–10",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 5
           },
           "conductivity": {
             "name": "conductivity",
@@ -1464,7 +1474,8 @@
             "description": "Thermal conductivity rating 0–1",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.6
           },
           "magicAffinity": {
             "name": "magicAffinity",
@@ -1472,7 +1483,8 @@
             "description": "Capacity to hold enchantment 0–1",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.8
           }
         },
         "relations": {},
@@ -1613,7 +1625,8 @@
             "description": "g/cm³; governs item weight",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 9.5
           },
           "hardness": {
             "name": "hardness",
@@ -1621,7 +1634,8 @@
             "description": "Mohs-equivalent scale 1–10",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 8.5
           },
           "conductivity": {
             "name": "conductivity",
@@ -1629,7 +1643,8 @@
             "description": "Thermal conductivity rating 0–1",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.9
           },
           "magicAffinity": {
             "name": "magicAffinity",
@@ -1637,7 +1652,8 @@
             "description": "Capacity to hold enchantment 0–1",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.95
           }
         },
         "relations": {},
@@ -1750,7 +1766,8 @@
             "description": "g/cm³; heavier than most woods",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.85
           },
           "hardness": {
             "name": "hardness",
@@ -1758,7 +1775,8 @@
             "description": "Janka hardness equivalent 0–1",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.7
           },
           "conductivity": {
             "name": "conductivity",
@@ -1766,7 +1784,8 @@
             "description": "Thermal conductivity 0–1; low for wood",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.12
           },
           "magicAffinity": {
             "name": "magicAffinity",
@@ -1774,7 +1793,8 @@
             "description": "Capacity to hold enchantment 0–1; very low — dense wood resists magical binding",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.05
           }
         },
         "relations": {},
@@ -1885,7 +1905,8 @@
             "description": "g/cm³; extremely low — used as fibre not lumber",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.15
           },
           "hardness": {
             "name": "hardness",
@@ -1893,7 +1914,8 @@
             "description": "Janka equivalent 0–1; low but flexible",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.2
           },
           "conductivity": {
             "name": "conductivity",
@@ -1901,7 +1923,8 @@
             "description": "Thermal conductivity 0–1",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.08
           },
           "magicAffinity": {
             "name": "magicAffinity",
@@ -1909,7 +1932,8 @@
             "description": "Capacity to hold enchantment 0–1; moderate — bioluminescent nature enhances magical bonding",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.45
           },
           "isLuminous": {
             "name": "isLuminous",
@@ -2030,7 +2054,8 @@
             "description": "g/cm³; notably light for a stone",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 1.8
           },
           "hardness": {
             "name": "hardness",
@@ -2038,7 +2063,8 @@
             "description": "Mohs equivalent 1–10",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 3.5
           },
           "conductivity": {
             "name": "conductivity",
@@ -2046,7 +2072,8 @@
             "description": "Thermal conductivity 0–1; low, good insulator",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.18
           },
           "magicAffinity": {
             "name": "magicAffinity",
@@ -2054,7 +2081,8 @@
             "description": "Capacity to hold enchantment 0–1; weak — accepts basic ward runes only",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.15
           }
         },
         "relations": {},
@@ -2165,7 +2193,8 @@
             "description": "g/cm³; moderate",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 2.6
           },
           "hardness": {
             "name": "hardness",
@@ -2173,7 +2202,8 @@
             "description": "Mohs equivalent 1–10; brittle, shatters under impact",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 4
           },
           "conductivity": {
             "name": "conductivity",
@@ -2181,7 +2211,8 @@
             "description": "Thermal conductivity 0–1; near zero — poor heat conductor despite its light-energy affinity",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.02
           },
           "magicAffinity": {
             "name": "magicAffinity",
@@ -2189,7 +2220,8 @@
             "description": "Capacity to hold enchantment 0–1; high — specialised for light-type magic",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.75
           }
         },
         "relations": {},
@@ -7677,7 +7709,8 @@
             "description": "kg; affects carry capacity",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 2.8
           },
           "rarity": {
             "name": "rarity",
@@ -7691,7 +7724,8 @@
               "epic",
               "legendary"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "common"
           },
           "stackable": {
             "name": "stackable",
@@ -7699,7 +7733,8 @@
             "description": "Whether multiple instances stack in inventory",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": false
           },
           "durability": {
             "name": "durability",
@@ -7707,7 +7742,8 @@
             "description": "Remaining durability points before condition degrades",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 80
           }
         },
         "relations": {
@@ -7871,7 +7907,8 @@
             "description": "kg; affects carry capacity",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 4.5
           },
           "rarity": {
             "name": "rarity",
@@ -7885,7 +7922,8 @@
               "epic",
               "legendary"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "uncommon"
           },
           "stackable": {
             "name": "stackable",
@@ -7893,7 +7931,8 @@
             "description": "Whether multiple instances stack in inventory",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": false
           },
           "durability": {
             "name": "durability",
@@ -7901,7 +7940,8 @@
             "description": "Remaining durability points before condition degrades",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 160
           }
         },
         "relations": {
@@ -8069,7 +8109,8 @@
             "description": "kg; affects carry capacity",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 2.3
           },
           "rarity": {
             "name": "rarity",
@@ -8083,7 +8124,8 @@
               "epic",
               "legendary"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "common"
           },
           "stackable": {
             "name": "stackable",
@@ -8091,7 +8133,8 @@
             "description": "Whether multiple instances stack in inventory",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": false
           },
           "durability": {
             "name": "durability",
@@ -8099,7 +8142,8 @@
             "description": "Remaining durability points before condition degrades",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 90
           }
         },
         "relations": {
@@ -8264,7 +8308,8 @@
             "description": "kg",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 1.4
           },
           "rarity": {
             "name": "rarity",
@@ -8278,7 +8323,8 @@
               "epic",
               "legendary"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "common"
           },
           "stackable": {
             "name": "stackable",
@@ -8286,7 +8332,8 @@
             "description": "Always false for weapons",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": false
           },
           "durability": {
             "name": "durability",
@@ -8294,7 +8341,8 @@
             "description": "Remaining durability points before condition degrades",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 100
           }
         },
         "relations": {
@@ -8453,7 +8501,8 @@
             "description": "kg",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 4.2
           },
           "rarity": {
             "name": "rarity",
@@ -8467,7 +8516,8 @@
               "epic",
               "legendary"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "uncommon"
           },
           "stackable": {
             "name": "stackable",
@@ -8475,7 +8525,8 @@
             "description": "Always false for weapons",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": false
           },
           "durability": {
             "name": "durability",
@@ -8483,7 +8534,8 @@
             "description": "Remaining durability points before condition degrades",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 200
           }
         },
         "relations": {
@@ -8651,7 +8703,8 @@
             "description": "kg",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.9
           },
           "rarity": {
             "name": "rarity",
@@ -8665,7 +8718,8 @@
               "epic",
               "legendary"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "uncommon"
           },
           "stackable": {
             "name": "stackable",
@@ -8673,7 +8727,8 @@
             "description": "Always false for weapons",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": false
           },
           "durability": {
             "name": "durability",
@@ -8681,7 +8736,8 @@
             "description": "Remaining durability points before condition degrades",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 150
           }
         },
         "relations": {
@@ -8854,7 +8910,8 @@
             "description": "kg",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 1.8
           },
           "rarity": {
             "name": "rarity",
@@ -8868,7 +8925,8 @@
               "epic",
               "legendary"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "rare"
           },
           "stackable": {
             "name": "stackable",
@@ -8876,7 +8934,8 @@
             "description": "Always false for weapons",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": false
           },
           "durability": {
             "name": "durability",
@@ -8884,7 +8943,8 @@
             "description": "Remaining durability points before condition degrades",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 120
           }
         },
         "relations": {
@@ -9047,7 +9107,8 @@
             "description": "kg",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 2.1
           },
           "rarity": {
             "name": "rarity",
@@ -9061,7 +9122,8 @@
               "epic",
               "legendary"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "common"
           },
           "stackable": {
             "name": "stackable",
@@ -9069,7 +9131,8 @@
             "description": "Always false for armour pieces",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": false
           },
           "durability": {
             "name": "durability",
@@ -9077,7 +9140,8 @@
             "description": "Remaining durability points before condition degrades",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 120
           }
         },
         "relations": {
@@ -9232,7 +9296,8 @@
             "description": "kg",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 9.8
           },
           "rarity": {
             "name": "rarity",
@@ -9246,7 +9311,8 @@
               "epic",
               "legendary"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "uncommon"
           },
           "stackable": {
             "name": "stackable",
@@ -9254,7 +9320,8 @@
             "description": "Always false for armour pieces",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": false
           },
           "durability": {
             "name": "durability",
@@ -9262,7 +9329,8 @@
             "description": "Remaining durability points before condition degrades",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 250
           }
         },
         "relations": {
@@ -9430,7 +9498,8 @@
             "description": "kg",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.6
           },
           "rarity": {
             "name": "rarity",
@@ -9444,7 +9513,8 @@
               "epic",
               "legendary"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "uncommon"
           },
           "stackable": {
             "name": "stackable",
@@ -9452,7 +9522,8 @@
             "description": "Always false for armour pieces",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": false
           },
           "durability": {
             "name": "durability",
@@ -9460,7 +9531,8 @@
             "description": "Remaining durability points before condition degrades",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 80
           }
         },
         "relations": {
@@ -9619,7 +9691,8 @@
             "description": "kg per unit",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.3
           },
           "rarity": {
             "name": "rarity",
@@ -9633,7 +9706,8 @@
               "epic",
               "legendary"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "common"
           },
           "stackable": {
             "name": "stackable",
@@ -9641,7 +9715,8 @@
             "description": "True; stacks up to 20 per slot",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": true
           },
           "durability": {
             "name": "durability",
@@ -9649,7 +9724,8 @@
             "description": "Freshness; hits 0 when spoiled",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 100
           }
         },
         "relations": {},
@@ -9763,7 +9839,8 @@
             "description": "kg per flask",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.2
           },
           "rarity": {
             "name": "rarity",
@@ -9777,7 +9854,8 @@
               "epic",
               "legendary"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "uncommon"
           },
           "stackable": {
             "name": "stackable",
@@ -9785,7 +9863,8 @@
             "description": "True; stacks up to 10 per slot",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": true
           },
           "durability": {
             "name": "durability",
@@ -9793,7 +9872,8 @@
             "description": "Potency; degrades as the potion ages",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 100
           }
         },
         "relations": {},
@@ -9907,7 +9987,8 @@
             "description": "kg per ingot",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 1
           },
           "rarity": {
             "name": "rarity",
@@ -9921,7 +10002,8 @@
               "epic",
               "legendary"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "common"
           },
           "stackable": {
             "name": "stackable",
@@ -9929,7 +10011,8 @@
             "description": "True; stacks up to 50 per slot",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": true
           },
           "durability": {
             "name": "durability",
@@ -9937,7 +10020,8 @@
             "description": "Structural integrity; degrades only under deliberate stress",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 200
           }
         },
         "relations": {
@@ -10092,7 +10176,8 @@
             "description": "kg per ingot",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 1.4
           },
           "rarity": {
             "name": "rarity",
@@ -10106,7 +10191,8 @@
               "epic",
               "legendary"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "uncommon"
           },
           "stackable": {
             "name": "stackable",
@@ -10114,7 +10200,8 @@
             "description": "True; stacks up to 30 per slot",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": true
           },
           "durability": {
             "name": "durability",
@@ -10122,7 +10209,8 @@
             "description": "Structural integrity; degrades only under deliberate stress",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 200
           }
         },
         "relations": {
@@ -10277,7 +10365,8 @@
             "description": "kg per plank",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.7
           },
           "rarity": {
             "name": "rarity",
@@ -10291,7 +10380,8 @@
               "epic",
               "legendary"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "common"
           },
           "stackable": {
             "name": "stackable",
@@ -10299,7 +10389,8 @@
             "description": "True; stacks up to 30 per slot",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": true
           },
           "durability": {
             "name": "durability",
@@ -10307,7 +10398,8 @@
             "description": "Structural integrity",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 150
           }
         },
         "relations": {
@@ -10462,7 +10554,8 @@
             "description": "kg per unit",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.02
           },
           "rarity": {
             "name": "rarity",
@@ -10476,7 +10569,8 @@
               "epic",
               "legendary"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "uncommon"
           },
           "stackable": {
             "name": "stackable",
@@ -10484,7 +10578,8 @@
             "description": "True; stacks up to 99 per slot",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": true
           },
           "durability": {
             "name": "durability",
@@ -10492,7 +10587,8 @@
             "description": "Magical potency; dissipates if stored poorly",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 80
           }
         },
         "relations": {
@@ -10608,7 +10704,8 @@
             "description": "kg per shard",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.08
           },
           "rarity": {
             "name": "rarity",
@@ -10622,7 +10719,8 @@
               "epic",
               "legendary"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "uncommon"
           },
           "stackable": {
             "name": "stackable",
@@ -10630,7 +10728,8 @@
             "description": "True; stacks up to 20 per slot",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": true
           },
           "durability": {
             "name": "durability",
@@ -10638,7 +10737,8 @@
             "description": "Crystal integrity; shatters under standard forge temperatures — must be processed in an arcane forge",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 60
           }
         },
         "relations": {
@@ -10754,7 +10854,8 @@
             "description": "kg per block",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 3.5
           },
           "rarity": {
             "name": "rarity",
@@ -10768,7 +10869,8 @@
               "epic",
               "legendary"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "common"
           },
           "stackable": {
             "name": "stackable",
@@ -10776,7 +10878,8 @@
             "description": "True; stacks up to 20 per slot",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": true
           },
           "durability": {
             "name": "durability",
@@ -10784,7 +10887,8 @@
             "description": "Structural integrity",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 300
           }
         },
         "relations": {
@@ -10939,7 +11043,8 @@
             "description": "kg per shard",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.05
           },
           "rarity": {
             "name": "rarity",
@@ -10953,7 +11058,8 @@
               "epic",
               "legendary"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "rare"
           },
           "stackable": {
             "name": "stackable",
@@ -10961,7 +11067,8 @@
             "description": "True; stacks up to 10 per slot",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": true
           },
           "durability": {
             "name": "durability",
@@ -10969,7 +11076,8 @@
             "description": "Charge level; 0 means the shard is spent",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 50
           }
         },
         "relations": {
@@ -11128,7 +11236,8 @@
             "description": "kg per tablet",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.4
           },
           "rarity": {
             "name": "rarity",
@@ -11142,7 +11251,8 @@
               "epic",
               "legendary"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "epic"
           },
           "stackable": {
             "name": "stackable",
@@ -11150,7 +11260,8 @@
             "description": "False; each tablet is unique",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": false
           },
           "durability": {
             "name": "durability",
@@ -11158,7 +11269,8 @@
             "description": "Rune integrity; corrupts under anti-magic fields",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 200
           }
         },
         "relations": {
@@ -11321,7 +11433,8 @@
             "description": "kg per orb",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0.15
           },
           "rarity": {
             "name": "rarity",
@@ -11335,7 +11448,8 @@
               "epic",
               "legendary"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "rare"
           },
           "stackable": {
             "name": "stackable",
@@ -11343,7 +11457,8 @@
             "description": "True; stacks up to 5 per slot",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": true
           },
           "durability": {
             "name": "durability",
@@ -11351,7 +11466,8 @@
             "description": "Charge; depletes with use",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 150
           }
         },
         "relations": {
@@ -13701,7 +13817,8 @@
               "4",
               "5"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "1"
           },
           "aggressionLevel": {
             "name": "aggressionLevel",
@@ -13714,7 +13831,8 @@
               "aggressive",
               "territorial"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "neutral"
           },
           "baseHp": {
             "name": "baseHp",
@@ -13722,7 +13840,8 @@
             "description": "Hit points at tier baseline",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 80
           },
           "baseDamage": {
             "name": "baseDamage",
@@ -13730,7 +13849,8 @@
             "description": "Damage per standard attack at tier baseline",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 12
           }
         },
         "relations": {},
@@ -14025,7 +14145,8 @@
               "4",
               "5"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "2"
           },
           "aggressionLevel": {
             "name": "aggressionLevel",
@@ -14038,7 +14159,8 @@
               "aggressive",
               "territorial"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "territorial"
           },
           "baseHp": {
             "name": "baseHp",
@@ -14046,7 +14168,8 @@
             "description": "Hit points per wolf at tier baseline",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 60
           },
           "baseDamage": {
             "name": "baseDamage",
@@ -14054,7 +14177,8 @@
             "description": "Damage per bite at tier baseline",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 15
           }
         },
         "relations": {},
@@ -14363,7 +14487,8 @@
               "4",
               "5"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "2"
           },
           "aggressionLevel": {
             "name": "aggressionLevel",
@@ -14376,7 +14501,8 @@
               "aggressive",
               "territorial"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "neutral"
           },
           "baseHp": {
             "name": "baseHp",
@@ -14384,7 +14510,8 @@
             "description": "Hit points at tier baseline; high value",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 200
           },
           "baseDamage": {
             "name": "baseDamage",
@@ -14392,7 +14519,8 @@
             "description": "Damage per charge at tier baseline",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 30
           }
         },
         "relations": {},
@@ -14683,7 +14811,8 @@
               "4",
               "5"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "1"
           },
           "aggressionLevel": {
             "name": "aggressionLevel",
@@ -14696,7 +14825,8 @@
               "aggressive",
               "territorial"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "territorial"
           },
           "baseHp": {
             "name": "baseHp",
@@ -14704,7 +14834,8 @@
             "description": "Hit points at tier baseline; low value",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 25
           },
           "baseDamage": {
             "name": "baseDamage",
@@ -14712,7 +14843,8 @@
             "description": "Damage per talon strike at tier baseline",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 5
           }
         },
         "relations": {},
@@ -15003,7 +15135,8 @@
               "4",
               "5"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "3"
           },
           "aggressionLevel": {
             "name": "aggressionLevel",
@@ -15016,7 +15149,8 @@
               "aggressive",
               "territorial"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "neutral"
           },
           "baseHp": {
             "name": "baseHp",
@@ -15024,7 +15158,8 @@
             "description": "Hit points at tier baseline; very high due to shell armour",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 350
           },
           "baseDamage": {
             "name": "baseDamage",
@@ -15032,7 +15167,8 @@
             "description": "Damage per slime spray at tier baseline",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 20
           }
         },
         "relations": {},
@@ -15326,7 +15462,8 @@
               "4",
               "5"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "4"
           },
           "aggressionLevel": {
             "name": "aggressionLevel",
@@ -15339,7 +15476,8 @@
               "aggressive",
               "territorial"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "aggressive"
           },
           "baseHp": {
             "name": "baseHp",
@@ -15347,7 +15485,8 @@
             "description": "Hit points at tier baseline",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 280
           },
           "baseDamage": {
             "name": "baseDamage",
@@ -15355,7 +15494,8 @@
             "description": "Damage per claw strike at tier baseline",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 35
           }
         },
         "relations": {},
@@ -15651,7 +15791,8 @@
               "4",
               "5"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "1"
           },
           "aggressionLevel": {
             "name": "aggressionLevel",
@@ -15664,7 +15805,8 @@
               "aggressive",
               "territorial"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "passive"
           },
           "baseHp": {
             "name": "baseHp",
@@ -15672,7 +15814,8 @@
             "description": "Hit points at tier baseline; low",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 20
           },
           "baseDamage": {
             "name": "baseDamage",
@@ -15680,7 +15823,8 @@
             "description": "Damage per nip at tier baseline; minimal",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 2
           }
         },
         "relations": {},
@@ -15987,7 +16131,8 @@
               "4",
               "5"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "3"
           },
           "aggressionLevel": {
             "name": "aggressionLevel",
@@ -16000,7 +16145,8 @@
               "aggressive",
               "territorial"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "aggressive"
           },
           "baseHp": {
             "name": "baseHp",
@@ -16008,7 +16154,8 @@
             "description": "Hit points at tier baseline",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 150
           },
           "baseDamage": {
             "name": "baseDamage",
@@ -16016,7 +16163,8 @@
             "description": "Damage per strike at tier baseline",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 28
           }
         },
         "relations": {},
@@ -16312,7 +16460,8 @@
               "4",
               "5"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "5"
           },
           "aggressionLevel": {
             "name": "aggressionLevel",
@@ -16325,7 +16474,8 @@
               "aggressive",
               "territorial"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "aggressive"
           },
           "baseHp": {
             "name": "baseHp",
@@ -16333,7 +16483,8 @@
             "description": "Hit points at tier baseline; very high",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 800
           },
           "baseDamage": {
             "name": "baseDamage",
@@ -16341,7 +16492,8 @@
             "description": "Damage per strike at tier baseline; very high",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 60
           }
         },
         "relations": {},
@@ -16647,7 +16799,8 @@
               "4",
               "5"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "5"
           },
           "aggressionLevel": {
             "name": "aggressionLevel",
@@ -16660,7 +16813,8 @@
               "aggressive",
               "territorial"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "aggressive"
           },
           "baseHp": {
             "name": "baseHp",
@@ -16668,7 +16822,8 @@
             "description": "Hit points at tier baseline; extreme value",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 2000
           },
           "baseDamage": {
             "name": "baseDamage",
@@ -16676,7 +16831,8 @@
             "description": "Damage per slam at tier baseline; extreme value",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 90
           }
         },
         "relations": {},

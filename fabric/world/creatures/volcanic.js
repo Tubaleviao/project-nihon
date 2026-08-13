@@ -13,10 +13,10 @@ module.exports = {
     fields: {
       id:             { type: 'uuid', primaryKey: true },
       state:          { type: 'enum', values: CREATURE_STATES },
-      tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier' },
-      aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
-      baseHp:         { type: 'integer', description: 'Hit points at tier baseline; very high due to shell armour' },
-      baseDamage:     { type: 'integer', description: 'Damage per slime spray at tier baseline' },
+      tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier', defaultValue: '3' },
+      aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS, defaultValue: 'neutral' },
+      baseHp:         { type: 'integer', description: 'Hit points at tier baseline; very high due to shell armour', defaultValue: 350 },
+      baseDamage:     { type: 'integer', description: 'Damage per slime spray at tier baseline', defaultValue: 20 },
     },
     stateMachine: creatureStateMachine(),
     behaviors: {
@@ -83,10 +83,10 @@ module.exports = {
     fields: {
       id:             { type: 'uuid', primaryKey: true },
       state:          { type: 'enum', values: CREATURE_STATES },
-      tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier' },
-      aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
-      baseHp:         { type: 'integer', description: 'Hit points at tier baseline' },
-      baseDamage:     { type: 'integer', description: 'Damage per claw strike at tier baseline' },
+      tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier', defaultValue: '4' },
+      aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS, defaultValue: 'aggressive' },
+      baseHp:         { type: 'integer', description: 'Hit points at tier baseline', defaultValue: 280 },
+      baseDamage:     { type: 'integer', description: 'Damage per claw strike at tier baseline', defaultValue: 35 },
     },
     stateMachine: creatureStateMachine(),
     behaviors: {

@@ -6,10 +6,10 @@
 script = ExtResource("1")
 id = ""
 condition = 0
-weight = 0.0
-rarity = 0
+weight = 0.9
+rarity = "uncommon"
 stackable = false
-durability = 0
+durability = 150
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "Recurve bow with an aethermite-treated thornwood stave and duskfiber string. Arrows fired from this bow carry a faint magical charge; enchanted arrows deal bonus elemental damage."

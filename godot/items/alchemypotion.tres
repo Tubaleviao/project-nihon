@@ -6,10 +6,10 @@
 script = ExtResource("1")
 id = ""
 condition = 0
-weight = 0.0
-rarity = 0
-stackable = false
-durability = 0
+weight = 0.2
+rarity = "uncommon"
+stackable = true
+durability = 100
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "Sealed glass flask containing an Alchemist-brewed reagent. The specific effect depends on the recipe; common variants restore health, cure status effects, or temporarily enhance a single attribute."

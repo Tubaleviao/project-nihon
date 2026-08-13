@@ -6,10 +6,10 @@
 script = ExtResource("1")
 id = ""
 condition = 0
-weight = 0.0
-rarity = 0
+weight = 4.5
+rarity = "uncommon"
 stackable = false
-durability = 0
+durability = 160
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "Heavy-duty pick smelted from veilsteel. Cuts through hardstone formations that shatter ferrite picks. Magic-resistant alloy resists aethermite corruption in ley-line veins."

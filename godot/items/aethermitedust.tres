@@ -6,10 +6,10 @@
 script = ExtResource("1")
 id = ""
 condition = 0
-weight = 0.0
-rarity = 0
-stackable = false
-durability = 0
+weight = 0.02
+rarity = "uncommon"
+stackable = true
+durability = 80
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "Fine powder ground from raw aethermite ore at an arcane forge. Used as an enchanting reagent and in potion brewing; the ground form is not interchangeable with shards."

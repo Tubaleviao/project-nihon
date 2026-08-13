@@ -6,10 +6,10 @@
 script = ExtResource("1")
 id = ""
 condition = 0
-weight = 0.0
-rarity = 0
-stackable = false
-durability = 0
+weight = 0.08
+rarity = "uncommon"
+stackable = true
+durability = 60
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "Raw aethermite refined into a crystalline shard at an arcane forge. The solid form of processed aethermite; used as a smithing input for veilsteel alloying. Not interchangeable with aethermite dust — the shard form retains structural integrity under forge heat."

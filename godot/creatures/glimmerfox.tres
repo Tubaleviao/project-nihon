@@ -6,10 +6,10 @@
 script = ExtResource("1")
 id = ""
 state = 0
-tier = 0
-aggressionLevel = 0
-baseHp = 0
-baseDamage = 0
+tier = "1"
+aggressionLevel = "passive"
+baseHp = 20
+baseDamage = 2
 state_machine_field = "state"
 initial_state = "idle"
 description = "A sleek, luminescent fox native to the Twilight Grove whose fur shifts in hue with the accelerated day-night cycle. Inherently curious and non-aggressive; actively approaches players carrying food. Its shed fur is harvested as a raw alchemical reagent that intensifies potion luminosity."

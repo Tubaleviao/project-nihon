@@ -6,10 +6,10 @@
 script = ExtResource("1")
 id = ""
 condition = 0
-weight = 0.0
-rarity = 0
+weight = 4.2
+rarity = "uncommon"
 stackable = false
-durability = 0
+durability = 200
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "Two-handed longsword of veilsteel. Heavy and slow but capable of cracking enchanted armour. Its anti-magic properties suppress active enchantments on struck targets for several seconds."

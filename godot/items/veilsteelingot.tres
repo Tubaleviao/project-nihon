@@ -6,10 +6,10 @@
 script = ExtResource("1")
 id = ""
 condition = 0
-weight = 0.0
-rarity = 0
-stackable = false
-durability = 0
+weight = 1.4
+rarity = "uncommon"
+stackable = true
+durability = 200
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "Refined veilsteel bar alloyed in a master forge from ferrite ingots and an aethermite shard. The intermediate material required for all mid-tier veilsteel weapons and armour."
