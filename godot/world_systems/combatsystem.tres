@@ -1,9 +1,6 @@
 [gd_resource type="Resource" format=3]
 
-[ext_resource type="Script" path="res://godot/world_systems/combatsystem.gd" id="1"]
-
 [resource]
-script = ExtResource("1")
 id = ""
 description = "Defines the rules governing all combat interactions — player vs creature, player vs player, and structure damage. Combat is simulation-driven: outcomes emerge from stats, skills, equipment, and biome conditions rather than authored scripts. Magic and martial paths are balanced by design — neither dominates at every range and context."
 tags = ["world-system"]

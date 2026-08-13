@@ -32,7 +32,7 @@ function creatureStateMachine({ canFlee = true, skipAlert = false, conditionalAl
     ? []
     : [
         { from: 'idle',  to: 'alert',      trigger: 'detect' },
-        ...(conditionalAlertSkip ? [{ from: 'idle', to: 'aggressive', trigger: 'detect_direct' }] : []),
+        ...(conditionalAlertSkip ? [{ from: 'idle', to: 'aggressive', trigger: 'detect' }] : []),
         { from: 'alert', to: 'aggressive', trigger: 'attack' },
         { from: 'alert', to: 'idle',       trigger: 'calm' },
       ]

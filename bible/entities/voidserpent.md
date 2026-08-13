@@ -26,7 +26,7 @@ A massive serpentine entity born from void-rift energy given form. Its scales sh
 stateDiagram-v2
   [*] --> idle
   idle --> alert : detect\n[Detects any player with void corruption above 10 within 20 tiles; Detects any player regardless of stealth within 5 tiles; When corruption threshold is exceeded while idle, fires attack trigger immediately — skips the alert state for this path only]
-  idle --> aggressive : detect_direct
+  idle --> aggressive : detect\n[Detects any player with void corruption above 10 within 20 tiles; Detects any player regardless of stealth within 5 tiles; When corruption threshold is exceeded while idle, fires attack trigger immediately — skips the alert state for this path only]
   alert --> aggressive : attack\n[Bite: baseDamage + 20 void corruption to target; 50% physical damage reduction applies unless attacker is VoidTouched; Tail sweep: half baseDamage in a 4-tile arc; knocks targets back 2 tiles; Every 3rd attack the serpent fully phases for 2 seconds; all non-magical, non-void attacks pass through harmlessly — VoidTouched players deal full damage regardless]
   alert --> idle : calm\n[Enters dormancy 3 in-game minutes after losing all targets]
   aggressive --> dead : die\n[Death emits a death event; scales and fang solidify from the void form over 3 seconds]
@@ -52,7 +52,7 @@ stateDiagram-v2
 | From | To | Trigger | Guards | Effects |
 | ---- | --- | ------- | ------ | ------- |
 | `idle` | `alert` | `detect` | Detects any player with void corruption above 10 within 20 tiles; Detects any player regardless of stealth within 5 tiles; When corruption threshold is exceeded while idle, fires attack trigger immediately — skips the alert state for this path only |  |
-| `idle` | `aggressive` | `detect_direct` |  |  |
+| `idle` | `aggressive` | `detect` | Detects any player with void corruption above 10 within 20 tiles; Detects any player regardless of stealth within 5 tiles; When corruption threshold is exceeded while idle, fires attack trigger immediately — skips the alert state for this path only |  |
 | `alert` | `aggressive` | `attack` | Bite: baseDamage + 20 void corruption to target; 50% physical damage reduction applies unless attacker is VoidTouched; Tail sweep: half baseDamage in a 4-tile arc; knocks targets back 2 tiles; Every 3rd attack the serpent fully phases for 2 seconds; all non-magical, non-void attacks pass through harmlessly — VoidTouched players deal full damage regardless |  |
 | `alert` | `idle` | `calm` | Enters dormancy 3 in-game minutes after losing all targets |  |
 | `aggressive` | `dead` | `die` | Death emits a death event; scales and fang solidify from the void form over 3 seconds |  |

@@ -5,12 +5,13 @@
   "description": "Open-source sandbox MMORPG — game design fabric powered by newel",
   "scripts": {
     "validate": "newel validate -s ./fabric/index.js",
-    "inspect":  "newel inspect  -s ./fabric/index.js",
+    "inspect": "newel inspect  -s ./fabric/index.js",
     "generate": "newel generate -c ./newel.config.js"
   },
   "dependencies": {
-    "@newel/core": "file:../newel/packages/core",
-    "@newel/generator-bible": "file:../newel/packages/generator-bible",
-    "@newel/generator-godot": "file:../newel/packages/generator-godot"
+    "@newel/core": "^0.3.0",
+    "@newel/generator-bible": "^0.0.1",
+    "@newel/generator-godot": "^0.0.1",
+    "@newel/generator-wiki": "^0.0.3"
   }
 }

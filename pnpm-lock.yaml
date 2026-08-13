@@ -9,14 +9,17 @@ importers:
   .:
     dependencies:
       '@newel/core':
-        specifier: file:../newel/packages/core
-        version: file:../newel/packages/core
+        specifier: ^0.3.0
+        version: 0.3.0
       '@newel/generator-bible':
-        specifier: file:../newel/packages/generator-bible
-        version: file:../newel/packages/generator-bible
+        specifier: ^0.0.1
+        version: 0.0.1
       '@newel/generator-godot':
-        specifier: file:../newel/packages/generator-godot
-        version: file:../newel/packages/generator-godot
+        specifier: ^0.0.1
+        version: 0.0.1
+      '@newel/generator-wiki':
+        specifier: ^0.0.3
+        version: 0.0.3
 
 packages:
 
@@ -176,17 +179,26 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@newel/core@file:../newel/packages/core':
-    resolution: {directory: ../newel/packages/core, type: directory}
+  '@newel/core@0.2.0':
+    resolution: {integrity: sha512-9KaYrhREvxViCL004c4Bs6XLOlRhydVfoeAq2W8iuPEnPHQ1PY0li++iKcaRHdww/cf4GGeHQxkjmGK8FOEbYQ==}
     engines: {node: '>=20'}
     hasBin: true
 
-  '@newel/generator-bible@file:../newel/packages/generator-bible':
-    resolution: {directory: ../newel/packages/generator-bible, type: directory}
+  '@newel/core@0.3.0':
+    resolution: {integrity: sha512-45leWri8Fl1ZZQUU4LIGy3H5iaZOJwfZNRn2pgxfOTKk1s9icBDRE6NSN6rBKRxHUtTYTo3dl1LooU1zJFd/oA==}
+    engines: {node: '>=20'}
+    hasBin: true
+
+  '@newel/generator-bible@0.0.1':
+    resolution: {integrity: sha512-ynAuaK4DXmjVJJKe63vSMlSt7Nn4YnnVM2k7u2UZOc6nDq/noYaQWFAG7zJ19LuOSZxvHHOc82MLgnsAi/I2Cg==}
     engines: {node: '>=20'}
 
-  '@newel/generator-godot@file:../newel/packages/generator-godot':
-    resolution: {directory: ../newel/packages/generator-godot, type: directory}
+  '@newel/generator-godot@0.0.1':
+    resolution: {integrity: sha512-XjluRiMv2vmSrWhgMbx1xoG9CqAadLsByIaYlpp/GuYOgFaZBS+u8AUl0xMOeLmwHNHB4UYH4s69RGkv2uDV+A==}
+    engines: {node: '>=20'}
+
+  '@newel/generator-wiki@0.0.3':
+    resolution: {integrity: sha512-oPUm/XQzSkt0WpB3UKNjqbcHD9VvZjDdTRCkMVG4VaG7J1Q6JEMbj9+gVNVcfvhgXV/fxgAqvk+stJ3+VVsUbg==}
     engines: {node: '>=20'}
 
   commander@12.1.0:
@@ -288,18 +300,27 @@ snapshots:
   '@esbuild/win32-x64@0.28.1':
     optional: true
 
-  '@newel/core@file:../newel/packages/core':
+  '@newel/core@0.2.0':
     dependencies:
       commander: 12.1.0
       tsx: 4.23.1
 
-  '@newel/generator-bible@file:../newel/packages/generator-bible':
+  '@newel/core@0.3.0':
     dependencies:
-      '@newel/core': file:../newel/packages/core
+      commander: 12.1.0
+      tsx: 4.23.1
 
-  '@newel/generator-godot@file:../newel/packages/generator-godot':
+  '@newel/generator-bible@0.0.1':
     dependencies:
-      '@newel/core': file:../newel/packages/core
+      '@newel/core': 0.2.0
+
+  '@newel/generator-godot@0.0.1':
+    dependencies:
+      '@newel/core': 0.2.0
+
+  '@newel/generator-wiki@0.0.3':
+    dependencies:
+      '@newel/core': 0.3.0
 
   commander@12.1.0: {}
 
