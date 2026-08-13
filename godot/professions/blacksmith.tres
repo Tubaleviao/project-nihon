@@ -1,11 +1,7 @@
 [gd_resource type="Resource" format=3]
 
-[ext_resource type="Script" path="res://godot/professions/blacksmith.gd" id="1"]
-
 [resource]
-script = ExtResource("1")
 id = ""
-status = 0
 state_machine_field = "status"
 initial_state = "locked"
 description = "Dedicated metalworker who has combined standard smithing with arcane forging techniques. Produces higher-quality weapons and armour, and can process magical materials unavailable to casual crafters."

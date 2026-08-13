@@ -1,8 +1,5 @@
 [gd_resource type="Resource" format=3]
 
-[ext_resource type="Script" path="res://godot/systems/civilizationisplayermade.gd" id="1"]
-
 [resource]
-script = ExtResource("1")
 description = "Civilization is player-made — towns, governments, economies, and infrastructure are built and maintained by players."
 tags = ["system"]

@@ -1,11 +1,7 @@
 [gd_resource type="Resource" format=3]
 
-[ext_resource type="Script" path="res://godot/decisions/onepersistentworld.gd" id="1"]
-
 [resource]
-script = ExtResource("1")
 id = ""
-status = 0
 state_machine_field = "status"
 initial_state = "proposed"
 description = "A single persistent official world server. All players on the official server share one continuous world; no shards."

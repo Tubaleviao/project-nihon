@@ -1,11 +1,7 @@
 [gd_resource type="Resource" format=3]
 
-[ext_resource type="Script" path="res://godot/decisions/godotengine.gd" id="1"]
-
 [resource]
-script = ExtResource("1")
 id = ""
-status = 0
 state_machine_field = "status"
 initial_state = "proposed"
 description = "Use Godot 4.x as the game client engine. Chosen for its open-source license, GDScript ergonomics, and strong 3D/networking support."

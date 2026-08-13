@@ -1,11 +1,7 @@
 [gd_resource type="Resource" format=3]
 
-[ext_resource type="Script" path="res://godot/recipes/recipehealthpotion.gd" id="1"]
-
 [resource]
-script = ExtResource("1")
 id = ""
-domain = 0
 yield = 0
 description = "Brew a health-restoring potion from aethermite dust and harvested herbs at an alchemy bench."
 tags = ["recipe"]
