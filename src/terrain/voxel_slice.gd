@@ -8,8 +8,10 @@ extends Node
 ## Public API:
 ##   build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void
 ##
-## Each chunk is materialised as a GridMap-style MeshInstance3D with a matching
-## StaticBody3D collision mesh so CharacterBody3D can walk on it.
+## Each chunk is materialised as a MeshInstance3D with a matching StaticBody3D
+## collision mesh so CharacterBody3D can walk on it. Every column emits its top
+## face plus a wall on each side where a lower neighbour (or the chunk edge)
+## leaves it exposed, producing a closed, hole-free shell.
 
 const CHUNK_SIZE  := 32        # tiles per side — must match TerrainSlice.CHUNK_SIZE
 const TILE_SIZE   := 1.0       # world units per tile (XZ)
@@ -57,51 +59,54 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
 			var bx := origin.x + tx * TILE_SIZE
 			var bz := origin.z + tz * TILE_SIZE
 
-			# Top face of the voxel column.
-			var v00 := Vector3(bx,           h, bz)
-			var v10 := Vector3(bx + TILE_SIZE, h, bz)
-			var v01 := Vector3(bx,           h, bz + TILE_SIZE)
-			var v11 := Vector3(bx + TILE_SIZE, h, bz + TILE_SIZE)
+			# Top face.
+			col_faces.append_array(_add_face(st,
+				Vector3(bx,              h, bz),
+				Vector3(bx,              h, bz + TILE_SIZE),
+				Vector3(bx + TILE_SIZE, h, bz + TILE_SIZE),
+				Vector3(bx + TILE_SIZE, h, bz),
+				Vector3.UP))
 
-			var uv00 := Vector2(float(tx) / CHUNK_SIZE,       float(tz) / CHUNK_SIZE)
-			var uv10 := Vector2(float(tx + 1) / CHUNK_SIZE,   float(tz) / CHUNK_SIZE)
-			var uv01 := Vector2(float(tx) / CHUNK_SIZE,       float(tz + 1) / CHUNK_SIZE)
-			var uv11 := Vector2(float(tx + 1) / CHUNK_SIZE,   float(tz + 1) / CHUNK_SIZE)
+			# North wall.
+			var hn := _neighbour_height(heightmap, tx, tz - 1)
+			if hn < h:
+				col_faces.append_array(_add_face(st,
+					Vector3(bx,              h,  bz),
+					Vector3(bx + TILE_SIZE, h,  bz),
+					Vector3(bx + TILE_SIZE, hn, bz),
+					Vector3(bx,              hn, bz),
+					Vector3(0, 0, -1)))
 
-			# Normal always up for the top face.
-			st.set_normal(Vector3.UP)
+			# South wall.
+			var hs := _neighbour_height(heightmap, tx, tz + 1)
+			if hs < h:
+				col_faces.append_array(_add_face(st,
+					Vector3(bx + TILE_SIZE, h,  bz + TILE_SIZE),
+					Vector3(bx,              h,  bz + TILE_SIZE),
+					Vector3(bx,              hs, bz + TILE_SIZE),
+					Vector3(bx + TILE_SIZE, hs, bz + TILE_SIZE),
+					Vector3(0, 0, 1)))
 
-			st.set_uv(uv00); st.add_vertex(v00)
-			st.set_uv(uv10); st.add_vertex(v10)
-			st.set_uv(uv11); st.add_vertex(v11)
+			# West wall.
+			var hw := _neighbour_height(heightmap, tx - 1, tz)
+			if hw < h:
+				col_faces.append_array(_add_face(st,
+					Vector3(bx, h,  bz + TILE_SIZE),
+					Vector3(bx, h,  bz),
+					Vector3(bx, hw, bz),
+					Vector3(bx, hw, bz + TILE_SIZE),
+					Vector3(-1, 0, 0)))
 
-			st.set_uv(uv00); st.add_vertex(v00)
-			st.set_uv(uv11); st.add_vertex(v11)
-			st.set_uv(uv01); st.add_vertex(v01)
+			# East wall.
+			var he := _neighbour_height(heightmap, tx + 1, tz)
+			if he < h:
+				col_faces.append_array(_add_face(st,
+					Vector3(bx + TILE_SIZE, h,  bz),
+					Vector3(bx + TILE_SIZE, h,  bz + TILE_SIZE),
+					Vector3(bx + TILE_SIZE, he, bz + TILE_SIZE),
+					Vector3(bx + TILE_SIZE, he, bz),
+					Vector3(1, 0, 0)))
 
-			# Add both triangles to the collision face list.
-			col_faces.append(v00); col_faces.append(v10); col_faces.append(v11)
-			col_faces.append(v00); col_faces.append(v11); col_faces.append(v01)
-
-			# South side wall (if neighbour is lower, or at chunk edge).
-			if tz < CHUNK_SIZE - 1:
-				var h_next := _voxel_height(heightmap[(tz + 1) * CHUNK_SIZE + tx])
-				if h_next < h:
-					var sw0 := Vector3(bx,           h_next, bz + TILE_SIZE)
-					var sw1 := Vector3(bx + TILE_SIZE, h_next, bz + TILE_SIZE)
-					st.set_normal(Vector3(0, 0, 1))
-					st.set_uv(Vector2(0, 0)); st.add_vertex(v01)
-					st.set_uv(Vector2(1, 0)); st.add_vertex(v11)
-					st.set_uv(Vector2(1, 1)); st.add_vertex(sw1)
-
-					st.set_uv(Vector2(0, 0)); st.add_vertex(v01)
-					st.set_uv(Vector2(1, 1)); st.add_vertex(sw1)
-					st.set_uv(Vector2(0, 1)); st.add_vertex(sw0)
-
-					col_faces.append(v01);  col_faces.append(v11);  col_faces.append(sw1)
-					col_faces.append(v01);  col_faces.append(sw1);  col_faces.append(sw0)
-
-	st.generate_normals()
 	var mesh_inst := MeshInstance3D.new()
 	mesh_inst.mesh = st.commit()
 
@@ -129,6 +134,25 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
 
 func _voxel_height(raw_height: float) -> float:
 	return floor(raw_height / STEP_HEIGHT) * STEP_HEIGHT
+
+## Height of the tile at (tx, tz), or 0.0 for out-of-chunk (chunk edge).
+func _neighbour_height(heightmap: Array, tx: int, tz: int) -> float:
+	if tx < 0 or tx >= CHUNK_SIZE or tz < 0 or tz >= CHUNK_SIZE:
+		return 0.0
+	return _voxel_height(heightmap[tz * CHUNK_SIZE + tx])
+
+## Append a quad (two triangles) to the visual surface and return the matching
+## collision triangles. a, b, c, d are in counter-clockwise order seen from the
+## normal side.
+func _add_face(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, normal: Vector3) -> PackedVector3Array:
+	st.set_normal(normal)
+	st.set_uv(Vector2(0, 0)); st.add_vertex(a)
+	st.set_uv(Vector2(1, 0)); st.add_vertex(b)
+	st.set_uv(Vector2(1, 1)); st.add_vertex(c)
+	st.set_uv(Vector2(0, 0)); st.add_vertex(a)
+	st.set_uv(Vector2(1, 1)); st.add_vertex(c)
+	st.set_uv(Vector2(0, 1)); st.add_vertex(d)
+	return PackedVector3Array([a, b, c, a, c, d])
 
 func _on_chunk_ready(chunk_pos: Vector2i, heightmap: Array) -> void:
 	build_chunk(chunk_pos, heightmap)

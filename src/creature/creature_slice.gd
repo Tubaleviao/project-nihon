@@ -28,9 +28,13 @@ const SPAWN_MANIFEST: Dictionary = {
 const SPAWN_ORIGIN := Vector3(16.0, 8.0, 16.0)
 const SPAWN_RADIUS := 10.0
 
-## Instance record: { "creature_id", "position", "state", "hp", "respawn_at" }
+## Instance record: { "creature_id", "position", "state", "hp", "respawn_at", "body" }
 var _instances: Dictionary = {}
 var _next_id: int = 0
+
+## Set by game_root before the slices enter the tree so creatures can spawn on
+## the terrain surface instead of a fixed height.
+var terrain_slice: Node = null
 
 func _ready() -> void:
 	GameBus.creature_died.connect(_on_creature_died)
@@ -94,14 +98,24 @@ func _spawn(creature_id: String) -> String:
 	var r     := randf_range(2.0, SPAWN_RADIUS)
 	var pos   := SPAWN_ORIGIN + Vector3(cos(angle) * r, 0.0, sin(angle) * r)
 
+	# Sit the creature on the terrain surface instead of a fixed height.
+	if terrain_slice != null and terrain_slice.has_method("get_height_at"):
+		pos.y = terrain_slice.get_height_at(Vector2(pos.x, pos.z))
+
 	var iid := "creature_%d" % _next_id
 	_next_id += 1
+
+	# Build a visible body so the creature can be seen in the world.
+	var body := _make_visual(creature_id, pos)
+	add_child(body)
+
 	_instances[iid] = {
 		"creature_id": creature_id,
 		"position":    pos,
 		"state":       "idle",
 		"hp":          hp,
 		"respawn_at":  -1.0,
+		"body":        body,
 	}
 
 	GameBus.creature_spawned.emit(iid, creature_id, pos)
@@ -118,6 +132,8 @@ func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String
 				inst["state"]      = "dead"
 				inst["hp"]         = 0.0
 				inst["respawn_at"] = Time.get_ticks_msec() + RESPAWN_SECONDS * 1000.0
+				if inst.has("body") and inst["body"]:
+					inst["body"].visible = false
 
 func _tick_respawn() -> void:
 	var now := float(Time.get_ticks_msec())
@@ -130,4 +146,38 @@ func _tick_respawn() -> void:
 			inst["state"]      = "idle"
 			inst["hp"]         = max_hp
 			inst["respawn_at"] = -1.0
+			if inst.has("body") and inst["body"]:
+				inst["body"].visible = true
 			print("CreatureSlice: %s [%s] respawned" % [creature_id, iid])
+
+# ---------------------------------------------------------------------------
+# Visuals
+# ---------------------------------------------------------------------------
+
+func _make_visual(creature_id: String, pos: Vector3) -> Node3D:
+	var node := Node3D.new()
+	node.name = creature_id
+	node.position = pos
+
+	var mesh := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(0.8, 1.0, 1.2)
+	mesh.mesh = box
+	# Centre the body so its base rests on the terrain surface.
+	mesh.position = Vector3(0.0, 0.5, 0.0)
+
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = _creature_color(creature_id)
+	mesh.material_override = mat
+
+	node.add_child(mesh)
+	return node
+
+func _creature_color(creature_id: String) -> Color:
+	match creature_id:
+		"ForestBoar":
+			return Color(0.55, 0.35, 0.2)
+		"GraywolfPack":
+			return Color(0.42, 0.42, 0.48)
+		_:
+			return Color(0.8, 0.8, 0.8)

@@ -37,6 +37,10 @@ func _ready() -> void:
 	_loot        = LootSlice.new()
 	_inventory   = InventorySlice.new()
 
+	# CreatureSlice needs the terrain to place spawns on the surface; wire it
+	# before the slices enter the tree so its _ready() can use it.
+	_creature.terrain_slice = _terrain
+
 	for s in [_terrain, _voxel, _battle, _creature, _networking, _persistence, _player, _loot, _inventory]:
 		s.name = s.get_script().resource_path.get_file().get_basename()
 		add_child(s)
