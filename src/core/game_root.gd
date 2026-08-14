@@ -132,7 +132,7 @@ func _boot_world() -> void:
 # ---------------------------------------------------------------------------
 
 func _on_chunk_ready(chunk_pos: Vector2i, heightmap: Array) -> void:
-	var sample := heightmap[0] if heightmap.size() > 0 else 0.0
+	var sample: float = heightmap[0] if heightmap.size() > 0 else 0.0
 	print("[Terrain] chunk_ready pos=%s  height[0]=%.2f" % [chunk_pos, sample])
 
 func _on_combat_resolved(result: Dictionary) -> void:
