@@ -27,6 +27,13 @@ var _loot:        LootSlice
 var _inventory:   InventorySlice
 
 func _ready() -> void:
+	# Run the automated tests before any production slice enters the tree.
+	# The suite emits signals on the shared GameBus (creature_died, chunk_ready,
+	# combat, loot…). Running it first keeps those emissions from leaking into
+	# production state — previously the test creature_died calls were marking
+	# every freshly spawned creature dead and hiding its body on world boot.
+	_run_tests()
+
 	_terrain     = TerrainSlice.new()
 	_voxel       = VoxelSlice.new()
 	_battle      = BattleSlice.new()
@@ -82,9 +89,6 @@ func _ready() -> void:
 	environment.ambient_light_energy = 0.5
 	env.environment = environment
 	add_child(env)
-
-	# Run automated tests before anything else so failures are visible early.
-	_run_tests()
 
 	# Verify GameData entries load cleanly.
 	_check_game_data()
