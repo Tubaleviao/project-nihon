@@ -90,6 +90,13 @@ func _boot_world() -> void:
 	print("\n[Terrain] Requesting origin chunk (0, 0)…")
 	_terrain.request_chunk(Vector2i(0, 0))
 
+	# Place the player on top of the terrain at the spawn point so it doesn't
+	# spawn embedded in (and fall through) the collision mesh.
+	var spawn_xz := Vector2(16.0, 16.0)
+	var ground_h := _terrain.get_height_at(spawn_xz)
+	_player.spawn_at(Vector3(spawn_xz.x, ground_h + 1.0, spawn_xz.y))
+	print("[Player] spawning on terrain at (%.1f, %.1f, %.1f)" % [spawn_xz.x, ground_h + 1.0, spawn_xz.y])
+
 	# Creature slice already spawned creatures from SPAWN_MANIFEST in _ready().
 	# Trigger an initial creature awareness pass: the nearest ForestBoar
 	# fires a detect signal through the bus so combat can start immediately.

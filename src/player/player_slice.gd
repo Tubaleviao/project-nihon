@@ -71,6 +71,11 @@ func _input(event: InputEvent) -> void:
 func get_position() -> Vector3:
 	return _body.global_position if _body else Vector3.ZERO
 
+func spawn_at(pos: Vector3) -> void:
+	if _body:
+		_body.global_position = pos
+		_vel = Vector3.ZERO
+
 func get_hp() -> float:
 	return _hp
 
