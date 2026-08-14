@@ -13,10 +13,10 @@ module.exports = {
     fields: {
       id:             { type: 'uuid', primaryKey: true },
       state:          { type: 'enum', values: CREATURE_STATES },
-      tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier' },
-      aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
-      baseHp:         { type: 'integer', description: 'Hit points at tier baseline' },
-      baseDamage:     { type: 'integer', description: 'Damage per standard attack at tier baseline' },
+      tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier', defaultValue: '1' },
+      aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS, defaultValue: 'neutral' },
+      baseHp:         { type: 'integer', description: 'Hit points at tier baseline', defaultValue: 80 },
+      baseDamage:     { type: 'integer', description: 'Damage per standard attack at tier baseline', defaultValue: 12 },
     },
     stateMachine: creatureStateMachine({ conditionalAlertSkip: true }),
     behaviors: {
@@ -78,10 +78,10 @@ module.exports = {
     fields: {
       id:             { type: 'uuid', primaryKey: true },
       state:          { type: 'enum', values: CREATURE_STATES },
-      tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier' },
-      aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
-      baseHp:         { type: 'integer', description: 'Hit points per wolf at tier baseline' },
-      baseDamage:     { type: 'integer', description: 'Damage per bite at tier baseline' },
+      tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier', defaultValue: '2' },
+      aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS, defaultValue: 'territorial' },
+      baseHp:         { type: 'integer', description: 'Hit points per wolf at tier baseline', defaultValue: 60 },
+      baseDamage:     { type: 'integer', description: 'Damage per bite at tier baseline', defaultValue: 15 },
     },
     stateMachine: creatureStateMachine({ conditionalAlertSkip: true }),
     behaviors: {
@@ -152,10 +152,10 @@ module.exports = {
     fields: {
       id:             { type: 'uuid', primaryKey: true },
       state:          { type: 'enum', values: CREATURE_STATES },
-      tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier' },
-      aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
-      baseHp:         { type: 'integer', description: 'Hit points at tier baseline; high value' },
-      baseDamage:     { type: 'integer', description: 'Damage per charge at tier baseline' },
+      tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier', defaultValue: '2' },
+      aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS, defaultValue: 'neutral' },
+      baseHp:         { type: 'integer', description: 'Hit points at tier baseline; high value', defaultValue: 200 },
+      baseDamage:     { type: 'integer', description: 'Damage per charge at tier baseline', defaultValue: 30 },
     },
     stateMachine: creatureStateMachine(),
     behaviors: {
@@ -220,10 +220,10 @@ module.exports = {
     fields: {
       id:             { type: 'uuid', primaryKey: true },
       state:          { type: 'enum', values: CREATURE_STATES },
-      tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier' },
-      aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
-      baseHp:         { type: 'integer', description: 'Hit points at tier baseline; low value' },
-      baseDamage:     { type: 'integer', description: 'Damage per talon strike at tier baseline' },
+      tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier', defaultValue: '1' },
+      aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS, defaultValue: 'territorial' },
+      baseHp:         { type: 'integer', description: 'Hit points at tier baseline; low value', defaultValue: 25 },
+      baseDamage:     { type: 'integer', description: 'Damage per talon strike at tier baseline', defaultValue: 5 },
     },
     stateMachine: creatureStateMachine(),
     behaviors: {

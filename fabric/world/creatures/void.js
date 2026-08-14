@@ -14,10 +14,10 @@ module.exports = {
     fields: {
       id:             { type: 'uuid', primaryKey: true },
       state:          { type: 'enum', values: CREATURE_STATES },
-      tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier; highest tier' },
-      aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
-      baseHp:         { type: 'integer', description: 'Hit points at tier baseline; very high' },
-      baseDamage:     { type: 'integer', description: 'Damage per strike at tier baseline; very high' },
+      tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier; highest tier', defaultValue: '5' },
+      aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS, defaultValue: 'aggressive' },
+      baseHp:         { type: 'integer', description: 'Hit points at tier baseline; very high', defaultValue: 800 },
+      baseDamage:     { type: 'integer', description: 'Damage per strike at tier baseline; very high', defaultValue: 60 },
     },
     stateMachine: creatureStateMachine({ conditionalAlertSkip: true }),
     behaviors: {
@@ -89,10 +89,10 @@ module.exports = {
     fields: {
       id:             { type: 'uuid', primaryKey: true },
       state:          { type: 'enum', values: creatureStateValues({ canFlee: false, skipAlert: true }) },
-      tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier; highest tier' },
-      aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
-      baseHp:         { type: 'integer', description: 'Hit points at tier baseline; extreme value' },
-      baseDamage:     { type: 'integer', description: 'Damage per slam at tier baseline; extreme value' },
+      tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier; highest tier', defaultValue: '5' },
+      aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS, defaultValue: 'aggressive' },
+      baseHp:         { type: 'integer', description: 'Hit points at tier baseline; extreme value', defaultValue: 2000 },
+      baseDamage:     { type: 'integer', description: 'Damage per slam at tier baseline; extreme value', defaultValue: 90 },
     },
     stateMachine: creatureStateMachine({ canFlee: false, skipAlert: true }),
     behaviors: {

@@ -9,9 +9,9 @@
     "generate": "newel generate -c ./newel.config.js"
   },
   "dependencies": {
-    "@newel/core": "^0.3.0",
-    "@newel/generator-bible": "^0.0.1",
-    "@newel/generator-godot": "^0.0.1",
+    "@newel/core": "^0.3.1",
+    "@newel/generator-bible": "^0.0.2",
+    "@newel/generator-godot": "^0.0.2",
     "@newel/generator-wiki": "^0.0.3"
   }
 }

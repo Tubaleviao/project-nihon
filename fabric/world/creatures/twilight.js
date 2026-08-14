@@ -13,10 +13,10 @@ module.exports = {
     fields: {
       id:             { type: 'uuid', primaryKey: true },
       state:          { type: 'enum', values: CREATURE_STATES },
-      tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier' },
-      aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
-      baseHp:         { type: 'integer', description: 'Hit points at tier baseline; low' },
-      baseDamage:     { type: 'integer', description: 'Damage per nip at tier baseline; minimal' },
+      tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier', defaultValue: '1' },
+      aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS, defaultValue: 'passive' },
+      baseHp:         { type: 'integer', description: 'Hit points at tier baseline; low', defaultValue: 20 },
+      baseDamage:     { type: 'integer', description: 'Damage per nip at tier baseline; minimal', defaultValue: 2 },
     },
     stateMachine: creatureStateMachine(),
     behaviors: {
@@ -91,10 +91,10 @@ module.exports = {
     fields: {
       id:             { type: 'uuid', primaryKey: true },
       state:          { type: 'enum', values: CREATURE_STATES },
-      tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier' },
-      aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS },
-      baseHp:         { type: 'integer', description: 'Hit points at tier baseline' },
-      baseDamage:     { type: 'integer', description: 'Damage per strike at tier baseline' },
+      tier:           { type: 'enum', values: CREATURE_TIERS, description: 'Combat difficulty tier', defaultValue: '3' },
+      aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS, defaultValue: 'aggressive' },
+      baseHp:         { type: 'integer', description: 'Hit points at tier baseline', defaultValue: 150 },
+      baseDamage:     { type: 'integer', description: 'Damage per strike at tier baseline', defaultValue: 28 },
     },
     stateMachine: creatureStateMachine(),
     behaviors: {

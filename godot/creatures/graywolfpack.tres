@@ -1,9 +1,15 @@
 [gd_resource type="Resource" format=3]
 
+[ext_resource type="Script" path="res://godot/creatures/graywolfpack.gd" id="1"]
+
 [resource]
+script = ExtResource("1")
 id = ""
-baseHp = 0
-baseDamage = 0
+state = 0
+tier = 1
+aggressionLevel = 3
+baseHp = 60
+baseDamage = 15
 state_machine_field = "state"
 initial_state = "idle"
 description = "A coordinated hunting pack of gray wolves that roam temperate forest edges and clearings. Individual wolves are manageable; the pack tactics make them deadly to lone travellers. Taming a pup from a defeated pack unlocks the Ranger profession bonus."

@@ -1,11 +1,15 @@
 [gd_resource type="Resource" format=3]
 
+[ext_resource type="Script" path="res://godot/materials/ashite.gd" id="1"]
+
 [resource]
+script = ExtResource("1")
 id = ""
-density = 0.0
-hardness = 0.0
-conductivity = 0.0
-magicAffinity = 0.0
+state = 0
+density = 1.8
+hardness = 3.5
+conductivity = 0.18
+magicAffinity = 0.15
 state_machine_field = "state"
 initial_state = "raw"
 description = "Pale grey volcanic rock formed from compressed volcanic ash. Lightweight for its volume and naturally insulating; the standard building stone for heated workshops and cold-climate settlements."

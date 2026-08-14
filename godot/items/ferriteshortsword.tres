@@ -1,10 +1,15 @@
 [gd_resource type="Resource" format=3]
 
+[ext_resource type="Script" path="res://godot/items/ferriteshortsword.gd" id="1"]
+
 [resource]
+script = ExtResource("1")
 id = ""
-weight = 0.0
+condition = 0
+weight = 1.4
+rarity = 0
 stackable = false
-durability = 0
+durability = 100
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "Standard single-edged blade forged from a refined ferrite ingot. Lightweight and quick; chips against armoured opponents but reliable for unarmoured targets."

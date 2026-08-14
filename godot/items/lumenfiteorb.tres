@@ -1,10 +1,15 @@
 [gd_resource type="Resource" format=3]
 
+[ext_resource type="Script" path="res://godot/items/lumenfiteorb.gd" id="1"]
+
 [resource]
+script = ExtResource("1")
 id = ""
-weight = 0.0
-stackable = false
-durability = 0
+condition = 0
+weight = 0.15
+rarity = 2
+stackable = true
+durability = 150
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "A polished lumenfite sphere charged with stored magical energy by an Arcanist. Serves as a portable light source, a spell-focus amplifier, and a key reagent in high-tier enchanting recipes."

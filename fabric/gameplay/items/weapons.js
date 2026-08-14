@@ -12,10 +12,10 @@ module.exports = {
     fields: {
       id:        { type: 'uuid', primaryKey: true },
       condition: { type: 'enum', values: DURABILITY_STATES },
-      weight:    { type: 'decimal', description: 'kg' },
-      rarity:    { type: 'enum', values: RARITIES },
-      stackable: { type: 'boolean', description: 'Always false for weapons' },
-      durability: { type: 'integer', description: 'Remaining durability points before condition degrades' },
+      weight:    { type: 'decimal', description: 'kg', defaultValue: 1.4 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
+      stackable: { type: 'boolean', description: 'Always false for weapons', defaultValue: false },
+      durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 100 },
     },
     relations: {
       ferrite: { name: 'ferrite', kind: 'hasOne', target: 'Ferrite' },
@@ -48,10 +48,10 @@ module.exports = {
     fields: {
       id:        { type: 'uuid', primaryKey: true },
       condition: { type: 'enum', values: DURABILITY_STATES },
-      weight:    { type: 'decimal', description: 'kg' },
-      rarity:    { type: 'enum', values: RARITIES },
-      stackable: { type: 'boolean', description: 'Always false for weapons' },
-      durability: { type: 'integer', description: 'Remaining durability points before condition degrades' },
+      weight:    { type: 'decimal', description: 'kg', defaultValue: 4.2 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
+      stackable: { type: 'boolean', description: 'Always false for weapons', defaultValue: false },
+      durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 200 },
     },
     relations: {
       veilsteel: { name: 'veilsteel', kind: 'hasOne', target: 'Veilsteel' },
@@ -88,10 +88,10 @@ module.exports = {
     fields: {
       id:        { type: 'uuid', primaryKey: true },
       condition: { type: 'enum', values: DURABILITY_STATES },
-      weight:    { type: 'decimal', description: 'kg' },
-      rarity:    { type: 'enum', values: RARITIES },
-      stackable: { type: 'boolean', description: 'Always false for weapons' },
-      durability: { type: 'integer', description: 'Remaining durability points before condition degrades' },
+      weight:    { type: 'decimal', description: 'kg', defaultValue: 0.9 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
+      stackable: { type: 'boolean', description: 'Always false for weapons', defaultValue: false },
+      durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 150 },
     },
     relations: {
       thornwood:  { name: 'thornwood',  kind: 'hasOne', target: 'Thornwood' },
@@ -130,10 +130,10 @@ module.exports = {
     fields: {
       id:        { type: 'uuid', primaryKey: true },
       condition: { type: 'enum', values: DURABILITY_STATES },
-      weight:    { type: 'decimal', description: 'kg' },
-      rarity:    { type: 'enum', values: RARITIES },
-      stackable: { type: 'boolean', description: 'Always false for weapons' },
-      durability: { type: 'integer', description: 'Remaining durability points before condition degrades' },
+      weight:    { type: 'decimal', description: 'kg', defaultValue: 1.8 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'rare' },
+      stackable: { type: 'boolean', description: 'Always false for weapons', defaultValue: false },
+      durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 120 },
     },
     relations: {
       voidite: { name: 'voidite', kind: 'hasOne', target: 'Voidite' },

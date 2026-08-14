@@ -1,9 +1,15 @@
 [gd_resource type="Resource" format=3]
 
+[ext_resource type="Script" path="res://godot/creatures/forestboar.gd" id="1"]
+
 [resource]
+script = ExtResource("1")
 id = ""
-baseHp = 0
-baseDamage = 0
+state = 0
+tier = 0
+aggressionLevel = 1
+baseHp = 80
+baseDamage = 12
 state_machine_field = "state"
 initial_state = "idle"
 description = "A stout, bristle-furred boar that roots through the forest floor for tubers and fungi. Normally passive, but fiercely territorial when its young are nearby. The most hunted creature in the temperate forest — a reliable early-game meat and hide source."

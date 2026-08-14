@@ -1,10 +1,15 @@
 [gd_resource type="Resource" format=3]
 
+[ext_resource type="Script" path="res://godot/items/aethermitedust.gd" id="1"]
+
 [resource]
+script = ExtResource("1")
 id = ""
-weight = 0.0
-stackable = false
-durability = 0
+condition = 0
+weight = 0.02
+rarity = 1
+stackable = true
+durability = 80
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "Fine powder ground from raw aethermite ore at an arcane forge. Used as an enchanting reagent and in potion brewing; the ground form is not interchangeable with shards."

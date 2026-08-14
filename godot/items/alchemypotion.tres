@@ -1,10 +1,15 @@
 [gd_resource type="Resource" format=3]
 
+[ext_resource type="Script" path="res://godot/items/alchemypotion.gd" id="1"]
+
 [resource]
+script = ExtResource("1")
 id = ""
-weight = 0.0
-stackable = false
-durability = 0
+condition = 0
+weight = 0.2
+rarity = 1
+stackable = true
+durability = 100
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "Sealed glass flask containing an Alchemist-brewed reagent. The specific effect depends on the recipe; common variants restore health, cure status effects, or temporarily enhance a single attribute."

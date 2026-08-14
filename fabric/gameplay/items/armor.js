@@ -12,10 +12,10 @@ module.exports = {
     fields: {
       id:        { type: 'uuid', primaryKey: true },
       condition: { type: 'enum', values: DURABILITY_STATES },
-      weight:    { type: 'decimal', description: 'kg' },
-      rarity:    { type: 'enum', values: RARITIES },
-      stackable: { type: 'boolean', description: 'Always false for armour pieces' },
-      durability: { type: 'integer', description: 'Remaining durability points before condition degrades' },
+      weight:    { type: 'decimal', description: 'kg', defaultValue: 2.1 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
+      stackable: { type: 'boolean', description: 'Always false for armour pieces', defaultValue: false },
+      durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 120 },
     },
     relations: {
       ferrite: { name: 'ferrite', kind: 'hasOne', target: 'Ferrite' },
@@ -45,10 +45,10 @@ module.exports = {
     fields: {
       id:        { type: 'uuid', primaryKey: true },
       condition: { type: 'enum', values: DURABILITY_STATES },
-      weight:    { type: 'decimal', description: 'kg' },
-      rarity:    { type: 'enum', values: RARITIES },
-      stackable: { type: 'boolean', description: 'Always false for armour pieces' },
-      durability: { type: 'integer', description: 'Remaining durability points before condition degrades' },
+      weight:    { type: 'decimal', description: 'kg', defaultValue: 9.8 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
+      stackable: { type: 'boolean', description: 'Always false for armour pieces', defaultValue: false },
+      durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 250 },
     },
     relations: {
       veilsteel: { name: 'veilsteel', kind: 'hasOne', target: 'Veilsteel' },
@@ -85,10 +85,10 @@ module.exports = {
     fields: {
       id:        { type: 'uuid', primaryKey: true },
       condition: { type: 'enum', values: DURABILITY_STATES },
-      weight:    { type: 'decimal', description: 'kg' },
-      rarity:    { type: 'enum', values: RARITIES },
-      stackable: { type: 'boolean', description: 'Always false for armour pieces' },
-      durability: { type: 'integer', description: 'Remaining durability points before condition degrades' },
+      weight:    { type: 'decimal', description: 'kg', defaultValue: 0.6 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
+      stackable: { type: 'boolean', description: 'Always false for armour pieces', defaultValue: false },
+      durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 80 },
     },
     relations: {
       duskfiber: { name: 'duskfiber', kind: 'hasOne', target: 'Duskfiber' },

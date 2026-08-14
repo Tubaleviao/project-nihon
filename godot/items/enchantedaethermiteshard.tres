@@ -1,10 +1,15 @@
 [gd_resource type="Resource" format=3]
 
+[ext_resource type="Script" path="res://godot/items/enchantedaethermiteshard.gd" id="1"]
+
 [resource]
+script = ExtResource("1")
 id = ""
-weight = 0.0
-stackable = false
-durability = 0
+condition = 0
+weight = 0.05
+rarity = 2
+stackable = true
+durability = 50
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "A refined aethermite shard that has been fully imbued at an arcane forge. Emits a faint silver glow; consumed as a single-use catalyst when enchanting metals or imbuing equipment."

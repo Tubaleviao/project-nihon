@@ -12,10 +12,10 @@ module.exports = {
     fields: {
       id:        { type: 'uuid', primaryKey: true },
       condition: { type: 'enum', values: DURABILITY_STATES },
-      weight:    { type: 'decimal', description: 'kg; affects carry capacity' },
-      rarity:    { type: 'enum', values: RARITIES },
-      stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory' },
-      durability: { type: 'integer', description: 'Remaining durability points before condition degrades' },
+      weight:    { type: 'decimal', description: 'kg; affects carry capacity', defaultValue: 2.8 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
+      stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
+      durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 80 },
     },
     relations: {
       ferrite:   { name: 'ferrite',   kind: 'hasOne', target: 'Ferrite' },
@@ -49,10 +49,10 @@ module.exports = {
     fields: {
       id:        { type: 'uuid', primaryKey: true },
       condition: { type: 'enum', values: DURABILITY_STATES },
-      weight:    { type: 'decimal', description: 'kg; affects carry capacity' },
-      rarity:    { type: 'enum', values: RARITIES },
-      stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory' },
-      durability: { type: 'integer', description: 'Remaining durability points before condition degrades' },
+      weight:    { type: 'decimal', description: 'kg; affects carry capacity', defaultValue: 4.5 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
+      stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
+      durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 160 },
     },
     relations: {
       veilsteel:  { name: 'veilsteel',  kind: 'hasOne', target: 'Veilsteel' },
@@ -89,10 +89,10 @@ module.exports = {
     fields: {
       id:        { type: 'uuid', primaryKey: true },
       condition: { type: 'enum', values: DURABILITY_STATES },
-      weight:    { type: 'decimal', description: 'kg; affects carry capacity' },
-      rarity:    { type: 'enum', values: RARITIES },
-      stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory' },
-      durability: { type: 'integer', description: 'Remaining durability points before condition degrades' },
+      weight:    { type: 'decimal', description: 'kg; affects carry capacity', defaultValue: 2.3 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
+      stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
+      durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 90 },
     },
     relations: {
       ferrite:   { name: 'ferrite',   kind: 'hasOne', target: 'Ferrite' },

@@ -1,10 +1,15 @@
 [gd_resource type="Resource" format=3]
 
+[ext_resource type="Script" path="res://godot/items/ferritehelmet.gd" id="1"]
+
 [resource]
+script = ExtResource("1")
 id = ""
-weight = 0.0
+condition = 0
+weight = 2.1
+rarity = 0
 stackable = false
-durability = 0
+durability = 120
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "Simple open-faced helmet shaped from ferrite plate. Offers reliable head protection against blunt and slashing attacks at early-game cost."

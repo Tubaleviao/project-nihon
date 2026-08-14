@@ -1,9 +1,15 @@
 [gd_resource type="Resource" format=3]
 
+[ext_resource type="Script" path="res://godot/creatures/riftwarden.gd" id="1"]
+
 [resource]
+script = ExtResource("1")
 id = ""
-baseHp = 0
-baseDamage = 0
+state = 0
+tier = 4
+aggressionLevel = 2
+baseHp = 2000
+baseDamage = 90
 state_machine_field = "state"
 initial_state = "idle"
 description = "An ancient construct of crystallised voidite that guards the innermost rift boundary. Moves slowly but is virtually immune to physical damage. Warden fragments are the rarest material in the game — a single Warden kill can supply a guild with enough voidite-grade components for weeks."

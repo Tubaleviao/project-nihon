@@ -1,11 +1,15 @@
 [gd_resource type="Resource" format=3]
 
+[ext_resource type="Script" path="res://godot/materials/veilsteel.gd" id="1"]
+
 [resource]
+script = ExtResource("1")
 id = ""
-density = 0.0
-hardness = 0.0
-conductivity = 0.0
-magicAffinity = 0.0
+state = 0
+density = 8.1
+hardness = 7.8
+conductivity = 0.05
+magicAffinity = 0.05
 state_machine_field = "state"
 initial_state = "unalloyed"
 description = "Blue-black alloy smelted from ferrite ingots and aethermite shards under high heat. Extremely hard but non-conductive; absorbs magical interference, making it ideal for anti-magic armor."

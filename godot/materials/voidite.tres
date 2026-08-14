@@ -1,11 +1,15 @@
 [gd_resource type="Resource" format=3]
 
+[ext_resource type="Script" path="res://godot/materials/voidite.gd" id="1"]
+
 [resource]
+script = ExtResource("1")
 id = ""
-density = 0.0
-hardness = 0.0
-conductivity = 0.0
-magicAffinity = 0.0
+state = 0
+density = 9.5
+hardness = 8.5
+conductivity = 0.9
+magicAffinity = 0.95
 state_machine_field = "state"
 initial_state = "raw"
 description = "Jet-black crystalline ore found only in void-touched biomes and deep rifts. Extremely rare, highly conductive of void-type magic; dangerously unstable in raw form."

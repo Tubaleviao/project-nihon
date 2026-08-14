@@ -1,11 +1,16 @@
 [gd_resource type="Resource" format=3]
 
+[ext_resource type="Script" path="res://godot/materials/aethermite.gd" id="1"]
+
 [resource]
+script = ExtResource("1")
 id = ""
-density = 0.0
-hardness = 0.0
-conductivity = 0.0
-magicAffinity = 0.0
+state = 0
+form = 0
+density = 4.3
+hardness = 5.0
+conductivity = 0.6
+magicAffinity = 0.8
 state_machine_field = "state"
 initial_state = "raw"
 description = "Pale silver ore that hums faintly in the presence of active magic. Found deep underground near ley lines and in meteor craters. The primary catalyst for enchanting and arcane crafting."

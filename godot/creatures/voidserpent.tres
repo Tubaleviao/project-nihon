@@ -1,9 +1,15 @@
 [gd_resource type="Resource" format=3]
 
+[ext_resource type="Script" path="res://godot/creatures/voidserpent.gd" id="1"]
+
 [resource]
+script = ExtResource("1")
 id = ""
-baseHp = 0
-baseDamage = 0
+state = 0
+tier = 4
+aggressionLevel = 2
+baseHp = 800
+baseDamage = 60
 state_machine_field = "state"
 initial_state = "idle"
 description = "A massive serpentine entity born from void-rift energy given form. Its scales shift between physical and incorporeal, making conventional weapons unreliable. VoidTouched players deal full damage regardless of phase state. Its shed scale fragments are the only material that can line a void-safe container."
