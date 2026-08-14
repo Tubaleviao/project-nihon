@@ -109,6 +109,9 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color(0.35, 0.6, 0.28)
 	mat.roughness    = 0.9
+	# Render both faces so the terrain shell is never see-through regardless
+	# of triangle winding (avoids backface-culled "transparent" hilltops).
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mesh_inst.material_override = mat
 
 	root.add_child(mesh_inst)
