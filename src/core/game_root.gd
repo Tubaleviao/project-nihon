@@ -63,6 +63,26 @@ func _ready() -> void:
 	GameBus.player_state_changed.connect(_on_player_state_changed)
 	GameBus.inventory_full.connect(_on_inventory_full)
 
+	# Lighting — a directional "sun" plus soft ambient sky fill.
+	var sun := DirectionalLight3D.new()
+	sun.name = "Sun"
+	sun.rotation_degrees = Vector3(-50.0, -30.0, 0.0)
+	sun.light_color = Color(1.0, 0.95, 0.85)
+	sun.light_energy = 1.4
+	sun.shadow_enabled = true
+	add_child(sun)
+
+	var env := WorldEnvironment.new()
+	env.name = "Environment"
+	var environment := Environment.new()
+	environment.background_mode = Environment.BG_COLOR
+	environment.background_color = Color(0.45, 0.62, 0.85)
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	environment.ambient_light_color = Color(0.55, 0.6, 0.7)
+	environment.ambient_light_energy = 0.5
+	env.environment = environment
+	add_child(env)
+
 	# Run automated tests before anything else so failures are visible early.
 	_run_tests()
 
