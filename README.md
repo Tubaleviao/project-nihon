@@ -30,7 +30,7 @@ pnpm generate   # generate the design bible into bible/
 | 7 | Character system specification | Done |
 | 8 | `generator-godot` integration | Done |
 | 9 | Public wiki | Planned |
-| 10 | Vertical slices (terrain, battle, networking, persistence) | In progress |
+| 10 | Vertical slices — playable game loop with creature combat | Done |
 
 See [ROADMAP.md](ROADMAP.md) for the full spec, deliverables, and acceptance criteria for each phase.
 

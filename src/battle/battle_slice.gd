@@ -13,6 +13,9 @@ extends Node
 ## Populated on first hit; reset via reset_hp().
 var _hp_state: Dictionary = {}
 
+## Set by game_root so instance IDs can be resolved to fabric creature keys.
+var creature_slice: Node = null
+
 func _ready() -> void:
 	GameBus.combat_round_requested.connect(_on_combat_round_requested)
 
@@ -49,7 +52,14 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 
 	if hp_remaining <= 0.0 and outcome != "miss":
 		outcome = "kill"
-		GameBus.creature_died.emit(defender_id, Vector3.ZERO, attacker_id)
+		# Resolve world position from creature_slice for loot drop placement.
+		var death_pos := Vector3.ZERO
+		if creature_slice != null:
+			for inst in creature_slice.get_all_instances():
+				if inst["instance_id"] == defender_id or inst["creature_id"] == defender_id:
+					death_pos = inst["position"]
+					break
+		GameBus.creature_died.emit(defender_id, death_pos, attacker_id)
 
 	var result := {
 		"attacker": attacker_id,
@@ -72,12 +82,19 @@ func reset_hp(entity_id: String) -> void:
 func _on_combat_round_requested(attacker_id: String, defender_id: String) -> void:
 	resolve_round(attacker_id, defender_id)
 
+## Resolve a creature instance_id to its fabric key, then load from GameData.
 func _lookup(entity_id: String) -> Resource:
 	if entity_id == "player":
 		push_warning("BattleSlice: 'player' entity has no GameData resource — using stat fallbacks")
 		return null
+	# Direct fabric key lookup first.
 	if GameData.CREATURES.has(entity_id):
 		return GameData.CREATURES[entity_id]
+	# Resolve creature instance_id → fabric key via creature_slice.
+	if creature_slice != null:
+		var creature_id: String = creature_slice.get_instance_creature_id(entity_id)
+		if creature_id != "" and GameData.CREATURES.has(creature_id):
+			return GameData.CREATURES[creature_id]
 	return null
 
 func _field(res: Resource, field: String, fallback: float) -> float:

@@ -18,6 +18,7 @@ const MOUSE_SENS   := 0.002   # radians per pixel
 const CAMERA_PITCH_MIN := -80.0
 const CAMERA_PITCH_MAX :=  80.0
 const SYNC_INTERVAL := 30     # physics ticks between network sync broadcasts
+const ATTACK_RANGE := 3.0     # metres — melee interaction radius
 
 const MAX_HP := 100.0
 
@@ -28,6 +29,9 @@ var _hp:     float = MAX_HP
 var _vel:    Vector3 = Vector3.ZERO
 var _sync_tick: int = 0
 var _alive: bool = true
+
+## Set by game_root after all slices are instantiated.
+var creature_slice: Node = null
 
 func _ready() -> void:
 	_build_body()
@@ -58,6 +62,11 @@ func _input(event: InputEvent) -> void:
 				Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 			else:
 				Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	# Left-click or F key → melee attack the nearest creature in range.
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_try_attack()
+	if event is InputEventKey and event.pressed and event.keycode == KEY_F:
+		_try_attack()
 
 func get_position() -> Vector3:
 	return _body.global_position if _body else Vector3.ZERO
@@ -155,3 +164,16 @@ func _die() -> void:
 	_alive = false
 	print("PlayerSlice: player died at %s" % get_position())
 	GameBus.creature_died.emit("player", get_position(), "")
+
+func _try_attack() -> void:
+	if not _alive:
+		return
+	if creature_slice == null:
+		push_warning("PlayerSlice: creature_slice not wired — cannot resolve attack target")
+		return
+	var target_id: String = creature_slice.nearest_creature(get_position(), ATTACK_RANGE)
+	if target_id == "":
+		return   # no creature in range
+	var creature_id: String = creature_slice.get_instance_creature_id(target_id)
+	print("PlayerSlice: attacking %s [%s]" % [creature_id, target_id])
+	GameBus.combat_round_requested.emit("player", target_id)

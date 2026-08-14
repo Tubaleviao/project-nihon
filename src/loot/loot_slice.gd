@@ -10,10 +10,14 @@ extends Node
 ##   get_pickups_near(pos: Vector3, radius: float) -> Array[Dictionary]
 ##   consume_pickup(pickup_id: String)              -> Dictionary  (empty on miss)
 ##
-## Drop tables are defined inline here, matching the LootTable entity in the fabric.
+## Drop tables are a direct transcription of each creature's "drop" behavior rules
+## in the fabric (fabric/world/creatures/*.js). They are the authoritative source;
+## any balance change starts there.
 ## Format per entry: { "item_id": String, "chance": float, "min_qty": int, "max_qty": int }
-
-const DESPAWN_SECONDS := 120.0
+##
+## DESPAWN_SECONDS matches LootTable.despawnSeconds defaultValue in the fabric
+## (fabric/gameplay/loot.js). If the fabric value changes, update this constant.
+const DESPAWN_SECONDS := 120.0  # LootTable.despawnSeconds defaultValue
 
 ## Loot tables keyed by creature entity id (matches GameData.CREATURES keys).
 const LOOT_TABLES: Dictionary = {
@@ -69,6 +73,9 @@ const LOOT_TABLES: Dictionary = {
 var _pickups: Dictionary = {}
 var _next_id: int = 0
 
+## Set by game_root so instance IDs can be resolved to fabric creature keys.
+var creature_slice: Node = null
+
 func _ready() -> void:
 	GameBus.creature_died.connect(_on_creature_died)
 
@@ -99,9 +106,15 @@ func consume_pickup(pickup_id: String) -> Dictionary:
 func _on_creature_died(entity_id: String, position: Vector3, _killer_id: String) -> void:
 	if entity_id == "player":
 		return
-	var table: Array = LOOT_TABLES.get(entity_id, [])
+	# entity_id may be a creature instance_id; resolve to the fabric key for drop table lookup.
+	var fabric_key := entity_id
+	if creature_slice != null:
+		var resolved: String = creature_slice.get_instance_creature_id(entity_id)
+		if resolved != "":
+			fabric_key = resolved
+	var table: Array = LOOT_TABLES.get(fabric_key, [])
 	if table.is_empty():
-		print("LootSlice: no loot table for '%s'" % entity_id)
+		print("LootSlice: no loot table for '%s' (fabric key: %s)" % [entity_id, fabric_key])
 		return
 	for entry in table:
 		if randf() <= entry["chance"]:
@@ -117,7 +130,7 @@ func _on_creature_died(entity_id: String, position: Vector3, _killer_id: String)
 				"spawned_at": Time.get_ticks_msec(),
 			}
 			GameBus.loot_dropped.emit(pid, entry["item_id"], position, qty)
-			print("LootSlice: %s dropped %s ×%d at %s" % [entity_id, entry["item_id"], qty, position])
+			print("LootSlice: %s dropped %s ×%d at %s" % [fabric_key, entry["item_id"], qty, position])
 
 func _tick_despawn() -> void:
 	var now := Time.get_ticks_msec()

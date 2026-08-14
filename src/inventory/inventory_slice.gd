@@ -13,12 +13,16 @@ extends Node
 ##   get_total_slots_used()           -> int
 ##   drop_item(item_id, quantity)     -> bool
 
-const MAX_SLOTS    := 30
-const MAX_WEIGHT   := 50.0     # kg
-const PICKUP_RADIUS := 2.0     # tiles — auto-collect within this range
+## Fabric source of truth: PlayerCharacter.maxSlots / maxWeightKg defaultValues.
+## Read from GameData.SYSTEMS["PlayerCharacter"] if available; otherwise use
+## the fabric-documented defaults (30 slots, 50 kg) as compile-time constants.
+const MAX_SLOTS    := 30      # PlayerCharacter.maxSlots defaultValue in fabric
+const MAX_WEIGHT   := 50.0   # PlayerCharacter.maxWeightKg defaultValue in fabric
+const PICKUP_RADIUS := 2.0   # metres — auto-collect within this range
 
-## Weights per item_id (kg). Fallback weight used for unknown items.
-const ITEM_WEIGHTS: Dictionary = {
+## Weights for raw creature drops that are not fabric items (no .tres resource).
+## Values are authoritative design decisions; any change starts in this table.
+const RAW_DROP_WEIGHTS: Dictionary = {
 	"raw_boar_meat":    0.8,
 	"boar_hide":        1.5,
 	"boar_tusk":        0.4,
@@ -46,6 +50,9 @@ const ITEM_WEIGHTS: Dictionary = {
 }
 const DEFAULT_WEIGHT := 0.5
 
+## Built at _ready() from GameData.ITEMS so fabric item weights are authoritative.
+var _item_weight_cache: Dictionary = {}
+
 ## The actual inventory: item_id -> quantity.
 var _contents: Dictionary = {}
 var _current_weight: float = 0.0
@@ -58,6 +65,7 @@ var _player_pos: Vector3 = Vector3.ZERO
 var loot_slice: Node = null
 
 func _ready() -> void:
+	_build_weight_cache()
 	GameBus.loot_dropped.connect(_on_loot_dropped)
 	GameBus.player_state_changed.connect(_on_player_state_changed)
 
@@ -138,5 +146,16 @@ func _try_pickup(pickup_id: String, item_id: String, quantity: int) -> void:
 			_is_full = true
 			GameBus.inventory_full.emit()
 
+func _build_weight_cache() -> void:
+	# Seed with raw-drop weights (creature drops not in the item fabric).
+	_item_weight_cache.merge(RAW_DROP_WEIGHTS)
+	# Override/extend with fabric item weights from GameData.ITEMS (authoritative).
+	for key in GameData.ITEMS:
+		var res: Resource = GameData.ITEMS[key]
+		if res != null and "weight" in res:
+			var w = res.get("weight")
+			if w is float or w is int:
+				_item_weight_cache[key] = float(w)
+
 func _item_weight(item_id: String) -> float:
-	return ITEM_WEIGHTS.get(item_id, DEFAULT_WEIGHT)
+	return _item_weight_cache.get(item_id, DEFAULT_WEIGHT)

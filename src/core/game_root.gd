@@ -1,13 +1,14 @@
 extends Node
-## Game root — integration layer that owns all slices and runs a smoke-test
-## sequence on startup to verify the bus, data loading, and each slice.
+## Game root — integration layer that owns all slices and wires them together.
 ##
-## Slices communicate exclusively through GameBus signals; this script only
-## instantiates them and (for the prototype) drives the smoke-test sequence.
+## Slices communicate exclusively through GameBus signals. This script
+## instantiates slices, sets cross-slice references that cannot travel the bus,
+## and drives the startup sequence (tests → GameData check → terrain boot).
 
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const VoxelSlice       := preload("res://src/terrain/voxel_slice.gd")
 const BattleSlice      := preload("res://src/battle/battle_slice.gd")
+const CreatureSlice    := preload("res://src/creature/creature_slice.gd")
 const NetworkingSlice  := preload("res://src/networking/networking_slice.gd")
 const PersistenceSlice := preload("res://src/persistence/persistence_slice.gd")
 const PlayerSlice      := preload("res://src/player/player_slice.gd")
@@ -18,6 +19,7 @@ const TestSuite        := preload("res://src/tests/test_suite.gd")
 var _terrain:     TerrainSlice
 var _voxel:       VoxelSlice
 var _battle:      BattleSlice
+var _creature:    CreatureSlice
 var _networking:  NetworkingSlice
 var _persistence: PersistenceSlice
 var _player:      PlayerSlice
@@ -28,38 +30,43 @@ func _ready() -> void:
 	_terrain     = TerrainSlice.new()
 	_voxel       = VoxelSlice.new()
 	_battle      = BattleSlice.new()
+	_creature    = CreatureSlice.new()
 	_networking  = NetworkingSlice.new()
 	_persistence = PersistenceSlice.new()
 	_player      = PlayerSlice.new()
 	_loot        = LootSlice.new()
 	_inventory   = InventorySlice.new()
 
-	for s in [_terrain, _voxel, _battle, _networking, _persistence, _player, _loot, _inventory]:
+	for s in [_terrain, _voxel, _battle, _creature, _networking, _persistence, _player, _loot, _inventory]:
 		s.name = s.get_script().resource_path.get_file().get_basename()
 		add_child(s)
 
-	# Cross-slice wiring that can't live on the bus (direct references needed).
-	_inventory.loot_slice = _loot
+	# Cross-slice wiring: direct references where the bus cannot carry context.
+	_inventory.loot_slice    = _loot
+	_player.creature_slice   = _creature
+	_battle.creature_slice   = _creature
+	_loot.creature_slice     = _creature
 
-	# Wire cross-slice reactions through the bus.
+	# Bus listeners for integration-layer logging.
 	GameBus.chunk_ready.connect(_on_chunk_ready)
 	GameBus.combat_round_resolved.connect(_on_combat_resolved)
 	GameBus.save_completed.connect(_on_save_completed)
 	GameBus.load_completed.connect(_on_load_completed)
 	GameBus.creature_died.connect(_on_creature_died)
+	GameBus.creature_spawned.connect(_on_creature_spawned)
 	GameBus.loot_dropped.connect(_on_loot_dropped)
 	GameBus.item_picked_up.connect(_on_item_picked_up)
 	GameBus.player_state_changed.connect(_on_player_state_changed)
 	GameBus.inventory_full.connect(_on_inventory_full)
 
-	# Run automated tests before the smoke test so failures are visible early.
+	# Run automated tests before anything else so failures are visible early.
 	_run_tests()
 
 	# Verify GameData entries load cleanly.
 	_check_game_data()
 
-	# Prototype smoke test — exercises each slice.
-	_smoke_test()
+	# Boot terrain — creatures are spawned by CreatureSlice._ready() via GameData.
+	_boot_world()
 
 # ---------------------------------------------------------------------------
 # Automated tests
@@ -73,27 +80,34 @@ func _run_tests() -> void:
 	suite.queue_free()
 
 # ---------------------------------------------------------------------------
-# Smoke test
+# World boot
 # ---------------------------------------------------------------------------
 
-func _smoke_test() -> void:
-	print("\n=== Vertical slice smoke test ===")
+func _boot_world() -> void:
+	print("\n=== Project Nihon — world boot ===")
 
-	# --- Terrain + Voxel ---
-	print("\n[Terrain] Requesting chunk (0, 0)…")
+	# Terrain — request the origin chunk; VoxelSlice reacts to chunk_ready.
+	print("\n[Terrain] Requesting origin chunk (0, 0)…")
 	_terrain.request_chunk(Vector2i(0, 0))
-	# VoxelSlice automatically reacts to chunk_ready and builds the mesh.
 
-	# --- Battle + Death signal ---
-	print("\n[Battle] Requesting combat round: ForestBoar vs GraywolfPack…")
-	GameBus.combat_round_requested.emit("ForestBoar", "GraywolfPack")
+	# Creature slice already spawned creatures from SPAWN_MANIFEST in _ready().
+	# Trigger an initial creature awareness pass: the nearest ForestBoar
+	# fires a detect signal through the bus so combat can start immediately.
+	var instances := _creature.get_all_instances()
+	if instances.size() > 0:
+		var first: Dictionary = instances[0]
+		print("\n[Creatures] %d creatures spawned; first: %s [%s] at %s" % [
+			instances.size(),
+			first["creature_id"],
+			first["instance_id"],
+			first["position"],
+		])
+		# Request one combat round against the first spawned creature via the bus
+		# (the real trigger comes from player left-click; this validates the pipeline).
+		GameBus.combat_round_requested.emit("player", first["instance_id"])
 
-	# --- Simulate a creature death to test loot + inventory pipeline ---
-	print("\n[Loot] Simulating ForestBoar death…")
-	GameBus.creature_died.emit("ForestBoar", Vector3(16.0, 0.0, 16.0), "player")
-
-	# --- Persistence ---
-	print("\n[Persistence] Saving world snapshot to slot 0…")
+	# Persistence — save the initial world snapshot via the bus.
+	print("\n[Persistence] Saving initial world snapshot to slot 0…")
 	var snapshot := {
 		"version":   1,
 		"timestamp": Time.get_ticks_msec(),
@@ -107,11 +121,11 @@ func _smoke_test() -> void:
 	GameBus.save_requested.emit(0, snapshot)
 	GameBus.load_requested.emit(0)
 
-	# --- Networking ---
+	# Networking — open local host so peers can connect.
 	print("\n[Networking] Starting local host on port 7777…")
 	_networking.host(7777, 1)
 
-	print("\n=== Smoke test dispatched — watch signals above ===\n")
+	print("\n=== World boot complete — attack with left-click or F ===\n")
 
 # ---------------------------------------------------------------------------
 # Bus listeners
@@ -132,6 +146,9 @@ func _on_combat_resolved(result: Dictionary) -> void:
 
 func _on_creature_died(entity_id: String, position: Vector3, killer_id: String) -> void:
 	print("[Death] %s died at %s  killer=%s" % [entity_id, position, killer_id])
+
+func _on_creature_spawned(instance_id: String, creature_id: String, position: Vector3) -> void:
+	print("[Creature] %s [%s] spawned at %s" % [creature_id, instance_id, position])
 
 func _on_loot_dropped(pickup_id: String, item_id: String, position: Vector3, quantity: int) -> void:
 	print("[Loot] pickup=%s  item=%s ×%d  at %s" % [pickup_id, item_id, quantity, position])

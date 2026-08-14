@@ -73,6 +73,16 @@ signal load_requested(slot: int)
 ## killer_id   : String   — entity_id of the killer ("" if environmental)
 signal creature_died(entity_id: String, position: Vector3, killer_id: String)
 
+## Emitted by CreatureSlice when a new creature instance enters the world.
+## instance_id : String   — unique runtime identifier for this instance
+## creature_id : String   — fabric key (e.g. "ForestBoar")
+## position    : Vector3  — spawn world position
+signal creature_spawned(instance_id: String, creature_id: String, position: Vector3)
+
+## Request to attack the nearest creature (emitted by PlayerSlice on attack input).
+## attacker_id : String — "player" or creature instance_id
+signal attack_requested(attacker_id: String)
+
 # ---------------------------------------------------------------------------
 # Loot
 # ---------------------------------------------------------------------------

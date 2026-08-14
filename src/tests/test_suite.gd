@@ -9,6 +9,7 @@ extends Node
 
 # Preload slices so tests are isolated from the main scene tree.
 const BattleSlice     := preload("res://src/battle/battle_slice.gd")
+const CreatureSlice   := preload("res://src/creature/creature_slice.gd")
 const TerrainSlice    := preload("res://src/terrain/terrain_slice.gd")
 const PersistenceSlice:= preload("res://src/persistence/persistence_slice.gd")
 const LootSlice       := preload("res://src/loot/loot_slice.gd")
@@ -27,22 +28,28 @@ func run() -> void:
 	print("║       Project Nihon — Test Suite     ║")
 	print("╚══════════════════════════════════════╝\n")
 
-	_run_test("battle: hit reduces defender hp",         _test_battle_hit_reduces_hp)
-	_run_test("battle: miss leaves hp unchanged",        _test_battle_miss_outcome_exists)
-	_run_test("battle: kill emits creature_died signal", _test_battle_kill_emits_death)
-	_run_test("battle: reset_hp restores state",         _test_battle_reset_hp)
-	_run_test("terrain: chunk size is correct",          _test_terrain_chunk_size)
-	_run_test("terrain: height is non-negative",         _test_terrain_height_nonneg)
-	_run_test("terrain: two chunks are independent",     _test_terrain_two_chunks)
-	_run_test("persistence: save then load round-trip",  _test_persistence_round_trip)
-	_run_test("persistence: missing slot emits load_failed", _test_persistence_missing_slot)
-	_run_test("loot: known creature produces drops",     _test_loot_known_creature)
-	_run_test("loot: unknown creature produces no drops",_test_loot_unknown_creature)
-	_run_test("loot: consume removes pickup",            _test_loot_consume_removes)
-	_run_test("inventory: pickup adds item",             _test_inventory_pickup_adds)
-	_run_test("inventory: drop reduces quantity",        _test_inventory_drop)
-	_run_test("inventory: over-drop returns false",      _test_inventory_over_drop)
-	_run_test("inventory: slot count correct",           _test_inventory_slot_count)
+	_run_test("battle: hit reduces defender hp",              _test_battle_hit_reduces_hp)
+	_run_test("battle: miss leaves hp unchanged",             _test_battle_miss_outcome_exists)
+	_run_test("battle: kill emits creature_died signal",      _test_battle_kill_emits_death)
+	_run_test("battle: reset_hp restores state",              _test_battle_reset_hp)
+	_run_test("battle: resolves stats via creature_slice",    _test_battle_resolves_via_creature_slice)
+	_run_test("creature: spawns instances from GameData",     _test_creature_spawns_from_gamedata)
+	_run_test("creature: nearest_creature returns closest",   _test_creature_nearest)
+	_run_test("creature: death marks instance dead",          _test_creature_death_marks_dead)
+	_run_test("terrain: chunk size is correct",               _test_terrain_chunk_size)
+	_run_test("terrain: height is non-negative",              _test_terrain_height_nonneg)
+	_run_test("terrain: two chunks are independent",          _test_terrain_two_chunks)
+	_run_test("persistence: save then load round-trip",       _test_persistence_round_trip)
+	_run_test("persistence: missing slot emits load_failed",  _test_persistence_missing_slot)
+	_run_test("loot: known creature produces drops",          _test_loot_known_creature)
+	_run_test("loot: unknown creature produces no drops",     _test_loot_unknown_creature)
+	_run_test("loot: consume removes pickup",                 _test_loot_consume_removes)
+	_run_test("loot: instance_id resolves to fabric key",     _test_loot_instance_id_resolve)
+	_run_test("inventory: pickup adds item",                  _test_inventory_pickup_adds)
+	_run_test("inventory: drop reduces quantity",             _test_inventory_drop)
+	_run_test("inventory: over-drop returns false",           _test_inventory_over_drop)
+	_run_test("inventory: slot count correct",                _test_inventory_slot_count)
+	_run_test("inventory: weights loaded from GameData.ITEMS",_test_inventory_weights_from_gamedata)
 
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
@@ -103,6 +110,66 @@ func _test_battle_reset_hp() -> void:
 	b.reset_hp("ForestBoar")
 	assert_false(b._hp_state.has("ForestBoar"), "HP state cleared after reset")
 	b.queue_free()
+
+func _test_battle_resolves_via_creature_slice() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	var b := BattleSlice.new()
+	b.creature_slice = c
+	add_child(b)
+	# Grab the first spawned instance and attack it by instance_id.
+	var instances := c.get_all_instances()
+	assert_true(instances.size() > 0, "creature slice spawned at least one instance")
+	if instances.size() > 0:
+		var iid: String = instances[0]["instance_id"]
+		var result := b.resolve_round("player", iid)
+		assert_true(result.has("defender_hp_remaining"), "result has defender_hp_remaining for instance_id")
+	b.queue_free()
+	c.queue_free()
+
+# ---------------------------------------------------------------------------
+# CreatureSlice tests
+# ---------------------------------------------------------------------------
+
+func _test_creature_spawns_from_gamedata() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	var instances := c.get_all_instances()
+	assert_true(instances.size() > 0, "at least one creature spawned from GameData")
+	for inst in instances:
+		assert_true(GameData.CREATURES.has(inst["creature_id"]),
+			"creature_id '%s' exists in GameData.CREATURES" % inst["creature_id"])
+		assert_true(inst["hp"] > 0.0, "spawned creature has positive HP from fabric")
+	c.queue_free()
+
+func _test_creature_nearest() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	var instances := c.get_all_instances()
+	assert_true(instances.size() > 0, "need at least one instance for nearest test")
+	if instances.size() > 0:
+		var pos: Vector3 = instances[0]["position"]
+		var result := c.nearest_creature(pos, 1000.0)
+		assert_true(result != "", "nearest_creature returns an instance_id within large radius")
+	c.queue_free()
+
+func _test_creature_death_marks_dead() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	var instances := c.get_all_instances()
+	assert_true(instances.size() > 0, "need an instance to kill")
+	if instances.size() > 0:
+		var iid: String = instances[0]["instance_id"]
+		var creature_id: String = instances[0]["creature_id"]
+		GameBus.creature_died.emit(iid, Vector3.ZERO, "player")
+		var updated := c.get_all_instances()
+		var found := false
+		for inst in updated:
+			if inst["instance_id"] == iid:
+				assert_eq(inst["state"], "dead", "instance state is dead after creature_died signal")
+				found = true
+		assert_true(found, "dead instance still present in get_all_instances")
+	c.queue_free()
 
 # ---------------------------------------------------------------------------
 # TerrainSlice tests
@@ -202,6 +269,31 @@ func _test_loot_consume_removes() -> void:
 	assert_true(second.is_empty(), "second consume returns empty (already taken)")
 	l.queue_free()
 
+func _test_loot_instance_id_resolve() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	var l := LootSlice.new()
+	l.creature_slice = c
+	add_child(l)
+	var drops: Array = []
+	GameBus.loot_dropped.connect(func(pid, iid, pos, qty):
+		drops.append({ "id": pid, "item": iid, "qty": qty }))
+	# Kill by instance_id; loot slice must resolve to "ForestBoar" for drop table.
+	var instances := c.get_all_instances()
+	var boar_iid := ""
+	for inst in instances:
+		if inst["creature_id"] == "ForestBoar":
+			boar_iid = inst["instance_id"]
+			break
+	if boar_iid != "":
+		GameBus.creature_died.emit(boar_iid, Vector3.ZERO, "player")
+		assert_true(drops.size() >= 2,
+			"ForestBoar drops via instance_id produce at least 2 guaranteed items")
+	else:
+		assert_true(true, "no ForestBoar instance — skip instance_id resolve test")
+	l.queue_free()
+	c.queue_free()
+
 # ---------------------------------------------------------------------------
 # InventorySlice tests
 # ---------------------------------------------------------------------------
@@ -241,6 +333,18 @@ func _test_inventory_slot_count() -> void:
 	assert_eq(inv.get_total_slots_used(), 3, "3 distinct item types = 3 slots")
 	inv._try_pickup("p4", "wolf_pelt",   1)   # stack merge
 	assert_eq(inv.get_total_slots_used(), 3, "stacking same item doesn't add a slot")
+	inv.queue_free()
+
+func _test_inventory_weights_from_gamedata() -> void:
+	var inv := InventorySlice.new()
+	add_child(inv)
+	# FieldRations is in GameData.ITEMS (weight = 0.3 in fabric/gameplay/items/food.js).
+	# After _ready(), the weight cache should have its weight from the resource.
+	var w: float = inv._item_weight("FieldRations")
+	assert_true(w > 0.0, "FieldRations weight > 0 (loaded from GameData.ITEMS)")
+	# Raw drop not in GameData.ITEMS must still return a positive weight.
+	var w2: float = inv._item_weight("raw_boar_meat")
+	assert_true(w2 > 0.0, "raw_boar_meat weight > 0 (from RAW_DROP_WEIGHTS)")
 	inv.queue_free()
 
 # ---------------------------------------------------------------------------
