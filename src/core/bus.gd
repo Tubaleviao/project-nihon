@@ -56,6 +56,9 @@ signal save_completed(slot: int)
 ## data : Dictionary — the loaded world state
 signal load_completed(slot: int, data: Dictionary)
 
+## Emitted by PersistenceSlice when a load fails (file missing, unreadable, or corrupt).
+signal load_failed(slot: int, reason: String)
+
 ## Request a save/load (any system can fire these).
 signal save_requested(slot: int, data: Dictionary)
 signal load_requested(slot: int)

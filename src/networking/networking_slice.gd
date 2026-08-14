@@ -46,6 +46,7 @@ func join(address: String = "127.0.0.1", port: int = DEFAULT_PORT) -> Error:
 func disconnect_all() -> void:
 	if _peer:
 		_peer.close()
+	_detach_peer()
 	multiplayer.multiplayer_peer = null
 
 # ---------------------------------------------------------------------------
@@ -53,9 +54,17 @@ func disconnect_all() -> void:
 # ---------------------------------------------------------------------------
 
 func _attach_peer() -> void:
+	# Disconnect stale handlers before reconnecting to prevent duplicates.
+	_detach_peer()
 	multiplayer.multiplayer_peer = _peer
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+
+func _detach_peer() -> void:
+	if multiplayer.peer_connected.is_connected(_on_peer_connected):
+		multiplayer.peer_connected.disconnect(_on_peer_connected)
+	if multiplayer.peer_disconnected.is_connected(_on_peer_disconnected):
+		multiplayer.peer_disconnected.disconnect(_on_peer_disconnected)
 
 func _on_peer_connected(id: int) -> void:
 	GameBus.peer_connected.emit(id)
@@ -64,17 +73,30 @@ func _on_peer_disconnected(id: int) -> void:
 	GameBus.peer_disconnected.emit(id)
 
 func _on_packet_send_requested(peer_id: int, payload: Dictionary) -> void:
-	if multiplayer.multiplayer_peer == null:
+	var mp_peer := multiplayer.multiplayer_peer
+	if mp_peer == null:
+		return
+	# Only send when fully connected; drop packets during the handshake window.
+	if mp_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		push_warning("NetworkingSlice: dropping packet to peer %d — not yet connected" % peer_id)
 		return
 	var json := JSON.stringify(payload)
-	# Use an RPC routed through a dedicated relay method to avoid raw byte sends.
 	_relay_packet.rpc_id(peer_id, json)
 
 @rpc("any_peer", "reliable")
 func _relay_packet(json: String) -> void:
+	var sender := multiplayer.get_remote_sender_id()
+	# Server-side only: reject relays from non-authoritative senders.
+	# sender == 0 means the call originated locally (server calling itself),
+	# which is a sign of a mis-routed packet_send_requested event.
+	if multiplayer.is_server() and sender == 0:
+		push_error("NetworkingSlice: _relay_packet called locally on the server — dropped")
+		return
 	var payload = JSON.parse_string(json)
 	if payload == null:
-		push_error("NetworkingSlice: received malformed JSON packet")
+		push_error("NetworkingSlice: received malformed JSON packet from peer %d" % sender)
 		return
-	var sender := multiplayer.get_remote_sender_id()
+	if not payload is Dictionary:
+		push_error("NetworkingSlice: expected Dictionary payload from peer %d, got %s" % [sender, typeof(payload)])
+		return
 	GameBus.packet_received.emit(sender, payload)

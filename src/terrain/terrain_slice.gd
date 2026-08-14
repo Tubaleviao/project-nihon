@@ -27,8 +27,10 @@ func request_chunk(pos: Vector2i) -> void:
 	GameBus.chunk_ready.emit(pos, heightmap)
 
 ## Sample height at an arbitrary world position (snaps to nearest chunk sample).
+## Uses the same (raw+1)*0.5*HEIGHT_SCALE formula as _generate so values match the heightmap.
 func get_height_at(world_pos: Vector2) -> float:
-	return _noise.get_noise_2d(world_pos.x, world_pos.y) * HEIGHT_SCALE
+	var raw := _noise.get_noise_2d(world_pos.x, world_pos.y)
+	return (raw + 1.0) * 0.5 * HEIGHT_SCALE
 
 # ---------------------------------------------------------------------------
 # Private

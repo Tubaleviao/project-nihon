@@ -7,6 +7,11 @@ extends Node
 ##
 ## Public API:
 ##   resolve_round(attacker_id, defender_id) -> Dictionary
+##   reset_hp(entity_id)                     -> void
+
+## Running HP for each combatant, keyed by entity_id.
+## Populated on first hit; reset via reset_hp().
+var _hp_state: Dictionary = {}
 
 func _ready() -> void:
 	GameBus.combat_round_requested.connect(_on_combat_round_requested)
@@ -17,7 +22,11 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 	var defender_res := _lookup(defender_id)
 
 	var base_dmg: float = _field(attacker_res, "baseDamage", 10.0)
-	var def_hp:   float = _field(defender_res, "baseHp",     100.0)
+	var max_hp:   float = _field(defender_res, "baseHp",     100.0)
+
+	# Initialise running HP on first encounter.
+	if not _hp_state.has(defender_id):
+		_hp_state[defender_id] = max_hp
 
 	# Hit roll: base 80 % hit rate, modified by tier difference
 	var hit_roll := randf()
@@ -35,15 +44,21 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 	else:
 		outcome = "miss"
 
+	_hp_state[defender_id] = maxf(_hp_state[defender_id] - damage, 0.0)
+
 	var result := {
 		"attacker": attacker_id,
 		"defender": defender_id,
 		"damage":   snappedf(damage, 0.1),
 		"outcome":  outcome,
-		"defender_hp_remaining": maxf(def_hp - damage, 0.0),
+		"defender_hp_remaining": _hp_state[defender_id],
 	}
 	GameBus.combat_round_resolved.emit(result)
 	return result
+
+## Reset a combatant's tracked HP back to its base value (e.g. on respawn).
+func reset_hp(entity_id: String) -> void:
+	_hp_state.erase(entity_id)
 
 # ---------------------------------------------------------------------------
 # Private
@@ -54,6 +69,7 @@ func _on_combat_round_requested(attacker_id: String, defender_id: String) -> voi
 
 func _lookup(entity_id: String) -> Resource:
 	if entity_id == "player":
+		push_warning("BattleSlice: 'player' entity has no GameData resource — using stat fallbacks")
 		return null
 	if GameData.CREATURES.has(entity_id):
 		return GameData.CREATURES[entity_id]

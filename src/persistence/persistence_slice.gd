@@ -5,6 +5,7 @@ extends Node
 ##   IN  : save_requested(slot, data)
 ##   OUT : save_completed(slot)
 ##         load_completed(slot, data)
+##         load_failed(slot, reason)
 ##
 ## Public API:
 ##   save(slot: int, data: Dictionary) -> Error
@@ -32,20 +33,27 @@ func save(slot: int, data: Dictionary) -> Error:
 	return OK
 
 ## Deserialize and return the slot data, or an empty dict on failure.
+## Emits load_completed on success and load_failed on any failure.
 func load_slot(slot: int) -> Dictionary:
 	var path := _path(slot)
 	if not FileAccess.file_exists(path):
-		push_warning("PersistenceSlice: slot %d not found at %s" % [slot, path])
+		var reason := "slot %d not found at %s" % [slot, path]
+		push_warning("PersistenceSlice: " + reason)
+		GameBus.load_failed.emit(slot, reason)
 		return {}
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
-		push_error("PersistenceSlice: cannot open %s for read — %s" % [path, error_string(FileAccess.get_open_error())])
+		var reason := "cannot open %s for read — %s" % [path, error_string(FileAccess.get_open_error())]
+		push_error("PersistenceSlice: " + reason)
+		GameBus.load_failed.emit(slot, reason)
 		return {}
 	var text  := file.get_as_text()
 	file.close()
 	var data = JSON.parse_string(text)
 	if data == null or not data is Dictionary:
-		push_error("PersistenceSlice: slot %d contains invalid JSON" % slot)
+		var reason := "slot %d contains invalid JSON" % slot
+		push_error("PersistenceSlice: " + reason)
+		GameBus.load_failed.emit(slot, reason)
 		return {}
 	GameBus.load_completed.emit(slot, data)
 	print("PersistenceSlice: loaded slot %d ← %s" % [slot, path])
