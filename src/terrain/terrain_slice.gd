@@ -10,16 +10,16 @@ extends Node
 ##   get_height_at(world_pos: Vector2) -> float — sample the last generated chunk
 
 const CHUNK_SIZE := 32       # tiles per side
-const HEIGHT_SCALE := 64.0   # world units peak-to-valley
+const HEIGHT_SCALE := 5.0    # world units peak-to-valley (gentle, even terrain)
 
 var _noise := FastNoiseLite.new()
 
 func _ready() -> void:
 	_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_noise.seed = randi()
-	_noise.frequency = 0.03
+	_noise.frequency = 0.05
 	_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
-	_noise.fractal_octaves = 4
+	_noise.fractal_octaves = 3
 
 ## Generate a chunk and emit chunk_ready when done.
 func request_chunk(pos: Vector2i) -> void:

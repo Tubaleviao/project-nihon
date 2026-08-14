@@ -15,7 +15,7 @@ extends Node
 
 const CHUNK_SIZE  := 32        # tiles per side — must match TerrainSlice.CHUNK_SIZE
 const TILE_SIZE   := 1.0       # world units per tile (XZ)
-const STEP_HEIGHT := 1.0       # world units per quantised height step
+const STEP_HEIGHT := 0.5       # world units per quantised height step
 
 ## Active chunk containers keyed by "x,y" string.
 var _chunks: Dictionary = {}
@@ -125,6 +125,20 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
 	col_shape.shape  = col
 	static_body.add_child(col_shape)
 	root.add_child(static_body)
+
+	# Safety floor so the player can never fall out of the world.
+	var floor_body := StaticBody3D.new()
+	var floor_shape := CollisionShape3D.new()
+	var floor_box := BoxShape3D.new()
+	floor_box.size = Vector3(CHUNK_SIZE * TILE_SIZE, 1.0, CHUNK_SIZE * TILE_SIZE)
+	floor_shape.shape = floor_box
+	floor_shape.position = Vector3(
+		origin.x + CHUNK_SIZE * TILE_SIZE * 0.5,
+		-0.5,
+		origin.z + CHUNK_SIZE * TILE_SIZE * 0.5
+	)
+	floor_body.add_child(floor_shape)
+	root.add_child(floor_body)
 
 	print("VoxelSlice: built chunk %s  tiles=%d" % [key, CHUNK_SIZE * CHUNK_SIZE])
 
