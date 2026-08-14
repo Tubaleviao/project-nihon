@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-13T22:08:15.899Z",
-  "schemaHash": "sha256:405a82eecba3a9e0056ce253b175a063c9f9c404f57c74d5f89ec266ff539f01",
+  "generatedAt": "2026-08-14T12:20:48.994Z",
+  "schemaHash": "sha256:a5e056a67fb8243f5d61cda76f13da44f048379dbc577bade26a5a49a516ed10",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -13992,8 +13992,11 @@
             {
               "from": "idle",
               "to": "aggressive",
-              "trigger": "detect_direct",
-              "guards": [],
+              "trigger": "detect",
+              "guards": [
+                "Detects players within 8 tile radius",
+                "Fires attack trigger directly from idle (no alert phase) if player is within 3 tiles of boarlet (juvenile)"
+              ],
               "effects": []
             },
             {
@@ -14334,8 +14337,11 @@
             {
               "from": "idle",
               "to": "aggressive",
-              "trigger": "detect_direct",
-              "guards": [],
+              "trigger": "detect",
+              "guards": [
+                "Lead wolf detects within 12 tile radius; pack shares the alert state instantly",
+                "Pack fires attack trigger directly from idle (no alert phase) if player is carrying raw meat"
+              ],
               "effects": []
             },
             {
@@ -16641,8 +16647,12 @@
             {
               "from": "idle",
               "to": "aggressive",
-              "trigger": "detect_direct",
-              "guards": [],
+              "trigger": "detect",
+              "guards": [
+                "Detects any player with void corruption above 10 within 20 tiles",
+                "Detects any player regardless of stealth within 5 tiles",
+                "When corruption threshold is exceeded while idle, fires attack trigger immediately — skips the alert state for this path only"
+              ],
               "effects": []
             },
             {

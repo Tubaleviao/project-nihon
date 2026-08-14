@@ -26,7 +26,7 @@ A coordinated hunting pack of gray wolves that roam temperate forest edges and c
 stateDiagram-v2
   [*] --> idle
   idle --> alert : detect\n[Lead wolf detects within 12 tile radius; pack shares the alert state instantly; Pack fires attack trigger directly from idle (no alert phase) if player is carrying raw meat]
-  idle --> aggressive : detect_direct
+  idle --> aggressive : detect\n[Lead wolf detects within 12 tile radius; pack shares the alert state instantly; Pack fires attack trigger directly from idle (no alert phase) if player is carrying raw meat]
   alert --> aggressive : attack\n[Two wolves attempt to flank; remaining wolves attack the front; Flanking wolf deals 1.5× baseDamage if attack lands from behind]
   alert --> idle : calm\n[Pack returns to patrol route 60 seconds after losing target]
   aggressive --> dead : die\n[Each wolf dies independently; pack is considered dead when all wolves reach the dead state]
@@ -52,7 +52,7 @@ stateDiagram-v2
 | From | To | Trigger | Guards | Effects |
 | ---- | --- | ------- | ------ | ------- |
 | `idle` | `alert` | `detect` | Lead wolf detects within 12 tile radius; pack shares the alert state instantly; Pack fires attack trigger directly from idle (no alert phase) if player is carrying raw meat |  |
-| `idle` | `aggressive` | `detect_direct` |  |  |
+| `idle` | `aggressive` | `detect` | Lead wolf detects within 12 tile radius; pack shares the alert state instantly; Pack fires attack trigger directly from idle (no alert phase) if player is carrying raw meat |  |
 | `alert` | `aggressive` | `attack` | Two wolves attempt to flank; remaining wolves attack the front; Flanking wolf deals 1.5× baseDamage if attack lands from behind |  |
 | `alert` | `idle` | `calm` | Pack returns to patrol route 60 seconds after losing target |  |
 | `aggressive` | `dead` | `die` | Each wolf dies independently; pack is considered dead when all wolves reach the dead state |  |
