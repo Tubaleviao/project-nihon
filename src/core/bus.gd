@@ -62,3 +62,51 @@ signal load_failed(slot: int, reason: String)
 ## Request a save/load (any system can fire these).
 signal save_requested(slot: int, data: Dictionary)
 signal load_requested(slot: int)
+
+# ---------------------------------------------------------------------------
+# Battle — death signals
+# ---------------------------------------------------------------------------
+
+## Emitted by BattleSlice when a combatant's HP reaches zero.
+## entity_id   : String   — creature key or "player"
+## position    : Vector3  — world position of the death
+## killer_id   : String   — entity_id of the killer ("" if environmental)
+signal creature_died(entity_id: String, position: Vector3, killer_id: String)
+
+# ---------------------------------------------------------------------------
+# Loot
+# ---------------------------------------------------------------------------
+
+## Emitted by LootSlice when a pickup appears in the world.
+## pickup_id : String     — unique identifier for this loot instance
+## item_id   : String     — GameData item key
+## position  : Vector3    — world position of the pickup
+## quantity  : int
+signal loot_dropped(pickup_id: String, item_id: String, position: Vector3, quantity: int)
+
+## Emitted by LootSlice when a pickup despawns without being collected.
+signal loot_expired(pickup_id: String)
+
+# ---------------------------------------------------------------------------
+# Inventory
+# ---------------------------------------------------------------------------
+
+## Emitted by InventorySlice when a player picks up a world item.
+## item_id  : String — GameData item key
+## quantity : int
+signal item_picked_up(item_id: String, quantity: int)
+
+## Emitted by InventorySlice when the inventory reaches capacity.
+signal inventory_full()
+
+# ---------------------------------------------------------------------------
+# Player
+# ---------------------------------------------------------------------------
+
+## Emitted by PlayerSlice every physics tick with authoritative position/health.
+## payload : Dictionary — { "position": Vector3, "hp": float, "max_hp": float }
+signal player_state_changed(payload: Dictionary)
+
+## Networking: broadcast our player state to peers.
+## payload : Dictionary — same schema as player_state_changed payload
+signal player_state_sync_requested(payload: Dictionary)

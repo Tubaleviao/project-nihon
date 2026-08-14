@@ -14,6 +14,8 @@ const items        = require('./gameplay/items')
 const recipes      = require('./gameplay/recipes')
 const technology   = require('./gameplay/technology')
 const combat       = require('./gameplay/combat')
+const player       = require('./gameplay/player')
+const loot         = require('./gameplay/loot')
 
 module.exports = defineFabric({
   meta: {
@@ -174,5 +176,15 @@ module.exports = defineFabric({
     },
     // Gameplay — Combat system
     { CombatSystem: combat.CombatSystem },
+    // Gameplay — Player + Inventory
+    {
+      PlayerCharacter: player.PlayerCharacter,
+      Inventory:       player.Inventory,
+    },
+    // Gameplay — Loot + Death signals
+    {
+      LootTable:   loot.LootTable,
+      DeathSignal: loot.DeathSignal,
+    },
   ),
 })

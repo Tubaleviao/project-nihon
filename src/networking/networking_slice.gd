@@ -3,9 +3,14 @@ extends Node
 ##
 ## Plug contract (GameBus signals consumed / emitted):
 ##   IN  : packet_send_requested(peer_id, payload)
+##         player_state_sync_requested(payload)   — broadcasts own state to all peers
 ##   OUT : peer_connected(peer_id)
 ##         peer_disconnected(peer_id)
-##         packet_received(peer_id, payload)
+##         packet_received(peer_id, payload)       — carries typed payloads from peers
+##
+## Packet schema (all payloads carry a "type" key):
+##   "player_state" : { type, peer_id, position:[x,y,z], hp, max_hp }
+##   "creature_died": { type, entity_id, position:[x,y,z], killer_id }
 ##
 ## Public API:
 ##   host(port: int, max_clients: int) -> Error
@@ -19,6 +24,8 @@ var _peer: ENetMultiplayerPeer
 
 func _ready() -> void:
 	GameBus.packet_send_requested.connect(_on_packet_send_requested)
+	GameBus.player_state_sync_requested.connect(_on_player_state_sync_requested)
+	GameBus.creature_died.connect(_on_creature_died_for_broadcast)
 
 ## Start an ENet server on the given port.
 func host(port: int = DEFAULT_PORT, max_clients: int = 64) -> Error:
@@ -71,6 +78,37 @@ func _on_peer_connected(id: int) -> void:
 
 func _on_peer_disconnected(id: int) -> void:
 	GameBus.peer_disconnected.emit(id)
+
+func _on_player_state_sync_requested(payload: Dictionary) -> void:
+	var mp_peer := multiplayer.multiplayer_peer
+	if mp_peer == null or mp_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		return
+	var pos: Vector3 = payload.get("position", Vector3.ZERO)
+	var packet := {
+		"type":     "player_state",
+		"peer_id":  multiplayer.get_unique_id(),
+		"position": [pos.x, pos.y, pos.z],
+		"hp":       payload.get("hp",     100.0),
+		"max_hp":   payload.get("max_hp", 100.0),
+	}
+	# Broadcast to all connected peers.
+	for pid in multiplayer.get_peers():
+		var json := JSON.stringify(packet)
+		_relay_packet.rpc_id(pid, json)
+
+func _on_creature_died_for_broadcast(entity_id: String, position: Vector3, killer_id: String) -> void:
+	var mp_peer := multiplayer.multiplayer_peer
+	if mp_peer == null or mp_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		return
+	var packet := {
+		"type":      "creature_died",
+		"entity_id": entity_id,
+		"position":  [position.x, position.y, position.z],
+		"killer_id": killer_id,
+	}
+	for pid in multiplayer.get_peers():
+		var json := JSON.stringify(packet)
+		_relay_packet.rpc_id(pid, json)
 
 func _on_packet_send_requested(peer_id: int, payload: Dictionary) -> void:
 	var mp_peer := multiplayer.multiplayer_peer

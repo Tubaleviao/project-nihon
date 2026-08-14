@@ -45,13 +45,18 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 		outcome = "miss"
 
 	_hp_state[defender_id] = maxf(_hp_state[defender_id] - damage, 0.0)
+	var hp_remaining: float = _hp_state[defender_id]
+
+	if hp_remaining <= 0.0 and outcome != "miss":
+		outcome = "kill"
+		GameBus.creature_died.emit(defender_id, Vector3.ZERO, attacker_id)
 
 	var result := {
 		"attacker": attacker_id,
 		"defender": defender_id,
 		"damage":   snappedf(damage, 0.1),
 		"outcome":  outcome,
-		"defender_hp_remaining": _hp_state[defender_id],
+		"defender_hp_remaining": hp_remaining,
 	}
 	GameBus.combat_round_resolved.emit(result)
 	return result
