@@ -243,3 +243,80 @@ of this phase in `../newel/packages/generator-godot/`.
 - Wiki is publicly accessible
 - No internal field names or implementation-detail rules are visible to players
 - Wiki updates automatically on every fabric change via CI
+
+---
+
+## Phase 10 — Vertical slices: playable game loop ✅ Done
+
+**Goal:** Produce a playable, bus-driven prototype that exercises every major
+game system end-to-end. All runtime constants (HP, damage, loot despawn, item
+weights, inventory limits) are sourced from `GameData` / the fabric rather than
+hardcoded elsewhere.
+
+**Deliverables:**
+
+- `src/core/bus.gd` — central `GameBus` autoload; all inter-slice communication
+  travels through typed signals. Added in this phase:
+  - `creature_spawned(instance_id, creature_id, position)` — emitted when a
+    creature enters the world
+  - `attack_requested(attacker_id)` — emitted by PlayerSlice on attack input
+  - `combat_round_requested` / `combat_round_resolved` — battle pipeline signals
+
+- `src/terrain/terrain_slice.gd` + `voxel_slice.gd` — noise-based voxel terrain
+  generated in chunks; `chunk_ready` signal drives mesh construction
+
+- `src/creature/creature_slice.gd` — **new**; spawns creature instances from
+  `GameData.CREATURES` (`SPAWN_MANIFEST` lists fabric keys and counts); reads
+  `baseHp` directly from the fabric resource; provides
+  `nearest_creature(pos, radius)` and `get_instance_creature_id(id)` for other
+  slices; handles death and respawn cycle
+
+- `src/player/player_slice.gd` — first-person `CharacterBody3D`; left-click or
+  `F` emits `combat_round_requested("player", nearest_instance_id)` via
+  `GameBus`; `creature_slice` reference wired by `game_root` at startup;
+  `ATTACK_RANGE` constant (3 m) sets melee interaction radius
+
+- `src/battle/battle_slice.gd` — resolves combat stats from `GameData.CREATURES`
+  using the fabric's `baseHp` / `baseDamage` fields; resolves creature
+  `instance_id → fabric key` via `creature_slice`; emits `creature_died` with
+  the world-space death position looked up from `creature_slice`
+
+- `src/loot/loot_slice.gd` — drop tables are a direct transcription of each
+  creature's `drop` behavior rules in the fabric (`fabric/world/creatures/`);
+  `DESPAWN_SECONDS` constant matches `LootTable.despawnSeconds` defaultValue
+  (`120`) in `fabric/gameplay/loot.js`; resolves `instance_id → fabric key` via
+  `creature_slice` so drops work whether the signal carries a key or instance ID
+
+- `src/inventory/inventory_slice.gd` — `MAX_SLOTS` (30) and `MAX_WEIGHT` (50 kg)
+  match `PlayerCharacter.maxSlots` / `maxWeightKg` defaults in the fabric;
+  item weights are built at `_ready()` from `GameData.ITEMS` (each `.tres` has a
+  `weight` property generated from the fabric); raw creature drops not modelled
+  as fabric items fall back to `RAW_DROP_WEIGHTS`
+
+- `src/networking/networking_slice.gd` — ENet peer-to-peer host/connect;
+  `packet_received` / `peer_connected` / `peer_disconnected` signals
+
+- `src/persistence/persistence_slice.gd` — `FileAccess`-based save/load to
+  `user://` slot files; `save_completed` / `load_completed` / `load_failed`
+  signals
+
+- `src/core/game_root.gd` — integration root; instantiates all slices, wires
+  cross-slice references (`creature_slice` into player/battle/loot,
+  `loot_slice` into inventory), connects bus listeners, boots terrain and
+  triggers the creature awareness check via the bus rather than calling slice
+  methods directly
+
+- `src/tests/test_suite.gd` — self-contained test runner; 16 tests covering
+  battle, terrain, persistence, loot, and inventory slices; runs at startup
+  before world boot; assertions use real signal flows, not mocked intermediates
+
+**Acceptance criteria:**
+- Player can move on voxel terrain and attack nearest creature with left-click or F ✓
+- Attack input emits `combat_round_requested` through `GameBus` (no direct slice call) ✓
+- Creature stats (`baseHp`, `baseDamage`) are read from `GameData.CREATURES` ✓
+- Creature deaths emit `creature_died` with real world-space position ✓
+- Drop tables are an explicit transcription of fabric `drop` behavior rules ✓
+- `DESPAWN_SECONDS` matches `LootTable.despawnSeconds` fabric defaultValue ✓
+- Item weights for crafted items loaded at runtime from `GameData.ITEMS` ✓
+- `MAX_SLOTS` / `MAX_WEIGHT` match `PlayerCharacter` fabric defaultValues ✓
+- All 16 automated tests pass at startup ✓
