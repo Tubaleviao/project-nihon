@@ -2,3 +2,5 @@
 class_name CombatSystemData
 extends Resource
 
+
+@export var id: String

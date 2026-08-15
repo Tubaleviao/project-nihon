@@ -6,6 +6,6 @@
 script = ExtResource("1")
 id = ""
 domain = 0
-yield = 0
+outputCount = 0
 description = "Imbue a refined aethermite shard with magical energy at an arcane forge to produce an enchanted catalyst."
 tags = ["recipe"]

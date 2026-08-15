@@ -1,0 +1,19 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/players/playercharacter.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+state = 0
+name = ""
+baseHp = 100
+currentHp = 100
+baseSpeed = 4.5
+positionX = 0.0
+positionY = 0.0
+positionZ = 0.0
+state_machine_field = "state"
+initial_state = "alive"
+description = "The player-controlled character in the world. Stats are derived from equipped items, active skills, and status effects. A player's character persists across sessions; death resets only transient state."
+tags = ["player"]

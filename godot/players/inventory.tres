@@ -1,0 +1,16 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/players/inventory.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+state = 0
+maxSlots = 30
+maxWeightKg = 50.0
+usedSlots = 0
+currentWeightKg = 0.0
+state_machine_field = "state"
+initial_state = "closed"
+description = "The container of items carried by a single player. Weight and slot limits enforce the survival economy; exceeding either blocks pickups. Inventory contents are persisted server-side and restored on login."
+tags = ["player"]

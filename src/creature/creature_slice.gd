@@ -93,7 +93,7 @@ func _spawn(creature_id: String) -> String:
 		push_error("CreatureSlice: unknown creature '%s' in GameData.CREATURES" % creature_id)
 		return ""
 
-	var hp: float = float(res.get("baseHp") if "baseHp" in res else 100)
+	var hp: float = float(res.get("baseHp"))
 	var angle := randf_range(0.0, TAU)
 	var r     := randf_range(2.0, SPAWN_RADIUS)
 	var pos   := SPAWN_ORIGIN + Vector3(cos(angle) * r, 0.0, sin(angle) * r)
@@ -142,7 +142,7 @@ func _tick_respawn() -> void:
 		if inst["state"] == "dead" and inst["respawn_at"] > 0.0 and now >= inst["respawn_at"]:
 			var creature_id: String = inst["creature_id"]
 			var res: Resource = GameData.CREATURES.get(creature_id, null)
-			var max_hp: float = float(res.get("baseHp") if res and "baseHp" in res else 100)
+			var max_hp: float = float(res.get("baseHp"))
 			inst["state"]      = "idle"
 			inst["hp"]         = max_hp
 			inst["respawn_at"] = -1.0

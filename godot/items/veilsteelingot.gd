@@ -16,3 +16,10 @@ enum Condition {
 	DAMAGED,
 	BROKEN,
 }
+
+@export var id: String
+@export var condition: int
+@export var weight: float
+@export var rarity: int
+@export var stackable: bool
+@export var durability: int

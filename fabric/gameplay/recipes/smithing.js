@@ -10,7 +10,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
-      yield:  { type: 'integer', description: 'Number of output items produced per craft' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
     },
     relations: {
       inputFerrite: { name: 'inputFerrite', kind: 'hasOne', target: 'Ferrite' },
@@ -37,7 +37,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
-      yield:  { type: 'integer', description: 'Number of output items produced per craft' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
     },
     relations: {
       inputFerrite:    { name: 'inputFerrite',    kind: 'hasOne', target: 'FerriteIngot' },
@@ -65,7 +65,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
-      yield:  { type: 'integer', description: 'Number of output items produced per craft' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
     },
     relations: {
       inputIngot: { name: 'inputIngot', kind: 'hasOne', target: 'FerriteIngot' },
@@ -92,7 +92,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
-      yield:  { type: 'integer', description: 'Number of output items produced per craft' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
     },
     relations: {
       inputIngot:  { name: 'inputIngot',  kind: 'hasOne', target: 'FerriteIngot' },
@@ -121,7 +121,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
-      yield:  { type: 'integer', description: 'Number of output items produced per craft' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
     },
     relations: {
       inputVeilsteel: { name: 'inputVeilsteel', kind: 'hasOne', target: 'VeilsteelIngot' },
@@ -150,7 +150,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
-      yield:  { type: 'integer', description: 'Number of output items produced per craft' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
     },
     relations: {
       inputVeilsteel: { name: 'inputVeilsteel', kind: 'hasOne', target: 'VeilsteelIngot' },

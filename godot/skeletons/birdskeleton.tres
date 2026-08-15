@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/skeletons/birdskeleton.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+family = "bird"
+bones = [{"name":"Root","parent":""},{"name":"Spine","parent":"Root"},{"name":"Neck","parent":"Spine"},{"name":"Head","parent":"Neck"},{"name":"Wing_L","parent":"Spine"},{"name":"Wing_R","parent":"Spine"},{"name":"Leg_L","parent":"Root"},{"name":"Leg_R","parent":"Root"}]
+sockets = {"socket_head":"Head","socket_face":"Head","socket_back":"Spine","socket_mount":"Spine"}
+semanticTags = ["bird","has_head","has_back_socket"]
+description = "Bipedal avian skeleton with wings, legs, spine, neck, and head. Shared rig for flying creatures and raptors."
+tags = ["skeleton"]

@@ -2,3 +2,4 @@
 class_name FreedomComesFirstData
 extends Resource
 
+

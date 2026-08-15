@@ -14,6 +14,7 @@ const TerrainSlice    := preload("res://src/terrain/terrain_slice.gd")
 const PersistenceSlice:= preload("res://src/persistence/persistence_slice.gd")
 const LootSlice       := preload("res://src/loot/loot_slice.gd")
 const InventorySlice  := preload("res://src/inventory/inventory_slice.gd")
+const CharacterSlice  := preload("res://src/character/character_slice.gd")
 
 var _pass: int = 0
 var _fail: int = 0
@@ -50,6 +51,15 @@ func run() -> void:
 	_run_test("inventory: over-drop returns false",           _test_inventory_over_drop)
 	_run_test("inventory: slot count correct",                _test_inventory_slot_count)
 	_run_test("inventory: weights loaded from GameData.ITEMS",_test_inventory_weights_from_gamedata)
+	_run_test("character: palette has 256 entries",           _test_character_palette_size)
+	_run_test("character: color index clamps to palette",     _test_character_color_clamp)
+	_run_test("character: proportions clamp to bounds",       _test_character_clamp_proportions)
+	_run_test("character: unknown equipment dropped",         _test_character_drops_unknown_equipment)
+	_run_test("character: recipe round-trips",                _test_character_recipe_round_trip)
+	_run_test("character: visual state derives wear",         _test_character_visual_state_wear)
+	_run_test("character: spawns non-humanoid",               _test_character_spawns_nonhumanoid)
+	_run_test("character: unknown appearance rejected",       _test_character_unknown_appearance)
+	_run_test("character: LOD hides fine detail",             _test_character_lod_hides_detail)
 
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
@@ -346,6 +356,118 @@ func _test_inventory_weights_from_gamedata() -> void:
 	var w2: float = inv._item_weight("raw_boar_meat")
 	assert_true(w2 > 0.0, "raw_boar_meat weight > 0 (from RAW_DROP_WEIGHTS)")
 	inv.queue_free()
+
+# ---------------------------------------------------------------------------
+# CharacterSlice tests
+# ---------------------------------------------------------------------------
+
+func _test_character_palette_size() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	assert_eq(ch.get_palette_size(), 256, "palette expands to 256 entries")
+	var c0 := ch.palette_color(0)
+	var c255 := ch.palette_color(255)
+	assert_true(c0 is Color and c255 is Color, "palette_color returns Color")
+	ch.queue_free()
+
+func _test_character_color_clamp() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	assert_true(ch.palette_color(-5) == ch.palette_color(0), "negative index clamps to 0")
+	assert_true(ch.palette_color(9999) == ch.palette_color(255), "oversized index clamps to 255")
+	assert_true(ch.palette_color(100) is Color, "in-range index returns Color")
+	ch.queue_free()
+
+func _test_character_clamp_proportions() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var recipe := ch.deserialize_appearance({
+		"skeleton": "HumanoidSkeleton",
+		"proportions": { "height": 9.0, "bodyMass": 0.01, "shoulderWidth": 1.0 },
+	})
+	var props: Dictionary = recipe["proportions"]
+	assert_eq(props["height"], 1.15, "height clamped to max 1.15")
+	assert_eq(props["bodyMass"], 0.80, "bodyMass clamped to min 0.80")
+	assert_eq(props["shoulderWidth"], 1.0, "in-range value unchanged")
+	ch.queue_free()
+
+func _test_character_drops_unknown_equipment() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var recipe := ch.deserialize_appearance({
+		"skeleton": "HumanoidSkeleton",
+		"equipment": {
+			"Chest": { "item": "VeilsteelChestplate", "state": "equipped" },
+			"Head":  { "item": "NonexistentHelm", "state": "equipped" },
+		},
+	})
+	var eq: Dictionary = recipe["equipment"]
+	assert_true(eq.has("Chest"), "known equipment kept")
+	assert_false(eq.has("Head"), "unknown equipment dropped")
+	ch.queue_free()
+
+func _test_character_recipe_round_trip() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var original := {
+		"skeleton": "HumanoidSkeleton",
+		"body": "human_body_02",
+		"proportions": { "height": 0.96, "bodyMass": 1.04 },
+		"skinColor": 12,
+		"hair": "hair_long_04",
+		"hairColor": 40,
+		"equipment": { "MainHand": { "item": "VeilsteelLongsword", "state": "sheathed", "durability": 0.7 } },
+	}
+	var normalized := ch.deserialize_appearance(original)
+	var serialized := ch.serialize_appearance(normalized)
+	var again := ch.deserialize_appearance(serialized)
+	assert_eq(again["skeleton"], "HumanoidSkeleton", "skeleton survives")
+	assert_eq(again["skinColor"], 12, "skinColor survives")
+	assert_eq(again["hairColor"], 40, "hairColor survives")
+	var eq: Dictionary = again["equipment"]
+	assert_true(eq.has("MainHand"), "equipment survives round-trip")
+	assert_eq(eq["MainHand"]["durability"], 0.7, "durability survives round-trip")
+	ch.queue_free()
+
+func _test_character_visual_state_wear() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character_from_recipe({
+		"skeleton": "HumanoidSkeleton",
+		"equipment": { "MainHand": { "item": "VeilsteelLongsword", "state": "equipped", "durability": 0.7 } },
+	}, Vector3.ZERO)
+	assert_true(iid != "", "character created")
+	var vs := ch.get_visual_state(iid)
+	var eq: Dictionary = vs.get("equipment", {})
+	assert_eq(eq["MainHand"]["wear"], "Used", "wear derived from durability 0.7")
+	ch.queue_free()
+
+func _test_character_spawns_nonhumanoid() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("BoarRider", Vector3.ZERO)
+	assert_true(iid != "", "boar_rider (quadruped) created")
+	var app := ch.get_appearance(iid)
+	assert_eq(app["skeleton"], "QuadrupedSkeleton", "quadruped skeleton preserved")
+	ch.queue_free()
+
+func _test_character_unknown_appearance() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	assert_eq(ch.create_character("does_not_exist", Vector3.ZERO), "", "unknown appearance_id returns empty")
+	ch.queue_free()
+
+func _test_character_lod_hides_detail() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	assert_true(iid != "", "traveller created")
+	ch.set_lod(0)
+	assert_true(ch.is_part_visible(iid, "hair"), "hair visible at LOD0")
+	ch.set_lod(3)
+	assert_false(ch.is_part_visible(iid, "hair"), "hair hidden at LOD3")
+	assert_true(ch.is_part_visible(iid, "body"), "body visible at LOD3")
+	ch.queue_free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers

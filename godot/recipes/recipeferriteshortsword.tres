@@ -6,6 +6,6 @@
 script = ExtResource("1")
 id = ""
 domain = 0
-yield = 0
+outputCount = 0
 description = "Forge a ferrite short sword from one refined ferrite ingot."
 tags = ["recipe"]

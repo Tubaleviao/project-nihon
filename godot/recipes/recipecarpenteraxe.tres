@@ -6,6 +6,6 @@
 script = ExtResource("1")
 id = ""
 domain = 0
-yield = 0
+outputCount = 0
 description = "Assemble a carpenter axe from one ferrite ingot, one thornwood plank, and one duskfiber strand."
 tags = ["recipe"]

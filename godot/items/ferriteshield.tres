@@ -1,0 +1,25 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/items/ferriteshield.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+condition = 0
+weight = 5.5
+rarity = 0
+stackable = false
+durability = 180
+equipmentSlot = "OffHand"
+deformationMode = "RIGID"
+masks = {"primary":true,"secondary":false,"accent":true,"metal":true,"emission":false,"wear":true}
+hideRegions = []
+attachments = {"equipped":"socket_shield","stored":"socket_back"}
+minLodLevel = 2
+size = [0.55,0.75,0.08]
+metalTone = "ferrite"
+compatibleTags = ["has_hands","can_wield_weapon"]
+state_machine_field = "condition"
+initial_state = "pristine"
+description = "Round shield of ferrite-plated hardwood. Blocks melee and missile strikes at the cost of mobility; the standard off-hand defence for early-game fighters."
+tags = ["item"]

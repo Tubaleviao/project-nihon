@@ -16,7 +16,7 @@ Smelt two raw ferrite ore into one refined ferrite ingot at a forge.
 | Field | Type | Description |
 | ----- | ---- | ----------- |
 | domain | `smithing`, `alchemy`, `arcane`, `carpentry` | Crafting station required |
-| yield | integer | Number of output items produced per craft |
+| outputCount | integer | Number of output items produced per craft |
 
 ## Related
 

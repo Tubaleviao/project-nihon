@@ -11,7 +11,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
-      yield:  { type: 'integer', description: 'Number of output items produced per craft' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
     },
     relations: {
       inputShard: { name: 'inputShard', kind: 'hasOne', target: 'Aethermite' },
@@ -40,7 +40,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
-      yield:  { type: 'integer', description: 'Number of output items produced per craft' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
     },
     relations: {
       inputPlank:    { name: 'inputPlank',    kind: 'hasOne', target: 'ThornwoodPlank' },
@@ -70,7 +70,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
-      yield:  { type: 'integer', description: 'Number of output items produced per craft' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
     },
     relations: {
       inputLumenfite: { name: 'inputLumenfite', kind: 'hasOne', target: 'Lumenfite' },
@@ -99,7 +99,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
-      yield:  { type: 'integer', description: 'Number of output items produced per craft' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
     },
     relations: {
       inputVoidite:  { name: 'inputVoidite',  kind: 'hasOne', target: 'Voidite' },

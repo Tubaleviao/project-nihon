@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/skeletons/humanoidskeleton.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+family = "humanoid"
+bones = [{"name":"Root","parent":""},{"name":"Hips","parent":"Root"},{"name":"Spine","parent":"Hips"},{"name":"Chest","parent":"Spine"},{"name":"Neck","parent":"Chest"},{"name":"Head","parent":"Neck"},{"name":"Shoulder_L","parent":"Chest"},{"name":"Arm_L","parent":"Shoulder_L"},{"name":"Forearm_L","parent":"Arm_L"},{"name":"Hand_L","parent":"Forearm_L"},{"name":"Shoulder_R","parent":"Chest"},{"name":"Arm_R","parent":"Shoulder_R"},{"name":"Forearm_R","parent":"Arm_R"},{"name":"Hand_R","parent":"Forearm_R"},{"name":"Leg_L","parent":"Hips"},{"name":"Foot_L","parent":"Leg_L"},{"name":"Leg_R","parent":"Hips"},{"name":"Foot_R","parent":"Leg_R"}]
+sockets = {"socket_head":"Head","socket_face":"Head","socket_back":"Chest","socket_cape":"Chest","socket_chest":"Chest","socket_weapon_r":"Hand_R","socket_weapon_l":"Hand_L","socket_shield":"Hand_L","socket_hip_r":"Hips","socket_hip_l":"Hips","socket_mount":"Hips"}
+semanticTags = ["humanoid","has_head","has_hands","has_back_socket","can_wield_weapon","can_wear_helmet"]
+description = "Bipedal humanoid bone structure with two arms, two legs, and a head. The shared rig for humans and humanoid races; carries the full set of equipment sockets (head, face, chest, back, cape, weapon, shield, hips, mount)."
+tags = ["skeleton"]

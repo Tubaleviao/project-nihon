@@ -2,6 +2,11 @@
 extends Node
 # Add to Project → Autoload as "GameData"
 
+const APPEARANCES: Dictionary = {
+		"BoarRider": preload("res://godot/appearances/boarrider.tres"),
+		"TravellerHuman": preload("res://godot/appearances/travellerhuman.tres")
+}
+
 const BIOMES: Dictionary = {
 		"TemperateForest": preload("res://godot/biomes/temperateforest.tres"),
 		"TemperateGrassland": preload("res://godot/biomes/temperategrassland.tres"),
@@ -46,6 +51,7 @@ const ITEMS: Dictionary = {
 		"FerriteHelmet": preload("res://godot/items/ferritehelmet.tres"),
 		"FerriteIngot": preload("res://godot/items/ferriteingot.tres"),
 		"FerritePick": preload("res://godot/items/ferritepick.tres"),
+		"FerriteShield": preload("res://godot/items/ferriteshield.tres"),
 		"FerriteShortSword": preload("res://godot/items/ferriteshortsword.tres"),
 		"FieldRations": preload("res://godot/items/fieldrations.tres"),
 		"LumenfiteOrb": preload("res://godot/items/lumenfiteorb.tres"),
@@ -58,6 +64,10 @@ const ITEMS: Dictionary = {
 		"VoiditeEdge": preload("res://godot/items/voiditeedge.tres")
 }
 
+const LOOTS: Dictionary = {
+		"LootTable": preload("res://godot/loots/loottable.tres")
+}
+
 const MATERIALS: Dictionary = {
 		"Aethermite": preload("res://godot/materials/aethermite.tres"),
 		"Ashite": preload("res://godot/materials/ashite.tres"),
@@ -67,6 +77,15 @@ const MATERIALS: Dictionary = {
 		"Thornwood": preload("res://godot/materials/thornwood.tres"),
 		"Veilsteel": preload("res://godot/materials/veilsteel.tres"),
 		"Voidite": preload("res://godot/materials/voidite.tres")
+}
+
+const PALETTES: Dictionary = {
+		"DefaultPalette": preload("res://godot/palettes/defaultpalette.tres")
+}
+
+const PLAYERS: Dictionary = {
+		"Inventory": preload("res://godot/players/inventory.tres"),
+		"PlayerCharacter": preload("res://godot/players/playercharacter.tres")
 }
 
 const PROFESSIONS: Dictionary = {
@@ -100,6 +119,13 @@ const RECIPES: Dictionary = {
 		"RecipeVoidRuneTablet": preload("res://godot/recipes/recipevoidrunetablet.tres")
 }
 
+const SKELETONS: Dictionary = {
+		"BirdSkeleton": preload("res://godot/skeletons/birdskeleton.tres"),
+		"HumanoidSkeleton": preload("res://godot/skeletons/humanoidskeleton.tres"),
+		"QuadrupedSkeleton": preload("res://godot/skeletons/quadrupedskeleton.tres"),
+		"SerpentSkeleton": preload("res://godot/skeletons/serpentskeleton.tres")
+}
+
 const SKILLS: Dictionary = {
 		"Alchemy": preload("res://godot/skills/alchemy.tres"),
 		"ArcaneForging": preload("res://godot/skills/arcaneforging.tres"),
@@ -128,6 +154,7 @@ const SYSTEMS: Dictionary = {
 		"BelievableNotRealistic": preload("res://godot/systems/believablenotrealistic.tres"),
 		"CivilizationIsPlayerMade": preload("res://godot/systems/civilizationisplayermade.tres"),
 		"CommunityOwnsTheFuture": preload("res://godot/systems/communityownsthefuture.tres"),
+		"DeathSignal": preload("res://godot/systems/deathsignal.tres"),
 		"EverythingHasTradeoffs": preload("res://godot/systems/everythinghastradeoffs.tres"),
 		"FreedomComesFirst": preload("res://godot/systems/freedomcomesfirst.tres"),
 		"KnowledgeIsProgression": preload("res://godot/systems/knowledgeisprogression.tres"),

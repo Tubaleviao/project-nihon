@@ -6,6 +6,6 @@
 script = ExtResource("1")
 id = ""
 domain = 0
-yield = 0
+outputCount = 0
 description = "Brew a void-resist potion from refined voidite shard dust and aethermite dust. Temporarily suppresses void-damage intake; required for extended void-rift operations."
 tags = ["recipe"]

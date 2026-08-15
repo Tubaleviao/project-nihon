@@ -1,4 +1,4 @@
-const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine } = require('./shared')
+const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, equipmentVisualFields } = require('./shared')
 
 module.exports = {
 
@@ -52,6 +52,17 @@ module.exports = {
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
       stackable: { type: 'boolean', description: 'Always false for weapons', defaultValue: false },
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 200 },
+      ...equipmentVisualFields({
+        slot: 'MainHand',
+        deformationMode: 'RIGID',
+        masks: { primary: false, secondary: false, accent: true, metal: true, emission: false, wear: true },
+        hideRegions: [],
+        attachments: { equipped: 'socket_weapon_r', sheathed: 'socket_hip_l', stored: 'socket_back' },
+        minLodLevel: 2,
+        size: [0.10, 0.10, 1.10],
+        metalTone: 'veilsteel',
+        compatibleTags: ['has_hands', 'can_wield_weapon'],
+      }),
     },
     relations: {
       veilsteel: { name: 'veilsteel', kind: 'hasOne', target: 'Veilsteel' },

@@ -124,3 +124,18 @@ signal player_state_changed(payload: Dictionary)
 ## Networking: broadcast our player state to peers.
 ## payload : Dictionary — same schema as player_state_changed payload
 signal player_state_sync_requested(payload: Dictionary)
+
+# ---------------------------------------------------------------------------
+# Character
+# ---------------------------------------------------------------------------
+
+## Emitted by CharacterSlice when a character instance is assembled in the world.
+## instance_id : String   — unique runtime identifier
+## skeleton_id : String   — skeleton key (e.g. "humanoid_01", "quadruped_01")
+## position    : Vector3  — world position
+signal character_spawned(instance_id: String, skeleton_id: String, position: Vector3)
+
+## Emitted by CharacterSlice when an instance's appearance recipe is replaced.
+## instance_id : String
+## appearance  : Dictionary — the normalized appearance recipe
+signal character_appearance_changed(instance_id: String, appearance: Dictionary)

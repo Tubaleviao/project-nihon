@@ -14,6 +14,7 @@ const PersistenceSlice := preload("res://src/persistence/persistence_slice.gd")
 const PlayerSlice      := preload("res://src/player/player_slice.gd")
 const LootSlice        := preload("res://src/loot/loot_slice.gd")
 const InventorySlice   := preload("res://src/inventory/inventory_slice.gd")
+const CharacterSlice   := preload("res://src/character/character_slice.gd")
 const TestSuite        := preload("res://src/tests/test_suite.gd")
 
 var _terrain:     TerrainSlice
@@ -25,6 +26,7 @@ var _persistence: PersistenceSlice
 var _player:      PlayerSlice
 var _loot:        LootSlice
 var _inventory:   InventorySlice
+var _character:   CharacterSlice
 
 func _ready() -> void:
 	# Run the automated tests before any production slice enters the tree.
@@ -43,12 +45,13 @@ func _ready() -> void:
 	_player      = PlayerSlice.new()
 	_loot        = LootSlice.new()
 	_inventory   = InventorySlice.new()
+	_character   = CharacterSlice.new()
 
 	# CreatureSlice needs the terrain to place spawns on the surface; wire it
 	# before the slices enter the tree so its _ready() can use it.
 	_creature.terrain_slice = _terrain
 
-	for s in [_terrain, _voxel, _battle, _creature, _networking, _persistence, _player, _loot, _inventory]:
+	for s in [_terrain, _voxel, _battle, _creature, _networking, _persistence, _player, _loot, _inventory, _character]:
 		s.name = s.get_script().resource_path.get_file().get_basename()
 		add_child(s)
 
@@ -69,6 +72,7 @@ func _ready() -> void:
 	GameBus.item_picked_up.connect(_on_item_picked_up)
 	GameBus.player_state_changed.connect(_on_player_state_changed)
 	GameBus.inventory_full.connect(_on_inventory_full)
+	GameBus.character_spawned.connect(_on_character_spawned)
 
 	# Lighting — a directional "sun" plus soft ambient sky fill.
 	var sun := DirectionalLight3D.new()
@@ -124,6 +128,11 @@ func _boot_world() -> void:
 	var ground_h := _terrain.get_height_at(spawn_xz)
 	_player.spawn_at(Vector3(spawn_xz.x, ground_h + 1.0, spawn_xz.y))
 	print("[Player] spawning on terrain at (%.1f, %.1f, %.1f)" % [spawn_xz.x, ground_h + 1.0, spawn_xz.y])
+
+	# Character system — spawn a demo humanoid and a non-humanoid (quadruped)
+	# near the player to exercise the appearance pipeline end to end.
+	_character.create_character("TravellerHuman", Vector3(spawn_xz.x + 3.0, ground_h + 1.0, spawn_xz.y))
+	_character.create_character("BoarRider", Vector3(spawn_xz.x - 3.0, ground_h + 1.0, spawn_xz.y))
 
 	# Creature slice already spawned creatures from SPAWN_MANIFEST in _ready().
 	# Trigger an initial creature awareness pass: the nearest ForestBoar
@@ -197,6 +206,9 @@ func _on_player_state_changed(payload: Dictionary) -> void:
 
 func _on_inventory_full() -> void:
 	print("[Inventory] FULL — pickups will be rejected")
+
+func _on_character_spawned(instance_id: String, skeleton_id: String, position: Vector3) -> void:
+	print("[Character] %s [%s] assembled at %s" % [skeleton_id, instance_id, position])
 
 func _on_save_completed(slot: int) -> void:
 	print("[Persistence] save_completed slot=%d" % slot)
