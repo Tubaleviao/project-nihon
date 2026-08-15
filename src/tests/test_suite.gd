@@ -77,6 +77,8 @@ func run() -> void:
 	_run_test("voxel: place beyond cap fails and refunds",     _test_voxel_place_cap)
 	_run_test("voxel: biome material mapping",                 _test_voxel_biome_materials)
 	_run_test("voxel: edits round-trip",                       _test_voxel_edits_round_trip)
+	_run_test("voxel: placed block keeps material colour",    _test_voxel_placed_block_keeps_material_color)
+	_run_test("voxel: mining placed block yields its material", _test_voxel_mine_placed_block_yields_material)
 
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
@@ -705,6 +707,45 @@ func _test_voxel_edits_round_trip() -> void:
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.0, "height reflects restored edit")
 	assert_eq(v.get_voxel_height_at(Vector2(17.0, 17.0)), 3.5, "second edit restored")
 	v.queue_free()
+
+func _test_voxel_placed_block_keeps_material_color() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	# Find a tile whose biome material is NOT Ferrite so the colour change is
+	# unambiguous (the synthetic chunk has no terrain_slice → TemperateForest).
+	var tile := Vector2i(-1, -1)
+	for tz in range(32):
+		for tx in range(32):
+			if v.material_for_biome("TemperateForest", Vector2(tx, tz)) != "Ferrite":
+				tile = Vector2i(tx, tz)
+				break
+		if tile.x >= 0:
+			break
+	assert_true(tile.x >= 0, "found a non-Ferrite tile in the test chunk")
+	v.set_place_material("Ferrite")
+	inv.add_item("Ferrite", 1)
+	var center := Vector2(tile.x + 0.5, tile.y + 0.5)
+	assert_true(v.place_block(Vector3(center.x, 2.0, center.y), Vector3.UP), "place succeeds")
+	assert_eq(v._column_color(center), VoxelSlice.MATERIAL_COLORS["Ferrite"], "placed block renders Ferrite colour, not biome colour")
+	v.queue_free()
+	inv.queue_free()
+
+func _test_voxel_mine_placed_block_yields_material() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	v.set_place_material("Thornwood")
+	inv.add_item("Thornwood", 1)
+	assert_true(v.place_block(Vector3(16.5, 2.0, 16.5), Vector3.UP), "place Thornwood succeeds")
+	var r := v.mine_block(Vector3(16.5, 2.5, 16.5))
+	assert_true(r.get("success", false), "mine succeeds")
+	assert_eq(str(r.get("material", "")), "Thornwood", "mining a placed block yields its own material")
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 2.0, "height back to natural after mining")
+	v.queue_free()
+	inv.queue_free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers

@@ -17,7 +17,8 @@ extends Node
 ##   mine_block(world_pos, normal)     -> Dictionary  { success, material, quantity, position }
 ##   place_block(world_pos, normal)    -> bool
 ##   get_voxel_height_at(world_pos)    -> float
-##   get_edits() / apply_edits(edits)  -> Dictionary / void
+##   get_edits() / get_edit_materials()   -> Dictionary
+##   apply_edits(edits, materials)        -> void
 ##   set_place_material / get_place_material / cycle_place_material
 ##   material_for_biome(biome, world_xz) -> String
 ##
@@ -57,6 +58,7 @@ const MATERIAL_COLORS: Dictionary = {
 	"Duskfiber":  Color(0.55, 0.34, 0.68),  # purple
 	"Lumenfite":  Color(0.92, 0.80, 0.30),  # gold
 	"Voidite":    Color(0.38, 0.24, 0.50),  # deep violet
+	"Veilsteel":  Color(0.30, 0.34, 0.42),  # blue-black alloy
 }
 
 ## Colour used for any material without an explicit entry above.
@@ -68,6 +70,10 @@ var _chunks: Dictionary = {}
 var _heightmaps: Dictionary = {}
 ## Voxel edits keyed by "gx,gz" string → absolute quantised height.
 var _edits: Dictionary = {}
+## Player-placed materials on each edited tile, keyed by "gx,gz" string → Array
+## of material keys (bottom → top). Drives column colour so a placed block keeps
+## its own tint instead of inheriting the biome colour.
+var _edit_materials: Dictionary = {}
 
 ## Set by game_root: terrain (biome + base height) and inventory (material flow).
 var terrain_slice: Node = null
@@ -234,9 +240,15 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP) -> Dictionary:
 
 	var new_h := maxf(current - STEP_HEIGHT, MIN_HEIGHT)
 	_edits[_tile_key(tile)] = new_h
+
+	# Yield the material of the block being removed: a player-placed block
+	# returns its own material; natural terrain returns the biome material.
+	var material := _pop_placed_material(tile)
+	if material == "":
+		material = material_for_biome(_biome_at(xz), xz)
+
 	_rebuild_chunk_at_tile(tile)
 
-	var material := material_for_biome(_biome_at(xz), xz)
 	if inventory_slice != null and inventory_slice.has_method("add_item"):
 		inventory_slice.add_item(material, 1)
 
@@ -250,6 +262,8 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP) -> Dictionary:
 ## Returns true on success; false if no material or the build cap is reached.
 func place_block(world_pos: Vector3, normal: Vector3) -> bool:
 	var material := _place_material
+	if material == "":
+		return false
 
 	# Consume first so a blocked placement never leaves terrain half-edited.
 	if inventory_slice != null and inventory_slice.has_method("drop_item"):
@@ -270,6 +284,7 @@ func place_block(world_pos: Vector3, normal: Vector3) -> bool:
 
 	var new_h := current + STEP_HEIGHT
 	_edits[_tile_key(tile)] = new_h
+	_push_placed_material(tile, material)
 	_rebuild_chunk_at_tile(tile)
 
 	var pos := Vector3(target_xz.x, new_h, target_xz.y)
@@ -285,11 +300,20 @@ func get_voxel_height_at(world_pos: Vector2) -> float:
 func get_edits() -> Dictionary:
 	return _edits.duplicate()
 
-## Restore voxel edits from a saved world snapshot and rebuild affected chunks.
-func apply_edits(edits: Dictionary) -> void:
+## Dump placed-material stacks for persistence: { "gx,gz": [material, ...] }.
+func get_edit_materials() -> Dictionary:
+	return _edit_materials.duplicate(true)
+
+## Restore voxel edits (heights + placed materials) from a saved world snapshot
+## and rebuild affected chunks. `materials` maps "gx,gz" → Array of material keys.
+func apply_edits(edits: Dictionary, materials: Dictionary = {}) -> void:
 	_edits.clear()
+	_edit_materials.clear()
 	for key in edits:
 		_edits[key] = float(edits[key])
+	for key in materials:
+		var stack: Array = materials[key]
+		_edit_materials[key] = stack.duplicate()
 	for ckey in _heightmaps:
 		var parts: PackedStringArray = str(ckey).split(",")
 		build_chunk(Vector2i(int(parts[0]), int(parts[1])), _heightmaps[ckey])
@@ -401,11 +425,47 @@ func _biome_at(xz: Vector2) -> String:
 		return terrain_slice.get_biome_at(xz)
 	return "TemperateForest"
 
-## Tint for a column at world_xz: the material that mining it would yield,
-## looked up in MATERIAL_COLORS (falling back to green for unknown keys).
+## Tint for a column at world_xz: the topmost player-placed material if one is
+## present, otherwise the biome material that mining it would yield. Looked up
+## in MATERIAL_COLORS (falling back to green for unknown keys).
 func _column_color(world_xz: Vector2) -> Color:
-	var material := material_for_biome(_biome_at(world_xz), world_xz)
+	var material := _placed_material_at(world_xz)
+	if material == "":
+		material = material_for_biome(_biome_at(world_xz), world_xz)
 	return MATERIAL_COLORS.get(material, FALLBACK_TERRAIN_COLOR)
+
+## Topmost player-placed material at world_xz, or "" when the column surface is
+## natural terrain (biome-derived colour).
+func _placed_material_at(world_xz: Vector2) -> String:
+	var key := _tile_key(_world_to_tile(world_xz))
+	if not _edit_materials.has(key):
+		return ""
+	var stack: Array = _edit_materials[key]
+	if stack.is_empty():
+		return ""
+	return str(stack[-1])
+
+## Record a newly placed block's material on top of a column's stack.
+func _push_placed_material(tile: Vector2i, material: String) -> void:
+	var key := _tile_key(tile)
+	if not _edit_materials.has(key):
+		_edit_materials[key] = []
+	_edit_materials[key].append(material)
+
+## Remove and return the topmost placed material on a column, or "" if the
+## column surface is natural terrain.
+func _pop_placed_material(tile: Vector2i) -> String:
+	var key := _tile_key(tile)
+	if not _edit_materials.has(key):
+		return ""
+	var stack: Array = _edit_materials[key]
+	if stack.is_empty():
+		_edit_materials.erase(key)
+		return ""
+	var material := str(stack.pop_back())
+	if stack.is_empty():
+		_edit_materials.erase(key)
+	return material
 
 func _voxel_height_at_tile(tile: Vector2i) -> float:
 	var key := _tile_key(tile)

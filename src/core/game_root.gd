@@ -199,7 +199,8 @@ func _boot_world() -> void:
 		},
 		"inventory": _inventory.get_contents(),
 		"world":     {
-			"voxel_edits": _voxel.get_edits(),
+			"voxel_edits":     _voxel.get_edits(),
+			"voxel_materials": _voxel.get_edit_materials(),
 		},
 	}
 	GameBus.save_requested.emit(0, snapshot)
@@ -270,7 +271,7 @@ func _on_load_completed(slot: int, data: Dictionary) -> void:
 	print("[Persistence] load_completed slot=%d  keys=%s" % [slot, data.keys()])
 	var world: Dictionary = data.get("world", {})
 	if world.has("voxel_edits"):
-		_voxel.apply_edits(world["voxel_edits"])
+		_voxel.apply_edits(world["voxel_edits"], world.get("voxel_materials", {}))
 		print("[Persistence] restored %d voxel edits" % world["voxel_edits"].size())
 
 # ---------------------------------------------------------------------------
