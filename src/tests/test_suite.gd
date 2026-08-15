@@ -80,6 +80,7 @@ func run() -> void:
 	_run_test("voxel: placed block keeps material colour",    _test_voxel_placed_block_keeps_material_color)
 	_run_test("voxel: mining placed block yields its material", _test_voxel_mine_placed_block_yields_material)
 	_run_test("voxel: placed block preserves base colour",     _test_voxel_placed_block_preserves_base_colour)
+	_run_test("voxel: place after mine keeps placed colour",   _test_voxel_place_after_mine_keeps_colour)
 
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
@@ -773,6 +774,35 @@ func _test_voxel_placed_block_preserves_base_colour() -> void:
 	assert_true(layers.size() >= 2, "column has natural + placed layers")
 	assert_eq(layers[0]["color"], v._natural_color(center), "natural base keeps its biome colour")
 	assert_eq(layers[-1]["color"], VoxelSlice.MATERIAL_COLORS["Ferrite"], "placed block renders Ferrite colour")
+	v.queue_free()
+	inv.queue_free()
+
+func _test_voxel_place_after_mine_keeps_colour() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	# Find a non-Ferrite (e.g. Thornwood) tile to mine.
+	var tile := Vector2i(-1, -1)
+	for tz in range(32):
+		for tx in range(32):
+			if v.material_for_biome("TemperateForest", Vector2(tx, tz)) != "Ferrite":
+				tile = Vector2i(tx, tz)
+				break
+		if tile.x >= 0:
+			break
+	assert_true(tile.x >= 0, "found a non-Ferrite tile in the test chunk")
+	var center := Vector2(tile.x + 0.5, tile.y + 0.5)
+	var mine_pos := Vector3(center.x, 2.0, center.y)
+	# Mine the natural top block (yields the biome material, e.g. Thornwood).
+	assert_true(v.mine_block(mine_pos).get("success", false), "mine natural succeeds")
+	# Place Ferrite back in the same column.
+	v.set_place_material("Ferrite")
+	inv.add_item("Ferrite", 1)
+	assert_true(v.place_block(mine_pos, Vector3.UP), "place Ferrite succeeds")
+	var layers: Array = v._column_layers(Vector2i(0, 0), v._heightmaps["0,0"], tile.x, tile.y)
+	assert_true(layers.size() >= 2, "column has natural + placed layers")
+	assert_eq(layers[-1]["color"], VoxelSlice.MATERIAL_COLORS["Ferrite"], "placed Ferrite renders Ferrite colour, not the mined material's colour")
 	v.queue_free()
 	inv.queue_free()
 

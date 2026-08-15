@@ -489,27 +489,28 @@ func _column_layers(chunk_pos: Vector2i, heightmap: Array, tx: int, tz: int) -> 
 	var key := _tile_key(Vector2i(gx, gz))
 	var world_xz := Vector2(gx * TILE_SIZE + TILE_SIZE * 0.5, gz * TILE_SIZE + TILE_SIZE * 0.5)
 	var natural_color := _natural_color(world_xz)
-	var natural_h := _voxel_height(heightmap[tz * CHUNK_SIZE + tx])
 	var h := _column_height(heightmap, chunk_pos, tx, tz)
 
+	var stack: Array = _edit_materials.get(key, [])
+	# Natural terrain fills everything below the player-placed blocks, so its top
+	# is the column height minus the placed blocks on top. Using the original
+	# noise height here would mislabel a block placed after mining the natural
+	# surface back down as "natural".
+	var natural_top := maxf(h - float(stack.size()) * STEP_HEIGHT, 0.0)
+
 	var layers: Array = []
-	var natural_top := minf(h, natural_h)
 	if natural_top > 0.0:
 		layers.append({ "bottom": 0.0, "top": natural_top, "color": natural_color })
 
-	var stack: Array = _edit_materials.get(key, [])
-	var placed_bottom := natural_h
-	var k := 0
-	while placed_bottom + 0.0001 < h:
-		var placed_top := minf(placed_bottom + STEP_HEIGHT, h)
+	var placed_bottom := natural_top
+	for k in range(stack.size()):
+		var placed_top := placed_bottom + STEP_HEIGHT
 		var col := natural_color
-		if k < stack.size():
-			var mat := str(stack[k])
-			if mat != "":
-				col = _material_color(mat)
+		var mat := str(stack[k])
+		if mat != "":
+			col = _material_color(mat)
 		layers.append({ "bottom": placed_bottom, "top": placed_top, "color": col })
 		placed_bottom = placed_top
-		k += 1
 	return layers
 
 func _voxel_height_at_tile(tile: Vector2i) -> float:
