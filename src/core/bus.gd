@@ -114,6 +114,18 @@ signal item_picked_up(item_id: String, quantity: int)
 signal inventory_full()
 
 # ---------------------------------------------------------------------------
+# Crafting
+# ---------------------------------------------------------------------------
+
+## Request to craft a recipe (emitted by the player/UI or any system).
+## recipe_id : String — key from GameData.RECIPES (e.g. "RecipeFerritePick")
+signal craft_requested(recipe_id: String)
+
+## Emitted by CraftingSlice with the outcome of a craft attempt.
+## result : Dictionary — { recipe_id, success, outputs: [{ item, quantity }], reason }
+signal craft_resolved(result: Dictionary)
+
+# ---------------------------------------------------------------------------
 # Player
 # ---------------------------------------------------------------------------
 

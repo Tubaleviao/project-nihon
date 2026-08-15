@@ -7,5 +7,6 @@ script = ExtResource("1")
 id = ""
 domain = 0
 outputCount = 0
+recipe = {"domain":"carpentry","station":"carpentry bench","inputs":[{"item":"Duskfiber","quantity":3}],"outputs":[{"item":"DuskfiberCloak","quantity":1}],"skillGuards":[{"skill":"Carpentry","tier":"apprentice"}]}
 description = "Weave three duskfiber strands into a duskfiber cloak at a carpentry bench."
 tags = ["recipe"]

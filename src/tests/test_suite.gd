@@ -15,6 +15,7 @@ const PersistenceSlice:= preload("res://src/persistence/persistence_slice.gd")
 const LootSlice       := preload("res://src/loot/loot_slice.gd")
 const InventorySlice  := preload("res://src/inventory/inventory_slice.gd")
 const CharacterSlice  := preload("res://src/character/character_slice.gd")
+const CraftingSlice   := preload("res://src/crafting/crafting_slice.gd")
 
 var _pass: int = 0
 var _fail: int = 0
@@ -60,6 +61,12 @@ func run() -> void:
 	_run_test("character: spawns non-humanoid",               _test_character_spawns_nonhumanoid)
 	_run_test("character: unknown appearance rejected",       _test_character_unknown_appearance)
 	_run_test("character: LOD hides fine detail",             _test_character_lod_hides_detail)
+	_run_test("crafting: recipe data loaded from fabric",     _test_crafting_recipe_data_loaded)
+	_run_test("crafting: skill guard blocks low tier",        _test_crafting_skill_guard_blocks)
+	_run_test("crafting: consumes inputs and produces output", _test_crafting_consumes_and_produces)
+	_run_test("crafting: missing inputs fail",                _test_crafting_missing_inputs)
+	_run_test("crafting: unknown recipe rejected",            _test_crafting_unknown_recipe)
+	_run_test("crafting: can_craft does not mutate",          _test_crafting_can_craft_no_mutate)
 
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
@@ -468,6 +475,86 @@ func _test_character_lod_hides_detail() -> void:
 	assert_false(ch.is_part_visible(iid, "hair"), "hair hidden at LOD3")
 	assert_true(ch.is_part_visible(iid, "body"), "body visible at LOD3")
 	ch.queue_free()
+
+# ---------------------------------------------------------------------------
+# CraftingSlice tests
+# ---------------------------------------------------------------------------
+
+func _test_crafting_recipe_data_loaded() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var recipe := c.get_recipe("RecipeFerritePick")
+	assert_false(recipe.is_empty(), "RecipeFerritePick has structured recipe data")
+	assert_eq(recipe["outputs"][0]["item"], "FerritePick", "output item is FerritePick")
+	assert_eq(recipe["inputs"][0]["item"], "FerriteIngot", "first input is FerriteIngot")
+	c.queue_free()
+
+func _test_crafting_skill_guard_blocks() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	# Default tier is novice; RecipeVoidRuneTablet requires VoidSmithing: expert.
+	var result := c.craft("RecipeVoidRuneTablet")
+	assert_false(result["success"], "craft fails without required skill tier")
+	assert_true(str(result["reason"]).begins_with("skill_requirement"), "reason is a skill requirement")
+	c.queue_free()
+	inv.queue_free()
+
+func _test_crafting_consumes_and_produces() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	inv.add_item("Ferrite", 4)
+	c.set_skill("Smithing", "novice")
+	var result := c.craft("RecipeFerriteIngot")
+	assert_true(result["success"], "FerriteIngot craft succeeds")
+	assert_eq(inv.get_item_count("Ferrite"), 2, "2 Ferrite remain (4 - 2 consumed)")
+	assert_eq(inv.get_item_count("FerriteIngot"), 1, "1 FerriteIngot produced")
+	c.queue_free()
+	inv.queue_free()
+
+func _test_crafting_missing_inputs() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	c.set_skill("Smithing", "novice")
+	var result := c.craft("RecipeFerriteIngot")
+	assert_false(result["success"], "craft fails without inputs")
+	assert_eq(result["reason"], "missing_inputs", "reason is missing_inputs")
+	c.queue_free()
+	inv.queue_free()
+
+func _test_crafting_unknown_recipe() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	var result := c.craft("DoesNotExist")
+	assert_false(result["success"], "unknown recipe rejected")
+	assert_eq(result["reason"], "unknown_recipe", "reason is unknown_recipe")
+	c.queue_free()
+	inv.queue_free()
+
+func _test_crafting_can_craft_no_mutate() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	inv.add_item("Ferrite", 2)
+	c.set_skill("Smithing", "novice")
+	var check := c.can_craft("RecipeFerriteIngot")
+	assert_true(check["success"], "can_craft returns true when craftable")
+	assert_eq(inv.get_item_count("Ferrite"), 2, "can_craft does not consume inputs")
+	c.queue_free()
+	inv.queue_free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers

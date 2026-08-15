@@ -1,4 +1,4 @@
-const { defineEntity } = require('./shared')
+const { defineEntity, recipeData } = require('./shared')
 
 module.exports = {
 
@@ -11,6 +11,13 @@ module.exports = {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
       outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'smithing',
+        station: 'forge',
+        inputs: [{ item: 'Ferrite', quantity: 2 }],
+        outputs: [{ item: 'FerriteIngot', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'novice' }],
+      }),
     },
     relations: {
       inputFerrite: { name: 'inputFerrite', kind: 'hasOne', target: 'Ferrite' },
@@ -38,6 +45,13 @@ module.exports = {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
       outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'smithing',
+        station: 'master forge',
+        inputs: [{ item: 'FerriteIngot', quantity: 3 }, { item: 'AethermiteShard', quantity: 1 }],
+        outputs: [{ item: 'VeilsteelIngot', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'journeyman' }],
+      }),
     },
     relations: {
       inputFerrite:    { name: 'inputFerrite',    kind: 'hasOne', target: 'FerriteIngot' },
@@ -66,6 +80,13 @@ module.exports = {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
       outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'smithing',
+        station: 'forge',
+        inputs: [{ item: 'FerriteIngot', quantity: 1 }],
+        outputs: [{ item: 'FerriteShortSword', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'novice' }],
+      }),
     },
     relations: {
       inputIngot: { name: 'inputIngot', kind: 'hasOne', target: 'FerriteIngot' },
@@ -93,6 +114,13 @@ module.exports = {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
       outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'smithing',
+        station: 'forge',
+        inputs: [{ item: 'FerriteIngot', quantity: 2 }, { item: 'ThornwoodPlank', quantity: 1 }],
+        outputs: [{ item: 'FerritePick', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'novice' }],
+      }),
     },
     relations: {
       inputIngot:  { name: 'inputIngot',  kind: 'hasOne', target: 'FerriteIngot' },
@@ -122,6 +150,13 @@ module.exports = {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
       outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'smithing',
+        station: 'master forge',
+        inputs: [{ item: 'VeilsteelIngot', quantity: 2 }, { item: 'AshiteBlock', quantity: 1 }],
+        outputs: [{ item: 'VeilsteelLongsword', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'journeyman' }],
+      }),
     },
     relations: {
       inputVeilsteel: { name: 'inputVeilsteel', kind: 'hasOne', target: 'VeilsteelIngot' },
@@ -151,6 +186,13 @@ module.exports = {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
       outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'smithing',
+        station: 'master forge',
+        inputs: [{ item: 'VeilsteelIngot', quantity: 4 }, { item: 'FerriteIngot', quantity: 2 }],
+        outputs: [{ item: 'VeilsteelChestplate', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'journeyman' }],
+      }),
     },
     relations: {
       inputVeilsteel: { name: 'inputVeilsteel', kind: 'hasOne', target: 'VeilsteelIngot' },

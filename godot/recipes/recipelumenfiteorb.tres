@@ -7,5 +7,6 @@ script = ExtResource("1")
 id = ""
 domain = 0
 outputCount = 0
+recipe = {"domain":"arcane","station":"arcane forge","inputs":[{"item":"Lumenfite","quantity":1},{"item":"EnchantedAethermiteShard","quantity":1}],"outputs":[{"item":"LumenfiteOrb","quantity":1}],"skillGuards":[{"skill":"Enchanting","tier":"journeyman"},{"skill":"ArcaneForging","tier":"apprentice"}]}
 description = "Polish a lumenfite stone into a charged spell-focus orb at an arcane forge."
 tags = ["recipe"]

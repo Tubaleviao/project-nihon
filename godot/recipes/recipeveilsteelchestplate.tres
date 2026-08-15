@@ -7,5 +7,6 @@ script = ExtResource("1")
 id = ""
 domain = 0
 outputCount = 0
+recipe = {"domain":"smithing","station":"master forge","inputs":[{"item":"VeilsteelIngot","quantity":4},{"item":"FerriteIngot","quantity":2}],"outputs":[{"item":"VeilsteelChestplate","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"journeyman"}]}
 description = "Forge a veilsteel chestplate from four veilsteel ingots and two ferrite ingots."
 tags = ["recipe"]

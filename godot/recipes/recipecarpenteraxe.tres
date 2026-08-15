@@ -7,5 +7,6 @@ script = ExtResource("1")
 id = ""
 domain = 0
 outputCount = 0
+recipe = {"domain":"carpentry","station":"carpentry bench","inputs":[{"item":"FerriteIngot","quantity":1},{"item":"ThornwoodPlank","quantity":1},{"item":"Duskfiber","quantity":1}],"outputs":[{"item":"CarpenterAxe","quantity":1}],"skillGuards":[{"skill":"Carpentry","tier":"apprentice"},{"skill":"Smithing","tier":"novice"}]}
 description = "Assemble a carpenter axe from one ferrite ingot, one thornwood plank, and one duskfiber strand."
 tags = ["recipe"]

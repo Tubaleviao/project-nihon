@@ -7,5 +7,6 @@ script = ExtResource("1")
 id = ""
 domain = 0
 outputCount = 0
+recipe = {"domain":"arcane","station":"arcane forge","inputs":[{"item":"ThornwoodPlank","quantity":1},{"item":"AethermiteDust","quantity":1},{"item":"Duskfiber","quantity":1}],"outputs":[{"item":"AethermiteBow","quantity":1}],"skillGuards":[{"skill":"Carpentry","tier":"apprentice"},{"skill":"ArcaneForging","tier":"apprentice"}]}
 description = "Treat a thornwood bow stave with aethermite and restring with duskfiber to produce an aethermite bow."
 tags = ["recipe"]
