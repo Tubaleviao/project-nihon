@@ -97,6 +97,8 @@ func consume_pickup(pickup_id: String) -> Dictionary:
 		return {}
 	var p: Dictionary = _pickups[pickup_id]
 	_pickups.erase(pickup_id)
+	if p.has("body") and p["body"] != null:
+		p["body"].queue_free()
 	return p
 
 # ---------------------------------------------------------------------------
@@ -123,11 +125,15 @@ func _on_creature_died(entity_id: String, position: Vector3, _killer_id: String)
 				continue
 			var pid := "pickup_%d" % _next_id
 			_next_id += 1
+			# Build a visible body so the item actually appears on the ground.
+			var body := _make_pickup_visual(entry["item_id"], position)
+			add_child(body)
 			_pickups[pid] = {
 				"item_id":    entry["item_id"],
 				"quantity":   qty,
 				"position":   position,
 				"spawned_at": Time.get_ticks_msec(),
+				"body":       body,
 			}
 			GameBus.loot_dropped.emit(pid, entry["item_id"], position, qty)
 			print("LootSlice: %s dropped %s ×%d at %s" % [fabric_key, entry["item_id"], qty, position])
@@ -140,6 +146,38 @@ func _tick_despawn() -> void:
 		if age_ms >= DESPAWN_SECONDS * 1000.0:
 			expired.append(pid)
 	for pid in expired:
+		var p: Dictionary = _pickups[pid]
+		if p.has("body") and p["body"] != null:
+			p["body"].queue_free()
 		_pickups.erase(pid)
 		GameBus.loot_expired.emit(pid)
 		print("LootSlice: pickup %s expired" % pid)
+
+# ---------------------------------------------------------------------------
+# Visuals
+# ---------------------------------------------------------------------------
+
+## Build a small coloured box so a dropped item is visible in the world.
+func _make_pickup_visual(item_id: String, pos: Vector3) -> Node3D:
+	var node := Node3D.new()
+	node.name = "Pickup_%s" % item_id
+	node.position = pos
+
+	var mesh := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(0.25, 0.25, 0.25)
+	mesh.mesh = box
+	# Rest the pickup just above the surface so it reads as a dropped item.
+	mesh.position = Vector3(0.0, 0.2, 0.0)
+
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = _item_color(item_id)
+	mesh.material_override = mat
+
+	node.add_child(mesh)
+	return node
+
+## Deterministic per-item colour so the same item always looks the same.
+func _item_color(item_id: String) -> Color:
+	var hue := float(absi(hash(item_id)) % 360) / 360.0
+	return Color.from_hsv(hue, 0.65, 0.9)

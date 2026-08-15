@@ -2,10 +2,11 @@ extends Node
 ## Inventory slice — collects nearby loot pickups and tracks carried items.
 ##
 ## Plug contract (GameBus signals consumed / emitted):
-##   IN  : loot_dropped(pickup_id, item_id, position, quantity)
-##         player_state_changed(payload)          — used for player position
+##   IN  : player_state_changed(payload)          — used for player position
 ##   OUT : item_picked_up(item_id, quantity)
 ##         inventory_full()
+## Pickups are auto-collected by polling loot_slice.get_pickups_near() every
+## physics tick (within PICKUP_RADIUS) rather than listening to loot_dropped.
 ##
 ## Public API:
 ##   get_contents()                   -> Dictionary  { item_id: quantity }
@@ -66,7 +67,6 @@ var loot_slice: Node = null
 
 func _ready() -> void:
 	_build_weight_cache()
-	GameBus.loot_dropped.connect(_on_loot_dropped)
 	GameBus.player_state_changed.connect(_on_player_state_changed)
 
 func get_contents() -> Dictionary:
@@ -99,9 +99,12 @@ func drop_item(item_id: String, quantity: int) -> bool:
 func _on_player_state_changed(payload: Dictionary) -> void:
 	_player_pos = payload.get("position", _player_pos)
 
-func _on_loot_dropped(pickup_id: String, item_id: String, position: Vector3, quantity: int) -> void:
-	if position.distance_to(_player_pos) <= PICKUP_RADIUS:
-		_try_pickup(pickup_id, item_id, quantity)
+func _physics_process(_delta: float) -> void:
+	if loot_slice == null or _is_full:
+		return
+	# Auto-collect any pickup the player has walked within range of.
+	for p in loot_slice.get_pickups_near(_player_pos, PICKUP_RADIUS):
+		_try_pickup(p["id"], p["item_id"], p["quantity"])
 
 func _try_pickup(pickup_id: String, item_id: String, quantity: int) -> void:
 	if _is_full:
