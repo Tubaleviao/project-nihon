@@ -79,6 +79,7 @@ func run() -> void:
 	_run_test("voxel: edits round-trip",                       _test_voxel_edits_round_trip)
 	_run_test("voxel: placed block keeps material colour",    _test_voxel_placed_block_keeps_material_color)
 	_run_test("voxel: mining placed block yields its material", _test_voxel_mine_placed_block_yields_material)
+	_run_test("voxel: placed block preserves base colour",     _test_voxel_placed_block_preserves_base_colour)
 
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
@@ -744,6 +745,34 @@ func _test_voxel_mine_placed_block_yields_material() -> void:
 	assert_true(r.get("success", false), "mine succeeds")
 	assert_eq(str(r.get("material", "")), "Thornwood", "mining a placed block yields its own material")
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 2.0, "height back to natural after mining")
+	v.queue_free()
+	inv.queue_free()
+
+func _test_voxel_placed_block_preserves_base_colour() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	# Place Ferrite on a tile whose biome material is NOT Ferrite, then check the
+	# column renders as two distinct layers: natural base (biome colour) + the
+	# placed block (Ferrite colour) — the base must NOT be recoloured.
+	var tile := Vector2i(-1, -1)
+	for tz in range(32):
+		for tx in range(32):
+			if v.material_for_biome("TemperateForest", Vector2(tx, tz)) != "Ferrite":
+				tile = Vector2i(tx, tz)
+				break
+		if tile.x >= 0:
+			break
+	assert_true(tile.x >= 0, "found a non-Ferrite tile in the test chunk")
+	v.set_place_material("Ferrite")
+	inv.add_item("Ferrite", 1)
+	var center := Vector2(tile.x + 0.5, tile.y + 0.5)
+	assert_true(v.place_block(Vector3(center.x, 2.0, center.y), Vector3.UP), "place succeeds")
+	var layers: Array = v._column_layers(Vector2i(0, 0), v._heightmaps["0,0"], tile.x, tile.y)
+	assert_true(layers.size() >= 2, "column has natural + placed layers")
+	assert_eq(layers[0]["color"], v._natural_color(center), "natural base keeps its biome colour")
+	assert_eq(layers[-1]["color"], VoxelSlice.MATERIAL_COLORS["Ferrite"], "placed block renders Ferrite colour")
 	v.queue_free()
 	inv.queue_free()
 

@@ -119,9 +119,14 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
 	for tz in range(CHUNK_SIZE):
 		for tx in range(CHUNK_SIZE):
 			var h := _column_height(heightmap, chunk_pos, tx, tz)
+			if h <= 0.0:
+				continue
 			var bx := origin.x + tx * TILE_SIZE
 			var bz := origin.z + tz * TILE_SIZE
-			var col := _column_color(Vector2(bx + TILE_SIZE * 0.5, bz + TILE_SIZE * 0.5))
+			var layers := _column_layers(chunk_pos, heightmap, tx, tz)
+			if layers.is_empty():
+				continue
+			var top_col: Color = layers[-1]["color"]
 
 			# Top face.
 			_add_face(st,
@@ -129,47 +134,27 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
 				Vector3(bx,              h, bz + TILE_SIZE),
 				Vector3(bx + TILE_SIZE, h, bz + TILE_SIZE),
 				Vector3(bx + TILE_SIZE, h, bz),
-				Vector3.UP, col)
+				Vector3.UP, top_col)
 
 			# North wall.
 			var hn := _neighbour_height(heightmap, chunk_pos, tx, tz - 1)
 			if hn < h:
-				_add_face(st,
-					Vector3(bx,              h,  bz),
-					Vector3(bx + TILE_SIZE, h,  bz),
-					Vector3(bx + TILE_SIZE, hn, bz),
-					Vector3(bx,              hn, bz),
-					Vector3(0, 0, -1), col)
+				_add_wall_column(st, Vector2(bx, bz), Vector2(bx + TILE_SIZE, bz), Vector3(0, 0, -1), layers, hn, h)
 
 			# South wall.
 			var hs := _neighbour_height(heightmap, chunk_pos, tx, tz + 1)
 			if hs < h:
-				_add_face(st,
-					Vector3(bx + TILE_SIZE, h,  bz + TILE_SIZE),
-					Vector3(bx,              h,  bz + TILE_SIZE),
-					Vector3(bx,              hs, bz + TILE_SIZE),
-					Vector3(bx + TILE_SIZE, hs, bz + TILE_SIZE),
-					Vector3(0, 0, 1), col)
+				_add_wall_column(st, Vector2(bx + TILE_SIZE, bz + TILE_SIZE), Vector2(bx, bz + TILE_SIZE), Vector3(0, 0, 1), layers, hs, h)
 
 			# West wall.
 			var hw := _neighbour_height(heightmap, chunk_pos, tx - 1, tz)
 			if hw < h:
-				_add_face(st,
-					Vector3(bx, h,  bz + TILE_SIZE),
-					Vector3(bx, h,  bz),
-					Vector3(bx, hw, bz),
-					Vector3(bx, hw, bz + TILE_SIZE),
-					Vector3(-1, 0, 0), col)
+				_add_wall_column(st, Vector2(bx, bz + TILE_SIZE), Vector2(bx, bz), Vector3(-1, 0, 0), layers, hw, h)
 
 			# East wall.
 			var he := _neighbour_height(heightmap, chunk_pos, tx + 1, tz)
 			if he < h:
-				_add_face(st,
-					Vector3(bx + TILE_SIZE, h,  bz),
-					Vector3(bx + TILE_SIZE, h,  bz + TILE_SIZE),
-					Vector3(bx + TILE_SIZE, he, bz + TILE_SIZE),
-					Vector3(bx + TILE_SIZE, he, bz),
-					Vector3(1, 0, 0), col)
+				_add_wall_column(st, Vector2(bx + TILE_SIZE, bz), Vector2(bx + TILE_SIZE, bz + TILE_SIZE), Vector3(1, 0, 0), layers, he, h)
 
 	var mesh_inst := MeshInstance3D.new()
 	mesh_inst.mesh = st.commit()
@@ -394,6 +379,24 @@ func _add_face(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, 
 	st.set_uv(Vector2(1, 1)); st.add_vertex(c)
 	st.set_uv(Vector2(0, 1)); st.add_vertex(d)
 
+## Emit the exposed side wall of a column, splitting the vertical span
+## [bottom, top] into per-layer segments so each block layer keeps its own
+## colour. e1/e2 are the two XZ positions of the wall's vertical edges.
+func _add_wall_column(st: SurfaceTool, e1: Vector2, e2: Vector2, normal: Vector3, layers: Array, bottom: float, top: float) -> void:
+	for layer in layers:
+		var ltop: float = layer["top"]
+		var lbottom: float = layer["bottom"]
+		var seg_top := minf(ltop, top)
+		var seg_bottom := maxf(lbottom, bottom)
+		if seg_top <= seg_bottom:
+			continue
+		_add_face(st,
+			Vector3(e1.x, seg_top,    e1.y),
+			Vector3(e2.x, seg_top,    e2.y),
+			Vector3(e2.x, seg_bottom, e2.y),
+			Vector3(e1.x, seg_bottom, e1.y),
+			normal, layer["color"])
+
 func _on_chunk_ready(chunk_pos: Vector2i, heightmap: Array) -> void:
 	build_chunk(chunk_pos, heightmap)
 
@@ -425,13 +428,21 @@ func _biome_at(xz: Vector2) -> String:
 		return terrain_slice.get_biome_at(xz)
 	return "TemperateForest"
 
-## Tint for a column at world_xz: the topmost player-placed material if one is
-## present, otherwise the biome material that mining it would yield. Looked up
-## in MATERIAL_COLORS (falling back to green for unknown keys).
+## Tint for a column's top face at world_xz: the topmost player-placed material
+## if one is present, otherwise the biome material that mining it would yield.
 func _column_color(world_xz: Vector2) -> Color:
 	var material := _placed_material_at(world_xz)
-	if material == "":
-		material = material_for_biome(_biome_at(world_xz), world_xz)
+	if material != "":
+		return _material_color(material)
+	return _natural_color(world_xz)
+
+## Colour a natural (unplaced) terrain column at world_xz, from its biome.
+func _natural_color(world_xz: Vector2) -> Color:
+	return _material_color(material_for_biome(_biome_at(world_xz), world_xz))
+
+## Resolve a material key to its terrain colour (falling back to green for
+## unknown keys).
+func _material_color(material: String) -> Color:
 	return MATERIAL_COLORS.get(material, FALLBACK_TERRAIN_COLOR)
 
 ## Topmost player-placed material at world_xz, or "" when the column surface is
@@ -466,6 +477,40 @@ func _pop_placed_material(tile: Vector2i) -> String:
 	if stack.is_empty():
 		_edit_materials.erase(key)
 	return material
+
+## Vertical colour layers for a column, bottom → top. Each entry is
+## { "bottom": float, "top": float, "color": Color }. The natural terrain is a
+## single bottom slab tinted by biome colour; each player-placed block above it
+## is its own slab tinted by its material (falling back to biome colour when a
+## placed height has no recorded material).
+func _column_layers(chunk_pos: Vector2i, heightmap: Array, tx: int, tz: int) -> Array:
+	var gx := chunk_pos.x * CHUNK_SIZE + tx
+	var gz := chunk_pos.y * CHUNK_SIZE + tz
+	var key := _tile_key(Vector2i(gx, gz))
+	var world_xz := Vector2(gx * TILE_SIZE + TILE_SIZE * 0.5, gz * TILE_SIZE + TILE_SIZE * 0.5)
+	var natural_color := _natural_color(world_xz)
+	var natural_h := _voxel_height(heightmap[tz * CHUNK_SIZE + tx])
+	var h := _column_height(heightmap, chunk_pos, tx, tz)
+
+	var layers: Array = []
+	var natural_top := minf(h, natural_h)
+	if natural_top > 0.0:
+		layers.append({ "bottom": 0.0, "top": natural_top, "color": natural_color })
+
+	var stack: Array = _edit_materials.get(key, [])
+	var placed_bottom := natural_h
+	var k := 0
+	while placed_bottom + 0.0001 < h:
+		var placed_top := minf(placed_bottom + STEP_HEIGHT, h)
+		var col := natural_color
+		if k < stack.size():
+			var mat := str(stack[k])
+			if mat != "":
+				col = _material_color(mat)
+		layers.append({ "bottom": placed_bottom, "top": placed_top, "color": col })
+		placed_bottom = placed_top
+		k += 1
+	return layers
 
 func _voxel_height_at_tile(tile: Vector2i) -> float:
 	var key := _tile_key(tile)
