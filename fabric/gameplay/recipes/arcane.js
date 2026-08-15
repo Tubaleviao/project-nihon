@@ -1,4 +1,4 @@
-const { defineEntity } = require('./shared')
+const { defineEntity, recipeData } = require('./shared')
 
 module.exports = {
 
@@ -12,6 +12,13 @@ module.exports = {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
       outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'arcane',
+        station: 'arcane forge',
+        inputs: [{ item: 'Aethermite', quantity: 1 }],
+        outputs: [{ item: 'EnchantedAethermiteShard', quantity: 1 }],
+        skillGuards: [{ skill: 'ArcaneForging', tier: 'journeyman' }],
+      }),
     },
     relations: {
       inputShard: { name: 'inputShard', kind: 'hasOne', target: 'Aethermite' },
@@ -41,6 +48,13 @@ module.exports = {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
       outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'arcane',
+        station: 'arcane forge',
+        inputs: [{ item: 'ThornwoodPlank', quantity: 1 }, { item: 'AethermiteDust', quantity: 1 }, { item: 'Duskfiber', quantity: 1 }],
+        outputs: [{ item: 'AethermiteBow', quantity: 1 }],
+        skillGuards: [{ skill: 'Carpentry', tier: 'apprentice' }, { skill: 'ArcaneForging', tier: 'apprentice' }],
+      }),
     },
     relations: {
       inputPlank:    { name: 'inputPlank',    kind: 'hasOne', target: 'ThornwoodPlank' },
@@ -71,6 +85,13 @@ module.exports = {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
       outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'arcane',
+        station: 'arcane forge',
+        inputs: [{ item: 'Lumenfite', quantity: 1 }, { item: 'EnchantedAethermiteShard', quantity: 1 }],
+        outputs: [{ item: 'LumenfiteOrb', quantity: 1 }],
+        skillGuards: [{ skill: 'Enchanting', tier: 'journeyman' }, { skill: 'ArcaneForging', tier: 'apprentice' }],
+      }),
     },
     relations: {
       inputLumenfite: { name: 'inputLumenfite', kind: 'hasOne', target: 'Lumenfite' },
@@ -100,6 +121,13 @@ module.exports = {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
       outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'arcane',
+        station: 'void-shielded workshop',
+        inputs: [{ item: 'Voidite', quantity: 1 }, { item: 'LumenfiteOrb', quantity: 1 }],
+        outputs: [{ item: 'VoidRuneTablet', quantity: 1 }],
+        skillGuards: [{ skill: 'VoidSmithing', tier: 'expert' }],
+      }),
     },
     relations: {
       inputVoidite:  { name: 'inputVoidite',  kind: 'hasOne', target: 'Voidite' },

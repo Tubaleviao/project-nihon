@@ -15,6 +15,7 @@ const PersistenceSlice:= preload("res://src/persistence/persistence_slice.gd")
 const LootSlice       := preload("res://src/loot/loot_slice.gd")
 const InventorySlice  := preload("res://src/inventory/inventory_slice.gd")
 const CharacterSlice  := preload("res://src/character/character_slice.gd")
+const CraftingSlice   := preload("res://src/crafting/crafting_slice.gd")
 
 var _pass: int = 0
 var _fail: int = 0
@@ -30,13 +31,14 @@ func run() -> void:
 	print("╚══════════════════════════════════════╝\n")
 
 	_run_test("battle: hit reduces defender hp",              _test_battle_hit_reduces_hp)
-	_run_test("battle: miss leaves hp unchanged",             _test_battle_miss_outcome_exists)
+	_run_test("battle: miss leaves hp unchanged",             _test_battle_miss_leaves_hp_unchanged)
 	_run_test("battle: kill emits creature_died signal",      _test_battle_kill_emits_death)
 	_run_test("battle: reset_hp restores state",              _test_battle_reset_hp)
 	_run_test("battle: resolves stats via creature_slice",    _test_battle_resolves_via_creature_slice)
 	_run_test("creature: spawns instances from GameData",     _test_creature_spawns_from_gamedata)
 	_run_test("creature: nearest_creature returns closest",   _test_creature_nearest)
 	_run_test("creature: death marks instance dead",          _test_creature_death_marks_dead)
+	_run_test("creature: respawn resets battle hp state",     _test_creature_respawn_resets_battle_hp)
 	_run_test("terrain: chunk size is correct",               _test_terrain_chunk_size)
 	_run_test("terrain: height is non-negative",              _test_terrain_height_nonneg)
 	_run_test("terrain: two chunks are independent",          _test_terrain_two_chunks)
@@ -60,6 +62,12 @@ func run() -> void:
 	_run_test("character: spawns non-humanoid",               _test_character_spawns_nonhumanoid)
 	_run_test("character: unknown appearance rejected",       _test_character_unknown_appearance)
 	_run_test("character: LOD hides fine detail",             _test_character_lod_hides_detail)
+	_run_test("crafting: recipe data loaded from fabric",     _test_crafting_recipe_data_loaded)
+	_run_test("crafting: skill guard blocks low tier",        _test_crafting_skill_guard_blocks)
+	_run_test("crafting: consumes inputs and produces output", _test_crafting_consumes_and_produces)
+	_run_test("crafting: missing inputs fail",                _test_crafting_missing_inputs)
+	_run_test("crafting: unknown recipe rejected",            _test_crafting_unknown_recipe)
+	_run_test("crafting: can_craft does not mutate",          _test_crafting_can_craft_no_mutate)
 
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
@@ -84,33 +92,37 @@ func _test_battle_hit_reduces_hp() -> void:
 	assert_true(result["defender_hp_remaining"] >= 0.0, "HP is non-negative")
 	b.queue_free()
 
-func _test_battle_miss_outcome_exists() -> void:
+func _test_battle_miss_leaves_hp_unchanged() -> void:
 	var b := BattleSlice.new()
 	add_child(b)
-	# Run many rounds; at least one outcome value must be "hit", "critical", or "miss".
-	var seen := {}
-	for _i in range(40):
+	seed(11)
+	# Start HP high enough that the defender survives any number of rounds in
+	# this test, so a miss is observed from a live (non-zero) HP state.
+	b._hp_state["GraywolfPack"] = 10000.0
+	var saw_miss := false
+	for _i in range(200):
+		var before: float = b._hp_state["GraywolfPack"]
 		var r := b.resolve_round("ForestBoar", "GraywolfPack")
-		seen[r["outcome"]] = true
-	assert_true(seen.has("hit") or seen.has("critical") or seen.has("miss"),
-		"outcome is hit/critical/miss/kill")
+		if r["outcome"] == "miss":
+			assert_eq(b._hp_state["GraywolfPack"], before, "miss leaves defender HP unchanged")
+			saw_miss = true
+			break
+	assert_true(saw_miss, "observed at least one miss over 200 seeded rounds")
 	b.queue_free()
 
 func _test_battle_kill_emits_death() -> void:
 	var b := BattleSlice.new()
 	add_child(b)
-	# Prime defender with 1 HP so the next non-miss attack kills it.
+	seed(42)
+	# Prime the defender with 1 HP so the next non-miss attack kills it.
 	b._hp_state["ForestBoar"] = 1.0
-	var died_fired := false
-	GameBus.creature_died.connect(func(_id, _pos, _killer): died_fired = true)
-	# Run rounds until HP is zero or we exhaust attempts.
-	for _i in range(20):
+	var captured := {}
+	GameBus.creature_died.connect(func(_id, _pos, _killer): captured["died"] = true)
+	for _i in range(200):
 		b.resolve_round("GraywolfPack", "ForestBoar")
-		if died_fired:
+		if captured.get("died", false):
 			break
-	# died_fired may still be false if all 20 rounds were misses (unlikely but valid).
-	# We only assert that the mechanism exists; a definitive kill test would require seeding.
-	assert_true(true, "creature_died mechanism is wired")
+	assert_true(captured.get("died", false), "creature_died emitted once defender HP reaches zero")
 	b.queue_free()
 
 func _test_battle_reset_hp() -> void:
@@ -181,6 +193,27 @@ func _test_creature_death_marks_dead() -> void:
 		assert_true(found, "dead instance still present in get_all_instances")
 	c.queue_free()
 
+func _test_creature_respawn_resets_battle_hp() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	var b := BattleSlice.new()
+	b.creature_slice = c
+	add_child(b)
+	var instances := c.get_all_instances()
+	assert_true(instances.size() > 0, "need an instance to respawn")
+	if instances.size() > 0:
+		var iid: String = instances[0]["instance_id"]
+		# Simulate a kill: battle tracks 0 HP and the creature dies via the bus.
+		b._hp_state[iid] = 0.0
+		GameBus.creature_died.emit(iid, Vector3.ZERO, "player")
+		# Force the respawn timer to have elapsed, then tick.
+		c._instances[iid]["respawn_at"] = Time.get_ticks_msec() - 1.0
+		c._tick_respawn()
+		assert_false(b._hp_state.has(iid), "battle hp state cleared on respawn")
+		assert_eq(c._instances[iid]["state"], "idle", "creature state back to idle after respawn")
+	b.queue_free()
+	c.queue_free()
+
 # ---------------------------------------------------------------------------
 # TerrainSlice tests
 # ---------------------------------------------------------------------------
@@ -188,19 +221,20 @@ func _test_creature_death_marks_dead() -> void:
 func _test_terrain_chunk_size() -> void:
 	var t := TerrainSlice.new()
 	add_child(t)
-	var heightmap: Array = []
-	GameBus.chunk_ready.connect(func(_pos, hm): heightmap = hm)
+	var captured := {}
+	GameBus.chunk_ready.connect(func(_pos, hm): captured["heightmap"] = hm)
 	t.request_chunk(Vector2i(0, 0))
+	var heightmap: Array = captured.get("heightmap", [])
 	assert_eq(heightmap.size(), t.CHUNK_SIZE * t.CHUNK_SIZE, "heightmap size matches CHUNK_SIZE²")
 	t.queue_free()
 
 func _test_terrain_height_nonneg() -> void:
 	var t := TerrainSlice.new()
 	add_child(t)
-	var heightmap: Array = []
-	GameBus.chunk_ready.connect(func(_pos, hm): heightmap = hm)
+	var captured := {}
+	GameBus.chunk_ready.connect(func(_pos, hm): captured["heightmap"] = hm)
 	t.request_chunk(Vector2i(1, 1))
-	for h in heightmap:
+	for h in captured.get("heightmap", []):
 		assert_true(h >= 0.0, "height is non-negative")
 	t.queue_free()
 
@@ -221,11 +255,12 @@ func _test_terrain_two_chunks() -> void:
 func _test_persistence_round_trip() -> void:
 	var p := PersistenceSlice.new()
 	add_child(p)
-	var loaded: Dictionary = {}
-	GameBus.load_completed.connect(func(_slot, data): loaded = data)
+	var captured := {}
+	GameBus.load_completed.connect(func(_slot, data): captured["data"] = data)
 	var data := { "player": "TestPlayer", "level": 42 }
 	p.save(99, data)
 	p.load_slot(99)
+	var loaded: Dictionary = captured.get("data", {})
 	assert_eq(loaded.get("player", ""), "TestPlayer", "player name round-trips")
 	assert_eq(loaded.get("level", 0),   42,           "level round-trips")
 	p.queue_free()
@@ -233,10 +268,10 @@ func _test_persistence_round_trip() -> void:
 func _test_persistence_missing_slot() -> void:
 	var p := PersistenceSlice.new()
 	add_child(p)
-	var failed := false
-	GameBus.load_failed.connect(func(_slot, _reason): failed = true)
+	var captured := {}
+	GameBus.load_failed.connect(func(_slot, _reason): captured["failed"] = true)
 	p.load_slot(98)   # slot 98 was never saved in this test run
-	assert_true(failed, "load_failed emitted for missing slot")
+	assert_true(captured.get("failed", false), "load_failed emitted for missing slot")
 	p.queue_free()
 
 # ---------------------------------------------------------------------------
@@ -260,18 +295,19 @@ func _test_loot_known_creature() -> void:
 func _test_loot_unknown_creature() -> void:
 	var l := LootSlice.new()
 	add_child(l)
-	var dropped := false
-	GameBus.loot_dropped.connect(func(_pid, _iid, _pos, _qty): dropped = true)
+	var captured := {}
+	GameBus.loot_dropped.connect(func(_pid, _iid, _pos, _qty): captured["dropped"] = true)
 	GameBus.creature_died.emit("UnknownBeast", Vector3.ZERO, "")
-	assert_false(dropped, "no loot dropped for unknown creature")
+	assert_false(captured.get("dropped", false), "no loot dropped for unknown creature")
 	l.queue_free()
 
 func _test_loot_consume_removes() -> void:
 	var l := LootSlice.new()
 	add_child(l)
-	var last_pid := ""
-	GameBus.loot_dropped.connect(func(pid, _iid, _pos, _qty): last_pid = pid)
+	var captured := {}
+	GameBus.loot_dropped.connect(func(pid, _iid, _pos, _qty): captured["pid"] = pid)
 	GameBus.creature_died.emit("ForestBoar", Vector3.ZERO, "player")
+	var last_pid: String = captured.get("pid", "")
 	assert_true(last_pid != "", "at least one pickup was created")
 	var result := l.consume_pickup(last_pid)
 	assert_false(result.is_empty(), "consume returns the pickup data")
@@ -468,6 +504,86 @@ func _test_character_lod_hides_detail() -> void:
 	assert_false(ch.is_part_visible(iid, "hair"), "hair hidden at LOD3")
 	assert_true(ch.is_part_visible(iid, "body"), "body visible at LOD3")
 	ch.queue_free()
+
+# ---------------------------------------------------------------------------
+# CraftingSlice tests
+# ---------------------------------------------------------------------------
+
+func _test_crafting_recipe_data_loaded() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var recipe := c.get_recipe("RecipeFerritePick")
+	assert_false(recipe.is_empty(), "RecipeFerritePick has structured recipe data")
+	assert_eq(recipe["outputs"][0]["item"], "FerritePick", "output item is FerritePick")
+	assert_eq(recipe["inputs"][0]["item"], "FerriteIngot", "first input is FerriteIngot")
+	c.queue_free()
+
+func _test_crafting_skill_guard_blocks() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	# Default tier is novice; RecipeVoidRuneTablet requires VoidSmithing: expert.
+	var result := c.craft("RecipeVoidRuneTablet")
+	assert_false(result["success"], "craft fails without required skill tier")
+	assert_true(str(result["reason"]).begins_with("skill_requirement"), "reason is a skill requirement")
+	c.queue_free()
+	inv.queue_free()
+
+func _test_crafting_consumes_and_produces() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	inv.add_item("Ferrite", 4)
+	c.set_skill("Smithing", "novice")
+	var result := c.craft("RecipeFerriteIngot")
+	assert_true(result["success"], "FerriteIngot craft succeeds")
+	assert_eq(inv.get_item_count("Ferrite"), 2, "2 Ferrite remain (4 - 2 consumed)")
+	assert_eq(inv.get_item_count("FerriteIngot"), 1, "1 FerriteIngot produced")
+	c.queue_free()
+	inv.queue_free()
+
+func _test_crafting_missing_inputs() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	c.set_skill("Smithing", "novice")
+	var result := c.craft("RecipeFerriteIngot")
+	assert_false(result["success"], "craft fails without inputs")
+	assert_eq(result["reason"], "missing_inputs", "reason is missing_inputs")
+	c.queue_free()
+	inv.queue_free()
+
+func _test_crafting_unknown_recipe() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	var result := c.craft("DoesNotExist")
+	assert_false(result["success"], "unknown recipe rejected")
+	assert_eq(result["reason"], "unknown_recipe", "reason is unknown_recipe")
+	c.queue_free()
+	inv.queue_free()
+
+func _test_crafting_can_craft_no_mutate() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	inv.add_item("Ferrite", 2)
+	c.set_skill("Smithing", "novice")
+	var check := c.can_craft("RecipeFerriteIngot")
+	assert_true(check["success"], "can_craft returns true when craftable")
+	assert_eq(inv.get_item_count("Ferrite"), 2, "can_craft does not consume inputs")
+	c.queue_free()
+	inv.queue_free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers

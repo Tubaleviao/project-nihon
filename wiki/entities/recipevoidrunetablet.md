@@ -17,6 +17,7 @@ Etch stabilisation runes into a refined voidite slab at a void-shielded workshop
 | ----- | ---- | ----------- |
 | domain | `smithing`, `alchemy`, `arcane`, `carpentry` | Crafting station required |
 | outputCount | integer | Number of output items produced per craft |
+| recipe | json | Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier). |
 
 ## Related
 

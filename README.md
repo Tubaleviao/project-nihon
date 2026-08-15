@@ -31,6 +31,7 @@ pnpm generate   # generate the design bible into bible/
 | 8 | `generator-godot` integration | Done |
 | 9 | Public wiki | Planned |
 | 10 | Vertical slices — playable game loop with creature combat | Done |
+| 11 | Crafting slice — fabric-driven recipe resolution | Done |
 
 See [ROADMAP.md](ROADMAP.md) for the full spec, deliverables, and acceptance criteria for each phase.
 

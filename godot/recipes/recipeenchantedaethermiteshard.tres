@@ -7,5 +7,6 @@ script = ExtResource("1")
 id = ""
 domain = 0
 outputCount = 0
+recipe = {"domain":"arcane","station":"arcane forge","inputs":[{"item":"Aethermite","quantity":1}],"outputs":[{"item":"EnchantedAethermiteShard","quantity":1}],"skillGuards":[{"skill":"ArcaneForging","tier":"journeyman"}]}
 description = "Imbue a refined aethermite shard with magical energy at an arcane forge to produce an enchanted catalyst."
 tags = ["recipe"]

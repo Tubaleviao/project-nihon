@@ -94,6 +94,57 @@ func drop_item(item_id: String, quantity: int) -> bool:
 	_refresh_inventory_ui()
 	return true
 
+## Add quantity of item_id to the inventory, respecting slot + weight limits.
+## Returns true on success; false if it would exceed either limit (no change).
+func add_item(item_id: String, quantity: int) -> bool:
+	if quantity <= 0:
+		return true
+	var add_weight := _item_weight(item_id) * float(quantity)
+	if _current_weight + add_weight > _max_weight:
+		return false
+	if not _contents.has(item_id) and _contents.size() >= _max_slots:
+		return false
+	_contents[item_id] = _contents.get(item_id, 0) + quantity
+	_current_weight += add_weight
+	_is_full = false
+	_refresh_inventory_ui()
+	return true
+
+## Consume a { item_id: quantity } map atomically: returns true only if the
+## entire map is available, in which case every item is removed together.
+func consume_items(counts: Dictionary) -> bool:
+	for item_id in counts:
+		var qty: int = int(counts[item_id])
+		if _contents.get(item_id, 0) < qty:
+			return false
+	for item_id in counts:
+		var qty: int = int(counts[item_id])
+		var have: int = _contents[item_id]
+		_current_weight = maxf(_current_weight - _item_weight(item_id) * float(qty), 0.0)
+		if have == qty:
+			_contents.erase(item_id)
+		else:
+			_contents[item_id] = have - qty
+	_is_full = false
+	_refresh_inventory_ui()
+	return true
+
+## Whether a { item_id: quantity } map can be added without exceeding weight or
+## slot limits. Non-mutating; used by CraftingSlice to pre-flight outputs.
+func can_add_items(counts: Dictionary) -> bool:
+	var weight := _current_weight
+	var slots := _contents.size()
+	for item_id in counts:
+		var qty: int = int(counts[item_id])
+		weight += _item_weight(item_id) * float(qty)
+		if not _contents.has(item_id):
+			slots += 1
+	if weight > _max_weight:
+		return false
+	if slots > _max_slots:
+		return false
+	return true
+
 # ---------------------------------------------------------------------------
 # Private
 # ---------------------------------------------------------------------------

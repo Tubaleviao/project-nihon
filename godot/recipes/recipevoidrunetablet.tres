@@ -7,5 +7,6 @@ script = ExtResource("1")
 id = ""
 domain = 0
 outputCount = 0
+recipe = {"domain":"arcane","station":"void-shielded workshop","inputs":[{"item":"Voidite","quantity":1},{"item":"LumenfiteOrb","quantity":1}],"outputs":[{"item":"VoidRuneTablet","quantity":1}],"skillGuards":[{"skill":"VoidSmithing","tier":"expert"}]}
 description = "Etch stabilisation runes into a refined voidite slab at a void-shielded workshop."
 tags = ["recipe"]

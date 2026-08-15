@@ -18,6 +18,7 @@ var creature_slice: Node = null
 
 func _ready() -> void:
 	GameBus.combat_round_requested.connect(_on_combat_round_requested)
+	GameBus.creature_respawned.connect(_on_creature_respawned)
 
 ## Resolve a single combat round synchronously and emit the result.
 func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
@@ -81,6 +82,11 @@ func reset_hp(entity_id: String) -> void:
 
 func _on_combat_round_requested(attacker_id: String, defender_id: String) -> void:
 	resolve_round(attacker_id, defender_id)
+
+## Clear tracked HP when a creature respawns so it doesn't re-enter combat with
+## a stale 0 HP (which would cause an instant re-kill on the next round).
+func _on_creature_respawned(instance_id: String, _creature_id: String) -> void:
+	reset_hp(instance_id)
 
 ## Resolve a creature instance_id to its fabric key, then load from GameData.
 func _lookup(entity_id: String) -> Resource:

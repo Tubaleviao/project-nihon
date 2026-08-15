@@ -15,6 +15,7 @@ const PlayerSlice      := preload("res://src/player/player_slice.gd")
 const LootSlice        := preload("res://src/loot/loot_slice.gd")
 const InventorySlice   := preload("res://src/inventory/inventory_slice.gd")
 const CharacterSlice   := preload("res://src/character/character_slice.gd")
+const CraftingSlice    := preload("res://src/crafting/crafting_slice.gd")
 const TestSuite        := preload("res://src/tests/test_suite.gd")
 
 var _terrain:     TerrainSlice
@@ -27,6 +28,7 @@ var _player:      PlayerSlice
 var _loot:        LootSlice
 var _inventory:   InventorySlice
 var _character:   CharacterSlice
+var _crafting:    CraftingSlice
 
 func _ready() -> void:
 	# Run the automated tests before any production slice enters the tree.
@@ -46,12 +48,13 @@ func _ready() -> void:
 	_loot        = LootSlice.new()
 	_inventory   = InventorySlice.new()
 	_character   = CharacterSlice.new()
+	_crafting    = CraftingSlice.new()
 
 	# CreatureSlice needs the terrain to place spawns on the surface; wire it
 	# before the slices enter the tree so its _ready() can use it.
 	_creature.terrain_slice = _terrain
 
-	for s in [_terrain, _voxel, _battle, _creature, _networking, _persistence, _player, _loot, _inventory, _character]:
+	for s in [_terrain, _voxel, _battle, _creature, _networking, _persistence, _player, _loot, _inventory, _character, _crafting]:
 		s.name = s.get_script().resource_path.get_file().get_basename()
 		add_child(s)
 
@@ -60,6 +63,7 @@ func _ready() -> void:
 	_player.creature_slice   = _creature
 	_battle.creature_slice   = _creature
 	_loot.creature_slice     = _creature
+	_crafting.inventory_slice = _inventory
 
 	# Bus listeners for integration-layer logging.
 	GameBus.chunk_ready.connect(_on_chunk_ready)
@@ -73,6 +77,7 @@ func _ready() -> void:
 	GameBus.player_state_changed.connect(_on_player_state_changed)
 	GameBus.inventory_full.connect(_on_inventory_full)
 	GameBus.character_spawned.connect(_on_character_spawned)
+	GameBus.craft_resolved.connect(_on_craft_resolved)
 
 	# Lighting — a directional "sun" plus soft ambient sky fill.
 	var sun := DirectionalLight3D.new()
@@ -150,6 +155,21 @@ func _boot_world() -> void:
 		# (the real trigger comes from player left-click; this validates the pipeline).
 		GameBus.combat_round_requested.emit("player", first["instance_id"])
 
+	# Crafting — seed a starter kit of raw materials, grant demo skill tiers, and
+	# run a smithing chain (ore → ingot → plank → pick) through the bus to prove
+	# the fabric recipe data drives real inventory mutation end to end.
+	print("\n[Crafting] Seeding starter kit + running smithing chain…")
+	var starter_kit := { "Ferrite": 4, "Thornwood": 2 }
+	for item_id in starter_kit:
+		_inventory.add_item(item_id, starter_kit[item_id])
+	_crafting.set_skill("Smithing", "journeyman")
+	_crafting.set_skill("Carpentry", "apprentice")
+	GameBus.craft_requested.emit("RecipeFerriteIngot")      # 2 Ferrite → 1 FerriteIngot
+	GameBus.craft_requested.emit("RecipeFerriteIngot")      # 2 Ferrite → 1 FerriteIngot
+	GameBus.craft_requested.emit("RecipeThornwoodPlank")    # 2 Thornwood → 3 ThornwoodPlank
+	GameBus.craft_requested.emit("RecipeFerritePick")       # 2 ingot + 1 plank → pick
+	GameBus.craft_requested.emit("RecipeVoidRuneTablet")    # expected to FAIL (skill guard)
+
 	# Persistence — save the initial world snapshot via the bus.
 	print("\n[Persistence] Saving initial world snapshot to slot 0…")
 	var snapshot := {
@@ -210,6 +230,13 @@ func _on_inventory_full() -> void:
 func _on_character_spawned(instance_id: String, skeleton_id: String, position: Vector3) -> void:
 	print("[Character] %s [%s] assembled at %s" % [skeleton_id, instance_id, position])
 
+func _on_craft_resolved(result: Dictionary) -> void:
+	if result.get("success", false):
+		print("[Crafting] %s → %s" % [result.get("recipe_id", "?"), str(result.get("outputs", []))])
+	else:
+		print("[Crafting] %s FAILED — %s" % [result.get("recipe_id", "?"), result.get("reason", "?")])
+	print("[Inventory] contents: %s" % str(_inventory.get_contents()))
+
 func _on_save_completed(slot: int) -> void:
 	print("[Persistence] save_completed slot=%d" % slot)
 
@@ -223,13 +250,18 @@ func _on_load_completed(slot: int, data: Dictionary) -> void:
 func _check_game_data() -> void:
 	print("\n=== GameData registry check ===")
 	var registries := {
+		"APPEARANCES":  GameData.APPEARANCES,
 		"BIOMES":       GameData.BIOMES,
 		"CREATURES":    GameData.CREATURES,
 		"DECISIONS":    GameData.DECISIONS,
 		"ITEMS":        GameData.ITEMS,
+		"LOOTS":        GameData.LOOTS,
 		"MATERIALS":    GameData.MATERIALS,
+		"PALETTES":     GameData.PALETTES,
+		"PLAYERS":      GameData.PLAYERS,
 		"PROFESSIONS":  GameData.PROFESSIONS,
 		"RECIPES":      GameData.RECIPES,
+		"SKELETONS":    GameData.SKELETONS,
 		"SKILLS":       GameData.SKILLS,
 		"SYSTEMS":      GameData.SYSTEMS,
 		"TECHNOLOGIES": GameData.TECHNOLOGIES,

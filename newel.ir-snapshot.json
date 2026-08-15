@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-15T13:53:24.496Z",
-  "schemaHash": "sha256:24100f973dd061501a0991fa25da4b626a409b1d76a5274a8842f878ac0fcab7",
+  "generatedAt": "2026-08-15T16:15:49.277Z",
+  "schemaHash": "sha256:865c913db6b2fb32cede9a9c1ecfc486053494406a72c341ae6a780e46e7f9eb",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -12316,6 +12316,36 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "smithing",
+              "station": "forge",
+              "inputs": [
+                {
+                  "item": "Ferrite",
+                  "quantity": 2
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "novice"
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -12385,6 +12415,40 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "smithing",
+              "station": "master forge",
+              "inputs": [
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 3
+                },
+                {
+                  "item": "AethermiteShard",
+                  "quantity": 1
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "VeilsteelIngot",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "journeyman"
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -12459,6 +12523,36 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "smithing",
+              "station": "forge",
+              "inputs": [
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 1
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "FerriteShortSword",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "novice"
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -12528,6 +12622,40 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "smithing",
+              "station": "forge",
+              "inputs": [
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 2
+                },
+                {
+                  "item": "ThornwoodPlank",
+                  "quantity": 1
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "FerritePick",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "novice"
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -12602,6 +12730,40 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "smithing",
+              "station": "master forge",
+              "inputs": [
+                {
+                  "item": "VeilsteelIngot",
+                  "quantity": 2
+                },
+                {
+                  "item": "AshiteBlock",
+                  "quantity": 1
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "VeilsteelLongsword",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "journeyman"
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -12676,6 +12838,40 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "smithing",
+              "station": "master forge",
+              "inputs": [
+                {
+                  "item": "VeilsteelIngot",
+                  "quantity": 4
+                },
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 2
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "VeilsteelChestplate",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "journeyman"
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -12750,6 +12946,36 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "alchemy",
+              "station": "alchemy bench",
+              "inputs": [
+                {
+                  "item": "AethermiteDust",
+                  "quantity": 1
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "AlchemyPotion",
+                  "quantity": 2
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Alchemy",
+                  "tier": "novice"
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -12819,6 +13045,36 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "alchemy",
+              "station": "alchemy bench",
+              "inputs": [
+                {
+                  "item": "AethermiteDust",
+                  "quantity": 1
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "AlchemyPotion",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Alchemy",
+                  "tier": "novice"
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -12888,6 +13144,44 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "alchemy",
+              "station": "alchemy bench",
+              "inputs": [
+                {
+                  "item": "Voidite",
+                  "quantity": 1
+                },
+                {
+                  "item": "AethermiteDust",
+                  "quantity": 2
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "AlchemyPotion",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Alchemy",
+                  "tier": "expert"
+                },
+                {
+                  "skill": "ArcaneForging",
+                  "tier": "journeyman"
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -12963,6 +13257,36 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "arcane",
+              "station": "arcane forge",
+              "inputs": [
+                {
+                  "item": "Aethermite",
+                  "quantity": 1
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "EnchantedAethermiteShard",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "ArcaneForging",
+                  "tier": "journeyman"
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -13033,6 +13357,48 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "arcane",
+              "station": "arcane forge",
+              "inputs": [
+                {
+                  "item": "ThornwoodPlank",
+                  "quantity": 1
+                },
+                {
+                  "item": "AethermiteDust",
+                  "quantity": 1
+                },
+                {
+                  "item": "Duskfiber",
+                  "quantity": 1
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "AethermiteBow",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "apprentice"
+                },
+                {
+                  "skill": "ArcaneForging",
+                  "tier": "apprentice"
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -13112,6 +13478,44 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "arcane",
+              "station": "arcane forge",
+              "inputs": [
+                {
+                  "item": "Lumenfite",
+                  "quantity": 1
+                },
+                {
+                  "item": "EnchantedAethermiteShard",
+                  "quantity": 1
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "LumenfiteOrb",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Enchanting",
+                  "tier": "journeyman"
+                },
+                {
+                  "skill": "ArcaneForging",
+                  "tier": "apprentice"
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -13186,6 +13590,40 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "arcane",
+              "station": "void-shielded workshop",
+              "inputs": [
+                {
+                  "item": "Voidite",
+                  "quantity": 1
+                },
+                {
+                  "item": "LumenfiteOrb",
+                  "quantity": 1
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "VoidRuneTablet",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "VoidSmithing",
+                  "tier": "expert"
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -13261,6 +13699,36 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "carpentry",
+              "station": "carpentry bench",
+              "inputs": [
+                {
+                  "item": "Thornwood",
+                  "quantity": 2
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "ThornwoodPlank",
+                  "quantity": 3
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "novice"
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -13330,6 +13798,48 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "carpentry",
+              "station": "carpentry bench",
+              "inputs": [
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 1
+                },
+                {
+                  "item": "ThornwoodPlank",
+                  "quantity": 1
+                },
+                {
+                  "item": "Duskfiber",
+                  "quantity": 1
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "CarpenterAxe",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "apprentice"
+                },
+                {
+                  "skill": "Smithing",
+                  "tier": "novice"
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -13410,6 +13920,36 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "carpentry",
+              "station": "carpentry bench",
+              "inputs": [
+                {
+                  "item": "Duskfiber",
+                  "quantity": 3
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "DuskfiberCloak",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "apprentice"
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -13478,6 +14018,36 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "carpentry",
+              "station": "masonry bench",
+              "inputs": [
+                {
+                  "item": "Ashite",
+                  "quantity": 3
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "AshiteBlock",
+                  "quantity": 2
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "journeyman"
+                }
+              ]
+            }
           }
         },
         "relations": {

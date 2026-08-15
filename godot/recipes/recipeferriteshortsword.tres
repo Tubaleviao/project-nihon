@@ -7,5 +7,6 @@ script = ExtResource("1")
 id = ""
 domain = 0
 outputCount = 0
+recipe = {"domain":"smithing","station":"forge","inputs":[{"item":"FerriteIngot","quantity":1}],"outputs":[{"item":"FerriteShortSword","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"novice"}]}
 description = "Forge a ferrite short sword from one refined ferrite ingot."
 tags = ["recipe"]

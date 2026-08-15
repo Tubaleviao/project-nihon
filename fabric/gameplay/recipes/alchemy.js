@@ -1,4 +1,4 @@
-const { defineEntity } = require('./shared')
+const { defineEntity, recipeData } = require('./shared')
 
 module.exports = {
 
@@ -12,6 +12,13 @@ module.exports = {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
       outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'alchemy',
+        station: 'alchemy bench',
+        inputs: [{ item: 'AethermiteDust', quantity: 1 }],
+        outputs: [{ item: 'AlchemyPotion', quantity: 2 }],
+        skillGuards: [{ skill: 'Alchemy', tier: 'novice' }],
+      }),
     },
     relations: {
       inputDust:   { name: 'inputDust',   kind: 'hasOne', target: 'AethermiteDust' },
@@ -41,6 +48,13 @@ module.exports = {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
       outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'alchemy',
+        station: 'alchemy bench',
+        inputs: [{ item: 'AethermiteDust', quantity: 1 }],
+        outputs: [{ item: 'AlchemyPotion', quantity: 1 }],
+        skillGuards: [{ skill: 'Alchemy', tier: 'novice' }],
+      }),
     },
     relations: {
       inputDust: { name: 'inputDust', kind: 'hasOne', target: 'AethermiteDust' },
@@ -70,6 +84,13 @@ module.exports = {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
       outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'alchemy',
+        station: 'alchemy bench',
+        inputs: [{ item: 'Voidite', quantity: 1 }, { item: 'AethermiteDust', quantity: 2 }],
+        outputs: [{ item: 'AlchemyPotion', quantity: 1 }],
+        skillGuards: [{ skill: 'Alchemy', tier: 'expert' }, { skill: 'ArcaneForging', tier: 'journeyman' }],
+      }),
     },
     relations: {
       inputVoidite:   { name: 'inputVoidite',   kind: 'hasOne', target: 'Voidite' },

@@ -7,5 +7,6 @@ script = ExtResource("1")
 id = ""
 domain = 0
 outputCount = 0
+recipe = {"domain":"alchemy","station":"alchemy bench","inputs":[{"item":"AethermiteDust","quantity":1}],"outputs":[{"item":"AlchemyPotion","quantity":1}],"skillGuards":[{"skill":"Alchemy","tier":"novice"}]}
 description = "Brew a stamina-restoring potion from aethermite dust and root reagents. Used by explorers and miners for extended field operations."
 tags = ["recipe"]

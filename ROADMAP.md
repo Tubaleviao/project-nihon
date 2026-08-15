@@ -320,3 +320,80 @@ hardcoded elsewhere.
 - Item weights for crafted items loaded at runtime from `GameData.ITEMS` ✓
 - `MAX_SLOTS` / `MAX_WEIGHT` match `PlayerCharacter` fabric defaultValues ✓
 - All 16 automated tests pass at startup ✓
+
+---
+
+## Phase 11 — Crafting slice ✅ Done
+
+**Goal:** Prove the fabric drives gameplay beyond combat — resolve recipes from
+structured fabric data against the player's inventory and skill tiers.
+
+**Newel dependency:** None. Uses the existing `json` field type (already emitted
+by `generator-godot`); no generator change needed.
+
+**Deliverables:**
+- `fabric/gameplay/recipes/*` — each recipe gains a structured `recipe` json
+  field (via `recipeData()` in `shared.js`): inputs (item key + quantity),
+  outputs (item key + quantity), and skill guards (skill key + minimum tier).
+  Relations and behaviors are unchanged — they remain the graph view for the
+  bible/wiki generators and the technology tree.
+- `src/crafting/crafting_slice.gd` — resolves recipes from `GameData.RECIPES`
+  against the inventory; enforces skill guards (novice → master, fail-closed);
+  consumes inputs atomically then produces outputs.
+- `src/inventory/inventory_slice.gd` — new `add_item` / `consume_items` /
+  `can_add_items` primitives for programmatic inventory mutation.
+- `src/core/bus.gd` — `craft_requested` / `craft_resolved` signals.
+- `src/tests/test_suite.gd` — 6 crafting tests (data load, skill guard,
+  consume/produce, missing inputs, unknown recipe, non-mutating check).
+
+**Acceptance criteria:**
+- Recipes resolve from `GameData.RECIPES` — the fabric is the single source of truth ✓
+- Skill guards gate recipes by tier, fail closed ✓
+- Crafting consumes inputs and produces outputs in inventory ✓
+- All 6 crafting tests pass at startup ✓
+
+**Known simplifications (deferred):**
+- Station gating (`forge`, `alchemy bench`, …) is not enforced — no building system yet.
+- Materials have no weight model (inventory weight resolves to 0 for raw materials).
+- Herb/root reagents referenced by potion rules are not yet modelled as items.
+
+---
+
+## Phase 12 — Voxel mining and building
+
+**Goal:** Realize the "players build a civilization" core fantasy — mine raw
+materials from voxel terrain and place persistent structures.
+
+**Deliverables (proposed):**
+- `voxel_slice.gd` gains an edit API (mine a block → material, place a block).
+- Player raycast interaction reuses the existing aim ray to select a target block.
+- Mined materials flow into the inventory (feeding Phase 11 crafting).
+- Placed structures persist through `PersistenceSlice` (world-state save/load).
+- Biome-aware material spawns (temperate → ferrite/thornwood, volcanic → ashite, …).
+
+---
+
+## Phase 13 — Technology unlock gates
+
+**Goal:** Gate recipes behind the technology tree so progression
+(`KnowledgeIsProgression`) is real, not text.
+
+**Deliverables (proposed):**
+- A technology/research slice holding per-player `TECHNOLOGIES` status
+  (`locked → researching → unlocked`).
+- Crafting checks the recipe's owning technology is unlocked (in addition to
+  skill guards).
+- Research consumes resources (materials from Phase 12) and takes time.
+
+---
+
+## Deferred (in priority order)
+
+- **Creature AI / behavior** — implement the fabric state machines
+  (`idle/alert/aggressive/fleeing/respawning`) so creatures move, aggro, attack
+  back, and flee. Combat currently "works" but creatures are static.
+- **Multiplayer world sync** — the ENet plumbing exists (host/join + state
+  broadcast); full authoritative world sync is a large, high-risk lift. Defer
+  until the single-player gather→craft→build loop is solid.
+- **Chunk streaming / larger world** — single 32×32 chunk is enough until there
+  is a reason to explore (resource distribution in Phase 12).

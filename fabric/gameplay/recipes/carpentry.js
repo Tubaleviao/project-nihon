@@ -1,4 +1,4 @@
-const { defineEntity } = require('./shared')
+const { defineEntity, recipeData } = require('./shared')
 
 module.exports = {
 
@@ -11,6 +11,13 @@ module.exports = {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
       outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'carpentry',
+        station: 'carpentry bench',
+        inputs: [{ item: 'Thornwood', quantity: 2 }],
+        outputs: [{ item: 'ThornwoodPlank', quantity: 3 }],
+        skillGuards: [{ skill: 'Carpentry', tier: 'novice' }],
+      }),
     },
     relations: {
       inputThornwood: { name: 'inputThornwood', kind: 'hasOne', target: 'Thornwood' },
@@ -39,6 +46,13 @@ module.exports = {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
       outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'carpentry',
+        station: 'carpentry bench',
+        inputs: [{ item: 'FerriteIngot', quantity: 1 }, { item: 'ThornwoodPlank', quantity: 1 }, { item: 'Duskfiber', quantity: 1 }],
+        outputs: [{ item: 'CarpenterAxe', quantity: 1 }],
+        skillGuards: [{ skill: 'Carpentry', tier: 'apprentice' }, { skill: 'Smithing', tier: 'novice' }],
+      }),
     },
     relations: {
       inputIngot:    { name: 'inputIngot',    kind: 'hasOne', target: 'FerriteIngot' },
@@ -69,6 +83,13 @@ module.exports = {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
       outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'carpentry',
+        station: 'carpentry bench',
+        inputs: [{ item: 'Duskfiber', quantity: 3 }],
+        outputs: [{ item: 'DuskfiberCloak', quantity: 1 }],
+        skillGuards: [{ skill: 'Carpentry', tier: 'apprentice' }],
+      }),
     },
     relations: {
       inputDuskfiber: { name: 'inputDuskfiber', kind: 'hasOne', target: 'Duskfiber' },
@@ -96,6 +117,13 @@ module.exports = {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
       outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'carpentry',
+        station: 'masonry bench',
+        inputs: [{ item: 'Ashite', quantity: 3 }],
+        outputs: [{ item: 'AshiteBlock', quantity: 2 }],
+        skillGuards: [{ skill: 'Carpentry', tier: 'journeyman' }],
+      }),
     },
     relations: {
       inputAshite: { name: 'inputAshite', kind: 'hasOne', target: 'Ashite' },

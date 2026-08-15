@@ -11,13 +11,13 @@ config_version=5
 [application]
 
 config/name="project-nihon"
-run/main_scene="uid://bioa2ycf74xir"
+run/main_scene="res://Main.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 
 [autoload]
 
-GameData="*uid://ba0i5wyyux5fc"
+GameData="*res://godot/autoload/GameData.gd"
 GameBus="*res://src/core/bus.gd"
 
 [display]
