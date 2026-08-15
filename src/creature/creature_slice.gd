@@ -149,6 +149,7 @@ func _tick_respawn() -> void:
 			if inst.has("body") and inst["body"]:
 				inst["body"].visible = true
 			print("CreatureSlice: %s [%s] respawned" % [creature_id, iid])
+			GameBus.creature_respawned.emit(iid, creature_id)
 
 # ---------------------------------------------------------------------------
 # Visuals

@@ -79,6 +79,11 @@ signal creature_died(entity_id: String, position: Vector3, killer_id: String)
 ## position    : Vector3  — spawn world position
 signal creature_spawned(instance_id: String, creature_id: String, position: Vector3)
 
+## Emitted by CreatureSlice when a dead creature instance respawns.
+## instance_id : String   — unique runtime identifier for this instance
+## creature_id : String   — fabric key (e.g. "ForestBoar")
+signal creature_respawned(instance_id: String, creature_id: String)
+
 ## Request to attack the nearest creature (emitted by PlayerSlice on attack input).
 ## attacker_id : String — "player" or creature instance_id
 signal attack_requested(attacker_id: String)

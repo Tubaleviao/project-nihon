@@ -38,6 +38,7 @@ func run() -> void:
 	_run_test("creature: spawns instances from GameData",     _test_creature_spawns_from_gamedata)
 	_run_test("creature: nearest_creature returns closest",   _test_creature_nearest)
 	_run_test("creature: death marks instance dead",          _test_creature_death_marks_dead)
+	_run_test("creature: respawn resets battle hp state",     _test_creature_respawn_resets_battle_hp)
 	_run_test("terrain: chunk size is correct",               _test_terrain_chunk_size)
 	_run_test("terrain: height is non-negative",              _test_terrain_height_nonneg)
 	_run_test("terrain: two chunks are independent",          _test_terrain_two_chunks)
@@ -186,6 +187,27 @@ func _test_creature_death_marks_dead() -> void:
 				assert_eq(inst["state"], "dead", "instance state is dead after creature_died signal")
 				found = true
 		assert_true(found, "dead instance still present in get_all_instances")
+	c.queue_free()
+
+func _test_creature_respawn_resets_battle_hp() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	var b := BattleSlice.new()
+	b.creature_slice = c
+	add_child(b)
+	var instances := c.get_all_instances()
+	assert_true(instances.size() > 0, "need an instance to respawn")
+	if instances.size() > 0:
+		var iid: String = instances[0]["instance_id"]
+		# Simulate a kill: battle tracks 0 HP and the creature dies via the bus.
+		b._hp_state[iid] = 0.0
+		GameBus.creature_died.emit(iid, Vector3.ZERO, "player")
+		# Force the respawn timer to have elapsed, then tick.
+		c._instances[iid]["respawn_at"] = Time.get_ticks_msec() - 1.0
+		c._tick_respawn()
+		assert_false(b._hp_state.has(iid), "battle hp state cleared on respawn")
+		assert_eq(c._instances[iid]["state"], "idle", "creature state back to idle after respawn")
+	b.queue_free()
 	c.queue_free()
 
 # ---------------------------------------------------------------------------
