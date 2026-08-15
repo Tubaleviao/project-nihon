@@ -8,6 +8,7 @@ id = ""
 status = 0
 researchCost = 0
 tier = 0
+tech = {"unlocks":["RecipeHealthPotion","RecipeStaminaPotion"],"requires":[],"researchDuration":20,"researchMaterials":[{"item":"Aethermite","quantity":2}]}
 state_machine_field = "status"
 initial_state = "locked"
 description = "Basic alchemical knowledge. Unlocks the alchemy bench and foundational potion recipes including health and stamina potions."

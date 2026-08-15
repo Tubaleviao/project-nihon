@@ -407,17 +407,47 @@ materials from voxel terrain and place persistent structures.
 
 ---
 
-## Phase 13 — Technology unlock gates
+## Phase 13 — Technology unlock gates ✅ Done
 
 **Goal:** Gate recipes behind the technology tree so progression
 (`KnowledgeIsProgression`) is real, not text.
 
-**Deliverables (proposed):**
-- A technology/research slice holding per-player `TECHNOLOGIES` status
-  (`locked → researching → unlocked`).
-- Crafting checks the recipe's owning technology is unlocked (in addition to
-  skill guards).
-- Research consumes resources (materials from Phase 12) and takes time.
+**Newel dependency:** None. Reuses the existing `json` field type (already
+emitted by `generator-godot`); no generator change needed.
+
+**Deliverables:**
+- `fabric/gameplay/technology/index.js` — each technology gains a structured
+  `tech` json field (via `techData()`): recipe unlocks, prerequisite
+  technologies, research duration (seconds), and the material cost consumed on
+  `beginResearch`.
+- `src/technology/technology_slice.gd` — per-player research status
+  (`locked → researching → unlocked`); `begin_research` validates prerequisites
+  and consumes materials, `complete_research` unlocks, and a `_process` tick
+  auto-completes research once its duration elapses. Reverse-indexes
+  recipe → technology for gate lookups.
+- `src/crafting/crafting_slice.gd` — `craft`/`can_craft` now check the recipe's
+  owning technology is unlocked (in addition to skill guards), fail-closed via
+  `technology_locked:<tech>`.
+- `src/core/bus.gd` — `research_requested` / `research_resolved` /
+  `technology_unlocked` signals.
+- `src/core/game_root.gd` — wires TechnologySlice; the boot demo demonstrates
+  a craft fail while locked, researches the two starter techs, then runs the
+  smithing chain; technology status round-trips through the save snapshot.
+- `src/tests/test_suite.gd` — 7 technology tests (recipe→tech mapping,
+  prerequisite gate, material consumption, unlock, craft blocked/allowed,
+  unknown tech).
+
+**Acceptance criteria:**
+- Recipes gate behind their owning technology (locked until researched) ✓
+- Research consumes materials and takes time (auto-completes on duration) ✓
+- Prerequisite technologies gate research, fail-closed ✓
+- Technology status survives a save/load round-trip ✓
+- All automated tests pass at startup (7 new technology tests) ✓
+
+**Known simplifications (deferred):**
+- Research cost is material-only; the abstract `researchCost` points field is
+  not yet enforced.
+- `VoidTouched` / `voidBurstSurvivor` special-case unlock triggers are not wired.
 
 ---
 

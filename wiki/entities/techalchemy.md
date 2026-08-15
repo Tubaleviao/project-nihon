@@ -18,6 +18,7 @@ Basic alchemical knowledge. Unlocks the alchemy bench and foundational potion re
 | status | `locked`, `researching`, `unlocked` |  |
 | researchCost | integer | Research points required to complete |
 | tier | integer | Technology tree tier (1 = root) |
+| tech | json | Structured technology data: recipe unlocks, prerequisite technologies, research duration (seconds), and material cost consumed to begin research. |
 
 ## Related
 

@@ -157,6 +157,22 @@ signal block_placed(material: String, position: Vector3)
 signal block_place_material_changed(material: String)
 
 # ---------------------------------------------------------------------------
+# Technology / research
+# ---------------------------------------------------------------------------
+
+## Request to begin researching a technology (emitted by the player/UI or any
+## system). tech_id : String — key from GameData.TECHNOLOGIES (e.g. "TechBasicSmithing").
+signal research_requested(tech_id: String)
+
+## Emitted by TechnologySlice with the outcome of a research attempt.
+## result : Dictionary — { tech_id, success, reason, status }
+signal research_resolved(result: Dictionary)
+
+## Emitted by TechnologySlice when research completes and a technology unlocks.
+## tech_id : String — key from GameData.TECHNOLOGIES
+signal technology_unlocked(tech_id: String)
+
+# ---------------------------------------------------------------------------
 # Player
 # ---------------------------------------------------------------------------
 
