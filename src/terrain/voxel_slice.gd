@@ -5,7 +5,7 @@ extends Node
 ##
 ## Plug contract (GameBus signals consumed / emitted):
 ##   IN  : chunk_ready(chunk_pos, heightmap)
-##         block_mine_requested(position)
+##         block_mine_requested(position, normal)
 ##         block_place_requested(position, normal)
 ##         block_cycle_material_requested()
 ##   OUT : block_mined(material, quantity, position)
@@ -14,7 +14,7 @@ extends Node
 ##
 ## Public API:
 ##   build_chunk(chunk_pos, heightmap) -> void
-##   mine_block(world_pos)             -> Dictionary  { success, material, quantity, position }
+##   mine_block(world_pos, normal)     -> Dictionary  { success, material, quantity, position }
 ##   place_block(world_pos, normal)    -> bool
 ##   get_voxel_height_at(world_pos)    -> float
 ##   get_edits() / apply_edits(edits)  -> Dictionary / void
@@ -202,8 +202,12 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
 
 ## Remove one voxel from the column under world_pos, yielding that biome's
 ## material into the inventory. Returns { success, material, quantity, position }.
-func mine_block(world_pos: Vector3) -> Dictionary:
+## normal disambiguates side-face hits: the ray lands on the boundary between
+## two columns, so we step back along the normal into the block being mined.
+func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP) -> Dictionary:
 	var xz := Vector2(world_pos.x, world_pos.z)
+	if normal.y <= 0.5:
+		xz -= Vector2(normal.x, normal.z) * TILE_SIZE * 0.5
 	var tile := _world_to_tile(xz)
 	var current := _voxel_height_at_tile(tile)
 	if current <= MIN_HEIGHT:
@@ -333,8 +337,8 @@ func _add_face(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, 
 func _on_chunk_ready(chunk_pos: Vector2i, heightmap: Array) -> void:
 	build_chunk(chunk_pos, heightmap)
 
-func _on_mine_requested(position: Vector3) -> void:
-	mine_block(position)
+func _on_mine_requested(position: Vector3, normal: Vector3) -> void:
+	mine_block(position, normal)
 
 func _on_place_requested(position: Vector3, normal: Vector3) -> void:
 	place_block(position, normal)

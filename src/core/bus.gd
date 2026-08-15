@@ -135,8 +135,10 @@ signal craft_resolved(result: Dictionary)
 # ---------------------------------------------------------------------------
 
 ## Request to mine the voxel block under the given world position (PlayerSlice
-## on right-click). VoxelSlice lowers the column and yields a material.
-signal block_mine_requested(position: Vector3)
+## on right-click). normal is the hit face normal, used to disambiguate which
+## column to mine when the ray strikes a side face. VoxelSlice lowers the
+## column and yields a material.
+signal block_mine_requested(position: Vector3, normal: Vector3)
 
 ## Request to place a voxel block against the hit face (PlayerSlice on
 ## middle-click). normal is the face normal used to pick the target column.

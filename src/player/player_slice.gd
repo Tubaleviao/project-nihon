@@ -96,7 +96,7 @@ func _input(event: InputEvent) -> void:
 	# Right-click → mine the aimed terrain block.
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
 		if _aimed_block_hit:
-			GameBus.block_mine_requested.emit(_aimed_block_pos)
+			GameBus.block_mine_requested.emit(_aimed_block_pos, _aimed_block_normal)
 	# Middle-click → place a block against the aimed terrain face.
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_MIDDLE:
 		if _aimed_block_hit:

@@ -71,6 +71,7 @@ func run() -> void:
 	_run_test("crafting: can_craft does not mutate",          _test_crafting_can_craft_no_mutate)
 	_run_test("voxel: mine lowers height and yields material", _test_voxel_mine_yields_material)
 	_run_test("voxel: mine at bedrock fails",                  _test_voxel_mine_bedrock)
+	_run_test("voxel: side-face mine targets hit block",       _test_voxel_mine_side_face)
 	_run_test("voxel: place raises height and consumes",       _test_voxel_place_consumes)
 	_run_test("voxel: place beyond cap fails and refunds",     _test_voxel_place_cap)
 	_run_test("voxel: biome material mapping",                 _test_voxel_biome_materials)
@@ -626,6 +627,22 @@ func _test_voxel_mine_bedrock() -> void:
 	var r := v.mine_block(Vector3(16.5, 0.0, 16.5))
 	assert_false(r.get("success", false), "mining at bedrock fails")
 	v.queue_free()
+
+func _test_voxel_mine_side_face() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	# East-facing face (normal +X) at x=17.0: the hit block is tile 16 (west).
+	v.mine_block(Vector3(17.0, 1.5, 16.5), Vector3(1, 0, 0))
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.5, "+X face mines the block west of the boundary")
+	assert_eq(v.get_voxel_height_at(Vector2(17.0, 16.0)), 2.0, "east block untouched")
+	# West-facing face (normal -X) at x=19.0: the hit block is tile 19 (east).
+	v.mine_block(Vector3(19.0, 1.5, 16.5), Vector3(-1, 0, 0))
+	assert_eq(v.get_voxel_height_at(Vector2(19.0, 16.0)), 1.5, "-X face mines the block east of the boundary")
+	assert_eq(v.get_voxel_height_at(Vector2(18.0, 16.0)), 2.0, "west block untouched")
+	v.queue_free()
+	inv.queue_free()
 
 func _test_voxel_place_consumes() -> void:
 	var v := _make_voxel()
