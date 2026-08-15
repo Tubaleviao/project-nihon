@@ -116,13 +116,13 @@ func _test_battle_kill_emits_death() -> void:
 	seed(42)
 	# Prime the defender with 1 HP so the next non-miss attack kills it.
 	b._hp_state["ForestBoar"] = 1.0
-	var died_fired := false
-	GameBus.creature_died.connect(func(_id, _pos, _killer): died_fired = true)
+	var captured := {}
+	GameBus.creature_died.connect(func(_id, _pos, _killer): captured["died"] = true)
 	for _i in range(200):
 		b.resolve_round("GraywolfPack", "ForestBoar")
-		if died_fired:
+		if captured.get("died", false):
 			break
-	assert_true(died_fired, "creature_died emitted once defender HP reaches zero")
+	assert_true(captured.get("died", false), "creature_died emitted once defender HP reaches zero")
 	b.queue_free()
 
 func _test_battle_reset_hp() -> void:
@@ -221,19 +221,20 @@ func _test_creature_respawn_resets_battle_hp() -> void:
 func _test_terrain_chunk_size() -> void:
 	var t := TerrainSlice.new()
 	add_child(t)
-	var heightmap: Array = []
-	GameBus.chunk_ready.connect(func(_pos, hm): heightmap = hm)
+	var captured := {}
+	GameBus.chunk_ready.connect(func(_pos, hm): captured["heightmap"] = hm)
 	t.request_chunk(Vector2i(0, 0))
+	var heightmap: Array = captured.get("heightmap", [])
 	assert_eq(heightmap.size(), t.CHUNK_SIZE * t.CHUNK_SIZE, "heightmap size matches CHUNK_SIZE²")
 	t.queue_free()
 
 func _test_terrain_height_nonneg() -> void:
 	var t := TerrainSlice.new()
 	add_child(t)
-	var heightmap: Array = []
-	GameBus.chunk_ready.connect(func(_pos, hm): heightmap = hm)
+	var captured := {}
+	GameBus.chunk_ready.connect(func(_pos, hm): captured["heightmap"] = hm)
 	t.request_chunk(Vector2i(1, 1))
-	for h in heightmap:
+	for h in captured.get("heightmap", []):
 		assert_true(h >= 0.0, "height is non-negative")
 	t.queue_free()
 
@@ -254,11 +255,12 @@ func _test_terrain_two_chunks() -> void:
 func _test_persistence_round_trip() -> void:
 	var p := PersistenceSlice.new()
 	add_child(p)
-	var loaded: Dictionary = {}
-	GameBus.load_completed.connect(func(_slot, data): loaded = data)
+	var captured := {}
+	GameBus.load_completed.connect(func(_slot, data): captured["data"] = data)
 	var data := { "player": "TestPlayer", "level": 42 }
 	p.save(99, data)
 	p.load_slot(99)
+	var loaded: Dictionary = captured.get("data", {})
 	assert_eq(loaded.get("player", ""), "TestPlayer", "player name round-trips")
 	assert_eq(loaded.get("level", 0),   42,           "level round-trips")
 	p.queue_free()
@@ -266,10 +268,10 @@ func _test_persistence_round_trip() -> void:
 func _test_persistence_missing_slot() -> void:
 	var p := PersistenceSlice.new()
 	add_child(p)
-	var failed := false
-	GameBus.load_failed.connect(func(_slot, _reason): failed = true)
+	var captured := {}
+	GameBus.load_failed.connect(func(_slot, _reason): captured["failed"] = true)
 	p.load_slot(98)   # slot 98 was never saved in this test run
-	assert_true(failed, "load_failed emitted for missing slot")
+	assert_true(captured.get("failed", false), "load_failed emitted for missing slot")
 	p.queue_free()
 
 # ---------------------------------------------------------------------------
@@ -293,18 +295,19 @@ func _test_loot_known_creature() -> void:
 func _test_loot_unknown_creature() -> void:
 	var l := LootSlice.new()
 	add_child(l)
-	var dropped := false
-	GameBus.loot_dropped.connect(func(_pid, _iid, _pos, _qty): dropped = true)
+	var captured := {}
+	GameBus.loot_dropped.connect(func(_pid, _iid, _pos, _qty): captured["dropped"] = true)
 	GameBus.creature_died.emit("UnknownBeast", Vector3.ZERO, "")
-	assert_false(dropped, "no loot dropped for unknown creature")
+	assert_false(captured.get("dropped", false), "no loot dropped for unknown creature")
 	l.queue_free()
 
 func _test_loot_consume_removes() -> void:
 	var l := LootSlice.new()
 	add_child(l)
-	var last_pid := ""
-	GameBus.loot_dropped.connect(func(pid, _iid, _pos, _qty): last_pid = pid)
+	var captured := {}
+	GameBus.loot_dropped.connect(func(pid, _iid, _pos, _qty): captured["pid"] = pid)
 	GameBus.creature_died.emit("ForestBoar", Vector3.ZERO, "player")
+	var last_pid: String = captured.get("pid", "")
 	assert_true(last_pid != "", "at least one pickup was created")
 	var result := l.consume_pickup(last_pid)
 	assert_false(result.is_empty(), "consume returns the pickup data")
