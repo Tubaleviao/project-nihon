@@ -33,7 +33,8 @@ pnpm generate   # generate the design bible into bible/
 | 10 | Vertical slices — playable game loop with creature combat | Done |
 | 11 | Crafting slice — fabric-driven recipe resolution | Done |
 | 12 | Voxel mining and building | Done |
-| 13 | Technology unlock gates | Planned |
+| 13 | Technology unlock gates | Done |
+| 14 | Player UI (inventory, technology tree, crafting) | Planned |
 
 Deferred (in priority order): creature AI/behavior, multiplayer world sync,
 chunk streaming / larger world.

@@ -16,6 +16,7 @@ const LootSlice       := preload("res://src/loot/loot_slice.gd")
 const InventorySlice  := preload("res://src/inventory/inventory_slice.gd")
 const CharacterSlice  := preload("res://src/character/character_slice.gd")
 const CraftingSlice   := preload("res://src/crafting/crafting_slice.gd")
+const TechnologySlice := preload("res://src/technology/technology_slice.gd")
 const VoxelSlice      := preload("res://src/terrain/voxel_slice.gd")
 
 var _pass: int = 0
@@ -69,6 +70,13 @@ func run() -> void:
 	_run_test("crafting: missing inputs fail",                _test_crafting_missing_inputs)
 	_run_test("crafting: unknown recipe rejected",            _test_crafting_unknown_recipe)
 	_run_test("crafting: can_craft does not mutate",          _test_crafting_can_craft_no_mutate)
+	_run_test("technology: recipe resolves to owning tech",    _test_technology_recipe_resolves_to_tech)
+	_run_test("technology: research requires prerequisite",    _test_technology_research_requires_prereq)
+	_run_test("technology: research consumes materials",       _test_technology_research_consumes_materials)
+	_run_test("technology: complete research unlocks",         _test_technology_complete_unlocks)
+	_run_test("technology: crafting blocked while locked",     _test_technology_crafting_blocked_locked)
+	_run_test("technology: crafting allowed after unlock",     _test_technology_crafting_allowed_after_unlock)
+	_run_test("technology: unknown technology rejected",       _test_technology_unknown_rejected)
 	_run_test("voxel: mine lowers height and yields material", _test_voxel_mine_yields_material)
 	_run_test("voxel: mine at bedrock fails",                  _test_voxel_mine_bedrock)
 	_run_test("voxel: side-face mine targets hit block",       _test_voxel_mine_side_face)
@@ -90,6 +98,13 @@ func run() -> void:
 	else:
 		push_error("TestSuite: %d test(s) FAILED" % _fail)
 	print("────────────────────────────────────────\n")
+
+	# Detach every test slice from the shared GameBus. They were queue_free()'d
+	# (deferred to end of frame), so without this they would still be connected
+	# while game_root boots the world and would re-run saves, loads, crafts and
+	# chunk builds against production emissions.
+	for child in get_children():
+		GameBus.disconnect_all_from(child)
 
 # ---------------------------------------------------------------------------
 # BattleSlice tests
@@ -597,6 +612,102 @@ func _test_crafting_can_craft_no_mutate() -> void:
 	assert_eq(inv.get_item_count("Ferrite"), 2, "can_craft does not consume inputs")
 	c.queue_free()
 	inv.queue_free()
+
+# ---------------------------------------------------------------------------
+# TechnologySlice tests (research gates)
+# ---------------------------------------------------------------------------
+
+func _test_technology_recipe_resolves_to_tech() -> void:
+	var t := TechnologySlice.new()
+	add_child(t)
+	assert_eq(t.get_recipe_tech("RecipeFerriteIngot"), "TechBasicSmithing", "FerriteIngot belongs to TechBasicSmithing")
+	assert_eq(t.get_recipe_tech("RecipeVoidRuneTablet"), "TechVoidMastery", "VoidRuneTablet belongs to TechVoidMastery")
+	t.queue_free()
+
+func _test_technology_research_requires_prereq() -> void:
+	var t := TechnologySlice.new()
+	add_child(t)
+	# TechMasterForge requires TechBasicSmithing (still locked).
+	var result := t.begin_research("TechMasterForge")
+	assert_false(result["success"], "research blocked without prerequisite")
+	assert_true(str(result["reason"]).begins_with("prerequisite_locked"), "reason is a prerequisite gate")
+	t.queue_free()
+
+func _test_technology_research_consumes_materials() -> void:
+	var t := TechnologySlice.new()
+	add_child(t)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	t.inventory_slice = inv
+	inv.add_item("Ferrite", 4)
+	var result := t.begin_research("TechBasicSmithing")
+	assert_true(result["success"], "research begins with materials present")
+	assert_eq(t.get_status("TechBasicSmithing"), "researching", "status is researching")
+	assert_eq(inv.get_item_count("Ferrite"), 0, "Ferrite material cost consumed")
+	t.queue_free()
+	inv.queue_free()
+
+func _test_technology_complete_unlocks() -> void:
+	var t := TechnologySlice.new()
+	add_child(t)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	t.inventory_slice = inv
+	inv.add_item("Ferrite", 4)
+	t.begin_research("TechBasicSmithing")
+	var result := t.complete_research("TechBasicSmithing")
+	assert_true(result["success"], "complete research succeeds")
+	assert_eq(t.get_status("TechBasicSmithing"), "unlocked", "status is unlocked")
+	assert_true(t.is_recipe_unlocked("RecipeFerriteIngot"), "recipe now unlocked")
+	t.queue_free()
+	inv.queue_free()
+
+func _test_technology_crafting_blocked_locked() -> void:
+	var t := TechnologySlice.new()
+	add_child(t)
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	c.technology_slice = t
+	inv.add_item("Ferrite", 2)
+	c.set_skill("Smithing", "novice")
+	var result := c.craft("RecipeFerriteIngot")
+	assert_false(result["success"], "craft blocked while technology locked")
+	assert_true(str(result["reason"]).begins_with("technology_locked"), "reason is a technology gate")
+	t.queue_free()
+	c.queue_free()
+	inv.queue_free()
+
+func _test_technology_crafting_allowed_after_unlock() -> void:
+	var t := TechnologySlice.new()
+	add_child(t)
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	c.technology_slice = t
+	t.inventory_slice = inv
+	inv.add_item("Ferrite", 6)   # 4 for research + 2 for the craft
+	c.set_skill("Smithing", "novice")
+	assert_true(t.begin_research("TechBasicSmithing")["success"], "begin research succeeds")
+	assert_true(t.complete_research("TechBasicSmithing")["success"], "complete research succeeds")
+	var result := c.craft("RecipeFerriteIngot")
+	assert_true(result["success"], "craft succeeds after technology unlocked")
+	assert_eq(inv.get_item_count("FerriteIngot"), 1, "ingot produced")
+	t.queue_free()
+	c.queue_free()
+	inv.queue_free()
+
+func _test_technology_unknown_rejected() -> void:
+	var t := TechnologySlice.new()
+	add_child(t)
+	var result := t.begin_research("DoesNotExist")
+	assert_false(result["success"], "unknown technology rejected")
+	assert_eq(result["reason"], "unknown_technology", "reason is unknown_technology")
+	t.queue_free()
 
 # ---------------------------------------------------------------------------
 # VoxelSlice tests (mining & building)

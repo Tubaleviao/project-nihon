@@ -8,6 +8,7 @@ id = ""
 status = 0
 researchCost = 0
 tier = 0
+tech = {"unlocks":["RecipeEnchantedAethermiteShard","RecipeAethermiteBow","RecipeLumenfiteOrb"],"requires":["TechBasicSmithing","TechAlchemy"],"researchDuration":60,"researchMaterials":[{"item":"Aethermite","quantity":8}]}
 state_machine_field = "status"
 initial_state = "locked"
 description = "Magical metallurgy principles. Unlocks the arcane forge structure and all arcane crafting recipes including aethermite shard imbuing and the aethermite bow."

@@ -8,6 +8,7 @@ id = ""
 status = 0
 researchCost = 0
 tier = 0
+tech = {"unlocks":["RecipeDuskfiberCloak"],"requires":["TechBasicCarpentry"],"researchDuration":30,"researchMaterials":[{"item":"Duskfiber","quantity":8}]}
 state_machine_field = "status"
 initial_state = "locked"
 description = "Fiber processing and loom construction techniques. Unlocks duskfiber weaving and the cloak recipe. Depends on basic carpentry for the loom frame."

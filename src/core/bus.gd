@@ -157,6 +157,22 @@ signal block_placed(material: String, position: Vector3)
 signal block_place_material_changed(material: String)
 
 # ---------------------------------------------------------------------------
+# Technology / research
+# ---------------------------------------------------------------------------
+
+## Request to begin researching a technology (emitted by the player/UI or any
+## system). tech_id : String — key from GameData.TECHNOLOGIES (e.g. "TechBasicSmithing").
+signal research_requested(tech_id: String)
+
+## Emitted by TechnologySlice with the outcome of a research attempt.
+## result : Dictionary — { tech_id, success, reason, status }
+signal research_resolved(result: Dictionary)
+
+## Emitted by TechnologySlice when research completes and a technology unlocks.
+## tech_id : String — key from GameData.TECHNOLOGIES
+signal technology_unlocked(tech_id: String)
+
+# ---------------------------------------------------------------------------
 # Player
 # ---------------------------------------------------------------------------
 
@@ -182,3 +198,19 @@ signal character_spawned(instance_id: String, skeleton_id: String, position: Vec
 ## instance_id : String
 ## appearance  : Dictionary — the normalized appearance recipe
 signal character_appearance_changed(instance_id: String, appearance: Dictionary)
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+## Disconnect every GameBus connection whose bound object is `target`. Used by
+## the test suite to detach queued-for-free slices (queue_free is deferred to
+## end of frame) so they stop answering production bus emissions during the same
+## boot frame — otherwise a stale PersistenceSlice re-saves/re-loads the world
+## and stale VoxelSlice/CraftingSlice instances rebuild chunks and spam logs.
+func disconnect_all_from(target: Object) -> void:
+	for sig in get_signal_list():
+		var signal_name: String = sig["name"]
+		for conn in get_signal_connection_list(signal_name):
+			if conn["callable"].get_object() == target:
+				disconnect(signal_name, conn["callable"])

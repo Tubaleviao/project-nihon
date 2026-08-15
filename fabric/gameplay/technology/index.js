@@ -18,6 +18,20 @@ function technologyStateMachine() {
   }
 }
 
+// Structured runtime technology data consumed by TechnologySlice
+// (src/technology/). The relations/behaviors carry the graph view used by the
+// bible/wiki generators; this json field is the single source of truth for
+// in-game research resolution — recipe unlocks, prerequisite technologies,
+// research duration (seconds), and the material cost consumed on beginResearch.
+function techData(tech) {
+  return {
+    type: 'json',
+    description:
+      'Structured technology data: recipe unlocks, prerequisite technologies, research duration (seconds), and material cost consumed to begin research.',
+    defaultValue: tech,
+  }
+}
+
 module.exports = {
 
   // ─── TechBasicSmithing ────────────────────────────────────────────────────
@@ -32,6 +46,12 @@ module.exports = {
       status: { type: 'enum', values: TECH_STATES },
       researchCost: { type: 'integer', description: 'Research points required to complete' },
       tier:   { type: 'integer', description: 'Technology tree tier (1 = root)' },
+      tech: techData({
+        unlocks: ['RecipeFerriteIngot', 'RecipeFerriteShortSword', 'RecipeFerritePick'],
+        requires: [],
+        researchDuration: 10,
+        researchMaterials: [{ item: 'Ferrite', quantity: 4 }],
+      }),
     },
     relations: {
       unlocksRecipeFerriteIngot:     { name: 'unlocksRecipeFerriteIngot',     kind: 'hasOne', target: 'RecipeFerriteIngot' },
@@ -69,6 +89,12 @@ module.exports = {
       status: { type: 'enum', values: TECH_STATES },
       researchCost: { type: 'integer', description: 'Research points required to complete' },
       tier:   { type: 'integer', description: 'Technology tree tier' },
+      tech: techData({
+        unlocks: ['RecipeVeilsteelIngot', 'RecipeVeilsteelLongsword', 'RecipeVeilsteelChestplate', 'RecipeAshiteBlock'],
+        requires: ['TechBasicSmithing'],
+        researchDuration: 45,
+        researchMaterials: [{ item: 'Ashite', quantity: 20 }],
+      }),
     },
     relations: {
       requiresTechBasicSmithing:        { name: 'requiresTechBasicSmithing',        kind: 'hasOne', target: 'TechBasicSmithing' },
@@ -108,6 +134,12 @@ module.exports = {
       status: { type: 'enum', values: TECH_STATES },
       researchCost: { type: 'integer', description: 'Research points required to complete' },
       tier:   { type: 'integer', description: 'Technology tree tier (1 = root)' },
+      tech: techData({
+        unlocks: ['RecipeThornwoodPlank', 'RecipeCarpenterAxe'],
+        requires: [],
+        researchDuration: 10,
+        researchMaterials: [{ item: 'Thornwood', quantity: 4 }],
+      }),
     },
     relations: {
       unlocksRecipeThornwoodPlank: { name: 'unlocksRecipeThornwoodPlank', kind: 'hasOne', target: 'RecipeThornwoodPlank' },
@@ -140,6 +172,12 @@ module.exports = {
       status: { type: 'enum', values: TECH_STATES },
       researchCost: { type: 'integer', description: 'Research points required to complete' },
       tier:   { type: 'integer', description: 'Technology tree tier' },
+      tech: techData({
+        unlocks: ['RecipeDuskfiberCloak'],
+        requires: ['TechBasicCarpentry'],
+        researchDuration: 30,
+        researchMaterials: [{ item: 'Duskfiber', quantity: 8 }],
+      }),
     },
     relations: {
       requiresTechBasicCarpentry:  { name: 'requiresTechBasicCarpentry',  kind: 'hasOne', target: 'TechBasicCarpentry' },
@@ -175,6 +213,12 @@ module.exports = {
       status: { type: 'enum', values: TECH_STATES },
       researchCost: { type: 'integer', description: 'Research points required to complete' },
       tier:   { type: 'integer', description: 'Technology tree tier' },
+      tech: techData({
+        unlocks: ['RecipeEnchantedAethermiteShard', 'RecipeAethermiteBow', 'RecipeLumenfiteOrb'],
+        requires: ['TechBasicSmithing', 'TechAlchemy'],
+        researchDuration: 60,
+        researchMaterials: [{ item: 'Aethermite', quantity: 8 }],
+      }),
     },
     relations: {
       requiresTechBasicSmithing:            { name: 'requiresTechBasicSmithing',            kind: 'hasOne', target: 'TechBasicSmithing' },
@@ -214,6 +258,12 @@ module.exports = {
       status: { type: 'enum', values: TECH_STATES },
       researchCost: { type: 'integer', description: 'Research points required to complete' },
       tier:   { type: 'integer', description: 'Technology tree tier (1 = root)' },
+      tech: techData({
+        unlocks: ['RecipeHealthPotion', 'RecipeStaminaPotion'],
+        requires: [],
+        researchDuration: 20,
+        researchMaterials: [{ item: 'Aethermite', quantity: 2 }],
+      }),
     },
     relations: {
       unlocksRecipeHealthPotion:  { name: 'unlocksRecipeHealthPotion',  kind: 'hasOne', target: 'RecipeHealthPotion' },
@@ -249,6 +299,12 @@ module.exports = {
       status: { type: 'enum', values: TECH_STATES },
       researchCost: { type: 'integer', description: 'Research points required to complete' },
       tier:   { type: 'integer', description: 'Technology tree tier (highest)' },
+      tech: techData({
+        unlocks: ['RecipeVoidResistPotion', 'RecipeVoidRuneTablet'],
+        requires: ['TechArcaneForging', 'TechAlchemy'],
+        researchDuration: 120,
+        researchMaterials: [{ item: 'Voidite', quantity: 5 }],
+      }),
     },
     relations: {
       requiresTechArcaneForging:       { name: 'requiresTechArcaneForging',       kind: 'hasOne', target: 'TechArcaneForging' },

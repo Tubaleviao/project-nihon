@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-15T16:15:49.277Z",
-  "schemaHash": "sha256:865c913db6b2fb32cede9a9c1ecfc486053494406a72c341ae6a780e46e7f9eb",
+  "generatedAt": "2026-08-15T20:02:00.927Z",
+  "schemaHash": "sha256:4479ec05e91ce1477bd86f9c92a0e1b4813af32f175d416587ffa0ac8192840b",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -14123,6 +14123,29 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "tech": {
+            "name": "tech",
+            "type": "json",
+            "description": "Structured technology data: recipe unlocks, prerequisite technologies, research duration (seconds), and material cost consumed to begin research.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "unlocks": [
+                "RecipeFerriteIngot",
+                "RecipeFerriteShortSword",
+                "RecipeFerritePick"
+              ],
+              "requires": [],
+              "researchDuration": 10,
+              "researchMaterials": [
+                {
+                  "item": "Ferrite",
+                  "quantity": 4
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -14256,6 +14279,32 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "tech": {
+            "name": "tech",
+            "type": "json",
+            "description": "Structured technology data: recipe unlocks, prerequisite technologies, research duration (seconds), and material cost consumed to begin research.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "unlocks": [
+                "RecipeVeilsteelIngot",
+                "RecipeVeilsteelLongsword",
+                "RecipeVeilsteelChestplate",
+                "RecipeAshiteBlock"
+              ],
+              "requires": [
+                "TechBasicSmithing"
+              ],
+              "researchDuration": 45,
+              "researchMaterials": [
+                {
+                  "item": "Ashite",
+                  "quantity": 20
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -14401,6 +14450,28 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "tech": {
+            "name": "tech",
+            "type": "json",
+            "description": "Structured technology data: recipe unlocks, prerequisite technologies, research duration (seconds), and material cost consumed to begin research.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "unlocks": [
+                "RecipeThornwoodPlank",
+                "RecipeCarpenterAxe"
+              ],
+              "requires": [],
+              "researchDuration": 10,
+              "researchMaterials": [
+                {
+                  "item": "Thornwood",
+                  "quantity": 4
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -14527,6 +14598,29 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "tech": {
+            "name": "tech",
+            "type": "json",
+            "description": "Structured technology data: recipe unlocks, prerequisite technologies, research duration (seconds), and material cost consumed to begin research.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "unlocks": [
+                "RecipeDuskfiberCloak"
+              ],
+              "requires": [
+                "TechBasicCarpentry"
+              ],
+              "researchDuration": 30,
+              "researchMaterials": [
+                {
+                  "item": "Duskfiber",
+                  "quantity": 8
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -14655,6 +14749,32 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "tech": {
+            "name": "tech",
+            "type": "json",
+            "description": "Structured technology data: recipe unlocks, prerequisite technologies, research duration (seconds), and material cost consumed to begin research.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "unlocks": [
+                "RecipeEnchantedAethermiteShard",
+                "RecipeAethermiteBow",
+                "RecipeLumenfiteOrb"
+              ],
+              "requires": [
+                "TechBasicSmithing",
+                "TechAlchemy"
+              ],
+              "researchDuration": 60,
+              "researchMaterials": [
+                {
+                  "item": "Aethermite",
+                  "quantity": 8
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -14800,6 +14920,28 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "tech": {
+            "name": "tech",
+            "type": "json",
+            "description": "Structured technology data: recipe unlocks, prerequisite technologies, research duration (seconds), and material cost consumed to begin research.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "unlocks": [
+                "RecipeHealthPotion",
+                "RecipeStaminaPotion"
+              ],
+              "requires": [],
+              "researchDuration": 20,
+              "researchMaterials": [
+                {
+                  "item": "Aethermite",
+                  "quantity": 2
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -14926,6 +15068,31 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "tech": {
+            "name": "tech",
+            "type": "json",
+            "description": "Structured technology data: recipe unlocks, prerequisite technologies, research duration (seconds), and material cost consumed to begin research.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "unlocks": [
+                "RecipeVoidResistPotion",
+                "RecipeVoidRuneTablet"
+              ],
+              "requires": [
+                "TechArcaneForging",
+                "TechAlchemy"
+              ],
+              "researchDuration": 120,
+              "researchMaterials": [
+                {
+                  "item": "Voidite",
+                  "quantity": 5
+                }
+              ]
+            }
           }
         },
         "relations": {

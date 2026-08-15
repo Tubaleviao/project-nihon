@@ -32,6 +32,10 @@ const TIER_ORDER: Array = ["novice", "apprentice", "journeyman", "expert", "mast
 ## Set by game_root so recipes can consume/produce inventory items.
 var inventory_slice: Node = null
 
+## Set by game_root so recipes are gated behind the technology tree. When null
+## (isolated unit tests) the gate is not applied.
+var technology_slice: Node = null
+
 ## Runtime player skill tiers: skill key → tier name. Seeded from
 ## GameData.SKILLS at the lowest tier; a progression system raises them later.
 var _skill_tiers: Dictionary = {}
@@ -51,6 +55,10 @@ func craft(recipe_id: String) -> Dictionary:
 	var guard_reason := _check_skill_guards(recipe)
 	if guard_reason != "":
 		return _fail(recipe_id, guard_reason)
+
+	var tech_reason := _check_tech_gate(recipe_id)
+	if tech_reason != "":
+		return _fail(recipe_id, tech_reason)
 
 	var inputs: Array = recipe.get("inputs", [])
 	var outputs: Array = recipe.get("outputs", [])
@@ -94,6 +102,9 @@ func can_craft(recipe_id: String) -> Dictionary:
 	var guard_reason := _check_skill_guards(recipe)
 	if guard_reason != "":
 		return _result(recipe_id, false, [], guard_reason)
+	var tech_reason := _check_tech_gate(recipe_id)
+	if tech_reason != "":
+		return _result(recipe_id, false, [], tech_reason)
 	if inventory_slice == null:
 		return _result(recipe_id, false, [], "no_inventory")
 	for entry in recipe.get("inputs", []):
@@ -144,6 +155,22 @@ func _check_skill_guards(recipe: Dictionary) -> String:
 		if _tier_rank(get_skill(skill)) < _tier_rank(required_tier):
 			return "skill_requirement:%s:%s" % [skill, required_tier]
 	return ""
+
+## Return "" when the recipe's owning technology is unlocked (or no technology
+## slice is wired — isolated unit tests), or a `technology_locked:<tech>` reason
+## string. Fail-closed when a technology slice is present and the recipe is
+## unmapped.
+func _check_tech_gate(recipe_id: String) -> String:
+	if technology_slice == null or not technology_slice.has_method("is_recipe_unlocked"):
+		return ""
+	if technology_slice.is_recipe_unlocked(recipe_id):
+		return ""
+	var tech_id := ""
+	if technology_slice.has_method("get_recipe_tech"):
+		tech_id = str(technology_slice.get_recipe_tech(recipe_id))
+	if tech_id != "":
+		return "technology_locked:%s" % tech_id
+	return "technology_locked"
 
 func _tier_rank(tier: String) -> int:
 	return TIER_ORDER.find(tier)

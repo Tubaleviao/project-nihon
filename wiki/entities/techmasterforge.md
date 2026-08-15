@@ -18,6 +18,7 @@ Advanced forge construction and temperature-control techniques. Unlocks the mast
 | status | `locked`, `researching`, `unlocked` |  |
 | researchCost | integer | Research points required to complete |
 | tier | integer | Technology tree tier |
+| tech | json | Structured technology data: recipe unlocks, prerequisite technologies, research duration (seconds), and material cost consumed to begin research. |
 
 ## Related
 

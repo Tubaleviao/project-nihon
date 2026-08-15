@@ -8,6 +8,7 @@ id = ""
 status = 0
 researchCost = 0
 tier = 0
+tech = {"unlocks":["RecipeFerriteIngot","RecipeFerriteShortSword","RecipeFerritePick"],"requires":[],"researchDuration":10,"researchMaterials":[{"item":"Ferrite","quantity":4}]}
 state_machine_field = "status"
 initial_state = "locked"
 description = "Foundational metalworking knowledge. Unlocks the forge structure, ferrite smelting, and all Smithing: Novice recipes. Every civilization needs this first."
