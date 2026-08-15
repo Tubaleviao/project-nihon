@@ -382,7 +382,7 @@ func _test_character_clamp_proportions() -> void:
 	var ch := CharacterSlice.new()
 	add_child(ch)
 	var recipe := ch.deserialize_appearance({
-		"skeleton": "humanoid_01",
+		"skeleton": "HumanoidSkeleton",
 		"proportions": { "height": 9.0, "bodyMass": 0.01, "shoulderWidth": 1.0 },
 	})
 	var props: Dictionary = recipe["proportions"]
@@ -395,7 +395,7 @@ func _test_character_drops_unknown_equipment() -> void:
 	var ch := CharacterSlice.new()
 	add_child(ch)
 	var recipe := ch.deserialize_appearance({
-		"skeleton": "humanoid_01",
+		"skeleton": "HumanoidSkeleton",
 		"equipment": {
 			"Chest": { "item": "VeilsteelChestplate", "state": "equipped" },
 			"Head":  { "item": "NonexistentHelm", "state": "equipped" },
@@ -410,7 +410,7 @@ func _test_character_recipe_round_trip() -> void:
 	var ch := CharacterSlice.new()
 	add_child(ch)
 	var original := {
-		"skeleton": "humanoid_01",
+		"skeleton": "HumanoidSkeleton",
 		"body": "human_body_02",
 		"proportions": { "height": 0.96, "bodyMass": 1.04 },
 		"skinColor": 12,
@@ -421,7 +421,7 @@ func _test_character_recipe_round_trip() -> void:
 	var normalized := ch.deserialize_appearance(original)
 	var serialized := ch.serialize_appearance(normalized)
 	var again := ch.deserialize_appearance(serialized)
-	assert_eq(again["skeleton"], "humanoid_01", "skeleton survives")
+	assert_eq(again["skeleton"], "HumanoidSkeleton", "skeleton survives")
 	assert_eq(again["skinColor"], 12, "skinColor survives")
 	assert_eq(again["hairColor"], 40, "hairColor survives")
 	var eq: Dictionary = again["equipment"]
@@ -433,7 +433,7 @@ func _test_character_visual_state_wear() -> void:
 	var ch := CharacterSlice.new()
 	add_child(ch)
 	var iid := ch.create_character_from_recipe({
-		"skeleton": "humanoid_01",
+		"skeleton": "HumanoidSkeleton",
 		"equipment": { "MainHand": { "item": "VeilsteelLongsword", "state": "equipped", "durability": 0.7 } },
 	}, Vector3.ZERO)
 	assert_true(iid != "", "character created")
@@ -445,10 +445,10 @@ func _test_character_visual_state_wear() -> void:
 func _test_character_spawns_nonhumanoid() -> void:
 	var ch := CharacterSlice.new()
 	add_child(ch)
-	var iid := ch.create_character("boar_rider", Vector3.ZERO)
+	var iid := ch.create_character("BoarRider", Vector3.ZERO)
 	assert_true(iid != "", "boar_rider (quadruped) created")
 	var app := ch.get_appearance(iid)
-	assert_eq(app["skeleton"], "quadruped_01", "quadruped skeleton preserved")
+	assert_eq(app["skeleton"], "QuadrupedSkeleton", "quadruped skeleton preserved")
 	ch.queue_free()
 
 func _test_character_unknown_appearance() -> void:
@@ -460,7 +460,7 @@ func _test_character_unknown_appearance() -> void:
 func _test_character_lod_hides_detail() -> void:
 	var ch := CharacterSlice.new()
 	add_child(ch)
-	var iid := ch.create_character("traveller_human", Vector3.ZERO)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
 	assert_true(iid != "", "traveller created")
 	ch.set_lod(0)
 	assert_true(ch.is_part_visible(iid, "hair"), "hair visible at LOD0")

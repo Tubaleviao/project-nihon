@@ -20,6 +20,15 @@ Two-handed longsword of veilsteel. Heavy and slow but capable of cracking enchan
 | rarity | `common`, `uncommon`, `rare`, `epic`, `legendary` |  |
 | stackable | boolean | Always false for weapons |
 | durability | integer | Remaining durability points before condition degrades |
+| equipmentSlot | string | Equipment slot — what is equipped (§6) |
+| deformationMode | string | SKINNED \| RIGID \| HYBRID (§10) |
+| masks | json | Color/mask regions present on the asset (§17) |
+| hideRegions | json | Body regions this item hides to prevent clipping (§16) |
+| attachments | json | Attachment state → socket map (§7) |
+| minLodLevel | integer | Coarsest LOD at which this part still renders (§35) |
+| size | json | Placeholder mesh extents [x, y, z] |
+| metalTone | string | Metal tone for metal-mask regions (§21) |
+| compatibleTags | json | Semantic tags required to equip (§39) |
 
 ## Related
 

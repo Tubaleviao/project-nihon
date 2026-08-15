@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/skeletons/serpentskeleton.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+family = "serpent"
+bones = [{"name":"Root","parent":""},{"name":"Spine_1","parent":"Root"},{"name":"Spine_2","parent":"Spine_1"},{"name":"Spine_3","parent":"Spine_2"},{"name":"Neck","parent":"Spine_3"},{"name":"Head","parent":"Neck"}]
+sockets = {"socket_head":"Head","socket_face":"Head"}
+semanticTags = ["serpent","has_head"]
+description = "Limbless serpentine skeleton built from a segmented spine ending in a head. Shared rig for serpent monsters and worm-like creatures."
+tags = ["skeleton"]

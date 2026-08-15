@@ -16,6 +16,9 @@ const technology   = require('./gameplay/technology')
 const combat       = require('./gameplay/combat')
 const player       = require('./gameplay/player')
 const loot         = require('./gameplay/loot')
+const skeletons    = require('./gameplay/characters/skeletons')
+const palettes     = require('./gameplay/characters/palettes')
+const appearances  = require('./gameplay/characters/appearances')
 
 module.exports = defineFabric({
   meta: {
@@ -185,6 +188,16 @@ module.exports = defineFabric({
     {
       LootTable:   loot.LootTable,
       DeathSignal: loot.DeathSignal,
+    },
+    // Gameplay — Character system (skeletons, palette, appearance recipes)
+    {
+      HumanoidSkeleton: skeletons.HumanoidSkeleton,
+      QuadrupedSkeleton: skeletons.QuadrupedSkeleton,
+      BirdSkeleton:      skeletons.BirdSkeleton,
+      SerpentSkeleton:   skeletons.SerpentSkeleton,
+      DefaultPalette:    palettes.DefaultPalette,
+      TravellerHuman:    appearances.TravellerHuman,
+      BoarRider:         appearances.BoarRider,
     },
   ),
 })

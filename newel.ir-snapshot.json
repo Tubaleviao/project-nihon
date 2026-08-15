@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-14T12:56:05.399Z",
-  "schemaHash": "sha256:a5e056a67fb8243f5d61cda76f13da44f048379dbc577bade26a5a49a516ed10",
+  "generatedAt": "2026-08-15T10:13:04.700Z",
+  "schemaHash": "sha256:adef85f773db73491a4e59211d8c749c5caeeddccf8875172ee2616598e9b620",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -8536,6 +8536,105 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 200
+          },
+          "equipmentSlot": {
+            "name": "equipmentSlot",
+            "type": "string",
+            "description": "Equipment slot — what is equipped (§6)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "MainHand"
+          },
+          "deformationMode": {
+            "name": "deformationMode",
+            "type": "string",
+            "description": "SKINNED | RIGID | HYBRID (§10)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "RIGID"
+          },
+          "masks": {
+            "name": "masks",
+            "type": "json",
+            "description": "Color/mask regions present on the asset (§17)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "primary": false,
+              "secondary": false,
+              "accent": true,
+              "metal": true,
+              "emission": false,
+              "wear": true
+            }
+          },
+          "hideRegions": {
+            "name": "hideRegions",
+            "type": "json",
+            "description": "Body regions this item hides to prevent clipping (§16)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": []
+          },
+          "attachments": {
+            "name": "attachments",
+            "type": "json",
+            "description": "Attachment state → socket map (§7)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "equipped": "socket_weapon_r",
+              "sheathed": "socket_hip_l",
+              "stored": "socket_back"
+            }
+          },
+          "minLodLevel": {
+            "name": "minLodLevel",
+            "type": "integer",
+            "description": "Coarsest LOD at which this part still renders (§35)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2
+          },
+          "size": {
+            "name": "size",
+            "type": "json",
+            "description": "Placeholder mesh extents [x, y, z]",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              0.1,
+              0.1,
+              1.1
+            ]
+          },
+          "metalTone": {
+            "name": "metalTone",
+            "type": "string",
+            "description": "Metal tone for metal-mask regions (§21)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "veilsteel"
+          },
+          "compatibleTags": {
+            "name": "compatibleTags",
+            "type": "json",
+            "description": "Semantic tags required to equip (§39)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "has_hands",
+              "can_wield_weapon"
+            ]
           }
         },
         "relations": {
@@ -9142,6 +9241,106 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 120
+          },
+          "equipmentSlot": {
+            "name": "equipmentSlot",
+            "type": "string",
+            "description": "Equipment slot — what is equipped (§6)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Head"
+          },
+          "deformationMode": {
+            "name": "deformationMode",
+            "type": "string",
+            "description": "SKINNED | RIGID | HYBRID (§10)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "RIGID"
+          },
+          "masks": {
+            "name": "masks",
+            "type": "json",
+            "description": "Color/mask regions present on the asset (§17)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "primary": true,
+              "secondary": true,
+              "accent": true,
+              "metal": true,
+              "emission": false,
+              "wear": true
+            }
+          },
+          "hideRegions": {
+            "name": "hideRegions",
+            "type": "json",
+            "description": "Body regions this item hides to prevent clipping (§16)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "Hair"
+            ]
+          },
+          "attachments": {
+            "name": "attachments",
+            "type": "json",
+            "description": "Attachment state → socket map (§7)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "equipped": "socket_head",
+              "stored": "socket_back"
+            }
+          },
+          "minLodLevel": {
+            "name": "minLodLevel",
+            "type": "integer",
+            "description": "Coarsest LOD at which this part still renders (§35)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
+          },
+          "size": {
+            "name": "size",
+            "type": "json",
+            "description": "Placeholder mesh extents [x, y, z]",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              0.34,
+              0.34,
+              0.34
+            ]
+          },
+          "metalTone": {
+            "name": "metalTone",
+            "type": "string",
+            "description": "Metal tone for metal-mask regions (§21)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "ferrite"
+          },
+          "compatibleTags": {
+            "name": "compatibleTags",
+            "type": "json",
+            "description": "Semantic tags required to equip (§39)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "humanoid",
+              "can_wear_helmet"
+            ]
           }
         },
         "relations": {
@@ -9331,6 +9530,107 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 250
+          },
+          "equipmentSlot": {
+            "name": "equipmentSlot",
+            "type": "string",
+            "description": "Equipment slot — what is equipped (§6)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Chest"
+          },
+          "deformationMode": {
+            "name": "deformationMode",
+            "type": "string",
+            "description": "SKINNED | RIGID | HYBRID (§10)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "HYBRID"
+          },
+          "masks": {
+            "name": "masks",
+            "type": "json",
+            "description": "Color/mask regions present on the asset (§17)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "primary": true,
+              "secondary": true,
+              "accent": true,
+              "metal": true,
+              "emission": false,
+              "wear": true
+            }
+          },
+          "hideRegions": {
+            "name": "hideRegions",
+            "type": "json",
+            "description": "Body regions this item hides to prevent clipping (§16)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "BodyChest",
+              "BodyShoulders"
+            ]
+          },
+          "attachments": {
+            "name": "attachments",
+            "type": "json",
+            "description": "Attachment state → socket map (§7)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "equipped": "socket_chest",
+              "stored": "socket_back"
+            }
+          },
+          "minLodLevel": {
+            "name": "minLodLevel",
+            "type": "integer",
+            "description": "Coarsest LOD at which this part still renders (§35)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
+          },
+          "size": {
+            "name": "size",
+            "type": "json",
+            "description": "Placeholder mesh extents [x, y, z]",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              0.7,
+              0.55,
+              0.42
+            ]
+          },
+          "metalTone": {
+            "name": "metalTone",
+            "type": "string",
+            "description": "Metal tone for metal-mask regions (§21)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "veilsteel"
+          },
+          "compatibleTags": {
+            "name": "compatibleTags",
+            "type": "json",
+            "description": "Semantic tags required to equip (§39)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "humanoid",
+              "has_hands"
+            ]
           }
         },
         "relations": {
@@ -9533,6 +9833,103 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 80
+          },
+          "equipmentSlot": {
+            "name": "equipmentSlot",
+            "type": "string",
+            "description": "Equipment slot — what is equipped (§6)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Cape"
+          },
+          "deformationMode": {
+            "name": "deformationMode",
+            "type": "string",
+            "description": "SKINNED | RIGID | HYBRID (§10)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "SKINNED"
+          },
+          "masks": {
+            "name": "masks",
+            "type": "json",
+            "description": "Color/mask regions present on the asset (§17)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "primary": true,
+              "secondary": false,
+              "accent": false,
+              "metal": false,
+              "emission": false,
+              "wear": true
+            }
+          },
+          "hideRegions": {
+            "name": "hideRegions",
+            "type": "json",
+            "description": "Body regions this item hides to prevent clipping (§16)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": []
+          },
+          "attachments": {
+            "name": "attachments",
+            "type": "json",
+            "description": "Attachment state → socket map (§7)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "equipped": "socket_cape",
+              "stored": "socket_back"
+            }
+          },
+          "minLodLevel": {
+            "name": "minLodLevel",
+            "type": "integer",
+            "description": "Coarsest LOD at which this part still renders (§35)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2
+          },
+          "size": {
+            "name": "size",
+            "type": "json",
+            "description": "Placeholder mesh extents [x, y, z]",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              0.7,
+              0.9,
+              0.14
+            ]
+          },
+          "metalTone": {
+            "name": "metalTone",
+            "type": "string",
+            "description": "Metal tone for metal-mask regions (§21)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "none"
+          },
+          "compatibleTags": {
+            "name": "compatibleTags",
+            "type": "json",
+            "description": "Semantic tags required to equip (§39)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "has_back_socket"
+            ]
           }
         },
         "relations": {
@@ -17126,6 +17523,1617 @@
             }
           }
         },
+        "pii": [],
+        "gdpr": {}
+      },
+      "PlayerCharacter": {
+        "name": "PlayerCharacter",
+        "tags": [
+          "player"
+        ],
+        "description": "The player-controlled character in the world. Stats are derived from equipped items, active skills, and status effects. A player's character persists across sessions; death resets only transient state.",
+        "goal": "Model the minimum runtime data the server needs to authorise actions and the client needs to render the character",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "state": {
+            "name": "state",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "alive",
+              "dead",
+              "respawning"
+            ],
+            "pii": false
+          },
+          "name": {
+            "name": "name",
+            "type": "string",
+            "description": "Display name chosen at character creation",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "baseHp": {
+            "name": "baseHp",
+            "type": "integer",
+            "description": "Maximum HP at current level/gear baseline",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          },
+          "currentHp": {
+            "name": "currentHp",
+            "type": "integer",
+            "description": "Current hit points; 0 triggers the die transition",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          },
+          "baseSpeed": {
+            "name": "baseSpeed",
+            "type": "decimal",
+            "description": "Movement speed in tiles per second",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 4.5
+          },
+          "positionX": {
+            "name": "positionX",
+            "type": "decimal",
+            "description": "World X coordinate (server-authoritative)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
+          "positionY": {
+            "name": "positionY",
+            "type": "decimal",
+            "description": "World Y coordinate (elevation)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
+          "positionZ": {
+            "name": "positionZ",
+            "type": "decimal",
+            "description": "World Z coordinate (server-authoritative)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "move": {
+            "name": "move",
+            "description": "Move the character through the world",
+            "rules": [
+              "Server validates the destination tile against the heightmap collision mesh",
+              "Speed is reduced to 60% in water, 80% on rough terrain (volcanic, void)",
+              "Movement input is rejected while the character is in the dead state"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "attack": {
+            "name": "attack",
+            "description": "Initiate a combat action against a target entity",
+            "rules": [
+              "Attack request is forwarded to CombatSystem.calculateHit",
+              "Cooldown is determined by the equipped weapon's attack speed field",
+              "Attacks from the dead state are silently dropped by the server"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "die": {
+            "name": "die",
+            "description": "Transition to dead state on HP reaching 0",
+            "rules": [
+              "Emits a player_died event consumed by the UI, loot, and persistence systems",
+              "Inventory is locked; equipment remains visible to other players at the death location",
+              "Respawn timer begins immediately (default 10 seconds)"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "respawn": {
+            "name": "respawn",
+            "description": "Begin respawning at the player's bound respawn point",
+            "rules": [
+              "HP is restored to baseHp on completing the respawn transition",
+              "Player appears at their last-used bind point or the world spawn if none is set"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "spawn": {
+            "name": "spawn",
+            "description": "Complete respawn; character becomes interactive again",
+            "rules": [
+              "Grants 5-second invulnerability window; movement is unrestricted immediately"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "state",
+          "initial": "alive",
+          "states": {
+            "alive": {
+              "name": "alive",
+              "description": "Player is in the world; can move, fight, and interact",
+              "terminal": false
+            },
+            "dead": {
+              "name": "dead",
+              "description": "Player has been killed; inventory is locked; respawn timer running",
+              "terminal": false
+            },
+            "respawning": {
+              "name": "respawning",
+              "description": "Player is transitioning back to alive at their bind point",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "alive",
+              "to": "dead",
+              "trigger": "die",
+              "guards": [
+                "Emits a player_died event consumed by the UI, loot, and persistence systems",
+                "Inventory is locked; equipment remains visible to other players at the death location",
+                "Respawn timer begins immediately (default 10 seconds)"
+              ],
+              "effects": []
+            },
+            {
+              "from": "dead",
+              "to": "respawning",
+              "trigger": "respawn",
+              "guards": [
+                "HP is restored to baseHp on completing the respawn transition",
+                "Player appears at their last-used bind point or the world spawn if none is set"
+              ],
+              "effects": []
+            },
+            {
+              "from": "respawning",
+              "to": "alive",
+              "trigger": "spawn",
+              "guards": [
+                "Grants 5-second invulnerability window; movement is unrestricted immediately"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "Inventory": {
+        "name": "Inventory",
+        "tags": [
+          "player"
+        ],
+        "description": "The container of items carried by a single player. Weight and slot limits enforce the survival economy; exceeding either blocks pickups. Inventory contents are persisted server-side and restored on login.",
+        "goal": "Define the rules governing what a player can carry, how items stack, and when the full state is reached",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "state": {
+            "name": "state",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "open",
+              "closed",
+              "full"
+            ],
+            "pii": false
+          },
+          "maxSlots": {
+            "name": "maxSlots",
+            "type": "integer",
+            "description": "Maximum number of distinct item stacks",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 30
+          },
+          "maxWeightKg": {
+            "name": "maxWeightKg",
+            "type": "decimal",
+            "description": "Maximum total carry weight in kilograms",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 50
+          },
+          "usedSlots": {
+            "name": "usedSlots",
+            "type": "integer",
+            "description": "Current number of occupied stacks",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
+          "currentWeightKg": {
+            "name": "currentWeightKg",
+            "type": "decimal",
+            "description": "Sum of (item.weight × quantity) for all stacks",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "pickup": {
+            "name": "pickup",
+            "description": "Add a world-dropped item to the inventory",
+            "rules": [
+              "Rejected if state is full",
+              "Stackable items merge into an existing stack if one exists; otherwise a new slot is consumed",
+              "Weight is recalculated on every pickup; if the result would exceed maxWeightKg, the pickup is rejected",
+              "Emits an item_picked_up event with the item id and quantity"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "drop": {
+            "name": "drop",
+            "description": "Remove an item from the inventory and place it in the world at the player's position",
+            "rules": [
+              "Dropping a full stack frees the slot",
+              "Partial stack drop reduces quantity; slot is freed only when quantity reaches 0",
+              "Equipment currently worn cannot be dropped without first being unequipped"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "open": {
+            "name": "open",
+            "description": "Open the inventory UI",
+            "rules": [
+              "Blocked during combat animations; otherwise always permitted"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "close": {
+            "name": "close",
+            "description": "Close the inventory UI",
+            "rules": [
+              "Always permitted"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "fill": {
+            "name": "fill",
+            "description": "Transition to full state when slots or weight ceiling is reached",
+            "rules": [
+              "Triggered automatically after every successful pickup that saturates either limit"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "state",
+          "initial": "closed",
+          "states": {
+            "open": {
+              "name": "open",
+              "description": "Inventory UI is visible; player can manage, equip, or drop items",
+              "terminal": false
+            },
+            "closed": {
+              "name": "closed",
+              "description": "Inventory UI is hidden; passive weight and slot checks still apply",
+              "terminal": false
+            },
+            "full": {
+              "name": "full",
+              "description": "All slots and weight capacity are at maximum; pickups are rejected",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "closed",
+              "to": "open",
+              "trigger": "open",
+              "guards": [
+                "Blocked during combat animations; otherwise always permitted"
+              ],
+              "effects": []
+            },
+            {
+              "from": "open",
+              "to": "closed",
+              "trigger": "close",
+              "guards": [
+                "Always permitted"
+              ],
+              "effects": []
+            },
+            {
+              "from": "open",
+              "to": "full",
+              "trigger": "fill",
+              "guards": [
+                "Triggered automatically after every successful pickup that saturates either limit"
+              ],
+              "effects": []
+            },
+            {
+              "from": "closed",
+              "to": "full",
+              "trigger": "fill",
+              "guards": [
+                "Triggered automatically after every successful pickup that saturates either limit"
+              ],
+              "effects": []
+            },
+            {
+              "from": "full",
+              "to": "open",
+              "trigger": "open",
+              "guards": [
+                "Blocked during combat animations; otherwise always permitted"
+              ],
+              "effects": []
+            },
+            {
+              "from": "full",
+              "to": "closed",
+              "trigger": "close",
+              "guards": [
+                "Always permitted"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "LootTable": {
+        "name": "LootTable",
+        "tags": [
+          "loot"
+        ],
+        "description": "Defines the rules that govern what items drop when a creature dies. Each entry specifies an item, a quantity range, and a drop chance. The LootTable is shared across all instances of a creature species; individual rolls are performed per kill by the loot system.",
+        "goal": "Centralise drop rules in the design bible so balance changes are a single-source edit rather than scattered constants",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "state": {
+            "name": "state",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "sealed",
+              "available",
+              "claimed",
+              "expired"
+            ],
+            "pii": false
+          },
+          "creatureId": {
+            "name": "creatureId",
+            "type": "string",
+            "description": "Entity key of the creature this table belongs to",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "despawnSeconds": {
+            "name": "despawnSeconds",
+            "type": "integer",
+            "description": "Seconds before unclaimed loot is removed from the world",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 120
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "roll": {
+            "name": "roll",
+            "description": "Perform the loot roll for all entries in the table and place results in the world",
+            "rules": [
+              "Guaranteed entries (chance = 1.0) always produce their item",
+              "Chance entries are rolled independently; multiple chance drops can occur in one kill",
+              "Quantity is chosen uniformly at random within [minQty, maxQty]",
+              "Rolled items are placed at the creature's death position as world pickups",
+              "Emits a loot_dropped event with the full drop list"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "collect": {
+            "name": "collect",
+            "description": "A player picks up one or more items from the available loot",
+            "rules": [
+              "Collection transfers the item to the player's inventory via Inventory.pickup",
+              "When the last item is collected the state transitions to claimed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "expire": {
+            "name": "expire",
+            "description": "Despawn timer elapses; all remaining items are removed",
+            "rules": [
+              "Timer starts when state enters available",
+              "Expiry emits a loot_expired event so clients can hide the pickup indicator"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "state",
+          "initial": "sealed",
+          "states": {
+            "sealed": {
+              "name": "sealed",
+              "description": "Loot has not yet been rolled; no items are visible",
+              "terminal": false
+            },
+            "available": {
+              "name": "available",
+              "description": "Loot roll has completed; items are present in the world and can be picked up",
+              "terminal": false
+            },
+            "claimed": {
+              "name": "claimed",
+              "description": "All items have been picked up; the container is empty",
+              "terminal": false
+            },
+            "expired": {
+              "name": "expired",
+              "description": "Despawn timer elapsed with unclaimed items; items are removed from the world",
+              "terminal": true
+            }
+          },
+          "transitions": [
+            {
+              "from": "sealed",
+              "to": "available",
+              "trigger": "roll",
+              "guards": [
+                "Guaranteed entries (chance = 1.0) always produce their item",
+                "Chance entries are rolled independently; multiple chance drops can occur in one kill",
+                "Quantity is chosen uniformly at random within [minQty, maxQty]",
+                "Rolled items are placed at the creature's death position as world pickups",
+                "Emits a loot_dropped event with the full drop list"
+              ],
+              "effects": []
+            },
+            {
+              "from": "available",
+              "to": "claimed",
+              "trigger": "collect",
+              "guards": [
+                "Collection transfers the item to the player's inventory via Inventory.pickup",
+                "When the last item is collected the state transitions to claimed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "available",
+              "to": "expired",
+              "trigger": "expire",
+              "guards": [
+                "Timer starts when state enters available",
+                "Expiry emits a loot_expired event so clients can hide the pickup indicator"
+              ],
+              "effects": []
+            },
+            {
+              "from": "claimed",
+              "to": "expired",
+              "trigger": "expire",
+              "guards": [
+                "Timer starts when state enters available",
+                "Expiry emits a loot_expired event so clients can hide the pickup indicator"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "DeathSignal": {
+        "name": "DeathSignal",
+        "tags": [
+          "system"
+        ],
+        "description": "System that propagates entity-death events across all subsystems. When any creature or player entity transitions to the dead state, DeathSignal broadcasts an authoritative death event that the loot, combat, UI, and persistence systems subscribe to. This decouples the death source from its downstream effects.",
+        "goal": "Ensure every death — creature or player — triggers consistent downstream reactions through a single broadcast channel",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "broadcast": {
+            "name": "broadcast",
+            "description": "Emit a death event when any entity reaches the dead state",
+            "rules": [
+              "Payload includes: entity_id, entity_type (creature | player), world_position, killer_id (nullable)",
+              "Subscribed systems: LootTable.roll, CombatSystem (XP calculation), PersistenceSlice (world-state update), UI (death overlay)",
+              "Broadcast is idempotent — duplicate broadcasts for the same entity in the same death cycle are suppressed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "HumanoidSkeleton": {
+        "name": "HumanoidSkeleton",
+        "tags": [
+          "skeleton"
+        ],
+        "description": "Bipedal humanoid bone structure with two arms, two legs, and a head. The shared rig for humans and humanoid races; carries the full set of equipment sockets (head, face, chest, back, cape, weapon, shield, hips, mount).",
+        "goal": "Provide a rig that supports the complete humanoid equipment and attachment set",
+        "fields": {
+          "family": {
+            "name": "family",
+            "type": "string",
+            "description": "Skeleton family",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "humanoid"
+          },
+          "bones": {
+            "name": "bones",
+            "type": "json",
+            "description": "Ordered bone chain [{ name, parent }]; parents precede children",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "name": "Root",
+                "parent": ""
+              },
+              {
+                "name": "Hips",
+                "parent": "Root"
+              },
+              {
+                "name": "Spine",
+                "parent": "Hips"
+              },
+              {
+                "name": "Chest",
+                "parent": "Spine"
+              },
+              {
+                "name": "Neck",
+                "parent": "Chest"
+              },
+              {
+                "name": "Head",
+                "parent": "Neck"
+              },
+              {
+                "name": "Shoulder_L",
+                "parent": "Chest"
+              },
+              {
+                "name": "Arm_L",
+                "parent": "Shoulder_L"
+              },
+              {
+                "name": "Forearm_L",
+                "parent": "Arm_L"
+              },
+              {
+                "name": "Hand_L",
+                "parent": "Forearm_L"
+              },
+              {
+                "name": "Shoulder_R",
+                "parent": "Chest"
+              },
+              {
+                "name": "Arm_R",
+                "parent": "Shoulder_R"
+              },
+              {
+                "name": "Forearm_R",
+                "parent": "Arm_R"
+              },
+              {
+                "name": "Hand_R",
+                "parent": "Forearm_R"
+              },
+              {
+                "name": "Leg_L",
+                "parent": "Hips"
+              },
+              {
+                "name": "Foot_L",
+                "parent": "Leg_L"
+              },
+              {
+                "name": "Leg_R",
+                "parent": "Hips"
+              },
+              {
+                "name": "Foot_R",
+                "parent": "Leg_R"
+              }
+            ]
+          },
+          "sockets": {
+            "name": "sockets",
+            "type": "json",
+            "description": "Semantic attachment points mapped to bones",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "socket_head": "Head",
+              "socket_face": "Head",
+              "socket_back": "Chest",
+              "socket_cape": "Chest",
+              "socket_chest": "Chest",
+              "socket_weapon_r": "Hand_R",
+              "socket_weapon_l": "Hand_L",
+              "socket_shield": "Hand_L",
+              "socket_hip_r": "Hips",
+              "socket_hip_l": "Hips",
+              "socket_mount": "Hips"
+            }
+          },
+          "semanticTags": {
+            "name": "semanticTags",
+            "type": "json",
+            "description": "Semantic compatibility tags (§40)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "humanoid",
+              "has_head",
+              "has_hands",
+              "has_back_socket",
+              "can_wield_weapon",
+              "can_wear_helmet"
+            ]
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "QuadrupedSkeleton": {
+        "name": "QuadrupedSkeleton",
+        "tags": [
+          "skeleton"
+        ],
+        "description": "Four-legged skeleton (fore and hind legs, spine, neck, head, tail). Shared rig for mounts, domesticated creatures, and quadruped monsters.",
+        "goal": "Provide a rig for quadruped creatures and mounts",
+        "fields": {
+          "family": {
+            "name": "family",
+            "type": "string",
+            "description": "Skeleton family",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "quadruped"
+          },
+          "bones": {
+            "name": "bones",
+            "type": "json",
+            "description": "Ordered bone chain [{ name, parent }]",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "name": "Root",
+                "parent": ""
+              },
+              {
+                "name": "Hips",
+                "parent": "Root"
+              },
+              {
+                "name": "Spine",
+                "parent": "Hips"
+              },
+              {
+                "name": "Chest",
+                "parent": "Spine"
+              },
+              {
+                "name": "Neck",
+                "parent": "Chest"
+              },
+              {
+                "name": "Head",
+                "parent": "Neck"
+              },
+              {
+                "name": "Leg_FL",
+                "parent": "Chest"
+              },
+              {
+                "name": "Leg_FR",
+                "parent": "Chest"
+              },
+              {
+                "name": "Leg_BL",
+                "parent": "Hips"
+              },
+              {
+                "name": "Leg_BR",
+                "parent": "Hips"
+              },
+              {
+                "name": "Tail",
+                "parent": "Hips"
+              }
+            ]
+          },
+          "sockets": {
+            "name": "sockets",
+            "type": "json",
+            "description": "Semantic attachment points mapped to bones",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "socket_head": "Head",
+              "socket_face": "Head",
+              "socket_back": "Spine",
+              "socket_mount": "Spine"
+            }
+          },
+          "semanticTags": {
+            "name": "semanticTags",
+            "type": "json",
+            "description": "Semantic compatibility tags (§40)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "quadruped",
+              "has_head",
+              "has_back_socket"
+            ]
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "BirdSkeleton": {
+        "name": "BirdSkeleton",
+        "tags": [
+          "skeleton"
+        ],
+        "description": "Bipedal avian skeleton with wings, legs, spine, neck, and head. Shared rig for flying creatures and raptors.",
+        "goal": "Provide a rig for avian creatures",
+        "fields": {
+          "family": {
+            "name": "family",
+            "type": "string",
+            "description": "Skeleton family",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "bird"
+          },
+          "bones": {
+            "name": "bones",
+            "type": "json",
+            "description": "Ordered bone chain [{ name, parent }]",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "name": "Root",
+                "parent": ""
+              },
+              {
+                "name": "Spine",
+                "parent": "Root"
+              },
+              {
+                "name": "Neck",
+                "parent": "Spine"
+              },
+              {
+                "name": "Head",
+                "parent": "Neck"
+              },
+              {
+                "name": "Wing_L",
+                "parent": "Spine"
+              },
+              {
+                "name": "Wing_R",
+                "parent": "Spine"
+              },
+              {
+                "name": "Leg_L",
+                "parent": "Root"
+              },
+              {
+                "name": "Leg_R",
+                "parent": "Root"
+              }
+            ]
+          },
+          "sockets": {
+            "name": "sockets",
+            "type": "json",
+            "description": "Semantic attachment points mapped to bones",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "socket_head": "Head",
+              "socket_face": "Head",
+              "socket_back": "Spine",
+              "socket_mount": "Spine"
+            }
+          },
+          "semanticTags": {
+            "name": "semanticTags",
+            "type": "json",
+            "description": "Semantic compatibility tags (§40)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "bird",
+              "has_head",
+              "has_back_socket"
+            ]
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "SerpentSkeleton": {
+        "name": "SerpentSkeleton",
+        "tags": [
+          "skeleton"
+        ],
+        "description": "Limbless serpentine skeleton built from a segmented spine ending in a head. Shared rig for serpent monsters and worm-like creatures.",
+        "goal": "Provide a rig for limbless serpentine creatures",
+        "fields": {
+          "family": {
+            "name": "family",
+            "type": "string",
+            "description": "Skeleton family",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "serpent"
+          },
+          "bones": {
+            "name": "bones",
+            "type": "json",
+            "description": "Ordered bone chain [{ name, parent }]",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "name": "Root",
+                "parent": ""
+              },
+              {
+                "name": "Spine_1",
+                "parent": "Root"
+              },
+              {
+                "name": "Spine_2",
+                "parent": "Spine_1"
+              },
+              {
+                "name": "Spine_3",
+                "parent": "Spine_2"
+              },
+              {
+                "name": "Neck",
+                "parent": "Spine_3"
+              },
+              {
+                "name": "Head",
+                "parent": "Neck"
+              }
+            ]
+          },
+          "sockets": {
+            "name": "sockets",
+            "type": "json",
+            "description": "Semantic attachment points mapped to bones",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "socket_head": "Head",
+              "socket_face": "Head"
+            }
+          },
+          "semanticTags": {
+            "name": "semanticTags",
+            "type": "json",
+            "description": "Semantic compatibility tags (§40)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "serpent",
+              "has_head"
+            ]
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "DefaultPalette": {
+        "name": "DefaultPalette",
+        "tags": [
+          "palette"
+        ],
+        "description": "The single shared 256-entry palette for the character system. Characters store color indices; the shader samples this palette texture. One byte per index keeps network and persistence cost flat (§19).",
+        "goal": "Define the controlled color space that preserves the pixel-art art direction",
+        "fields": {
+          "entries": {
+            "name": "entries",
+            "type": "json",
+            "description": "256 hex color strings, region-grouped (§19)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "#ffebd6",
+              "#fde7d1",
+              "#fae2cc",
+              "#f8dec6",
+              "#f6dac1",
+              "#f3d5bc",
+              "#f1d1b7",
+              "#efcdb1",
+              "#ecc8ac",
+              "#eac4a7",
+              "#e8c0a2",
+              "#e5bb9d",
+              "#e3b797",
+              "#e1b392",
+              "#deae8d",
+              "#dcaa88",
+              "#d8a582",
+              "#d3a07d",
+              "#cd9a78",
+              "#c89572",
+              "#c28f6d",
+              "#bc8968",
+              "#b78463",
+              "#b17e5d",
+              "#ac7958",
+              "#a67353",
+              "#a16e4d",
+              "#9b6848",
+              "#966343",
+              "#905d3e",
+              "#8b5838",
+              "#855233",
+              "#0d0a0d",
+              "#150f0f",
+              "#1c1311",
+              "#241813",
+              "#2c1d15",
+              "#332217",
+              "#3b2619",
+              "#432b1b",
+              "#4a301c",
+              "#52351e",
+              "#593920",
+              "#603f22",
+              "#674425",
+              "#6d4a27",
+              "#735029",
+              "#7a552b",
+              "#805b2e",
+              "#876030",
+              "#8d6632",
+              "#936c34",
+              "#9a7137",
+              "#a0783d",
+              "#a6824d",
+              "#ac8c5d",
+              "#b2966d",
+              "#b8a07c",
+              "#bdaa8c",
+              "#c3b49c",
+              "#c9bdac",
+              "#cfc7bb",
+              "#d5d1cb",
+              "#dbdbdb",
+              "#294d85",
+              "#2c5180",
+              "#2f547b",
+              "#325876",
+              "#355c71",
+              "#385f6c",
+              "#3a6367",
+              "#3d6762",
+              "#406a5e",
+              "#436e59",
+              "#467254",
+              "#4d6f50",
+              "#55684c",
+              "#5d6149",
+              "#665b45",
+              "#6e5442",
+              "#774d3e",
+              "#7f463b",
+              "#884037",
+              "#903934",
+              "#983230",
+              "#a0332f",
+              "#a84232",
+              "#af5135",
+              "#b75f38",
+              "#be6e3b",
+              "#c67d3e",
+              "#cd8c41",
+              "#d59b44",
+              "#dca947",
+              "#e4b84a",
+              "#ebc74d",
+              "#e6e6e6",
+              "#e2e2e2",
+              "#ddddde",
+              "#d9d9da",
+              "#d4d4d6",
+              "#d0d0d2",
+              "#cbcbce",
+              "#c7c7ca",
+              "#c2c2c6",
+              "#bebec2",
+              "#b9b9be",
+              "#b1b1b6",
+              "#a7a7ad",
+              "#9c9ca3",
+              "#929299",
+              "#88888f",
+              "#7d7d85",
+              "#73737b",
+              "#696971",
+              "#5e5e67",
+              "#54545e",
+              "#4c4b55",
+              "#47464f",
+              "#434149",
+              "#3e3d43",
+              "#3a383d",
+              "#353338",
+              "#312e32",
+              "#2c292c",
+              "#282426",
+              "#231f20",
+              "#1f1a1a",
+              "#e69e29",
+              "#e3962a",
+              "#e18d2c",
+              "#de852d",
+              "#dc7c2f",
+              "#d97430",
+              "#d76b32",
+              "#d46333",
+              "#d25b35",
+              "#cf5236",
+              "#cd4a38",
+              "#c34b3f",
+              "#b55148",
+              "#a75752",
+              "#995d5c",
+              "#8b6366",
+              "#7e6970",
+              "#706f7a",
+              "#627584",
+              "#547b8e",
+              "#468197",
+              "#3e839e",
+              "#437d9e",
+              "#47779e",
+              "#4c719e",
+              "#506b9e",
+              "#55659e",
+              "#595f9e",
+              "#5e599e",
+              "#62539e",
+              "#674d9e",
+              "#6b479e",
+              "#4d4d52",
+              "#535255",
+              "#595758",
+              "#5f5c5b",
+              "#65615e",
+              "#6b6661",
+              "#726b63",
+              "#787066",
+              "#7e7469",
+              "#84796c",
+              "#8a7e6f",
+              "#8f8270",
+              "#93846f",
+              "#97866f",
+              "#9c896e",
+              "#a08b6e",
+              "#a48e6d",
+              "#a8906d",
+              "#ad936c",
+              "#b1956c",
+              "#b5976b",
+              "#b99b6e",
+              "#bea278",
+              "#c2a981",
+              "#c7b08a",
+              "#cbb794",
+              "#d0be9d",
+              "#d4c5a6",
+              "#d9cbb0",
+              "#ddd2b9",
+              "#e2d9c3",
+              "#e6e0cc",
+              "#2999eb",
+              "#2aa1e1",
+              "#2ba9d7",
+              "#2cb1cd",
+              "#2db9c4",
+              "#2ec1ba",
+              "#2fc9b0",
+              "#30d1a6",
+              "#31d89c",
+              "#32e092",
+              "#33e888",
+              "#3fe081",
+              "#51d17b",
+              "#62c175",
+              "#74b16f",
+              "#86a169",
+              "#989163",
+              "#aa815d",
+              "#bc7157",
+              "#cd6151",
+              "#df524b",
+              "#e9474c",
+              "#e1485c",
+              "#da486c",
+              "#d2497c",
+              "#cb4a8c",
+              "#c34a9c",
+              "#bc4bac",
+              "#b44bbb",
+              "#ad4ccb",
+              "#a54cdb",
+              "#9e4deb",
+              "#1459b3",
+              "#1760ad",
+              "#1a68a7",
+              "#1d6fa0",
+              "#20779a",
+              "#237e94",
+              "#26868e",
+              "#298d88",
+              "#2c9581",
+              "#2f9c7b",
+              "#32a475",
+              "#39a16f",
+              "#419a69",
+              "#4a9262",
+              "#538b5c",
+              "#5b8356",
+              "#647c50",
+              "#6c744a",
+              "#756d44",
+              "#7e653d",
+              "#865e37",
+              "#8d5c37",
+              "#916544",
+              "#956d50",
+              "#99765c",
+              "#9c7f69",
+              "#a08775",
+              "#a49081",
+              "#a8998e",
+              "#aba29a",
+              "#afaaa7",
+              "#b3b3b3"
+            ]
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "TravellerHuman": {
+        "name": "TravellerHuman",
+        "tags": [
+          "appearance"
+        ],
+        "description": "The default humanoid traveller: veilsteel chestplate, a sheathed veilsteel longsword, and a stored ferrite shield. Demonstrates the full composition stack — body proportions, face, hair, beard, and multi-slot equipment.",
+        "goal": "Provide a representative humanoid appearance for demo and testing",
+        "fields": {
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton key in GameData.SKELETONS",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "HumanoidSkeleton"
+          },
+          "body": {
+            "name": "body",
+            "type": "string",
+            "description": "Body mesh identifier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "human_body_02"
+          },
+          "proportions": {
+            "name": "proportions",
+            "type": "json",
+            "description": "Body proportion multipliers (§8); clamped to artistic bounds",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "height": 0.96,
+              "bodyMass": 1.04,
+              "shoulderWidth": 1.03,
+              "armLength": 1,
+              "legLength": 1,
+              "headScale": 1
+            }
+          },
+          "skinColor": {
+            "name": "skinColor",
+            "type": "integer",
+            "description": "Palette index for skin",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 12
+          },
+          "head": {
+            "name": "head",
+            "type": "string",
+            "description": "Head mesh identifier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "head_03"
+          },
+          "eyes": {
+            "name": "eyes",
+            "type": "string",
+            "description": "Eyes component identifier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "eyes_07"
+          },
+          "eyeColor": {
+            "name": "eyeColor",
+            "type": "integer",
+            "description": "Palette index for eyes",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 225
+          },
+          "hair": {
+            "name": "hair",
+            "type": "string",
+            "description": "Hair component identifier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "hair_long_04"
+          },
+          "hairColor": {
+            "name": "hairColor",
+            "type": "integer",
+            "description": "Palette index for hair",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 40
+          },
+          "beard": {
+            "name": "beard",
+            "type": "string",
+            "description": "Beard component identifier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "beard_short_02"
+          },
+          "beardColor": {
+            "name": "beardColor",
+            "type": "integer",
+            "description": "Palette index for beard",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 40
+          },
+          "equipment": {
+            "name": "equipment",
+            "type": "json",
+            "description": "Equipment instances by slot",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Chest": {
+                "item": "VeilsteelChestplate",
+                "state": "equipped",
+                "primaryColor": 70,
+                "secondaryColor": 100,
+                "accentColor": 130,
+                "durability": 1
+              },
+              "MainHand": {
+                "item": "VeilsteelLongsword",
+                "state": "sheathed",
+                "primaryColor": 0,
+                "secondaryColor": 0,
+                "accentColor": 130,
+                "durability": 0.7
+              },
+              "OffHand": {
+                "item": "FerriteShield",
+                "state": "stored",
+                "primaryColor": 70,
+                "secondaryColor": 0,
+                "accentColor": 130,
+                "durability": 0.5
+              }
+            }
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "BoarRider": {
+        "name": "BoarRider",
+        "tags": [
+          "appearance"
+        ],
+        "description": "A quadruped boar — the same character system driving a non-humanoid skeleton. Demonstrates that Character is not synonymous with humanoid (§3).",
+        "goal": "Provide a representative non-humanoid appearance for demo and testing",
+        "fields": {
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton key in GameData.SKELETONS",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "QuadrupedSkeleton"
+          },
+          "body": {
+            "name": "body",
+            "type": "string",
+            "description": "Body mesh identifier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "boar_body_01"
+          },
+          "proportions": {
+            "name": "proportions",
+            "type": "json",
+            "description": "Body proportion multipliers (§8)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "height": 0.9,
+              "bodyMass": 1.15,
+              "shoulderWidth": 1,
+              "armLength": 1,
+              "legLength": 1,
+              "headScale": 1
+            }
+          },
+          "skinColor": {
+            "name": "skinColor",
+            "type": "integer",
+            "description": "Palette index for skin/fur",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 20
+          },
+          "head": {
+            "name": "head",
+            "type": "string",
+            "description": "Head mesh identifier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "boar_head_01"
+          },
+          "eyes": {
+            "name": "eyes",
+            "type": "string",
+            "description": "Eyes component identifier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "eyes_01"
+          },
+          "eyeColor": {
+            "name": "eyeColor",
+            "type": "integer",
+            "description": "Palette index for eyes",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 225
+          },
+          "hair": {
+            "name": "hair",
+            "type": "string",
+            "description": "Hair component identifier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "none"
+          },
+          "hairColor": {
+            "name": "hairColor",
+            "type": "integer",
+            "description": "Palette index for hair",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
+          "beard": {
+            "name": "beard",
+            "type": "string",
+            "description": "Beard component identifier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "none"
+          },
+          "beardColor": {
+            "name": "beardColor",
+            "type": "integer",
+            "description": "Palette index for beard",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
+          "equipment": {
+            "name": "equipment",
+            "type": "json",
+            "description": "Equipment instances by slot",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {}
+          }
+        },
+        "relations": {},
+        "behaviors": {},
         "pii": [],
         "gdpr": {}
       }

@@ -17,6 +17,15 @@ Simple open-faced helmet shaped from ferrite plate. Offers reliable head protect
 | `rarity` | enum (`common`, `uncommon`, `rare`, `epic`, `legendary`) | yes |  |
 | `stackable` | boolean | yes | Always false for armour pieces |
 | `durability` | integer | yes | Remaining durability points before condition degrades |
+| `equipmentSlot` | string | yes | Equipment slot — what is equipped (§6) |
+| `deformationMode` | string | yes | SKINNED \| RIGID \| HYBRID (§10) |
+| `masks` | json | yes | Color/mask regions present on the asset (§17) |
+| `hideRegions` | json | yes | Body regions this item hides to prevent clipping (§16) |
+| `attachments` | json | yes | Attachment state → socket map (§7) |
+| `minLodLevel` | integer | yes | Coarsest LOD at which this part still renders (§35) |
+| `size` | json | yes | Placeholder mesh extents [x, y, z] |
+| `metalTone` | string | yes | Metal tone for metal-mask regions (§21) |
+| `compatibleTags` | json | yes | Semantic tags required to equip (§39) |
 
 ## Relations
 

@@ -131,8 +131,8 @@ func _boot_world() -> void:
 
 	# Character system — spawn a demo humanoid and a non-humanoid (quadruped)
 	# near the player to exercise the appearance pipeline end to end.
-	_character.create_character("traveller_human", Vector3(spawn_xz.x + 3.0, ground_h + 1.0, spawn_xz.y))
-	_character.create_character("boar_rider", Vector3(spawn_xz.x - 3.0, ground_h + 1.0, spawn_xz.y))
+	_character.create_character("TravellerHuman", Vector3(spawn_xz.x + 3.0, ground_h + 1.0, spawn_xz.y))
+	_character.create_character("BoarRider", Vector3(spawn_xz.x - 3.0, ground_h + 1.0, spawn_xz.y))
 
 	# Creature slice already spawned creatures from SPAWN_MANIFEST in _ready().
 	# Trigger an initial creature awareness pass: the nearest ForestBoar

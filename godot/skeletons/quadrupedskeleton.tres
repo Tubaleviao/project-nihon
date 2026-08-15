@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/skeletons/quadrupedskeleton.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+family = "quadruped"
+bones = [{"name":"Root","parent":""},{"name":"Hips","parent":"Root"},{"name":"Spine","parent":"Hips"},{"name":"Chest","parent":"Spine"},{"name":"Neck","parent":"Chest"},{"name":"Head","parent":"Neck"},{"name":"Leg_FL","parent":"Chest"},{"name":"Leg_FR","parent":"Chest"},{"name":"Leg_BL","parent":"Hips"},{"name":"Leg_BR","parent":"Hips"},{"name":"Tail","parent":"Hips"}]
+sockets = {"socket_head":"Head","socket_face":"Head","socket_back":"Spine","socket_mount":"Spine"}
+semanticTags = ["quadruped","has_head","has_back_socket"]
+description = "Four-legged skeleton (fore and hind legs, spine, neck, head, tail). Shared rig for mounts, domesticated creatures, and quadruped monsters."
+tags = ["skeleton"]

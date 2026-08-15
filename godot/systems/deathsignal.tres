@@ -1,0 +1,9 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/systems/deathsignal.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+description = "System that propagates entity-death events across all subsystems. When any creature or player entity transitions to the dead state, DeathSignal broadcasts an authoritative death event that the loot, combat, UI, and persistence systems subscribe to. This decouples the death source from its downstream effects."
+tags = ["system"]

@@ -2,3 +2,6 @@
 .godot/
 /android/
 .vscode/
+
+# Node.js (fabric tooling — @newel)
+node_modules/

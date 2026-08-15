@@ -5,6 +5,11 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 
 > Fabric version: `0.2.0`
 
+## Appearance
+
+- [BoarRider](entities/boarrider.md) — A quadruped boar — the same character system driving a non-humanoid skeleton
+- [TravellerHuman](entities/travellerhuman.md) — The default humanoid traveller: veilsteel chestplate, a sheathed veilsteel longsword, and a stored ferrite shield
+
 ## Biome
 
 - [TemperateForest](entities/temperateforest.md) — Broad mixed-leaf forests covering most mid-latitude landmass
@@ -61,6 +66,10 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [VoiditeEdge](entities/voiditeedge.md) — Jagged single-edged blade carved from a stabilised voidite shard
 - [VoidRuneTablet](entities/voidrunetablet.md) — Flat voidite slab etched with stabilisation runes by a Void Smithing expert
 
+## Loot
+
+- [LootTable](entities/loottable.md) — Defines the rules that govern what items drop when a creature dies
+
 ## Material
 
 - [Aethermite](entities/aethermite.md) — Pale silver ore that hums faintly in the presence of active magic
@@ -71,6 +80,15 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [Thornwood](entities/thornwood.md) — Dense, dark-veined wood from the Thornwood tree that grows in lowland forests
 - [Veilsteel](entities/veilsteel.md) — Blue-black alloy smelted from ferrite ingots and aethermite shards under high heat
 - [Voidite](entities/voidite.md) — Jet-black crystalline ore found only in void-touched biomes and deep rifts
+
+## Palette
+
+- [DefaultPalette](entities/defaultpalette.md) — The single shared 256-entry palette for the character system
+
+## Player
+
+- [Inventory](entities/inventory.md) — The container of items carried by a single player
+- [PlayerCharacter](entities/playercharacter.md) — The player-controlled character in the world
 
 ## Profession
 
@@ -103,6 +121,13 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [RecipeVoidResistPotion](entities/recipevoidresistpotion.md) — Brew a void-resist potion from refined voidite shard dust and aethermite dust
 - [RecipeVoidRuneTablet](entities/recipevoidrunetablet.md) — Etch stabilisation runes into a refined voidite slab at a void-shielded workshop
 
+## Skeleton
+
+- [BirdSkeleton](entities/birdskeleton.md) — Bipedal avian skeleton with wings, legs, spine, neck, and head
+- [HumanoidSkeleton](entities/humanoidskeleton.md) — Bipedal humanoid bone structure with two arms, two legs, and a head
+- [QuadrupedSkeleton](entities/quadrupedskeleton.md) — Four-legged skeleton (fore and hind legs, spine, neck, head, tail)
+- [SerpentSkeleton](entities/serpentskeleton.md) — Limbless serpentine skeleton built from a segmented spine ending in a head
+
 ## Skill
 
 - [Alchemy](entities/alchemy.md) — Brewing potions, reagents, poisons, and catalysts from raw materials
@@ -132,6 +157,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [BelievableNotRealistic](entities/believablenotrealistic.md) — Believable, not realistic — the world has internal consistency and lore logic rather than real-world physics fidelity
 - [CivilizationIsPlayerMade](entities/civilizationisplayermade.md) — Civilization is player-made — towns, governments, economies, and infrastructure are built and maintained by players
 - [CommunityOwnsTheFuture](entities/communityownsthefuture.md) — Community owns the future — the game is open-source and its direction is shaped by contributor consensus
+- [DeathSignal](entities/deathsignal.md) — System that propagates entity-death events across all subsystems
 - [EverythingHasTradeoffs](entities/everythinghastradeoffs.md) — Everything has trade-offs — no dominant strategy; every choice sacrifices something
 - [FreedomComesFirst](entities/freedomcomesfirst.md) — Freedom comes first — players choose who to be, what to build, and how to play without imposed class or story restrictions
 - [KnowledgeIsProgression](entities/knowledgeisprogression.md) — Knowledge is progression — players advance by discovering how the world works, not by grinding XP bars

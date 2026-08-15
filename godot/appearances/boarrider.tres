@@ -1,0 +1,20 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/appearances/boarrider.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+skeleton = "QuadrupedSkeleton"
+body = "boar_body_01"
+proportions = {"height":0.9,"bodyMass":1.15,"shoulderWidth":1,"armLength":1,"legLength":1,"headScale":1}
+skinColor = 20
+head = "boar_head_01"
+eyes = "eyes_01"
+eyeColor = 225
+hair = "none"
+hairColor = 0
+beard = "none"
+beardColor = 0
+equipment = {}
+description = "A quadruped boar — the same character system driving a non-humanoid skeleton. Demonstrates that Character is not synonymous with humanoid (§3)."
+tags = ["appearance"]

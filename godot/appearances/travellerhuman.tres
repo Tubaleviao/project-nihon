@@ -1,0 +1,20 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/appearances/travellerhuman.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+skeleton = "HumanoidSkeleton"
+body = "human_body_02"
+proportions = {"height":0.96,"bodyMass":1.04,"shoulderWidth":1.03,"armLength":1,"legLength":1,"headScale":1}
+skinColor = 12
+head = "head_03"
+eyes = "eyes_07"
+eyeColor = 225
+hair = "hair_long_04"
+hairColor = 40
+beard = "beard_short_02"
+beardColor = 40
+equipment = {"Chest":{"item":"VeilsteelChestplate","state":"equipped","primaryColor":70,"secondaryColor":100,"accentColor":130,"durability":1},"MainHand":{"item":"VeilsteelLongsword","state":"sheathed","primaryColor":0,"secondaryColor":0,"accentColor":130,"durability":0.7},"OffHand":{"item":"FerriteShield","state":"stored","primaryColor":70,"secondaryColor":0,"accentColor":130,"durability":0.5}}
+description = "The default humanoid traveller: veilsteel chestplate, a sheathed veilsteel longsword, and a stored ferrite shield. Demonstrates the full composition stack — body proportions, face, hair, beard, and multi-slot equipment."
+tags = ["appearance"]

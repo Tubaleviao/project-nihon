@@ -1,4 +1,4 @@
-const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine } = require('./shared')
+const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, equipmentVisualFields } = require('./shared')
 
 module.exports = {
 
@@ -16,6 +16,17 @@ module.exports = {
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
       stackable: { type: 'boolean', description: 'Always false for armour pieces', defaultValue: false },
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 120 },
+      ...equipmentVisualFields({
+        slot: 'Head',
+        deformationMode: 'RIGID',
+        masks: { primary: true, secondary: true, accent: true, metal: true, emission: false, wear: true },
+        hideRegions: ['Hair'],
+        attachments: { equipped: 'socket_head', stored: 'socket_back' },
+        minLodLevel: 3,
+        size: [0.34, 0.34, 0.34],
+        metalTone: 'ferrite',
+        compatibleTags: ['humanoid', 'can_wear_helmet'],
+      }),
     },
     relations: {
       ferrite: { name: 'ferrite', kind: 'hasOne', target: 'Ferrite' },
@@ -49,6 +60,17 @@ module.exports = {
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
       stackable: { type: 'boolean', description: 'Always false for armour pieces', defaultValue: false },
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 250 },
+      ...equipmentVisualFields({
+        slot: 'Chest',
+        deformationMode: 'HYBRID',
+        masks: { primary: true, secondary: true, accent: true, metal: true, emission: false, wear: true },
+        hideRegions: ['BodyChest', 'BodyShoulders'],
+        attachments: { equipped: 'socket_chest', stored: 'socket_back' },
+        minLodLevel: 3,
+        size: [0.70, 0.55, 0.42],
+        metalTone: 'veilsteel',
+        compatibleTags: ['humanoid', 'has_hands'],
+      }),
     },
     relations: {
       veilsteel: { name: 'veilsteel', kind: 'hasOne', target: 'Veilsteel' },
@@ -89,6 +111,17 @@ module.exports = {
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
       stackable: { type: 'boolean', description: 'Always false for armour pieces', defaultValue: false },
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 80 },
+      ...equipmentVisualFields({
+        slot: 'Cape',
+        deformationMode: 'SKINNED',
+        masks: { primary: true, secondary: false, accent: false, metal: false, emission: false, wear: true },
+        hideRegions: [],
+        attachments: { equipped: 'socket_cape', stored: 'socket_back' },
+        minLodLevel: 2,
+        size: [0.70, 0.90, 0.14],
+        metalTone: 'none',
+        compatibleTags: ['has_back_socket'],
+      }),
     },
     relations: {
       duskfiber: { name: 'duskfiber', kind: 'hasOne', target: 'Duskfiber' },
@@ -106,6 +139,50 @@ module.exports = {
           'Requires two duskfiber strands per condition tier restored',
           'Carpentry: Apprentice',
         ],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
+  // ─── FerriteShield ────────────────────────────────────────────────────────
+  FerriteShield: defineEntity({
+    tags: ['item'],
+    description:
+      'Round shield of ferrite-plated hardwood. Blocks melee and missile strikes ' +
+      'at the cost of mobility; the standard off-hand defence for early-game fighters.',
+    goal: 'Provide an entry-level off-hand defensive option for shield-wielding characters',
+    fields: {
+      id:        { type: 'uuid', primaryKey: true },
+      condition: { type: 'enum', values: DURABILITY_STATES },
+      weight:    { type: 'decimal', description: 'kg', defaultValue: 5.5 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
+      stackable: { type: 'boolean', description: 'Always false for shields', defaultValue: false },
+      durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 180 },
+      ...equipmentVisualFields({
+        slot: 'OffHand',
+        deformationMode: 'RIGID',
+        masks: { primary: true, secondary: false, accent: true, metal: true, emission: false, wear: true },
+        hideRegions: [],
+        attachments: { equipped: 'socket_shield', stored: 'socket_back' },
+        minLodLevel: 2,
+        size: [0.55, 0.75, 0.08],
+        metalTone: 'ferrite',
+        compatibleTags: ['has_hands', 'can_wield_weapon'],
+      }),
+    },
+    relations: {
+      ferrite: { name: 'ferrite', kind: 'hasOne', target: 'Ferrite' },
+    },
+    stateMachine: itemStateMachine(),
+    behaviors: {
+      degrade: {
+        description: 'Condition worsens as the shield absorbs blows',
+        rules: ['Blocking heavy or void attacks degrades the shield at double rate'],
+        auth: { roles: ['maintainer'] },
+      },
+      repair: {
+        description: 'Re-plate and re-band the shield at a forge',
+        rules: ['Requires one ferrite ingot; Smithing: Novice'],
         auth: { roles: ['maintainer'] },
       },
     },
