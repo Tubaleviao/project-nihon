@@ -451,6 +451,33 @@ emitted by `generator-godot`); no generator change needed.
 
 ---
 
+## Phase 14 — Player UI: inventory, technology tree, crafting
+
+**Goal:** Expose the systems built so far through in-game windows so a player
+can drive them without code. Inventory, technology tree, and crafting come
+first; the window system is built to host more later.
+
+**Deliverables (proposed):**
+- A shared window/HUD layer (CanvasLayer) that opens/closes named panels with a
+  consistent chrome (title bar, keyboard toggle, close affordance).
+- **Inventory window** — grid list of carried items + weight/slot usage,
+  replacing the current `I`-toggle debug label.
+- **Technology tree window** — renders technologies as nodes with prerequisite
+  edges, per-node status (`locked → researching → unlocked`), material cost, and
+  a "begin research" action.
+- **Crafting window** — lists craftable recipes, greys out blocked ones with a
+  reason (skill tier, technology, missing inputs), and a craft button.
+- Player input to trigger research/craft through the bus, replacing the
+  boot-demo-only signal emissions.
+
+**Acceptance criteria (draft):**
+- Inventory, technology, and crafting windows open/close and reflect live state.
+- Crafting blocks/unblocks recipes reactively as technologies unlock.
+- Research can be initiated from the technology window (materials consumed,
+  auto-completes on duration).
+
+---
+
 ## Deferred (in priority order)
 
 - **Creature AI / behavior** — implement the fabric state machines
