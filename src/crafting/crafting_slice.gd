@@ -85,24 +85,25 @@ func craft(recipe_id: String) -> Dictionary:
 	return _ok(recipe_id, produced)
 
 ## Non-mutating check: returns the same result shape craft() would, with
-## success=true only if the recipe would currently succeed.
+## success=true only if the recipe would currently succeed. Does NOT emit
+## craft_resolved (it is a query, not a craft attempt).
 func can_craft(recipe_id: String) -> Dictionary:
 	var recipe := get_recipe(recipe_id)
 	if recipe.is_empty():
-		return _fail(recipe_id, "unknown_recipe")
+		return _result(recipe_id, false, [], "unknown_recipe")
 	var guard_reason := _check_skill_guards(recipe)
 	if guard_reason != "":
-		return _fail(recipe_id, guard_reason)
+		return _result(recipe_id, false, [], guard_reason)
 	if inventory_slice == null:
-		return _fail(recipe_id, "no_inventory")
+		return _result(recipe_id, false, [], "no_inventory")
 	for entry in recipe.get("inputs", []):
 		var item_id: String = str(entry.get("item", ""))
 		var qty: int = int(entry.get("quantity", 1))
 		if inventory_slice.get_item_count(item_id) < qty:
-			return _fail(recipe_id, "missing_inputs")
+			return _result(recipe_id, false, [], "missing_inputs")
 	if not inventory_slice.can_add_items(_to_counts(recipe.get("outputs", []))):
-		return _fail(recipe_id, "inventory_full")
-	return _ok(recipe_id, recipe.get("outputs", []))
+		return _result(recipe_id, false, [], "inventory_full")
+	return _result(recipe_id, true, recipe.get("outputs", []), "")
 
 ## Return the structured recipe data for a recipe key, or {} if unknown/malformed.
 func get_recipe(recipe_id: String) -> Dictionary:
@@ -157,12 +158,15 @@ func _to_counts(entries: Array) -> Dictionary:
 		counts[item_id] = counts.get(item_id, 0) + qty
 	return counts
 
+func _result(recipe_id: String, success: bool, outputs: Array, reason: String) -> Dictionary:
+	return { "recipe_id": recipe_id, "success": success, "outputs": outputs, "reason": reason }
+
 func _ok(recipe_id: String, outputs: Array) -> Dictionary:
-	var result := { "recipe_id": recipe_id, "success": true, "outputs": outputs, "reason": "" }
+	var result := _result(recipe_id, true, outputs, "")
 	GameBus.craft_resolved.emit(result)
 	return result
 
 func _fail(recipe_id: String, reason: String) -> Dictionary:
-	var result := { "recipe_id": recipe_id, "success": false, "outputs": [], "reason": reason }
+	var result := _result(recipe_id, false, [], reason)
 	GameBus.craft_resolved.emit(result)
 	return result
