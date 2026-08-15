@@ -14,11 +14,11 @@ extends Node
 ##   get_total_slots_used()           -> int
 ##   drop_item(item_id, quantity)     -> bool
 
-## Fabric source of truth: PlayerCharacter.maxSlots / maxWeightKg defaultValues.
-## Read from GameData.SYSTEMS["PlayerCharacter"] if available; otherwise use
-## the fabric-documented defaults (30 slots, 50 kg) as compile-time constants.
-const MAX_SLOTS    := 30      # PlayerCharacter.maxSlots defaultValue in fabric
-const MAX_WEIGHT   := 50.0   # PlayerCharacter.maxWeightKg defaultValue in fabric
+## Inventory capacity comes from the Inventory entity in the fabric
+## (GameData.PLAYERS["Inventory"].maxSlots / maxWeightKg), loaded in _ready().
+## Initial values below match the fabric defaults.
+var _max_slots: int = 30
+var _max_weight: float = 50.0
 
 ## Weights for raw creature drops that are not fabric items (no .tres resource).
 ## Values are authoritative design decisions; any change starts in this table.
@@ -48,7 +48,6 @@ const RAW_DROP_WEIGHTS: Dictionary = {
 	"rift_shard":       1.0,
 	"warden_core":      0.8,
 }
-const DEFAULT_WEIGHT := 0.5
 
 ## Built at _ready() from GameData.ITEMS so fabric item weights are authoritative.
 var _item_weight_cache: Dictionary = {}
@@ -66,6 +65,7 @@ var _ui_layer: CanvasLayer = null
 var _items_label: Label = null
 
 func _ready() -> void:
+	_load_capacity()
 	_build_weight_cache()
 	GameBus.pickup_requested.connect(_on_pickup_requested)
 	_build_inventory_ui()
@@ -116,9 +116,9 @@ func _try_pickup(pickup_id: String, item_id: String, quantity: int) -> void:
 		return
 
 	var add_weight := _item_weight(item_id) * float(quantity)
-	if _current_weight + add_weight > MAX_WEIGHT:
+	if _current_weight + add_weight > _max_weight:
 		push_warning("InventorySlice: '%s' ×%d would exceed weight limit (%.1f/%.1f kg)" % [
-			item_id, quantity, _current_weight + add_weight, MAX_WEIGHT])
+			item_id, quantity, _current_weight + add_weight, _max_weight])
 		GameBus.inventory_full.emit()
 		_is_full = true
 		return
@@ -126,9 +126,9 @@ func _try_pickup(pickup_id: String, item_id: String, quantity: int) -> void:
 	# Check slot budget for new item types.
 	var already_have := _contents.has(item_id)
 	var would_add_slot := not already_have
-	if would_add_slot and _contents.size() >= MAX_SLOTS:
+	if would_add_slot and _contents.size() >= _max_slots:
 		push_warning("InventorySlice: cannot pick up '%s' — no free slots (%d/%d)" % [
-			item_id, _contents.size(), MAX_SLOTS])
+			item_id, _contents.size(), _max_slots])
 		GameBus.inventory_full.emit()
 		_is_full = true
 		return
@@ -145,14 +145,21 @@ func _try_pickup(pickup_id: String, item_id: String, quantity: int) -> void:
 
 	GameBus.item_picked_up.emit(item_id, quantity)
 	print("InventorySlice: picked up %s ×%d  (%.1f/%.1f kg  %d/%d slots)" % [
-		item_id, quantity, _current_weight, MAX_WEIGHT, _contents.size(), MAX_SLOTS])
+		item_id, quantity, _current_weight, _max_weight, _contents.size(), _max_slots])
 	_refresh_inventory_ui()
 
 	# Re-check full state after pickup.
-	if _contents.size() >= MAX_SLOTS or _current_weight >= MAX_WEIGHT:
+	if _contents.size() >= _max_slots or _current_weight >= _max_weight:
 		if not _is_full:
 			_is_full = true
 			GameBus.inventory_full.emit()
+
+## Load inventory capacity from the Inventory entity (GameData.PLAYERS).
+func _load_capacity() -> void:
+	var res: Resource = GameData.PLAYERS.get("Inventory", null)
+	if res != null:
+		_max_slots = int(res.get("maxSlots"))
+		_max_weight = float(res.get("maxWeightKg"))
 
 func _build_weight_cache() -> void:
 	# Seed with raw-drop weights (creature drops not in the item fabric).
@@ -160,13 +167,11 @@ func _build_weight_cache() -> void:
 	# Override/extend with fabric item weights from GameData.ITEMS (authoritative).
 	for key in GameData.ITEMS:
 		var res: Resource = GameData.ITEMS[key]
-		if res != null and "weight" in res:
-			var w = res.get("weight")
-			if w is float or w is int:
-				_item_weight_cache[key] = float(w)
+		if res != null:
+			_item_weight_cache[key] = float(res.get("weight"))
 
 func _item_weight(item_id: String) -> float:
-	return _item_weight_cache.get(item_id, DEFAULT_WEIGHT)
+	return float(_item_weight_cache.get(item_id, 0.0))
 
 # ---------------------------------------------------------------------------
 # Inventory UI

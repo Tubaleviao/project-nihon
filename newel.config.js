@@ -1,6 +1,6 @@
 const { defineConfig } = require('@newel/core')
 const { BibleGenerator } = require('@newel/generator-bible')
-const { GodotGenerator } = require('./generators/godot-generator')
+const { GodotGenerator } = require('@newel/generator-godot')
 const { WikiGenerator } = require('@newel/generator-wiki')
 
 module.exports = defineConfig({

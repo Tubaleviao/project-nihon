@@ -100,8 +100,4 @@ func _lookup(entity_id: String) -> Resource:
 func _field(res: Resource, field: String, fallback: float) -> float:
 	if res == null:
 		return fallback
-	if field in res:
-		var v = res.get(field)
-		if v is float or v is int:
-			return float(v)
-	return fallback
+	return float(res.get(field))

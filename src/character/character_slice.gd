@@ -48,9 +48,9 @@ const DEFAULT_SKELETON := "HumanoidSkeleton"
 
 ## Body-proportion bounds (characters.md §8). Artistic, not engine defaults —
 ## each combination must survive validation against animations, clothing and
-## clipping before finalizing. Kept here as mechanics config (same pattern as
-## InventorySlice.MAX_SLOTS / MAX_WEIGHT); the fabric carries the enumerable
-## content (skeletons, palettes, appearances, equipment).
+## clipping before finalizing. Kept here as mechanics config (clamping bounds);
+## the fabric carries the enumerable content (skeletons, palettes, appearances,
+## equipment).
 const BODY_PROP_BOUNDS: Dictionary = {
 	"height":        { "min": 0.85, "default": 1.00, "max": 1.15 },
 	"bodyMass":      { "min": 0.80, "default": 1.00, "max": 1.20 },
