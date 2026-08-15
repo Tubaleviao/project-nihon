@@ -13,7 +13,7 @@ Alloy three ferrite ingots and one refined aethermite shard into one veilsteel i
 | ---- | ---- | -------- | ----------- |
 | `id` | uuid | yes |  |
 | `domain` | enum (`smithing`, `alchemy`, `arcane`, `carpentry`) | yes | Crafting station required |
-| `yield` | integer | yes | Number of output items produced per craft |
+| `outputCount` | integer | yes | Number of output items produced per craft |
 
 ## Relations
 

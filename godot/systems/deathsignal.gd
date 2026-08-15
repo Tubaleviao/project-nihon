@@ -2,3 +2,5 @@
 class_name DeathSignalData
 extends Resource
 
+
+@export var id: String

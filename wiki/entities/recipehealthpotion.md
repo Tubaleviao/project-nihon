@@ -16,7 +16,7 @@ Brew a health-restoring potion from aethermite dust and harvested herbs at an al
 | Field | Type | Description |
 | ----- | ---- | ----------- |
 | domain | `smithing`, `alchemy`, `arcane`, `carpentry` | Crafting station required |
-| yield | integer | Number of output items produced per craft |
+| outputCount | integer | Number of output items produced per craft |
 
 ## Related
 

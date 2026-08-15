@@ -6,6 +6,6 @@
 script = ExtResource("1")
 id = ""
 domain = 0
-yield = 0
+outputCount = 0
 description = "Polish a lumenfite stone into a charged spell-focus orb at an arcane forge."
 tags = ["recipe"]

@@ -6,6 +6,6 @@
 script = ExtResource("1")
 id = ""
 domain = 0
-yield = 0
+outputCount = 0
 description = "Brew a stamina-restoring potion from aethermite dust and root reagents. Used by explorers and miners for extended field operations."
 tags = ["recipe"]

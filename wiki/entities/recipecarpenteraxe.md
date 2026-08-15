@@ -16,7 +16,7 @@ Assemble a carpenter axe from one ferrite ingot, one thornwood plank, and one du
 | Field | Type | Description |
 | ----- | ---- | ----------- |
 | domain | `smithing`, `alchemy`, `arcane`, `carpentry` | Crafting station required |
-| yield | integer | Number of output items produced per craft |
+| outputCount | integer | Number of output items produced per craft |
 
 ## Related
 

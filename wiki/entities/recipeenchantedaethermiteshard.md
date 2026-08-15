@@ -16,7 +16,7 @@ Imbue a refined aethermite shard with magical energy at an arcane forge to produ
 | Field | Type | Description |
 | ----- | ---- | ----------- |
 | domain | `smithing`, `alchemy`, `arcane`, `carpentry` | Crafting station required |
-| yield | integer | Number of output items produced per craft |
+| outputCount | integer | Number of output items produced per craft |
 
 ## Related
 

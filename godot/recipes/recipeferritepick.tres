@@ -6,6 +6,6 @@
 script = ExtResource("1")
 id = ""
 domain = 0
-yield = 0
+outputCount = 0
 description = "Craft a ferrite mining pick from two ferrite ingots and one thornwood plank."
 tags = ["recipe"]

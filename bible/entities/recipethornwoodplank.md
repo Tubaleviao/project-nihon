@@ -13,7 +13,7 @@ Mill two thornwood logs into three thornwood planks at a carpentry bench.
 | ---- | ---- | -------- | ----------- |
 | `id` | uuid | yes |  |
 | `domain` | enum (`smithing`, `alchemy`, `arcane`, `carpentry`) | yes | Crafting station required |
-| `yield` | integer | yes | Number of output items produced per craft |
+| `outputCount` | integer | yes | Number of output items produced per craft |
 
 ## Relations
 

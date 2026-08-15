@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-15T10:13:04.700Z",
-  "schemaHash": "sha256:adef85f773db73491a4e59211d8c749c5caeeddccf8875172ee2616598e9b620",
+  "generatedAt": "2026-08-15T12:29:58.177Z",
+  "schemaHash": "sha256:bba262f6f1ab1cea17abe5628c67bdcb856b46dcf7897debe1038689ed874c10",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -12022,8 +12022,8 @@
             ],
             "pii": false
           },
-          "yield": {
-            "name": "yield",
+          "outputCount": {
+            "name": "outputCount",
             "type": "integer",
             "description": "Number of output items produced per craft",
             "nullable": false,
@@ -12091,8 +12091,8 @@
             ],
             "pii": false
           },
-          "yield": {
-            "name": "yield",
+          "outputCount": {
+            "name": "outputCount",
             "type": "integer",
             "description": "Number of output items produced per craft",
             "nullable": false,
@@ -12165,8 +12165,8 @@
             ],
             "pii": false
           },
-          "yield": {
-            "name": "yield",
+          "outputCount": {
+            "name": "outputCount",
             "type": "integer",
             "description": "Number of output items produced per craft",
             "nullable": false,
@@ -12234,8 +12234,8 @@
             ],
             "pii": false
           },
-          "yield": {
-            "name": "yield",
+          "outputCount": {
+            "name": "outputCount",
             "type": "integer",
             "description": "Number of output items produced per craft",
             "nullable": false,
@@ -12308,8 +12308,8 @@
             ],
             "pii": false
           },
-          "yield": {
-            "name": "yield",
+          "outputCount": {
+            "name": "outputCount",
             "type": "integer",
             "description": "Number of output items produced per craft",
             "nullable": false,
@@ -12382,8 +12382,8 @@
             ],
             "pii": false
           },
-          "yield": {
-            "name": "yield",
+          "outputCount": {
+            "name": "outputCount",
             "type": "integer",
             "description": "Number of output items produced per craft",
             "nullable": false,
@@ -12456,8 +12456,8 @@
             ],
             "pii": false
           },
-          "yield": {
-            "name": "yield",
+          "outputCount": {
+            "name": "outputCount",
             "type": "integer",
             "description": "Number of output items produced per craft",
             "nullable": false,
@@ -12525,8 +12525,8 @@
             ],
             "pii": false
           },
-          "yield": {
-            "name": "yield",
+          "outputCount": {
+            "name": "outputCount",
             "type": "integer",
             "description": "Number of output items produced per craft",
             "nullable": false,
@@ -12594,8 +12594,8 @@
             ],
             "pii": false
           },
-          "yield": {
-            "name": "yield",
+          "outputCount": {
+            "name": "outputCount",
             "type": "integer",
             "description": "Number of output items produced per craft",
             "nullable": false,
@@ -12669,8 +12669,8 @@
             ],
             "pii": false
           },
-          "yield": {
-            "name": "yield",
+          "outputCount": {
+            "name": "outputCount",
             "type": "integer",
             "description": "Number of output items produced per craft",
             "nullable": false,
@@ -12739,8 +12739,8 @@
             ],
             "pii": false
           },
-          "yield": {
-            "name": "yield",
+          "outputCount": {
+            "name": "outputCount",
             "type": "integer",
             "description": "Number of output items produced per craft",
             "nullable": false,
@@ -12818,8 +12818,8 @@
             ],
             "pii": false
           },
-          "yield": {
-            "name": "yield",
+          "outputCount": {
+            "name": "outputCount",
             "type": "integer",
             "description": "Number of output items produced per craft",
             "nullable": false,
@@ -12892,8 +12892,8 @@
             ],
             "pii": false
           },
-          "yield": {
-            "name": "yield",
+          "outputCount": {
+            "name": "outputCount",
             "type": "integer",
             "description": "Number of output items produced per craft",
             "nullable": false,
@@ -12967,8 +12967,8 @@
             ],
             "pii": false
           },
-          "yield": {
-            "name": "yield",
+          "outputCount": {
+            "name": "outputCount",
             "type": "integer",
             "description": "Number of output items produced per craft",
             "nullable": false,
@@ -13036,8 +13036,8 @@
             ],
             "pii": false
           },
-          "yield": {
-            "name": "yield",
+          "outputCount": {
+            "name": "outputCount",
             "type": "integer",
             "description": "Number of output items produced per craft",
             "nullable": false,
@@ -13116,8 +13116,8 @@
             ],
             "pii": false
           },
-          "yield": {
-            "name": "yield",
+          "outputCount": {
+            "name": "outputCount",
             "type": "integer",
             "description": "Number of output items produced per craft",
             "nullable": false,
@@ -13184,8 +13184,8 @@
             ],
             "pii": false
           },
-          "yield": {
-            "name": "yield",
+          "outputCount": {
+            "name": "outputCount",
             "type": "integer",
             "description": "Number of output items produced per craft",
             "nullable": false,

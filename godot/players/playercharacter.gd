@@ -7,3 +7,13 @@ enum State {
 	DEAD,
 	RESPAWNING,
 }
+
+@export var id: String
+@export var state: int
+@export var name: String
+@export var baseHp: int
+@export var currentHp: int
+@export var baseSpeed: float
+@export var positionX: float
+@export var positionY: float
+@export var positionZ: float

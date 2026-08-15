@@ -11,7 +11,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
-      yield:  { type: 'integer', description: 'Number of output items produced per craft' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
     },
     relations: {
       inputDust:   { name: 'inputDust',   kind: 'hasOne', target: 'AethermiteDust' },
@@ -40,7 +40,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
-      yield:  { type: 'integer', description: 'Number of output items produced per craft' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
     },
     relations: {
       inputDust: { name: 'inputDust', kind: 'hasOne', target: 'AethermiteDust' },
@@ -69,7 +69,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
-      yield:  { type: 'integer', description: 'Number of output items produced per craft' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
     },
     relations: {
       inputVoidite:   { name: 'inputVoidite',   kind: 'hasOne', target: 'Voidite' },

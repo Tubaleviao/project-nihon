@@ -16,7 +16,7 @@ Etch stabilisation runes into a refined voidite slab at a void-shielded workshop
 | Field | Type | Description |
 | ----- | ---- | ----------- |
 | domain | `smithing`, `alchemy`, `arcane`, `carpentry` | Crafting station required |
-| yield | integer | Number of output items produced per craft |
+| outputCount | integer | Number of output items produced per craft |
 
 ## Related
 

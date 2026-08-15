@@ -23,3 +23,10 @@ enum State {
 	DEAD,
 	RESPAWNING,
 }
+
+@export var id: String
+@export var state: int
+@export var tier: int
+@export var aggressionLevel: int
+@export var baseHp: int
+@export var baseDamage: int

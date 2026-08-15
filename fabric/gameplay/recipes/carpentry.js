@@ -10,7 +10,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
-      yield:  { type: 'integer', description: 'Number of output items produced per craft' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
     },
     relations: {
       inputThornwood: { name: 'inputThornwood', kind: 'hasOne', target: 'Thornwood' },
@@ -38,7 +38,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
-      yield:  { type: 'integer', description: 'Number of output items produced per craft' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
     },
     relations: {
       inputIngot:    { name: 'inputIngot',    kind: 'hasOne', target: 'FerriteIngot' },
@@ -68,7 +68,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
-      yield:  { type: 'integer', description: 'Number of output items produced per craft' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
     },
     relations: {
       inputDuskfiber: { name: 'inputDuskfiber', kind: 'hasOne', target: 'Duskfiber' },
@@ -95,7 +95,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
-      yield:  { type: 'integer', description: 'Number of output items produced per craft' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
     },
     relations: {
       inputAshite: { name: 'inputAshite', kind: 'hasOne', target: 'Ashite' },
