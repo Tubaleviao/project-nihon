@@ -19,6 +19,10 @@ extends Node
 ## (fabric/gameplay/loot.js). If the fabric value changes, update this constant.
 const DESPAWN_SECONDS := 120.0  # LootTable.despawnSeconds defaultValue
 
+## Physics layer for pickup bodies (layer 3 / bit 2). PlayerSlice aims with a
+## ray whose collision mask targets this layer.
+const PICKUP_COLLISION_LAYER := 4
+
 ## Loot tables keyed by creature entity id (matches GameData.CREATURES keys).
 const LOOT_TABLES: Dictionary = {
 	"ForestBoar": [
@@ -101,6 +105,12 @@ func consume_pickup(pickup_id: String) -> Dictionary:
 		p["body"].queue_free()
 	return p
 
+## Return the pickup record for an id without consuming it (empty dict if unknown).
+func get_pickup(pickup_id: String) -> Dictionary:
+	if not _pickups.has(pickup_id):
+		return {}
+	return _pickups[pickup_id]
+
 # ---------------------------------------------------------------------------
 # Private
 # ---------------------------------------------------------------------------
@@ -126,7 +136,7 @@ func _on_creature_died(entity_id: String, position: Vector3, _killer_id: String)
 			var pid := "pickup_%d" % _next_id
 			_next_id += 1
 			# Build a visible body so the item actually appears on the ground.
-			var body := _make_pickup_visual(entry["item_id"], position)
+			var body := _make_pickup_visual(pid, entry["item_id"], position)
 			add_child(body)
 			_pickups[pid] = {
 				"item_id":    entry["item_id"],
@@ -158,7 +168,7 @@ func _tick_despawn() -> void:
 # ---------------------------------------------------------------------------
 
 ## Build a small coloured box so a dropped item is visible in the world.
-func _make_pickup_visual(item_id: String, pos: Vector3) -> Node3D:
+func _make_pickup_visual(pid: String, item_id: String, pos: Vector3) -> Node3D:
 	var node := Node3D.new()
 	node.name = "Pickup_%s" % item_id
 	node.position = pos
@@ -175,6 +185,21 @@ func _make_pickup_visual(item_id: String, pos: Vector3) -> Node3D:
 	mesh.material_override = mat
 
 	node.add_child(mesh)
+
+	# Collision body so the player's aim ray can detect this pickup.
+	var col_body := StaticBody3D.new()
+	col_body.collision_layer = PICKUP_COLLISION_LAYER
+	col_body.collision_mask = 0
+	col_body.set_meta("pickup_id", pid)
+	col_body.set_meta("item_id", item_id)
+	var shape := CollisionShape3D.new()
+	var box_shape := BoxShape3D.new()
+	box_shape.size = Vector3(0.4, 0.4, 0.4)
+	shape.shape = box_shape
+	shape.position = Vector3(0.0, 0.2, 0.0)
+	col_body.add_child(shape)
+	node.add_child(col_body)
+
 	return node
 
 ## Deterministic per-item colour so the same item always looks the same.

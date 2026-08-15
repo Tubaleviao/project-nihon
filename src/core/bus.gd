@@ -97,6 +97,10 @@ signal loot_dropped(pickup_id: String, item_id: String, position: Vector3, quant
 ## Emitted by LootSlice when a pickup despawns without being collected.
 signal loot_expired(pickup_id: String)
 
+## Request to pick up a world pickup (emitted by PlayerSlice when the player
+## aims at a pickup and clicks). Carries the LootSlice pickup id.
+signal pickup_requested(pickup_id: String)
+
 # ---------------------------------------------------------------------------
 # Inventory
 # ---------------------------------------------------------------------------
