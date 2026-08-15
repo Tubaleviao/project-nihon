@@ -31,7 +31,7 @@ func run() -> void:
 	print("╚══════════════════════════════════════╝\n")
 
 	_run_test("battle: hit reduces defender hp",              _test_battle_hit_reduces_hp)
-	_run_test("battle: miss leaves hp unchanged",             _test_battle_miss_outcome_exists)
+	_run_test("battle: miss leaves hp unchanged",             _test_battle_miss_leaves_hp_unchanged)
 	_run_test("battle: kill emits creature_died signal",      _test_battle_kill_emits_death)
 	_run_test("battle: reset_hp restores state",              _test_battle_reset_hp)
 	_run_test("battle: resolves stats via creature_slice",    _test_battle_resolves_via_creature_slice)
@@ -92,33 +92,37 @@ func _test_battle_hit_reduces_hp() -> void:
 	assert_true(result["defender_hp_remaining"] >= 0.0, "HP is non-negative")
 	b.queue_free()
 
-func _test_battle_miss_outcome_exists() -> void:
+func _test_battle_miss_leaves_hp_unchanged() -> void:
 	var b := BattleSlice.new()
 	add_child(b)
-	# Run many rounds; at least one outcome value must be "hit", "critical", or "miss".
-	var seen := {}
-	for _i in range(40):
+	seed(11)
+	# Start HP high enough that the defender survives any number of rounds in
+	# this test, so a miss is observed from a live (non-zero) HP state.
+	b._hp_state["GraywolfPack"] = 10000.0
+	var saw_miss := false
+	for _i in range(200):
+		var before: float = b._hp_state["GraywolfPack"]
 		var r := b.resolve_round("ForestBoar", "GraywolfPack")
-		seen[r["outcome"]] = true
-	assert_true(seen.has("hit") or seen.has("critical") or seen.has("miss"),
-		"outcome is hit/critical/miss/kill")
+		if r["outcome"] == "miss":
+			assert_eq(b._hp_state["GraywolfPack"], before, "miss leaves defender HP unchanged")
+			saw_miss = true
+			break
+	assert_true(saw_miss, "observed at least one miss over 200 seeded rounds")
 	b.queue_free()
 
 func _test_battle_kill_emits_death() -> void:
 	var b := BattleSlice.new()
 	add_child(b)
-	# Prime defender with 1 HP so the next non-miss attack kills it.
+	seed(42)
+	# Prime the defender with 1 HP so the next non-miss attack kills it.
 	b._hp_state["ForestBoar"] = 1.0
 	var died_fired := false
 	GameBus.creature_died.connect(func(_id, _pos, _killer): died_fired = true)
-	# Run rounds until HP is zero or we exhaust attempts.
-	for _i in range(20):
+	for _i in range(200):
 		b.resolve_round("GraywolfPack", "ForestBoar")
 		if died_fired:
 			break
-	# died_fired may still be false if all 20 rounds were misses (unlikely but valid).
-	# We only assert that the mechanism exists; a definitive kill test would require seeding.
-	assert_true(true, "creature_died mechanism is wired")
+	assert_true(died_fired, "creature_died emitted once defender HP reaches zero")
 	b.queue_free()
 
 func _test_battle_reset_hp() -> void:

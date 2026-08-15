@@ -250,13 +250,18 @@ func _on_load_completed(slot: int, data: Dictionary) -> void:
 func _check_game_data() -> void:
 	print("\n=== GameData registry check ===")
 	var registries := {
+		"APPEARANCES":  GameData.APPEARANCES,
 		"BIOMES":       GameData.BIOMES,
 		"CREATURES":    GameData.CREATURES,
 		"DECISIONS":    GameData.DECISIONS,
 		"ITEMS":        GameData.ITEMS,
+		"LOOTS":        GameData.LOOTS,
 		"MATERIALS":    GameData.MATERIALS,
+		"PALETTES":     GameData.PALETTES,
+		"PLAYERS":      GameData.PLAYERS,
 		"PROFESSIONS":  GameData.PROFESSIONS,
 		"RECIPES":      GameData.RECIPES,
+		"SKELETONS":    GameData.SKELETONS,
 		"SKILLS":       GameData.SKILLS,
 		"SYSTEMS":      GameData.SYSTEMS,
 		"TECHNOLOGIES": GameData.TECHNOLOGIES,
