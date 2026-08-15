@@ -116,7 +116,7 @@ func apply_appearance(instance_id: String, recipe: Dictionary) -> bool:
 	var inst: Dictionary = _instances[instance_id]
 
 	var old_root: Node3D = inst["root"]
-	old_root.free()
+	old_root.queue_free()
 
 	var built: Dictionary = _make_visual(instance_id, normalized)
 	var root: Node3D = built["root"]

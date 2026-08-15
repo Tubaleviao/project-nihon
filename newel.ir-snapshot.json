@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-15T12:29:58.177Z",
-  "schemaHash": "sha256:bba262f6f1ab1cea17abe5628c67bdcb856b46dcf7897debe1038689ed874c10",
+  "generatedAt": "2026-08-15T13:53:24.496Z",
+  "schemaHash": "sha256:24100f973dd061501a0991fa25da4b626a409b1d76a5274a8842f878ac0fcab7",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -10046,6 +10046,293 @@
               "guards": [
                 "Requires two duskfiber strands per condition tier restored",
                 "Carpentry: Apprentice"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "FerriteShield": {
+        "name": "FerriteShield",
+        "tags": [
+          "item"
+        ],
+        "description": "Round shield of ferrite-plated hardwood. Blocks melee and missile strikes at the cost of mobility; the standard off-hand defence for early-game fighters.",
+        "goal": "Provide an entry-level off-hand defensive option for shield-wielding characters",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 5.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "Always false for shields",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Remaining durability points before condition degrades",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 180
+          },
+          "equipmentSlot": {
+            "name": "equipmentSlot",
+            "type": "string",
+            "description": "Equipment slot — what is equipped (§6)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "OffHand"
+          },
+          "deformationMode": {
+            "name": "deformationMode",
+            "type": "string",
+            "description": "SKINNED | RIGID | HYBRID (§10)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "RIGID"
+          },
+          "masks": {
+            "name": "masks",
+            "type": "json",
+            "description": "Color/mask regions present on the asset (§17)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "primary": true,
+              "secondary": false,
+              "accent": true,
+              "metal": true,
+              "emission": false,
+              "wear": true
+            }
+          },
+          "hideRegions": {
+            "name": "hideRegions",
+            "type": "json",
+            "description": "Body regions this item hides to prevent clipping (§16)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": []
+          },
+          "attachments": {
+            "name": "attachments",
+            "type": "json",
+            "description": "Attachment state → socket map (§7)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "equipped": "socket_shield",
+              "stored": "socket_back"
+            }
+          },
+          "minLodLevel": {
+            "name": "minLodLevel",
+            "type": "integer",
+            "description": "Coarsest LOD at which this part still renders (§35)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2
+          },
+          "size": {
+            "name": "size",
+            "type": "json",
+            "description": "Placeholder mesh extents [x, y, z]",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              0.55,
+              0.75,
+              0.08
+            ]
+          },
+          "metalTone": {
+            "name": "metalTone",
+            "type": "string",
+            "description": "Metal tone for metal-mask regions (§21)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "ferrite"
+          },
+          "compatibleTags": {
+            "name": "compatibleTags",
+            "type": "json",
+            "description": "Semantic tags required to equip (§39)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "has_hands",
+              "can_wield_weapon"
+            ]
+          }
+        },
+        "relations": {
+          "ferrite": {
+            "name": "ferrite",
+            "kind": "hasOne",
+            "target": "Ferrite"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "Condition worsens as the shield absorbs blows",
+            "rules": [
+              "Blocking heavy or void attacks degrades the shield at double rate"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-plate and re-band the shield at a forge",
+            "rules": [
+              "Requires one ferrite ingot; Smithing: Novice"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Blocking heavy or void attacks degrades the shield at double rate"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Blocking heavy or void attacks degrades the shield at double rate"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Blocking heavy or void attacks degrades the shield at double rate"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires one ferrite ingot; Smithing: Novice"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires one ferrite ingot; Smithing: Novice"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires one ferrite ingot; Smithing: Novice"
               ],
               "effects": []
             }

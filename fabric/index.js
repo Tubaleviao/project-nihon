@@ -122,6 +122,7 @@ module.exports = defineFabric({
       FerriteHelmet:            items.FerriteHelmet,
       VeilsteelChestplate:      items.VeilsteelChestplate,
       DuskfiberCloak:           items.DuskfiberCloak,
+      FerriteShield:            items.FerriteShield,
       FieldRations:             items.FieldRations,
       AlchemyPotion:            items.AlchemyPotion,
       FerriteIngot:             items.FerriteIngot,

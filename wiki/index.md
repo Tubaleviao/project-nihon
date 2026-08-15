@@ -57,6 +57,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [FerriteHelmet](entities/ferritehelmet.md) — Simple open-faced helmet shaped from ferrite plate
 - [FerriteIngot](entities/ferriteingot.md) — Smelted ferrite bar ready for smithing
 - [FerritePick](entities/ferritepick.md) — Rough-hewn mining pick forged from ferrite ingots and a thornwood handle
+- [FerriteShield](entities/ferriteshield.md) — Round shield of ferrite-plated hardwood
 - [FerriteShortSword](entities/ferriteshortsword.md) — Standard single-edged blade forged from a refined ferrite ingot
 - [FieldRations](entities/fieldrations.md) — Dried grain-and-herb ration pack prepared from temperate grassland crops
 - [LumenfiteOrb](entities/lumenfiteorb.md) — A polished lumenfite sphere charged with stored magical energy by an Arcanist

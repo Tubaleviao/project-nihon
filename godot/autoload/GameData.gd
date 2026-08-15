@@ -51,6 +51,7 @@ const ITEMS: Dictionary = {
 		"FerriteHelmet": preload("res://godot/items/ferritehelmet.tres"),
 		"FerriteIngot": preload("res://godot/items/ferriteingot.tres"),
 		"FerritePick": preload("res://godot/items/ferritepick.tres"),
+		"FerriteShield": preload("res://godot/items/ferriteshield.tres"),
 		"FerriteShortSword": preload("res://godot/items/ferriteshortsword.tres"),
 		"FieldRations": preload("res://godot/items/fieldrations.tres"),
 		"LumenfiteOrb": preload("res://godot/items/lumenfiteorb.tres"),
