@@ -131,6 +131,32 @@ signal craft_requested(recipe_id: String)
 signal craft_resolved(result: Dictionary)
 
 # ---------------------------------------------------------------------------
+# Mining / building
+# ---------------------------------------------------------------------------
+
+## Request to mine the voxel block under the given world position (PlayerSlice
+## on right-click). normal is the hit face normal, used to disambiguate which
+## column to mine when the ray strikes a side face. VoxelSlice lowers the
+## column and yields a material.
+signal block_mine_requested(position: Vector3, normal: Vector3)
+
+## Request to place a voxel block against the hit face (PlayerSlice on
+## middle-click). normal is the face normal used to pick the target column.
+signal block_place_requested(position: Vector3, normal: Vector3)
+
+## Request to advance the build material selection (PlayerSlice on R).
+signal block_cycle_material_requested()
+
+## Emitted by VoxelSlice when a block is mined and its material enters the inventory.
+signal block_mined(material: String, quantity: int, position: Vector3)
+
+## Emitted by VoxelSlice when a block is placed.
+signal block_placed(material: String, position: Vector3)
+
+## Emitted by VoxelSlice when the build material selection changes.
+signal block_place_material_changed(material: String)
+
+# ---------------------------------------------------------------------------
 # Player
 # ---------------------------------------------------------------------------
 

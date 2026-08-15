@@ -16,6 +16,7 @@ const LootSlice       := preload("res://src/loot/loot_slice.gd")
 const InventorySlice  := preload("res://src/inventory/inventory_slice.gd")
 const CharacterSlice  := preload("res://src/character/character_slice.gd")
 const CraftingSlice   := preload("res://src/crafting/crafting_slice.gd")
+const VoxelSlice      := preload("res://src/terrain/voxel_slice.gd")
 
 var _pass: int = 0
 var _fail: int = 0
@@ -68,6 +69,18 @@ func run() -> void:
 	_run_test("crafting: missing inputs fail",                _test_crafting_missing_inputs)
 	_run_test("crafting: unknown recipe rejected",            _test_crafting_unknown_recipe)
 	_run_test("crafting: can_craft does not mutate",          _test_crafting_can_craft_no_mutate)
+	_run_test("voxel: mine lowers height and yields material", _test_voxel_mine_yields_material)
+	_run_test("voxel: mine at bedrock fails",                  _test_voxel_mine_bedrock)
+	_run_test("voxel: side-face mine targets hit block",       _test_voxel_mine_side_face)
+	_run_test("voxel: cycle filters to held materials",        _test_voxel_cycle_inventory_filtered)
+	_run_test("voxel: place raises height and consumes",       _test_voxel_place_consumes)
+	_run_test("voxel: place beyond cap fails and refunds",     _test_voxel_place_cap)
+	_run_test("voxel: biome material mapping",                 _test_voxel_biome_materials)
+	_run_test("voxel: edits round-trip",                       _test_voxel_edits_round_trip)
+	_run_test("voxel: placed block keeps material colour",    _test_voxel_placed_block_keeps_material_color)
+	_run_test("voxel: mining placed block yields its material", _test_voxel_mine_placed_block_yields_material)
+	_run_test("voxel: placed block preserves base colour",     _test_voxel_placed_block_preserves_base_colour)
+	_run_test("voxel: place after mine keeps placed colour",   _test_voxel_place_after_mine_keeps_colour)
 
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
@@ -583,6 +596,214 @@ func _test_crafting_can_craft_no_mutate() -> void:
 	assert_true(check["success"], "can_craft returns true when craftable")
 	assert_eq(inv.get_item_count("Ferrite"), 2, "can_craft does not consume inputs")
 	c.queue_free()
+	inv.queue_free()
+
+# ---------------------------------------------------------------------------
+# VoxelSlice tests (mining & building)
+# ---------------------------------------------------------------------------
+
+## Build a VoxelSlice over a flat 2.0-tall synthetic chunk (deterministic).
+func _make_voxel() -> VoxelSlice:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var hm: Array = []
+	hm.resize(32 * 32)
+	hm.fill(2.0)
+	v.build_chunk(Vector2i(0, 0), hm)
+	return v
+
+func _test_voxel_mine_yields_material() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 2.0, "flat chunk height is 2.0")
+	var r := v.mine_block(Vector3(16.5, 2.0, 16.5))
+	assert_true(r.get("success", false), "mine succeeds on a 2.0-tall column")
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.5, "height lowered by STEP_HEIGHT")
+	assert_true(GameData.MATERIALS.has(r.get("material", "")), "yielded a valid fabric material")
+	assert_eq(inv.get_item_count(str(r.get("material", ""))), 1, "material added to inventory")
+	v.queue_free()
+	inv.queue_free()
+
+func _test_voxel_mine_bedrock() -> void:
+	var v := _make_voxel()
+	v.apply_edits({ "16,16": 0.0 })
+	var r := v.mine_block(Vector3(16.5, 0.0, 16.5))
+	assert_false(r.get("success", false), "mining at bedrock fails")
+	v.queue_free()
+
+func _test_voxel_mine_side_face() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	# East-facing face (normal +X) at x=17.0: the hit block is tile 16 (west).
+	v.mine_block(Vector3(17.0, 1.5, 16.5), Vector3(1, 0, 0))
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.5, "+X face mines the block west of the boundary")
+	assert_eq(v.get_voxel_height_at(Vector2(17.0, 16.0)), 2.0, "east block untouched")
+	# West-facing face (normal -X) at x=19.0: the hit block is tile 19 (east).
+	v.mine_block(Vector3(19.0, 1.5, 16.5), Vector3(-1, 0, 0))
+	assert_eq(v.get_voxel_height_at(Vector2(19.0, 16.0)), 1.5, "-X face mines the block east of the boundary")
+	assert_eq(v.get_voxel_height_at(Vector2(18.0, 16.0)), 2.0, "west block untouched")
+	v.queue_free()
+	inv.queue_free()
+
+func _test_voxel_cycle_inventory_filtered() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	inv.add_item("Ashite", 2)
+	inv.add_item("Thornwood", 1)
+	v.set_place_material("Ashite")
+	assert_eq(v.cycle_place_material(), "Thornwood", "cycles to the other held material")
+	assert_eq(v.cycle_place_material(), "Ashite", "wraps back, skipping materials not held")
+	v.queue_free()
+	inv.queue_free()
+
+func _test_voxel_place_consumes() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	v.set_place_material("Ashite")
+	inv.add_item("Ashite", 3)
+	var ok := v.place_block(Vector3(16.5, 2.0, 16.5), Vector3.UP)
+	assert_true(ok, "place succeeds")
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 2.5, "height raised by STEP_HEIGHT")
+	assert_eq(inv.get_item_count("Ashite"), 2, "Ashite consumed from inventory")
+	v.queue_free()
+	inv.queue_free()
+
+func _test_voxel_place_cap() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	v.set_place_material("Ashite")
+	inv.add_item("Ashite", 1)
+	v.apply_edits({ "16,16": v.MAX_HEIGHT })
+	var ok := v.place_block(Vector3(16.5, v.MAX_HEIGHT, 16.5), Vector3.UP)
+	assert_false(ok, "place beyond build cap fails")
+	assert_eq(inv.get_item_count("Ashite"), 1, "blocked placement refunds the material")
+	v.queue_free()
+	inv.queue_free()
+
+func _test_voxel_biome_materials() -> void:
+	var v := VoxelSlice.new()
+	var volcanic: Array = []
+	for i in range(16):
+		volcanic.append(v.material_for_biome("VolcanicBadlands", Vector2(i, 0)))
+	assert_true(volcanic.has("Ashite") or volcanic.has("Aethermite"), "volcanic yields ashite/aethermite")
+	var temperate: Array = []
+	for i in range(16):
+		temperate.append(v.material_for_biome("TemperateForest", Vector2(i, 0)))
+	assert_true(temperate.has("Ferrite") or temperate.has("Thornwood"), "temperate yields ferrite/thornwood")
+	v.queue_free()
+
+func _test_voxel_edits_round_trip() -> void:
+	var v := _make_voxel()
+	v.apply_edits({ "16,16": 1.0, "17,17": 3.5 })
+	assert_eq(v.get_edits().get("16,16", 0.0), 1.0, "edit 16,16 survives")
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.0, "height reflects restored edit")
+	assert_eq(v.get_voxel_height_at(Vector2(17.0, 17.0)), 3.5, "second edit restored")
+	v.queue_free()
+
+func _test_voxel_placed_block_keeps_material_color() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	# Find a tile whose biome material is NOT Ferrite so the colour change is
+	# unambiguous (the synthetic chunk has no terrain_slice → TemperateForest).
+	var tile := Vector2i(-1, -1)
+	for tz in range(32):
+		for tx in range(32):
+			if v.material_for_biome("TemperateForest", Vector2(tx, tz)) != "Ferrite":
+				tile = Vector2i(tx, tz)
+				break
+		if tile.x >= 0:
+			break
+	assert_true(tile.x >= 0, "found a non-Ferrite tile in the test chunk")
+	v.set_place_material("Ferrite")
+	inv.add_item("Ferrite", 1)
+	var center := Vector2(tile.x + 0.5, tile.y + 0.5)
+	assert_true(v.place_block(Vector3(center.x, 2.0, center.y), Vector3.UP), "place succeeds")
+	assert_eq(v._column_color(center), VoxelSlice.MATERIAL_COLORS["Ferrite"], "placed block renders Ferrite colour, not biome colour")
+	v.queue_free()
+	inv.queue_free()
+
+func _test_voxel_mine_placed_block_yields_material() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	v.set_place_material("Thornwood")
+	inv.add_item("Thornwood", 1)
+	assert_true(v.place_block(Vector3(16.5, 2.0, 16.5), Vector3.UP), "place Thornwood succeeds")
+	var r := v.mine_block(Vector3(16.5, 2.5, 16.5))
+	assert_true(r.get("success", false), "mine succeeds")
+	assert_eq(str(r.get("material", "")), "Thornwood", "mining a placed block yields its own material")
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 2.0, "height back to natural after mining")
+	v.queue_free()
+	inv.queue_free()
+
+func _test_voxel_placed_block_preserves_base_colour() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	# Place Ferrite on a tile whose biome material is NOT Ferrite, then check the
+	# column renders as two distinct layers: natural base (biome colour) + the
+	# placed block (Ferrite colour) — the base must NOT be recoloured.
+	var tile := Vector2i(-1, -1)
+	for tz in range(32):
+		for tx in range(32):
+			if v.material_for_biome("TemperateForest", Vector2(tx, tz)) != "Ferrite":
+				tile = Vector2i(tx, tz)
+				break
+		if tile.x >= 0:
+			break
+	assert_true(tile.x >= 0, "found a non-Ferrite tile in the test chunk")
+	v.set_place_material("Ferrite")
+	inv.add_item("Ferrite", 1)
+	var center := Vector2(tile.x + 0.5, tile.y + 0.5)
+	assert_true(v.place_block(Vector3(center.x, 2.0, center.y), Vector3.UP), "place succeeds")
+	var layers: Array = v._column_layers(Vector2i(0, 0), v._heightmaps["0,0"], tile.x, tile.y)
+	assert_true(layers.size() >= 2, "column has natural + placed layers")
+	assert_eq(layers[0]["color"], v._natural_color(center), "natural base keeps its biome colour")
+	assert_eq(layers[-1]["color"], VoxelSlice.MATERIAL_COLORS["Ferrite"], "placed block renders Ferrite colour")
+	v.queue_free()
+	inv.queue_free()
+
+func _test_voxel_place_after_mine_keeps_colour() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	# Find a non-Ferrite (e.g. Thornwood) tile to mine.
+	var tile := Vector2i(-1, -1)
+	for tz in range(32):
+		for tx in range(32):
+			if v.material_for_biome("TemperateForest", Vector2(tx, tz)) != "Ferrite":
+				tile = Vector2i(tx, tz)
+				break
+		if tile.x >= 0:
+			break
+	assert_true(tile.x >= 0, "found a non-Ferrite tile in the test chunk")
+	var center := Vector2(tile.x + 0.5, tile.y + 0.5)
+	var mine_pos := Vector3(center.x, 2.0, center.y)
+	# Mine the natural top block (yields the biome material, e.g. Thornwood).
+	assert_true(v.mine_block(mine_pos).get("success", false), "mine natural succeeds")
+	# Place Ferrite back in the same column.
+	v.set_place_material("Ferrite")
+	inv.add_item("Ferrite", 1)
+	assert_true(v.place_block(mine_pos, Vector3.UP), "place Ferrite succeeds")
+	var layers: Array = v._column_layers(Vector2i(0, 0), v._heightmaps["0,0"], tile.x, tile.y)
+	assert_true(layers.size() >= 2, "column has natural + placed layers")
+	assert_eq(layers[-1]["color"], VoxelSlice.MATERIAL_COLORS["Ferrite"], "placed Ferrite renders Ferrite colour, not the mined material's colour")
+	v.queue_free()
 	inv.queue_free()
 
 # ---------------------------------------------------------------------------

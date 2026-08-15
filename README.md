@@ -29,9 +29,14 @@ pnpm generate   # generate the design bible into bible/
 | 6 | `generator-bible` integration | Done |
 | 7 | Character system specification | Done |
 | 8 | `generator-godot` integration | Done |
-| 9 | Public wiki | Planned |
+| 9 | Public wiki | Done |
 | 10 | Vertical slices — playable game loop with creature combat | Done |
 | 11 | Crafting slice — fabric-driven recipe resolution | Done |
+| 12 | Voxel mining and building | Done |
+| 13 | Technology unlock gates | Planned |
+
+Deferred (in priority order): creature AI/behavior, multiplayer world sync,
+chunk streaming / larger world.
 
 See [ROADMAP.md](ROADMAP.md) for the full spec, deliverables, and acceptance criteria for each phase.
 

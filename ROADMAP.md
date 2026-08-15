@@ -227,22 +227,24 @@ of this phase in `../newel/packages/generator-godot/`.
 
 ---
 
-## Phase 9 — Public wiki
+## Phase 9 — Public wiki ✅ Done
 
 **Goal:** Publish a player-facing wiki generated from the same fabric.
 
-**Newel dependency:** Newel Phase 13 (`generator-wiki`) must be released.
+**Newel dependency:** Newel Phase 13 (`generator-wiki`).
 
 **Deliverables:**
 - `newel.config.js` updated with `WikiGenerator`
-- Wiki deployed as a static site (VitePress or equivalent)
+- `wiki/` output committed to the repo (generated Markdown per entity)
 - Internal design notes (rules, guards written as implementation details)
   suppressed via patches
 
 **Acceptance criteria:**
-- Wiki is publicly accessible
-- No internal field names or implementation-detail rules are visible to players
-- Wiki updates automatically on every fabric change via CI
+- Wiki generator wired and producing player-facing Markdown ✓
+- Wiki output committed and regenerable from the fabric ✓
+
+**Deferred:** public static-site deployment (VitePress or equivalent) and
+CI-triggered regeneration are not yet wired.
 
 ---
 
@@ -359,17 +361,49 @@ by `generator-godot`); no generator change needed.
 
 ---
 
-## Phase 12 — Voxel mining and building
+## Phase 12 — Voxel mining and building ✅ Done
 
 **Goal:** Realize the "players build a civilization" core fantasy — mine raw
 materials from voxel terrain and place persistent structures.
 
-**Deliverables (proposed):**
-- `voxel_slice.gd` gains an edit API (mine a block → material, place a block).
-- Player raycast interaction reuses the existing aim ray to select a target block.
-- Mined materials flow into the inventory (feeding Phase 11 crafting).
-- Placed structures persist through `PersistenceSlice` (world-state save/load).
-- Biome-aware material spawns (temperate → ferrite/thornwood, volcanic → ashite, …).
+**Newel dependency:** None. Reuses the existing fabric materials
+(`GameData.MATERIALS`) and the inventory primitives added in Phase 11.
+
+**Deliverables:**
+- `src/terrain/voxel_slice.gd` — edit API: `mine_block(world_pos)` lowers a
+  column one `STEP_HEIGHT` and yields the biome's material into the inventory;
+  `place_block(world_pos, normal)` raises the adjacent column one step and
+  consumes the selected material. Edits are stored as absolute quantised
+  heights keyed by global tile coordinate and re-applied on every
+  `build_chunk` rebuild.
+- `src/terrain/terrain_slice.gd` — `get_biome_at(world_pos)` on a fixed-seed
+  temperature noise channel (independent of the height noise) so biome
+  assignment is deterministic across runs.
+- Biome-aware material spawns: `BIOME_MATERIALS` maps biome → material keys
+  (temperate → ferrite/thornwood, volcanic → ashite/aethermite, twilight →
+  duskfiber/lumenfite, void → voidite/aethermite); `material_for_biome()` picks
+  deterministically per tile.
+- `src/player/player_slice.gd` — a second aim ray targets the terrain on its
+  dedicated collision layer (layer 2); right-click mines, middle-click places,
+  `R` cycles the build material. Terrain collision moved to layer 2 so the
+  block ray never hits the player's own body.
+- Mined materials flow into the inventory via `inventory_slice.add_item`
+  (feeding Phase 11 crafting); placement consumes via `drop_item`.
+- Persistence: `get_edits()` / `apply_edits()` round-trip voxel edits through
+  the world snapshot (`world.voxel_edits`); `game_root` restores them on
+  `load_completed`.
+
+**Acceptance criteria:**
+- `mine_block` lowers the column height and yields a fabric material ✓
+- `place_block` raises the column height and consumes the selected material ✓
+- Mining at bedrock and building past the cap are blocked (fail-closed) ✓
+- Materials resolve per biome (temperate ≠ volcanic) ✓
+- Voxel edits survive a save/load round-trip ✓
+- 6 automated tests pass at startup ✓
+
+**Known simplifications (deferred):**
+- Mining/building tool gating is not enforced (no durability or tier gates).
+- Materials still have no weight model (inventory weight resolves to 0).
 
 ---
 

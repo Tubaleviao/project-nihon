@@ -21,6 +21,8 @@ const SYNC_INTERVAL := 30     # physics ticks between network sync broadcasts
 const ATTACK_RANGE := 3.0     # metres — melee interaction radius
 const PICKUP_RANGE := 8.0     # metres — how far the player can aim-pick
 const PICKUP_COLLISION_MASK := 4   # layer 3 (bit 2) — matches loot pickup bodies
+const BUILD_RANGE := 8.0      # metres — how far the player can reach a block
+const TERRAIN_COLLISION_MASK := 2  # layer 2 (bit 1) — terrain, for mine/build ray
 
 const MAX_HP := 100.0
 
@@ -37,14 +39,22 @@ var _hud: CanvasLayer = null
 var _aim_label: Label = null
 var _aimed_pickup_id: String = ""
 var _aimed_item_id: String = ""
+var _build_hint_label: Label = null
+
+## Aimed terrain block (mine/build target), updated every frame.
+var _aimed_block_hit: bool = false
+var _aimed_block_pos: Vector3 = Vector3.ZERO
+var _aimed_block_normal: Vector3 = Vector3.UP
 
 ## Set by game_root after all slices are instantiated.
 var creature_slice: Node = null
+var voxel_slice: Node = null
 
 func _ready() -> void:
 	_build_body()
 	_build_hud()
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	GameBus.block_place_material_changed.connect(_on_place_material_changed)
 
 func _physics_process(delta: float) -> void:
 	if not _alive:
@@ -83,6 +93,17 @@ func _input(event: InputEvent) -> void:
 	# F key → melee attack the nearest creature in range.
 	if event is InputEventKey and event.pressed and event.keycode == KEY_F:
 		_try_attack()
+	# Right-click → mine the aimed terrain block.
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		if _aimed_block_hit:
+			GameBus.block_mine_requested.emit(_aimed_block_pos, _aimed_block_normal)
+	# Middle-click → place a block against the aimed terrain face.
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_MIDDLE:
+		if _aimed_block_hit:
+			GameBus.block_place_requested.emit(_aimed_block_pos, _aimed_block_normal)
+	# R key → cycle the build material.
+	if event is InputEventKey and event.pressed and event.keycode == KEY_R:
+		GameBus.block_cycle_material_requested.emit()
 
 func get_position() -> Vector3:
 	return _body.global_position if _body else Vector3.ZERO
@@ -110,6 +131,11 @@ func _build_body() -> void:
 	_body = CharacterBody3D.new()
 	_body.name = "PlayerBody"
 	add_child(_body)
+
+	# Terrain collision lives on layer 2 (see VoxelSlice.TERRAIN_COLLISION_LAYER);
+	# the body must collide with that layer to stand on the ground.
+	_body.collision_layer = 1
+	_body.collision_mask = 3   # layer 1 (default) + layer 2 (terrain)
 
 	# Spawn above the terrain origin so the player lands on the voxel surface.
 	_body.global_position = Vector3(16.0, 12.0, 16.0)
@@ -242,18 +268,41 @@ func _build_hud() -> void:
 	_hud.add_child(aim_label)
 	_aim_label = aim_label
 
+	# Build hint — current place material + control reminders.
+	var build_hint := Label.new()
+	build_hint.name = "BuildHint"
+	build_hint.anchor_left = 0.5
+	build_hint.anchor_right = 0.5
+	build_hint.anchor_top = 1.0
+	build_hint.anchor_bottom = 1.0
+	build_hint.offset_left = -300.0
+	build_hint.offset_right = 300.0
+	build_hint.offset_top = -48.0
+	build_hint.offset_bottom = -16.0
+	build_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	build_hint.add_theme_font_size_override("font_size", 16)
+	_hud.add_child(build_hint)
+	_build_hint_label = build_hint
+	_refresh_build_hint()
+
 	add_child(_hud)
 
 func _update_aim() -> void:
 	var pid := ""
 	var item_id := ""
+	_aimed_block_hit = false
+	_aimed_block_pos = Vector3.ZERO
+	_aimed_block_normal = Vector3.UP
 	if _camera != null and _alive:
 		var viewport := _camera.get_viewport()
 		if viewport != null:
 			var center := viewport.get_visible_rect().size * 0.5
 			var from := _camera.project_ray_origin(center)
-			var to := from + _camera.project_ray_normal(center) * PICKUP_RANGE
+			var dir := _camera.project_ray_normal(center)
 			var space := _camera.get_world_3d().direct_space_state
+
+			# Pickup ray (layer 3).
+			var to := from + dir * PICKUP_RANGE
 			var query := PhysicsRayQueryParameters3D.create(from, to, PICKUP_COLLISION_MASK)
 			query.collide_with_areas = false
 			query.collide_with_bodies = true
@@ -263,6 +312,17 @@ func _update_aim() -> void:
 				if collider != null and collider.has_meta("pickup_id"):
 					pid = str(collider.get_meta("pickup_id"))
 					item_id = str(collider.get_meta("item_id"))
+
+			# Block ray (terrain layer 2) — mine/build target.
+			var bto := from + dir * BUILD_RANGE
+			var bquery := PhysicsRayQueryParameters3D.create(from, bto, TERRAIN_COLLISION_MASK)
+			bquery.collide_with_areas = false
+			bquery.collide_with_bodies = true
+			var bhit := space.intersect_ray(bquery)
+			if not bhit.is_empty():
+				_aimed_block_hit = true
+				_aimed_block_pos = bhit.get("position", Vector3.ZERO)
+				_aimed_block_normal = bhit.get("normal", Vector3.UP)
 	_aimed_pickup_id = pid
 	_aimed_item_id = item_id
 	_update_aim_hud()
@@ -276,6 +336,19 @@ func _update_aim_hud() -> void:
 	else:
 		_aim_label.text = "Pick up: %s" % _aimed_item_id
 		_aim_label.visible = true
+
+func _refresh_build_hint() -> void:
+	if _build_hint_label == null:
+		return
+	var mat := ""
+	if voxel_slice != null and voxel_slice.has_method("get_place_material"):
+		mat = str(voxel_slice.get_place_material())
+	if mat == "":
+		mat = "none"
+	_build_hint_label.text = "Build: %s   |   RMB mine · MMB place · R cycle" % mat
+
+func _on_place_material_changed(_material: String) -> void:
+	_refresh_build_hint()
 
 func _try_pickup_aimed() -> void:
 	var pid := _aimed_pickup_id
