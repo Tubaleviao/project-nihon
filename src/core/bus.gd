@@ -118,6 +118,10 @@ signal item_picked_up(item_id: String, quantity: int)
 ## Emitted by InventorySlice when the inventory reaches capacity.
 signal inventory_full()
 
+## Emitted by InventorySlice whenever contents change (add/drop/consume/pickup).
+## The UI slice listens to refresh the inventory window.
+signal inventory_changed()
+
 # ---------------------------------------------------------------------------
 # Crafting
 # ---------------------------------------------------------------------------

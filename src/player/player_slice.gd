@@ -78,12 +78,12 @@ func _input(event: InputEvent) -> void:
 			cam_arm.rotation_degrees.x - event.relative.y * rad_to_deg(MOUSE_SENS),
 			CAMERA_PITCH_MIN, CAMERA_PITCH_MAX
 		)
-	if event is InputEventKey and event.pressed:
-		if event.keycode == KEY_ESCAPE:
-			if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-				Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-			else:
-				Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	# All world actions below require a captured mouse. While a UI window is
+	# open the UI slice keeps the mouse visible, so this guard prevents
+	# attacking, mining, or placing through an open menu. ESC (mouse capture
+	# toggle) is owned by the UI slice now.
+	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		return
 	# Left-click: pick up an aimed item if there is one, otherwise attack.
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if _aimed_pickup_id != "":

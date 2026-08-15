@@ -17,6 +17,7 @@ const InventorySlice   := preload("res://src/inventory/inventory_slice.gd")
 const CharacterSlice   := preload("res://src/character/character_slice.gd")
 const CraftingSlice    := preload("res://src/crafting/crafting_slice.gd")
 const TechnologySlice  := preload("res://src/technology/technology_slice.gd")
+const UiSlice          := preload("res://src/ui/ui_slice.gd")
 const TestSuite        := preload("res://src/tests/test_suite.gd")
 
 var _terrain:     TerrainSlice
@@ -31,6 +32,7 @@ var _inventory:   InventorySlice
 var _character:   CharacterSlice
 var _crafting:    CraftingSlice
 var _technology:  TechnologySlice
+var _ui:          UiSlice
 
 func _ready() -> void:
 	# Run the automated tests before any production slice enters the tree.
@@ -52,12 +54,13 @@ func _ready() -> void:
 	_character   = CharacterSlice.new()
 	_crafting    = CraftingSlice.new()
 	_technology  = TechnologySlice.new()
+	_ui          = UiSlice.new()
 
 	# CreatureSlice needs the terrain to place spawns on the surface; wire it
 	# before the slices enter the tree so its _ready() can use it.
 	_creature.terrain_slice = _terrain
 
-	for s in [_terrain, _voxel, _battle, _creature, _networking, _persistence, _player, _loot, _inventory, _character, _crafting, _technology]:
+	for s in [_terrain, _voxel, _battle, _creature, _networking, _persistence, _player, _loot, _inventory, _character, _crafting, _technology, _ui]:
 		s.name = s.get_script().resource_path.get_file().get_basename()
 		add_child(s)
 
@@ -72,6 +75,10 @@ func _ready() -> void:
 	_technology.inventory_slice = _inventory
 	_voxel.terrain_slice      = _terrain
 	_voxel.inventory_slice    = _inventory
+	_ui.inventory_slice       = _inventory
+	_ui.crafting_slice        = _crafting
+	_ui.technology_slice      = _technology
+	_ui.refresh_all()
 
 	# Bus listeners for integration-layer logging.
 	GameBus.chunk_ready.connect(_on_chunk_ready)

@@ -5,6 +5,7 @@ extends Node
 ##   IN  : pickup_requested(pickup_id)            — player aims at a pickup and clicks
 ##   OUT : item_picked_up(item_id, quantity)
 ##         inventory_full()
+##         inventory_changed()                    — contents mutated (UI refresh)
 ## Pickups are collected on demand: PlayerSlice raycasts for the aimed pickup and
 ## emits pickup_requested; this slice resolves the item via loot_slice and adds it.
 ##
@@ -12,6 +13,9 @@ extends Node
 ##   get_contents()                   -> Dictionary  { item_id: quantity }
 ##   get_item_count(item_id: String)  -> int
 ##   get_total_slots_used()           -> int
+##   get_current_weight()             -> float
+##   get_max_weight()                 -> float
+##   get_max_slots()                  -> int
 ##   drop_item(item_id, quantity)     -> bool
 
 ## Inventory capacity comes from the Inventory entity in the fabric
@@ -60,15 +64,10 @@ var _is_full: bool = false
 ## Reference to LootSlice, set by game_root at startup.
 var loot_slice: Node = null
 
-## Inventory UI (toggled with "I").
-var _ui_layer: CanvasLayer = null
-var _items_label: Label = null
-
 func _ready() -> void:
 	_load_capacity()
 	_build_weight_cache()
 	GameBus.pickup_requested.connect(_on_pickup_requested)
-	_build_inventory_ui()
 
 func get_contents() -> Dictionary:
 	return _contents.duplicate()
@@ -78,6 +77,15 @@ func get_item_count(item_id: String) -> int:
 
 func get_total_slots_used() -> int:
 	return _contents.size()
+
+func get_current_weight() -> float:
+	return _current_weight
+
+func get_max_weight() -> float:
+	return _max_weight
+
+func get_max_slots() -> int:
+	return _max_slots
 
 ## Drop quantity of item_id from inventory; returns true if successful.
 func drop_item(item_id: String, quantity: int) -> bool:
@@ -91,7 +99,7 @@ func drop_item(item_id: String, quantity: int) -> bool:
 	else:
 		_contents[item_id] = have - quantity
 	_is_full = false
-	_refresh_inventory_ui()
+	GameBus.inventory_changed.emit()
 	return true
 
 ## Add quantity of item_id to the inventory, respecting slot + weight limits.
@@ -107,7 +115,7 @@ func add_item(item_id: String, quantity: int) -> bool:
 	_contents[item_id] = _contents.get(item_id, 0) + quantity
 	_current_weight += add_weight
 	_is_full = false
-	_refresh_inventory_ui()
+	GameBus.inventory_changed.emit()
 	return true
 
 ## Consume a { item_id: quantity } map atomically: returns true only if the
@@ -126,7 +134,7 @@ func consume_items(counts: Dictionary) -> bool:
 		else:
 			_contents[item_id] = have - qty
 	_is_full = false
-	_refresh_inventory_ui()
+	GameBus.inventory_changed.emit()
 	return true
 
 ## Whether a { item_id: quantity } map can be added without exceeding weight or
@@ -148,10 +156,6 @@ func can_add_items(counts: Dictionary) -> bool:
 # ---------------------------------------------------------------------------
 # Private
 # ---------------------------------------------------------------------------
-
-func _input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and event.keycode == KEY_I:
-		_toggle_inventory()
 
 func _on_pickup_requested(pickup_id: String) -> void:
 	if loot_slice == null:
@@ -197,7 +201,7 @@ func _try_pickup(pickup_id: String, item_id: String, quantity: int) -> void:
 	GameBus.item_picked_up.emit(item_id, quantity)
 	print("InventorySlice: picked up %s ×%d  (%.1f/%.1f kg  %d/%d slots)" % [
 		item_id, quantity, _current_weight, _max_weight, _contents.size(), _max_slots])
-	_refresh_inventory_ui()
+	GameBus.inventory_changed.emit()
 
 	# Re-check full state after pickup.
 	if _contents.size() >= _max_slots or _current_weight >= _max_weight:
@@ -223,60 +227,3 @@ func _build_weight_cache() -> void:
 
 func _item_weight(item_id: String) -> float:
 	return float(_item_weight_cache.get(item_id, 0.0))
-
-# ---------------------------------------------------------------------------
-# Inventory UI
-# ---------------------------------------------------------------------------
-
-func _build_inventory_ui() -> void:
-	_ui_layer = CanvasLayer.new()
-	_ui_layer.name = "InventoryUI"
-	_ui_layer.layer = 20
-	_ui_layer.visible = false
-
-	var panel := PanelContainer.new()
-	panel.position = Vector2(24, 24)
-	panel.custom_minimum_size = Vector2(340, 280)
-	_ui_layer.add_child(panel)
-
-	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 16)
-	margin.add_theme_constant_override("margin_right", 16)
-	margin.add_theme_constant_override("margin_top", 16)
-	margin.add_theme_constant_override("margin_bottom", 16)
-	panel.add_child(margin)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 8)
-	margin.add_child(vbox)
-
-	var title := Label.new()
-	title.text = "Inventory"
-	title.add_theme_font_size_override("font_size", 24)
-	vbox.add_child(title)
-
-	_items_label = Label.new()
-	_items_label.add_theme_font_size_override("font_size", 16)
-	vbox.add_child(_items_label)
-
-	add_child(_ui_layer)
-	_refresh_inventory_ui()
-
-func _toggle_inventory() -> void:
-	if _ui_layer == null:
-		return
-	_refresh_inventory_ui()
-	_ui_layer.visible = not _ui_layer.visible
-
-func _refresh_inventory_ui() -> void:
-	if _items_label == null:
-		return
-	if _contents.is_empty():
-		_items_label.text = "(empty)"
-		return
-	var keys: Array = _contents.keys()
-	keys.sort()
-	var lines: Array = []
-	for item_id in keys:
-		lines.append("%s ×%d" % [item_id, _contents[item_id]])
-	_items_label.text = "\n".join(lines)
