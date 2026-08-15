@@ -72,6 +72,7 @@ func run() -> void:
 	_run_test("voxel: mine lowers height and yields material", _test_voxel_mine_yields_material)
 	_run_test("voxel: mine at bedrock fails",                  _test_voxel_mine_bedrock)
 	_run_test("voxel: side-face mine targets hit block",       _test_voxel_mine_side_face)
+	_run_test("voxel: cycle filters to held materials",        _test_voxel_cycle_inventory_filtered)
 	_run_test("voxel: place raises height and consumes",       _test_voxel_place_consumes)
 	_run_test("voxel: place beyond cap fails and refunds",     _test_voxel_place_cap)
 	_run_test("voxel: biome material mapping",                 _test_voxel_biome_materials)
@@ -641,6 +642,19 @@ func _test_voxel_mine_side_face() -> void:
 	v.mine_block(Vector3(19.0, 1.5, 16.5), Vector3(-1, 0, 0))
 	assert_eq(v.get_voxel_height_at(Vector2(19.0, 16.0)), 1.5, "-X face mines the block east of the boundary")
 	assert_eq(v.get_voxel_height_at(Vector2(18.0, 16.0)), 2.0, "west block untouched")
+	v.queue_free()
+	inv.queue_free()
+
+func _test_voxel_cycle_inventory_filtered() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	inv.add_item("Ashite", 2)
+	inv.add_item("Thornwood", 1)
+	v.set_place_material("Ashite")
+	assert_eq(v.cycle_place_material(), "Thornwood", "cycles to the other held material")
+	assert_eq(v.cycle_place_material(), "Ashite", "wraps back, skipping materials not held")
 	v.queue_free()
 	inv.queue_free()
 

@@ -46,6 +46,22 @@ const BIOME_MATERIALS: Dictionary = {
 	"VoidRift":           ["Voidite", "Aethermite"],
 }
 
+## Terrain tint per material key — makes each ground material visually distinct
+## (the whole terrain was previously one flat green). Keyed by the fabric
+## material entity names in GameData.MATERIALS.
+const MATERIAL_COLORS: Dictionary = {
+	"Ferrite":    Color(0.62, 0.62, 0.66),  # pale iron
+	"Thornwood":  Color(0.45, 0.32, 0.20),  # wood brown
+	"Ashite":     Color(0.28, 0.28, 0.31),  # charcoal
+	"Aethermite": Color(0.25, 0.75, 0.80),  # teal
+	"Duskfiber":  Color(0.55, 0.34, 0.68),  # purple
+	"Lumenfite":  Color(0.92, 0.80, 0.30),  # gold
+	"Voidite":    Color(0.38, 0.24, 0.50),  # deep violet
+}
+
+## Colour used for any material without an explicit entry above.
+const FALLBACK_TERRAIN_COLOR := Color(0.35, 0.60, 0.28)
+
 ## Active chunk containers keyed by "x,y" string.
 var _chunks: Dictionary = {}
 ## Base heightmaps keyed by "x,y" string (the unedited noise terrain).
@@ -57,8 +73,9 @@ var _edits: Dictionary = {}
 var terrain_slice: Node = null
 var inventory_slice: Node = null
 
-## Material used by place_block; cycled via cycle_place_material().
-var _place_material: String = "Ferrite"
+## Material used by place_block; cycled via cycle_place_material(). Empty until
+## the player cycles onto a material they actually hold in inventory.
+var _place_material: String = ""
 
 func _ready() -> void:
 	GameBus.chunk_ready.connect(_on_chunk_ready)
@@ -98,6 +115,7 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
 			var h := _column_height(heightmap, chunk_pos, tx, tz)
 			var bx := origin.x + tx * TILE_SIZE
 			var bz := origin.z + tz * TILE_SIZE
+			var col := _column_color(Vector2(bx + TILE_SIZE * 0.5, bz + TILE_SIZE * 0.5))
 
 			# Top face.
 			_add_face(st,
@@ -105,7 +123,7 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
 				Vector3(bx,              h, bz + TILE_SIZE),
 				Vector3(bx + TILE_SIZE, h, bz + TILE_SIZE),
 				Vector3(bx + TILE_SIZE, h, bz),
-				Vector3.UP)
+				Vector3.UP, col)
 
 			# North wall.
 			var hn := _neighbour_height(heightmap, chunk_pos, tx, tz - 1)
@@ -115,7 +133,7 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
 					Vector3(bx + TILE_SIZE, h,  bz),
 					Vector3(bx + TILE_SIZE, hn, bz),
 					Vector3(bx,              hn, bz),
-					Vector3(0, 0, -1))
+					Vector3(0, 0, -1), col)
 
 			# South wall.
 			var hs := _neighbour_height(heightmap, chunk_pos, tx, tz + 1)
@@ -125,7 +143,7 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
 					Vector3(bx,              h,  bz + TILE_SIZE),
 					Vector3(bx,              hs, bz + TILE_SIZE),
 					Vector3(bx + TILE_SIZE, hs, bz + TILE_SIZE),
-					Vector3(0, 0, 1))
+					Vector3(0, 0, 1), col)
 
 			# West wall.
 			var hw := _neighbour_height(heightmap, chunk_pos, tx - 1, tz)
@@ -135,7 +153,7 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
 					Vector3(bx, h,  bz),
 					Vector3(bx, hw, bz),
 					Vector3(bx, hw, bz + TILE_SIZE),
-					Vector3(-1, 0, 0))
+					Vector3(-1, 0, 0), col)
 
 			# East wall.
 			var he := _neighbour_height(heightmap, chunk_pos, tx + 1, tz)
@@ -145,14 +163,15 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
 					Vector3(bx + TILE_SIZE, h,  bz + TILE_SIZE),
 					Vector3(bx + TILE_SIZE, he, bz + TILE_SIZE),
 					Vector3(bx + TILE_SIZE, he, bz),
-					Vector3(1, 0, 0))
+					Vector3(1, 0, 0), col)
 
 	var mesh_inst := MeshInstance3D.new()
 	mesh_inst.mesh = st.commit()
 
-	# Simple grass-like material (works without a texture asset).
+	# Per-column vertex colour (biome/material tint), no texture asset needed.
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.35, 0.6, 0.28)
+	mat.albedo_color = Color.WHITE
+	mat.vertex_color_use_as_albedo = true
 	mat.roughness    = 0.9
 	# Render both faces so the terrain shell is never see-through regardless
 	# of triangle winding (avoids backface-culled "transparent" hilltops).
@@ -281,16 +300,32 @@ func set_place_material(material: String) -> void:
 func get_place_material() -> String:
 	return _place_material
 
-## Advance to the next buildable material (sorted GameData.MATERIALS keys).
+## Advance to the next buildable material — only materials currently held in
+## the inventory (sorted GameData.MATERIALS keys). Falls back to an empty
+## selection when the inventory holds nothing buildable.
 func cycle_place_material() -> String:
-	var keys: Array = GameData.MATERIALS.keys()
-	keys.sort()
-	if not keys.is_empty():
+	var keys := _buildable_materials()
+	if keys.is_empty():
+		_place_material = ""
+	else:
 		var idx: int = keys.find(_place_material)
 		idx = (idx + 1) % keys.size()
 		_place_material = str(keys[idx])
 	GameBus.block_place_material_changed.emit(_place_material)
 	return _place_material
+
+## Sorted material keys the player can actually place: every GameData.MATERIALS
+## key held in the inventory. With no inventory wired, falls back to all keys.
+func _buildable_materials() -> Array:
+	var keys: Array = GameData.MATERIALS.keys()
+	keys.sort()
+	if inventory_slice == null or not inventory_slice.has_method("get_item_count"):
+		return keys
+	var out: Array = []
+	for key in keys:
+		if inventory_slice.get_item_count(str(key)) > 0:
+			out.append(str(key))
+	return out
 
 ## Material yielded by mining a tile in the given biome (deterministic per tile).
 func material_for_biome(biome: String, world_xz: Vector2) -> String:
@@ -324,9 +359,10 @@ func _column_height(heightmap: Array, chunk_pos: Vector2i, tx: int, tz: int) -> 
 	return _voxel_height(heightmap[tz * CHUNK_SIZE + tx])
 
 ## Append a quad (two triangles) to the visual surface. a, b, c, d are in
-## counter-clockwise order seen from the normal side.
-func _add_face(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, normal: Vector3) -> void:
+## counter-clockwise order seen from the normal side. color tints the face.
+func _add_face(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, normal: Vector3, color: Color) -> void:
 	st.set_normal(normal)
+	st.set_color(color)
 	st.set_uv(Vector2(0, 0)); st.add_vertex(a)
 	st.set_uv(Vector2(1, 0)); st.add_vertex(b)
 	st.set_uv(Vector2(1, 1)); st.add_vertex(c)
@@ -364,6 +400,12 @@ func _biome_at(xz: Vector2) -> String:
 	if terrain_slice != null and terrain_slice.has_method("get_biome_at"):
 		return terrain_slice.get_biome_at(xz)
 	return "TemperateForest"
+
+## Tint for a column at world_xz: the material that mining it would yield,
+## looked up in MATERIAL_COLORS (falling back to green for unknown keys).
+func _column_color(world_xz: Vector2) -> Color:
+	var material := material_for_biome(_biome_at(world_xz), world_xz)
+	return MATERIAL_COLORS.get(material, FALLBACK_TERRAIN_COLOR)
 
 func _voxel_height_at_tile(tile: Vector2i) -> float:
 	var key := _tile_key(tile)

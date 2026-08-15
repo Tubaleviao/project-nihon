@@ -340,9 +340,11 @@ func _update_aim_hud() -> void:
 func _refresh_build_hint() -> void:
 	if _build_hint_label == null:
 		return
-	var mat := "Ferrite"
+	var mat := ""
 	if voxel_slice != null and voxel_slice.has_method("get_place_material"):
 		mat = str(voxel_slice.get_place_material())
+	if mat == "":
+		mat = "none"
 	_build_hint_label.text = "Build: %s   |   RMB mine · MMB place · R cycle" % mat
 
 func _on_place_material_changed(_material: String) -> void:
