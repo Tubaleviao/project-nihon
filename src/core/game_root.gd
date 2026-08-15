@@ -59,11 +59,14 @@ func _ready() -> void:
 		add_child(s)
 
 	# Cross-slice wiring: direct references where the bus cannot carry context.
-	_inventory.loot_slice    = _loot
-	_player.creature_slice   = _creature
-	_battle.creature_slice   = _creature
-	_loot.creature_slice     = _creature
+	_inventory.loot_slice     = _loot
+	_player.creature_slice    = _creature
+	_player.voxel_slice       = _voxel
+	_battle.creature_slice    = _creature
+	_loot.creature_slice      = _creature
 	_crafting.inventory_slice = _inventory
+	_voxel.terrain_slice      = _terrain
+	_voxel.inventory_slice    = _inventory
 
 	# Bus listeners for integration-layer logging.
 	GameBus.chunk_ready.connect(_on_chunk_ready)
@@ -78,6 +81,8 @@ func _ready() -> void:
 	GameBus.inventory_full.connect(_on_inventory_full)
 	GameBus.character_spawned.connect(_on_character_spawned)
 	GameBus.craft_resolved.connect(_on_craft_resolved)
+	GameBus.block_mined.connect(_on_block_mined)
+	GameBus.block_placed.connect(_on_block_placed)
 
 	# Lighting — a directional "sun" plus soft ambient sky fill.
 	var sun := DirectionalLight3D.new()
@@ -155,6 +160,18 @@ func _boot_world() -> void:
 		# (the real trigger comes from player left-click; this validates the pipeline).
 		GameBus.combat_round_requested.emit("player", first["instance_id"])
 
+	# Mining & building — mine a surface block (biome material → inventory) and
+	# place one back, proving the voxel edit API and material flow end to end.
+	print("\n[Mining] Mining a surface block near spawn…")
+	var mine_spot := Vector3(spawn_xz.x + 6.0, ground_h, spawn_xz.y + 2.0)
+	var mined := _voxel.mine_block(mine_spot)
+	if mined.get("success", false):
+		print("[Mining] mined %s ×%d" % [mined["material"], mined["quantity"]])
+	_inventory.add_item("Ashite", 4)
+	_voxel.set_place_material("Ashite")
+	var placed := _voxel.place_block(Vector3(spawn_xz.x + 10.0, ground_h, spawn_xz.y + 2.0), Vector3.UP)
+	print("[Building] placed Ashite block: %s" % ("ok" if placed else "blocked"))
+
 	# Crafting — seed a starter kit of raw materials, grant demo skill tiers, and
 	# run a smithing chain (ore → ingot → plank → pick) through the bus to prove
 	# the fabric recipe data drives real inventory mutation end to end.
@@ -181,6 +198,9 @@ func _boot_world() -> void:
 			"hp":       _player.get_hp(),
 		},
 		"inventory": _inventory.get_contents(),
+		"world":     {
+			"voxel_edits": _voxel.get_edits(),
+		},
 	}
 	GameBus.save_requested.emit(0, snapshot)
 	GameBus.load_requested.emit(0)
@@ -189,7 +209,7 @@ func _boot_world() -> void:
 	print("\n[Networking] Starting local host on port 7777…")
 	_networking.host(7777, 1)
 
-	print("\n=== World boot complete — attack with left-click or F ===\n")
+	print("\n=== World boot complete — LMB/F attack · RMB mine · MMB place · R cycle ===\n")
 
 # ---------------------------------------------------------------------------
 # Bus listeners
@@ -237,11 +257,21 @@ func _on_craft_resolved(result: Dictionary) -> void:
 		print("[Crafting] %s FAILED — %s" % [result.get("recipe_id", "?"), result.get("reason", "?")])
 	print("[Inventory] contents: %s" % str(_inventory.get_contents()))
 
+func _on_block_mined(material: String, quantity: int, position: Vector3) -> void:
+	print("[Mining] %s ×%d at %s" % [material, quantity, position])
+
+func _on_block_placed(material: String, position: Vector3) -> void:
+	print("[Building] %s placed at %s" % [material, position])
+
 func _on_save_completed(slot: int) -> void:
 	print("[Persistence] save_completed slot=%d" % slot)
 
 func _on_load_completed(slot: int, data: Dictionary) -> void:
 	print("[Persistence] load_completed slot=%d  keys=%s" % [slot, data.keys()])
+	var world: Dictionary = data.get("world", {})
+	if world.has("voxel_edits"):
+		_voxel.apply_edits(world["voxel_edits"])
+		print("[Persistence] restored %d voxel edits" % world["voxel_edits"].size())
 
 # ---------------------------------------------------------------------------
 # GameData smoke test

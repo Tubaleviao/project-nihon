@@ -16,6 +16,7 @@ const LootSlice       := preload("res://src/loot/loot_slice.gd")
 const InventorySlice  := preload("res://src/inventory/inventory_slice.gd")
 const CharacterSlice  := preload("res://src/character/character_slice.gd")
 const CraftingSlice   := preload("res://src/crafting/crafting_slice.gd")
+const VoxelSlice      := preload("res://src/terrain/voxel_slice.gd")
 
 var _pass: int = 0
 var _fail: int = 0
@@ -68,6 +69,12 @@ func run() -> void:
 	_run_test("crafting: missing inputs fail",                _test_crafting_missing_inputs)
 	_run_test("crafting: unknown recipe rejected",            _test_crafting_unknown_recipe)
 	_run_test("crafting: can_craft does not mutate",          _test_crafting_can_craft_no_mutate)
+	_run_test("voxel: mine lowers height and yields material", _test_voxel_mine_yields_material)
+	_run_test("voxel: mine at bedrock fails",                  _test_voxel_mine_bedrock)
+	_run_test("voxel: place raises height and consumes",       _test_voxel_place_consumes)
+	_run_test("voxel: place beyond cap fails and refunds",     _test_voxel_place_cap)
+	_run_test("voxel: biome material mapping",                 _test_voxel_biome_materials)
+	_run_test("voxel: edits round-trip",                       _test_voxel_edits_round_trip)
 
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
@@ -584,6 +591,89 @@ func _test_crafting_can_craft_no_mutate() -> void:
 	assert_eq(inv.get_item_count("Ferrite"), 2, "can_craft does not consume inputs")
 	c.queue_free()
 	inv.queue_free()
+
+# ---------------------------------------------------------------------------
+# VoxelSlice tests (mining & building)
+# ---------------------------------------------------------------------------
+
+## Build a VoxelSlice over a flat 2.0-tall synthetic chunk (deterministic).
+func _make_voxel() -> VoxelSlice:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var hm: Array = []
+	hm.resize(32 * 32)
+	hm.fill(2.0)
+	v.build_chunk(Vector2i(0, 0), hm)
+	return v
+
+func _test_voxel_mine_yields_material() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 2.0, "flat chunk height is 2.0")
+	var r := v.mine_block(Vector3(16.5, 2.0, 16.5))
+	assert_true(r.get("success", false), "mine succeeds on a 2.0-tall column")
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.5, "height lowered by STEP_HEIGHT")
+	assert_true(GameData.MATERIALS.has(r.get("material", "")), "yielded a valid fabric material")
+	assert_eq(inv.get_item_count(str(r.get("material", ""))), 1, "material added to inventory")
+	v.queue_free()
+	inv.queue_free()
+
+func _test_voxel_mine_bedrock() -> void:
+	var v := _make_voxel()
+	v.apply_edits({ "16,16": 0.0 })
+	var r := v.mine_block(Vector3(16.5, 0.0, 16.5))
+	assert_false(r.get("success", false), "mining at bedrock fails")
+	v.queue_free()
+
+func _test_voxel_place_consumes() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	v.set_place_material("Ashite")
+	inv.add_item("Ashite", 3)
+	var ok := v.place_block(Vector3(16.5, 2.0, 16.5), Vector3.UP)
+	assert_true(ok, "place succeeds")
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 2.5, "height raised by STEP_HEIGHT")
+	assert_eq(inv.get_item_count("Ashite"), 2, "Ashite consumed from inventory")
+	v.queue_free()
+	inv.queue_free()
+
+func _test_voxel_place_cap() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	v.set_place_material("Ashite")
+	inv.add_item("Ashite", 1)
+	v.apply_edits({ "16,16": v.MAX_HEIGHT })
+	var ok := v.place_block(Vector3(16.5, v.MAX_HEIGHT, 16.5), Vector3.UP)
+	assert_false(ok, "place beyond build cap fails")
+	assert_eq(inv.get_item_count("Ashite"), 1, "blocked placement refunds the material")
+	v.queue_free()
+	inv.queue_free()
+
+func _test_voxel_biome_materials() -> void:
+	var v := VoxelSlice.new()
+	var volcanic: Array = []
+	for i in range(16):
+		volcanic.append(v.material_for_biome("VolcanicBadlands", Vector2(i, 0)))
+	assert_true(volcanic.has("Ashite") or volcanic.has("Aethermite"), "volcanic yields ashite/aethermite")
+	var temperate: Array = []
+	for i in range(16):
+		temperate.append(v.material_for_biome("TemperateForest", Vector2(i, 0)))
+	assert_true(temperate.has("Ferrite") or temperate.has("Thornwood"), "temperate yields ferrite/thornwood")
+	v.queue_free()
+
+func _test_voxel_edits_round_trip() -> void:
+	var v := _make_voxel()
+	v.apply_edits({ "16,16": 1.0, "17,17": 3.5 })
+	assert_eq(v.get_edits().get("16,16", 0.0), 1.0, "edit 16,16 survives")
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.0, "height reflects restored edit")
+	assert_eq(v.get_voxel_height_at(Vector2(17.0, 17.0)), 3.5, "second edit restored")
+	v.queue_free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers

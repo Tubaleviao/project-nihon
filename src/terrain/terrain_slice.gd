@@ -11,8 +11,10 @@ extends Node
 
 const CHUNK_SIZE := 32       # tiles per side
 const HEIGHT_SCALE := 5.0    # world units peak-to-valley (gentle, even terrain)
+const BIOME_SEED := 20260815 # fixed seed so biome assignment is deterministic
 
 var _noise := FastNoiseLite.new()
+var _biome_noise := FastNoiseLite.new()
 
 func _ready() -> void:
 	_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
@@ -20,6 +22,12 @@ func _ready() -> void:
 	_noise.frequency = 0.05
 	_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_noise.fractal_octaves = 3
+
+	_biome_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	_biome_noise.seed = BIOME_SEED
+	_biome_noise.frequency = 0.02
+	_biome_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_biome_noise.fractal_octaves = 2
 
 ## Generate a chunk and emit chunk_ready when done.
 func request_chunk(pos: Vector2i) -> void:
@@ -31,6 +39,17 @@ func request_chunk(pos: Vector2i) -> void:
 func get_height_at(world_pos: Vector2) -> float:
 	var raw := _noise.get_noise_2d(world_pos.x, world_pos.y)
 	return (raw + 1.0) * 0.5 * HEIGHT_SCALE
+
+## Return the biome key for a world position. Uses a fixed-seed temperature
+## noise channel (independent of the height noise) so biome assignment is
+## deterministic across runs even though terrain height varies.
+func get_biome_at(world_pos: Vector2) -> String:
+	var temp := _biome_noise.get_noise_2d(world_pos.x, world_pos.y)
+	if temp > 0.4:
+		return "VolcanicBadlands"
+	if temp < -0.4:
+		return "Twilight"
+	return "TemperateForest"
 
 # ---------------------------------------------------------------------------
 # Private
