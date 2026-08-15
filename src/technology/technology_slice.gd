@@ -128,6 +128,15 @@ func apply_statuses(statuses: Dictionary) -> void:
 		if GameData.TECHNOLOGIES.has(tech_id):
 			_status[tech_id] = str(statuses[tech_id])
 	_research_end_at.clear()
+	# The saved snapshot carries only the status string, not the research
+	# deadline. Re-schedule auto-completion for any tech restored mid-research so
+	# it does not stay stuck in "researching" forever after a reload (the timer
+	# restarts from now — elapsed time is not persisted).
+	for tech_id in _status:
+		if _status[tech_id] == STATE_RESEARCHING:
+			var duration: float = float(_get_tech_data(tech_id).get("researchDuration", 0.0))
+			if duration > 0.0:
+				_research_end_at[tech_id] = Time.get_ticks_msec() + int(duration * 1000.0)
 
 # ---------------------------------------------------------------------------
 # Private

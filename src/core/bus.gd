@@ -198,3 +198,19 @@ signal character_spawned(instance_id: String, skeleton_id: String, position: Vec
 ## instance_id : String
 ## appearance  : Dictionary — the normalized appearance recipe
 signal character_appearance_changed(instance_id: String, appearance: Dictionary)
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+## Disconnect every GameBus connection whose bound object is `target`. Used by
+## the test suite to detach queued-for-free slices (queue_free is deferred to
+## end of frame) so they stop answering production bus emissions during the same
+## boot frame — otherwise a stale PersistenceSlice re-saves/re-loads the world
+## and stale VoxelSlice/CraftingSlice instances rebuild chunks and spam logs.
+func disconnect_all_from(target: Object) -> void:
+	for sig in get_signal_list():
+		var signal_name: String = sig["name"]
+		for conn in get_signal_connection_list(signal_name):
+			if conn["callable"].get_object() == target:
+				disconnect(signal_name, conn["callable"])

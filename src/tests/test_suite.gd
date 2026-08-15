@@ -99,6 +99,13 @@ func run() -> void:
 		push_error("TestSuite: %d test(s) FAILED" % _fail)
 	print("────────────────────────────────────────\n")
 
+	# Detach every test slice from the shared GameBus. They were queue_free()'d
+	# (deferred to end of frame), so without this they would still be connected
+	# while game_root boots the world and would re-run saves, loads, crafts and
+	# chunk builds against production emissions.
+	for child in get_children():
+		GameBus.disconnect_all_from(child)
+
 # ---------------------------------------------------------------------------
 # BattleSlice tests
 # ---------------------------------------------------------------------------
