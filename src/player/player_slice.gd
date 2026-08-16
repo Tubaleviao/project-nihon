@@ -26,6 +26,8 @@ const TERRAIN_COLLISION_MASK := 2  # layer 2 (bit 1) — terrain, for mine/build
 
 const MAX_HP := 100.0
 
+const MouseIconScript := preload("res://src/ui/mouse_icon.gd")
+
 var _body:   CharacterBody3D
 var _camera: Camera3D
 var _pivot:  Node3D           # horizontal yaw pivot under _body
@@ -39,7 +41,7 @@ var _hud: CanvasLayer = null
 var _aim_label: Label = null
 var _aimed_pickup_id: String = ""
 var _aimed_item_id: String = ""
-var _build_hint_label: Label = null
+var _build_material_label: Label = null
 
 ## Aimed terrain block (mine/build target), updated every frame.
 var _aimed_block_hit: bool = false
@@ -268,22 +270,42 @@ func _build_hud() -> void:
 	_hud.add_child(aim_label)
 	_aim_label = aim_label
 
-	# Build hint — current place material + control reminders.
-	var build_hint := Label.new()
-	build_hint.name = "BuildHint"
-	build_hint.anchor_left = 0.5
-	build_hint.anchor_right = 0.5
-	build_hint.anchor_top = 1.0
-	build_hint.anchor_bottom = 1.0
-	build_hint.offset_left = -300.0
-	build_hint.offset_right = 300.0
-	build_hint.offset_top = -48.0
-	build_hint.offset_bottom = -16.0
-	build_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	build_hint.add_theme_font_size_override("font_size", 16)
-	_hud.add_child(build_hint)
-	_build_hint_label = build_hint
+	# Build hint — current place material + mouse-button cues (icons, not text).
+	var hint := HBoxContainer.new()
+	hint.name = "BuildHint"
+	hint.anchor_left = 0.5
+	hint.anchor_right = 0.5
+	hint.anchor_top = 1.0
+	hint.anchor_bottom = 1.0
+	hint.offset_left = -340.0
+	hint.offset_right = 340.0
+	hint.offset_top = -46.0
+	hint.offset_bottom = -16.0
+	hint.alignment = BoxContainer.ALIGNMENT_CENTER
+	hint.add_theme_constant_override("separation", 10)
+	_hud.add_child(hint)
+
+	_build_material_label = Label.new()
+	_build_material_label.add_theme_font_size_override("font_size", 16)
+	hint.add_child(_build_material_label)
+
+	hint.add_child(_make_sep_label())
+	hint.add_child(_make_mouse_icon(MOUSE_BUTTON_RIGHT))
+	hint.add_child(_make_hint_label("Mine"))
+	hint.add_child(_make_sep_label())
+	hint.add_child(_make_mouse_icon(MOUSE_BUTTON_MIDDLE))
+	hint.add_child(_make_hint_label("Place"))
+	hint.add_child(_make_sep_label())
+	var cycle_key := Label.new()
+	cycle_key.text = "R"
+	cycle_key.add_theme_font_size_override("font_size", 16)
+	cycle_key.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
+	hint.add_child(cycle_key)
+	hint.add_child(_make_hint_label("Cycle"))
+
 	_refresh_build_hint()
+
+	_build_shortcuts_menu()
 
 	add_child(_hud)
 
@@ -338,14 +360,104 @@ func _update_aim_hud() -> void:
 		_aim_label.visible = true
 
 func _refresh_build_hint() -> void:
-	if _build_hint_label == null:
+	if _build_material_label == null:
 		return
 	var mat := ""
 	if voxel_slice != null and voxel_slice.has_method("get_place_material"):
 		mat = str(voxel_slice.get_place_material())
 	if mat == "":
 		mat = "none"
-	_build_hint_label.text = "Build: %s   |   RMB mine · MMB place · R cycle" % mat
+	_build_material_label.text = "Build: %s" % mat
+
+
+func _make_mouse_icon(button: int) -> Control:
+	var icon: Control = MouseIconScript.new()
+	icon.button = button
+	icon.custom_minimum_size = Vector2(20, 30)
+	return icon
+
+
+func _make_sep_label() -> Label:
+	var sep := Label.new()
+	sep.text = "·"
+	sep.add_theme_font_size_override("font_size", 16)
+	sep.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
+	return sep
+
+
+func _make_hint_label(text: String) -> Label:
+	var lbl := Label.new()
+	lbl.text = text
+	lbl.add_theme_font_size_override("font_size", 16)
+	return lbl
+
+
+func _build_shortcuts_menu() -> void:
+	var panel := PanelContainer.new()
+	panel.name = "ShortcutsMenu"
+	panel.position = Vector2(12, 12)
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.07, 0.07, 0.09, 0.55)
+	style.set_corner_radius_all(8)
+	style.content_margin_left = 12.0
+	style.content_margin_right = 12.0
+	style.content_margin_top = 10.0
+	style.content_margin_bottom = 10.0
+	panel.add_theme_stylebox_override("panel", style)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 5)
+	panel.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "Controls"
+	title.add_theme_font_size_override("font_size", 17)
+	title.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 0.9))
+	vbox.add_child(title)
+
+	_add_key_row(vbox, "WASD", "Move")
+	_add_key_row(vbox, "Space", "Jump")
+	_add_mouse_row(vbox, MOUSE_BUTTON_LEFT, "Attack / Pick up")
+	_add_mouse_row(vbox, MOUSE_BUTTON_RIGHT, "Mine")
+	_add_mouse_row(vbox, MOUSE_BUTTON_MIDDLE, "Place")
+	_add_key_row(vbox, "R", "Cycle material")
+	_add_key_row(vbox, "I · T · C", "Windows")
+	_add_key_row(vbox, "ESC", "Cursor")
+
+	_hud.add_child(panel)
+	panel.reset_size()
+
+
+func _add_mouse_row(box: VBoxContainer, button: int, desc: String) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	var holder := CenterContainer.new()
+	holder.custom_minimum_size = Vector2(56, 30)
+	holder.add_child(_make_mouse_icon(button))
+	row.add_child(holder)
+	row.add_child(_make_menu_label(desc))
+	box.add_child(row)
+
+
+func _add_key_row(box: VBoxContainer, key: String, desc: String) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	var key_label := Label.new()
+	key_label.text = key
+	key_label.add_theme_font_size_override("font_size", 15)
+	key_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
+	key_label.custom_minimum_size = Vector2(56, 0)
+	row.add_child(key_label)
+	row.add_child(_make_menu_label(desc))
+	box.add_child(row)
+
+
+func _make_menu_label(text: String) -> Label:
+	var lbl := Label.new()
+	lbl.text = text
+	lbl.add_theme_font_size_override("font_size", 15)
+	return lbl
 
 func _on_place_material_changed(_material: String) -> void:
 	_refresh_build_hint()
