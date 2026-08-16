@@ -278,6 +278,7 @@ func _on_item_picked_up(_item_id: String, _quantity: int) -> void:
 
 func _on_inventory_changed() -> void:
 	refresh_inventory()
+	refresh_crafting()
 
 func _on_block_mined(_material: String, _quantity: int, _position: Vector3) -> void:
 	refresh_inventory()
