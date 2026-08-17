@@ -35,11 +35,54 @@ pnpm generate   # generate the design bible into bible/
 | 12 | Voxel mining and building | Done |
 | 13 | Technology unlock gates | Done |
 | 14 | Player UI (inventory, technology tree, crafting) | Done |
-
-Deferred (in priority order): creature AI/behavior, multiplayer world sync,
-chunk streaming / larger world.
+| 15 | Creature AI and behavior | Planned |
+| 16 | Station-gated crafting and tool durability | Planned |
+| 17 | Chunk streaming and world expansion | Planned |
+| 18 | Multiplayer world sync | Planned |
+| 19 | Animation system and character visuals | Planned |
+| 20 | Social systems and player economy | Planned |
 
 See [ROADMAP.md](ROADMAP.md) for the full spec, deliverables, and acceptance criteria for each phase.
+
+---
+
+## Development life-cycle
+
+Project Nihon follows a **fabric-first** discipline: every gameplay system is defined in the Newel fabric before it is implemented in GDScript. The flow is:
+
+```
+fabric/ (design)  →  pnpm generate  →  godot/  (Godot resources)
+                                    →  bible/  (design bible)
+                                    →  wiki/   (player wiki)
+```
+
+### Phases and slices
+
+Each roadmap phase ships as one or more **slices** — self-contained GDScript autoloads that communicate exclusively through `GameBus` typed signals. A slice owns its data and exposes pure-function projections for the test suite and the UI layer. No slice calls another slice's methods directly.
+
+### Adding a new system
+
+1. **Model it in the fabric** — add entities, fields, state machines, and behaviors in `fabric/`. Run `pnpm validate` before touching any GDScript.
+2. **Generate** — run `pnpm generate` to emit updated `.tres` resources into `godot/` and regenerate `bible/` and `wiki/`.
+3. **Check drift** — run `pnpm check-drift` to confirm the IR snapshot is up-to-date before importing in Godot.
+4. **Implement the slice** — add `src/<system>/<system>_slice.gd`; wire it in `src/core/game_root.gd`; add bus signals in `src/core/bus.gd`.
+5. **Write tests** — extend `src/tests/test_suite.gd` with at least one test per acceptance criterion before marking the phase done.
+6. **Open a PR** — phases ship as pull requests; titles follow `feat(<system>): <short description>`. PRs for design changes to the fabric are separate from implementation PRs.
+
+### Branching strategy
+
+| Branch prefix | Purpose |
+|---|---|
+| `feat/<system>` | New phase implementation |
+| `fix/<area>` | Bug fix in an existing slice |
+| `docs/<topic>` | Roadmap, wiki, or bible updates |
+| `fabric/<topic>` | Fabric-only changes (no GDScript) |
+
+`main` is the stable branch. All work goes through pull requests; direct pushes to `main` are not permitted except for generated artifact updates (`bible/`, `wiki/`, `godot/`).
+
+### Design decisions
+
+Major design decisions follow the community governance process described in the `CommunityOwnsTheFuture` constitution principle. Proposals are tracked as fabric entities in `fabric/constitution/decisions.js` with a state machine (`proposed → accepted → superseded`). Significant decisions must be ratified by contributor consensus before implementation begins.
 
 ---
 
