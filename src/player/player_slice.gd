@@ -130,12 +130,12 @@ func spawn_at(pos: Vector3) -> void:
 func get_hp() -> float:
 	return _hp
 
-func take_damage(dmg: float) -> void:
+func take_damage(dmg: float, killer_id: String = "") -> void:
 	_hp = maxf(_hp - dmg, 0.0)
 	_update_hp_bar()
 	_broadcast_state()
 	if _hp <= 0.0 and _alive:
-		_die()
+		_die(killer_id)
 
 # ---------------------------------------------------------------------------
 # Private
@@ -222,11 +222,11 @@ func _broadcast_state() -> void:
 	GameBus.player_state_changed.emit(payload)
 	GameBus.player_state_sync_requested.emit(payload)
 
-func _die() -> void:
+func _die(killer_id: String = "") -> void:
 	_alive = false
 	_respawn_timer = RESPAWN_DELAY
 	print("PlayerSlice: player died at %s — respawning in %.0fs" % [get_position(), RESPAWN_DELAY])
-	GameBus.creature_died.emit("player", get_position(), "")
+	GameBus.player_died.emit(get_position(), killer_id)
 
 func _respawn() -> void:
 	_hp = MAX_HP
@@ -241,7 +241,9 @@ func _respawn() -> void:
 	print("PlayerSlice: player respawned at %s" % spawn_pos)
 
 func _on_player_damaged(dmg: float, attacker_id: String) -> void:
-	take_damage(dmg)
+	if not _alive:
+		return
+	take_damage(dmg, attacker_id)
 	print("PlayerSlice: took %.1f damage from %s  hp=%.1f" % [dmg, attacker_id, _hp])
 
 func _try_attack() -> void:

@@ -63,9 +63,10 @@ func _ready() -> void:
 	# before the slices enter the tree so its _ready() can use it.
 	_creature.terrain_slice = _terrain
 
-	# CreatureAI needs creature_slice and player_slice for position queries.
+	# CreatureAI needs creature_slice, player_slice, and battle_slice for queries.
 	_creature_ai.creature_slice = _creature
 	_creature_ai.player_slice   = _player
+	_creature_ai.battle_slice   = _battle
 
 	for s in [_terrain, _voxel, _battle, _creature, _creature_ai, _networking, _persistence, _player, _loot, _inventory, _character, _crafting, _technology, _ui]:
 		s.name = s.get_script().resource_path.get_file().get_basename()
@@ -105,6 +106,7 @@ func _ready() -> void:
 	GameBus.block_mined.connect(_on_block_mined)
 	GameBus.block_placed.connect(_on_block_placed)
 	GameBus.player_damaged.connect(_on_player_damaged)
+	GameBus.player_died.connect(_on_player_died)
 	GameBus.player_respawned.connect(_on_player_respawned)
 	GameBus.creature_alert.connect(func(iid): print("[AI] %s → alert" % iid))
 	GameBus.creature_aggressive.connect(func(iid): print("[AI] %s → aggressive" % iid))
@@ -313,6 +315,9 @@ func _on_block_placed(material: String, position: Vector3) -> void:
 
 func _on_player_damaged(damage: float, attacker_id: String) -> void:
 	print("[Player] took %.1f dmg from %s  hp=%.1f" % [damage, attacker_id, _player.get_hp()])
+
+func _on_player_died(position: Vector3, killer_id: String) -> void:
+	print("[Player] died at %s  killer=%s" % [position, killer_id])
 
 func _on_player_respawned(position: Vector3) -> void:
 	print("[Player] respawned at %s" % position)

@@ -52,6 +52,7 @@ var _ai: Dictionary = {}
 ## References wired by game_root before _ready.
 var creature_slice: Node = null
 var player_slice:   Node = null
+var battle_slice:   Node = null
 
 func _ready() -> void:
 	GameBus.creature_died.connect(_on_creature_died)
@@ -80,9 +81,12 @@ func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: f
 	var pos: Vector3       = inst["position"]
 	var ai_state: String   = ai["state"]
 	var dist: float        = pos.distance_to(player_pos)
-	var hp: float          = inst["hp"]
+	# Read combat HP from battle_slice so the flee threshold reflects actual damage
+	# taken; inst["hp"] is only written at spawn/death and stays at max during combat.
+	var _combat_hp: float = battle_slice.get_hp(iid) if battle_slice != null else -1.0
+	var hp: float = _combat_hp if _combat_hp >= 0.0 else inst["hp"]
 	var res: Resource      = GameData.CREATURES.get(inst["creature_id"], null)
-	var max_hp: float      = float(res.get("baseHp")) if res else 100.0
+	var max_hp: float      = float(res.get("baseHp", 100)) if res else 100.0
 	var alert_r: float     = ALERT_RADIUS_DEFAULT
 	var attack_r: float    = ATTACK_RADIUS_DEFAULT
 
@@ -111,12 +115,15 @@ func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: f
 			_chase(iid, inst, player_pos, delta)
 			ai["attack_timer"] += delta
 			if ai["attack_timer"] >= ATTACK_INTERVAL:
-				ai["attack_timer"] = 0.0
 				if dist <= attack_r:
+					ai["attack_timer"] = 0.0
 					GameBus.combat_round_requested.emit(iid, "player")
 
 		"fleeing":
-			if dist > SAFE_RADIUS or hp <= 0.0:
+			if hp <= 0.0:
+				_transition(iid, "dead")
+				return
+			if dist > SAFE_RADIUS:
 				_transition(iid, "idle")
 				return
 			_flee(iid, inst, player_pos, delta)
@@ -139,8 +146,8 @@ func _chase(iid: String, inst: Dictionary, player_pos: Vector3, delta: float) ->
 	_move_instance(iid, inst, player_pos, SPEED_AGGRESSIVE, delta)
 
 func _flee(iid: String, inst: Dictionary, player_pos: Vector3, delta: float) -> void:
-	var away: Vector3 = (inst["position"] - player_pos).normalized() * SPEED_FLEE
-	var target: Vector3 = inst["position"] + away * delta * 10.0
+	var away: Vector3 = (inst["position"] - player_pos).normalized()
+	var target: Vector3 = inst["position"] + away
 	_move_instance(iid, inst, target, SPEED_FLEE, delta)
 
 func _move_instance(iid: String, inst: Dictionary, target: Vector3, speed: float, delta: float) -> void:
@@ -150,12 +157,7 @@ func _move_instance(iid: String, inst: Dictionary, target: Vector3, speed: float
 		return
 	dir = dir.normalized()
 	var new_pos: Vector3 = pos + dir * speed * delta
-	# Update the stored position so subsequent ticks use the moved position.
-	creature_slice._instances[iid]["position"] = new_pos
-	# Move the visual body if it exists.
-	var body = creature_slice._instances[iid].get("body", null)
-	if body != null and is_instance_valid(body):
-		body.position = new_pos
+	creature_slice.set_instance_position(iid, new_pos)
 
 # ---------------------------------------------------------------------------
 # State transition
@@ -218,5 +220,4 @@ func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String
 
 func _on_creature_respawned(instance_id: String, _creature_id: String) -> void:
 	if _ai.has(instance_id):
-		_ai[instance_id]["state"] = "idle"
-		_ai[instance_id]["attack_timer"] = 0.0
+		_transition(instance_id, "idle")

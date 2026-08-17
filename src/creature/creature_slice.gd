@@ -85,6 +85,15 @@ func get_instance_creature_id(instance_id: String) -> String:
 		return ""
 	return _instances[instance_id]["creature_id"]
 
+## Move an instance to a new world position, keeping body and record in sync.
+func set_instance_position(instance_id: String, pos: Vector3) -> void:
+	if not _instances.has(instance_id):
+		return
+	_instances[instance_id]["position"] = pos
+	var body = _instances[instance_id].get("body", null)
+	if body != null and is_instance_valid(body):
+		body.position = pos
+
 ## Return a snapshot of all active instances (for HUD / minimap use).
 func get_all_instances() -> Array:
 	var out: Array = []
@@ -146,6 +155,8 @@ func _spawn(creature_id: String) -> String:
 	return iid
 
 func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String) -> void:
+	if entity_id == "player":
+		return
 	# entity_id may be either a fabric key or an instance_id.
 	# Mark matching instance(s) dead and schedule respawn.
 	for iid in _instances:

@@ -185,6 +185,11 @@ signal technology_unlocked(tech_id: String)
 ## attacker_id : String  — creature instance_id that attacked
 signal player_damaged(damage: float, attacker_id: String)
 
+## Emitted by PlayerSlice when the player's HP reaches zero.
+## position  : Vector3 — world position at time of death
+## killer_id : String  — attacker entity_id ("" if environmental)
+signal player_died(position: Vector3, killer_id: String)
+
 ## Emitted by PlayerSlice when the player dies and then respawns.
 signal player_respawned(position: Vector3)
 

@@ -87,6 +87,10 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 	GameBus.combat_round_resolved.emit(result)
 	return result
 
+## Return the current tracked combat HP for an entity (-1.0 if not yet in combat).
+func get_hp(entity_id: String) -> float:
+	return _hp_state.get(entity_id, -1.0)
+
 ## Reset a combatant's tracked HP back to its base value (e.g. on respawn).
 func reset_hp(entity_id: String) -> void:
 	_hp_state.erase(entity_id)
