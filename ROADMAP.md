@@ -161,8 +161,8 @@ bible.
 ## Phase 7 — Character system specification
 
 **Goal:** Produce a complete, actionable character system specification that
-covers visual customization, asset architecture, persistence, and multiplayer
-state — ready to guide engine implementation and art production.
+covers visual customization, asset architecture, animation, persistence, and
+multiplayer state — ready to guide engine implementation and art production.
 
 **Newel dependency:** None. This is a design phase.
 
@@ -184,7 +184,9 @@ state — ready to guide engine implementation and art production.
   - Multiplayer visual state synchronization
   - Permanent vs. transient visual state separation
   - LOD levels and composition simplification with `minLodLevel` per attachment
-  - Animation system placeholder (to be expanded in a dedicated spec)
+  - Animation system specification: locomotion state machine
+    (`idle / walk / run / fall / land`), blend tree layout, root-motion policy,
+    IK targets for hand and foot placement, and transition rules between states
   - Data-driven content model
   - Asset compatibility and semantic tag system
   - Asset production pipeline checklist
@@ -192,15 +194,14 @@ state — ready to guide engine implementation and art production.
 
 **Open items to resolve before engine implementation:**
 - Final palette size (recommended starting point: 256 entries)
-- Animation system specification (state machines, blend trees, locomotion)
 - Hitbox category definitions
 
 **Acceptance criteria:**
 - Every section has enough detail to guide an implementation decision
 - Palette size is explicitly decided and documented
+- Animation state machine covers at minimum: idle, walk, run, fall, land, attack,
+  death — with transition conditions and blend parameters specified
 - The asset pipeline checklist is complete and agreed upon by art and engineering
-- The animation system placeholder is acknowledged and a follow-up spec is
-  scheduled
 
 ---
 
@@ -497,13 +498,349 @@ first; the window system is built to host more later.
 
 ---
 
+## Phase 15 — Creature AI and behavior
+
+**Goal:** Make creatures alive — implement the fabric-defined state machines so
+they navigate, aggro, attack back, flee, and respawn at biome-correct locations.
+Combat currently resolves correctly but creatures are static targets.
+
+**Newel dependency:** None. State machines are already modelled in the fabric
+(`idle/alert/aggressive/fleeing/dead/respawning`); this phase wires them to
+GDScript NavigationAgent3D behavior.
+
+**Deliverables:**
+- `src/creature/creature_ai.gd` — per-instance state machine driven by
+  `GameData.CREATURES` fields; transitions: `idle` → `alert` (player within
+  `alertRadius`) → `aggressive` (within `attackRadius`) → `fleeing` (HP < 20 %)
+  → `dead` → `respawning`
+- `src/creature/creature_slice.gd` — extend with `NavigationAgent3D` paths;
+  spawn positions resolved from biome bounds so creatures appear in the correct
+  biome tile; patrol waypoints generated from biome center ± noise offset
+- `src/battle/battle_slice.gd` — creature `attack` behavior emits
+  `attack_requested(creature_instance_id)` so the battle pipeline is
+  bidirectional; `baseDamage` applied to player HP via `GameBus`
+- `src/player/player_slice.gd` — add player HP bar wired to `GameBus`
+  `player_damaged` signal; death + respawn cycle
+- `src/tests/test_suite.gd` — tests for state transitions (idle→alert, alert→
+  aggressive, fleeing threshold, respawn timer)
+
+**Acceptance criteria:**
+- Creatures patrol within their biome tile in `idle` state
+- Player entering `alertRadius` triggers `alert`; entering `attackRadius`
+  triggers attack cycle
+- Creature flees when HP drops below 20 %; respawns after `respawnSeconds`
+- Player takes damage from creature attacks; death triggers respawn
+- Automated tests cover all five state transitions
+
+**Known simplifications deferred to later:**
+- Pack / herd behavior (creatures alerting nearby allies)
+- Taming (`tame` behavior modelled in fabric but not wired)
+
+---
+
+## Phase 16 — Station-gated crafting and tool durability
+
+**Goal:** Close two long-standing "Known simplifications": enforce crafting
+station requirements and give tools a durability lifecycle.
+
+**Newel dependency:** None. Station tags already exist on recipes via the
+`stationRequired` guard field; durability state machines are in the item fabric
+(`pristine → worn → damaged → broken`).
+
+**Deliverables:**
+- `src/world/station_slice.gd` — tracks placed crafting stations (forge, alchemy
+  bench, carpentry bench, arcane table) as world entities; exposes
+  `nearest_station(pos, type, radius)` for the crafting gate check
+- `src/crafting/crafting_slice.gd` — `craft` / `can_craft` check `stationRequired`
+  against `station_slice`; surfaced in the crafting UI as a new block reason
+  `station_required:<type>`
+- Tool durability: `inventory_slice.gd` tracks per-slot durability; `use_item`
+  decrements durability based on action type; `broken` tools block their action
+  and emit `item_broke` on the bus
+- `src/ui/ui_slice.gd` — durability bar per tool slot in the inventory window;
+  crafting rows show station requirement inline
+- `src/tests/test_suite.gd` — tests for station gate (blocked without station,
+  allowed when nearby), durability decrement, and item-broke signal
+
+**Acceptance criteria:**
+- Recipes with `stationRequired` cannot be crafted without a nearby station ✗→✓
+- Tool durability decrements on use and breaks at 0
+- Broken tools cannot be used until repaired
+- Station requirement visible in crafting UI
+- All new automated tests pass
+
+**Known simplifications deferred:**
+- Repairing broken tools (requires a repair recipe category)
+- Station placement UI (stations currently spawned via console/test harness)
+
+---
+
+## Phase 17 — Chunk streaming and world expansion
+
+**Goal:** Replace the fixed 32×32 chunk with a streaming world so players can
+explore beyond the starting area and encounter resource distribution that makes
+the gather→craft→build loop meaningful at scale.
+
+**Newel dependency:** None.
+
+**Deliverables:**
+- `src/terrain/chunk_manager.gd` — loads/unloads `VoxelSlice` chunks as the
+  player moves; view distance configurable (default 3 chunks); `chunk_loaded` /
+  `chunk_unloaded` signals on the bus
+- `src/terrain/terrain_slice.gd` — world coordinate system: chunks addressed by
+  `(cx, cz)` int pair; biome assignment is now per-chunk, seeded by `(cx, cz)`
+  so biome borders are stable across sessions
+- `src/persistence/persistence_slice.gd` — per-chunk voxel edit storage; only
+  dirty chunks written to disk; save slot stores a chunk manifest
+- `src/creature/creature_slice.gd` — creature spawn budget per loaded chunk; on
+  chunk load, spawn quota creatures at biome-appropriate positions; despawn on
+  chunk unload if not engaged
+- Minimap stub: `src/ui/minimap.gd` — top-down 2D overlay showing loaded chunks,
+  biome color-coding, and player position
+
+**Acceptance criteria:**
+- World chunks load/unload as player moves; no visible pop-in within view distance
+- Biome assignment is stable (same seed, same coordinate → same biome)
+- Voxel edits in one chunk do not affect adjacent chunks
+- Creature populations scale with loaded area
+- Minimap renders loaded chunk outlines and player dot
+- Save/load round-trip preserves edits across all visited chunks
+
+---
+
+## Phase 18 — Multiplayer world sync (core)
+
+**Goal:** Promote the ENet plumbing (Phase 10) to a real authoritative
+host/client model so two or more players share the same world state.
+
+**Newel dependency:** None. Character sync spec is already drafted in
+`characters.md`.
+
+**Deliverables:**
+- `src/networking/networking_slice.gd` — full rewrite: host runs authoritative
+  simulation; clients send input packets, receive world-state deltas; RPCs for
+  `player_moved`, `block_changed`, `creature_state_changed`, `inventory_delta`
+- `src/core/game_root.gd` — boot path branches on host vs. client; clients defer
+  slice initialization until the host sends the initial world snapshot
+- `src/player/player_slice.gd` — remote player ghosts: `CharacterBody3D` driven
+  by interpolated snapshots rather than local input
+- `src/terrain/voxel_slice.gd` — block edits validated server-side; clients
+  receive authoritative `block_changed` events and apply them locally
+- `src/creature/creature_slice.gd` — creature AI runs on host only; client
+  receives state broadcast (position + state enum) at a fixed tick rate
+- Dead-reckoning for player movement; rollback for mining/placing (reject if
+  server disagrees within 200 ms)
+
+**Acceptance criteria:**
+- Two clients on localhost share terrain, inventory events, and creature state
+- Block mines/places are authoritative (server rejects conflicting edits)
+- Remote player ghosts render with < 100 ms interpolation lag at 60 Hz
+- Save snapshots are host-side only; clients re-sync on reconnect
+- All single-player automated tests still pass (host mode = single-player mode)
+
+**Known simplifications (deferred to Phase 19):**
+- No packet-loss simulation or jitter tolerance — only tested on a clean loopback
+  connection where delivery is guaranteed and latency is near-zero.
+- No network-condition emulation tooling.
+
+---
+
+## Phase 19 — Multiplayer chaos resilience
+
+**Goal:** Harden the Phase 18 authoritative model against real network
+conditions: jitter, packet loss, reordering, and abrupt disconnects.
+
+**Newel dependency:** None.
+
+**Deliverables:**
+- `src/networking/networking_slice.gd` — configurable network emulator layer:
+  artificial jitter (±N ms, configurable), packet-loss rate (0–30 %), and
+  out-of-order delivery toggled via an `emulate_network` export flag; disabled
+  by default in production builds
+- Jitter buffer for incoming state snapshots: hold N ms of snapshots and
+  interpolate between them; configurable buffer depth
+- Sequence-numbered packets with gap detection; duplicate and out-of-order
+  packets discarded gracefully
+- Disconnect / reconnect cycle: host persists last-known player state; rejoining
+  client receives a full world snapshot and resumes from last authoritative
+  position
+- `src/tests/test_suite.gd` — automated tests: simulated 15 % packet loss with
+  no desync after 10 s, jitter ±50 ms with ghost interpolation within tolerance,
+  abrupt client disconnect and reconnect restoring inventory
+
+**Acceptance criteria:**
+- Gameplay remains playable at 15 % packet loss and ±50 ms jitter on localhost
+  simulation
+- No inventory duplication or block-state desync after a reconnect cycle
+- Network emulator layer adds zero overhead when disabled
+- All Phase 18 acceptance criteria continue to hold
+
+**Known simplifications (deferred):**
+- Wide-area network (WAN) testing — all validation is loopback or LAN.
+- Bandwidth cap / throttle budgeting for snapshot deltas.
+
+---
+
+## Phase 20 — Skeleton rig and animation
+
+**Goal:** Bring the animation spec from `characters.md` to life: a rigged
+humanoid skeleton with a fabric-driven locomotion state machine.
+
+**Newel dependency:** None. Animation spec is complete from Phase 7.
+
+**Deliverables:**
+- Base humanoid skeleton rig (`CharacterBody3D` + `Skeleton3D`) with standard
+  bone hierarchy matching the `SkeletonDefinition` taxonomy in `characters.md`
+- `src/character/character_slice.gd` — wires fabric `GameData.CHARACTERS`
+  (skeletons, appearances) to runtime `MeshInstance3D` + `Skeleton3D`
+  construction; exposes `apply_equipment(slot, item_key)` and
+  `clear_equipment(slot)`
+- Socket attachment system: equipment meshes attached at named sockets; SKINNED /
+  RIGID / HYBRID deformation modes
+- `AnimationTree` driven by the locomotion state machine from `characters.md`
+  (`idle / walk / run / fall / land / attack / death`); blend parameters wired
+  to `velocity` and combat bus signals
+- IK targets for hand and foot placement wired to terrain normal
+- Root-motion policy applied: horizontal delta drives `CharacterBody3D.velocity`,
+  vertical from physics
+
+**Acceptance criteria:**
+- Player character animates through idle → walk → run transitions based on speed
+- Attack and death animations play on the correct bus signals
+- Foot IK keeps feet flush with voxel terrain surface
+- Socket-attached equipment deforms correctly in SKINNED mode, stays rigid in
+  RIGID mode
+
+**Known simplifications (deferred to Phase 21):**
+- Palette and material system not yet wired (placeholder albedo only).
+- LOD simplification not yet applied (full-detail mesh at all distances).
+- No blend-shape facial customization.
+
+---
+
+## Phase 21 — Material and palette pipeline
+
+**Goal:** Implement the pixel-art material system from `characters.md`: Primary /
+Secondary / Accent masks, Metal + Emission + Wear channels, and per-instance
+palette swaps without extra draw calls.
+
+**Newel dependency:** None.
+
+**Deliverables:**
+- Custom `ShaderMaterial` with Primary / Secondary / Accent mask channels; Metal,
+  Emission, and Wear channels driven by texture red, green, blue slots
+- Per-instance palette data passed as `ShaderParameter` arrays — one set per
+  `MeshInstance3D`, no new texture asset per character skin
+- Palette entries sourced from `GameData.CHARACTERS` fabric fields; 256-entry
+  palette cap enforced in the generator
+- Pixel-art texture constraints enforced: Point filtering set on all character
+  textures via import presets, no mip-maps, UV mapping validated against the
+  production checklist in `characters.md`
+- `characters.md` extended with production checklist sign-offs: resolution table,
+  Point filtering settings, UV mapping guide
+- `src/tests/test_suite.gd` — palette swap round-trip test (apply palette,
+  read back `ShaderParameter` values, confirm match)
+
+**Acceptance criteria:**
+- Palette swap changes character color without creating a new texture asset
+- Two characters with different palettes share the same `Mesh` resource
+- Pixel-art textures render without bilinear blurring (Point filter confirmed)
+- Wear channel visually degrades equipment as durability decreases
+
+**Known simplifications (deferred to Phase 22):**
+- LOD mesh switching not yet tied to this material system.
+- Emission channel is static; dynamic glow (e.g. enchantments) deferred.
+
+---
+
+## Phase 22 — LOD and composition simplification
+
+**Goal:** Apply the `minLodLevel` attachment rules from `characters.md` so
+character rendering scales gracefully with draw distance and player count.
+
+**Newel dependency:** None.
+
+**Deliverables:**
+- `src/character/character_slice.gd` — LOD manager: at runtime, evaluate each
+  `CharacterBody3D`'s screen-space size or world distance and set the active LOD
+  level (0 = full, 1 = medium, 2 = impostor)
+- Per-attachment `minLodLevel` respected: accessories and high-poly details hidden
+  at LOD 1; full socket set collapsed to body-only at LOD 2
+- Simplified meshes at distance > 20 m (LOD 1 threshold) and > 60 m (LOD 2 /
+  impostor billboard)
+- Impostor billboard: a pre-baked sprite rendered in place of the full rig at
+  LOD 2; palette swap applied to the billboard texture
+- `src/tests/test_suite.gd` — tests: LOD level transitions at distance thresholds,
+  attachment visibility toggling, impostor swap correctness
+
+**Acceptance criteria:**
+- Full-detail rig renders within 20 m; simplified mesh between 20–60 m; impostor
+  beyond 60 m
+- `minLodLevel` attachments are hidden at their specified threshold (no earlier)
+- Impostor billboard uses the correct palette for the character instance
+- Frame time with 20 remote characters at 60 m is measurably lower than 20 full rigs
+
+**Known simplifications (deferred):**
+- LOD mesh generation is manual (artist-authored); no automatic mesh decimation.
+- Impostor baking is offline; no runtime re-bake on palette change.
+- No per-platform LOD bias (mobile vs. desktop thresholds are identical).
+
+---
+
+## Phase 23 — Social systems and player economy
+
+**Goal:** Ground the `CommunityOwnsTheFuture` and `EconomyIsPlayer-Driven`
+constitution principles in real game mechanics: trade, social skills, and
+community governance hooks.
+
+**Newel dependency:** None. Social skill tree already defined in
+`fabric/gameplay/skills/social.js`.
+
+**Deliverables:**
+- `src/trade/trade_slice.gd` — player-to-player trade UI: propose trade (items +
+  quantities), counter-offer, accept/reject; secured via host authority in
+  multiplayer; emits `trade_completed` on the bus
+- `src/world/market_slice.gd` — persistent world market: players list items at
+  a price; other players browse and buy; listings expire after configurable
+  duration; market data is part of the world save snapshot
+- Social skill effects wired: `Diplomacy` skill tier buffs trade offer reception;
+  `Leadership` unlocks guild formation; `Lore` unlocks advanced wiki entries
+- `src/governance/proposal_slice.gd` — in-game proposal system mirroring the
+  constitution's `CommunityOwnsTheFuture` principle: players submit proposals,
+  ratification requires N% contributor vote; accepted proposals emit a fabric
+  decision event (the fabric decision state machine: `proposed → accepted →
+  superseded`)
+- UI panels for trade, market, and proposals wired into `ui_slice.gd`
+
+**Acceptance criteria:**
+- Two players can complete a trade; inventory reflects the exchange on both sides
+- Market listings persist across save/load
+- Social skill tier visibly affects a trade or leadership action
+- Proposal system allows submission, voting, and ratification; accepted proposals
+  update a runtime decisions log
+
+---
+
 ## Deferred (in priority order)
 
-- **Creature AI / behavior** — implement the fabric state machines
-  (`idle/alert/aggressive/fleeing/respawning`) so creatures move, aggro, attack
-  back, and flee. Combat currently "works" but creatures are static.
-- **Multiplayer world sync** — the ENet plumbing exists (host/join + state
-  broadcast); full authoritative world sync is a large, high-risk lift. Defer
-  until the single-player gather→craft→build loop is solid.
-- **Chunk streaming / larger world** — single 32×32 chunk is enough until there
-  is a reason to explore (resource distribution in Phase 12).
+- **Public wiki deployment** — VitePress (or equivalent) static-site deployment
+  and CI-triggered wiki regeneration from the fabric (deferred from Phase 9).
+- **Research cost points** — the abstract `researchCost` points field is modelled
+  in the fabric but not enforced at runtime (deferred from Phase 13).
+- **`VoidTouched` special-case unlock** — the void-burst survivor unlock trigger
+  is defined in the fabric but not wired to any runtime event (deferred from
+  Phase 13).
+- **Taming** — the `tame` behavior is modelled on creature entities; requires
+  Phase 15 creature AI before it can be wired.
+- **Station placement UI** — currently stations are spawned programmatically;
+  a build-mode placement flow is needed (deferred from Phase 16).
+- **Tool repair recipes** — broken tools need a dedicated repair recipe category
+  (deferred from Phase 16).
+- **Pack / herd behavior** — creatures alerting nearby allies (deferred from
+  Phase 15).
+- **WAN / cross-region multiplayer testing** — all Phase 18–19 multiplayer
+  validation is loopback or LAN (deferred from Phase 19).
+- **Automatic LOD mesh decimation** — simplified meshes are hand-authored;
+  runtime decimation deferred from Phase 22.
+- **Dynamic impostor re-bake** — impostor billboards are offline-baked; live
+  palette-change re-bake deferred from Phase 22.
