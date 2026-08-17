@@ -451,30 +451,49 @@ emitted by `generator-godot`); no generator change needed.
 
 ---
 
-## Phase 14 — Player UI: inventory, technology tree, crafting
+## Phase 14 — Player UI: inventory, technology tree, crafting ✅ Done
 
 **Goal:** Expose the systems built so far through in-game windows so a player
 can drive them without code. Inventory, technology tree, and crafting come
 first; the window system is built to host more later.
 
-**Deliverables (proposed):**
-- A shared window/HUD layer (CanvasLayer) that opens/closes named panels with a
-  consistent chrome (title bar, keyboard toggle, close affordance).
-- **Inventory window** — grid list of carried items + weight/slot usage,
-  replacing the current `I`-toggle debug label.
-- **Technology tree window** — renders technologies as nodes with prerequisite
-  edges, per-node status (`locked → researching → unlocked`), material cost, and
-  a "begin research" action.
-- **Crafting window** — lists craftable recipes, greys out blocked ones with a
-  reason (skill tier, technology, missing inputs), and a craft button.
-- Player input to trigger research/craft through the bus, replacing the
-  boot-demo-only signal emissions.
+**Deliverables:**
+- `src/ui/ui_slice.gd` — **new**; a shared window layer (CanvasLayer) hosting
+  three named panels with consistent chrome (title bar, ✕ close button,
+  keyboard toggles `I` / `T` / `C`). Opening a window releases the mouse so
+  buttons are clickable; closing the last window re-captures it. World input is
+  gated in `player_slice.gd` on the mouse being captured, so no attack/mine
+  slips through an open menu. Exposes pure data projections
+  (`inventory_lines()`, `crafting_rows()`, `technology_rows()`) that the
+  headless test suite asserts against directly.
+- **Inventory window** (`I`) — item list + live weight/slot usage, replacing the
+  old `I`-toggle debug label. `inventory_slice.gd` dropped its private UI and now
+  emits an `inventory_changed` bus signal on any mutation, plus public
+  `get_current_weight` / `get_max_weight` / `get_max_slots` accessors.
+- **Technology tree window** (`T`) — one row per technology with status
+  (`locked → researching → unlocked`), prerequisite edges (listed `requires`),
+  material cost + duration, and a "Research" button emitting
+  `research_requested` through the bus. Rows are disabled unless prerequisites
+  are met.
+- **Crafting window** (`C`) — every recipe rendered as inputs → outputs with a
+  "Craft" button emitting `craft_requested`; blocked recipes are greyed out with
+  the reason (skill tier, technology, missing inputs).
+- Player input now drives research/craft through the bus via these windows,
+  replacing the boot-demo-only signal emissions.
 
-**Acceptance criteria (draft):**
-- Inventory, technology, and crafting windows open/close and reflect live state.
-- Crafting blocks/unblocks recipes reactively as technologies unlock.
+**Acceptance criteria:**
+- Inventory, technology, and crafting windows open/close and reflect live state ✓
+- Crafting blocks/unblocks recipes reactively as technologies unlock ✓
 - Research can be initiated from the technology window (materials consumed,
-  auto-completes on duration).
+  auto-completes on duration) ✓
+- 4 new UI tests pass at startup (window toggle, inventory lines, crafting
+  gate, technology rows) ✓
+
+**Known simplifications (deferred):**
+- Prerequisite edges render as text (`requires: …`) in a flat tier list, not a
+  drawn node graph.
+- Research failure feedback (e.g. missing materials) surfaces through the
+  window's feedback line and the boot log, not a modal.
 
 ---
 

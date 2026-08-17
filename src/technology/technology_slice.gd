@@ -122,6 +122,11 @@ func get_status(tech_id: String) -> String:
 func get_statuses() -> Dictionary:
 	return _status.duplicate()
 
+## Return the structured `tech` json field for a technology (or {} if malformed).
+## Public so the UI slice can render cost / duration / prerequisite edges.
+func get_tech_data(tech_id: String) -> Dictionary:
+	return _get_tech_data(tech_id)
+
 ## Restore status from a persisted snapshot (ignores unknown tech keys).
 func apply_statuses(statuses: Dictionary) -> void:
 	for tech_id in statuses:

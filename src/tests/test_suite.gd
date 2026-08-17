@@ -17,6 +17,7 @@ const InventorySlice  := preload("res://src/inventory/inventory_slice.gd")
 const CharacterSlice  := preload("res://src/character/character_slice.gd")
 const CraftingSlice   := preload("res://src/crafting/crafting_slice.gd")
 const TechnologySlice := preload("res://src/technology/technology_slice.gd")
+const UiSlice         := preload("res://src/ui/ui_slice.gd")
 const VoxelSlice      := preload("res://src/terrain/voxel_slice.gd")
 
 var _pass: int = 0
@@ -89,6 +90,10 @@ func run() -> void:
 	_run_test("voxel: mining placed block yields its material", _test_voxel_mine_placed_block_yields_material)
 	_run_test("voxel: placed block preserves base colour",     _test_voxel_placed_block_preserves_base_colour)
 	_run_test("voxel: place after mine keeps placed colour",   _test_voxel_place_after_mine_keeps_colour)
+	_run_test("ui: windows toggle open/close",                 _test_ui_window_toggle)
+	_run_test("ui: inventory lines reflect contents",          _test_ui_inventory_lines)
+	_run_test("ui: crafting rows gate on technology",          _test_ui_crafting_rows_tech_gate)
+	_run_test("ui: technology rows report status + prereqs",   _test_ui_technology_rows_status)
 
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
@@ -915,6 +920,95 @@ func _test_voxel_place_after_mine_keeps_colour() -> void:
 	assert_true(layers.size() >= 2, "column has natural + placed layers")
 	assert_eq(layers[-1]["color"], VoxelSlice.MATERIAL_COLORS["Ferrite"], "placed Ferrite renders Ferrite colour, not the mined material's colour")
 	v.queue_free()
+	inv.queue_free()
+
+# ---------------------------------------------------------------------------
+# UiSlice tests (Phase 14 windows)
+# ---------------------------------------------------------------------------
+
+func _ui_row(rows: Array, id: String) -> Dictionary:
+	for r in rows:
+		if str(r["id"]) == id:
+			return r
+	return {}
+
+func _test_ui_window_toggle() -> void:
+	var ui := UiSlice.new()
+	add_child(ui)
+	assert_false(ui.any_window_open(), "no windows open initially")
+	ui.toggle_window("inventory")
+	assert_true(ui.is_window_open("inventory"), "inventory opens on toggle")
+	assert_true(ui.any_window_open(), "any_window_open true after open")
+	ui.toggle_window("technology")
+	assert_true(ui.is_window_open("technology"), "technology opens independently")
+	ui.toggle_window("inventory")
+	assert_false(ui.is_window_open("inventory"), "inventory closes on second toggle")
+	assert_true(ui.any_window_open(), "technology still open")
+	ui.close_window("technology")
+	assert_false(ui.any_window_open(), "all windows closed")
+	ui.queue_free()
+
+func _test_ui_inventory_lines() -> void:
+	var ui := UiSlice.new()
+	add_child(ui)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	ui.inventory_slice = inv
+	inv.add_item("Ferrite", 5)
+	inv.add_item("Thornwood", 2)
+	var lines: Array = ui.inventory_lines()
+	assert_true(lines.has("Ferrite ×5"), "Ferrite line present")
+	assert_true(lines.has("Thornwood ×2"), "Thornwood line present")
+	ui.queue_free()
+	inv.queue_free()
+
+func _test_ui_crafting_rows_tech_gate() -> void:
+	var ui := UiSlice.new()
+	add_child(ui)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	var tech := TechnologySlice.new()
+	add_child(tech)
+	var craft := CraftingSlice.new()
+	add_child(craft)
+	ui.inventory_slice = inv
+	ui.crafting_slice = craft
+	ui.technology_slice = tech
+	craft.inventory_slice = inv
+	craft.technology_slice = tech
+	tech.inventory_slice = inv
+	craft.set_skill("Smithing", "novice")
+	inv.add_item("Ferrite", 6)   # 4 for research + 2 for the craft
+	var locked := _ui_row(ui.crafting_rows(), "RecipeFerriteIngot")
+	assert_false(bool(locked["can_craft"]), "crafting blocked while tech locked")
+	assert_true(str(locked["reason"]).begins_with("technology_locked"), "reason is technology_locked")
+	assert_true(tech.begin_research("TechBasicSmithing")["success"], "begin research succeeds")
+	assert_true(tech.complete_research("TechBasicSmithing")["success"], "complete research succeeds")
+	var unlocked := _ui_row(ui.crafting_rows(), "RecipeFerriteIngot")
+	assert_true(bool(unlocked["can_craft"]), "crafting allowed after unlock")
+	ui.queue_free()
+	craft.queue_free()
+	tech.queue_free()
+	inv.queue_free()
+
+func _test_ui_technology_rows_status() -> void:
+	var ui := UiSlice.new()
+	add_child(ui)
+	var tech := TechnologySlice.new()
+	add_child(tech)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	ui.technology_slice = tech
+	ui.inventory_slice = inv
+	tech.inventory_slice = inv
+	var root := _ui_row(ui.technology_rows(), "TechBasicSmithing")
+	assert_eq(root["status"], "locked", "root tech starts locked")
+	assert_true(bool(root["can_research"]), "root tech researchable (no prereqs)")
+	var gated := _ui_row(ui.technology_rows(), "TechMasterForge")
+	assert_false(bool(gated["can_research"]), "TechMasterForge gated by prereq")
+	assert_true((gated["requires"] as Array).has("TechBasicSmithing"), "requires lists TechBasicSmithing")
+	ui.queue_free()
+	tech.queue_free()
 	inv.queue_free()
 
 # ---------------------------------------------------------------------------
