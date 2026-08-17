@@ -48,6 +48,21 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 	else:
 		outcome = "miss"
 
+	# Player HP is owned by PlayerSlice; forward damage via the bus instead of
+	# tracking it here, and skip the kill-check (PlayerSlice handles death).
+	if defender_id == "player":
+		if outcome != "miss":
+			GameBus.player_damaged.emit(damage, attacker_id)
+		var result_player := {
+			"attacker": attacker_id,
+			"defender": defender_id,
+			"damage":   snappedf(damage, 0.1),
+			"outcome":  outcome,
+			"defender_hp_remaining": -1.0,   # unknown — owned by PlayerSlice
+		}
+		GameBus.combat_round_resolved.emit(result_player)
+		return result_player
+
 	_hp_state[defender_id] = maxf(_hp_state[defender_id] - damage, 0.0)
 	var hp_remaining: float = _hp_state[defender_id]
 

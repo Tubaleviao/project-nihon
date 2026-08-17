@@ -20,12 +20,34 @@ const RESPAWN_SECONDS := 300.0
 
 ## Which creature fabric keys to spawn and how many of each.
 const SPAWN_MANIFEST: Dictionary = {
-	"ForestBoar":  3,
-	"GraywolfPack": 2,
+	"ForestBoar":    3,
+	"GraywolfPack":  2,
+	"SteppeBison":   2,
+	"RidgeHawk":     2,
+	"LavaSlug":      2,
+	"CinderGargoyle":1,
+	"GlimmerFox":    2,
+	"VeilStalker":   1,
+	"VoidSerpent":   1,
+	"RiftWarden":    1,
 }
 
-## Spread around the player's starting position.
-const SPAWN_ORIGIN := Vector3(16.0, 8.0, 16.0)
+## Biome spawn centres: each creature type anchors to a biome region.
+## These map to distinct terrain zones so biome immersion is maintained.
+const CREATURE_BIOME_ORIGINS: Dictionary = {
+	"ForestBoar":    Vector3(16.0, 8.0, 16.0),   # temperate forest
+	"GraywolfPack":  Vector3(16.0, 8.0, 16.0),   # temperate forest
+	"SteppeBison":   Vector3(48.0, 8.0, 16.0),   # temperate grassland
+	"RidgeHawk":     Vector3(48.0, 8.0, 48.0),   # temperate grassland
+	"LavaSlug":      Vector3(80.0, 8.0, 16.0),   # volcanic badlands
+	"CinderGargoyle":Vector3(80.0, 8.0, 16.0),   # volcanic badlands
+	"GlimmerFox":    Vector3(16.0, 8.0, 80.0),   # twilight grove
+	"VeilStalker":   Vector3(16.0, 8.0, 80.0),   # twilight grove
+	"VoidSerpent":   Vector3(80.0, 8.0, 80.0),   # void rift
+	"RiftWarden":    Vector3(80.0, 8.0, 80.0),   # void rift
+}
+
+## Spread around each biome origin.
 const SPAWN_RADIUS := 10.0
 
 ## Instance record: { "creature_id", "position", "state", "hp", "respawn_at", "body" }
@@ -94,9 +116,10 @@ func _spawn(creature_id: String) -> String:
 		return ""
 
 	var hp: float = float(res.get("baseHp"))
-	var angle := randf_range(0.0, TAU)
-	var r     := randf_range(2.0, SPAWN_RADIUS)
-	var pos   := SPAWN_ORIGIN + Vector3(cos(angle) * r, 0.0, sin(angle) * r)
+	var angle  := randf_range(0.0, TAU)
+	var r      := randf_range(2.0, SPAWN_RADIUS)
+	var origin := CREATURE_BIOME_ORIGINS.get(creature_id, Vector3(16.0, 8.0, 16.0))
+	var pos    := origin + Vector3(cos(angle) * r, 0.0, sin(angle) * r)
 
 	# Sit the creature on the terrain surface instead of a fixed height.
 	if terrain_slice != null and terrain_slice.has_method("get_height_at"):
@@ -176,9 +199,14 @@ func _make_visual(creature_id: String, pos: Vector3) -> Node3D:
 
 func _creature_color(creature_id: String) -> Color:
 	match creature_id:
-		"ForestBoar":
-			return Color(0.55, 0.35, 0.2)
-		"GraywolfPack":
-			return Color(0.42, 0.42, 0.48)
-		_:
-			return Color(0.8, 0.8, 0.8)
+		"ForestBoar":     return Color(0.55, 0.35, 0.20)
+		"GraywolfPack":   return Color(0.42, 0.42, 0.48)
+		"SteppeBison":    return Color(0.60, 0.45, 0.25)
+		"RidgeHawk":      return Color(0.70, 0.55, 0.30)
+		"LavaSlug":       return Color(0.85, 0.25, 0.10)
+		"CinderGargoyle": return Color(0.30, 0.15, 0.10)
+		"GlimmerFox":     return Color(0.90, 0.80, 0.40)
+		"VeilStalker":    return Color(0.25, 0.20, 0.35)
+		"VoidSerpent":    return Color(0.10, 0.05, 0.25)
+		"RiftWarden":     return Color(0.50, 0.00, 0.50)
+		_:                return Color(0.80, 0.80, 0.80)

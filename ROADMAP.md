@@ -498,7 +498,7 @@ first; the window system is built to host more later.
 
 ---
 
-## Phase 15 — Creature AI and behavior
+## Phase 15 — Creature AI and behavior ✅ Done
 
 **Goal:** Make creatures alive — implement the fabric-defined state machines so
 they navigate, aggro, attack back, flee, and respawn at biome-correct locations.
