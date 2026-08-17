@@ -161,8 +161,8 @@ bible.
 ## Phase 7 — Character system specification
 
 **Goal:** Produce a complete, actionable character system specification that
-covers visual customization, asset architecture, persistence, and multiplayer
-state — ready to guide engine implementation and art production.
+covers visual customization, asset architecture, animation, persistence, and
+multiplayer state — ready to guide engine implementation and art production.
 
 **Newel dependency:** None. This is a design phase.
 
@@ -184,7 +184,9 @@ state — ready to guide engine implementation and art production.
   - Multiplayer visual state synchronization
   - Permanent vs. transient visual state separation
   - LOD levels and composition simplification with `minLodLevel` per attachment
-  - Animation system placeholder (to be expanded in a dedicated spec)
+  - Animation system specification: locomotion state machine
+    (`idle / walk / run / fall / land`), blend tree layout, root-motion policy,
+    IK targets for hand and foot placement, and transition rules between states
   - Data-driven content model
   - Asset compatibility and semantic tag system
   - Asset production pipeline checklist
@@ -192,15 +194,14 @@ state — ready to guide engine implementation and art production.
 
 **Open items to resolve before engine implementation:**
 - Final palette size (recommended starting point: 256 entries)
-- Animation system specification (state machines, blend trees, locomotion)
 - Hitbox category definitions
 
 **Acceptance criteria:**
 - Every section has enough detail to guide an implementation decision
 - Palette size is explicitly decided and documented
+- Animation state machine covers at minimum: idle, walk, run, fall, land, attack,
+  death — with transition conditions and blend parameters specified
 - The asset pipeline checklist is complete and agreed upon by art and engineering
-- The animation system placeholder is acknowledged and a follow-up spec is
-  scheduled
 
 ---
 
@@ -607,7 +608,7 @@ the gather→craft→build loop meaningful at scale.
 
 ---
 
-## Phase 18 — Multiplayer world sync
+## Phase 18 — Multiplayer world sync (core)
 
 **Goal:** Promote the ENet plumbing (Phase 10) to a real authoritative
 host/client model so two or more players share the same world state.
@@ -627,8 +628,8 @@ host/client model so two or more players share the same world state.
   receive authoritative `block_changed` events and apply them locally
 - `src/creature/creature_slice.gd` — creature AI runs on host only; client
   receives state broadcast (position + state enum) at a fixed tick rate
-- Latency tolerance: dead-reckoning for player movement; rollback for mining/
-  placing (reject if server disagrees within 200 ms)
+- Dead-reckoning for player movement; rollback for mining/placing (reject if
+  server disagrees within 200 ms)
 
 **Acceptance criteria:**
 - Two clients on localhost share terrain, inventory events, and creature state
@@ -637,41 +638,156 @@ host/client model so two or more players share the same world state.
 - Save snapshots are host-side only; clients re-sync on reconnect
 - All single-player automated tests still pass (host mode = single-player mode)
 
+**Known simplifications (deferred to Phase 19):**
+- No packet-loss simulation or jitter tolerance — only tested on a clean loopback
+  connection where delivery is guaranteed and latency is near-zero.
+- No network-condition emulation tooling.
+
 ---
 
-## Phase 19 — Animation system and character visuals
+## Phase 19 — Multiplayer chaos resilience
 
-**Goal:** Bring the character system spec (`characters.md`) to life: real
-skeleton rigs, equipment deformation, and the pixel-art material/palette pipeline.
+**Goal:** Harden the Phase 18 authoritative model against real network
+conditions: jitter, packet loss, reordering, and abrupt disconnects.
 
-**Newel dependency:** None. Spec is complete from Phase 7.
+**Newel dependency:** None.
+
+**Deliverables:**
+- `src/networking/networking_slice.gd` — configurable network emulator layer:
+  artificial jitter (±N ms, configurable), packet-loss rate (0–30 %), and
+  out-of-order delivery toggled via an `emulate_network` export flag; disabled
+  by default in production builds
+- Jitter buffer for incoming state snapshots: hold N ms of snapshots and
+  interpolate between them; configurable buffer depth
+- Sequence-numbered packets with gap detection; duplicate and out-of-order
+  packets discarded gracefully
+- Disconnect / reconnect cycle: host persists last-known player state; rejoining
+  client receives a full world snapshot and resumes from last authoritative
+  position
+- `src/tests/test_suite.gd` — automated tests: simulated 15 % packet loss with
+  no desync after 10 s, jitter ±50 ms with ghost interpolation within tolerance,
+  abrupt client disconnect and reconnect restoring inventory
+
+**Acceptance criteria:**
+- Gameplay remains playable at 15 % packet loss and ±50 ms jitter on localhost
+  simulation
+- No inventory duplication or block-state desync after a reconnect cycle
+- Network emulator layer adds zero overhead when disabled
+- All Phase 18 acceptance criteria continue to hold
+
+**Known simplifications (deferred):**
+- Wide-area network (WAN) testing — all validation is loopback or LAN.
+- Bandwidth cap / throttle budgeting for snapshot deltas.
+
+---
+
+## Phase 20 — Skeleton rig and animation
+
+**Goal:** Bring the animation spec from `characters.md` to life: a rigged
+humanoid skeleton with a fabric-driven locomotion state machine.
+
+**Newel dependency:** None. Animation spec is complete from Phase 7.
 
 **Deliverables:**
 - Base humanoid skeleton rig (`CharacterBody3D` + `Skeleton3D`) with standard
   bone hierarchy matching the `SkeletonDefinition` taxonomy in `characters.md`
+- `src/character/character_slice.gd` — wires fabric `GameData.CHARACTERS`
+  (skeletons, appearances) to runtime `MeshInstance3D` + `Skeleton3D`
+  construction; exposes `apply_equipment(slot, item_key)` and
+  `clear_equipment(slot)`
 - Socket attachment system: equipment meshes attached at named sockets; SKINNED /
   RIGID / HYBRID deformation modes
-- Material system: Primary / Secondary / Accent palette masks; Metal + Emission +
-  Wear channels; per-instance `ShaderMaterial` so characters visually differ
-  without extra draw calls
-- `src/character/character_slice.gd` — wires fabric `GameData.CHARACTERS` (skeletons,
-  appearances, palettes) to runtime `MeshInstance3D` construction; exposes
-  `apply_equipment(slot, item_key)` and `clear_equipment(slot)`
-- Pixel-art texture pipeline documentation: resolution table, Point filtering
-  settings, UV mapping guide (extend `characters.md` with production checklist
-  sign-offs)
-- LOD: `minLodLevel` respected per attachment; simplified meshes at distance > 20 m
+- `AnimationTree` driven by the locomotion state machine from `characters.md`
+  (`idle / walk / run / fall / land / attack / death`); blend parameters wired
+  to `velocity` and combat bus signals
+- IK targets for hand and foot placement wired to terrain normal
+- Root-motion policy applied: horizontal delta drives `CharacterBody3D.velocity`,
+  vertical from physics
 
 **Acceptance criteria:**
-- Player character renders with at least two equipment pieces from the fabric
-- Swapping equipment updates the visual in < 1 frame
-- Palette swap changes color without a new texture asset
-- LOD simplification triggers at the specified distance threshold
-- Pixel-art textures render without bilinear blurring
+- Player character animates through idle → walk → run transitions based on speed
+- Attack and death animations play on the correct bus signals
+- Foot IK keeps feet flush with voxel terrain surface
+- Socket-attached equipment deforms correctly in SKINNED mode, stays rigid in
+  RIGID mode
+
+**Known simplifications (deferred to Phase 21):**
+- Palette and material system not yet wired (placeholder albedo only).
+- LOD simplification not yet applied (full-detail mesh at all distances).
+- No blend-shape facial customization.
 
 ---
 
-## Phase 20 — Social systems and player economy
+## Phase 21 — Material and palette pipeline
+
+**Goal:** Implement the pixel-art material system from `characters.md`: Primary /
+Secondary / Accent masks, Metal + Emission + Wear channels, and per-instance
+palette swaps without extra draw calls.
+
+**Newel dependency:** None.
+
+**Deliverables:**
+- Custom `ShaderMaterial` with Primary / Secondary / Accent mask channels; Metal,
+  Emission, and Wear channels driven by texture red, green, blue slots
+- Per-instance palette data passed as `ShaderParameter` arrays — one set per
+  `MeshInstance3D`, no new texture asset per character skin
+- Palette entries sourced from `GameData.CHARACTERS` fabric fields; 256-entry
+  palette cap enforced in the generator
+- Pixel-art texture constraints enforced: Point filtering set on all character
+  textures via import presets, no mip-maps, UV mapping validated against the
+  production checklist in `characters.md`
+- `characters.md` extended with production checklist sign-offs: resolution table,
+  Point filtering settings, UV mapping guide
+- `src/tests/test_suite.gd` — palette swap round-trip test (apply palette,
+  read back `ShaderParameter` values, confirm match)
+
+**Acceptance criteria:**
+- Palette swap changes character color without creating a new texture asset
+- Two characters with different palettes share the same `Mesh` resource
+- Pixel-art textures render without bilinear blurring (Point filter confirmed)
+- Wear channel visually degrades equipment as durability decreases
+
+**Known simplifications (deferred to Phase 22):**
+- LOD mesh switching not yet tied to this material system.
+- Emission channel is static; dynamic glow (e.g. enchantments) deferred.
+
+---
+
+## Phase 22 — LOD and composition simplification
+
+**Goal:** Apply the `minLodLevel` attachment rules from `characters.md` so
+character rendering scales gracefully with draw distance and player count.
+
+**Newel dependency:** None.
+
+**Deliverables:**
+- `src/character/character_slice.gd` — LOD manager: at runtime, evaluate each
+  `CharacterBody3D`'s screen-space size or world distance and set the active LOD
+  level (0 = full, 1 = medium, 2 = impostor)
+- Per-attachment `minLodLevel` respected: accessories and high-poly details hidden
+  at LOD 1; full socket set collapsed to body-only at LOD 2
+- Simplified meshes at distance > 20 m (LOD 1 threshold) and > 60 m (LOD 2 /
+  impostor billboard)
+- Impostor billboard: a pre-baked sprite rendered in place of the full rig at
+  LOD 2; palette swap applied to the billboard texture
+- `src/tests/test_suite.gd` — tests: LOD level transitions at distance thresholds,
+  attachment visibility toggling, impostor swap correctness
+
+**Acceptance criteria:**
+- Full-detail rig renders within 20 m; simplified mesh between 20–60 m; impostor
+  beyond 60 m
+- `minLodLevel` attachments are hidden at their specified threshold (no earlier)
+- Impostor billboard uses the correct palette for the character instance
+- Frame time with 20 remote characters at 60 m is measurably lower than 20 full rigs
+
+**Known simplifications (deferred):**
+- LOD mesh generation is manual (artist-authored); no automatic mesh decimation.
+- Impostor baking is offline; no runtime re-bake on palette change.
+- No per-platform LOD bias (mobile vs. desktop thresholds are identical).
+
+---
+
+## Phase 23 — Social systems and player economy
 
 **Goal:** Ground the `CommunityOwnsTheFuture` and `EconomyIsPlayer-Driven`
 constitution principles in real game mechanics: trade, social skills, and
@@ -722,6 +838,9 @@ community governance hooks.
   (deferred from Phase 16).
 - **Pack / herd behavior** — creatures alerting nearby allies (deferred from
   Phase 15).
-- **Animation system spec** — placeholder acknowledged in Phase 7; full state
-  machine + blend tree + locomotion spec is a prerequisite for Phase 19 art
-  production.
+- **WAN / cross-region multiplayer testing** — all Phase 18–19 multiplayer
+  validation is loopback or LAN (deferred from Phase 19).
+- **Automatic LOD mesh decimation** — simplified meshes are hand-authored;
+  runtime decimation deferred from Phase 22.
+- **Dynamic impostor re-bake** — impostor billboards are offline-baked; live
+  palette-change re-bake deferred from Phase 22.
