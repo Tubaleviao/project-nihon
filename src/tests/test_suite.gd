@@ -1038,8 +1038,18 @@ func _test_ai_idle_to_alert() -> void:
 	var ai: CreatureAI   = rig["ai"]
 	var instances := c.get_all_instances()
 	assert_true(instances.size() > 0, "need at least one creature instance")
-	var iid: String = instances[0]["instance_id"]
-	var pos: Vector3 = instances[0]["position"]
+	# idle→alert only applies to NEUTRAL creatures (aggressionLevel == 1). Aggressive
+	# creatures skip the alert state entirely, so select a NEUTRAL instance instead of
+	# blindly using instances[0] (which is CinderGargoyle, aggressionLevel == 2).
+	var iid := ""
+	var pos := Vector3.ZERO
+	for inst in instances:
+		var res: Resource = GameData.CREATURES.get(inst["creature_id"], null)
+		if res != null and int(res.get("aggressionLevel")) == 1:
+			iid = inst["instance_id"]
+			pos = inst["position"]
+			break
+	assert_true(iid != "", "need a NEUTRAL creature instance (aggressionLevel == 1)")
 	ai.force_state(iid, "idle")
 	# Place the "player" close enough to trigger alert (within ALERT_RADIUS_DEFAULT).
 	var near_pos := pos + Vector3(1.0, 0.0, 0.0)
