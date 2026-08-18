@@ -20,6 +20,12 @@ A sleek, luminescent fox native to the Twilight Grove whose fur shifts in hue wi
 | aggressionLevel | `passive`, `neutral`, `aggressive`, `territorial` |  |
 | baseHp | integer | Hit points at tier baseline; low |
 | baseDamage | integer | Damage per nip at tier baseline; minimal |
+| alertRadius | decimal | Distance in metres at which creature enters alert state |
+| attackRadius | decimal | Distance in metres at which creature begins attacking |
+| fleeThreshold | decimal | HP fraction (0–1) below which creature flees; flees on weapon detect |
+| respawnSeconds | integer | Seconds before a dead creature respawns |
+| spawnCount | integer | Number of instances spawned per game world |
+| biome | `TemperateForest`, `TemperateGrassland`, `VolcanicBadlands`, `TwilightGrove`, `VoidRift` | Biome this creature belongs to |
 
 ## States
 

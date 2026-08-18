@@ -23,9 +23,3 @@ enum Tier {
 	EXPERT,
 	MASTER,
 }
-
-@export var id: String
-@export var tier: int
-@export var xpCurve: int
-@export var maxLevel: int
-@export var category: int

@@ -12,11 +12,11 @@ importers:
         specifier: ^0.3.1
         version: 0.3.1
       '@newel/generator-bible':
-        specifier: ^0.0.1
-        version: 0.0.1
+        specifier: ^0.0.2
+        version: 0.0.2
       '@newel/generator-godot':
-        specifier: ^0.0.1
-        version: 0.0.1
+        specifier: ^0.0.2
+        version: 0.0.2
       '@newel/generator-wiki':
         specifier: ^0.0.3
         version: 0.0.3
@@ -335,11 +335,6 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@newel/core@0.2.0':
-    resolution: {integrity: sha512-9KaYrhREvxViCL004c4Bs6XLOlRhydVfoeAq2W8iuPEnPHQ1PY0li++iKcaRHdww/cf4GGeHQxkjmGK8FOEbYQ==}
-    engines: {node: '>=20'}
-    hasBin: true
-
   '@newel/core@0.3.0':
     resolution: {integrity: sha512-45leWri8Fl1ZZQUU4LIGy3H5iaZOJwfZNRn2pgxfOTKk1s9icBDRE6NSN6rBKRxHUtTYTo3dl1LooU1zJFd/oA==}
     engines: {node: '>=20'}
@@ -350,12 +345,12 @@ packages:
     engines: {node: '>=20'}
     hasBin: true
 
-  '@newel/generator-bible@0.0.1':
-    resolution: {integrity: sha512-ynAuaK4DXmjVJJKe63vSMlSt7Nn4YnnVM2k7u2UZOc6nDq/noYaQWFAG7zJ19LuOSZxvHHOc82MLgnsAi/I2Cg==}
+  '@newel/generator-bible@0.0.2':
+    resolution: {integrity: sha512-/kgPJX6TqX1i/CX44GSaMlemx6BHyytXo2QnzABGQOUcZaQX6Uop06pzAZuUISWZhPUCNyrpYdTS2dV3C8R+iA==}
     engines: {node: '>=20'}
 
-  '@newel/generator-godot@0.0.1':
-    resolution: {integrity: sha512-XjluRiMv2vmSrWhgMbx1xoG9CqAadLsByIaYlpp/GuYOgFaZBS+u8AUl0xMOeLmwHNHB4UYH4s69RGkv2uDV+A==}
+  '@newel/generator-godot@0.0.2':
+    resolution: {integrity: sha512-amGXM0IRkdXYvSXiGGtk/+Ye13apaiDMAG0kohm/jq8pCMWbHC4rfhZi2RshegeRI8u1jOdXYhovTq0WOEyPvg==}
     engines: {node: '>=20'}
 
   '@newel/generator-wiki@0.0.3':
@@ -549,11 +544,6 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
-  '@newel/core@0.2.0':
-    dependencies:
-      commander: 12.1.0
-      tsx: 4.23.1
-
   '@newel/core@0.3.0':
     dependencies:
       commander: 12.1.0
@@ -564,13 +554,13 @@ snapshots:
       commander: 12.1.0
       tsx: 4.23.12
 
-  '@newel/generator-bible@0.0.1':
+  '@newel/generator-bible@0.0.2':
     dependencies:
-      '@newel/core': 0.2.0
+      '@newel/core': 0.3.1
 
-  '@newel/generator-godot@0.0.1':
+  '@newel/generator-godot@0.0.2':
     dependencies:
-      '@newel/core': 0.2.0
+      '@newel/core': 0.3.1
 
   '@newel/generator-wiki@0.0.3':
     dependencies:

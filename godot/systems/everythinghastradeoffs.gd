@@ -2,4 +2,3 @@
 class_name EverythingHasTradeoffsData
 extends Resource
 
-

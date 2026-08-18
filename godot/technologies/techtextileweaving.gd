@@ -7,9 +7,3 @@ enum Status {
 	RESEARCHING,
 	UNLOCKED,
 }
-
-@export var id: String
-@export var status: int
-@export var researchCost: int
-@export var tier: int
-@export var tech: Dictionary

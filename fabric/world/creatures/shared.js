@@ -3,6 +3,7 @@ const { defineEntity } = require('@newel/core')
 const CREATURE_TIERS = ['1', '2', '3', '4', '5']
 const AGGRESSION_LEVELS = ['passive', 'neutral', 'aggressive', 'territorial']
 const CREATURE_STATES = ['idle', 'alert', 'aggressive', 'fleeing', 'dead', 'respawning']
+const BIOME_KEYS = ['TemperateForest', 'TemperateGrassland', 'VolcanicBadlands', 'TwilightGrove', 'VoidRift']
 
 // Returns the CREATURE_STATES subset appropriate for a creature's canFlee/skipAlert settings.
 function creatureStateValues({ canFlee = true, skipAlert = false } = {}) {
@@ -60,4 +61,4 @@ function creatureStateMachine({ canFlee = true, skipAlert = false, conditionalAl
   }
 }
 
-module.exports = { defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES }
+module.exports = { defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS }

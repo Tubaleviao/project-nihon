@@ -9,8 +9,3 @@ enum Domain {
 	CARPENTRY,
 }
 
-
-@export var id: String
-@export var domain: int
-@export var outputCount: int
-@export var recipe: Dictionary

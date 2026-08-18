@@ -2,4 +2,3 @@
 class_name KnowledgeIsProgressionData
 extends Resource
 
-

@@ -17,6 +17,12 @@ An ancient construct of crystallised voidite that guards the innermost rift boun
 | `aggressionLevel` | enum (`passive`, `neutral`, `aggressive`, `territorial`) | yes |  |
 | `baseHp` | integer | yes | Hit points at tier baseline; extreme value |
 | `baseDamage` | integer | yes | Damage per slam at tier baseline; extreme value |
+| `alertRadius` | decimal | yes | Distance in metres at which creature detects and attacks; no alert phase |
+| `attackRadius` | decimal | yes | Distance in metres at which creature begins attacking |
+| `fleeThreshold` | decimal | yes | HP fraction (0–1) below which creature flees; 0 = never flees |
+| `respawnSeconds` | integer | yes | Seconds before a dead creature respawns |
+| `spawnCount` | integer | yes | Number of instances spawned per game world; singleton per rift zone |
+| `biome` | enum (`TemperateForest`, `TemperateGrassland`, `VolcanicBadlands`, `TwilightGrove`, `VoidRift`) | yes | Biome this creature belongs to |
 
 ### State machine
 

@@ -7,10 +7,3 @@ enum State {
 	CLOSED,
 	FULL,
 }
-
-@export var id: String
-@export var state: int
-@export var maxSlots: int
-@export var maxWeightKg: float
-@export var usedSlots: int
-@export var currentWeightKg: float

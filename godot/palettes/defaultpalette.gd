@@ -2,5 +2,3 @@
 class_name DefaultPaletteData
 extends Resource
 
-
-@export var entries: Array

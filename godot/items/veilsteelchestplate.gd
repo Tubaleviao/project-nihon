@@ -16,19 +16,3 @@ enum Condition {
 	DAMAGED,
 	BROKEN,
 }
-
-@export var id: String
-@export var condition: int
-@export var weight: float
-@export var rarity: int
-@export var stackable: bool
-@export var durability: int
-@export var equipmentSlot: String
-@export var deformationMode: String
-@export var masks: Dictionary
-@export var hideRegions: Array
-@export var attachments: Dictionary
-@export var minLodLevel: int
-@export var size: Array
-@export var metalTone: String
-@export var compatibleTags: Array

@@ -2,8 +2,3 @@
 class_name VolcanicBadlandsData
 extends Resource
 
-
-@export var id: String
-@export var avgTemperature: float
-@export var avgRainfall: float
-@export var soilFertility: float

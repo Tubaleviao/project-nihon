@@ -2,5 +2,3 @@
 class_name WeatherSystemData
 extends Resource
 
-
-@export var id: String

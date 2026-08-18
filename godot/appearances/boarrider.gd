@@ -2,16 +2,3 @@
 class_name BoarRiderData
 extends Resource
 
-
-@export var skeleton: String
-@export var body: String
-@export var proportions: Dictionary
-@export var skinColor: int
-@export var head: String
-@export var eyes: String
-@export var eyeColor: int
-@export var hair: String
-@export var hairColor: int
-@export var beard: String
-@export var beardColor: int
-@export var equipment: Dictionary

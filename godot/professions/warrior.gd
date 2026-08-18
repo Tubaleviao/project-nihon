@@ -7,6 +7,3 @@ enum Status {
 	ACTIVE,
 	MASTERED,
 }
-
-@export var id: String
-@export var status: int

@@ -14,41 +14,19 @@ extends Node
 ##   get_instance_creature_id(instance_id: String)      -> String   (fabric key)
 ##   get_all_instances()                                -> Array[Dictionary]
 
-## Seconds before a dead creature's instance respawns (prototype fixed value).
-## The fabric's respawn rule is per-creature; using a common prototype value here.
-const RESPAWN_SECONDS := 300.0
-
-## Which creature fabric keys to spawn and how many of each.
-const SPAWN_MANIFEST: Dictionary = {
-	"ForestBoar":    3,
-	"GraywolfPack":  2,
-	"SteppeBison":   2,
-	"RidgeHawk":     2,
-	"LavaSlug":      2,
-	"CinderGargoyle":1,
-	"GlimmerFox":    2,
-	"VeilStalker":   1,
-	"VoidSerpent":   1,
-	"RiftWarden":    1,
-}
-
-## Biome spawn centres: each creature type anchors to a biome region.
-## These map to distinct terrain zones so biome immersion is maintained.
-const CREATURE_BIOME_ORIGINS: Dictionary = {
-	"ForestBoar":    Vector3(16.0, 8.0, 16.0),   # temperate forest
-	"GraywolfPack":  Vector3(16.0, 8.0, 16.0),   # temperate forest
-	"SteppeBison":   Vector3(48.0, 8.0, 16.0),   # temperate grassland
-	"RidgeHawk":     Vector3(48.0, 8.0, 48.0),   # temperate grassland
-	"LavaSlug":      Vector3(80.0, 8.0, 16.0),   # volcanic badlands
-	"CinderGargoyle":Vector3(80.0, 8.0, 16.0),   # volcanic badlands
-	"GlimmerFox":    Vector3(16.0, 8.0, 80.0),   # twilight grove
-	"VeilStalker":   Vector3(16.0, 8.0, 80.0),   # twilight grove
-	"VoidSerpent":   Vector3(80.0, 8.0, 80.0),   # void rift
-	"RiftWarden":    Vector3(80.0, 8.0, 80.0),   # void rift
-}
-
 ## Spread around each biome origin.
 const SPAWN_RADIUS := 10.0
+
+## Biome origin centres indexed by the biome enum integer emitted by the Godot generator.
+## Order matches BIOME_KEYS in fabric/world/creatures/shared.js:
+## 0=TemperateForest, 1=TemperateGrassland, 2=VolcanicBadlands, 3=TwilightGrove, 4=VoidRift
+const BIOME_ORIGINS: Array = [
+	Vector3(16.0, 8.0, 16.0),  # TemperateForest
+	Vector3(48.0, 8.0, 32.0),  # TemperateGrassland
+	Vector3(80.0, 8.0, 16.0),  # VolcanicBadlands
+	Vector3(16.0, 8.0, 80.0),  # TwilightGrove
+	Vector3(80.0, 8.0, 80.0),  # VoidRift
+]
 
 ## Instance record: { "creature_id", "position", "state", "hp", "respawn_at", "body" }
 var _instances: Dictionary = {}
@@ -113,8 +91,9 @@ func get_all_instances() -> Array:
 # ---------------------------------------------------------------------------
 
 func _spawn_initial_creatures() -> void:
-	for creature_id in SPAWN_MANIFEST:
-		var count: int = SPAWN_MANIFEST[creature_id]
+	for creature_id in GameData.CREATURES:
+		var res: Resource = GameData.CREATURES[creature_id]
+		var count: int = int(res.get("spawnCount")) if res.has_method("get") else 1
 		for i in range(count):
 			_spawn(creature_id)
 
@@ -127,7 +106,8 @@ func _spawn(creature_id: String) -> String:
 	var hp: float = float(res.get("baseHp"))
 	var angle  := randf_range(0.0, TAU)
 	var r      := randf_range(2.0, SPAWN_RADIUS)
-	var origin: Vector3 = CREATURE_BIOME_ORIGINS.get(creature_id, Vector3(16.0, 8.0, 16.0))
+	var biome_idx: int = int(res.get("biome"))
+	var origin: Vector3 = BIOME_ORIGINS[biome_idx] if biome_idx < BIOME_ORIGINS.size() else BIOME_ORIGINS[0]
 	var pos: Vector3    = origin + Vector3(cos(angle) * r, 0.0, sin(angle) * r)
 
 	# Sit the creature on the terrain surface instead of a fixed height.
@@ -158,14 +138,17 @@ func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String
 	if entity_id == "player":
 		return
 	# entity_id may be either a fabric key or an instance_id.
-	# Mark matching instance(s) dead and schedule respawn.
+	# Mark matching instance(s) dead and schedule respawn using per-creature respawnSeconds.
 	for iid in _instances:
 		var inst: Dictionary = _instances[iid]
 		if inst["creature_id"] == entity_id or iid == entity_id:
 			if inst["state"] != "dead":
+				var cid: String = inst["creature_id"]
+				var res: Resource = GameData.CREATURES.get(cid, null)
+				var respawn_secs: float = float(res.get("respawnSeconds")) if res else 300.0
 				inst["state"]      = "dead"
 				inst["hp"]         = 0.0
-				inst["respawn_at"] = Time.get_ticks_msec() + RESPAWN_SECONDS * 1000.0
+				inst["respawn_at"] = Time.get_ticks_msec() + respawn_secs * 1000.0
 				if inst.has("body") and inst["body"]:
 					inst["body"].visible = false
 

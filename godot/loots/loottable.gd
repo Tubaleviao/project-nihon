@@ -8,8 +8,3 @@ enum State {
 	CLAIMED,
 	EXPIRED,
 }
-
-@export var id: String
-@export var state: int
-@export var creatureId: String
-@export var despawnSeconds: int

@@ -13,11 +13,3 @@ enum State {
 	ENCHANTED,
 	CONSUMED,
 }
-
-@export var id: String
-@export var state: int
-@export var form: int
-@export var density: float
-@export var hardness: float
-@export var conductivity: float
-@export var magicAffinity: float

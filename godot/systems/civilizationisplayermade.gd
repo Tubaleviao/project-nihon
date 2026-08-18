@@ -2,4 +2,3 @@
 class_name CivilizationIsPlayerMadeData
 extends Resource
 
-

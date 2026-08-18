@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-15T20:02:00.927Z",
-  "schemaHash": "sha256:4479ec05e91ce1477bd86f9c92a0e1b4813af32f175d416587ffa0ac8192840b",
+  "generatedAt": "2026-08-18T13:38:52.435Z",
+  "schemaHash": "sha256:2aebd06bc9eeeaf3ed1cae8ecce34a5c3b4eb0a03d95823f0479351d0f764415",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -15272,6 +15272,67 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 12
+          },
+          "alertRadius": {
+            "name": "alertRadius",
+            "type": "decimal",
+            "description": "Distance in metres at which creature enters alert state",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 8
+          },
+          "attackRadius": {
+            "name": "attackRadius",
+            "type": "decimal",
+            "description": "Distance in metres at which creature begins attacking",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
+          },
+          "fleeThreshold": {
+            "name": "fleeThreshold",
+            "type": "decimal",
+            "description": "HP fraction (0–1) below which creature flees",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.25
+          },
+          "respawnSeconds": {
+            "name": "respawnSeconds",
+            "type": "integer",
+            "description": "Seconds before a dead creature respawns",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 300
+          },
+          "spawnCount": {
+            "name": "spawnCount",
+            "type": "integer",
+            "description": "Number of instances spawned per game world",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
+          },
+          "biome": {
+            "name": "biome",
+            "type": "enum",
+            "description": "Biome this creature belongs to",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "TemperateForest",
+              "TemperateGrassland",
+              "VolcanicBadlands",
+              "TwilightGrove",
+              "VoidRift"
+            ],
+            "pii": false,
+            "defaultValue": "TemperateForest"
           }
         },
         "relations": {},
@@ -15603,6 +15664,67 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 15
+          },
+          "alertRadius": {
+            "name": "alertRadius",
+            "type": "decimal",
+            "description": "Distance in metres at which creature enters alert state",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 12
+          },
+          "attackRadius": {
+            "name": "attackRadius",
+            "type": "decimal",
+            "description": "Distance in metres at which creature begins attacking",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
+          },
+          "fleeThreshold": {
+            "name": "fleeThreshold",
+            "type": "decimal",
+            "description": "HP fraction (0–1) below which creature flees",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.3
+          },
+          "respawnSeconds": {
+            "name": "respawnSeconds",
+            "type": "integer",
+            "description": "Seconds before a dead creature respawns",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 900
+          },
+          "spawnCount": {
+            "name": "spawnCount",
+            "type": "integer",
+            "description": "Number of instances spawned per game world",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2
+          },
+          "biome": {
+            "name": "biome",
+            "type": "enum",
+            "description": "Biome this creature belongs to",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "TemperateForest",
+              "TemperateGrassland",
+              "VolcanicBadlands",
+              "TwilightGrove",
+              "VoidRift"
+            ],
+            "pii": false,
+            "defaultValue": "TemperateForest"
           }
         },
         "relations": {},
@@ -15948,6 +16070,67 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 30
+          },
+          "alertRadius": {
+            "name": "alertRadius",
+            "type": "decimal",
+            "description": "Distance in metres at which creature enters alert state",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 6
+          },
+          "attackRadius": {
+            "name": "attackRadius",
+            "type": "decimal",
+            "description": "Distance in metres at which creature begins attacking",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 4
+          },
+          "fleeThreshold": {
+            "name": "fleeThreshold",
+            "type": "decimal",
+            "description": "HP fraction (0–1) below which creature flees",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.2
+          },
+          "respawnSeconds": {
+            "name": "respawnSeconds",
+            "type": "integer",
+            "description": "Seconds before a dead creature respawns",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1200
+          },
+          "spawnCount": {
+            "name": "spawnCount",
+            "type": "integer",
+            "description": "Number of instances spawned per game world",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2
+          },
+          "biome": {
+            "name": "biome",
+            "type": "enum",
+            "description": "Biome this creature belongs to",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "TemperateForest",
+              "TemperateGrassland",
+              "VolcanicBadlands",
+              "TwilightGrove",
+              "VoidRift"
+            ],
+            "pii": false,
+            "defaultValue": "TemperateGrassland"
           }
         },
         "relations": {},
@@ -16272,6 +16455,67 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 5
+          },
+          "alertRadius": {
+            "name": "alertRadius",
+            "type": "decimal",
+            "description": "Distance in metres at which creature enters alert state",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 8
+          },
+          "attackRadius": {
+            "name": "attackRadius",
+            "type": "decimal",
+            "description": "Distance in metres at which creature begins attacking",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
+          },
+          "fleeThreshold": {
+            "name": "fleeThreshold",
+            "type": "decimal",
+            "description": "HP fraction (0–1) below which creature flees; flees on any damage",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "respawnSeconds": {
+            "name": "respawnSeconds",
+            "type": "integer",
+            "description": "Seconds before a dead creature respawns",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 600
+          },
+          "spawnCount": {
+            "name": "spawnCount",
+            "type": "integer",
+            "description": "Number of instances spawned per game world",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2
+          },
+          "biome": {
+            "name": "biome",
+            "type": "enum",
+            "description": "Biome this creature belongs to",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "TemperateForest",
+              "TemperateGrassland",
+              "VolcanicBadlands",
+              "TwilightGrove",
+              "VoidRift"
+            ],
+            "pii": false,
+            "defaultValue": "TemperateGrassland"
           }
         },
         "relations": {},
@@ -16596,6 +16840,67 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 20
+          },
+          "alertRadius": {
+            "name": "alertRadius",
+            "type": "decimal",
+            "description": "Distance in metres at which creature enters alert state",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 6
+          },
+          "attackRadius": {
+            "name": "attackRadius",
+            "type": "decimal",
+            "description": "Distance in metres at which creature begins attacking",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
+          },
+          "fleeThreshold": {
+            "name": "fleeThreshold",
+            "type": "decimal",
+            "description": "HP fraction (0–1) below which creature flees",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.1
+          },
+          "respawnSeconds": {
+            "name": "respawnSeconds",
+            "type": "integer",
+            "description": "Seconds before a dead creature respawns",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1500
+          },
+          "spawnCount": {
+            "name": "spawnCount",
+            "type": "integer",
+            "description": "Number of instances spawned per game world",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2
+          },
+          "biome": {
+            "name": "biome",
+            "type": "enum",
+            "description": "Biome this creature belongs to",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "TemperateForest",
+              "TemperateGrassland",
+              "VolcanicBadlands",
+              "TwilightGrove",
+              "VoidRift"
+            ],
+            "pii": false,
+            "defaultValue": "VolcanicBadlands"
           }
         },
         "relations": {},
@@ -16923,6 +17228,67 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 35
+          },
+          "alertRadius": {
+            "name": "alertRadius",
+            "type": "decimal",
+            "description": "Distance in metres at which creature enters alert state",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 15
+          },
+          "attackRadius": {
+            "name": "attackRadius",
+            "type": "decimal",
+            "description": "Distance in metres at which creature begins attacking",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 4
+          },
+          "fleeThreshold": {
+            "name": "fleeThreshold",
+            "type": "decimal",
+            "description": "HP fraction (0–1) below which creature flees",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.2
+          },
+          "respawnSeconds": {
+            "name": "respawnSeconds",
+            "type": "integer",
+            "description": "Seconds before a dead creature respawns",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2400
+          },
+          "spawnCount": {
+            "name": "spawnCount",
+            "type": "integer",
+            "description": "Number of instances spawned per game world",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "biome": {
+            "name": "biome",
+            "type": "enum",
+            "description": "Biome this creature belongs to",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "TemperateForest",
+              "TemperateGrassland",
+              "VolcanicBadlands",
+              "TwilightGrove",
+              "VoidRift"
+            ],
+            "pii": false,
+            "defaultValue": "VolcanicBadlands"
           }
         },
         "relations": {},
@@ -17252,6 +17618,67 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 2
+          },
+          "alertRadius": {
+            "name": "alertRadius",
+            "type": "decimal",
+            "description": "Distance in metres at which creature enters alert state",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 8
+          },
+          "attackRadius": {
+            "name": "attackRadius",
+            "type": "decimal",
+            "description": "Distance in metres at which creature begins attacking",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
+          },
+          "fleeThreshold": {
+            "name": "fleeThreshold",
+            "type": "decimal",
+            "description": "HP fraction (0–1) below which creature flees; flees on weapon detect",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "respawnSeconds": {
+            "name": "respawnSeconds",
+            "type": "integer",
+            "description": "Seconds before a dead creature respawns",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 480
+          },
+          "spawnCount": {
+            "name": "spawnCount",
+            "type": "integer",
+            "description": "Number of instances spawned per game world",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2
+          },
+          "biome": {
+            "name": "biome",
+            "type": "enum",
+            "description": "Biome this creature belongs to",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "TemperateForest",
+              "TemperateGrassland",
+              "VolcanicBadlands",
+              "TwilightGrove",
+              "VoidRift"
+            ],
+            "pii": false,
+            "defaultValue": "TwilightGrove"
           }
         },
         "relations": {},
@@ -17592,6 +18019,67 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 28
+          },
+          "alertRadius": {
+            "name": "alertRadius",
+            "type": "decimal",
+            "description": "Distance in metres at which creature enters alert state",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 15
+          },
+          "attackRadius": {
+            "name": "attackRadius",
+            "type": "decimal",
+            "description": "Distance in metres at which creature begins attacking",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
+          },
+          "fleeThreshold": {
+            "name": "fleeThreshold",
+            "type": "decimal",
+            "description": "HP fraction (0–1) below which creature flees",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.3
+          },
+          "respawnSeconds": {
+            "name": "respawnSeconds",
+            "type": "integer",
+            "description": "Seconds before a dead creature respawns",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1080
+          },
+          "spawnCount": {
+            "name": "spawnCount",
+            "type": "integer",
+            "description": "Number of instances spawned per game world",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "biome": {
+            "name": "biome",
+            "type": "enum",
+            "description": "Biome this creature belongs to",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "TemperateForest",
+              "TemperateGrassland",
+              "VolcanicBadlands",
+              "TwilightGrove",
+              "VoidRift"
+            ],
+            "pii": false,
+            "defaultValue": "TwilightGrove"
           }
         },
         "relations": {},
@@ -17921,6 +18409,67 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 60
+          },
+          "alertRadius": {
+            "name": "alertRadius",
+            "type": "decimal",
+            "description": "Distance in metres at which creature enters alert state",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 5
+          },
+          "attackRadius": {
+            "name": "attackRadius",
+            "type": "decimal",
+            "description": "Distance in metres at which creature begins attacking",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 4
+          },
+          "fleeThreshold": {
+            "name": "fleeThreshold",
+            "type": "decimal",
+            "description": "HP fraction (0–1) below which creature flees",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.15
+          },
+          "respawnSeconds": {
+            "name": "respawnSeconds",
+            "type": "integer",
+            "description": "Seconds before a dead creature respawns",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3600
+          },
+          "spawnCount": {
+            "name": "spawnCount",
+            "type": "integer",
+            "description": "Number of instances spawned per game world",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "biome": {
+            "name": "biome",
+            "type": "enum",
+            "description": "Biome this creature belongs to",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "TemperateForest",
+              "TemperateGrassland",
+              "VolcanicBadlands",
+              "TwilightGrove",
+              "VoidRift"
+            ],
+            "pii": false,
+            "defaultValue": "VoidRift"
           }
         },
         "relations": {},
@@ -18264,6 +18813,67 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 90
+          },
+          "alertRadius": {
+            "name": "alertRadius",
+            "type": "decimal",
+            "description": "Distance in metres at which creature detects and attacks; no alert phase",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 20
+          },
+          "attackRadius": {
+            "name": "attackRadius",
+            "type": "decimal",
+            "description": "Distance in metres at which creature begins attacking",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 6
+          },
+          "fleeThreshold": {
+            "name": "fleeThreshold",
+            "type": "decimal",
+            "description": "HP fraction (0–1) below which creature flees; 0 = never flees",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
+          "respawnSeconds": {
+            "name": "respawnSeconds",
+            "type": "integer",
+            "description": "Seconds before a dead creature respawns",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 7200
+          },
+          "spawnCount": {
+            "name": "spawnCount",
+            "type": "integer",
+            "description": "Number of instances spawned per game world; singleton per rift zone",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "biome": {
+            "name": "biome",
+            "type": "enum",
+            "description": "Biome this creature belongs to",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "TemperateForest",
+              "TemperateGrassland",
+              "VolcanicBadlands",
+              "TwilightGrove",
+              "VoidRift"
+            ],
+            "pii": false,
+            "defaultValue": "VoidRift"
           }
         },
         "relations": {},

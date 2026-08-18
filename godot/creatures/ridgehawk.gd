@@ -17,6 +17,14 @@ enum AggressionLevel {
 	TERRITORIAL,
 }
 
+enum Biome {
+	TEMPERATE_FOREST,
+	TEMPERATE_GRASSLAND,
+	VOLCANIC_BADLANDS,
+	TWILIGHT_GROVE,
+	VOID_RIFT,
+}
+
 enum State {
 	IDLE,
 	ALERT,
@@ -25,10 +33,3 @@ enum State {
 	DEAD,
 	RESPAWNING,
 }
-
-@export var id: String
-@export var state: int
-@export var tier: int
-@export var aggressionLevel: int
-@export var baseHp: int
-@export var baseDamage: int

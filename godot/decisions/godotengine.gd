@@ -7,6 +7,3 @@ enum Status {
 	ACCEPTED,
 	SUPERSEDED,
 }
-
-@export var id: String
-@export var status: int

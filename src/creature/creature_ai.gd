@@ -1,9 +1,12 @@
 extends Node
 ## Creature AI — per-frame state machine driver for all live creature instances.
 ##
-## Reads instance data from creature_slice and moves the bodies toward their
-## patrol/chase targets using a simple kinematic step (no NavigationAgent3D
-## needed for this prototype; adds no Godot scene-tree dependencies).
+## Reads instance data from creature_slice and moves bodies toward their
+## patrol/chase targets using kinematic stepping (direct vector math; no
+## NavigationAgent3D scene-tree dependency required for this prototype).
+##
+## Per-creature alert/attack radii and flee threshold are read from
+## GameData.CREATURES so the fabric is the single source of truth.
 ##
 ## State machine per creature:
 ##   idle        — patrol waypoints around spawn position
@@ -26,25 +29,17 @@ extends Node
 ##   get_state(instance_id) -> String
 ##   force_state(instance_id, state)   -- test helper
 
-## Metres — player entry triggers alert.
-const ALERT_RADIUS_DEFAULT    := 12.0
-## Metres — player entry triggers attack.
-const ATTACK_RADIUS_DEFAULT   := 3.0
-## HP fraction below which the creature flees (0.20 = 20 %).
-const FLEE_THRESHOLD          := 0.20
-## Safe metres before a fleeing creature relaxes back to idle.
-const SAFE_RADIUS             := 20.0
 ## Seconds between creature melee strikes while aggressive.
-const ATTACK_INTERVAL         := 1.5
+const ATTACK_INTERVAL  := 1.5
 ## Patrol waypoint spread around the spawn origin.
-const PATROL_RADIUS           := 6.0
+const PATROL_RADIUS    := 6.0
 ## Patrol waypoint reached tolerance.
-const PATROL_TOLERANCE        := 1.2
+const PATROL_TOLERANCE := 1.2
 ## Movement speeds (m/s).
-const SPEED_IDLE              := 1.2
-const SPEED_ALERT             := 0.0   # alert = stationary, watching
-const SPEED_AGGRESSIVE        := 3.5
-const SPEED_FLEE              := 4.5
+const SPEED_IDLE       := 1.2
+const SPEED_ALERT      := 0.0   # alert = stationary, watching
+const SPEED_AGGRESSIVE := 3.5
+const SPEED_FLEE       := 4.5
 
 ## Per-instance AI state: { "state", "attack_timer", "patrol_target", "spawn_pos" }
 var _ai: Dictionary = {}
@@ -87,8 +82,11 @@ func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: f
 	var hp: float = _combat_hp if _combat_hp >= 0.0 else inst["hp"]
 	var res: Resource      = GameData.CREATURES.get(inst["creature_id"], null)
 	var max_hp: float      = float(res.get("baseHp")) if res else 100.0
-	var alert_r: float     = ALERT_RADIUS_DEFAULT
-	var attack_r: float    = ATTACK_RADIUS_DEFAULT
+	# Per-creature AI parameters from the fabric (GameData.CREATURES).
+	var alert_r: float     = float(res.get("alertRadius")) if res else 12.0
+	var attack_r: float    = float(res.get("attackRadius")) if res else 3.0
+	var flee_thr: float    = float(res.get("fleeThreshold")) if res else 0.20
+	var safe_r: float      = alert_r * 1.5
 
 	match ai_state:
 		"idle":
@@ -106,10 +104,10 @@ func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: f
 				return
 
 		"aggressive":
-			if hp / max_hp < FLEE_THRESHOLD:
+			if flee_thr > 0.0 and hp / max_hp < flee_thr:
 				_transition(iid, "fleeing")
 				return
-			if dist > alert_r * 1.5:
+			if dist > safe_r:
 				_transition(iid, "idle")
 				return
 			_chase(iid, inst, player_pos, delta)
@@ -123,7 +121,7 @@ func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: f
 			if hp <= 0.0:
 				_transition(iid, "dead")
 				return
-			if dist > SAFE_RADIUS:
+			if dist > safe_r:
 				_transition(iid, "idle")
 				return
 			_flee(iid, inst, player_pos, delta)
