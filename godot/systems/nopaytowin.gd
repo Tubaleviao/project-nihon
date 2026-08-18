@@ -2,3 +2,4 @@
 class_name NoPayToWinData
 extends Resource
 
+

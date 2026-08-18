@@ -31,3 +31,16 @@ enum State {
 	DEAD,
 	RESPAWNING,
 }
+
+@export var id: String
+@export var state: int
+@export var tier: int
+@export var aggressionLevel: int
+@export var baseHp: int
+@export var baseDamage: int
+@export var alertRadius: float
+@export var attackRadius: float
+@export var fleeThreshold: float
+@export var respawnSeconds: int
+@export var spawnCount: int
+@export var biome: int

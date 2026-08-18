@@ -15,8 +15,8 @@ importers:
         specifier: ^0.0.2
         version: 0.0.2
       '@newel/generator-godot':
-        specifier: ^0.0.2
-        version: 0.0.2
+        specifier: ^0.0.3
+        version: 0.0.3
       '@newel/generator-wiki':
         specifier: ^0.0.3
         version: 0.0.3
@@ -349,8 +349,8 @@ packages:
     resolution: {integrity: sha512-/kgPJX6TqX1i/CX44GSaMlemx6BHyytXo2QnzABGQOUcZaQX6Uop06pzAZuUISWZhPUCNyrpYdTS2dV3C8R+iA==}
     engines: {node: '>=20'}
 
-  '@newel/generator-godot@0.0.2':
-    resolution: {integrity: sha512-amGXM0IRkdXYvSXiGGtk/+Ye13apaiDMAG0kohm/jq8pCMWbHC4rfhZi2RshegeRI8u1jOdXYhovTq0WOEyPvg==}
+  '@newel/generator-godot@0.0.3':
+    resolution: {integrity: sha512-ezW1vfIFE7oXlmxttrOGBGPQedwnaGLGUZe53xYBuFIVc9uVZLgePb1v06mJQJ/v2Lygd7+oSGZOMNoKSpUqdA==}
     engines: {node: '>=20'}
 
   '@newel/generator-wiki@0.0.3':
@@ -558,7 +558,7 @@ snapshots:
     dependencies:
       '@newel/core': 0.3.1
 
-  '@newel/generator-godot@0.0.2':
+  '@newel/generator-godot@0.0.3':
     dependencies:
       '@newel/core': 0.3.1
 

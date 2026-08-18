@@ -2,3 +2,8 @@
 class_name BirdSkeletonData
 extends Resource
 
+
+@export var family: String
+@export var bones: Array
+@export var sockets: Dictionary
+@export var semanticTags: Array
