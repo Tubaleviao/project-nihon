@@ -1122,7 +1122,7 @@ func _test_ai_attack_emits_combat() -> void:
 	# Player within attack radius.
 	var attack_pos := pos + Vector3(0.5, 0.0, 0.0)
 	var captured := {}
-	GameBus.combat_round_requested.connect(func(att, def): captured = { "att": att, "def": def })
+	GameBus.combat_round_requested.connect(func(att, def): captured["att"] = att; captured["def"] = def)
 	ai._tick_instance(iid, c._instances[iid], attack_pos, 0.01)
 	assert_eq(captured.get("att", ""), iid, "attacker is the creature instance_id")
 	assert_eq(captured.get("def", ""), "player", "defender is player")

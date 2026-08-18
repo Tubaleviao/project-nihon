@@ -127,8 +127,8 @@ func _spawn(creature_id: String) -> String:
 	var hp: float = float(res.get("baseHp"))
 	var angle  := randf_range(0.0, TAU)
 	var r      := randf_range(2.0, SPAWN_RADIUS)
-	var origin := CREATURE_BIOME_ORIGINS.get(creature_id, Vector3(16.0, 8.0, 16.0))
-	var pos    := origin + Vector3(cos(angle) * r, 0.0, sin(angle) * r)
+	var origin: Vector3 = CREATURE_BIOME_ORIGINS.get(creature_id, Vector3(16.0, 8.0, 16.0))
+	var pos: Vector3    = origin + Vector3(cos(angle) * r, 0.0, sin(angle) * r)
 
 	# Sit the creature on the terrain surface instead of a fixed height.
 	if terrain_slice != null and terrain_slice.has_method("get_height_at"):

@@ -86,7 +86,7 @@ func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: f
 	var _combat_hp: float = battle_slice.get_hp(iid) if battle_slice != null else -1.0
 	var hp: float = _combat_hp if _combat_hp >= 0.0 else inst["hp"]
 	var res: Resource      = GameData.CREATURES.get(inst["creature_id"], null)
-	var max_hp: float      = float(res.get("baseHp", 100)) if res else 100.0
+	var max_hp: float      = float(res.get("baseHp")) if res else 100.0
 	var alert_r: float     = ALERT_RADIUS_DEFAULT
 	var attack_r: float    = ATTACK_RADIUS_DEFAULT
 
