@@ -44,6 +44,12 @@ const SPEED_FLEE       := 4.5
 ## Per-instance AI state: { "state", "attack_timer", "patrol_target", "spawn_pos" }
 var _ai: Dictionary = {}
 
+## aggressionLevel from fabric drives the idle→next-state branch:
+##   0 PASSIVE    — flee immediately when player enters alertRadius
+##   1 NEUTRAL    — stop and watch (alert state), then chase if player closes further
+##   2 AGGRESSIVE — chase immediately, no alert pause
+##   3 TERRITORIAL — like AGGRESSIVE but alertRadius × 1.5
+
 ## References wired by game_root before _ready.
 var creature_slice: Node = null
 var player_slice:   Node = null
@@ -83,15 +89,26 @@ func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: f
 	var res: Resource      = GameData.CREATURES.get(inst["creature_id"], null)
 	var max_hp: float      = float(res.get("baseHp")) if res else 100.0
 	# Per-creature AI parameters from the fabric (GameData.CREATURES).
+	# aggressionLevel: 0=PASSIVE, 1=NEUTRAL, 2=AGGRESSIVE, 3=TERRITORIAL
+	var aggression: int    = int(res.get("aggressionLevel")) if res else 1
 	var alert_r: float     = float(res.get("alertRadius")) if res else 12.0
 	var attack_r: float    = float(res.get("attackRadius")) if res else 3.0
 	var flee_thr: float    = float(res.get("fleeThreshold")) if res else 0.20
+	# TERRITORIAL creatures claim a wider area than their base alertRadius.
+	if aggression == 3:
+		alert_r *= 1.5
 	var safe_r: float      = alert_r * 1.5
 
 	match ai_state:
 		"idle":
 			if dist <= alert_r:
-				_transition(iid, "alert")
+				match aggression:
+					0: # PASSIVE — flee immediately, never attack
+						_transition(iid, "fleeing")
+					1: # NEUTRAL — pause and watch before committing
+						_transition(iid, "alert")
+					2, 3: # AGGRESSIVE / TERRITORIAL — attack without warning
+						_transition(iid, "aggressive")
 				return
 			_patrol(iid, inst, delta)
 

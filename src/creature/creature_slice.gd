@@ -14,18 +14,26 @@ extends Node
 ##   get_instance_creature_id(instance_id: String)      -> String   (fabric key)
 ##   get_all_instances()                                -> Array[Dictionary]
 
-## Spread around each biome origin.
+## Spread around each biome search origin.
 const SPAWN_RADIUS := 10.0
 
-## Biome origin centres indexed by the biome enum integer emitted by the Godot generator.
-## Order matches BIOME_KEYS in fabric/world/creatures/shared.js:
-## 0=TemperateForest, 1=TemperateGrassland, 2=VolcanicBadlands, 3=TwilightGrove, 4=VoidRift
-const BIOME_ORIGINS: Array = [
-	Vector3(16.0, 8.0, 16.0),  # TemperateForest
-	Vector3(48.0, 8.0, 32.0),  # TemperateGrassland
-	Vector3(80.0, 8.0, 16.0),  # VolcanicBadlands
-	Vector3(16.0, 8.0, 80.0),  # TwilightGrove
-	Vector3(80.0, 8.0, 80.0),  # VoidRift
+## Maps fabric biome enum integer to the key returned by terrain_slice.get_biome_at().
+## Order: 0=TemperateForest, 1=TemperateGrassland, 2=VolcanicBadlands, 3=Twilight, 4=VoidRift
+const BIOME_KEYS: Array = [
+	"TemperateForest",
+	"TemperateGrassland",
+	"VolcanicBadlands",
+	"Twilight",
+	"VoidRift",
+]
+
+## Approximate XZ search centres per biome index — seeds the get_biome_at() position search.
+const BIOME_SEARCH_ORIGINS: Array = [
+	Vector2(16.0, 16.0),  # TemperateForest
+	Vector2(48.0, 32.0),  # TemperateGrassland
+	Vector2(80.0, 16.0),  # VolcanicBadlands
+	Vector2(16.0, 80.0),  # Twilight
+	Vector2(80.0, 80.0),  # VoidRift
 ]
 
 ## Instance record: { "creature_id", "position", "state", "hp", "respawn_at", "body" }
@@ -107,8 +115,10 @@ func _spawn(creature_id: String) -> String:
 	var angle  := randf_range(0.0, TAU)
 	var r      := randf_range(2.0, SPAWN_RADIUS)
 	var biome_idx: int = int(res.get("biome"))
-	var origin: Vector3 = BIOME_ORIGINS[biome_idx] if biome_idx < BIOME_ORIGINS.size() else BIOME_ORIGINS[0]
-	var pos: Vector3    = origin + Vector3(cos(angle) * r, 0.0, sin(angle) * r)
+	var biome_key: String = BIOME_KEYS[biome_idx] if biome_idx < BIOME_KEYS.size() else BIOME_KEYS[0]
+	var search_origin: Vector2 = BIOME_SEARCH_ORIGINS[biome_idx] if biome_idx < BIOME_SEARCH_ORIGINS.size() else BIOME_SEARCH_ORIGINS[0]
+	var xz: Vector2 = _find_biome_position(biome_key, search_origin)
+	var pos: Vector3 = Vector3(xz.x + cos(angle) * r, 0.0, xz.y + sin(angle) * r)
 
 	# Sit the creature on the terrain surface instead of a fixed height.
 	if terrain_slice != null and terrain_slice.has_method("get_height_at"):
@@ -124,6 +134,7 @@ func _spawn(creature_id: String) -> String:
 	_instances[iid] = {
 		"creature_id": creature_id,
 		"position":    pos,
+		"spawn_pos":   pos,
 		"state":       "idle",
 		"hp":          hp,
 		"respawn_at":  -1.0,
@@ -133,6 +144,24 @@ func _spawn(creature_id: String) -> String:
 	GameBus.creature_spawned.emit(iid, creature_id, pos)
 	print("CreatureSlice: spawned %s [%s] at %s  hp=%.0f" % [creature_id, iid, pos, hp])
 	return iid
+
+## Probe outward from search_origin until terrain_slice.get_biome_at() returns the
+## desired biome key, then return that XZ coordinate.  Falls back to search_origin
+## after BIOME_SEARCH_STEPS attempts so spawning always succeeds even if the biome
+## is not reachable from the seed position.
+const BIOME_SEARCH_STEPS := 12
+const BIOME_SEARCH_STEP_SIZE := 8.0
+
+func _find_biome_position(biome_key: String, seed_xz: Vector2) -> Vector2:
+	if terrain_slice == null or not terrain_slice.has_method("get_biome_at"):
+		return seed_xz
+	for step in range(BIOME_SEARCH_STEPS):
+		var angle := randf_range(0.0, TAU)
+		var dist  := BIOME_SEARCH_STEP_SIZE * (step + 1)
+		var probe := seed_xz + Vector2(cos(angle) * dist, sin(angle) * dist)
+		if terrain_slice.get_biome_at(probe) == biome_key:
+			return probe
+	return seed_xz
 
 func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String) -> void:
 	if entity_id == "player":
@@ -163,8 +192,10 @@ func _tick_respawn() -> void:
 			inst["state"]      = "idle"
 			inst["hp"]         = max_hp
 			inst["respawn_at"] = -1.0
+			inst["position"]   = inst["spawn_pos"]
 			if inst.has("body") and inst["body"]:
-				inst["body"].visible = true
+				inst["body"].position = inst["spawn_pos"]
+				inst["body"].visible  = true
 			print("CreatureSlice: %s [%s] respawned" % [creature_id, iid])
 			GameBus.creature_respawned.emit(iid, creature_id)
 

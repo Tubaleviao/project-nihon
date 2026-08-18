@@ -244,7 +244,6 @@ func _on_player_damaged(dmg: float, attacker_id: String) -> void:
 	if not _alive:
 		return
 	take_damage(dmg, attacker_id)
-	print("PlayerSlice: took %.1f damage from %s  hp=%.1f" % [dmg, attacker_id, _hp])
 
 func _try_attack() -> void:
 	if not _alive:
