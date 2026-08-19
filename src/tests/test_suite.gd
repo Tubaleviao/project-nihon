@@ -20,6 +20,7 @@ const CraftingSlice   := preload("res://src/crafting/crafting_slice.gd")
 const TechnologySlice := preload("res://src/technology/technology_slice.gd")
 const UiSlice         := preload("res://src/ui/ui_slice.gd")
 const VoxelSlice      := preload("res://src/terrain/voxel_slice.gd")
+const StationSlice    := preload("res://src/world/station_slice.gd")
 
 var _pass: int = 0
 var _fail: int = 0
@@ -72,6 +73,10 @@ func run() -> void:
 	_run_test("crafting: missing inputs fail",                _test_crafting_missing_inputs)
 	_run_test("crafting: unknown recipe rejected",            _test_crafting_unknown_recipe)
 	_run_test("crafting: can_craft does not mutate",          _test_crafting_can_craft_no_mutate)
+	_run_test("station: gate blocks without nearby station",  _test_station_gate_blocks)
+	_run_test("station: gate passes when station nearby",     _test_station_gate_passes)
+	_run_test("durability: use decrements points",            _test_durability_use_decrements)
+	_run_test("durability: broken tool emits item_broke",     _test_durability_broken_emits)
 	_run_test("technology: recipe resolves to owning tech",    _test_technology_recipe_resolves_to_tech)
 	_run_test("technology: research requires prerequisite",    _test_technology_research_requires_prereq)
 	_run_test("technology: research consumes materials",       _test_technology_research_consumes_materials)
@@ -623,6 +628,85 @@ func _test_crafting_can_craft_no_mutate() -> void:
 	assert_true(check["success"], "can_craft returns true when craftable")
 	assert_eq(inv.get_item_count("Ferrite"), 2, "can_craft does not consume inputs")
 	c.queue_free()
+	inv.queue_free()
+
+# ---------------------------------------------------------------------------
+# StationSlice tests (Phase 16 station-gated crafting)
+# ---------------------------------------------------------------------------
+
+func _test_station_gate_blocks() -> void:
+	var station := StationSlice.new()
+	add_child(station)
+	var craft := CraftingSlice.new()
+	add_child(craft)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	craft.inventory_slice = inv
+	craft.station_slice = station
+	inv.add_item("Ferrite", 2)
+	craft.set_skill("Smithing", "novice")
+	# Player at origin with no station placed → RecipeFerriteIngot (forge) blocked.
+	station.set_player_position(Vector3.ZERO)
+	var result := craft.craft("RecipeFerriteIngot")
+	assert_false(result["success"], "craft blocked without a nearby forge")
+	assert_true(str(result["reason"]).begins_with("station_required"), "reason is station_required")
+	station.queue_free()
+	craft.queue_free()
+	inv.queue_free()
+
+func _test_station_gate_passes() -> void:
+	var station := StationSlice.new()
+	add_child(station)
+	var craft := CraftingSlice.new()
+	add_child(craft)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	craft.inventory_slice = inv
+	craft.station_slice = station
+	inv.add_item("Ferrite", 2)
+	craft.set_skill("Smithing", "novice")
+	station.set_player_position(Vector3.ZERO)
+	station.place_station("forge", Vector3(1.0, 0.0, 0.0))
+	var result := craft.craft("RecipeFerriteIngot")
+	assert_true(result["success"], "craft succeeds with a forge nearby")
+	assert_eq(inv.get_item_count("FerriteIngot"), 1, "FerriteIngot produced")
+	station.queue_free()
+	craft.queue_free()
+	inv.queue_free()
+
+# ---------------------------------------------------------------------------
+# Inventory durability tests (Phase 16 tool durability)
+# ---------------------------------------------------------------------------
+
+func _test_durability_use_decrements() -> void:
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv.add_item("FerritePick", 1)
+	var max_d := inv.get_max_durability("FerritePick")
+	assert_true(max_d > 0.0, "FerritePick has a durability model")
+	assert_eq(inv.get_durability("FerritePick"), max_d, "fresh tool starts at max durability")
+	var ok := inv.use_item("FerritePick", "mine")
+	assert_true(ok, "use succeeds while tool has durability")
+	assert_eq(inv.get_durability("FerritePick"), max_d - 1.0, "durability decremented by one")
+	inv.queue_free()
+
+func _test_durability_broken_emits() -> void:
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv.add_item("FerritePick", 1)
+	var broke := {}
+	GameBus.item_broke.connect(func(iid): broke["id"] = iid)
+	# Force the tool to one remaining point, then use it past the break.
+	inv._durability["FerritePick"] = 1.0
+	var ok := inv.use_item("FerritePick", "mine")
+	assert_false(ok, "use blocked when the tool breaks")
+	assert_eq(broke.get("id", ""), "FerritePick", "item_broke emitted for FerritePick")
+	assert_eq(inv.get_durability("FerritePick"), 0.0, "durability clamped at 0")
+	# A broken tool blocks further use and re-emits item_broke.
+	broke.clear()
+	var ok2 := inv.use_item("FerritePick", "mine")
+	assert_false(ok2, "broken tool blocks further use")
+	assert_eq(broke.get("id", ""), "FerritePick", "item_broke re-emitted on broken use")
 	inv.queue_free()
 
 # ---------------------------------------------------------------------------

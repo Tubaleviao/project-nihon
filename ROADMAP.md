@@ -554,40 +554,43 @@ GDScript and adds the AI-specific fields to each creature entity.
 
 ---
 
-## Phase 16 — Station-gated crafting and tool durability
+## Phase 16 — Station-gated crafting and tool durability ✅ Done
 
 **Goal:** Close two long-standing "Known simplifications": enforce crafting
 station requirements and give tools a durability lifecycle.
 
 **Newel dependency:** None. Station tags already exist on recipes via the
-`stationRequired` guard field; durability state machines are in the item fabric
-(`pristine → worn → damaged → broken`).
+`station` field in each recipe's structured `recipe` json; durability state
+machines are in the item fabric (`pristine → worn → damaged → broken`).
 
 **Deliverables:**
-- `src/world/station_slice.gd` — tracks placed crafting stations (forge, alchemy
-  bench, carpentry bench, arcane table) as world entities; exposes
+- `src/world/station_slice.gd` — tracks placed crafting stations (forge, master
+  forge, arcane forge, alchemy bench, carpentry bench, masonry bench,
+  void-shielded workshop) as world entities; exposes
   `nearest_station(pos, type, radius)` for the crafting gate check
-- `src/crafting/crafting_slice.gd` — `craft` / `can_craft` check `stationRequired`
-  against `station_slice`; surfaced in the crafting UI as a new block reason
-  `station_required:<type>`
-- Tool durability: `inventory_slice.gd` tracks per-slot durability; `use_item`
-  decrements durability based on action type; `broken` tools block their action
-  and emit `item_broke` on the bus
-- `src/ui/ui_slice.gd` — durability bar per tool slot in the inventory window;
+- `src/crafting/crafting_slice.gd` — `craft` / `can_craft` check the recipe's
+  `station` field against `station_slice`; surfaced in the crafting UI as a new
+  block reason `station_required:<type>`
+- Tool durability: `inventory_slice.gd` tracks durability per item;
+  `use_item` decrements durability by action type; `broken` tools block their
+  action and emit `item_broke` on the bus
+- `src/ui/ui_slice.gd` — durability bar per tool in the inventory window;
   crafting rows show station requirement inline
 - `src/tests/test_suite.gd` — tests for station gate (blocked without station,
   allowed when nearby), durability decrement, and item-broke signal
 
 **Acceptance criteria:**
-- Recipes with `stationRequired` cannot be crafted without a nearby station ✗→✓
-- Tool durability decrements on use and breaks at 0
-- Broken tools cannot be used until repaired
-- Station requirement visible in crafting UI
-- All new automated tests pass
+- Recipes with `station` cannot be crafted without a nearby station ✓
+- Tool durability decrements on use and breaks at 0 ✓
+- Broken tools cannot be used until repaired ✓
+- Station requirement visible in crafting UI ✓
+- All new automated tests pass ✓
 
 **Known simplifications deferred:**
 - Repairing broken tools (requires a repair recipe category)
 - Station placement UI (stations currently spawned via console/test harness)
+- Per-instance durability: stacks of a durable item share one durability value
+  (the inventory models item_id → quantity, not per-slot item instances)
 
 ---
 

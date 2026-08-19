@@ -18,6 +18,7 @@ const InventorySlice   := preload("res://src/inventory/inventory_slice.gd")
 const CharacterSlice   := preload("res://src/character/character_slice.gd")
 const CraftingSlice    := preload("res://src/crafting/crafting_slice.gd")
 const TechnologySlice  := preload("res://src/technology/technology_slice.gd")
+const StationSlice     := preload("res://src/world/station_slice.gd")
 const UiSlice          := preload("res://src/ui/ui_slice.gd")
 const TestSuite        := preload("res://src/tests/test_suite.gd")
 
@@ -34,6 +35,7 @@ var _inventory:   InventorySlice
 var _character:   CharacterSlice
 var _crafting:    CraftingSlice
 var _technology:  TechnologySlice
+var _station:     StationSlice
 var _ui:          UiSlice
 
 func _ready() -> void:
@@ -57,6 +59,7 @@ func _ready() -> void:
 	_character   = CharacterSlice.new()
 	_crafting    = CraftingSlice.new()
 	_technology  = TechnologySlice.new()
+	_station     = StationSlice.new()
 	_ui          = UiSlice.new()
 
 	# CreatureSlice needs the terrain to place spawns on the surface; wire it
@@ -68,7 +71,7 @@ func _ready() -> void:
 	_creature_ai.player_slice   = _player
 	_creature_ai.battle_slice   = _battle
 
-	for s in [_terrain, _voxel, _battle, _creature, _creature_ai, _networking, _persistence, _player, _loot, _inventory, _character, _crafting, _technology, _ui]:
+	for s in [_terrain, _voxel, _battle, _creature, _creature_ai, _networking, _persistence, _player, _loot, _inventory, _character, _crafting, _technology, _station, _ui]:
 		s.name = s.get_script().resource_path.get_file().get_basename()
 		add_child(s)
 
@@ -80,6 +83,8 @@ func _ready() -> void:
 	_loot.creature_slice      = _creature
 	_crafting.inventory_slice = _inventory
 	_crafting.technology_slice = _technology
+	_crafting.station_slice = _station
+	_station.player_slice = _player
 	_technology.inventory_slice = _inventory
 	_voxel.terrain_slice      = _terrain
 	_voxel.inventory_slice    = _inventory
@@ -111,6 +116,8 @@ func _ready() -> void:
 	GameBus.creature_alert.connect(func(iid): print("[AI] %s → alert" % iid))
 	GameBus.creature_aggressive.connect(func(iid): print("[AI] %s → aggressive" % iid))
 	GameBus.creature_fleeing.connect(func(iid): print("[AI] %s → fleeing" % iid))
+	GameBus.station_placed.connect(func(id, type, pos): print("[Station] %s [%s] placed at %s" % [type, id, pos]))
+	GameBus.item_broke.connect(func(iid): print("[Item] %s broke!" % iid))
 
 	# Lighting — a directional "sun" plus soft ambient sky fill.
 	var sun := DirectionalLight3D.new()
@@ -218,6 +225,15 @@ func _boot_world() -> void:
 	_technology.complete_research("TechBasicSmithing")      # force-complete (demo)
 	GameBus.research_requested.emit("TechBasicCarpentry")   # consumes Thornwood ×4
 	_technology.complete_research("TechBasicCarpentry")
+
+	# Station gating (Phase 16): recipes with a `station` field need a nearby
+	# structure. Crafting before any station is placed fails on the station gate.
+	GameBus.craft_requested.emit("RecipeFerriteIngot")      # FAIL: station_required:forge
+
+	# Place a forge and a carpentry bench beside the player.
+	var ppos: Vector3 = _player.get_position()
+	_station.place_station("forge", ppos + Vector3(2.0, 0.0, 0.0))
+	_station.place_station("carpentry bench", ppos + Vector3(-2.0, 0.0, 0.0))
 
 	# Now the smithing chain resolves through the bus.
 	GameBus.craft_requested.emit("RecipeFerriteIngot")      # 2 Ferrite → 1 FerriteIngot

@@ -10,9 +10,10 @@ extends Node
 ## GameData.MATERIALS. The inventory treats both uniformly (keys are strings);
 ## raw material weights resolve to 0 until materials gain a weight model.
 ##
-## Station gating ("forge", "alchemy bench", …) is intentionally NOT enforced
-## yet — there is no building system to place stations. The `station` field is
-## carried through for documentation and future gating.
+## Station gating: recipes whose `recipe` json names a `station` field must be
+## crafted within STATION_RADIUS of a placed station of that type. The station
+## slice (src/world/station_slice.gd) tracks placed stations; this slice reads
+## the `station` field and fails with `station_required:<type>` when none is near.
 ##
 ## Plug contract (GameBus signals consumed / emitted):
 ##   IN  : craft_requested(recipe_id)
@@ -35,6 +36,13 @@ var inventory_slice: Node = null
 ## Set by game_root so recipes are gated behind the technology tree. When null
 ## (isolated unit tests) the gate is not applied.
 var technology_slice: Node = null
+
+## Set by game_root so recipes are gated behind a nearby crafting station. When
+## null (isolated unit tests) the gate is not applied.
+var station_slice: Node = null
+
+## Radius (m) within which a recipe's required station must be placed.
+const STATION_RADIUS: float = 8.0
 
 ## Runtime player skill tiers: skill key → tier name. Seeded from
 ## GameData.SKILLS at the lowest tier; a progression system raises them later.
@@ -59,6 +67,10 @@ func craft(recipe_id: String) -> Dictionary:
 	var tech_reason := _check_tech_gate(recipe_id)
 	if tech_reason != "":
 		return _fail(recipe_id, tech_reason)
+
+	var station_reason := _check_station_gate(recipe)
+	if station_reason != "":
+		return _fail(recipe_id, station_reason)
 
 	var inputs: Array = recipe.get("inputs", [])
 	var outputs: Array = recipe.get("outputs", [])
@@ -105,6 +117,9 @@ func can_craft(recipe_id: String) -> Dictionary:
 	var tech_reason := _check_tech_gate(recipe_id)
 	if tech_reason != "":
 		return _result(recipe_id, false, [], tech_reason)
+	var station_reason := _check_station_gate(recipe)
+	if station_reason != "":
+		return _result(recipe_id, false, [], station_reason)
 	if inventory_slice == null:
 		return _result(recipe_id, false, [], "no_inventory")
 	for entry in recipe.get("inputs", []):
@@ -171,6 +186,21 @@ func _check_tech_gate(recipe_id: String) -> String:
 	if tech_id != "":
 		return "technology_locked:%s" % tech_id
 	return "technology_locked"
+
+## Return "" when the recipe's required station (its `station` json field) is
+## absent OR a matching station is within STATION_RADIUS of the player, else a
+## `station_required:<type>` reason string. Recipes without a station field are
+## not gated. When no station slice is wired (isolated unit tests) the gate is
+## skipped — mirroring the technology gate's isolated-test behaviour.
+func _check_station_gate(recipe: Dictionary) -> String:
+	var station: String = str(recipe.get("station", ""))
+	if station == "":
+		return ""
+	if station_slice == null or not station_slice.has_method("station_near_player"):
+		return ""
+	if station_slice.station_near_player(station, STATION_RADIUS):
+		return ""
+	return "station_required:%s" % station
 
 func _tier_rank(tier: String) -> int:
 	return TIER_ORDER.find(tier)

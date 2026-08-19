@@ -122,6 +122,11 @@ signal inventory_full()
 ## The UI slice listens to refresh the inventory window.
 signal inventory_changed()
 
+## Emitted by InventorySlice when a durable item's condition reaches broken
+## (durability hits 0) and its action is blocked.
+## item_id : String — GameData item key (e.g. "FerritePick")
+signal item_broke(item_id: String)
+
 # ---------------------------------------------------------------------------
 # Crafting
 # ---------------------------------------------------------------------------
@@ -133,6 +138,16 @@ signal craft_requested(recipe_id: String)
 ## Emitted by CraftingSlice with the outcome of a craft attempt.
 ## result : Dictionary — { recipe_id, success, outputs: [{ item, quantity }], reason }
 signal craft_resolved(result: Dictionary)
+
+# ---------------------------------------------------------------------------
+# Stations
+# ---------------------------------------------------------------------------
+
+## Emitted by StationSlice when a crafting station is placed in the world.
+## station_id : String  — unique runtime identifier
+## type       : String  — station type (e.g. "forge", "alchemy bench")
+## position   : Vector3 — world position
+signal station_placed(station_id: String, type: String, position: Vector3)
 
 # ---------------------------------------------------------------------------
 # Mining / building
