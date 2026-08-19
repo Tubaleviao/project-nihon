@@ -18,12 +18,12 @@ extends Node
 const SPAWN_RADIUS := 10.0
 
 ## Maps fabric biome enum integer to the key returned by terrain_slice.get_biome_at().
-## Order: 0=TemperateForest, 1=TemperateGrassland, 2=VolcanicBadlands, 3=Twilight, 4=VoidRift
+## Order: 0=TemperateForest, 1=TemperateGrassland, 2=VolcanicBadlands, 3=TwilightGrove, 4=VoidRift
 const BIOME_KEYS: Array = [
 	"TemperateForest",
 	"TemperateGrassland",
 	"VolcanicBadlands",
-	"Twilight",
+	"TwilightGrove",
 	"VoidRift",
 ]
 
@@ -101,7 +101,7 @@ func get_all_instances() -> Array:
 func _spawn_initial_creatures() -> void:
 	for creature_id in GameData.CREATURES:
 		var res: Resource = GameData.CREATURES[creature_id]
-		var count: int = int(res.get("spawnCount")) if res.has_method("get") else 1
+		var count: int = int(res.get("spawnCount")) if res != null else 1
 		for i in range(count):
 			_spawn(creature_id)
 

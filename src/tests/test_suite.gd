@@ -1195,10 +1195,10 @@ func _test_ai_fleeing_to_idle() -> void:
 	var iid: String  = instances[0]["instance_id"]
 	var pos: Vector3 = instances[0]["position"]
 	ai.force_state(iid, "fleeing")
-	# Place player beyond safe_r (alertRadius * 1.5) for this creature.
+	# Place player beyond safe_r (always base alertRadius * 1.5, regardless of aggression).
 	var res: Resource = GameData.CREATURES.get(c._instances[iid]["creature_id"], null)
-	var alert_r: float = float(res.get("alertRadius")) if res else 12.0
-	var safe_r: float  = alert_r * 1.5
+	var base_alert_r: float = float(res.get("alertRadius")) if res else 12.0
+	var safe_r: float = base_alert_r * 1.5
 	var far_pos := pos + Vector3(safe_r + 5.0, 0.0, 0.0)
 	ai._tick_instance(iid, c._instances[iid], far_pos, 0.1)
 	assert_eq(ai.get_state(iid), "idle", "creature relaxes to idle when player is far")

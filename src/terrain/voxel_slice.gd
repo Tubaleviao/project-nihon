@@ -43,7 +43,7 @@ const BIOME_MATERIALS: Dictionary = {
 	"TemperateForest":    ["Ferrite", "Thornwood"],
 	"TemperateGrassland": ["Ferrite", "Thornwood"],
 	"VolcanicBadlands":   ["Ashite", "Aethermite"],
-	"Twilight":           ["Duskfiber", "Lumenfite"],
+	"TwilightGrove":      ["Duskfiber", "Lumenfite"],
 	"VoidRift":           ["Voidite", "Aethermite"],
 }
 

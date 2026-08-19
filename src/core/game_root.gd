@@ -71,6 +71,11 @@ func _ready() -> void:
 	_creature_ai.player_slice   = _player
 	_creature_ai.battle_slice   = _battle
 
+	# Wire crafting + station cross-references before add_child so their _ready()
+	# methods see the correct dependencies if they ever emit signals during init.
+	_crafting.station_slice    = _station
+	_station.player_slice      = _player
+
 	for s in [_terrain, _voxel, _battle, _creature, _creature_ai, _networking, _persistence, _player, _loot, _inventory, _character, _crafting, _technology, _station, _ui]:
 		s.name = s.get_script().resource_path.get_file().get_basename()
 		add_child(s)
