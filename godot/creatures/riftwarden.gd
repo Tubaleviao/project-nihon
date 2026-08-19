@@ -17,6 +17,14 @@ enum AggressionLevel {
 	TERRITORIAL,
 }
 
+enum Biome {
+	TEMPERATE_FOREST,
+	TEMPERATE_GRASSLAND,
+	VOLCANIC_BADLANDS,
+	TWILIGHT_GROVE,
+	VOID_RIFT,
+}
+
 enum State {
 	IDLE,
 	AGGRESSIVE,
@@ -30,3 +38,9 @@ enum State {
 @export var aggressionLevel: int
 @export var baseHp: int
 @export var baseDamage: int
+@export var alertRadius: float
+@export var attackRadius: float
+@export var fleeThreshold: float
+@export var respawnSeconds: int
+@export var spawnCount: int
+@export var biome: int

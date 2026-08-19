@@ -10,6 +10,7 @@ extends Node
 # Preload slices so tests are isolated from the main scene tree.
 const BattleSlice     := preload("res://src/battle/battle_slice.gd")
 const CreatureSlice   := preload("res://src/creature/creature_slice.gd")
+const CreatureAI      := preload("res://src/creature/creature_ai.gd")
 const TerrainSlice    := preload("res://src/terrain/terrain_slice.gd")
 const PersistenceSlice:= preload("res://src/persistence/persistence_slice.gd")
 const LootSlice       := preload("res://src/loot/loot_slice.gd")
@@ -94,6 +95,12 @@ func run() -> void:
 	_run_test("ui: inventory lines reflect contents",          _test_ui_inventory_lines)
 	_run_test("ui: crafting rows gate on technology",          _test_ui_crafting_rows_tech_gate)
 	_run_test("ui: technology rows report status + prereqs",   _test_ui_technology_rows_status)
+	_run_test("ai: idle→alert when player within alertRadius", _test_ai_idle_to_alert)
+	_run_test("ai: alert→aggressive when player within attackRadius", _test_ai_alert_to_aggressive)
+	_run_test("ai: aggressive→fleeing below flee threshold",   _test_ai_aggressive_to_fleeing)
+	_run_test("ai: fleeing→idle when safe distance exceeded",  _test_ai_fleeing_to_idle)
+	_run_test("ai: attack emits combat_round_requested",       _test_ai_attack_emits_combat)
+	_run_test("player: respawn resets hp and alive flag",      _test_player_respawn)
 
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
@@ -1010,6 +1017,145 @@ func _test_ui_technology_rows_status() -> void:
 	ui.queue_free()
 	tech.queue_free()
 	inv.queue_free()
+
+# ---------------------------------------------------------------------------
+# CreatureAI tests (Phase 15)
+# ---------------------------------------------------------------------------
+
+## Build an isolated AI rig: CreatureSlice + CreatureAI + a minimal PlayerSlice
+## stub (just needs get_position()).
+func _make_ai_rig() -> Dictionary:
+	var c := CreatureSlice.new()
+	add_child(c)
+	var ai := CreatureAI.new()
+	ai.creature_slice = c
+	add_child(ai)
+	return { "creature": c, "ai": ai }
+
+func _test_ai_idle_to_alert() -> void:
+	var rig := _make_ai_rig()
+	var c: CreatureSlice = rig["creature"]
+	var ai: CreatureAI   = rig["ai"]
+	var instances := c.get_all_instances()
+	assert_true(instances.size() > 0, "need at least one creature instance")
+	# idle→alert only applies to NEUTRAL creatures (aggressionLevel == 1). Aggressive
+	# creatures skip the alert state entirely, so select a NEUTRAL instance instead of
+	# blindly using instances[0] (which is CinderGargoyle, aggressionLevel == 2).
+	var iid := ""
+	var pos := Vector3.ZERO
+	for inst in instances:
+		var res: Resource = GameData.CREATURES.get(inst["creature_id"], null)
+		if res != null and int(res.get("aggressionLevel")) == 1:
+			iid = inst["instance_id"]
+			pos = inst["position"]
+			break
+	assert_true(iid != "", "need a NEUTRAL creature instance (aggressionLevel == 1)")
+	ai.force_state(iid, "idle")
+	# Place the "player" close enough to trigger alert (within ALERT_RADIUS_DEFAULT).
+	var near_pos := pos + Vector3(1.0, 0.0, 0.0)
+	# Simulate a tick via internal logic: transition should fire.
+	var captured := {}
+	GameBus.creature_alert.connect(func(id): captured["alert"] = id)
+	ai._tick_instance(iid, c._instances[iid], near_pos, 0.1)
+	assert_true(captured.get("alert", "") == iid, "creature_alert emitted for instance_id")
+	assert_eq(ai.get_state(iid), "alert", "state is alert after player enters alertRadius")
+	rig["creature"].queue_free()
+	rig["ai"].queue_free()
+
+func _test_ai_alert_to_aggressive() -> void:
+	var rig := _make_ai_rig()
+	var c: CreatureSlice = rig["creature"]
+	var ai: CreatureAI   = rig["ai"]
+	var instances := c.get_all_instances()
+	assert_true(instances.size() > 0, "need at least one creature instance")
+	var iid: String  = instances[0]["instance_id"]
+	var pos: Vector3 = instances[0]["position"]
+	ai.force_state(iid, "alert")
+	# Place "player" within attackRadius.
+	var attack_pos := pos + Vector3(0.5, 0.0, 0.0)
+	var captured := {}
+	GameBus.creature_aggressive.connect(func(id): captured["aggro"] = id)
+	ai._tick_instance(iid, c._instances[iid], attack_pos, 0.1)
+	assert_true(captured.get("aggro", "") == iid, "creature_aggressive emitted")
+	assert_eq(ai.get_state(iid), "aggressive", "state is aggressive")
+	rig["creature"].queue_free()
+	rig["ai"].queue_free()
+
+func _test_ai_aggressive_to_fleeing() -> void:
+	var rig := _make_ai_rig()
+	var c: CreatureSlice = rig["creature"]
+	var ai: CreatureAI   = rig["ai"]
+	var instances := c.get_all_instances()
+	assert_true(instances.size() > 0, "need at least one creature instance")
+	var iid: String  = instances[0]["instance_id"]
+	var pos: Vector3 = instances[0]["position"]
+	ai.force_state(iid, "aggressive")
+	# Drain HP below flee threshold.
+	var res: Resource = GameData.CREATURES.get(c._instances[iid]["creature_id"], null)
+	var max_hp: float = float(res.get("baseHp")) if res else 100.0
+	c._instances[iid]["hp"] = max_hp * 0.10   # 10 % < 20 % threshold
+	var captured := {}
+	GameBus.creature_fleeing.connect(func(id): captured["flee"] = id)
+	ai._tick_instance(iid, c._instances[iid], pos + Vector3(1.0, 0.0, 0.0), 0.1)
+	assert_true(captured.get("flee", "") == iid, "creature_fleeing emitted")
+	assert_eq(ai.get_state(iid), "fleeing", "state is fleeing below flee threshold")
+	rig["creature"].queue_free()
+	rig["ai"].queue_free()
+
+func _test_ai_fleeing_to_idle() -> void:
+	var rig := _make_ai_rig()
+	var c: CreatureSlice = rig["creature"]
+	var ai: CreatureAI   = rig["ai"]
+	var instances := c.get_all_instances()
+	assert_true(instances.size() > 0, "need at least one creature instance")
+	var iid: String  = instances[0]["instance_id"]
+	var pos: Vector3 = instances[0]["position"]
+	ai.force_state(iid, "fleeing")
+	# Place player beyond safe_r (alertRadius * 1.5) for this creature.
+	var res: Resource = GameData.CREATURES.get(c._instances[iid]["creature_id"], null)
+	var alert_r: float = float(res.get("alertRadius")) if res else 12.0
+	var safe_r: float  = alert_r * 1.5
+	var far_pos := pos + Vector3(safe_r + 5.0, 0.0, 0.0)
+	ai._tick_instance(iid, c._instances[iid], far_pos, 0.1)
+	assert_eq(ai.get_state(iid), "idle", "creature relaxes to idle when player is far")
+	rig["creature"].queue_free()
+	rig["ai"].queue_free()
+
+func _test_ai_attack_emits_combat() -> void:
+	var rig := _make_ai_rig()
+	var c: CreatureSlice = rig["creature"]
+	var ai: CreatureAI   = rig["ai"]
+	var instances := c.get_all_instances()
+	assert_true(instances.size() > 0, "need at least one creature instance")
+	var iid: String  = instances[0]["instance_id"]
+	var pos: Vector3 = instances[0]["position"]
+	ai.force_state(iid, "aggressive")
+	# Pre-charge the attack timer so it fires on the next tick.
+	ai._ai[iid]["attack_timer"] = CreatureAI.ATTACK_INTERVAL
+	# Player within attack radius.
+	var attack_pos := pos + Vector3(0.5, 0.0, 0.0)
+	var captured := {}
+	GameBus.combat_round_requested.connect(func(att, def): captured["att"] = att; captured["def"] = def)
+	ai._tick_instance(iid, c._instances[iid], attack_pos, 0.01)
+	assert_eq(captured.get("att", ""), iid, "attacker is the creature instance_id")
+	assert_eq(captured.get("def", ""), "player", "defender is player")
+	rig["creature"].queue_free()
+	rig["ai"].queue_free()
+
+func _test_player_respawn() -> void:
+	const PlayerSlice := preload("res://src/player/player_slice.gd")
+	var p := PlayerSlice.new()
+	add_child(p)
+	# Simulate death: drain HP to zero.
+	p.take_damage(PlayerSlice.MAX_HP)
+	assert_false(p._alive, "player is dead after lethal damage")
+	assert_true(p._hp <= 0.0, "player HP at zero")
+	# Force respawn timer to expire.
+	p._respawn_timer = 0.001
+	p._physics_process(1.0)   # one physics tick advances timer past 0
+	assert_true(p._alive, "player alive after respawn")
+	assert_eq(p._hp, PlayerSlice.MAX_HP, "player HP restored to max on respawn")
+	p.queue_free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers

@@ -180,6 +180,29 @@ signal technology_unlocked(tech_id: String)
 # Player
 # ---------------------------------------------------------------------------
 
+## Emitted by BattleSlice when a creature's attack lands on the player.
+## damage      : float   — amount of damage dealt this round
+## attacker_id : String  — creature instance_id that attacked
+signal player_damaged(damage: float, attacker_id: String)
+
+## Emitted by PlayerSlice when the player's HP reaches zero.
+## position  : Vector3 — world position at time of death
+## killer_id : String  — attacker entity_id ("" if environmental)
+signal player_died(position: Vector3, killer_id: String)
+
+## Emitted by PlayerSlice when the player dies and then respawns.
+signal player_respawned(position: Vector3)
+
+## Emitted by CreatureAI when it detects the player (idle→alert transition).
+## instance_id : String — which creature instance entered alert state
+signal creature_alert(instance_id: String)
+
+## Emitted by CreatureAI when a creature switches to aggressive state.
+signal creature_aggressive(instance_id: String)
+
+## Emitted by CreatureAI when a creature flees (HP < flee threshold).
+signal creature_fleeing(instance_id: String)
+
 ## Emitted by PlayerSlice every physics tick with authoritative position/health.
 ## payload : Dictionary — { "position": Vector3, "hp": float, "max_hp": float }
 signal player_state_changed(payload: Dictionary)

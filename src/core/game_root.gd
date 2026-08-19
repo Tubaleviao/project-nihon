@@ -9,6 +9,7 @@ const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const VoxelSlice       := preload("res://src/terrain/voxel_slice.gd")
 const BattleSlice      := preload("res://src/battle/battle_slice.gd")
 const CreatureSlice    := preload("res://src/creature/creature_slice.gd")
+const CreatureAI       := preload("res://src/creature/creature_ai.gd")
 const NetworkingSlice  := preload("res://src/networking/networking_slice.gd")
 const PersistenceSlice := preload("res://src/persistence/persistence_slice.gd")
 const PlayerSlice      := preload("res://src/player/player_slice.gd")
@@ -24,6 +25,7 @@ var _terrain:     TerrainSlice
 var _voxel:       VoxelSlice
 var _battle:      BattleSlice
 var _creature:    CreatureSlice
+var _creature_ai: CreatureAI
 var _networking:  NetworkingSlice
 var _persistence: PersistenceSlice
 var _player:      PlayerSlice
@@ -46,6 +48,7 @@ func _ready() -> void:
 	_voxel       = VoxelSlice.new()
 	_battle      = BattleSlice.new()
 	_creature    = CreatureSlice.new()
+	_creature_ai = CreatureAI.new()
 	_networking  = NetworkingSlice.new()
 	_persistence = PersistenceSlice.new()
 	_player      = PlayerSlice.new()
@@ -60,7 +63,12 @@ func _ready() -> void:
 	# before the slices enter the tree so its _ready() can use it.
 	_creature.terrain_slice = _terrain
 
-	for s in [_terrain, _voxel, _battle, _creature, _networking, _persistence, _player, _loot, _inventory, _character, _crafting, _technology, _ui]:
+	# CreatureAI needs creature_slice, player_slice, and battle_slice for queries.
+	_creature_ai.creature_slice = _creature
+	_creature_ai.player_slice   = _player
+	_creature_ai.battle_slice   = _battle
+
+	for s in [_terrain, _voxel, _battle, _creature, _creature_ai, _networking, _persistence, _player, _loot, _inventory, _character, _crafting, _technology, _ui]:
 		s.name = s.get_script().resource_path.get_file().get_basename()
 		add_child(s)
 
@@ -97,6 +105,12 @@ func _ready() -> void:
 	GameBus.technology_unlocked.connect(_on_technology_unlocked)
 	GameBus.block_mined.connect(_on_block_mined)
 	GameBus.block_placed.connect(_on_block_placed)
+	GameBus.player_damaged.connect(_on_player_damaged)
+	GameBus.player_died.connect(_on_player_died)
+	GameBus.player_respawned.connect(_on_player_respawned)
+	GameBus.creature_alert.connect(func(iid): print("[AI] %s → alert" % iid))
+	GameBus.creature_aggressive.connect(func(iid): print("[AI] %s → aggressive" % iid))
+	GameBus.creature_fleeing.connect(func(iid): print("[AI] %s → fleeing" % iid))
 
 	# Lighting — a directional "sun" plus soft ambient sky fill.
 	var sun := DirectionalLight3D.new()
@@ -298,6 +312,15 @@ func _on_block_mined(material: String, quantity: int, position: Vector3) -> void
 
 func _on_block_placed(material: String, position: Vector3) -> void:
 	print("[Building] %s placed at %s" % [material, position])
+
+func _on_player_damaged(damage: float, attacker_id: String) -> void:
+	print("[Player] took %.1f dmg from %s  hp=%.1f" % [damage, attacker_id, _player.get_hp()])
+
+func _on_player_died(position: Vector3, killer_id: String) -> void:
+	print("[Player] died at %s  killer=%s" % [position, killer_id])
+
+func _on_player_respawned(position: Vector3) -> void:
+	print("[Player] respawned at %s" % position)
 
 func _on_save_completed(slot: int) -> void:
 	print("[Persistence] save_completed slot=%d" % slot)

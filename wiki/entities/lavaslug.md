@@ -20,6 +20,12 @@ A slow-moving, magma-encrusted slug the size of a cart horse that grazes on ashi
 | aggressionLevel | `passive`, `neutral`, `aggressive`, `territorial` |  |
 | baseHp | integer | Hit points at tier baseline; very high due to shell armour |
 | baseDamage | integer | Damage per slime spray at tier baseline |
+| alertRadius | decimal | Distance in metres at which creature enters alert state |
+| attackRadius | decimal | Distance in metres at which creature begins attacking |
+| fleeThreshold | decimal | HP fraction (0–1) below which creature flees |
+| respawnSeconds | integer | Seconds before a dead creature respawns |
+| spawnCount | integer | Number of instances spawned per game world |
+| biome | `TemperateForest`, `TemperateGrassland`, `VolcanicBadlands`, `TwilightGrove`, `VoidRift` | Biome this creature belongs to |
 
 ## States
 

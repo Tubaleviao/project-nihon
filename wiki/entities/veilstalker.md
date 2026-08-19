@@ -20,6 +20,12 @@ A lithe, shadowy predator that phases in and out of visibility in sync with the 
 | aggressionLevel | `passive`, `neutral`, `aggressive`, `territorial` |  |
 | baseHp | integer | Hit points at tier baseline |
 | baseDamage | integer | Damage per strike at tier baseline |
+| alertRadius | decimal | Distance in metres at which creature enters alert state |
+| attackRadius | decimal | Distance in metres at which creature begins attacking |
+| fleeThreshold | decimal | HP fraction (0–1) below which creature flees |
+| respawnSeconds | integer | Seconds before a dead creature respawns |
+| spawnCount | integer | Number of instances spawned per game world |
+| biome | `TemperateForest`, `TemperateGrassland`, `VolcanicBadlands`, `TwilightGrove`, `VoidRift` | Biome this creature belongs to |
 
 ## States
 

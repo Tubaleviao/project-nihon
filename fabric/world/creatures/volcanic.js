@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES } = require('./shared')
+const { defineEntity, creatureStateMachine, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
 
 module.exports = {
 
@@ -17,6 +17,12 @@ module.exports = {
       aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS, defaultValue: 'neutral' },
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline; very high due to shell armour', defaultValue: 350 },
       baseDamage:     { type: 'integer', description: 'Damage per slime spray at tier baseline', defaultValue: 20 },
+      alertRadius:    { type: 'decimal', description: 'Distance in metres at which creature enters alert state', defaultValue: 6.0 },
+      attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 3.0 },
+      fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees', defaultValue: 0.10 },
+      respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 1500 },
+      spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 2 },
+      biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'VolcanicBadlands' },
     },
     stateMachine: creatureStateMachine(),
     behaviors: {
@@ -87,6 +93,12 @@ module.exports = {
       aggressionLevel: { type: 'enum', values: AGGRESSION_LEVELS, defaultValue: 'aggressive' },
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline', defaultValue: 280 },
       baseDamage:     { type: 'integer', description: 'Damage per claw strike at tier baseline', defaultValue: 35 },
+      alertRadius:    { type: 'decimal', description: 'Distance in metres at which creature enters alert state', defaultValue: 15.0 },
+      attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 4.0 },
+      fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees', defaultValue: 0.20 },
+      respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 2400 },
+      spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 1 },
+      biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'VolcanicBadlands' },
     },
     stateMachine: creatureStateMachine(),
     behaviors: {

@@ -97,6 +97,8 @@ func _on_player_state_sync_requested(payload: Dictionary) -> void:
 		_relay_packet.rpc_id(pid, json)
 
 func _on_creature_died_for_broadcast(entity_id: String, position: Vector3, killer_id: String) -> void:
+	if entity_id == "player":
+		return
 	var mp_peer := multiplayer.multiplayer_peer
 	if mp_peer == null or mp_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
 		return

@@ -20,6 +20,12 @@ A keen-eyed raptor that nests on grassland ridges and hunts small game from alti
 | aggressionLevel | `passive`, `neutral`, `aggressive`, `territorial` |  |
 | baseHp | integer | Hit points at tier baseline; low value |
 | baseDamage | integer | Damage per talon strike at tier baseline |
+| alertRadius | decimal | Distance in metres at which creature enters alert state |
+| attackRadius | decimal | Distance in metres at which creature begins attacking |
+| fleeThreshold | decimal | HP fraction (0–1) below which creature flees; flees on any damage |
+| respawnSeconds | integer | Seconds before a dead creature respawns |
+| spawnCount | integer | Number of instances spawned per game world |
+| biome | `TemperateForest`, `TemperateGrassland`, `VolcanicBadlands`, `TwilightGrove`, `VoidRift` | Biome this creature belongs to |
 
 ## States
 

@@ -48,6 +48,13 @@ var _aimed_block_hit: bool = false
 var _aimed_block_pos: Vector3 = Vector3.ZERO
 var _aimed_block_normal: Vector3 = Vector3.UP
 
+## HP bar label — updated on every damage/heal event.
+var _hp_label: Label = null
+
+## Respawn countdown in seconds; -1 when not respawning.
+const RESPAWN_DELAY := 5.0
+var _respawn_timer: float = -1.0
+
 ## Set by game_root after all slices are instantiated.
 var creature_slice: Node = null
 var voxel_slice: Node = null
@@ -57,9 +64,14 @@ func _ready() -> void:
 	_build_hud()
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	GameBus.block_place_material_changed.connect(_on_place_material_changed)
+	GameBus.player_damaged.connect(_on_player_damaged)
 
 func _physics_process(delta: float) -> void:
 	if not _alive:
+		if _respawn_timer > 0.0:
+			_respawn_timer -= delta
+			if _respawn_timer <= 0.0:
+				_respawn()
 		return
 	_move(delta)
 	_sync_tick += 1
@@ -118,11 +130,12 @@ func spawn_at(pos: Vector3) -> void:
 func get_hp() -> float:
 	return _hp
 
-func take_damage(dmg: float) -> void:
+func take_damage(dmg: float, killer_id: String = "") -> void:
 	_hp = maxf(_hp - dmg, 0.0)
+	_update_hp_bar()
 	_broadcast_state()
 	if _hp <= 0.0 and _alive:
-		_die()
+		_die(killer_id)
 
 # ---------------------------------------------------------------------------
 # Private
@@ -209,10 +222,28 @@ func _broadcast_state() -> void:
 	GameBus.player_state_changed.emit(payload)
 	GameBus.player_state_sync_requested.emit(payload)
 
-func _die() -> void:
+func _die(killer_id: String = "") -> void:
 	_alive = false
-	print("PlayerSlice: player died at %s" % get_position())
-	GameBus.creature_died.emit("player", get_position(), "")
+	_respawn_timer = RESPAWN_DELAY
+	print("PlayerSlice: player died at %s — respawning in %.0fs" % [get_position(), RESPAWN_DELAY])
+	GameBus.player_died.emit(get_position(), killer_id)
+
+func _respawn() -> void:
+	_hp = MAX_HP
+	_alive = true
+	_respawn_timer = -1.0
+	# Teleport back to the world spawn point.
+	var spawn_pos := Vector3(16.0, 12.0, 16.0)
+	spawn_at(spawn_pos)
+	_update_hp_bar()
+	_broadcast_state()
+	GameBus.player_respawned.emit(spawn_pos)
+	print("PlayerSlice: player respawned at %s" % spawn_pos)
+
+func _on_player_damaged(dmg: float, attacker_id: String) -> void:
+	if not _alive:
+		return
+	take_damage(dmg, attacker_id)
 
 func _try_attack() -> void:
 	if not _alive:
@@ -252,6 +283,23 @@ func _build_hud() -> void:
 	crosshair.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	crosshair.add_theme_font_size_override("font_size", 22)
 	_hud.add_child(crosshair)
+
+	# HP bar — bottom-left corner, updates on every damage/heal event.
+	var hp_label := Label.new()
+	hp_label.name = "HpLabel"
+	hp_label.anchor_left = 0.0
+	hp_label.anchor_right = 0.0
+	hp_label.anchor_top = 1.0
+	hp_label.anchor_bottom = 1.0
+	hp_label.offset_left = 12.0
+	hp_label.offset_right = 220.0
+	hp_label.offset_top = -44.0
+	hp_label.offset_bottom = -16.0
+	hp_label.add_theme_font_size_override("font_size", 18)
+	hp_label.add_theme_color_override("font_color", Color(0.85, 0.20, 0.20))
+	_hud.add_child(hp_label)
+	_hp_label = hp_label
+	_update_hp_bar()
 
 	# Aimed item name (shown only when a pickup is under the crosshair).
 	var aim_label := Label.new()
@@ -308,6 +356,15 @@ func _build_hud() -> void:
 	_build_shortcuts_menu()
 
 	add_child(_hud)
+
+func _update_hp_bar() -> void:
+	if _hp_label == null:
+		return
+	var bar := ""
+	var filled := int((_hp / MAX_HP) * 10.0)
+	for i in range(10):
+		bar += "█" if i < filled else "░"
+	_hp_label.text = "HP %s %.0f/%.0f" % [bar, _hp, MAX_HP]
 
 func _update_aim() -> void:
 	var pid := ""

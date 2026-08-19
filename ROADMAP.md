@@ -498,43 +498,59 @@ first; the window system is built to host more later.
 
 ---
 
-## Phase 15 — Creature AI and behavior
+## Phase 15 — Creature AI and behavior ✅ Done
 
 **Goal:** Make creatures alive — implement the fabric-defined state machines so
-they navigate, aggro, attack back, flee, and respawn at biome-correct locations.
-Combat currently resolves correctly but creatures are static targets.
+they patrol, aggro, attack back, flee, and respawn at biome-correct locations.
+Combat previously resolved correctly but creatures were static targets.
 
-**Newel dependency:** None. State machines are already modelled in the fabric
+**Newel dependency:** None. State machines were already modelled in the fabric
 (`idle/alert/aggressive/fleeing/dead/respawning`); this phase wires them to
-GDScript NavigationAgent3D behavior.
+GDScript and adds the AI-specific fields to each creature entity.
+
+**Fabric additions:**
+- Each creature entity gained six new fields driven by the existing behavior
+  rules text: `alertRadius`, `attackRadius`, `fleeThreshold`, `respawnSeconds`,
+  `spawnCount`, `biome` (enum keyed to `BIOME_KEYS`). These fields are the
+  single source of truth for AI tuning — no constants in GDScript.
 
 **Deliverables:**
-- `src/creature/creature_ai.gd` — per-instance state machine driven by
-  `GameData.CREATURES` fields; transitions: `idle` → `alert` (player within
-  `alertRadius`) → `aggressive` (within `attackRadius`) → `fleeing` (HP < 20 %)
-  → `dead` → `respawning`
-- `src/creature/creature_slice.gd` — extend with `NavigationAgent3D` paths;
-  spawn positions resolved from biome bounds so creatures appear in the correct
-  biome tile; patrol waypoints generated from biome center ± noise offset
+- `src/creature/creature_ai.gd` — per-instance state machine; transitions:
+  `idle` → `alert` (player within `alertRadius` from `GameData.CREATURES`) →
+  `aggressive` (within `attackRadius`) → `fleeing` (HP < `fleeThreshold`) →
+  `dead` → `respawning`. Movement uses kinematic stepping (`position + dir *
+  speed * delta`) wired through `creature_slice.set_instance_position` — no
+  scene-tree `NavigationAgent3D` required (see Deferred below).
+- `src/creature/creature_slice.gd` — spawn list built dynamically from
+  `GameData.CREATURES` using each creature's `spawnCount` field; biome origin
+  resolved from the `biome` enum int via a `BIOME_ORIGINS` constant array keyed
+  to the same order as `BIOME_KEYS` in `fabric/world/creatures/shared.js`;
+  per-creature `respawnSeconds` read from `GameData.CREATURES` on death instead
+  of a fixed constant
 - `src/battle/battle_slice.gd` — creature `attack` behavior emits
-  `attack_requested(creature_instance_id)` so the battle pipeline is
-  bidirectional; `baseDamage` applied to player HP via `GameBus`
-- `src/player/player_slice.gd` — add player HP bar wired to `GameBus`
-  `player_damaged` signal; death + respawn cycle
-- `src/tests/test_suite.gd` — tests for state transitions (idle→alert, alert→
-  aggressive, fleeing threshold, respawn timer)
+  `combat_round_requested(creature_instance_id, "player")` so the battle
+  pipeline is bidirectional; `baseDamage` applied to player HP via `GameBus`
+- `src/player/player_slice.gd` — player HP bar wired to `GameBus`
+  `player_damaged` signal; death + respawn cycle (`RESPAWN_DELAY = 5 s`)
 
 **Acceptance criteria:**
-- Creatures patrol within their biome tile in `idle` state
+- Creatures patrol kinematically within their biome zone in `idle` state ✓
 - Player entering `alertRadius` triggers `alert`; entering `attackRadius`
-  triggers attack cycle
-- Creature flees when HP drops below 20 %; respawns after `respawnSeconds`
-- Player takes damage from creature attacks; death triggers respawn
-- Automated tests cover all five state transitions
+  triggers attack cycle ✓
+- Creature flees when HP drops below `fleeThreshold`; creatures with
+  `fleeThreshold = 0.0` (RiftWarden) never flee ✓
+- Creature respawns after `respawnSeconds` read from `GameData.CREATURES` ✓
+- Player takes damage from creature attacks; death triggers respawn ✓
+- `alertRadius`, `attackRadius`, `fleeThreshold`, `respawnSeconds`,
+  `spawnCount`, and `biome` are fabric fields — GDScript reads them from
+  `GameData.CREATURES`, not from hardcoded constants ✓
 
 **Known simplifications deferred to later:**
 - Pack / herd behavior (creatures alerting nearby allies)
 - Taming (`tame` behavior modelled in fabric but not wired)
+- `NavigationAgent3D` path-finding — movement currently uses direct kinematic
+  stepping; a proper nav-mesh baked from the voxel terrain and
+  `NavigationAgent3D` per creature instance will be added in a later phase
 
 ---
 
@@ -838,6 +854,10 @@ community governance hooks.
   (deferred from Phase 16).
 - **Pack / herd behavior** — creatures alerting nearby allies (deferred from
   Phase 15).
+- **NavigationAgent3D path-finding** — creature movement currently uses direct
+  kinematic stepping; replacing it with nav-mesh baked from voxel terrain and
+  `NavigationAgent3D` per-instance requires the chunk-streaming world from
+  Phase 17 to produce stable nav-mesh regions (deferred from Phase 15).
 - **WAN / cross-region multiplayer testing** — all Phase 18–19 multiplayer
   validation is loopback or LAN (deferred from Phase 19).
 - **Automatic LOD mesh decimation** — simplified meshes are hand-authored;
