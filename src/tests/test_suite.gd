@@ -75,8 +75,11 @@ func run() -> void:
 	_run_test("crafting: can_craft does not mutate",          _test_crafting_can_craft_no_mutate)
 	_run_test("station: gate blocks without nearby station",  _test_station_gate_blocks)
 	_run_test("station: gate passes when station nearby",     _test_station_gate_passes)
+	_run_test("station: types derived from fabric",           _test_station_types_from_fabric)
 	_run_test("durability: use decrements points",            _test_durability_use_decrements)
 	_run_test("durability: broken tool emits item_broke",     _test_durability_broken_emits)
+	_run_test("durability: stackable materials excluded",     _test_durability_stackable_excluded)
+	_run_test("durability: find_tool returns held pick",      _test_durability_find_tool)
 	_run_test("technology: recipe resolves to owning tech",    _test_technology_recipe_resolves_to_tech)
 	_run_test("technology: research requires prerequisite",    _test_technology_research_requires_prereq)
 	_run_test("technology: research consumes materials",       _test_technology_research_consumes_materials)
@@ -699,7 +702,7 @@ func _test_durability_broken_emits() -> void:
 	# Force the tool to one remaining point, then use it past the break.
 	inv._durability["FerritePick"] = 1.0
 	var ok := inv.use_item("FerritePick", "mine")
-	assert_false(ok, "use blocked when the tool breaks")
+	assert_true(ok, "the use that consumes the last point still succeeds")
 	assert_eq(broke.get("id", ""), "FerritePick", "item_broke emitted for FerritePick")
 	assert_eq(inv.get_durability("FerritePick"), 0.0, "durability clamped at 0")
 	# A broken tool blocks further use and re-emits item_broke.
@@ -708,6 +711,38 @@ func _test_durability_broken_emits() -> void:
 	assert_false(ok2, "broken tool blocks further use")
 	assert_eq(broke.get("id", ""), "FerritePick", "item_broke re-emitted on broken use")
 	inv.queue_free()
+
+func _test_durability_stackable_excluded() -> void:
+	var inv := InventorySlice.new()
+	add_child(inv)
+	# Stackable items carry a durability field (structural integrity / freshness)
+	# but must NOT be treated as per-instance equipment.
+	assert_false(inv.is_durable("FerriteIngot"), "stackable material is not durable equipment")
+	assert_false(inv.is_durable("ThornwoodPlank"), "stackable component is not durable equipment")
+	assert_false(inv.is_durable("FieldRations"), "stackable food is not durable equipment")
+	# Non-stackable tools / weapons / armour are durable.
+	assert_true(inv.is_durable("FerritePick"), "non-stackable tool is durable")
+	assert_true(inv.is_durable("VeilsteelLongsword"), "non-stackable weapon is durable")
+	assert_true(inv.is_durable("FerriteShield"), "non-stackable shield is durable")
+	inv.queue_free()
+
+func _test_durability_find_tool() -> void:
+	var inv := InventorySlice.new()
+	add_child(inv)
+	assert_eq(inv.find_tool("Pick"), "", "no tool held when inventory empty")
+	inv.add_item("FerritePick", 1)
+	assert_eq(inv.find_tool("Pick"), "FerritePick", "find_tool returns the held pick")
+	assert_eq(inv.find_tool("Axe"), "", "find_tool returns empty when no matching tool")
+	inv.queue_free()
+
+func _test_station_types_from_fabric() -> void:
+	var station := StationSlice.new()
+	add_child(station)
+	var types: Array = station.placeable_station_types()
+	assert_true(types.has("forge"), "forge derived from recipe station fields")
+	assert_true(types.has("alchemy bench"), "alchemy bench derived from recipe station fields")
+	assert_true(types.size() >= 2, "multiple station types exist")
+	station.queue_free()
 
 # ---------------------------------------------------------------------------
 # TechnologySlice tests (research gates)

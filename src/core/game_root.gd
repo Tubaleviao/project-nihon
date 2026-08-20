@@ -90,6 +90,7 @@ func _ready() -> void:
 	_crafting.technology_slice = _technology
 	_crafting.station_slice = _station
 	_station.player_slice = _player
+	_player.station_slice = _station
 	_technology.inventory_slice = _inventory
 	_voxel.terrain_slice      = _terrain
 	_voxel.inventory_slice    = _inventory

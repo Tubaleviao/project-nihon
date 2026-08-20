@@ -150,7 +150,12 @@ func durability_bar(item_id: String) -> String:
 	if cur < 0.0:
 		return ""
 	var max_d: float = inventory_slice.get_max_durability(item_id)
-	return "  [%d/%d]" % [int(cur), int(max_d)]
+	var cond := ""
+	if inventory_slice.has_method("get_condition"):
+		cond = str(inventory_slice.get_condition(item_id))
+	if cond == "pristine" or cond == "":
+		return "  [%d/%d]" % [int(cur), int(max_d)]
+	return "  [%d/%d %s]" % [int(cur), int(max_d), cond]
 
 ## One row per recipe: { id, can_craft, reason, inputs, outputs }.
 func crafting_rows() -> Array:

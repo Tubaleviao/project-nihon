@@ -223,6 +223,13 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP) -> Dictionary:
 	if current <= MIN_HEIGHT:
 		return { "success": false, "material": "", "quantity": 0, "position": world_pos }
 
+	# Tool durability: mining consumes the held pick. A broken pick blocks the
+	# mine; bare-handed (no pick) mining is still allowed.
+	var pick := _held_pick()
+	if pick != "" and inventory_slice != null and inventory_slice.has_method("use_item"):
+		if not inventory_slice.use_item(pick, "mine"):
+			return { "success": false, "material": "", "quantity": 0, "position": world_pos }
+
 	var new_h := maxf(current - STEP_HEIGHT, MIN_HEIGHT)
 	_edits[_tile_key(tile)] = new_h
 
@@ -402,6 +409,13 @@ func _on_chunk_ready(chunk_pos: Vector2i, heightmap: Array) -> void:
 
 func _on_mine_requested(position: Vector3, normal: Vector3) -> void:
 	mine_block(position, normal)
+
+## The held mining pick's item_id, or "" when the player has none. Delegates to
+## the inventory's name-based tool lookup ("Pick" → FerritePick/VeilsteelPick).
+func _held_pick() -> String:
+	if inventory_slice == null or not inventory_slice.has_method("find_tool"):
+		return ""
+	return str(inventory_slice.find_tool("Pick"))
 
 func _on_place_requested(position: Vector3, normal: Vector3) -> void:
 	place_block(position, normal)

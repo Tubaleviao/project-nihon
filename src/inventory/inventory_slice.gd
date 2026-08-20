@@ -57,9 +57,10 @@ const RAW_DROP_WEIGHTS: Dictionary = {
 var _item_weight_cache: Dictionary = {}
 
 ## Durability tracking: item_id -> remaining durability points. Populated lazily
-## from GameData.ITEMS for items that declare a `durability` field (tools,
-## weapons, armor). Stacks of a durable item share one durability value — the
-## inventory models item_id -> quantity, not per-slot item instances.
+## from GameData.ITEMS for non-stackable items that declare a `durability` field
+## (tools, weapons, armour, shields, unique tablets). Stacks of a durable item
+## share one durability value — the inventory models item_id -> quantity, not
+## per-slot item instances.
 var _item_durability_cache: Dictionary = {}
 var _durability: Dictionary = {}
 
@@ -204,9 +205,11 @@ func get_condition(item_id: String) -> String:
 	return "damaged"
 
 ## Use a held item for `action_type`. Returns true when the action is allowed
-## (item held and, for durable items, not already broken); false when blocked.
-## Using a durable item decrements its durability; crossing to 0 emits item_broke
-## and blocks the action from here on.
+## (item held and, for durable items, not already broken); false when blocked
+## (not held, or already broken). Using a durable item decrements its
+## durability; when it crosses to 0 the item breaks (item_broke emitted), but
+## the use that consumed the last point still counts as allowed — the tool
+## breaks AS A RESULT of the use, it does not pre-empt it.
 func use_item(item_id: String, action_type: String = "use") -> bool:
 	if _contents.get(item_id, 0) <= 0:
 		return false
@@ -221,8 +224,17 @@ func use_item(item_id: String, action_type: String = "use") -> bool:
 	GameBus.inventory_changed.emit()
 	if float(_durability[item_id]) <= 0.0:
 		GameBus.item_broke.emit(item_id)
-		return false
 	return true
+
+## Find the first held durable item whose key contains `hint` (e.g. "Pick" for
+## mining, "Axe" for chopping). Returns the item_id, or "" when none is held.
+## This is a stopgap: the fabric has no structured tool-class field yet, so the
+## mining/chopping distinction is encoded in the item name.
+func find_tool(hint: String) -> String:
+	for item_id in _item_durability_cache:
+		if _contents.get(item_id, 0) > 0 and str(item_id).contains(hint):
+			return str(item_id)
+	return ""
 
 # ---------------------------------------------------------------------------
 # Private
@@ -296,15 +308,23 @@ func _build_weight_cache() -> void:
 		if res != null:
 			_item_weight_cache[key] = float(res.get("weight"))
 
-## Build the durability cache from GameData.ITEMS: every item that declares a
-## `durability` field (tools, weapons, armor, some components) is tracked.
+## Build the durability cache from GameData.ITEMS: only non-stackable items
+## that declare a `durability` field (tools, weapons, armour, shields, unique
+## tablets) are tracked as per-instance durable equipment. Stackable items
+## (materials, components, food, potions, magical shards) also carry a
+## `durability` field, but it models freshness / potency / charge / structural
+## integrity — mechanics a per-use decrement must NOT apply to. `stackable` is
+## the fabric's own discriminator: equipment is always non-stackable.
 func _build_durability_cache() -> void:
 	for key in GameData.ITEMS:
 		var res: Resource = GameData.ITEMS[key]
-		if res != null:
-			var d = res.get("durability")
-			if d != null and float(d) > 0.0:
-				_item_durability_cache[key] = float(d)
+		if res == null:
+			continue
+		if bool(res.get("stackable")):
+			continue
+		var d = res.get("durability")
+		if d != null and float(d) > 0.0:
+			_item_durability_cache[key] = float(d)
 
 func _item_weight(item_id: String) -> float:
 	return float(_item_weight_cache.get(item_id, 0.0))
