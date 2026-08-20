@@ -30,11 +30,6 @@ extends Node
 ## (fabric/gameplay/skills/shared.js): novice → apprentice → journeyman → expert → master.
 const TIER_ORDER: Array = ["novice", "apprentice", "journeyman", "expert", "master"]
 
-## Enable verbose craft-fail logging and craft_resolved emission on every failed
-## attempt (including expected world-boot demo failures). Set false in production
-## to suppress expected-failure noise from the boot sequence.
-const DEBUG := false
-
 ## Set by game_root so recipes can consume/produce inventory items.
 var inventory_slice: Node = null
 
@@ -230,6 +225,5 @@ func _ok(recipe_id: String, outputs: Array) -> Dictionary:
 
 func _fail(recipe_id: String, reason: String) -> Dictionary:
 	var result := _result(recipe_id, false, [], reason)
-	if DEBUG:
-		GameBus.craft_resolved.emit(result)
+	GameBus.craft_resolved.emit(result)
 	return result

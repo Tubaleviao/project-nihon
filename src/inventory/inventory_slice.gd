@@ -245,19 +245,6 @@ func use_item(item_id: String, action_type: String = "use") -> bool:
 		GameBus.item_broke.emit(item_id)
 	return true
 
-## Find the first held durable tool whose fabric `toolType` matches `tool_type`
-## (e.g. "pick" for mining, "axe" for chopping). Returns the item_id, or ""
-## when none is held. The tool class is a fabric field, so adding another mining
-## pick (stone, metal, …) needs no code change here.
-func find_tool(tool_type: String) -> String:
-	for item_id in _item_durability_cache:
-		if _contents.get(item_id, 0) <= 0:
-			continue
-		var res: Resource = GameData.ITEMS.get(item_id, null)
-		if res != null and str(res.get("toolType")) == tool_type:
-			return str(item_id)
-	return ""
-
 # ---------------------------------------------------------------------------
 # Private
 # ---------------------------------------------------------------------------
