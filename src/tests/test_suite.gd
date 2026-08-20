@@ -729,10 +729,16 @@ func _test_durability_stackable_excluded() -> void:
 func _test_durability_find_tool() -> void:
 	var inv := InventorySlice.new()
 	add_child(inv)
-	assert_eq(inv.find_tool("Pick"), "", "no tool held when inventory empty")
+	assert_eq(inv.find_tool("pick"), "", "no tool held when inventory empty")
 	inv.add_item("FerritePick", 1)
-	assert_eq(inv.find_tool("Pick"), "FerritePick", "find_tool returns the held pick")
-	assert_eq(inv.find_tool("Axe"), "", "find_tool returns empty when no matching tool")
+	inv.add_item("VeilsteelPick", 1)
+	inv.add_item("CarpenterAxe", 1)
+	# find_tool matches on the fabric toolType, not the item name.
+	assert_eq(inv.find_tool("pick"), "FerritePick", "find_tool returns a held pick")
+	assert_eq(inv.find_tool("axe"), "CarpenterAxe", "find_tool returns the held axe")
+	# A non-tool durable item (a weapon) has no toolType and never matches.
+	inv.add_item("FerriteShortSword", 1)
+	assert_eq(inv.find_tool("pick"), "FerritePick", "a weapon is not a mining tool")
 	inv.queue_free()
 
 func _test_station_types_from_fabric() -> void:

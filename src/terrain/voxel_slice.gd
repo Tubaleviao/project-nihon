@@ -411,11 +411,11 @@ func _on_mine_requested(position: Vector3, normal: Vector3) -> void:
 	mine_block(position, normal)
 
 ## The held mining pick's item_id, or "" when the player has none. Delegates to
-## the inventory's name-based tool lookup ("Pick" → FerritePick/VeilsteelPick).
+## the inventory's fabric-driven tool lookup ("pick" → FerritePick/VeilsteelPick).
 func _held_pick() -> String:
 	if inventory_slice == null or not inventory_slice.has_method("find_tool"):
 		return ""
-	return str(inventory_slice.find_tool("Pick"))
+	return str(inventory_slice.find_tool("pick"))
 
 func _on_place_requested(position: Vector3, normal: Vector3) -> void:
 	place_block(position, normal)

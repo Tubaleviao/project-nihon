@@ -10,6 +10,7 @@ weight = 2.3
 rarity = 0
 stackable = false
 durability = 90
+toolType = "axe"
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "Felling axe with a weighted ferrite head and a duskfiber-wrapped thornwood handle. Balanced for sustained chopping; also functions as a light combat weapon."
