@@ -73,13 +73,20 @@ func run() -> void:
 	_run_test("crafting: missing inputs fail",                _test_crafting_missing_inputs)
 	_run_test("crafting: unknown recipe rejected",            _test_crafting_unknown_recipe)
 	_run_test("crafting: can_craft does not mutate",          _test_crafting_can_craft_no_mutate)
-	_run_test("station: gate blocks without nearby station",  _test_station_gate_blocks)
-	_run_test("station: gate passes when station nearby",     _test_station_gate_passes)
-	_run_test("station: types derived from fabric",           _test_station_types_from_fabric)
-	_run_test("durability: use decrements points",            _test_durability_use_decrements)
-	_run_test("durability: broken tool emits item_broke",     _test_durability_broken_emits)
-	_run_test("durability: stackable materials excluded",     _test_durability_stackable_excluded)
-	_run_test("durability: find_tool returns held pick",      _test_durability_find_tool)
+	_run_test("station: gate blocks without nearby station",           _test_station_gate_blocks)
+	_run_test("station: gate passes when station nearby",             _test_station_gate_passes)
+	_run_test("station: wrong station type still blocks",             _test_station_wrong_type_blocks)
+	_run_test("station: carpentry bench gates carpentry recipe",      _test_station_carpentry_bench)
+	_run_test("station: master forge gates high-tier recipe",         _test_station_master_forge)
+	_run_test("station: nearest_station ignores wrong type",          _test_station_nearest_ignores_wrong_type)
+	_run_test("station: all canonical types accepted",                _test_station_all_canonical_types)
+	_run_test("station: types derived from fabric",                   _test_station_types_from_fabric)
+	_run_test("durability: use decrements points",                    _test_durability_use_decrements)
+	_run_test("durability: broken tool emits item_broke",             _test_durability_broken_emits)
+	_run_test("durability: stackable materials excluded",             _test_durability_stackable_excluded)
+	_run_test("durability: drop and repick resets to full",           _test_durability_drop_repick_resets)
+	_run_test("durability: find_tool returns held pick",              _test_durability_find_tool)
+	_run_test("durability: find_tool skips broken, returns working",  _test_durability_find_tool_skips_broken)
 	_run_test("technology: recipe resolves to owning tech",    _test_technology_recipe_resolves_to_tech)
 	_run_test("technology: research requires prerequisite",    _test_technology_research_requires_prereq)
 	_run_test("technology: research consumes materials",       _test_technology_research_consumes_materials)
@@ -677,6 +684,101 @@ func _test_station_gate_passes() -> void:
 	craft.queue_free()
 	inv.queue_free()
 
+func _test_station_wrong_type_blocks() -> void:
+	var station := StationSlice.new()
+	add_child(station)
+	var craft := CraftingSlice.new()
+	add_child(craft)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	craft.inventory_slice = inv
+	craft.station_slice = station
+	inv.add_item("Ferrite", 2)
+	craft.set_skill("Smithing", "novice")
+	station.set_player_position(Vector3.ZERO)
+	# Place a carpentry bench — not a forge — so RecipeFerriteIngot (forge) stays blocked.
+	station.place_station("carpentry bench", Vector3(1.0, 0.0, 0.0))
+	var result := craft.craft("RecipeFerriteIngot")
+	assert_false(result["success"], "craft blocked when only a wrong-type station is nearby")
+	assert_true(str(result["reason"]).begins_with("station_required"), "reason is station_required")
+	station.queue_free()
+	craft.queue_free()
+	inv.queue_free()
+
+func _test_station_carpentry_bench() -> void:
+	var station := StationSlice.new()
+	add_child(station)
+	var craft := CraftingSlice.new()
+	add_child(craft)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	craft.inventory_slice = inv
+	craft.station_slice = station
+	inv.add_item("Thornwood", 2)
+	craft.set_skill("Carpentry", "novice")
+	station.set_player_position(Vector3.ZERO)
+	station.place_station("carpentry bench", Vector3(1.0, 0.0, 0.0))
+	var result := craft.craft("RecipeThornwoodPlank")
+	assert_true(result["success"], "RecipeThornwoodPlank succeeds next to a carpentry bench")
+	assert_eq(inv.get_item_count("ThornwoodPlank"), 3, "3 ThornwoodPlanks produced")
+	station.queue_free()
+	craft.queue_free()
+	inv.queue_free()
+
+func _test_station_master_forge() -> void:
+	var station := StationSlice.new()
+	add_child(station)
+	var craft := CraftingSlice.new()
+	add_child(craft)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	craft.inventory_slice = inv
+	craft.station_slice = station
+	inv.add_item("FerriteIngot", 3)
+	inv.add_item("AethermiteShard", 1)
+	craft.set_skill("Smithing", "journeyman")
+	station.set_player_position(Vector3.ZERO)
+	# A plain forge must NOT satisfy the master forge requirement.
+	station.place_station("forge", Vector3(1.0, 0.0, 0.0))
+	var blocked := craft.craft("RecipeVeilsteelIngot")
+	assert_false(blocked["success"], "RecipeVeilsteelIngot blocked next to a plain forge")
+	# Re-stock inputs and place a master forge.
+	inv.add_item("FerriteIngot", 3)
+	inv.add_item("AethermiteShard", 1)
+	station.place_station("master forge", Vector3(-1.0, 0.0, 0.0))
+	var result := craft.craft("RecipeVeilsteelIngot")
+	assert_true(result["success"], "RecipeVeilsteelIngot succeeds next to a master forge")
+	assert_eq(inv.get_item_count("VeilsteelIngot"), 1, "VeilsteelIngot produced")
+	station.queue_free()
+	craft.queue_free()
+	inv.queue_free()
+
+func _test_station_nearest_ignores_wrong_type() -> void:
+	var station := StationSlice.new()
+	add_child(station)
+	station.set_player_position(Vector3.ZERO)
+	station.place_station("carpentry bench", Vector3(1.0, 0.0, 0.0))
+	station.place_station("forge", Vector3(100.0, 0.0, 0.0))   # far away
+	# nearest_station("forge", 5.0) should return "" — the forge is outside radius.
+	var near_forge := station.nearest_station(Vector3.ZERO, "forge", 5.0)
+	assert_eq(near_forge, "", "no forge within radius 5 — carpentry bench is not counted")
+	var near_bench := station.nearest_station(Vector3.ZERO, "carpentry bench", 5.0)
+	assert_true(near_bench != "", "carpentry bench within radius 5 found")
+	station.queue_free()
+
+func _test_station_all_canonical_types() -> void:
+	var station := StationSlice.new()
+	add_child(station)
+	station.set_player_position(Vector3.ZERO)
+	var types: Array = station.placeable_station_types()
+	assert_true(types.size() >= 4, "at least 4 station types in the fabric")
+	for i in range(types.size()):
+		var t: String = str(types[i])
+		var sid := station.place_station(t, Vector3(float(i), 0.0, 0.0))
+		assert_true(sid != "", "place_station('%s') returns a non-empty id" % t)
+		assert_true(station.station_near_player(t, 200.0), "station_near_player finds '%s'" % t)
+	station.queue_free()
+
 # ---------------------------------------------------------------------------
 # Inventory durability tests (Phase 16 tool durability)
 # ---------------------------------------------------------------------------
@@ -749,6 +851,39 @@ func _test_station_types_from_fabric() -> void:
 	assert_true(types.has("alchemy bench"), "alchemy bench derived from recipe station fields")
 	assert_true(types.size() >= 2, "multiple station types exist")
 	station.queue_free()
+
+
+func _test_durability_drop_repick_resets() -> void:
+	var inv := InventorySlice.new()
+	add_child(inv)
+	# Pick up a FerritePick, use it once to wear it, then drop it.
+	inv.add_item("FerritePick", 1)
+	var max_d := inv.get_max_durability("FerritePick")
+	inv.use_item("FerritePick", "mine")
+	assert_eq(inv.get_durability("FerritePick"), max_d - 1.0, "durability decremented after use")
+	inv.drop_item("FerritePick", 1)
+	assert_eq(inv.get_item_count("FerritePick"), 0, "pick dropped from inventory")
+	# Pick up a fresh FerritePick — durability must be full again.
+	inv.add_item("FerritePick", 1)
+	assert_eq(inv.get_durability("FerritePick"), max_d, "repicked tool starts at max durability")
+	inv.queue_free()
+
+func _test_durability_find_tool_skips_broken() -> void:
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv.add_item("FerritePick", 1)
+	inv.add_item("VeilsteelPick", 1)
+	# Break both picks — find_tool must return "".
+	inv._durability["VeilsteelPick"] = 0.0
+	inv._durability["FerritePick"] = 0.0
+	var none := inv.find_tool("pick")
+	assert_eq(none, "", "find_tool returns empty when all picks are broken")
+	# Restore one pick's durability — find_tool must return it now.
+	inv._durability.erase("FerritePick")   # erase so _ensure_durability reinits to max
+	var found := inv.find_tool("pick")
+	assert_eq(found, "FerritePick", "find_tool returns FerritePick once restored")
+	inv.queue_free()
+
 
 # ---------------------------------------------------------------------------
 # TechnologySlice tests (research gates)

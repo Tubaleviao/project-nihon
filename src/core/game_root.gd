@@ -81,15 +81,13 @@ func _ready() -> void:
 		add_child(s)
 
 	# Cross-slice wiring: direct references where the bus cannot carry context.
-	_inventory.loot_slice     = _loot
-	_player.creature_slice    = _creature
-	_player.voxel_slice       = _voxel
-	_battle.creature_slice    = _creature
-	_loot.creature_slice      = _creature
-	_crafting.inventory_slice = _inventory
+	_inventory.loot_slice      = _loot
+	_player.creature_slice     = _creature
+	_player.voxel_slice        = _voxel
+	_battle.creature_slice     = _creature
+	_loot.creature_slice       = _creature
+	_crafting.inventory_slice  = _inventory
 	_crafting.technology_slice = _technology
-	_crafting.station_slice = _station
-	_station.player_slice = _player
 	_player.station_slice = _station
 	_technology.inventory_slice = _inventory
 	_voxel.terrain_slice      = _terrain
@@ -166,6 +164,10 @@ func _run_tests() -> void:
 # World boot
 # ---------------------------------------------------------------------------
 
+## Set true to enable verbose craft-fail logging and the demo station/craft
+## sequence in _boot_world(). False keeps boot output minimal in production.
+const DEBUG := false
+
 func _boot_world() -> void:
 	print("\n=== Project Nihon — world boot ===")
 
@@ -213,40 +215,34 @@ func _boot_world() -> void:
 	var placed := _voxel.place_block(Vector3(spawn_xz.x + 10.0, ground_h, spawn_xz.y + 2.0), Vector3.UP)
 	print("[Building] placed Ashite block: %s" % ("ok" if placed else "blocked"))
 
-	# Technology + crafting — prove the Phase 13 gate: recipes stay locked until
-	# their owning technology is researched. Seed materials, show a craft fail
-	# while locked, research the two starter techs, then run the smithing chain.
-	print("\n[Technology] Seeding materials + demonstrating research gates…")
-	var starter_kit := { "Ferrite": 10, "Thornwood": 6 }
-	for item_id in starter_kit:
-		_inventory.add_item(item_id, starter_kit[item_id])
-	_crafting.set_skill("Smithing", "journeyman")
-	_crafting.set_skill("Carpentry", "apprentice")
+	if DEBUG:
+		# Technology + crafting demo (DEBUG only): exercises the research and
+		# station gates with expected-fail craft attempts and console output.
+		print("\n[Technology] Seeding materials + demonstrating research gates…")
+		var starter_kit := { "Ferrite": 10, "Thornwood": 6 }
+		for item_id in starter_kit:
+			_inventory.add_item(item_id, starter_kit[item_id])
+		_crafting.set_skill("Smithing", "journeyman")
+		_crafting.set_skill("Carpentry", "apprentice")
 
-	# Crafting before research must fail on the technology gate.
-	GameBus.craft_requested.emit("RecipeFerriteIngot")      # FAIL: technology_locked
+		GameBus.craft_requested.emit("RecipeFerriteIngot")      # FAIL: technology_locked
 
-	# Research the two starter technologies (consume materials, then complete).
-	GameBus.research_requested.emit("TechBasicSmithing")    # consumes Ferrite ×4
-	_technology.complete_research("TechBasicSmithing")      # force-complete (demo)
-	GameBus.research_requested.emit("TechBasicCarpentry")   # consumes Thornwood ×4
-	_technology.complete_research("TechBasicCarpentry")
+		GameBus.research_requested.emit("TechBasicSmithing")
+		_technology.complete_research("TechBasicSmithing")
+		GameBus.research_requested.emit("TechBasicCarpentry")
+		_technology.complete_research("TechBasicCarpentry")
 
-	# Station gating (Phase 16): recipes with a `station` field need a nearby
-	# structure. Crafting before any station is placed fails on the station gate.
-	GameBus.craft_requested.emit("RecipeFerriteIngot")      # FAIL: station_required:forge
+		GameBus.craft_requested.emit("RecipeFerriteIngot")      # FAIL: station_required:forge
 
-	# Place a forge and a carpentry bench beside the player.
-	var ppos: Vector3 = _player.get_position()
-	_station.place_station("forge", ppos + Vector3(2.0, 0.0, 0.0))
-	_station.place_station("carpentry bench", ppos + Vector3(-2.0, 0.0, 0.0))
+		var ppos: Vector3 = _player.get_position()
+		_station.place_station("forge", ppos + Vector3(2.0, 0.0, 0.0))
+		_station.place_station("carpentry bench", ppos + Vector3(-2.0, 0.0, 0.0))
 
-	# Now the smithing chain resolves through the bus.
-	GameBus.craft_requested.emit("RecipeFerriteIngot")      # 2 Ferrite → 1 FerriteIngot
-	GameBus.craft_requested.emit("RecipeFerriteIngot")      # 2 Ferrite → 1 FerriteIngot
-	GameBus.craft_requested.emit("RecipeThornwoodPlank")    # 2 Thornwood → 3 ThornwoodPlank
-	GameBus.craft_requested.emit("RecipeFerritePick")       # 2 ingot + 1 plank → pick
-	GameBus.craft_requested.emit("RecipeVoidRuneTablet")    # FAIL (skill guard + tech gate)
+		GameBus.craft_requested.emit("RecipeFerriteIngot")
+		GameBus.craft_requested.emit("RecipeFerriteIngot")
+		GameBus.craft_requested.emit("RecipeThornwoodPlank")
+		GameBus.craft_requested.emit("RecipeFerritePick")
+		GameBus.craft_requested.emit("RecipeVoidRuneTablet")    # FAIL (skill guard + tech gate)
 
 	# Persistence — save the initial world snapshot via the bus.
 	print("\n[Persistence] Saving initial world snapshot to slot 0…")

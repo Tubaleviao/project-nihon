@@ -107,6 +107,8 @@ func get_max_slots() -> int:
 	return _max_slots
 
 ## Drop quantity of item_id from inventory; returns true if successful.
+## Clears the durability record when the last unit is dropped so a fresh pickup
+## of the same item key always starts at full durability (not the old worn value).
 func drop_item(item_id: String, quantity: int) -> bool:
 	var have: int = _contents.get(item_id, 0)
 	if have < quantity or quantity <= 0:
@@ -115,6 +117,7 @@ func drop_item(item_id: String, quantity: int) -> bool:
 	_current_weight = maxf(_current_weight - w, 0.0)
 	if have == quantity:
 		_contents.erase(item_id)
+		_durability.erase(item_id)
 	else:
 		_contents[item_id] = have - quantity
 	_is_full = false
@@ -171,6 +174,22 @@ func can_add_items(counts: Dictionary) -> bool:
 	if slots > _max_slots:
 		return false
 	return true
+
+## Find the first held durable tool whose fabric `toolType` matches `tool_type`
+## (e.g. "pick" for mining, "axe" for chopping). Broken tools (durability == 0)
+## are skipped. Returns the item_id, or "" when no usable tool is held.
+func find_tool(tool_type: String) -> String:
+	for item_id in _item_durability_cache:
+		if _contents.get(item_id, 0) <= 0:
+			continue
+		var res: Resource = GameData.ITEMS.get(item_id, null)
+		if res == null or str(res.get("toolType")) != tool_type:
+			continue
+		_ensure_durability(item_id)
+		if float(_durability[item_id]) <= 0.0:
+			continue
+		return str(item_id)
+	return ""
 
 ## Whether `item_id` has a durability field in the fabric (tools/weapons/armor).
 func is_durable(item_id: String) -> bool:
