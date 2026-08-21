@@ -60,7 +60,7 @@ const RAW_DROP_WEIGHTS: Dictionary = {
 	"warden_sigil":          0.2,
 }
 
-## Built at _ready() from GameData.ITEMS so fabric item weights are authoritative.
+## Built at _ready() from GameData.MATERIALS (density) and GameData.ITEMS (weight).
 var _item_weight_cache: Dictionary = {}
 
 ## Durability tracking: item_id -> remaining durability points. Populated lazily
@@ -316,8 +316,14 @@ func _load_capacity() -> void:
 		_max_weight = float(res.get("maxWeightKg"))
 
 func _build_weight_cache() -> void:
-	# Seed with raw-drop weights (creature drops not in the item fabric).
+	# Seed with raw-drop weights (creature drops not in the item or material fabric).
 	_item_weight_cache.merge(RAW_DROP_WEIGHTS)
+	# Fabric raw materials (mined from terrain) declare density (g/cm³); use that
+	# as a per-unit kg weight so mined items aren't weightless.
+	for key in GameData.MATERIALS:
+		var res: Resource = GameData.MATERIALS[key]
+		if res != null:
+			_item_weight_cache[key] = float(res.get("density"))
 	# Override/extend with fabric item weights from GameData.ITEMS (authoritative).
 	for key in GameData.ITEMS:
 		var res: Resource = GameData.ITEMS[key]

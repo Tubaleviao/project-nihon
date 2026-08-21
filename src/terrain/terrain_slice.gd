@@ -52,8 +52,10 @@ func get_biome_at(world_pos: Vector2) -> String:
 
 ## Return the biome key for a whole chunk, deterministically derived from the
 ## chunk coordinate and BIOME_SEED. Same (cx, cz) always yields the same biome.
+## Uses integer multiply-mix (Knuth multiplicative hashing) for better distribution
+## than converting integers to strings and calling .hash().
 func get_biome_at_chunk(chunk_pos: Vector2i) -> String:
-	var h := str(BIOME_SEED).hash() ^ str(chunk_pos.x).hash() ^ (str(chunk_pos.y).hash() << 1)
+	var h: int = BIOME_SEED + chunk_pos.x * 2654435761 + chunk_pos.y * 2246822519
 	var idx := posmod(h, BIOME_KEYS.size())
 	return str(BIOME_KEYS[idx])
 

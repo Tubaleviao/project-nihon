@@ -29,10 +29,16 @@ const PICKUP_COLLISION_LAYER := 4
 var _pickups: Dictionary = {}
 var _next_id: int = 0
 
+## Despawn threshold in milliseconds, cached at startup from the fabric.
+var _despawn_ms: float = DESPAWN_SECONDS * 1000.0
+
 ## Set by game_root so instance IDs can be resolved to fabric creature keys.
 var creature_slice: Node = null
 
 func _ready() -> void:
+	var res: Resource = GameData.LOOTS.get("LootTable", null)
+	if res != null:
+		_despawn_ms = float(res.get("despawnSeconds")) * 1000.0
 	GameBus.creature_died.connect(_on_creature_died)
 
 func _process(delta: float) -> void:
@@ -119,20 +125,12 @@ func _drop_table(fabric_key: String) -> Array:
 			return parsed
 	return []
 
-## Despawn timer in seconds, read from the fabric LootTable entity (falls back to
-## DESPAWN_SECONDS when the entity is unavailable).
-func _despawn_seconds() -> float:
-	var res: Resource = GameData.LOOTS.get("LootTable", null)
-	if res != null:
-		return float(res.get("despawnSeconds"))
-	return DESPAWN_SECONDS
-
 func _tick_despawn() -> void:
 	var now := Time.get_ticks_msec()
 	var expired: Array = []
 	for pid in _pickups:
 		var age_ms: float = float(now - _pickups[pid]["spawned_at"])
-		if age_ms >= _despawn_seconds() * 1000.0:
+		if age_ms >= _despawn_ms:
 			expired.append(pid)
 	for pid in expired:
 		var p: Dictionary = _pickups[pid]

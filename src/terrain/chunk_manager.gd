@@ -18,7 +18,7 @@ extends Node
 ##   load_chunk(pos) / unload_chunk(pos)    — explicit load/unload
 ##   get_loaded_chunks() -> Array           — [{ chunk, biome }, ...]
 
-const CHUNK_SIZE := 32                 # tiles per side — must match TerrainSlice
+## Chunk size is owned by TerrainSlice; world_to_chunk() delegates to it.
 const DEFAULT_VIEW_DISTANCE := 3       # Chebyshev radius, in chunks
 
 ## Set by game_root before the slices enter the tree.
@@ -32,6 +32,7 @@ var view_distance: int = DEFAULT_VIEW_DISTANCE
 
 var _loaded: Dictionary = {}   # "cx,cz" -> true
 var _active: bool = false
+var _last_center: Vector2i = Vector2i(-9999, -9999)   # sentinel: no valid center yet
 
 func _process(_delta: float) -> void:
 	if not _active:
@@ -47,20 +48,26 @@ func start() -> void:
 func stop() -> void:
 	_active = false
 
-## One synchronous streaming pass: load missing chunks in range, unload chunks
-## out of range. Safe to call repeatedly; diffing is idempotent.
+## One streaming pass: load missing chunks in range, unload chunks out of range.
+## Skips the diff entirely when the player hasn't moved to a new chunk since the
+## last call. Each load/unload is deferred to the end of the frame so the loop
+## doesn't block rendering.
 func refresh() -> void:
 	var center := player_chunk()
+	if center == _last_center:
+		return
+	_last_center = center
+
 	var desired := _desired_chunks(center, view_distance)
 	var wanted: Dictionary = {}
 	for c in desired:
 		wanted[_chunk_key(c)] = true
 	for key in wanted:
 		if not _loaded.has(key):
-			load_chunk(_key_to_chunk(key))
+			call_deferred("load_chunk", _key_to_chunk(key))
 	for key in _loaded.keys():
 		if not wanted.has(key):
-			unload_chunk(_key_to_chunk(key))
+			call_deferred("unload_chunk", _key_to_chunk(key))
 
 func load_chunk(chunk_pos: Vector2i) -> void:
 	var key := _chunk_key(chunk_pos)
@@ -94,7 +101,9 @@ func player_chunk() -> Vector2i:
 	return Vector2i.ZERO
 
 func world_to_chunk(world_pos: Vector2) -> Vector2i:
-	return Vector2i(floori(world_pos.x / CHUNK_SIZE), floori(world_pos.y / CHUNK_SIZE))
+	if terrain_slice != null and terrain_slice.has_method("world_to_chunk"):
+		return terrain_slice.world_to_chunk(world_pos)
+	return Vector2i(floori(world_pos.x / 32), floori(world_pos.y / 32))
 
 ## Loaded chunks with their biome, for the minimap and introspection.
 func get_loaded_chunks() -> Array:

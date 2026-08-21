@@ -16,20 +16,9 @@ extends Node
 ##   spawn_for_chunk(chunk_pos: Vector2i)               -> void     (Phase 17)
 ##   despawn_for_chunk(chunk_pos: Vector2i)             -> void     (Phase 17)
 
-## Terrain chunk side length — must match TerrainSlice.CHUNK_SIZE. Creature
-## spawning is chunk-scoped (Phase 17): each loaded chunk gets a budget of
-## creatures matching that chunk's biome.
-const CHUNK_SIZE := 32
-
-## Maps fabric biome enum integer to the key returned by terrain_slice.get_biome_at_chunk().
-## Order: 0=TemperateForest, 1=TemperateGrassland, 2=VolcanicBadlands, 3=TwilightGrove, 4=VoidRift
-const BIOME_KEYS: Array = [
-	"TemperateForest",
-	"TemperateGrassland",
-	"VolcanicBadlands",
-	"TwilightGrove",
-	"VoidRift",
-]
+## CHUNK_SIZE and BIOME_KEYS live in TerrainSlice (single source of truth).
+## Spawning uses _chunk_biome() which delegates to terrain_slice, so no local
+## copy of these constants is needed here.
 
 ## Instance record: { "creature_id", "position", "chunk", "state", "hp", "respawn_at", "body" }
 var _instances: Dictionary = {}
@@ -99,12 +88,13 @@ func get_all_instances() -> Array:
 ## every creature is spawned regardless of biome.
 func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 	var chunk_biome := _chunk_biome(chunk_pos)
+	var biome_keys: Array = _biome_keys()
 	for creature_id in GameData.CREATURES:
 		var res: Resource = GameData.CREATURES[creature_id]
 		if res == null:
 			continue
 		var biome_idx: int = int(res.get("biome"))
-		var biome_key: String = BIOME_KEYS[biome_idx] if biome_idx < BIOME_KEYS.size() else BIOME_KEYS[0]
+		var biome_key: String = biome_keys[biome_idx] if biome_idx < biome_keys.size() else biome_keys[0]
 		if chunk_biome != "" and biome_key != chunk_biome:
 			continue
 		var count: int = int(res.get("spawnCount"))
@@ -170,11 +160,12 @@ func _spawn(creature_id: String, chunk_pos: Vector2i) -> String:
 ## Random world XZ inside the chunk footprint (inset one tile from the edge so
 ## creatures don't straddle a chunk boundary).
 func _random_chunk_position(chunk_pos: Vector2i) -> Vector2:
-	var origin_x := chunk_pos.x * CHUNK_SIZE
-	var origin_z := chunk_pos.y * CHUNK_SIZE
+	var cs: int = _chunk_size()
+	var origin_x := chunk_pos.x * cs
+	var origin_z := chunk_pos.y * cs
 	return Vector2(
-		origin_x + randf_range(1.0, float(CHUNK_SIZE) - 1.0),
-		origin_z + randf_range(1.0, float(CHUNK_SIZE) - 1.0)
+		origin_x + randf_range(1.0, float(cs) - 1.0),
+		origin_z + randf_range(1.0, float(cs) - 1.0)
 	)
 
 ## The biome key for a chunk, or "" when no terrain_slice is wired (isolated tests).
@@ -182,6 +173,18 @@ func _chunk_biome(chunk_pos: Vector2i) -> String:
 	if terrain_slice != null and terrain_slice.has_method("get_biome_at_chunk"):
 		return str(terrain_slice.get_biome_at_chunk(chunk_pos))
 	return ""
+
+## Chunk side length from TerrainSlice; falls back to 32 when unwired (tests).
+func _chunk_size() -> int:
+	if terrain_slice != null and terrain_slice.has_method("world_to_chunk"):
+		return terrain_slice.CHUNK_SIZE
+	return 32
+
+## Canonical biome key list from TerrainSlice; falls back to the hard list when unwired.
+func _biome_keys() -> Array:
+	if terrain_slice != null and "BIOME_KEYS" in terrain_slice:
+		return terrain_slice.BIOME_KEYS
+	return ["TemperateForest", "TemperateGrassland", "VolcanicBadlands", "TwilightGrove", "VoidRift"]
 
 func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String) -> void:
 	if entity_id == "player":

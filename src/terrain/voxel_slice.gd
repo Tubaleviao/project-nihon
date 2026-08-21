@@ -27,7 +27,9 @@ extends Node
 ## stored as absolute quantised heights keyed by global tile coordinate, so they
 ## survive chunk rebuilds and save/load.
 
-const CHUNK_SIZE  := 32        # tiles per side — must match TerrainSlice.CHUNK_SIZE
+## CHUNK_SIZE is defined once on TerrainSlice and accessed via terrain_slice.CHUNK_SIZE.
+## The local alias below keeps internal uses readable without duplicating the value.
+const CHUNK_SIZE  := 32        # alias — authoritative copy lives in TerrainSlice
 const TILE_SIZE   := 1.0       # world units per tile (XZ)
 const STEP_HEIGHT := 0.5       # world units per quantised height step
 const MIN_HEIGHT  := 0.0       # bedrock — cannot mine below this
@@ -87,7 +89,23 @@ var inventory_slice: Node = null
 ## the player cycles onto a material they actually hold in inventory.
 var _place_material: String = ""
 
+## Single world-level safety floor shared by all chunks (prevents the player from
+## ever falling through the world). Created once in _ready().
+var _world_floor: StaticBody3D = null
+
 func _ready() -> void:
+	_world_floor = StaticBody3D.new()
+	_world_floor.name = "WorldFloor"
+	_world_floor.collision_layer = TERRAIN_COLLISION_LAYER
+	_world_floor.collision_mask = 0
+	var floor_shape := CollisionShape3D.new()
+	var floor_box := BoxShape3D.new()
+	floor_box.size = Vector3(65536.0, 1.0, 65536.0)
+	floor_shape.shape = floor_box
+	floor_shape.position = Vector3(0.0, -0.5, 0.0)
+	_world_floor.add_child(floor_shape)
+	add_child(_world_floor)
+
 	GameBus.chunk_ready.connect(_on_chunk_ready)
 	GameBus.block_mine_requested.connect(_on_mine_requested)
 	GameBus.block_place_requested.connect(_on_place_requested)
@@ -195,18 +213,6 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
 			)
 			static_body.add_child(col_shape)
 	root.add_child(static_body)
-
-	# --- Safety floor so the player can never fall out of the world ---
-	var floor_body := StaticBody3D.new()
-	floor_body.collision_layer = TERRAIN_COLLISION_LAYER
-	floor_body.collision_mask = 0
-	var floor_shape := CollisionShape3D.new()
-	var floor_box := BoxShape3D.new()
-	floor_box.size = Vector3(64.0, 1.0, 64.0)
-	floor_shape.shape = floor_box
-	floor_shape.position = Vector3(origin.x + 16.0, -0.5, origin.z + 16.0)
-	floor_body.add_child(floor_shape)
-	root.add_child(floor_body)
 
 	print("VoxelSlice: built chunk %s  tiles=%d" % [key, CHUNK_SIZE * CHUNK_SIZE])
 
