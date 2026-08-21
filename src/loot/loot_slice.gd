@@ -82,10 +82,12 @@ func _on_creature_died(entity_id: String, position: Vector3, _killer_id: String)
 		return
 	for entry in table:
 		if randf() <= float(entry.get("chance", 0.0)):
+			var item_id: String = str(entry.get("item", ""))
+			if item_id == "":
+				continue
 			var qty: int = randi_range(int(entry.get("minQty", 1)), int(entry.get("maxQty", 1)))
 			if qty <= 0:
 				continue
-			var item_id: String = str(entry.get("item", ""))
 			var pid := "pickup_%d" % _next_id
 			_next_id += 1
 			# Build a visible body so the item actually appears on the ground.

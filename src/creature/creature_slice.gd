@@ -41,7 +41,6 @@ var terrain_slice: Node = null
 
 func _ready() -> void:
 	GameBus.creature_died.connect(_on_creature_died)
-	_spawn_initial_creatures()
 
 func _process(_delta: float) -> void:
 	_tick_respawn()
@@ -94,14 +93,10 @@ func get_all_instances() -> Array:
 # Private
 # ---------------------------------------------------------------------------
 
-## Spawn the initial population into the origin chunk. When terrain_slice is not
-## wired (isolated unit tests), spawn_for_chunk spawns every creature regardless
-## of biome, preserving the pre-streaming behaviour those tests rely on.
-func _spawn_initial_creatures() -> void:
-	spawn_for_chunk(Vector2i(0, 0))
-
 ## Spawn the per-chunk creature budget: every creature whose biome matches this
 ## chunk's biome, at its spawnCount, placed at random positions inside the chunk.
+## When terrain_slice is not wired (isolated unit tests), chunk_biome is "" and
+## every creature is spawned regardless of biome.
 func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 	var chunk_biome := _chunk_biome(chunk_pos)
 	for creature_id in GameData.CREATURES:
@@ -112,7 +107,7 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 		var biome_key: String = BIOME_KEYS[biome_idx] if biome_idx < BIOME_KEYS.size() else BIOME_KEYS[0]
 		if chunk_biome != "" and biome_key != chunk_biome:
 			continue
-		var count: int = int(res.get("spawnCount")) if res != null else 1
+		var count: int = int(res.get("spawnCount"))
 		for i in range(count):
 			_spawn(creature_id, chunk_pos)
 

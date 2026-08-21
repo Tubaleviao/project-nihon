@@ -203,6 +203,7 @@ func _test_battle_reset_hp() -> void:
 func _test_battle_resolves_via_creature_slice() -> void:
 	var c := CreatureSlice.new()
 	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
 	var b := BattleSlice.new()
 	b.creature_slice = c
 	add_child(b)
@@ -223,6 +224,7 @@ func _test_battle_resolves_via_creature_slice() -> void:
 func _test_creature_spawns_from_gamedata() -> void:
 	var c := CreatureSlice.new()
 	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
 	var instances := c.get_all_instances()
 	assert_true(instances.size() > 0, "at least one creature spawned from GameData")
 	for inst in instances:
@@ -234,6 +236,7 @@ func _test_creature_spawns_from_gamedata() -> void:
 func _test_creature_nearest() -> void:
 	var c := CreatureSlice.new()
 	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
 	var instances := c.get_all_instances()
 	assert_true(instances.size() > 0, "need at least one instance for nearest test")
 	if instances.size() > 0:
@@ -245,6 +248,7 @@ func _test_creature_nearest() -> void:
 func _test_creature_death_marks_dead() -> void:
 	var c := CreatureSlice.new()
 	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
 	var instances := c.get_all_instances()
 	assert_true(instances.size() > 0, "need an instance to kill")
 	if instances.size() > 0:
@@ -263,6 +267,7 @@ func _test_creature_death_marks_dead() -> void:
 func _test_creature_respawn_resets_battle_hp() -> void:
 	var c := CreatureSlice.new()
 	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
 	var b := BattleSlice.new()
 	b.creature_slice = c
 	add_child(b)
@@ -402,6 +407,7 @@ func _test_loot_consume_removes() -> void:
 func _test_loot_instance_id_resolve() -> void:
 	var c := CreatureSlice.new()
 	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
 	var l := LootSlice.new()
 	l.creature_slice = c
 	add_child(l)
@@ -1316,6 +1322,7 @@ func _test_ui_technology_rows_status() -> void:
 func _make_ai_rig() -> Dictionary:
 	var c := CreatureSlice.new()
 	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
 	var ai := CreatureAI.new()
 	ai.creature_slice = c
 	add_child(ai)
@@ -1527,6 +1534,7 @@ func _test_chunk_unload_preserves_edits() -> void:
 func _test_chunk_creature_spawn_per_chunk() -> void:
 	var c := CreatureSlice.new()
 	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
 	var before: int = c.get_all_instances().size()
 	assert_true(before > 0, "initial chunk has creatures")
 	c.spawn_for_chunk(Vector2i(1, 0))
