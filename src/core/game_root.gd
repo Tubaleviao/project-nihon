@@ -7,6 +7,7 @@ extends Node
 
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const VoxelSlice       := preload("res://src/terrain/voxel_slice.gd")
+const ChunkManager     := preload("res://src/terrain/chunk_manager.gd")
 const BattleSlice      := preload("res://src/battle/battle_slice.gd")
 const CreatureSlice    := preload("res://src/creature/creature_slice.gd")
 const CreatureAI       := preload("res://src/creature/creature_ai.gd")
@@ -20,10 +21,13 @@ const CraftingSlice    := preload("res://src/crafting/crafting_slice.gd")
 const TechnologySlice  := preload("res://src/technology/technology_slice.gd")
 const StationSlice     := preload("res://src/world/station_slice.gd")
 const UiSlice          := preload("res://src/ui/ui_slice.gd")
+const Minimap          := preload("res://src/ui/minimap.gd")
 const TestSuite        := preload("res://src/tests/test_suite.gd")
 
 var _terrain:     TerrainSlice
 var _voxel:       VoxelSlice
+var _chunk_manager: ChunkManager
+var _minimap:     Minimap
 var _battle:      BattleSlice
 var _creature:    CreatureSlice
 var _creature_ai: CreatureAI
@@ -48,6 +52,8 @@ func _ready() -> void:
 
 	_terrain     = TerrainSlice.new()
 	_voxel       = VoxelSlice.new()
+	_chunk_manager = ChunkManager.new()
+	_minimap     = Minimap.new()
 	_battle      = BattleSlice.new()
 	_creature    = CreatureSlice.new()
 	_creature_ai = CreatureAI.new()
@@ -76,7 +82,7 @@ func _ready() -> void:
 	_crafting.station_slice    = _station
 	_station.player_slice      = _player
 
-	for s in [_terrain, _voxel, _battle, _creature, _creature_ai, _networking, _persistence, _player, _loot, _inventory, _character, _crafting, _technology, _station, _ui]:
+	for s in [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _player, _loot, _inventory, _character, _crafting, _technology, _station, _ui]:
 		s.name = s.get_script().resource_path.get_file().get_basename()
 		add_child(s)
 
@@ -96,6 +102,29 @@ func _ready() -> void:
 	_ui.crafting_slice        = _crafting
 	_ui.technology_slice      = _technology
 	_ui.refresh_all()
+
+	# Chunk streaming (Phase 17) — wire the manager to its collaborators.
+	_chunk_manager.terrain_slice  = _terrain
+	_chunk_manager.voxel_slice    = _voxel
+	_chunk_manager.player_slice   = _player
+	_chunk_manager.creature_slice = _creature
+
+	# Minimap overlay (Phase 17) — top-right, biome-coloured chunk view.
+	var minimap_layer := CanvasLayer.new()
+	minimap_layer.name = "MinimapLayer"
+	minimap_layer.layer = 20
+	add_child(minimap_layer)
+	_minimap.anchor_left = 1.0
+	_minimap.anchor_right = 1.0
+	_minimap.anchor_top = 0.0
+	_minimap.anchor_bottom = 0.0
+	_minimap.offset_left = -180.0
+	_minimap.offset_right = -12.0
+	_minimap.offset_top = 12.0
+	_minimap.offset_bottom = 180.0
+	_minimap.chunk_manager = _chunk_manager
+	_minimap.player_slice = _player
+	minimap_layer.add_child(_minimap)
 
 	# Bus listeners for integration-layer logging.
 	GameBus.chunk_ready.connect(_on_chunk_ready)
@@ -122,6 +151,8 @@ func _ready() -> void:
 	GameBus.creature_fleeing.connect(func(iid): print("[AI] %s → fleeing" % iid))
 	GameBus.station_placed.connect(func(id, type, pos): print("[Station] %s [%s] placed at %s" % [type, id, pos]))
 	GameBus.item_broke.connect(func(iid): print("[Item] %s broke!" % iid))
+	GameBus.chunk_loaded.connect(func(pos): print("[Chunk] loaded %s" % pos))
+	GameBus.chunk_unloaded.connect(func(pos): print("[Chunk] unloaded %s" % pos))
 
 	# Lighting — a directional "sun" plus soft ambient sky fill.
 	var sun := DirectionalLight3D.new()
@@ -171,16 +202,19 @@ const DEBUG := false
 func _boot_world() -> void:
 	print("\n=== Project Nihon — world boot ===")
 
-	# Terrain — request the origin chunk; VoxelSlice reacts to chunk_ready.
-	print("\n[Terrain] Requesting origin chunk (0, 0)…")
-	_terrain.request_chunk(Vector2i(0, 0))
-
 	# Place the player on top of the terrain at the spawn point so it doesn't
 	# spawn embedded in (and fall through) the collision mesh.
 	var spawn_xz := Vector2(16.0, 16.0)
 	var ground_h := _terrain.get_height_at(spawn_xz)
 	_player.spawn_at(Vector3(spawn_xz.x, ground_h + 1.0, spawn_xz.y))
 	print("[Player] spawning on terrain at (%.1f, %.1f, %.1f)" % [spawn_xz.x, ground_h + 1.0, spawn_xz.y])
+
+	# Chunk streaming (Phase 17) — load the window of chunks around the player
+	# instead of a single fixed origin chunk. VoxelSlice builds the mesh on
+	# chunk_ready and CreatureSlice spawns each chunk's budget.
+	print("\n[Terrain] Streaming chunks around player (view distance %d)…" % _chunk_manager.view_distance)
+	_chunk_manager.start()
+	_chunk_manager.refresh()
 
 	# Character system — spawn a demo humanoid and a non-humanoid (quadruped)
 	# near the player to exercise the appearance pipeline end to end.
@@ -256,8 +290,8 @@ func _boot_world() -> void:
 		},
 		"inventory": _inventory.get_contents(),
 		"world":     {
-			"voxel_edits":     _voxel.get_edits(),
-			"voxel_materials": _voxel.get_edit_materials(),
+			"chunks":       _voxel.get_chunk_manifest(),
+			"dirty_chunks": _voxel.get_dirty_chunk_keys(),
 		},
 		"technology": _technology.get_statuses(),
 	}
@@ -346,7 +380,13 @@ func _on_save_completed(slot: int) -> void:
 func _on_load_completed(slot: int, data: Dictionary) -> void:
 	print("[Persistence] load_completed slot=%d  keys=%s" % [slot, data.keys()])
 	var world: Dictionary = data.get("world", {})
-	if world.has("voxel_edits"):
+	if world.has("chunks"):
+		_voxel.apply_chunk_manifest(world["chunks"])
+		var edit_count := 0
+		for ckey in world["chunks"]:
+			edit_count += world["chunks"][ckey].get("edits", {}).size()
+		print("[Persistence] restored %d voxel edits across %d chunks" % [edit_count, world["chunks"].size()])
+	elif world.has("voxel_edits"):
 		_voxel.apply_edits(world["voxel_edits"], world.get("voxel_materials", {}))
 		print("[Persistence] restored %d voxel edits" % world["voxel_edits"].size())
 	if data.has("technology"):

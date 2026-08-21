@@ -12,6 +12,7 @@ const BattleSlice     := preload("res://src/battle/battle_slice.gd")
 const CreatureSlice   := preload("res://src/creature/creature_slice.gd")
 const CreatureAI      := preload("res://src/creature/creature_ai.gd")
 const TerrainSlice    := preload("res://src/terrain/terrain_slice.gd")
+const ChunkManager    := preload("res://src/terrain/chunk_manager.gd")
 const PersistenceSlice:= preload("res://src/persistence/persistence_slice.gd")
 const LootSlice       := preload("res://src/loot/loot_slice.gd")
 const InventorySlice  := preload("res://src/inventory/inventory_slice.gd")
@@ -21,6 +22,7 @@ const TechnologySlice := preload("res://src/technology/technology_slice.gd")
 const UiSlice         := preload("res://src/ui/ui_slice.gd")
 const VoxelSlice      := preload("res://src/terrain/voxel_slice.gd")
 const StationSlice    := preload("res://src/world/station_slice.gd")
+const Minimap         := preload("res://src/ui/minimap.gd")
 
 var _pass: int = 0
 var _fail: int = 0
@@ -116,6 +118,15 @@ func run() -> void:
 	_run_test("ai: fleeing→idle when safe distance exceeded",  _test_ai_fleeing_to_idle)
 	_run_test("ai: attack emits combat_round_requested",       _test_ai_attack_emits_combat)
 	_run_test("player: respawn resets hp and alive flag",      _test_player_respawn)
+	_run_test("chunk: desired set within view distance",        _test_chunk_desired_set)
+	_run_test("chunk: world/chunk coordinate round-trip",       _test_chunk_coordinate_round_trip)
+	_run_test("chunk: per-chunk biome is stable",               _test_chunk_biome_stable)
+	_run_test("chunk: load/unload emits signals",               _test_chunk_load_unload_signals)
+	_run_test("chunk: voxel edits isolated per chunk",          _test_chunk_voxel_edits_isolated)
+	_run_test("chunk: unload preserves edits on reload",        _test_chunk_unload_preserves_edits)
+	_run_test("chunk: creature spawn scales per chunk",         _test_chunk_creature_spawn_per_chunk)
+	_run_test("chunk: persistence round-trips per-chunk edits", _test_chunk_persistence_manifest)
+	_run_test("chunk: minimap cells resolve chunks",            _test_chunk_minimap_cells)
 
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
@@ -1416,6 +1427,132 @@ func _test_player_respawn() -> void:
 	assert_true(p._alive, "player alive after respawn")
 	assert_eq(p._hp, PlayerSlice.MAX_HP, "player HP restored to max on respawn")
 	p.queue_free()
+
+# ---------------------------------------------------------------------------
+# Chunk streaming tests (Phase 17)
+# ---------------------------------------------------------------------------
+
+func _test_chunk_desired_set() -> void:
+	var cm := ChunkManager.new()
+	add_child(cm)
+	var set1: Array = cm._desired_chunks(Vector2i(0, 0), 1)
+	assert_eq(set1.size(), 9, "view distance 1 yields a 3x3 window")
+	var set3: Array = cm._desired_chunks(Vector2i(0, 0), 3)
+	assert_eq(set3.size(), 49, "view distance 3 yields a 7x7 window")
+	assert_true(set1.has(Vector2i(0, 0)), "center chunk included")
+	assert_true(set1.has(Vector2i(1, 1)), "corner chunk included at radius 1")
+	cm.queue_free()
+
+func _test_chunk_coordinate_round_trip() -> void:
+	var t := TerrainSlice.new()
+	add_child(t)
+	assert_eq(t.chunk_to_world(Vector2i(2, -3)), Vector2(64.0, -96.0), "chunk (2,-3) maps to world (64,-96)")
+	assert_eq(t.world_to_chunk(Vector2(64.0, -96.0)), Vector2i(2, -3), "world round-trips to chunk")
+	assert_eq(t.world_to_chunk(Vector2(70.0, -90.0)), Vector2i(2, -3), "interior point maps to same chunk")
+	t.queue_free()
+
+func _test_chunk_biome_stable() -> void:
+	var t := TerrainSlice.new()
+	add_child(t)
+	var b1 := t.get_biome_at_chunk(Vector2i(3, 4))
+	var b2 := t.get_biome_at_chunk(Vector2i(3, 4))
+	assert_eq(b1, b2, "same chunk yields the same biome across calls")
+	assert_true(TerrainSlice.BIOME_KEYS.has(b1), "biome is a known canonical key")
+	var world: Vector2 = t.chunk_to_world(Vector2i(3, 4))
+	assert_eq(t.get_biome_at(world + Vector2(5.0, 7.0)), b1, "get_biome_at agrees inside the chunk")
+	t.queue_free()
+
+func _test_chunk_load_unload_signals() -> void:
+	var cm := ChunkManager.new()
+	add_child(cm)
+	var loaded := {}
+	var unloaded := {}
+	GameBus.chunk_loaded.connect(func(p): loaded[p] = true)
+	GameBus.chunk_unloaded.connect(func(p): unloaded[p] = true)
+	cm.load_chunk(Vector2i(0, 0))
+	assert_true(loaded.has(Vector2i(0, 0)), "chunk_loaded emitted on load")
+	cm.unload_chunk(Vector2i(0, 0))
+	assert_true(unloaded.has(Vector2i(0, 0)), "chunk_unloaded emitted on unload")
+	cm.queue_free()
+
+func _test_chunk_voxel_edits_isolated() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	var flat: Array = []
+	flat.resize(32 * 32)
+	flat.fill(2.0)
+	v.build_chunk(Vector2i(0, 0), flat)
+	v.build_chunk(Vector2i(1, 0), flat)
+	assert_true(v.mine_block(Vector3(16.5, 2.0, 16.5)).get("success", false), "mine in chunk (0,0)")
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.5, "chunk (0,0) lowered")
+	assert_eq(v.get_voxel_height_at(Vector2(48.0, 16.0)), 2.0, "chunk (1,0) unaffected")
+	v.queue_free()
+	inv.queue_free()
+
+func _test_chunk_unload_preserves_edits() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var flat: Array = []
+	flat.resize(32 * 32)
+	flat.fill(2.0)
+	v.build_chunk(Vector2i(0, 0), flat)
+	v.apply_edits({ "16,16": 1.0 })
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.0, "edit applied")
+	v.unload_chunk(Vector2i(0, 0))
+	v.build_chunk(Vector2i(0, 0), flat)
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.0, "edit survives unload/reload")
+	v.queue_free()
+
+func _test_chunk_creature_spawn_per_chunk() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	var before: int = c.get_all_instances().size()
+	assert_true(before > 0, "initial chunk has creatures")
+	c.spawn_for_chunk(Vector2i(1, 0))
+	var after: int = c.get_all_instances().size()
+	assert_true(after > before, "spawning another chunk adds creatures")
+	c.despawn_for_chunk(Vector2i(1, 0))
+	assert_eq(c.get_all_instances().size(), before, "despawning a chunk removes only its creatures")
+	c.queue_free()
+
+func _test_chunk_persistence_manifest() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var flat: Array = []
+	flat.resize(32 * 32)
+	flat.fill(2.0)
+	v.build_chunk(Vector2i(0, 0), flat)
+	v.apply_edits({ "16,16": 1.0, "48,48": 3.0 })
+	var manifest: Dictionary = v.get_chunk_manifest()
+	assert_true(manifest.has("0,0"), "manifest groups chunk (0,0)")
+	assert_true(manifest.has("1,1"), "manifest groups chunk (1,1)")
+	assert_eq(float(manifest["0,0"]["edits"]["16,16"]), 1.0, "chunk (0,0) edit recorded")
+	var v2 := VoxelSlice.new()
+	add_child(v2)
+	v2.build_chunk(Vector2i(0, 0), flat)
+	v2.build_chunk(Vector2i(1, 1), flat)
+	v2.apply_chunk_manifest(manifest)
+	assert_eq(v2.get_voxel_height_at(Vector2(16.0, 16.0)), 1.0, "restored edit in chunk (0,0)")
+	assert_eq(v2.get_voxel_height_at(Vector2(48.0, 48.0)), 3.0, "restored edit in chunk (1,1)")
+	v.queue_free()
+	v2.queue_free()
+
+func _test_chunk_minimap_cells() -> void:
+	var mm := Minimap.new()
+	add_child(mm)
+	mm.set_chunks([
+		{ "chunk": Vector2i(0, 0), "biome": "TemperateForest" },
+		{ "chunk": Vector2i(1, 0), "biome": "VolcanicBadlands" },
+	])
+	var cells: Array = mm.get_chunk_cells()
+	assert_eq(cells.size(), 2, "two chunks reported")
+	assert_true(Minimap.BIOME_COLORS.has(cells[0]["biome"]), "biome resolves to a colour")
+	mm.set_player_pos(Vector2(16.0, 16.0))
+	assert_eq(mm.get_player_cell()["chunk"], Vector2i(0, 0), "player cell resolves to chunk (0,0)")
+	mm.queue_free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers

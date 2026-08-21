@@ -13,11 +13,15 @@ extends Node
 ##   nearest_creature(from_pos: Vector3, radius: float) -> String   (instance_id or "")
 ##   get_instance_creature_id(instance_id: String)      -> String   (fabric key)
 ##   get_all_instances()                                -> Array[Dictionary]
+##   spawn_for_chunk(chunk_pos: Vector2i)               -> void     (Phase 17)
+##   despawn_for_chunk(chunk_pos: Vector2i)             -> void     (Phase 17)
 
-## Spread around each biome search origin.
-const SPAWN_RADIUS := 10.0
+## Terrain chunk side length — must match TerrainSlice.CHUNK_SIZE. Creature
+## spawning is chunk-scoped (Phase 17): each loaded chunk gets a budget of
+## creatures matching that chunk's biome.
+const CHUNK_SIZE := 32
 
-## Maps fabric biome enum integer to the key returned by terrain_slice.get_biome_at().
+## Maps fabric biome enum integer to the key returned by terrain_slice.get_biome_at_chunk().
 ## Order: 0=TemperateForest, 1=TemperateGrassland, 2=VolcanicBadlands, 3=TwilightGrove, 4=VoidRift
 const BIOME_KEYS: Array = [
 	"TemperateForest",
@@ -27,16 +31,7 @@ const BIOME_KEYS: Array = [
 	"VoidRift",
 ]
 
-## Approximate XZ search centres per biome index — seeds the get_biome_at() position search.
-const BIOME_SEARCH_ORIGINS: Array = [
-	Vector2(16.0, 16.0),  # TemperateForest
-	Vector2(48.0, 32.0),  # TemperateGrassland
-	Vector2(80.0, 16.0),  # VolcanicBadlands
-	Vector2(16.0, 80.0),  # Twilight
-	Vector2(80.0, 80.0),  # VoidRift
-]
-
-## Instance record: { "creature_id", "position", "state", "hp", "respawn_at", "body" }
+## Instance record: { "creature_id", "position", "chunk", "state", "hp", "respawn_at", "body" }
 var _instances: Dictionary = {}
 var _next_id: int = 0
 
@@ -91,6 +86,7 @@ func get_all_instances() -> Array:
 			"position":    inst["position"],
 			"state":       inst["state"],
 			"hp":          inst["hp"],
+			"chunk":       inst.get("chunk", Vector2i.ZERO),
 		})
 	return out
 
@@ -98,27 +94,57 @@ func get_all_instances() -> Array:
 # Private
 # ---------------------------------------------------------------------------
 
+## Spawn the initial population into the origin chunk. When terrain_slice is not
+## wired (isolated unit tests), spawn_for_chunk spawns every creature regardless
+## of biome, preserving the pre-streaming behaviour those tests rely on.
 func _spawn_initial_creatures() -> void:
+	spawn_for_chunk(Vector2i(0, 0))
+
+## Spawn the per-chunk creature budget: every creature whose biome matches this
+## chunk's biome, at its spawnCount, placed at random positions inside the chunk.
+func spawn_for_chunk(chunk_pos: Vector2i) -> void:
+	var chunk_biome := _chunk_biome(chunk_pos)
 	for creature_id in GameData.CREATURES:
 		var res: Resource = GameData.CREATURES[creature_id]
+		if res == null:
+			continue
+		var biome_idx: int = int(res.get("biome"))
+		var biome_key: String = BIOME_KEYS[biome_idx] if biome_idx < BIOME_KEYS.size() else BIOME_KEYS[0]
+		if chunk_biome != "" and biome_key != chunk_biome:
+			continue
 		var count: int = int(res.get("spawnCount")) if res != null else 1
 		for i in range(count):
-			_spawn(creature_id)
+			_spawn(creature_id, chunk_pos)
 
-func _spawn(creature_id: String) -> String:
+## Despawn creatures belonging to `chunk_pos` that are not engaged in combat.
+## Engaged (aggressive / fleeing) creatures are kept so an in-progress fight is
+## not torn away; idle/alert/dead instances are removed and their bodies freed.
+func despawn_for_chunk(chunk_pos: Vector2i) -> void:
+	var to_erase: Array = []
+	for iid in _instances:
+		var inst: Dictionary = _instances[iid]
+		if inst.get("chunk", Vector2i.ZERO) != chunk_pos:
+			continue
+		if inst["state"] == "aggressive" or inst["state"] == "fleeing":
+			continue
+		var body = inst.get("body", null)
+		if body != null and is_instance_valid(body):
+			body.queue_free()
+		to_erase.append(iid)
+	for iid in to_erase:
+		_instances.erase(iid)
+	if to_erase.size() > 0:
+		print("CreatureSlice: despawned %d creatures from chunk %s" % [to_erase.size(), chunk_pos])
+
+func _spawn(creature_id: String, chunk_pos: Vector2i) -> String:
 	var res: Resource = GameData.CREATURES.get(creature_id, null)
 	if res == null:
 		push_error("CreatureSlice: unknown creature '%s' in GameData.CREATURES" % creature_id)
 		return ""
 
 	var hp: float = float(res.get("baseHp"))
-	var angle  := randf_range(0.0, TAU)
-	var r      := randf_range(2.0, SPAWN_RADIUS)
-	var biome_idx: int = int(res.get("biome"))
-	var biome_key: String = BIOME_KEYS[biome_idx] if biome_idx < BIOME_KEYS.size() else BIOME_KEYS[0]
-	var search_origin: Vector2 = BIOME_SEARCH_ORIGINS[biome_idx] if biome_idx < BIOME_SEARCH_ORIGINS.size() else BIOME_SEARCH_ORIGINS[0]
-	var xz: Vector2 = _find_biome_position(biome_key, search_origin)
-	var pos: Vector3 = Vector3(xz.x + cos(angle) * r, 0.0, xz.y + sin(angle) * r)
+	var xz: Vector2 = _random_chunk_position(chunk_pos)
+	var pos: Vector3 = Vector3(xz.x, 0.0, xz.y)
 
 	# Sit the creature on the terrain surface instead of a fixed height.
 	if terrain_slice != null and terrain_slice.has_method("get_height_at"):
@@ -134,6 +160,7 @@ func _spawn(creature_id: String) -> String:
 	_instances[iid] = {
 		"creature_id": creature_id,
 		"position":    pos,
+		"chunk":       chunk_pos,
 		"spawn_pos":   pos,
 		"state":       "idle",
 		"hp":          hp,
@@ -145,23 +172,21 @@ func _spawn(creature_id: String) -> String:
 	print("CreatureSlice: spawned %s [%s] at %s  hp=%.0f" % [creature_id, iid, pos, hp])
 	return iid
 
-## Probe outward from search_origin until terrain_slice.get_biome_at() returns the
-## desired biome key, then return that XZ coordinate.  Falls back to search_origin
-## after BIOME_SEARCH_STEPS attempts so spawning always succeeds even if the biome
-## is not reachable from the seed position.
-const BIOME_SEARCH_STEPS := 12
-const BIOME_SEARCH_STEP_SIZE := 8.0
+## Random world XZ inside the chunk footprint (inset one tile from the edge so
+## creatures don't straddle a chunk boundary).
+func _random_chunk_position(chunk_pos: Vector2i) -> Vector2:
+	var origin_x := chunk_pos.x * CHUNK_SIZE
+	var origin_z := chunk_pos.y * CHUNK_SIZE
+	return Vector2(
+		origin_x + randf_range(1.0, float(CHUNK_SIZE) - 1.0),
+		origin_z + randf_range(1.0, float(CHUNK_SIZE) - 1.0)
+	)
 
-func _find_biome_position(biome_key: String, seed_xz: Vector2) -> Vector2:
-	if terrain_slice == null or not terrain_slice.has_method("get_biome_at"):
-		return seed_xz
-	for step in range(BIOME_SEARCH_STEPS):
-		var angle := randf_range(0.0, TAU)
-		var dist  := BIOME_SEARCH_STEP_SIZE * (step + 1)
-		var probe := seed_xz + Vector2(cos(angle) * dist, sin(angle) * dist)
-		if terrain_slice.get_biome_at(probe) == biome_key:
-			return probe
-	return seed_xz
+## The biome key for a chunk, or "" when no terrain_slice is wired (isolated tests).
+func _chunk_biome(chunk_pos: Vector2i) -> String:
+	if terrain_slice != null and terrain_slice.has_method("get_biome_at_chunk"):
+		return str(terrain_slice.get_biome_at_chunk(chunk_pos))
+	return ""
 
 func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String) -> void:
 	if entity_id == "player":
