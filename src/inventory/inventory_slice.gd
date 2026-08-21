@@ -318,6 +318,32 @@ func _load_capacity() -> void:
 func _build_weight_cache() -> void:
 	# Seed with raw-drop weights (creature drops not in the item or material fabric).
 	_item_weight_cache.merge(RAW_DROP_WEIGHTS)
+	# Verify every drop item referenced in creature fabric has a weight entry.
+	# Keys come from the single source of truth (creature drop tables); RAW_DROP_WEIGHTS
+	# must cover all of them — warn here so new fabric drops are never silently weightless.
+	for creature_id in GameData.CREATURES:
+		var res: Resource = GameData.CREATURES[creature_id]
+		if res == null:
+			continue
+		var raw_drops = res.get("drops")
+		var drops_arr: Array = []
+		if raw_drops is Array:
+			drops_arr = raw_drops
+		elif raw_drops is String and raw_drops != "":
+			var parsed = JSON.parse_string(raw_drops)
+			if parsed is Array:
+				drops_arr = parsed
+		for entry in drops_arr:
+			if entry is not Dictionary:
+				continue
+			var item_id: String = str(entry.get("item", ""))
+			if item_id == "":
+				continue
+			# Skip items that have a fabric resource — those get their weight from ITEMS below.
+			if GameData.ITEMS.has(item_id):
+				continue
+			if not _item_weight_cache.has(item_id):
+				push_warning("InventorySlice: drop item '%s' (from creature '%s') has no weight in RAW_DROP_WEIGHTS — defaulting to 0 kg. Add it to RAW_DROP_WEIGHTS." % [item_id, creature_id])
 	# Fabric raw materials (mined from terrain) declare density (g/cm³); use that
 	# as a per-unit kg weight so mined items aren't weightless.
 	for key in GameData.MATERIALS:

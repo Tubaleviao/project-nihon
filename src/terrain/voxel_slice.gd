@@ -332,10 +332,11 @@ func get_edit_materials() -> Dictionary:
 func apply_edits(edits: Dictionary, materials: Dictionary = {}) -> void:
 	_edits.clear()
 	_edit_materials.clear()
-	_dirty_chunks.clear()
+	# _dirty_chunks is NOT cleared here: dirty tracking is reset only by
+	# clear_dirty_chunks() after a successful save (called from game_root._on_save_completed).
+	# Restored on-disk edits are not dirty — they were already persisted.
 	for key in edits:
 		_edits[key] = float(edits[key])
-		_mark_dirty(_key_to_tile(str(key)))
 	for key in materials:
 		var stack: Array = materials[key]
 		_edit_materials[key] = stack.duplicate()

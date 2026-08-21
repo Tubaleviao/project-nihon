@@ -83,9 +83,11 @@ func get_all_instances() -> Array:
 # ---------------------------------------------------------------------------
 
 ## Spawn the per-chunk creature budget: every creature whose biome matches this
-## chunk's biome, at its spawnCount, placed at random positions inside the chunk.
+## chunk's biome, at its spawnCount, placed at deterministic positions inside the chunk.
 ## When terrain_slice is not wired (isolated unit tests), chunk_biome is "" and
 ## every creature is spawned regardless of biome.
+## Accounts for engaged (aggressive/fleeing) survivors from a previous despawn so that
+## a chunk reload never exceeds the per-creature spawnCount budget.
 func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 	var chunk_biome := _chunk_biome(chunk_pos)
 	var biome_keys: Array = _biome_keys()
@@ -97,9 +99,16 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 		var biome_key: String = biome_keys[biome_idx] if biome_idx < biome_keys.size() else biome_keys[0]
 		if chunk_biome != "" and biome_key != chunk_biome:
 			continue
-		var count: int = int(res.get("spawnCount"))
-		for i in range(count):
-			_spawn(creature_id, chunk_pos)
+		var budget: int = int(res.get("spawnCount"))
+		# Count surviving instances (engaged creatures kept alive across a despawn).
+		var surviving: int = 0
+		for iid in _instances:
+			var inst: Dictionary = _instances[iid]
+			if inst.get("chunk") == chunk_pos and inst.get("creature_id") == creature_id:
+				surviving += 1
+		var to_spawn: int = budget - surviving
+		for i in range(to_spawn):
+			_spawn(creature_id, chunk_pos, surviving + i)
 
 ## Despawn creatures belonging to `chunk_pos` that are not engaged in combat.
 ## Engaged (aggressive / fleeing) creatures are kept so an in-progress fight is
@@ -121,14 +130,14 @@ func despawn_for_chunk(chunk_pos: Vector2i) -> void:
 	if to_erase.size() > 0:
 		print("CreatureSlice: despawned %d creatures from chunk %s" % [to_erase.size(), chunk_pos])
 
-func _spawn(creature_id: String, chunk_pos: Vector2i) -> String:
+func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> String:
 	var res: Resource = GameData.CREATURES.get(creature_id, null)
 	if res == null:
 		push_error("CreatureSlice: unknown creature '%s' in GameData.CREATURES" % creature_id)
 		return ""
 
 	var hp: float = float(res.get("baseHp"))
-	var xz: Vector2 = _random_chunk_position(chunk_pos)
+	var xz: Vector2 = _deterministic_chunk_position(chunk_pos, creature_id, spawn_index)
 	var pos: Vector3 = Vector3(xz.x, 0.0, xz.y)
 
 	# Sit the creature on the terrain surface instead of a fixed height.
@@ -157,15 +166,19 @@ func _spawn(creature_id: String, chunk_pos: Vector2i) -> String:
 	print("CreatureSlice: spawned %s [%s] at %s  hp=%.0f" % [creature_id, iid, pos, hp])
 	return iid
 
-## Random world XZ inside the chunk footprint (inset one tile from the edge so
-## creatures don't straddle a chunk boundary).
-func _random_chunk_position(chunk_pos: Vector2i) -> Vector2:
+## Deterministic world XZ inside the chunk footprint (inset one tile from the edge).
+## The position is derived from chunk_pos, creature_id, and spawn_index so the same
+## creature always lands at the same spot regardless of frame rate or call order.
+func _deterministic_chunk_position(chunk_pos: Vector2i, creature_id: String, spawn_index: int) -> Vector2:
 	var cs: int = _chunk_size()
-	var origin_x := chunk_pos.x * cs
-	var origin_z := chunk_pos.y * cs
+	var inner: int = cs - 2  # tiles available after 1-tile border inset
+	var seed_x: int = (chunk_pos.x * 73856093) ^ (chunk_pos.y * 19349663) ^ (creature_id.hash() * 83492791) ^ (spawn_index * 1000003)
+	var seed_z: int = (chunk_pos.x * 19349663) ^ (chunk_pos.y * 83492791) ^ (creature_id.hash() * 1000003) ^ (spawn_index * 73856093)
+	var local_x: int = (abs(seed_x) % inner) + 1
+	var local_z: int = (abs(seed_z) % inner) + 1
 	return Vector2(
-		origin_x + randf_range(1.0, float(cs) - 1.0),
-		origin_z + randf_range(1.0, float(cs) - 1.0)
+		float(chunk_pos.x * cs + local_x) + 0.5,
+		float(chunk_pos.y * cs + local_z) + 0.5
 	)
 
 ## The biome key for a chunk, or "" when no terrain_slice is wired (isolated tests).

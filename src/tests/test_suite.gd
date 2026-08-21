@@ -1531,6 +1531,32 @@ func _test_chunk_unload_preserves_edits() -> void:
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.0, "edit survives unload/reload")
 	v.queue_free()
 
+func _test_apply_edits_preserves_dirty_chunks() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	var flat: Array = []
+	flat.resize(32 * 32)
+	flat.fill(2.0)
+	v.build_chunk(Vector2i(0, 0), flat)
+	# Mine a block — this marks chunk (0,0) dirty.
+	v.mine_block(Vector3(16.5, 2.0, 16.5))
+	assert_true(v.get_dirty_chunk_keys().size() > 0, "mining marks a chunk dirty")
+	# Simulate a save: clear dirty tracking (as game_root does after save).
+	v.clear_dirty_chunks()
+	assert_eq(v.get_dirty_chunk_keys().size(), 0, "dirty cleared after save")
+	# Mine another block — this marks the chunk dirty mid-save-cycle.
+	v.mine_block(Vector3(17.5, 2.0, 16.5))
+	assert_true(v.get_dirty_chunk_keys().size() > 0, "mid-cycle mine marks chunk dirty again")
+	# apply_edits simulates what happens on load (world data reapplied).
+	# It must NOT clear the dirty tracking set by the mid-cycle mine above.
+	v.apply_edits({ "16,16": 1.0 })
+	assert_true(v.get_dirty_chunk_keys().size() > 0, "apply_edits preserves pre-existing dirty chunks")
+	v.queue_free()
+	inv.queue_free()
+
 func _test_chunk_creature_spawn_per_chunk() -> void:
 	var c := CreatureSlice.new()
 	add_child(c)
@@ -1542,6 +1568,25 @@ func _test_chunk_creature_spawn_per_chunk() -> void:
 	assert_true(after > before, "spawning another chunk adds creatures")
 	c.despawn_for_chunk(Vector2i(1, 0))
 	assert_eq(c.get_all_instances().size(), before, "despawning a chunk removes only its creatures")
+	c.queue_free()
+
+func _test_chunk_reload_engaged_budget() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
+	var initial_count: int = c.get_all_instances().size()
+	assert_true(initial_count > 0, "initial spawn populates the chunk")
+	# Mark the first instance aggressive so despawn_for_chunk keeps it alive.
+	var all: Array = c.get_all_instances()
+	var engaged_id: String = all[0]["instance_id"]
+	c._instances[engaged_id]["state"] = "aggressive"
+	c.despawn_for_chunk(Vector2i(0, 0))
+	# One engaged creature survives the despawn.
+	assert_eq(c.get_all_instances().size(), 1, "engaged creature survives despawn")
+	# Reload: spawn_for_chunk must honour the budget and not exceed initial_count.
+	c.spawn_for_chunk(Vector2i(0, 0))
+	var after_reload: int = c.get_all_instances().size()
+	assert_true(after_reload <= initial_count, "reload does not exceed original spawn budget (got %d, budget %d)" % [after_reload, initial_count])
 	c.queue_free()
 
 func _test_chunk_persistence_manifest() -> void:
