@@ -219,7 +219,7 @@ func _rpc_c2h(json: String) -> void:
 	var payload = _parse(json)
 	if payload == null:
 		return
-	_route_inbound(sender, payload)
+	_route_c2h(sender, payload)
 
 ## Host → client channel: authoritative state and the world snapshot.
 @rpc("authority", "reliable")
@@ -227,7 +227,7 @@ func _rpc_h2c(json: String) -> void:
 	var payload = _parse(json)
 	if payload == null:
 		return
-	_route_inbound(1, payload)
+	_route_h2c(payload)
 
 func _parse(json: String) -> Variant:
 	var payload = JSON.parse_string(json)
@@ -239,30 +239,32 @@ func _parse(json: String) -> Variant:
 		return null
 	return payload
 
-## Route an inbound packet by type. On the host, client intents are re-applied
-## authoritatively; on the client, host deltas are re-emitted locally.
-func _route_inbound(sender: int, payload: Dictionary) -> void:
+## Route a client → host packet. Only client-originated types are accepted;
+## host-only types sent by a malicious client are dropped and logged.
+func _route_c2h(sender: int, payload: Dictionary) -> void:
 	match str(payload.get("type", "")):
 		"player_moved":
-			# A remote player moved. Only meaningful on the host (who relays to
-			# other clients) and on clients (who render ghosts).
 			var pos := _vec3(payload.get("position", []))
 			GameBus.remote_player_state.emit(sender, pos)
 		"block_edit_intent":
-			if _role == Role.HOST:
-				# Authoritative re-run: emit the standard edit request so the
-				# host voxel slice validates and applies it, then broadcasts the
-				# result via block_changed.
-				var action := str(payload.get("action", ""))
-				var ipos := _vec3(payload.get("position", []))
-				var inorm := _vec3(payload.get("normal", [0, 1, 0]))
-				var imat := str(payload.get("material", ""))
-				if action == "mine":
-					GameBus.block_mine_requested.emit(ipos, inorm)
-				elif action == "place":
-					GameBus.block_place_requested.emit(ipos, inorm)
-				else:
-					push_error("NetworkingSlice: unknown block_edit_intent action '%s'" % action)
+			var action := str(payload.get("action", ""))
+			var ipos := _vec3(payload.get("position", []))
+			var inorm := _vec3(payload.get("normal", [0, 1, 0]))
+			if action == "mine":
+				GameBus.block_mine_requested.emit(ipos, inorm)
+			elif action == "place":
+				GameBus.block_place_requested.emit(ipos, inorm)
+			else:
+				push_error("NetworkingSlice: unknown block_edit_intent action '%s'" % action)
+		_:
+			# Clients may not send host-authoritative types (block_changed,
+			# inventory_synced, etc.) — drop anything else and log it.
+			push_warning("NetworkingSlice: unexpected type '%s' from client %d — dropped" \
+				% [payload.get("type", ""), sender])
+
+## Route a host → client packet. Only host-originated types are handled.
+func _route_h2c(payload: Dictionary) -> void:
+	match str(payload.get("type", "")):
 		"block_changed":
 			GameBus.block_changed.emit(
 				str(payload.get("action", "")),
@@ -287,7 +289,7 @@ func _route_inbound(sender: int, payload: Dictionary) -> void:
 			GameBus.world_snapshot_received.emit(payload.get("data", {}))
 		_:
 			# Legacy low-level packets fall through to packet_received.
-			GameBus.packet_received.emit(sender, payload)
+			GameBus.packet_received.emit(1, payload)
 
 func _vec3(arr) -> Vector3:
 	if arr is Array and arr.size() >= 3:

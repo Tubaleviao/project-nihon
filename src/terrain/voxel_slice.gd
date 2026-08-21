@@ -547,7 +547,6 @@ func apply_block_change(action: String, position: Vector3, normal: Vector3, mate
 		_edits[_tile_key(tile)] = new_h
 		_pop_placed_material(tile)
 		_rebuild_chunk_at_tile(tile)
-		_mark_dirty(tile)
 	elif action == "place":
 		var target_xz := Vector2(position.x, position.z)
 		if normal.y <= 0.5:
@@ -560,7 +559,6 @@ func apply_block_change(action: String, position: Vector3, normal: Vector3, mate
 		_edits[_tile_key(tile)] = new_h
 		_push_placed_material(tile, material)
 		_rebuild_chunk_at_tile(tile)
-		_mark_dirty(tile)
 
 # --- Coordinate helpers ---
 

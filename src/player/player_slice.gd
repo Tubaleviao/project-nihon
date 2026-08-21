@@ -89,9 +89,9 @@ func _physics_process(delta: float) -> void:
 		_sync_tick = 0
 		_broadcast_state()
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	_update_aim()
-	_tick_ghosts(_delta)
+	_tick_ghosts(delta)
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
@@ -155,8 +155,10 @@ func get_remote_ghost_count() -> int:
 ## (no local input, no physics) that interpolate between host snapshots.
 func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	if not _ghosts.has(peer_id):
+		var body := _make_ghost_body()
+		body.position = position
 		_ghosts[peer_id] = {
-			"body": _make_ghost_body(),
+			"body": body,
 			"from": position,
 			"to":   position,
 			"t":    1.0,
