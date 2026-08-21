@@ -55,12 +55,18 @@ var creature_slice: Node = null
 var player_slice:   Node = null
 var battle_slice:   Node = null
 
+## Authority mode (Phase 18): creature AI runs on the host only. On a client
+## the creature bodies are driven by host state broadcasts, never local AI.
+var is_authoritative: bool = true
+
 func _ready() -> void:
 	GameBus.creature_died.connect(_on_creature_died)
 	GameBus.creature_respawned.connect(_on_creature_respawned)
 	GameBus.creature_spawned.connect(_on_creature_spawned)
 
 func _process(delta: float) -> void:
+	if not is_authoritative:
+		return
 	if creature_slice == null or player_slice == null:
 		return
 	var player_pos: Vector3 = player_slice.get_position()

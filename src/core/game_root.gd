@@ -42,6 +42,13 @@ var _technology:  TechnologySlice
 var _station:     StationSlice
 var _ui:          UiSlice
 
+## Network role (Phase 18). HOST = authoritative simulation (default, matches
+## single-player); CLIENT = receives world state from a host. Derived from
+## command-line user args: `godot -- --client <addr>` joins, otherwise host.
+var _is_client: bool = false
+var _host_address: String = "127.0.0.1"
+var _snapshot_pending: bool = false
+
 func _ready() -> void:
 	# Run the automated tests before any production slice enters the tree.
 	# The suite emits signals on the shared GameBus (creature_died, chunk_ready,
@@ -49,6 +56,8 @@ func _ready() -> void:
 	# production state — previously the test creature_died calls were marking
 	# every freshly spawned creature dead and hiding its body on world boot.
 	_run_tests()
+
+	_parse_network_args()
 
 	_terrain     = TerrainSlice.new()
 	_voxel       = VoxelSlice.new()
@@ -103,6 +112,13 @@ func _ready() -> void:
 	_ui.technology_slice      = _technology
 	_ui.refresh_all()
 
+	# Authority mode (Phase 18): a client never owns world state — it forwards
+	# edits to the host and applies authoritative deltas. The host (and offline
+	# single-player) keeps full simulation authority.
+	_voxel.is_authoritative     = not _is_client
+	_creature.is_authoritative  = not _is_client
+	_creature_ai.is_authoritative = not _is_client
+
 	# Chunk streaming (Phase 17) — wire the manager to its collaborators.
 	_chunk_manager.terrain_slice  = _terrain
 	_chunk_manager.voxel_slice    = _voxel
@@ -153,6 +169,8 @@ func _ready() -> void:
 	GameBus.item_broke.connect(func(iid): print("[Item] %s broke!" % iid))
 	GameBus.chunk_loaded.connect(func(pos): print("[Chunk] loaded %s" % pos))
 	GameBus.chunk_unloaded.connect(func(pos): print("[Chunk] unloaded %s" % pos))
+	GameBus.peer_connected.connect(_on_peer_connected)
+	GameBus.world_snapshot_received.connect(_on_world_snapshot_received)
 
 	# Lighting — a directional "sun" plus soft ambient sky fill.
 	var sun := DirectionalLight3D.new()
@@ -191,6 +209,16 @@ func _run_tests() -> void:
 	suite.run()
 	suite.queue_free()
 
+## Parse `--client [addr]` from OS user args to determine network role. Defaults
+## to host (authoritative single-player) when no args are present.
+func _parse_network_args() -> void:
+	var args := OS.get_cmdline_user_args()
+	for i in range(args.size()):
+		if args[i] == "--client":
+			_is_client = true
+			if i + 1 < args.size() and not str(args[i + 1]).begins_with("--"):
+				_host_address = str(args[i + 1])
+
 # ---------------------------------------------------------------------------
 # World boot
 # ---------------------------------------------------------------------------
@@ -201,6 +229,10 @@ const DEBUG := false
 
 func _boot_world() -> void:
 	print("\n=== Project Nihon — world boot ===")
+
+	if _is_client:
+		_boot_client()
+		return
 
 	# Place the player on top of the terrain at the spawn point so it doesn't
 	# spawn embedded in (and fall through) the collision mesh.
@@ -303,6 +335,53 @@ func _boot_world() -> void:
 	_networking.host(7777, 1)
 
 	print("\n=== World boot complete — LMB/F attack · RMB mine · MMB place · R cycle ===\n")
+
+## Client boot path (Phase 18): do NOT run the authoritative simulation. Join
+## the host and wait for the world snapshot before showing anything.
+func _boot_client() -> void:
+	print("[Networking] Client mode — joining %s:7777, awaiting world snapshot…" % _host_address)
+	_networking.join(_host_address, 7777)
+	_snapshot_pending = true
+
+func _on_peer_connected(peer_id: int) -> void:
+	if _is_client:
+		return
+	# Host: ship the authoritative world snapshot to the newly connected client.
+	print("[Networking] peer %d connected — sending world snapshot" % peer_id)
+	_networking.send_snapshot(peer_id, _build_snapshot())
+
+## Host-side: serialize authoritative world state for a connecting client.
+func _build_snapshot() -> Dictionary:
+	var players := {}
+	players[str(multiplayer.get_unique_id())] = _player.get_position()
+	return {
+		"version":   1,
+		"heightmaps": _voxel.get_heightmaps(),
+		"edits":     _voxel.get_chunk_manifest(),
+		"creatures": _creature.get_snapshot_creatures(),
+		"inventory": _inventory.get_contents(),
+		"players":   players,
+	}
+
+## Client-side: apply the host's world snapshot and begin rendering.
+func _on_world_snapshot_received(data: Dictionary) -> void:
+	if not _is_client:
+		return
+	print("[Networking] world snapshot received — applying state")
+	if data.has("heightmaps") and data["heightmaps"] is Dictionary:
+		_voxel.apply_heightmaps(data["heightmaps"])
+	if data.has("edits") and data["edits"] is Dictionary:
+		_voxel.apply_chunk_manifest(data["edits"])
+	if data.has("creatures") and data["creatures"] is Array:
+		_creature.apply_snapshot_creatures(data["creatures"])
+	if data.has("inventory") and data["inventory"] is Dictionary:
+		_inventory.replace_contents(data["inventory"])
+	if data.has("players") and data["players"] is Dictionary:
+		for pid in data["players"]:
+			var pos = data["players"][pid]
+			if pos is Array and pos.size() >= 3:
+				GameBus.remote_player_state.emit(int(pid), Vector3(float(pos[0]), float(pos[1]), float(pos[2])))
+	_snapshot_pending = false
 
 # ---------------------------------------------------------------------------
 # Bus listeners

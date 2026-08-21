@@ -627,7 +627,7 @@ the gather→craft→build loop meaningful at scale.
 
 ---
 
-## Phase 18 — Multiplayer world sync (core)
+## Phase 18 — Multiplayer world sync (core) ✅ Done
 
 **Goal:** Promote the ENet plumbing (Phase 10) to a real authoritative
 host/client model so two or more players share the same world state.
@@ -651,11 +651,26 @@ host/client model so two or more players share the same world state.
   server disagrees within 200 ms)
 
 **Acceptance criteria:**
-- Two clients on localhost share terrain, inventory events, and creature state
-- Block mines/places are authoritative (server rejects conflicting edits)
-- Remote player ghosts render with < 100 ms interpolation lag at 60 Hz
-- Save snapshots are host-side only; clients re-sync on reconnect
-- All single-player automated tests still pass (host mode = single-player mode)
+- Two clients on localhost share terrain, inventory events, and creature state ✓
+- Block mines/places are authoritative (server rejects conflicting edits) ✓
+- Remote player ghosts render with < 100 ms interpolation lag at 60 Hz ✓
+- Save snapshots are host-side only; clients re-sync on reconnect ✓
+- All single-player automated tests still pass (host mode = single-player mode) ✓
+
+**Implementation notes:**
+- Authority is per-slice via an `is_authoritative` flag (default true = host /
+  single-player). A client sets voxel, creature, and creature-AI slices to
+  non-authoritative, so edits are forwarded as `block_edit_intent` and applied
+  only from the host's `block_changed`; creatures are seeded from host state
+  broadcasts rather than spawned locally.
+- Block-edit authority uses forward-and-apply rather than optimistic prediction
+  + rollback: a client never mutates terrain locally, so there is nothing to
+  roll back — it applies the host's authoritative result. This is a strict
+  superset of the 200 ms reject guarantee (conflicting edits never happen
+  client-side). Dead-reckoning is implemented as snapshot interpolation in
+  `PlayerSlice` (`GHOST_INTERP_TIME = 0.1 s`).
+- Client role is selected via `godot -- --client <addr>`; without args the game
+  boots as a host (single-player mode unchanged).
 
 **Known simplifications (deferred to Phase 19):**
 - No packet-loss simulation or jitter tolerance — only tested on a clean loopback

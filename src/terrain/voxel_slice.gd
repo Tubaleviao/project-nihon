@@ -85,6 +85,13 @@ var _dirty_chunks: Dictionary = {}
 var terrain_slice: Node = null
 var inventory_slice: Node = null
 
+## Authority mode (Phase 18). When true (host / single-player), this slice owns
+## world edits: mine/place requests are validated and applied here, and their
+## results are broadcast via block_changed. When false (client), edits are
+## forwarded to the host via block_edit_intent and applied only when the host's
+## authoritative block_changed arrives. Set by game_root before _ready().
+var is_authoritative: bool = true
+
 ## Material used by place_block; cycled via cycle_place_material(). Empty until
 ## the player cycles onto a material they actually hold in inventory.
 var _place_material: String = ""
@@ -110,6 +117,7 @@ func _ready() -> void:
 	GameBus.block_mine_requested.connect(_on_mine_requested)
 	GameBus.block_place_requested.connect(_on_place_requested)
 	GameBus.block_cycle_material_requested.connect(_on_cycle_requested)
+	GameBus.block_changed.connect(_on_block_changed)
 
 ## Build (or rebuild) the mesh and collision for one chunk.
 func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
@@ -235,6 +243,17 @@ func get_loaded_chunks() -> Array:
 		out.append(Vector2i(int(parts[0]), int(parts[1])))
 	return out
 
+## Dump the base heightmaps for all built chunks, keyed by "cx,cz" → Array.
+## Used by the host to ship terrain to clients in the world snapshot.
+func get_heightmaps() -> Dictionary:
+	return _heightmaps.duplicate(true)
+
+## Rebuild chunks from a host-sent heightmap map (client snapshot application).
+func apply_heightmaps(heightmaps: Dictionary) -> void:
+	for ckey in heightmaps:
+		var parts: PackedStringArray = str(ckey).split(",")
+		build_chunk(Vector2i(int(parts[0]), int(parts[1])), heightmaps[ckey])
+
 # ---------------------------------------------------------------------------
 # Edit API — mining and building
 # ---------------------------------------------------------------------------
@@ -276,6 +295,7 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP) -> Dictionary:
 
 	var pos := Vector3(world_pos.x, new_h, world_pos.z)
 	GameBus.block_mined.emit(material, 1, pos)
+	GameBus.block_changed.emit("mine", world_pos, normal, material)
 	print("VoxelSlice: mined %s at (%d,%d) → height %.1f" % [material, tile.x, tile.y, new_h])
 	return { "success": true, "material": material, "quantity": 1, "position": pos }
 
@@ -312,6 +332,7 @@ func place_block(world_pos: Vector3, normal: Vector3) -> bool:
 
 	var pos := Vector3(target_xz.x, new_h, target_xz.y)
 	GameBus.block_placed.emit(material, pos)
+	GameBus.block_changed.emit("place", world_pos, normal, material)
 	print("VoxelSlice: placed %s at (%d,%d) → height %.1f" % [material, tile.x, tile.y, new_h])
 	return true
 
@@ -483,7 +504,10 @@ func _on_chunk_ready(chunk_pos: Vector2i, heightmap: Array) -> void:
 	build_chunk(chunk_pos, heightmap)
 
 func _on_mine_requested(position: Vector3, normal: Vector3) -> void:
-	mine_block(position, normal)
+	if is_authoritative:
+		mine_block(position, normal)
+	else:
+		GameBus.block_edit_intent.emit("mine", position, normal, "")
 
 ## The held mining pick's item_id, or "" when the player has none. Delegates to
 ## the inventory's fabric-driven tool lookup ("pick" → FerritePick/VeilsteelPick).
@@ -493,10 +517,50 @@ func _held_pick() -> String:
 	return str(inventory_slice.find_tool("pick"))
 
 func _on_place_requested(position: Vector3, normal: Vector3) -> void:
-	place_block(position, normal)
+	if is_authoritative:
+		place_block(position, normal)
+	else:
+		GameBus.block_edit_intent.emit("place", position, normal, _place_material)
 
 func _on_cycle_requested() -> void:
 	cycle_place_material()
+
+## Apply an authoritative block edit received from the host. Re-runs the same
+## tile-resolution and height math as mine_block/place_block, but does NOT touch
+## the inventory or emit block_changed — the host already did both.
+func _on_block_changed(action: String, position: Vector3, normal: Vector3, material: String) -> void:
+	if is_authoritative:
+		return   # host already applied this edit locally
+	apply_block_change(action, position, normal, material)
+
+## Client-side application of a host-authoritative block edit (see block_changed).
+func apply_block_change(action: String, position: Vector3, normal: Vector3, material: String) -> void:
+	if action == "mine":
+		var xz := Vector2(position.x, position.z)
+		if normal.y <= 0.5:
+			xz -= Vector2(normal.x, normal.z) * TILE_SIZE * 0.5
+		var tile := _world_to_tile(xz)
+		var current := _voxel_height_at_tile(tile)
+		if current <= MIN_HEIGHT:
+			return
+		var new_h := maxf(current - STEP_HEIGHT, MIN_HEIGHT)
+		_edits[_tile_key(tile)] = new_h
+		_pop_placed_material(tile)
+		_rebuild_chunk_at_tile(tile)
+		_mark_dirty(tile)
+	elif action == "place":
+		var target_xz := Vector2(position.x, position.z)
+		if normal.y <= 0.5:
+			target_xz += Vector2(normal.x, normal.z) * TILE_SIZE * 0.5
+		var tile := _world_to_tile(target_xz)
+		var current := _voxel_height_at_tile(tile)
+		if current >= MAX_HEIGHT:
+			return
+		var new_h := current + STEP_HEIGHT
+		_edits[_tile_key(tile)] = new_h
+		_push_placed_material(tile, material)
+		_rebuild_chunk_at_tile(tile)
+		_mark_dirty(tile)
 
 # --- Coordinate helpers ---
 
