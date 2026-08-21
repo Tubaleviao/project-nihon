@@ -376,6 +376,9 @@ func _on_player_respawned(position: Vector3) -> void:
 
 func _on_save_completed(slot: int) -> void:
 	print("[Persistence] save_completed slot=%d" % slot)
+	# The snapshot is on disk; reset dirty-chunk tracking so the next save only
+	# re-serializes chunks edited after this point.
+	_voxel.clear_dirty_chunks()
 
 func _on_load_completed(slot: int, data: Dictionary) -> void:
 	print("[Persistence] load_completed slot=%d  keys=%s" % [slot, data.keys()])
