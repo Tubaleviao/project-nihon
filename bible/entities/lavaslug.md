@@ -23,6 +23,7 @@ A slow-moving, magma-encrusted slug the size of a cart horse that grazes on ashi
 | `respawnSeconds` | integer | yes | Seconds before a dead creature respawns |
 | `spawnCount` | integer | yes | Number of instances spawned per game world |
 | `biome` | enum (`TemperateForest`, `TemperateGrassland`, `VolcanicBadlands`, `TwilightGrove`, `VoidRift`) | yes | Biome this creature belongs to |
+| `drops` | json | yes | Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system. |
 
 ### State machine
 

@@ -14,6 +14,14 @@ extends Node
 ## heightmap  : Array    — flat Array[float] of length chunk_size²
 signal chunk_ready(chunk_pos: Vector2i, heightmap: Array)
 
+## Emitted by ChunkManager when a chunk enters the loaded set (Phase 17).
+## chunk_pos : Vector2i  — grid coordinates of the chunk
+signal chunk_loaded(chunk_pos: Vector2i)
+
+## Emitted by ChunkManager when a chunk leaves the loaded set (Phase 17).
+## chunk_pos : Vector2i  — grid coordinates of the chunk
+signal chunk_unloaded(chunk_pos: Vector2i)
+
 # ---------------------------------------------------------------------------
 # Battle
 # ---------------------------------------------------------------------------

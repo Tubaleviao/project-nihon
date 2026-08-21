@@ -594,7 +594,7 @@ machines are in the item fabric (`pristine → worn → damaged → broken`).
 
 ---
 
-## Phase 17 — Chunk streaming and world expansion
+## Phase 17 — Chunk streaming and world expansion ✅ Done
 
 **Goal:** Replace the fixed 32×32 chunk with a streaming world so players can
 explore beyond the starting area and encounter resource distribution that makes
@@ -618,12 +618,12 @@ the gather→craft→build loop meaningful at scale.
   biome color-coding, and player position
 
 **Acceptance criteria:**
-- World chunks load/unload as player moves; no visible pop-in within view distance
-- Biome assignment is stable (same seed, same coordinate → same biome)
-- Voxel edits in one chunk do not affect adjacent chunks
-- Creature populations scale with loaded area
-- Minimap renders loaded chunk outlines and player dot
-- Save/load round-trip preserves edits across all visited chunks
+- World chunks load/unload as player moves; no visible pop-in within view distance ✓
+- Biome assignment is stable (same seed, same coordinate → same biome) ✓
+- Voxel edits in one chunk do not affect adjacent chunks ✓
+- Creature populations scale with loaded area ✓
+- Minimap renders loaded chunk outlines and player dot ✓
+- Save/load round-trip preserves edits across all visited chunks ✓
 
 ---
 

@@ -10,77 +10,35 @@ extends Node
 ##   get_pickups_near(pos: Vector3, radius: float) -> Array[Dictionary]
 ##   consume_pickup(pickup_id: String)              -> Dictionary  (empty on miss)
 ##
-## Drop tables are a direct transcription of each creature's "drop" behavior rules
-## in the fabric (fabric/world/creatures/*.js). They are the authoritative source;
-## any balance change starts there.
-## Format per entry: { "item_id": String, "chance": float, "min_qty": int, "max_qty": int }
+## Drop tables are read from the fabric at runtime: each creature entity carries
+## a structured `drops` json field (fabric/world/creatures/*.js) with the exact
+## drop table — item key, drop chance (0–1), and quantity range [minQty, maxQty].
+## The fabric is the single source of truth; this slice never hardcodes drops.
+## Format per entry: { "item": String, "chance": float, "minQty": int, "maxQty": int }
 ##
-## DESPAWN_SECONDS matches LootTable.despawnSeconds defaultValue in the fabric
-## (fabric/gameplay/loot.js). If the fabric value changes, update this constant.
-const DESPAWN_SECONDS := 120.0  # LootTable.despawnSeconds defaultValue
+## Despawn timer is read from GameData.LOOTS["LootTable"].despawnSeconds.
+## DESPAWN_SECONDS is a fallback only (matches the fabric defaultValue).
+const DESPAWN_SECONDS := 120.0  # LootTable.despawnSeconds defaultValue (fallback)
 
 ## Physics layer for pickup bodies (layer 3 / bit 2). PlayerSlice aims with a
 ## ray whose collision mask targets this layer.
 const PICKUP_COLLISION_LAYER := 4
-
-## Loot tables keyed by creature entity id (matches GameData.CREATURES keys).
-const LOOT_TABLES: Dictionary = {
-	"ForestBoar": [
-		{ "item_id": "raw_boar_meat",   "chance": 1.00, "min_qty": 1, "max_qty": 3 },
-		{ "item_id": "boar_hide",       "chance": 1.00, "min_qty": 1, "max_qty": 1 },
-		{ "item_id": "boar_tusk",       "chance": 0.20, "min_qty": 1, "max_qty": 1 },
-	],
-	"GraywolfPack": [
-		{ "item_id": "wolf_pelt",       "chance": 1.00, "min_qty": 1, "max_qty": 1 },
-		{ "item_id": "wolf_fang",       "chance": 0.40, "min_qty": 0, "max_qty": 1 },
-		{ "item_id": "alpha_wolf_fang", "chance": 1.00, "min_qty": 1, "max_qty": 1 },
-	],
-	"SteppeBison": [
-		{ "item_id": "bison_meat",      "chance": 1.00, "min_qty": 3, "max_qty": 6 },
-		{ "item_id": "bison_hide",      "chance": 1.00, "min_qty": 2, "max_qty": 2 },
-		{ "item_id": "bison_bone",      "chance": 1.00, "min_qty": 1, "max_qty": 2 },
-		{ "item_id": "bison_horn",      "chance": 0.25, "min_qty": 1, "max_qty": 1 },
-	],
-	"RidgeHawk": [
-		{ "item_id": "hawk_feather",    "chance": 1.00, "min_qty": 1, "max_qty": 3 },
-		{ "item_id": "hawk_talon",      "chance": 0.35, "min_qty": 1, "max_qty": 1 },
-	],
-	"LavaSlug": [
-		{ "item_id": "slag_gland",      "chance": 1.00, "min_qty": 1, "max_qty": 1 },
-		{ "item_id": "volcanic_slime",  "chance": 0.70, "min_qty": 1, "max_qty": 2 },
-	],
-	"CinderGargoyle": [
-		{ "item_id": "gargoyle_shard",  "chance": 1.00, "min_qty": 1, "max_qty": 2 },
-		{ "item_id": "ember_core",      "chance": 0.30, "min_qty": 1, "max_qty": 1 },
-	],
-	"GlimmerFox": [
-		{ "item_id": "glimmer_pelt",    "chance": 1.00, "min_qty": 1, "max_qty": 1 },
-		{ "item_id": "foxfire_essence", "chance": 0.50, "min_qty": 1, "max_qty": 1 },
-	],
-	"VeilStalker": [
-		{ "item_id": "veil_hide",       "chance": 1.00, "min_qty": 1, "max_qty": 1 },
-		{ "item_id": "paralysis_venom", "chance": 0.60, "min_qty": 1, "max_qty": 2 },
-	],
-	"VoidSerpent": [
-		{ "item_id": "void_scale",      "chance": 1.00, "min_qty": 2, "max_qty": 4 },
-		{ "item_id": "void_essence",    "chance": 0.40, "min_qty": 1, "max_qty": 1 },
-	],
-	"RiftWarden": [
-		{ "item_id": "rift_shard",      "chance": 1.00, "min_qty": 1, "max_qty": 1 },
-		{ "item_id": "warden_core",     "chance": 0.20, "min_qty": 1, "max_qty": 1 },
-		{ "item_id": "void_essence",    "chance": 0.60, "min_qty": 1, "max_qty": 2 },
-	],
-}
 
 ## Active pickups keyed by pickup_id.
 ## Each entry: { "item_id", "quantity", "position", "spawned_at" }
 var _pickups: Dictionary = {}
 var _next_id: int = 0
 
+## Despawn threshold in milliseconds, cached at startup from the fabric.
+var _despawn_ms: float = DESPAWN_SECONDS * 1000.0
+
 ## Set by game_root so instance IDs can be resolved to fabric creature keys.
 var creature_slice: Node = null
 
 func _ready() -> void:
+	var res: Resource = GameData.LOOTS.get("LootTable", null)
+	if res != null:
+		_despawn_ms = float(res.get("despawnSeconds")) * 1000.0
 	GameBus.creature_died.connect(_on_creature_died)
 
 func _process(delta: float) -> void:
@@ -124,36 +82,55 @@ func _on_creature_died(entity_id: String, position: Vector3, _killer_id: String)
 		var resolved: String = creature_slice.get_instance_creature_id(entity_id)
 		if resolved != "":
 			fabric_key = resolved
-	var table: Array = LOOT_TABLES.get(fabric_key, [])
+	var table: Array = _drop_table(fabric_key)
 	if table.is_empty():
 		print("LootSlice: no loot table for '%s' (fabric key: %s)" % [entity_id, fabric_key])
 		return
 	for entry in table:
-		if randf() <= entry["chance"]:
-			var qty: int = randi_range(entry["min_qty"], entry["max_qty"])
+		if randf() <= float(entry.get("chance", 0.0)):
+			var item_id: String = str(entry.get("item", ""))
+			if item_id == "":
+				continue
+			var qty: int = randi_range(int(entry.get("minQty", 1)), int(entry.get("maxQty", 1)))
 			if qty <= 0:
 				continue
 			var pid := "pickup_%d" % _next_id
 			_next_id += 1
 			# Build a visible body so the item actually appears on the ground.
-			var body := _make_pickup_visual(pid, entry["item_id"], position)
+			var body := _make_pickup_visual(pid, item_id, position)
 			add_child(body)
 			_pickups[pid] = {
-				"item_id":    entry["item_id"],
+				"item_id":    item_id,
 				"quantity":   qty,
 				"position":   position,
 				"spawned_at": Time.get_ticks_msec(),
 				"body":       body,
 			}
-			GameBus.loot_dropped.emit(pid, entry["item_id"], position, qty)
-			print("LootSlice: %s dropped %s ×%d at %s" % [fabric_key, entry["item_id"], qty, position])
+			GameBus.loot_dropped.emit(pid, item_id, position, qty)
+			print("LootSlice: %s dropped %s ×%d at %s" % [fabric_key, item_id, qty, position])
+
+## Resolve a creature's structured drop table from the fabric (`drops` json field
+## on GameData.CREATURES). Returns the Array of { item, chance, minQty, maxQty }
+## entries, or [] when the creature is unknown or has no drops field.
+func _drop_table(fabric_key: String) -> Array:
+	var res: Resource = GameData.CREATURES.get(fabric_key, null)
+	if res == null:
+		return []
+	var drops = res.get("drops")
+	if drops is Array:
+		return drops
+	if drops is String and drops != "":
+		var parsed = JSON.parse_string(drops)
+		if parsed is Array:
+			return parsed
+	return []
 
 func _tick_despawn() -> void:
 	var now := Time.get_ticks_msec()
 	var expired: Array = []
 	for pid in _pickups:
 		var age_ms: float = float(now - _pickups[pid]["spawned_at"])
-		if age_ms >= DESPAWN_SECONDS * 1000.0:
+		if age_ms >= _despawn_ms:
 			expired.append(pid)
 	for pid in expired:
 		var p: Dictionary = _pickups[pid]

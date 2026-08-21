@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
+const { defineEntity, creatureStateMachine, creatureStateValues, dropsData, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
 
 module.exports = {
 
@@ -24,6 +24,11 @@ module.exports = {
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 3600 },
       spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 1 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'VoidRift' },
+      drops: dropsData([
+        { item: 'void_scale',        chance: 1.0,  minQty: 2, maxQty: 4 },
+        { item: 'void_serpent_fang', chance: 1.0,  minQty: 1, maxQty: 1 },
+        { item: 'phase_locked_core', chance: 0.25, minQty: 1, maxQty: 1 },
+      ]),
     },
     stateMachine: creatureStateMachine({ conditionalAlertSkip: true }),
     behaviors: {
@@ -105,6 +110,11 @@ module.exports = {
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 7200 },
       spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world; singleton per rift zone', defaultValue: 1 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'VoidRift' },
+      drops: dropsData([
+        { item: 'rift_shard',        chance: 1.0,  minQty: 4, maxQty: 8 },
+        { item: 'void_core_crystal', chance: 1.0,  minQty: 1, maxQty: 1 },
+        { item: 'warden_sigil',      chance: 0.05, minQty: 1, maxQty: 1 },
+      ]),
     },
     stateMachine: creatureStateMachine({ canFlee: false, skipAlert: true }),
     behaviors: {

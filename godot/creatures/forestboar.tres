@@ -16,6 +16,7 @@ fleeThreshold = 0.25
 respawnSeconds = 300
 spawnCount = 3
 biome = 0
+drops = [{"item":"raw_boar_meat","chance":1,"minQty":1,"maxQty":3},{"item":"boar_hide","chance":1,"minQty":1,"maxQty":1},{"item":"boar_tusk","chance":0.2,"minQty":1,"maxQty":1}]
 state_machine_field = "state"
 initial_state = "idle"
 description = "A stout, bristle-furred boar that roots through the forest floor for tubers and fungi. Normally passive, but fiercely territorial when its young are nearby. The most hunted creature in the temperate forest — a reliable early-game meat and hide source."

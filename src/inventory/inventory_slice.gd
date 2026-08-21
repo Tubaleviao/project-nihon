@@ -25,35 +25,42 @@ var _max_slots: int = 30
 var _max_weight: float = 50.0
 
 ## Weights for raw creature drops that are not fabric items (no .tres resource).
-## Values are authoritative design decisions; any change starts in this table.
+## Drop items, chances, and quantities live in each creature's `drops` fabric
+## field (single source of truth); only the kg weight is runtime-local, so any
+## weight change starts in this table.
 const RAW_DROP_WEIGHTS: Dictionary = {
-	"raw_boar_meat":    0.8,
-	"boar_hide":        1.5,
-	"boar_tusk":        0.4,
-	"wolf_pelt":        1.2,
-	"wolf_fang":        0.1,
-	"alpha_wolf_fang":  0.2,
-	"bison_meat":       1.2,
-	"bison_hide":       3.0,
-	"bison_bone":       1.0,
-	"bison_horn":       0.5,
-	"hawk_feather":     0.05,
-	"hawk_talon":       0.1,
-	"slag_gland":       0.6,
-	"volcanic_slime":   0.3,
-	"gargoyle_shard":   0.8,
-	"ember_core":       0.4,
-	"glimmer_pelt":     0.9,
-	"foxfire_essence":  0.2,
-	"veil_hide":        1.1,
-	"paralysis_venom":  0.1,
-	"void_scale":       0.6,
-	"void_essence":     0.3,
-	"rift_shard":       1.0,
-	"warden_core":      0.8,
+	"raw_boar_meat":         0.8,
+	"boar_hide":             1.5,
+	"boar_tusk":             0.4,
+	"wolf_pelt":             1.2,
+	"wolf_fang":             0.1,
+	"alpha_wolf_fang":       0.2,
+	"bison_meat":            1.2,
+	"bison_hide":            3.0,
+	"bison_bone":            1.0,
+	"bison_horn":            0.5,
+	"hawk_feather":          0.05,
+	"hawk_talon":            0.1,
+	"slug_shell_shard":      0.6,
+	"superheated_slime_vial": 0.3,
+	"lava_core_organ":       0.5,
+	"gargoyle_wing_fragment": 0.8,
+	"petrified_binding_stone": 0.9,
+	"gargoyle_crest":        0.2,
+	"glimmer_pelt":          0.9,
+	"luminescent_reagent":   0.2,
+	"veilstalker_venom_sac": 0.1,
+	"shadow_phase_membrane": 0.5,
+	"crystallised_phase_shard": 0.3,
+	"void_scale":            0.6,
+	"void_serpent_fang":     0.4,
+	"phase_locked_core":     0.5,
+	"rift_shard":            1.0,
+	"void_core_crystal":     0.8,
+	"warden_sigil":          0.2,
 }
 
-## Built at _ready() from GameData.ITEMS so fabric item weights are authoritative.
+## Built at _ready() from GameData.MATERIALS (density) and GameData.ITEMS (weight).
 var _item_weight_cache: Dictionary = {}
 
 ## Durability tracking: item_id -> remaining durability points. Populated lazily
@@ -309,8 +316,40 @@ func _load_capacity() -> void:
 		_max_weight = float(res.get("maxWeightKg"))
 
 func _build_weight_cache() -> void:
-	# Seed with raw-drop weights (creature drops not in the item fabric).
+	# Seed with raw-drop weights (creature drops not in the item or material fabric).
 	_item_weight_cache.merge(RAW_DROP_WEIGHTS)
+	# Verify every drop item referenced in creature fabric has a weight entry.
+	# Keys come from the single source of truth (creature drop tables); RAW_DROP_WEIGHTS
+	# must cover all of them — warn here so new fabric drops are never silently weightless.
+	for creature_id in GameData.CREATURES:
+		var res: Resource = GameData.CREATURES[creature_id]
+		if res == null:
+			continue
+		var raw_drops = res.get("drops")
+		var drops_arr: Array = []
+		if raw_drops is Array:
+			drops_arr = raw_drops
+		elif raw_drops is String and raw_drops != "":
+			var parsed = JSON.parse_string(raw_drops)
+			if parsed is Array:
+				drops_arr = parsed
+		for entry in drops_arr:
+			if entry is not Dictionary:
+				continue
+			var item_id: String = str(entry.get("item", ""))
+			if item_id == "":
+				continue
+			# Skip items that have a fabric resource — those get their weight from ITEMS below.
+			if GameData.ITEMS.has(item_id):
+				continue
+			if not _item_weight_cache.has(item_id):
+				push_warning("InventorySlice: drop item '%s' (from creature '%s') has no weight in RAW_DROP_WEIGHTS — defaulting to 0 kg. Add it to RAW_DROP_WEIGHTS." % [item_id, creature_id])
+	# Fabric raw materials (mined from terrain) declare density (g/cm³); use that
+	# as a per-unit kg weight so mined items aren't weightless.
+	for key in GameData.MATERIALS:
+		var res: Resource = GameData.MATERIALS[key]
+		if res != null:
+			_item_weight_cache[key] = float(res.get("density"))
 	# Override/extend with fabric item weights from GameData.ITEMS (authoritative).
 	for key in GameData.ITEMS:
 		var res: Resource = GameData.ITEMS[key]

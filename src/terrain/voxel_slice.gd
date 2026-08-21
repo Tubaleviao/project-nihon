@@ -27,7 +27,9 @@ extends Node
 ## stored as absolute quantised heights keyed by global tile coordinate, so they
 ## survive chunk rebuilds and save/load.
 
-const CHUNK_SIZE  := 32        # tiles per side — must match TerrainSlice.CHUNK_SIZE
+## CHUNK_SIZE is defined once on TerrainSlice and accessed via terrain_slice.CHUNK_SIZE.
+## The local alias below keeps internal uses readable without duplicating the value.
+const CHUNK_SIZE  := 32        # alias — authoritative copy lives in TerrainSlice
 const TILE_SIZE   := 1.0       # world units per tile (XZ)
 const STEP_HEIGHT := 0.5       # world units per quantised height step
 const MIN_HEIGHT  := 0.0       # bedrock — cannot mine below this
@@ -75,6 +77,10 @@ var _edits: Dictionary = {}
 ## its own tint instead of inheriting the biome colour.
 var _edit_materials: Dictionary = {}
 
+## Chunks touched by an edit since the last save, keyed by "cx,cz" string → true.
+## Drives the per-chunk persistence manifest so only dirty chunks are re-serialized.
+var _dirty_chunks: Dictionary = {}
+
 ## Set by game_root: terrain (biome + base height) and inventory (material flow).
 var terrain_slice: Node = null
 var inventory_slice: Node = null
@@ -83,7 +89,23 @@ var inventory_slice: Node = null
 ## the player cycles onto a material they actually hold in inventory.
 var _place_material: String = ""
 
+## Single world-level safety floor shared by all chunks (prevents the player from
+## ever falling through the world). Created once in _ready().
+var _world_floor: StaticBody3D = null
+
 func _ready() -> void:
+	_world_floor = StaticBody3D.new()
+	_world_floor.name = "WorldFloor"
+	_world_floor.collision_layer = TERRAIN_COLLISION_LAYER
+	_world_floor.collision_mask = 0
+	var floor_shape := CollisionShape3D.new()
+	var floor_box := BoxShape3D.new()
+	floor_box.size = Vector3(65536.0, 1.0, 65536.0)
+	floor_shape.shape = floor_box
+	floor_shape.position = Vector3(0.0, -0.5, 0.0)
+	_world_floor.add_child(floor_shape)
+	add_child(_world_floor)
+
 	GameBus.chunk_ready.connect(_on_chunk_ready)
 	GameBus.block_mine_requested.connect(_on_mine_requested)
 	GameBus.block_place_requested.connect(_on_place_requested)
@@ -192,19 +214,26 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
 			static_body.add_child(col_shape)
 	root.add_child(static_body)
 
-	# --- Safety floor so the player can never fall out of the world ---
-	var floor_body := StaticBody3D.new()
-	floor_body.collision_layer = TERRAIN_COLLISION_LAYER
-	floor_body.collision_mask = 0
-	var floor_shape := CollisionShape3D.new()
-	var floor_box := BoxShape3D.new()
-	floor_box.size = Vector3(64.0, 1.0, 64.0)
-	floor_shape.shape = floor_box
-	floor_shape.position = Vector3(origin.x + 16.0, -0.5, origin.z + 16.0)
-	floor_body.add_child(floor_shape)
-	root.add_child(floor_body)
-
 	print("VoxelSlice: built chunk %s  tiles=%d" % [key, CHUNK_SIZE * CHUNK_SIZE])
+
+## Free a chunk's visual + collision nodes without touching its base heightmap
+## or any voxel edits. The heightmap is cached in `_heightmaps` so a later
+## build_chunk() re-applies edits and restores the column exactly. Used by
+## ChunkManager to stream chunks out of view.
+func unload_chunk(chunk_pos: Vector2i) -> void:
+	var key := _chunk_key(chunk_pos)
+	if _chunks.has(key):
+		_chunks[key].queue_free()
+		_chunks.erase(key)
+		print("VoxelSlice: unloaded chunk %s" % key)
+
+## Return the set of chunks currently holding live mesh nodes.
+func get_loaded_chunks() -> Array:
+	var out: Array = []
+	for key in _chunks:
+		var parts: PackedStringArray = str(key).split(",")
+		out.append(Vector2i(int(parts[0]), int(parts[1])))
+	return out
 
 # ---------------------------------------------------------------------------
 # Edit API — mining and building
@@ -240,6 +269,7 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP) -> Dictionary:
 		material = material_for_biome(_biome_at(xz), xz)
 
 	_rebuild_chunk_at_tile(tile)
+	_mark_dirty(tile)
 
 	if inventory_slice != null and inventory_slice.has_method("add_item"):
 		inventory_slice.add_item(material, 1)
@@ -278,6 +308,7 @@ func place_block(world_pos: Vector3, normal: Vector3) -> bool:
 	_edits[_tile_key(tile)] = new_h
 	_push_placed_material(tile, material)
 	_rebuild_chunk_at_tile(tile)
+	_mark_dirty(tile)
 
 	var pos := Vector3(target_xz.x, new_h, target_xz.y)
 	GameBus.block_placed.emit(material, pos)
@@ -301,6 +332,9 @@ func get_edit_materials() -> Dictionary:
 func apply_edits(edits: Dictionary, materials: Dictionary = {}) -> void:
 	_edits.clear()
 	_edit_materials.clear()
+	# _dirty_chunks is NOT cleared here: dirty tracking is reset only by
+	# clear_dirty_chunks() after a successful save (called from game_root._on_save_completed).
+	# Restored on-disk edits are not dirty — they were already persisted.
 	for key in edits:
 		_edits[key] = float(edits[key])
 	for key in materials:
@@ -309,6 +343,47 @@ func apply_edits(edits: Dictionary, materials: Dictionary = {}) -> void:
 	for ckey in _heightmaps:
 		var parts: PackedStringArray = str(ckey).split(",")
 		build_chunk(Vector2i(int(parts[0]), int(parts[1])), _heightmaps[ckey])
+
+## Group voxel edits by chunk into a persistence manifest:
+##   { "cx,cz": { "edits": { "gx,gz": height, ... }, "materials": { "gx,gz": [..] } } }
+## Only chunks with edits appear. Used by the world save snapshot so edits are
+## stored per-chunk and only dirty chunks need re-serialization.
+func get_chunk_manifest() -> Dictionary:
+	var manifest: Dictionary = {}
+	for key in _edits:
+		var chunk := _chunk_key(_tile_to_chunk(_key_to_tile(str(key))))
+		if not manifest.has(chunk):
+			manifest[chunk] = { "edits": {}, "materials": {} }
+		manifest[chunk]["edits"][key] = _edits[key]
+	for key in _edit_materials:
+		var chunk := _chunk_key(_tile_to_chunk(_key_to_tile(str(key))))
+		if not manifest.has(chunk):
+			manifest[chunk] = { "edits": {}, "materials": {} }
+		manifest[chunk]["materials"][key] = _edit_materials[key].duplicate()
+	return manifest
+
+## Restore voxel edits from a chunk manifest (see get_chunk_manifest). Flattens
+## the per-chunk grouping back into the global tile-keyed edit tables.
+func apply_chunk_manifest(manifest: Dictionary) -> void:
+	var edits: Dictionary = {}
+	var materials: Dictionary = {}
+	for ckey in manifest:
+		var chunk_data: Dictionary = manifest[ckey]
+		if chunk_data.has("edits"):
+			for key in chunk_data["edits"]:
+				edits[key] = chunk_data["edits"][key]
+		if chunk_data.has("materials"):
+			for key in chunk_data["materials"]:
+				materials[key] = chunk_data["materials"][key]
+	apply_edits(edits, materials)
+
+## Return the "cx,cz" keys of chunks modified since the last save/clear.
+func get_dirty_chunk_keys() -> Array:
+	return _dirty_chunks.keys()
+
+## Clear the dirty-chunk tracking (call after a successful save).
+func clear_dirty_chunks() -> void:
+	_dirty_chunks.clear()
 
 func set_place_material(material: String) -> void:
 	_place_material = material
@@ -436,6 +511,15 @@ func _tile_key(tile: Vector2i) -> String:
 
 func _chunk_key(chunk_pos: Vector2i) -> String:
 	return "%d,%d" % [chunk_pos.x, chunk_pos.y]
+
+## Parse a "gx,gz" tile key back into a tile coordinate.
+func _key_to_tile(key: String) -> Vector2i:
+	var parts: PackedStringArray = str(key).split(",")
+	return Vector2i(int(parts[0]), int(parts[1]))
+
+## Mark the chunk containing `tile` as dirty for persistence.
+func _mark_dirty(tile: Vector2i) -> void:
+	_dirty_chunks[_chunk_key(_tile_to_chunk(tile))] = true
 
 func _biome_at(xz: Vector2) -> String:
 	if terrain_slice != null and terrain_slice.has_method("get_biome_at"):

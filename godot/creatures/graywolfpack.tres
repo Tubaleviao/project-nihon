@@ -16,6 +16,7 @@ fleeThreshold = 0.3
 respawnSeconds = 900
 spawnCount = 2
 biome = 0
+drops = [{"item":"wolf_pelt","chance":1,"minQty":1,"maxQty":1},{"item":"wolf_fang","chance":0.4,"minQty":0,"maxQty":1},{"item":"alpha_wolf_fang","chance":1,"minQty":1,"maxQty":1}]
 state_machine_field = "state"
 initial_state = "idle"
 description = "A coordinated hunting pack of gray wolves that roam temperate forest edges and clearings. Individual wolves are manageable; the pack tactics make them deadly to lone travellers. Taming a pup from a defeated pack unlocks the Ranger profession bonus."

@@ -23,6 +23,7 @@ An ancient construct of crystallised voidite that guards the innermost rift boun
 | `respawnSeconds` | integer | yes | Seconds before a dead creature respawns |
 | `spawnCount` | integer | yes | Number of instances spawned per game world; singleton per rift zone |
 | `biome` | enum (`TemperateForest`, `TemperateGrassland`, `VolcanicBadlands`, `TwilightGrove`, `VoidRift`) | yes | Biome this creature belongs to |
+| `drops` | json | yes | Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system. |
 
 ### State machine
 

@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
+const { defineEntity, creatureStateMachine, dropsData, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
 
 module.exports = {
 
@@ -23,6 +23,10 @@ module.exports = {
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 480 },
       spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 2 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TwilightGrove' },
+      drops: dropsData([
+        { item: 'glimmer_pelt',        chance: 1.0, minQty: 1, maxQty: 1 },
+        { item: 'luminescent_reagent', chance: 1.0, minQty: 1, maxQty: 1 },
+      ]),
     },
     stateMachine: creatureStateMachine(),
     behaviors: {
@@ -107,6 +111,11 @@ module.exports = {
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 1080 },
       spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 1 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TwilightGrove' },
+      drops: dropsData([
+        { item: 'veilstalker_venom_sac',    chance: 1.0, minQty: 1, maxQty: 1 },
+        { item: 'shadow_phase_membrane',    chance: 1.0, minQty: 1, maxQty: 1 },
+        { item: 'crystallised_phase_shard', chance: 0.2, minQty: 1, maxQty: 1 },
+      ]),
     },
     stateMachine: creatureStateMachine(),
     behaviors: {

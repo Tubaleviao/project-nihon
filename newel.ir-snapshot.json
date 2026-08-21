@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-20T09:03:39.150Z",
-  "schemaHash": "sha256:70edd93ad603f8db85f000686d165daada7e33f2cd61b6edbccf47353497c71b",
+  "generatedAt": "2026-08-21T10:01:38.234Z",
+  "schemaHash": "sha256:53e6049df00cdca731dc0ed24df4dd71862354a6ddc50b933b1c6f5c3080f69c",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -15360,6 +15360,34 @@
             ],
             "pii": false,
             "defaultValue": "TemperateForest"
+          },
+          "drops": {
+            "name": "drops",
+            "type": "json",
+            "description": "Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "item": "raw_boar_meat",
+                "chance": 1,
+                "minQty": 1,
+                "maxQty": 3
+              },
+              {
+                "item": "boar_hide",
+                "chance": 1,
+                "minQty": 1,
+                "maxQty": 1
+              },
+              {
+                "item": "boar_tusk",
+                "chance": 0.2,
+                "minQty": 1,
+                "maxQty": 1
+              }
+            ]
           }
         },
         "relations": {},
@@ -15752,6 +15780,34 @@
             ],
             "pii": false,
             "defaultValue": "TemperateForest"
+          },
+          "drops": {
+            "name": "drops",
+            "type": "json",
+            "description": "Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "item": "wolf_pelt",
+                "chance": 1,
+                "minQty": 1,
+                "maxQty": 1
+              },
+              {
+                "item": "wolf_fang",
+                "chance": 0.4,
+                "minQty": 0,
+                "maxQty": 1
+              },
+              {
+                "item": "alpha_wolf_fang",
+                "chance": 1,
+                "minQty": 1,
+                "maxQty": 1
+              }
+            ]
           }
         },
         "relations": {},
@@ -16158,6 +16214,40 @@
             ],
             "pii": false,
             "defaultValue": "TemperateGrassland"
+          },
+          "drops": {
+            "name": "drops",
+            "type": "json",
+            "description": "Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "item": "bison_meat",
+                "chance": 1,
+                "minQty": 3,
+                "maxQty": 6
+              },
+              {
+                "item": "bison_hide",
+                "chance": 1,
+                "minQty": 2,
+                "maxQty": 2
+              },
+              {
+                "item": "bison_bone",
+                "chance": 1,
+                "minQty": 1,
+                "maxQty": 2
+              },
+              {
+                "item": "bison_horn",
+                "chance": 0.25,
+                "minQty": 1,
+                "maxQty": 1
+              }
+            ]
           }
         },
         "relations": {},
@@ -16543,6 +16633,28 @@
             ],
             "pii": false,
             "defaultValue": "TemperateGrassland"
+          },
+          "drops": {
+            "name": "drops",
+            "type": "json",
+            "description": "Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "item": "hawk_feather",
+                "chance": 1,
+                "minQty": 1,
+                "maxQty": 3
+              },
+              {
+                "item": "hawk_talon",
+                "chance": 0.35,
+                "minQty": 1,
+                "maxQty": 1
+              }
+            ]
           }
         },
         "relations": {},
@@ -16928,6 +17040,34 @@
             ],
             "pii": false,
             "defaultValue": "VolcanicBadlands"
+          },
+          "drops": {
+            "name": "drops",
+            "type": "json",
+            "description": "Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "item": "slug_shell_shard",
+                "chance": 1,
+                "minQty": 2,
+                "maxQty": 4
+              },
+              {
+                "item": "superheated_slime_vial",
+                "chance": 1,
+                "minQty": 1,
+                "maxQty": 2
+              },
+              {
+                "item": "lava_core_organ",
+                "chance": 0.15,
+                "minQty": 1,
+                "maxQty": 1
+              }
+            ]
           }
         },
         "relations": {},
@@ -17316,6 +17456,34 @@
             ],
             "pii": false,
             "defaultValue": "VolcanicBadlands"
+          },
+          "drops": {
+            "name": "drops",
+            "type": "json",
+            "description": "Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "item": "gargoyle_wing_fragment",
+                "chance": 1,
+                "minQty": 1,
+                "maxQty": 2
+              },
+              {
+                "item": "petrified_binding_stone",
+                "chance": 1,
+                "minQty": 1,
+                "maxQty": 1
+              },
+              {
+                "item": "gargoyle_crest",
+                "chance": 0.1,
+                "minQty": 1,
+                "maxQty": 1
+              }
+            ]
           }
         },
         "relations": {},
@@ -17706,6 +17874,28 @@
             ],
             "pii": false,
             "defaultValue": "TwilightGrove"
+          },
+          "drops": {
+            "name": "drops",
+            "type": "json",
+            "description": "Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "item": "glimmer_pelt",
+                "chance": 1,
+                "minQty": 1,
+                "maxQty": 1
+              },
+              {
+                "item": "luminescent_reagent",
+                "chance": 1,
+                "minQty": 1,
+                "maxQty": 1
+              }
+            ]
           }
         },
         "relations": {},
@@ -18107,6 +18297,34 @@
             ],
             "pii": false,
             "defaultValue": "TwilightGrove"
+          },
+          "drops": {
+            "name": "drops",
+            "type": "json",
+            "description": "Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "item": "veilstalker_venom_sac",
+                "chance": 1,
+                "minQty": 1,
+                "maxQty": 1
+              },
+              {
+                "item": "shadow_phase_membrane",
+                "chance": 1,
+                "minQty": 1,
+                "maxQty": 1
+              },
+              {
+                "item": "crystallised_phase_shard",
+                "chance": 0.2,
+                "minQty": 1,
+                "maxQty": 1
+              }
+            ]
           }
         },
         "relations": {},
@@ -18497,6 +18715,34 @@
             ],
             "pii": false,
             "defaultValue": "VoidRift"
+          },
+          "drops": {
+            "name": "drops",
+            "type": "json",
+            "description": "Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "item": "void_scale",
+                "chance": 1,
+                "minQty": 2,
+                "maxQty": 4
+              },
+              {
+                "item": "void_serpent_fang",
+                "chance": 1,
+                "minQty": 1,
+                "maxQty": 1
+              },
+              {
+                "item": "phase_locked_core",
+                "chance": 0.25,
+                "minQty": 1,
+                "maxQty": 1
+              }
+            ]
           }
         },
         "relations": {},
@@ -18901,6 +19147,34 @@
             ],
             "pii": false,
             "defaultValue": "VoidRift"
+          },
+          "drops": {
+            "name": "drops",
+            "type": "json",
+            "description": "Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "item": "rift_shard",
+                "chance": 1,
+                "minQty": 4,
+                "maxQty": 8
+              },
+              {
+                "item": "void_core_crystal",
+                "chance": 1,
+                "minQty": 1,
+                "maxQty": 1
+              },
+              {
+                "item": "warden_sigil",
+                "chance": 0.05,
+                "minQty": 1,
+                "maxQty": 1
+              }
+            ]
           }
         },
         "relations": {},
