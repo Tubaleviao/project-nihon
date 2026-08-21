@@ -56,6 +56,24 @@ const RAW_DROP_WEIGHTS: Dictionary = {
 ## Built at _ready() from GameData.ITEMS so fabric item weights are authoritative.
 var _item_weight_cache: Dictionary = {}
 
+## Durability tracking: item_id -> remaining durability points. Populated lazily
+## from GameData.ITEMS for non-stackable items that declare a `durability` field
+## (tools, weapons, armour, shields, unique tablets). Stacks of a durable item
+## share one durability value — the inventory models item_id -> quantity, not
+## per-slot item instances.
+var _item_durability_cache: Dictionary = {}
+var _durability: Dictionary = {}
+
+## Durability points consumed per use, by action type. Actions without a
+## specific entry fall back to DURABILITY_DECREMENT.
+const DURABILITY_DECREMENT: float = 1.0
+const ACTION_DECREMENT: Dictionary = {
+	"mine": 1.0,
+	"chop": 1.0,
+	"place": 1.0,
+	"attack": 1.0,
+}
+
 ## The actual inventory: item_id -> quantity.
 var _contents: Dictionary = {}
 var _current_weight: float = 0.0
@@ -67,6 +85,7 @@ var loot_slice: Node = null
 func _ready() -> void:
 	_load_capacity()
 	_build_weight_cache()
+	_build_durability_cache()
 	GameBus.pickup_requested.connect(_on_pickup_requested)
 
 func get_contents() -> Dictionary:
@@ -88,6 +107,8 @@ func get_max_slots() -> int:
 	return _max_slots
 
 ## Drop quantity of item_id from inventory; returns true if successful.
+## Clears the durability record when the last unit is dropped so a fresh pickup
+## of the same item key always starts at full durability (not the old worn value).
 func drop_item(item_id: String, quantity: int) -> bool:
 	var have: int = _contents.get(item_id, 0)
 	if have < quantity or quantity <= 0:
@@ -96,6 +117,7 @@ func drop_item(item_id: String, quantity: int) -> bool:
 	_current_weight = maxf(_current_weight - w, 0.0)
 	if have == quantity:
 		_contents.erase(item_id)
+		_durability.erase(item_id)
 	else:
 		_contents[item_id] = have - quantity
 	_is_full = false
@@ -151,6 +173,76 @@ func can_add_items(counts: Dictionary) -> bool:
 		return false
 	if slots > _max_slots:
 		return false
+	return true
+
+## Find the first held durable tool whose fabric `toolType` matches `tool_type`
+## (e.g. "pick" for mining, "axe" for chopping). Broken tools (durability == 0)
+## are skipped. Returns the item_id, or "" when no usable tool is held.
+func find_tool(tool_type: String) -> String:
+	for item_id in _item_durability_cache:
+		if _contents.get(item_id, 0) <= 0:
+			continue
+		var res: Resource = GameData.ITEMS.get(item_id, null)
+		if res == null or str(res.get("toolType")) != tool_type:
+			continue
+		_ensure_durability(item_id)
+		if float(_durability[item_id]) <= 0.0:
+			continue
+		return str(item_id)
+	return ""
+
+## Whether `item_id` has a durability field in the fabric (tools/weapons/armor).
+func is_durable(item_id: String) -> bool:
+	return _item_durability_cache.has(item_id)
+
+## Current remaining durability for `item_id`, or -1.0 when the item has no
+## durability model. Returns max durability when the item is held but has not
+## yet been used.
+func get_durability(item_id: String) -> float:
+	if not _item_durability_cache.has(item_id):
+		return -1.0
+	_ensure_durability(item_id)
+	return float(_durability[item_id])
+
+## Maximum durability points for `item_id` from GameData.ITEMS, or -1.0.
+func get_max_durability(item_id: String) -> float:
+	return float(_item_durability_cache.get(item_id, -1.0))
+
+## Current condition tier (pristine → worn → damaged → broken) for a durable
+## item, derived from durability points vs. max. Non-durable items return "".
+func get_condition(item_id: String) -> String:
+	if not _item_durability_cache.has(item_id):
+		return ""
+	var max_d := get_max_durability(item_id)
+	var cur := get_durability(item_id)
+	if cur <= 0.0:
+		return "broken"
+	if cur >= max_d:
+		return "pristine"
+	if cur >= max_d * 0.5:
+		return "worn"
+	return "damaged"
+
+## Use a held item for `action_type`. Returns true when the action is allowed
+## (item held and, for durable items, not already broken); false when blocked
+## (not held, or already broken). Using a durable item decrements its
+## durability; when it crosses to 0 the item breaks (item_broke emitted), but
+## the use that consumed the last point still counts as allowed — the tool
+## breaks AS A RESULT of the use, it does not pre-empt it.
+func use_item(item_id: String, action_type: String = "use") -> bool:
+	if _contents.get(item_id, 0) <= 0:
+		return false
+	if not _item_durability_cache.has(item_id):
+		return true
+	_ensure_durability(item_id)
+	if float(_durability[item_id]) <= 0.0:
+		GameBus.item_broke.emit(item_id)
+		return false
+	var dec := float(ACTION_DECREMENT.get(action_type, DURABILITY_DECREMENT))
+	_durability[item_id] = maxf(float(_durability[item_id]) - dec, 0.0)
+	GameBus.inventory_changed.emit()
+	if float(_durability[item_id]) <= 0.0:
+		GameBus.item_broke.emit(item_id)
 	return true
 
 # ---------------------------------------------------------------------------
@@ -225,5 +317,28 @@ func _build_weight_cache() -> void:
 		if res != null:
 			_item_weight_cache[key] = float(res.get("weight"))
 
+## Build the durability cache from GameData.ITEMS: only non-stackable items
+## that declare a `durability` field (tools, weapons, armour, shields, unique
+## tablets) are tracked as per-instance durable equipment. Stackable items
+## (materials, components, food, potions, magical shards) also carry a
+## `durability` field, but it models freshness / potency / charge / structural
+## integrity — mechanics a per-use decrement must NOT apply to. `stackable` is
+## the fabric's own discriminator: equipment is always non-stackable.
+func _build_durability_cache() -> void:
+	for key in GameData.ITEMS:
+		var res: Resource = GameData.ITEMS[key]
+		if res == null:
+			continue
+		if bool(res.get("stackable")):
+			continue
+		var d = res.get("durability")
+		if d != null and float(d) > 0.0:
+			_item_durability_cache[key] = float(d)
+
 func _item_weight(item_id: String) -> float:
 	return float(_item_weight_cache.get(item_id, 0.0))
+
+## Initialize a durable item's durability to its fabric max on first access.
+func _ensure_durability(item_id: String) -> void:
+	if _item_durability_cache.has(item_id) and not _durability.has(item_id):
+		_durability[item_id] = _item_durability_cache[item_id]

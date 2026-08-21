@@ -17,6 +17,7 @@ Heavy-duty pick smelted from veilsteel. Cuts through hardstone formations that s
 | `rarity` | enum (`common`, `uncommon`, `rare`, `epic`, `legendary`) | yes |  |
 | `stackable` | boolean | yes | Whether multiple instances stack in inventory |
 | `durability` | integer | yes | Remaining durability points before condition degrades |
+| `toolType` | string | yes | Tool class — the action this tool performs. "pick" mines, "axe" chops. |
 
 ## Relations
 

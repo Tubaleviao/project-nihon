@@ -114,7 +114,8 @@ func refresh_all() -> void:
 # Pure projections (testable without a scene tree)
 # ---------------------------------------------------------------------------
 
-## One display line per carried item ("Ferrite ×5"), sorted by key.
+## One display line per carried item ("Ferrite ×5"), sorted by key. Durable
+## items append a durability readout ("FerritePick ×1  [80/80]").
 func inventory_lines() -> Array:
 	var lines: Array = []
 	if inventory_slice == null:
@@ -125,7 +126,7 @@ func inventory_lines() -> Array:
 	var keys: Array = contents.keys()
 	keys.sort()
 	for item_id in keys:
-		lines.append("%s ×%d" % [item_id, contents[item_id]])
+		lines.append("%s ×%d%s" % [item_id, contents[item_id], durability_bar(item_id)])
 	return lines
 
 func inventory_usage_text() -> String:
@@ -137,6 +138,24 @@ func inventory_usage_text() -> String:
 		inventory_slice.get_total_slots_used(),
 		inventory_slice.get_max_slots(),
 	]
+
+## Durability readout for a held durable item ("  [80/80]"), or "" when the
+## item has no durability model or is not held.
+func durability_bar(item_id: String) -> String:
+	if inventory_slice == null or not inventory_slice.has_method("get_durability"):
+		return ""
+	if inventory_slice.get_item_count(item_id) <= 0:
+		return ""
+	var cur: float = inventory_slice.get_durability(item_id)
+	if cur < 0.0:
+		return ""
+	var max_d: float = inventory_slice.get_max_durability(item_id)
+	var cond := ""
+	if inventory_slice.has_method("get_condition"):
+		cond = str(inventory_slice.get_condition(item_id))
+	if cond == "pristine" or cond == "":
+		return "  [%d/%d]" % [int(cur), int(max_d)]
+	return "  [%d/%d %s]" % [int(cur), int(max_d), cond]
 
 ## One row per recipe: { id, can_craft, reason, inputs, outputs }.
 func crafting_rows() -> Array:
@@ -153,6 +172,7 @@ func crafting_rows() -> Array:
 			"id": rid,
 			"can_craft": bool(check.get("success", false)),
 			"reason": str(check.get("reason", "")),
+			"station": str(recipe.get("station", "")),
 			"inputs": _fmt_entries(recipe.get("inputs", [])),
 			"outputs": _fmt_entries(recipe.get("outputs", [])),
 		})
@@ -216,6 +236,8 @@ func refresh_crafting() -> void:
 		btn.pressed.connect(_on_craft_pressed.bind(str(r["id"])))
 		hbox.add_child(btn)
 		var line := "%s: %s → %s" % [r["id"], r["inputs"], r["outputs"]]
+		if str(r.get("station", "")) != "":
+			line += "  @ %s" % r["station"]
 		var lbl := Label.new()
 		lbl.text = line + ("" if bool(r["can_craft"]) else "  (%s)" % r["reason"])
 		lbl.modulate = Color(1, 1, 1) if bool(r["can_craft"]) else Color(0.6, 0.6, 0.6)

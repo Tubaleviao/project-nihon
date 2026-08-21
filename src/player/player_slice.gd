@@ -42,6 +42,7 @@ var _aim_label: Label = null
 var _aimed_pickup_id: String = ""
 var _aimed_item_id: String = ""
 var _build_material_label: Label = null
+var _station_label: Label = null
 
 ## Aimed terrain block (mine/build target), updated every frame.
 var _aimed_block_hit: bool = false
@@ -58,6 +59,7 @@ var _respawn_timer: float = -1.0
 ## Set by game_root after all slices are instantiated.
 var creature_slice: Node = null
 var voxel_slice: Node = null
+var station_slice: Node = null
 
 func _ready() -> void:
 	_build_body()
@@ -118,6 +120,12 @@ func _input(event: InputEvent) -> void:
 	# R key → cycle the build material.
 	if event is InputEventKey and event.pressed and event.keycode == KEY_R:
 		GameBus.block_cycle_material_requested.emit()
+	# B key → cycle the station type to place.
+	if event is InputEventKey and event.pressed and event.keycode == KEY_B:
+		_cycle_station_type()
+	# V key → place the selected station at the player's feet.
+	if event is InputEventKey and event.pressed and event.keycode == KEY_V:
+		_place_station()
 
 func get_position() -> Vector3:
 	return _body.global_position if _body else Vector3.ZERO
@@ -351,6 +359,11 @@ func _build_hud() -> void:
 	hint.add_child(cycle_key)
 	hint.add_child(_make_hint_label("Cycle"))
 
+	_station_label = Label.new()
+	_station_label.add_theme_font_size_override("font_size", 16)
+	_station_label.add_theme_color_override("font_color", Color(0.6, 0.85, 1.0))
+	hint.add_child(_station_label)
+
 	_refresh_build_hint()
 
 	_build_shortcuts_menu()
@@ -417,14 +430,41 @@ func _update_aim_hud() -> void:
 		_aim_label.visible = true
 
 func _refresh_build_hint() -> void:
-	if _build_material_label == null:
+	if _build_material_label != null:
+		var mat := ""
+		if voxel_slice != null and voxel_slice.has_method("get_place_material"):
+			mat = str(voxel_slice.get_place_material())
+		if mat == "":
+			mat = "none"
+		_build_material_label.text = "Build: %s" % mat
+	if _station_label != null:
+		var stype := ""
+		if station_slice != null and station_slice.has_method("get_place_station_type"):
+			stype = str(station_slice.get_place_station_type())
+		if stype == "":
+			stype = "none"
+		_station_label.text = "  ·  Station: %s" % stype
+
+
+func _cycle_station_type() -> void:
+	if station_slice == null or not station_slice.has_method("cycle_station_type"):
 		return
-	var mat := ""
-	if voxel_slice != null and voxel_slice.has_method("get_place_material"):
-		mat = str(voxel_slice.get_place_material())
-	if mat == "":
-		mat = "none"
-	_build_material_label.text = "Build: %s" % mat
+	station_slice.cycle_station_type()
+	_refresh_build_hint()
+
+
+func _place_station() -> void:
+	if station_slice == null or not station_slice.has_method("place_station"):
+		return
+	var stype := ""
+	if station_slice.has_method("get_place_station_type"):
+		stype = str(station_slice.get_place_station_type())
+	if stype == "":
+		return
+	var pos := get_position()
+	pos.y -= 0.9   # sit the marker at the player's feet
+	station_slice.place_station(stype, pos)
+	_refresh_build_hint()
 
 
 func _make_mouse_icon(button: int) -> Control:
@@ -479,6 +519,7 @@ func _build_shortcuts_menu() -> void:
 	_add_mouse_row(vbox, MOUSE_BUTTON_RIGHT, "Mine")
 	_add_mouse_row(vbox, MOUSE_BUTTON_MIDDLE, "Place")
 	_add_key_row(vbox, "R", "Cycle material")
+	_add_key_row(vbox, "B · V", "Station cycle / place")
 	_add_key_row(vbox, "I · T · C", "Windows")
 	_add_key_row(vbox, "ESC", "Cursor")
 

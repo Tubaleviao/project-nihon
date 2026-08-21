@@ -16,6 +16,7 @@ module.exports = {
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 80 },
+      toolType:   { type: 'string', description: 'Tool class — the action this tool performs. "pick" mines, "axe" chops.', defaultValue: 'pick' },
     },
     relations: {
       ferrite:   { name: 'ferrite',   kind: 'hasOne', target: 'Ferrite' },
@@ -53,6 +54,7 @@ module.exports = {
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 160 },
+      toolType:   { type: 'string', description: 'Tool class — the action this tool performs. "pick" mines, "axe" chops.', defaultValue: 'pick' },
     },
     relations: {
       veilsteel:  { name: 'veilsteel',  kind: 'hasOne', target: 'Veilsteel' },
@@ -93,6 +95,7 @@ module.exports = {
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 90 },
+      toolType:   { type: 'string', description: 'Tool class — the action this tool performs. "pick" mines, "axe" chops.', defaultValue: 'axe' },
     },
     relations: {
       ferrite:   { name: 'ferrite',   kind: 'hasOne', target: 'Ferrite' },

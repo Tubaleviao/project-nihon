@@ -35,8 +35,8 @@ pnpm generate   # generate the design bible into bible/
 | 12 | Voxel mining and building | Done |
 | 13 | Technology unlock gates | Done |
 | 14 | Player UI (inventory, technology tree, crafting) | Done |
-| 15 | Creature AI and behavior | Planned |
-| 16 | Station-gated crafting and tool durability | Planned |
+| 15 | Creature AI and behavior | Done |
+| 16 | Station-gated crafting and tool durability | Done |
 | 17 | Chunk streaming and world expansion | Planned |
 | 18 | Multiplayer world sync (core) | Planned |
 | 19 | Multiplayer chaos resilience (jitter + packet loss) | Planned |

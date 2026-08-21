@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-18T21:40:44.771Z",
-  "schemaHash": "sha256:2aebd06bc9eeeaf3ed1cae8ecce34a5c3b4eb0a03d95823f0479351d0f764415",
+  "generatedAt": "2026-08-20T09:03:39.150Z",
+  "schemaHash": "sha256:70edd93ad603f8db85f000686d165daada7e33f2cd61b6edbccf47353497c71b",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -7744,6 +7744,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 80
+          },
+          "toolType": {
+            "name": "toolType",
+            "type": "string",
+            "description": "Tool class — the action this tool performs. \"pick\" mines, \"axe\" chops.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "pick"
           }
         },
         "relations": {
@@ -7942,6 +7951,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 160
+          },
+          "toolType": {
+            "name": "toolType",
+            "type": "string",
+            "description": "Tool class — the action this tool performs. \"pick\" mines, \"axe\" chops.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "pick"
           }
         },
         "relations": {
@@ -8144,6 +8162,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 90
+          },
+          "toolType": {
+            "name": "toolType",
+            "type": "string",
+            "description": "Tool class — the action this tool performs. \"pick\" mines, \"axe\" chops.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "axe"
           }
         },
         "relations": {

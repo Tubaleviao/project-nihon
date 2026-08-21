@@ -45,10 +45,14 @@ func get_height_at(world_pos: Vector2) -> float:
 ## deterministic across runs even though terrain height varies.
 func get_biome_at(world_pos: Vector2) -> String:
 	var temp := _biome_noise.get_noise_2d(world_pos.x, world_pos.y)
-	if temp > 0.4:
+	if temp > 0.55:
+		return "VoidRift"
+	if temp > 0.25:
 		return "VolcanicBadlands"
+	if temp > 0.05:
+		return "TemperateGrassland"
 	if temp < -0.4:
-		return "Twilight"
+		return "TwilightGrove"
 	return "TemperateForest"
 
 # ---------------------------------------------------------------------------

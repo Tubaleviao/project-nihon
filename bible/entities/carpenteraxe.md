@@ -17,6 +17,7 @@ Felling axe with a weighted ferrite head and a duskfiber-wrapped thornwood handl
 | `rarity` | enum (`common`, `uncommon`, `rare`, `epic`, `legendary`) | yes |  |
 | `stackable` | boolean | yes | Whether multiple instances stack in inventory |
 | `durability` | integer | yes | Remaining durability points before condition degrades |
+| `toolType` | string | yes | Tool class — the action this tool performs. "pick" mines, "axe" chops. |
 
 ## Relations
 

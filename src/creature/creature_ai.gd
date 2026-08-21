@@ -94,10 +94,12 @@ func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: f
 	var alert_r: float     = float(res.get("alertRadius")) if res else 12.0
 	var attack_r: float    = float(res.get("attackRadius")) if res else 3.0
 	var flee_thr: float    = float(res.get("fleeThreshold")) if res else 0.20
-	# TERRITORIAL creatures claim a wider area than their base alertRadius.
+	# TERRITORIAL creatures claim a wider alert area than their base alertRadius.
+	# safe_r is always alertRadius * 1.5, computed before the territorial scaling
+	# so it doesn't compound to alertRadius * 2.25.
+	var safe_r: float      = float(res.get("alertRadius")) * 1.5 if res else alert_r * 1.5
 	if aggression == 3:
 		alert_r *= 1.5
-	var safe_r: float      = alert_r * 1.5
 
 	match ai_state:
 		"idle":
@@ -130,8 +132,8 @@ func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: f
 			_chase(iid, inst, player_pos, delta)
 			ai["attack_timer"] += delta
 			if ai["attack_timer"] >= ATTACK_INTERVAL:
+				ai["attack_timer"] = 0.0
 				if dist <= attack_r:
-					ai["attack_timer"] = 0.0
 					GameBus.combat_round_requested.emit(iid, "player")
 
 		"fleeing":
@@ -205,7 +207,13 @@ func get_state(instance_id: String) -> String:
 	return _ai[instance_id]["state"]
 
 func force_state(instance_id: String, state: String) -> void:
-	_ensure_ai_record(instance_id, Vector3.ZERO)
+	var spawn_pos := Vector3.ZERO
+	if creature_slice != null:
+		for inst in creature_slice.get_all_instances():
+			if inst["instance_id"] == instance_id:
+				spawn_pos = inst["position"]
+				break
+	_ensure_ai_record(instance_id, spawn_pos)
 	_ai[instance_id]["state"] = state
 
 # ---------------------------------------------------------------------------
