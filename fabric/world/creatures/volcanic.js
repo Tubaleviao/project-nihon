@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
+const { defineEntity, creatureStateMachine, dropsData, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
 
 module.exports = {
 
@@ -23,6 +23,11 @@ module.exports = {
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 1500 },
       spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 2 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'VolcanicBadlands' },
+      drops: dropsData([
+        { item: 'slug_shell_shard',       chance: 1.0,  minQty: 2, maxQty: 4 },
+        { item: 'superheated_slime_vial', chance: 1.0,  minQty: 1, maxQty: 2 },
+        { item: 'lava_core_organ',        chance: 0.15, minQty: 1, maxQty: 1 },
+      ]),
     },
     stateMachine: creatureStateMachine(),
     behaviors: {
@@ -99,6 +104,11 @@ module.exports = {
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 2400 },
       spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 1 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'VolcanicBadlands' },
+      drops: dropsData([
+        { item: 'gargoyle_wing_fragment',  chance: 1.0, minQty: 1, maxQty: 2 },
+        { item: 'petrified_binding_stone', chance: 1.0, minQty: 1, maxQty: 1 },
+        { item: 'gargoyle_crest',          chance: 0.1, minQty: 1, maxQty: 1 },
+      ]),
     },
     stateMachine: creatureStateMachine(),
     behaviors: {

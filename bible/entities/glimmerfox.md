@@ -23,6 +23,7 @@ A sleek, luminescent fox native to the Twilight Grove whose fur shifts in hue wi
 | `respawnSeconds` | integer | yes | Seconds before a dead creature respawns |
 | `spawnCount` | integer | yes | Number of instances spawned per game world |
 | `biome` | enum (`TemperateForest`, `TemperateGrassland`, `VolcanicBadlands`, `TwilightGrove`, `VoidRift`) | yes | Biome this creature belongs to |
+| `drops` | json | yes | Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system. |
 
 ### State machine
 

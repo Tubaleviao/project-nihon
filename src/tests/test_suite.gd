@@ -52,6 +52,7 @@ func run() -> void:
 	_run_test("persistence: save then load round-trip",       _test_persistence_round_trip)
 	_run_test("persistence: missing slot emits load_failed",  _test_persistence_missing_slot)
 	_run_test("loot: known creature produces drops",          _test_loot_known_creature)
+	_run_test("loot: drops read from fabric (LavaSlug)",     _test_loot_drops_from_fabric)
 	_run_test("loot: unknown creature produces no drops",     _test_loot_unknown_creature)
 	_run_test("loot: consume removes pickup",                 _test_loot_consume_removes)
 	_run_test("loot: instance_id resolves to fabric key",     _test_loot_instance_id_resolve)
@@ -356,6 +357,23 @@ func _test_loot_known_creature() -> void:
 	var items := drops.map(func(d): return d["item"])
 	assert_true(items.has("raw_boar_meat"), "raw_boar_meat always drops")
 	assert_true(items.has("boar_hide"),     "boar_hide always drops")
+	l.queue_free()
+
+func _test_loot_drops_from_fabric() -> void:
+	var l := LootSlice.new()
+	add_child(l)
+	var drops: Array = []
+	GameBus.loot_dropped.connect(func(pid, iid, pos, qty):
+		drops.append({ "id": pid, "item": iid, "qty": qty }))
+	# LavaSlug's fabric drop table: slug_shell_shard (2–4), superheated_slime_vial
+	# (1–2), lava_core_organ (15%). The first two are guaranteed; the old
+	# hardcoded ids (slag_gland / volcanic_slime) must no longer appear.
+	GameBus.creature_died.emit("LavaSlug", Vector3.ZERO, "player")
+	var items := drops.map(func(d): return d["item"])
+	assert_true(items.has("slug_shell_shard"),       "slug_shell_shard drops from fabric")
+	assert_true(items.has("superheated_slime_vial"), "superheated_slime_vial always drops")
+	assert_false(items.has("slag_gland"),            "stale 'slag_gland' id no longer used")
+	assert_false(items.has("volcanic_slime"),        "stale 'volcanic_slime' id no longer used")
 	l.queue_free()
 
 func _test_loot_unknown_creature() -> void:

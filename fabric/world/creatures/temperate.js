@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
+const { defineEntity, creatureStateMachine, dropsData, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
 
 module.exports = {
 
@@ -23,6 +23,11 @@ module.exports = {
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 300 },
       spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 3 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TemperateForest' },
+      drops: dropsData([
+        { item: 'raw_boar_meat', chance: 1.0, minQty: 1, maxQty: 3 },
+        { item: 'boar_hide',     chance: 1.0, minQty: 1, maxQty: 1 },
+        { item: 'boar_tusk',     chance: 0.2, minQty: 1, maxQty: 1 },
+      ]),
     },
     stateMachine: creatureStateMachine({ conditionalAlertSkip: true }),
     behaviors: {
@@ -94,6 +99,11 @@ module.exports = {
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 900 },
       spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 2 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TemperateForest' },
+      drops: dropsData([
+        { item: 'wolf_pelt',       chance: 1.0, minQty: 1, maxQty: 1 },
+        { item: 'wolf_fang',       chance: 0.4, minQty: 0, maxQty: 1 },
+        { item: 'alpha_wolf_fang', chance: 1.0, minQty: 1, maxQty: 1 },
+      ]),
     },
     stateMachine: creatureStateMachine({ conditionalAlertSkip: true }),
     behaviors: {
@@ -174,6 +184,12 @@ module.exports = {
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 1200 },
       spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 2 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TemperateGrassland' },
+      drops: dropsData([
+        { item: 'bison_meat', chance: 1.0,  minQty: 3, maxQty: 6 },
+        { item: 'bison_hide', chance: 1.0,  minQty: 2, maxQty: 2 },
+        { item: 'bison_bone', chance: 1.0,  minQty: 1, maxQty: 2 },
+        { item: 'bison_horn', chance: 0.25, minQty: 1, maxQty: 1 },
+      ]),
     },
     stateMachine: creatureStateMachine(),
     behaviors: {
@@ -248,6 +264,10 @@ module.exports = {
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 600 },
       spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 2 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TemperateGrassland' },
+      drops: dropsData([
+        { item: 'hawk_feather', chance: 1.0,  minQty: 1, maxQty: 3 },
+        { item: 'hawk_talon',   chance: 0.35, minQty: 1, maxQty: 1 },
+      ]),
     },
     stateMachine: creatureStateMachine(),
     behaviors: {

@@ -61,4 +61,18 @@ function creatureStateMachine({ canFlee = true, skipAlert = false, conditionalAl
   }
 }
 
-module.exports = { defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS }
+// Structured drop table consumed by LootSlice (src/loot/loot_slice.gd). The
+// `drop` behavior above carries the prose design bible; this json field is the
+// single source of truth for in-game loot rolls — item key (raw creature drop,
+// not a fabric entity), drop chance (0–1), and quantity range [minQty, maxQty].
+// Each entry is rolled independently on death.
+function dropsData(drops) {
+  return {
+    type: 'json',
+    description:
+      'Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.',
+    defaultValue: drops,
+  }
+}
+
+module.exports = { defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, dropsData }

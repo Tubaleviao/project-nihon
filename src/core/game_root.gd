@@ -221,9 +221,9 @@ func _boot_world() -> void:
 	_character.create_character("TravellerHuman", Vector3(spawn_xz.x + 3.0, ground_h + 1.0, spawn_xz.y))
 	_character.create_character("BoarRider", Vector3(spawn_xz.x - 3.0, ground_h + 1.0, spawn_xz.y))
 
-	# Creature slice already spawned creatures from SPAWN_MANIFEST in _ready().
-	# Trigger an initial creature awareness pass: the nearest ForestBoar
-	# fires a detect signal through the bus so combat can start immediately.
+	# CreatureSlice already spawned each chunk's budget via ChunkManager (Phase 17).
+	# Fire one combat round against the first spawned creature through the bus to
+	# validate the combat pipeline end to end.
 	var instances := _creature.get_all_instances()
 	if instances.size() > 0:
 		var first: Dictionary = instances[0]

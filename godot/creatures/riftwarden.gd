@@ -44,3 +44,4 @@ enum State {
 @export var respawnSeconds: int
 @export var spawnCount: int
 @export var biome: int
+@export var drops: Array

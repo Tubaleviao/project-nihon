@@ -26,6 +26,7 @@ A keen-eyed raptor that nests on grassland ridges and hunts small game from alti
 | respawnSeconds | integer | Seconds before a dead creature respawns |
 | spawnCount | integer | Number of instances spawned per game world |
 | biome | `TemperateForest`, `TemperateGrassland`, `VolcanicBadlands`, `TwilightGrove`, `VoidRift` | Biome this creature belongs to |
+| drops | json | Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system. |
 
 ## States
 

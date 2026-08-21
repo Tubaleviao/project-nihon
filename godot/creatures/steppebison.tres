@@ -16,6 +16,7 @@ fleeThreshold = 0.2
 respawnSeconds = 1200
 spawnCount = 2
 biome = 1
+drops = [{"item":"bison_meat","chance":1,"minQty":3,"maxQty":6},{"item":"bison_hide","chance":1,"minQty":2,"maxQty":2},{"item":"bison_bone","chance":1,"minQty":1,"maxQty":2},{"item":"bison_horn","chance":0.25,"minQty":1,"maxQty":1}]
 state_machine_field = "state"
 initial_state = "idle"
 description = "A massive, shaggy bison that grazes temperate grasslands in loose herds. Slow and passive unless provoked, but a stampede is lethal to unarmoured players. The primary large-game target for grassland settlements; bones are a key structural component."
