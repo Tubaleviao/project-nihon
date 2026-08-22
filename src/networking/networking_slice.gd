@@ -36,9 +36,16 @@ enum Role { OFFLINE, HOST, CLIENT }
 
 const DEFAULT_PORT    := 7777
 const DEFAULT_CHANNEL := 0
+## Max JSON chars per snapshot chunk (≈ bytes for ASCII). Large snapshots are
+## split across multiple reliable packets and reassembled on the client.
+const SNAPSHOT_CHUNK_SIZE := 16384
 
 var _peer: ENetMultiplayerPeer
 var _role: int = Role.OFFLINE
+
+## Snapshot reassembly state (client): snapshot_id → { count, received, parts }.
+var _snapshot_buffer: Dictionary = {}
+var _next_snapshot_id: int = 0
 
 func _ready() -> void:
 	GameBus.packet_send_requested.connect(_on_packet_send_requested)
@@ -94,16 +101,26 @@ func is_client() -> bool:
 func is_offline() -> bool:
 	return _role == Role.OFFLINE
 
-## Host → one client: send the initial world snapshot.
+## Host → one client: send the initial world snapshot, split into fixed-size
+## chunks so a large world (many heightmaps + creatures + edits) never exceeds
+## a single reliable packet. The client reassembles chunks by snapshot_id.
 func send_snapshot(peer_id: int, data: Dictionary) -> void:
 	if not _role == Role.HOST:
 		push_warning("NetworkingSlice: send_snapshot called on non-host — dropped")
 		return
-	var packet := {
-		"type": "world_snapshot",
-		"data": data,
-	}
-	_rpc_h2c.rpc_id(peer_id, JSON.stringify(packet))
+	var json := JSON.stringify(data)
+	var chunk_count := maxi(1, ceili(float(json.length()) / float(SNAPSHOT_CHUNK_SIZE)))
+	var snapshot_id: int = _next_snapshot_id
+	_next_snapshot_id += 1
+	for i in range(chunk_count):
+		var packet := {
+			"type":        "snapshot_chunk",
+			"snapshot_id": snapshot_id,
+			"index":       i,
+			"count":       chunk_count,
+			"data":        json.substr(i * SNAPSHOT_CHUNK_SIZE, SNAPSHOT_CHUNK_SIZE),
+		}
+		_rpc_h2c.rpc_id(peer_id, JSON.stringify(packet))
 
 # ---------------------------------------------------------------------------
 # Private
@@ -168,12 +185,13 @@ func _on_block_changed(action: String, position: Vector3, normal: Vector3, mater
 	}
 	_send_json(JSON.stringify(packet))
 
-func _on_creature_state_changed(instance_id: String, state: String, position: Vector3) -> void:
+func _on_creature_state_changed(instance_id: String, creature_id: String, state: String, position: Vector3) -> void:
 	if _role != Role.HOST:
 		return
 	var packet := {
 		"type":        "creature_state_changed",
 		"instance_id": instance_id,
+		"creature_id": creature_id,
 		"state":       state,
 		"position":    [position.x, position.y, position.z],
 	}
@@ -265,6 +283,10 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 ## Route a host → client packet. Only host-originated types are handled.
 func _route_h2c(payload: Dictionary) -> void:
 	match str(payload.get("type", "")):
+		"player_moved":
+			# The host's own movement arrives as player_moved (peer_id == host id).
+			var pos := _vec3(payload.get("position", []))
+			GameBus.remote_player_state.emit(int(payload.get("peer_id", 1)), pos)
 		"block_changed":
 			GameBus.block_changed.emit(
 				str(payload.get("action", "")),
@@ -275,6 +297,7 @@ func _route_h2c(payload: Dictionary) -> void:
 		"creature_state_changed":
 			GameBus.creature_state_changed.emit(
 				str(payload.get("instance_id", "")),
+				str(payload.get("creature_id", "")),
 				str(payload.get("state", "")),
 				_vec3(payload.get("position", []))
 			)
@@ -287,9 +310,40 @@ func _route_h2c(payload: Dictionary) -> void:
 			GameBus.inventory_synced.emit(payload.get("contents", {}))
 		"world_snapshot":
 			GameBus.world_snapshot_received.emit(payload.get("data", {}))
+		"snapshot_chunk":
+			_accumulate_snapshot_chunk(payload)
 		_:
 			# Legacy low-level packets fall through to packet_received.
 			GameBus.packet_received.emit(1, payload)
+
+## Reassemble a chunked world snapshot (see send_snapshot) and emit
+## world_snapshot_received once the final chunk lands. Chunks are indexed so
+## out-of-order delivery still reassembles correctly.
+func _accumulate_snapshot_chunk(payload: Dictionary) -> void:
+	var snapshot_id: int = int(payload.get("snapshot_id", -1))
+	var index: int = int(payload.get("index", -1))
+	var count: int = int(payload.get("count", 0))
+	var chunk: String = str(payload.get("data", ""))
+	if snapshot_id < 0 or count <= 0 or index < 0 or index >= count:
+		push_error("NetworkingSlice: malformed snapshot_chunk dropped")
+		return
+	if not _snapshot_buffer.has(snapshot_id):
+		_snapshot_buffer[snapshot_id] = { "count": count, "received": 0, "parts": [] }
+	var entry: Dictionary = _snapshot_buffer[snapshot_id]
+	while entry["parts"].size() < count:
+		entry["parts"].append("")
+	entry["parts"][index] = chunk
+	entry["received"] += 1
+	if entry["received"] >= count:
+		_snapshot_buffer.erase(snapshot_id)
+		var full := ""
+		for part in entry["parts"]:
+			full += part
+		var data = JSON.parse_string(full)
+		if data is Dictionary:
+			GameBus.world_snapshot_received.emit(data)
+		else:
+			push_error("NetworkingSlice: snapshot reassembly produced invalid JSON")
 
 func _vec3(arr) -> Vector3:
 	if arr is Array and arr.size() >= 3:

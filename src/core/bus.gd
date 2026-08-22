@@ -75,7 +75,7 @@ signal block_edit_intent(action: String, position: Vector3, normal: Vector3, mat
 signal block_changed(action: String, position: Vector3, normal: Vector3, material: String)
 
 ## Host → clients: authoritative creature state delta (position + state enum).
-signal creature_state_changed(instance_id: String, state: String, position: Vector3)
+signal creature_state_changed(instance_id: String, creature_id: String, state: String, position: Vector3)
 
 ## Remote player position update for ghost interpolation (host → clients).
 signal remote_player_state(peer_id: int, position: Vector3)

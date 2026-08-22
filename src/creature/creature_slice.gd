@@ -38,6 +38,10 @@ var is_authoritative: bool = true
 const CREATURE_SYNC_INTERVAL := 0.1
 var _sync_accum: float = 0.0
 
+## Last broadcast { state, position } per instance, so the sync tick ships only
+## changed instances (dirty tracking) instead of the whole population every tick.
+var _last_broadcast: Dictionary = {}
+
 func _ready() -> void:
 	GameBus.creature_died.connect(_on_creature_died)
 	GameBus.creature_state_changed.connect(_on_creature_state_changed)
@@ -160,6 +164,7 @@ func despawn_for_chunk(chunk_pos: Vector2i) -> void:
 		to_erase.append(iid)
 	for iid in to_erase:
 		_instances.erase(iid)
+		_last_broadcast.erase(iid)
 	if to_erase.size() > 0:
 		print("CreatureSlice: despawned %d creatures from chunk %s" % [to_erase.size(), chunk_pos])
 
@@ -268,27 +273,36 @@ func _tick_respawn() -> void:
 			print("CreatureSlice: %s [%s] respawned" % [creature_id, iid])
 			GameBus.creature_respawned.emit(iid, creature_id)
 
-## Host → clients: emit a creature_state_changed delta for every live instance.
-## The host's networking slice forwards these to clients.
+## Host → clients: emit a creature_state_changed delta for instances whose
+## state or position changed since the last broadcast. Unchanged instances are
+## skipped so the sync tick ships only genuine deltas, not the whole population.
 func _broadcast_creature_states() -> void:
 	for iid in _instances:
 		var inst: Dictionary = _instances[iid]
-		GameBus.creature_state_changed.emit(iid, inst["state"], inst["position"])
+		var state: String = inst["state"]
+		var pos: Vector3 = inst["position"]
+		var prev = _last_broadcast.get(iid, null)
+		if prev != null and prev["state"] == state and prev["position"] == pos:
+			continue
+		_last_broadcast[iid] = { "state": state, "position": pos }
+		GameBus.creature_state_changed.emit(iid, inst["creature_id"], state, pos)
 
 ## Client-side application of a host-authoritative creature state delta. Creates
 ## the instance record (and a visual body) on first sight, then updates its
 ## state and position on subsequent updates.
-func _on_creature_state_changed(instance_id: String, state: String, position: Vector3) -> void:
+func _on_creature_state_changed(instance_id: String, creature_id: String, state: String, position: Vector3) -> void:
 	if is_authoritative:
 		return   # the host already owns this instance
-	apply_creature_state(instance_id, state, position)
+	apply_creature_state(instance_id, creature_id, state, position)
 
 ## Client-side application of a single authoritative creature state (see
 ## _on_creature_state_changed). Public so the snapshot loader can seed the
 ## world from the host's get_snapshot_creatures() output.
-func apply_creature_state(instance_id: String, state: String, position: Vector3) -> void:
+func apply_creature_state(instance_id: String, creature_id: String, state: String, position: Vector3) -> void:
 	if _instances.has(instance_id):
 		var inst: Dictionary = _instances[instance_id]
+		if creature_id != "":
+			inst["creature_id"] = creature_id
 		inst["state"]    = state
 		inst["position"] = position
 		var body = inst.get("body", null)
@@ -297,12 +311,13 @@ func apply_creature_state(instance_id: String, state: String, position: Vector3)
 			body.visible = state != "dead"
 		return
 	# First sight: create a record + visual body without touching GameData counts.
-	# instance_id doubles as the node name (non-empty); the colour lookup falls
-	# through to the grey default since the client doesn't resolve creature_id.
-	var body := _make_visual(instance_id, position)
+	# The creature_id is preserved from the host so the body gets the correct
+	# colour; fall back to instance_id (still a non-empty node name) when absent.
+	var visual_id: String = creature_id if creature_id != "" else instance_id
+	var body := _make_visual(visual_id, position)
 	add_child(body)
 	_instances[instance_id] = {
-		"creature_id": "",
+		"creature_id": creature_id,
 		"position":    position,
 		"chunk":       Vector2i.ZERO,
 		"spawn_pos":   position,
@@ -324,6 +339,7 @@ func apply_snapshot_creatures(list: Array) -> void:
 			pos = Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
 		apply_creature_state(
 			str(entry.get("instance_id", "")),
+			str(entry.get("creature_id", "")),
 			str(entry.get("state", "idle")),
 			pos
 		)

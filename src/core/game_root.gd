@@ -49,6 +49,10 @@ var _is_client: bool = false
 var _host_address: String = "127.0.0.1"
 var _snapshot_pending: bool = false
 
+## Client-side: seconds to wait for the host world snapshot before giving up.
+const SNAPSHOT_TIMEOUT := 10.0
+var _snapshot_elapsed: float = 0.0
+
 func _ready() -> void:
 	# Run the automated tests before any production slice enters the tree.
 	# The suite emits signals on the shared GameBus (creature_died, chunk_ready,
@@ -171,6 +175,8 @@ func _ready() -> void:
 	GameBus.chunk_unloaded.connect(func(pos): print("[Chunk] unloaded %s" % pos))
 	GameBus.peer_connected.connect(_on_peer_connected)
 	GameBus.world_snapshot_received.connect(_on_world_snapshot_received)
+	multiplayer.connection_failed.connect(_on_connection_failed)
+	multiplayer.server_disconnected.connect(_on_server_disconnected)
 
 	# Lighting — a directional "sun" plus soft ambient sky fill.
 	var sun := DirectionalLight3D.new()
@@ -210,14 +216,32 @@ func _run_tests() -> void:
 	suite.queue_free()
 
 ## Parse `--client [addr]` from OS user args to determine network role. Defaults
-## to host (authoritative single-player) when no args are present.
+## to host (authoritative single-player) when no args are present. A malformed
+## address is rejected with a warning and falls back to localhost.
 func _parse_network_args() -> void:
 	var args := OS.get_cmdline_user_args()
 	for i in range(args.size()):
 		if args[i] == "--client":
 			_is_client = true
 			if i + 1 < args.size() and not str(args[i + 1]).begins_with("--"):
-				_host_address = str(args[i + 1])
+				var addr := str(args[i + 1])
+				if _valid_host_address(addr):
+					_host_address = addr
+				else:
+					push_warning("[Networking] invalid --client address '%s' — using 127.0.0.1" % addr)
+					_host_address = "127.0.0.1"
+
+## True when `addr` is a literal IP or a plain hostname (no scheme, path, or
+## whitespace). Rejects empty and obviously malformed values so a bad --client
+## argument fails loudly instead of silently joining 127.0.0.1.
+func _valid_host_address(addr: String) -> bool:
+	if addr.is_empty():
+		return false
+	if addr.contains("://") or addr.contains("/") or addr.contains(" ") or addr.contains("	"):
+		return false
+	var re := RegEx.new()
+	re.compile("^[A-Za-z0-9][A-Za-z0-9.:-]*$")
+	return re.search(addr) != null
 
 # ---------------------------------------------------------------------------
 # World boot
@@ -331,17 +355,22 @@ func _boot_world() -> void:
 	GameBus.load_requested.emit(0)
 
 	# Networking — open local host so peers can connect.
-	print("\n[Networking] Starting local host on port 7777…")
-	_networking.host(7777, 1)
+	print("\n[Networking] Starting local host on port %d…" % _networking.DEFAULT_PORT)
+	_networking.host(_networking.DEFAULT_PORT, 1)
 
 	print("\n=== World boot complete — LMB/F attack · RMB mine · MMB place · R cycle ===\n")
 
 ## Client boot path (Phase 18): do NOT run the authoritative simulation. Join
 ## the host and wait for the world snapshot before showing anything.
 func _boot_client() -> void:
-	print("[Networking] Client mode — joining %s:7777, awaiting world snapshot…" % _host_address)
-	_networking.join(_host_address, 7777)
+	print("[Networking] Client mode — joining %s:%d, awaiting world snapshot…" % [_host_address, _networking.DEFAULT_PORT])
+	var err: Error = _networking.join(_host_address, _networking.DEFAULT_PORT)
+	if err != OK:
+		push_error("[Networking] client failed to connect to %s — %s" % [_host_address, error_string(err)])
+		_snapshot_pending = false
+		return
 	_snapshot_pending = true
+	_snapshot_elapsed = 0.0
 
 func _on_peer_connected(peer_id: int) -> void:
 	if _is_client:
@@ -349,6 +378,26 @@ func _on_peer_connected(peer_id: int) -> void:
 	# Host: ship the authoritative world snapshot to the newly connected client.
 	print("[Networking] peer %d connected — sending world snapshot" % peer_id)
 	_networking.send_snapshot(peer_id, _build_snapshot())
+
+func _process(delta: float) -> void:
+	if not _snapshot_pending:
+		return
+	_snapshot_elapsed += delta
+	if _snapshot_elapsed >= SNAPSHOT_TIMEOUT:
+		push_error("[Networking] world snapshot timed out after %.1fs — giving up" % SNAPSHOT_TIMEOUT)
+		_snapshot_pending = false
+
+func _on_connection_failed() -> void:
+	if not _is_client:
+		return
+	push_error("[Networking] connection to host failed")
+	_snapshot_pending = false
+
+func _on_server_disconnected() -> void:
+	if not _is_client:
+		return
+	push_error("[Networking] disconnected from host")
+	_snapshot_pending = false
 
 ## Host-side: serialize authoritative world state for a connecting client.
 func _build_snapshot() -> Dictionary:

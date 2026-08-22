@@ -154,6 +154,11 @@ func get_remote_ghost_count() -> int:
 ## Remote player ghosts — a client renders other players as visual-only bodies
 ## (no local input, no physics) that interpolate between host snapshots.
 func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
+	# Never ghost our own local player: the host echoes a client's movement back
+	# to every peer (including the originator), and that echo must not spawn a
+	# ghost of ourselves.
+	if peer_id == multiplayer.get_unique_id():
+		return
 	if not _ghosts.has(peer_id):
 		var body := _make_ghost_body()
 		body.position = position

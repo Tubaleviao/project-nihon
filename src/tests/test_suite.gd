@@ -135,6 +135,8 @@ func run() -> void:
 	_run_test("net: client does not spawn creatures locally",    _test_net_creature_client_no_local_spawn)
 	_run_test("net: creature snapshot round-trips",              _test_net_creature_snapshot_roundtrip)
 	_run_test("net: remote player ghost interpolates",           _test_net_player_ghost_interpolation)
+	_run_test("net: own peer id does not ghost",                 _test_net_player_ghost_self_filter)
+	_run_test("net: creature dirty-track broadcast",             _test_net_creature_dirty_broadcast)
 	_run_test("net: inventory replace_contents",                 _test_net_inventory_replace_contents)
 
 	var total := _pass + _fail
@@ -1684,13 +1686,14 @@ func _test_net_creature_client_no_local_spawn() -> void:
 	c.spawn_for_chunk(Vector2i(0, 0))
 	assert_eq(c.get_all_instances().size(), 0, "client does not spawn locally")
 	# But it does apply host state deltas.
-	c.apply_creature_state("creature_9", "idle", Vector3(1.0, 2.0, 3.0))
+	c.apply_creature_state("creature_9", "ForestBoar", "idle", Vector3(1.0, 2.0, 3.0))
 	var all := c.get_all_instances()
 	assert_eq(all.size(), 1, "client applies a host creature state")
 	assert_eq(all[0]["instance_id"], "creature_9", "instance id preserved")
+	assert_eq(all[0]["creature_id"], "ForestBoar", "creature id preserved")
 	assert_eq(all[0]["state"], "idle", "state preserved")
 	# Update path.
-	c.apply_creature_state("creature_9", "aggressive", Vector3(4.0, 5.0, 6.0))
+	c.apply_creature_state("creature_9", "ForestBoar", "aggressive", Vector3(4.0, 5.0, 6.0))
 	assert_eq(c.get_all_instances().size(), 1, "update does not duplicate the instance")
 	assert_eq(c.get_all_instances()[0]["state"], "aggressive", "state updated")
 	c.queue_free()
@@ -1706,6 +1709,10 @@ func _test_net_creature_snapshot_roundtrip() -> void:
 	client.is_authoritative = false
 	client.apply_snapshot_creatures(snap)
 	assert_eq(client.get_all_instances().size(), snap.size(), "client seeds population from snapshot")
+	# creature_id must survive the snapshot round-trip.
+	var cfirst: Dictionary = client.get_all_instances()[0]
+	var sfirst: Dictionary = snap[0]
+	assert_eq(cfirst["creature_id"], sfirst["creature_id"], "creature_id preserved through snapshot")
 	host.queue_free()
 	client.queue_free()
 
@@ -1721,6 +1728,34 @@ func _test_net_player_ghost_interpolation() -> void:
 	var body: Node3D = p._ghosts[2]["body"]
 	assert_true(body.position.x > 0.0 and body.position.x < 10.0, "ghost interpolates between snapshots")
 	p.queue_free()
+
+func _test_net_player_ghost_self_filter() -> void:
+	# The local player's own peer id must never spawn a ghost — the host echoes
+	# a client's movement back to every peer, including the originator.
+	var p := PlayerSlice.new()
+	add_child(p)
+	p._on_remote_player_state(multiplayer.get_unique_id(), Vector3(1.0, 2.0, 3.0))
+	assert_eq(p.get_remote_ghost_count(), 0, "own peer id does not spawn a ghost")
+	p.queue_free()
+
+func _test_net_creature_dirty_broadcast() -> void:
+	# Unchanged instances are not re-broadcast; only mutated ones are.
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
+	var emissions := []
+	GameBus.creature_state_changed.connect(func(iid, _cid, _state, _pos): emissions.append(iid))
+	c._broadcast_creature_states()
+	assert_true(emissions.size() > 0, "first broadcast ships the population")
+	emissions.clear()
+	c._broadcast_creature_states()
+	assert_eq(emissions.size(), 0, "unchanged creatures are not re-broadcast")
+	var first_id: String = c.get_all_instances()[0]["instance_id"]
+	c.set_instance_position(first_id, Vector3(50.0, 50.0, 50.0))
+	c._broadcast_creature_states()
+	assert_eq(emissions.size(), 1, "only the moved creature is re-broadcast")
+	assert_eq(emissions[0], first_id, "the dirty instance is the one broadcast")
+	c.queue_free()
 
 func _test_net_inventory_replace_contents() -> void:
 	var inv := InventorySlice.new()
