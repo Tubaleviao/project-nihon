@@ -37,9 +37,9 @@ pnpm generate   # generate the design bible into bible/
 | 14 | Player UI (inventory, technology tree, crafting) | Done |
 | 15 | Creature AI and behavior | Done |
 | 16 | Station-gated crafting and tool durability | Done |
-| 17 | Chunk streaming and world expansion | Planned |
-| 18 | Multiplayer world sync (core) | Planned |
-| 19 | Multiplayer chaos resilience (jitter + packet loss) | Planned |
+| 17 | Chunk streaming and world expansion | Done |
+| 18 | Multiplayer world sync (core) | Done |
+| 19 | Multiplayer chaos resilience (jitter + packet loss) | Done |
 | 20 | Skeleton rig and animation | Planned |
 | 21 | Material and palette pipeline | Planned |
 | 22 | LOD and composition simplification | Planned |

@@ -1,11 +1,18 @@
 extends Node
-## Networking slice — authoritative host/client model (Phase 18).
+## Networking slice — authoritative host/client model (Phase 18), hardened
+## against real network conditions (Phase 19).
 ##
 ## The host runs the authoritative simulation (terrain, creature AI, combat,
 ## voxel edits, loot). Clients send their local input and block-edit intents
 ## to the host, and apply authoritative state deltas the host broadcasts back.
 ## A client never mutates world state on its own — every block edit and
 ## creature state change flows through the host.
+##
+## Phase 19 adds chaos resilience: a configurable network emulator (jitter,
+## loss, reordering), sequence-numbered packets with duplicate/out-of-order
+## discard and gap detection, a client-side jitter buffer for remote-player
+## snapshots, and a host-side last-known-state store for disconnect/reconnect
+## resume. The emulator is disabled by default (zero overhead in production).
 ##
 ## Plug contract (GameBus signals consumed / emitted):
 ##   IN  : packet_send_requested(peer_id, payload)   — legacy low-level send
@@ -31,6 +38,9 @@ extends Node
 ##   disconnect_all()        -> void
 ##   is_host() / is_client() / is_offline() -> bool
 ##   send_snapshot(peer_id, data) -> void    — host → one client
+##   remember_player_state(peer_id, pos) -> void   — Phase 19
+##   get_last_known_state(peer_id) -> Vector3      — Phase 19
+##   get_last_known_states() -> Dictionary         — Phase 19
 
 enum Role { OFFLINE, HOST, CLIENT }
 
@@ -40,12 +50,46 @@ const DEFAULT_CHANNEL := 0
 ## split across multiple reliable packets and reassembled on the client.
 const SNAPSHOT_CHUNK_SIZE := 16384
 
+## Phase 19 — maximum packet-loss percentage the emulator will accept.
+const MAX_LOSS_RATE := 30.0
+
 var _peer: ENetMultiplayerPeer
 var _role: int = Role.OFFLINE
 
 ## Snapshot reassembly state (client): snapshot_id → { count, received, parts }.
 var _snapshot_buffer: Dictionary = {}
 var _next_snapshot_id: int = 0
+
+# ---------------------------------------------------------------------------
+# Phase 19 — chaos resilience configuration
+# ---------------------------------------------------------------------------
+
+## Network emulator: when enabled, outbound packets are subjected to jitter,
+## loss, and reordering. Disabled by default in production (zero overhead).
+@export var emulate_network: bool = false
+## Packet-loss rate as a percentage (0.0–30.0). Only active when emulate_network.
+@export var emulator_loss_rate: float = 0.0
+## Artificial jitter as a ±N ms delivery delay. Only active when emulate_network.
+@export var emulator_jitter_ms: float = 0.0
+## Reorder adjacent queued packets to model out-of-order delivery.
+@export var emulator_reorder: bool = false
+
+## Sequence numbering: every outbound packet carries a monotonic seq; the
+## receiver uses it to drop duplicates and detect gaps.
+var _send_seq: int = 0
+var _recv_seq: Dictionary = {}          # peer_id -> last accepted seq
+var _rng := RandomNumberGenerator.new()
+
+## Emulator delivery queue: { at_ms, peer_id, json }, drained by _process.
+var _pending: Array = []
+
+## Jitter buffer (client): peer_id -> Array of { at_ms, position }.
+var jitter_buffer_ms: float = 100.0
+var _jitter_buffer: Dictionary = {}
+
+## Host-side last-known player states (peer_id -> Vector3), retained across a
+## disconnect so a rejoining client can resume from its last position.
+var _last_known_states: Dictionary = {}
 
 func _ready() -> void:
 	GameBus.packet_send_requested.connect(_on_packet_send_requested)
@@ -55,6 +99,15 @@ func _ready() -> void:
 	GameBus.creature_state_changed.connect(_on_creature_state_changed)
 	GameBus.remote_player_state.connect(_on_remote_player_state)
 	GameBus.inventory_synced.connect(_on_inventory_synced)
+
+## Phase 19 — drain the emulator queue and (on clients) the jitter buffer.
+## No-op when emulation is disabled, so production runs pay zero overhead.
+func _process(_delta: float) -> void:
+	if not emulate_network:
+		return
+	_drain_emulator()
+	if _role == Role.CLIENT:
+		_drain_jitter_buffer()
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -91,6 +144,8 @@ func disconnect_all() -> void:
 	_detach_peer()
 	multiplayer.multiplayer_peer = null
 	_role = Role.OFFLINE
+	_pending.clear()
+	_jitter_buffer.clear()
 
 func is_host() -> bool:
 	return _role == Role.HOST
@@ -120,7 +175,24 @@ func send_snapshot(peer_id: int, data: Dictionary) -> void:
 			"count":       chunk_count,
 			"data":        json.substr(i * SNAPSHOT_CHUNK_SIZE, SNAPSHOT_CHUNK_SIZE),
 		}
-		_rpc_h2c.rpc_id(peer_id, JSON.stringify(packet))
+		_deliver(peer_id, packet)
+
+# ---------------------------------------------------------------------------
+# Phase 19 — reconnect resume (host side)
+# ---------------------------------------------------------------------------
+
+## Record a client's last-known authoritative position. Retained across a
+## disconnect so a rejoining client resumes from where it left off.
+func remember_player_state(peer_id: int, position: Vector3) -> void:
+	_last_known_states[peer_id] = position
+
+## Last-known position for a peer, or Vector3.ZERO when unknown.
+func get_last_known_state(peer_id: int) -> Vector3:
+	return _last_known_states.get(peer_id, Vector3.ZERO)
+
+## All retained player states, for folding into a reconnect world snapshot.
+func get_last_known_states() -> Dictionary:
+	return _last_known_states.duplicate(true)
 
 # ---------------------------------------------------------------------------
 # Private
@@ -132,13 +204,41 @@ func _connected() -> bool:
 		return false
 	return mp_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED
 
-## Broadcast a JSON packet to every connected peer (host) or to the host (client).
-func _send_json(json: String) -> void:
+## Broadcast a packet dict to every peer (host) or to the host (client),
+## routing through the Phase 19 emulator.
+func _broadcast(payload: Dictionary) -> void:
 	if not _connected():
 		return
 	if _role == Role.HOST:
 		for pid in multiplayer.get_peers():
-			_rpc_h2c.rpc_id(pid, json)
+			_deliver(pid, payload.duplicate(true))
+	elif _role == Role.CLIENT:
+		_deliver(1, payload)
+
+## Central outbound path (Phase 19). Attach a monotonic seq, then either send
+## immediately (emulation disabled — zero overhead) or queue for emulated
+## delivery (loss / jitter / reorder).
+func _deliver(peer_id: int, payload: Dictionary) -> void:
+	payload["seq"] = _send_seq
+	_send_seq += 1
+	var json := JSON.stringify(payload)
+	if not emulate_network:
+		_send_raw(peer_id, json)
+		return
+	if _should_drop():
+		return
+	var at_ms: float = float(Time.get_ticks_msec()) + _jitter_delay_ms()
+	_pending.append({ "at_ms": at_ms, "peer_id": peer_id, "json": json })
+	if emulator_reorder:
+		_maybe_reorder()
+
+## Perform the actual RPC send. Host → client uses _rpc_h2c (authority), client
+## → host uses _rpc_c2h. No-op when no peer is attached (isolated tests).
+func _send_raw(peer_id: int, json: String) -> void:
+	if _peer == null:
+		return
+	if _role == Role.HOST:
+		_rpc_h2c.rpc_id(peer_id, json)
 	elif _role == Role.CLIENT:
 		_rpc_c2h.rpc_id(1, json)
 
@@ -157,7 +257,7 @@ func _on_player_state_sync_requested(payload: Dictionary) -> void:
 		"hp":       payload.get("hp",     100.0),
 		"max_hp":   payload.get("max_hp", 100.0),
 	}
-	_send_json(JSON.stringify(packet))
+	_broadcast(packet)
 
 func _on_block_edit_intent(action: String, position: Vector3, normal: Vector3, material: String) -> void:
 	if _role != Role.CLIENT:
@@ -171,7 +271,7 @@ func _on_block_edit_intent(action: String, position: Vector3, normal: Vector3, m
 		"normal":   [normal.x, normal.y, normal.z],
 		"material": material,
 	}
-	_send_json(JSON.stringify(packet))
+	_broadcast(packet)
 
 func _on_block_changed(action: String, position: Vector3, normal: Vector3, material: String) -> void:
 	if _role != Role.HOST:
@@ -183,7 +283,7 @@ func _on_block_changed(action: String, position: Vector3, normal: Vector3, mater
 		"normal":   [normal.x, normal.y, normal.z],
 		"material": material,
 	}
-	_send_json(JSON.stringify(packet))
+	_broadcast(packet)
 
 func _on_creature_state_changed(instance_id: String, creature_id: String, state: String, position: Vector3) -> void:
 	if _role != Role.HOST:
@@ -195,17 +295,20 @@ func _on_creature_state_changed(instance_id: String, creature_id: String, state:
 		"state":       state,
 		"position":    [position.x, position.y, position.z],
 	}
-	_send_json(JSON.stringify(packet))
+	_broadcast(packet)
 
 func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	if _role != Role.HOST:
 		return
+	# Phase 19 — persist the client's last-known authoritative position so a
+	# rejoining client can resume from it.
+	remember_player_state(peer_id, position)
 	var packet := {
 		"type":     "remote_player_state",
 		"peer_id":  peer_id,
 		"position": [position.x, position.y, position.z],
 	}
-	_send_json(JSON.stringify(packet))
+	_broadcast(packet)
 
 func _on_inventory_synced(contents: Dictionary) -> void:
 	if _role != Role.HOST:
@@ -214,17 +317,16 @@ func _on_inventory_synced(contents: Dictionary) -> void:
 		"type":     "inventory_synced",
 		"contents": contents,
 	}
-	_send_json(JSON.stringify(packet))
+	_broadcast(packet)
 
 func _on_packet_send_requested(peer_id: int, payload: Dictionary) -> void:
 	# Legacy low-level send: wraps an arbitrary payload and ships it as-is.
 	if not _connected():
 		return
-	var json := JSON.stringify(payload)
 	if _role == Role.HOST:
-		_rpc_h2c.rpc_id(peer_id, json)
+		_deliver(peer_id, payload.duplicate(true))
 	else:
-		_rpc_c2h.rpc_id(1, json)
+		_deliver(1, payload)
 
 # ---------------------------------------------------------------------------
 # Wire → GameBus (inbound)
@@ -237,6 +339,8 @@ func _rpc_c2h(json: String) -> void:
 	var payload = _parse(json)
 	if payload == null:
 		return
+	if not _dedup(sender, payload):
+		return
 	_route_c2h(sender, payload)
 
 ## Host → client channel: authoritative state and the world snapshot.
@@ -245,6 +349,11 @@ func _rpc_h2c(json: String) -> void:
 	var payload = _parse(json)
 	if payload == null:
 		return
+	# Snapshot chunks are index-reassembled (out-of-order tolerant) and made
+	# idempotent separately; every other packet type is seq-deduplicated.
+	if str(payload.get("type", "")) != "snapshot_chunk":
+		if not _dedup(multiplayer.get_remote_sender_id(), payload):
+			return
 	_route_h2c(payload)
 
 func _parse(json: String) -> Variant:
@@ -256,6 +365,22 @@ func _parse(json: String) -> Variant:
 		push_error("NetworkingSlice: expected Dictionary packet, got %s" % typeof(payload))
 		return null
 	return payload
+
+## Phase 19 — sequence dedup / gap detection. Returns false when the packet is
+## a duplicate or an out-of-order arrival (seq <= last seen) and must be
+## dropped; true otherwise. A forward gap (seq > last + 1) indicates lost or
+## reordered packets and is logged but not blocking.
+func _dedup(sender: int, payload: Dictionary) -> bool:
+	if not payload.has("seq"):
+		return true   # legacy packet without seq — accept
+	var seq: int = int(payload["seq"])
+	var last: int = _recv_seq.get(sender, -1)
+	if seq <= last:
+		return false
+	if seq > last + 1:
+		print("NetworkingSlice: seq gap from peer %d (last %d, got %d)" % [sender, last, seq])
+	_recv_seq[sender] = seq
+	return true
 
 ## Route a client → host packet. Only client-originated types are accepted;
 ## host-only types sent by a malicious client are dropped and logged.
@@ -302,10 +427,7 @@ func _route_h2c(payload: Dictionary) -> void:
 				_vec3(payload.get("position", []))
 			)
 		"remote_player_state":
-			GameBus.remote_player_state.emit(
-				int(payload.get("peer_id", 0)),
-				_vec3(payload.get("position", []))
-			)
+			_route_remote_player_state(payload)
 		"inventory_synced":
 			GameBus.inventory_synced.emit(payload.get("contents", {}))
 		"world_snapshot":
@@ -316,9 +438,21 @@ func _route_h2c(payload: Dictionary) -> void:
 			# Legacy low-level packets fall through to packet_received.
 			GameBus.packet_received.emit(1, payload)
 
+## Remote-player state on the client: when emulation is enabled, buffer and
+## replay through the jitter buffer; otherwise emit straight through (the
+## Phase 18 path, unchanged).
+func _route_remote_player_state(payload: Dictionary) -> void:
+	var pid := int(payload.get("peer_id", 0))
+	var pos := _vec3(payload.get("position", []))
+	if emulate_network and _role == Role.CLIENT:
+		_buffer_remote_state(pid, pos)
+	else:
+		GameBus.remote_player_state.emit(pid, pos)
+
 ## Reassemble a chunked world snapshot (see send_snapshot) and emit
 ## world_snapshot_received once the final chunk lands. Chunks are indexed so
-## out-of-order delivery still reassembles correctly.
+## out-of-order delivery still reassembles correctly, and duplicate chunks are
+## ignored (Phase 19) so emulator re-delivery cannot corrupt the reassembly.
 func _accumulate_snapshot_chunk(payload: Dictionary) -> void:
 	var snapshot_id: int = int(payload.get("snapshot_id", -1))
 	var index: int = int(payload.get("index", -1))
@@ -332,8 +466,11 @@ func _accumulate_snapshot_chunk(payload: Dictionary) -> void:
 	var entry: Dictionary = _snapshot_buffer[snapshot_id]
 	while entry["parts"].size() < count:
 		entry["parts"].append("")
-	entry["parts"][index] = chunk
-	entry["received"] += 1
+	# Idempotent: only count a chunk once, so a duplicate (emulator re-delivery)
+	# never double-increments `received` and prematurely completes reassembly.
+	if entry["parts"][index] == "":
+		entry["parts"][index] = chunk
+		entry["received"] += 1
 	if entry["received"] >= count:
 		_snapshot_buffer.erase(snapshot_id)
 		var full := ""
@@ -349,6 +486,103 @@ func _vec3(arr) -> Vector3:
 	if arr is Array and arr.size() >= 3:
 		return Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
 	return Vector3.ZERO
+
+# ---------------------------------------------------------------------------
+# Phase 19 — network emulator
+# ---------------------------------------------------------------------------
+
+## Loss decision: true to DROP the packet. Loss rate is clamped to
+## [0, MAX_LOSS_RATE]. Pure and deterministic under a seeded `_rng`.
+func _should_drop() -> bool:
+	var rate: float = clampf(emulator_loss_rate, 0.0, MAX_LOSS_RATE)
+	if rate <= 0.0:
+		return false
+	return _rng.randf() * 100.0 < rate
+
+## Jitter delay: ±emulator_jitter_ms, clamped to >= 0.
+func _jitter_delay_ms() -> float:
+	if emulator_jitter_ms <= 0.0:
+		return 0.0
+	return maxf(0.0, _rng.randf_range(-emulator_jitter_ms, emulator_jitter_ms))
+
+## Reorder: swap two adjacent pending packets with a small probability to
+## model out-of-order delivery.
+func _maybe_reorder() -> void:
+	if _pending.size() < 2:
+		return
+	if _rng.randf() < 0.25:
+		var i := _rng.randi_range(0, _pending.size() - 2)
+		var tmp: Dictionary = _pending[i]
+		_pending[i] = _pending[i + 1]
+		_pending[i + 1] = tmp
+
+## Drain the emulator queue, delivering due packets via the real RPC.
+func _drain_emulator() -> void:
+	var now := float(Time.get_ticks_msec())
+	var i := 0
+	while i < _pending.size():
+		var entry: Dictionary = _pending[i]
+		if float(entry["at_ms"]) <= now:
+			_send_raw(int(entry["peer_id"]), str(entry["json"]))
+			_pending.remove_at(i)
+		else:
+			i += 1
+
+# ---------------------------------------------------------------------------
+# Phase 19 — jitter buffer (client)
+# ---------------------------------------------------------------------------
+
+## Push a remote-player snapshot into the jitter buffer.
+func _buffer_remote_state(peer_id: int, position: Vector3) -> void:
+	var at_ms := float(Time.get_ticks_msec())
+	if not _jitter_buffer.has(peer_id):
+		_jitter_buffer[peer_id] = []
+	_jitter_buffer[peer_id].append({ "at_ms": at_ms, "position": position })
+
+## Sample the buffered snapshots for `peer_id` at playback time
+## (now_ms - jitter_buffer_ms), interpolating between the two surrounding
+## snapshots. Pure — accepts an explicit clock for tests.
+func _sample_remote_state_at(peer_id: int, now_ms: float) -> Vector3:
+	var queue: Array = _jitter_buffer.get(peer_id, [])
+	if queue.is_empty():
+		return Vector3.ZERO
+	var play: float = now_ms - jitter_buffer_ms
+	var first: Dictionary = queue[0]
+	if play <= float(first["at_ms"]):
+		return first["position"]
+	var last: Dictionary = queue[queue.size() - 1]
+	if play >= float(last["at_ms"]):
+		return last["position"]
+	for i in range(queue.size() - 1):
+		var a: Dictionary = queue[i]
+		var b: Dictionary = queue[i + 1]
+		var ta: float = float(a["at_ms"])
+		var tb: float = float(b["at_ms"])
+		if play >= ta and play <= tb:
+			var t: float = (play - ta) / maxf(tb - ta, 0.0001)
+			return (a["position"] as Vector3).lerp(b["position"], t)
+	return last["position"]
+
+## Drop buffered snapshots older than the playback window.
+func _prune_jitter_buffer(peer_id: int, now_ms: float) -> void:
+	if not _jitter_buffer.has(peer_id):
+		return
+	var queue: Array = _jitter_buffer[peer_id]
+	var cutoff: float = now_ms - jitter_buffer_ms - 1000.0
+	while queue.size() > 1 and float(queue[0]["at_ms"]) < cutoff:
+		queue.pop_front()
+
+## Replay buffered snapshots on the fixed playback delay, emitting the
+## interpolated remote-player state to the bus.
+func _drain_jitter_buffer() -> void:
+	var now := float(Time.get_ticks_msec())
+	for peer_id in _jitter_buffer:
+		var queue: Array = _jitter_buffer[peer_id]
+		if queue.is_empty():
+			continue
+		var pos: Vector3 = _sample_remote_state_at(int(peer_id), now)
+		GameBus.remote_player_state.emit(int(peer_id), pos)
+		_prune_jitter_buffer(int(peer_id), now)
 
 # ---------------------------------------------------------------------------
 # Peer lifecycle
@@ -369,5 +603,7 @@ func _detach_peer() -> void:
 func _on_peer_connected(id: int) -> void:
 	GameBus.peer_connected.emit(id)
 
+## Phase 19 — a peer disconnecting does NOT erase its last-known state; the
+## record is retained so a rejoining client resumes from its last position.
 func _on_peer_disconnected(id: int) -> void:
 	GameBus.peer_disconnected.emit(id)
