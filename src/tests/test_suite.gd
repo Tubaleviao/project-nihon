@@ -138,6 +138,15 @@ func run() -> void:
 	_run_test("net: own peer id does not ghost",                 _test_net_player_ghost_self_filter)
 	_run_test("net: creature dirty-track broadcast",             _test_net_creature_dirty_broadcast)
 	_run_test("net: inventory replace_contents",                 _test_net_inventory_replace_contents)
+	_run_test("net: packets carry monotonic seq numbers",        _test_net_sequence_monotonic)
+	_run_test("net: duplicate and out-of-order packets dropped", _test_net_sequence_dedup)
+	_run_test("net: emulator queues with monotonic seq",         _test_net_emulator_delivery)
+	_run_test("net: emulator drops near loss rate",              _test_net_emulator_loss)
+	_run_test("net: emulator jitter stays within bounds",        _test_net_emulator_jitter)
+	_run_test("net: emulator adds no queue when disabled",       _test_net_emulator_zero_overhead)
+	_run_test("net: jitter buffer interpolates within tolerance", _test_net_jitter_buffer)
+	_run_test("net: reconnect restores inventory without duplication", _test_net_reconnect_inventory_no_dup)
+	_run_test("net: host persists last-known state across disconnect", _test_net_reconnect_last_known_state)
 
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
@@ -1765,6 +1774,138 @@ func _test_net_inventory_replace_contents() -> void:
 	assert_eq(inv.get_item_count("Ferrite"), 0, "replace clears old items")
 	assert_eq(inv.get_item_count("Ashite"), 3, "replace applies host contents")
 	inv.queue_free()
+
+# ---------------------------------------------------------------------------
+# Networking / chaos resilience tests (Phase 19)
+# ---------------------------------------------------------------------------
+
+func _test_net_sequence_monotonic() -> void:
+	# Every outbound packet must carry a monotonically increasing seq, even when
+	# the emulator is disabled (zero-overhead path).
+	var n := NetworkingSlice.new()
+	add_child(n)
+	var p1 := { "type": "x" }
+	var p2 := { "type": "y" }
+	n._deliver(1, p1)
+	n._deliver(1, p2)
+	assert_eq(int(p1["seq"]), 0, "first packet gets seq 0")
+	assert_eq(int(p2["seq"]), 1, "second packet gets seq 1")
+	n.queue_free()
+
+func _test_net_sequence_dedup() -> void:
+	# The receiver must accept in-order packets, drop duplicates and
+	# out-of-order arrivals, and still accept a forward gap (loss).
+	var n := NetworkingSlice.new()
+	add_child(n)
+	assert_true(n._dedup(1, { "seq": 0, "type": "x" }), "first seq accepted")
+	assert_true(n._dedup(1, { "seq": 1, "type": "x" }), "next seq accepted")
+	assert_false(n._dedup(1, { "seq": 1, "type": "x" }), "duplicate seq dropped")
+	assert_false(n._dedup(1, { "seq": 0, "type": "x" }), "out-of-order seq dropped")
+	assert_true(n._dedup(1, { "seq": 5, "type": "x" }), "forward gap accepted (logged, not blocking)")
+	n.queue_free()
+
+func _test_net_emulator_delivery() -> void:
+	# With emulation on but no loss/jitter, every packet is queued and the
+	# queue preserves monotonic seq order.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n.emulate_network = true
+	n.emulator_loss_rate = 0.0
+	n.emulator_jitter_ms = 0.0
+	n._rng.seed = 7
+	for i in range(10):
+		n._deliver(1, { "type": "x", "i": i })
+	assert_eq(n._pending.size(), 10, "all packets queued when no loss and no jitter")
+	var seqs: Array = []
+	for e in n._pending:
+		var parsed = JSON.parse_string(e["json"])
+		seqs.append(int(parsed["seq"]))
+	seqs.sort()
+	assert_eq(seqs, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], "queued packets carry monotonic seq 0..9")
+	n.queue_free()
+
+func _test_net_emulator_loss() -> void:
+	# At a 15% loss rate the emulator drops a fraction close to 15% (and the
+	# mechanism is deterministic under a seeded RNG).
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n.emulate_network = true
+	n.emulator_loss_rate = 15.0
+	n._rng.seed = 12345
+	var dropped := 0
+	var total := 1000
+	for _i in range(total):
+		if n._should_drop():
+			dropped += 1
+	var pct := float(dropped) / float(total) * 100.0
+	assert_true(pct > 8.0 and pct < 22.0, "loss rate near 15%% (got %.1f%%)" % pct)
+	n.queue_free()
+
+func _test_net_emulator_jitter() -> void:
+	# Jitter delays must stay within the configured ±bound (clamped to >= 0).
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n.emulate_network = true
+	n.emulator_jitter_ms = 50.0
+	n._rng.seed = 99
+	for _i in range(200):
+		var d: float = n._jitter_delay_ms()
+		assert_true(d >= 0.0 and d <= 50.0, "jitter delay within [0, 50] (got %.1f)" % d)
+	n.queue_free()
+
+func _test_net_emulator_zero_overhead() -> void:
+	# With emulation disabled (production default), packets go straight out and
+	# never enter the delivery queue.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._deliver(1, { "type": "x" })
+	assert_eq(n._pending.size(), 0, "no packets queued when emulation disabled")
+	n.queue_free()
+
+func _test_net_jitter_buffer() -> void:
+	# The client jitter buffer replays remote-player snapshots on a fixed
+	# playback delay and interpolates between the surrounding snapshots.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n.jitter_buffer_ms = 100.0
+	n._jitter_buffer[1] = [
+		{ "at_ms": 0.0,   "position": Vector3(0.0, 0.0, 0.0) },
+		{ "at_ms": 50.0,  "position": Vector3(10.0, 0.0, 0.0) },
+		{ "at_ms": 100.0, "position": Vector3(20.0, 0.0, 0.0) },
+	]
+	var a: Vector3 = n._sample_remote_state_at(1, 100.0)
+	assert_true(abs(a.x) < 0.001, "playback before first snapshot returns first position")
+	var b: Vector3 = n._sample_remote_state_at(1, 150.0)
+	assert_true(abs(b.x - 10.0) < 0.001, "playback at middle snapshot returns exact position")
+	var c: Vector3 = n._sample_remote_state_at(1, 125.0)
+	assert_true(abs(c.x - 5.0) < 0.5, "interpolated between snapshots within tolerance")
+	var d: Vector3 = n._sample_remote_state_at(1, 250.0)
+	assert_true(abs(d.x - 20.0) < 0.001, "playback past last snapshot returns last position")
+	n.queue_free()
+
+func _test_net_reconnect_inventory_no_dup() -> void:
+	# Re-applying the host snapshot (initial join + rejoin) must not duplicate
+	# inventory entries — replace_contents is idempotent.
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv.add_item("Ferrite", 5)
+	var contents: Dictionary = inv.get_contents()
+	inv.replace_contents(contents)
+	inv.replace_contents(contents)
+	assert_eq(inv.get_item_count("Ferrite"), 5, "reconnect re-apply does not duplicate inventory")
+	inv.queue_free()
+
+func _test_net_reconnect_last_known_state() -> void:
+	# The host retains a client's last-known position across a disconnect so a
+	# rejoining client resumes from it.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n.remember_player_state(2, Vector3(4.0, 5.0, 6.0))
+	assert_eq(n.get_last_known_state(2), Vector3(4.0, 5.0, 6.0), "state remembered")
+	n._on_peer_disconnected(2)
+	assert_eq(n.get_last_known_state(2), Vector3(4.0, 5.0, 6.0), "last-known state retained across disconnect")
+	assert_true(n.get_last_known_states().has(2), "retained state present for snapshot")
+	n.queue_free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers
