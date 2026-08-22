@@ -53,6 +53,36 @@ signal packet_received(peer_id: int, payload: Dictionary)
 ## Request to send a packet to a peer (any system can fire this).
 signal packet_send_requested(peer_id: int, payload: Dictionary)
 
+## Authoritative world sync (Phase 18) — host validates and broadcasts world
+## state; clients apply it locally instead of simulating.
+## ---------------------------------------------------------------------------
+
+## Emitted by the host when a client connects and needs the initial world state.
+## peer_id : int — the peer to send the snapshot to.
+signal world_snapshot_requested(peer_id: int)
+
+## Emitted on a client when the host's initial world snapshot arrives.
+## data : Dictionary — { chunks, edits, creatures, players }
+signal world_snapshot_received(data: Dictionary)
+
+## Client → host: a player wants to mine/place a block. The host re-runs the
+## edit authoritatively and broadcasts the result via block_changed.
+## action : String — "mine" or "place"
+signal block_edit_intent(action: String, position: Vector3, normal: Vector3, material: String)
+
+## Host → clients: authoritative result of a block edit, applied via
+## VoxelSlice.apply_block_change().
+signal block_changed(action: String, position: Vector3, normal: Vector3, material: String)
+
+## Host → clients: authoritative creature state delta (position + state enum).
+signal creature_state_changed(instance_id: String, creature_id: String, state: String, position: Vector3)
+
+## Remote player position update for ghost interpolation (host → clients).
+signal remote_player_state(peer_id: int, position: Vector3)
+
+## Host → clients: authoritative inventory contents (replace local state).
+signal inventory_synced(contents: Dictionary)
+
 # ---------------------------------------------------------------------------
 # Persistence
 # ---------------------------------------------------------------------------

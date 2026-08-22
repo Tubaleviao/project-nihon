@@ -28,11 +28,31 @@ var _next_id: int = 0
 ## the terrain surface instead of a fixed height.
 var terrain_slice: Node = null
 
+## Authority mode (Phase 18). When true (host / single-player), this slice owns
+## the creature simulation (spawning, AI, respawn) and broadcasts state deltas.
+## When false (client), spawn_for_chunk is a no-op and creature bodies are
+## created/updated from host creature_state_changed broadcasts instead.
+var is_authoritative: bool = true
+
+## Seconds between host → client creature state broadcasts.
+const CREATURE_SYNC_INTERVAL := 0.1
+var _sync_accum: float = 0.0
+
+## Last broadcast { state, position } per instance, so the sync tick ships only
+## changed instances (dirty tracking) instead of the whole population every tick.
+var _last_broadcast: Dictionary = {}
+
 func _ready() -> void:
 	GameBus.creature_died.connect(_on_creature_died)
+	GameBus.creature_state_changed.connect(_on_creature_state_changed)
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	_tick_respawn()
+	if is_authoritative:
+		_sync_accum += delta
+		if _sync_accum >= CREATURE_SYNC_INTERVAL:
+			_sync_accum = 0.0
+			_broadcast_creature_states()
 
 ## Return the instance_id of the nearest live creature within radius, or "".
 func nearest_creature(from_pos: Vector3, radius: float) -> String:
@@ -78,6 +98,21 @@ func get_all_instances() -> Array:
 		})
 	return out
 
+## Serialize the live creature population for the world snapshot (host → client).
+## Each entry is { instance_id, creature_id, state, position:[x,y,z] }.
+func get_snapshot_creatures() -> Array:
+	var out: Array = []
+	for iid in _instances:
+		var inst: Dictionary = _instances[iid]
+		var pos: Vector3 = inst["position"]
+		out.append({
+			"instance_id": iid,
+			"creature_id": inst["creature_id"],
+			"state":       inst["state"],
+			"position":    [pos.x, pos.y, pos.z],
+		})
+	return out
+
 # ---------------------------------------------------------------------------
 # Private
 # ---------------------------------------------------------------------------
@@ -89,6 +124,8 @@ func get_all_instances() -> Array:
 ## Accounts for engaged (aggressive/fleeing) survivors from a previous despawn so that
 ## a chunk reload never exceeds the per-creature spawnCount budget.
 func spawn_for_chunk(chunk_pos: Vector2i) -> void:
+	if not is_authoritative:
+		return   # clients receive creatures from host broadcasts
 	var chunk_biome := _chunk_biome(chunk_pos)
 	var biome_keys: Array = _biome_keys()
 	for creature_id in GameData.CREATURES:
@@ -127,6 +164,7 @@ func despawn_for_chunk(chunk_pos: Vector2i) -> void:
 		to_erase.append(iid)
 	for iid in to_erase:
 		_instances.erase(iid)
+		_last_broadcast.erase(iid)
 	if to_erase.size() > 0:
 		print("CreatureSlice: despawned %d creatures from chunk %s" % [to_erase.size(), chunk_pos])
 
@@ -234,6 +272,77 @@ func _tick_respawn() -> void:
 				inst["body"].visible  = true
 			print("CreatureSlice: %s [%s] respawned" % [creature_id, iid])
 			GameBus.creature_respawned.emit(iid, creature_id)
+
+## Host → clients: emit a creature_state_changed delta for instances whose
+## state or position changed since the last broadcast. Unchanged instances are
+## skipped so the sync tick ships only genuine deltas, not the whole population.
+func _broadcast_creature_states() -> void:
+	for iid in _instances:
+		var inst: Dictionary = _instances[iid]
+		var state: String = inst["state"]
+		var pos: Vector3 = inst["position"]
+		var prev = _last_broadcast.get(iid, null)
+		if prev != null and prev["state"] == state and prev["position"] == pos:
+			continue
+		_last_broadcast[iid] = { "state": state, "position": pos }
+		GameBus.creature_state_changed.emit(iid, inst["creature_id"], state, pos)
+
+## Client-side application of a host-authoritative creature state delta. Creates
+## the instance record (and a visual body) on first sight, then updates its
+## state and position on subsequent updates.
+func _on_creature_state_changed(instance_id: String, creature_id: String, state: String, position: Vector3) -> void:
+	if is_authoritative:
+		return   # the host already owns this instance
+	apply_creature_state(instance_id, creature_id, state, position)
+
+## Client-side application of a single authoritative creature state (see
+## _on_creature_state_changed). Public so the snapshot loader can seed the
+## world from the host's get_snapshot_creatures() output.
+func apply_creature_state(instance_id: String, creature_id: String, state: String, position: Vector3) -> void:
+	if _instances.has(instance_id):
+		var inst: Dictionary = _instances[instance_id]
+		if creature_id != "":
+			inst["creature_id"] = creature_id
+		inst["state"]    = state
+		inst["position"] = position
+		var body = inst.get("body", null)
+		if body != null and is_instance_valid(body):
+			body.position = position
+			body.visible = state != "dead"
+		return
+	# First sight: create a record + visual body without touching GameData counts.
+	# The creature_id is preserved from the host so the body gets the correct
+	# colour; fall back to instance_id (still a non-empty node name) when absent.
+	var visual_id: String = creature_id if creature_id != "" else instance_id
+	var body := _make_visual(visual_id, position)
+	add_child(body)
+	_instances[instance_id] = {
+		"creature_id": creature_id,
+		"position":    position,
+		"chunk":       Vector2i.ZERO,
+		"spawn_pos":   position,
+		"state":       state,
+		"hp":          0.0,
+		"respawn_at":  -1.0,
+		"body":        body,
+	}
+
+## Seed the client's creature population from a host snapshot list
+## (see get_snapshot_creatures).
+func apply_snapshot_creatures(list: Array) -> void:
+	for entry in list:
+		if entry is not Dictionary:
+			continue
+		var pos := Vector3.ZERO
+		var arr = entry.get("position", [])
+		if arr is Array and arr.size() >= 3:
+			pos = Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
+		apply_creature_state(
+			str(entry.get("instance_id", "")),
+			str(entry.get("creature_id", "")),
+			str(entry.get("state", "idle")),
+			pos
+		)
 
 # ---------------------------------------------------------------------------
 # Visuals

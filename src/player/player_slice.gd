@@ -56,6 +56,13 @@ var _hp_label: Label = null
 const RESPAWN_DELAY := 5.0
 var _respawn_timer: float = -1.0
 
+## Remote player ghosts (Phase 18). Keyed by peer_id → { "body": Node3D,
+## "from": Vector3, "to": Vector3, "t": float }. Each ghost is a simple
+## visual-only body (no physics) that interpolates from the previous snapshot
+## to the latest one, so remote movement renders smoothly between host ticks.
+var _ghosts: Dictionary = {}
+const GHOST_INTERP_TIME := 0.1   # seconds to blend between two snapshots
+
 ## Set by game_root after all slices are instantiated.
 var creature_slice: Node = null
 var voxel_slice: Node = null
@@ -67,6 +74,7 @@ func _ready() -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	GameBus.block_place_material_changed.connect(_on_place_material_changed)
 	GameBus.player_damaged.connect(_on_player_damaged)
+	GameBus.remote_player_state.connect(_on_remote_player_state)
 
 func _physics_process(delta: float) -> void:
 	if not _alive:
@@ -81,8 +89,9 @@ func _physics_process(delta: float) -> void:
 		_sync_tick = 0
 		_broadcast_state()
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	_update_aim()
+	_tick_ghosts(delta)
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
@@ -137,6 +146,55 @@ func spawn_at(pos: Vector3) -> void:
 
 func get_hp() -> float:
 	return _hp
+
+## Number of remote player ghosts currently tracked.
+func get_remote_ghost_count() -> int:
+	return _ghosts.size()
+
+## Remote player ghosts — a client renders other players as visual-only bodies
+## (no local input, no physics) that interpolate between host snapshots.
+func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
+	# Never ghost our own local player: the host echoes a client's movement back
+	# to every peer (including the originator), and that echo must not spawn a
+	# ghost of ourselves.
+	if peer_id == multiplayer.get_unique_id():
+		return
+	if not _ghosts.has(peer_id):
+		var body := _make_ghost_body()
+		body.position = position
+		_ghosts[peer_id] = {
+			"body": body,
+			"from": position,
+			"to":   position,
+			"t":    1.0,
+		}
+		return
+	var g: Dictionary = _ghosts[peer_id]
+	g["from"] = g["body"].position
+	g["to"]   = position
+	g["t"]    = 0.0
+
+func _tick_ghosts(delta: float) -> void:
+	for peer_id in _ghosts:
+		var g: Dictionary = _ghosts[peer_id]
+		g["t"] = minf(g["t"] + delta / GHOST_INTERP_TIME, 1.0)
+		g["body"].position = g["from"].lerp(g["to"], g["t"])
+
+func _make_ghost_body() -> Node3D:
+	var body := Node3D.new()
+	body.name = "RemotePlayer"
+	var mesh := MeshInstance3D.new()
+	var cap := CapsuleMesh.new()
+	cap.radius = 0.4
+	cap.height = 1.8
+	mesh.mesh = cap
+	mesh.position = Vector3(0.0, 0.9, 0.0)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.30, 0.55, 0.90)   # blue — distinct from the local player
+	mesh.material_override = mat
+	body.add_child(mesh)
+	add_child(body)
+	return body
 
 func take_damage(dmg: float, killer_id: String = "") -> void:
 	_hp = maxf(_hp - dmg, 0.0)

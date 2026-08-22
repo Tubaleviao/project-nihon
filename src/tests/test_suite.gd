@@ -23,6 +23,8 @@ const UiSlice         := preload("res://src/ui/ui_slice.gd")
 const VoxelSlice      := preload("res://src/terrain/voxel_slice.gd")
 const StationSlice    := preload("res://src/world/station_slice.gd")
 const Minimap         := preload("res://src/ui/minimap.gd")
+const PlayerSlice     := preload("res://src/player/player_slice.gd")
+const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
 
 var _pass: int = 0
 var _fail: int = 0
@@ -128,6 +130,14 @@ func run() -> void:
 	_run_test("chunk: creature spawn scales per chunk",         _test_chunk_creature_spawn_per_chunk)
 	_run_test("chunk: persistence round-trips per-chunk edits", _test_chunk_persistence_manifest)
 	_run_test("chunk: minimap cells resolve chunks",            _test_chunk_minimap_cells)
+	_run_test("net: client forwards block intent",               _test_net_voxel_client_forwards_intent)
+	_run_test("net: apply_block_change applies host edit",       _test_net_voxel_apply_block_change)
+	_run_test("net: client does not spawn creatures locally",    _test_net_creature_client_no_local_spawn)
+	_run_test("net: creature snapshot round-trips",              _test_net_creature_snapshot_roundtrip)
+	_run_test("net: remote player ghost interpolates",           _test_net_player_ghost_interpolation)
+	_run_test("net: own peer id does not ghost",                 _test_net_player_ghost_self_filter)
+	_run_test("net: creature dirty-track broadcast",             _test_net_creature_dirty_broadcast)
+	_run_test("net: inventory replace_contents",                 _test_net_inventory_replace_contents)
 
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
@@ -1624,6 +1634,137 @@ func _test_chunk_minimap_cells() -> void:
 	mm.set_player_pos(Vector2(16.0, 16.0))
 	assert_eq(mm.get_player_cell()["chunk"], Vector2i(0, 0), "player cell resolves to chunk (0,0)")
 	mm.queue_free()
+
+# ---------------------------------------------------------------------------
+# Networking / authority tests (Phase 18)
+# ---------------------------------------------------------------------------
+
+func _test_net_voxel_client_forwards_intent() -> void:
+	# A non-authoritative voxel slice must NOT mutate terrain via mine_block —
+	# it forwards a block_edit_intent to the host instead. Invoke the handler
+	# directly so the shared bus (and stale slices from other tests) can't
+	# interfere with the assertion.
+	var v := VoxelSlice.new()
+	add_child(v)
+	v.is_authoritative = false
+	var flat: Array = []
+	flat.resize(32 * 32)
+	flat.fill(2.0)
+	v.build_chunk(Vector2i(0, 0), flat)
+	var intent := {}
+	GameBus.block_edit_intent.connect(func(action, pos, normal, material):
+		intent["action"] = action
+		intent["material"] = material
+	)
+	v._on_mine_requested(Vector3(16.0, 2.0, 16.0), Vector3.UP)
+	assert_eq(intent.get("action", ""), "mine", "client forwards a mine intent")
+	assert_false(v._edits.has("16,16"), "mine_block did not edit this slice directly")
+	v.queue_free()
+
+func _test_net_voxel_apply_block_change() -> void:
+	# apply_block_change applies a host-authoritative edit without touching
+	# inventory or re-emitting block_changed.
+	var v := VoxelSlice.new()
+	add_child(v)
+	var flat: Array = []
+	flat.resize(32 * 32)
+	flat.fill(2.0)
+	v.build_chunk(Vector2i(0, 0), flat)
+	var reemit := 0
+	GameBus.block_changed.connect(func(_a, _p, _n, _m): reemit += 1)
+	v.apply_block_change("mine", Vector3(16.0, 2.0, 16.0), Vector3.UP, "")
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.5, "mine applied (2.0 → 1.5)")
+	v.apply_block_change("place", Vector3(16.0, 2.0, 16.0), Vector3.UP, "Ferrite")
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 2.0, "place applied (1.5 → 2.0)")
+	assert_eq(reemit, 0, "apply_block_change does not re-emit block_changed")
+	v.queue_free()
+
+func _test_net_creature_client_no_local_spawn() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.is_authoritative = false
+	c.spawn_for_chunk(Vector2i(0, 0))
+	assert_eq(c.get_all_instances().size(), 0, "client does not spawn locally")
+	# But it does apply host state deltas.
+	c.apply_creature_state("creature_9", "ForestBoar", "idle", Vector3(1.0, 2.0, 3.0))
+	var all := c.get_all_instances()
+	assert_eq(all.size(), 1, "client applies a host creature state")
+	assert_eq(all[0]["instance_id"], "creature_9", "instance id preserved")
+	assert_eq(all[0]["creature_id"], "ForestBoar", "creature id preserved")
+	assert_eq(all[0]["state"], "idle", "state preserved")
+	# Update path.
+	c.apply_creature_state("creature_9", "ForestBoar", "aggressive", Vector3(4.0, 5.0, 6.0))
+	assert_eq(c.get_all_instances().size(), 1, "update does not duplicate the instance")
+	assert_eq(c.get_all_instances()[0]["state"], "aggressive", "state updated")
+	c.queue_free()
+
+func _test_net_creature_snapshot_roundtrip() -> void:
+	var host := CreatureSlice.new()
+	add_child(host)
+	host.spawn_for_chunk(Vector2i(0, 0))
+	var snap := host.get_snapshot_creatures()
+	assert_true(snap.size() > 0, "host produces a non-empty snapshot")
+	var client := CreatureSlice.new()
+	add_child(client)
+	client.is_authoritative = false
+	client.apply_snapshot_creatures(snap)
+	assert_eq(client.get_all_instances().size(), snap.size(), "client seeds population from snapshot")
+	# creature_id must survive the snapshot round-trip.
+	var cfirst: Dictionary = client.get_all_instances()[0]
+	var sfirst: Dictionary = snap[0]
+	assert_eq(cfirst["creature_id"], sfirst["creature_id"], "creature_id preserved through snapshot")
+	host.queue_free()
+	client.queue_free()
+
+func _test_net_player_ghost_interpolation() -> void:
+	var p := PlayerSlice.new()
+	add_child(p)
+	assert_eq(p.get_remote_ghost_count(), 0, "no ghosts initially")
+	p._on_remote_player_state(2, Vector3(0.0, 0.0, 0.0))
+	assert_eq(p.get_remote_ghost_count(), 1, "first remote state spawns a ghost")
+	# A second snapshot resets interpolation toward the new target.
+	p._on_remote_player_state(2, Vector3(10.0, 0.0, 0.0))
+	p._tick_ghosts(0.05)   # half the interp time
+	var body: Node3D = p._ghosts[2]["body"]
+	assert_true(body.position.x > 0.0 and body.position.x < 10.0, "ghost interpolates between snapshots")
+	p.queue_free()
+
+func _test_net_player_ghost_self_filter() -> void:
+	# The local player's own peer id must never spawn a ghost — the host echoes
+	# a client's movement back to every peer, including the originator.
+	var p := PlayerSlice.new()
+	add_child(p)
+	p._on_remote_player_state(multiplayer.get_unique_id(), Vector3(1.0, 2.0, 3.0))
+	assert_eq(p.get_remote_ghost_count(), 0, "own peer id does not spawn a ghost")
+	p.queue_free()
+
+func _test_net_creature_dirty_broadcast() -> void:
+	# Unchanged instances are not re-broadcast; only mutated ones are.
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
+	var emissions := []
+	GameBus.creature_state_changed.connect(func(iid, _cid, _state, _pos): emissions.append(iid))
+	c._broadcast_creature_states()
+	assert_true(emissions.size() > 0, "first broadcast ships the population")
+	emissions.clear()
+	c._broadcast_creature_states()
+	assert_eq(emissions.size(), 0, "unchanged creatures are not re-broadcast")
+	var first_id: String = c.get_all_instances()[0]["instance_id"]
+	c.set_instance_position(first_id, Vector3(50.0, 50.0, 50.0))
+	c._broadcast_creature_states()
+	assert_eq(emissions.size(), 1, "only the moved creature is re-broadcast")
+	assert_eq(emissions[0], first_id, "the dirty instance is the one broadcast")
+	c.queue_free()
+
+func _test_net_inventory_replace_contents() -> void:
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv.add_item("Ferrite", 5)
+	inv.replace_contents({ "Ashite": 3 })
+	assert_eq(inv.get_item_count("Ferrite"), 0, "replace clears old items")
+	assert_eq(inv.get_item_count("Ashite"), 3, "replace applies host contents")
+	inv.queue_free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers

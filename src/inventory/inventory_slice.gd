@@ -94,6 +94,23 @@ func _ready() -> void:
 	_build_weight_cache()
 	_build_durability_cache()
 	GameBus.pickup_requested.connect(_on_pickup_requested)
+	GameBus.inventory_synced.connect(_on_inventory_synced)
+
+## Client-side: replace local contents with a host-authoritative inventory.
+func replace_contents(contents: Dictionary) -> void:
+	_contents.clear()
+	_current_weight = 0.0
+	for item_id in contents:
+		var qty: int = int(contents[item_id])
+		if qty <= 0:
+			continue
+		_contents[item_id] = qty
+		_current_weight += _item_weight(item_id) * float(qty)
+	_is_full = false
+	GameBus.inventory_changed.emit()
+
+func _on_inventory_synced(contents: Dictionary) -> void:
+	replace_contents(contents)
 
 func get_contents() -> Dictionary:
 	return _contents.duplicate()
