@@ -74,10 +74,18 @@ var _next_snapshot_id: int = 0
 ## Reorder adjacent queued packets to model out-of-order delivery.
 @export var emulator_reorder: bool = false
 
-## Sequence numbering: every outbound packet carries a monotonic seq; the
-## receiver uses it to drop duplicates and detect gaps.
-var _send_seq: int = 0
-var _recv_seq: Dictionary = {}          # peer_id -> last accepted seq
+## Sequence numbering: every outbound packet carries a per-type monotonic seq;
+## the receiver uses it to drop duplicates and detect gaps.
+## _send_seq is keyed on packet type so interleaved types don't create false gaps.
+var _send_seq: Dictionary = {}          # packet_type -> next seq int
+## _recv_seq is keyed on "peer_id:packet_type" to namespace each type independently.
+var _recv_seq: Dictionary = {}          # "peer:type" -> highest seq seen
+## Sliding dedup window: keeps recently-seen seqs per "peer:type" channel.
+var _recv_seen: Dictionary = {}         # "peer:type" -> {seq -> true}
+const DEDUP_WINDOW := 64               # number of recent seqs to remember
+## Rate-limit seq-gap warnings to one per second per channel.
+var _seq_gap_warn_ms: Dictionary = {}  # "peer:type" -> last warn time_ms
+const SEQ_GAP_WARN_INTERVAL_MS := 1000.0
 var _rng := RandomNumberGenerator.new()
 
 ## Emulator delivery queue: { at_ms, peer_id, json }, drained by _process.
@@ -90,6 +98,10 @@ var _jitter_buffer: Dictionary = {}
 ## Host-side last-known player states (peer_id -> Vector3), retained across a
 ## disconnect so a rejoining client can resume from its last position.
 var _last_known_states: Dictionary = {}
+## Timestamps (peer_id -> ms) set when a peer disconnects; used to evict
+## entries from _last_known_states after LAST_KNOWN_STATE_TTL_MS.
+var _last_known_timestamps: Dictionary = {}
+const LAST_KNOWN_STATE_TTL_MS := 300_000  # 5 minutes
 
 func _ready() -> void:
 	GameBus.packet_send_requested.connect(_on_packet_send_requested)
@@ -101,8 +113,9 @@ func _ready() -> void:
 	GameBus.inventory_synced.connect(_on_inventory_synced)
 
 ## Phase 19 — drain the emulator queue and (on clients) the jitter buffer.
-## No-op when emulation is disabled, so production runs pay zero overhead.
+## Eviction of stale last-known-states runs unconditionally (no ENet overhead).
 func _process(_delta: float) -> void:
+	_evict_stale_states()
 	if not emulate_network:
 		return
 	_drain_emulator()
@@ -183,8 +196,10 @@ func send_snapshot(peer_id: int, data: Dictionary) -> void:
 
 ## Record a client's last-known authoritative position. Retained across a
 ## disconnect so a rejoining client resumes from where it left off.
+## Clears the eviction countdown: an active peer is never stale.
 func remember_player_state(peer_id: int, position: Vector3) -> void:
 	_last_known_states[peer_id] = position
+	_last_known_timestamps.erase(peer_id)
 
 ## Last-known position for a peer, or Vector3.ZERO when unknown.
 func get_last_known_state(peer_id: int) -> Vector3:
@@ -193,6 +208,18 @@ func get_last_known_state(peer_id: int) -> Vector3:
 ## All retained player states, for folding into a reconnect world snapshot.
 func get_last_known_states() -> Dictionary:
 	return _last_known_states.duplicate(true)
+
+## Evict last-known states for peers that have been disconnected longer than
+## LAST_KNOWN_STATE_TTL_MS. Called every frame from _process() so the host
+## dict doesn't grow without bound over long sessions.
+func _evict_stale_states() -> void:
+	if _last_known_timestamps.is_empty():
+		return
+	var now_ms: float = float(Time.get_ticks_msec())
+	for pid: int in _last_known_timestamps.keys():
+		if now_ms - float(_last_known_timestamps[pid]) > float(LAST_KNOWN_STATE_TTL_MS):
+			_last_known_states.erase(pid)
+			_last_known_timestamps.erase(pid)
 
 # ---------------------------------------------------------------------------
 # Private
@@ -215,12 +242,15 @@ func _broadcast(payload: Dictionary) -> void:
 	elif _role == Role.CLIENT:
 		_deliver(1, payload)
 
-## Central outbound path (Phase 19). Attach a monotonic seq, then either send
-## immediately (emulation disabled — zero overhead) or queue for emulated
-## delivery (loss / jitter / reorder).
+## Central outbound path (Phase 19). Attach a per-type monotonic seq, then
+## either send immediately (emulation disabled — zero overhead) or queue for
+## emulated delivery (loss / jitter / reorder).
 func _deliver(peer_id: int, payload: Dictionary) -> void:
-	payload["seq"] = _send_seq
-	_send_seq += 1
+	var ptype: String = str(payload.get("type", "_"))
+	if not _send_seq.has(ptype):
+		_send_seq[ptype] = 0
+	payload["seq"] = _send_seq[ptype]
+	_send_seq[ptype] += 1
 	var json := JSON.stringify(payload)
 	if not emulate_network:
 		_send_raw(peer_id, json)
@@ -366,20 +396,53 @@ func _parse(json: String) -> Variant:
 		return null
 	return payload
 
-## Phase 19 — sequence dedup / gap detection. Returns false when the packet is
-## a duplicate or an out-of-order arrival (seq <= last seen) and must be
-## dropped; true otherwise. A forward gap (seq > last + 1) indicates lost or
-## reordered packets and is logged but not blocking.
+## Phase 19 — sequence dedup / gap detection.
+## Uses a per-type sliding window so reordered-but-unseen packets are accepted
+## (returned true) rather than silently dropped. Only true duplicates (the same
+## seq already in the seen window) and packets older than DEDUP_WINDOW behind
+## the frontier are dropped (returned false).
+## Gap warnings are rate-limited to one per second per (peer, type) channel.
 func _dedup(sender: int, payload: Dictionary) -> bool:
 	if not payload.has("seq"):
 		return true   # legacy packet without seq — accept
 	var seq: int = int(payload["seq"])
-	var last: int = _recv_seq.get(sender, -1)
-	if seq <= last:
+	var ptype: String = str(payload.get("type", "_"))
+	var key: String = "%d:%s" % [sender, ptype]
+
+	if not _recv_seen.has(key):
+		_recv_seen[key] = {}
+	var seen: Dictionary = _recv_seen[key]
+
+	# True duplicate: this exact seq was already accepted in the window.
+	if seen.has(seq):
 		return false
-	if seq > last + 1:
-		print("NetworkingSlice: seq gap from peer %d (last %d, got %d)" % [sender, last, seq])
-	_recv_seq[sender] = seq
+
+	var last: int = _recv_seq.get(key, -1)
+
+	# Too stale: more than DEDUP_WINDOW behind the frontier — cannot reorder.
+	if last >= 0 and seq < last - DEDUP_WINDOW:
+		return false
+
+	# Forward gap (packet loss): log at most once per second per channel.
+	if last >= 0 and seq > last + 1:
+		var now_ms: float = float(Time.get_ticks_msec())
+		var gap_last: float = float(_seq_gap_warn_ms.get(key, -SEQ_GAP_WARN_INTERVAL_MS))
+		if now_ms - gap_last >= SEQ_GAP_WARN_INTERVAL_MS:
+			push_warning("NetworkingSlice: seq gap — peer %d type '%s' frontier %d got %d" \
+				% [sender, ptype, last, seq])
+			_seq_gap_warn_ms[key] = now_ms
+
+	# Mark seen and prune entries beyond the window.
+	seen[seq] = true
+	var cutoff: int = seq - DEDUP_WINDOW
+	for k: int in seen.keys():
+		if k < cutoff:
+			seen.erase(k)
+
+	# Advance the frontier only when this seq is higher.
+	if seq > last:
+		_recv_seq[key] = seq
+
 	return true
 
 ## Route a client → host packet. Only client-originated types are accepted;
@@ -499,11 +562,13 @@ func _should_drop() -> bool:
 		return false
 	return _rng.randf() * 100.0 < rate
 
-## Jitter delay: ±emulator_jitter_ms, clamped to >= 0.
+## Jitter delay: uniformly distributed in [-emulator_jitter_ms, +emulator_jitter_ms].
+## Negative values are delivered immediately by _drain_emulator (at_ms in the past).
+## The distribution is centered at zero — no positive bias.
 func _jitter_delay_ms() -> float:
 	if emulator_jitter_ms <= 0.0:
 		return 0.0
-	return maxf(0.0, _rng.randf_range(-emulator_jitter_ms, emulator_jitter_ms))
+	return _rng.randf_range(-emulator_jitter_ms, emulator_jitter_ms)
 
 ## Reorder: swap two adjacent pending packets with a small probability to
 ## model out-of-order delivery.
@@ -605,5 +670,9 @@ func _on_peer_connected(id: int) -> void:
 
 ## Phase 19 — a peer disconnecting does NOT erase its last-known state; the
 ## record is retained so a rejoining client resumes from its last position.
+## A disconnect timestamp is set so _evict_stale_states() can expire the entry
+## after LAST_KNOWN_STATE_TTL_MS if the peer never reconnects.
 func _on_peer_disconnected(id: int) -> void:
 	GameBus.peer_disconnected.emit(id)
+	if _last_known_states.has(id):
+		_last_known_timestamps[id] = Time.get_ticks_msec()

@@ -405,8 +405,9 @@ func _build_snapshot() -> Dictionary:
 	players[str(multiplayer.get_unique_id())] = _player.get_position()
 	# Phase 19 — include last-known remote player states so a rejoining client
 	# resumes from its last authoritative position after a disconnect.
-	for pid in _networking.get_last_known_states():
-		var last_pos: Vector3 = _networking.get_last_known_states()[pid]
+	var last_known := _networking.get_last_known_states()
+	for pid in last_known:
+		var last_pos: Vector3 = last_known[pid]
 		players[str(pid)] = [last_pos.x, last_pos.y, last_pos.z]
 	return {
 		"version":   1,
