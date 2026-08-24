@@ -149,6 +149,7 @@ func _ready() -> void:
 	# Bus listeners for integration-layer logging.
 	GameBus.chunk_ready.connect(_on_chunk_ready)
 	GameBus.combat_round_resolved.connect(_on_combat_resolved)
+	GameBus.combat_round_requested.connect(_on_combat_round_requested)
 	GameBus.save_completed.connect(_on_save_completed)
 	GameBus.load_completed.connect(_on_load_completed)
 	GameBus.creature_died.connect(_on_creature_died)
@@ -274,8 +275,15 @@ func _boot_world() -> void:
 
 	# Character system — spawn a demo humanoid and a non-humanoid (quadruped)
 	# near the player to exercise the appearance pipeline end to end.
-	_character.create_character("TravellerHuman", Vector3(spawn_xz.x + 3.0, ground_h + 1.0, spawn_xz.y))
+	var player_char := _character.create_character("TravellerHuman", Vector3(spawn_xz.x + 3.0, ground_h + 1.0, spawn_xz.y))
 	_character.create_character("BoarRider", Vector3(spawn_xz.x - 3.0, ground_h + 1.0, spawn_xz.y))
+	_character.set_player_character(player_char)
+
+	# Phase 20 — exercise the locomotion state machine across the speed range so
+	# the idle → walk → run transition is visible in the boot log.
+	for spd in [0.0, 2.0, 5.0]:
+		_character.update_locomotion(player_char, spd, true, 0.0, 0.0)
+		print("[Character] locomotion speed=%.1f → %s" % [spd, _character.get_locomotion_state_name(player_char)])
 
 	# CreatureSlice already spawned each chunk's budget via ChunkManager (Phase 17).
 	# Fire one combat round against the first spawned creature through the bus to
@@ -455,6 +463,11 @@ func _on_combat_resolved(result: Dictionary) -> void:
 		result.get("defender_hp_remaining", 0.0),
 	])
 
+## Drive the player avatar's attack animation whenever the player attacks.
+func _on_combat_round_requested(attacker_id: String, defender_id: String) -> void:
+	if attacker_id == "player" and _character.get_player_character() != "":
+		GameBus.character_attack_requested.emit(_character.get_player_character())
+
 func _on_creature_died(entity_id: String, position: Vector3, killer_id: String) -> void:
 	print("[Death] %s died at %s  killer=%s" % [entity_id, position, killer_id])
 
@@ -504,6 +517,8 @@ func _on_player_damaged(damage: float, attacker_id: String) -> void:
 
 func _on_player_died(position: Vector3, killer_id: String) -> void:
 	print("[Player] died at %s  killer=%s" % [position, killer_id])
+	if _character.get_player_character() != "":
+		GameBus.character_death_requested.emit(_character.get_player_character())
 
 func _on_player_respawned(position: Vector3) -> void:
 	print("[Player] respawned at %s" % position)

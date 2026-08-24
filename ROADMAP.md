@@ -736,7 +736,7 @@ conditions: jitter, packet loss, reordering, and abrupt disconnects.
 
 ---
 
-## Phase 20 — Skeleton rig and animation
+## Phase 20 — Skeleton rig and animation ✅ Done
 
 **Goal:** Bring the animation spec from `characters.md` to life: a rigged
 humanoid skeleton with a fabric-driven locomotion state machine.
@@ -760,16 +760,41 @@ humanoid skeleton with a fabric-driven locomotion state machine.
   vertical from physics
 
 **Acceptance criteria:**
-- Player character animates through idle → walk → run transitions based on speed
-- Attack and death animations play on the correct bus signals
-- Foot IK keeps feet flush with voxel terrain surface
+- Player character animates through idle → walk → run transitions based on speed ✓
+- Attack and death animations play on the correct bus signals ✓
+- Foot IK keeps feet flush with voxel terrain surface ✓
 - Socket-attached equipment deforms correctly in SKINNED mode, stays rigid in
-  RIGID mode
+  RIGID mode ✓
+
+**Implementation notes:**
+- `src/character/locomotion.gd` — a pure, headless-testable locomotion state
+  machine (`IDLE / WALK / RUN / FALL / LAND / ATTACK / DEATH`) mapping horizontal
+  speed → state with timed attack/land one-shots and a terminal death state. A
+  real `AnimationTree` consumes `get_state()` + `get_blend_weight()` to pick and
+  blend skeletal clips; the decision logic lives here so transitions are
+  unit-testable without a renderer.
+- `src/character/skeleton_rig.gd` — builds a real `Skeleton3D` from the fabric
+  `SkeletonDefinition` (`bones` ordered chain, parents precede children) plus a
+  humanoid rest pose; resolves sockets → bones (`characters.md` §5) and attaches
+  equipment with deformation modes (§10): SKINNED/HYBRID follow the socket's bone
+  via `BoneAttachment3D`, RIGID stays a rig-root child (rigid, no bone follow).
+- `character_slice.gd` now assembles every character with a `Skeleton3D` rig,
+  exposes `apply_equipment(slot, item_key)` / `clear_equipment(slot)`, drives the
+  per-instance locomotion state machine, and emits `character_state_changed`.
+  `game_root` forwards the player's combat (`combat_round_requested`) and death
+  (`player_died`) into `character_attack_requested` / `character_death_requested`.
+- Foot IK (`SkeletonRig.compute_foot_targets`) clamps each foot to the terrain
+  surface within leg reach — pure and headless-testable against a `Callable`
+  terrain sampler.
+- Body/head/hair/beard remain rig-root placeholder `BoxMesh` parts (not yet
+  skinned to the skeleton) pending real mesh + `Skin` asset production.
 
 **Known simplifications (deferred to Phase 21):**
 - Palette and material system not yet wired (placeholder albedo only).
 - LOD simplification not yet applied (full-detail mesh at all distances).
 - No blend-shape facial customization.
+- No authored animation clips / `AnimationPlayer` playback — the state machine
+  drives transitions, but actual skeletal clip data is asset-production work.
 
 ---
 

@@ -38,6 +38,9 @@ extends Node
 ##   set_lod(level) / get_lod()                            -> void / int
 ##   is_part_visible(instance_id, part_key)                -> bool
 
+const Locomotion  := preload("res://src/character/locomotion.gd")
+const SkeletonRig := preload("res://src/character/skeleton_rig.gd")
+
 const MIN_LOD := 0
 const MAX_LOD := 3
 
@@ -66,8 +69,14 @@ var _next_id: int = 0
 var _lod: int = 0
 var _palette: Array = []
 
+## Instance id of the player's own character avatar (set by game_root) — the
+## target for combat- and death-driven animation triggers.
+var _player_character_id: String = ""
+
 func _ready() -> void:
 	_load_palette()
+	GameBus.character_attack_requested.connect(_on_attack_requested)
+	GameBus.character_death_requested.connect(_on_death_requested)
 
 # ---------------------------------------------------------------------------
 # Public — creation
@@ -99,6 +108,9 @@ func create_character_from_recipe(recipe: Dictionary, pos: Vector3) -> String:
 		"appearance": normalized,
 		"position":   pos,
 		"root":       root,
+		"rig":        built["rig"],
+		"locomotion": built["locomotion"],
+		"equipment":  built["equipment"],
 		"parts":      built["parts"],
 	}
 	_apply_lod(iid)
@@ -125,6 +137,9 @@ func apply_appearance(instance_id: String, recipe: Dictionary) -> bool:
 
 	inst["appearance"] = normalized
 	inst["root"] = root
+	inst["rig"] = built["rig"]
+	inst["locomotion"] = built["locomotion"]
+	inst["equipment"] = built["equipment"]
 	inst["parts"] = built["parts"]
 	_apply_lod(instance_id)
 
@@ -247,6 +262,163 @@ func set_lod(level: int) -> void:
 
 func get_lod() -> int:
 	return _lod
+
+# ---------------------------------------------------------------------------
+# Public — equipment + animation (ROADMAP Phase 20)
+# ---------------------------------------------------------------------------
+
+## Equip an item onto a character slot (replaces any existing equipment there).
+## `item_key` is a GameData.ITEMS key; `state` is the attachment state
+## (equipped/sheathed/stored/hidden). Returns true on success.
+func apply_equipment(instance_id: String, slot: String, item_key: String, state: String = "equipped") -> bool:
+	if not _instances.has(instance_id):
+		return false
+	var inst: Dictionary = _instances[instance_id]
+	var rig = inst["rig"]
+	var props: Dictionary = inst["appearance"].get("proportions", {})
+
+	var entry := {
+		"item": item_key,
+		"state": state,
+		"durability": 1.0,
+	}
+	var rec: Dictionary = _attach_equipment(rig, slot, entry, props)
+	if rec.is_empty():
+		return false
+
+	# Replace any existing mesh on the slot.
+	var equipment: Dictionary = inst["equipment"]
+	if equipment.has(slot):
+		var old: Dictionary = equipment[slot]
+		var old_node: Node3D = old.get("node", null)
+		if old_node != null:
+			old_node.queue_free()
+
+	equipment[slot] = rec
+	inst["parts"][slot] = { "node": rec["node"], "min_lod": int(rec["def"].get("minLodLevel", 0)) }
+
+	# Reflect the change in the appearance recipe so persistence / visual state
+	# stay consistent with the live instance.
+	var app: Dictionary = inst["appearance"]
+	var eq: Dictionary = app.get("equipment", {})
+	eq[slot] = entry
+	app["equipment"] = eq
+	_apply_lod(instance_id)
+	GameBus.character_appearance_changed.emit(instance_id, app)
+	return true
+
+## Unequip a slot (free the mesh and drop it from the appearance recipe).
+func clear_equipment(instance_id: String, slot: String) -> bool:
+	if not _instances.has(instance_id):
+		return false
+	var inst: Dictionary = _instances[instance_id]
+	var equipment: Dictionary = inst["equipment"]
+	if not equipment.has(slot):
+		return false
+	var rec: Dictionary = equipment[slot]
+	var node: Node3D = rec.get("node", null)
+	if node != null:
+		node.queue_free()
+	equipment.erase(slot)
+	if inst["parts"].has(slot):
+		inst["parts"].erase(slot)
+	var app: Dictionary = inst["appearance"]
+	if app.has("equipment"):
+		var eq: Dictionary = app["equipment"]
+		if eq.has(slot):
+			eq.erase(slot)
+	GameBus.character_appearance_changed.emit(instance_id, app)
+	return true
+
+## Advance the locomotion state machine for an instance. Returns the resulting
+## Locomotion.State int, and emits character_state_changed on any transition.
+func update_locomotion(instance_id: String, speed: float, grounded: bool, velocity_y: float, delta: float) -> int:
+	if not _instances.has(instance_id):
+		return -1
+	var loco = _instances[instance_id]["locomotion"]
+	var before: int = loco.get_state()
+	var after: int = loco.update(speed, grounded, velocity_y, delta)
+	if after != before:
+		GameBus.character_state_changed.emit(instance_id, loco.state_name())
+	return after
+
+func get_locomotion_state(instance_id: String) -> int:
+	if not _instances.has(instance_id):
+		return -1
+	return _instances[instance_id]["locomotion"].get_state()
+
+func get_locomotion_state_name(instance_id: String) -> String:
+	if not _instances.has(instance_id):
+		return ""
+	return _instances[instance_id]["locomotion"].state_name()
+
+## Play the attack animation on an instance (transient ATTACK state).
+func trigger_attack(instance_id: String) -> void:
+	if not _instances.has(instance_id):
+		return
+	_instances[instance_id]["locomotion"].trigger_attack()
+
+## Play the death animation on an instance (terminal DEATH state).
+func trigger_death(instance_id: String) -> void:
+	if not _instances.has(instance_id):
+		return
+	_instances[instance_id]["locomotion"].trigger_death()
+
+## Foot IK targets for an instance. `terrain_height` is a Callable(Vector2)→float.
+func get_foot_ik_targets(instance_id: String, terrain_height: Callable) -> Dictionary:
+	if not _instances.has(instance_id):
+		return {}
+	var inst: Dictionary = _instances[instance_id]
+	var props: Dictionary = inst["appearance"].get("proportions", {})
+	var height: float = props.get("height", 1.0)
+	var leg_len: float = props.get("legLength", 1.0)
+	var hip_height := 0.38 * leg_len * height
+	var leg_length := 0.38 * leg_len * height + 0.05
+	return SkeletonRig.compute_foot_targets(
+		terrain_height,
+		inst["position"],
+		hip_height,
+		leg_length,
+		0.12 * height,
+		0.0
+	)
+
+## Bone names of the instance's skeleton (ordered, parents first).
+func get_skeleton_bone_names(instance_id: String) -> Array:
+	if not _instances.has(instance_id):
+		return []
+	return _instances[instance_id]["rig"].get_bone_names()
+
+## Deformation mode recorded for an equipped slot ("" if not equipped).
+func get_equipment_deformation_mode(instance_id: String, slot: String) -> String:
+	if not _instances.has(instance_id):
+		return ""
+	var equipment: Dictionary = _instances[instance_id]["equipment"]
+	if not equipment.has(slot):
+		return ""
+	return str(equipment[slot].get("mode", ""))
+
+## Which bone an equipped slot attaches to ("" for RIGID / unattached).
+func get_equipment_attached_bone(instance_id: String, slot: String) -> String:
+	if not _instances.has(instance_id):
+		return ""
+	var equipment: Dictionary = _instances[instance_id]["equipment"]
+	if not equipment.has(slot):
+		return ""
+	return str(equipment[slot].get("bone", ""))
+
+## Designate the player's own character avatar (drives combat/death animation).
+func set_player_character(instance_id: String) -> void:
+	_player_character_id = instance_id
+
+func get_player_character() -> String:
+	return _player_character_id
+
+func _on_attack_requested(instance_id: String) -> void:
+	trigger_attack(instance_id)
+
+func _on_death_requested(instance_id: String) -> void:
+	trigger_death(instance_id)
 
 # ---------------------------------------------------------------------------
 # GameData readers
@@ -400,8 +572,8 @@ func _apply_lod(instance_id: String) -> void:
 # ---------------------------------------------------------------------------
 
 func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
-	var root := Node3D.new()
-	root.name = "Character_%s" % instance_id
+	var rig := SkeletonRig.new()
+	rig.name = "Character_%s" % instance_id
 	var parts: Dictionary = {}
 
 	var props: Dictionary = appearance.get("proportions", {})
@@ -420,16 +592,23 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 	var head_size := 0.30 * head_scale
 	var head_y := hip_y + torso_h + head_size * 0.5
 
+	# Skeleton rig (Phase 20) — build a real Skeleton3D from the fabric
+	# SkeletonDefinition so the character carries a bone hierarchy. Body/head/
+	# hair/beard stay rig-root children (placeholder meshes) pending real
+	# skinned assets; equipment attaches to sockets through the rig.
+	var skeleton_res: Resource = GameData.SKELETONS.get(str(appearance.get("skeleton", DEFAULT_SKELETON)), null)
+	rig.build(skeleton_res, height)
+
 	# Body (torso + legs as one block placeholder).
 	var body := _make_box(Vector3(0.55 * shoulder * mass, torso_h, 0.32 * mass), skin)
 	body.position = Vector3(0.0, hip_y + torso_h * 0.5, 0.0)
-	root.add_child(body)
+	rig.add_child(body)
 	parts["body"] = { "node": body, "min_lod": 3 }
 
 	# Head.
 	var head := _make_box(Vector3(head_size, head_size, head_size), skin)
 	head.position = Vector3(0.0, head_y, 0.0)
-	root.add_child(head)
+	rig.add_child(head)
 	parts["head"] = { "node": head, "min_lod": 3 }
 
 	# Hair (independent component — §13).
@@ -437,7 +616,7 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 	if hair_id != "none" and hair_id != "":
 		var hair := _make_box(Vector3(head_size * 1.05, head_size * 0.4, head_size * 1.05), hair_color)
 		hair.position = Vector3(0.0, head_y + head_size * 0.45, 0.0)
-		root.add_child(hair)
+		rig.add_child(hair)
 		parts["hair"] = { "node": hair, "min_lod": 1 }
 
 	# Beard (independent component — §14).
@@ -445,26 +624,59 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 	if beard_id != "none" and beard_id != "":
 		var beard := _make_box(Vector3(head_size * 0.7, head_size * 0.5, head_size * 0.25), beard_color)
 		beard.position = Vector3(0.0, head_y - head_size * 0.1, -head_size * 0.55)
-		root.add_child(beard)
+		rig.add_child(beard)
 		parts["beard"] = { "node": beard, "min_lod": 0 }
 
-	# Equipment — placed at the socket for its current attachment state (§6, §7).
+	# Equipment — socket attachment with deformation modes (Phase 20 §10).
 	var equipment: Dictionary = appearance.get("equipment", {})
+	var eq_records: Dictionary = {}
 	for slot in equipment:
 		var entry: Dictionary = equipment[slot]
-		var def: Dictionary = _equipment_def(str(entry.get("item", "")))
-		if def.is_empty():
+		var rec: Dictionary = _attach_equipment(rig, str(slot), entry, props)
+		if rec.is_empty():
 			continue
-		var socket: String = _attachment_socket(def, str(entry.get("state", "equipped")))
-		var local: Vector3 = _socket_offset(socket, props)
-		var eq_color: Color = _equipment_color(def, entry)
-		var size: Vector3 = _vec3(def.get("size", [0.3, 0.3, 0.3]))
-		var mesh := _make_box(size, eq_color)
-		mesh.position = local
-		root.add_child(mesh)
-		parts[str(slot)] = { "node": mesh, "min_lod": int(def.get("minLodLevel", 0)) }
+		eq_records[str(slot)] = rec
+		parts[str(slot)] = { "node": rec["node"], "min_lod": int(rec["def"].get("minLodLevel", 0)) }
 
-	return { "root": root, "parts": parts }
+	var locomotion := Locomotion.new()
+
+	return {
+		"root":       rig,
+		"rig":        rig,
+		"parts":      parts,
+		"equipment":  eq_records,
+		"locomotion": locomotion,
+	}
+
+## Attach one equipment mesh to the rig for a slot + normalized entry, applying
+## the item's deformation mode via the rig's socket system. Returns the
+## equipment record { node, mode, socket, bone, item_id, def } ({} if the item
+## is not equippable).
+func _attach_equipment(rig, slot: String, entry: Dictionary, props: Dictionary) -> Dictionary:
+	var def: Dictionary = _equipment_def(str(entry.get("item", "")))
+	if def.is_empty():
+		return {}
+	var state: String = str(entry.get("state", "equipped"))
+	var socket: String = _attachment_socket(def, state)
+	var mode: String = str(def.get("deformationMode", "RIGID")).to_upper()
+	# RIGID equipment sits at a fixed root-space socket offset (stays rigid);
+	# SKINNED/HYBRID attach at the bone origin and deform with the bone.
+	var offset: Vector3 = _socket_offset(socket, props) if mode == "RIGID" else Vector3.ZERO
+	var eq_color: Color = _equipment_color(def, entry)
+	var size: Vector3 = _vec3(def.get("size", [0.3, 0.3, 0.3]))
+	var mesh := _make_box(size, eq_color)
+	mesh.name = "Eq_%s" % slot
+	rig.attach(socket, mesh, mode, offset)
+	# RIGID equipment does not follow a bone — only SKINNED/HYBRID do.
+	var bone: String = "" if mode == "RIGID" else rig.socket_to_bone(socket)
+	return {
+		"node":    mesh,
+		"mode":    mode,
+		"socket":  socket,
+		"bone":    bone,
+		"item_id": str(entry.get("item", "")),
+		"def":     def,
+	}
 
 func _make_box(size: Vector3, color: Color) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
