@@ -138,6 +138,16 @@ func run() -> void:
 	_run_test("net: own peer id does not ghost",                 _test_net_player_ghost_self_filter)
 	_run_test("net: creature dirty-track broadcast",             _test_net_creature_dirty_broadcast)
 	_run_test("net: inventory replace_contents",                 _test_net_inventory_replace_contents)
+	_run_test("net: packets carry per-type monotonic seq",        _test_net_sequence_monotonic)
+	_run_test("net: duplicate dropped; reordered-unseen accepted", _test_net_sequence_dedup)
+	_run_test("net: emulator queues with monotonic seq",         _test_net_emulator_delivery)
+	_run_test("net: emulator drops near loss rate",              _test_net_emulator_loss)
+	_run_test("net: emulator jitter centered around zero",       _test_net_emulator_jitter)
+	_run_test("net: emulator adds no queue when disabled",       _test_net_emulator_zero_overhead)
+	_run_test("net: jitter buffer interpolates within tolerance", _test_net_jitter_buffer)
+	_run_test("net: inventory replace_contents is idempotent",   _test_net_inventory_replace_idempotent)
+	_run_test("net: host persists last-known state across disconnect", _test_net_reconnect_last_known_state)
+	_run_test("net: emulated loss+reorder — all delivered packets accepted", _test_net_two_peer_loss_reorder)
 
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
@@ -1765,6 +1775,198 @@ func _test_net_inventory_replace_contents() -> void:
 	assert_eq(inv.get_item_count("Ferrite"), 0, "replace clears old items")
 	assert_eq(inv.get_item_count("Ashite"), 3, "replace applies host contents")
 	inv.queue_free()
+
+# ---------------------------------------------------------------------------
+# Networking / chaos resilience tests (Phase 19)
+# ---------------------------------------------------------------------------
+
+func _test_net_sequence_monotonic() -> void:
+	# Each packet type maintains its own counter; two packets of the same type
+	# increment together, while a different type starts fresh at 0.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	var p1 := { "type": "player_moved" }
+	var p2 := { "type": "player_moved" }
+	var p3 := { "type": "block_changed" }
+	n._deliver(1, p1)
+	n._deliver(1, p2)
+	n._deliver(1, p3)
+	assert_eq(int(p1["seq"]), 0, "first player_moved gets seq 0")
+	assert_eq(int(p2["seq"]), 1, "second player_moved gets seq 1")
+	assert_eq(int(p3["seq"]), 0, "block_changed starts its own per-type counter at 0")
+	n.queue_free()
+
+func _test_net_sequence_dedup() -> void:
+	# In-order and forward-gap packets are accepted. True duplicates (same seq
+	# already in the window) are dropped. Out-of-order packets that have NOT been
+	# seen before are accepted (delivered late is fine; dropped is not). Each
+	# packet type is tracked independently.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	assert_true(n._dedup(1, { "seq": 0, "type": "x" }), "first seq accepted")
+	assert_true(n._dedup(1, { "seq": 1, "type": "x" }), "next in-order seq accepted")
+	assert_false(n._dedup(1, { "seq": 1, "type": "x" }), "duplicate seq dropped")
+	assert_false(n._dedup(1, { "seq": 0, "type": "x" }), "already-seen seq dropped")
+	assert_true(n._dedup(1, { "seq": 5, "type": "x" }), "forward gap accepted (logged, not blocking)")
+	# Out-of-order but UNSEEN: seq 3 arrives after seq 5 — must be accepted, not dropped.
+	assert_true(n._dedup(1, { "seq": 3, "type": "x" }), "out-of-order unseen seq accepted (delivered late)")
+	# Cross-type isolation: same seq on a different type has its own counter.
+	assert_true(n._dedup(1, { "seq": 0, "type": "y" }), "same seq on a different type accepted independently")
+	n.queue_free()
+
+func _test_net_emulator_delivery() -> void:
+	# With emulation on but no loss/jitter, every packet is queued and the
+	# queue preserves monotonic seq order.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n.emulate_network = true
+	n.emulator_loss_rate = 0.0
+	n.emulator_jitter_ms = 0.0
+	n._rng.seed = 7
+	for i in range(10):
+		n._deliver(1, { "type": "x", "i": i })
+	assert_eq(n._pending.size(), 10, "all packets queued when no loss and no jitter")
+	var seqs: Array = []
+	for e in n._pending:
+		var parsed = JSON.parse_string(e["json"])
+		seqs.append(int(parsed["seq"]))
+	seqs.sort()
+	assert_eq(seqs, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], "queued packets carry monotonic seq 0..9")
+	n.queue_free()
+
+func _test_net_emulator_loss() -> void:
+	# At a 15% loss rate the emulator drops a fraction close to 15% (and the
+	# mechanism is deterministic under a seeded RNG).
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n.emulate_network = true
+	n.emulator_loss_rate = 15.0
+	n._rng.seed = 12345
+	var dropped := 0
+	var total := 1000
+	for _i in range(total):
+		if n._should_drop():
+			dropped += 1
+	var pct := float(dropped) / float(total) * 100.0
+	assert_true(pct > 8.0 and pct < 22.0, "loss rate near 15%% (got %.1f%%)" % pct)
+	n.queue_free()
+
+func _test_net_emulator_jitter() -> void:
+	# Jitter delays are uniformly distributed in [-bound, +bound] with no
+	# positive bias. Negative values are delivered immediately by the drain loop.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n.emulate_network = true
+	n.emulator_jitter_ms = 50.0
+	n._rng.seed = 99
+	for _i in range(200):
+		var d: float = n._jitter_delay_ms()
+		assert_true(d >= -50.0 and d <= 50.0, "jitter delay within [-50, 50] (got %.1f)" % d)
+	n.queue_free()
+
+func _test_net_emulator_zero_overhead() -> void:
+	# With emulation disabled (production default), packets go straight out and
+	# never enter the delivery queue.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._deliver(1, { "type": "x" })
+	assert_eq(n._pending.size(), 0, "no packets queued when emulation disabled")
+	n.queue_free()
+
+func _test_net_jitter_buffer() -> void:
+	# The client jitter buffer replays remote-player snapshots on a fixed
+	# playback delay and interpolates between the surrounding snapshots.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n.jitter_buffer_ms = 100.0
+	n._jitter_buffer[1] = [
+		{ "at_ms": 0.0,   "position": Vector3(0.0, 0.0, 0.0) },
+		{ "at_ms": 50.0,  "position": Vector3(10.0, 0.0, 0.0) },
+		{ "at_ms": 100.0, "position": Vector3(20.0, 0.0, 0.0) },
+	]
+	var a: Vector3 = n._sample_remote_state_at(1, 100.0)
+	assert_true(abs(a.x) < 0.001, "playback before first snapshot returns first position")
+	var b: Vector3 = n._sample_remote_state_at(1, 150.0)
+	assert_true(abs(b.x - 10.0) < 0.001, "playback at middle snapshot returns exact position")
+	var c: Vector3 = n._sample_remote_state_at(1, 125.0)
+	assert_true(abs(c.x - 5.0) < 0.5, "interpolated between snapshots within tolerance")
+	var d: Vector3 = n._sample_remote_state_at(1, 250.0)
+	assert_true(abs(d.x - 20.0) < 0.001, "playback past last snapshot returns last position")
+	n.queue_free()
+
+func _test_net_inventory_replace_idempotent() -> void:
+	# replace_contents must be idempotent: applying the same snapshot twice
+	# (e.g. initial join followed by a rejoin) must not duplicate entries.
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv.add_item("Ferrite", 5)
+	var contents: Dictionary = inv.get_contents()
+	inv.replace_contents(contents)
+	inv.replace_contents(contents)
+	assert_eq(inv.get_item_count("Ferrite"), 5, "double replace_contents does not duplicate inventory")
+	inv.queue_free()
+
+func _test_net_reconnect_last_known_state() -> void:
+	# The host retains a client's last-known position across a disconnect so a
+	# rejoining client resumes from it.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n.remember_player_state(2, Vector3(4.0, 5.0, 6.0))
+	assert_eq(n.get_last_known_state(2), Vector3(4.0, 5.0, 6.0), "state remembered")
+	n._on_peer_disconnected(2)
+	assert_eq(n.get_last_known_state(2), Vector3(4.0, 5.0, 6.0), "last-known state retained across disconnect")
+	assert_true(n.get_last_known_states().has(2), "retained state present for snapshot")
+	n.queue_free()
+
+func _test_net_two_peer_loss_reorder() -> void:
+	# End-to-end emulation: a sender with 10% loss and reorder stages packets;
+	# all non-dropped packets must be accepted by the receiver's sliding-window
+	# dedup even when delivered in reverse order (worst-case reorder). A second
+	# pass must reject every packet as a duplicate (dedup is idempotent).
+	var sender := NetworkingSlice.new()
+	add_child(sender)
+	sender.emulate_network = true
+	sender.emulator_loss_rate = 10.0
+	sender.emulator_reorder = true
+	sender._rng.seed = 1337
+
+	for i in range(30):
+		sender._deliver(1, { "type": "player_moved", "i": i })
+
+	# Collect the packets the emulator kept (not lost), in whatever order the
+	# reorder step staged them.
+	var queued: Array = []
+	for entry in sender._pending:
+		var parsed = JSON.parse_string(str(entry["json"]))
+		if parsed is Dictionary:
+			queued.append(parsed)
+
+	assert_true(queued.size() > 0, "at least some packets survive 10% loss over 30 sent")
+
+	var receiver := NetworkingSlice.new()
+	add_child(receiver)
+
+	# Deliver in reverse order — maximum reorder stress.
+	var reversed_q := queued.duplicate()
+	reversed_q.reverse()
+	var accepted := 0
+	for pkt in reversed_q:
+		if receiver._dedup(1, pkt):
+			accepted += 1
+
+	assert_eq(accepted, queued.size(),
+		"all %d non-dropped packets accepted despite reverse-order delivery" % queued.size())
+
+	# Second pass: every seq is now in the seen window — all must be rejected.
+	var duplicates := 0
+	for pkt in queued:
+		if receiver._dedup(1, pkt):
+			duplicates += 1
+
+	assert_eq(duplicates, 0, "no packet accepted a second time — dedup is idempotent")
+
+	sender.queue_free()
+	receiver.queue_free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers

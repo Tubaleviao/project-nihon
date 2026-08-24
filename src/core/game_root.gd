@@ -403,6 +403,12 @@ func _on_server_disconnected() -> void:
 func _build_snapshot() -> Dictionary:
 	var players := {}
 	players[str(multiplayer.get_unique_id())] = _player.get_position()
+	# Phase 19 — include last-known remote player states so a rejoining client
+	# resumes from its last authoritative position after a disconnect.
+	var last_known := _networking.get_last_known_states()
+	for pid in last_known:
+		var last_pos: Vector3 = last_known[pid]
+		players[str(pid)] = [last_pos.x, last_pos.y, last_pos.z]
 	return {
 		"version":   1,
 		"heightmaps": _voxel.get_heightmaps(),
