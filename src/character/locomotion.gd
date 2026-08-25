@@ -31,11 +31,14 @@ const LAND_DURATION := 0.25
 
 var _state: int = State.IDLE
 var _timer: float = 0.0
+var _speed: float = 0.0
 
 ## Advance the machine one tick. `speed` is horizontal speed (m/s), `grounded`
 ## whether the body is on the floor, `velocity_y` the vertical velocity (m/s,
 ## negative when falling). Returns the resulting State.
 func update(speed: float, grounded: bool, velocity_y: float, delta: float) -> int:
+	_speed = speed
+
 	# Death is terminal: no transition out.
 	if _state == State.DEATH:
 		return _state
@@ -94,13 +97,29 @@ func get_state() -> int:
 func state_name() -> String:
 	return State.keys()[_state]
 
-## 0..1 blend weight for the walk→run blend tree. IDLE/other states report 0.
+## 0..1 continuous "locomotion amount" for cross-fading the idle → walk → run
+## clips. 0 = full idle, 1 = full run, with the walk band interpolating between
+## them. Reported from the speed of the last update() call; see blend_curve()
+## for the exact mapping.
 func get_blend_weight() -> float:
-	if _state == State.WALK:
+	return blend_curve(_speed)
+
+## Documented blend curve: maps horizontal speed (m/s) to a 0..1 locomotion
+## blend weight, replacing the old per-state magic constants (WALK → 0, RUN → 1).
+##
+##   speed <= WALK_SPEED             → 0.0  (full idle clip)
+##   WALK_SPEED < speed < RUN_SPEED  → linear 0..1 ramp (walk-band cross-fade)
+##   speed >= RUN_SPEED              → 1.0  (full run clip)
+##
+## Piecewise-linear in speed so the transition is smooth and predictable. A
+## future AnimationTree consumes this directly to drive its BlendSpace1D, so the
+## curve lives here (not in the renderer) and stays unit-testable headless.
+static func blend_curve(speed: float) -> float:
+	if speed <= WALK_SPEED:
 		return 0.0
-	if _state == State.RUN:
+	if speed >= RUN_SPEED:
 		return 1.0
-	return 0.0
+	return (speed - WALK_SPEED) / (RUN_SPEED - WALK_SPEED)
 
 func _set_state(s: int) -> void:
 	_state = s

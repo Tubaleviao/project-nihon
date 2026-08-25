@@ -11,6 +11,8 @@ extends Node3D
 ## Locomotion decisions live in Locomotion (locomotion.gd); this node is the
 ## thing those decisions deform.
 
+const GameDataReader := preload("res://src/core/game_data_reader.gd")
+
 ## Humanoid rest pose (local positions, unscaled height) — bone name → Vector3.
 ## Non-humanoid / unknown bones fall back to a small deterministic chain step.
 const REST_POSE: Dictionary = {
@@ -58,10 +60,10 @@ func build(skeleton_res: Resource, scale: float = 1.0) -> void:
 	if skeleton_res == null:
 		return
 
-	_family = _str_field(skeleton_res, "family", "humanoid")
-	_sockets = _json_field(skeleton_res, "sockets", {})
+	_family = GameDataReader.str_field(skeleton_res, "family", "humanoid")
+	_sockets = GameDataReader.json_field(skeleton_res, "sockets", {})
 
-	var bone_defs = _json_field(skeleton_res, "bones", [])
+	var bone_defs = GameDataReader.json_field(skeleton_res, "bones", [])
 	var idx := 0
 	for b in bone_defs:
 		var bone_name: String = str(b.get("name", ""))
@@ -98,6 +100,22 @@ func get_skeleton() -> Skeleton3D:
 func get_bone_index(bone_name: String) -> int:
 	return int(_bone_index.get(bone_name, -1))
 
+## Global (rig-root-space) rest position of a bone's origin, computed by walking
+## the parent chain and summing each ancestor's rest transform. Unknown bones
+## return Vector3.ZERO. This is the anchor callers subtract to convert a
+## root-space socket offset into a bone-local offset.
+func get_bone_global_rest(bone_name: String) -> Vector3:
+	if not _bone_index.has(bone_name):
+		return Vector3.ZERO
+	var pos := Vector3.ZERO
+	var idx: int = _bone_index[bone_name]
+	var guard := 0
+	while idx != -1 and guard < _bones.size():
+		pos += _skeleton.get_bone_rest(idx).origin
+		idx = _skeleton.get_bone_parent(idx)
+		guard += 1
+	return pos
+
 func get_bone_names() -> Array:
 	return _bones.duplicate()
 
@@ -117,18 +135,29 @@ func attach(socket: String, mesh: MeshInstance3D, mode: String, local_offset: Ve
 	mesh.set_meta("socket", socket)
 
 	if m == "RIGID":
-		# Rigid: no bone follow — the mesh is a direct child of the rig root.
+		# Rigid: no bone follow — the mesh is a direct child of the rig root,
+		# positioned at the root-space socket offset.
 		mesh.set_meta("attached_bone", "")
 		self.add_child(mesh)
 		mesh.transform.origin = local_offset
 		return
 
-	# SKINNED / HYBRID: follow the socket's bone.
-	mesh.set_meta("attached_bone", bone)
+	# SKINNED / HYBRID: follow the socket's bone. `local_offset` is bone-local.
+	attach_to_bone(bone, mesh, local_offset)
+
+## Attach a mesh directly to a named bone (SKINNED/HYBRID). The mesh is parented
+## under a BoneAttachment3D on that bone so it follows the skeleton, positioned
+## at `local_offset` in bone-local space. An unknown/empty bone name falls back
+## to a rig-root child so nothing is left orphaned.
+func attach_to_bone(bone_name: String, mesh: MeshInstance3D, local_offset: Vector3) -> void:
+	mesh.set_meta("attached_bone", bone_name)
+	if bone_name == "" or not _bone_index.has(bone_name):
+		self.add_child(mesh)
+		mesh.transform.origin = local_offset
+		return
 	var att := BoneAttachment3D.new()
-	att.name = "Attach_%s" % (bone if bone != "" else socket)
-	if bone != "" and _bone_index.has(bone):
-		att.bone_idx = _bone_index[bone]
+	att.name = "Attach_%s" % bone_name
+	att.bone_idx = _bone_index[bone_name]
 	_skeleton.add_child(att)
 	att.add_child(mesh)
 	mesh.transform.origin = local_offset
@@ -155,17 +184,3 @@ static func compute_foot_targets(
 	var foot_l := Vector3(left_x, clampf(left_y, hip_y - leg_length, hip_y), z)
 	var foot_r := Vector3(right_x, clampf(right_y, hip_y - leg_length, hip_y), z)
 	return { "foot_l": foot_l, "foot_r": foot_r, "hip_y": hip_y }
-
-func _str_field(res: Resource, key: String, default: String) -> String:
-	var v = res.get(key)
-	return str(v) if v != null else default
-
-func _json_field(res: Resource, key: String, default):
-	var v = res.get(key)
-	if v is Dictionary or v is Array:
-		return v
-	if v is String and v != "":
-		var parsed = JSON.parse_string(v)
-		if parsed != null:
-			return parsed
-	return default

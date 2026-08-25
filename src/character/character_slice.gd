@@ -40,6 +40,7 @@ extends Node
 
 const Locomotion  := preload("res://src/character/locomotion.gd")
 const SkeletonRig := preload("res://src/character/skeleton_rig.gd")
+const GameDataReader := preload("res://src/core/game_data_reader.gd")
 
 const MIN_LOD := 0
 const MAX_LOD := 3
@@ -187,6 +188,16 @@ func is_part_visible(instance_id: String, part_key: String) -> bool:
 	if not parts.has(part_key):
 		return false
 	return parts[part_key]["node"].visible
+
+## Live node for a named part (body/head/hair/beard or an equipment slot), or
+## null when the part is absent. Exposed for tests and the debug HUD.
+func get_part_node(instance_id: String, part_key: String) -> Node3D:
+	if not _instances.has(instance_id):
+		return null
+	var parts: Dictionary = _instances[instance_id]["parts"]
+	if not parts.has(part_key):
+		return null
+	return parts[part_key].get("node", null)
 
 # ---------------------------------------------------------------------------
 # Public — recipe (de)serialization (characters.md §30, §31)
@@ -420,32 +431,6 @@ func _on_attack_requested(instance_id: String) -> void:
 func _on_death_requested(instance_id: String) -> void:
 	trigger_death(instance_id)
 
-# ---------------------------------------------------------------------------
-# GameData readers
-# ---------------------------------------------------------------------------
-
-## Read a json-typed field from a generated resource. Handles the value as a
-## Dictionary/Array directly, or as a JSON string; falls back to `default`.
-func _json(res: Resource, key: String, default):
-	var v = res.get(key)
-	if v is Dictionary or v is Array:
-		return v
-	if v is String and v != "":
-		var parsed = JSON.parse_string(v)
-		if parsed != null:
-			return parsed
-	return default
-
-func _str_field(res: Resource, key: String, default: String) -> String:
-	var v = res.get(key)
-	return str(v) if v != null else default
-
-func _int_field(res: Resource, key: String, default: int) -> int:
-	var v = res.get(key)
-	if v is int or v is float:
-		return int(v)
-	return default
-
 ## Build the equipment-visual definition for an item from GameData.ITEMS.
 ## Returns {} when the item is missing or has no equipment slot (not equippable).
 ## `hide` and `compatibleTags` exist in the fabric but are not yet consumed by
@@ -454,34 +439,34 @@ func _equipment_def(item_id: String) -> Dictionary:
 	var res: Resource = GameData.ITEMS.get(item_id, null)
 	if res == null:
 		return {}
-	var slot := _str_field(res, "equipmentSlot", "")
+	var slot := GameDataReader.str_field(res, "equipmentSlot", "")
 	if slot == "":
 		return {}
 	return {
 		"slot":           slot,
-		"deformationMode": _str_field(res, "deformationMode", "RIGID"),
-		"masks":           _json(res, "masks", {}),
-		"attachments":     _json(res, "attachments", {}),
-		"minLodLevel":     _int_field(res, "minLodLevel", 0),
-		"size":            _json(res, "size", [0.3, 0.3, 0.3]),
-		"metal":           _str_field(res, "metalTone", "none"),
+		"deformationMode": GameDataReader.str_field(res, "deformationMode", "RIGID"),
+		"masks":           GameDataReader.json_field(res, "masks", {}),
+		"attachments":     GameDataReader.json_field(res, "attachments", {}),
+		"minLodLevel":     GameDataReader.int_field(res, "minLodLevel", 0),
+		"size":            GameDataReader.json_field(res, "size", [0.3, 0.3, 0.3]),
+		"metal":           GameDataReader.str_field(res, "metalTone", "none"),
 	}
 
 ## Build a raw appearance recipe Dictionary from a GameData.APPEARANCES resource.
 func _appearance_to_recipe(res: Resource) -> Dictionary:
 	return {
-		"skeleton":    _str_field(res, "skeleton", DEFAULT_SKELETON),
-		"body":        _str_field(res, "body", "human_body_01"),
-		"proportions": _json(res, "proportions", {}),
-		"skinColor":   _int_field(res, "skinColor", 12),
-		"head":        _str_field(res, "head", "head_01"),
-		"eyes":        _str_field(res, "eyes", "eyes_01"),
-		"eyeColor":    _int_field(res, "eyeColor", 225),
-		"hair":        _str_field(res, "hair", "hair_short_01"),
-		"hairColor":   _int_field(res, "hairColor", 40),
-		"beard":       _str_field(res, "beard", "beard_none"),
-		"beardColor":  _int_field(res, "beardColor", 40),
-		"equipment":   _json(res, "equipment", {}),
+		"skeleton":    GameDataReader.str_field(res, "skeleton", DEFAULT_SKELETON),
+		"body":        GameDataReader.str_field(res, "body", "human_body_01"),
+		"proportions": GameDataReader.json_field(res, "proportions", {}),
+		"skinColor":   GameDataReader.int_field(res, "skinColor", 12),
+		"head":        GameDataReader.str_field(res, "head", "head_01"),
+		"eyes":        GameDataReader.str_field(res, "eyes", "eyes_01"),
+		"eyeColor":    GameDataReader.int_field(res, "eyeColor", 225),
+		"hair":        GameDataReader.str_field(res, "hair", "hair_short_01"),
+		"hairColor":   GameDataReader.int_field(res, "hairColor", 40),
+		"beard":       GameDataReader.str_field(res, "beard", "beard_none"),
+		"beardColor":  GameDataReader.int_field(res, "beardColor", 40),
+		"equipment":   GameDataReader.json_field(res, "equipment", {}),
 	}
 
 # ---------------------------------------------------------------------------
@@ -490,7 +475,7 @@ func _appearance_to_recipe(res: Resource) -> Dictionary:
 
 func _load_palette() -> void:
 	var res: Resource = GameData.PALETTES.get(PALETTE_KEY, null)
-	var entries = _json(res, "entries", []) if res != null else []
+	var entries = GameDataReader.json_field(res, "entries", []) if res != null else []
 	_palette = []
 	if entries is Array and entries.size() > 0:
 		for hex_str in entries:
@@ -593,22 +578,30 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 	var head_y := hip_y + torso_h + head_size * 0.5
 
 	# Skeleton rig (Phase 20) — build a real Skeleton3D from the fabric
-	# SkeletonDefinition so the character carries a bone hierarchy. Body/head/
-	# hair/beard stay rig-root children (placeholder meshes) pending real
-	# skinned assets; equipment attaches to sockets through the rig.
+	# SkeletonDefinition so the character carries a bone hierarchy. Body and head
+	# are skinned to their bones (torso / head) so they deform with the
+	# skeleton; hair/beard stay rig-root children (placeholder details) pending
+	# real skinned assets; equipment attaches to sockets through the rig.
 	var skeleton_res: Resource = GameData.SKELETONS.get(str(appearance.get("skeleton", DEFAULT_SKELETON)), null)
 	rig.build(skeleton_res, height)
 
-	# Body (torso + legs as one block placeholder).
+	# Body (torso + legs as one block placeholder) — skinned to the torso bone so
+	# it deforms with the skeleton. The mesh keeps its computed root-space
+	# position, expressed as a bone-local offset (root-space minus the bone's
+	# rest origin) so the rendered pose is unchanged at rest.
 	var body := _make_box(Vector3(0.55 * shoulder * mass, torso_h, 0.32 * mass), skin)
-	body.position = Vector3(0.0, hip_y + torso_h * 0.5, 0.0)
-	rig.add_child(body)
+	var body_pos := Vector3(0.0, hip_y + torso_h * 0.5, 0.0)
+	var torso_bone := _torso_bone(rig)
+	rig.attach_to_bone(torso_bone, body, body_pos - rig.get_bone_global_rest(torso_bone))
 	parts["body"] = { "node": body, "min_lod": 3 }
 
-	# Head.
+	# Head — skinned to the head bone.
 	var head := _make_box(Vector3(head_size, head_size, head_size), skin)
-	head.position = Vector3(0.0, head_y, 0.0)
-	rig.add_child(head)
+	var head_pos := Vector3(0.0, head_y, 0.0)
+	var head_bone := rig.socket_to_bone("socket_head")
+	if rig.get_bone_index(head_bone) == -1:
+		head_bone = ""
+	rig.attach_to_bone(head_bone, head, head_pos - rig.get_bone_global_rest(head_bone))
 	parts["head"] = { "node": head, "min_lod": 3 }
 
 	# Hair (independent component — §13).
@@ -659,9 +652,15 @@ func _attach_equipment(rig, slot: String, entry: Dictionary, props: Dictionary) 
 	var state: String = str(entry.get("state", "equipped"))
 	var socket: String = _attachment_socket(def, state)
 	var mode: String = str(def.get("deformationMode", "RIGID")).to_upper()
-	# RIGID equipment sits at a fixed root-space socket offset (stays rigid);
-	# SKINNED/HYBRID attach at the bone origin and deform with the bone.
-	var offset: Vector3 = _socket_offset(socket, props) if mode == "RIGID" else Vector3.ZERO
+	var socket_pos: Vector3 = _socket_offset(socket, props)
+	# RIGID equipment sits at a fixed root-space socket offset (stays rigid).
+	# SKINNED/HYBRID deform with the socket's bone, so their offset is the
+	# socket position expressed in bone-local space (root-space minus the bone's
+	# rest origin) — a bare root-space offset would double-apply once the mesh is
+	# reparented under the bone.
+	var offset: Vector3 = socket_pos
+	if mode != "RIGID":
+		offset = socket_pos - rig.get_bone_global_rest(rig.socket_to_bone(socket))
 	var eq_color: Color = _equipment_color(def, entry)
 	var size: Vector3 = _vec3(def.get("size", [0.3, 0.3, 0.3]))
 	var mesh := _make_box(size, eq_color)
@@ -677,6 +676,15 @@ func _attach_equipment(rig, slot: String, entry: Dictionary, props: Dictionary) 
 		"item_id": str(entry.get("item", "")),
 		"def":     def,
 	}
+
+## Preferred torso bone to skin the body mesh to, in a family-agnostic order
+## (humanoid/quadruped → Chest, bird → Spine, serpent → Spine_1, else Root).
+## Returns "" when none exist, so the rig keeps the body a root child.
+func _torso_bone(rig) -> String:
+	for name in ["Chest", "Spine", "Spine_1", "Root"]:
+		if rig.get_bone_index(name) != -1:
+			return name
+	return ""
 
 func _make_box(size: Vector3, color: Color) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()

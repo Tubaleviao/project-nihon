@@ -279,12 +279,6 @@ func _boot_world() -> void:
 	_character.create_character("BoarRider", Vector3(spawn_xz.x - 3.0, ground_h + 1.0, spawn_xz.y))
 	_character.set_player_character(player_char)
 
-	# Phase 20 — exercise the locomotion state machine across the speed range so
-	# the idle → walk → run transition is visible in the boot log.
-	for spd in [0.0, 2.0, 5.0]:
-		_character.update_locomotion(player_char, spd, true, 0.0, 0.0)
-		print("[Character] locomotion speed=%.1f → %s" % [spd, _character.get_locomotion_state_name(player_char)])
-
 	# CreatureSlice already spawned each chunk's budget via ChunkManager (Phase 17).
 	# Fire one combat round against the first spawned creature through the bus to
 	# validate the combat pipeline end to end.
