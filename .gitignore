@@ -5,3 +5,6 @@
 
 # Node.js (fabric tooling — @newel)
 node_modules/
+
+# Production asset pack (built from the private assets submodule — never commit)
+assets.pck

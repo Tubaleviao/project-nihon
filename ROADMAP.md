@@ -789,7 +789,7 @@ humanoid skeleton with a fabric-driven locomotion state machine.
 - Body/head/hair/beard remain rig-root placeholder `BoxMesh` parts (not yet
   skinned to the skeleton) pending real mesh + `Skin` asset production.
 
-**Known simplifications (deferred to Phase 21):**
+**Known simplifications (deferred to Phase 22):**
 - Palette and material system not yet wired (placeholder albedo only).
 - LOD simplification not yet applied (full-detail mesh at all distances).
 - No blend-shape facial customization.
@@ -798,7 +798,42 @@ humanoid skeleton with a fabric-driven locomotion state machine.
 
 ---
 
-## Phase 21 — Material and palette pipeline
+## Phase 21 — Asset separation and public placeholders
+
+**Goal:** Keep production art private while the public repo clones and runs
+clean. A private asset submodule (Git LFS) is packed into a `.pck` that mounts
+over `res://` at startup and replaces the committed placeholders — the same
+mechanism that will carry paid DLC packs later.
+
+**Newel dependency:** None.
+
+**Deliverables:**
+- Production art lives in a private repo (`project-nihon-assets`), added to this
+  repo as the `assets-prod/` git submodule; large binaries are tracked with
+  Git LFS inside that repo.
+- `assets/` — ugly placeholders committed at canonical `res://` paths
+  (`assets/textures/placeholder_character.png`) so a public clone resolves every
+  asset reference with no missing-resource errors.
+- `tools/pack_pck.gd` + `tools/build_pck.sh` — pack the submodule into a single
+  `assets.pck` whose entries land at the same `res://assets/…` paths (a `.pck`
+  is the unit of optional content — the DLC monetization model).
+- `src/core/asset_overlay.gd` (autoload) — mounts `assets.pck` over `res://` at
+  startup, swapping placeholders for production art; exposes `asset_mode()`.
+- `tools/gen_placeholder.py` — deterministically regenerates placeholder art.
+- Build policy: Steam/release bundles `assets.pck` (mounted from next to the
+  binary); the public/GitHub build ships placeholders only.
+- No code references a private-only path — production art is addressed only via
+  its public canonical `res://assets/…` path, which the `.pck` overlays.
+
+**Acceptance criteria:**
+- A fresh `git clone` of the public repo opens and runs in Godot — placeholders
+  present, no missing-resource errors
+- Production art is absent from the public repo (only the submodule pointer)
+- `assets.pck` is gitignored and never committed
+
+---
+
+## Phase 22 — Material and palette pipeline
 
 **Goal:** Implement the pixel-art material system from `characters.md`: Primary /
 Secondary / Accent masks, Metal + Emission + Wear channels, and per-instance
@@ -827,13 +862,13 @@ palette swaps without extra draw calls.
 - Pixel-art textures render without bilinear blurring (Point filter confirmed)
 - Wear channel visually degrades equipment as durability decreases
 
-**Known simplifications (deferred to Phase 22):**
+**Known simplifications (deferred to Phase 23):**
 - LOD mesh switching not yet tied to this material system.
 - Emission channel is static; dynamic glow (e.g. enchantments) deferred.
 
 ---
 
-## Phase 22 — LOD and composition simplification
+## Phase 23 — LOD and composition simplification
 
 **Goal:** Apply the `minLodLevel` attachment rules from `characters.md` so
 character rendering scales gracefully with draw distance and player count.
@@ -867,7 +902,7 @@ character rendering scales gracefully with draw distance and player count.
 
 ---
 
-## Phase 23 — Social systems and player economy
+## Phase 24 — Social systems and player economy
 
 **Goal:** Ground the `CommunityOwnsTheFuture` and `EconomyIsPlayer-Driven`
 constitution principles in real game mechanics: trade, social skills, and
@@ -925,6 +960,6 @@ community governance hooks.
 - **WAN / cross-region multiplayer testing** — all Phase 18–19 multiplayer
   validation is loopback or LAN (deferred from Phase 19).
 - **Automatic LOD mesh decimation** — simplified meshes are hand-authored;
-  runtime decimation deferred from Phase 22.
+  runtime decimation deferred from Phase 23.
 - **Dynamic impostor re-bake** — impostor billboards are offline-baked; live
-  palette-change re-bake deferred from Phase 22.
+  palette-change re-bake deferred from Phase 23.

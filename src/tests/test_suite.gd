@@ -159,6 +159,9 @@ func run() -> void:
 	_run_test("net: inventory replace_contents is idempotent",   _test_net_inventory_replace_idempotent)
 	_run_test("net: host persists last-known state across disconnect", _test_net_reconnect_last_known_state)
 	_run_test("net: emulated loss+reorder — all delivered packets accepted", _test_net_two_peer_loss_reorder)
+	_run_test("asset: placeholder resolves at canonical path",  _test_asset_placeholder_resolves)
+	_run_test("asset: overlay mode is placeholder or production", _test_asset_overlay_mode_valid)
+	_run_test("asset: no private-only paths hardcoded",          _test_asset_no_private_paths_hardcoded)
 
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
@@ -2130,6 +2133,24 @@ func _test_net_two_peer_loss_reorder() -> void:
 
 	sender.queue_free()
 	receiver.queue_free()
+
+# ---------------------------------------------------------------------------
+# AssetOverlay tests (Phase 21 — asset separation)
+# ---------------------------------------------------------------------------
+
+func _test_asset_placeholder_resolves() -> void:
+	assert_true(FileAccess.file_exists(AssetOverlay.PLACEHOLDER_PATH),
+		"canonical placeholder exists at %s" % AssetOverlay.PLACEHOLDER_PATH)
+
+func _test_asset_overlay_mode_valid() -> void:
+	assert_true(AssetOverlay.asset_mode() in ["placeholder", "production"],
+		"asset mode is placeholder|production, got '%s'" % AssetOverlay.asset_mode())
+
+func _test_asset_no_private_paths_hardcoded() -> void:
+	assert_eq(AssetOverlay.PCK_NAME, "assets.pck",
+		"pack name is a public constant, not a private-only path")
+	assert_true(AssetOverlay.PLACEHOLDER_PATH.begins_with("res://assets/"),
+		"canonical asset path lives under the public res://assets/ prefix")
 
 # ---------------------------------------------------------------------------
 # Assertion helpers
