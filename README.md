@@ -40,7 +40,7 @@ pnpm generate   # generate the design bible into bible/
 | 17 | Chunk streaming and world expansion | Done |
 | 18 | Multiplayer world sync (core) | Done |
 | 19 | Multiplayer chaos resilience (jitter + packet loss) | Done |
-| 20 | Skeleton rig and animation | Planned |
+| 20 | Skeleton rig and animation | Done |
 | 21 | Material and palette pipeline | Planned |
 | 22 | LOD and composition simplification | Planned |
 | 23 | Social systems and player economy | Planned |

@@ -279,6 +279,20 @@ signal character_spawned(instance_id: String, skeleton_id: String, position: Vec
 ## appearance  : Dictionary — the normalized appearance recipe
 signal character_appearance_changed(instance_id: String, appearance: Dictionary)
 
+## Request the attack animation on a character instance (ROADMAP Phase 20).
+## Wired from game_root when the player attacks (combat_round_requested with
+## attacker == "player").
+signal character_attack_requested(instance_id: String)
+
+## Request the death animation on a character instance (ROADMAP Phase 20).
+## Wired from game_root on player death.
+signal character_death_requested(instance_id: String)
+
+## Emitted by CharacterSlice when a character instance's locomotion state
+## changes (ROADMAP Phase 20). state is the Locomotion.State name string
+## ("IDLE", "WALK", "RUN", "FALL", "LAND", "ATTACK", "DEATH").
+signal character_state_changed(instance_id: String, state: String)
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

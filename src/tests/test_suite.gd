@@ -25,6 +25,8 @@ const StationSlice    := preload("res://src/world/station_slice.gd")
 const Minimap         := preload("res://src/ui/minimap.gd")
 const PlayerSlice     := preload("res://src/player/player_slice.gd")
 const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
+const Locomotion      := preload("res://src/character/locomotion.gd")
+const SkeletonRig     := preload("res://src/character/skeleton_rig.gd")
 
 var _pass: int = 0
 var _fail: int = 0
@@ -72,6 +74,15 @@ func run() -> void:
 	_run_test("character: spawns non-humanoid",               _test_character_spawns_nonhumanoid)
 	_run_test("character: unknown appearance rejected",       _test_character_unknown_appearance)
 	_run_test("character: LOD hides fine detail",             _test_character_lod_hides_detail)
+	_run_test("character: skeleton rig builds bone hierarchy",_test_character_skeleton_rig)
+	_run_test("character: locomotion idle→walk→run by speed", _test_character_locomotion_speed)
+	_run_test("character: blend curve maps speed to 0..1",     _test_character_blend_curve)
+	_run_test("character: attack/death play on bus signals",  _test_character_attack_death_signals)
+	_run_test("character: foot IK tracks terrain surface",    _test_character_foot_ik)
+	_run_test("character: equipment SKINNED vs RIGID",        _test_character_deformation_modes)
+	_run_test("character: apply/clear equipment",             _test_character_apply_clear_equipment)
+	_run_test("character: RIGID socket offset places mesh",   _test_character_rigid_socket_offset)
+	_run_test("character: full spawn path assembles + signals", _test_character_full_spawn_path)
 	_run_test("crafting: recipe data loaded from fabric",     _test_crafting_recipe_data_loaded)
 	_run_test("crafting: skill guard blocks low tier",        _test_crafting_skill_guard_blocks)
 	_run_test("crafting: consumes inputs and produces output", _test_crafting_consumes_and_produces)
@@ -613,6 +624,158 @@ func _test_character_lod_hides_detail() -> void:
 	ch.set_lod(3)
 	assert_false(ch.is_part_visible(iid, "hair"), "hair hidden at LOD3")
 	assert_true(ch.is_part_visible(iid, "body"), "body visible at LOD3")
+	ch.queue_free()
+
+func _test_character_skeleton_rig() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	assert_true(iid != "", "traveller created")
+	var bones: Array = ch.get_skeleton_bone_names(iid)
+	assert_true(bones.has("Root"),   "Root bone present")
+	assert_true(bones.has("Hips"),   "Hips bone present")
+	assert_true(bones.has("Chest"),  "Chest bone present")
+	assert_true(bones.has("Head"),   "Head bone present")
+	assert_true(bones.has("Hand_R"), "Hand_R bone present")
+	assert_true(bones.has("Foot_L"), "Foot_L bone present")
+	ch.queue_free()
+
+func _test_character_locomotion_speed() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	assert_eq(ch.get_locomotion_state_name(iid), "IDLE", "character starts idle")
+	ch.update_locomotion(iid, 2.0, true, 0.0, 0.0)
+	assert_eq(ch.get_locomotion_state_name(iid), "WALK", "speed 2.0 → WALK")
+	ch.update_locomotion(iid, 5.0, true, 0.0, 0.0)
+	assert_eq(ch.get_locomotion_state_name(iid), "RUN", "speed 5.0 → RUN")
+	ch.update_locomotion(iid, 0.0, true, 0.0, 0.0)
+	assert_eq(ch.get_locomotion_state_name(iid), "IDLE", "speed 0.0 → IDLE")
+	ch.queue_free()
+
+func _test_character_attack_death_signals() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	GameBus.character_attack_requested.emit(iid)
+	assert_eq(ch.get_locomotion_state_name(iid), "ATTACK", "attack request → ATTACK")
+	GameBus.character_death_requested.emit(iid)
+	assert_eq(ch.get_locomotion_state_name(iid), "DEATH", "death request → DEATH")
+	ch.queue_free()
+
+func _test_character_foot_ik() -> void:
+	var flat := func(_xz: Vector2) -> float: return 0.0
+	var t := SkeletonRig.compute_foot_targets(flat, Vector3(0.0, 1.0, 0.0), 0.5, 1.5, 0.2, 0.0)
+	var fl: Vector3 = t["foot_l"]
+	var fr: Vector3 = t["foot_r"]
+	assert_true(is_equal_approx(fl.y, 0.0), "left foot on flat terrain y=0")
+	assert_true(is_equal_approx(fr.y, 0.0), "right foot on flat terrain y=0")
+	var slope := func(xz: Vector2) -> float: return xz.x * 0.5
+	var t2 := SkeletonRig.compute_foot_targets(slope, Vector3(0.0, 1.0, 0.0), 0.5, 1.5, 0.2, 0.0)
+	var sl: Vector3 = t2["foot_l"]
+	var sr: Vector3 = t2["foot_r"]
+	assert_true(sl.y < sr.y, "slope tilts feet (left lower)")
+	var trench := func(_xz: Vector2) -> float: return -10.0
+	var t3 := SkeletonRig.compute_foot_targets(trench, Vector3(0.0, 1.0, 0.0), 0.5, 1.5, 0.2, 0.0)
+	var tl: Vector3 = t3["foot_l"]
+	assert_true(is_equal_approx(tl.y, 0.0), "deep trench clamps foot to leg reach")
+
+func _test_character_deformation_modes() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character_from_recipe({ "skeleton": "HumanoidSkeleton" }, Vector3.ZERO)
+	assert_true(ch.apply_equipment(iid, "Cape", "DuskfiberCloak"), "cloak (SKINNED) equipped")
+	assert_true(ch.apply_equipment(iid, "MainHand", "VeilsteelLongsword"), "sword (RIGID) equipped")
+	assert_eq(ch.get_equipment_deformation_mode(iid, "Cape"), "SKINNED", "cloak deforms (SKINNED)")
+	assert_eq(ch.get_equipment_deformation_mode(iid, "MainHand"), "RIGID", "sword stays rigid (RIGID)")
+	assert_true(ch.get_equipment_attached_bone(iid, "Cape") != "", "SKINNED cloak follows a bone")
+	assert_eq(ch.get_equipment_attached_bone(iid, "MainHand"), "", "RIGID sword does not follow a bone")
+	ch.queue_free()
+
+func _test_character_apply_clear_equipment() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character_from_recipe({ "skeleton": "HumanoidSkeleton" }, Vector3.ZERO)
+	assert_true(ch.apply_equipment(iid, "MainHand", "VeilsteelLongsword"), "sword equipped")
+	assert_eq(ch.get_equipment_deformation_mode(iid, "MainHand"), "RIGID", "sword present")
+	assert_true(ch.clear_equipment(iid, "MainHand"), "sword cleared")
+	assert_eq(ch.get_equipment_deformation_mode(iid, "MainHand"), "", "slot empty after clear")
+	assert_false(ch.clear_equipment(iid, "MainHand"), "clearing empty slot returns false")
+	ch.queue_free()
+
+func _test_character_blend_curve() -> void:
+	# The blend weight is a continuous 0..1 curve over speed (idle → walk → run),
+	# replacing the old per-state magic constants (WALK → 0, RUN → 1).
+	assert_eq(Locomotion.blend_curve(0.0), 0.0, "idle speed → blend 0")
+	assert_eq(Locomotion.blend_curve(Locomotion.WALK_SPEED), 0.0, "walk threshold → blend 0")
+	assert_eq(Locomotion.blend_curve(Locomotion.RUN_SPEED), 1.0, "run threshold → blend 1")
+	var mid: float = (Locomotion.WALK_SPEED + Locomotion.RUN_SPEED) / 2.0
+	assert_true(is_equal_approx(Locomotion.blend_curve(mid), 0.5), "mid-band speed → blend 0.5")
+	assert_true(Locomotion.blend_curve(0.0) < Locomotion.blend_curve(mid), "blend rises through the walk band")
+	var loco := Locomotion.new()
+	loco.update(mid, true, 0.0, 0.0)
+	assert_true(is_equal_approx(loco.get_blend_weight(), 0.5), "get_blend_weight tracks last update speed")
+
+func _test_character_rigid_socket_offset() -> void:
+	# Socket offsets place equipment in two spaces: RIGID in root space (mesh is
+	# a rig-root child), SKINNED/HYBRID in bone-local space (mesh under a
+	# BoneAttachment3D). Both must land at a non-origin socket position.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character_from_recipe({ "skeleton": "HumanoidSkeleton" }, Vector3.ZERO)
+
+	assert_true(ch.apply_equipment(iid, "MainHand", "VeilsteelLongsword"), "RIGID sword equipped")
+	var sword: Node3D = ch.get_part_node(iid, "MainHand")
+	assert_true(sword != null, "RIGID mesh exposed")
+	assert_eq(ch.get_equipment_attached_bone(iid, "MainHand"), "", "RIGID sword not bone-parented")
+	assert_false(sword.get_parent() is BoneAttachment3D, "RIGID mesh is a rig-root child, not under a bone")
+	var sp: Vector3 = sword.position
+	assert_true(sp.x > 0.0 and sp.y > 0.0, "RIGID sword at right-hand socket offset, not origin")
+
+	assert_true(ch.apply_equipment(iid, "Cape", "DuskfiberCloak"), "SKINNED cloak equipped")
+	var cloak: Node3D = ch.get_part_node(iid, "Cape")
+	assert_true(cloak != null, "SKINNED mesh exposed")
+	assert_true(ch.get_equipment_attached_bone(iid, "Cape") != "", "SKINNED cloak bone-parented")
+	assert_true(cloak.get_parent() is BoneAttachment3D, "SKINNED mesh under a BoneAttachment3D")
+	assert_true(cloak.position != Vector3.ZERO, "SKINNED cloak honors a non-zero bone-local socket offset")
+	ch.queue_free()
+
+func _test_character_full_spawn_path() -> void:
+	# End-to-end spawn: create_character must register an instance, assemble the
+	# rig (bone hierarchy + body/head skinned to bones), initialise locomotion to
+	# idle, and emit character_spawned with the correct skeleton and position.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+
+	var captured := {}
+	GameBus.character_spawned.connect(func(iid, skeleton_id, position):
+		captured["count"] = captured.get("count", 0) + 1
+		captured["iid"] = iid
+		captured["skeleton"] = skeleton_id
+		captured["position"] = position
+	)
+
+	var pos := Vector3(4.0, 2.0, 6.0)
+	var iid := ch.create_character("TravellerHuman", pos)
+	assert_true(iid != "", "character created")
+
+	assert_eq(ch.get_appearance(iid)["skeleton"], "HumanoidSkeleton", "skeleton preserved")
+
+	var bones: Array = ch.get_skeleton_bone_names(iid)
+	assert_true(bones.has("Root") and bones.has("Chest") and bones.has("Head"), "bone hierarchy assembled")
+
+	var body: Node3D = ch.get_part_node(iid, "body")
+	var head: Node3D = ch.get_part_node(iid, "head")
+	assert_true(body != null and head != null, "body and head parts assembled")
+	assert_eq(str(body.get_meta("attached_bone")), "Chest", "body skinned to torso bone")
+	assert_eq(str(head.get_meta("attached_bone")), "Head", "head skinned to head bone")
+
+	assert_eq(ch.get_locomotion_state_name(iid), "IDLE", "starts idle")
+
+	assert_eq(captured.get("count", 0), 1, "character_spawned emitted exactly once")
+	assert_eq(captured.get("iid"), iid, "signal carries instance id")
+	assert_eq(captured.get("skeleton"), "HumanoidSkeleton", "signal carries skeleton id")
+	assert_eq(captured.get("position"), pos, "signal carries spawn position")
 	ch.queue_free()
 
 # ---------------------------------------------------------------------------
