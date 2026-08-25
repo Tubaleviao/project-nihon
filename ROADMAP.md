@@ -798,7 +798,7 @@ humanoid skeleton with a fabric-driven locomotion state machine.
 
 ---
 
-## Phase 21 — Asset separation and public placeholders
+## Phase 21 — Asset separation and public placeholders ✅ Done
 
 **Goal:** Keep production art private while the public repo clones and runs
 clean. A private asset submodule (Git LFS) is packed into a `.pck` that mounts
@@ -827,9 +827,9 @@ mechanism that will carry paid DLC packs later.
 
 **Acceptance criteria:**
 - A fresh `git clone` of the public repo opens and runs in Godot — placeholders
-  present, no missing-resource errors
-- Production art is absent from the public repo (only the submodule pointer)
-- `assets.pck` is gitignored and never committed
+  present, no missing-resource errors ✓
+- Production art is absent from the public repo (only the submodule pointer) ✓
+- `assets.pck` is gitignored and never committed ✓
 
 ---
 
