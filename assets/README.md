@@ -39,3 +39,23 @@ tools/build_pck.sh                        # emits assets.pck (gitignored)
 
 The `assets.pck` is gitignored and must never be committed — it is built from
 private art and committing it would leak that art into the public repo.
+
+## Known limitation — imported resource types
+
+The overlay mounts **raw** production files at their canonical `res://` path.
+That works for anything Godot loads as raw bytes at runtime (e.g. via
+`FileAccess`/`Image.load_from_file()`). It does **not** work for resource types
+that go through Godot's import pipeline (textures loaded as `CompressedTexture2D`,
+meshes, etc.): the engine resolves `res://assets/textures/foo.png` through its
+`.import` sidecar to a compiled resource cached under
+`res://.godot/imported/...`, and that resolution happens at export/build time —
+mounting a second pck with only a raw replacement file does not update it, so a
+scene `ExtResource` reference to the placeholder would keep showing the
+placeholder even with `assets.pck` mounted.
+
+Nothing today depends on this path (the character rig still uses placeholder
+`BoxMesh` parts), but **Phase 22 (material/palette pipeline)** must account for
+this before wiring real textures onto meshes — either by loading production
+textures explicitly via `Image`/`FileAccess` at runtime instead of scene
+resource references, or by packing matching compiled import artifacts rather
+than raw source files.

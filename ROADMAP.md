@@ -831,6 +831,19 @@ mechanism that will carry paid DLC packs later.
 - Production art is absent from the public repo (only the submodule pointer) ✓
 - `assets.pck` is gitignored and never committed ✓
 
+**Known limitation (must be addressed in Phase 22):** the overlay mounts raw
+production files at their canonical path, which only works for resources loaded
+as raw bytes at runtime. Godot resolves imported types (textures as
+`CompressedTexture2D`, meshes, etc.) through their `.import` sidecar to a
+compiled cache path baked in at export time — a second pck containing only a
+raw replacement file does not change that resolution, so a scene `ExtResource`
+reference would keep showing the placeholder even with `assets.pck` mounted.
+Not yet exercised (the character rig still uses placeholder `BoxMesh` parts),
+but Phase 22 must either load production textures explicitly via
+`Image`/`FileAccess` instead of scene resource references, or pack matching
+compiled import artifacts rather than raw source files. See
+`assets/README.md`.
+
 ---
 
 ## Phase 22 — Material and palette pipeline
