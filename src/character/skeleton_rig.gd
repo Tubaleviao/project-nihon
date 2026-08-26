@@ -13,15 +13,17 @@ extends Node3D
 
 const GameDataReader := preload("res://src/core/game_data_reader.gd")
 
-## Humanoid rest pose (local positions, unscaled height) — bone name → Vector3.
-## Non-humanoid / unknown bones fall back to a small deterministic chain step.
+## Fallback humanoid rest pose, used only when a skeleton resource carries no
+## `restPose` field of its own (e.g. a hand-built test double) — real skeleton
+## resources (GameData.SKELETONS) define `restPose` in the fabric (§4) and are
+## read via `build()` instead.
 const REST_POSE: Dictionary = {
 	"Root":       Vector3(0.0, 0.0, 0.0),
 	"Hips":       Vector3(0.0, 0.95, 0.0),
 	"Spine":      Vector3(0.0, 0.15, 0.0),
 	"Chest":      Vector3(0.0, 0.30, 0.0),
-	"Neck":       Vector3(0.0, 0.25, 0.0),
-	"Head":       Vector3(0.0, 0.18, 0.0),
+	"Neck":       Vector3(0.0, 0.14, 0.0),
+	"Head":       Vector3(0.0, 0.05, 0.0),
 	"Shoulder_L": Vector3(-0.20, 0.18, 0.0),
 	"Arm_L":      Vector3(-0.05, -0.18, 0.0),
 	"Forearm_L":  Vector3(0.0, -0.28, 0.0),
@@ -30,25 +32,50 @@ const REST_POSE: Dictionary = {
 	"Arm_R":      Vector3(0.05, -0.18, 0.0),
 	"Forearm_R":  Vector3(0.0, -0.28, 0.0),
 	"Hand_R":     Vector3(0.0, -0.26, 0.0),
-	"Leg_L":      Vector3(-0.10, -0.40, 0.0),
-	"Foot_L":     Vector3(0.0, -0.45, 0.0),
-	"Leg_R":      Vector3(0.10, -0.40, 0.0),
-	"Foot_R":     Vector3(0.0, -0.45, 0.0),
+	"Leg_L":      Vector3(-0.10, -0.85, 0.0),
+	"Foot_L":     Vector3(0.0, -0.10, 0.0),
+	"Leg_R":      Vector3(0.10, -0.85, 0.0),
+	"Foot_R":     Vector3(0.0, -0.10, 0.0),
 }
 
-## Fallback local step for bones with no humanoid rest pose (quadruped/bird/
-## serpent/custom families) so a non-humanoid chain does not collapse to origin.
+## Fallback local step for bones with no rest pose entry at all (custom/unknown
+## bone names) so a chain never collapses to origin.
 const DEFAULT_STEP := Vector3(0.0, 0.2, 0.0)
+
+## Placeholder body-shape coefficients (characters.md §8), used as a fallback
+## for skeleton families that don't define `bodyShapeCoefficients` (only
+## HumanoidSkeleton does — non-humanoid families don't use the humanoid
+## placeholder body/socket layout). Mirrors HumanoidSkeleton's fabric defaults.
+const DEFAULT_BODY_SHAPE: Dictionary = {
+	"torsoHeightFactor": 0.64,
+	"hipHeightFactor": 0.95,
+	"headSizeFactor": 0.21,
+	"chestYFactor": 0.70,
+	"handXFactor": 0.42,
+	"handYArmFactor": 0.05,
+	"weaponForwardOffset": 0.15,
+	"hipSideOffset": 0.2,
+	"backForwardOffset": -0.25,
+	"capeUpOffset": 0.15,
+	"footSideFactor": 0.12,
+}
 
 var _skeleton: Skeleton3D
 var _bone_index: Dictionary = {}   # bone name -> bone index
 var _bones: Array = []             # ordered bone names
 var _sockets: Dictionary = {}      # socket -> bone name
 var _family: String = "humanoid"
+var _rest_pose: Dictionary = {}    # bone name -> Vector3, from the resource's restPose
+var _body_shape: Dictionary = DEFAULT_BODY_SHAPE
+var _turn_speed: float = 8.0
 
 ## Build the Skeleton3D from a generated skeleton resource (GameData.SKELETONS
-## entry). `scale` is the height proportion multiplier applied to rest poses.
-func build(skeleton_res: Resource, scale: float = 1.0) -> void:
+## entry). `props` is the character's body-proportion dict (height, bodyMass,
+## shoulderWidth, armLength, legLength, headScale — characters.md §8); each
+## bone's rest offset is scaled per its bone group (see `_bone_group_scale`) so
+## the rig's real bone positions track the same proportions the placeholder
+## mesh/socket/foot-IK math uses instead of a single uniform `height` factor.
+func build(skeleton_res: Resource, props: Dictionary = {}) -> void:
 	_skeleton = Skeleton3D.new()
 	_skeleton.name = "Skeleton3D"
 	add_child(_skeleton)
@@ -57,11 +84,23 @@ func build(skeleton_res: Resource, scale: float = 1.0) -> void:
 	_sockets = {}
 	_bones = []
 	_bone_index = {}
+	_rest_pose = {}
+	_body_shape = DEFAULT_BODY_SHAPE
+	_turn_speed = 8.0
 	if skeleton_res == null:
 		return
 
 	_family = GameDataReader.str_field(skeleton_res, "family", "humanoid")
 	_sockets = GameDataReader.json_field(skeleton_res, "sockets", {})
+	_turn_speed = GameDataReader.float_field(skeleton_res, "turnSpeed", 8.0)
+
+	var raw_coeffs: Dictionary = GameDataReader.json_field(skeleton_res, "bodyShapeCoefficients", {})
+	if not raw_coeffs.is_empty():
+		_body_shape = raw_coeffs
+
+	var raw_pose: Dictionary = GameDataReader.json_field(skeleton_res, "restPose", {})
+	for bone_name in raw_pose:
+		_rest_pose[bone_name] = _vec3(raw_pose[bone_name])
 
 	var bone_defs = GameDataReader.json_field(skeleton_res, "bones", [])
 	var idx := 0
@@ -72,7 +111,7 @@ func build(skeleton_res: Resource, scale: float = 1.0) -> void:
 		_bones.append(bone_name)
 		_bone_index[bone_name] = idx
 		_skeleton.add_bone(bone_name)
-		_skeleton.set_bone_rest(idx, _rest_transform(bone_name, scale))
+		_skeleton.set_bone_rest(idx, _rest_transform(bone_name, props))
 		idx += 1
 
 	# Wire parents (the fabric guarantees parents precede children).
@@ -82,13 +121,102 @@ func build(skeleton_res: Resource, scale: float = 1.0) -> void:
 		if bone_name != "" and parent != "" and _bone_index.has(parent):
 			_skeleton.set_bone_parent(_bone_index[bone_name], _bone_index[parent])
 
-func _rest_transform(bone_name: String, scale: float) -> Transform3D:
-	var pos: Vector3
-	if REST_POSE.has(bone_name):
-		pos = REST_POSE[bone_name] * scale
+func _rest_transform(bone_name: String, props: Dictionary) -> Transform3D:
+	var raw: Vector3
+	if _rest_pose.has(bone_name):
+		raw = _rest_pose[bone_name]
+	elif REST_POSE.has(bone_name):
+		raw = REST_POSE[bone_name]
 	else:
-		pos = DEFAULT_STEP * scale
-	return Transform3D(Basis.IDENTITY, pos)
+		raw = DEFAULT_STEP
+	return Transform3D(Basis.IDENTITY, raw * _bone_group_scale(bone_name, props))
+
+## Per-bone-group proportion scale, applied per axis so a bone's rest offset
+## tracks the same body dimension the placeholder mesh/socket/foot-IK code uses
+## for that region — previously every bone scaled by `height` alone while
+## `character_slice.gd` additionally factored in shoulderWidth/legLength/
+## headScale/armLength, so sockets did not track the body they were dressing.
+static func _bone_group_scale(bone_name: String, props: Dictionary) -> Vector3:
+	var height: float = props.get("height", 1.0)
+	var shoulder: float = props.get("shoulderWidth", 1.0)
+	var leg_len: float = props.get("legLength", 1.0)
+	var arm_len: float = props.get("armLength", 1.0)
+	var head_scale: float = props.get("headScale", 1.0)
+	match bone_name:
+		"Leg_L", "Leg_R", "Foot_L", "Foot_R", "Leg_FL", "Leg_FR", "Leg_BL", "Leg_BR":
+			return Vector3(height, leg_len * height, height)
+		"Shoulder_L", "Shoulder_R":
+			return Vector3(shoulder, height, height)
+		"Arm_L", "Arm_R", "Forearm_L", "Forearm_R", "Hand_L", "Hand_R", "Wing_L", "Wing_R":
+			return Vector3(height, arm_len * height, height)
+		"Head":
+			return Vector3(head_scale, head_scale, head_scale)
+		_:
+			return Vector3(height, height, height)
+
+static func _vec3(v) -> Vector3:
+	if v is Vector3:
+		return v
+	if v is Array and v.size() >= 3:
+		return Vector3(float(v[0]), float(v[1]), float(v[2]))
+	return Vector3.ZERO
+
+## Body-shape coefficients this rig was built with (characters.md §8) — read
+## from the skeleton resource's `bodyShapeCoefficients` field, falling back to
+## `DEFAULT_BODY_SHAPE`. Shared by `compute_landmarks` so the visual assembly,
+## socket offsets, and foot IK all derive the same landmarks from one source.
+func get_body_shape_coefficients() -> Dictionary:
+	return _body_shape
+
+## Facing turn rate in radians/second (characters.md §37), read from the
+## skeleton resource's `turnSpeed` field.
+func get_turn_speed() -> float:
+	return _turn_speed
+
+## Shared placeholder body landmarks — the single formula behind the visual
+## assembly, socket offsets, and foot IK (characters.md §8), so all three stay
+## in sync as proportions or bodyShapeCoefficients change. `coeffs` is normally
+## `get_body_shape_coefficients()`; `props` is the character's proportion dict.
+## Missing keys in `coeffs` fall back to `DEFAULT_BODY_SHAPE` — the one place
+## default coefficient values live, so there is no second, driftable copy.
+static func compute_landmarks(coeffs: Dictionary, props: Dictionary) -> Dictionary:
+	var c: Dictionary = DEFAULT_BODY_SHAPE.duplicate()
+	c.merge(coeffs, true)
+
+	var height: float = props.get("height", 1.0)
+	var shoulder: float = props.get("shoulderWidth", 1.0)
+	var leg_len: float = props.get("legLength", 1.0)
+	var head_scale: float = props.get("headScale", 1.0)
+	var arm_len: float = props.get("armLength", 1.0)
+
+	var torso_h: float = float(c["torsoHeightFactor"]) * height
+	var hip_y: float = float(c["hipHeightFactor"]) * leg_len * height
+	var head_size: float = float(c["headSizeFactor"]) * head_scale
+	var chest_y: float = hip_y + torso_h * float(c["chestYFactor"])
+	var head_top: float = hip_y + torso_h + head_size
+	var head_y: float = hip_y + torso_h + head_size * 0.5
+	var hand_x: float = float(c["handXFactor"]) * shoulder
+	var hand_y: float = chest_y - float(c["handYArmFactor"]) * arm_len * height
+
+	return {
+		"torso_h":        torso_h,
+		"hip_y":          hip_y,
+		"head_size":      head_size,
+		"head_top":       head_top,
+		"head_y":         head_y,
+		"chest_y":        chest_y,
+		"hand_x":         hand_x,
+		"hand_y":         hand_y,
+		"weapon_forward": float(c["weaponForwardOffset"]),
+		"hip_side":       float(c["hipSideOffset"]),
+		"back_forward":   float(c["backForwardOffset"]),
+		"cape_up":        float(c["capeUpOffset"]),
+		"foot_side":      float(c["footSideFactor"]) * height,
+		# The restPose Leg+Foot chain is tuned to reach exactly hip_y (feet at
+		# y=0 at rest — characters.md §4/§37.4), so the physical hip→foot chain
+		# length equals hip_y itself; IK must not reach further than that.
+		"leg_reach":      hip_y,
+	}
 
 ## Bone name a socket maps to (characters.md §5); "" when unknown.
 func socket_to_bone(socket: String) -> String:
@@ -157,8 +285,8 @@ func attach_to_bone(bone_name: String, mesh: MeshInstance3D, local_offset: Vecto
 		return
 	var att := BoneAttachment3D.new()
 	att.name = "Attach_%s" % bone_name
-	att.bone_idx = _bone_index[bone_name]
 	_skeleton.add_child(att)
+	att.bone_idx = _bone_index[bone_name]
 	att.add_child(mesh)
 	mesh.transform.origin = local_offset
 

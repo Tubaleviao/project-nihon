@@ -6,4 +6,6 @@ extends Resource
 @export var family: String
 @export var bones: Array
 @export var sockets: Dictionary
+@export var restPose: Dictionary
+@export var turnSpeed: float
 @export var semanticTags: Array

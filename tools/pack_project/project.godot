@@ -1,0 +1,20 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+;
+; This is a standalone, disposable Godot project used only by
+; tools/build_pck.sh to export the production assets.pck via
+; `godot --export-pack`. It is scoped to nothing but the staged
+; `_overlay/` directory so the resulting pck contains only the
+; production art, none of the main game's own resources/scripts.
+
+config_version=5
+
+[application]
+
+config/name="nihon-assets-pack"
+config/features=PackedStringArray("4.7")

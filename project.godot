@@ -17,6 +17,7 @@ config/icon="res://icon.svg"
 
 [autoload]
 
+AssetOverlay="*res://src/core/asset_overlay.gd"
 GameData="*res://godot/autoload/GameData.gd"
 GameBus="*res://src/core/bus.gd"
 

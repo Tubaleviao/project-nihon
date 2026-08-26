@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-21T10:01:38.234Z",
-  "schemaHash": "sha256:53e6049df00cdca731dc0ed24df4dd71862354a6ddc50b933b1c6f5c3080f69c",
+  "generatedAt": "2026-08-26T22:23:57.902Z",
+  "schemaHash": "sha256:e21fd389a6457dd3b10e5b5bf2510ebf79d920e4f3efe164541977c430c190b0",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -20210,6 +20210,136 @@
               "socket_mount": "Hips"
             }
           },
+          "restPose": {
+            "name": "restPose",
+            "type": "json",
+            "description": "Unscaled local rest position [x, y, z] per bone, applied by SkeletonRig when building the Skeleton3D (characters.md §4)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Root": [
+                0,
+                0,
+                0
+              ],
+              "Hips": [
+                0,
+                0.95,
+                0
+              ],
+              "Spine": [
+                0,
+                0.15,
+                0
+              ],
+              "Chest": [
+                0,
+                0.3,
+                0
+              ],
+              "Neck": [
+                0,
+                0.14,
+                0
+              ],
+              "Head": [
+                0,
+                0.05,
+                0
+              ],
+              "Shoulder_L": [
+                -0.2,
+                0.18,
+                0
+              ],
+              "Arm_L": [
+                -0.05,
+                -0.18,
+                0
+              ],
+              "Forearm_L": [
+                0,
+                -0.28,
+                0
+              ],
+              "Hand_L": [
+                0,
+                -0.26,
+                0
+              ],
+              "Shoulder_R": [
+                0.2,
+                0.18,
+                0
+              ],
+              "Arm_R": [
+                0.05,
+                -0.18,
+                0
+              ],
+              "Forearm_R": [
+                0,
+                -0.28,
+                0
+              ],
+              "Hand_R": [
+                0,
+                -0.26,
+                0
+              ],
+              "Leg_L": [
+                -0.1,
+                -0.85,
+                0
+              ],
+              "Foot_L": [
+                0,
+                -0.1,
+                0
+              ],
+              "Leg_R": [
+                0.1,
+                -0.85,
+                0
+              ],
+              "Foot_R": [
+                0,
+                -0.1,
+                0
+              ]
+            }
+          },
+          "bodyShapeCoefficients": {
+            "name": "bodyShapeCoefficients",
+            "type": "json",
+            "description": "Placeholder body-shape coefficients shared by the visual assembly, socket offsets, and foot IK so all three derive the same landmarks and stay in sync as proportions change (characters.md §9)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "torsoHeightFactor": 0.64,
+              "hipHeightFactor": 0.95,
+              "headSizeFactor": 0.21,
+              "chestYFactor": 0.7,
+              "handXFactor": 0.42,
+              "handYArmFactor": 0.05,
+              "weaponForwardOffset": 0.15,
+              "hipSideOffset": 0.2,
+              "backForwardOffset": -0.25,
+              "capeUpOffset": 0.15,
+              "footSideFactor": 0.12
+            }
+          },
+          "turnSpeed": {
+            "name": "turnSpeed",
+            "type": "decimal",
+            "description": "Facing turn rate in radians/second, applied when binding the avatar to a live controller (§37)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 8
+          },
           "semanticTags": {
             "name": "semanticTags",
             "type": "json",
@@ -20317,6 +20447,80 @@
               "socket_mount": "Spine"
             }
           },
+          "restPose": {
+            "name": "restPose",
+            "type": "json",
+            "description": "Unscaled local rest position [x, y, z] per bone, applied by SkeletonRig when building the Skeleton3D (characters.md §4)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Root": [
+                0,
+                0,
+                0
+              ],
+              "Hips": [
+                0,
+                0.55,
+                -0.3
+              ],
+              "Spine": [
+                0,
+                0.05,
+                0.35
+              ],
+              "Chest": [
+                0,
+                0.05,
+                0.35
+              ],
+              "Neck": [
+                0,
+                0.05,
+                0.25
+              ],
+              "Head": [
+                0,
+                0.05,
+                0.2
+              ],
+              "Leg_FL": [
+                -0.25,
+                -0.65,
+                0
+              ],
+              "Leg_FR": [
+                0.25,
+                -0.65,
+                0
+              ],
+              "Leg_BL": [
+                -0.25,
+                -0.55,
+                0
+              ],
+              "Leg_BR": [
+                0.25,
+                -0.55,
+                0
+              ],
+              "Tail": [
+                0,
+                0,
+                -0.3
+              ]
+            }
+          },
+          "turnSpeed": {
+            "name": "turnSpeed",
+            "type": "decimal",
+            "description": "Facing turn rate in radians/second, applied when binding the avatar to a live controller (§37)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 4
+          },
           "semanticTags": {
             "name": "semanticTags",
             "type": "json",
@@ -20387,11 +20591,11 @@
               },
               {
                 "name": "Leg_L",
-                "parent": "Root"
+                "parent": "Spine"
               },
               {
                 "name": "Leg_R",
-                "parent": "Root"
+                "parent": "Spine"
               }
             ]
           },
@@ -20408,6 +20612,65 @@
               "socket_back": "Spine",
               "socket_mount": "Spine"
             }
+          },
+          "restPose": {
+            "name": "restPose",
+            "type": "json",
+            "description": "Unscaled local rest position [x, y, z] per bone, applied by SkeletonRig when building the Skeleton3D (characters.md §4)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Root": [
+                0,
+                0,
+                0
+              ],
+              "Spine": [
+                0,
+                0.4,
+                0
+              ],
+              "Neck": [
+                0,
+                0.15,
+                0.1
+              ],
+              "Head": [
+                0,
+                0.12,
+                0.05
+              ],
+              "Wing_L": [
+                -0.2,
+                0.05,
+                0
+              ],
+              "Wing_R": [
+                0.2,
+                0.05,
+                0
+              ],
+              "Leg_L": [
+                -0.08,
+                -0.4,
+                0
+              ],
+              "Leg_R": [
+                0.08,
+                -0.4,
+                0
+              ]
+            }
+          },
+          "turnSpeed": {
+            "name": "turnSpeed",
+            "type": "decimal",
+            "description": "Facing turn rate in radians/second, applied when binding the avatar to a live controller (§37)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 5
           },
           "semanticTags": {
             "name": "semanticTags",
@@ -20490,6 +20753,55 @@
               "socket_head": "Head",
               "socket_face": "Head"
             }
+          },
+          "restPose": {
+            "name": "restPose",
+            "type": "json",
+            "description": "Unscaled local rest position [x, y, z] per bone, applied by SkeletonRig when building the Skeleton3D (characters.md §4)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Root": [
+                0,
+                0,
+                0
+              ],
+              "Spine_1": [
+                0,
+                0,
+                0.3
+              ],
+              "Spine_2": [
+                0,
+                0,
+                0.3
+              ],
+              "Spine_3": [
+                0,
+                0,
+                0.3
+              ],
+              "Neck": [
+                0,
+                0,
+                0.2
+              ],
+              "Head": [
+                0,
+                0,
+                0.15
+              ]
+            }
+          },
+          "turnSpeed": {
+            "name": "turnSpeed",
+            "type": "decimal",
+            "description": "Facing turn rate in radians/second, applied when binding the avatar to a live controller (§37)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
           },
           "semanticTags": {
             "name": "semanticTags",

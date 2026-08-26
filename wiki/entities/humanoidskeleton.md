@@ -18,5 +18,8 @@ Bipedal humanoid bone structure with two arms, two legs, and a head. The shared 
 | family | string | Skeleton family |
 | bones | json | Ordered bone chain [{ name, parent }]; parents precede children |
 | sockets | json | Semantic attachment points mapped to bones |
+| restPose | json | Unscaled local rest position [x, y, z] per bone, applied by SkeletonRig when building the Skeleton3D (characters.md §4) |
+| bodyShapeCoefficients | json | Placeholder body-shape coefficients shared by the visual assembly, socket offsets, and foot IK so all three derive the same landmarks and stay in sync as proportions change (characters.md §9) |
+| turnSpeed | decimal | Facing turn rate in radians/second, applied when binding the avatar to a live controller (§37) |
 | semanticTags | json | Semantic compatibility tags (§40) |
 

@@ -739,7 +739,9 @@ conditions: jitter, packet loss, reordering, and abrupt disconnects.
 ## Phase 20 — Skeleton rig and animation ✅ Done
 
 **Goal:** Bring the animation spec from `characters.md` to life: a rigged
-humanoid skeleton with a fabric-driven locomotion state machine.
+humanoid skeleton with a locomotion decision layer driven by the player
+controller's real speed every frame, with per-family facing rate (`turnSpeed`)
+sourced from the fabric.
 
 **Newel dependency:** None. Animation spec is complete from Phase 7.
 
@@ -752,17 +754,21 @@ humanoid skeleton with a fabric-driven locomotion state machine.
   `clear_equipment(slot)`
 - Socket attachment system: equipment meshes attached at named sockets; SKINNED /
   RIGID / HYBRID deformation modes
-- `AnimationTree` driven by the locomotion state machine from `characters.md`
-  (`idle / walk / run / fall / land / attack / death`); blend parameters wired
-  to `velocity` and combat bus signals
-- IK targets for hand and foot placement wired to terrain normal
-- Root-motion policy applied: horizontal delta drives `CharacterBody3D.velocity`,
-  vertical from physics
+- A locomotion decision layer (`characters.md` §37) — state machine
+  (`idle / walk / run / fall / land / attack / death`) plus a continuous
+  idle↔walk↔run blend curve — driven by the player controller's real speed
+  every frame; a real `AnimationTree`/authored clips are asset-production work
+  this layer is designed to plug into, not yet built
+- Approximate foot IK: terrain-sampled whole-body vertical offset (not a
+  per-leg bone solver — see Known simplifications)
+- Per-family `turnSpeed` facing: the body rotates to face its movement
+  direction at a fabric-defined rate instead of snapping or strafing
 
 **Acceptance criteria:**
 - Player character animates through idle → walk → run transitions based on speed ✓
 - Attack and death animations play on the correct bus signals ✓
-- Foot IK keeps feet flush with voxel terrain surface ✓
+- Foot IK keeps feet approximately flush with terrain (whole-body offset, not
+  per-leg placement — see Known simplifications) ✓
 - Socket-attached equipment deforms correctly in SKINNED mode, stays rigid in
   RIGID mode ✓
 
@@ -770,35 +776,118 @@ humanoid skeleton with a fabric-driven locomotion state machine.
 - `src/character/locomotion.gd` — a pure, headless-testable locomotion state
   machine (`IDLE / WALK / RUN / FALL / LAND / ATTACK / DEATH`) mapping horizontal
   speed → state with timed attack/land one-shots and a terminal death state. A
-  real `AnimationTree` consumes `get_state()` + `get_blend_weight()` to pick and
-  blend skeletal clips; the decision logic lives here so transitions are
-  unit-testable without a renderer.
+  real `AnimationTree` would consume `get_state()` + `get_blend_weight()` to pick
+  and blend skeletal clips — no such node exists yet; the decision logic lives
+  here so transitions are unit-testable without a renderer.
 - `src/character/skeleton_rig.gd` — builds a real `Skeleton3D` from the fabric
-  `SkeletonDefinition` (`bones` ordered chain, parents precede children) plus a
-  humanoid rest pose; resolves sockets → bones (`characters.md` §5) and attaches
-  equipment with deformation modes (§10): SKINNED/HYBRID follow the socket's bone
-  via `BoneAttachment3D`, RIGID stays a rig-root child (rigid, no bone follow).
+  `SkeletonDefinition` (`bones` ordered chain, parents precede children), reading
+  `restPose`, `bodyShapeCoefficients`, and `turnSpeed` from the resource (not
+  hardcoded) and scaling each bone's rest offset per its bone group (legs by
+  `legLength`, arms by `armLength`, head by `headScale`, etc. — `characters.md`
+  §8) instead of a single uniform height factor. Resolves sockets → bones
+  (§5) and attaches equipment with deformation modes (§10): SKINNED/HYBRID
+  follow the socket's bone via `BoneAttachment3D`, RIGID stays a rig-root child.
+  `SkeletonRig.compute_landmarks()` centralizes the body-shape math (torso
+  height, hip height, hand/socket offsets, leg reach) so the placeholder mesh,
+  socket offsets, and foot IK all derive the same landmarks from one source
+  instead of three independently-drifting copies.
 - `character_slice.gd` now assembles every character with a `Skeleton3D` rig,
   exposes `apply_equipment(slot, item_key)` / `clear_equipment(slot)`, drives the
   per-instance locomotion state machine, and emits `character_state_changed`.
-  `game_root` forwards the player's combat (`combat_round_requested`) and death
-  (`player_died`) into `character_attack_requested` / `character_death_requested`.
-- Foot IK (`SkeletonRig.compute_foot_targets`) clamps each foot to the terrain
-  surface within leg reach — pure and headless-testable against a `Callable`
-  terrain sampler.
-- Body/head/hair/beard remain rig-root placeholder `BoxMesh` parts (not yet
-  skinned to the skeleton) pending real mesh + `Skin` asset production.
+  `sync_player_avatar()` binds the player's own visual avatar to the real
+  `PlayerSlice` controller every frame — position, facing (turnSpeed-limited
+  rotation toward horizontal velocity), locomotion state, and foot IK — instead
+  of the avatar spawning at a fixed offset and never moving. `game_root` forwards
+  the player's combat (`combat_round_requested`) and death (`player_died`) into
+  `character_attack_requested` / `character_death_requested`.
+- Foot IK (`SkeletonRig.compute_foot_targets`) samples terrain under both feet
+  and clamps each to the terrain surface within leg reach — pure and
+  headless-testable against a `Callable` terrain sampler. `sync_player_avatar`
+  uses the higher foot to offset the whole body vertically (not a per-leg
+  solver — see Known simplifications) and stashes both foot targets as root
+  metadata for a future real IK pass to consume.
+- Body (chest/legs, or the generic non-humanoid body box) and head are skinned
+  to the skeleton via `BoneAttachment3D`, so they deform with the bone chain.
+  Hair and beard remain rig-root placeholder `BoxMesh` children (not bone-
+  attached) pending real mesh + `Skin` asset production.
 
-**Known simplifications (deferred to Phase 21):**
+**Known simplifications (deferred to Phase 22):**
 - Palette and material system not yet wired (placeholder albedo only).
 - LOD simplification not yet applied (full-detail mesh at all distances).
 - No blend-shape facial customization.
-- No authored animation clips / `AnimationPlayer` playback — the state machine
-  drives transitions, but actual skeletal clip data is asset-production work.
+- No authored animation clips / `AnimationPlayer` / `AnimationTree` playback —
+  the state machine and blend curve drive transitions and cross-fade weights,
+  but no clip data or blend-tree node exists; that is asset-production work.
+- No root motion — the player controller drives `CharacterBody3D.velocity`
+  directly from input, not from extracted animation displacement.
+- Foot IK is a whole-body vertical offset from the higher sampled foot, not an
+  independent per-leg two-bone solver; legs do not visibly bend to match
+  terrain slope.
+- No sheathe/draw clips, dual-wield/two-handed upper-body layer, or emotes yet
+  — `characters.md` §37.6–§37.8 specify the intended design, not a built
+  system.
 
 ---
 
-## Phase 21 — Material and palette pipeline
+## Phase 21 — Asset separation and public placeholders ✅ Done
+
+**Goal:** Keep production art private while the public repo clones and runs
+clean. A private asset submodule (Git LFS) is packed into a `.pck` that mounts
+over `res://` at startup and replaces the committed placeholders — the same
+mechanism that will carry paid DLC packs later.
+
+**Newel dependency:** None.
+
+**Deliverables:**
+- Production art lives in a private repo (`project-nihon-assets`), added to this
+  repo as the `assets-prod/` git submodule (HTTPS remote, so
+  `--recurse-submodules` doesn't require SSH credentials); large binaries are
+  tracked with Git LFS inside that repo, which also carries a `.gdignore` so
+  Godot's scanner never touches it in place.
+- `assets/` — ugly placeholders committed at canonical `.raw`-suffixed paths
+  (`assets/textures/placeholder_character.png.raw`) so a public clone resolves
+  every asset reference with no missing-resource errors. The `.raw` suffix
+  keeps Godot's importer from claiming the file, so its bytes survive a real
+  export and are readable via `FileAccess` — a plain `.png` would not be.
+- `tools/build_pck.sh` — stages a plain copy of `assets-prod/` into a
+  disposable pack-only project (`tools/pack_project/`) and calls Godot's own
+  exporter (`godot --export-pack`) over it, producing `assets.pck` with
+  entries under `res://_overlay/…` (a `.pck` is the unit of optional
+  content — the DLC monetization model). Exits non-zero on any packing
+  failure — there is no separate custom packer script to silently swallow one.
+- `export_presets.cfg` — "Linux"/"Windows Desktop" presets exclude both
+  `assets-prod/*` and `_overlay/*` from the shipped game, splitting the
+  public/Steam build from the private-asset-adjacent build tooling.
+- `src/core/asset_overlay.gd` (autoload) — mounts `assets.pck` over `res://` at
+  startup; `resolve_path(rel)`/`load_texture(rel)` prefer the mounted
+  `res://_overlay/<rel>` override, falling back to the public placeholder at
+  `res://assets/<rel>`. `character_slice.gd` is wired to `load_texture()` as
+  the first real runtime consumer.
+- `tools/gen_placeholder.py` — deterministically regenerates placeholder art.
+- Build policy: Steam/release bundles `assets.pck` (mounted from next to the
+  binary); the public/GitHub build ships placeholders only.
+- No code references a private-only path — production art is addressed only via
+  the public `res://assets/…` prefix and the pack's own `res://_overlay/…`
+  namespace, both safe to ship; `_test_asset_no_private_paths_hardcoded`
+  recursively scans `src/` to enforce this.
+
+**Acceptance criteria:**
+- A fresh `git clone --recurse-submodules` of the public repo opens and runs in
+  Godot — placeholders present, no missing-resource errors ✓
+- Production art is absent from the public repo (only the submodule pointer) ✓
+- `assets.pck` is gitignored and never committed ✓
+- `_test_asset_pck_round_trip_override` builds a fixture pck with `PCKPacker`,
+  mounts it, and asserts the override is actually served — not just that the
+  relevant constants look right ✓
+
+Resolved: the import-pipeline limitation described in earlier drafts of this
+phase (raw overlay files not working for recognized resource types) is fixed
+by the `.raw` suffix convention above, rather than deferred to Phase 22. See
+`assets/README.md` for the full mechanism.
+
+---
+
+## Phase 22 — Material and palette pipeline
 
 **Goal:** Implement the pixel-art material system from `characters.md`: Primary /
 Secondary / Accent masks, Metal + Emission + Wear channels, and per-instance
@@ -827,13 +916,13 @@ palette swaps without extra draw calls.
 - Pixel-art textures render without bilinear blurring (Point filter confirmed)
 - Wear channel visually degrades equipment as durability decreases
 
-**Known simplifications (deferred to Phase 22):**
+**Known simplifications (deferred to Phase 23):**
 - LOD mesh switching not yet tied to this material system.
 - Emission channel is static; dynamic glow (e.g. enchantments) deferred.
 
 ---
 
-## Phase 22 — LOD and composition simplification
+## Phase 23 — LOD and composition simplification
 
 **Goal:** Apply the `minLodLevel` attachment rules from `characters.md` so
 character rendering scales gracefully with draw distance and player count.
@@ -867,7 +956,7 @@ character rendering scales gracefully with draw distance and player count.
 
 ---
 
-## Phase 23 — Social systems and player economy
+## Phase 24 — Social systems and player economy
 
 **Goal:** Ground the `CommunityOwnsTheFuture` and `EconomyIsPlayer-Driven`
 constitution principles in real game mechanics: trade, social skills, and
@@ -925,6 +1014,6 @@ community governance hooks.
 - **WAN / cross-region multiplayer testing** — all Phase 18–19 multiplayer
   validation is loopback or LAN (deferred from Phase 19).
 - **Automatic LOD mesh decimation** — simplified meshes are hand-authored;
-  runtime decimation deferred from Phase 22.
+  runtime decimation deferred from Phase 23.
 - **Dynamic impostor re-bake** — impostor billboards are offline-baked; live
-  palette-change re-bake deferred from Phase 22.
+  palette-change re-bake deferred from Phase 23.

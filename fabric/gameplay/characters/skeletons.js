@@ -62,6 +62,53 @@ module.exports = {
           socket_mount: 'Hips',
         },
       },
+      restPose: {
+        type: 'json',
+        description:
+          'Unscaled local rest position [x, y, z] per bone, applied by SkeletonRig ' +
+          'when building the Skeleton3D (characters.md §4)',
+        defaultValue: {
+          Root:       [0.0, 0.0, 0.0],
+          Hips:       [0.0, 0.95, 0.0],
+          Spine:      [0.0, 0.15, 0.0],
+          Chest:      [0.0, 0.30, 0.0],
+          Neck:       [0.0, 0.14, 0.0],
+          Head:       [0.0, 0.05, 0.0],
+          Shoulder_L: [-0.20, 0.18, 0.0],
+          Arm_L:      [-0.05, -0.18, 0.0],
+          Forearm_L:  [0.0, -0.28, 0.0],
+          Hand_L:     [0.0, -0.26, 0.0],
+          Shoulder_R: [0.20, 0.18, 0.0],
+          Arm_R:      [0.05, -0.18, 0.0],
+          Forearm_R:  [0.0, -0.28, 0.0],
+          Hand_R:     [0.0, -0.26, 0.0],
+          Leg_L:      [-0.10, -0.85, 0.0],
+          Foot_L:     [0.0, -0.10, 0.0],
+          Leg_R:      [0.10, -0.85, 0.0],
+          Foot_R:     [0.0, -0.10, 0.0],
+        },
+      },
+      bodyShapeCoefficients: {
+        type: 'json',
+        description:
+          'Placeholder body-shape coefficients shared by the visual assembly, socket ' +
+          'offsets, and foot IK so all three derive the same landmarks and stay in ' +
+          'sync as proportions change (characters.md §9)',
+        defaultValue: {
+          torsoHeightFactor: 0.64,
+          hipHeightFactor: 0.95,
+          headSizeFactor: 0.21,
+          chestYFactor: 0.70,
+          handXFactor: 0.42,
+          handYArmFactor: 0.05,
+          weaponForwardOffset: 0.15,
+          hipSideOffset: 0.2,
+          backForwardOffset: -0.25,
+          capeUpOffset: 0.15,
+          footSideFactor: 0.12,
+        },
+      },
+      turnSpeed: { type: 'decimal', description: 'Facing turn rate in radians/second, applied when binding the avatar to a live controller (§37)', defaultValue: 8.0 },
       semanticTags: { type: 'json', description: 'Semantic compatibility tags (§40)', defaultValue: ['humanoid', 'has_head', 'has_hands', 'has_back_socket', 'can_wield_weapon', 'can_wear_helmet'] },
     },
   }),
@@ -101,6 +148,26 @@ module.exports = {
           socket_mount: 'Spine',
         },
       },
+      restPose: {
+        type: 'json',
+        description:
+          'Unscaled local rest position [x, y, z] per bone, applied by SkeletonRig ' +
+          'when building the Skeleton3D (characters.md §4)',
+        defaultValue: {
+          Root:   [0.0, 0.0, 0.0],
+          Hips:   [0.0, 0.55, -0.3],
+          Spine:  [0.0, 0.05, 0.35],
+          Chest:  [0.0, 0.05, 0.35],
+          Neck:   [0.0, 0.05, 0.25],
+          Head:   [0.0, 0.05, 0.2],
+          Leg_FL: [-0.25, -0.65, 0.0],
+          Leg_FR: [0.25, -0.65, 0.0],
+          Leg_BL: [-0.25, -0.55, 0.0],
+          Leg_BR: [0.25, -0.55, 0.0],
+          Tail:   [0.0, 0.0, -0.3],
+        },
+      },
+      turnSpeed: { type: 'decimal', description: 'Facing turn rate in radians/second, applied when binding the avatar to a live controller (§37)', defaultValue: 4.0 },
       semanticTags: { type: 'json', description: 'Semantic compatibility tags (§40)', defaultValue: ['quadruped', 'has_head', 'has_back_socket'] },
     },
   }),
@@ -123,8 +190,8 @@ module.exports = {
           { name: 'Head', parent: 'Neck' },
           { name: 'Wing_L', parent: 'Spine' },
           { name: 'Wing_R', parent: 'Spine' },
-          { name: 'Leg_L', parent: 'Root' },
-          { name: 'Leg_R', parent: 'Root' },
+          { name: 'Leg_L', parent: 'Spine' },
+          { name: 'Leg_R', parent: 'Spine' },
         ],
       },
       sockets: {
@@ -137,6 +204,23 @@ module.exports = {
           socket_mount: 'Spine',
         },
       },
+      restPose: {
+        type: 'json',
+        description:
+          'Unscaled local rest position [x, y, z] per bone, applied by SkeletonRig ' +
+          'when building the Skeleton3D (characters.md §4)',
+        defaultValue: {
+          Root:    [0.0, 0.0, 0.0],
+          Spine:   [0.0, 0.4, 0.0],
+          Neck:    [0.0, 0.15, 0.1],
+          Head:    [0.0, 0.12, 0.05],
+          Wing_L:  [-0.2, 0.05, 0.0],
+          Wing_R:  [0.2, 0.05, 0.0],
+          Leg_L:   [-0.08, -0.4, 0.0],
+          Leg_R:   [0.08, -0.4, 0.0],
+        },
+      },
+      turnSpeed: { type: 'decimal', description: 'Facing turn rate in radians/second, applied when binding the avatar to a live controller (§37)', defaultValue: 5.0 },
       semanticTags: { type: 'json', description: 'Semantic compatibility tags (§40)', defaultValue: ['bird', 'has_head', 'has_back_socket'] },
     },
   }),
@@ -169,6 +253,21 @@ module.exports = {
           socket_face: 'Head',
         },
       },
+      restPose: {
+        type: 'json',
+        description:
+          'Unscaled local rest position [x, y, z] per bone, applied by SkeletonRig ' +
+          'when building the Skeleton3D (characters.md §4)',
+        defaultValue: {
+          Root:    [0.0, 0.0, 0.0],
+          Spine_1: [0.0, 0.0, 0.3],
+          Spine_2: [0.0, 0.0, 0.3],
+          Spine_3: [0.0, 0.0, 0.3],
+          Neck:    [0.0, 0.0, 0.2],
+          Head:    [0.0, 0.0, 0.15],
+        },
+      },
+      turnSpeed: { type: 'decimal', description: 'Facing turn rate in radians/second, applied when binding the avatar to a live controller (§37)', defaultValue: 3.0 },
       semanticTags: { type: 'json', description: 'Semantic compatibility tags (§40)', defaultValue: ['serpent', 'has_head'] },
     },
   }),

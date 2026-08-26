@@ -1,0 +1,3 @@
+[submodule "assets-prod"]
+	path = assets-prod
+	url = https://github.com/Tubaleviao/project-nihon-assets.git
