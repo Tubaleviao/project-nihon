@@ -22,8 +22,8 @@ const REST_POSE: Dictionary = {
 	"Hips":       Vector3(0.0, 0.95, 0.0),
 	"Spine":      Vector3(0.0, 0.15, 0.0),
 	"Chest":      Vector3(0.0, 0.30, 0.0),
-	"Neck":       Vector3(0.0, 0.25, 0.0),
-	"Head":       Vector3(0.0, 0.18, 0.0),
+	"Neck":       Vector3(0.0, 0.14, 0.0),
+	"Head":       Vector3(0.0, 0.05, 0.0),
 	"Shoulder_L": Vector3(-0.20, 0.18, 0.0),
 	"Arm_L":      Vector3(-0.05, -0.18, 0.0),
 	"Forearm_L":  Vector3(0.0, -0.28, 0.0),
@@ -32,10 +32,10 @@ const REST_POSE: Dictionary = {
 	"Arm_R":      Vector3(0.05, -0.18, 0.0),
 	"Forearm_R":  Vector3(0.0, -0.28, 0.0),
 	"Hand_R":     Vector3(0.0, -0.26, 0.0),
-	"Leg_L":      Vector3(-0.10, -0.40, 0.0),
-	"Foot_L":     Vector3(0.0, -0.45, 0.0),
-	"Leg_R":      Vector3(0.10, -0.40, 0.0),
-	"Foot_R":     Vector3(0.0, -0.45, 0.0),
+	"Leg_L":      Vector3(-0.10, -0.85, 0.0),
+	"Foot_L":     Vector3(0.0, -0.10, 0.0),
+	"Leg_R":      Vector3(0.10, -0.85, 0.0),
+	"Foot_R":     Vector3(0.0, -0.10, 0.0),
 }
 
 ## Fallback local step for bones with no rest pose entry at all (custom/unknown
@@ -47,17 +47,16 @@ const DEFAULT_STEP := Vector3(0.0, 0.2, 0.0)
 ## HumanoidSkeleton does — non-humanoid families don't use the humanoid
 ## placeholder body/socket layout). Mirrors HumanoidSkeleton's fabric defaults.
 const DEFAULT_BODY_SHAPE: Dictionary = {
-	"torsoHeightFactor": 0.70,
+	"torsoHeightFactor": 0.64,
 	"hipHeightFactor": 0.95,
-	"headSizeFactor": 0.15,
-	"chestYFactor": 0.64,
+	"headSizeFactor": 0.21,
+	"chestYFactor": 0.70,
 	"handXFactor": 0.42,
 	"handYArmFactor": 0.05,
 	"weaponForwardOffset": 0.15,
 	"hipSideOffset": 0.2,
 	"backForwardOffset": -0.25,
 	"capeUpOffset": 0.15,
-	"legReachMargin": 0.05,
 	"footSideFactor": 0.12,
 }
 
@@ -178,39 +177,45 @@ func get_turn_speed() -> float:
 ## assembly, socket offsets, and foot IK (characters.md §8), so all three stay
 ## in sync as proportions or bodyShapeCoefficients change. `coeffs` is normally
 ## `get_body_shape_coefficients()`; `props` is the character's proportion dict.
+## Missing keys in `coeffs` fall back to `DEFAULT_BODY_SHAPE` — the one place
+## default coefficient values live, so there is no second, driftable copy.
 static func compute_landmarks(coeffs: Dictionary, props: Dictionary) -> Dictionary:
+	var c: Dictionary = DEFAULT_BODY_SHAPE.duplicate()
+	c.merge(coeffs, true)
+
 	var height: float = props.get("height", 1.0)
 	var shoulder: float = props.get("shoulderWidth", 1.0)
 	var leg_len: float = props.get("legLength", 1.0)
 	var head_scale: float = props.get("headScale", 1.0)
 	var arm_len: float = props.get("armLength", 1.0)
 
-	var torso_h: float = float(coeffs.get("torsoHeightFactor", 0.62)) * height
-	var hip_y: float = float(coeffs.get("hipHeightFactor", 0.38)) * leg_len * height
-	var head_size: float = float(coeffs.get("headSizeFactor", 0.30)) * head_scale
-	var chest_y: float = hip_y + torso_h * float(coeffs.get("chestYFactor", 0.6))
+	var torso_h: float = float(c["torsoHeightFactor"]) * height
+	var hip_y: float = float(c["hipHeightFactor"]) * leg_len * height
+	var head_size: float = float(c["headSizeFactor"]) * head_scale
+	var chest_y: float = hip_y + torso_h * float(c["chestYFactor"])
 	var head_top: float = hip_y + torso_h + head_size
 	var head_y: float = hip_y + torso_h + head_size * 0.5
-	var hand_x: float = float(coeffs.get("handXFactor", 0.42)) * shoulder
-	var hand_y: float = chest_y - float(coeffs.get("handYArmFactor", 0.05)) * arm_len * height
-	var leg_reach_margin: float = float(coeffs.get("legReachMargin", 0.05))
+	var hand_x: float = float(c["handXFactor"]) * shoulder
+	var hand_y: float = chest_y - float(c["handYArmFactor"]) * arm_len * height
 
 	return {
-		"torso_h":          torso_h,
-		"hip_y":            hip_y,
-		"head_size":        head_size,
-		"head_top":         head_top,
-		"head_y":           head_y,
-		"chest_y":          chest_y,
-		"hand_x":           hand_x,
-		"hand_y":           hand_y,
-		"weapon_forward":   float(coeffs.get("weaponForwardOffset", 0.15)),
-		"hip_side":         float(coeffs.get("hipSideOffset", 0.2)),
-		"back_forward":     float(coeffs.get("backForwardOffset", -0.25)),
-		"cape_up":          float(coeffs.get("capeUpOffset", 0.15)),
-		"leg_reach_margin": leg_reach_margin,
-		"foot_side":        float(coeffs.get("footSideFactor", 0.12)) * height,
-		"leg_reach":        hip_y + leg_reach_margin,
+		"torso_h":        torso_h,
+		"hip_y":          hip_y,
+		"head_size":      head_size,
+		"head_top":       head_top,
+		"head_y":         head_y,
+		"chest_y":        chest_y,
+		"hand_x":         hand_x,
+		"hand_y":         hand_y,
+		"weapon_forward": float(c["weaponForwardOffset"]),
+		"hip_side":       float(c["hipSideOffset"]),
+		"back_forward":   float(c["backForwardOffset"]),
+		"cape_up":        float(c["capeUpOffset"]),
+		"foot_side":      float(c["footSideFactor"]) * height,
+		# The restPose Leg+Foot chain is tuned to reach exactly hip_y (feet at
+		# y=0 at rest — characters.md §4/§37.4), so the physical hip→foot chain
+		# length equals hip_y itself; IK must not reach further than that.
+		"leg_reach":      hip_y,
 	}
 
 ## Bone name a socket maps to (characters.md §5); "" when unknown.

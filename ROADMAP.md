@@ -806,8 +806,10 @@ sourced from the fabric.
   uses the higher foot to offset the whole body vertically (not a per-leg
   solver — see Known simplifications) and stashes both foot targets as root
   metadata for a future real IK pass to consume.
-- Body/head/hair/beard remain rig-root placeholder `BoxMesh` parts (not yet
-  skinned to the skeleton) pending real mesh + `Skin` asset production.
+- Body (chest/legs, or the generic non-humanoid body box) and head are skinned
+  to the skeleton via `BoneAttachment3D`, so they deform with the bone chain.
+  Hair and beard remain rig-root placeholder `BoxMesh` children (not bone-
+  attached) pending real mesh + `Skin` asset production.
 
 **Known simplifications (deferred to Phase 22):**
 - Palette and material system not yet wired (placeholder albedo only).

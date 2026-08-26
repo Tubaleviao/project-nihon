@@ -746,7 +746,7 @@ socket placement, and foot IK through one shared set of coefficients
 ```
 torsoHeightFactor, hipHeightFactor, headSizeFactor, chestYFactor,
 handXFactor, handYArmFactor, weaponForwardOffset, hipSideOffset,
-backForwardOffset, capeUpOffset, legReachMargin, footSideFactor
+backForwardOffset, capeUpOffset, footSideFactor
 ```
 
 These coefficients combine with the instance's proportions to produce
@@ -757,10 +757,13 @@ placement, and foot IK (37.5) below.
 The rig's actual bone rest pose is a separate mechanism: it comes from
 `restPose` (per-`SkeletonDefinition`, §4), scaled per bone group directly by
 the raw proportions (not by `bodyShapeCoefficients`). `bodyShapeCoefficients`
-and `restPose` are declared independently but chosen to agree numerically —
-e.g. `hipHeightFactor + torsoHeightFactor + headSizeFactor` sums to the same
-total height that `restPose`'s cumulative bone offsets produce — so the
-placeholder mesh/socket landmarks line up with the actual bone chain at rest.
+and `restPose` are declared independently but chosen to agree numerically at
+the two points that matter for placeholder mesh placement: the Leg+Foot
+chain's cumulative offset equals `hipHeightFactor * legLength * height` (so
+feet rest at `y = 0`, §37.5), and the Neck+Head chain's cumulative offset
+(added on top of Hips+Spine+Chest) equals `head_top - head_size` — the *base*
+of the head box, not the character's total height — so the head placeholder
+sits directly on its bone instead of floating above or sinking below it.
 Keeping that agreement is a manual bookkeeping step whenever either is tuned.
 Non-humanoid families do not define `bodyShapeCoefficients` — they use their
 own `restPose` only, since the placeholder humanoid mesh/socket layout does

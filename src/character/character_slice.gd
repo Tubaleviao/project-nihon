@@ -688,44 +688,45 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 	rig.build(skeleton_res, props)
 	var is_humanoid: bool = rig.get_family() == "humanoid"
 
-	var landmarks: Dictionary = SkeletonRig.compute_landmarks(rig.get_body_shape_coefficients(), props)
-	var torso_h: float = landmarks["torso_h"]
-	var hip_y: float = landmarks["hip_y"]
-	var head_size: float = landmarks["head_size"]
-	var head_y: float = landmarks["head_y"]
-
-	# Chest (torso/shoulders/arms region placeholder — §16 BodyChest/
-	# BodyShoulders/BodyArms) — skinned to the torso bone so it deforms with the
-	# skeleton. The mesh keeps its computed root-space position, expressed as a
-	# bone-local offset (root-space minus the bone's rest origin) so the
-	# rendered pose is unchanged at rest.
-	var chest := _make_box(Vector3(0.55 * shoulder * mass, torso_h, 0.32 * mass), skin)
-	var chest_pos := Vector3(0.0, hip_y + torso_h * 0.5, 0.0)
 	var torso_bone := _torso_bone(rig)
-	rig.attach_to_bone(torso_bone, chest, chest_pos - rig.get_bone_global_rest(torso_bone))
-	parts["body_chest"] = { "node": chest, "min_lod": 3 }
-
-	# Legs (hips-to-ground region placeholder — §16 BodyLegs) — skinned to the
-	# hip bone so it deforms with the skeleton.
-	var legs := _make_box(Vector3(0.45 * shoulder * mass, hip_y, 0.30 * mass), skin)
-	var legs_pos := Vector3(0.0, hip_y * 0.5, 0.0)
-	var legs_bone := _legs_bone(rig)
-	rig.attach_to_bone(legs_bone, legs, legs_pos - rig.get_bone_global_rest(legs_bone))
-	parts["body_legs"] = { "node": legs, "min_lod": 3 }
-
-	# Head — skinned to the head bone.
-	var head := _make_box(Vector3(head_size, head_size, head_size), skin)
-	var head_pos := Vector3(0.0, head_y, 0.0)
 	var head_bone := rig.socket_to_bone("socket_head")
 	if rig.get_bone_index(head_bone) == -1:
 		head_bone = ""
-	rig.attach_to_bone(head_bone, head, head_pos - rig.get_bone_global_rest(head_bone))
-	parts["head"] = { "node": head, "min_lod": 3 }
 
-	# Hair and beard are humanoid-specific placeholder details (§13, §14) — skip
-	# them for non-humanoid families (quadruped/bird/serpent), which don't use
-	# the humanoid head layout these boxes are shaped for.
 	if is_humanoid:
+		# Humanoid placeholders use the full body-shape landmark system (torso/
+		# hip/head landmarks — characters.md §37.4), which only humanoid
+		# skeletons declare `bodyShapeCoefficients` for.
+		var landmarks: Dictionary = SkeletonRig.compute_landmarks(rig.get_body_shape_coefficients(), props)
+		var torso_h: float = landmarks["torso_h"]
+		var hip_y: float = landmarks["hip_y"]
+		var head_size: float = landmarks["head_size"]
+		var head_y: float = landmarks["head_y"]
+
+		# Chest (torso/shoulders/arms region placeholder — §16 BodyChest/
+		# BodyShoulders/BodyArms) — skinned to the torso bone so it deforms with the
+		# skeleton. The mesh keeps its computed root-space position, expressed as a
+		# bone-local offset (root-space minus the bone's rest origin) so the
+		# rendered pose is unchanged at rest.
+		var chest := _make_box(Vector3(0.55 * shoulder * mass, torso_h, 0.32 * mass), skin)
+		var chest_pos := Vector3(0.0, hip_y + torso_h * 0.5, 0.0)
+		rig.attach_to_bone(torso_bone, chest, chest_pos - rig.get_bone_global_rest(torso_bone))
+		parts["body_chest"] = { "node": chest, "min_lod": 3 }
+
+		# Legs (hips-to-ground region placeholder — §16 BodyLegs) — skinned to the
+		# hip bone so it deforms with the skeleton.
+		var legs := _make_box(Vector3(0.45 * shoulder * mass, hip_y, 0.30 * mass), skin)
+		var legs_pos := Vector3(0.0, hip_y * 0.5, 0.0)
+		var legs_bone := _legs_bone(rig)
+		rig.attach_to_bone(legs_bone, legs, legs_pos - rig.get_bone_global_rest(legs_bone))
+		parts["body_legs"] = { "node": legs, "min_lod": 3 }
+
+		# Head — skinned to the head bone.
+		var head := _make_box(Vector3(head_size, head_size, head_size), skin)
+		var head_pos := Vector3(0.0, head_y, 0.0)
+		rig.attach_to_bone(head_bone, head, head_pos - rig.get_bone_global_rest(head_bone))
+		parts["head"] = { "node": head, "min_lod": 3 }
+
 		# Hair (independent component — §13).
 		var hair_id: String = str(appearance.get("hair", "none"))
 		if hair_id != "none" and hair_id != "":
@@ -741,6 +742,20 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 			beard.position = Vector3(0.0, head_y - head_size * 0.1, -head_size * 0.55)
 			rig.add_child(beard)
 			parts["beard"] = { "node": beard, "min_lod": 0 }
+	else:
+		# Non-humanoid families (quadruped/bird/serpent) don't declare
+		# bodyShapeCoefficients and don't share the humanoid torso/hip/head
+		# layout, so use a single generic body box and a generic head box,
+		# sized from height/mass/headScale only and centered on their bone
+		# (zero bone-local offset) rather than the humanoid landmark math.
+		var body := _make_box(Vector3(0.5 * mass, height * 0.5, 0.5 * mass), skin)
+		rig.attach_to_bone(torso_bone, body, Vector3.ZERO)
+		parts["body"] = { "node": body, "min_lod": 3 }
+
+		var nh_head_size: float = 0.25 * head_scale
+		var head := _make_box(Vector3(nh_head_size, nh_head_size, nh_head_size), skin)
+		rig.attach_to_bone(head_bone, head, Vector3.ZERO)
+		parts["head"] = { "node": head, "min_lod": 3 }
 
 	# Equipment — socket attachment with deformation modes (Phase 20 §10).
 	var equipment: Dictionary = appearance.get("equipment", {})

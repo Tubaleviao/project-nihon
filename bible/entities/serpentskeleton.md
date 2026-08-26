@@ -14,5 +14,7 @@ Limbless serpentine skeleton built from a segmented spine ending in a head. Shar
 | `family` | string | yes | Skeleton family |
 | `bones` | json | yes | Ordered bone chain [{ name, parent }] |
 | `sockets` | json | yes | Semantic attachment points mapped to bones |
+| `restPose` | json | yes | Unscaled local rest position [x, y, z] per bone, applied by SkeletonRig when building the Skeleton3D (characters.md §4) |
+| `turnSpeed` | decimal | yes | Facing turn rate in radians/second, applied when binding the avatar to a live controller (§37) |
 | `semanticTags` | json | yes | Semantic compatibility tags (§40) |
 
