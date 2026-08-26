@@ -767,7 +767,10 @@ sits directly on its bone instead of floating above or sinking below it.
 Keeping that agreement is a manual bookkeeping step whenever either is tuned.
 Non-humanoid families do not define `bodyShapeCoefficients` — they use their
 own `restPose` only, since the placeholder humanoid mesh/socket layout does
-not apply to them.
+not apply to them. Their `restPose` chains still follow the same feet-at-`y=0`
+convention (the lowest leg/contact bone rests on the ground plane), and their
+socket offsets are derived from each socket bone's rest position rather than
+the humanoid landmark math.
 
 ### 37.5 Foot IK (Approximate)
 

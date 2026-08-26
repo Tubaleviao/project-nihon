@@ -626,10 +626,12 @@ func _apply_lod(instance_id: String) -> void:
 	var equipment: Dictionary = inst["equipment"]
 
 	var hidden: Dictionary = {}
+	var rig = inst.get("rig", null)
+	var is_humanoid: bool = rig != null and rig.get_family() == "humanoid"
 	for slot in equipment:
 		var def: Dictionary = equipment[slot].get("def", {})
 		for region in def.get("hideRegions", []):
-			var part_key := _region_to_part(str(region))
+			var part_key := _region_to_part(str(region), is_humanoid)
 			if part_key != "":
 				hidden[part_key] = true
 
@@ -640,12 +642,14 @@ func _apply_lod(instance_id: String) -> void:
 		node.visible = _lod <= min_lod and not hidden.get(key, false)
 
 ## Map a fabric mesh-hiding region (characters.md §16) onto the placeholder
-## part key it corresponds to in `parts`. The placeholder body is split into a
-## chest region (torso/shoulders/arms) and a legs region, so BodyChest/
-## BodyShoulders/BodyArms collapse onto "body_chest" while BodyLegs maps to
-## "body_legs"; "Ears" has no separate placeholder mesh and resolves onto
-## "head" along with "Head" itself.
-func _region_to_part(region: String) -> String:
+## part key it corresponds to in `parts`. The humanoid placeholder body is
+## split into a chest region (torso/shoulders/arms) and a legs region, so
+## BodyChest/BodyShoulders/BodyArms collapse onto "body_chest" while BodyLegs
+## maps to "body_legs"; "Ears" has no separate placeholder mesh and resolves
+## onto "head" along with "Head" itself. Non-humanoid families build a single
+## generic "body" part instead of the humanoid chest/legs split, so every body
+## region collapses onto "body" there.
+func _region_to_part(region: String, is_humanoid: bool) -> String:
 	match region:
 		"Hair", "HairTop":
 			return "hair"
@@ -654,9 +658,9 @@ func _region_to_part(region: String) -> String:
 		"Head", "Ears":
 			return "head"
 		"BodyChest", "BodyShoulders", "BodyArms":
-			return "body_chest"
+			return "body_chest" if is_humanoid else "body"
 		"BodyLegs":
-			return "body_legs"
+			return "body_legs" if is_humanoid else "body"
 		_:
 			return ""
 
@@ -897,6 +901,12 @@ func _metal_color(metal: String) -> Color:
 ## the body they dress. Real rigs define these per skeleton; this mapping
 ## keeps the code-only placeholder assembly coherent.
 func _socket_offset(rig, socket: String, props: Dictionary) -> Vector3:
+	# Non-humanoid skeletons declare no bodyShapeCoefficients and don't share the
+	# humanoid landmark layout, so their sockets attach directly at their socket
+	# bone's rest origin (characters.md §4) instead of humanoid landmark math
+	# (which would place equipment on a body layout those families don't have).
+	if rig.get_family() != "humanoid":
+		return rig.get_bone_global_rest(rig.socket_to_bone(socket))
 	var l: Dictionary = SkeletonRig.compute_landmarks(rig.get_body_shape_coefficients(), props)
 
 	match socket:

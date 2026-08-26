@@ -82,6 +82,9 @@ func run() -> void:
 	_run_test("character: equipment SKINNED vs RIGID",        _test_character_deformation_modes)
 	_run_test("character: apply/clear equipment",             _test_character_apply_clear_equipment)
 	_run_test("character: RIGID socket offset places mesh",   _test_character_rigid_socket_offset)
+	_run_test("character: non-humanoid rest pose feet at y=0", _test_nonhumanoid_rest_pose_feet_at_y0)
+	_run_test("character: non-humanoid socket at bone rest",   _test_nonhumanoid_socket_offset_from_bone)
+	_run_test("character: non-humanoid hideRegions hide body", _test_nonhumanoid_hide_regions_map_to_body)
 	_run_test("character: full spawn path assembles + signals", _test_character_full_spawn_path)
 	_run_test("crafting: recipe data loaded from fabric",     _test_crafting_recipe_data_loaded)
 	_run_test("crafting: skill guard blocks low tier",        _test_crafting_skill_guard_blocks)
@@ -615,6 +618,57 @@ func _test_character_unknown_appearance() -> void:
 	var ch := CharacterSlice.new()
 	add_child(ch)
 	assert_eq(ch.create_character("does_not_exist", Vector3.ZERO), "", "unknown appearance_id returns empty")
+	ch.free()
+
+func _test_nonhumanoid_rest_pose_feet_at_y0() -> void:
+	# Non-humanoid rest poses share the humanoid "feet at y=0" convention
+	# (characters.md §37.4): the lowest leg/contact bone rests on the ground
+	# plane so a rig placed at the origin stands on the terrain, not above or
+	# sunk into it.
+	var q := SkeletonRig.new()
+	add_child(q)
+	q.build(GameData.SKELETONS["QuadrupedSkeleton"], {})
+	assert_true(is_equal_approx(q.get_bone_global_rest("Leg_FL").y, 0.0), "quadruped fore foot rests at y=0")
+	assert_true(is_equal_approx(q.get_bone_global_rest("Leg_BR").y, 0.0), "quadruped hind foot rests at y=0")
+	q.free()
+
+	var b := SkeletonRig.new()
+	add_child(b)
+	b.build(GameData.SKELETONS["BirdSkeleton"], {})
+	assert_true(is_equal_approx(b.get_bone_global_rest("Leg_L").y, 0.0), "bird foot rests at y=0")
+	assert_true(is_equal_approx(b.get_bone_global_rest("Leg_R").y, 0.0), "bird right foot rests at y=0")
+	b.free()
+
+	var s := SkeletonRig.new()
+	add_child(s)
+	s.build(GameData.SKELETONS["SerpentSkeleton"], {})
+	assert_true(is_equal_approx(s.get_bone_global_rest("Spine_1").y, 0.0), "serpent body rests at y=0")
+	s.free()
+
+func _test_nonhumanoid_socket_offset_from_bone() -> void:
+	# Non-humanoid sockets attach at their socket bone's rest origin, not the
+	# humanoid landmark layout (characters.md §4). A RIGID head item on a
+	# quadruped must land at the Head bone (y≈0.75), not humanoid head_top
+	# (y≈1.80) — asserting y<1.0 catches a regression to the humanoid layout.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("BoarRider", Vector3.ZERO)
+	assert_true(ch.apply_equipment(iid, "Head", "FerriteHelmet"), "helmet equips on quadruped")
+	var helmet: Node3D = ch.get_part_node(iid, "Head")
+	assert_true(helmet != null, "helmet mesh exposed")
+	assert_true(helmet.position.y > 0.0 and helmet.position.y < 1.0, "head socket at bone rest, not humanoid landmark")
+	ch.free()
+
+func _test_nonhumanoid_hide_regions_map_to_body() -> void:
+	# Non-humanoid families build a single generic "body" part instead of the
+	# humanoid body_chest/body_legs split, so body hideRegions (e.g. a
+	# chestplate's BodyChest/BodyShoulders) must hide that one part (§16).
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("BoarRider", Vector3.ZERO)
+	assert_true(ch.is_part_visible(iid, "body"), "quadruped body visible before equipment")
+	assert_true(ch.apply_equipment(iid, "Chest", "VeilsteelChestplate"), "chestplate equips on quadruped")
+	assert_false(ch.is_part_visible(iid, "body"), "BodyChest/BodyShoulders hide the generic non-humanoid body part")
 	ch.free()
 
 func _test_character_lod_hides_detail() -> void:

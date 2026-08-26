@@ -5,9 +5,9 @@
 [resource]
 script = ExtResource("1")
 family = "bird"
-bones = [{"name":"Root","parent":""},{"name":"Spine","parent":"Root"},{"name":"Neck","parent":"Spine"},{"name":"Head","parent":"Neck"},{"name":"Wing_L","parent":"Spine"},{"name":"Wing_R","parent":"Spine"},{"name":"Leg_L","parent":"Root"},{"name":"Leg_R","parent":"Root"}]
+bones = [{"name":"Root","parent":""},{"name":"Spine","parent":"Root"},{"name":"Neck","parent":"Spine"},{"name":"Head","parent":"Neck"},{"name":"Wing_L","parent":"Spine"},{"name":"Wing_R","parent":"Spine"},{"name":"Leg_L","parent":"Spine"},{"name":"Leg_R","parent":"Spine"}]
 sockets = {"socket_head":"Head","socket_face":"Head","socket_back":"Spine","socket_mount":"Spine"}
-restPose = {"Root":[0,0,0],"Spine":[0,0.4,0],"Neck":[0,0.15,0.1],"Head":[0,0.12,0.05],"Wing_L":[-0.2,0.05,0],"Wing_R":[0.2,0.05,0],"Leg_L":[-0.08,-0.35,0],"Leg_R":[0.08,-0.35,0]}
+restPose = {"Root":[0,0,0],"Spine":[0,0.4,0],"Neck":[0,0.15,0.1],"Head":[0,0.12,0.05],"Wing_L":[-0.2,0.05,0],"Wing_R":[0.2,0.05,0],"Leg_L":[-0.08,-0.4,0],"Leg_R":[0.08,-0.4,0]}
 turnSpeed = 5.0
 semanticTags = ["bird","has_head","has_back_socket"]
 description = "Bipedal avian skeleton with wings, legs, spine, neck, and head. Shared rig for flying creatures and raptors."
