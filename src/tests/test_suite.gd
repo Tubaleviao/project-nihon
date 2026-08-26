@@ -86,6 +86,11 @@ func run() -> void:
 	_run_test("character: non-humanoid socket at bone rest",   _test_nonhumanoid_socket_offset_from_bone)
 	_run_test("character: non-humanoid hideRegions hide body", _test_nonhumanoid_hide_regions_map_to_body)
 	_run_test("character: full spawn path assembles + signals", _test_character_full_spawn_path)
+	_run_test("character: shared palette texture (256×1)",        _test_character_palette_texture_shared)
+	_run_test("character: palette swap round-trips shader params", _test_character_palette_swap_round_trip)
+	_run_test("character: parts share one shader resource",       _test_character_material_shader_shared)
+	_run_test("character: wear channel derives from durability",  _test_character_wear_channel)
+	_run_test("character: metal channel is palette-driven",       _test_character_metal_channel)
 	_run_test("crafting: recipe data loaded from fabric",     _test_crafting_recipe_data_loaded)
 	_run_test("crafting: skill guard blocks low tier",        _test_crafting_skill_guard_blocks)
 	_run_test("crafting: consumes inputs and produces output", _test_crafting_consumes_and_produces)
@@ -843,6 +848,96 @@ func _test_character_full_spawn_path() -> void:
 	assert_eq(captured.get("position"), pos, "signal carries spawn position")
 
 	GameBus.character_spawned.disconnect(on_spawned)
+	ch.free()
+
+func _test_character_palette_texture_shared() -> void:
+	# The palette is ONE shared 256×1 texture (characters.md §19); every part
+	# samples it. A part's material carries it as `palette_tex`, so a palette
+	# swap writes a shader index — no per-skin texture asset is ever created.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	assert_true(iid != "", "character created")
+	var shared := ch.get_palette_texture()
+	assert_true(shared is ImageTexture, "palette texture is an ImageTexture")
+	assert_eq(shared.get_width(), 256, "palette texture is 256 wide")
+	assert_eq(shared.get_height(), 1, "palette texture is a single row")
+	var mat := ch.get_part_material(iid, "head")
+	assert_true(mat is ShaderMaterial, "part uses a ShaderMaterial")
+	assert_true(mat.get_shader_parameter("palette_tex") == shared, "part material references the shared palette texture")
+	ch.free()
+
+func _test_character_palette_swap_round_trip() -> void:
+	# A palette swap is a per-instance shader-parameter write (§20): apply a new
+	# index, read it back, confirm it matches — no new texture, no new material.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	assert_true(iid != "", "character created")
+	var mat := ch.get_part_material(iid, "body_chest")
+	assert_true(mat is ShaderMaterial, "body part uses ShaderMaterial")
+	var before: int = int(mat.get_shader_parameter("base_index"))
+	assert_true(ch.apply_palette_index(iid, "body_chest", "primary_index", 200), "apply_palette_index succeeds")
+	assert_eq(int(mat.get_shader_parameter("primary_index")), 200, "primary_index round-trips through the shader parameter")
+	assert_eq(int(mat.get_shader_parameter("base_index")), before, "base_index unchanged by primary swap")
+	ch.apply_palette_index(iid, "body_chest", "accent_index", 9999)
+	assert_eq(int(mat.get_shader_parameter("accent_index")), 255, "oversized index clamps to 255")
+	ch.free()
+
+func _test_character_material_shader_shared() -> void:
+	# All parts share ONE shader resource (the palette pipeline's GPU win); only
+	# per-instance parameters differ. Parts on different characters reference the
+	# same Shader object while each carries its own material instance.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	var iid2 := ch.create_character("BoarRider", Vector3.ZERO)
+	assert_true(iid != "" and iid2 != "", "characters created")
+	var m1 := ch.get_part_material(iid, "body_chest")
+	var m2 := ch.get_part_material(iid2, "body")
+	assert_true(m1 is ShaderMaterial and m2 is ShaderMaterial, "parts use ShaderMaterial")
+	assert_true(m1.shader == m2.shader, "parts share the same shader resource")
+	assert_true(m1 != m2, "materials are distinct per-instance resources")
+	ch.free()
+
+func _test_character_wear_channel() -> void:
+	# Wear derives from durability (§23): a low-durability equipment mesh carries
+	# a higher `wear` shader parameter than a fresh one, degrading it visually.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var worn_iid := ch.create_character_from_recipe({
+		"skeleton": "HumanoidSkeleton",
+		"equipment": { "MainHand": { "item": "VeilsteelLongsword", "state": "equipped", "durability": 0.1 } },
+	}, Vector3.ZERO)
+	var fresh_iid := ch.create_character_from_recipe({
+		"skeleton": "HumanoidSkeleton",
+		"equipment": { "MainHand": { "item": "VeilsteelLongsword", "state": "equipped", "durability": 1.0 } },
+	}, Vector3.ZERO)
+	var worn_mat := ch.get_part_material(worn_iid, "MainHand")
+	var fresh_mat := ch.get_part_material(fresh_iid, "MainHand")
+	assert_true(worn_mat is ShaderMaterial and fresh_mat is ShaderMaterial, "equipment uses ShaderMaterial")
+	var worn: float = float(worn_mat.get_shader_parameter("wear"))
+	var fresh: float = float(fresh_mat.get_shader_parameter("wear"))
+	assert_true(worn > fresh, "worn equipment carries higher wear than fresh")
+	assert_true(is_equal_approx(worn, 0.9), "wear = 1 - durability")
+	ch.free()
+
+func _test_character_metal_channel() -> void:
+	# RIGID metal equipment is palette-driven but metallic (§21): its material
+	# carries metalness = 1 and a metals-region base index (160–191), not a
+	# hardcoded RGB — metal colours flow through the shared palette.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character_from_recipe({
+		"skeleton": "HumanoidSkeleton",
+		"equipment": { "OffHand": { "item": "FerriteShield", "state": "equipped", "durability": 1.0 } },
+	}, Vector3.ZERO)
+	assert_true(iid != "", "character created")
+	var mat := ch.get_part_material(iid, "OffHand")
+	assert_true(mat is ShaderMaterial, "shield uses ShaderMaterial")
+	assert_eq(float(mat.get_shader_parameter("metalness")), 1.0, "metal equipment is metallic")
+	var base: int = int(mat.get_shader_parameter("base_index"))
+	assert_true(base >= 160 and base <= 191, "metal base index is in the metals region (160–191)")
 	ch.free()
 
 # ---------------------------------------------------------------------------

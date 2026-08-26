@@ -42,7 +42,7 @@ pnpm generate   # generate the design bible into bible/
 | 19 | Multiplayer chaos resilience (jitter + packet loss) | Done |
 | 20 | Skeleton rig and animation | Done |
 | 21 | Asset separation and public placeholders | Done |
-| 22 | Material and palette pipeline | Planned |
+| 22 | Material and palette pipeline | Done |
 | 23 | LOD and composition simplification | Planned |
 | 24 | Social systems and player economy | Planned |
 
