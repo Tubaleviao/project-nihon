@@ -70,6 +70,11 @@ var _next_id: int = 0
 var _lod: int = 0
 var _palette: Array = []
 
+## Body-part texture, lazily resolved through AssetOverlay so a mounted
+## production pack overrides the committed placeholder without this slice
+## ever referencing a private path (§ asset separation).
+var _body_texture: ImageTexture = null
+
 ## Instance id of the player's own character avatar (set by game_root) — the
 ## target for combat- and death-driven animation triggers.
 var _player_character_id: String = ""
@@ -693,11 +698,20 @@ func _make_box(size: Vector3, color: Color) -> MeshInstance3D:
 	mesh.mesh = box
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
+	mat.albedo_texture = _get_body_texture()
 	# Pixel-art aesthetic lives at the asset level (Point filtering, low-res
-	# textures, palettes), not in post-processing (§29). The placeholder uses
-	# flat albedo until real assets exist.
+	# textures, palettes), not in post-processing (§29). Per-part tint still
+	# comes from albedo_color; the texture is the placeholder/production art
+	# resolved through AssetOverlay until the Phase 22 palette pipeline lands.
 	mesh.material_override = mat
 	return mesh
+
+## Lazily decode the body-part texture once per slice instance. Cheap even if
+## decoded again by a later instance — the point is not re-reading it per box.
+func _get_body_texture() -> ImageTexture:
+	if _body_texture == null:
+		_body_texture = AssetOverlay.load_texture(AssetOverlay.PLACEHOLDER_REL)
+	return _body_texture
 
 ## Resolve the socket for an equipment item's current attachment state (§7).
 func _attachment_socket(def: Dictionary, state: String) -> String:

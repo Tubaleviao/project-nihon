@@ -2,9 +2,11 @@
 """Regenerate the committed placeholder art.
 
 Placeholders live at canonical ``res://`` paths under ``assets/`` so a public
-clone always resolves every asset reference. Production art (kept in the
-private ``project-nihon-assets`` repo) is packed into a ``.pck`` that overlays
-these same paths at startup — see ``assets/README.md`` and ``tools/pack_pck.gd``.
+clone always resolves every asset reference. The ``.raw`` suffix keeps Godot's
+import pipeline from claiming the file, so its raw bytes survive intact in any
+export — see ``assets/README.md`` and ``tools/build_pck.sh``. Production art
+(kept in the private ``project-nihon-assets`` repo) is packed into a ``.pck``
+that overlays it at runtime.
 
 The output is an intentionally ugly magenta/black checkerboard so a shipped
 placeholder can never be mistaken for real art.
@@ -44,7 +46,7 @@ def checker(x: int, y: int):
 
 
 def main() -> None:
-    out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("assets/textures/placeholder_character.png")
+    out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("assets/textures/placeholder_character.png.raw")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(_png(SIZE, SIZE, checker))
     print(f"wrote {out}")

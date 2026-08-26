@@ -160,8 +160,8 @@ func run() -> void:
 	_run_test("net: host persists last-known state across disconnect", _test_net_reconnect_last_known_state)
 	_run_test("net: emulated loss+reorder — all delivered packets accepted", _test_net_two_peer_loss_reorder)
 	_run_test("asset: placeholder resolves at canonical path",  _test_asset_placeholder_resolves)
-	_run_test("asset: overlay mode is placeholder or production", _test_asset_overlay_mode_valid)
 	_run_test("asset: no private-only paths hardcoded",          _test_asset_no_private_paths_hardcoded)
+	_run_test("asset: pck round-trip proves override works",    _test_asset_pck_round_trip_override)
 
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
@@ -2142,15 +2142,88 @@ func _test_asset_placeholder_resolves() -> void:
 	assert_true(FileAccess.file_exists(AssetOverlay.PLACEHOLDER_PATH),
 		"canonical placeholder exists at %s" % AssetOverlay.PLACEHOLDER_PATH)
 
-func _test_asset_overlay_mode_valid() -> void:
-	assert_true(AssetOverlay.asset_mode() in ["placeholder", "production"],
-		"asset mode is placeholder|production, got '%s'" % AssetOverlay.asset_mode())
-
+## Recursively scans every committed .gd file under res://src for string
+## literals that only make sense against the private assets-prod submodule —
+## i.e. paths/URLs that would only resolve on a machine with that private
+## remote checked out, defeating the public-clone acceptance criterion.
 func _test_asset_no_private_paths_hardcoded() -> void:
-	assert_eq(AssetOverlay.PCK_NAME, "assets.pck",
-		"pack name is a public constant, not a private-only path")
-	assert_true(AssetOverlay.PLACEHOLDER_PATH.begins_with("res://assets/"),
-		"canonical asset path lives under the public res://assets/ prefix")
+	const FORBIDDEN := [
+		"res://assets-prod",
+		"assets-prod/",
+		"git@github.com",
+		"Tubaleviao/project-nihon-assets",
+	]
+	var violations: Array[String] = []
+	_scan_dir_for_forbidden_strings("res://src", FORBIDDEN, violations)
+	assert_eq(violations.size(), 0,
+		"no private-only path/URL hardcoded in src/ (found: %s)" % ", ".join(violations))
+
+func _scan_dir_for_forbidden_strings(dir_path: String, forbidden: Array, violations: Array[String]) -> void:
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		if entry != "." and entry != "..":
+			var full_path := dir_path.path_join(entry)
+			if dir.current_is_dir():
+				_scan_dir_for_forbidden_strings(full_path, forbidden, violations)
+			elif entry.ends_with(".gd") and full_path != "res://src/tests/test_suite.gd":
+				var f := FileAccess.open(full_path, FileAccess.READ)
+				if f != null:
+					var text := f.get_as_text()
+					for needle in forbidden:
+						if text.contains(needle):
+							violations.append("%s contains '%s'" % [full_path, needle])
+		entry = dir.get_next()
+	dir.list_dir_end()
+
+## Proves the production-override mechanism actually works end to end: packs
+## a fixture .pck with PCKPacker (the same primitive `--export-pack` uses
+## under the hood), mounts it exactly as AssetOverlay._mount_production_pack
+## does, and asserts AssetOverlay.resolve_path now serves the overlaid bytes
+## instead of falling back to the public placeholder — not just that the
+## constants involved look right.
+func _test_asset_pck_round_trip_override() -> void:
+	const REL := "round_trip_probe/sample.raw"
+	var overlay_path := AssetOverlay.OVERLAY_PREFIX + REL
+
+	assert_false(FileAccess.file_exists(overlay_path),
+		"probe path is not present before any fixture pck is mounted")
+	assert_eq(AssetOverlay.resolve_path(REL), "res://assets/" + REL,
+		"resolve_path falls back to the public placeholder prefix pre-mount")
+
+	var payload := "OVERLAY_CONTENT_ROUND_TRIP_PROBE".to_utf8_buffer()
+	var src_path := "user://_rt_probe_src.raw"
+	var src_file := FileAccess.open(src_path, FileAccess.WRITE)
+	src_file.store_buffer(payload)
+	src_file.close()
+
+	var fixture_path := "user://_rt_probe_fixture.pck"
+	var packer := PCKPacker.new()
+	var err := packer.pck_start(fixture_path)
+	assert_eq(err, OK, "PCKPacker.pck_start succeeds (err=%s)" % error_string(err))
+	err = packer.add_file(overlay_path, src_path)
+	assert_eq(err, OK, "PCKPacker.add_file succeeds (err=%s)" % error_string(err))
+	err = packer.flush()
+	assert_eq(err, OK, "PCKPacker.flush writes the fixture pck (err=%s)" % error_string(err))
+
+	var mounted := ProjectSettings.load_resource_pack(fixture_path, true)
+	assert_true(mounted, "fixture pck mounts over res://")
+
+	assert_true(FileAccess.file_exists(overlay_path),
+		"overlay path exists once the fixture pck is mounted")
+
+	var resolved := AssetOverlay.resolve_path(REL)
+	assert_eq(resolved, overlay_path,
+		"resolve_path now prefers the mounted overlay over the public placeholder")
+
+	var read_back := FileAccess.get_file_as_bytes(resolved)
+	assert_eq(read_back, payload,
+		"bytes read back through resolve_path match what the fixture pck actually shipped")
+
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(src_path))
 
 # ---------------------------------------------------------------------------
 # Assertion helpers

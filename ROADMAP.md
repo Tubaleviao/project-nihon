@@ -809,40 +809,50 @@ mechanism that will carry paid DLC packs later.
 
 **Deliverables:**
 - Production art lives in a private repo (`project-nihon-assets`), added to this
-  repo as the `assets-prod/` git submodule; large binaries are tracked with
-  Git LFS inside that repo.
-- `assets/` — ugly placeholders committed at canonical `res://` paths
-  (`assets/textures/placeholder_character.png`) so a public clone resolves every
-  asset reference with no missing-resource errors.
-- `tools/pack_pck.gd` + `tools/build_pck.sh` — pack the submodule into a single
-  `assets.pck` whose entries land at the same `res://assets/…` paths (a `.pck`
-  is the unit of optional content — the DLC monetization model).
+  repo as the `assets-prod/` git submodule (HTTPS remote, so
+  `--recurse-submodules` doesn't require SSH credentials); large binaries are
+  tracked with Git LFS inside that repo, which also carries a `.gdignore` so
+  Godot's scanner never touches it in place.
+- `assets/` — ugly placeholders committed at canonical `.raw`-suffixed paths
+  (`assets/textures/placeholder_character.png.raw`) so a public clone resolves
+  every asset reference with no missing-resource errors. The `.raw` suffix
+  keeps Godot's importer from claiming the file, so its bytes survive a real
+  export and are readable via `FileAccess` — a plain `.png` would not be.
+- `tools/build_pck.sh` — stages a plain copy of `assets-prod/` into a
+  disposable pack-only project (`tools/pack_project/`) and calls Godot's own
+  exporter (`godot --export-pack`) over it, producing `assets.pck` with
+  entries under `res://_overlay/…` (a `.pck` is the unit of optional
+  content — the DLC monetization model). Exits non-zero on any packing
+  failure — there is no separate custom packer script to silently swallow one.
+- `export_presets.cfg` — "Linux"/"Windows Desktop" presets exclude both
+  `assets-prod/*` and `_overlay/*` from the shipped game, splitting the
+  public/Steam build from the private-asset-adjacent build tooling.
 - `src/core/asset_overlay.gd` (autoload) — mounts `assets.pck` over `res://` at
-  startup, swapping placeholders for production art; exposes `asset_mode()`.
+  startup; `resolve_path(rel)`/`load_texture(rel)` prefer the mounted
+  `res://_overlay/<rel>` override, falling back to the public placeholder at
+  `res://assets/<rel>`. `character_slice.gd` is wired to `load_texture()` as
+  the first real runtime consumer.
 - `tools/gen_placeholder.py` — deterministically regenerates placeholder art.
 - Build policy: Steam/release bundles `assets.pck` (mounted from next to the
   binary); the public/GitHub build ships placeholders only.
 - No code references a private-only path — production art is addressed only via
-  its public canonical `res://assets/…` path, which the `.pck` overlays.
+  the public `res://assets/…` prefix and the pack's own `res://_overlay/…`
+  namespace, both safe to ship; `_test_asset_no_private_paths_hardcoded`
+  recursively scans `src/` to enforce this.
 
 **Acceptance criteria:**
-- A fresh `git clone` of the public repo opens and runs in Godot — placeholders
-  present, no missing-resource errors ✓
+- A fresh `git clone --recurse-submodules` of the public repo opens and runs in
+  Godot — placeholders present, no missing-resource errors ✓
 - Production art is absent from the public repo (only the submodule pointer) ✓
 - `assets.pck` is gitignored and never committed ✓
+- `_test_asset_pck_round_trip_override` builds a fixture pck with `PCKPacker`,
+  mounts it, and asserts the override is actually served — not just that the
+  relevant constants look right ✓
 
-**Known limitation (must be addressed in Phase 22):** the overlay mounts raw
-production files at their canonical path, which only works for resources loaded
-as raw bytes at runtime. Godot resolves imported types (textures as
-`CompressedTexture2D`, meshes, etc.) through their `.import` sidecar to a
-compiled cache path baked in at export time — a second pck containing only a
-raw replacement file does not change that resolution, so a scene `ExtResource`
-reference would keep showing the placeholder even with `assets.pck` mounted.
-Not yet exercised (the character rig still uses placeholder `BoxMesh` parts),
-but Phase 22 must either load production textures explicitly via
-`Image`/`FileAccess` instead of scene resource references, or pack matching
-compiled import artifacts rather than raw source files. See
-`assets/README.md`.
+Resolved: the import-pipeline limitation described in earlier drafts of this
+phase (raw overlay files not working for recognized resource types) is fixed
+by the `.raw` suffix convention above, rather than deferred to Phase 22. See
+`assets/README.md` for the full mechanism.
 
 ---
 
