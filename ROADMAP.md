@@ -739,7 +739,9 @@ conditions: jitter, packet loss, reordering, and abrupt disconnects.
 ## Phase 20 — Skeleton rig and animation ✅ Done
 
 **Goal:** Bring the animation spec from `characters.md` to life: a rigged
-humanoid skeleton with a fabric-driven locomotion state machine.
+humanoid skeleton with a locomotion decision layer driven by the player
+controller's real speed every frame, with per-family facing rate (`turnSpeed`)
+sourced from the fabric.
 
 **Newel dependency:** None. Animation spec is complete from Phase 7.
 

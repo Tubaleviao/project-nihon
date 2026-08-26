@@ -739,10 +739,9 @@ character keep facing the direction it was last moving.
 ### 37.4 Body-Shape Landmarks
 
 Humanoid body proportions (§8: `height`, `bodyMass`, `shoulderWidth`,
-`armLength`, `legLength`, `headScale`) drive both the placeholder visual mesh
-*and* the rig's actual bone rest pose, from one shared set of coefficients
-(`bodyShapeCoefficients`, declared per-`SkeletonDefinition`) so a rig never
-drifts out of sync with the body it is meant to animate:
+`armLength`, `legLength`, `headScale`) drive the placeholder visual mesh,
+socket placement, and foot IK through one shared set of coefficients
+(`bodyShapeCoefficients`, declared per-`SkeletonDefinition`):
 
 ```
 torsoHeightFactor, hipHeightFactor, headSizeFactor, chestYFactor,
@@ -753,9 +752,19 @@ backForwardOffset, capeUpOffset, legReachMargin, footSideFactor
 These coefficients combine with the instance's proportions to produce
 landmarks (`hip_y`, `chest_y`, `head_top`, `hand_x`/`hand_y`, socket offsets,
 leg reach, foot stance width) consumed identically by mesh assembly, socket
-placement, and foot IK (37.5) below. Non-humanoid families do not define
-`bodyShapeCoefficients` — they use their own `restPose` only, since the
-placeholder humanoid mesh/socket layout does not apply to them.
+placement, and foot IK (37.5) below.
+
+The rig's actual bone rest pose is a separate mechanism: it comes from
+`restPose` (per-`SkeletonDefinition`, §4), scaled per bone group directly by
+the raw proportions (not by `bodyShapeCoefficients`). `bodyShapeCoefficients`
+and `restPose` are declared independently but chosen to agree numerically —
+e.g. `hipHeightFactor + torsoHeightFactor + headSizeFactor` sums to the same
+total height that `restPose`'s cumulative bone offsets produce — so the
+placeholder mesh/socket landmarks line up with the actual bone chain at rest.
+Keeping that agreement is a manual bookkeeping step whenever either is tuned.
+Non-humanoid families do not define `bodyShapeCoefficients` — they use their
+own `restPose` only, since the placeholder humanoid mesh/socket layout does
+not apply to them.
 
 ### 37.5 Foot IK (Approximate)
 

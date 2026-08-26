@@ -198,8 +198,9 @@ func is_part_visible(instance_id: String, part_key: String) -> bool:
 		return false
 	return parts[part_key]["node"].visible
 
-## Live node for a named part (body/head/hair/beard or an equipment slot), or
-## null when the part is absent. Exposed for tests and the debug HUD.
+## Live node for a named part (body_chest/body_legs/head/hair/beard or an
+## equipment slot), or null when the part is absent. Exposed for tests and the
+## debug HUD.
 func get_part_node(instance_id: String, part_key: String) -> Node3D:
 	if not _instances.has(instance_id):
 		return null
@@ -297,15 +298,21 @@ func get_lod() -> int:
 func apply_equipment(instance_id: String, slot: String, item_key: String, state: String = "equipped") -> bool:
 	if not _instances.has(instance_id):
 		return false
+	var def := _equipment_def(item_key)
+	# Reject an item that doesn't actually fit this slot — mirrors
+	# deserialize_appearance()'s recipe-side guard so a caller can't force any
+	# equippable item into any slot regardless of what it fits (§30).
+	if def.is_empty() or str(def.get("slot", "")) != slot:
+		return false
+
 	var inst: Dictionary = _instances[instance_id]
 	var rig = inst["rig"]
 	var props: Dictionary = inst["appearance"].get("proportions", {})
 
-	var entry := {
+	var entry := _normalize_equipment({
 		"item": item_key,
 		"state": state,
-		"durability": 1.0,
-	}
+	})
 	var rec: Dictionary = _attach_equipment(rig, slot, entry, props)
 	if rec.is_empty():
 		return false
@@ -633,9 +640,11 @@ func _apply_lod(instance_id: String) -> void:
 		node.visible = _lod <= min_lod and not hidden.get(key, false)
 
 ## Map a fabric mesh-hiding region (characters.md §16) onto the placeholder
-## part key it corresponds to in `parts`. The placeholder body is one combined
-## torso+legs box, so every torso-ish region collapses onto "body"; regions
-## with no placeholder equivalent (e.g. "Ears") resolve to "" and are ignored.
+## part key it corresponds to in `parts`. The placeholder body is split into a
+## chest region (torso/shoulders/arms) and a legs region, so BodyChest/
+## BodyShoulders/BodyArms collapse onto "body_chest" while BodyLegs maps to
+## "body_legs"; "Ears" has no separate placeholder mesh and resolves onto
+## "head" along with "Head" itself.
 func _region_to_part(region: String) -> String:
 	match region:
 		"Hair", "HairTop":
@@ -644,8 +653,10 @@ func _region_to_part(region: String) -> String:
 			return "beard"
 		"Head", "Ears":
 			return "head"
-		"BodyChest", "BodyShoulders", "BodyArms", "BodyLegs":
-			return "body"
+		"BodyChest", "BodyShoulders", "BodyArms":
+			return "body_chest"
+		"BodyLegs":
+			return "body_legs"
 		_:
 			return ""
 
@@ -670,11 +681,12 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 
 	# Skeleton rig (Phase 20) — build a real Skeleton3D from the fabric
 	# SkeletonDefinition so the character carries a bone hierarchy. Body and head
-	# are skinned to their bones (torso / head) so they deform with the
+	# are skinned to their bones (torso / legs / head) so they deform with the
 	# skeleton; hair/beard stay rig-root children (placeholder details) pending
 	# real skinned assets; equipment attaches to sockets through the rig.
 	var skeleton_res: Resource = GameData.SKELETONS.get(str(appearance.get("skeleton", DEFAULT_SKELETON)), null)
 	rig.build(skeleton_res, props)
+	var is_humanoid: bool = rig.get_family() == "humanoid"
 
 	var landmarks: Dictionary = SkeletonRig.compute_landmarks(rig.get_body_shape_coefficients(), props)
 	var torso_h: float = landmarks["torso_h"]
@@ -682,15 +694,24 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 	var head_size: float = landmarks["head_size"]
 	var head_y: float = landmarks["head_y"]
 
-	# Body (torso + legs as one block placeholder) — skinned to the torso bone so
-	# it deforms with the skeleton. The mesh keeps its computed root-space
-	# position, expressed as a bone-local offset (root-space minus the bone's
-	# rest origin) so the rendered pose is unchanged at rest.
-	var body := _make_box(Vector3(0.55 * shoulder * mass, torso_h, 0.32 * mass), skin)
-	var body_pos := Vector3(0.0, hip_y + torso_h * 0.5, 0.0)
+	# Chest (torso/shoulders/arms region placeholder — §16 BodyChest/
+	# BodyShoulders/BodyArms) — skinned to the torso bone so it deforms with the
+	# skeleton. The mesh keeps its computed root-space position, expressed as a
+	# bone-local offset (root-space minus the bone's rest origin) so the
+	# rendered pose is unchanged at rest.
+	var chest := _make_box(Vector3(0.55 * shoulder * mass, torso_h, 0.32 * mass), skin)
+	var chest_pos := Vector3(0.0, hip_y + torso_h * 0.5, 0.0)
 	var torso_bone := _torso_bone(rig)
-	rig.attach_to_bone(torso_bone, body, body_pos - rig.get_bone_global_rest(torso_bone))
-	parts["body"] = { "node": body, "min_lod": 3 }
+	rig.attach_to_bone(torso_bone, chest, chest_pos - rig.get_bone_global_rest(torso_bone))
+	parts["body_chest"] = { "node": chest, "min_lod": 3 }
+
+	# Legs (hips-to-ground region placeholder — §16 BodyLegs) — skinned to the
+	# hip bone so it deforms with the skeleton.
+	var legs := _make_box(Vector3(0.45 * shoulder * mass, hip_y, 0.30 * mass), skin)
+	var legs_pos := Vector3(0.0, hip_y * 0.5, 0.0)
+	var legs_bone := _legs_bone(rig)
+	rig.attach_to_bone(legs_bone, legs, legs_pos - rig.get_bone_global_rest(legs_bone))
+	parts["body_legs"] = { "node": legs, "min_lod": 3 }
 
 	# Head — skinned to the head bone.
 	var head := _make_box(Vector3(head_size, head_size, head_size), skin)
@@ -701,21 +722,25 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 	rig.attach_to_bone(head_bone, head, head_pos - rig.get_bone_global_rest(head_bone))
 	parts["head"] = { "node": head, "min_lod": 3 }
 
-	# Hair (independent component — §13).
-	var hair_id: String = str(appearance.get("hair", "none"))
-	if hair_id != "none" and hair_id != "":
-		var hair := _make_box(Vector3(head_size * 1.05, head_size * 0.4, head_size * 1.05), hair_color)
-		hair.position = Vector3(0.0, head_y + head_size * 0.45, 0.0)
-		rig.add_child(hair)
-		parts["hair"] = { "node": hair, "min_lod": 1 }
+	# Hair and beard are humanoid-specific placeholder details (§13, §14) — skip
+	# them for non-humanoid families (quadruped/bird/serpent), which don't use
+	# the humanoid head layout these boxes are shaped for.
+	if is_humanoid:
+		# Hair (independent component — §13).
+		var hair_id: String = str(appearance.get("hair", "none"))
+		if hair_id != "none" and hair_id != "":
+			var hair := _make_box(Vector3(head_size * 1.05, head_size * 0.4, head_size * 1.05), hair_color)
+			hair.position = Vector3(0.0, head_y + head_size * 0.45, 0.0)
+			rig.add_child(hair)
+			parts["hair"] = { "node": hair, "min_lod": 1 }
 
-	# Beard (independent component — §14).
-	var beard_id: String = str(appearance.get("beard", "none"))
-	if beard_id != "none" and beard_id != "":
-		var beard := _make_box(Vector3(head_size * 0.7, head_size * 0.5, head_size * 0.25), beard_color)
-		beard.position = Vector3(0.0, head_y - head_size * 0.1, -head_size * 0.55)
-		rig.add_child(beard)
-		parts["beard"] = { "node": beard, "min_lod": 0 }
+		# Beard (independent component — §14).
+		var beard_id: String = str(appearance.get("beard", "none"))
+		if beard_id != "none" and beard_id != "":
+			var beard := _make_box(Vector3(head_size * 0.7, head_size * 0.5, head_size * 0.25), beard_color)
+			beard.position = Vector3(0.0, head_y - head_size * 0.1, -head_size * 0.55)
+			rig.add_child(beard)
+			parts["beard"] = { "node": beard, "min_lod": 0 }
 
 	# Equipment — socket attachment with deformation modes (Phase 20 §10).
 	var equipment: Dictionary = appearance.get("equipment", {})
@@ -779,6 +804,15 @@ func _attach_equipment(rig, slot: String, entry: Dictionary, props: Dictionary) 
 ## Returns "" when none exist, so the rig keeps the body a root child.
 func _torso_bone(rig) -> String:
 	for name in ["Chest", "Spine", "Spine_1", "Root"]:
+		if rig.get_bone_index(name) != -1:
+			return name
+	return ""
+
+## Preferred hip bone to skin the legs mesh to, in a family-agnostic order
+## (humanoid/quadruped → Hips, else Root). Returns "" when none exist, so the
+## rig keeps the legs mesh a root child.
+func _legs_bone(rig) -> String:
+	for name in ["Hips", "Root"]:
 		if rig.get_bone_index(name) != -1:
 			return name
 	return ""

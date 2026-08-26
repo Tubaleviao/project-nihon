@@ -626,7 +626,11 @@ func _test_character_lod_hides_detail() -> void:
 	assert_true(ch.is_part_visible(iid, "hair"), "hair visible at LOD0")
 	ch.set_lod(3)
 	assert_false(ch.is_part_visible(iid, "hair"), "hair hidden at LOD3")
-	assert_true(ch.is_part_visible(iid, "body"), "body visible at LOD3")
+	# body_chest is legitimately hidden here too — TravellerHuman's default
+	# VeilsteelChestplate covers BodyChest/BodyShoulders (§16) — so use
+	# body_legs, which none of its default equipment hides, to verify coarse
+	# geometry still passes the LOD3 cutoff.
+	assert_true(ch.is_part_visible(iid, "body_legs"), "body_legs visible at LOD3")
 	ch.free()
 
 func _test_character_skeleton_rig() -> void:
@@ -751,12 +755,16 @@ func _test_character_full_spawn_path() -> void:
 	add_child(ch)
 
 	var captured := {}
-	GameBus.character_spawned.connect(func(iid, skeleton_id, position):
+	# Bound to a local Callable (rather than left as an inline connect target) so
+	# it can be explicitly disconnected below — a lambda connected to an
+	# autoload signal is not severed just by freeing `ch`, unlike GameBus
+	# connections made through a slice's own bound methods.
+	var on_spawned := func(iid, skeleton_id, position):
 		captured["count"] = captured.get("count", 0) + 1
 		captured["iid"] = iid
 		captured["skeleton"] = skeleton_id
 		captured["position"] = position
-	)
+	GameBus.character_spawned.connect(on_spawned)
 
 	var pos := Vector3(4.0, 2.0, 6.0)
 	var iid := ch.create_character("TravellerHuman", pos)
@@ -767,7 +775,7 @@ func _test_character_full_spawn_path() -> void:
 	var bones: Array = ch.get_skeleton_bone_names(iid)
 	assert_true(bones.has("Root") and bones.has("Chest") and bones.has("Head"), "bone hierarchy assembled")
 
-	var body: Node3D = ch.get_part_node(iid, "body")
+	var body: Node3D = ch.get_part_node(iid, "body_chest")
 	var head: Node3D = ch.get_part_node(iid, "head")
 	assert_true(body != null and head != null, "body and head parts assembled")
 	assert_eq(str(body.get_meta("attached_bone")), "Chest", "body skinned to torso bone")
@@ -779,6 +787,8 @@ func _test_character_full_spawn_path() -> void:
 	assert_eq(captured.get("iid"), iid, "signal carries instance id")
 	assert_eq(captured.get("skeleton"), "HumanoidSkeleton", "signal carries skeleton id")
 	assert_eq(captured.get("position"), pos, "signal carries spawn position")
+
+	GameBus.character_spawned.disconnect(on_spawned)
 	ch.free()
 
 # ---------------------------------------------------------------------------

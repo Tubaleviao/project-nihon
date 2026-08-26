@@ -47,10 +47,10 @@ const DEFAULT_STEP := Vector3(0.0, 0.2, 0.0)
 ## HumanoidSkeleton does — non-humanoid families don't use the humanoid
 ## placeholder body/socket layout). Mirrors HumanoidSkeleton's fabric defaults.
 const DEFAULT_BODY_SHAPE: Dictionary = {
-	"torsoHeightFactor": 0.62,
-	"hipHeightFactor": 0.38,
-	"headSizeFactor": 0.30,
-	"chestYFactor": 0.6,
+	"torsoHeightFactor": 0.70,
+	"hipHeightFactor": 0.95,
+	"headSizeFactor": 0.15,
+	"chestYFactor": 0.64,
 	"handXFactor": 0.42,
 	"handYArmFactor": 0.05,
 	"weaponForwardOffset": 0.15,
