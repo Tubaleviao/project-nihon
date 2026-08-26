@@ -273,9 +273,11 @@ func _boot_world() -> void:
 	_chunk_manager.start()
 	_chunk_manager.refresh()
 
-	# Character system — spawn a demo humanoid and a non-humanoid (quadruped)
-	# near the player to exercise the appearance pipeline end to end.
-	var player_char := _character.create_character("TravellerHuman", Vector3(spawn_xz.x + 3.0, ground_h + 1.0, spawn_xz.y))
+	# Character system — the player's own avatar spawns at the player's real
+	# position (it is synced to the controller every frame from here on, in
+	# _process); a non-humanoid (quadruped) demo spawns alongside it to
+	# exercise the appearance pipeline end to end.
+	var player_char := _character.create_character("TravellerHuman", _player.get_position())
 	_character.create_character("BoarRider", Vector3(spawn_xz.x - 3.0, ground_h + 1.0, spawn_xz.y))
 	_character.set_player_character(player_char)
 
@@ -382,12 +384,33 @@ func _on_peer_connected(peer_id: int) -> void:
 	_networking.send_snapshot(peer_id, _build_snapshot())
 
 func _process(delta: float) -> void:
+	_sync_player_avatar(delta)
+
 	if not _snapshot_pending:
 		return
 	_snapshot_elapsed += delta
 	if _snapshot_elapsed >= SNAPSHOT_TIMEOUT:
 		push_error("[Networking] world snapshot timed out after %.1fs — giving up" % SNAPSHOT_TIMEOUT)
 		_snapshot_pending = false
+
+## Drive the player's visual avatar from the real player controller every
+## frame — position/facing, locomotion state, and approximate foot IK
+## (characters.md §37). Only the host currently spawns character visuals
+## (_boot_world), so this is a no-op on clients until one exists.
+func _sync_player_avatar(delta: float) -> void:
+	var player_char: String = _character.get_player_character()
+	if player_char == "":
+		return
+	var vel: Vector3 = _player.get_velocity()
+	_character.sync_player_avatar(
+		player_char,
+		_player.get_position(),
+		Vector3(vel.x, 0.0, vel.z),
+		vel.y,
+		_player.is_grounded(),
+		delta,
+		_terrain.get_height_at
+	)
 
 func _on_connection_failed() -> void:
 	if not _is_client:

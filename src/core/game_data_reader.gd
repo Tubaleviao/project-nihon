@@ -21,6 +21,13 @@ static func int_field(res: Resource, key: String, default: int) -> int:
 		return int(v)
 	return default
 
+## Read a float-typed field, accepting int or float storage, else `default`.
+static func float_field(res: Resource, key: String, default: float) -> float:
+	var v = res.get(key)
+	if v is int or v is float:
+		return float(v)
+	return default
+
 ## Read a json-typed field. Accepts a native Dictionary/Array, or a JSON string
 ## that parses to one; otherwise returns `default`.
 static func json_field(res: Resource, key: String, default):

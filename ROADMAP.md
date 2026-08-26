@@ -752,17 +752,21 @@ humanoid skeleton with a fabric-driven locomotion state machine.
   `clear_equipment(slot)`
 - Socket attachment system: equipment meshes attached at named sockets; SKINNED /
   RIGID / HYBRID deformation modes
-- `AnimationTree` driven by the locomotion state machine from `characters.md`
-  (`idle / walk / run / fall / land / attack / death`); blend parameters wired
-  to `velocity` and combat bus signals
-- IK targets for hand and foot placement wired to terrain normal
-- Root-motion policy applied: horizontal delta drives `CharacterBody3D.velocity`,
-  vertical from physics
+- A locomotion decision layer (`characters.md` §37) — state machine
+  (`idle / walk / run / fall / land / attack / death`) plus a continuous
+  idle↔walk↔run blend curve — driven by the player controller's real speed
+  every frame; a real `AnimationTree`/authored clips are asset-production work
+  this layer is designed to plug into, not yet built
+- Approximate foot IK: terrain-sampled whole-body vertical offset (not a
+  per-leg bone solver — see Known simplifications)
+- Per-family `turnSpeed` facing: the body rotates to face its movement
+  direction at a fabric-defined rate instead of snapping or strafing
 
 **Acceptance criteria:**
 - Player character animates through idle → walk → run transitions based on speed ✓
 - Attack and death animations play on the correct bus signals ✓
-- Foot IK keeps feet flush with voxel terrain surface ✓
+- Foot IK keeps feet approximately flush with terrain (whole-body offset, not
+  per-leg placement — see Known simplifications) ✓
 - Socket-attached equipment deforms correctly in SKINNED mode, stays rigid in
   RIGID mode ✓
 
@@ -770,22 +774,36 @@ humanoid skeleton with a fabric-driven locomotion state machine.
 - `src/character/locomotion.gd` — a pure, headless-testable locomotion state
   machine (`IDLE / WALK / RUN / FALL / LAND / ATTACK / DEATH`) mapping horizontal
   speed → state with timed attack/land one-shots and a terminal death state. A
-  real `AnimationTree` consumes `get_state()` + `get_blend_weight()` to pick and
-  blend skeletal clips; the decision logic lives here so transitions are
-  unit-testable without a renderer.
+  real `AnimationTree` would consume `get_state()` + `get_blend_weight()` to pick
+  and blend skeletal clips — no such node exists yet; the decision logic lives
+  here so transitions are unit-testable without a renderer.
 - `src/character/skeleton_rig.gd` — builds a real `Skeleton3D` from the fabric
-  `SkeletonDefinition` (`bones` ordered chain, parents precede children) plus a
-  humanoid rest pose; resolves sockets → bones (`characters.md` §5) and attaches
-  equipment with deformation modes (§10): SKINNED/HYBRID follow the socket's bone
-  via `BoneAttachment3D`, RIGID stays a rig-root child (rigid, no bone follow).
+  `SkeletonDefinition` (`bones` ordered chain, parents precede children), reading
+  `restPose`, `bodyShapeCoefficients`, and `turnSpeed` from the resource (not
+  hardcoded) and scaling each bone's rest offset per its bone group (legs by
+  `legLength`, arms by `armLength`, head by `headScale`, etc. — `characters.md`
+  §8) instead of a single uniform height factor. Resolves sockets → bones
+  (§5) and attaches equipment with deformation modes (§10): SKINNED/HYBRID
+  follow the socket's bone via `BoneAttachment3D`, RIGID stays a rig-root child.
+  `SkeletonRig.compute_landmarks()` centralizes the body-shape math (torso
+  height, hip height, hand/socket offsets, leg reach) so the placeholder mesh,
+  socket offsets, and foot IK all derive the same landmarks from one source
+  instead of three independently-drifting copies.
 - `character_slice.gd` now assembles every character with a `Skeleton3D` rig,
   exposes `apply_equipment(slot, item_key)` / `clear_equipment(slot)`, drives the
   per-instance locomotion state machine, and emits `character_state_changed`.
-  `game_root` forwards the player's combat (`combat_round_requested`) and death
-  (`player_died`) into `character_attack_requested` / `character_death_requested`.
-- Foot IK (`SkeletonRig.compute_foot_targets`) clamps each foot to the terrain
-  surface within leg reach — pure and headless-testable against a `Callable`
-  terrain sampler.
+  `sync_player_avatar()` binds the player's own visual avatar to the real
+  `PlayerSlice` controller every frame — position, facing (turnSpeed-limited
+  rotation toward horizontal velocity), locomotion state, and foot IK — instead
+  of the avatar spawning at a fixed offset and never moving. `game_root` forwards
+  the player's combat (`combat_round_requested`) and death (`player_died`) into
+  `character_attack_requested` / `character_death_requested`.
+- Foot IK (`SkeletonRig.compute_foot_targets`) samples terrain under both feet
+  and clamps each to the terrain surface within leg reach — pure and
+  headless-testable against a `Callable` terrain sampler. `sync_player_avatar`
+  uses the higher foot to offset the whole body vertically (not a per-leg
+  solver — see Known simplifications) and stashes both foot targets as root
+  metadata for a future real IK pass to consume.
 - Body/head/hair/beard remain rig-root placeholder `BoxMesh` parts (not yet
   skinned to the skeleton) pending real mesh + `Skin` asset production.
 
@@ -793,8 +811,17 @@ humanoid skeleton with a fabric-driven locomotion state machine.
 - Palette and material system not yet wired (placeholder albedo only).
 - LOD simplification not yet applied (full-detail mesh at all distances).
 - No blend-shape facial customization.
-- No authored animation clips / `AnimationPlayer` playback — the state machine
-  drives transitions, but actual skeletal clip data is asset-production work.
+- No authored animation clips / `AnimationPlayer` / `AnimationTree` playback —
+  the state machine and blend curve drive transitions and cross-fade weights,
+  but no clip data or blend-tree node exists; that is asset-production work.
+- No root motion — the player controller drives `CharacterBody3D.velocity`
+  directly from input, not from extracted animation displacement.
+- Foot IK is a whole-body vertical offset from the higher sampled foot, not an
+  independent per-leg two-bone solver; legs do not visibly bend to match
+  terrain slope.
+- No sheathe/draw clips, dual-wield/two-handed upper-body layer, or emotes yet
+  — `characters.md` §37.6–§37.8 specify the intended design, not a built
+  system.
 
 ---
 

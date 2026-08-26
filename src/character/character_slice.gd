@@ -17,9 +17,10 @@ extends Node
 ## content. The fabric is the single source of truth.
 ##
 ## Visuals are modular low-poly placeholders (BoxMesh parts) assembled in code —
-## real meshes / textures / skeletons / animations are asset-production work
-## outside this slice's scope. See characters.md §37 for the animation system
-## (not yet specified).
+## real skinned meshes/textures/clips are asset-production work outside this
+## slice's scope, but the decision layer they plug into (locomotion state
+## machine, blend curve, facing, approximate foot IK) is implemented per
+## characters.md §37.
 ##
 ## Plug contract (GameBus signals consumed / emitted):
 ##   OUT : character_spawned(instance_id, skeleton_id, position)
@@ -66,7 +67,10 @@ const BODY_PROP_BOUNDS: Dictionary = {
 
 ## Instance record: { "appearance", "position", "root", "parts" }.
 var _instances: Dictionary = {}
-var _next_id: int = 0
+## Static so ids stay globally unique across every CharacterSlice instance —
+## tests create and free many slices within a single synchronous run(), and a
+## per-instance counter reissued "character_0" from each one.
+static var _next_id: int = 0
 var _lod: int = 0
 var _palette: Array = []
 
@@ -233,7 +237,7 @@ func deserialize_appearance(data: Dictionary) -> Dictionary:
 	recipe["eyeColor"] = _color_index(data.get("eyeColor", 225))
 	recipe["hair"] = str(data.get("hair", "hair_short_01"))
 	recipe["hairColor"] = _color_index(data.get("hairColor", 40))
-	recipe["beard"] = str(data.get("beard", "beard_none"))
+	recipe["beard"] = str(data.get("beard", "none"))
 	recipe["beardColor"] = _color_index(data.get("beardColor", 40))
 
 	var eq_raw = data.get("equipment", {})
@@ -244,7 +248,11 @@ func deserialize_appearance(data: Dictionary) -> Dictionary:
 			var entry = eq_in[slot]
 			if entry is Dictionary:
 				var item_id: String = str(entry.get("item", ""))
-				if not _equipment_def(item_id).is_empty():
+				var def := _equipment_def(item_id)
+				# Reject an entry whose dict key doesn't match the item's own
+				# equipmentSlot — otherwise a recipe could claim any equippable
+				# item into any slot key regardless of what it actually fits.
+				if not def.is_empty() and str(def.get("slot", "")) == str(slot):
 					eq_out[slot] = _normalize_equipment(entry)
 	recipe["equipment"] = eq_out
 
@@ -343,6 +351,9 @@ func clear_equipment(instance_id: String, slot: String) -> bool:
 		var eq: Dictionary = app["equipment"]
 		if eq.has(slot):
 			eq.erase(slot)
+	# Un-equipping can lift a hideRegions hide another slot no longer shares
+	# (or the cleared slot could have been the last thing hiding a part).
+	_apply_lod(instance_id)
 	GameBus.character_appearance_changed.emit(instance_id, app)
 	return true
 
@@ -386,18 +397,67 @@ func get_foot_ik_targets(instance_id: String, terrain_height: Callable) -> Dicti
 		return {}
 	var inst: Dictionary = _instances[instance_id]
 	var props: Dictionary = inst["appearance"].get("proportions", {})
-	var height: float = props.get("height", 1.0)
-	var leg_len: float = props.get("legLength", 1.0)
-	var hip_height := 0.38 * leg_len * height
-	var leg_length := 0.38 * leg_len * height + 0.05
+	var rig = inst["rig"]
+	var landmarks: Dictionary = SkeletonRig.compute_landmarks(rig.get_body_shape_coefficients(), props)
 	return SkeletonRig.compute_foot_targets(
 		terrain_height,
 		inst["position"],
-		hip_height,
-		leg_length,
-		0.12 * height,
+		landmarks["hip_y"],
+		landmarks["leg_reach"],
+		landmarks["foot_side"],
 		0.0
 	)
+
+## Drive a live-controlled instance (the player avatar) from its controller's
+## per-frame state: position/facing sync, locomotion state, and an approximate
+## foot-IK vertical offset (characters.md §37 — hip-height adjustment only, no
+## per-leg bone solver). `horizontal_velocity` and `speed` are the controller's
+## XZ velocity and its length; `terrain_height` is a Callable(Vector2)->float.
+## Foot targets are stashed as root metadata ("foot_ik_l"/"foot_ik_r") for
+## later consumers (e.g. a future real IK solver) instead of being discarded.
+func sync_player_avatar(
+	instance_id: String,
+	position: Vector3,
+	horizontal_velocity: Vector3,
+	velocity_y: float,
+	grounded: bool,
+	delta: float,
+	terrain_height: Callable
+) -> void:
+	if not _instances.has(instance_id):
+		return
+	var inst: Dictionary = _instances[instance_id]
+	var root: Node3D = inst["root"]
+	var rig = inst["rig"]
+	var props: Dictionary = inst["appearance"].get("proportions", {})
+	var landmarks: Dictionary = SkeletonRig.compute_landmarks(rig.get_body_shape_coefficients(), props)
+
+	# Turning — rotate toward the horizontal movement direction at the rig's
+	# turnSpeed (radians/sec), rather than snapping to face it instantly.
+	var speed: float = Vector2(horizontal_velocity.x, horizontal_velocity.z).length()
+	if speed > 0.05:
+		var target_yaw := atan2(horizontal_velocity.x, horizontal_velocity.z)
+		root.rotation.y = rotate_toward(root.rotation.y, target_yaw, rig.get_turn_speed() * delta)
+
+	# Approximate foot IK — sample terrain under both feet at the controller's
+	# XZ position and pull the whole body up/down by the higher foot's height
+	# offset from its rest hip height, instead of leaving the avatar floating
+	# over slopes/stairs or sinking into them (no per-leg bone solver — §37).
+	var feet: Dictionary = SkeletonRig.compute_foot_targets(
+		terrain_height,
+		position,
+		landmarks["hip_y"],
+		landmarks["leg_reach"],
+		landmarks["foot_side"],
+		0.0
+	)
+	var ground_y: float = maxf(feet["foot_l"].y, feet["foot_r"].y) - landmarks["hip_y"]
+	root.position = Vector3(position.x, ground_y, position.z)
+	root.set_meta("foot_ik_l", feet["foot_l"])
+	root.set_meta("foot_ik_r", feet["foot_r"])
+
+	inst["position"] = root.position
+	update_locomotion(instance_id, speed, grounded, velocity_y, delta)
 
 ## Bone names of the instance's skeleton (ordered, parents first).
 func get_skeleton_bone_names(instance_id: String) -> Array:
@@ -438,8 +498,8 @@ func _on_death_requested(instance_id: String) -> void:
 
 ## Build the equipment-visual definition for an item from GameData.ITEMS.
 ## Returns {} when the item is missing or has no equipment slot (not equippable).
-## `hide` and `compatibleTags` exist in the fabric but are not yet consumed by
-## the placeholder visual.
+## `compatibleTags` exists in the fabric but is not yet consumed by the
+## placeholder visual; `hideRegions` is consumed by `_apply_lod` (§16).
 func _equipment_def(item_id: String) -> Dictionary:
 	var res: Resource = GameData.ITEMS.get(item_id, null)
 	if res == null:
@@ -455,6 +515,7 @@ func _equipment_def(item_id: String) -> Dictionary:
 		"minLodLevel":     GameDataReader.int_field(res, "minLodLevel", 0),
 		"size":            GameDataReader.json_field(res, "size", [0.3, 0.3, 0.3]),
 		"metal":           GameDataReader.str_field(res, "metalTone", "none"),
+		"hideRegions":     GameDataReader.json_field(res, "hideRegions", []),
 	}
 
 ## Build a raw appearance recipe Dictionary from a GameData.APPEARANCES resource.
@@ -469,7 +530,7 @@ func _appearance_to_recipe(res: Resource) -> Dictionary:
 		"eyeColor":    GameDataReader.int_field(res, "eyeColor", 225),
 		"hair":        GameDataReader.str_field(res, "hair", "hair_short_01"),
 		"hairColor":   GameDataReader.int_field(res, "hairColor", 40),
-		"beard":       GameDataReader.str_field(res, "beard", "beard_none"),
+		"beard":       GameDataReader.str_field(res, "beard", "none"),
 		"beardColor":  GameDataReader.int_field(res, "beardColor", 40),
 		"equipment":   GameDataReader.json_field(res, "equipment", {}),
 	}
@@ -545,17 +606,48 @@ func _wear_level(durability: float) -> String:
 # LOD
 # ---------------------------------------------------------------------------
 
-## A part renders while `_lod <= part.min_lod`. Body/head carry the highest
-## min_lod (always visible); fine details (beard, hair) carry the lowest.
+## A part renders while `_lod <= part.min_lod` and its part key is not hidden by
+## a currently-equipped item's `hideRegions` (§16, e.g. a helmet hiding "Hair").
+## The hidden set is recomputed from every equipped slot's def each call rather
+## than tracked incrementally, so two overlapping hides (and un-equipping one of
+## them) always resolve correctly from current state alone.
 func _apply_lod(instance_id: String) -> void:
 	if not _instances.has(instance_id):
 		return
-	var parts: Dictionary = _instances[instance_id]["parts"]
+	var inst: Dictionary = _instances[instance_id]
+	var parts: Dictionary = inst["parts"]
+	var equipment: Dictionary = inst["equipment"]
+
+	var hidden: Dictionary = {}
+	for slot in equipment:
+		var def: Dictionary = equipment[slot].get("def", {})
+		for region in def.get("hideRegions", []):
+			var part_key := _region_to_part(str(region))
+			if part_key != "":
+				hidden[part_key] = true
+
 	for key in parts:
 		var part: Dictionary = parts[key]
 		var node: Node3D = part["node"]
 		var min_lod: int = part.get("min_lod", 0)
-		node.visible = _lod <= min_lod
+		node.visible = _lod <= min_lod and not hidden.get(key, false)
+
+## Map a fabric mesh-hiding region (characters.md §16) onto the placeholder
+## part key it corresponds to in `parts`. The placeholder body is one combined
+## torso+legs box, so every torso-ish region collapses onto "body"; regions
+## with no placeholder equivalent (e.g. "Ears") resolve to "" and are ignored.
+func _region_to_part(region: String) -> String:
+	match region:
+		"Hair", "HairTop":
+			return "hair"
+		"Beard":
+			return "beard"
+		"Head", "Ears":
+			return "head"
+		"BodyChest", "BodyShoulders", "BodyArms", "BodyLegs":
+			return "body"
+		_:
+			return ""
 
 # ---------------------------------------------------------------------------
 # Visual construction (placeholder)
@@ -571,16 +663,10 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 	var mass: float = props.get("bodyMass", 1.0)
 	var shoulder: float = props.get("shoulderWidth", 1.0)
 	var head_scale: float = props.get("headScale", 1.0)
-	var leg_len: float = props.get("legLength", 1.0)
 
 	var skin: Color = palette_color(int(appearance.get("skinColor", 12)))
 	var hair_color: Color = palette_color(int(appearance.get("hairColor", 40)))
 	var beard_color: Color = palette_color(int(appearance.get("beardColor", 40)))
-
-	var torso_h := 0.62 * height
-	var hip_y := 0.38 * leg_len * height
-	var head_size := 0.30 * head_scale
-	var head_y := hip_y + torso_h + head_size * 0.5
 
 	# Skeleton rig (Phase 20) — build a real Skeleton3D from the fabric
 	# SkeletonDefinition so the character carries a bone hierarchy. Body and head
@@ -588,7 +674,13 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 	# skeleton; hair/beard stay rig-root children (placeholder details) pending
 	# real skinned assets; equipment attaches to sockets through the rig.
 	var skeleton_res: Resource = GameData.SKELETONS.get(str(appearance.get("skeleton", DEFAULT_SKELETON)), null)
-	rig.build(skeleton_res, height)
+	rig.build(skeleton_res, props)
+
+	var landmarks: Dictionary = SkeletonRig.compute_landmarks(rig.get_body_shape_coefficients(), props)
+	var torso_h: float = landmarks["torso_h"]
+	var hip_y: float = landmarks["hip_y"]
+	var head_size: float = landmarks["head_size"]
+	var head_y: float = landmarks["head_y"]
 
 	# Body (torso + legs as one block placeholder) — skinned to the torso bone so
 	# it deforms with the skeleton. The mesh keeps its computed root-space
@@ -657,7 +749,7 @@ func _attach_equipment(rig, slot: String, entry: Dictionary, props: Dictionary) 
 	var state: String = str(entry.get("state", "equipped"))
 	var socket: String = _attachment_socket(def, state)
 	var mode: String = str(def.get("deformationMode", "RIGID")).to_upper()
-	var socket_pos: Vector3 = _socket_offset(socket, props)
+	var socket_pos: Vector3 = _socket_offset(rig, socket, props)
 	# RIGID equipment sits at a fixed root-space socket offset (stays rigid).
 	# SKINNED/HYBRID deform with the socket's bone, so their offset is the
 	# socket position expressed in bone-local space (root-space minus the bone's
@@ -751,42 +843,32 @@ func _metal_color(metal: String) -> Color:
 			return Color(0.7, 0.7, 0.72)
 
 ## Placeholder socket → local offset for the humanoid family, scaled by the
-## current proportions. Real rigs define these per skeleton; this mapping keeps
-## the code-only placeholder assembly coherent.
-func _socket_offset(socket: String, props: Dictionary) -> Vector3:
-	var height: float = props.get("height", 1.0)
-	var shoulder: float = props.get("shoulderWidth", 1.0)
-	var leg_len: float = props.get("legLength", 1.0)
-	var head_scale: float = props.get("headScale", 1.0)
-	var arm_len: float = props.get("armLength", 1.0)
-
-	var torso_h := 0.62 * height
-	var hip_y := 0.38 * leg_len * height
-	var chest_y := hip_y + torso_h * 0.6
-	var head_size := 0.30 * head_scale
-	var head_top := hip_y + torso_h + head_size
-	var hand_x := 0.42 * shoulder
-	var hand_y := chest_y - 0.05 * arm_len * height
+## current proportions via the same landmark formula the visual assembly and
+## foot IK use (SkeletonRig.compute_landmarks), so sockets stay in sync with
+## the body they dress. Real rigs define these per skeleton; this mapping
+## keeps the code-only placeholder assembly coherent.
+func _socket_offset(rig, socket: String, props: Dictionary) -> Vector3:
+	var l: Dictionary = SkeletonRig.compute_landmarks(rig.get_body_shape_coefficients(), props)
 
 	match socket:
 		"socket_head", "socket_face":
-			return Vector3(0.0, head_top, 0.0)
+			return Vector3(0.0, l["head_top"], 0.0)
 		"socket_weapon_r":
-			return Vector3(hand_x, hand_y, 0.15)
+			return Vector3(l["hand_x"], l["hand_y"], l["weapon_forward"])
 		"socket_weapon_l":
-			return Vector3(-hand_x, hand_y, 0.15)
+			return Vector3(-l["hand_x"], l["hand_y"], l["weapon_forward"])
 		"socket_shield":
-			return Vector3(-hand_x, hand_y, 0.0)
+			return Vector3(-l["hand_x"], l["hand_y"], 0.0)
 		"socket_hip_r":
-			return Vector3(0.2, hip_y, 0.0)
+			return Vector3(l["hip_side"], l["hip_y"], 0.0)
 		"socket_hip_l":
-			return Vector3(-0.2, hip_y, 0.0)
+			return Vector3(-l["hip_side"], l["hip_y"], 0.0)
 		"socket_back":
-			return Vector3(0.0, chest_y, -0.25)
+			return Vector3(0.0, l["chest_y"], l["back_forward"])
 		"socket_cape":
-			return Vector3(0.0, chest_y + 0.15, -0.25)
+			return Vector3(0.0, l["chest_y"] + l["cape_up"], l["back_forward"])
 		"socket_chest":
-			return Vector3(0.0, chest_y, 0.0)
+			return Vector3(0.0, l["chest_y"], 0.0)
 		_:
 			return Vector3.ZERO
 

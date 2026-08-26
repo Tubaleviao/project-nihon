@@ -654,22 +654,162 @@ engine-specific logic.
 
 ---
 
-## 37. Animation System (to be specified)
+## 37. Animation System
 
-The `AnimationSet` is referenced in the character hierarchy but requires its own
-dedicated specification covering:
+The `AnimationSet` is the layer that turns locomotion/combat *decisions* into
+skeletal motion. It is split into a state machine (what pose family is active),
+a blend curve (how continuous motion cross-fades within a family), a facing
+model (how the body turns to face its movement), and an approximate foot IK
+pass (how the whole body settles onto uneven terrain). Real skeletal clips are
+asset-production work outside this spec's scope; everything below is the
+decision layer a clip set plugs into, and it is deliberately engine-agnostic
+and headless-testable — none of it depends on a renderer.
 
-- animation state machines;
-- blend trees;
-- locomotion and combat transitions;
-- sheathing and draw animations;
-- dual-wield and two-handed weapon handling;
-- quadruped vs. humanoid animation differences;
-- socket-driven attachment state changes;
-- emotes and social animations.
+### 37.1 Locomotion State Machine
 
-This section is a placeholder. The animation system specification must be
-produced before any animation production begins.
+A pure state machine per character instance drives one of:
+
+```
+IDLE
+WALK
+RUN
+FALL
+LAND
+ATTACK
+DEATH
+```
+
+It is fed each frame with `(speed, grounded, velocity_y, delta)` and applies:
+
+- **Grounded, by speed** — `speed < WALK_SPEED` → `IDLE`; `WALK_SPEED ≤ speed <
+  RUN_SPEED` → `WALK`; `speed ≥ RUN_SPEED` → `RUN`.
+- **Airborne** — falls to `FALL` only while descending (`velocity_y` below a
+  small negative threshold); a rising jump keeps the previous grounded state
+  so a hop does not flicker into `FALL`.
+- **Landing** — the frame grounded resumes after a `FALL`, the machine holds a
+  brief timed `LAND` pose before falling through to the normal grounded state.
+- **Attack** — a one-shot timed pose requested independently of locomotion;
+  holds for a fixed duration, then falls through to whatever the grounded/
+  airborne state would otherwise be.
+- **Death** — terminal. No transition leaves `DEATH` except an explicit reset
+  (respawn, appearance re-application).
+
+This machine is the same for every skeleton family (humanoid, quadruped, bird,
+serpent) — families differ in their clip sets and `turnSpeed` (37.3), not in
+the state graph.
+
+### 37.2 Blend Curve
+
+Discrete states are not enough for a natural idle↔walk↔run cross-fade at
+arbitrary speeds, so a continuous `0..1` blend weight is derived from speed
+independently of the discrete state:
+
+```
+speed ≤ WALK_SPEED              → 0.0   (full idle clip)
+WALK_SPEED < speed < RUN_SPEED   → linear ramp (walk-band cross-fade)
+speed ≥ RUN_SPEED                → 1.0   (full run clip)
+```
+
+An `AnimationTree` consumes this weight directly to drive a `BlendSpace1D`
+(idle → walk → run); the curve is piecewise-linear so the cross-fade has no
+discontinuities at the `WALK_SPEED`/`RUN_SPEED` boundaries.
+
+### 37.3 Facing / Turning
+
+Each `SkeletonDefinition` declares a `turnSpeed` (radians/second) — how fast
+that family reorients its whole body to face its movement direction. This is
+**not** part of the locomotion state machine: it is a continuous rotation
+applied every frame, independent of which clip is playing, so a running
+character visibly turns into a corner instead of strafing sideways or
+snapping instantly to face a new heading.
+
+```
+HumanoidSkeleton   turnSpeed: 8.0   (agile, upright biped)
+QuadrupedSkeleton  turnSpeed: 4.0   (wider turning radius, four-legged gait)
+BirdSkeleton       turnSpeed: 5.0
+SerpentSkeleton    turnSpeed: 3.0   (long body, widest turning radius)
+```
+
+Each frame, while horizontal speed is above a small deadzone, the body's yaw
+is rotated toward `atan2(velocity.x, velocity.z)` by at most `turnSpeed *
+delta` (shortest-arc, wraparound-safe). Below the deadzone the character holds
+its last facing rather than snapping to zero — this is what lets an `IDLE`
+character keep facing the direction it was last moving.
+
+### 37.4 Body-Shape Landmarks
+
+Humanoid body proportions (§8: `height`, `bodyMass`, `shoulderWidth`,
+`armLength`, `legLength`, `headScale`) drive both the placeholder visual mesh
+*and* the rig's actual bone rest pose, from one shared set of coefficients
+(`bodyShapeCoefficients`, declared per-`SkeletonDefinition`) so a rig never
+drifts out of sync with the body it is meant to animate:
+
+```
+torsoHeightFactor, hipHeightFactor, headSizeFactor, chestYFactor,
+handXFactor, handYArmFactor, weaponForwardOffset, hipSideOffset,
+backForwardOffset, capeUpOffset, legReachMargin, footSideFactor
+```
+
+These coefficients combine with the instance's proportions to produce
+landmarks (`hip_y`, `chest_y`, `head_top`, `hand_x`/`hand_y`, socket offsets,
+leg reach, foot stance width) consumed identically by mesh assembly, socket
+placement, and foot IK (37.5) below. Non-humanoid families do not define
+`bodyShapeCoefficients` — they use their own `restPose` only, since the
+placeholder humanoid mesh/socket layout does not apply to them.
+
+### 37.5 Foot IK (Approximate)
+
+Full per-leg bone IK (two-bone solver per leg, pole vectors, per-foot terrain
+alignment) is future work. Until then, each frame samples terrain height under
+both feet (offset from the body's XZ position by the rig's stance width) and
+uses the **higher** of the two as a whole-body vertical offset from the rig's
+rest hip height — the body rises and settles with slopes and stairs as a
+single rigid unit, without independently posed legs. This is deliberately the
+simplest correct approximation: it prevents the avatar from floating over a
+slope or sinking into one, without committing to bone-level IK before real
+skinned leg meshes exist to justify it.
+
+The sampled per-foot targets (world-space positions) are stashed as metadata
+on the rig root every frame rather than discarded, so a future real IK solver
+can pick them up as its target inputs instead of recomputing the terrain
+sampling from scratch.
+
+### 37.6 Combat, Sheathing, and Draw
+
+`ATTACK` (37.1) is the locomotion-level interruption; the clip it plays should
+itself be selected by the currently equipped `MainHand`/`OffHand` items ("what
+does *this* weapon's attack look like"), not hardcoded per character. Sheathe/
+draw is not a separate state in the machine — it is a transition of an
+equipped item's **attachment state** (§7: `Equipped` ↔ `Sheathed`), which
+changes the item's active socket (`equippedSocket` vs `storedSocket`). The
+animation system's job is to play a brief draw/sheathe clip in lockstep with
+that socket reassignment so the weapon does not visibly teleport from hip to
+hand — the state change (data) and the clip (presentation) are driven by the
+same event, but neither owns the other.
+
+Dual-wield and two-handed weapons are an upper-body concern layered
+independently of the IDLE/WALK/RUN lower body: the equipped `MainHand`/
+`OffHand` combination selects an upper-body clip set (one-handed-and-shield,
+dual-wield, two-handed) that blends additively over whatever the lower body
+is doing, so a character can run while playing a two-handed idle sway.
+
+### 37.7 Socket-Driven Attachment Changes
+
+Every attachment-state transition (§7) that changes a socket is a potential
+animation trigger, not just weapons: a cape being stowed, a shield moving from
+`socket_shield` to a back socket, a hood toggling `Equipped`/`Hidden`. The
+animation layer subscribes to these transitions rather than polling equipment
+state — the source of truth for *what* is equipped/where stays in the
+character recipe (§30), and animation only reacts to it.
+
+### 37.8 Emotes and Social Animations
+
+Emotes are one-shot top-layer clips (wave, sit, dance) requested independently
+of locomotion and combat, analogous to `ATTACK`: they hold for a fixed or
+clip-driven duration and then fall through to whatever the locomotion state
+machine would otherwise report. Unlike `ATTACK`/`DEATH`, an emote should be
+interruptible by movement input (walking cancels a wave) rather than holding
+for its full duration regardless of new input.
 
 ---
 

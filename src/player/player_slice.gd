@@ -139,6 +139,12 @@ func _input(event: InputEvent) -> void:
 func get_position() -> Vector3:
 	return _body.global_position if _body else Vector3.ZERO
 
+func get_velocity() -> Vector3:
+	return _vel
+
+func is_grounded() -> bool:
+	return _body.is_on_floor() if _body else false
+
 func spawn_at(pos: Vector3) -> void:
 	if _body:
 		_body.global_position = pos

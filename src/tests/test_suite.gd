@@ -172,12 +172,12 @@ func run() -> void:
 		push_error("TestSuite: %d test(s) FAILED" % _fail)
 	print("────────────────────────────────────────\n")
 
-	# Detach every test slice from the shared GameBus. They were queue_free()'d
-	# (deferred to end of frame), so without this they would still be connected
-	# while game_root boots the world and would re-run saves, loads, crafts and
-	# chunk builds against production emissions.
-	for child in get_children():
-		GameBus.disconnect_all_from(child)
+	# Every test slice is torn down with .free() (immediate, not queue_free's
+	# end-of-frame deferral) right after its assertions, so it is gone — and
+	# disconnected from the shared GameBus — before the next test runs. Without
+	# that, dozens of freed-in-name-only slices would stay alive and connected
+	# through the whole suite and into game_root's world boot, re-running saves,
+	# loads, crafts and chunk builds against production emissions.
 
 # ---------------------------------------------------------------------------
 # BattleSlice tests
@@ -191,7 +191,7 @@ func _test_battle_hit_reduces_hp() -> void:
 	var result := b.resolve_round("ForestBoar", "GraywolfPack")
 	assert_true(result.has("defender_hp_remaining"), "result has defender_hp_remaining")
 	assert_true(result["defender_hp_remaining"] >= 0.0, "HP is non-negative")
-	b.queue_free()
+	b.free()
 
 func _test_battle_miss_leaves_hp_unchanged() -> void:
 	var b := BattleSlice.new()
@@ -209,7 +209,7 @@ func _test_battle_miss_leaves_hp_unchanged() -> void:
 			saw_miss = true
 			break
 	assert_true(saw_miss, "observed at least one miss over 200 seeded rounds")
-	b.queue_free()
+	b.free()
 
 func _test_battle_kill_emits_death() -> void:
 	var b := BattleSlice.new()
@@ -224,7 +224,7 @@ func _test_battle_kill_emits_death() -> void:
 		if captured.get("died", false):
 			break
 	assert_true(captured.get("died", false), "creature_died emitted once defender HP reaches zero")
-	b.queue_free()
+	b.free()
 
 func _test_battle_reset_hp() -> void:
 	var b := BattleSlice.new()
@@ -232,7 +232,7 @@ func _test_battle_reset_hp() -> void:
 	b._hp_state["ForestBoar"] = 10.0
 	b.reset_hp("ForestBoar")
 	assert_false(b._hp_state.has("ForestBoar"), "HP state cleared after reset")
-	b.queue_free()
+	b.free()
 
 func _test_battle_resolves_via_creature_slice() -> void:
 	var c := CreatureSlice.new()
@@ -248,8 +248,8 @@ func _test_battle_resolves_via_creature_slice() -> void:
 		var iid: String = instances[0]["instance_id"]
 		var result := b.resolve_round("player", iid)
 		assert_true(result.has("defender_hp_remaining"), "result has defender_hp_remaining for instance_id")
-	b.queue_free()
-	c.queue_free()
+	b.free()
+	c.free()
 
 # ---------------------------------------------------------------------------
 # CreatureSlice tests
@@ -265,7 +265,7 @@ func _test_creature_spawns_from_gamedata() -> void:
 		assert_true(GameData.CREATURES.has(inst["creature_id"]),
 			"creature_id '%s' exists in GameData.CREATURES" % inst["creature_id"])
 		assert_true(inst["hp"] > 0.0, "spawned creature has positive HP from fabric")
-	c.queue_free()
+	c.free()
 
 func _test_creature_nearest() -> void:
 	var c := CreatureSlice.new()
@@ -277,7 +277,7 @@ func _test_creature_nearest() -> void:
 		var pos: Vector3 = instances[0]["position"]
 		var result := c.nearest_creature(pos, 1000.0)
 		assert_true(result != "", "nearest_creature returns an instance_id within large radius")
-	c.queue_free()
+	c.free()
 
 func _test_creature_death_marks_dead() -> void:
 	var c := CreatureSlice.new()
@@ -296,7 +296,7 @@ func _test_creature_death_marks_dead() -> void:
 				assert_eq(inst["state"], "dead", "instance state is dead after creature_died signal")
 				found = true
 		assert_true(found, "dead instance still present in get_all_instances")
-	c.queue_free()
+	c.free()
 
 func _test_creature_respawn_resets_battle_hp() -> void:
 	var c := CreatureSlice.new()
@@ -317,8 +317,8 @@ func _test_creature_respawn_resets_battle_hp() -> void:
 		c._tick_respawn()
 		assert_false(b._hp_state.has(iid), "battle hp state cleared on respawn")
 		assert_eq(c._instances[iid]["state"], "idle", "creature state back to idle after respawn")
-	b.queue_free()
-	c.queue_free()
+	b.free()
+	c.free()
 
 # ---------------------------------------------------------------------------
 # TerrainSlice tests
@@ -332,7 +332,7 @@ func _test_terrain_chunk_size() -> void:
 	t.request_chunk(Vector2i(0, 0))
 	var heightmap: Array = captured.get("heightmap", [])
 	assert_eq(heightmap.size(), t.CHUNK_SIZE * t.CHUNK_SIZE, "heightmap size matches CHUNK_SIZE²")
-	t.queue_free()
+	t.free()
 
 func _test_terrain_height_nonneg() -> void:
 	var t := TerrainSlice.new()
@@ -342,7 +342,7 @@ func _test_terrain_height_nonneg() -> void:
 	t.request_chunk(Vector2i(1, 1))
 	for h in captured.get("heightmap", []):
 		assert_true(h >= 0.0, "height is non-negative")
-	t.queue_free()
+	t.free()
 
 func _test_terrain_two_chunks() -> void:
 	var t := TerrainSlice.new()
@@ -352,7 +352,7 @@ func _test_terrain_two_chunks() -> void:
 	t.request_chunk(Vector2i(0, 0))
 	t.request_chunk(Vector2i(5, 5))
 	assert_eq(maps.size(), 2, "two chunk_ready signals received")
-	t.queue_free()
+	t.free()
 
 # ---------------------------------------------------------------------------
 # PersistenceSlice tests
@@ -369,7 +369,7 @@ func _test_persistence_round_trip() -> void:
 	var loaded: Dictionary = captured.get("data", {})
 	assert_eq(loaded.get("player", ""), "TestPlayer", "player name round-trips")
 	assert_eq(loaded.get("level", 0),   42,           "level round-trips")
-	p.queue_free()
+	p.free()
 
 func _test_persistence_missing_slot() -> void:
 	var p := PersistenceSlice.new()
@@ -378,7 +378,7 @@ func _test_persistence_missing_slot() -> void:
 	GameBus.load_failed.connect(func(_slot, _reason): captured["failed"] = true)
 	p.load_slot(98)   # slot 98 was never saved in this test run
 	assert_true(captured.get("failed", false), "load_failed emitted for missing slot")
-	p.queue_free()
+	p.free()
 
 # ---------------------------------------------------------------------------
 # LootSlice tests
@@ -396,7 +396,7 @@ func _test_loot_known_creature() -> void:
 	var items := drops.map(func(d): return d["item"])
 	assert_true(items.has("raw_boar_meat"), "raw_boar_meat always drops")
 	assert_true(items.has("boar_hide"),     "boar_hide always drops")
-	l.queue_free()
+	l.free()
 
 func _test_loot_drops_from_fabric() -> void:
 	var l := LootSlice.new()
@@ -413,7 +413,7 @@ func _test_loot_drops_from_fabric() -> void:
 	assert_true(items.has("superheated_slime_vial"), "superheated_slime_vial always drops")
 	assert_false(items.has("slag_gland"),            "stale 'slag_gland' id no longer used")
 	assert_false(items.has("volcanic_slime"),        "stale 'volcanic_slime' id no longer used")
-	l.queue_free()
+	l.free()
 
 func _test_loot_unknown_creature() -> void:
 	var l := LootSlice.new()
@@ -422,7 +422,7 @@ func _test_loot_unknown_creature() -> void:
 	GameBus.loot_dropped.connect(func(_pid, _iid, _pos, _qty): captured["dropped"] = true)
 	GameBus.creature_died.emit("UnknownBeast", Vector3.ZERO, "")
 	assert_false(captured.get("dropped", false), "no loot dropped for unknown creature")
-	l.queue_free()
+	l.free()
 
 func _test_loot_consume_removes() -> void:
 	var l := LootSlice.new()
@@ -436,7 +436,7 @@ func _test_loot_consume_removes() -> void:
 	assert_false(result.is_empty(), "consume returns the pickup data")
 	var second := l.consume_pickup(last_pid)
 	assert_true(second.is_empty(), "second consume returns empty (already taken)")
-	l.queue_free()
+	l.free()
 
 func _test_loot_instance_id_resolve() -> void:
 	var c := CreatureSlice.new()
@@ -461,8 +461,8 @@ func _test_loot_instance_id_resolve() -> void:
 			"ForestBoar drops via instance_id produce at least 2 guaranteed items")
 	else:
 		assert_true(true, "no ForestBoar instance — skip instance_id resolve test")
-	l.queue_free()
-	c.queue_free()
+	l.free()
+	c.free()
 
 # ---------------------------------------------------------------------------
 # InventorySlice tests
@@ -474,7 +474,7 @@ func _test_inventory_pickup_adds() -> void:
 	# Directly call internal pickup helper; bypass proximity check.
 	inv._try_pickup("test_pid", "hawk_feather", 3)
 	assert_eq(inv.get_item_count("hawk_feather"), 3, "hawk_feather ×3 in inventory")
-	inv.queue_free()
+	inv.free()
 
 func _test_inventory_drop() -> void:
 	var inv := InventorySlice.new()
@@ -483,7 +483,7 @@ func _test_inventory_drop() -> void:
 	var ok := inv.drop_item("wolf_pelt", 1)
 	assert_true(ok, "drop returned true")
 	assert_eq(inv.get_item_count("wolf_pelt"), 1, "one wolf pelt remains")
-	inv.queue_free()
+	inv.free()
 
 func _test_inventory_over_drop() -> void:
 	var inv := InventorySlice.new()
@@ -492,7 +492,7 @@ func _test_inventory_over_drop() -> void:
 	var ok := inv.drop_item("wolf_pelt", 5)
 	assert_false(ok, "drop of more than held returns false")
 	assert_eq(inv.get_item_count("wolf_pelt"), 1, "quantity unchanged after failed drop")
-	inv.queue_free()
+	inv.free()
 
 func _test_inventory_slot_count() -> void:
 	var inv := InventorySlice.new()
@@ -503,7 +503,7 @@ func _test_inventory_slot_count() -> void:
 	assert_eq(inv.get_total_slots_used(), 3, "3 distinct item types = 3 slots")
 	inv._try_pickup("p4", "wolf_pelt",   1)   # stack merge
 	assert_eq(inv.get_total_slots_used(), 3, "stacking same item doesn't add a slot")
-	inv.queue_free()
+	inv.free()
 
 func _test_inventory_weights_from_gamedata() -> void:
 	var inv := InventorySlice.new()
@@ -515,7 +515,7 @@ func _test_inventory_weights_from_gamedata() -> void:
 	# Raw drop not in GameData.ITEMS must still return a positive weight.
 	var w2: float = inv._item_weight("raw_boar_meat")
 	assert_true(w2 > 0.0, "raw_boar_meat weight > 0 (from RAW_DROP_WEIGHTS)")
-	inv.queue_free()
+	inv.free()
 
 # ---------------------------------------------------------------------------
 # CharacterSlice tests
@@ -528,7 +528,7 @@ func _test_character_palette_size() -> void:
 	var c0 := ch.palette_color(0)
 	var c255 := ch.palette_color(255)
 	assert_true(c0 is Color and c255 is Color, "palette_color returns Color")
-	ch.queue_free()
+	ch.free()
 
 func _test_character_color_clamp() -> void:
 	var ch := CharacterSlice.new()
@@ -536,7 +536,7 @@ func _test_character_color_clamp() -> void:
 	assert_true(ch.palette_color(-5) == ch.palette_color(0), "negative index clamps to 0")
 	assert_true(ch.palette_color(9999) == ch.palette_color(255), "oversized index clamps to 255")
 	assert_true(ch.palette_color(100) is Color, "in-range index returns Color")
-	ch.queue_free()
+	ch.free()
 
 func _test_character_clamp_proportions() -> void:
 	var ch := CharacterSlice.new()
@@ -549,7 +549,7 @@ func _test_character_clamp_proportions() -> void:
 	assert_eq(props["height"], 1.15, "height clamped to max 1.15")
 	assert_eq(props["bodyMass"], 0.80, "bodyMass clamped to min 0.80")
 	assert_eq(props["shoulderWidth"], 1.0, "in-range value unchanged")
-	ch.queue_free()
+	ch.free()
 
 func _test_character_drops_unknown_equipment() -> void:
 	var ch := CharacterSlice.new()
@@ -564,7 +564,7 @@ func _test_character_drops_unknown_equipment() -> void:
 	var eq: Dictionary = recipe["equipment"]
 	assert_true(eq.has("Chest"), "known equipment kept")
 	assert_false(eq.has("Head"), "unknown equipment dropped")
-	ch.queue_free()
+	ch.free()
 
 func _test_character_recipe_round_trip() -> void:
 	var ch := CharacterSlice.new()
@@ -587,7 +587,7 @@ func _test_character_recipe_round_trip() -> void:
 	var eq: Dictionary = again["equipment"]
 	assert_true(eq.has("MainHand"), "equipment survives round-trip")
 	assert_eq(eq["MainHand"]["durability"], 0.7, "durability survives round-trip")
-	ch.queue_free()
+	ch.free()
 
 func _test_character_visual_state_wear() -> void:
 	var ch := CharacterSlice.new()
@@ -600,7 +600,7 @@ func _test_character_visual_state_wear() -> void:
 	var vs := ch.get_visual_state(iid)
 	var eq: Dictionary = vs.get("equipment", {})
 	assert_eq(eq["MainHand"]["wear"], "Used", "wear derived from durability 0.7")
-	ch.queue_free()
+	ch.free()
 
 func _test_character_spawns_nonhumanoid() -> void:
 	var ch := CharacterSlice.new()
@@ -609,13 +609,13 @@ func _test_character_spawns_nonhumanoid() -> void:
 	assert_true(iid != "", "boar_rider (quadruped) created")
 	var app := ch.get_appearance(iid)
 	assert_eq(app["skeleton"], "QuadrupedSkeleton", "quadruped skeleton preserved")
-	ch.queue_free()
+	ch.free()
 
 func _test_character_unknown_appearance() -> void:
 	var ch := CharacterSlice.new()
 	add_child(ch)
 	assert_eq(ch.create_character("does_not_exist", Vector3.ZERO), "", "unknown appearance_id returns empty")
-	ch.queue_free()
+	ch.free()
 
 func _test_character_lod_hides_detail() -> void:
 	var ch := CharacterSlice.new()
@@ -627,7 +627,7 @@ func _test_character_lod_hides_detail() -> void:
 	ch.set_lod(3)
 	assert_false(ch.is_part_visible(iid, "hair"), "hair hidden at LOD3")
 	assert_true(ch.is_part_visible(iid, "body"), "body visible at LOD3")
-	ch.queue_free()
+	ch.free()
 
 func _test_character_skeleton_rig() -> void:
 	var ch := CharacterSlice.new()
@@ -641,7 +641,7 @@ func _test_character_skeleton_rig() -> void:
 	assert_true(bones.has("Head"),   "Head bone present")
 	assert_true(bones.has("Hand_R"), "Hand_R bone present")
 	assert_true(bones.has("Foot_L"), "Foot_L bone present")
-	ch.queue_free()
+	ch.free()
 
 func _test_character_locomotion_speed() -> void:
 	var ch := CharacterSlice.new()
@@ -654,7 +654,7 @@ func _test_character_locomotion_speed() -> void:
 	assert_eq(ch.get_locomotion_state_name(iid), "RUN", "speed 5.0 → RUN")
 	ch.update_locomotion(iid, 0.0, true, 0.0, 0.0)
 	assert_eq(ch.get_locomotion_state_name(iid), "IDLE", "speed 0.0 → IDLE")
-	ch.queue_free()
+	ch.free()
 
 func _test_character_attack_death_signals() -> void:
 	var ch := CharacterSlice.new()
@@ -664,7 +664,7 @@ func _test_character_attack_death_signals() -> void:
 	assert_eq(ch.get_locomotion_state_name(iid), "ATTACK", "attack request → ATTACK")
 	GameBus.character_death_requested.emit(iid)
 	assert_eq(ch.get_locomotion_state_name(iid), "DEATH", "death request → DEATH")
-	ch.queue_free()
+	ch.free()
 
 func _test_character_foot_ik() -> void:
 	var flat := func(_xz: Vector2) -> float: return 0.0
@@ -693,7 +693,7 @@ func _test_character_deformation_modes() -> void:
 	assert_eq(ch.get_equipment_deformation_mode(iid, "MainHand"), "RIGID", "sword stays rigid (RIGID)")
 	assert_true(ch.get_equipment_attached_bone(iid, "Cape") != "", "SKINNED cloak follows a bone")
 	assert_eq(ch.get_equipment_attached_bone(iid, "MainHand"), "", "RIGID sword does not follow a bone")
-	ch.queue_free()
+	ch.free()
 
 func _test_character_apply_clear_equipment() -> void:
 	var ch := CharacterSlice.new()
@@ -704,7 +704,7 @@ func _test_character_apply_clear_equipment() -> void:
 	assert_true(ch.clear_equipment(iid, "MainHand"), "sword cleared")
 	assert_eq(ch.get_equipment_deformation_mode(iid, "MainHand"), "", "slot empty after clear")
 	assert_false(ch.clear_equipment(iid, "MainHand"), "clearing empty slot returns false")
-	ch.queue_free()
+	ch.free()
 
 func _test_character_blend_curve() -> void:
 	# The blend weight is a continuous 0..1 curve over speed (idle → walk → run),
@@ -741,7 +741,7 @@ func _test_character_rigid_socket_offset() -> void:
 	assert_true(ch.get_equipment_attached_bone(iid, "Cape") != "", "SKINNED cloak bone-parented")
 	assert_true(cloak.get_parent() is BoneAttachment3D, "SKINNED mesh under a BoneAttachment3D")
 	assert_true(cloak.position != Vector3.ZERO, "SKINNED cloak honors a non-zero bone-local socket offset")
-	ch.queue_free()
+	ch.free()
 
 func _test_character_full_spawn_path() -> void:
 	# End-to-end spawn: create_character must register an instance, assemble the
@@ -779,7 +779,7 @@ func _test_character_full_spawn_path() -> void:
 	assert_eq(captured.get("iid"), iid, "signal carries instance id")
 	assert_eq(captured.get("skeleton"), "HumanoidSkeleton", "signal carries skeleton id")
 	assert_eq(captured.get("position"), pos, "signal carries spawn position")
-	ch.queue_free()
+	ch.free()
 
 # ---------------------------------------------------------------------------
 # CraftingSlice tests
@@ -792,7 +792,7 @@ func _test_crafting_recipe_data_loaded() -> void:
 	assert_false(recipe.is_empty(), "RecipeFerritePick has structured recipe data")
 	assert_eq(recipe["outputs"][0]["item"], "FerritePick", "output item is FerritePick")
 	assert_eq(recipe["inputs"][0]["item"], "FerriteIngot", "first input is FerriteIngot")
-	c.queue_free()
+	c.free()
 
 func _test_crafting_skill_guard_blocks() -> void:
 	var c := CraftingSlice.new()
@@ -804,8 +804,8 @@ func _test_crafting_skill_guard_blocks() -> void:
 	var result := c.craft("RecipeVoidRuneTablet")
 	assert_false(result["success"], "craft fails without required skill tier")
 	assert_true(str(result["reason"]).begins_with("skill_requirement"), "reason is a skill requirement")
-	c.queue_free()
-	inv.queue_free()
+	c.free()
+	inv.free()
 
 func _test_crafting_consumes_and_produces() -> void:
 	var c := CraftingSlice.new()
@@ -819,8 +819,8 @@ func _test_crafting_consumes_and_produces() -> void:
 	assert_true(result["success"], "FerriteIngot craft succeeds")
 	assert_eq(inv.get_item_count("Ferrite"), 2, "2 Ferrite remain (4 - 2 consumed)")
 	assert_eq(inv.get_item_count("FerriteIngot"), 1, "1 FerriteIngot produced")
-	c.queue_free()
-	inv.queue_free()
+	c.free()
+	inv.free()
 
 func _test_crafting_missing_inputs() -> void:
 	var c := CraftingSlice.new()
@@ -832,8 +832,8 @@ func _test_crafting_missing_inputs() -> void:
 	var result := c.craft("RecipeFerriteIngot")
 	assert_false(result["success"], "craft fails without inputs")
 	assert_eq(result["reason"], "missing_inputs", "reason is missing_inputs")
-	c.queue_free()
-	inv.queue_free()
+	c.free()
+	inv.free()
 
 func _test_crafting_unknown_recipe() -> void:
 	var c := CraftingSlice.new()
@@ -844,8 +844,8 @@ func _test_crafting_unknown_recipe() -> void:
 	var result := c.craft("DoesNotExist")
 	assert_false(result["success"], "unknown recipe rejected")
 	assert_eq(result["reason"], "unknown_recipe", "reason is unknown_recipe")
-	c.queue_free()
-	inv.queue_free()
+	c.free()
+	inv.free()
 
 func _test_crafting_can_craft_no_mutate() -> void:
 	var c := CraftingSlice.new()
@@ -858,8 +858,8 @@ func _test_crafting_can_craft_no_mutate() -> void:
 	var check := c.can_craft("RecipeFerriteIngot")
 	assert_true(check["success"], "can_craft returns true when craftable")
 	assert_eq(inv.get_item_count("Ferrite"), 2, "can_craft does not consume inputs")
-	c.queue_free()
-	inv.queue_free()
+	c.free()
+	inv.free()
 
 # ---------------------------------------------------------------------------
 # StationSlice tests (Phase 16 station-gated crafting)
@@ -881,9 +881,9 @@ func _test_station_gate_blocks() -> void:
 	var result := craft.craft("RecipeFerriteIngot")
 	assert_false(result["success"], "craft blocked without a nearby forge")
 	assert_true(str(result["reason"]).begins_with("station_required"), "reason is station_required")
-	station.queue_free()
-	craft.queue_free()
-	inv.queue_free()
+	station.free()
+	craft.free()
+	inv.free()
 
 func _test_station_gate_passes() -> void:
 	var station := StationSlice.new()
@@ -901,9 +901,9 @@ func _test_station_gate_passes() -> void:
 	var result := craft.craft("RecipeFerriteIngot")
 	assert_true(result["success"], "craft succeeds with a forge nearby")
 	assert_eq(inv.get_item_count("FerriteIngot"), 1, "FerriteIngot produced")
-	station.queue_free()
-	craft.queue_free()
-	inv.queue_free()
+	station.free()
+	craft.free()
+	inv.free()
 
 func _test_station_wrong_type_blocks() -> void:
 	var station := StationSlice.new()
@@ -922,9 +922,9 @@ func _test_station_wrong_type_blocks() -> void:
 	var result := craft.craft("RecipeFerriteIngot")
 	assert_false(result["success"], "craft blocked when only a wrong-type station is nearby")
 	assert_true(str(result["reason"]).begins_with("station_required"), "reason is station_required")
-	station.queue_free()
-	craft.queue_free()
-	inv.queue_free()
+	station.free()
+	craft.free()
+	inv.free()
 
 func _test_station_carpentry_bench() -> void:
 	var station := StationSlice.new()
@@ -942,9 +942,9 @@ func _test_station_carpentry_bench() -> void:
 	var result := craft.craft("RecipeThornwoodPlank")
 	assert_true(result["success"], "RecipeThornwoodPlank succeeds next to a carpentry bench")
 	assert_eq(inv.get_item_count("ThornwoodPlank"), 3, "3 ThornwoodPlanks produced")
-	station.queue_free()
-	craft.queue_free()
-	inv.queue_free()
+	station.free()
+	craft.free()
+	inv.free()
 
 func _test_station_master_forge() -> void:
 	var station := StationSlice.new()
@@ -970,9 +970,9 @@ func _test_station_master_forge() -> void:
 	var result := craft.craft("RecipeVeilsteelIngot")
 	assert_true(result["success"], "RecipeVeilsteelIngot succeeds next to a master forge")
 	assert_eq(inv.get_item_count("VeilsteelIngot"), 1, "VeilsteelIngot produced")
-	station.queue_free()
-	craft.queue_free()
-	inv.queue_free()
+	station.free()
+	craft.free()
+	inv.free()
 
 func _test_station_nearest_ignores_wrong_type() -> void:
 	var station := StationSlice.new()
@@ -985,7 +985,7 @@ func _test_station_nearest_ignores_wrong_type() -> void:
 	assert_eq(near_forge, "", "no forge within radius 5 — carpentry bench is not counted")
 	var near_bench := station.nearest_station(Vector3.ZERO, "carpentry bench", 5.0)
 	assert_true(near_bench != "", "carpentry bench within radius 5 found")
-	station.queue_free()
+	station.free()
 
 func _test_station_all_canonical_types() -> void:
 	var station := StationSlice.new()
@@ -998,7 +998,7 @@ func _test_station_all_canonical_types() -> void:
 		var sid := station.place_station(t, Vector3(float(i), 0.0, 0.0))
 		assert_true(sid != "", "place_station('%s') returns a non-empty id" % t)
 		assert_true(station.station_near_player(t, 200.0), "station_near_player finds '%s'" % t)
-	station.queue_free()
+	station.free()
 
 # ---------------------------------------------------------------------------
 # Inventory durability tests (Phase 16 tool durability)
@@ -1014,7 +1014,7 @@ func _test_durability_use_decrements() -> void:
 	var ok := inv.use_item("FerritePick", "mine")
 	assert_true(ok, "use succeeds while tool has durability")
 	assert_eq(inv.get_durability("FerritePick"), max_d - 1.0, "durability decremented by one")
-	inv.queue_free()
+	inv.free()
 
 func _test_durability_broken_emits() -> void:
 	var inv := InventorySlice.new()
@@ -1033,7 +1033,7 @@ func _test_durability_broken_emits() -> void:
 	var ok2 := inv.use_item("FerritePick", "mine")
 	assert_false(ok2, "broken tool blocks further use")
 	assert_eq(broke.get("id", ""), "FerritePick", "item_broke re-emitted on broken use")
-	inv.queue_free()
+	inv.free()
 
 func _test_durability_stackable_excluded() -> void:
 	var inv := InventorySlice.new()
@@ -1047,7 +1047,7 @@ func _test_durability_stackable_excluded() -> void:
 	assert_true(inv.is_durable("FerritePick"), "non-stackable tool is durable")
 	assert_true(inv.is_durable("VeilsteelLongsword"), "non-stackable weapon is durable")
 	assert_true(inv.is_durable("FerriteShield"), "non-stackable shield is durable")
-	inv.queue_free()
+	inv.free()
 
 func _test_durability_find_tool() -> void:
 	var inv := InventorySlice.new()
@@ -1062,7 +1062,7 @@ func _test_durability_find_tool() -> void:
 	# A non-tool durable item (a weapon) has no toolType and never matches.
 	inv.add_item("FerriteShortSword", 1)
 	assert_eq(inv.find_tool("pick"), "FerritePick", "a weapon is not a mining tool")
-	inv.queue_free()
+	inv.free()
 
 func _test_station_types_from_fabric() -> void:
 	var station := StationSlice.new()
@@ -1071,7 +1071,7 @@ func _test_station_types_from_fabric() -> void:
 	assert_true(types.has("forge"), "forge derived from recipe station fields")
 	assert_true(types.has("alchemy bench"), "alchemy bench derived from recipe station fields")
 	assert_true(types.size() >= 2, "multiple station types exist")
-	station.queue_free()
+	station.free()
 
 
 func _test_durability_drop_repick_resets() -> void:
@@ -1087,7 +1087,7 @@ func _test_durability_drop_repick_resets() -> void:
 	# Pick up a fresh FerritePick — durability must be full again.
 	inv.add_item("FerritePick", 1)
 	assert_eq(inv.get_durability("FerritePick"), max_d, "repicked tool starts at max durability")
-	inv.queue_free()
+	inv.free()
 
 func _test_durability_find_tool_skips_broken() -> void:
 	var inv := InventorySlice.new()
@@ -1103,7 +1103,7 @@ func _test_durability_find_tool_skips_broken() -> void:
 	inv._durability.erase("FerritePick")   # erase so _ensure_durability reinits to max
 	var found := inv.find_tool("pick")
 	assert_eq(found, "FerritePick", "find_tool returns FerritePick once restored")
-	inv.queue_free()
+	inv.free()
 
 
 # ---------------------------------------------------------------------------
@@ -1115,7 +1115,7 @@ func _test_technology_recipe_resolves_to_tech() -> void:
 	add_child(t)
 	assert_eq(t.get_recipe_tech("RecipeFerriteIngot"), "TechBasicSmithing", "FerriteIngot belongs to TechBasicSmithing")
 	assert_eq(t.get_recipe_tech("RecipeVoidRuneTablet"), "TechVoidMastery", "VoidRuneTablet belongs to TechVoidMastery")
-	t.queue_free()
+	t.free()
 
 func _test_technology_research_requires_prereq() -> void:
 	var t := TechnologySlice.new()
@@ -1124,7 +1124,7 @@ func _test_technology_research_requires_prereq() -> void:
 	var result := t.begin_research("TechMasterForge")
 	assert_false(result["success"], "research blocked without prerequisite")
 	assert_true(str(result["reason"]).begins_with("prerequisite_locked"), "reason is a prerequisite gate")
-	t.queue_free()
+	t.free()
 
 func _test_technology_research_consumes_materials() -> void:
 	var t := TechnologySlice.new()
@@ -1137,8 +1137,8 @@ func _test_technology_research_consumes_materials() -> void:
 	assert_true(result["success"], "research begins with materials present")
 	assert_eq(t.get_status("TechBasicSmithing"), "researching", "status is researching")
 	assert_eq(inv.get_item_count("Ferrite"), 0, "Ferrite material cost consumed")
-	t.queue_free()
-	inv.queue_free()
+	t.free()
+	inv.free()
 
 func _test_technology_complete_unlocks() -> void:
 	var t := TechnologySlice.new()
@@ -1152,8 +1152,8 @@ func _test_technology_complete_unlocks() -> void:
 	assert_true(result["success"], "complete research succeeds")
 	assert_eq(t.get_status("TechBasicSmithing"), "unlocked", "status is unlocked")
 	assert_true(t.is_recipe_unlocked("RecipeFerriteIngot"), "recipe now unlocked")
-	t.queue_free()
-	inv.queue_free()
+	t.free()
+	inv.free()
 
 func _test_technology_crafting_blocked_locked() -> void:
 	var t := TechnologySlice.new()
@@ -1169,9 +1169,9 @@ func _test_technology_crafting_blocked_locked() -> void:
 	var result := c.craft("RecipeFerriteIngot")
 	assert_false(result["success"], "craft blocked while technology locked")
 	assert_true(str(result["reason"]).begins_with("technology_locked"), "reason is a technology gate")
-	t.queue_free()
-	c.queue_free()
-	inv.queue_free()
+	t.free()
+	c.free()
+	inv.free()
 
 func _test_technology_crafting_allowed_after_unlock() -> void:
 	var t := TechnologySlice.new()
@@ -1190,9 +1190,9 @@ func _test_technology_crafting_allowed_after_unlock() -> void:
 	var result := c.craft("RecipeFerriteIngot")
 	assert_true(result["success"], "craft succeeds after technology unlocked")
 	assert_eq(inv.get_item_count("FerriteIngot"), 1, "ingot produced")
-	t.queue_free()
-	c.queue_free()
-	inv.queue_free()
+	t.free()
+	c.free()
+	inv.free()
 
 func _test_technology_unknown_rejected() -> void:
 	var t := TechnologySlice.new()
@@ -1200,7 +1200,7 @@ func _test_technology_unknown_rejected() -> void:
 	var result := t.begin_research("DoesNotExist")
 	assert_false(result["success"], "unknown technology rejected")
 	assert_eq(result["reason"], "unknown_technology", "reason is unknown_technology")
-	t.queue_free()
+	t.free()
 
 # ---------------------------------------------------------------------------
 # VoxelSlice tests (mining & building)
@@ -1227,15 +1227,15 @@ func _test_voxel_mine_yields_material() -> void:
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.5, "height lowered by STEP_HEIGHT")
 	assert_true(GameData.MATERIALS.has(r.get("material", "")), "yielded a valid fabric material")
 	assert_eq(inv.get_item_count(str(r.get("material", ""))), 1, "material added to inventory")
-	v.queue_free()
-	inv.queue_free()
+	v.free()
+	inv.free()
 
 func _test_voxel_mine_bedrock() -> void:
 	var v := _make_voxel()
 	v.apply_edits({ "16,16": 0.0 })
 	var r := v.mine_block(Vector3(16.5, 0.0, 16.5))
 	assert_false(r.get("success", false), "mining at bedrock fails")
-	v.queue_free()
+	v.free()
 
 func _test_voxel_mine_side_face() -> void:
 	var v := _make_voxel()
@@ -1250,8 +1250,8 @@ func _test_voxel_mine_side_face() -> void:
 	v.mine_block(Vector3(19.0, 1.5, 16.5), Vector3(-1, 0, 0))
 	assert_eq(v.get_voxel_height_at(Vector2(19.0, 16.0)), 1.5, "-X face mines the block east of the boundary")
 	assert_eq(v.get_voxel_height_at(Vector2(18.0, 16.0)), 2.0, "west block untouched")
-	v.queue_free()
-	inv.queue_free()
+	v.free()
+	inv.free()
 
 func _test_voxel_cycle_inventory_filtered() -> void:
 	var v := _make_voxel()
@@ -1263,8 +1263,8 @@ func _test_voxel_cycle_inventory_filtered() -> void:
 	v.set_place_material("Ashite")
 	assert_eq(v.cycle_place_material(), "Thornwood", "cycles to the other held material")
 	assert_eq(v.cycle_place_material(), "Ashite", "wraps back, skipping materials not held")
-	v.queue_free()
-	inv.queue_free()
+	v.free()
+	inv.free()
 
 func _test_voxel_place_consumes() -> void:
 	var v := _make_voxel()
@@ -1277,8 +1277,8 @@ func _test_voxel_place_consumes() -> void:
 	assert_true(ok, "place succeeds")
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 2.5, "height raised by STEP_HEIGHT")
 	assert_eq(inv.get_item_count("Ashite"), 2, "Ashite consumed from inventory")
-	v.queue_free()
-	inv.queue_free()
+	v.free()
+	inv.free()
 
 func _test_voxel_place_cap() -> void:
 	var v := _make_voxel()
@@ -1291,8 +1291,8 @@ func _test_voxel_place_cap() -> void:
 	var ok := v.place_block(Vector3(16.5, v.MAX_HEIGHT, 16.5), Vector3.UP)
 	assert_false(ok, "place beyond build cap fails")
 	assert_eq(inv.get_item_count("Ashite"), 1, "blocked placement refunds the material")
-	v.queue_free()
-	inv.queue_free()
+	v.free()
+	inv.free()
 
 func _test_voxel_biome_materials() -> void:
 	var v := VoxelSlice.new()
@@ -1304,7 +1304,7 @@ func _test_voxel_biome_materials() -> void:
 	for i in range(16):
 		temperate.append(v.material_for_biome("TemperateForest", Vector2(i, 0)))
 	assert_true(temperate.has("Ferrite") or temperate.has("Thornwood"), "temperate yields ferrite/thornwood")
-	v.queue_free()
+	v.free()
 
 func _test_voxel_edits_round_trip() -> void:
 	var v := _make_voxel()
@@ -1312,7 +1312,7 @@ func _test_voxel_edits_round_trip() -> void:
 	assert_eq(v.get_edits().get("16,16", 0.0), 1.0, "edit 16,16 survives")
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.0, "height reflects restored edit")
 	assert_eq(v.get_voxel_height_at(Vector2(17.0, 17.0)), 3.5, "second edit restored")
-	v.queue_free()
+	v.free()
 
 func _test_voxel_placed_block_keeps_material_color() -> void:
 	var v := _make_voxel()
@@ -1335,8 +1335,8 @@ func _test_voxel_placed_block_keeps_material_color() -> void:
 	var center := Vector2(tile.x + 0.5, tile.y + 0.5)
 	assert_true(v.place_block(Vector3(center.x, 2.0, center.y), Vector3.UP), "place succeeds")
 	assert_eq(v._column_color(center), VoxelSlice.MATERIAL_COLORS["Ferrite"], "placed block renders Ferrite colour, not biome colour")
-	v.queue_free()
-	inv.queue_free()
+	v.free()
+	inv.free()
 
 func _test_voxel_mine_placed_block_yields_material() -> void:
 	var v := _make_voxel()
@@ -1350,8 +1350,8 @@ func _test_voxel_mine_placed_block_yields_material() -> void:
 	assert_true(r.get("success", false), "mine succeeds")
 	assert_eq(str(r.get("material", "")), "Thornwood", "mining a placed block yields its own material")
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 2.0, "height back to natural after mining")
-	v.queue_free()
-	inv.queue_free()
+	v.free()
+	inv.free()
 
 func _test_voxel_placed_block_preserves_base_colour() -> void:
 	var v := _make_voxel()
@@ -1378,8 +1378,8 @@ func _test_voxel_placed_block_preserves_base_colour() -> void:
 	assert_true(layers.size() >= 2, "column has natural + placed layers")
 	assert_eq(layers[0]["color"], v._natural_color(center), "natural base keeps its biome colour")
 	assert_eq(layers[-1]["color"], VoxelSlice.MATERIAL_COLORS["Ferrite"], "placed block renders Ferrite colour")
-	v.queue_free()
-	inv.queue_free()
+	v.free()
+	inv.free()
 
 func _test_voxel_place_after_mine_keeps_colour() -> void:
 	var v := _make_voxel()
@@ -1407,8 +1407,8 @@ func _test_voxel_place_after_mine_keeps_colour() -> void:
 	var layers: Array = v._column_layers(Vector2i(0, 0), v._heightmaps["0,0"], tile.x, tile.y)
 	assert_true(layers.size() >= 2, "column has natural + placed layers")
 	assert_eq(layers[-1]["color"], VoxelSlice.MATERIAL_COLORS["Ferrite"], "placed Ferrite renders Ferrite colour, not the mined material's colour")
-	v.queue_free()
-	inv.queue_free()
+	v.free()
+	inv.free()
 
 # ---------------------------------------------------------------------------
 # UiSlice tests (Phase 14 windows)
@@ -1434,7 +1434,7 @@ func _test_ui_window_toggle() -> void:
 	assert_true(ui.any_window_open(), "technology still open")
 	ui.close_window("technology")
 	assert_false(ui.any_window_open(), "all windows closed")
-	ui.queue_free()
+	ui.free()
 
 func _test_ui_inventory_lines() -> void:
 	var ui := UiSlice.new()
@@ -1447,8 +1447,8 @@ func _test_ui_inventory_lines() -> void:
 	var lines: Array = ui.inventory_lines()
 	assert_true(lines.has("Ferrite ×5"), "Ferrite line present")
 	assert_true(lines.has("Thornwood ×2"), "Thornwood line present")
-	ui.queue_free()
-	inv.queue_free()
+	ui.free()
+	inv.free()
 
 func _test_ui_crafting_rows_tech_gate() -> void:
 	var ui := UiSlice.new()
@@ -1474,10 +1474,10 @@ func _test_ui_crafting_rows_tech_gate() -> void:
 	assert_true(tech.complete_research("TechBasicSmithing")["success"], "complete research succeeds")
 	var unlocked := _ui_row(ui.crafting_rows(), "RecipeFerriteIngot")
 	assert_true(bool(unlocked["can_craft"]), "crafting allowed after unlock")
-	ui.queue_free()
-	craft.queue_free()
-	tech.queue_free()
-	inv.queue_free()
+	ui.free()
+	craft.free()
+	tech.free()
+	inv.free()
 
 func _test_ui_technology_rows_status() -> void:
 	var ui := UiSlice.new()
@@ -1495,9 +1495,9 @@ func _test_ui_technology_rows_status() -> void:
 	var gated := _ui_row(ui.technology_rows(), "TechMasterForge")
 	assert_false(bool(gated["can_research"]), "TechMasterForge gated by prereq")
 	assert_true((gated["requires"] as Array).has("TechBasicSmithing"), "requires lists TechBasicSmithing")
-	ui.queue_free()
-	tech.queue_free()
-	inv.queue_free()
+	ui.free()
+	tech.free()
+	inv.free()
 
 # ---------------------------------------------------------------------------
 # CreatureAI tests (Phase 15)
@@ -1541,8 +1541,8 @@ func _test_ai_idle_to_alert() -> void:
 	ai._tick_instance(iid, c._instances[iid], near_pos, 0.1)
 	assert_true(captured.get("alert", "") == iid, "creature_alert emitted for instance_id")
 	assert_eq(ai.get_state(iid), "alert", "state is alert after player enters alertRadius")
-	rig["creature"].queue_free()
-	rig["ai"].queue_free()
+	rig["creature"].free()
+	rig["ai"].free()
 
 func _test_ai_alert_to_aggressive() -> void:
 	var rig := _make_ai_rig()
@@ -1560,8 +1560,8 @@ func _test_ai_alert_to_aggressive() -> void:
 	ai._tick_instance(iid, c._instances[iid], attack_pos, 0.1)
 	assert_true(captured.get("aggro", "") == iid, "creature_aggressive emitted")
 	assert_eq(ai.get_state(iid), "aggressive", "state is aggressive")
-	rig["creature"].queue_free()
-	rig["ai"].queue_free()
+	rig["creature"].free()
+	rig["ai"].free()
 
 func _test_ai_aggressive_to_fleeing() -> void:
 	var rig := _make_ai_rig()
@@ -1581,8 +1581,8 @@ func _test_ai_aggressive_to_fleeing() -> void:
 	ai._tick_instance(iid, c._instances[iid], pos + Vector3(1.0, 0.0, 0.0), 0.1)
 	assert_true(captured.get("flee", "") == iid, "creature_fleeing emitted")
 	assert_eq(ai.get_state(iid), "fleeing", "state is fleeing below flee threshold")
-	rig["creature"].queue_free()
-	rig["ai"].queue_free()
+	rig["creature"].free()
+	rig["ai"].free()
 
 func _test_ai_fleeing_to_idle() -> void:
 	var rig := _make_ai_rig()
@@ -1600,8 +1600,8 @@ func _test_ai_fleeing_to_idle() -> void:
 	var far_pos := pos + Vector3(safe_r + 5.0, 0.0, 0.0)
 	ai._tick_instance(iid, c._instances[iid], far_pos, 0.1)
 	assert_eq(ai.get_state(iid), "idle", "creature relaxes to idle when player is far")
-	rig["creature"].queue_free()
-	rig["ai"].queue_free()
+	rig["creature"].free()
+	rig["ai"].free()
 
 func _test_ai_attack_emits_combat() -> void:
 	var rig := _make_ai_rig()
@@ -1621,8 +1621,8 @@ func _test_ai_attack_emits_combat() -> void:
 	ai._tick_instance(iid, c._instances[iid], attack_pos, 0.01)
 	assert_eq(captured.get("att", ""), iid, "attacker is the creature instance_id")
 	assert_eq(captured.get("def", ""), "player", "defender is player")
-	rig["creature"].queue_free()
-	rig["ai"].queue_free()
+	rig["creature"].free()
+	rig["ai"].free()
 
 func _test_player_respawn() -> void:
 	const PlayerSlice := preload("res://src/player/player_slice.gd")
@@ -1637,7 +1637,7 @@ func _test_player_respawn() -> void:
 	p._physics_process(1.0)   # one physics tick advances timer past 0
 	assert_true(p._alive, "player alive after respawn")
 	assert_eq(p._hp, PlayerSlice.MAX_HP, "player HP restored to max on respawn")
-	p.queue_free()
+	p.free()
 
 # ---------------------------------------------------------------------------
 # Chunk streaming tests (Phase 17)
@@ -1652,7 +1652,7 @@ func _test_chunk_desired_set() -> void:
 	assert_eq(set3.size(), 49, "view distance 3 yields a 7x7 window")
 	assert_true(set1.has(Vector2i(0, 0)), "center chunk included")
 	assert_true(set1.has(Vector2i(1, 1)), "corner chunk included at radius 1")
-	cm.queue_free()
+	cm.free()
 
 func _test_chunk_coordinate_round_trip() -> void:
 	var t := TerrainSlice.new()
@@ -1660,7 +1660,7 @@ func _test_chunk_coordinate_round_trip() -> void:
 	assert_eq(t.chunk_to_world(Vector2i(2, -3)), Vector2(64.0, -96.0), "chunk (2,-3) maps to world (64,-96)")
 	assert_eq(t.world_to_chunk(Vector2(64.0, -96.0)), Vector2i(2, -3), "world round-trips to chunk")
 	assert_eq(t.world_to_chunk(Vector2(70.0, -90.0)), Vector2i(2, -3), "interior point maps to same chunk")
-	t.queue_free()
+	t.free()
 
 func _test_chunk_biome_stable() -> void:
 	var t := TerrainSlice.new()
@@ -1671,7 +1671,7 @@ func _test_chunk_biome_stable() -> void:
 	assert_true(TerrainSlice.BIOME_KEYS.has(b1), "biome is a known canonical key")
 	var world: Vector2 = t.chunk_to_world(Vector2i(3, 4))
 	assert_eq(t.get_biome_at(world + Vector2(5.0, 7.0)), b1, "get_biome_at agrees inside the chunk")
-	t.queue_free()
+	t.free()
 
 func _test_chunk_load_unload_signals() -> void:
 	var cm := ChunkManager.new()
@@ -1684,7 +1684,7 @@ func _test_chunk_load_unload_signals() -> void:
 	assert_true(loaded.has(Vector2i(0, 0)), "chunk_loaded emitted on load")
 	cm.unload_chunk(Vector2i(0, 0))
 	assert_true(unloaded.has(Vector2i(0, 0)), "chunk_unloaded emitted on unload")
-	cm.queue_free()
+	cm.free()
 
 func _test_chunk_voxel_edits_isolated() -> void:
 	var v := VoxelSlice.new()
@@ -1700,8 +1700,8 @@ func _test_chunk_voxel_edits_isolated() -> void:
 	assert_true(v.mine_block(Vector3(16.5, 2.0, 16.5)).get("success", false), "mine in chunk (0,0)")
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.5, "chunk (0,0) lowered")
 	assert_eq(v.get_voxel_height_at(Vector2(48.0, 16.0)), 2.0, "chunk (1,0) unaffected")
-	v.queue_free()
-	inv.queue_free()
+	v.free()
+	inv.free()
 
 func _test_chunk_unload_preserves_edits() -> void:
 	var v := VoxelSlice.new()
@@ -1715,7 +1715,7 @@ func _test_chunk_unload_preserves_edits() -> void:
 	v.unload_chunk(Vector2i(0, 0))
 	v.build_chunk(Vector2i(0, 0), flat)
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.0, "edit survives unload/reload")
-	v.queue_free()
+	v.free()
 
 func _test_apply_edits_preserves_dirty_chunks() -> void:
 	var v := VoxelSlice.new()
@@ -1740,8 +1740,8 @@ func _test_apply_edits_preserves_dirty_chunks() -> void:
 	# It must NOT clear the dirty tracking set by the mid-cycle mine above.
 	v.apply_edits({ "16,16": 1.0 })
 	assert_true(v.get_dirty_chunk_keys().size() > 0, "apply_edits preserves pre-existing dirty chunks")
-	v.queue_free()
-	inv.queue_free()
+	v.free()
+	inv.free()
 
 func _test_chunk_creature_spawn_per_chunk() -> void:
 	var c := CreatureSlice.new()
@@ -1754,7 +1754,7 @@ func _test_chunk_creature_spawn_per_chunk() -> void:
 	assert_true(after > before, "spawning another chunk adds creatures")
 	c.despawn_for_chunk(Vector2i(1, 0))
 	assert_eq(c.get_all_instances().size(), before, "despawning a chunk removes only its creatures")
-	c.queue_free()
+	c.free()
 
 func _test_chunk_reload_engaged_budget() -> void:
 	var c := CreatureSlice.new()
@@ -1773,7 +1773,7 @@ func _test_chunk_reload_engaged_budget() -> void:
 	c.spawn_for_chunk(Vector2i(0, 0))
 	var after_reload: int = c.get_all_instances().size()
 	assert_true(after_reload <= initial_count, "reload does not exceed original spawn budget (got %d, budget %d)" % [after_reload, initial_count])
-	c.queue_free()
+	c.free()
 
 func _test_chunk_persistence_manifest() -> void:
 	var v := VoxelSlice.new()
@@ -1794,8 +1794,8 @@ func _test_chunk_persistence_manifest() -> void:
 	v2.apply_chunk_manifest(manifest)
 	assert_eq(v2.get_voxel_height_at(Vector2(16.0, 16.0)), 1.0, "restored edit in chunk (0,0)")
 	assert_eq(v2.get_voxel_height_at(Vector2(48.0, 48.0)), 3.0, "restored edit in chunk (1,1)")
-	v.queue_free()
-	v2.queue_free()
+	v.free()
+	v2.free()
 
 func _test_chunk_minimap_cells() -> void:
 	var mm := Minimap.new()
@@ -1809,7 +1809,7 @@ func _test_chunk_minimap_cells() -> void:
 	assert_true(Minimap.BIOME_COLORS.has(cells[0]["biome"]), "biome resolves to a colour")
 	mm.set_player_pos(Vector2(16.0, 16.0))
 	assert_eq(mm.get_player_cell()["chunk"], Vector2i(0, 0), "player cell resolves to chunk (0,0)")
-	mm.queue_free()
+	mm.free()
 
 # ---------------------------------------------------------------------------
 # Networking / authority tests (Phase 18)
@@ -1835,7 +1835,7 @@ func _test_net_voxel_client_forwards_intent() -> void:
 	v._on_mine_requested(Vector3(16.0, 2.0, 16.0), Vector3.UP)
 	assert_eq(intent.get("action", ""), "mine", "client forwards a mine intent")
 	assert_false(v._edits.has("16,16"), "mine_block did not edit this slice directly")
-	v.queue_free()
+	v.free()
 
 func _test_net_voxel_apply_block_change() -> void:
 	# apply_block_change applies a host-authoritative edit without touching
@@ -1853,7 +1853,7 @@ func _test_net_voxel_apply_block_change() -> void:
 	v.apply_block_change("place", Vector3(16.0, 2.0, 16.0), Vector3.UP, "Ferrite")
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 2.0, "place applied (1.5 → 2.0)")
 	assert_eq(reemit, 0, "apply_block_change does not re-emit block_changed")
-	v.queue_free()
+	v.free()
 
 func _test_net_creature_client_no_local_spawn() -> void:
 	var c := CreatureSlice.new()
@@ -1872,7 +1872,7 @@ func _test_net_creature_client_no_local_spawn() -> void:
 	c.apply_creature_state("creature_9", "ForestBoar", "aggressive", Vector3(4.0, 5.0, 6.0))
 	assert_eq(c.get_all_instances().size(), 1, "update does not duplicate the instance")
 	assert_eq(c.get_all_instances()[0]["state"], "aggressive", "state updated")
-	c.queue_free()
+	c.free()
 
 func _test_net_creature_snapshot_roundtrip() -> void:
 	var host := CreatureSlice.new()
@@ -1889,8 +1889,8 @@ func _test_net_creature_snapshot_roundtrip() -> void:
 	var cfirst: Dictionary = client.get_all_instances()[0]
 	var sfirst: Dictionary = snap[0]
 	assert_eq(cfirst["creature_id"], sfirst["creature_id"], "creature_id preserved through snapshot")
-	host.queue_free()
-	client.queue_free()
+	host.free()
+	client.free()
 
 func _test_net_player_ghost_interpolation() -> void:
 	var p := PlayerSlice.new()
@@ -1903,7 +1903,7 @@ func _test_net_player_ghost_interpolation() -> void:
 	p._tick_ghosts(0.05)   # half the interp time
 	var body: Node3D = p._ghosts[2]["body"]
 	assert_true(body.position.x > 0.0 and body.position.x < 10.0, "ghost interpolates between snapshots")
-	p.queue_free()
+	p.free()
 
 func _test_net_player_ghost_self_filter() -> void:
 	# The local player's own peer id must never spawn a ghost — the host echoes
@@ -1912,7 +1912,7 @@ func _test_net_player_ghost_self_filter() -> void:
 	add_child(p)
 	p._on_remote_player_state(multiplayer.get_unique_id(), Vector3(1.0, 2.0, 3.0))
 	assert_eq(p.get_remote_ghost_count(), 0, "own peer id does not spawn a ghost")
-	p.queue_free()
+	p.free()
 
 func _test_net_creature_dirty_broadcast() -> void:
 	# Unchanged instances are not re-broadcast; only mutated ones are.
@@ -1931,7 +1931,7 @@ func _test_net_creature_dirty_broadcast() -> void:
 	c._broadcast_creature_states()
 	assert_eq(emissions.size(), 1, "only the moved creature is re-broadcast")
 	assert_eq(emissions[0], first_id, "the dirty instance is the one broadcast")
-	c.queue_free()
+	c.free()
 
 func _test_net_inventory_replace_contents() -> void:
 	var inv := InventorySlice.new()
@@ -1940,7 +1940,7 @@ func _test_net_inventory_replace_contents() -> void:
 	inv.replace_contents({ "Ashite": 3 })
 	assert_eq(inv.get_item_count("Ferrite"), 0, "replace clears old items")
 	assert_eq(inv.get_item_count("Ashite"), 3, "replace applies host contents")
-	inv.queue_free()
+	inv.free()
 
 # ---------------------------------------------------------------------------
 # Networking / chaos resilience tests (Phase 19)
@@ -1960,7 +1960,7 @@ func _test_net_sequence_monotonic() -> void:
 	assert_eq(int(p1["seq"]), 0, "first player_moved gets seq 0")
 	assert_eq(int(p2["seq"]), 1, "second player_moved gets seq 1")
 	assert_eq(int(p3["seq"]), 0, "block_changed starts its own per-type counter at 0")
-	n.queue_free()
+	n.free()
 
 func _test_net_sequence_dedup() -> void:
 	# In-order and forward-gap packets are accepted. True duplicates (same seq
@@ -1978,7 +1978,7 @@ func _test_net_sequence_dedup() -> void:
 	assert_true(n._dedup(1, { "seq": 3, "type": "x" }), "out-of-order unseen seq accepted (delivered late)")
 	# Cross-type isolation: same seq on a different type has its own counter.
 	assert_true(n._dedup(1, { "seq": 0, "type": "y" }), "same seq on a different type accepted independently")
-	n.queue_free()
+	n.free()
 
 func _test_net_emulator_delivery() -> void:
 	# With emulation on but no loss/jitter, every packet is queued and the
@@ -1998,7 +1998,7 @@ func _test_net_emulator_delivery() -> void:
 		seqs.append(int(parsed["seq"]))
 	seqs.sort()
 	assert_eq(seqs, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], "queued packets carry monotonic seq 0..9")
-	n.queue_free()
+	n.free()
 
 func _test_net_emulator_loss() -> void:
 	# At a 15% loss rate the emulator drops a fraction close to 15% (and the
@@ -2015,7 +2015,7 @@ func _test_net_emulator_loss() -> void:
 			dropped += 1
 	var pct := float(dropped) / float(total) * 100.0
 	assert_true(pct > 8.0 and pct < 22.0, "loss rate near 15%% (got %.1f%%)" % pct)
-	n.queue_free()
+	n.free()
 
 func _test_net_emulator_jitter() -> void:
 	# Jitter delays are uniformly distributed in [-bound, +bound] with no
@@ -2028,7 +2028,7 @@ func _test_net_emulator_jitter() -> void:
 	for _i in range(200):
 		var d: float = n._jitter_delay_ms()
 		assert_true(d >= -50.0 and d <= 50.0, "jitter delay within [-50, 50] (got %.1f)" % d)
-	n.queue_free()
+	n.free()
 
 func _test_net_emulator_zero_overhead() -> void:
 	# With emulation disabled (production default), packets go straight out and
@@ -2037,7 +2037,7 @@ func _test_net_emulator_zero_overhead() -> void:
 	add_child(n)
 	n._deliver(1, { "type": "x" })
 	assert_eq(n._pending.size(), 0, "no packets queued when emulation disabled")
-	n.queue_free()
+	n.free()
 
 func _test_net_jitter_buffer() -> void:
 	# The client jitter buffer replays remote-player snapshots on a fixed
@@ -2058,7 +2058,7 @@ func _test_net_jitter_buffer() -> void:
 	assert_true(abs(c.x - 5.0) < 0.5, "interpolated between snapshots within tolerance")
 	var d: Vector3 = n._sample_remote_state_at(1, 250.0)
 	assert_true(abs(d.x - 20.0) < 0.001, "playback past last snapshot returns last position")
-	n.queue_free()
+	n.free()
 
 func _test_net_inventory_replace_idempotent() -> void:
 	# replace_contents must be idempotent: applying the same snapshot twice
@@ -2070,7 +2070,7 @@ func _test_net_inventory_replace_idempotent() -> void:
 	inv.replace_contents(contents)
 	inv.replace_contents(contents)
 	assert_eq(inv.get_item_count("Ferrite"), 5, "double replace_contents does not duplicate inventory")
-	inv.queue_free()
+	inv.free()
 
 func _test_net_reconnect_last_known_state() -> void:
 	# The host retains a client's last-known position across a disconnect so a
@@ -2082,7 +2082,7 @@ func _test_net_reconnect_last_known_state() -> void:
 	n._on_peer_disconnected(2)
 	assert_eq(n.get_last_known_state(2), Vector3(4.0, 5.0, 6.0), "last-known state retained across disconnect")
 	assert_true(n.get_last_known_states().has(2), "retained state present for snapshot")
-	n.queue_free()
+	n.free()
 
 func _test_net_two_peer_loss_reorder() -> void:
 	# End-to-end emulation: a sender with 10% loss and reorder stages packets;
@@ -2131,8 +2131,8 @@ func _test_net_two_peer_loss_reorder() -> void:
 
 	assert_eq(duplicates, 0, "no packet accepted a second time — dedup is idempotent")
 
-	sender.queue_free()
-	receiver.queue_free()
+	sender.free()
+	receiver.free()
 
 # ---------------------------------------------------------------------------
 # AssetOverlay tests (Phase 21 — asset separation)
