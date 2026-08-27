@@ -978,8 +978,8 @@ character rendering scales gracefully with draw distance and player count.
   at LOD 1; full socket set collapsed to body-only at LOD 2
 - Simplified meshes at distance > 20 m (LOD 1 threshold) and > 60 m (LOD 2 /
   impostor billboard)
-- Impostor billboard: a pre-baked sprite rendered in place of the full rig at
-  LOD 2; palette swap applied to the billboard texture
+- Impostor billboard: a camera-facing coloured quad rendered in place of the full
+  rig at LOD 2 (a placeholder for the deferred pre-baked sprite, see below)
 - `src/tests/test_suite.gd` — tests: LOD level transitions at distance thresholds,
   attachment visibility toggling, impostor swap correctness
 
@@ -996,22 +996,34 @@ character rendering scales gracefully with draw distance and player count.
 - LOD levels collapse to the Phase 23 three-tier model (0 = full, 1 = medium,
   2 = impostor); `MAX_LOD` is now 2 and `IMPOSTOR_LOD` is 2. The `characters.md`
   §35 table's LOD3 (extreme distance) folds into the impostor tier.
+- Per-part LOD is stored as `max_lod` — the COARSEST level at which a part still
+  renders (`node.visible = lod <= max_lod`), so the name reads as a max, not a
+  min. Fine detail (hair, beard) is `max_lod` 0 (hidden at LOD 1); coarse body
+  geometry is `max_lod` `MAX_LOD` (visible through the impostor tier). The fabric
+  `minLodLevel` field carries the same "coarsest level" semantics on the old 0–3
+  scale and defaults to `MAX_LOD` when absent.
 - `CharacterSlice.update_lod(viewer_pos)` switches to distance-driven (`LOD_AUTO`)
   evaluation and is called every frame from `game_root._process` with the player
-  position. `set_lod(level)` remains a manual override (`LOD_MANUAL`) for the
-  test suite and debug tooling. `lod_level_for_distance()` is the pure
-  threshold function (≤20 m → 0, ≤60 m → 1, else 2).
+  position. `set_lod(level)` applies a manual level immediately (`LOD_MANUAL`)
+  for the test suite and debug tooling, but it is NOT a persistent override — the
+  next `update_lod` call re-asserts distance-driven mode. `lod_level_for_distance()`
+  is the threshold function (≤20 m → 0, ≤60 m → 1, else 2) with a `LOD_HYSTERESIS`
+  (2 m) dead-zone: dropping to a finer level only commits once inside the margin,
+  preventing boundary flicker. `_apply_lod` early-outs when neither the resolved
+  level nor the hideRegions hidden set changed since the last frame.
 - The impostor is a camera-facing `QuadMesh` (`billboard_mode` enabled, unshaded)
-  tinted to the character's skin palette colour via `palette_color()`, so it
-  honours the same palette-swap rule as the real parts. `_apply_lod` shows it and
-  force-hides every part at `IMPOSTOR_LOD`, regardless of each part's `min_lod`.
-- Composition simplification is unchanged from Phase 20/22: fine detail (hair,
-  beard) hides at their `min_lod` thresholds (hair 1, beard 0); coarse body
-  geometry (`min_lod` 3) stays until the impostor tier.
+  tinted to the character's skin palette colour via `palette_color()`. The colour
+  is resolved ONCE at creation (a baked colour), so a palette-texture swap is NOT
+  reflected here — a true pre-baked sprite impostor is deferred (see below). The
+  quad mesh is cached by size and the material by skin colour. `_apply_lod` shows
+  the impostor and force-hides every part at `IMPOSTOR_LOD`, regardless of each
+  part's `max_lod`.
 
 **Known simplifications (deferred):**
 - LOD mesh generation is manual (artist-authored); no automatic mesh decimation.
-- Impostor baking is offline; no runtime re-bake on palette change.
+- Pre-baked sprite impostor — the billboard is a coloured-quad placeholder, not a
+  pre-baked render of the rig; palette-swap applied to the billboard texture and
+  runtime re-bake on palette change are deferred.
 - No per-platform LOD bias (mobile vs. desktop thresholds are identical).
 
 ---
