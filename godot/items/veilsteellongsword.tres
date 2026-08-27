@@ -18,6 +18,7 @@ attachments = {"equipped":"socket_weapon_r","sheathed":"socket_hip_l","stored":"
 minLodLevel = 2
 size = [0.1,0.1,1.1]
 metalTone = "veilsteel"
+emissionColor = 200
 compatibleTags = ["has_hands","can_wield_weapon"]
 state_machine_field = "condition"
 initial_state = "pristine"

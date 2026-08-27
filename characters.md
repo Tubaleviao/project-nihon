@@ -911,6 +911,41 @@ Production steps for each new equipment asset:
 From this point, adding content is predominantly asset production and data
 configuration — no core code changes.
 
+### 41.1 Production checklist sign-offs (Phase 22)
+
+The material and palette pipeline (Phase 22) enforces the following at runtime;
+each item is signed off once the placeholder build confirms it, so art and
+engineering agree on the constraints before any authored asset lands.
+
+**Resolution table** (§24) — placeholder build sign-off:
+
+- [ ] Face `32×32`, Hair `32×32`, Body `64×64`, Armor `64×64`,
+      Weapon `32×32–64×64` — documented as the texel-density baseline
+      (doc-only: no authored asset yet confirms it).
+- [ ] Every authored asset committed at its stated resolution (no upscaled
+      placeholders shipped as production art).
+
+**Point filtering settings** (§25) — sign-off:
+
+- [x] Character palette texture is `256×1`, sampled with `filter_nearest`
+      (Nearest/Point) — enforced in `character_material.gdshader`, not import
+      presets.
+- [x] No mip-maps on character palette/detail textures (`filter_nearest` sampler
+      hint, `Image.create(..., use_mipmaps=false)`).
+- [x] Bilinear interpolation is excluded for pixel-art assets by construction
+      (sampler hint), independent of per-machine texture-filter settings.
+
+**UV mapping guide** (§26) — sign-off:
+
+- [ ] UVs must be pixel-grid aligned, avoid distortion, and keep consistent
+      texel density (documented as a hard constraint for authored assets —
+      doc-only, no authored UVs yet).
+- [x] Colour-region masks map to `color_mask_tex` R/G/B = Primary/Secondary/
+      Accent (§18); material channels map to `channel_tex` R/G/B = Metal/
+      Emission/Wear (§21–§23).
+- [ ] Authored mask textures produced for each equipment asset (placeholder
+      build uses default-black masks, i.e. base colour only).
+
 ---
 
 ## 42. Optimization Principles

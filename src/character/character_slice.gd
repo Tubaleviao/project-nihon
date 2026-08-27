@@ -42,6 +42,7 @@ extends Node
 const Locomotion  := preload("res://src/character/locomotion.gd")
 const SkeletonRig := preload("res://src/character/skeleton_rig.gd")
 const GameDataReader := preload("res://src/core/game_data_reader.gd")
+const CharacterMaterial := preload("res://src/character/character_material.gd")
 
 const MIN_LOD := 0
 const MAX_LOD := 3
@@ -64,6 +65,12 @@ const BODY_PROP_BOUNDS: Dictionary = {
 	"legLength":     { "min": 0.90, "default": 1.00, "max": 1.10 },
 	"headScale":     { "min": 0.90, "default": 1.00, "max": 1.10 },
 }
+
+## Quantization step for the six proportion sliders (§8). Snapping each slider to
+## this grid (rather than quantizing the derived box extents) collapses the
+## placeholder mesh key space AND keeps mesh size and socket position on the same
+## grid, so adjacent parts meet without an extent/position seam.
+const PROPORTION_STEP := 0.05
 
 ## Instance record: { "appearance", "position", "root", "parts" }.
 var _instances: Dictionary = {}
@@ -208,6 +215,44 @@ func get_part_node(instance_id: String, part_key: String) -> Node3D:
 	if not parts.has(part_key):
 		return null
 	return parts[part_key].get("node", null)
+
+## The ShaderMaterial on a named part (body_chest / body_legs / head / hair /
+## beard / an equipment slot), or null when the part is absent. Every part now
+## shares ONE material (§20), so this returns that shared material — use
+## get_part_shader_parameter() to read a part's per-instance palette/channel
+## values (they live on the mesh, not the shared material).
+func get_part_material(instance_id: String, part_key: String) -> ShaderMaterial:
+	var node := get_part_node(instance_id, part_key)
+	if node == null:
+		return null
+	var mat = node.material_override
+	return mat if mat is ShaderMaterial else null
+
+## Read a per-instance shader parameter from a part's mesh (set via
+## set_instance_shader_parameter). Returns null when the part is absent or the
+## parameter was never set. Exposed for Phase 22 palette-swap and channel tests
+## to read/write per-instance values directly.
+func get_part_shader_parameter(instance_id: String, part_key: String, param: String):
+	var node := get_part_node(instance_id, part_key)
+	if node == null or not (node is GeometryInstance3D):
+		return null
+	return (node as GeometryInstance3D).get_instance_shader_parameter(param)
+
+## The shared 256×1 palette texture (characters.md §19), built once from the
+## fabric palette. Every part samples this same texture; a palette swap writes a
+## shader index, never a new texture. Exposed for tests and tooling.
+func get_palette_texture() -> ImageTexture:
+	return CharacterMaterial.palette_texture(_palette_colors())
+
+## Swap one palette index channel on a part's mesh without creating a new
+## texture or material (§20). `channel` is base_index / primary_index /
+## secondary_index / accent_index. Returns false when the part is absent or the
+## channel key is unknown (see CharacterMaterial.set_index).
+func apply_palette_index(instance_id: String, part_key: String, channel: String, index: int) -> bool:
+	var node := get_part_node(instance_id, part_key)
+	if node == null or not (node is GeometryInstance3D):
+		return false
+	return CharacterMaterial.set_index(node as GeometryInstance3D, channel, index) >= 0
 
 # ---------------------------------------------------------------------------
 # Public — recipe (de)serialization (characters.md §30, §31)
@@ -522,6 +567,7 @@ func _equipment_def(item_id: String) -> Dictionary:
 		"minLodLevel":     GameDataReader.int_field(res, "minLodLevel", 0),
 		"size":            GameDataReader.json_field(res, "size", [0.3, 0.3, 0.3]),
 		"metal":           GameDataReader.str_field(res, "metalTone", "none"),
+		"emissionColor":   GameDataReader.int_field(res, "emissionColor", 200),
 		"hideRegions":     GameDataReader.json_field(res, "hideRegions", []),
 	}
 
@@ -565,6 +611,33 @@ func _fallback_palette() -> Array:
 		out.append(Color(g, g, g))
 	return out
 
+## Named 32-entry region bounds (characters.md §19), read from the generated
+## palette's `regions` field (palettes.js) so the metals/emission region numbers
+## are never hardcoded in this slice. Falls back to the palettes.js layout when
+## the field is absent (defensive against a stale/unregenerated GameData).
+func _palette_regions() -> Array:
+	var res: Resource = GameData.PALETTES.get(PALETTE_KEY, null)
+	var regions = GameDataReader.json_field(res, "regions", []) if res != null else []
+	if regions is Array and regions.size() > 0:
+		return regions
+	return _default_regions()
+
+## Region bounds { "start": int, "end": int } for a named region (e.g. "metals",
+## "emission"). Empty {0,0} when the name is unknown.
+func _region_bounds(name: String) -> Dictionary:
+	for r in _palette_regions():
+		if r is Dictionary and str(r.get("name", "")) == name:
+			return { "start": int(r.get("start", 0)), "end": int(r.get("end", 0)) }
+	return { "start": 0, "end": 0 }
+
+## Mirrors the palettes.js REGIONS layout (8 × 32-entry regions) as a fallback.
+func _default_regions() -> Array:
+	var names := ["skin", "hair", "primary", "secondary", "accent", "metals", "emission", "eyes"]
+	var out: Array = []
+	for i in range(names.size()):
+		out.append({ "name": names[i], "start": i * 32, "end": (i + 1) * 32 - 1 })
+	return out
+
 # ---------------------------------------------------------------------------
 # Recipe normalization helpers
 # ---------------------------------------------------------------------------
@@ -579,7 +652,7 @@ func _normalize_proportions(props) -> Dictionary:
 		var def: float = bounds["default"]
 		var v = src.get(key, def)
 		if v is float or v is int:
-			out[key] = clampf(float(v), lo, hi)
+			out[key] = snappedf(clampf(float(v), lo, hi), PROPORTION_STEP)
 		else:
 			out[key] = def
 	return out
@@ -599,15 +672,29 @@ func _normalize_equipment(entry: Dictionary) -> Dictionary:
 		"durability":     clampf(float(entry.get("durability", 1.0)), 0.0, 1.0),
 	}
 
+## Wear tiers (§23): durability → discrete tier, shared by the visual-state
+## name (_wear_level) and the shader scalar (_wear_value) so the two never drift.
+const WEAR_TIERS: Array = [
+	{ "min": 0.9, "name": "New", "value": 0.0 },
+	{ "min": 0.6, "name": "Used", "value": 0.35 },
+	{ "min": 0.3, "name": "Worn", "value": 0.7 },
+	{ "min": 0.0, "name": "Heavily Damaged", "value": 1.0 },
+]
+
+func _wear_tier(durability: float) -> Dictionary:
+	for tier in WEAR_TIERS:
+		if durability >= float(tier["min"]):
+			return tier
+	return WEAR_TIERS[WEAR_TIERS.size() - 1]
+
 ## Wear is derived from durability, never persisted (§23).
 func _wear_level(durability: float) -> String:
-	if durability >= 0.9:
-		return "New"
-	if durability >= 0.6:
-		return "Used"
-	if durability >= 0.3:
-		return "Worn"
-	return "Heavily Damaged"
+	return _wear_tier(durability)["name"]
+
+## Discrete shader wear scalar, derived from the same tiers as _wear_level (§23),
+## so the shader's wear visually matches the reported wear tier.
+func _wear_value(durability: float) -> float:
+	return _wear_tier(durability)["value"]
 
 # ---------------------------------------------------------------------------
 # LOD
@@ -679,9 +766,9 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 	var shoulder: float = props.get("shoulderWidth", 1.0)
 	var head_scale: float = props.get("headScale", 1.0)
 
-	var skin: Color = palette_color(int(appearance.get("skinColor", 12)))
-	var hair_color: Color = palette_color(int(appearance.get("hairColor", 40)))
-	var beard_color: Color = palette_color(int(appearance.get("beardColor", 40)))
+	var skin_idx: int = int(appearance.get("skinColor", 12))
+	var hair_idx: int = int(appearance.get("hairColor", 40))
+	var beard_idx: int = int(appearance.get("beardColor", 40))
 
 	# Skeleton rig (Phase 20) — build a real Skeleton3D from the fabric
 	# SkeletonDefinition so the character carries a bone hierarchy. Body and head
@@ -712,21 +799,21 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 		# skeleton. The mesh keeps its computed root-space position, expressed as a
 		# bone-local offset (root-space minus the bone's rest origin) so the
 		# rendered pose is unchanged at rest.
-		var chest := _make_box(Vector3(0.55 * shoulder * mass, torso_h, 0.32 * mass), skin)
+		var chest := _make_box(Vector3(0.55 * shoulder * mass, torso_h, 0.32 * mass), skin_idx)
 		var chest_pos := Vector3(0.0, hip_y + torso_h * 0.5, 0.0)
 		rig.attach_to_bone(torso_bone, chest, chest_pos - rig.get_bone_global_rest(torso_bone))
 		parts["body_chest"] = { "node": chest, "min_lod": 3 }
 
 		# Legs (hips-to-ground region placeholder — §16 BodyLegs) — skinned to the
 		# hip bone so it deforms with the skeleton.
-		var legs := _make_box(Vector3(0.45 * shoulder * mass, hip_y, 0.30 * mass), skin)
+		var legs := _make_box(Vector3(0.45 * shoulder * mass, hip_y, 0.30 * mass), skin_idx)
 		var legs_pos := Vector3(0.0, hip_y * 0.5, 0.0)
 		var legs_bone := _legs_bone(rig)
 		rig.attach_to_bone(legs_bone, legs, legs_pos - rig.get_bone_global_rest(legs_bone))
 		parts["body_legs"] = { "node": legs, "min_lod": 3 }
 
 		# Head — skinned to the head bone.
-		var head := _make_box(Vector3(head_size, head_size, head_size), skin)
+		var head := _make_box(Vector3(head_size, head_size, head_size), skin_idx)
 		var head_pos := Vector3(0.0, head_y, 0.0)
 		rig.attach_to_bone(head_bone, head, head_pos - rig.get_bone_global_rest(head_bone))
 		parts["head"] = { "node": head, "min_lod": 3 }
@@ -734,7 +821,7 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 		# Hair (independent component — §13).
 		var hair_id: String = str(appearance.get("hair", "none"))
 		if hair_id != "none" and hair_id != "":
-			var hair := _make_box(Vector3(head_size * 1.05, head_size * 0.4, head_size * 1.05), hair_color)
+			var hair := _make_box(Vector3(head_size * 1.05, head_size * 0.4, head_size * 1.05), hair_idx)
 			hair.position = Vector3(0.0, head_y + head_size * 0.45, 0.0)
 			rig.add_child(hair)
 			parts["hair"] = { "node": hair, "min_lod": 1 }
@@ -742,7 +829,7 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 		# Beard (independent component — §14).
 		var beard_id: String = str(appearance.get("beard", "none"))
 		if beard_id != "none" and beard_id != "":
-			var beard := _make_box(Vector3(head_size * 0.7, head_size * 0.5, head_size * 0.25), beard_color)
+			var beard := _make_box(Vector3(head_size * 0.7, head_size * 0.5, head_size * 0.25), beard_idx)
 			beard.position = Vector3(0.0, head_y - head_size * 0.1, -head_size * 0.55)
 			rig.add_child(beard)
 			parts["beard"] = { "node": beard, "min_lod": 0 }
@@ -752,12 +839,12 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 		# layout, so use a single generic body box and a generic head box,
 		# sized from height/mass/headScale only and centered on their bone
 		# (zero bone-local offset) rather than the humanoid landmark math.
-		var body := _make_box(Vector3(0.5 * mass, height * 0.5, 0.5 * mass), skin)
+		var body := _make_box(Vector3(0.5 * mass, height * 0.5, 0.5 * mass), skin_idx)
 		rig.attach_to_bone(torso_bone, body, Vector3.ZERO)
 		parts["body"] = { "node": body, "min_lod": 3 }
 
 		var nh_head_size: float = 0.25 * head_scale
-		var head := _make_box(Vector3(nh_head_size, nh_head_size, nh_head_size), skin)
+		var head := _make_box(Vector3(nh_head_size, nh_head_size, nh_head_size), skin_idx)
 		rig.attach_to_bone(head_bone, head, Vector3.ZERO)
 		parts["head"] = { "node": head, "min_lod": 3 }
 
@@ -802,9 +889,8 @@ func _attach_equipment(rig, slot: String, entry: Dictionary, props: Dictionary) 
 	var offset: Vector3 = socket_pos
 	if mode != "RIGID":
 		offset = socket_pos - rig.get_bone_global_rest(rig.socket_to_bone(socket))
-	var eq_color: Color = _equipment_color(def, entry)
 	var size: Vector3 = _vec3(def.get("size", [0.3, 0.3, 0.3]))
-	var mesh := _make_box(size, eq_color)
+	var mesh := _make_box(size, _equipment_base_index(def, entry), _equipment_material_opts(def, entry))
 	mesh.name = "Eq_%s" % slot
 	rig.attach(socket, mesh, mode, offset)
 	# RIGID equipment does not follow a bone — only SKINNED/HYBRID do.
@@ -836,20 +922,51 @@ func _legs_bone(rig) -> String:
 			return name
 	return ""
 
-func _make_box(size: Vector3, color: Color) -> MeshInstance3D:
+## Shared BoxMesh cache (characters.md §43 — the Phase 22 mesh-sharing
+## criterion). Keyed by the exact box size, which is already quantized because
+## the proportion sliders are snapped in `_normalize_proportions` (§8) before the
+## extents are derived — so two characters with the same quantized proportions
+## produce bit-identical sizes and share one mesh, without any extent-level
+## rounding that would shift the mesh off the socket position. Bounded with a
+## full-clear eviction so it never grows for the process lifetime.
+##
+## NOTE: cached entries are SHARED across characters — never mutate a cached
+## BoxMesh's `size` (or any property) in place, or every part sharing it changes.
+static var _box_meshes: Dictionary = {}
+
+## Upper bound on the shared BoxMesh cache before a full clear (placeholder
+## extents are cheap to rebuild, so a clear is simpler than LRU bookkeeping).
+## Sized to the quantized-slider key space (chest + legs + head/hair/beard +
+## equipment across the §8 proportion grid) so a full clear is rare in practice.
+const BOX_MESH_CACHE_MAX := 2048
+
+func _make_box(size: Vector3, palette_index: int, opts: Dictionary = {}) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = size
+	var box: BoxMesh = _box_meshes.get(size, null)
+	if box == null:
+		if _box_meshes.size() >= BOX_MESH_CACHE_MAX:
+			# Full-clear eviction: existing parts keep their (ref-counted) meshes;
+			# new parts rebuild. Keeps the cache bounded without LRU tracking.
+			_box_meshes.clear()
+		box = BoxMesh.new()
+		box.size = size
+		_box_meshes[size] = box
 	mesh.mesh = box
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mat.albedo_texture = _get_body_texture()
-	# Pixel-art aesthetic lives at the asset level (Point filtering, low-res
-	# textures, palettes), not in post-processing (§29). Per-part tint still
-	# comes from albedo_color; the texture is the placeholder/production art
-	# resolved through AssetOverlay until the Phase 22 palette pipeline lands.
+	# ONE shared ShaderMaterial for every part (§20): the palette index and
+	# channel scalars are per-instance parameters, never a new material. The
+	# shared body detail texture is bound once on the shared material (same for
+	# all parts); per-part colour/channel values are written via
+	# CharacterMaterial.apply_instance.
+	var mat := CharacterMaterial.shared_material(_palette_colors())
+	mat.set_shader_parameter("detail_tex", _get_body_texture())
 	mesh.material_override = mat
+	CharacterMaterial.apply_instance(mesh, palette_index, opts)
 	return mesh
+
+func _palette_colors() -> Array:
+	if _palette.is_empty():
+		_load_palette()
+	return _palette
 
 ## Lazily decode the body-part texture once per slice instance. Cheap even if
 ## decoded again by a later instance — the point is not re-reading it per box.
@@ -867,33 +984,89 @@ func _attachment_socket(def: Dictionary, state: String) -> String:
 		return str(attachments["equipped"])
 	return "socket_back"
 
-## Placeholder equipment color: RIGID metal items take the metal tone; otherwise
-## the primary mask drives the color (multi-mask-region rendering needs real
-## assets, deferred per §42).
-func _equipment_color(def: Dictionary, entry: Dictionary) -> Color:
-	var mode: String = str(def.get("deformationMode", "RIGID"))
+## Palette index that drives an equipment mesh's base colour (Phase 22): RIGID
+## metal items resolve to a metals-region index (§21), otherwise the primary
+## mask colour drives it (multi-mask-region rendering needs authored mask
+## textures, deferred per §42). The deformation mode is normalised to upper case
+## (fabric authors it as SKINNED/RIGID/HYBRID) and the metal branch is gated on
+## the metal mask flag (masks.metal), consistent with the metalness channel.
+func _equipment_base_index(def: Dictionary, entry: Dictionary) -> int:
+	var mode: String = str(def.get("deformationMode", "RIGID")).to_upper()
 	var metal: String = str(def.get("metal", "none"))
-	if mode == "RIGID" and metal != "none" and metal != "":
-		return _metal_color(metal)
 	var masks: Dictionary = def.get("masks", {})
-	if masks.get("primary", false):
-		return palette_color(int(entry.get("primaryColor", 0)))
-	if masks.get("accent", false):
-		return palette_color(int(entry.get("accentColor", 0)))
-	return palette_color(int(entry.get("secondaryColor", 0)))
+	if mode == "RIGID" and bool(masks.get("metal", false)) and metal != "none" and metal != "":
+		return _metal_palette_index(metal)
+	if bool(masks.get("primary", false)):
+		return int(entry.get("primaryColor", 0))
+	if bool(masks.get("accent", false)):
+		return int(entry.get("accentColor", 0))
+	return int(entry.get("secondaryColor", 0))
 
-func _metal_color(metal: String) -> Color:
+## Per-instance channel opts for an equipment mesh (§21–§23): metalness from
+## the metal mask flag (masks.metal), wear from the discrete durability tiers,
+## roughness from the metal tone + wear, emission from the emission mask flag +
+## per-item emissionColor palette index.
+func _equipment_material_opts(def: Dictionary, entry: Dictionary) -> Dictionary:
+	var metal: String = str(def.get("metal", "none"))
+	var masks: Dictionary = def.get("masks", {})
+	var durability: float = clampf(float(entry.get("durability", 1.0)), 0.0, 1.0)
+	var metalness: float = 1.0 if bool(masks.get("metal", false)) else 0.0
+	var wear := _wear_value(durability)
+	var opts := {
+		"primary_index":     int(entry.get("primaryColor", 0)),
+		"secondary_index":   int(entry.get("secondaryColor", 0)),
+		"accent_index":      int(entry.get("accentColor", 0)),
+		"metalness":         metalness,
+		"wear":              wear,
+		"roughness":         _roughness_for(metal, wear, metalness),
+		"emission_strength": 1.0 if bool(masks.get("emission", false)) else 0.0,
+	}
+	if bool(masks.get("emission", false)):
+		opts["emission_index"] = _emission_index(def)
+	return opts
+
+## Metal tone → metals-region palette index (§21). The metals region bounds are
+## read from the generated palette's `regions` field (palettes.js), not
+## hardcoded; the within-region offset per tone is a content decision (dark
+## ferrite → bright gold).
+func _metal_palette_index(metal: String) -> int:
+	var start: int = _region_bounds("metals")["start"]
 	match metal:
 		"iron", "ferrite":
-			return Color(0.62, 0.62, 0.66)
+			return start
 		"steel", "veilsteel":
-			return Color(0.72, 0.76, 0.82)
+			return start + 16
 		"bronze":
-			return Color(0.72, 0.55, 0.35)
+			return start + 24
 		"gold":
-			return Color(0.95, 0.78, 0.32)
+			return start + 30
 		_:
-			return Color(0.7, 0.7, 0.72)
+			return start + 8
+
+## Emission colour is a palette index in the emission region (192–223, §22),
+## read from the per-item emissionColor field, not a hardcoded RGB.
+func _emission_index(def: Dictionary) -> int:
+	var bounds := _region_bounds("emission")
+	var idx := int(def.get("emissionColor", 200))
+	return clampi(idx, int(bounds["start"]), int(bounds["end"]))
+
+## Metal tone + wear → surface roughness (§21): different tones reflect light
+## differently (iron rough, gold smooth) and wear roughens the surface.
+func _roughness_for(metal: String, wear: float, metalness: float) -> float:
+	var base := 0.55
+	if metalness > 0.5:
+		match metal:
+			"iron", "ferrite":
+				base = 0.55
+			"steel", "veilsteel":
+				base = 0.3
+			"bronze":
+				base = 0.4
+			"gold":
+				base = 0.2
+			_:
+				base = 0.5
+	return clampf(base + wear * 0.35, 0.0, 1.0)
 
 ## Placeholder socket → local offset for the humanoid family, scaled by the
 ## current proportions via the same landmark formula the visual assembly and

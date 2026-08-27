@@ -86,6 +86,17 @@ func run() -> void:
 	_run_test("character: non-humanoid socket at bone rest",   _test_nonhumanoid_socket_offset_from_bone)
 	_run_test("character: non-humanoid hideRegions hide body", _test_nonhumanoid_hide_regions_map_to_body)
 	_run_test("character: full spawn path assembles + signals", _test_character_full_spawn_path)
+	_run_test("character: shared palette texture (256×1)",        _test_character_palette_texture_shared)
+	_run_test("character: palette pixel matches fabric hex",      _test_character_palette_pixel_matches_fabric)
+	_run_test("character: palette swap round-trips shader params", _test_character_palette_swap_round_trip)
+	_run_test("character: unknown palette channel rejected",     _test_character_palette_bad_channel_key)
+	_run_test("character: parts share one shader + material",    _test_character_material_shader_shared)
+	_run_test("character: wear channel derives from tiers",      _test_character_wear_channel)
+	_run_test("character: metal channel is palette-driven",      _test_character_metal_channel)
+	_run_test("character: emission path uses palette index",     _test_character_emission_path)
+	_run_test("character: instance uniforms reach shader",        _test_character_instance_uniforms_reach_shader)
+	_run_test("character: same-size parts share one BoxMesh",     _test_character_mesh_shared)
+	_run_test("character: nearby proportions snap to one bucket",   _test_character_proportions_quantized)
 	_run_test("crafting: recipe data loaded from fabric",     _test_crafting_recipe_data_loaded)
 	_run_test("crafting: skill guard blocks low tier",        _test_crafting_skill_guard_blocks)
 	_run_test("crafting: consumes inputs and produces output", _test_crafting_consumes_and_produces)
@@ -549,9 +560,9 @@ func _test_character_clamp_proportions() -> void:
 		"proportions": { "height": 9.0, "bodyMass": 0.01, "shoulderWidth": 1.0 },
 	})
 	var props: Dictionary = recipe["proportions"]
-	assert_eq(props["height"], 1.15, "height clamped to max 1.15")
-	assert_eq(props["bodyMass"], 0.80, "bodyMass clamped to min 0.80")
-	assert_eq(props["shoulderWidth"], 1.0, "in-range value unchanged")
+	assert_true(is_equal_approx(props["height"], 1.15), "height clamped to max 1.15")
+	assert_true(is_equal_approx(props["bodyMass"], 0.80), "bodyMass clamped to min 0.80")
+	assert_true(is_equal_approx(props["shoulderWidth"], 1.0), "in-range value unchanged")
 	ch.free()
 
 func _test_character_drops_unknown_equipment() -> void:
@@ -843,6 +854,203 @@ func _test_character_full_spawn_path() -> void:
 	assert_eq(captured.get("position"), pos, "signal carries spawn position")
 
 	GameBus.character_spawned.disconnect(on_spawned)
+	ch.free()
+
+func _test_character_palette_texture_shared() -> void:
+	# The palette is ONE shared 256×1 texture (characters.md §19); every part
+	# samples it. A part's material carries it as `palette_tex`, so a palette
+	# swap writes a shader index — no per-skin texture asset is ever created.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	assert_true(iid != "", "character created")
+	var shared := ch.get_palette_texture()
+	assert_true(shared is ImageTexture, "palette texture is an ImageTexture")
+	assert_eq(shared.get_width(), 256, "palette texture is 256 wide")
+	assert_eq(shared.get_height(), 1, "palette texture is a single row")
+	var mat := ch.get_part_material(iid, "head")
+	assert_true(mat is ShaderMaterial, "part uses a ShaderMaterial")
+	assert_true(mat.get_shader_parameter("palette_tex") == shared, "part material references the shared palette texture")
+	ch.free()
+
+func _test_character_palette_pixel_matches_fabric() -> void:
+	# The palette texture pixels must equal the fabric hex entries byte-for-byte
+	# (§19): the fabric palette is the single source of truth for colour.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var res: Resource = GameData.PALETTES.get("DefaultPalette", null)
+	assert_true(res != null, "DefaultPalette resource present")
+	var entries = res.get("entries")
+	assert_true(entries is Array and entries.size() == 256, "fabric palette has 256 entries")
+	var img: Image = ch.get_palette_texture().get_image()
+	for i in [0, 32, 160, 192, 255]:
+		var hex_str: String = str(entries[i])
+		var expected: Color = Color(hex_str)
+		var px: Color = img.get_pixel(i, 0)
+		assert_eq(px.r8, expected.r8, "red channel of pixel %d matches fabric hex" % i)
+		assert_eq(px.g8, expected.g8, "green channel of pixel %d matches fabric hex" % i)
+		assert_eq(px.b8, expected.b8, "blue channel of pixel %d matches fabric hex" % i)
+	ch.free()
+
+func _test_character_palette_swap_round_trip() -> void:
+	# A palette swap is a per-instance shader-parameter write (§20): apply a new
+	# index, read it back from the mesh, confirm it matches — no new texture, no
+	# new material.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	assert_true(iid != "", "character created")
+	var before: int = int(ch.get_part_shader_parameter(iid, "body_chest", "base_index"))
+	assert_true(ch.apply_palette_index(iid, "body_chest", "primary_index", 200), "apply_palette_index succeeds")
+	assert_eq(int(ch.get_part_shader_parameter(iid, "body_chest", "primary_index")), 200, "primary_index round-trips through the shader parameter")
+	assert_eq(int(ch.get_part_shader_parameter(iid, "body_chest", "base_index")), before, "base_index unchanged by primary swap")
+	ch.apply_palette_index(iid, "body_chest", "accent_index", 9999)
+	assert_eq(int(ch.get_part_shader_parameter(iid, "body_chest", "accent_index")), 255, "oversized index clamps to 255")
+	ch.free()
+
+func _test_character_palette_bad_channel_key() -> void:
+	# Unknown channel keys are rejected (§20), not silently ignored.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	assert_true(iid != "", "character created")
+	assert_false(ch.apply_palette_index(iid, "body_chest", "bogus_channel", 10), "unknown channel key rejected")
+	assert_false(ch.apply_palette_index(iid, "body_chest", "emission_index", 10), "emission_index is not a palette-swap channel")
+	assert_true(ch.apply_palette_index(iid, "body_chest", "accent_index", 10), "known channel key accepted")
+	ch.free()
+
+func _test_character_material_shader_shared() -> void:
+	# All parts share ONE shader AND ONE material resource (§20); only
+	# per-instance parameters differ. Parts on different characters reference the
+	# same Shader and the same ShaderMaterial instance.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	var iid2 := ch.create_character("BoarRider", Vector3.ZERO)
+	assert_true(iid != "" and iid2 != "", "characters created")
+	var m1 := ch.get_part_material(iid, "body_chest")
+	var m2 := ch.get_part_material(iid2, "body")
+	assert_true(m1 is ShaderMaterial and m2 is ShaderMaterial, "parts use ShaderMaterial")
+	assert_true(m1.shader == m2.shader, "parts share the same shader resource")
+	assert_true(m1 == m2, "parts share ONE material resource (per-instance params live on the mesh)")
+	ch.free()
+
+func _test_character_wear_channel() -> void:
+	# Wear derives from the durability tiers (§23): a low-durability equipment
+	# mesh carries a higher `wear` shader parameter than a fresh one, degrading
+	# it visually. Wear is a discrete tier value, not `1 - durability`.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var worn_iid := ch.create_character_from_recipe({
+		"skeleton": "HumanoidSkeleton",
+		"equipment": { "MainHand": { "item": "VeilsteelLongsword", "state": "equipped", "durability": 0.1 } },
+	}, Vector3.ZERO)
+	var fresh_iid := ch.create_character_from_recipe({
+		"skeleton": "HumanoidSkeleton",
+		"equipment": { "MainHand": { "item": "VeilsteelLongsword", "state": "equipped", "durability": 1.0 } },
+	}, Vector3.ZERO)
+	var worn: float = float(ch.get_part_shader_parameter(worn_iid, "MainHand", "wear"))
+	var fresh: float = float(ch.get_part_shader_parameter(fresh_iid, "MainHand", "wear"))
+	assert_true(worn > fresh, "worn equipment carries higher wear than fresh")
+	assert_true(is_equal_approx(worn, 1.0), "wear = Heavily Damaged tier (1.0) at durability 0.1")
+	assert_true(is_equal_approx(fresh, 0.0), "wear = New tier (0.0) at durability 1.0")
+	ch.free()
+
+func _test_character_metal_channel() -> void:
+	# RIGID metal equipment is palette-driven but metallic (§21): its mesh
+	# carries metalness = 1 (from masks.metal) and a metals-region base index
+	# (160–191), not a hardcoded RGB — metal colours flow through the shared
+	# palette.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character_from_recipe({
+		"skeleton": "HumanoidSkeleton",
+		"equipment": { "OffHand": { "item": "FerriteShield", "state": "equipped", "durability": 1.0 } },
+	}, Vector3.ZERO)
+	assert_true(iid != "", "character created")
+	assert_eq(float(ch.get_part_shader_parameter(iid, "OffHand", "metalness")), 1.0, "metal equipment is metallic")
+	var base: int = int(ch.get_part_shader_parameter(iid, "OffHand", "base_index"))
+	assert_true(base >= 160 and base <= 191, "metal base index is in the metals region (160–191)")
+	ch.free()
+
+func _test_character_emission_path() -> void:
+	# Emission (§22) is palette-driven: an item with an emission mask resolves a
+	# palette index in the emission region (192–223) from its emissionColor field.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var def := {
+		"deformationMode": "RIGID",
+		"metal": "none",
+		"masks": { "primary": true, "metal": false, "emission": true },
+		"emissionColor": 205,
+	}
+	var opts := ch._equipment_material_opts(def, { "durability": 1.0 })
+	assert_true(opts.has("emission_index"), "emission items carry an emission_index")
+	assert_true(int(opts["emission_index"]) >= 192 and int(opts["emission_index"]) <= 223, "emission_index in the emission region (192–223)")
+	assert_eq(int(opts["emission_index"]), 205, "emission_index reflects the item's emissionColor field")
+	assert_eq(float(opts["emission_strength"]), 1.0, "emission items have emission_strength = 1")
+	var nondef := {
+		"deformationMode": "RIGID",
+		"metal": "none",
+		"masks": { "primary": true, "metal": false, "emission": false },
+		"emissionColor": 205,
+	}
+	var nonopts := ch._equipment_material_opts(nondef, { "durability": 1.0 })
+	assert_false(nonopts.has("emission_index"), "non-emission items omit emission_index")
+	assert_eq(float(nonopts["emission_strength"]), 0.0, "non-emission items have emission_strength = 0")
+	ch.free()
+
+func _test_character_instance_uniforms_reach_shader() -> void:
+	# set_instance_shader_parameter only reaches the shader when the uniform is
+	# declared `instance uniform`; get_instance_shader_parameter reads the stored
+	# value back regardless, so the round-trip tests can't catch a missing
+	# `instance` keyword. Instance uniforms are excluded from
+	# get_shader_uniform_list() (they're per-instance, not per-material), so
+	# assert the 9 palette/channel uniforms are NOT in that list.
+	var shader: Shader = load("res://src/character/character_material.gdshader")
+	assert_true(shader != null, "character material shader loads")
+	var material_uniforms := {}
+	for u in shader.get_shader_uniform_list():
+		material_uniforms[str(u["name"])] = true
+	var instance_uniforms := ["base_index", "primary_index", "secondary_index", "accent_index", "emission_index", "metalness", "emission_strength", "roughness", "wear"]
+	for key in instance_uniforms:
+		assert_false(material_uniforms.has(key), "uniform '%s' is instance-scoped (a regular uniform would be a no-op write)" % key)
+	# The shared samplers remain material-level uniforms (bound once on the shared
+	# material), so they DO appear in the list.
+	assert_true(material_uniforms.has("palette_tex"), "palette_tex remains a material-level uniform")
+	assert_true(material_uniforms.has("detail_tex"), "detail_tex remains a material-level uniform")
+
+func _test_character_mesh_shared() -> void:
+	# Parts with identical extents share one BoxMesh resource (§43 / Phase 22
+	# mesh-sharing criterion): two instances of the same appearance have the same
+	# proportions, so their body boxes share one BoxMesh.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid1 := ch.create_character("TravellerHuman", Vector3.ZERO)
+	var iid2 := ch.create_character("TravellerHuman", Vector3.ZERO)
+	assert_true(iid1 != "" and iid2 != "", "characters created")
+	var n1 := ch.get_part_node(iid1, "body_chest") as MeshInstance3D
+	var n2 := ch.get_part_node(iid2, "body_chest") as MeshInstance3D
+	assert_true(n1 != null and n2 != null, "body parts exist")
+	assert_true(n1.mesh is BoxMesh and n2.mesh is BoxMesh, "parts use a BoxMesh")
+	assert_true(n1.mesh == n2.mesh, "same-size parts share one BoxMesh resource")
+	ch.free()
+
+func _test_character_proportions_quantized() -> void:
+	# Nearby proportion sliders snap to the same PROPORTION_STEP bucket (§8), so
+	# characters with slightly different sliders still derive identical extents
+	# and share one placeholder mesh — and the mesh size stays on the same grid as
+	# the socket position (no extent/position seam).
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var recipe := ch.deserialize_appearance({
+		"skeleton": "HumanoidSkeleton",
+		"proportions": { "height": 0.96, "bodyMass": 1.04, "shoulderWidth": 1.07 },
+	})
+	var props: Dictionary = recipe["proportions"]
+	assert_true(is_equal_approx(props["height"], 0.95), "0.96 snaps to the 0.95 bucket")
+	assert_true(is_equal_approx(props["bodyMass"], 1.05), "1.04 snaps to the 1.05 bucket")
+	assert_true(is_equal_approx(props["shoulderWidth"], 1.05), "1.07 snaps to the 1.05 bucket")
 	ch.free()
 
 # ---------------------------------------------------------------------------

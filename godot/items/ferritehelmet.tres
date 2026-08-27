@@ -18,6 +18,7 @@ attachments = {"equipped":"socket_head","stored":"socket_back"}
 minLodLevel = 3
 size = [0.34,0.34,0.34]
 metalTone = "ferrite"
+emissionColor = 200
 compatibleTags = ["humanoid","can_wear_helmet"]
 state_machine_field = "condition"
 initial_state = "pristine"

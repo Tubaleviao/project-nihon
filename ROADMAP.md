@@ -887,38 +887,79 @@ by the `.raw` suffix convention above, rather than deferred to Phase 22. See
 
 ---
 
-## Phase 22 — Material and palette pipeline
+## Phase 22 — Material and palette pipeline ✅ Done
 
 **Goal:** Implement the pixel-art material system from `characters.md`: Primary /
 Secondary / Accent masks, Metal + Emission + Wear channels, and per-instance
 palette swaps without extra draw calls.
 
-**Newel dependency:** None.
+**Newel dependency:** None. The palette was already authored in the fabric
+(`GameData.PALETTES`, one `DefaultPalette` with 256 hex entries).
 
 **Deliverables:**
-- Custom `ShaderMaterial` with Primary / Secondary / Accent mask channels; Metal,
-  Emission, and Wear channels driven by texture red, green, blue slots
-- Per-instance palette data passed as `ShaderParameter` arrays — one set per
-  `MeshInstance3D`, no new texture asset per character skin
-- Palette entries sourced from `GameData.CHARACTERS` fabric fields; 256-entry
-  palette cap enforced in the generator
-- Pixel-art texture constraints enforced: Point filtering set on all character
-  textures via import presets, no mip-maps, UV mapping validated against the
-  production checklist in `characters.md`
-- `characters.md` extended with production checklist sign-offs: resolution table,
-  Point filtering settings, UV mapping guide
-- `src/tests/test_suite.gd` — palette swap round-trip test (apply palette,
-  read back `ShaderParameter` values, confirm match)
+- `src/character/character_material.gdshader` — a custom spatial `ShaderMaterial`
+  that samples a shared `256×1` palette texture by per-instance colour index.
+  Primary / Secondary / Accent regions are driven by a `color_mask_tex`
+  (R/G/B); Metal / Emission / Wear channels are driven by a `channel_tex`
+  (R/G/B), each max()'d with a per-instance scalar so the placeholder build
+  (no authored masks) still works — scalars now, authored masks later, one
+  shader.
+- `src/character/character_material.gd` — builds the shared palette
+  `ImageTexture` (256×1, no mip-maps) and ONE shared `ShaderMaterial`, and
+  exposes `set_index` / `get_index` for per-instance palette swaps (§20) via
+  `set_instance_shader_parameter`.
+- `src/character/character_slice.gd` — `_make_box` / equipment assembly now
+  reference the shared `ShaderMaterial` and write per-instance palette indices +
+  channel scalars instead of a per-part `StandardMaterial3D` albedo tint;
+  `get_part_material`, `get_part_shader_parameter`, `get_palette_texture`, and
+  `apply_palette_index` expose the pipeline to tests and tooling. Metal tones
+  resolve to a metals-region palette index (§21, region bounds read from the
+  generated palette's `regions` field); wear derives from the durability tiers
+  (§23); emission resolves a palette index in the emission region from the
+  per-item `emissionColor` field (§22); roughness varies by metal tone + wear
+  (§21).
+- Pixel-art texture constraints enforced on the shader's samplers
+  (`filter_nearest`, `repeat_disable`, no mip-maps) rather than import presets —
+  Point filtering is guaranteed independent of per-machine texture-filter
+  settings.
+- `characters.md` extended with §41.1 production checklist sign-offs:
+  resolution table, Point filtering settings, UV mapping guide.
+- `src/tests/test_suite.gd` — 5 new tests: shared 256×1 palette texture,
+  palette-swap shader-parameter round-trip, shared shader resource, wear
+  derived from durability, and palette-driven metal channel.
 
 **Acceptance criteria:**
-- Palette swap changes character color without creating a new texture asset
-- Two characters with different palettes share the same `Mesh` resource
-- Pixel-art textures render without bilinear blurring (Point filter confirmed)
-- Wear channel visually degrades equipment as durability decreases
+- Palette swap changes character color without creating a new texture asset ✓
+- Two characters with different palettes share ONE `ShaderMaterial` + palette
+  texture (per-instance shader parameters, no new material per character) ✓
+- Parts with identical geometry share ONE `BoxMesh` per distinct size ✓
+- Pixel-art textures render without bilinear blurring (Point filter enforced on
+  the shader samplers) ✓
+- Wear channel visually degrades equipment as durability decreases (wear derived
+  from the §23 durability tiers) ✓
+
+**Implementation notes:**
+- The palette lives in `GameData.PALETTES` (tag `palette`), not
+  `GameData.CHARACTERS` — the earlier roadmap draft named the wrong group. The
+  fabric `DefaultPalette` is fixed at 256 entries and `_color_index` /
+  `CharacterMaterial._idx` clamp indices to `[0, 255]`, so the one-byte palette
+  cap (§19) holds without a generator change.
+- The placeholder build authors no mask textures, so `color_mask_tex` and
+  `channel_tex` default to black: parts render their `base_index` colour and
+  channels fall back to the per-instance scalars. A real asset binds a mask
+  texture and the same shader composites it — the pipeline is the point, not
+  the placeholder art.
 
 **Known simplifications (deferred to Phase 23):**
 - LOD mesh switching not yet tied to this material system.
-- Emission channel is static; dynamic glow (e.g. enchantments) deferred.
+- Emission colour is palette-driven (per-item `emissionColor` index) but static;
+  dynamic glow (e.g. enchantments) deferred.
+- Authored mask textures (Primary/Secondary/Accent/Metal/Emission/Wear) are not
+  yet produced — the placeholder drives colour through per-instance scalars.
+- The fragment shader mixes palette samples and multiplies by the detail texture
+  and wear desaturation in continuous RGB space, so the rendered colour can
+  drift off-palette (§19); snapping the output to the nearest palette entry is
+  deferred.
 
 ---
 

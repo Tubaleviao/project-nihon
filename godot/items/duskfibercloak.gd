@@ -31,4 +31,5 @@ enum Condition {
 @export var minLodLevel: int
 @export var size: Array
 @export var metalTone: String
+@export var emissionColor: int
 @export var compatibleTags: Array

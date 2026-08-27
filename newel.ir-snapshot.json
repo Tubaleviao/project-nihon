@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-26T22:23:57.902Z",
-  "schemaHash": "sha256:e21fd389a6457dd3b10e5b5bf2510ebf79d920e4f3efe164541977c430c190b0",
+  "generatedAt": "2026-08-27T14:40:48.911Z",
+  "schemaHash": "sha256:03c52b55ffd3c6ba16ad8958690d1dc4086459c95446002d3c29b53b99ed12c7",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -8651,6 +8651,15 @@
             "pii": false,
             "defaultValue": "veilsteel"
           },
+          "emissionColor": {
+            "name": "emissionColor",
+            "type": "integer",
+            "description": "Palette index in the emission region (192–223) for emissive regions (§22)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 200
+          },
           "compatibleTags": {
             "name": "compatibleTags",
             "type": "json",
@@ -9357,6 +9366,15 @@
             "pii": false,
             "defaultValue": "ferrite"
           },
+          "emissionColor": {
+            "name": "emissionColor",
+            "type": "integer",
+            "description": "Palette index in the emission region (192–223) for emissive regions (§22)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 200
+          },
           "compatibleTags": {
             "name": "compatibleTags",
             "type": "json",
@@ -9646,6 +9664,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": "veilsteel"
+          },
+          "emissionColor": {
+            "name": "emissionColor",
+            "type": "integer",
+            "description": "Palette index in the emission region (192–223) for emissive regions (§22)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 200
           },
           "compatibleTags": {
             "name": "compatibleTags",
@@ -9947,6 +9974,15 @@
             "pii": false,
             "defaultValue": "none"
           },
+          "emissionColor": {
+            "name": "emissionColor",
+            "type": "integer",
+            "description": "Palette index in the emission region (192–223) for emissive regions (§22)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 200
+          },
           "compatibleTags": {
             "name": "compatibleTags",
             "type": "json",
@@ -10236,6 +10272,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": "ferrite"
+          },
+          "emissionColor": {
+            "name": "emissionColor",
+            "type": "integer",
+            "description": "Palette index in the emission region (192–223) for emissive regions (§22)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 200
           },
           "compatibleTags": {
             "name": "compatibleTags",
@@ -21093,6 +21138,56 @@
               "#aba29a",
               "#afaaa7",
               "#b3b3b3"
+            ]
+          },
+          "regions": {
+            "name": "regions",
+            "type": "json",
+            "description": "Named 32-entry region bounds for the 256-entry palette (§19)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "name": "skin",
+                "start": 0,
+                "end": 31
+              },
+              {
+                "name": "hair",
+                "start": 32,
+                "end": 63
+              },
+              {
+                "name": "primary",
+                "start": 64,
+                "end": 95
+              },
+              {
+                "name": "secondary",
+                "start": 96,
+                "end": 127
+              },
+              {
+                "name": "accent",
+                "start": 128,
+                "end": 159
+              },
+              {
+                "name": "metals",
+                "start": 160,
+                "end": 191
+              },
+              {
+                "name": "emission",
+                "start": 192,
+                "end": 223
+              },
+              {
+                "name": "eyes",
+                "start": 224,
+                "end": 255
+              }
             ]
           }
         },

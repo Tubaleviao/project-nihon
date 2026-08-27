@@ -25,6 +25,7 @@ Full torso armour forged from veilsteel plates over a ferrite under-layer. Excep
 | `minLodLevel` | integer | yes | Coarsest LOD at which this part still renders (§35) |
 | `size` | json | yes | Placeholder mesh extents [x, y, z] |
 | `metalTone` | string | yes | Metal tone for metal-mask regions (§21) |
+| `emissionColor` | integer | yes | Palette index in the emission region (192–223) for emissive regions (§22) |
 | `compatibleTags` | json | yes | Semantic tags required to equip (§39) |
 
 ## Relations

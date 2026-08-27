@@ -4,3 +4,4 @@ extends Resource
 
 
 @export var entries: Array
+@export var regions: Array
