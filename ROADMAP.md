@@ -932,6 +932,7 @@ palette swaps without extra draw calls.
 - Palette swap changes character color without creating a new texture asset ✓
 - Two characters with different palettes share ONE `ShaderMaterial` + palette
   texture (per-instance shader parameters, no new material per character) ✓
+- Parts with identical geometry share ONE `BoxMesh` per distinct size ✓
 - Pixel-art textures render without bilinear blurring (Point filter enforced on
   the shader samplers) ✓
 - Wear channel visually degrades equipment as durability decreases (wear derived
@@ -955,6 +956,10 @@ palette swaps without extra draw calls.
   dynamic glow (e.g. enchantments) deferred.
 - Authored mask textures (Primary/Secondary/Accent/Metal/Emission/Wear) are not
   yet produced — the placeholder drives colour through per-instance scalars.
+- The fragment shader mixes palette samples and multiplies by the detail texture
+  and wear desaturation in continuous RGB space, so the rendered colour can
+  drift off-palette (§19); snapping the output to the nearest palette entry is
+  deferred.
 
 ---
 

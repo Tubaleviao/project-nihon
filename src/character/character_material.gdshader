@@ -9,11 +9,11 @@ shader_type spatial;
 // material per part; two characters with different palettes share the same GPU
 // texture, shader, and material resource.
 //
-// The per-instance uniforms are regular `uniform`s driven by
-// `GeometryInstance3D.set_instance_shader_parameter` (the documented path for a
-// shared material on individual meshes). The `instance uniform` GLSL keyword
-// (true per-instance buffers) is a MultiMesh/particle optimisation deferred to
-// when GPU instancing lands (roadmap §42).
+// The per-instance uniforms below are declared `instance uniform`: that is what
+// makes `GeometryInstance3D.set_instance_shader_parameter` reach the shader.
+// Without the `instance` keyword the write is a no-op at render time (the part
+// renders the uniform's default, not the per-instance value) even though
+// `get_instance_shader_parameter` still reads the stored value back.
 //
 // Mask channels (artist-authored, §17/§18):
 //   color_mask_tex  R = Primary, G = Secondary, B = Accent
@@ -25,34 +25,35 @@ shader_type spatial;
 // either drives the result — scalars now, authored masks later, one shader.
 
 // Shared 256-entry palette (§19): nearest-filtered, no mipmaps, no tiling.
-// The sampler defaults to black so an unbound palette renders a flat neutral
-// rather than sampling garbage.
-uniform sampler2D palette_tex : hint_default_black, filter_nearest, repeat_disable;
+// `source_color` marks it as colour data (sRGB-decoded); `hint_default_black`
+// so an unbound palette renders a flat neutral rather than sampling garbage.
+uniform sampler2D palette_tex : source_color, hint_default_black, filter_nearest, repeat_disable;
 
-// Colour-region masks (§17/§18): R=Primary, G=Secondary, B=Accent.
+// Colour-region masks (§17/§18): R=Primary, G=Secondary, B=Accent. Mask data —
+// NOT a colour source, so no `source_color` hint.
 uniform sampler2D color_mask_tex : hint_default_black, filter_nearest, repeat_disable;
 
-// Material channels (§21/§22/§23): R=Metal, G=Emission, B=Wear.
+// Material channels (§21/§22/§23): R=Metal, G=Emission, B=Wear. Mask data.
 uniform sampler2D channel_tex : hint_default_black, filter_nearest, repeat_disable;
 
-// Low-res detail/albedo texture (§24/§25), nearest-filtered like the palette.
-uniform sampler2D detail_tex : hint_default_white, filter_nearest, repeat_disable;
+// Low-res detail/albedo texture (§24/§25): colour data, nearest-filtered.
+uniform sampler2D detail_tex : source_color, hint_default_white, filter_nearest, repeat_disable;
 
 // Per-instance palette indices (§20) — one byte each.
-uniform int base_index = 0;
-uniform int primary_index = 0;
-uniform int secondary_index = 0;
-uniform int accent_index = 0;
+instance uniform int base_index = 0;
+instance uniform int primary_index = 0;
+instance uniform int secondary_index = 0;
+instance uniform int accent_index = 0;
 
 // Per-instance emission index, within the emission region (192–223, §22).
-uniform int emission_index = 192;
+instance uniform int emission_index = 192;
 
 // Per-instance channel scalars — the placeholder path; a real texture channel
 // is max()'d in so either source drives the result.
-uniform float metalness : hint_range(0.0, 1.0) = 0.0;
-uniform float emission_strength : hint_range(0.0, 1.0) = 0.0;
-uniform float roughness : hint_range(0.0, 1.0) = 0.55;
-uniform float wear : hint_range(0.0, 1.0) = 0.0;
+instance uniform float metalness : hint_range(0.0, 1.0) = 0.0;
+instance uniform float emission_strength : hint_range(0.0, 1.0) = 0.0;
+instance uniform float roughness : hint_range(0.0, 1.0) = 0.55;
+instance uniform float wear : hint_range(0.0, 1.0) = 0.0;
 
 vec3 palette_sample(int idx) {
 	float u = (float(clamp(idx, 0, 255)) + 0.5) / 256.0;

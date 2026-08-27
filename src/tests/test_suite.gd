@@ -94,6 +94,8 @@ func run() -> void:
 	_run_test("character: wear channel derives from tiers",      _test_character_wear_channel)
 	_run_test("character: metal channel is palette-driven",      _test_character_metal_channel)
 	_run_test("character: emission path uses palette index",     _test_character_emission_path)
+	_run_test("character: instance uniforms reach shader",        _test_character_instance_uniforms_reach_shader)
+	_run_test("character: same-size parts share one BoxMesh",     _test_character_mesh_shared)
 	_run_test("crafting: recipe data loaded from fabric",     _test_crafting_recipe_data_loaded)
 	_run_test("crafting: skill guard blocks low tier",        _test_crafting_skill_guard_blocks)
 	_run_test("crafting: consumes inputs and produces output", _test_crafting_consumes_and_produces)
@@ -995,6 +997,42 @@ func _test_character_emission_path() -> void:
 	var nonopts := ch._equipment_material_opts(nondef, { "durability": 1.0 })
 	assert_false(nonopts.has("emission_index"), "non-emission items omit emission_index")
 	assert_eq(float(nonopts["emission_strength"]), 0.0, "non-emission items have emission_strength = 0")
+	ch.free()
+
+func _test_character_instance_uniforms_reach_shader() -> void:
+	# set_instance_shader_parameter only reaches the shader when the uniform is
+	# declared `instance uniform`; get_instance_shader_parameter reads the stored
+	# value back regardless, so the round-trip tests can't catch a missing
+	# `instance` keyword. Instance uniforms are excluded from
+	# get_shader_uniform_list() (they're per-instance, not per-material), so
+	# assert the 9 palette/channel uniforms are NOT in that list.
+	var shader: Shader = load("res://src/character/character_material.gdshader")
+	assert_true(shader != null, "character material shader loads")
+	var material_uniforms := {}
+	for u in shader.get_shader_uniform_list():
+		material_uniforms[str(u["name"])] = true
+	var instance_uniforms := ["base_index", "primary_index", "secondary_index", "accent_index", "emission_index", "metalness", "emission_strength", "roughness", "wear"]
+	for key in instance_uniforms:
+		assert_false(material_uniforms.has(key), "uniform '%s' is instance-scoped (a regular uniform would be a no-op write)" % key)
+	# The shared samplers remain material-level uniforms (bound once on the shared
+	# material), so they DO appear in the list.
+	assert_true(material_uniforms.has("palette_tex"), "palette_tex remains a material-level uniform")
+	assert_true(material_uniforms.has("detail_tex"), "detail_tex remains a material-level uniform")
+
+func _test_character_mesh_shared() -> void:
+	# Parts with identical extents share one BoxMesh resource (§43 / Phase 22
+	# mesh-sharing criterion): two instances of the same appearance have the same
+	# proportions, so their body boxes share one BoxMesh.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid1 := ch.create_character("TravellerHuman", Vector3.ZERO)
+	var iid2 := ch.create_character("TravellerHuman", Vector3.ZERO)
+	assert_true(iid1 != "" and iid2 != "", "characters created")
+	var n1 := ch.get_part_node(iid1, "body_chest") as MeshInstance3D
+	var n2 := ch.get_part_node(iid2, "body_chest") as MeshInstance3D
+	assert_true(n1 != null and n2 != null, "body parts exist")
+	assert_true(n1.mesh is BoxMesh and n2.mesh is BoxMesh, "parts use a BoxMesh")
+	assert_true(n1.mesh == n2.mesh, "same-size parts share one BoxMesh resource")
 	ch.free()
 
 # ---------------------------------------------------------------------------

@@ -916,10 +916,18 @@ func _legs_bone(rig) -> String:
 			return name
 	return ""
 
+## Cache BoxMesh per distinct size so parts with identical extents share one mesh
+## resource (characters.md §43 — the Phase 22 mesh-sharing criterion). Static so
+## the cache spans every CharacterSlice instance (tests create and free many).
+static var _box_meshes: Dictionary = {}
+
 func _make_box(size: Vector3, palette_index: int, opts: Dictionary = {}) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = size
+	var box: BoxMesh = _box_meshes.get(size, null)
+	if box == null:
+		box = BoxMesh.new()
+		box.size = size
+		_box_meshes[size] = box
 	mesh.mesh = box
 	# ONE shared ShaderMaterial for every part (§20): the palette index and
 	# channel scalars are per-instance parameters, never a new material. The
