@@ -1028,9 +1028,9 @@ character rendering scales gracefully with draw distance and player count.
 
 ---
 
-## Phase 24 — Social systems and player economy
+## Phase 24 — Social systems and player economy ✅ Done
 
-**Goal:** Ground the `CommunityOwnsTheFuture` and `EconomyIsPlayer-Driven`
+**Goal:** Ground the `CommunityOwnsTheFuture` and `EconomyIsPlayerDriven`
 constitution principles in real game mechanics: trade, social skills, and
 community governance hooks.
 
@@ -1038,7 +1038,7 @@ community governance hooks.
 `fabric/gameplay/skills/social.js`.
 
 **Deliverables:**
-- `src/trade/trade_slice.gd` — player-to-player trade UI: propose trade (items +
+- `src/trade/trade_slice.gd` — player-to-player trade: propose trade (items +
   quantities), counter-offer, accept/reject; secured via host authority in
   multiplayer; emits `trade_completed` on the bus
 - `src/world/market_slice.gd` — persistent world market: players list items at
@@ -1054,11 +1054,53 @@ community governance hooks.
 - UI panels for trade, market, and proposals wired into `ui_slice.gd`
 
 **Acceptance criteria:**
-- Two players can complete a trade; inventory reflects the exchange on both sides
-- Market listings persist across save/load
-- Social skill tier visibly affects a trade or leadership action
+- Two players can complete a trade; inventory reflects the exchange on both sides ✓
+- Market listings persist across save/load ✓
+- Social skill tier visibly affects a trade or leadership action ✓
 - Proposal system allows submission, voting, and ratification; accepted proposals
-  update a runtime decisions log
+  update a runtime decisions log ✓
+
+**Implementation notes:**
+- **Trade broker fee** is the concrete Diplomacy effect: the local player's
+  Diplomacy tier determines the fraction of received goods withheld as a broker
+  fee (`TradeSlice.TRADE_TAX`: novice 10% → master 0%). This makes the social
+  skill tree visibly affect a trade without a second skill lookup path.
+- **`Lore` skill does not exist in the fabric** — `fabric/gameplay/skills/social.js`
+  defines only `Diplomacy`, `Trade`, `Speechcraft`, and `Leadership`. The
+  `Lore`-unlocks-wiki hook is therefore deferred until a `Lore` skill is
+  authored (see Known simplifications).
+- **`Leadership` guild-formation gate** is implemented as
+  `ProposalSlice.can_form_guild(tier)` (apprentice or higher). Guild formation
+  itself (the guild entity, roster, permissions) is deferred — only the skill
+  gate is wired.
+- **No currency model exists yet.** Market `price` is an abstract numeric value
+  recorded on the listing; a buy transfers the item to the buyer and removes
+  the listing, but no currency changes hands. Currency exchange is deferred
+  until the fabric defines an economy token.
+- **Trade resolution is inventory-symmetric** via a pluggable party-inventory
+  map (`set_party_inventory`): the local player uses `inventory_slice`; tests
+  inject a second `InventorySlice` to model the remote side, so "both sides"
+  exchange is asserted directly.
+- **Market expiry** is lazy: `get_listings` filters by `expires_at`, and
+  `expire_listings()` removes + emits `market_listing_expired`. The save
+  snapshot carries `listed_at`/`expires_at`, so a restored listing keeps its
+  original deadline.
+- **Ratification** is threshold-over-votes-cast (`set_ratification_threshold`,
+  default 0.6): a proposal ratifies the moment the for-fraction reaches the
+  threshold, then records into the runtime decisions log and emits
+  `proposal_ratified`.
+
+**Known simplifications (deferred):**
+- **Currency exchange** — `price` is metadata only; no economy token is
+  transferred on buy/sell (no currency model in the fabric yet).
+- **`Lore` skill** — not authored in the fabric; the "Lore unlocks advanced
+  wiki entries" hook needs a `Lore` skill entity first.
+- **Full guild system** — `can_form_guild` gates formation, but guild entity,
+  roster, and permissions are not built.
+- **Trade UI is a stub** — the trade window documents the mechanic; actual
+  propose/counter-offer flow needs a second player or NPC counterparty UI.
+- **Market listing escrow** — listings are records, not an escrowed item
+  reserve; a seller's inventory is not debited on list.
 
 ---
 

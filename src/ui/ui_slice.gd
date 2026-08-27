@@ -22,11 +22,16 @@ extends Node
 const WINDOW_INVENTORY  := "inventory"
 const WINDOW_TECHNOLOGY := "technology"
 const WINDOW_CRAFTING   := "crafting"
+const WINDOW_TRADE      := "trade"
+const WINDOW_MARKET     := "market"
+const WINDOW_PROPOSALS  := "proposals"
 
 ## Set by game_root after instantiation.
 var inventory_slice: Node = null
 var crafting_slice: Node = null
 var technology_slice: Node = null
+var market_slice: Node = null
+var proposal_slice: Node = null
 
 var _ui: CanvasLayer = null
 var _panels: Dictionary = {}                 # panel name -> PanelContainer
@@ -35,6 +40,8 @@ var _inventory_items: Label = null
 var _crafting_box: VBoxContainer = null
 var _technology_box: VBoxContainer = null
 var _technology_feedback: Label = null
+var _market_box: VBoxContainer = null
+var _proposal_box: VBoxContainer = null
 
 func _ready() -> void:
 	_build_ui()
@@ -45,6 +52,11 @@ func _ready() -> void:
 	GameBus.inventory_changed.connect(_on_inventory_changed)
 	GameBus.block_mined.connect(_on_block_mined)
 	GameBus.block_placed.connect(_on_block_placed)
+	GameBus.market_listing_created.connect(_on_market_changed)
+	GameBus.market_listing_purchased.connect(_on_market_changed)
+	GameBus.market_listing_expired.connect(_on_market_changed)
+	GameBus.proposal_submitted.connect(_on_proposal_changed)
+	GameBus.proposal_ratified.connect(_on_proposal_changed)
 	refresh_all()
 
 func _input(event: InputEvent) -> void:
@@ -56,6 +68,12 @@ func _input(event: InputEvent) -> void:
 				toggle_window(WINDOW_TECHNOLOGY)
 			KEY_C:
 				toggle_window(WINDOW_CRAFTING)
+			KEY_B:
+				toggle_window(WINDOW_TRADE)
+			KEY_M:
+				toggle_window(WINDOW_MARKET)
+			KEY_G:
+				toggle_window(WINDOW_PROPOSALS)
 			KEY_ESCAPE:
 				if any_window_open():
 					_close_all_windows()
@@ -109,6 +127,8 @@ func refresh_all() -> void:
 	refresh_inventory()
 	refresh_crafting()
 	refresh_technology()
+	refresh_market()
+	refresh_proposals()
 
 # ---------------------------------------------------------------------------
 # Pure projections (testable without a scene tree)
@@ -199,6 +219,46 @@ func technology_rows() -> Array:
 		})
 	return rows
 
+## One row per active market listing: { id, seller, item_id, quantity, price }.
+func market_rows() -> Array:
+	var rows: Array = []
+	if market_slice == null:
+		return rows
+	for listing in market_slice.get_listings():
+		var l: Dictionary = listing
+		rows.append({
+			"id": str(l["id"]),
+			"seller": str(l["seller"]),
+			"item_id": str(l["item_id"]),
+			"quantity": int(l["quantity"]),
+			"price": float(l["price"]),
+		})
+	return rows
+
+## One row per proposal: { id, title, author, state, for, against }.
+func proposal_rows() -> Array:
+	var rows: Array = []
+	if proposal_slice == null:
+		return rows
+	for p in proposal_slice.get_all_proposals():
+		var votes: Dictionary = p.get("votes", {})
+		var for_count: int = 0
+		var against_count: int = 0
+		for voter in votes:
+			if votes[voter] == "for":
+				for_count += 1
+			else:
+				against_count += 1
+		rows.append({
+			"id": str(p["id"]),
+			"title": str(p.get("title", "")),
+			"author": str(p.get("author", "")),
+			"state": str(p.get("state", "proposed")),
+			"for": for_count,
+			"against": against_count,
+		})
+	return rows
+
 ## A tech is researchable from the window only when still locked and every
 ## prerequisite is unlocked. Material availability is validated at research time
 ## (begin_research), not here.
@@ -266,6 +326,35 @@ func refresh_technology() -> void:
 		hbox.add_child(lbl)
 		_technology_box.add_child(hbox)
 
+func refresh_market() -> void:
+	if _market_box == null:
+		return
+	for child in _market_box.get_children():
+		child.queue_free()
+	for row in market_rows():
+		var r: Dictionary = row
+		var hbox := HBoxContainer.new()
+		hbox.add_theme_constant_override("separation", 8)
+		var btn := Button.new()
+		btn.text = "Buy"
+		btn.pressed.connect(_on_market_buy_pressed.bind(str(r["id"])))
+		hbox.add_child(btn)
+		var lbl := Label.new()
+		lbl.text = "%s  %s ×%d  @ %.2f  (%s)" % [r["id"], r["item_id"], r["quantity"], r["price"], r["seller"]]
+		hbox.add_child(lbl)
+		_market_box.add_child(hbox)
+
+func refresh_proposals() -> void:
+	if _proposal_box == null:
+		return
+	for child in _proposal_box.get_children():
+		child.queue_free()
+	for row in proposal_rows():
+		var r: Dictionary = row
+		var lbl := Label.new()
+		lbl.text = "%s [%s] %s  (for:%d / against:%d) — %s" % [r["id"], r["state"], r["title"], r["for"], r["against"], r["author"]]
+		_proposal_box.add_child(lbl)
+
 # ---------------------------------------------------------------------------
 # Bus handlers
 # ---------------------------------------------------------------------------
@@ -308,6 +397,18 @@ func _on_block_mined(_material: String, _quantity: int, _position: Vector3) -> v
 func _on_block_placed(_material: String, _position: Vector3) -> void:
 	refresh_inventory()
 
+func _on_market_changed(_a = null, _b = null, _c = null, _d = 0, _e = 0.0) -> void:
+	refresh_market()
+
+func _on_proposal_changed(_a = null, _b = null) -> void:
+	refresh_proposals()
+
+func _on_market_buy_pressed(listing_id: String) -> void:
+	if market_slice != null:
+		market_slice.buy(listing_id, "player")
+	refresh_market()
+	refresh_inventory()
+
 # ---------------------------------------------------------------------------
 # UI construction
 # ---------------------------------------------------------------------------
@@ -321,6 +422,9 @@ func _build_ui() -> void:
 	_panels[WINDOW_INVENTORY] = _build_window(WINDOW_INVENTORY, "Inventory", _build_inventory_content(), Vector2(24, 24))
 	_panels[WINDOW_TECHNOLOGY] = _build_window(WINDOW_TECHNOLOGY, "Technology", _build_technology_content(), Vector2(470, 24))
 	_panels[WINDOW_CRAFTING] = _build_window(WINDOW_CRAFTING, "Crafting", _build_crafting_content(), Vector2(24, 360))
+	_panels[WINDOW_TRADE] = _build_window(WINDOW_TRADE, "Trade", _build_trade_content(), Vector2(470, 360))
+	_panels[WINDOW_MARKET] = _build_window(WINDOW_MARKET, "Market", _build_market_content(), Vector2(24, 700))
+	_panels[WINDOW_PROPOSALS] = _build_window(WINDOW_PROPOSALS, "Proposals", _build_proposals_content(), Vector2(470, 700))
 
 func _build_window(key: String, title: String, content: Control, position: Vector2) -> PanelContainer:
 	var panel := PanelContainer.new()
@@ -392,6 +496,33 @@ func _build_technology_content() -> Control:
 	scroll.add_child(_technology_box)
 	vbox.add_child(scroll)
 	return vbox
+
+func _build_trade_content() -> Control:
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	var lbl := Label.new()
+	lbl.text = "Player-to-player trade is initiated in-world.\nYour Diplomacy tier lowers the broker fee on received goods."
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(lbl)
+	return vbox
+
+func _build_market_content() -> Control:
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_market_box = VBoxContainer.new()
+	_market_box.add_theme_constant_override("separation", 4)
+	_market_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(_market_box)
+	return scroll
+
+func _build_proposals_content() -> Control:
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_proposal_box = VBoxContainer.new()
+	_proposal_box.add_theme_constant_override("separation", 4)
+	_proposal_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(_proposal_box)
+	return scroll
 
 # ---------------------------------------------------------------------------
 # Helpers

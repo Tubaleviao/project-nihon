@@ -292,3 +292,35 @@ signal character_death_requested(instance_id: String)
 ## changes (ROADMAP Phase 20). state is the Locomotion.State name string
 ## ("IDLE", "WALK", "RUN", "FALL", "LAND", "ATTACK", "DEATH").
 signal character_state_changed(instance_id: String, state: String)
+
+# ---------------------------------------------------------------------------
+# Trade (Phase 24)
+# ---------------------------------------------------------------------------
+
+## Emitted by TradeSlice when a two-party trade resolves (both accepted and the
+## exchange committed). trade is the full trade record.
+signal trade_completed(trade: Dictionary)
+
+# ---------------------------------------------------------------------------
+# Market (Phase 24)
+# ---------------------------------------------------------------------------
+
+## Emitted by MarketSlice when a listing is created.
+signal market_listing_created(listing_id: String, seller: String, item_id: String, quantity: int, price: float)
+
+## Emitted by MarketSlice when a listing is purchased.
+signal market_listing_purchased(listing_id: String, buyer: String, item_id: String, quantity: int)
+
+## Emitted by MarketSlice when a listing expires without a buyer.
+signal market_listing_expired(listing_id: String)
+
+# ---------------------------------------------------------------------------
+# Governance / proposals (Phase 24)
+# ---------------------------------------------------------------------------
+
+## Emitted by ProposalSlice when a proposal is submitted for community vote.
+signal proposal_submitted(proposal_id: String)
+
+## Emitted by ProposalSlice when a proposal reaches ratification threshold.
+signal proposal_ratified(proposal_id: String, title: String)
+

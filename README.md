@@ -44,7 +44,7 @@ pnpm generate   # generate the design bible into bible/
 | 21 | Asset separation and public placeholders | Done |
 | 22 | Material and palette pipeline | Done |
 | 23 | LOD and composition simplification | Done |
-| 24 | Social systems and player economy | Planned |
+| 24 | Social systems and player economy | Done |
 
 See [ROADMAP.md](ROADMAP.md) for the full spec, deliverables, and acceptance criteria for each phase.
 

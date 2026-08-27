@@ -22,6 +22,9 @@ const TechnologySlice := preload("res://src/technology/technology_slice.gd")
 const UiSlice         := preload("res://src/ui/ui_slice.gd")
 const VoxelSlice      := preload("res://src/terrain/voxel_slice.gd")
 const StationSlice    := preload("res://src/world/station_slice.gd")
+const MarketSlice     := preload("res://src/world/market_slice.gd")
+const TradeSlice      := preload("res://src/trade/trade_slice.gd")
+const ProposalSlice   := preload("res://src/governance/proposal_slice.gd")
 const Minimap         := preload("res://src/ui/minimap.gd")
 const PlayerSlice     := preload("res://src/player/player_slice.gd")
 const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
@@ -182,6 +185,19 @@ func run() -> void:
 	_run_test("asset: placeholder resolves at canonical path",  _test_asset_placeholder_resolves)
 	_run_test("asset: no private-only paths hardcoded",          _test_asset_no_private_paths_hardcoded)
 	_run_test("asset: pck round-trip proves override works",    _test_asset_pck_round_trip_override)
+	_run_test("trade: both accept resolves exchange",           _test_trade_both_accept_resolves)
+	_run_test("trade: counter-offer requires prior offer",      _test_trade_counter_offer_requires_offer)
+	_run_test("trade: reject closes session",                   _test_trade_reject)
+	_run_test("trade: missing goods blocks resolution",         _test_trade_missing_goods)
+	_run_test("trade: diplomacy tier lowers broker fee",        _test_trade_diplomacy_lowers_fee)
+	_run_test("market: list and browse listings",               _test_market_list_browse)
+	_run_test("market: buy transfers item to buyer",            _test_market_buy_transfers)
+	_run_test("market: expired listing is not browsable",       _test_market_expired_not_browsable)
+	_run_test("market: listings persist across save/load",      _test_market_persistence)
+	_run_test("proposal: submit, vote, ratify",                 _test_proposal_submit_vote_ratify)
+	_run_test("proposal: ratification updates decisions log",   _test_proposal_decisions_log)
+	_run_test("proposal: below threshold stays proposed",       _test_proposal_below_threshold)
+	_run_test("proposal: leadership gates guild formation",     _test_proposal_leadership_guild)
 
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
@@ -2604,6 +2620,194 @@ func _test_asset_pck_round_trip_override() -> void:
 		"bytes read back through resolve_path match what the fixture pck actually shipped")
 
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(src_path))
+
+# ---------------------------------------------------------------------------
+# Trade slice tests (Phase 24)
+# ---------------------------------------------------------------------------
+
+func _test_trade_both_accept_resolves() -> void:
+	var inv_a := InventorySlice.new()
+	add_child(inv_a)
+	var inv_b := InventorySlice.new()
+	add_child(inv_b)
+	inv_a.add_item("wolf_fang", 5)
+	inv_b.add_item("hawk_feather", 3)
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("player", inv_a)
+	t.set_party_inventory("peer", inv_b)
+	t.set_skill("Diplomacy", "master")   # tax-free so the exchange is clean
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "wolf_fang": 5 }, { "hawk_feather": 3 })
+	t.propose(tid, "peer", { "hawk_feather": 3 }, { "wolf_fang": 5 })
+	t.accept(tid, "player")
+	var result: Dictionary = t.accept(tid, "peer")
+	assert_true(bool(result.get("success", false)), "trade resolves when both accept")
+	assert_eq(inv_a.get_item_count("wolf_fang"), 0, "player gave away wolf fangs")
+	assert_eq(inv_a.get_item_count("hawk_feather"), 3, "player received hawk feathers")
+	assert_eq(inv_b.get_item_count("hawk_feather"), 0, "peer gave away hawk feathers")
+	assert_eq(inv_b.get_item_count("wolf_fang"), 5, "peer received wolf fangs")
+	t.free()
+	inv_a.free()
+	inv_b.free()
+
+func _test_trade_counter_offer_requires_offer() -> void:
+	var t := TradeSlice.new()
+	add_child(t)
+	var tid := t.start_trade("player", "peer")
+	var result: Dictionary = t.counter_offer(tid, "player", { "wolf_fang": 1 }, {})
+	assert_false(bool(result.get("success", false)), "counter-offer without a prior offer fails")
+	assert_eq(str(result.get("reason", "")), "no_offer", "reason is no_offer")
+	t.free()
+
+func _test_trade_reject() -> void:
+	var t := TradeSlice.new()
+	add_child(t)
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "wolf_fang": 1 }, {})
+	t.reject(tid, "player")
+	assert_eq(str(t.get_trade(tid)["state"]), "rejected", "rejected trade state is rejected")
+	t.free()
+
+func _test_trade_missing_goods() -> void:
+	var inv_a := InventorySlice.new()
+	add_child(inv_a)
+	var inv_b := InventorySlice.new()
+	add_child(inv_b)
+	# Player has no wolf_fang to give.
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("player", inv_a)
+	t.set_party_inventory("peer", inv_b)
+	t.set_skill("Diplomacy", "master")
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "wolf_fang": 5 }, {})
+	t.propose(tid, "peer", {}, { "wolf_fang": 5 })
+	t.accept(tid, "player")
+	var result: Dictionary = t.accept(tid, "peer")
+	assert_false(bool(result.get("success", false)), "trade with missing goods fails")
+	assert_true(str(result.get("reason", "")).begins_with("missing_goods"), "reason is missing_goods")
+	t.free()
+	inv_a.free()
+	inv_b.free()
+
+func _test_trade_diplomacy_lowers_fee() -> void:
+	var inv_a := InventorySlice.new()
+	add_child(inv_a)
+	var inv_b := InventorySlice.new()
+	add_child(inv_b)
+	inv_b.add_item("hawk_feather", 10)
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("player", inv_a)
+	t.set_party_inventory("peer", inv_b)
+	# Novice Diplomacy (default) applies a 10% broker fee to received goods.
+	t.set_skill("Diplomacy", "novice")
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", {}, { "hawk_feather": 10 })
+	t.propose(tid, "peer", { "hawk_feather": 10 }, {})
+	t.accept(tid, "player")
+	t.accept(tid, "peer")
+	assert_eq(inv_a.get_item_count("hawk_feather"), 9, "novice diplomacy: 10 → 9 after 10% fee")
+	t.free()
+	inv_a.free()
+	inv_b.free()
+
+# ---------------------------------------------------------------------------
+# Market slice tests (Phase 24)
+# ---------------------------------------------------------------------------
+
+func _test_market_list_browse() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	var id1 := m.list_item("seller_a", "hawk_feather", 5, 10.0)
+	var id2 := m.list_item("seller_b", "wolf_fang", 3, 20.0)
+	assert_true(id1 != "" and id2 != "", "listings created with non-empty ids")
+	assert_eq(m.get_listings().size(), 2, "two active listings browsable")
+	m.free()
+
+func _test_market_buy_transfers() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	m.inventory_slice = inv
+	var id := m.list_item("seller", "hawk_feather", 3, 5.0)
+	var result: Dictionary = m.buy(id, "player")
+	assert_true(bool(result.get("success", false)), "buy succeeds")
+	assert_eq(inv.get_item_count("hawk_feather"), 3, "item transferred to buyer inventory")
+	assert_eq(m.get_listings().size(), 0, "purchased listing removed")
+	m.free()
+	inv.free()
+
+func _test_market_expired_not_browsable() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	var id := m.list_item("seller", "hawk_feather", 1, 5.0, 0.0)
+	assert_eq(m.get_listings().size(), 0, "expired listing not browsable")
+	assert_eq(m.get_all_listings().size(), 1, "still present until expire_listings")
+	var n := m.expire_listings()
+	assert_eq(n, 1, "one listing expired")
+	assert_eq(m.get_all_listings().size(), 0, "expired listing removed")
+	m.free()
+
+func _test_market_persistence() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	m.list_item("seller", "hawk_feather", 5, 7.5)
+	var data: Dictionary = m.get_market_data()
+	assert_eq(data.size(), 1, "one listing serialized")
+	var m2 := MarketSlice.new()
+	add_child(m2)
+	m2.apply_market_data(data)
+	var listings: Array = m2.get_listings()
+	assert_eq(listings.size(), 1, "listing restored")
+	assert_eq(str(listings[0]["item_id"]), "hawk_feather", "item id preserved")
+	assert_eq(int(listings[0]["quantity"]), 5, "quantity preserved")
+	m.free()
+	m2.free()
+
+# ---------------------------------------------------------------------------
+# Governance / proposal tests (Phase 24)
+# ---------------------------------------------------------------------------
+
+func _test_proposal_submit_vote_ratify() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	var pid := p.submit_proposal("alice", "Allow X", "body")
+	assert_true(pid != "", "proposal submitted with an id")
+	p.vote(pid, "bob", "for")
+	assert_eq(str(p.get_proposal(pid)["state"]), "accepted", "unanimous vote ratifies")
+	p.free()
+
+func _test_proposal_decisions_log() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	var pid := p.submit_proposal("alice", "Ratify the thing", "body")
+	p.vote(pid, "bob", "for")
+	var log: Array = p.get_decisions_log()
+	assert_eq(log.size(), 1, "one ratified proposal logged")
+	assert_eq(str(log[0]["title"]), "Ratify the thing", "log records the title")
+	assert_eq(str(log[0]["state"]), "accepted", "log records accepted state")
+	p.free()
+
+func _test_proposal_below_threshold() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.set_ratification_threshold(0.6)
+	var pid := p.submit_proposal("alice", "X", "body")
+	p.vote(pid, "a", "against")
+	p.vote(pid, "b", "for")
+	assert_eq(str(p.get_proposal(pid)["state"]), "proposed", "1 for / 2 votes stays proposed")
+	p.free()
+
+func _test_proposal_leadership_guild() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	assert_false(p.can_form_guild("novice"), "novice cannot form a guild")
+	assert_true(p.can_form_guild("apprentice"), "apprentice can form a guild")
+	assert_true(p.can_form_guild("master"), "master can form a guild")
+	p.free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers
