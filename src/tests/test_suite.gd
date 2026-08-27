@@ -74,6 +74,12 @@ func run() -> void:
 	_run_test("character: spawns non-humanoid",               _test_character_spawns_nonhumanoid)
 	_run_test("character: unknown appearance rejected",       _test_character_unknown_appearance)
 	_run_test("character: LOD hides fine detail",             _test_character_lod_hides_detail)
+	_run_test("character: LOD distance thresholds map to level", _test_character_lod_distance_thresholds)
+	_run_test("character: LOD impostor billboard swap",        _test_character_lod_impostor)
+	_run_test("character: LOD auto resolves by distance",      _test_character_lod_auto_distance)
+	_run_test("character: LOD medium hides fine detail",       _test_character_lod_medium_hides_fine_detail)
+	_run_test("character: LOD hysteresis on thresholds",       _test_character_lod_hysteresis)
+	_run_test("character: LOD equipping at impostor hides node", _test_character_lod_equip_at_impostor)
 	_run_test("character: skeleton rig builds bone hierarchy",_test_character_skeleton_rig)
 	_run_test("character: locomotion idle→walk→run by speed", _test_character_locomotion_speed)
 	_run_test("character: blend curve maps speed to 0..1",     _test_character_blend_curve)
@@ -689,13 +695,115 @@ func _test_character_lod_hides_detail() -> void:
 	assert_true(iid != "", "traveller created")
 	ch.set_lod(0)
 	assert_true(ch.is_part_visible(iid, "hair"), "hair visible at LOD0")
-	ch.set_lod(3)
-	assert_false(ch.is_part_visible(iid, "hair"), "hair hidden at LOD3")
-	# body_chest is legitimately hidden here too — TravellerHuman's default
-	# VeilsteelChestplate covers BodyChest/BodyShoulders (§16) — so use
-	# body_legs, which none of its default equipment hides, to verify coarse
-	# geometry still passes the LOD3 cutoff.
-	assert_true(ch.is_part_visible(iid, "body_legs"), "body_legs visible at LOD3")
+	# LOD 2 swaps in the impostor billboard (Phase 23), hiding the whole rig —
+	# hair and even coarse body geometry are all gone.
+	ch.set_lod(2)
+	assert_false(ch.is_part_visible(iid, "hair"), "hair hidden at LOD2")
+	assert_false(ch.is_part_visible(iid, "body_legs"), "body_legs hidden at LOD2 (impostor)")
+	assert_true(ch.is_impostor_visible(iid), "impostor shown at LOD2")
+	ch.free()
+
+func _test_character_lod_distance_thresholds() -> void:
+	# Pure distance→LOD mapping (Phase 23): ≤20m full, ≤60m medium, beyond
+	# impostor. Boundaries are inclusive of the nearer level.
+	assert_eq(CharacterSlice.lod_level_for_distance(0.0), 0, "0m → LOD 0")
+	assert_eq(CharacterSlice.lod_level_for_distance(20.0), 0, "20m (boundary) → LOD 0")
+	assert_eq(CharacterSlice.lod_level_for_distance(20.1), 1, "just past 20m → LOD 1")
+	assert_eq(CharacterSlice.lod_level_for_distance(60.0), 1, "60m (boundary) → LOD 1")
+	assert_eq(CharacterSlice.lod_level_for_distance(60.1), 2, "just past 60m → LOD 2")
+	assert_eq(CharacterSlice.lod_level_for_distance(500.0), 2, "far → LOD 2 (impostor)")
+
+func _test_character_lod_impostor() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	ch.set_lod(0)
+	assert_false(ch.is_impostor_visible(iid), "impostor hidden at LOD0")
+	assert_true(ch.is_part_visible(iid, "body_legs"), "body_legs visible at LOD0")
+	ch.set_lod(1)
+	assert_false(ch.is_impostor_visible(iid), "impostor hidden at LOD1")
+	assert_true(ch.is_part_visible(iid, "body_legs"), "coarse geometry still visible at LOD1")
+	ch.set_lod(2)
+	assert_true(ch.is_impostor_visible(iid), "impostor shown at LOD2")
+	assert_false(ch.is_part_visible(iid, "body_legs"), "body_legs hidden at LOD2")
+	# The impostor billboard is tinted to the character's own palette colour
+	# (dominant skin colour), so a palette swap follows the instance.
+	var imp: Node3D = ch.get_impostor_node(iid)
+	assert_true(imp != null, "impostor node exists")
+	var skin_idx: int = int(ch.get_appearance(iid)["skinColor"])
+	var mat: Material = imp.material_override
+	assert_true(mat is StandardMaterial3D, "impostor uses a StandardMaterial3D")
+	assert_true((mat as StandardMaterial3D).albedo_color.is_equal_approx(ch.palette_color(skin_idx)), "impostor tinted to the character's palette colour")
+	ch.free()
+
+func _test_character_lod_auto_distance() -> void:
+	# Distance-driven LOD (Phase 23): update_lod switches to AUTO and resolves
+	# each instance's level from its world distance to the viewer.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	ch.update_lod(Vector3(0.0, 0.0, 10.0))
+	assert_eq(ch.get_instance_lod(iid), 0, "10m → LOD 0")
+	assert_false(ch.is_impostor_visible(iid), "no impostor at 10m")
+	ch.update_lod(Vector3(0.0, 0.0, 40.0))
+	assert_eq(ch.get_instance_lod(iid), 1, "40m → LOD 1")
+	assert_false(ch.is_impostor_visible(iid), "no impostor at 40m")
+	ch.update_lod(Vector3(0.0, 0.0, 100.0))
+	assert_eq(ch.get_instance_lod(iid), 2, "100m → LOD 2")
+	assert_true(ch.is_impostor_visible(iid), "impostor shown at 100m")
+	# Manual set_lod re-overrides auto evaluation.
+	ch.set_lod(0)
+	assert_eq(ch.get_instance_lod(iid), 0, "set_lod(0) overrides auto LOD")
+	assert_false(ch.is_impostor_visible(iid), "impostor hidden after manual reset")
+	ch.free()
+
+func _test_character_lod_medium_hides_fine_detail() -> void:
+	# LOD 1 (medium) must hide fine detail (hair) via its `max_lod`, while
+	# keeping coarse geometry (body_legs/head) visible and NOT swapping in the
+	# impostor — distinct from the LOD 2 impostor force-hide. Guards the
+	# max_lod renumbering: hair must be 0 (hidden at LOD 1), coarse parts
+	# MAX_LOD (visible through the impostor tier).
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	ch.set_lod(0)
+	assert_true(ch.is_part_visible(iid, "hair"), "hair visible at LOD0")
+	assert_true(ch.is_part_visible(iid, "body_legs"), "body_legs visible at LOD0")
+	ch.set_lod(1)
+	assert_false(ch.is_part_visible(iid, "hair"), "hair hidden at LOD1 (fine detail)")
+	assert_true(ch.is_part_visible(iid, "body_legs"), "body_legs visible at LOD1 (coarse)")
+	assert_true(ch.is_part_visible(iid, "head"), "head visible at LOD1 (coarse)")
+	assert_false(ch.is_impostor_visible(iid), "no impostor at LOD1")
+	ch.free()
+
+func _test_character_lod_hysteresis() -> void:
+	# Hysteresis (Phase 23): a move to a FINER level steps down one level at a
+	# time and only commits once the distance has moved a full LOD_HYSTERESIS
+	# margin inside the threshold — so an instance straddling a boundary doesn't
+	# flicker, and one jumping several levels doesn't hold a stale coarse level.
+	# A move to a COARSER level still commits immediately.
+	assert_eq(CharacterSlice.lod_level_for_distance(19.0, 1), 1, "19m from LOD1 stays 1 (inside 20m but within margin)")
+	assert_eq(CharacterSlice.lod_level_for_distance(17.0, 1), 0, "17m from LOD1 refines to 0 (past margin)")
+	assert_eq(CharacterSlice.lod_level_for_distance(59.0, 2), 2, "59m from LOD2 stays 2 (within margin)")
+	assert_eq(CharacterSlice.lod_level_for_distance(57.0, 2), 1, "57m from LOD2 refines to 1 (past margin)")
+	assert_eq(CharacterSlice.lod_level_for_distance(21.0, 0), 1, "21m from LOD0 coarsens immediately to 1")
+	assert_eq(CharacterSlice.lod_level_for_distance(61.0, 1), 2, "61m from LOD1 coarsens immediately to 2")
+	assert_eq(CharacterSlice.lod_level_for_distance(19.0, 2), 1, "19m from LOD2 steps to 1, not held at impostor")
+	assert_eq(CharacterSlice.lod_level_for_distance(10.0, 2), 1, "10m from LOD2 steps one level finer (2→1), then 1→0 next frame")
+
+func _test_character_lod_equip_at_impostor() -> void:
+	# Equipping at impostor distance must still hide the freshly-built node:
+	# the _apply_lod early-out would otherwise skip nodes that default to
+	# visible, leaving the rig showing through the impostor.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	ch.set_lod(2)
+	assert_true(ch.is_impostor_visible(iid), "impostor visible at LOD2")
+	# VeilsteelLongsword has no hideRegions, so the hidden set is unchanged and
+	# the early-out path (not the hideRegions recompute path) is exercised.
+	assert_true(ch.apply_equipment(iid, "MainHand", "VeilsteelLongsword"), "sword equips at impostor LOD")
+	assert_false(ch.is_part_visible(iid, "MainHand"), "equipment hidden at impostor LOD")
 	ch.free()
 
 func _test_character_skeleton_rig() -> void:

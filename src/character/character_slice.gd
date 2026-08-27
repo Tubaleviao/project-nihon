@@ -36,7 +36,9 @@ extends Node
 ##   deserialize_appearance(data)                          -> Dictionary
 ##   palette_color(index)                                  -> Color
 ##   get_palette_size()                                    -> int
-##   set_lod(level) / get_lod()                            -> void / int
+##   set_lod(level) / get_lod() / get_lod_mode()          -> void / int / int
+##   update_lod(viewer_pos) / lod_level_for_distance(d)    -> void / int
+##   get_instance_lod(instance_id) / is_impostor_visible() -> int / bool
 ##   is_part_visible(instance_id, part_key)                -> bool
 
 const Locomotion  := preload("res://src/character/locomotion.gd")
@@ -45,7 +47,24 @@ const GameDataReader := preload("res://src/core/game_data_reader.gd")
 const CharacterMaterial := preload("res://src/character/character_material.gd")
 
 const MIN_LOD := 0
-const MAX_LOD := 3
+const MAX_LOD := 2
+## LOD level at which the full rig is replaced by the impostor billboard
+## (ROADMAP Phase 23). Levels: 0 = full detail, 1 = medium (fine detail hidden),
+## 2 = impostor billboard.
+const IMPOSTOR_LOD := 2
+## Distance thresholds (metres) for automatic per-instance LOD selection:
+## ≤ LOD1_DISTANCE → LOD 0; ≤ LOD2_DISTANCE → LOD 1; beyond → LOD 2 (impostor).
+const LOD1_DISTANCE := 20.0
+const LOD2_DISTANCE := 60.0
+## Hysteresis margin (metres) applied to the LOD thresholds so an instance that
+## sits right on a 20 m / 60 m boundary doesn't flicker between levels frame to
+## frame: dropping to a FINER level only commits once the distance has moved a
+## full margin inside the threshold, while moving to a coarser level still
+## commits immediately.
+const LOD_HYSTERESIS := 2.0
+## LOD source modes: a manual override (set_lod) vs distance-driven (update_lod).
+const LOD_MANUAL := 0
+const LOD_AUTO := 1
 
 ## Palette is a fixed 256 entries (§19): one byte per color index.
 const PALETTE_SIZE := 256
@@ -79,6 +98,8 @@ var _instances: Dictionary = {}
 ## per-instance counter reissued "character_0" from each one.
 static var _next_id: int = 0
 var _lod: int = 0
+var _lod_mode: int = LOD_MANUAL
+var _viewer_position: Vector3 = Vector3.ZERO
 var _palette: Array = []
 
 ## Body-part texture, lazily resolved through AssetOverlay so a mounted
@@ -129,6 +150,7 @@ func create_character_from_recipe(recipe: Dictionary, pos: Vector3) -> String:
 		"locomotion": built["locomotion"],
 		"equipment":  built["equipment"],
 		"parts":      built["parts"],
+		"impostor":   built.get("impostor", null),
 	}
 	_apply_lod(iid)
 
@@ -158,6 +180,12 @@ func apply_appearance(instance_id: String, recipe: Dictionary) -> bool:
 	inst["locomotion"] = built["locomotion"]
 	inst["equipment"] = built["equipment"]
 	inst["parts"] = built["parts"]
+	inst["impostor"] = built.get("impostor", null)
+	# The rebuilt rig's nodes default to visible; reset the early-out state so
+	# _apply_lod force-applies visibility to the new nodes instead of skipping
+	# them (which would leave the full rig showing at impostor distance).
+	inst["lod"] = -1
+	inst.erase("_hidden")
 	_apply_lod(instance_id)
 
 	GameBus.character_appearance_changed.emit(instance_id, normalized)
@@ -325,13 +353,98 @@ func get_palette_size() -> int:
 # Public — LOD (characters.md §35, §36)
 # ---------------------------------------------------------------------------
 
+## Apply a manual LOD level to every instance (test/debug convenience). The
+## level is clamped to [MIN_LOD, MAX_LOD] and applied immediately. NOTE: this is
+## NOT a persistent override — `update_lod()` switches back to distance-driven
+## mode, and `game_root` calls `update_lod()` every frame, so a manual level set
+## here is re-evaluated away on the next frame in production. Tests read it back
+## before any further `update_lod()` call.
 func set_lod(level: int) -> void:
+	_lod_mode = LOD_MANUAL
 	_lod = clampi(level, MIN_LOD, MAX_LOD)
 	for iid in _instances:
 		_apply_lod(iid)
 
+## The manual LOD level last set via `set_lod()`. Returns -1 when in
+## distance-driven (LOD_AUTO) mode, where there is no single level — each
+## instance resolves its own from distance (`get_instance_lod`). See
+## `get_lod_mode()`.
 func get_lod() -> int:
-	return _lod
+	return _lod if _lod_mode == LOD_MANUAL else -1
+
+## The active LOD source mode: LOD_MANUAL (a `set_lod` override) or LOD_AUTO
+## (distance-driven via `update_lod`).
+func get_lod_mode() -> int:
+	return _lod_mode
+
+## Resolve a distance (metres) to a LOD level (0/1/2) using the Phase 23
+## thresholds. Pure and headless-testable: ≤ LOD1_DISTANCE → 0 (full),
+## ≤ LOD2_DISTANCE → 1 (medium), beyond → 2 (impostor billboard).
+##
+## Pass `current` (the instance's previous level) to enable hysteresis: a move
+## to a FINER level steps down ONE level at a time and only commits once the
+## distance is a full LOD_HYSTERESIS margin inside the relevant threshold, so an
+## instance straddling a boundary (or jumping several levels at once) doesn't
+## flicker or hold a stale coarse level. A move to a COARSER level commits
+## immediately. Omit `current` (or pass -1) for the pure threshold mapping.
+static func lod_level_for_distance(distance: float, current: int = -1) -> int:
+	if current < 0:
+		return _threshold_level(distance)
+	match current:
+		0:
+			if distance <= LOD1_DISTANCE:
+				return 0
+			return _threshold_level(distance)
+		1:
+			if distance <= LOD1_DISTANCE - LOD_HYSTERESIS:
+				return 0
+			if distance <= LOD2_DISTANCE:
+				return 1
+			return 2
+		2:
+			if distance <= LOD2_DISTANCE - LOD_HYSTERESIS:
+				return 1
+			return 2
+	return _threshold_level(distance)
+
+## Pure threshold mapping with no hysteresis (see lod_level_for_distance).
+static func _threshold_level(distance: float) -> int:
+	if distance <= LOD1_DISTANCE:
+		return 0
+	if distance <= LOD2_DISTANCE:
+		return 1
+	return 2
+
+## Switch to distance-driven LOD and evaluate every instance against
+## `viewer_pos` (the player position, passed by game_root each frame). Each
+## instance's LOD is derived from its world distance to the viewer, then
+## `_apply_lod` hides fine detail or swaps in the impostor as appropriate. Call
+## this once per frame from the integration root.
+func update_lod(viewer_pos: Vector3) -> void:
+	_lod_mode = LOD_AUTO
+	_viewer_position = viewer_pos
+	for iid in _instances:
+		_apply_lod(iid)
+
+## The active LOD level for an instance (0 = full, 1 = medium, 2 = impostor),
+## or -1 for an unknown instance id.
+func get_instance_lod(instance_id: String) -> int:
+	if not _instances.has(instance_id):
+		return -1
+	return int(_instances[instance_id].get("lod", _resolved_lod(instance_id)))
+
+## Whether the impostor billboard is currently shown for an instance.
+func is_impostor_visible(instance_id: String) -> bool:
+	if not _instances.has(instance_id):
+		return false
+	var impostor = _instances[instance_id].get("impostor", null)
+	return impostor != null and impostor.visible
+
+## The impostor billboard node for an instance (null when absent).
+func get_impostor_node(instance_id: String) -> Node3D:
+	if not _instances.has(instance_id):
+		return null
+	return _instances[instance_id].get("impostor", null)
 
 # ---------------------------------------------------------------------------
 # Public — equipment + animation (ROADMAP Phase 20)
@@ -371,7 +484,7 @@ func apply_equipment(instance_id: String, slot: String, item_key: String, state:
 			old_node.queue_free()
 
 	equipment[slot] = rec
-	inst["parts"][slot] = { "node": rec["node"], "min_lod": int(rec["def"].get("minLodLevel", 0)) }
+	inst["parts"][slot] = { "node": rec["node"], "max_lod": int(rec["def"].get("minLodLevel", MAX_LOD)) }
 
 	# Reflect the change in the appearance recipe so persistence / visual state
 	# stay consistent with the live instance.
@@ -379,6 +492,11 @@ func apply_equipment(instance_id: String, slot: String, item_key: String, state:
 	var eq: Dictionary = app.get("equipment", {})
 	eq[slot] = entry
 	app["equipment"] = eq
+	# The new equipment node defaults to visible; reset the early-out state so
+	# _apply_lod applies the correct visibility (e.g. hides it at impostor LOD)
+	# rather than skipping the freshly-built node.
+	inst["lod"] = -1
+	inst.erase("_hidden")
 	_apply_lod(instance_id)
 	GameBus.character_appearance_changed.emit(instance_id, app)
 	return true
@@ -564,7 +682,7 @@ func _equipment_def(item_id: String) -> Dictionary:
 		"deformationMode": GameDataReader.str_field(res, "deformationMode", "RIGID"),
 		"masks":           GameDataReader.json_field(res, "masks", {}),
 		"attachments":     GameDataReader.json_field(res, "attachments", {}),
-		"minLodLevel":     GameDataReader.int_field(res, "minLodLevel", 0),
+		"minLodLevel":     GameDataReader.int_field(res, "minLodLevel", MAX_LOD),
 		"size":            GameDataReader.json_field(res, "size", [0.3, 0.3, 0.3]),
 		"metal":           GameDataReader.str_field(res, "metalTone", "none"),
 		"emissionColor":   GameDataReader.int_field(res, "emissionColor", 200),
@@ -700,17 +818,29 @@ func _wear_value(durability: float) -> float:
 # LOD
 # ---------------------------------------------------------------------------
 
-## A part renders while `_lod <= part.min_lod` and its part key is not hidden by
+## A part renders while `_lod <= part.max_lod` and its part key is not hidden by
 ## a currently-equipped item's `hideRegions` (§16, e.g. a helmet hiding "Hair").
-## The hidden set is recomputed from every equipped slot's def each call rather
-## than tracked incrementally, so two overlapping hides (and un-equipping one of
-## them) always resolve correctly from current state alone.
+## `max_lod` is the COARSEST level at which a part still renders (fine detail
+## like hair/beard is 0, coarse body geometry is MAX_LOD) — the comparison
+## `lod <= max_lod` is why the name reads as a max, not a min. The hidden set is
+## recomputed from every equipped slot's def each call rather than tracked
+## incrementally, so two overlapping hides (and un-equipping one of them) always
+## resolve correctly from current state alone.
+##
+## At IMPOSTOR_LOD the whole rig is replaced by the impostor billboard (Phase 23):
+## every part is hidden regardless of its max_lod and the billboard is shown in
+## its place.
+##
+## Early-outs when neither the resolved level nor the hideRegions-derived hidden
+## set changed since the last apply — `update_lod` re-runs this every frame, and
+## touching node visibility is only warranted on a real transition.
 func _apply_lod(instance_id: String) -> void:
 	if not _instances.has(instance_id):
 		return
 	var inst: Dictionary = _instances[instance_id]
-	var parts: Dictionary = inst["parts"]
 	var equipment: Dictionary = inst["equipment"]
+
+	var lod: int = _resolved_lod(instance_id)
 
 	var hidden: Dictionary = {}
 	var rig = inst.get("rig", null)
@@ -722,11 +852,37 @@ func _apply_lod(instance_id: String) -> void:
 			if part_key != "":
 				hidden[part_key] = true
 
+	if inst.get("lod", -1) == lod and inst.get("_hidden", {}) == hidden:
+		return
+	inst["lod"] = lod
+	inst["_hidden"] = hidden
+
+	var use_impostor: bool = lod >= IMPOSTOR_LOD
+	var parts: Dictionary = inst["parts"]
 	for key in parts:
 		var part: Dictionary = parts[key]
 		var node: Node3D = part["node"]
-		var min_lod: int = part.get("min_lod", 0)
-		node.visible = _lod <= min_lod and not hidden.get(key, false)
+		var max_lod: int = part.get("max_lod", MAX_LOD)
+		node.visible = (not use_impostor) and lod <= max_lod and not hidden.get(key, false)
+
+	var impostor = inst.get("impostor", null)
+	if impostor != null:
+		impostor.visible = use_impostor
+
+## The LOD level that governs an instance right now: the manual override when in
+## LOD_MANUAL mode, else distance-to-viewer when in LOD_AUTO mode (with
+## hysteresis against the instance's previous level).
+func _resolved_lod(instance_id: String) -> int:
+	if _lod_mode == LOD_MANUAL:
+		return _lod
+	if not _instances.has(instance_id):
+		return _lod
+	var inst: Dictionary = _instances[instance_id]
+	var root: Node3D = inst["root"]
+	return lod_level_for_distance(
+		_viewer_position.distance_to(root.global_position),
+		int(inst.get("lod", MIN_LOD))
+	)
 
 ## Map a fabric mesh-hiding region (characters.md §16) onto the placeholder
 ## part key it corresponds to in `parts`. The humanoid placeholder body is
@@ -802,7 +958,7 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 		var chest := _make_box(Vector3(0.55 * shoulder * mass, torso_h, 0.32 * mass), skin_idx)
 		var chest_pos := Vector3(0.0, hip_y + torso_h * 0.5, 0.0)
 		rig.attach_to_bone(torso_bone, chest, chest_pos - rig.get_bone_global_rest(torso_bone))
-		parts["body_chest"] = { "node": chest, "min_lod": 3 }
+		parts["body_chest"] = { "node": chest, "max_lod": MAX_LOD }
 
 		# Legs (hips-to-ground region placeholder — §16 BodyLegs) — skinned to the
 		# hip bone so it deforms with the skeleton.
@@ -810,13 +966,13 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 		var legs_pos := Vector3(0.0, hip_y * 0.5, 0.0)
 		var legs_bone := _legs_bone(rig)
 		rig.attach_to_bone(legs_bone, legs, legs_pos - rig.get_bone_global_rest(legs_bone))
-		parts["body_legs"] = { "node": legs, "min_lod": 3 }
+		parts["body_legs"] = { "node": legs, "max_lod": MAX_LOD }
 
 		# Head — skinned to the head bone.
 		var head := _make_box(Vector3(head_size, head_size, head_size), skin_idx)
 		var head_pos := Vector3(0.0, head_y, 0.0)
 		rig.attach_to_bone(head_bone, head, head_pos - rig.get_bone_global_rest(head_bone))
-		parts["head"] = { "node": head, "min_lod": 3 }
+		parts["head"] = { "node": head, "max_lod": MAX_LOD }
 
 		# Hair (independent component — §13).
 		var hair_id: String = str(appearance.get("hair", "none"))
@@ -824,7 +980,7 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 			var hair := _make_box(Vector3(head_size * 1.05, head_size * 0.4, head_size * 1.05), hair_idx)
 			hair.position = Vector3(0.0, head_y + head_size * 0.45, 0.0)
 			rig.add_child(hair)
-			parts["hair"] = { "node": hair, "min_lod": 1 }
+			parts["hair"] = { "node": hair, "max_lod": 0 }
 
 		# Beard (independent component — §14).
 		var beard_id: String = str(appearance.get("beard", "none"))
@@ -832,7 +988,7 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 			var beard := _make_box(Vector3(head_size * 0.7, head_size * 0.5, head_size * 0.25), beard_idx)
 			beard.position = Vector3(0.0, head_y - head_size * 0.1, -head_size * 0.55)
 			rig.add_child(beard)
-			parts["beard"] = { "node": beard, "min_lod": 0 }
+			parts["beard"] = { "node": beard, "max_lod": 0 }
 	else:
 		# Non-humanoid families (quadruped/bird/serpent) don't declare
 		# bodyShapeCoefficients and don't share the humanoid torso/hip/head
@@ -841,12 +997,12 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 		# (zero bone-local offset) rather than the humanoid landmark math.
 		var body := _make_box(Vector3(0.5 * mass, height * 0.5, 0.5 * mass), skin_idx)
 		rig.attach_to_bone(torso_bone, body, Vector3.ZERO)
-		parts["body"] = { "node": body, "min_lod": 3 }
+		parts["body"] = { "node": body, "max_lod": MAX_LOD }
 
 		var nh_head_size: float = 0.25 * head_scale
 		var head := _make_box(Vector3(nh_head_size, nh_head_size, nh_head_size), skin_idx)
 		rig.attach_to_bone(head_bone, head, Vector3.ZERO)
-		parts["head"] = { "node": head, "min_lod": 3 }
+		parts["head"] = { "node": head, "max_lod": MAX_LOD }
 
 	# Equipment — socket attachment with deformation modes (Phase 20 §10).
 	var equipment: Dictionary = appearance.get("equipment", {})
@@ -857,9 +1013,15 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 		if rec.is_empty():
 			continue
 		eq_records[str(slot)] = rec
-		parts[str(slot)] = { "node": rec["node"], "min_lod": int(rec["def"].get("minLodLevel", 0)) }
+		parts[str(slot)] = { "node": rec["node"], "max_lod": int(rec["def"].get("minLodLevel", MAX_LOD)) }
 
 	var locomotion := Locomotion.new()
+
+	# Impostor billboard (Phase 23) — a camera-facing quad tinted to the
+	# character's dominant (skin) palette colour, shown in place of the full rig
+	# at LOD ≥ IMPOSTOR_LOD. This is a coloured-quad placeholder; the real
+	# pre-baked sprite impostor is deferred (ROADMAP Phase 23).
+	var impostor := _make_impostor(rig, appearance, props)
 
 	return {
 		"root":       rig,
@@ -867,7 +1029,68 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 		"parts":      parts,
 		"equipment":  eq_records,
 		"locomotion": locomotion,
+		"impostor":   impostor,
 	}
+
+## Build the impostor billboard (ROADMAP Phase 23): a camera-facing QuadMesh
+## tinted to the character's dominant (skin) palette colour, shown in place of
+## the full rig once the instance drops to IMPOSTOR_LOD. Hidden by default —
+## `_apply_lod` shows it. Sized to the character's silhouette: total height
+## (head_top for humanoid, `height` for other families) by shoulder width.
+##
+## The quad mesh is cached by size and the unshaded billboard material by the
+## RESOLVED skin colour, so impostors sharing a silhouette / colour reuse
+## resources. NOTE: the colour is a palette index resolved ONCE at creation into
+## the material's albedo (a baked colour), NOT a live sample of the palette
+## texture — so a palette-texture swap is NOT reflected here (unlike the real
+## parts, which sample the shared palette each frame). A true pre-baked sprite
+## impostor that honours palette swaps is deferred (ROADMAP Phase 23 "Known
+## simplifications").
+func _make_impostor(rig, appearance: Dictionary, props: Dictionary) -> MeshInstance3D:
+	var skin_idx: int = int(appearance.get("skinColor", 12))
+	var w: float = 0.55 * float(props.get("shoulderWidth", 1.0)) * float(props.get("bodyMass", 1.0))
+	var h: float = float(props.get("height", 1.0))
+	if rig.get_family() == "humanoid":
+		var landmarks: Dictionary = SkeletonRig.compute_landmarks(rig.get_body_shape_coefficients(), props)
+		h = float(landmarks["head_top"])
+	var size := Vector2(w, h)
+	var quad: QuadMesh = _impostor_quads.get(size, null)
+	if quad == null:
+		if _impostor_quads.size() >= IMPOSTOR_CACHE_MAX:
+			_impostor_quads.clear()
+		quad = QuadMesh.new()
+		quad.size = size
+		_impostor_quads[size] = quad
+	var color := palette_color(skin_idx)
+	var mat: StandardMaterial3D = _impostor_materials.get(color, null)
+	if mat == null:
+		if _impostor_materials.size() >= IMPOSTOR_CACHE_MAX:
+			_impostor_materials.clear()
+		mat = StandardMaterial3D.new()
+		mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.albedo_color = color
+		_impostor_materials[color] = mat
+	var imp := MeshInstance3D.new()
+	imp.name = "Impostor"
+	imp.mesh = quad
+	imp.material_override = mat
+	imp.visible = false
+	rig.add_child(imp)
+	imp.position = Vector3(0.0, h * 0.5, 0.0)
+	return imp
+
+## Shared impostor caches (Phase 23): the billboard quad mesh is keyed by size
+## and the unshaded billboard material by the RESOLVED skin colour (not the
+## palette index), so impostors with the same silhouette / colour share
+## resources instead of each allocating a fresh QuadMesh + StandardMaterial3D.
+## Keying the material on the resolved colour (not the index) means two
+## CharacterSlice instances with different palettes never alias a material whose
+## albedo was baked from another slice's palette. Both caches full-clear past
+## IMPOSTOR_CACHE_MAX, mirroring the BoxMesh cache (`_box_meshes`).
+static var _impostor_quads: Dictionary = {}
+static var _impostor_materials: Dictionary = {}
+const IMPOSTOR_CACHE_MAX := 256
 
 ## Attach one equipment mesh to the rig for a slot + normalized entry, applying
 ## the item's deformation mode via the rig's socket system. Returns the

@@ -385,6 +385,10 @@ func _on_peer_connected(peer_id: int) -> void:
 
 func _process(delta: float) -> void:
 	_sync_player_avatar(delta)
+	# Distance-driven LOD (Phase 23) — evaluate each character's world distance
+	# to the player each frame and swap fine detail / the impostor billboard in
+	# and out. No-op until characters exist and on clients (no spawned visuals).
+	_character.update_lod(_player.get_position())
 
 	if not _snapshot_pending:
 		return

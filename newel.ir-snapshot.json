@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-27T14:40:48.911Z",
-  "schemaHash": "sha256:03c52b55ffd3c6ba16ad8958690d1dc4086459c95446002d3c29b53b99ed12c7",
+  "generatedAt": "2026-08-27T21:13:44.262Z",
+  "schemaHash": "sha256:eb0cf259e7e4d45435a7570a73e3186c034a9b67dfe6a8110afc61a206f92caf",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -9342,7 +9342,7 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 3
+            "defaultValue": 2
           },
           "size": {
             "name": "size",
@@ -9641,7 +9641,7 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 3
+            "defaultValue": 2
           },
           "size": {
             "name": "size",
