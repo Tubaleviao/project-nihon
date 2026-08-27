@@ -79,6 +79,7 @@ func run() -> void:
 	_run_test("character: LOD auto resolves by distance",      _test_character_lod_auto_distance)
 	_run_test("character: LOD medium hides fine detail",       _test_character_lod_medium_hides_fine_detail)
 	_run_test("character: LOD hysteresis on thresholds",       _test_character_lod_hysteresis)
+	_run_test("character: LOD equipping at impostor hides node", _test_character_lod_equip_at_impostor)
 	_run_test("character: skeleton rig builds bone hierarchy",_test_character_skeleton_rig)
 	_run_test("character: locomotion idle→walk→run by speed", _test_character_locomotion_speed)
 	_run_test("character: blend curve maps speed to 0..1",     _test_character_blend_curve)
@@ -776,16 +777,34 @@ func _test_character_lod_medium_hides_fine_detail() -> void:
 	ch.free()
 
 func _test_character_lod_hysteresis() -> void:
-	# Hysteresis (Phase 23): a move to a FINER level only commits once the
-	# distance has moved a full LOD_HYSTERESIS margin inside the threshold, so an
-	# instance straddling a boundary doesn't flicker; a move to a COARSER level
-	# still commits immediately.
+	# Hysteresis (Phase 23): a move to a FINER level steps down one level at a
+	# time and only commits once the distance has moved a full LOD_HYSTERESIS
+	# margin inside the threshold — so an instance straddling a boundary doesn't
+	# flicker, and one jumping several levels doesn't hold a stale coarse level.
+	# A move to a COARSER level still commits immediately.
 	assert_eq(CharacterSlice.lod_level_for_distance(19.0, 1), 1, "19m from LOD1 stays 1 (inside 20m but within margin)")
 	assert_eq(CharacterSlice.lod_level_for_distance(17.0, 1), 0, "17m from LOD1 refines to 0 (past margin)")
 	assert_eq(CharacterSlice.lod_level_for_distance(59.0, 2), 2, "59m from LOD2 stays 2 (within margin)")
 	assert_eq(CharacterSlice.lod_level_for_distance(57.0, 2), 1, "57m from LOD2 refines to 1 (past margin)")
 	assert_eq(CharacterSlice.lod_level_for_distance(21.0, 0), 1, "21m from LOD0 coarsens immediately to 1")
 	assert_eq(CharacterSlice.lod_level_for_distance(61.0, 1), 2, "61m from LOD1 coarsens immediately to 2")
+	assert_eq(CharacterSlice.lod_level_for_distance(19.0, 2), 1, "19m from LOD2 steps to 1, not held at impostor")
+	assert_eq(CharacterSlice.lod_level_for_distance(10.0, 2), 1, "10m from LOD2 steps one level finer (2→1), then 1→0 next frame")
+
+func _test_character_lod_equip_at_impostor() -> void:
+	# Equipping at impostor distance must still hide the freshly-built node:
+	# the _apply_lod early-out would otherwise skip nodes that default to
+	# visible, leaving the rig showing through the impostor.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	ch.set_lod(2)
+	assert_true(ch.is_impostor_visible(iid), "impostor visible at LOD2")
+	# VeilsteelLongsword has no hideRegions, so the hidden set is unchanged and
+	# the early-out path (not the hideRegions recompute path) is exercised.
+	assert_true(ch.apply_equipment(iid, "MainHand", "VeilsteelLongsword"), "sword equips at impostor LOD")
+	assert_false(ch.is_part_visible(iid, "MainHand"), "equipment hidden at impostor LOD")
+	ch.free()
 
 func _test_character_skeleton_rig() -> void:
 	var ch := CharacterSlice.new()

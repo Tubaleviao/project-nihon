@@ -181,6 +181,11 @@ func apply_appearance(instance_id: String, recipe: Dictionary) -> bool:
 	inst["equipment"] = built["equipment"]
 	inst["parts"] = built["parts"]
 	inst["impostor"] = built.get("impostor", null)
+	# The rebuilt rig's nodes default to visible; reset the early-out state so
+	# _apply_lod force-applies visibility to the new nodes instead of skipping
+	# them (which would leave the full rig showing at impostor distance).
+	inst["lod"] = -1
+	inst.erase("_hidden")
 	_apply_lod(instance_id)
 
 	GameBus.character_appearance_changed.emit(instance_id, normalized)
@@ -377,22 +382,30 @@ func get_lod_mode() -> int:
 ## ≤ LOD2_DISTANCE → 1 (medium), beyond → 2 (impostor billboard).
 ##
 ## Pass `current` (the instance's previous level) to enable hysteresis: a move
-## to a FINER level only commits once the distance is a full LOD_HYSTERESIS
-## margin inside the threshold, so an instance straddling a boundary doesn't
-## flicker. Omit `current` (or pass -1) for the pure threshold mapping.
+## to a FINER level steps down ONE level at a time and only commits once the
+## distance is a full LOD_HYSTERESIS margin inside the relevant threshold, so an
+## instance straddling a boundary (or jumping several levels at once) doesn't
+## flicker or hold a stale coarse level. A move to a COARSER level commits
+## immediately. Omit `current` (or pass -1) for the pure threshold mapping.
 static func lod_level_for_distance(distance: float, current: int = -1) -> int:
-	var target := _threshold_level(distance)
 	if current < 0:
-		return target
-	if target < current:
-		match target:
-			0:
-				if distance > LOD1_DISTANCE - LOD_HYSTERESIS:
-					return current
-			1:
-				if distance > LOD2_DISTANCE - LOD_HYSTERESIS:
-					return current
-	return target
+		return _threshold_level(distance)
+	match current:
+		0:
+			if distance <= LOD1_DISTANCE:
+				return 0
+			return _threshold_level(distance)
+		1:
+			if distance <= LOD1_DISTANCE - LOD_HYSTERESIS:
+				return 0
+			if distance <= LOD2_DISTANCE:
+				return 1
+			return 2
+		2:
+			if distance <= LOD2_DISTANCE - LOD_HYSTERESIS:
+				return 1
+			return 2
+	return _threshold_level(distance)
 
 ## Pure threshold mapping with no hysteresis (see lod_level_for_distance).
 static func _threshold_level(distance: float) -> int:
@@ -479,6 +492,11 @@ func apply_equipment(instance_id: String, slot: String, item_key: String, state:
 	var eq: Dictionary = app.get("equipment", {})
 	eq[slot] = entry
 	app["equipment"] = eq
+	# The new equipment node defaults to visible; reset the early-out state so
+	# _apply_lod applies the correct visibility (e.g. hides it at impostor LOD)
+	# rather than skipping the freshly-built node.
+	inst["lod"] = -1
+	inst.erase("_hidden")
 	_apply_lod(instance_id)
 	GameBus.character_appearance_changed.emit(instance_id, app)
 	return true
@@ -1020,13 +1038,14 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 ## `_apply_lod` shows it. Sized to the character's silhouette: total height
 ## (head_top for humanoid, `height` for other families) by shoulder width.
 ##
-## The quad mesh is cached by size and the unshaded billboard material by skin
-## colour, so impostors sharing a silhouette / colour reuse resources. NOTE: the
-## colour is a palette index resolved ONCE at creation into the material's
-## albedo (a baked colour), NOT a live sample of the palette texture — so a
-## palette-texture swap is NOT reflected here (unlike the real parts, which
-## sample the shared palette each frame). A true pre-baked sprite impostor that
-## honours palette swaps is deferred (ROADMAP Phase 23 "Known simplifications").
+## The quad mesh is cached by size and the unshaded billboard material by the
+## RESOLVED skin colour, so impostors sharing a silhouette / colour reuse
+## resources. NOTE: the colour is a palette index resolved ONCE at creation into
+## the material's albedo (a baked colour), NOT a live sample of the palette
+## texture — so a palette-texture swap is NOT reflected here (unlike the real
+## parts, which sample the shared palette each frame). A true pre-baked sprite
+## impostor that honours palette swaps is deferred (ROADMAP Phase 23 "Known
+## simplifications").
 func _make_impostor(rig, appearance: Dictionary, props: Dictionary) -> MeshInstance3D:
 	var skin_idx: int = int(appearance.get("skinColor", 12))
 	var w: float = 0.55 * float(props.get("shoulderWidth", 1.0)) * float(props.get("bodyMass", 1.0))
@@ -1037,16 +1056,21 @@ func _make_impostor(rig, appearance: Dictionary, props: Dictionary) -> MeshInsta
 	var size := Vector2(w, h)
 	var quad: QuadMesh = _impostor_quads.get(size, null)
 	if quad == null:
+		if _impostor_quads.size() >= IMPOSTOR_CACHE_MAX:
+			_impostor_quads.clear()
 		quad = QuadMesh.new()
 		quad.size = size
 		_impostor_quads[size] = quad
-	var mat: StandardMaterial3D = _impostor_materials.get(skin_idx, null)
+	var color := palette_color(skin_idx)
+	var mat: StandardMaterial3D = _impostor_materials.get(color, null)
 	if mat == null:
+		if _impostor_materials.size() >= IMPOSTOR_CACHE_MAX:
+			_impostor_materials.clear()
 		mat = StandardMaterial3D.new()
 		mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		mat.albedo_color = palette_color(skin_idx)
-		_impostor_materials[skin_idx] = mat
+		mat.albedo_color = color
+		_impostor_materials[color] = mat
 	var imp := MeshInstance3D.new()
 	imp.name = "Impostor"
 	imp.mesh = quad
@@ -1057,11 +1081,16 @@ func _make_impostor(rig, appearance: Dictionary, props: Dictionary) -> MeshInsta
 	return imp
 
 ## Shared impostor caches (Phase 23): the billboard quad mesh is keyed by size
-## and the unshaded billboard material by skin colour, so impostors with the
-## same silhouette / colour share resources instead of each allocating a fresh
-## QuadMesh + StandardMaterial3D. Mirrors the BoxMesh cache (`_box_meshes`).
+## and the unshaded billboard material by the RESOLVED skin colour (not the
+## palette index), so impostors with the same silhouette / colour share
+## resources instead of each allocating a fresh QuadMesh + StandardMaterial3D.
+## Keying the material on the resolved colour (not the index) means two
+## CharacterSlice instances with different palettes never alias a material whose
+## albedo was baked from another slice's palette. Both caches full-clear past
+## IMPOSTOR_CACHE_MAX, mirroring the BoxMesh cache (`_box_meshes`).
 static var _impostor_quads: Dictionary = {}
 static var _impostor_materials: Dictionary = {}
+const IMPOSTOR_CACHE_MAX := 256
 
 ## Attach one equipment mesh to the rig for a slot + normalized entry, applying
 ## the item's deformation mode via the rig's socket system. Returns the
