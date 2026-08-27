@@ -28,6 +28,7 @@ Round shield of ferrite-plated hardwood. Blocks melee and missile strikes at the
 | minLodLevel | integer | Coarsest LOD at which this part still renders (§35) |
 | size | json | Placeholder mesh extents [x, y, z] |
 | metalTone | string | Metal tone for metal-mask regions (§21) |
+| emissionColor | integer | Palette index in the emission region (192–223) for emissive regions (§22) |
 | compatibleTags | json | Semantic tags required to equip (§39) |
 
 ## Related

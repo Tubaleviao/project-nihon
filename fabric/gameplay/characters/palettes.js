@@ -22,6 +22,19 @@ const { defineEntity } = require('./shared')
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PALETTE_SIZE = 256
+const REGION_SIZE = 32
+
+// Named region layout (characters.md §19). The 256 entries are grouped into
+// eight 32-entry regions in this order; region bounds are derived from this
+// list (index * REGION_SIZE .. (index + 1) * REGION_SIZE - 1) so runtime code
+// and the generated GameData agree on the metals (160–191) and emission
+// (192–223) regions without hardcoding the numbers.
+const REGION_NAMES = ['skin', 'hair', 'primary', 'secondary', 'accent', 'metals', 'emission', 'eyes']
+const REGIONS = REGION_NAMES.map((name, i) => ({
+  name,
+  start: i * REGION_SIZE,
+  end: (i + 1) * REGION_SIZE - 1,
+}))
 
 // Anchor colors per 32-entry region, as [r, g, b] (0-255).
 const PALETTE_REGIONS = [
@@ -93,9 +106,18 @@ module.exports = {
         description: `256 hex color strings, region-grouped (§19)`,
         defaultValue: buildDefaultPalette(),
       },
+      regions: {
+        type: 'json',
+        description: 'Named 32-entry region bounds for the 256-entry palette (§19)',
+        defaultValue: REGIONS,
+      },
     },
   }),
 
 }
 
 module.exports.PALETTE_SIZE = PALETTE_SIZE
+module.exports.REGION_SIZE = REGION_SIZE
+module.exports.REGIONS = REGIONS
+module.exports.METALS_REGION = REGIONS[5]
+module.exports.EMISSION_REGION = REGIONS[6]

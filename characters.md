@@ -919,8 +919,9 @@ engineering agree on the constraints before any authored asset lands.
 
 **Resolution table** (§24) — placeholder build sign-off:
 
-- [x] Face `32×32`, Hair `32×32`, Body `64×64`, Armor `64×64`,
-      Weapon `32×32–64×64` — documented as the texel-density baseline.
+- [ ] Face `32×32`, Hair `32×32`, Body `64×64`, Armor `64×64`,
+      Weapon `32×32–64×64` — documented as the texel-density baseline
+      (doc-only: no authored asset yet confirms it).
 - [ ] Every authored asset committed at its stated resolution (no upscaled
       placeholders shipped as production art).
 
@@ -936,8 +937,9 @@ engineering agree on the constraints before any authored asset lands.
 
 **UV mapping guide** (§26) — sign-off:
 
-- [x] UVs must be pixel-grid aligned, avoid distortion, and keep consistent
-      texel density (documented as a hard constraint for authored assets).
+- [ ] UVs must be pixel-grid aligned, avoid distortion, and keep consistent
+      texel density (documented as a hard constraint for authored assets —
+      doc-only, no authored UVs yet).
 - [x] Colour-region masks map to `color_mask_tex` R/G/B = Primary/Secondary/
       Accent (§18); material channels map to `channel_tex` R/G/B = Metal/
       Emission/Wear (§21–§23).

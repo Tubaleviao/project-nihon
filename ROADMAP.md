@@ -905,14 +905,19 @@ palette swaps without extra draw calls.
   (no authored masks) still works — scalars now, authored masks later, one
   shader.
 - `src/character/character_material.gd` — builds the shared palette
-  `ImageTexture` (256×1, no mip-maps) and the per-part `ShaderMaterial`, and
-  exposes `set_index` / `get_index` for per-instance palette swaps (§20).
+  `ImageTexture` (256×1, no mip-maps) and ONE shared `ShaderMaterial`, and
+  exposes `set_index` / `get_index` for per-instance palette swaps (§20) via
+  `set_instance_shader_parameter`.
 - `src/character/character_slice.gd` — `_make_box` / equipment assembly now
-  build a `ShaderMaterial` carrying palette indices + channel scalars instead of
-  a `StandardMaterial3D` albedo tint; `get_part_material`,
-  `get_palette_texture`, and `apply_palette_index` expose the pipeline to tests
-  and tooling. Metal tones resolve to a metals-region palette index (§21); wear
-  is derived from durability (§23).
+  reference the shared `ShaderMaterial` and write per-instance palette indices +
+  channel scalars instead of a per-part `StandardMaterial3D` albedo tint;
+  `get_part_material`, `get_part_shader_parameter`, `get_palette_texture`, and
+  `apply_palette_index` expose the pipeline to tests and tooling. Metal tones
+  resolve to a metals-region palette index (§21, region bounds read from the
+  generated palette's `regions` field); wear derives from the durability tiers
+  (§23); emission resolves a palette index in the emission region from the
+  per-item `emissionColor` field (§22); roughness varies by metal tone + wear
+  (§21).
 - Pixel-art texture constraints enforced on the shader's samplers
   (`filter_nearest`, `repeat_disable`, no mip-maps) rather than import presets —
   Point filtering is guaranteed independent of per-machine texture-filter
@@ -925,12 +930,12 @@ palette swaps without extra draw calls.
 
 **Acceptance criteria:**
 - Palette swap changes character color without creating a new texture asset ✓
-- Two characters with different palettes share the same shader + palette texture
-  (per-instance `ShaderMaterial`, no new texture per skin) ✓
+- Two characters with different palettes share ONE `ShaderMaterial` + palette
+  texture (per-instance shader parameters, no new material per character) ✓
 - Pixel-art textures render without bilinear blurring (Point filter enforced on
   the shader samplers) ✓
-- Wear channel visually degrades equipment as durability decreases (`wear = 1 −
-  durability`, §23) ✓
+- Wear channel visually degrades equipment as durability decreases (wear derived
+  from the §23 durability tiers) ✓
 
 **Implementation notes:**
 - The palette lives in `GameData.PALETTES` (tag `palette`), not
@@ -946,7 +951,8 @@ palette swaps without extra draw calls.
 
 **Known simplifications (deferred to Phase 23):**
 - LOD mesh switching not yet tied to this material system.
-- Emission channel is static; dynamic glow (e.g. enchantments) deferred.
+- Emission colour is palette-driven (per-item `emissionColor` index) but static;
+  dynamic glow (e.g. enchantments) deferred.
 - Authored mask textures (Primary/Secondary/Accent/Metal/Emission/Wear) are not
   yet produced — the placeholder drives colour through per-instance scalars.
 

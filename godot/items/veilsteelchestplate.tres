@@ -18,6 +18,7 @@ attachments = {"equipped":"socket_chest","stored":"socket_back"}
 minLodLevel = 3
 size = [0.7,0.55,0.42]
 metalTone = "veilsteel"
+emissionColor = 200
 compatibleTags = ["humanoid","has_hands"]
 state_machine_field = "condition"
 initial_state = "pristine"

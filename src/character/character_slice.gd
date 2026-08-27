@@ -211,9 +211,10 @@ func get_part_node(instance_id: String, part_key: String) -> Node3D:
 	return parts[part_key].get("node", null)
 
 ## The ShaderMaterial on a named part (body_chest / body_legs / head / hair /
-## beard / an equipment slot), or null when the part is absent. Exposed for
-## Phase 22 palette-swap and channel tests to read/write shader parameters
-## directly (`material.get_shader_parameter(...)`).
+## beard / an equipment slot), or null when the part is absent. Every part now
+## shares ONE material (§20), so this returns that shared material — use
+## get_part_shader_parameter() to read a part's per-instance palette/channel
+## values (they live on the mesh, not the shared material).
 func get_part_material(instance_id: String, part_key: String) -> ShaderMaterial:
 	var node := get_part_node(instance_id, part_key)
 	if node == null:
@@ -221,21 +222,31 @@ func get_part_material(instance_id: String, part_key: String) -> ShaderMaterial:
 	var mat = node.material_override
 	return mat if mat is ShaderMaterial else null
 
+## Read a per-instance shader parameter from a part's mesh (set via
+## set_instance_shader_parameter). Returns null when the part is absent or the
+## parameter was never set. Exposed for Phase 22 palette-swap and channel tests
+## to read/write per-instance values directly.
+func get_part_shader_parameter(instance_id: String, part_key: String, param: String):
+	var node := get_part_node(instance_id, part_key)
+	if node == null or not (node is GeometryInstance3D):
+		return null
+	return (node as GeometryInstance3D).get_instance_shader_parameter(param)
+
 ## The shared 256×1 palette texture (characters.md §19), built once from the
 ## fabric palette. Every part samples this same texture; a palette swap writes a
 ## shader index, never a new texture. Exposed for tests and tooling.
 func get_palette_texture() -> ImageTexture:
 	return CharacterMaterial.palette_texture(_palette_colors())
 
-## Swap one palette index channel on a part's material without creating a new
+## Swap one palette index channel on a part's mesh without creating a new
 ## texture or material (§20). `channel` is base_index / primary_index /
-## secondary_index / accent_index. Returns true when the part exists.
+## secondary_index / accent_index. Returns false when the part is absent or the
+## channel key is unknown (see CharacterMaterial.set_index).
 func apply_palette_index(instance_id: String, part_key: String, channel: String, index: int) -> bool:
-	var mat := get_part_material(instance_id, part_key)
-	if mat == null:
+	var node := get_part_node(instance_id, part_key)
+	if node == null or not (node is GeometryInstance3D):
 		return false
-	CharacterMaterial.set_index(mat, channel, index)
-	return true
+	return CharacterMaterial.set_index(node as GeometryInstance3D, channel, index) >= 0
 
 # ---------------------------------------------------------------------------
 # Public — recipe (de)serialization (characters.md §30, §31)
@@ -550,6 +561,7 @@ func _equipment_def(item_id: String) -> Dictionary:
 		"minLodLevel":     GameDataReader.int_field(res, "minLodLevel", 0),
 		"size":            GameDataReader.json_field(res, "size", [0.3, 0.3, 0.3]),
 		"metal":           GameDataReader.str_field(res, "metalTone", "none"),
+		"emissionColor":   GameDataReader.int_field(res, "emissionColor", 200),
 		"hideRegions":     GameDataReader.json_field(res, "hideRegions", []),
 	}
 
@@ -593,6 +605,33 @@ func _fallback_palette() -> Array:
 		out.append(Color(g, g, g))
 	return out
 
+## Named 32-entry region bounds (characters.md §19), read from the generated
+## palette's `regions` field (palettes.js) so the metals/emission region numbers
+## are never hardcoded in this slice. Falls back to the palettes.js layout when
+## the field is absent (defensive against a stale/unregenerated GameData).
+func _palette_regions() -> Array:
+	var res: Resource = GameData.PALETTES.get(PALETTE_KEY, null)
+	var regions = GameDataReader.json_field(res, "regions", []) if res != null else []
+	if regions is Array and regions.size() > 0:
+		return regions
+	return _default_regions()
+
+## Region bounds { "start": int, "end": int } for a named region (e.g. "metals",
+## "emission"). Empty {0,0} when the name is unknown.
+func _region_bounds(name: String) -> Dictionary:
+	for r in _palette_regions():
+		if r is Dictionary and str(r.get("name", "")) == name:
+			return { "start": int(r.get("start", 0)), "end": int(r.get("end", 0)) }
+	return { "start": 0, "end": 0 }
+
+## Mirrors the palettes.js REGIONS layout (8 × 32-entry regions) as a fallback.
+func _default_regions() -> Array:
+	var names := ["skin", "hair", "primary", "secondary", "accent", "metals", "emission", "eyes"]
+	var out: Array = []
+	for i in range(names.size()):
+		out.append({ "name": names[i], "start": i * 32, "end": (i + 1) * 32 - 1 })
+	return out
+
 # ---------------------------------------------------------------------------
 # Recipe normalization helpers
 # ---------------------------------------------------------------------------
@@ -627,15 +666,29 @@ func _normalize_equipment(entry: Dictionary) -> Dictionary:
 		"durability":     clampf(float(entry.get("durability", 1.0)), 0.0, 1.0),
 	}
 
+## Wear tiers (§23): durability → discrete tier, shared by the visual-state
+## name (_wear_level) and the shader scalar (_wear_value) so the two never drift.
+const WEAR_TIERS: Array = [
+	{ "min": 0.9, "name": "New", "value": 0.0 },
+	{ "min": 0.6, "name": "Used", "value": 0.35 },
+	{ "min": 0.3, "name": "Worn", "value": 0.7 },
+	{ "min": 0.0, "name": "Heavily Damaged", "value": 1.0 },
+]
+
+func _wear_tier(durability: float) -> Dictionary:
+	for tier in WEAR_TIERS:
+		if durability >= float(tier["min"]):
+			return tier
+	return WEAR_TIERS[WEAR_TIERS.size() - 1]
+
 ## Wear is derived from durability, never persisted (§23).
 func _wear_level(durability: float) -> String:
-	if durability >= 0.9:
-		return "New"
-	if durability >= 0.6:
-		return "Used"
-	if durability >= 0.3:
-		return "Worn"
-	return "Heavily Damaged"
+	return _wear_tier(durability)["name"]
+
+## Discrete shader wear scalar, derived from the same tiers as _wear_level (§23),
+## so the shader's wear visually matches the reported wear tier.
+func _wear_value(durability: float) -> float:
+	return _wear_tier(durability)["value"]
 
 # ---------------------------------------------------------------------------
 # LOD
@@ -868,18 +921,16 @@ func _make_box(size: Vector3, palette_index: int, opts: Dictionary = {}) -> Mesh
 	var box := BoxMesh.new()
 	box.size = size
 	mesh.mesh = box
-	mesh.material_override = _make_material(palette_index, opts)
+	# ONE shared ShaderMaterial for every part (§20): the palette index and
+	# channel scalars are per-instance parameters, never a new material. The
+	# shared body detail texture is bound once on the shared material (same for
+	# all parts); per-part colour/channel values are written via
+	# CharacterMaterial.apply_instance.
+	var mat := CharacterMaterial.shared_material(_palette_colors())
+	mat.set_shader_parameter("detail_tex", _get_body_texture())
+	mesh.material_override = mat
+	CharacterMaterial.apply_instance(mesh, palette_index, opts)
 	return mesh
-
-## Build the per-part ShaderMaterial (Phase 22): the palette index drives the
-## colour (not a baked Color), and channel opts carry metalness / emission /
-## wear. Replaces the old StandardMaterial3D albedo tint; pixel-art Point
-## filtering is enforced on the shader's samplers (`filter_nearest`), not here.
-func _make_material(palette_index: int, opts: Dictionary) -> ShaderMaterial:
-	var o: Dictionary = opts.duplicate()
-	o["base_index"] = palette_index
-	o["detail_tex"] = _get_body_texture()
-	return CharacterMaterial.build(_palette_colors(), o)
 
 func _palette_colors() -> Array:
 	if _palette.is_empty():
@@ -905,59 +956,86 @@ func _attachment_socket(def: Dictionary, state: String) -> String:
 ## Palette index that drives an equipment mesh's base colour (Phase 22): RIGID
 ## metal items resolve to a metals-region index (§21), otherwise the primary
 ## mask colour drives it (multi-mask-region rendering needs authored mask
-## textures, deferred per §42).
+## textures, deferred per §42). The deformation mode is normalised to upper case
+## (fabric authors it as SKINNED/RIGID/HYBRID) and the metal branch is gated on
+## the metal mask flag (masks.metal), consistent with the metalness channel.
 func _equipment_base_index(def: Dictionary, entry: Dictionary) -> int:
-	var mode: String = str(def.get("deformationMode", "RIGID"))
+	var mode: String = str(def.get("deformationMode", "RIGID")).to_upper()
 	var metal: String = str(def.get("metal", "none"))
-	if mode == "RIGID" and metal != "none" and metal != "":
-		return _metal_palette_index(metal)
 	var masks: Dictionary = def.get("masks", {})
-	if masks.get("primary", false):
+	if mode == "RIGID" and bool(masks.get("metal", false)) and metal != "none" and metal != "":
+		return _metal_palette_index(metal)
+	if bool(masks.get("primary", false)):
 		return int(entry.get("primaryColor", 0))
-	if masks.get("accent", false):
+	if bool(masks.get("accent", false)):
 		return int(entry.get("accentColor", 0))
 	return int(entry.get("secondaryColor", 0))
 
 ## Per-instance channel opts for an equipment mesh (§21–§23): metalness from
-## the metal tone, wear derived from durability (never persisted), emission from
-## the emission mask flag.
+## the metal mask flag (masks.metal), wear from the discrete durability tiers,
+## roughness from the metal tone + wear, emission from the emission mask flag +
+## per-item emissionColor palette index.
 func _equipment_material_opts(def: Dictionary, entry: Dictionary) -> Dictionary:
 	var metal: String = str(def.get("metal", "none"))
 	var masks: Dictionary = def.get("masks", {})
 	var durability: float = clampf(float(entry.get("durability", 1.0)), 0.0, 1.0)
+	var metalness: float = 1.0 if bool(masks.get("metal", false)) else 0.0
+	var wear := _wear_value(durability)
 	var opts := {
-		"primary_index":   int(entry.get("primaryColor", 0)),
-		"secondary_index": int(entry.get("secondaryColor", 0)),
-		"accent_index":    int(entry.get("accentColor", 0)),
-		"metalness":       1.0 if metal != "none" and metal != "" else 0.0,
-		"wear":            1.0 - durability,
-		"emission_strength": 1.0 if masks.get("emission", false) else 0.0,
+		"primary_index":     int(entry.get("primaryColor", 0)),
+		"secondary_index":   int(entry.get("secondaryColor", 0)),
+		"accent_index":      int(entry.get("accentColor", 0)),
+		"metalness":         metalness,
+		"wear":              wear,
+		"roughness":         _roughness_for(metal, wear, metalness),
+		"emission_strength": 1.0 if bool(masks.get("emission", false)) else 0.0,
 	}
-	if masks.get("emission", false):
-		opts["emission_color"] = _emission_color()
+	if bool(masks.get("emission", false)):
+		opts["emission_index"] = _emission_index(def)
 	return opts
 
-## Metal tone → metals-region palette index (§21). The metals region (160–191)
-## is authored greys/bronzes/silvers; a metal item samples it rather than a
-## hardcoded RGB, so every colour — metal included — is palette-driven.
+## Metal tone → metals-region palette index (§21). The metals region bounds are
+## read from the generated palette's `regions` field (palettes.js), not
+## hardcoded; the within-region offset per tone is a content decision (dark
+## ferrite → bright gold).
 func _metal_palette_index(metal: String) -> int:
+	var start: int = _region_bounds("metals")["start"]
 	match metal:
 		"iron", "ferrite":
-			return 160
+			return start
 		"steel", "veilsteel":
-			return 176
+			return start + 16
 		"bronze":
-			return 184
+			return start + 24
 		"gold":
-			return 190
+			return start + 30
 		_:
-			return 168
+			return start + 8
 
-## Emission colour is not yet authored per-item in the fabric; a soft cyan
-## placeholder makes the emission channel visible for items flagged with an
-## emission mask (dynamic glow is a deferred simplification — §22).
-func _emission_color() -> Color:
-	return Color(0.2, 0.55, 1.0)
+## Emission colour is a palette index in the emission region (192–223, §22),
+## read from the per-item emissionColor field, not a hardcoded RGB.
+func _emission_index(def: Dictionary) -> int:
+	var bounds := _region_bounds("emission")
+	var idx := int(def.get("emissionColor", 200))
+	return clampi(idx, int(bounds["start"]), int(bounds["end"]))
+
+## Metal tone + wear → surface roughness (§21): different tones reflect light
+## differently (iron rough, gold smooth) and wear roughens the surface.
+func _roughness_for(metal: String, wear: float, metalness: float) -> float:
+	var base := 0.55
+	if metalness > 0.5:
+		match metal:
+			"iron", "ferrite":
+				base = 0.55
+			"steel", "veilsteel":
+				base = 0.3
+			"bronze":
+				base = 0.4
+			"gold":
+				base = 0.2
+			_:
+				base = 0.5
+	return clampf(base + wear * 0.35, 0.0, 1.0)
 
 ## Placeholder socket → local offset for the humanoid family, scaled by the
 ## current proportions via the same landmark formula the visual assembly and

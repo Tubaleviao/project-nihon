@@ -12,4 +12,5 @@ The single shared 256-entry palette for the character system. Characters store c
 | Name | Type | Required | Description |
 | ---- | ---- | -------- | ----------- |
 | `entries` | json | yes | 256 hex color strings, region-grouped (§19) |
+| `regions` | json | yes | Named 32-entry region bounds for the 256-entry palette (§19) |
 
