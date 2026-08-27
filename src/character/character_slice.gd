@@ -916,18 +916,47 @@ func _legs_bone(rig) -> String:
 			return name
 	return ""
 
-## Cache BoxMesh per distinct size so parts with identical extents share one mesh
-## resource (characters.md §43 — the Phase 22 mesh-sharing criterion). Static so
-## the cache spans every CharacterSlice instance (tests create and free many).
+## Shared BoxMesh cache (characters.md §43 — the Phase 22 mesh-sharing
+## criterion). Keyed by a QUANTIZED size bucket so characters with nearby (not
+## bit-identical) proportion sliders still reuse a mesh, and bounded with a
+## full-clear eviction so it never grows for the process lifetime.
+##
+## NOTE: cached entries are SHARED across characters — never mutate a cached
+## BoxMesh's `size` (or any property) in place, or every part sharing it changes.
 static var _box_meshes: Dictionary = {}
+
+## Fixed quantization step for box extents. Extents within the same step land in
+## one bucket and share a mesh, collapsing slider noise into a small finite set
+## of placeholder sizes.
+const BOX_SIZE_STEP := 0.01
+
+## Upper bound on the shared BoxMesh cache before a full clear (placeholder
+## extents are cheap to rebuild, so a clear is simpler than LRU bookkeeping).
+const BOX_MESH_CACHE_MAX := 256
+
+## Quantize a size to an integer bucket key (one step per unit). Integer keys
+## avoid floating-point collision noise that would otherwise fragment the cache.
+func _box_size_key(size: Vector3) -> Vector3i:
+	return Vector3i(
+		int(roundf(size.x / BOX_SIZE_STEP)),
+		int(roundf(size.y / BOX_SIZE_STEP)),
+		int(roundf(size.z / BOX_SIZE_STEP))
+	)
 
 func _make_box(size: Vector3, palette_index: int, opts: Dictionary = {}) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
-	var box: BoxMesh = _box_meshes.get(size, null)
+	var key := _box_size_key(size)
+	var box: BoxMesh = _box_meshes.get(key, null)
 	if box == null:
+		if _box_meshes.size() >= BOX_MESH_CACHE_MAX:
+			# Full-clear eviction: existing parts keep their (ref-counted) meshes;
+			# new parts rebuild. Keeps the cache bounded without LRU tracking.
+			_box_meshes.clear()
 		box = BoxMesh.new()
-		box.size = size
-		_box_meshes[size] = box
+		# The shared mesh's size is the quantized bucket centre, so every part in
+		# the bucket renders identically.
+		box.size = Vector3(key.x * BOX_SIZE_STEP, key.y * BOX_SIZE_STEP, key.z * BOX_SIZE_STEP)
+		_box_meshes[key] = box
 	mesh.mesh = box
 	# ONE shared ShaderMaterial for every part (§20): the palette index and
 	# channel scalars are per-instance parameters, never a new material. The

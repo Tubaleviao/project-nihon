@@ -96,6 +96,7 @@ func run() -> void:
 	_run_test("character: emission path uses palette index",     _test_character_emission_path)
 	_run_test("character: instance uniforms reach shader",        _test_character_instance_uniforms_reach_shader)
 	_run_test("character: same-size parts share one BoxMesh",     _test_character_mesh_shared)
+	_run_test("character: nearby sizes quantize to one bucket",   _test_character_box_size_quantized)
 	_run_test("crafting: recipe data loaded from fabric",     _test_crafting_recipe_data_loaded)
 	_run_test("crafting: skill guard blocks low tier",        _test_crafting_skill_guard_blocks)
 	_run_test("crafting: consumes inputs and produces output", _test_crafting_consumes_and_produces)
@@ -1033,6 +1034,19 @@ func _test_character_mesh_shared() -> void:
 	assert_true(n1 != null and n2 != null, "body parts exist")
 	assert_true(n1.mesh is BoxMesh and n2.mesh is BoxMesh, "parts use a BoxMesh")
 	assert_true(n1.mesh == n2.mesh, "same-size parts share one BoxMesh resource")
+	ch.free()
+
+func _test_character_box_size_quantized() -> void:
+	# Nearby extents quantize to the same bucket key, so characters with slightly
+	# different proportion sliders still share a mesh instead of minting a unique
+	# one per slider value. Integer bucket keys also dodge float-collision noise.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var a: Vector3i = ch._box_size_key(Vector3(0.551, 1.201, 0.321))
+	var b: Vector3i = ch._box_size_key(Vector3(0.553, 1.203, 0.323))
+	assert_true(a == b, "nearby sizes quantize to the same bucket key")
+	var far: Vector3i = ch._box_size_key(Vector3(1.0, 1.0, 1.0))
+	assert_true(a != far, "far sizes quantize to different buckets")
 	ch.free()
 
 # ---------------------------------------------------------------------------
