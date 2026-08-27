@@ -96,7 +96,7 @@ func run() -> void:
 	_run_test("character: emission path uses palette index",     _test_character_emission_path)
 	_run_test("character: instance uniforms reach shader",        _test_character_instance_uniforms_reach_shader)
 	_run_test("character: same-size parts share one BoxMesh",     _test_character_mesh_shared)
-	_run_test("character: nearby sizes quantize to one bucket",   _test_character_box_size_quantized)
+	_run_test("character: nearby proportions snap to one bucket",   _test_character_proportions_quantized)
 	_run_test("crafting: recipe data loaded from fabric",     _test_crafting_recipe_data_loaded)
 	_run_test("crafting: skill guard blocks low tier",        _test_crafting_skill_guard_blocks)
 	_run_test("crafting: consumes inputs and produces output", _test_crafting_consumes_and_produces)
@@ -560,9 +560,9 @@ func _test_character_clamp_proportions() -> void:
 		"proportions": { "height": 9.0, "bodyMass": 0.01, "shoulderWidth": 1.0 },
 	})
 	var props: Dictionary = recipe["proportions"]
-	assert_eq(props["height"], 1.15, "height clamped to max 1.15")
-	assert_eq(props["bodyMass"], 0.80, "bodyMass clamped to min 0.80")
-	assert_eq(props["shoulderWidth"], 1.0, "in-range value unchanged")
+	assert_true(is_equal_approx(props["height"], 1.15), "height clamped to max 1.15")
+	assert_true(is_equal_approx(props["bodyMass"], 0.80), "bodyMass clamped to min 0.80")
+	assert_true(is_equal_approx(props["shoulderWidth"], 1.0), "in-range value unchanged")
 	ch.free()
 
 func _test_character_drops_unknown_equipment() -> void:
@@ -1036,17 +1036,21 @@ func _test_character_mesh_shared() -> void:
 	assert_true(n1.mesh == n2.mesh, "same-size parts share one BoxMesh resource")
 	ch.free()
 
-func _test_character_box_size_quantized() -> void:
-	# Nearby extents quantize to the same bucket key, so characters with slightly
-	# different proportion sliders still share a mesh instead of minting a unique
-	# one per slider value. Integer bucket keys also dodge float-collision noise.
+func _test_character_proportions_quantized() -> void:
+	# Nearby proportion sliders snap to the same PROPORTION_STEP bucket (§8), so
+	# characters with slightly different sliders still derive identical extents
+	# and share one placeholder mesh — and the mesh size stays on the same grid as
+	# the socket position (no extent/position seam).
 	var ch := CharacterSlice.new()
 	add_child(ch)
-	var a: Vector3i = ch._box_size_key(Vector3(0.551, 1.201, 0.321))
-	var b: Vector3i = ch._box_size_key(Vector3(0.553, 1.203, 0.323))
-	assert_true(a == b, "nearby sizes quantize to the same bucket key")
-	var far: Vector3i = ch._box_size_key(Vector3(1.0, 1.0, 1.0))
-	assert_true(a != far, "far sizes quantize to different buckets")
+	var recipe := ch.deserialize_appearance({
+		"skeleton": "HumanoidSkeleton",
+		"proportions": { "height": 0.96, "bodyMass": 1.04, "shoulderWidth": 1.07 },
+	})
+	var props: Dictionary = recipe["proportions"]
+	assert_true(is_equal_approx(props["height"], 0.95), "0.96 snaps to the 0.95 bucket")
+	assert_true(is_equal_approx(props["bodyMass"], 1.05), "1.04 snaps to the 1.05 bucket")
+	assert_true(is_equal_approx(props["shoulderWidth"], 1.05), "1.07 snaps to the 1.05 bucket")
 	ch.free()
 
 # ---------------------------------------------------------------------------
