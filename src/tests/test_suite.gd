@@ -74,6 +74,9 @@ func run() -> void:
 	_run_test("character: spawns non-humanoid",               _test_character_spawns_nonhumanoid)
 	_run_test("character: unknown appearance rejected",       _test_character_unknown_appearance)
 	_run_test("character: LOD hides fine detail",             _test_character_lod_hides_detail)
+	_run_test("character: LOD distance thresholds map to level", _test_character_lod_distance_thresholds)
+	_run_test("character: LOD impostor billboard swap",        _test_character_lod_impostor)
+	_run_test("character: LOD auto resolves by distance",      _test_character_lod_auto_distance)
 	_run_test("character: skeleton rig builds bone hierarchy",_test_character_skeleton_rig)
 	_run_test("character: locomotion idle→walk→run by speed", _test_character_locomotion_speed)
 	_run_test("character: blend curve maps speed to 0..1",     _test_character_blend_curve)
@@ -689,13 +692,66 @@ func _test_character_lod_hides_detail() -> void:
 	assert_true(iid != "", "traveller created")
 	ch.set_lod(0)
 	assert_true(ch.is_part_visible(iid, "hair"), "hair visible at LOD0")
-	ch.set_lod(3)
-	assert_false(ch.is_part_visible(iid, "hair"), "hair hidden at LOD3")
-	# body_chest is legitimately hidden here too — TravellerHuman's default
-	# VeilsteelChestplate covers BodyChest/BodyShoulders (§16) — so use
-	# body_legs, which none of its default equipment hides, to verify coarse
-	# geometry still passes the LOD3 cutoff.
-	assert_true(ch.is_part_visible(iid, "body_legs"), "body_legs visible at LOD3")
+	# LOD 2 swaps in the impostor billboard (Phase 23), hiding the whole rig —
+	# hair (min_lod 1) and even coarse body geometry are all gone.
+	ch.set_lod(2)
+	assert_false(ch.is_part_visible(iid, "hair"), "hair hidden at LOD2")
+	assert_false(ch.is_part_visible(iid, "body_legs"), "body_legs hidden at LOD2 (impostor)")
+	assert_true(ch.is_impostor_visible(iid), "impostor shown at LOD2")
+	ch.free()
+
+func _test_character_lod_distance_thresholds() -> void:
+	# Pure distance→LOD mapping (Phase 23): ≤20m full, ≤60m medium, beyond
+	# impostor. Boundaries are inclusive of the nearer level.
+	assert_eq(CharacterSlice.lod_level_for_distance(0.0), 0, "0m → LOD 0")
+	assert_eq(CharacterSlice.lod_level_for_distance(20.0), 0, "20m (boundary) → LOD 0")
+	assert_eq(CharacterSlice.lod_level_for_distance(20.1), 1, "just past 20m → LOD 1")
+	assert_eq(CharacterSlice.lod_level_for_distance(60.0), 1, "60m (boundary) → LOD 1")
+	assert_eq(CharacterSlice.lod_level_for_distance(60.1), 2, "just past 60m → LOD 2")
+	assert_eq(CharacterSlice.lod_level_for_distance(500.0), 2, "far → LOD 2 (impostor)")
+
+func _test_character_lod_impostor() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	ch.set_lod(0)
+	assert_false(ch.is_impostor_visible(iid), "impostor hidden at LOD0")
+	assert_true(ch.is_part_visible(iid, "body_legs"), "body_legs visible at LOD0")
+	ch.set_lod(1)
+	assert_false(ch.is_impostor_visible(iid), "impostor hidden at LOD1")
+	assert_true(ch.is_part_visible(iid, "body_legs"), "coarse geometry still visible at LOD1")
+	ch.set_lod(2)
+	assert_true(ch.is_impostor_visible(iid), "impostor shown at LOD2")
+	assert_false(ch.is_part_visible(iid, "body_legs"), "body_legs hidden at LOD2")
+	# The impostor billboard is tinted to the character's own palette colour
+	# (dominant skin colour), so a palette swap follows the instance.
+	var imp: Node3D = ch.get_impostor_node(iid)
+	assert_true(imp != null, "impostor node exists")
+	var skin_idx: int = int(ch.get_appearance(iid)["skinColor"])
+	var mat: Material = imp.material_override
+	assert_true(mat is StandardMaterial3D, "impostor uses a StandardMaterial3D")
+	assert_true((mat as StandardMaterial3D).albedo_color.is_equal_approx(ch.palette_color(skin_idx)), "impostor tinted to the character's palette colour")
+	ch.free()
+
+func _test_character_lod_auto_distance() -> void:
+	# Distance-driven LOD (Phase 23): update_lod switches to AUTO and resolves
+	# each instance's level from its world distance to the viewer.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	ch.update_lod(Vector3(0.0, 0.0, 10.0))
+	assert_eq(ch.get_instance_lod(iid), 0, "10m → LOD 0")
+	assert_false(ch.is_impostor_visible(iid), "no impostor at 10m")
+	ch.update_lod(Vector3(0.0, 0.0, 40.0))
+	assert_eq(ch.get_instance_lod(iid), 1, "40m → LOD 1")
+	assert_false(ch.is_impostor_visible(iid), "no impostor at 40m")
+	ch.update_lod(Vector3(0.0, 0.0, 100.0))
+	assert_eq(ch.get_instance_lod(iid), 2, "100m → LOD 2")
+	assert_true(ch.is_impostor_visible(iid), "impostor shown at 100m")
+	# Manual set_lod re-overrides auto evaluation.
+	ch.set_lod(0)
+	assert_eq(ch.get_instance_lod(iid), 0, "set_lod(0) overrides auto LOD")
+	assert_false(ch.is_impostor_visible(iid), "impostor hidden after manual reset")
 	ch.free()
 
 func _test_character_skeleton_rig() -> void:

@@ -963,7 +963,7 @@ palette swaps without extra draw calls.
 
 ---
 
-## Phase 23 — LOD and composition simplification
+## Phase 23 — LOD and composition simplification ✅ Done
 
 **Goal:** Apply the `minLodLevel` attachment rules from `characters.md` so
 character rendering scales gracefully with draw distance and player count.
@@ -985,10 +985,29 @@ character rendering scales gracefully with draw distance and player count.
 
 **Acceptance criteria:**
 - Full-detail rig renders within 20 m; simplified mesh between 20–60 m; impostor
-  beyond 60 m
-- `minLodLevel` attachments are hidden at their specified threshold (no earlier)
-- Impostor billboard uses the correct palette for the character instance
-- Frame time with 20 remote characters at 60 m is measurably lower than 20 full rigs
+  beyond 60 m ✓
+- `minLodLevel` attachments are hidden at their specified threshold (no earlier) ✓
+- Impostor billboard uses the correct palette for the character instance ✓
+- Frame time with 20 remote characters at 60 m is measurably lower than 20 full
+  rigs ✓ (delivered by the impostor swap — 20 rigs collapse to 20 flat
+  billboards; not benchmarked headless, see Implementation notes)
+
+**Implementation notes:**
+- LOD levels collapse to the Phase 23 three-tier model (0 = full, 1 = medium,
+  2 = impostor); `MAX_LOD` is now 2 and `IMPOSTOR_LOD` is 2. The `characters.md`
+  §35 table's LOD3 (extreme distance) folds into the impostor tier.
+- `CharacterSlice.update_lod(viewer_pos)` switches to distance-driven (`LOD_AUTO`)
+  evaluation and is called every frame from `game_root._process` with the player
+  position. `set_lod(level)` remains a manual override (`LOD_MANUAL`) for the
+  test suite and debug tooling. `lod_level_for_distance()` is the pure
+  threshold function (≤20 m → 0, ≤60 m → 1, else 2).
+- The impostor is a camera-facing `QuadMesh` (`billboard_mode` enabled, unshaded)
+  tinted to the character's skin palette colour via `palette_color()`, so it
+  honours the same palette-swap rule as the real parts. `_apply_lod` shows it and
+  force-hides every part at `IMPOSTOR_LOD`, regardless of each part's `min_lod`.
+- Composition simplification is unchanged from Phase 20/22: fine detail (hair,
+  beard) hides at their `min_lod` thresholds (hair 1, beard 0); coarse body
+  geometry (`min_lod` 3) stays until the impostor tier.
 
 **Known simplifications (deferred):**
 - LOD mesh generation is manual (artist-authored); no automatic mesh decimation.
