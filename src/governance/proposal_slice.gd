@@ -79,6 +79,8 @@ func _ready() -> void:
 	GameBus.governance_synced.connect(_on_governance_synced)
 
 func _process(delta: float) -> void:
+	if not is_authoritative:
+		return
 	_expiry_tick_accum += delta
 	if _expiry_tick_accum >= EXPIRY_TICK_INTERVAL:
 		_expiry_tick_accum = 0.0

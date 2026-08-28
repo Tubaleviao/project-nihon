@@ -1116,6 +1116,13 @@ community governance hooks.
   `trade_synced`) on every mutation. That is simple and correct for now, but a
   populated world will outgrow it — full-state broadcasts should be replaced
   with per-mutation deltas (or a dirty-field diff) once lists grow.
+- **Per-peer inventory** — multiplayer has a single shared inventory: the host's
+  `inventory_slice` is synced to every client (`inventory_synced` /
+  `replace_contents`). Party identity is now peer-scoped (a client's
+  "player" resolves to `peer_<id>` on the host, never the host's own
+  inventory), so a remote client's market purchase / trade fails closed rather
+  than crediting the host. Actually delivering to a remote player needs a
+  per-peer inventory store + per-peer sync, which is still deferred.
 
 ---
 

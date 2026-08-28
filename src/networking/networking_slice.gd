@@ -529,6 +529,16 @@ func _dedup(sender: int, payload: Dictionary) -> bool:
 
 	return true
 
+## Resolve a client's self-reference to a peer-scoped party id. A client sends
+## the literal "player" to mean "me", but on the host every remote client would
+## collide on that string and resolve to the host's own inventory. Rewriting
+## "player" → "peer_<id>" keeps each peer's market/trade/proposal actions aimed
+## at that peer, never at the host's "player" identity.
+func _peer_party(sender: int, party: String) -> String:
+	if party == "player":
+		return "peer_%d" % sender
+	return party
+
 ## Route a client → host packet. Only client-originated types are accepted;
 ## host-only types sent by a malicious client are dropped and logged.
 func _route_c2h(sender: int, payload: Dictionary) -> void:
@@ -548,7 +558,7 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				push_error("NetworkingSlice: unknown block_edit_intent action '%s'" % action)
 		"market_list_intent":
 			GameBus.market_list_intent.emit(
-				str(payload.get("seller", "")),
+				_peer_party(sender, str(payload.get("seller", ""))),
 				str(payload.get("item_id", "")),
 				int(payload.get("quantity", 0)),
 				float(payload.get("price", 0.0))
@@ -556,18 +566,18 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 		"market_buy_intent":
 			GameBus.market_buy_intent.emit(
 				str(payload.get("listing_id", "")),
-				str(payload.get("buyer", ""))
+				_peer_party(sender, str(payload.get("buyer", "")))
 			)
 		"proposal_submit_intent":
 			GameBus.proposal_submit_intent.emit(
-				str(payload.get("author", "")),
+				_peer_party(sender, str(payload.get("author", ""))),
 				str(payload.get("title", "")),
 				str(payload.get("body", ""))
 			)
 		"proposal_vote_intent":
 			GameBus.proposal_vote_intent.emit(
 				str(payload.get("proposal_id", "")),
-				str(payload.get("voter", "")),
+				_peer_party(sender, str(payload.get("voter", ""))),
 				str(payload.get("verdict", ""))
 			)
 		"proposal_supersede_intent":
@@ -577,25 +587,25 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			)
 		"trade_start_intent":
 			GameBus.trade_start_intent.emit(
-				str(payload.get("party_a", "")),
+				_peer_party(sender, str(payload.get("party_a", ""))),
 				str(payload.get("party_b", ""))
 			)
 		"trade_propose_intent":
 			GameBus.trade_propose_intent.emit(
 				str(payload.get("trade_id", "")),
-				str(payload.get("party", "")),
+				_peer_party(sender, str(payload.get("party", ""))),
 				payload.get("give", {}),
 				payload.get("want", {})
 			)
 		"trade_accept_intent":
 			GameBus.trade_accept_intent.emit(
 				str(payload.get("trade_id", "")),
-				str(payload.get("party", ""))
+				_peer_party(sender, str(payload.get("party", "")))
 			)
 		"trade_reject_intent":
 			GameBus.trade_reject_intent.emit(
 				str(payload.get("trade_id", "")),
-				str(payload.get("party", ""))
+				_peer_party(sender, str(payload.get("party", "")))
 			)
 		_:
 			# Clients may not send host-authoritative types (block_changed,

@@ -109,7 +109,9 @@ func set_party_inventory(party: String, inv: Node) -> void:
 func _inventory_for(party: String) -> Node:
 	if _party_inventory.has(party):
 		return _party_inventory[party]
-	return inventory_slice
+	if party == "player":
+		return inventory_slice
+	return null
 
 ## Open a trade between two parties; returns the trade id. On a client this
 ## forwards a start intent and returns "" (the host assigns the id).
@@ -231,6 +233,11 @@ func _maybe_resolve(trade_id: String) -> Dictionary:
 ## Execute the exchange: A's give → B's inventory, B's give → A's inventory,
 ## with the local player's Trade broker fee applied to what they receive.
 func _resolve_exchange(t: Dictionary) -> Dictionary:
+	# Idempotent: once completed, never re-run the exchange. A double accept
+	# (reachable by clicking the UI "accept" button twice) must not duplicate
+	# the transferred items.
+	if str(t.get("state", "")) == "completed":
+		return { "trade_id": t["id"], "success": true, "reason": "", "state": "completed" }
 	var parties: Array = t["parties"]
 	var a: String = parties[0]
 	var b: String = parties[1]

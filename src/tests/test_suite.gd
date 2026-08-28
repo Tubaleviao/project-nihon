@@ -34,6 +34,9 @@ const SkeletonRig     := preload("res://src/character/skeleton_rig.gd")
 var _pass: int = 0
 var _fail: int = 0
 var _current_test: String = ""
+## Method names (e.g. "_test_foo") registered via _run_test, used by the
+## self-check to catch a test function that was written but never registered.
+var _registered_names: Dictionary = {}
 
 # ---------------------------------------------------------------------------
 # Entry
@@ -162,6 +165,8 @@ func run() -> void:
 	_run_test("chunk: voxel edits isolated per chunk",          _test_chunk_voxel_edits_isolated)
 	_run_test("chunk: unload preserves edits on reload",        _test_chunk_unload_preserves_edits)
 	_run_test("chunk: creature spawn scales per chunk",         _test_chunk_creature_spawn_per_chunk)
+	_run_test("chunk: reload honours engaged spawn budget",     _test_chunk_reload_engaged_budget)
+	_run_test("chunk: apply_edits preserves dirty chunks",      _test_apply_edits_preserves_dirty_chunks)
 	_run_test("chunk: persistence round-trips per-chunk edits", _test_chunk_persistence_manifest)
 	_run_test("chunk: minimap cells resolve chunks",            _test_chunk_minimap_cells)
 	_run_test("net: client forwards block intent",               _test_net_voxel_client_forwards_intent)
@@ -182,6 +187,7 @@ func run() -> void:
 	_run_test("net: inventory replace_contents is idempotent",   _test_net_inventory_replace_idempotent)
 	_run_test("net: host persists last-known state across disconnect", _test_net_reconnect_last_known_state)
 	_run_test("net: emulated loss+reorder — all delivered packets accepted", _test_net_two_peer_loss_reorder)
+	_run_test("net: client self-reference is peer-scoped",       _test_net_peer_party_scopes_identity)
 	_run_test("asset: placeholder resolves at canonical path",  _test_asset_placeholder_resolves)
 	_run_test("asset: no private-only paths hardcoded",          _test_asset_no_private_paths_hardcoded)
 	_run_test("asset: pck round-trip proves override works",    _test_asset_pck_round_trip_override)
@@ -198,6 +204,8 @@ func run() -> void:
 	_run_test("trade: failed resolve reports still-pending",    _test_trade_failed_resolve_stays_pending)
 	_run_test("trade: client forwards intents",                 _test_trade_client_forwards_intents)
 	_run_test("trade: client applies authoritative sync",       _test_trade_client_applies_sync)
+	_run_test("trade: double accept does not duplicate",        _test_trade_double_accept_no_dupe)
+	_run_test("trade: remote party has no host inventory",      _test_trade_remote_party_no_inventory)
 	_run_test("market: list and browse listings",               _test_market_list_browse)
 	_run_test("market: buy transfers escrow to buyer",          _test_market_buy_transfers)
 	_run_test("market: expired listing is not browsable",       _test_market_expired_not_browsable)
@@ -227,6 +235,16 @@ func run() -> void:
 	_run_test("proposal: get_proposal deep-copies votes",       _test_proposal_get_proposal_deep_copy)
 	_run_test("proposal: supersede replaces a proposal",        _test_proposal_supersede)
 	_run_test("proposal: supersede needs ratified replacement", _test_proposal_supersede_requires_ratified_replacement)
+	_run_test("proposal: expiry tick is authority-gated",       _test_proposal_expiry_authority_gated)
+
+	# Self-check: the _run_test list above is manual, so a test function can be
+	# written but forgotten from the list. Fail loudly instead of silently
+	# dropping it: any _test_* method not registered above fails the suite.
+	for m in get_method_list():
+		var method_name: String = str(m.get("name", ""))
+		if method_name.begins_with("_test_") and not _registered_names.has(method_name):
+			push_error("TestSuite: '%s' is defined but never registered — add it to the _run_test list" % method_name)
+			_fail += 1
 
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
@@ -2559,6 +2577,14 @@ func _test_net_two_peer_loss_reorder() -> void:
 	sender.free()
 	receiver.free()
 
+func _test_net_peer_party_scopes_identity() -> void:
+	var n := NetworkingSlice.new()
+	add_child(n)
+	assert_eq(n._peer_party(5, "player"), "peer_5", "client 'player' self-reference is peer-scoped")
+	assert_eq(n._peer_party(5, "merchant"), "merchant", "non-self party id passes through unchanged")
+	assert_eq(n._peer_party(5, "peer_9"), "peer_9", "already-scoped id passes through unchanged")
+	n.free()
+
 # ---------------------------------------------------------------------------
 # AssetOverlay tests (Phase 21 — asset separation)
 # ---------------------------------------------------------------------------
@@ -2864,6 +2890,55 @@ func _test_trade_client_applies_sync() -> void:
 	})
 	assert_eq(str(t.get_trade("trade_0")["state"]), "pending", "client applied authoritative trade state")
 	t.free()
+
+func _test_trade_double_accept_no_dupe() -> void:
+	var inv_a := InventorySlice.new()
+	add_child(inv_a)
+	var inv_b := InventorySlice.new()
+	add_child(inv_b)
+	inv_a.add_item("wolf_fang", 5)
+	inv_b.add_item("hawk_feather", 3)
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("player", inv_a)
+	t.set_party_inventory("peer", inv_b)
+	t.set_skill("Trade", "master")
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "wolf_fang": 5 }, { "hawk_feather": 3 })
+	t.propose(tid, "peer", { "hawk_feather": 3 }, { "wolf_fang": 5 })
+	t.accept(tid, "player")
+	t.accept(tid, "peer")   # resolves once
+	# A second accept (double-click the UI button) must not re-run the exchange.
+	var r: Dictionary = t.accept(tid, "peer")
+	assert_true(bool(r.get("success", false)), "second accept is a no-op success")
+	assert_eq(inv_a.get_item_count("hawk_feather"), 3, "player's received items are not duplicated")
+	assert_eq(inv_b.get_item_count("wolf_fang"), 5, "peer's received items are not duplicated")
+	assert_eq(inv_a.get_item_count("wolf_fang"), 0, "player's given items stay gone")
+	assert_eq(inv_b.get_item_count("hawk_feather"), 0, "peer's given items stay gone")
+	t.free()
+	inv_a.free()
+	inv_b.free()
+
+func _test_trade_remote_party_no_inventory() -> void:
+	# A remote peer ("peer_5") the host has no inventory for must resolve to
+	# null (fail-closed) — never to the host's own inventory_slice.
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv.add_item("wolf_fang", 5)
+	var t := TradeSlice.new()
+	add_child(t)
+	t.inventory_slice = inv
+	t.set_skill("Trade", "master")
+	var tid := t.start_trade("player", "peer_5")
+	t.propose(tid, "player", { "wolf_fang": 5 }, {})
+	t.propose(tid, "peer_5", {}, { "wolf_fang": 5 })
+	t.accept(tid, "player")
+	var r: Dictionary = t.accept(tid, "peer_5")
+	assert_false(bool(r.get("success", false)), "remote peer with no inventory cannot resolve")
+	assert_eq(str(r.get("reason", "")), "no_inventory", "reason is no_inventory (not host-credited)")
+	assert_eq(inv.get_item_count("wolf_fang"), 5, "host inventory is not credited to the remote peer")
+	t.free()
+	inv.free()
 
 # ---------------------------------------------------------------------------
 # Market slice tests (Phase 24)
@@ -3317,6 +3392,25 @@ func _test_proposal_supersede_requires_ratified_replacement() -> void:
 	assert_eq(str(p.get_proposal(old_pid)["state"]), "proposed", "old proposal unchanged")
 	p.free()
 
+func _test_proposal_expiry_authority_gated() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.is_authoritative = false
+	p.set_voting_window(0.0)
+	# Seed an already-expired proposal via the authoritative sync path.
+	var now := Time.get_unix_time_from_system()
+	p.apply_governance_data({
+		"proposals": {
+			"proposal_0": { "id": "proposal_0", "author": "alice", "title": "X", "body": "", "state": "proposed", "votes": {}, "submitted_at": 0.0, "expires_at": now - 10.0 }
+		},
+		"decisions_log": [],
+		"next_id": 1,
+	})
+	# A client's _process tick must NOT expire proposals — the host owns expiry.
+	p._process(2.0)
+	assert_eq(str(p.get_proposal("proposal_0")["state"]), "proposed", "non-authoritative tick does not expire proposals")
+	p.free()
+
 # ---------------------------------------------------------------------------
 # Assertion helpers
 # ---------------------------------------------------------------------------
@@ -3348,6 +3442,7 @@ func _ko(msg: String) -> void:
 
 func _run_test(name: String, fn: Callable) -> void:
 	_current_test = name
+	_registered_names[str(fn.get_method())] = true
 	var fails_before := _fail
 	fn.call()
 	var outcome := "✓" if _fail == fails_before else "✗"
