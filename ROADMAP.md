@@ -1083,11 +1083,12 @@ community governance hooks.
   map (`set_party_inventory`): the local player uses `inventory_slice`; tests
   inject a second `InventorySlice` to model the remote side, so "both sides"
   exchange is asserted directly.
-- **Market expiry** is lazy and wall-clock: `get_listings` filters by
-  `expires_at` (a Unix-epoch timestamp, not process uptime), and
-  `expire_listings()` removes + emits `market_listing_expired`. The save
-  snapshot carries `listed_at`/`expires_at`, so a restored listing keeps its
-  real deadline across sessions. The default lifetime is fabric
+- **Market expiry** is wall-clock: `get_listings` filters by `expires_at` (a
+  Unix-epoch timestamp, not process uptime), and a runtime tick calls
+  `expire_listings()` to remove lapsed listings, refund their escrow to the
+  seller, and emit `market_listing_expired`. The save snapshot carries
+  `listed_at`/`expires_at`, so a restored listing keeps its real deadline
+  across sessions. The default lifetime is fabric
   `MarketSystem.defaultExpirySeconds`.
 - **Ratification** requires quorum + threshold + window (fabric
   `GovernanceSystem.ratification`: threshold 0.6, quorum 3, window 86400 s): a
@@ -1107,8 +1108,9 @@ community governance hooks.
 - **Trade UI** — a single-player demo flow (a seeded merchant) lets a player
   start and complete a trade; a full two-player / NPC negotiation UI is still
   deferred.
-- **Market listing escrow** — listings are records, not an escrowed item
-  reserve; a seller's inventory is not debited on list.
+- **Market listing escrow** — listings now escrow the seller's goods (debited on
+  list, transferred on buy, refunded on expiry); a listing is still not an
+  escrowed *currency* reserve because there is no currency model.
 
 ---
 

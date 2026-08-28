@@ -190,15 +190,22 @@ func run() -> void:
 	_run_test("trade: reject closes session",                   _test_trade_reject)
 	_run_test("trade: missing goods blocks resolution",         _test_trade_missing_goods)
 	_run_test("trade: Trade tier lowers broker fee",           _test_trade_skill_lowers_fee)
+	_run_test("trade: no broker fee when neither side is player", _test_trade_no_fee_without_player)
 	_run_test("market: list and browse listings",               _test_market_list_browse)
-	_run_test("market: buy transfers item to buyer",            _test_market_buy_transfers)
+	_run_test("market: buy transfers escrow to buyer",          _test_market_buy_transfers)
 	_run_test("market: expired listing is not browsable",       _test_market_expired_not_browsable)
 	_run_test("market: expiry is wall-clock, not uptime",       _test_market_expiry_wall_clock)
 	_run_test("market: listings persist across disk save/load", _test_market_persistence_disk)
+	_run_test("market: escrow prevents list/buy duplication",   _test_market_escrow_no_dupe)
+	_run_test("market: buy fails without buyer inventory",      _test_market_buy_no_inventory)
+	_run_test("market: list rejects insufficient stock",        _test_market_list_insufficient)
+	_run_test("market: expiry refunds escrow to seller",        _test_market_expire_refunds_escrow)
+	_run_test("market: restored ids never collide",             _test_market_restore_no_id_collision)
 	_run_test("proposal: quorum met ratifies",                  _test_proposal_quorum_ratify)
 	_run_test("proposal: below quorum stays proposed",          _test_proposal_below_quorum)
 	_run_test("proposal: author cannot vote on own proposal",   _test_proposal_author_self_vote)
 	_run_test("proposal: voting window rejects late votes",     _test_proposal_window_expiry)
+	_run_test("proposal: lapsed proposal transitions to expired", _test_proposal_expire_transitions)
 	_run_test("proposal: ratification updates decisions log",   _test_proposal_decisions_log)
 	_run_test("proposal: below threshold stays proposed",       _test_proposal_below_threshold)
 	_run_test("proposal: leadership gates guild formation",     _test_proposal_leadership_guild)
@@ -2717,6 +2724,31 @@ func _test_trade_skill_lowers_fee() -> void:
 	inv_a.free()
 	inv_b.free()
 
+func _test_trade_no_fee_without_player() -> void:
+	# A host resolving a peer-to-peer trade (neither party is "player") applies
+	# no broker fee — the fee keys on the local player's Trade tier.
+	var inv_a := InventorySlice.new()
+	add_child(inv_a)
+	inv_a.add_item("wolf_fang", 10)
+	var inv_b := InventorySlice.new()
+	add_child(inv_b)
+	inv_b.add_item("hawk_feather", 10)
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("peer_x", inv_a)
+	t.set_party_inventory("peer_y", inv_b)
+	var tid := t.start_trade("peer_x", "peer_y")
+	t.propose(tid, "peer_x", { "wolf_fang": 10 }, { "hawk_feather": 10 })
+	t.propose(tid, "peer_y", { "hawk_feather": 10 }, { "wolf_fang": 10 })
+	t.accept(tid, "peer_x")
+	var result: Dictionary = t.accept(tid, "peer_y")
+	assert_true(bool(result.get("success", false)), "peer-to-peer trade resolves")
+	assert_eq(inv_a.get_item_count("hawk_feather"), 10, "peer_x receives full amount (no fee)")
+	assert_eq(inv_b.get_item_count("wolf_fang"), 10, "peer_y receives full amount (no fee)")
+	t.free()
+	inv_a.free()
+	inv_b.free()
+
 # ---------------------------------------------------------------------------
 # Market slice tests (Phase 24)
 # ---------------------------------------------------------------------------
@@ -2724,40 +2756,67 @@ func _test_trade_skill_lowers_fee() -> void:
 func _test_market_list_browse() -> void:
 	var m := MarketSlice.new()
 	add_child(m)
+	var seller_a := InventorySlice.new()
+	add_child(seller_a)
+	seller_a.add_item("hawk_feather", 5)
+	var seller_b := InventorySlice.new()
+	add_child(seller_b)
+	seller_b.add_item("wolf_fang", 3)
+	m.set_party_inventory("seller_a", seller_a)
+	m.set_party_inventory("seller_b", seller_b)
 	var id1 := m.list_item("seller_a", "hawk_feather", 5, 10.0)
 	var id2 := m.list_item("seller_b", "wolf_fang", 3, 20.0)
 	assert_true(id1 != "" and id2 != "", "listings created with non-empty ids")
 	assert_eq(m.get_listings().size(), 2, "two active listings browsable")
 	m.free()
+	seller_a.free()
+	seller_b.free()
 
 func _test_market_buy_transfers() -> void:
 	var m := MarketSlice.new()
 	add_child(m)
-	var inv := InventorySlice.new()
-	add_child(inv)
-	m.inventory_slice = inv
+	var seller := InventorySlice.new()
+	add_child(seller)
+	seller.add_item("hawk_feather", 3)
+	var buyer := InventorySlice.new()
+	add_child(buyer)
+	m.set_party_inventory("seller", seller)
+	m.set_party_inventory("player", buyer)
 	var id := m.list_item("seller", "hawk_feather", 3, 5.0)
+	assert_eq(seller.get_item_count("hawk_feather"), 0, "seller debited (escrow) on list")
 	var result: Dictionary = m.buy(id, "player")
 	assert_true(bool(result.get("success", false)), "buy succeeds")
-	assert_eq(inv.get_item_count("hawk_feather"), 3, "item transferred to buyer inventory")
+	assert_eq(buyer.get_item_count("hawk_feather"), 3, "escrow transferred to buyer (not minted)")
+	assert_eq(seller.get_item_count("hawk_feather"), 0, "seller stays debited after sale")
 	assert_eq(m.get_listings().size(), 0, "purchased listing removed")
 	m.free()
-	inv.free()
+	seller.free()
+	buyer.free()
 
 func _test_market_expired_not_browsable() -> void:
 	var m := MarketSlice.new()
 	add_child(m)
+	var seller := InventorySlice.new()
+	add_child(seller)
+	seller.add_item("hawk_feather", 1)
+	m.set_party_inventory("seller", seller)
 	var id := m.list_item("seller", "hawk_feather", 1, 5.0, 0.0)
 	assert_eq(m.get_listings().size(), 0, "expired listing not browsable")
 	assert_eq(m.get_all_listings().size(), 1, "still present until expire_listings")
 	var n := m.expire_listings()
 	assert_eq(n, 1, "one listing expired")
 	assert_eq(m.get_all_listings().size(), 0, "expired listing removed")
+	assert_eq(seller.get_item_count("hawk_feather"), 1, "expired escrow refunded to seller")
 	m.free()
+	seller.free()
 
 func _test_market_expiry_wall_clock() -> void:
 	var m := MarketSlice.new()
 	add_child(m)
+	var seller := InventorySlice.new()
+	add_child(seller)
+	seller.add_item("hawk_feather", 5)
+	m.set_party_inventory("seller", seller)
 	var before := Time.get_unix_time_from_system()
 	m.list_item("seller", "hawk_feather", 5, 7.5)
 	var all: Array = m.get_all_listings()
@@ -2768,12 +2827,17 @@ func _test_market_expiry_wall_clock() -> void:
 	assert_true(expires_at > 1_000_000_000.0, "expires_at is a wall-clock (epoch) timestamp, not uptime")
 	assert_true(expires_at > before, "deadline is in the future")
 	m.free()
+	seller.free()
 
 func _test_market_persistence_disk() -> void:
 	# Round-trip through the real persistence slice (disk), not an in-memory
 	# get/apply, so a restored listing keeps its wall-clock deadline.
 	var m := MarketSlice.new()
 	add_child(m)
+	var seller := InventorySlice.new()
+	add_child(seller)
+	seller.add_item("hawk_feather", 5)
+	m.set_party_inventory("seller", seller)
 	m.list_item("seller", "hawk_feather", 5, 7.5)
 	var market_data: Dictionary = m.get_market_data()
 	var ps := PersistenceSlice.new()
@@ -2791,7 +2855,88 @@ func _test_market_persistence_disk() -> void:
 	assert_true(float(listings[0]["expires_at"]) > Time.get_unix_time_from_system(), "restored listing has a future wall-clock deadline")
 	m.free()
 	m2.free()
+	seller.free()
 	ps.free()
+
+func _test_market_escrow_no_dupe() -> void:
+	# Single-player: the same inventory is seller and buyer. Listing debits the
+	# escrow up front, so buying your own listing nets zero — never a duplicate.
+	var m := MarketSlice.new()
+	add_child(m)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv.add_item("hawk_feather", 5)
+	m.set_party_inventory("player", inv)
+	var id := m.list_item("player", "hawk_feather", 5, 10.0)
+	assert_eq(inv.get_item_count("hawk_feather"), 0, "listing escrows the whole stack")
+	m.buy(id, "player")
+	assert_eq(inv.get_item_count("hawk_feather"), 5, "self-buy nets zero (5, not 10)")
+	m.free()
+	inv.free()
+
+func _test_market_buy_no_inventory() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	var seller := InventorySlice.new()
+	add_child(seller)
+	seller.add_item("hawk_feather", 3)
+	m.set_party_inventory("seller", seller)
+	var id := m.list_item("seller", "hawk_feather", 3, 5.0)
+	# Buyer "nobody" has no inventory mapped and isn't "player".
+	var result: Dictionary = m.buy(id, "nobody")
+	assert_false(bool(result.get("success", false)), "buy fails for a buyer with no inventory")
+	assert_eq(str(result.get("reason", "")), "no_inventory", "reason is no_inventory")
+	assert_eq(m.get_listings().size(), 1, "listing is preserved, not erased")
+	m.free()
+	seller.free()
+
+func _test_market_list_insufficient() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	var seller := InventorySlice.new()
+	add_child(seller)
+	seller.add_item("hawk_feather", 2)
+	m.set_party_inventory("seller", seller)
+	var id := m.list_item("seller", "hawk_feather", 5, 10.0)
+	assert_eq(id, "", "listing rejected when seller lacks stock")
+	assert_eq(seller.get_item_count("hawk_feather"), 2, "seller not debited on rejected listing")
+	m.free()
+	seller.free()
+
+func _test_market_expire_refunds_escrow() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	var seller := InventorySlice.new()
+	add_child(seller)
+	seller.add_item("hawk_feather", 4)
+	m.set_party_inventory("seller", seller)
+	m.list_item("seller", "hawk_feather", 4, 8.0, 0.0)
+	assert_eq(seller.get_item_count("hawk_feather"), 0, "escrowed on list")
+	var n := m.expire_listings()
+	assert_eq(n, 1, "one listing expired")
+	assert_eq(seller.get_item_count("hawk_feather"), 4, "escrow refunded on expiry")
+	m.free()
+	seller.free()
+
+func _test_market_restore_no_id_collision() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	# Restore a listing whose id suffix (5) exceeds the restored set size (1).
+	m.apply_market_data({
+		"listing_5": {
+			"seller": "seller", "item_id": "hawk_feather", "quantity": 1,
+			"price": 5.0, "listed_at": 0.0, "expires_at": 0.0,
+		}
+	})
+	var seller := InventorySlice.new()
+	add_child(seller)
+	seller.add_item("hawk_feather", 2)
+	m.set_party_inventory("seller", seller)
+	var new_id := m.list_item("seller", "hawk_feather", 1, 5.0)
+	assert_true(new_id != "listing_5", "new listing id does not collide with a restored id")
+	assert_eq(str(new_id), "listing_6", "next id continues past the largest restored suffix")
+	m.free()
+	seller.free()
 
 # ---------------------------------------------------------------------------
 # Governance / proposal tests (Phase 24)
@@ -2843,6 +2988,17 @@ func _test_proposal_window_expiry() -> void:
 	assert_false(bool(result.get("success", false)), "late vote rejected")
 	assert_eq(str(result.get("reason", "")), "expired", "reason is expired")
 	assert_eq(str(p.get_proposal(pid)["state"]), "proposed", "expired proposal stays proposed")
+	p.free()
+
+func _test_proposal_expire_transitions() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.set_voting_window(0.0)
+	var pid := p.submit_proposal("alice", "X", "body")
+	assert_eq(str(p.get_proposal(pid)["state"]), "proposed", "starts proposed")
+	var n := p.expire_proposals()
+	assert_eq(n, 1, "one proposal expired")
+	assert_eq(str(p.get_proposal(pid)["state"]), "expired", "lapsed proposal transitions to expired")
 	p.free()
 
 func _test_proposal_decisions_log() -> void:

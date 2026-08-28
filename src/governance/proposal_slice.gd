@@ -5,7 +5,8 @@ extends Node
 ## has cast ballots within a voting window and a threshold fraction favour the
 ## change. The proposal author cannot vote on their own proposal, so a single
 ## author cannot self-ratify. A ratified proposal mirrors the fabric decision
-## state machine (`proposed → accepted → superseded`) and is recorded in a
+## state machine (`proposed → accepted → superseded`); a proposal whose window
+## lapses without ratifying transitions to `expired` and is recorded in a
 ## runtime decisions log.
 ##
 ## Balance numbers (threshold, quorum, voting window, guild min tier) come from
@@ -25,12 +26,17 @@ extends Node
 ##   get_all_proposals()                  -> Array
 ##   get_decisions_log()                  -> Array      (ratified proposals)
 ##   is_open(proposal_id)                 -> bool
+##   expire_proposals()                   -> int   (mark lapsed proposals expired)
 ##   set_ratification_threshold(frac) / set_quorum(n) / set_voting_window(seconds)
 ##   can_form_guild(leadership_tier)      -> bool
 
 const STATE_PROPOSED := "proposed"
 const STATE_ACCEPTED := "accepted"
 const STATE_SUPERSEDED := "superseded"
+const STATE_EXPIRED := "expired"
+
+## How often (seconds) the runtime window-expiry tick runs.
+const EXPIRY_TICK_INTERVAL: float = 1.0
 
 ## Skill tier order — matches fabric skill state machine (novice → master).
 const TIER_ORDER: Array = ["novice", "apprentice", "journeyman", "expert", "master"]
@@ -49,9 +55,16 @@ var _ratification_threshold: float = DEFAULT_RATIFICATION_THRESHOLD
 var _quorum: int = DEFAULT_QUORUM
 var _window_seconds: float = DEFAULT_WINDOW_SECONDS
 var _guild_min_tier: String = DEFAULT_GUILD_MIN_TIER
+var _expiry_tick_accum: float = 0.0
 
 func _ready() -> void:
 	_load_governance_config()
+
+func _process(delta: float) -> void:
+	_expiry_tick_accum += delta
+	if _expiry_tick_accum >= EXPIRY_TICK_INTERVAL:
+		_expiry_tick_accum = 0.0
+		expire_proposals()
 
 ## Load ratification + guild parameters from the fabric GovernanceSystem entity.
 func _load_governance_config() -> void:
@@ -140,6 +153,19 @@ func is_open(proposal_id: String) -> bool:
 	if str(p["state"]) != STATE_PROPOSED:
 		return false
 	return float(p["expires_at"]) > _now()
+
+## Mark every proposed proposal whose voting window has lapsed as expired, so it
+## stops rendering vote controls and can no longer ratify. Returns the number
+## expired. Called by the runtime tick and directly by tests.
+func expire_proposals() -> int:
+	var now := _now()
+	var n := 0
+	for id in _proposals:
+		var p: Dictionary = _proposals[id]
+		if str(p["state"]) == STATE_PROPOSED and float(p["expires_at"]) <= now:
+			p["state"] = STATE_EXPIRED
+			n += 1
+	return n
 
 ## The runtime decisions log: every ratified proposal, most recent last.
 func get_decisions_log() -> Array:

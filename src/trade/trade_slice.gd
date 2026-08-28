@@ -207,13 +207,15 @@ func _resolve_exchange(t: Dictionary) -> Dictionary:
 	if not _can_consume(inv_b, give_b):
 		return _fail(t["id"], "missing_goods:%s" % b)
 
-	# The local player's Trade broker fee applies to what they receive.
+	# The local player's Trade broker fee applies only to goods the LOCAL player
+	# receives. When neither party is "player" (e.g. a host resolving a
+	# peer-to-peer trade), no fee applies.
 	var received_a: Dictionary = give_b.duplicate()
 	var received_b: Dictionary = give_a.duplicate()
 	var tax: float = float(_broker_fee.get(get_skill(_fee_skill), 0.10))
 	if a == PARTY_PLAYER:
 		received_a = _apply_tax(give_b, tax)
-	else:
+	elif b == PARTY_PLAYER:
 		received_b = _apply_tax(give_a, tax)
 
 	if not _can_add(inv_a, received_a):
