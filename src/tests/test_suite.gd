@@ -193,6 +193,11 @@ func run() -> void:
 	_run_test("trade: no broker fee when neither side is player", _test_trade_no_fee_without_player)
 	_run_test("trade: propose reports success",                 _test_trade_state_reports_success)
 	_run_test("trade: get_trade returns a defensive copy",      _test_trade_get_trade_defensive_copy)
+	_run_test("trade: get_trade deep-copies nested offers",     _test_trade_get_trade_deep_copy)
+	_run_test("trade: unknown party is rejected",               _test_trade_unknown_party_rejected)
+	_run_test("trade: failed resolve reports still-pending",    _test_trade_failed_resolve_stays_pending)
+	_run_test("trade: client forwards intents",                 _test_trade_client_forwards_intents)
+	_run_test("trade: client applies authoritative sync",       _test_trade_client_applies_sync)
 	_run_test("market: list and browse listings",               _test_market_list_browse)
 	_run_test("market: buy transfers escrow to buyer",          _test_market_buy_transfers)
 	_run_test("market: expired listing is not browsable",       _test_market_expired_not_browsable)
@@ -207,6 +212,7 @@ func run() -> void:
 	_run_test("market: client applies authoritative sync",      _test_market_sync_applies_on_client)
 	_run_test("market: authoritative list emits sync",          _test_market_authoritative_emits_sync)
 	_run_test("market: expiry keeps escrow when seller full",   _test_market_expire_keeps_escrow_when_full)
+	_run_test("market: expiry drops listing with no seller inv", _test_market_expire_drops_no_inventory_seller)
 	_run_test("proposal: quorum met ratifies",                  _test_proposal_quorum_ratify)
 	_run_test("proposal: below quorum stays proposed",          _test_proposal_below_quorum)
 	_run_test("proposal: author cannot vote on own proposal",   _test_proposal_author_self_vote)
@@ -218,6 +224,9 @@ func run() -> void:
 	_run_test("proposal: ratification updates decisions log",   _test_proposal_decisions_log)
 	_run_test("proposal: below threshold stays proposed",       _test_proposal_below_threshold)
 	_run_test("proposal: leadership gates guild formation",     _test_proposal_leadership_guild)
+	_run_test("proposal: get_proposal deep-copies votes",       _test_proposal_get_proposal_deep_copy)
+	_run_test("proposal: supersede replaces a proposal",        _test_proposal_supersede)
+	_run_test("proposal: supersede needs ratified replacement", _test_proposal_supersede_requires_ratified_replacement)
 
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
@@ -2776,6 +2785,86 @@ func _test_trade_get_trade_defensive_copy() -> void:
 	assert_eq(str(t.get_trade(tid)["state"]), "pending", "get_trade returns a copy, not live state")
 	t.free()
 
+func _test_trade_get_trade_deep_copy() -> void:
+	var t := TradeSlice.new()
+	add_child(t)
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "wolf_fang": 1 }, {})
+	var snapshot: Dictionary = t.get_trade(tid)
+	snapshot["offers"]["player"]["give"]["wolf_fang"] = 99
+	assert_eq(int(t.get_trade(tid)["offers"]["player"]["give"]["wolf_fang"]), 1, "nested offers are deep-copied, not shared")
+	t.free()
+
+func _test_trade_unknown_party_rejected() -> void:
+	var t := TradeSlice.new()
+	add_child(t)
+	var tid := t.start_trade("player", "peer")
+	var r: Dictionary = t.propose(tid, "stranger", {}, {})
+	assert_false(bool(r.get("success", false)), "propose by a non-party fails")
+	assert_eq(str(r.get("reason", "")), "unknown_party", "propose reason is unknown_party")
+	r = t.reject(tid, "stranger")
+	assert_false(bool(r.get("success", false)), "reject by a non-party fails")
+	assert_eq(str(r.get("reason", "")), "unknown_party", "reject reason is unknown_party")
+	assert_eq(str(t.get_trade(tid)["state"]), "pending", "non-party reject leaves the trade pending")
+	t.free()
+
+func _test_trade_failed_resolve_stays_pending() -> void:
+	var inv_a := InventorySlice.new()
+	add_child(inv_a)
+	var inv_b := InventorySlice.new()
+	add_child(inv_b)
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("player", inv_a)
+	t.set_party_inventory("peer", inv_b)
+	t.set_skill("Trade", "master")
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "wolf_fang": 5 }, {})
+	t.propose(tid, "peer", {}, { "wolf_fang": 5 })
+	t.accept(tid, "player")
+	var result: Dictionary = t.accept(tid, "peer")
+	assert_false(bool(result.get("success", false)), "missing goods fails")
+	assert_eq(str(result.get("state", "")), "pending", "failed resolve reports the trade still pending")
+	assert_eq(str(t.get_trade(tid)["state"]), "pending", "get_trade agrees the trade is still pending")
+	t.free()
+	inv_a.free()
+	inv_b.free()
+
+func _test_trade_client_forwards_intents() -> void:
+	var t := TradeSlice.new()
+	add_child(t)
+	t.is_authoritative = false
+	var box := {}
+	GameBus.trade_start_intent.connect(func(_a, _b): box["start"] = true)
+	GameBus.trade_propose_intent.connect(func(_tid, _p, _g, _w): box["propose"] = true)
+	GameBus.trade_accept_intent.connect(func(_tid, _p): box["accept"] = true)
+	GameBus.trade_reject_intent.connect(func(_tid, _p): box["reject"] = true)
+	var tid := t.start_trade("player", "peer")
+	assert_eq(tid, "", "client start returns empty (forwarded)")
+	assert_true(box.get("start", false), "start intent forwarded")
+	var r: Dictionary = t.propose("trade_0", "player", {}, {})
+	assert_eq(str(r.get("reason", "")), "forwarded", "client propose forwards intent")
+	assert_true(box.get("propose", false), "propose intent forwarded")
+	assert_eq(t.get_trade_data()["trades"].size(), 0, "client does not mutate trade state locally")
+	r = t.accept("trade_0", "player")
+	assert_true(box.get("accept", false), "accept intent forwarded")
+	r = t.reject("trade_0", "player")
+	assert_true(box.get("reject", false), "reject intent forwarded")
+	t.free()
+
+func _test_trade_client_applies_sync() -> void:
+	var t := TradeSlice.new()
+	add_child(t)
+	t.is_authoritative = false
+	GameBus.trade_synced.emit({
+		"trades": {
+			"trade_0": { "id": "trade_0", "parties": ["player", "peer"], "offers": {}, "accepted": {}, "state": "pending" }
+		},
+		"next_id": 1,
+	})
+	assert_eq(str(t.get_trade("trade_0")["state"]), "pending", "client applied authoritative trade state")
+	t.free()
+
 # ---------------------------------------------------------------------------
 # Market slice tests (Phase 24)
 # ---------------------------------------------------------------------------
@@ -3028,6 +3117,24 @@ func _test_market_expire_keeps_escrow_when_full() -> void:
 	m.free()
 	seller.free()
 
+func _test_market_expire_drops_no_inventory_seller() -> void:
+	# A listing whose seller's inventory no longer exists can never be refunded.
+	# Expiry must drop it (terminating the retry loop) rather than retry forever.
+	var m := MarketSlice.new()
+	add_child(m)
+	var seller := InventorySlice.new()
+	add_child(seller)
+	seller.add_item("hawk_feather", 3)
+	m.set_party_inventory("seller", seller)
+	var id := m.list_item("seller", "hawk_feather", 3, 5.0, 0.0)
+	assert_true(id != "", "listing created")
+	m._party_inventory.erase("seller")   # the seller's inventory is gone
+	var n := m.expire_listings()
+	assert_eq(n, 1, "listing dropped when the seller has no inventory")
+	assert_eq(m.get_all_listings().size(), 0, "no infinite retry — listing removed")
+	m.free()
+	seller.free()
+
 # ---------------------------------------------------------------------------
 # Governance / proposal tests (Phase 24)
 # ---------------------------------------------------------------------------
@@ -3171,6 +3278,43 @@ func _test_proposal_leadership_guild() -> void:
 	assert_false(p.can_form_guild("novice"), "novice cannot form a guild")
 	assert_true(p.can_form_guild("apprentice"), "apprentice can form a guild")
 	assert_true(p.can_form_guild("master"), "master can form a guild")
+	p.free()
+
+func _test_proposal_get_proposal_deep_copy() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.set_quorum(2)
+	var pid := p.submit_proposal("alice", "X", "body")
+	p.vote(pid, "bob", "for")
+	var snapshot: Dictionary = p.get_proposal(pid)
+	snapshot["votes"]["bob"] = "against"
+	assert_eq(str(p.get_proposal(pid)["votes"]["bob"]), "for", "nested votes are deep-copied, not shared")
+	p.free()
+
+func _test_proposal_supersede() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.set_quorum(1)
+	var old_pid := p.submit_proposal("alice", "Old rule", "body")
+	var new_pid := p.submit_proposal("bob", "New rule", "body")
+	p.vote(new_pid, "carol", "for")   # ratify the replacement (quorum 1)
+	assert_eq(str(p.get_proposal(new_pid)["state"]), "accepted", "replacement ratified")
+	var r: Dictionary = p.supersede_proposal(old_pid, new_pid)
+	assert_true(bool(r.get("success", false)), "supersede succeeds")
+	assert_eq(str(p.get_proposal(old_pid)["state"]), "superseded", "old proposal superseded")
+	p.free()
+
+func _test_proposal_supersede_requires_ratified_replacement() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.set_quorum(3)
+	var old_pid := p.submit_proposal("alice", "Old", "body")
+	var new_pid := p.submit_proposal("bob", "New", "body")
+	# Replacement is still proposed (quorum 3 unmet) — supersede must refuse.
+	var r: Dictionary = p.supersede_proposal(old_pid, new_pid)
+	assert_false(bool(r.get("success", false)), "supersede requires a ratified replacement")
+	assert_eq(str(r.get("reason", "")), "replacement_not_ratified", "reason is replacement_not_ratified")
+	assert_eq(str(p.get_proposal(old_pid)["state"]), "proposed", "old proposal unchanged")
 	p.free()
 
 # ---------------------------------------------------------------------------

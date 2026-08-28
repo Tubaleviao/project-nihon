@@ -119,6 +119,12 @@ func _ready() -> void:
 	GameBus.market_buy_intent.connect(_on_market_buy_intent)
 	GameBus.proposal_submit_intent.connect(_on_proposal_submit_intent)
 	GameBus.proposal_vote_intent.connect(_on_proposal_vote_intent)
+	GameBus.proposal_supersede_intent.connect(_on_proposal_supersede_intent)
+	GameBus.trade_synced.connect(_on_trade_synced)
+	GameBus.trade_start_intent.connect(_on_trade_start_intent)
+	GameBus.trade_propose_intent.connect(_on_trade_propose_intent)
+	GameBus.trade_accept_intent.connect(_on_trade_accept_intent)
+	GameBus.trade_reject_intent.connect(_on_trade_reject_intent)
 
 ## Phase 19 — drain the emulator queue and (on clients) the jitter buffer.
 ## Eviction of stale last-known-states runs unconditionally (no ENet overhead).
@@ -397,6 +403,36 @@ func _on_proposal_vote_intent(proposal_id: String, voter: String, verdict: Strin
 		return
 	_broadcast({ "type": "proposal_vote_intent", "proposal_id": proposal_id, "voter": voter, "verdict": verdict })
 
+func _on_proposal_supersede_intent(proposal_id: String, replacement_id: String) -> void:
+	if _role != Role.CLIENT:
+		return
+	_broadcast({ "type": "proposal_supersede_intent", "proposal_id": proposal_id, "replacement_id": replacement_id })
+
+func _on_trade_synced(data: Dictionary) -> void:
+	if _role != Role.HOST:
+		return
+	_broadcast({ "type": "trade_synced", "data": data })
+
+func _on_trade_start_intent(party_a: String, party_b: String) -> void:
+	if _role != Role.CLIENT:
+		return
+	_broadcast({ "type": "trade_start_intent", "party_a": party_a, "party_b": party_b })
+
+func _on_trade_propose_intent(trade_id: String, party: String, give: Dictionary, want: Dictionary) -> void:
+	if _role != Role.CLIENT:
+		return
+	_broadcast({ "type": "trade_propose_intent", "trade_id": trade_id, "party": party, "give": give, "want": want })
+
+func _on_trade_accept_intent(trade_id: String, party: String) -> void:
+	if _role != Role.CLIENT:
+		return
+	_broadcast({ "type": "trade_accept_intent", "trade_id": trade_id, "party": party })
+
+func _on_trade_reject_intent(trade_id: String, party: String) -> void:
+	if _role != Role.CLIENT:
+		return
+	_broadcast({ "type": "trade_reject_intent", "trade_id": trade_id, "party": party })
+
 func _on_packet_send_requested(peer_id: int, payload: Dictionary) -> void:
 	# Legacy low-level send: wraps an arbitrary payload and ships it as-is.
 	if not _connected():
@@ -534,6 +570,33 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				str(payload.get("voter", "")),
 				str(payload.get("verdict", ""))
 			)
+		"proposal_supersede_intent":
+			GameBus.proposal_supersede_intent.emit(
+				str(payload.get("proposal_id", "")),
+				str(payload.get("replacement_id", ""))
+			)
+		"trade_start_intent":
+			GameBus.trade_start_intent.emit(
+				str(payload.get("party_a", "")),
+				str(payload.get("party_b", ""))
+			)
+		"trade_propose_intent":
+			GameBus.trade_propose_intent.emit(
+				str(payload.get("trade_id", "")),
+				str(payload.get("party", "")),
+				payload.get("give", {}),
+				payload.get("want", {})
+			)
+		"trade_accept_intent":
+			GameBus.trade_accept_intent.emit(
+				str(payload.get("trade_id", "")),
+				str(payload.get("party", ""))
+			)
+		"trade_reject_intent":
+			GameBus.trade_reject_intent.emit(
+				str(payload.get("trade_id", "")),
+				str(payload.get("party", ""))
+			)
 		_:
 			# Clients may not send host-authoritative types (block_changed,
 			# inventory_synced, etc.) — drop anything else and log it.
@@ -569,6 +632,8 @@ func _route_h2c(payload: Dictionary) -> void:
 			GameBus.market_synced.emit(payload.get("data", {}))
 		"governance_synced":
 			GameBus.governance_synced.emit(payload.get("data", {}))
+		"trade_synced":
+			GameBus.trade_synced.emit(payload.get("data", {}))
 		"trade_completed":
 			GameBus.trade_completed.emit(payload.get("trade", {}))
 		"world_snapshot":

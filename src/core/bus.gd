@@ -301,6 +301,23 @@ signal character_state_changed(instance_id: String, state: String)
 ## exchange committed). trade is the full trade record.
 signal trade_completed(trade: Dictionary)
 
+## Client → host (Phase 24 authority): a non-authoritative slice wants to open
+## a trade between two parties.
+signal trade_start_intent(party_a: String, party_b: String)
+
+## Client → host: a non-authoritative slice wants to set or replace an offer
+## (covers both propose and counter-offer).
+signal trade_propose_intent(trade_id: String, party: String, give: Dictionary, want: Dictionary)
+
+## Client → host: a non-authoritative slice wants to accept a trade.
+signal trade_accept_intent(trade_id: String, party: String)
+
+## Client → host: a non-authoritative slice wants to reject a trade.
+signal trade_reject_intent(trade_id: String, party: String)
+
+## Host → clients: authoritative trade state (all active trade sessions).
+signal trade_synced(data: Dictionary)
+
 # ---------------------------------------------------------------------------
 # Market (Phase 24)
 # ---------------------------------------------------------------------------
@@ -338,6 +355,10 @@ signal proposal_submit_intent(author: String, title: String, body: String)
 
 ## Client → host: a non-authoritative slice wants to cast a vote.
 signal proposal_vote_intent(proposal_id: String, voter: String, verdict: String)
+
+## Client → host: a non-authoritative slice wants to supersede a proposal with
+## a ratified replacement.
+signal proposal_supersede_intent(proposal_id: String, replacement_id: String)
 
 ## Host → clients: authoritative governance state (proposals + decisions log).
 signal governance_synced(data: Dictionary)

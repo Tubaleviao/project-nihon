@@ -12,6 +12,12 @@ extends Node
 ##
 ## Plug contract (GameBus signals emitted):
 ##   OUT : trade_completed(trade)   — the resolved trade record
+##         trade_synced(data)       — authoritative full state (host)
+##         trade_start_intent / trade_propose_intent / trade_accept_intent /
+##         trade_reject_intent      — client intent
+##   IN  : trade_start_intent / trade_propose_intent / trade_accept_intent /
+##         trade_reject_intent      (host applies)
+##         trade_synced(data)       — apply authoritative state (client)
 ##
 ## Public API:
 ##   start_trade(a, b)              -> String     (trade id)
@@ -49,7 +55,9 @@ var _broker_fee: Dictionary = DEFAULT_BROKER_FEE.duplicate()
 var inventory_slice: Node = null
 
 ## Host authority (Phase 18). The host resolves trades and broadcasts
-## `trade_completed`; full remote-session negotiation is deferred (see ROADMAP).
+## `trade_completed`; a client forwards intents to the host and applies
+## `trade_synced` broadcasts (full remote-session negotiation is deferred — see
+## ROADMAP).
 var is_authoritative: bool = true
 
 ## Runtime player skill tiers: skill key → tier name, seeded novice.
@@ -66,6 +74,11 @@ func _ready() -> void:
 	for skill_key in GameData.SKILLS:
 		_skill_tiers[skill_key] = "novice"
 	_load_trade_config()
+	GameBus.trade_start_intent.connect(_on_start_intent)
+	GameBus.trade_propose_intent.connect(_on_propose_intent)
+	GameBus.trade_accept_intent.connect(_on_accept_intent)
+	GameBus.trade_reject_intent.connect(_on_reject_intent)
+	GameBus.trade_synced.connect(_on_trade_synced)
 
 ## Load the broker-fee table and fee skill from the fabric TradeSystem entity so
 ## balance numbers stay fabric-first (single source of truth in GameData).
@@ -98,8 +111,12 @@ func _inventory_for(party: String) -> Node:
 		return _party_inventory[party]
 	return inventory_slice
 
-## Open a trade between two parties; returns the trade id.
+## Open a trade between two parties; returns the trade id. On a client this
+## forwards a start intent and returns "" (the host assigns the id).
 func start_trade(party_a: String, party_b: String) -> String:
+	if not is_authoritative:
+		GameBus.trade_start_intent.emit(party_a, party_b)
+		return ""
 	var id := "trade_%d" % _next_id
 	_next_id += 1
 	_trades[id] = {
@@ -109,51 +126,82 @@ func start_trade(party_a: String, party_b: String) -> String:
 		"accepted": {},
 		"state": "pending",
 	}
+	_emit_synced()
 	return id
 
-## Set (or replace) a party's offer: what they give and what they want.
+## Set (or replace) a party's offer: what they give and what they want. On a
+## client this forwards a propose intent and returns a "forwarded" marker.
 func propose(trade_id: String, party: String, give: Dictionary, want: Dictionary) -> Dictionary:
+	if not is_authoritative:
+		GameBus.trade_propose_intent.emit(trade_id, party, give, want)
+		return { "trade_id": trade_id, "success": false, "reason": "forwarded", "state": "pending" }
 	var t: Dictionary = _trades.get(trade_id, {})
 	if t.is_empty():
 		return _fail(trade_id, "unknown_trade")
-	t["offers"][party] = { "give": give.duplicate(), "want": want.duplicate() }
+	if not _is_party(t, party):
+		return _fail(trade_id, "unknown_party")
+	t["offers"][party] = { "give": give.duplicate(true), "want": want.duplicate(true) }
+	_emit_synced()
 	return _state(trade_id)
 
 ## Replace an existing offer (a party may only counter-offer after proposing).
+## On a client this forwards a propose intent and returns a "forwarded" marker.
 func counter_offer(trade_id: String, party: String, give: Dictionary, want: Dictionary) -> Dictionary:
+	if not is_authoritative:
+		GameBus.trade_propose_intent.emit(trade_id, party, give, want)
+		return { "trade_id": trade_id, "success": false, "reason": "forwarded", "state": "pending" }
 	var t: Dictionary = _trades.get(trade_id, {})
 	if t.is_empty():
 		return _fail(trade_id, "unknown_trade")
+	if not _is_party(t, party):
+		return _fail(trade_id, "unknown_party")
 	if not t["offers"].has(party):
 		return _fail(trade_id, "no_offer")
-	t["offers"][party] = { "give": give.duplicate(), "want": want.duplicate() }
+	t["offers"][party] = { "give": give.duplicate(true), "want": want.duplicate(true) }
+	_emit_synced()
 	return _state(trade_id)
 
-## Mark a party as accepting; the trade resolves the moment both accept.
+## Mark a party as accepting; the trade resolves the moment both accept. On a
+## client this forwards an accept intent and returns a "forwarded" marker.
 func accept(trade_id: String, party: String) -> Dictionary:
+	if not is_authoritative:
+		GameBus.trade_accept_intent.emit(trade_id, party)
+		return { "trade_id": trade_id, "success": false, "reason": "forwarded", "state": "pending" }
 	var t: Dictionary = _trades.get(trade_id, {})
 	if t.is_empty():
 		return _fail(trade_id, "unknown_trade")
+	if not _is_party(t, party):
+		return _fail(trade_id, "unknown_party")
 	if not t["offers"].has(party):
 		return _fail(trade_id, "no_offer")
 	t["accepted"][party] = true
 	return _maybe_resolve(trade_id)
 
-## Reject a trade; the session is closed for both parties.
+## Reject a trade; the session is closed for both parties. `party` is validated
+## against the trade's parties (a non-party cannot reject). On a client this
+## forwards a reject intent.
 func reject(trade_id: String, party: String) -> Dictionary:
+	if not is_authoritative:
+		GameBus.trade_reject_intent.emit(trade_id, party)
+		return { "trade_id": trade_id, "success": false, "reason": "forwarded", "state": "pending" }
 	var t: Dictionary = _trades.get(trade_id, {})
 	if t.is_empty():
 		return _fail(trade_id, "unknown_trade")
+	if not _is_party(t, party):
+		return _fail(trade_id, "unknown_party")
 	t["state"] = "rejected"
+	_emit_synced()
 	return { "trade_id": trade_id, "success": false, "reason": "rejected", "state": "rejected" }
 
 func get_trade(trade_id: String) -> Dictionary:
-	return _trades.get(trade_id, {}).duplicate()
+	return _trades.get(trade_id, {}).duplicate(true)
 
 ## Force-resolve a trade whose two parties have accepted (also called
 ## automatically by accept). Exchanges give/want items between the parties'
 ## inventories, applying the local player's Trade broker fee.
 func resolve(trade_id: String) -> Dictionary:
+	if not is_authoritative:
+		return { "trade_id": trade_id, "success": false, "reason": "forwarded", "state": "pending" }
 	var t: Dictionary = _trades.get(trade_id, {})
 	if t.is_empty():
 		return _fail(trade_id, "unknown_trade")
@@ -226,7 +274,8 @@ func _resolve_exchange(t: Dictionary) -> Dictionary:
 	_add(inv_b, received_b)
 
 	t["state"] = "completed"
-	GameBus.trade_completed.emit(t.duplicate())
+	_emit_synced()
+	GameBus.trade_completed.emit(t.duplicate(true))
 	return { "trade_id": t["id"], "success": true, "reason": "", "state": "completed" }
 
 func _apply_tax(counts: Dictionary, tax: float) -> Dictionary:
@@ -259,4 +308,54 @@ func _state(trade_id: String) -> Dictionary:
 	return { "trade_id": trade_id, "success": true, "reason": "", "state": str(t.get("state", "pending")) }
 
 func _fail(trade_id: String, reason: String) -> Dictionary:
-	return { "trade_id": trade_id, "success": false, "reason": reason, "state": "failed" }
+	# The reported state reflects the trade's actual state, not a hardcoded
+	# "failed": a resolve that fails on missing goods leaves the trade pending
+	# (retryable), so the result and get_trade() stay consistent.
+	var state := "failed"
+	var t: Dictionary = _trades.get(trade_id, {})
+	if not t.is_empty():
+		state = str(t.get("state", "pending"))
+	return { "trade_id": trade_id, "success": false, "reason": reason, "state": state }
+
+func _is_party(t: Dictionary, party: String) -> bool:
+	return party in t["parties"]
+
+## Full trade state for authoritative sync (all active sessions + id counter).
+func get_trade_data() -> Dictionary:
+	return { "trades": _trades.duplicate(true), "next_id": _next_id }
+
+## Restore full trade state from an authoritative sync.
+func apply_trade_data(data: Dictionary) -> void:
+	_trades.clear()
+	var trades: Variant = data.get("trades", {})
+	if trades is Dictionary:
+		_trades = trades.duplicate(true)
+	_next_id = int(data.get("next_id", _next_id))
+
+# ---------------------------------------------------------------------------
+# Authority (Phase 24) — intent forwarding + authoritative broadcast
+# ---------------------------------------------------------------------------
+
+func _on_start_intent(party_a: String, party_b: String) -> void:
+	if is_authoritative:
+		start_trade(party_a, party_b)
+
+func _on_propose_intent(trade_id: String, party: String, give: Dictionary, want: Dictionary) -> void:
+	if is_authoritative:
+		propose(trade_id, party, give, want)
+
+func _on_accept_intent(trade_id: String, party: String) -> void:
+	if is_authoritative:
+		accept(trade_id, party)
+
+func _on_reject_intent(trade_id: String, party: String) -> void:
+	if is_authoritative:
+		reject(trade_id, party)
+
+func _on_trade_synced(data: Dictionary) -> void:
+	if not is_authoritative:
+		apply_trade_data(data)
+
+func _emit_synced() -> void:
+	if is_authoritative:
+		GameBus.trade_synced.emit(get_trade_data())

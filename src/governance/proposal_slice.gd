@@ -35,6 +35,7 @@ extends Node
 ##   get_decisions_log()                  -> Array      (ratified proposals)
 ##   is_open(proposal_id)                 -> bool
 ##   expire_proposals()                   -> int   (mark lapsed proposals expired)
+##   supersede_proposal(proposal_id, replacement_id) -> Dictionary
 ##   get_governance_data()                -> Dictionary  (persistence + sync)
 ##   apply_governance_data(data)          -> void
 ##   set_ratification_threshold(frac) / set_quorum(n) / set_voting_window(seconds)
@@ -74,6 +75,7 @@ func _ready() -> void:
 	_load_governance_config()
 	GameBus.proposal_submit_intent.connect(_on_submit_intent)
 	GameBus.proposal_vote_intent.connect(_on_vote_intent)
+	GameBus.proposal_supersede_intent.connect(_on_supersede_intent)
 	GameBus.governance_synced.connect(_on_governance_synced)
 
 func _process(delta: float) -> void:
@@ -161,13 +163,13 @@ func vote(proposal_id: String, voter: String, verdict: String) -> Dictionary:
 	return get_proposal(proposal_id)
 
 func get_proposal(proposal_id: String) -> Dictionary:
-	return _proposals.get(proposal_id, {}).duplicate()
+	return _proposals.get(proposal_id, {}).duplicate(true)
 
 ## Every proposal (submitted and ratified) as a list of records.
 func get_all_proposals() -> Array:
 	var out: Array = []
 	for id in _proposals:
-		out.append(_proposals[id].duplicate())
+		out.append(_proposals[id].duplicate(true))
 	return out
 
 ## Whether a proposal is still open for voting (proposed and within its window).
@@ -193,6 +195,27 @@ func expire_proposals() -> int:
 	if n > 0:
 		_emit_synced()
 	return n
+
+## Mark a proposal as superseded by a ratified replacement. Per the fabric
+## GovernanceSystem state machine, supersede is legal from `proposed` or
+## `accepted`, and the replacement must already be ratified (`accepted`). On a
+## client this forwards a supersede intent. Returns a success/failure record.
+func supersede_proposal(proposal_id: String, replacement_id: String) -> Dictionary:
+	if not is_authoritative:
+		GameBus.proposal_supersede_intent.emit(proposal_id, replacement_id)
+		return { "success": false, "reason": "forwarded", "proposal_id": proposal_id }
+	var p: Dictionary = _proposals.get(proposal_id, {})
+	if p.is_empty():
+		return { "success": false, "reason": "unknown_proposal", "proposal_id": proposal_id }
+	var state := str(p["state"])
+	if state == STATE_SUPERSEDED or state == STATE_EXPIRED:
+		return { "success": false, "reason": "not_supersedable", "proposal_id": proposal_id }
+	var repl: Dictionary = _proposals.get(replacement_id, {})
+	if repl.is_empty() or str(repl["state"]) != STATE_ACCEPTED:
+		return { "success": false, "reason": "replacement_not_ratified", "proposal_id": proposal_id }
+	p["state"] = STATE_SUPERSEDED
+	_emit_synced()
+	return { "success": true, "reason": "", "proposal_id": proposal_id, "state": STATE_SUPERSEDED }
 
 ## The runtime decisions log: every ratified proposal, most recent last.
 func get_decisions_log() -> Array:
@@ -267,6 +290,10 @@ func _on_submit_intent(author: String, title: String, body: String) -> void:
 func _on_vote_intent(proposal_id: String, voter: String, verdict: String) -> void:
 	if is_authoritative:
 		vote(proposal_id, voter, verdict)
+
+func _on_supersede_intent(proposal_id: String, replacement_id: String) -> void:
+	if is_authoritative:
+		supersede_proposal(proposal_id, replacement_id)
 
 func _on_governance_synced(data: Dictionary) -> void:
 	if not is_authoritative:

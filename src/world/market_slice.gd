@@ -65,6 +65,8 @@ func _ready() -> void:
 	GameBus.market_synced.connect(_on_market_synced)
 
 func _process(delta: float) -> void:
+	if not is_authoritative:
+		return
 	_expiry_tick_accum += delta
 	if _expiry_tick_accum >= EXPIRY_TICK_INTERVAL:
 		_expiry_tick_accum = 0.0
@@ -176,7 +178,9 @@ func buy(listing_id: String, buyer: String) -> Dictionary:
 ## Remove every expired listing, refunding its escrow to the seller and emitting
 ## market_listing_expired for each. A seller whose inventory can't hold the
 ## refund keeps the listing escrowed (retried next tick) so items are never
-## destroyed. Returns the number removed.
+## destroyed. A seller whose inventory no longer exists (null) can never be
+## refunded, so the listing is dropped rather than retried forever. Returns the
+## number removed.
 func expire_listings() -> int:
 	var now := _now()
 	var expired: Array = []
@@ -186,6 +190,14 @@ func expire_listings() -> int:
 	var removed := 0
 	for id in expired:
 		var l: Dictionary = _listings[id]
+		var seller_inv := _inventory_for(str(l["seller"]))
+		if seller_inv == null:
+			# No inventory to refund to — the escrow is unrecoverable. Drop the
+			# listing so the expiry tick doesn't retry it forever.
+			_listings.erase(id)
+			GameBus.market_listing_expired.emit(id)
+			removed += 1
+			continue
 		if not _refund_escrow(l):
 			continue   # seller can't hold the refund yet — keep it escrowed
 		_listings.erase(id)

@@ -1111,6 +1111,11 @@ community governance hooks.
 - **Market listing escrow** — listings now escrow the seller's goods (debited on
   list, transferred on buy, refunded on expiry); a listing is still not an
   escrowed *currency* reserve because there is no currency model.
+- **Delta-based state sync** — the market, governance, and trade slices
+  broadcast their *full* state (`market_synced` / `governance_synced` /
+  `trade_synced`) on every mutation. That is simple and correct for now, but a
+  populated world will outgrow it — full-state broadcasts should be replaced
+  with per-mutation deltas (or a dirty-field diff) once lists grow.
 
 ---
 
