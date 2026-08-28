@@ -189,12 +189,16 @@ func run() -> void:
 	_run_test("trade: counter-offer requires prior offer",      _test_trade_counter_offer_requires_offer)
 	_run_test("trade: reject closes session",                   _test_trade_reject)
 	_run_test("trade: missing goods blocks resolution",         _test_trade_missing_goods)
-	_run_test("trade: diplomacy tier lowers broker fee",        _test_trade_diplomacy_lowers_fee)
+	_run_test("trade: Trade tier lowers broker fee",           _test_trade_skill_lowers_fee)
 	_run_test("market: list and browse listings",               _test_market_list_browse)
 	_run_test("market: buy transfers item to buyer",            _test_market_buy_transfers)
 	_run_test("market: expired listing is not browsable",       _test_market_expired_not_browsable)
-	_run_test("market: listings persist across save/load",      _test_market_persistence)
-	_run_test("proposal: submit, vote, ratify",                 _test_proposal_submit_vote_ratify)
+	_run_test("market: expiry is wall-clock, not uptime",       _test_market_expiry_wall_clock)
+	_run_test("market: listings persist across disk save/load", _test_market_persistence_disk)
+	_run_test("proposal: quorum met ratifies",                  _test_proposal_quorum_ratify)
+	_run_test("proposal: below quorum stays proposed",          _test_proposal_below_quorum)
+	_run_test("proposal: author cannot vote on own proposal",   _test_proposal_author_self_vote)
+	_run_test("proposal: voting window rejects late votes",     _test_proposal_window_expiry)
 	_run_test("proposal: ratification updates decisions log",   _test_proposal_decisions_log)
 	_run_test("proposal: below threshold stays proposed",       _test_proposal_below_threshold)
 	_run_test("proposal: leadership gates guild formation",     _test_proposal_leadership_guild)
@@ -2636,7 +2640,7 @@ func _test_trade_both_accept_resolves() -> void:
 	add_child(t)
 	t.set_party_inventory("player", inv_a)
 	t.set_party_inventory("peer", inv_b)
-	t.set_skill("Diplomacy", "master")   # tax-free so the exchange is clean
+	t.set_skill("Trade", "master")   # tax-free so the exchange is clean
 	var tid := t.start_trade("player", "peer")
 	t.propose(tid, "player", { "wolf_fang": 5 }, { "hawk_feather": 3 })
 	t.propose(tid, "peer", { "hawk_feather": 3 }, { "wolf_fang": 5 })
@@ -2679,7 +2683,7 @@ func _test_trade_missing_goods() -> void:
 	add_child(t)
 	t.set_party_inventory("player", inv_a)
 	t.set_party_inventory("peer", inv_b)
-	t.set_skill("Diplomacy", "master")
+	t.set_skill("Trade", "master")
 	var tid := t.start_trade("player", "peer")
 	t.propose(tid, "player", { "wolf_fang": 5 }, {})
 	t.propose(tid, "peer", {}, { "wolf_fang": 5 })
@@ -2691,7 +2695,7 @@ func _test_trade_missing_goods() -> void:
 	inv_a.free()
 	inv_b.free()
 
-func _test_trade_diplomacy_lowers_fee() -> void:
+func _test_trade_skill_lowers_fee() -> void:
 	var inv_a := InventorySlice.new()
 	add_child(inv_a)
 	var inv_b := InventorySlice.new()
@@ -2701,14 +2705,14 @@ func _test_trade_diplomacy_lowers_fee() -> void:
 	add_child(t)
 	t.set_party_inventory("player", inv_a)
 	t.set_party_inventory("peer", inv_b)
-	# Novice Diplomacy (default) applies a 10% broker fee to received goods.
-	t.set_skill("Diplomacy", "novice")
+	# Novice Trade (default) applies a 10% broker fee to received goods.
+	t.set_skill("Trade", "novice")
 	var tid := t.start_trade("player", "peer")
 	t.propose(tid, "player", {}, { "hawk_feather": 10 })
 	t.propose(tid, "peer", { "hawk_feather": 10 }, {})
 	t.accept(tid, "player")
 	t.accept(tid, "peer")
-	assert_eq(inv_a.get_item_count("hawk_feather"), 9, "novice diplomacy: 10 → 9 after 10% fee")
+	assert_eq(inv_a.get_item_count("hawk_feather"), 9, "novice Trade: 10 → 9 after 10% fee")
 	t.free()
 	inv_a.free()
 	inv_b.free()
@@ -2751,40 +2755,104 @@ func _test_market_expired_not_browsable() -> void:
 	assert_eq(m.get_all_listings().size(), 0, "expired listing removed")
 	m.free()
 
-func _test_market_persistence() -> void:
+func _test_market_expiry_wall_clock() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	var before := Time.get_unix_time_from_system()
+	m.list_item("seller", "hawk_feather", 5, 7.5)
+	var all: Array = m.get_all_listings()
+	assert_eq(all.size(), 1, "one listing recorded")
+	var expires_at: float = float(all[0]["expires_at"])
+	# A wall-clock deadline is a Unix-epoch timestamp (~1.7e9), not process
+	# uptime (a few hundred ms). This proves expiry tracks real time.
+	assert_true(expires_at > 1_000_000_000.0, "expires_at is a wall-clock (epoch) timestamp, not uptime")
+	assert_true(expires_at > before, "deadline is in the future")
+	m.free()
+
+func _test_market_persistence_disk() -> void:
+	# Round-trip through the real persistence slice (disk), not an in-memory
+	# get/apply, so a restored listing keeps its wall-clock deadline.
 	var m := MarketSlice.new()
 	add_child(m)
 	m.list_item("seller", "hawk_feather", 5, 7.5)
-	var data: Dictionary = m.get_market_data()
-	assert_eq(data.size(), 1, "one listing serialized")
+	var market_data: Dictionary = m.get_market_data()
+	var ps := PersistenceSlice.new()
+	add_child(ps)
+	ps.save(97, { "market": market_data })
+	var loaded: Dictionary = ps.load_slot(97)
+	assert_true(loaded.has("market"), "market key restored from disk")
 	var m2 := MarketSlice.new()
 	add_child(m2)
-	m2.apply_market_data(data)
+	m2.apply_market_data(loaded["market"])
 	var listings: Array = m2.get_listings()
-	assert_eq(listings.size(), 1, "listing restored")
+	assert_eq(listings.size(), 1, "listing restored from disk")
 	assert_eq(str(listings[0]["item_id"]), "hawk_feather", "item id preserved")
 	assert_eq(int(listings[0]["quantity"]), 5, "quantity preserved")
+	assert_true(float(listings[0]["expires_at"]) > Time.get_unix_time_from_system(), "restored listing has a future wall-clock deadline")
 	m.free()
 	m2.free()
+	ps.free()
 
 # ---------------------------------------------------------------------------
 # Governance / proposal tests (Phase 24)
 # ---------------------------------------------------------------------------
 
-func _test_proposal_submit_vote_ratify() -> void:
+func _test_proposal_quorum_ratify() -> void:
 	var p := ProposalSlice.new()
 	add_child(p)
+	p.set_quorum(3)
+	p.set_ratification_threshold(0.6)
 	var pid := p.submit_proposal("alice", "Allow X", "body")
 	assert_true(pid != "", "proposal submitted with an id")
 	p.vote(pid, "bob", "for")
-	assert_eq(str(p.get_proposal(pid)["state"]), "accepted", "unanimous vote ratifies")
+	p.vote(pid, "carol", "for")
+	p.vote(pid, "dave", "for")
+	assert_eq(str(p.get_proposal(pid)["state"]), "accepted", "quorum met (3/3 for) ratifies")
+	p.free()
+
+func _test_proposal_below_quorum() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.set_quorum(3)
+	var pid := p.submit_proposal("alice", "X", "body")
+	p.vote(pid, "bob", "for")
+	p.vote(pid, "carol", "for")
+	# 2 unanimous votes < quorum 3 → still proposed.
+	assert_eq(str(p.get_proposal(pid)["state"]), "proposed", "below quorum stays proposed")
+	p.free()
+
+func _test_proposal_author_self_vote() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.set_quorum(1)
+	var pid := p.submit_proposal("alice", "X", "body")
+	var result: Dictionary = p.vote(pid, "alice", "for")
+	assert_false(bool(result.get("success", false)), "author vote is rejected")
+	assert_eq(str(result.get("reason", "")), "author_cannot_vote", "reason is author_cannot_vote")
+	assert_eq(str(p.get_proposal(pid)["state"]), "proposed", "author cannot self-ratify")
+	p.free()
+
+func _test_proposal_window_expiry() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.set_quorum(1)
+	p.set_voting_window(0.0)
+	var pid := p.submit_proposal("alice", "X", "body")
+	# window 0 → expires immediately; a vote after the window is rejected.
+	var result: Dictionary = p.vote(pid, "bob", "for")
+	assert_false(bool(result.get("success", false)), "late vote rejected")
+	assert_eq(str(result.get("reason", "")), "expired", "reason is expired")
+	assert_eq(str(p.get_proposal(pid)["state"]), "proposed", "expired proposal stays proposed")
 	p.free()
 
 func _test_proposal_decisions_log() -> void:
 	var p := ProposalSlice.new()
 	add_child(p)
+	p.set_quorum(2)
+	p.set_ratification_threshold(0.6)
 	var pid := p.submit_proposal("alice", "Ratify the thing", "body")
 	p.vote(pid, "bob", "for")
+	p.vote(pid, "carol", "for")
 	var log: Array = p.get_decisions_log()
 	assert_eq(log.size(), 1, "one ratified proposal logged")
 	assert_eq(str(log[0]["title"]), "Ratify the thing", "log records the title")
@@ -2794,11 +2862,14 @@ func _test_proposal_decisions_log() -> void:
 func _test_proposal_below_threshold() -> void:
 	var p := ProposalSlice.new()
 	add_child(p)
+	p.set_quorum(3)
 	p.set_ratification_threshold(0.6)
 	var pid := p.submit_proposal("alice", "X", "body")
-	p.vote(pid, "a", "against")
-	p.vote(pid, "b", "for")
-	assert_eq(str(p.get_proposal(pid)["state"]), "proposed", "1 for / 2 votes stays proposed")
+	# 3 votes meets quorum, but 1 for / 2 against = 0.33 < 0.6 threshold.
+	p.vote(pid, "a", "for")
+	p.vote(pid, "b", "against")
+	p.vote(pid, "c", "against")
+	assert_eq(str(p.get_proposal(pid)["state"]), "proposed", "1 for / 3 votes stays proposed")
 	p.free()
 
 func _test_proposal_leadership_guild() -> void:

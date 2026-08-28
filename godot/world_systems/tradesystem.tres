@@ -1,0 +1,11 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/world_systems/tradesystem.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+feeSkill = "Trade"
+brokerFee = {"novice":0.1,"apprentice":0.08,"journeyman":0.05,"expert":0.02,"master":0}
+description = "Defines the rules governing player-to-player trade. A trade is a two-party session: each side proposes what they give and want, either may counter-offer, and the exchange commits only when both accept. A broker fee is withheld from the goods a player receives, scaled by their commercial skill tier."
+tags = ["world-system"]

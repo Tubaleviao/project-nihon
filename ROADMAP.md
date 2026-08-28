@@ -1044,13 +1044,14 @@ community governance hooks.
 - `src/world/market_slice.gd` — persistent world market: players list items at
   a price; other players browse and buy; listings expire after configurable
   duration; market data is part of the world save snapshot
-- Social skill effects wired: `Diplomacy` skill tier buffs trade offer reception;
+- Social skill effects wired: `Trade` skill tier sets the trade broker fee;
   `Leadership` unlocks guild formation; `Lore` unlocks advanced wiki entries
 - `src/governance/proposal_slice.gd` — in-game proposal system mirroring the
   constitution's `CommunityOwnsTheFuture` principle: players submit proposals,
-  ratification requires N% contributor vote; accepted proposals emit a fabric
-  decision event (the fabric decision state machine: `proposed → accepted →
-  superseded`)
+  others vote within a window; ratification requires a quorum of distinct voters
+  and a threshold fraction in favour (authors cannot self-vote); accepted
+  proposals emit a fabric decision event (the fabric decision state machine:
+  `proposed → accepted → superseded`)
 - UI panels for trade, market, and proposals wired into `ui_slice.gd`
 
 **Acceptance criteria:**
@@ -1061,10 +1062,11 @@ community governance hooks.
   update a runtime decisions log ✓
 
 **Implementation notes:**
-- **Trade broker fee** is the concrete Diplomacy effect: the local player's
-  Diplomacy tier determines the fraction of received goods withheld as a broker
-  fee (`TradeSlice.TRADE_TAX`: novice 10% → master 0%). This makes the social
-  skill tree visibly affect a trade without a second skill lookup path.
+- **Trade broker fee** is the concrete Trade effect: the local player's Trade
+  tier determines the fraction of received goods withheld as a broker fee
+  (fabric `TradeSystem.brokerFee`: novice 10% → master 0%). Diplomacy is scoped
+  to NPC factions in the fabric and does not affect player-to-player trade.
+  Balance numbers live in `fabric/gameplay/economy.js`, not hardcoded constants.
 - **`Lore` skill does not exist in the fabric** — `fabric/gameplay/skills/social.js`
   defines only `Diplomacy`, `Trade`, `Speechcraft`, and `Leadership`. The
   `Lore`-unlocks-wiki hook is therefore deferred until a `Lore` skill is
@@ -1081,14 +1083,19 @@ community governance hooks.
   map (`set_party_inventory`): the local player uses `inventory_slice`; tests
   inject a second `InventorySlice` to model the remote side, so "both sides"
   exchange is asserted directly.
-- **Market expiry** is lazy: `get_listings` filters by `expires_at`, and
+- **Market expiry** is lazy and wall-clock: `get_listings` filters by
+  `expires_at` (a Unix-epoch timestamp, not process uptime), and
   `expire_listings()` removes + emits `market_listing_expired`. The save
   snapshot carries `listed_at`/`expires_at`, so a restored listing keeps its
-  original deadline.
-- **Ratification** is threshold-over-votes-cast (`set_ratification_threshold`,
-  default 0.6): a proposal ratifies the moment the for-fraction reaches the
-  threshold, then records into the runtime decisions log and emits
-  `proposal_ratified`.
+  real deadline across sessions. The default lifetime is fabric
+  `MarketSystem.defaultExpirySeconds`.
+- **Ratification** requires quorum + threshold + window (fabric
+  `GovernanceSystem.ratification`: threshold 0.6, quorum 3, window 86400 s): a
+  proposal ratifies only once at least `quorum` distinct voters have cast
+  ballots within the voting window and the for-fraction reaches the threshold.
+  The author cannot vote on their own proposal, so a single author cannot
+  self-ratify. A ratified proposal records into the runtime decisions log and
+  emits `proposal_ratified`.
 
 **Known simplifications (deferred):**
 - **Currency exchange** — `price` is metadata only; no economy token is
@@ -1097,8 +1104,9 @@ community governance hooks.
   wiki entries" hook needs a `Lore` skill entity first.
 - **Full guild system** — `can_form_guild` gates formation, but guild entity,
   roster, and permissions are not built.
-- **Trade UI is a stub** — the trade window documents the mechanic; actual
-  propose/counter-offer flow needs a second player or NPC counterparty UI.
+- **Trade UI** — a single-player demo flow (a seeded merchant) lets a player
+  start and complete a trade; a full two-player / NPC negotiation UI is still
+  deferred.
 - **Market listing escrow** — listings are records, not an escrowed item
   reserve; a seller's inventory is not debited on list.
 

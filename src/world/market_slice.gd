@@ -23,7 +23,8 @@ extends Node
 ##   get_market_data()         -> Dictionary  (persistence)
 ##   apply_market_data(data)   -> void        (persistence restore)
 
-## Default listing lifetime (seconds) before expiry.
+## Default listing lifetime (seconds) before expiry — fallback mirroring the
+## fabric MarketSystem.defaultExpirySeconds; overridden from GameData in _ready().
 const DEFAULT_EXPIRY_SECONDS: float = 3600.0
 
 ## Local player inventory (set by game_root) — receives purchased items.
@@ -37,8 +38,26 @@ var _listings: Dictionary = {}
 var _next_id: int = 0
 var _expiry_seconds: float = DEFAULT_EXPIRY_SECONDS
 
+func _ready() -> void:
+	_load_market_config()
+
+## Load the default listing lifetime from the fabric MarketSystem entity so the
+## expiry window is fabric-first (single source of truth in GameData).
+func _load_market_config() -> void:
+	var res: Resource = GameData.WORLD_SYSTEMS.get("MarketSystem", null)
+	if res == null:
+		return
+	var secs: Variant = res.get("defaultExpirySeconds")
+	if secs != null:
+		_expiry_seconds = float(secs)
+
 func set_expiry_seconds(seconds: float) -> void:
 	_expiry_seconds = seconds
+
+## Wall-clock time (Unix epoch seconds). Listings must track real deadlines, not
+## process uptime, so a saved listing keeps its deadline across sessions.
+func _now() -> float:
+	return Time.get_unix_time_from_system()
 
 ## Create a listing for `quantity` of `item_id` at `price`, expiring after
 ## `expires_in` seconds (defaults to the configured duration). Returns the
@@ -47,7 +66,7 @@ func list_item(seller: String, item_id: String, quantity: int, price: float, exp
 	if quantity <= 0 or price < 0.0:
 		return ""
 	var lifetime: float = _expiry_seconds if expires_in < 0.0 else expires_in
-	var now := Time.get_ticks_msec()
+	var now := _now()
 	var id := "listing_%d" % _next_id
 	_next_id += 1
 	_listings[id] = {
@@ -57,7 +76,7 @@ func list_item(seller: String, item_id: String, quantity: int, price: float, exp
 		"quantity": quantity,
 		"price": price,
 		"listed_at": now,
-		"expires_at": now + int(lifetime * 1000.0),
+		"expires_at": now + lifetime,
 	}
 	GameBus.market_listing_created.emit(id, seller, item_id, quantity, price)
 	return id
@@ -65,10 +84,10 @@ func list_item(seller: String, item_id: String, quantity: int, price: float, exp
 ## Active (unexpired) listings.
 func get_listings() -> Array:
 	var out: Array = []
-	var now := Time.get_ticks_msec()
+	var now := _now()
 	for id in _listings:
 		var l: Dictionary = _listings[id]
-		if int(l["expires_at"]) > now:
+		if float(l["expires_at"]) > now:
 			out.append(l.duplicate())
 	return out
 
@@ -85,7 +104,7 @@ func buy(listing_id: String, buyer: String) -> Dictionary:
 	var l: Dictionary = _listings.get(listing_id, {})
 	if l.is_empty():
 		return _buy_fail(listing_id, "", 0, "unknown_listing")
-	if int(l["expires_at"]) <= Time.get_ticks_msec():
+	if float(l["expires_at"]) <= _now():
 		return _buy_fail(listing_id, str(l["item_id"]), int(l["quantity"]), "expired")
 	var item_id: String = str(l["item_id"])
 	var quantity: int = int(l["quantity"])
@@ -100,10 +119,10 @@ func buy(listing_id: String, buyer: String) -> Dictionary:
 ## Remove every expired listing, emitting market_listing_expired for each.
 ## Returns the number expired.
 func expire_listings() -> int:
-	var now := Time.get_ticks_msec()
+	var now := _now()
 	var expired: Array = []
 	for id in _listings:
-		if int(_listings[id]["expires_at"]) <= now:
+		if float(_listings[id]["expires_at"]) <= now:
 			expired.append(id)
 	for id in expired:
 		_listings.erase(id)
@@ -141,8 +160,8 @@ func apply_market_data(data: Dictionary) -> void:
 			"item_id": item_id,
 			"quantity": int(e.get("quantity", 0)),
 			"price": float(e.get("price", 0.0)),
-			"listed_at": int(e.get("listed_at", 0)),
-			"expires_at": int(e.get("expires_at", 0)),
+			"listed_at": float(e.get("listed_at", 0.0)),
+			"expires_at": float(e.get("expires_at", 0.0)),
 		}
 	# Keep the id counter ahead of any restored listing ids.
 	_next_id = _listings.size() + 1

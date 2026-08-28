@@ -32,6 +32,7 @@ var crafting_slice: Node = null
 var technology_slice: Node = null
 var market_slice: Node = null
 var proposal_slice: Node = null
+var trade_slice: Node = null
 
 var _ui: CanvasLayer = null
 var _panels: Dictionary = {}                 # panel name -> PanelContainer
@@ -42,6 +43,15 @@ var _technology_box: VBoxContainer = null
 var _technology_feedback: Label = null
 var _market_box: VBoxContainer = null
 var _proposal_box: VBoxContainer = null
+# Phase 24 social/economy window widgets (trade / market / proposals).
+var _active_trade_id: String = ""
+var _trade_status: Label = null
+var _market_item_select: OptionButton = null
+var _market_qty: LineEdit = null
+var _market_price: LineEdit = null
+var _proposal_title: LineEdit = null
+var _proposal_body: LineEdit = null
+var _proposal_feedback: Label = null
 
 func _ready() -> void:
 	_build_ui()
@@ -129,6 +139,7 @@ func refresh_all() -> void:
 	refresh_technology()
 	refresh_market()
 	refresh_proposals()
+	refresh_trade()
 
 # ---------------------------------------------------------------------------
 # Pure projections (testable without a scene tree)
@@ -259,6 +270,19 @@ func proposal_rows() -> Array:
 		})
 	return rows
 
+## Sorted list of inventory item ids currently held (feeds the market "list"
+## item selector). Empty when no inventory is wired.
+func listable_items() -> Array:
+	var out: Array = []
+	if inventory_slice == null:
+		return out
+	var contents: Dictionary = inventory_slice.get_contents()
+	for item_id in contents:
+		if int(contents[item_id]) > 0:
+			out.append(str(item_id))
+	out.sort()
+	return out
+
 ## A tech is researchable from the window only when still locked and every
 ## prerequisite is unlocked. Material availability is validated at research time
 ## (begin_research), not here.
@@ -327,22 +351,32 @@ func refresh_technology() -> void:
 		_technology_box.add_child(hbox)
 
 func refresh_market() -> void:
-	if _market_box == null:
+	if _market_box != null:
+		for child in _market_box.get_children():
+			child.queue_free()
+		for row in market_rows():
+			var r: Dictionary = row
+			var hbox := HBoxContainer.new()
+			hbox.add_theme_constant_override("separation", 8)
+			var btn := Button.new()
+			btn.text = "Buy"
+			btn.pressed.connect(_on_market_buy_pressed.bind(str(r["id"])))
+			hbox.add_child(btn)
+			var lbl := Label.new()
+			lbl.text = "%s  %s ×%d  @ %.2f  (%s)" % [r["id"], r["item_id"], r["quantity"], r["price"], r["seller"]]
+			hbox.add_child(lbl)
+			_market_box.add_child(hbox)
+	_refresh_market_item_selector()
+
+func _refresh_market_item_selector() -> void:
+	if _market_item_select == null:
 		return
-	for child in _market_box.get_children():
-		child.queue_free()
-	for row in market_rows():
-		var r: Dictionary = row
-		var hbox := HBoxContainer.new()
-		hbox.add_theme_constant_override("separation", 8)
-		var btn := Button.new()
-		btn.text = "Buy"
-		btn.pressed.connect(_on_market_buy_pressed.bind(str(r["id"])))
-		hbox.add_child(btn)
-		var lbl := Label.new()
-		lbl.text = "%s  %s ×%d  @ %.2f  (%s)" % [r["id"], r["item_id"], r["quantity"], r["price"], r["seller"]]
-		hbox.add_child(lbl)
-		_market_box.add_child(hbox)
+	var selected: int = _market_item_select.selected
+	_market_item_select.clear()
+	for item_id in listable_items():
+		_market_item_select.add_item(str(item_id))
+	if _market_item_select.item_count > 0:
+		_market_item_select.selected = clampi(selected, 0, _market_item_select.item_count - 1)
 
 func refresh_proposals() -> void:
 	if _proposal_box == null:
@@ -351,9 +385,43 @@ func refresh_proposals() -> void:
 		child.queue_free()
 	for row in proposal_rows():
 		var r: Dictionary = row
+		var hbox := HBoxContainer.new()
+		hbox.add_theme_constant_override("separation", 8)
 		var lbl := Label.new()
 		lbl.text = "%s [%s] %s  (for:%d / against:%d) — %s" % [r["id"], r["state"], r["title"], r["for"], r["against"], r["author"]]
-		_proposal_box.add_child(lbl)
+		hbox.add_child(lbl)
+		if str(r["state"]) == "proposed":
+			var for_btn := Button.new()
+			for_btn.text = "For"
+			for_btn.pressed.connect(_on_proposal_vote_pressed.bind(str(r["id"]), "for"))
+			hbox.add_child(for_btn)
+			var against_btn := Button.new()
+			against_btn.text = "Against"
+			against_btn.pressed.connect(_on_proposal_vote_pressed.bind(str(r["id"]), "against"))
+			hbox.add_child(against_btn)
+		_proposal_box.add_child(hbox)
+
+func refresh_trade() -> void:
+	if _trade_status == null:
+		return
+	_trade_status.text = _trade_status_text()
+
+## Human-readable summary of the active trade session, or a prompt when none is
+## open. Pure projection so it is testable without a scene tree.
+func _trade_status_text() -> String:
+	if trade_slice == null:
+		return "Trade is unavailable (no trade slice wired)."
+	if _active_trade_id == "":
+		return "No active trade. Click \"Start trade\" to open a session with the merchant."
+	var t: Dictionary = trade_slice.get_trade(_active_trade_id)
+	if t.is_empty():
+		return "Trade session ended."
+	var state: String = str(t.get("state", "pending"))
+	if state == "completed":
+		return "Trade completed — the merchant's goods were added to your inventory (less the Trade broker fee)."
+	if state == "rejected":
+		return "Trade rejected."
+	return "Trade %s open — click \"Accept trade\" to complete the exchange." % _active_trade_id
 
 # ---------------------------------------------------------------------------
 # Bus handlers
@@ -390,6 +458,7 @@ func _on_item_picked_up(_item_id: String, _quantity: int) -> void:
 func _on_inventory_changed() -> void:
 	refresh_inventory()
 	refresh_crafting()
+	_refresh_market_item_selector()
 
 func _on_block_mined(_material: String, _quantity: int, _position: Vector3) -> void:
 	refresh_inventory()
@@ -408,6 +477,64 @@ func _on_market_buy_pressed(listing_id: String) -> void:
 		market_slice.buy(listing_id, "player")
 	refresh_market()
 	refresh_inventory()
+
+func _on_trade_start_pressed() -> void:
+	if trade_slice == null:
+		return
+	_active_trade_id = trade_slice.start_trade("player", "merchant")
+	# The merchant proposes a fixed offer (10 hawk feathers, wants nothing) and
+	# accepts; the player completes the exchange with "Accept trade".
+	trade_slice.propose(_active_trade_id, "merchant", { "hawk_feather": 10 }, {})
+	trade_slice.accept(_active_trade_id, "merchant")
+	refresh_trade()
+
+func _on_trade_accept_pressed() -> void:
+	if trade_slice == null or _active_trade_id == "":
+		return
+	trade_slice.propose(_active_trade_id, "player", {}, { "hawk_feather": 10 })
+	trade_slice.accept(_active_trade_id, "player")
+	refresh_trade()
+	refresh_inventory()
+
+func _on_market_list_pressed() -> void:
+	if market_slice == null or _market_item_select == null:
+		return
+	if _market_item_select.item_count == 0:
+		return
+	var item_id: String = _market_item_select.get_item_text(_market_item_select.selected)
+	var qty: int = int(_market_qty.text) if _market_qty != null else 1
+	var price: float = float(_market_price.text) if _market_price != null else 1.0
+	if qty <= 0:
+		qty = 1
+	if price < 0.0:
+		price = 0.0
+	market_slice.list_item("player", item_id, qty, price)
+	refresh_market()
+
+func _on_proposal_submit_pressed() -> void:
+	if proposal_slice == null:
+		return
+	var title := _proposal_title.text if _proposal_title != null else ""
+	var body := _proposal_body.text if _proposal_body != null else ""
+	if title.strip_edges() == "":
+		return
+	proposal_slice.submit_proposal("player", title, body)
+	_proposal_title.text = ""
+	_proposal_body.text = ""
+	if _proposal_feedback != null:
+		_proposal_feedback.text = "Proposal submitted. Other players can now vote."
+	refresh_proposals()
+
+func _on_proposal_vote_pressed(proposal_id: String, verdict: String) -> void:
+	if proposal_slice == null:
+		return
+	var result: Dictionary = proposal_slice.vote(proposal_id, "player", verdict)
+	if _proposal_feedback != null:
+		if result.get("success", true):
+			_proposal_feedback.text = "Vote cast."
+		else:
+			_proposal_feedback.text = "Vote rejected: %s" % result.get("reason", "?")
+	refresh_proposals()
 
 # ---------------------------------------------------------------------------
 # UI construction
@@ -501,28 +628,90 @@ func _build_trade_content() -> Control:
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 6)
 	var lbl := Label.new()
-	lbl.text = "Player-to-player trade is initiated in-world.\nYour Diplomacy tier lowers the broker fee on received goods."
+	lbl.text = "Player-to-player trade with the merchant. Your Trade tier lowers the broker fee on received goods."
 	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vbox.add_child(lbl)
+	var start_btn := Button.new()
+	start_btn.text = "Start trade"
+	start_btn.pressed.connect(_on_trade_start_pressed)
+	vbox.add_child(start_btn)
+	var accept_btn := Button.new()
+	accept_btn.text = "Accept trade"
+	accept_btn.pressed.connect(_on_trade_accept_pressed)
+	vbox.add_child(accept_btn)
+	_trade_status = Label.new()
+	_trade_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_trade_status.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vbox.add_child(_trade_status)
 	return vbox
 
 func _build_market_content() -> Control:
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	var list_lbl := Label.new()
+	list_lbl.text = "List an item for sale (item · qty · price):"
+	vbox.add_child(list_lbl)
+	var list_row := HBoxContainer.new()
+	list_row.add_theme_constant_override("separation", 6)
+	_market_item_select = OptionButton.new()
+	_market_item_select.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list_row.add_child(_market_item_select)
+	_market_qty = LineEdit.new()
+	_market_qty.text = "1"
+	_market_qty.custom_minimum_size = Vector2(40, 0)
+	list_row.add_child(_market_qty)
+	_market_price = LineEdit.new()
+	_market_price.text = "1.0"
+	_market_price.custom_minimum_size = Vector2(50, 0)
+	list_row.add_child(_market_price)
+	var list_btn := Button.new()
+	list_btn.text = "List"
+	list_btn.pressed.connect(_on_market_list_pressed)
+	list_row.add_child(list_btn)
+	vbox.add_child(list_row)
+	var browse_lbl := Label.new()
+	browse_lbl.text = "Available listings:"
+	vbox.add_child(browse_lbl)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_market_box = VBoxContainer.new()
 	_market_box.add_theme_constant_override("separation", 4)
 	_market_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(_market_box)
-	return scroll
+	vbox.add_child(scroll)
+	return vbox
 
 func _build_proposals_content() -> Control:
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	var title_row := HBoxContainer.new()
+	title_row.add_theme_constant_override("separation", 6)
+	_proposal_title = LineEdit.new()
+	_proposal_title.placeholder_text = "Proposal title"
+	_proposal_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_row.add_child(_proposal_title)
+	var submit_btn := Button.new()
+	submit_btn.text = "Submit"
+	submit_btn.pressed.connect(_on_proposal_submit_pressed)
+	title_row.add_child(submit_btn)
+	vbox.add_child(title_row)
+	_proposal_body = LineEdit.new()
+	_proposal_body.placeholder_text = "Proposal body (optional)"
+	vbox.add_child(_proposal_body)
+	_proposal_feedback = Label.new()
+	_proposal_feedback.add_theme_font_size_override("font_size", 13)
+	vbox.add_child(_proposal_feedback)
+	var list_lbl := Label.new()
+	list_lbl.text = "Proposals:"
+	vbox.add_child(list_lbl)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_proposal_box = VBoxContainer.new()
 	_proposal_box.add_theme_constant_override("separation", 4)
 	_proposal_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(_proposal_box)
-	return scroll
+	vbox.add_child(scroll)
+	return vbox
 
 # ---------------------------------------------------------------------------
 # Helpers

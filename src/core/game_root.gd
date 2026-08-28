@@ -125,8 +125,20 @@ func _ready() -> void:
 	_ui.technology_slice      = _technology
 	_ui.market_slice          = _market
 	_ui.proposal_slice        = _proposal
+	_ui.trade_slice           = _trade
 	_trade.inventory_slice    = _inventory
 	_market.inventory_slice   = _inventory
+	# Single-player social demo (Phase 24): a seeded merchant counterparty lets
+	# the trade window commit a real exchange, and a couple of other-authored
+	# proposals give a solo player something to vote on (they cannot vote on
+	# their own submissions).
+	var merchant_inv := InventorySlice.new()
+	merchant_inv.name = "MerchantInventory"
+	add_child(merchant_inv)
+	merchant_inv.add_item("hawk_feather", 10)
+	_trade.set_party_inventory("merchant", merchant_inv)
+	_proposal.submit_proposal("merchant", "Open a northern trade route", "Connect the settlement to the northern passes.")
+	_proposal.submit_proposal("elder", "Establish a community forge", "Build a shared forge for all smiths.")
 	_ui.refresh_all()
 
 	# Authority mode (Phase 18): a client never owns world state — it forwards

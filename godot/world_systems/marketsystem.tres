@@ -1,0 +1,10 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/world_systems/marketsystem.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+defaultExpirySeconds = 3600
+description = "Defines the rules of the persistent player-run market. Players list items at a price; others browse and buy; listings expire after a configurable duration. Listing deadlines are wall-clock timestamps so a saved listing keeps its real deadline across sessions."
+tags = ["world-system"]

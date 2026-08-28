@@ -5,9 +5,10 @@ extends Node
 ##
 ## A trade is a two-party session. Each party proposes what they give and what
 ## they want; either side may counter-offer; the exchange commits when both
-## accept. The local player's Diplomacy skill tier applies a broker fee to the
-## goods they receive — higher Diplomacy lowers the fee (see TRADE_TAX) — making
-## the social skill tree visibly affect a trade.
+## accept. The local player's Trade skill tier applies a broker fee to the
+## goods they receive — higher Trade lowers the fee — making the social skill
+## tree visibly affect a trade. (Diplomacy is scoped to NPC factions in the
+## fabric and does not affect player-to-player trade.)
 ##
 ## Plug contract (GameBus signals emitted):
 ##   OUT : trade_completed(trade)   — the resolved trade record
@@ -29,15 +30,23 @@ const PARTY_PLAYER := "player"
 ## Skill tier order — matches fabric skill state machine (novice → master).
 const TIER_ORDER: Array = ["novice", "apprentice", "journeyman", "expert", "master"]
 
-## Diplomacy tier → fraction of received goods withheld as a broker fee.
-## Higher Diplomacy lowers the fee; a master trades tax-free.
-const TRADE_TAX: Dictionary = {
+## Trade tier → fraction of received goods withheld as a broker fee (fallback,
+## mirroring the fabric TradeSystem.brokerFee default). Higher Trade lowers the
+## fee; a master trades tax-free. Overridden from GameData in _ready().
+const DEFAULT_BROKER_FEE: Dictionary = {
 	"novice": 0.10,
 	"apprentice": 0.08,
 	"journeyman": 0.05,
 	"expert": 0.02,
 	"master": 0.0,
 }
+
+## Social skill whose tier drives the broker fee (fabric TradeSystem.feeSkill).
+var _fee_skill: String = "Trade"
+
+## Broker-fee table loaded from the fabric (TradeSystem.brokerFee); defaults to
+## DEFAULT_BROKER_FEE until _ready() loads the authoritative values.
+var _broker_fee: Dictionary = DEFAULT_BROKER_FEE.duplicate()
 
 ## Local player inventory (set by game_root). Default party inventory.
 var inventory_slice: Node = null
@@ -59,6 +68,20 @@ var _next_id: int = 0
 func _ready() -> void:
 	for skill_key in GameData.SKILLS:
 		_skill_tiers[skill_key] = "novice"
+	_load_trade_config()
+
+## Load the broker-fee table and fee skill from the fabric TradeSystem entity so
+## balance numbers stay fabric-first (single source of truth in GameData).
+func _load_trade_config() -> void:
+	var res: Resource = GameData.WORLD_SYSTEMS.get("TradeSystem", null)
+	if res == null:
+		return
+	var fee: Variant = res.get("brokerFee")
+	if fee is Dictionary and not fee.is_empty():
+		_broker_fee = (fee as Dictionary).duplicate()
+	var skill: String = str(res.get("feeSkill"))
+	if skill != "":
+		_fee_skill = skill
 
 func set_skill(skill: String, tier: String) -> void:
 	_skill_tiers[skill] = tier
@@ -132,7 +155,7 @@ func get_trade(trade_id: String) -> Dictionary:
 
 ## Force-resolve a trade whose two parties have accepted (also called
 ## automatically by accept). Exchanges give/want items between the parties'
-## inventories, applying the local player's Diplomacy broker fee.
+## inventories, applying the local player's Trade broker fee.
 func resolve(trade_id: String) -> Dictionary:
 	var t: Dictionary = _trades.get(trade_id, {})
 	if t.is_empty():
@@ -184,10 +207,10 @@ func _resolve_exchange(t: Dictionary) -> Dictionary:
 	if not _can_consume(inv_b, give_b):
 		return _fail(t["id"], "missing_goods:%s" % b)
 
-	# The local player's Diplomacy fee applies to what they receive.
+	# The local player's Trade broker fee applies to what they receive.
 	var received_a: Dictionary = give_b.duplicate()
 	var received_b: Dictionary = give_a.duplicate()
-	var tax: float = float(TRADE_TAX.get(get_skill("Diplomacy"), 0.10))
+	var tax: float = float(_broker_fee.get(get_skill(_fee_skill), 0.10))
 	if a == PARTY_PLAYER:
 		received_a = _apply_tax(give_b, tax)
 	else:
