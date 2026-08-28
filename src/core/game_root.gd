@@ -129,14 +129,17 @@ func _ready() -> void:
 	_trade.inventory_slice    = _inventory
 	_market.inventory_slice   = _inventory
 	# Single-player social demo (Phase 24): a seeded merchant counterparty lets
-	# the trade window commit a real exchange, and a couple of other-authored
-	# proposals give a solo player something to vote on (they cannot vote on
-	# their own submissions).
+	# the trade window commit a real exchange, a merchant market listing gives a
+	# solo player a non-self seller to buy from, and a couple of other-authored
+	# proposals give them something to vote on.
 	var merchant_inv := InventorySlice.new()
 	merchant_inv.name = "MerchantInventory"
 	add_child(merchant_inv)
 	merchant_inv.add_item("hawk_feather", 10)
+	merchant_inv.add_item("wolf_fang", 3)
 	_trade.set_party_inventory("merchant", merchant_inv)
+	_market.set_party_inventory("merchant", merchant_inv)
+	_market.list_item("merchant", "wolf_fang", 2, 15.0)
 	_proposal.submit_proposal("merchant", "Open a northern trade route", "Connect the settlement to the northern passes.")
 	_proposal.submit_proposal("elder", "Establish a community forge", "Build a shared forge for all smiths.")
 	_ui.refresh_all()
@@ -147,6 +150,9 @@ func _ready() -> void:
 	_voxel.is_authoritative     = not _is_client
 	_creature.is_authoritative  = not _is_client
 	_creature_ai.is_authoritative = not _is_client
+	_market.is_authoritative    = not _is_client
+	_trade.is_authoritative     = not _is_client
+	_proposal.is_authoritative  = not _is_client
 
 	# Chunk streaming (Phase 17) — wire the manager to its collaborators.
 	_chunk_manager.terrain_slice  = _terrain
@@ -386,7 +392,7 @@ func _boot_world() -> void:
 		},
 		"technology": _technology.get_statuses(),
 		"market": _market.get_market_data(),
-		"governance": _proposal.get_decisions_log(),
+		"governance": _proposal.get_governance_data(),
 	}
 	GameBus.save_requested.emit(0, snapshot)
 	GameBus.load_requested.emit(0)
@@ -477,6 +483,8 @@ func _build_snapshot() -> Dictionary:
 		"edits":     _voxel.get_chunk_manifest(),
 		"creatures": _creature.get_snapshot_creatures(),
 		"inventory": _inventory.get_contents(),
+		"market":    _market.get_market_data(),
+		"governance": _proposal.get_governance_data(),
 		"players":   players,
 	}
 
@@ -493,6 +501,10 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 		_creature.apply_snapshot_creatures(data["creatures"])
 	if data.has("inventory") and data["inventory"] is Dictionary:
 		_inventory.replace_contents(data["inventory"])
+	if data.has("market") and data["market"] is Dictionary:
+		_market.apply_market_data(data["market"])
+	if data.has("governance") and data["governance"] is Dictionary:
+		_proposal.apply_governance_data(data["governance"])
 	if data.has("players") and data["players"] is Dictionary:
 		for pid in data["players"]:
 			var pos = data["players"][pid]
@@ -605,8 +617,13 @@ func _on_load_completed(slot: int, data: Dictionary) -> void:
 		_market.apply_market_data(data["market"])
 		print("[Persistence] restored %d market listings" % data["market"].size())
 	if data.has("governance"):
-		_proposal.apply_decisions_log(data["governance"])
-		print("[Persistence] restored %d ratified decisions" % data["governance"].size())
+		var gov: Variant = data["governance"]
+		if gov is Dictionary:
+			_proposal.apply_governance_data(gov)
+		elif gov is Array:
+			# Backward compat: older saves stored only the decisions log.
+			_proposal.apply_decisions_log(gov)
+		print("[Persistence] restored governance state")
 
 # ---------------------------------------------------------------------------
 # GameData smoke test

@@ -2,7 +2,14 @@
 class_name GovernanceSystemData
 extends Resource
 
+enum Status {
+	PROPOSED,
+	ACCEPTED,
+	SUPERSEDED,
+	EXPIRED,
+}
 
 @export var id: String
 @export var ratification: Dictionary
 @export var guildMinTier: String
+@export var status: int

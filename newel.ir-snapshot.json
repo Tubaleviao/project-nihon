@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-28T12:44:44.365Z",
-  "schemaHash": "sha256:d2fbd4b28955a3a2c53ee3ea5c03ebbb10f46231f829ce2cb724ee2d14921337",
+  "generatedAt": "2026-08-28T17:44:55.832Z",
+  "schemaHash": "sha256:08269eea2ef52b4e7347964e9cb4838b1c68865ea6458763ffb5ee4011003e92",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -19647,6 +19647,20 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": "apprentice"
+          },
+          "status": {
+            "name": "status",
+            "type": "enum",
+            "description": "Lifecycle of a proposal: open for voting, ratified, replaced, or lapsed past its window",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "proposed",
+              "accepted",
+              "superseded",
+              "expired"
+            ],
+            "pii": false
           }
         },
         "relations": {},
@@ -19665,7 +19679,94 @@
                 "maintainer"
               ]
             }
+          },
+          "expire": {
+            "name": "expire",
+            "description": "Close a proposal whose voting window has lapsed without ratification",
+            "rules": [
+              "A proposal past its window deadline transitions to expired",
+              "Expired proposals no longer accept votes"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "supersede": {
+            "name": "supersede",
+            "description": "Mark a proposal as replaced by a newer one",
+            "rules": [
+              "A replacement proposal must be ratified first"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
           }
+        },
+        "stateMachine": {
+          "field": "status",
+          "initial": "proposed",
+          "states": {
+            "proposed": {
+              "name": "proposed",
+              "description": "Proposal is open for community voting within its window",
+              "terminal": false
+            },
+            "accepted": {
+              "name": "accepted",
+              "description": "Proposal ratified and recorded in the decisions log",
+              "terminal": false
+            },
+            "superseded": {
+              "name": "superseded",
+              "description": "Proposal replaced by a newer one",
+              "terminal": true
+            },
+            "expired": {
+              "name": "expired",
+              "description": "Voting window lapsed without ratification",
+              "terminal": true
+            }
+          },
+          "transitions": [
+            {
+              "from": "proposed",
+              "to": "accepted",
+              "trigger": "ratify",
+              "guards": [
+                "The proposal author may not vote on their own proposal",
+                "Ratification requires at least quorum distinct voters",
+                "Votes after the voting window closes are rejected",
+                "A ratified proposal is recorded in the runtime decisions log"
+              ],
+              "effects": []
+            },
+            {
+              "from": "proposed",
+              "to": "expired",
+              "trigger": "expire",
+              "guards": [
+                "A proposal past its window deadline transitions to expired",
+                "Expired proposals no longer accept votes"
+              ],
+              "effects": []
+            },
+            {
+              "from": [
+                "proposed",
+                "accepted"
+              ],
+              "to": "superseded",
+              "trigger": "supersede",
+              "guards": [
+                "A replacement proposal must be ratified first"
+              ],
+              "effects": []
+            }
+          ]
         },
         "pii": [],
         "gdpr": {}

@@ -6,8 +6,13 @@ extends Node
 ## change. The proposal author cannot vote on their own proposal, so a single
 ## author cannot self-ratify. A ratified proposal mirrors the fabric decision
 ## state machine (`proposed → accepted → superseded`); a proposal whose window
-## lapses without ratifying transitions to `expired` and is recorded in a
-## runtime decisions log.
+## lapses without ratifying transitions to `expired` — both states are defined
+## in the fabric GovernanceSystem state machine.
+##
+## Host authority (Phase 18/24): the host owns governance state. A
+## non-authoritative slice (client) forwards submit/vote intents to the host
+## and applies `governance_synced` broadcasts. Open proposals + the decisions
+## log round-trip through the save snapshot and the authoritative sync.
 ##
 ## Balance numbers (threshold, quorum, voting window, guild min tier) come from
 ## the fabric GovernanceSystem entity — fabric-first, no hardcoded constants.
@@ -15,9 +20,12 @@ extends Node
 ## Social skill wiring: `can_form_guild` gates guild formation on the
 ## Leadership skill tier (apprentice or higher).
 ##
-## Plug contract (GameBus signals emitted):
-##   OUT : proposal_submitted(proposal_id)
-##         proposal_ratified(proposal_id, title)
+## Plug contract (GameBus signals emitted / consumed):
+##   OUT : proposal_submitted / proposal_ratified
+##         governance_synced(data)  — authoritative full state (host)
+##         proposal_submit_intent / proposal_vote_intent — client intent
+##   IN  : proposal_submit_intent / proposal_vote_intent (host applies)
+##         governance_synced(data)  — apply authoritative state (client)
 ##
 ## Public API:
 ##   submit_proposal(author, title, body) -> String
@@ -27,8 +35,12 @@ extends Node
 ##   get_decisions_log()                  -> Array      (ratified proposals)
 ##   is_open(proposal_id)                 -> bool
 ##   expire_proposals()                   -> int   (mark lapsed proposals expired)
+##   get_governance_data()                -> Dictionary  (persistence + sync)
+##   apply_governance_data(data)          -> void
 ##   set_ratification_threshold(frac) / set_quorum(n) / set_voting_window(seconds)
 ##   can_form_guild(leadership_tier)      -> bool
+
+const SkillTiers := preload("res://src/core/skill_tiers.gd")
 
 const STATE_PROPOSED := "proposed"
 const STATE_ACCEPTED := "accepted"
@@ -38,15 +50,16 @@ const STATE_EXPIRED := "expired"
 ## How often (seconds) the runtime window-expiry tick runs.
 const EXPIRY_TICK_INTERVAL: float = 1.0
 
-## Skill tier order — matches fabric skill state machine (novice → master).
-const TIER_ORDER: Array = ["novice", "apprentice", "journeyman", "expert", "master"]
-
 ## Fallbacks mirroring the fabric GovernanceSystem defaults; overridden from
 ## GameData in _ready().
 const DEFAULT_RATIFICATION_THRESHOLD: float = 0.6
 const DEFAULT_QUORUM: int = 3
 const DEFAULT_WINDOW_SECONDS: float = 86400.0
 const DEFAULT_GUILD_MIN_TIER := "apprentice"
+
+## Host authority (Phase 18). The host mutates + broadcasts; a client forwards
+## intent and applies authoritative deltas.
+var is_authoritative: bool = true
 
 var _proposals: Dictionary = {}
 var _next_id: int = 0
@@ -59,6 +72,9 @@ var _expiry_tick_accum: float = 0.0
 
 func _ready() -> void:
 	_load_governance_config()
+	GameBus.proposal_submit_intent.connect(_on_submit_intent)
+	GameBus.proposal_vote_intent.connect(_on_vote_intent)
+	GameBus.governance_synced.connect(_on_governance_synced)
 
 func _process(delta: float) -> void:
 	_expiry_tick_accum += delta
@@ -93,13 +109,16 @@ func set_quorum(n: int) -> void:
 func set_voting_window(seconds: float) -> void:
 	_window_seconds = seconds
 
-## Wall-clock now (Unix epoch seconds) — the voting window is a real deadline,
-## not process uptime, so it survives save/load like market listings.
+## Wall-clock now (Unix epoch seconds).
 func _now() -> float:
 	return Time.get_unix_time_from_system()
 
-## Submit a proposal for community vote; returns the proposal id.
+## Submit a proposal for community vote. On the authoritative slice returns the
+## proposal id; on a client forwards a submit intent and returns "".
 func submit_proposal(author: String, title: String, body: String) -> String:
+	if not is_authoritative:
+		GameBus.proposal_submit_intent.emit(author, title, body)
+		return ""
 	var id := "proposal_%d" % _next_id
 	_next_id += 1
 	var now := _now()
@@ -114,12 +133,17 @@ func submit_proposal(author: String, title: String, body: String) -> String:
 		"expires_at": now + _window_seconds,
 	}
 	GameBus.proposal_submitted.emit(id)
+	_emit_synced()
 	return id
 
 ## Cast a vote ("for" or "against"). One vote per voter (last wins). The author
 ## cannot vote on their own proposal; votes past the window are rejected. After
-## the vote is recorded, ratification is re-checked. Returns the proposal record.
+## the vote is recorded, ratification is re-checked. On a client this forwards a
+## vote intent. Returns the proposal record (or a failure/forwarded marker).
 func vote(proposal_id: String, voter: String, verdict: String) -> Dictionary:
+	if not is_authoritative:
+		GameBus.proposal_vote_intent.emit(proposal_id, voter, verdict)
+		return { "success": false, "reason": "forwarded", "proposal_id": proposal_id }
 	var p: Dictionary = _proposals.get(proposal_id, {})
 	if p.is_empty():
 		return { "success": false, "reason": "unknown_proposal" }
@@ -133,6 +157,7 @@ func vote(proposal_id: String, voter: String, verdict: String) -> Dictionary:
 		return { "success": false, "reason": "expired", "proposal_id": proposal_id }
 	p["votes"][voter] = verdict
 	_check_ratification(proposal_id)
+	_emit_synced()
 	return get_proposal(proposal_id)
 
 func get_proposal(proposal_id: String) -> Dictionary:
@@ -165,6 +190,8 @@ func expire_proposals() -> int:
 		if str(p["state"]) == STATE_PROPOSED and float(p["expires_at"]) <= now:
 			p["state"] = STATE_EXPIRED
 			n += 1
+	if n > 0:
+		_emit_synced()
 	return n
 
 ## The runtime decisions log: every ratified proposal, most recent last.
@@ -180,7 +207,30 @@ func apply_decisions_log(log: Array) -> void:
 
 ## Whether a Leadership tier is sufficient to form a guild.
 func can_form_guild(leadership_tier: String) -> bool:
-	return _tier_rank(leadership_tier) >= _tier_rank(_guild_min_tier)
+	return SkillTiers.rank(leadership_tier) >= SkillTiers.rank(_guild_min_tier)
+
+## Full governance state (open proposals + decisions log) for persistence and
+## authoritative sync.
+func get_governance_data() -> Dictionary:
+	return {
+		"proposals": _proposals.duplicate(true),
+		"decisions_log": _decisions_log.duplicate(),
+		"next_id": _next_id,
+	}
+
+## Restore full governance state from a persisted snapshot / authoritative sync.
+func apply_governance_data(data: Dictionary) -> void:
+	_proposals.clear()
+	var props: Variant = data.get("proposals", {})
+	if props is Dictionary:
+		_proposals = props.duplicate(true)
+	_decisions_log.clear()
+	var log: Variant = data.get("decisions_log", [])
+	if log is Array:
+		for entry in log:
+			if entry is Dictionary:
+				_decisions_log.append(entry)
+	_next_id = int(data.get("next_id", _next_id))
 
 # ---------------------------------------------------------------------------
 # Private
@@ -206,5 +256,22 @@ func _check_ratification(proposal_id: String) -> void:
 		})
 		GameBus.proposal_ratified.emit(proposal_id, p["title"])
 
-func _tier_rank(tier: String) -> int:
-	return TIER_ORDER.find(tier)
+# ---------------------------------------------------------------------------
+# Authority (Phase 24) — intent forwarding + authoritative broadcast
+# ---------------------------------------------------------------------------
+
+func _on_submit_intent(author: String, title: String, body: String) -> void:
+	if is_authoritative:
+		submit_proposal(author, title, body)
+
+func _on_vote_intent(proposal_id: String, voter: String, verdict: String) -> void:
+	if is_authoritative:
+		vote(proposal_id, voter, verdict)
+
+func _on_governance_synced(data: Dictionary) -> void:
+	if not is_authoritative:
+		apply_governance_data(data)
+
+func _emit_synced() -> void:
+	if is_authoritative:
+		GameBus.governance_synced.emit(get_governance_data())

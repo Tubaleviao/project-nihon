@@ -314,6 +314,15 @@ signal market_listing_purchased(listing_id: String, buyer: String, item_id: Stri
 ## Emitted by MarketSlice when a listing expires without a buyer.
 signal market_listing_expired(listing_id: String)
 
+## Client → host (Phase 24 authority): a non-authoritative slice wants to list.
+signal market_list_intent(seller: String, item_id: String, quantity: int, price: float)
+
+## Client → host: a non-authoritative slice wants to buy a listing.
+signal market_buy_intent(listing_id: String, buyer: String)
+
+## Host → clients: authoritative market state (full listing data).
+signal market_synced(data: Dictionary)
+
 # ---------------------------------------------------------------------------
 # Governance / proposals (Phase 24)
 # ---------------------------------------------------------------------------
@@ -323,4 +332,13 @@ signal proposal_submitted(proposal_id: String)
 
 ## Emitted by ProposalSlice when a proposal reaches ratification threshold.
 signal proposal_ratified(proposal_id: String, title: String)
+
+## Client → host (Phase 24 authority): a non-authoritative slice wants to submit.
+signal proposal_submit_intent(author: String, title: String, body: String)
+
+## Client → host: a non-authoritative slice wants to cast a vote.
+signal proposal_vote_intent(proposal_id: String, voter: String, verdict: String)
+
+## Host → clients: authoritative governance state (proposals + decisions log).
+signal governance_synced(data: Dictionary)
 

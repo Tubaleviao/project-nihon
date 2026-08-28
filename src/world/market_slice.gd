@@ -7,14 +7,21 @@ extends Node
 ## Listings are ESCROWED: `list_item` debits the seller's inventory up front and
 ## refuses the listing if they don't hold the quantity; `buy` transfers the
 ## escrowed items into the buyer's inventory (no duplication — a self-buy nets
-## zero, not double); an expired listing refunds its escrow back to the seller.
-## There is no currency model yet, so `price` is an abstract numeric value
-## recorded on the listing.
+## zero, not double); an expired listing refunds its escrow back to the seller
+## (a seller with a full inventory keeps the listing escrowed until there is
+## room, so items are never destroyed).
 ##
-## Plug contract (GameBus signals emitted):
-##   OUT : market_listing_created(listing_id, seller, item_id, quantity, price)
-##         market_listing_purchased(listing_id, buyer, item_id, quantity)
-##         market_listing_expired(listing_id)
+## Host authority (Phase 18/24): the host owns the market. A non-authoritative
+## slice (client) forwards list/buy intents to the host via the bus instead of
+## mutating locally, and applies `market_synced` broadcasts. There is no
+## currency model yet, so `price` is an abstract numeric value.
+##
+## Plug contract (GameBus signals emitted / consumed):
+##   OUT : market_listing_created / market_listing_purchased / market_listing_expired
+##         market_synced(data)     — authoritative full state (host)
+##         market_list_intent / market_buy_intent — client intent
+##   IN  : market_list_intent / market_buy_intent (host applies)
+##         market_synced(data)     — apply authoritative state (client)
 ##
 ## Public API:
 ##   list_item(seller, item_id, quantity, price, expires_in) -> String
@@ -31,14 +38,14 @@ extends Node
 ## fabric MarketSystem.defaultExpirySeconds; overridden from GameData in _ready().
 const DEFAULT_EXPIRY_SECONDS: float = 3600.0
 
-## How often (seconds) the runtime expiry tick runs. Without a caller,
-## expire_listings() never fires outside tests and escrow is never refunded.
+## How often (seconds) the runtime expiry tick runs.
 const EXPIRY_TICK_INTERVAL: float = 1.0
 
 ## Local player inventory (set by game_root) — default party inventory.
 var inventory_slice: Node = null
 
-## Host authority (Phase 18) — kept for symmetry with other slices.
+## Host authority (Phase 18). The host mutates + broadcasts; a client forwards
+## intent and applies authoritative deltas.
 var is_authoritative: bool = true
 
 ## Party id → inventory override (tests model seller/buyer sides; a host models
@@ -53,6 +60,9 @@ var _expiry_tick_accum: float = 0.0
 
 func _ready() -> void:
 	_load_market_config()
+	GameBus.market_list_intent.connect(_on_list_intent)
+	GameBus.market_buy_intent.connect(_on_buy_intent)
+	GameBus.market_synced.connect(_on_market_synced)
 
 func _process(delta: float) -> void:
 	_expiry_tick_accum += delta
@@ -84,18 +94,19 @@ func _inventory_for(party: String) -> Node:
 		return inventory_slice
 	return null
 
-## Wall-clock time (Unix epoch seconds). Listings must track real deadlines, not
-## process uptime, so a saved listing keeps its deadline across sessions.
+## Wall-clock time (Unix epoch seconds).
 func _now() -> float:
 	return Time.get_unix_time_from_system()
 
 ## Create a listing for `quantity` of `item_id` at `price`, expiring after
-## `expires_in` seconds (defaults to the configured duration). The listing is
-## ESCROWED: the seller's inventory is debited up front, and the listing is
-## rejected ("") when the seller has no inventory or doesn't hold the quantity.
-## Returns the listing id.
+## `expires_in` seconds. On the authoritative slice the seller's inventory is
+## debited up front and the listing is rejected ("") when the seller can't
+## supply the quantity. On a client this forwards a list intent and returns "".
 func list_item(seller: String, item_id: String, quantity: int, price: float, expires_in: float = -1.0) -> String:
 	if quantity <= 0 or price < 0.0:
+		return ""
+	if not is_authoritative:
+		GameBus.market_list_intent.emit(seller, item_id, quantity, price)
 		return ""
 	var seller_inv := _inventory_for(seller)
 	if seller_inv == null:
@@ -116,6 +127,7 @@ func list_item(seller: String, item_id: String, quantity: int, price: float, exp
 		"expires_at": now + lifetime,
 	}
 	GameBus.market_listing_created.emit(id, seller, item_id, quantity, price)
+	_emit_synced()
 	return id
 
 ## Active (unexpired) listings.
@@ -137,9 +149,12 @@ func get_all_listings() -> Array:
 
 ## Purchase a listing: transfer its escrowed item into the buyer's inventory and
 ## remove the listing. Fails (leaving the listing intact) when the buyer has no
-## inventory to credit or can't hold the item. Returns
-## { listing_id, success, item_id, quantity, reason }.
+## inventory or can't hold the item. On a client this forwards a buy intent.
+## Returns { listing_id, success, item_id, quantity, reason }.
 func buy(listing_id: String, buyer: String) -> Dictionary:
+	if not is_authoritative:
+		GameBus.market_buy_intent.emit(listing_id, buyer)
+		return { "listing_id": listing_id, "success": false, "item_id": "", "quantity": 0, "reason": "forwarded" }
 	var l: Dictionary = _listings.get(listing_id, {})
 	if l.is_empty():
 		return _buy_fail(listing_id, "", 0, "unknown_listing")
@@ -155,29 +170,44 @@ func buy(listing_id: String, buyer: String) -> Dictionary:
 	buyer_inv.add_item(item_id, quantity)
 	_listings.erase(listing_id)
 	GameBus.market_listing_purchased.emit(listing_id, buyer, item_id, quantity)
+	_emit_synced()
 	return { "listing_id": listing_id, "success": true, "item_id": item_id, "quantity": quantity, "reason": "" }
 
 ## Remove every expired listing, refunding its escrow to the seller and emitting
-## market_listing_expired for each. Returns the number expired.
+## market_listing_expired for each. A seller whose inventory can't hold the
+## refund keeps the listing escrowed (retried next tick) so items are never
+## destroyed. Returns the number removed.
 func expire_listings() -> int:
 	var now := _now()
 	var expired: Array = []
 	for id in _listings:
 		if float(_listings[id]["expires_at"]) <= now:
 			expired.append(id)
+	var removed := 0
 	for id in expired:
 		var l: Dictionary = _listings[id]
-		_refund_escrow(l)
+		if not _refund_escrow(l):
+			continue   # seller can't hold the refund yet — keep it escrowed
 		_listings.erase(id)
 		GameBus.market_listing_expired.emit(id)
-	return expired.size()
+		removed += 1
+	if removed > 0:
+		_emit_synced()
+	return removed
 
-## Return an expired listing's escrowed items to its seller.
-func _refund_escrow(l: Dictionary) -> void:
+## Return an expired listing's escrowed items to its seller. Returns false
+## (keeping the listing escrowed) when the seller has no inventory or can't hold
+## the items — items are never silently dropped.
+func _refund_escrow(l: Dictionary) -> bool:
 	var seller_inv := _inventory_for(str(l["seller"]))
 	if seller_inv == null:
-		return
-	seller_inv.add_item(str(l["item_id"]), int(l["quantity"]))
+		return false
+	var item_id := str(l["item_id"])
+	var quantity := int(l["quantity"])
+	if not seller_inv.can_add_items({ item_id: quantity }):
+		return false
+	seller_inv.add_item(item_id, quantity)
+	return true
 
 ## Serialize active + expired listings for the save snapshot.
 func get_market_data() -> Dictionary:
@@ -213,9 +243,6 @@ func apply_market_data(data: Dictionary) -> void:
 			"listed_at": float(e.get("listed_at", 0.0)),
 			"expires_at": float(e.get("expires_at", 0.0)),
 		}
-	# Keep the id counter ahead of any restored listing id. Derive it from the
-	# largest existing suffix rather than the count, so restoring "listing_5"
-	# never lets a fresh listing reuse 5 just because the set is small.
 	_next_id = _max_listing_suffix() + 1
 
 ## Largest numeric suffix among existing listing ids (-1 when none).
@@ -229,3 +256,27 @@ func _max_listing_suffix() -> int:
 
 func _buy_fail(listing_id: String, item_id: String, quantity: int, reason: String) -> Dictionary:
 	return { "listing_id": listing_id, "success": false, "item_id": item_id, "quantity": quantity, "reason": reason }
+
+# ---------------------------------------------------------------------------
+# Authority (Phase 24) — intent forwarding + authoritative broadcast
+# ---------------------------------------------------------------------------
+
+## Host: apply a client's list intent.
+func _on_list_intent(seller: String, item_id: String, quantity: int, price: float) -> void:
+	if is_authoritative:
+		list_item(seller, item_id, quantity, price)
+
+## Host: apply a client's buy intent.
+func _on_buy_intent(listing_id: String, buyer: String) -> void:
+	if is_authoritative:
+		buy(listing_id, buyer)
+
+## Client: apply the host's authoritative market state.
+func _on_market_synced(data: Dictionary) -> void:
+	if not is_authoritative:
+		apply_market_data(data)
+
+## Host: broadcast the authoritative market state to clients.
+func _emit_synced() -> void:
+	if is_authoritative:
+		GameBus.market_synced.emit(get_market_data())

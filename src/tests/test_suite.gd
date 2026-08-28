@@ -191,6 +191,8 @@ func run() -> void:
 	_run_test("trade: missing goods blocks resolution",         _test_trade_missing_goods)
 	_run_test("trade: Trade tier lowers broker fee",           _test_trade_skill_lowers_fee)
 	_run_test("trade: no broker fee when neither side is player", _test_trade_no_fee_without_player)
+	_run_test("trade: propose reports success",                 _test_trade_state_reports_success)
+	_run_test("trade: get_trade returns a defensive copy",      _test_trade_get_trade_defensive_copy)
 	_run_test("market: list and browse listings",               _test_market_list_browse)
 	_run_test("market: buy transfers escrow to buyer",          _test_market_buy_transfers)
 	_run_test("market: expired listing is not browsable",       _test_market_expired_not_browsable)
@@ -201,11 +203,18 @@ func run() -> void:
 	_run_test("market: list rejects insufficient stock",        _test_market_list_insufficient)
 	_run_test("market: expiry refunds escrow to seller",        _test_market_expire_refunds_escrow)
 	_run_test("market: restored ids never collide",             _test_market_restore_no_id_collision)
+	_run_test("market: client forwards list/buy intent",        _test_market_client_forwards_intent)
+	_run_test("market: client applies authoritative sync",      _test_market_sync_applies_on_client)
+	_run_test("market: authoritative list emits sync",          _test_market_authoritative_emits_sync)
+	_run_test("market: expiry keeps escrow when seller full",   _test_market_expire_keeps_escrow_when_full)
 	_run_test("proposal: quorum met ratifies",                  _test_proposal_quorum_ratify)
 	_run_test("proposal: below quorum stays proposed",          _test_proposal_below_quorum)
 	_run_test("proposal: author cannot vote on own proposal",   _test_proposal_author_self_vote)
 	_run_test("proposal: voting window rejects late votes",     _test_proposal_window_expiry)
 	_run_test("proposal: lapsed proposal transitions to expired", _test_proposal_expire_transitions)
+	_run_test("proposal: client forwards submit/vote intent",   _test_proposal_client_forwards_intent)
+	_run_test("proposal: client applies authoritative sync",    _test_proposal_sync_applies_on_client)
+	_run_test("proposal: open proposals round-trip",            _test_proposal_persistence_round_trip)
 	_run_test("proposal: ratification updates decisions log",   _test_proposal_decisions_log)
 	_run_test("proposal: below threshold stays proposed",       _test_proposal_below_threshold)
 	_run_test("proposal: leadership gates guild formation",     _test_proposal_leadership_guild)
@@ -2749,6 +2758,24 @@ func _test_trade_no_fee_without_player() -> void:
 	inv_a.free()
 	inv_b.free()
 
+func _test_trade_state_reports_success() -> void:
+	var t := TradeSlice.new()
+	add_child(t)
+	var tid := t.start_trade("player", "peer")
+	var result: Dictionary = t.propose(tid, "player", {}, {})
+	assert_true(bool(result.get("success", false)), "propose reports success")
+	assert_eq(str(result.get("state", "")), "pending", "propose returns the trade state")
+	t.free()
+
+func _test_trade_get_trade_defensive_copy() -> void:
+	var t := TradeSlice.new()
+	add_child(t)
+	var tid := t.start_trade("player", "peer")
+	var snapshot: Dictionary = t.get_trade(tid)
+	snapshot["state"] = "tampered"
+	assert_eq(str(t.get_trade(tid)["state"]), "pending", "get_trade returns a copy, not live state")
+	t.free()
+
 # ---------------------------------------------------------------------------
 # Market slice tests (Phase 24)
 # ---------------------------------------------------------------------------
@@ -2938,6 +2965,69 @@ func _test_market_restore_no_id_collision() -> void:
 	m.free()
 	seller.free()
 
+func _test_market_client_forwards_intent() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	m.is_authoritative = false
+	var box := {}
+	GameBus.market_list_intent.connect(func(_s, _i, _q, _p): box["list"] = true)
+	GameBus.market_buy_intent.connect(func(_lid, _b): box["buy"] = true)
+	var id := m.list_item("player", "hawk_feather", 5, 10.0)
+	assert_eq(id, "", "client list returns empty (forwarded)")
+	assert_true(box.get("list", false), "list intent forwarded")
+	assert_eq(m.get_all_listings().size(), 0, "client list does not mutate locally")
+	var r: Dictionary = m.buy("listing_0", "player")
+	assert_eq(str(r.get("reason", "")), "forwarded", "client buy forwards intent")
+	assert_true(box.get("buy", false), "buy intent forwarded")
+	m.free()
+
+func _test_market_sync_applies_on_client() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	m.is_authoritative = false
+	GameBus.market_synced.emit({
+		"listing_0": { "seller": "merchant", "item_id": "wolf_fang", "quantity": 2, "price": 15.0, "listed_at": 0.0, "expires_at": 9999999999.0 }
+	})
+	assert_eq(m.get_listings().size(), 1, "client applied authoritative market state")
+	m.free()
+
+func _test_market_authoritative_emits_sync() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	var seller := InventorySlice.new()
+	add_child(seller)
+	seller.add_item("hawk_feather", 5)
+	m.set_party_inventory("seller", seller)
+	var box := {}
+	GameBus.market_synced.connect(func(_d): box["synced"] = true)
+	m.list_item("seller", "hawk_feather", 5, 10.0)
+	assert_true(box.get("synced", false), "authoritative list emits market_synced")
+	m.free()
+	seller.free()
+
+func _test_market_expire_keeps_escrow_when_full() -> void:
+	# Fill the seller's weight, list an item (freeing a little), then re-fill so
+	# the escrow refund can no longer fit — expiry must keep the listing, not
+	# destroy the items.
+	var m := MarketSlice.new()
+	add_child(m)
+	var seller := InventorySlice.new()
+	add_child(seller)
+	m.set_party_inventory("seller", seller)
+	seller.add_item("Ferrite", 1)
+	while seller.add_item("Veilsteel", 1):
+		pass
+	var id := m.list_item("seller", "Ferrite", 1, 5.0, 0.0)
+	assert_true(id != "", "listing created")
+	# Re-fill the weight the debit freed so the Ferrite refund can't fit.
+	while seller.add_item("Veilsteel", 1):
+		pass
+	var n := m.expire_listings()
+	assert_eq(n, 0, "expiry keeps the listing when the seller is full")
+	assert_eq(m.get_all_listings().size(), 1, "escrow is not destroyed")
+	m.free()
+	seller.free()
+
 # ---------------------------------------------------------------------------
 # Governance / proposal tests (Phase 24)
 # ---------------------------------------------------------------------------
@@ -3000,6 +3090,53 @@ func _test_proposal_expire_transitions() -> void:
 	assert_eq(n, 1, "one proposal expired")
 	assert_eq(str(p.get_proposal(pid)["state"]), "expired", "lapsed proposal transitions to expired")
 	p.free()
+
+func _test_proposal_client_forwards_intent() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.is_authoritative = false
+	var box := {}
+	GameBus.proposal_submit_intent.connect(func(_a, _t, _b): box["submit"] = true)
+	GameBus.proposal_vote_intent.connect(func(_pid, _v, _ver): box["vote"] = true)
+	var pid := p.submit_proposal("alice", "X", "body")
+	assert_eq(pid, "", "client submit returns empty (forwarded)")
+	assert_true(box.get("submit", false), "submit intent forwarded")
+	assert_eq(p.get_all_proposals().size(), 0, "client submit does not mutate locally")
+	var r: Dictionary = p.vote("proposal_0", "bob", "for")
+	assert_eq(str(r.get("reason", "")), "forwarded", "client vote forwards intent")
+	assert_true(box.get("vote", false), "vote intent forwarded")
+	p.free()
+
+func _test_proposal_sync_applies_on_client() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.is_authoritative = false
+	GameBus.governance_synced.emit({
+		"proposals": {
+			"proposal_0": { "id": "proposal_0", "author": "alice", "title": "X", "body": "", "state": "proposed", "votes": {}, "submitted_at": 0.0, "expires_at": 9999999999.0 },
+		},
+		"decisions_log": [],
+		"next_id": 1,
+	})
+	assert_eq(p.get_all_proposals().size(), 1, "client applied authoritative governance state")
+	p.free()
+
+func _test_proposal_persistence_round_trip() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.set_quorum(1)
+	var pid := p.submit_proposal("alice", "X", "body")
+	assert_true(pid != "", "proposal submitted")
+	var data: Dictionary = p.get_governance_data()
+	var p2 := ProposalSlice.new()
+	add_child(p2)
+	p2.apply_governance_data(data)
+	var proposals: Array = p2.get_all_proposals()
+	assert_eq(proposals.size(), 1, "open proposal restored")
+	assert_eq(str(proposals[0]["title"]), "X", "title preserved")
+	assert_eq(str(proposals[0]["state"]), "proposed", "state preserved")
+	p.free()
+	p2.free()
 
 func _test_proposal_decisions_log() -> void:
 	var p := ProposalSlice.new()

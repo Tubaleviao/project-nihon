@@ -1,7 +1,8 @@
 extends Node
-## UI slice — window system exposing inventory, technology tree, and crafting
-## (Phase 14). Each window is a PanelContainer on a shared CanvasLayer, toggled
-## with I / T / C and closed with ESC or the window's ✕ button. Opening a window
+## UI slice — window system exposing inventory, technology, crafting, trade,
+## market, and proposals. Each window is a PanelContainer on a shared CanvasLayer,
+## toggled with I / T / C / Y (trade) / M (market) / G (proposals) and closed
+## with ESC or the window's ✕ button. Opening a window
 ## releases the mouse so buttons are clickable; closing the last window
 ## re-captures it. World input is gated in PlayerSlice on the mouse being
 ## captured, so no attack/mine slips through an open menu.
@@ -49,6 +50,7 @@ var _trade_status: Label = null
 var _market_item_select: OptionButton = null
 var _market_qty: LineEdit = null
 var _market_price: LineEdit = null
+var _market_feedback: Label = null
 var _proposal_title: LineEdit = null
 var _proposal_body: LineEdit = null
 var _proposal_feedback: Label = null
@@ -78,7 +80,7 @@ func _input(event: InputEvent) -> void:
 				toggle_window(WINDOW_TECHNOLOGY)
 			KEY_C:
 				toggle_window(WINDOW_CRAFTING)
-			KEY_B:
+			KEY_Y:
 				toggle_window(WINDOW_TRADE)
 			KEY_M:
 				toggle_window(WINDOW_MARKET)
@@ -508,7 +510,12 @@ func _on_market_list_pressed() -> void:
 		qty = 1
 	if price < 0.0:
 		price = 0.0
-	market_slice.list_item("player", item_id, qty, price)
+	var id: String = market_slice.list_item("player", item_id, qty, price)
+	if _market_feedback != null:
+		if id != "":
+			_market_feedback.text = "Listed %s ×%d @ %.2f." % [item_id, qty, price]
+		else:
+			_market_feedback.text = "Couldn't list %s — check you hold the quantity." % item_id
 	refresh_market()
 
 func _on_proposal_submit_pressed() -> void:
@@ -669,6 +676,9 @@ func _build_market_content() -> Control:
 	list_btn.pressed.connect(_on_market_list_pressed)
 	list_row.add_child(list_btn)
 	vbox.add_child(list_row)
+	_market_feedback = Label.new()
+	_market_feedback.add_theme_font_size_override("font_size", 13)
+	vbox.add_child(_market_feedback)
 	var browse_lbl := Label.new()
 	browse_lbl.text = "Available listings:"
 	vbox.add_child(browse_lbl)

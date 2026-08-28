@@ -27,9 +27,6 @@ extends Node
 ## Local player party id.
 const PARTY_PLAYER := "player"
 
-## Skill tier order — matches fabric skill state machine (novice → master).
-const TIER_ORDER: Array = ["novice", "apprentice", "journeyman", "expert", "master"]
-
 ## Trade tier → fraction of received goods withheld as a broker fee (fallback,
 ## mirroring the fabric TradeSystem.brokerFee default). Higher Trade lowers the
 ## fee; a master trades tax-free. Overridden from GameData in _ready().
@@ -51,8 +48,8 @@ var _broker_fee: Dictionary = DEFAULT_BROKER_FEE.duplicate()
 ## Local player inventory (set by game_root). Default party inventory.
 var inventory_slice: Node = null
 
-## Host authority (Phase 18). Single-player / host resolve trades; a client
-## forwards intent instead. Kept for symmetry with other slices.
+## Host authority (Phase 18). The host resolves trades and broadcasts
+## `trade_completed`; full remote-session negotiation is deferred (see ROADMAP).
 var is_authoritative: bool = true
 
 ## Runtime player skill tiers: skill key → tier name, seeded novice.
@@ -151,7 +148,7 @@ func reject(trade_id: String, party: String) -> Dictionary:
 	return { "trade_id": trade_id, "success": false, "reason": "rejected", "state": "rejected" }
 
 func get_trade(trade_id: String) -> Dictionary:
-	return _trades.get(trade_id, {})
+	return _trades.get(trade_id, {}).duplicate()
 
 ## Force-resolve a trade whose two parties have accepted (also called
 ## automatically by accept). Exchanges give/want items between the parties'
@@ -184,7 +181,7 @@ func _maybe_resolve(trade_id: String) -> Dictionary:
 	return _resolve_exchange(t)
 
 ## Execute the exchange: A's give → B's inventory, B's give → A's inventory,
-## with the local player's Diplomacy fee applied to what they receive.
+## with the local player's Trade broker fee applied to what they receive.
 func _resolve_exchange(t: Dictionary) -> Dictionary:
 	var parties: Array = t["parties"]
 	var a: String = parties[0]
@@ -257,12 +254,9 @@ func _add(inv: Node, counts: Dictionary) -> void:
 	for item_id in counts:
 		inv.add_item(item_id, int(counts[item_id]))
 
-func _tier_rank(tier: String) -> int:
-	return TIER_ORDER.find(tier)
-
 func _state(trade_id: String) -> Dictionary:
 	var t: Dictionary = _trades.get(trade_id, {})
-	return { "trade_id": trade_id, "success": false, "reason": "", "state": str(t.get("state", "pending")) }
+	return { "trade_id": trade_id, "success": true, "reason": "", "state": str(t.get("state", "pending")) }
 
 func _fail(trade_id: String, reason: String) -> Dictionary:
 	return { "trade_id": trade_id, "success": false, "reason": reason, "state": "failed" }

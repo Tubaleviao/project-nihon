@@ -105,6 +105,26 @@ module.exports = {
         description: 'Minimum Leadership tier required to form a guild',
         defaultValue: 'apprentice',
       },
+      status: {
+        type: 'enum',
+        values: ['proposed', 'accepted', 'superseded', 'expired'],
+        description: 'Lifecycle of a proposal: open for voting, ratified, replaced, or lapsed past its window',
+      },
+    },
+    stateMachine: {
+      field: 'status',
+      initial: 'proposed',
+      states: {
+        proposed:   'Proposal is open for community voting within its window',
+        accepted:   'Proposal ratified and recorded in the decisions log',
+        superseded: { description: 'Proposal replaced by a newer one', terminal: true },
+        expired:    { description: 'Voting window lapsed without ratification', terminal: true },
+      },
+      transitions: [
+        { from: 'proposed',              to: 'accepted',   trigger: 'ratify' },
+        { from: 'proposed',              to: 'expired',    trigger: 'expire' },
+        { from: ['proposed', 'accepted'], to: 'superseded', trigger: 'supersede' },
+      ],
     },
     behaviors: {
       ratify: {
@@ -114,6 +134,21 @@ module.exports = {
           'Ratification requires at least quorum distinct voters',
           'Votes after the voting window closes are rejected',
           'A ratified proposal is recorded in the runtime decisions log',
+        ],
+        auth: { roles: ['maintainer'] },
+      },
+      expire: {
+        description: 'Close a proposal whose voting window has lapsed without ratification',
+        rules: [
+          'A proposal past its window deadline transitions to expired',
+          'Expired proposals no longer accept votes',
+        ],
+        auth: { roles: ['maintainer'] },
+      },
+      supersede: {
+        description: 'Mark a proposal as replaced by a newer one',
+        rules: [
+          'A replacement proposal must be ratified first',
         ],
         auth: { roles: ['maintainer'] },
       },

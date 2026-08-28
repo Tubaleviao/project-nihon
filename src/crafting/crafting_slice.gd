@@ -26,9 +26,8 @@ extends Node
 ##   get_recipe(recipe_id) -> Dictionary  (structured recipe or {})
 ##   set_skill / get_skill / get_skills
 
-## Skill tier order — matches the fabric skill state machine
-## (fabric/gameplay/skills/shared.js): novice → apprentice → journeyman → expert → master.
-const TIER_ORDER: Array = ["novice", "apprentice", "journeyman", "expert", "master"]
+## Shared skill-tier ordering (novice → master) — see src/core/skill_tiers.gd.
+const SkillTiers := preload("res://src/core/skill_tiers.gd")
 
 ## Set by game_root so recipes can consume/produce inventory items.
 var inventory_slice: Node = null
@@ -167,7 +166,7 @@ func _check_skill_guards(recipe: Dictionary) -> String:
 	for guard in recipe.get("skillGuards", []):
 		var skill: String = str(guard.get("skill", ""))
 		var required_tier: String = str(guard.get("tier", "novice"))
-		if _tier_rank(get_skill(skill)) < _tier_rank(required_tier):
+		if SkillTiers.rank(get_skill(skill)) < SkillTiers.rank(required_tier):
 			return "skill_requirement:%s:%s" % [skill, required_tier]
 	return ""
 
@@ -201,9 +200,6 @@ func _check_station_gate(recipe: Dictionary) -> String:
 	if station_slice.station_near_player(station, STATION_RADIUS):
 		return ""
 	return "station_required:%s" % station
-
-func _tier_rank(tier: String) -> int:
-	return TIER_ORDER.find(tier)
 
 ## Collapse a [{ item, quantity }] list into a { item: quantity } map, summing
 ## any duplicate item keys.
