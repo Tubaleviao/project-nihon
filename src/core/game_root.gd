@@ -128,20 +128,22 @@ func _ready() -> void:
 	_ui.trade_slice           = _trade
 	_trade.inventory_slice    = _inventory
 	_market.inventory_slice   = _inventory
-	# Single-player social demo (Phase 24): a seeded merchant counterparty lets
-	# the trade window commit a real exchange, a merchant market listing gives a
-	# solo player a non-self seller to buy from, and a couple of other-authored
-	# proposals give them something to vote on.
-	var merchant_inv := InventorySlice.new()
-	merchant_inv.name = "MerchantInventory"
-	add_child(merchant_inv)
-	merchant_inv.add_item("hawk_feather", 10)
-	merchant_inv.add_item("wolf_fang", 3)
-	_trade.set_party_inventory("merchant", merchant_inv)
-	_market.set_party_inventory("merchant", merchant_inv)
-	_market.list_item("merchant", "wolf_fang", 2, 15.0)
-	_proposal.submit_proposal("merchant", "Open a northern trade route", "Connect the settlement to the northern passes.")
-	_proposal.submit_proposal("elder", "Establish a community forge", "Build a shared forge for all smiths.")
+	if DEBUG:
+		# Single-player social demo (DEBUG only): a seeded merchant counterparty
+		# lets the trade window commit a real exchange, a merchant market listing
+		# gives a solo player a non-self seller to buy from, and a couple of
+		# other-authored proposals give them something to vote on. This is demo
+		# scaffolding — it must not run in a production boot.
+		var merchant_inv := InventorySlice.new()
+		merchant_inv.name = "MerchantInventory"
+		add_child(merchant_inv)
+		merchant_inv.add_item("hawk_feather", 10)
+		merchant_inv.add_item("wolf_fang", 3)
+		_trade.set_party_inventory("merchant", merchant_inv)
+		_market.set_party_inventory("merchant", merchant_inv)
+		_market.list_item("merchant", "wolf_fang", 2, 15.0)
+		_proposal.submit_proposal("merchant", "Open a northern trade route", "Connect the settlement to the northern passes.")
+		_proposal.submit_proposal("elder", "Establish a community forge", "Build a shared forge for all smiths.")
 	_ui.refresh_all()
 
 	# Authority mode (Phase 18): a client never owns world state — it forwards
@@ -393,6 +395,7 @@ func _boot_world() -> void:
 		"technology": _technology.get_statuses(),
 		"market": _market.get_market_data(),
 		"governance": _proposal.get_governance_data(),
+		"trade": _trade.get_trade_data(),
 	}
 	GameBus.save_requested.emit(0, snapshot)
 	GameBus.load_requested.emit(0)
@@ -485,6 +488,7 @@ func _build_snapshot() -> Dictionary:
 		"inventory": _inventory.get_contents(),
 		"market":    _market.get_market_data(),
 		"governance": _proposal.get_governance_data(),
+		"trade":     _trade.get_trade_data(),
 		"players":   players,
 	}
 
@@ -505,6 +509,8 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 		_market.apply_market_data(data["market"])
 	if data.has("governance") and data["governance"] is Dictionary:
 		_proposal.apply_governance_data(data["governance"])
+	if data.has("trade") and data["trade"] is Dictionary:
+		_trade.apply_trade_data(data["trade"])
 	if data.has("players") and data["players"] is Dictionary:
 		for pid in data["players"]:
 			var pos = data["players"][pid]
@@ -624,6 +630,11 @@ func _on_load_completed(slot: int, data: Dictionary) -> void:
 			# Backward compat: older saves stored only the decisions log.
 			_proposal.apply_decisions_log(gov)
 		print("[Persistence] restored governance state")
+	if data.has("trade"):
+		var tr: Variant = data["trade"]
+		if tr is Dictionary:
+			_trade.apply_trade_data(tr)
+		print("[Persistence] restored trade state")
 
 # ---------------------------------------------------------------------------
 # GameData smoke test

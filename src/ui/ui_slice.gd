@@ -64,11 +64,11 @@ func _ready() -> void:
 	GameBus.inventory_changed.connect(_on_inventory_changed)
 	GameBus.block_mined.connect(_on_block_mined)
 	GameBus.block_placed.connect(_on_block_placed)
-	GameBus.market_listing_created.connect(_on_market_changed)
-	GameBus.market_listing_purchased.connect(_on_market_changed)
-	GameBus.market_listing_expired.connect(_on_market_changed)
-	GameBus.proposal_submitted.connect(_on_proposal_changed)
-	GameBus.proposal_ratified.connect(_on_proposal_changed)
+	GameBus.market_listing_created.connect(_on_market_listing_created)
+	GameBus.market_listing_purchased.connect(_on_market_listing_purchased)
+	GameBus.market_listing_expired.connect(_on_market_listing_expired)
+	GameBus.proposal_submitted.connect(_on_proposal_submitted)
+	GameBus.proposal_ratified.connect(_on_proposal_ratified)
 	refresh_all()
 
 func _input(event: InputEvent) -> void:
@@ -468,10 +468,19 @@ func _on_block_mined(_material: String, _quantity: int, _position: Vector3) -> v
 func _on_block_placed(_material: String, _position: Vector3) -> void:
 	refresh_inventory()
 
-func _on_market_changed(_a = null, _b = null, _c = null, _d = 0, _e = 0.0) -> void:
+func _on_market_listing_created(_listing_id: String, _seller: String, _item_id: String, _quantity: int, _price: float) -> void:
 	refresh_market()
 
-func _on_proposal_changed(_a = null, _b = null) -> void:
+func _on_market_listing_purchased(_listing_id: String, _buyer: String, _item_id: String, _quantity: int) -> void:
+	refresh_market()
+
+func _on_market_listing_expired(_listing_id: String) -> void:
+	refresh_market()
+
+func _on_proposal_submitted(_proposal_id: String) -> void:
+	refresh_proposals()
+
+func _on_proposal_ratified(_proposal_id: String, _title: String) -> void:
 	refresh_proposals()
 
 func _on_market_buy_pressed(listing_id: String) -> void:

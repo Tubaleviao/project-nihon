@@ -238,6 +238,10 @@ func _resolve_exchange(t: Dictionary) -> Dictionary:
 	# the transferred items.
 	if str(t.get("state", "")) == "completed":
 		return { "trade_id": t["id"], "success": true, "reason": "", "state": "completed" }
+	# A rejected trade is terminal: reject leaves the accepted flags intact, so
+	# a late accept must not resolve a rejected session.
+	if str(t.get("state", "")) == "rejected":
+		return _fail(t["id"], "rejected")
 	var parties: Array = t["parties"]
 	var a: String = parties[0]
 	var b: String = parties[1]
@@ -289,9 +293,12 @@ func _apply_tax(counts: Dictionary, tax: float) -> Dictionary:
 	var out := {}
 	for item_id in counts:
 		var qty: int = int(counts[item_id])
-		var received: int = int(round(float(qty) * (1.0 - tax)))
-		if received > 0:
-			out[item_id] = received
+		if qty <= 0:
+			continue
+		# The fee withholds a fraction of received goods; never let it round a
+		# positive quantity down to zero — that would destroy the item outright.
+		var received: int = maxi(1, int(round(float(qty) * (1.0 - tax))))
+		out[item_id] = received
 	return out
 
 func _can_consume(inv: Node, counts: Dictionary) -> bool:
