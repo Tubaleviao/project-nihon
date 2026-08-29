@@ -209,6 +209,7 @@ func run() -> void:
 	_run_test("trade: rejected trade cannot resolve",           _test_trade_rejected_cannot_resolve)
 	_run_test("trade: broker fee never destroys goods",         _test_trade_fee_never_destroys_goods)
 	_run_test("trade: state round-trips for snapshot/persist",  _test_trade_data_round_trip)
+	_run_test("trade: partial accept broadcasts sync",          _test_trade_partial_accept_syncs)
 	_run_test("market: list and browse listings",               _test_market_list_browse)
 	_run_test("market: buy transfers escrow to buyer",          _test_market_buy_transfers)
 	_run_test("market: expired listing is not browsable",       _test_market_expired_not_browsable)
@@ -3007,6 +3008,24 @@ func _test_trade_data_round_trip() -> void:
 	assert_eq(new_tid, "trade_1", "next_id continues past restored trades")
 	t.free()
 	t2.free()
+
+func _test_trade_partial_accept_syncs() -> void:
+	var t := TradeSlice.new()
+	add_child(t)
+	var box := {}
+	GameBus.trade_synced.connect(func(data): box["data"] = data)
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "wolf_fang": 1 }, {})
+	t.propose(tid, "peer", { "hawk_feather": 1 }, {})
+	# A single-party accept mutates authoritative state (the accepted flag)
+	# without resolving; it must broadcast so a client reflects who accepted.
+	t.accept(tid, "player")
+	var synced: Dictionary = box.get("data", {})
+	var trades: Dictionary = synced.get("trades", {})
+	assert_true(trades.has(tid), "partial accept broadcasts trade_synced")
+	assert_true(bool(trades[tid]["accepted"].get("player", false)), "synced state reflects the accepting party")
+	assert_false(bool(trades[tid]["accepted"].get("peer", false)), "the other party is not yet marked accepted")
+	t.free()
 
 # ---------------------------------------------------------------------------
 # Market slice tests (Phase 24)

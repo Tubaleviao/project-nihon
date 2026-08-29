@@ -227,6 +227,11 @@ func _maybe_resolve(trade_id: String) -> Dictionary:
 	var parties: Array = t["parties"]
 	for party in parties:
 		if not t["accepted"].get(party, false):
+			# A single-party acceptance mutates authoritative state (the
+			# accepted flag) but doesn't resolve yet — broadcast it so clients
+			# see who has accepted. The full resolve path (_resolve_exchange)
+			# emits its own sync, so this only fires on the partial-accept path.
+			_emit_synced()
 			return _state(trade_id)
 	return _resolve_exchange(t)
 
