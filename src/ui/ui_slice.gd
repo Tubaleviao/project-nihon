@@ -40,6 +40,7 @@ var _panels: Dictionary = {}                 # panel name -> PanelContainer
 var _inventory_usage: Label = null
 var _inventory_items: Label = null
 var _crafting_box: VBoxContainer = null
+var _repair_feedback: Label = null
 var _technology_box: VBoxContainer = null
 var _technology_feedback: Label = null
 var _market_box: VBoxContainer = null
@@ -227,9 +228,12 @@ func repair_rows() -> Array:
 		var spec: Dictionary = crafting_slice.get_repair_spec(iid)
 		if spec.is_empty():
 			continue
-		if inventory_slice.has_method("get_condition") and inventory_slice.get_condition(iid) == "pristine":
-			continue
 		var check: Dictionary = crafting_slice.can_repair(iid)
+		# Skip items whose only blocker is being pristine — they need no repair.
+		# Filter on can_repair's reason (which already reflects the condition)
+		# rather than re-deriving "pristine" here.
+		if str(check.get("reason", "")) == "already_pristine":
+			continue
 		rows.append({
 			"id": iid,
 			"can_repair": bool(check.get("success", false)),
@@ -500,7 +504,12 @@ func _on_craft_resolved(_result: Dictionary) -> void:
 	refresh_crafting()
 	refresh_inventory()
 
-func _on_repair_resolved(_result: Dictionary) -> void:
+func _on_repair_resolved(result: Dictionary) -> void:
+	if _repair_feedback != null:
+		if result.get("success", false):
+			_repair_feedback.text = "Repaired %s." % result.get("item_id", "?")
+		else:
+			_repair_feedback.text = "%s: %s" % [result.get("item_id", "?"), result.get("reason", "?")]
 	refresh_crafting()
 	refresh_inventory()
 
@@ -679,13 +688,19 @@ func _build_inventory_content() -> Control:
 	return vbox
 
 func _build_crafting_content() -> Control:
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	_repair_feedback = Label.new()
+	_repair_feedback.add_theme_font_size_override("font_size", 14)
+	vbox.add_child(_repair_feedback)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_crafting_box = VBoxContainer.new()
 	_crafting_box.add_theme_constant_override("separation", 4)
 	_crafting_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(_crafting_box)
-	return scroll
+	vbox.add_child(scroll)
+	return vbox
 
 func _build_technology_content() -> Control:
 	var vbox := VBoxContainer.new()

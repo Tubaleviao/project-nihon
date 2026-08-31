@@ -41,8 +41,10 @@ var _player_position_override: Vector3 = Vector3.ZERO
 func set_player_position(pos: Vector3) -> void:
 	_player_position_override = pos
 
-## Distinct non-empty `station` values across GameData.RECIPES, sorted. This is
-## the fabric's authoritative list of placeable station types.
+## Distinct non-empty `station` values across GameData.RECIPES AND item repair
+## specs (GameData.ITEMS[*].repair), sorted. Both are the fabric's authoritative
+## sources of station types: a recipe or a repair spec can name a station that
+## the other never uses, and every named station must be placeable.
 func placeable_station_types() -> Array:
 	var types := {}
 	for key in GameData.RECIPES:
@@ -52,6 +54,15 @@ func placeable_station_types() -> Array:
 		var recipe = res.get("recipe")
 		if recipe is Dictionary:
 			var station: String = str(recipe.get("station", ""))
+			if station != "":
+				types[station] = true
+	for key in GameData.ITEMS:
+		var res2: Resource = GameData.ITEMS[key]
+		if res2 == null:
+			continue
+		var repair = res2.get("repair")
+		if repair is Dictionary:
+			var station: String = str(repair.get("station", ""))
 			if station != "":
 				types[station] = true
 	var out: Array = types.keys()

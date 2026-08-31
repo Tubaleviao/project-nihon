@@ -81,6 +81,12 @@ const ACTION_DECREMENT: Dictionary = {
 	"attack": 1.0,
 }
 
+## Condition tiers ordered pristine → broken, mirroring the fabric's
+## DURABILITY_STATES (fabric/gameplay/items/shared.js). The index of a tier is
+## exactly how many condition tiers below pristine it sits, so index == the
+## number of tiers a repair must restore (0 = pristine, 3 = broken).
+const DURABILITY_STATES: Array = ["pristine", "worn", "damaged", "broken"]
+
 ## The actual inventory: item_id -> quantity.
 var _contents: Dictionary = {}
 var _current_weight: float = 0.0
@@ -240,12 +246,18 @@ func get_condition(item_id: String) -> String:
 	var max_d := get_max_durability(item_id)
 	var cur := get_durability(item_id)
 	if cur <= 0.0:
-		return "broken"
+		return DURABILITY_STATES[3]
 	if cur >= max_d:
-		return "pristine"
+		return DURABILITY_STATES[0]
 	if cur >= max_d * 0.5:
-		return "worn"
-	return "damaged"
+		return DURABILITY_STATES[1]
+	return DURABILITY_STATES[2]
+
+## Number of condition tiers below pristine for `item_id` (0 = pristine,
+## 1 = worn, 2 = damaged, 3 = broken) — i.e. how many tiers a repair must
+## restore. Non-durable items return 0.
+func condition_tiers_below_pristine(item_id: String) -> int:
+	return maxi(DURABILITY_STATES.find(get_condition(item_id)), 0)
 
 ## Use a held item for `action_type`. Returns true when the action is allowed
 ## (item held and, for durable items, not already broken); false when blocked

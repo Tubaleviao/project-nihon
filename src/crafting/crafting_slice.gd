@@ -133,17 +133,7 @@ func can_craft(recipe_id: String) -> Dictionary:
 
 ## Return the structured recipe data for a recipe key, or {} if unknown/malformed.
 func get_recipe(recipe_id: String) -> Dictionary:
-	var res: Resource = GameData.RECIPES.get(recipe_id, null)
-	if res == null:
-		return {}
-	var v = res.get("recipe")
-	if v is Dictionary:
-		return v
-	if v is String and v != "":
-		var parsed = JSON.parse_string(v)
-		if parsed is Dictionary:
-			return parsed
-	return {}
+	return _structured_field(GameData.RECIPES, recipe_id, "recipe")
 
 func set_skill(skill: String, tier: String) -> void:
 	_skill_tiers[skill] = tier
@@ -160,17 +150,7 @@ func get_skills() -> Dictionary:
 ## GameData.ITEMS[key].repair — the fabric's single source of truth. Shape:
 ## { station, materials: [{item, quantity}], skillGuards: [{skill, tier}] }.
 func get_repair_spec(item_id: String) -> Dictionary:
-	var res: Resource = GameData.ITEMS.get(item_id, null)
-	if res == null:
-		return {}
-	var v = res.get("repair")
-	if v is Dictionary:
-		return v
-	if v is String and v != "":
-		var parsed = JSON.parse_string(v)
-		if parsed is Dictionary:
-			return parsed
-	return {}
+	return _structured_field(GameData.ITEMS, item_id, "repair")
 
 ## Repair a held durable item: validate guards, consume the repair materials, and
 ## restore the item to pristine (full durability). Emits repair_resolved.
@@ -211,7 +191,11 @@ func _resolve_repair(item_id: String, mutate: bool) -> Dictionary:
 		return _repair_result(item_id, false, "no_item")
 	if inventory_slice.has_method("is_durable") and not inventory_slice.is_durable(item_id):
 		return _repair_result(item_id, false, "not_repairable")
-	if inventory_slice.has_method("get_condition") and inventory_slice.get_condition(item_id) == "pristine":
+	# Reject a pristine item (nothing to restore). Tiers are read from the
+	# inventory's condition model (fabric DURABILITY_STATES), not a hardcoded
+	# "pristine" literal.
+	var tiers := _condition_tiers_to_restore(item_id)
+	if tiers <= 0:
 		return _repair_result(item_id, false, "already_pristine")
 	var guard_reason := _check_skill_guards(spec)
 	if guard_reason != "":
@@ -219,20 +203,63 @@ func _resolve_repair(item_id: String, mutate: bool) -> Dictionary:
 	var station_reason := _check_station_gate(spec)
 	if station_reason != "":
 		return _repair_result(item_id, false, station_reason)
+	# Material cost scales with the number of condition tiers restored AND the
+	# held stack count: a stack shares one durability value, so repairing the
+	# whole stack restores every unit and charges per unit.
+	var stack_count: int = inventory_slice.get_item_count(item_id)
 	var materials: Array = spec.get("materials", [])
+	var scaled: Array = []
 	for entry in materials:
+		var mat_id: String = str(entry.get("item", ""))
+		var qty: int = int(entry.get("quantity", 1)) * tiers * stack_count
+		scaled.append({ "item": mat_id, "quantity": qty })
+	for entry in scaled:
 		var mat_id: String = str(entry.get("item", ""))
 		var qty: int = int(entry.get("quantity", 1))
 		if inventory_slice.get_item_count(mat_id) < qty:
 			return _repair_result(item_id, false, "missing_inputs")
+	var counts := _to_counts(scaled)
 	if mutate:
-		if not inventory_slice.consume_items(_to_counts(materials)):
+		if not inventory_slice.has_method("repair_item"):
+			return _repair_result(item_id, false, "not_repairable")
+		if not inventory_slice.consume_items(counts):
 			return _repair_result(item_id, false, "missing_inputs")
-		inventory_slice.repair_item(item_id)
+		if not inventory_slice.repair_item(item_id):
+			# Roll back the consumed materials so a failed repair never leaves
+			# the inventory short-changed.
+			_refund(counts)
+			return _repair_result(item_id, false, "not_repairable")
 	return _repair_result(item_id, true, "")
+
+## Number of condition tiers a repair must restore to reach pristine
+## (0 = already pristine). Delegates to the inventory's condition model.
+func _condition_tiers_to_restore(item_id: String) -> int:
+	if inventory_slice != null and inventory_slice.has_method("condition_tiers_below_pristine"):
+		return int(inventory_slice.condition_tiers_below_pristine(item_id))
+	return 0
+
+## Reverse a consume: put each consumed material back. Used to roll back a
+## repair whose repair_item() call failed.
+func _refund(counts: Dictionary) -> void:
+	for item_id in counts:
+		inventory_slice.add_item(str(item_id), int(counts[item_id]))
 
 func _repair_result(item_id: String, success: bool, reason: String) -> Dictionary:
 	return { "item_id": item_id, "success": success, "reason": reason }
+
+## Return a deep-copied structured Dictionary field (a `json` fabric field such
+## as a recipe or repair spec) from a registry, or {} when the entry or field is
+## absent. `json` fields are generated as Dictionaries, so there is no
+## JSON-string fallback to parse; the copy is deep because both recipes and
+## repair specs carry nested `materials`/`skillGuards` containers.
+func _structured_field(registry: Dictionary, key: String, field: String) -> Dictionary:
+	var res: Resource = registry.get(key, null)
+	if res == null:
+		return {}
+	var v = res.get(field)
+	if v is Dictionary:
+		return v.duplicate(true)
+	return {}
 
 ## Return "" when all skill guards pass, or a `skill_requirement:Skill:tier`
 ## reason string identifying the first unmet guard.
