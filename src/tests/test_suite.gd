@@ -132,6 +132,7 @@ func run() -> void:
 	_run_test("durability: find_tool skips broken, returns working",  _test_durability_find_tool_skips_broken)
 	_run_test("durability: length matches quantity across ops",       _test_durability_length_matches_quantity)
 	_run_test("durability: values round-trip (sync/trade/market)",    _test_durability_values_round_trip)
+	_run_test("durability: host sync overwrites worn with pristine",  _test_sync_pristine_over_worn)
 	_run_test("repair: spec loaded from fabric",                    _test_repair_spec_loaded)
 	_run_test("repair: worn tool restored to pristine",             _test_repair_restores_worn)
 	_run_test("repair: materials consumed",                         _test_repair_consumes_materials)
@@ -1702,6 +1703,25 @@ func _test_market_expire_preserves_wear() -> void:
 	assert_eq(seller.get_durability("FerritePick"), worn_d, "refunded pick is still worn, not pristine")
 	seller.free()
 	m.free()
+
+func _test_sync_pristine_over_worn() -> void:
+	# Host's authoritative durability must overwrite a client's worn copy — a
+	# pristine pick in the sync payload comes back pristine, not preserved-worn.
+	var client := InventorySlice.new()
+	add_child(client)
+	client.add_item("FerritePick", 1)
+	client.use_item("FerritePick", "mine")
+	var max_d := client.get_max_durability("FerritePick")
+	assert_true(client.get_durability("FerritePick") < max_d, "client pick starts worn")
+
+	var host := InventorySlice.new()
+	add_child(host)
+	host.add_item("FerritePick", 1)   # pristine
+
+	client.replace_contents(host.get_contents(), host.get_durability_data())
+	assert_eq(client.get_durability("FerritePick"), max_d, "host pristine pick overwrites the client's worn copy")
+	client.free()
+	host.free()
 
 func _test_repair_spec_loaded() -> void:
 	var c := CraftingSlice.new()

@@ -80,8 +80,10 @@ signal creature_state_changed(instance_id: String, creature_id: String, state: S
 ## Remote player position update for ghost interpolation (host → clients).
 signal remote_player_state(peer_id: int, position: Vector3)
 
-## Host → clients: authoritative inventory contents (replace local state).
-signal inventory_synced(contents: Dictionary)
+## Host → clients: authoritative inventory contents (replace local state), plus
+## the per-instance durability map (item_id -> Array) so worn tools don't come
+## back pristine after a sync.
+signal inventory_synced(contents: Dictionary, durabilities: Dictionary)
 
 # ---------------------------------------------------------------------------
 # Persistence

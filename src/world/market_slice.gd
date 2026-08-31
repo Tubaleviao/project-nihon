@@ -263,7 +263,7 @@ func apply_market_data(data: Dictionary) -> void:
 			"price": float(e.get("price", 0.0)),
 			"listed_at": float(e.get("listed_at", 0.0)),
 			"expires_at": float(e.get("expires_at", 0.0)),
-			"durability": e.get("durability", []),
+			"durability": (e.get("durability", []) as Array).duplicate(),
 		}
 	_next_id = _max_listing_suffix() + 1
 

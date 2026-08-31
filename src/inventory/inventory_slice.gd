@@ -16,7 +16,23 @@ extends Node
 ##   get_current_weight()             -> float
 ##   get_max_weight()                 -> float
 ##   get_max_slots()                  -> int
+##   replace_contents(contents, durabilities = {})   — host-authoritative sync
+##   add_item(item_id, quantity, durabilities = [])  -> bool
+##   consume_items(counts)            -> bool
+##   consume_items_with_durability(counts) -> { success, removed }
+##   can_add_items(counts)            -> bool
 ##   drop_item(item_id, quantity)     -> bool
+##   drop_item_returning(item_id, quantity) -> { success, removed }
+##   find_tool(tool_type)             -> String
+##   is_durable(item_id)              -> bool
+##   get_durability(item_id)          -> float   (worst instance, -1 if none)
+##   get_max_durability(item_id)      -> float
+##   get_durability_values(item_id)   -> Array   (per-instance copy)
+##   get_durability_data()            -> Dictionary { item_id: Array }
+##   get_condition(item_id)           -> String  (pristine → broken, "" if none)
+##   condition_tiers_below_pristine(item_id) -> int
+##   use_item(item_id, action_type)   -> bool
+##   repair_item(item_id)             -> bool
 
 ## Inventory capacity comes from the Inventory entity in the fabric
 ## (GameData.PLAYERS["Inventory"].maxSlots / maxWeightKg), loaded in _ready().
@@ -126,8 +142,8 @@ func replace_contents(contents: Dictionary, durabilities: Dictionary = {}) -> vo
 	_is_full = false
 	GameBus.inventory_changed.emit()
 
-func _on_inventory_synced(contents: Dictionary) -> void:
-	replace_contents(contents)
+func _on_inventory_synced(contents: Dictionary, durabilities: Dictionary = {}) -> void:
+	replace_contents(contents, durabilities)
 
 func get_contents() -> Dictionary:
 	return _contents.duplicate()
@@ -154,6 +170,10 @@ func drop_item(item_id: String, quantity: int) -> bool:
 ## Drop `quantity` of `item_id`, returning the removed per-instance durability
 ## values (worst first) so a caller can carry the exact condition. Returns
 ## { success: bool, removed: Array }.
+##
+## NOTE: currently unused — `drop_item` (the bool wrapper) is the only caller and
+## nothing wires the returned durability to a ground pickup yet. Kept so a future
+## drop-to-ground flow can hand the item's exact wear to the spawned pickup.
 func drop_item_returning(item_id: String, quantity: int) -> Dictionary:
 	var have: int = _contents.get(item_id, 0)
 	if have < quantity or quantity <= 0:
@@ -331,8 +351,9 @@ func use_item(item_id: String, action_type: String = "use") -> bool:
 		return true
 	_ensure_durability(item_id)
 	var arr: Array = _durability[item_id]
-	# Use the MOST-WORN usable instance (lowest durability still > 0), so a stack
-	# wears evenly and a broken copy never blocks a still-usable one.
+	# Use the MOST-WORN usable instance (lowest durability still > 0), so wear
+	# CONCENTRATES on one copy until it breaks — pristine copies stay pristine,
+	# and a broken copy never blocks a still-usable one.
 	var idx := -1
 	var best := INF
 	for i in arr.size():
@@ -509,15 +530,20 @@ func _ensure_durability(item_id: String) -> void:
 	_durability[item_id] = arr
 
 ## Append `qty` per-instance durability entries to `item_id`. Each entry takes
-## its value from `durabilities[i]` (clamped) when present, else the fabric max.
-## No-op for non-durable items.
+## its value from `durabilities[i]` (clamped) when present. When the payload is
+## SHORTER than `qty`, the remainder is padded with the WORST (lowest) value in
+## the payload — never max — so a partial payload can't fabricate pristine
+## copies; an empty payload still means fresh (max). No-op for non-durable items.
 func _add_instances(item_id: String, qty: int, durabilities: Array) -> void:
 	if not _item_durability_cache.has(item_id):
 		return
 	var arr: Array = _durability.get(item_id, [])
 	var max_d := float(_item_durability_cache[item_id])
+	var pad := max_d
+	for v in durabilities:
+		pad = minf(pad, clampf(float(v), 0.0, max_d))
 	for i in qty:
-		var d := max_d
+		var d := pad
 		if i < durabilities.size():
 			d = clampf(float(durabilities[i]), 0.0, max_d)
 		arr.append(d)
