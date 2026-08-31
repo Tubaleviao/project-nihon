@@ -136,6 +136,9 @@ func get_recipe(recipe_id: String) -> Dictionary:
 	return _structured_field(GameData.RECIPES, recipe_id, "recipe")
 
 func set_skill(skill: String, tier: String) -> void:
+	if not SkillTiers.is_valid_tier(tier):
+		push_warning("CraftingSlice: ignoring unknown skill tier '%s' for '%s'" % [tier, skill])
+		return
 	_skill_tiers[skill] = tier
 
 func get_skill(skill: String) -> String:
@@ -164,8 +167,8 @@ func repair(item_id: String) -> Dictionary:
 ## repair_resolved (a query, not a repair attempt). Accepts an already-loaded
 ## `spec` so callers that have already fetched it (e.g. repair_rows) don't pay a
 ## second deep-copy.
-func can_repair(item_id: String, spec = null) -> Dictionary:
-	if spec == null:
+func can_repair(item_id: String, spec: Dictionary = {}) -> Dictionary:
+	if spec.is_empty():
 		spec = get_repair_spec(item_id)
 	return _resolve_repair(item_id, false, spec)
 

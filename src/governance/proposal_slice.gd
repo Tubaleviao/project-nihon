@@ -230,8 +230,11 @@ func apply_decisions_log(log: Array) -> void:
 		if entry is Dictionary:
 			_decisions_log.append(entry)
 
-## Whether a Leadership tier is sufficient to form a guild.
+## Whether a Leadership tier is sufficient to form a guild. Unknown tiers fail
+## closed: a bogus tier is rejected before ranking rather than treated as valid.
 func can_form_guild(leadership_tier: String) -> bool:
+	if not SkillTiers.is_valid_tier(leadership_tier):
+		return false
 	return SkillTiers.rank(leadership_tier) >= SkillTiers.rank(_guild_min_tier)
 
 ## Full governance state (open proposals + decisions log) for persistence and

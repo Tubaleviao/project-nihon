@@ -226,6 +226,7 @@ func run() -> void:
 	_run_test("trade: state round-trips for snapshot/persist",  _test_trade_data_round_trip)
 	_run_test("trade: partial accept broadcasts sync",          _test_trade_partial_accept_syncs)
 	_run_test("trade: broken item stays broken across trade",    _test_trade_broken_item_not_pristine)
+	_run_test("trade: pristine transfer preserves broken copy",  _test_trade_pristine_to_broken_holder)
 	_run_test("market: list and browse listings",               _test_market_list_browse)
 	_run_test("market: buy transfers escrow to buyer",          _test_market_buy_transfers)
 	_run_test("market: expired listing is not browsable",       _test_market_expired_not_browsable)
@@ -252,6 +253,7 @@ func run() -> void:
 	_run_test("proposal: ratification updates decisions log",   _test_proposal_decisions_log)
 	_run_test("proposal: below threshold stays proposed",       _test_proposal_below_threshold)
 	_run_test("proposal: leadership gates guild formation",     _test_proposal_leadership_guild)
+	_run_test("skills: unknown tier fails closed",              _test_unknown_tier_fails_closed)
 	_run_test("proposal: get_proposal deep-copies votes",       _test_proposal_get_proposal_deep_copy)
 	_run_test("proposal: supersede replaces a proposal",        _test_proposal_supersede)
 	_run_test("proposal: supersede needs ratified replacement", _test_proposal_supersede_requires_ratified_replacement)
@@ -1815,6 +1817,36 @@ func _test_trade_broken_item_not_pristine() -> void:
 	assert_true(bool(result.get("success", false)), "trade resolves")
 	assert_eq(inv_b.get_item_count("FerritePick"), 1, "peer received the pick")
 	assert_eq(inv_b.get_condition("FerritePick"), "broken", "traded pick stays broken, not pristine")
+	t.free()
+	inv_a.free()
+	inv_b.free()
+
+func _test_trade_pristine_to_broken_holder() -> void:
+	var inv_a := InventorySlice.new()
+	add_child(inv_a)
+	var inv_b := InventorySlice.new()
+	add_child(inv_b)
+	# B already holds a broken pick.
+	inv_b.add_item("FerritePick", 1)
+	_break_item(inv_b, "FerritePick")
+	assert_eq(inv_b.get_condition("FerritePick"), "broken", "holder's pick is broken")
+	# A trades a pristine pick to B.
+	inv_a.add_item("FerritePick", 1)
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("player", inv_a)
+	t.set_party_inventory("peer", inv_b)
+	t.set_skill("Trade", "master")
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "FerritePick": 1 }, {})
+	t.propose(tid, "peer", {}, { "FerritePick": 1 })
+	t.accept(tid, "player")
+	var result: Dictionary = t.accept(tid, "peer")
+	assert_true(bool(result.get("success", false)), "trade resolves")
+	assert_eq(inv_b.get_item_count("FerritePick"), 2, "holder now has two picks")
+	# The broken copy is preserved — the pristine transfer must not overwrite it.
+	assert_eq(inv_b.get_condition("FerritePick"), "broken", "broken copy still broken, not overwritten")
+	assert_eq(inv_b.find_tool("pick"), "FerritePick", "a usable pristine instance is still present")
 	t.free()
 	inv_a.free()
 	inv_b.free()
@@ -3729,6 +3761,33 @@ func _test_proposal_leadership_guild() -> void:
 	assert_true(p.can_form_guild("apprentice"), "apprentice can form a guild")
 	assert_true(p.can_form_guild("master"), "master can form a guild")
 	p.free()
+
+func _test_unknown_tier_fails_closed() -> void:
+	# Guild formation: an unknown Leadership tier must be rejected, not ranked.
+	var p := ProposalSlice.new()
+	add_child(p)
+	assert_false(p.can_form_guild("grandmaster"), "unknown leadership tier cannot form a guild")
+	p.free()
+	# Craft guard: an unknown required tier must block even a master crafter.
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	c.set_skill("Smithing", "master")
+	inv.add_item("FerritePick", 1)
+	inv.add_item("FerriteIngot", 1)
+	inv.use_item("FerritePick", "mine")   # worn
+	var bogus_spec := {
+		"station": "",
+		"materials": [{ "item": "FerriteIngot", "quantity": 1 }],
+		"skillGuards": [{ "skill": "Smithing", "tier": "grandmaster" }],
+	}
+	var check := c.can_repair("FerritePick", bogus_spec)
+	assert_false(bool(check.get("success", false)), "unknown required tier blocks repair")
+	assert_true(str(check.get("reason", "")).begins_with("skill_requirement"), "reason is skill_requirement")
+	c.free()
+	inv.free()
 
 func _test_proposal_get_proposal_deep_copy() -> void:
 	var p := ProposalSlice.new()

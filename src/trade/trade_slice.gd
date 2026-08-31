@@ -290,10 +290,8 @@ func _resolve_exchange(t: Dictionary) -> Dictionary:
 	var dur_b := _capture_durability(inv_b, give_b)
 	_consume(inv_a, give_a)
 	_consume(inv_b, give_b)
-	_add(inv_a, received_a)
-	_add(inv_b, received_b)
-	_apply_durability(inv_a, dur_b)   # A receives B's give → B's durability
-	_apply_durability(inv_b, dur_a)   # B receives A's give → A's durability
+	_add(inv_a, received_a, dur_b)   # A receives B's give → B's durability
+	_add(inv_b, received_b, dur_a)   # B receives A's give → A's durability
 
 	t["state"] = "completed"
 	_emit_synced()
@@ -324,9 +322,10 @@ func _consume(inv: Node, counts: Dictionary) -> void:
 func _can_add(inv: Node, counts: Dictionary) -> bool:
 	return inv.can_add_items(counts)
 
-func _add(inv: Node, counts: Dictionary) -> void:
+func _add(inv: Node, counts: Dictionary, durabilities: Dictionary = {}) -> void:
 	for item_id in counts:
-		inv.add_item(item_id, int(counts[item_id]))
+		var d: float = float(durabilities.get(item_id, -1.0))
+		inv.add_item(item_id, int(counts[item_id]), d)
 
 ## Capture the remaining durability of each durable item in `counts` from `inv`
 ## (keyed by item_id). Non-durable items (durability -1) are skipped.
@@ -339,14 +338,6 @@ func _capture_durability(inv: Node, counts: Dictionary) -> Dictionary:
 		if d >= 0.0:
 			out[item_id] = d
 	return out
-
-## Apply a previously captured durability map to `inv`, so a traded item's
-## condition carries over rather than resetting to pristine.
-func _apply_durability(inv: Node, durabilities: Dictionary) -> void:
-	if not inv.has_method("set_durability"):
-		return
-	for item_id in durabilities:
-		inv.set_durability(item_id, float(durabilities[item_id]))
 
 func _state(trade_id: String) -> Dictionary:
 	var t: Dictionary = _trades.get(trade_id, {})
