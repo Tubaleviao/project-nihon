@@ -388,6 +388,7 @@ func _boot_world() -> void:
 			"hp":       _player.get_hp(),
 		},
 		"inventory": _inventory.get_contents(),
+		"inventory_durability": _inventory.get_durability_data(),
 		"world":     {
 			"chunks":       _voxel.get_chunk_manifest(),
 			"dirty_chunks": _voxel.get_dirty_chunk_keys(),
@@ -486,6 +487,7 @@ func _build_snapshot() -> Dictionary:
 		"edits":     _voxel.get_chunk_manifest(),
 		"creatures": _creature.get_snapshot_creatures(),
 		"inventory": _inventory.get_contents(),
+		"inventory_durability": _inventory.get_durability_data(),
 		"market":    _market.get_market_data(),
 		"governance": _proposal.get_governance_data(),
 		"trade":     _trade.get_trade_data(),
@@ -504,7 +506,7 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 	if data.has("creatures") and data["creatures"] is Array:
 		_creature.apply_snapshot_creatures(data["creatures"])
 	if data.has("inventory") and data["inventory"] is Dictionary:
-		_inventory.replace_contents(data["inventory"])
+		_inventory.replace_contents(data["inventory"], data.get("inventory_durability", {}))
 	if data.has("market") and data["market"] is Dictionary:
 		_market.apply_market_data(data["market"])
 	if data.has("governance") and data["governance"] is Dictionary:
@@ -606,6 +608,8 @@ func _on_save_completed(slot: int) -> void:
 
 func _on_load_completed(slot: int, data: Dictionary) -> void:
 	print("[Persistence] load_completed slot=%d  keys=%s" % [slot, data.keys()])
+	if data.has("inventory") and data["inventory"] is Dictionary:
+		_inventory.replace_contents(data["inventory"], data.get("inventory_durability", {}))
 	var world: Dictionary = data.get("world", {})
 	if world.has("chunks"):
 		_voxel.apply_chunk_manifest(world["chunks"])

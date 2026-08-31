@@ -103,7 +103,11 @@ func _ready() -> void:
 	GameBus.inventory_synced.connect(_on_inventory_synced)
 
 ## Client-side: replace local contents with a host-authoritative inventory.
-func replace_contents(contents: Dictionary) -> void:
+## `durabilities` (item_id -> Array of per-instance points) carries condition in
+## the sync payload; when a durable item is absent from it, its LOCAL values are
+## preserved for the overlapping quantity (falling back to max for any excess).
+func replace_contents(contents: Dictionary, durabilities: Dictionary = {}) -> void:
+	var old_durability := _durability.duplicate(true)
 	_contents.clear()
 	_durability.clear()
 	_current_weight = 0.0
@@ -113,7 +117,12 @@ func replace_contents(contents: Dictionary) -> void:
 			continue
 		_contents[item_id] = qty
 		_current_weight += _item_weight(item_id) * float(qty)
-		_add_instances(item_id, qty, [])
+		var dvals: Array = []
+		if durabilities.has(item_id):
+			dvals = durabilities[item_id]
+		elif old_durability.has(item_id):
+			dvals = old_durability[item_id]
+		_add_instances(item_id, qty, dvals)
 	_is_full = false
 	GameBus.inventory_changed.emit()
 
@@ -139,22 +148,26 @@ func get_max_slots() -> int:
 	return _max_slots
 
 ## Drop quantity of item_id from inventory; returns true if successful.
-## Clears the durability record when the last unit is dropped so a fresh pickup
-## of the same item key always starts at full durability (not the old worn value).
 func drop_item(item_id: String, quantity: int) -> bool:
+	return bool(drop_item_returning(item_id, quantity).get("success", false))
+
+## Drop `quantity` of `item_id`, returning the removed per-instance durability
+## values (worst first) so a caller can carry the exact condition. Returns
+## { success: bool, removed: Array }.
+func drop_item_returning(item_id: String, quantity: int) -> Dictionary:
 	var have: int = _contents.get(item_id, 0)
 	if have < quantity or quantity <= 0:
-		return false
+		return { "success": false, "removed": [] }
 	var w := _item_weight(item_id) * float(quantity)
 	_current_weight = maxf(_current_weight - w, 0.0)
 	if have == quantity:
 		_contents.erase(item_id)
 	else:
 		_contents[item_id] = have - quantity
-	_remove_instances(item_id, quantity)
+	var removed: Array = _remove_instances(item_id, quantity)
 	_is_full = false
 	GameBus.inventory_changed.emit()
-	return true
+	return { "success": true, "removed": removed }
 
 ## Add quantity of item_id to the inventory, respecting slot + weight limits.
 ## Returns true on success; false if it would exceed either limit (no change).
@@ -199,6 +212,7 @@ func consume_items_with_durability(counts: Dictionary) -> Dictionary:
 			_contents.erase(item_id)
 		else:
 			_contents[item_id] = have - qty
+		_ensure_durability(item_id)
 		var taken: Array = _remove_instances(item_id, qty)
 		if not taken.is_empty():
 			removed[item_id] = taken
@@ -270,6 +284,15 @@ func get_durability_values(item_id: String) -> Array:
 	_ensure_durability(item_id)
 	return (_durability.get(item_id, []) as Array).duplicate()
 
+## Serialize per-instance durability for the save/snapshot payloads:
+## { item_id: Array } for every held durable item (deep-copied).
+func get_durability_data() -> Dictionary:
+	var out := {}
+	for item_id in _durability:
+		if _contents.get(item_id, 0) > 0:
+			out[item_id] = (_durability[item_id] as Array).duplicate()
+	return out
+
 ## Current condition tier (pristine → worn → damaged → broken) for a durable
 ## item, derived from the WORST instance's durability vs. max. Non-durable items
 ## return "".
@@ -308,11 +331,15 @@ func use_item(item_id: String, action_type: String = "use") -> bool:
 		return true
 	_ensure_durability(item_id)
 	var arr: Array = _durability[item_id]
+	# Use the MOST-WORN usable instance (lowest durability still > 0), so a stack
+	# wears evenly and a broken copy never blocks a still-usable one.
 	var idx := -1
+	var best := INF
 	for i in arr.size():
-		if float(arr[i]) > 0.0:
+		var v := float(arr[i])
+		if v > 0.0 and v < best:
+			best = v
 			idx = i
-			break
 	if idx == -1:
 		GameBus.item_broke.emit(item_id)
 		return false

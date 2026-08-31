@@ -113,8 +113,15 @@ func list_item(seller: String, item_id: String, quantity: int, price: float, exp
 	var seller_inv := _inventory_for(seller)
 	if seller_inv == null:
 		return ""
-	if not seller_inv.consume_items({ item_id: quantity }):
-		return ""
+	var taken: Array = []
+	if seller_inv.has_method("consume_items_with_durability"):
+		var r: Dictionary = seller_inv.consume_items_with_durability({ item_id: quantity })
+		if not bool(r.get("success", false)):
+			return ""
+		taken = r.get("removed", {}).get(item_id, [])
+	else:
+		if not seller_inv.consume_items({ item_id: quantity }):
+			return ""
 	var lifetime: float = _expiry_seconds if expires_in < 0.0 else expires_in
 	var now := _now()
 	var id := "listing_%d" % _next_id
@@ -127,6 +134,7 @@ func list_item(seller: String, item_id: String, quantity: int, price: float, exp
 		"price": price,
 		"listed_at": now,
 		"expires_at": now + lifetime,
+		"durability": taken,
 	}
 	GameBus.market_listing_created.emit(id, seller, item_id, quantity, price)
 	_emit_synced()
@@ -169,7 +177,7 @@ func buy(listing_id: String, buyer: String) -> Dictionary:
 		return _buy_fail(listing_id, item_id, quantity, "no_inventory")
 	if not buyer_inv.can_add_items({ item_id: quantity }):
 		return _buy_fail(listing_id, item_id, quantity, "inventory_full")
-	buyer_inv.add_item(item_id, quantity)
+	buyer_inv.add_item(item_id, quantity, l.get("durability", []))
 	_listings.erase(listing_id)
 	GameBus.market_listing_purchased.emit(listing_id, buyer, item_id, quantity)
 	_emit_synced()
@@ -218,7 +226,7 @@ func _refund_escrow(l: Dictionary) -> bool:
 	var quantity := int(l["quantity"])
 	if not seller_inv.can_add_items({ item_id: quantity }):
 		return false
-	seller_inv.add_item(item_id, quantity)
+	seller_inv.add_item(item_id, quantity, l.get("durability", []))
 	return true
 
 ## Serialize active + expired listings for the save snapshot.
@@ -233,6 +241,7 @@ func get_market_data() -> Dictionary:
 			"price": l["price"],
 			"listed_at": l["listed_at"],
 			"expires_at": l["expires_at"],
+			"durability": (l.get("durability", []) as Array).duplicate(),
 		}
 	return data
 
@@ -254,6 +263,7 @@ func apply_market_data(data: Dictionary) -> void:
 			"price": float(e.get("price", 0.0)),
 			"listed_at": float(e.get("listed_at", 0.0)),
 			"expires_at": float(e.get("expires_at", 0.0)),
+			"durability": e.get("durability", []),
 		}
 	_next_id = _max_listing_suffix() + 1
 
