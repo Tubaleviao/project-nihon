@@ -129,6 +129,14 @@ func run() -> void:
 	_run_test("durability: drop and repick resets to full",           _test_durability_drop_repick_resets)
 	_run_test("durability: find_tool returns held pick",              _test_durability_find_tool)
 	_run_test("durability: find_tool skips broken, returns working",  _test_durability_find_tool_skips_broken)
+	_run_test("repair: spec loaded from fabric",                    _test_repair_spec_loaded)
+	_run_test("repair: worn tool restored to pristine",             _test_repair_restores_worn)
+	_run_test("repair: materials consumed",                         _test_repair_consumes_materials)
+	_run_test("repair: skill guard blocks low tier",                _test_repair_skill_guard_blocks)
+	_run_test("repair: station gate blocks without forge",          _test_repair_station_gate_blocks)
+	_run_test("repair: pristine item already repaired",             _test_repair_pristine_rejected)
+	_run_test("repair: non-durable item rejected",                  _test_repair_non_durable_rejected)
+	_run_test("repair: broken tool restored via bus",               _test_repair_broken_via_bus)
 	_run_test("technology: recipe resolves to owning tech",    _test_technology_recipe_resolves_to_tech)
 	_run_test("technology: research requires prerequisite",    _test_technology_research_requires_prereq)
 	_run_test("technology: research consumes materials",       _test_technology_research_consumes_materials)
@@ -1550,6 +1558,139 @@ func _test_durability_find_tool_skips_broken() -> void:
 	inv._durability.erase("FerritePick")   # erase so _ensure_durability reinits to max
 	var found := inv.find_tool("pick")
 	assert_eq(found, "FerritePick", "find_tool returns FerritePick once restored")
+	inv.free()
+
+
+# ---------------------------------------------------------------------------
+# Repair tests (Phase 25 — deferred from Phase 16 tool repair)
+# ---------------------------------------------------------------------------
+
+func _test_repair_spec_loaded() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var spec := c.get_repair_spec("FerritePick")
+	assert_false(spec.is_empty(), "FerritePick has a repair spec")
+	assert_eq(spec["station"], "forge", "FerritePick repairs at a forge")
+	assert_eq(spec["materials"][0]["item"], "FerriteIngot", "repair material is FerriteIngot")
+	assert_eq(spec["skillGuards"][0]["skill"], "Smithing", "repair guard is Smithing")
+	assert_true(c.get_repair_spec("FerriteIngot").is_empty(), "stackable material has no repair spec")
+	c.free()
+
+func _test_repair_restores_worn() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	inv.add_item("FerritePick", 1)
+	inv.add_item("FerriteIngot", 1)
+	var max_d := inv.get_max_durability("FerritePick")
+	inv.use_item("FerritePick", "mine")
+	assert_eq(inv.get_durability("FerritePick"), max_d - 1.0, "pick worn by one use")
+	var result := c.repair("FerritePick")
+	assert_true(result["success"], "repair succeeds")
+	assert_eq(inv.get_durability("FerritePick"), max_d, "durability restored to max")
+	assert_eq(inv.get_condition("FerritePick"), "pristine", "condition back to pristine")
+	c.free()
+	inv.free()
+
+func _test_repair_consumes_materials() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	inv.add_item("FerritePick", 1)
+	inv.add_item("FerriteIngot", 3)
+	inv.use_item("FerritePick", "mine")
+	var result := c.repair("FerritePick")
+	assert_true(result["success"], "repair succeeds")
+	assert_eq(inv.get_item_count("FerriteIngot"), 2, "one FerriteIngot consumed")
+	c.free()
+	inv.free()
+
+func _test_repair_skill_guard_blocks() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	inv.add_item("VeilsteelPick", 1)
+	inv.add_item("VeilsteelIngot", 1)
+	inv._durability["VeilsteelPick"] = 1.0   # worn
+	# Default Smithing tier is novice; VeilsteelPick repair requires journeyman.
+	var result := c.repair("VeilsteelPick")
+	assert_false(result["success"], "repair blocked at novice")
+	assert_true(str(result["reason"]).begins_with("skill_requirement"), "reason is skill_requirement")
+	c.free()
+	inv.free()
+
+func _test_repair_station_gate_blocks() -> void:
+	var station := StationSlice.new()
+	add_child(station)
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	c.station_slice = station
+	inv.add_item("FerritePick", 1)
+	inv.add_item("FerriteIngot", 1)
+	inv._durability["FerritePick"] = 1.0
+	station.set_player_position(Vector3.ZERO)
+	var result := c.repair("FerritePick")
+	assert_false(result["success"], "repair blocked without a forge")
+	assert_true(str(result["reason"]).begins_with("station_required"), "reason is station_required")
+	station.place_station("forge", Vector3(1.0, 0.0, 0.0))
+	var result2 := c.repair("FerritePick")
+	assert_true(result2["success"], "repair succeeds with a forge nearby")
+	station.free()
+	c.free()
+	inv.free()
+
+func _test_repair_pristine_rejected() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	inv.add_item("FerritePick", 1)
+	inv.add_item("FerriteIngot", 1)
+	var result := c.repair("FerritePick")
+	assert_false(result["success"], "pristine item cannot be repaired")
+	assert_eq(result["reason"], "already_pristine", "reason is already_pristine")
+	c.free()
+	inv.free()
+
+func _test_repair_non_durable_rejected() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	inv.add_item("FerriteIngot", 5)
+	var result := c.repair("FerriteIngot")
+	assert_false(result["success"], "stackable material cannot be repaired")
+	assert_eq(result["reason"], "not_repairable", "reason is not_repairable")
+	c.free()
+	inv.free()
+
+func _test_repair_broken_via_bus() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	inv.add_item("FerritePick", 1)
+	inv.add_item("FerriteIngot", 1)
+	inv._durability["FerritePick"] = 0.0   # broken
+	var resolved := {}
+	GameBus.repair_resolved.connect(func(r): resolved["r"] = r)
+	GameBus.repair_requested.emit("FerritePick")
+	var r: Dictionary = resolved.get("r", {})
+	assert_true(r.get("success", false), "repair via bus succeeds")
+	assert_eq(inv.get_durability("FerritePick"), inv.get_max_durability("FerritePick"), "broken tool restored to full")
+	c.free()
 	inv.free()
 
 

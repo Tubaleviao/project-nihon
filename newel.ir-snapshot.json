@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-28T17:44:55.832Z",
-  "schemaHash": "sha256:08269eea2ef52b4e7347964e9cb4838b1c68865ea6458763ffb5ee4011003e92",
+  "generatedAt": "2026-08-31T13:42:06.296Z",
+  "schemaHash": "sha256:d52646bc8cab8ffacad241208302e048ec4e13072a7ae7f1021ac08c084f90c4",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -7753,6 +7753,29 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": "pick"
+          },
+          "repair": {
+            "name": "repair",
+            "type": "json",
+            "description": "Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "station": "forge",
+              "materials": [
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "novice"
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -7960,6 +7983,29 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": "pick"
+          },
+          "repair": {
+            "name": "repair",
+            "type": "json",
+            "description": "Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "station": "master forge",
+              "materials": [
+                {
+                  "item": "VeilsteelIngot",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "journeyman"
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -8171,6 +8217,29 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": "axe"
+          },
+          "repair": {
+            "name": "repair",
+            "type": "json",
+            "description": "Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "station": "forge",
+              "materials": [
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "novice"
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -8370,6 +8439,29 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 100
+          },
+          "repair": {
+            "name": "repair",
+            "type": "json",
+            "description": "Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "station": "forge",
+              "materials": [
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "novice"
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -8563,6 +8655,29 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 200
+          },
+          "repair": {
+            "name": "repair",
+            "type": "json",
+            "description": "Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "station": "master forge",
+              "materials": [
+                {
+                  "item": "VeilsteelIngot",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "journeyman"
+                }
+              ]
+            }
           },
           "equipmentSlot": {
             "name": "equipmentSlot",
@@ -8873,6 +8988,33 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 150
+          },
+          "repair": {
+            "name": "repair",
+            "type": "json",
+            "description": "Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "station": "arcane forge",
+              "materials": [
+                {
+                  "item": "ThornwoodPlank",
+                  "quantity": 1
+                },
+                {
+                  "item": "AethermiteDust",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "ArcaneForging",
+                  "tier": "apprentice"
+                }
+              ]
+            }
           }
         },
         "relations": {
@@ -9278,6 +9420,29 @@
             "pii": false,
             "defaultValue": 120
           },
+          "repair": {
+            "name": "repair",
+            "type": "json",
+            "description": "Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "station": "forge",
+              "materials": [
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "novice"
+                }
+              ]
+            }
+          },
           "equipmentSlot": {
             "name": "equipmentSlot",
             "type": "string",
@@ -9575,6 +9740,33 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 250
+          },
+          "repair": {
+            "name": "repair",
+            "type": "json",
+            "description": "Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "station": "master forge",
+              "materials": [
+                {
+                  "item": "VeilsteelIngot",
+                  "quantity": 1
+                },
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "journeyman"
+                }
+              ]
+            }
           },
           "equipmentSlot": {
             "name": "equipmentSlot",
@@ -9888,6 +10080,29 @@
             "pii": false,
             "defaultValue": 80
           },
+          "repair": {
+            "name": "repair",
+            "type": "json",
+            "description": "Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "station": "carpentry bench",
+              "materials": [
+                {
+                  "item": "Duskfiber",
+                  "quantity": 2
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "apprentice"
+                }
+              ]
+            }
+          },
           "equipmentSlot": {
             "name": "equipmentSlot",
             "type": "string",
@@ -10186,6 +10401,29 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 180
+          },
+          "repair": {
+            "name": "repair",
+            "type": "json",
+            "description": "Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "station": "forge",
+              "materials": [
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "novice"
+                }
+              ]
+            }
           },
           "equipmentSlot": {
             "name": "equipmentSlot",

@@ -20,6 +20,7 @@ Two-handed longsword of veilsteel. Heavy and slow but capable of cracking enchan
 | rarity | `common`, `uncommon`, `rare`, `epic`, `legendary` |  |
 | stackable | boolean | Always false for weapons |
 | durability | integer | Remaining durability points before condition degrades |
+| repair | json | Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier). |
 | equipmentSlot | string | Equipment slot — what is equipped (§6) |
 | deformationMode | string | SKINNED \| RIGID \| HYBRID (§10) |
 | masks | json | Color/mask regions present on the asset (§17) |

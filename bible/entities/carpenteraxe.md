@@ -18,6 +18,7 @@ Felling axe with a weighted ferrite head and a duskfiber-wrapped thornwood handl
 | `stackable` | boolean | yes | Whether multiple instances stack in inventory |
 | `durability` | integer | yes | Remaining durability points before condition degrades |
 | `toolType` | string | yes | Tool class — the action this tool performs. "pick" mines, "axe" chops. |
+| `repair` | json | yes | Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier). |
 
 ## Relations
 

@@ -17,6 +17,7 @@ Round shield of ferrite-plated hardwood. Blocks melee and missile strikes at the
 | `rarity` | enum (`common`, `uncommon`, `rare`, `epic`, `legendary`) | yes |  |
 | `stackable` | boolean | yes | Always false for shields |
 | `durability` | integer | yes | Remaining durability points before condition degrades |
+| `repair` | json | yes | Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier). |
 | `equipmentSlot` | string | yes | Equipment slot — what is equipped (§6) |
 | `deformationMode` | string | yes | SKINNED \| RIGID \| HYBRID (§10) |
 | `masks` | json | yes | Color/mask regions present on the asset (§17) |

@@ -269,6 +269,21 @@ func use_item(item_id: String, action_type: String = "use") -> bool:
 		GameBus.item_broke.emit(item_id)
 	return true
 
+## Restore a held durable item's durability to its fabric maximum (pristine
+## condition). Returns true when the item is held and durable; false otherwise
+## (not held, or not a durable equipment item — stackable materials have no
+## per-use durability model). No material/station/skill checks here — those
+## live in CraftingSlice.repair(), which calls this once its own gates pass.
+func repair_item(item_id: String) -> bool:
+	if not _item_durability_cache.has(item_id):
+		return false
+	if _contents.get(item_id, 0) <= 0:
+		return false
+	_ensure_durability(item_id)
+	_durability[item_id] = _item_durability_cache[item_id]
+	GameBus.inventory_changed.emit()
+	return true
+
 # ---------------------------------------------------------------------------
 # Private
 # ---------------------------------------------------------------------------

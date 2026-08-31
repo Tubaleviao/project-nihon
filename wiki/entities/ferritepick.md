@@ -21,6 +21,7 @@ Rough-hewn mining pick forged from ferrite ingots and a thornwood handle. The st
 | stackable | boolean | Whether multiple instances stack in inventory |
 | durability | integer | Remaining durability points before condition degrades |
 | toolType | string | Tool class — the action this tool performs. "pick" mines, "axe" chops. |
+| repair | json | Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier). |
 
 ## Related
 

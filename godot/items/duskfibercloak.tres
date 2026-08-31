@@ -10,6 +10,7 @@ weight = 0.6
 rarity = 1
 stackable = false
 durability = 80
+repair = {"station":"carpentry bench","materials":[{"item":"Duskfiber","quantity":2}],"skillGuards":[{"skill":"Carpentry","tier":"apprentice"}]}
 equipmentSlot = "Cape"
 deformationMode = "SKINNED"
 masks = {"primary":true,"secondary":false,"accent":false,"metal":false,"emission":false,"wear":true}

@@ -21,6 +21,7 @@ Heavy-duty pick smelted from veilsteel. Cuts through hardstone formations that s
 | stackable | boolean | Whether multiple instances stack in inventory |
 | durability | integer | Remaining durability points before condition degrades |
 | toolType | string | Tool class — the action this tool performs. "pick" mines, "axe" chops. |
+| repair | json | Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier). |
 
 ## Related
 

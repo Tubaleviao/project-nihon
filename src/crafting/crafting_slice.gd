@@ -51,6 +51,7 @@ func _ready() -> void:
 	for skill_key in GameData.SKILLS:
 		_skill_tiers[skill_key] = "novice"
 	GameBus.craft_requested.connect(_on_craft_requested)
+	GameBus.repair_requested.connect(_on_repair_requested)
 
 ## Resolve a recipe against the inventory and skill tiers, consuming inputs and
 ## producing outputs on success. Emits craft_resolved. Never throws.
@@ -153,12 +154,85 @@ func get_skill(skill: String) -> String:
 func get_skills() -> Dictionary:
 	return _skill_tiers.duplicate()
 
+## Return the structured repair spec for a durable item, or {} when the item has
+## no repair field (stackable materials, or items whose repair references
+## unmodelled entities such as the VoiditeEdge "refined voidite shard"). Reads
+## GameData.ITEMS[key].repair — the fabric's single source of truth. Shape:
+## { station, materials: [{item, quantity}], skillGuards: [{skill, tier}] }.
+func get_repair_spec(item_id: String) -> Dictionary:
+	var res: Resource = GameData.ITEMS.get(item_id, null)
+	if res == null:
+		return {}
+	var v = res.get("repair")
+	if v is Dictionary:
+		return v
+	if v is String and v != "":
+		var parsed = JSON.parse_string(v)
+		if parsed is Dictionary:
+			return parsed
+	return {}
+
+## Repair a held durable item: validate guards, consume the repair materials, and
+## restore the item to pristine (full durability). Emits repair_resolved.
+func repair(item_id: String) -> Dictionary:
+	var result := _resolve_repair(item_id, true)
+	GameBus.repair_resolved.emit(result)
+	return result
+
+## Non-mutating repair check: the same result shape repair() would produce, with
+## success=true only if the repair would currently succeed. Does NOT emit
+## repair_resolved (a query, not a repair attempt).
+func can_repair(item_id: String) -> Dictionary:
+	return _resolve_repair(item_id, false)
+
 # ---------------------------------------------------------------------------
 # Private
 # ---------------------------------------------------------------------------
 
 func _on_craft_requested(recipe_id: String) -> void:
 	craft(recipe_id)
+
+func _on_repair_requested(item_id: String) -> void:
+	repair(item_id)
+
+## Resolve a repair attempt (or check) against the item's fabric repair spec.
+## When `mutate` is false, only the guards + material availability are checked
+## (no consumption, no durability change). When true, materials are consumed
+## atomically and the item is restored. Reasons mirror the craft pipeline:
+## not_repairable / no_inventory / no_item / already_pristine /
+## skill_requirement:<skill>:<tier> / station_required:<type> / missing_inputs.
+func _resolve_repair(item_id: String, mutate: bool) -> Dictionary:
+	var spec := get_repair_spec(item_id)
+	if spec.is_empty():
+		return _repair_result(item_id, false, "not_repairable")
+	if inventory_slice == null or not inventory_slice.has_method("consume_items"):
+		return _repair_result(item_id, false, "no_inventory")
+	if inventory_slice.get_item_count(item_id) <= 0:
+		return _repair_result(item_id, false, "no_item")
+	if inventory_slice.has_method("is_durable") and not inventory_slice.is_durable(item_id):
+		return _repair_result(item_id, false, "not_repairable")
+	if inventory_slice.has_method("get_condition") and inventory_slice.get_condition(item_id) == "pristine":
+		return _repair_result(item_id, false, "already_pristine")
+	var guard_reason := _check_skill_guards(spec)
+	if guard_reason != "":
+		return _repair_result(item_id, false, guard_reason)
+	var station_reason := _check_station_gate(spec)
+	if station_reason != "":
+		return _repair_result(item_id, false, station_reason)
+	var materials: Array = spec.get("materials", [])
+	for entry in materials:
+		var mat_id: String = str(entry.get("item", ""))
+		var qty: int = int(entry.get("quantity", 1))
+		if inventory_slice.get_item_count(mat_id) < qty:
+			return _repair_result(item_id, false, "missing_inputs")
+	if mutate:
+		if not inventory_slice.consume_items(_to_counts(materials)):
+			return _repair_result(item_id, false, "missing_inputs")
+		inventory_slice.repair_item(item_id)
+	return _repair_result(item_id, true, "")
+
+func _repair_result(item_id: String, success: bool, reason: String) -> Dictionary:
+	return { "item_id": item_id, "success": success, "reason": reason }
 
 ## Return "" when all skill guards pass, or a `skill_requirement:Skill:tier`
 ## reason string identifying the first unmet guard.

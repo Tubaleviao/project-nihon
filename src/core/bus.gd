@@ -177,6 +177,14 @@ signal craft_requested(recipe_id: String)
 ## result : Dictionary — { recipe_id, success, outputs: [{ item, quantity }], reason }
 signal craft_resolved(result: Dictionary)
 
+## Request to repair a held durable item (emitted by the player/UI or any system).
+## item_id : String — key from GameData.ITEMS (e.g. "FerritePick")
+signal repair_requested(item_id: String)
+
+## Emitted by CraftingSlice with the outcome of a repair attempt.
+## result : Dictionary — { item_id, success, reason }
+signal repair_resolved(result: Dictionary)
+
 # ---------------------------------------------------------------------------
 # Stations
 # ---------------------------------------------------------------------------
