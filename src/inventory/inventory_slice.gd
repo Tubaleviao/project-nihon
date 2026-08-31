@@ -183,6 +183,7 @@ func consume_items(counts: Dictionary) -> bool:
 		_current_weight = maxf(_current_weight - _item_weight(item_id) * float(qty), 0.0)
 		if have == qty:
 			_contents.erase(item_id)
+			_durability.erase(item_id)
 		else:
 			_contents[item_id] = have - qty
 	_is_full = false
@@ -295,6 +296,17 @@ func repair_item(item_id: String) -> bool:
 	_durability[item_id] = _item_durability_cache[item_id]
 	GameBus.inventory_changed.emit()
 	return true
+
+## Set the remaining durability of a held durable item. Used to transfer an
+## item's condition across inventories (e.g. a trade), so a broken tool stays
+## broken when it changes hands. Clamped to [0, max]. No-op when the item is not
+## durable or not currently held.
+func set_durability(item_id: String, value: float) -> void:
+	if not _item_durability_cache.has(item_id):
+		return
+	if _contents.get(item_id, 0) <= 0:
+		return
+	_durability[item_id] = clampf(value, 0.0, float(_item_durability_cache[item_id]))
 
 # ---------------------------------------------------------------------------
 # Private

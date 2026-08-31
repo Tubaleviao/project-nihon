@@ -114,6 +114,8 @@ func open_window(panel: String) -> void:
 	var p: Control = _panels.get(panel, null)
 	if p == null:
 		return
+	if panel == WINDOW_CRAFTING and _repair_feedback != null:
+		_repair_feedback.text = ""
 	p.visible = true
 	refresh_all()
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
@@ -228,7 +230,7 @@ func repair_rows() -> Array:
 		var spec: Dictionary = crafting_slice.get_repair_spec(iid)
 		if spec.is_empty():
 			continue
-		var check: Dictionary = crafting_slice.can_repair(iid)
+		var check: Dictionary = crafting_slice.can_repair(iid, spec)
 		# Skip items whose only blocker is being pristine — they need no repair.
 		# Filter on can_repair's reason (which already reflects the condition)
 		# rather than re-deriving "pristine" here.
@@ -501,6 +503,8 @@ func _on_close_pressed(panel: String) -> void:
 	close_window(panel)
 
 func _on_craft_resolved(_result: Dictionary) -> void:
+	if _repair_feedback != null:
+		_repair_feedback.text = ""
 	refresh_crafting()
 	refresh_inventory()
 

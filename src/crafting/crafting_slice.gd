@@ -155,15 +155,19 @@ func get_repair_spec(item_id: String) -> Dictionary:
 ## Repair a held durable item: validate guards, consume the repair materials, and
 ## restore the item to pristine (full durability). Emits repair_resolved.
 func repair(item_id: String) -> Dictionary:
-	var result := _resolve_repair(item_id, true)
+	var result := _resolve_repair(item_id, true, get_repair_spec(item_id))
 	GameBus.repair_resolved.emit(result)
 	return result
 
 ## Non-mutating repair check: the same result shape repair() would produce, with
 ## success=true only if the repair would currently succeed. Does NOT emit
-## repair_resolved (a query, not a repair attempt).
-func can_repair(item_id: String) -> Dictionary:
-	return _resolve_repair(item_id, false)
+## repair_resolved (a query, not a repair attempt). Accepts an already-loaded
+## `spec` so callers that have already fetched it (e.g. repair_rows) don't pay a
+## second deep-copy.
+func can_repair(item_id: String, spec = null) -> Dictionary:
+	if spec == null:
+		spec = get_repair_spec(item_id)
+	return _resolve_repair(item_id, false, spec)
 
 # ---------------------------------------------------------------------------
 # Private
@@ -181,11 +185,12 @@ func _on_repair_requested(item_id: String) -> void:
 ## atomically and the item is restored. Reasons mirror the craft pipeline:
 ## not_repairable / no_inventory / no_item / already_pristine /
 ## skill_requirement:<skill>:<tier> / station_required:<type> / missing_inputs.
-func _resolve_repair(item_id: String, mutate: bool) -> Dictionary:
-	var spec := get_repair_spec(item_id)
+func _resolve_repair(item_id: String, mutate: bool, spec: Dictionary) -> Dictionary:
 	if spec.is_empty():
 		return _repair_result(item_id, false, "not_repairable")
 	if inventory_slice == null or not inventory_slice.has_method("consume_items"):
+		return _repair_result(item_id, false, "no_inventory")
+	if not inventory_slice.has_method("repair_item"):
 		return _repair_result(item_id, false, "no_inventory")
 	if inventory_slice.get_item_count(item_id) <= 0:
 		return _repair_result(item_id, false, "no_item")
@@ -195,7 +200,9 @@ func _resolve_repair(item_id: String, mutate: bool) -> Dictionary:
 	# inventory's condition model (fabric DURABILITY_STATES), not a hardcoded
 	# "pristine" literal.
 	var tiers := _condition_tiers_to_restore(item_id)
-	if tiers <= 0:
+	if tiers < 0:
+		return _repair_result(item_id, false, "not_repairable")
+	if tiers == 0:
 		return _repair_result(item_id, false, "already_pristine")
 	var guard_reason := _check_skill_guards(spec)
 	if guard_reason != "":
@@ -203,15 +210,14 @@ func _resolve_repair(item_id: String, mutate: bool) -> Dictionary:
 	var station_reason := _check_station_gate(spec)
 	if station_reason != "":
 		return _repair_result(item_id, false, station_reason)
-	# Material cost scales with the number of condition tiers restored AND the
-	# held stack count: a stack shares one durability value, so repairing the
-	# whole stack restores every unit and charges per unit.
-	var stack_count: int = inventory_slice.get_item_count(item_id)
+	# Material cost scales with the number of condition tiers restored. Durability
+	# is per item key (a stack shares one value), so there is no per-unit
+	# multiplier.
 	var materials: Array = spec.get("materials", [])
 	var scaled: Array = []
 	for entry in materials:
 		var mat_id: String = str(entry.get("item", ""))
-		var qty: int = int(entry.get("quantity", 1)) * tiers * stack_count
+		var qty: int = int(entry.get("quantity", 1)) * tiers
 		scaled.append({ "item": mat_id, "quantity": qty })
 	for entry in scaled:
 		var mat_id: String = str(entry.get("item", ""))
@@ -220,8 +226,6 @@ func _resolve_repair(item_id: String, mutate: bool) -> Dictionary:
 			return _repair_result(item_id, false, "missing_inputs")
 	var counts := _to_counts(scaled)
 	if mutate:
-		if not inventory_slice.has_method("repair_item"):
-			return _repair_result(item_id, false, "not_repairable")
 		if not inventory_slice.consume_items(counts):
 			return _repair_result(item_id, false, "missing_inputs")
 		if not inventory_slice.repair_item(item_id):
@@ -232,17 +236,19 @@ func _resolve_repair(item_id: String, mutate: bool) -> Dictionary:
 	return _repair_result(item_id, true, "")
 
 ## Number of condition tiers a repair must restore to reach pristine
-## (0 = already pristine). Delegates to the inventory's condition model.
+## (0 = already pristine). Returns -1 when the inventory cannot report condition
+## tiers (no `condition_tiers_below_pristine` method).
 func _condition_tiers_to_restore(item_id: String) -> int:
 	if inventory_slice != null and inventory_slice.has_method("condition_tiers_below_pristine"):
 		return int(inventory_slice.condition_tiers_below_pristine(item_id))
-	return 0
+	return -1
 
 ## Reverse a consume: put each consumed material back. Used to roll back a
 ## repair whose repair_item() call failed.
 func _refund(counts: Dictionary) -> void:
 	for item_id in counts:
-		inventory_slice.add_item(str(item_id), int(counts[item_id]))
+		if not inventory_slice.add_item(str(item_id), int(counts[item_id])):
+			push_warning("CraftingSlice: refund of '%s' failed — inventory may be inconsistent" % item_id)
 
 func _repair_result(item_id: String, success: bool, reason: String) -> Dictionary:
 	return { "item_id": item_id, "success": success, "reason": reason }

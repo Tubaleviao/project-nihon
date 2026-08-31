@@ -30,6 +30,7 @@ const PlayerSlice     := preload("res://src/player/player_slice.gd")
 const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
 const Locomotion      := preload("res://src/character/locomotion.gd")
 const SkeletonRig     := preload("res://src/character/skeleton_rig.gd")
+const SkillTiers      := preload("res://src/core/skill_tiers.gd")
 
 var _pass: int = 0
 var _fail: int = 0
@@ -142,7 +143,6 @@ func run() -> void:
 	_run_test("repair: missing materials blocked",                 _test_repair_missing_inputs)
 	_run_test("repair: no item held",                              _test_repair_no_item)
 	_run_test("repair: multi-material AethermiteBow",              _test_repair_multi_material_aethermitebow)
-	_run_test("repair: stack count scales cost",                  _test_repair_stack_count_scales_cost)
 	_run_test("repair: specs resolve against fabric",              _test_repair_specs_resolve)
 	_run_test("technology: recipe resolves to owning tech",    _test_technology_recipe_resolves_to_tech)
 	_run_test("technology: research requires prerequisite",    _test_technology_research_requires_prereq)
@@ -225,6 +225,7 @@ func run() -> void:
 	_run_test("trade: broker fee never destroys goods",         _test_trade_fee_never_destroys_goods)
 	_run_test("trade: state round-trips for snapshot/persist",  _test_trade_data_round_trip)
 	_run_test("trade: partial accept broadcasts sync",          _test_trade_partial_accept_syncs)
+	_run_test("trade: broken item stays broken across trade",    _test_trade_broken_item_not_pristine)
 	_run_test("market: list and browse listings",               _test_market_list_browse)
 	_run_test("market: buy transfers escrow to buyer",          _test_market_buy_transfers)
 	_run_test("market: expired listing is not browsable",       _test_market_expired_not_browsable)
@@ -1793,21 +1794,30 @@ func _test_repair_multi_material_aethermitebow() -> void:
 	c.free()
 	inv.free()
 
-func _test_repair_stack_count_scales_cost() -> void:
-	var c := CraftingSlice.new()
-	add_child(c)
-	var inv := InventorySlice.new()
-	add_child(inv)
-	c.inventory_slice = inv
-	inv.add_item("FerritePick", 2)   # a stack of 2 picks shares one durability value
-	inv.add_item("FerriteIngot", 2)
-	inv.use_item("FerritePick", "mine")   # worn (1 tier)
-	var result := c.repair("FerritePick")
-	assert_true(result["success"], "repairing a stack of 2 picks succeeds")
-	assert_eq(inv.get_item_count("FerriteIngot"), 0, "one ingot consumed per pick in the stack")
-	assert_eq(inv.get_condition("FerritePick"), "pristine", "whole stack restored to pristine")
-	c.free()
-	inv.free()
+func _test_trade_broken_item_not_pristine() -> void:
+	var inv_a := InventorySlice.new()
+	add_child(inv_a)
+	var inv_b := InventorySlice.new()
+	add_child(inv_b)
+	inv_a.add_item("FerritePick", 1)
+	_break_item(inv_a, "FerritePick")
+	assert_eq(inv_a.get_condition("FerritePick"), "broken", "seller holds a broken pick")
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("player", inv_a)
+	t.set_party_inventory("peer", inv_b)
+	t.set_skill("Trade", "master")   # tax-free so the exchange is clean
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "FerritePick": 1 }, {})
+	t.propose(tid, "peer", {}, { "FerritePick": 1 })
+	t.accept(tid, "player")
+	var result: Dictionary = t.accept(tid, "peer")
+	assert_true(bool(result.get("success", false)), "trade resolves")
+	assert_eq(inv_b.get_item_count("FerritePick"), 1, "peer received the pick")
+	assert_eq(inv_b.get_condition("FerritePick"), "broken", "traded pick stays broken, not pristine")
+	t.free()
+	inv_a.free()
+	inv_b.free()
 
 func _test_repair_specs_resolve() -> void:
 	var c := CraftingSlice.new()
@@ -1825,7 +1835,9 @@ func _test_repair_specs_resolve() -> void:
 			)
 		for guard in spec.get("skillGuards", []):
 			var skill := str(guard.get("skill", ""))
+			var tier := str(guard.get("tier", "novice"))
 			assert_true(GameData.SKILLS.has(skill), "repair skill '%s' for %s resolves to a skill" % [skill, item_id])
+			assert_true(SkillTiers.TIER_ORDER.has(tier), "repair tier '%s' for %s is a valid tier" % [tier, item_id])
 	c.free()
 
 

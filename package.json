@@ -6,7 +6,7 @@
   "scripts": {
     "validate": "newel validate -s ./fabric/index.js",
     "inspect": "newel inspect  -s ./fabric/index.js",
-    "generate": "newel generate -c ./newel.config.js",
+    "generate": "newel generate -c ./newel.config.js && node ./tools/strip-generatedat.js",
     "check-drift": "newel check-drift -c ./newel.config.js"
   },
   "dependencies": {
