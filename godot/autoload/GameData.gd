@@ -177,6 +177,9 @@ const TECHNOLOGIES: Dictionary = {
 
 const WORLD_SYSTEMS: Dictionary = {
 		"CombatSystem": preload("res://godot/world_systems/combatsystem.tres"),
+		"GovernanceSystem": preload("res://godot/world_systems/governancesystem.tres"),
+		"MarketSystem": preload("res://godot/world_systems/marketsystem.tres"),
+		"TradeSystem": preload("res://godot/world_systems/tradesystem.tres"),
 		"WeatherSystem": preload("res://godot/world_systems/weathersystem.tres")
 }
 

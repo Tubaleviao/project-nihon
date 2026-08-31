@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  godot-tests:
+    name: Godot headless test suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # The private `assets-prod` submodule is intentionally NOT checked out:
+        # the public repo runs clean on the committed placeholders, and the
+        # production art lives in a separately-built, gitignored .pck.
+
+      - name: Download Godot 4.7
+        run: |
+          mkdir -p /tmp/godot
+          curl -fsSL -o /tmp/godot/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          unzip -o /tmp/godot/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
+
+      - name: Run headless test suite
+        run: |
+          # --quit is mandatory: without it the headless main loop never exits.
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --quit \
+            2>&1 | tee /tmp/godot-tests.log
+          if ! grep -q "All tests passed" /tmp/godot-tests.log; then
+            echo "::error::test suite did not report 'All tests passed'"
+            exit 1
+          fi
+          if grep -qE "SCRIPT ERROR|Parse Error|Compile Error" /tmp/godot-tests.log; then
+            echo "::error::script/parse/compile errors present"
+            exit 1
+          fi
+          if grep -q "✗" /tmp/godot-tests.log; then
+            echo "::error::one or more tests failed"
+            exit 1
+          fi
+
+  fabric:
+    name: Fabric validation + drift check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate fabric schema
+        run: npm run validate
+
+      - name: Check generated files for fabric drift
+        run: npm run check-drift

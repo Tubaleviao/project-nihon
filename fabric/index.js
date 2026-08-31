@@ -14,6 +14,7 @@ const items        = require('./gameplay/items')
 const recipes      = require('./gameplay/recipes')
 const technology   = require('./gameplay/technology')
 const combat       = require('./gameplay/combat')
+const economy      = require('./gameplay/economy')
 const player       = require('./gameplay/player')
 const loot         = require('./gameplay/loot')
 const skeletons    = require('./gameplay/characters/skeletons')
@@ -180,6 +181,12 @@ module.exports = defineFabric({
     },
     // Gameplay — Combat system
     { CombatSystem: combat.CombatSystem },
+    // Gameplay — Player economy + governance systems (Phase 24)
+    {
+      TradeSystem:      economy.TradeSystem,
+      MarketSystem:     economy.MarketSystem,
+      GovernanceSystem: economy.GovernanceSystem,
+    },
     // Gameplay — Player + Inventory
     {
       PlayerCharacter: player.PlayerCharacter,

@@ -292,3 +292,74 @@ signal character_death_requested(instance_id: String)
 ## changes (ROADMAP Phase 20). state is the Locomotion.State name string
 ## ("IDLE", "WALK", "RUN", "FALL", "LAND", "ATTACK", "DEATH").
 signal character_state_changed(instance_id: String, state: String)
+
+# ---------------------------------------------------------------------------
+# Trade (Phase 24)
+# ---------------------------------------------------------------------------
+
+## Emitted by TradeSlice when a two-party trade resolves (both accepted and the
+## exchange committed). trade is the full trade record.
+signal trade_completed(trade: Dictionary)
+
+## Client → host (Phase 24 authority): a non-authoritative slice wants to open
+## a trade between two parties.
+signal trade_start_intent(party_a: String, party_b: String)
+
+## Client → host: a non-authoritative slice wants to set or replace an offer
+## (covers both propose and counter-offer).
+signal trade_propose_intent(trade_id: String, party: String, give: Dictionary, want: Dictionary)
+
+## Client → host: a non-authoritative slice wants to accept a trade.
+signal trade_accept_intent(trade_id: String, party: String)
+
+## Client → host: a non-authoritative slice wants to reject a trade.
+signal trade_reject_intent(trade_id: String, party: String)
+
+## Host → clients: authoritative trade state (all active trade sessions).
+signal trade_synced(data: Dictionary)
+
+# ---------------------------------------------------------------------------
+# Market (Phase 24)
+# ---------------------------------------------------------------------------
+
+## Emitted by MarketSlice when a listing is created.
+signal market_listing_created(listing_id: String, seller: String, item_id: String, quantity: int, price: float)
+
+## Emitted by MarketSlice when a listing is purchased.
+signal market_listing_purchased(listing_id: String, buyer: String, item_id: String, quantity: int)
+
+## Emitted by MarketSlice when a listing expires without a buyer.
+signal market_listing_expired(listing_id: String)
+
+## Client → host (Phase 24 authority): a non-authoritative slice wants to list.
+signal market_list_intent(seller: String, item_id: String, quantity: int, price: float)
+
+## Client → host: a non-authoritative slice wants to buy a listing.
+signal market_buy_intent(listing_id: String, buyer: String)
+
+## Host → clients: authoritative market state (full listing data).
+signal market_synced(data: Dictionary)
+
+# ---------------------------------------------------------------------------
+# Governance / proposals (Phase 24)
+# ---------------------------------------------------------------------------
+
+## Emitted by ProposalSlice when a proposal is submitted for community vote.
+signal proposal_submitted(proposal_id: String)
+
+## Emitted by ProposalSlice when a proposal reaches ratification threshold.
+signal proposal_ratified(proposal_id: String, title: String)
+
+## Client → host (Phase 24 authority): a non-authoritative slice wants to submit.
+signal proposal_submit_intent(author: String, title: String, body: String)
+
+## Client → host: a non-authoritative slice wants to cast a vote.
+signal proposal_vote_intent(proposal_id: String, voter: String, verdict: String)
+
+## Client → host: a non-authoritative slice wants to supersede a proposal with
+## a ratified replacement.
+signal proposal_supersede_intent(proposal_id: String, replacement_id: String)
+
+## Host → clients: authoritative governance state (proposals + decisions log).
+signal governance_synced(data: Dictionary)
+

@@ -44,7 +44,7 @@ pnpm generate   # generate the design bible into bible/
 | 21 | Asset separation and public placeholders | Done |
 | 22 | Material and palette pipeline | Done |
 | 23 | LOD and composition simplification | Done |
-| 24 | Social systems and player economy | Planned |
+| 24 | Social systems and player economy | Done |
 
 See [ROADMAP.md](ROADMAP.md) for the full spec, deliverables, and acceptance criteria for each phase.
 
@@ -65,7 +65,9 @@ fabric/ (design)  →  pnpm generate  →  godot/  (Godot resources)
 
 ### Phases and slices
 
-Each roadmap phase ships as one or more **slices** — self-contained GDScript autoloads that communicate exclusively through `GameBus` typed signals. A slice owns its data and exposes pure-function projections for the test suite and the UI layer. No slice calls another slice's methods directly.
+Each roadmap phase ships as one or more **slices** — self-contained GDScript nodes that communicate primarily through `GameBus` typed signals. A slice owns its data and exposes pure-function projections for the test suite and the UI layer.
+
+Slices do **not** hold each other by default. The bus carries every *event* and *intent*; `game_root` wires a small, curated set of cross-slice references only where a signal cannot carry the context — a slice needs to **query** another slice's data (e.g. `creature_slice`, `inventory_slice`, `terrain_slice` to resolve an entity or read counts), and the UI slice holds references to the data slices to render their projections and drive player actions. The invariant is that these references are for **read-only queries and projections**: every state *mutation* still flows through the bus (an intent signal in, an authoritative `*_synced` / `*_resolved` signal out), never through a direct method call that mutates another slice's state.
 
 ### Adding a new system
 

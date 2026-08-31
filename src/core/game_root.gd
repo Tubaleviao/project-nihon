@@ -20,6 +20,9 @@ const CharacterSlice   := preload("res://src/character/character_slice.gd")
 const CraftingSlice    := preload("res://src/crafting/crafting_slice.gd")
 const TechnologySlice  := preload("res://src/technology/technology_slice.gd")
 const StationSlice     := preload("res://src/world/station_slice.gd")
+const MarketSlice      := preload("res://src/world/market_slice.gd")
+const TradeSlice       := preload("res://src/trade/trade_slice.gd")
+const ProposalSlice    := preload("res://src/governance/proposal_slice.gd")
 const UiSlice          := preload("res://src/ui/ui_slice.gd")
 const Minimap          := preload("res://src/ui/minimap.gd")
 const TestSuite        := preload("res://src/tests/test_suite.gd")
@@ -40,6 +43,9 @@ var _character:   CharacterSlice
 var _crafting:    CraftingSlice
 var _technology:  TechnologySlice
 var _station:     StationSlice
+var _market:      MarketSlice
+var _trade:       TradeSlice
+var _proposal:    ProposalSlice
 var _ui:          UiSlice
 
 ## Network role (Phase 18). HOST = authoritative simulation (default, matches
@@ -79,6 +85,9 @@ func _ready() -> void:
 	_crafting    = CraftingSlice.new()
 	_technology  = TechnologySlice.new()
 	_station     = StationSlice.new()
+	_market      = MarketSlice.new()
+	_trade       = TradeSlice.new()
+	_proposal    = ProposalSlice.new()
 	_ui          = UiSlice.new()
 
 	# CreatureSlice needs the terrain to place spawns on the surface; wire it
@@ -95,7 +104,7 @@ func _ready() -> void:
 	_crafting.station_slice    = _station
 	_station.player_slice      = _player
 
-	for s in [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _player, _loot, _inventory, _character, _crafting, _technology, _station, _ui]:
+	for s in [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _player, _loot, _inventory, _character, _crafting, _technology, _station, _market, _trade, _proposal, _ui]:
 		s.name = s.get_script().resource_path.get_file().get_basename()
 		add_child(s)
 
@@ -114,6 +123,27 @@ func _ready() -> void:
 	_ui.inventory_slice       = _inventory
 	_ui.crafting_slice        = _crafting
 	_ui.technology_slice      = _technology
+	_ui.market_slice          = _market
+	_ui.proposal_slice        = _proposal
+	_ui.trade_slice           = _trade
+	_trade.inventory_slice    = _inventory
+	_market.inventory_slice   = _inventory
+	if DEBUG:
+		# Single-player social demo (DEBUG only): a seeded merchant counterparty
+		# lets the trade window commit a real exchange, a merchant market listing
+		# gives a solo player a non-self seller to buy from, and a couple of
+		# other-authored proposals give them something to vote on. This is demo
+		# scaffolding — it must not run in a production boot.
+		var merchant_inv := InventorySlice.new()
+		merchant_inv.name = "MerchantInventory"
+		add_child(merchant_inv)
+		merchant_inv.add_item("hawk_feather", 10)
+		merchant_inv.add_item("wolf_fang", 3)
+		_trade.set_party_inventory("merchant", merchant_inv)
+		_market.set_party_inventory("merchant", merchant_inv)
+		_market.list_item("merchant", "wolf_fang", 2, 15.0)
+		_proposal.submit_proposal("merchant", "Open a northern trade route", "Connect the settlement to the northern passes.")
+		_proposal.submit_proposal("elder", "Establish a community forge", "Build a shared forge for all smiths.")
 	_ui.refresh_all()
 
 	# Authority mode (Phase 18): a client never owns world state — it forwards
@@ -122,6 +152,9 @@ func _ready() -> void:
 	_voxel.is_authoritative     = not _is_client
 	_creature.is_authoritative  = not _is_client
 	_creature_ai.is_authoritative = not _is_client
+	_market.is_authoritative    = not _is_client
+	_trade.is_authoritative     = not _is_client
+	_proposal.is_authoritative  = not _is_client
 
 	# Chunk streaming (Phase 17) — wire the manager to its collaborators.
 	_chunk_manager.terrain_slice  = _terrain
@@ -172,6 +205,12 @@ func _ready() -> void:
 	GameBus.creature_fleeing.connect(func(iid): print("[AI] %s → fleeing" % iid))
 	GameBus.station_placed.connect(func(id, type, pos): print("[Station] %s [%s] placed at %s" % [type, id, pos]))
 	GameBus.item_broke.connect(func(iid): print("[Item] %s broke!" % iid))
+	GameBus.trade_completed.connect(_on_trade_completed)
+	GameBus.market_listing_created.connect(func(id, seller, item, qty, price): print("[Market] %s listed %s ×%d @ %.2f" % [seller, item, qty, price]))
+	GameBus.market_listing_purchased.connect(func(id, buyer, item, qty): print("[Market] %s bought %s ×%d" % [buyer, item, qty]))
+	GameBus.market_listing_expired.connect(func(id): print("[Market] listing %s expired" % id))
+	GameBus.proposal_submitted.connect(func(id): print("[Governance] proposal %s submitted" % id))
+	GameBus.proposal_ratified.connect(func(id, title): print("[Governance] proposal %s ratified: %s" % [id, title]))
 	GameBus.chunk_loaded.connect(func(pos): print("[Chunk] loaded %s" % pos))
 	GameBus.chunk_unloaded.connect(func(pos): print("[Chunk] unloaded %s" % pos))
 	GameBus.peer_connected.connect(_on_peer_connected)
@@ -354,6 +393,9 @@ func _boot_world() -> void:
 			"dirty_chunks": _voxel.get_dirty_chunk_keys(),
 		},
 		"technology": _technology.get_statuses(),
+		"market": _market.get_market_data(),
+		"governance": _proposal.get_governance_data(),
+		"trade": _trade.get_trade_data(),
 	}
 	GameBus.save_requested.emit(0, snapshot)
 	GameBus.load_requested.emit(0)
@@ -444,6 +486,9 @@ func _build_snapshot() -> Dictionary:
 		"edits":     _voxel.get_chunk_manifest(),
 		"creatures": _creature.get_snapshot_creatures(),
 		"inventory": _inventory.get_contents(),
+		"market":    _market.get_market_data(),
+		"governance": _proposal.get_governance_data(),
+		"trade":     _trade.get_trade_data(),
 		"players":   players,
 	}
 
@@ -460,6 +505,12 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 		_creature.apply_snapshot_creatures(data["creatures"])
 	if data.has("inventory") and data["inventory"] is Dictionary:
 		_inventory.replace_contents(data["inventory"])
+	if data.has("market") and data["market"] is Dictionary:
+		_market.apply_market_data(data["market"])
+	if data.has("governance") and data["governance"] is Dictionary:
+		_proposal.apply_governance_data(data["governance"])
+	if data.has("trade") and data["trade"] is Dictionary:
+		_trade.apply_trade_data(data["trade"])
 	if data.has("players") and data["players"] is Dictionary:
 		for pid in data["players"]:
 			var pos = data["players"][pid]
@@ -527,6 +578,9 @@ func _on_research_resolved(result: Dictionary) -> void:
 func _on_technology_unlocked(tech_id: String) -> void:
 	print("[Technology] unlocked %s" % tech_id)
 
+func _on_trade_completed(trade: Dictionary) -> void:
+	print("[Trade] completed: %s <-> %s" % [trade.get("parties", []), trade.get("id", "?")])
+
 func _on_block_mined(material: String, quantity: int, position: Vector3) -> void:
 	print("[Mining] %s ×%d at %s" % [material, quantity, position])
 
@@ -565,6 +619,22 @@ func _on_load_completed(slot: int, data: Dictionary) -> void:
 	if data.has("technology"):
 		_technology.apply_statuses(data["technology"])
 		print("[Persistence] restored technology statuses: %s" % str(data["technology"]))
+	if data.has("market"):
+		_market.apply_market_data(data["market"])
+		print("[Persistence] restored %d market listings" % data["market"].size())
+	if data.has("governance"):
+		var gov: Variant = data["governance"]
+		if gov is Dictionary:
+			_proposal.apply_governance_data(gov)
+		elif gov is Array:
+			# Backward compat: older saves stored only the decisions log.
+			_proposal.apply_decisions_log(gov)
+		print("[Persistence] restored governance state")
+	if data.has("trade"):
+		var tr: Variant = data["trade"]
+		if tr is Dictionary:
+			_trade.apply_trade_data(tr)
+		print("[Persistence] restored trade state")
 
 # ---------------------------------------------------------------------------
 # GameData smoke test

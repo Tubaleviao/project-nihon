@@ -22,6 +22,9 @@ const TechnologySlice := preload("res://src/technology/technology_slice.gd")
 const UiSlice         := preload("res://src/ui/ui_slice.gd")
 const VoxelSlice      := preload("res://src/terrain/voxel_slice.gd")
 const StationSlice    := preload("res://src/world/station_slice.gd")
+const MarketSlice     := preload("res://src/world/market_slice.gd")
+const TradeSlice      := preload("res://src/trade/trade_slice.gd")
+const ProposalSlice   := preload("res://src/governance/proposal_slice.gd")
 const Minimap         := preload("res://src/ui/minimap.gd")
 const PlayerSlice     := preload("res://src/player/player_slice.gd")
 const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
@@ -31,6 +34,9 @@ const SkeletonRig     := preload("res://src/character/skeleton_rig.gd")
 var _pass: int = 0
 var _fail: int = 0
 var _current_test: String = ""
+## Method names (e.g. "_test_foo") registered via _run_test, used by the
+## self-check to catch a test function that was written but never registered.
+var _registered_names: Dictionary = {}
 
 # ---------------------------------------------------------------------------
 # Entry
@@ -159,6 +165,8 @@ func run() -> void:
 	_run_test("chunk: voxel edits isolated per chunk",          _test_chunk_voxel_edits_isolated)
 	_run_test("chunk: unload preserves edits on reload",        _test_chunk_unload_preserves_edits)
 	_run_test("chunk: creature spawn scales per chunk",         _test_chunk_creature_spawn_per_chunk)
+	_run_test("chunk: reload honours engaged spawn budget",     _test_chunk_reload_engaged_budget)
+	_run_test("chunk: apply_edits preserves dirty chunks",      _test_apply_edits_preserves_dirty_chunks)
 	_run_test("chunk: persistence round-trips per-chunk edits", _test_chunk_persistence_manifest)
 	_run_test("chunk: minimap cells resolve chunks",            _test_chunk_minimap_cells)
 	_run_test("net: client forwards block intent",               _test_net_voxel_client_forwards_intent)
@@ -179,9 +187,68 @@ func run() -> void:
 	_run_test("net: inventory replace_contents is idempotent",   _test_net_inventory_replace_idempotent)
 	_run_test("net: host persists last-known state across disconnect", _test_net_reconnect_last_known_state)
 	_run_test("net: emulated loss+reorder — all delivered packets accepted", _test_net_two_peer_loss_reorder)
+	_run_test("net: client self-reference is peer-scoped",       _test_net_peer_party_scopes_identity)
 	_run_test("asset: placeholder resolves at canonical path",  _test_asset_placeholder_resolves)
 	_run_test("asset: no private-only paths hardcoded",          _test_asset_no_private_paths_hardcoded)
 	_run_test("asset: pck round-trip proves override works",    _test_asset_pck_round_trip_override)
+	_run_test("trade: both accept resolves exchange",           _test_trade_both_accept_resolves)
+	_run_test("trade: counter-offer requires prior offer",      _test_trade_counter_offer_requires_offer)
+	_run_test("trade: reject closes session",                   _test_trade_reject)
+	_run_test("trade: missing goods blocks resolution",         _test_trade_missing_goods)
+	_run_test("trade: Trade tier lowers broker fee",           _test_trade_skill_lowers_fee)
+	_run_test("trade: no broker fee when neither side is player", _test_trade_no_fee_without_player)
+	_run_test("trade: propose reports success",                 _test_trade_state_reports_success)
+	_run_test("trade: get_trade returns a defensive copy",      _test_trade_get_trade_defensive_copy)
+	_run_test("trade: get_trade deep-copies nested offers",     _test_trade_get_trade_deep_copy)
+	_run_test("trade: unknown party is rejected",               _test_trade_unknown_party_rejected)
+	_run_test("trade: failed resolve reports still-pending",    _test_trade_failed_resolve_stays_pending)
+	_run_test("trade: client forwards intents",                 _test_trade_client_forwards_intents)
+	_run_test("trade: client applies authoritative sync",       _test_trade_client_applies_sync)
+	_run_test("trade: double accept does not duplicate",        _test_trade_double_accept_no_dupe)
+	_run_test("trade: remote party has no host inventory",      _test_trade_remote_party_no_inventory)
+	_run_test("trade: rejected trade cannot resolve",           _test_trade_rejected_cannot_resolve)
+	_run_test("trade: broker fee never destroys goods",         _test_trade_fee_never_destroys_goods)
+	_run_test("trade: state round-trips for snapshot/persist",  _test_trade_data_round_trip)
+	_run_test("trade: partial accept broadcasts sync",          _test_trade_partial_accept_syncs)
+	_run_test("market: list and browse listings",               _test_market_list_browse)
+	_run_test("market: buy transfers escrow to buyer",          _test_market_buy_transfers)
+	_run_test("market: expired listing is not browsable",       _test_market_expired_not_browsable)
+	_run_test("market: expiry is wall-clock, not uptime",       _test_market_expiry_wall_clock)
+	_run_test("market: listings persist across disk save/load", _test_market_persistence_disk)
+	_run_test("market: escrow prevents list/buy duplication",   _test_market_escrow_no_dupe)
+	_run_test("market: buy fails without buyer inventory",      _test_market_buy_no_inventory)
+	_run_test("market: list rejects insufficient stock",        _test_market_list_insufficient)
+	_run_test("market: expiry refunds escrow to seller",        _test_market_expire_refunds_escrow)
+	_run_test("market: restored ids never collide",             _test_market_restore_no_id_collision)
+	_run_test("market: client forwards list/buy intent",        _test_market_client_forwards_intent)
+	_run_test("market: client applies authoritative sync",      _test_market_sync_applies_on_client)
+	_run_test("market: authoritative list emits sync",          _test_market_authoritative_emits_sync)
+	_run_test("market: expiry keeps escrow when seller full",   _test_market_expire_keeps_escrow_when_full)
+	_run_test("market: expiry drops listing with no seller inv", _test_market_expire_drops_no_inventory_seller)
+	_run_test("proposal: quorum met ratifies",                  _test_proposal_quorum_ratify)
+	_run_test("proposal: below quorum stays proposed",          _test_proposal_below_quorum)
+	_run_test("proposal: author cannot vote on own proposal",   _test_proposal_author_self_vote)
+	_run_test("proposal: voting window rejects late votes",     _test_proposal_window_expiry)
+	_run_test("proposal: lapsed proposal transitions to expired", _test_proposal_expire_transitions)
+	_run_test("proposal: client forwards submit/vote intent",   _test_proposal_client_forwards_intent)
+	_run_test("proposal: client applies authoritative sync",    _test_proposal_sync_applies_on_client)
+	_run_test("proposal: open proposals round-trip",            _test_proposal_persistence_round_trip)
+	_run_test("proposal: ratification updates decisions log",   _test_proposal_decisions_log)
+	_run_test("proposal: below threshold stays proposed",       _test_proposal_below_threshold)
+	_run_test("proposal: leadership gates guild formation",     _test_proposal_leadership_guild)
+	_run_test("proposal: get_proposal deep-copies votes",       _test_proposal_get_proposal_deep_copy)
+	_run_test("proposal: supersede replaces a proposal",        _test_proposal_supersede)
+	_run_test("proposal: supersede needs ratified replacement", _test_proposal_supersede_requires_ratified_replacement)
+	_run_test("proposal: expiry tick is authority-gated",       _test_proposal_expiry_authority_gated)
+
+	# Self-check: the _run_test list above is manual, so a test function can be
+	# written but forgotten from the list. Fail loudly instead of silently
+	# dropping it: any _test_* method not registered above fails the suite.
+	for m in get_method_list():
+		var method_name: String = str(m.get("name", ""))
+		if method_name.begins_with("_test_") and not _registered_names.has(method_name):
+			push_error("TestSuite: '%s' is defined but never registered — add it to the _run_test list" % method_name)
+			_fail += 1
 
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
@@ -2514,6 +2581,14 @@ func _test_net_two_peer_loss_reorder() -> void:
 	sender.free()
 	receiver.free()
 
+func _test_net_peer_party_scopes_identity() -> void:
+	var n := NetworkingSlice.new()
+	add_child(n)
+	assert_eq(n._peer_party(5, "player"), "peer_5", "client 'player' self-reference is peer-scoped")
+	assert_eq(n._peer_party(5, "merchant"), "merchant", "non-self party id passes through unchanged")
+	assert_eq(n._peer_party(5, "peer_9"), "peer_9", "already-scoped id passes through unchanged")
+	n.free()
+
 # ---------------------------------------------------------------------------
 # AssetOverlay tests (Phase 21 — asset separation)
 # ---------------------------------------------------------------------------
@@ -2606,6 +2681,824 @@ func _test_asset_pck_round_trip_override() -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(src_path))
 
 # ---------------------------------------------------------------------------
+# Trade slice tests (Phase 24)
+# ---------------------------------------------------------------------------
+
+func _test_trade_both_accept_resolves() -> void:
+	var inv_a := InventorySlice.new()
+	add_child(inv_a)
+	var inv_b := InventorySlice.new()
+	add_child(inv_b)
+	inv_a.add_item("wolf_fang", 5)
+	inv_b.add_item("hawk_feather", 3)
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("player", inv_a)
+	t.set_party_inventory("peer", inv_b)
+	t.set_skill("Trade", "master")   # tax-free so the exchange is clean
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "wolf_fang": 5 }, { "hawk_feather": 3 })
+	t.propose(tid, "peer", { "hawk_feather": 3 }, { "wolf_fang": 5 })
+	t.accept(tid, "player")
+	var result: Dictionary = t.accept(tid, "peer")
+	assert_true(bool(result.get("success", false)), "trade resolves when both accept")
+	assert_eq(inv_a.get_item_count("wolf_fang"), 0, "player gave away wolf fangs")
+	assert_eq(inv_a.get_item_count("hawk_feather"), 3, "player received hawk feathers")
+	assert_eq(inv_b.get_item_count("hawk_feather"), 0, "peer gave away hawk feathers")
+	assert_eq(inv_b.get_item_count("wolf_fang"), 5, "peer received wolf fangs")
+	t.free()
+	inv_a.free()
+	inv_b.free()
+
+func _test_trade_counter_offer_requires_offer() -> void:
+	var t := TradeSlice.new()
+	add_child(t)
+	var tid := t.start_trade("player", "peer")
+	var result: Dictionary = t.counter_offer(tid, "player", { "wolf_fang": 1 }, {})
+	assert_false(bool(result.get("success", false)), "counter-offer without a prior offer fails")
+	assert_eq(str(result.get("reason", "")), "no_offer", "reason is no_offer")
+	t.free()
+
+func _test_trade_reject() -> void:
+	var t := TradeSlice.new()
+	add_child(t)
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "wolf_fang": 1 }, {})
+	t.reject(tid, "player")
+	assert_eq(str(t.get_trade(tid)["state"]), "rejected", "rejected trade state is rejected")
+	t.free()
+
+func _test_trade_missing_goods() -> void:
+	var inv_a := InventorySlice.new()
+	add_child(inv_a)
+	var inv_b := InventorySlice.new()
+	add_child(inv_b)
+	# Player has no wolf_fang to give.
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("player", inv_a)
+	t.set_party_inventory("peer", inv_b)
+	t.set_skill("Trade", "master")
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "wolf_fang": 5 }, {})
+	t.propose(tid, "peer", {}, { "wolf_fang": 5 })
+	t.accept(tid, "player")
+	var result: Dictionary = t.accept(tid, "peer")
+	assert_false(bool(result.get("success", false)), "trade with missing goods fails")
+	assert_true(str(result.get("reason", "")).begins_with("missing_goods"), "reason is missing_goods")
+	t.free()
+	inv_a.free()
+	inv_b.free()
+
+func _test_trade_skill_lowers_fee() -> void:
+	var inv_a := InventorySlice.new()
+	add_child(inv_a)
+	var inv_b := InventorySlice.new()
+	add_child(inv_b)
+	inv_b.add_item("hawk_feather", 10)
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("player", inv_a)
+	t.set_party_inventory("peer", inv_b)
+	# Novice Trade (default) applies a 10% broker fee to received goods.
+	t.set_skill("Trade", "novice")
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", {}, { "hawk_feather": 10 })
+	t.propose(tid, "peer", { "hawk_feather": 10 }, {})
+	t.accept(tid, "player")
+	t.accept(tid, "peer")
+	assert_eq(inv_a.get_item_count("hawk_feather"), 9, "novice Trade: 10 → 9 after 10% fee")
+	t.free()
+	inv_a.free()
+	inv_b.free()
+
+func _test_trade_no_fee_without_player() -> void:
+	# A host resolving a peer-to-peer trade (neither party is "player") applies
+	# no broker fee — the fee keys on the local player's Trade tier.
+	var inv_a := InventorySlice.new()
+	add_child(inv_a)
+	inv_a.add_item("wolf_fang", 10)
+	var inv_b := InventorySlice.new()
+	add_child(inv_b)
+	inv_b.add_item("hawk_feather", 10)
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("peer_x", inv_a)
+	t.set_party_inventory("peer_y", inv_b)
+	var tid := t.start_trade("peer_x", "peer_y")
+	t.propose(tid, "peer_x", { "wolf_fang": 10 }, { "hawk_feather": 10 })
+	t.propose(tid, "peer_y", { "hawk_feather": 10 }, { "wolf_fang": 10 })
+	t.accept(tid, "peer_x")
+	var result: Dictionary = t.accept(tid, "peer_y")
+	assert_true(bool(result.get("success", false)), "peer-to-peer trade resolves")
+	assert_eq(inv_a.get_item_count("hawk_feather"), 10, "peer_x receives full amount (no fee)")
+	assert_eq(inv_b.get_item_count("wolf_fang"), 10, "peer_y receives full amount (no fee)")
+	t.free()
+	inv_a.free()
+	inv_b.free()
+
+func _test_trade_state_reports_success() -> void:
+	var t := TradeSlice.new()
+	add_child(t)
+	var tid := t.start_trade("player", "peer")
+	var result: Dictionary = t.propose(tid, "player", {}, {})
+	assert_true(bool(result.get("success", false)), "propose reports success")
+	assert_eq(str(result.get("state", "")), "pending", "propose returns the trade state")
+	t.free()
+
+func _test_trade_get_trade_defensive_copy() -> void:
+	var t := TradeSlice.new()
+	add_child(t)
+	var tid := t.start_trade("player", "peer")
+	var snapshot: Dictionary = t.get_trade(tid)
+	snapshot["state"] = "tampered"
+	assert_eq(str(t.get_trade(tid)["state"]), "pending", "get_trade returns a copy, not live state")
+	t.free()
+
+func _test_trade_get_trade_deep_copy() -> void:
+	var t := TradeSlice.new()
+	add_child(t)
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "wolf_fang": 1 }, {})
+	var snapshot: Dictionary = t.get_trade(tid)
+	snapshot["offers"]["player"]["give"]["wolf_fang"] = 99
+	assert_eq(int(t.get_trade(tid)["offers"]["player"]["give"]["wolf_fang"]), 1, "nested offers are deep-copied, not shared")
+	t.free()
+
+func _test_trade_unknown_party_rejected() -> void:
+	var t := TradeSlice.new()
+	add_child(t)
+	var tid := t.start_trade("player", "peer")
+	var r: Dictionary = t.propose(tid, "stranger", {}, {})
+	assert_false(bool(r.get("success", false)), "propose by a non-party fails")
+	assert_eq(str(r.get("reason", "")), "unknown_party", "propose reason is unknown_party")
+	r = t.reject(tid, "stranger")
+	assert_false(bool(r.get("success", false)), "reject by a non-party fails")
+	assert_eq(str(r.get("reason", "")), "unknown_party", "reject reason is unknown_party")
+	assert_eq(str(t.get_trade(tid)["state"]), "pending", "non-party reject leaves the trade pending")
+	t.free()
+
+func _test_trade_failed_resolve_stays_pending() -> void:
+	var inv_a := InventorySlice.new()
+	add_child(inv_a)
+	var inv_b := InventorySlice.new()
+	add_child(inv_b)
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("player", inv_a)
+	t.set_party_inventory("peer", inv_b)
+	t.set_skill("Trade", "master")
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "wolf_fang": 5 }, {})
+	t.propose(tid, "peer", {}, { "wolf_fang": 5 })
+	t.accept(tid, "player")
+	var result: Dictionary = t.accept(tid, "peer")
+	assert_false(bool(result.get("success", false)), "missing goods fails")
+	assert_eq(str(result.get("state", "")), "pending", "failed resolve reports the trade still pending")
+	assert_eq(str(t.get_trade(tid)["state"]), "pending", "get_trade agrees the trade is still pending")
+	t.free()
+	inv_a.free()
+	inv_b.free()
+
+func _test_trade_client_forwards_intents() -> void:
+	var t := TradeSlice.new()
+	add_child(t)
+	t.is_authoritative = false
+	var box := {}
+	GameBus.trade_start_intent.connect(func(_a, _b): box["start"] = true)
+	GameBus.trade_propose_intent.connect(func(_tid, _p, _g, _w): box["propose"] = true)
+	GameBus.trade_accept_intent.connect(func(_tid, _p): box["accept"] = true)
+	GameBus.trade_reject_intent.connect(func(_tid, _p): box["reject"] = true)
+	var tid := t.start_trade("player", "peer")
+	assert_eq(tid, "", "client start returns empty (forwarded)")
+	assert_true(box.get("start", false), "start intent forwarded")
+	var r: Dictionary = t.propose("trade_0", "player", {}, {})
+	assert_eq(str(r.get("reason", "")), "forwarded", "client propose forwards intent")
+	assert_true(box.get("propose", false), "propose intent forwarded")
+	assert_eq(t.get_trade_data()["trades"].size(), 0, "client does not mutate trade state locally")
+	r = t.accept("trade_0", "player")
+	assert_true(box.get("accept", false), "accept intent forwarded")
+	r = t.reject("trade_0", "player")
+	assert_true(box.get("reject", false), "reject intent forwarded")
+	t.free()
+
+func _test_trade_client_applies_sync() -> void:
+	var t := TradeSlice.new()
+	add_child(t)
+	t.is_authoritative = false
+	GameBus.trade_synced.emit({
+		"trades": {
+			"trade_0": { "id": "trade_0", "parties": ["player", "peer"], "offers": {}, "accepted": {}, "state": "pending" }
+		},
+		"next_id": 1,
+	})
+	assert_eq(str(t.get_trade("trade_0")["state"]), "pending", "client applied authoritative trade state")
+	t.free()
+
+func _test_trade_double_accept_no_dupe() -> void:
+	var inv_a := InventorySlice.new()
+	add_child(inv_a)
+	var inv_b := InventorySlice.new()
+	add_child(inv_b)
+	inv_a.add_item("wolf_fang", 5)
+	inv_b.add_item("hawk_feather", 3)
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("player", inv_a)
+	t.set_party_inventory("peer", inv_b)
+	t.set_skill("Trade", "master")
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "wolf_fang": 5 }, { "hawk_feather": 3 })
+	t.propose(tid, "peer", { "hawk_feather": 3 }, { "wolf_fang": 5 })
+	t.accept(tid, "player")
+	t.accept(tid, "peer")   # resolves once
+	# A second accept (double-click the UI button) must not re-run the exchange.
+	var r: Dictionary = t.accept(tid, "peer")
+	assert_true(bool(r.get("success", false)), "second accept is a no-op success")
+	assert_eq(inv_a.get_item_count("hawk_feather"), 3, "player's received items are not duplicated")
+	assert_eq(inv_b.get_item_count("wolf_fang"), 5, "peer's received items are not duplicated")
+	assert_eq(inv_a.get_item_count("wolf_fang"), 0, "player's given items stay gone")
+	assert_eq(inv_b.get_item_count("hawk_feather"), 0, "peer's given items stay gone")
+	t.free()
+	inv_a.free()
+	inv_b.free()
+
+func _test_trade_remote_party_no_inventory() -> void:
+	# A remote peer ("peer_5") the host has no inventory for must resolve to
+	# null (fail-closed) — never to the host's own inventory_slice.
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv.add_item("wolf_fang", 5)
+	var t := TradeSlice.new()
+	add_child(t)
+	t.inventory_slice = inv
+	t.set_skill("Trade", "master")
+	var tid := t.start_trade("player", "peer_5")
+	t.propose(tid, "player", { "wolf_fang": 5 }, {})
+	t.propose(tid, "peer_5", {}, { "wolf_fang": 5 })
+	t.accept(tid, "player")
+	var r: Dictionary = t.accept(tid, "peer_5")
+	assert_false(bool(r.get("success", false)), "remote peer with no inventory cannot resolve")
+	assert_eq(str(r.get("reason", "")), "no_inventory", "reason is no_inventory (not host-credited)")
+	assert_eq(inv.get_item_count("wolf_fang"), 5, "host inventory is not credited to the remote peer")
+	t.free()
+	inv.free()
+
+func _test_trade_rejected_cannot_resolve() -> void:
+	var inv_a := InventorySlice.new()
+	add_child(inv_a)
+	inv_a.add_item("wolf_fang", 5)
+	var inv_b := InventorySlice.new()
+	add_child(inv_b)
+	inv_b.add_item("hawk_feather", 3)
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("player", inv_a)
+	t.set_party_inventory("peer", inv_b)
+	t.set_skill("Trade", "master")
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "wolf_fang": 5 }, { "hawk_feather": 3 })
+	t.propose(tid, "peer", { "hawk_feather": 3 }, { "wolf_fang": 5 })
+	t.accept(tid, "player")
+	t.reject(tid, "peer")
+	# A late accept on a rejected trade must not resolve the exchange.
+	var r: Dictionary = t.accept(tid, "peer")
+	assert_false(bool(r.get("success", false)), "rejected trade cannot resolve")
+	assert_eq(str(r.get("reason", "")), "rejected", "reason is rejected")
+	assert_eq(inv_a.get_item_count("wolf_fang"), 5, "no goods moved — player kept their fangs")
+	assert_eq(inv_b.get_item_count("hawk_feather"), 3, "no goods moved — peer kept their feathers")
+	t.free()
+	inv_a.free()
+	inv_b.free()
+
+func _test_trade_fee_never_destroys_goods() -> void:
+	var inv_a := InventorySlice.new()
+	add_child(inv_a)
+	var inv_b := InventorySlice.new()
+	add_child(inv_b)
+	inv_b.add_item("hawk_feather", 1)
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("player", inv_a)
+	t.set_party_inventory("peer", inv_b)
+	t._broker_fee = { "novice": 0.9 }   # a 90% fee would round 1 → 0 without the guard
+	t.set_skill("Trade", "novice")
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", {}, { "hawk_feather": 1 })
+	t.propose(tid, "peer", { "hawk_feather": 1 }, {})
+	t.accept(tid, "player")
+	t.accept(tid, "peer")
+	assert_eq(inv_a.get_item_count("hawk_feather"), 1, "a positive received quantity never rounds to zero")
+	t.free()
+	inv_a.free()
+	inv_b.free()
+
+func _test_trade_data_round_trip() -> void:
+	var t := TradeSlice.new()
+	add_child(t)
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "wolf_fang": 2 }, {})
+	var data: Dictionary = t.get_trade_data()
+	var t2 := TradeSlice.new()
+	add_child(t2)
+	t2.apply_trade_data(data)
+	assert_eq(str(t2.get_trade(tid)["state"]), "pending", "trade state restored")
+	assert_eq(int(t2.get_trade(tid)["offers"]["player"]["give"]["wolf_fang"]), 2, "nested offer restored")
+	var new_tid := t2.start_trade("player", "peer")
+	assert_eq(new_tid, "trade_1", "next_id continues past restored trades")
+	t.free()
+	t2.free()
+
+func _test_trade_partial_accept_syncs() -> void:
+	var t := TradeSlice.new()
+	add_child(t)
+	var box := {}
+	GameBus.trade_synced.connect(func(data): box["data"] = data)
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "wolf_fang": 1 }, {})
+	t.propose(tid, "peer", { "hawk_feather": 1 }, {})
+	# A single-party accept mutates authoritative state (the accepted flag)
+	# without resolving; it must broadcast so a client reflects who accepted.
+	t.accept(tid, "player")
+	var synced: Dictionary = box.get("data", {})
+	var trades: Dictionary = synced.get("trades", {})
+	assert_true(trades.has(tid), "partial accept broadcasts trade_synced")
+	assert_true(bool(trades[tid]["accepted"].get("player", false)), "synced state reflects the accepting party")
+	assert_false(bool(trades[tid]["accepted"].get("peer", false)), "the other party is not yet marked accepted")
+	t.free()
+
+# ---------------------------------------------------------------------------
+# Market slice tests (Phase 24)
+# ---------------------------------------------------------------------------
+
+func _test_market_list_browse() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	var seller_a := InventorySlice.new()
+	add_child(seller_a)
+	seller_a.add_item("hawk_feather", 5)
+	var seller_b := InventorySlice.new()
+	add_child(seller_b)
+	seller_b.add_item("wolf_fang", 3)
+	m.set_party_inventory("seller_a", seller_a)
+	m.set_party_inventory("seller_b", seller_b)
+	var id1 := m.list_item("seller_a", "hawk_feather", 5, 10.0)
+	var id2 := m.list_item("seller_b", "wolf_fang", 3, 20.0)
+	assert_true(id1 != "" and id2 != "", "listings created with non-empty ids")
+	assert_eq(m.get_listings().size(), 2, "two active listings browsable")
+	m.free()
+	seller_a.free()
+	seller_b.free()
+
+func _test_market_buy_transfers() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	var seller := InventorySlice.new()
+	add_child(seller)
+	seller.add_item("hawk_feather", 3)
+	var buyer := InventorySlice.new()
+	add_child(buyer)
+	m.set_party_inventory("seller", seller)
+	m.set_party_inventory("player", buyer)
+	var id := m.list_item("seller", "hawk_feather", 3, 5.0)
+	assert_eq(seller.get_item_count("hawk_feather"), 0, "seller debited (escrow) on list")
+	var result: Dictionary = m.buy(id, "player")
+	assert_true(bool(result.get("success", false)), "buy succeeds")
+	assert_eq(buyer.get_item_count("hawk_feather"), 3, "escrow transferred to buyer (not minted)")
+	assert_eq(seller.get_item_count("hawk_feather"), 0, "seller stays debited after sale")
+	assert_eq(m.get_listings().size(), 0, "purchased listing removed")
+	m.free()
+	seller.free()
+	buyer.free()
+
+func _test_market_expired_not_browsable() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	var seller := InventorySlice.new()
+	add_child(seller)
+	seller.add_item("hawk_feather", 1)
+	m.set_party_inventory("seller", seller)
+	var id := m.list_item("seller", "hawk_feather", 1, 5.0, 0.0)
+	assert_eq(m.get_listings().size(), 0, "expired listing not browsable")
+	assert_eq(m.get_all_listings().size(), 1, "still present until expire_listings")
+	var n := m.expire_listings()
+	assert_eq(n, 1, "one listing expired")
+	assert_eq(m.get_all_listings().size(), 0, "expired listing removed")
+	assert_eq(seller.get_item_count("hawk_feather"), 1, "expired escrow refunded to seller")
+	m.free()
+	seller.free()
+
+func _test_market_expiry_wall_clock() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	var seller := InventorySlice.new()
+	add_child(seller)
+	seller.add_item("hawk_feather", 5)
+	m.set_party_inventory("seller", seller)
+	var before := Time.get_unix_time_from_system()
+	m.list_item("seller", "hawk_feather", 5, 7.5)
+	var all: Array = m.get_all_listings()
+	assert_eq(all.size(), 1, "one listing recorded")
+	var expires_at: float = float(all[0]["expires_at"])
+	# A wall-clock deadline is a Unix-epoch timestamp (~1.7e9), not process
+	# uptime (a few hundred ms). This proves expiry tracks real time.
+	assert_true(expires_at > 1_000_000_000.0, "expires_at is a wall-clock (epoch) timestamp, not uptime")
+	assert_true(expires_at > before, "deadline is in the future")
+	m.free()
+	seller.free()
+
+func _test_market_persistence_disk() -> void:
+	# Round-trip through the real persistence slice (disk), not an in-memory
+	# get/apply, so a restored listing keeps its wall-clock deadline.
+	var m := MarketSlice.new()
+	add_child(m)
+	var seller := InventorySlice.new()
+	add_child(seller)
+	seller.add_item("hawk_feather", 5)
+	m.set_party_inventory("seller", seller)
+	m.list_item("seller", "hawk_feather", 5, 7.5)
+	var market_data: Dictionary = m.get_market_data()
+	var ps := PersistenceSlice.new()
+	add_child(ps)
+	ps.save(97, { "market": market_data })
+	var loaded: Dictionary = ps.load_slot(97)
+	assert_true(loaded.has("market"), "market key restored from disk")
+	var m2 := MarketSlice.new()
+	add_child(m2)
+	m2.apply_market_data(loaded["market"])
+	var listings: Array = m2.get_listings()
+	assert_eq(listings.size(), 1, "listing restored from disk")
+	assert_eq(str(listings[0]["item_id"]), "hawk_feather", "item id preserved")
+	assert_eq(int(listings[0]["quantity"]), 5, "quantity preserved")
+	assert_true(float(listings[0]["expires_at"]) > Time.get_unix_time_from_system(), "restored listing has a future wall-clock deadline")
+	m.free()
+	m2.free()
+	seller.free()
+	ps.free()
+
+func _test_market_escrow_no_dupe() -> void:
+	# Single-player: the same inventory is seller and buyer. Listing debits the
+	# escrow up front, so buying your own listing nets zero — never a duplicate.
+	var m := MarketSlice.new()
+	add_child(m)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv.add_item("hawk_feather", 5)
+	m.set_party_inventory("player", inv)
+	var id := m.list_item("player", "hawk_feather", 5, 10.0)
+	assert_eq(inv.get_item_count("hawk_feather"), 0, "listing escrows the whole stack")
+	m.buy(id, "player")
+	assert_eq(inv.get_item_count("hawk_feather"), 5, "self-buy nets zero (5, not 10)")
+	m.free()
+	inv.free()
+
+func _test_market_buy_no_inventory() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	var seller := InventorySlice.new()
+	add_child(seller)
+	seller.add_item("hawk_feather", 3)
+	m.set_party_inventory("seller", seller)
+	var id := m.list_item("seller", "hawk_feather", 3, 5.0)
+	# Buyer "nobody" has no inventory mapped and isn't "player".
+	var result: Dictionary = m.buy(id, "nobody")
+	assert_false(bool(result.get("success", false)), "buy fails for a buyer with no inventory")
+	assert_eq(str(result.get("reason", "")), "no_inventory", "reason is no_inventory")
+	assert_eq(m.get_listings().size(), 1, "listing is preserved, not erased")
+	m.free()
+	seller.free()
+
+func _test_market_list_insufficient() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	var seller := InventorySlice.new()
+	add_child(seller)
+	seller.add_item("hawk_feather", 2)
+	m.set_party_inventory("seller", seller)
+	var id := m.list_item("seller", "hawk_feather", 5, 10.0)
+	assert_eq(id, "", "listing rejected when seller lacks stock")
+	assert_eq(seller.get_item_count("hawk_feather"), 2, "seller not debited on rejected listing")
+	m.free()
+	seller.free()
+
+func _test_market_expire_refunds_escrow() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	var seller := InventorySlice.new()
+	add_child(seller)
+	seller.add_item("hawk_feather", 4)
+	m.set_party_inventory("seller", seller)
+	m.list_item("seller", "hawk_feather", 4, 8.0, 0.0)
+	assert_eq(seller.get_item_count("hawk_feather"), 0, "escrowed on list")
+	var n := m.expire_listings()
+	assert_eq(n, 1, "one listing expired")
+	assert_eq(seller.get_item_count("hawk_feather"), 4, "escrow refunded on expiry")
+	m.free()
+	seller.free()
+
+func _test_market_restore_no_id_collision() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	# Restore a listing whose id suffix (5) exceeds the restored set size (1).
+	m.apply_market_data({
+		"listing_5": {
+			"seller": "seller", "item_id": "hawk_feather", "quantity": 1,
+			"price": 5.0, "listed_at": 0.0, "expires_at": 0.0,
+		}
+	})
+	var seller := InventorySlice.new()
+	add_child(seller)
+	seller.add_item("hawk_feather", 2)
+	m.set_party_inventory("seller", seller)
+	var new_id := m.list_item("seller", "hawk_feather", 1, 5.0)
+	assert_true(new_id != "listing_5", "new listing id does not collide with a restored id")
+	assert_eq(str(new_id), "listing_6", "next id continues past the largest restored suffix")
+	m.free()
+	seller.free()
+
+func _test_market_client_forwards_intent() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	m.is_authoritative = false
+	var box := {}
+	GameBus.market_list_intent.connect(func(_s, _i, _q, _p): box["list"] = true)
+	GameBus.market_buy_intent.connect(func(_lid, _b): box["buy"] = true)
+	var id := m.list_item("player", "hawk_feather", 5, 10.0)
+	assert_eq(id, "", "client list returns empty (forwarded)")
+	assert_true(box.get("list", false), "list intent forwarded")
+	assert_eq(m.get_all_listings().size(), 0, "client list does not mutate locally")
+	var r: Dictionary = m.buy("listing_0", "player")
+	assert_eq(str(r.get("reason", "")), "forwarded", "client buy forwards intent")
+	assert_true(box.get("buy", false), "buy intent forwarded")
+	m.free()
+
+func _test_market_sync_applies_on_client() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	m.is_authoritative = false
+	GameBus.market_synced.emit({
+		"listing_0": { "seller": "merchant", "item_id": "wolf_fang", "quantity": 2, "price": 15.0, "listed_at": 0.0, "expires_at": 9999999999.0 }
+	})
+	assert_eq(m.get_listings().size(), 1, "client applied authoritative market state")
+	m.free()
+
+func _test_market_authoritative_emits_sync() -> void:
+	var m := MarketSlice.new()
+	add_child(m)
+	var seller := InventorySlice.new()
+	add_child(seller)
+	seller.add_item("hawk_feather", 5)
+	m.set_party_inventory("seller", seller)
+	var box := {}
+	GameBus.market_synced.connect(func(_d): box["synced"] = true)
+	m.list_item("seller", "hawk_feather", 5, 10.0)
+	assert_true(box.get("synced", false), "authoritative list emits market_synced")
+	m.free()
+	seller.free()
+
+func _test_market_expire_keeps_escrow_when_full() -> void:
+	# Fill the seller's weight, list an item (freeing a little), then re-fill so
+	# the escrow refund can no longer fit — expiry must keep the listing, not
+	# destroy the items.
+	var m := MarketSlice.new()
+	add_child(m)
+	var seller := InventorySlice.new()
+	add_child(seller)
+	m.set_party_inventory("seller", seller)
+	seller.add_item("Ferrite", 1)
+	while seller.add_item("Veilsteel", 1):
+		pass
+	var id := m.list_item("seller", "Ferrite", 1, 5.0, 0.0)
+	assert_true(id != "", "listing created")
+	# Re-fill the weight the debit freed so the Ferrite refund can't fit.
+	while seller.add_item("Veilsteel", 1):
+		pass
+	var n := m.expire_listings()
+	assert_eq(n, 0, "expiry keeps the listing when the seller is full")
+	assert_eq(m.get_all_listings().size(), 1, "escrow is not destroyed")
+	m.free()
+	seller.free()
+
+func _test_market_expire_drops_no_inventory_seller() -> void:
+	# A listing whose seller's inventory no longer exists can never be refunded.
+	# Expiry must drop it (terminating the retry loop) rather than retry forever.
+	var m := MarketSlice.new()
+	add_child(m)
+	var seller := InventorySlice.new()
+	add_child(seller)
+	seller.add_item("hawk_feather", 3)
+	m.set_party_inventory("seller", seller)
+	var id := m.list_item("seller", "hawk_feather", 3, 5.0, 0.0)
+	assert_true(id != "", "listing created")
+	m._party_inventory.erase("seller")   # the seller's inventory is gone
+	var n := m.expire_listings()
+	assert_eq(n, 1, "listing dropped when the seller has no inventory")
+	assert_eq(m.get_all_listings().size(), 0, "no infinite retry — listing removed")
+	m.free()
+	seller.free()
+
+# ---------------------------------------------------------------------------
+# Governance / proposal tests (Phase 24)
+# ---------------------------------------------------------------------------
+
+func _test_proposal_quorum_ratify() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.set_quorum(3)
+	p.set_ratification_threshold(0.6)
+	var pid := p.submit_proposal("alice", "Allow X", "body")
+	assert_true(pid != "", "proposal submitted with an id")
+	p.vote(pid, "bob", "for")
+	p.vote(pid, "carol", "for")
+	p.vote(pid, "dave", "for")
+	assert_eq(str(p.get_proposal(pid)["state"]), "accepted", "quorum met (3/3 for) ratifies")
+	p.free()
+
+func _test_proposal_below_quorum() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.set_quorum(3)
+	var pid := p.submit_proposal("alice", "X", "body")
+	p.vote(pid, "bob", "for")
+	p.vote(pid, "carol", "for")
+	# 2 unanimous votes < quorum 3 → still proposed.
+	assert_eq(str(p.get_proposal(pid)["state"]), "proposed", "below quorum stays proposed")
+	p.free()
+
+func _test_proposal_author_self_vote() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.set_quorum(1)
+	var pid := p.submit_proposal("alice", "X", "body")
+	var result: Dictionary = p.vote(pid, "alice", "for")
+	assert_false(bool(result.get("success", false)), "author vote is rejected")
+	assert_eq(str(result.get("reason", "")), "author_cannot_vote", "reason is author_cannot_vote")
+	assert_eq(str(p.get_proposal(pid)["state"]), "proposed", "author cannot self-ratify")
+	p.free()
+
+func _test_proposal_window_expiry() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.set_quorum(1)
+	p.set_voting_window(0.0)
+	var pid := p.submit_proposal("alice", "X", "body")
+	# window 0 → expires immediately; a vote after the window is rejected.
+	var result: Dictionary = p.vote(pid, "bob", "for")
+	assert_false(bool(result.get("success", false)), "late vote rejected")
+	assert_eq(str(result.get("reason", "")), "expired", "reason is expired")
+	assert_eq(str(p.get_proposal(pid)["state"]), "proposed", "expired proposal stays proposed")
+	p.free()
+
+func _test_proposal_expire_transitions() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.set_voting_window(0.0)
+	var pid := p.submit_proposal("alice", "X", "body")
+	assert_eq(str(p.get_proposal(pid)["state"]), "proposed", "starts proposed")
+	var n := p.expire_proposals()
+	assert_eq(n, 1, "one proposal expired")
+	assert_eq(str(p.get_proposal(pid)["state"]), "expired", "lapsed proposal transitions to expired")
+	p.free()
+
+func _test_proposal_client_forwards_intent() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.is_authoritative = false
+	var box := {}
+	GameBus.proposal_submit_intent.connect(func(_a, _t, _b): box["submit"] = true)
+	GameBus.proposal_vote_intent.connect(func(_pid, _v, _ver): box["vote"] = true)
+	var pid := p.submit_proposal("alice", "X", "body")
+	assert_eq(pid, "", "client submit returns empty (forwarded)")
+	assert_true(box.get("submit", false), "submit intent forwarded")
+	assert_eq(p.get_all_proposals().size(), 0, "client submit does not mutate locally")
+	var r: Dictionary = p.vote("proposal_0", "bob", "for")
+	assert_eq(str(r.get("reason", "")), "forwarded", "client vote forwards intent")
+	assert_true(box.get("vote", false), "vote intent forwarded")
+	p.free()
+
+func _test_proposal_sync_applies_on_client() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.is_authoritative = false
+	GameBus.governance_synced.emit({
+		"proposals": {
+			"proposal_0": { "id": "proposal_0", "author": "alice", "title": "X", "body": "", "state": "proposed", "votes": {}, "submitted_at": 0.0, "expires_at": 9999999999.0 },
+		},
+		"decisions_log": [],
+		"next_id": 1,
+	})
+	assert_eq(p.get_all_proposals().size(), 1, "client applied authoritative governance state")
+	p.free()
+
+func _test_proposal_persistence_round_trip() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.set_quorum(1)
+	var pid := p.submit_proposal("alice", "X", "body")
+	assert_true(pid != "", "proposal submitted")
+	var data: Dictionary = p.get_governance_data()
+	var p2 := ProposalSlice.new()
+	add_child(p2)
+	p2.apply_governance_data(data)
+	var proposals: Array = p2.get_all_proposals()
+	assert_eq(proposals.size(), 1, "open proposal restored")
+	assert_eq(str(proposals[0]["title"]), "X", "title preserved")
+	assert_eq(str(proposals[0]["state"]), "proposed", "state preserved")
+	p.free()
+	p2.free()
+
+func _test_proposal_decisions_log() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.set_quorum(2)
+	p.set_ratification_threshold(0.6)
+	var pid := p.submit_proposal("alice", "Ratify the thing", "body")
+	p.vote(pid, "bob", "for")
+	p.vote(pid, "carol", "for")
+	var log: Array = p.get_decisions_log()
+	assert_eq(log.size(), 1, "one ratified proposal logged")
+	assert_eq(str(log[0]["title"]), "Ratify the thing", "log records the title")
+	assert_eq(str(log[0]["state"]), "accepted", "log records accepted state")
+	p.free()
+
+func _test_proposal_below_threshold() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.set_quorum(3)
+	p.set_ratification_threshold(0.6)
+	var pid := p.submit_proposal("alice", "X", "body")
+	# 3 votes meets quorum, but 1 for / 2 against = 0.33 < 0.6 threshold.
+	p.vote(pid, "a", "for")
+	p.vote(pid, "b", "against")
+	p.vote(pid, "c", "against")
+	assert_eq(str(p.get_proposal(pid)["state"]), "proposed", "1 for / 3 votes stays proposed")
+	p.free()
+
+func _test_proposal_leadership_guild() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	assert_false(p.can_form_guild("novice"), "novice cannot form a guild")
+	assert_true(p.can_form_guild("apprentice"), "apprentice can form a guild")
+	assert_true(p.can_form_guild("master"), "master can form a guild")
+	p.free()
+
+func _test_proposal_get_proposal_deep_copy() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.set_quorum(2)
+	var pid := p.submit_proposal("alice", "X", "body")
+	p.vote(pid, "bob", "for")
+	var snapshot: Dictionary = p.get_proposal(pid)
+	snapshot["votes"]["bob"] = "against"
+	assert_eq(str(p.get_proposal(pid)["votes"]["bob"]), "for", "nested votes are deep-copied, not shared")
+	p.free()
+
+func _test_proposal_supersede() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.set_quorum(1)
+	var old_pid := p.submit_proposal("alice", "Old rule", "body")
+	var new_pid := p.submit_proposal("bob", "New rule", "body")
+	p.vote(new_pid, "carol", "for")   # ratify the replacement (quorum 1)
+	assert_eq(str(p.get_proposal(new_pid)["state"]), "accepted", "replacement ratified")
+	var r: Dictionary = p.supersede_proposal(old_pid, new_pid)
+	assert_true(bool(r.get("success", false)), "supersede succeeds")
+	assert_eq(str(p.get_proposal(old_pid)["state"]), "superseded", "old proposal superseded")
+	p.free()
+
+func _test_proposal_supersede_requires_ratified_replacement() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.set_quorum(3)
+	var old_pid := p.submit_proposal("alice", "Old", "body")
+	var new_pid := p.submit_proposal("bob", "New", "body")
+	# Replacement is still proposed (quorum 3 unmet) — supersede must refuse.
+	var r: Dictionary = p.supersede_proposal(old_pid, new_pid)
+	assert_false(bool(r.get("success", false)), "supersede requires a ratified replacement")
+	assert_eq(str(r.get("reason", "")), "replacement_not_ratified", "reason is replacement_not_ratified")
+	assert_eq(str(p.get_proposal(old_pid)["state"]), "proposed", "old proposal unchanged")
+	p.free()
+
+func _test_proposal_expiry_authority_gated() -> void:
+	var p := ProposalSlice.new()
+	add_child(p)
+	p.is_authoritative = false
+	p.set_voting_window(0.0)
+	# Seed an already-expired proposal via the authoritative sync path.
+	var now := Time.get_unix_time_from_system()
+	p.apply_governance_data({
+		"proposals": {
+			"proposal_0": { "id": "proposal_0", "author": "alice", "title": "X", "body": "", "state": "proposed", "votes": {}, "submitted_at": 0.0, "expires_at": now - 10.0 }
+		},
+		"decisions_log": [],
+		"next_id": 1,
+	})
+	# A client's _process tick must NOT expire proposals — the host owns expiry.
+	p._process(2.0)
+	assert_eq(str(p.get_proposal("proposal_0")["state"]), "proposed", "non-authoritative tick does not expire proposals")
+	p.free()
+
+# ---------------------------------------------------------------------------
 # Assertion helpers
 # ---------------------------------------------------------------------------
 
@@ -2636,6 +3529,7 @@ func _ko(msg: String) -> void:
 
 func _run_test(name: String, fn: Callable) -> void:
 	_current_test = name
+	_registered_names[str(fn.get_method())] = true
 	var fails_before := _fail
 	fn.call()
 	var outcome := "✓" if _fail == fails_before else "✗"

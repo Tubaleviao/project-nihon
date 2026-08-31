@@ -183,5 +183,8 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 ## World-system
 
 - [CombatSystem](entities/combatsystem.md) — Defines the rules governing all combat interactions — player vs creature, player vs player, and structure damage
+- [GovernanceSystem](entities/governancesystem.md) — Defines the rules of in-game community governance
+- [MarketSystem](entities/marketsystem.md) — Defines the rules of the persistent player-run market
+- [TradeSystem](entities/tradesystem.md) — Defines the rules governing player-to-player trade
 - [WeatherSystem](entities/weathersystem.md) — Simulates weather across biomes as an emergent world system
 

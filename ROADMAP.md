@@ -1028,9 +1028,9 @@ character rendering scales gracefully with draw distance and player count.
 
 ---
 
-## Phase 24 — Social systems and player economy
+## Phase 24 — Social systems and player economy ✅ Done
 
-**Goal:** Ground the `CommunityOwnsTheFuture` and `EconomyIsPlayer-Driven`
+**Goal:** Ground the `CommunityOwnsTheFuture` and `EconomyIsPlayerDriven`
 constitution principles in real game mechanics: trade, social skills, and
 community governance hooks.
 
@@ -1038,27 +1038,91 @@ community governance hooks.
 `fabric/gameplay/skills/social.js`.
 
 **Deliverables:**
-- `src/trade/trade_slice.gd` — player-to-player trade UI: propose trade (items +
+- `src/trade/trade_slice.gd` — player-to-player trade: propose trade (items +
   quantities), counter-offer, accept/reject; secured via host authority in
   multiplayer; emits `trade_completed` on the bus
 - `src/world/market_slice.gd` — persistent world market: players list items at
   a price; other players browse and buy; listings expire after configurable
   duration; market data is part of the world save snapshot
-- Social skill effects wired: `Diplomacy` skill tier buffs trade offer reception;
+- Social skill effects wired: `Trade` skill tier sets the trade broker fee;
   `Leadership` unlocks guild formation; `Lore` unlocks advanced wiki entries
 - `src/governance/proposal_slice.gd` — in-game proposal system mirroring the
   constitution's `CommunityOwnsTheFuture` principle: players submit proposals,
-  ratification requires N% contributor vote; accepted proposals emit a fabric
-  decision event (the fabric decision state machine: `proposed → accepted →
-  superseded`)
+  others vote within a window; ratification requires a quorum of distinct voters
+  and a threshold fraction in favour (authors cannot self-vote); accepted
+  proposals emit a fabric decision event (the fabric decision state machine:
+  `proposed → accepted → superseded`)
 - UI panels for trade, market, and proposals wired into `ui_slice.gd`
 
 **Acceptance criteria:**
-- Two players can complete a trade; inventory reflects the exchange on both sides
-- Market listings persist across save/load
-- Social skill tier visibly affects a trade or leadership action
+- Two players can complete a trade; inventory reflects the exchange on both sides ✓
+- Market listings persist across save/load ✓
+- Social skill tier visibly affects a trade or leadership action ✓
 - Proposal system allows submission, voting, and ratification; accepted proposals
-  update a runtime decisions log
+  update a runtime decisions log ✓
+
+**Implementation notes:**
+- **Trade broker fee** is the concrete Trade effect: the local player's Trade
+  tier determines the fraction of received goods withheld as a broker fee
+  (fabric `TradeSystem.brokerFee`: novice 10% → master 0%). Diplomacy is scoped
+  to NPC factions in the fabric and does not affect player-to-player trade.
+  Balance numbers live in `fabric/gameplay/economy.js`, not hardcoded constants.
+- **`Lore` skill does not exist in the fabric** — `fabric/gameplay/skills/social.js`
+  defines only `Diplomacy`, `Trade`, `Speechcraft`, and `Leadership`. The
+  `Lore`-unlocks-wiki hook is therefore deferred until a `Lore` skill is
+  authored (see Known simplifications).
+- **`Leadership` guild-formation gate** is implemented as
+  `ProposalSlice.can_form_guild(tier)` (apprentice or higher). Guild formation
+  itself (the guild entity, roster, permissions) is deferred — only the skill
+  gate is wired.
+- **No currency model exists yet.** Market `price` is an abstract numeric value
+  recorded on the listing; a buy transfers the item to the buyer and removes
+  the listing, but no currency changes hands. Currency exchange is deferred
+  until the fabric defines an economy token.
+- **Trade resolution is inventory-symmetric** via a pluggable party-inventory
+  map (`set_party_inventory`): the local player uses `inventory_slice`; tests
+  inject a second `InventorySlice` to model the remote side, so "both sides"
+  exchange is asserted directly.
+- **Market expiry** is wall-clock: `get_listings` filters by `expires_at` (a
+  Unix-epoch timestamp, not process uptime), and a runtime tick calls
+  `expire_listings()` to remove lapsed listings, refund their escrow to the
+  seller, and emit `market_listing_expired`. The save snapshot carries
+  `listed_at`/`expires_at`, so a restored listing keeps its real deadline
+  across sessions. The default lifetime is fabric
+  `MarketSystem.defaultExpirySeconds`.
+- **Ratification** requires quorum + threshold + window (fabric
+  `GovernanceSystem.ratification`: threshold 0.6, quorum 3, window 86400 s): a
+  proposal ratifies only once at least `quorum` distinct voters have cast
+  ballots within the voting window and the for-fraction reaches the threshold.
+  The author cannot vote on their own proposal, so a single author cannot
+  self-ratify. A ratified proposal records into the runtime decisions log and
+  emits `proposal_ratified`.
+
+**Known simplifications (deferred):**
+- **Currency exchange** — `price` is metadata only; no economy token is
+  transferred on buy/sell (no currency model in the fabric yet).
+- **`Lore` skill** — not authored in the fabric; the "Lore unlocks advanced
+  wiki entries" hook needs a `Lore` skill entity first.
+- **Full guild system** — `can_form_guild` gates formation, but guild entity,
+  roster, and permissions are not built.
+- **Trade UI** — a single-player demo flow (a seeded merchant) lets a player
+  start and complete a trade; a full two-player / NPC negotiation UI is still
+  deferred.
+- **Market listing escrow** — listings now escrow the seller's goods (debited on
+  list, transferred on buy, refunded on expiry); a listing is still not an
+  escrowed *currency* reserve because there is no currency model.
+- **Delta-based state sync** — the market, governance, and trade slices
+  broadcast their *full* state (`market_synced` / `governance_synced` /
+  `trade_synced`) on every mutation. That is simple and correct for now, but a
+  populated world will outgrow it — full-state broadcasts should be replaced
+  with per-mutation deltas (or a dirty-field diff) once lists grow.
+- **Per-peer inventory** — multiplayer has a single shared inventory: the host's
+  `inventory_slice` is synced to every client (`inventory_synced` /
+  `replace_contents`). Party identity is now peer-scoped (a client's
+  "player" resolves to `peer_<id>` on the host, never the host's own
+  inventory), so a remote client's market purchase / trade fails closed rather
+  than crediting the host. Actually delivering to a remote player needs a
+  per-peer inventory store + per-peer sync, which is still deferred.
 
 ---
 
