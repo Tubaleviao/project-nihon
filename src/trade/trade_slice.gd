@@ -284,12 +284,10 @@ func _resolve_exchange(t: Dictionary) -> Dictionary:
 	if not _can_add(inv_b, received_b):
 		return _fail(t["id"], "inventory_full:%s" % b)
 
-	# Capture durability BEFORE consuming so a traded item's condition carries
-	# over to the recipient instead of resetting to pristine.
-	var dur_a := _capture_durability(inv_a, give_a)
-	var dur_b := _capture_durability(inv_b, give_b)
-	_consume(inv_a, give_a)
-	_consume(inv_b, give_b)
+	# Consume and capture the removed instances' durability (worst first) so the
+	# exact condition carries over to the recipient instead of resetting.
+	var dur_a := _consume_taking_durability(inv_a, give_a)
+	var dur_b := _consume_taking_durability(inv_b, give_b)
 	_add(inv_a, received_a, dur_b)   # A receives B's give → B's durability
 	_add(inv_b, received_b, dur_a)   # B receives A's give → A's durability
 
@@ -316,28 +314,23 @@ func _can_consume(inv: Node, counts: Dictionary) -> bool:
 			return false
 	return true
 
-func _consume(inv: Node, counts: Dictionary) -> void:
+## Consume `counts` from `inv` and return the removed per-instance durability
+## values (keyed by item_id → Array), so the exact condition carries over to the
+## recipient. Falls back to a plain consume when the inventory can't report it.
+func _consume_taking_durability(inv: Node, counts: Dictionary) -> Dictionary:
+	if inv.has_method("consume_items_with_durability"):
+		var r: Dictionary = inv.consume_items_with_durability(counts)
+		return r.get("removed", {})
 	inv.consume_items(counts)
+	return {}
 
 func _can_add(inv: Node, counts: Dictionary) -> bool:
 	return inv.can_add_items(counts)
 
 func _add(inv: Node, counts: Dictionary, durabilities: Dictionary = {}) -> void:
 	for item_id in counts:
-		var d: float = float(durabilities.get(item_id, -1.0))
-		inv.add_item(item_id, int(counts[item_id]), d)
-
-## Capture the remaining durability of each durable item in `counts` from `inv`
-## (keyed by item_id). Non-durable items (durability -1) are skipped.
-func _capture_durability(inv: Node, counts: Dictionary) -> Dictionary:
-	var out := {}
-	if not inv.has_method("get_durability"):
-		return out
-	for item_id in counts:
-		var d: float = inv.get_durability(item_id)
-		if d >= 0.0:
-			out[item_id] = d
-	return out
+		var arr: Array = durabilities.get(item_id, [])
+		inv.add_item(item_id, int(counts[item_id]), arr)
 
 func _state(trade_id: String) -> Dictionary:
 	var t: Dictionary = _trades.get(trade_id, {})

@@ -135,11 +135,14 @@ func can_craft(recipe_id: String) -> Dictionary:
 func get_recipe(recipe_id: String) -> Dictionary:
 	return _structured_field(GameData.RECIPES, recipe_id, "recipe")
 
-func set_skill(skill: String, tier: String) -> void:
+## Set a skill's tier. Returns true when applied, false when `tier` is not a
+## known tier (in which case the skill keeps its previous tier).
+func set_skill(skill: String, tier: String) -> bool:
 	if not SkillTiers.is_valid_tier(tier):
 		push_warning("CraftingSlice: ignoring unknown skill tier '%s' for '%s'" % [tier, skill])
-		return
+		return false
 	_skill_tiers[skill] = tier
+	return true
 
 func get_skill(skill: String) -> String:
 	return str(_skill_tiers.get(skill, "novice"))

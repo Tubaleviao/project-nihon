@@ -130,6 +130,7 @@ func run() -> void:
 	_run_test("durability: drop and repick resets to full",           _test_durability_drop_repick_resets)
 	_run_test("durability: find_tool returns held pick",              _test_durability_find_tool)
 	_run_test("durability: find_tool skips broken, returns working",  _test_durability_find_tool_skips_broken)
+	_run_test("durability: length matches quantity across ops",       _test_durability_length_matches_quantity)
 	_run_test("repair: spec loaded from fabric",                    _test_repair_spec_loaded)
 	_run_test("repair: worn tool restored to pristine",             _test_repair_restores_worn)
 	_run_test("repair: materials consumed",                         _test_repair_consumes_materials)
@@ -1588,6 +1589,42 @@ func _break_item(item: Node, item_id: String) -> void:
 	for i in max_d:
 		item.use_item(item_id, "mine")
 
+func _test_durability_length_matches_quantity() -> void:
+	var inv := InventorySlice.new()
+	add_child(inv)
+	# After add (the pickup path delegates to add_item).
+	inv.add_item("FerritePick", 2)
+	assert_eq(inv.get_durability_values("FerritePick").size(), inv.get_item_count("FerritePick"), "durability length matches quantity after add")
+	# After sync (replace_contents rebuilds durability).
+	inv.replace_contents({ "FerritePick": 3 })
+	assert_eq(inv.get_durability_values("FerritePick").size(), inv.get_item_count("FerritePick"), "durability length matches quantity after sync")
+	# After drop.
+	inv.drop_item("FerritePick", 1)
+	assert_eq(inv.get_durability_values("FerritePick").size(), inv.get_item_count("FerritePick"), "durability length matches quantity after drop")
+	inv.free()
+	# After trade.
+	var inv_a := InventorySlice.new()
+	add_child(inv_a)
+	var inv_b := InventorySlice.new()
+	add_child(inv_b)
+	inv_a.add_item("FerritePick", 2)
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("player", inv_a)
+	t.set_party_inventory("peer", inv_b)
+	t.set_skill("Trade", "master")
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "FerritePick": 2 }, {})
+	t.propose(tid, "peer", {}, { "FerritePick": 2 })
+	t.accept(tid, "player")
+	t.accept(tid, "peer")
+	assert_eq(inv_a.get_item_count("FerritePick"), 0, "seller gave away both picks")
+	assert_eq(inv_b.get_item_count("FerritePick"), 2, "buyer received two picks")
+	assert_eq(inv_b.get_durability_values("FerritePick").size(), 2, "durability length matches quantity after trade")
+	t.free()
+	inv_a.free()
+	inv_b.free()
+
 func _test_repair_spec_loaded() -> void:
 	var c := CraftingSlice.new()
 	add_child(c)
@@ -2704,9 +2741,11 @@ func _test_net_inventory_replace_contents() -> void:
 	var inv := InventorySlice.new()
 	add_child(inv)
 	inv.add_item("Ferrite", 5)
-	inv.replace_contents({ "Ashite": 3 })
+	inv.replace_contents({ "Ashite": 3, "FerritePick": 2 })
 	assert_eq(inv.get_item_count("Ferrite"), 0, "replace clears old items")
 	assert_eq(inv.get_item_count("Ashite"), 3, "replace applies host contents")
+	assert_eq(inv.get_item_count("FerritePick"), 2, "replace applies a durable item")
+	assert_eq(inv.get_durability_values("FerritePick").size(), 2, "durable durability rebuilt to match quantity")
 	inv.free()
 
 # ---------------------------------------------------------------------------
