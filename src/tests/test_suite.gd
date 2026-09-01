@@ -130,10 +130,12 @@ func run() -> void:
 	_run_test("durability: drop and repick resets to full",           _test_durability_drop_repick_resets)
 	_run_test("durability: find_tool returns held pick",              _test_durability_find_tool)
 	_run_test("durability: find_tool skips broken, returns working",  _test_durability_find_tool_skips_broken)
-	_run_test("durability: length matches quantity across ops",       _test_durability_length_matches_quantity)
 	_run_test("durability: values round-trip (sync/trade/market)",    _test_durability_values_round_trip)
+	_run_test("durability: sync/load copy, not move",                _test_durability_sync_is_copy_not_move)
 	_run_test("durability: host sync overwrites worn with pristine",  _test_sync_pristine_over_worn)
 	_run_test("durability: missing payload + larger host qty grants fresh excess", _test_sync_missing_payload_grants_fresh_excess)
+	_run_test("durability: shrink to 1 keeps worst instance",        _test_sync_shrink_keeps_worst_instance)
+	_run_test("durability: short payload pads with carried value",   _test_sync_short_payload_pads_with_carried_value)
 	_run_test("repair: spec loaded from fabric",                    _test_repair_spec_loaded)
 	_run_test("repair: worn tool restored to pristine",             _test_repair_restores_worn)
 	_run_test("repair: materials consumed",                         _test_repair_consumes_materials)
@@ -1593,41 +1595,65 @@ func _break_item(item: Node, item_id: String) -> void:
 	for i in max_d:
 		item.use_item(item_id, "mine")
 
-func _test_durability_length_matches_quantity() -> void:
+## Sum every per-instance durability value across a list of inventory slices.
+## Used to assert durability is conserved across a sync/load copy (never lost,
+## never fabricated).
+func _sum_durability_across(invs: Array) -> float:
+	var total := 0.0
+	for inv in invs:
+		var data: Dictionary = inv.get_durability_data()
+		for item_id in data:
+			for v in data[item_id]:
+				total += float(v)
+	return total
+
+func _test_durability_sync_is_copy_not_move() -> void:
+	# Sync/load apply a COPY of the source's durability: the destination's
+	# durability map matches the source's exactly, the total is conserved, and
+	# the source retains its own state — unlike a transfer/consume, which is a
+	# MOVE that empties the source.
+	var src := InventorySlice.new()
+	add_child(src)
+	var dst := InventorySlice.new()
+	add_child(dst)
+	src.add_item("FerritePick", 2)
+	src.use_item("FerritePick", "mine")   # wear one instance
+	var src_data: Dictionary = src.get_durability_data()
+	dst.replace_contents(src.get_contents(), src_data)
+	assert_eq(dst.get_durability_data(), src.get_durability_data(), "destination durability map equals source exactly")
+	assert_eq(dst.get_durability_values("FerritePick"), src.get_durability_values("FerritePick"), "per-instance values match")
+	assert_eq(_sum_durability_across([dst]), _sum_durability_across([src]), "total durability conserved by the copy")
+	assert_eq(src.get_item_count("FerritePick"), 2, "source still holds its items (copy, not move)")
+	assert_eq(src.get_durability_data(), src_data, "source durability unchanged after sync")
+	src.free()
+	dst.free()
+
+func _test_sync_shrink_keeps_worst_instance() -> void:
+	# A shrinking sync (host says 1, client holds 3) with NO durability payload
+	# must keep the WORST instance, not the first-stored (pristine) one.
+	var client := InventorySlice.new()
+	add_child(client)
+	client.add_item("FerritePick", 3, [80.0, 50.0, 10.0])
+	assert_eq(client.get_durability_values("FerritePick").size(), 3, "client holds three picks")
+	client.replace_contents({ "FerritePick": 1 }, {})
+	var vals := client.get_durability_values("FerritePick")
+	assert_eq(vals.size(), 1, "one survivor after the shrink")
+	assert_eq(vals[0], 10.0, "survivor is the worst instance, not the first-stored pristine one")
+	client.free()
+
+func _test_sync_short_payload_pads_with_carried_value() -> void:
+	# A payload claiming 3 instances but carrying one value pads all three with
+	# that value, NOT the fabric max — a short payload must not fabricate
+	# pristine copies.
 	var inv := InventorySlice.new()
 	add_child(inv)
-	# After add (the pickup path delegates to add_item).
-	inv.add_item("FerritePick", 2)
-	assert_eq(inv.get_durability_values("FerritePick").size(), inv.get_item_count("FerritePick"), "durability length matches quantity after add")
-	# After sync (replace_contents rebuilds durability).
-	inv.replace_contents({ "FerritePick": 3 })
-	assert_eq(inv.get_durability_values("FerritePick").size(), inv.get_item_count("FerritePick"), "durability length matches quantity after sync")
-	# After drop.
-	inv.drop_item("FerritePick", 1)
-	assert_eq(inv.get_durability_values("FerritePick").size(), inv.get_item_count("FerritePick"), "durability length matches quantity after drop")
+	inv.replace_contents({ "FerritePick": 3 }, { "FerritePick": [50.0] })
+	var vals := inv.get_durability_values("FerritePick")
+	assert_eq(vals.size(), 3, "three instances after sync")
+	assert_eq(vals[0], 50.0, "first instance carries the payload value")
+	assert_eq(vals[1], 50.0, "second instance padded with the carried value")
+	assert_eq(vals[2], 50.0, "third instance padded with the carried value")
 	inv.free()
-	# After trade.
-	var inv_a := InventorySlice.new()
-	add_child(inv_a)
-	var inv_b := InventorySlice.new()
-	add_child(inv_b)
-	inv_a.add_item("FerritePick", 2)
-	var t := TradeSlice.new()
-	add_child(t)
-	t.set_party_inventory("player", inv_a)
-	t.set_party_inventory("peer", inv_b)
-	t.set_skill("Trade", "master")
-	var tid := t.start_trade("player", "peer")
-	t.propose(tid, "player", { "FerritePick": 2 }, {})
-	t.propose(tid, "peer", {}, { "FerritePick": 2 })
-	t.accept(tid, "player")
-	t.accept(tid, "peer")
-	assert_eq(inv_a.get_item_count("FerritePick"), 0, "seller gave away both picks")
-	assert_eq(inv_b.get_item_count("FerritePick"), 2, "buyer received two picks")
-	assert_eq(inv_b.get_durability_values("FerritePick").size(), 2, "durability length matches quantity after trade")
-	t.free()
-	inv_a.free()
-	inv_b.free()
 
 func _test_durability_values_round_trip() -> void:
 	# Sync: replace_contents with durability data preserves exact values.

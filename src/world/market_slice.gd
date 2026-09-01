@@ -104,6 +104,12 @@ func _now() -> float:
 ## `expires_in` seconds. On the authoritative slice the seller's inventory is
 ## debited up front and the listing is rejected ("") when the seller can't
 ## supply the quantity. On a client this forwards a list intent and returns "".
+##
+## The listing's `durability` field is ESCROW state: it holds the exact
+## per-instance durability values removed from the seller. EVERY exit path must
+## forward it losslessly or a worn item silently resets to pristine — `buy`
+## (→ buyer), `_refund_escrow` (→ seller), and `get_market_data` /
+## `apply_market_data` (→ save/load) all carry it. Never mint a fresh copy.
 func list_item(seller: String, item_id: String, quantity: int, price: float, expires_in: float = -1.0) -> String:
 	if quantity <= 0 or price < 0.0:
 		return ""

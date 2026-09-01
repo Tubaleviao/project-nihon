@@ -1173,6 +1173,19 @@ emitted by `generator-godot`); no generator change needed.
 - Repair is reachable through the bus (`repair_requested` → `repair_resolved`) ✓
 - All 8 repair tests pass at startup ✓
 
+**Durability model (final, do NOT revert):** the per-instance durability array
+**is** the durable stack — `InventorySlice._durability[item_id]` holds one
+entry per held instance, and its `.size()` is the held quantity. Non-durable
+(stackable) items keep their count in `_contents`; durable items live ONLY in
+`_durability`. There is no separate per-item shared value, so the earlier
+"one shared value per item_id × stack_count" design must not be reintroduced
+(repair cost and wear both derive from the per-instance array). Cross-slice
+transfers use the static `InventorySlice.transfer(src, dst, counts)`, which
+carries the exact removed per-instance values; `replace_contents` resolves a
+durable item's array via `_worst_values` (keep the worst instances on a shrink,
+pad a short payload with its carried value, warn + grant fresh when a payload
+omits a durable item).
+
 **Known simplifications (deferred):**
 - **VoiditeEdge / VoidRuneTablet repair** — their prose repair rules reference a
   "refined voidite shard" (not modelled as an item/material) and gate on the

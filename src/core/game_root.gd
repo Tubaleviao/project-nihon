@@ -607,7 +607,11 @@ func _on_save_completed(slot: int) -> void:
 func _on_load_completed(slot: int, data: Dictionary) -> void:
 	print("[Persistence] load_completed slot=%d  keys=%s" % [slot, data.keys()])
 	if data.has("inventory") and data["inventory"] is Dictionary:
-		_inventory.replace_contents(data["inventory"], data.get("inventory_durability", {}), false)
+		# A MISSING `inventory_durability` key is the intentional old-save signal:
+		# saves written before per-instance durability carried no per-instance
+		# wear, so `replace_contents` correctly grants fresh (pristine) durable
+		# instances rather than resurrecting stale local wear.
+		_inventory.replace_contents(data["inventory"], data.get("inventory_durability", {}))
 	var world: Dictionary = data.get("world", {})
 	if world.has("chunks"):
 		_voxel.apply_chunk_manifest(world["chunks"])

@@ -16,7 +16,7 @@ extends Node
 ##   get_current_weight()             -> float
 ##   get_max_weight()                 -> float
 ##   get_max_slots()                  -> int
-##   replace_contents(contents, durabilities = {}, preserve_local = true)  — sync/load
+##   replace_contents(contents, durabilities = {})  — sync/load
 ##   add_item(item_id, quantity, durabilities = [])  -> bool
 ##   consume_items(counts)            -> bool
 ##   consume_items_with_durability(counts) -> { success, removed }
@@ -33,6 +33,7 @@ extends Node
 ##   condition_tiers_below_pristine(item_id) -> int
 ##   use_item(item_id, action_type)   -> bool
 ##   repair_item(item_id)             -> bool
+##   transfer(src, dst, counts)       -> Dictionary { success, reason }  (static)
 
 ## Inventory capacity comes from the Inventory entity in the fabric
 ## (GameData.PLAYERS["Inventory"].maxSlots / maxWeightKg), loaded in _ready().
@@ -79,11 +80,13 @@ const RAW_DROP_WEIGHTS: Dictionary = {
 ## Built at _ready() from GameData.MATERIALS (density) and GameData.ITEMS (weight).
 var _item_weight_cache: Dictionary = {}
 
-## Durability tracking: item_id -> Array of per-instance durability points,
-## one entry per held unit. Populated from GameData.ITEMS for non-stackable
+## Durability model: item_id -> Array of per-instance durability points.
+## For a DURABLE item the array IS the durable stack — its `.size()` is the held
+## quantity, and each entry is one instance's remaining points (a stack can mix a
+## broken copy with a pristine one). Built from GameData.ITEMS for non-stackable
 ## items that declare a `durability` field (tools, weapons, armour, shields,
-## unique tablets). Each held instance keeps its own durability, so a stack of
-## the same tool can mix a broken copy with a pristine one.
+## unique tablets). Non-durable (stackable) items are NOT tracked here; their
+## quantities live in `_contents`.
 var _item_durability_cache: Dictionary = {}
 var _durability: Dictionary = {}
 
@@ -103,7 +106,8 @@ const ACTION_DECREMENT: Dictionary = {
 ## number of tiers a repair must restore (0 = pristine, 3 = broken).
 const DURABILITY_STATES: Array = ["pristine", "worn", "damaged", "broken"]
 
-## The actual inventory: item_id -> quantity.
+## Non-durable inventory: item_id -> quantity (stackable items only). Durable
+## items are held in `_durability` (the array is the stack).
 var _contents: Dictionary = {}
 var _current_weight: float = 0.0
 var _is_full: bool = false
@@ -120,34 +124,29 @@ func _ready() -> void:
 
 ## Client-side: replace local contents with a host-authoritative inventory.
 ## `durabilities` (item_id -> Array of per-instance points) carries condition in
-## the sync/save payload. When `preserve_local` is true (the sync path) and a
-## durable item is absent from the payload, its LOCAL values are kept for the
-## overlapping quantity, with the excess beyond that filled fresh (max). When
-## `preserve_local` is false (the load path), a missing durability map means
-## fresh (max) instances — an old save must not resurrect stale local wear.
-func replace_contents(contents: Dictionary, durabilities: Dictionary = {}, preserve_local: bool = true) -> void:
-	var old_durability := _durability.duplicate(true)
-	_contents.clear()
-	_durability.clear()
-	_current_weight = 0.0
+## the sync/save payload. For a durable item the resolved array has exactly
+## `contents[item_id]` entries: the payload's values are authoritative, a short
+## payload is padded with its WORST carried value (never fabricated pristine),
+## and a payload that omits the item preserves the LOCAL values for the overlap
+## (keeping the WORST instances on a shrink, padding fresh/max for any excess) —
+## with a warning, since omitting a durable item would otherwise silently reset
+## it to pristine.
+func replace_contents(contents: Dictionary, durabilities: Dictionary = {}) -> void:
+	var new_contents := {}
+	var new_durability := {}
+	var new_weight := 0.0
 	for item_id in contents:
 		var qty: int = int(contents[item_id])
 		if qty <= 0:
 			continue
-		_contents[item_id] = qty
-		_current_weight += _item_weight(item_id) * float(qty)
-		# Resolve the durability source and the pad policy for any excess:
-		#   payload array  -> pad with the WORST value (a partial payload must
-		#                     not fabricate pristine copies);
-		#   local fallback -> pad with max (the excess is genuinely fresh).
-		var dvals: Array = []
-		var pad := _durability_max(item_id)
-		if durabilities.has(item_id):
-			dvals = durabilities[item_id]
-			pad = _worst_pad(dvals, qty, pad)
-		elif preserve_local and old_durability.has(item_id):
-			dvals = old_durability[item_id]
-		_add_instances(item_id, qty, dvals, pad)
+		if is_durable(item_id):
+			new_durability[item_id] = _resolve_durability(item_id, qty, durabilities)
+		else:
+			new_contents[item_id] = qty
+		new_weight += _item_weight(item_id) * float(qty)
+	_contents = new_contents
+	_durability = new_durability
+	_current_weight = new_weight
 	_is_full = false
 	GameBus.inventory_changed.emit()
 
@@ -155,13 +154,18 @@ func _on_inventory_synced(contents: Dictionary, durabilities: Dictionary = {}) -
 	replace_contents(contents, durabilities)
 
 func get_contents() -> Dictionary:
-	return _contents.duplicate()
+	var out := _contents.duplicate()
+	for item_id in _durability:
+		out[item_id] = (_durability[item_id] as Array).size()
+	return out
 
 func get_item_count(item_id: String) -> int:
+	if is_durable(item_id):
+		return (_durability.get(item_id, []) as Array).size()
 	return _contents.get(item_id, 0)
 
 func get_total_slots_used() -> int:
-	return _contents.size()
+	return _contents.size() + _durability.size()
 
 func get_current_weight() -> float:
 	return _current_weight
@@ -184,16 +188,18 @@ func drop_item(item_id: String, quantity: int) -> bool:
 ## nothing wires the returned durability to a ground pickup yet. Kept so a future
 ## drop-to-ground flow can hand the item's exact wear to the spawned pickup.
 func drop_item_returning(item_id: String, quantity: int) -> Dictionary:
-	var have: int = _contents.get(item_id, 0)
+	var have: int = get_item_count(item_id)
 	if have < quantity or quantity <= 0:
 		return { "success": false, "removed": [] }
 	var w := _item_weight(item_id) * float(quantity)
 	_current_weight = maxf(_current_weight - w, 0.0)
-	if have == quantity:
+	var removed: Array = []
+	if is_durable(item_id):
+		removed = _remove_instances(item_id, quantity)
+	elif have == quantity:
 		_contents.erase(item_id)
 	else:
 		_contents[item_id] = have - quantity
-	var removed: Array = _remove_instances(item_id, quantity)
 	_is_full = false
 	GameBus.inventory_changed.emit()
 	return { "success": true, "removed": removed }
@@ -209,11 +215,14 @@ func add_item(item_id: String, quantity: int, durabilities: Array = []) -> bool:
 	var add_weight := _item_weight(item_id) * float(quantity)
 	if _current_weight + add_weight > _max_weight:
 		return false
-	if not _contents.has(item_id) and _contents.size() >= _max_slots:
+	var already_held: bool = get_item_count(item_id) > 0
+	if not already_held and get_total_slots_used() >= _max_slots:
 		return false
-	_contents[item_id] = _contents.get(item_id, 0) + quantity
+	if is_durable(item_id):
+		_append_instances(item_id, quantity, durabilities)
+	else:
+		_contents[item_id] = _contents.get(item_id, 0) + quantity
 	_current_weight += add_weight
-	_add_instances(item_id, quantity, durabilities, _worst_pad(durabilities, quantity, _durability_max(item_id)))
 	_is_full = false
 	GameBus.inventory_changed.emit()
 	return true
@@ -230,21 +239,21 @@ func consume_items(counts: Dictionary) -> bool:
 func consume_items_with_durability(counts: Dictionary) -> Dictionary:
 	for item_id in counts:
 		var qty: int = int(counts[item_id])
-		if _contents.get(item_id, 0) < qty:
+		if get_item_count(item_id) < qty:
 			return { "success": false, "removed": {} }
 	var removed := {}
 	for item_id in counts:
 		var qty: int = int(counts[item_id])
-		var have: int = _contents[item_id]
+		var have: int = get_item_count(item_id)
 		_current_weight = maxf(_current_weight - _item_weight(item_id) * float(qty), 0.0)
-		if have == qty:
+		if is_durable(item_id):
+			var taken: Array = _remove_instances(item_id, qty)
+			if not taken.is_empty():
+				removed[item_id] = taken
+		elif have == qty:
 			_contents.erase(item_id)
 		else:
 			_contents[item_id] = have - qty
-		_ensure_durability(item_id)
-		var taken: Array = _remove_instances(item_id, qty)
-		if not taken.is_empty():
-			removed[item_id] = taken
 	_is_full = false
 	GameBus.inventory_changed.emit()
 	return { "success": true, "removed": removed }
@@ -253,11 +262,11 @@ func consume_items_with_durability(counts: Dictionary) -> Dictionary:
 ## slot limits. Non-mutating; used by CraftingSlice to pre-flight outputs.
 func can_add_items(counts: Dictionary) -> bool:
 	var weight := _current_weight
-	var slots := _contents.size()
+	var slots := get_total_slots_used()
 	for item_id in counts:
 		var qty: int = int(counts[item_id])
 		weight += _item_weight(item_id) * float(qty)
-		if not _contents.has(item_id):
+		if get_item_count(item_id) <= 0:
 			slots += 1
 	if weight > _max_weight:
 		return false
@@ -270,12 +279,11 @@ func can_add_items(counts: Dictionary) -> bool:
 ## are skipped. Returns the item_id, or "" when no usable tool is held.
 func find_tool(tool_type: String) -> String:
 	for item_id in _item_durability_cache:
-		if _contents.get(item_id, 0) <= 0:
+		if get_item_count(item_id) <= 0:
 			continue
 		var res: Resource = GameData.ITEMS.get(item_id, null)
 		if res == null or str(res.get("toolType")) != tool_type:
 			continue
-		_ensure_durability(item_id)
 		if not _has_usable_instance(item_id):
 			continue
 		return str(item_id)
@@ -291,7 +299,6 @@ func is_durable(item_id: String) -> bool:
 func get_durability(item_id: String) -> float:
 	if not _item_durability_cache.has(item_id):
 		return -1.0
-	_ensure_durability(item_id)
 	var arr: Array = _durability.get(item_id, [])
 	if arr.is_empty():
 		return -1.0
@@ -310,7 +317,6 @@ func get_max_durability(item_id: String) -> float:
 func get_durability_values(item_id: String) -> Array:
 	if not _item_durability_cache.has(item_id):
 		return []
-	_ensure_durability(item_id)
 	return (_durability.get(item_id, []) as Array).duplicate()
 
 ## Serialize per-instance durability for the save/snapshot payloads:
@@ -318,8 +324,7 @@ func get_durability_values(item_id: String) -> Array:
 func get_durability_data() -> Dictionary:
 	var out := {}
 	for item_id in _durability:
-		if _contents.get(item_id, 0) > 0:
-			out[item_id] = (_durability[item_id] as Array).duplicate()
+		out[item_id] = (_durability[item_id] as Array).duplicate()
 	return out
 
 ## Current condition tier (pristine → worn → damaged → broken) for a durable
@@ -340,7 +345,6 @@ func get_condition(item_id: String) -> String:
 func condition_tiers_below_pristine(item_id: String) -> int:
 	if not _item_durability_cache.has(item_id):
 		return 0
-	_ensure_durability(item_id)
 	var max_d := get_max_durability(item_id)
 	var total := 0
 	for v in _durability.get(item_id, []):
@@ -354,12 +358,11 @@ func condition_tiers_below_pristine(item_id: String) -> int:
 ## the use that consumed the last point still counts as allowed — the tool
 ## breaks AS A RESULT of the use, it does not pre-empt it.
 func use_item(item_id: String, action_type: String = "use") -> bool:
-	if _contents.get(item_id, 0) <= 0:
-		return false
 	if not _item_durability_cache.has(item_id):
-		return true
-	_ensure_durability(item_id)
-	var arr: Array = _durability[item_id]
+		return get_item_count(item_id) > 0
+	var arr: Array = _durability.get(item_id, [])
+	if arr.is_empty():
+		return false
 	# Use the MOST-WORN usable instance (lowest durability still > 0), so wear
 	# CONCENTRATES on one copy until it breaks — pristine copies stay pristine,
 	# and a broken copy never blocks a still-usable one.
@@ -389,16 +392,36 @@ func use_item(item_id: String, action_type: String = "use") -> bool:
 func repair_item(item_id: String) -> bool:
 	if not _item_durability_cache.has(item_id):
 		return false
-	if _contents.get(item_id, 0) <= 0:
+	var arr: Array = _durability.get(item_id, [])
+	if arr.is_empty():
 		return false
-	_ensure_durability(item_id)
 	var max_d := float(_item_durability_cache[item_id])
-	var arr: Array = _durability[item_id]
 	for i in arr.size():
 		arr[i] = max_d
 	_durability[item_id] = arr
 	GameBus.inventory_changed.emit()
 	return true
+
+## Static: atomically move `counts` (item_id -> quantity) from `src` to `dst`.
+## Pre-checks the destination's capacity and the source's availability, consumes
+## from the source carrying the exact per-instance durability, then re-adds to
+## the destination with the removed values (so a worn/broken item arrives with
+## its real condition). Returns { success: bool, reason: String }.
+static func transfer(src: Node, dst: Node, counts: Dictionary) -> Dictionary:
+	if not bool(dst.can_add_items(counts)):
+		return { "success": false, "reason": "inventory_full" }
+	for item_id in counts:
+		if int(src.get_item_count(item_id)) < int(counts[item_id]):
+			return { "success": false, "reason": "missing_goods" }
+	var consumed: Dictionary = src.consume_items_with_durability(counts)
+	if not bool(consumed.get("success", false)):
+		return { "success": false, "reason": "missing_goods" }
+	var removed: Dictionary = consumed.get("removed", {})
+	for item_id in counts:
+		var qty: int = int(counts[item_id])
+		var dvals: Array = removed.get(item_id, [])
+		dst.add_item(item_id, qty, dvals)
+	return { "success": true, "reason": "" }
 
 # ---------------------------------------------------------------------------
 # Private
@@ -426,11 +449,11 @@ func _try_pickup(pickup_id: String, item_id: String, quantity: int) -> void:
 		return
 
 	# Check slot budget for new item types.
-	var already_have := _contents.has(item_id)
+	var already_have := get_item_count(item_id) > 0
 	var would_add_slot := not already_have
-	if would_add_slot and _contents.size() >= _max_slots:
+	if would_add_slot and get_total_slots_used() >= _max_slots:
 		push_warning("InventorySlice: cannot pick up '%s' — no free slots (%d/%d)" % [
-			item_id, _contents.size(), _max_slots])
+			item_id, get_total_slots_used(), _max_slots])
 		GameBus.inventory_full.emit()
 		_is_full = true
 		return
@@ -449,10 +472,10 @@ func _try_pickup(pickup_id: String, item_id: String, quantity: int) -> void:
 
 	GameBus.item_picked_up.emit(item_id, quantity)
 	print("InventorySlice: picked up %s ×%d  (%.1f/%.1f kg  %d/%d slots)" % [
-		item_id, quantity, _current_weight, _max_weight, _contents.size(), _max_slots])
+		item_id, quantity, _current_weight, _max_weight, get_total_slots_used(), _max_slots])
 
 	# Re-check full state after pickup.
-	if _contents.size() >= _max_slots or _current_weight >= _max_weight:
+	if get_total_slots_used() >= _max_slots or _current_weight >= _max_weight:
 		if not _is_full:
 			_is_full = true
 			GameBus.inventory_full.emit()
@@ -526,52 +549,72 @@ func _build_durability_cache() -> void:
 func _item_weight(item_id: String) -> float:
 	return float(_item_weight_cache.get(item_id, 0.0))
 
-## Initialize a durable item's durability array to its fabric max on first
-## access (one entry per held unit).
-func _ensure_durability(item_id: String) -> void:
-	if not _item_durability_cache.has(item_id) or _durability.has(item_id):
-		return
-	var qty := int(_contents.get(item_id, 0))
+## Resolve the per-instance durability array for a durable `item_id` held at
+## `qty`. The payload's values (`durabilities[item_id]`) are authoritative: a
+## short payload is padded with its WORST carried value (never fabricated
+## pristine), and a payload that omits the item falls back to the LOCAL values —
+## keeping the WORST instances on a shrink and granting fresh (max) for any
+## excess. A durable item absent from both payload and local is fresh, with a
+## warning (the omission would otherwise silently reset it to pristine).
+func _resolve_durability(item_id: String, qty: int, durabilities: Dictionary) -> Array:
 	var max_d := float(_item_durability_cache[item_id])
+	var payload: Array = durabilities.get(item_id, [])
+	if not payload.is_empty():
+		return _worst_values(payload, qty)
+	var local: Array = _durability.get(item_id, [])
+	if local.is_empty():
+		push_warning("InventorySlice: sync/save payload omits durability for durable item '%s' — granting pristine copies" % item_id)
+		return _fresh_values(max_d, qty)
+	push_warning("InventorySlice: sync/save payload omits durability for durable item '%s' — preserving local wear (worst-first)" % item_id)
+	if local.size() < qty:
+		# Preserve the local wear, pad the excess fresh (max) — those are new
+		# instances the player never held.
+		var padded := local.duplicate()
+		for i in qty - local.size():
+			padded.append(max_d)
+		return _worst_values(padded, qty)
+	return _worst_values(local, qty)
+
+## Return the `qty` lowest durability values from `vals`, sorted ascending.
+## When `vals` is longer than `qty` the best (highest) values are dropped, so a
+## shrinking sync keeps the WORST instances; when `vals` is shorter, the excess
+## is padded with the worst carried value (a short payload must not fabricate
+## pristine copies).
+func _worst_values(vals: Array, qty: int) -> Array:
+	var out: Array = []
+	if vals.is_empty() or qty <= 0:
+		return out
+	var sorted := vals.duplicate()
+	sorted.sort()   # ascending durability: worst (lowest) first
+	var worst := float(sorted[0])
+	for i in qty:
+		if i < sorted.size():
+			out.append(sorted[i])
+		else:
+			out.append(worst)
+	return out
+
+## A fresh (pristine) durability array of `qty` entries, each the fabric max.
+func _fresh_values(max_d: float, qty: int) -> Array:
 	var arr: Array = []
 	for i in qty:
 		arr.append(max_d)
-	_durability[item_id] = arr
+	return arr
 
 ## Append `qty` per-instance durability entries to `item_id`. Each entry takes
 ## its value from `durabilities[i]` (clamped) when present; any remainder beyond
-## the payload is filled with `pad`. The caller chooses `pad` — the worst value
-## for a sync/save payload (a partial payload must not fabricate pristine
-## copies) or max for a local-fallback array (the excess is genuinely fresh).
-## No-op for non-durable items.
-func _add_instances(item_id: String, qty: int, durabilities: Array, pad: float) -> void:
+## the payload is fresh (max). No-op for non-durable items.
+func _append_instances(item_id: String, qty: int, durabilities: Array) -> void:
 	if not _item_durability_cache.has(item_id):
 		return
 	var arr: Array = _durability.get(item_id, [])
 	var max_d := float(_item_durability_cache[item_id])
 	for i in qty:
-		var d := pad
+		var d := max_d
 		if i < durabilities.size():
 			d = clampf(float(durabilities[i]), 0.0, max_d)
 		arr.append(d)
 	_durability[item_id] = arr
-
-## Fabric-max durability for a durable item (0.0 when not durable). The
-## non-durable value is unused — `_add_instances` no-ops for those items.
-func _durability_max(item_id: String) -> float:
-	return float(_item_durability_cache.get(item_id, 0.0))
-
-## Pad value for a payload durability array: the WORST (lowest, clamped) value
-## in the array, so a partial payload can't fabricate pristine copies for its
-## excess. An empty array still means fresh (max). When the payload already
-## covers `qty`, no padding occurs — return `max_d` and skip the scan entirely.
-func _worst_pad(durabilities: Array, qty: int, max_d: float) -> float:
-	if durabilities.size() >= qty:
-		return max_d
-	var pad := max_d
-	for v in durabilities:
-		pad = minf(pad, clampf(float(v), 0.0, max_d))
-	return pad
 
 ## Remove `qty` per-instance durability entries from `item_id`, taking the WORST
 ## (most-worn, lowest-durability) instances first, and return the removed values

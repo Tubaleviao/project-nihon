@@ -33,6 +33,9 @@ extends Node
 ## Local player party id.
 const PARTY_PLAYER := "player"
 
+## Preload the inventory slice so the exchange can use its static `transfer`.
+const InventorySlice := preload("res://src/inventory/inventory_slice.gd")
+
 ## Trade tier → fraction of received goods withheld as a broker fee (fallback,
 ## mirroring the fabric TradeSystem.brokerFee default). Higher Trade lowers the
 ## fee; a master trades tax-free. Overridden from GameData in _ready().
@@ -284,12 +287,15 @@ func _resolve_exchange(t: Dictionary) -> Dictionary:
 	if not _can_add(inv_b, received_b):
 		return _fail(t["id"], "inventory_full:%s" % b)
 
-	# Consume and capture the removed instances' durability (worst first) so the
-	# exact condition carries over to the recipient instead of resetting.
-	var dur_a := _consume_taking_durability(inv_a, give_a)
-	var dur_b := _consume_taking_durability(inv_b, give_b)
-	_add(inv_a, received_a, dur_b)   # A receives B's give → B's durability
-	_add(inv_b, received_b, dur_a)   # B receives A's give → A's durability
+	# Move the goods with two static transfers, each carrying the removed
+	# instances' exact per-instance durability (worst first), so a worn/broken
+	# item arrives with its real condition instead of resetting to pristine.
+	var r_a: Dictionary = InventorySlice.transfer(inv_b, inv_a, received_a)   # A receives B's give
+	if not bool(r_a.get("success", false)):
+		return _fail(t["id"], str(r_a.get("reason", "transfer_failed")))
+	var r_b: Dictionary = InventorySlice.transfer(inv_a, inv_b, received_b)   # B receives A's give
+	if not bool(r_b.get("success", false)):
+		return _fail(t["id"], str(r_b.get("reason", "transfer_failed")))
 
 	t["state"] = "completed"
 	_emit_synced()
@@ -314,23 +320,8 @@ func _can_consume(inv: Node, counts: Dictionary) -> bool:
 			return false
 	return true
 
-## Consume `counts` from `inv` and return the removed per-instance durability
-## values (keyed by item_id → Array), so the exact condition carries over to the
-## recipient. Falls back to a plain consume when the inventory can't report it.
-func _consume_taking_durability(inv: Node, counts: Dictionary) -> Dictionary:
-	if inv.has_method("consume_items_with_durability"):
-		var r: Dictionary = inv.consume_items_with_durability(counts)
-		return r.get("removed", {})
-	inv.consume_items(counts)
-	return {}
-
 func _can_add(inv: Node, counts: Dictionary) -> bool:
 	return inv.can_add_items(counts)
-
-func _add(inv: Node, counts: Dictionary, durabilities: Dictionary = {}) -> void:
-	for item_id in counts:
-		var arr: Array = durabilities.get(item_id, [])
-		inv.add_item(item_id, int(counts[item_id]), arr)
 
 func _state(trade_id: String) -> Dictionary:
 	var t: Dictionary = _trades.get(trade_id, {})
