@@ -287,13 +287,17 @@ func _resolve_exchange(t: Dictionary) -> Dictionary:
 	if not _can_add(inv_b, received_b):
 		return _fail(t["id"], "inventory_full:%s" % b)
 
-	# Move the goods with two static transfers, each carrying the removed
-	# instances' exact per-instance durability (worst first), so a worn/broken
-	# item arrives with its real condition instead of resetting to pristine.
-	var r_a: Dictionary = InventorySlice.transfer(inv_b, inv_a, received_a)   # A receives B's give
+	# Move the goods with two static transfers, each consuming the giver's FULL
+	# give (so the broker fee is destroyed, not retained by the giver) and adding
+	# only the (taxed) received amount to the receiver, carrying the removed
+	# instances' exact per-instance durability (worst first).
+	var r_a: Dictionary = InventorySlice.transfer(inv_b, inv_a, give_b, received_a)   # A receives (taxed) B's give
 	if not bool(r_a.get("success", false)):
 		return _fail(t["id"], str(r_a.get("reason", "transfer_failed")))
-	var r_b: Dictionary = InventorySlice.transfer(inv_a, inv_b, received_b)   # B receives A's give
+	# The pre-checks above (_can_consume + _can_add) guarantee both transfers
+	# succeed, so the second cannot fail after the first has committed — no
+	# rollback is needed.
+	var r_b: Dictionary = InventorySlice.transfer(inv_a, inv_b, give_a, received_b)   # B receives (taxed) A's give
 	if not bool(r_b.get("success", false)):
 		return _fail(t["id"], str(r_b.get("reason", "transfer_failed")))
 

@@ -402,25 +402,29 @@ func repair_item(item_id: String) -> bool:
 	GameBus.inventory_changed.emit()
 	return true
 
-## Static: atomically move `counts` (item_id -> quantity) from `src` to `dst`.
-## Pre-checks the destination's capacity and the source's availability, consumes
-## from the source carrying the exact per-instance durability, then re-adds to
-## the destination with the removed values (so a worn/broken item arrives with
-## its real condition). Returns { success: bool, reason: String }.
-static func transfer(src: Node, dst: Node, counts: Dictionary) -> Dictionary:
-	if not bool(dst.can_add_items(counts)):
+## Static: atomically move goods from `src` to `dst`. Consumes the FULL `give`
+## (item_id -> quantity) from `src`, carrying each instance's exact per-instance
+## durability, then adds only `receive` (item_id -> quantity) to `dst` with the
+## removed values (worst first). When `receive` is smaller than `give` the
+## difference is destroyed — the trade uses this to burn the broker fee.
+## `receive` defaults to `give` for a lossless 1:1 move. Returns
+## { success: bool, reason: String }.
+static func transfer(src: Node, dst: Node, give: Dictionary, receive: Dictionary = {}) -> Dictionary:
+	var add: Dictionary = receive if not receive.is_empty() else give
+	if not bool(dst.can_add_items(add)):
 		return { "success": false, "reason": "inventory_full" }
-	for item_id in counts:
-		if int(src.get_item_count(item_id)) < int(counts[item_id]):
+	for item_id in give:
+		if int(src.get_item_count(item_id)) < int(give[item_id]):
 			return { "success": false, "reason": "missing_goods" }
-	var consumed: Dictionary = src.consume_items_with_durability(counts)
+	var consumed: Dictionary = src.consume_items_with_durability(give)
 	if not bool(consumed.get("success", false)):
 		return { "success": false, "reason": "missing_goods" }
 	var removed: Dictionary = consumed.get("removed", {})
-	for item_id in counts:
-		var qty: int = int(counts[item_id])
+	for item_id in add:
+		var qty: int = int(add[item_id])
 		var dvals: Array = removed.get(item_id, [])
-		dst.add_item(item_id, qty, dvals)
+		if not bool(dst.add_item(item_id, qty, dvals)):
+			push_warning("InventorySlice.transfer: add_item failed for '%s' ×%d after consuming from source — goods lost" % [item_id, qty])
 	return { "success": true, "reason": "" }
 
 # ---------------------------------------------------------------------------
@@ -560,7 +564,13 @@ func _resolve_durability(item_id: String, qty: int, durabilities: Dictionary) ->
 	var max_d := float(_item_durability_cache[item_id])
 	var payload: Array = durabilities.get(item_id, [])
 	if not payload.is_empty():
-		return _worst_values(payload, qty)
+		# Clamp every payload value to [0, max]: an above-max value never
+		# fabricates condition beyond pristine, and a negative value becomes
+		# broken (0).
+		return _worst_values(_clamp_values(payload, max_d), qty)
+	# The omission warnings below only fire when the payload is empty for this
+	# item (a non-empty payload returns above), so a present-but-short payload
+	# never triggers them.
 	var local: Array = _durability.get(item_id, [])
 	if local.is_empty():
 		push_warning("InventorySlice: sync/save payload omits durability for durable item '%s' — granting pristine copies" % item_id)
@@ -600,6 +610,14 @@ func _fresh_values(max_d: float, qty: int) -> Array:
 	for i in qty:
 		arr.append(max_d)
 	return arr
+
+## Clamp every durability value to [0, max], so a payload carrying an
+## above-max or negative value resolves to a legal per-instance point.
+func _clamp_values(vals: Array, max_d: float) -> Array:
+	var out: Array = []
+	for v in vals:
+		out.append(clampf(float(v), 0.0, max_d))
+	return out
 
 ## Append `qty` per-instance durability entries to `item_id`. Each entry takes
 ## its value from `durabilities[i]` (clamped) when present; any remainder beyond

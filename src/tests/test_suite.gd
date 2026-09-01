@@ -136,6 +136,8 @@ func run() -> void:
 	_run_test("durability: missing payload + larger host qty grants fresh excess", _test_sync_missing_payload_grants_fresh_excess)
 	_run_test("durability: shrink to 1 keeps worst instance",        _test_sync_shrink_keeps_worst_instance)
 	_run_test("durability: short payload pads with carried value",   _test_sync_short_payload_pads_with_carried_value)
+	_run_test("durability: above-max payload value clamped",         _test_durability_clamp_above_max)
+	_run_test("durability: negative payload value becomes broken",   _test_durability_clamp_negative_broken)
 	_run_test("repair: spec loaded from fabric",                    _test_repair_spec_loaded)
 	_run_test("repair: worn tool restored to pristine",             _test_repair_restores_worn)
 	_run_test("repair: materials consumed",                         _test_repair_consumes_materials)
@@ -1554,8 +1556,10 @@ func _test_durability_drop_repick_resets() -> void:
 	var max_d := inv.get_max_durability("FerritePick")
 	inv.use_item("FerritePick", "mine")
 	assert_eq(inv.get_durability("FerritePick"), max_d - 1.0, "durability decremented after use")
+	var drop_before := _sum_durability_across([inv])
 	inv.drop_item("FerritePick", 1)
 	assert_eq(inv.get_item_count("FerritePick"), 0, "pick dropped from inventory")
+	assert_true(_sum_durability_across([inv]) <= drop_before, "drop never increases total durability")
 	# Pick up a fresh FerritePick — durability must be full again.
 	inv.add_item("FerritePick", 1)
 	assert_eq(inv.get_durability("FerritePick"), max_d, "repicked tool starts at max durability")
@@ -1655,6 +1659,25 @@ func _test_sync_short_payload_pads_with_carried_value() -> void:
 	assert_eq(vals[2], 50.0, "third instance padded with the carried value")
 	inv.free()
 
+func _test_durability_clamp_above_max() -> void:
+	# A payload durability above the fabric max must clamp to max — it must not
+	# fabricate condition beyond pristine.
+	var inv := InventorySlice.new()
+	add_child(inv)
+	var max_d := inv.get_max_durability("FerritePick")
+	inv.replace_contents({ "FerritePick": 1 }, { "FerritePick": [max_d + 50.0] })
+	assert_eq(inv.get_durability("FerritePick"), max_d, "above-max payload value clamps to max")
+	inv.free()
+
+func _test_durability_clamp_negative_broken() -> void:
+	# A negative payload durability clamps to 0 (broken), not to a bogus
+	# negative value.
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv.replace_contents({ "FerritePick": 1 }, { "FerritePick": [-5.0] })
+	assert_eq(inv.get_durability("FerritePick"), 0.0, "negative payload value becomes broken (0)")
+	inv.free()
+
 func _test_durability_values_round_trip() -> void:
 	# Sync: replace_contents with durability data preserves exact values.
 	var inv := InventorySlice.new()
@@ -1683,9 +1706,11 @@ func _test_durability_values_round_trip() -> void:
 	var tid := t.start_trade("player", "peer")
 	t.propose(tid, "player", { "FerritePick": 1 }, {})
 	t.propose(tid, "peer", {}, { "FerritePick": 1 })
+	var trade_before := _sum_durability_across([inv_a, inv_b])
 	t.accept(tid, "player")
 	t.accept(tid, "peer")
 	assert_eq(inv_b.get_durability("FerritePick"), worn_d, "trade round-trips the exact worn value")
+	assert_true(_sum_durability_across([inv_a, inv_b]) <= trade_before, "trade never increases total durability")
 	t.free()
 	inv_a.free()
 	inv_b.free()
@@ -1701,11 +1726,13 @@ func _test_durability_values_round_trip() -> void:
 	seller.add_item("FerritePick", 1)
 	seller.use_item("FerritePick", "mine")
 	var worn_d2 := seller.get_durability("FerritePick")
+	var buy_before := _sum_durability_across([seller, buyer])
 	var lid := m.list_item("seller", "FerritePick", 1, 10.0)
 	assert_true(lid != "", "listing created")
 	var buy_res := m.buy(lid, "buyer")
 	assert_true(bool(buy_res.get("success", false)), "buy succeeds")
 	assert_eq(buyer.get_durability("FerritePick"), worn_d2, "market buy round-trips the exact worn value")
+	assert_true(_sum_durability_across([seller, buyer]) <= buy_before, "market buy never increases total durability")
 	seller.free()
 	buyer.free()
 	m.free()
@@ -1721,6 +1748,7 @@ func _test_market_expire_preserves_wear() -> void:
 	var worn_d := seller.get_durability("FerritePick")
 	var max_d := seller.get_max_durability("FerritePick")
 	assert_true(worn_d < max_d, "seller holds a worn pick")
+	var expiry_before := _sum_durability_across([seller])
 	var lid := m.list_item("seller", "FerritePick", 1, 10.0, 0.0)   # expires immediately
 	assert_true(lid != "", "listing created")
 	assert_eq(seller.get_item_count("FerritePick"), 0, "pick escrowed out of seller inventory")
@@ -1728,6 +1756,7 @@ func _test_market_expire_preserves_wear() -> void:
 	assert_true(removed >= 1, "listing expired")
 	assert_eq(seller.get_item_count("FerritePick"), 1, "pick refunded")
 	assert_eq(seller.get_durability("FerritePick"), worn_d, "refunded pick is still worn, not pristine")
+	assert_true(_sum_durability_across([seller]) <= expiry_before, "market expiry never increases total durability")
 	seller.free()
 	m.free()
 
@@ -3274,6 +3303,7 @@ func _test_trade_skill_lowers_fee() -> void:
 	t.accept(tid, "player")
 	t.accept(tid, "peer")
 	assert_eq(inv_a.get_item_count("hawk_feather"), 9, "novice Trade: 10 → 9 after 10% fee")
+	assert_eq(inv_b.get_item_count("hawk_feather"), 0, "giver's full give leaves their inventory — the fee is destroyed, not retained")
 	t.free()
 	inv_a.free()
 	inv_b.free()
