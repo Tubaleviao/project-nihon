@@ -133,6 +133,7 @@ func run() -> void:
 	_run_test("durability: length matches quantity across ops",       _test_durability_length_matches_quantity)
 	_run_test("durability: values round-trip (sync/trade/market)",    _test_durability_values_round_trip)
 	_run_test("durability: host sync overwrites worn with pristine",  _test_sync_pristine_over_worn)
+	_run_test("durability: missing payload + larger host qty grants fresh excess", _test_sync_missing_payload_grants_fresh_excess)
 	_run_test("repair: spec loaded from fabric",                    _test_repair_spec_loaded)
 	_run_test("repair: worn tool restored to pristine",             _test_repair_restores_worn)
 	_run_test("repair: materials consumed",                         _test_repair_consumes_materials)
@@ -1722,6 +1723,28 @@ func _test_sync_pristine_over_worn() -> void:
 	assert_eq(client.get_durability("FerritePick"), max_d, "host pristine pick overwrites the client's worn copy")
 	client.free()
 	host.free()
+
+func _test_sync_missing_payload_grants_fresh_excess() -> void:
+	# A sync whose payload omits a durable item must preserve the LOCAL worn
+	# value for the overlapping quantity, but grant FRESH (max) for the excess —
+	# the host says we now hold 3, we only ever held 1, so the 2 new copies are
+	# genuinely fresh, not cloned-worn.
+	var client := InventorySlice.new()
+	add_child(client)
+	client.add_item("FerritePick", 1)
+	client.use_item("FerritePick", "mine")
+	var max_d := client.get_max_durability("FerritePick")
+	var worn_d := client.get_durability("FerritePick")
+	assert_true(worn_d < max_d, "client pick starts worn")
+
+	# Host syncs a larger quantity but sends NO durability for FerritePick.
+	client.replace_contents({ "FerritePick": 3 }, {})
+	var vals := client.get_durability_values("FerritePick")
+	assert_eq(vals.size(), 3, "three instances after sync")
+	assert_eq(vals[0], worn_d, "overlapping instance preserves the local worn value")
+	assert_eq(vals[1], max_d, "first excess instance is fresh (max)")
+	assert_eq(vals[2], max_d, "second excess instance is fresh (max)")
+	client.free()
 
 func _test_repair_spec_loaded() -> void:
 	var c := CraftingSlice.new()

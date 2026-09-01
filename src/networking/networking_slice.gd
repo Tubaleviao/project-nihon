@@ -21,7 +21,7 @@ extends Node
 ##         block_changed(action, pos, normal, mat)   — host authoritative edit
 ##         creature_state_changed(iid, state, pos)   — host authoritative delta
 ##         remote_player_state(peer_id, pos)         — host player ghost update
-##         inventory_synced(contents, durabilities)   — host authoritative contents
+##         inventory_synced(contents, durabilities)  — host authoritative contents
 ##   OUT : peer_connected(peer_id)
 ##         peer_disconnected(peer_id)
 ##         packet_received(peer_id, payload)         — legacy low-level receive

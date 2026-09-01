@@ -380,7 +380,6 @@ func _boot_world() -> void:
 	# Persistence — save the initial world snapshot via the bus.
 	print("\n[Persistence] Saving initial world snapshot to slot 0…")
 	var snapshot := {
-		"version":   1,
 		"timestamp": Time.get_ticks_msec(),
 		"player":    {
 			"name":     "Traveller",
@@ -482,7 +481,6 @@ func _build_snapshot() -> Dictionary:
 		var last_pos: Vector3 = last_known[pid]
 		players[str(pid)] = [last_pos.x, last_pos.y, last_pos.z]
 	return {
-		"version":   1,
 		"heightmaps": _voxel.get_heightmaps(),
 		"edits":     _voxel.get_chunk_manifest(),
 		"creatures": _creature.get_snapshot_creatures(),
@@ -609,7 +607,7 @@ func _on_save_completed(slot: int) -> void:
 func _on_load_completed(slot: int, data: Dictionary) -> void:
 	print("[Persistence] load_completed slot=%d  keys=%s" % [slot, data.keys()])
 	if data.has("inventory") and data["inventory"] is Dictionary:
-		_inventory.replace_contents(data["inventory"], data.get("inventory_durability", {}))
+		_inventory.replace_contents(data["inventory"], data.get("inventory_durability", {}), false)
 	var world: Dictionary = data.get("world", {})
 	if world.has("chunks"):
 		_voxel.apply_chunk_manifest(world["chunks"])

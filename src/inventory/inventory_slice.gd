@@ -16,7 +16,7 @@ extends Node
 ##   get_current_weight()             -> float
 ##   get_max_weight()                 -> float
 ##   get_max_slots()                  -> int
-##   replace_contents(contents, durabilities = {})   — host-authoritative sync
+##   replace_contents(contents, durabilities = {}, preserve_local = true)  — sync/load
 ##   add_item(item_id, quantity, durabilities = [])  -> bool
 ##   consume_items(counts)            -> bool
 ##   consume_items_with_durability(counts) -> { success, removed }
@@ -120,9 +120,12 @@ func _ready() -> void:
 
 ## Client-side: replace local contents with a host-authoritative inventory.
 ## `durabilities` (item_id -> Array of per-instance points) carries condition in
-## the sync payload; when a durable item is absent from it, its LOCAL values are
-## preserved for the overlapping quantity (falling back to max for any excess).
-func replace_contents(contents: Dictionary, durabilities: Dictionary = {}) -> void:
+## the sync/save payload. When `preserve_local` is true (the sync path) and a
+## durable item is absent from the payload, its LOCAL values are kept for the
+## overlapping quantity, with the excess beyond that filled fresh (max). When
+## `preserve_local` is false (the load path), a missing durability map means
+## fresh (max) instances — an old save must not resurrect stale local wear.
+func replace_contents(contents: Dictionary, durabilities: Dictionary = {}, preserve_local: bool = true) -> void:
 	var old_durability := _durability.duplicate(true)
 	_contents.clear()
 	_durability.clear()
@@ -133,12 +136,18 @@ func replace_contents(contents: Dictionary, durabilities: Dictionary = {}) -> vo
 			continue
 		_contents[item_id] = qty
 		_current_weight += _item_weight(item_id) * float(qty)
+		# Resolve the durability source and the pad policy for any excess:
+		#   payload array  -> pad with the WORST value (a partial payload must
+		#                     not fabricate pristine copies);
+		#   local fallback -> pad with max (the excess is genuinely fresh).
 		var dvals: Array = []
+		var pad := _durability_max(item_id)
 		if durabilities.has(item_id):
 			dvals = durabilities[item_id]
-		elif old_durability.has(item_id):
+			pad = _worst_pad(dvals, qty, pad)
+		elif preserve_local and old_durability.has(item_id):
 			dvals = old_durability[item_id]
-		_add_instances(item_id, qty, dvals)
+		_add_instances(item_id, qty, dvals, pad)
 	_is_full = false
 	GameBus.inventory_changed.emit()
 
@@ -204,7 +213,7 @@ func add_item(item_id: String, quantity: int, durabilities: Array = []) -> bool:
 		return false
 	_contents[item_id] = _contents.get(item_id, 0) + quantity
 	_current_weight += add_weight
-	_add_instances(item_id, quantity, durabilities)
+	_add_instances(item_id, quantity, durabilities, _worst_pad(durabilities, quantity, _durability_max(item_id)))
 	_is_full = false
 	GameBus.inventory_changed.emit()
 	return true
@@ -530,24 +539,39 @@ func _ensure_durability(item_id: String) -> void:
 	_durability[item_id] = arr
 
 ## Append `qty` per-instance durability entries to `item_id`. Each entry takes
-## its value from `durabilities[i]` (clamped) when present. When the payload is
-## SHORTER than `qty`, the remainder is padded with the WORST (lowest) value in
-## the payload — never max — so a partial payload can't fabricate pristine
-## copies; an empty payload still means fresh (max). No-op for non-durable items.
-func _add_instances(item_id: String, qty: int, durabilities: Array) -> void:
+## its value from `durabilities[i]` (clamped) when present; any remainder beyond
+## the payload is filled with `pad`. The caller chooses `pad` — the worst value
+## for a sync/save payload (a partial payload must not fabricate pristine
+## copies) or max for a local-fallback array (the excess is genuinely fresh).
+## No-op for non-durable items.
+func _add_instances(item_id: String, qty: int, durabilities: Array, pad: float) -> void:
 	if not _item_durability_cache.has(item_id):
 		return
 	var arr: Array = _durability.get(item_id, [])
 	var max_d := float(_item_durability_cache[item_id])
-	var pad := max_d
-	for v in durabilities:
-		pad = minf(pad, clampf(float(v), 0.0, max_d))
 	for i in qty:
 		var d := pad
 		if i < durabilities.size():
 			d = clampf(float(durabilities[i]), 0.0, max_d)
 		arr.append(d)
 	_durability[item_id] = arr
+
+## Fabric-max durability for a durable item (0.0 when not durable). The
+## non-durable value is unused — `_add_instances` no-ops for those items.
+func _durability_max(item_id: String) -> float:
+	return float(_item_durability_cache.get(item_id, 0.0))
+
+## Pad value for a payload durability array: the WORST (lowest, clamped) value
+## in the array, so a partial payload can't fabricate pristine copies for its
+## excess. An empty array still means fresh (max). When the payload already
+## covers `qty`, no padding occurs — return `max_d` and skip the scan entirely.
+func _worst_pad(durabilities: Array, qty: int, max_d: float) -> float:
+	if durabilities.size() >= qty:
+		return max_d
+	var pad := max_d
+	for v in durabilities:
+		pad = minf(pad, clampf(float(v), 0.0, max_d))
+	return pad
 
 ## Remove `qty` per-instance durability entries from `item_id`, taking the WORST
 ## (most-worn, lowest-durability) instances first, and return the removed values
