@@ -219,6 +219,7 @@ func run() -> void:
 	_run_test("trade: reject closes session",                   _test_trade_reject)
 	_run_test("trade: missing goods blocks resolution",         _test_trade_missing_goods)
 	_run_test("trade: Trade tier lowers broker fee",           _test_trade_skill_lowers_fee)
+	_run_test("trade: fee burns the best instance",            _test_trade_fee_burns_best_instance)
 	_run_test("trade: no broker fee when neither side is player", _test_trade_no_fee_without_player)
 	_run_test("trade: propose reports success",                 _test_trade_state_reports_success)
 	_run_test("trade: get_trade returns a defensive copy",      _test_trade_get_trade_defensive_copy)
@@ -3304,6 +3305,38 @@ func _test_trade_skill_lowers_fee() -> void:
 	t.accept(tid, "peer")
 	assert_eq(inv_a.get_item_count("hawk_feather"), 9, "novice Trade: 10 → 9 after 10% fee")
 	assert_eq(inv_b.get_item_count("hawk_feather"), 0, "giver's full give leaves their inventory — the fee is destroyed, not retained")
+	t.free()
+	inv_a.free()
+	inv_b.free()
+
+func _test_trade_fee_burns_best_instance() -> void:
+	# A taxed trade of a mixed-condition stack must deliver a DEFINED subset: the
+	# receiver keeps the WORST instance and the fee burns the BEST — the same
+	# worst-first ordering as _remove_instances/_worst_values. Total durability
+	# never increases.
+	var inv_a := InventorySlice.new()   # player (receiver)
+	add_child(inv_a)
+	var inv_b := InventorySlice.new()   # peer (giver)
+	add_child(inv_b)
+	var max_d := inv_b.get_max_durability("FerritePick")
+	var worn := max_d - 30.0
+	inv_b.add_item("FerritePick", 2, [max_d, worn])   # pristine + worn
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("player", inv_a)
+	t.set_party_inventory("peer", inv_b)
+	t._broker_fee = { "novice": 0.9 }   # 90% fee rounds 2 → 1
+	t.set_skill("Trade", "novice")
+	var trade_before := _sum_durability_across([inv_a, inv_b])
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", {}, { "FerritePick": 2 })
+	t.propose(tid, "peer", { "FerritePick": 2 }, {})
+	t.accept(tid, "player")
+	t.accept(tid, "peer")
+	assert_eq(inv_a.get_item_count("FerritePick"), 1, "90% fee delivers 1 of 2 instances")
+	assert_eq(inv_b.get_item_count("FerritePick"), 0, "giver's full give leaves their inventory")
+	assert_eq(inv_a.get_durability("FerritePick"), worn, "receiver keeps the worst instance — the fee burns the best")
+	assert_true(_sum_durability_across([inv_a, inv_b]) <= trade_before, "taxed trade never increases total durability")
 	t.free()
 	inv_a.free()
 	inv_b.free()

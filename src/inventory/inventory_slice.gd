@@ -405,12 +405,19 @@ func repair_item(item_id: String) -> bool:
 ## Static: atomically move goods from `src` to `dst`. Consumes the FULL `give`
 ## (item_id -> quantity) from `src`, carrying each instance's exact per-instance
 ## durability, then adds only `receive` (item_id -> quantity) to `dst` with the
-## removed values (worst first). When `receive` is smaller than `give` the
-## difference is destroyed — the trade uses this to burn the broker fee.
-## `receive` defaults to `give` for a lossless 1:1 move. Returns
-## { success: bool, reason: String }.
-static func transfer(src: Node, dst: Node, give: Dictionary, receive: Dictionary = {}) -> Dictionary:
-	var add: Dictionary = receive if not receive.is_empty() else give
+## removed values. `receive` defaults to `null` (deliver `give` — a lossless 1:1
+## move); an explicit empty dict `{}` delivers nothing (burn the whole give).
+## When `receive` is smaller than `give` the difference is destroyed — the trade
+## uses this to burn the broker fee.
+##
+## Durability ordering: removed values are delivered WORST-first (ascending), so
+## when `receive` < `give` the fee burns the BEST (highest-durability) instances
+## and the receiver keeps the WORST — consistent with `_remove_instances` and
+## `_worst_values`. Returns { success: bool, reason: String }.
+static func transfer(src: Node, dst: Node, give: Dictionary, receive: Variant = null) -> Dictionary:
+	var add: Dictionary = give
+	if receive is Dictionary:
+		add = receive
 	if not bool(dst.can_add_items(add)):
 		return { "success": false, "reason": "inventory_full" }
 	for item_id in give:
@@ -422,7 +429,8 @@ static func transfer(src: Node, dst: Node, give: Dictionary, receive: Dictionary
 	var removed: Dictionary = consumed.get("removed", {})
 	for item_id in add:
 		var qty: int = int(add[item_id])
-		var dvals: Array = removed.get(item_id, [])
+		var dvals: Array = (removed.get(item_id, []) as Array).duplicate()
+		dvals.sort()   # worst-first, so the fee burns the best instances
 		if not bool(dst.add_item(item_id, qty, dvals)):
 			push_warning("InventorySlice.transfer: add_item failed for '%s' ×%d after consuming from source — goods lost" % [item_id, qty])
 	return { "success": true, "reason": "" }
@@ -568,14 +576,17 @@ func _resolve_durability(item_id: String, qty: int, durabilities: Dictionary) ->
 		# fabricates condition beyond pristine, and a negative value becomes
 		# broken (0).
 		return _worst_values(_clamp_values(payload, max_d), qty)
-	# The omission warnings below only fire when the payload is empty for this
-	# item (a non-empty payload returns above), so a present-but-short payload
-	# never triggers them.
+	# Only warn about an omission when the payload is NON-EMPTY but still lacks
+	# this item — that is a partial sync silently resetting the item. A fully
+	# empty payload is the documented old-save signal and is handled quietly.
+	var warn := not durabilities.is_empty()
 	var local: Array = _durability.get(item_id, [])
 	if local.is_empty():
-		push_warning("InventorySlice: sync/save payload omits durability for durable item '%s' — granting pristine copies" % item_id)
+		if warn:
+			push_warning("InventorySlice: sync/save payload omits durability for durable item '%s' — granting pristine copies" % item_id)
 		return _fresh_values(max_d, qty)
-	push_warning("InventorySlice: sync/save payload omits durability for durable item '%s' — preserving local wear (worst-first)" % item_id)
+	if warn:
+		push_warning("InventorySlice: sync/save payload omits durability for durable item '%s' — preserving local wear (worst-first)" % item_id)
 	if local.size() < qty:
 		# Preserve the local wear, pad the excess fresh (max) — those are new
 		# instances the player never held.
@@ -636,21 +647,21 @@ func _append_instances(item_id: String, qty: int, durabilities: Array) -> void:
 
 ## Remove `qty` per-instance durability entries from `item_id`, taking the WORST
 ## (most-worn, lowest-durability) instances first, and return the removed values
-## so a caller can carry them to a recipient. A partial removal keeps the
-## better-condition instances. Erases the key when the stack empties. Returns an
-## empty array for non-durable/unheld items.
+## sorted worst-first in BOTH branches — so a caller that takes fewer than the
+## full stack always receives the worst subset (the fee burns the best). A
+## partial removal keeps the better-condition instances. Erases the key when the
+## stack empties. Returns an empty array for non-durable/unheld items.
 func _remove_instances(item_id: String, qty: int) -> Array:
 	if not _durability.has(item_id):
 		return []
 	var arr: Array = _durability[item_id]
-	if qty >= arr.size():
-		_durability.erase(item_id)
-		return arr
 	var sorted := arr.duplicate()
 	sorted.sort()   # ascending durability: worst (lowest) first
-	var removed: Array = sorted.slice(0, qty)
+	if qty >= arr.size():
+		_durability.erase(item_id)
+		return sorted
 	_durability[item_id] = sorted.slice(qty)
-	return removed
+	return sorted.slice(0, qty)
 
 ## Whether any held instance of `item_id` still has durability > 0.
 func _has_usable_instance(item_id: String) -> bool:
