@@ -185,6 +185,8 @@ func run() -> void:
 	_run_test("chunk: world/chunk coordinate round-trip",       _test_chunk_coordinate_round_trip)
 	_run_test("chunk: per-chunk biome is stable",               _test_chunk_biome_stable)
 	_run_test("chunk: load/unload emits signals",               _test_chunk_load_unload_signals)
+	_run_test("chunk: refresh queues nearest-first",            _test_chunk_refresh_queues_nearest_first)
+	_run_test("chunk: load queue respects per-frame budget",    _test_chunk_load_queue_respects_budget)
 	_run_test("chunk: voxel edits isolated per chunk",          _test_chunk_voxel_edits_isolated)
 	_run_test("chunk: unload preserves edits on reload",        _test_chunk_unload_preserves_edits)
 	_run_test("chunk: creature spawn scales per chunk",         _test_chunk_creature_spawn_per_chunk)
@@ -2665,6 +2667,37 @@ func _test_chunk_load_unload_signals() -> void:
 	assert_true(loaded.has(Vector2i(0, 0)), "chunk_loaded emitted on load")
 	cm.unload_chunk(Vector2i(0, 0))
 	assert_true(unloaded.has(Vector2i(0, 0)), "chunk_unloaded emitted on unload")
+	cm.free()
+
+func _test_chunk_refresh_queues_nearest_first() -> void:
+	var cm := ChunkManager.new()
+	add_child(cm)
+	var player := PlayerSlice.new()
+	add_child(player)
+	cm.player_slice = player
+	cm.view_distance = 1
+	player.spawn_at(Vector3(16.0, 40.0, 16.0))  # chunk (0,0)
+	cm.refresh()
+	assert_true(cm._load_queue.size() > 0, "refresh enqueues desired chunks")
+	assert_eq(cm._load_queue[0], Vector2i(0, 0), "center chunk queued first (nearest-first)")
+	assert_false(cm._loaded.has("0,0"), "loads are queued, not built immediately")
+	cm.free()
+	player.free()
+
+func _test_chunk_load_queue_respects_budget() -> void:
+	var cm := ChunkManager.new()
+	add_child(cm)
+	cm.loads_per_frame = 2
+	cm._pending["1,0"] = true
+	cm._pending["0,1"] = true
+	cm._pending["0,0"] = true
+	cm._load_queue = [Vector2i(1, 0), Vector2i(0, 1), Vector2i(0, 0)]
+	cm._drain_load_queue()
+	assert_eq(cm._load_queue.size(), 1, "budget of 2 leaves one chunk still queued")
+	assert_true(cm._loaded.has("1,0"), "first queued chunk loaded")
+	assert_true(cm._loaded.has("0,1"), "second queued chunk loaded")
+	assert_false(cm._loaded.has("0,0"), "third chunk still pending after one drain")
+	assert_false(cm._pending.has("1,0"), "loaded chunk cleared from pending set")
 	cm.free()
 
 func _test_chunk_voxel_edits_isolated() -> void:
