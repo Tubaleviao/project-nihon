@@ -1,4 +1,4 @@
-const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine } = require('./shared')
+const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, repairData } = require('./shared')
 
 module.exports = {
 
@@ -17,6 +17,11 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 80 },
       toolType:   { type: 'string', description: 'Tool class — the action this tool performs. "pick" mines, "axe" chops.', defaultValue: 'pick' },
+      repair: repairData({
+        station: 'forge',
+        materials: [{ item: 'FerriteIngot', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'novice' }],
+      }),
     },
     relations: {
       ferrite:   { name: 'ferrite',   kind: 'hasOne', target: 'Ferrite' },
@@ -55,6 +60,11 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 160 },
       toolType:   { type: 'string', description: 'Tool class — the action this tool performs. "pick" mines, "axe" chops.', defaultValue: 'pick' },
+      repair: repairData({
+        station: 'master forge',
+        materials: [{ item: 'VeilsteelIngot', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'journeyman' }],
+      }),
     },
     relations: {
       veilsteel:  { name: 'veilsteel',  kind: 'hasOne', target: 'Veilsteel' },
@@ -96,6 +106,11 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 90 },
       toolType:   { type: 'string', description: 'Tool class — the action this tool performs. "pick" mines, "axe" chops.', defaultValue: 'axe' },
+      repair: repairData({
+        station: 'forge',
+        materials: [{ item: 'FerriteIngot', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'novice' }],
+      }),
     },
     relations: {
       ferrite:   { name: 'ferrite',   kind: 'hasOne', target: 'Ferrite' },

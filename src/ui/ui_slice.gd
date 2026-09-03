@@ -40,6 +40,7 @@ var _panels: Dictionary = {}                 # panel name -> PanelContainer
 var _inventory_usage: Label = null
 var _inventory_items: Label = null
 var _crafting_box: VBoxContainer = null
+var _repair_feedback: Label = null
 var _technology_box: VBoxContainer = null
 var _technology_feedback: Label = null
 var _market_box: VBoxContainer = null
@@ -58,6 +59,7 @@ var _proposal_feedback: Label = null
 func _ready() -> void:
 	_build_ui()
 	GameBus.craft_resolved.connect(_on_craft_resolved)
+	GameBus.repair_resolved.connect(_on_repair_resolved)
 	GameBus.research_resolved.connect(_on_research_resolved)
 	GameBus.technology_unlocked.connect(_on_technology_unlocked)
 	GameBus.item_picked_up.connect(_on_item_picked_up)
@@ -112,6 +114,8 @@ func open_window(panel: String) -> void:
 	var p: Control = _panels.get(panel, null)
 	if p == null:
 		return
+	if panel == WINDOW_CRAFTING and _repair_feedback != null:
+		_repair_feedback.text = ""
 	p.visible = true
 	refresh_all()
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
@@ -208,6 +212,36 @@ func crafting_rows() -> Array:
 			"station": str(recipe.get("station", "")),
 			"inputs": _fmt_entries(recipe.get("inputs", [])),
 			"outputs": _fmt_entries(recipe.get("outputs", [])),
+		})
+	return rows
+
+## One row per held repairable item: { id, can_repair, reason, station, materials }.
+## Only durable items that have a fabric repair spec AND are currently held AND
+## are not pristine are listed — a pristine item needs no repair, and stackable
+## materials have no repair spec.
+func repair_rows() -> Array:
+	var rows: Array = []
+	if crafting_slice == null or inventory_slice == null:
+		return rows
+	var ids: Array = inventory_slice.get_contents().keys()
+	ids.sort()
+	for item_id in ids:
+		var iid := str(item_id)
+		var spec: Dictionary = crafting_slice.get_repair_spec(iid)
+		if spec.is_empty():
+			continue
+		var check: Dictionary = crafting_slice.can_repair(iid, spec)
+		# Skip items whose only blocker is being pristine — they need no repair.
+		# Filter on can_repair's reason (which already reflects the condition)
+		# rather than re-deriving "pristine" here.
+		if str(check.get("reason", "")) == "already_pristine":
+			continue
+		rows.append({
+			"id": iid,
+			"can_repair": bool(check.get("success", false)),
+			"reason": str(check.get("reason", "")),
+			"station": str(spec.get("station", "")),
+			"materials": _fmt_entries(spec.get("materials", [])),
 		})
 	return rows
 
@@ -330,6 +364,33 @@ func refresh_crafting() -> void:
 		hbox.add_child(lbl)
 		_crafting_box.add_child(hbox)
 
+	# Repair section: one row per held, repairable, non-pristine item.
+	var repair_rows_list: Array = repair_rows()
+	if not repair_rows_list.is_empty():
+		var sep := Label.new()
+		sep.text = "— Repairs —"
+		sep.add_theme_font_size_override("font_size", 14)
+		sep.modulate = Color(0.75, 0.75, 0.75)
+		_crafting_box.add_child(sep)
+		for row in repair_rows_list:
+			var r: Dictionary = row
+			var hbox := HBoxContainer.new()
+			hbox.add_theme_constant_override("separation", 8)
+			var btn := Button.new()
+			btn.text = "Repair"
+			btn.disabled = not bool(r["can_repair"])
+			btn.pressed.connect(_on_repair_pressed.bind(str(r["id"])))
+			hbox.add_child(btn)
+			var line := str(r["id"])
+			if str(r.get("station", "")) != "":
+				line += "  @ %s" % r["station"]
+			line += "  needs: %s" % r["materials"]
+			var lbl := Label.new()
+			lbl.text = line + ("" if bool(r["can_repair"]) else "  (%s)" % r["reason"])
+			lbl.modulate = Color(1, 1, 1) if bool(r["can_repair"]) else Color(0.6, 0.6, 0.6)
+			hbox.add_child(lbl)
+			_crafting_box.add_child(hbox)
+
 func refresh_technology() -> void:
 	if _technology_box == null:
 		return
@@ -432,6 +493,9 @@ func _trade_status_text() -> String:
 func _on_craft_pressed(recipe_id: String) -> void:
 	GameBus.craft_requested.emit(recipe_id)
 
+func _on_repair_pressed(item_id: String) -> void:
+	GameBus.repair_requested.emit(item_id)
+
 func _on_research_pressed(tech_id: String) -> void:
 	GameBus.research_requested.emit(tech_id)
 
@@ -439,6 +503,17 @@ func _on_close_pressed(panel: String) -> void:
 	close_window(panel)
 
 func _on_craft_resolved(_result: Dictionary) -> void:
+	if _repair_feedback != null:
+		_repair_feedback.text = ""
+	refresh_crafting()
+	refresh_inventory()
+
+func _on_repair_resolved(result: Dictionary) -> void:
+	if _repair_feedback != null:
+		if result.get("success", false):
+			_repair_feedback.text = "Repaired %s." % result.get("item_id", "?")
+		else:
+			_repair_feedback.text = "%s: %s" % [result.get("item_id", "?"), result.get("reason", "?")]
 	refresh_crafting()
 	refresh_inventory()
 
@@ -617,13 +692,19 @@ func _build_inventory_content() -> Control:
 	return vbox
 
 func _build_crafting_content() -> Control:
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	_repair_feedback = Label.new()
+	_repair_feedback.add_theme_font_size_override("font_size", 14)
+	vbox.add_child(_repair_feedback)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_crafting_box = VBoxContainer.new()
 	_crafting_box.add_theme_constant_override("separation", 4)
 	_crafting_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(_crafting_box)
-	return scroll
+	vbox.add_child(scroll)
+	return vbox
 
 func _build_technology_content() -> Control:
 	var vbox := VBoxContainer.new()

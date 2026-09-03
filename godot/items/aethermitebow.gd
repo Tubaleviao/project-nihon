@@ -23,3 +23,4 @@ enum Condition {
 @export var rarity: int
 @export var stackable: bool
 @export var durability: int
+@export var repair: Dictionary

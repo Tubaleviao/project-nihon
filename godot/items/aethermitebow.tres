@@ -10,6 +10,7 @@ weight = 0.9
 rarity = 1
 stackable = false
 durability = 150
+repair = {"station":"arcane forge","materials":[{"item":"ThornwoodPlank","quantity":1},{"item":"AethermiteDust","quantity":1}],"skillGuards":[{"skill":"ArcaneForging","tier":"apprentice"}]}
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "Recurve bow with an aethermite-treated thornwood stave and duskfiber string. Arrows fired from this bow carry a faint magical charge; enchanted arrows deal bonus elemental damage."

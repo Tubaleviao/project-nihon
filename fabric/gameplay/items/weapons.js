@@ -1,4 +1,4 @@
-const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, equipmentVisualFields } = require('./shared')
+const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, equipmentVisualFields, repairData } = require('./shared')
 
 module.exports = {
 
@@ -16,6 +16,11 @@ module.exports = {
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
       stackable: { type: 'boolean', description: 'Always false for weapons', defaultValue: false },
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 100 },
+      repair: repairData({
+        station: 'forge',
+        materials: [{ item: 'FerriteIngot', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'novice' }],
+      }),
     },
     relations: {
       ferrite: { name: 'ferrite', kind: 'hasOne', target: 'Ferrite' },
@@ -52,6 +57,11 @@ module.exports = {
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
       stackable: { type: 'boolean', description: 'Always false for weapons', defaultValue: false },
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 200 },
+      repair: repairData({
+        station: 'master forge',
+        materials: [{ item: 'VeilsteelIngot', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'journeyman' }],
+      }),
       ...equipmentVisualFields({
         slot: 'MainHand',
         deformationMode: 'RIGID',
@@ -103,6 +113,11 @@ module.exports = {
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
       stackable: { type: 'boolean', description: 'Always false for weapons', defaultValue: false },
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 150 },
+      repair: repairData({
+        station: 'arcane forge',
+        materials: [{ item: 'ThornwoodPlank', quantity: 1 }, { item: 'AethermiteDust', quantity: 1 }],
+        skillGuards: [{ skill: 'ArcaneForging', tier: 'apprentice' }],
+      }),
     },
     relations: {
       thornwood:  { name: 'thornwood',  kind: 'hasOne', target: 'Thornwood' },

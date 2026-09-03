@@ -80,8 +80,10 @@ signal creature_state_changed(instance_id: String, creature_id: String, state: S
 ## Remote player position update for ghost interpolation (host → clients).
 signal remote_player_state(peer_id: int, position: Vector3)
 
-## Host → clients: authoritative inventory contents (replace local state).
-signal inventory_synced(contents: Dictionary)
+## Host → clients: authoritative inventory contents (replace local state), plus
+## the per-instance durability map (item_id -> Array) so worn tools don't come
+## back pristine after a sync.
+signal inventory_synced(contents: Dictionary, durabilities: Dictionary)
 
 # ---------------------------------------------------------------------------
 # Persistence
@@ -176,6 +178,14 @@ signal craft_requested(recipe_id: String)
 ## Emitted by CraftingSlice with the outcome of a craft attempt.
 ## result : Dictionary — { recipe_id, success, outputs: [{ item, quantity }], reason }
 signal craft_resolved(result: Dictionary)
+
+## Request to repair a held durable item (emitted by the player/UI or any system).
+## item_id : String — key from GameData.ITEMS (e.g. "FerritePick")
+signal repair_requested(item_id: String)
+
+## Emitted by CraftingSlice with the outcome of a repair attempt.
+## result : Dictionary — { item_id, success, reason }
+signal repair_resolved(result: Dictionary)
 
 # ---------------------------------------------------------------------------
 # Stations

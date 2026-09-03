@@ -33,6 +33,9 @@ extends Node
 ## Local player party id.
 const PARTY_PLAYER := "player"
 
+## Preload the inventory slice so the exchange can use its static `transfer`.
+const InventorySlice := preload("res://src/inventory/inventory_slice.gd")
+
 ## Trade tier → fraction of received goods withheld as a broker fee (fallback,
 ## mirroring the fabric TradeSystem.brokerFee default). Higher Trade lowers the
 ## fee; a master trades tax-free. Overridden from GameData in _ready().
@@ -284,10 +287,19 @@ func _resolve_exchange(t: Dictionary) -> Dictionary:
 	if not _can_add(inv_b, received_b):
 		return _fail(t["id"], "inventory_full:%s" % b)
 
-	_consume(inv_a, give_a)
-	_consume(inv_b, give_b)
-	_add(inv_a, received_a)
-	_add(inv_b, received_b)
+	# Move the goods with two static transfers, each consuming the giver's FULL
+	# give (so the broker fee is destroyed, not retained by the giver) and adding
+	# only the (taxed) received amount to the receiver, carrying the removed
+	# instances' exact per-instance durability (worst first).
+	var r_a: Dictionary = InventorySlice.transfer(inv_b, inv_a, give_b, received_a)   # A receives (taxed) B's give
+	if not bool(r_a.get("success", false)):
+		return _fail(t["id"], str(r_a.get("reason", "transfer_failed")))
+	# The pre-checks above (_can_consume + _can_add) guarantee both transfers
+	# succeed, so the second cannot fail after the first has committed — no
+	# rollback is needed.
+	var r_b: Dictionary = InventorySlice.transfer(inv_a, inv_b, give_a, received_b)   # B receives (taxed) A's give
+	if not bool(r_b.get("success", false)):
+		return _fail(t["id"], str(r_b.get("reason", "transfer_failed")))
 
 	t["state"] = "completed"
 	_emit_synced()
@@ -312,15 +324,8 @@ func _can_consume(inv: Node, counts: Dictionary) -> bool:
 			return false
 	return true
 
-func _consume(inv: Node, counts: Dictionary) -> void:
-	inv.consume_items(counts)
-
 func _can_add(inv: Node, counts: Dictionary) -> bool:
 	return inv.can_add_items(counts)
-
-func _add(inv: Node, counts: Dictionary) -> void:
-	for item_id in counts:
-		inv.add_item(item_id, int(counts[item_id]))
 
 func _state(trade_id: String) -> Dictionary:
 	var t: Dictionary = _trades.get(trade_id, {})

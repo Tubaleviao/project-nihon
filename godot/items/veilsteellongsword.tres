@@ -10,6 +10,7 @@ weight = 4.2
 rarity = 1
 stackable = false
 durability = 200
+repair = {"station":"master forge","materials":[{"item":"VeilsteelIngot","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"journeyman"}]}
 equipmentSlot = "MainHand"
 deformationMode = "RIGID"
 masks = {"primary":false,"secondary":false,"accent":true,"metal":true,"emission":false,"wear":true}

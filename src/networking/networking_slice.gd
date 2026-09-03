@@ -21,7 +21,7 @@ extends Node
 ##         block_changed(action, pos, normal, mat)   — host authoritative edit
 ##         creature_state_changed(iid, state, pos)   — host authoritative delta
 ##         remote_player_state(peer_id, pos)         — host player ghost update
-##         inventory_synced(contents)                — host authoritative contents
+##         inventory_synced(contents, durabilities)  — host authoritative contents
 ##   OUT : peer_connected(peer_id)
 ##         peer_disconnected(peer_id)
 ##         packet_received(peer_id, payload)         — legacy low-level receive
@@ -354,12 +354,13 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	}
 	_broadcast(packet)
 
-func _on_inventory_synced(contents: Dictionary) -> void:
+func _on_inventory_synced(contents: Dictionary, durabilities: Dictionary = {}) -> void:
 	if _role != Role.HOST:
 		return
 	var packet := {
 		"type":     "inventory_synced",
 		"contents": contents,
+		"durabilities": durabilities,
 	}
 	_broadcast(packet)
 
@@ -637,7 +638,10 @@ func _route_h2c(payload: Dictionary) -> void:
 		"remote_player_state":
 			_route_remote_player_state(payload)
 		"inventory_synced":
-			GameBus.inventory_synced.emit(payload.get("contents", {}))
+			GameBus.inventory_synced.emit(
+				payload.get("contents", {}),
+				payload.get("durabilities", {})
+			)
 		"market_synced":
 			GameBus.market_synced.emit(payload.get("data", {}))
 		"governance_synced":

@@ -7,6 +7,15 @@ extends RefCounted
 
 const TIER_ORDER: Array = ["novice", "apprentice", "journeyman", "expert", "master"]
 
-## Rank of a tier name (0 = novice). Returns -1 for an unknown tier.
+## Whether `tier` is a known tier name.
+static func is_valid_tier(tier: String) -> bool:
+	return TIER_ORDER.has(tier)
+
+## Rank of a tier name (0 = novice). Unknown tiers fail closed: they return a
+## rank one past `master`, so a guard that requires an unknown tier can never be
+## satisfied (the required rank is higher than any real tier).
 static func rank(tier: String) -> int:
-	return TIER_ORDER.find(tier)
+	var idx := TIER_ORDER.find(tier)
+	if idx == -1:
+		return TIER_ORDER.size()
+	return idx

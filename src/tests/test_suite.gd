@@ -30,6 +30,7 @@ const PlayerSlice     := preload("res://src/player/player_slice.gd")
 const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
 const Locomotion      := preload("res://src/character/locomotion.gd")
 const SkeletonRig     := preload("res://src/character/skeleton_rig.gd")
+const SkillTiers      := preload("res://src/core/skill_tiers.gd")
 
 var _pass: int = 0
 var _fail: int = 0
@@ -129,6 +130,28 @@ func run() -> void:
 	_run_test("durability: drop and repick resets to full",           _test_durability_drop_repick_resets)
 	_run_test("durability: find_tool returns held pick",              _test_durability_find_tool)
 	_run_test("durability: find_tool skips broken, returns working",  _test_durability_find_tool_skips_broken)
+	_run_test("durability: values round-trip (sync/trade/market)",    _test_durability_values_round_trip)
+	_run_test("durability: sync/load copy, not move",                _test_durability_sync_is_copy_not_move)
+	_run_test("durability: host sync overwrites worn with pristine",  _test_sync_pristine_over_worn)
+	_run_test("durability: missing payload + larger host qty grants fresh excess", _test_sync_missing_payload_grants_fresh_excess)
+	_run_test("durability: shrink to 1 keeps worst instance",        _test_sync_shrink_keeps_worst_instance)
+	_run_test("durability: short payload pads with carried value",   _test_sync_short_payload_pads_with_carried_value)
+	_run_test("durability: above-max payload value clamped",         _test_durability_clamp_above_max)
+	_run_test("durability: negative payload value becomes broken",   _test_durability_clamp_negative_broken)
+	_run_test("repair: spec loaded from fabric",                    _test_repair_spec_loaded)
+	_run_test("repair: worn tool restored to pristine",             _test_repair_restores_worn)
+	_run_test("repair: materials consumed",                         _test_repair_consumes_materials)
+	_run_test("repair: skill guard blocks low tier",                _test_repair_skill_guard_blocks)
+	_run_test("repair: station gate blocks without forge",          _test_repair_station_gate_blocks)
+	_run_test("repair: pristine item already repaired",             _test_repair_pristine_rejected)
+	_run_test("repair: non-durable item rejected",                  _test_repair_non_durable_rejected)
+	_run_test("repair: broken tool restored via bus",               _test_repair_broken_via_bus)
+	_run_test("repair: can_repair is non-mutating",                _test_repair_can_repair_direct)
+	_run_test("repair: failed repair consumes no materials",       _test_repair_failed_consumes_nothing)
+	_run_test("repair: missing materials blocked",                 _test_repair_missing_inputs)
+	_run_test("repair: no item held",                              _test_repair_no_item)
+	_run_test("repair: multi-material AethermiteBow",              _test_repair_multi_material_aethermitebow)
+	_run_test("repair: specs resolve against fabric",              _test_repair_specs_resolve)
 	_run_test("technology: recipe resolves to owning tech",    _test_technology_recipe_resolves_to_tech)
 	_run_test("technology: research requires prerequisite",    _test_technology_research_requires_prereq)
 	_run_test("technology: research consumes materials",       _test_technology_research_consumes_materials)
@@ -196,6 +219,7 @@ func run() -> void:
 	_run_test("trade: reject closes session",                   _test_trade_reject)
 	_run_test("trade: missing goods blocks resolution",         _test_trade_missing_goods)
 	_run_test("trade: Trade tier lowers broker fee",           _test_trade_skill_lowers_fee)
+	_run_test("trade: fee burns the best instance",            _test_trade_fee_burns_best_instance)
 	_run_test("trade: no broker fee when neither side is player", _test_trade_no_fee_without_player)
 	_run_test("trade: propose reports success",                 _test_trade_state_reports_success)
 	_run_test("trade: get_trade returns a defensive copy",      _test_trade_get_trade_defensive_copy)
@@ -210,6 +234,8 @@ func run() -> void:
 	_run_test("trade: broker fee never destroys goods",         _test_trade_fee_never_destroys_goods)
 	_run_test("trade: state round-trips for snapshot/persist",  _test_trade_data_round_trip)
 	_run_test("trade: partial accept broadcasts sync",          _test_trade_partial_accept_syncs)
+	_run_test("trade: broken item stays broken across trade",    _test_trade_broken_item_not_pristine)
+	_run_test("trade: pristine transfer preserves broken copy",  _test_trade_pristine_to_broken_holder)
 	_run_test("market: list and browse listings",               _test_market_list_browse)
 	_run_test("market: buy transfers escrow to buyer",          _test_market_buy_transfers)
 	_run_test("market: expired listing is not browsable",       _test_market_expired_not_browsable)
@@ -219,6 +245,7 @@ func run() -> void:
 	_run_test("market: buy fails without buyer inventory",      _test_market_buy_no_inventory)
 	_run_test("market: list rejects insufficient stock",        _test_market_list_insufficient)
 	_run_test("market: expiry refunds escrow to seller",        _test_market_expire_refunds_escrow)
+	_run_test("market: expiry refunds worn item as worn",       _test_market_expire_preserves_wear)
 	_run_test("market: restored ids never collide",             _test_market_restore_no_id_collision)
 	_run_test("market: client forwards list/buy intent",        _test_market_client_forwards_intent)
 	_run_test("market: client applies authoritative sync",      _test_market_sync_applies_on_client)
@@ -236,6 +263,7 @@ func run() -> void:
 	_run_test("proposal: ratification updates decisions log",   _test_proposal_decisions_log)
 	_run_test("proposal: below threshold stays proposed",       _test_proposal_below_threshold)
 	_run_test("proposal: leadership gates guild formation",     _test_proposal_leadership_guild)
+	_run_test("skills: unknown tier fails closed",              _test_unknown_tier_fails_closed)
 	_run_test("proposal: get_proposal deep-copies votes",       _test_proposal_get_proposal_deep_copy)
 	_run_test("proposal: supersede replaces a proposal",        _test_proposal_supersede)
 	_run_test("proposal: supersede needs ratified replacement", _test_proposal_supersede_requires_ratified_replacement)
@@ -1469,8 +1497,8 @@ func _test_durability_broken_emits() -> void:
 	inv.add_item("FerritePick", 1)
 	var broke := {}
 	GameBus.item_broke.connect(func(iid): broke["id"] = iid)
-	# Force the tool to one remaining point, then use it past the break.
-	inv._durability["FerritePick"] = 1.0
+	# Force the tool to one remaining point via use_item, then use it past the break.
+	_wear_item(inv, "FerritePick", int(inv.get_max_durability("FerritePick")) - 1)
 	var ok := inv.use_item("FerritePick", "mine")
 	assert_true(ok, "the use that consumes the last point still succeeds")
 	assert_eq(broke.get("id", ""), "FerritePick", "item_broke emitted for FerritePick")
@@ -1529,8 +1557,10 @@ func _test_durability_drop_repick_resets() -> void:
 	var max_d := inv.get_max_durability("FerritePick")
 	inv.use_item("FerritePick", "mine")
 	assert_eq(inv.get_durability("FerritePick"), max_d - 1.0, "durability decremented after use")
+	var drop_before := _sum_durability_across([inv])
 	inv.drop_item("FerritePick", 1)
 	assert_eq(inv.get_item_count("FerritePick"), 0, "pick dropped from inventory")
+	assert_true(_sum_durability_across([inv]) <= drop_before, "drop never increases total durability")
 	# Pick up a fresh FerritePick — durability must be full again.
 	inv.add_item("FerritePick", 1)
 	assert_eq(inv.get_durability("FerritePick"), max_d, "repicked tool starts at max durability")
@@ -1541,16 +1571,520 @@ func _test_durability_find_tool_skips_broken() -> void:
 	add_child(inv)
 	inv.add_item("FerritePick", 1)
 	inv.add_item("VeilsteelPick", 1)
-	# Break both picks — find_tool must return "".
-	inv._durability["VeilsteelPick"] = 0.0
-	inv._durability["FerritePick"] = 0.0
+	# Break both picks via use_item — find_tool must return "".
+	_break_item(inv, "VeilsteelPick")
+	_break_item(inv, "FerritePick")
 	var none := inv.find_tool("pick")
 	assert_eq(none, "", "find_tool returns empty when all picks are broken")
 	# Restore one pick's durability — find_tool must return it now.
-	inv._durability.erase("FerritePick")   # erase so _ensure_durability reinits to max
+	inv.repair_item("FerritePick")
 	var found := inv.find_tool("pick")
 	assert_eq(found, "FerritePick", "find_tool returns FerritePick once restored")
 	inv.free()
+
+
+# ---------------------------------------------------------------------------
+# Repair tests (Phase 25 — deferred from Phase 16 tool repair)
+# ---------------------------------------------------------------------------
+
+## Wear `item_id` down by `uses` via the public use_item API, so durability
+## tests exercise the real wear path instead of poking the private
+## `_durability` dictionary.
+func _wear_item(item: Node, item_id: String, uses: int) -> void:
+	for i in uses:
+		item.use_item(item_id, "mine")
+
+## Break `item_id` completely by applying use_item max_durability times.
+func _break_item(item: Node, item_id: String) -> void:
+	var max_d := int(item.get_max_durability(item_id))
+	for i in max_d:
+		item.use_item(item_id, "mine")
+
+## Sum every per-instance durability value across a list of inventory slices.
+## Used to assert durability is conserved across a sync/load copy (never lost,
+## never fabricated).
+func _sum_durability_across(invs: Array) -> float:
+	var total := 0.0
+	for inv in invs:
+		var data: Dictionary = inv.get_durability_data()
+		for item_id in data:
+			for v in data[item_id]:
+				total += float(v)
+	return total
+
+func _test_durability_sync_is_copy_not_move() -> void:
+	# Sync/load apply a COPY of the source's durability: the destination's
+	# durability map matches the source's exactly, the total is conserved, and
+	# the source retains its own state — unlike a transfer/consume, which is a
+	# MOVE that empties the source.
+	var src := InventorySlice.new()
+	add_child(src)
+	var dst := InventorySlice.new()
+	add_child(dst)
+	src.add_item("FerritePick", 2)
+	src.use_item("FerritePick", "mine")   # wear one instance
+	var src_data: Dictionary = src.get_durability_data()
+	dst.replace_contents(src.get_contents(), src_data)
+	assert_eq(dst.get_durability_data(), src.get_durability_data(), "destination durability map equals source exactly")
+	assert_eq(dst.get_durability_values("FerritePick"), src.get_durability_values("FerritePick"), "per-instance values match")
+	assert_eq(_sum_durability_across([dst]), _sum_durability_across([src]), "total durability conserved by the copy")
+	assert_eq(src.get_item_count("FerritePick"), 2, "source still holds its items (copy, not move)")
+	assert_eq(src.get_durability_data(), src_data, "source durability unchanged after sync")
+	src.free()
+	dst.free()
+
+func _test_sync_shrink_keeps_worst_instance() -> void:
+	# A shrinking sync (host says 1, client holds 3) with NO durability payload
+	# must keep the WORST instance, not the first-stored (pristine) one.
+	var client := InventorySlice.new()
+	add_child(client)
+	client.add_item("FerritePick", 3, [80.0, 50.0, 10.0])
+	assert_eq(client.get_durability_values("FerritePick").size(), 3, "client holds three picks")
+	client.replace_contents({ "FerritePick": 1 }, {})
+	var vals := client.get_durability_values("FerritePick")
+	assert_eq(vals.size(), 1, "one survivor after the shrink")
+	assert_eq(vals[0], 10.0, "survivor is the worst instance, not the first-stored pristine one")
+	client.free()
+
+func _test_sync_short_payload_pads_with_carried_value() -> void:
+	# A payload claiming 3 instances but carrying one value pads all three with
+	# that value, NOT the fabric max — a short payload must not fabricate
+	# pristine copies.
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv.replace_contents({ "FerritePick": 3 }, { "FerritePick": [50.0] })
+	var vals := inv.get_durability_values("FerritePick")
+	assert_eq(vals.size(), 3, "three instances after sync")
+	assert_eq(vals[0], 50.0, "first instance carries the payload value")
+	assert_eq(vals[1], 50.0, "second instance padded with the carried value")
+	assert_eq(vals[2], 50.0, "third instance padded with the carried value")
+	inv.free()
+
+func _test_durability_clamp_above_max() -> void:
+	# A payload durability above the fabric max must clamp to max — it must not
+	# fabricate condition beyond pristine.
+	var inv := InventorySlice.new()
+	add_child(inv)
+	var max_d := inv.get_max_durability("FerritePick")
+	inv.replace_contents({ "FerritePick": 1 }, { "FerritePick": [max_d + 50.0] })
+	assert_eq(inv.get_durability("FerritePick"), max_d, "above-max payload value clamps to max")
+	inv.free()
+
+func _test_durability_clamp_negative_broken() -> void:
+	# A negative payload durability clamps to 0 (broken), not to a bogus
+	# negative value.
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv.replace_contents({ "FerritePick": 1 }, { "FerritePick": [-5.0] })
+	assert_eq(inv.get_durability("FerritePick"), 0.0, "negative payload value becomes broken (0)")
+	inv.free()
+
+func _test_durability_values_round_trip() -> void:
+	# Sync: replace_contents with durability data preserves exact values.
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv.add_item("FerritePick", 2)
+	inv.use_item("FerritePick", "mine")
+	var inv2 := InventorySlice.new()
+	add_child(inv2)
+	inv2.replace_contents(inv.get_contents(), inv.get_durability_data())
+	assert_eq(inv2.get_durability_values("FerritePick"), inv.get_durability_values("FerritePick"), "sync round-trips exact durability values")
+	inv.free()
+	inv2.free()
+	# Trade: the transferred pick keeps its exact worn value.
+	var inv_a := InventorySlice.new()
+	add_child(inv_a)
+	var inv_b := InventorySlice.new()
+	add_child(inv_b)
+	inv_a.add_item("FerritePick", 1)
+	inv_a.use_item("FerritePick", "mine")
+	var worn_d := inv_a.get_durability("FerritePick")
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("player", inv_a)
+	t.set_party_inventory("peer", inv_b)
+	t.set_skill("Trade", "master")
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "FerritePick": 1 }, {})
+	t.propose(tid, "peer", {}, { "FerritePick": 1 })
+	var trade_before := _sum_durability_across([inv_a, inv_b])
+	t.accept(tid, "player")
+	t.accept(tid, "peer")
+	assert_eq(inv_b.get_durability("FerritePick"), worn_d, "trade round-trips the exact worn value")
+	assert_true(_sum_durability_across([inv_a, inv_b]) <= trade_before, "trade never increases total durability")
+	t.free()
+	inv_a.free()
+	inv_b.free()
+	# Market: buying a worn listing yields a worn item.
+	var seller := InventorySlice.new()
+	add_child(seller)
+	var buyer := InventorySlice.new()
+	add_child(buyer)
+	var m := MarketSlice.new()
+	add_child(m)
+	m.set_party_inventory("seller", seller)
+	m.set_party_inventory("buyer", buyer)
+	seller.add_item("FerritePick", 1)
+	seller.use_item("FerritePick", "mine")
+	var worn_d2 := seller.get_durability("FerritePick")
+	var buy_before := _sum_durability_across([seller, buyer])
+	var lid := m.list_item("seller", "FerritePick", 1, 10.0)
+	assert_true(lid != "", "listing created")
+	var buy_res := m.buy(lid, "buyer")
+	assert_true(bool(buy_res.get("success", false)), "buy succeeds")
+	assert_eq(buyer.get_durability("FerritePick"), worn_d2, "market buy round-trips the exact worn value")
+	assert_true(_sum_durability_across([seller, buyer]) <= buy_before, "market buy never increases total durability")
+	seller.free()
+	buyer.free()
+	m.free()
+
+func _test_market_expire_preserves_wear() -> void:
+	var seller := InventorySlice.new()
+	add_child(seller)
+	var m := MarketSlice.new()
+	add_child(m)
+	m.set_party_inventory("seller", seller)
+	seller.add_item("FerritePick", 1)
+	seller.use_item("FerritePick", "mine")
+	var worn_d := seller.get_durability("FerritePick")
+	var max_d := seller.get_max_durability("FerritePick")
+	assert_true(worn_d < max_d, "seller holds a worn pick")
+	var expiry_before := _sum_durability_across([seller])
+	var lid := m.list_item("seller", "FerritePick", 1, 10.0, 0.0)   # expires immediately
+	assert_true(lid != "", "listing created")
+	assert_eq(seller.get_item_count("FerritePick"), 0, "pick escrowed out of seller inventory")
+	var removed := m.expire_listings()
+	assert_true(removed >= 1, "listing expired")
+	assert_eq(seller.get_item_count("FerritePick"), 1, "pick refunded")
+	assert_eq(seller.get_durability("FerritePick"), worn_d, "refunded pick is still worn, not pristine")
+	assert_true(_sum_durability_across([seller]) <= expiry_before, "market expiry never increases total durability")
+	seller.free()
+	m.free()
+
+func _test_sync_pristine_over_worn() -> void:
+	# Host's authoritative durability must overwrite a client's worn copy — a
+	# pristine pick in the sync payload comes back pristine, not preserved-worn.
+	var client := InventorySlice.new()
+	add_child(client)
+	client.add_item("FerritePick", 1)
+	client.use_item("FerritePick", "mine")
+	var max_d := client.get_max_durability("FerritePick")
+	assert_true(client.get_durability("FerritePick") < max_d, "client pick starts worn")
+
+	var host := InventorySlice.new()
+	add_child(host)
+	host.add_item("FerritePick", 1)   # pristine
+
+	client.replace_contents(host.get_contents(), host.get_durability_data())
+	assert_eq(client.get_durability("FerritePick"), max_d, "host pristine pick overwrites the client's worn copy")
+	client.free()
+	host.free()
+
+func _test_sync_missing_payload_grants_fresh_excess() -> void:
+	# A sync whose payload omits a durable item must preserve the LOCAL worn
+	# value for the overlapping quantity, but grant FRESH (max) for the excess —
+	# the host says we now hold 3, we only ever held 1, so the 2 new copies are
+	# genuinely fresh, not cloned-worn.
+	var client := InventorySlice.new()
+	add_child(client)
+	client.add_item("FerritePick", 1)
+	client.use_item("FerritePick", "mine")
+	var max_d := client.get_max_durability("FerritePick")
+	var worn_d := client.get_durability("FerritePick")
+	assert_true(worn_d < max_d, "client pick starts worn")
+
+	# Host syncs a larger quantity but sends NO durability for FerritePick.
+	client.replace_contents({ "FerritePick": 3 }, {})
+	var vals := client.get_durability_values("FerritePick")
+	assert_eq(vals.size(), 3, "three instances after sync")
+	assert_eq(vals[0], worn_d, "overlapping instance preserves the local worn value")
+	assert_eq(vals[1], max_d, "first excess instance is fresh (max)")
+	assert_eq(vals[2], max_d, "second excess instance is fresh (max)")
+	client.free()
+
+func _test_repair_spec_loaded() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var spec := c.get_repair_spec("FerritePick")
+	assert_false(spec.is_empty(), "FerritePick has a repair spec")
+	assert_eq(spec["station"], "forge", "FerritePick repairs at a forge")
+	assert_eq(spec["materials"][0]["item"], "FerriteIngot", "repair material is FerriteIngot")
+	assert_eq(spec["skillGuards"][0]["skill"], "Smithing", "repair guard is Smithing")
+	assert_true(c.get_repair_spec("FerriteIngot").is_empty(), "stackable material has no repair spec")
+	c.free()
+
+func _test_repair_restores_worn() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	inv.add_item("FerritePick", 1)
+	inv.add_item("FerriteIngot", 1)
+	var max_d := inv.get_max_durability("FerritePick")
+	inv.use_item("FerritePick", "mine")
+	assert_eq(inv.get_durability("FerritePick"), max_d - 1.0, "pick worn by one use")
+	var result := c.repair("FerritePick")
+	assert_true(result["success"], "repair succeeds")
+	assert_eq(inv.get_durability("FerritePick"), max_d, "durability restored to max")
+	assert_eq(inv.get_condition("FerritePick"), "pristine", "condition back to pristine")
+	c.free()
+	inv.free()
+
+func _test_repair_consumes_materials() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	inv.add_item("FerritePick", 1)
+	inv.add_item("FerriteIngot", 3)
+	inv.use_item("FerritePick", "mine")
+	var result := c.repair("FerritePick")
+	assert_true(result["success"], "repair succeeds")
+	assert_eq(inv.get_item_count("FerriteIngot"), 2, "one FerriteIngot consumed")
+	c.free()
+	inv.free()
+
+func _test_repair_skill_guard_blocks() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	inv.add_item("VeilsteelPick", 1)
+	inv.add_item("VeilsteelIngot", 1)
+	_wear_item(inv, "VeilsteelPick", 1)   # worn
+	# Default Smithing tier is novice; VeilsteelPick repair requires journeyman.
+	var result := c.repair("VeilsteelPick")
+	assert_false(result["success"], "repair blocked at novice")
+	assert_true(str(result["reason"]).begins_with("skill_requirement"), "reason is skill_requirement")
+	c.free()
+	inv.free()
+
+func _test_repair_station_gate_blocks() -> void:
+	var station := StationSlice.new()
+	add_child(station)
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	c.station_slice = station
+	inv.add_item("FerritePick", 1)
+	inv.add_item("FerriteIngot", 1)
+	_wear_item(inv, "FerritePick", 1)
+	station.set_player_position(Vector3.ZERO)
+	var result := c.repair("FerritePick")
+	assert_false(result["success"], "repair blocked without a forge")
+	assert_true(str(result["reason"]).begins_with("station_required"), "reason is station_required")
+	station.place_station("forge", Vector3(1.0, 0.0, 0.0))
+	var result2 := c.repair("FerritePick")
+	assert_true(result2["success"], "repair succeeds with a forge nearby")
+	station.free()
+	c.free()
+	inv.free()
+
+func _test_repair_pristine_rejected() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	inv.add_item("FerritePick", 1)
+	inv.add_item("FerriteIngot", 1)
+	var result := c.repair("FerritePick")
+	assert_false(result["success"], "pristine item cannot be repaired")
+	assert_eq(result["reason"], "already_pristine", "reason is already_pristine")
+	c.free()
+	inv.free()
+
+func _test_repair_non_durable_rejected() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	inv.add_item("FerriteIngot", 5)
+	var result := c.repair("FerriteIngot")
+	assert_false(result["success"], "stackable material cannot be repaired")
+	assert_eq(result["reason"], "not_repairable", "reason is not_repairable")
+	c.free()
+	inv.free()
+
+func _test_repair_broken_via_bus() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	inv.add_item("FerritePick", 1)
+	inv.add_item("FerriteIngot", 3)
+	_break_item(inv, "FerritePick")   # broken
+	var resolved := {}
+	GameBus.repair_resolved.connect(func(r): resolved["r"] = r)
+	GameBus.repair_requested.emit("FerritePick")
+	var r: Dictionary = resolved.get("r", {})
+	assert_true(r.get("success", false), "repair via bus succeeds")
+	assert_eq(inv.get_durability("FerritePick"), inv.get_max_durability("FerritePick"), "broken tool restored to full")
+	assert_eq(inv.get_item_count("FerriteIngot"), 0, "broken repair consumed all three tier-scaled ingots")
+	c.free()
+	inv.free()
+
+func _test_repair_can_repair_direct() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	inv.add_item("FerritePick", 1)
+	inv.add_item("FerriteIngot", 1)
+	inv.use_item("FerritePick", "mine")
+	var check := c.can_repair("FerritePick")
+	assert_true(check["success"], "can_repair reports success for a worn held pick with materials")
+	# can_repair must be a pure query: no materials consumed, durability unchanged.
+	assert_eq(inv.get_item_count("FerriteIngot"), 1, "can_repair consumes no materials")
+	assert_eq(inv.get_condition("FerritePick"), "worn", "can_repair does not restore durability")
+	c.free()
+	inv.free()
+
+func _test_repair_failed_consumes_nothing() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	inv.add_item("VeilsteelPick", 1)
+	inv.add_item("VeilsteelIngot", 1)
+	_wear_item(inv, "VeilsteelPick", 1)
+	# Novice Smithing blocks the journeyman-gated repair.
+	var result := c.repair("VeilsteelPick")
+	assert_false(result["success"], "repair blocked by the skill guard")
+	assert_eq(inv.get_item_count("VeilsteelIngot"), 1, "a failed repair consumes no materials")
+	c.free()
+	inv.free()
+
+func _test_repair_missing_inputs() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	inv.add_item("FerritePick", 1)
+	inv.use_item("FerritePick", "mine")
+	var result := c.repair("FerritePick")
+	assert_false(result["success"], "repair fails when materials are absent")
+	assert_eq(result["reason"], "missing_inputs", "reason is missing_inputs")
+	c.free()
+	inv.free()
+
+func _test_repair_no_item() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	inv.add_item("FerriteIngot", 1)
+	var result := c.repair("FerritePick")
+	assert_false(result["success"], "repair fails when the item is not held")
+	assert_eq(result["reason"], "no_item", "reason is no_item")
+	c.free()
+	inv.free()
+
+func _test_repair_multi_material_aethermitebow() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	c.set_skill("ArcaneForging", "apprentice")
+	inv.add_item("AethermiteBow", 1)
+	inv.add_item("ThornwoodPlank", 1)
+	inv.add_item("AethermiteDust", 1)
+	inv.use_item("AethermiteBow", "attack")   # worn (tiers=1)
+	var result := c.repair("AethermiteBow")
+	assert_true(result["success"], "AethermiteBow repairs with both materials")
+	assert_eq(inv.get_item_count("ThornwoodPlank"), 0, "thornwood plank consumed")
+	assert_eq(inv.get_item_count("AethermiteDust"), 0, "aethermite dust consumed")
+	assert_eq(inv.get_condition("AethermiteBow"), "pristine", "bow restored to pristine")
+	c.free()
+	inv.free()
+
+func _test_trade_broken_item_not_pristine() -> void:
+	var inv_a := InventorySlice.new()
+	add_child(inv_a)
+	var inv_b := InventorySlice.new()
+	add_child(inv_b)
+	inv_a.add_item("FerritePick", 1)
+	_break_item(inv_a, "FerritePick")
+	assert_eq(inv_a.get_condition("FerritePick"), "broken", "seller holds a broken pick")
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("player", inv_a)
+	t.set_party_inventory("peer", inv_b)
+	t.set_skill("Trade", "master")   # tax-free so the exchange is clean
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "FerritePick": 1 }, {})
+	t.propose(tid, "peer", {}, { "FerritePick": 1 })
+	t.accept(tid, "player")
+	var result: Dictionary = t.accept(tid, "peer")
+	assert_true(bool(result.get("success", false)), "trade resolves")
+	assert_eq(inv_b.get_item_count("FerritePick"), 1, "peer received the pick")
+	assert_eq(inv_b.get_condition("FerritePick"), "broken", "traded pick stays broken, not pristine")
+	t.free()
+	inv_a.free()
+	inv_b.free()
+
+func _test_trade_pristine_to_broken_holder() -> void:
+	var inv_a := InventorySlice.new()
+	add_child(inv_a)
+	var inv_b := InventorySlice.new()
+	add_child(inv_b)
+	# B already holds a broken pick.
+	inv_b.add_item("FerritePick", 1)
+	_break_item(inv_b, "FerritePick")
+	assert_eq(inv_b.get_condition("FerritePick"), "broken", "holder's pick is broken")
+	# A trades a pristine pick to B.
+	inv_a.add_item("FerritePick", 1)
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("player", inv_a)
+	t.set_party_inventory("peer", inv_b)
+	t.set_skill("Trade", "master")
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", { "FerritePick": 1 }, {})
+	t.propose(tid, "peer", {}, { "FerritePick": 1 })
+	t.accept(tid, "player")
+	var result: Dictionary = t.accept(tid, "peer")
+	assert_true(bool(result.get("success", false)), "trade resolves")
+	assert_eq(inv_b.get_item_count("FerritePick"), 2, "holder now has two picks")
+	# The broken copy is preserved — the pristine transfer must not overwrite it.
+	assert_eq(inv_b.get_condition("FerritePick"), "broken", "broken copy still broken, not overwritten")
+	assert_eq(inv_b.find_tool("pick"), "FerritePick", "a usable pristine instance is still present")
+	t.free()
+	inv_a.free()
+	inv_b.free()
+
+func _test_repair_specs_resolve() -> void:
+	var c := CraftingSlice.new()
+	add_child(c)
+	for item_id in GameData.ITEMS:
+		var spec := c.get_repair_spec(str(item_id))
+		if spec.is_empty():
+			continue
+		assert_true(str(spec.get("station", "")) != "", "repair spec for %s names a station" % item_id)
+		for mat in spec.get("materials", []):
+			var mid := str(mat.get("item", ""))
+			assert_true(
+				GameData.ITEMS.has(mid) or GameData.MATERIALS.has(mid),
+				"repair material '%s' for %s resolves to an item or material" % [mid, item_id]
+			)
+		for guard in spec.get("skillGuards", []):
+			var skill := str(guard.get("skill", ""))
+			var tier := str(guard.get("tier", "novice"))
+			assert_true(GameData.SKILLS.has(skill), "repair skill '%s' for %s resolves to a skill" % [skill, item_id])
+			assert_true(SkillTiers.TIER_ORDER.has(tier), "repair tier '%s' for %s is a valid tier" % [tier, item_id])
+	c.free()
 
 
 # ---------------------------------------------------------------------------
@@ -2384,9 +2918,11 @@ func _test_net_inventory_replace_contents() -> void:
 	var inv := InventorySlice.new()
 	add_child(inv)
 	inv.add_item("Ferrite", 5)
-	inv.replace_contents({ "Ashite": 3 })
+	inv.replace_contents({ "Ashite": 3, "FerritePick": 2 })
 	assert_eq(inv.get_item_count("Ferrite"), 0, "replace clears old items")
 	assert_eq(inv.get_item_count("Ashite"), 3, "replace applies host contents")
+	assert_eq(inv.get_item_count("FerritePick"), 2, "replace applies a durable item")
+	assert_eq(inv.get_durability_values("FerritePick").size(), 2, "durable durability rebuilt to match quantity")
 	inv.free()
 
 # ---------------------------------------------------------------------------
@@ -2768,6 +3304,39 @@ func _test_trade_skill_lowers_fee() -> void:
 	t.accept(tid, "player")
 	t.accept(tid, "peer")
 	assert_eq(inv_a.get_item_count("hawk_feather"), 9, "novice Trade: 10 → 9 after 10% fee")
+	assert_eq(inv_b.get_item_count("hawk_feather"), 0, "giver's full give leaves their inventory — the fee is destroyed, not retained")
+	t.free()
+	inv_a.free()
+	inv_b.free()
+
+func _test_trade_fee_burns_best_instance() -> void:
+	# A taxed trade of a mixed-condition stack must deliver a DEFINED subset: the
+	# receiver keeps the WORST instance and the fee burns the BEST — the same
+	# worst-first ordering as _remove_instances/_worst_values. Total durability
+	# never increases.
+	var inv_a := InventorySlice.new()   # player (receiver)
+	add_child(inv_a)
+	var inv_b := InventorySlice.new()   # peer (giver)
+	add_child(inv_b)
+	var max_d := inv_b.get_max_durability("FerritePick")
+	var worn := max_d - 30.0
+	inv_b.add_item("FerritePick", 2, [max_d, worn])   # pristine + worn
+	var t := TradeSlice.new()
+	add_child(t)
+	t.set_party_inventory("player", inv_a)
+	t.set_party_inventory("peer", inv_b)
+	t._broker_fee = { "novice": 0.9 }   # 90% fee rounds 2 → 1
+	t.set_skill("Trade", "novice")
+	var trade_before := _sum_durability_across([inv_a, inv_b])
+	var tid := t.start_trade("player", "peer")
+	t.propose(tid, "player", {}, { "FerritePick": 2 })
+	t.propose(tid, "peer", { "FerritePick": 2 }, {})
+	t.accept(tid, "player")
+	t.accept(tid, "peer")
+	assert_eq(inv_a.get_item_count("FerritePick"), 1, "90% fee delivers 1 of 2 instances")
+	assert_eq(inv_b.get_item_count("FerritePick"), 0, "giver's full give leaves their inventory")
+	assert_eq(inv_a.get_durability("FerritePick"), worn, "receiver keeps the worst instance — the fee burns the best")
+	assert_true(_sum_durability_across([inv_a, inv_b]) <= trade_before, "taxed trade never increases total durability")
 	t.free()
 	inv_a.free()
 	inv_b.free()
@@ -3441,6 +4010,33 @@ func _test_proposal_leadership_guild() -> void:
 	assert_true(p.can_form_guild("apprentice"), "apprentice can form a guild")
 	assert_true(p.can_form_guild("master"), "master can form a guild")
 	p.free()
+
+func _test_unknown_tier_fails_closed() -> void:
+	# Guild formation: an unknown Leadership tier must be rejected, not ranked.
+	var p := ProposalSlice.new()
+	add_child(p)
+	assert_false(p.can_form_guild("grandmaster"), "unknown leadership tier cannot form a guild")
+	p.free()
+	# Craft guard: an unknown required tier must block even a master crafter.
+	var c := CraftingSlice.new()
+	add_child(c)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	c.inventory_slice = inv
+	c.set_skill("Smithing", "master")
+	inv.add_item("FerritePick", 1)
+	inv.add_item("FerriteIngot", 1)
+	inv.use_item("FerritePick", "mine")   # worn
+	var bogus_spec := {
+		"station": "",
+		"materials": [{ "item": "FerriteIngot", "quantity": 1 }],
+		"skillGuards": [{ "skill": "Smithing", "tier": "grandmaster" }],
+	}
+	var check := c.can_repair("FerritePick", bogus_spec)
+	assert_false(bool(check.get("success", false)), "unknown required tier blocks repair")
+	assert_true(str(check.get("reason", "")).begins_with("skill_requirement"), "reason is skill_requirement")
+	c.free()
+	inv.free()
 
 func _test_proposal_get_proposal_deep_copy() -> void:
 	var p := ProposalSlice.new()

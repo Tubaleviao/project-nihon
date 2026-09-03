@@ -20,6 +20,7 @@ Standard single-edged blade forged from a refined ferrite ingot. Lightweight and
 | rarity | `common`, `uncommon`, `rare`, `epic`, `legendary` |  |
 | stackable | boolean | Always false for weapons |
 | durability | integer | Remaining durability points before condition degrades |
+| repair | json | Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier). |
 
 ## Related
 

@@ -24,6 +24,24 @@ function itemStateMachine() {
   }
 }
 
+// Structured runtime repair spec consumed by CraftingSlice.repair() (src/crafting/).
+// The prose `repair` behavior rules on each item carry the design intent; this
+// json field is the single source of truth for in-game repair resolution — the
+// required station, materials consumed, and skill guards (skill key + minimum
+// tier). `materials`/`skillGuards` entries reference entity keys from
+// GameData.ITEMS or GameData.MATERIALS and GameData.SKILLS respectively. Items
+// whose prose repair rules reference unmodelled entities (e.g. the VoiditeEdge /
+// VoidRuneTablet "refined voidite shard" + VoidTouched profession) omit this
+// field and are deferred until those entities exist.
+function repairData({ station = '', materials = [], skillGuards = [] }) {
+  return {
+    type: 'json',
+    description:
+      'Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier).',
+    defaultValue: { station, materials, skillGuards },
+  }
+}
+
 function consumableStateMachine() {
   return {
     field: 'condition',
@@ -61,4 +79,4 @@ function equipmentVisualFields({ slot, deformationMode, masks, hideRegions, atta
   }
 }
 
-module.exports = { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, consumableStateMachine, equipmentVisualFields }
+module.exports = { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, consumableStateMachine, equipmentVisualFields, repairData }

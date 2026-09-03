@@ -10,6 +10,7 @@ weight = 2.1
 rarity = 0
 stackable = false
 durability = 120
+repair = {"station":"forge","materials":[{"item":"FerriteIngot","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"novice"}]}
 equipmentSlot = "Head"
 deformationMode = "RIGID"
 masks = {"primary":true,"secondary":true,"accent":true,"metal":true,"emission":false,"wear":true}

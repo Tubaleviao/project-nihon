@@ -380,7 +380,6 @@ func _boot_world() -> void:
 	# Persistence — save the initial world snapshot via the bus.
 	print("\n[Persistence] Saving initial world snapshot to slot 0…")
 	var snapshot := {
-		"version":   1,
 		"timestamp": Time.get_ticks_msec(),
 		"player":    {
 			"name":     "Traveller",
@@ -388,6 +387,7 @@ func _boot_world() -> void:
 			"hp":       _player.get_hp(),
 		},
 		"inventory": _inventory.get_contents(),
+		"inventory_durability": _inventory.get_durability_data(),
 		"world":     {
 			"chunks":       _voxel.get_chunk_manifest(),
 			"dirty_chunks": _voxel.get_dirty_chunk_keys(),
@@ -481,11 +481,11 @@ func _build_snapshot() -> Dictionary:
 		var last_pos: Vector3 = last_known[pid]
 		players[str(pid)] = [last_pos.x, last_pos.y, last_pos.z]
 	return {
-		"version":   1,
 		"heightmaps": _voxel.get_heightmaps(),
 		"edits":     _voxel.get_chunk_manifest(),
 		"creatures": _creature.get_snapshot_creatures(),
 		"inventory": _inventory.get_contents(),
+		"inventory_durability": _inventory.get_durability_data(),
 		"market":    _market.get_market_data(),
 		"governance": _proposal.get_governance_data(),
 		"trade":     _trade.get_trade_data(),
@@ -504,7 +504,7 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 	if data.has("creatures") and data["creatures"] is Array:
 		_creature.apply_snapshot_creatures(data["creatures"])
 	if data.has("inventory") and data["inventory"] is Dictionary:
-		_inventory.replace_contents(data["inventory"])
+		_inventory.replace_contents(data["inventory"], data.get("inventory_durability", {}))
 	if data.has("market") and data["market"] is Dictionary:
 		_market.apply_market_data(data["market"])
 	if data.has("governance") and data["governance"] is Dictionary:
@@ -606,6 +606,12 @@ func _on_save_completed(slot: int) -> void:
 
 func _on_load_completed(slot: int, data: Dictionary) -> void:
 	print("[Persistence] load_completed slot=%d  keys=%s" % [slot, data.keys()])
+	if data.has("inventory") and data["inventory"] is Dictionary:
+		# A MISSING `inventory_durability` key is the intentional old-save signal:
+		# saves written before per-instance durability carried no per-instance
+		# wear, so `replace_contents` correctly grants fresh (pristine) durable
+		# instances rather than resurrecting stale local wear.
+		_inventory.replace_contents(data["inventory"], data.get("inventory_durability", {}))
 	var world: Dictionary = data.get("world", {})
 	if world.has("chunks"):
 		_voxel.apply_chunk_manifest(world["chunks"])

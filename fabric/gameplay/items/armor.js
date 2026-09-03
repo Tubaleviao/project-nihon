@@ -1,4 +1,4 @@
-const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, equipmentVisualFields } = require('./shared')
+const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, equipmentVisualFields, repairData } = require('./shared')
 
 module.exports = {
 
@@ -16,6 +16,11 @@ module.exports = {
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
       stackable: { type: 'boolean', description: 'Always false for armour pieces', defaultValue: false },
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 120 },
+      repair: repairData({
+        station: 'forge',
+        materials: [{ item: 'FerriteIngot', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'novice' }],
+      }),
       ...equipmentVisualFields({
         slot: 'Head',
         deformationMode: 'RIGID',
@@ -60,6 +65,11 @@ module.exports = {
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
       stackable: { type: 'boolean', description: 'Always false for armour pieces', defaultValue: false },
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 250 },
+      repair: repairData({
+        station: 'master forge',
+        materials: [{ item: 'VeilsteelIngot', quantity: 1 }, { item: 'FerriteIngot', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'journeyman' }],
+      }),
       ...equipmentVisualFields({
         slot: 'Chest',
         deformationMode: 'HYBRID',
@@ -111,6 +121,11 @@ module.exports = {
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
       stackable: { type: 'boolean', description: 'Always false for armour pieces', defaultValue: false },
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 80 },
+      repair: repairData({
+        station: 'carpentry bench',
+        materials: [{ item: 'Duskfiber', quantity: 2 }],
+        skillGuards: [{ skill: 'Carpentry', tier: 'apprentice' }],
+      }),
       ...equipmentVisualFields({
         slot: 'Cape',
         deformationMode: 'SKINNED',
@@ -158,6 +173,11 @@ module.exports = {
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
       stackable: { type: 'boolean', description: 'Always false for shields', defaultValue: false },
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 180 },
+      repair: repairData({
+        station: 'forge',
+        materials: [{ item: 'FerriteIngot', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'novice' }],
+      }),
       ...equipmentVisualFields({
         slot: 'OffHand',
         deformationMode: 'RIGID',

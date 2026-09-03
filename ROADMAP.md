@@ -587,7 +587,6 @@ machines are in the item fabric (`pristine → worn → damaged → broken`).
 - All new automated tests pass ✓
 
 **Known simplifications deferred:**
-- Repairing broken tools (requires a repair recipe category)
 - Station placement UI (stations currently spawned via console/test harness)
 - Per-instance durability: stacks of a durable item share one durability value
   (the inventory models item_id → quantity, not per-slot item instances)
@@ -1126,6 +1125,80 @@ community governance hooks.
 
 ---
 
+## Phase 25 — Tool and equipment repair ✅ Done
+
+**Goal:** Close the last Phase 16 "Known simplification": broken tools could not
+be repaired. Repairable equipment now has a fabric-authored repair spec and a
+runtime repair flow that consumes materials, gates on skill + station, and
+restores the item to pristine.
+
+**Newel dependency:** None. Reuses the existing `json` field type (already
+emitted by `generator-godot`); no generator change needed.
+
+**Deliverables:**
+- `fabric/gameplay/items/shared.js` — a `repairData()` helper returning a
+  structured `repair` json field: `{ station, materials: [{item, quantity}],
+  skillGuards: [{skill, tier}] }`. This mirrors `recipeData()` and makes the
+  repair cost a fabric value, not a GDScript constant.
+- `fabric/gameplay/items/{tools,weapons,armor}.js` — every non-stackable
+  equipment item gains a `repair` field transcribed from its prose `repair`
+  behavior rules (e.g. FerritePick → `forge` + 1 FerriteIngot + Smithing novice;
+  VeilsteelLongsword → `master forge` + 1 VeilsteelIngot + Smithing journeyman;
+  AethermiteBow → `arcane forge` + ThornwoodPlank + AethermiteDust + ArcaneForging
+  apprentice).
+- `src/inventory/inventory_slice.gd` — `repair_item(item_id)` restores a held
+  durable item's durability to its fabric maximum (pristine), failing closed for
+  non-durable / un-held items.
+- `src/crafting/crafting_slice.gd` — `repair(item_id)` / `can_repair(item_id)` /
+  `get_repair_spec(item_id)`. Reuses the existing skill-guard and station-gate
+  checkers (`_check_skill_guards` / `_check_station_gate`) so repair obeys the
+  same fail-closed gates as crafting: `not_repairable` / `no_inventory` /
+  `no_item` / `already_pristine` / `skill_requirement:<skill>:<tier>` /
+  `station_required:<type>` / `missing_inputs`. Materials are consumed atomically,
+  then durability is restored.
+- `src/core/bus.gd` — `repair_requested(item_id)` / `repair_resolved(result)`
+  signals.
+- `src/ui/ui_slice.gd` — a "Repairs" section in the crafting window listing held,
+  repairable, non-pristine items with a Repair button wired through the bus;
+  `repair_rows()` is a pure, headless-testable projection.
+- `src/tests/test_suite.gd` — 8 repair tests (spec load, restore-to-pristine,
+  material consumption, skill guard, station gate, pristine rejection,
+  non-durable rejection, broken-tool-via-bus).
+
+**Acceptance criteria:**
+- Repair cost/station/skill come from the fabric `repair` field, not hardcoded ✓
+- A worn/broken tool is restored to pristine by consuming its repair materials ✓
+- Repair obeys the same skill + station gates as crafting, fail-closed ✓
+- A pristine item is not repairable (no wasted materials) ✓
+- Repair is reachable through the bus (`repair_requested` → `repair_resolved`) ✓
+- All 8 repair tests pass at startup ✓
+
+**Durability model (final, do NOT revert):** the per-instance durability array
+**is** the durable stack — `InventorySlice._durability[item_id]` holds one
+entry per held instance, and its `.size()` is the held quantity. Non-durable
+(stackable) items keep their count in `_contents`; durable items live ONLY in
+`_durability`. There is no separate per-item shared value, so the earlier
+"one shared value per item_id × stack_count" design must not be reintroduced
+(repair cost and wear both derive from the per-instance array). Cross-slice
+transfers use the static `InventorySlice.transfer(src, dst, counts)`, which
+carries the exact removed per-instance values; `replace_contents` resolves a
+durable item's array via `_worst_values` (keep the worst instances on a shrink,
+pad a short payload with its carried value, warn + grant fresh when a payload
+omits a durable item).
+
+**Known simplifications (deferred):**
+- **VoiditeEdge / VoidRuneTablet repair** — their prose repair rules reference a
+  "refined voidite shard" (not modelled as an item/material) and gate on the
+  VoidTouched profession (not wired). They carry no `repair` field and return
+  `not_repairable` until those entities exist.
+- **Per-condition-tier cost** — the fabric prose says e.g. "one ingot per
+  condition tier restored"; the structured spec collapses this to a flat
+  full-repair cost (restore straight to pristine for a fixed material spend).
+- **AethermiteBow multi-tier repair** — the prose offers a separate string-only
+  repair and a full stave repair; the spec models the full stave repair only.
+
+---
+
 ## Deferred (in priority order)
 
 - **Public wiki deployment** — VitePress (or equivalent) static-site deployment
@@ -1139,8 +1212,6 @@ community governance hooks.
   Phase 15 creature AI before it can be wired.
 - **Station placement UI** — currently stations are spawned programmatically;
   a build-mode placement flow is needed (deferred from Phase 16).
-- **Tool repair recipes** — broken tools need a dedicated repair recipe category
-  (deferred from Phase 16).
 - **Pack / herd behavior** — creatures alerting nearby allies (deferred from
   Phase 15).
 - **NavigationAgent3D path-finding** — creature movement currently uses direct
