@@ -13,6 +13,13 @@ const CHUNK_SIZE := 32       # tiles per side
 const HEIGHT_SCALE := 5.0    # world units peak-to-valley (gentle, even terrain)
 const BIOME_SEED := 20260815 # fixed seed so biome assignment is deterministic
 
+## Finite world extent: the playable area spans chunk coordinates
+## [-WORLD_RADIUS_CHUNKS, WORLD_RADIUS_CHUNKS) on each axis — a
+## (2*WORLD_RADIUS_CHUNKS)² chunk square (256² chunks at the default 128).
+## Very large, but not infinite: the player and chunk streaming are both
+## clamped to this so the world has a real edge.
+const WORLD_RADIUS_CHUNKS := 128
+
 ## Canonical biome keys, in the same order as the fabric biome enum
 ## (mirrors creature_slice.BIOME_KEYS). Phase 17: biome assignment is per-chunk,
 ## keyed by (cx, cz) so biome borders are stable across sessions.
@@ -67,6 +74,30 @@ func world_to_chunk(world_pos: Vector2) -> Vector2i:
 ## corner in world units).
 func chunk_to_world(chunk_pos: Vector2i) -> Vector2:
 	return Vector2(chunk_pos.x * CHUNK_SIZE, chunk_pos.y * CHUNK_SIZE)
+
+## True when `chunk_pos` lies inside the finite world (see WORLD_RADIUS_CHUNKS).
+func is_chunk_in_bounds(chunk_pos: Vector2i) -> bool:
+	return absi(chunk_pos.x) < WORLD_RADIUS_CHUNKS and absi(chunk_pos.y) < WORLD_RADIUS_CHUNKS
+
+## Half the world's extent in world units (the playable XZ range is ±this).
+func world_half_extent() -> float:
+	return float(WORLD_RADIUS_CHUNKS * CHUNK_SIZE)
+
+## The finite world's chunk-radius (see WORLD_RADIUS_CHUNKS).
+func world_radius_chunks() -> int:
+	return WORLD_RADIUS_CHUNKS
+
+## Clamp a world position's X/Z so the player cannot walk past the world edge.
+## Y is left untouched (gravity/terrain handle vertical). Insets the boundary by
+## a hair so the body stays on the final chunk's collision instead of straddling
+## the exact edge.
+func clamp_to_world(pos: Vector3) -> Vector3:
+	var half := world_half_extent() - 0.5
+	return Vector3(
+		clampf(pos.x, -half, half),
+		pos.y,
+		clampf(pos.z, -half, half)
+	)
 
 # ---------------------------------------------------------------------------
 # Private

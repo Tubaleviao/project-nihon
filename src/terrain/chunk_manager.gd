@@ -8,6 +8,15 @@ extends Node
 ## mesh on chunk_ready) and spawns the per-chunk creature budget; unloading frees
 ## the voxel mesh and despawns non-engaged creatures.
 ##
+## Loading is time-sliced. Building a chunk (noise + surface mesh + per-column
+## collision) is the single most expensive thing this game does on the main
+## thread, and crossing a chunk boundary previously fired every new chunk's
+## build in the same frame — a multi-millisecond stall that froze movement.
+## Chunks are now queued (nearest-first) and drained a bounded number per frame,
+## so the build cost is spread across several frames and never blocks the render
+## loop. The `view_distance` buffer (3 chunks) gives enough lead time that a
+## chunk is almost always ready before the player reaches it.
+##
 ## Plug contract (GameBus signals emitted):
 ##   OUT : chunk_loaded(chunk_pos), chunk_unloaded(chunk_pos)
 ##
@@ -21,6 +30,11 @@ extends Node
 ## Chunk size is owned by TerrainSlice; world_to_chunk() delegates to it.
 const DEFAULT_VIEW_DISTANCE := 3       # Chebyshev radius, in chunks
 
+## Chunk builds to drain from the load queue each frame. Keeping this small
+## (1–2) spreads the per-chunk mesh + collision build over several frames so no
+## single frame stalls. Overridable for tuning/tests.
+const DEFAULT_LOADS_PER_FRAME := 1
+
 ## Set by game_root before the slices enter the tree.
 var terrain_slice: Node = null
 var voxel_slice: Node = null
@@ -30,13 +44,24 @@ var creature_slice: Node = null
 ## Chebyshev radius in chunks. Overridable (tests use a small radius).
 var view_distance: int = DEFAULT_VIEW_DISTANCE
 
+## Chunk builds to process per _process tick (see DEFAULT_LOADS_PER_FRAME).
+var loads_per_frame: int = DEFAULT_LOADS_PER_FRAME
+
 var _loaded: Dictionary = {}   # "cx,cz" -> true
 var _active: bool = false
 var _last_center: Vector2i = Vector2i(-9999, -9999)   # sentinel: no valid center yet
 
+## Chunks queued for loading, ordered nearest-first to the player. Drained a
+## bounded number per frame by _drain_load_queue().
+var _load_queue: Array = []    # of Vector2i
+## Chunks enqueued but not yet built; dedupes against _load_queue so a refresh
+## pass never double-queues a chunk already waiting to load.
+var _pending: Dictionary = {}  # "cx,cz" -> true
+
 func _process(_delta: float) -> void:
 	if not _active:
 		return
+	_drain_load_queue()
 	refresh()
 
 ## Begin automatic streaming (driven by _process). Call after the player has
@@ -48,10 +73,10 @@ func start() -> void:
 func stop() -> void:
 	_active = false
 
-## One streaming pass: load missing chunks in range, unload chunks out of range.
-## Skips the diff entirely when the player hasn't moved to a new chunk since the
-## last call. Each load/unload is deferred to the end of the frame so the loop
-## doesn't block rendering.
+## One streaming pass: queue missing chunks in range (nearest-first), unload
+## chunks out of range. Skips the diff entirely when the player hasn't moved to
+## a new chunk since the last call. Loads are NOT built here — they go onto
+## _load_queue and are drained a bounded number per frame by _drain_load_queue.
 func refresh() -> void:
 	var center := player_chunk()
 	if center == _last_center:
@@ -61,13 +86,36 @@ func refresh() -> void:
 	var desired := _desired_chunks(center, view_distance)
 	var wanted: Dictionary = {}
 	for c in desired:
-		wanted[_chunk_key(c)] = true
-	for key in wanted:
-		if not _loaded.has(key):
-			call_deferred("load_chunk", _key_to_chunk(key))
+		if _in_bounds(c):
+			wanted[_chunk_key(c)] = true
+
+	# Queue loads nearest-first. Building a chunk is expensive, so spreading the
+	# new-ring load across frames (instead of call_deferring them all to the same
+	# frame end) is what removes the boundary-crossing freeze.
+	var to_load: Array = []
+	for c in desired:
+		var key := _chunk_key(c)
+		if _in_bounds(c) and not _loaded.has(key) and not _pending.has(key):
+			to_load.append(c)
+	to_load.sort_custom(func(a, b): return _dist2(center, a) < _dist2(center, b))
+	for c in to_load:
+		_pending[_chunk_key(c)] = true
+		_load_queue.append(c)
+
+	# Unloads are cheap (queue_free only), so they run immediately.
 	for key in _loaded.keys():
 		if not wanted.has(key):
-			call_deferred("unload_chunk", _key_to_chunk(key))
+			unload_chunk(_key_to_chunk(key))
+
+## Build up to `loads_per_frame` queued chunks this frame, nearest-first.
+func _drain_load_queue() -> void:
+	var budget := loads_per_frame
+	while not _load_queue.is_empty() and budget > 0:
+		var chunk: Vector2i = _load_queue.pop_front()
+		_pending.erase(_chunk_key(chunk))
+		if not _loaded.has(_chunk_key(chunk)):
+			load_chunk(chunk)
+		budget -= 1
 
 func load_chunk(chunk_pos: Vector2i) -> void:
 	var key := _chunk_key(chunk_pos)
@@ -123,6 +171,20 @@ func _desired_chunks(center: Vector2i, radius: int) -> Array:
 		for dz in range(-radius, radius + 1):
 			out.append(center + Vector2i(dx, dz))
 	return out
+
+## Squared Chebyshev-ish distance from `center` to `chunk` — used only for
+## ordering the load queue so the chunk nearest the player builds first.
+func _dist2(center: Vector2i, chunk: Vector2i) -> int:
+	var dx := chunk.x - center.x
+	var dz := chunk.y - center.y
+	return dx * dx + dz * dz
+
+## True when `chunk` is inside the finite world, or when no terrain slice is
+## wired (isolated unit tests treat the world as unbounded).
+func _in_bounds(chunk: Vector2i) -> bool:
+	if terrain_slice != null and terrain_slice.has_method("is_chunk_in_bounds"):
+		return terrain_slice.is_chunk_in_bounds(chunk)
+	return true
 
 func _chunk_key(chunk_pos: Vector2i) -> String:
 	return "%d,%d" % [chunk_pos.x, chunk_pos.y]

@@ -185,6 +185,8 @@ func run() -> void:
 	_run_test("chunk: world/chunk coordinate round-trip",       _test_chunk_coordinate_round_trip)
 	_run_test("chunk: per-chunk biome is stable",               _test_chunk_biome_stable)
 	_run_test("chunk: load/unload emits signals",               _test_chunk_load_unload_signals)
+	_run_test("chunk: refresh queues nearest-first",            _test_chunk_refresh_queues_nearest_first)
+	_run_test("chunk: load queue respects per-frame budget",    _test_chunk_load_queue_respects_budget)
 	_run_test("chunk: voxel edits isolated per chunk",          _test_chunk_voxel_edits_isolated)
 	_run_test("chunk: unload preserves edits on reload",        _test_chunk_unload_preserves_edits)
 	_run_test("chunk: creature spawn scales per chunk",         _test_chunk_creature_spawn_per_chunk)
@@ -192,6 +194,10 @@ func run() -> void:
 	_run_test("chunk: apply_edits preserves dirty chunks",      _test_apply_edits_preserves_dirty_chunks)
 	_run_test("chunk: persistence round-trips per-chunk edits", _test_chunk_persistence_manifest)
 	_run_test("chunk: minimap cells resolve chunks",            _test_chunk_minimap_cells)
+	_run_test("chunk: minimap reveals fog of war",              _test_chunk_minimap_fog_of_war)
+	_run_test("chunk: minimap zooms in and out",                _test_chunk_minimap_zoom)
+	_run_test("chunk: minimap arrow points at facing",          _test_chunk_minimap_arrow_direction)
+	_run_test("player: facing is a normalized yaw vector",      _test_player_facing)
 	_run_test("net: client forwards block intent",               _test_net_voxel_client_forwards_intent)
 	_run_test("net: apply_block_change applies host edit",       _test_net_voxel_apply_block_change)
 	_run_test("net: client does not spawn creatures locally",    _test_net_creature_client_no_local_spawn)
@@ -2667,6 +2673,37 @@ func _test_chunk_load_unload_signals() -> void:
 	assert_true(unloaded.has(Vector2i(0, 0)), "chunk_unloaded emitted on unload")
 	cm.free()
 
+func _test_chunk_refresh_queues_nearest_first() -> void:
+	var cm := ChunkManager.new()
+	add_child(cm)
+	var player := PlayerSlice.new()
+	add_child(player)
+	cm.player_slice = player
+	cm.view_distance = 1
+	player.spawn_at(Vector3(16.0, 40.0, 16.0))  # chunk (0,0)
+	cm.refresh()
+	assert_true(cm._load_queue.size() > 0, "refresh enqueues desired chunks")
+	assert_eq(cm._load_queue[0], Vector2i(0, 0), "center chunk queued first (nearest-first)")
+	assert_false(cm._loaded.has("0,0"), "loads are queued, not built immediately")
+	cm.free()
+	player.free()
+
+func _test_chunk_load_queue_respects_budget() -> void:
+	var cm := ChunkManager.new()
+	add_child(cm)
+	cm.loads_per_frame = 2
+	cm._pending["1,0"] = true
+	cm._pending["0,1"] = true
+	cm._pending["0,0"] = true
+	cm._load_queue = [Vector2i(1, 0), Vector2i(0, 1), Vector2i(0, 0)]
+	cm._drain_load_queue()
+	assert_eq(cm._load_queue.size(), 1, "budget of 2 leaves one chunk still queued")
+	assert_true(cm._loaded.has("1,0"), "first queued chunk loaded")
+	assert_true(cm._loaded.has("0,1"), "second queued chunk loaded")
+	assert_false(cm._loaded.has("0,0"), "third chunk still pending after one drain")
+	assert_false(cm._pending.has("1,0"), "loaded chunk cleared from pending set")
+	cm.free()
+
 func _test_chunk_voxel_edits_isolated() -> void:
 	var v := VoxelSlice.new()
 	add_child(v)
@@ -2781,16 +2818,60 @@ func _test_chunk_persistence_manifest() -> void:
 func _test_chunk_minimap_cells() -> void:
 	var mm := Minimap.new()
 	add_child(mm)
-	mm.set_chunks([
-		{ "chunk": Vector2i(0, 0), "biome": "TemperateForest" },
-		{ "chunk": Vector2i(1, 0), "biome": "VolcanicBadlands" },
-	])
-	var cells: Array = mm.get_chunk_cells()
-	assert_eq(cells.size(), 2, "two chunks reported")
-	assert_true(Minimap.BIOME_COLORS.has(cells[0]["biome"]), "biome resolves to a colour")
 	mm.set_player_pos(Vector2(16.0, 16.0))
 	assert_eq(mm.get_player_cell()["chunk"], Vector2i(0, 0), "player cell resolves to chunk (0,0)")
+	assert_true(mm.is_revealed(Vector2i(0, 0)), "player's own chunk is revealed")
+	assert_true(Minimap.BIOME_COLORS.has("TemperateForest"), "biome resolves to a colour")
 	mm.free()
+
+func _test_chunk_minimap_fog_of_war() -> void:
+	var mm := Minimap.new()
+	add_child(mm)
+	mm.set_player_pos(Vector2(16.0, 16.0))  # chunk (0,0), reveals a 3x3 neighbourhood
+	assert_true(mm.is_revealed(Vector2i(0, 0)), "current chunk revealed")
+	assert_true(mm.is_revealed(Vector2i(1, 1)), "neighbour revealed (reveal radius)")
+	assert_false(mm.is_revealed(Vector2i(3, 3)), "far chunk not yet revealed")
+	# Move far away: previously visited chunks stay revealed (persistent fog).
+	mm.set_player_pos(Vector2(16.0 + 32.0 * 10.0, 16.0))  # chunk (10, 0)
+	assert_true(mm.is_revealed(Vector2i(0, 0)), "previously visited chunk stays revealed")
+	mm.free()
+
+func _test_chunk_minimap_zoom() -> void:
+	var mm := Minimap.new()
+	add_child(mm)
+	assert_true(mm.get_zoom() < Minimap.ZOOM_MAX, "default zoom is zoomed in")
+	var before: float = mm.get_zoom()
+	mm.zoom_out()
+	assert_true(mm.get_zoom() > before, "zoom out shows more chunks")
+	mm.zoom_in()
+	mm.zoom_in()
+	assert_true(mm.get_zoom() < Minimap.ZOOM_MAX, "zoom in shows fewer chunks")
+	mm.set_zoom(1000.0)
+	assert_eq(mm.get_zoom(), Minimap.ZOOM_MAX, "zoom clamps to ZOOM_MAX")
+	mm.set_zoom(-5.0)
+	assert_eq(mm.get_zoom(), Minimap.ZOOM_MIN, "zoom clamps to ZOOM_MIN")
+	mm.free()
+
+func _test_chunk_minimap_arrow_direction() -> void:
+	var mm := Minimap.new()
+	add_child(mm)
+	assert_true(mm._facing_screen_dir(Vector2(0.0, -1.0)).is_equal_approx(Vector2(0.0, -1.0)), "north (world -Z) maps to screen up")
+	assert_true(mm._facing_screen_dir(Vector2(1.0, 0.0)).is_equal_approx(Vector2(1.0, 0.0)), "east (world +X) maps to screen right")
+	assert_true(mm._facing_screen_dir(Vector2(0.0, 1.0)).is_equal_approx(Vector2(0.0, 1.0)), "south (world +Z) maps to screen down")
+	assert_true(mm._facing_screen_dir(Vector2.ZERO).is_equal_approx(Vector2(0.0, -1.0)), "degenerate facing falls back to north")
+	mm.free()
+
+func _test_player_facing() -> void:
+	var p := PlayerSlice.new()
+	add_child(p)
+	var f0: Vector2 = p.get_facing()
+	assert_true(absf(f0.length() - 1.0) < 0.001, "facing is a unit vector")
+	assert_true(f0.is_equal_approx(Vector2(0.0, -1.0)), "unrotated player faces -Z (north)")
+	p._pivot.rotate_y(PI * 0.5)
+	var f1: Vector2 = p.get_facing()
+	assert_false(f1.is_equal_approx(f0), "facing changes after yaw rotation")
+	assert_true(absf(f1.length() - 1.0) < 0.001, "rotated facing stays normalized")
+	p.free()
 
 # ---------------------------------------------------------------------------
 # Networking / authority tests (Phase 18)

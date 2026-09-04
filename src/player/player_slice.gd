@@ -67,6 +67,7 @@ const GHOST_INTERP_TIME := 0.1   # seconds to blend between two snapshots
 var creature_slice: Node = null
 var voxel_slice: Node = null
 var station_slice: Node = null
+var terrain_slice: Node = null
 
 func _ready() -> void:
 	_build_body()
@@ -144,6 +145,18 @@ func get_velocity() -> Vector3:
 
 func is_grounded() -> bool:
 	return _body.is_on_floor() if _body else false
+
+## The player's horizontal facing direction in world XZ (normalized), derived
+## from the yaw pivot's forward axis. Used by the minimap to orient the player
+## arrow. Falls back to "north" (-Z) before the body is built.
+func get_facing() -> Vector2:
+	if _pivot == null:
+		return Vector2(0.0, -1.0)
+	var b: Basis = _pivot.global_transform.basis
+	var f := Vector2(-b.z.x, -b.z.z)
+	if f.length_squared() < 0.0001:
+		return Vector2(0.0, -1.0)
+	return f.normalized()
 
 func spawn_at(pos: Vector3) -> void:
 	if _body:
@@ -284,6 +297,12 @@ func _move(delta: float) -> void:
 	_body.move_and_slide()
 	# Sync velocity after slide so gravity accumulation is correct.
 	_vel = _body.velocity
+
+	# Keep the player inside the finite world. The CharacterBody3D's physics
+	# body is moved directly so the clamp is authoritative for both the visible
+	# avatar and collision, without relying on a wall at the world edge.
+	if terrain_slice != null and terrain_slice.has_method("clamp_to_world"):
+		_body.global_position = terrain_slice.clamp_to_world(_body.global_position)
 
 func _broadcast_state() -> void:
 	var payload := {
