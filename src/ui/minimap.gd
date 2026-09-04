@@ -50,6 +50,7 @@ var _revealed: Dictionary = {}
 
 var _player_pos: Vector2 = Vector2.ZERO
 var _player_chunk: Vector2i = Vector2i(-9999, -9999)
+var _facing: Vector2 = Vector2(0.0, -1.0)   # world XZ facing, for the arrow
 var _chunks_across: float = ZOOM_DEFAULT
 
 func _process(_delta: float) -> void:
@@ -57,13 +58,18 @@ func _process(_delta: float) -> void:
 		return
 	var p: Vector3 = player_slice.get_position()
 	_player_pos = Vector2(p.x, p.z)
+	var facing := Vector2(0.0, -1.0)
+	if player_slice.has_method("get_facing"):
+		facing = player_slice.get_facing()
 	var pc := world_to_chunk(_player_pos)
-	# Only redraw when the player enters a new chunk — the dot is always centred,
-	# so sub-chunk movement needs no repaint and the map never re-draws every
-	# frame (which used to churn a fresh loaded-chunk array per frame).
-	if pc != _player_chunk:
+	var chunk_changed := pc != _player_chunk
+	if chunk_changed:
 		_player_chunk = pc
 		_reveal_around(pc)
+	# Redraw when the player enters a new chunk (fog-of-war reveal) or turns
+	# (arrow orientation). Standing still with a steady heading costs nothing.
+	if chunk_changed or not facing.is_equal_approx(_facing):
+		_facing = facing
 		queue_redraw()
 
 func set_player_pos(pos: Vector2) -> void:
@@ -72,6 +78,12 @@ func set_player_pos(pos: Vector2) -> void:
 	if pc != _player_chunk:
 		_player_chunk = pc
 		_reveal_around(pc)
+	queue_redraw()
+
+## Set the player's facing (world XZ) directly — test/debug hook mirroring
+## what _process reads from the player slice.
+func set_facing(facing: Vector2) -> void:
+	_facing = facing
 	queue_redraw()
 
 ## Reveal the chunk neighbourhood around `center` (fog-of-war). No-op beyond the
@@ -183,14 +195,18 @@ func _draw() -> void:
 	# the view reaches it.
 	_draw_world_bounds(size, cell_px)
 
-	# Player dot, centred.
-	var dot_half := cell_px * 0.25
-	var dot := Rect2(
-		size.x * 0.5 - dot_half,
-		size.y * 0.5 - dot_half,
-		cell_px * 0.5, cell_px * 0.5
-	)
-	draw_rect(dot, Color(1.0, 1.0, 1.0))
+	# Player arrow — points in the player's facing direction.
+	var dir := _facing_screen_dir(_facing)
+	var angle := atan2(dir.y, dir.x)
+	var center := Vector2(size.x * 0.5, size.y * 0.5)
+	var arrow_len := cell_px * 0.55
+	var half_w := arrow_len * 0.45
+	var tip := center + Vector2(cos(angle), sin(angle)) * arrow_len
+	var back := center - Vector2(cos(angle), sin(angle)) * arrow_len * 0.5
+	var perp := Vector2(-sin(angle), cos(angle))
+	var left := back + perp * half_w
+	var right := back - perp * half_w
+	draw_colored_polygon(PackedVector2Array([tip, left, right]), Color(1.0, 1.0, 1.0))
 
 ## Draw the finite world's boundary line where it falls inside the visible
 ## window. The playable chunks span [-R, R) on each axis.
@@ -222,6 +238,15 @@ func _biome(c: Vector2i) -> String:
 	if terrain_slice != null and terrain_slice.has_method("get_biome_at_chunk"):
 		return str(terrain_slice.get_biome_at_chunk(c))
 	return "TemperateForest"
+
+## Screen-space unit direction for the player arrow, given a world XZ facing.
+## The minimap maps world +X → screen +X and world +Z → screen +Y (down), so the
+## screen direction is the facing's (x, z) as-is. Returns "north" (up) when the
+## facing is degenerate.
+func _facing_screen_dir(facing: Vector2) -> Vector2:
+	if facing.length_squared() < 0.0001:
+		return Vector2(0.0, -1.0)
+	return Vector2(facing.x, facing.y).normalized()
 
 func _chunk_key(c: Vector2i) -> String:
 	return "%d,%d" % [c.x, c.y]

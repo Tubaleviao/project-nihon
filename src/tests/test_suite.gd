@@ -196,6 +196,8 @@ func run() -> void:
 	_run_test("chunk: minimap cells resolve chunks",            _test_chunk_minimap_cells)
 	_run_test("chunk: minimap reveals fog of war",              _test_chunk_minimap_fog_of_war)
 	_run_test("chunk: minimap zooms in and out",                _test_chunk_minimap_zoom)
+	_run_test("chunk: minimap arrow points at facing",          _test_chunk_minimap_arrow_direction)
+	_run_test("player: facing is a normalized yaw vector",      _test_player_facing)
 	_run_test("net: client forwards block intent",               _test_net_voxel_client_forwards_intent)
 	_run_test("net: apply_block_change applies host edit",       _test_net_voxel_apply_block_change)
 	_run_test("net: client does not spawn creatures locally",    _test_net_creature_client_no_local_spawn)
@@ -2849,6 +2851,27 @@ func _test_chunk_minimap_zoom() -> void:
 	mm.set_zoom(-5.0)
 	assert_eq(mm.get_zoom(), Minimap.ZOOM_MIN, "zoom clamps to ZOOM_MIN")
 	mm.free()
+
+func _test_chunk_minimap_arrow_direction() -> void:
+	var mm := Minimap.new()
+	add_child(mm)
+	assert_true(mm._facing_screen_dir(Vector2(0.0, -1.0)).is_equal_approx(Vector2(0.0, -1.0)), "north (world -Z) maps to screen up")
+	assert_true(mm._facing_screen_dir(Vector2(1.0, 0.0)).is_equal_approx(Vector2(1.0, 0.0)), "east (world +X) maps to screen right")
+	assert_true(mm._facing_screen_dir(Vector2(0.0, 1.0)).is_equal_approx(Vector2(0.0, 1.0)), "south (world +Z) maps to screen down")
+	assert_true(mm._facing_screen_dir(Vector2.ZERO).is_equal_approx(Vector2(0.0, -1.0)), "degenerate facing falls back to north")
+	mm.free()
+
+func _test_player_facing() -> void:
+	var p := PlayerSlice.new()
+	add_child(p)
+	var f0: Vector2 = p.get_facing()
+	assert_true(absf(f0.length() - 1.0) < 0.001, "facing is a unit vector")
+	assert_true(f0.is_equal_approx(Vector2(0.0, -1.0)), "unrotated player faces -Z (north)")
+	p._pivot.rotate_y(PI * 0.5)
+	var f1: Vector2 = p.get_facing()
+	assert_false(f1.is_equal_approx(f0), "facing changes after yaw rotation")
+	assert_true(absf(f1.length() - 1.0) < 0.001, "rotated facing stays normalized")
+	p.free()
 
 # ---------------------------------------------------------------------------
 # Networking / authority tests (Phase 18)

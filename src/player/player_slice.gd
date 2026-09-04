@@ -146,6 +146,18 @@ func get_velocity() -> Vector3:
 func is_grounded() -> bool:
 	return _body.is_on_floor() if _body else false
 
+## The player's horizontal facing direction in world XZ (normalized), derived
+## from the yaw pivot's forward axis. Used by the minimap to orient the player
+## arrow. Falls back to "north" (-Z) before the body is built.
+func get_facing() -> Vector2:
+	if _pivot == null:
+		return Vector2(0.0, -1.0)
+	var b: Basis = _pivot.global_transform.basis
+	var f := Vector2(-b.z.x, -b.z.z)
+	if f.length_squared() < 0.0001:
+		return Vector2(0.0, -1.0)
+	return f.normalized()
+
 func spawn_at(pos: Vector3) -> void:
 	if _body:
 		_body.global_position = pos
