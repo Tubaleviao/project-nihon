@@ -67,6 +67,7 @@ const GHOST_INTERP_TIME := 0.1   # seconds to blend between two snapshots
 var creature_slice: Node = null
 var voxel_slice: Node = null
 var station_slice: Node = null
+var terrain_slice: Node = null
 
 func _ready() -> void:
 	_build_body()
@@ -284,6 +285,12 @@ func _move(delta: float) -> void:
 	_body.move_and_slide()
 	# Sync velocity after slide so gravity accumulation is correct.
 	_vel = _body.velocity
+
+	# Keep the player inside the finite world. The CharacterBody3D's physics
+	# body is moved directly so the clamp is authoritative for both the visible
+	# avatar and collision, without relying on a wall at the world edge.
+	if terrain_slice != null and terrain_slice.has_method("clamp_to_world"):
+		_body.global_position = terrain_slice.clamp_to_world(_body.global_position)
 
 func _broadcast_state() -> void:
 	var payload := {

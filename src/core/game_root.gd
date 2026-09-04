@@ -112,6 +112,7 @@ func _ready() -> void:
 	_inventory.loot_slice      = _loot
 	_player.creature_slice     = _creature
 	_player.voxel_slice        = _voxel
+	_player.terrain_slice      = _terrain
 	_battle.creature_slice     = _creature
 	_loot.creature_slice       = _creature
 	_crafting.inventory_slice  = _inventory
@@ -177,6 +178,7 @@ func _ready() -> void:
 	_minimap.offset_bottom = 180.0
 	_minimap.chunk_manager = _chunk_manager
 	_minimap.player_slice = _player
+	_minimap.terrain_slice = _terrain
 	minimap_layer.add_child(_minimap)
 
 	# Bus listeners for integration-layer logging.

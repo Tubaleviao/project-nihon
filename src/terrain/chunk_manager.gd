@@ -33,7 +33,7 @@ const DEFAULT_VIEW_DISTANCE := 3       # Chebyshev radius, in chunks
 ## Chunk builds to drain from the load queue each frame. Keeping this small
 ## (1–2) spreads the per-chunk mesh + collision build over several frames so no
 ## single frame stalls. Overridable for tuning/tests.
-const DEFAULT_LOADS_PER_FRAME := 2
+const DEFAULT_LOADS_PER_FRAME := 1
 
 ## Set by game_root before the slices enter the tree.
 var terrain_slice: Node = null
@@ -86,7 +86,8 @@ func refresh() -> void:
 	var desired := _desired_chunks(center, view_distance)
 	var wanted: Dictionary = {}
 	for c in desired:
-		wanted[_chunk_key(c)] = true
+		if _in_bounds(c):
+			wanted[_chunk_key(c)] = true
 
 	# Queue loads nearest-first. Building a chunk is expensive, so spreading the
 	# new-ring load across frames (instead of call_deferring them all to the same
@@ -94,7 +95,7 @@ func refresh() -> void:
 	var to_load: Array = []
 	for c in desired:
 		var key := _chunk_key(c)
-		if not _loaded.has(key) and not _pending.has(key):
+		if _in_bounds(c) and not _loaded.has(key) and not _pending.has(key):
 			to_load.append(c)
 	to_load.sort_custom(func(a, b): return _dist2(center, a) < _dist2(center, b))
 	for c in to_load:
@@ -177,6 +178,13 @@ func _dist2(center: Vector2i, chunk: Vector2i) -> int:
 	var dx := chunk.x - center.x
 	var dz := chunk.y - center.y
 	return dx * dx + dz * dz
+
+## True when `chunk` is inside the finite world, or when no terrain slice is
+## wired (isolated unit tests treat the world as unbounded).
+func _in_bounds(chunk: Vector2i) -> bool:
+	if terrain_slice != null and terrain_slice.has_method("is_chunk_in_bounds"):
+		return terrain_slice.is_chunk_in_bounds(chunk)
+	return true
 
 func _chunk_key(chunk_pos: Vector2i) -> String:
 	return "%d,%d" % [chunk_pos.x, chunk_pos.y]

@@ -194,6 +194,8 @@ func run() -> void:
 	_run_test("chunk: apply_edits preserves dirty chunks",      _test_apply_edits_preserves_dirty_chunks)
 	_run_test("chunk: persistence round-trips per-chunk edits", _test_chunk_persistence_manifest)
 	_run_test("chunk: minimap cells resolve chunks",            _test_chunk_minimap_cells)
+	_run_test("chunk: minimap reveals fog of war",              _test_chunk_minimap_fog_of_war)
+	_run_test("chunk: minimap zooms in and out",                _test_chunk_minimap_zoom)
 	_run_test("net: client forwards block intent",               _test_net_voxel_client_forwards_intent)
 	_run_test("net: apply_block_change applies host edit",       _test_net_voxel_apply_block_change)
 	_run_test("net: client does not spawn creatures locally",    _test_net_creature_client_no_local_spawn)
@@ -2814,15 +2816,38 @@ func _test_chunk_persistence_manifest() -> void:
 func _test_chunk_minimap_cells() -> void:
 	var mm := Minimap.new()
 	add_child(mm)
-	mm.set_chunks([
-		{ "chunk": Vector2i(0, 0), "biome": "TemperateForest" },
-		{ "chunk": Vector2i(1, 0), "biome": "VolcanicBadlands" },
-	])
-	var cells: Array = mm.get_chunk_cells()
-	assert_eq(cells.size(), 2, "two chunks reported")
-	assert_true(Minimap.BIOME_COLORS.has(cells[0]["biome"]), "biome resolves to a colour")
 	mm.set_player_pos(Vector2(16.0, 16.0))
 	assert_eq(mm.get_player_cell()["chunk"], Vector2i(0, 0), "player cell resolves to chunk (0,0)")
+	assert_true(mm.is_revealed(Vector2i(0, 0)), "player's own chunk is revealed")
+	assert_true(Minimap.BIOME_COLORS.has("TemperateForest"), "biome resolves to a colour")
+	mm.free()
+
+func _test_chunk_minimap_fog_of_war() -> void:
+	var mm := Minimap.new()
+	add_child(mm)
+	mm.set_player_pos(Vector2(16.0, 16.0))  # chunk (0,0), reveals a 3x3 neighbourhood
+	assert_true(mm.is_revealed(Vector2i(0, 0)), "current chunk revealed")
+	assert_true(mm.is_revealed(Vector2i(1, 1)), "neighbour revealed (reveal radius)")
+	assert_false(mm.is_revealed(Vector2i(3, 3)), "far chunk not yet revealed")
+	# Move far away: previously visited chunks stay revealed (persistent fog).
+	mm.set_player_pos(Vector2(16.0 + 32.0 * 10.0, 16.0))  # chunk (10, 0)
+	assert_true(mm.is_revealed(Vector2i(0, 0)), "previously visited chunk stays revealed")
+	mm.free()
+
+func _test_chunk_minimap_zoom() -> void:
+	var mm := Minimap.new()
+	add_child(mm)
+	assert_true(mm.get_zoom() < Minimap.ZOOM_MAX, "default zoom is zoomed in")
+	var before: float = mm.get_zoom()
+	mm.zoom_out()
+	assert_true(mm.get_zoom() > before, "zoom out shows more chunks")
+	mm.zoom_in()
+	mm.zoom_in()
+	assert_true(mm.get_zoom() < Minimap.ZOOM_MAX, "zoom in shows fewer chunks")
+	mm.set_zoom(1000.0)
+	assert_eq(mm.get_zoom(), Minimap.ZOOM_MAX, "zoom clamps to ZOOM_MAX")
+	mm.set_zoom(-5.0)
+	assert_eq(mm.get_zoom(), Minimap.ZOOM_MIN, "zoom clamps to ZOOM_MIN")
 	mm.free()
 
 # ---------------------------------------------------------------------------
