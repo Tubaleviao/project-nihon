@@ -15,13 +15,22 @@ const SPEED        := 4.5     # m/s horizontal
 const JUMP_FORCE   := 5.0     # m/s vertical
 const GRAVITY      := -9.8    # m/s²
 const MOUSE_SENS   := 0.002   # radians per pixel
-const CAMERA_PITCH_MIN := -80.0
-const CAMERA_PITCH_MAX :=  80.0
+# Isometric orbit camera: the mouse orbits (yaw) + tilts (pitch) around the
+# player, and the scroll wheel zooms. Pitch is clamped to a downward-only range
+# so the camera always looks at the ground from above (classic isometric view).
+const CAMERA_PITCH_MIN := -75.0   # degrees below horizontal (looking down)
+const CAMERA_PITCH_MAX := -20.0
+const CAMERA_PITCH     := -45.0   # default isometric down-angle
+const CAMERA_DISTANCE      := 12.0  # orbit radius behind the pivot
+const CAMERA_DISTANCE_MIN  := 4.0
+const CAMERA_DISTANCE_MAX  := 24.0
+const CAMERA_PIVOT_HEIGHT  := 2.0   # vertical point the camera orbits around
+const ZOOM_STEP := 1.5             # world units per scroll tick
 const SYNC_INTERVAL := 30     # physics ticks between network sync broadcasts
 const ATTACK_RANGE := 3.0     # metres — melee interaction radius
-const PICKUP_RANGE := 8.0     # metres — how far the player can aim-pick
+const PICKUP_RANGE := 60.0    # metres — how far the player can aim-pick (camera sits far back)
 const PICKUP_COLLISION_MASK := 4   # layer 3 (bit 2) — matches loot pickup bodies
-const BUILD_RANGE := 8.0      # metres — how far the player can reach a block
+const BUILD_RANGE := 60.0     # metres — how far the player can reach a block
 const TERRAIN_COLLISION_MASK := 2  # layer 2 (bit 1) — terrain, for mine/build ray
 
 const MAX_HP := 100.0
@@ -104,6 +113,12 @@ func _input(event: InputEvent) -> void:
 			cam_arm.rotation_degrees.x - event.relative.y * rad_to_deg(MOUSE_SENS),
 			CAMERA_PITCH_MIN, CAMERA_PITCH_MAX
 		)
+	# Scroll wheel → zoom the orbit camera in/out (captured mouse only).
+	if event is InputEventMouseButton and event.pressed and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_zoom(-ZOOM_STEP)
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_zoom(ZOOM_STEP)
 	# All world actions below require a captured mouse. While a UI window is
 	# open the UI slice keeps the mouse visible, so this guard prevents
 	# attacking, mining, or placing through an open menu. ESC (mouse capture
@@ -162,6 +177,13 @@ func spawn_at(pos: Vector3) -> void:
 	if _body:
 		_body.global_position = pos
 		_vel = Vector3.ZERO
+
+## Adjust the orbit camera's distance from the player (scroll-wheel zoom),
+## clamped to [CAMERA_DISTANCE_MIN, CAMERA_DISTANCE_MAX].
+func _zoom(delta_z: float) -> void:
+	if _camera == null:
+		return
+	_camera.position.z = clampf(_camera.position.z + delta_z, CAMERA_DISTANCE_MIN, CAMERA_DISTANCE_MAX)
 
 func get_hp() -> float:
 	return _hp
@@ -253,15 +275,18 @@ func _build_body() -> void:
 	_pivot.name = "YawPivot"
 	_body.add_child(_pivot)
 
-	# Camera arm (controls pitch).
+	# Camera arm (controls pitch) — pitched down for the isometric view.
 	var cam_arm := Node3D.new()
 	cam_arm.name = "CamArm"
-	cam_arm.position = Vector3(0, 1.6, 0)   # eye height
+	cam_arm.position = Vector3(0, CAMERA_PIVOT_HEIGHT, 0)
+	cam_arm.rotation_degrees.x = CAMERA_PITCH
 	_pivot.add_child(cam_arm)
 
+	# Camera sits back along the arm's +Z (behind/above the pivot) so it looks
+	# down at the player from an isometric angle. Zoom adjusts this distance.
 	_camera = Camera3D.new()
 	_camera.name = "PlayerCamera"
-	_camera.position = Vector3(0, 0, 0)
+	_camera.position = Vector3(0, 0, CAMERA_DISTANCE)
 	_camera.current  = true
 	cam_arm.add_child(_camera)
 
@@ -598,6 +623,8 @@ func _build_shortcuts_menu() -> void:
 
 	_add_key_row(vbox, "WASD", "Move")
 	_add_key_row(vbox, "Space", "Jump")
+	_add_key_row(vbox, "Mouse move", "Orbit camera")
+	_add_key_row(vbox, "Scroll", "Zoom")
 	_add_mouse_row(vbox, MOUSE_BUTTON_LEFT, "Attack / Pick up")
 	_add_mouse_row(vbox, MOUSE_BUTTON_RIGHT, "Mine")
 	_add_mouse_row(vbox, MOUSE_BUTTON_MIDDLE, "Place")
