@@ -208,17 +208,15 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 ## The position is derived from chunk_pos, creature_id, and spawn_index so the same
 ## creature always lands at the same spot regardless of frame rate or call order.
 func _deterministic_chunk_position(chunk_pos: Vector2i, creature_id: String, spawn_index: int) -> Vector2:
-	var tile: float = _tile_size()
-	var tiles_per_side: int = _chunk_tile_count()
-	var cs: float = float(tiles_per_side) * tile   # world units per chunk side
-	var inner: int = tiles_per_side - 2            # tiles available after 1-tile border inset
+	var cs: int = _chunk_size()
+	var inner: int = cs - 2  # tiles available after 1-tile border inset
 	var seed_x: int = (chunk_pos.x * 73856093) ^ (chunk_pos.y * 19349663) ^ (creature_id.hash() * 83492791) ^ (spawn_index * 1000003)
 	var seed_z: int = (chunk_pos.x * 19349663) ^ (chunk_pos.y * 83492791) ^ (creature_id.hash() * 1000003) ^ (spawn_index * 73856093)
 	var local_x: int = (abs(seed_x) % inner) + 1
 	var local_z: int = (abs(seed_z) % inner) + 1
 	return Vector2(
-		float(chunk_pos.x) * cs + float(local_x) * tile + tile * 0.5,
-		float(chunk_pos.y) * cs + float(local_z) * tile + tile * 0.5
+		float(chunk_pos.x * cs + local_x) + 0.5,
+		float(chunk_pos.y * cs + local_z) + 0.5
 	)
 
 ## The biome key for a chunk, or "" when no terrain_slice is wired (isolated tests).
@@ -227,17 +225,11 @@ func _chunk_biome(chunk_pos: Vector2i) -> String:
 		return str(terrain_slice.get_biome_at_chunk(chunk_pos))
 	return ""
 
-## Tiles per chunk side; falls back to 32 when unwired (isolated tests).
-func _chunk_tile_count() -> int:
-	if terrain_slice != null and "CHUNK_SIZE" in terrain_slice:
+## Chunk side length from TerrainSlice; falls back to 32 when unwired (tests).
+func _chunk_size() -> int:
+	if terrain_slice != null and terrain_slice.has_method("world_to_chunk"):
 		return terrain_slice.CHUNK_SIZE
 	return 32
-
-## World units per tile; falls back to 1.0 when unwired (isolated tests).
-func _tile_size() -> float:
-	if terrain_slice != null and "TILE_SIZE" in terrain_slice:
-		return terrain_slice.TILE_SIZE
-	return 1.0
 
 ## Canonical biome key list from TerrainSlice; falls back to the hard list when unwired.
 func _biome_keys() -> Array:

@@ -2198,7 +2198,7 @@ func _make_voxel() -> VoxelSlice:
 	var v := VoxelSlice.new()
 	add_child(v)
 	var hm: Array = []
-	hm.resize(64 * 64)
+	hm.resize(32 * 32)
 	hm.fill(2.0)
 	v.build_chunk(Vector2i(0, 0), hm)
 	return v
@@ -2209,7 +2209,7 @@ func _test_voxel_mine_yields_material() -> void:
 	add_child(inv)
 	v.inventory_slice = inv
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 2.0, "flat chunk height is 2.0")
-	var r := v.mine_block(Vector3(16.0, 2.0, 16.0))
+	var r := v.mine_block(Vector3(16.5, 2.0, 16.5))
 	assert_true(r.get("success", false), "mine succeeds on a 2.0-tall column")
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.875, "height lowered by STEP_HEIGHT")
 	assert_true(GameData.MATERIALS.has(r.get("material", "")), "yielded a valid fabric material")
@@ -2219,8 +2219,8 @@ func _test_voxel_mine_yields_material() -> void:
 
 func _test_voxel_mine_bedrock() -> void:
 	var v := _make_voxel()
-	v.apply_edits({ "32,32": 0.0 })
-	var r := v.mine_block(Vector3(16.0, 0.0, 16.0))
+	v.apply_edits({ "16,16": 0.0 })
+	var r := v.mine_block(Vector3(16.5, 0.0, 16.5))
 	assert_false(r.get("success", false), "mining at bedrock fails")
 	v.free()
 
@@ -2229,16 +2229,14 @@ func _test_voxel_mine_side_face() -> void:
 	var inv := InventorySlice.new()
 	add_child(inv)
 	v.inventory_slice = inv
-	# East-facing face (normal +X) at x=16.5 — boundary between tile 32 and 33:
-	# the hit block is tile 32 (west).
-	v.mine_block(Vector3(16.5, 1.5, 16.25), Vector3(1, 0, 0))
+	# East-facing face (normal +X) at x=17.0: the hit block is tile 16 (west).
+	v.mine_block(Vector3(17.0, 1.5, 16.5), Vector3(1, 0, 0))
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.875, "+X face mines the block west of the boundary")
-	assert_eq(v.get_voxel_height_at(Vector2(16.5, 16.0)), 2.0, "east block untouched")
-	# West-facing face (normal -X) at x=17.0 — boundary between tile 33 and 34:
-	# the hit block is tile 34 (east).
-	v.mine_block(Vector3(17.0, 1.5, 16.25), Vector3(-1, 0, 0))
-	assert_eq(v.get_voxel_height_at(Vector2(17.0, 16.0)), 1.875, "-X face mines the block east of the boundary")
-	assert_eq(v.get_voxel_height_at(Vector2(16.5, 16.0)), 2.0, "west block untouched")
+	assert_eq(v.get_voxel_height_at(Vector2(17.0, 16.0)), 2.0, "east block untouched")
+	# West-facing face (normal -X) at x=19.0: the hit block is tile 19 (east).
+	v.mine_block(Vector3(19.0, 1.5, 16.5), Vector3(-1, 0, 0))
+	assert_eq(v.get_voxel_height_at(Vector2(19.0, 16.0)), 1.875, "-X face mines the block east of the boundary")
+	assert_eq(v.get_voxel_height_at(Vector2(18.0, 16.0)), 2.0, "west block untouched")
 	v.free()
 	inv.free()
 
@@ -2262,7 +2260,7 @@ func _test_voxel_place_consumes() -> void:
 	v.inventory_slice = inv
 	v.set_place_material("Ashite")
 	inv.add_item("Ashite", 3)
-	var ok := v.place_block(Vector3(16.0, 2.0, 16.0), Vector3.UP)
+	var ok := v.place_block(Vector3(16.5, 2.0, 16.5), Vector3.UP)
 	assert_true(ok, "place succeeds")
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 2.125, "height raised by STEP_HEIGHT")
 	assert_eq(inv.get_item_count("Ashite"), 2, "Ashite consumed from inventory")
@@ -2276,8 +2274,8 @@ func _test_voxel_place_cap() -> void:
 	v.inventory_slice = inv
 	v.set_place_material("Ashite")
 	inv.add_item("Ashite", 1)
-	v.apply_edits({ "32,32": v.MAX_HEIGHT })
-	var ok := v.place_block(Vector3(16.0, v.MAX_HEIGHT, 16.0), Vector3.UP)
+	v.apply_edits({ "16,16": v.MAX_HEIGHT })
+	var ok := v.place_block(Vector3(16.5, v.MAX_HEIGHT, 16.5), Vector3.UP)
 	assert_false(ok, "place beyond build cap fails")
 	assert_eq(inv.get_item_count("Ashite"), 1, "blocked placement refunds the material")
 	v.free()
@@ -2297,8 +2295,8 @@ func _test_voxel_biome_materials() -> void:
 
 func _test_voxel_edits_round_trip() -> void:
 	var v := _make_voxel()
-	v.apply_edits({ "32,32": 1.0, "34,34": 3.5 })
-	assert_eq(v.get_edits().get("32,32", 0.0), 1.0, "edit 32,32 survives")
+	v.apply_edits({ "16,16": 1.0, "17,17": 3.5 })
+	assert_eq(v.get_edits().get("16,16", 0.0), 1.0, "edit 16,16 survives")
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.0, "height reflects restored edit")
 	assert_eq(v.get_voxel_height_at(Vector2(17.0, 17.0)), 3.5, "second edit restored")
 	v.free()
@@ -2311,11 +2309,9 @@ func _test_voxel_placed_block_keeps_material_color() -> void:
 	# Find a tile whose biome material is NOT Ferrite so the colour change is
 	# unambiguous (the synthetic chunk has no terrain_slice → TemperateForest).
 	var tile := Vector2i(-1, -1)
-	for tz in range(64):
-		for tx in range(64):
-			var wx := float(tx) * 0.5 + 0.25
-			var wz := float(tz) * 0.5 + 0.25
-			if v.material_for_biome("TemperateForest", Vector2(wx, wz)) != "Ferrite":
+	for tz in range(32):
+		for tx in range(32):
+			if v.material_for_biome("TemperateForest", Vector2(tx, tz)) != "Ferrite":
 				tile = Vector2i(tx, tz)
 				break
 		if tile.x >= 0:
@@ -2323,7 +2319,7 @@ func _test_voxel_placed_block_keeps_material_color() -> void:
 	assert_true(tile.x >= 0, "found a non-Ferrite tile in the test chunk")
 	v.set_place_material("Ferrite")
 	inv.add_item("Ferrite", 1)
-	var center := Vector2(float(tile.x) * 0.5 + 0.25, float(tile.y) * 0.5 + 0.25)
+	var center := Vector2(tile.x + 0.5, tile.y + 0.5)
 	assert_true(v.place_block(Vector3(center.x, 2.0, center.y), Vector3.UP), "place succeeds")
 	assert_eq(v._column_color(center), VoxelSlice.MATERIAL_COLORS["Ferrite"], "placed block renders Ferrite colour, not biome colour")
 	v.free()
@@ -2336,8 +2332,8 @@ func _test_voxel_mine_placed_block_yields_material() -> void:
 	v.inventory_slice = inv
 	v.set_place_material("Thornwood")
 	inv.add_item("Thornwood", 1)
-	assert_true(v.place_block(Vector3(16.0, 2.0, 16.0), Vector3.UP), "place Thornwood succeeds")
-	var r := v.mine_block(Vector3(16.0, 2.5, 16.0))
+	assert_true(v.place_block(Vector3(16.5, 2.0, 16.5), Vector3.UP), "place Thornwood succeeds")
+	var r := v.mine_block(Vector3(16.5, 2.5, 16.5))
 	assert_true(r.get("success", false), "mine succeeds")
 	assert_eq(str(r.get("material", "")), "Thornwood", "mining a placed block yields its own material")
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 2.0, "height back to natural after mining")
@@ -2353,11 +2349,9 @@ func _test_voxel_placed_block_preserves_base_colour() -> void:
 	# column renders as two distinct layers: natural base (biome colour) + the
 	# placed block (Ferrite colour) — the base must NOT be recoloured.
 	var tile := Vector2i(-1, -1)
-	for tz in range(64):
-		for tx in range(64):
-			var wx := float(tx) * 0.5 + 0.25
-			var wz := float(tz) * 0.5 + 0.25
-			if v.material_for_biome("TemperateForest", Vector2(wx, wz)) != "Ferrite":
+	for tz in range(32):
+		for tx in range(32):
+			if v.material_for_biome("TemperateForest", Vector2(tx, tz)) != "Ferrite":
 				tile = Vector2i(tx, tz)
 				break
 		if tile.x >= 0:
@@ -2365,7 +2359,7 @@ func _test_voxel_placed_block_preserves_base_colour() -> void:
 	assert_true(tile.x >= 0, "found a non-Ferrite tile in the test chunk")
 	v.set_place_material("Ferrite")
 	inv.add_item("Ferrite", 1)
-	var center := Vector2(float(tile.x) * 0.5 + 0.25, float(tile.y) * 0.5 + 0.25)
+	var center := Vector2(tile.x + 0.5, tile.y + 0.5)
 	assert_true(v.place_block(Vector3(center.x, 2.0, center.y), Vector3.UP), "place succeeds")
 	var layers: Array = v._column_layers(Vector2i(0, 0), v._heightmaps["0,0"], tile.x, tile.y)
 	assert_true(layers.size() >= 2, "column has natural + placed layers")
@@ -2381,17 +2375,15 @@ func _test_voxel_place_after_mine_keeps_colour() -> void:
 	v.inventory_slice = inv
 	# Find a non-Ferrite (e.g. Thornwood) tile to mine.
 	var tile := Vector2i(-1, -1)
-	for tz in range(64):
-		for tx in range(64):
-			var wx := float(tx) * 0.5 + 0.25
-			var wz := float(tz) * 0.5 + 0.25
-			if v.material_for_biome("TemperateForest", Vector2(wx, wz)) != "Ferrite":
+	for tz in range(32):
+		for tx in range(32):
+			if v.material_for_biome("TemperateForest", Vector2(tx, tz)) != "Ferrite":
 				tile = Vector2i(tx, tz)
 				break
 		if tile.x >= 0:
 			break
 	assert_true(tile.x >= 0, "found a non-Ferrite tile in the test chunk")
-	var center := Vector2(float(tile.x) * 0.5 + 0.25, float(tile.y) * 0.5 + 0.25)
+	var center := Vector2(tile.x + 0.5, tile.y + 0.5)
 	var mine_pos := Vector3(center.x, 2.0, center.y)
 	# Mine the natural top block (yields the biome material, e.g. Thornwood).
 	assert_true(v.mine_block(mine_pos).get("success", false), "mine natural succeeds")
@@ -2719,11 +2711,11 @@ func _test_chunk_voxel_edits_isolated() -> void:
 	add_child(inv)
 	v.inventory_slice = inv
 	var flat: Array = []
-	flat.resize(64 * 64)
+	flat.resize(32 * 32)
 	flat.fill(2.0)
 	v.build_chunk(Vector2i(0, 0), flat)
 	v.build_chunk(Vector2i(1, 0), flat)
-	assert_true(v.mine_block(Vector3(16.0, 2.0, 16.0)).get("success", false), "mine in chunk (0,0)")
+	assert_true(v.mine_block(Vector3(16.5, 2.0, 16.5)).get("success", false), "mine in chunk (0,0)")
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.875, "chunk (0,0) lowered")
 	assert_eq(v.get_voxel_height_at(Vector2(48.0, 16.0)), 2.0, "chunk (1,0) unaffected")
 	v.free()
@@ -2733,10 +2725,10 @@ func _test_chunk_unload_preserves_edits() -> void:
 	var v := VoxelSlice.new()
 	add_child(v)
 	var flat: Array = []
-	flat.resize(64 * 64)
+	flat.resize(32 * 32)
 	flat.fill(2.0)
 	v.build_chunk(Vector2i(0, 0), flat)
-	v.apply_edits({ "32,32": 1.0 })
+	v.apply_edits({ "16,16": 1.0 })
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.0, "edit applied")
 	v.unload_chunk(Vector2i(0, 0))
 	v.build_chunk(Vector2i(0, 0), flat)
@@ -2750,7 +2742,7 @@ func _test_apply_edits_preserves_dirty_chunks() -> void:
 	add_child(inv)
 	v.inventory_slice = inv
 	var flat: Array = []
-	flat.resize(64 * 64)
+	flat.resize(32 * 32)
 	flat.fill(2.0)
 	v.build_chunk(Vector2i(0, 0), flat)
 	# Mine a block — this marks chunk (0,0) dirty.
@@ -2805,14 +2797,14 @@ func _test_chunk_persistence_manifest() -> void:
 	var v := VoxelSlice.new()
 	add_child(v)
 	var flat: Array = []
-	flat.resize(64 * 64)
+	flat.resize(32 * 32)
 	flat.fill(2.0)
 	v.build_chunk(Vector2i(0, 0), flat)
-	v.apply_edits({ "32,32": 1.0, "96,96": 3.0 })
+	v.apply_edits({ "16,16": 1.0, "48,48": 3.0 })
 	var manifest: Dictionary = v.get_chunk_manifest()
 	assert_true(manifest.has("0,0"), "manifest groups chunk (0,0)")
 	assert_true(manifest.has("1,1"), "manifest groups chunk (1,1)")
-	assert_eq(float(manifest["0,0"]["edits"]["32,32"]), 1.0, "chunk (0,0) edit recorded")
+	assert_eq(float(manifest["0,0"]["edits"]["16,16"]), 1.0, "chunk (0,0) edit recorded")
 	var v2 := VoxelSlice.new()
 	add_child(v2)
 	v2.build_chunk(Vector2i(0, 0), flat)
@@ -2894,7 +2886,7 @@ func _test_net_voxel_client_forwards_intent() -> void:
 	add_child(v)
 	v.is_authoritative = false
 	var flat: Array = []
-	flat.resize(64 * 64)
+	flat.resize(32 * 32)
 	flat.fill(2.0)
 	v.build_chunk(Vector2i(0, 0), flat)
 	var intent := {}
@@ -2913,7 +2905,7 @@ func _test_net_voxel_apply_block_change() -> void:
 	var v := VoxelSlice.new()
 	add_child(v)
 	var flat: Array = []
-	flat.resize(64 * 64)
+	flat.resize(32 * 32)
 	flat.fill(2.0)
 	v.build_chunk(Vector2i(0, 0), flat)
 	var reemit := 0
