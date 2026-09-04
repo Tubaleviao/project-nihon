@@ -2211,7 +2211,7 @@ func _test_voxel_mine_yields_material() -> void:
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 2.0, "flat chunk height is 2.0")
 	var r := v.mine_block(Vector3(16.5, 2.0, 16.5))
 	assert_true(r.get("success", false), "mine succeeds on a 2.0-tall column")
-	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.5, "height lowered by STEP_HEIGHT")
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.875, "height lowered by STEP_HEIGHT")
 	assert_true(GameData.MATERIALS.has(r.get("material", "")), "yielded a valid fabric material")
 	assert_eq(inv.get_item_count(str(r.get("material", ""))), 1, "material added to inventory")
 	v.free()
@@ -2231,11 +2231,11 @@ func _test_voxel_mine_side_face() -> void:
 	v.inventory_slice = inv
 	# East-facing face (normal +X) at x=17.0: the hit block is tile 16 (west).
 	v.mine_block(Vector3(17.0, 1.5, 16.5), Vector3(1, 0, 0))
-	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.5, "+X face mines the block west of the boundary")
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.875, "+X face mines the block west of the boundary")
 	assert_eq(v.get_voxel_height_at(Vector2(17.0, 16.0)), 2.0, "east block untouched")
 	# West-facing face (normal -X) at x=19.0: the hit block is tile 19 (east).
 	v.mine_block(Vector3(19.0, 1.5, 16.5), Vector3(-1, 0, 0))
-	assert_eq(v.get_voxel_height_at(Vector2(19.0, 16.0)), 1.5, "-X face mines the block east of the boundary")
+	assert_eq(v.get_voxel_height_at(Vector2(19.0, 16.0)), 1.875, "-X face mines the block east of the boundary")
 	assert_eq(v.get_voxel_height_at(Vector2(18.0, 16.0)), 2.0, "west block untouched")
 	v.free()
 	inv.free()
@@ -2262,7 +2262,7 @@ func _test_voxel_place_consumes() -> void:
 	inv.add_item("Ashite", 3)
 	var ok := v.place_block(Vector3(16.5, 2.0, 16.5), Vector3.UP)
 	assert_true(ok, "place succeeds")
-	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 2.5, "height raised by STEP_HEIGHT")
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 2.125, "height raised by STEP_HEIGHT")
 	assert_eq(inv.get_item_count("Ashite"), 2, "Ashite consumed from inventory")
 	v.free()
 	inv.free()
@@ -2716,7 +2716,7 @@ func _test_chunk_voxel_edits_isolated() -> void:
 	v.build_chunk(Vector2i(0, 0), flat)
 	v.build_chunk(Vector2i(1, 0), flat)
 	assert_true(v.mine_block(Vector3(16.5, 2.0, 16.5)).get("success", false), "mine in chunk (0,0)")
-	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.5, "chunk (0,0) lowered")
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.875, "chunk (0,0) lowered")
 	assert_eq(v.get_voxel_height_at(Vector2(48.0, 16.0)), 2.0, "chunk (1,0) unaffected")
 	v.free()
 	inv.free()
@@ -2911,9 +2911,9 @@ func _test_net_voxel_apply_block_change() -> void:
 	var reemit := 0
 	GameBus.block_changed.connect(func(_a, _p, _n, _m): reemit += 1)
 	v.apply_block_change("mine", Vector3(16.0, 2.0, 16.0), Vector3.UP, "")
-	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.5, "mine applied (2.0 → 1.5)")
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.875, "mine applied (2.0 → 1.875)")
 	v.apply_block_change("place", Vector3(16.0, 2.0, 16.0), Vector3.UP, "Ferrite")
-	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 2.0, "place applied (1.5 → 2.0)")
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 2.0, "place applied (1.875 → 2.0)")
 	assert_eq(reemit, 0, "apply_block_change does not re-emit block_changed")
 	v.free()
 
