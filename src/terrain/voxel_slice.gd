@@ -29,9 +29,9 @@ extends Node
 
 ## CHUNK_SIZE is defined once on TerrainSlice and accessed via terrain_slice.CHUNK_SIZE.
 ## The local alias below keeps internal uses readable without duplicating the value.
-const CHUNK_SIZE  := 32        # alias — authoritative copy lives in TerrainSlice
-const TILE_SIZE   := 1.0       # world units per tile (XZ)
-const STEP_HEIGHT := 0.5       # world units per quantised height step
+const CHUNK_SIZE  := 64        # alias — authoritative copy lives in TerrainSlice
+const TILE_SIZE   := 0.5       # world units per tile (XZ)
+const STEP_HEIGHT := 0.125     # world units per quantised height step (walkable, no jumps)
 const MIN_HEIGHT  := 0.0       # bedrock — cannot mine below this
 const MAX_HEIGHT  := 16.0      # build cap — cannot place above this
 

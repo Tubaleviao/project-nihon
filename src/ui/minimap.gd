@@ -15,7 +15,7 @@ extends Control
 ## projections (world_to_chunk / get_player_cell / reveal tracking) are pure and
 ## are what the automated test suite asserts against.
 
-const CHUNK_SIZE := 32                 # tiles per side — must match TerrainSlice
+const CHUNK_SIZE := 32                 # world units per chunk side (TerrainSlice CHUNK_SIZE × TILE_SIZE)
 
 ## Reveal this many chunks around the player's current chunk (Chebyshev radius).
 ## 1 reveals a 3×3 neighbourhood — enough to see where you are and where you

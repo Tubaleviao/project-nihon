@@ -9,7 +9,8 @@ extends Node
 ##   request_chunk(pos: Vector2i) -> void   — kick off async generation
 ##   get_height_at(world_pos: Vector2) -> float — sample the last generated chunk
 
-const CHUNK_SIZE := 32       # tiles per side
+const CHUNK_SIZE := 64       # tiles per side
+const TILE_SIZE := 0.5       # world units per tile (XZ) — smaller squares = finer terrain
 const HEIGHT_SCALE := 5.0    # world units peak-to-valley (gentle, even terrain)
 const BIOME_SEED := 20260815 # fixed seed so biome assignment is deterministic
 
@@ -68,12 +69,20 @@ func get_biome_at_chunk(chunk_pos: Vector2i) -> String:
 
 ## Convert a world XZ position to its containing chunk coordinate.
 func world_to_chunk(world_pos: Vector2) -> Vector2i:
-	return Vector2i(floori(world_pos.x / CHUNK_SIZE), floori(world_pos.y / CHUNK_SIZE))
+	return Vector2i(floori(world_pos.x / (CHUNK_SIZE * TILE_SIZE)), floori(world_pos.y / (CHUNK_SIZE * TILE_SIZE)))
 
 ## Convert a chunk coordinate to the world XZ origin of that chunk (bottom-left
 ## corner in world units).
 func chunk_to_world(chunk_pos: Vector2i) -> Vector2:
-	return Vector2(chunk_pos.x * CHUNK_SIZE, chunk_pos.y * CHUNK_SIZE)
+	return Vector2(chunk_pos.x * CHUNK_SIZE * TILE_SIZE, chunk_pos.y * CHUNK_SIZE * TILE_SIZE)
+
+## World units per chunk side (CHUNK_SIZE tiles × TILE_SIZE = 32).
+func chunk_world_size() -> float:
+	return float(CHUNK_SIZE) * TILE_SIZE
+
+## World units per tile (XZ).
+func tile_size() -> float:
+	return TILE_SIZE
 
 ## True when `chunk_pos` lies inside the finite world (see WORLD_RADIUS_CHUNKS).
 func is_chunk_in_bounds(chunk_pos: Vector2i) -> bool:
@@ -81,7 +90,7 @@ func is_chunk_in_bounds(chunk_pos: Vector2i) -> bool:
 
 ## Half the world's extent in world units (the playable XZ range is ±this).
 func world_half_extent() -> float:
-	return float(WORLD_RADIUS_CHUNKS * CHUNK_SIZE)
+	return float(WORLD_RADIUS_CHUNKS) * CHUNK_SIZE * TILE_SIZE
 
 ## The finite world's chunk-radius (see WORLD_RADIUS_CHUNKS).
 func world_radius_chunks() -> int:
@@ -110,6 +119,8 @@ func _generate(pos: Vector2i) -> Array:
 	var origin_y := pos.y * CHUNK_SIZE
 	for ty in range(CHUNK_SIZE):
 		for tx in range(CHUNK_SIZE):
-			var raw := _noise.get_noise_2d(origin_x + tx, origin_y + ty)
+			# Sample noise at the tile's world position (tile index × TILE_SIZE)
+			# so the heightfield matches get_height_at() at the same world coords.
+			var raw := _noise.get_noise_2d((origin_x + tx) * TILE_SIZE, (origin_y + ty) * TILE_SIZE)
 			out[ty * CHUNK_SIZE + tx] = (raw + 1.0) * 0.5 * HEIGHT_SCALE
 	return out
