@@ -372,4 +372,3 @@ signal proposal_supersede_intent(proposal_id: String, replacement_id: String)
 
 ## Host → clients: authoritative governance state (proposals + decisions log).
 signal governance_synced(data: Dictionary)
-
