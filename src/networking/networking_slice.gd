@@ -46,6 +46,9 @@ enum Role { OFFLINE, HOST, CLIENT }
 
 const DEFAULT_PORT    := 7777
 const DEFAULT_CHANNEL := 0
+## Default max peers for a dedicated/headless server (the single-player demo
+## host caps at 1). ENet's practical ceiling; see Phase 29 interest management.
+const DEFAULT_MAX_CLIENTS := 64
 ## Max JSON chars per snapshot chunk (≈ bytes for ASCII). Large snapshots are
 ## split across multiple reliable packets and reassembled on the client.
 const SNAPSHOT_CHUNK_SIZE := 16384
@@ -141,7 +144,7 @@ func _process(_delta: float) -> void:
 # ---------------------------------------------------------------------------
 
 ## Start an authoritative ENet server. Sets the slice to HOST role.
-func host(port: int = DEFAULT_PORT, max_clients: int = 64) -> Error:
+func host(port: int = DEFAULT_PORT, max_clients: int = DEFAULT_MAX_CLIENTS) -> Error:
 	_peer = ENetMultiplayerPeer.new()
 	var err := _peer.create_server(port, max_clients)
 	if err != OK:

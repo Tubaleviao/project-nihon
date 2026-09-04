@@ -20,9 +20,20 @@ extends Node
 ## Spawning uses _chunk_biome() which delegates to terrain_slice, so no local
 ## copy of these constants is needed here.
 
-## Instance record: { "creature_id", "position", "chunk", "state", "hp", "respawn_at", "body" }
+## Instance record: { "creature_id", "position", "chunk", "state", "hp", "respawn_at", "mi" }.
+## `mi` is an opaque MultiMesh instance index, never a live Node3D — a headless
+## server keeps the same records with no rendering attached.
+const MultimeshPool := preload("res://src/core/multimesh_pool.gd")
+
 var _instances: Dictionary = {}
 var _next_id: int = 0
+
+## Shared MultiMesh pool for creature bodies; null when render_visuals is false
+## (headless server) so the simulation runs with no visual nodes.
+var _pool: Node = null
+## When false (headless server), no pool is built and transform/colour writes
+## are no-ops — the same data model drives a bare simulation.
+var render_visuals: bool = true
 
 ## Set by game_root before the slices enter the tree so creatures can spawn on
 ## the terrain surface instead of a fixed height.
@@ -45,6 +56,8 @@ var _last_broadcast: Dictionary = {}
 func _ready() -> void:
 	GameBus.creature_died.connect(_on_creature_died)
 	GameBus.creature_state_changed.connect(_on_creature_state_changed)
+	if render_visuals:
+		_build_pool()
 
 func _process(delta: float) -> void:
 	_tick_respawn()
@@ -79,9 +92,8 @@ func set_instance_position(instance_id: String, pos: Vector3) -> void:
 	if not _instances.has(instance_id):
 		return
 	_instances[instance_id]["position"] = pos
-	var body = _instances[instance_id].get("body", null)
-	if body != null and is_instance_valid(body):
-		body.position = pos
+	if _pool != null and _instances[instance_id].has("mi"):
+		_pool.set_transform(int(_instances[instance_id]["mi"]), _visual_transform(pos))
 
 ## Return a snapshot of all active instances (for HUD / minimap use).
 func get_all_instances() -> Array:
@@ -158,9 +170,8 @@ func despawn_for_chunk(chunk_pos: Vector2i) -> void:
 			continue
 		if inst["state"] == "aggressive" or inst["state"] == "fleeing":
 			continue
-		var body = inst.get("body", null)
-		if body != null and is_instance_valid(body):
-			body.queue_free()
+		if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
+			_pool.release(int(inst["mi"]))
 		to_erase.append(iid)
 	for iid in to_erase:
 		_instances.erase(iid)
@@ -185,9 +196,9 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 	var iid := "creature_%d" % _next_id
 	_next_id += 1
 
-	# Build a visible body so the creature can be seen in the world.
-	var body := _make_visual(creature_id, pos)
-	add_child(body)
+	# Build a visible body so the creature can be seen in the world. Headless
+	# (no pool) allocates no visual — the record carries the instance index only.
+	var mi := _alloc_visual(creature_id, pos)
 
 	_instances[iid] = {
 		"creature_id": creature_id,
@@ -197,7 +208,7 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 		"state":       "idle",
 		"hp":          hp,
 		"respawn_at":  -1.0,
-		"body":        body,
+		"mi":          mi,
 	}
 
 	GameBus.creature_spawned.emit(iid, creature_id, pos)
@@ -252,8 +263,8 @@ func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String
 				inst["state"]      = "dead"
 				inst["hp"]         = 0.0
 				inst["respawn_at"] = Time.get_ticks_msec() + respawn_secs * 1000.0
-				if inst.has("body") and inst["body"]:
-					inst["body"].visible = false
+				if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
+					_pool.hide(int(inst["mi"]))
 
 func _tick_respawn() -> void:
 	var now := float(Time.get_ticks_msec())
@@ -267,9 +278,8 @@ func _tick_respawn() -> void:
 			inst["hp"]         = max_hp
 			inst["respawn_at"] = -1.0
 			inst["position"]   = inst["spawn_pos"]
-			if inst.has("body") and inst["body"]:
-				inst["body"].position = inst["spawn_pos"]
-				inst["body"].visible  = true
+			if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
+				_pool.set_transform(int(inst["mi"]), _visual_transform(inst["spawn_pos"]))
 			print("CreatureSlice: %s [%s] respawned" % [creature_id, iid])
 			GameBus.creature_respawned.emit(iid, creature_id)
 
@@ -305,17 +315,19 @@ func apply_creature_state(instance_id: String, creature_id: String, state: Strin
 			inst["creature_id"] = creature_id
 		inst["state"]    = state
 		inst["position"] = position
-		var body = inst.get("body", null)
-		if body != null and is_instance_valid(body):
-			body.position = position
-			body.visible = state != "dead"
+		if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
+			if state == "dead":
+				_pool.hide(int(inst["mi"]))
+			else:
+				_pool.set_transform(int(inst["mi"]), _visual_transform(position))
 		return
 	# First sight: create a record + visual body without touching GameData counts.
 	# The creature_id is preserved from the host so the body gets the correct
 	# colour; fall back to instance_id (still a non-empty node name) when absent.
 	var visual_id: String = creature_id if creature_id != "" else instance_id
-	var body := _make_visual(visual_id, position)
-	add_child(body)
+	var mi := _alloc_visual(visual_id, position)
+	if state == "dead" and _pool != null and mi >= 0:
+		_pool.hide(mi)
 	_instances[instance_id] = {
 		"creature_id": creature_id,
 		"position":    position,
@@ -324,7 +336,7 @@ func apply_creature_state(instance_id: String, creature_id: String, state: Strin
 		"state":       state,
 		"hp":          0.0,
 		"respawn_at":  -1.0,
-		"body":        body,
+		"mi":          mi,
 	}
 
 ## Seed the client's creature population from a host snapshot list
@@ -348,24 +360,31 @@ func apply_snapshot_creatures(list: Array) -> void:
 # Visuals
 # ---------------------------------------------------------------------------
 
-func _make_visual(creature_id: String, pos: Vector3) -> Node3D:
-	var node := Node3D.new()
-	node.name = creature_id
-	node.position = pos
-
-	var mesh := MeshInstance3D.new()
+## Build the shared MultiMesh pool for all creature bodies (one draw call).
+## The box mesh is shared; the per-creature tint lives in the per-instance
+## colour, and the 0.5 half-height offset is baked into each instance transform.
+func _build_pool() -> void:
 	var box := BoxMesh.new()
 	box.size = Vector3(0.8, 1.0, 1.2)
-	mesh.mesh = box
-	# Centre the body so its base rests on the terrain surface.
-	mesh.position = Vector3(0.0, 0.5, 0.0)
+	_pool = MultimeshPool.new()
+	_pool.name = "CreaturePool"
+	_pool.setup(box, true)
+	add_child(_pool)
 
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = _creature_color(creature_id)
-	mesh.material_override = mat
+## Allocate a visual instance for a creature, tinted by type. Returns the
+## MultiMesh instance index, or -1 when headless (no pool).
+func _alloc_visual(creature_id: String, pos: Vector3) -> int:
+	if _pool == null:
+		return -1
+	var idx: int = _pool.alloc()
+	_pool.set_color(idx, _creature_color(creature_id))
+	_pool.set_transform(idx, _visual_transform(pos))
+	return idx
 
-	node.add_child(mesh)
-	return node
+## World surface position → instance transform, raised half a box so the base
+## rests on the terrain.
+func _visual_transform(pos: Vector3) -> Transform3D:
+	return Transform3D(Basis(), pos + Vector3(0.0, 0.5, 0.0))
 
 func _creature_color(creature_id: String) -> Color:
 	match creature_id:

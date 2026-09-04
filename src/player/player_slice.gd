@@ -65,12 +65,21 @@ var _hp_label: Label = null
 const RESPAWN_DELAY := 5.0
 var _respawn_timer: float = -1.0
 
-## Remote player ghosts (Phase 18). Keyed by peer_id → { "body": Node3D,
-## "from": Vector3, "to": Vector3, "t": float }. Each ghost is a simple
-## visual-only body (no physics) that interpolates from the previous snapshot
-## to the latest one, so remote movement renders smoothly between host ticks.
+## Remote player ghosts (Phase 18). Keyed by peer_id → { "mi": int, "from":
+## Vector3, "to": Vector3, "t": float, "pos": Vector3 }. Each ghost is a
+## MultiMesh instance (no per-peer Node3D, no physics) that interpolates from
+## the previous snapshot to the latest one, so remote movement renders smoothly
+## between host ticks.
+const MultimeshPool := preload("res://src/core/multimesh_pool.gd")
+
 var _ghosts: Dictionary = {}
 const GHOST_INTERP_TIME := 0.1   # seconds to blend between two snapshots
+
+## Shared MultiMesh pool for remote player ghosts; null when headless.
+var _ghost_pool: Node = null
+## When false (headless server), no body, camera, or HUD is built — the slice
+## tracks no local presentation; remote-player state flows purely as data.
+var render_visuals: bool = true
 
 ## Set by game_root after all slices are instantiated.
 var creature_slice: Node = null
@@ -79,9 +88,10 @@ var station_slice: Node = null
 var terrain_slice: Node = null
 
 func _ready() -> void:
-	_build_body()
-	_build_hud()
-	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	if render_visuals:
+		_build_body()
+		_build_hud()
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	GameBus.block_place_material_changed.connect(_on_place_material_changed)
 	GameBus.player_damaged.connect(_on_player_damaged)
 	GameBus.remote_player_state.connect(_on_remote_player_state)
@@ -93,14 +103,16 @@ func _physics_process(delta: float) -> void:
 			if _respawn_timer <= 0.0:
 				_respawn()
 		return
-	_move(delta)
+	if render_visuals:
+		_move(delta)
 	_sync_tick += 1
 	if _sync_tick >= SYNC_INTERVAL:
 		_sync_tick = 0
 		_broadcast_state()
 
 func _process(delta: float) -> void:
-	_update_aim()
+	if render_visuals:
+		_update_aim()
 	_tick_ghosts(delta)
 
 func _input(event: InputEvent) -> void:
@@ -194,6 +206,8 @@ func get_remote_ghost_count() -> int:
 
 ## Remote player ghosts — a client renders other players as visual-only bodies
 ## (no local input, no physics) that interpolate between host snapshots.
+const GHOST_COLOR := Color(0.30, 0.55, 0.90)   # blue — distinct from the local player
+
 func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	# Never ghost our own local player: the host echoes a client's movement back
 	# to every peer (including the originator), and that echo must not spawn a
@@ -201,17 +215,21 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	if peer_id == multiplayer.get_unique_id():
 		return
 	if not _ghosts.has(peer_id):
-		var body := _make_ghost_body()
-		body.position = position
+		if _ghost_pool == null:
+			_build_ghost_pool()
+		var mi: int = _ghost_pool.alloc()
+		_ghost_pool.set_color(mi, GHOST_COLOR)
+		_ghost_pool.set_transform(mi, _ghost_transform(position))
 		_ghosts[peer_id] = {
-			"body": body,
+			"mi":   mi,
 			"from": position,
 			"to":   position,
 			"t":    1.0,
+			"pos":  position,
 		}
 		return
 	var g: Dictionary = _ghosts[peer_id]
-	g["from"] = g["body"].position
+	g["from"] = g["pos"]
 	g["to"]   = position
 	g["t"]    = 0.0
 
@@ -219,23 +237,22 @@ func _tick_ghosts(delta: float) -> void:
 	for peer_id in _ghosts:
 		var g: Dictionary = _ghosts[peer_id]
 		g["t"] = minf(g["t"] + delta / GHOST_INTERP_TIME, 1.0)
-		g["body"].position = g["from"].lerp(g["to"], g["t"])
+		g["pos"] = g["from"].lerp(g["to"], g["t"])
+		if _ghost_pool != null:
+			_ghost_pool.set_transform(int(g["mi"]), _ghost_transform(g["pos"]))
 
-func _make_ghost_body() -> Node3D:
-	var body := Node3D.new()
-	body.name = "RemotePlayer"
-	var mesh := MeshInstance3D.new()
+func _build_ghost_pool() -> void:
 	var cap := CapsuleMesh.new()
 	cap.radius = 0.4
 	cap.height = 1.8
-	mesh.mesh = cap
-	mesh.position = Vector3(0.0, 0.9, 0.0)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.30, 0.55, 0.90)   # blue — distinct from the local player
-	mesh.material_override = mat
-	body.add_child(mesh)
-	add_child(body)
-	return body
+	_ghost_pool = MultimeshPool.new()
+	_ghost_pool.name = "GhostPool"
+	_ghost_pool.setup(cap, true)
+	add_child(_ghost_pool)
+
+## World position → ghost instance transform (capsule half-height 0.9 offset).
+func _ghost_transform(pos: Vector3) -> Transform3D:
+	return Transform3D(Basis(), pos + Vector3(0.0, 0.9, 0.0))
 
 func take_damage(dmg: float, killer_id: String = "") -> void:
 	_hp = maxf(_hp - dmg, 0.0)

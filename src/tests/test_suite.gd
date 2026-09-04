@@ -31,6 +31,7 @@ const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
 const Locomotion      := preload("res://src/character/locomotion.gd")
 const SkeletonRig     := preload("res://src/character/skeleton_rig.gd")
 const SkillTiers      := preload("res://src/core/skill_tiers.gd")
+const MultimeshPool   := preload("res://src/core/multimesh_pool.gd")
 
 var _pass: int = 0
 var _fail: int = 0
@@ -274,6 +275,9 @@ func run() -> void:
 	_run_test("proposal: supersede replaces a proposal",        _test_proposal_supersede)
 	_run_test("proposal: supersede needs ratified replacement", _test_proposal_supersede_requires_ratified_replacement)
 	_run_test("proposal: expiry tick is authority-gated",       _test_proposal_expiry_authority_gated)
+	_run_test("instancing: pool alloc grows and recycles",      _test_multimesh_pool_alloc_recycle)
+	_run_test("instancing: headless creature has no visual",    _test_creature_headless_no_visual)
+	_run_test("instancing: creatures share one pool",           _test_creature_single_pool)
 
 	# Self-check: the _run_test list above is manual, so a test function can be
 	# written but forgotten from the list. Fail loudly instead of silently
@@ -299,6 +303,55 @@ func run() -> void:
 	# that, dozens of freed-in-name-only slices would stay alive and connected
 	# through the whole suite and into game_root's world boot, re-running saves,
 	# loads, crafts and chunk builds against production emissions.
+
+# ---------------------------------------------------------------------------
+# Phase 26/27 — instancing + headless server
+# ---------------------------------------------------------------------------
+
+func _test_multimesh_pool_alloc_recycle() -> void:
+	var pool := MultimeshPool.new()
+	add_child(pool)
+	var box := BoxMesh.new()
+	box.size = Vector3(1.0, 1.0, 1.0)
+	pool.setup(box, true)
+	assert_eq(pool.alloc(), 0, "first alloc is index 0")
+	assert_eq(pool.alloc(), 1, "second alloc is index 1")
+	assert_eq(pool.alloc(), 2, "third alloc is index 2")
+	pool.release(1)
+	assert_eq(pool.alloc(), 1, "released index is recycled first")
+	for i in range(300):
+		pool.alloc()
+	assert_true(pool.instance_count() > 300, "pool grew beyond the initial step")
+	pool.free()
+
+func _test_creature_headless_no_visual() -> void:
+	# A headless server (render_visuals = false) spawns creatures as pure data:
+	# no MultiMesh pool is built and each instance carries the -1 sentinel index.
+	var c := CreatureSlice.new()
+	c.render_visuals = false
+	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
+	var all := c.get_all_instances()
+	assert_true(all.size() > 0, "headless creatures still spawn as data")
+	assert_true(c._pool == null, "no pool is built when render_visuals is false")
+	assert_eq(int(c._instances[all[0]["instance_id"]]["mi"]), -1, "instance index is the -1 sentinel")
+	c.free()
+
+func _test_creature_single_pool() -> void:
+	# With rendering on, every creature shares ONE MultiMesh pool (one draw call).
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
+	var all := c.get_all_instances()
+	assert_true(all.size() > 1, "enough creatures to exercise the shared pool")
+	assert_true(c._pool != null, "a pool is built when rendering")
+	var seen := {}
+	for inst in all:
+		var mi: int = int(c._instances[inst["instance_id"]]["mi"])
+		assert_true(mi >= 0, "rendered creature has a valid instance index")
+		seen[mi] = true
+	assert_eq(seen.size(), all.size(), "instance indices are unique per creature")
+	c.free()
 
 # ---------------------------------------------------------------------------
 # BattleSlice tests
@@ -2963,8 +3016,8 @@ func _test_net_player_ghost_interpolation() -> void:
 	# A second snapshot resets interpolation toward the new target.
 	p._on_remote_player_state(2, Vector3(10.0, 0.0, 0.0))
 	p._tick_ghosts(0.05)   # half the interp time
-	var body: Node3D = p._ghosts[2]["body"]
-	assert_true(body.position.x > 0.0 and body.position.x < 10.0, "ghost interpolates between snapshots")
+	var pos: Vector3 = p._ghosts[2]["pos"]
+	assert_true(pos.x > 0.0 and pos.x < 10.0, "ghost interpolates between snapshots")
 	p.free()
 
 func _test_net_player_ghost_self_filter() -> void:
