@@ -9,3 +9,5 @@ node_modules/
 # Production asset pack (built from the private assets submodule — never commit)
 assets.pck
 tools/pack_project/_overlay/
+# Added by code-review-graph
+.code-review-graph/
