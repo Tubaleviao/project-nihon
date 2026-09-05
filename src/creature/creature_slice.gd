@@ -295,6 +295,7 @@ func _tick_respawn() -> void:
 			inst["hp"]         = max_hp
 			inst["respawn_at"] = -1.0
 			inst["position"]   = inst["spawn_pos"]
+			_spatial.update(iid, inst["spawn_pos"])
 			if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
 				_pool.set_transform(int(inst["mi"]), _visual_transform(inst["spawn_pos"]))
 			print("CreatureSlice: %s [%s] respawned" % [creature_id, iid])

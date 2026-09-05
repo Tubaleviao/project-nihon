@@ -64,6 +64,7 @@ func run() -> void:
 	_run_test("spatial: remove drops entity",                 _test_spatial_remove)
 	_run_test("spatial: nearest returns closest",             _test_spatial_nearest)
 	_run_test("creature: nearest_creature routes via hash",   _test_creature_nearest_via_hash)
+	_run_test("creature: respawn re-hashes spatial position", _test_creature_respawn_rehashes_spatial)
 	_run_test("terrain: chunk size is correct",               _test_terrain_chunk_size)
 	_run_test("terrain: height is non-negative",              _test_terrain_height_nonneg)
 	_run_test("terrain: two chunks are independent",          _test_terrain_two_chunks)
@@ -553,6 +554,29 @@ func _test_creature_nearest_via_hash() -> void:
 		var pos: Vector3 = instances[0]["position"]
 		var result := c.nearest_creature(pos, 1000.0)
 		assert_true(result != "", "nearest_creature via hash returns an id")
+	c.free()
+
+func _test_creature_respawn_rehashes_spatial() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
+	var instances := c.get_all_instances()
+	assert_true(instances.size() > 0, "need an instance to respawn")
+	if instances.size() > 0:
+		var iid: String = instances[0]["instance_id"]
+		var spawn_pos: Vector3 = c._instances[iid]["spawn_pos"]
+		# Move the creature away from its spawn point (the AI patrol path does this).
+		var moved := spawn_pos + Vector3(100.0, 0.0, 100.0)
+		c.set_instance_position(iid, moved)
+		assert_false(c._spatial.query_radius(spawn_pos, 1.0).has(iid), "hash cleared old cell after move")
+		assert_true(c._spatial.query_radius(moved, 1.0).has(iid), "hash holds the moved position")
+		# Kill it and force the respawn timer to have elapsed, then tick.
+		c._instances[iid]["state"] = "dead"
+		c._instances[iid]["respawn_at"] = Time.get_ticks_msec() - 1.0
+		c._tick_respawn()
+		assert_eq(c._instances[iid]["position"], spawn_pos, "position reset to the spawn point")
+		assert_true(c._spatial.query_radius(spawn_pos, 1.0).has(iid), "hash re-keyed to the spawn point after respawn")
+		assert_false(c._spatial.query_radius(moved, 1.0).has(iid), "hash cleared the death cell after respawn")
 	c.free()
 
 # ---------------------------------------------------------------------------
