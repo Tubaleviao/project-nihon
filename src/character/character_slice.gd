@@ -1029,21 +1029,23 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 			leg["pivot"].add_child(foot)
 		parts["body_legs"] = { "node": legs_container, "max_lod": MAX_LOD }
 
-		# Arms — one capsule per arm hanging from a shoulder pivot, so the walk
-		# cycle swings them in opposition to the legs.
+		# Arms — one capsule per arm hanging from a shoulder pivot (at the top of
+		# the torso, not the chest) so they read as attached to the shoulders and
+		# swing in opposition to the legs during the walk cycle.
 		var arm_radius: float = 0.08 * mass
 		var arm_len: float = 0.55 * height * props.get("armLength", 1.0)
-		var arm_side: float = 0.30 * shoulder
+		var arm_side: float = 0.27 * shoulder * mass
+		var shoulder_y: float = hip_y + torso_h - 0.06
 		for side in [["arm_l", -1.0], ["arm_r", 1.0]]:
 			var pivot_key: String = side[0]
 			var sign: float = side[1]
-			var arm := _make_limb(Vector3(arm_side * sign, chest_y, 0.0), arm_len, arm_radius, skin_idx)
+			var arm := _make_limb(Vector3(arm_side * sign, shoulder_y, 0.0), arm_len, arm_radius, skin_idx)
 			rig.add_child(arm["pivot"])
 			limb_pivots[pivot_key] = arm["pivot"]
 			parts[pivot_key] = { "node": arm["pivot"], "max_lod": MAX_LOD }
 
 		# Head — a larger, clearly-rounded sphere skinned to the head bone.
-		var head := _make_sphere(head_size * 0.62, head_size * 1.2, skin_idx)
+		var head := _make_sphere(head_size * 0.72, head_size * 1.3, skin_idx)
 		var head_pos := Vector3(0.0, head_y, 0.0)
 		rig.attach_to_bone(head_bone, head, head_pos - rig.get_bone_global_rest(head_bone))
 		parts["head"] = { "node": head, "max_lod": MAX_LOD }
@@ -1190,6 +1192,11 @@ func _attach_equipment(rig, slot: String, entry: Dictionary, props: Dictionary) 
 	var size: Vector3 = _vec3(def.get("size", [0.3, 0.3, 0.3]))
 	var mesh := _make_box(size, _equipment_base_index(def, entry), _equipment_material_opts(def, entry))
 	mesh.name = "Eq_%s" % slot
+	# A weapon sheathed at a hip socket hangs vertically (blade-down) rather than
+	# pointing forward like an equipped weapon: rotate the placeholder box's long
+	# (Z) axis onto Y.
+	if socket.begins_with("socket_hip"):
+		mesh.rotation_degrees.x = 90.0
 	rig.attach(socket, mesh, mode, offset)
 	# RIGID equipment does not follow a bone — only SKINNED/HYBRID do.
 	var bone: String = "" if mode == "RIGID" else rig.socket_to_bone(socket)
