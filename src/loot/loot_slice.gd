@@ -84,7 +84,6 @@ func _on_creature_died(entity_id: String, position: Vector3, _killer_id: String)
 			fabric_key = resolved
 	var table: Array = _drop_table(fabric_key)
 	if table.is_empty():
-		print("LootSlice: no loot table for '%s' (fabric key: %s)" % [entity_id, fabric_key])
 		return
 	for entry in table:
 		if randf() <= float(entry.get("chance", 0.0)):
@@ -107,7 +106,6 @@ func _on_creature_died(entity_id: String, position: Vector3, _killer_id: String)
 				"body":       body,
 			}
 			GameBus.loot_dropped.emit(pid, item_id, position, qty)
-			print("LootSlice: %s dropped %s ×%d at %s" % [fabric_key, item_id, qty, position])
 
 ## Resolve a creature's structured drop table from the fabric (`drops` json field
 ## on GameData.CREATURES). Returns the Array of { item, chance, minQty, maxQty }
@@ -138,7 +136,6 @@ func _tick_despawn() -> void:
 			p["body"].queue_free()
 		_pickups.erase(pid)
 		GameBus.loot_expired.emit(pid)
-		print("LootSlice: pickup %s expired" % pid)
 
 # ---------------------------------------------------------------------------
 # Visuals

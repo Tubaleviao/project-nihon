@@ -152,7 +152,6 @@ func host(port: int = DEFAULT_PORT, max_clients: int = DEFAULT_MAX_CLIENTS) -> E
 		return err
 	_role = Role.HOST
 	_attach_peer()
-	print("NetworkingSlice: hosting on port %d" % port)
 	return OK
 
 ## Connect to a remote host. Sets the slice to CLIENT role.
@@ -164,7 +163,6 @@ func join(address: String = "127.0.0.1", port: int = DEFAULT_PORT) -> Error:
 		return err
 	_role = Role.CLIENT
 	_attach_peer()
-	print("NetworkingSlice: connecting to %s:%d" % [address, port])
 	return OK
 
 ## Tear down the peer and return to offline role.

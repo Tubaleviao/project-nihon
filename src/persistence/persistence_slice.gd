@@ -29,7 +29,6 @@ func save(slot: int, data: Dictionary) -> Error:
 	file.store_string(JSON.stringify(data, "\t"))
 	file.close()
 	GameBus.save_completed.emit(slot)
-	print("PersistenceSlice: saved slot %d → %s" % [slot, path])
 	return OK
 
 ## Deserialize and return the slot data, or an empty dict on failure.
@@ -56,7 +55,6 @@ func load_slot(slot: int) -> Dictionary:
 		GameBus.load_failed.emit(slot, reason)
 		return {}
 	GameBus.load_completed.emit(slot, data)
-	print("PersistenceSlice: loaded slot %d ← %s" % [slot, path])
 	return data
 
 # ---------------------------------------------------------------------------

@@ -168,7 +168,6 @@ func create_character_from_recipe(recipe: Dictionary, pos: Vector3) -> String:
 
 	var skeleton_id: String = str(normalized.get("skeleton", "?"))
 	GameBus.character_spawned.emit(iid, skeleton_id, pos)
-	print("CharacterSlice: spawned %s [%s] at %s" % [skeleton_id, iid, pos])
 	return iid
 
 ## Replace an existing instance's appearance recipe (rebuilds the visual).

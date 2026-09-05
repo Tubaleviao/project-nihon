@@ -367,7 +367,6 @@ func _broadcast_state() -> void:
 func _die(killer_id: String = "") -> void:
 	_alive = false
 	_respawn_timer = RESPAWN_DELAY
-	print("PlayerSlice: player died at %s — respawning in %.0fs" % [get_position(), RESPAWN_DELAY])
 	GameBus.player_died.emit(get_position(), killer_id)
 
 func _respawn() -> void:
@@ -380,7 +379,6 @@ func _respawn() -> void:
 	_update_hp_bar()
 	_broadcast_state()
 	GameBus.player_respawned.emit(spawn_pos)
-	print("PlayerSlice: player respawned at %s" % spawn_pos)
 
 func _on_player_damaged(dmg: float, attacker_id: String) -> void:
 	if not _alive:
@@ -397,7 +395,6 @@ func _try_attack() -> void:
 	if target_id == "":
 		return   # no creature in range
 	var creature_id: String = creature_slice.get_instance_creature_id(target_id)
-	print("PlayerSlice: attacking %s [%s]" % [creature_id, target_id])
 	GameBus.combat_round_requested.emit("player", target_id)
 
 # ---------------------------------------------------------------------------
@@ -701,7 +698,6 @@ func _try_pickup_aimed() -> void:
 	var pid := _aimed_pickup_id
 	if pid == "":
 		return
-	print("PlayerSlice: picking up %s [%s]" % [_aimed_item_id, pid])
 	GameBus.pickup_requested.emit(pid)
 	_aimed_pickup_id = ""
 	_aimed_item_id = ""

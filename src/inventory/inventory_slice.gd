@@ -483,8 +483,6 @@ func _try_pickup(pickup_id: String, item_id: String, quantity: int) -> void:
 		return
 
 	GameBus.item_picked_up.emit(item_id, quantity)
-	print("InventorySlice: picked up %s ×%d  (%.1f/%.1f kg  %d/%d slots)" % [
-		item_id, quantity, _current_weight, _max_weight, get_total_slots_used(), _max_slots])
 
 	# Re-check full state after pickup.
 	if get_total_slots_used() >= _max_slots or _current_weight >= _max_weight:

@@ -38,9 +38,9 @@ var _production_active := false
 func _ready() -> void:
 	_production_active = _mount_production_pack()
 	if _production_active:
-		print("[AssetOverlay] production pack mounted — %s overrides res://assets/" % PCK_NAME)
+		pass
 	else:
-		print("[AssetOverlay] placeholder mode — no %s found" % PCK_NAME)
+		pass
 
 
 ## True once the production .pck has been mounted over res://.
