@@ -118,6 +118,7 @@ func run() -> void:
 	_run_test("character: instance uniforms reach shader",        _test_character_instance_uniforms_reach_shader)
 	_run_test("character: same-size parts share one mesh",     _test_character_mesh_shared)
 	_run_test("character: procedural walk swings limbs",        _test_character_procedural_walk_animation)
+	_run_test("character: toggle equipment on/off",             _test_character_toggle_equipment)
 	_run_test("character: nearby proportions snap to one bucket",   _test_character_proportions_quantized)
 	_run_test("crafting: recipe data loaded from fabric",     _test_crafting_recipe_data_loaded)
 	_run_test("crafting: skill guard blocks low tier",        _test_crafting_skill_guard_blocks)
@@ -1401,6 +1402,22 @@ func _test_character_procedural_walk_animation() -> void:
 	# Walk: advance a frame at walking speed -> arms swing in opposition.
 	ch.sync_player_avatar(iid, Vector3.ZERO, Vector3(0.0, 0.0, 2.0), 0.0, true, 0.1, terrain)
 	assert_true(absf(arm_l.rotation.x) > 0.001 or absf(arm_r.rotation.x) > 0.001, "arms swing while walking")
+	ch.free()
+
+func _test_character_toggle_equipment() -> void:
+	# Toggling all equipment at once clears then restores every slot, so the
+	# "naked" body can be inspected under the gear (vanity/debug).
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	assert_true(iid != "", "character created")
+	assert_true(ch.get_part_node(iid, "Chest") != null, "chestplate equipped initially")
+	assert_true(ch.toggle_equipment(iid), "toggle off returns true")
+	assert_true(ch.get_part_node(iid, "Chest") == null, "chestplate cleared after toggle")
+	assert_true(ch.get_part_node(iid, "MainHand") == null, "sword cleared after toggle")
+	assert_true(ch.get_part_node(iid, "OffHand") == null, "shield cleared after toggle")
+	assert_true(ch.toggle_equipment(iid), "toggle on returns true")
+	assert_true(ch.get_part_node(iid, "Chest") != null, "chestplate restored after toggle")
 	ch.free()
 
 func _test_character_proportions_quantized() -> void:

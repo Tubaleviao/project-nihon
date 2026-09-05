@@ -122,6 +122,7 @@ func _ready() -> void:
 	_load_palette()
 	GameBus.character_attack_requested.connect(_on_attack_requested)
 	GameBus.character_death_requested.connect(_on_death_requested)
+	GameBus.character_equipment_toggle_requested.connect(_on_equipment_toggle_requested)
 
 # ---------------------------------------------------------------------------
 # Public — creation
@@ -160,6 +161,8 @@ func create_character_from_recipe(recipe: Dictionary, pos: Vector3) -> String:
 		"impostor":    built.get("impostor", null),
 		"limb_pivots": built.get("limb_pivots", {}),
 		"anim_phase":  0.0,
+		"base_equipment": normalized.get("equipment", {}).duplicate(true),
+		"equipment_visible": true,
 	}
 	_apply_lod(iid)
 
@@ -192,6 +195,8 @@ func apply_appearance(instance_id: String, recipe: Dictionary) -> bool:
 	inst["impostor"] = built.get("impostor", null)
 	inst["limb_pivots"] = built.get("limb_pivots", {})
 	inst["anim_phase"] = 0.0
+	inst["base_equipment"] = normalized.get("equipment", {}).duplicate(true)
+	inst["equipment_visible"] = true
 	# The rebuilt rig's nodes default to visible; reset the early-out state so
 	# _apply_lod force-applies visibility to the new nodes instead of skipping
 	# them (which would leave the full rig showing at impostor distance).
@@ -538,6 +543,30 @@ func clear_equipment(instance_id: String, slot: String) -> bool:
 	GameBus.character_appearance_changed.emit(instance_id, app)
 	return true
 
+## Toggle all equipment slots on/off at once — a vanity/debug convenience so the
+## "naked" body can be inspected under the gear. Unequipping remembers the base
+## gear; re-equipping restores it. Returns true on success.
+func toggle_equipment(instance_id: String) -> bool:
+	if not _instances.has(instance_id):
+		return false
+	var inst: Dictionary = _instances[instance_id]
+	var visible: bool = inst.get("equipment_visible", true)
+	if visible:
+		# Unequip every slot. Iterate a snapshot of the keys — clear_equipment
+		# mutates the equipment record mid-loop.
+		var slots: Array = inst["equipment"].keys()
+		for slot in slots:
+			clear_equipment(instance_id, str(slot))
+		inst["equipment_visible"] = false
+	else:
+		# Re-equip the base (original) gear.
+		var base: Dictionary = inst.get("base_equipment", {})
+		for slot in base:
+			var entry: Dictionary = base[slot]
+			apply_equipment(instance_id, str(slot), str(entry.get("item", "")), str(entry.get("state", "equipped")))
+		inst["equipment_visible"] = true
+	return true
+
 ## Advance the locomotion state machine for an instance. Returns the resulting
 ## Locomotion.State int, and emits character_state_changed on any transition.
 func update_locomotion(instance_id: String, speed: float, grounded: bool, velocity_y: float, delta: float) -> int:
@@ -709,6 +738,9 @@ func _on_attack_requested(instance_id: String) -> void:
 
 func _on_death_requested(instance_id: String) -> void:
 	trigger_death(instance_id)
+
+func _on_equipment_toggle_requested() -> void:
+	toggle_equipment(_player_character_id)
 
 ## Build the equipment-visual definition for an item from GameData.ITEMS.
 ## Returns {} when the item is missing or has no equipment slot (not equippable).

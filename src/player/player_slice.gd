@@ -163,6 +163,9 @@ func _input(event: InputEvent) -> void:
 	# V key → place the selected station at the player's feet.
 	if event is InputEventKey and event.pressed and event.keycode == KEY_V:
 		_place_station()
+	# E key → toggle all equipment on/off (inspect the naked body under the gear).
+	if event is InputEventKey and event.pressed and event.keycode == KEY_E:
+		GameBus.character_equipment_toggle_requested.emit()
 
 func get_position() -> Vector3:
 	return _body.global_position if _body else Vector3.ZERO
@@ -653,6 +656,7 @@ func _build_shortcuts_menu() -> void:
 	_add_mouse_row(vbox, MOUSE_BUTTON_MIDDLE, "Place")
 	_add_key_row(vbox, "R", "Cycle material")
 	_add_key_row(vbox, "B · V", "Station cycle / place")
+	_add_key_row(vbox, "E", "Toggle equipment")
 	_add_key_row(vbox, "I · T · C", "Windows")
 	_add_key_row(vbox, "ESC", "Cursor")
 
