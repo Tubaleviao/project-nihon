@@ -209,6 +209,10 @@ func get_remote_ghost_count() -> int:
 const GHOST_COLOR := Color(0.30, 0.55, 0.90)   # blue — distinct from the local player
 
 func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
+	# A headless server renders nothing and has no local player — remote-player
+	# ghosts are a client-only concern, so never build a visual pool here.
+	if not render_visuals:
+		return
 	# Never ghost our own local player: the host echoes a client's movement back
 	# to every peer (including the originator), and that echo must not spawn a
 	# ghost of ourselves.
@@ -347,6 +351,8 @@ func _move(delta: float) -> void:
 		_body.global_position = terrain_slice.clamp_to_world(_body.global_position)
 
 func _broadcast_state() -> void:
+	if not render_visuals:
+		return
 	var payload := {
 		"position": get_position(),
 		"hp":       _hp,

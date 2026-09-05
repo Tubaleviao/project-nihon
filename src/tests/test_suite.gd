@@ -278,6 +278,7 @@ func run() -> void:
 	_run_test("instancing: pool alloc grows and recycles",      _test_multimesh_pool_alloc_recycle)
 	_run_test("instancing: headless creature has no visual",    _test_creature_headless_no_visual)
 	_run_test("instancing: creatures share one pool",           _test_creature_single_pool)
+	_run_test("instancing: headless player has no ghost/broadcast", _test_player_headless_no_ghost_or_broadcast)
 
 	# Self-check: the _run_test list above is manual, so a test function can be
 	# written but forgotten from the list. Fail loudly instead of silently
@@ -3027,6 +3028,24 @@ func _test_net_player_ghost_self_filter() -> void:
 	add_child(p)
 	p._on_remote_player_state(multiplayer.get_unique_id(), Vector3(1.0, 2.0, 3.0))
 	assert_eq(p.get_remote_ghost_count(), 0, "own peer id does not spawn a ghost")
+	p.free()
+
+func _test_player_headless_no_ghost_or_broadcast() -> void:
+	# A headless server (render_visuals = false) has no local player and renders
+	# nothing: it must not build a ghost pool for remote players, and it must not
+	# broadcast a phantom player at (0,0,0) to clients.
+	var p := PlayerSlice.new()
+	p.render_visuals = false
+	add_child(p)
+	p._on_remote_player_state(2, Vector3(1.0, 2.0, 3.0))
+	assert_eq(p.get_remote_ghost_count(), 0, "headless server spawns no remote ghost")
+	assert_true(p._ghost_pool == null, "headless server builds no ghost pool")
+	var emitted := {}
+	var cb := func(_payload): emitted["hit"] = true
+	GameBus.player_state_changed.connect(cb)
+	p._broadcast_state()
+	assert_true(not emitted.has("hit"), "headless server does not broadcast a phantom player")
+	GameBus.player_state_changed.disconnect(cb)
 	p.free()
 
 func _test_net_creature_dirty_broadcast() -> void:
