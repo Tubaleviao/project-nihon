@@ -66,6 +66,13 @@ const LOD_HYSTERESIS := 2.0
 const LOD_MANUAL := 0
 const LOD_AUTO := 1
 
+## Procedural locomotion animation (no authored clips yet — characters.md §37
+## defers real skeletal clips). `ANIM_FREQ` is the walk-phase advance in radians
+## per metre travelled; `RUN_SWING_AMPLITUDE` is the peak limb-swing angle
+## (radians) at full run. Idle (blend weight 0) resolves to the rest pose.
+const ANIM_FREQ := 7.0
+const RUN_SWING_AMPLITUDE := 0.7
+
 ## Palette is a fixed 256 entries (§19): one byte per color index.
 const PALETTE_SIZE := 256
 const PALETTE_KEY := "DefaultPalette"
@@ -143,14 +150,16 @@ func create_character_from_recipe(recipe: Dictionary, pos: Vector3) -> String:
 	add_child(root)
 
 	_instances[iid] = {
-		"appearance": normalized,
-		"position":   pos,
-		"root":       root,
-		"rig":        built["rig"],
-		"locomotion": built["locomotion"],
-		"equipment":  built["equipment"],
-		"parts":      built["parts"],
-		"impostor":   built.get("impostor", null),
+		"appearance":  normalized,
+		"position":    pos,
+		"root":        root,
+		"rig":         built["rig"],
+		"locomotion":  built["locomotion"],
+		"equipment":   built["equipment"],
+		"parts":       built["parts"],
+		"impostor":    built.get("impostor", null),
+		"limb_pivots": built.get("limb_pivots", {}),
+		"anim_phase":  0.0,
 	}
 	_apply_lod(iid)
 
@@ -181,6 +190,8 @@ func apply_appearance(instance_id: String, recipe: Dictionary) -> bool:
 	inst["equipment"] = built["equipment"]
 	inst["parts"] = built["parts"]
 	inst["impostor"] = built.get("impostor", null)
+	inst["limb_pivots"] = built.get("limb_pivots", {})
+	inst["anim_phase"] = 0.0
 	# The rebuilt rig's nodes default to visible; reset the early-out state so
 	# _apply_lod force-applies visibility to the new nodes instead of skipping
 	# them (which would leave the full rig showing at impostor distance).
@@ -629,6 +640,39 @@ func sync_player_avatar(
 	inst["position"] = root.position
 	update_locomotion(instance_id, speed, grounded, velocity_y, delta)
 
+	# Procedural locomotion animation — advance the walk phase by distance
+	# travelled and swing the limb pivots. The blend weight (0 idle → 1 run)
+	# scales the swing amplitude, so the character settles to a rest pose as it
+	# slows to a stop instead of freezing mid-stride.
+	var phase: float = inst.get("anim_phase", 0.0)
+	phase = fmod(phase + speed * delta * ANIM_FREQ, TAU)
+	inst["anim_phase"] = phase
+	_animate_limbs(inst, phase, inst["locomotion"].get_blend_weight() * RUN_SWING_AMPLITUDE)
+
+## Swing the limb pivots for the procedural walk/run cycle. `phase` is the
+## accumulated walk phase (0..TAU); `amplitude` is the peak swing angle in
+## radians (0 = rest pose). Legs and arms swing in opposition around each limb's
+## local X axis. Knees/elbows are absent (single-capsule limbs), so the swing is
+## a rigid rotation from the hip/shoulder — a deliberate simplification pending
+## real multi-segment limbs and authored clips (characters.md §37).
+func _animate_limbs(inst: Dictionary, phase: float, amplitude: float) -> void:
+	var pivots: Dictionary = inst.get("limb_pivots", {})
+	if pivots.is_empty():
+		return
+	var swing: float = sin(phase) * amplitude
+	var leg_l: Node3D = pivots.get("leg_l", null)
+	var leg_r: Node3D = pivots.get("leg_r", null)
+	var arm_l: Node3D = pivots.get("arm_l", null)
+	var arm_r: Node3D = pivots.get("arm_r", null)
+	if leg_l != null:
+		leg_l.rotation.x = swing
+	if leg_r != null:
+		leg_r.rotation.x = -swing
+	if arm_l != null:
+		arm_l.rotation.x = -swing
+	if arm_r != null:
+		arm_r.rotation.x = swing
+
 ## Bone names of the instance's skeleton (ordered, parents first).
 func get_skeleton_bone_names(instance_id: String) -> Array:
 	if not _instances.has(instance_id):
@@ -940,6 +984,12 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 	if rig.get_bone_index(head_bone) == -1:
 		head_bone = ""
 
+	## Procedural-limb pivots for the walk/run cycle, populated by the humanoid
+	## branch and left empty for non-humanoid families (which get no limb
+	## animation). Stored on the instance record so sync_player_avatar can swing
+	## them.
+	var limb_pivots: Dictionary = {}
+
 	if is_humanoid:
 		# Humanoid placeholders use the full body-shape landmark system (torso/
 		# hip/head landmarks — characters.md §37.4), which only humanoid
@@ -949,67 +999,51 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 		var hip_y: float = landmarks["hip_y"]
 		var head_size: float = landmarks["head_size"]
 		var head_y: float = landmarks["head_y"]
+		var chest_y: float = landmarks["chest_y"]
+		var foot_side: float = landmarks["foot_side"]
 
-		# Chest (torso/shoulders region placeholder — §16 BodyChest/
-		# BodyShoulders) — skinned to the torso bone so it deforms with the
-		# skeleton. The mesh keeps its computed root-space position, expressed as a
-		# bone-local offset (root-space minus the bone's rest origin) so the
-		# rendered pose is unchanged at rest.
-		var chest := _make_box(Vector3(0.55 * shoulder * mass, torso_h, 0.32 * mass), skin_idx)
+		# Chest — a rounded vertical capsule (not the old flat box) so the torso
+		# reads as a 3D body rather than a plate, skinned to the torso bone.
+		var torso_radius: float = 0.27 * shoulder * mass
+		var chest := _make_capsule(torso_radius, torso_h, skin_idx)
 		var chest_pos := Vector3(0.0, hip_y + torso_h * 0.5, 0.0)
 		rig.attach_to_bone(torso_bone, chest, chest_pos - rig.get_bone_global_rest(torso_bone))
 		parts["body_chest"] = { "node": chest, "max_lod": MAX_LOD }
 
-		# Legs — two separate capsules (one per leg) plus a foot each, held in a
-		# single "body_legs" container skinned to the hip bone so hide/LOD toggle
-		# both legs at once. This replaces the old single hips-to-ground box with
-		# a recognisably human two-legged silhouette (§16 BodyLegs).
-		var legs_bone := _legs_bone(rig)
+		# Legs — one capsule per leg hanging from a hip pivot so the procedural
+		# walk cycle can swing each leg independently around its local X axis.
+		# Both pivots live under a "body_legs" container so hide/LOD toggle both
+		# at once (§16 BodyLegs); each foot rides its leg pivot so it swings too.
+		var leg_radius: float = 0.09 * mass * shoulder
 		var legs_container := Node3D.new()
 		legs_container.name = "Legs"
-		rig.attach_to_bone(legs_bone, legs_container, Vector3.ZERO)
-		var leg_radius: float = 0.09 * mass * shoulder
-		var hips_rest: Vector3 = rig.get_bone_global_rest(legs_bone)
-		for side in [["Leg_L", "Foot_L"], ["Leg_R", "Foot_R"]]:
-			var leg_bone: String = side[0]
-			var foot_bone: String = side[1]
-			if rig.get_bone_index(leg_bone) == -1 or rig.get_bone_index(foot_bone) == -1:
-				continue
-			var foot_local: Vector3 = rig.get_bone_global_rest(foot_bone) - hips_rest
-			var leg_len: float = foot_local.length()
-			if leg_len < 0.001:
-				continue
-			var leg := _make_capsule(leg_radius, leg_len, skin_idx)
-			leg.position = foot_local * 0.5
-			legs_container.add_child(leg)
+		rig.add_child(legs_container)
+		for side in [["leg_l", -1.0], ["leg_r", 1.0]]:
+			var pivot_key: String = side[0]
+			var sign: float = side[1]
+			var leg := _make_limb(Vector3(foot_side * sign, hip_y, 0.0), hip_y, leg_radius, skin_idx)
+			legs_container.add_child(leg["pivot"])
+			limb_pivots[pivot_key] = leg["pivot"]
 			var foot := _make_box(Vector3(0.14 * shoulder, 0.08, 0.26), skin_idx)
-			foot.position = foot_local + Vector3(0.0, 0.04, -0.10)
-			legs_container.add_child(foot)
+			foot.position = Vector3(0.0, -hip_y + 0.04, -0.10)
+			leg["pivot"].add_child(foot)
 		parts["body_legs"] = { "node": legs_container, "max_lod": MAX_LOD }
 
-		# Arms — two capsules running shoulder→hand, anchored to the skeleton's
-		# own rest chain (Shoulder→Arm→Forearm→Hand) so they hang naturally at
-		# the sides rather than reusing the raised weapon-grip hand landmark.
+		# Arms — one capsule per arm hanging from a shoulder pivot, so the walk
+		# cycle swings them in opposition to the legs.
 		var arm_radius: float = 0.08 * mass
-		for side in [["Shoulder_L", "Arm_L", "Hand_L", "arm_l"], ["Shoulder_R", "Arm_R", "Hand_R", "arm_r"]]:
-			var shoulder_bone: String = side[0]
-			var arm_bone: String = side[1]
-			var hand_bone: String = side[2]
-			var part_key: String = side[3]
-			if rig.get_bone_index(shoulder_bone) == -1 or rig.get_bone_index(hand_bone) == -1:
-				continue
-			var shoulder_pos: Vector3 = rig.get_bone_global_rest(shoulder_bone)
-			var hand_pos: Vector3 = rig.get_bone_global_rest(hand_bone)
-			var arm_len: float = shoulder_pos.distance_to(hand_pos)
-			if arm_len < 0.001:
-				continue
-			var arm := _make_capsule(arm_radius, arm_len, skin_idx)
-			rig.attach_to_bone(arm_bone, arm, (shoulder_pos + hand_pos) * 0.5 - rig.get_bone_global_rest(arm_bone))
-			parts[part_key] = { "node": arm, "max_lod": MAX_LOD }
+		var arm_len: float = 0.55 * height * props.get("armLength", 1.0)
+		var arm_side: float = 0.30 * shoulder
+		for side in [["arm_l", -1.0], ["arm_r", 1.0]]:
+			var pivot_key: String = side[0]
+			var sign: float = side[1]
+			var arm := _make_limb(Vector3(arm_side * sign, chest_y, 0.0), arm_len, arm_radius, skin_idx)
+			rig.add_child(arm["pivot"])
+			limb_pivots[pivot_key] = arm["pivot"]
+			parts[pivot_key] = { "node": arm["pivot"], "max_lod": MAX_LOD }
 
-		# Head — a rounded (ovoid) head skinned to the head bone, replacing the
-		# old cube so the character reads as a human rather than a stack of boxes.
-		var head := _make_sphere(head_size * 0.52, head_size * 1.1, skin_idx)
+		# Head — a larger, clearly-rounded sphere skinned to the head bone.
+		var head := _make_sphere(head_size * 0.62, head_size * 1.2, skin_idx)
 		var head_pos := Vector3(0.0, head_y, 0.0)
 		rig.attach_to_bone(head_bone, head, head_pos - rig.get_bone_global_rest(head_bone))
 		parts["head"] = { "node": head, "max_lod": MAX_LOD }
@@ -1064,12 +1098,13 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 	var impostor := _make_impostor(rig, appearance, props)
 
 	return {
-		"root":       rig,
-		"rig":        rig,
-		"parts":      parts,
-		"equipment":  eq_records,
-		"locomotion": locomotion,
-		"impostor":   impostor,
+		"root":        rig,
+		"rig":         rig,
+		"parts":       parts,
+		"equipment":   eq_records,
+		"locomotion":  locomotion,
+		"impostor":    impostor,
+		"limb_pivots": limb_pivots,
 	}
 
 ## Build the impostor billboard (ROADMAP Phase 23): a camera-facing QuadMesh
@@ -1176,15 +1211,6 @@ func _torso_bone(rig) -> String:
 			return name
 	return ""
 
-## Preferred hip bone to skin the legs mesh to, in a family-agnostic order
-## (humanoid/quadruped → Hips, else Root). Returns "" when none exist, so the
-## rig keeps the legs mesh a root child.
-func _legs_bone(rig) -> String:
-	for name in ["Hips", "Root"]:
-		if rig.get_bone_index(name) != -1:
-			return name
-	return ""
-
 ## Shared BoxMesh cache (characters.md §43 — the Phase 22 mesh-sharing
 ## criterion). Keyed by the exact box size, which is already quantized because
 ## the proportion sliders are snapped in `_normalize_proportions` (§8) before the
@@ -1267,6 +1293,18 @@ func _finish_part(mesh: MeshInstance3D, palette_index: int, opts: Dictionary) ->
 	mesh.material_override = mat
 	CharacterMaterial.apply_instance(mesh, palette_index, opts)
 	return mesh
+
+## Build a limb as a pivot-at-joint + a hanging capsule: the pivot sits at the
+## joint position and the capsule hangs down from it (centred at -length/2), so
+## rotating the pivot around its local X axis swings the limb for the procedural
+## walk cycle. Returns { pivot, mesh }.
+func _make_limb(joint_pos: Vector3, length: float, radius: float, palette_index: int) -> Dictionary:
+	var pivot := Node3D.new()
+	pivot.position = joint_pos
+	var capsule := _make_capsule(radius, length, palette_index)
+	capsule.position = Vector3(0.0, -length * 0.5, 0.0)
+	pivot.add_child(capsule)
+	return { "pivot": pivot, "mesh": capsule }
 
 func _palette_colors() -> Array:
 	if _palette.is_empty():
