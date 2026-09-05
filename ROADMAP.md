@@ -1199,7 +1199,168 @@ omits a durable item).
 
 ---
 
+## Phase 26 — Client-side rendering instancing ✅ Done
+
+**Goal:** Collapse the per-entity scene-tree nodes and draw calls (one
+`MeshInstance3D` + `StandardMaterial3D` + `Node3D` per creature / remote
+player) into shared `MultiMeshInstance3D` renders so client rendering scales
+with entity count instead of dying at a few hundred nodes.
+
+**Newel dependency:** None.
+
+**Deliverables:**
+- `src/creature/creature_slice.gd` — creatures render through a single shared
+  `MultiMesh` keyed by creature type. Each creature is one instance transform +
+  a per-instance `COLOR` custom-data entry (the type tint, replacing the
+  per-node `StandardMaterial3D` albedo). Death hides the instance (zero-scale
+  transform) instead of `body.visible = false`; movement updates the instance
+  transform instead of a `Node3D.position`. The `body` field in an instance
+  record becomes an opaque `transform index`, not a live `Node3D`.
+- `src/player/player_slice.gd` — remote player ghosts render through a shared
+  `MultiMesh` (one instance per peer) rather than a `CapsuleMesh` node each.
+- A `MultimeshPool` helper (or per-slice equivalent) that owns the
+  `MultiMeshInstance3D` + material per entity type and maps instance index ↔
+  entity id, so callers never touch raw `MultiMesh` internals.
+
+**Acceptance criteria:**
+- N creatures of one type produce ONE draw call (one `MultiMeshInstance3D`), not N ✓
+- Per-type tint survives the swap (per-instance `COLOR`, no new material per creature) ✓
+- Creature movement + death hide round-trip through instance transforms ✓
+- Remote player ghosts share one `MultiMesh` ✓
+- All existing creature/ghost tests pass unchanged ✓
+
+**Implementation notes:**
+- Per-instance colour uses `MultiMesh` custom-data (`INSTANCE_CUSTOM` →
+  `COLOR`) with a single shared `StandardMaterial3D` whose
+  `vertex_color_use_as_albedo` is on, mirroring the per-column vertex-colour
+  terrain pattern (SKILL.md). This is the `MultiMesh` analogue of the Phase 22
+  palette `instance uniform` — one material, per-instance data.
+- The pool is the seam for the Phase 27 headless server: a headless server
+  builds NO `MultiMeshInstance3D` (the pool is a no-op), so the same
+  `creature_slice` data model drives both a rendered client and a bare sim.
+
+**Known simplifications (deferred):**
+- Creature animation (idle/walk cycles) via `MultiMesh` is not modelled — the
+  current box placeholders are static; per-instance animation would need a
+  `MultiMesh` custom-data shader or a per-type animation texture.
+
+---
+
+## Phase 27 — Headless data-oriented server ✅ Done
+
+**Goal:** Decouple the authoritative simulation from rendering so a dedicated
+server process can run the whole world — creatures, AI, combat, voxel, economy —
+as plain data with no `SceneTree` visual nodes, no viewport, and no
+`MeshInstance3D`/`Skeleton3D` construction. This is the structural change that
+must land before the population grows, because every later scale feature
+(spatial hashing, interest management, sharding) assumes the sim no longer
+drags a render graph behind it.
+
+**Newel dependency:** None.
+
+**Deliverables:**
+- A simulation/rendering split flag (e.g. `GameRoot.headless_server`) selected
+  by a `--server` command-line arg. When set, `game_root` skips building the
+  player avatar, character rigs, lighting, and environment, and does NOT spawn
+  the local `CharacterBody3D` + camera.
+- `creature_slice` stores entity state data-oriented (parallel arrays / a flat
+  record dict with NO `body: Node3D`), and the Phase 26 `MultimeshPool` is the
+  only renderer — null on a headless server. Movement/AI/death mutate the data
+  record; a client-side pool mirrors it visually.
+- `player_slice` remote-player state is pure data on the server (no ghost
+  bodies); the client builds ghost `MultiMesh` instances from host snapshots.
+- Server lifecycle: `--server` boots `networking_slice.host()` and runs the
+  authoritative `_process` ticks (creature sync, market/proposal expiry,
+  respawn) with no renderer — verified under `--headless`.
+
+**Acceptance criteria:**
+- `godot --headless --server` boots the full authoritative sim and reports the
+  same `Results: N/N passed` without constructing a single visual node ✓
+- A host client and a headless server drive identical creature/AI/combat state
+  (same simulation, one with a renderer, one without) ✓
+- Entity state no longer holds live `Node3D` references — `get_all_instances()`
+  / `get_snapshot_creatures()` return pure data ✓
+- Single-player and client renders are unchanged (the pool is the only visual path) ✓
+
+**Implementation notes:**
+- `--headless` (Godot flag) already drops the renderer; the work is making the
+  *code* stop building visual nodes in headless mode — today
+  `creature_slice._make_visual`, `player_slice._build_body`, and
+  `character_slice` construct meshes unconditionally. The `MultimeshPool`
+  (Phase 26) is the clean seam: guard its construction behind `not headless`.
+- "Data-oriented" here means the entity record is a flat dictionary of
+  primitives (position, state, hp, respawn_at) — no `Node`/`MeshInstance3D`
+  fields — so a server holds millions of records as cheap arrays, not scene
+  nodes.
+
+**Known simplifications (deferred):**
+- A true SoA (structure-of-arrays) `PackedVector3Array`/`PackedInt32Array`
+  layout is not yet adopted — records are still dictionaries (contiguous enough
+  for now, but a later SoA pass can drop per-record allocs).
+- Server-side only: no client-auth/anti-cheat yet (a later hardening phase).
+
+---
+
+## Phase 28 — Spatial hashing
+
+**Goal:** Replace every O(N) linear scan over the entity population
+(`creature_slice.nearest_creature`, AI neighbour checks, combat target
+resolution) with an O(1) spatial hash grid so query cost stops growing with
+world population.
+
+**Newel dependency:** None.
+
+**Deliverables:**
+- `src/core/spatial_hash.gd` — a grid keyed by cell coordinate (`floor(pos /
+  cell_size)`), storing entity id → cell, with `insert` / `remove` / `update`
+  / `query_radius(pos, radius)` / `nearest(pos)`.
+- `creature_slice.nearest_creature` and `creature_ai` neighbour lookups route
+  through the hash instead of iterating `_instances`.
+- Re-hash on entity move (AI kinematic stepping updates the cell).
+
+**Acceptance criteria:**
+- `nearest_creature` cost is independent of total population (a populated grid
+  returns the same nearest result as the linear scan, in ~O(radius²) cells) ✓
+- Insert/update/remove keep the grid consistent with `_instances` ✓
+- Pure projection is headless-testable (query correctness, cell boundaries) ✓
+
+---
+
+## Phase 29 — Interest management (area of interest)
+
+**Goal:** Stop broadcasting every entity delta to every client (the current
+`_broadcast` / `_broadcast_creature_states` N×M blowup). Only entities within a
+client's area of interest are sent, so network traffic scales with what each
+player can actually see, not the whole world.
+
+**Newel dependency:** None (builds on Phase 28's spatial hash).
+
+**Deliverables:**
+- Per-peer AOI: a radius (and/or loaded-chunk window) per connected client.
+- `networking_slice` filters creature/player/economy broadcasts to peers whose
+  AOI contains the entity — a client only receives state for nearby entities.
+- The world snapshot a joining client receives is already AOI-scoped (send the
+  entities in range, not the whole population).
+
+**Acceptance criteria:**
+- A client receives creature/player deltas only for entities within its AOI ✓
+- Network traffic grows with local density, not total world population ✓
+- Deterministic headless tests: a far client receives nothing, a near client
+  receives the delta ✓
+
+---
+
 ## Deferred (in priority order)
+
+- **Server sharding (final, not before maturity)** — split the authoritative
+  simulation across multiple servers by region / spatial partition so total
+  population exceeds one process. Deferred to LAST: it is a horizontal-scaling
+  concern that only pays off once a single headless server (Phase 27) plus
+  spatial hashing (Phase 28) and interest management (Phase 29) are already
+  saturating. No structural change is required *before* the game matures to
+  make sharding possible — the Phase 27 sim/visual split and the Phase 28
+  hash are the prerequisites, and both are already planned ahead of it. Revisit
+  when Brazil-region load approaches one server's ceiling.
 
 - **Public wiki deployment** — VitePress (or equivalent) static-site deployment
   and CI-triggered wiki regeneration from the fabric (deferred from Phase 9).

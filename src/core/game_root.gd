@@ -48,10 +48,13 @@ var _trade:       TradeSlice
 var _proposal:    ProposalSlice
 var _ui:          UiSlice
 
-## Network role (Phase 18). HOST = authoritative simulation (default, matches
-## single-player); CLIENT = receives world state from a host. Derived from
-## command-line user args: `godot -- --client <addr>` joins, otherwise host.
+## Network role (Phase 18/27). HOST = authoritative simulation (default, matches
+## single-player); CLIENT = receives world state from a host; SERVER = headless
+## dedicated authoritative host (no rendering, no local player). Derived from
+## command-line user args: `godot -- --client <addr>` joins, `--server` boots a
+## headless server, otherwise host.
 var _is_client: bool = false
+var _is_server: bool = false
 var _host_address: String = "127.0.0.1"
 var _snapshot_pending: bool = false
 
@@ -103,6 +106,12 @@ func _ready() -> void:
 	# methods see the correct dependencies if they ever emit signals during init.
 	_crafting.station_slice    = _station
 	_station.player_slice      = _player
+
+	# Headless server (Phase 27): creature + player presentation is skipped so
+	# the authoritative simulation runs with no visual nodes. Set BEFORE the
+	# slices enter the tree so their _ready() skips body/pool construction.
+	_creature.render_visuals = not _is_server
+	_player.render_visuals   = not _is_server
 
 	for s in [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _player, _loot, _inventory, _character, _crafting, _technology, _station, _market, _trade, _proposal, _ui]:
 		s.name = s.get_script().resource_path.get_file().get_basename()
@@ -220,25 +229,27 @@ func _ready() -> void:
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
 
-	# Lighting — a directional "sun" plus soft ambient sky fill.
-	var sun := DirectionalLight3D.new()
-	sun.name = "Sun"
-	sun.rotation_degrees = Vector3(-50.0, -30.0, 0.0)
-	sun.light_color = Color(1.0, 0.95, 0.85)
-	sun.light_energy = 1.4
-	sun.shadow_enabled = true
-	add_child(sun)
+	# Lighting — a directional "sun" plus soft ambient sky fill. Skipped on a
+	# headless server (no renderer to light).
+	if not _is_server:
+		var sun := DirectionalLight3D.new()
+		sun.name = "Sun"
+		sun.rotation_degrees = Vector3(-50.0, -30.0, 0.0)
+		sun.light_color = Color(1.0, 0.95, 0.85)
+		sun.light_energy = 1.4
+		sun.shadow_enabled = true
+		add_child(sun)
 
-	var env := WorldEnvironment.new()
-	env.name = "Environment"
-	var environment := Environment.new()
-	environment.background_mode = Environment.BG_COLOR
-	environment.background_color = Color(0.45, 0.62, 0.85)
-	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.ambient_light_color = Color(0.55, 0.6, 0.7)
-	environment.ambient_light_energy = 0.5
-	env.environment = environment
-	add_child(env)
+		var env := WorldEnvironment.new()
+		env.name = "Environment"
+		var environment := Environment.new()
+		environment.background_mode = Environment.BG_COLOR
+		environment.background_color = Color(0.45, 0.62, 0.85)
+		environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		environment.ambient_light_color = Color(0.55, 0.6, 0.7)
+		environment.ambient_light_energy = 0.5
+		env.environment = environment
+		add_child(env)
 
 	# Verify GameData entries load cleanly.
 	_check_game_data()
@@ -263,6 +274,8 @@ func _run_tests() -> void:
 func _parse_network_args() -> void:
 	var args := OS.get_cmdline_user_args()
 	for i in range(args.size()):
+		if args[i] == "--server":
+			_is_server = true
 		if args[i] == "--client":
 			_is_client = true
 			if i + 1 < args.size() and not str(args[i + 1]).begins_with("--"):
@@ -298,6 +311,10 @@ func _boot_world() -> void:
 
 	if _is_client:
 		_boot_client()
+		return
+
+	if _is_server:
+		_boot_server()
 		return
 
 	# Place the player on top of the terrain at the spawn point so it doesn't
@@ -419,6 +436,17 @@ func _boot_client() -> void:
 		return
 	_snapshot_pending = true
 	_snapshot_elapsed = 0.0
+
+## Headless dedicated-server boot (Phase 27): run the authoritative simulation
+## with no local player presentation. Streams the world around the origin and
+## opens the host so clients can connect. No avatar, lighting, or demo.
+func _boot_server() -> void:
+	print("\n[Server] Headless authoritative server — booting simulation…")
+	_chunk_manager.start()
+	_chunk_manager.refresh()
+	print("[Networking] Starting headless server on port %d (max %d clients)…" % [_networking.DEFAULT_PORT, _networking.DEFAULT_MAX_CLIENTS])
+	_networking.host(_networking.DEFAULT_PORT, _networking.DEFAULT_MAX_CLIENTS)
+	print("=== Headless server running ===\n")
 
 func _on_peer_connected(peer_id: int) -> void:
 	if _is_client:
