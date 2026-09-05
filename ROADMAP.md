@@ -1301,7 +1301,7 @@ drags a render graph behind it.
 
 ---
 
-## Phase 28 — Spatial hashing
+## Phase 28 — Spatial hashing ✅ Done
 
 **Goal:** Replace every O(N) linear scan over the entity population
 (`creature_slice.nearest_creature`, AI neighbour checks, combat target
@@ -1323,6 +1323,30 @@ world population.
   returns the same nearest result as the linear scan, in ~O(radius²) cells) ✓
 - Insert/update/remove keep the grid consistent with `_instances` ✓
 - Pure projection is headless-testable (query correctness, cell boundaries) ✓
+
+**Implementation notes:**
+- `src/core/spatial_hash.gd` is a `RefCounted` grid keyed by `floor(pos.x /
+  cell_size)` × `floor(pos.z / cell_size)` (2D XZ — the world is a
+  heightfield). Cells hold an id→true set; a parallel `id → cell` map gives
+  O(1) remove/re-hash, and `id → position` serves radius/nearest without an
+  external lookup. `query_radius` scans only the cells overlapping the query's
+  AABB and filters on full 3D distance; `nearest` doubles the probe radius
+  until a candidate is found (cost bounded by local density, with a linear
+  fallback for a pathologically sparse population). Default `cell_size` 8.0
+  puts the 3 m attack range and most AI alert radii in a single cell.
+- `creature_slice` keeps the hash in lockstep with `_instances`: `insert` on
+  spawn and on client first-sight, `update` in `set_instance_position` (AI
+  kinematic stepping) and `apply_creature_state`, `remove` in
+  `despawn_for_chunk`. `nearest_creature` now iterates
+  `_spatial.query_radius(...)` (dead-state filtered) instead of scanning the
+  whole population — the O(N) → O(radius²)-cells win. `creatures_in_radius`
+  is the public neighbour-query primitive the AI (pack/herd, deferred) will
+  consume.
+- The AI's per-frame `_process` still iterates `get_all_instances()` because it
+  must tick *every* creature's state machine — that is an inherent O(N) tick
+  loop, not a spatial query, so it is not routed through the hash. There is no
+  creature-to-creature neighbour lookup in the AI yet (pack/herd behaviour is
+  deferred from Phase 15); `creatures_in_radius` exists for when it lands.
 
 ---
 
