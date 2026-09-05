@@ -24,9 +24,15 @@ extends Node
 ## `mi` is an opaque MultiMesh instance index, never a live Node3D — a headless
 ## server keeps the same records with no rendering attached.
 const MultimeshPool := preload("res://src/core/multimesh_pool.gd")
+const SpatialHash    := preload("res://src/core/spatial_hash.gd")
 
 var _instances: Dictionary = {}
 var _next_id: int = 0
+
+## Spatial hash over the live population so nearest-creature / neighbour queries
+## are O(radius²) cells, not an O(N) scan (Phase 28). Kept in lockstep with
+## _instances: insert on spawn, update on move, remove on despawn.
+var _spatial := SpatialHash.new()
 
 ## Shared MultiMesh pool for creature bodies; null when render_visuals is false
 ## (headless server) so the simulation runs with no visual nodes.
@@ -68,10 +74,12 @@ func _process(delta: float) -> void:
 			_broadcast_creature_states()
 
 ## Return the instance_id of the nearest live creature within radius, or "".
+## Routed through the spatial hash (Phase 28) so the scan is bounded by the
+## query footprint, not the total population.
 func nearest_creature(from_pos: Vector3, radius: float) -> String:
 	var best_id := ""
 	var best_dist := radius + 1.0
-	for iid in _instances:
+	for iid in _spatial.query_radius(from_pos, radius):
 		var inst: Dictionary = _instances[iid]
 		if inst["state"] == "dead":
 			continue
@@ -80,6 +88,11 @@ func nearest_creature(from_pos: Vector3, radius: float) -> String:
 			best_dist = d
 			best_id = iid
 	return best_id
+
+## Instance ids within `radius` of `pos` (any state). The AI's neighbour /
+## proximity queries route through the hash via this (Phase 28).
+func creatures_in_radius(pos: Vector3, radius: float) -> Array:
+	return _spatial.query_radius(pos, radius)
 
 ## Return the fabric creature key for an instance (e.g. "ForestBoar").
 func get_instance_creature_id(instance_id: String) -> String:
@@ -92,6 +105,7 @@ func set_instance_position(instance_id: String, pos: Vector3) -> void:
 	if not _instances.has(instance_id):
 		return
 	_instances[instance_id]["position"] = pos
+	_spatial.update(instance_id, pos)
 	if _pool != null and _instances[instance_id].has("mi"):
 		_pool.set_transform(int(_instances[instance_id]["mi"]), _visual_transform(pos))
 
@@ -176,6 +190,7 @@ func despawn_for_chunk(chunk_pos: Vector2i) -> void:
 	for iid in to_erase:
 		_instances.erase(iid)
 		_last_broadcast.erase(iid)
+		_spatial.remove(iid)
 	if to_erase.size() > 0:
 		print("CreatureSlice: despawned %d creatures from chunk %s" % [to_erase.size(), chunk_pos])
 
@@ -210,6 +225,8 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 		"respawn_at":  -1.0,
 		"mi":          mi,
 	}
+
+	_spatial.insert(iid, pos)
 
 	GameBus.creature_spawned.emit(iid, creature_id, pos)
 	print("CreatureSlice: spawned %s [%s] at %s  hp=%.0f" % [creature_id, iid, pos, hp])
@@ -315,6 +332,7 @@ func apply_creature_state(instance_id: String, creature_id: String, state: Strin
 			inst["creature_id"] = creature_id
 		inst["state"]    = state
 		inst["position"] = position
+		_spatial.update(instance_id, position)
 		if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
 			if state == "dead":
 				_pool.hide(int(inst["mi"]))
@@ -338,6 +356,7 @@ func apply_creature_state(instance_id: String, creature_id: String, state: Strin
 		"respawn_at":  -1.0,
 		"mi":          mi,
 	}
+	_spatial.insert(instance_id, position)
 
 ## Seed the client's creature population from a host snapshot list
 ## (see get_snapshot_creatures).

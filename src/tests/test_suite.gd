@@ -32,6 +32,7 @@ const Locomotion      := preload("res://src/character/locomotion.gd")
 const SkeletonRig     := preload("res://src/character/skeleton_rig.gd")
 const SkillTiers      := preload("res://src/core/skill_tiers.gd")
 const MultimeshPool   := preload("res://src/core/multimesh_pool.gd")
+const SpatialHash     := preload("res://src/core/spatial_hash.gd")
 
 var _pass: int = 0
 var _fail: int = 0
@@ -58,6 +59,11 @@ func run() -> void:
 	_run_test("creature: nearest_creature returns closest",   _test_creature_nearest)
 	_run_test("creature: death marks instance dead",          _test_creature_death_marks_dead)
 	_run_test("creature: respawn resets battle hp state",     _test_creature_respawn_resets_battle_hp)
+	_run_test("spatial: insert + query_radius finds entity",  _test_spatial_query_radius)
+	_run_test("spatial: update moves entity across cells",    _test_spatial_update_moves_cell)
+	_run_test("spatial: remove drops entity",                 _test_spatial_remove)
+	_run_test("spatial: nearest returns closest",             _test_spatial_nearest)
+	_run_test("creature: nearest_creature routes via hash",   _test_creature_nearest_via_hash)
 	_run_test("terrain: chunk size is correct",               _test_terrain_chunk_size)
 	_run_test("terrain: height is non-negative",              _test_terrain_height_nonneg)
 	_run_test("terrain: two chunks are independent",          _test_terrain_two_chunks)
@@ -493,6 +499,60 @@ func _test_creature_respawn_resets_battle_hp() -> void:
 		assert_false(b._hp_state.has(iid), "battle hp state cleared on respawn")
 		assert_eq(c._instances[iid]["state"], "idle", "creature state back to idle after respawn")
 	b.free()
+	c.free()
+
+# ---------------------------------------------------------------------------
+# SpatialHash tests (Phase 28)
+# ---------------------------------------------------------------------------
+
+func _test_spatial_query_radius() -> void:
+	var h := SpatialHash.new(8.0)
+	h.insert("a", Vector3(0.0, 0.0, 0.0))
+	h.insert("b", Vector3(2.0, 0.0, 0.0))
+	h.insert("far", Vector3(100.0, 0.0, 100.0))
+	var near := h.query_radius(Vector3(0.0, 0.0, 0.0), 3.0)
+	assert_true(near.has("a"), "entity at origin within radius")
+	assert_true(near.has("b"), "entity 2m away within radius")
+	assert_false(near.has("far"), "distant entity excluded from radius query")
+	assert_eq(h.size(), 3, "hash tracks all three entities")
+
+func _test_spatial_update_moves_cell() -> void:
+	var h := SpatialHash.new(8.0)
+	h.insert("a", Vector3(0.0, 0.0, 0.0))
+	h.update("a", Vector3(30.0, 0.0, 30.0))
+	assert_false(h.query_radius(Vector3(0.0, 0.0, 0.0), 1.0).has("a"), "entity no longer found near old cell")
+	assert_true(h.query_radius(Vector3(30.0, 0.0, 30.0), 1.0).has("a"), "entity found near new position")
+	assert_eq(h.size(), 1, "update preserves a single entry")
+
+func _test_spatial_remove() -> void:
+	var h := SpatialHash.new(8.0)
+	h.insert("a", Vector3(0.0, 0.0, 0.0))
+	h.insert("b", Vector3(1.0, 0.0, 0.0))
+	h.remove("a")
+	assert_false(h.has("a"), "removed entity no longer present")
+	assert_true(h.has("b"), "other entity unaffected")
+	assert_eq(h.size(), 1, "size reflects removal")
+	h.remove("a")
+	assert_eq(h.size(), 1, "removing an unknown id is a no-op")
+
+func _test_spatial_nearest() -> void:
+	var h := SpatialHash.new(8.0)
+	h.insert("near", Vector3(1.0, 0.0, 0.0))
+	h.insert("far", Vector3(50.0, 0.0, 50.0))
+	assert_eq(h.nearest(Vector3(0.0, 0.0, 0.0)), "near", "nearest returns closest entity")
+	assert_eq(h.nearest(Vector3(100.0, 0.0, 100.0)), "far", "nearest from a distant origin")
+
+func _test_creature_nearest_via_hash() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
+	var instances := c.get_all_instances()
+	assert_true(instances.size() > 0, "need at least one instance")
+	if instances.size() > 0:
+		assert_eq(c._spatial.size(), instances.size(), "spatial hash mirrors _instances count")
+		var pos: Vector3 = instances[0]["position"]
+		var result := c.nearest_creature(pos, 1000.0)
+		assert_true(result != "", "nearest_creature via hash returns an id")
 	c.free()
 
 # ---------------------------------------------------------------------------
