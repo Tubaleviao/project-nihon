@@ -66,6 +66,13 @@ const LOD_HYSTERESIS := 2.0
 const LOD_MANUAL := 0
 const LOD_AUTO := 1
 
+## Procedural locomotion animation (no authored clips yet — characters.md §37
+## defers real skeletal clips). `ANIM_FREQ` is the walk-phase advance in radians
+## per metre travelled; `RUN_SWING_AMPLITUDE` is the peak limb-swing angle
+## (radians) at full run. Idle (blend weight 0) resolves to the rest pose.
+const ANIM_FREQ := 7.0
+const RUN_SWING_AMPLITUDE := 0.7
+
 ## Palette is a fixed 256 entries (§19): one byte per color index.
 const PALETTE_SIZE := 256
 const PALETTE_KEY := "DefaultPalette"
@@ -115,6 +122,7 @@ func _ready() -> void:
 	_load_palette()
 	GameBus.character_attack_requested.connect(_on_attack_requested)
 	GameBus.character_death_requested.connect(_on_death_requested)
+	GameBus.character_equipment_toggle_requested.connect(_on_equipment_toggle_requested)
 
 # ---------------------------------------------------------------------------
 # Public — creation
@@ -143,14 +151,18 @@ func create_character_from_recipe(recipe: Dictionary, pos: Vector3) -> String:
 	add_child(root)
 
 	_instances[iid] = {
-		"appearance": normalized,
-		"position":   pos,
-		"root":       root,
-		"rig":        built["rig"],
-		"locomotion": built["locomotion"],
-		"equipment":  built["equipment"],
-		"parts":      built["parts"],
-		"impostor":   built.get("impostor", null),
+		"appearance":  normalized,
+		"position":    pos,
+		"root":        root,
+		"rig":         built["rig"],
+		"locomotion":  built["locomotion"],
+		"equipment":   built["equipment"],
+		"parts":       built["parts"],
+		"impostor":    built.get("impostor", null),
+		"limb_pivots": built.get("limb_pivots", {}),
+		"anim_phase":  0.0,
+		"base_equipment": normalized.get("equipment", {}).duplicate(true),
+		"equipment_visible": true,
 	}
 	_apply_lod(iid)
 
@@ -181,6 +193,10 @@ func apply_appearance(instance_id: String, recipe: Dictionary) -> bool:
 	inst["equipment"] = built["equipment"]
 	inst["parts"] = built["parts"]
 	inst["impostor"] = built.get("impostor", null)
+	inst["limb_pivots"] = built.get("limb_pivots", {})
+	inst["anim_phase"] = 0.0
+	inst["base_equipment"] = normalized.get("equipment", {}).duplicate(true)
+	inst["equipment_visible"] = true
 	# The rebuilt rig's nodes default to visible; reset the early-out state so
 	# _apply_lod force-applies visibility to the new nodes instead of skipping
 	# them (which would leave the full rig showing at impostor distance).
@@ -527,6 +543,30 @@ func clear_equipment(instance_id: String, slot: String) -> bool:
 	GameBus.character_appearance_changed.emit(instance_id, app)
 	return true
 
+## Toggle all equipment slots on/off at once — a vanity/debug convenience so the
+## "naked" body can be inspected under the gear. Unequipping remembers the base
+## gear; re-equipping restores it. Returns true on success.
+func toggle_equipment(instance_id: String) -> bool:
+	if not _instances.has(instance_id):
+		return false
+	var inst: Dictionary = _instances[instance_id]
+	var visible: bool = inst.get("equipment_visible", true)
+	if visible:
+		# Unequip every slot. Iterate a snapshot of the keys — clear_equipment
+		# mutates the equipment record mid-loop.
+		var slots: Array = inst["equipment"].keys()
+		for slot in slots:
+			clear_equipment(instance_id, str(slot))
+		inst["equipment_visible"] = false
+	else:
+		# Re-equip the base (original) gear.
+		var base: Dictionary = inst.get("base_equipment", {})
+		for slot in base:
+			var entry: Dictionary = base[slot]
+			apply_equipment(instance_id, str(slot), str(entry.get("item", "")), str(entry.get("state", "equipped")))
+		inst["equipment_visible"] = true
+	return true
+
 ## Advance the locomotion state machine for an instance. Returns the resulting
 ## Locomotion.State int, and emits character_state_changed on any transition.
 func update_locomotion(instance_id: String, speed: float, grounded: bool, velocity_y: float, delta: float) -> int:
@@ -629,6 +669,39 @@ func sync_player_avatar(
 	inst["position"] = root.position
 	update_locomotion(instance_id, speed, grounded, velocity_y, delta)
 
+	# Procedural locomotion animation — advance the walk phase by distance
+	# travelled and swing the limb pivots. The blend weight (0 idle → 1 run)
+	# scales the swing amplitude, so the character settles to a rest pose as it
+	# slows to a stop instead of freezing mid-stride.
+	var phase: float = inst.get("anim_phase", 0.0)
+	phase = fmod(phase + speed * delta * ANIM_FREQ, TAU)
+	inst["anim_phase"] = phase
+	_animate_limbs(inst, phase, inst["locomotion"].get_blend_weight() * RUN_SWING_AMPLITUDE)
+
+## Swing the limb pivots for the procedural walk/run cycle. `phase` is the
+## accumulated walk phase (0..TAU); `amplitude` is the peak swing angle in
+## radians (0 = rest pose). Legs and arms swing in opposition around each limb's
+## local X axis. Knees/elbows are absent (single-capsule limbs), so the swing is
+## a rigid rotation from the hip/shoulder — a deliberate simplification pending
+## real multi-segment limbs and authored clips (characters.md §37).
+func _animate_limbs(inst: Dictionary, phase: float, amplitude: float) -> void:
+	var pivots: Dictionary = inst.get("limb_pivots", {})
+	if pivots.is_empty():
+		return
+	var swing: float = sin(phase) * amplitude
+	var leg_l: Node3D = pivots.get("leg_l", null)
+	var leg_r: Node3D = pivots.get("leg_r", null)
+	var arm_l: Node3D = pivots.get("arm_l", null)
+	var arm_r: Node3D = pivots.get("arm_r", null)
+	if leg_l != null:
+		leg_l.rotation.x = swing
+	if leg_r != null:
+		leg_r.rotation.x = -swing
+	if arm_l != null:
+		arm_l.rotation.x = -swing
+	if arm_r != null:
+		arm_r.rotation.x = swing
+
 ## Bone names of the instance's skeleton (ordered, parents first).
 func get_skeleton_bone_names(instance_id: String) -> Array:
 	if not _instances.has(instance_id):
@@ -665,6 +738,9 @@ func _on_attack_requested(instance_id: String) -> void:
 
 func _on_death_requested(instance_id: String) -> void:
 	trigger_death(instance_id)
+
+func _on_equipment_toggle_requested() -> void:
+	toggle_equipment(_player_character_id)
 
 ## Build the equipment-visual definition for an item from GameData.ITEMS.
 ## Returns {} when the item is missing or has no equipment slot (not equippable).
@@ -940,6 +1016,12 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 	if rig.get_bone_index(head_bone) == -1:
 		head_bone = ""
 
+	## Procedural-limb pivots for the walk/run cycle, populated by the humanoid
+	## branch and left empty for non-humanoid families (which get no limb
+	## animation). Stored on the instance record so sync_player_avatar can swing
+	## them.
+	var limb_pivots: Dictionary = {}
+
 	if is_humanoid:
 		# Humanoid placeholders use the full body-shape landmark system (torso/
 		# hip/head landmarks — characters.md §37.4), which only humanoid
@@ -949,27 +1031,53 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 		var hip_y: float = landmarks["hip_y"]
 		var head_size: float = landmarks["head_size"]
 		var head_y: float = landmarks["head_y"]
+		var chest_y: float = landmarks["chest_y"]
+		var foot_side: float = landmarks["foot_side"]
 
-		# Chest (torso/shoulders/arms region placeholder — §16 BodyChest/
-		# BodyShoulders/BodyArms) — skinned to the torso bone so it deforms with the
-		# skeleton. The mesh keeps its computed root-space position, expressed as a
-		# bone-local offset (root-space minus the bone's rest origin) so the
-		# rendered pose is unchanged at rest.
-		var chest := _make_box(Vector3(0.55 * shoulder * mass, torso_h, 0.32 * mass), skin_idx)
+		# Chest — a rounded vertical capsule (not the old flat box) so the torso
+		# reads as a 3D body rather than a plate, skinned to the torso bone.
+		var torso_radius: float = 0.27 * shoulder * mass
+		var chest := _make_capsule(torso_radius, torso_h, skin_idx)
 		var chest_pos := Vector3(0.0, hip_y + torso_h * 0.5, 0.0)
 		rig.attach_to_bone(torso_bone, chest, chest_pos - rig.get_bone_global_rest(torso_bone))
 		parts["body_chest"] = { "node": chest, "max_lod": MAX_LOD }
 
-		# Legs (hips-to-ground region placeholder — §16 BodyLegs) — skinned to the
-		# hip bone so it deforms with the skeleton.
-		var legs := _make_box(Vector3(0.45 * shoulder * mass, hip_y, 0.30 * mass), skin_idx)
-		var legs_pos := Vector3(0.0, hip_y * 0.5, 0.0)
-		var legs_bone := _legs_bone(rig)
-		rig.attach_to_bone(legs_bone, legs, legs_pos - rig.get_bone_global_rest(legs_bone))
-		parts["body_legs"] = { "node": legs, "max_lod": MAX_LOD }
+		# Legs — one capsule per leg hanging from a hip pivot so the procedural
+		# walk cycle can swing each leg independently around its local X axis.
+		# Both pivots live under a "body_legs" container so hide/LOD toggle both
+		# at once (§16 BodyLegs); each foot rides its leg pivot so it swings too.
+		var leg_radius: float = 0.09 * mass * shoulder
+		var legs_container := Node3D.new()
+		legs_container.name = "Legs"
+		rig.add_child(legs_container)
+		for side in [["leg_l", -1.0], ["leg_r", 1.0]]:
+			var pivot_key: String = side[0]
+			var sign: float = side[1]
+			var leg := _make_limb(Vector3(foot_side * sign, hip_y, 0.0), hip_y, leg_radius, skin_idx)
+			legs_container.add_child(leg["pivot"])
+			limb_pivots[pivot_key] = leg["pivot"]
+			var foot := _make_box(Vector3(0.14 * shoulder, 0.08, 0.26), skin_idx)
+			foot.position = Vector3(0.0, -hip_y + 0.04, -0.10)
+			leg["pivot"].add_child(foot)
+		parts["body_legs"] = { "node": legs_container, "max_lod": MAX_LOD }
 
-		# Head — skinned to the head bone.
-		var head := _make_box(Vector3(head_size, head_size, head_size), skin_idx)
+		# Arms — one capsule per arm hanging from a shoulder pivot (at the top of
+		# the torso, not the chest) so they read as attached to the shoulders and
+		# swing in opposition to the legs during the walk cycle.
+		var arm_radius: float = 0.08 * mass
+		var arm_len: float = 0.55 * height * props.get("armLength", 1.0)
+		var arm_side: float = 0.27 * shoulder * mass
+		var shoulder_y: float = hip_y + torso_h - 0.06
+		for side in [["arm_l", -1.0], ["arm_r", 1.0]]:
+			var pivot_key: String = side[0]
+			var sign: float = side[1]
+			var arm := _make_limb(Vector3(arm_side * sign, shoulder_y, 0.0), arm_len, arm_radius, skin_idx)
+			rig.add_child(arm["pivot"])
+			limb_pivots[pivot_key] = arm["pivot"]
+			parts[pivot_key] = { "node": arm["pivot"], "max_lod": MAX_LOD }
+
+		# Head — a larger, clearly-rounded sphere skinned to the head bone.
+		var head := _make_sphere(head_size * 0.72, head_size * 1.3, skin_idx)
 		var head_pos := Vector3(0.0, head_y, 0.0)
 		rig.attach_to_bone(head_bone, head, head_pos - rig.get_bone_global_rest(head_bone))
 		parts["head"] = { "node": head, "max_lod": MAX_LOD }
@@ -1024,12 +1132,13 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 	var impostor := _make_impostor(rig, appearance, props)
 
 	return {
-		"root":       rig,
-		"rig":        rig,
-		"parts":      parts,
-		"equipment":  eq_records,
-		"locomotion": locomotion,
-		"impostor":   impostor,
+		"root":        rig,
+		"rig":         rig,
+		"parts":       parts,
+		"equipment":   eq_records,
+		"locomotion":  locomotion,
+		"impostor":    impostor,
+		"limb_pivots": limb_pivots,
 	}
 
 ## Build the impostor billboard (ROADMAP Phase 23): a camera-facing QuadMesh
@@ -1115,6 +1224,11 @@ func _attach_equipment(rig, slot: String, entry: Dictionary, props: Dictionary) 
 	var size: Vector3 = _vec3(def.get("size", [0.3, 0.3, 0.3]))
 	var mesh := _make_box(size, _equipment_base_index(def, entry), _equipment_material_opts(def, entry))
 	mesh.name = "Eq_%s" % slot
+	# A weapon sheathed at a hip socket hangs vertically (blade-down) rather than
+	# pointing forward like an equipped weapon: rotate the placeholder box's long
+	# (Z) axis onto Y.
+	if socket.begins_with("socket_hip"):
+		mesh.rotation_degrees.x = 90.0
 	rig.attach(socket, mesh, mode, offset)
 	# RIGID equipment does not follow a bone — only SKINNED/HYBRID do.
 	var bone: String = "" if mode == "RIGID" else rig.socket_to_bone(socket)
@@ -1136,15 +1250,6 @@ func _torso_bone(rig) -> String:
 			return name
 	return ""
 
-## Preferred hip bone to skin the legs mesh to, in a family-agnostic order
-## (humanoid/quadruped → Hips, else Root). Returns "" when none exist, so the
-## rig keeps the legs mesh a root child.
-func _legs_bone(rig) -> String:
-	for name in ["Hips", "Root"]:
-		if rig.get_bone_index(name) != -1:
-			return name
-	return ""
-
 ## Shared BoxMesh cache (characters.md §43 — the Phase 22 mesh-sharing
 ## criterion). Keyed by the exact box size, which is already quantized because
 ## the proportion sliders are snapped in `_normalize_proportions` (§8) before the
@@ -1156,6 +1261,8 @@ func _legs_bone(rig) -> String:
 ## NOTE: cached entries are SHARED across characters — never mutate a cached
 ## BoxMesh's `size` (or any property) in place, or every part sharing it changes.
 static var _box_meshes: Dictionary = {}
+static var _capsule_meshes: Dictionary = {}
+static var _sphere_meshes: Dictionary = {}
 
 ## Upper bound on the shared BoxMesh cache before a full clear (placeholder
 ## extents are cheap to rebuild, so a clear is simpler than LRU bookkeeping).
@@ -1175,6 +1282,46 @@ func _make_box(size: Vector3, palette_index: int, opts: Dictionary = {}) -> Mesh
 		box.size = size
 		_box_meshes[size] = box
 	mesh.mesh = box
+	return _finish_part(mesh, palette_index, opts)
+
+## A vertical capsule part (arms/legs/neck), sharing the same BoxMesh-style cache
+## and the single shared ShaderMaterial as every other part. Keyed by
+## (radius, height); `height` is the capsule's total height including both caps.
+func _make_capsule(radius: float, height: float, palette_index: int, opts: Dictionary = {}) -> MeshInstance3D:
+	var key := Vector2(radius, height)
+	var mesh := MeshInstance3D.new()
+	var cap: CapsuleMesh = _capsule_meshes.get(key, null)
+	if cap == null:
+		if _capsule_meshes.size() >= BOX_MESH_CACHE_MAX:
+			_capsule_meshes.clear()
+		cap = CapsuleMesh.new()
+		cap.radius = radius
+		cap.height = height
+		_capsule_meshes[key] = cap
+	mesh.mesh = cap
+	return _finish_part(mesh, palette_index, opts)
+
+## A rounded (spherical/ovoid) part (the head), sharing the same cache and shared
+## material. `height` != 2*radius gives a slightly taller-than-wide ovoid, which
+## reads more naturally for a head than a perfect sphere.
+func _make_sphere(radius: float, height: float, palette_index: int, opts: Dictionary = {}) -> MeshInstance3D:
+	var key := Vector2(radius, height)
+	var mesh := MeshInstance3D.new()
+	var sph: SphereMesh = _sphere_meshes.get(key, null)
+	if sph == null:
+		if _sphere_meshes.size() >= BOX_MESH_CACHE_MAX:
+			_sphere_meshes.clear()
+		sph = SphereMesh.new()
+		sph.radius = radius
+		sph.height = height
+		_sphere_meshes[key] = sph
+	mesh.mesh = sph
+	return _finish_part(mesh, palette_index, opts)
+
+## Shared tail of every part builder: bind the ONE shared ShaderMaterial (the
+## palette index and channel scalars are per-instance parameters, never a new
+## material) and write the per-instance colour/channel values.
+func _finish_part(mesh: MeshInstance3D, palette_index: int, opts: Dictionary) -> MeshInstance3D:
 	# ONE shared ShaderMaterial for every part (§20): the palette index and
 	# channel scalars are per-instance parameters, never a new material. The
 	# shared body detail texture is bound once on the shared material (same for
@@ -1185,6 +1332,18 @@ func _make_box(size: Vector3, palette_index: int, opts: Dictionary = {}) -> Mesh
 	mesh.material_override = mat
 	CharacterMaterial.apply_instance(mesh, palette_index, opts)
 	return mesh
+
+## Build a limb as a pivot-at-joint + a hanging capsule: the pivot sits at the
+## joint position and the capsule hangs down from it (centred at -length/2), so
+## rotating the pivot around its local X axis swings the limb for the procedural
+## walk cycle. Returns { pivot, mesh }.
+func _make_limb(joint_pos: Vector3, length: float, radius: float, palette_index: int) -> Dictionary:
+	var pivot := Node3D.new()
+	pivot.position = joint_pos
+	var capsule := _make_capsule(radius, length, palette_index)
+	capsule.position = Vector3(0.0, -length * 0.5, 0.0)
+	pivot.add_child(capsule)
+	return { "pivot": pivot, "mesh": capsule }
 
 func _palette_colors() -> Array:
 	if _palette.is_empty():
