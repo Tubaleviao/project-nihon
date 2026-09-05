@@ -277,7 +277,7 @@ func attach(socket: String, mesh: MeshInstance3D, mode: String, local_offset: Ve
 ## under a BoneAttachment3D on that bone so it follows the skeleton, positioned
 ## at `local_offset` in bone-local space. An unknown/empty bone name falls back
 ## to a rig-root child so nothing is left orphaned.
-func attach_to_bone(bone_name: String, mesh: MeshInstance3D, local_offset: Vector3) -> void:
+func attach_to_bone(bone_name: String, mesh: Node3D, local_offset: Vector3) -> void:
 	mesh.set_meta("attached_bone", bone_name)
 	if bone_name == "" or not _bone_index.has(bone_name):
 		self.add_child(mesh)

@@ -950,8 +950,8 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 		var head_size: float = landmarks["head_size"]
 		var head_y: float = landmarks["head_y"]
 
-		# Chest (torso/shoulders/arms region placeholder — §16 BodyChest/
-		# BodyShoulders/BodyArms) — skinned to the torso bone so it deforms with the
+		# Chest (torso/shoulders region placeholder — §16 BodyChest/
+		# BodyShoulders) — skinned to the torso bone so it deforms with the
 		# skeleton. The mesh keeps its computed root-space position, expressed as a
 		# bone-local offset (root-space minus the bone's rest origin) so the
 		# rendered pose is unchanged at rest.
@@ -960,16 +960,56 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 		rig.attach_to_bone(torso_bone, chest, chest_pos - rig.get_bone_global_rest(torso_bone))
 		parts["body_chest"] = { "node": chest, "max_lod": MAX_LOD }
 
-		# Legs (hips-to-ground region placeholder — §16 BodyLegs) — skinned to the
-		# hip bone so it deforms with the skeleton.
-		var legs := _make_box(Vector3(0.45 * shoulder * mass, hip_y, 0.30 * mass), skin_idx)
-		var legs_pos := Vector3(0.0, hip_y * 0.5, 0.0)
+		# Legs — two separate capsules (one per leg) plus a foot each, held in a
+		# single "body_legs" container skinned to the hip bone so hide/LOD toggle
+		# both legs at once. This replaces the old single hips-to-ground box with
+		# a recognisably human two-legged silhouette (§16 BodyLegs).
 		var legs_bone := _legs_bone(rig)
-		rig.attach_to_bone(legs_bone, legs, legs_pos - rig.get_bone_global_rest(legs_bone))
-		parts["body_legs"] = { "node": legs, "max_lod": MAX_LOD }
+		var legs_container := Node3D.new()
+		legs_container.name = "Legs"
+		rig.attach_to_bone(legs_bone, legs_container, Vector3.ZERO)
+		var leg_radius: float = 0.09 * mass * shoulder
+		var hips_rest: Vector3 = rig.get_bone_global_rest(legs_bone)
+		for side in [["Leg_L", "Foot_L"], ["Leg_R", "Foot_R"]]:
+			var leg_bone: String = side[0]
+			var foot_bone: String = side[1]
+			if rig.get_bone_index(leg_bone) == -1 or rig.get_bone_index(foot_bone) == -1:
+				continue
+			var foot_local: Vector3 = rig.get_bone_global_rest(foot_bone) - hips_rest
+			var leg_len: float = foot_local.length()
+			if leg_len < 0.001:
+				continue
+			var leg := _make_capsule(leg_radius, leg_len, skin_idx)
+			leg.position = foot_local * 0.5
+			legs_container.add_child(leg)
+			var foot := _make_box(Vector3(0.14 * shoulder, 0.08, 0.26), skin_idx)
+			foot.position = foot_local + Vector3(0.0, 0.04, -0.10)
+			legs_container.add_child(foot)
+		parts["body_legs"] = { "node": legs_container, "max_lod": MAX_LOD }
 
-		# Head — skinned to the head bone.
-		var head := _make_box(Vector3(head_size, head_size, head_size), skin_idx)
+		# Arms — two capsules running shoulder→hand, anchored to the skeleton's
+		# own rest chain (Shoulder→Arm→Forearm→Hand) so they hang naturally at
+		# the sides rather than reusing the raised weapon-grip hand landmark.
+		var arm_radius: float = 0.08 * mass
+		for side in [["Shoulder_L", "Arm_L", "Hand_L", "arm_l"], ["Shoulder_R", "Arm_R", "Hand_R", "arm_r"]]:
+			var shoulder_bone: String = side[0]
+			var arm_bone: String = side[1]
+			var hand_bone: String = side[2]
+			var part_key: String = side[3]
+			if rig.get_bone_index(shoulder_bone) == -1 or rig.get_bone_index(hand_bone) == -1:
+				continue
+			var shoulder_pos: Vector3 = rig.get_bone_global_rest(shoulder_bone)
+			var hand_pos: Vector3 = rig.get_bone_global_rest(hand_bone)
+			var arm_len: float = shoulder_pos.distance_to(hand_pos)
+			if arm_len < 0.001:
+				continue
+			var arm := _make_capsule(arm_radius, arm_len, skin_idx)
+			rig.attach_to_bone(arm_bone, arm, (shoulder_pos + hand_pos) * 0.5 - rig.get_bone_global_rest(arm_bone))
+			parts[part_key] = { "node": arm, "max_lod": MAX_LOD }
+
+		# Head — a rounded (ovoid) head skinned to the head bone, replacing the
+		# old cube so the character reads as a human rather than a stack of boxes.
+		var head := _make_sphere(head_size * 0.52, head_size * 1.1, skin_idx)
 		var head_pos := Vector3(0.0, head_y, 0.0)
 		rig.attach_to_bone(head_bone, head, head_pos - rig.get_bone_global_rest(head_bone))
 		parts["head"] = { "node": head, "max_lod": MAX_LOD }
@@ -1156,6 +1196,8 @@ func _legs_bone(rig) -> String:
 ## NOTE: cached entries are SHARED across characters — never mutate a cached
 ## BoxMesh's `size` (or any property) in place, or every part sharing it changes.
 static var _box_meshes: Dictionary = {}
+static var _capsule_meshes: Dictionary = {}
+static var _sphere_meshes: Dictionary = {}
 
 ## Upper bound on the shared BoxMesh cache before a full clear (placeholder
 ## extents are cheap to rebuild, so a clear is simpler than LRU bookkeeping).
@@ -1175,6 +1217,46 @@ func _make_box(size: Vector3, palette_index: int, opts: Dictionary = {}) -> Mesh
 		box.size = size
 		_box_meshes[size] = box
 	mesh.mesh = box
+	return _finish_part(mesh, palette_index, opts)
+
+## A vertical capsule part (arms/legs/neck), sharing the same BoxMesh-style cache
+## and the single shared ShaderMaterial as every other part. Keyed by
+## (radius, height); `height` is the capsule's total height including both caps.
+func _make_capsule(radius: float, height: float, palette_index: int, opts: Dictionary = {}) -> MeshInstance3D:
+	var key := Vector2(radius, height)
+	var mesh := MeshInstance3D.new()
+	var cap: CapsuleMesh = _capsule_meshes.get(key, null)
+	if cap == null:
+		if _capsule_meshes.size() >= BOX_MESH_CACHE_MAX:
+			_capsule_meshes.clear()
+		cap = CapsuleMesh.new()
+		cap.radius = radius
+		cap.height = height
+		_capsule_meshes[key] = cap
+	mesh.mesh = cap
+	return _finish_part(mesh, palette_index, opts)
+
+## A rounded (spherical/ovoid) part (the head), sharing the same cache and shared
+## material. `height` != 2*radius gives a slightly taller-than-wide ovoid, which
+## reads more naturally for a head than a perfect sphere.
+func _make_sphere(radius: float, height: float, palette_index: int, opts: Dictionary = {}) -> MeshInstance3D:
+	var key := Vector2(radius, height)
+	var mesh := MeshInstance3D.new()
+	var sph: SphereMesh = _sphere_meshes.get(key, null)
+	if sph == null:
+		if _sphere_meshes.size() >= BOX_MESH_CACHE_MAX:
+			_sphere_meshes.clear()
+		sph = SphereMesh.new()
+		sph.radius = radius
+		sph.height = height
+		_sphere_meshes[key] = sph
+	mesh.mesh = sph
+	return _finish_part(mesh, palette_index, opts)
+
+## Shared tail of every part builder: bind the ONE shared ShaderMaterial (the
+## palette index and channel scalars are per-instance parameters, never a new
+## material) and write the per-instance colour/channel values.
+func _finish_part(mesh: MeshInstance3D, palette_index: int, opts: Dictionary) -> MeshInstance3D:
 	# ONE shared ShaderMaterial for every part (§20): the palette index and
 	# channel scalars are per-instance parameters, never a new material. The
 	# shared body detail texture is bound once on the shared material (same for
