@@ -97,6 +97,7 @@ func run() -> void:
 	_run_test("character: LOD equipping at impostor hides node", _test_character_lod_equip_at_impostor)
 	_run_test("character: skeleton rig builds bone hierarchy",_test_character_skeleton_rig)
 	_run_test("character: bone pose initialized from rest",    _test_character_skeleton_pose_matches_rest)
+	_run_test("character: avatar faces movement direction",   _test_character_faces_movement_direction)
 	_run_test("character: locomotion idle→walk→run by speed", _test_character_locomotion_speed)
 	_run_test("character: blend curve maps speed to 0..1",     _test_character_blend_curve)
 	_run_test("character: attack/death play on bus signals",  _test_character_attack_death_signals)
@@ -1081,6 +1082,22 @@ func _test_character_skeleton_pose_matches_rest() -> void:
 			"%s pose matches rest (bone attachments track the bone)" % bone_name
 		)
 	rig.free()
+
+func _test_character_faces_movement_direction() -> void:
+	# Regression: the avatar's forward (the face/beard side, -Z) must point along
+	# the movement direction. A bare atan2(vx, vz) aligned +Z (the back) with
+	# velocity, so the avatar walked backwards. Negating both args aligns -Z.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character_from_recipe({ "skeleton": "HumanoidSkeleton" }, Vector3.ZERO)
+	# The legs container is a rig-root child, so its parent is the rig root.
+	var rig: Node3D = ch.get_part_node(iid, "body_legs").get_parent() as Node3D
+	assert_true(rig != null, "rig root reachable from the legs container")
+	var flat := func(_xz: Vector2) -> float: return 0.0
+	# Move forward (-Z) with a large delta so rotate_toward snaps to the target.
+	ch.sync_player_avatar(iid, Vector3.ZERO, Vector3(0.0, 0.0, -1.0), 0.0, true, 10.0, flat)
+	assert_true(is_equal_approx(rig.rotation.y, 0.0), "forward (-Z) movement faces yaw 0, not backwards")
+	ch.free()
 
 func _test_character_locomotion_speed() -> void:
 	var ch := CharacterSlice.new()

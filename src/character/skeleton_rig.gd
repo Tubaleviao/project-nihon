@@ -47,8 +47,9 @@ const DEFAULT_STEP := Vector3(0.0, 0.2, 0.0)
 ## HumanoidSkeleton does — non-humanoid families don't use the humanoid
 ## placeholder body/socket layout). Mirrors HumanoidSkeleton's fabric defaults.
 const DEFAULT_BODY_SHAPE: Dictionary = {
-	"torsoHeightFactor": 0.64,
-	"hipHeightFactor": 0.95,
+	"torsoHeightFactor": 0.72,
+	"hipHeightFactor": 0.85,
+	"neckHeightFactor": 0.14,
 	"headSizeFactor": 0.21,
 	"chestYFactor": 0.70,
 	"handXFactor": 0.42,
@@ -200,16 +201,18 @@ static func compute_landmarks(coeffs: Dictionary, props: Dictionary) -> Dictiona
 
 	var torso_h: float = float(c["torsoHeightFactor"]) * height
 	var hip_y: float = float(c["hipHeightFactor"]) * leg_len * height
+	var neck_len: float = float(c["neckHeightFactor"]) * height
 	var head_size: float = float(c["headSizeFactor"]) * head_scale
 	var chest_y: float = hip_y + torso_h * float(c["chestYFactor"])
-	var head_top: float = hip_y + torso_h + head_size
-	var head_y: float = hip_y + torso_h + head_size * 0.5
+	var head_top: float = hip_y + torso_h + neck_len + head_size
+	var head_y: float = hip_y + torso_h + neck_len + head_size * 0.5
 	var hand_x: float = float(c["handXFactor"]) * shoulder
 	var hand_y: float = chest_y - float(c["handYArmFactor"]) * arm_len * height
 
 	return {
 		"torso_h":        torso_h,
 		"hip_y":          hip_y,
+		"neck_len":       neck_len,
 		"head_size":      head_size,
 		"head_top":       head_top,
 		"head_y":         head_y,

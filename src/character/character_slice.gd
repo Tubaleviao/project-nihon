@@ -645,7 +645,10 @@ func sync_player_avatar(
 	# turnSpeed (radians/sec), rather than snapping to face it instantly.
 	var speed: float = Vector2(horizontal_velocity.x, horizontal_velocity.z).length()
 	if speed > 0.05:
-		var target_yaw := atan2(horizontal_velocity.x, horizontal_velocity.z)
+		# The character's forward (face, -Z) must point along the velocity. A bare
+		# atan2(vx, vz) aligns +Z with velocity, which faces the character's BACK
+		# forward (walking backwards). Negate both args so -Z tracks velocity.
+		var target_yaw := atan2(-horizontal_velocity.x, -horizontal_velocity.z)
 		root.rotation.y = rotate_toward(root.rotation.y, target_yaw, rig.get_turn_speed() * delta)
 
 	# Approximate foot IK — sample terrain under both feet at the controller's
@@ -1028,6 +1031,7 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 		var landmarks: Dictionary = SkeletonRig.compute_landmarks(rig.get_body_shape_coefficients(), props)
 		var torso_h: float = landmarks["torso_h"]
 		var hip_y: float = landmarks["hip_y"]
+		var neck_len: float = landmarks["neck_len"]
 		var head_size: float = landmarks["head_size"]
 		var head_y: float = landmarks["head_y"]
 		var chest_y: float = landmarks["chest_y"]
@@ -1035,7 +1039,7 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 
 		# Chest — a rounded vertical capsule (not the old flat box) so the torso
 		# reads as a 3D body rather than a plate, skinned to the torso bone.
-		var torso_radius: float = 0.27 * shoulder * mass
+		var torso_radius: float = 0.20 * shoulder * mass
 		var chest := _make_capsule(torso_radius, torso_h, skin_idx)
 		var chest_pos := Vector3(0.0, hip_y + torso_h * 0.5, 0.0)
 		rig.attach_to_bone(torso_bone, chest, chest_pos - rig.get_bone_global_rest(torso_bone))
@@ -1065,7 +1069,7 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 		# swing in opposition to the legs during the walk cycle.
 		var arm_radius: float = 0.08 * mass
 		var arm_len: float = 0.55 * height * props.get("armLength", 1.0)
-		var arm_side: float = 0.27 * shoulder * mass
+		var arm_side: float = 0.20 * shoulder * mass
 		var shoulder_y: float = hip_y + torso_h - 0.06
 		for side in [["arm_l", -1.0], ["arm_r", 1.0]]:
 			var pivot_key: String = side[0]
@@ -1075,25 +1079,37 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 			limb_pivots[pivot_key] = arm["pivot"]
 			parts[pivot_key] = { "node": arm["pivot"], "max_lod": MAX_LOD }
 
-		# Head — a larger, clearly-rounded sphere skinned to the head bone.
-		var head := _make_sphere(head_size * 0.72, head_size * 1.3, skin_idx)
+		# Neck — a short capsule bridging the torso and head, so the head reads
+		# as sitting on a neck (the Neck bone spans this gap) rather than fused
+		# to the torso.
+		var neck_radius: float = 0.06 * mass
+		var neck := _make_capsule(neck_radius, neck_len, skin_idx)
+		neck.position = Vector3(0.0, hip_y + torso_h + neck_len * 0.5, 0.0)
+		rig.add_child(neck)
+		parts["neck"] = { "node": neck, "max_lod": MAX_LOD }
+
+		# Head — a rounded ovoid (slightly taller than wide) sitting on the neck.
+		var head_radius: float = head_size * 0.55
+		var head_height: float = head_size * 1.25
+		var head := _make_sphere(head_radius, head_height, skin_idx)
 		var head_pos := Vector3(0.0, head_y, 0.0)
 		rig.attach_to_bone(head_bone, head, head_pos - rig.get_bone_global_rest(head_bone))
 		parts["head"] = { "node": head, "max_lod": MAX_LOD }
 
-		# Hair (independent component — §13).
+		# Hair (independent component — §13) caps the top of the head.
 		var hair_id: String = str(appearance.get("hair", "none"))
 		if hair_id != "none" and hair_id != "":
 			var hair := _make_box(Vector3(head_size * 1.05, head_size * 0.4, head_size * 1.05), hair_idx)
-			hair.position = Vector3(0.0, head_y + head_size * 0.45, 0.0)
+			hair.position = Vector3(0.0, head_y + head_height * 0.5 + head_size * 0.1, 0.0)
 			rig.add_child(hair)
 			parts["hair"] = { "node": hair, "max_lod": 0 }
 
-		# Beard (independent component — §14).
+		# Beard (independent component — §14) hangs on the front of the chin
+		# (the face side is -Z), not inside the head.
 		var beard_id: String = str(appearance.get("beard", "none"))
 		if beard_id != "none" and beard_id != "":
 			var beard := _make_box(Vector3(head_size * 0.7, head_size * 0.5, head_size * 0.25), beard_idx)
-			beard.position = Vector3(0.0, head_y - head_size * 0.1, -head_size * 0.55)
+			beard.position = Vector3(0.0, head_y - head_height * 0.35, -head_radius - head_size * 0.15)
 			rig.add_child(beard)
 			parts["beard"] = { "node": beard, "max_lod": 0 }
 	else:
