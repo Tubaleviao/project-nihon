@@ -96,6 +96,8 @@ func run() -> void:
 	_run_test("character: LOD hysteresis on thresholds",       _test_character_lod_hysteresis)
 	_run_test("character: LOD equipping at impostor hides node", _test_character_lod_equip_at_impostor)
 	_run_test("character: skeleton rig builds bone hierarchy",_test_character_skeleton_rig)
+	_run_test("character: bone pose initialized from rest",    _test_character_skeleton_pose_matches_rest)
+	_run_test("character: avatar faces movement direction",   _test_character_faces_movement_direction)
 	_run_test("character: locomotion idle→walk→run by speed", _test_character_locomotion_speed)
 	_run_test("character: blend curve maps speed to 0..1",     _test_character_blend_curve)
 	_run_test("character: attack/death play on bus signals",  _test_character_attack_death_signals)
@@ -116,7 +118,9 @@ func run() -> void:
 	_run_test("character: metal channel is palette-driven",      _test_character_metal_channel)
 	_run_test("character: emission path uses palette index",     _test_character_emission_path)
 	_run_test("character: instance uniforms reach shader",        _test_character_instance_uniforms_reach_shader)
-	_run_test("character: same-size parts share one BoxMesh",     _test_character_mesh_shared)
+	_run_test("character: same-size parts share one mesh",     _test_character_mesh_shared)
+	_run_test("character: procedural walk swings limbs",        _test_character_procedural_walk_animation)
+	_run_test("character: toggle equipment on/off",             _test_character_toggle_equipment)
 	_run_test("character: nearby proportions snap to one bucket",   _test_character_proportions_quantized)
 	_run_test("crafting: recipe data loaded from fabric",     _test_crafting_recipe_data_loaded)
 	_run_test("crafting: skill guard blocks low tier",        _test_crafting_skill_guard_blocks)
@@ -1059,6 +1063,42 @@ func _test_character_skeleton_rig() -> void:
 	assert_true(bones.has("Foot_L"), "Foot_L bone present")
 	ch.free()
 
+func _test_character_skeleton_pose_matches_rest() -> void:
+	# Regression: build() must initialize each bone's POSE from its REST.
+	# `set_bone_rest` stores only the rest transform; the pose (what
+	# BoneAttachment3D follows) stays identity after `add_bone`. Without
+	# reset_bone_poses(), every bone-attached mesh (head, torso, SKINNED/HYBRID
+	# equipment) snaps to the skeleton origin — displaced by
+	# `-get_bone_global_rest(bone)` — the "head in the wrong place / missing
+	# body parts" bug. The pose must match the rest so attachments track bones.
+	var rig := SkeletonRig.new()
+	add_child(rig)
+	rig.build(GameData.SKELETONS["HumanoidSkeleton"], {})
+	var skel: Skeleton3D = rig.get_skeleton()
+	for bone_name in ["Hips", "Chest", "Neck", "Head", "Hand_L", "Foot_L"]:
+		var idx: int = rig.get_bone_index(bone_name)
+		assert_true(
+			skel.get_bone_pose(idx).origin.is_equal_approx(skel.get_bone_rest(idx).origin),
+			"%s pose matches rest (bone attachments track the bone)" % bone_name
+		)
+	rig.free()
+
+func _test_character_faces_movement_direction() -> void:
+	# Regression: the avatar's forward (the face/beard side, -Z) must point along
+	# the movement direction. A bare atan2(vx, vz) aligned +Z (the back) with
+	# velocity, so the avatar walked backwards. Negating both args aligns -Z.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character_from_recipe({ "skeleton": "HumanoidSkeleton" }, Vector3.ZERO)
+	# The legs container is a rig-root child, so its parent is the rig root.
+	var rig: Node3D = ch.get_part_node(iid, "body_legs").get_parent() as Node3D
+	assert_true(rig != null, "rig root reachable from the legs container")
+	var flat := func(_xz: Vector2) -> float: return 0.0
+	# Move forward (-Z) with a large delta so rotate_toward snaps to the target.
+	ch.sync_player_avatar(iid, Vector3.ZERO, Vector3(0.0, 0.0, -1.0), 0.0, true, 10.0, flat)
+	assert_true(is_equal_approx(rig.rotation.y, 0.0), "forward (-Z) movement faces yaw 0, not backwards")
+	ch.free()
+
 func _test_character_locomotion_speed() -> void:
 	var ch := CharacterSlice.new()
 	add_child(ch)
@@ -1368,9 +1408,9 @@ func _test_character_instance_uniforms_reach_shader() -> void:
 	assert_true(material_uniforms.has("detail_tex"), "detail_tex remains a material-level uniform")
 
 func _test_character_mesh_shared() -> void:
-	# Parts with identical extents share one BoxMesh resource (§43 / Phase 22
+	# Parts with identical extents share one mesh resource (§43 / Phase 22
 	# mesh-sharing criterion): two instances of the same appearance have the same
-	# proportions, so their body boxes share one BoxMesh.
+	# proportions, so their body parts (now a rounded capsule) share one capsule.
 	var ch := CharacterSlice.new()
 	add_child(ch)
 	var iid1 := ch.create_character("TravellerHuman", Vector3.ZERO)
@@ -1379,8 +1419,43 @@ func _test_character_mesh_shared() -> void:
 	var n1 := ch.get_part_node(iid1, "body_chest") as MeshInstance3D
 	var n2 := ch.get_part_node(iid2, "body_chest") as MeshInstance3D
 	assert_true(n1 != null and n2 != null, "body parts exist")
-	assert_true(n1.mesh is BoxMesh and n2.mesh is BoxMesh, "parts use a BoxMesh")
-	assert_true(n1.mesh == n2.mesh, "same-size parts share one BoxMesh resource")
+	assert_true(n1.mesh is CapsuleMesh and n2.mesh is CapsuleMesh, "parts use a CapsuleMesh")
+	assert_true(n1.mesh == n2.mesh, "same-size parts share one mesh resource")
+	ch.free()
+
+func _test_character_procedural_walk_animation() -> void:
+	# Driving the avatar forward swings the limb pivots away from the rest pose,
+	# and idle settles them back (procedural locomotion — no authored clips yet).
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	assert_true(iid != "", "character created")
+	var terrain := func(_v: Vector2) -> float: return 0.0
+	# Idle: no horizontal speed -> rest pose (zero swing).
+	ch.sync_player_avatar(iid, Vector3.ZERO, Vector3.ZERO, 0.0, true, 0.1, terrain)
+	var arm_l: Node3D = ch.get_part_node(iid, "arm_l")
+	var arm_r: Node3D = ch.get_part_node(iid, "arm_r")
+	assert_true(arm_l != null and arm_r != null, "arm pivots exist")
+	assert_true(absf(arm_l.rotation.x) < 0.001 and absf(arm_r.rotation.x) < 0.001, "idle arms at rest pose")
+	# Walk: advance a frame at walking speed -> arms swing in opposition.
+	ch.sync_player_avatar(iid, Vector3.ZERO, Vector3(0.0, 0.0, 2.0), 0.0, true, 0.1, terrain)
+	assert_true(absf(arm_l.rotation.x) > 0.001 or absf(arm_r.rotation.x) > 0.001, "arms swing while walking")
+	ch.free()
+
+func _test_character_toggle_equipment() -> void:
+	# Toggling all equipment at once clears then restores every slot, so the
+	# "naked" body can be inspected under the gear (vanity/debug).
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	assert_true(iid != "", "character created")
+	assert_true(ch.get_part_node(iid, "Chest") != null, "chestplate equipped initially")
+	assert_true(ch.toggle_equipment(iid), "toggle off returns true")
+	assert_true(ch.get_part_node(iid, "Chest") == null, "chestplate cleared after toggle")
+	assert_true(ch.get_part_node(iid, "MainHand") == null, "sword cleared after toggle")
+	assert_true(ch.get_part_node(iid, "OffHand") == null, "shield cleared after toggle")
+	assert_true(ch.toggle_equipment(iid), "toggle on returns true")
+	assert_true(ch.get_part_node(iid, "Chest") != null, "chestplate restored after toggle")
 	ch.free()
 
 func _test_character_proportions_quantized() -> void:

@@ -222,8 +222,6 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
 			static_body.add_child(col_shape)
 	root.add_child(static_body)
 
-	print("VoxelSlice: built chunk %s  tiles=%d" % [key, CHUNK_SIZE * CHUNK_SIZE])
-
 ## Free a chunk's visual + collision nodes without touching its base heightmap
 ## or any voxel edits. The heightmap is cached in `_heightmaps` so a later
 ## build_chunk() re-applies edits and restores the column exactly. Used by
@@ -233,7 +231,6 @@ func unload_chunk(chunk_pos: Vector2i) -> void:
 	if _chunks.has(key):
 		_chunks[key].queue_free()
 		_chunks.erase(key)
-		print("VoxelSlice: unloaded chunk %s" % key)
 
 ## Return the set of chunks currently holding live mesh nodes.
 func get_loaded_chunks() -> Array:
@@ -288,7 +285,6 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP) -> Dictionary:
 
 	GameBus.block_mined.emit(material, 1, pos)
 	GameBus.block_changed.emit("mine", world_pos, normal, material)
-	print("VoxelSlice: mined %s at (%d,%d) → height %.1f" % [material, tile.x, tile.y, new_h])
 	return { "success": true, "material": material, "quantity": 1, "position": pos }
 
 ## Place one voxel of the currently selected material on the column adjacent to
@@ -317,7 +313,6 @@ func place_block(world_pos: Vector3, normal: Vector3) -> bool:
 	_mark_dirty(tile)
 	GameBus.block_placed.emit(material, pos)
 	GameBus.block_changed.emit("place", world_pos, normal, material)
-	print("VoxelSlice: placed %s at (%d,%d) → height %.1f" % [material, tile.x, tile.y, new_h])
 	return true
 
 ## Current (edited) voxel height at a world XZ position, quantised to STEP.

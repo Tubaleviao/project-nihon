@@ -211,19 +211,7 @@ func _ready() -> void:
 	GameBus.player_damaged.connect(_on_player_damaged)
 	GameBus.player_died.connect(_on_player_died)
 	GameBus.player_respawned.connect(_on_player_respawned)
-	GameBus.creature_alert.connect(func(iid): print("[AI] %s → alert" % iid))
-	GameBus.creature_aggressive.connect(func(iid): print("[AI] %s → aggressive" % iid))
-	GameBus.creature_fleeing.connect(func(iid): print("[AI] %s → fleeing" % iid))
-	GameBus.station_placed.connect(func(id, type, pos): print("[Station] %s [%s] placed at %s" % [type, id, pos]))
-	GameBus.item_broke.connect(func(iid): print("[Item] %s broke!" % iid))
 	GameBus.trade_completed.connect(_on_trade_completed)
-	GameBus.market_listing_created.connect(func(id, seller, item, qty, price): print("[Market] %s listed %s ×%d @ %.2f" % [seller, item, qty, price]))
-	GameBus.market_listing_purchased.connect(func(id, buyer, item, qty): print("[Market] %s bought %s ×%d" % [buyer, item, qty]))
-	GameBus.market_listing_expired.connect(func(id): print("[Market] listing %s expired" % id))
-	GameBus.proposal_submitted.connect(func(id): print("[Governance] proposal %s submitted" % id))
-	GameBus.proposal_ratified.connect(func(id, title): print("[Governance] proposal %s ratified: %s" % [id, title]))
-	GameBus.chunk_loaded.connect(func(pos): print("[Chunk] loaded %s" % pos))
-	GameBus.chunk_unloaded.connect(func(pos): print("[Chunk] unloaded %s" % pos))
 	GameBus.peer_connected.connect(_on_peer_connected)
 	GameBus.world_snapshot_received.connect(_on_world_snapshot_received)
 	multiplayer.connection_failed.connect(_on_connection_failed)
@@ -307,7 +295,6 @@ func _valid_host_address(addr: String) -> bool:
 const DEBUG := false
 
 func _boot_world() -> void:
-	print("\n=== Project Nihon — world boot ===")
 
 	if _is_client:
 		_boot_client()
@@ -322,12 +309,10 @@ func _boot_world() -> void:
 	var spawn_xz := Vector2(16.0, 16.0)
 	var ground_h := _terrain.get_height_at(spawn_xz)
 	_player.spawn_at(Vector3(spawn_xz.x, ground_h + 1.0, spawn_xz.y))
-	print("[Player] spawning on terrain at (%.1f, %.1f, %.1f)" % [spawn_xz.x, ground_h + 1.0, spawn_xz.y])
 
 	# Chunk streaming (Phase 17) — load the window of chunks around the player
 	# instead of a single fixed origin chunk. VoxelSlice builds the mesh on
 	# chunk_ready and CreatureSlice spawns each chunk's budget.
-	print("\n[Terrain] Streaming chunks around player (view distance %d)…" % _chunk_manager.view_distance)
 	_chunk_manager.start()
 	_chunk_manager.refresh()
 
@@ -345,32 +330,21 @@ func _boot_world() -> void:
 	var instances := _creature.get_all_instances()
 	if instances.size() > 0:
 		var first: Dictionary = instances[0]
-		print("\n[Creatures] %d creatures spawned; first: %s [%s] at %s" % [
-			instances.size(),
-			first["creature_id"],
-			first["instance_id"],
-			first["position"],
-		])
 		# Request one combat round against the first spawned creature via the bus
 		# (the real trigger comes from player left-click; this validates the pipeline).
 		GameBus.combat_round_requested.emit("player", first["instance_id"])
 
 	# Mining & building — mine a surface block (biome material → inventory) and
 	# place one back, proving the voxel edit API and material flow end to end.
-	print("\n[Mining] Mining a surface block near spawn…")
 	var mine_spot := Vector3(spawn_xz.x + 6.0, ground_h, spawn_xz.y + 2.0)
-	var mined := _voxel.mine_block(mine_spot)
-	if mined.get("success", false):
-		print("[Mining] mined %s ×%d" % [mined["material"], mined["quantity"]])
+	_voxel.mine_block(mine_spot)
 	_inventory.add_item("Ashite", 4)
 	_voxel.set_place_material("Ashite")
-	var placed := _voxel.place_block(Vector3(spawn_xz.x + 10.0, ground_h, spawn_xz.y + 2.0), Vector3.UP)
-	print("[Building] placed Ashite block: %s" % ("ok" if placed else "blocked"))
+	_voxel.place_block(Vector3(spawn_xz.x + 10.0, ground_h, spawn_xz.y + 2.0), Vector3.UP)
 
 	if DEBUG:
 		# Technology + crafting demo (DEBUG only): exercises the research and
 		# station gates with expected-fail craft attempts and console output.
-		print("\n[Technology] Seeding materials + demonstrating research gates…")
 		var starter_kit := { "Ferrite": 10, "Thornwood": 6 }
 		for item_id in starter_kit:
 			_inventory.add_item(item_id, starter_kit[item_id])
@@ -397,7 +371,6 @@ func _boot_world() -> void:
 		GameBus.craft_requested.emit("RecipeVoidRuneTablet")    # FAIL (skill guard + tech gate)
 
 	# Persistence — save the initial world snapshot via the bus.
-	print("\n[Persistence] Saving initial world snapshot to slot 0…")
 	var snapshot := {
 		"timestamp": Time.get_ticks_msec(),
 		"player":    {
@@ -420,15 +393,11 @@ func _boot_world() -> void:
 	GameBus.load_requested.emit(0)
 
 	# Networking — open local host so peers can connect.
-	print("\n[Networking] Starting local host on port %d…" % _networking.DEFAULT_PORT)
 	_networking.host(_networking.DEFAULT_PORT, 1)
-
-	print("\n=== World boot complete — LMB/F attack · RMB mine · MMB place · R cycle ===\n")
 
 ## Client boot path (Phase 18): do NOT run the authoritative simulation. Join
 ## the host and wait for the world snapshot before showing anything.
 func _boot_client() -> void:
-	print("[Networking] Client mode — joining %s:%d, awaiting world snapshot…" % [_host_address, _networking.DEFAULT_PORT])
 	var err: Error = _networking.join(_host_address, _networking.DEFAULT_PORT)
 	if err != OK:
 		push_error("[Networking] client failed to connect to %s — %s" % [_host_address, error_string(err)])
@@ -441,18 +410,14 @@ func _boot_client() -> void:
 ## with no local player presentation. Streams the world around the origin and
 ## opens the host so clients can connect. No avatar, lighting, or demo.
 func _boot_server() -> void:
-	print("\n[Server] Headless authoritative server — booting simulation…")
 	_chunk_manager.start()
 	_chunk_manager.refresh()
-	print("[Networking] Starting headless server on port %d (max %d clients)…" % [_networking.DEFAULT_PORT, _networking.DEFAULT_MAX_CLIENTS])
 	_networking.host(_networking.DEFAULT_PORT, _networking.DEFAULT_MAX_CLIENTS)
-	print("=== Headless server running ===\n")
 
 func _on_peer_connected(peer_id: int) -> void:
 	if _is_client:
 		return
 	# Host: ship the authoritative world snapshot to the newly connected client.
-	print("[Networking] peer %d connected — sending world snapshot" % peer_id)
 	_networking.send_snapshot(peer_id, _build_snapshot())
 
 func _process(delta: float) -> void:
@@ -526,7 +491,6 @@ func _build_snapshot() -> Dictionary:
 func _on_world_snapshot_received(data: Dictionary) -> void:
 	if not _is_client:
 		return
-	print("[Networking] world snapshot received — applying state")
 	if data.has("heightmaps") and data["heightmaps"] is Dictionary:
 		_voxel.apply_heightmaps(data["heightmaps"])
 	if data.has("edits") and data["edits"] is Dictionary:
@@ -553,17 +517,10 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 # ---------------------------------------------------------------------------
 
 func _on_chunk_ready(chunk_pos: Vector2i, heightmap: Array) -> void:
-	var sample: float = heightmap[0] if heightmap.size() > 0 else 0.0
-	print("[Terrain] chunk_ready pos=%s  height[0]=%.2f" % [chunk_pos, sample])
+	pass
 
 func _on_combat_resolved(result: Dictionary) -> void:
-	print("[Battle] %s → %s : %s  dmg=%.1f  defender_hp=%.1f" % [
-		result.get("attacker", "?"),
-		result.get("defender", "?"),
-		result.get("outcome",  "?"),
-		result.get("damage",   0.0),
-		result.get("defender_hp_remaining", 0.0),
-	])
+	pass
 
 ## Drive the player avatar's attack animation whenever the player attacks.
 func _on_combat_round_requested(attacker_id: String, defender_id: String) -> void:
@@ -571,71 +528,60 @@ func _on_combat_round_requested(attacker_id: String, defender_id: String) -> voi
 		GameBus.character_attack_requested.emit(_character.get_player_character())
 
 func _on_creature_died(entity_id: String, position: Vector3, killer_id: String) -> void:
-	print("[Death] %s died at %s  killer=%s" % [entity_id, position, killer_id])
+	pass
 
 func _on_creature_spawned(instance_id: String, creature_id: String, position: Vector3) -> void:
-	print("[Creature] %s [%s] spawned at %s" % [creature_id, instance_id, position])
+	pass
 
 func _on_loot_dropped(pickup_id: String, item_id: String, position: Vector3, quantity: int) -> void:
-	print("[Loot] pickup=%s  item=%s ×%d  at %s" % [pickup_id, item_id, quantity, position])
+	pass
 
 func _on_item_picked_up(item_id: String, quantity: int) -> void:
-	print("[Inventory] picked up %s ×%d" % [item_id, quantity])
-	print("[Inventory] contents: %s" % str(_inventory.get_contents()))
+	pass
 
 func _on_player_state_changed(payload: Dictionary) -> void:
 	pass   # logged by PlayerSlice; suppress repetitive output here
 
 func _on_inventory_full() -> void:
-	print("[Inventory] FULL — pickups will be rejected")
+	pass
 
 func _on_character_spawned(instance_id: String, skeleton_id: String, position: Vector3) -> void:
-	print("[Character] %s [%s] assembled at %s" % [skeleton_id, instance_id, position])
+	pass
 
 func _on_craft_resolved(result: Dictionary) -> void:
-	if result.get("success", false):
-		print("[Crafting] %s → %s" % [result.get("recipe_id", "?"), str(result.get("outputs", []))])
-	else:
-		print("[Crafting] %s FAILED — %s" % [result.get("recipe_id", "?"), result.get("reason", "?")])
-	print("[Inventory] contents: %s" % str(_inventory.get_contents()))
+	pass
 
 func _on_research_resolved(result: Dictionary) -> void:
-	if result.get("success", false):
-		print("[Technology] %s → %s" % [result.get("tech_id", "?"), result.get("status", "?")])
-	else:
-		print("[Technology] %s FAILED — %s" % [result.get("tech_id", "?"), result.get("reason", "?")])
+	pass
 
 func _on_technology_unlocked(tech_id: String) -> void:
-	print("[Technology] unlocked %s" % tech_id)
+	pass
 
 func _on_trade_completed(trade: Dictionary) -> void:
-	print("[Trade] completed: %s <-> %s" % [trade.get("parties", []), trade.get("id", "?")])
+	pass
 
 func _on_block_mined(material: String, quantity: int, position: Vector3) -> void:
-	print("[Mining] %s ×%d at %s" % [material, quantity, position])
+	pass
 
 func _on_block_placed(material: String, position: Vector3) -> void:
-	print("[Building] %s placed at %s" % [material, position])
+	pass
 
 func _on_player_damaged(damage: float, attacker_id: String) -> void:
-	print("[Player] took %.1f dmg from %s  hp=%.1f" % [damage, attacker_id, _player.get_hp()])
+	pass
 
 func _on_player_died(position: Vector3, killer_id: String) -> void:
-	print("[Player] died at %s  killer=%s" % [position, killer_id])
 	if _character.get_player_character() != "":
 		GameBus.character_death_requested.emit(_character.get_player_character())
 
 func _on_player_respawned(position: Vector3) -> void:
-	print("[Player] respawned at %s" % position)
+	pass
 
 func _on_save_completed(slot: int) -> void:
-	print("[Persistence] save_completed slot=%d" % slot)
 	# The snapshot is on disk; reset dirty-chunk tracking so the next save only
 	# re-serializes chunks edited after this point.
 	_voxel.clear_dirty_chunks()
 
 func _on_load_completed(slot: int, data: Dictionary) -> void:
-	print("[Persistence] load_completed slot=%d  keys=%s" % [slot, data.keys()])
 	if data.has("inventory") and data["inventory"] is Dictionary:
 		# A MISSING `inventory_durability` key is the intentional old-save signal:
 		# saves written before per-instance durability carried no per-instance
@@ -645,19 +591,12 @@ func _on_load_completed(slot: int, data: Dictionary) -> void:
 	var world: Dictionary = data.get("world", {})
 	if world.has("chunks"):
 		_voxel.apply_chunk_manifest(world["chunks"])
-		var edit_count := 0
-		for ckey in world["chunks"]:
-			edit_count += world["chunks"][ckey].get("edits", {}).size()
-		print("[Persistence] restored %d voxel edits across %d chunks" % [edit_count, world["chunks"].size()])
 	elif world.has("voxel_edits"):
 		_voxel.apply_edits(world["voxel_edits"], world.get("voxel_materials", {}))
-		print("[Persistence] restored %d voxel edits" % world["voxel_edits"].size())
 	if data.has("technology"):
 		_technology.apply_statuses(data["technology"])
-		print("[Persistence] restored technology statuses: %s" % str(data["technology"]))
 	if data.has("market"):
 		_market.apply_market_data(data["market"])
-		print("[Persistence] restored %d market listings" % data["market"].size())
 	if data.has("governance"):
 		var gov: Variant = data["governance"]
 		if gov is Dictionary:
@@ -665,19 +604,16 @@ func _on_load_completed(slot: int, data: Dictionary) -> void:
 		elif gov is Array:
 			# Backward compat: older saves stored only the decisions log.
 			_proposal.apply_decisions_log(gov)
-		print("[Persistence] restored governance state")
 	if data.has("trade"):
 		var tr: Variant = data["trade"]
 		if tr is Dictionary:
 			_trade.apply_trade_data(tr)
-		print("[Persistence] restored trade state")
 
 # ---------------------------------------------------------------------------
 # GameData smoke test
 # ---------------------------------------------------------------------------
 
 func _check_game_data() -> void:
-	print("\n=== GameData registry check ===")
 	var registries := {
 		"APPEARANCES":  GameData.APPEARANCES,
 		"BIOMES":       GameData.BIOMES,
@@ -701,5 +637,3 @@ func _check_game_data() -> void:
 		for key in reg:
 			if reg[key] == null:
 				push_error("%s → %s FAILED" % [reg_name, key])
-			else:
-				print("%s → %s OK" % [reg_name, key])

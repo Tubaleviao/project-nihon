@@ -191,8 +191,6 @@ func despawn_for_chunk(chunk_pos: Vector2i) -> void:
 		_instances.erase(iid)
 		_last_broadcast.erase(iid)
 		_spatial.remove(iid)
-	if to_erase.size() > 0:
-		print("CreatureSlice: despawned %d creatures from chunk %s" % [to_erase.size(), chunk_pos])
 
 func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> String:
 	var res: Resource = GameData.CREATURES.get(creature_id, null)
@@ -229,7 +227,6 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 	_spatial.insert(iid, pos)
 
 	GameBus.creature_spawned.emit(iid, creature_id, pos)
-	print("CreatureSlice: spawned %s [%s] at %s  hp=%.0f" % [creature_id, iid, pos, hp])
 	return iid
 
 ## Deterministic world XZ inside the chunk footprint (inset one tile from the edge).
@@ -298,7 +295,6 @@ func _tick_respawn() -> void:
 			_spatial.update(iid, inst["spawn_pos"])
 			if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
 				_pool.set_transform(int(inst["mi"]), _visual_transform(inst["spawn_pos"]))
-			print("CreatureSlice: %s [%s] respawned" % [creature_id, iid])
 			GameBus.creature_respawned.emit(iid, creature_id)
 
 ## Host → clients: emit a creature_state_changed delta for instances whose

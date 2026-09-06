@@ -127,7 +127,6 @@ func load_chunk(chunk_pos: Vector2i) -> void:
 	if creature_slice != null and creature_slice.has_method("spawn_for_chunk"):
 		creature_slice.spawn_for_chunk(chunk_pos)
 	GameBus.chunk_loaded.emit(chunk_pos)
-	print("ChunkManager: loaded chunk %s" % chunk_pos)
 
 func unload_chunk(chunk_pos: Vector2i) -> void:
 	var key := _chunk_key(chunk_pos)
@@ -139,7 +138,6 @@ func unload_chunk(chunk_pos: Vector2i) -> void:
 	if creature_slice != null and creature_slice.has_method("despawn_for_chunk"):
 		creature_slice.despawn_for_chunk(chunk_pos)
 	GameBus.chunk_unloaded.emit(chunk_pos)
-	print("ChunkManager: unloaded chunk %s" % chunk_pos)
 
 ## Chunk coordinate under the player's current XZ position.
 func player_chunk() -> Vector2i:

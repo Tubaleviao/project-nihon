@@ -298,6 +298,11 @@ signal character_attack_requested(instance_id: String)
 ## Wired from game_root on player death.
 signal character_death_requested(instance_id: String)
 
+## Request to toggle all equipment slots on/off at once (vanity/debug — inspect
+## the "naked" body under the gear). Wired from PlayerSlice on a hotkey; the
+## player's own character is resolved by CharacterSlice.
+signal character_equipment_toggle_requested()
+
 ## Emitted by CharacterSlice when a character instance's locomotion state
 ## changes (ROADMAP Phase 20). state is the Locomotion.State name string
 ## ("IDLE", "WALK", "RUN", "FALL", "LAND", "ATTACK", "DEATH").

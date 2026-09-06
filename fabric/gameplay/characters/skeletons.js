@@ -95,8 +95,9 @@ module.exports = {
           'offsets, and foot IK so all three derive the same landmarks and stay in ' +
           'sync as proportions change (characters.md §9)',
         defaultValue: {
-          torsoHeightFactor: 0.64,
-          hipHeightFactor: 0.95,
+          torsoHeightFactor: 0.72,
+          hipHeightFactor: 0.85,
+          neckHeightFactor: 0.14,
           headSizeFactor: 0.21,
           chestYFactor: 0.70,
           handXFactor: 0.42,

@@ -47,8 +47,9 @@ const DEFAULT_STEP := Vector3(0.0, 0.2, 0.0)
 ## HumanoidSkeleton does — non-humanoid families don't use the humanoid
 ## placeholder body/socket layout). Mirrors HumanoidSkeleton's fabric defaults.
 const DEFAULT_BODY_SHAPE: Dictionary = {
-	"torsoHeightFactor": 0.64,
-	"hipHeightFactor": 0.95,
+	"torsoHeightFactor": 0.72,
+	"hipHeightFactor": 0.85,
+	"neckHeightFactor": 0.14,
 	"headSizeFactor": 0.21,
 	"chestYFactor": 0.70,
 	"handXFactor": 0.42,
@@ -121,6 +122,15 @@ func build(skeleton_res: Resource, props: Dictionary = {}) -> void:
 		if bone_name != "" and parent != "" and _bone_index.has(parent):
 			_skeleton.set_bone_parent(_bone_index[bone_name], _bone_index[parent])
 
+	# Initialize each bone's POSE from its REST. `set_bone_rest` stores only the
+	# rest transform; the pose (what `BoneAttachment3D` actually follows) is left
+	# at identity by `add_bone`. Without this, every BoneAttachment3D sits at the
+	# skeleton origin, so every bone-attached mesh (head, torso, SKINNED/HYBRID
+	# equipment) is displaced by `-get_bone_global_rest(bone)` — the "head in the
+	# wrong place / body parts missing" bug. reset_bone_poses() copies rest→pose
+	# so attachments track their bones correctly.
+	_skeleton.reset_bone_poses()
+
 func _rest_transform(bone_name: String, props: Dictionary) -> Transform3D:
 	var raw: Vector3
 	if _rest_pose.has(bone_name):
@@ -191,16 +201,18 @@ static func compute_landmarks(coeffs: Dictionary, props: Dictionary) -> Dictiona
 
 	var torso_h: float = float(c["torsoHeightFactor"]) * height
 	var hip_y: float = float(c["hipHeightFactor"]) * leg_len * height
+	var neck_len: float = float(c["neckHeightFactor"]) * height
 	var head_size: float = float(c["headSizeFactor"]) * head_scale
 	var chest_y: float = hip_y + torso_h * float(c["chestYFactor"])
-	var head_top: float = hip_y + torso_h + head_size
-	var head_y: float = hip_y + torso_h + head_size * 0.5
+	var head_top: float = hip_y + torso_h + neck_len + head_size
+	var head_y: float = hip_y + torso_h + neck_len + head_size * 0.5
 	var hand_x: float = float(c["handXFactor"]) * shoulder
 	var hand_y: float = chest_y - float(c["handYArmFactor"]) * arm_len * height
 
 	return {
 		"torso_h":        torso_h,
 		"hip_y":          hip_y,
+		"neck_len":       neck_len,
 		"head_size":      head_size,
 		"head_top":       head_top,
 		"head_y":         head_y,
@@ -277,7 +289,7 @@ func attach(socket: String, mesh: MeshInstance3D, mode: String, local_offset: Ve
 ## under a BoneAttachment3D on that bone so it follows the skeleton, positioned
 ## at `local_offset` in bone-local space. An unknown/empty bone name falls back
 ## to a rig-root child so nothing is left orphaned.
-func attach_to_bone(bone_name: String, mesh: MeshInstance3D, local_offset: Vector3) -> void:
+func attach_to_bone(bone_name: String, mesh: Node3D, local_offset: Vector3) -> void:
 	mesh.set_meta("attached_bone", bone_name)
 	if bone_name == "" or not _bone_index.has(bone_name):
 		self.add_child(mesh)

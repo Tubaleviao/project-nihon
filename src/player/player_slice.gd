@@ -163,6 +163,9 @@ func _input(event: InputEvent) -> void:
 	# V key → place the selected station at the player's feet.
 	if event is InputEventKey and event.pressed and event.keycode == KEY_V:
 		_place_station()
+	# E key → toggle all equipment on/off (inspect the naked body under the gear).
+	if event is InputEventKey and event.pressed and event.keycode == KEY_E:
+		GameBus.character_equipment_toggle_requested.emit()
 
 func get_position() -> Vector3:
 	return _body.global_position if _body else Vector3.ZERO
@@ -364,7 +367,6 @@ func _broadcast_state() -> void:
 func _die(killer_id: String = "") -> void:
 	_alive = false
 	_respawn_timer = RESPAWN_DELAY
-	print("PlayerSlice: player died at %s — respawning in %.0fs" % [get_position(), RESPAWN_DELAY])
 	GameBus.player_died.emit(get_position(), killer_id)
 
 func _respawn() -> void:
@@ -377,7 +379,6 @@ func _respawn() -> void:
 	_update_hp_bar()
 	_broadcast_state()
 	GameBus.player_respawned.emit(spawn_pos)
-	print("PlayerSlice: player respawned at %s" % spawn_pos)
 
 func _on_player_damaged(dmg: float, attacker_id: String) -> void:
 	if not _alive:
@@ -394,7 +395,6 @@ func _try_attack() -> void:
 	if target_id == "":
 		return   # no creature in range
 	var creature_id: String = creature_slice.get_instance_creature_id(target_id)
-	print("PlayerSlice: attacking %s [%s]" % [creature_id, target_id])
 	GameBus.combat_round_requested.emit("player", target_id)
 
 # ---------------------------------------------------------------------------
@@ -653,6 +653,7 @@ func _build_shortcuts_menu() -> void:
 	_add_mouse_row(vbox, MOUSE_BUTTON_MIDDLE, "Place")
 	_add_key_row(vbox, "R", "Cycle material")
 	_add_key_row(vbox, "B · V", "Station cycle / place")
+	_add_key_row(vbox, "E", "Toggle equipment")
 	_add_key_row(vbox, "I · T · C", "Windows")
 	_add_key_row(vbox, "ESC", "Cursor")
 
@@ -697,7 +698,6 @@ func _try_pickup_aimed() -> void:
 	var pid := _aimed_pickup_id
 	if pid == "":
 		return
-	print("PlayerSlice: picking up %s [%s]" % [_aimed_item_id, pid])
 	GameBus.pickup_requested.emit(pid)
 	_aimed_pickup_id = ""
 	_aimed_item_id = ""

@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:d52646bc8cab8ffacad241208302e048ec4e13072a7ae7f1021ac08c084f90c4",
+  "schemaHash": "sha256:c456f7d23c3a3069859dba0a6c87b22218b1f391a5916786239257739eaca749",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -20865,8 +20865,9 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
-              "torsoHeightFactor": 0.64,
-              "hipHeightFactor": 0.95,
+              "torsoHeightFactor": 0.72,
+              "hipHeightFactor": 0.85,
+              "neckHeightFactor": 0.14,
               "headSizeFactor": 0.21,
               "chestYFactor": 0.7,
               "handXFactor": 0.42,
