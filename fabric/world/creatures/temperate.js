@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, dropsData, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
+const { defineEntity, creatureStateMachine, dropsData, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS } = require('./shared')
 
 module.exports = {
 
@@ -99,6 +99,8 @@ module.exports = {
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 900 },
       spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 2 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TemperateForest' },
+      groupBehavior:  { type: 'enum', values: GROUP_BEHAVIORS, description: 'How group members coordinate: none (solitary), pack (share alert/aggressive), herd (share flee)', defaultValue: 'pack' },
+      packRadius:     { type: 'decimal', description: 'Distance in metres within which group members coordinate with each other', defaultValue: 20.0 },
       drops: dropsData([
         { item: 'wolf_pelt',       chance: 1.0, minQty: 1, maxQty: 1 },
         { item: 'wolf_fang',       chance: 0.4, minQty: 0, maxQty: 1 },
@@ -184,6 +186,8 @@ module.exports = {
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 1200 },
       spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 2 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TemperateGrassland' },
+      groupBehavior:  { type: 'enum', values: GROUP_BEHAVIORS, description: 'How group members coordinate: none (solitary), pack (share alert/aggressive), herd (share flee)', defaultValue: 'herd' },
+      packRadius:     { type: 'decimal', description: 'Distance in metres within which group members coordinate with each other', defaultValue: 20.0 },
       drops: dropsData([
         { item: 'bison_meat', chance: 1.0,  minQty: 3, maxQty: 6 },
         { item: 'bison_hide', chance: 1.0,  minQty: 2, maxQty: 2 },

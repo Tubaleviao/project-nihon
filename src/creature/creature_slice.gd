@@ -200,6 +200,13 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 
 	var hp: float = float(res.get("baseHp"))
 	var xz: Vector2 = _deterministic_chunk_position(chunk_pos, creature_id, spawn_index)
+	# Pack/herd members cluster around a single deterministic centre so their
+	# group coordination (pack alert / herd flee) fires in practice instead of
+	# being scattered out of packRadius. Solitary creatures keep the scattered
+	# per-index spawn positions.
+	if _is_group_creature(creature_id):
+		var center: Vector2 = _deterministic_chunk_position(chunk_pos, creature_id, 0)
+		xz = center + _pack_member_offset(spawn_index)
 	var pos: Vector3 = Vector3(xz.x, 0.0, xz.y)
 
 	# Sit the creature on the terrain surface instead of a fixed height.
@@ -243,6 +250,37 @@ func _deterministic_chunk_position(chunk_pos: Vector2i, creature_id: String, spa
 		float(chunk_pos.x * cs + local_x) + 0.5,
 		float(chunk_pos.y * cs + local_z) + 0.5
 	)
+
+## True when the creature is a pack/herd member (groupBehavior != none). Solitary
+## creatures (and any resource without the field) return false and keep their
+## per-index scattered spawn positions.
+func _is_group_creature(creature_id: String) -> bool:
+	var res: Resource = GameData.CREATURES.get(creature_id, null)
+	if res == null:
+		return false
+	var gb: Variant = res.get("groupBehavior")
+	return gb != null and int(gb) != 0
+
+## Small deterministic offsets for pack/herd members around the pack centre. Kept
+## well inside a typical packRadius (20 m) so every member stays in coordination
+## range of every other member.
+const PACK_MEMBER_OFFSETS: Array[Vector2] = [
+	Vector2(0.0, 0.0),
+	Vector2(2.5, 0.0),
+	Vector2(-2.5, 0.0),
+	Vector2(0.0, 2.5),
+	Vector2(0.0, -2.5),
+	Vector2(2.5, 2.5),
+	Vector2(-2.5, -2.5),
+	Vector2(-2.5, 2.5),
+	Vector2(2.5, -2.5),
+]
+
+## The cluster offset for the Nth member of a pack/herd. Index wraps so a larger
+## spawnCount than the offset table stays deterministic.
+func _pack_member_offset(spawn_index: int) -> Vector2:
+	var idx: int = spawn_index % PACK_MEMBER_OFFSETS.size()
+	return PACK_MEMBER_OFFSETS[idx]
 
 ## The biome key for a chunk, or "" when no terrain_slice is wired (isolated tests).
 func _chunk_biome(chunk_pos: Vector2i) -> String:

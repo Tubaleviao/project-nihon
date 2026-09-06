@@ -41,6 +41,14 @@ const SPEED_ALERT      := 0.0   # alert = stationary, watching
 const SPEED_AGGRESSIVE := 3.5
 const SPEED_FLEE       := 4.5
 
+## Group coordination (pack/herd) — fabric `groupBehavior` enum values (Phase 30).
+##   0 NONE — solitary; no cross-creature coordination
+##   1 PACK — members share alert/aggressive (predators coordinate an attack)
+##   2 HERD — members share flee (prey stampede together)
+const GROUP_NONE := 0
+const GROUP_PACK := 1
+const GROUP_HERD := 2
+
 ## Per-instance AI state: { "state", "attack_timer", "patrol_target", "spawn_pos" }
 var _ai: Dictionary = {}
 
@@ -112,28 +120,28 @@ func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: f
 			if dist <= alert_r:
 				match aggression:
 					0: # PASSIVE — flee immediately, never attack
-						_transition(iid, "fleeing")
+						_transition(iid, "fleeing", inst)
 					1: # NEUTRAL — pause and watch before committing
-						_transition(iid, "alert")
+						_transition(iid, "alert", inst)
 					2, 3: # AGGRESSIVE / TERRITORIAL — attack without warning
-						_transition(iid, "aggressive")
+						_transition(iid, "aggressive", inst)
 				return
 			_patrol(iid, inst, delta)
 
 		"alert":
 			if dist <= attack_r:
-				_transition(iid, "aggressive")
+				_transition(iid, "aggressive", inst)
 				return
 			if dist > alert_r:
-				_transition(iid, "idle")
+				_transition(iid, "idle", inst)
 				return
 
 		"aggressive":
 			if flee_thr > 0.0 and hp / max_hp < flee_thr:
-				_transition(iid, "fleeing")
+				_transition(iid, "fleeing", inst)
 				return
 			if dist > safe_r:
-				_transition(iid, "idle")
+				_transition(iid, "idle", inst)
 				return
 			_chase(iid, inst, player_pos, delta)
 			ai["attack_timer"] += delta
@@ -144,10 +152,10 @@ func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: f
 
 		"fleeing":
 			if hp <= 0.0:
-				_transition(iid, "dead")
+				_transition(iid, "dead", inst)
 				return
 			if dist > safe_r:
-				_transition(iid, "idle")
+				_transition(iid, "idle", inst)
 				return
 			_flee(iid, inst, player_pos, delta)
 
@@ -186,7 +194,7 @@ func _move_instance(iid: String, inst: Dictionary, target: Vector3, speed: float
 # State transition
 # ---------------------------------------------------------------------------
 
-func _transition(iid: String, new_state: String) -> void:
+func _transition(iid: String, new_state: String, inst: Dictionary = {}, propagate: bool = true) -> void:
 	var old_state: String = _ai[iid]["state"]
 	if old_state == new_state:
 		return
@@ -202,6 +210,77 @@ func _transition(iid: String, new_state: String) -> void:
 		"idle":
 			# Reset patrol waypoint toward spawn when calming down.
 			_ai[iid]["patrol_target"] = _random_waypoint(_ai[iid]["spawn_pos"])
+	# Pack/herd threat escalation: when a member enters a threat state, pull
+	# nearby same-species members into the same state (non-recursive — see
+	# _escalate_neighbor).
+	if propagate and not inst.is_empty():
+		_propagate_group_state(iid, inst, new_state)
+
+# ---------------------------------------------------------------------------
+# Pack / herd coordination (Phase 30)
+# ---------------------------------------------------------------------------
+
+## groupBehavior (enum int) for a creature resource; GROUP_NONE when the field
+## is absent or the resource is null. Solitary creatures omit the field entirely.
+func _group_behavior(res: Resource) -> int:
+	if res == null:
+		return GROUP_NONE
+	var gb: Variant = res.get("groupBehavior")
+	return int(gb) if gb != null else GROUP_NONE
+
+## packRadius (metres) for a creature resource; 0.0 when absent or null.
+func _pack_radius(res: Resource) -> float:
+	if res == null:
+		return 0.0
+	var pr: Variant = res.get("packRadius")
+	return float(pr) if pr != null else 0.0
+
+## Propagate a threat-state transition to nearby same-species members. Only
+## escalation spreads (alert/aggressive/fleeing); calm-down (idle) and death are
+## per-creature. `pack` shares alert + aggressive; `herd` shares fleeing only.
+func _propagate_group_state(iid: String, inst: Dictionary, new_state: String) -> void:
+	if new_state != "alert" and new_state != "aggressive" and new_state != "fleeing":
+		return
+	var res: Resource = GameData.CREATURES.get(inst["creature_id"], null)
+	var group_behavior: int = _group_behavior(res)
+	if group_behavior == GROUP_NONE:
+		return
+	var pack_r: float = _pack_radius(res)
+	if pack_r <= 0.0:
+		return
+	# pack shares alert + aggressive; herd shares fleeing only.
+	if group_behavior == GROUP_PACK and new_state == "fleeing":
+		return
+	if group_behavior == GROUP_HERD and new_state != "fleeing":
+		return
+	var neighbors: Array = creature_slice.creatures_in_radius(inst["position"], pack_r)
+	for nid in neighbors:
+		if nid == iid:
+			continue
+		if creature_slice.get_instance_creature_id(nid) != inst["creature_id"]:
+			continue
+		_escalate_neighbor(nid, new_state)
+
+## Escalate a same-species neighbour toward `new_state` without downgrading it.
+## Propagated transitions never re-propagate (propagate=false), so a pack flood
+## is bounded and longer chains resolve over subsequent frames as each member
+## ticks its own state machine.
+func _escalate_neighbor(nid: String, new_state: String) -> void:
+	if not _ai.has(nid):
+		return
+	var cur: String = _ai[nid]["state"]
+	if cur == "dead" or cur == "respawning":
+		return
+	match new_state:
+		"fleeing":
+			if cur != "fleeing":
+				_transition(nid, "fleeing", {}, false)
+		"aggressive":
+			if cur == "idle" or cur == "alert":
+				_transition(nid, "aggressive", {}, false)
+		"alert":
+			if cur == "idle":
+				_transition(nid, "alert", {}, false)
 
 # ---------------------------------------------------------------------------
 # Public API (test helper)

@@ -25,6 +25,12 @@ enum Biome {
 	VOID_RIFT,
 }
 
+enum GroupBehavior {
+	NONE,
+	PACK,
+	HERD,
+}
+
 enum State {
 	IDLE,
 	ALERT,
@@ -46,4 +52,6 @@ enum State {
 @export var respawnSeconds: int
 @export var spawnCount: int
 @export var biome: int
+@export var groupBehavior: int
+@export var packRadius: float
 @export var drops: Array

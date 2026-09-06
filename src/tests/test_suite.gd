@@ -192,6 +192,10 @@ func run() -> void:
 	_run_test("ai: aggressive→fleeing below flee threshold",   _test_ai_aggressive_to_fleeing)
 	_run_test("ai: fleeing→idle when safe distance exceeded",  _test_ai_fleeing_to_idle)
 	_run_test("ai: attack emits combat_round_requested",       _test_ai_attack_emits_combat)
+	_run_test("ai: pack shares aggressive state",              _test_ai_pack_shares_aggressive)
+	_run_test("ai: herd shares fleeing state",                 _test_ai_herd_shares_flee)
+	_run_test("ai: solitary creature does not propagate",      _test_ai_solitary_no_propagation)
+	_run_test("ai: group behavior reads from fabric",          _test_ai_group_behavior_reads_fabric)
 	_run_test("player: respawn resets hp and alive flag",      _test_player_respawn)
 	_run_test("chunk: desired set within view distance",        _test_chunk_desired_set)
 	_run_test("chunk: world/chunk coordinate round-trip",       _test_chunk_coordinate_round_trip)
@@ -2824,6 +2828,93 @@ func _test_ai_attack_emits_combat() -> void:
 	ai._tick_instance(iid, c._instances[iid], attack_pos, 0.01)
 	assert_eq(captured.get("att", ""), iid, "attacker is the creature instance_id")
 	assert_eq(captured.get("def", ""), "player", "defender is player")
+	rig["creature"].free()
+	rig["ai"].free()
+
+## Collect the instance ids of a specific creature type from a CreatureSlice.
+func _instances_of(c: CreatureSlice, creature_id: String) -> Array:
+	var out: Array = []
+	for iid in c._instances:
+		if c._instances[iid]["creature_id"] == creature_id:
+			out.append(iid)
+	return out
+
+func _test_ai_pack_shares_aggressive() -> void:
+	var rig := _make_ai_rig()
+	var c: CreatureSlice = rig["creature"]
+	var ai: CreatureAI   = rig["ai"]
+	var wolves := _instances_of(c, "GraywolfPack")
+	assert_true(wolves.size() >= 2, "GraywolfPack spawns at least 2 pack members")
+	var lead: String = wolves[0]
+	var ally: String = wolves[1]
+	ai.force_state(lead, "idle")
+	ai.force_state(ally, "idle")
+	# Cluster the ally next to the lead so packRadius covers it.
+	var lead_pos: Vector3 = c._instances[lead]["position"]
+	c.set_instance_position(ally, lead_pos + Vector3(1.0, 0.0, 0.0))
+	# A player right on the lead wolf turns it aggressive (territorial: idle → aggressive).
+	var player_pos: Vector3 = lead_pos + Vector3(0.5, 0.0, 0.0)
+	ai._tick_instance(lead, c._instances[lead], player_pos, 0.1)
+	assert_eq(ai.get_state(lead), "aggressive", "lead wolf turns aggressive")
+	assert_eq(ai.get_state(ally), "aggressive", "pack member shares the aggressive state")
+	rig["creature"].free()
+	rig["ai"].free()
+
+func _test_ai_herd_shares_flee() -> void:
+	var rig := _make_ai_rig()
+	var c: CreatureSlice = rig["creature"]
+	var ai: CreatureAI   = rig["ai"]
+	var bison := _instances_of(c, "SteppeBison")
+	assert_true(bison.size() >= 2, "SteppeBison spawns at least 2 herd members")
+	var lead: String = bison[0]
+	var ally: String = bison[1]
+	ai.force_state(lead, "aggressive")
+	ai.force_state(ally, "idle")
+	var lead_pos: Vector3 = c._instances[lead]["position"]
+	c.set_instance_position(ally, lead_pos + Vector3(1.0, 0.0, 0.0))
+	# Drain the lead bison below its flee threshold so it flees.
+	var res: Resource = GameData.CREATURES.get("SteppeBison", null)
+	var max_hp: float = float(res.get("baseHp")) if res else 200.0
+	c._instances[lead]["hp"] = max_hp * 0.10
+	var player_pos: Vector3 = lead_pos + Vector3(0.5, 0.0, 0.0)
+	ai._tick_instance(lead, c._instances[lead], player_pos, 0.1)
+	assert_eq(ai.get_state(lead), "fleeing", "lead bison flees below threshold")
+	assert_eq(ai.get_state(ally), "fleeing", "herd member shares the fleeing state")
+	rig["creature"].free()
+	rig["ai"].free()
+
+func _test_ai_solitary_no_propagation() -> void:
+	var rig := _make_ai_rig()
+	var c: CreatureSlice = rig["creature"]
+	var ai: CreatureAI   = rig["ai"]
+	var boars := _instances_of(c, "ForestBoar")
+	assert_true(boars.size() >= 2, "ForestBoar spawns at least 2 instances")
+	var a: String = boars[0]
+	var b: String = boars[1]
+	ai.force_state(a, "idle")
+	ai.force_state(b, "idle")
+	var a_pos: Vector3 = c._instances[a]["position"]
+	c.set_instance_position(b, a_pos + Vector3(1.0, 0.0, 0.0))
+	# ForestBoar is solitary (no groupBehavior): detecting a player must NOT drag
+	# its neighbour along.
+	var player_pos: Vector3 = a_pos + Vector3(0.5, 0.0, 0.0)
+	ai._tick_instance(a, c._instances[a], player_pos, 0.1)
+	assert_true(ai.get_state(a) != "idle", "boar leaves idle on detection")
+	assert_eq(ai.get_state(b), "idle", "solitary boar does not drag its neighbour")
+	rig["creature"].free()
+	rig["ai"].free()
+
+func _test_ai_group_behavior_reads_fabric() -> void:
+	var rig := _make_ai_rig()
+	var ai: CreatureAI = rig["ai"]
+	var wolf_res: Resource  = GameData.CREATURES.get("GraywolfPack", null)
+	var bison_res: Resource = GameData.CREATURES.get("SteppeBison", null)
+	var boar_res: Resource  = GameData.CREATURES.get("ForestBoar", null)
+	assert_eq(ai._group_behavior(wolf_res), CreatureAI.GROUP_PACK, "GraywolfPack is a pack")
+	assert_eq(ai._group_behavior(bison_res), CreatureAI.GROUP_HERD, "SteppeBison is a herd")
+	assert_eq(ai._group_behavior(boar_res), CreatureAI.GROUP_NONE, "ForestBoar is solitary (no groupBehavior)")
+	assert_true(ai._pack_radius(wolf_res) > 0.0, "pack has a positive packRadius")
+	assert_eq(ai._pack_radius(boar_res), 0.0, "solitary creature has zero packRadius")
 	rig["creature"].free()
 	rig["ai"].free()
 
