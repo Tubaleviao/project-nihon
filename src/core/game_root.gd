@@ -58,6 +58,10 @@ var _is_server: bool = false
 var _host_address: String = "127.0.0.1"
 var _snapshot_pending: bool = false
 
+## Phase 29 — the AOI grid cell each connected peer last reported, so a client
+## moving into a new region triggers a re-scoped snapshot (host side only).
+var _peer_aoi_regions: Dictionary = {}
+
 ## Client-side: seconds to wait for the host world snapshot before giving up.
 const SNAPSHOT_TIMEOUT := 10.0
 var _snapshot_elapsed: float = 0.0
@@ -213,6 +217,7 @@ func _ready() -> void:
 	GameBus.player_respawned.connect(_on_player_respawned)
 	GameBus.trade_completed.connect(_on_trade_completed)
 	GameBus.peer_connected.connect(_on_peer_connected)
+	GameBus.remote_player_state.connect(_on_remote_player_state)
 	GameBus.world_snapshot_received.connect(_on_world_snapshot_received)
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
@@ -417,8 +422,22 @@ func _boot_server() -> void:
 func _on_peer_connected(peer_id: int) -> void:
 	if _is_client:
 		return
-	# Host: ship the authoritative world snapshot to the newly connected client.
-	_networking.send_snapshot(peer_id, _build_snapshot())
+	# Host: ship the authoritative, AOI-scoped world snapshot to the newly
+	# connected client (Phase 29 — only entities in the peer's area of interest).
+	_networking.send_snapshot(peer_id, _build_snapshot(peer_id))
+
+## Phase 29 — a client's movement may carry it into a new area of interest.
+## When the AOI grid cell changes, re-send a scoped snapshot so the client gains
+## the entities now in range — including static creatures that were never
+## "dirty" and therefore never re-broadcast as a delta.
+func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
+	if _is_client:
+		return
+	var region: Vector2i = _networking.aoi_region(position)
+	if _peer_aoi_regions.get(peer_id, null) == region:
+		return
+	_peer_aoi_regions[peer_id] = region
+	_networking.send_snapshot(peer_id, _build_snapshot(peer_id))
 
 func _process(delta: float) -> void:
 	_sync_player_avatar(delta)
@@ -465,20 +484,25 @@ func _on_server_disconnected() -> void:
 	push_error("[Networking] disconnected from host")
 	_snapshot_pending = false
 
-## Host-side: serialize authoritative world state for a connecting client.
-func _build_snapshot() -> Dictionary:
+## Host-side: serialize authoritative world state for a connecting client,
+## AOI-scoped (Phase 29) — only entities within the peer's area of interest are
+## sent, so the initial payload scales with local density, not world population.
+func _build_snapshot(peer_id: int) -> Dictionary:
 	var players := {}
-	players[str(multiplayer.get_unique_id())] = _player.get_position()
+	var host_pos := _player.get_position()
+	if _networking.in_aoi(peer_id, host_pos):
+		players[str(multiplayer.get_unique_id())] = [host_pos.x, host_pos.y, host_pos.z]
 	# Phase 19 — include last-known remote player states so a rejoining client
 	# resumes from its last authoritative position after a disconnect.
 	var last_known := _networking.get_last_known_states()
 	for pid in last_known:
 		var last_pos: Vector3 = last_known[pid]
-		players[str(pid)] = [last_pos.x, last_pos.y, last_pos.z]
+		if _networking.in_aoi(peer_id, last_pos):
+			players[str(pid)] = [last_pos.x, last_pos.y, last_pos.z]
 	return {
 		"heightmaps": _voxel.get_heightmaps(),
 		"edits":     _voxel.get_chunk_manifest(),
-		"creatures": _creature.get_snapshot_creatures(),
+		"creatures": _scoped_creatures(peer_id),
 		"inventory": _inventory.get_contents(),
 		"inventory_durability": _inventory.get_durability_data(),
 		"market":    _market.get_market_data(),
@@ -486,6 +510,19 @@ func _build_snapshot() -> Dictionary:
 		"trade":     _trade.get_trade_data(),
 		"players":   players,
 	}
+
+## Phase 29 — the creature subset of the snapshot, filtered to the joining
+## peer's AOI so a client seeds only the population it can actually see.
+func _scoped_creatures(peer_id: int) -> Array:
+	var out: Array = []
+	for c in _creature.get_snapshot_creatures():
+		var arr = c.get("position", [0.0, 0.0, 0.0])
+		var pos := Vector3.ZERO
+		if arr is Array and arr.size() >= 3:
+			pos = Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
+		if _networking.in_aoi(peer_id, pos):
+			out.append(c)
+	return out
 
 ## Client-side: apply the host's world snapshot and begin rendering.
 func _on_world_snapshot_received(data: Dictionary) -> void:

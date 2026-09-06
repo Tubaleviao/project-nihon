@@ -229,6 +229,9 @@ func run() -> void:
 	_run_test("net: host persists last-known state across disconnect", _test_net_reconnect_last_known_state)
 	_run_test("net: emulated loss+reorder — all delivered packets accepted", _test_net_two_peer_loss_reorder)
 	_run_test("net: client self-reference is peer-scoped",       _test_net_peer_party_scopes_identity)
+	_run_test("net: AOI center defaults to spawn; in_aoi gates", _test_net_aoi_center_and_in_aoi)
+	_run_test("net: AOI recipients are near peers only",         _test_net_aoi_recipients)
+	_run_test("net: AOI region floors to grid cell",             _test_net_aoi_region)
 	_run_test("asset: placeholder resolves at canonical path",  _test_asset_placeholder_resolves)
 	_run_test("asset: no private-only paths hardcoded",          _test_asset_no_private_paths_hardcoded)
 	_run_test("asset: pck round-trip proves override works",    _test_asset_pck_round_trip_override)
@@ -3435,6 +3438,48 @@ func _test_net_peer_party_scopes_identity() -> void:
 	assert_eq(n._peer_party(5, "player"), "peer_5", "client 'player' self-reference is peer-scoped")
 	assert_eq(n._peer_party(5, "merchant"), "merchant", "non-self party id passes through unchanged")
 	assert_eq(n._peer_party(5, "peer_9"), "peer_9", "already-scoped id passes through unchanged")
+	n.free()
+
+func _test_net_aoi_center_and_in_aoi() -> void:
+	# Interest management (Phase 29): a peer with no reported position falls back
+	# to the spawn AOI center, and in_aoi gates on the AOI radius.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	assert_eq(n.get_aoi_center(99), NetworkingSlice.DEFAULT_AOI_CENTER,
+		"unknown peer defaults to the spawn AOI center")
+	n.remember_player_state(2, Vector3(0.0, 0.0, 0.0))
+	assert_true(n.in_aoi(2, Vector3(50.0, 0.0, 0.0)), "position within AOI radius is in AOI")
+	assert_false(n.in_aoi(2, Vector3(200.0, 0.0, 0.0)), "position beyond AOI radius is out of AOI")
+	n.free()
+
+func _test_net_aoi_recipients() -> void:
+	# A delta is delivered only to peers whose AOI contains the entity: a near
+	# peer receives it, a far peer does not, and a non-connected peer is never
+	# delivered to even when in range.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n.remember_player_state(2, Vector3(0.0, 0.0, 0.0))        # near
+	n.remember_player_state(3, Vector3(5000.0, 0.0, 5000.0))  # far
+	var near: Array = n.aoi_recipients(Vector3(10.0, 0.0, 0.0), [2, 3])
+	assert_true(near.has(2), "near peer is an AOI recipient")
+	assert_false(near.has(3), "far peer is not an AOI recipient")
+	var far: Array = n.aoi_recipients(Vector3(5000.0, 0.0, 5000.0), [2, 3])
+	assert_true(far.has(3), "far entity reaches the far peer")
+	assert_false(far.has(2), "far entity does not reach the near peer")
+	assert_false(n.aoi_recipients(Vector3.ZERO, [3]).has(2),
+		"peer outside the connected set is excluded even when in range")
+	n.free()
+
+func _test_net_aoi_region() -> void:
+	# The AOI grid cell floors world position by the AOI radius, negative values
+	# included, so a peer crossing a boundary triggers a re-scope.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	assert_eq(n.aoi_region(Vector3.ZERO), Vector2i(0, 0), "origin maps to cell (0,0)")
+	assert_eq(n.aoi_region(Vector3(NetworkingSlice.AOI_RADIUS, 0.0, 0.0)), Vector2i(1, 0),
+		"exactly AOI_RADIUS crosses into cell (1,0)")
+	assert_eq(n.aoi_region(Vector3(-1.0, 0.0, -1.0)), Vector2i(-1, -1),
+		"negative positions floor to negative cells")
 	n.free()
 
 # ---------------------------------------------------------------------------

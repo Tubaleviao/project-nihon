@@ -45,6 +45,11 @@ pnpm generate   # generate the design bible into bible/
 | 22 | Material and palette pipeline | Done |
 | 23 | LOD and composition simplification | Done |
 | 24 | Social systems and player economy | Done |
+| 25 | Tool and equipment repair | Done |
+| 26 | Client-side rendering instancing | Done |
+| 27 | Headless data-oriented server | Done |
+| 28 | Spatial hashing | Done |
+| 29 | Interest management (area of interest) | Done |
 
 See [ROADMAP.md](ROADMAP.md) for the full spec, deliverables, and acceptance criteria for each phase.
 

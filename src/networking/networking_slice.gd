@@ -44,6 +44,10 @@ extends Node
 
 enum Role { OFFLINE, HOST, CLIENT }
 
+## Spatial hash over connected peers' AOI centers so interest filtering is an
+## O(radius²)-cells query, not an O(peers) scan (Phase 29).
+const SpatialHash := preload("res://src/core/spatial_hash.gd")
+
 const DEFAULT_PORT    := 7777
 const DEFAULT_CHANNEL := 0
 ## Default max peers for a dedicated/headless server (the single-player demo
@@ -55,6 +59,16 @@ const SNAPSHOT_CHUNK_SIZE := 16384
 
 ## Phase 19 — maximum packet-loss percentage the emulator will accept.
 const MAX_LOSS_RATE := 30.0
+
+## Phase 29 — area-of-interest radius (world units). A client receives deltas
+## and snapshot entities within this radius of its position; anything farther is
+## not sent. 96 units = 3 chunks (CHUNK_SIZE 32), matching the chunk-streaming
+## view distance so interest and streaming agree.
+const AOI_RADIUS := 96.0
+## AOI center used for a peer that has not reported a position yet (freshly
+## connected). Matches the world spawn point so the initial snapshot is scoped
+## around where players first appear.
+const DEFAULT_AOI_CENTER := Vector3(16.0, 0.0, 16.0)
 
 var _peer: ENetMultiplayerPeer
 var _role: int = Role.OFFLINE
@@ -105,6 +119,10 @@ var _last_known_states: Dictionary = {}
 ## entries from _last_known_states after LAST_KNOWN_STATE_TTL_MS.
 var _last_known_timestamps: Dictionary = {}
 const LAST_KNOWN_STATE_TTL_MS := 300_000  # 5 minutes
+
+## Spatial hash of peer AOI centers (peer_id -> position), mirroring
+## _last_known_states so interest queries stay O(cells), not O(peers) (Phase 29).
+var _peer_spatial := SpatialHash.new()
 
 func _ready() -> void:
 	GameBus.packet_send_requested.connect(_on_packet_send_requested)
@@ -214,6 +232,7 @@ func send_snapshot(peer_id: int, data: Dictionary) -> void:
 ## Clears the eviction countdown: an active peer is never stale.
 func remember_player_state(peer_id: int, position: Vector3) -> void:
 	_last_known_states[peer_id] = position
+	_peer_spatial.update(peer_id, position)
 	_last_known_timestamps.erase(peer_id)
 
 ## Last-known position for a peer, or Vector3.ZERO when unknown.
@@ -235,6 +254,46 @@ func _evict_stale_states() -> void:
 		if now_ms - float(_last_known_timestamps[pid]) > float(LAST_KNOWN_STATE_TTL_MS):
 			_last_known_states.erase(pid)
 			_last_known_timestamps.erase(pid)
+			_peer_spatial.remove(pid)
+
+# ---------------------------------------------------------------------------
+# Phase 29 — interest management (area of interest)
+# ---------------------------------------------------------------------------
+
+## The AOI center for a peer: its last-known position, or the world spawn point
+## when it has not reported one yet (a freshly connected client). Pure.
+func get_aoi_center(peer_id: int) -> Vector3:
+	return _last_known_states.get(peer_id, DEFAULT_AOI_CENTER)
+
+## True when `position` lies within `peer_id`'s area of interest. Pure.
+func in_aoi(peer_id: int, position: Vector3) -> bool:
+	return get_aoi_center(peer_id).distance_to(position) <= AOI_RADIUS
+
+## The AOI grid cell for a world position (cell = AOI_RADIUS). A peer crossing a
+## cell boundary re-scopes its snapshot (see game_root). Pure.
+func aoi_region(position: Vector3) -> Vector2i:
+	return Vector2i(floori(position.x / AOI_RADIUS), floori(position.z / AOI_RADIUS))
+
+## Peer ids (among `connected`) whose AOI contains `position`. Pure — the
+## connected set is passed in so the filter is testable headless.
+func aoi_recipients(position: Vector3, connected: Array) -> Array:
+	var out: Array = []
+	for pid in _peer_spatial.query_radius(position, AOI_RADIUS):
+		if pid in connected:
+			out.append(pid)
+	return out
+
+## Broadcast a spatial delta only to peers whose AOI contains `position`.
+## On the host this replaces the N×M broadcast-to-all with a scoped fan-out;
+## on a client it forwards to the host unchanged (position is ignored there).
+func _broadcast_aoi(payload: Dictionary, position: Vector3) -> void:
+	if not _connected():
+		return
+	if _role == Role.HOST:
+		for pid in aoi_recipients(position, multiplayer.get_peers()):
+			_deliver(int(pid), payload.duplicate(true))
+	elif _role == Role.CLIENT:
+		_deliver(1, payload)
 
 # ---------------------------------------------------------------------------
 # Private
@@ -302,7 +361,7 @@ func _on_player_state_sync_requested(payload: Dictionary) -> void:
 		"hp":       payload.get("hp",     100.0),
 		"max_hp":   payload.get("max_hp", 100.0),
 	}
-	_broadcast(packet)
+	_broadcast_aoi(packet, pos)
 
 func _on_block_edit_intent(action: String, position: Vector3, normal: Vector3, material: String) -> void:
 	if _role != Role.CLIENT:
@@ -328,7 +387,7 @@ func _on_block_changed(action: String, position: Vector3, normal: Vector3, mater
 		"normal":   [normal.x, normal.y, normal.z],
 		"material": material,
 	}
-	_broadcast(packet)
+	_broadcast_aoi(packet, position)
 
 func _on_creature_state_changed(instance_id: String, creature_id: String, state: String, position: Vector3) -> void:
 	if _role != Role.HOST:
@@ -340,7 +399,7 @@ func _on_creature_state_changed(instance_id: String, creature_id: String, state:
 		"state":       state,
 		"position":    [position.x, position.y, position.z],
 	}
-	_broadcast(packet)
+	_broadcast_aoi(packet, position)
 
 func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	if _role != Role.HOST:
@@ -353,7 +412,7 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 		"peer_id":  peer_id,
 		"position": [position.x, position.y, position.z],
 	}
-	_broadcast(packet)
+	_broadcast_aoi(packet, position)
 
 func _on_inventory_synced(contents: Dictionary, durabilities: Dictionary = {}) -> void:
 	if _role != Role.HOST:
@@ -824,6 +883,10 @@ func _detach_peer() -> void:
 		multiplayer.peer_disconnected.disconnect(_on_peer_disconnected)
 
 func _on_peer_connected(id: int) -> void:
+	# Phase 29 — seed the peer's AOI center (its retained last-known position,
+	# else the spawn default) into the peer spatial hash so it receives deltas
+	# before its first movement reports a position.
+	_peer_spatial.update(id, get_aoi_center(id))
 	GameBus.peer_connected.emit(id)
 
 ## Phase 19 — a peer disconnecting does NOT erase its last-known state; the
