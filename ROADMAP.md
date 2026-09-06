@@ -1350,7 +1350,7 @@ world population.
 
 ---
 
-## Phase 29 — Interest management (area of interest)
+## Phase 29 — Interest management (area of interest) ✅ Done
 
 **Goal:** Stop broadcasting every entity delta to every client (the current
 `_broadcast` / `_broadcast_creature_states` N×M blowup). Only entities within a
@@ -1360,17 +1360,28 @@ player can actually see, not the whole world.
 **Newel dependency:** None (builds on Phase 28's spatial hash).
 
 **Deliverables:**
-- Per-peer AOI: a radius (and/or loaded-chunk window) per connected client.
-- `networking_slice` filters creature/player/economy broadcasts to peers whose
+- Per-peer AOI: a radius (`networking_slice.AOI_RADIUS`, 96 units = 3 chunks)
+  per connected client, keyed on the peer's last-known position (a freshly
+  connected peer defaults to the spawn point).
+- `networking_slice` filters creature/player/voxel broadcasts to peers whose
   AOI contains the entity — a client only receives state for nearby entities.
-- The world snapshot a joining client receives is already AOI-scoped (send the
-  entities in range, not the whole population).
+  Spatial deltas route through `_broadcast_aoi`; a `_peer_spatial` hash makes
+  the interest query O(cells) instead of O(peers).
+- The world snapshot a joining client receives is AOI-scoped (`_build_snapshot`
+  filters creatures and players via `_scoped_creatures`), and a client moving
+  into a new AOI grid cell triggers a re-scoped snapshot.
 
 **Acceptance criteria:**
 - A client receives creature/player deltas only for entities within its AOI ✓
 - Network traffic grows with local density, not total world population ✓
 - Deterministic headless tests: a far client receives nothing, a near client
   receives the delta ✓
+
+**Known simplifications (deferred):**
+- Economy state (market/governance/trade) is global, non-spatial replicated
+  state and remains full-broadcast — every client needs the full market view.
+- Re-scope granularity is one AOI grid cell (96 units), so entities entering
+  AOI mid-cell appear on the next boundary crossing, not instantly.
 
 ---
 
