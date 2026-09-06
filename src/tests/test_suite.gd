@@ -96,6 +96,7 @@ func run() -> void:
 	_run_test("character: LOD hysteresis on thresholds",       _test_character_lod_hysteresis)
 	_run_test("character: LOD equipping at impostor hides node", _test_character_lod_equip_at_impostor)
 	_run_test("character: skeleton rig builds bone hierarchy",_test_character_skeleton_rig)
+	_run_test("character: bone pose initialized from rest",    _test_character_skeleton_pose_matches_rest)
 	_run_test("character: locomotion idle→walk→run by speed", _test_character_locomotion_speed)
 	_run_test("character: blend curve maps speed to 0..1",     _test_character_blend_curve)
 	_run_test("character: attack/death play on bus signals",  _test_character_attack_death_signals)
@@ -1060,6 +1061,26 @@ func _test_character_skeleton_rig() -> void:
 	assert_true(bones.has("Hand_R"), "Hand_R bone present")
 	assert_true(bones.has("Foot_L"), "Foot_L bone present")
 	ch.free()
+
+func _test_character_skeleton_pose_matches_rest() -> void:
+	# Regression: build() must initialize each bone's POSE from its REST.
+	# `set_bone_rest` stores only the rest transform; the pose (what
+	# BoneAttachment3D follows) stays identity after `add_bone`. Without
+	# reset_bone_poses(), every bone-attached mesh (head, torso, SKINNED/HYBRID
+	# equipment) snaps to the skeleton origin — displaced by
+	# `-get_bone_global_rest(bone)` — the "head in the wrong place / missing
+	# body parts" bug. The pose must match the rest so attachments track bones.
+	var rig := SkeletonRig.new()
+	add_child(rig)
+	rig.build(GameData.SKELETONS["HumanoidSkeleton"], {})
+	var skel: Skeleton3D = rig.get_skeleton()
+	for bone_name in ["Hips", "Chest", "Neck", "Head", "Hand_L", "Foot_L"]:
+		var idx: int = rig.get_bone_index(bone_name)
+		assert_true(
+			skel.get_bone_pose(idx).origin.is_equal_approx(skel.get_bone_rest(idx).origin),
+			"%s pose matches rest (bone attachments track the bone)" % bone_name
+		)
+	rig.free()
 
 func _test_character_locomotion_speed() -> void:
 	var ch := CharacterSlice.new()

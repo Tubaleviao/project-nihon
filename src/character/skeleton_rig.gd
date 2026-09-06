@@ -121,6 +121,15 @@ func build(skeleton_res: Resource, props: Dictionary = {}) -> void:
 		if bone_name != "" and parent != "" and _bone_index.has(parent):
 			_skeleton.set_bone_parent(_bone_index[bone_name], _bone_index[parent])
 
+	# Initialize each bone's POSE from its REST. `set_bone_rest` stores only the
+	# rest transform; the pose (what `BoneAttachment3D` actually follows) is left
+	# at identity by `add_bone`. Without this, every BoneAttachment3D sits at the
+	# skeleton origin, so every bone-attached mesh (head, torso, SKINNED/HYBRID
+	# equipment) is displaced by `-get_bone_global_rest(bone)` — the "head in the
+	# wrong place / body parts missing" bug. reset_bone_poses() copies rest→pose
+	# so attachments track their bones correctly.
+	_skeleton.reset_bone_poses()
+
 func _rest_transform(bone_name: String, props: Dictionary) -> Transform3D:
 	var raw: Vector3
 	if _rest_pose.has(bone_name):

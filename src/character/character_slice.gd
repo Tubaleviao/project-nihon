@@ -1006,11 +1006,9 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 	# are skinned to their bones (torso / legs / head) so they deform with the
 	# skeleton; hair/beard stay rig-root children (placeholder details) pending
 	# real skinned assets; equipment attaches to sockets through the rig.
-	var currentSkeleton = str(appearance.get("skeleton", DEFAULT_SKELETON))
-	var skeleton_res: Resource = GameData.SKELETONS.get(currentSkeleton, null)
+	var skeleton_res: Resource = GameData.SKELETONS.get(str(appearance.get("skeleton", DEFAULT_SKELETON)), null)
 	rig.build(skeleton_res, props)
 	var is_humanoid: bool = rig.get_family() == "humanoid"
-	print("%s %s" % [currentSkeleton, is_humanoid])
 
 	var torso_bone := _torso_bone(rig)
 	var head_bone := rig.socket_to_bone("socket_head")
