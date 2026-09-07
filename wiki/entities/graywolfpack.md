@@ -26,6 +26,8 @@ A coordinated hunting pack of gray wolves that roam temperate forest edges and c
 | respawnSeconds | integer | Seconds before a dead creature respawns |
 | spawnCount | integer | Number of instances spawned per game world |
 | biome | `TemperateForest`, `TemperateGrassland`, `VolcanicBadlands`, `TwilightGrove`, `VoidRift` | Biome this creature belongs to |
+| groupBehavior | `none`, `pack`, `herd` | How group members coordinate: none (solitary), pack (share alert/aggressive), herd (share flee) |
+| packRadius | decimal | Distance in metres within which group members coordinate with each other |
 | drops | json | Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system. |
 
 ## States

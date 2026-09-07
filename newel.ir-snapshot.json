@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:c456f7d23c3a3069859dba0a6c87b22218b1f391a5916786239257739eaca749",
+  "schemaHash": "sha256:30111496a55d2f8992daf0ec9ecbd105fe1551f7196def287e3261cb1576c613",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -16063,6 +16063,29 @@
             "pii": false,
             "defaultValue": "TemperateForest"
           },
+          "groupBehavior": {
+            "name": "groupBehavior",
+            "type": "enum",
+            "description": "How group members coordinate: none (solitary), pack (share alert/aggressive), herd (share flee)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "none",
+              "pack",
+              "herd"
+            ],
+            "pii": false,
+            "defaultValue": "pack"
+          },
+          "packRadius": {
+            "name": "packRadius",
+            "type": "decimal",
+            "description": "Distance in metres within which group members coordinate with each other",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 20
+          },
           "drops": {
             "name": "drops",
             "type": "json",
@@ -16496,6 +16519,29 @@
             ],
             "pii": false,
             "defaultValue": "TemperateGrassland"
+          },
+          "groupBehavior": {
+            "name": "groupBehavior",
+            "type": "enum",
+            "description": "How group members coordinate: none (solitary), pack (share alert/aggressive), herd (share flee)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "none",
+              "pack",
+              "herd"
+            ],
+            "pii": false,
+            "defaultValue": "herd"
+          },
+          "packRadius": {
+            "name": "packRadius",
+            "type": "decimal",
+            "description": "Distance in metres within which group members coordinate with each other",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 20
           },
           "drops": {
             "name": "drops",

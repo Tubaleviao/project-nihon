@@ -4,6 +4,10 @@ const CREATURE_TIERS = ['1', '2', '3', '4', '5']
 const AGGRESSION_LEVELS = ['passive', 'neutral', 'aggressive', 'territorial']
 const CREATURE_STATES = ['idle', 'alert', 'aggressive', 'fleeing', 'dead', 'respawning']
 const BIOME_KEYS = ['TemperateForest', 'TemperateGrassland', 'VolcanicBadlands', 'TwilightGrove', 'VoidRift']
+// How group members coordinate (pack/herd behaviour, Phase 30). `none` = solitary
+// (no cross-creature coordination); `pack` = predators that share alert/aggressive
+// (a coordinated attack); `herd` = prey that stampede together (share flee).
+const GROUP_BEHAVIORS = ['none', 'pack', 'herd']
 
 // Returns the CREATURE_STATES subset appropriate for a creature's canFlee/skipAlert settings.
 function creatureStateValues({ canFlee = true, skipAlert = false } = {}) {
@@ -75,4 +79,4 @@ function dropsData(drops) {
   }
 }
 
-module.exports = { defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, dropsData }
+module.exports = { defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS, dropsData }

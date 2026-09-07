@@ -1385,6 +1385,70 @@ player can actually see, not the whole world.
 
 ---
 
+## Phase 30 — Pack and herd behavior ✅ Done
+
+**Goal:** Close the last creature-AI "Known simplification" deferred from Phase
+15: creatures alerting nearby allies. Predator packs coordinate an attack;
+prey herds stampede together — group tactics that make a lone wolf manageable
+but a pack deadly, and a bison herd lethal when panicked.
+
+**Newel dependency:** None. Reuses the existing `enum` and `decimal` field
+types (already emitted by `generator-godot`); no generator change needed.
+
+**Deliverables:**
+- `fabric/world/creatures/shared.js` — a `GROUP_BEHAVIORS` enum
+  (`none` / `pack` / `herd`).
+- `fabric/world/creatures/temperate.js` — `GraywolfPack` gains
+  `groupBehavior: 'pack'` + `packRadius: 20.0`; `SteppeBison` gains
+  `groupBehavior: 'herd'` + `packRadius: 20.0`. Solitary creatures omit both
+  fields entirely (the runtime treats an absent field as `none` / `0.0`).
+- `src/creature/creature_ai.gd` — `_propagate_group_state` / `_escalate_neighbor`
+  fire when a member enters a threat state: a **pack** shares `alert` +
+  `aggressive` (a coordinated attack), a **herd** shares `fleeing` (a
+  stampede). Propagation is same-species only, escalation-only (never
+  downgrades a more-threatened neighbour), and non-recursive (bounded).
+- `src/creature/creature_slice.gd` — pack/herd members **cluster** around a
+  single deterministic pack centre at spawn (small per-index offsets) so their
+  coordination actually fires in practice instead of spawning scattered out of
+  `packRadius`. Solitary creatures keep their per-index scattered positions.
+
+**Acceptance criteria:**
+- A wolf detecting the player drags its pack-mates into `aggressive` ✓
+- A bison fleeing below its threshold drags the herd into `fleeing` ✓
+- A solitary creature (no `groupBehavior`) never drags a neighbour ✓
+- `groupBehavior` / `packRadius` are fabric fields read from `GameData.CREATURES`,
+  not hardcoded GDScript constants ✓
+- 4 new automated tests pass at startup ✓
+
+**Implementation notes:**
+- `groupBehavior` is an enum field (stored as an int index in `.tres`:
+  `0` none, `1` pack, `2` herd); `packRadius` is a `decimal` field. The AI reads
+  both via `_group_behavior(res)` / `_pack_radius(res)` helpers that default to
+  `GROUP_NONE` / `0.0` when the field is absent, so the eight solitary creatures
+  need no field entries.
+- Propagation lives in `_transition` (which now takes the triggering instance
+  and a `propagate` flag): the *original* transition propagates to neighbours,
+  but a propagated transition passes `propagate = false`, so a pack flood is
+  bounded and longer chains resolve over subsequent frames as each member ticks.
+- `_escalate_neighbor` escalates `idle → alert → aggressive` (pack) or any live
+  state `→ fleeing` (herd) and never downgrades; dead/respawning neighbours are
+  skipped.
+- Pack/herd spawn clustering keys on the creature's `groupBehavior`; the pack
+  centre is the existing `_deterministic_chunk_position(..., spawn_index = 0)`
+  and members fan out by `_pack_member_offset(spawn_index)`, so spawn layout
+  stays deterministic across runs.
+
+**Known simplifications (deferred):**
+- No inter-species coordination — a wolf pack never alerts a nearby bison herd,
+  and vice versa (the fabric models each species as an independent group).
+- No explicit "pack leader" role: any member can trigger the group; the fabric
+  prose's "lead wolf dies → pack disbands" rule is not yet a distinct mechanic
+  (a dead member simply stops propagating and the survivors keep coordinating).
+- Group coordination is instantaneous; no signal-propagation delay or
+  distance-falloff within `packRadius`.
+
+---
+
 ## Deferred (in priority order)
 
 - **Server sharding (final, not before maturity)** — split the authoritative
@@ -1408,8 +1472,6 @@ player can actually see, not the whole world.
   Phase 15 creature AI before it can be wired.
 - **Station placement UI** — currently stations are spawned programmatically;
   a build-mode placement flow is needed (deferred from Phase 16).
-- **Pack / herd behavior** — creatures alerting nearby allies (deferred from
-  Phase 15).
 - **NavigationAgent3D path-finding** — creature movement currently uses direct
   kinematic stepping; replacing it with nav-mesh baked from voxel terrain and
   `NavigationAgent3D` per-instance requires the chunk-streaming world from
