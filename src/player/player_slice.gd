@@ -250,7 +250,7 @@ func _tick_ghosts(delta: float) -> void:
 
 func _build_ghost_pool() -> void:
 	var cap := CapsuleMesh.new()
-	cap.radius = 0.4
+	cap.radius = 0.25  # matches the collision capsule (see _build_body)
 	cap.height = 1.8
 	_ghost_pool = MultimeshPool.new()
 	_ghost_pool.name = "GhostPool"
