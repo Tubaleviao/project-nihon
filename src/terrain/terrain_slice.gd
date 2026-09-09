@@ -9,9 +9,16 @@ extends Node
 ##   request_chunk(pos: Vector2i) -> void   — kick off async generation
 ##   get_height_at(world_pos: Vector2) -> float — sample the last generated chunk
 
-const CHUNK_SIZE := 32       # tiles per side
+const CHUNK_SIZE := 64       # tiles per side (64 × 0.5 = 32 world units per chunk)
+const TILE_SIZE  := 0.5      # world units per tile (XZ) — each square is half its former 1.0 size
 const HEIGHT_SCALE := 5.0    # world units peak-to-valley (gentle, even terrain)
 const BIOME_SEED := 20260815 # fixed seed so biome assignment is deterministic
+
+## The starting area is flattened into a plain field so the player can walk
+## freely from spawn without jumping. Spawn centre + radius + flat height below.
+const SPAWN_CENTER := Vector2(16.0, 16.0)  # world XZ — matches the player spawn point
+const SPAWN_FLATTEN_RADIUS := 20.0         # world units — a generous, walkable starting plain
+const SPAWN_HEIGHT := 2.0                  # flat height of the starting plain
 
 ## Finite world extent: the playable area spans chunk coordinates
 ## [-WORLD_RADIUS_CHUNKS, WORLD_RADIUS_CHUNKS) on each axis — a
@@ -45,11 +52,11 @@ func request_chunk(pos: Vector2i) -> void:
 	var heightmap := _generate(pos)
 	GameBus.chunk_ready.emit(pos, heightmap)
 
-## Sample height at an arbitrary world position (snaps to nearest chunk sample).
-## Uses the same (raw+1)*0.5*HEIGHT_SCALE formula as _generate so values match the heightmap.
+## Sample height at an arbitrary world position (matches the heightmap formula,
+## including spawn-area flattening). Uses the same (raw+1)*0.5*HEIGHT_SCALE
+## formula as _generate so values match the heightmap.
 func get_height_at(world_pos: Vector2) -> float:
-	var raw := _noise.get_noise_2d(world_pos.x, world_pos.y)
-	return (raw + 1.0) * 0.5 * HEIGHT_SCALE
+	return _height_at(world_pos.x, world_pos.y)
 
 ## Return the biome key for a world position. Phase 17: biome assignment is
 ## per-chunk — the whole chunk shares one biome, seeded by (cx, cz) so biome
@@ -68,12 +75,12 @@ func get_biome_at_chunk(chunk_pos: Vector2i) -> String:
 
 ## Convert a world XZ position to its containing chunk coordinate.
 func world_to_chunk(world_pos: Vector2) -> Vector2i:
-	return Vector2i(floori(world_pos.x / CHUNK_SIZE), floori(world_pos.y / CHUNK_SIZE))
+	return Vector2i(floori(world_pos.x / (CHUNK_SIZE * TILE_SIZE)), floori(world_pos.y / (CHUNK_SIZE * TILE_SIZE)))
 
 ## Convert a chunk coordinate to the world XZ origin of that chunk (bottom-left
 ## corner in world units).
 func chunk_to_world(chunk_pos: Vector2i) -> Vector2:
-	return Vector2(chunk_pos.x * CHUNK_SIZE, chunk_pos.y * CHUNK_SIZE)
+	return Vector2(chunk_pos.x * CHUNK_SIZE * TILE_SIZE, chunk_pos.y * CHUNK_SIZE * TILE_SIZE)
 
 ## True when `chunk_pos` lies inside the finite world (see WORLD_RADIUS_CHUNKS).
 func is_chunk_in_bounds(chunk_pos: Vector2i) -> bool:
@@ -81,7 +88,7 @@ func is_chunk_in_bounds(chunk_pos: Vector2i) -> bool:
 
 ## Half the world's extent in world units (the playable XZ range is ±this).
 func world_half_extent() -> float:
-	return float(WORLD_RADIUS_CHUNKS * CHUNK_SIZE)
+	return float(WORLD_RADIUS_CHUNKS * CHUNK_SIZE * TILE_SIZE)
 
 ## The finite world's chunk-radius (see WORLD_RADIUS_CHUNKS).
 func world_radius_chunks() -> int:
@@ -106,10 +113,25 @@ func clamp_to_world(pos: Vector3) -> Vector3:
 func _generate(pos: Vector2i) -> Array:
 	var out: Array = []
 	out.resize(CHUNK_SIZE * CHUNK_SIZE)
-	var origin_x := pos.x * CHUNK_SIZE
-	var origin_y := pos.y * CHUNK_SIZE
+	var origin_x := pos.x * CHUNK_SIZE * TILE_SIZE
+	var origin_z := pos.y * CHUNK_SIZE * TILE_SIZE
 	for ty in range(CHUNK_SIZE):
 		for tx in range(CHUNK_SIZE):
-			var raw := _noise.get_noise_2d(origin_x + tx, origin_y + ty)
-			out[ty * CHUNK_SIZE + tx] = (raw + 1.0) * 0.5 * HEIGHT_SCALE
+			out[ty * CHUNK_SIZE + tx] = _height_at(origin_x + tx * TILE_SIZE, origin_z + ty * TILE_SIZE)
 	return out
+
+## Continuous terrain height at a world XZ position: noise scaled by HEIGHT_SCALE,
+## then flattened to a plain field inside SPAWN_FLATTEN_RADIUS of SPAWN_CENTER so
+## the player starts on walkable ground. Shared by _generate and get_height_at so
+## the heightmap and direct samples always agree.
+func _height_at(x: float, z: float) -> float:
+	var raw := _noise.get_noise_2d(x, z)
+	var h := (raw + 1.0) * 0.5 * HEIGHT_SCALE
+	var dx := x - SPAWN_CENTER.x
+	var dz := z - SPAWN_CENTER.y
+	var d := sqrt(dx * dx + dz * dz)
+	if d < SPAWN_FLATTEN_RADIUS:
+		var t := d / SPAWN_FLATTEN_RADIUS
+		t = t * t * (3.0 - 2.0 * t)   # smoothstep: 0 at centre → 1 at edge
+		h = lerp(SPAWN_HEIGHT, h, t)
+	return h

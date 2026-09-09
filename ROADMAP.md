@@ -1449,6 +1449,42 @@ types (already emitted by `generator-godot`); no generator change needed.
 
 ---
 
+## Phase 31 — Trees and resource appearance
+
+**Goal:** Source wood materials from trees instead of the bare ground, and give
+surface resources a distinct visual identity so the world reads as "mostly
+plain dirt/rock with sparse, valuable veins" rather than a uniform resource
+field.
+
+**Newel dependency:** None. Reuses existing material entities (`Thornwood`,
+`Duskfiber`); trees are a new world feature modelled in GDScript first, with a
+fabric `world-system`/entity to follow once the runtime shape is settled.
+
+**Deliverables:**
+- Tree entities spawn deterministically per biome (Thornwood in temperate,
+  Duskwood in twilight), placed on the terrain surface like creatures.
+- Chopping a tree yields its wood material (`Thornwood` / `Duskfiber`) into the
+  inventory, replacing the removed ground-wood distribution (wood no longer
+  mines from the ground — see Phase 12's `BIOME_MATERIALS`).
+- Distinct visual treatment for resource veins: the common ground renders as
+  plain dirt/rock, while rarer materials (Aethermite, Lumenfite, Voidite) are
+  tinted and, where sensible, given a small raised/deposited shape so a vein is
+  recognizable from a distance.
+
+**Acceptance criteria:**
+- `BIOME_MATERIALS` no longer lists any wood material (already true as of the
+  map-improvements change; wood comes only from trees).
+- Chopping a tree yields its wood and the tree respawns on a cooldown.
+- A rare-material vein is visually distinguishable from the surrounding ground.
+
+**Known simplifications (deferred):**
+- Tree chopping gated behind a tool (`toolType: 'axe'`) — the axe already
+  exists in the fabric; the gating is wired with the tree feature.
+- Resource deposits have no depth/quantity model yet (mining still yields one
+  unit per `STEP_HEIGHT` slice).
+
+---
+
 ## Deferred (in priority order)
 
 - **Server sharding (final, not before maturity)** — split the authoritative
