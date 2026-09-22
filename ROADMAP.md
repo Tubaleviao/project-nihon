@@ -1501,6 +1501,76 @@ a server-issued local UUID or an account-backed id). No generator change: the
 state machine are already emitted. Run `pnpm validate` → `pnpm generate` →
 `pnpm check-drift` after adding it.
 
+**Steps:** this phase ships in two ordered steps. **Step 1 is a prerequisite and
+lands first, on its own commit** — it is cheap, mechanical, and touches no
+gameplay, so it must not be entangled with the persistence work. Step 2 (the
+identity + save lifecycle) builds on it.
+
+---
+
+### Step 1 — One authoritative boot path (land first)
+
+**Why first:** there are currently three boot paths and the authoritative half
+is duplicated. `_boot_world()` branches: client → `_boot_client()`, server →
+`_boot_server()`, else the host path is inlined in `_boot_world()` itself (player
+spawn, chunk streaming, the demo craft sequence, the save/load snapshot,
+`_networking.host()`). There is **no `_boot_host()` function at all**. So the
+dedicated server and the listen-host drift apart — and the drift is already
+visible: the host path hardcodes `_networking.host(_networking.DEFAULT_PORT, 1)`
+while `_boot_server()` uses `DEFAULT_MAX_CLIENTS` (64). Until the server path is
+the single authoritative boot, every later persistence change (Step 2) has to be
+made twice and verified twice.
+
+**Deliverables:**
+- Extract the inlined host path from `_boot_world()` into `_boot_host()`.
+  `_boot_host()` calls `_boot_server()` for the authoritative half, then layers
+  local presentation on top: player spawn, avatar/character visuals, lighting,
+  HUD/UI, minimap, and the `DEBUG`-gated demo sequence.
+- `_boot_world()` becomes a three-line role dispatch
+  (`_is_client` → `_boot_client()`, `_is_server` → `_boot_server()`, else
+  `_boot_host()`).
+- Raise the default `max_clients` off 1: the host path passes
+  `_networking.DEFAULT_MAX_CLIENTS` (64), not a literal `1`.
+- Add a CI job to `.github/workflows/ci.yml` that boots `--server --headless`
+  and asserts the server comes up clean.
+
+**Acceptance criteria:** *(not yet met — phase in progress)*
+- [ ] `_boot_world()` contains no inlined host logic — it only dispatches.
+- [ ] A listen host and a dedicated server share the identical authoritative
+  half (same `chunk_manager.start()` / `refresh()` + `networking.host()` calls).
+- [ ] The host still renders: `render_visuals` is decided by `_is_server` in
+  `_ready()`, so a host calling `_boot_server()` must still build the player,
+  avatars, lighting, and UI.
+- [ ] `max_clients` is 64 on the host path, not 1.
+- [ ] The new CI job fails on a `SCRIPT ERROR` / `Parse Error` / `Compile Error`
+  in the server boot log.
+- [ ] Headless suite count is unchanged (this step adds behaviours, not tests of
+  the suite's existing assertions).
+
+**Implementation notes:**
+- **Order the authoritative half before the player spawn.** `_boot_server()`
+  streams the chunk window around the *origin*; the host path places the player
+  at the spawn point first and then refreshes so the window centres on spawn. A
+  `_boot_host()` that calls `_boot_server()` first must therefore re-`refresh()`
+  the chunk manager after spawning, or `_boot_server()` must expose its two
+  authoritative steps separately. Do not silently regress the spawn-centred
+  window — that is the Phase 17/31 behaviour.
+- **`--server` is a *user* arg, so it goes after `--`.** `OS.get_cmdline_user_args()`
+  returns only what follows the separator; the CI job must invoke
+  `godot --headless --path . --quit -- --server`, not `--server` among the engine
+  args (it would be silently ignored and the job would boot a host instead).
+- **Assert positively, not just by absence of errors.** Today the server path
+  prints no line on success, so the only assertable fact is the absence of
+  `SCRIPT ERROR` / `Parse Error` / `Compile Error`. Add one boot line (e.g.
+  `[Server] listening on <port>, max_clients <n>`) so the job can assert the
+  server actually came up rather than merely failed to crash.
+- Keep the CI job cheap: reuse the `godot-tests` job's Godot 4.7 download step
+  and run `--quit` (without it the headless main loop never exits).
+
+---
+
+### Step 2 — Player identity and the save lifecycle
+
 **Deliverables:**
 - Add a stable player id that survives reconnect; `peer_id` can't be the key.
   Mint a `player_id` on first join, persist it, and send it to the client so a
@@ -1574,6 +1644,10 @@ state machine are already emitted. Run `pnpm validate` → `pnpm generate` →
   SIGTERM during a save can't truncate a per-player record.
 - Autosave interval and the save-dir layout belong in the fabric/config, not as
   bare GDScript constants, following the fabric-first discipline.
+- **Load only in the authoritative half.** After Step 1 there is exactly one
+  authoritative boot (`_boot_server()`), so the world load belongs there and a
+  listen host inherits it for free. Do not put the load in `_boot_host()`'s
+  presentation layer — that is the duplication Step 1 exists to remove.
 
 **Known simplifications (deferred):**
 - No account or auth service: identity is whatever the ratified
