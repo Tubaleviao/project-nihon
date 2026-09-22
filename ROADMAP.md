@@ -1485,6 +1485,107 @@ fabric `world-system`/entity to follow once the runtime shape is settled.
 
 ---
 
+## Phase 32 — Player identity and server-side persistence
+
+**Goal:** Give each player a connection-independent id owning their inventory,
+HP, position, and appearance, then write a real save lifecycle — load on server
+boot, autosave, save on disconnect and shutdown. Today the dedicated server
+(Phase 27) boots empty and discards the world: `_boot_server()` calls neither
+save nor load, and every piece of player state is keyed on `peer_id`, which ENet
+reassigns on every connection.
+
+**Newel dependency:** `PlayerIdentityModel` — a new `decision` entity in
+`fabric/constitution/decisions.js` (the ratified decision on whether identity is
+a server-issued local UUID or an account-backed id). No generator change: the
+`uuid` + `enum` field types and the `proposed → accepted → superseded` decision
+state machine are already emitted. Run `pnpm validate` → `pnpm generate` →
+`pnpm check-drift` after adding it.
+
+**Deliverables:**
+- Add a stable player id that survives reconnect; `peer_id` can't be the key.
+  Mint a `player_id` on first join, persist it, and send it to the client so a
+  reconnect re-binds to the same record (`networking_slice` keeps only the
+  transport mapping `peer_id → player_id`).
+- Make inventory per-player, preserving the Phase 25 per-instance
+  durability-array invariant: a durable item's per-instance `Array` *is* the
+  stack, and `get_durability_data()` / `replace_contents()` round-trip per
+  player — no shared inventory across peers.
+- Restore `player.position` and `player.hp` in `_on_load_completed` — the boot
+  snapshot already writes both (`player` → `position` / `hp` in `game_root`),
+  but load restores only inventory / technology / market / governance / trade.
+- Add stations and creature state (deaths, respawn timers) to the snapshot.
+  `station_slice` has no `get_station_data()` / `apply_station_data()` pair at
+  all, and `creature_slice.get_snapshot_creatures()` carries only
+  `{instance_id, creature_id, state, position}` — no `hp`, no `respawn_at`.
+- Load the world in `_boot_server`, which currently calls neither save nor load
+  (it only runs `chunk_manager.start()` / `refresh()` and `host()`).
+- Autosave on an interval; save on peer disconnect.
+- Save on shutdown: handle `WM_CLOSE_REQUEST` and `SIGTERM` — servers are
+  killed, not closed, so the window-close path alone never fires. The WM-close
+  half needs `get_tree().auto_accept_quit = false` before saving.
+- Use the existing dirty-chunk tracking for incremental voxel saves, not full
+  rewrites: `_on_save_completed` already calls `clear_dirty_chunks()`, so an
+  autosave must rewrite only `get_dirty_chunk_keys()`'s manifests.
+- Replace the single JSON slot with per-player records under a server save dir:
+  `persistence_slice` writes one `user://saves/slot_NN.json` today; move to a
+  world record (chunks / stations / creatures) plus one record per player under
+  a server save dir, keeping `save` / `load_slot` working for the existing
+  tests and the client-side legacy path.
+- Ratify identity model (local UUID vs account) as a fabric decision entity:
+  `PlayerIdentityModel` in `fabric/constitution/decisions.js`, accepted through
+  the same decision state machine the other constitution decisions use.
+
+**Acceptance criteria:** *(not yet met — phase in progress)*
+- [ ] A restart round-trip (save → fresh boot → load) reproduces player
+  position, HP, inventory with per-instance durability, stations, and creature
+  death / respawn state.
+- [ ] Reconnecting with a new connection keeps the same inventory — the id
+  survives the reconnect and the `peer_id` change.
+- [ ] A disconnect mid-craft leaves the inventory consistent after save: no
+  half-consumed materials, no duplicated output.
+- [ ] A spoofed id is rejected — a client cannot claim or write into another
+  player's record.
+- [ ] `_boot_server` loads the world on boot and autosave runs on its interval
+  (host/authoritative only).
+- [ ] `pnpm validate` + `pnpm check-drift` clean, headless suite green with the
+  4 new tests.
+
+**Tasks / tests:**
+- Restart round-trip (save → boot → load).
+- Reconnect keeps inventory.
+- Disconnect mid-craft.
+- Spoofed id rejected.
+
+**Implementation notes:**
+- **Respawn timers must become wall-clock.** `creature_slice` sets
+  `inst["respawn_at"] = Time.get_ticks_msec() + respawn_secs * 1000.0` —
+  `Time.get_ticks_msec()` is *process uptime*, so a saved deadline is meaningless
+  after a restart. Persist it as a Unix-epoch deadline
+  (`Time.get_unix_time_from_system()`), matching the Phase 24 market/proposal
+  convention.
+- **Id authority sits on the server.** The client may supply a cached id at
+  join; the server honours it only if it already has that record, otherwise it
+  mints a fresh one. That single rule is what makes the spoof case rejectable.
+- **Gate the whole lifecycle on `is_authoritative`.** A client neither loads a
+  world from disk nor autosaves — it receives state from the host (Phase 29's
+  AOI-scoped snapshot stays the client's only view).
+- **Save writes should survive a kill mid-write.** Create the save dir with
+  `DirAccess.make_dir_recursive_absolute` and write via a temp file + rename so a
+  SIGTERM during a save can't truncate a per-player record.
+- Autosave interval and the save-dir layout belong in the fabric/config, not as
+  bare GDScript constants, following the fabric-first discipline.
+
+**Known simplifications (deferred):**
+- No account or auth service: identity is whatever the ratified
+  `PlayerIdentityModel` decision lands on, but account binding / login is out of
+  scope for this phase (a local server-issued UUID is the working model).
+- No world-shard handoff of a player record between servers — see Deferred →
+  server sharding.
+- Autosave is a plain interval timer; no dirty-player-only diffing, so a
+  player record is rewritten whole each tick even when only one field changed.
+
+---
+
 ## Deferred (in priority order)
 
 - **Server sharding (final, not before maturity)** — split the authoritative
