@@ -1485,41 +1485,26 @@ fabric `world-system`/entity to follow once the runtime shape is settled.
 
 ---
 
-## Phase 32 — Player identity and server-side persistence
+## Phase 32 — One authoritative boot path
 
-**Goal:** Give each player a connection-independent id owning their inventory,
-HP, position, and appearance, then write a real save lifecycle — load on server
-boot, autosave, save on disconnect and shutdown. Today the dedicated server
-(Phase 27) boots empty and discards the world: `_boot_server()` calls neither
-save nor load, and every piece of player state is keyed on `peer_id`, which ENet
-reassigns on every connection.
+**Goal:** Make the host path a superset of the server path — `_boot_host()` calls
+`_boot_server()` for the authoritative half, then layers local presentation
+(player spawn, avatars, lighting, UI) on top. One authoritative boot means the
+dedicated server and the listen host can never drift apart. Cheap and
+mechanical; touches no gameplay.
 
-**Newel dependency:** `PlayerIdentityModel` — a new `decision` entity in
-`fabric/constitution/decisions.js` (the ratified decision on whether identity is
-a server-issued local UUID or an account-backed id). No generator change: the
-`uuid` + `enum` field types and the `proposed → accepted → superseded` decision
-state machine are already emitted. Run `pnpm validate` → `pnpm generate` →
-`pnpm check-drift` after adding it.
+**Newel dependency:** None.
 
-**Steps:** this phase ships in two ordered steps. **Step 1 is a prerequisite and
-lands first, on its own commit** — it is cheap, mechanical, and touches no
-gameplay, so it must not be entangled with the persistence work. Step 2 (the
-identity + save lifecycle) builds on it.
-
----
-
-### Step 1 — One authoritative boot path (land first)
-
-**Why first:** there are currently three boot paths and the authoritative half
-is duplicated. `_boot_world()` branches: client → `_boot_client()`, server →
-`_boot_server()`, else the host path is inlined in `_boot_world()` itself (player
-spawn, chunk streaming, the demo craft sequence, the save/load snapshot,
-`_networking.host()`). There is **no `_boot_host()` function at all**. So the
-dedicated server and the listen-host drift apart — and the drift is already
-visible: the host path hardcodes `_networking.host(_networking.DEFAULT_PORT, 1)`
-while `_boot_server()` uses `DEFAULT_MAX_CLIENTS` (64). Until the server path is
-the single authoritative boot, every later persistence change (Step 2) has to be
-made twice and verified twice.
+**Why this is its own phase:** there are currently three boot paths and the
+authoritative half is duplicated. `_boot_world()` branches: client →
+`_boot_client()`, server → `_boot_server()`, else the host path is inlined in
+`_boot_world()` itself (player spawn, chunk streaming, the demo craft sequence,
+the save/load snapshot, `_networking.host()`). There is **no `_boot_host()`
+function at all**. The drift is already visible in code: the host path hardcodes
+`_networking.host(_networking.DEFAULT_PORT, 1)` while `_boot_server()` passes
+`DEFAULT_MAX_CLIENTS` (64). Until the server path is the single authoritative
+boot, every Phase 33 persistence change has to be written and verified twice —
+which is why this lands first, as its own commit.
 
 **Deliverables:**
 - Extract the inlined host path from `_boot_world()` into `_boot_host()`.
@@ -1567,9 +1552,33 @@ made twice and verified twice.
 - Keep the CI job cheap: reuse the `godot-tests` job's Godot 4.7 download step
   and run `--quit` (without it the headless main loop never exits).
 
+**Known simplifications (deferred):**
+- The authoritative half is shared; the presentation layer is not. Only the host
+  runs the `DEBUG`-gated demo sequence, the player spawn, and the visual build,
+  so a dedicated server is authoritative but presentation-free — that is the
+  intended Phase 27 sim/visual split, not a gap.
+- `--server` gains no graceful termination hook here; the save-on-termination
+  lifecycle is Phase 33's work.
+
 ---
 
-### Step 2 — Player identity and the save lifecycle
+## Phase 33 — Player identity and server-side persistence
+
+**Goal:** Give each player a connection-independent id owning their inventory,
+HP, position, and appearance, then write a real save lifecycle — load on server
+boot, autosave, save on disconnect and shutdown. Today the dedicated server
+(Phase 27) boots empty and discards the world: `_boot_server()` calls neither
+save nor load, and every piece of player state is keyed on `peer_id`, which ENet
+reassigns on every connection. Builds on Phase 32: by the time this phase starts
+there is exactly one authoritative boot (`_boot_server()`), shared by the
+listen host.
+
+**Newel dependency:** `PlayerIdentityModel` — a new `decision` entity in
+`fabric/constitution/decisions.js` (the ratified decision on whether identity is
+a server-issued local UUID or an account-backed id). No generator change: the
+`uuid` + `enum` field types and the `proposed → accepted → superseded` decision
+state machine are already emitted. Run `pnpm validate` → `pnpm generate` →
+`pnpm check-drift` after adding it.
 
 **Deliverables:**
 - Add a stable player id that survives reconnect; `peer_id` can't be the key.
@@ -1587,8 +1596,9 @@ made twice and verified twice.
   `station_slice` has no `get_station_data()` / `apply_station_data()` pair at
   all, and `creature_slice.get_snapshot_creatures()` carries only
   `{instance_id, creature_id, state, position}` — no `hp`, no `respawn_at`.
-- Load the world in `_boot_server`, which currently calls neither save nor load
-  (it only runs `chunk_manager.start()` / `refresh()` and `host()`).
+- Load the world in `_boot_server` — Phase 32's shared authoritative half — which
+  currently calls neither save nor load (it only runs `chunk_manager.start()` /
+  `refresh()` and `host()`). Loading there means the listen host inherits it.
 - Autosave on an interval; save on peer disconnect.
 - Save on shutdown: handle `WM_CLOSE_REQUEST` and `SIGTERM` — servers are
   killed, not closed, so the window-close path alone never fires. The WM-close
@@ -1644,10 +1654,10 @@ made twice and verified twice.
   SIGTERM during a save can't truncate a per-player record.
 - Autosave interval and the save-dir layout belong in the fabric/config, not as
   bare GDScript constants, following the fabric-first discipline.
-- **Load only in the authoritative half.** After Step 1 there is exactly one
+- **Load only in the authoritative half.** Phase 32 leaves exactly one
   authoritative boot (`_boot_server()`), so the world load belongs there and a
   listen host inherits it for free. Do not put the load in `_boot_host()`'s
-  presentation layer — that is the duplication Step 1 exists to remove.
+  presentation layer — that is the duplication Phase 32 removed.
 
 **Known simplifications (deferred):**
 - No account or auth service: identity is whatever the ratified
