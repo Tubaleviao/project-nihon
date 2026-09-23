@@ -8,5 +8,6 @@ extends Resource
 @export var worldFileName: String
 @export var playerFilePrefix: String
 @export var autosaveIntervalSeconds: int
+@export var shutdownPollSeconds: int
 @export var shutdownRequestPath: String
 @export var atomicWrites: bool

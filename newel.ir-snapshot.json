@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:89e22e80c0eb563f9a3952f2778915416b53e35668229ced200e89a88ab90881",
+  "schemaHash": "sha256:55cabfcea99c631be3e603a0ef22b79a7aaed734746d193da7c1d96fc3322fd0",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -19942,10 +19942,19 @@
             "pii": false,
             "defaultValue": 300
           },
+          "shutdownPollSeconds": {
+            "name": "shutdownPollSeconds",
+            "type": "integer",
+            "description": "Seconds between polls of shutdownRequestPath. Kept far shorter than the autosave interval: the poll is how a restart request is noticed, and a request answered only on the autosave tick meant an orchestrator that kills after a short grace period killed an unsaved server.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 5
+          },
           "shutdownRequestPath": {
             "name": "shutdownRequestPath",
             "type": "string",
-            "description": "Path polled on the autosave tick; when it exists the server saves and quits cleanly. The headless substitute for a window-close or SIGTERM hook.",
+            "description": "Path polled on the shutdown cadence (shutdownPollSeconds); when it exists the server saves and quits cleanly. The headless substitute for a window-close or SIGTERM hook.",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -19995,7 +20004,22 @@
             "description": "Load the world and every player record when the authoritative boot starts",
             "rules": [
               "Only the authoritative half loads — a client receives state from the host",
-              "A missing world record is not an error; the server boots a fresh world"
+              "A missing world record is not an error; the server boots a fresh world",
+              "Only the local player record is read at boot; every other record is pulled in lazily by the reconnect claim that presents its id"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "evictPlayer": {
+            "name": "evictPlayer",
+            "description": "Release the in-memory record and inventory of a player whose connection has dropped",
+            "rules": [
+              "The record must be durable on disk before it is evicted; the next claim re-loads it",
+              "Never evict the local player, whose record and inventory are this process own",
+              "Never evict an ONLINE player"
             ],
             "auth": {
               "roles": [

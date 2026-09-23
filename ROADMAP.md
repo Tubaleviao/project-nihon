@@ -1860,6 +1860,76 @@ complete before exit, a real server+client pair showing `reconnected player
 '<128-bit id>'` (the lazy load path over the wire), and a `send_snapshot` call-site
 count of 3 → 2 against `HEAD`.
 
+### Phase 33 — review pass 2 (a restart that waits, a failure that hides, a client that gives up)
+
+A second review of the same branch found five more defects. Two are the same shape
+as before ("a bound that is really unbounded"), one is a trust boundary in the
+wrong direction, and two are lifecycle gaps:
+
+- **The shutdown poll was gated behind the autosave tick.** The
+  `shutdown_requested` file was only checked once `autosaveIntervalSeconds` (300 s)
+  had elapsed, so a restart request sat unread for up to five minutes. An
+  orchestrator that writes the request and `SIGKILL`s after a short grace period
+  killed the server *before* it saved — losing up to a full autosave interval on
+  every restart. The poll now has its own fabric cadence,
+  `shutdownPollSeconds` (default 5 s), resolved exactly like the autosave interval
+  (a non-positive value falls back rather than meaning "never notice a restart"),
+  and `PersistenceSlice.poll_due()` is the shared rule behind both. It is still
+  not a per-frame `FileAccess.file_exists()` — the "don't stat every frame" fix
+  stands, only the latency bound changed from *the autosave interval* to *the
+  shutdown poll interval*.
+- **A failed save was discovered one interval late, after the edits were already
+  un-marked.** Dirty chunks are cleared at COLLECTION time (that is what makes the
+  deferred clear exact), and the only reaper ran at the *start of the next*
+  `_save_everything()`. So a write that failed was reported up to 300 s later,
+  while its chunks read as clean: in that window the edits looked saved and were
+  not, and a process that died inside it lost them with no error at all.
+  `_poll_save_completion()` now reaps the worker as soon as `Thread.is_alive()` is
+  false — one bool per frame, reusing the single `_finish_save()` result path, so
+  the failure and the dirty-chunk re-mark land within a frame.
+- **The handshake was fire-and-forget.** The client sent `join_intent` once on
+  `connected_to_server`. Lose that packet (or the snapshot that answers it) and the
+  client sat connected with no identity, no world, and no way to ask again — the
+  snapshot-pending timer just gave up after 10 s. The client now re-presents the
+  intent (`NetworkingSlice.request_handshake()`) every `HANDSHAKE_RETRY_SECS` up to
+  `MAX_HANDSHAKE_RETRIES`, and each retry carries a fresh `seq` so the receiver's
+  dedup passes it. The host half was also broken: `resolve_identity` returned early
+  for an already-bound peer *without* emitting `player_joined`, so a retry would
+  have produced no snapshot at all — it now re-answers idempotently.
+- **A remote peer's HP was client-declared AND persisted.** The host kept the HP
+  it received in the peer's own `player_moved` packet and folded it into the
+  durable record, so `hp: 9999` on the wire became 9999 HP across a reconnect, a
+  restart, and every later save — persistence as a cheat engine. Only the LOCAL
+  player's host-simulated HP may be written (`PlayerRegistry.record_hp` refuses
+  anything else, via the pure `hp_is_authoritative_locally()`), the remote fold
+  call site is gone, and the now-consumerless `_last_known_hp` store was deleted
+  rather than left as write-only state. The honest trade: a remote peer's HP is no
+  longer durable, so a peer hard-killed mid-session resumes at its last
+  *host-authored* HP instead of its last declared one.
+- **Records and inventory nodes were never evicted.** The registry only ever grew:
+  every player who had EVER connected kept a record plus a live `InventorySlice`
+  node for the whole session. Now that the record is durable on disk and the
+  registry holds a loader, `PlayerRegistry.evict_player()` releases both on
+  disconnect (never the local player, never an online one, and only a node the
+  registry itself parented — the local player's is the game's own `_inventory`).
+  The reconnect claim re-loads from disk, so eviction costs one read and loses
+  nothing. Consequences handled in the same pass: trade/market hold a raw node per
+  party, and a freed node is not null, so both gained
+  `clear_party_inventory()` (called on disconnect) and a `_inventory_for()` that
+  treats a freed binding as "no inventory"; `game_root._peer_aoi_regions` is
+  cleared for the peer id too, so a reused ENet id cannot have its first re-scope
+  snapshot suppressed.
+
+Verification for this pass: headless host / `--server` / `--client` boots green at
+`Results: 6940/6940 passed (0 failed)` (was 6894; 7 registered cases replaced 1),
+a throwaway-copy `--server` probe that wrote `user://shutdown_requested` mid-run
+exiting **5.3 s later** with `[Server] shutdown requested — saving before quit`
+followed by a completed world save (the old code needed up to 300 s, so the same
+probe would still have been running), and a real server+client pair whose client
+was `SIGKILL`ed mid-session: the disconnect wrote the client's record, left no
+`SCRIPT ERROR` / `previously freed` / `Invalid` line in the server log, and a later
+`shutdown_requested` saved `world.json` plus both player records.
+
 ---
 
 ## Deferred (in priority order)

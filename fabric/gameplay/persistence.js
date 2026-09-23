@@ -40,9 +40,14 @@ module.exports = {
         description: 'Seconds between authoritative autosaves. Bounds how much world state a hard kill can lose, since a headless server cannot intercept SIGTERM.',
         defaultValue: 300,
       },
+      shutdownPollSeconds: {
+        type: 'integer',
+        description: 'Seconds between polls of shutdownRequestPath. Kept far shorter than the autosave interval: the poll is how a restart request is noticed, and a request answered only on the autosave tick meant an orchestrator that kills after a short grace period killed an unsaved server.',
+        defaultValue: 5,
+      },
       shutdownRequestPath: {
         type: 'string',
-        description: 'Path polled on the autosave tick; when it exists the server saves and quits cleanly. The headless substitute for a window-close or SIGTERM hook.',
+        description: 'Path polled on the shutdown cadence (shutdownPollSeconds); when it exists the server saves and quits cleanly. The headless substitute for a window-close or SIGTERM hook.',
         defaultValue: 'user://shutdown_requested',
       },
       atomicWrites: {
@@ -74,6 +79,16 @@ module.exports = {
         rules: [
           'Only the authoritative half loads — a client receives state from the host',
           'A missing world record is not an error; the server boots a fresh world',
+          'Only the local player record is read at boot; every other record is pulled in lazily by the reconnect claim that presents its id',
+        ],
+        auth: { roles: ['maintainer'] },
+      },
+      evictPlayer: {
+        description: 'Release the in-memory record and inventory of a player whose connection has dropped',
+        rules: [
+          'The record must be durable on disk before it is evicted; the next claim re-loads it',
+          'Never evict the local player, whose record and inventory are this process own',
+          'Never evict an ONLINE player',
         ],
         auth: { roles: ['maintainer'] },
       },

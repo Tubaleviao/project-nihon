@@ -9,6 +9,7 @@ serverSaveDir = "user://saves/server/"
 worldFileName = "world.json"
 playerFilePrefix = "player_"
 autosaveIntervalSeconds = 300
+shutdownPollSeconds = 5
 shutdownRequestPath = "user://shutdown_requested"
 atomicWrites = true
 description = "Defines the authoritative save lifecycle: which directory the world and per-player records live in, how often the server autosaves, how a headless server is asked to shut down cleanly, and how a record is written so a kill mid-write cannot truncate it. The world record holds chunk manifests, stations, and creature state; one record per player holds position, HP, inventory, and technology."

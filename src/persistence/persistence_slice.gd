@@ -49,6 +49,8 @@ extends Node
 ##   sanitize_player_id(player_id)     -> String      (pure, path-safe)
 ##   autosave_due(elapsed, interval)   -> bool  (static, pure)
 ##   resolved_autosave_interval(value) -> float (static, pure)
+##   poll_due(elapsed, interval)       -> bool  (static, pure, general cadence)
+##   resolved_shutdown_poll_interval(v)-> float (static, pure)
 ##   merge_creature_states(base, inc)  -> Array (static, pure)
 
 const SAVE_DIR  := "user://saves/"
@@ -60,12 +62,19 @@ const DEFAULT_SERVER_SAVE_DIR := "user://saves/server/"
 const DEFAULT_WORLD_FILE      := "world.json"
 const DEFAULT_PLAYER_PREFIX   := "player_"
 const DEFAULT_AUTOSAVE_SECS   := 300.0
+## Cadence of the shutdown-request poll. It is deliberately INDEPENDENT of (and
+## far shorter than) the autosave interval: the poll is how a restart request is
+## noticed, so tying it to a 300 s autosave meant a restart was answered up to
+## five minutes late, and an orchestrator that sigkills after a short grace
+## period killed the server before it saved.
+const DEFAULT_SHUTDOWN_POLL_SECS := 5.0
 const DEFAULT_SHUTDOWN_PATH   := "user://shutdown_requested"
 
 var server_save_dir: String = DEFAULT_SERVER_SAVE_DIR
 var world_file: String = DEFAULT_WORLD_FILE
 var player_prefix: String = DEFAULT_PLAYER_PREFIX
 var autosave_interval: float = DEFAULT_AUTOSAVE_SECS
+var shutdown_poll_interval: float = DEFAULT_SHUTDOWN_POLL_SECS
 var shutdown_request_path: String = DEFAULT_SHUTDOWN_PATH
 var atomic_writes: bool = true
 
@@ -87,6 +96,7 @@ func _load_config() -> void:
 	world_file          = str(res.get("worldFileName"))
 	player_prefix       = str(res.get("playerFilePrefix"))
 	autosave_interval   = float(res.get("autosaveIntervalSeconds"))
+	shutdown_poll_interval = float(res.get("shutdownPollSeconds"))
 	shutdown_request_path = str(res.get("shutdownRequestPath"))
 	atomic_writes       = bool(res.get("atomicWrites"))
 	if server_save_dir.is_empty():
@@ -100,6 +110,10 @@ func _load_config() -> void:
 	# honouring it would silently drop the only bound on how much world state a
 	# hard kill can lose. Fall back like the string fields above instead.
 	autosave_interval = resolved_autosave_interval(autosave_interval)
+	# Same treatment for the shutdown poll: 0 (or a negative) would silently mean
+	# "never notice a shutdown request", which is the same class of bug as the
+	# autosave one above, so it falls back to the default cadence.
+	shutdown_poll_interval = resolved_shutdown_poll_interval(shutdown_poll_interval)
 
 # ---------------------------------------------------------------------------
 # Legacy slot path
@@ -290,6 +304,13 @@ static func sanitize_player_id(player_id: String) -> String:
 ## True when an autosave is due: `elapsed` seconds have accumulated since the
 ## last save and `interval` is a positive cadence. Pure.
 static func autosave_due(elapsed: float, interval: float) -> bool:
+	return poll_due(elapsed, interval)
+
+## True when a cadence with `interval` seconds has elapsed. The shared rule for
+## every periodic poll on the authoritative save lifecycle (the autosave itself
+## and the shutdown-request poll), so both answer the same way to a 0 or negative
+## interval and there is one place to change the semantics. Pure.
+static func poll_due(elapsed: float, interval: float) -> bool:
 	return interval > 0.0 and elapsed >= interval
 
 ## The autosave cadence to actually use: a non-positive configured value falls back
@@ -298,6 +319,14 @@ static func autosave_due(elapsed: float, interval: float) -> bool:
 static func resolved_autosave_interval(configured: float) -> float:
 	if configured <= 0.0:
 		return DEFAULT_AUTOSAVE_SECS
+	return configured
+
+## The shutdown-poll cadence to actually use. A non-positive configured value must
+## not mean "never notice a restart request", so it falls back to
+## DEFAULT_SHUTDOWN_POLL_SECS exactly as the autosave interval does. Pure.
+static func resolved_shutdown_poll_interval(configured: float) -> float:
+	if configured <= 0.0:
+		return DEFAULT_SHUTDOWN_POLL_SECS
 	return configured
 
 ## The chunk manifests an INCREMENTAL save should carry: only the dirty keys, so
@@ -316,9 +345,11 @@ static func dirty_chunk_subset(manifest: Dictionary, dirty_keys: Array) -> Dicti
 ## technology, position, HP. True only on the join/reconnect snapshot and only
 ## once the host has resolved the peer's identity.
 ##
-## The record is a durability artifact, not a live feed: `record_position()` /
-## `record_hp()` are only called for the local player and at disconnect, so a
-## remote peer's recorded position is whatever was loaded from disk. Snapshot
+## The record is a durability artifact, not a live feed: `record_position()` is
+## only called for the local player and for a remote peer's last-known position,
+## and `record_hp()` for the local player alone (a remote peer's HP is
+## client-declared and is not persisted — see PlayerRegistry.record_hp), so a
+## remote peer's recorded state is whatever was on disk. Snapshot
 ## contents are applied by the client as authoritative, so carrying the record on
 ## every AOI re-scope (which a moving client triggers repeatedly) would teleport
 ## the client back to its last-saved position and roll its inventory and

@@ -69,6 +69,14 @@ var _peer_aoi_regions: Dictionary = {}
 ## Phase 33 — seconds accumulated since the last authoritative autosave.
 var _autosave_elapsed: float = 0.0
 
+## Phase 33 — seconds accumulated since the shutdown-request file was last polled.
+## Kept SEPARATE from `_autosave_elapsed` (and paired with the fabric's own, much
+## shorter cadence): a shutdown request answered only on the autosave tick made a
+## restart wait up to a full 300 s, so an orchestrator that kills the process
+## after a short grace period killed it before it ever saved — up to five minutes
+## of edits lost on every restart.
+var _shutdown_poll_elapsed: float = 0.0
+
 ## Phase 33 — the world record read at boot. It carries the local player id the
 ## previous process minted, and the creature state that has to be re-applied
 ## AFTER chunk streaming spawns the population.
@@ -77,6 +85,16 @@ var _loaded_world: Dictionary = {}
 ## Client-side: seconds to wait for the host world snapshot before giving up.
 const SNAPSHOT_TIMEOUT := 10.0
 var _snapshot_elapsed: float = 0.0
+
+## Client-side: how long to wait for a snapshot before re-presenting the join
+## intent, and how many times to do so. The handshake is the only route to an
+## identity and a world, so a lost join_intent (or a lost snapshot) must be
+## retried rather than ending in an empty client: retries are spaced so a slow
+## host is not flooded, and the total budget stays inside SNAPSHOT_TIMEOUT.
+const HANDSHAKE_RETRY_SECS := 3.0
+const MAX_HANDSHAKE_RETRIES := 3
+var _handshake_elapsed: float = 0.0
+var _handshake_retries: int = 0
 
 func _ready() -> void:
 	# Run the automated tests before any production slice enters the tree.
@@ -514,6 +532,8 @@ func _boot_client() -> void:
 		return
 	_snapshot_pending = true
 	_snapshot_elapsed = 0.0
+	_handshake_elapsed = 0.0
+	_handshake_retries = 0
 
 ## Headless dedicated-server boot (Phase 27): run the authoritative simulation
 ## with no local player presentation. Streams the world around the origin and
@@ -574,8 +594,16 @@ func _on_player_identity_assigned(player_id: String) -> void:
 	print("[Client] identity assigned: %s" % player_id)
 
 ## Phase 33 — host: a connection dropped. Write the player's record before the
-## transport mapping is discarded; the record stays on disk (and in memory), so
-## the same player_id reconnects to the same inventory, position, and HP.
+## transport mapping is discarded; the record stays on DISK (and is re-loaded
+## lazily on the reconnect claim), so the same player_id reconnects to the same
+## inventory, position, and HP.
+##
+## The in-memory record and the player's inventory node are then RELEASED
+## (`evict_player`): keeping them was what made the registry grow with every peer
+## that had ever connected. Order matters — fold, write, unbind, then evict — so
+## the durable copy is complete before the only reference to the live one goes.
+## The party bindings in trade/market are dropped with it: they hold a raw node
+## reference, and a freed node is not null.
 func _on_peer_disconnected(peer_id: int) -> void:
 	if _is_client:
 		return
@@ -585,36 +613,42 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	_fold_last_known_state(peer_id, player_id)
 	_persistence.save_player(player_id, _registry.get_player_data(player_id))
 	_registry.unbind_peer(peer_id)
+	# A stale AOI cell for a peer_id ENet may hand to the next connection would
+	# suppress that peer's very first re-scoped snapshot.
+	_peer_aoi_regions.erase(peer_id)
+	_trade.clear_party_inventory(player_id)
+	_market.clear_party_inventory(player_id)
+	_registry.evict_player(player_id)
 	GameBus.player_left.emit(player_id)
 
 ## Fold everything the host knows about a LIVE remote peer into its registry record:
-## its last-reported position and HP. Both are guarded by has_*() discriminators —
-## get_last_known_state() answers Vector3.ZERO and get_last_known_hp() answers -1.0
-## for "never reported", so writing them unconditionally would reset a returning
-## player's record to the world origin (or full HP) from a peer that connected but
-## never sent a state packet.
+## its last-reported position.
+##
+## Position is guarded by has_last_known_state() — get_last_known_state() answers
+## Vector3.ZERO for BOTH "at the origin" and "never reported", so writing it
+## unconditionally would reset a returning player's record to the world origin
+## from a peer that connected but never sent a state packet.
+##
+## HP is deliberately NOT folded. The HP the host holds for a remote peer is the
+## value that peer declared on the wire (`player_moved`), and the host has no
+## simulation of that peer to check it against, so writing it into a durable
+## record made a client-declared number survive a reconnect, a restart and every
+## later save — a durable, restart-proof cheat. `PlayerRegistry.record_hp` refuses
+## it at the choke point too; this call site is gone rather than left as a silent
+## no-op. Only the LOCAL player's host-simulated HP is persisted.
 func _fold_last_known_state(peer_id: int, player_id: String) -> void:
 	if _networking.has_last_known_state(peer_id):
 		_registry.record_position(player_id, _networking.get_last_known_state(peer_id))
-	if _networking.has_last_known_hp(peer_id):
-		_registry.record_hp(player_id, _networking.get_last_known_hp(peer_id))
 
-## Phase 33 — fold every ONLINE remote peer's last-known position and HP into its
-## record. This runs on every autosave, not only at disconnect: a peer whose process
+## Phase 33 — fold every ONLINE remote peer's last-known position into its record.
+## This runs on every autosave, not only at disconnect: a peer whose process
 ## is KILLED (or whose host is) never reaches _on_peer_disconnected, so the durable
 ## record would otherwise still hold whatever was loaded from disk — a returning
-## player resurrected at the world origin with the HP they had last session. The
-## autosave interval is now the bound on how much of a remote peer's live state a
-## hard kill can lose.
+## player resurrected at the world origin. The autosave interval is now the bound
+## on how much of a remote peer's live position a hard kill can lose. (Its HP is
+## not folded at all — see _fold_last_known_state.)
 func _snapshot_remote_players() -> void:
-	# The union of both stores: a peer that reported one of the two but not the
-	# other still has something worth folding (each is separately guarded below).
-	var peer_ids: Dictionary = {}
 	for peer_id in _networking.get_last_known_states():
-		peer_ids[int(peer_id)] = true
-	for peer_id in _networking.get_last_known_hps():
-		peer_ids[int(peer_id)] = true
-	for peer_id in peer_ids:
 		var player_id := _registry.get_player_id(int(peer_id))
 		if player_id.is_empty():
 			continue
@@ -643,13 +677,36 @@ func _process(delta: float) -> void:
 	# and out. No-op until characters exist and on clients (no spawned visuals).
 	_character.update_lod(_player.get_position())
 
+	# Phase 33 — settle a COMPLETED save worker before the lifecycle tick can
+	# start another one: a failed write is then reported within a frame instead of
+	# at the start of the next autosave, and its dirty chunks go back immediately.
+	_poll_save_completion()
+
 	# Phase 33 — authoritative save lifecycle: the autosave interval plus the
-	# shutdown-request poll. Must run before the snapshot-pending early return.
+	# shutdown-request poll (each on its own cadence). Must run before the
+	# snapshot-pending early return.
 	_tick_save_lifecycle(delta)
 
 	if not _snapshot_pending:
 		return
+	_tick_client_handshake(delta)
+
+## Client-side: wait for the host's world snapshot, re-presenting the join intent
+## while it does not arrive. The handshake is the only route to an identity and a
+## world, and it used to be fire-and-forget: one lost join_intent — or one lost
+## snapshot — left a fully connected client with nothing and no way to ask again.
+## Each retry re-sends the intent (a fresh seq, so the host's dedup passes it) and
+## the host re-answers an already-bound peer (see
+## PlayerRegistry.resolve_identity), so the retry re-delivers the snapshot.
+func _tick_client_handshake(delta: float) -> void:
 	_snapshot_elapsed += delta
+	_handshake_elapsed += delta
+	if _handshake_elapsed >= HANDSHAKE_RETRY_SECS and _handshake_retries < MAX_HANDSHAKE_RETRIES:
+		_handshake_elapsed = 0.0
+		_handshake_retries += 1
+		push_warning("[Networking] no world snapshot after %.1fs — re-presenting join intent (retry %d/%d)" % [
+			HANDSHAKE_RETRY_SECS, _handshake_retries, MAX_HANDSHAKE_RETRIES])
+		_networking.request_handshake()
 	if _snapshot_elapsed >= SNAPSHOT_TIMEOUT:
 		push_error("[Networking] world snapshot timed out after %.1fs — giving up" % SNAPSHOT_TIMEOUT)
 		_snapshot_pending = false
@@ -801,25 +858,32 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 ## roles only: a client neither loads a world nor writes one — its state arrives
 ## in the host's AOI-scoped snapshot (Phase 29).
 ##
-## The shutdown-request file is polled ON THE AUTOSAVE TICK, not every frame: it
-## used to be a `FileAccess.file_exists()` stat on every single frame, forever, for
-## a file that is written at most once. The cost of polling here instead is that a
-## shutdown request is answered at most one autosave interval late, which is the
-## same latency a headless server already accepts for its world record.
+## The shutdown-request file is polled on its OWN cadence (`shutdownPollSeconds`,
+## seconds by default), NOT on the autosave tick: it used to be gated behind
+## `autosaveIntervalSeconds` (300 s), so a restart request sat unread for up to
+## five minutes. An orchestrator that writes the request and sigkills after a
+## short grace period therefore killed the server before it saved, losing up to a
+## full autosave interval per restart. It is still not a per-frame
+## `FileAccess.file_exists()` (the file is written at most once), so the separate
+## short cadence keeps the "don't stat every frame" fix while bounding the
+## shutdown latency to `shutdownPollSeconds` instead of the autosave interval.
 func _tick_save_lifecycle(delta: float) -> void:
 	if _is_client:
 		return
+	_shutdown_poll_elapsed += delta
+	if PersistenceSlice.poll_due(_shutdown_poll_elapsed, _persistence.shutdown_poll_interval):
+		_shutdown_poll_elapsed = 0.0
+		if FileAccess.file_exists(_persistence.shutdown_request_path):
+			print("[Server] shutdown requested — saving before quit")
+			_save_everything(true)
+			_flush_save()
+			DirAccess.remove_absolute(_persistence.shutdown_request_path)
+			get_tree().quit()
+			return
 	_autosave_elapsed += delta
 	if not PersistenceSlice.autosave_due(_autosave_elapsed, _persistence.autosave_interval):
 		return
 	_autosave_elapsed = 0.0
-	if FileAccess.file_exists(_persistence.shutdown_request_path):
-		print("[Server] shutdown requested — saving before quit")
-		_save_everything(true)
-		_flush_save()
-		DirAccess.remove_absolute(_persistence.shutdown_request_path)
-		get_tree().quit()
-		return
 	_save_everything(true)
 
 ## Write the world record plus one record per player. `incremental` merges only the
@@ -953,6 +1017,20 @@ func _reap_save_thread() -> void:
 		return
 	_finish_save(int(_save_thread.wait_to_finish()))
 	_save_thread = null
+
+## Reap the save worker as soon as it has FINISHED, without blocking.
+##
+## Before this, the only reaper was `_reap_save_thread()` at the START of the next
+## `_save_everything()`, so a failed write was discovered up to one whole autosave
+## interval late — and the chunks it had serialized had already been cleared from
+## the dirty set at collection time. In that window the edits looked saved and
+## were not, and a process that died inside it lost them with no error reported.
+## `Thread.is_alive()` is false the moment the worker returns, so this costs one
+## bool per frame and reuses the same single reaper (no second result path).
+func _poll_save_completion() -> void:
+	if _save_thread == null or _save_thread.is_alive():
+		return
+	_reap_save_thread()
 
 ## Block until the in-flight write has landed. Shutdown (window close, the polled
 ## shutdown-request file, process exit) must not outrun its own save.

@@ -109,9 +109,18 @@ func get_skills() -> Dictionary:
 func set_party_inventory(party: String, inv: Node) -> void:
 	_party_inventory[party] = inv
 
+## Forget a party's inventory binding — see MarketSlice.clear_party_inventory:
+## a freed node is not null, so a stale binding has to be removed when the
+## registry frees a disconnected player's inventory.
+func clear_party_inventory(party: String) -> void:
+	_party_inventory.erase(party)
+
 func _inventory_for(party: String) -> Node:
 	if _party_inventory.has(party):
-		return _party_inventory[party]
+		var bound: Variant = _party_inventory[party]
+		if is_instance_valid(bound):
+			return bound
+		_party_inventory.erase(party)
 	if party == "player":
 		return inventory_slice
 	return null

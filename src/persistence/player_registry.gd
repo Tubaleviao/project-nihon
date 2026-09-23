@@ -13,7 +13,12 @@ extends Node
 ##     reconnect. Any other claim is ignored and a fresh id is minted, so a
 ##     spoofed id can never read or write another player's record
 ##     (the ratified PlayerIdentityModel decision). A record is loaded from disk
-##     LAZILY, on the claim that asks for it (`set_record_loader`), not all at boot.
+##     LAZILY, on the claim that asks for it (`set_record_loader`), not all at boot,
+##     and it is released again when the connection drops (`evict_player`) — the
+##     disk copy is the durable half, so the registry holds records only for the
+##     players who are actually online right now.
+##   • A remote peer's HP is NOT durable here: it arrives client-declared, so
+##     only the local player's HP may be written into a record (see `record_hp`).
 ##   • Clients never mint, load, or store anything: `is_authoritative` is false
 ##     there and every mutating entry point returns early.
 ##
@@ -37,6 +42,7 @@ extends Node
 ##   record_appearance(player_id, recipe) / record_technology(player_id, statuses)
 ##   get_inventory(player_id) -> InventorySlice  — created on first access
 ##   set_inventory(player_id, inventory)
+##   evict_player(player_id) -> bool             — drop an offline player's memory
 ##   get_player_data(player_id) -> Dictionary    — serializable record
 ##   apply_player_data(player_id, data) -> void
 ##   get_players_data() -> Dictionary / apply_players_data(data) -> void
@@ -131,6 +137,14 @@ func resolve_identity(peer_id: int, claimed_id: String = "") -> String:
 		push_warning("PlayerRegistry: resolve_identity on a non-authoritative registry — ignored")
 		return ""
 	if _peer_ids.has(peer_id):
+		# An ALREADY-bound peer asking again is a retry, not a new join: the
+		# handshake is re-answered rather than silently swallowed. The client
+		# re-presents its join intent when no snapshot has arrived (a lost
+		# join_intent, or a lost snapshot), and without this re-emit the retry
+		# produced no `player_joined`, so the host never re-sent the snapshot
+		# and the client stayed empty forever. Idempotent on both sides:
+		# `ensure_player` is a no-op and the handshake snapshot is re-sent.
+		GameBus.player_joined.emit(peer_id, str(_peer_ids[peer_id]), false)
 		return str(_peer_ids[peer_id])
 	var player_id := ""
 	var reconnected := false
@@ -166,9 +180,11 @@ func _ensure_record_loaded(player_id: String) -> void:
 	if data is Dictionary and not (data as Dictionary).is_empty():
 		apply_player_data(player_id, data)
 
-## Drop a connection's transport mapping. The record is RETAINED, so the same
-## player_id reconnects to it later. Returns the id the connection held ("" when
-## the peer was never bound).
+## Drop a connection's transport mapping. The record on disk is the player's
+## durable identity, so the same player_id reconnects to it later; the IN-MEMORY
+## copy is a different question and is released by `evict_player` once it is
+## safe (which is why a reconnect re-loads rather than re-binds). Returns the id
+## the connection held ("" when the peer was never bound).
 func unbind_peer(peer_id: int) -> String:
 	if not _peer_ids.has(peer_id):
 		return ""
@@ -251,7 +267,26 @@ func record_position(player_id: String, position: Vector3) -> void:
 		return
 	rec["position"] = [position.x, position.y, position.z]
 
+## Record a player's HP — but ONLY for the local (host-simulated) player.
+##
+## A REMOTE peer's HP is client-declared: the value arrives on the wire in the
+## peer's own `player_moved` packet (see networking `_route_c2h`), and the host
+## has no simulation of that peer's health to check it against. Writing it into
+## the record made persistence into a durable cheat — a client that declared
+## 9999 HP kept 9999 HP across a reconnect, a restart, and every future save,
+## because the save lifecycle faithfully re-serialized whatever it was given.
+## The honest position is that this process cannot vouch for that number, so it
+## is not durable; the peer's HP is owned by the simulation on the machine that
+## runs it (its own client) and is revocable there.
+##
+## The local player's HP IS host-simulated and durable (see `is_online` for the
+## same local-vs-remote split). Pure predicate, so the rule is testable alone.
+static func hp_is_authoritative_locally(player_id: String, local_player_id: String) -> bool:
+	return player_id != "" and player_id == local_player_id
+
 func record_hp(player_id: String, hp: float) -> void:
+	if not hp_is_authoritative_locally(player_id, local_player_id):
+		return
 	var rec := ensure_player(player_id)
 	if rec.is_empty():
 		return
@@ -296,6 +331,40 @@ func set_inventory(player_id: String, inventory: Node) -> void:
 
 func has_inventory(player_id: String) -> bool:
 	return _inventories.has(player_id)
+
+# ---------------------------------------------------------------------------
+# Eviction
+# ---------------------------------------------------------------------------
+
+## Release everything this process holds in memory for a player who is no longer
+## connected: the record and the registry-owned inventory node.
+##
+## Without this the registry only ever grew. The record is KEPT on disk and the
+## registry holds a loader (`set_record_loader`), so the next claim that presents
+## the id pulls it straight back in (`_ensure_record_loaded`) — eviction costs one
+## disk read on a reconnect and nothing at all for a player who never returns,
+## which is exactly the set the old behaviour leaked. `game_root` writes the
+## record before calling this (see `_on_peer_disconnected`), so nothing is lost.
+##
+## Refused for an ONLINE player and for the local player: the local player is
+## online by definition, and its record and inventory are this process's own.
+## The inventory NODE is only freed when the registry created it (parent ==
+## self); the local player's is the game's own `_inventory` instance, handed in
+## by `set_local_player`, and is not this slice's to free.
+##
+## Returns true when a record was resident and has been dropped.
+func evict_player(player_id: String) -> bool:
+	if player_id.is_empty() or is_online(player_id):
+		return false
+	var had_record := _players.erase(player_id)
+	var inv: Variant = _inventories.get(player_id, null)
+	if inv != null:
+		_inventories.erase(player_id)
+		var node := inv as Node
+		if is_instance_valid(node) and node.get_parent() == self:
+			remove_child(node)
+			node.queue_free()
+	return had_record
 
 # ---------------------------------------------------------------------------
 # Serialization

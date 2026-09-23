@@ -46,9 +46,8 @@ extends Node
 ##   remember_player_state(peer_id, pos) -> void   — Phase 19
 ##   get_last_known_state(peer_id) -> Vector3      — Phase 19
 ##   get_last_known_states() -> Dictionary         — Phase 19
-##   remember_player_hp(peer_id, hp) -> void       — Phase 33
-##   has_last_known_hp(peer_id) -> bool / get_last_known_hp(peer_id) -> float
-##   get_last_known_hps() -> Dictionary
+##   has_last_known_state(peer_id) -> bool
+##   request_handshake() -> void                   — re-present the join intent
 
 enum Role { OFFLINE, HOST, CLIENT }
 
@@ -123,12 +122,6 @@ var _jitter_buffer: Dictionary = {}
 ## Host-side last-known player states (peer_id -> Vector3), retained across a
 ## disconnect so a rejoining client can resume from its last position.
 var _last_known_states: Dictionary = {}
-
-## Phase 33 — last-known HP per peer (peer_id -> float), the companion to
-## _last_known_states. A remote peer reports its HP on every player_moved packet;
-## without keeping it here the host has nothing to persist for a peer that dies
-## without a clean disconnect, and that peer would come back at full health.
-var _last_known_hp: Dictionary = {}
 
 ## Phase 33 — transport mapping only: peer_id (ENet, reassigned every connection)
 ## → player_id (server-issued, stable). Every player-scoped record and inventory
@@ -321,26 +314,6 @@ func has_last_known_state(peer_id: int) -> bool:
 func get_last_known_states() -> Dictionary:
 	return _last_known_states.duplicate(true)
 
-## Record a client's last-known authoritative HP. Mirrors remember_player_state:
-## it is what the host persists for a peer that is killed without a clean
-## disconnect (see game_root's save lifecycle).
-func remember_player_hp(peer_id: int, hp: float) -> void:
-	_last_known_hp[peer_id] = hp
-
-## True when an HP for `peer_id` has actually been recorded this session. The
-## companion to has_last_known_state(): a peer that reported a position but no HP
-## (an older client) must not have a default written into its record.
-func has_last_known_hp(peer_id: int) -> bool:
-	return _last_known_hp.has(peer_id)
-
-## The last HP recorded for a peer, or -1.0 ("unknown") when there is none.
-func get_last_known_hp(peer_id: int) -> float:
-	return float(_last_known_hp.get(peer_id, -1.0))
-
-## All retained HP values (peer_id -> hp), for folding into player records.
-func get_last_known_hps() -> Dictionary:
-	return _last_known_hp.duplicate(true)
-
 ## Evict last-known states for peers that have been disconnected longer than
 ## LAST_KNOWN_STATE_TTL_MS. Called every frame from _process() so the host
 ## dict doesn't grow without bound over long sessions.
@@ -351,7 +324,6 @@ func _evict_stale_states() -> void:
 	for pid: int in _last_known_timestamps.keys():
 		if now_ms - float(_last_known_timestamps[pid]) > float(LAST_KNOWN_STATE_TTL_MS):
 			_last_known_states.erase(pid)
-			_last_known_hp.erase(pid)
 			_last_known_timestamps.erase(pid)
 			_peer_spatial.remove(pid)
 
@@ -745,10 +717,12 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			GameBus.player_join_intent.emit(sender, str(payload.get("claimed_id", "")))
 		"player_moved":
 			var pos := _vec3(payload.get("position", []))
-			# The peer's own HP rides the same packet. Remember it, or the host has
-			# nothing to persist for a peer that never disconnects cleanly.
-			if payload.has("hp"):
-				remember_player_hp(sender, float(payload.get("hp", -1.0)))
+			# The packet also carries the peer's self-declared `hp` / `max_hp`,
+			# used for its own display. The host deliberately keeps NO durable
+			# copy: the value is client-declared and cannot be verified here, so
+			# persisting it made health a restart-proof cheat (see
+			# PlayerRegistry.record_hp). Position is the only half the host
+			# retains, and only so a reconnect can resume from it.
 			GameBus.remote_player_state.emit(sender, pos)
 		"craft_intent":
 			# A remote peer's craft must resolve against ITS OWN inventory (crafting
@@ -1062,6 +1036,18 @@ func _detach_peer() -> void:
 func _on_connected_to_server() -> void:
 	if _role != Role.CLIENT:
 		return
+	request_handshake()
+
+## Client side: (re-)present the join intent. Called on connect, and again by
+## game_root while the client is still waiting for its world snapshot — the
+## handshake is the ONLY way a client gets an identity and a world, so a lost
+## join_intent (or a lost snapshot) used to leave a connected client with
+## nothing at all and no way to ask again. Each call gets a fresh `seq`, so the
+## retry is not swallowed by the receiver's dedup, and the host re-answers an
+## already-bound peer idempotently (PlayerRegistry.resolve_identity).
+func request_handshake() -> void:
+	if _role != Role.CLIENT:
+		return
 	_deliver(1, { "type": "join_intent", "claimed_id": claimed_player_id })
 
 ## Phase 33 — host side: an identity was bound to a connection. Record the
@@ -1083,15 +1069,17 @@ func _on_peer_connected(id: int) -> void:
 	_peer_spatial.update(id, get_aoi_center(id))
 	GameBus.peer_connected.emit(id)
 
-## Phase 19 — a peer disconnecting does NOT erase its last-known state; the
-## record is retained so a rejoining client resumes from its last position.
+## Phase 19 — a peer disconnecting does NOT erase its last-known position; it is
+## retained (with a TTL) so a rejoining client resumes from where it left off and
+## the record written at disconnect carries that position.
 ## A disconnect timestamp is set so _evict_stale_states() can expire the entry
 ## after LAST_KNOWN_STATE_TTL_MS if the peer never reconnects.
 func _on_peer_disconnected(id: int) -> void:
 	GameBus.peer_disconnected.emit(id)
 	# Phase 33 — the connection is gone, so its transport mapping goes with it.
-	# The player's RECORD is retained (see PlayerRegistry), which is what lets a
-	# reconnect with the same player id re-bind to it.
+	# The player's durable record stays on disk, which is what lets a reconnect
+	# with the same player id re-bind to it; game_root writes it and then releases
+	# the in-memory copy (PlayerRegistry.evict_player).
 	forget_player_id(id)
 	if _last_known_states.has(id):
 		_last_known_timestamps[id] = Time.get_ticks_msec()

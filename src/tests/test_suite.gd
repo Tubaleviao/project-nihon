@@ -336,7 +336,13 @@ func run() -> void:
 	_run_test("creature: despawn keeps the death record",         _test_despawn_keeps_death_record)
 	_run_test("creature: recorded death survives boot replay",    _test_recorded_death_survives_boot_replay)
 	_run_test("creature: state delta keeps the respawn deadline", _test_creature_state_delta_keeps_deadline)
-	_run_test("net: last-known hp is retained for a peer",        _test_net_last_known_hp)
+	_run_test("persistence: shutdown poll is independent of autosave", _test_shutdown_poll_cadence)
+	_run_test("identity: client-declared hp is never persisted",   _test_remote_hp_not_persisted)
+	_run_test("identity: disconnect evicts record + inventory",   _test_disconnect_evicts_player)
+	_run_test("identity: handshake retry re-answers a bound peer", _test_handshake_retry_reanswers_peer)
+	_run_test("net: retry re-presents the join intent",           _test_retry_represents_join_intent)
+	_run_test("market: cleared party inventory binding",          _test_party_inventory_binding_cleared)
+	_run_test("persistence: failed write reports + keeps record",  _test_failed_write_reports_and_preserves)
 	_run_test("craft: craft uses the crafter's own inventory",    _test_craft_uses_crafter_inventory)
 	_run_test("craft: client forwards a craft intent",            _test_craft_client_forwards_intent)
 
@@ -5049,7 +5055,9 @@ func _test_identity_reconnect_keeps_inventory() -> void:
 	var inventory = registry.get_inventory(pid)
 	assert_true(inventory != null, "the player gets an inventory")
 	inventory.add_item("Ashite", 5)
-	registry.record_hp(pid, 42.0)
+	# POSITION is the surviving-field probe here, not HP: a remote peer's HP is
+	# client-declared and deliberately NOT persisted (see record_hp and
+	# _test_remote_hp_not_persisted), so it could not carry this assertion.
 	registry.record_position(pid, Vector3(7.0, 1.0, 8.0))
 	assert_true(registry.is_online(pid), "the identity is bound while connected")
 	assert_eq(registry.get_peer_id(pid), 2, "the id maps to the live connection")
@@ -5064,7 +5072,7 @@ func _test_identity_reconnect_keeps_inventory() -> void:
 	assert_eq(again, pid, "the reconnect re-binds to the same player_id")
 	assert_eq(registry.get_peer_id(pid), 7, "the id now maps to the new connection")
 	assert_eq(registry.get_inventory(pid).get_item_count("Ashite"), 5, "the inventory survives the reconnect")
-	assert_eq(float(registry.get_record(pid)["hp"]), 42.0, "the record survives the reconnect")
+	assert_eq(registry.get_record(pid)["position"], [7.0, 1.0, 8.0], "the record survives the reconnect")
 
 	# Two players never share an inventory instance.
 	var other := registry.resolve_identity(9)
@@ -5596,25 +5604,196 @@ func _test_creature_state_delta_keeps_deadline() -> void:
 	assert_eq(float(creatures._instances[iid]["hp"]), 12.0, "and an omitted hp leaves it alone")
 	creatures.free()
 
-func _test_net_last_known_hp() -> void:
-	# A remote peer's HP rides its player_moved packet. With no host-side store the
-	# host had nothing to persist for a peer killed without a clean disconnect, and
-	# that peer came back at full health.
+func _test_shutdown_poll_cadence() -> void:
+	# The shutdown-request poll used to be gated behind the autosave tick (300 s by
+	# default), so a restart request sat unread for up to five minutes and an
+	# orchestrator that sigkills after a short grace period killed the server
+	# before it saved. The poll has its OWN, far shorter cadence.
+	assert_eq(PersistenceSlice.resolved_shutdown_poll_interval(0.0),
+		PersistenceSlice.DEFAULT_SHUTDOWN_POLL_SECS, "a zero poll cadence falls back")
+	assert_eq(PersistenceSlice.resolved_shutdown_poll_interval(-1.0),
+		PersistenceSlice.DEFAULT_SHUTDOWN_POLL_SECS, "a negative one falls back too")
+	assert_eq(PersistenceSlice.resolved_shutdown_poll_interval(2.0), 2.0, "a positive cadence is respected")
+	assert_true(PersistenceSlice.poll_due(5.0, 5.0), "the poll fires on its own cadence")
+	# The regression in one assertion: at the poll deadline an autosave is NOT due.
+	assert_true(PersistenceSlice.poll_due(PersistenceSlice.DEFAULT_SHUTDOWN_POLL_SECS,
+		PersistenceSlice.DEFAULT_SHUTDOWN_POLL_SECS), "the default poll deadline is reached")
+	assert_false(PersistenceSlice.autosave_due(PersistenceSlice.DEFAULT_SHUTDOWN_POLL_SECS,
+		PersistenceSlice.DEFAULT_AUTOSAVE_SECS), "while the autosave is nowhere near due")
+	assert_false(PersistenceSlice.poll_due(4.999, 5.0), "and nothing fires early")
+	assert_false(PersistenceSlice.poll_due(10.0, 0.0), "a zero cadence never fires (resolved before use)")
+	# autosave_due keeps its own semantics through the shared rule.
+	assert_true(PersistenceSlice.autosave_due(300.0, 300.0), "autosave_due still matches on the deadline")
+	assert_false(PersistenceSlice.autosave_due(299.0, 300.0), "and not before it")
+
+func _test_remote_hp_not_persisted() -> void:
+	# A remote peer's HP arrives CLIENT-DECLARED on its own player_moved packet. The
+	# host has no simulation of that peer to check it against, so writing it into the
+	# durable record made health a restart-proof cheat: declare 9999 and keep 9999
+	# across a reconnect, a restart, and every later save.
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var host_id := registry.mint_player_id()
+	registry.set_local_player(host_id)
+	var remote := registry.resolve_identity(7)
+	assert_true(remote != "" and remote != host_id, "a remote peer gets its own identity")
+	registry.record_hp(remote, 9999.0)
+	assert_eq(float(registry.get_record(remote).get("hp", -2.0)), -1.0,
+		"a client-declared hp is refused, so the record keeps the unknown sentinel")
+	assert_eq(float(registry.get_player_data(remote).get("hp", -2.0)), -1.0,
+		"and the serializable record cannot carry it to disk either")
+	assert_false(PlayerRegistry.hp_is_authoritative_locally(remote, host_id),
+		"the rule names a remote peer's hp as non-authoritative")
+	assert_false(PlayerRegistry.hp_is_authoritative_locally("", host_id), "an empty id is never authoritative")
+	assert_true(PlayerRegistry.hp_is_authoritative_locally(host_id, host_id),
+		"the local player's hp IS host-simulated")
+	registry.record_hp(host_id, 42.0)
+	assert_eq(float(registry.get_record(host_id)["hp"]), 42.0,
+		"so the local player's hp is still persisted")
+	registry.free()
+
+func _test_disconnect_evicts_player() -> void:
+	# The registry used to retain every record and every inventory node forever, so a
+	# long-lived server grew with every peer that had EVER connected — and a record
+	# for someone who never came back was never needed. The record is durable on
+	# disk before eviction, and the next claim re-loads it, so eviction is lossless.
+	var dir := "user://saves/test_evict/"
+	_wipe_dir(dir)
+	var store := PersistenceSlice.new()
+	add_child(store)
+	store.server_save_dir = dir
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	registry.set_record_loader(store.load_player)
+	var host_id := registry.mint_player_id()
+	var host_inv := InventorySlice.new()
+	add_child(host_inv)   # parented to the TEST, like the game's own _inventory
+	registry.set_local_player(host_id, host_inv)
+
+	var remote := registry.resolve_identity(4)
+	assert_true(store.save_player(remote, registry.get_player_data(remote)) == OK, "the record is durable")
+	var remote_inv = registry.get_inventory(remote)
+	assert_true(remote_inv != null, "the peer owns an inventory")
+	assert_true(remote_inv.get_parent() == registry, "which the registry created and parents")
+
+	registry.unbind_peer(4)
+	assert_true(registry.evict_player(remote), "the disconnected player's record is evicted")
+	assert_false(registry.has_player(remote), "the record is no longer resident")
+	assert_false(registry.has_inventory(remote), "nor is the inventory node")
+	assert_true(remote_inv.get_parent() == null, "the registry-owned node was detached for freeing")
+	assert_false(registry.evict_player(remote), "eviction is idempotent")
+
+	# The LOCAL player is never evicted: it is online by definition and its
+	# inventory is the game's own instance, not this slice's to free.
+	assert_false(registry.evict_player(host_id), "the local player cannot be evicted")
+	assert_true(registry.has_player(host_id), "its record stays resident")
+	assert_true(is_instance_valid(host_inv), "and its injected inventory is not freed")
+	assert_true(host_inv.get_parent() != registry, "because the registry does not own that node")
+
+	# Lossless: the next claim pulls the record back off disk.
+	var reclaimed := registry.resolve_identity(9, remote)
+	assert_eq(reclaimed, remote, "a reconnect re-binds to the evicted record")
+	assert_true(registry.has_player(remote), "which was re-loaded from disk")
+	registry.free()
+	store.free()
+
+func _test_handshake_retry_reanswers_peer() -> void:
+	# The handshake is the only route to a client's identity and world. A lost
+	# join_intent (or a lost snapshot) used to leave a connected client with nothing,
+	# and a retry would have been SWALLOWED: an already-bound peer returned early
+	# without emitting player_joined, so the host never re-sent the snapshot.
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var answers: Array = []
+	var on_joined := func(peer_id: int, player_id: String, reconnected: bool) -> void:
+		answers.append([peer_id, player_id, reconnected])
+	GameBus.player_joined.connect(on_joined)
+	var first := registry.resolve_identity(4)
+	assert_eq(answers.size(), 1, "the first join is answered")
+	assert_true(first != "", "with an identity")
+	var retry := registry.resolve_identity(4)
+	assert_eq(retry, first, "a retry gets the SAME identity rather than a fresh mint")
+	assert_eq(answers.size(), 2, "and is answered again, so the host re-sends the snapshot")
+	assert_eq(str(answers[1][1]), first, "carrying the bound id")
+	assert_false(bool(answers[1][2]), "and it is not reported as a reconnect")
+	# A retry cannot re-point the connection at another player's record either.
+	assert_eq(registry.resolve_identity(4, "player_9_9_deadbeef"), first,
+		"a claim from an already-bound peer is ignored")
+	assert_eq(answers.size(), 3, "and it is still answered")
+	GameBus.player_joined.disconnect(on_joined)
+	registry.free()
+
+func _test_retry_represents_join_intent() -> void:
+	# The client half of the retry: each re-presentation is a real packet with a
+	# FRESH seq, so the host's dedup cannot mistake it for a duplicate and drop it.
 	var n := NetworkingSlice.new()
 	add_child(n)
-	assert_false(n.has_last_known_hp(6), "an unreported peer has no known hp")
-	assert_eq(n.get_last_known_hp(6), -1.0, "and reads the unknown sentinel")
-	n.remember_player_hp(6, 37.5)
-	assert_true(n.has_last_known_hp(6), "a reporting peer has one")
-	assert_eq(n.get_last_known_hp(6), 37.5, "and the real value reads back")
-	assert_eq(float(n.get_last_known_hps().get(6, -1.0)), 37.5, "the store enumerates too")
-	n.remember_player_state(6, Vector3(1.0, 2.0, 3.0))
-	# Eviction takes the HP with the position: the pair goes stale together.
-	n._last_known_timestamps[6] = Time.get_ticks_msec() - NetworkingSlice.LAST_KNOWN_STATE_TTL_MS - 1
-	n._evict_stale_states()
-	assert_false(n.has_last_known_hp(6), "an expired peer's hp is evicted")
-	assert_false(n.has_last_known_state(6), "along with its position")
+	n.emulate_network = true
+	n.request_handshake()
+	assert_eq(n._pending.size(), 0, "a non-client never presents a join intent")
+	n._role = NetworkingSlice.Role.CLIENT
+	n.request_handshake()
+	assert_eq(n._pending.size(), 1, "the client presents a join intent")
+	var first: Dictionary = JSON.parse_string(str(n._pending[0]["json"]))
+	assert_eq(str(first.get("type", "")), "join_intent", "and it is a join intent")
+	var first_seq := int(first.get("seq", -1))
+	n.request_handshake()
+	assert_eq(n._pending.size(), 2, "the retry is a real second packet, not a suppressed duplicate")
+	var second: Dictionary = JSON.parse_string(str(n._pending[1]["json"]))
+	assert_true(int(second.get("seq", -1)) > first_seq, "with a fresh seq")
 	n.free()
+
+func _test_party_inventory_binding_cleared() -> void:
+	# Trade and market hold a RAW node reference per party. When the registry frees a
+	# disconnected player's inventory that reference becomes a FREED object — which is
+	# not null — so a listing expiry or a trade would hand out a dead node. The
+	# binding has to be cleared, and a freed one must resolve as "no inventory".
+	var market := MarketSlice.new()
+	add_child(market)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	var pid := "player_1_1_abc"
+	market.set_party_inventory(pid, inv)
+	assert_true(market._inventory_for(pid) == inv, "the binding resolves while the inventory lives")
+	market.clear_party_inventory(pid)
+	assert_true(market._inventory_for(pid) == null, "clearing it yields no inventory")
+	market.set_party_inventory(pid, inv)
+	inv.free()
+	assert_true(market._inventory_for(pid) == null, "a freed inventory resolves as none, not as a dead node")
+	market.free()
+
+	var trade := TradeSlice.new()
+	add_child(trade)
+	var trade_inv := InventorySlice.new()
+	add_child(trade_inv)
+	trade.set_party_inventory(pid, trade_inv)
+	assert_true(trade._inventory_for(pid) == trade_inv, "the trade slice resolves a live binding")
+	trade.clear_party_inventory(pid)
+	assert_true(trade._inventory_for(pid) == null, "and forgets it on disconnect")
+	trade_inv.free()
+	trade.free()
+
+func _test_failed_write_reports_and_preserves() -> void:
+	# A failed write has to be REPORTED (game_root._finish_save is what logs it and
+	# re-marks the cleared dirty chunks) and must never damage the record already on
+	# disk. The old lifecycle only reaped the worker at the START of the next save,
+	# so the failure went unnoticed for a whole interval while the edits looked saved.
+	var dir := "user://saves/test_failed_write/"
+	_wipe_dir(dir)
+	var store := PersistenceSlice.new()
+	add_child(store)
+	store.server_save_dir = dir
+	assert_eq(store.save_world({ "local_player_id": "p1" }, false), OK, "the first record writes")
+	var on_disk := store.load_world()
+	assert_eq(str(on_disk.get("local_player_id", "")), "p1", "and reads back")
+	# Point the writer at a path that cannot be opened.
+	store.atomic_writes = false
+	store.server_save_dir = ""
+	store.world_file = ""
+	var err := store.write_job({ "world": { "local_player_id": "p2" }, "incremental": false, "players": {} })
+	assert_true(err != OK, "an unopenable target reports an error instead of silently succeeding")
+	assert_eq(str(on_disk.get("local_player_id", "")), "p1", "and the record already on disk is untouched")
+	store.free()
 
 func _test_craft_uses_crafter_inventory() -> void:
 	# Each player persists their OWN inventory, so a craft must consume and produce
