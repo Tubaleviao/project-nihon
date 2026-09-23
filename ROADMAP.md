@@ -383,7 +383,10 @@ materials from voxel terrain and place persistent structures.
 - Biome-aware material spawns: `BIOME_MATERIALS` maps biome → material keys
   (temperate → ferrite/thornwood, volcanic → ashite/aethermite, twilight →
   duskfiber/lumenfite, void → voidite/aethermite); `material_for_biome()` picks
-  deterministically per tile.
+  deterministically per tile. (Superseded on the wood half: the map-improvements
+  change dropped every wood material from this table — the biome prose spawns
+  wood as trees, which Phase 31 implements in `src/world/tree_slice.gd`. The
+  table is now ferrite/rock plus the two rare ores above.)
 - `src/player/player_slice.gd` — a second aim ray targets the terrain on its
   dedicated collision layer (layer 2); right-click mines, middle-click places,
   `R` cycles the build material. Terrain collision moved to layer 2 so the
@@ -1449,7 +1452,7 @@ types (already emitted by `generator-godot`); no generator change needed.
 
 ---
 
-## Phase 31 — Trees and resource appearance
+## Phase 31 — Trees and resource appearance ✅ Done
 
 **Goal:** Source wood materials from trees instead of the bare ground, and give
 surface resources a distinct visual identity so the world reads as "mostly
@@ -1461,25 +1464,39 @@ field.
 fabric `world-system`/entity to follow once the runtime shape is settled.
 
 **Deliverables:**
-- Tree entities spawn deterministically per biome (Thornwood in temperate,
-  Duskwood in twilight), placed on the terrain surface like creatures.
+- `src/world/tree_slice.gd` — trees spawn deterministically per biome, derived
+  from the chunk coordinate, species, and index, so a host and a client place
+  the same trees with no snapshot. Density follows the biome prose: temperate
+  forest 8 per chunk (weight 0.8), grassland 2 (isolated copses, 0.1), twilight
+  grove 8 (Duskwood); the volcanic badlands and the void rift prose grants no
+  conventional wood, so they grow none. Trees stand on the terrain surface like
+  creatures and stream with their chunk.
 - Chopping a tree yields its wood material (`Thornwood` / `Duskfiber`) into the
   inventory, replacing the removed ground-wood distribution (wood no longer
-  mines from the ground — see Phase 12's `BIOME_MATERIALS`).
+  mines from the ground — see Phase 12's `BIOME_MATERIALS`). A chop requires a
+  held axe (the fabric discriminator `toolType: 'axe'`), spends one point of its
+  durability, leaves a stump, and the stump regrows after a cooldown.
 - Distinct visual treatment for resource veins: the common ground renders as
   plain dirt/rock, while rarer materials (Aethermite, Lumenfite, Voidite) are
-  tinted and, where sensible, given a small raised/deposited shape so a vein is
-  recognizable from a distance.
+  tinted and given a small raised/deposited shape (`vein_deposits()` in
+  `voxel_slice.gd`) so a vein is recognizable from a distance.
 
 **Acceptance criteria:**
-- `BIOME_MATERIALS` no longer lists any wood material (already true as of the
+- [x] `BIOME_MATERIALS` no longer lists any wood material (already true as of the
   map-improvements change; wood comes only from trees).
-- Chopping a tree yields its wood and the tree respawns on a cooldown.
-- A rare-material vein is visually distinguishable from the surrounding ground.
+- [x] Chopping a tree yields its wood and the tree respawns on a cooldown.
+- [x] A rare-material vein is visually distinguishable from the surrounding
+  ground.
 
 **Known simplifications (deferred):**
-- Tree chopping gated behind a tool (`toolType: 'axe'`) — the axe already
-  exists in the fabric; the gating is wired with the tree feature.
+- Tree state is not persisted — a restart restores standing trees. Creature
+  death/respawn persistence is Phase 33's work, and trees travel with it then.
+- A tree's trunk collision exists to be an aim target, not an obstacle: the
+  player still walks through a trunk (the player's `collision_mask` is
+  untouched, which keeps tree spawning from needing spawn-clearance rules).
+- Tree density and the regrowth cooldown are GDScript constants
+  (`TREES_BY_BIOME`, `RESPAWN_SECONDS`) — they move to the fabric `world-system`
+  entity the Newel-dependency note above describes.
 - Resource deposits have no depth/quantity model yet (mining still yields one
   unit per `STEP_HEIGHT` slice).
 
