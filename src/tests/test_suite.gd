@@ -2518,17 +2518,32 @@ func _test_voxel_biome_materials() -> void:
 
 func _test_voxel_material_rarity() -> void:
 	var v := VoxelSlice.new()
-	var ferrite := 0
+	# Fabric fidelity: the temperate prose grants no rare ground ore (ferrite
+	# outcrops only — wood comes from trees), so the whole biome is ferrite.
+	var temperate_only_ferrite := true
+	for tz in range(64):
+		for tx in range(64):
+			var wc := Vector2(
+				tx * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5,
+				tz * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5)
+			if v.material_for_biome("TemperateForest", wc) != "Ferrite":
+				temperate_only_ferrite = false
+	assert_true(temperate_only_ferrite, "temperate ground is ferrite only (no invented rare ore)")
+	# Rarity: the volcanic prose grants ashite 0.9 / aethermite 0.2, so the
+	# common rock dominates the surface and the rare ore is sparse veins.
+	var ashite := 0
 	var aethermite := 0
 	for tz in range(64):
 		for tx in range(64):
-			var wc := Vector2(tx * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5, tz * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5)
-			var m := v.material_for_biome("TemperateForest", wc)
-			if m == "Ferrite":
-				ferrite += 1
+			var wc := Vector2(
+				tx * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5,
+				tz * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5)
+			var m := v.material_for_biome("VolcanicBadlands", wc)
+			if m == "Ashite":
+				ashite += 1
 			elif m == "Aethermite":
 				aethermite += 1
-	assert_true(ferrite > aethermite, "common ferrite outnumbers rare aethermite (%d vs %d)" % [ferrite, aethermite])
+	assert_true(ashite > aethermite, "common ashite outnumbers rare aethermite (%d vs %d)" % [ashite, aethermite])
 	assert_true(aethermite > 0, "rare aethermite appears as sparse veins")
 	v.free()
 
@@ -2545,23 +2560,16 @@ func _test_voxel_placed_block_keeps_material_color() -> void:
 	var inv := InventorySlice.new()
 	add_child(inv)
 	v.inventory_slice = inv
-	# Find a tile whose biome material is NOT Ferrite so the colour change is
-	# unambiguous (the synthetic chunk has no terrain_slice → TemperateForest).
-	var tile := Vector2i(-1, -1)
-	for tz in range(64):
-		for tx in range(64):
-			var wc := Vector2(tx * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5, tz * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5)
-			if v.material_for_biome("TemperateForest", wc) != "Ferrite":
-				tile = Vector2i(tx, tz)
-				break
-		if tile.x >= 0:
-			break
-	assert_true(tile.x >= 0, "found a non-Ferrite tile in the test chunk")
-	v.set_place_material("Ferrite")
-	inv.add_item("Ferrite", 1)
-	var center := Vector2(tile.x * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5, tile.y * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5)
+	# The synthetic chunk has no terrain_slice, so its biome is TemperateForest
+	# (fabric prose: ferrite outcrops only — no rare ground ore). Place a
+	# DIFFERENT material so the colour change is unambiguous: the column must
+	# render the placed block's own colour, not the biome colour.
+	v.set_place_material("Ashite")
+	inv.add_item("Ashite", 1)
+	var center := Vector2(16.0, 16.0)
+	assert_eq(v._natural_color(center), VoxelSlice.MATERIAL_COLORS["Ferrite"], "natural column renders the ferrite biome colour")
 	assert_true(v.place_block(Vector3(center.x, 2.0, center.y), Vector3.UP), "place succeeds")
-	assert_eq(v._column_color(center), VoxelSlice.MATERIAL_COLORS["Ferrite"], "placed block renders Ferrite colour, not biome colour")
+	assert_eq(v._column_color(center), VoxelSlice.MATERIAL_COLORS["Ashite"], "placed block renders Ashite colour, not biome colour")
 	v.free()
 	inv.free()
 
@@ -2585,27 +2593,18 @@ func _test_voxel_placed_block_preserves_base_colour() -> void:
 	var inv := InventorySlice.new()
 	add_child(inv)
 	v.inventory_slice = inv
-	# Place Ferrite on a tile whose biome material is NOT Ferrite, then check the
-	# column renders as two distinct layers: natural base (biome colour) + the
-	# placed block (Ferrite colour) — the base must NOT be recoloured.
-	var tile := Vector2i(-1, -1)
-	for tz in range(64):
-		for tx in range(64):
-			var wc := Vector2(tx * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5, tz * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5)
-			if v.material_for_biome("TemperateForest", wc) != "Ferrite":
-				tile = Vector2i(tx, tz)
-				break
-		if tile.x >= 0:
-			break
-	assert_true(tile.x >= 0, "found a non-Ferrite tile in the test chunk")
-	v.set_place_material("Ferrite")
-	inv.add_item("Ferrite", 1)
-	var center := Vector2(tile.x * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5, tile.y * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5)
+	# Place Ashite on a temperate (ferrite) column, then check the column renders
+	# as two distinct layers: natural base (biome colour) + the placed block
+	# (Ashite colour) — the base must NOT be recoloured.
+	v.set_place_material("Ashite")
+	inv.add_item("Ashite", 1)
+	var center := Vector2(16.0, 16.0)
 	assert_true(v.place_block(Vector3(center.x, 2.0, center.y), Vector3.UP), "place succeeds")
-	var layers: Array = v._column_layers(Vector2i(0, 0), v._heightmaps["0,0"], tile.x, tile.y)
+	var layers: Array = v._column_layers(Vector2i(0, 0), v._heightmaps["0,0"], 32, 32)
 	assert_true(layers.size() >= 2, "column has natural + placed layers")
 	assert_eq(layers[0]["color"], v._natural_color(center), "natural base keeps its biome colour")
-	assert_eq(layers[-1]["color"], VoxelSlice.MATERIAL_COLORS["Ferrite"], "placed block renders Ferrite colour")
+	assert_true(v._natural_color(center) != VoxelSlice.MATERIAL_COLORS["Ashite"], "placed colour differs from the biome colour")
+	assert_eq(layers[-1]["color"], VoxelSlice.MATERIAL_COLORS["Ashite"], "placed block renders Ashite colour")
 	v.free()
 	inv.free()
 
@@ -2614,28 +2613,18 @@ func _test_voxel_place_after_mine_keeps_colour() -> void:
 	var inv := InventorySlice.new()
 	add_child(inv)
 	v.inventory_slice = inv
-	# Find a non-Ferrite (e.g. Thornwood) tile to mine.
-	var tile := Vector2i(-1, -1)
-	for tz in range(64):
-		for tx in range(64):
-			var wc := Vector2(tx * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5, tz * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5)
-			if v.material_for_biome("TemperateForest", wc) != "Ferrite":
-				tile = Vector2i(tx, tz)
-				break
-		if tile.x >= 0:
-			break
-	assert_true(tile.x >= 0, "found a non-Ferrite tile in the test chunk")
-	var center := Vector2(tile.x * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5, tile.y * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5)
+	# Mine the natural top block of a temperate column (yields the biome
+	# material — ferrite here), then place a different material back on it.
+	var center := Vector2(16.0, 16.0)
 	var mine_pos := Vector3(center.x, 2.0, center.y)
-	# Mine the natural top block (yields the biome material, e.g. Thornwood).
 	assert_true(v.mine_block(mine_pos).get("success", false), "mine natural succeeds")
-	# Place Ferrite back in the same column.
-	v.set_place_material("Ferrite")
-	inv.add_item("Ferrite", 1)
-	assert_true(v.place_block(mine_pos, Vector3.UP), "place Ferrite succeeds")
-	var layers: Array = v._column_layers(Vector2i(0, 0), v._heightmaps["0,0"], tile.x, tile.y)
+	v.set_place_material("Ashite")
+	inv.add_item("Ashite", 1)
+	assert_true(v.place_block(mine_pos, Vector3.UP), "place Ashite succeeds")
+	var layers: Array = v._column_layers(Vector2i(0, 0), v._heightmaps["0,0"], 32, 32)
 	assert_true(layers.size() >= 2, "column has natural + placed layers")
-	assert_eq(layers[-1]["color"], VoxelSlice.MATERIAL_COLORS["Ferrite"], "placed Ferrite renders Ferrite colour, not the mined material's colour")
+	assert_eq(layers[-1]["color"], VoxelSlice.MATERIAL_COLORS["Ashite"], "placed Ashite renders Ashite colour, not the mined material's colour")
+	assert_true(VoxelSlice.MATERIAL_COLORS["Ashite"] != v._natural_color(center), "placed colour differs from the mined material's colour")
 	v.free()
 	inv.free()
 

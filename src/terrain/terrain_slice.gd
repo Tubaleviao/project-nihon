@@ -7,7 +7,7 @@ extends Node
 ##
 ## Public API:
 ##   request_chunk(pos: Vector2i) -> void   — kick off async generation
-##   get_height_at(world_pos: Vector2) -> float — sample the last generated chunk
+##   get_height_at(world_pos: Vector2) -> float — terrain height at world XZ
 
 const CHUNK_SIZE := 64       # tiles per side (64 × 0.5 = 32 world units per chunk)
 const TILE_SIZE  := 0.5      # world units per tile (XZ) — each square is half its former 1.0 size

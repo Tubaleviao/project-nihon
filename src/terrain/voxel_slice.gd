@@ -39,17 +39,27 @@ const MAX_HEIGHT  := 16.0      # build cap — cannot place above this
 ## block ray can target terrain without hitting the player's own body.
 const TERRAIN_COLLISION_LAYER := 2
 
-## Biome → weighted material distribution (material key → relative weight).
-## Weights encode rarity from the fabric's biome spawn prose: the common
-## "rocky"/metallic material dominates (the bulk of the ground), while rarer
-## ores and crystals appear only as sparse veins. Wood materials (Thornwood /
-## Duskfiber) are deliberately absent — they come from trees (deferred to a
-## later "trees and resource appearance" phase), not from mining the ground.
+## Biome → weighted ground-material distribution (material key → weight out of
+## 100). A faithful transcription of each biome's fabric `evaluateSpawn` prose
+## (fabric/world/biomes/*.js), normalised to 100: the biome's dominant rock /
+## metal / crystal is the bulk of the surface, and a rarer ore appears only
+## where that biome's prose actually grants one (sparse veins). Wood materials
+## (Thornwood / Duskfiber) are deliberately absent — their prose spawns them as
+## trees, not as ground to mine (they land with the "trees and resource
+## appearance" phase). Aethermite is a deep ley-line ore (see the Aethermite
+## entity: "deep underground near ley lines"), so it is granted only to the two
+## biomes whose prose spawns it — VolcanicBadlands (0.2) and TwilightGrove
+## (0.15) — and never invented for the temperate biomes.
 const BIOME_MATERIALS: Dictionary = {
-	"TemperateForest":    { "Ferrite": 85, "Aethermite": 15 },
-	"TemperateGrassland": { "Ferrite": 90, "Aethermite": 10 },
-	"VolcanicBadlands":   { "Ashite": 80, "Aethermite": 15, "Ferrite": 5 },
-	"TwilightGrove":      { "Lumenfite": 80, "Aethermite": 20 },
+	# prose: ferrite outcrops 0.6; thornwood 0.8 is a tree, not ground
+	"TemperateForest":    { "Ferrite": 100 },
+	# prose: ferrite deposits 0.4; thornwood 0.1 is a tree, not ground
+	"TemperateGrassland": { "Ferrite": 100 },
+	# prose: ashite 0.9 / aethermite 0.2 / ferrite 0.1
+	"VolcanicBadlands":   { "Ashite": 75, "Aethermite": 17, "Ferrite": 8 },
+	# prose: lumenfite 0.5 / aethermite 0.15; duskfiber 0.9 is a tree, not ground
+	"TwilightGrove":      { "Lumenfite": 77, "Aethermite": 23 },
+	# prose: voidite 0.7 / ferrite 0.3
 	"VoidRift":           { "Voidite": 70, "Ferrite": 30 },
 }
 
