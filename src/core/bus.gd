@@ -240,6 +240,27 @@ signal research_resolved(result: Dictionary)
 signal technology_unlocked(tech_id: String)
 
 # ---------------------------------------------------------------------------
+# Trees (Phase 31)
+# ---------------------------------------------------------------------------
+
+## Request to fell a standing tree (emitted by PlayerSlice on a chop input, or
+## forwarded by a client to the host). Handled by TreeSlice.
+## tree_id : String — TreeSlice tree id (carried as metadata on the trunk body)
+signal tree_chop_requested(tree_id: String)
+
+## Emitted by TreeSlice with the authoritative result of a chop. A client applies
+## this instead of chopping locally.
+## tree_id    : String — TreeSlice tree id
+## wood       : String — the wood material felled (e.g. "Thornwood")
+## state      : String — the tree's state after the chop ("stump")
+## respawn_at : float  — wall-clock Unix seconds the stump regrows
+signal tree_chopped(tree_id: String, wood: String, state: String, respawn_at: float)
+
+## Emitted by TreeSlice when a stump regrows into a standing tree.
+## tree_id : String — TreeSlice tree id
+signal tree_respawned(tree_id: String)
+
+# ---------------------------------------------------------------------------
 # Player
 # ---------------------------------------------------------------------------
 

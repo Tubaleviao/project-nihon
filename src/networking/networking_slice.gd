@@ -22,6 +22,9 @@ extends Node
 ##         creature_state_changed(iid, state, pos)   — host authoritative delta
 ##         remote_player_state(peer_id, pos)         — host player ghost update
 ##         inventory_synced(contents, durabilities)  — host authoritative contents
+##         tree_chop_requested(tree_id)              — client wants to fell a tree
+##         tree_chopped(tree_id, wood, state, at)    — host authoritative chop
+##         tree_respawned(tree_id)                   — host authoritative regrowth
 ##   OUT : peer_connected(peer_id)
 ##         peer_disconnected(peer_id)
 ##         packet_received(peer_id, payload)         — legacy low-level receive
@@ -132,6 +135,11 @@ func _ready() -> void:
 	GameBus.creature_state_changed.connect(_on_creature_state_changed)
 	GameBus.remote_player_state.connect(_on_remote_player_state)
 	GameBus.inventory_synced.connect(_on_inventory_synced)
+	# Phase 31 — trees: a chop intent travels client → host, the resolved chop and
+	# the regrowth travel host → client.
+	GameBus.tree_chop_requested.connect(_on_tree_chop_requested)
+	GameBus.tree_chopped.connect(_on_tree_chopped)
+	GameBus.tree_respawned.connect(_on_tree_respawned)
 	# Phase 24 — social/economy replication.
 	GameBus.market_synced.connect(_on_market_synced)
 	GameBus.governance_synced.connect(_on_governance_synced)
@@ -389,6 +397,31 @@ func _on_block_changed(action: String, position: Vector3, normal: Vector3, mater
 	}
 	_broadcast_aoi(packet, position)
 
+func _on_tree_chop_requested(tree_id: String) -> void:
+	if _role != Role.CLIENT:
+		# Host (and single-player) resolve the chop directly through TreeSlice;
+		# only clients forward the intent.
+		return
+	_broadcast({ "type": "tree_chop_intent", "tree_id": tree_id })
+
+func _on_tree_chopped(tree_id: String, wood: String, state: String, respawn_at: float) -> void:
+	if _role != Role.HOST:
+		return
+	# Not AOI-scoped: trees are deterministic per chunk, so a client either knows
+	# the tree or ignores an unknown id.
+	_broadcast({
+		"type":       "tree_chopped",
+		"tree_id":    tree_id,
+		"wood":       wood,
+		"state":      state,
+		"respawn_at": respawn_at,
+	})
+
+func _on_tree_respawned(tree_id: String) -> void:
+	if _role != Role.HOST:
+		return
+	_broadcast({ "type": "tree_respawned", "tree_id": tree_id })
+
 func _on_creature_state_changed(instance_id: String, creature_id: String, state: String, position: Vector3) -> void:
 	if _role != Role.HOST:
 		return
@@ -617,6 +650,10 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				GameBus.block_place_requested.emit(ipos, inorm)
 			else:
 				push_error("NetworkingSlice: unknown block_edit_intent action '%s'" % action)
+		"tree_chop_intent":
+			# The host re-runs the chop authoritatively (TreeSlice handles it and
+			# broadcasts tree_chopped back to every client).
+			GameBus.tree_chop_requested.emit(str(payload.get("tree_id", "")))
 		"market_list_intent":
 			GameBus.market_list_intent.emit(
 				_peer_party(sender, str(payload.get("seller", ""))),
@@ -688,6 +725,15 @@ func _route_h2c(payload: Dictionary) -> void:
 				_vec3(payload.get("normal", [0, 1, 0])),
 				str(payload.get("material", ""))
 			)
+		"tree_chopped":
+			GameBus.tree_chopped.emit(
+				str(payload.get("tree_id", "")),
+				str(payload.get("wood", "")),
+				str(payload.get("state", "")),
+				float(payload.get("respawn_at", 0.0))
+			)
+		"tree_respawned":
+			GameBus.tree_respawned.emit(str(payload.get("tree_id", "")))
 		"creature_state_changed":
 			GameBus.creature_state_changed.emit(
 				str(payload.get("instance_id", "")),

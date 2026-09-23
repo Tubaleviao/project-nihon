@@ -21,11 +21,15 @@ extends Node
 ##   apply_edits(edits, materials)        -> void
 ##   set_place_material / get_place_material / cycle_place_material
 ##   material_for_biome(biome, world_xz) -> String
+##   vein_deposits(chunk_pos, heightmap) -> Array   (rare-vein raised deposits)
 ##
 ## Terrain is a heightfield: each (x, z) column has a single quantised height.
 ## Mining lowers a column by one STEP; building raises it by one STEP. Edits are
 ## stored as absolute quantised heights keyed by global tile coordinate, so they
 ## survive chunk rebuilds and save/load.
+
+## Shared box authoring for the rare-vein deposits (Phase 31).
+const MeshUtil := preload("res://src/core/mesh_util.gd")
 
 ## CHUNK_SIZE is defined once on TerrainSlice and accessed via terrain_slice.CHUNK_SIZE.
 ## The local alias below keeps internal uses readable without duplicating the value.
@@ -45,8 +49,8 @@ const TERRAIN_COLLISION_LAYER := 2
 ## metal / crystal is the bulk of the surface, and a rarer ore appears only
 ## where that biome's prose actually grants one (sparse veins). Wood materials
 ## (Thornwood / Duskfiber) are deliberately absent — their prose spawns them as
-## trees, not as ground to mine (they land with the "trees and resource
-## appearance" phase). Aethermite is a deep ley-line ore (see the Aethermite
+## trees, not as ground to mine, so trees (TreeSlice, Phase 31) are the only wood
+## source. Aethermite is a deep ley-line ore (see the Aethermite
 ## entity: "deep underground near ley lines"), so it is granted only to the two
 ## biomes whose prose spawns it — VolcanicBadlands (0.2) and TwilightGrove
 ## (0.15) — and never invented for the temperate biomes.
@@ -79,6 +83,21 @@ const MATERIAL_COLORS: Dictionary = {
 
 ## Colour used for any material without an explicit entry above.
 const FALLBACK_TERRAIN_COLOR := Color(0.35, 0.60, 0.28)
+
+## Materials that read as SPARSE VEINS rather than bulk ground: Aethermite is a
+## deep ley-line ore, Lumenfite the twilight crystal, Voidite the rift ore. A
+## rare vein is tinted AND given a small raised deposit so it is recognizable
+## from a distance, while the common ground (Ferrite, Ashite) stays flat
+## dirt/rock — the "mostly plain ground with sparse valuable veins" read Phase 31
+## asks for.
+const RARE_VEIN_MATERIALS: Array = ["Aethermite", "Lumenfite", "Voidite"]
+## Small raised deposit geometry: purely VISUAL. The column's height and
+## collision are unchanged, so mining a vein still yields exactly one
+## STEP_HEIGHT slice.
+const VEIN_DEPOSIT_HEIGHT := 0.22
+## Inset from the tile edge, so adjacent deposits never touch and the tile grid
+## stays readable.
+const VEIN_DEPOSIT_INSET := 0.16
 
 ## Active chunk containers keyed by "x,y" string.
 var _chunks: Dictionary = {}
@@ -199,6 +218,12 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
 			var he := _neighbour_height(heightmap, chunk_pos, tx + 1, tz)
 			if he < h:
 				_add_wall_column(st, Vector2(bx + TILE_SIZE, bz), Vector2(bx + TILE_SIZE, bz + TILE_SIZE), Vector3(1, 0, 0), layers, he, h)
+
+	# Rare veins get a small raised deposit on top of the flat ground so a player
+	# can spot one from a distance (Phase 31). Visual only — no collision, no
+	# height change, so mining still works exactly as before.
+	for deposit in vein_deposits(chunk_pos, heightmap):
+		MeshUtil.add_box(st, deposit["position"], deposit["size"], deposit["color"])
 
 	var mesh_inst := MeshInstance3D.new()
 	mesh_inst.mesh = st.commit()
@@ -459,6 +484,38 @@ func material_for_biome(biome: String, world_xz: Vector2) -> String:
 		if roll < cumulative:
 			return str(material)
 	return str(weights.keys()[0])
+
+## Small raised deposits for the rare veins in one chunk, as
+## `[{ "position": Vector3, "size": Vector3, "color": Color }]` — the geometry
+## build_chunk adds on top of the flat ground. Only NATURAL columns qualify: a
+## player-placed block is never a vein, and a mined-out column yields no deposit
+## (its material changes to the placement stack's top). Pure, so the rare-vein
+## read is testable headlessly without a renderer.
+func vein_deposits(chunk_pos: Vector2i, heightmap: Array) -> Array:
+	var out: Array = []
+	var deposit_size := Vector3(
+		TILE_SIZE - VEIN_DEPOSIT_INSET * 2.0,
+		VEIN_DEPOSIT_HEIGHT,
+		TILE_SIZE - VEIN_DEPOSIT_INSET * 2.0)
+	for tz in range(CHUNK_SIZE):
+		for tx in range(CHUNK_SIZE):
+			var h := _column_height(heightmap, chunk_pos, tx, tz)
+			if h <= 0.0:
+				continue
+			var world_xz := Vector2(
+				(chunk_pos.x * CHUNK_SIZE + tx) * TILE_SIZE + TILE_SIZE * 0.5,
+				(chunk_pos.y * CHUNK_SIZE + tz) * TILE_SIZE + TILE_SIZE * 0.5)
+			if _placed_material_at(world_xz) != "":
+				continue
+			var material := material_for_biome(_biome_at(world_xz), world_xz)
+			if not RARE_VEIN_MATERIALS.has(material):
+				continue
+			out.append({
+				"position": Vector3(world_xz.x, h + VEIN_DEPOSIT_HEIGHT * 0.5, world_xz.y),
+				"size":     deposit_size,
+				"color":    _material_color(material),
+			})
+	return out
 
 # ---------------------------------------------------------------------------
 # Private

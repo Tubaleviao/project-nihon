@@ -32,6 +32,8 @@ const PICKUP_RANGE := 60.0    # metres — how far the player can aim-pick (came
 const PICKUP_COLLISION_MASK := 4   # layer 3 (bit 2) — matches loot pickup bodies
 const BUILD_RANGE := 60.0     # metres — how far the player can reach a block
 const TERRAIN_COLLISION_MASK := 2  # layer 2 (bit 1) — terrain, for mine/build ray
+const CHOP_RANGE := 60.0      # metres — how far the player can reach a tree trunk
+const TREE_COLLISION_MASK := 8 # layer 4 (bit 3) — tree trunks, for the chop ray
 
 const MAX_HP := 100.0
 
@@ -57,6 +59,11 @@ var _station_label: Label = null
 var _aimed_block_hit: bool = false
 var _aimed_block_pos: Vector3 = Vector3.ZERO
 var _aimed_block_normal: Vector3 = Vector3.UP
+
+## Aimed tree trunk (chop target), updated every frame. Empty when no trunk is
+## under the crosshair — the id and species ride as metadata on the trunk body.
+var _aimed_tree_id: String = ""
+var _aimed_tree_species: String = ""
 
 ## HP bar label — updated on every damage/heal event.
 var _hp_label: Label = null
@@ -137,10 +144,13 @@ func _input(event: InputEvent) -> void:
 	# toggle) is owned by the UI slice now.
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		return
-	# Left-click: pick up an aimed item if there is one, otherwise attack.
+	# Left-click: pick up an aimed item if there is one, else chop an aimed tree,
+	# otherwise attack.
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if _aimed_pickup_id != "":
 			_try_pickup_aimed()
+		elif _aimed_tree_id != "":
+			GameBus.tree_chop_requested.emit(_aimed_tree_id)
 		else:
 			_try_attack()
 	# F key → melee attack the nearest creature in range.
@@ -516,6 +526,8 @@ func _update_hp_bar() -> void:
 func _update_aim() -> void:
 	var pid := ""
 	var item_id := ""
+	var tid := ""
+	var tspecies := ""
 	_aimed_block_hit = false
 	_aimed_block_pos = Vector3.ZERO
 	_aimed_block_normal = Vector3.UP
@@ -526,6 +538,7 @@ func _update_aim() -> void:
 			var from := _camera.project_ray_origin(center)
 			var dir := _camera.project_ray_normal(center)
 			var space := _camera.get_world_3d().direct_space_state
+			var block_dist := INF
 
 			# Pickup ray (layer 3).
 			var to := from + dir * PICKUP_RANGE
@@ -549,19 +562,40 @@ func _update_aim() -> void:
 				_aimed_block_hit = true
 				_aimed_block_pos = bhit.get("position", Vector3.ZERO)
 				_aimed_block_normal = bhit.get("normal", Vector3.UP)
+				block_dist = from.distance_to(_aimed_block_pos)
+
+			# Tree ray (layer 4) — chop target. Trees are not on the terrain
+			# layer, so this is its own ray; a trunk is only accepted when it is
+			# not behind the terrain the block ray already hit.
+			var tto := from + dir * CHOP_RANGE
+			var tquery := PhysicsRayQueryParameters3D.create(from, tto, TREE_COLLISION_MASK)
+			tquery.collide_with_areas = false
+			tquery.collide_with_bodies = true
+			var thit := space.intersect_ray(tquery)
+			if not thit.is_empty():
+				var tpos: Vector3 = thit.get("position", Vector3.ZERO)
+				var tcollider = thit.get("collider")
+				if tcollider != null and tcollider.has_meta("tree_id") and from.distance_to(tpos) <= block_dist:
+					tid = str(tcollider.get_meta("tree_id"))
+					tspecies = str(tcollider.get_meta("species", ""))
 	_aimed_pickup_id = pid
 	_aimed_item_id = item_id
+	_aimed_tree_id = tid
+	_aimed_tree_species = tspecies
 	_update_aim_hud()
 
 func _update_aim_hud() -> void:
 	if _aim_label == null:
 		return
-	if _aimed_item_id == "":
-		_aim_label.text = ""
-		_aim_label.visible = false
-	else:
+	if _aimed_item_id != "":
 		_aim_label.text = "Pick up: %s" % _aimed_item_id
 		_aim_label.visible = true
+	elif _aimed_tree_id != "":
+		_aim_label.text = "Chop: %s (axe)" % _aimed_tree_species
+		_aim_label.visible = true
+	else:
+		_aim_label.text = ""
+		_aim_label.visible = false
 
 func _refresh_build_hint() -> void:
 	if _build_material_label != null:
@@ -651,7 +685,7 @@ func _build_shortcuts_menu() -> void:
 	_add_key_row(vbox, "Space", "Jump")
 	_add_key_row(vbox, "Mouse move", "Orbit camera")
 	_add_key_row(vbox, "Scroll", "Zoom")
-	_add_mouse_row(vbox, MOUSE_BUTTON_LEFT, "Attack / Pick up")
+	_add_mouse_row(vbox, MOUSE_BUTTON_LEFT, "Attack / Pick up / Chop")
 	_add_mouse_row(vbox, MOUSE_BUTTON_RIGHT, "Mine")
 	_add_mouse_row(vbox, MOUSE_BUTTON_MIDDLE, "Place")
 	_add_key_row(vbox, "R", "Cycle material")

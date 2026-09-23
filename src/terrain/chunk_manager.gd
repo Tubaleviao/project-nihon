@@ -5,8 +5,9 @@ extends Node
 ## frame (once started) it computes the player's chunk, loads any chunk within
 ## `view_distance` that isn't loaded yet, and unloads chunks that fell out of
 ## range. Loading requests the heightmap from TerrainSlice (VoxelSlice builds the
-## mesh on chunk_ready) and spawns the per-chunk creature budget; unloading frees
-## the voxel mesh and despawns non-engaged creatures.
+## mesh on chunk_ready) and spawns the per-chunk creature and tree budgets;
+## unloading frees the voxel mesh, despawns non-engaged creatures, and drops the
+## chunk's trees.
 ##
 ## Loading is time-sliced. Building a chunk (noise + surface mesh + per-column
 ## collision) is the single most expensive thing this game does on the main
@@ -40,6 +41,7 @@ var terrain_slice: Node = null
 var voxel_slice: Node = null
 var player_slice: Node = null
 var creature_slice: Node = null
+var tree_slice: Node = null
 
 ## Chebyshev radius in chunks. Overridable (tests use a small radius).
 var view_distance: int = DEFAULT_VIEW_DISTANCE
@@ -126,6 +128,8 @@ func load_chunk(chunk_pos: Vector2i) -> void:
 		terrain_slice.request_chunk(chunk_pos)
 	if creature_slice != null and creature_slice.has_method("spawn_for_chunk"):
 		creature_slice.spawn_for_chunk(chunk_pos)
+	if tree_slice != null and tree_slice.has_method("spawn_for_chunk"):
+		tree_slice.spawn_for_chunk(chunk_pos)
 	GameBus.chunk_loaded.emit(chunk_pos)
 
 func unload_chunk(chunk_pos: Vector2i) -> void:
@@ -137,6 +141,8 @@ func unload_chunk(chunk_pos: Vector2i) -> void:
 		voxel_slice.unload_chunk(chunk_pos)
 	if creature_slice != null and creature_slice.has_method("despawn_for_chunk"):
 		creature_slice.despawn_for_chunk(chunk_pos)
+	if tree_slice != null and tree_slice.has_method("despawn_for_chunk"):
+		tree_slice.despawn_for_chunk(chunk_pos)
 	GameBus.chunk_unloaded.emit(chunk_pos)
 
 ## Chunk coordinate under the player's current XZ position.
