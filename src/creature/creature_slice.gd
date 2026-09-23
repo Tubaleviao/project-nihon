@@ -15,6 +15,7 @@ extends Node
 ##   get_all_instances()                                -> Array[Dictionary]
 ##   get_snapshot_creatures()                           -> Array    (Phase 33: + hp, respawn_at)
 ##   apply_snapshot_creatures(list)                     -> void     (Phase 33)
+##   apply_recorded_creature_states(list)               -> void     (Phase 33, host: no new ids)
 ##   spawn_for_chunk(chunk_pos: Vector2i)               -> void     (Phase 17)
 ##   despawn_for_chunk(chunk_pos: Vector2i)             -> void     (Phase 17)
 ##
@@ -437,16 +438,34 @@ func apply_creature_state(instance_id: String, creature_id: String, state: Strin
 
 ## Seed the client's creature population from a host snapshot list
 ## (see get_snapshot_creatures), carrying hp and the wall-clock respawn deadline.
+## CLIENT path: an unknown instance id is created on first sight.
 func apply_snapshot_creatures(list: Array) -> void:
+	_apply_creature_entries(list, true)
+
+## Host path — re-apply the creature half of a saved world record over the
+## population chunk streaming just spawned. Unlike the client path this NEVER
+## creates an instance: an instance id absent from `_instances` belongs to a chunk
+## that is not in the current view window, and creating it here would fabricate a
+## record with no chunk (Vector2i.ZERO) whose visual body nothing ever releases —
+## and whose id, being deterministic, would then be silently overwritten by the
+## real spawn when that chunk streams, losing the restored state anyway. Skipping
+## is also the safe answer to the spawn-index caveat in `_instance_id()`.
+func apply_recorded_creature_states(list: Array) -> void:
+	_apply_creature_entries(list, false)
+
+func _apply_creature_entries(list: Array, create_missing: bool) -> void:
 	for entry in list:
 		if entry is not Dictionary:
+			continue
+		var iid := str(entry.get("instance_id", ""))
+		if not create_missing and not _instances.has(iid):
 			continue
 		var pos := Vector3.ZERO
 		var arr = entry.get("position", [])
 		if arr is Array and arr.size() >= 3:
 			pos = Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
 		apply_creature_state(
-			str(entry.get("instance_id", "")),
+			iid,
 			str(entry.get("creature_id", "")),
 			str(entry.get("state", "idle")),
 			pos,

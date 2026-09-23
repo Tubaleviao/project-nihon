@@ -318,6 +318,9 @@ func run() -> void:
 	_run_test("identity: reconnect keeps the inventory",         _test_identity_reconnect_keeps_inventory)
 	_run_test("identity: disconnect mid-craft stays consistent", _test_identity_disconnect_mid_craft)
 	_run_test("identity: spoofed id is rejected",               _test_identity_spoofed_id_rejected)
+	_run_test("identity: snapshot carries own record only on handshake", _test_identity_snapshot_own_record_rule)
+	_run_test("identity: record replay skips ids not spawned",   _test_identity_record_replay_skips_unknown_ids)
+	_run_test("identity: unknown peer position is not 0,0,0",    _test_identity_unknown_peer_has_no_position)
 
 	# Self-check: the _run_test list above is manual, so a test function can be
 	# written but forgotten from the list. Fail loudly instead of silently
@@ -5142,6 +5145,86 @@ func _test_identity_spoofed_id_rejected() -> void:
 	registry.is_authoritative = false
 	assert_eq(registry.resolve_identity(9, ""), "", "a non-authoritative registry mints nothing")
 	registry.free()
+
+func _test_identity_snapshot_own_record_rule() -> void:
+	# The peer's own record (position / HP / inventory / technology) may ride the
+	# JOIN snapshot only. The client applies whatever the snapshot carries, and the
+	# record is written at load and at disconnect — never per frame — so carrying it
+	# on an AOI re-scope would teleport a moving client back to its last-saved
+	# position and roll its inventory back with it.
+	assert_true(PersistenceSlice.snapshot_carries_own_record(true, "player_1_1_ab"),
+		"the handshake snapshot of a known peer carries its record")
+	assert_false(PersistenceSlice.snapshot_carries_own_record(false, "player_1_1_ab"),
+		"an AOI re-scope never carries the record")
+	assert_false(PersistenceSlice.snapshot_carries_own_record(true, ""),
+		"a snapshot for a peer with no resolved identity carries no record")
+	assert_false(PersistenceSlice.snapshot_carries_own_record(false, ""),
+		"neither does a re-scope before the handshake lands")
+
+func _test_identity_record_replay_skips_unknown_ids() -> void:
+	# A saved world record is replayed over the population chunk streaming spawned.
+	# An id the slice does not hold belongs to an unstreamed chunk: the replay must
+	# skip it rather than fabricate an instance (no chunk, leaked visual, and an id
+	# the real spawn would later overwrite, losing the restored state anyway).
+	var creatures := CreatureSlice.new()
+	add_child(creatures)
+	creatures.spawn_for_chunk(Vector2i(0, 0))
+	var spawned := creatures.get_all_instances()
+	assert_true(spawned.size() > 0, "need a streamed population to replay onto")
+	var known_id: String = str(spawned[0]["instance_id"])
+	var count_before: int = spawned.size()
+
+	# A record with one id this process spawned, one id from a chunk it did not.
+	var record: Array = [
+		{
+			"instance_id": known_id,
+			"creature_id": str(spawned[0]["creature_id"]),
+			"state":       "dead",
+			"position":    [1.0, 2.0, 3.0],
+			"hp":          0.0,
+			"respawn_at":  4102444800.0,
+		},
+		{
+			"instance_id": "creature_999_999_Ghost_0",
+			"creature_id": "CinderGargoyle",
+			"state":       "dead",
+			"position":    [100.0, 0.0, 100.0],
+			"hp":          0.0,
+			"respawn_at":  4102444800.0,
+		},
+	]
+	creatures.apply_recorded_creature_states(record)
+
+	assert_eq(creatures.get_all_instances().size(), count_before,
+		"the replay creates no instance for an id that was never spawned")
+	assert_false(creatures._instances.has("creature_999_999_Ghost_0"),
+		"the unstreamed id is not fabricated")
+	assert_true(creatures._instances.has(known_id), "the streamed instance is still present")
+	assert_eq(str(creatures._instances[known_id]["state"]), "dead",
+		"the recorded death re-applies to the instance that exists")
+	assert_eq(float(creatures._instances[known_id]["respawn_at"]), 4102444800.0,
+		"the wall-clock deadline re-applies with it")
+
+	# The CLIENT path is unchanged: first sight still creates the instance, or a
+	# client would render nothing the host tells it about.
+	creatures.apply_snapshot_creatures([{ "instance_id": "creature_5_5_Slug_0", "creature_id": "LavaSlug", "state": "idle", "position": [4.0, 1.0, 4.0] }])
+	assert_true(creatures._instances.has("creature_5_5_Slug_0"),
+		"the client snapshot path still creates an unknown instance on first sight")
+	creatures.free()
+
+func _test_identity_unknown_peer_has_no_position() -> void:
+	# get_last_known_state() answers Vector3.ZERO both for "standing at the origin"
+	# and for "never reported". A disconnect handler that cannot tell them apart
+	# writes (0,0,0) into a durable player record, so a returning player resurrects
+	# at the world origin. has_last_known_state() is the discriminator.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	assert_false(n.has_last_known_state(4), "a peer that never reported has no known state")
+	assert_eq(n.get_last_known_state(4), Vector3.ZERO, "and its position reads as the origin sentinel")
+	n.remember_player_state(4, Vector3(9.0, 2.0, 9.0))
+	assert_true(n.has_last_known_state(4), "a reporting peer has a known state")
+	assert_eq(n.get_last_known_state(4), Vector3(9.0, 2.0, 9.0), "and the real position reads back")
+	n.free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers

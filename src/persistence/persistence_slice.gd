@@ -229,6 +229,20 @@ static func dirty_chunk_subset(manifest: Dictionary, dirty_keys: Array) -> Dicti
 			out[k] = manifest[k]
 	return out
 
+## Whether a host world snapshot may carry the PEER'S OWN record — inventory,
+## technology, position, HP. True only on the join/reconnect snapshot and only
+## once the host has resolved the peer's identity.
+##
+## The record is a durability artifact, not a live feed: `record_position()` /
+## `record_hp()` are only called for the local player and at disconnect, so a
+## remote peer's recorded position is whatever was loaded from disk. Snapshot
+## contents are applied by the client as authoritative, so carrying the record on
+## every AOI re-scope (which a moving client triggers repeatedly) would teleport
+## the client back to its last-saved position and roll its inventory and
+## technology back to that instant. Pure, so the rule is testable on its own.
+static func snapshot_carries_own_record(is_handshake_snapshot: bool, player_id: String) -> bool:
+	return is_handshake_snapshot and not player_id.is_empty()
+
 # ---------------------------------------------------------------------------
 # Private
 # ---------------------------------------------------------------------------

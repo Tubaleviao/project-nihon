@@ -296,6 +296,14 @@ func remember_player_state(peer_id: int, position: Vector3) -> void:
 func get_last_known_state(peer_id: int) -> Vector3:
 	return _last_known_states.get(peer_id, Vector3.ZERO)
 
+## True when a position for `peer_id` has actually been recorded this session.
+## `get_last_known_state()` cannot be used to tell "at the origin" from "never
+## reported": both answer Vector3.ZERO, and a caller that writes the answer into a
+## durable record would overwrite the saved position with the origin. Check this
+## first when persisting a disconnect.
+func has_last_known_state(peer_id: int) -> bool:
+	return _last_known_states.has(peer_id)
+
 ## All retained player states, for folding into a reconnect world snapshot.
 func get_last_known_states() -> Dictionary:
 	return _last_known_states.duplicate(true)

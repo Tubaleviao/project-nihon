@@ -571,7 +571,13 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	var player_id := _registry.get_player_id(peer_id)
 	if player_id.is_empty():
 		return
-	_registry.record_position(player_id, _networking.get_last_known_state(peer_id))
+	# Only fold a position into the record when the peer actually reported one.
+	# get_last_known_state() answers Vector3.ZERO for "never seen", so writing it
+	# unconditionally would reset a returning player's saved position to the world
+	# origin (a peer that connected but never moved, or one that disconnected
+	# before the first state packet, would resurrect at 0,0,0).
+	if _networking.has_last_known_state(peer_id):
+		_registry.record_position(player_id, _networking.get_last_known_state(peer_id))
 	_persistence.save_player(player_id, _registry.get_player_data(player_id))
 	_registry.unbind_peer(peer_id)
 	GameBus.player_left.emit(player_id)
@@ -593,7 +599,10 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	if _peer_aoi_regions.get(peer_id, null) == region:
 		return
 	_peer_aoi_regions[peer_id] = region
-	_networking.send_snapshot(peer_id, _build_snapshot(peer_id))
+	# Phase 33 — world/entity data only: the peer's own record is NOT re-sent, or
+	# the client would re-apply a stale position/HP/inventory on every region
+	# crossing (the record is written at load and at disconnect, not per frame).
+	_networking.send_snapshot(peer_id, _build_snapshot(peer_id, false))
 
 func _process(delta: float) -> void:
 	_sync_player_avatar(delta)
@@ -651,7 +660,14 @@ func _on_server_disconnected() -> void:
 ## Phase 33 — the inventory half is the CONNECTING PEER's own record, not the
 ## host's: inventory is per-player now, and shipping the host's contents would
 ## hand every client the host's items.
-func _build_snapshot(peer_id: int) -> Dictionary:
+##
+## `include_own_record` is TRUE only for the join/reconnect snapshot. The record is
+## a durability artifact, not a live feed (see
+## PersistenceSlice.snapshot_carries_own_record), and the client applies whatever
+## it receives as authoritative — so carrying a stale record on an AOI re-scope
+## would teleport the client to its last-saved position and roll its inventory and
+## technology back to that instant.
+func _build_snapshot(peer_id: int, include_own_record: bool = true) -> Dictionary:
 	var players := {}
 	var host_pos := _player.get_position()
 	if _networking.in_aoi(peer_id, host_pos):
@@ -664,21 +680,26 @@ func _build_snapshot(peer_id: int) -> Dictionary:
 		if _networking.in_aoi(peer_id, last_pos):
 			players[str(pid)] = [last_pos.x, last_pos.y, last_pos.z]
 	var player_id := _registry.get_player_id(peer_id)
-	var own := _registry.get_player_data(player_id) if not player_id.is_empty() else {}
-	return {
+	var snapshot := {
 		"heightmaps": _voxel.get_heightmaps(),
 		"edits":     _voxel.get_chunk_manifest(),
 		"creatures": _scoped_creatures(peer_id),
 		"stations":  _station.get_station_data(),
-		"inventory": own.get("inventory", {}),
-		"inventory_durability": own.get("inventory_durability", {}),
-		"technology": own.get("technology", {}),
-		"player":    { "position": own.get("position", []), "hp": own.get("hp", -1.0) },
 		"market":    _market.get_market_data(),
 		"governance": _proposal.get_governance_data(),
 		"trade":     _trade.get_trade_data(),
 		"players":   players,
 	}
+	# The peer's own record exists only once the host resolved its identity, and it
+	# is shipped only on the handshake snapshot — an AOI re-scope omits the keys
+	# entirely, so the client keeps the state it already holds.
+	if PersistenceSlice.snapshot_carries_own_record(include_own_record, player_id):
+		var own := _registry.get_player_data(player_id)
+		snapshot["inventory"] = own.get("inventory", {})
+		snapshot["inventory_durability"] = own.get("inventory_durability", {})
+		snapshot["technology"] = own.get("technology", {})
+		snapshot["player"] = { "position": own.get("position", []), "hp": own.get("hp", -1.0) }
+	return snapshot
 
 ## Phase 29 — the creature subset of the snapshot, filtered to the joining
 ## peer's AOI so a client seeds only the population it can actually see.
@@ -765,7 +786,17 @@ func _tick_save_lifecycle(delta: float) -> void:
 ## Write the world record plus one record per known player. `incremental` merges
 ## only the dirty chunk manifests into the record already on disk, so a periodic
 ## autosave does not re-serialize every loaded chunk.
+##
+## Authoritative roles only — this is the single choke point for every caller
+## (boot, autosave, window close, shutdown request). A client owns no world and no
+## records: it holds a cached player_id and receives its state from the host, so
+## writing here would drop a client-side `world.json` into `user://saves/server/`
+## that a later host boot would load as authoritative (client state, no world).
+## `_notification()` runs on a client too — `auto_accept_quit` only decides whether
+## the engine also quits, not whether the notification is delivered.
 func _save_everything(incremental: bool) -> void:
+	if _is_client:
+		return
 	_snapshot_local_player()
 	_save_world(incremental)
 	_save_player_records()
@@ -880,12 +911,14 @@ func _load_world_records() -> void:
 		print("[Server] restored %d player record(s)" % pids.size())
 
 ## Re-apply the recorded creature state (state, HP, and the wall-clock respawn
-## deadline) over the population chunk streaming just spawned.
+## deadline) over the population chunk streaming just spawned. `apply_recorded_…`
+## (not the client's `apply_snapshot_creatures`) so a record for a chunk outside
+## the current view window is skipped instead of fabricating an instance.
 func _apply_loaded_creature_state() -> void:
 	var creatures: Variant = _loaded_world.get("creatures", [])
 	if not (creatures is Array) or (creatures as Array).is_empty():
 		return
-	_creature.apply_snapshot_creatures(creatures)
+	_creature.apply_recorded_creature_states(creatures)
 
 # ---------------------------------------------------------------------------
 # Bus listeners
