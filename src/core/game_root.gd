@@ -123,7 +123,13 @@ func _ready() -> void:
 	_player.render_visuals   = not _is_server
 	_tree.render_visuals     = not _is_server
 
-	for s in [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _player, _loot, _inventory, _character, _crafting, _technology, _station, _tree, _market, _trade, _proposal, _ui]:
+	# The UI (Phase 14) is presentation only, so a headless dedicated server
+	# (Phase 27) keeps it out of the tree — its _ready() would otherwise build
+	# windows nothing can render or click.
+	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _player, _loot, _inventory, _character, _crafting, _technology, _station, _tree, _market, _trade, _proposal]
+	if not _is_server:
+		slices.append(_ui)
+	for s in slices:
 		s.name = s.get_script().resource_path.get_file().get_basename()
 		add_child(s)
 
@@ -141,15 +147,18 @@ func _ready() -> void:
 	_voxel.terrain_slice      = _terrain
 	_voxel.inventory_slice    = _inventory
 	_tree.inventory_slice     = _inventory
-	_ui.inventory_slice       = _inventory
-	_ui.crafting_slice        = _crafting
-	_ui.technology_slice      = _technology
-	_ui.market_slice          = _market
-	_ui.proposal_slice        = _proposal
-	_ui.trade_slice           = _trade
+	if not _is_server:
+		_ui.inventory_slice       = _inventory
+		_ui.crafting_slice        = _crafting
+		_ui.technology_slice      = _technology
+		_ui.market_slice          = _market
+		_ui.proposal_slice        = _proposal
+		_ui.trade_slice           = _trade
 	_trade.inventory_slice    = _inventory
 	_market.inventory_slice   = _inventory
-	if DEBUG:
+	# Host-only, like the demo sequence in _boot_host(): the seeded counterparty
+	# is single-player scaffolding and `_ui` is not in the tree on a server.
+	if DEBUG and not _is_server:
 		# Single-player social demo (DEBUG only): a seeded merchant counterparty
 		# lets the trade window commit a real exchange, a merchant market listing
 		# gives a solo player a non-self seller to buy from, and a couple of
@@ -185,23 +194,26 @@ func _ready() -> void:
 	_chunk_manager.creature_slice = _creature
 	_chunk_manager.tree_slice     = _tree
 
-	# Minimap overlay (Phase 17) — top-right, biome-coloured chunk view.
-	var minimap_layer := CanvasLayer.new()
-	minimap_layer.name = "MinimapLayer"
-	minimap_layer.layer = 20
-	add_child(minimap_layer)
-	_minimap.anchor_left = 1.0
-	_minimap.anchor_right = 1.0
-	_minimap.anchor_top = 0.0
-	_minimap.anchor_bottom = 0.0
-	_minimap.offset_left = -180.0
-	_minimap.offset_right = -12.0
-	_minimap.offset_top = 12.0
-	_minimap.offset_bottom = 180.0
-	_minimap.chunk_manager = _chunk_manager
-	_minimap.player_slice = _player
-	_minimap.terrain_slice = _terrain
-	minimap_layer.add_child(_minimap)
+	# Minimap overlay (Phase 17) — top-right, biome-coloured chunk view. Pure
+	# presentation, so a headless dedicated server (Phase 27) skips it entirely,
+	# the same way the lighting block below does.
+	if not _is_server:
+		var minimap_layer := CanvasLayer.new()
+		minimap_layer.name = "MinimapLayer"
+		minimap_layer.layer = 20
+		add_child(minimap_layer)
+		_minimap.anchor_left = 1.0
+		_minimap.anchor_right = 1.0
+		_minimap.anchor_top = 0.0
+		_minimap.anchor_bottom = 0.0
+		_minimap.offset_left = -180.0
+		_minimap.offset_right = -12.0
+		_minimap.offset_top = 12.0
+		_minimap.offset_bottom = 180.0
+		_minimap.chunk_manager = _chunk_manager
+		_minimap.player_slice = _player
+		_minimap.terrain_slice = _terrain
+		minimap_layer.add_child(_minimap)
 
 	# Bus listeners for integration-layer logging.
 	GameBus.chunk_ready.connect(_on_chunk_ready)
@@ -326,12 +338,16 @@ func _boot_world() -> void:
 ## authoritative half is exactly `_boot_server()` — the same
 ## `chunk_manager.start()` / `refresh()` and `networking.host()` calls a
 ## headless dedicated server runs — so a listen host and a dedicated server can
-## never drift apart. Everything after it is local presentation: the player
-## spawn, the avatar visuals, the demo sequences and the boot save/load.
+## never drift apart. Everything after it is the host-only tail: presentation
+## (player spawn, avatars, lighting, UI) plus the boot demos and the save/load
+## sample. Those demos and that save are not presentation — they mutate
+## authoritative state (a mined and a placed block, 4 Ashite, one combat round,
+## slot 0 written and reloaded) — so what the two boots share is the same
+## authoritative calls, not the same world state.
 ##
 ## Lighting, the minimap and the UI are built in `_ready()` behind a
-## `not _is_server` guard, so they are already host-only and need no second
-## path here. `render_visuals` on the creature/player/tree slices is likewise
+## `not _is_server` guard, so they are host-only and need no second path here.
+## `render_visuals` on the creature/player/tree slices is likewise
 ## decided in `_ready()` — a host calling `_boot_server()` still renders.
 func _boot_host() -> void:
 	_boot_server()

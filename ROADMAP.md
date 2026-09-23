@@ -1545,8 +1545,10 @@ which is why this landed first, as its own commit.
   max_clients 64` — as the delivered record.
 - [x] The host still renders: `render_visuals` is decided by `_is_server` in
   `_ready()`, so a host calling `_boot_server()` must still build the player,
-  avatars, lighting, and UI. (Lighting, the minimap and the UI stayed in
-  `_ready()` behind their `not _is_server` guard; nothing clears them.)
+  avatars, lighting, and UI. (Lighting was already behind `not _is_server`; the
+  review that closed this phase found the minimap overlay and the UI slice were
+  **not** — both were built on every role, dedicated server included — and moved
+  them behind the same guard. Nothing clears them on a host.)
 - [x] `max_clients` is 64 on the host path, not 1.
 - [x] The new CI job fails on a `SCRIPT ERROR` / `Parse Error` / `Compile Error`
   in the server boot log (`.github/workflows/ci.yml` job `server-boot`), and
@@ -1579,7 +1581,10 @@ which is why this landed first, as its own commit.
 - The authoritative half is shared; the presentation layer is not. Only the host
   runs the `DEBUG`-gated demo sequence, the player spawn, and the visual build,
   so a dedicated server is authoritative but presentation-free — that is the
-  intended Phase 27 sim/visual split, not a gap.
+  intended Phase 27 sim/visual split, not a gap. Note the tail also holds the
+  *unconditional* boot demos (mine + place, 4 Ashite, one combat round) and the
+  boot save/load, and those mutate authoritative state — so the two boots share
+  the same authoritative calls, not the same world state.
 - `--server` gains no graceful termination hook here; the save-on-termination
   lifecycle is Phase 33's work.
 
