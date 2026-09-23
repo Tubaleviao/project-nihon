@@ -305,11 +305,13 @@ func _valid_host_address(addr: String) -> bool:
 # ---------------------------------------------------------------------------
 
 ## Set true to enable verbose craft-fail logging and the demo station/craft
-## sequence in _boot_world(). False keeps boot output minimal in production.
+## sequence in _boot_host(). False keeps boot output minimal in production.
 const DEBUG := false
 
+## Role dispatch (Phase 32): client → `_boot_client()`, dedicated server →
+## `_boot_server()`, otherwise the listen host → `_boot_host()`. No boot logic
+## lives here any more — the host path used to be inlined at this point.
 func _boot_world() -> void:
-
 	if _is_client:
 		_boot_client()
 		return
@@ -318,16 +320,33 @@ func _boot_world() -> void:
 		_boot_server()
 		return
 
-	# Place the player on top of the terrain at the spawn point so it doesn't
-	# spawn embedded in (and fall through) the collision mesh.
+	_boot_host()
+
+## Listen-host boot path (Phase 32): a superset of the server path. The
+## authoritative half is exactly `_boot_server()` — the same
+## `chunk_manager.start()` / `refresh()` and `networking.host()` calls a
+## headless dedicated server runs — so a listen host and a dedicated server can
+## never drift apart. Everything after it is local presentation: the player
+## spawn, the avatar visuals, the demo sequences and the boot save/load.
+##
+## Lighting, the minimap and the UI are built in `_ready()` behind a
+## `not _is_server` guard, so they are already host-only and need no second
+## path here. `render_visuals` on the creature/player/tree slices is likewise
+## decided in `_ready()` — a host calling `_boot_server()` still renders.
+func _boot_host() -> void:
+	_boot_server()
+
+	# Player spawn — above the terrain surface so it doesn't spawn embedded in
+	# (and fall through) the collision mesh.
 	var spawn_xz := Vector2(16.0, 16.0)
 	var ground_h := _terrain.get_height_at(spawn_xz)
 	_player.spawn_at(Vector3(spawn_xz.x, ground_h + 1.0, spawn_xz.y))
 
-	# Chunk streaming (Phase 17) — load the window of chunks around the player
-	# instead of a single fixed origin chunk. VoxelSlice builds the mesh on
-	# chunk_ready and CreatureSlice spawns each chunk's budget.
-	_chunk_manager.start()
+	# Chunk streaming (Phase 17) — the authoritative half above streamed the
+	# window around the origin, so re-centre it on the spawn point. VoxelSlice
+	# builds the mesh on chunk_ready and CreatureSlice spawns each chunk's
+	# budget. `refresh()` skips the diff when the player is still in the chunk
+	# it last centred on, so this is a no-op when spawn sits in the origin chunk.
 	_chunk_manager.refresh()
 
 	# Character system — the player's own avatar spawns at the player's real
@@ -406,9 +425,6 @@ func _boot_world() -> void:
 	GameBus.save_requested.emit(0, snapshot)
 	GameBus.load_requested.emit(0)
 
-	# Networking — open local host so peers can connect.
-	_networking.host(_networking.DEFAULT_PORT, 1)
-
 ## Client boot path (Phase 18): do NOT run the authoritative simulation. Join
 ## the host and wait for the world snapshot before showing anything.
 func _boot_client() -> void:
@@ -465,7 +481,7 @@ func _process(delta: float) -> void:
 ## Drive the player's visual avatar from the real player controller every
 ## frame — position/facing, locomotion state, and approximate foot IK
 ## (characters.md §37). Only the host currently spawns character visuals
-## (_boot_world), so this is a no-op on clients until one exists.
+## (_boot_host), so this is a no-op on clients until one exists.
 func _sync_player_avatar(delta: float) -> void:
 	var player_char: String = _character.get_player_character()
 	if player_char == "":
