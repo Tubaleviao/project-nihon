@@ -118,6 +118,16 @@ var _jitter_buffer: Dictionary = {}
 ## Host-side last-known player states (peer_id -> Vector3), retained across a
 ## disconnect so a rejoining client can resume from its last position.
 var _last_known_states: Dictionary = {}
+
+## Phase 33 — transport mapping only: peer_id (ENet, reassigned every connection)
+## → player_id (server-issued, stable). Every player-scoped record and inventory
+## is keyed on the player_id; this dict is thrown away on disconnect.
+var _player_ids: Dictionary = {}
+
+## Phase 33 — the id this client last received from a host, presented on join so
+## a reconnect re-binds to the same record. Set by game_root before join().
+var claimed_player_id: String = ""
+
 ## Timestamps (peer_id -> ms) set when a peer disconnects; used to evict
 ## entries from _last_known_states after LAST_KNOWN_STATE_TTL_MS.
 var _last_known_timestamps: Dictionary = {}
@@ -154,6 +164,9 @@ func _ready() -> void:
 	GameBus.trade_propose_intent.connect(_on_trade_propose_intent)
 	GameBus.trade_accept_intent.connect(_on_trade_accept_intent)
 	GameBus.trade_reject_intent.connect(_on_trade_reject_intent)
+	# Phase 33 — the identity handshake: the host answers a join with the
+	# server-issued player id for that connection.
+	GameBus.player_joined.connect(_on_player_joined)
 
 ## Phase 19 — drain the emulator queue and (on clients) the jitter buffer.
 ## Eviction of stale last-known-states runs unconditionally (no ENet overhead).
@@ -204,6 +217,7 @@ func disconnect_all() -> void:
 	_role = Role.OFFLINE
 	_pending.clear()
 	_jitter_buffer.clear()
+	_player_ids.clear()
 
 func is_host() -> bool:
 	return _role == Role.HOST
@@ -213,6 +227,37 @@ func is_client() -> bool:
 
 func is_offline() -> bool:
 	return _role == Role.OFFLINE
+
+# ---------------------------------------------------------------------------
+# Phase 33 — identity transport mapping
+# ---------------------------------------------------------------------------
+
+## The server-issued player id behind a connection, or "" when the peer has not
+## completed the join handshake.
+func get_player_id(peer_id: int) -> String:
+	return str(_player_ids.get(peer_id, ""))
+
+## Record the peer → player_id mapping, and (on a host) send the assigned id back
+## to that peer so it can cache it for a reconnect.
+func set_player_id(peer_id: int, player_id: String) -> void:
+	if player_id.is_empty():
+		return
+	_player_ids[peer_id] = player_id
+	if _role == Role.HOST:
+		_deliver(peer_id, { "type": "identity_assigned", "player_id": player_id })
+
+func forget_player_id(peer_id: int) -> void:
+	_player_ids.erase(peer_id)
+
+## The player id behind a party string. A client sends the literal "player" to
+## mean "me"; on the host that resolves to the peer's server-issued IDENTITY, so
+## market/trade/proposal actions keep landing on the same record across a
+## reconnect (peer_id does not). Falls back to "peer_<id>" before the handshake.
+func party_id_for(peer_id: int) -> String:
+	var pid := get_player_id(peer_id)
+	if pid.is_empty():
+		return "peer_%d" % peer_id
+	return pid
 
 ## Host → one client: send the initial world snapshot, split into fixed-size
 ## chunks so a large world (many heightmaps + creatures + edits) never exceeds
@@ -630,17 +675,22 @@ func _dedup(sender: int, payload: Dictionary) -> bool:
 ## Resolve a client's self-reference to a peer-scoped party id. A client sends
 ## the literal "player" to mean "me", but on the host every remote client would
 ## collide on that string and resolve to the host's own inventory. Rewriting
-## "player" → "peer_<id>" keeps each peer's market/trade/proposal actions aimed
-## at that peer, never at the host's "player" identity.
+## "player" → the peer's server-issued player id (Phase 33) keeps each peer's
+## market/trade/proposal actions aimed at that peer's own record — and keeps them
+## aimed there across a reconnect, which a peer_id could not do.
 func _peer_party(sender: int, party: String) -> String:
 	if party == "player":
-		return "peer_%d" % sender
+		return party_id_for(sender)
 	return party
 
 ## Route a client → host packet. Only client-originated types are accepted;
 ## host-only types sent by a malicious client are dropped and logged.
 func _route_c2h(sender: int, payload: Dictionary) -> void:
 	match str(payload.get("type", "")):
+		"join_intent":
+			# Phase 33 — the client presents its cached id ("" on a first join).
+			# The registry owns resolution; the host answers with player_joined.
+			GameBus.player_join_intent.emit(sender, str(payload.get("claimed_id", "")))
 		"player_moved":
 			var pos := _vec3(payload.get("position", []))
 			GameBus.remote_player_state.emit(sender, pos)
@@ -762,6 +812,11 @@ func _route_h2c(payload: Dictionary) -> void:
 			GameBus.trade_completed.emit(payload.get("trade", {}))
 		"world_snapshot":
 			GameBus.world_snapshot_received.emit(payload.get("data", {}))
+		"identity_assigned":
+			# Phase 33 — the host's answer to our join intent. Cache it so a
+			# reconnect claims the same record.
+			claimed_player_id = str(payload.get("player_id", ""))
+			GameBus.player_identity_assigned.emit(claimed_player_id)
 		"snapshot_chunk":
 			_accumulate_snapshot_chunk(payload)
 		_:
@@ -925,12 +980,35 @@ func _attach_peer() -> void:
 	multiplayer.multiplayer_peer = _peer
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+	multiplayer.connected_to_server.connect(_on_connected_to_server)
 
 func _detach_peer() -> void:
 	if multiplayer.peer_connected.is_connected(_on_peer_connected):
 		multiplayer.peer_connected.disconnect(_on_peer_connected)
 	if multiplayer.peer_disconnected.is_connected(_on_peer_disconnected):
 		multiplayer.peer_disconnected.disconnect(_on_peer_disconnected)
+	if multiplayer.connected_to_server.is_connected(_on_connected_to_server):
+		multiplayer.connected_to_server.disconnect(_on_connected_to_server)
+
+## Phase 33 — client side: the connection is up, so present our cached player id.
+## The host answers with the id it binds us to (the same one on a reconnect, a
+## fresh one on a first join, and a fresh one for a claim it refuses).
+func _on_connected_to_server() -> void:
+	if _role != Role.CLIENT:
+		return
+	_deliver(1, { "type": "join_intent", "claimed_id": claimed_player_id })
+
+## Phase 33 — host side: an identity was bound to a connection. Record the
+## transport mapping and ship the assigned id back to that peer.
+func _on_player_joined(peer_id: int, player_id: String, _reconnected: bool) -> void:
+	if _role != Role.HOST or _is_local_peer(peer_id):
+		return
+	set_player_id(peer_id, player_id)
+
+## True when `peer_id` is this machine's own id (the host's own player), which
+## needs no wire handshake.
+func _is_local_peer(peer_id: int) -> bool:
+	return peer_id == multiplayer.get_unique_id()
 
 func _on_peer_connected(id: int) -> void:
 	# Phase 29 — seed the peer's AOI center (its retained last-known position,
@@ -945,5 +1023,9 @@ func _on_peer_connected(id: int) -> void:
 ## after LAST_KNOWN_STATE_TTL_MS if the peer never reconnects.
 func _on_peer_disconnected(id: int) -> void:
 	GameBus.peer_disconnected.emit(id)
+	# Phase 33 — the connection is gone, so its transport mapping goes with it.
+	# The player's RECORD is retained (see PlayerRegistry), which is what lets a
+	# reconnect with the same player id re-bind to it.
+	forget_player_id(id)
 	if _last_known_states.has(id):
 		_last_known_timestamps[id] = Time.get_ticks_msec()

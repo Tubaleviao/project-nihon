@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:30111496a55d2f8992daf0ec9ecbd105fe1551f7196def287e3261cb1576c613",
+  "schemaHash": "sha256:89e22e80c0eb563f9a3952f2778915416b53e35668229ced200e89a88ab90881",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -989,6 +989,108 @@
         ],
         "description": "Fictional materials with unique properties replace real-world counterparts, giving the world consistent internal lore and design freedom.",
         "goal": "Decouple material design from real-world constraints while maintaining internal balance logic",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "status": {
+            "name": "status",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "proposed",
+              "accepted",
+              "superseded"
+            ],
+            "pii": false
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "accept": {
+            "name": "accept",
+            "description": "Ratify this decision after community review",
+            "rules": [
+              "Community vote must reach quorum"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "supersede": {
+            "name": "supersede",
+            "description": "Mark this decision as replaced by a newer one",
+            "rules": [
+              "A replacement decision must be accepted first"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "status",
+          "initial": "proposed",
+          "states": {
+            "proposed": {
+              "name": "proposed",
+              "description": "Decision is under community discussion",
+              "terminal": false
+            },
+            "accepted": {
+              "name": "accepted",
+              "description": "Decision is ratified and in effect",
+              "terminal": false
+            },
+            "superseded": {
+              "name": "superseded",
+              "description": "Decision has been replaced by a newer decision",
+              "terminal": true
+            }
+          },
+          "transitions": [
+            {
+              "from": "proposed",
+              "to": "accepted",
+              "trigger": "accept",
+              "guards": [
+                "Community vote must reach quorum"
+              ],
+              "effects": []
+            },
+            {
+              "from": [
+                "proposed",
+                "accepted"
+              ],
+              "to": "superseded",
+              "trigger": "supersede",
+              "guards": [
+                "A replacement decision must be accepted first"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "PlayerIdentityModel": {
+        "name": "PlayerIdentityModel",
+        "tags": [
+          "decision"
+        ],
+        "description": "A player identity is a server-issued local UUID (player_id), not an account. The server mints the id on first join, persists it next to the player record, and sends it to the client so a reconnect re-binds to the same record. The client may present a cached id at join, and the server honours it only when it already owns that record and no live peer holds it — a client can therefore never claim another online player's record.",
+        "goal": "Give every player a connection-independent identity so inventory, HP, position, and appearance survive a reconnect or a server restart, without waiting for an account/auth service",
         "fields": {
           "id": {
             "name": "id",
@@ -19778,6 +19880,122 @@
               "PvP in temperate and twilight biomes requires mutual flagging or active war declaration between guilds",
               "Killing an unflagged player in a non-PvP zone applies the murderer debuff: +50% guard aggression for 24 in-game hours",
               "Loot on player death: equipped item durability decreases by one tier; no inventory drop unless both players are flagged"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "PersistenceSystem": {
+        "name": "PersistenceSystem",
+        "tags": [
+          "world-system"
+        ],
+        "description": "Defines the authoritative save lifecycle: which directory the world and per-player records live in, how often the server autosaves, how a headless server is asked to shut down cleanly, and how a record is written so a kill mid-write cannot truncate it. The world record holds chunk manifests, stations, and creature state; one record per player holds position, HP, inventory, and technology.",
+        "goal": "Ground TheWorldIsPersistent — the world and its players survive a restart, a reconnect, and a kill -TERM",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "serverSaveDir": {
+            "name": "serverSaveDir",
+            "type": "string",
+            "description": "Directory holding the server world record and one file per player record.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "user://saves/server/"
+          },
+          "worldFileName": {
+            "name": "worldFileName",
+            "type": "string",
+            "description": "File name (inside serverSaveDir) of the authoritative world record.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "world.json"
+          },
+          "playerFilePrefix": {
+            "name": "playerFilePrefix",
+            "type": "string",
+            "description": "Prefix for per-player record files; the player id is appended before the extension.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "player_"
+          },
+          "autosaveIntervalSeconds": {
+            "name": "autosaveIntervalSeconds",
+            "type": "integer",
+            "description": "Seconds between authoritative autosaves. Bounds how much world state a hard kill can lose, since a headless server cannot intercept SIGTERM.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 300
+          },
+          "shutdownRequestPath": {
+            "name": "shutdownRequestPath",
+            "type": "string",
+            "description": "Path polled on the autosave tick; when it exists the server saves and quits cleanly. The headless substitute for a window-close or SIGTERM hook.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "user://shutdown_requested"
+          },
+          "atomicWrites": {
+            "name": "atomicWrites",
+            "type": "boolean",
+            "description": "Write records through a temp file + rename so a kill during a save cannot leave a truncated record.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "saveWorld": {
+            "name": "saveWorld",
+            "description": "Write the authoritative world record: chunk manifests, stations, creature state, and the local player id",
+            "rules": [
+              "An incremental save merges only the dirty chunk manifests into the existing record",
+              "A full save rewrites every loaded chunk manifest",
+              "The write goes through a temp file and a rename when atomicWrites is set"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "savePlayer": {
+            "name": "savePlayer",
+            "description": "Write one player record: position, HP, inventory with per-instance durability, and technology",
+            "rules": [
+              "Records are keyed by the server-issued player_id, never by peer_id",
+              "Each record is written whole; a partial write is never visible"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "loadOnBoot": {
+            "name": "loadOnBoot",
+            "description": "Load the world and every player record when the authoritative boot starts",
+            "rules": [
+              "Only the authoritative half loads — a client receives state from the host",
+              "A missing world record is not an error; the server boots a fresh world"
             ],
             "auth": {
               "roles": [

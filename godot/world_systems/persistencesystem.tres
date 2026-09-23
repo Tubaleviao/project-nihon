@@ -1,0 +1,15 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/world_systems/persistencesystem.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+serverSaveDir = "user://saves/server/"
+worldFileName = "world.json"
+playerFilePrefix = "player_"
+autosaveIntervalSeconds = 300
+shutdownRequestPath = "user://shutdown_requested"
+atomicWrites = true
+description = "Defines the authoritative save lifecycle: which directory the world and per-player records live in, how often the server autosaves, how a headless server is asked to shut down cleanly, and how a record is written so a kill mid-write cannot truncate it. The world record holds chunk manifests, stations, and creature state; one record per player holds position, HP, inventory, and technology."
+tags = ["world-system"]

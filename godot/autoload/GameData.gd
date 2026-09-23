@@ -36,7 +36,8 @@ const DECISIONS: Dictionary = {
 		"MagicBalancedWithMartial": preload("res://godot/decisions/magicbalancedwithmartial.tres"),
 		"NoTeleportation": preload("res://godot/decisions/noteleportation.tres"),
 		"OfflinePlayerNpcs": preload("res://godot/decisions/offlineplayernpcs.tres"),
-		"OnePersistentWorld": preload("res://godot/decisions/onepersistentworld.tres")
+		"OnePersistentWorld": preload("res://godot/decisions/onepersistentworld.tres"),
+		"PlayerIdentityModel": preload("res://godot/decisions/playeridentitymodel.tres")
 }
 
 const ITEMS: Dictionary = {
@@ -179,6 +180,7 @@ const WORLD_SYSTEMS: Dictionary = {
 		"CombatSystem": preload("res://godot/world_systems/combatsystem.tres"),
 		"GovernanceSystem": preload("res://godot/world_systems/governancesystem.tres"),
 		"MarketSystem": preload("res://godot/world_systems/marketsystem.tres"),
+		"PersistenceSystem": preload("res://godot/world_systems/persistencesystem.tres"),
 		"TradeSystem": preload("res://godot/world_systems/tradesystem.tres"),
 		"WeatherSystem": preload("res://godot/world_systems/weathersystem.tres")
 }

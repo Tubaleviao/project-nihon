@@ -13,8 +13,16 @@ extends Node
 ##   nearest_creature(from_pos: Vector3, radius: float) -> String   (instance_id or "")
 ##   get_instance_creature_id(instance_id: String)      -> String   (fabric key)
 ##   get_all_instances()                                -> Array[Dictionary]
+##   get_snapshot_creatures()                           -> Array    (Phase 33: + hp, respawn_at)
+##   apply_snapshot_creatures(list)                     -> void     (Phase 33)
 ##   spawn_for_chunk(chunk_pos: Vector2i)               -> void     (Phase 17)
 ##   despawn_for_chunk(chunk_pos: Vector2i)             -> void     (Phase 17)
+##
+## Respawn deadlines are WALL-CLOCK (Phase 33): `respawn_at` is a Unix-epoch
+## second from Time.get_unix_time_from_system(), the same convention the market
+## listings and tree regrowth use, so a deadline persisted in the world record
+## still means what it says after a restart. (It used to be process uptime via
+## Time.get_ticks_msec(), which is meaningless in a new process.)
 
 ## CHUNK_SIZE and BIOME_KEYS live in TerrainSlice (single source of truth).
 ## Spawning uses _chunk_biome() which delegates to terrain_slice, so no local
@@ -27,7 +35,6 @@ const MultimeshPool := preload("res://src/core/multimesh_pool.gd")
 const SpatialHash    := preload("res://src/core/spatial_hash.gd")
 
 var _instances: Dictionary = {}
-var _next_id: int = 0
 
 ## Spatial hash over the live population so nearest-creature / neighbour queries
 ## are O(radius²) cells, not an O(N) scan (Phase 28). Kept in lockstep with
@@ -124,8 +131,11 @@ func get_all_instances() -> Array:
 		})
 	return out
 
-## Serialize the live creature population for the world snapshot (host → client).
-## Each entry is { instance_id, creature_id, state, position:[x,y,z] }.
+## Serialize the live creature population for the world snapshot (host → client)
+## and for the world record (Phase 33). Each entry is
+## { instance_id, creature_id, state, position:[x,y,z], hp, respawn_at }.
+## `hp` and `respawn_at` are what make a death/respawn round-trip exact: a dead
+## instance comes back dead, with the same wall-clock respawn deadline.
 func get_snapshot_creatures() -> Array:
 	var out: Array = []
 	for iid in _instances:
@@ -136,6 +146,8 @@ func get_snapshot_creatures() -> Array:
 			"creature_id": inst["creature_id"],
 			"state":       inst["state"],
 			"position":    [pos.x, pos.y, pos.z],
+			"hp":          float(inst.get("hp", 0.0)),
+			"respawn_at":  float(inst.get("respawn_at", -1.0)),
 		})
 	return out
 
@@ -213,8 +225,7 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 	if terrain_slice != null and terrain_slice.has_method("get_height_at"):
 		pos.y = terrain_slice.get_height_at(Vector2(pos.x, pos.z))
 
-	var iid := "creature_%d" % _next_id
-	_next_id += 1
+	var iid := _instance_id(chunk_pos, creature_id, spawn_index)
 
 	# Build a visible body so the creature can be seen in the world. Headless
 	# (no pool) allocates no visual — the record carries the instance index only.
@@ -235,6 +246,22 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 
 	GameBus.creature_spawned.emit(iid, creature_id, pos)
 	return iid
+
+## Deterministic instance id: derived from the chunk it belongs to, the creature
+## it is, and its spawn index — the same inputs _deterministic_chunk_position()
+## uses. A counter id was NOT stable: two peers that streamed chunks in a
+## different order named the same creature differently, and every chunk
+## unload/reload (which respawns the budget from scratch) renamed survivors.
+## Since phase 33 persists and replicates creature state by instance id, the id
+## has to be a property of the creature, not of the order it happened to spawn in.
+##
+## Caveat: spawn_for_chunk() keeps engaged (aggressive/fleeing) survivors across
+## a despawn and indexes new spawns after them, so a chunk reloaded while one of
+## its creatures is mid-fight can hand a fresh spawn the next index. The
+## persisted state is still re-attachable for every unengaged creature, which is
+## what the world record needs.
+func _instance_id(chunk_pos: Vector2i, creature_id: String, spawn_index: int) -> String:
+	return "creature_%d_%d_%s_%d" % [chunk_pos.x, chunk_pos.y, creature_id, spawn_index]
 
 ## Deterministic world XZ inside the chunk footprint (inset one tile from the edge).
 ## The position is derived from chunk_pos, creature_id, and spawn_index so the same
@@ -322,15 +349,18 @@ func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String
 				var respawn_secs: float = float(res.get("respawnSeconds")) if res else 300.0
 				inst["state"]      = "dead"
 				inst["hp"]         = 0.0
-				inst["respawn_at"] = Time.get_ticks_msec() + respawn_secs * 1000.0
+				# WALL-CLOCK deadline (Phase 33) — a saved deadline must still mean
+				# the same moment in a new process, so this is Unix-epoch seconds,
+				# not process uptime.
+				inst["respawn_at"] = Time.get_unix_time_from_system() + respawn_secs
 				if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
 					_pool.hide(int(inst["mi"]))
 
 func _tick_respawn() -> void:
-	var now := float(Time.get_ticks_msec())
+	var now := Time.get_unix_time_from_system()
 	for iid in _instances:
 		var inst: Dictionary = _instances[iid]
-		if inst["state"] == "dead" and inst["respawn_at"] > 0.0 and now >= inst["respawn_at"]:
+		if inst["state"] == "dead" and float(inst["respawn_at"]) > 0.0 and now >= float(inst["respawn_at"]):
 			var creature_id: String = inst["creature_id"]
 			var res: Resource = GameData.CREATURES.get(creature_id, null)
 			var max_hp: float = float(res.get("baseHp"))
@@ -367,14 +397,18 @@ func _on_creature_state_changed(instance_id: String, creature_id: String, state:
 
 ## Client-side application of a single authoritative creature state (see
 ## _on_creature_state_changed). Public so the snapshot loader can seed the
-## world from the host's get_snapshot_creatures() output.
-func apply_creature_state(instance_id: String, creature_id: String, state: String, position: Vector3) -> void:
+## world from the host's get_snapshot_creatures() output — including the `hp`
+## and wall-clock `respawn_at` a dead instance carries (Phase 33).
+func apply_creature_state(instance_id: String, creature_id: String, state: String, position: Vector3, hp: float = -1.0, respawn_at: float = -1.0) -> void:
 	if _instances.has(instance_id):
 		var inst: Dictionary = _instances[instance_id]
 		if creature_id != "":
 			inst["creature_id"] = creature_id
 		inst["state"]    = state
 		inst["position"] = position
+		if hp >= 0.0:
+			inst["hp"] = hp
+		inst["respawn_at"] = respawn_at
 		_spatial.update(instance_id, position)
 		if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
 			if state == "dead":
@@ -395,14 +429,14 @@ func apply_creature_state(instance_id: String, creature_id: String, state: Strin
 		"chunk":       Vector2i.ZERO,
 		"spawn_pos":   position,
 		"state":       state,
-		"hp":          0.0,
-		"respawn_at":  -1.0,
+		"hp":          maxf(hp, 0.0),
+		"respawn_at":  respawn_at,
 		"mi":          mi,
 	}
 	_spatial.insert(instance_id, position)
 
 ## Seed the client's creature population from a host snapshot list
-## (see get_snapshot_creatures).
+## (see get_snapshot_creatures), carrying hp and the wall-clock respawn deadline.
 func apply_snapshot_creatures(list: Array) -> void:
 	for entry in list:
 		if entry is not Dictionary:
@@ -415,7 +449,9 @@ func apply_snapshot_creatures(list: Array) -> void:
 			str(entry.get("instance_id", "")),
 			str(entry.get("creature_id", "")),
 			str(entry.get("state", "idle")),
-			pos
+			pos,
+			float(entry.get("hp", -1.0)),
+			float(entry.get("respawn_at", -1.0))
 		)
 
 # ---------------------------------------------------------------------------

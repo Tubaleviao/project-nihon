@@ -213,6 +213,15 @@ func _zoom(delta_z: float) -> void:
 func get_hp() -> float:
 	return _hp
 
+## Restore HP from a save (Phase 33). Clamped to [0, MAX_HP]; the position half
+## of a restore is `spawn_at()`. Restoring HP is what makes the boot snapshot's
+## `player.hp` field actually read back instead of written and forgotten.
+func set_hp(hp: float) -> void:
+	_hp = clampf(hp, 0.0, MAX_HP)
+	_alive = _hp > 0.0
+	_update_hp_bar()
+	_broadcast_state()
+
 ## Number of remote player ghosts currently tracked.
 func get_remote_ghost_count() -> int:
 	return _ghosts.size()

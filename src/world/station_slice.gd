@@ -93,10 +93,59 @@ func cycle_station_type() -> String:
 func place_station(type: String, position: Vector3) -> String:
 	var id := "station_%d" % _next_id
 	_next_id += 1
-	_stations[id] = { "id": id, "type": type, "position": position }
-	_add_marker(id, type, position)
+	_insert_station(id, type, position)
 	GameBus.station_placed.emit(id, type, position)
 	return id
+
+## Insert a station under a KNOWN id and keep the allocator above it. Used by
+## apply_station_data so a restored station keeps its saved id rather than being
+## renumbered by load order.
+func _insert_station(id: String, type: String, position: Vector3) -> void:
+	_stations[id] = { "id": id, "type": type, "position": position }
+	var suffix := id.trim_prefix("station_")
+	if suffix.is_valid_int():
+		_next_id = maxi(_next_id, int(suffix) + 1)
+	_add_marker(id, type, position)
+
+# ---------------------------------------------------------------------------
+# Phase 33 — world-record serialization
+# ---------------------------------------------------------------------------
+
+## Every placed station as a serializable list of
+## { id, type, position:[x,y,z] }, ordered by id so the payload is stable.
+func get_station_data() -> Array:
+	var out: Array = []
+	for id in _stations:
+		var s: Dictionary = _stations[id]
+		var pos: Vector3 = s["position"]
+		out.append({
+			"id":       str(s["id"]),
+			"type":     str(s["type"]),
+			"position": [pos.x, pos.y, pos.z],
+		})
+	out.sort_custom(func(a, b): return str(a["id"]) < str(b["id"]))
+	return out
+
+## Replace the placed set from a saved payload. The current stations (and their
+## markers) are dropped first, so a load is authoritative rather than additive.
+## Entries without a usable type or position are skipped, and each restored
+## station keeps its saved id.
+func apply_station_data(data: Array) -> void:
+	for id in _stations.keys():
+		remove_station(str(id))
+	for entry in data:
+		if not entry is Dictionary:
+			continue
+		var stype := str(entry.get("type", ""))
+		var arr = entry.get("position", [])
+		if stype.is_empty() or not (arr is Array) or (arr as Array).size() < 3:
+			continue
+		var pos := Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
+		var id := str(entry.get("id", ""))
+		if id.is_empty():
+			id = "station_%d" % _next_id
+			_next_id += 1
+		_insert_station(id, stype, pos)
 
 func remove_station(station_id: String) -> void:
 	if _markers.has(station_id):

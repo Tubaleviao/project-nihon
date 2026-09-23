@@ -1590,7 +1590,7 @@ which is why this landed first, as its own commit.
 
 ---
 
-## Phase 33 — Player identity and server-side persistence
+## Phase 33 — Player identity and server-side persistence ✅ Done
 
 **Goal:** Give each player a connection-independent id owning their inventory,
 HP, position, and appearance, then write a real save lifecycle — load on server
@@ -1643,58 +1643,141 @@ state machine are already emitted. Run `pnpm validate` → `pnpm generate` →
   `PlayerIdentityModel` in `fabric/constitution/decisions.js`, accepted through
   the same decision state machine the other constitution decisions use.
 
-**Acceptance criteria:** *(not yet met — phase in progress)*
-- [ ] A restart round-trip (save → fresh boot → load) reproduces player
+**Acceptance criteria:** *(met — see the verification notes below)*
+- [x] A restart round-trip (save → fresh boot → load) reproduces player
   position, HP, inventory with per-instance durability, stations, and creature
   death / respawn state.
-- [ ] Reconnecting with a new connection keeps the same inventory — the id
+- [x] Reconnecting with a new connection keeps the same inventory — the id
   survives the reconnect and the `peer_id` change.
-- [ ] A disconnect mid-craft leaves the inventory consistent after save: no
+- [x] A disconnect mid-craft leaves the inventory consistent after save: no
   half-consumed materials, no duplicated output.
-- [ ] A spoofed id is rejected — a client cannot claim or write into another
+- [x] A spoofed id is rejected — a client cannot claim or write into another
   player's record.
-- [ ] `_boot_server` loads the world on boot and autosave runs on its interval
+- [x] `_boot_server` loads the world on boot and autosave runs on its interval
   (host/authoritative only).
-- [ ] `pnpm validate` + `pnpm check-drift` clean, headless suite green with the
-  4 new tests.
+- [x] `pnpm validate` + `pnpm check-drift` clean (543 generated files match the
+  manifest), headless suite green with the 4 new tests.
 
 **Tasks / tests:**
-- Restart round-trip (save → boot → load).
-- Reconnect keeps inventory.
-- Disconnect mid-craft.
-- Spoofed id rejected.
+- `identity: restart round-trip restores the world` — save → drop every slice →
+  fresh slices → load: voxel edits (incl. the incrementally-merged chunk),
+  station (id + type), creature state + wall-clock deadline, player position /
+  HP / inventory durability / appearance recipe.
+- `identity: reconnect keeps the inventory` — first join mints an id, disconnect
+  drops the transport mapping, a NEW connection claiming the cached id re-binds
+  to the same record and the same inventory.
+- `identity: disconnect mid-craft stays consistent` — a craft, then the
+  disconnect-time record write, then a restored inventory: exactly one craft's
+  inputs consumed, the output present exactly once, the record equal to the live
+  inventory.
+- `identity: spoofed id is rejected` — a claim on a LIVE identity is refused and
+  cannot read or write the victim's record; an unknown claimed id is discarded;
+  a non-authoritative (client) registry mints nothing.
+
+**Verification (headless, on this machine):**
+- Suite: `6695/6695` before the phase → `6761/6761` after (the 4 new tests plus
+  the two respawn tests moved to wall-clock deadlines).
+- Dedicated server, no save: `[Server] no world record at
+  user://saves/server/world.json — booting a fresh world` then
+  `[Server] listening on port 7777, max_clients 64`.
+- Listen host: writes `saves/server/world.json` +
+  `saves/server/player_<player_id>.json`.
+- Dedicated server again: `[Server] world loaded from …/world.json` and
+  `[Server] restored 1 player record(s)`.
+- Clean shutdown on a HEADLESS server (a signal cannot do this — see notes):
+  with `user://shutdown_requested` present the server prints
+  `[Server] shutdown requested — saving before quit`, writes
+  `world saved (incremental) — 0 chunk manifest(s), 169 creature(s)`, deletes the
+  request file and exits. `world.json`'s mtime moves; the process is gone.
+- Identity handshake over a real socket (loopback, twice):
+  `[Server] joined player 'player_1790181748_1_812e' as peer_506044089`, client
+  caches `{"player_id": "player_1790181748_1_812e"}`, and on the second
+  connection — a different peer id — `[Server] reconnected player
+  'player_1790181748_1_812e' as peer_1148372338`. Two record files land in the
+  save dir (the local player and the remote peer).
 
 **Implementation notes:**
-- **Respawn timers must become wall-clock.** `creature_slice` sets
-  `inst["respawn_at"] = Time.get_ticks_msec() + respawn_secs * 1000.0` —
-  `Time.get_ticks_msec()` is *process uptime*, so a saved deadline is meaningless
-  after a restart. Persist it as a Unix-epoch deadline
-  (`Time.get_unix_time_from_system()`), matching the Phase 24 market/proposal
-  convention.
-- **Id authority sits on the server.** The client may supply a cached id at
-  join; the server honours it only if it already has that record, otherwise it
-  mints a fresh one. That single rule is what makes the spoof case rejectable.
-- **Gate the whole lifecycle on `is_authoritative`.** A client neither loads a
-  world from disk nor autosaves — it receives state from the host (Phase 29's
-  AOI-scoped snapshot stays the client's only view).
-- **Save writes should survive a kill mid-write.** Create the save dir with
-  `DirAccess.make_dir_recursive_absolute` and write via a temp file + rename so a
-  SIGTERM during a save can't truncate a per-player record.
-- Autosave interval and the save-dir layout belong in the fabric/config, not as
-  bare GDScript constants, following the fabric-first discipline.
-- **Load only in the authoritative half.** Phase 32 leaves exactly one
-  authoritative boot (`_boot_server()`), so the world load belongs there and a
-  listen host inherits it for free. Do not put the load in `_boot_host()`'s
-  presentation layer — that is the duplication Phase 32 removed.
+- **Respawn timers became wall-clock.** `creature_slice` used
+  `Time.get_ticks_msec() + respawn_secs * 1000.0` — *process uptime*, so a saved
+  deadline meant nothing after a restart. Deadlines are now Unix-epoch seconds
+  (`Time.get_unix_time_from_system()`), matching the Phase 24 market/proposal and
+  Phase 31 tree conventions. The two existing tests that faked an elapsed
+  deadline with `get_ticks_msec()` were moved to the same clock (they had been
+  passing *accidentally*: a ticks_msec deadline is always in the past for an
+  epoch comparison).
+- **`SIGTERM` cannot be intercepted by Godot 4.7 — verified, not assumed.** A
+  probe (a throwaway project with a `_notification` print, run headless) showed
+  the process dies on `SIGTERM` with **no** notification at all; `SIGINT` *is*
+  caught but goes through the `auto_accept_quit` gate rather than reaching the
+  scene tree. So the phase does all of: (a) `get_tree().auto_accept_quit = false`
+  plus a `NOTIFICATION_WM_CLOSE_REQUEST` handler that saves then quits (the
+  windowed path, authoritative roles only); (b) autosave on the fabric interval;
+  (c) a polled `user://shutdown_requested` file that saves and quits — the
+  headless shutdown hook, and the one the verification above exercises. The
+  interval is what bounds the loss for a plain `kill -TERM`.
+- **Creature instance ids are now deterministic** — `creature_<cx>_<cz>_<species>_<i>`
+  instead of a `_next_id` counter. Persisting and replicating creature state by
+  instance id makes the counter-id shape a correctness bug (a peer that streamed
+  chunks in a different order named the same creature differently, and a chunk
+  reload renumbered survivors): the same defect Phase 31 fixed for tree ids. An
+  engaged creature kept alive across a despawn can still shift an index, so the
+  state of a mid-fight chunk is not guaranteed to re-attach — noted in the
+  function.
+- **Load order in `_boot_server` matters.** Load the records, then
+  `chunk_manager.start()` / `refresh()`, then re-apply the recorded creature
+  state: `spawn_for_chunk()` builds fresh instance records and would otherwise
+  wipe the restored death/respawn state.
+- **Only the world record resets dirty-chunk tracking.** `_on_save_completed`
+  (the legacy `slot_NN` path) deliberately no longer calls
+  `clear_dirty_chunks()`; `world_saved()` does. The slot file is a single-file
+  sample and not what a server loads, so letting it clear the dirty set dropped
+  pre-slot edits from the next world save.
+- **Incremental saves carry only the dirty manifests.**
+  `PersistenceSlice.dirty_chunk_subset(manifest, keys)` is the shared pure
+  implementation (runtime + test), and `save_world(..., incremental)` merges it
+  over the record on disk, so an autosave no longer re-serializes ~49 chunk
+  manifests.
+- **Id authority sits on the server.** The client presents a cached id at join;
+  the host honours it only when it owns that record AND no live peer holds it —
+  otherwise a fresh id is minted. That single rule gives both the reconnect
+  re-bind and the spoof rejection. `resolve_identity` on a non-authoritative
+  registry is a no-op, so a client can never mint.
+- **Gate the lifecycle on `is_authoritative`.** A client neither loads a world
+  nor autosaves; it receives state from the host (Phase 29's AOI-scoped snapshot
+  stays the client's only view) and only caches its player id.
+- **Writes are atomic.** `make_dir_recursive_absolute` + temp file + rename, so a
+  kill during a save leaves either the old record or the new one, never a
+  truncated file.
+- Autosave interval, save-dir layout, record file names, the shutdown-request
+  path and the atomic-write switch all live in the fabric `PersistenceSystem`
+  (`fabric/gameplay/persistence.js`), not as bare GDScript constants.
+- **`PlayerCharacter`'s per-player inventory is a registry-owned
+  `InventorySlice`**; the local player's is the game's own `_inventory`
+  (registered via `set_local_player`), which is what makes inventory per-player
+  without touching any existing call site. `_build_snapshot` ships the CONNECTING
+  peer's own contents instead of the host's, and `networking._peer_party` now
+  resolves a client's `"player"` self-reference to its player id, so a peer's
+  market/trade actions land on its own record — and keep landing there after a
+  reconnect, which `peer_<id>` could not do.
 
 **Known simplifications (deferred):**
-- No account or auth service: identity is whatever the ratified
-  `PlayerIdentityModel` decision lands on, but account binding / login is out of
-  scope for this phase (a local server-issued UUID is the working model).
+- No account or auth service: identity is the server-issued local UUID the
+  ratified `PlayerIdentityModel` decision lands on; account binding / login is
+  out of scope.
 - No world-shard handoff of a player record between servers — see Deferred →
   server sharding.
-- Autosave is a plain interval timer; no dirty-player-only diffing, so a
-  player record is rewritten whole each tick even when only one field changed.
+- Autosave is a plain interval timer; no dirty-player-only diffing, so a player
+  record is rewritten whole each tick even when only one field changed.
+- **Crafting is still host-scoped for remote peers**: `crafting_slice` holds one
+  `inventory_slice` reference, so a remote peer's craft resolves against the
+  host's own inventory. Market and trade ARE per-player (party inventories);
+  crafting needs the same party-inventory plumbing, which belongs with the
+  station-placement work.
+- Appearance is persisted for the LOCAL player's record and rebuilt on boot;
+  other players' appearances are not replicated to clients (clients still render
+  their own avatar plus position-only ghosts).
+- A headless server's clean shutdown needs the `shutdown_requested` file (or an
+  autosave tick), because `SIGTERM` cannot be intercepted — see the notes above.
 
 ---
 

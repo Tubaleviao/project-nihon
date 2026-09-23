@@ -41,6 +41,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [NoTeleportation](entities/noteleportation.md) — No teleportation; infrastructure replaces fast travel
 - [OfflinePlayerNpcs](entities/offlineplayernpcs.md) — Offline players may be represented in the world as configurable service NPCs, keeping shops and services running in their absence
 - [OnePersistentWorld](entities/onepersistentworld.md) — A single persistent official world server
+- [PlayerIdentityModel](entities/playeridentitymodel.md) — A player identity is a server-issued local UUID (player_id), not an account
 
 ## Item
 
@@ -183,6 +184,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [CombatSystem](entities/combatsystem.md) — Defines the rules governing all combat interactions — player vs creature, player vs player, and structure damage
 - [GovernanceSystem](entities/governancesystem.md) — Defines the rules of in-game community governance
 - [MarketSystem](entities/marketsystem.md) — Defines the rules of the persistent player-run market
+- [PersistenceSystem](entities/persistencesystem.md) — Defines the authoritative save lifecycle: which directory the world and per-player records live in, how often the server autosaves, how a headless server is asked to shut down cleanly, and how a record is written so a kill mid-write cannot truncate it
 - [TradeSystem](entities/tradesystem.md) — Defines the rules governing player-to-player trade
 - [WeatherSystem](entities/weathersystem.md) — Simulates weather across biomes as an emergent world system
 
