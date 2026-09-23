@@ -66,8 +66,11 @@ func _process(_delta: float) -> void:
 	_drain_load_queue()
 	refresh()
 
-## Begin automatic streaming (driven by _process). Call after the player has
-## been placed so the initial window is centred on the actual spawn.
+## Begin automatic streaming (driven by _process). The first `refresh()` is what
+## centres the window, so the caller places the player before calling it —
+## `_boot_host()` reaches it through `_boot_server()` before the spawn and then
+## re-centres with a second `refresh()`, while a dedicated server simply streams
+## around the player's pre-spawn position (the origin) and never moves it.
 func start() -> void:
 	_active = true
 

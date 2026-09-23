@@ -52,7 +52,7 @@ pnpm generate   # generate the design bible into bible/
 | 29 | Interest management (area of interest) | Done |
 | 30 | Pack and herd behavior | Done |
 | 31 | Trees and resource appearance | Done |
-| 32 | One authoritative boot path | Planned |
+| 32 | One authoritative boot path | Done |
 | 33 | Player identity and server-side persistence | Planned |
 
 See [ROADMAP.md](ROADMAP.md) for the full spec, deliverables, and acceptance criteria for each phase.

@@ -41,6 +41,42 @@ jobs:
             exit 1
           fi
 
+  server-boot:
+    name: Dedicated server boots clean
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # Same submodule note as godot-tests: the public repo runs on the
+        # committed placeholders.
+
+      - name: Download Godot 4.7
+        run: |
+          mkdir -p /tmp/godot
+          curl -fsSL -o /tmp/godot/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          unzip -o /tmp/godot/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
+
+      - name: Boot the dedicated server headless
+        run: |
+          # `--server` is a USER arg: it must follow the `--` separator.
+          # OS.get_cmdline_user_args() returns only what comes after it, so
+          # passing `--server` among the engine args would silently boot a
+          # listen host instead and the job would prove nothing.
+          # `--quit` is mandatory: without it the headless main loop never exits.
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --quit -- --server \
+            2>&1 | tee /tmp/godot-server.log
+          # Positive assertion: the server path must report it actually came up,
+          # not merely fail to crash.
+          if ! grep -q "\[Server\] listening on port" /tmp/godot-server.log; then
+            echo "::error::server did not report a listening line"
+            exit 1
+          fi
+          if grep -qE "SCRIPT ERROR|Parse Error|Compile Error" /tmp/godot-server.log; then
+            echo "::error::script/parse/compile errors present in the server boot log"
+            exit 1
+          fi
+
   fabric:
     name: Fabric validation + drift check
     runs-on: ubuntu-latest

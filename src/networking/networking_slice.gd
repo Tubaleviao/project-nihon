@@ -170,6 +170,9 @@ func _process(_delta: float) -> void:
 # ---------------------------------------------------------------------------
 
 ## Start an authoritative ENet server. Sets the slice to HOST role.
+## Prints one boot line on success (the same line a dedicated server and a
+## listen host both emit) so CI can assert the server actually came up rather
+## than merely failing to crash.
 func host(port: int = DEFAULT_PORT, max_clients: int = DEFAULT_MAX_CLIENTS) -> Error:
 	_peer = ENetMultiplayerPeer.new()
 	var err := _peer.create_server(port, max_clients)
@@ -178,6 +181,7 @@ func host(port: int = DEFAULT_PORT, max_clients: int = DEFAULT_MAX_CLIENTS) -> E
 		return err
 	_role = Role.HOST
 	_attach_peer()
+	print("[Server] listening on port %d, max_clients %d" % [port, max_clients])
 	return OK
 
 ## Connect to a remote host. Sets the slice to CLIENT role.
