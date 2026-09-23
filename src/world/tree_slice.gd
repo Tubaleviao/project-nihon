@@ -4,11 +4,11 @@ extends Node
 ## Wood materials (Thornwood / Duskfiber) deliberately do NOT spawn as ground in
 ## VoxelSlice.BIOME_MATERIALS: the fabric's biome prose spawns them as *trees*, so
 ## this slice is where a player actually gets lumber. Trees are placed
-## deterministically inside each loaded chunk — the position derives from the
-## chunk coordinate and an index, so host and client agree with no snapshot for
-## placement — sit on the terrain surface like creatures, and are felled with an
-## axe (`toolType: "axe"`): the wood lands in the inventory and the stump regrows
-## after a cooldown.
+## deterministically inside each loaded chunk — the position and the id derive
+## from the chunk coordinate, the species, and an index, so host and client agree
+## on both with no snapshot for placement — sit on the terrain surface like
+## creatures, and are felled with an axe (`toolType: "axe"`): the wood lands in
+## the inventory and the stump regrows after a cooldown.
 ##
 ## Only *state* is replicated: chopping is authoritative (a client forwards the
 ## intent, the host re-runs the chop and broadcasts the result), mirroring the
@@ -74,7 +74,6 @@ const RESPAWN_SECONDS := 120.0
 ## mi, body }. `mi` is an opaque MultiMesh instance index and `body` the trunk's
 ## StaticBody3D (null headless, or while chopped) — never a rendered Node3D tree.
 var _trees: Dictionary = {}
-var _next_id: int = 0
 
 ## Shared MultiMesh pool; null when render_visuals is false (headless server).
 var _pool: Node = null
@@ -107,9 +106,9 @@ func _process(_delta: float) -> void:
 # Streaming (Phase 17)
 # ---------------------------------------------------------------------------
 
-## Spawn the per-chunk tree budget for this chunk's biome. Positions and species
-## are deterministic, so a reload restores the same trees; surviving trees are
-## counted first so a chunk reload never exceeds the budget.
+## Spawn the per-chunk tree budget for this chunk's biome. Positions, species,
+## and ids are deterministic, so a reload restores the same trees; surviving trees
+## are counted first so a chunk reload never exceeds the budget.
 func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 	var entry := tree_entry_for_biome(_chunk_biome(chunk_pos))
 	if entry.is_empty():
@@ -253,7 +252,7 @@ func _tick_respawn() -> void:
 		tree["state"] = "standing"
 		tree["respawn_at"] = -1.0
 		if render_visuals:
-			tree["body"] = _build_collision(str(tid), tree["position"])
+			tree["body"] = _build_collision(str(tid), tree["position"], str(tree["species"]))
 		if _pool != null and int(tree["mi"]) >= 0:
 			_pool.set_color(int(tree["mi"]), _species_color(str(tree["species"])))
 			_pool.set_transform(int(tree["mi"]), _visual_transform(tree["position"]))
@@ -296,7 +295,7 @@ func _on_tree_respawned(tree_id: String) -> void:
 	tree["state"] = "standing"
 	tree["respawn_at"] = -1.0
 	if render_visuals:
-		tree["body"] = _build_collision(tree_id, tree["position"])
+		tree["body"] = _build_collision(tree_id, tree["position"], str(tree["species"]))
 	if _pool != null and int(tree["mi"]) >= 0:
 		_pool.set_color(int(tree["mi"]), _species_color(str(tree["species"])))
 		_pool.set_transform(int(tree["mi"]), _visual_transform(tree["position"]))
@@ -312,12 +311,15 @@ func _spawn(species: String, wood: String, chunk_pos: Vector2i, spawn_index: int
 	if terrain_slice != null and terrain_slice.has_method("get_height_at"):
 		pos.y = terrain_slice.get_height_at(Vector2(xz.x, xz.y))
 
-	var tree_id := "tree_%d" % _next_id
-	_next_id += 1
+	# The id derives from the same deterministic placement inputs, not from a spawn
+	# counter: a tree id is the only identity the wire carries, so it has to agree
+	# between peers (whose chunk streaming order differs) and survive a chunk reload
+	# (which respawns a chunk's trees from scratch).
+	var tree_id := "tree_%d_%d_%d" % [chunk_pos.x, chunk_pos.y, spawn_index]
 	var mi := _alloc_visual(species, pos)
 	var body: StaticBody3D = null
 	if render_visuals:
-		body = _build_collision(tree_id, pos)
+		body = _build_collision(tree_id, pos, species)
 
 	_trees[tree_id] = {
 		"tree_id":    tree_id,
@@ -401,14 +403,16 @@ func _stump_color() -> Color:
 	return Color(0.28, 0.20, 0.13)
 
 ## One StaticBody3D per standing tree, on TREE_COLLISION_LAYER, carrying the tree
-## id (and species) as metadata so the player's chop ray can resolve its target.
-## Built only when rendering — a headless server has no aim ray to serve.
-func _build_collision(tree_id: String, pos: Vector3) -> StaticBody3D:
+## id and species as metadata so the player's chop ray can resolve its target and
+## label it (PlayerSlice reads both). Built only when rendering — a headless
+## server has no aim ray to serve.
+func _build_collision(tree_id: String, pos: Vector3, species: String) -> StaticBody3D:
 	var body := StaticBody3D.new()
 	body.name = "TreeTrunk_%s" % tree_id
 	body.collision_layer = TREE_COLLISION_LAYER
 	body.collision_mask = 0
 	body.set_meta("tree_id", tree_id)
+	body.set_meta("species", species)
 	body.position = pos
 	var shape := CollisionShape3D.new()
 	var cylinder := CylinderShape3D.new()

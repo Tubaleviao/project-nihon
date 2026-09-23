@@ -487,10 +487,11 @@ func material_for_biome(biome: String, world_xz: Vector2) -> String:
 
 ## Small raised deposits for the rare veins in one chunk, as
 ## `[{ "position": Vector3, "size": Vector3, "color": Color }]` — the geometry
-## build_chunk adds on top of the flat ground. Only NATURAL columns qualify: a
-## player-placed block is never a vein, and a mined-out column yields no deposit
-## (its material changes to the placement stack's top). Pure, so the rare-vein
-## read is testable headlessly without a renderer.
+## build_chunk adds on top of the flat ground. Only a NATURAL column qualifies: a
+## player-placed block is never a vein. Mining does NOT remove a deposit — the
+## mined tile has no placed material, so its material roll is unchanged and the
+## deposit simply rides down to the lowered column top with it. Pure, so the
+## rare-vein read is testable headlessly without a renderer.
 func vein_deposits(chunk_pos: Vector2i, heightmap: Array) -> Array:
 	var out: Array = []
 	var deposit_size := Vector3(

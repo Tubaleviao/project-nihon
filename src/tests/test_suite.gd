@@ -219,6 +219,9 @@ func run() -> void:
 	_run_test("tree: stump regrows on its cooldown",            _test_tree_stump_regrows_on_cooldown)
 	_run_test("tree: despawn is per chunk",                     _test_tree_despawn_is_per_chunk)
 	_run_test("tree: client forwards then applies host chop",   _test_tree_client_forwards_then_applies_host_chop)
+	_run_test("tree: ids agree across peer spawn order",        _test_tree_ids_agree_across_peer_spawn_order)
+	_run_test("tree: ids survive a chunk reload",               _test_tree_ids_survive_chunk_reload)
+	_run_test("tree: trunk body carries its identity",          _test_tree_trunk_body_carries_its_identity)
 	_run_test("chunk: reload honours engaged spawn budget",     _test_chunk_reload_engaged_budget)
 	_run_test("chunk: apply_edits preserves dirty chunks",      _test_apply_edits_preserves_dirty_chunks)
 	_run_test("chunk: persistence round-trips per-chunk edits", _test_chunk_persistence_manifest)
@@ -4693,6 +4696,61 @@ func _test_tree_client_forwards_then_applies_host_chop() -> void:
 	GameBus.tree_chop_requested.disconnect(listener)
 	t.free()
 
+## The tree id is the ONLY identity the wire carries (tree_chop_intent /
+## tree_chopped / tree_respawned all name a tree by it), and placement is
+## deterministic so no snapshot carries it. Peers that stream their chunks in a
+## different order must therefore still agree on it.
+func _test_tree_ids_agree_across_peer_spawn_order() -> void:
+	var host := _make_tree_slice()
+	var client := _make_tree_slice()
+	host.spawn_for_chunk(Vector2i(0, 0))
+	host.spawn_for_chunk(Vector2i(1, 0))
+	# The client seeds the same two chunks in the opposite order (its own
+	# streaming raced ahead of the host's snapshot, say).
+	client.spawn_for_chunk(Vector2i(1, 0))
+	client.spawn_for_chunk(Vector2i(0, 0))
+	var host_ids: Array = host.trees_in_chunk(Vector2i(0, 0))
+	var client_ids: Array = client.trees_in_chunk(Vector2i(0, 0))
+	host_ids.sort()
+	client_ids.sort()
+	assert_eq(client_ids, host_ids, "both peers name a chunk's trees identically")
+	# …so a broadcast chop resolves on the client instead of being dropped.
+	var tid: String = str(host_ids[0])
+	assert_eq(client.get_tree_record(tid).get("position", Vector3.ZERO),
+		host.get_tree_record(tid).get("position", Vector3.ZERO),
+		"the id names the same tree on both peers")
+	host.free()
+	client.free()
+
+## A reloaded chunk respawns its trees from scratch, so the id must derive from
+## the deterministic placement inputs rather than from spawn order — otherwise a
+## chop broadcast naming a tree harvested before the reload resolves to nothing
+## (apply_chop_state / _on_tree_respawned silently ignore an unknown id).
+func _test_tree_ids_survive_chunk_reload() -> void:
+	var t := _make_tree_slice()
+	t.spawn_for_chunk(Vector2i(0, 0))
+	t.spawn_for_chunk(Vector2i(1, 0))   # an unrelated chunk spawned after it
+	var before: Array = t.trees_in_chunk(Vector2i(0, 0))
+	before.sort()
+	t.despawn_for_chunk(Vector2i(0, 0))
+	t.spawn_for_chunk(Vector2i(0, 0))
+	var after: Array = t.trees_in_chunk(Vector2i(0, 0))
+	after.sort()
+	assert_eq(after, before, "a reloaded chunk restores the same tree ids")
+	t.free()
+
+## The chop HUD label reads the aimed trunk's species off its collision body, so
+## the body must actually carry it (PlayerSlice: get_meta("species")).
+func _test_tree_trunk_body_carries_its_identity() -> void:
+	var t := _make_tree_slice()
+	t.spawn_for_chunk(Vector2i(0, 0))
+	var tree: Dictionary = t.get_all_trees()[0]
+	var body = tree["body"]
+	assert_true(body != null, "a rendered tree builds a trunk collision body")
+	assert_eq(str(body.get_meta("tree_id", "")), str(tree["tree_id"]), "the trunk carries its tree id")
+	assert_eq(str(body.get_meta("species", "")), str(tree["species"]), "the trunk carries its species (the chop HUD label reads it)")
+	t.free()
+
 func _test_chunk_tree_spawn_per_chunk() -> void:
 	var cm := ChunkManager.new()
 	add_child(cm)
@@ -4746,6 +4804,17 @@ func _test_voxel_rare_vein_deposits() -> void:
 		assert_true(absf(float(d["position"].y) - expected_top) < 0.0001, "a deposit sits on the column top")
 		assert_true(absf(float(d["size"].x) - expected_size) < 0.0001, "a deposit is inset inside its tile")
 	assert_eq(v.vein_deposits(plain, flat).size(), 0, "common ground carries no deposit")
+
+	# A mined natural column is not a *placed* one, so its vein keeps its deposit
+	# — at the lowered height (only a player-placed surface is exempt).
+	var mined_tile: Vector2i = v._world_to_tile(Vector2(deposits[0]["position"].x, deposits[0]["position"].z))
+	v._edits[v._tile_key(mined_tile)] = 1.5
+	var mined: Array = v.vein_deposits(rare, flat)
+	assert_eq(mined.size(), deposits.size(), "mining a vein column does not remove its deposit")
+	assert_true(absf(float(mined[0]["position"].y) - (1.5 + VoxelSlice.VEIN_DEPOSIT_HEIGHT * 0.5)) < 0.0001,
+		"the deposit rides down to the mined column top")
+	# Undo the simulated mine: the mesh check below compares flat chunks.
+	v._edits.erase(v._tile_key(mined_tile))
 
 	# The deposits must actually reach the rendered mesh: a rare-biome chunk
 	# carries exactly one box per rare tile more than a ferrite-only chunk of the
