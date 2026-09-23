@@ -250,7 +250,7 @@ func _tick_ghosts(delta: float) -> void:
 
 func _build_ghost_pool() -> void:
 	var cap := CapsuleMesh.new()
-	cap.radius = 0.4
+	cap.radius = 0.25  # matches the collision capsule (see _build_body)
 	cap.height = 1.8
 	_ghost_pool = MultimeshPool.new()
 	_ghost_pool.name = "GhostPool"
@@ -288,7 +288,10 @@ func _build_body() -> void:
 
 	var col := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
-	cap.radius = 0.4
+	# Radius 0.25 (diameter 0.5) matches TILE_SIZE so the body doesn't sink into
+	# the finer 0.5-unit terrain grid (a wider capsule spans multiple columns of
+	# slightly different height and "swims" into the ground).
+	cap.radius = 0.25
 	cap.height = 1.8
 	col.shape   = cap
 	col.position = Vector3(0, 0.9, 0)

@@ -1449,6 +1449,227 @@ types (already emitted by `generator-godot`); no generator change needed.
 
 ---
 
+## Phase 31 — Trees and resource appearance
+
+**Goal:** Source wood materials from trees instead of the bare ground, and give
+surface resources a distinct visual identity so the world reads as "mostly
+plain dirt/rock with sparse, valuable veins" rather than a uniform resource
+field.
+
+**Newel dependency:** None. Reuses existing material entities (`Thornwood`,
+`Duskfiber`); trees are a new world feature modelled in GDScript first, with a
+fabric `world-system`/entity to follow once the runtime shape is settled.
+
+**Deliverables:**
+- Tree entities spawn deterministically per biome (Thornwood in temperate,
+  Duskwood in twilight), placed on the terrain surface like creatures.
+- Chopping a tree yields its wood material (`Thornwood` / `Duskfiber`) into the
+  inventory, replacing the removed ground-wood distribution (wood no longer
+  mines from the ground — see Phase 12's `BIOME_MATERIALS`).
+- Distinct visual treatment for resource veins: the common ground renders as
+  plain dirt/rock, while rarer materials (Aethermite, Lumenfite, Voidite) are
+  tinted and, where sensible, given a small raised/deposited shape so a vein is
+  recognizable from a distance.
+
+**Acceptance criteria:**
+- `BIOME_MATERIALS` no longer lists any wood material (already true as of the
+  map-improvements change; wood comes only from trees).
+- Chopping a tree yields its wood and the tree respawns on a cooldown.
+- A rare-material vein is visually distinguishable from the surrounding ground.
+
+**Known simplifications (deferred):**
+- Tree chopping gated behind a tool (`toolType: 'axe'`) — the axe already
+  exists in the fabric; the gating is wired with the tree feature.
+- Resource deposits have no depth/quantity model yet (mining still yields one
+  unit per `STEP_HEIGHT` slice).
+
+---
+
+## Phase 32 — One authoritative boot path
+
+**Goal:** Make the host path a superset of the server path — `_boot_host()` calls
+`_boot_server()` for the authoritative half, then layers local presentation
+(player spawn, avatars, lighting, UI) on top. One authoritative boot means the
+dedicated server and the listen host can never drift apart. Cheap and
+mechanical; touches no gameplay.
+
+**Newel dependency:** None.
+
+**Why this is its own phase:** there are currently three boot paths and the
+authoritative half is duplicated. `_boot_world()` branches: client →
+`_boot_client()`, server → `_boot_server()`, else the host path is inlined in
+`_boot_world()` itself (player spawn, chunk streaming, the demo craft sequence,
+the save/load snapshot, `_networking.host()`). There is **no `_boot_host()`
+function at all**. The drift is already visible in code: the host path hardcodes
+`_networking.host(_networking.DEFAULT_PORT, 1)` while `_boot_server()` passes
+`DEFAULT_MAX_CLIENTS` (64). Until the server path is the single authoritative
+boot, every Phase 33 persistence change has to be written and verified twice —
+which is why this lands first, as its own commit.
+
+**Deliverables:**
+- Extract the inlined host path from `_boot_world()` into `_boot_host()`.
+  `_boot_host()` calls `_boot_server()` for the authoritative half, then layers
+  local presentation on top: player spawn, avatar/character visuals, lighting,
+  HUD/UI, minimap, and the `DEBUG`-gated demo sequence.
+- `_boot_world()` becomes a three-line role dispatch
+  (`_is_client` → `_boot_client()`, `_is_server` → `_boot_server()`, else
+  `_boot_host()`).
+- Raise the default `max_clients` off 1: the host path passes
+  `_networking.DEFAULT_MAX_CLIENTS` (64), not a literal `1`.
+- Add a CI job to `.github/workflows/ci.yml` that boots `--server --headless`
+  and asserts the server comes up clean.
+
+**Acceptance criteria:** *(not yet met — phase in progress)*
+- [ ] `_boot_world()` contains no inlined host logic — it only dispatches.
+- [ ] A listen host and a dedicated server share the identical authoritative
+  half (same `chunk_manager.start()` / `refresh()` + `networking.host()` calls).
+- [ ] The host still renders: `render_visuals` is decided by `_is_server` in
+  `_ready()`, so a host calling `_boot_server()` must still build the player,
+  avatars, lighting, and UI.
+- [ ] `max_clients` is 64 on the host path, not 1.
+- [ ] The new CI job fails on a `SCRIPT ERROR` / `Parse Error` / `Compile Error`
+  in the server boot log.
+- [ ] Headless suite count is unchanged (this step adds behaviours, not tests of
+  the suite's existing assertions).
+
+**Implementation notes:**
+- **Order the authoritative half before the player spawn.** `_boot_server()`
+  streams the chunk window around the *origin*; the host path places the player
+  at the spawn point first and then refreshes so the window centres on spawn. A
+  `_boot_host()` that calls `_boot_server()` first must therefore re-`refresh()`
+  the chunk manager after spawning, or `_boot_server()` must expose its two
+  authoritative steps separately. Do not silently regress the spawn-centred
+  window — that is the Phase 17/31 behaviour.
+- **`--server` is a *user* arg, so it goes after `--`.** `OS.get_cmdline_user_args()`
+  returns only what follows the separator; the CI job must invoke
+  `godot --headless --path . --quit -- --server`, not `--server` among the engine
+  args (it would be silently ignored and the job would boot a host instead).
+- **Assert positively, not just by absence of errors.** Today the server path
+  prints no line on success, so the only assertable fact is the absence of
+  `SCRIPT ERROR` / `Parse Error` / `Compile Error`. Add one boot line (e.g.
+  `[Server] listening on <port>, max_clients <n>`) so the job can assert the
+  server actually came up rather than merely failed to crash.
+- Keep the CI job cheap: reuse the `godot-tests` job's Godot 4.7 download step
+  and run `--quit` (without it the headless main loop never exits).
+
+**Known simplifications (deferred):**
+- The authoritative half is shared; the presentation layer is not. Only the host
+  runs the `DEBUG`-gated demo sequence, the player spawn, and the visual build,
+  so a dedicated server is authoritative but presentation-free — that is the
+  intended Phase 27 sim/visual split, not a gap.
+- `--server` gains no graceful termination hook here; the save-on-termination
+  lifecycle is Phase 33's work.
+
+---
+
+## Phase 33 — Player identity and server-side persistence
+
+**Goal:** Give each player a connection-independent id owning their inventory,
+HP, position, and appearance, then write a real save lifecycle — load on server
+boot, autosave, save on disconnect and shutdown. Today the dedicated server
+(Phase 27) boots empty and discards the world: `_boot_server()` calls neither
+save nor load, and every piece of player state is keyed on `peer_id`, which ENet
+reassigns on every connection. Builds on Phase 32: by the time this phase starts
+there is exactly one authoritative boot (`_boot_server()`), shared by the
+listen host.
+
+**Newel dependency:** `PlayerIdentityModel` — a new `decision` entity in
+`fabric/constitution/decisions.js` (the ratified decision on whether identity is
+a server-issued local UUID or an account-backed id). No generator change: the
+`uuid` + `enum` field types and the `proposed → accepted → superseded` decision
+state machine are already emitted. Run `pnpm validate` → `pnpm generate` →
+`pnpm check-drift` after adding it.
+
+**Deliverables:**
+- Add a stable player id that survives reconnect; `peer_id` can't be the key.
+  Mint a `player_id` on first join, persist it, and send it to the client so a
+  reconnect re-binds to the same record (`networking_slice` keeps only the
+  transport mapping `peer_id → player_id`).
+- Make inventory per-player, preserving the Phase 25 per-instance
+  durability-array invariant: a durable item's per-instance `Array` *is* the
+  stack, and `get_durability_data()` / `replace_contents()` round-trip per
+  player — no shared inventory across peers.
+- Restore `player.position` and `player.hp` in `_on_load_completed` — the boot
+  snapshot already writes both (`player` → `position` / `hp` in `game_root`),
+  but load restores only inventory / technology / market / governance / trade.
+- Add stations and creature state (deaths, respawn timers) to the snapshot.
+  `station_slice` has no `get_station_data()` / `apply_station_data()` pair at
+  all, and `creature_slice.get_snapshot_creatures()` carries only
+  `{instance_id, creature_id, state, position}` — no `hp`, no `respawn_at`.
+- Load the world in `_boot_server` — Phase 32's shared authoritative half — which
+  currently calls neither save nor load (it only runs `chunk_manager.start()` /
+  `refresh()` and `host()`). Loading there means the listen host inherits it.
+- Autosave on an interval; save on peer disconnect.
+- Save on shutdown: handle `WM_CLOSE_REQUEST` and `SIGTERM` — servers are
+  killed, not closed, so the window-close path alone never fires. The WM-close
+  half needs `get_tree().auto_accept_quit = false` before saving.
+- Use the existing dirty-chunk tracking for incremental voxel saves, not full
+  rewrites: `_on_save_completed` already calls `clear_dirty_chunks()`, so an
+  autosave must rewrite only `get_dirty_chunk_keys()`'s manifests.
+- Replace the single JSON slot with per-player records under a server save dir:
+  `persistence_slice` writes one `user://saves/slot_NN.json` today; move to a
+  world record (chunks / stations / creatures) plus one record per player under
+  a server save dir, keeping `save` / `load_slot` working for the existing
+  tests and the client-side legacy path.
+- Ratify identity model (local UUID vs account) as a fabric decision entity:
+  `PlayerIdentityModel` in `fabric/constitution/decisions.js`, accepted through
+  the same decision state machine the other constitution decisions use.
+
+**Acceptance criteria:** *(not yet met — phase in progress)*
+- [ ] A restart round-trip (save → fresh boot → load) reproduces player
+  position, HP, inventory with per-instance durability, stations, and creature
+  death / respawn state.
+- [ ] Reconnecting with a new connection keeps the same inventory — the id
+  survives the reconnect and the `peer_id` change.
+- [ ] A disconnect mid-craft leaves the inventory consistent after save: no
+  half-consumed materials, no duplicated output.
+- [ ] A spoofed id is rejected — a client cannot claim or write into another
+  player's record.
+- [ ] `_boot_server` loads the world on boot and autosave runs on its interval
+  (host/authoritative only).
+- [ ] `pnpm validate` + `pnpm check-drift` clean, headless suite green with the
+  4 new tests.
+
+**Tasks / tests:**
+- Restart round-trip (save → boot → load).
+- Reconnect keeps inventory.
+- Disconnect mid-craft.
+- Spoofed id rejected.
+
+**Implementation notes:**
+- **Respawn timers must become wall-clock.** `creature_slice` sets
+  `inst["respawn_at"] = Time.get_ticks_msec() + respawn_secs * 1000.0` —
+  `Time.get_ticks_msec()` is *process uptime*, so a saved deadline is meaningless
+  after a restart. Persist it as a Unix-epoch deadline
+  (`Time.get_unix_time_from_system()`), matching the Phase 24 market/proposal
+  convention.
+- **Id authority sits on the server.** The client may supply a cached id at
+  join; the server honours it only if it already has that record, otherwise it
+  mints a fresh one. That single rule is what makes the spoof case rejectable.
+- **Gate the whole lifecycle on `is_authoritative`.** A client neither loads a
+  world from disk nor autosaves — it receives state from the host (Phase 29's
+  AOI-scoped snapshot stays the client's only view).
+- **Save writes should survive a kill mid-write.** Create the save dir with
+  `DirAccess.make_dir_recursive_absolute` and write via a temp file + rename so a
+  SIGTERM during a save can't truncate a per-player record.
+- Autosave interval and the save-dir layout belong in the fabric/config, not as
+  bare GDScript constants, following the fabric-first discipline.
+- **Load only in the authoritative half.** Phase 32 leaves exactly one
+  authoritative boot (`_boot_server()`), so the world load belongs there and a
+  listen host inherits it for free. Do not put the load in `_boot_host()`'s
+  presentation layer — that is the duplication Phase 32 removed.
+
+**Known simplifications (deferred):**
+- No account or auth service: identity is whatever the ratified
+  `PlayerIdentityModel` decision lands on, but account binding / login is out of
+  scope for this phase (a local server-issued UUID is the working model).
+- No world-shard handoff of a player record between servers — see Deferred →
+  server sharding.
+- Autosave is a plain interval timer; no dirty-player-only diffing, so a
+  player record is rewritten whole each tick even when only one field changed.
+
+---
+
 ## Deferred (in priority order)
 
 - **Server sharding (final, not before maturity)** — split the authoritative

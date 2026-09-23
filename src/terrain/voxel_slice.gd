@@ -29,8 +29,8 @@ extends Node
 
 ## CHUNK_SIZE is defined once on TerrainSlice and accessed via terrain_slice.CHUNK_SIZE.
 ## The local alias below keeps internal uses readable without duplicating the value.
-const CHUNK_SIZE  := 32        # alias — authoritative copy lives in TerrainSlice
-const TILE_SIZE   := 1.0       # world units per tile (XZ)
+const CHUNK_SIZE  := 64        # alias — authoritative copy lives in TerrainSlice
+const TILE_SIZE   := 0.5       # world units per tile (XZ) — half the former 1.0 size
 const STEP_HEIGHT := 0.125     # world units per quantised height step (smooth, walkable — no jumps)
 const MIN_HEIGHT  := 0.0       # bedrock — cannot mine below this
 const MAX_HEIGHT  := 16.0      # build cap — cannot place above this
@@ -39,14 +39,28 @@ const MAX_HEIGHT  := 16.0      # build cap — cannot place above this
 ## block ray can target terrain without hitting the player's own body.
 const TERRAIN_COLLISION_LAYER := 2
 
-## Biome → material keys mined from its surface. Values are fabric material
-## entity keys (GameData.MATERIALS); the dominant material is listed first.
+## Biome → weighted ground-material distribution (material key → weight out of
+## 100). A faithful transcription of each biome's fabric `evaluateSpawn` prose
+## (fabric/world/biomes/*.js), normalised to 100: the biome's dominant rock /
+## metal / crystal is the bulk of the surface, and a rarer ore appears only
+## where that biome's prose actually grants one (sparse veins). Wood materials
+## (Thornwood / Duskfiber) are deliberately absent — their prose spawns them as
+## trees, not as ground to mine (they land with the "trees and resource
+## appearance" phase). Aethermite is a deep ley-line ore (see the Aethermite
+## entity: "deep underground near ley lines"), so it is granted only to the two
+## biomes whose prose spawns it — VolcanicBadlands (0.2) and TwilightGrove
+## (0.15) — and never invented for the temperate biomes.
 const BIOME_MATERIALS: Dictionary = {
-	"TemperateForest":    ["Ferrite", "Thornwood"],
-	"TemperateGrassland": ["Ferrite", "Thornwood"],
-	"VolcanicBadlands":   ["Ashite", "Aethermite"],
-	"TwilightGrove":      ["Duskfiber", "Lumenfite"],
-	"VoidRift":           ["Voidite", "Aethermite"],
+	# prose: ferrite outcrops 0.6; thornwood 0.8 is a tree, not ground
+	"TemperateForest":    { "Ferrite": 100 },
+	# prose: ferrite deposits 0.4; thornwood 0.1 is a tree, not ground
+	"TemperateGrassland": { "Ferrite": 100 },
+	# prose: ashite 0.9 / aethermite 0.2 / ferrite 0.1
+	"VolcanicBadlands":   { "Ashite": 75, "Aethermite": 17, "Ferrite": 8 },
+	# prose: lumenfite 0.5 / aethermite 0.15; duskfiber 0.9 is a tree, not ground
+	"TwilightGrove":      { "Lumenfite": 77, "Aethermite": 23 },
+	# prose: voidite 0.7 / ferrite 0.3
+	"VoidRift":           { "Voidite": 70, "Ferrite": 30 },
 }
 
 ## Terrain tint per material key — makes each ground material visually distinct
@@ -201,25 +215,36 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
 
 	root.add_child(mesh_inst)
 
-	# --- Collision: one solid box per column ---
+	# --- Collision: merge horizontally-contiguous same-height columns into one
+	# box per run. TILE_SIZE 0.5 would otherwise emit 64×64 = 4096 boxes per
+	# chunk and stall boundary crossings; run-merging collapses flat rows (the
+	# common case, especially the flattened spawn plain) to a handful of boxes,
+	# so the finer visual grid costs no extra collision nodes. ---
 	var static_body := StaticBody3D.new()
 	static_body.collision_layer = TERRAIN_COLLISION_LAYER
 	static_body.collision_mask = 0
 	for tz in range(CHUNK_SIZE):
-		for tx in range(CHUNK_SIZE):
+		var tx := 0
+		while tx < CHUNK_SIZE:
 			var h := _column_height(heightmap, chunk_pos, tx, tz)
 			if h <= 0.0:
+				tx += 1
 				continue
+			var run_end := tx + 1
+			while run_end < CHUNK_SIZE and _column_height(heightmap, chunk_pos, run_end, tz) == h:
+				run_end += 1
+			var run_width := run_end - tx
 			var col_shape := CollisionShape3D.new()
 			var box := BoxShape3D.new()
-			box.size = Vector3(TILE_SIZE, h, TILE_SIZE)
+			box.size = Vector3(run_width * TILE_SIZE, h, TILE_SIZE)
 			col_shape.shape = box
 			col_shape.position = Vector3(
-				origin.x + tx * TILE_SIZE + TILE_SIZE * 0.5,
+				origin.x + (tx + run_width * 0.5) * TILE_SIZE,
 				h * 0.5,
 				origin.z + tz * TILE_SIZE + TILE_SIZE * 0.5
 			)
 			static_body.add_child(col_shape)
+			tx = run_end
 	root.add_child(static_body)
 
 ## Free a chunk's visual + collision nodes without touching its base heightmap
@@ -418,14 +443,22 @@ func _buildable_materials() -> Array:
 			out.append(str(key))
 	return out
 
-## Material yielded by mining a tile in the given biome (deterministic per tile).
+## Material yielded by mining a tile in the given biome (deterministic per tile,
+## rarity-weighted). The common "rocky" material dominates; rarer ores appear as
+## sparse veins. No wood materials — those come from trees, not the ground.
 func material_for_biome(biome: String, world_xz: Vector2) -> String:
-	var materials: Array = BIOME_MATERIALS.get(biome, ["Ferrite"])
-	if materials.is_empty():
+	var weights: Dictionary = BIOME_MATERIALS.get(biome, { "Ferrite": 1 })
+	if weights.is_empty():
 		return "Ferrite"
 	var tile := _world_to_tile(world_xz)
-	var idx := absi(tile.x * 73856093 + tile.y * 19349663) % materials.size()
-	return str(materials[idx])
+	# Deterministic per-tile roll (stable across sessions, no randi()).
+	var roll := posmod(tile.x * 73856093 + tile.y * 19349663, 100)
+	var cumulative := 0
+	for material in weights:
+		cumulative += int(weights[material])
+		if roll < cumulative:
+			return str(material)
+	return str(weights.keys()[0])
 
 # ---------------------------------------------------------------------------
 # Private

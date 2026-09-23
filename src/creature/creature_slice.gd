@@ -239,16 +239,18 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 ## Deterministic world XZ inside the chunk footprint (inset one tile from the edge).
 ## The position is derived from chunk_pos, creature_id, and spawn_index so the same
 ## creature always lands at the same spot regardless of frame rate or call order.
+## Tile-aware: converts the global tile index to world units via TILE_SIZE (0.5).
 func _deterministic_chunk_position(chunk_pos: Vector2i, creature_id: String, spawn_index: int) -> Vector2:
 	var cs: int = _chunk_size()
+	var ts: float = _tile_size()
 	var inner: int = cs - 2  # tiles available after 1-tile border inset
 	var seed_x: int = (chunk_pos.x * 73856093) ^ (chunk_pos.y * 19349663) ^ (creature_id.hash() * 83492791) ^ (spawn_index * 1000003)
 	var seed_z: int = (chunk_pos.x * 19349663) ^ (chunk_pos.y * 83492791) ^ (creature_id.hash() * 1000003) ^ (spawn_index * 73856093)
 	var local_x: int = (abs(seed_x) % inner) + 1
 	var local_z: int = (abs(seed_z) % inner) + 1
 	return Vector2(
-		float(chunk_pos.x * cs + local_x) + 0.5,
-		float(chunk_pos.y * cs + local_z) + 0.5
+		float(chunk_pos.x * cs + local_x) * ts + ts * 0.5,
+		float(chunk_pos.y * cs + local_z) * ts + ts * 0.5
 	)
 
 ## True when the creature is a pack/herd member (groupBehavior != none). Solitary
@@ -293,6 +295,12 @@ func _chunk_size() -> int:
 	if terrain_slice != null and terrain_slice.has_method("world_to_chunk"):
 		return terrain_slice.CHUNK_SIZE
 	return 32
+
+## Tile world size from TerrainSlice; falls back to 1.0 when unwired (tests).
+func _tile_size() -> float:
+	if terrain_slice != null and "TILE_SIZE" in terrain_slice:
+		return float(terrain_slice.TILE_SIZE)
+	return 1.0
 
 ## Canonical biome key list from TerrainSlice; falls back to the hard list when unwired.
 func _biome_keys() -> Array:

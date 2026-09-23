@@ -50,6 +50,10 @@ pnpm generate   # generate the design bible into bible/
 | 27 | Headless data-oriented server | Done |
 | 28 | Spatial hashing | Done |
 | 29 | Interest management (area of interest) | Done |
+| 30 | Pack and herd behavior | Done |
+| 31 | Trees and resource appearance | In progress |
+| 32 | One authoritative boot path | Planned |
+| 33 | Player identity and server-side persistence | Planned |
 
 See [ROADMAP.md](ROADMAP.md) for the full spec, deliverables, and acceptance criteria for each phase.
 
