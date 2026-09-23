@@ -17,6 +17,7 @@ const combat       = require('./gameplay/combat')
 const economy      = require('./gameplay/economy')
 const player       = require('./gameplay/player')
 const loot         = require('./gameplay/loot')
+const persistence  = require('./gameplay/persistence')
 const skeletons    = require('./gameplay/characters/skeletons')
 const palettes     = require('./gameplay/characters/palettes')
 const appearances  = require('./gameplay/characters/appearances')
@@ -54,6 +55,7 @@ module.exports = defineFabric({
       DestructibleBuildings:     decisions.DestructibleBuildings,
       KnowledgeByExperimentation: decisions.KnowledgeByExperimentation,
       FictionalMaterials:        decisions.FictionalMaterials,
+      PlayerIdentityModel:       decisions.PlayerIdentityModel,
       MonetizationRules:         monetization.MonetizationRules,
     },
     // World — Materials
@@ -181,6 +183,8 @@ module.exports = defineFabric({
     },
     // Gameplay — Combat system
     { CombatSystem: combat.CombatSystem },
+    // Gameplay — Server persistence + save lifecycle (Phase 33)
+    { PersistenceSystem: persistence.PersistenceSystem },
     // Gameplay — Player economy + governance systems (Phase 24)
     {
       TradeSystem:      economy.TradeSystem,

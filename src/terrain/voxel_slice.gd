@@ -435,6 +435,22 @@ func get_dirty_chunk_keys() -> Array:
 func clear_dirty_chunks() -> void:
 	_dirty_chunks.clear()
 
+## Remove exactly `keys` from the dirty set. The authoritative save runs the file
+## write on a worker thread, so the clear happens when the payload is COLLECTED
+## (main thread, atomically with reading it) rather than after the write lands. A
+## keyed clear is what makes that safe: an edit made while the write is in flight
+## marks its chunk dirty again and is carried by the next save, instead of being
+## swallowed by a blanket clear.
+func clear_dirty_chunk_keys(keys: Array) -> void:
+	for key in keys:
+		_dirty_chunks.erase(str(key))
+
+## Re-mark `keys` dirty — the rollback for a save whose write failed, so a failed
+## write cannot lose the chunks it claimed to persist.
+func mark_dirty_chunks(keys: Array) -> void:
+	for key in keys:
+		_dirty_chunks[str(key)] = true
+
 func set_place_material(material: String) -> void:
 	_place_material = material
 

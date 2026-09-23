@@ -104,6 +104,40 @@ signal save_requested(slot: int, data: Dictionary)
 signal load_requested(slot: int)
 
 # ---------------------------------------------------------------------------
+# Player identity + authoritative records (Phase 33)
+# ---------------------------------------------------------------------------
+
+## Client → host: a joining player presents a cached player_id (empty on a first
+## join). The host resolves it — honouring a known id that no live peer holds,
+## minting a fresh one otherwise — so a reconnect re-binds to the same record.
+## peer_id    : int    — the connection the id belongs to (transport only)
+## claimed_id : String — the client's cached id ("" when it has none)
+signal player_join_intent(peer_id: int, claimed_id: String)
+
+## Host → client: the server-issued player_id for this connection. The client
+## caches it so a reconnect can claim the same record.
+signal player_identity_assigned(player_id: String)
+
+## Host-side: an identity was bound to a connection (first join or reconnect).
+## peer_id     : int    — the connection the id was bound to (transport only)
+## player_id   : String — the server-issued id
+## reconnected : bool   — true when the connection claimed an existing record
+signal player_joined(peer_id: int, player_id: String, reconnected: bool)
+
+## Host-side: a connection dropped and its record was written. The record is
+## retained, so the player_id is still valid for a later reconnect.
+signal player_left(player_id: String)
+
+## Emitted by PersistenceSlice when the authoritative world record is written.
+signal world_saved()
+
+## Emitted by PersistenceSlice when a world save fails.
+signal world_save_failed(reason: String)
+
+## Emitted by PersistenceSlice when one player record is written.
+signal player_saved(player_id: String)
+
+# ---------------------------------------------------------------------------
 # Battle — death signals
 # ---------------------------------------------------------------------------
 
@@ -174,6 +208,15 @@ signal item_broke(item_id: String)
 ## Request to craft a recipe (emitted by the player/UI or any system).
 ## recipe_id : String — key from GameData.RECIPES (e.g. "RecipeFerritePick")
 signal craft_requested(recipe_id: String)
+
+## Phase 33 — a craft intent carrying WHO is crafting, so crafting is per-player.
+## A client emits it with an empty player_id ("me"); the networking slice forwards
+## it to the host, which re-emits it with the identity it resolved for that
+## connection, and CraftingSlice resolves the recipe against that player's own
+## inventory. Host-local crafting stays on `craft_requested`.
+## recipe_id : String — key from GameData.RECIPES
+## player_id : String — the crafter; "" means "the local player"
+signal craft_intent(recipe_id: String, player_id: String)
 
 ## Emitted by CraftingSlice with the outcome of a craft attempt.
 ## result : Dictionary — { recipe_id, success, outputs: [{ item, quantity }], reason }

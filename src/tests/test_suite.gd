@@ -35,6 +35,7 @@ const SkeletonRig     := preload("res://src/character/skeleton_rig.gd")
 const SkillTiers      := preload("res://src/core/skill_tiers.gd")
 const MultimeshPool   := preload("res://src/core/multimesh_pool.gd")
 const SpatialHash     := preload("res://src/core/spatial_hash.gd")
+const PlayerRegistry  := preload("res://src/persistence/player_registry.gd")
 
 var _pass: int = 0
 var _fail: int = 0
@@ -313,6 +314,37 @@ func run() -> void:
 	_run_test("instancing: headless creature has no visual",    _test_creature_headless_no_visual)
 	_run_test("instancing: creatures share one pool",           _test_creature_single_pool)
 	_run_test("instancing: headless player has no ghost/broadcast", _test_player_headless_no_ghost_or_broadcast)
+	_run_test("identity: restart round-trip restores the world",  _test_identity_restart_round_trip)
+	_run_test("identity: reconnect keeps the inventory",         _test_identity_reconnect_keeps_inventory)
+	_run_test("identity: disconnect mid-craft stays consistent", _test_identity_disconnect_mid_craft)
+	_run_test("identity: spoofed id is rejected",               _test_identity_spoofed_id_rejected)
+	_run_test("identity: snapshot carries own record only on handshake", _test_identity_snapshot_own_record_rule)
+	_run_test("identity: record replay skips ids not spawned",   _test_identity_record_replay_skips_unknown_ids)
+	_run_test("identity: unknown peer position is not 0,0,0",    _test_identity_unknown_peer_has_no_position)
+	# Phase 33 review fixes
+	_run_test("persistence: incremental merge keeps unstreamed creature deaths", _test_merge_keeps_unstreamed_creature_deaths)
+	_run_test("persistence: creature merge is per instance_id",   _test_merge_creature_states_by_instance_id)
+	_run_test("persistence: autosave interval falls back when 0", _test_autosave_interval_falls_back)
+	_run_test("persistence: player id is path-safe",              _test_player_id_is_path_safe)
+	_run_test("persistence: non-canonical player id refused",     _test_non_canonical_player_id_refused)
+	_run_test("persistence: thread-safe write_job writes records", _test_write_job_writes_records)
+	_run_test("chunk: dirty clear is per key + re-markable",      _test_dirty_keys_clear_and_remark)
+	_run_test("identity: minted id carries 128-bit entropy",      _test_minted_id_has_crypto_entropy)
+	_run_test("identity: local player id is not claimable",       _test_local_player_id_not_claimable)
+	_run_test("identity: offline record loads lazily on claim",   _test_record_loaded_lazily_on_claim)
+	_run_test("identity: save writes online records only",        _test_save_writes_online_records_only)
+	_run_test("creature: despawn keeps the death record",         _test_despawn_keeps_death_record)
+	_run_test("creature: recorded death survives boot replay",    _test_recorded_death_survives_boot_replay)
+	_run_test("creature: state delta keeps the respawn deadline", _test_creature_state_delta_keeps_deadline)
+	_run_test("persistence: shutdown poll is independent of autosave", _test_shutdown_poll_cadence)
+	_run_test("identity: client-declared hp is never persisted",   _test_remote_hp_not_persisted)
+	_run_test("identity: disconnect evicts record + inventory",   _test_disconnect_evicts_player)
+	_run_test("identity: handshake retry re-answers a bound peer", _test_handshake_retry_reanswers_peer)
+	_run_test("net: retry re-presents the join intent",           _test_retry_represents_join_intent)
+	_run_test("market: cleared party inventory binding",          _test_party_inventory_binding_cleared)
+	_run_test("persistence: failed write reports + keeps record",  _test_failed_write_reports_and_preserves)
+	_run_test("craft: craft uses the crafter's own inventory",    _test_craft_uses_crafter_inventory)
+	_run_test("craft: client forwards a craft intent",            _test_craft_client_forwards_intent)
 
 	# Self-check: the _run_test list above is manual, so a test function can be
 	# written but forgotten from the list. Fail loudly instead of silently
@@ -521,8 +553,9 @@ func _test_creature_respawn_resets_battle_hp() -> void:
 		# Simulate a kill: battle tracks 0 HP and the creature dies via the bus.
 		b._hp_state[iid] = 0.0
 		GameBus.creature_died.emit(iid, Vector3.ZERO, "player")
-		# Force the respawn timer to have elapsed, then tick.
-		c._instances[iid]["respawn_at"] = Time.get_ticks_msec() - 1.0
+		# Force the respawn timer to have elapsed, then tick. Deadlines are
+		# WALL-CLOCK seconds (Phase 33), not process uptime.
+		c._instances[iid]["respawn_at"] = Time.get_unix_time_from_system() - 1.0
 		c._tick_respawn()
 		assert_false(b._hp_state.has(iid), "battle hp state cleared on respawn")
 		assert_eq(c._instances[iid]["state"], "idle", "creature state back to idle after respawn")
@@ -599,7 +632,7 @@ func _test_creature_respawn_rehashes_spatial() -> void:
 		assert_true(c._spatial.query_radius(moved, 1.0).has(iid), "hash holds the moved position")
 		# Kill it and force the respawn timer to have elapsed, then tick.
 		c._instances[iid]["state"] = "dead"
-		c._instances[iid]["respawn_at"] = Time.get_ticks_msec() - 1.0
+		c._instances[iid]["respawn_at"] = Time.get_unix_time_from_system() - 1.0
 		c._tick_respawn()
 		assert_eq(c._instances[iid]["position"], spawn_pos, "position reset to the spawn point")
 		assert_true(c._spatial.query_radius(spawn_pos, 1.0).has(iid), "hash re-keyed to the spawn point after respawn")
@@ -4835,6 +4868,994 @@ func _test_voxel_rare_vein_materials() -> void:
 	assert_false(VoxelSlice.RARE_VEIN_MATERIALS.has("Ferrite"), "the common ground is not a vein")
 	assert_false(VoxelSlice.RARE_VEIN_MATERIALS.has("Ashite"), "the volcanic bulk rock is not a vein")
 	v.free()
+
+# ---------------------------------------------------------------------------
+# Phase 33 — player identity + server-side persistence
+# ---------------------------------------------------------------------------
+
+## Empty a test save directory so each run starts from a known state.
+func _wipe_dir(dir: String) -> void:
+	var d := DirAccess.open(dir)
+	if d == null:
+		DirAccess.make_dir_recursive_absolute(dir)
+		return
+	for file_name in d.get_files():
+		d.remove(file_name)
+
+func _test_identity_restart_round_trip() -> void:
+	# save → fresh boot → load must reproduce player position, HP, inventory with
+	# per-instance durability, stations, and creature death / respawn state. This
+	# is the "the world is persistent" acceptance criterion, end to end.
+	var dir := "user://saves/test_p33_roundtrip/"
+	_wipe_dir(dir)
+
+	# ---- process 1: mutate state, then save ----
+	var voxel := VoxelSlice.new()
+	add_child(voxel)
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+	voxel.build_chunk(Vector2i(0, 0), flat)
+	voxel.build_chunk(Vector2i(1, 0), flat)
+	voxel.mine_block(Vector3(16.0, 2.0, 16.0))    # chunk "0,0"
+	voxel.mine_block(Vector3(48.0, 2.0, 16.0))    # chunk "1,0"
+
+	var stations := StationSlice.new()
+	add_child(stations)
+	stations.place_station("forge", Vector3(20.0, 3.0, 20.0))
+
+	var creatures := CreatureSlice.new()
+	add_child(creatures)
+	creatures.spawn_for_chunk(Vector2i(0, 0))
+	var spawned := creatures.get_all_instances()
+	assert_true(spawned.size() > 0, "need a population to record")
+	var dead_id: String = str(spawned[0]["instance_id"])
+	GameBus.creature_died.emit(dead_id, Vector3.ZERO, "player")
+	var deadline := float(creatures._instances[dead_id]["respawn_at"])
+	assert_eq(str(creatures._instances[dead_id]["state"]), "dead", "the creature is recorded dead")
+	# The deadline must be WALL-CLOCK, or a restart makes it meaningless.
+	assert_true(deadline > Time.get_unix_time_from_system(), "respawn deadline is a future Unix-epoch second")
+
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var inventory := InventorySlice.new()
+	add_child(inventory)
+	inventory.add_item("FerritePick", 1)     # durable → per-instance wear
+	inventory.add_item("Ashite", 6)
+	inventory.use_item("FerritePick", "mine")
+	var worn := float(inventory.get_durability_values("FerritePick")[0])
+	assert_true(worn < inventory.get_max_durability("FerritePick"), "the pick is worn before the save")
+	var pid := registry.mint_player_id()
+	registry.set_local_player(pid, inventory)
+	registry.record_position(pid, Vector3(21.0, 4.5, 22.0))
+	registry.record_hp(pid, 63.0)
+	# Appearance is part of the identity: store the avatar's recipe.
+	var character := CharacterSlice.new()
+	add_child(character)
+	var char_id := character.create_character("TravellerHuman", Vector3.ZERO)
+	var appearance: Dictionary = character.get_appearance(char_id)
+	assert_false(appearance.is_empty(), "the character exposes an appearance recipe")
+	registry.record_appearance(pid, appearance)
+
+	var writer := PersistenceSlice.new()
+	add_child(writer)
+	writer.server_save_dir = dir
+	var full := {
+		"timestamp":       Time.get_unix_time_from_system(),
+		"local_player_id": pid,
+		"chunks":          voxel.get_chunk_manifest(),
+		"dirty_chunks":    voxel.get_dirty_chunk_keys(),
+		"stations":        stations.get_station_data(),
+		"creatures":       creatures.get_snapshot_creatures(),
+	}
+	assert_eq(writer.save_world(full, false), OK, "the full world record writes")
+	assert_eq(writer.save_player(pid, registry.get_player_data(pid)), OK, "the player record writes")
+	assert_true(writer.has_world(), "world record exists on disk")
+	assert_eq(writer.list_player_records(), [pid], "exactly one player record is listed")
+
+	# ---- an autosave is incremental: only the dirty chunk is re-serialized ----
+	voxel.clear_dirty_chunks()
+	voxel.mine_block(Vector3(48.0, 2.0, 20.0))   # chunk "1,0" only
+	var dirty := voxel.get_dirty_chunk_keys()
+	assert_eq(dirty.size(), 1, "only the edited chunk is dirty")
+	var subset := PersistenceSlice.dirty_chunk_subset(voxel.get_chunk_manifest(), dirty)
+	assert_eq(subset.size(), 1, "the incremental payload carries only the dirty manifest")
+	assert_true(subset.has("1,0"), "the dirty chunk is the one carried")
+	assert_false(subset.has("0,0"), "a clean chunk is NOT re-serialized")
+	assert_eq(writer.save_world({
+		"timestamp":       Time.get_unix_time_from_system(),
+		"local_player_id": pid,
+		"chunks":          subset,
+		"dirty_chunks":    dirty,
+		"stations":        stations.get_station_data(),
+		"creatures":       creatures.get_snapshot_creatures(),
+	}, true), OK, "the incremental world record writes")
+
+	# ---- process end ----
+	voxel.free()
+	stations.free()
+	creatures.free()
+	inventory.free()
+	writer.free()
+	character.free()
+
+	# ---- process 2: a fresh boot reads it back ----
+	var reader := PersistenceSlice.new()
+	add_child(reader)
+	reader.server_save_dir = dir
+	var world := reader.load_world()
+	assert_false(world.is_empty(), "the world record reloads")
+	# The incremental merge kept the chunk the earlier FULL save wrote.
+	assert_true(world["chunks"].has("0,0"), "the clean chunk survives the incremental merge")
+	assert_true(world["chunks"].has("1,0"), "the dirty chunk is present after the merge")
+
+	var voxel2 := VoxelSlice.new()
+	add_child(voxel2)
+	voxel2.apply_chunk_manifest(world["chunks"])
+	assert_eq(voxel2.get_voxel_height_at(Vector2(16.0, 16.0)), 1.875, "the mined column comes back mined")
+	assert_eq(voxel2.get_voxel_height_at(Vector2(48.0, 16.0)), 1.875, "the second mined column too")
+	assert_eq(voxel2.get_voxel_height_at(Vector2(48.0, 20.0)), 1.875, "and the autosaved edit")
+
+	var stations2 := StationSlice.new()
+	add_child(stations2)
+	stations2.apply_station_data(world.get("stations", []))
+	assert_eq(stations2.get_all_stations().size(), 1, "the station comes back")
+	assert_eq(str(stations2.get_all_stations()[0]["id"]), "station_0", "a station keeps its saved id")
+	assert_eq(str(stations2.get_all_stations()[0]["type"]), "forge", "and its type")
+
+	# Creature state: the population respawns from the same deterministic inputs,
+	# then the recorded state is applied over it — the boot order.
+	var creatures2 := CreatureSlice.new()
+	add_child(creatures2)
+	creatures2.spawn_for_chunk(Vector2i(0, 0))
+	creatures2.apply_snapshot_creatures(world.get("creatures", []))
+	assert_true(creatures2._instances.has(dead_id), "the recorded instance id exists after a fresh spawn")
+	if creatures2._instances.has(dead_id):
+		assert_eq(str(creatures2._instances[dead_id]["state"]), "dead", "the death survives the restart")
+		# The record is JSON text, so compare within a millisecond rather than
+		# bit-for-bit: the deadline is the same INSTANT after the round-trip.
+		assert_true(absf(float(creatures2._instances[dead_id]["respawn_at"]) - deadline) < 0.001,
+			"the wall-clock deadline survives the restart")
+
+	var record := reader.load_player(pid)
+	assert_false(record.is_empty(), "the player record reloads")
+	assert_eq(str(record["player_id"]), pid, "the record is keyed by the player id")
+	assert_eq(float(record["position"][0]), 21.0, "position x round-trips")
+	assert_eq(float(record["position"][2]), 22.0, "position z round-trips")
+	assert_eq(float(record["hp"]), 63.0, "HP round-trips")
+
+	# The stored appearance recipe is a usable recipe, not just data on disk.
+	var saved_appearance: Variant = record.get("appearance", {})
+	assert_true(saved_appearance is Dictionary and not (saved_appearance as Dictionary).is_empty(),
+		"appearance is persisted with the record")
+	var character2 := CharacterSlice.new()
+	add_child(character2)
+	assert_true(character2.create_character_from_recipe(saved_appearance, Vector3.ZERO) != "",
+		"the stored appearance recipe rebuilds a character")
+	character2.free()
+
+	var inventory2 := InventorySlice.new()
+	add_child(inventory2)
+	inventory2.replace_contents(record["inventory"], record.get("inventory_durability", {}))
+	assert_eq(inventory2.get_item_count("Ashite"), 6, "stack contents round-trip")
+	assert_eq(inventory2.get_item_count("FerritePick"), 1, "the durable item round-trips")
+	assert_eq(float(inventory2.get_durability_values("FerritePick")[0]), worn, "per-instance wear round-trips")
+	inventory2.free()
+	reader.free()
+
+func _test_identity_reconnect_keeps_inventory() -> void:
+	# A reconnect is a NEW peer_id. The registry must hand the same player_id back,
+	# along with the same inventory and record — nothing may be keyed on peer_id.
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+
+	var pid := registry.resolve_identity(2)
+	assert_true(pid != "", "a first join is minted an identity")
+	assert_true(pid != "peer_2", "the identity is not the connection id")
+	var inventory = registry.get_inventory(pid)
+	assert_true(inventory != null, "the player gets an inventory")
+	inventory.add_item("Ashite", 5)
+	# POSITION is the surviving-field probe here, not HP: a remote peer's HP is
+	# client-declared and deliberately NOT persisted (see record_hp and
+	# _test_remote_hp_not_persisted), so it could not carry this assertion.
+	registry.record_position(pid, Vector3(7.0, 1.0, 8.0))
+	assert_true(registry.is_online(pid), "the identity is bound while connected")
+	assert_eq(registry.get_peer_id(pid), 2, "the id maps to the live connection")
+
+	# Disconnect: the transport mapping goes, the record and inventory stay.
+	assert_eq(registry.unbind_peer(2), pid, "unbind returns the identity it held")
+	assert_false(registry.is_online(pid), "the player is offline after the disconnect")
+	assert_true(registry.has_player(pid), "the record is retained while offline")
+
+	# Reconnect on a different connection, claiming the cached id.
+	var again := registry.resolve_identity(7, pid)
+	assert_eq(again, pid, "the reconnect re-binds to the same player_id")
+	assert_eq(registry.get_peer_id(pid), 7, "the id now maps to the new connection")
+	assert_eq(registry.get_inventory(pid).get_item_count("Ashite"), 5, "the inventory survives the reconnect")
+	assert_eq(registry.get_record(pid)["position"], [7.0, 1.0, 8.0], "the record survives the reconnect")
+
+	# Two players never share an inventory instance.
+	var other := registry.resolve_identity(9)
+	assert_true(other != pid, "a different connection is a different player")
+	assert_true(registry.get_inventory(other) != registry.get_inventory(pid), "inventories are per-player")
+	registry.free()
+
+func _test_identity_disconnect_mid_craft() -> void:
+	# A craft consumes its inputs then produces its outputs. A disconnect writes
+	# the player record, so the saved inventory must be an all-or-nothing step:
+	# no half-consumed materials (inputs gone, no output) and no duplicated output.
+	var crafting := CraftingSlice.new()
+	add_child(crafting)
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var inventory := InventorySlice.new()
+	add_child(inventory)
+	crafting.inventory_slice = inventory
+	crafting.set_skill("Smithing", "master")
+
+	var recipe: Dictionary = crafting.get_recipe("RecipeFerriteIngot")
+	assert_false(recipe.is_empty(), "the recipe resolves from GameData")
+	# The structured field carries [{item, quantity}] entries; the slice folds
+	# them into { item_id: quantity } counts for consumption checks.
+	var inputs: Dictionary = crafting._to_counts(recipe.get("inputs", []))
+	var outputs: Dictionary = crafting._to_counts(recipe.get("outputs", []))
+	assert_true(inputs.size() > 0 and outputs.size() > 0, "the recipe has structured inputs and outputs")
+	for item_id in inputs:
+		inventory.add_item(str(item_id), int(inputs[item_id]) * 2)
+
+	var pid := registry.mint_player_id()
+	registry.set_local_player(pid, inventory)
+	assert_true(bool(crafting.craft("RecipeFerriteIngot").get("success", false)), "the craft succeeds")
+
+	# The disconnect-time record write.
+	var dir := "user://saves/test_p33_craft/"
+	_wipe_dir(dir)
+	var store := PersistenceSlice.new()
+	add_child(store)
+	store.server_save_dir = dir
+	store.save_player(pid, registry.get_player_data(pid))
+
+	# A fresh inventory restored from that record: exactly one craft happened.
+	var restored := InventorySlice.new()
+	add_child(restored)
+	var record := store.load_player(pid)
+	restored.replace_contents(record["inventory"], record.get("inventory_durability", {}))
+	for item_id in inputs:
+		assert_eq(restored.get_item_count(str(item_id)),
+			int(inputs[item_id]), "exactly one craft's inputs were consumed")
+	for item_id in outputs:
+		assert_eq(restored.get_item_count(str(item_id)),
+			int(outputs[item_id]), "the output is present exactly once — never duplicated")
+	# The write is a snapshot of ONE consistent state: what is on disk is exactly
+	# what the player holds, so a kill between consume and produce cannot persist
+	# a half-finished craft. (JSON numbers come back as floats, hence int().)
+	var live: Dictionary = inventory.get_contents()
+	var saved: Dictionary = record["inventory"]
+	assert_eq(saved.size(), live.size(), "the saved record holds exactly the live items")
+	for item_id in live:
+		assert_eq(int(saved.get(item_id, -1)), int(live[item_id]),
+			"the saved record matches the live '%s' count" % item_id)
+
+	restored.free()
+	store.free()
+	inventory.free()
+	registry.free()
+	crafting.free()
+
+func _test_identity_spoofed_id_rejected() -> void:
+	# Id authority sits on the server. Claiming a record that a LIVE peer holds,
+	# or one the server has never seen, must not grant access to it.
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+
+	var victim := registry.resolve_identity(2)
+	var victim_inventory = registry.get_inventory(victim)
+	victim_inventory.add_item("Ashite", 9)
+	assert_true(registry.is_online(victim), "the victim is connected")
+
+	# A second connection claims the victim's id while the victim is still online.
+	var attacker := registry.resolve_identity(5, victim)
+	assert_true(attacker != victim, "a claim on a live identity is refused")
+	assert_eq(registry.get_player_id(2), victim, "the victim keeps its identity")
+	assert_eq(victim_inventory.get_item_count("Ashite"), 9, "the victim's inventory is untouched")
+	var attacker_inventory = registry.get_inventory(attacker)
+	attacker_inventory.add_item("Ashite", 1)
+	assert_eq(victim_inventory.get_item_count("Ashite"), 9, "the attacker cannot write into the victim's record")
+
+	# An id the server has never issued is discarded too.
+	var fresh := registry.resolve_identity(6, "player_never_issued")
+	assert_true(fresh != "player_never_issued", "an unknown claimed id is discarded")
+	assert_true(registry.has_player(fresh), "the peer becomes a new player instead")
+
+	# The third case: an OFFLINE record — one that exists but no live PEER holds. The
+	# listen host's own player is exactly that (it has no connection to itself, so no
+	# peer_id maps to it), and the old rule — "the record exists and is not online" —
+	# handed it to whichever client claimed the id first, inventory and all.
+	var host_id := registry.mint_player_id()
+	registry.set_local_player(host_id)
+	registry.get_inventory(host_id).add_item("Ashite", 3)
+	assert_true(registry.is_online(host_id), "the local player counts as online")
+	assert_eq(registry.get_peer_id(host_id), 0, "even though no peer id holds it")
+	var grab := registry.resolve_identity(11, host_id)
+	assert_true(grab != host_id, "a claim on the host's own offline record is refused")
+	assert_eq(registry.get_inventory(host_id).get_item_count("Ashite"), 3,
+		"and the host's inventory is untouched")
+
+	# A client owns no identity authority at all.
+	registry.is_authoritative = false
+	assert_eq(registry.resolve_identity(9, ""), "", "a non-authoritative registry mints nothing")
+	registry.free()
+
+func _test_identity_snapshot_own_record_rule() -> void:
+	# The peer's own record (position / HP / inventory / technology) may ride the
+	# JOIN snapshot only. The client applies whatever the snapshot carries, and the
+	# record is written at load and at disconnect — never per frame — so carrying it
+	# on an AOI re-scope would teleport a moving client back to its last-saved
+	# position and roll its inventory back with it.
+	assert_true(PersistenceSlice.snapshot_carries_own_record(true, "player_1_1_ab"),
+		"the handshake snapshot of a known peer carries its record")
+	assert_false(PersistenceSlice.snapshot_carries_own_record(false, "player_1_1_ab"),
+		"an AOI re-scope never carries the record")
+	assert_false(PersistenceSlice.snapshot_carries_own_record(true, ""),
+		"a snapshot for a peer with no resolved identity carries no record")
+	assert_false(PersistenceSlice.snapshot_carries_own_record(false, ""),
+		"neither does a re-scope before the handshake lands")
+
+func _test_identity_record_replay_skips_unknown_ids() -> void:
+	# A saved world record is replayed over the population chunk streaming spawned.
+	# An id the slice does not hold belongs to an unstreamed chunk: the replay must
+	# skip it rather than fabricate an instance (no chunk, leaked visual, and an id
+	# the real spawn would later overwrite, losing the restored state anyway).
+	var creatures := CreatureSlice.new()
+	add_child(creatures)
+	creatures.spawn_for_chunk(Vector2i(0, 0))
+	var spawned := creatures.get_all_instances()
+	assert_true(spawned.size() > 0, "need a streamed population to replay onto")
+	var known_id: String = str(spawned[0]["instance_id"])
+	var count_before: int = spawned.size()
+
+	# A record with one id this process spawned, one id from a chunk it did not.
+	var record: Array = [
+		{
+			"instance_id": known_id,
+			"creature_id": str(spawned[0]["creature_id"]),
+			"state":       "dead",
+			"position":    [1.0, 2.0, 3.0],
+			"hp":          0.0,
+			"respawn_at":  4102444800.0,
+		},
+		{
+			"instance_id": "creature_999_999_Ghost_0",
+			"creature_id": "CinderGargoyle",
+			"state":       "dead",
+			"position":    [100.0, 0.0, 100.0],
+			"hp":          0.0,
+			"respawn_at":  4102444800.0,
+		},
+	]
+	creatures.apply_recorded_creature_states(record)
+
+	assert_eq(creatures.get_all_instances().size(), count_before,
+		"the replay creates no instance for an id that was never spawned")
+	assert_false(creatures._instances.has("creature_999_999_Ghost_0"),
+		"the unstreamed id is not fabricated")
+	assert_true(creatures._instances.has(known_id), "the streamed instance is still present")
+	assert_eq(str(creatures._instances[known_id]["state"]), "dead",
+		"the recorded death re-applies to the instance that exists")
+	assert_eq(float(creatures._instances[known_id]["respawn_at"]), 4102444800.0,
+		"the wall-clock deadline re-applies with it")
+
+	# The CLIENT path is unchanged: first sight still creates the instance, or a
+	# client would render nothing the host tells it about.
+	creatures.apply_snapshot_creatures([{ "instance_id": "creature_5_5_Slug_0", "creature_id": "LavaSlug", "state": "idle", "position": [4.0, 1.0, 4.0] }])
+	assert_true(creatures._instances.has("creature_5_5_Slug_0"),
+		"the client snapshot path still creates an unknown instance on first sight")
+	creatures.free()
+
+func _test_identity_unknown_peer_has_no_position() -> void:
+	# get_last_known_state() answers Vector3.ZERO both for "standing at the origin"
+	# and for "never reported". A disconnect handler that cannot tell them apart
+	# writes (0,0,0) into a durable player record, so a returning player resurrects
+	# at the world origin. has_last_known_state() is the discriminator.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	assert_false(n.has_last_known_state(4), "a peer that never reported has no known state")
+	assert_eq(n.get_last_known_state(4), Vector3.ZERO, "and its position reads as the origin sentinel")
+	n.remember_player_state(4, Vector3(9.0, 2.0, 9.0))
+	assert_true(n.has_last_known_state(4), "a reporting peer has a known state")
+	assert_eq(n.get_last_known_state(4), Vector3(9.0, 2.0, 9.0), "and the real position reads back")
+	n.free()
+
+# ---------------------------------------------------------------------------
+# Phase 33 review fixes
+# ---------------------------------------------------------------------------
+
+func _test_merge_keeps_unstreamed_creature_deaths() -> void:
+	# An incremental save carries only the population the process holds (the streamed
+	# chunks). Replacing the recorded creature list wholesale dropped the death of
+	# every creature in a chunk that was not in view — walk away from a corpse, save,
+	# walk back, and the death was gone.
+	var base: Array = [
+		{ "instance_id": "creature_0_0_Boar_0", "state": "dead", "respawn_at": 4102444800.0 },
+		{ "instance_id": "creature_1_0_Wolf_0", "state": "idle", "respawn_at": -1.0 },
+	]
+	var inc: Array = [
+		{ "instance_id": "creature_1_0_Wolf_0", "state": "dead", "respawn_at": 4102444801.0 },
+	]
+	var merged := PersistenceSlice.merge_creature_states(base, inc)
+	assert_eq(merged.size(), 2, "the unstreamed entry is retained")
+	var by_id: Dictionary = {}
+	for entry in merged:
+		by_id[str(entry["instance_id"])] = entry
+	assert_eq(str(by_id["creature_0_0_Boar_0"]["state"]), "dead",
+		"a death in a chunk that is not in view survives the merge")
+	assert_eq(str(by_id["creature_1_0_Wolf_0"]["state"]), "dead", "the payload's newer state wins")
+	assert_eq(float(by_id["creature_1_0_Wolf_0"]["respawn_at"]), 4102444801.0, "and its deadline with it")
+
+	# The same through the real incremental disk path (_merge_world).
+	var dir := "user://saves/test_merge_creatures/"
+	_wipe_dir(dir)
+	var store := PersistenceSlice.new()
+	add_child(store)
+	store.server_save_dir = dir
+	assert_eq(store.save_world({ "creatures": base }, false), OK, "the full record writes")
+	assert_eq(store.save_world({ "creatures": inc }, true), OK, "the incremental record writes")
+	var world := store.load_world()
+	assert_eq((world["creatures"] as Array).size(), 2, "the incremental write merged, not replaced")
+	store.free()
+
+func _test_merge_creature_states_by_instance_id() -> void:
+	# The merge is keyed on instance_id: the payload wins per id, junk is ignored, and
+	# a missing list on either side is not a crash.
+	assert_eq(PersistenceSlice.merge_creature_states([], []).size(), 0, "two empties merge to empty")
+	assert_eq(PersistenceSlice.merge_creature_states(null, null).size(), 0, "and so do two nulls")
+	assert_eq(PersistenceSlice.merge_creature_states(["junk", 3], []).size(), 0,
+		"non-dictionary entries are ignored, not fatal")
+	var only_inc := PersistenceSlice.merge_creature_states([], [{ "instance_id": "a", "state": "dead" }])
+	assert_eq(only_inc.size(), 1, "an entry only the payload knows is added")
+	assert_eq(only_inc[0]["state"], "dead", "with the payload's state")
+	var only_base := PersistenceSlice.merge_creature_states([{ "instance_id": "a", "state": "dead" }], [])
+	assert_eq(only_base.size(), 1, "an entry only the record knows is retained")
+	assert_eq(only_base[0]["state"], "dead", "with the record's state")
+
+func _test_autosave_interval_falls_back() -> void:
+	# 0 (or a negative) in the fabric used to SILENTLY DISABLE the autosave, and a
+	# headless server has no other save hook — nothing is delivered for SIGTERM. It
+	# falls back like the string fields do instead of being honoured as "never".
+	assert_eq(PersistenceSlice.resolved_autosave_interval(0.0), PersistenceSlice.DEFAULT_AUTOSAVE_SECS,
+		"a zero interval falls back")
+	assert_eq(PersistenceSlice.resolved_autosave_interval(-5.0), PersistenceSlice.DEFAULT_AUTOSAVE_SECS,
+		"a negative interval falls back too")
+	assert_eq(PersistenceSlice.resolved_autosave_interval(60.0), 60.0, "a positive interval is respected")
+	assert_true(PersistenceSlice.autosave_due(300.0, PersistenceSlice.resolved_autosave_interval(0.0)),
+		"and the fallback really does make an autosave due")
+
+func _test_player_id_is_path_safe() -> void:
+	var store := PersistenceSlice.new()
+	add_child(store)
+	store.server_save_dir = "user://saves/server/"
+	assert_eq(PersistenceSlice.sanitize_player_id("player_1_1_ab"), "player_1_1_ab",
+		"a canonical id is unchanged")
+	assert_eq(PersistenceSlice.sanitize_player_id("../../world"), "world", "traversal is stripped")
+	assert_eq(PersistenceSlice.sanitize_player_id("a/b"), "ab", "separators are stripped")
+	assert_eq(PersistenceSlice.sanitize_player_id("a\\b"), "ab", "windows separators too")
+	assert_eq(PersistenceSlice.sanitize_player_id("..."), "", "dots alone sanitize away")
+	var path := store.player_path("../../world")
+	assert_true(path.begins_with(store.server_save_dir), "the record path stays inside the save dir: %s" % path)
+	assert_false(path.contains(".."), "and carries no traversal: %s" % path)
+	assert_eq(path, store.player_path("world"), "a traversal id cannot name a different file than its safe form")
+	store.free()
+
+func _test_non_canonical_player_id_refused() -> void:
+	# A player id reaches the filesystem through player_path(), so a non-canonical one
+	# is refused outright rather than sanitized into a DIFFERENT record's path.
+	var dir := "user://saves/test_sanitize/"
+	_wipe_dir(dir)
+	var store := PersistenceSlice.new()
+	add_child(store)
+	store.server_save_dir = dir
+	var pid := "player_1_1_ab"
+	assert_eq(store.save_player(pid, { "player_id": pid }), OK, "a canonical id saves")
+	assert_eq(str(store.load_player(pid).get("player_id", "")), pid, "and loads back")
+	assert_eq(store.save_player("../escape", {}), ERR_INVALID_PARAMETER, "a traversal id is refused")
+	assert_true(store.load_player("../escape").is_empty(), "and cannot be read back")
+	assert_true(store.load_player("").is_empty(), "an empty id is refused too")
+	assert_eq(store.list_player_records(), [pid], "exactly the canonical record is on disk")
+	assert_false(FileAccess.file_exists("user://saves/escape.json"), "no file escaped the save dir")
+	store.free()
+
+func _test_write_job_writes_records() -> void:
+	# The authoritative save runs write_job on a worker THREAD (see game_root), so the
+	# job must be plain data with no bus signals and no node access — and it must
+	# produce exactly the records a synchronous save would.
+	var dir := "user://saves/test_write_job/"
+	_wipe_dir(dir)
+	var store := PersistenceSlice.new()
+	add_child(store)
+	store.server_save_dir = dir
+	var pid := "player_1_1_abc"
+	var job := {
+		"world":       { "local_player_id": pid, "chunks": { "0,0": { "edits": {}, "materials": {} } } },
+		"incremental": false,
+		"players":     { pid: { "player_id": pid, "hp": 12.0 } },
+	}
+	var thread := Thread.new()
+	assert_eq(thread.start(store.write_job.bind(job)), OK, "the job starts on a worker thread")
+	assert_eq(int(thread.wait_to_finish()), OK, "and reports success")
+	assert_true(store.has_world(), "the world record landed")
+	assert_eq(str(store.load_world().get("local_player_id", "")), pid, "with its local player id")
+	assert_eq(float(store.load_player(pid).get("hp", -1.0)), 12.0, "and the player record landed")
+
+	# An incremental job merges over what is already on disk.
+	var job2 := {
+		"world":       { "local_player_id": pid, "creatures": [{ "instance_id": "c0", "state": "dead" }] },
+		"incremental": true,
+		"players":     {},
+	}
+	assert_eq(int(store.write_job(job2)), OK, "the incremental job writes")
+	var world := store.load_world()
+	assert_true((world.get("chunks", {}) as Dictionary).has("0,0"), "the earlier chunk survived the merge")
+	assert_eq((world.get("creatures", []) as Array).size(), 1, "and the new creature state was folded in")
+	store.free()
+
+func _test_dirty_keys_clear_and_remark() -> void:
+	# The authoritative save clears the dirty keys it SERIALIZED, on the main thread,
+	# because the write is off-thread. A keyed clear (plus a re-mark when the write
+	# failed) is what keeps an edit made during the write from being silently dropped.
+	var voxel := VoxelSlice.new()
+	add_child(voxel)
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+	voxel.build_chunk(Vector2i(0, 0), flat)
+	voxel.build_chunk(Vector2i(1, 0), flat)
+	voxel.mine_block(Vector3(16.0, 2.0, 16.0))   # chunk "0,0"
+	voxel.mine_block(Vector3(48.0, 2.0, 16.0))   # chunk "1,0"
+	assert_eq(voxel.get_dirty_chunk_keys().size(), 2, "two chunks are dirty")
+	voxel.clear_dirty_chunk_keys(["0,0"])
+	assert_eq(voxel.get_dirty_chunk_keys(), ["1,0"], "only the serialized key was cleared")
+	voxel.mark_dirty_chunks(["0,0"])
+	assert_eq(voxel.get_dirty_chunk_keys().size(), 2, "a failed write puts its chunks back")
+	voxel.clear_dirty_chunk_keys(voxel.get_dirty_chunk_keys())
+	assert_eq(voxel.get_dirty_chunk_keys().size(), 0, "all keys can be cleared")
+	voxel.mine_block(Vector3(20.0, 2.0, 16.0))   # chunk "0,0" again
+	assert_eq(voxel.get_dirty_chunk_keys(), ["0,0"], "a later edit re-marks its own chunk only")
+	voxel.free()
+
+func _test_minted_id_has_crypto_entropy() -> void:
+	# player_id is a bearer token: whoever presents it is handed the record. It used
+	# to carry 16 bits of a fast PRNG — 65 536 guesses, brute-forceable in one
+	# reconnect flood. It is 128 bits of CSPRNG now.
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var a := registry.mint_player_id()
+	var b := registry.mint_player_id()
+	assert_true(a != b, "two mints differ")
+	var parts := a.split("_")
+	assert_eq(parts.size(), 4, "the id keeps its readable player_<epoch>_<n>_<entropy> shape")
+	assert_eq(parts[0], "player", "with its prefix")
+	assert_eq(parts[3].length(), PlayerRegistry.ID_ENTROPY_BYTES * 2, "128 bits of entropy, hex-encoded")
+	assert_true(parts[3].is_valid_hex_number(false), "and it is hex")
+	assert_true(parts[3].length() > 4, "strictly more than the 4 hex chars (16 bits) it replaced")
+	assert_eq(PersistenceSlice.sanitize_player_id(a), a, "a minted id is path-canonical")
+	registry.free()
+
+func _test_local_player_id_not_claimable() -> void:
+	# A listen host's own player has no peer mapping (it never connects to itself), so
+	# a peer-map lookup answered "offline" and the claim rule — "the record exists and
+	# is not online" — handed the host's inventory to any client that asked for it.
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var host_id := registry.mint_player_id()
+	registry.set_local_player(host_id)
+	assert_true(registry.is_online(host_id), "the local player is online by definition")
+	assert_eq(registry.get_peer_id(host_id), 0, "even though no peer holds it")
+	var inventory = registry.get_inventory(host_id)
+	assert_true(inventory.add_item("Ashite", 3), "the host holds materials")
+	var claim := registry.resolve_identity(4, host_id)
+	assert_true(claim != host_id, "another peer cannot claim the host's identity")
+	assert_eq(registry.get_inventory(host_id).get_item_count("Ashite"), 3,
+		"and the host's inventory is untouched")
+	assert_eq(registry.get_player_id(4), claim, "the claiming peer got a fresh identity of its own")
+	registry.free()
+
+func _test_record_loaded_lazily_on_claim() -> void:
+	# The boot no longer reads every record on disk into memory (the registry never
+	# evicts, so a long-lived server held every player who had ever joined). A record
+	# is pulled in the first time something claims it.
+	var dir := "user://saves/test_lazy/"
+	_wipe_dir(dir)
+	var store := PersistenceSlice.new()
+	add_child(store)
+	store.server_save_dir = dir
+	var stored := "player_1_1_lazy"
+	assert_eq(store.save_player(stored, { "player_id": stored, "hp": 55.0, "position": [3.0, 4.0, 5.0] }), OK,
+		"a record exists on disk")
+	var unseen := "player_1_1_unseen"
+	assert_eq(store.save_player(unseen, { "player_id": unseen, "hp": 1.0 }), OK, "and so does another")
+
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	registry.set_record_loader(store.load_player)
+	assert_false(registry.has_player(stored), "an unclaimed record is NOT resident")
+	var pid := registry.resolve_identity(3, stored)
+	assert_eq(pid, stored, "the claim re-binds to the stored record")
+	assert_true(registry.has_player(stored), "the record was loaded on the claim")
+	assert_eq(float(registry.get_record(stored)["hp"]), 55.0, "with its HP")
+	assert_eq(float(registry.get_record(stored)["position"][0]), 3.0, "and its position")
+	registry.resolve_identity(8)
+	assert_false(registry.has_player(unseen), "a record nobody claimed is never loaded at all")
+	registry.free()
+	store.free()
+
+func _test_save_writes_online_records_only() -> void:
+	# An offline player's record is already durable and cannot change without a
+	# connection, so rewriting every long-gone player on every autosave only grew the
+	# write cost with the number of players who had ever joined.
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var host_id := registry.mint_player_id()
+	registry.set_local_player(host_id)
+	var online := registry.resolve_identity(2)
+	var offline := registry.resolve_identity(5)
+	registry.unbind_peer(5)
+	assert_true(registry.is_online(online), "a bound peer is online")
+	assert_false(registry.is_online(offline), "an unbound player is offline")
+	var ids := registry.get_online_player_ids()
+	assert_true(host_id in ids, "the save set includes the local player")
+	assert_true(online in ids, "and every connected peer")
+	assert_false(offline in ids, "but not a player who has gone away")
+	registry.free()
+
+func _test_despawn_keeps_death_record() -> void:
+	# A dead creature's state IS the record. Despawning the chunk erased the instance
+	# outright, so walking back respawned the creature alive, ignoring the death.
+	var creatures := CreatureSlice.new()
+	add_child(creatures)
+	creatures.spawn_for_chunk(Vector2i(0, 0))
+	var spawned := creatures.get_all_instances()
+	assert_true(spawned.size() > 0, "need a population to kill")
+	var iid: String = str(spawned[0]["instance_id"])
+	GameBus.creature_died.emit(iid, Vector3.ZERO, "player")
+	var deadline := float(creatures._instances[iid]["respawn_at"])
+	assert_eq(str(creatures._instances[iid]["state"]), "dead", "the creature is dead")
+
+	creatures.despawn_for_chunk(Vector2i(0, 0))
+	assert_false(creatures._instances.has(iid), "the instance is despawned (its body slot freed)")
+	var carried := false
+	for entry in creatures.get_snapshot_creatures():
+		if str(entry.get("instance_id", "")) == iid:
+			carried = true
+			assert_eq(str(entry["state"]), "dead", "the snapshot still carries the death")
+			assert_true(absf(float(entry["respawn_at"]) - deadline) < 0.001,
+				"with its wall-clock deadline")
+	assert_true(carried, "a despawned death is still part of the record")
+
+	# Walking back: the chunk respawns its budget, and the dead one comes back DEAD.
+	creatures.spawn_for_chunk(Vector2i(0, 0))
+	assert_true(creatures._instances.has(iid), "the instance exists again after the reload")
+	assert_eq(str(creatures._instances[iid]["state"]), "dead", "and it came back dead, not alive")
+	assert_true(absf(float(creatures._instances[iid]["respawn_at"]) - deadline) < 0.001,
+		"with the same respawn deadline")
+
+	# A deadline that has already passed is spent: the reload brings it back alive.
+	creatures._instances[iid]["respawn_at"] = Time.get_unix_time_from_system() - 1.0
+	creatures._tick_respawn()
+	assert_eq(str(creatures._instances[iid]["state"]), "idle", "a spent deadline respawns it")
+	creatures.despawn_for_chunk(Vector2i(0, 0))
+	creatures.spawn_for_chunk(Vector2i(0, 0))
+	assert_eq(str(creatures._instances[iid]["state"]), "idle", "and a spent death is not remembered")
+	creatures.free()
+
+func _test_recorded_death_survives_boot_replay() -> void:
+	# The boot replays a saved record AFTER chunk streaming. A recorded death for an
+	# id outside the boot view window used to be dropped on the floor — and the chunk
+	# streams later, so the creature respawned alive. It is held instead.
+	var creatures := CreatureSlice.new()
+	add_child(creatures)
+	creatures.spawn_for_chunk(Vector2i(4, 4))
+	var ids: Array = []
+	for entry in creatures.get_all_instances():
+		ids.append(str(entry["instance_id"]))
+	assert_true(ids.size() > 0, "need a population to name ids")
+	var target: String = str(ids[0])
+	var deadline := Time.get_unix_time_from_system() + 600.0
+	for iid in ids:
+		creatures._instances.erase(iid)   # a slice that has never streamed chunk 4,4
+	var replay: Array = [{
+		"instance_id": target,
+		"creature_id": "",
+		"state":       "dead",
+		"position":    [1.0, 2.0, 3.0],
+		"hp":          0.0,
+		"respawn_at":  deadline,
+	}]
+	creatures.apply_recorded_creature_states(replay)
+	assert_false(creatures._instances.has(target), "the replay still fabricates no instance")
+	assert_true(creatures._dead_state.has(target), "but it HOLDS the death for the unstreamed chunk")
+
+	creatures.spawn_for_chunk(Vector2i(4, 4))
+	assert_true(creatures._instances.has(target), "the chunk finally streams")
+	assert_eq(str(creatures._instances[target]["state"]), "dead", "and the creature is dead, as recorded")
+	assert_true(absf(float(creatures._instances[target]["respawn_at"]) - deadline) < 0.001,
+		"with the recorded deadline")
+	creatures.free()
+
+func _test_creature_state_delta_keeps_deadline() -> void:
+	# apply_creature_state's optional fields are SENTINELS, not defaults: the per-tick
+	# delta carries neither, so a 4-arg call must not wipe the respawn deadline it
+	# does not mention. Assigning the -1.0 default unconditionally did exactly that,
+	# so a dead instance lost its deadline on the very next state packet.
+	var creatures := CreatureSlice.new()
+	add_child(creatures)
+	var iid := "creature_0_0_Boar_0"
+	creatures.apply_creature_state(iid, "ForestBoar", "dead", Vector3(1.0, 2.0, 3.0), 0.0, 4102444800.0)
+	assert_eq(float(creatures._instances[iid]["respawn_at"]), 4102444800.0, "the deadline is recorded")
+	creatures.apply_creature_state(iid, "ForestBoar", "idle", Vector3(2.0, 2.0, 3.0))
+	assert_eq(float(creatures._instances[iid]["respawn_at"]), 4102444800.0,
+		"a delta carrying no deadline leaves it alone")
+	assert_eq(str(creatures._instances[iid]["state"]), "idle", "while applying the state it does carry")
+	creatures.apply_creature_state(iid, "ForestBoar", "dead", Vector3(2.0, 2.0, 3.0), 0.0, 4102444900.0)
+	assert_eq(float(creatures._instances[iid]["respawn_at"]), 4102444900.0,
+		"an explicit deadline replaces it")
+	creatures.apply_creature_state(iid, "ForestBoar", "idle", Vector3(2.0, 2.0, 3.0), 12.0)
+	assert_eq(float(creatures._instances[iid]["hp"]), 12.0, "an explicit hp is applied")
+	creatures.apply_creature_state(iid, "ForestBoar", "idle", Vector3(2.0, 2.0, 3.0))
+	assert_eq(float(creatures._instances[iid]["hp"]), 12.0, "and an omitted hp leaves it alone")
+	creatures.free()
+
+func _test_shutdown_poll_cadence() -> void:
+	# The shutdown-request poll used to be gated behind the autosave tick (300 s by
+	# default), so a restart request sat unread for up to five minutes and an
+	# orchestrator that sigkills after a short grace period killed the server
+	# before it saved. The poll has its OWN, far shorter cadence.
+	assert_eq(PersistenceSlice.resolved_shutdown_poll_interval(0.0),
+		PersistenceSlice.DEFAULT_SHUTDOWN_POLL_SECS, "a zero poll cadence falls back")
+	assert_eq(PersistenceSlice.resolved_shutdown_poll_interval(-1.0),
+		PersistenceSlice.DEFAULT_SHUTDOWN_POLL_SECS, "a negative one falls back too")
+	assert_eq(PersistenceSlice.resolved_shutdown_poll_interval(2.0), 2.0, "a positive cadence is respected")
+	assert_true(PersistenceSlice.poll_due(5.0, 5.0), "the poll fires on its own cadence")
+	# The regression in one assertion: at the poll deadline an autosave is NOT due.
+	assert_true(PersistenceSlice.poll_due(PersistenceSlice.DEFAULT_SHUTDOWN_POLL_SECS,
+		PersistenceSlice.DEFAULT_SHUTDOWN_POLL_SECS), "the default poll deadline is reached")
+	assert_false(PersistenceSlice.autosave_due(PersistenceSlice.DEFAULT_SHUTDOWN_POLL_SECS,
+		PersistenceSlice.DEFAULT_AUTOSAVE_SECS), "while the autosave is nowhere near due")
+	assert_false(PersistenceSlice.poll_due(4.999, 5.0), "and nothing fires early")
+	assert_false(PersistenceSlice.poll_due(10.0, 0.0), "a zero cadence never fires (resolved before use)")
+	# autosave_due keeps its own semantics through the shared rule.
+	assert_true(PersistenceSlice.autosave_due(300.0, 300.0), "autosave_due still matches on the deadline")
+	assert_false(PersistenceSlice.autosave_due(299.0, 300.0), "and not before it")
+
+func _test_remote_hp_not_persisted() -> void:
+	# A remote peer's HP arrives CLIENT-DECLARED on its own player_moved packet. The
+	# host has no simulation of that peer to check it against, so writing it into the
+	# durable record made health a restart-proof cheat: declare 9999 and keep 9999
+	# across a reconnect, a restart, and every later save.
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var host_id := registry.mint_player_id()
+	registry.set_local_player(host_id)
+	var remote := registry.resolve_identity(7)
+	assert_true(remote != "" and remote != host_id, "a remote peer gets its own identity")
+	registry.record_hp(remote, 9999.0)
+	assert_eq(float(registry.get_record(remote).get("hp", -2.0)), -1.0,
+		"a client-declared hp is refused, so the record keeps the unknown sentinel")
+	assert_eq(float(registry.get_player_data(remote).get("hp", -2.0)), -1.0,
+		"and the serializable record cannot carry it to disk either")
+	assert_false(PlayerRegistry.hp_is_authoritative_locally(remote, host_id),
+		"the rule names a remote peer's hp as non-authoritative")
+	assert_false(PlayerRegistry.hp_is_authoritative_locally("", host_id), "an empty id is never authoritative")
+	assert_true(PlayerRegistry.hp_is_authoritative_locally(host_id, host_id),
+		"the local player's hp IS host-simulated")
+	registry.record_hp(host_id, 42.0)
+	assert_eq(float(registry.get_record(host_id)["hp"]), 42.0,
+		"so the local player's hp is still persisted")
+	registry.free()
+
+func _test_disconnect_evicts_player() -> void:
+	# The registry used to retain every record and every inventory node forever, so a
+	# long-lived server grew with every peer that had EVER connected — and a record
+	# for someone who never came back was never needed. The record is durable on
+	# disk before eviction, and the next claim re-loads it, so eviction is lossless.
+	var dir := "user://saves/test_evict/"
+	_wipe_dir(dir)
+	var store := PersistenceSlice.new()
+	add_child(store)
+	store.server_save_dir = dir
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	registry.set_record_loader(store.load_player)
+	var host_id := registry.mint_player_id()
+	var host_inv := InventorySlice.new()
+	add_child(host_inv)   # parented to the TEST, like the game's own _inventory
+	registry.set_local_player(host_id, host_inv)
+
+	var remote := registry.resolve_identity(4)
+	assert_true(store.save_player(remote, registry.get_player_data(remote)) == OK, "the record is durable")
+	var remote_inv = registry.get_inventory(remote)
+	assert_true(remote_inv != null, "the peer owns an inventory")
+	assert_true(remote_inv.get_parent() == registry, "which the registry created and parents")
+
+	registry.unbind_peer(4)
+	assert_true(registry.evict_player(remote), "the disconnected player's record is evicted")
+	assert_false(registry.has_player(remote), "the record is no longer resident")
+	assert_false(registry.has_inventory(remote), "nor is the inventory node")
+	assert_true(remote_inv.get_parent() == null, "the registry-owned node was detached for freeing")
+	assert_false(registry.evict_player(remote), "eviction is idempotent")
+
+	# The LOCAL player is never evicted: it is online by definition and its
+	# inventory is the game's own instance, not this slice's to free.
+	assert_false(registry.evict_player(host_id), "the local player cannot be evicted")
+	assert_true(registry.has_player(host_id), "its record stays resident")
+	assert_true(is_instance_valid(host_inv), "and its injected inventory is not freed")
+	assert_true(host_inv.get_parent() != registry, "because the registry does not own that node")
+
+	# Lossless: the next claim pulls the record back off disk.
+	var reclaimed := registry.resolve_identity(9, remote)
+	assert_eq(reclaimed, remote, "a reconnect re-binds to the evicted record")
+	assert_true(registry.has_player(remote), "which was re-loaded from disk")
+	registry.free()
+	store.free()
+
+func _test_handshake_retry_reanswers_peer() -> void:
+	# The handshake is the only route to a client's identity and world. A lost
+	# join_intent (or a lost snapshot) used to leave a connected client with nothing,
+	# and a retry would have been SWALLOWED: an already-bound peer returned early
+	# without emitting player_joined, so the host never re-sent the snapshot.
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var answers: Array = []
+	var on_joined := func(peer_id: int, player_id: String, reconnected: bool) -> void:
+		answers.append([peer_id, player_id, reconnected])
+	GameBus.player_joined.connect(on_joined)
+	var first := registry.resolve_identity(4)
+	assert_eq(answers.size(), 1, "the first join is answered")
+	assert_true(first != "", "with an identity")
+	var retry := registry.resolve_identity(4)
+	assert_eq(retry, first, "a retry gets the SAME identity rather than a fresh mint")
+	assert_eq(answers.size(), 2, "and is answered again, so the host re-sends the snapshot")
+	assert_eq(str(answers[1][1]), first, "carrying the bound id")
+	assert_false(bool(answers[1][2]), "and it is not reported as a reconnect")
+	# A retry cannot re-point the connection at another player's record either.
+	assert_eq(registry.resolve_identity(4, "player_9_9_deadbeef"), first,
+		"a claim from an already-bound peer is ignored")
+	assert_eq(answers.size(), 3, "and it is still answered")
+	GameBus.player_joined.disconnect(on_joined)
+	registry.free()
+
+func _test_retry_represents_join_intent() -> void:
+	# The client half of the retry: each re-presentation is a real packet with a
+	# FRESH seq, so the host's dedup cannot mistake it for a duplicate and drop it.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n.emulate_network = true
+	n.request_handshake()
+	assert_eq(n._pending.size(), 0, "a non-client never presents a join intent")
+	n._role = NetworkingSlice.Role.CLIENT
+	n.request_handshake()
+	assert_eq(n._pending.size(), 1, "the client presents a join intent")
+	var first: Dictionary = JSON.parse_string(str(n._pending[0]["json"]))
+	assert_eq(str(first.get("type", "")), "join_intent", "and it is a join intent")
+	var first_seq := int(first.get("seq", -1))
+	n.request_handshake()
+	assert_eq(n._pending.size(), 2, "the retry is a real second packet, not a suppressed duplicate")
+	var second: Dictionary = JSON.parse_string(str(n._pending[1]["json"]))
+	assert_true(int(second.get("seq", -1)) > first_seq, "with a fresh seq")
+	n.free()
+
+func _test_party_inventory_binding_cleared() -> void:
+	# Trade and market hold a RAW node reference per party. When the registry frees a
+	# disconnected player's inventory that reference becomes a FREED object — which is
+	# not null — so a listing expiry or a trade would hand out a dead node. The
+	# binding has to be cleared, and a freed one must resolve as "no inventory".
+	var market := MarketSlice.new()
+	add_child(market)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	var pid := "player_1_1_abc"
+	market.set_party_inventory(pid, inv)
+	assert_true(market._inventory_for(pid) == inv, "the binding resolves while the inventory lives")
+	market.clear_party_inventory(pid)
+	assert_true(market._inventory_for(pid) == null, "clearing it yields no inventory")
+	market.set_party_inventory(pid, inv)
+	inv.free()
+	assert_true(market._inventory_for(pid) == null, "a freed inventory resolves as none, not as a dead node")
+	market.free()
+
+	var trade := TradeSlice.new()
+	add_child(trade)
+	var trade_inv := InventorySlice.new()
+	add_child(trade_inv)
+	trade.set_party_inventory(pid, trade_inv)
+	assert_true(trade._inventory_for(pid) == trade_inv, "the trade slice resolves a live binding")
+	trade.clear_party_inventory(pid)
+	assert_true(trade._inventory_for(pid) == null, "and forgets it on disconnect")
+	trade_inv.free()
+	trade.free()
+
+func _test_failed_write_reports_and_preserves() -> void:
+	# A failed write has to be REPORTED (game_root._finish_save is what logs it and
+	# re-marks the cleared dirty chunks) and must never damage the record already on
+	# disk. The old lifecycle only reaped the worker at the START of the next save,
+	# so the failure went unnoticed for a whole interval while the edits looked saved.
+	var dir := "user://saves/test_failed_write/"
+	_wipe_dir(dir)
+	var store := PersistenceSlice.new()
+	add_child(store)
+	store.server_save_dir = dir
+	assert_eq(store.save_world({ "local_player_id": "p1" }, false), OK, "the first record writes")
+	var on_disk := store.load_world()
+	assert_eq(str(on_disk.get("local_player_id", "")), "p1", "and reads back")
+	# Point the writer at a path that cannot be opened.
+	store.atomic_writes = false
+	store.server_save_dir = ""
+	store.world_file = ""
+	var err := store.write_job({ "world": { "local_player_id": "p2" }, "incremental": false, "players": {} })
+	assert_true(err != OK, "an unopenable target reports an error instead of silently succeeding")
+	assert_eq(str(on_disk.get("local_player_id", "")), "p1", "and the record already on disk is untouched")
+	store.free()
+
+func _test_craft_uses_crafter_inventory() -> void:
+	# Each player persists their OWN inventory, so a craft must consume and produce
+	# against the crafter's — a single host-scoped inventory landed a remote peer's
+	# craft on the host's, and persisted it against the host's record.
+	var crafting := CraftingSlice.new()
+	add_child(crafting)
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	crafting.inventory_slice = null      # prove the registry is what answers
+	crafting.player_registry = registry
+	crafting.set_skill("Smithing", "master")
+	var recipe := crafting.get_recipe("RecipeFerriteIngot")
+	assert_false(recipe.is_empty(), "the recipe resolves from the fabric")
+	var inputs := crafting._to_counts(recipe.get("inputs", []))
+	var outputs := crafting._to_counts(recipe.get("outputs", []))
+	var crafter := registry.resolve_identity(2)
+	var other := registry.resolve_identity(3)
+	var crafter_inv = registry.get_inventory(crafter)
+	var other_inv = registry.get_inventory(other)
+	for item_id in inputs:
+		crafter_inv.add_item(str(item_id), int(inputs[item_id]))
+		other_inv.add_item(str(item_id), int(inputs[item_id]) * 3)
+
+	assert_true(bool(crafting.craft("RecipeFerriteIngot", crafter).get("success", false)), "the craft succeeds")
+	for item_id in inputs:
+		assert_eq(crafter_inv.get_item_count(str(item_id)), 0, "the crafter's inputs were consumed")
+		assert_eq(other_inv.get_item_count(str(item_id)), int(inputs[item_id]) * 3,
+			"another player's inventory is untouched")
+	for item_id in outputs:
+		assert_eq(crafter_inv.get_item_count(str(item_id)), int(outputs[item_id]),
+			"the output went to the crafter")
+		assert_eq(other_inv.get_item_count(str(item_id)), 0, "and to nobody else")
+	# can_craft is scoped the same way.
+	assert_true(bool(crafting.can_craft("RecipeFerriteIngot", other).get("success", false)),
+		"the other player can still craft from their own materials")
+	assert_false(bool(crafting.can_craft("RecipeFerriteIngot", crafter).get("success", false)),
+		"the crafter now lacks the inputs")
+	crafting.free()
+	registry.free()
+
+func _test_craft_client_forwards_intent() -> void:
+	# A client owns no records, so it must FORWARD a craft to the host rather than
+	# resolve it locally against its synced copy of the inventory.
+	var crafting := CraftingSlice.new()
+	add_child(crafting)
+	var inventory := InventorySlice.new()
+	add_child(inventory)
+	crafting.inventory_slice = inventory
+	crafting.is_authoritative = false
+	var forwarded: Array = []
+	var on_intent := func(recipe_id: String, player_id: String) -> void:
+		forwarded.append([recipe_id, player_id])
+	GameBus.craft_intent.connect(on_intent)
+	GameBus.craft_requested.emit("RecipeFerriteIngot")
+	GameBus.craft_intent.disconnect(on_intent)
+	assert_eq(forwarded.size(), 1, "the client forwarded exactly one intent")
+	assert_eq(str(forwarded[0][0]), "RecipeFerriteIngot", "carrying the recipe id")
+	assert_eq(str(forwarded[0][1]), "", "and no identity — the host decides who is crafting")
+	assert_eq(inventory.get_item_count("Ferrite"), 0, "the client mutated nothing locally")
+	crafting.free()
+	inventory.free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers

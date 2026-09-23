@@ -246,6 +246,41 @@ module.exports = {
     },
   }),
 
+  PlayerIdentityModel: defineEntity({
+    tags: ['decision'],
+    description: 'A player identity is a server-issued local UUID (player_id), not an account. The server mints the id on first join, persists it next to the player record, and sends it to the client so a reconnect re-binds to the same record. The client may present a cached id at join, and the server honours it only when it already owns that record and no live peer holds it — a client can therefore never claim another online player\'s record.',
+    goal: 'Give every player a connection-independent identity so inventory, HP, position, and appearance survive a reconnect or a server restart, without waiting for an account/auth service',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      status: { type: 'enum', values: ['proposed', 'accepted', 'superseded'] },
+    },
+    stateMachine: {
+      field: 'status',
+      initial: 'proposed',
+      states: {
+        proposed:   'Decision is under community discussion',
+        accepted:   'Decision is ratified and in effect',
+        superseded: { description: 'Decision has been replaced by a newer decision', terminal: true },
+      },
+      transitions: [
+        { from: 'proposed',              to: 'accepted',   trigger: 'accept' },
+        { from: ['proposed', 'accepted'], to: 'superseded', trigger: 'supersede' },
+      ],
+    },
+    behaviors: {
+      accept: {
+        description: 'Ratify this decision after community review',
+        rules: ['Community vote must reach quorum'],
+        auth: { roles: ['maintainer'] },
+      },
+      supersede: {
+        description: 'Mark this decision as replaced by a newer one',
+        rules: ['A replacement decision must be accepted first'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
   FictionalMaterials: defineEntity({
     tags: ['decision'],
     description: 'Fictional materials with unique properties replace real-world counterparts, giving the world consistent internal lore and design freedom.',

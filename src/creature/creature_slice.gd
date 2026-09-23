@@ -13,8 +13,17 @@ extends Node
 ##   nearest_creature(from_pos: Vector3, radius: float) -> String   (instance_id or "")
 ##   get_instance_creature_id(instance_id: String)      -> String   (fabric key)
 ##   get_all_instances()                                -> Array[Dictionary]
+##   get_snapshot_creatures()                           -> Array    (Phase 33: + hp, respawn_at)
+##   apply_snapshot_creatures(list)                     -> void     (Phase 33)
+##   apply_recorded_creature_states(list)               -> void     (Phase 33, host: no new ids)
 ##   spawn_for_chunk(chunk_pos: Vector2i)               -> void     (Phase 17)
 ##   despawn_for_chunk(chunk_pos: Vector2i)             -> void     (Phase 17)
+##
+## Respawn deadlines are WALL-CLOCK (Phase 33): `respawn_at` is a Unix-epoch
+## second from Time.get_unix_time_from_system(), the same convention the market
+## listings and tree regrowth use, so a deadline persisted in the world record
+## still means what it says after a restart. (It used to be process uptime via
+## Time.get_ticks_msec(), which is meaningless in a new process.)
 
 ## CHUNK_SIZE and BIOME_KEYS live in TerrainSlice (single source of truth).
 ## Spawning uses _chunk_biome() which delegates to terrain_slice, so no local
@@ -27,7 +36,16 @@ const MultimeshPool := preload("res://src/core/multimesh_pool.gd")
 const SpatialHash    := preload("res://src/core/spatial_hash.gd")
 
 var _instances: Dictionary = {}
-var _next_id: int = 0
+
+## Death records for creatures that are NOT currently resident: instance_id →
+## { creature_id, respawn_at, position }. A despawn erases the instance (and frees
+## its body slot) but the death is the creature's STATE, not scenery: without this,
+## walking out of a chunk and back respawned the creature alive, ignoring the
+## recorded death entirely. Entries are consumed when the chunk streams again
+## (`_spawn` re-applies the death) or dropped once the deadline has passed (it would
+## respawn alive anyway). `get_snapshot_creatures()` carries them, so the world
+## record holds a death for a chunk that is not in view.
+var _dead_state: Dictionary = {}
 
 ## Spatial hash over the live population so nearest-creature / neighbour queries
 ## are O(radius²) cells, not an O(N) scan (Phase 28). Kept in lockstep with
@@ -124,8 +142,16 @@ func get_all_instances() -> Array:
 		})
 	return out
 
-## Serialize the live creature population for the world snapshot (host → client).
-## Each entry is { instance_id, creature_id, state, position:[x,y,z] }.
+## Serialize the live creature population for the world snapshot (host → client)
+## and for the world record (Phase 33). Each entry is
+## { instance_id, creature_id, state, position:[x,y,z], hp, respawn_at }.
+## `hp` and `respawn_at` are what make a death/respawn round-trip exact: a dead
+## instance comes back dead, with the same wall-clock respawn deadline.
+##
+## Non-resident deaths (`_dead_state` — creatures whose chunk was despawned while
+## they were dead) are carried TOO, at the position they will respawn at: the world
+## record is the only thing that outlives the process, so a death in a chunk that is
+## not in the view window has to be in it or it is lost on the next boot.
 func get_snapshot_creatures() -> Array:
 	var out: Array = []
 	for iid in _instances:
@@ -136,6 +162,21 @@ func get_snapshot_creatures() -> Array:
 			"creature_id": inst["creature_id"],
 			"state":       inst["state"],
 			"position":    [pos.x, pos.y, pos.z],
+			"hp":          float(inst.get("hp", 0.0)),
+			"respawn_at":  float(inst.get("respawn_at", -1.0)),
+		})
+	for iid in _dead_state:
+		if _instances.has(iid):
+			continue
+		var dead: Dictionary = _dead_state[iid]
+		var dead_pos: Variant = dead.get("position", [0.0, 0.0, 0.0])
+		out.append({
+			"instance_id": iid,
+			"creature_id": str(dead.get("creature_id", "")),
+			"state":       "dead",
+			"position":    dead_pos,
+			"hp":          0.0,
+			"respawn_at":  float(dead.get("respawn_at", -1.0)),
 		})
 	return out
 
@@ -175,7 +216,12 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 
 ## Despawn creatures belonging to `chunk_pos` that are not engaged in combat.
 ## Engaged (aggressive / fleeing) creatures are kept so an in-progress fight is
-## not torn away; idle/alert/dead instances are removed and their bodies freed.
+## not torn away; idle/alert instances are removed and their bodies freed.
+##
+## A DEAD instance is erased too (its body slot is freed with it), but its death is
+## retained in `_dead_state` first: the death and its wall-clock respawn deadline are
+## the creature's persisted state, so dropping them meant walking out of a chunk and
+## back respawned the creature ALIVE — the record was silently ignored.
 func despawn_for_chunk(chunk_pos: Vector2i) -> void:
 	var to_erase: Array = []
 	for iid in _instances:
@@ -184,6 +230,8 @@ func despawn_for_chunk(chunk_pos: Vector2i) -> void:
 			continue
 		if inst["state"] == "aggressive" or inst["state"] == "fleeing":
 			continue
+		if inst["state"] == "dead":
+			_remember_death(iid, inst)
 		if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
 			_pool.release(int(inst["mi"]))
 		to_erase.append(iid)
@@ -191,6 +239,21 @@ func despawn_for_chunk(chunk_pos: Vector2i) -> void:
 		_instances.erase(iid)
 		_last_broadcast.erase(iid)
 		_spatial.remove(iid)
+
+## Keep a non-resident death record for `iid` from its live instance record. Only a
+## still-pending death is worth keeping: a deadline that has already passed means the
+## creature would come back alive, so remembering it would freeze a corpse forever.
+func _remember_death(iid: String, inst: Dictionary) -> void:
+	var deadline := float(inst.get("respawn_at", -1.0))
+	if deadline <= Time.get_unix_time_from_system():
+		_dead_state.erase(iid)
+		return
+	var pos: Vector3 = inst.get("position", Vector3.ZERO)
+	_dead_state[iid] = {
+		"creature_id": str(inst.get("creature_id", "")),
+		"respawn_at":  deadline,
+		"position":    [pos.x, pos.y, pos.z],
+	}
 
 func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> String:
 	var res: Resource = GameData.CREATURES.get(creature_id, null)
@@ -213,8 +276,7 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 	if terrain_slice != null and terrain_slice.has_method("get_height_at"):
 		pos.y = terrain_slice.get_height_at(Vector2(pos.x, pos.z))
 
-	var iid := "creature_%d" % _next_id
-	_next_id += 1
+	var iid := _instance_id(chunk_pos, creature_id, spawn_index)
 
 	# Build a visible body so the creature can be seen in the world. Headless
 	# (no pool) allocates no visual — the record carries the instance index only.
@@ -231,10 +293,40 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 		"mi":          mi,
 	}
 
+	# A creature that died before its chunk was despawned (or before this process
+	# ever streamed that chunk) comes back DEAD, with the same wall-clock deadline,
+	# instead of respawning alive and ignoring the record. The record is consumed
+	# here either way: a deadline already in the past means the respawn just happened.
+	var pending: Variant = _dead_state.get(iid, null)
+	if pending != null:
+		_dead_state.erase(iid)
+		if float(pending["respawn_at"]) > Time.get_unix_time_from_system():
+			_instances[iid]["state"]      = "dead"
+			_instances[iid]["hp"]         = 0.0
+			_instances[iid]["respawn_at"] = float(pending["respawn_at"])
+			if _pool != null and mi >= 0:
+				_pool.hide(mi)
+
 	_spatial.insert(iid, pos)
 
 	GameBus.creature_spawned.emit(iid, creature_id, pos)
 	return iid
+
+## Deterministic instance id: derived from the chunk it belongs to, the creature
+## it is, and its spawn index — the same inputs _deterministic_chunk_position()
+## uses. A counter id was NOT stable: two peers that streamed chunks in a
+## different order named the same creature differently, and every chunk
+## unload/reload (which respawns the budget from scratch) renamed survivors.
+## Since phase 33 persists and replicates creature state by instance id, the id
+## has to be a property of the creature, not of the order it happened to spawn in.
+##
+## Caveat: spawn_for_chunk() keeps engaged (aggressive/fleeing) survivors across
+## a despawn and indexes new spawns after them, so a chunk reloaded while one of
+## its creatures is mid-fight can hand a fresh spawn the next index. The
+## persisted state is still re-attachable for every unengaged creature, which is
+## what the world record needs.
+func _instance_id(chunk_pos: Vector2i, creature_id: String, spawn_index: int) -> String:
+	return "creature_%d_%d_%s_%d" % [chunk_pos.x, chunk_pos.y, creature_id, spawn_index]
 
 ## Deterministic world XZ inside the chunk footprint (inset one tile from the edge).
 ## The position is derived from chunk_pos, creature_id, and spawn_index so the same
@@ -322,15 +414,19 @@ func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String
 				var respawn_secs: float = float(res.get("respawnSeconds")) if res else 300.0
 				inst["state"]      = "dead"
 				inst["hp"]         = 0.0
-				inst["respawn_at"] = Time.get_ticks_msec() + respawn_secs * 1000.0
+				# WALL-CLOCK deadline (Phase 33) — a saved deadline must still mean
+				# the same moment in a new process, so this is Unix-epoch seconds,
+				# not process uptime.
+				inst["respawn_at"] = Time.get_unix_time_from_system() + respawn_secs
 				if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
 					_pool.hide(int(inst["mi"]))
 
 func _tick_respawn() -> void:
-	var now := float(Time.get_ticks_msec())
+	var now := Time.get_unix_time_from_system()
 	for iid in _instances:
 		var inst: Dictionary = _instances[iid]
-		if inst["state"] == "dead" and inst["respawn_at"] > 0.0 and now >= inst["respawn_at"]:
+		if inst["state"] == "dead" and float(inst["respawn_at"]) > 0.0 and now >= float(inst["respawn_at"]):
+			_dead_state.erase(iid)
 			var creature_id: String = inst["creature_id"]
 			var res: Resource = GameData.CREATURES.get(creature_id, null)
 			var max_hp: float = float(res.get("baseHp"))
@@ -342,6 +438,12 @@ func _tick_respawn() -> void:
 			if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
 				_pool.set_transform(int(inst["mi"]), _visual_transform(inst["spawn_pos"]))
 			GameBus.creature_respawned.emit(iid, creature_id)
+	# Sweep non-resident death records whose deadline has passed: they no longer
+	# describe anything (the creature is due alive), and keeping them would grow the
+	# map without bound for chunks that are never streamed again.
+	for iid in _dead_state.keys():
+		if float(_dead_state[iid]["respawn_at"]) <= now:
+			_dead_state.erase(iid)
 
 ## Host → clients: emit a creature_state_changed delta for instances whose
 ## state or position changed since the last broadcast. Unchanged instances are
@@ -367,14 +469,26 @@ func _on_creature_state_changed(instance_id: String, creature_id: String, state:
 
 ## Client-side application of a single authoritative creature state (see
 ## _on_creature_state_changed). Public so the snapshot loader can seed the
-## world from the host's get_snapshot_creatures() output.
-func apply_creature_state(instance_id: String, creature_id: String, state: String, position: Vector3) -> void:
+## world from the host's get_snapshot_creatures() output — including the `hp`
+## and wall-clock `respawn_at` a dead instance carries (Phase 33).
+##
+## Both optional fields are SENTINELS, not defaults: `hp < 0` and `respawn_at < 0`
+## each mean "unchanged", exactly as `hp` already did. A respawn deadline has no
+## legitimate value at or below zero (it is Unix-epoch seconds), so a 4-argument
+## caller — the per-tick state delta, which carries neither field — must leave the
+## existing deadline alone. Assigning the -1.0 default unconditionally wiped a dead
+## instance's respawn_at on every delta, so the creature never came back.
+func apply_creature_state(instance_id: String, creature_id: String, state: String, position: Vector3, hp: float = -1.0, respawn_at: float = -1.0) -> void:
 	if _instances.has(instance_id):
 		var inst: Dictionary = _instances[instance_id]
 		if creature_id != "":
 			inst["creature_id"] = creature_id
 		inst["state"]    = state
 		inst["position"] = position
+		if hp >= 0.0:
+			inst["hp"] = hp
+		if respawn_at >= 0.0:
+			inst["respawn_at"] = respawn_at
 		_spatial.update(instance_id, position)
 		if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
 			if state == "dead":
@@ -395,28 +509,73 @@ func apply_creature_state(instance_id: String, creature_id: String, state: Strin
 		"chunk":       Vector2i.ZERO,
 		"spawn_pos":   position,
 		"state":       state,
-		"hp":          0.0,
-		"respawn_at":  -1.0,
+		"hp":          maxf(hp, 0.0),
+		"respawn_at":  respawn_at,
 		"mi":          mi,
 	}
 	_spatial.insert(instance_id, position)
 
 ## Seed the client's creature population from a host snapshot list
-## (see get_snapshot_creatures).
+## (see get_snapshot_creatures), carrying hp and the wall-clock respawn deadline.
+## CLIENT path: an unknown instance id is created on first sight.
 func apply_snapshot_creatures(list: Array) -> void:
+	_apply_creature_entries(list, true)
+
+## Host path — re-apply the creature half of a saved world record over the
+## population chunk streaming just spawned. Unlike the client path this NEVER
+## creates an instance: an instance id absent from `_instances` belongs to a chunk
+## that is not in the current view window, and creating it here would fabricate a
+## record with no chunk (Vector2i.ZERO) whose visual body nothing ever releases —
+## and whose id, being deterministic, would then be silently overwritten by the
+## real spawn when that chunk streams, losing the restored state anyway. Skipping
+## is also the safe answer to the spawn-index caveat in `_instance_id()`.
+##
+## A recorded DEATH for such an id is not skipped, though: it is held in
+## `_dead_state` so the death survives until the chunk streams (see `_spawn`).
+## Otherwise a death in a chunk outside the boot view window was lost outright and
+## walking back respawned the creature alive.
+func apply_recorded_creature_states(list: Array) -> void:
+	_apply_creature_entries(list, false)
+
+func _apply_creature_entries(list: Array, create_missing: bool) -> void:
 	for entry in list:
 		if entry is not Dictionary:
+			continue
+		var iid := str(entry.get("instance_id", ""))
+		if not create_missing and not _instances.has(iid):
+			_hold_death_record(iid, entry)
 			continue
 		var pos := Vector3.ZERO
 		var arr = entry.get("position", [])
 		if arr is Array and arr.size() >= 3:
 			pos = Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
 		apply_creature_state(
-			str(entry.get("instance_id", "")),
+			iid,
 			str(entry.get("creature_id", "")),
 			str(entry.get("state", "idle")),
-			pos
+			pos,
+			float(entry.get("hp", -1.0)),
+			float(entry.get("respawn_at", -1.0))
 		)
+
+## Hold an unstreamed id's recorded death so it re-applies when its chunk streams
+## (see _spawn). Only a pending death is held; a live entry, an entry whose deadline
+## has passed, or a malformed one is ignored.
+func _hold_death_record(iid: String, entry: Dictionary) -> void:
+	if iid.is_empty() or str(entry.get("state", "")) != "dead":
+		return
+	var deadline := float(entry.get("respawn_at", -1.0))
+	if deadline <= Time.get_unix_time_from_system():
+		return
+	var pos := Vector3.ZERO
+	var arr = entry.get("position", [])
+	if arr is Array and arr.size() >= 3:
+		pos = Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
+	_dead_state[iid] = {
+		"creature_id": str(entry.get("creature_id", "")),
+		"respawn_at":  deadline,
+		"position":    [pos.x, pos.y, pos.z],
+	}
 
 # ---------------------------------------------------------------------------
 # Visuals

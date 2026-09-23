@@ -13,6 +13,7 @@ const CreatureSlice    := preload("res://src/creature/creature_slice.gd")
 const CreatureAI       := preload("res://src/creature/creature_ai.gd")
 const NetworkingSlice  := preload("res://src/networking/networking_slice.gd")
 const PersistenceSlice := preload("res://src/persistence/persistence_slice.gd")
+const PlayerRegistry   := preload("res://src/persistence/player_registry.gd")
 const PlayerSlice      := preload("res://src/player/player_slice.gd")
 const LootSlice        := preload("res://src/loot/loot_slice.gd")
 const InventorySlice   := preload("res://src/inventory/inventory_slice.gd")
@@ -37,6 +38,7 @@ var _creature:    CreatureSlice
 var _creature_ai: CreatureAI
 var _networking:  NetworkingSlice
 var _persistence: PersistenceSlice
+var _registry:    PlayerRegistry
 var _player:      PlayerSlice
 var _loot:        LootSlice
 var _inventory:   InventorySlice
@@ -64,9 +66,35 @@ var _snapshot_pending: bool = false
 ## moving into a new region triggers a re-scoped snapshot (host side only).
 var _peer_aoi_regions: Dictionary = {}
 
+## Phase 33 — seconds accumulated since the last authoritative autosave.
+var _autosave_elapsed: float = 0.0
+
+## Phase 33 — seconds accumulated since the shutdown-request file was last polled.
+## Kept SEPARATE from `_autosave_elapsed` (and paired with the fabric's own, much
+## shorter cadence): a shutdown request answered only on the autosave tick made a
+## restart wait up to a full 300 s, so an orchestrator that kills the process
+## after a short grace period killed it before it ever saved — up to five minutes
+## of edits lost on every restart.
+var _shutdown_poll_elapsed: float = 0.0
+
+## Phase 33 — the world record read at boot. It carries the local player id the
+## previous process minted, and the creature state that has to be re-applied
+## AFTER chunk streaming spawns the population.
+var _loaded_world: Dictionary = {}
+
 ## Client-side: seconds to wait for the host world snapshot before giving up.
 const SNAPSHOT_TIMEOUT := 10.0
 var _snapshot_elapsed: float = 0.0
+
+## Client-side: how long to wait for a snapshot before re-presenting the join
+## intent, and how many times to do so. The handshake is the only route to an
+## identity and a world, so a lost join_intent (or a lost snapshot) must be
+## retried rather than ending in an empty client: retries are spaced so a slow
+## host is not flooded, and the total budget stays inside SNAPSHOT_TIMEOUT.
+const HANDSHAKE_RETRY_SECS := 3.0
+const MAX_HANDSHAKE_RETRIES := 3
+var _handshake_elapsed: float = 0.0
+var _handshake_retries: int = 0
 
 func _ready() -> void:
 	# Run the automated tests before any production slice enters the tree.
@@ -77,6 +105,8 @@ func _ready() -> void:
 	_run_tests()
 
 	_parse_network_args()
+	# Phase 33 — intercept the quit so records are written first.
+	_install_quit_guard()
 
 	_terrain     = TerrainSlice.new()
 	_voxel       = VoxelSlice.new()
@@ -87,6 +117,7 @@ func _ready() -> void:
 	_creature_ai = CreatureAI.new()
 	_networking  = NetworkingSlice.new()
 	_persistence = PersistenceSlice.new()
+	_registry    = PlayerRegistry.new()
 	_player      = PlayerSlice.new()
 	_loot        = LootSlice.new()
 	_inventory   = InventorySlice.new()
@@ -126,7 +157,7 @@ func _ready() -> void:
 	# The UI (Phase 14) is presentation only, so a headless dedicated server
 	# (Phase 27) keeps it out of the tree — its _ready() would otherwise build
 	# windows nothing can render or click.
-	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _player, _loot, _inventory, _character, _crafting, _technology, _station, _tree, _market, _trade, _proposal]
+	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _inventory, _character, _crafting, _technology, _station, _tree, _market, _trade, _proposal]
 	if not _is_server:
 		slices.append(_ui)
 	for s in slices:
@@ -142,6 +173,9 @@ func _ready() -> void:
 	_loot.creature_slice       = _creature
 	_crafting.inventory_slice  = _inventory
 	_crafting.technology_slice = _technology
+	# Phase 33 — crafting resolves against the CRAFTER's own inventory, so the slice
+	# needs the registry that owns one inventory per player (see CraftingSlice).
+	_crafting.player_registry  = _registry
 	_player.station_slice = _station
 	_technology.inventory_slice = _inventory
 	_voxel.terrain_slice      = _terrain
@@ -186,6 +220,11 @@ func _ready() -> void:
 	_market.is_authoritative    = not _is_client
 	_trade.is_authoritative     = not _is_client
 	_proposal.is_authoritative  = not _is_client
+	# Phase 33 — a client owns no player records: the host mints ids, keeps the
+	# records, and ships the client only its own state. Crafting follows the same
+	# rule, because a craft mutates a player's persisted inventory.
+	_registry.is_authoritative  = not _is_client
+	_crafting.is_authoritative  = not _is_client
 
 	# Chunk streaming (Phase 17) — wire the manager to its collaborators.
 	_chunk_manager.terrain_slice  = _terrain
@@ -238,6 +277,9 @@ func _ready() -> void:
 	GameBus.player_respawned.connect(_on_player_respawned)
 	GameBus.trade_completed.connect(_on_trade_completed)
 	GameBus.peer_connected.connect(_on_peer_connected)
+	GameBus.peer_disconnected.connect(_on_peer_disconnected)
+	GameBus.player_joined.connect(_on_player_joined)
+	GameBus.player_identity_assigned.connect(_on_player_identity_assigned)
 	GameBus.remote_player_state.connect(_on_remote_player_state)
 	GameBus.world_snapshot_received.connect(_on_world_snapshot_received)
 	multiplayer.connection_failed.connect(_on_connection_failed)
@@ -300,6 +342,27 @@ func _parse_network_args() -> void:
 					push_warning("[Networking] invalid --client address '%s' — using 127.0.0.1" % addr)
 					_host_address = "127.0.0.1"
 
+## Phase 33 — save-on-shutdown. `auto_accept_quit = false` turns the window
+## manager's close request into a notification this node answers by writing the
+## world + player records and only then quitting. Only the authoritative roles
+## own state worth writing, so a client keeps the default behaviour.
+##
+## A headless server has no window, and Godot 4.7 delivers NO notification for
+## SIGTERM — the process is simply killed (verified with a probe; see the Phase
+## 33 implementation notes in ROADMAP.md). That case is covered by the autosave
+## interval plus the shutdown-request file polled in _tick_save_lifecycle().
+func _install_quit_guard() -> void:
+	if not _is_client:
+		get_tree().auto_accept_quit = false
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		print("[Server] window close requested — saving before quit")
+		_save_everything(true)
+		# The write is threaded, so quitting here would race it: block until it lands.
+		_flush_save()
+		get_tree().quit()
+
 ## True when `addr` is a literal IP or a plain hostname (no scheme, path, or
 ## whitespace). Rejects empty and obviously malformed values so a bad --client
 ## argument fails loudly instead of silently joining 127.0.0.1.
@@ -358,6 +421,11 @@ func _boot_host() -> void:
 	var ground_h := _terrain.get_height_at(spawn_xz)
 	_player.spawn_at(Vector3(spawn_xz.x, ground_h + 1.0, spawn_xz.y))
 
+	# Phase 33 — the local player's own record (position / HP / technologies) is
+	# restored on top of the spawn point, so a restart puts the player back where
+	# they logged off instead of at the world origin.
+	_restore_local_player()
+
 	# Chunk streaming (Phase 17) — the authoritative half above streamed the
 	# window around the origin, so re-centre it on the spawn point. VoxelSlice
 	# builds the mesh on chunk_ready and CreatureSlice spawns each chunk's
@@ -368,8 +436,10 @@ func _boot_host() -> void:
 	# Character system — the player's own avatar spawns at the player's real
 	# position (it is synced to the controller every frame from here on, in
 	# _process); a non-humanoid (quadruped) demo spawns alongside it to
-	# exercise the appearance pipeline end to end.
-	var player_char := _character.create_character("TravellerHuman", _player.get_position())
+	# exercise the appearance pipeline end to end. Phase 33 — the avatar is
+	# rebuilt from the appearance recipe in the loaded player record when there
+	# is one, so a restart keeps the character you were playing, not a default.
+	var player_char := _restore_or_create_player_character(_player.get_position())
 	_character.create_character("BoarRider", Vector3(spawn_xz.x - 3.0, ground_h + 1.0, spawn_xz.y))
 	_character.set_player_character(player_char)
 
@@ -441,9 +511,20 @@ func _boot_host() -> void:
 	GameBus.save_requested.emit(0, snapshot)
 	GameBus.load_requested.emit(0)
 
+	# Phase 33 — write the AUTHORITATIVE records (world + one record per player)
+	# on top of the legacy slot file above. The slot file is the single-file
+	# sample the client-side path and the older tests use; the server records are
+	# what an authoritative boot loads.
+	_save_everything(false)
+
 ## Client boot path (Phase 18): do NOT run the authoritative simulation. Join
 ## the host and wait for the world snapshot before showing anything.
+##
+## Phase 33 — the client presents the id it cached from a previous session, so
+## the host can re-bind it to the same record. The record itself never leaves the
+## host; the client only ever holds the id.
 func _boot_client() -> void:
+	_networking.claimed_player_id = _persistence.load_client_identity()
 	var err: Error = _networking.join(_host_address, _networking.DEFAULT_PORT)
 	if err != OK:
 		push_error("[Networking] client failed to connect to %s — %s" % [_host_address, error_string(err)])
@@ -451,21 +532,127 @@ func _boot_client() -> void:
 		return
 	_snapshot_pending = true
 	_snapshot_elapsed = 0.0
+	_handshake_elapsed = 0.0
+	_handshake_retries = 0
 
 ## Headless dedicated-server boot (Phase 27): run the authoritative simulation
 ## with no local player presentation. Streams the world around the origin and
 ## opens the host so clients can connect. No avatar, lighting, or demo.
+##
+## Phase 33 makes this the ONE place the world is loaded from disk. Every
+## authoritative process (dedicated server and listen host alike) inherits it,
+## because _boot_host() calls this first — the same "one authoritative boot"
+## rule Phase 32 established. Order matters:
+##
+##   1. read the world record + player records off disk,
+##   2. start/refresh chunk streaming (this is what SPAWNS the creature
+##      population and builds the chunk manifests),
+##   3. re-apply the recorded creature state on top of the fresh spawn — a
+##      recorded death/respawn deadline is only meaningful once the instance
+##      exists again,
+##   4. open the host socket.
 func _boot_server() -> void:
+	_load_world_records()
 	_chunk_manager.start()
 	_chunk_manager.refresh()
+	_apply_loaded_creature_state()
 	_networking.host(_networking.DEFAULT_PORT, _networking.DEFAULT_MAX_CLIENTS)
 
-func _on_peer_connected(peer_id: int) -> void:
+## Phase 33 — host: an identity was bound (first join, or a reconnect). The peer's
+## own inventory is now known, so register it as that peer's trade/market party (the
+## party id the client's "player" self-reference resolves to) and send its world
+## snapshot.
+##
+## The snapshot is sent HERE, on the handshake, and NOT also on `peer_connected`.
+## It used to be sent twice — once on connect, once on join — so every reconnecting
+## client paid for a full world snapshot twice, and the FIRST one was the worse of
+## the two: it was built before the peer's identity was resolved, so it carried no
+## own-record and was immediately replaced. One snapshot, with the identity in hand.
+func _on_player_joined(peer_id: int, player_id: String, reconnected: bool) -> void:
 	if _is_client:
 		return
-	# Host: ship the authoritative, AOI-scoped world snapshot to the newly
-	# connected client (Phase 29 — only entities in the peer's area of interest).
+	var inv = _registry.get_inventory(player_id)
+	if inv != null:
+		_trade.set_party_inventory(player_id, inv)
+		_market.set_party_inventory(player_id, inv)
+	print("[Server] %s player '%s' as %s" % ["reconnected" if reconnected else "joined", player_id, "peer_%d" % peer_id])
 	_networking.send_snapshot(peer_id, _build_snapshot(peer_id))
+
+## Phase 33 — host: a connection came up. There is deliberately nothing to send yet:
+## the peer's identity has not been resolved, so a snapshot here would carry no
+## own-record and would have to be replaced by the handshake snapshot (see
+## _on_player_joined). Kept as the single place to note when a peer appears.
+func _on_peer_connected(_peer_id: int) -> void:
+	pass
+
+## Phase 33 — client: the host told us which record we are. Cache the id so the
+## next connection can claim it, and read our own state out of it.
+func _on_player_identity_assigned(player_id: String) -> void:
+	if not _is_client or player_id.is_empty():
+		return
+	_persistence.save_client_identity(player_id)
+	print("[Client] identity assigned: %s" % player_id)
+
+## Phase 33 — host: a connection dropped. Write the player's record before the
+## transport mapping is discarded; the record stays on DISK (and is re-loaded
+## lazily on the reconnect claim), so the same player_id reconnects to the same
+## inventory, position, and HP.
+##
+## The in-memory record and the player's inventory node are then RELEASED
+## (`evict_player`): keeping them was what made the registry grow with every peer
+## that had ever connected. Order matters — fold, write, unbind, then evict — so
+## the durable copy is complete before the only reference to the live one goes.
+## The party bindings in trade/market are dropped with it: they hold a raw node
+## reference, and a freed node is not null.
+func _on_peer_disconnected(peer_id: int) -> void:
+	if _is_client:
+		return
+	var player_id := _registry.get_player_id(peer_id)
+	if player_id.is_empty():
+		return
+	_fold_last_known_state(peer_id, player_id)
+	_persistence.save_player(player_id, _registry.get_player_data(player_id))
+	_registry.unbind_peer(peer_id)
+	# A stale AOI cell for a peer_id ENet may hand to the next connection would
+	# suppress that peer's very first re-scoped snapshot.
+	_peer_aoi_regions.erase(peer_id)
+	_trade.clear_party_inventory(player_id)
+	_market.clear_party_inventory(player_id)
+	_registry.evict_player(player_id)
+	GameBus.player_left.emit(player_id)
+
+## Fold everything the host knows about a LIVE remote peer into its registry record:
+## its last-reported position.
+##
+## Position is guarded by has_last_known_state() — get_last_known_state() answers
+## Vector3.ZERO for BOTH "at the origin" and "never reported", so writing it
+## unconditionally would reset a returning player's record to the world origin
+## from a peer that connected but never sent a state packet.
+##
+## HP is deliberately NOT folded. The HP the host holds for a remote peer is the
+## value that peer declared on the wire (`player_moved`), and the host has no
+## simulation of that peer to check it against, so writing it into a durable
+## record made a client-declared number survive a reconnect, a restart and every
+## later save — a durable, restart-proof cheat. `PlayerRegistry.record_hp` refuses
+## it at the choke point too; this call site is gone rather than left as a silent
+## no-op. Only the LOCAL player's host-simulated HP is persisted.
+func _fold_last_known_state(peer_id: int, player_id: String) -> void:
+	if _networking.has_last_known_state(peer_id):
+		_registry.record_position(player_id, _networking.get_last_known_state(peer_id))
+
+## Phase 33 — fold every ONLINE remote peer's last-known position into its record.
+## This runs on every autosave, not only at disconnect: a peer whose process
+## is KILLED (or whose host is) never reaches _on_peer_disconnected, so the durable
+## record would otherwise still hold whatever was loaded from disk — a returning
+## player resurrected at the world origin. The autosave interval is now the bound
+## on how much of a remote peer's live position a hard kill can lose. (Its HP is
+## not folded at all — see _fold_last_known_state.)
+func _snapshot_remote_players() -> void:
+	for peer_id in _networking.get_last_known_states():
+		var player_id := _registry.get_player_id(int(peer_id))
+		if player_id.is_empty():
+			continue
+		_fold_last_known_state(int(peer_id), player_id)
 
 ## Phase 29 — a client's movement may carry it into a new area of interest.
 ## When the AOI grid cell changes, re-send a scoped snapshot so the client gains
@@ -478,7 +665,10 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	if _peer_aoi_regions.get(peer_id, null) == region:
 		return
 	_peer_aoi_regions[peer_id] = region
-	_networking.send_snapshot(peer_id, _build_snapshot(peer_id))
+	# Phase 33 — world/entity data only: the peer's own record is NOT re-sent, or
+	# the client would re-apply a stale position/HP/inventory on every region
+	# crossing (the record is written at load and at disconnect, not per frame).
+	_networking.send_snapshot(peer_id, _build_snapshot(peer_id, false))
 
 func _process(delta: float) -> void:
 	_sync_player_avatar(delta)
@@ -487,9 +677,36 @@ func _process(delta: float) -> void:
 	# and out. No-op until characters exist and on clients (no spawned visuals).
 	_character.update_lod(_player.get_position())
 
+	# Phase 33 — settle a COMPLETED save worker before the lifecycle tick can
+	# start another one: a failed write is then reported within a frame instead of
+	# at the start of the next autosave, and its dirty chunks go back immediately.
+	_poll_save_completion()
+
+	# Phase 33 — authoritative save lifecycle: the autosave interval plus the
+	# shutdown-request poll (each on its own cadence). Must run before the
+	# snapshot-pending early return.
+	_tick_save_lifecycle(delta)
+
 	if not _snapshot_pending:
 		return
+	_tick_client_handshake(delta)
+
+## Client-side: wait for the host's world snapshot, re-presenting the join intent
+## while it does not arrive. The handshake is the only route to an identity and a
+## world, and it used to be fire-and-forget: one lost join_intent — or one lost
+## snapshot — left a fully connected client with nothing and no way to ask again.
+## Each retry re-sends the intent (a fresh seq, so the host's dedup passes it) and
+## the host re-answers an already-bound peer (see
+## PlayerRegistry.resolve_identity), so the retry re-delivers the snapshot.
+func _tick_client_handshake(delta: float) -> void:
 	_snapshot_elapsed += delta
+	_handshake_elapsed += delta
+	if _handshake_elapsed >= HANDSHAKE_RETRY_SECS and _handshake_retries < MAX_HANDSHAKE_RETRIES:
+		_handshake_elapsed = 0.0
+		_handshake_retries += 1
+		push_warning("[Networking] no world snapshot after %.1fs — re-presenting join intent (retry %d/%d)" % [
+			HANDSHAKE_RETRY_SECS, _handshake_retries, MAX_HANDSHAKE_RETRIES])
+		_networking.request_handshake()
 	if _snapshot_elapsed >= SNAPSHOT_TIMEOUT:
 		push_error("[Networking] world snapshot timed out after %.1fs — giving up" % SNAPSHOT_TIMEOUT)
 		_snapshot_pending = false
@@ -528,7 +745,18 @@ func _on_server_disconnected() -> void:
 ## Host-side: serialize authoritative world state for a connecting client,
 ## AOI-scoped (Phase 29) — only entities within the peer's area of interest are
 ## sent, so the initial payload scales with local density, not world population.
-func _build_snapshot(peer_id: int) -> Dictionary:
+##
+## Phase 33 — the inventory half is the CONNECTING PEER's own record, not the
+## host's: inventory is per-player now, and shipping the host's contents would
+## hand every client the host's items.
+##
+## `include_own_record` is TRUE only for the join/reconnect snapshot. The record is
+## a durability artifact, not a live feed (see
+## PersistenceSlice.snapshot_carries_own_record), and the client applies whatever
+## it receives as authoritative — so carrying a stale record on an AOI re-scope
+## would teleport the client to its last-saved position and roll its inventory and
+## technology back to that instant.
+func _build_snapshot(peer_id: int, include_own_record: bool = true) -> Dictionary:
 	var players := {}
 	var host_pos := _player.get_position()
 	if _networking.in_aoi(peer_id, host_pos):
@@ -540,17 +768,27 @@ func _build_snapshot(peer_id: int) -> Dictionary:
 		var last_pos: Vector3 = last_known[pid]
 		if _networking.in_aoi(peer_id, last_pos):
 			players[str(pid)] = [last_pos.x, last_pos.y, last_pos.z]
-	return {
+	var player_id := _registry.get_player_id(peer_id)
+	var snapshot := {
 		"heightmaps": _voxel.get_heightmaps(),
 		"edits":     _voxel.get_chunk_manifest(),
 		"creatures": _scoped_creatures(peer_id),
-		"inventory": _inventory.get_contents(),
-		"inventory_durability": _inventory.get_durability_data(),
+		"stations":  _station.get_station_data(),
 		"market":    _market.get_market_data(),
 		"governance": _proposal.get_governance_data(),
 		"trade":     _trade.get_trade_data(),
 		"players":   players,
 	}
+	# The peer's own record exists only once the host resolved its identity, and it
+	# is shipped only on the handshake snapshot — an AOI re-scope omits the keys
+	# entirely, so the client keeps the state it already holds.
+	if PersistenceSlice.snapshot_carries_own_record(include_own_record, player_id):
+		var own := _registry.get_player_data(player_id)
+		snapshot["inventory"] = own.get("inventory", {})
+		snapshot["inventory_durability"] = own.get("inventory_durability", {})
+		snapshot["technology"] = own.get("technology", {})
+		snapshot["player"] = { "position": own.get("position", []), "hp": own.get("hp", -1.0) }
+	return snapshot
 
 ## Phase 29 — the creature subset of the snapshot, filtered to the joining
 ## peer's AOI so a client seeds only the population it can actually see.
@@ -581,6 +819,20 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 			_tree.spawn_for_chunk(_chunk_key_to_pos(str(ckey)))
 	if data.has("edits") and data["edits"] is Dictionary:
 		_voxel.apply_chunk_manifest(data["edits"])
+	# Phase 33 — stations and the client's OWN record (position / HP /
+	# technologies). Stations are world data, so a client mirrors the host's set.
+	if data.has("stations") and data["stations"] is Array:
+		_station.apply_station_data(data["stations"])
+	if data.has("technology") and data["technology"] is Dictionary:
+		_technology.apply_statuses(data["technology"])
+	var own: Variant = data.get("player", {})
+	if own is Dictionary:
+		var arr = own.get("position", [])
+		if arr is Array and (arr as Array).size() >= 3:
+			_player.spawn_at(Vector3(float(arr[0]), float(arr[1]), float(arr[2])))
+		var hp := float(own.get("hp", -1.0))
+		if hp >= 0.0:
+			_player.set_hp(hp)
 	if data.has("creatures") and data["creatures"] is Array:
 		_creature.apply_snapshot_creatures(data["creatures"])
 	if data.has("inventory") and data["inventory"] is Dictionary:
@@ -597,6 +849,310 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 			if pos is Array and pos.size() >= 3:
 				GameBus.remote_player_state.emit(int(pid), Vector3(float(pos[0]), float(pos[1]), float(pos[2])))
 	_snapshot_pending = false
+
+# ---------------------------------------------------------------------------
+# Phase 33 — authoritative persistence lifecycle
+# ---------------------------------------------------------------------------
+
+## Accumulate the autosave timer and honour a shutdown request. Authoritative
+## roles only: a client neither loads a world nor writes one — its state arrives
+## in the host's AOI-scoped snapshot (Phase 29).
+##
+## The shutdown-request file is polled on its OWN cadence (`shutdownPollSeconds`,
+## seconds by default), NOT on the autosave tick: it used to be gated behind
+## `autosaveIntervalSeconds` (300 s), so a restart request sat unread for up to
+## five minutes. An orchestrator that writes the request and sigkills after a
+## short grace period therefore killed the server before it saved, losing up to a
+## full autosave interval per restart. It is still not a per-frame
+## `FileAccess.file_exists()` (the file is written at most once), so the separate
+## short cadence keeps the "don't stat every frame" fix while bounding the
+## shutdown latency to `shutdownPollSeconds` instead of the autosave interval.
+func _tick_save_lifecycle(delta: float) -> void:
+	if _is_client:
+		return
+	_shutdown_poll_elapsed += delta
+	if PersistenceSlice.poll_due(_shutdown_poll_elapsed, _persistence.shutdown_poll_interval):
+		_shutdown_poll_elapsed = 0.0
+		if FileAccess.file_exists(_persistence.shutdown_request_path):
+			print("[Server] shutdown requested — saving before quit")
+			_save_everything(true)
+			_flush_save()
+			DirAccess.remove_absolute(_persistence.shutdown_request_path)
+			get_tree().quit()
+			return
+	_autosave_elapsed += delta
+	if not PersistenceSlice.autosave_due(_autosave_elapsed, _persistence.autosave_interval):
+		return
+	_autosave_elapsed = 0.0
+	_save_everything(true)
+
+## Write the world record plus one record per player. `incremental` merges only the
+## dirty chunk manifests into the record already on disk, so a periodic autosave does
+## not re-serialize every loaded chunk.
+##
+## Authoritative roles only — this is the single choke point for every caller
+## (boot, autosave, window close, shutdown request). A client owns no world and no
+## records: it holds a cached player_id and receives its state from the host, so
+## writing here would drop a client-side `world.json` into `user://saves/server/`
+## that a later host boot would load as authoritative (client state, no world).
+## `_notification()` runs on a client too — `auto_accept_quit` only decides whether
+## the engine also quits, not whether the notification is delivered.
+##
+## The write itself runs on a worker thread (see _start_save_thread): this function
+## only COLLECTS the payload, which is the part that reads live slice state and so
+## has to happen on the main thread. Callers that must not outrun their write
+## (shutdown) call _flush_save() afterwards.
+func _save_everything(incremental: bool) -> void:
+	if _is_client:
+		return
+	_reap_save_thread()
+	_snapshot_local_player()
+	_snapshot_remote_players()
+	_start_save_thread(_collect_save_job(incremental))
+
+## Fold the local player's LIVE state into its registry record before a write.
+func _snapshot_local_player() -> void:
+	var pid := _registry.local_player_id
+	if pid.is_empty():
+		return
+	_registry.record_position(pid, _player.get_position())
+	_registry.record_hp(pid, _player.get_hp())
+	_registry.record_technology(pid, _technology.get_statuses())
+	# Appearance is part of the identity ("owning their inventory, HP, position,
+	# and appearance"): the character's recipe is stored, not its visual nodes.
+	var char_id := _character.get_player_character()
+	if char_id != "":
+		_registry.record_appearance(pid, _character.get_appearance(char_id))
+
+# ---------------------------------------------------------------------------
+# Phase 33 — the off-thread save
+# ---------------------------------------------------------------------------
+#
+# Serializing the world record is expensive (every loaded chunk manifest, every
+# creature, every station) and it used to run inline inside _process on the
+# autosave tick, so one frame in every `autosaveIntervalSeconds` stalled on JSON
+# encode + file write. The record is now written by a `Thread`.
+#
+# Only the WRITE moved. Building the payload still happens on the main thread,
+# because that is the half that reads live slice state (voxel edits, stations,
+# creatures, inventories) and touching nodes from a worker is not safe. What the
+# worker gets is a deep copy of plain data, so nothing it reads can be mutated
+# underneath it.
+
+## In-flight save worker, or null. Only one is ever pending: a new save reaps the
+## previous one first, so two writers can never interleave on the same files.
+var _save_thread: Thread = null
+## What the in-flight write was given: the dirty chunk keys it serialized (so its
+## completion can clear exactly those, or re-mark them when the write failed), plus
+## the counts the completion line reports. Kept as a bundle because the completion
+## happens later than the collection and must not read live slice state again.
+var _save_summary: Dictionary = {}
+
+func _collect_save_job(incremental: bool) -> Dictionary:
+	var manifest := _voxel.get_chunk_manifest()
+	var dirty := _voxel.get_dirty_chunk_keys()
+	# An incremental save carries ONLY the dirty chunk manifests; save_world() then
+	# merges them into the record already on disk. The rest of the world (stations,
+	# creatures) is small and always rewritten.
+	if incremental:
+		manifest = PersistenceSlice.dirty_chunk_subset(manifest, dirty)
+	var creatures := _creature.get_snapshot_creatures()
+	var stations := _station.get_station_data()
+	var world := {
+		"timestamp":       Time.get_unix_time_from_system(),
+		"local_player_id": _registry.local_player_id,
+		"chunks":          manifest,
+		"stations":        stations,
+		"creatures":       creatures,
+	}
+	# NOTE: no `dirty_chunks` key. It used to ride the record, but nothing ever read
+	# it back — dirty tracking lives in memory (VoxelSlice) and is reset by the save
+	# that consumed it, so writing the list to disk only made the record bigger.
+	var players := {}
+	# ONLINE players only (see PlayerRegistry.get_online_player_ids): an offline
+	# player's record is already durable and cannot have changed since it was
+	# written, so rewriting every long-gone player on every autosave was pure churn —
+	# the write cost grew with the number of players who had EVER joined.
+	for pid in _registry.get_online_player_ids():
+		var player_id := str(pid)
+		players[player_id] = _registry.get_player_data(player_id)
+	# The clear happens HERE, on the main thread, in the same synchronous step that
+	# read the dirty set: an edit made while the worker writes re-marks its chunk and
+	# is carried by the next save. Clearing after the write landed would need a
+	# second, racy bookkeeping pass; clearing before it but on failure re-marking is
+	# exact in both directions.
+	_voxel.clear_dirty_chunk_keys(dirty)
+	_save_summary = {
+		"dirty":       dirty,
+		"incremental": incremental,
+		"chunks":      manifest.size(),
+		"creatures":   creatures.size(),
+		"stations":    stations.size(),
+		"players":     players.size(),
+	}
+	return { "world": world, "incremental": incremental, "players": players }
+
+func _start_save_thread(job: Dictionary) -> void:
+	# Deep-copied before it crosses the thread boundary: the payload holds references
+	# into live records (positions, appearance, technology), and the worker must not
+	# be able to read state the main thread is still writing.
+	job = job.duplicate(true)
+	_save_thread = Thread.new()
+	var err := _save_thread.start(_persistence.write_job.bind(job))
+	if err != OK:
+		# No thread available (or the OS refused one). Fall back to writing inline:
+		# a stalled frame beats a save that never happened.
+		push_error("[Server] save thread failed to start (%s) — saving inline" % error_string(err))
+		_save_thread = null
+		_finish_save(_persistence.write_job(job))
+		return
+	print("[Server] world save started (threaded)")
+
+## Wait for the in-flight write, report it, and settle the dirty-chunk bookkeeping.
+## Exactly one place reads the worker's result, so the success and failure paths
+## cannot drift. Runs on the main thread (Thread.wait_to_finish blocks, which is why
+## only the shutdown paths call it directly).
+func _reap_save_thread() -> void:
+	if _save_thread == null:
+		return
+	_finish_save(int(_save_thread.wait_to_finish()))
+	_save_thread = null
+
+## Reap the save worker as soon as it has FINISHED, without blocking.
+##
+## Before this, the only reaper was `_reap_save_thread()` at the START of the next
+## `_save_everything()`, so a failed write was discovered up to one whole autosave
+## interval late — and the chunks it had serialized had already been cleared from
+## the dirty set at collection time. In that window the edits looked saved and
+## were not, and a process that died inside it lost them with no error reported.
+## `Thread.is_alive()` is false the moment the worker returns, so this costs one
+## bool per frame and reuses the same single reaper (no second result path).
+func _poll_save_completion() -> void:
+	if _save_thread == null or _save_thread.is_alive():
+		return
+	_reap_save_thread()
+
+## Block until the in-flight write has landed. Shutdown (window close, the polled
+## shutdown-request file, process exit) must not outrun its own save.
+func _flush_save() -> void:
+	_reap_save_thread()
+
+func _finish_save(result: int) -> void:
+	if result != OK:
+		push_error("[Server] world save failed — %s" % error_string(result))
+		GameBus.world_save_failed.emit(error_string(result))
+		# The dirty set was cleared when the payload was collected, so a failed write
+		# has to put its chunks back or the next save would skip them.
+		_voxel.mark_dirty_chunks(_save_summary.get("dirty", []))
+		_save_summary = {}
+		return
+	print("[Server] world saved (%s) — %d chunk manifest(s), %d creature(s), %d station(s), %d player record(s)" % [
+		"incremental" if bool(_save_summary.get("incremental", false)) else "full",
+		int(_save_summary.get("chunks", 0)),
+		int(_save_summary.get("creatures", 0)),
+		int(_save_summary.get("stations", 0)),
+		int(_save_summary.get("players", 0)),
+	])
+	_save_summary = {}
+	GameBus.world_saved.emit()
+
+## A pending save must not be dropped when the process goes away (a `--quit` boot
+## exits long before the autosave interval). `Thread` also has to be waited for
+## before it is freed, so this is both the correctness and the lifecycle hook.
+func _exit_tree() -> void:
+	_flush_save()
+
+## Bind the local (authoritative) player's identity and inventory. The id comes
+## from the world record when a previous process minted one, so identity is as
+## persistent as the world; otherwise a fresh id is minted here. Binding the
+## game's own `_inventory` is what makes the local player's inventory per-player
+## without touching any existing call site.
+func _bind_local_identity() -> void:
+	var pid := str(_loaded_world.get("local_player_id", ""))
+	if pid.is_empty():
+		pid = _registry.mint_player_id()
+	_registry.set_local_player(pid, _inventory)
+
+## Rebuild the local avatar from the appearance recipe in the saved player
+## record, or create the default appearance when the record has none (a fresh
+## world). Returns the character instance id.
+func _restore_or_create_player_character(pos: Vector3) -> String:
+	var pid := _registry.local_player_id
+	var appearance: Variant = _registry.get_record(pid).get("appearance", {}) if not pid.is_empty() else {}
+	if appearance is Dictionary and not (appearance as Dictionary).is_empty():
+		var restored: String = _character.create_character_from_recipe(appearance, pos)
+		if restored != "":
+			return restored
+	return _character.create_character("TravellerHuman", pos)
+
+## Restore the local player's position, HP, and technologies from its record.
+## Called AFTER the spawn point is set, so the record wins over the spawn.
+func _restore_local_player() -> void:
+	var pid := _registry.local_player_id
+	if pid.is_empty():
+		return
+	var rec := _registry.get_record(pid)
+	var arr = rec.get("position", [])
+	if arr is Array and (arr as Array).size() >= 3:
+		_player.spawn_at(Vector3(float(arr[0]), float(arr[1]), float(arr[2])))
+	var hp := float(rec.get("hp", -1.0))
+	if hp >= 0.0:
+		_player.set_hp(hp)
+	var tech: Variant = rec.get("technology", {})
+	if tech is Dictionary and not (tech as Dictionary).is_empty():
+		_technology.apply_statuses(tech)
+
+## Read the world record and the LOCAL player's record off disk. A missing world
+## record is NOT an error — a server with no save boots a fresh world.
+##
+## Chunk manifests and stations are applied here (pure data). The creature state
+## is applied by _apply_loaded_creature_state() AFTER chunk streaming, because
+## spawn_for_chunk() builds fresh instance records.
+##
+## Only the local player's record is read at boot. Every OTHER record on disk used
+## to be loaded here too, and the registry never evicts — so a server that had seen
+## a thousand players held a thousand records, their inventories and all, in memory
+## for the whole session, whether or not any of them ever came back. A record is now
+## brought in on demand: the registry is given a reader (set_record_loader) and pulls
+## one in the first time a peer CLAIMS it (a reconnect). That is the only moment a
+## remote record is needed.
+func _load_world_records() -> void:
+	_loaded_world = _persistence.load_world()
+	_bind_local_identity()
+	# Lazy reader for every other player's record (see the docstring above).
+	_registry.set_record_loader(_persistence.load_player)
+	if _loaded_world.is_empty():
+		print("[Server] no world record at %s — booting a fresh world" % _persistence.world_path())
+	else:
+		var chunks: Variant = _loaded_world.get("chunks", {})
+		if chunks is Dictionary and not (chunks as Dictionary).is_empty():
+			_voxel.apply_chunk_manifest(chunks)
+		_station.apply_station_data(_loaded_world.get("stations", []))
+		print("[Server] world loaded from %s" % _persistence.world_path())
+	# The local player's record: position, HP, inventory (with per-instance
+	# durability), and technology. It lands in the game's own slices because
+	# _bind_local_identity() ran first.
+	_load_local_player_record()
+
+func _load_local_player_record() -> void:
+	var pid := _registry.local_player_id
+	if pid.is_empty():
+		return
+	var record := _persistence.load_player(pid)
+	if record.is_empty():
+		return
+	_registry.apply_player_data(pid, record)
+	print("[Server] restored the local player record '%s'" % pid)
+
+## Re-apply the recorded creature state (state, HP, and the wall-clock respawn
+## deadline) over the population chunk streaming just spawned. `apply_recorded_…`
+## (not the client's `apply_snapshot_creatures`) so a record for a chunk outside
+## the current view window is skipped instead of fabricating an instance.
+func _apply_loaded_creature_state() -> void:
+	var creatures: Variant = _loaded_world.get("creatures", [])
+	if not (creatures is Array) or (creatures as Array).is_empty():
+		return
+	_creature.apply_recorded_creature_states(creatures)
 
 # ---------------------------------------------------------------------------
 # Bus listeners
@@ -671,9 +1227,14 @@ func _on_player_respawned(position: Vector3) -> void:
 	pass
 
 func _on_save_completed(slot: int) -> void:
-	# The snapshot is on disk; reset dirty-chunk tracking so the next save only
-	# re-serializes chunks edited after this point.
-	_voxel.clear_dirty_chunks()
+	# NOTHING to reset here. The legacy slot file is a single-file sample (the
+	# boot/client record), not the authoritative world record, so writing it does
+	# NOT make the chunk manifests durable — only an authoritative world save does,
+	# and that save clears the keys it serialized itself (see `_collect_save_job`;
+	# the clear has to happen where the payload is read, because the write is off
+	# the main thread). Clearing here would silently drop the edits made before the
+	# slot write from the next world save.
+	pass
 
 func _on_load_completed(slot: int, data: Dictionary) -> void:
 	if data.has("inventory") and data["inventory"] is Dictionary:
@@ -689,6 +1250,16 @@ func _on_load_completed(slot: int, data: Dictionary) -> void:
 		_voxel.apply_edits(world["voxel_edits"], world.get("voxel_materials", {}))
 	if data.has("technology"):
 		_technology.apply_statuses(data["technology"])
+	# Phase 33 — the snapshot carries the player's own record: position is set
+	# FIRST (spawn_at), then HP, so the restored body sits where the record says.
+	var player_data: Variant = data.get("player", {})
+	if player_data is Dictionary and not _is_client:
+		var arr = player_data.get("position", [])
+		if arr is Array and (arr as Array).size() >= 3:
+			_player.spawn_at(Vector3(float(arr[0]), float(arr[1]), float(arr[2])))
+		var hp := float(player_data.get("hp", -1.0))
+		if hp >= 0.0:
+			_player.set_hp(hp)
 	if data.has("market"):
 		_market.apply_market_data(data["market"])
 	if data.has("governance"):

@@ -89,9 +89,21 @@ func set_expiry_seconds(seconds: float) -> void:
 func set_party_inventory(party: String, inv: Node) -> void:
 	_party_inventory[party] = inv
 
+## Forget a party's inventory binding. Called when a peer disconnects and its
+## registry-owned inventory node is freed (PlayerRegistry.evict_player): the
+## stored reference would otherwise be a FREED object, which is not null, so
+## `_inventory_for` would hand callers something that explodes on first use.
+func clear_party_inventory(party: String) -> void:
+	_party_inventory.erase(party)
+
 func _inventory_for(party: String) -> Node:
 	if _party_inventory.has(party):
-		return _party_inventory[party]
+		var bound: Variant = _party_inventory[party]
+		# A freed node is not null; treat it as "no inventory" and drop the
+		# binding, so an evicted seller cannot crash the expiry tick.
+		if is_instance_valid(bound):
+			return bound
+		_party_inventory.erase(party)
 	if party == "player":
 		return inventory_slice
 	return null

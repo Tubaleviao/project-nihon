@@ -17,20 +17,42 @@ extends Node
 ##
 ## Plug contract (GameBus signals consumed / emitted):
 ##   IN  : craft_requested(recipe_id)
+##         craft_intent(recipe_id, player_id)   — Phase 33: who is crafting
+##         repair_requested(item_id)
 ##   OUT : craft_resolved(result)
 ##         result: { recipe_id, success, outputs: [{ item, quantity }], reason }
+##         craft_intent(recipe_id, "")          — client forwards to the host
 ##
 ## Public API:
-##   craft(recipe_id)      -> Dictionary  (resolve immediately, mutating inventory)
-##   can_craft(recipe_id)  -> Dictionary  (non-mutating check)
+##   craft(recipe_id, player_id := "") -> Dictionary
+##   can_craft(recipe_id, player_id := "") -> Dictionary
 ##   get_recipe(recipe_id) -> Dictionary  (structured recipe or {})
+##   inventory_for(player_id) -> Node
 ##   set_skill / get_skill / get_skills
+##
+## Crafting is PER-PLAYER (Phase 33): each player owns an inventory that is
+## persisted with their record, so a recipe must be resolved against the crafter's
+## own inventory rather than a single host-scoped one — otherwise a remote peer's
+## crafts (and the materials they consume) would land on the host's inventory and
+## be persisted against the host's record. `player_id` selects the inventory;
+## "" (the default, and every isolated unit test) falls back to `inventory_slice`.
 
 ## Shared skill-tier ordering (novice → master) — see src/core/skill_tiers.gd.
 const SkillTiers := preload("res://src/core/skill_tiers.gd")
 
-## Set by game_root so recipes can consume/produce inventory items.
+## Set by game_root so recipes can consume/produce inventory items. The fallback
+## inventory when no per-player registry is wired (isolated unit tests) or when no
+## player id is given.
 var inventory_slice: Node = null
+
+## Set by game_root: the PlayerRegistry, which owns one inventory per player. When
+## wired, `inventory_for(player_id)` resolves the crafter's own inventory.
+var player_registry: Node = null
+
+## Authority mode: true on the host / single-player (this slice resolves the craft),
+## false on a client (it forwards a craft intent to the host instead, which is the
+## only machine that owns the player records).
+var is_authoritative: bool = true
 
 ## Set by game_root so recipes are gated behind the technology tree. When null
 ## (isolated unit tests) the gate is not applied.
@@ -51,11 +73,19 @@ func _ready() -> void:
 	for skill_key in GameData.SKILLS:
 		_skill_tiers[skill_key] = "novice"
 	GameBus.craft_requested.connect(_on_craft_requested)
+	GameBus.craft_intent.connect(_on_craft_intent)
 	GameBus.repair_requested.connect(_on_repair_requested)
 
-## Resolve a recipe against the inventory and skill tiers, consuming inputs and
-## producing outputs on success. Emits craft_resolved. Never throws.
-func craft(recipe_id: String) -> Dictionary:
+## The inventory a craft by `player_id` resolves against: that player's own
+## inventory from the registry when one is wired, else the slice's fallback.
+func inventory_for(player_id: String) -> Node:
+	if player_id != "" and player_registry != null and player_registry.has_method("get_inventory"):
+		return player_registry.get_inventory(player_id)
+	return inventory_slice
+
+## Resolve a recipe against the crafter's inventory and skill tiers, consuming
+## inputs and producing outputs on success. Emits craft_resolved. Never throws.
+func craft(recipe_id: String, player_id: String = "") -> Dictionary:
 	var recipe := get_recipe(recipe_id)
 	if recipe.is_empty():
 		return _fail(recipe_id, "unknown_recipe")
@@ -75,7 +105,8 @@ func craft(recipe_id: String) -> Dictionary:
 	var inputs: Array = recipe.get("inputs", [])
 	var outputs: Array = recipe.get("outputs", [])
 
-	if inventory_slice == null or not inventory_slice.has_method("consume_items"):
+	var inventory := inventory_for(player_id)
+	if inventory == null or not inventory.has_method("consume_items"):
 		return _fail(recipe_id, "no_inventory")
 
 	# Availability check (inputs present) — consume_items is atomic, but a clear
@@ -83,23 +114,23 @@ func craft(recipe_id: String) -> Dictionary:
 	for entry in inputs:
 		var item_id: String = str(entry.get("item", ""))
 		var qty: int = int(entry.get("quantity", 1))
-		if inventory_slice.get_item_count(item_id) < qty:
+		if inventory.get_item_count(item_id) < qty:
 			return _fail(recipe_id, "missing_inputs")
 
 	# Capacity check (outputs will fit) BEFORE consuming inputs, so a failed
 	# craft never leaves the inventory half-consumed.
-	if not inventory_slice.can_add_items(_to_counts(outputs)):
+	if not inventory.can_add_items(_to_counts(outputs)):
 		return _fail(recipe_id, "inventory_full")
 
 	# Consume inputs, then produce outputs.
-	if not inventory_slice.consume_items(_to_counts(inputs)):
+	if not inventory.consume_items(_to_counts(inputs)):
 		return _fail(recipe_id, "missing_inputs")
 
 	var produced: Array = []
 	for entry in outputs:
 		var item_id: String = str(entry.get("item", ""))
 		var qty: int = int(entry.get("quantity", 1))
-		inventory_slice.add_item(item_id, qty)
+		inventory.add_item(item_id, qty)
 		produced.append({ "item": item_id, "quantity": qty })
 
 	return _ok(recipe_id, produced)
@@ -107,7 +138,7 @@ func craft(recipe_id: String) -> Dictionary:
 ## Non-mutating check: returns the same result shape craft() would, with
 ## success=true only if the recipe would currently succeed. Does NOT emit
 ## craft_resolved (it is a query, not a craft attempt).
-func can_craft(recipe_id: String) -> Dictionary:
+func can_craft(recipe_id: String, player_id: String = "") -> Dictionary:
 	var recipe := get_recipe(recipe_id)
 	if recipe.is_empty():
 		return _result(recipe_id, false, [], "unknown_recipe")
@@ -120,14 +151,15 @@ func can_craft(recipe_id: String) -> Dictionary:
 	var station_reason := _check_station_gate(recipe)
 	if station_reason != "":
 		return _result(recipe_id, false, [], station_reason)
-	if inventory_slice == null:
+	var inventory := inventory_for(player_id)
+	if inventory == null:
 		return _result(recipe_id, false, [], "no_inventory")
 	for entry in recipe.get("inputs", []):
 		var item_id: String = str(entry.get("item", ""))
 		var qty: int = int(entry.get("quantity", 1))
-		if inventory_slice.get_item_count(item_id) < qty:
+		if inventory.get_item_count(item_id) < qty:
 			return _result(recipe_id, false, [], "missing_inputs")
-	if not inventory_slice.can_add_items(_to_counts(recipe.get("outputs", []))):
+	if not inventory.can_add_items(_to_counts(recipe.get("outputs", []))):
 		return _result(recipe_id, false, [], "inventory_full")
 	return _result(recipe_id, true, recipe.get("outputs", []), "")
 
@@ -179,8 +211,31 @@ func can_repair(item_id: String, spec: Dictionary = {}) -> Dictionary:
 # Private
 # ---------------------------------------------------------------------------
 
+## Host-local craft request (the UI or any host-side system): resolved against the
+## local player's own inventory. A CLIENT does not resolve crafts at all — it owns no
+## records, so it forwards a craft intent to the host, which is the only machine that
+## can mutate a persisted inventory.
 func _on_craft_requested(recipe_id: String) -> void:
-	craft(recipe_id)
+	if not is_authoritative:
+		GameBus.craft_intent.emit(recipe_id, "")
+		return
+	craft(recipe_id, local_player_id())
+
+## A craft intent carrying a crafter. On the host this is the resolved path (the
+## networking slice re-emits an inbound intent with the identity it bound to that
+## connection). On a client the same signal is the OUTBOUND one — networking forwards
+## it and this slice must not also resolve it locally.
+func _on_craft_intent(recipe_id: String, player_id: String) -> void:
+	if not is_authoritative:
+		return
+	craft(recipe_id, player_id if player_id != "" else local_player_id())
+
+## The local player's id on this machine, or "" when no registry is wired (isolated
+## unit tests, where the fallback inventory_slice is the only inventory anyway).
+func local_player_id() -> String:
+	if player_registry != null and "local_player_id" in player_registry:
+		return str(player_registry.local_player_id)
+	return ""
 
 func _on_repair_requested(item_id: String) -> void:
 	repair(item_id)
