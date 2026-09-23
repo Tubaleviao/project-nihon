@@ -1502,7 +1502,7 @@ fabric `world-system`/entity to follow once the runtime shape is settled.
 
 ---
 
-## Phase 32 — One authoritative boot path
+## Phase 32 — One authoritative boot path ✅ Done
 
 **Goal:** Make the host path a superset of the server path — `_boot_host()` calls
 `_boot_server()` for the authoritative half, then layers local presentation
@@ -1512,16 +1512,17 @@ mechanical; touches no gameplay.
 
 **Newel dependency:** None.
 
-**Why this is its own phase:** there are currently three boot paths and the
-authoritative half is duplicated. `_boot_world()` branches: client →
-`_boot_client()`, server → `_boot_server()`, else the host path is inlined in
-`_boot_world()` itself (player spawn, chunk streaming, the demo craft sequence,
-the save/load snapshot, `_networking.host()`). There is **no `_boot_host()`
-function at all**. The drift is already visible in code: the host path hardcodes
+**Why this is its own phase:** there were three boot paths and the authoritative
+half was duplicated (the state this phase removed). `_boot_world()` branched:
+client → `_boot_client()`, server → `_boot_server()`, else the host path was
+inlined in `_boot_world()` itself (player spawn, chunk streaming, the demo craft
+sequence, the save/load snapshot, `_networking.host()`). There was **no
+`_boot_host()` function at all** before this phase; the drift is already visible
+in code: the host path hardcoded
 `_networking.host(_networking.DEFAULT_PORT, 1)` while `_boot_server()` passes
 `DEFAULT_MAX_CLIENTS` (64). Until the server path is the single authoritative
 boot, every Phase 33 persistence change has to be written and verified twice —
-which is why this lands first, as its own commit.
+which is why this landed first, as its own commit.
 
 **Deliverables:**
 - Extract the inlined host path from `_boot_world()` into `_boot_host()`.
@@ -1536,18 +1537,23 @@ which is why this lands first, as its own commit.
 - Add a CI job to `.github/workflows/ci.yml` that boots `--server --headless`
   and asserts the server comes up clean.
 
-**Acceptance criteria:** *(not yet met — phase in progress)*
-- [ ] `_boot_world()` contains no inlined host logic — it only dispatches.
-- [ ] A listen host and a dedicated server share the identical authoritative
+**Acceptance criteria:**
+- [x] `_boot_world()` contains no inlined host logic — it only dispatches.
+- [x] A listen host and a dedicated server share the identical authoritative
   half (same `chunk_manager.start()` / `refresh()` + `networking.host()` calls).
-- [ ] The host still renders: `render_visuals` is decided by `_is_server` in
+  Both boots print the same line — `[Server] listening on port 7777,
+  max_clients 64` — as the delivered record.
+- [x] The host still renders: `render_visuals` is decided by `_is_server` in
   `_ready()`, so a host calling `_boot_server()` must still build the player,
-  avatars, lighting, and UI.
-- [ ] `max_clients` is 64 on the host path, not 1.
-- [ ] The new CI job fails on a `SCRIPT ERROR` / `Parse Error` / `Compile Error`
-  in the server boot log.
-- [ ] Headless suite count is unchanged (this step adds behaviours, not tests of
-  the suite's existing assertions).
+  avatars, lighting, and UI. (Lighting, the minimap and the UI stayed in
+  `_ready()` behind their `not _is_server` guard; nothing clears them.)
+- [x] `max_clients` is 64 on the host path, not 1.
+- [x] The new CI job fails on a `SCRIPT ERROR` / `Parse Error` / `Compile Error`
+  in the server boot log (`.github/workflows/ci.yml` job `server-boot`), and
+  additionally asserts the listening line is present rather than only that the
+  boot failed to crash.
+- [x] Headless suite count is unchanged (this step adds behaviours, not tests of
+  the suite's existing assertions). 6695 passed before and after.
 
 **Implementation notes:**
 - **Order the authoritative half before the player spawn.** `_boot_server()`
