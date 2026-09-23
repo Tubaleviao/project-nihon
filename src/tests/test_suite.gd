@@ -22,6 +22,8 @@ const TechnologySlice := preload("res://src/technology/technology_slice.gd")
 const UiSlice         := preload("res://src/ui/ui_slice.gd")
 const VoxelSlice      := preload("res://src/terrain/voxel_slice.gd")
 const StationSlice    := preload("res://src/world/station_slice.gd")
+const TreeSlice       := preload("res://src/world/tree_slice.gd")
+const MeshUtil        := preload("res://src/core/mesh_util.gd")
 const MarketSlice     := preload("res://src/world/market_slice.gd")
 const TradeSlice      := preload("res://src/trade/trade_slice.gd")
 const ProposalSlice   := preload("res://src/governance/proposal_slice.gd")
@@ -184,6 +186,8 @@ func run() -> void:
 	_run_test("voxel: mining placed block yields its material", _test_voxel_mine_placed_block_yields_material)
 	_run_test("voxel: placed block preserves base colour",     _test_voxel_placed_block_preserves_base_colour)
 	_run_test("voxel: place after mine keeps placed colour",   _test_voxel_place_after_mine_keeps_colour)
+	_run_test("voxel: rare vein deposits on natural tiles",    _test_voxel_rare_vein_deposits)
+	_run_test("voxel: rare vein material list",                _test_voxel_rare_vein_materials)
 	_run_test("ui: windows toggle open/close",                 _test_ui_window_toggle)
 	_run_test("ui: inventory lines reflect contents",          _test_ui_inventory_lines)
 	_run_test("ui: crafting rows gate on technology",          _test_ui_crafting_rows_tech_gate)
@@ -207,6 +211,17 @@ func run() -> void:
 	_run_test("chunk: voxel edits isolated per chunk",          _test_chunk_voxel_edits_isolated)
 	_run_test("chunk: unload preserves edits on reload",        _test_chunk_unload_preserves_edits)
 	_run_test("chunk: creature spawn scales per chunk",         _test_chunk_creature_spawn_per_chunk)
+	_run_test("chunk: tree spawn scales per chunk",             _test_chunk_tree_spawn_per_chunk)
+	_run_test("tree: spawns the per-chunk budget",              _test_tree_spawn_for_chunk)
+	_run_test("tree: per-biome species and density",            _test_tree_per_biome_table)
+	_run_test("tree: chop yields wood and wears the axe",       _test_tree_chop_yields_wood_and_wears_axe)
+	_run_test("tree: chop requires an axe",                     _test_tree_chop_requires_axe)
+	_run_test("tree: stump regrows on its cooldown",            _test_tree_stump_regrows_on_cooldown)
+	_run_test("tree: despawn is per chunk",                     _test_tree_despawn_is_per_chunk)
+	_run_test("tree: client forwards then applies host chop",   _test_tree_client_forwards_then_applies_host_chop)
+	_run_test("tree: ids agree across peer spawn order",        _test_tree_ids_agree_across_peer_spawn_order)
+	_run_test("tree: ids survive a chunk reload",               _test_tree_ids_survive_chunk_reload)
+	_run_test("tree: trunk body carries its identity",          _test_tree_trunk_body_carries_its_identity)
 	_run_test("chunk: reload honours engaged spawn budget",     _test_chunk_reload_engaged_budget)
 	_run_test("chunk: apply_edits preserves dirty chunks",      _test_apply_edits_preserves_dirty_chunks)
 	_run_test("chunk: persistence round-trips per-chunk edits", _test_chunk_persistence_manifest)
@@ -4552,6 +4567,274 @@ func _test_proposal_expiry_authority_gated() -> void:
 	p._process(2.0)
 	assert_eq(str(p.get_proposal("proposal_0")["state"]), "proposed", "non-authoritative tick does not expire proposals")
 	p.free()
+
+# ---------------------------------------------------------------------------
+# TreeSlice tests (Phase 31)
+# ---------------------------------------------------------------------------
+
+## A TreeSlice with no terrain wired: biome "" falls back to the default
+## (temperate) entry, mirroring CreatureSlice's isolated-test path.
+func _make_tree_slice() -> Node:
+	var t := TreeSlice.new()
+	add_child(t)
+	return t
+
+func _test_tree_spawn_for_chunk() -> void:
+	var t := _make_tree_slice()
+	t.spawn_for_chunk(Vector2i(0, 0))
+	var trees: Array = t.get_all_trees()
+	assert_eq(trees.size(), 8, "the default temperate biome grants 8 trees per chunk")
+	var tiles := {}
+	for tree in trees:
+		assert_eq(str(tree["species"]), "Thornwood", "the temperate biome grows Thornwood")
+		assert_eq(str(tree["wood"]), "Thornwood", "a temperate tree yields Thornwood")
+		assert_eq(str(tree["state"]), "standing", "a fresh tree is standing")
+		tiles["%.2f,%.2f" % [tree["position"].x, tree["position"].z]] = true
+	assert_eq(tiles.size(), trees.size(), "every tree lands on its own spot")
+	t.free()
+
+func _test_tree_per_biome_table() -> void:
+	var t := _make_tree_slice()
+	assert_eq(int(t.tree_entry_for_biome("TemperateForest")["per_chunk"]), 8, "temperate forest is wooded (prose weight 0.8)")
+	assert_eq(int(t.tree_entry_for_biome("TemperateGrassland")["per_chunk"]), 2, "grassland grows only isolated copses (prose 0.1)")
+	assert_eq(str(t.tree_entry_for_biome("TwilightGrove")["wood"]), "Duskfiber", "twilight trees yield Duskfiber")
+	assert_true(t.tree_entry_for_biome("VolcanicBadlands").is_empty(), "the volcanic badlands grow no trees")
+	assert_true(t.tree_entry_for_biome("VoidRift").is_empty(), "the void rift grows no trees")
+	t.free()
+
+func _test_tree_chop_yields_wood_and_wears_axe() -> void:
+	var t := _make_tree_slice()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv.add_item("CarpenterAxe", 1)
+	t.inventory_slice = inv
+	t.spawn_for_chunk(Vector2i(0, 0))
+	var tid: String = str(t.get_all_trees()[0]["tree_id"])
+	var wear_before: float = float(inv.get_durability_data()["CarpenterAxe"][0])
+	var result: Dictionary = t.chop_tree(tid)
+	assert_true(result["success"], "a chop succeeds while an axe is held")
+	assert_eq(str(result["wood"]), "Thornwood", "the chop reports the wood felled")
+	assert_eq(inv.get_item_count("Thornwood"), 2, "the wood lands in the inventory")
+	var tree: Dictionary = t.get_tree_record(tid)
+	assert_eq(str(tree["state"]), "stump", "a chopped tree becomes a stump")
+	assert_true(float(tree["respawn_at"]) > 0.0, "a regrowth deadline is set")
+	var wear_after: float = float(inv.get_durability_data()["CarpenterAxe"][0])
+	assert_true(wear_after < wear_before, "chopping wears the axe (%.2f -> %.2f)" % [wear_before, wear_after])
+	t.free()
+	inv.free()
+
+func _test_tree_chop_requires_axe() -> void:
+	var t := _make_tree_slice()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	t.inventory_slice = inv
+	t.spawn_for_chunk(Vector2i(0, 0))
+	var tid: String = str(t.get_all_trees()[0]["tree_id"])
+	var bare: Dictionary = t.chop_tree(tid)
+	assert_false(bare["success"], "a bare-handed chop is refused")
+	assert_eq(str(bare["reason"]), "axe_required", "the refusal names the missing axe")
+	assert_eq(str(t.get_tree_record(tid)["state"]), "standing", "a refused chop leaves the tree standing")
+	# The fabric's toolType is the discriminator: a pick is not an axe.
+	inv.add_item("FerritePick", 1)
+	assert_eq(str(t.chop_tree(tid)["reason"]), "axe_required", "a pick does not fell a tree")
+	assert_eq(inv.get_item_count("Thornwood"), 0, "a refused chop yields no wood")
+	t.free()
+	inv.free()
+
+func _test_tree_stump_regrows_on_cooldown() -> void:
+	var t := _make_tree_slice()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv.add_item("CarpenterAxe", 1)
+	t.inventory_slice = inv
+	t.spawn_for_chunk(Vector2i(0, 0))
+	var tid: String = str(t.get_all_trees()[0]["tree_id"])
+	t.chop_tree(tid)
+	assert_eq(str(t.chop_tree(tid)["reason"]), "not_standing", "a stump cannot be chopped twice")
+	# Drive the deadline into the past — regrowth is wall-clock gated.
+	t._trees[tid]["respawn_at"] = Time.get_unix_time_from_system() - 1.0
+	t._tick_respawn()
+	var tree: Dictionary = t.get_tree_record(tid)
+	assert_eq(str(tree["state"]), "standing", "the stump regrows after the cooldown")
+	assert_eq(float(tree["respawn_at"]), -1.0, "the regrowth deadline clears")
+	assert_true(t.chop_tree(tid)["success"], "a regrown tree can be chopped again")
+	t.free()
+	inv.free()
+
+func _test_tree_despawn_is_per_chunk() -> void:
+	var t := _make_tree_slice()
+	t.spawn_for_chunk(Vector2i(0, 0))
+	t.spawn_for_chunk(Vector2i(1, 0))
+	assert_eq(t.get_all_trees().size(), 16, "two chunks carry their own budgets")
+	assert_eq(t.trees_in_chunk(Vector2i(1, 0)).size(), 8, "chunk (1,0) owns 8 trees")
+	t.despawn_for_chunk(Vector2i(1, 0))
+	assert_eq(t.get_all_trees().size(), 8, "despawning a chunk removes only its trees")
+	t.spawn_for_chunk(Vector2i(1, 0))
+	assert_eq(t.trees_in_chunk(Vector2i(1, 0)).size(), 8, "a chunk reload restores its budget")
+	t.free()
+
+func _test_tree_client_forwards_then_applies_host_chop() -> void:
+	var t := _make_tree_slice()
+	t.spawn_for_chunk(Vector2i(0, 0))
+	var tid: String = str(t.get_all_trees()[0]["tree_id"])
+	var forwarded := {}
+	var listener := func(id): forwarded["id"] = id
+	GameBus.tree_chop_requested.connect(listener)
+	t.is_authoritative = false
+	var result: Dictionary = t.chop_tree(tid)
+	assert_eq(str(result["reason"]), "forwarded", "a client forwards the chop instead of resolving it")
+	assert_eq(str(forwarded.get("id", "")), tid, "the forwarded intent carries the tree id")
+	assert_eq(str(t.get_tree_record(tid)["state"]), "standing", "a client never chops locally")
+	# The host's authoritative chop arrives on the bus.
+	GameBus.tree_chopped.emit(tid, "Thornwood", "stump", 12345.0)
+	var chopped: Dictionary = t.get_tree_record(tid)
+	assert_eq(str(chopped["state"]), "stump", "the client applies the host's chop")
+	assert_eq(float(chopped["respawn_at"]), 12345.0, "the host's regrowth deadline is kept")
+	# A client never regrows on its own clock.
+	t._process(600.0)
+	assert_eq(str(t.get_tree_record(tid)["state"]), "stump", "a client does not run the regrowth tick")
+	GameBus.tree_chop_requested.disconnect(listener)
+	t.free()
+
+## The tree id is the ONLY identity the wire carries (tree_chop_intent /
+## tree_chopped / tree_respawned all name a tree by it), and placement is
+## deterministic so no snapshot carries it. Peers that stream their chunks in a
+## different order must therefore still agree on it.
+func _test_tree_ids_agree_across_peer_spawn_order() -> void:
+	var host := _make_tree_slice()
+	var client := _make_tree_slice()
+	host.spawn_for_chunk(Vector2i(0, 0))
+	host.spawn_for_chunk(Vector2i(1, 0))
+	# The client seeds the same two chunks in the opposite order (its own
+	# streaming raced ahead of the host's snapshot, say).
+	client.spawn_for_chunk(Vector2i(1, 0))
+	client.spawn_for_chunk(Vector2i(0, 0))
+	var host_ids: Array = host.trees_in_chunk(Vector2i(0, 0))
+	var client_ids: Array = client.trees_in_chunk(Vector2i(0, 0))
+	host_ids.sort()
+	client_ids.sort()
+	assert_eq(client_ids, host_ids, "both peers name a chunk's trees identically")
+	# …so a broadcast chop resolves on the client instead of being dropped.
+	var tid: String = str(host_ids[0])
+	assert_eq(client.get_tree_record(tid).get("position", Vector3.ZERO),
+		host.get_tree_record(tid).get("position", Vector3.ZERO),
+		"the id names the same tree on both peers")
+	host.free()
+	client.free()
+
+## A reloaded chunk respawns its trees from scratch, so the id must derive from
+## the deterministic placement inputs rather than from spawn order — otherwise a
+## chop broadcast naming a tree harvested before the reload resolves to nothing
+## (apply_chop_state / _on_tree_respawned silently ignore an unknown id).
+func _test_tree_ids_survive_chunk_reload() -> void:
+	var t := _make_tree_slice()
+	t.spawn_for_chunk(Vector2i(0, 0))
+	t.spawn_for_chunk(Vector2i(1, 0))   # an unrelated chunk spawned after it
+	var before: Array = t.trees_in_chunk(Vector2i(0, 0))
+	before.sort()
+	t.despawn_for_chunk(Vector2i(0, 0))
+	t.spawn_for_chunk(Vector2i(0, 0))
+	var after: Array = t.trees_in_chunk(Vector2i(0, 0))
+	after.sort()
+	assert_eq(after, before, "a reloaded chunk restores the same tree ids")
+	t.free()
+
+## The chop HUD label reads the aimed trunk's species off its collision body, so
+## the body must actually carry it (PlayerSlice: get_meta("species")).
+func _test_tree_trunk_body_carries_its_identity() -> void:
+	var t := _make_tree_slice()
+	t.spawn_for_chunk(Vector2i(0, 0))
+	var tree: Dictionary = t.get_all_trees()[0]
+	var body = tree["body"]
+	assert_true(body != null, "a rendered tree builds a trunk collision body")
+	assert_eq(str(body.get_meta("tree_id", "")), str(tree["tree_id"]), "the trunk carries its tree id")
+	assert_eq(str(body.get_meta("species", "")), str(tree["species"]), "the trunk carries its species (the chop HUD label reads it)")
+	t.free()
+
+func _test_chunk_tree_spawn_per_chunk() -> void:
+	var cm := ChunkManager.new()
+	add_child(cm)
+	var t := _make_tree_slice()
+	cm.tree_slice = t
+	cm.load_chunk(Vector2i(0, 0))
+	assert_true(t.trees_in_chunk(Vector2i(0, 0)).size() > 0, "loading a chunk spawns its trees")
+	cm.unload_chunk(Vector2i(0, 0))
+	assert_eq(t.trees_in_chunk(Vector2i(0, 0)).size(), 0, "unloading a chunk drops its trees")
+	t.free()
+	cm.free()
+
+# ---------------------------------------------------------------------------
+# Rare-vein deposit tests (Phase 31)
+# ---------------------------------------------------------------------------
+
+## First chunk (scanning along cz = 0) whose biome is one of `biomes`, or
+## Vector2i(-1, -1) when none is found.
+func _find_chunk_with_biome(terrain: Node, biomes: Array) -> Vector2i:
+	for cx in range(-80, 80):
+		if biomes.has(str(terrain.get_biome_at_chunk(Vector2i(cx, 0)))):
+			return Vector2i(cx, 0)
+	return Vector2i(-1, -1)
+
+## Vertex count of the built chunk's visual surface (surface 0).
+func _chunk_surface_vertices(voxel: Node, chunk_pos: Vector2i) -> int:
+	var root: Node3D = voxel._chunks["%d,%d" % [chunk_pos.x, chunk_pos.y]]
+	var mesh_inst: MeshInstance3D = root.get_child(0)
+	return mesh_inst.mesh.surface_get_array_len(0)
+
+func _test_voxel_rare_vein_deposits() -> void:
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	var v := VoxelSlice.new()
+	add_child(v)
+	v.terrain_slice = terrain
+	var rare := _find_chunk_with_biome(terrain, ["VolcanicBadlands", "TwilightGrove"])
+	var plain := _find_chunk_with_biome(terrain, ["TemperateForest", "TemperateGrassland"])
+	assert_true(rare.x != -1, "found a biome that grants a rare vein")
+	assert_true(plain.x != -1, "found a biome with no rare vein")
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+
+	var deposits: Array = v.vein_deposits(rare, flat)
+	assert_true(deposits.size() > 0, "rare vein tiles get a raised deposit")
+	# Vector3 holds 32-bit floats, so compare the deposit geometry approximately.
+	var expected_top: float = 2.0 + VoxelSlice.VEIN_DEPOSIT_HEIGHT * 0.5
+	var expected_size: float = VoxelSlice.TILE_SIZE - VoxelSlice.VEIN_DEPOSIT_INSET * 2.0
+	for d in deposits:
+		assert_true(absf(float(d["position"].y) - expected_top) < 0.0001, "a deposit sits on the column top")
+		assert_true(absf(float(d["size"].x) - expected_size) < 0.0001, "a deposit is inset inside its tile")
+	assert_eq(v.vein_deposits(plain, flat).size(), 0, "common ground carries no deposit")
+
+	# A mined natural column is not a *placed* one, so its vein keeps its deposit
+	# — at the lowered height (only a player-placed surface is exempt).
+	var mined_tile: Vector2i = v._world_to_tile(Vector2(deposits[0]["position"].x, deposits[0]["position"].z))
+	v._edits[v._tile_key(mined_tile)] = 1.5
+	var mined: Array = v.vein_deposits(rare, flat)
+	assert_eq(mined.size(), deposits.size(), "mining a vein column does not remove its deposit")
+	assert_true(absf(float(mined[0]["position"].y) - (1.5 + VoxelSlice.VEIN_DEPOSIT_HEIGHT * 0.5)) < 0.0001,
+		"the deposit rides down to the mined column top")
+	# Undo the simulated mine: the mesh check below compares flat chunks.
+	v._edits.erase(v._tile_key(mined_tile))
+
+	# The deposits must actually reach the rendered mesh: a rare-biome chunk
+	# carries exactly one box per rare tile more than a ferrite-only chunk of the
+	# same (identical, flat) heightmap.
+	v.build_chunk(rare, flat)
+	v.build_chunk(plain, flat)
+	var delta: int = _chunk_surface_vertices(v, rare) - _chunk_surface_vertices(v, plain)
+	assert_eq(delta, deposits.size() * MeshUtil.BOX_VERTEX_COUNT, "every deposit reaches the chunk mesh")
+	v.free()
+	terrain.free()
+
+func _test_voxel_rare_vein_materials() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	assert_true(VoxelSlice.RARE_VEIN_MATERIALS.has("Aethermite"), "aethermite is a vein material")
+	assert_true(VoxelSlice.RARE_VEIN_MATERIALS.has("Lumenfite"), "lumenfite is a vein material")
+	assert_true(VoxelSlice.RARE_VEIN_MATERIALS.has("Voidite"), "voidite is a vein material")
+	assert_false(VoxelSlice.RARE_VEIN_MATERIALS.has("Ferrite"), "the common ground is not a vein")
+	assert_false(VoxelSlice.RARE_VEIN_MATERIALS.has("Ashite"), "the volcanic bulk rock is not a vein")
+	v.free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers

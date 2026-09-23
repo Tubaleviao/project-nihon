@@ -20,6 +20,7 @@ const CharacterSlice   := preload("res://src/character/character_slice.gd")
 const CraftingSlice    := preload("res://src/crafting/crafting_slice.gd")
 const TechnologySlice  := preload("res://src/technology/technology_slice.gd")
 const StationSlice     := preload("res://src/world/station_slice.gd")
+const TreeSlice        := preload("res://src/world/tree_slice.gd")
 const MarketSlice      := preload("res://src/world/market_slice.gd")
 const TradeSlice       := preload("res://src/trade/trade_slice.gd")
 const ProposalSlice    := preload("res://src/governance/proposal_slice.gd")
@@ -43,6 +44,7 @@ var _character:   CharacterSlice
 var _crafting:    CraftingSlice
 var _technology:  TechnologySlice
 var _station:     StationSlice
+var _tree:        TreeSlice
 var _market:      MarketSlice
 var _trade:       TradeSlice
 var _proposal:    ProposalSlice
@@ -92,6 +94,7 @@ func _ready() -> void:
 	_crafting    = CraftingSlice.new()
 	_technology  = TechnologySlice.new()
 	_station     = StationSlice.new()
+	_tree        = TreeSlice.new()
 	_market      = MarketSlice.new()
 	_trade       = TradeSlice.new()
 	_proposal    = ProposalSlice.new()
@@ -100,6 +103,8 @@ func _ready() -> void:
 	# CreatureSlice needs the terrain to place spawns on the surface; wire it
 	# before the slices enter the tree so its _ready() can use it.
 	_creature.terrain_slice = _terrain
+	# TreeSlice likewise stands its trees on the terrain surface.
+	_tree.terrain_slice = _terrain
 
 	# CreatureAI needs creature_slice, player_slice, and battle_slice for queries.
 	_creature_ai.creature_slice = _creature
@@ -116,8 +121,9 @@ func _ready() -> void:
 	# slices enter the tree so their _ready() skips body/pool construction.
 	_creature.render_visuals = not _is_server
 	_player.render_visuals   = not _is_server
+	_tree.render_visuals     = not _is_server
 
-	for s in [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _player, _loot, _inventory, _character, _crafting, _technology, _station, _market, _trade, _proposal, _ui]:
+	for s in [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _player, _loot, _inventory, _character, _crafting, _technology, _station, _tree, _market, _trade, _proposal, _ui]:
 		s.name = s.get_script().resource_path.get_file().get_basename()
 		add_child(s)
 
@@ -134,6 +140,7 @@ func _ready() -> void:
 	_technology.inventory_slice = _inventory
 	_voxel.terrain_slice      = _terrain
 	_voxel.inventory_slice    = _inventory
+	_tree.inventory_slice     = _inventory
 	_ui.inventory_slice       = _inventory
 	_ui.crafting_slice        = _crafting
 	_ui.technology_slice      = _technology
@@ -166,6 +173,7 @@ func _ready() -> void:
 	_voxel.is_authoritative     = not _is_client
 	_creature.is_authoritative  = not _is_client
 	_creature_ai.is_authoritative = not _is_client
+	_tree.is_authoritative      = not _is_client
 	_market.is_authoritative    = not _is_client
 	_trade.is_authoritative     = not _is_client
 	_proposal.is_authoritative  = not _is_client
@@ -175,6 +183,7 @@ func _ready() -> void:
 	_chunk_manager.voxel_slice    = _voxel
 	_chunk_manager.player_slice   = _player
 	_chunk_manager.creature_slice = _creature
+	_chunk_manager.tree_slice     = _tree
 
 	# Minimap overlay (Phase 17) — top-right, biome-coloured chunk view.
 	var minimap_layer := CanvasLayer.new()
@@ -529,7 +538,15 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 	if not _is_client:
 		return
 	if data.has("heightmaps") and data["heightmaps"] is Dictionary:
-		_voxel.apply_heightmaps(data["heightmaps"])
+		var heightmaps: Dictionary = data["heightmaps"]
+		_voxel.apply_heightmaps(heightmaps)
+		# Trees are placed deterministically from the chunk coordinate, so a
+		# client seeds its own rather than receiving them in the snapshot; only a
+		# tree's chopped/standing STATE is replicated (tree_chopped /
+		# tree_respawned). Mirrors the deterministic creature hash, which also
+		# needs no per-entity placement payload.
+		for ckey in heightmaps:
+			_tree.spawn_for_chunk(_chunk_key_to_pos(str(ckey)))
 	if data.has("edits") and data["edits"] is Dictionary:
 		_voxel.apply_chunk_manifest(data["edits"])
 	if data.has("creatures") and data["creatures"] is Array:
@@ -552,6 +569,14 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 # ---------------------------------------------------------------------------
 # Bus listeners
 # ---------------------------------------------------------------------------
+
+## Parse a "cx,cz" chunk key (as used by the world snapshot's heightmap map)
+## back into a chunk coordinate.
+func _chunk_key_to_pos(key: String) -> Vector2i:
+	var parts: PackedStringArray = key.split(",")
+	if parts.size() < 2:
+		return Vector2i.ZERO
+	return Vector2i(int(parts[0]), int(parts[1]))
 
 func _on_chunk_ready(chunk_pos: Vector2i, heightmap: Array) -> void:
 	pass
