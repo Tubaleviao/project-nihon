@@ -25,6 +25,7 @@ extends Node
 ##         tree_chop_requested(tree_id)              — client wants to fell a tree
 ##         tree_chopped(tree_id, wood, state, at)    — host authoritative chop
 ##         tree_respawned(tree_id)                   — host authoritative regrowth
+##         craft_intent(recipe_id, player_id)        — client wants to craft
 ##   OUT : peer_connected(peer_id)
 ##         peer_disconnected(peer_id)
 ##         packet_received(peer_id, payload)         — legacy low-level receive
@@ -33,6 +34,7 @@ extends Node
 ##         creature_state_changed(...)                — re-emitted on client
 ##         remote_player_state(...)                   — re-emitted on client
 ##         inventory_synced(...)                      — re-emitted on client
+##         craft_intent(...)                          — re-emitted on host from wire
 ##         world_snapshot_received(data)              — client received snapshot
 ##
 ## Public API:
@@ -44,6 +46,9 @@ extends Node
 ##   remember_player_state(peer_id, pos) -> void   — Phase 19
 ##   get_last_known_state(peer_id) -> Vector3      — Phase 19
 ##   get_last_known_states() -> Dictionary         — Phase 19
+##   remember_player_hp(peer_id, hp) -> void       — Phase 33
+##   has_last_known_hp(peer_id) -> bool / get_last_known_hp(peer_id) -> float
+##   get_last_known_hps() -> Dictionary
 
 enum Role { OFFLINE, HOST, CLIENT }
 
@@ -119,6 +124,12 @@ var _jitter_buffer: Dictionary = {}
 ## disconnect so a rejoining client can resume from its last position.
 var _last_known_states: Dictionary = {}
 
+## Phase 33 — last-known HP per peer (peer_id -> float), the companion to
+## _last_known_states. A remote peer reports its HP on every player_moved packet;
+## without keeping it here the host has nothing to persist for a peer that dies
+## without a clean disconnect, and that peer would come back at full health.
+var _last_known_hp: Dictionary = {}
+
 ## Phase 33 — transport mapping only: peer_id (ENet, reassigned every connection)
 ## → player_id (server-issued, stable). Every player-scoped record and inventory
 ## is keyed on the player_id; this dict is thrown away on disconnect.
@@ -150,6 +161,8 @@ func _ready() -> void:
 	GameBus.tree_chop_requested.connect(_on_tree_chop_requested)
 	GameBus.tree_chopped.connect(_on_tree_chopped)
 	GameBus.tree_respawned.connect(_on_tree_respawned)
+	# Phase 33 — crafting is per-player, so a client's craft travels as an intent.
+	GameBus.craft_intent.connect(_on_craft_intent)
 	# Phase 24 — social/economy replication.
 	GameBus.market_synced.connect(_on_market_synced)
 	GameBus.governance_synced.connect(_on_governance_synced)
@@ -308,6 +321,26 @@ func has_last_known_state(peer_id: int) -> bool:
 func get_last_known_states() -> Dictionary:
 	return _last_known_states.duplicate(true)
 
+## Record a client's last-known authoritative HP. Mirrors remember_player_state:
+## it is what the host persists for a peer that is killed without a clean
+## disconnect (see game_root's save lifecycle).
+func remember_player_hp(peer_id: int, hp: float) -> void:
+	_last_known_hp[peer_id] = hp
+
+## True when an HP for `peer_id` has actually been recorded this session. The
+## companion to has_last_known_state(): a peer that reported a position but no HP
+## (an older client) must not have a default written into its record.
+func has_last_known_hp(peer_id: int) -> bool:
+	return _last_known_hp.has(peer_id)
+
+## The last HP recorded for a peer, or -1.0 ("unknown") when there is none.
+func get_last_known_hp(peer_id: int) -> float:
+	return float(_last_known_hp.get(peer_id, -1.0))
+
+## All retained HP values (peer_id -> hp), for folding into player records.
+func get_last_known_hps() -> Dictionary:
+	return _last_known_hp.duplicate(true)
+
 ## Evict last-known states for peers that have been disconnected longer than
 ## LAST_KNOWN_STATE_TTL_MS. Called every frame from _process() so the host
 ## dict doesn't grow without bound over long sessions.
@@ -318,6 +351,7 @@ func _evict_stale_states() -> void:
 	for pid: int in _last_known_timestamps.keys():
 		if now_ms - float(_last_known_timestamps[pid]) > float(LAST_KNOWN_STATE_TTL_MS):
 			_last_known_states.erase(pid)
+			_last_known_hp.erase(pid)
 			_last_known_timestamps.erase(pid)
 			_peer_spatial.remove(pid)
 
@@ -478,6 +512,16 @@ func _on_tree_respawned(tree_id: String) -> void:
 	if _role != Role.HOST:
 		return
 	_broadcast({ "type": "tree_respawned", "tree_id": tree_id })
+
+## Phase 33 — a client-side craft request travels to the host as an intent; the host
+## resolves it against the REQUESTING peer's inventory (see the craft_intent arm of
+## _route_c2h). The player_id half is ignored here: the identity is bound to the
+## connection on the host side, never trusted from the payload. Mirrors the tree
+## chop intent — the host re-emits this signal inbound and must not echo it back.
+func _on_craft_intent(recipe_id: String, _player_id: String) -> void:
+	if _role != Role.CLIENT:
+		return
+	_broadcast({ "type": "craft_intent", "recipe_id": recipe_id })
 
 func _on_creature_state_changed(instance_id: String, creature_id: String, state: String, position: Vector3) -> void:
 	if _role != Role.HOST:
@@ -701,7 +745,21 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			GameBus.player_join_intent.emit(sender, str(payload.get("claimed_id", "")))
 		"player_moved":
 			var pos := _vec3(payload.get("position", []))
+			# The peer's own HP rides the same packet. Remember it, or the host has
+			# nothing to persist for a peer that never disconnects cleanly.
+			if payload.has("hp"):
+				remember_player_hp(sender, float(payload.get("hp", -1.0)))
 			GameBus.remote_player_state.emit(sender, pos)
+		"craft_intent":
+			# A remote peer's craft must resolve against ITS OWN inventory (crafting
+			# is per-player now that each player persists one). The identity comes
+			# from the connection, never from the payload: a client cannot name
+			# whose inventory it crafts against.
+			var crafter := get_player_id(sender)
+			if crafter.is_empty():
+				push_warning("NetworkingSlice: craft_intent from un-handshaked peer %d — dropped" % sender)
+			else:
+				GameBus.craft_intent.emit(str(payload.get("recipe_id", "")), crafter)
 		"block_edit_intent":
 			var action := str(payload.get("action", ""))
 			var ipos := _vec3(payload.get("position", []))

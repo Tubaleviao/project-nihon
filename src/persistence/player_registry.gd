@@ -12,7 +12,8 @@ extends Node
 ##     already owns that record and no live peer holds it — i.e. a genuine
 ##     reconnect. Any other claim is ignored and a fresh id is minted, so a
 ##     spoofed id can never read or write another player's record
-##     (the ratified PlayerIdentityModel decision).
+##     (the ratified PlayerIdentityModel decision). A record is loaded from disk
+##     LAZILY, on the claim that asks for it (`set_record_loader`), not all at boot.
 ##   • Clients never mint, load, or store anything: `is_authoritative` is false
 ##     there and every mutating entry point returns early.
 ##
@@ -23,12 +24,14 @@ extends Node
 ##
 ## Public API:
 ##   set_local_player(player_id, inventory)      — bind the local player's id
+##   set_record_loader(loader: Callable)         — inject the durable reader
 ##   resolve_identity(peer_id, claimed_id) -> String
 ##   unbind_peer(peer_id) -> String
 ##   get_player_id(peer_id) -> String            — "" when unknown
 ##   get_peer_id(player_id) -> int               — 0 when offline
 ##   is_online(player_id) -> bool
 ##   has_player(player_id) / get_player_ids() -> Array
+##   get_online_player_ids() -> Array            — the ids a save should write
 ##   get_record(player_id) -> Dictionary
 ##   record_position(player_id, pos) / record_hp(player_id, hp)
 ##   record_appearance(player_id, recipe) / record_technology(player_id, statuses)
@@ -62,10 +65,19 @@ var _inventories: Dictionary = {}
 
 ## Ids minted by this process, so two mints in the same second stay distinct.
 var _mint_counter: int = 0
-var _rng := RandomNumberGenerator.new()
+## CSPRNG source for the id's entropy. `RandomNumberGenerator` is NOT suitable: it
+## is a fast PRNG, and the id is a bearer token.
+var _crypto := Crypto.new()
+
+## Bytes of CSPRNG entropy in a minted id (128 bits).
+const ID_ENTROPY_BYTES := 16
+
+## Loads a player record from durable storage (injected by game_root — the registry
+## owns identity, not the save layout). Used to bring a record into memory the
+## first time a peer claims it (see _ensure_record_loaded).
+var _record_loader: Callable = Callable()
 
 func _ready() -> void:
-	_rng.randomize()
 	GameBus.player_join_intent.connect(_on_player_join_intent)
 
 # ---------------------------------------------------------------------------
@@ -73,11 +85,24 @@ func _ready() -> void:
 # ---------------------------------------------------------------------------
 
 ## Mint a fresh, unique, connection-independent player id.
+##
+## The trailing component is 128 bits of CRYPTOGRAPHIC randomness, not the 16-bit
+## `randi() & 0xFFFF` it used to be. The id is presented on a reconnect and is the
+## only thing standing between a peer and a record (`resolve_identity` hands the
+## record to whoever claims the id), so it is a bearer token: 16 bits is 65 536
+## guesses, brute-forceable in one connect flood, and it would hand an attacker
+## another player's inventory and position. The epoch + counter prefix is kept for
+## human readability and same-second ordering only — the entropy is what secures it.
 func mint_player_id() -> String:
 	_mint_counter += 1
 	var stamp: int = int(Time.get_unix_time_from_system())
-	var entropy: int = _rng.randi() & 0xFFFF
-	return "player_%d_%d_%04x" % [stamp, _mint_counter, entropy]
+	var entropy: String = _crypto.generate_random_bytes(ID_ENTROPY_BYTES).hex_encode()
+	return "player_%d_%d_%s" % [stamp, _mint_counter, entropy]
+
+## Inject the durable-storage reader used for a lazy record load. `loader` takes a
+## player id and returns the record dictionary (or {} when there is none).
+func set_record_loader(loader: Callable) -> void:
+	_record_loader = loader
 
 ## Bind the local player's identity to an existing inventory instance (the
 ## game's `_inventory`). Called by game_root on boot / after load.
@@ -90,10 +115,15 @@ func set_local_player(player_id: String, inventory: Node = null) -> void:
 ## Resolve (or mint) the identity behind a connection.
 ##
 ## A peer that is already bound keeps its id. A peer presenting `claimed_id` gets
-## it back ONLY when the registry owns that record and no live peer holds it —
-## the reconnect case. Everything else mints a fresh id, which is what makes a
-## spoofed or unknown id harmless: the connecting peer simply becomes a new
-## player and never touches the record it tried to claim.
+## it back ONLY when the registry owns that record and no live peer holds it — the
+## reconnect case. Everything else mints a fresh id, which is what makes a spoofed
+## or unknown id harmless: the connecting peer simply becomes a new player and
+## never touches the record it tried to claim.
+##
+## The LOCAL player's id is refused outright, in addition to the `is_online` guard:
+## a listen host's own player is not bound to a peer id, so the peer-map lookup
+## alone would not protect it, and every connecting client would be able to claim
+## the host's inventory and position (see `is_online`).
 func resolve_identity(peer_id: int, claimed_id: String = "") -> String:
 	# Id authority sits on the server: a client never mints, never resolves, and
 	# never bundles a record. It waits for the host's player_identity_assigned.
@@ -104,7 +134,12 @@ func resolve_identity(peer_id: int, claimed_id: String = "") -> String:
 		return str(_peer_ids[peer_id])
 	var player_id := ""
 	var reconnected := false
-	if claimed_id != "" and has_player(claimed_id) and not is_online(claimed_id):
+	var claimable := claimed_id != "" and claimed_id != local_player_id
+	if claimable:
+		# Records are loaded LAZILY, not all at boot (see _ensure_record_loaded):
+		# the claim is where a returning player's record is brought into memory.
+		_ensure_record_loaded(claimed_id)
+	if claimable and has_player(claimed_id) and not is_online(claimed_id):
 		player_id = claimed_id
 		reconnected = true
 	else:
@@ -115,6 +150,21 @@ func resolve_identity(peer_id: int, claimed_id: String = "") -> String:
 	ensure_player(player_id)
 	GameBus.player_joined.emit(peer_id, player_id, reconnected)
 	return player_id
+
+## Bring `player_id`'s record into memory if it is not already resident, using the
+## injected loader. The authoritative boot does NOT read every record on disk — a
+## record belonging to a player who never reconnects should not be resident — so a
+## record is loaded the first time something actually asks for it: the reconnect
+## claim. A no-op when the record is resident, when no loader is wired (isolated
+## tests), or when there is no record on disk (a first join mints instead).
+func _ensure_record_loaded(player_id: String) -> void:
+	if player_id.is_empty() or _players.has(player_id):
+		return
+	if not _record_loader.is_valid():
+		return
+	var data: Variant = _record_loader.call(player_id)
+	if data is Dictionary and not (data as Dictionary).is_empty():
+		apply_player_data(player_id, data)
 
 ## Drop a connection's transport mapping. The record is RETAINED, so the same
 ## player_id reconnects to it later. Returns the id the connection held ("" when
@@ -136,7 +186,20 @@ func get_peer_id(player_id: String) -> int:
 			return int(pid)
 	return 0
 
+## True when a live connection holds `player_id` — or when it is THIS machine's own
+## local player, which is online by definition (it is the human at this keyboard).
+##
+## The local player has no peer mapping: a listen host never connects to itself, so
+## `set_local_player()` records no `_peer_ids` entry and a bare peer-map lookup
+## answered false. Every client could then claim the host's id and be handed the
+## host's inventory and position, since the claim rule is "the record exists and is
+## not online". This is the guard that closes that; `resolve_identity` also refuses
+## the local id explicitly, so neither alone is load-bearing.
 func is_online(player_id: String) -> bool:
+	if player_id.is_empty():
+		return false
+	if player_id == local_player_id:
+		return true
 	return get_peer_id(player_id) != 0
 
 func has_player(player_id: String) -> bool:
@@ -144,6 +207,20 @@ func has_player(player_id: String) -> bool:
 
 func get_player_ids() -> Array:
 	var out: Array = _players.keys()
+	out.sort()
+	return out
+
+## The ids whose RECORD a save should write: the players whose state can still
+## change, i.e. the online ones — which includes the local player (see is_online).
+## An offline player's record is already durable and cannot have changed since it
+## was written (nothing can move it without a connection), so rewriting every
+## long-gone player on every autosave only made the save cost grow with the number
+## of players who had ever joined. Sorted, so the write order is deterministic.
+func get_online_player_ids() -> Array:
+	var out: Array = []
+	for player_id in _players:
+		if is_online(str(player_id)):
+			out.append(str(player_id))
 	out.sort()
 	return out
 

@@ -1727,11 +1727,14 @@ state machine are already emitted. Run `pnpm validate` → `pnpm generate` →
   `chunk_manager.start()` / `refresh()`, then re-apply the recorded creature
   state: `spawn_for_chunk()` builds fresh instance records and would otherwise
   wipe the restored death/respawn state.
-- **Only the world record resets dirty-chunk tracking.** `_on_save_completed`
-  (the legacy `slot_NN` path) deliberately no longer calls
-  `clear_dirty_chunks()`; `world_saved()` does. The slot file is a single-file
-  sample and not what a server loads, so letting it clear the dirty set dropped
-  pre-slot edits from the next world save.
+- **Only the world-record save resets dirty-chunk tracking, and it does so by key.**
+  `_on_save_completed` (the legacy `slot_NN` path) deliberately does not clear
+  anything: the slot file is a single-file sample and not what a server loads, so
+  letting it clear the dirty set dropped pre-slot edits from the next world save.
+  The authoritative save clears exactly the keys it serialized
+  (`clear_dirty_chunk_keys()`), because the write is off-thread (see the review
+  notes below) — an edit made while the worker writes re-marks its chunk instead of
+  being swallowed, and a FAILED write re-marks its keys (`mark_dirty_chunks()`).
 - **Incremental saves carry only the dirty manifests.**
   `PersistenceSlice.dirty_chunk_subset(manifest, keys)` is the shared pure
   implementation (runtime + test), and `save_world(..., incremental)` merges it
@@ -1766,18 +1769,96 @@ state machine are already emitted. Run `pnpm validate` → `pnpm generate` →
   out of scope.
 - No world-shard handoff of a player record between servers — see Deferred →
   server sharding.
-- Autosave is a plain interval timer; no dirty-player-only diffing, so a player
-  record is rewritten whole each tick even when only one field changed.
-- **Crafting is still host-scoped for remote peers**: `crafting_slice` holds one
-  `inventory_slice` reference, so a remote peer's craft resolves against the
-  host's own inventory. Market and trade ARE per-player (party inventories);
-  crafting needs the same party-inventory plumbing, which belongs with the
-  station-placement work.
+- Autosave is a plain interval timer; only ONLINE players' records are rewritten
+  (an offline record cannot have changed), but a rewritten record is still whole —
+  no field-level diffing.
+- **Crafting is per-crafter now, not host-scoped.** `crafting_slice` resolves a
+  recipe against `inventory_for(player_id)` — the PlayerRegistry's per-player
+  inventory — so a remote peer's craft consumes and produces against ITS OWN
+  persisted inventory. A client does not resolve crafts at all: it emits
+  `craft_intent(recipe_id, "")`, the networking slice forwards it, and the host
+  re-emits it with the identity it bound to that connection (`craft_intent`'s c2h
+  arm refuses an un-handshaked peer and never trusts a payload-supplied id). Repair
+  and technology research are still host-scoped: same plumbing, not yet moved.
 - Appearance is persisted for the LOCAL player's record and rebuilt on boot;
   other players' appearances are not replicated to clients (clients still render
   their own avatar plus position-only ghosts).
 - A headless server's clean shutdown needs the `shutdown_requested` file (or an
   autosave tick), because `SIGTERM` cannot be intercepted — see the notes above.
+
+### Phase 33 — review fixes (durable state is not live state, twice over)
+
+A post-implementation review of the branch found 19 defects. They cluster into
+four shapes, each worth remembering:
+
+- **A durable record treated as a live feed.** An incremental world save replaced
+  the recorded `creatures` list wholesale, but the payload only carries the
+  population the process holds (the streamed chunks), so a death in a chunk that
+  was not in view was dropped — walk away from a corpse, save, walk back, and the
+  creature was alive again. `PersistenceSlice.merge_creature_states()` folds the
+  list per `instance_id`. Same shape twice more: a remote peer's position and HP
+  were folded into its record only at disconnect (a hard kill restored it at the
+  origin, at full health — they are folded on every autosave now, with
+  `_last_known_hp` as the HP store), and `despawn_for_chunk` erased a dead
+  creature outright so a chunk reload respawned it alive (`_dead_state` keeps the
+  death, `_spawn` re-applies it, `get_snapshot_creatures` carries it, and the boot
+  replay holds a death for an unstreamed chunk instead of skipping it).
+- **A sentinel indistinguishable from a real value.** `apply_creature_state`'s
+  optional `respawn_at` was assigned unconditionally, so the 4-argument per-tick
+  delta wrote its `-1.0` default over a real wall-clock deadline and the creature
+  never came back; `-1.0` now means "unchanged", exactly as `hp` already did.
+  `get_last_known_state()`/`get_last_known_hp()` keep the `has_*()` discriminators
+  for the same reason.
+- **A credential that is not guessable.** `player_id` is a BEARER token —
+  `resolve_identity` hands the record to whoever presents it — and it carried
+  `randi() & 0xFFFF`: 65 536 guesses, brute-forceable in one connect flood. It is
+  now 128 bits from `Crypto.generate_random_bytes(16)`, and `player_path()`
+  SANITIZES the id before interpolating it into a filesystem path
+  (`save_player`/`load_player` refuse a non-canonical id rather than silently
+  reading a different record).
+- **An authority gap on the local player.** A listen host never binds its own
+  player to a peer id, so a peer-map lookup answered "offline" and
+  `resolve_identity`'s rule — "the record exists and is not online" — handed the
+  host's inventory and position to whichever client claimed the id first.
+  `is_online()` counts the local player, and the id is refused explicitly.
+  The spoof test now covers this third case (it had live-victim and
+  never-issued, i.e. exactly the two claims that were already safe).
+
+Plus the operational half:
+
+- **The save no longer serializes on the main thread.** `_save_everything()`
+  collects the payload (the part that reads live slice state) and hands a deep
+  copy to a `Thread` running `PersistenceSlice.write_job()`, which does JSON +
+  FileAccess with no signals and no node access. Dirty chunks are cleared by key
+  at COLLECTION time (re-marked if the write fails), which is what makes the
+  deferred clear exact; shutdown paths (`WM_CLOSE_REQUEST`, the polled
+  shutdown-request file, `_exit_tree`) call `_flush_save()` so they cannot outrun
+  their own write.
+- **`file_exists(shutdown_request_path)` ran every frame** for a file written at
+  most once — it is polled on the autosave tick now. The interval also falls back
+  to 300 s when the fabric value is 0 instead of silently disabling the autosave
+  (a headless server has no other save hook), and `dirty_chunks` was dropped from
+  the world record: it was written and never read back.
+- **Boot no longer loads every record on disk.** The registry never evicts, so a
+  long-lived server held every player who had ever joined; a record is pulled in
+  lazily by the claim that needs it (`set_record_loader`). The autosave writes
+  only the ONLINE players' records for the same reason.
+- **The reconnect snapshot was sent twice** (`peer_connected`, then
+  `player_joined`) — and the first was the useless one, built before the identity
+  existed so it carried no own-record. `send_snapshot` now has exactly two call
+  sites: the handshake join and an AOI re-scope.
+- **The atomic write has a documented limit**: temp file + rename is atomic
+  against the PROCESS dying, but nothing is `fsync`ed, so a machine power loss can
+  still lose the record. Godot 4.7 exposes no fsync, so this is stated rather than
+  fixed.
+
+Verification for this pass: headless host / `--server` / `--client` boots green at
+`Results: 6894/6894 passed (0 failed)` (was 6776; +17 registered cases), a
+throwaway-copy lifecycle probe with the cadence shortened to 1 s showing threaded
+autosaves landing and a shutdown request consumed on the tick with the save
+complete before exit, a real server+client pair showing `reconnected player
+'<128-bit id>'` (the lazy load path over the wire), and a `send_snapshot` call-site
+count of 3 → 2 against `HEAD`.
 
 ---
 

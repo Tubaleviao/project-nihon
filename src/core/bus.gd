@@ -209,6 +209,15 @@ signal item_broke(item_id: String)
 ## recipe_id : String — key from GameData.RECIPES (e.g. "RecipeFerritePick")
 signal craft_requested(recipe_id: String)
 
+## Phase 33 — a craft intent carrying WHO is crafting, so crafting is per-player.
+## A client emits it with an empty player_id ("me"); the networking slice forwards
+## it to the host, which re-emits it with the identity it resolved for that
+## connection, and CraftingSlice resolves the recipe against that player's own
+## inventory. Host-local crafting stays on `craft_requested`.
+## recipe_id : String — key from GameData.RECIPES
+## player_id : String — the crafter; "" means "the local player"
+signal craft_intent(recipe_id: String, player_id: String)
+
 ## Emitted by CraftingSlice with the outcome of a craft attempt.
 ## result : Dictionary — { recipe_id, success, outputs: [{ item, quantity }], reason }
 signal craft_resolved(result: Dictionary)
