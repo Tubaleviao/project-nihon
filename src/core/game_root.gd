@@ -178,6 +178,10 @@ func _ready() -> void:
 	_crafting.player_registry  = _registry
 	_player.station_slice = _station
 	_technology.inventory_slice = _inventory
+	# Phase 34 — research consumes the RESEARCHER's own materials and moves that
+	# player's tree only, so the slice needs the registry that owns one inventory
+	# per player (see TechnologySlice).
+	_technology.player_registry = _registry
 	_voxel.terrain_slice      = _terrain
 	_voxel.inventory_slice    = _inventory
 	_tree.inventory_slice     = _inventory
@@ -225,6 +229,9 @@ func _ready() -> void:
 	# rule, because a craft mutates a player's persisted inventory.
 	_registry.is_authoritative  = not _is_client
 	_crafting.is_authoritative  = not _is_client
+	# Phase 34 — same rule for the technology tree: a client owns no records, so it
+	# forwards a research intent instead of resolving one against its synced copy.
+	_technology.is_authoritative = not _is_client
 
 	# Chunk streaming (Phase 17) — wire the manager to its collaborators.
 	_chunk_manager.terrain_slice  = _terrain
@@ -268,8 +275,10 @@ func _ready() -> void:
 	GameBus.inventory_full.connect(_on_inventory_full)
 	GameBus.character_spawned.connect(_on_character_spawned)
 	GameBus.craft_resolved.connect(_on_craft_resolved)
+	GameBus.repair_resolved.connect(_on_repair_resolved)
 	GameBus.research_resolved.connect(_on_research_resolved)
 	GameBus.technology_unlocked.connect(_on_technology_unlocked)
+	GameBus.own_state_synced.connect(_on_own_state_synced)
 	GameBus.block_mined.connect(_on_block_mined)
 	GameBus.block_placed.connect(_on_block_placed)
 	GameBus.player_damaged.connect(_on_player_damaged)
@@ -503,7 +512,7 @@ func _boot_host() -> void:
 			"chunks":       _voxel.get_chunk_manifest(),
 			"dirty_chunks": _voxel.get_dirty_chunk_keys(),
 		},
-		"technology": _technology.get_statuses(),
+		"technology": _technology.get_statuses(_registry.local_player_id),
 		"market": _market.get_market_data(),
 		"governance": _proposal.get_governance_data(),
 		"trade": _trade.get_trade_data(),
@@ -575,6 +584,13 @@ func _on_player_joined(peer_id: int, player_id: String, reconnected: bool) -> vo
 	if inv != null:
 		_trade.set_party_inventory(player_id, inv)
 		_market.set_party_inventory(player_id, inv)
+	# Phase 34 — the peer's technology tree is part of its record, so hand it to the
+	# slice before the snapshot goes out: a reconnecting peer resumes its own
+	# "researching"/"unlocked" statuses (and the research timer for a status restored
+	# mid-research), and a first join gets a seeded, all-locked tree.
+	var tech: Variant = _registry.get_record(player_id).get("technology", {})
+	if tech is Dictionary:
+		_technology.apply_statuses(tech, player_id)
 	print("[Server] %s player '%s' as %s" % ["reconnected" if reconnected else "joined", player_id, "peer_%d" % peer_id])
 	_networking.send_snapshot(peer_id, _build_snapshot(peer_id))
 
@@ -824,7 +840,9 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 	if data.has("stations") and data["stations"] is Array:
 		_station.apply_station_data(data["stations"])
 	if data.has("technology") and data["technology"] is Dictionary:
-		_technology.apply_statuses(data["technology"])
+		# A client has no registry identity: its own tree is the only one it holds,
+		# which is the "" bucket resolve_player() falls back to.
+		_technology.apply_statuses(data["technology"], _registry.local_player_id)
 	var own: Variant = data.get("player", {})
 	if own is Dictionary:
 		var arr = own.get("position", [])
@@ -917,7 +935,7 @@ func _snapshot_local_player() -> void:
 		return
 	_registry.record_position(pid, _player.get_position())
 	_registry.record_hp(pid, _player.get_hp())
-	_registry.record_technology(pid, _technology.get_statuses())
+	_registry.record_technology(pid, _technology.get_statuses(pid))
 	# Appearance is part of the identity ("owning their inventory, HP, position,
 	# and appearance"): the character's recipe is stored, not its visual nodes.
 	var char_id := _character.get_player_character()
@@ -1100,7 +1118,7 @@ func _restore_local_player() -> void:
 		_player.set_hp(hp)
 	var tech: Variant = rec.get("technology", {})
 	if tech is Dictionary and not (tech as Dictionary).is_empty():
-		_technology.apply_statuses(tech)
+		_technology.apply_statuses(tech, pid)
 
 ## Read the world record and the LOCAL player's record off disk. A missing world
 ## record is NOT an error — a server with no save boots a fresh world.
@@ -1198,14 +1216,69 @@ func _on_inventory_full() -> void:
 func _on_character_spawned(instance_id: String, skeleton_id: String, position: Vector3) -> void:
 	pass
 
+## Phase 34 — a craft the host resolved for a REMOTE peer changed that peer's own
+## record. Its client only ever mirrors its own state from a snapshot, so without
+## this push it would keep showing the pre-craft inventory until the next AOI
+## re-scope or reconnect. Scoped to that peer; the local player is already live
+## here. (Craft got the same fix as the two new actions: it had the identical gap.)
 func _on_craft_resolved(result: Dictionary) -> void:
-	pass
+	_sync_peer_own_state(result)
 
+## Phase 34 — the repair half of the same rule.
+func _on_repair_resolved(result: Dictionary) -> void:
+	_sync_peer_own_state(result)
+
+## Phase 34 — research: fold the researcher's new statuses into its record first, so
+## the durable copy and the copy pushed to its client cannot diverge, then push.
 func _on_research_resolved(result: Dictionary) -> void:
+	if _is_client:
+		return
+	var pid := str(result.get("player_id", ""))
+	if pid != "":
+		_registry.record_technology(pid, _technology.get_statuses(pid))
+	_sync_peer_own_state(result)
+
+func _on_technology_unlocked(_tech_id: String, _player_id: String) -> void:
 	pass
 
-func _on_technology_unlocked(tech_id: String) -> void:
-	pass
+## Host → the peer whose own record just changed. Nothing to do for a local player
+## (its state is already live in this process) and nothing to send for a failed
+## action (nothing changed).
+func _sync_peer_own_state(result: Dictionary) -> void:
+	if _is_client:
+		return
+	if not bool(result.get("success", false)):
+		return
+	var pid := str(result.get("player_id", ""))
+	if pid == "" or pid == _registry.local_player_id:
+		return
+	var peer := _registry.get_peer_id(pid)
+	if peer == 0:
+		return
+	_networking.send_own_state(peer, _own_state_payload(pid))
+
+## The slice of `player_id`'s record its own client mirrors: inventory contents with
+## per-instance durability, plus its technology statuses. Position and HP are
+## deliberately absent — they are host-simulated and ride the normal player-state
+## path, and re-sending a stored position here would teleport the peer back to it.
+func _own_state_payload(player_id: String) -> Dictionary:
+	var own := _registry.get_player_data(player_id)
+	return {
+		"inventory": own.get("inventory", {}),
+		"inventory_durability": own.get("inventory_durability", {}),
+		"technology": own.get("technology", {}),
+	}
+
+## Client-side: the host changed our own record while acting on our behalf (a craft,
+## repair, or research we asked for). Applied exactly like the like-named keys of the
+## join snapshot.
+func _on_own_state_synced(data: Dictionary) -> void:
+	if not _is_client:
+		return
+	if data.has("inventory") and data["inventory"] is Dictionary:
+		_inventory.replace_contents(data["inventory"], data.get("inventory_durability", {}))
+	if data.has("technology") and data["technology"] is Dictionary:
+		_technology.apply_statuses(data["technology"], _registry.local_player_id)
 
 func _on_trade_completed(trade: Dictionary) -> void:
 	pass
@@ -1249,7 +1322,7 @@ func _on_load_completed(slot: int, data: Dictionary) -> void:
 	elif world.has("voxel_edits"):
 		_voxel.apply_edits(world["voxel_edits"], world.get("voxel_materials", {}))
 	if data.has("technology"):
-		_technology.apply_statuses(data["technology"])
+		_technology.apply_statuses(data["technology"], _registry.local_player_id)
 	# Phase 33 — the snapshot carries the player's own record: position is set
 	# FIRST (spawn_at), then HP, so the restored body sits where the record says.
 	var player_data: Variant = data.get("player", {})

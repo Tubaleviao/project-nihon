@@ -502,14 +502,17 @@ func _on_research_pressed(tech_id: String) -> void:
 func _on_close_pressed(panel: String) -> void:
 	close_window(panel)
 
-func _on_craft_resolved(_result: Dictionary) -> void:
-	if _repair_feedback != null:
+func _on_craft_resolved(result: Dictionary) -> void:
+	# Phase 34 — gated like the repair/research feedback below: a listen host resolves
+	# crafts for remote peers too, and their outcome must not clear the local player's
+	# repair feedback label.
+	if _repair_feedback != null and _belongs_to_local_player(result):
 		_repair_feedback.text = ""
 	refresh_crafting()
 	refresh_inventory()
 
 func _on_repair_resolved(result: Dictionary) -> void:
-	if _repair_feedback != null:
+	if _repair_feedback != null and _belongs_to_local_player(result):
 		if result.get("success", false):
 			_repair_feedback.text = "Repaired %s." % result.get("item_id", "?")
 		else:
@@ -518,16 +521,27 @@ func _on_repair_resolved(result: Dictionary) -> void:
 	refresh_inventory()
 
 func _on_research_resolved(result: Dictionary) -> void:
-	if _technology_feedback != null:
+	if _technology_feedback != null and _belongs_to_local_player(result):
 		if result.get("success", false):
 			_technology_feedback.text = "Researching %s…" % result.get("tech_id", "?")
 		else:
 			_technology_feedback.text = "%s: %s" % [result.get("tech_id", "?"), result.get("reason", "?")]
 	refresh_technology()
 
-func _on_technology_unlocked(_tech_id: String) -> void:
+func _on_technology_unlocked(_tech_id: String, _player_id: String) -> void:
 	refresh_technology()
 	refresh_crafting()
+
+## Whether a resolved action concerns THIS machine's player. A listen host resolves
+## craft / repair / research for remote peers too (Phase 34), and their outcome must
+## not be reported in the local player's feedback labels.
+func _belongs_to_local_player(result: Dictionary) -> bool:
+	var pid := str(result.get("player_id", ""))
+	if pid == "":
+		return true
+	if technology_slice != null and technology_slice.has_method("local_player_id"):
+		return pid == str(technology_slice.local_player_id())
+	return true
 
 func _on_item_picked_up(_item_id: String, _quantity: int) -> void:
 	refresh_inventory()

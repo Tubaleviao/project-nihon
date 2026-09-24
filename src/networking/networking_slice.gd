@@ -26,6 +26,8 @@ extends Node
 ##         tree_chopped(tree_id, wood, state, at)    — host authoritative chop
 ##         tree_respawned(tree_id)                   — host authoritative regrowth
 ##         craft_intent(recipe_id, player_id)        — client wants to craft
+##         repair_intent(item_id, player_id)         — client wants to repair
+##         research_intent(tech_id, player_id)       — client wants to research
 ##   OUT : peer_connected(peer_id)
 ##         peer_disconnected(peer_id)
 ##         packet_received(peer_id, payload)         — legacy low-level receive
@@ -35,6 +37,9 @@ extends Node
 ##         remote_player_state(...)                   — re-emitted on client
 ##         inventory_synced(...)                      — re-emitted on client
 ##         craft_intent(...)                          — re-emitted on host from wire
+##         repair_intent(...)                         — re-emitted on host from wire
+##         research_intent(...)                       — re-emitted on host from wire
+##         own_state_synced(data)                     — re-emitted on client
 ##         world_snapshot_received(data)              — client received snapshot
 ##
 ## Public API:
@@ -43,6 +48,7 @@ extends Node
 ##   disconnect_all()        -> void
 ##   is_host() / is_client() / is_offline() -> bool
 ##   send_snapshot(peer_id, data) -> void    — host → one client
+##   send_own_state(peer_id, data) -> void   — host → one client (Phase 34)
 ##   remember_player_state(peer_id, pos) -> void   — Phase 19
 ##   get_last_known_state(peer_id) -> Vector3      — Phase 19
 ##   get_last_known_states() -> Dictionary         — Phase 19
@@ -156,6 +162,10 @@ func _ready() -> void:
 	GameBus.tree_respawned.connect(_on_tree_respawned)
 	# Phase 33 — crafting is per-player, so a client's craft travels as an intent.
 	GameBus.craft_intent.connect(_on_craft_intent)
+	# Phase 34 — repair and research are per-player too, so they travel the same
+	# way, and the host re-syncs the peer's own record slice when it resolves one.
+	GameBus.repair_intent.connect(_on_repair_intent)
+	GameBus.research_intent.connect(_on_research_intent)
 	# Phase 24 — social/economy replication.
 	GameBus.market_synced.connect(_on_market_synced)
 	GameBus.governance_synced.connect(_on_governance_synced)
@@ -495,6 +505,36 @@ func _on_craft_intent(recipe_id: String, _player_id: String) -> void:
 		return
 	_broadcast({ "type": "craft_intent", "recipe_id": recipe_id })
 
+## Phase 34 — the repair half of the same rule: a client cannot repair, because a
+## repair consumes materials from a persisted inventory. It forwards the item as an
+## intent and the host resolves it against the connection's own player record (see
+## the repair_intent arm of _route_c2h). The player_id half is ignored here for the
+## same reason as craft_intent: the identity is bound to the connection on the host
+## side, never trusted from the payload.
+func _on_repair_intent(item_id: String, _player_id: String) -> void:
+	if _role != Role.CLIENT:
+		return
+	_broadcast({ "type": "repair_intent", "item_id": item_id })
+
+## Phase 34 — research likewise: the technology tree is per-player state, so a
+## client forwards the tech and the host researches for the identity it bound.
+func _on_research_intent(tech_id: String, _player_id: String) -> void:
+	if _role != Role.CLIENT:
+		return
+	_broadcast({ "type": "research_intent", "tech_id": tech_id })
+
+## Phase 34 — host → one client: the peer's OWN record slice changed on the host's
+## side of an action it asked for (its inventory after a repair, its technology
+## statuses after a research). Delivered to that peer alone: an inventory is
+## private, so unlike an AOI-scoped world delta this cannot be broadcast.
+## `data` mirrors the like-named join-snapshot keys:
+## { inventory, inventory_durability, technology }.
+func send_own_state(peer_id: int, data: Dictionary) -> void:
+	if _role != Role.HOST:
+		push_warning("NetworkingSlice: send_own_state called on non-host — dropped")
+		return
+	_deliver(peer_id, { "type": "own_state_synced", "data": data })
+
 func _on_creature_state_changed(instance_id: String, creature_id: String, state: String, position: Vector3) -> void:
 	if _role != Role.HOST:
 		return
@@ -734,6 +774,23 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				push_warning("NetworkingSlice: craft_intent from un-handshaked peer %d — dropped" % sender)
 			else:
 				GameBus.craft_intent.emit(str(payload.get("recipe_id", "")), crafter)
+		"repair_intent":
+			# Phase 34 — the same identity rule as craft_intent: the repairing
+			# player is the one bound to THIS connection, so a client cannot name
+			# whose tool it repairs or whose materials it spends.
+			var repairer := get_player_id(sender)
+			if repairer.is_empty():
+				push_warning("NetworkingSlice: repair_intent from un-handshaked peer %d — dropped" % sender)
+			else:
+				GameBus.repair_intent.emit(str(payload.get("item_id", "")), repairer)
+		"research_intent":
+			# Phase 34 — and the same for research: whose tree moves is decided by
+			# the connection, never by the payload.
+			var researcher := get_player_id(sender)
+			if researcher.is_empty():
+				push_warning("NetworkingSlice: research_intent from un-handshaked peer %d — dropped" % sender)
+			else:
+				GameBus.research_intent.emit(str(payload.get("tech_id", "")), researcher)
 		"block_edit_intent":
 			var action := str(payload.get("action", ""))
 			var ipos := _vec3(payload.get("position", []))
@@ -852,6 +909,13 @@ func _route_h2c(payload: Dictionary) -> void:
 			GameBus.trade_completed.emit(payload.get("trade", {}))
 		"world_snapshot":
 			GameBus.world_snapshot_received.emit(payload.get("data", {}))
+		"own_state_synced":
+			# Phase 34 — the host's copy of OUR record changed (it resolved a repair
+			# or research for us). Apply it; game_root owns what that means.
+			# NOTE: no listener on this side of the signal — `send_own_state` is a
+			# direct call, and re-emitting from a listener on the same signal would
+			# make the client loop forever on its own packet.
+			GameBus.own_state_synced.emit(payload.get("data", {}))
 		"identity_assigned":
 			# Phase 33 — the host's answer to our join intent. Cache it so a
 			# reconnect claims the same record.
