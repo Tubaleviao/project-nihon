@@ -1932,7 +1932,7 @@ was `SIGKILL`ed mid-session: the disconnect wrote the client's record, left no
 
 ---
 
-## Phase 34 — Per-player repair and research
+## Phase 34 — Per-player repair and research ✅ Done
 
 **Goal:** Finish the per-player authority Phase 33 started. Two player-scoped
 actions still resolve against the host's own state: `CraftingSlice.repair()`
@@ -1982,22 +1982,41 @@ runtime state, not what the fabric describes, so no `pnpm validate` /
   forwarding, per-player repair, client repair forwarding, intent identity
   binding, own-state push scoping).
 
-**Acceptance criteria:** *(not yet met — phase in progress)*
-- [ ] One player's research consumes only THEIR materials and moves only THEIR
+**Acceptance criteria:** *(met — see the verification notes below)*
+- [x] One player's research consumes only THEIR materials and moves only THEIR
   statuses; another player's tree stays locked, and a prerequisite is per-player.
-- [ ] A remote peer's repair consumes the repair materials from and restores the
+  (`technology: tree and materials are per-player`: alice researching moves her
+  stack and her status, bob's `Ferrite` stays 4 and his status `locked`; bob's
+  `TechMasterForge` answers `prerequisite_locked` until HE holds
+  `TechBasicSmithing`, and two players then hold the same technology
+  independently.)
+- [x] A remote peer's repair consumes the repair materials from and restores the
   durability of ITS OWN inventory; the host's is untouched.
-- [ ] A client never resolves a repair or research locally: it forwards an
+  (`repair: resolves against the repairer's inventory`: alice's pick goes
+  `worn` → `pristine` and her `FerriteIngot` 3 → 2 while bob's stays worn at the
+  same durability with all 3 ingots.)
+- [x] A client never resolves a repair or research locally: it forwards an
   intent, and its own state changes only through the host's `own_state_synced`.
-- [ ] An un-handshaked peer's repair / research intent is dropped, and a
+  (`technology: client forwards research intent` and `repair: client forwards
+  intent, mutates nothing`: one intent, an empty `player_id`, nothing consumed
+  or restored locally.)
+- [x] An un-handshaked peer's repair / research intent is dropped, and a
   `player_id` inside the payload is ignored — the identity comes from the
-  connection.
-- [ ] `technology_unlocked` names the player whose tree moved, and the listen
-  host's own UI does not report a remote peer's outcome.
-- [ ] Headless suite green on the host, `--server` and `--client` boots, with no
-  `SCRIPT ERROR` / `Parse Error` in any of them.
-- [ ] A real server+client pair still handshakes, joins, reconnects, and
-  receives its own record.
+  connection. (`net: player intents bind connection identity`: no signal before
+  the handshake, then both intents arrive carrying `player_7_1_deadbeef`, the id
+  bound to the connection, not the `player_victim` the payload named.)
+- [x] `technology_unlocked` names the player whose tree moved, and the listen
+  host's own UI does not report a remote peer's outcome. (`technology_unlocked`
+  now carries `player_id`, and `UiSlice._belongs_to_local_player` gates the
+  craft / repair / research feedback labels on it.)
+- [x] Headless suite green on the host, `--server` and `--client` boots, with no
+  `SCRIPT ERROR` / `Parse Error` in any of them. (`Results: 6991/6991 passed
+  (0 failed)` + `All tests passed ✓` on all three, and
+  `[Server] listening on port 7777, max_clients 64` on the `--server` boot.)
+- [x] A real server+client pair still handshakes, joins, reconnects, and
+  receives its own record. (`[Server] reconnected player
+  'player_1790211585_1_c1faa9ada576fae72382b700cd8555b8' as peer_693354570`
+  with the client logging `[Client] identity assigned: …`.)
 
 **Tasks / tests:**
 - `technology: tree and materials are per-player`

@@ -54,6 +54,7 @@ pnpm generate   # generate the design bible into bible/
 | 31 | Trees and resource appearance | Done |
 | 32 | One authoritative boot path | Done |
 | 33 | Player identity and server-side persistence | Done |
+| 34 | Per-player repair and research | Done |
 
 See [ROADMAP.md](ROADMAP.md) for the full spec, deliverables, and acceptance criteria for each phase.
 
