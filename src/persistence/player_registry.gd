@@ -42,6 +42,8 @@ extends Node
 ##   record_position(player_id, pos) / record_hp(player_id, hp)
 ##   record_appearance(player_id, recipe) / record_technology(player_id, statuses)
 ##   record_flags(player_id, flags) / record_companions(player_id, ids)  — Phase 35
+##   get_skill_tier(player_id, skill) / record_skill(player_id, skill, tier)  — Phase 36
+##   record_skills(player_id, tiers)
 ##   get_inventory(player_id) -> InventorySlice  — created on first access
 ##   set_inventory(player_id, inventory)
 ##   evict_player(player_id) -> bool             — drop an offline player's memory
@@ -64,7 +66,8 @@ var local_player_id: String = ""
 ## connection, and it is thrown away on disconnect.
 var _peer_ids: Dictionary = {}
 
-## player_id → record: { player_id, position, hp, appearance, technology, flags, companions }.
+## player_id → record: { player_id, position, hp, appearance, technology, flags,
+## companions, skills }.
 var _players: Dictionary = {}
 
 ## player_id → InventorySlice. The local player's entry is the game's existing
@@ -275,6 +278,7 @@ func ensure_player(player_id: String) -> Dictionary:
 			"technology": {},
 			"flags":      {},
 			"companions": [],
+			"skills":     {},
 		}
 	return _players[player_id]
 
@@ -323,6 +327,42 @@ func record_technology(player_id: String, statuses: Dictionary) -> void:
 	if rec.is_empty():
 		return
 	rec["technology"] = statuses
+
+## Phase 36 — one player's skill tier (e.g. Smithing → journeyman): the gate every
+## crafting recipe and repair step is resolved against. Per-player, because a
+## shared table let the first player to reach a tier unlock that tier's recipes for
+## everybody on the server.
+##
+## Returns "" when the record holds no tier for that skill — the caller decides what
+## a missing tier means (CraftingSlice reads it as the seed tier, novice), so the
+## default lives in one place instead of two.
+func get_skill_tier(player_id: String, skill: String) -> String:
+	if skill == "":
+		return ""
+	var skills = get_record(player_id).get("skills", {})
+	if skills is Dictionary:
+		return str((skills as Dictionary).get(skill, ""))
+	return ""
+
+## Record one skill tier on a player's record (durable progression).
+func record_skill(player_id: String, skill: String, tier: String) -> void:
+	if skill == "" or tier == "":
+		return
+	var rec := ensure_player(player_id)
+	if rec.is_empty():
+		return
+	var skills: Dictionary = rec.get("skills", {})
+	if not (skills is Dictionary):
+		skills = {}
+	skills[skill] = tier
+	rec["skills"] = skills
+
+## Replace a player's whole tier table (restore path / bulk write).
+func record_skills(player_id: String, tiers: Dictionary) -> void:
+	var rec := ensure_player(player_id)
+	if rec.is_empty():
+		return
+	rec["skills"] = tiers.duplicate()
 
 ## The player's taming flags (Phase 35) — e.g. `wolfBondHolder`, which the Ranger
 ## profession gate reads. Durable, because a flag is progression, not scenery.
@@ -424,6 +464,7 @@ func get_player_data(player_id: String) -> Dictionary:
 		"technology": rec.get("technology", {}),
 		"flags":      rec.get("flags", {}),
 		"companions": rec.get("companions", []),
+		"skills":     rec.get("skills", {}),
 		"inventory": {},
 		"inventory_durability": {},
 	}
@@ -448,6 +489,10 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	# carries neither key and restores to the empty defaults.
 	rec["flags"]      = data.get("flags", {})
 	rec["companions"] = data.get("companions", [])
+	# Phase 36: skill tiers are per-player progression too, so they ride the same
+	# record. A payload from before this phase carries no `skills` key and restores
+	# to the empty table — every skill then reads as its seed tier (novice).
+	rec["skills"]     = data.get("skills", {})
 	var contents: Variant = data.get("inventory", {})
 	if contents is Dictionary and not contents.is_empty():
 		var inv = get_inventory(player_id)

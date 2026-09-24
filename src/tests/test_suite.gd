@@ -132,6 +132,7 @@ func run() -> void:
 	_run_test("crafting: missing inputs fail",                _test_crafting_missing_inputs)
 	_run_test("crafting: unknown recipe rejected",            _test_crafting_unknown_recipe)
 	_run_test("crafting: can_craft does not mutate",          _test_crafting_can_craft_no_mutate)
+	_run_test("crafting: skill tiers are per-player",         _test_craft_skill_tiers_are_per_player)
 	_run_test("station: gate blocks without nearby station",           _test_station_gate_blocks)
 	_run_test("station: gate passes when station nearby",             _test_station_gate_passes)
 	_run_test("station: wrong station type still blocks",             _test_station_wrong_type_blocks)
@@ -1641,6 +1642,79 @@ func _test_crafting_can_craft_no_mutate() -> void:
 	assert_eq(inv.get_item_count("Ferrite"), 2, "can_craft does not consume inputs")
 	c.free()
 	inv.free()
+
+func _test_craft_skill_tiers_are_per_player() -> void:
+	# Skill tiers used to be ONE process-wide table, so every player shared every
+	# gate: the first peer to reach journeyman unlocked those recipes for the whole
+	# server, and a peer's craft was gated by whoever had levelled last.
+	# Phase 36 moves the tiers onto the player record — this proves two players in
+	# one process can hold different tiers, that neither reads the other's, and that
+	# a tier survives the record round-trip.
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var c := CraftingSlice.new()
+	add_child(c)
+	c.player_registry = reg
+
+	# Any recipe carrying a skill guard: the gate answers before the inputs do.
+	var recipe_id := ""
+	var skill := ""
+	var required := ""
+	for key in GameData.RECIPES:
+		var spec: Dictionary = c.get_recipe(str(key))
+		var guards: Array = spec.get("skillGuards", [])
+		if guards.size() > 0:
+			recipe_id = str(key)
+			skill = str(guards[0].get("skill", ""))
+			required = str(guards[0].get("tier", "novice"))
+			break
+	assert_true(recipe_id != "" and skill != "" and required != "",
+		"need a recipe with a skill guard (fabric defines several)")
+
+	var peer_a := "player_peer_a_1_cafe"
+	var peer_b := "player_peer_b_2_beef"
+	# The exact guard this test is about: a recipe may carry several skill guards, and
+	# only THIS one's tier is being raised.
+	var gate := "skill_requirement:%s:%s" % [skill, required]
+	assert_eq(str(c.can_craft(recipe_id, peer_a)["reason"]), gate, "a player with no tier is gated")
+	assert_eq(c.get_skill_for(peer_a, skill), "novice", "and reads as the seed tier")
+
+	# The earning player lifts their own gate...
+	assert_true(c.set_skill_for(peer_a, skill, required), "a valid tier is applied")
+	assert_true(str(c.can_craft(recipe_id, peer_a)["reason"]) != gate,
+		"their own tier lifts their own gate")
+	assert_eq(c.get_skill_for(peer_a, skill), required, "and only theirs")
+
+	# ...while a second player is still gated, and still reads novice.
+	assert_eq(str(c.can_craft(recipe_id, peer_b)["reason"]), gate,
+		"a second player is NOT unlocked by the first player's tier")
+	assert_eq(c.get_skill_for(peer_b, skill), "novice", "a peer with no tier reads as novice")
+
+	# The LOCAL player's live table must not leak into a peer's gate either: the
+	# demo/UI path writes via set_skill(), which is the local player's own store.
+	c.set_skill(skill, required)
+	assert_eq(c.get_skill_for("player_host_1", skill), required, "the local player reads their own tier")
+	assert_eq(str(c.can_craft(recipe_id, peer_b)["reason"]), gate,
+		"and the local player's tier still does not unlock a peer")
+
+	# Durable: the tier rides the record, and an older payload (no `skills` key)
+	# restores to the seed tier rather than to somebody else's numbers.
+	var data: Dictionary = reg.get_player_data(peer_a)
+	assert_eq(str(data.get("skills", {}).get(skill, "")), required, "the tier rides the record")
+	var restored := PlayerRegistry.new()
+	add_child(restored)
+	restored.apply_player_data(peer_a, data)
+	assert_eq(restored.get_skill_tier(peer_a, skill), required, "and restores from it")
+	var legacy := PlayerRegistry.new()
+	add_child(legacy)
+	legacy.apply_player_data(peer_b, { "position": [1.0, 2.0, 3.0] })
+	assert_eq(legacy.get_skill_tier(peer_b, skill), "", "a pre-Phase-36 payload has no tiers in it")
+
+	c.free()
+	reg.free()
+	restored.free()
+	legacy.free()
 
 # ---------------------------------------------------------------------------
 # StationSlice tests (Phase 16 station-gated crafting)
@@ -6509,6 +6583,11 @@ func _make_taming_rig() -> Dictionary:
 	taming.crafting_slice  = crafting
 	taming.player_registry = registry
 	taming.inventory_slice = null   # prove the registry is what answers
+	# Phase 36 — the crafting slice is wired to the same registry game_root wires it
+	# to, because skill tiers are resolved per player through it: without it the
+	# slice has no notion of "this machine's player" and would read every tier as
+	# novice (`get_skill_for` cannot tell a peer from a nameless local player).
+	crafting.player_registry = registry
 	return { "creature": c, "taming": taming, "crafting": crafting, "registry": registry }
 
 ## The first instance id of a fabric creature key, or "" when the population has
@@ -6859,14 +6938,17 @@ func _test_taming_is_per_player() -> void:
 	var taming: Node = rig["taming"]
 	var registry: Node = rig["registry"]
 	var local_pid := str(registry.local_player_id)
-	rig["crafting"].set_skill("Unarmed", "journeyman")
-	rig["crafting"].set_skill("Alchemy", "apprentice")
 	var wolves := _taming_instances_of(c, "GraywolfPack")
 	var target := str(wolves[1])
 	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
 
 	var alice: String = str(registry.resolve_identity(2))
 	var bob: String = str(registry.resolve_identity(3))
+	# Phase 36 — the tier is the TAMER's, so each tamer is given their own: a single
+	# process-wide set_skill() no longer stands in for every player's progression.
+	for tamer in [alice, bob]:
+		rig["crafting"].set_skill_for(str(tamer), "Unarmed", "journeyman")
+		rig["crafting"].set_skill_for(str(tamer), "Alchemy", "apprentice")
 	_taming_stand_near(registry, alice, c, target)
 	_taming_stand_near(registry, bob, c, target)
 	# Only BOB carries the offering: a feed by alice must not spend bob's ration.

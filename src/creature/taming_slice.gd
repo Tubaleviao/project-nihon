@@ -204,10 +204,13 @@ func is_unarmed(player_id: String = "") -> bool:
 		return false
 	return true
 
-## The tamer's tier name for a skill, from the same per-process table the crafting
-## gates read. Unknown/unwired resolves to "novice", so a requirement above
-## novice fails closed rather than being skipped.
+## The tamer's tier name for a skill, resolved for THAT player (Phase 36): tiers are
+## per-player, so a peer's Unarmed tier is its own record's and never this machine's.
+## An unwired table — or a record with no tier yet — resolves to "novice", so a
+## requirement above novice fails closed rather than being skipped.
 func skill_tier(player_id: String, skill: String) -> String:
+	if crafting_slice != null and crafting_slice.has_method("get_skill_for"):
+		return str(crafting_slice.get_skill_for(player_id, skill))
 	if crafting_slice != null and crafting_slice.has_method("get_skill"):
 		return str(crafting_slice.get_skill(skill))
 	return "novice"

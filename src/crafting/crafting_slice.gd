@@ -35,7 +35,14 @@ extends Node
 ##   repair(item_id, player_id := "") -> Dictionary
 ##   can_repair(item_id, spec := {}, player_id := "") -> Dictionary
 ##   inventory_for(player_id) -> Node
-##   set_skill / get_skill / get_skills
+##   get_skill_for(player_id, skill) / set_skill_for(player_id, skill, tier)
+##   set_skill / get_skill / get_skills        — THIS machine's own player
+##
+## Skill tiers are PER-PLAYER (Phase 36): a tier lives on the player's record
+## (PlayerRegistry.get_skill_tier / record_skill), so the guards of a recipe or a
+## repair are resolved against the player the action is FOR. Before this they were
+## one process-wide table, i.e. shared by every player — the first peer to reach a
+## tier unlocked that tier's recipes for the whole server.
 ##
 ## Crafting is PER-PLAYER (Phase 33): each player owns an inventory that is
 ## persisted with their record, so a recipe must be resolved against the crafter's
@@ -78,8 +85,17 @@ var station_slice: Node = null
 ## Radius (m) within which a recipe's required station must be placed.
 const STATION_RADIUS: float = 8.0
 
-## Runtime player skill tiers: skill key → tier name. Seeded from
+## THIS MACHINE's own skill tiers: skill key → tier name. Seeded from
 ## GameData.SKILLS at the lowest tier; a progression system raises them later.
+##
+## Phase 36 — skill tiers are PER PLAYER, stored on the player's record
+## (`PlayerRegistry.get_skill_tier` / `record_skill`). They used to be this one
+## process-wide table, which every player shared: the first peer to reach
+## journeyman unlocked the journeyman recipes for the whole server, and a peer's
+## craft was gated by whoever had levelled last. This table is now the store for
+## the LOCAL player when their record has no tier yet (the pre-identity boot, the
+## DEBUG demo, and every isolated test), and `get_skill_for()` is the single
+## resolution point every guard goes through.
 var _skill_tiers: Dictionary = {}
 
 func _ready() -> void:
@@ -105,7 +121,7 @@ func craft(recipe_id: String, player_id: String = "") -> Dictionary:
 	if recipe.is_empty():
 		return _fail(recipe_id, "unknown_recipe", pid)
 
-	var guard_reason := _check_skill_guards(recipe)
+	var guard_reason := _check_skill_guards(recipe, pid)
 	if guard_reason != "":
 		return _fail(recipe_id, guard_reason, pid)
 
@@ -158,7 +174,7 @@ func can_craft(recipe_id: String, player_id: String = "") -> Dictionary:
 	var recipe := get_recipe(recipe_id)
 	if recipe.is_empty():
 		return _result(recipe_id, false, [], "unknown_recipe", pid)
-	var guard_reason := _check_skill_guards(recipe)
+	var guard_reason := _check_skill_guards(recipe, pid)
 	if guard_reason != "":
 		return _result(recipe_id, false, [], guard_reason, pid)
 	var tech_reason := _check_tech_gate(recipe_id, pid)
@@ -183,20 +199,55 @@ func can_craft(recipe_id: String, player_id: String = "") -> Dictionary:
 func get_recipe(recipe_id: String) -> Dictionary:
 	return _structured_field(GameData.RECIPES, recipe_id, "recipe")
 
-## Set a skill's tier. Returns true when applied, false when `tier` is not a
-## known tier (in which case the skill keeps its previous tier).
-func set_skill(skill: String, tier: String) -> bool:
+## Set a skill's tier for a player. Returns true when applied, false when `tier`
+## is not a known tier (in which case the skill keeps its previous tier).
+##
+## Phase 36 — the write goes to the player's record when one is available (durable
+## progression: a tier survives a restart with the player who earned it), and to
+## this machine's own table when the call is about the LOCAL player — which is also
+## the only store there is before an identity exists, so a boot-time edit (the
+## DEBUG demo's `set_skill("Smithing", "journeyman")`) is not silently dropped.
+## `player_id` defaults to "" = THIS machine's local player.
+func set_skill_for(player_id: String, skill: String, tier: String) -> bool:
 	if not SkillTiers.is_valid_tier(tier):
 		push_warning("CraftingSlice: ignoring unknown skill tier '%s' for '%s'" % [tier, skill])
 		return false
-	_skill_tiers[skill] = tier
+	var pid := _resolve_player(player_id)
+	if pid == "" or pid == local_player_id():
+		_skill_tiers[skill] = tier
+	if pid != "" and player_registry != null and player_registry.has_method("record_skill"):
+		player_registry.record_skill(pid, skill, tier)
 	return true
 
-func get_skill(skill: String) -> String:
-	return str(_skill_tiers.get(skill, "novice"))
+## The tier a player holds in a skill. Because `player_id` defaults to "" (THIS
+## machine's local player) this is also the pre-Phase-36 `get_skill(skill)`.
+func get_skill_for(player_id: String, skill: String) -> String:
+	var pid := _resolve_player(player_id)
+	if pid != "" and player_registry != null and player_registry.has_method("get_skill_tier"):
+		var recorded := str(player_registry.get_skill_tier(pid, skill))
+		if recorded != "":
+			return recorded
+	# No recorded tier: this machine's own player falls back to its live table (the
+	# seed values, and anything the UI or the boot demo set before an identity
+	# existed). Any OTHER player has no other store, so the requirement fails closed
+	# against the seed tier rather than reading this machine's numbers as theirs.
+	if pid == "" or pid == local_player_id():
+		return str(_skill_tiers.get(skill, "novice"))
+	return "novice"
 
+func set_skill(skill: String, tier: String) -> bool:
+	return set_skill_for(local_player_id(), skill, tier)
+
+func get_skill(skill: String) -> String:
+	return get_skill_for(local_player_id(), skill)
+
+## THIS machine's own player's tier table, one entry per skill (the shape the
+## pre-Phase-36 `get_skills()` returned, now resolved per skill).
 func get_skills() -> Dictionary:
-	return _skill_tiers.duplicate()
+	var out := {}
+	for skill_key in GameData.SKILLS:
+		out[skill_key] = get_skill_for(local_player_id(), str(skill_key))
+	return out
 
 ## Return the structured repair spec for a durable item, or {} when the item has
 ## no repair field (stackable materials, or items whose repair references
@@ -314,7 +365,7 @@ func _resolve_repair(item_id: String, mutate: bool, spec: Dictionary, player_id:
 		return _repair_result(item_id, false, "not_repairable", pid)
 	if tiers == 0:
 		return _repair_result(item_id, false, "already_pristine", pid)
-	var guard_reason := _check_skill_guards(spec)
+	var guard_reason := _check_skill_guards(spec, pid)
 	if guard_reason != "":
 		return _repair_result(item_id, false, guard_reason, pid)
 	var station_reason := _check_station_gate(spec)
@@ -384,11 +435,16 @@ func _structured_field(registry: Dictionary, key: String, field: String) -> Dict
 
 ## Return "" when all skill guards pass, or a `skill_requirement:Skill:tier`
 ## reason string identifying the first unmet guard.
-func _check_skill_guards(recipe: Dictionary) -> String:
-	for guard in recipe.get("skillGuards", []):
+##
+## Phase 36 — the guard is resolved for `player_id`: skill tiers are per-player, so
+## the tier this checks belongs to the player the craft/repair is FOR, not to this
+## process. Passing the id through is what stops one peer's progression from gating
+## (or unlocking) another's.
+func _check_skill_guards(spec: Dictionary, player_id: String = "") -> String:
+	for guard in spec.get("skillGuards", []):
 		var skill: String = str(guard.get("skill", ""))
 		var required_tier: String = str(guard.get("tier", "novice"))
-		if SkillTiers.rank(get_skill(skill)) < SkillTiers.rank(required_tier):
+		if SkillTiers.rank(get_skill_for(player_id, skill)) < SkillTiers.rank(required_tier):
 			return "skill_requirement:%s:%s" % [skill, required_tier]
 	return ""
 
