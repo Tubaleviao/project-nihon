@@ -4,10 +4,12 @@ extends Node
 ## Plug contract (GameBus signals consumed / emitted):
 ##   IN  : combat_round_requested(attacker_id, defender_id)
 ##   OUT : combat_round_resolved(result)
+##         player_damaged(damage, attacker_id, target_id)
 ##
 ## Public API:
 ##   resolve_round(attacker_id, defender_id) -> Dictionary
 ##   reset_hp(entity_id)                     -> void
+##   is_player_target(entity_id)             -> bool   (static, Phase 37)
 
 ## Running HP for each combatant, keyed by entity_id.
 ## Populated on first hit; reset via reset_hp().
@@ -20,6 +22,23 @@ func _ready() -> void:
 	GameBus.combat_round_requested.connect(_on_combat_round_requested)
 	GameBus.creature_respawned.connect(_on_creature_respawned)
 
+## Phase 37 — the registry's id-SHAPE predicate, preloaded for the player/creature
+## split: it is a pure static check on a string, so no registry needs to be in the tree
+## for a defender id to be recognised as a player's.
+const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
+
+## Phase 37 — is `defender_id` a PLAYER rather than a creature?
+##
+## The creature path tracks hit points and emits `creature_died` when they run out;
+## a PLAYER's health is owned by the machine that simulates that body (PlayerSlice),
+## so a round against a player forwards damage instead. Two shapes are players: the
+## literal "player" (the local body's id, used by the bus since Phase 1) and a
+## server-minted player id — the target a remote peer is named by in
+## `combat_round_requested` (see CreatureAI._tick_instance). Pure and static, so the
+## rule is testable on its own and every caller agrees on it.
+static func is_player_target(defender_id: String) -> bool:
+	return defender_id == "player" or PlayerRegistry.looks_like_player_id(defender_id)
+
 ## Resolve a single combat round synchronously and emit the result.
 func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 	var attacker_res := _lookup(attacker_id)
@@ -27,10 +46,6 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 
 	var base_dmg: float = _field(attacker_res, "baseDamage", 10.0)
 	var max_hp:   float = _field(defender_res, "baseHp",     100.0)
-
-	# Initialise running HP on first encounter.
-	if not _hp_state.has(defender_id):
-		_hp_state[defender_id] = max_hp
 
 	# Hit roll: base 80 % hit rate, modified by tier difference
 	var hit_roll := randf()
@@ -48,11 +63,15 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 	else:
 		outcome = "miss"
 
-	# Player HP is owned by PlayerSlice; forward damage via the bus instead of
-	# tracking it here, and skip the kill-check (PlayerSlice handles death).
-	if defender_id == "player":
+	# A player's HP is owned by that player's own simulation (PlayerSlice), so damage
+	# is FORWARDED via the bus rather than tracked here, and the kill-check is skipped
+	# (PlayerSlice handles death). Phase 37 — that rule is now keyed on the DEFENDER
+	# SHAPE, not on the literal "player": a round routed by target id can name a remote
+	# peer, whose body is simulated on its own client. The target rides the signal, so
+	# the host can deliver it to that peer (GameRoot._on_player_damaged).
+	if is_player_target(defender_id):
 		if outcome != "miss":
-			GameBus.player_damaged.emit(damage, attacker_id)
+			GameBus.player_damaged.emit(damage, attacker_id, defender_id)
 		var result_player := {
 			"attacker": attacker_id,
 			"defender": defender_id,
@@ -62,6 +81,12 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 		}
 		GameBus.combat_round_resolved.emit(result_player)
 		return result_player
+
+	# A CREATURE defender: this slice owns its hit points, initialising them on first
+	# encounter. (For a player defender they are never initialised — nothing here is
+	# allowed to hold a number it cannot verify; see the branch above.)
+	if not _hp_state.has(defender_id):
+		_hp_state[defender_id] = max_hp
 
 	_hp_state[defender_id] = maxf(_hp_state[defender_id] - damage, 0.0)
 	var hp_remaining: float = _hp_state[defender_id]

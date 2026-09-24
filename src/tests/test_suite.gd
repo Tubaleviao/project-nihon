@@ -382,6 +382,17 @@ func run() -> void:
 	_run_test("craft: craft uses the crafter's own inventory",    _test_craft_uses_crafter_inventory)
 	_run_test("craft: client forwards a craft intent",            _test_craft_client_forwards_intent)
 
+	# Phase 37 review fixes
+	_run_test("net: inventory sync is owner-scoped",              _test_inventory_sync_is_owner_scoped)
+	_run_test("net: inventory sync is peer-scoped on the wire",   _test_net_inventory_sync_is_peer_scoped)
+	_run_test("net: incomplete snapshot is evicted on disconnect", _test_net_incomplete_snapshot_evicted_on_disconnect)
+	_run_test("net: a player's damage is routed to their peer",   _test_net_peer_damage_is_peer_scoped)
+	_run_test("identity: a named party is a handle, not an id",   _test_named_party_accepts_handles_only)
+	_run_test("taming: cooldowns are durable",                    _test_taming_cooldowns_are_durable)
+	_run_test("taming: per-player mirrors are evicted",           _test_taming_mirrors_evicted_on_forget)
+	_run_test("battle: player rounds route by target id",         _test_battle_routes_player_rounds_by_target)
+	_run_test("creature: instances_view is cached and live",      _test_creature_instances_view_cached)
+
 	# Self-check: the _run_test list above is manual, so a test function can be
 	# written but forgotten from the list. Fail loudly instead of silently
 	# dropping it: any _test_* method not registered above fails the suite.
@@ -3812,12 +3823,21 @@ func _test_net_trade_intents_bind_connection_identity() -> void:
 	assert_eq(str(proposed[0][1]), "player_7_1_cafe", "and the proposer")
 	assert_eq(str(rejected[0][1]), "player_7_1_cafe", "and the rejecter")
 
-	# Invites: the named counterparty must resolve. The host's own player is online;
-	# an unknown id, an empty name and the sender itself are all refused.
-	n._route_c2h(7, { "type": "trade_start_intent", "party_a": spoof, "party_b": "player_host_1" })
-	assert_eq(started.size(), 1, "an invite to an online player is opened")
+	# Invites: the named counterparty must resolve. Phase 37 — the name is a public
+	# HANDLE, which is the only identity a client is ever told, so that is what an
+	# invite carries.
+	var host_handle: String = reg.public_handle("player_host_1")
+	n._route_c2h(7, { "type": "trade_start_intent", "party_a": spoof, "party_b": host_handle })
+	assert_eq(started.size(), 1, "an invite to an online player's handle is opened")
 	assert_eq(str(started[0][0]), "player_7_1_cafe", "in the sender's own name")
 	assert_eq(str(started[0][1]), "player_host_1", "naming the counterparty it resolved")
+
+	# Phase 37 — a RAW PLAYER ID is no longer a name an invite may carry, even a real
+	# online player's: answering it turned this into a yes/no oracle for "is that exact
+	# id connected", and an id is a bearer token (see resolve_identity). Nothing
+	# legitimate still sends one — a client learns ids nowhere (redact_for_client).
+	n._route_c2h(7, { "type": "trade_start_intent", "party_a": "player_7_1_cafe", "party_b": "player_host_1" })
+	assert_eq(started.size(), 1, "a raw online player id is refused")
 	n._route_c2h(7, { "type": "trade_start_intent", "party_a": "player_7_1_cafe", "party_b": "player_nobody_9_0" })
 	n._route_c2h(7, { "type": "trade_start_intent", "party_a": "player_7_1_cafe", "party_b": "" })
 	n._route_c2h(7, { "type": "trade_start_intent", "party_a": "player_7_1_cafe", "party_b": "player_7_1_cafe" })
@@ -6676,22 +6696,27 @@ func _test_ai_targets_nearest_of_all_players() -> void:
 	assert_true(moved.distance_to(peer_pos) < pos.distance_to(peer_pos),
 		"and chases it (the peer, not the host 400 m away)")
 
-	# A remote target is chased but not struck: the host has no simulation of a
-	# peer's health, and handing its player id to the battle slice would run it
-	# through the creature path (hit points, then a creature_died on a player id).
+	# Phase 37 — and it IS struck: the round is routed by the target the creature
+	# engaged, so a remote peer's id rides `combat_round_requested` and the host can
+	# deliver the hit to that peer's own client (see BattleSlice.is_player_target and
+	# GameRoot._on_player_damaged). Phase 36 closed on the opposite: a peer was chased
+	# and then swung at nothing at all.
 	var rounds: Array = []
 	var on_round := func(attacker: String, defender: String) -> void:
 		rounds.append([attacker, defender])
 	GameBus.combat_round_requested.connect(on_round)
 	ai.force_state(iid, "aggressive")
 	ai._ai[iid]["attack_timer"] = CreatureAI.ATTACK_INTERVAL
-	ai._tick_instance(iid, c._instances[iid], peer_pos, 0.01, "player_peer")
-	assert_eq(rounds.size(), 0, "a remote peer is chased, not turned into a combat round")
+	# In attack range by construction (0.5 m), so the round does not depend on how far
+	# the chase above happened to get this tick.
+	ai._tick_instance(iid, c._instances[iid], c._instances[iid]["position"] + Vector3(0.5, 0.0, 0.0), 0.01, "player_peer")
+	assert_eq(rounds.size(), 1, "a remote peer is struck, not merely chased")
+	assert_eq(str(rounds[0][1]), "player_peer", "under the id the creature actually engaged")
 
 	ai._ai[iid]["attack_timer"] = CreatureAI.ATTACK_INTERVAL
 	ai._tick_instance(iid, c._instances[iid], c._instances[iid]["position"] + Vector3(0.5, 0.0, 0.0), 0.01)
-	assert_eq(rounds.size(), 1, "the local player is still struck")
-	assert_eq(str(rounds[0][1]), "player", "under the defender id the bus has always used")
+	assert_eq(rounds.size(), 2, "the local player is struck too")
+	assert_eq(str(rounds[1][1]), "player", "under the defender id the bus has always used")
 
 	GameBus.combat_round_requested.disconnect(on_round)
 	rig["creature"].free()
@@ -7336,10 +7361,380 @@ func _test_taming_record_round_trip() -> void:
 	legacy.apply_record({ "player_id": pid }, pid)
 	assert_eq(legacy.get_flags(pid).size(), 0, "an older record restores no flags")
 	assert_eq((legacy.get_companions(pid) as Array).size(), 0, "and no companions")
+	# Both extra slices are torn down like every other test slice: they are connected to
+	# `tame_intent`/`tame_requested` on the shared bus, so leaving them alive let a later
+	# test's tame be resolved — and refused — by an unwired leftover first.
+	restored.free()
+	legacy.free()
 	rig["creature"].free()
 	rig["taming"].free()
 	rig["crafting"].free()
 	rig["registry"].free()
+
+# ---------------------------------------------------------------------------
+# Phase 37 — review pass: owner-scoped syncs, durable cooldowns, bounded mirrors,
+# routed rounds, and a cached population view
+# ---------------------------------------------------------------------------
+
+## Phase 37 — an inventory sync NAMES its owner, and only that owner's inventory applies
+## it. Before this the signal was global and every InventorySlice in the process replaced
+## its contents with whatever was synced, so a peer's sync clobbered the host's own pack
+## and the demo merchant's stock.
+func _test_inventory_sync_is_owner_scoped() -> void:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	var local_pid := reg.mint_player_id()
+	reg.set_local_player(local_pid)
+	var local_inv := InventorySlice.new()
+	add_child(local_inv)
+	reg.set_inventory(local_pid, local_inv)
+	# A registry-CREATED inventory carries its owner (get_inventory stamps it).
+	var peer_pid := "player_peer_1"
+	var peer_inv: Node = reg.get_inventory(peer_pid)
+	var merchant := InventorySlice.new()
+	add_child(merchant)
+	merchant.owner_id = "merchant"
+
+	local_inv.add_item("Ferrite", 2)
+	peer_inv.add_item("Thornwood", 3)
+	merchant.add_item("hawk_feather", 5)
+
+	GameBus.inventory_synced.emit(peer_pid, { "Ashite": 7 }, {})
+	assert_eq(peer_inv.get_item_count("Ashite"), 7, "the peer's inventory takes its own sync")
+	assert_eq(local_inv.get_item_count("Ferrite"), 2, "the local pack is untouched")
+	assert_eq(merchant.get_item_count("hawk_feather"), 5, "and so is the merchant's stock")
+
+	# The local bucket answers for this machine's own inventory, under either literal.
+	GameBus.inventory_synced.emit("player", { "WolfFang": 1 }, {})
+	assert_eq(local_inv.get_item_count("WolfFang"), 1, "a local sync lands on the local pack")
+	assert_eq(peer_inv.get_item_count("Ashite"), 7, "and not on a peer's")
+	assert_eq(merchant.get_item_count("WolfFang"), 0, "nor on the merchant's")
+	GameBus.inventory_synced.emit("", { "Ferrite": 4 }, {})
+	assert_eq(local_inv.get_item_count("Ferrite"), 4, "the empty literal means the same thing")
+
+	# The stamp is what the filter reads.
+	assert_true(peer_inv.is_owned_by(peer_pid), "a peer's inventory answers to its own id")
+	assert_false(peer_inv.is_owned_by("merchant"), "and to nothing else")
+	assert_false(peer_inv.is_owned_by(""), "not even the local bucket")
+	assert_true(local_inv.is_owned_by(""), "the local pack answers the empty literal")
+	assert_true(local_inv.is_owned_by("player"), "and the \"player\" literal")
+	assert_false(local_inv.is_owned_by(peer_pid), "but not a peer's id")
+	merchant.free()
+	local_inv.free()
+	reg.free()   # frees the registry-created peer inventory with it
+
+## Phase 37 — and the wire half: an inventory is PRIVATE, so the host sends a sync to
+## the OWNER'S peer alone and never broadcasts it (and never falls back to a broadcast
+## when it cannot resolve the owner).
+func _test_net_inventory_sync_is_peer_scoped() -> void:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var peer_pid := str(reg.resolve_identity(5))
+	var host := NetworkingSlice.new()
+	add_child(host)
+	host.player_registry = reg
+	host.emulate_network = true
+	host._role = NetworkingSlice.Role.HOST
+
+	host._on_inventory_synced(peer_pid, { "Ferrite": 1 }, {})
+	assert_eq(host._pending.size(), 1, "one packet, for the owner's peer")
+	assert_eq(int(host._pending[0]["peer_id"]), 5, "addressed to that peer alone")
+	var packet: Dictionary = JSON.parse_string(str(host._pending[0]["json"]))
+	assert_eq(str(packet.get("type", "")), "inventory_synced", "of the inventory_synced type")
+	assert_eq(int(packet.get("contents", {}).get("Ferrite", 0)), 1, "carrying the contents")
+	assert_false(JSON.stringify(packet).contains(peer_pid), "and no player id — a bearer token stays off the wire")
+
+	# Nobody to send it to: the local bucket (this process's own inventory is already
+	# live here), an offline/unknown owner, or an unwired registry. Each FAILS CLOSED.
+	host._pending.clear()
+	host._on_inventory_synced("", { "Ferrite": 1 }, {})
+	host._on_inventory_synced("player", { "Ferrite": 1 }, {})
+	host._on_inventory_synced("player_nobody_9_0", { "Ferrite": 1 }, {})
+	assert_eq(host._pending.size(), 0, "a local or unresolvable owner is sent nothing")
+	host.player_registry = null
+	host._on_inventory_synced(peer_pid, { "Ferrite": 1 }, {})
+	assert_eq(host._pending.size(), 0, "an unwired registry does not fall back to a broadcast")
+
+	# The client half: the peer-scoped packet reaches the bus as the LOCAL bucket, so
+	# only this machine's own inventory applies it.
+	var client := NetworkingSlice.new()
+	add_child(client)
+	client._role = NetworkingSlice.Role.CLIENT
+	var seen: Array = []
+	var on_sync := func(owner: String, contents: Dictionary, _durabilities: Dictionary) -> void:
+		seen.append([owner, contents])
+	GameBus.inventory_synced.connect(on_sync)
+	client._route_h2c(packet)
+	GameBus.inventory_synced.disconnect(on_sync)
+	assert_eq(seen.size(), 1, "the client re-emits the sync for its own slices")
+	assert_eq(str(seen[0][0]), "", "under the local bucket")
+	assert_eq(int((seen[0][1] as Dictionary).get("Ferrite", 0)), 1, "with the synced contents")
+	client.free()
+	host.free()
+	reg.free()
+
+## Phase 37 — a snapshot that lost a chunk can never complete, so its reassembly entry
+## used to sit in the buffer for the rest of the session: one leak per lost chunk, on a
+## connection that may be long gone. It is transport state, so it goes with the
+## connection.
+func _test_net_incomplete_snapshot_evicted_on_disconnect() -> void:
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.CLIENT
+	n._accumulate_snapshot_chunk({ "snapshot_id": 1, "index": 0, "count": 2, "data": "{\"a\":" })
+	assert_eq(n._snapshot_buffer.size(), 1, "a partial snapshot is buffered")
+	n.forget_player_id(1)
+	assert_eq(n._snapshot_buffer.size(), 0, "the dropped connection's reassembly state goes with it")
+
+	# A complete snapshot still empties its own entry (the pre-existing path).
+	n._accumulate_snapshot_chunk({ "snapshot_id": 2, "index": 0, "count": 2, "data": "{\"a\":" })
+	n._accumulate_snapshot_chunk({ "snapshot_id": 2, "index": 1, "count": 2, "data": "1}" })
+	assert_eq(n._snapshot_buffer.size(), 0, "reassembly is unchanged for a snapshot that completes")
+	n.free()
+
+## Phase 37 — a creature's round is routed by the TARGET it engaged. Both a player's
+## shapes go down the damage-forwarding path: the local body ("player") and a remote
+## peer's player id. Neither may reach the creature path, which tracks hit points and
+## emits `creature_died` — on a player id that would be a corpse on somebody's identity.
+func _test_battle_routes_player_rounds_by_target() -> void:
+	assert_true(BattleSlice.is_player_target("player"), "the local body is a player target")
+	assert_true(BattleSlice.is_player_target("player_1700000000_1_" + "ab".repeat(16)),
+		"so is a server-minted player id")
+	assert_false(BattleSlice.is_player_target("ForestBoar"), "a fabric creature key is not")
+	assert_false(BattleSlice.is_player_target("creature_0_0_ForestBoar_0"), "nor an instance id")
+
+	var b := BattleSlice.new()
+	add_child(b)
+	var hits: Array = []
+	var on_damage := func(damage: float, attacker_id: String, target_id: String) -> void:
+		hits.append([damage, attacker_id, target_id])
+	var deaths: Array = []
+	var on_death := func(entity_id: String, _position: Vector3, _killer: String) -> void:
+		deaths.append(entity_id)
+	GameBus.player_damaged.connect(on_damage)
+	GameBus.creature_died.connect(on_death)
+
+	var peer := "player_1700000000_1_" + "cd".repeat(16)
+	for i in 20:
+		b.resolve_round("ForestBoar", peer)
+	GameBus.player_damaged.disconnect(on_damage)
+	GameBus.creature_died.disconnect(on_death)
+	assert_true(hits.size() > 0, "the rounds against a peer forward damage")
+	for h in hits:
+		assert_eq(str(h[2]), peer, "each one naming the target the round was routed by")
+		assert_eq(str(h[1]), "ForestBoar", "and the creature that struck")
+	assert_eq(deaths.size(), 0, "a player target never reaches the creature death path")
+	assert_eq(b.get_hp(peer), -1.0, "and no hit points are tracked for a player here")
+
+	# The local body routes the same way, under the id the bus has always used for it.
+	var local_hits: Array = []
+	var on_local := func(_damage: float, _attacker: String, target_id: String) -> void:
+		local_hits.append(target_id)
+	GameBus.player_damaged.connect(on_local)
+	for i in 20:
+		b.resolve_round("ForestBoar", "player")
+	GameBus.player_damaged.disconnect(on_local)
+	assert_true(local_hits.size() > 0, "the local body is struck too")
+	for t in local_hits:
+		assert_eq(str(t), "player", "under the local defender id")
+	b.free()
+
+## Phase 37 — the wire half of round routing: the host cannot apply a peer's damage
+## (it holds no verifiable HP for that peer), so it sends the round to the peer whose
+## body is simulated there; that client applies it to its own PlayerSlice.
+func _test_net_peer_damage_is_peer_scoped() -> void:
+	var host := NetworkingSlice.new()
+	add_child(host)
+	host.emulate_network = true
+	host.send_player_damaged(5, 12.0, "creature_0_0_ForestBoar_0")
+	assert_eq(host._pending.size(), 0, "a non-host cannot send damage")
+	host._role = NetworkingSlice.Role.HOST
+	host.send_player_damaged(5, 12.0, "creature_0_0_ForestBoar_0")
+	assert_eq(host._pending.size(), 1, "the host queues exactly one packet")
+	assert_eq(int(host._pending[0]["peer_id"]), 5, "addressed to the peer that was hit")
+	var packet: Dictionary = JSON.parse_string(str(host._pending[0]["json"]))
+	assert_eq(str(packet.get("type", "")), "player_damaged", "of the player_damaged type")
+
+	# The client half: the local body absorbs it, under the id the bus has always used.
+	var client := NetworkingSlice.new()
+	add_child(client)
+	client._role = NetworkingSlice.Role.CLIENT
+	var hits: Array = []
+	var on_damage := func(damage: float, attacker_id: String, target_id: String) -> void:
+		hits.append([damage, attacker_id, target_id])
+	GameBus.player_damaged.connect(on_damage)
+	client._route_h2c(packet)
+	GameBus.player_damaged.disconnect(on_damage)
+	assert_eq(hits.size(), 1, "the peer's client applies the hit")
+	assert_eq(float(hits[0][0]), 12.0, "for the damage the host resolved")
+	assert_eq(str(hits[0][1]), "creature_0_0_ForestBoar_0", "attributed to the creature")
+	assert_eq(str(hits[0][2]), "player", "addressed to the local body")
+
+	# And a round aimed at ANOTHER player is not this body's to absorb.
+	var player := PlayerSlice.new()
+	add_child(player)
+	assert_true(player._is_local_target("player"), "the local body takes the local rounds")
+	assert_true(player._is_local_target(""), "under the resolve_player literal too")
+	assert_false(player._is_local_target("player_someone_else_1_x"), "another player's is refused")
+	player.free()
+	client.free()
+	host.free()
+
+## Phase 37 — a named counterparty must be a public HANDLE. Accepting a raw player id as
+## well made the resolver a yes/no oracle for "is this exact id online", and an id is a
+## bearer token: presenting one on join claims the record.
+func _test_named_party_accepts_handles_only() -> void:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var guest := str(reg.resolve_identity(3))
+
+	assert_eq(reg.resolve_named_party(reg.public_handle(guest)), guest, "a handle resolves")
+	assert_eq(reg.resolve_named_party(reg.public_handle("player_host_1")), "player_host_1",
+		"the local player's handle resolves too")
+	assert_eq(reg.resolve_named_party(guest), "", "a raw ONLINE player id does not")
+	assert_eq(reg.resolve_named_party("player_host_1"), "", "not even the local player's own id")
+	assert_eq(reg.resolve_named_party("player_nobody_9_0"), "", "nor an unknown id")
+	assert_eq(reg.resolve_named_party("merchant"), "", "nor a demo scaffolding literal")
+	assert_eq(reg.resolve_named_party(""), "", "nor an empty name")
+	assert_eq(reg.resolve_named_party(reg.public_handle("player_nobody_9_0")), "",
+		"and an offline player's handle answers nothing")
+
+	# The offline case: dropping the connection takes the handle's answer with it.
+	reg.unbind_peer(3)
+	assert_eq(reg.resolve_named_party(reg.public_handle(guest)), "",
+		"a handle resolves only while its player is here")
+	reg.free()
+
+## Phase 37 — a tame cooldown is a rule about the PLAYER, so it rides the player record.
+## In memory alone, a host restart (or a reconnect) handed every player a clean table and
+## the fox could be fed in a loop again.
+func _test_taming_cooldowns_are_durable() -> void:
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var crafting: Node = rig["crafting"]
+	var pid := str(registry.local_player_id)
+	var fox := _taming_instance_of(c, "GlimmerFox")
+	_taming_stand_near(registry, pid, c, fox)
+	crafting.set_skill_for(pid, "Alchemy", "apprentice")
+	var inventory: Node = taming.inventory_for(pid)
+	assert_true(inventory.add_item("FieldRations", 2), "the tamer carries rations")
+
+	assert_true(bool(taming.tame(fox, "")["success"]), "the first feed succeeds")
+	assert_true(taming.cooldown_remaining(fox, pid) > 0.0, "and starts the fabric's cooldown")
+	taming.sync_record(pid)
+	var data: Dictionary = registry.get_player_data(pid)
+	assert_true(data.has("cooldowns"), "the record carries the cooldown table")
+	assert_true((data["cooldowns"] as Dictionary).has(fox), "with this fox's deadline")
+
+	# A fresh slice (the shape of a server restart) restores it from the record.
+	var restored := TamingSlice.new()
+	add_child(restored)
+	restored.creature_slice = c
+	restored.crafting_slice = crafting
+	restored.player_registry = registry
+	restored.apply_record(data, pid)
+	assert_true(restored.cooldown_remaining(fox, pid) > 0.0,
+		"the fox is still on cooldown after the restart")
+	assert_eq(str(restored.can_tame(fox, pid)["reason"]), "on_cooldown",
+		"and the feed is refused — the same refusal the pre-restart process gave")
+
+	# An EXPIRED deadline is not persisted: it bounds nothing, and keeping it would grow
+	# the record with every fox ever fed.
+	restored._cooldowns_for(pid)[fox] = Time.get_unix_time_from_system() - 1.0
+	restored.sync_record(pid)
+	assert_false(registry.get_cooldowns(pid).has(fox), "an elapsed cooldown is pruned from the record")
+	var live := PlayerRegistry.live_cooldowns({
+		"stale": Time.get_unix_time_from_system() - 1.0,
+		"fresh": Time.get_unix_time_from_system() + 60.0,
+	})
+	assert_eq(live.size(), 1, "the prune rule is pure and keeps only live deadlines")
+	assert_true(live.has("fresh"), "the live one")
+
+	restored.free()
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+## Phase 37 — the three per-player taming mirrors (flags, companion bindings, cooldowns)
+## only ever grew: a server that had seen a thousand tamers held a thousand tables for the
+## rest of the session. They are released on disconnect, and nothing is lost — the record
+## written at that moment is the durable copy, and a reconnect re-applies it.
+func _test_taming_mirrors_evicted_on_forget() -> void:
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var wolves := _taming_instances_of(c, "GraywolfPack")
+	var target := str(wolves[1])
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	var alice: String = str(registry.resolve_identity(2))
+	rig["crafting"].set_skill_for(alice, "Unarmed", "journeyman")
+	_taming_stand_near(registry, alice, c, target)
+	var tamed: Dictionary = _taming_tame_via_intent(target, alice)
+	assert_eq(str(tamed.get("reason", "no_result")), "", "alice's tame is not refused")
+	assert_true(bool(tamed.get("success", false)), "alice tames the pup")
+	assert_true(taming.has_flag(alice, "wolfBondHolder"), "the flag is mirrored")
+	taming._cooldowns_for(alice)[target] = Time.get_unix_time_from_system() + 60.0
+	taming.sync_record(alice)
+	var record: Dictionary = registry.get_player_data(alice)
+	assert_true(bool((record["flags"] as Dictionary).get("wolfBondHolder", false)),
+		"and written on the durable record first")
+
+	taming.forget_player_id(alice)
+	assert_false(taming._flags.has(alice), "the flags mirror is released")
+	assert_false(taming._companions.has(alice), "so is the companion mirror")
+	assert_false(taming._cooldowns.has(alice), "and the cooldown mirror")
+	assert_true(bool((registry.get_record(alice)["flags"] as Dictionary).get("wolfBondHolder", false)),
+		"while the record still holds the flag — the reconnect path reads it back")
+
+	# The reconnect path: apply_record re-applies the claimed record.
+	taming.apply_record(registry.get_record(alice), alice)
+	assert_true(taming.has_flag(alice, "wolfBondHolder"), "a reconnect restores the flag")
+	assert_true((taming.get_companions(alice) as Array).has(target), "and the companion binding")
+
+	# The local player is never evicted: it is online by definition, and its mirrors are
+	# this process's own (the same rule PlayerRegistry.evict_player follows).
+	taming.forget_player_id(str(registry.local_player_id))
+	taming.forget_player_id("")
+	assert_true(taming.has_flag(alice, "wolfBondHolder"), "forgetting a local id evicts nothing")
+	assert_true((taming.get_companions(alice) as Array).has(target), "neither the flags nor the companions")
+
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+## Phase 37 — `get_all_instances()` builds a fresh dictionary per instance on every call,
+## and the AI ran it once per frame. `instances_view()` serves the same population without
+## the copies: it is cached until the population's MEMBERSHIP changes, and the records it
+## hands out are the slice's own (live) ones.
+func _test_creature_instances_view_cached() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
+	var view: Array = c.instances_view()
+	assert_eq(view.size(), c.get_all_instances().size(), "the view holds the whole live population")
+	var first: Dictionary = view[0]
+	assert_true(first.has("instance_id"), "each record carries its own id")
+	assert_true(is_same(c.instances_view(), view), "and the view is CACHED — no per-frame rebuild")
+
+	# The records ARE the slice's own, which is what makes the view cheap and what makes
+	# it read-only by contract: writing through it writes the world.
+	first["state"] = "alert"
+	assert_eq(str(c._instances[str(first["instance_id"])]["state"]), "alert",
+		"the view exposes the live record, not a copy")
+
+	# Membership changes are the one thing that invalidates it.
+	var before: int = c.instances_view().size()
+	c.despawn_for_chunk(Vector2i(0, 0))
+	assert_false(is_same(c.instances_view(), view), "a despawn rebuilds the view")
+	assert_true(c.instances_view().size() < before, "without the despawned instances")
+	c.free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers

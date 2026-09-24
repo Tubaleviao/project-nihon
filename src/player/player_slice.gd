@@ -409,10 +409,24 @@ func _respawn() -> void:
 	_broadcast_state()
 	GameBus.player_respawned.emit(spawn_pos)
 
-func _on_player_damaged(dmg: float, attacker_id: String) -> void:
+## Phase 37 — `target_id` names WHICH player took the hit (see the bus signal). This
+## body is simulated here, so it takes the damage only when the round was addressed to
+## it (see `_is_local_target`); a round aimed at ANOTHER player — a remote peer's id —
+## belongs to that peer's own client.
+func _on_player_damaged(dmg: float, attacker_id: String, target_id: String = "player") -> void:
+	if not _is_local_target(target_id):
+		return
 	if not _alive:
 		return
 	take_damage(dmg, attacker_id)
+
+## Whether a player-target id names THIS machine's own body: the local bucket literals
+## only — `""` (the `resolve_player` convention) and `"player"` (the id the bus has
+## always used for the local body, and the one a client is handed by the wire — see
+## NetworkingSlice._route_h2c). A player ID is deliberately NOT accepted here: this
+## slice owns exactly one body, and the only ids the host routes to it are those.
+func _is_local_target(target_id: String) -> bool:
+	return target_id == "" or target_id == "player"
 
 func _try_attack() -> void:
 	if not _alive:

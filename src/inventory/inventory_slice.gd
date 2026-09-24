@@ -17,6 +17,7 @@ extends Node
 ##   get_max_weight()                 -> float
 ##   get_max_slots()                  -> int
 ##   replace_contents(contents, durabilities = {})  — sync/load
+##   is_owned_by(owner)               -> bool  (Phase 37: is a sync addressed to me?)
 ##   add_item(item_id, quantity, durabilities = [])  -> bool
 ##   consume_items(counts)            -> bool
 ##   consume_items_with_durability(counts) -> { success, removed }
@@ -116,12 +117,41 @@ var _is_full: bool = false
 ## Reference to LootSlice, set by game_root at startup.
 var loot_slice: Node = null
 
+## Phase 37 — the player this inventory BELONGS to, so a bus-wide inventory sync can
+## be filtered to its addressee. `""` means "this machine's own player" (the Phase 34
+## `resolve_player` convention), which is what the game's own inventory and every
+## isolated test rig use; PlayerRegistry stamps a peer's inventory with that peer's
+## player id when it creates one, and the demo merchant's carries "merchant".
+##
+## This is a FILTER, never an authority: nothing here is used to authorize an action
+## (the host binds an acting identity to the connection — see
+## NetworkingSlice._actor_id).
+var owner_id: String = ""
+
+## The literals that denote THIS machine's own player on the bus: `""` (the
+## `resolve_player` convention) and `"player"` (TradeSlice.PARTY_PLAYER and the
+## defender id `combat_round_requested` has always used for the local body).
+const LOCAL_OWNER_LITERALS: PackedStringArray = ["", "player"]
+
 func _ready() -> void:
 	_load_capacity()
 	_build_weight_cache()
 	_build_durability_cache()
 	GameBus.pickup_requested.connect(_on_pickup_requested)
 	GameBus.inventory_synced.connect(_on_inventory_synced)
+
+## Phase 37 — is an inventory sync addressed to `owner` FOR this inventory?
+##
+## The signal is bus-wide, and one process holds several inventories (the local
+## player's, one per connected peer created by the registry, the demo merchant's), so
+## an unfiltered handler replaced EVERY inventory's contents with each sync it saw.
+## The local bucket answers both of its literals — `""` and `"player"` name the same
+## inventory (see LOCAL_OWNER_LITERALS) — and nothing else: a peer's sync is that
+## peer's alone.
+func is_owned_by(owner: String) -> bool:
+	if owner == owner_id:
+		return true
+	return owner_id == "" and owner in LOCAL_OWNER_LITERALS
 
 ## Client-side: replace local contents with a host-authoritative inventory.
 ## `durabilities` (item_id -> Array of per-instance points) carries condition in
@@ -151,7 +181,12 @@ func replace_contents(contents: Dictionary, durabilities: Dictionary = {}) -> vo
 	_is_full = false
 	GameBus.inventory_changed.emit()
 
-func _on_inventory_synced(contents: Dictionary, durabilities: Dictionary = {}) -> void:
+func _on_inventory_synced(owner_id: String, contents: Dictionary, durabilities: Dictionary = {}) -> void:
+	# Phase 37 — an inventory sync names its owner: applying it to every inventory in
+	# the process clobbered the local player's pack, every peer's, and the demo
+	# merchant's with whoever's contents happened to be synced.
+	if not is_owned_by(owner_id):
+		return
 	replace_contents(contents, durabilities)
 
 func get_contents() -> Dictionary:

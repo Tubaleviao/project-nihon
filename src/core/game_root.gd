@@ -234,6 +234,10 @@ func _ready() -> void:
 		# scaffolding — it must not run in a production boot.
 		var merchant_inv := InventorySlice.new()
 		merchant_inv.name = "MerchantInventory"
+		# Phase 37 — the merchant's inventory answers to "merchant" and to nothing
+		# else: unstamped it looked like the LOCAL bucket, so any sync addressed to this
+		# machine's own player would have overwritten the merchant's stock.
+		merchant_inv.owner_id = "merchant"
 		add_child(merchant_inv)
 		merchant_inv.add_item("hawk_feather", 10)
 		merchant_inv.add_item("wolf_fang", 3)
@@ -696,6 +700,12 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	_trade.clear_party_inventory(player_id)
 	_market.clear_party_inventory(player_id)
 	_registry.evict_player(player_id)
+	# Phase 37 — and the taming slice's per-player mirrors (flags, companion bindings,
+	# cooldowns) go with it. They are the same kind of memory: the durable copy is the
+	# record just written, so a server that has seen a thousand tamers no longer holds
+	# a thousand tables for the rest of the session, and a reconnect re-applies the
+	# record it claims (see _on_player_joined).
+	_taming.forget_player_id(player_id)
 	GameBus.player_left.emit(player_id)
 
 ## Fold everything the host knows about a LIVE remote peer into its registry record:
@@ -1410,8 +1420,29 @@ func _on_block_mined(material: String, quantity: int, position: Vector3) -> void
 func _on_block_placed(material: String, position: Vector3) -> void:
 	pass
 
-func _on_player_damaged(damage: float, attacker_id: String) -> void:
-	pass
+## Phase 37 — a combat round landed on a player. The damage is applied by the machine
+## that SIMULATES that body, so the host forwards it to the peer whose player id was
+## named and does nothing else here.
+##
+## This is the other half of routing rounds by target id (CreatureAI emits the round
+## against whoever the creature engaged): the host owns the authoritative simulation and
+## therefore knows a creature struck a peer, but it holds no verifiable HP for that peer
+## — `PlayerRegistry.record_hp` refuses a client-declared value for exactly that reason —
+## so it cannot apply or persist the hit itself. The peer's own client applies it to its
+## PlayerSlice, which is where that body lives.
+##
+## The local body is skipped: its damage is already applied in-process by PlayerSlice
+## (this signal is emitted by BattleSlice, which PlayerSlice itself listens to), and
+## there is no peer to send it to.
+func _on_player_damaged(damage: float, attacker_id: String, target_id: String) -> void:
+	if _is_client:
+		return
+	if target_id == "" or target_id == "player" or target_id == _registry.local_player_id:
+		return
+	var peer := _registry.get_peer_id(target_id)
+	if peer == 0:
+		return   # an offline or unknown target: nobody is simulating that body
+	_networking.send_player_damaged(peer, damage, attacker_id)
 
 func _on_player_died(position: Vector3, killer_id: String) -> void:
 	if _character.get_player_character() != "":

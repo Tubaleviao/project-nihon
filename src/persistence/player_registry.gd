@@ -33,7 +33,7 @@ extends Node
 ##   resolve_identity(peer_id, claimed_id) -> String
 ##   unbind_peer(peer_id) -> String
 ##   get_player_id(peer_id) -> String            — "" when unknown
-##   resolve_named_party(name) -> String         — Phase 36: a named counterparty
+##   resolve_named_party(name) -> String         — a named counterparty (HANDLES only, Phase 37)
 ##   get_peer_id(player_id) -> int               — 0 when offline
 ##   is_online(player_id) -> bool
 ##   has_player(player_id) / get_player_ids() -> Array
@@ -42,6 +42,8 @@ extends Node
 ##   record_position(player_id, pos) / record_hp(player_id, hp)
 ##   record_appearance(player_id, recipe) / record_technology(player_id, statuses)
 ##   record_flags(player_id, flags) / record_companions(player_id, ids)  — Phase 35
+##   record_cooldowns(player_id, cooldowns) / get_cooldowns(player_id)   — Phase 37
+##   live_cooldowns(cooldowns, now := -1.0) -> Dictionary  — pure prune (static)
 ##   get_skill_tier(player_id, skill) / record_skill(player_id, skill, tier)  — Phase 36
 ##   record_skills(player_id, tiers)
 ##   get_inventory(player_id) -> InventorySlice  — created on first access
@@ -264,18 +266,20 @@ func get_player_id(peer_id: int) -> String:
 ## ONLINE set: a session with an offline id could never be answered, so the invite
 ## is dropped rather than parked in the trade table. `is_online` covers the listen
 ## host's own player, who is an ordinary trade partner.
+##
+## Phase 37 — HANDLES ONLY. This used to answer an online player's RAW ID as well,
+## which made it an online-status oracle: `resolve_named_party("player_<…>")` told a
+## client whether that exact id was connected, and an id is a BEARER TOKEN (presenting
+## it on join claims the record — see resolve_identity). A client learns ids nowhere
+## legitimate any more (see NetworkingSlice.redact_for_client), so the only use left
+## for accepting one was probing. A public handle is the name a payload may carry:
+## derived, opaque, and a claim to nothing.
 func resolve_named_party(name: String) -> String:
 	if name.is_empty():
 		return ""
-	if is_online(name):
-		return name
-	# Phase 36 — a client names the counterparty it saw in a broadcast, which is a
-	# public HANDLE now that player ids never travel. Resolve it to whoever is online
-	# by that handle (an offline player could not answer an invite anyway).
-	var pid := player_id_for_handle(name)
-	if pid != "" and is_online(pid):
-		return pid
-	return ""
+	# player_id_for_handle is the whole rule: it answers "" unless the name is one of
+	# OUR handles (the local player's included) for a player who is present here.
+	return player_id_for_handle(name)
 
 ## The live peer currently holding `player_id`, or 0 when the player is offline.
 func get_peer_id(player_id: String) -> int:
@@ -340,7 +344,8 @@ func ensure_player(player_id: String) -> Dictionary:
 			"flags":      {},
 			"companions": [],
 			"skills":     {},
-		}
+			"cooldowns":  {},
+			}
 	return _players[player_id]
 
 func get_record(player_id: String) -> Dictionary:
@@ -446,12 +451,46 @@ func record_companions(player_id: String, companion_ids: Array) -> void:
 	out.sort()
 	rec["companions"] = out
 
+## Phase 37 — the per-player interaction cooldowns (instance_id → wall-clock Unix
+## deadline), e.g. the GlimmerFox feed. Durable, because a cooldown is a rule about
+## the PLAYER, not about this process: keeping it in memory meant a host restart
+## handed every player a fresh set of cooldowns, so a fox could be milked in a loop
+## by reconnecting. Only LIVE deadlines are stored — an elapsed one bounds nothing
+## and would otherwise accumulate forever on the record.
+func record_cooldowns(player_id: String, cooldowns: Dictionary) -> void:
+	var rec := ensure_player(player_id)
+	if rec.is_empty():
+		return
+	rec["cooldowns"] = live_cooldowns(cooldowns)
+
+## The player's stored cooldowns (instance_id → deadline), already pruned to live
+## deadlines. A pre-Phase-37 record has no such key and answers empty.
+func get_cooldowns(player_id: String) -> Dictionary:
+	return live_cooldowns(get_record(player_id).get("cooldowns", {}))
+
+## Pure: the entries of a cooldown table whose deadline is still in the future,
+## measured against wall-clock Unix seconds — the same clock every other deadline in
+## the project uses. Static so the pruning rule is testable on its own.
+static func live_cooldowns(cooldowns: Variant, now: float = -1.0) -> Dictionary:
+	var out := {}
+	if not (cooldowns is Dictionary):
+		return out
+	var at: float = Time.get_unix_time_from_system() if now < 0.0 else now
+	for iid in cooldowns:
+		if float(cooldowns[iid]) > at:
+			out[str(iid)] = float(cooldowns[iid])
+	return out
+
 # ---------------------------------------------------------------------------
 # Per-player inventory
 # ---------------------------------------------------------------------------
 
 ## The inventory owned by `player_id`, creating (and parenting) one on first
 ## access so every player has their own — never the host's shared instance.
+##
+## Phase 37 — the created inventory is STAMPED with its owner (`owner_id`), which is
+## what stops a bus-wide `inventory_synced` meant for one player from replacing every
+## other inventory's contents in the process (see InventorySlice.is_owned_by).
 func get_inventory(player_id: String) -> Node:
 	if player_id.is_empty():
 		return null
@@ -461,11 +500,18 @@ func get_inventory(player_id: String) -> Node:
 		return null
 	var inv := InventorySlice.new()
 	inv.name = "Inventory_%s" % player_id
+	inv.owner_id = player_id
 	add_child(inv)
 	_inventories[player_id] = inv
 	return inv
 
 ## Bind an existing inventory instance to a player (the local player's).
+##
+## Deliberately does NOT stamp an owner: the local player's inventory IS the game's
+## own `_inventory` instance, and the local bucket is what every local sync is
+## addressed to (`""` / `"player"` — see InventorySlice.LOCAL_OWNER_LITERALS). An
+## inventory the registry CREATES for a peer is stamped in `get_inventory`, because
+## that one has to be told apart from this machine's.
 func set_inventory(player_id: String, inventory: Node) -> void:
 	if player_id.is_empty() or inventory == null:
 		return
@@ -526,6 +572,7 @@ func get_player_data(player_id: String) -> Dictionary:
 		"flags":      rec.get("flags", {}),
 		"companions": rec.get("companions", []),
 		"skills":     rec.get("skills", {}),
+		"cooldowns":  live_cooldowns(rec.get("cooldowns", {})),
 		"inventory": {},
 		"inventory_durability": {},
 	}
@@ -554,6 +601,9 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	# record. A payload from before this phase carries no `skills` key and restores
 	# to the empty table — every skill then reads as its seed tier (novice).
 	rec["skills"]     = data.get("skills", {})
+	# Phase 37: so are the interaction cooldowns (an expired deadline is dropped on
+	# the way in — see live_cooldowns). A pre-Phase-37 payload carries no key.
+	rec["cooldowns"]  = live_cooldowns(data.get("cooldowns", {}))
 	var contents: Variant = data.get("inventory", {})
 	if contents is Dictionary and not contents.is_empty():
 		var inv = get_inventory(player_id)

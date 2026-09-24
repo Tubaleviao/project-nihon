@@ -42,10 +42,12 @@ extends Node
 ##   skill_tier(player_id, skill)             -> String
 ##   has_flag(player_id, flag)                -> bool
 ##   get_flags(player_id := "")               -> Dictionary
+##   get_cooldowns(player_id := "")           -> Dictionary  (live deadlines, Phase 37)
 ##   get_companions(player_id := "")          -> Array      (instance ids, sorted)
 ##   companion_target(player_id)              -> Variant    (Vector3 or null)
 ##   apply_record(record, player_id := "")    -> void       (persistence restore)
 ##   sync_record(player_id := "")             -> void       (persistence write)
+##   forget_player_id(player_id)              -> void       (Phase 37: drop the mirrors)
 
 ## How close the tamer must be to the creature to interact with it — the fabric
 ## rule is "player must approach the pup while unarmed" / "offer field rations
@@ -54,6 +56,11 @@ const TAME_RANGE := 4.0
 
 ## Shared skill-tier ordering (novice → master) — see src/core/skill_tiers.gd.
 const SkillTiers := preload("res://src/core/skill_tiers.gd")
+
+## Phase 37 — the registry whose pure `live_cooldowns()` prune the cooldown mirror is
+## saved with and restored through, so the record and the in-memory table can never
+## disagree about which deadlines are still live.
+const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
 
 ## Set by game_root: the creature population (tamed bindings, alpha-down gate).
 var creature_slice: Node = null
@@ -94,6 +101,11 @@ var _companions: Dictionary = {}
 ## player_id -> { instance_id: wall-clock deadline (Unix seconds) }. A "yield"
 ## tame leaves the creature alive, so the fabric's cooldown is what stops the
 ## same fox being fed in a loop.
+##
+## Phase 37 — DURABLE: the table is mirrored onto the player record (`sync_record`)
+## and restored with it (`apply_record`). Kept in memory alone, a host restart handed
+## every player a clean cooldown table, so the loop the cooldown exists to prevent was
+## one restart (or one reconnect) away.
 var _cooldowns: Dictionary = {}
 
 ## Phase 36 — player_id -> true when that player's tame intent CLAIMED its hands
@@ -273,6 +285,33 @@ func _cooldowns_for(player_id: String) -> Dictionary:
 		_cooldowns[player_id] = {}
 	return _cooldowns[player_id]
 
+## The live cooldown deadlines to PERSIST for `player_id` (instance_id → deadline).
+## Expired entries are dropped: they bound nothing, and keeping them would grow the
+## player record with every fox ever fed. Pruning lives in PlayerRegistry
+## (`live_cooldowns`) so the record and the mirror agree on what "live" means.
+func get_cooldowns(player_id: String = "") -> Dictionary:
+	return PlayerRegistry.live_cooldowns(_cooldowns_for(resolve_player(player_id)))
+
+## Phase 37 — release everything this slice mirrors for a player who is no longer
+## connected: the flags, the companion bindings and the cooldowns.
+##
+## Without this the three mirrors only ever grew: a server that had seen a thousand
+## tamers kept a thousand flag/companion/cooldown tables for the whole session, whether
+## or not any of them ever came back. Nothing is lost — all three live on the player's
+## RECORD, which is written on disconnect and re-loaded on the next claim (see
+## PlayerRegistry.evict_player), and `_on_player_joined` re-applies it.
+##
+## Refused for the local player: it is online by definition (the human at this
+## keyboard), and its mirrors are this process's own. An empty id is the local bucket
+## and is refused for the same reason.
+func forget_player_id(player_id: String) -> void:
+	if player_id.is_empty() or player_id == local_player_id():
+		return
+	_flags.erase(player_id)
+	_companions.erase(player_id)
+	_cooldowns.erase(player_id)
+	_unarmed_claims.erase(player_id)
+
 ## Wall-clock seconds left on a creature's cooldown for `player_id` (0.0 when
 ## none). Unix-epoch based, like every other deadline in the project.
 func cooldown_remaining(instance_id: String, player_id: String = "") -> float:
@@ -442,8 +481,9 @@ func tame(instance_id: String, player_id: String = "") -> Dictionary:
 # Persistence (player record)
 # ---------------------------------------------------------------------------
 
-## Write the player's flags and companion bindings onto their record, so a
-## restart keeps them (the flag is what the Ranger profession gate reads).
+## Write the player's flags, companion bindings and cooldowns onto their record, so a
+## restart keeps them (the flag is what the Ranger profession gate reads, and a
+## cooldown is what stops a fox being fed in a loop — Phase 37).
 func sync_record(player_id: String = "") -> void:
 	var pid := resolve_player(player_id)
 	if pid == "" or player_registry == null:
@@ -452,10 +492,14 @@ func sync_record(player_id: String = "") -> void:
 		player_registry.record_flags(pid, get_flags(pid))
 	if player_registry.has_method("record_companions"):
 		player_registry.record_companions(pid, get_companions(pid))
+	if player_registry.has_method("record_cooldowns"):
+		player_registry.record_cooldowns(pid, get_cooldowns(pid))
 
-## Restore a player's flags and companions from their record. Companion bindings
-## whose instance is not resident (its chunk is not streamed) are kept in the
-## mirror and re-applied when that instance exists again — see `rebind_companion`.
+## Restore a player's flags, companions and cooldowns from their record. Companion
+## bindings whose instance is not resident (its chunk is not streamed) are kept in
+## the mirror and re-applied when that instance exists again — see `rebind_companion`.
+## Cooldowns are restored only while their deadline is still live (a deadline that has
+## passed bounds nothing — the same prune the record itself is written through).
 func apply_record(record: Dictionary, player_id: String = "") -> void:
 	var pid := resolve_player(player_id)
 	if pid == "":
@@ -470,6 +514,11 @@ func apply_record(record: Dictionary, player_id: String = "") -> void:
 		for iid in companions:
 			_companions_for(pid)[str(iid)] = true
 			rebind_companion(str(iid), pid)
+	# Phase 37 — the interaction cooldowns ride the same record, so a restarted or
+	# reconnected host does not hand the player a clean table.
+	var cooldowns = record.get("cooldowns", {})
+	if cooldowns is Dictionary:
+		_cooldowns_for(pid).merge(PlayerRegistry.live_cooldowns(cooldowns))
 
 ## Re-apply a companion binding to the creature population when the instance is
 ## resident. Safe to call at any time: a missing instance is left pending in the

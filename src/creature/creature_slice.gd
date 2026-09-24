@@ -12,7 +12,9 @@ extends Node
 ## Public API:
 ##   nearest_creature(from_pos: Vector3, radius: float) -> String   (instance_id or "")
 ##   get_instance_creature_id(instance_id: String)      -> String   (fabric key)
-##   get_all_instances()                                -> Array[Dictionary]
+##   get_all_instances()                                -> Array[Dictionary]  (a COPY)
+##   instances_view()                                   -> Array  (Phase 37: cached,
+##                                                        READ-ONLY live records)
 ##   get_snapshot_creatures()                           -> Array    (Phase 33: + hp, respawn_at)
 ##   apply_snapshot_creatures(list)                     -> void     (Phase 33)
 ##   apply_recorded_creature_states(list)               -> void     (Phase 33, host: no new ids)
@@ -41,6 +43,13 @@ const MultimeshPool := preload("res://src/core/multimesh_pool.gd")
 const SpatialHash    := preload("res://src/core/spatial_hash.gd")
 
 var _instances: Dictionary = {}
+
+## Phase 37 — the cached read-only view of `_instances` (see `instances_view`) plus the
+## staleness flag that guards it. Only MEMBERSHIP changes invalidate the view; the
+## records it holds are the live ones, so a moved or state-changed creature is already
+## visible through it.
+var _instances_view: Array = []
+var _view_stale: bool = true
 
 ## Death records for creatures that are NOT currently resident: instance_id →
 ## { creature_id, respawn_at, position }. A despawn erases the instance (and frees
@@ -215,6 +224,10 @@ func set_instance_position(instance_id: String, pos: Vector3) -> void:
 		_pool.set_transform(int(_instances[instance_id]["mi"]), _visual_transform(pos))
 
 ## Return a snapshot of all active instances (for HUD / minimap use).
+##
+## A COPY, deliberately: every entry is a fresh dictionary. That is what a UI or a
+## test wants (nobody can write through it), and it is also why it is NOT the per-frame
+## accessor — see `instances_view()`.
 func get_all_instances() -> Array:
 	var out: Array = []
 	for iid in _instances:
@@ -229,6 +242,33 @@ func get_all_instances() -> Array:
 			"tamed_by":    str(inst.get("tamed_by", "")),
 		})
 	return out
+
+## Phase 37 — the cached, READ-ONLY view of the live population, for per-frame
+## consumers (CreatureAI).
+##
+## `get_all_instances()` builds N fresh dictionaries on every call, and the AI called
+## it once per frame just to iterate — an allocation per creature per tick, for data
+## the slice already holds. The view is the same information without the copies: the
+## array holds the slice's OWN instance records (each carries its `instance_id`), so
+## it is LIVE — a writer that mutates a record through it mutates the world — and it is
+## only rebuilt when the population's MEMBERSHIP changes (spawn / despawn / first
+## sight), which is what `_view_stale` tracks. Positions and states change constantly
+## and need no rebuild: the records are shared.
+##
+## READ-ONLY BY CONTRACT: consumers iterate it. Nothing outside this slice may add,
+## remove, or re-key an instance through it — membership is this slice's to decide.
+func instances_view() -> Array:
+	if _view_stale:
+		_instances_view = []
+		for iid in _instances:
+			_instances_view.append(_instances[iid])
+		_view_stale = false
+	return _instances_view
+
+## Mark the cached view stale. Called from every place `_instances` gains or loses a
+## key, so membership changes are visible to the next `instances_view()`.
+func _invalidate_view() -> void:
+	_view_stale = true
 
 ## Serialize the live creature population for the world snapshot (host → client)
 ## and for the world record (Phase 33). Each entry is
@@ -327,6 +367,7 @@ func despawn_for_chunk(chunk_pos: Vector2i) -> void:
 		_instances.erase(iid)
 		_last_broadcast.erase(iid)
 		_spatial.remove(iid)
+	_invalidate_view()
 
 ## Keep a non-resident death record for `iid` from its live instance record. Only a
 ## still-pending death is worth keeping: a deadline that has already passed means the
@@ -371,6 +412,11 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 	var mi := _alloc_visual(creature_id, pos)
 
 	_instances[iid] = {
+		# The record carries its own id (Phase 37) so the cached read-only view
+		# (`instances_view()`) can hand per-frame consumers a record without rebuilding
+		# a projection dictionary per instance per tick. `get_all_instances()` still
+		# projects it back out for callers that want a copy.
+		"instance_id": iid,
 		"creature_id": creature_id,
 		"position":    pos,
 		"chunk":       chunk_pos,
@@ -381,6 +427,7 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 		"mi":          mi,
 		"tamed_by":    "",
 	}
+	_invalidate_view()
 
 	# A creature that died before its chunk was despawned (or before this process
 	# ever streamed that chunk) comes back DEAD, with the same wall-clock deadline,
@@ -601,6 +648,7 @@ func apply_creature_state(instance_id: String, creature_id: String, state: Strin
 	if state == "dead" and _pool != null and mi >= 0:
 		_pool.hide(mi)
 	_instances[instance_id] = {
+		"instance_id": instance_id,
 		"creature_id": creature_id,
 		"position":    position,
 		"chunk":       Vector2i.ZERO,
@@ -611,6 +659,7 @@ func apply_creature_state(instance_id: String, creature_id: String, state: Strin
 		"mi":          mi,
 		"tamed_by":    "",
 	}
+	_invalidate_view()
 	_spatial.insert(instance_id, position)
 
 ## Seed the client's creature population from a host snapshot list

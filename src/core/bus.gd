@@ -83,7 +83,19 @@ signal remote_player_state(peer_id: int, position: Vector3)
 ## Host → clients: authoritative inventory contents (replace local state), plus
 ## the per-instance durability map (item_id -> Array) so worn tools don't come
 ## back pristine after a sync.
-signal inventory_synced(contents: Dictionary, durabilities: Dictionary)
+##
+## Phase 37 — an inventory belongs to ONE player, so the sync NAMES that owner and
+## every InventorySlice decides whether it is the addressee (see
+## InventorySlice.owner_id). Without it the signal was global: one process can hold
+## several inventories at once (the local player's, one per connected peer created
+## by the registry, the demo merchant's), and every one of them replaced its
+## contents with whatever was synced — a peer's sync clobbered the host's own pack
+## and the merchant's stock.
+##
+## owner_id : String — the player whose inventory this is. "" and the literal
+##                     "player" both mean THIS machine's own player (the Phase 34
+##                     `resolve_player` convention); any other value is a player id.
+signal inventory_synced(owner_id: String, contents: Dictionary, durabilities: Dictionary)
 
 # ---------------------------------------------------------------------------
 # Persistence
@@ -338,10 +350,17 @@ signal tree_respawned(tree_id: String)
 # Player
 # ---------------------------------------------------------------------------
 
-## Emitted by BattleSlice when a creature's attack lands on the player.
+## Emitted by BattleSlice when a creature's attack lands on a player.
 ## damage      : float   — amount of damage dealt this round
 ## attacker_id : String  — creature instance_id that attacked
-signal player_damaged(damage: float, attacker_id: String)
+## target_id   : String  — WHICH player took the hit: the literal "player" for this
+##                         machine's own body, or a remote peer's player id (Phase
+##                         37 — upstream, `combat_round_requested` names the player
+##                         the creature actually engaged, so the round is routed by
+##                         that target instead of being opened for the local body
+##                         only). The host forwards a remote target's damage over
+##                         the wire; the machine that simulates that body applies it.
+signal player_damaged(damage: float, attacker_id: String, target_id: String)
 
 ## Emitted by PlayerSlice when the player's HP reaches zero.
 ## position  : Vector3 — world position at time of death

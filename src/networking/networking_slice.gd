@@ -33,7 +33,10 @@ extends Node
 ##         block_changed(action, pos, normal, mat)   — host authoritative edit
 ##         creature_state_changed(iid, state, pos)   — host authoritative delta
 ##         remote_player_state(peer_id, pos)         — host player ghost update
-##         inventory_synced(contents, durabilities)  — host authoritative contents
+##         inventory_synced(owner_id, contents, durabilities) — one player's contents
+##                                          (host → that player's peer only, Phase 37)
+##         player_damaged(damage, attacker_id, target_id) — a round that landed on a
+##                                          player (host → the target's peer, Phase 37)
 ##         tree_chop_requested(tree_id)              — client wants to fell a tree
 ##         tree_chopped(tree_id, wood, state, at)    — host authoritative chop
 ##         tree_respawned(tree_id)                   — host authoritative regrowth
@@ -62,6 +65,7 @@ extends Node
 ##   is_host() / is_client() / is_offline() -> bool
 ##   send_snapshot(peer_id, data) -> void    — host → one client
 ##   send_own_state(peer_id, data) -> void   — host → one client (Phase 34)
+##   send_player_damaged(peer_id, damage, attacker_id) -> void  — host → one client (Phase 37)
 ##   remember_player_state(peer_id, pos) -> void   — Phase 19
 ##   get_last_known_state(peer_id) -> Vector3      — Phase 19
 ##   get_last_known_states() -> Dictionary         — Phase 19
@@ -305,6 +309,9 @@ func disconnect_all() -> void:
 	_pending.clear()
 	_jitter_buffer.clear()
 	_player_ids.clear()
+	# Phase 37 — a torn-down connection cannot complete the snapshot it was
+	# reassembling (see forget_player_id).
+	_snapshot_buffer.clear()
 
 func is_host() -> bool:
 	return _role == Role.HOST
@@ -343,6 +350,12 @@ func forget_player_id(peer_id: int) -> void:
 	# starts with a full bucket rather than inheriting its predecessor's debt.
 	_rate_buckets.erase(peer_id)
 	_rate_warn_ms.erase(peer_id)
+	# Phase 37 — and so is snapshot reassembly: a snapshot that lost a chunk is never
+	# completed, so its buffer entry lived for the whole session (one leak per lost
+	# chunk, on a connection that may be long gone). The parts are keyed by
+	# snapshot_id, and the sender is the connection that carried them, so the whole
+	# buffer goes with the connection: a later snapshot is a fresh snapshot_id anyway.
+	_snapshot_buffer.clear()
 
 ## The player id behind a connection, or "peer_<id>" when the handshake has not
 ## happened yet. For LABELS and diagnostics only — never for authorizing an action:
@@ -655,15 +668,55 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	}
 	_broadcast_aoi(packet, position)
 
-func _on_inventory_synced(contents: Dictionary, durabilities: Dictionary = {}) -> void:
+func _on_inventory_synced(owner_id: String, contents: Dictionary, durabilities: Dictionary = {}) -> void:
 	if _role != Role.HOST:
+		return
+	# Phase 37 — an inventory is PRIVATE to its owner and the sync now names that
+	# owner, so it goes to that owner's peer alone. Broadcasting it handed every client
+	# one player's pack (and, before the owner was carried at all, had every
+	# InventorySlice in the process apply it).
+	var peer := _peer_for_inventory_owner(owner_id)
+	if peer == 0:
 		return
 	var packet := {
 		"type":     "inventory_synced",
 		"contents": contents,
 		"durabilities": durabilities,
 	}
-	_broadcast(packet)
+	_deliver(peer, packet)
+
+## The live peer whose player owns the inventory named by `owner_id`, or 0 when there
+## is nobody to send it to: an offline owner, a name this host cannot resolve, an
+## unwired registry (the check FAILS CLOSED — an unaddressed private payload is not
+## broadcast), or this machine's OWN player, whose inventory is already live here.
+##
+## `""` and `"player"` both denote the local bucket (see
+## InventorySlice.LOCAL_OWNER_LITERALS).
+func _peer_for_inventory_owner(owner_id: String) -> int:
+	if player_registry == null or not player_registry.has_method("get_peer_id"):
+		return 0
+	var pid := owner_id
+	if pid == "" or pid == "player":
+		pid = str(player_registry.local_player_id)
+	if pid == "":
+		return 0
+	return int(player_registry.get_peer_id(pid))
+
+## Phase 37 — host → one client: a creature struck THIS player. Damage is applied by
+## the machine that simulates the body (`PlayerSlice` on the peer's own client, which
+## owns its HP), so the host sends the round's outcome rather than trying to hold a
+## peer's health it cannot verify (`PlayerRegistry.record_hp` refuses a
+## client-declared HP for the same reason). Peer-scoped, like `send_own_state`: one
+## player's damage is not world state.
+func send_player_damaged(peer_id: int, damage: float, attacker_id: String) -> void:
+	if _role != Role.HOST:
+		push_warning("NetworkingSlice: send_player_damaged called on non-host — dropped")
+		return
+	_deliver(peer_id, {
+		"type":        "player_damaged",
+		"damage":      damage,
+		"attacker_id": attacker_id,
+	})
 
 # ---------------------------------------------------------------------------
 # Phase 24 — social/economy replication (host → clients authoritative state,
@@ -941,6 +994,11 @@ func _chop_is_in_reach(sender: int, tree_id: String) -> bool:
 ## the sender. Requiring the name to resolve against the registry means the host
 ## only ever opens a session with a player it knows and that is online right now —
 ## an invite to an offline or invented id is dropped, not parked.
+##
+## Phase 37 — the name must be a public HANDLE (see
+## PlayerRegistry.resolve_named_party): accepting a raw player id as well turned this
+## into a yes/no oracle for "is this exact id online", which is a probing tool, not a
+## feature. An id is a bearer token and a client is never told one.
 func _named_party(raw: String) -> String:
 	if raw == "" or player_registry == null:
 		return ""
@@ -1270,9 +1328,24 @@ func _route_h2c(payload: Dictionary) -> void:
 		"remote_player_state":
 			_route_remote_player_state(payload)
 		"inventory_synced":
+			# Phase 37 — the packet is addressed to THIS client alone (the host sends it
+			# to the owner's peer, see _on_inventory_synced) and carries no identity: the
+			# only inventory it can be is this machine's own, which is the local bucket
+			# (`""` / `"player"`). Re-broadcasting a player id here would put a bearer
+			# token on the wire for nothing.
 			GameBus.inventory_synced.emit(
+				"",
 				payload.get("contents", {}),
 				payload.get("durabilities", {})
+			)
+		"player_damaged":
+			# Phase 37 — a creature struck US on the host's authoritative simulation. The
+			# local body is the one that takes the hit, so the target is the local bucket
+			# id the bus has always used for it.
+			GameBus.player_damaged.emit(
+				float(payload.get("damage", 0.0)),
+				str(payload.get("attacker_id", "")),
+				"player"
 			)
 		"market_synced":
 			# Phase 36 — the payload names players by public handle; our OWN handle is

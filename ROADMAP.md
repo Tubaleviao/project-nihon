@@ -2296,7 +2296,8 @@ reports 543 files matching the manifest.
   release boot runs no suite.
 - [x] Creature AI targets the nearest of every player the host can place on the
   machine, not only the host's own body, and a remote target is chased rather than
-  handed to the battle slice.
+  handed to the battle slice. **(superseded in Phase 37: the round is now routed by
+  target id, and a player target takes the forwarded-damage path — see Phase 37.)**
 - [x] Skill tiers are per-player and durable: one player's tier neither unlocks nor
   gates another's craft, repair or tame, and a tier round-trips through the record.
 - [x] A remote peer's bare hands are a claim that rides its tame intent; an
@@ -2350,12 +2351,18 @@ reports 543 files matching the manifest.
   simulation of a peer's HP to hit or persist (`PlayerRegistry.record_hp` already
   refuses a client-declared value). Handing a player id to the battle slice would run
   it through the CREATURE path: tracked hit points, then a `creature_died` on
-  somebody's id. Peer damage over the wire is deferred (below).
+  somebody's id. Peer damage over the wire is deferred (below). **(closed in Phase 37:
+  the round is routed by target id and the player path forwards damage with the target,
+  which the host delivers to that peer's client. The danger named here was real — the
+  RED run of the old policy produced 11 `creature_died` emissions on a peer's id.)**
 
 **Known simplifications (deferred):**
 - **Peer damage over the wire.** A creature aggros and chases a remote peer, but no
   combat round is opened against it (see above). Closing this needs a host → client
-  damage event and per-peer HP ownership on the peer's own client.
+  damage event and per-peer HP ownership on the peer's own client. **(closed in Phase 37:
+  the round is routed by target id, `player_damaged` carries the target, and the host
+  sends the hit to that peer's own client — which applies it. A peer's HP is still owned
+  by its own client, so the host's view of it remains that client's word.)**
 - **Peer equipment is not replicated.** The bare-hands rule is evaluated against the
   peer's own claim. Verifying it means replicating worn gear, which is the feature
   the claim stands in for.
@@ -2369,7 +2376,154 @@ reports 543 files matching the manifest.
   routing level (`_route_c2h`, `_route_h2c`, `redact_for_client`) rather than by
   driving two real clients through ENet (Phase 34/35's gap, unchanged).
 - **The taming mirrors are still never evicted on disconnect** and `tamed_by` is
-  still not replicated — both carried over from Phase 35, unchanged.
+  still not replicated — both carried over from Phase 35, unchanged. **(closed in
+  Phase 37: `TamingSlice.forget_player_id` releases the flags, companion and cooldown
+  mirrors with the record that was just written; `tamed_by` replication is still
+  deferred.)**
+
+---
+
+## Phase 37 — Review pass: owner-scoped syncs, durable cooldowns, bounded memory, routed rounds ✅ Done
+
+**Goal:** close the seven findings of the review pass over Phases 33–36. Three themes:
+data that was addressed to nobody (inventory syncs, combat rounds), state that only lived
+in memory (cooldowns, the taming mirrors, half-reassembled snapshots), and one predicate
+that answered a question it should not (a raw player id in a counterparty name).
+
+**Newel dependency:** None. No fabric field changed — `pnpm validate` is clean and
+`pnpm check-drift` still reports 543 file(s) matching the manifest.
+
+**Deliverables:**
+- `src/core/bus.gd` — `inventory_synced(owner_id, contents, durabilities)` and
+  `player_damaged(damage, attacker_id, target_id)`.
+- `src/inventory/inventory_slice.gd` — `owner_id`, `LOCAL_OWNER_LITERALS`,
+  `is_owned_by()`, and the owner filter in `_on_inventory_synced`.
+- `src/persistence/player_registry.gd` — `cooldowns` on the player record
+  (`record_cooldowns` / `get_cooldowns` / static `live_cooldowns`), the owner stamp in
+  `get_inventory`, and `resolve_named_party()` restricted to public handles.
+- `src/creature/taming_slice.gd` — cooldowns persisted and restored with the record,
+  and `forget_player_id()` releasing the three per-player mirrors.
+- `src/networking/networking_slice.gd` — peer-scoped inventory sync
+  (`_peer_for_inventory_owner`), `send_player_damaged` plus its inbound route, and the
+  snapshot buffer eviction in `forget_player_id` / `disconnect_all`.
+- `src/creature/creature_slice.gd` — `instances_view()` (cached, read-only, live
+  records), `_view_stale` / `_invalidate_view`, and `instance_id` on the instance record.
+- `src/creature/creature_ai.gd` — the per-frame loop reads the cached view and emits a
+  round for whatever target the creature engaged.
+- `src/battle/battle_slice.gd` — static `is_player_target()`, the player path keyed on
+  the defender SHAPE, and creature hit points no longer initialised for a player.
+- `src/player/player_slice.gd` — `_on_player_damaged(..., target_id)` with
+  `_is_local_target()`.
+- `src/core/game_root.gd` — the merchant inventory's owner stamp, `_taming.forget_player_id`
+  on disconnect, and `_on_player_damaged` forwarding a peer's damage to its own client.
+- `src/tests/test_suite.gd` — 9 new tests (135 new assertions) and 3 rewritten ones.
+
+**Acceptance criteria:**
+- [x] An inventory sync is applied by the OWNER's inventory only: a peer's sync leaves
+  the local pack and the demo merchant's stock untouched, and the local bucket answers
+  under either of its literals. On the wire the host sends a sync to the owner's peer
+  alone, carries no player id, and fails closed (no broadcast fallback) for the local
+  bucket, an unresolvable owner, or an unwired registry.
+- [x] A tame cooldown survives a restart: it is written on the player record, pruned of
+  expired deadlines on the way in and out, and a restored slice still refuses the feed
+  with `on_cooldown`.
+- [x] An incomplete snapshot's reassembly entry is evicted with the connection that was
+  carrying it, while a snapshot that completes still empties its own entry.
+- [x] The per-player taming mirrors (flags, companion bindings, cooldowns) are released
+  on disconnect — and refused for the local player — with the durable record re-applied
+  by the reconnect path.
+- [x] Every combat round is routed by the target the creature engaged: a remote peer's
+  player id reaches the battle slice down the PLAYER path (no tracked hit points, no
+  `creature_died` on a player id — asserted over 20 rounds), and the host forwards the
+  hit to that peer's own client, which applies it to the local body.
+- [x] `get_all_instances()` still hands out copies, `instances_view()` returns the
+  cached live records (identical array between calls, no rebuild until membership
+  changes, rebuilt after a despawn), and the AI's per-frame loop uses it.
+- [x] A named counterparty must be a public handle: a raw player id — online, the local
+  player's own, or unknown — resolves to nothing, so the resolver is no longer an
+  online-status oracle. The invite path and the resolver are both asserted.
+- [x] Headless suite green on both boot paths — `Results: 7379/7379 passed  (0 failed)`
+  → `All tests passed ✓` with `[Server] listening on port 7777, max_clients 64` on the
+  server boot (7244 at the start of this pass: 135 new assertions).
+- [x] Every fix is RED-proven: with the pre-fix policy restored (source only, tests
+  kept) the new assertions fail — quoted in the commit body.
+
+**Implementation notes:**
+- **An inventory sync now names its owner, and the local bucket has two literals.** One
+  process holds several inventories at once (the local player's, one per connected peer
+  created by the registry, the demo merchant's), and the signal is bus-wide, so an
+  unfiltered handler replaced every one of them. `owner_id` is a FILTER, never an
+  authority — the host still binds the acting identity to the connection
+  (`_actor_id`) — and `""` / `"player"` both name this machine's own player (the Phase 34
+  `resolve_player` convention and `TradeSlice.PARTY_PLAYER`). The wire packet carries no
+  owner at all: it is delivered to the owner's peer, so the only inventory it can be is
+  that client's own, and a player id stays off the wire (Phase 36's rule).
+- **A cooldown is a rule about the PLAYER, not about the process.** Kept in memory it
+  was cleared by a restart, which is exactly the loop the fabric's `cooldownSeconds`
+  exists to stop — one reconnect away. It now rides the record, pruned to live deadlines
+  by one shared pure rule (`PlayerRegistry.live_cooldowns`), so the mirror and the record
+  cannot disagree about what is still in force.
+- **A half-reassembled snapshot is transport state.** Chunks are indexed by
+  `snapshot_id` and a lost chunk means the entry is never completed, so it lived for the
+  whole session — one leak per lost chunk, on a connection that may be long gone.
+  Reassembly belongs to the connection that carried it.
+- **The taming mirrors are the registry's rule, applied one slice over.** The record
+  written at disconnect is the durable copy (the same argument
+  `PlayerRegistry.evict_player` already makes), so the mirrors are released with it and
+  re-applied by `apply_record` on the next claim. The local player is refused, for the
+  same reason `evict_player` refuses it: it is online by definition.
+- **Rounds are routed by target, and a player target never reaches the creature path.**
+  `combat_round_requested` now carries whoever the creature engaged, and
+  `BattleSlice.is_player_target()` (the literal `"player"`, or an id-shaped player id)
+  decides which path the round takes. The creature path is the dangerous one — it tracks
+  hit points in `_hp_state` and emits `creature_died` when they run out, which on a
+  player id is a corpse on somebody's identity (the RED run produced 11 of them). Those
+  hit points are now initialised only for a creature defender: nothing here holds a
+  number it cannot verify.
+- **The hit itself is applied where the body is simulated.** The host owns the
+  authoritative simulation and so knows a creature struck a peer, but it still holds no
+  verifiable HP for that peer — `PlayerRegistry.record_hp` refuses a client-declared
+  value for exactly that reason — so it sends the round to that peer's own client rather
+  than applying or persisting it. `player_damaged` gained the target for that routing,
+  and the peer-scoped packet arrives as the local body's id, the only one it can be.
+  The residual trust is stated in place: the peer's HP is still its own client's to
+  keep, so a client that lies about its health is believed about it, exactly as it is
+  about its movement.
+- **The cached view is read-only by contract, and that is the whole design.** The
+  records in `instances_view()` are the slice's own, so it is cheap (no allocation per
+  creature per frame) and live (a write through it writes the world); only MEMBERSHIP
+  changes invalidate it, since a moved creature needs no rebuild. `get_all_instances()`
+  keeps its copy semantics for the UI and for tests, and the two are asserted apart.
+- **Handles only, because the alternative was an oracle.** `resolve_named_party`
+  answering a raw id told a client whether that exact id was connected, and an id is a
+  bearer token: presenting one on join claims the record. Nothing legitimate still sends
+  one — a client learns ids nowhere (`redact_for_client`) — so the branch was pure
+  probing surface.
+- **A suite leak was fixed on the way past.** `_test_taming_record_round_trip` left two
+  TamingSlices alive on the shared bus, so a later test's tame was resolved — and
+  refused — by an unwired leftover first. Every test slice is torn down immediately, as
+  the suite's own docstring requires.
+
+**Known simplifications (deferred):**
+- **A peer's HP is still client-owned.** The host now delivers a creature's hit to the
+  peer's own client, but the value that client keeps is still its own word: the host
+  holds no simulation of a peer to check it against. Making peer health authoritative
+  means simulating peer bodies (or at least their HP) on the host.
+- **Peer equipment is still not replicated.** The bare-hands rule is evaluated against
+  the peer's own claim (unchanged from Phase 36).
+- **`tamed_by` is still not replicated**, so a peer's companion appears as a wild
+  creature in its AOI stream while the follow AI runs only on the host (unchanged from
+  Phase 35).
+- **Still no end-to-end socket exercise** of these paths: every fix is proven at the
+  routing level (`_route_c2h` / `_route_h2c`, the bus, `_pending`) rather than by driving
+  two real clients through ENet (Phase 34/35/36's gap, unchanged).
+- **A combat round's damage event is not sequenced against movement.** The peer applies
+  whatever arrives; a reordered pair could apply a hit after the peer's own position
+  update reported a death. Phase 19's dedup covers duplicates and reordering per type,
+  not ordering BETWEEN types.
+- **The registry-held peer inventories are still only released on disconnect.** They are
+  evicted with the player (`evict_player`), but nothing bounds the inventory of a peer
+  whose disconnect was never delivered (a hard kill) beyond the autosave interval.
 
 ---
 
@@ -2408,7 +2562,10 @@ reports 543 files matching the manifest.
   the host opens no combat round against it: damage to a peer belongs to that
   peer's own client, and the host has no simulation of a peer's HP to hit or
   persist. Needs a host → client damage event plus per-peer HP ownership on the
-  peer's side (deferred from Phase 36).
+  peer's side (deferred from Phase 36). **(delivered in Phase 37: the round is routed
+  by target id, `player_damaged` carries the target, and the host sends the hit to the
+  peer's own client. What remains is making a peer's HP authoritative rather than
+  client-owned.)**
 - **Peer equipment replication** — a remote peer's worn gear is not replicated, so
   the fabric's bare-hands rule is evaluated against the claim that rides the peer's
   tame intent. Verifying it means replicating equipment (deferred from Phase 36).

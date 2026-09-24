@@ -20,7 +20,7 @@ extends Node
 ## Plug contract (GameBus signals consumed / emitted):
 ##   IN  : creature_died(entity_id, position, killer_id)
 ##         creature_respawned(instance_id, creature_id)
-##         player_damaged(damage, attacker_id)   — ignored (bus parity)
+##         player_damaged(damage, attacker_id, target_id) — ignored (bus parity)
 ##   OUT : creature_alert(instance_id)
 ##         creature_aggressive(instance_id)
 ##         creature_fleeing(instance_id)
@@ -102,7 +102,11 @@ func _process(delta: float) -> void:
 	var targets := _player_targets()
 	if targets.is_empty():
 		return
-	var instances: Array = creature_slice.get_all_instances()
+	# Phase 37 — the cached READ-ONLY view, not `get_all_instances()`: the latter builds
+	# a fresh dictionary per instance on every call, and this loop runs once per frame.
+	# The view is rebuilt only when the population's membership changes (see
+	# CreatureSlice.instances_view), and the records in it are the live ones.
+	var instances: Array = creature_slice.instances_view()
 	for inst in instances:
 		var iid: String = inst["instance_id"]
 		var c_state: String = inst["state"]
@@ -248,16 +252,17 @@ func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: f
 			ai["attack_timer"] += delta
 			if ai["attack_timer"] >= ATTACK_INTERVAL:
 				ai["attack_timer"] = 0.0
-				if dist <= attack_r and target_id == "player":
-					# Phase 36 — a remote peer is chased and fled from, but no round
-					# is opened against it: damage to a peer belongs to that peer's
-					# own client, which is the machine that simulates its health.
-					# The host has no simulation of a peer's HP to hit or to persist
-					# (the same reason PlayerRegistry.record_hp refuses a
-					# client-declared value), and handing a player id to the battle
-					# slice would run it through the CREATURE path — hit points and a
-					# creature_died on somebody's id. Peer damage over the wire is the
-					# deferred half of this fix (see ROADMAP).
+				if dist <= attack_r:
+					# Phase 37 — the round is routed by the TARGET the creature engaged,
+					# remote peers included. Phase 36 chased a peer but opened no round
+					# against it ("damage to a peer belongs to that peer's own client"),
+					# which left a creature that had closed on a remote player swinging at
+					# nothing at all. The id the round carries is the one the battle slice
+					# routes on: the literal "player" for this machine's own body, or the
+					# peer's player id, which the host forwards to that peer's own client as
+					# a damage event (see GameRoot._on_player_damaged) — the machine that
+					# simulates that body is the one that applies the hit, because the host
+					# holds no verifiable HP for a peer (PlayerRegistry.record_hp).
 					GameBus.combat_round_requested.emit(iid, target_id)
 
 		"fleeing":
