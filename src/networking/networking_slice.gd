@@ -14,6 +14,18 @@ extends Node
 ## snapshots, and a host-side last-known-state store for disconnect/reconnect
 ## resume. The emulator is disabled by default (zero overhead in production).
 ##
+## Phase 36 adds the inbound trust boundary. The host acts only on what it can
+## verify about the CONNECTION, never on what a payload claims about identity:
+## every acting party (market seller/buyer, proposal author/voter, trade
+## propose/accept/reject, craft/repair/research/tame) is the player id bound to the
+## sending connection, and a peer that has not completed the handshake cannot act
+## at all. World edits additionally have to land within arm's reach of the position
+## the host last saw that peer at (`MAX_EDIT_REACH`), a client packet is capped at
+## `MAX_CLIENT_PACKET_BYTES`, and each peer draws from its own token bucket
+## (`RATE_BUCKET_CAPACITY`) so one connection cannot flood the authoritative
+## process. The only identity a payload may name is a trade invite's counterparty,
+## which is resolved against the registry's ONLINE set (`resolve_named_party`).
+##
 ## Plug contract (GameBus signals consumed / emitted):
 ##   IN  : packet_send_requested(peer_id, payload)   — legacy low-level send
 ##         player_state_sync_requested(payload)      — local player state
@@ -84,6 +96,32 @@ const AOI_RADIUS := 96.0
 ## around where players first appear.
 const DEFAULT_AOI_CENTER := Vector3(16.0, 0.0, 16.0)
 
+## Phase 36 — reach limit (world units) for a wire-supplied world edit. Mirrors
+## PlayerSlice.BUILD_RANGE / CHOP_RANGE (60 m: the aim-ray reach the local client
+## applies to itself). The host re-checks a remote peer's edit against the distance
+## its OWN recorded position allows, so a client cannot mine, build or fell what it
+## is nowhere near — the client-side range is a convenience for the player, never
+## the gate. Mirrored instead of imported: this slice must not depend on the local
+## player's presentation slice to police the wire.
+const MAX_EDIT_REACH := 60.0
+
+## Phase 36 — largest client → host packet accepted, in JSON characters (≈ bytes
+## for ASCII). A client's packet is an unverified claim, so the cap keeps one peer
+## from making the authoritative process parse an arbitrarily large payload — a
+## CPU/heap denial of service against the host. Host → client packets are NOT
+## capped: the host is the only writer there, and a world snapshot is legitimately
+## far larger than this.
+const MAX_CLIENT_PACKET_BYTES := 8192
+
+## Phase 36 — per-peer client → host rate limit, a token bucket: `CAPACITY` tokens
+## to start (enough for a join burst) refilled at `REFILL_PER_SEC`, one token per
+## accepted packet. Movement is the chattiest legitimate traffic (one packet per
+## frame, ~60/s), so the refill is set above that; what the bucket stops is one peer
+## flooding the host with fresh intents (edit spam, market/proposal spam). The
+## Phase 19 dedup cannot: it rejects a REPLAYED seq, never a new one.
+const RATE_BUCKET_CAPACITY := 120.0
+const RATE_BUCKET_REFILL_PER_SEC := 40.0
+
 var _peer: ENetMultiplayerPeer
 var _role: int = Role.OFFLINE
 
@@ -147,6 +185,16 @@ const LAST_KNOWN_STATE_TTL_MS := 300_000  # 5 minutes
 ## Spatial hash of peer AOI centers (peer_id -> position), mirroring
 ## _last_known_states so interest queries stay O(cells), not O(peers) (Phase 29).
 var _peer_spatial := SpatialHash.new()
+
+## Phase 36 — peer_id → { tokens, at_ms }: the client → host token bucket (see
+## RATE_BUCKET_CAPACITY). Entries exist only for live peers: the bucket is dropped
+## with the rest of the transport state on disconnect (see forget_player_id).
+var _rate_buckets: Dictionary = {}
+
+## Phase 36 — peer_id → last rate-limit warning time_ms. A flooding peer would
+## otherwise log a line per dropped packet (a log flood on top of the packet
+## flood); the same one-per-second throttle the seq-gap warning uses applies.
+var _rate_warn_ms: Dictionary = {}
 
 func _ready() -> void:
 	GameBus.packet_send_requested.connect(_on_packet_send_requested)
@@ -268,11 +316,15 @@ func set_player_id(peer_id: int, player_id: String) -> void:
 
 func forget_player_id(peer_id: int) -> void:
 	_player_ids.erase(peer_id)
+	# Phase 36 — the rate-limit state is transport state too: a reconnecting peer
+	# starts with a full bucket rather than inheriting its predecessor's debt.
+	_rate_buckets.erase(peer_id)
+	_rate_warn_ms.erase(peer_id)
 
-## The player id behind a party string. A client sends the literal "player" to
-## mean "me"; on the host that resolves to the peer's server-issued IDENTITY, so
-## market/trade/proposal actions keep landing on the same record across a
-## reconnect (peer_id does not). Falls back to "peer_<id>" before the handshake.
+## The player id behind a connection, or "peer_<id>" when the handshake has not
+## happened yet. For LABELS and diagnostics only — never for authorizing an action:
+## `peer_<id>` is a transport id the host hands out, not an identity it has bound,
+## and every acting party must come from `get_player_id()` / `_actor_id()`.
 func party_id_for(peer_id: int) -> String:
 	var pid := get_player_id(peer_id)
 	if pid.is_empty():
@@ -668,9 +720,22 @@ func _on_packet_send_requested(peer_id: int, payload: Dictionary) -> void:
 # ---------------------------------------------------------------------------
 
 ## Client → host channel: input and edit intents from a client.
+##
+## Phase 36 — the two inbound guards live here, before the payload is even parsed,
+## because they police the CHANNEL rather than any one packet type: a size cap (a
+## client may not make the host parse an arbitrarily large JSON string) and a
+## per-peer token bucket (a client may not flood the host with fresh packets; the
+## Phase 19 dedup only rejects replayed seqs). Both refuse silently apart from a
+## rate-limited warning — a dropped packet is not an error the sender can fix.
 @rpc("any_peer", "reliable")
 func _rpc_c2h(json: String) -> void:
 	var sender := multiplayer.get_remote_sender_id()
+	if json.length() > MAX_CLIENT_PACKET_BYTES:
+		push_warning("NetworkingSlice: client packet from peer %d is %d chars (cap %d) — dropped" \
+			% [sender, json.length(), MAX_CLIENT_PACKET_BYTES])
+		return
+	if not _allow_packet(sender, float(Time.get_ticks_msec())):
+		return
 	var payload = _parse(json)
 	if payload == null:
 		return
@@ -750,16 +815,107 @@ func _dedup(sender: int, payload: Dictionary) -> bool:
 
 	return true
 
-## Resolve a client's self-reference to a peer-scoped party id. A client sends
-## the literal "player" to mean "me", but on the host every remote client would
-## collide on that string and resolve to the host's own inventory. Rewriting
-## "player" → the peer's server-issued player id (Phase 33) keeps each peer's
-## market/trade/proposal actions aimed at that peer's own record — and keeps them
-## aimed there across a reconnect, which a peer_id could not do.
-func _peer_party(sender: int, party: String) -> String:
-	if party == "player":
-		return party_id_for(sender)
-	return party
+## Phase 36 — per-peer client → host token bucket. `now_ms` is an argument (not a
+## clock read) so the rule is testable without waiting: the same shape the
+## emulator's `_sample_remote_state_at` uses. Returns true when a token was
+## available and the packet may be routed, false when the bucket is empty and the
+## packet is dropped.
+##
+## Refill is continuous (elapsed ms × RATE_BUCKET_REFILL_PER_SEC) and capped at
+## RATE_BUCKET_CAPACITY, so an idle peer always has a full burst waiting and a
+## flooding one is held to the sustained rate. The bucket is created on a peer's
+## first packet with a full capacity — the join burst (handshake + first snapshot
+## request + first movement packets) is exactly what that burst is for.
+func _allow_packet(peer_id: int, now_ms: float) -> bool:
+	if not _rate_buckets.has(peer_id):
+		_rate_buckets[peer_id] = { "tokens": RATE_BUCKET_CAPACITY, "at_ms": now_ms }
+	var bucket: Dictionary = _rate_buckets[peer_id]
+	var elapsed: float = maxf(0.0, now_ms - float(bucket["at_ms"]))
+	bucket["at_ms"] = now_ms
+	bucket["tokens"] = minf(
+		RATE_BUCKET_CAPACITY,
+		float(bucket["tokens"]) + elapsed * 0.001 * RATE_BUCKET_REFILL_PER_SEC
+	)
+	if float(bucket["tokens"]) < 1.0:
+		var last_warn: float = float(_rate_warn_ms.get(peer_id, -SEQ_GAP_WARN_INTERVAL_MS))
+		if now_ms - last_warn >= SEQ_GAP_WARN_INTERVAL_MS:
+			_rate_warn_ms[peer_id] = now_ms
+			push_warning("NetworkingSlice: peer %d exceeded the client packet rate — dropping" % peer_id)
+		return false
+	bucket["tokens"] = float(bucket["tokens"]) - 1.0
+	return true
+
+## The ACTING party behind a connection: the identity the host bound to it, and
+## nothing else. `""` when the peer has not completed the handshake.
+##
+## Phase 36 — this used to resolve the literal "player" to the sender's identity
+## and pass EVERY other string through verbatim, so a client could name another
+## player as itself: accept a trade as the victim, list the victim's goods (the
+## escrow debit drains the victim's inventory), or cast the victim's vote. The
+## payload's identity half is now ignored outright — the same rule craft_intent,
+## repair_intent, research_intent and tame_intent already followed. Callers refuse
+## an un-handshaked peer rather than acting for a nameless connection.
+func _actor_id(sender: int) -> String:
+	return get_player_id(sender)
+
+## Log and drop a client packet from a peer that has not completed the handshake.
+## Every identity-bound intent shares this refusal, so the reason is worded once.
+func _refuse_unhandshaked(sender: int, ptype: String) -> void:
+	push_warning("NetworkingSlice: %s from un-handshaked peer %d — dropped" % [ptype, sender])
+
+## Phase 36 — is `position` within `reach` metres of the peer's last recorded
+## position? The host records that position from the peer's own movement packets
+## (see remember_player_state), so it is the host's evidence of where the peer is,
+## not the peer's claim.
+##
+## A peer that has never reported a position has none the host can check against,
+## and the edit is refused rather than measured from an assumed origin:
+## `has_last_known_state()` is what distinguishes "never reported" from "at the
+## origin" (get_last_known_state answers Vector3.ZERO for both).
+func _within_reach(sender: int, position: Vector3, reach: float) -> bool:
+	if not has_last_known_state(sender):
+		return false
+	return get_last_known_state(sender).distance_to(position) <= reach
+
+## Phase 36 — the host-side tree population, wired by game_root. A chop intent
+## names only a tree id, so the tree's own position is the only way to check the
+## sender's reach; there is no way to carry it on the bus. Left unwired (isolated
+## tests) the check FAILS CLOSED, deliberately: a reach check that silently passes
+## when its source is missing is not a check.
+var tree_slice: Node = null
+
+## Phase 36 — the host-side identity resolver, wired by game_root: it is what turns
+## a counterparty NAME on a trade invite into the player id it denotes (and, in a
+## later pass, a public handle). Unwired, a named counterparty cannot be resolved at
+## all and the invite is dropped rather than parked in the trade table.
+var player_registry: Node = null
+
+## Is a chop of `tree_id` within `reach` of the peer? A tree the host does not
+## have is not chopable either (TreeSlice re-checks that authoritatively, on its
+## own side of the bus).
+func _chop_is_in_reach(sender: int, tree_id: String) -> bool:
+	if tree_slice == null or not tree_slice.has_method("get_tree_record"):
+		return false
+	var rec: Dictionary = tree_slice.get_tree_record(tree_id)
+	if rec.is_empty():
+		return false
+	return _within_reach(sender, rec["position"], MAX_EDIT_REACH)
+
+## Resolve the counterparty a client NAMED on a trade invite to the player id it
+## denotes, or "" when it denotes nothing this host can open a session with.
+##
+## Phase 36 — this is the ONE identity a client payload may legitimately name: an
+## invite grants the named player nothing (it is answered by that player's own
+## accept, which is bound to its own connection), and every ACTING half is bound to
+## the sender. Requiring the name to resolve against the registry means the host
+## only ever opens a session with a player it knows and that is online right now —
+## an invite to an offline or invented id is dropped, not parked.
+func _named_party(raw: String) -> String:
+	if raw == "" or player_registry == null:
+		return ""
+	if not player_registry.has_method("resolve_named_party"):
+		return ""
+	return str(player_registry.resolve_named_party(raw))
 
 ## Route a client → host packet. Only client-originated types are accepted;
 ## host-only types sent by a malicious client are dropped and logged.
@@ -783,40 +939,51 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			# is per-player now that each player persists one). The identity comes
 			# from the connection, never from the payload: a client cannot name
 			# whose inventory it crafts against.
-			var crafter := get_player_id(sender)
-			if crafter.is_empty():
-				push_warning("NetworkingSlice: craft_intent from un-handshaked peer %d — dropped" % sender)
-			else:
-				GameBus.craft_intent.emit(str(payload.get("recipe_id", "")), crafter)
+			var crafter := _actor_id(sender)
+			if crafter == "":
+				_refuse_unhandshaked(sender, "craft_intent")
+				return
+			GameBus.craft_intent.emit(str(payload.get("recipe_id", "")), crafter)
 		"repair_intent":
 			# Phase 34 — the same identity rule as craft_intent: the repairing
 			# player is the one bound to THIS connection, so a client cannot name
 			# whose tool it repairs or whose materials it spends.
-			var repairer := get_player_id(sender)
-			if repairer.is_empty():
-				push_warning("NetworkingSlice: repair_intent from un-handshaked peer %d — dropped" % sender)
-			else:
-				GameBus.repair_intent.emit(str(payload.get("item_id", "")), repairer)
+			var repairer := _actor_id(sender)
+			if repairer == "":
+				_refuse_unhandshaked(sender, "repair_intent")
+				return
+			GameBus.repair_intent.emit(str(payload.get("item_id", "")), repairer)
 		"research_intent":
 			# Phase 34 — and the same for research: whose tree moves is decided by
 			# the connection, never by the payload.
-			var researcher := get_player_id(sender)
-			if researcher.is_empty():
-				push_warning("NetworkingSlice: research_intent from un-handshaked peer %d — dropped" % sender)
-			else:
-				GameBus.research_intent.emit(str(payload.get("tech_id", "")), researcher)
+			var researcher := _actor_id(sender)
+			if researcher == "":
+				_refuse_unhandshaked(sender, "research_intent")
+				return
+			GameBus.research_intent.emit(str(payload.get("tech_id", "")), researcher)
 		"tame_intent":
 			# Phase 35 — and the same for taming: the flag and the companion bind
 			# to the connection's own player, never to a name in the payload.
-			var tamer := get_player_id(sender)
-			if tamer.is_empty():
-				push_warning("NetworkingSlice: tame_intent from un-handshaked peer %d — dropped" % sender)
-			else:
-				GameBus.tame_intent.emit(str(payload.get("instance_id", "")), tamer)
+			var tamer := _actor_id(sender)
+			if tamer == "":
+				_refuse_unhandshaked(sender, "tame_intent")
+				return
+			GameBus.tame_intent.emit(str(payload.get("instance_id", "")), tamer)
 		"block_edit_intent":
+			# Phase 36 — a world edit needs a bound identity AND a target within the
+			# host's evidence of arm's reach. The block position arrives as a bare
+			# claim: with no reach check a client could mine or build anywhere in the
+			# world (under another player's feet included), and with no handshake
+			# requirement it could do so before the host knew who it was at all.
+			if _actor_id(sender) == "":
+				_refuse_unhandshaked(sender, "block_edit_intent")
+				return
 			var action := str(payload.get("action", ""))
 			var ipos := _vec3(payload.get("position", []))
 			var inorm := _vec3(payload.get("normal", [0, 1, 0]))
+			if not _within_reach(sender, ipos, MAX_EDIT_REACH):
+				push_warning("NetworkingSlice: block_edit_intent from peer %d is out of reach — dropped" % sender)
+				return
 			if action == "mine":
 				GameBus.block_mine_requested.emit(ipos, inorm)
 			elif action == "place":
@@ -824,59 +991,131 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			else:
 				push_error("NetworkingSlice: unknown block_edit_intent action '%s'" % action)
 		"tree_chop_intent":
-			# The host re-runs the chop authoritatively (TreeSlice handles it and
-			# broadcasts tree_chopped back to every client).
-			GameBus.tree_chop_requested.emit(str(payload.get("tree_id", "")))
+			# Phase 36 — same two rules as block_edit_intent. The intent names only
+			# a tree id, so the reach check resolves the tree's own position through
+			# the wired TreeSlice (a tree the host does not have is not chopable
+			# either — TreeSlice re-checks that too, authoritatively). The host then
+			# re-runs the chop and broadcasts tree_chopped back to every client.
+			if _actor_id(sender) == "":
+				_refuse_unhandshaked(sender, "tree_chop_intent")
+				return
+			var tree_id := str(payload.get("tree_id", ""))
+			if not _chop_is_in_reach(sender, tree_id):
+				push_warning("NetworkingSlice: tree_chop_intent from peer %d is out of reach — dropped" % sender)
+				return
+			GameBus.tree_chop_requested.emit(tree_id)
 		"market_list_intent":
+			# Phase 36 — a listing is the CONNECTION's player selling. `seller` used
+			# to be passed through verbatim unless it read exactly "player", so a
+			# client could name a victim: the escrow debit then emptied that player's
+			# inventory into a listing the attacker could buy back.
+			var seller := _actor_id(sender)
+			if seller == "":
+				_refuse_unhandshaked(sender, "market_list_intent")
+				return
 			GameBus.market_list_intent.emit(
-				_peer_party(sender, str(payload.get("seller", ""))),
+				seller,
 				str(payload.get("item_id", "")),
 				int(payload.get("quantity", 0)),
 				float(payload.get("price", 0.0))
 			)
 		"market_buy_intent":
-			GameBus.market_buy_intent.emit(
-				str(payload.get("listing_id", "")),
-				_peer_party(sender, str(payload.get("buyer", "")))
-			)
+			# Phase 36 — the buyer is the connection's player too: naming one let a
+			# client drain a victim's market purchases into its own listing.
+			var buyer := _actor_id(sender)
+			if buyer == "":
+				_refuse_unhandshaked(sender, "market_buy_intent")
+				return
+			GameBus.market_buy_intent.emit(str(payload.get("listing_id", "")), buyer)
 		"proposal_submit_intent":
+			# Phase 36 — the author is the connection's player, never a name.
+			var author := _actor_id(sender)
+			if author == "":
+				_refuse_unhandshaked(sender, "proposal_submit_intent")
+				return
 			GameBus.proposal_submit_intent.emit(
-				_peer_party(sender, str(payload.get("author", ""))),
+				author,
 				str(payload.get("title", "")),
 				str(payload.get("body", ""))
 			)
 		"proposal_vote_intent":
+			# Phase 36 — "one vote per distinct voter" is what a quorum MEANS, so the
+			# voter must be the connection's player: a client that could name voters
+			# could ratify any proposal alone, and could vote a proposal through under
+			# the author's name (the one identity the rule forbids).
+			var voter := _actor_id(sender)
+			if voter == "":
+				_refuse_unhandshaked(sender, "proposal_vote_intent")
+				return
 			GameBus.proposal_vote_intent.emit(
 				str(payload.get("proposal_id", "")),
-				_peer_party(sender, str(payload.get("voter", ""))),
+				voter,
 				str(payload.get("verdict", ""))
 			)
 		"proposal_supersede_intent":
+			# Superseding names no party — it is a transition between two proposals —
+			# so there is no identity to bind. It still requires a bound identity: an
+			# anonymous connection may not move the decisions log. WHICH players may
+			# supersede a given proposal is a governance rule, not an identity one,
+			# and is not decided here.
+			if _actor_id(sender) == "":
+				_refuse_unhandshaked(sender, "proposal_supersede_intent")
+				return
 			GameBus.proposal_supersede_intent.emit(
 				str(payload.get("proposal_id", "")),
 				str(payload.get("replacement_id", ""))
 			)
 		"trade_start_intent":
-			GameBus.trade_start_intent.emit(
-				_peer_party(sender, str(payload.get("party_a", ""))),
-				str(payload.get("party_b", ""))
-			)
+			# Phase 36 — party_a is the connection's player: a client cannot open a
+			# session in someone else's name. party_b is the counterparty the client
+			# NAMES — an invite is the one thing a payload may legitimately name here,
+			# because it grants nothing: every later step (propose, accept, reject)
+			# acts as the connection's own player, so a session aimed at a name nobody
+			# answers simply never resolves. Rate-limited like every other intent, so
+			# a nameless invite flood cannot be a cheap amplification either.
+			var actor := _actor_id(sender)
+			if actor == "":
+				_refuse_unhandshaked(sender, "trade_start_intent")
+				return
+			var other := _named_party(str(payload.get("party_b", "")))
+			if other == "" or other == actor:
+				push_warning("NetworkingSlice: trade_start_intent from peer %d names an unusable counterparty — dropped" % sender)
+				return
+			GameBus.trade_start_intent.emit(actor, other)
 		"trade_propose_intent":
+			# Phase 36 — the party proposing is the connection's player.
+			var proposer := _actor_id(sender)
+			if proposer == "":
+				_refuse_unhandshaked(sender, "trade_propose_intent")
+				return
 			GameBus.trade_propose_intent.emit(
 				str(payload.get("trade_id", "")),
-				_peer_party(sender, str(payload.get("party", ""))),
+				proposer,
 				payload.get("give", {}),
 				payload.get("want", {})
 			)
 		"trade_accept_intent":
+			# Phase 36 — THE trade finding: `party` used to pass through verbatim,
+			# so a client could accept AS the other side and commit the other
+			# player's goods. The accepter is the connection's player, always.
+			var accepter := _actor_id(sender)
+			if accepter == "":
+				_refuse_unhandshaked(sender, "trade_accept_intent")
+				return
 			GameBus.trade_accept_intent.emit(
 				str(payload.get("trade_id", "")),
-				_peer_party(sender, str(payload.get("party", "")))
+				accepter
 			)
 		"trade_reject_intent":
+			# Phase 36 — and a client may only reject on its own behalf (a spoofed
+			# reject closed another player's session for both sides).
+			var rejecter := _actor_id(sender)
+			if rejecter == "":
+				_refuse_unhandshaked(sender, "trade_reject_intent")
+				return
 			GameBus.trade_reject_intent.emit(
 				str(payload.get("trade_id", "")),
-				_peer_party(sender, str(payload.get("party", "")))
+				rejecter
 			)
 		_:
 			# Clients may not send host-authoritative types (block_changed,

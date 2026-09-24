@@ -200,6 +200,12 @@ func _ready() -> void:
 	_voxel.terrain_slice      = _terrain
 	_voxel.inventory_slice    = _inventory
 	_tree.inventory_slice     = _inventory
+	# Phase 36 — the wire is policed with evidence the bus cannot carry: a tree chop
+	# intent names only a tree id (its position for the reach check comes from the tree
+	# slice) and a trade invite names a counterparty (resolved against the registry's
+	# online set). Both checks fail closed when unwired.
+	_networking.tree_slice      = _tree
+	_networking.player_registry = _registry
 	if not _is_server:
 		_ui.inventory_slice       = _inventory
 		_ui.crafting_slice        = _crafting

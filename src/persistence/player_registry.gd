@@ -33,6 +33,7 @@ extends Node
 ##   resolve_identity(peer_id, claimed_id) -> String
 ##   unbind_peer(peer_id) -> String
 ##   get_player_id(peer_id) -> String            — "" when unknown
+##   resolve_named_party(name) -> String         — Phase 36: a named counterparty
 ##   get_peer_id(player_id) -> int               — 0 when offline
 ##   is_online(player_id) -> bool
 ##   has_player(player_id) / get_player_ids() -> Array
@@ -195,6 +196,22 @@ func unbind_peer(peer_id: int) -> String:
 
 func get_player_id(peer_id: int) -> String:
 	return str(_peer_ids.get(peer_id, ""))
+
+## Phase 36 — resolve a counterparty NAME from a client payload to the player id it
+## denotes, or "" when nothing this host can open a session with.
+##
+## A trade invite is the only client payload that names another player on purpose
+## (every acting half is bound to its own connection instead), so this is the one
+## place a name from the wire has to be resolved — and it is resolved against the
+## ONLINE set: a session with an offline id could never be answered, so the invite
+## is dropped rather than parked in the trade table. `is_online` covers the listen
+## host's own player, who is an ordinary trade partner.
+func resolve_named_party(name: String) -> String:
+	if name.is_empty():
+		return ""
+	if is_online(name):
+		return name
+	return ""
 
 ## The live peer currently holding `player_id`, or 0 when the player is offline.
 func get_peer_id(player_id: String) -> int:

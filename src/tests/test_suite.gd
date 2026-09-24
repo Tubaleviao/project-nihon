@@ -270,7 +270,13 @@ func run() -> void:
 	_run_test("net: inventory replace_contents is idempotent",   _test_net_inventory_replace_idempotent)
 	_run_test("net: host persists last-known state across disconnect", _test_net_reconnect_last_known_state)
 	_run_test("net: emulated loss+reorder — all delivered packets accepted", _test_net_two_peer_loss_reorder)
-	_run_test("net: client self-reference is peer-scoped",       _test_net_peer_party_scopes_identity)
+	_run_test("net: acting identity is the bound connection",    _test_net_peer_party_scopes_identity)
+	_run_test("net: social intents bind connection identity",    _test_net_social_intents_bind_connection_identity)
+	_run_test("net: trade intents bind connection identity",     _test_net_trade_intents_bind_connection_identity)
+	_run_test("net: block edit needs handshake + reach",         _test_net_block_intent_requires_handshake_and_reach)
+	_run_test("net: tree chop needs handshake + reach",          _test_net_tree_intent_requires_handshake_and_reach)
+	_run_test("net: client packet size is capped",               _test_net_client_packet_size_capped)
+	_run_test("net: client packet rate is limited per peer",     _test_net_client_packet_rate_limited)
 	_run_test("net: AOI center defaults to spawn; in_aoi gates", _test_net_aoi_center_and_in_aoi)
 	_run_test("net: AOI recipients are near peers only",         _test_net_aoi_recipients)
 	_run_test("net: AOI region floors to grid cell",             _test_net_aoi_region)
@@ -3606,11 +3612,265 @@ func _test_net_two_peer_loss_reorder() -> void:
 	receiver.free()
 
 func _test_net_peer_party_scopes_identity() -> void:
+	# The acting party behind a connection is the identity the host bound to it —
+	# whatever a payload names, and nothing at all before the handshake. `party_id_for`
+	# keeps answering a transport label for display, but never authorizes anything.
 	var n := NetworkingSlice.new()
 	add_child(n)
-	assert_eq(n._peer_party(5, "player"), "peer_5", "client 'player' self-reference is peer-scoped")
-	assert_eq(n._peer_party(5, "merchant"), "merchant", "non-self party id passes through unchanged")
-	assert_eq(n._peer_party(5, "peer_9"), "peer_9", "already-scoped id passes through unchanged")
+	n._role = NetworkingSlice.Role.HOST
+	assert_eq(n._actor_id(5), "", "an un-handshaked peer has no acting identity")
+	assert_eq(n.party_id_for(5), "peer_5", "its diagnostic label falls back to the transport id")
+	n.set_player_id(5, "player_5_1_beef")
+	assert_eq(n._actor_id(5), "player_5_1_beef", "the bound identity is the acting party")
+	n.free()
+
+func _test_net_social_intents_bind_connection_identity() -> void:
+	# Market and governance intents carry an identity the host must IGNORE: a client
+	# that could name one could sell a victim's goods (the escrow debit empties their
+	# inventory), buy into a victim's own listing, or cast a victim's vote — a quorum
+	# of one. The connection decides who is acting; un-handshaked peers cannot act.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	var listed: Array = []
+	var bought: Array = []
+	var authored: Array = []
+	var voted: Array = []
+	var superseded: Array = []
+	var on_list := func(seller: String, item_id: String, qty: int, price: float) -> void:
+		listed.append([seller, item_id, qty, price])
+	var on_buy := func(listing_id: String, buyer: String) -> void:
+		bought.append([listing_id, buyer])
+	var on_submit := func(author: String, title: String, _body: String) -> void:
+		authored.append([author, title])
+	var on_vote := func(proposal_id: String, voter: String, verdict: String) -> void:
+		voted.append([proposal_id, voter, verdict])
+	var on_supersede := func(proposal_id: String, replacement_id: String) -> void:
+		superseded.append([proposal_id, replacement_id])
+	GameBus.market_list_intent.connect(on_list)
+	GameBus.market_buy_intent.connect(on_buy)
+	GameBus.proposal_submit_intent.connect(on_submit)
+	GameBus.proposal_vote_intent.connect(on_vote)
+	GameBus.proposal_supersede_intent.connect(on_supersede)
+
+	var spoof := "player_victim_1_deadbeef"
+	n._route_c2h(7, { "type": "market_list_intent", "seller": spoof, "item_id": "wolf_fang", "quantity": 2, "price": 5.0 })
+	n._route_c2h(7, { "type": "market_buy_intent", "listing_id": "listing_0", "buyer": spoof })
+	n._route_c2h(7, { "type": "proposal_submit_intent", "author": spoof, "title": "T", "body": "B" })
+	n._route_c2h(7, { "type": "proposal_vote_intent", "proposal_id": "proposal_0", "voter": spoof, "verdict": "for" })
+	n._route_c2h(7, { "type": "proposal_supersede_intent", "proposal_id": "proposal_0", "replacement_id": "proposal_1" })
+	assert_eq(listed.size(), 0, "an un-handshaked peer cannot list")
+	assert_eq(bought.size(), 0, "nor buy")
+	assert_eq(authored.size(), 0, "nor author a proposal")
+	assert_eq(voted.size(), 0, "nor vote")
+	assert_eq(superseded.size(), 0, "nor move the decisions log")
+
+	n.set_player_id(7, "player_7_1_cafe")
+	n._route_c2h(7, { "type": "market_list_intent", "seller": spoof, "item_id": "wolf_fang", "quantity": 2, "price": 5.0 })
+	n._route_c2h(7, { "type": "market_buy_intent", "listing_id": "listing_0", "buyer": spoof })
+	n._route_c2h(7, { "type": "proposal_submit_intent", "author": spoof, "title": "T", "body": "B" })
+	n._route_c2h(7, { "type": "proposal_vote_intent", "proposal_id": "proposal_0", "voter": spoof, "verdict": "for" })
+	n._route_c2h(7, { "type": "proposal_supersede_intent", "proposal_id": "proposal_0", "replacement_id": "proposal_1" })
+	assert_eq(str(listed[0][0]), "player_7_1_cafe", "the seller is the connection's player, not the name")
+	assert_eq(str(bought[0][1]), "player_7_1_cafe", "and so is the buyer")
+	assert_eq(str(authored[0][0]), "player_7_1_cafe", "and the proposal author")
+	assert_eq(str(voted[0][1]), "player_7_1_cafe", "and the voter")
+	assert_eq(voted[0][2], "for", "with the verdict it did send")
+	assert_eq(superseded.size(), 1, "a bound peer's supersede is re-emitted")
+
+	GameBus.market_list_intent.disconnect(on_list)
+	GameBus.market_buy_intent.disconnect(on_buy)
+	GameBus.proposal_submit_intent.disconnect(on_submit)
+	GameBus.proposal_vote_intent.disconnect(on_vote)
+	GameBus.proposal_supersede_intent.disconnect(on_supersede)
+	n.free()
+
+func _test_net_trade_intents_bind_connection_identity() -> void:
+	# Every trade step acts as the connection's own player: a spoofed accept used to
+	# commit the OTHER side's goods. An invite may name a counterparty, but only one
+	# the host can resolve to an online player — nobody can be dragged into a session
+	# that cannot be answered.
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.player_registry = reg
+	var started: Array = []
+	var proposed: Array = []
+	var accepted: Array = []
+	var rejected: Array = []
+	var on_start := func(party_a: String, party_b: String) -> void:
+		started.append([party_a, party_b])
+	var on_propose := func(trade_id: String, party: String, _give: Dictionary, _want: Dictionary) -> void:
+		proposed.append([trade_id, party])
+	var on_accept := func(trade_id: String, party: String) -> void:
+		accepted.append([trade_id, party])
+	var on_reject := func(trade_id: String, party: String) -> void:
+		rejected.append([trade_id, party])
+	GameBus.trade_start_intent.connect(on_start)
+	GameBus.trade_propose_intent.connect(on_propose)
+	GameBus.trade_accept_intent.connect(on_accept)
+	GameBus.trade_reject_intent.connect(on_reject)
+
+	var spoof := "player_victim_1_deadbeef"
+	n._route_c2h(7, { "type": "trade_accept_intent", "trade_id": "trade_0", "party": spoof })
+	n._route_c2h(7, { "type": "trade_propose_intent", "trade_id": "trade_0", "party": spoof, "give": {}, "want": {} })
+	n._route_c2h(7, { "type": "trade_reject_intent", "trade_id": "trade_0", "party": spoof })
+	n._route_c2h(7, { "type": "trade_start_intent", "party_a": spoof, "party_b": "player_host_1" })
+	assert_eq(accepted.size(), 0, "an un-handshaked peer cannot accept")
+	assert_eq(proposed.size(), 0, "nor propose")
+	assert_eq(rejected.size(), 0, "nor reject")
+	assert_eq(started.size(), 0, "nor open a session")
+
+	n.set_player_id(7, "player_7_1_cafe")
+	n._route_c2h(7, { "type": "trade_accept_intent", "trade_id": "trade_0", "party": spoof })
+	n._route_c2h(7, { "type": "trade_propose_intent", "trade_id": "trade_0", "party": spoof, "give": {}, "want": {} })
+	n._route_c2h(7, { "type": "trade_reject_intent", "trade_id": "trade_0", "party": spoof })
+	assert_eq(str(accepted[0][1]), "player_7_1_cafe", "the accepter is the connection's player")
+	assert_eq(str(proposed[0][1]), "player_7_1_cafe", "and the proposer")
+	assert_eq(str(rejected[0][1]), "player_7_1_cafe", "and the rejecter")
+
+	# Invites: the named counterparty must resolve. The host's own player is online;
+	# an unknown id, an empty name and the sender itself are all refused.
+	n._route_c2h(7, { "type": "trade_start_intent", "party_a": spoof, "party_b": "player_host_1" })
+	assert_eq(started.size(), 1, "an invite to an online player is opened")
+	assert_eq(str(started[0][0]), "player_7_1_cafe", "in the sender's own name")
+	assert_eq(str(started[0][1]), "player_host_1", "naming the counterparty it resolved")
+	n._route_c2h(7, { "type": "trade_start_intent", "party_a": "player_7_1_cafe", "party_b": "player_nobody_9_0" })
+	n._route_c2h(7, { "type": "trade_start_intent", "party_a": "player_7_1_cafe", "party_b": "" })
+	n._route_c2h(7, { "type": "trade_start_intent", "party_a": "player_7_1_cafe", "party_b": "player_7_1_cafe" })
+	assert_eq(started.size(), 1, "an unresolvable, empty or self counterparty is refused")
+
+	GameBus.trade_start_intent.disconnect(on_start)
+	GameBus.trade_propose_intent.disconnect(on_propose)
+	GameBus.trade_accept_intent.disconnect(on_accept)
+	GameBus.trade_reject_intent.disconnect(on_reject)
+	n.free()
+	reg.free()
+
+func _test_net_block_intent_requires_handshake_and_reach() -> void:
+	# A block edit is the world's state, so it needs a bound identity and a target the
+	# host can place relative to where it last saw the peer: without the reach check a
+	# client could mine or build anywhere (another player's feet included).
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	var mined: Array = []
+	var on_mine := func(pos: Vector3, normal: Vector3) -> void:
+		mined.append([pos, normal])
+	GameBus.block_mine_requested.connect(on_mine)
+
+	var near := Vector3(30.0, 4.0, 0.0)
+	var edit := { "type": "block_edit_intent", "action": "mine", "position": [near.x, near.y, near.z], "normal": [0, 1, 0] }
+	n._route_c2h(7, edit)
+	assert_eq(mined.size(), 0, "an un-handshaked peer cannot edit the world")
+
+	n.set_player_id(7, "player_7_1_cafe")
+	n._route_c2h(7, edit)
+	assert_eq(mined.size(), 0, "a peer with no recorded position has no reach to check")
+
+	n.remember_player_state(7, Vector3.ZERO)
+	n._route_c2h(7, edit)
+	assert_eq(mined.size(), 1, "an edit within reach is applied")
+	assert_eq(mined[0][0], near, "at the position the client asked for")
+
+	var far := Vector3(2000.0, 4.0, 2000.0)
+	n._route_c2h(7, { "type": "block_edit_intent", "action": "place", "position": [far.x, far.y, far.z], "normal": [0, 1, 0] })
+	assert_eq(mined.size(), 1, "an edit beyond reach is dropped")
+
+	GameBus.block_mine_requested.disconnect(on_mine)
+	n.free()
+
+func _test_net_tree_intent_requires_handshake_and_reach() -> void:
+	# The chop intent names only a tree id, so the reach check resolves the tree's own
+	# position through the wired TreeSlice — and fails closed when no tree is known.
+	var trees := TreeSlice.new()
+	add_child(trees)
+	trees.spawn_for_chunk(Vector2i(0, 0))
+	var all_trees: Array = trees.get_all_trees()
+	assert_true(all_trees.size() > 0, "the rig has trees to chop")
+	var target: Dictionary = all_trees[0]
+	var tree_pos: Vector3 = target["position"]
+
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.tree_slice = trees
+	var chops: Array = []
+	var on_chop := func(tree_id: String) -> void:
+		chops.append(tree_id)
+	GameBus.tree_chop_requested.connect(on_chop)
+
+	var intent := { "type": "tree_chop_intent", "tree_id": str(target["tree_id"]) }
+	n._route_c2h(7, intent)
+	assert_eq(chops.size(), 0, "an un-handshaked peer cannot chop")
+
+	n.set_player_id(7, "player_7_1_cafe")
+	n._route_c2h(7, { "type": "tree_chop_intent", "tree_id": "tree_999_999_9" })
+	assert_eq(chops.size(), 0, "a tree the host does not have is not chopable")
+
+	n.remember_player_state(7, tree_pos + Vector3(10.0, 0.0, 0.0))
+	n._route_c2h(7, intent)
+	assert_eq(chops.size(), 1, "a chop within reach is re-emitted for TreeSlice")
+	assert_eq(str(chops[0]), str(target["tree_id"]), "for the tree the client named")
+
+	n.remember_player_state(7, tree_pos + Vector3(500.0, 0.0, 500.0))
+	n._route_c2h(7, { "type": "tree_chop_intent", "tree_id": str(all_trees[1]["tree_id"]) })
+	assert_eq(chops.size(), 1, "a chop beyond reach is dropped")
+
+	GameBus.tree_chop_requested.disconnect(on_chop)
+	n.free()
+	trees.free()
+
+func _test_net_client_packet_size_capped() -> void:
+	# An oversized client packet is dropped before it is parsed: the cap is what keeps
+	# one peer from making the authoritative process chew on an arbitrarily large JSON
+	# string.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	# `_rpc_c2h` reads the sender off the multiplayer API, so the rig has to bind the
+	# identity to whatever this isolated slice reports as the remote sender.
+	var sender := multiplayer.get_remote_sender_id()
+	n.set_player_id(sender, "player_7_1_cafe")
+	var crafts: Array = []
+	var on_craft := func(recipe_id: String, player_id: String) -> void:
+		crafts.append([recipe_id, player_id])
+	GameBus.craft_intent.connect(on_craft)
+
+	n._rpc_c2h(JSON.stringify({ "type": "craft_intent", "recipe_id": "R" }))
+	assert_eq(crafts.size(), 1, "a packet within the cap is routed")
+	var filler := "x".repeat(NetworkingSlice.MAX_CLIENT_PACKET_BYTES)
+	n._rpc_c2h(JSON.stringify({ "type": "craft_intent", "recipe_id": "R", "filler": filler }))
+	assert_eq(crafts.size(), 1, "a packet over the cap is dropped")
+
+	GameBus.craft_intent.disconnect(on_craft)
+	n.free()
+
+func _test_net_client_packet_rate_limited() -> void:
+	# A per-peer token bucket: a burst is capped, the bucket refills at the sustained
+	# rate, and a reconnecting peer starts fresh instead of inheriting the debt.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	var allowed := 0
+	for i in range(int(NetworkingSlice.RATE_BUCKET_CAPACITY) + 10):
+		if n._allow_packet(3, 0.0):
+			allowed += 1
+	assert_eq(allowed, int(NetworkingSlice.RATE_BUCKET_CAPACITY), "a burst is capped at the bucket capacity")
+
+	var later := 500.0
+	assert_true(n._allow_packet(3, later), "the bucket refills over time")
+	var refilled := 0
+	for i in range(1000):
+		if n._allow_packet(3, later):
+			refilled += 1
+	assert_eq(refilled, int(NetworkingSlice.RATE_BUCKET_REFILL_PER_SEC * 0.5) - 1,
+		"and is then held to the sustained refill rate")
+
+	n.forget_player_id(3)
+	assert_true(n._allow_packet(3, later), "a disconnected peer's bucket goes with its transport state")
 	n.free()
 
 func _test_net_aoi_center_and_in_aoi() -> void:
