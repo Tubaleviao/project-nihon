@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, dropsData, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
+const { defineEntity, creatureStateMachine, dropsData, tameData, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
 
 module.exports = {
 
@@ -27,6 +27,20 @@ module.exports = {
         { item: 'glimmer_pelt',        chance: 1.0, minQty: 1, maxQty: 1 },
         { item: 'luminescent_reagent', chance: 1.0, minQty: 1, maxQty: 1 },
       ]),
+      tame: tameData({
+        result: 'yield',
+        requiresUnarmed: true,
+        requiresSkill: { skill: 'Alchemy', tier: 'apprentice' },
+        requiresAnyItem: [
+          { item: 'FieldRations',   quantity: 1 },
+          { item: 'raw_boar_meat',  quantity: 1 },
+        ],
+        requiresDefeated: false,
+        grantsFlag: '',
+        yields: [{ item: 'glimmer_fur_tuft', quantity: 1 }],
+        cooldownSeconds: 600,
+        suppressRespawn: false,
+      }),
     },
     stateMachine: creatureStateMachine(),
     behaviors: {

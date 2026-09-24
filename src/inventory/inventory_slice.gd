@@ -66,6 +66,7 @@ const RAW_DROP_WEIGHTS: Dictionary = {
 	"gargoyle_crest":        0.2,
 	"glimmer_pelt":          0.9,
 	"luminescent_reagent":   0.2,
+	"glimmer_fur_tuft":      0.1,   # shed via the GlimmerFox tame (Phase 35)
 	"veilstalker_venom_sac": 0.1,
 	"shadow_phase_membrane": 0.5,
 	"crystallised_phase_shard": 0.3,

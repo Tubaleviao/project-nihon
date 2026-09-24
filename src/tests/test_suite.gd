@@ -11,6 +11,7 @@ extends Node
 const BattleSlice     := preload("res://src/battle/battle_slice.gd")
 const CreatureSlice   := preload("res://src/creature/creature_slice.gd")
 const CreatureAI      := preload("res://src/creature/creature_ai.gd")
+const TamingSlice     := preload("res://src/creature/taming_slice.gd")
 const TerrainSlice    := preload("res://src/terrain/terrain_slice.gd")
 const ChunkManager    := preload("res://src/terrain/chunk_manager.gd")
 const PersistenceSlice:= preload("res://src/persistence/persistence_slice.gd")
@@ -179,6 +180,20 @@ func run() -> void:
 	_run_test("technology: tree and materials are per-player",  _test_research_is_per_player)
 	_run_test("technology: client forwards research intent",    _test_technology_client_forwards_intent)
 	_run_test("technology: client does not resolve research",  _test_technology_client_resolves_nothing)
+	_run_test("taming: fabric spec drives the interaction",    _test_taming_fabric_spec)
+	_run_test("taming: a creature with no tame field is refused", _test_taming_not_tameable)
+	_run_test("taming: wolf needs the alpha down",             _test_taming_wolf_requires_alpha_down)
+	_run_test("taming: wolf grants flag and companion",        _test_taming_wolf_grants_flag_companion)
+	_run_test("taming: skill gate fails closed",               _test_taming_requires_skill)
+	_run_test("taming: bare hands required",                   _test_taming_requires_unarmed)
+	_run_test("taming: fox feed yields and consumes the offer", _test_taming_fox_feed_yields)
+	_run_test("taming: fox feed needs an offering",            _test_taming_fox_needs_offer)
+	_run_test("taming: cooldown blocks a second feed",         _test_taming_cooldown)
+	_run_test("taming: flags and offerings are per-player",    _test_taming_is_per_player)
+	_run_test("taming: client forwards intent, mutates nothing", _test_taming_client_forwards_intent)
+	_run_test("taming: a companion does not respawn",          _test_taming_companion_respawn_suppressed)
+	_run_test("taming: companion is no target and follows owner", _test_taming_companion_follows)
+	_run_test("taming: record round-trip keeps flag + companion", _test_taming_record_round_trip)
 	_run_test("voxel: mine lowers height and yields material", _test_voxel_mine_yields_material)
 	_run_test("voxel: mine at bedrock fails",                  _test_voxel_mine_bedrock)
 	_run_test("voxel: side-face mine targets hit block",       _test_voxel_mine_side_face)
@@ -6128,6 +6143,527 @@ func _test_net_own_state_push_is_peer_scoped() -> void:
 		"carrying the peer's own inventory")
 	host.free()
 	client.free()
+
+# ---------------------------------------------------------------------------
+# Phase 35 — creature taming
+# ---------------------------------------------------------------------------
+
+## A taming rig: a creature population, the local player's registry + inventory,
+## and the taming slice wired to both. `character_slice` is left null unless a
+## test needs the bare-hands rule (see _test_taming_requires_unarmed), because a
+## null character slice means "no equipment model here" and the rule is skipped.
+func _make_taming_rig() -> Dictionary:
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
+	var crafting := CraftingSlice.new()
+	add_child(crafting)
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	registry.set_local_player(registry.mint_player_id())
+	var taming := TamingSlice.new()
+	add_child(taming)
+	taming.creature_slice  = c
+	taming.crafting_slice  = crafting
+	taming.player_registry = registry
+	taming.inventory_slice = null   # prove the registry is what answers
+	return { "creature": c, "taming": taming, "crafting": crafting, "registry": registry }
+
+## The first instance id of a fabric creature key, or "" when the population has
+## none. Spawn order is deterministic but not alphabetical, so tests must look the
+## species up rather than index the array.
+func _taming_instance_of(c: Node, creature_id: String) -> String:
+	for inst in c.get_all_instances():
+		if str(inst["creature_id"]) == creature_id:
+			return str(inst["instance_id"])
+	return ""
+
+## Every instance id of one species, in population order.
+func _taming_instances_of(c: Node, creature_id: String) -> Array:
+	var out: Array = []
+	for inst in c.get_all_instances():
+		if str(inst["creature_id"]) == creature_id:
+			out.append(str(inst["instance_id"]))
+	return out
+
+## Put a player next to a creature. The approach rule is real (TamingSlice re-checks
+## the distance), and a fresh record sits at the world origin, so a test that
+## forgets this reads "too_far" instead of the reason it meant to assert.
+func _taming_stand_near(registry: Node, player_id: String, c: Node, instance_id: String) -> void:
+	registry.record_position(player_id, c.get_instance_position(instance_id))
+
+func _test_taming_fabric_spec() -> void:
+	# The interaction is data: every rule the slice enforces comes off the creature's
+	# `tame` json field, so the assertions here are on the FABRIC, not on a table in
+	# GDScript. If the fabric changes, these fail — which is the point.
+	var rig := _make_taming_rig()
+	var taming: Node = rig["taming"]
+	var wolf: Dictionary = taming.tame_data("GraywolfPack")
+	assert_eq(str(wolf.get("result", "")), "companion", "the wolf tame yields a companion")
+	assert_eq(str(wolf.get("grantsFlag", "")), "wolfBondHolder", "and sets the Ranger flag")
+	assert_true(bool(wolf.get("requiresDefeated", false)), "and needs the alpha down")
+	assert_true(bool(wolf.get("suppressRespawn", false)), "a tamed wolf does not respawn")
+	assert_true(bool(wolf.get("requiresUnarmed", false)), "and needs bare hands")
+	var wolf_skill: Dictionary = wolf.get("requiresSkill", {})
+	assert_eq(str(wolf_skill.get("skill", "")), "Unarmed", "gated on the Unarmed skill")
+	assert_eq(str(wolf_skill.get("tier", "")), "journeyman", "at journeyman")
+
+	var fox: Dictionary = taming.tame_data("GlimmerFox")
+	assert_eq(str(fox.get("result", "")), "yield", "the fox tame yields items, not a companion")
+	assert_eq(int(fox.get("cooldownSeconds", 0)), 600, "with the fabric's 10-minute cooldown")
+	assert_true(bool(fox.get("requiresUnarmed", false)), "and needs bare hands too")
+	assert_false(str(fox.get("grantsFlag", "")) != "", "but grants no flag")
+	var offers: Array = fox.get("requiresAnyItem", [])
+	assert_eq(offers.size(), 2, "the fabric names two alternative offerings")
+	assert_eq(str((offers[0] as Dictionary).get("item", "")), "FieldRations", "rations first")
+	var yields: Array = fox.get("yields", [])
+	assert_eq(yields.size(), 1, "and one shed item")
+	assert_eq(str((yields[0] as Dictionary).get("item", "")), "glimmer_fur_tuft", "the fur tuft")
+
+	assert_true(taming.is_tameable("GlimmerFox"), "the fox is tameable")
+	assert_false(taming.is_tameable("ForestBoar"), "the boar is not")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_not_tameable() -> void:
+	# A creature with no `tame` field is refused, and an unknown instance is refused
+	# with a different reason — the UI needs to tell "not tameable" from "gone".
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var boar := _taming_instance_of(c, "ForestBoar")
+	assert_true(boar != "", "a ForestBoar instance exists")
+	_taming_stand_near(rig["registry"], str(rig["registry"].local_player_id), c, boar)
+	assert_eq(str(taming.can_tame(boar, "")["reason"]), "not_tameable", "the boar is not tameable")
+	assert_eq(taming.tame_data("ForestBoar").size(), 0, "and carries no tame data")
+	assert_eq(str(taming.can_tame("creature_nope", "")["reason"]), "unknown_instance",
+		"an unknown instance is refused as unknown")
+	assert_false(bool(taming.tame(boar, "")["success"]), "tame() fails on it too")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_wolf_requires_alpha_down() -> void:
+	# The fabric rule is "tame a surviving pup AFTER defeating the alpha wolf". The
+	# runtime models a pack as N instances of one creature id, so the gate is "one
+	# member of this species is dead".
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var wolves := _taming_instances_of(c, "GraywolfPack")
+	assert_true(wolves.size() >= 2, "the fabric spawns at least two pack members")
+	var target := str(wolves[1])
+	_taming_stand_near(registry, pid, c, target)
+
+	# Too far away: the creature must be approached, not summoned.
+	registry.record_position(pid, Vector3(500.0, 0.0, 500.0))
+	assert_eq(str(taming.can_tame(target, "")["reason"]), "too_far", "a distant target cannot be tamed")
+	_taming_stand_near(registry, pid, c, target)
+
+	assert_eq(str(taming.can_tame(target, "")["reason"]), "alpha_alive",
+		"not tameable while the whole pack stands")
+	assert_false(c.has_defeated_species("GraywolfPack"), "no pack member is down yet")
+
+	# The template has no skill either, so kill a member and confirm the gate that
+	# answers next is the SKILL one: the alpha gate is satisfied, not skipped.
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	assert_true(c.has_defeated_species("GraywolfPack"), "a pack member is dead")
+	assert_eq(str(taming.can_tame(target, "")["reason"]), "skill_locked:Unarmed:journeyman",
+		"the alpha gate is satisfied and the skill gate answers next")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_wolf_grants_flag_companion() -> void:
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var wolves := _taming_instances_of(c, "GraywolfPack")
+	var target := str(wolves[1])
+	_taming_stand_near(registry, pid, c, target)
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	assert_true(bool(rig["crafting"].set_skill("Unarmed", "journeyman")), "Unarmed: journeyman")
+
+	var result: Dictionary = taming.tame(target, "")
+	assert_true(bool(result["success"]), "the tame resolves")
+	assert_eq(str(result["result"]), "companion", "as a companion")
+	assert_eq(str(result["flag"]), "wolfBondHolder", "granting the flag")
+	assert_true(taming.has_flag(pid, "wolfBondHolder"), "the player holds the flag")
+	assert_eq(c.get_tamed_by(target), pid, "and the instance is bound to them")
+	assert_true(c.is_tamed(target), "the instance reports tamed")
+	assert_true((taming.get_companions(pid) as Array).has(target), "the companion is listed")
+
+	# Idempotence: a second tame of the same instance is refused, not doubled.
+	assert_eq(str(taming.can_tame(target, "")["reason"]), "already_tamed", "already tamed")
+	assert_eq((taming.get_companions(pid) as Array).size(), 1, "and it is still one companion")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_requires_skill() -> void:
+	# The skill gate fails CLOSED: an unwired/unadvanced table reads as "novice", so a
+	# journeyman requirement is refused rather than skipped.
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var wolves := _taming_instances_of(c, "GraywolfPack")
+	var target := str(wolves[1])
+	_taming_stand_near(registry, pid, c, target)
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+
+	assert_eq(taming.skill_tier(pid, "Unarmed"), "novice", "a fresh table is novice")
+	var refused: Dictionary = taming.tame(target, "")
+	assert_false(bool(refused["success"]), "a novice cannot tame the pup")
+	assert_eq(str(refused["reason"]), "skill_locked:Unarmed:journeyman", "reason names the gate")
+	assert_false(c.is_tamed(target), "and nothing was tamed")
+
+	# apprentice is still below journeyman — the gate is a rank, not an exact match.
+	rig["crafting"].set_skill("Unarmed", "apprentice")
+	assert_false(bool(taming.can_tame(target, "")["ok"]), "apprentice is not enough")
+	rig["crafting"].set_skill("Unarmed", "journeyman")
+	assert_true(bool(taming.can_tame(target, "")["ok"]), "journeyman passes")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_requires_unarmed() -> void:
+	# "Player must approach the pup while unarmed": an equipped main hand is what the
+	# rule reads. Only the local player's character is modelled, so the check runs
+	# against the character slice's own view of that character's equipment.
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var wolves := _taming_instances_of(c, "GraywolfPack")
+	var target := str(wolves[1])
+	_taming_stand_near(registry, pid, c, target)
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	rig["crafting"].set_skill("Unarmed", "journeyman")
+
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	taming.character_slice = ch
+	var char_id := ch.create_character("TravellerHuman", Vector3.ZERO)
+	assert_true(char_id != "", "the player character exists")
+	ch.set_player_character(char_id)
+	assert_true(taming.is_unarmed(""), "empty hands by default")
+	assert_true(bool(taming.can_tame(target, "")["ok"]), "so the tame is allowed")
+
+	assert_true(ch.apply_equipment(char_id, "MainHand", "VeilsteelLongsword"), "a sword is equipped")
+	assert_false(taming.is_unarmed(""), "an equipped weapon is not bare hands")
+	var refused: Dictionary = taming.tame(target, "")
+	assert_false(bool(refused["success"]), "a drawn weapon blocks the tame")
+	assert_eq(str(refused["reason"]), "armed", "reason is armed")
+	assert_false(c.is_tamed(target), "and nothing was tamed")
+
+	ch.clear_equipment(char_id, "MainHand")
+	assert_true(taming.is_unarmed(""), "clearing the slot frees the hands")
+	assert_true(bool(taming.tame(target, "")["success"]), "and the tame goes through")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_fox_feed_yields() -> void:
+	# The fox tame is the non-lethal half: the creature stays alive, sheds its fur and
+	# the offering comes off the TAMER's inventory.
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var fox := _taming_instance_of(c, "GlimmerFox")
+	assert_true(fox != "", "a GlimmerFox instance exists")
+	_taming_stand_near(registry, pid, c, fox)
+	rig["crafting"].set_skill("Alchemy", "apprentice")
+	var inventory: Node = taming.inventory_for(pid)
+	assert_true(inventory.add_item("FieldRations", 1), "the tamer carries rations")
+
+	var result: Dictionary = taming.tame(fox, "")
+	assert_true(bool(result["success"]), "the fox accepts the offer")
+	assert_eq(str(result["result"]), "yield", "it is a yield tame")
+	assert_eq(inventory.get_item_count("glimmer_fur_tuft"), 1, "the fox shed a fur tuft")
+	assert_eq(inventory.get_item_count("FieldRations"), 0, "and the ration was consumed by it")
+	assert_eq(str(c.get_tamed_by(fox)), "", "the fox is not a companion")
+	assert_eq(str(c._instances[fox]["state"]), "idle", "and it did not die")
+	var granted: Array = result["yields"]
+	assert_eq(granted.size(), 1, "the result reports the shed yield")
+	assert_eq(str((granted[0] as Dictionary).get("item", "")), "glimmer_fur_tuft", "as the fur tuft")
+	assert_eq(int((granted[0] as Dictionary).get("quantity", 0)), 1, "one of them")
+	assert_false(taming.has_flag(pid, "wolfBondHolder"), "a feed grants no flag")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_fox_needs_offer() -> void:
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var fox := _taming_instance_of(c, "GlimmerFox")
+	_taming_stand_near(registry, pid, c, fox)
+	rig["crafting"].set_skill("Alchemy", "apprentice")
+
+	assert_eq(str(taming.can_tame(fox, "")["reason"]), "missing_offer", "an empty-handed feed is refused")
+	var refused: Dictionary = taming.tame(fox, "")
+	assert_false(bool(refused["success"]), "and nothing is resolved")
+	assert_eq(str(refused["reason"]), "missing_offer", "reason is missing_offer")
+
+	# The raw-meat alternative satisfies the same rule, and is what gets consumed.
+	var inventory: Node = taming.inventory_for(pid)
+	assert_true(inventory.add_item("raw_boar_meat", 1), "raw meat is carried")
+	assert_true(bool(taming.tame(fox, "")["success"]), "the alternative offering works")
+	assert_eq(inventory.get_item_count("raw_boar_meat"), 0, "and it was the item consumed")
+	assert_eq(inventory.get_item_count("glimmer_fur_tuft"), 1, "still yielding the fur tuft")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_cooldown() -> void:
+	# A yield tame leaves the creature alive, so the fabric's cooldown is the only
+	# thing that stops the same fox being fed in a loop. Wall-clock, like every other
+	# deadline in the project.
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var fox := _taming_instance_of(c, "GlimmerFox")
+	_taming_stand_near(registry, pid, c, fox)
+	rig["crafting"].set_skill("Alchemy", "apprentice")
+	var inventory: Node = taming.inventory_for(pid)
+	inventory.add_item("FieldRations", 3)
+
+	assert_true(bool(taming.tame(fox, "")["success"]), "the first feed succeeds")
+	assert_true(taming.cooldown_remaining(fox, pid) > 0.0, "a cooldown is running")
+	assert_true(taming.cooldown_remaining(fox, pid) <= 600.0, "and it is bounded by the fabric's 600 s")
+	assert_eq(str(taming.can_tame(fox, "")["reason"]), "on_cooldown", "a second feed is refused")
+	assert_eq(inventory.get_item_count("FieldRations"), 2, "and the ration was NOT eaten")
+	assert_eq(inventory.get_item_count("glimmer_fur_tuft"), 1, "nor is a second tuft shed")
+	assert_false(bool(taming.tame(fox, "")["success"]), "tame() refuses it as well")
+
+	# Expire the deadline: the same fox can be fed again.
+	taming._cooldowns[pid][fox] = Time.get_unix_time_from_system() - 1.0
+	assert_eq(taming.cooldown_remaining(fox, pid), 0.0, "the cooldown has elapsed")
+	assert_true(bool(taming.tame(fox, "")["success"]), "so the fox can be fed again")
+	assert_eq(inventory.get_item_count("glimmer_fur_tuft"), 2, "shedding a second tuft")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_is_per_player() -> void:
+	# Taming is per-player for the same reason research is: the granted flag, the
+	# companion binding and the consumed offering all belong to ONE player's record and
+	# ONE player's inventory.
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var local_pid := str(registry.local_player_id)
+	rig["crafting"].set_skill("Unarmed", "journeyman")
+	rig["crafting"].set_skill("Alchemy", "apprentice")
+	var wolves := _taming_instances_of(c, "GraywolfPack")
+	var target := str(wolves[1])
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+
+	var alice: String = str(registry.resolve_identity(2))
+	var bob: String = str(registry.resolve_identity(3))
+	_taming_stand_near(registry, alice, c, target)
+	_taming_stand_near(registry, bob, c, target)
+	# Only BOB carries the offering: a feed by alice must not spend bob's ration.
+	var bob_inv: Node = registry.get_inventory(bob)
+	assert_true(bob_inv.add_item("FieldRations", 1), "bob carries a ration")
+
+	var alice_result: Dictionary = taming.tame(target, alice)
+	assert_true(bool(alice_result["success"]), "alice tames the pup with her own hands")
+	assert_eq(str(alice_result["player_id"]), alice, "and the result names alice")
+	assert_true(taming.has_flag(alice, "wolfBondHolder"), "alice holds the flag")
+	assert_false(taming.has_flag(bob, "wolfBondHolder"), "bob does not")
+	assert_eq(c.get_tamed_by(target), alice, "the companion belongs to alice")
+	assert_true((taming.get_companions(alice) as Array).has(target), "and is listed for her")
+	assert_false((taming.get_companions(bob) as Array).has(target), "not for bob")
+
+	# The offering is per-player: bob's ration is invisible to alice's feed, and alice
+	# has no ration of her own.
+	var fox := _taming_instance_of(c, "GlimmerFox")
+	_taming_stand_near(registry, alice, c, fox)
+	var fed: Dictionary = taming.tame(fox, alice)
+	assert_false(bool(fed["success"]), "alice cannot feed the fox on bob's ration")
+	assert_eq(str(fed["reason"]), "missing_offer", "reason is missing_offer")
+	assert_eq(bob_inv.get_item_count("FieldRations"), 1, "bob's ration is untouched")
+
+	# ...and bob, standing next to the same fox, does get fed.
+	_taming_stand_near(registry, bob, c, fox)
+	assert_true(bool(taming.tame(fox, bob)["success"]), "bob feeds it with his own ration")
+	assert_eq(bob_inv.get_item_count("FieldRations"), 0, "spending his own")
+	assert_eq(bob_inv.get_item_count("glimmer_fur_tuft"), 1, "and receiving the tuft")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_client_forwards_intent() -> void:
+	# A client owns no records, so it must FORWARD a tame to the host rather than
+	# resolve one against its synced world: the flag, the companion binding and the
+	# consumed offering all belong to a record only the host can write.
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
+	var taming := TamingSlice.new()
+	add_child(taming)
+	taming.creature_slice = c
+	taming.is_authoritative = false
+	var target := _taming_instance_of(c, "GraywolfPack")
+	var forwarded: Array = []
+	var on_intent := func(instance_id: String, player_id: String) -> void:
+		forwarded.append([instance_id, player_id])
+	GameBus.tame_intent.connect(on_intent)
+	GameBus.tame_requested.emit(target)
+	GameBus.tame_intent.disconnect(on_intent)
+	assert_eq(forwarded.size(), 1, "the client forwarded exactly one intent")
+	assert_eq(str(forwarded[0][0]), target, "carrying the instance id")
+	assert_eq(str(forwarded[0][1]), "", "and no identity — the host decides who is taming")
+	assert_false(c.is_tamed(target), "nothing resolved locally")
+	c.free()
+	taming.free()
+
+func _test_taming_companion_respawn_suppressed() -> void:
+	# "Pup does not respawn if tamed": the tamed binding outlives the death, so the
+	# respawn tick must leave a dead companion dead — while a wild creature with the
+	# same expired deadline does come back.
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var wolves := _taming_instances_of(c, "GraywolfPack")
+	var target := str(wolves[1])
+	_taming_stand_near(registry, pid, c, target)
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	rig["crafting"].set_skill("Unarmed", "journeyman")
+	assert_true(bool(taming.tame(target, "")["success"]), "the pup is tamed")
+
+	GameBus.creature_died.emit(target, Vector3.ZERO, "player")
+	assert_eq(str(c._instances[target]["state"]), "dead", "the companion died")
+	c._instances[target]["respawn_at"] = Time.get_unix_time_from_system() - 1.0
+
+	var wild := _taming_instance_of(c, "ForestBoar")
+	assert_true(wild != "", "a wild creature exists to control against")
+	GameBus.creature_died.emit(wild, Vector3.ZERO, "player")
+	c._instances[wild]["respawn_at"] = Time.get_unix_time_from_system() - 1.0
+
+	c._tick_respawn()
+	assert_eq(str(c._instances[target]["state"]), "dead", "a tamed companion does not respawn")
+	assert_eq(str(c._instances[wild]["state"]), "idle", "a wild creature still does")
+	assert_eq(c.get_tamed_by(target), pid, "and the binding survives the death")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_companion_follows() -> void:
+	# A companion is not a target and not a pack member: the attack targeting skips it,
+	# and its AI walks it toward its owner instead of patrolling.
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var wolves := _taming_instances_of(c, "GraywolfPack")
+	var target := str(wolves[1])
+	_taming_stand_near(registry, pid, c, target)
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	rig["crafting"].set_skill("Unarmed", "journeyman")
+	assert_true(bool(taming.tame(target, "")["success"]), "the pup is tamed")
+
+	var at: Vector3 = c.get_instance_position(target)
+	assert_true(c.nearest_creature(at, 20.0) != target, "a companion is not offered as a target")
+	var wild := _taming_instance_of(c, "ForestBoar")
+	assert_true(c.nearest_creature(c.get_instance_position(wild), 20.0) != "",
+		"while a wild creature still is")
+
+	var ai := CreatureAI.new()
+	add_child(ai)
+	ai.creature_slice = c
+	ai.taming_slice = taming
+	ai.on_companion_tamed(target, pid)
+	assert_eq(ai.get_state(target), "tamed", "the companion enters the tamed state")
+	ai.on_companion_tamed(target, pid)
+	assert_eq(ai.get_state(target), "tamed", "and re-entering it is idempotent")
+
+	var owner_at := Vector3(40.0, 0.0, 40.0)
+	registry.record_position(pid, owner_at)
+	var before: float = c.get_instance_position(target).distance_to(owner_at)
+	ai._tick_companion(target, c._instances[target], 0.5)
+	var after: float = c.get_instance_position(target).distance_to(owner_at)
+	assert_true(after < before, "the companion closes on its owner")
+	assert_eq(ai.get_state(target), "tamed", "and stays tamed while following")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_record_round_trip() -> void:
+	# The flag and the companion binding are per-player PROGRESSION, so they persist on
+	# the same record as position/HP/technology. A record written before this phase has
+	# neither key and restores to empty, not to a crash.
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var wolves := _taming_instances_of(c, "GraywolfPack")
+	var target := str(wolves[1])
+	_taming_stand_near(registry, pid, c, target)
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	rig["crafting"].set_skill("Unarmed", "journeyman")
+	assert_true(bool(taming.tame(target, "")["success"]), "the pup is tamed")
+
+	taming.sync_record(pid)
+	var data: Dictionary = registry.get_player_data(pid)
+	assert_true(data.has("flags"), "the record carries flags")
+	assert_true(data.has("companions"), "and companions")
+	assert_true(bool((data["flags"] as Dictionary).get("wolfBondHolder", false)), "the flag is written")
+	assert_true((data["companions"] as Array).has(target), "and the companion id")
+
+	# A fresh slice (a server boot) restores both from the record, and re-binds the
+	# companion to the creature instance that is resident again.
+	var restored := TamingSlice.new()
+	add_child(restored)
+	restored.creature_slice = c
+	restored.player_registry = registry
+	restored.apply_record(data, pid)
+	assert_true(restored.has_flag(pid, "wolfBondHolder"), "the flag is restored")
+	assert_true((restored.get_companions(pid) as Array).has(target), "so is the companion")
+	assert_eq(c.get_tamed_by(target), pid, "and the binding is re-applied to the instance")
+
+	# A pre-Phase-35 record applies to empty state.
+	var legacy := TamingSlice.new()
+	add_child(legacy)
+	legacy.apply_record({ "player_id": pid }, pid)
+	assert_eq(legacy.get_flags(pid).size(), 0, "an older record restores no flags")
+	assert_eq((legacy.get_companions(pid) as Array).size(), 0, "and no companions")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers

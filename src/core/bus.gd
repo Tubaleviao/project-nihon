@@ -472,3 +472,37 @@ signal proposal_supersede_intent(proposal_id: String, replacement_id: String)
 
 ## Host → clients: authoritative governance state (proposals + decisions log).
 signal governance_synced(data: Dictionary)
+
+# ---------------------------------------------------------------------------
+# Taming (Phase 35)
+# ---------------------------------------------------------------------------
+
+## Request to tame a creature instance (emitted by PlayerSlice on a tame input,
+## or any host-side system). The interaction is resolved against the creature's
+## structured `tame` field in the fabric (fabric/world/creatures/*.js) — the
+## requirements, the granted flag, the shed items and the cooldown all come from
+## there, never from a table in GDScript.
+## instance_id : String — CreatureSlice instance id
+signal tame_requested(instance_id: String)
+
+## Client → host (Phase 34/35 identity rule): a non-authoritative slice cannot
+## resolve a tame, because the companion binding, the granted player flag and the
+## consumed offering all belong to a player record the host owns. The client emits
+## this with an empty player_id ("me"); networking forwards it, and the host
+## re-emits it with the identity bound to that connection, so the offering comes
+## off that player's own inventory and only that player's flags move. Host-local
+## taming stays on `tame_requested`.
+## instance_id : String — CreatureSlice instance id
+## player_id   : String — the tamer; "" means "the local player"
+signal tame_intent(instance_id: String, player_id: String)
+
+## Emitted by TamingSlice with the outcome of a tame attempt.
+## result : Dictionary — { instance_id, creature_id, success, reason, result,
+##          player_id, flag, yields }
+signal tame_resolved(result: Dictionary)
+
+## Emitted by TamingSlice when an instance becomes a player's companion.
+## instance_id : String — CreatureSlice instance id
+## creature_id : String — fabric key (e.g. "GraywolfPack")
+## player_id   : String — the companion's owner
+signal creature_tamed(instance_id: String, creature_id: String, player_id: String)

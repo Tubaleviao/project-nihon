@@ -18,6 +18,11 @@ extends Node
 ##   apply_recorded_creature_states(list)               -> void     (Phase 33, host: no new ids)
 ##   spawn_for_chunk(chunk_pos: Vector2i)               -> void     (Phase 17)
 ##   despawn_for_chunk(chunk_pos: Vector2i)             -> void     (Phase 17)
+##   get_instance_position(instance_id)                 -> Vector3  (Phase 35)
+##   mark_tamed(instance_id, player_id)                 -> bool     (Phase 35)
+##   is_tamed(instance_id) / get_tamed_by(instance_id)  -> bool / String
+##   companions_of(player_id)                           -> Array    (Phase 35)
+##   has_defeated_species(creature_id)                  -> bool     (Phase 35, alpha-down gate)
 ##
 ## Respawn deadlines are WALL-CLOCK (Phase 33): `respawn_at` is a Unix-epoch
 ## second from Time.get_unix_time_from_system(), the same convention the market
@@ -93,13 +98,17 @@ func _process(delta: float) -> void:
 
 ## Return the instance_id of the nearest live creature within radius, or "".
 ## Routed through the spatial hash (Phase 28) so the scan is bounded by the
-## query footprint, not the total population.
+## query footprint, not the total population. TAMED instances are skipped
+## (Phase 35): a companion is not a target, so an attack input aimed at the
+## nearest creature must not swing at the player's own wolf.
 func nearest_creature(from_pos: Vector3, radius: float) -> String:
 	var best_id := ""
 	var best_dist := radius + 1.0
 	for iid in _spatial.query_radius(from_pos, radius):
 		var inst: Dictionary = _instances[iid]
 		if inst["state"] == "dead":
+			continue
+		if str(inst.get("tamed_by", "")) != "":
 			continue
 		var d: float = inst["position"].distance_to(from_pos)
 		if d < best_dist:
@@ -112,11 +121,89 @@ func nearest_creature(from_pos: Vector3, radius: float) -> String:
 func creatures_in_radius(pos: Vector3, radius: float) -> Array:
 	return _spatial.query_radius(pos, radius)
 
+# ---------------------------------------------------------------------------
+# Taming (Phase 35)
+# ---------------------------------------------------------------------------
+
+## Bind an instance to its owner. Returns false when the instance is unknown or
+## already tamed by somebody else (a companion is not re-tameable — the taming
+## slice's cooldown covers the yield case, this covers the companion case).
+func mark_tamed(instance_id: String, player_id: String) -> bool:
+	if not _instances.has(instance_id) or player_id == "":
+		return false
+	var cur: String = str(_instances[instance_id].get("tamed_by", ""))
+	if cur != "" and cur != player_id:
+		return false
+	_instances[instance_id]["tamed_by"] = player_id
+	return true
+
+func is_tamed(instance_id: String) -> bool:
+	return get_tamed_by(instance_id) != ""
+
+## The owner of a tamed instance, or "" when it is wild (or unknown).
+func get_tamed_by(instance_id: String) -> String:
+	if not _instances.has(instance_id):
+		return ""
+	return str(_instances[instance_id].get("tamed_by", ""))
+
+## Every instance currently tamed by `player_id`, ordered by instance id so the
+## list is stable (it is persisted on the player record).
+func companions_of(player_id: String) -> Array:
+	var out: Array = []
+	if player_id == "":
+		return out
+	for iid in _instances:
+		if str(_instances[iid].get("tamed_by", "")) == player_id:
+			out.append(str(iid))
+	out.sort()
+	return out
+
+## True when an instance of `creature_id` is dead (or held dead) anywhere the
+## slice knows about — live population, or a death retained for a chunk that is
+## not streamed right now. This is the pack's alpha-down gate for taming: the
+## fabric rule is "tame a surviving pup AFTER defeating the alpha wolf", and the
+## runtime models a pack as N instances of one creature id, so "the alpha is
+## down" is "one of them is dead".
+func has_defeated_species(creature_id: String) -> bool:
+	if creature_id == "":
+		return false
+	for iid in _instances:
+		var inst: Dictionary = _instances[iid]
+		if str(inst.get("creature_id", "")) == creature_id and inst["state"] == "dead":
+			return true
+	for iid in _dead_state:
+		if str(_dead_state[iid].get("creature_id", "")) == creature_id:
+			return true
+	return false
+
+## Whether a tamed instance of this creature is exempt from respawning — the
+## fabric's `tame.suppressRespawn` ("pup does not respawn if tamed"). Read from
+## GameData, never hardcoded, so the fabric stays the single source of truth.
+func _suppresses_respawn(inst: Dictionary) -> bool:
+	if str(inst.get("tamed_by", "")) == "":
+		return false
+	var res: Resource = GameData.CREATURES.get(str(inst.get("creature_id", "")), null)
+	if res == null:
+		return false
+	var tame = res.get("tame")
+	if tame is String and tame != "":
+		tame = JSON.parse_string(tame)
+	if not (tame is Dictionary):
+		return false
+	return bool(tame.get("suppressRespawn", false))
+
 ## Return the fabric creature key for an instance (e.g. "ForestBoar").
 func get_instance_creature_id(instance_id: String) -> String:
 	if not _instances.has(instance_id):
 		return ""
-	return _instances[instance_id]["creature_id"]
+	return str(_instances[instance_id]["creature_id"])
+
+## The instance's current world position, or Vector3.ZERO when it is unknown.
+## Public so per-player interactions (taming, Phase 35) can range-check a target.
+func get_instance_position(instance_id: String) -> Vector3:
+	if not _instances.has(instance_id):
+		return Vector3.ZERO
+	return _instances[instance_id]["position"]
 
 ## Move an instance to a new world position, keeping body and record in sync.
 func set_instance_position(instance_id: String, pos: Vector3) -> void:
@@ -139,6 +226,7 @@ func get_all_instances() -> Array:
 			"state":       inst["state"],
 			"hp":          inst["hp"],
 			"chunk":       inst.get("chunk", Vector2i.ZERO),
+			"tamed_by":    str(inst.get("tamed_by", "")),
 		})
 	return out
 
@@ -291,6 +379,7 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 		"hp":          hp,
 		"respawn_at":  -1.0,
 		"mi":          mi,
+		"tamed_by":    "",
 	}
 
 	# A creature that died before its chunk was despawned (or before this process
@@ -426,6 +515,14 @@ func _tick_respawn() -> void:
 	for iid in _instances:
 		var inst: Dictionary = _instances[iid]
 		if inst["state"] == "dead" and float(inst["respawn_at"]) > 0.0 and now >= float(inst["respawn_at"]):
+			# A TAMED companion whose fabric tame spec says it does not respawn
+			# stays dead: the fabric rule is "pup does not respawn if tamed", and
+			# bringing the wolf back would hand its owner a second body for the
+			# same companion id (the tamed_by binding outlives the death).
+			if _suppresses_respawn(inst):
+				_dead_state.erase(iid)
+				inst["respawn_at"] = -1.0
+				continue
 			_dead_state.erase(iid)
 			var creature_id: String = inst["creature_id"]
 			var res: Resource = GameData.CREATURES.get(creature_id, null)
@@ -512,6 +609,7 @@ func apply_creature_state(instance_id: String, creature_id: String, state: Strin
 		"hp":          maxf(hp, 0.0),
 		"respawn_at":  respawn_at,
 		"mi":          mi,
+		"tamed_by":    "",
 	}
 	_spatial.insert(instance_id, position)
 

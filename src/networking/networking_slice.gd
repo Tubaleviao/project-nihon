@@ -28,6 +28,7 @@ extends Node
 ##         craft_intent(recipe_id, player_id)        — client wants to craft
 ##         repair_intent(item_id, player_id)         — client wants to repair
 ##         research_intent(tech_id, player_id)       — client wants to research
+##         tame_intent(instance_id, player_id)       — client wants to tame
 ##   OUT : peer_connected(peer_id)
 ##         peer_disconnected(peer_id)
 ##         packet_received(peer_id, payload)         — legacy low-level receive
@@ -166,6 +167,9 @@ func _ready() -> void:
 	# way, and the host re-syncs the peer's own record slice when it resolves one.
 	GameBus.repair_intent.connect(_on_repair_intent)
 	GameBus.research_intent.connect(_on_research_intent)
+	# Phase 35 — taming is per-player as well (a granted flag and a companion
+	# binding both live on the tamer's record), so it travels the same way.
+	GameBus.tame_intent.connect(_on_tame_intent)
 	# Phase 24 — social/economy replication.
 	GameBus.market_synced.connect(_on_market_synced)
 	GameBus.governance_synced.connect(_on_governance_synced)
@@ -523,6 +527,16 @@ func _on_research_intent(tech_id: String, _player_id: String) -> void:
 		return
 	_broadcast({ "type": "research_intent", "tech_id": tech_id })
 
+## Phase 35 — taming: the granted flag and the companion binding live on a player
+## record the host owns, so a client forwards the target instance and the host
+## tames for the identity it bound. The player_id half is ignored here for the same
+## reason as craft_intent: the identity is bound to the connection on the host
+## side, never trusted from the payload.
+func _on_tame_intent(instance_id: String, _player_id: String) -> void:
+	if _role != Role.CLIENT:
+		return
+	_broadcast({ "type": "tame_intent", "instance_id": instance_id })
+
 ## Phase 34 — host → one client: the peer's OWN record slice changed on the host's
 ## side of an action it asked for (its inventory after a repair, its technology
 ## statuses after a research). Delivered to that peer alone: an inventory is
@@ -791,6 +805,14 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				push_warning("NetworkingSlice: research_intent from un-handshaked peer %d — dropped" % sender)
 			else:
 				GameBus.research_intent.emit(str(payload.get("tech_id", "")), researcher)
+		"tame_intent":
+			# Phase 35 — and the same for taming: the flag and the companion bind
+			# to the connection's own player, never to a name in the payload.
+			var tamer := get_player_id(sender)
+			if tamer.is_empty():
+				push_warning("NetworkingSlice: tame_intent from un-handshaked peer %d — dropped" % sender)
+			else:
+				GameBus.tame_intent.emit(str(payload.get("instance_id", "")), tamer)
 		"block_edit_intent":
 			var action := str(payload.get("action", ""))
 			var ipos := _vec3(payload.get("position", []))

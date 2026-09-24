@@ -17,6 +17,7 @@ respawnSeconds = 480
 spawnCount = 2
 biome = 3
 drops = [{"item":"glimmer_pelt","chance":1,"minQty":1,"maxQty":1},{"item":"luminescent_reagent","chance":1,"minQty":1,"maxQty":1}]
+tame = {"result":"yield","requiresUnarmed":true,"requiresSkill":{"skill":"Alchemy","tier":"apprentice"},"requiresAnyItem":[{"item":"FieldRations","quantity":1},{"item":"raw_boar_meat","quantity":1}],"requiresDefeated":false,"grantsFlag":"","yields":[{"item":"glimmer_fur_tuft","quantity":1}],"cooldownSeconds":600,"suppressRespawn":false}
 state_machine_field = "state"
 initial_state = "idle"
 description = "A sleek, luminescent fox native to the Twilight Grove whose fur shifts in hue with the accelerated day-night cycle. Inherently curious and non-aggressive; actively approaches players carrying food. Its shed fur is harvested as a raw alchemical reagent that intensifies potion luminosity."

@@ -47,3 +47,4 @@ enum State {
 @export var spawnCount: int
 @export var biome: int
 @export var drops: Array
+@export var tame: Dictionary

@@ -40,6 +40,7 @@ extends Node
 ##   get_record(player_id) -> Dictionary
 ##   record_position(player_id, pos) / record_hp(player_id, hp)
 ##   record_appearance(player_id, recipe) / record_technology(player_id, statuses)
+##   record_flags(player_id, flags) / record_companions(player_id, ids)  — Phase 35
 ##   get_inventory(player_id) -> InventorySlice  — created on first access
 ##   set_inventory(player_id, inventory)
 ##   evict_player(player_id) -> bool             — drop an offline player's memory
@@ -62,7 +63,7 @@ var local_player_id: String = ""
 ## connection, and it is thrown away on disconnect.
 var _peer_ids: Dictionary = {}
 
-## player_id → record: { player_id, position, hp, appearance, technology }.
+## player_id → record: { player_id, position, hp, appearance, technology, flags, companions }.
 var _players: Dictionary = {}
 
 ## player_id → InventorySlice. The local player's entry is the game's existing
@@ -255,6 +256,8 @@ func ensure_player(player_id: String) -> Dictionary:
 			"hp":         -1.0,
 			"appearance": {},
 			"technology": {},
+			"flags":      {},
+			"companions": [],
 		}
 	return _players[player_id]
 
@@ -303,6 +306,27 @@ func record_technology(player_id: String, statuses: Dictionary) -> void:
 	if rec.is_empty():
 		return
 	rec["technology"] = statuses
+
+## The player's taming flags (Phase 35) — e.g. `wolfBondHolder`, which the Ranger
+## profession gate reads. Durable, because a flag is progression, not scenery.
+func record_flags(player_id: String, flags: Dictionary) -> void:
+	var rec := ensure_player(player_id)
+	if rec.is_empty():
+		return
+	rec["flags"] = flags
+
+## The instance ids this player has tamed (Phase 35). Instance ids are derived
+## from the chunk, creature and spawn index, so they are stable across restarts
+## and a restored binding resolves to the same creature.
+func record_companions(player_id: String, companion_ids: Array) -> void:
+	var rec := ensure_player(player_id)
+	if rec.is_empty():
+		return
+	var out: Array = []
+	for iid in companion_ids:
+		out.append(str(iid))
+	out.sort()
+	rec["companions"] = out
 
 # ---------------------------------------------------------------------------
 # Per-player inventory
@@ -381,6 +405,8 @@ func get_player_data(player_id: String) -> Dictionary:
 		"hp":        float(rec.get("hp", -1.0)),
 		"appearance": rec.get("appearance", {}),
 		"technology": rec.get("technology", {}),
+		"flags":      rec.get("flags", {}),
+		"companions": rec.get("companions", []),
 		"inventory": {},
 		"inventory_durability": {},
 	}
@@ -400,6 +426,11 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	rec["hp"] = float(data.get("hp", -1.0))
 	rec["appearance"] = data.get("appearance", {})
 	rec["technology"] = data.get("technology", {})
+	# Phase 35: taming flags and companion bindings are per-player progression, so
+	# they ride the same record. A saved payload from before this phase simply
+	# carries neither key and restores to the empty defaults.
+	rec["flags"]      = data.get("flags", {})
+	rec["companions"] = data.get("companions", [])
 	var contents: Variant = data.get("inventory", {})
 	if contents is Dictionary and not contents.is_empty():
 		var inv = get_inventory(player_id)

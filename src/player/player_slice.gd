@@ -28,6 +28,9 @@ const CAMERA_PIVOT_HEIGHT  := 2.0   # vertical point the camera orbits around
 const ZOOM_STEP := 1.5             # world units per scroll tick
 const SYNC_INTERVAL := 30     # physics ticks between network sync broadcasts
 const ATTACK_RANGE := 3.0     # metres — melee interaction radius
+## Metres — how close the player must be to tame (Phase 35). Must match
+## TamingSlice.TAME_RANGE, which re-checks it and is the authority.
+const TAME_RANGE := 4.0
 const PICKUP_RANGE := 60.0    # metres — how far the player can aim-pick (camera sits far back)
 const PICKUP_COLLISION_MASK := 4   # layer 3 (bit 2) — matches loot pickup bodies
 const BUILD_RANGE := 60.0     # metres — how far the player can reach a block
@@ -173,6 +176,10 @@ func _input(event: InputEvent) -> void:
 	# V key → place the selected station at the player's feet.
 	if event is InputEventKey and event.pressed and event.keycode == KEY_V:
 		_place_station()
+	# G key → tame the nearest creature in range (Phase 35). The rules live in
+	# TamingSlice (fabric-driven); this is only the player-facing affordance.
+	if event is InputEventKey and event.pressed and event.keycode == KEY_G:
+		_try_tame()
 	# E key → toggle all equipment on/off (inspect the naked body under the gear).
 	if event is InputEventKey and event.pressed and event.keycode == KEY_E:
 		GameBus.character_equipment_toggle_requested.emit()
@@ -644,6 +651,20 @@ func _place_station() -> void:
 	_refresh_build_hint()
 
 
+## Ask to tame the nearest creature within TAME_RANGE (Phase 35). The request goes
+## on the bus and TamingSlice decides: it owns the fabric rules, the offering
+## consumed from the tamer's inventory, the granted flag and the companion
+## binding. The search range here is only what the player can reach; the slice
+## re-checks it against its own TAME_RANGE, which is the authority.
+func _try_tame() -> void:
+	if creature_slice == null or not creature_slice.has_method("nearest_creature"):
+		return
+	var iid := str(creature_slice.nearest_creature(get_position(), TAME_RANGE))
+	if iid == "":
+		return
+	GameBus.tame_requested.emit(iid)
+
+
 func _make_mouse_icon(button: int) -> Control:
 	var icon: Control = MouseIconScript.new()
 	icon.button = button
@@ -699,6 +720,7 @@ func _build_shortcuts_menu() -> void:
 	_add_mouse_row(vbox, MOUSE_BUTTON_MIDDLE, "Place")
 	_add_key_row(vbox, "R", "Cycle material")
 	_add_key_row(vbox, "B · V", "Station cycle / place")
+	_add_key_row(vbox, "G", "Tame nearest creature")
 	_add_key_row(vbox, "E", "Toggle equipment")
 	_add_key_row(vbox, "I · T · C", "Windows")
 	_add_key_row(vbox, "ESC", "Cursor")

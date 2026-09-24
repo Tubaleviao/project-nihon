@@ -20,6 +20,7 @@ const InventorySlice   := preload("res://src/inventory/inventory_slice.gd")
 const CharacterSlice   := preload("res://src/character/character_slice.gd")
 const CraftingSlice    := preload("res://src/crafting/crafting_slice.gd")
 const TechnologySlice  := preload("res://src/technology/technology_slice.gd")
+const TamingSlice      := preload("res://src/creature/taming_slice.gd")
 const StationSlice     := preload("res://src/world/station_slice.gd")
 const TreeSlice        := preload("res://src/world/tree_slice.gd")
 const MarketSlice      := preload("res://src/world/market_slice.gd")
@@ -45,6 +46,7 @@ var _inventory:   InventorySlice
 var _character:   CharacterSlice
 var _crafting:    CraftingSlice
 var _technology:  TechnologySlice
+var _taming:      TamingSlice
 var _station:     StationSlice
 var _tree:        TreeSlice
 var _market:      MarketSlice
@@ -124,6 +126,7 @@ func _ready() -> void:
 	_character   = CharacterSlice.new()
 	_crafting    = CraftingSlice.new()
 	_technology  = TechnologySlice.new()
+	_taming      = TamingSlice.new()
 	_station     = StationSlice.new()
 	_tree        = TreeSlice.new()
 	_market      = MarketSlice.new()
@@ -157,7 +160,7 @@ func _ready() -> void:
 	# The UI (Phase 14) is presentation only, so a headless dedicated server
 	# (Phase 27) keeps it out of the tree — its _ready() would otherwise build
 	# windows nothing can render or click.
-	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _inventory, _character, _crafting, _technology, _station, _tree, _market, _trade, _proposal]
+	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _inventory, _character, _crafting, _technology, _taming, _station, _tree, _market, _trade, _proposal]
 	if not _is_server:
 		slices.append(_ui)
 	for s in slices:
@@ -182,6 +185,18 @@ func _ready() -> void:
 	# player's tree only, so the slice needs the registry that owns one inventory
 	# per player (see TechnologySlice).
 	_technology.player_registry = _registry
+	# Phase 35 — taming is per-player too: the granted flag, the companion binding
+	# and the consumed offering all belong to one player's record and inventory, so
+	# the slice needs the registry, the creature population, the skill table and
+	# the character (for the bare-hands rule).
+	_taming.creature_slice   = _creature
+	_taming.creature_ai      = _creature_ai
+	_taming.player_slice     = _player
+	_taming.player_registry  = _registry
+	_taming.crafting_slice   = _crafting
+	_taming.character_slice  = _character
+	_taming.inventory_slice  = _inventory
+	_creature_ai.taming_slice = _taming
 	_voxel.terrain_slice      = _terrain
 	_voxel.inventory_slice    = _inventory
 	_tree.inventory_slice     = _inventory
@@ -232,6 +247,10 @@ func _ready() -> void:
 	# Phase 34 — same rule for the technology tree: a client owns no records, so it
 	# forwards a research intent instead of resolving one against its synced copy.
 	_technology.is_authoritative = not _is_client
+	# Phase 35 — same rule for taming: the flag and the companion binding live on a
+	# player record the host owns, so a client forwards a tame intent instead of
+	# resolving one against its synced world.
+	_taming.is_authoritative = not _is_client
 
 	# Chunk streaming (Phase 17) — wire the manager to its collaborators.
 	_chunk_manager.terrain_slice  = _terrain
@@ -277,6 +296,7 @@ func _ready() -> void:
 	GameBus.craft_resolved.connect(_on_craft_resolved)
 	GameBus.repair_resolved.connect(_on_repair_resolved)
 	GameBus.research_resolved.connect(_on_research_resolved)
+	GameBus.tame_resolved.connect(_on_tame_resolved)
 	GameBus.technology_unlocked.connect(_on_technology_unlocked)
 	GameBus.own_state_synced.connect(_on_own_state_synced)
 	GameBus.block_mined.connect(_on_block_mined)
@@ -591,6 +611,10 @@ func _on_player_joined(peer_id: int, player_id: String, reconnected: bool) -> vo
 	var tech: Variant = _registry.get_record(player_id).get("technology", {})
 	if tech is Dictionary:
 		_technology.apply_statuses(tech, player_id)
+	# Phase 35 — the peer's taming flags and companion bindings ride the same
+	# record: a reconnecting peer keeps its `wolfBondHolder` flag and its tamed
+	# wolf (re-bound to the creature instance when that instance is resident).
+	_taming.apply_record(_registry.get_record(player_id), player_id)
 	print("[Server] %s player '%s' as %s" % ["reconnected" if reconnected else "joined", player_id, "peer_%d" % peer_id])
 	_networking.send_snapshot(peer_id, _build_snapshot(peer_id))
 
@@ -803,6 +827,10 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true) -> Dictionar
 		snapshot["inventory"] = own.get("inventory", {})
 		snapshot["inventory_durability"] = own.get("inventory_durability", {})
 		snapshot["technology"] = own.get("technology", {})
+		# Phase 35 — taming flags (`wolfBondHolder`) and the companion bindings are
+		# part of the peer's own record, so they ride the same own-record payload.
+		snapshot["flags"] = own.get("flags", {})
+		snapshot["companions"] = own.get("companions", [])
 		snapshot["player"] = { "position": own.get("position", []), "hp": own.get("hp", -1.0) }
 	return snapshot
 
@@ -843,6 +871,12 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 		# A client has no registry identity: its own tree is the only one it holds,
 		# which is the "" bucket resolve_player() falls back to.
 		_technology.apply_statuses(data["technology"], _registry.local_player_id)
+	if data.has("flags") or data.has("companions"):
+		# Phase 35 — the peer's own taming record, same "" bucket rule as above.
+		_taming.apply_record({
+			"flags":      data.get("flags", {}),
+			"companions": data.get("companions", []),
+		}, _registry.local_player_id)
 	var own: Variant = data.get("player", {})
 	if own is Dictionary:
 		var arr = own.get("position", [])
@@ -936,6 +970,8 @@ func _snapshot_local_player() -> void:
 	_registry.record_position(pid, _player.get_position())
 	_registry.record_hp(pid, _player.get_hp())
 	_registry.record_technology(pid, _technology.get_statuses(pid))
+	# Phase 35 — the live taming flags and companion bindings ride the same record.
+	_taming.sync_record(pid)
 	# Appearance is part of the identity ("owning their inventory, HP, position,
 	# and appearance"): the character's recipe is stored, not its visual nodes.
 	var char_id := _character.get_player_character()
@@ -1119,6 +1155,8 @@ func _restore_local_player() -> void:
 	var tech: Variant = rec.get("technology", {})
 	if tech is Dictionary and not (tech as Dictionary).is_empty():
 		_technology.apply_statuses(tech, pid)
+	# Phase 35 — the local player's taming flags and companion bindings.
+	_taming.apply_record(rec, pid)
 
 ## Read the world record and the LOCAL player's record off disk. A missing world
 ## record is NOT an error — a server with no save boots a fresh world.
@@ -1241,6 +1279,18 @@ func _on_research_resolved(result: Dictionary) -> void:
 func _on_technology_unlocked(_tech_id: String, _player_id: String) -> void:
 	pass
 
+## Phase 35 — a tame the host resolved for a REMOTE peer granted that peer a flag
+## (e.g. `wolfBondHolder`) and possibly bound a companion, both of which live on its
+## record. Fold the new flags and companions into the record first, so the durable
+## copy and the copy pushed to its client cannot diverge, then push.
+func _on_tame_resolved(result: Dictionary) -> void:
+	if _is_client:
+		return
+	var pid := str(result.get("player_id", ""))
+	if pid != "":
+		_taming.sync_record(pid)
+	_sync_peer_own_state(result)
+
 ## Host → the peer whose own record just changed. Nothing to do for a local player
 ## (its state is already live in this process) and nothing to send for a failed
 ## action (nothing changed).
@@ -1267,6 +1317,8 @@ func _own_state_payload(player_id: String) -> Dictionary:
 		"inventory": own.get("inventory", {}),
 		"inventory_durability": own.get("inventory_durability", {}),
 		"technology": own.get("technology", {}),
+		"flags": own.get("flags", {}),
+		"companions": own.get("companions", []),
 	}
 
 ## Client-side: the host changed our own record while acting on our behalf (a craft,
@@ -1279,6 +1331,13 @@ func _on_own_state_synced(data: Dictionary) -> void:
 		_inventory.replace_contents(data["inventory"], data.get("inventory_durability", {}))
 	if data.has("technology") and data["technology"] is Dictionary:
 		_technology.apply_statuses(data["technology"], _registry.local_player_id)
+	if data.has("flags") or data.has("companions"):
+		# Phase 35 — the same own-state route carries the taming flags and the
+		# companion bindings a host resolved on our behalf.
+		_taming.apply_record({
+			"flags":      data.get("flags", {}),
+			"companions": data.get("companions", []),
+		}, _registry.local_player_id)
 
 func _on_trade_completed(trade: Dictionary) -> void:
 	pass

@@ -55,3 +55,4 @@ enum State {
 @export var groupBehavior: int
 @export var packRadius: float
 @export var drops: Array
+@export var tame: Dictionary

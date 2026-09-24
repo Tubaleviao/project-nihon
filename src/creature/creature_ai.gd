@@ -15,6 +15,7 @@ extends Node
 ##   fleeing     — run away from player until safe distance or dead
 ##   dead        — static; CreatureSlice handles respawn
 ##   respawning  — CreatureSlice brings instance back to idle
+##   tamed       — a companion (Phase 35): never aggros, follows its owner
 ##
 ## Plug contract (GameBus signals consumed / emitted):
 ##   IN  : creature_died(entity_id, position, killer_id)
@@ -28,6 +29,7 @@ extends Node
 ## Public API:
 ##   get_state(instance_id) -> String
 ##   force_state(instance_id, state)   -- test helper
+##   on_companion_tamed(instance_id, player_id)  -- Phase 35: enter the tamed state
 
 ## Seconds between creature melee strikes while aggressive.
 const ATTACK_INTERVAL  := 1.5
@@ -40,6 +42,12 @@ const SPEED_IDLE       := 1.2
 const SPEED_ALERT      := 0.0   # alert = stationary, watching
 const SPEED_AGGRESSIVE := 3.5
 const SPEED_FLEE       := 4.5
+## Companion (Phase 35): a tamed creature keeps pace with its owner and stops
+## short of them instead of climbing inside the player's body.
+const SPEED_COMPANION  := 4.0
+const COMPANION_FOLLOW_STOP := 2.0
+## AI state name for a tamed companion.
+const STATE_TAMED := "tamed"
 
 ## Group coordination (pack/herd) — fabric `groupBehavior` enum values (Phase 30).
 ##   0 NONE — solitary; no cross-creature coordination
@@ -63,6 +71,11 @@ var creature_slice: Node = null
 var player_slice:   Node = null
 var battle_slice:   Node = null
 
+## Set by game_root (Phase 35): resolves where a companion's owner is, so a tamed
+## creature follows instead of patrolling. Left null in isolated tests — a
+## companion then simply holds position.
+var taming_slice:   Node = null
+
 ## Authority mode (Phase 18): creature AI runs on the host only. On a client
 ## the creature bodies are driven by host state broadcasts, never local AI.
 var is_authoritative: bool = true
@@ -85,7 +98,53 @@ func _process(delta: float) -> void:
 		if c_state == "dead" or c_state == "respawning":
 			continue
 		_ensure_ai_record(iid, inst["position"])
+		if _is_companion(iid):
+			_tick_companion(iid, inst, delta)
+			continue
 		_tick_instance(iid, inst, player_pos, delta)
+
+# ---------------------------------------------------------------------------
+# Companion (Phase 35)
+# ---------------------------------------------------------------------------
+
+## Called by TamingSlice the moment an instance becomes a player's companion.
+## Idempotent, and the state is re-asserted every tick anyway (see _tick_companion)
+## so a restore or a respawn cannot leave a companion in a hostile state.
+func on_companion_tamed(instance_id: String, _player_id: String) -> void:
+	var pos := Vector3.ZERO
+	if creature_slice != null:
+		pos = creature_slice.get_instance_position(instance_id)
+	_ensure_ai_record(instance_id, pos)
+	_ai[instance_id]["state"] = STATE_TAMED
+
+## A companion never aggros, never attacks and never patrols: it walks toward its
+## owner and stops just short of them. The owner's position comes from TamingSlice,
+## which resolves the local player's body or a remote peer's recorded position;
+## when neither is knowable the companion holds position rather than guessing.
+func _tick_companion(iid: String, inst: Dictionary, delta: float) -> void:
+	if _ai[iid]["state"] != STATE_TAMED:
+		_transition(iid, STATE_TAMED, inst)
+	if taming_slice == null or not taming_slice.has_method("companion_target"):
+		return
+	if creature_slice == null or not creature_slice.has_method("get_tamed_by"):
+		return
+	var owner := str(creature_slice.get_tamed_by(iid))
+	if owner == "":
+		return
+	var target = taming_slice.companion_target(owner)
+	if not (target is Vector3):
+		return
+	var tgt: Vector3 = target
+	var pos: Vector3 = inst["position"]
+	if pos.distance_to(tgt) <= COMPANION_FOLLOW_STOP:
+		return
+	_move_instance(iid, inst, tgt, SPEED_COMPANION, delta)
+
+## Whether an instance is somebody's companion (CreatureSlice owns the binding).
+func _is_companion(iid: String) -> bool:
+	if creature_slice == null or not creature_slice.has_method("is_tamed"):
+		return false
+	return bool(creature_slice.is_tamed(iid))
 
 # ---------------------------------------------------------------------------
 # Per-instance tick
@@ -267,6 +326,10 @@ func _propagate_group_state(iid: String, inst: Dictionary, new_state: String) ->
 ## ticks its own state machine.
 func _escalate_neighbor(nid: String, new_state: String) -> void:
 	if not _ai.has(nid):
+		return
+	# A companion is not a pack member any more (Phase 35): a wolf that joined a
+	# player must not be dragged into its former pack's alert or flee.
+	if _is_companion(nid):
 		return
 	var cur: String = _ai[nid]["state"]
 	if cur == "dead" or cur == "respawning":
