@@ -149,6 +149,9 @@ var _peer: ENetMultiplayerPeer
 var _role: int = Role.OFFLINE
 
 ## Snapshot reassembly state (client): snapshot_id → { count, received, parts }.
+## Phase 38 — released with the connection whose chunks carried it: a peer's disconnect
+## on the host, this machine's own teardown, and (the case that was missing) a CLIENT
+## losing its host, which is what `_on_server_disconnected` is for.
 var _snapshot_buffer: Dictionary = {}
 var _next_snapshot_id: int = 0
 
@@ -1052,6 +1055,25 @@ func adopt_own_handle(value: Variant) -> Variant:
 		return "player" if s == claimed_handle else s
 	)
 
+## Phase 38 — host side: the world snapshot's social/economy blobs, redacted and keyed
+## by the ONE list that says which parts of the world name players
+## (`IDENTIFIED_STATE_KEYS`).
+##
+## The snapshot used to hardcode exactly those three keys, which left two lists to
+## keep in step: this side's literals and the constant `_adopt_snapshot_identities`
+## walks on the receiving side. A fourth identity-bearing blob added to the constant
+## would then have been ADOPTED by every client while never being redacted on the way
+## out — a player id on the wire, which is the leak the constant exists to prevent.
+## Blobs the constant does not name are dropped rather than passed through: an
+## identity-bearing key that nobody has added to the list is a key whose redaction
+## story has not been decided yet.
+func redact_social_state(state: Dictionary) -> Dictionary:
+	var out := {}
+	for key in IDENTIFIED_STATE_KEYS:
+		if state.has(key):
+			out[key] = redact_for_client(state[key])
+	return out
+
 ## Walk `value`, mapping every STRING through `mapper` — values and dictionary keys
 ## alike. Arrays and dictionaries are rebuilt; every other type is passed through. The
 ## shapes walked here are the replicated social/economy state (dictionaries of
@@ -1072,7 +1094,8 @@ func _map_identities(value: Variant, mapper: Callable) -> Variant:
 	return value
 
 ## Client side: the world snapshot's identity-bearing blobs, restored to this client's
-## own view (see IDENTIFIED_STATE_KEYS). Only those keys are walked — a snapshot is
+## own view (see IDENTIFIED_STATE_KEYS — the host half of the same list is
+## `redact_social_state`). Only those keys are walked — a snapshot is
 ## mostly terrain and entity data, and rewriting every string in it would cost a pass
 ## over the whole world for no privacy gain.
 func _adopt_snapshot_identities(data: Dictionary) -> Dictionary:
@@ -1093,10 +1116,13 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			var pos := _vec3(payload.get("position", []))
 			# The packet also carries the peer's self-declared `hp` / `max_hp`,
 			# used for its own display. The host deliberately keeps NO durable
-			# copy: the value is client-declared and cannot be verified here, so
-			# persisting it made health a restart-proof cheat (see
-			# PlayerRegistry.record_hp). Position is the only half the host
-			# retains, and only so a reconnect can resume from it.
+			# copy of THAT value: it is client-declared and cannot be verified
+			# here, so persisting it made health a restart-proof cheat (see
+			# PlayerRegistry.record_hp). Phase 38 — a peer's health IS durable
+			# now, but only from the number the host resolved itself
+			# (record_simulated_hp, via game_root._on_player_damaged); the
+			# declared half still has no door. Position is the other half the
+			# host retains, and only so a reconnect can resume from it.
 			GameBus.remote_player_state.emit(sender, pos)
 		"craft_intent":
 			# A remote peer's craft must resolve against ITS OWN inventory (crafting
@@ -1539,6 +1565,10 @@ func _attach_peer() -> void:
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
+	# Phase 38 — the other end of the same lifecycle: a CLIENT losing its host. Without
+	# this the client's reassembly state had no eviction point at all (both clear sites
+	# were on the host's side of the wire).
+	multiplayer.server_disconnected.connect(_on_server_disconnected)
 
 func _detach_peer() -> void:
 	if multiplayer.peer_connected.is_connected(_on_peer_connected):
@@ -1547,6 +1577,23 @@ func _detach_peer() -> void:
 		multiplayer.peer_disconnected.disconnect(_on_peer_disconnected)
 	if multiplayer.connected_to_server.is_connected(_on_connected_to_server):
 		multiplayer.connected_to_server.disconnect(_on_connected_to_server)
+	if multiplayer.server_disconnected.is_connected(_on_server_disconnected):
+		multiplayer.server_disconnected.disconnect(_on_server_disconnected)
+
+## Phase 38 — client side: the host went away. The reconnect policy is game_root's
+## (`_on_server_disconnected` there answers a retry), but the transport state left
+## behind is this slice's, and the snapshot buffer is the part that leaks: an
+## incomplete snapshot can never be completed by the host that just vanished, so its
+## entry lived for the whole session. Neither pre-existing clear site covered this —
+## one is this slice's own teardown and the other is a PEER disconnecting, and a client
+## has no peers to disconnect (see forget_player_id).
+##
+## Role-gated: a host has no server to lose, and its own teardown clears the buffer
+## already. A second, weaker clear here would be a hole rather than a fix.
+func _on_server_disconnected() -> void:
+	if _role != Role.CLIENT:
+		return
+	_snapshot_buffer.clear()
 
 ## Phase 33 — client side: the connection is up, so present our cached player id.
 ## The host answers with the id it binds us to (the same one on a reconnect, a

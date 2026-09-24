@@ -58,8 +58,8 @@ const TAME_RANGE := 4.0
 const SkillTiers := preload("res://src/core/skill_tiers.gd")
 
 ## Phase 37 — the registry whose pure `live_cooldowns()` prune the cooldown mirror is
-## saved with and restored through, so the record and the in-memory table can never
-## disagree about which deadlines are still live.
+## saved with, restored through, and (since Phase 38) pruned in place with, so the record
+## and the in-memory table can never disagree about which deadlines are still live.
 const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
 
 ## Set by game_root: the creature population (tamed bindings, alpha-down gate).
@@ -280,15 +280,35 @@ func _companions_for(player_id: String) -> Dictionary:
 		_companions[player_id] = {}
 	return _companions[player_id]
 
+## The taming mirror's cooldown table for `player_id`, PRUNED IN PLACE of expired
+## deadlines.
+##
+## Phase 38 — the prune used to run only on the way OUT (`get_cooldowns` hands the
+## record a filtered COPY), so the table this slice held kept every deadline the player
+## had ever set while the saved copy dropped them: the mirror grew with every fox ever
+## fed, for as long as the player stayed connected, and the record's copy only ever
+## caught up at a `sync_record`. Pruning where the table is READ is what makes the two
+## agree continuously, and it is the same one shared rule
+## (`PlayerRegistry.live_cooldowns`) applied to both.
 func _cooldowns_for(player_id: String) -> Dictionary:
 	if not _cooldowns.has(player_id):
 		_cooldowns[player_id] = {}
+	var table: Dictionary = _cooldowns[player_id]
+	if not table.is_empty():
+		var live := PlayerRegistry.live_cooldowns(table)
+		# Replace only when something actually expired, so the common case (a table of
+		# live deadlines) allocates nothing and every caller keeps writing into the one
+		# dictionary the mirror holds.
+		if live.size() != table.size():
+			_cooldowns[player_id] = live
 	return _cooldowns[player_id]
 
 ## The live cooldown deadlines to PERSIST for `player_id` (instance_id → deadline).
 ## Expired entries are dropped: they bound nothing, and keeping them would grow the
 ## player record with every fox ever fed. Pruning lives in PlayerRegistry
-## (`live_cooldowns`) so the record and the mirror agree on what "live" means.
+## (`live_cooldowns`) so the record and the mirror agree on what "live" means — and,
+## since Phase 38, the mirror itself is pruned in place as well (see `_cooldowns_for`),
+## so this is belt-and-braces rather than the only prune that ever ran.
 func get_cooldowns(player_id: String = "") -> Dictionary:
 	return PlayerRegistry.live_cooldowns(_cooldowns_for(resolve_player(player_id)))
 

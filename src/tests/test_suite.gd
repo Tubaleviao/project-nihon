@@ -393,6 +393,12 @@ func run() -> void:
 	_run_test("battle: player rounds route by target id",         _test_battle_routes_player_rounds_by_target)
 	_run_test("creature: instances_view is cached and live",      _test_creature_instances_view_cached)
 
+	# Phase 38 review fixes
+	_run_test("identity: the host simulates a peer's hp",         _test_host_simulates_peer_hp)
+	_run_test("net: snapshot social keys are one list",           _test_snapshot_social_keys_are_identified)
+	_run_test("net: snapshot buffer clears when host is lost",    _test_net_snapshot_buffer_cleared_when_host_lost)
+	_run_test("taming: cooldown mirror prunes in place",          _test_taming_cooldown_mirror_pruned_in_place)
+
 	# Self-check: the _run_test list above is manual, so a test function can be
 	# written but forgotten from the list. Fail loudly instead of silently
 	# dropping it: any _test_* method not registered above fails the suite.
@@ -7735,6 +7741,175 @@ func _test_creature_instances_view_cached() -> void:
 	assert_false(is_same(c.instances_view(), view), "a despawn rebuilds the view")
 	assert_true(c.instances_view().size() < before, "without the despawned instances")
 	c.free()
+
+# ---------------------------------------------------------------------------
+# Phase 38 review-fix tests
+# ---------------------------------------------------------------------------
+
+## Phase 38 — a peer's health is the HOST's to simulate. Phase 37 delivered the round to
+## the peer's own client and let THAT client keep the number, so a modified client could
+## ignore every hit and be unkillable, while an honest one lost its health on every
+## reconnect and every restart — the host had resolved the round and then discarded the
+## only evidence it had. The host now applies the hit to its own durable record for that
+## peer, while the DECLARED hp a peer sends is still refused at every door.
+func _test_host_simulates_peer_hp() -> void:
+	# The pure rule first. An unmodelled body starts at FULL health: the host holds no
+	# record of that peer's health and will not take the peer's word for it, so a fresh
+	# body is the only honest seed — and from the first resolved hit the number is the
+	# host's own.
+	assert_eq(PlayerRegistry.simulated_hp_after_hit(-1.0, 12.0, 100.0), 88.0,
+		"an unmodelled body starts at full health and takes the hit")
+	assert_eq(PlayerRegistry.simulated_hp_after_hit(50.0, 12.0, 100.0), 38.0,
+		"a modelled body continues from the number the host already holds")
+	assert_eq(PlayerRegistry.simulated_hp_after_hit(5.0, 12.0, 100.0), 0.0,
+		"a hit cannot drive a simulated body below zero")
+	assert_eq(PlayerRegistry.simulated_hp_after_hit(90.0, -12.0, 100.0), 100.0,
+		"and nothing here heals a body past its ceiling")
+
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var host_id := registry.mint_player_id()
+	registry.set_local_player(host_id)
+	var remote := str(registry.resolve_identity(7))
+	assert_eq(registry.get_hp(remote), -1.0, "the host begins holding no number for a peer")
+
+	registry.record_simulated_hp(remote, 88.0)
+	assert_eq(registry.get_hp(remote), 88.0, "the host's OWN resolution is recorded")
+	assert_eq(float(registry.get_record(remote).get("hp", -2.0)), 88.0, "on the peer's record")
+
+	# DURABLE: it rides the serializable record, so a reconnect or a restart does not hand
+	# the peer a full bar again — exactly the reset the Phase 37 behaviour produced.
+	var restored := PlayerRegistry.new()
+	add_child(restored)
+	restored.apply_player_data(remote, registry.get_player_data(remote))
+	assert_eq(restored.get_hp(remote), 88.0, "and survives the record round trip")
+
+	# The declared half still has no door, and the new one has no side entrances.
+	registry.record_hp(remote, 9999.0)
+	assert_eq(registry.get_hp(remote), 88.0, "a client-declared hp is still refused")
+	registry.record_simulated_hp(host_id, 1.0)
+	assert_eq(registry.get_hp(host_id), -1.0, "the local body's hp is record_hp's to write")
+	registry.record_simulated_hp("", 1.0)
+	var stranger := registry.mint_player_id()
+	registry.record_simulated_hp(stranger, 1.0)
+	assert_eq(registry.get_hp(stranger), -1.0,
+		"a player this host holds no record for is refused, not minted")
+	registry.record_simulated_hp(remote, 1.0)
+	assert_eq(registry.get_hp(remote), 1.0, "while a peer the host does hold updates")
+	# A client holds no records at all, even if a record should find its way into it.
+	var client_reg := PlayerRegistry.new()
+	add_child(client_reg)
+	client_reg.is_authoritative = false
+	client_reg._players[remote] = registry.get_record(remote).duplicate(true)
+	client_reg.record_simulated_hp(remote, 7.0)
+	assert_eq(client_reg.get_hp(remote), 1.0, "a non-authoritative registry writes nothing")
+	client_reg.free()
+	registry.free()
+	restored.free()
+
+## Phase 38 — the snapshot's social/economy blobs travel under the ONE list of
+## identity-bearing keys (`IDENTIFIED_STATE_KEYS`), the same list the receiving side walks
+## to adopt its own handle. Hardcoded literals in game_root meant a fourth entry in the
+## constant would have been adopted by every client while never being redacted on the way
+## out: a player id on the wire.
+func _test_snapshot_social_keys_are_identified() -> void:
+	assert_eq(NetworkingSlice.IDENTIFIED_STATE_KEYS.size(), 3,
+		"the list names three identity-bearing blobs")
+	for key in ["market", "governance", "trade"]:
+		assert_true(NetworkingSlice.IDENTIFIED_STATE_KEYS.has(key),
+			"%s is one of them" % key)
+
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_1000_1_" + "aa".repeat(16))
+	var seller := str(reg.resolve_identity(4))
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n.player_registry = reg
+
+	var sessions := {}
+	sessions[seller] = { "state": "open" }
+	var walked: Dictionary = n.redact_social_state({
+		"market":     { "listings": [{ "seller": seller, "price": 3.0 }] },
+		"governance": { "proposals": [{ "author": seller }] },
+		"trade":      { "sessions": sessions },
+		"creatures":  [{ "seller": seller }],
+	})
+	assert_eq(walked.size(), 3, "only the listed blobs are carried")
+	for key in NetworkingSlice.IDENTIFIED_STATE_KEYS:
+		assert_true(walked.has(key), "and %s is carried under its wire name" % key)
+	assert_false(walked.has("creatures"),
+		"a blob the list does not name is dropped, never passed through unredacted")
+
+	var market: Dictionary = walked["market"]
+	var listing: Dictionary = (market.get("listings", []) as Array)[0]
+	assert_eq(str(listing.get("seller", "")), reg.public_handle(seller),
+		"a listing's seller crosses the wire as a public handle")
+	var gov: Dictionary = walked["governance"]
+	var proposal: Dictionary = (gov.get("proposals", []) as Array)[0]
+	assert_eq(str(proposal.get("author", "")), reg.public_handle(seller),
+		"so does a proposal's author")
+	var trade: Dictionary = walked["trade"]
+	assert_true((trade.get("sessions", {}) as Dictionary).has(reg.public_handle(seller)),
+		"and a trade party does, even as a dictionary KEY")
+	assert_false(JSON.stringify(walked).contains(seller),
+		"with no player id left anywhere in the payload")
+	n.free()
+	reg.free()
+
+## Phase 38 — the snapshot buffer's clear sites were both on the HOST's side of the wire
+## (this slice's own teardown, and a PEER disconnecting), so a client that lost its host
+## kept a half-reassembled snapshot for the rest of the session. The host it was waiting
+## on is gone, and no chunk of that snapshot can still arrive.
+func _test_net_snapshot_buffer_cleared_when_host_lost() -> void:
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.CLIENT
+	n._accumulate_snapshot_chunk({ "snapshot_id": 1, "index": 0, "count": 2, "data": "{\"a\":" })
+	assert_eq(n._snapshot_buffer.size(), 1, "a partial snapshot is buffered")
+	n._on_server_disconnected()
+	assert_eq(n._snapshot_buffer.size(), 0,
+		"losing the host takes the half-reassembled snapshot with it")
+
+	# Role-gated: a host has no server to lose, and its own teardown (`disconnect_all`)
+	# already clears the buffer — this must not become a second, weaker clear.
+	n._role = NetworkingSlice.Role.HOST
+	n._accumulate_snapshot_chunk({ "snapshot_id": 2, "index": 0, "count": 2, "data": "{\"a\":" })
+	n._on_server_disconnected()
+	assert_eq(n._snapshot_buffer.size(), 1, "a host-role call changes nothing")
+	n.free()
+
+## Phase 38 — the cooldown MIRROR is pruned where it is read. The prune used to run only
+## on the way out (`get_cooldowns` hands the record a filtered copy), so the table the
+## slice held kept every deadline the player had ever set while the saved copy dropped
+## them: the mirror grew with every fox ever fed, for as long as the player stayed on.
+func _test_taming_cooldown_mirror_pruned_in_place() -> void:
+	var rig := _make_taming_rig()
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var now := Time.get_unix_time_from_system()
+	taming._cooldowns[pid] = { "creature_elapsed": now - 1.0, "creature_live": now + 60.0 }
+
+	assert_eq(taming.get_cooldowns(pid).size(), 1, "only the live deadline is handed to the record")
+	var mirror: Dictionary = taming._cooldowns[pid]
+	assert_false(mirror.has("creature_elapsed"),
+		"and the elapsed one is gone from the MIRROR, not merely from the copy")
+	assert_true(mirror.has("creature_live"), "while the live deadline stays")
+	assert_eq(taming.cooldown_remaining("creature_elapsed", pid), 0.0,
+		"an elapsed cooldown is not in force")
+	assert_true(taming.cooldown_remaining("creature_live", pid) > 0.0, "and a live one still is")
+
+	# A new deadline still lands in the table the reader left behind, so the prune did not
+	# hand the write path a detached dictionary.
+	taming._cooldowns_for(pid)["creature_fresh"] = now + 30.0
+	assert_true((taming._cooldowns[pid] as Dictionary).has("creature_fresh"),
+		"a deadline written after a prune stays in the mirror")
+	assert_eq(taming.get_cooldowns(pid).size(), 2, "and is handed out with the other live one")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers

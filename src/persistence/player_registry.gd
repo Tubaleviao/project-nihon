@@ -17,8 +17,10 @@ extends Node
 ##     and it is released again when the connection drops (`evict_player`) — the
 ##     disk copy is the durable half, so the registry holds records only for the
 ##     players who are actually online right now.
-##   • A remote peer's HP is NOT durable here: it arrives client-declared, so
-##     only the local player's HP may be written into a record (see `record_hp`).
+##   • Health is written from EVIDENCE, never from a claim. The local player's HP
+##     comes off the live body (`record_hp`); a remote peer's HP is written only
+##     when the HOST itself resolved it (`record_simulated_hp`). A value that
+##     arrived client-declared is refused by both — see the two docstrings.
 ##   • Clients never mint, load, or store anything: `is_authoritative` is false
 ##     there and every mutating entry point returns early.
 ##
@@ -40,6 +42,9 @@ extends Node
 ##   get_online_player_ids() -> Array            — the ids a save should write
 ##   get_record(player_id) -> Dictionary
 ##   record_position(player_id, pos) / record_hp(player_id, hp)
+##   get_hp(player_id) -> float                 — -1.0 when this machine holds none
+##   record_simulated_hp(player_id, hp)         — the HOST's own hit resolution (Phase 38)
+##   simulated_hp_after_hit(hp, damage, max) -> float  — pure rule (static, Phase 38)
 ##   record_appearance(player_id, recipe) / record_technology(player_id, statuses)
 ##   record_flags(player_id, flags) / record_companions(player_id, ids)  — Phase 35
 ##   record_cooldowns(player_id, cooldowns) / get_cooldowns(player_id)   — Phase 37
@@ -371,6 +376,11 @@ func record_position(player_id: String, position: Vector3) -> void:
 ##
 ## The local player's HP IS host-simulated and durable (see `is_online` for the
 ## same local-vs-remote split). Pure predicate, so the rule is testable alone.
+##
+## Phase 38 — a remote peer's HP is durable too, but through a DIFFERENT door:
+## what the host RESOLVES itself is evidence and is written by
+## `record_simulated_hp`. This method stays the live-body writer and still refuses
+## a remote id, so the wire's declared value has no path into a record at all.
 static func hp_is_authoritative_locally(player_id: String, local_player_id: String) -> bool:
 	return player_id != "" and player_id == local_player_id
 
@@ -378,6 +388,54 @@ func record_hp(player_id: String, hp: float) -> void:
 	if not hp_is_authoritative_locally(player_id, local_player_id):
 		return
 	var rec := ensure_player(player_id)
+	if rec.is_empty():
+		return
+	rec["hp"] = hp
+
+## The HP this machine holds for `player_id`, or -1.0 when it holds none.
+##
+## -1.0 is the "no number here" sentinel the record itself starts with
+## (`ensure_player`), so a caller can tell a body it has never modelled from one at
+## zero health. A simulation must seed such a body from full health rather than from
+## a declared value — see `simulated_hp_after_hit`.
+func get_hp(player_id: String) -> float:
+	return float(get_record(player_id).get("hp", -1.0))
+
+## Phase 38 — pure: a peer's host-simulated HP after a resolved hit.
+##
+## An UNMODELLED body (the -1.0 sentinel) starts at FULL health. That is the only
+## honest seed: the host holds no record of that peer's health, and it will not take
+## the peer's own word for it — the value a peer declares on `player_moved` is what
+## made a durable record a restart-proof cheat in the first place. A body the host has
+## never resolved a hit against is therefore treated as fresh, and from that first hit
+## onward the number is the host's own. Clamped to [0, max_hp]: a hit cannot heal, and
+## a body this process simulates cannot exceed the same ceiling a local body has.
+static func simulated_hp_after_hit(current_hp: float, damage: float, max_hp: float) -> float:
+	var base := current_hp if current_hp >= 0.0 else max_hp
+	return clampf(base - damage, 0.0, max_hp)
+
+## Phase 38 — write the HOST's OWN resolution of a remote peer's health.
+##
+## The counterpart to `record_hp`, and the split between them is the whole point. A
+## remote peer's HP that arrives over the wire is client-declared and refused. HP the
+## host RESOLVED ITSELF — a creature's combat round, opened against a peer the host was
+## already tracking (`game_root._on_player_damaged`) — is the host's own evidence, the
+## same standing as that peer's last-known position. Before this method existed there
+## was nowhere to put it: Phase 37 forwarded the round to the peer's own client and let
+## that client keep the number, so a modified client could ignore every hit and an
+## honest one lost its health on every reconnect and every restart, because nothing on
+## this machine was allowed to remember it.
+##
+## Refused for the LOCAL player (its live body owns that number, via `record_hp`), for
+## an empty id, for a player this host holds no record for (fail closed rather than
+## mint a record for a stranger), and on a non-authoritative machine (a client holds no
+## records at all).
+func record_simulated_hp(player_id: String, hp: float) -> void:
+	if not is_authoritative:
+		return
+	if player_id.is_empty() or hp_is_authoritative_locally(player_id, local_player_id):
+		return
+	var rec := get_record(player_id)
 	if rec.is_empty():
 		return
 	rec["hp"] = hp

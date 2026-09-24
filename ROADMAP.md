@@ -2405,7 +2405,9 @@ that answered a question it should not (a raw player id in a counterparty name).
   and `forget_player_id()` releasing the three per-player mirrors.
 - `src/networking/networking_slice.gd` — peer-scoped inventory sync
   (`_peer_for_inventory_owner`), `send_player_damaged` plus its inbound route, and the
-  snapshot buffer eviction in `forget_player_id` / `disconnect_all`.
+  snapshot buffer eviction in `forget_player_id` / `disconnect_all`. **(extended in Phase
+  38: both of those sites are on the host's half of the wire, so the CLIENT's path —
+  `_on_server_disconnected` — was added.)**
 - `src/creature/creature_slice.gd` — `instances_view()` (cached, read-only, live
   records), `_view_stale` / `_invalidate_view`, and `instance_id` on the instance record.
 - `src/creature/creature_ai.gd` — the per-frame loop reads the cached view and emits a
@@ -2508,7 +2510,11 @@ that answered a question it should not (a raw player id in a counterparty name).
 - **A peer's HP is still client-owned.** The host now delivers a creature's hit to the
   peer's own client, but the value that client keeps is still its own word: the host
   holds no simulation of a peer to check it against. Making peer health authoritative
-  means simulating peer bodies (or at least their HP) on the host.
+  means simulating peer bodies (or at least their HP) on the host. **(closed in Phase 38:
+  the host simulates a peer's HP itself — `PlayerRegistry.record_simulated_hp`, seeded by
+  the pure `simulated_hp_after_hit` — and persists it on the peer's record, so the
+  forwarded `player_damaged` is a display update rather than the only copy. What is still
+  deferred is what happens to a peer at zero: no death consequence is resolved host-side.)**
 - **Peer equipment is still not replicated.** The bare-hands rule is evaluated against
   the peer's own claim (unchanged from Phase 36).
 - **`tamed_by` is still not replicated**, so a peer's companion appears as a wild
@@ -2524,6 +2530,113 @@ that answered a question it should not (a raw player id in a counterparty name).
 - **The registry-held peer inventories are still only released on disconnect.** They are
   evicted with the player (`evict_player`), but nothing bounds the inventory of a peer
   whose disconnect was never delivered (a hard kill) beyond the autosave interval.
+
+---
+
+## Phase 38 — Review pass: host-simulated peer health, one key list, the missing clear, an in-place prune ✅ Done
+
+**Goal:** close the five findings of the review pass over Phases 33–38. Two of them are the
+same hole seen from both ends — the host resolved a combat round against a peer and then
+kept no number for it, so a client's health was its own client's word — and three are
+single-list/single-site bugs: a hardcoded key set beside an unused constant, a clear that
+only ever ran on the host's side of the wire, and a prune that only ever ran on the copy
+that was being saved.
+
+**Newel dependency:** None. No fabric field changed — `pnpm validate` is clean and
+`pnpm check-drift` still reports 543 file(s) matching the manifest.
+
+**Deliverables:**
+- `src/persistence/player_registry.gd` — `get_hp()`, the pure static
+  `simulated_hp_after_hit()`, and `record_simulated_hp()`: the HOST's own resolution of a
+  remote peer's health, the door `record_hp` deliberately is not. `record_hp` keeps
+  refusing a remote id, so the declared value still has no path into a record.
+- `src/core/game_root.gd` — `_on_player_damaged` applies the hit to the host's own record
+  for the peer BEFORE forwarding the display update, `_social_state()` plus the
+  `redact_social_state` merge in `_build_snapshot`, and the `_fold_last_known_state` /
+  `_snapshot_remote_players` notes brought in line with a peer's HP now being durable.
+- `src/networking/networking_slice.gd` — `redact_social_state(state)` (the host half of
+  `IDENTIFIED_STATE_KEYS`), `_on_server_disconnected()` and its wiring, so a CLIENT that
+  loses its host drops the snapshot it was reassembling.
+- `src/creature/taming_slice.gd` — `_cooldowns_for()` prunes expired deadlines in place,
+  through the same shared rule the record is written with.
+- `src/tests/test_suite.gd` — 4 new tests (36 new assertions) under a `Phase 38` banner.
+
+**Acceptance criteria:**
+- [x] A peer's health is the HOST's: `simulated_hp_after_hit` starts an unmodelled body at
+  full health (never at a value the peer declared), clamps to `[0, max_hp]`, and
+  `record_simulated_hp` writes it on the peer's durable record — asserted through
+  `get_player_data` → `apply_player_data`, so a reconnect or a restart no longer hands the
+  peer a full bar. The declared door stays shut: `record_hp` still refuses a remote id, the
+  local body is still `record_hp`'s, an id this host holds no record for is refused rather
+  than minted, and a non-authoritative registry writes nothing.
+- [x] The snapshot's social blobs travel under `IDENTIFIED_STATE_KEYS` and are walked from
+  it: only those keys are carried (a blob the list does not name is dropped, not passed
+  through unredacted), every listing seller / proposal author / trade party reaches the
+  wire as a public handle — including a trade party used as a dictionary KEY — and no
+  player id survives the walk.
+- [x] A client that loses its host clears its snapshot buffer, while a host-role call
+  changes nothing (the local teardown path already covers it).
+- [x] The cooldown mirror is pruned in place: an elapsed deadline is gone from
+  `TamingSlice._cooldowns` after a read, a live one stays, and a deadline written after a
+  prune lands in the same table the reader left behind.
+- [x] Headless suite green on both boot paths — `Results: 7415/7415 passed  (0 failed)` →
+  `All tests passed ✓` with `[Server] listening on port 7777, max_clients 64` on the server
+  boot (7379 at the start of this pass: 36 new assertions).
+- [x] Every fix is RED-proven: with the pre-fix policy restored (source only, tests kept)
+  the new assertions fail — quoted in the commit body.
+
+**Implementation notes:**
+- **A hit the host resolved is evidence, and evidence has to be kept.** Phase 37 routed the
+  round by target and delivered it to the peer's own client, which closed the "no round is
+  ever opened" hole but left the OUTCOME client-owned: a modified client could ignore the
+  packet and be unkillable, and an honest one lost its health on every reconnect and every
+  restart. The host now applies the hit to its own number for that peer first and sends the
+  round afterwards as a display update, so a client that drops it diverges from a truth it
+  does not hold instead of being the truth. The seed for a body the host has never modelled
+  is FULL health — the only honest choice, since the record is empty and the peer's own
+  declared value is what made a durable record a cheat in the first place (that value is
+  still ignored on `player_moved` and still refused by `record_hp`).
+- **Two writers for one field, and the split is the security property.** `record_hp` is the
+  live-body writer and refuses a remote id; `record_simulated_hp` is the host's own
+  resolution and refuses the local id, an empty id, a player with no resident record, and
+  any non-authoritative machine. Keeping them separate is what lets the durable rule stay
+  testable on its own (`simulated_hp_after_hit` is pure) instead of hiding behind "the host
+  may write anything".
+- **One list for identity-bearing state, read in both directions.** `IDENTIFIED_STATE_KEYS`
+  existed but the SNAPSHOT builder hardcoded the same three keys, so the constant only ever
+  governed the receiving side: a fourth entry would have been adopted by every client while
+  never being redacted on the way out — a player id on the wire, the exact leak the constant
+  exists to prevent. `redact_social_state` walks the constant now, and a key the list does
+  not name is dropped rather than passed through: an identity-bearing blob nobody has added
+  to the list is a blob whose redaction story has not been decided.
+- **The buffer's eviction points were both on the host's half of the wire.** One was this
+  slice's own teardown and the other was a PEER disconnecting — and a client has no peers to
+  disconnect, so a client's half-reassembled snapshot sat there for the rest of the session.
+  `server_disconnected` is the missing end of the same lifecycle (`_attach_peer` /
+  `_detach_peer`), and the handler is role-gated so it cannot become a second, weaker clear.
+- **A prune that only ran on the saved copy is not a prune.** `get_cooldowns` handed the
+  record a filtered copy while `_cooldowns` kept every deadline the player had ever set, so
+  the mirror grew with every fox ever fed and the record only caught up at a `sync_record`.
+  The prune now runs where the table is READ — the same `live_cooldowns` rule on both sides
+  — and allocates nothing when nothing expired, so the write path keeps landing in the one
+  dictionary the mirror holds.
+
+**Known simplifications (deferred):**
+- **Peer health has a durable floor but no death consequence.** The host simulates and
+  persists a peer's HP, but a peer reaching zero is still not resolved host-side (no
+  `creature_died`-style outcome, no respawn): the downed body stays the peer's own client's
+  business, as the whole of its movement is.
+- **A hit is not sequenced against the hit that preceded it.** The host applies each
+  resolved round as it comes, and `player_damaged` still carries only the delta, so a
+  client that lost a packet converges on the host's number a round late rather than never.
+- **Peer equipment is still not replicated.** The bare-hands rule is evaluated against the
+  peer's own claim (unchanged from Phase 36/37).
+- **`tamed_by` is still not replicated**, so a peer's companion appears as a wild creature
+  in its AOI stream while the follow AI runs only on the host (unchanged from Phase 35).
+- **Still no end-to-end socket exercise** of these paths: every fix is proven at the routing
+  level (`_route_c2h` / `_route_h2c`, the bus, `_pending`, and directly against the registry
+  rule) rather than by driving two real clients through ENet (Phase 34/35/36/37's gap,
+  unchanged).
 
 ---
 
@@ -2565,7 +2678,9 @@ that answered a question it should not (a raw player id in a counterparty name).
   peer's side (deferred from Phase 36). **(delivered in Phase 37: the round is routed
   by target id, `player_damaged` carries the target, and the host sends the hit to the
   peer's own client. What remains is making a peer's HP authoritative rather than
-  client-owned.)**
+  client-owned.)** **(closed in Phase 38: the host simulates the peer's HP itself and
+  persists it on the peer's record. `player_damaged` stays a display update — a client
+  that ignores it now diverges from the host's number instead of owning it.)**
 - **Peer equipment replication** — a remote peer's worn gear is not replicated, so
   the fabric's bare-hands rule is evaluated against the claim that rides the peer's
   tame intent. Verifying it means replicating equipment (deferred from Phase 36).

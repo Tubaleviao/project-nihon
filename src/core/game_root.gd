@@ -716,13 +716,15 @@ func _on_peer_disconnected(peer_id: int) -> void:
 ## unconditionally would reset a returning player's record to the world origin
 ## from a peer that connected but never sent a state packet.
 ##
-## HP is deliberately NOT folded. The HP the host holds for a remote peer is the
-## value that peer declared on the wire (`player_moved`), and the host has no
-## simulation of that peer to check it against, so writing it into a durable
-## record made a client-declared number survive a reconnect, a restart and every
-## later save — a durable, restart-proof cheat. `PlayerRegistry.record_hp` refuses
-## it at the choke point too; this call site is gone rather than left as a silent
-## no-op. Only the LOCAL player's host-simulated HP is persisted.
+## HP is not folded EITHER — but for the opposite reason to before Phase 38. The HP
+## this host holds for a remote peer is now its OWN simulation of that body
+## (`PlayerRegistry.record_simulated_hp`, written the moment the host resolves a
+## creature's round against it), not a value read back out of the wire's movement
+## packets, so there is nothing left to fold: the record is already current. What is
+## still refused at every door is the peer's DECLARED hp — `_route_c2h` ignores the
+## `hp` that rides `player_moved` and `PlayerRegistry.record_hp` refuses a remote id —
+## because that is a claim about a body this process cannot check. Only the local
+## player's live body and the host's own hit resolution may write a record's health.
 func _fold_last_known_state(peer_id: int, player_id: String) -> void:
 	if _networking.has_last_known_state(peer_id):
 		_registry.record_position(player_id, _networking.get_last_known_state(peer_id))
@@ -732,8 +734,9 @@ func _fold_last_known_state(peer_id: int, player_id: String) -> void:
 ## is KILLED (or whose host is) never reaches _on_peer_disconnected, so the durable
 ## record would otherwise still hold whatever was loaded from disk — a returning
 ## player resurrected at the world origin. The autosave interval is now the bound
-## on how much of a remote peer's live position a hard kill can lose. (Its HP is
-## not folded at all — see _fold_last_known_state.)
+## on how much of a remote peer's live position a hard kill can lose. (Its HP needs no
+## folding — the host's own simulated value is written when the hit is resolved; see
+## _fold_last_known_state.)
 func _snapshot_remote_players() -> void:
 	for peer_id in _networking.get_last_known_states():
 		var player_id := _registry.get_player_id(int(peer_id))
@@ -882,15 +885,17 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true) -> Dictionar
 		"edits":     _voxel.get_chunk_manifest(),
 		"creatures": _scoped_creatures(peer_id),
 		"stations":  _station.get_station_data(),
-		# Phase 36 — the snapshot carries the same social/economy state the deltas do,
-		# so it is redacted the same way: the listings' sellers, the trades' parties and
-		# the proposals' authors/voters reach a client as public handles, never as the
-		# player ids those records are claimed by.
-		"market":    _networking.redact_for_client(_market.get_market_data()),
-		"governance": _networking.redact_for_client(_proposal.get_governance_data()),
-		"trade":     _networking.redact_for_client(_trade.get_trade_data()),
 		"players":   players,
 	}
+	# Phase 36/38 — the social/economy state the snapshot carries is redacted the same
+	# way the deltas are (the listings' sellers, the trades' parties and the proposals'
+	# authors/voters reach a client as public handles, never as the player ids those
+	# records are claimed by), and it travels under exactly the keys the receiving side
+	# walks to adopt its OWN handle — `NetworkingSlice.IDENTIFIED_STATE_KEYS`. Iterating
+	# that one list is what keeps the two halves from drifting: three literals here and
+	# the constant there were two places to update, and the failure mode was a blob a
+	# client would adopt but nobody would redact.
+	snapshot.merge(_networking.redact_social_state(_social_state()))
 	# The peer's own record exists only once the host resolved its identity, and it
 	# is shipped only on the handshake snapshot — an AOI re-scope omits the keys
 	# entirely, so the client keeps the state it already holds.
@@ -905,6 +910,21 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true) -> Dictionar
 		snapshot["companions"] = own.get("companions", [])
 		snapshot["player"] = { "position": own.get("position", []), "hp": own.get("hp", -1.0) }
 	return snapshot
+
+## Phase 38 — the replicated social/economy state, keyed by the names the wire uses
+## (`NetworkingSlice.IDENTIFIED_STATE_KEYS`).
+##
+## One mapping, so the snapshot needs no literals of its own: a fourth social slice is
+## added HERE and its key added to that constant, and both the redaction the snapshot
+## does and the identity walk the receiving client does pick it up. The three keys are
+## still named in exactly one place each — this table says where the data lives, the
+## constant says which blobs carry identities.
+func _social_state() -> Dictionary:
+	return {
+		"market":     _market.get_market_data(),
+		"governance": _proposal.get_governance_data(),
+		"trade":      _trade.get_trade_data(),
+	}
 
 ## Phase 29 — the creature subset of the snapshot, filtered to the joining
 ## peer's AOI so a client seeds only the population it can actually see.
@@ -1420,16 +1440,28 @@ func _on_block_mined(material: String, quantity: int, position: Vector3) -> void
 func _on_block_placed(material: String, position: Vector3) -> void:
 	pass
 
-## Phase 37 — a combat round landed on a player. The damage is applied by the machine
-## that SIMULATES that body, so the host forwards it to the peer whose player id was
-## named and does nothing else here.
+## Phase 37/38 — a combat round landed on a player. The damage is applied by the machine
+## that SIMULATES that body: the local body in-process (PlayerSlice listens to this
+## signal itself), and a remote peer's body HERE, on the host.
 ##
 ## This is the other half of routing rounds by target id (CreatureAI emits the round
 ## against whoever the creature engaged): the host owns the authoritative simulation and
-## therefore knows a creature struck a peer, but it holds no verifiable HP for that peer
-## — `PlayerRegistry.record_hp` refuses a client-declared value for exactly that reason —
-## so it cannot apply or persist the hit itself. The peer's own client applies it to its
-## PlayerSlice, which is where that body lives.
+## therefore knows a creature struck a peer.
+##
+## Phase 38 — the host no longer takes the peer's word for the outcome. The Phase 37 pass
+## forwarded the round and left the peer's HP to the peer's own client, which meant a
+## client that simply ignored the packet was unkillable: the host had resolved the round
+## itself and then discarded the only evidence it had, and the peer's health reset to
+## whatever its client said on the next reconnect or restart. The host now applies the
+## hit to its OWN simulation of that peer's health first (`record_simulated_hp`), which
+## rides the peer's durable record, and THEN sends the round on as a display update. A
+## client that drops it diverges from a truth it does not hold, instead of being the
+## truth.
+##
+## The peer's DECLARED hp is still never believed — `_route_c2h` ignores the `hp` its
+## `player_moved` packets carry, and `PlayerRegistry.record_hp` refuses a remote id. Only
+## a number this process resolved itself is persisted (see
+## `PlayerRegistry.simulated_hp_after_hit`).
 ##
 ## The local body is skipped: its damage is already applied in-process by PlayerSlice
 ## (this signal is emitted by BattleSlice, which PlayerSlice itself listens to), and
@@ -1442,6 +1474,13 @@ func _on_player_damaged(damage: float, attacker_id: String, target_id: String) -
 	var peer := _registry.get_peer_id(target_id)
 	if peer == 0:
 		return   # an offline or unknown target: nobody is simulating that body
+	# The host's own resolution: a body it has never modelled starts at full health
+	# (an unmodelled body has no evidence behind it, and the peer's word is not
+	# evidence — see PlayerRegistry.simulated_hp_after_hit), then the hit lands on the
+	# number this process holds.
+	var simulated := PlayerRegistry.simulated_hp_after_hit(
+		_registry.get_hp(target_id), damage, PlayerSlice.MAX_HP)
+	_registry.record_simulated_hp(target_id, simulated)
 	_networking.send_player_damaged(peer, damage, attacker_id)
 
 func _on_player_died(position: Vector3, killer_id: String) -> void:
