@@ -178,6 +178,7 @@ func run() -> void:
 	_run_test("technology: unknown technology rejected",       _test_technology_unknown_rejected)
 	_run_test("technology: tree and materials are per-player",  _test_research_is_per_player)
 	_run_test("technology: client forwards research intent",    _test_technology_client_forwards_intent)
+	_run_test("technology: client does not resolve research",  _test_technology_client_resolves_nothing)
 	_run_test("voxel: mine lowers height and yields material", _test_voxel_mine_yields_material)
 	_run_test("voxel: mine at bedrock fails",                  _test_voxel_mine_bedrock)
 	_run_test("voxel: side-face mine targets hit block",       _test_voxel_mine_side_face)
@@ -5965,6 +5966,38 @@ func _test_technology_client_forwards_intent() -> void:
 	assert_eq(inv.get_item_count("Ferrite"), 4, "and no materials were consumed")
 	tech.free()
 	inv.free()
+
+func _test_technology_client_resolves_nothing() -> void:
+	# A client caches the tree the host hands it, but it must never RESOLVE a research
+	# locally. `apply_statuses` re-arms the auto-complete deadline for a status restored
+	# mid-research (so a slice does not stay stuck in "researching" after a reload), and
+	# on a CLIENT that deadline must never fire: the host owns completion and pushes the
+	# finished status back through `own_state_synced`. Without the authority guard the
+	# client unlocks the technology on its own clock — exactly the "a client never
+	# resolves a repair or research locally" invariant this phase is built on, and a
+	# status the host never granted.
+	var client := TechnologySlice.new()
+	add_child(client)
+	client.is_authoritative = false
+	client.apply_statuses({ "TechBasicSmithing": "researching" })
+	assert_true(client._research_end_at[""].has("TechBasicSmithing"),
+		"the restored status re-armed a deadline (the setup is real)")
+	client._research_end_at[""]["TechBasicSmithing"] = Time.get_unix_time_from_system() - 1.0
+	client._tick_research()
+	assert_eq(client.get_status("TechBasicSmithing"), "researching",
+		"a client does not complete research locally")
+
+	# The same slice WITH authority does complete it, on the same due deadline — the
+	# guard is about who is allowed to resolve, not about the deadline path being dead.
+	var host := TechnologySlice.new()
+	add_child(host)
+	host.apply_statuses({ "TechBasicSmithing": "researching" })
+	host._research_end_at[""]["TechBasicSmithing"] = Time.get_unix_time_from_system() - 1.0
+	host._tick_research()
+	assert_eq(host.get_status("TechBasicSmithing"), "unlocked",
+		"the authoritative slice still auto-completes")
+	client.free()
+	host.free()
 
 func _test_repair_uses_repairer_inventory() -> void:
 	# A repair consumes materials and restores durability, and both live in the

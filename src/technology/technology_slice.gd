@@ -253,7 +253,16 @@ func _on_research_intent(tech_id: String, player_id: String) -> void:
 
 ## Auto-complete any research whose deadline has elapsed. Deadlines are wall-clock
 ## Unix seconds, so they are compared against the same clock they were set from.
+##
+## A CLIENT does not tick at all. `apply_statuses` re-arms a deadline for any status
+## restored mid-research (see above), and on a client that timer must not fire: the
+## host owns completion and pushes the finished status back through
+## `own_state_synced`. Without this guard the client unlocks the technology on its own
+## clock — a status the host never granted, and the "a client never resolves a repair
+## or research locally" rule broken.
 func _tick_research() -> void:
+	if not is_authoritative:
+		return
 	var now := Time.get_unix_time_from_system()
 	var due: Array = []
 	for pid in _research_end_at:

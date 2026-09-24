@@ -1978,9 +1978,9 @@ runtime state, not what the fabric describes, so no `pnpm validate` /
   player's OWN bucket on join.
 - Results and events name their player: `technology_unlocked(tech_id,
   player_id)`, plus a `player_id` on every craft / repair / research result.
-- Six new test cases (per-player research + craft gate, client research
+- Seven new test cases (per-player research + craft gate, client research
   forwarding, per-player repair, client repair forwarding, intent identity
-  binding, own-state push scoping).
+  binding, own-state push scoping, client research never auto-completes).
 
 **Acceptance criteria:** *(met — see the verification notes below)*
 - [x] One player's research consumes only THEIR materials and moves only THEIR
@@ -1997,9 +1997,11 @@ runtime state, not what the fabric describes, so no `pnpm validate` /
   same durability with all 3 ingots.)
 - [x] A client never resolves a repair or research locally: it forwards an
   intent, and its own state changes only through the host's `own_state_synced`.
-  (`technology: client forwards research intent` and `repair: client forwards
-  intent, mutates nothing`: one intent, an empty `player_id`, nothing consumed
-  or restored locally.)
+  (`technology: client forwards research intent`, `repair: client forwards
+  intent, mutates nothing` and `technology: client does not resolve research`:
+  one intent, an empty `player_id`, nothing consumed or restored locally — and
+  the slice's own auto-complete tick is authority-gated, so a status restored
+  mid-research never completes on the client's clock.)
 - [x] An un-handshaked peer's repair / research intent is dropped, and a
   `player_id` inside the payload is ignored — the identity comes from the
   connection. (`net: player intents bind connection identity`: no signal before
@@ -2008,9 +2010,10 @@ runtime state, not what the fabric describes, so no `pnpm validate` /
 - [x] `technology_unlocked` names the player whose tree moved, and the listen
   host's own UI does not report a remote peer's outcome. (`technology_unlocked`
   now carries `player_id`, and `UiSlice._belongs_to_local_player` gates the
-  craft / repair / research feedback labels on it.)
+  craft / repair / research feedback labels on it — including the repair
+  feedback that `_on_craft_resolved` clears.)
 - [x] Headless suite green on the host, `--server` and `--client` boots, with no
-  `SCRIPT ERROR` / `Parse Error` in any of them. (`Results: 6991/6991 passed
+  `SCRIPT ERROR` / `Parse Error` in any of them. (`Results: 6994/6994 passed
   (0 failed)` + `All tests passed ✓` on all three, and
   `[Server] listening on port 7777, max_clients 64` on the `--server` boot.)
 - [x] A real server+client pair still handshakes, joins, reconnects, and
@@ -2025,10 +2028,11 @@ runtime state, not what the fabric describes, so no `pnpm validate` /
 - `repair: client forwards intent, mutates nothing`
 - `net: player intents bind connection identity`
 - `net: own-state push is peer-scoped`
+- `technology: client does not resolve research`
 
 **Verification (headless, on this machine):**
-- Suite: `6940/6940` before the phase → `6991/6991` after (+51 assertions from
-  the 6 new registered cases), green on the listen host, `--server`, and
+- Suite: `6940/6940` before the phase → `6994/6994` after (+54 assertions from
+  the 7 new registered cases), green on the listen host, `--server`, and
   `--client` boots.
 - A real server+client pair over loopback: the client presents its cached id and
   the server answers `[Server] reconnected player
@@ -2066,7 +2070,14 @@ runtime state, not what the fabric describes, so no `pnpm validate` /
   the stack overflowed (caught by the push test, which saw 2041 arrivals instead
   of one).
 - **Gate the whole lifecycle on `is_authoritative`.** A client neither resolves
-  research nor repairs: it forwards the intent and caches nothing.
+  research nor repairs: it forwards the intent and caches nothing. That includes
+  the slice's AUTOMATIC paths, not just its request handlers: `TechnologySlice`
+  re-arms an auto-complete deadline for any status restored mid-research (so a
+  real slice never stays stuck in `researching`), so an ungated `_tick_research`
+  had the client unlock the technology on its OWN clock and emit
+  `technology_unlocked` for a status the host never granted. The tick now returns
+  early when not authoritative; repair has no tick, so its guard sits on the
+  request / intent handlers.
 - **The identity is bound to the connection, never read from the payload.**
   `repair_intent` / `research_intent` are dropped from an un-handshaked peer and
   re-emitted with `get_player_id(sender)`; a `player_id` in the packet body is
