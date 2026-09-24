@@ -1932,6 +1932,150 @@ was `SIGKILL`ed mid-session: the disconnect wrote the client's record, left no
 
 ---
 
+## Phase 34 — Per-player repair and research
+
+**Goal:** Finish the per-player authority Phase 33 started. Two player-scoped
+actions still resolve against the host's own state: `CraftingSlice.repair()`
+reads `inventory_slice` directly, and `TechnologySlice` keeps ONE
+process-wide status dictionary whose material cost also comes off
+`inventory_slice`. So on a host a research unlocks the technology for every
+player at once and spends the host's materials — a peer can hand the whole
+server a free technology tree — and neither repair nor research has any wire
+path at all, so a client's attempt dies on the client. Phase 34 keys both on
+the server-issued `player_id`, forwards them as intents, and pushes the peer
+its own record slice back when the host resolves one on its behalf.
+
+**Newel dependency:** None. The technology tree, the repair specs and the player
+identity all already exist in the fabric; this phase changes who *owns* the
+runtime state, not what the fabric describes, so no `pnpm validate` /
+`generate` / `check-drift` step is involved.
+
+**Deliverables:**
+- `TechnologySlice` becomes per-player: `_status` and `_research_end_at` keyed
+  on `player_id`, `inventory_for(player_id)` from the PlayerRegistry, plus
+  `is_authoritative`. Every API takes `player_id := ""`, where "" resolves to
+  this machine's local player (`begin_research`, `complete_research`,
+  `is_unlocked`, `is_recipe_unlocked`, `get_status`, `get_statuses`,
+  `apply_statuses`).
+- `CraftingSlice` repair becomes per-player: `repair(item_id, player_id)`,
+  `can_repair(item_id, spec, player_id)` and `_resolve_repair(...)` — with
+  `_condition_tiers_to_restore` / `_refund` — resolve against
+  `inventory_for(player_id)` instead of a fixed `inventory_slice`.
+- The craft technology gate asks about the crafter:
+  `_check_tech_gate(recipe_id, player_id)`.
+- Repair and research travel as intents: new `repair_intent(item_id,
+  player_id)` / `research_intent(tech_id, player_id)` bus signals, a
+  non-authoritative slice forwarding its own request signal as an intent (the
+  shape `craft_intent` set), and `networking_slice` c2h arms that require the
+  handshake and re-emit with the identity bound to the CONNECTION.
+- The host hands the peer its own record slice back: a new host→client
+  `own_state_synced` payload (inventory contents + per-instance durability +
+  technology) sent by `networking_slice.send_own_state(peer_id, data)` to that
+  peer alone, driven by `game_root._sync_peer_own_state` after a craft, repair
+  or research the host resolved for a remote peer.
+- Persist per player: `record_technology(pid, get_statuses(pid))` when a
+  research resolves and on save, and the record's technology applied to the
+  player's OWN bucket on join.
+- Results and events name their player: `technology_unlocked(tech_id,
+  player_id)`, plus a `player_id` on every craft / repair / research result.
+- Six new test cases (per-player research + craft gate, client research
+  forwarding, per-player repair, client repair forwarding, intent identity
+  binding, own-state push scoping).
+
+**Acceptance criteria:** *(not yet met — phase in progress)*
+- [ ] One player's research consumes only THEIR materials and moves only THEIR
+  statuses; another player's tree stays locked, and a prerequisite is per-player.
+- [ ] A remote peer's repair consumes the repair materials from and restores the
+  durability of ITS OWN inventory; the host's is untouched.
+- [ ] A client never resolves a repair or research locally: it forwards an
+  intent, and its own state changes only through the host's `own_state_synced`.
+- [ ] An un-handshaked peer's repair / research intent is dropped, and a
+  `player_id` inside the payload is ignored — the identity comes from the
+  connection.
+- [ ] `technology_unlocked` names the player whose tree moved, and the listen
+  host's own UI does not report a remote peer's outcome.
+- [ ] Headless suite green on the host, `--server` and `--client` boots, with no
+  `SCRIPT ERROR` / `Parse Error` in any of them.
+- [ ] A real server+client pair still handshakes, joins, reconnects, and
+  receives its own record.
+
+**Tasks / tests:**
+- `technology: tree and materials are per-player`
+- `technology: client forwards research intent`
+- `repair: resolves against the repairer's inventory`
+- `repair: client forwards intent, mutates nothing`
+- `net: player intents bind connection identity`
+- `net: own-state push is peer-scoped`
+
+**Verification (headless, on this machine):**
+- Suite: `6940/6940` before the phase → `6991/6991` after (+51 assertions from
+  the 6 new registered cases), green on the listen host, `--server`, and
+  `--client` boots.
+- A real server+client pair over loopback: the client presents its cached id and
+  the server answers `[Server] reconnected player
+  'player_1790211585_1_c1faa9ada576fae72382b700cd8555b8' as peer_693354570`,
+  with the client logging `[Client] identity assigned: …` — the per-player
+  technology bucket is applied on the join path with no error.
+
+**Implementation notes:**
+- **"" means "the local player", not "no player".** Every id-taking call
+  defaults to `""` and `resolve_player()` maps it to this machine's local player
+  (the registry's `local_player_id`), so every pre-existing call site — the UI
+  projections, the DEBUG boot demo, the isolated unit tests — keeps working
+  untouched, and a client (no registry identity) or an isolated slice collapses
+  to the single bucket that IS its own player.
+- **Research deadlines are wall-clock Unix seconds now.** They were
+  `Time.get_ticks_msec() + duration`, i.e. process uptime — the same value shape
+  Phase 33 removed from creature respawns and Phase 24/31 already avoid. Nothing
+  persists the deadline today (a restored "researching" status restarts its
+  timer), but a deadline that only means something inside the process that set
+  it is exactly the value that breaks the moment anything does.
+- **The host pushes the peer's own state, because a client has no other way to
+  learn it.** A client's inventory and tree only ever arrive in a snapshot, so a
+  repair or research the host resolved on its behalf used to leave the peer
+  showing stale contents until the next AOI re-scope or reconnect. The push is
+  scoped to that peer — an inventory is private, so unlike an AOI world delta it
+  cannot be broadcast. Craft got the same fix (it had the identical gap, and
+  `_on_craft_resolved` was a `pass`), which is why craft results carry a
+  `player_id` too. Position and HP are deliberately NOT in the payload: they are
+  host-simulated and ride the normal player-state path, and re-sending a stored
+  position would teleport the peer back to it.
+- **Do not connect a listener to the signal the listener re-emits.**
+  `own_state_synced` is emitted by the inbound route and read by `game_root`, and
+  the outbound direction is a direct `send_own_state()` call — a networking
+  listener that re-emitted the signal made a client loop on its own packet until
+  the stack overflowed (caught by the push test, which saw 2041 arrivals instead
+  of one).
+- **Gate the whole lifecycle on `is_authoritative`.** A client neither resolves
+  research nor repairs: it forwards the intent and caches nothing.
+- **The identity is bound to the connection, never read from the payload.**
+  `repair_intent` / `research_intent` are dropped from an un-handshaked peer and
+  re-emitted with `get_player_id(sender)`; a `player_id` in the packet body is
+  ignored, exactly as `craft_intent` already did.
+- **Two players can hold the same technology independently** — the status
+  dictionary is a map of maps, so alice's `unlocked` and bob's `researching` for
+  the same tech coexist, and each pays the cost from their own inventory.
+
+**Known simplifications (deferred):**
+- **The `own_state_synced` push is not acknowledged.** It is a plain reliable
+  packet with no resend: a peer that loses it keeps the stale view until the next
+  snapshot. The suite proves the routing and the payload, not the delivery.
+- **No end-to-end socket exercise of the new intents.** The client's repair and
+  research requests come from UI clicks, and a headless client has no UI, so the
+  wire path is proven at the routing level (c2h identity binding, h2c delivery of
+  `own_state_synced`) plus a real socket pair for the handshake, join and
+  reconnect — not by driving a real client's research over the network.
+- **Skill tiers and station proximity are still per-process, not per-player.**
+  `CraftingSlice._skill_tiers` is one table for the machine, and
+  `station_near_player` answers about the local player's position, so a remote
+  peer's repair/craft is gated by the HOST's skills and the LOCAL player's
+  distance to a station. Moving skill progression and per-player position into
+  the record is the follow-up.
+- **Other players' appearances are still not replicated**, and repair/technology
+  research now share the same plumbing — that gap is unchanged from Phase 33.
+
+---
+
 ## Deferred (in priority order)
 
 - **Server sharding (final, not before maturity)** — split the authoritative

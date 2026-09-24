@@ -137,6 +137,14 @@ signal world_save_failed(reason: String)
 ## Emitted by PersistenceSlice when one player record is written.
 signal player_saved(player_id: String)
 
+## Host → one client (Phase 34): the peer's OWN record slice, re-sent when the host
+## changed something inside it on that peer's behalf — its inventory after a
+## remote repair/craft, or its technology statuses after a remote research. Scope is
+## the peer alone: an inventory is private, so this cannot ride a broadcast the way
+## an AOI-scoped world delta can. `data` mirrors the like-named keys of the join
+## snapshot: { inventory, inventory_durability, technology }.
+signal own_state_synced(data: Dictionary)
+
 # ---------------------------------------------------------------------------
 # Battle — death signals
 # ---------------------------------------------------------------------------
@@ -226,8 +234,18 @@ signal craft_resolved(result: Dictionary)
 ## item_id : String — key from GameData.ITEMS (e.g. "FerritePick")
 signal repair_requested(item_id: String)
 
+## Phase 34 — a repair intent carrying WHO is repairing, so repair is per-player
+## like crafting. A client emits it with an empty player_id ("me"); the networking
+## slice forwards it to the host, which re-emits it with the identity it resolved
+## for that connection, and CraftingSlice consumes the materials from and restores
+## the durability of that player's own inventory. Host-local repair stays on
+## `repair_requested`.
+## item_id   : String — key from GameData.ITEMS
+## player_id : String — the repairing player; "" means "the local player"
+signal repair_intent(item_id: String, player_id: String)
+
 ## Emitted by CraftingSlice with the outcome of a repair attempt.
-## result : Dictionary — { item_id, success, reason }
+## result : Dictionary — { item_id, success, reason, player_id }
 signal repair_resolved(result: Dictionary)
 
 # ---------------------------------------------------------------------------
@@ -274,13 +292,26 @@ signal block_place_material_changed(material: String)
 ## system). tech_id : String — key from GameData.TECHNOLOGIES (e.g. "TechBasicSmithing").
 signal research_requested(tech_id: String)
 
+## Phase 34 — a research intent carrying WHO is researching. The technology tree is
+## per-player state now (one status set per player), so a client cannot resolve a
+## research locally: it emits this with an empty player_id ("me"), networking
+## forwards it, and the host re-emits it with the identity bound to that connection
+## so the materials come off that player's own inventory and only that player's
+## status moves. Host-local research stays on `research_requested`.
+## tech_id   : String — key from GameData.TECHNOLOGIES
+## player_id : String — the researcher; "" means "the local player"
+signal research_intent(tech_id: String, player_id: String)
+
 ## Emitted by TechnologySlice with the outcome of a research attempt.
-## result : Dictionary — { tech_id, success, reason, status }
+## result : Dictionary — { tech_id, success, reason, status, player_id }
 signal research_resolved(result: Dictionary)
 
 ## Emitted by TechnologySlice when research completes and a technology unlocks.
-## tech_id : String — key from GameData.TECHNOLOGIES
-signal technology_unlocked(tech_id: String)
+## The player matters: a host research that unlocks for ONE player must not read as
+## a world-wide unlock. `player_id` is "" when no player registry is wired.
+## tech_id   : String — key from GameData.TECHNOLOGIES
+## player_id : String — whose tree gained the technology
+signal technology_unlocked(tech_id: String, player_id: String)
 
 # ---------------------------------------------------------------------------
 # Trees (Phase 31)

@@ -167,6 +167,8 @@ func run() -> void:
 	_run_test("repair: no item held",                              _test_repair_no_item)
 	_run_test("repair: multi-material AethermiteBow",              _test_repair_multi_material_aethermitebow)
 	_run_test("repair: specs resolve against fabric",              _test_repair_specs_resolve)
+	_run_test("repair: resolves against the repairer's inventory",  _test_repair_uses_repairer_inventory)
+	_run_test("repair: client forwards intent, mutates nothing",    _test_repair_client_forwards_intent)
 	_run_test("technology: recipe resolves to owning tech",    _test_technology_recipe_resolves_to_tech)
 	_run_test("technology: research requires prerequisite",    _test_technology_research_requires_prereq)
 	_run_test("technology: research consumes materials",       _test_technology_research_consumes_materials)
@@ -174,6 +176,8 @@ func run() -> void:
 	_run_test("technology: crafting blocked while locked",     _test_technology_crafting_blocked_locked)
 	_run_test("technology: crafting allowed after unlock",     _test_technology_crafting_allowed_after_unlock)
 	_run_test("technology: unknown technology rejected",       _test_technology_unknown_rejected)
+	_run_test("technology: tree and materials are per-player",  _test_research_is_per_player)
+	_run_test("technology: client forwards research intent",    _test_technology_client_forwards_intent)
 	_run_test("voxel: mine lowers height and yields material", _test_voxel_mine_yields_material)
 	_run_test("voxel: mine at bedrock fails",                  _test_voxel_mine_bedrock)
 	_run_test("voxel: side-face mine targets hit block",       _test_voxel_mine_side_face)
@@ -253,6 +257,8 @@ func run() -> void:
 	_run_test("net: AOI center defaults to spawn; in_aoi gates", _test_net_aoi_center_and_in_aoi)
 	_run_test("net: AOI recipients are near peers only",         _test_net_aoi_recipients)
 	_run_test("net: AOI region floors to grid cell",             _test_net_aoi_region)
+	_run_test("net: player intents bind connection identity",    _test_net_player_intents_bind_connection_identity)
+	_run_test("net: own-state push is peer-scoped",              _test_net_own_state_push_is_peer_scoped)
 	_run_test("asset: placeholder resolves at canonical path",  _test_asset_placeholder_resolves)
 	_run_test("asset: no private-only paths hardcoded",          _test_asset_no_private_paths_hardcoded)
 	_run_test("asset: pck round-trip proves override works",    _test_asset_pck_round_trip_override)
@@ -5856,6 +5862,239 @@ func _test_craft_client_forwards_intent() -> void:
 	assert_eq(inventory.get_item_count("Ferrite"), 0, "the client mutated nothing locally")
 	crafting.free()
 	inventory.free()
+
+# ---------------------------------------------------------------------------
+# Phase 34 — per-player repair and research
+# ---------------------------------------------------------------------------
+
+func _test_research_is_per_player() -> void:
+	# The technology tree is per-player STATE: one player's research consumes THAT
+	# player's materials and moves THAT player's statuses. Before Phase 34 a single
+	# process-wide dictionary unlocked the technology for everyone on the host, and
+	# the material cost came off the host's own inventory.
+	var tech := TechnologySlice.new()
+	add_child(tech)
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	tech.inventory_slice = null        # prove the registry is what answers
+	tech.player_registry = registry
+	var alice := registry.resolve_identity(2)
+	var bob := registry.resolve_identity(3)
+	var alice_inv = registry.get_inventory(alice)
+	var bob_inv = registry.get_inventory(bob)
+	var cost: Array = tech.get_tech_data("TechBasicSmithing").get("researchMaterials", [])
+	assert_true(cost.size() > 0, "the fabric gives TechBasicSmithing a material cost")
+	for entry in cost:
+		assert_true(alice_inv.add_item(str(entry["item"]), int(entry["quantity"])),
+			"alice's materials fit her inventory")
+	for entry in cost:
+		assert_true(bob_inv.add_item(str(entry["item"]), int(entry["quantity"])),
+			"bob's materials fit his inventory")
+
+	assert_true(bool(tech.begin_research("TechBasicSmithing", alice).get("success", false)),
+		"alice researches with her own materials")
+	assert_eq(tech.get_status("TechBasicSmithing", alice), "researching", "alice's tree moves")
+	assert_eq(tech.get_status("TechBasicSmithing", bob), "locked", "bob's tree is untouched")
+	for entry in cost:
+		var item_id := str(entry["item"])
+		assert_eq(alice_inv.get_item_count(item_id), 0, "alice's %s was consumed" % item_id)
+		assert_eq(bob_inv.get_item_count(item_id), int(entry["quantity"]),
+			"bob's %s was not" % item_id)
+	assert_false(tech.is_recipe_unlocked("RecipeFerriteIngot", bob),
+		"the recipe is not unlocked for the player who did not research it")
+
+	# A prerequisite is per-player too: bob is blocked until HE holds it.
+	var blocked := tech.begin_research("TechMasterForge", bob)
+	assert_false(bool(blocked.get("success", false)), "bob is blocked by a prerequisite he lacks")
+	assert_true(str(blocked.get("reason", "")).begins_with("prerequisite_locked"),
+		"reason is prerequisite_locked")
+
+	assert_true(bool(tech.complete_research("TechBasicSmithing", alice).get("success", false)),
+		"alice's research completes")
+	assert_true(tech.is_recipe_unlocked("RecipeFerriteIngot", alice), "unlocked for alice")
+	assert_false(tech.is_recipe_unlocked("RecipeFerriteIngot", bob), "still locked for bob")
+
+	# Bob now researches the SAME technology, paying from his own inventory — two
+	# players can hold the same technology independently.
+	assert_true(bool(tech.begin_research("TechBasicSmithing", bob).get("success", false)),
+		"bob researches the same technology on his own")
+	for entry in cost:
+		assert_eq(bob_inv.get_item_count(str(entry["item"])), 0, "paying the cost from his inventory")
+	assert_eq(tech.get_status("TechBasicSmithing", bob), "researching", "bob's tree moved")
+	assert_eq(tech.get_status("TechBasicSmithing", alice), "unlocked", "alice's is unaffected")
+
+	# The craft gate asks about the CRAFTER's tree, not the process's.
+	var crafting := CraftingSlice.new()
+	add_child(crafting)
+	crafting.technology_slice = tech
+	crafting.inventory_slice = null
+	crafting.player_registry = registry
+	crafting.set_skill("Smithing", "master")
+	var recipe := crafting.get_recipe("RecipeFerriteIngot")
+	for entry in recipe.get("inputs", []):
+		assert_true(alice_inv.add_item(str(entry["item"]), int(entry["quantity"])),
+			"alice's craft inputs fit her inventory")
+	assert_true(bool(crafting.can_craft("RecipeFerriteIngot", alice).get("success", false)),
+		"alice may craft the recipe she unlocked")
+	assert_true(str(crafting.can_craft("RecipeFerriteIngot", bob).get("reason", "")).begins_with("technology_locked"),
+		"and bob is still technology-locked on it")
+	crafting.free()
+	tech.free()
+	registry.free()
+
+func _test_technology_client_forwards_intent() -> void:
+	# A client owns no records, so it must FORWARD a research to the host rather than
+	# resolve one against its synced copy of the tree.
+	var tech := TechnologySlice.new()
+	add_child(tech)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	tech.inventory_slice = inv
+	tech.is_authoritative = false
+	inv.add_item("Ferrite", 4)
+	var forwarded: Array = []
+	var on_intent := func(tech_id: String, player_id: String) -> void:
+		forwarded.append([tech_id, player_id])
+	GameBus.research_intent.connect(on_intent)
+	GameBus.research_requested.emit("TechBasicSmithing")
+	GameBus.research_intent.disconnect(on_intent)
+	assert_eq(forwarded.size(), 1, "the client forwarded exactly one intent")
+	assert_eq(str(forwarded[0][0]), "TechBasicSmithing", "carrying the technology id")
+	assert_eq(str(forwarded[0][1]), "", "and no identity — the host decides who is researching")
+	assert_eq(tech.get_status("TechBasicSmithing"), "locked", "nothing resolved locally")
+	assert_eq(inv.get_item_count("Ferrite"), 4, "and no materials were consumed")
+	tech.free()
+	inv.free()
+
+func _test_repair_uses_repairer_inventory() -> void:
+	# A repair consumes materials and restores durability, and both live in the
+	# repairing player's own inventory — so it resolves against THAT player, never a
+	# single host-scoped one.
+	var crafting := CraftingSlice.new()
+	add_child(crafting)
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	crafting.inventory_slice = null      # prove the registry is what answers
+	crafting.player_registry = registry
+	crafting.set_skill("Smithing", "master")
+	var alice := registry.resolve_identity(2)
+	var bob := registry.resolve_identity(3)
+	var alice_inv = registry.get_inventory(alice)
+	var bob_inv = registry.get_inventory(bob)
+	for inv in [alice_inv, bob_inv]:
+		inv.add_item("FerritePick", 1)
+		inv.add_item("FerriteIngot", 3)
+		_wear_item(inv, "FerritePick", 1)
+	var bob_worn: float = bob_inv.get_durability("FerritePick")
+
+	assert_true(bool(crafting.repair("FerritePick", alice).get("success", false)),
+		"alice's repair succeeds")
+	assert_eq(alice_inv.get_condition("FerritePick"), "pristine", "alice's pick is restored")
+	assert_eq(alice_inv.get_item_count("FerriteIngot"), 2, "alice's material was consumed")
+	assert_eq(bob_inv.get_condition("FerritePick"), "worn", "bob's pick is untouched")
+	assert_eq(bob_inv.get_durability("FerritePick"), bob_worn, "bob's durability is untouched")
+	assert_eq(bob_inv.get_item_count("FerriteIngot"), 3, "bob's materials are untouched")
+	# The check half is scoped the same way.
+	assert_true(bool(crafting.can_repair("FerritePick", {}, bob).get("success", false)),
+		"bob can still repair his own worn pick")
+	assert_false(bool(crafting.can_repair("FerritePick", {}, alice).get("success", false)),
+		"alice's is already pristine")
+	crafting.free()
+	registry.free()
+
+func _test_repair_client_forwards_intent() -> void:
+	# The repair half of "a client owns no records": it forwards the item to the host,
+	# which is the only machine that can consume a persisted inventory.
+	var crafting := CraftingSlice.new()
+	add_child(crafting)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	crafting.inventory_slice = inv
+	crafting.is_authoritative = false
+	inv.add_item("FerritePick", 1)
+	inv.add_item("FerriteIngot", 3)
+	_wear_item(inv, "FerritePick", 1)
+	var forwarded: Array = []
+	var on_intent := func(item_id: String, player_id: String) -> void:
+		forwarded.append([item_id, player_id])
+	GameBus.repair_intent.connect(on_intent)
+	GameBus.repair_requested.emit("FerritePick")
+	GameBus.repair_intent.disconnect(on_intent)
+	assert_eq(forwarded.size(), 1, "the client forwarded exactly one intent")
+	assert_eq(str(forwarded[0][0]), "FerritePick", "carrying the item id")
+	assert_eq(str(forwarded[0][1]), "", "and no identity — the host decides who is repairing")
+	assert_eq(inv.get_condition("FerritePick"), "worn", "the client restored nothing locally")
+	assert_eq(inv.get_item_count("FerriteIngot"), 3, "and consumed nothing")
+	crafting.free()
+	inv.free()
+
+func _test_net_player_intents_bind_connection_identity() -> void:
+	# A repair or research intent names no player: the host resolves it for the
+	# identity bound to the connection, an un-handshaked peer cannot act at all, and
+	# an id inside the payload is ignored (it is a client's word, not evidence).
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	var research: Array = []
+	var repair: Array = []
+	var on_research := func(tech_id: String, player_id: String) -> void:
+		research.append([tech_id, player_id])
+	var on_repair := func(item_id: String, player_id: String) -> void:
+		repair.append([item_id, player_id])
+	GameBus.research_intent.connect(on_research)
+	GameBus.repair_intent.connect(on_repair)
+
+	n._route_c2h(7, { "type": "research_intent", "tech_id": "TechBasicSmithing" })
+	n._route_c2h(7, { "type": "repair_intent", "item_id": "FerritePick" })
+	assert_eq(research.size(), 0, "an un-handshaked peer cannot research")
+	assert_eq(repair.size(), 0, "and cannot repair")
+
+	n.set_player_id(7, "player_7_1_deadbeef")
+	n._route_c2h(7, { "type": "research_intent", "tech_id": "TechBasicSmithing" })
+	n._route_c2h(7, { "type": "repair_intent", "item_id": "FerritePick", "player_id": "player_victim" })
+	assert_eq(research.size(), 1, "the bound peer's research is re-emitted")
+	assert_eq(str(research[0][1]), "player_7_1_deadbeef", "carrying the connection's identity")
+	assert_eq(repair.size(), 1, "and its repair too")
+	assert_eq(str(repair[0][1]), "player_7_1_deadbeef", "ignoring the id the payload tried to name")
+
+	GameBus.research_intent.disconnect(on_research)
+	GameBus.repair_intent.disconnect(on_repair)
+	n.free()
+
+func _test_net_own_state_push_is_peer_scoped() -> void:
+	# The host hands a peer its own record slice back after acting on its behalf, and
+	# that push is addressed to the peer ALONE — an inventory is private, so it cannot
+	# ride a broadcast the way an AOI-scoped world delta can.
+	var host := NetworkingSlice.new()
+	add_child(host)
+	host.emulate_network = true
+	host.send_own_state(5, { "inventory": {} })
+	assert_eq(host._pending.size(), 0, "a non-host cannot push own-state")
+	host._role = NetworkingSlice.Role.HOST
+	host.send_own_state(5, {
+		"inventory": { "Ferrite": 1 },
+		"technology": { "TechBasicSmithing": "unlocked" },
+	})
+	assert_eq(host._pending.size(), 1, "the host queues exactly one packet")
+	var packet: Dictionary = JSON.parse_string(str(host._pending[0]["json"]))
+	assert_eq(str(packet.get("type", "")), "own_state_synced", "of the own_state_synced type")
+	assert_eq(int(host._pending[0]["peer_id"]), 5, "addressed to the peer it was given for")
+
+	# The client half: the packet reaches the bus, which game_root applies.
+	var client := NetworkingSlice.new()
+	add_child(client)
+	client._role = NetworkingSlice.Role.CLIENT
+	var applied: Array = []
+	var on_synced := func(data: Dictionary) -> void:
+		applied.append(data)
+	GameBus.own_state_synced.connect(on_synced)
+	client._route_h2c(packet)
+	GameBus.own_state_synced.disconnect(on_synced)
+	assert_eq(applied.size(), 1, "the payload reaches own_state_synced")
+	assert_eq(int(applied[0].get("inventory", {}).get("Ferrite", 0)), 1,
+		"carrying the peer's own inventory")
+	host.free()
+	client.free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers
