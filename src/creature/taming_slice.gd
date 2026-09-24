@@ -228,7 +228,11 @@ func get_flags(player_id: String = "") -> Dictionary:
 ## this mirrors it after any change so the record write is one lookup.
 func get_companions(player_id: String = "") -> Array:
 	var pid := resolve_player(player_id)
-	return _companions_for(pid).keys()
+	var ids: Array = _companions_for(pid).keys()
+	# Ordered, so the value is stable for the record write and for any caller that
+	# compares two lists (CreatureSlice.companions_of sorts for the same reason).
+	ids.sort()
+	return ids
 
 func _flags_for(player_id: String) -> Dictionary:
 	if not _flags.has(player_id):
@@ -338,6 +342,12 @@ func can_tame(instance_id: String, player_id: String = "") -> Dictionary:
 ## fabric's outcome (companion binding and/or granted flag and/or shed items),
 ## start the cooldown and persist the player's flags and companions. Never throws;
 ## every failure comes back as a `tame_resolved` result with a reason token.
+##
+## A refusal is ATOMIC: it spends no offering and moves no flag. The offering is
+## consumed first (see below) and is handed straight back if the companion binding
+## then refuses it, and the flag is granted only once the binding is taken — a
+## refused tame that had already eaten the player's rations and set their
+## progression flag would misreport what happened.
 func tame(instance_id: String, player_id: String = "") -> Dictionary:
 	var pid := resolve_player(player_id)
 	var check := can_tame(instance_id, pid)
@@ -347,27 +357,36 @@ func tame(instance_id: String, player_id: String = "") -> Dictionary:
 	var creature_id := str(check["creature_id"])
 	var data := tame_data(creature_id)
 	var inventory := inventory_for(pid)
+	var result_kind := str(data.get("result", ""))
 
 	# Consume the offering before applying anything, so two tamers racing the same
 	# fox cannot both spend the same ration: the second `can_tame` after the first
-	# consumption finds nothing to offer.
+	# consumption finds nothing to offer. `spent` remembers what was taken, so a
+	# refusal further down can hand it straight back.
 	var offers: Array = data.get("requiresAnyItem", [])
+	var spent: Dictionary = {}
 	if not offers.is_empty():
 		var offer := _first_available_offer(inventory, offers)
-		var offer_counts := {
+		spent = {
 			str(offer["item"]): int(offer.get("quantity", 1)),
 		}
-		if not inventory.consume_items(offer_counts):
+		if not inventory.consume_items(spent):
 			return _emit(_result(instance_id, creature_id, false, "missing_offer", "", pid, "", []))
 
-	var result_kind := str(data.get("result", ""))
+	# The companion binding is the last step that can still refuse after validation:
+	# an unidentified tamer (the "" bucket — see the class docstring) or a rival that
+	# bound the instance between `can_tame` and here. Take it BEFORE the flag is
+	# granted, and give the offering back when it refuses — exactly the rule
+	# `inventory_full` already follows: a refusal must not take anything.
+	if result_kind == "companion" and not creature_slice.mark_tamed(instance_id, pid):
+		_return_items(inventory, spent)
+		return _emit(_result(instance_id, creature_id, false, "already_tamed", result_kind, pid, "", []))
+
 	var flag := str(data.get("grantsFlag", ""))
 	if flag != "":
 		_flags_for(pid)[flag] = true
 
 	if result_kind == "companion":
-		if not creature_slice.mark_tamed(instance_id, pid):
-			return _emit(_result(instance_id, creature_id, false, "already_tamed", result_kind, pid, "", []))
 		_companions_for(pid)[instance_id] = true
 		if creature_ai != null and creature_ai.has_method("on_companion_tamed"):
 			creature_ai.on_companion_tamed(instance_id, pid)
@@ -486,6 +505,13 @@ func _to_counts(entries: Array) -> Dictionary:
 			continue
 		counts[item_id] = counts.get(item_id, 0) + qty
 	return counts
+
+## Hand a consumed { item_id: quantity } map back to `inventory`. Only ever called
+## on a refusal, moments after the consumption with nothing in between: the weight
+## and slot budget are exactly the pre-consumption ones, so this cannot fail.
+func _return_items(inventory: Node, spent: Dictionary) -> void:
+	for item_id in spent:
+		inventory.add_item(str(item_id), int(spent[item_id]))
 
 func _result(instance_id: String, creature_id: String, success: bool, reason: String, result: String, player_id: String, flag: String, yields: Array) -> Dictionary:
 	return {

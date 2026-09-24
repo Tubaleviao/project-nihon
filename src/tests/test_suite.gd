@@ -184,6 +184,7 @@ func run() -> void:
 	_run_test("taming: a creature with no tame field is refused", _test_taming_not_tameable)
 	_run_test("taming: wolf needs the alpha down",             _test_taming_wolf_requires_alpha_down)
 	_run_test("taming: wolf grants flag and companion",        _test_taming_wolf_grants_flag_companion)
+	_run_test("taming: unidentified tamer refused atomically", _test_taming_refusal_is_atomic)
 	_run_test("taming: skill gate fails closed",               _test_taming_requires_skill)
 	_run_test("taming: bare hands required",                   _test_taming_requires_unarmed)
 	_run_test("taming: fox feed yields and consumes the offer", _test_taming_fox_feed_yields)
@@ -6308,6 +6309,46 @@ func _test_taming_wolf_grants_flag_companion() -> void:
 	rig["taming"].free()
 	rig["crafting"].free()
 	rig["registry"].free()
+
+func _test_taming_refusal_is_atomic() -> void:
+	# An isolated slice with NO registry has no identified player, and `tamed_by` is
+	# an owner id ("" means wild) — so an unidentified tamer cannot bind a companion
+	# and is refused as `already_tamed` (see the class docstring). That refusal must
+	# be ATOMIC: it may not leave the wolf's `wolfBondHolder` flag set (progression)
+	# or an offering spent — the same rule `inventory_full` already follows. This is
+	# the one rig that reaches the refusal: every other taming test wires a registry,
+	# precisely because a rig without one gets a refusal, not a binding.
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
+	var crafting := CraftingSlice.new()
+	add_child(crafting)
+	var inventory := InventorySlice.new()
+	add_child(inventory)
+	var taming := TamingSlice.new()
+	add_child(taming)
+	taming.creature_slice  = c
+	taming.crafting_slice  = crafting
+	# No registry: inventory_for("") falls back to the slice's own inventory.
+	taming.inventory_slice = inventory
+	var wolves := _taming_instances_of(c, "GraywolfPack")
+	var target := str(wolves[1])
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	assert_true(bool(crafting.set_skill("Unarmed", "journeyman")), "Unarmed: journeyman")
+	assert_true(bool(taming.can_tame(target, "")["ok"]), "every requirement but the owner is met")
+
+	var refused: Dictionary = taming.tame(target, "")
+	assert_false(bool(refused["success"]), "an unidentified tamer cannot bind a companion")
+	assert_eq(str(refused["reason"]), "already_tamed",
+		"refused as already_tamed rather than bound to a wild owner")
+	assert_false(c.is_tamed(target), "so the instance stays wild")
+	assert_eq(c.get_tamed_by(target), "", "with no owner written on it")
+	assert_false(taming.has_flag("", "wolfBondHolder"), "and the refusal left no flag behind")
+	assert_eq((taming.get_companions("") as Array).size(), 0, "nor listed a companion")
+	c.free()
+	crafting.free()
+	inventory.free()
+	taming.free()
 
 func _test_taming_requires_skill() -> void:
 	# The skill gate fails CLOSED: an unwired/unadvanced table reads as "novice", so a

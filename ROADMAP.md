@@ -2154,7 +2154,8 @@ field on GraywolfPack and GlimmerFox, and `pnpm validate`, `pnpm generate` and
   panel lists it.
 - `src/inventory/inventory_slice.gd` — `glimmer_fur_tuft` weight, alongside the
   other raw creature drops.
-- `src/tests/test_suite.gd` — 14 taming tests under a `Phase 35` banner.
+- `src/tests/test_suite.gd` — 15 taming tests under a `Phase 35` banner, including
+  the atomic-refusal guard on the unidentified-tamer path.
 
 **Acceptance criteria:**
 - [x] The interaction is fabricated, not hardcoded: `tame_data()` is read for
@@ -2182,10 +2183,12 @@ field on GraywolfPack and GlimmerFox, and `pnpm validate`, `pnpm generate` and
   player's companion and spends that player's offerings — a second player cannot
   feed the same fox on the first player's rations.
 - [x] A client resolves nothing and forwards `tame_intent` with no identity.
-- [x] Headless suite green on both boot paths — `Results: 7118/7118 passed
+- [x] Headless suite green on both boot paths — `Results: 7126/7126 passed
   (0 failed)` → `All tests passed ✓` with `[Server] listening on port 7777,
-  max_clients 64` on the server boot (6994 before this phase: 124 new
+  max_clients 64` on the server boot (6994 before this phase: 132 new
   assertions).
+- [x] A refused tame is atomic: an unidentified tamer's refusal leaves the wolf's
+  `wolfBondHolder` flag unset and its offering unspent, asserted directly.
 
 **Implementation notes:**
 - **An empty owner is not a thing.** `tamed_by` is the instance's owner id and
@@ -2193,7 +2196,11 @@ field on GraywolfPack and GlimmerFox, and `pnpm validate`, `pnpm generate` and
   the `""` bucket (a client, or an isolated slice with no registry) cannot bind a
   companion and is refused as `already_tamed` rather than silently writing a
   wild-looking owner. Every taming test wires a PlayerRegistry for this reason —
-  a test that does not gets a refusal, not a binding.
+  a test that does not gets a refusal, not a binding. The refusal is ATOMIC: the
+  offering is consumed first (for the race) but handed back if the binding then
+  refuses, and the flag is granted only once the binding is taken, so a refused
+  tame neither spends a ration nor moves progression. The one rig without a
+  registry asserts exactly that.
 - **The alpha-down gate is defined against what the runtime models.** A pack is N
   instances of one creature id; there is no separate alpha or pup instance, so
   "the alpha is dead" is "one instance of that species is dead", which is also
