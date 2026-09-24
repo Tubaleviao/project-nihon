@@ -584,10 +584,16 @@ func _on_research_intent(tech_id: String, _player_id: String) -> void:
 ## tames for the identity it bound. The player_id half is ignored here for the same
 ## reason as craft_intent: the identity is bound to the connection on the host
 ## side, never trusted from the payload.
-func _on_tame_intent(instance_id: String, _player_id: String) -> void:
+##
+## Phase 36 — the payload also carries the sender's own bare-hands claim, which is
+## forwarded untouched: it is evidence ABOUT the client (its own body is the only
+## place that knows what it is holding), not a claim about anyone else, and the host
+## evaluates the fabric's `requiresUnarmed` rule against it. A peer that sends no
+## claim reads as armed (see TamingSlice.is_unarmed).
+func _on_tame_intent(instance_id: String, _player_id: String, unarmed: bool) -> void:
 	if _role != Role.CLIENT:
 		return
-	_broadcast({ "type": "tame_intent", "instance_id": instance_id })
+	_broadcast({ "type": "tame_intent", "instance_id": instance_id, "unarmed": unarmed })
 
 ## Phase 34 — host → one client: the peer's OWN record slice changed on the host's
 ## side of an action it asked for (its inventory after a repair, its technology
@@ -964,11 +970,19 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 		"tame_intent":
 			# Phase 35 — and the same for taming: the flag and the companion bind
 			# to the connection's own player, never to a name in the payload.
+			# Phase 36 — the sender's bare-hands claim is passed through: it is
+			# evidence about the sender itself (the only machine that knows what its
+			# body is holding), and the taming slice evaluates the fabric's rule
+			# against it, defaulting to "armed" when no claim arrived.
 			var tamer := _actor_id(sender)
 			if tamer == "":
 				_refuse_unhandshaked(sender, "tame_intent")
 				return
-			GameBus.tame_intent.emit(str(payload.get("instance_id", "")), tamer)
+			GameBus.tame_intent.emit(
+				str(payload.get("instance_id", "")),
+				tamer,
+				bool(payload.get("unarmed", false))
+			)
 		"block_edit_intent":
 			# Phase 36 — a world edit needs a bound identity AND a target within the
 			# host's evidence of arm's reach. The block position arrives as a bare

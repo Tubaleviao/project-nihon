@@ -188,6 +188,7 @@ func run() -> void:
 	_run_test("taming: unidentified tamer refused atomically", _test_taming_refusal_is_atomic)
 	_run_test("taming: skill gate fails closed",               _test_taming_requires_skill)
 	_run_test("taming: bare hands required",                   _test_taming_requires_unarmed)
+	_run_test("taming: a peer's bare hands are a claim",        _test_taming_peer_bare_hands_claim)
 	_run_test("taming: fox feed yields and consumes the offer", _test_taming_fox_feed_yields)
 	_run_test("taming: fox feed needs an offering",            _test_taming_fox_needs_offer)
 	_run_test("taming: cooldown blocks a second feed",         _test_taming_cooldown)
@@ -6590,6 +6591,22 @@ func _make_taming_rig() -> Dictionary:
 	crafting.player_registry = registry
 	return { "creature": c, "taming": taming, "crafting": crafting, "registry": registry }
 
+## Resolve a tame for a REMOTE player the way the host does: through the intent the
+## networking slice re-emits, carrying that peer's bare-hands claim (Phase 36). A
+## direct `tame(instance_id, player_id)` call is the HOST-LOCAL path — for someone
+## else's player id it now fails closed on the bare-hands rule, exactly because no
+## claim accompanied it.
+func _taming_tame_via_intent(instance_id: String, player_id: String, unarmed: bool = true) -> Dictionary:
+	var captured: Array = []
+	var on_resolved := func(result: Dictionary) -> void:
+		captured.append(result)
+	GameBus.tame_resolved.connect(on_resolved)
+	GameBus.tame_intent.emit(instance_id, player_id, unarmed)
+	GameBus.tame_resolved.disconnect(on_resolved)
+	if captured.is_empty():
+		return {}
+	return captured[0]
+
 ## The first instance id of a fabric creature key, or "" when the population has
 ## none. Spawn order is deterministic but not alphabetical, so tests must look the
 ## species up rather than index the array.
@@ -6838,6 +6855,62 @@ func _test_taming_requires_unarmed() -> void:
 	rig["crafting"].free()
 	rig["registry"].free()
 
+## Phase 36 — a remote peer's hands are a CLAIM. A peer's worn gear is not
+## replicated, so the host cannot read it, and the bare-hands requirement used to be
+## reported as satisfied for every peer (i.e. every remote tamer passed it for free).
+## The claim now rides the tame intent, is consumed by the resolution it accompanied,
+## and an unclaimed peer fails closed.
+func _test_taming_peer_bare_hands_claim() -> void:
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var fox := _taming_instance_of(c, "GlimmerFox")
+	var peer := str(registry.resolve_identity(2))
+	rig["crafting"].set_skill_for(peer, "Alchemy", "apprentice")
+	var inv: Node = registry.get_inventory(peer)
+	assert_true(inv.add_item("FieldRations", 1), "the peer carries a ration")
+	_taming_stand_near(registry, peer, c, fox)
+
+	# No claim: the host cannot verify the peer's hands, so the rule fails closed.
+	assert_false(taming.is_unarmed(peer), "a peer with no claim is not assumed unarmed")
+	var unclaimed: Dictionary = taming.tame(fox, peer)
+	assert_false(bool(unclaimed["success"]), "and cannot feed the fox")
+	assert_eq(str(unclaimed["reason"]), "armed", "the reason names the hands")
+	assert_eq(inv.get_item_count("FieldRations"), 1, "with the ration unspent")
+
+	# The claim travels WITH the attempt (through the bus, as networking re-emits it)
+	# and is consumed by that resolution.
+	var claimed: Array = []
+	var on_resolved := func(result: Dictionary) -> void:
+		claimed.append(result)
+	GameBus.tame_resolved.connect(on_resolved)
+	GameBus.tame_intent.emit(fox, peer, true)
+	GameBus.tame_resolved.disconnect(on_resolved)
+	assert_eq(claimed.size(), 1, "the intent resolved")
+	assert_true(bool(claimed[0]["success"]), "a bare-hands claim satisfies the rule")
+	assert_eq(str(claimed[0]["player_id"]), peer, "for the claimant")
+	assert_eq(inv.get_item_count("FieldRations"), 0, "and the offering is spent")
+	assert_false(taming.is_unarmed(peer), "the claim does not outlive its attempt")
+
+	# A peer that claims to be ARMED is refused, and refused before the fox's
+	# cooldown is even consulted.
+	_taming_stand_near(registry, peer, c, fox)
+	inv.add_item("FieldRations", 1)
+	var armed: Array = []
+	var on_armed := func(result: Dictionary) -> void:
+		armed.append(result)
+	GameBus.tame_resolved.connect(on_armed)
+	GameBus.tame_intent.emit(fox, peer, false)
+	GameBus.tame_resolved.disconnect(on_armed)
+	assert_eq(armed.size(), 1, "the armed attempt resolved too")
+	assert_eq(str(armed[0]["reason"]), "armed", "an armed claim is refused")
+	assert_eq(inv.get_item_count("FieldRations"), 1, "spending nothing")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
 func _test_taming_fox_feed_yields() -> void:
 	# The fox tame is the non-lethal half: the creature stays alive, sheds its fur and
 	# the offering comes off the TAMER's inventory.
@@ -6955,7 +7028,7 @@ func _test_taming_is_per_player() -> void:
 	var bob_inv: Node = registry.get_inventory(bob)
 	assert_true(bob_inv.add_item("FieldRations", 1), "bob carries a ration")
 
-	var alice_result: Dictionary = taming.tame(target, alice)
+	var alice_result: Dictionary = _taming_tame_via_intent(target, alice)
 	assert_true(bool(alice_result["success"]), "alice tames the pup with her own hands")
 	assert_eq(str(alice_result["player_id"]), alice, "and the result names alice")
 	assert_true(taming.has_flag(alice, "wolfBondHolder"), "alice holds the flag")
@@ -6968,14 +7041,14 @@ func _test_taming_is_per_player() -> void:
 	# has no ration of her own.
 	var fox := _taming_instance_of(c, "GlimmerFox")
 	_taming_stand_near(registry, alice, c, fox)
-	var fed: Dictionary = taming.tame(fox, alice)
+	var fed: Dictionary = _taming_tame_via_intent(fox, alice)
 	assert_false(bool(fed["success"]), "alice cannot feed the fox on bob's ration")
 	assert_eq(str(fed["reason"]), "missing_offer", "reason is missing_offer")
 	assert_eq(bob_inv.get_item_count("FieldRations"), 1, "bob's ration is untouched")
 
 	# ...and bob, standing next to the same fox, does get fed.
 	_taming_stand_near(registry, bob, c, fox)
-	assert_true(bool(taming.tame(fox, bob)["success"]), "bob feeds it with his own ration")
+	assert_true(bool(_taming_tame_via_intent(fox, bob)["success"]), "bob feeds it with his own ration")
 	assert_eq(bob_inv.get_item_count("FieldRations"), 0, "spending his own")
 	assert_eq(bob_inv.get_item_count("glimmer_fur_tuft"), 1, "and receiving the tuft")
 	rig["creature"].free()
@@ -6996,14 +7069,18 @@ func _test_taming_client_forwards_intent() -> void:
 	taming.is_authoritative = false
 	var target := _taming_instance_of(c, "GraywolfPack")
 	var forwarded: Array = []
-	var on_intent := func(instance_id: String, player_id: String) -> void:
-		forwarded.append([instance_id, player_id])
+	var on_intent := func(instance_id: String, player_id: String, unarmed: bool) -> void:
+		forwarded.append([instance_id, player_id, unarmed])
 	GameBus.tame_intent.connect(on_intent)
 	GameBus.tame_requested.emit(target)
 	GameBus.tame_intent.disconnect(on_intent)
 	assert_eq(forwarded.size(), 1, "the client forwarded exactly one intent")
 	assert_eq(str(forwarded[0][0]), target, "carrying the instance id")
 	assert_eq(str(forwarded[0][1]), "", "and no identity — the host decides who is taming")
+	# Phase 36 — but it DOES carry the client's own hands (the one machine that knows):
+	# no character slice is wired here, so the local player's hands are unmodelled and
+	# the claim is "unarmed".
+	assert_true(bool(forwarded[0][2]), "with this machine's own bare-hands claim")
 	assert_false(c.is_tamed(target), "nothing resolved locally")
 	c.free()
 	taming.free()

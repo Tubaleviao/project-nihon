@@ -492,9 +492,17 @@ signal tame_requested(instance_id: String)
 ## re-emits it with the identity bound to that connection, so the offering comes
 ## off that player's own inventory and only that player's flags move. Host-local
 ## taming stays on `tame_requested`.
+##
+## `unarmed` is the client's claim about its OWN hands (Phase 36), which is the only
+## equipment evidence a host can have for a peer: a body's worn gear is not
+## replicated, so the bare-hands requirement (`requiresUnarmed` in the fabric)
+## cannot be evaluated from the host's own state. It is a CLAIM — client-declared,
+## never persisted, and consumed by the resolution it accompanies — and a peer that
+## claims nothing fails the requirement closed instead of passing it for free.
 ## instance_id : String — CreatureSlice instance id
 ## player_id   : String — the tamer; "" means "the local player"
-signal tame_intent(instance_id: String, player_id: String)
+## unarmed     : bool — the tamer's claim that its hands are empty (see above)
+signal tame_intent(instance_id: String, player_id: String, unarmed: bool)
 
 ## Emitted by TamingSlice with the outcome of a tame attempt.
 ## result : Dictionary — { instance_id, creature_id, success, reason, result,
