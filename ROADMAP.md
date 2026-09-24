@@ -2228,7 +2228,8 @@ field on GraywolfPack and GlimmerFox, and `pnpm validate`, `pnpm generate` and
 **Known simplifications (deferred):**
 - Skill tiers remain the per-process table the crafting gates use
   (`CraftingSlice._skill_tiers`), not per-player progression — the same gap
-  Phase 34 recorded.
+  Phase 34 recorded. **(closed in Phase 36: the tiers moved onto the player
+  record.)**
 - The `tamed_by` binding is not replicated: a peer learns its own companions from
   its record (join snapshot / `own_state_synced`), and a peer's companion appears
   as a wild creature in its AOI stream. The follow AI only runs on the host.
@@ -2237,6 +2238,138 @@ field on GraywolfPack and GlimmerFox, and `pnpm validate`, `pnpm generate` and
   a real client's tame over the network (Phase 34's gap, unchanged).
 - Companion movement is still direct kinematic stepping, not a nav-mesh — the
   NavigationAgent3D item below is unchanged.
+
+---
+
+## Phase 36 — Review pass: the network trust boundary, gated boots, per-player progression ✅ Done
+
+**Goal:** close the ten findings of the Phase 36 review pass over Phases 33–35. Two
+themes: what the host is willing to believe from a client (identity claims, world
+edits, packet volume), and what the host tells a client (player ids that are also
+bearer tokens).
+
+**Newel dependency:** None. No fabric field changed — `pnpm check-drift` still
+reports 543 files matching the manifest.
+
+**Deliverables:**
+- `src/networking/networking_slice.gd` — the inbound trust boundary: acting
+  identity bound to the connection (`_actor_id`, `_refuse_unhandshaked`), world-edit
+  reach validation (`_within_reach`, `_chop_is_in_reach`, `MAX_EDIT_REACH`), the
+  packet size cap (`MAX_CLIENT_PACKET_BYTES`), the per-peer token bucket
+  (`_allow_packet`, `RATE_BUCKET_CAPACITY`, `RATE_BUCKET_REFILL_PER_SEC`), and the
+  outbound identity redaction (`redact_for_client`, `adopt_own_handle`,
+  `_map_identities`, `IDENTIFIED_STATE_KEYS`, `claimed_handle`).
+- `src/persistence/player_registry.gd` — `public_handle`, `player_id_for_handle`,
+  `looks_like_player_id`, `resolve_named_party`, and the per-player skill tiers
+  (`get_skill_tier` / `record_skill` / `record_skills`, carried by the record).
+- `src/crafting/crafting_slice.gd` — `get_skill_for` / `set_skill_for` and
+  `_check_skill_guards(spec, player_id)`.
+- `src/creature/creature_ai.gd` — the `player_targets` provider and per-target
+  ticking (`_player_targets`, `_nearest_target`, `_tick_instance(..., target_id)`).
+- `src/creature/taming_slice.gd` — the bare-hands claim (`_unarmed_claims`,
+  `is_unarmed` per player) and the claim-carrying intent handler.
+- `src/core/bus.gd` — `tame_intent(instance_id, player_id, unarmed)`.
+- `src/core/game_root.gd` — `should_run_tests` (the boot gate), the `_player_targets`
+  provider, the redacted snapshot (`_build_snapshot`), and the new wiring
+  (`_networking.tree_slice`, `_networking.player_registry`).
+- `src/tests/test_suite.gd` — 17 new/rewritten tests.
+
+**Acceptance criteria:**
+- [x] A client cannot act as another player: every acting party (market
+  seller/buyer, proposal author/voter, trade propose/accept/reject, craft, repair,
+  research, tame) is the player id bound to the sending connection, and a payload's
+  identity half is ignored. Asserted for all of them, plus that an un-handshaked
+  peer cannot act at all.
+- [x] World edits need a bound identity AND a target within `MAX_EDIT_REACH` (60 m)
+  of the position the host last recorded for that peer; a peer with no recorded
+  position is refused, and a tree chop resolves the tree's own position through the
+  wired TreeSlice.
+- [x] A client packet is capped at `MAX_CLIENT_PACKET_BYTES` before parsing, and each
+  peer draws from its own token bucket: a burst is capped at `RATE_BUCKET_CAPACITY`,
+  the bucket refills at the sustained rate, and a reconnect starts full.
+- [x] No player id is broadcast: market, trade and governance state — values AND the
+  keys of the offers/accepted maps — travel as public handles, in the delta
+  broadcasts and in the world snapshot, and a leaked handle claims nothing while a
+  leaked id is honoured as that player's reconnect (the takeover, demonstrated both
+  ways).
+- [x] The automated suite runs on boot only for a debug build or `--run-tests`; a
+  release boot runs no suite.
+- [x] Creature AI targets the nearest of every player the host can place on the
+  machine, not only the host's own body, and a remote target is chased rather than
+  handed to the battle slice.
+- [x] Skill tiers are per-player and durable: one player's tier neither unlocks nor
+  gates another's craft, repair or tame, and a tier round-trips through the record.
+- [x] A remote peer's bare hands are a claim that rides its tame intent; an
+  unclaimed peer fails the fabric's `requiresUnarmed` rule closed.
+- [x] Headless suite green on both boot paths — `Results: 7244/7244 passed
+  (0 failed)` → `All tests passed ✓` with `[Server] listening on port 7777,
+  max_clients 64` on the server boot (7165 at the start of this pass: 79 new
+  assertions).
+- [x] Every fix is RED-proven: with the fix reverted (source only, tests kept) the
+  new assertion fails — quoted in each commit body.
+
+**Implementation notes:**
+- **The acting party is the connection, and only a trade invite may name anyone.**
+  `_peer_party` used to pass any string except the literal `"player"` through
+  verbatim, which is what made a spoofed accept/spoofed sale/spoofed vote possible.
+  The counterparty on a trade invite is the one identity a payload may legitimately
+  name, because it grants nothing: it is answered by that player's own accept, which
+  is bound to its own connection. It is resolved against the registry's ONLINE set,
+  so an invite to an offline or invented name is dropped instead of parked.
+- **Reach is measured from the host's evidence, not the client's claim.** The peer's
+  position comes from the host's own record of its movement packets;
+  `has_last_known_state()` is what separates "never reported" from "at the origin",
+  so a peer with no position on record is refused rather than measured from an
+  assumed spawn.
+- **The channel is policed, not just its packet types.** Phase 19's dedup rejects a
+  REPLAYED seq and never a fresh flood, so the token bucket is what bounds a peer's
+  rate. Both bucket state and the size cap live before the payload is parsed.
+- **Handles are derived, not minted**, and that is the whole point: a minted handle
+  would need a record (absent for an offline seller named in a persisted listing), a
+  re-mint after a save/load, and a place to live. `sha256(player_id)` truncated needs
+  none of that, is stable across a restart, and cannot be turned back into the token.
+  The id-SHAPE predicate is what finds the ids inside a payload, so an evicted
+  player's id is still recognised as one.
+- **The client is shown its own handle back as `"player"`.** Single-player and
+  client-side code has always named the local player `"player"`; the adoption step
+  keeps that true without the client ever holding another player's identity — and
+  the demo's scaffolding literals (`"merchant"`) are not id-shaped, so they pass
+  through every redaction untouched.
+- **Skill tiers moved onto the record, with the process table kept for one narrow
+  case:** this machine's own player when the record holds no tier yet (the
+  pre-identity boot, the DEBUG demo's `set_skill`, and isolated tests). A peer has no
+  such fallback, so a missing tier fails closed at the seed tier instead of borrowing
+  this machine's numbers.
+- **The bare-hands claim is deliberately short-lived.** It is installed for exactly
+  the resolution its intent triggered and dropped immediately after, so a stale claim
+  cannot silently arm or disarm a later attempt. The residual trust is stated in the
+  code: a client that lies about its hands is believed, exactly as it is believed
+  about its movement.
+- **A remote target is chased but not struck.** Damage to a peer belongs to that
+  peer's own client — the machine that simulates its health — and the host has no
+  simulation of a peer's HP to hit or persist (`PlayerRegistry.record_hp` already
+  refuses a client-declared value). Handing a player id to the battle slice would run
+  it through the CREATURE path: tracked hit points, then a `creature_died` on
+  somebody's id. Peer damage over the wire is deferred (below).
+
+**Known simplifications (deferred):**
+- **Peer damage over the wire.** A creature aggros and chases a remote peer, but no
+  combat round is opened against it (see above). Closing this needs a host → client
+  damage event and per-peer HP ownership on the peer's own client.
+- **Peer equipment is not replicated.** The bare-hands rule is evaluated against the
+  peer's own claim. Verifying it means replicating worn gear, which is the feature
+  the claim stands in for.
+- **Trade's broker-fee tier is still slice-local** (`TradeSlice._skill_tiers`): it
+  affects only the LOCAL player's own fee, and is read from the local table. Moving
+  it onto the record is the remaining half of the per-player skill change.
+- **A client is not sent its own skill tiers.** It never resolves a craft or a
+  tame — it forwards an intent — so the tiers it displays (a gated recipe row) are
+  the local table's. The host is the authority for every gate.
+- **Still no end-to-end socket exercise** of the new guards: they are proven at the
+  routing level (`_route_c2h`, `_route_h2c`, `redact_for_client`) rather than by
+  driving two real clients through ENet (Phase 34/35's gap, unchanged).
+- **The taming mirrors are still never evicted on disconnect** and `tamed_by` is
+  still not replicated — both carried over from Phase 35, unchanged.
 
 ---
 
@@ -2271,3 +2404,11 @@ field on GraywolfPack and GlimmerFox, and `pnpm validate`, `pnpm generate` and
   runtime decimation deferred from Phase 23.
 - **Dynamic impostor re-bake** — impostor billboards are offline-baked; live
   palette-change re-bake deferred from Phase 23.
+- **Peer damage over the wire** — a creature aggros and chases a remote peer, but
+  the host opens no combat round against it: damage to a peer belongs to that
+  peer's own client, and the host has no simulation of a peer's HP to hit or
+  persist. Needs a host → client damage event plus per-peer HP ownership on the
+  peer's side (deferred from Phase 36).
+- **Peer equipment replication** — a remote peer's worn gear is not replicated, so
+  the fabric's bare-hands rule is evaluated against the claim that rides the peer's
+  tame intent. Verifying it means replicating equipment (deferred from Phase 36).
