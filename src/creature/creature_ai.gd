@@ -76,6 +76,15 @@ var battle_slice:   Node = null
 ## companion then simply holds position.
 var taming_slice:   Node = null
 
+## Phase 36 — every player the host can place on THIS machine, as
+## { target_id: Vector3 }: the local player's body under the id "player" (the
+## defender id `combat_round_requested` has always used for it) plus each remote
+## peer's last recorded position under its player id. Wired by game_root, which is
+## the only place that knows both the networking slice's last-known states and the
+## registry's peer → player mapping; unwired (an isolated test, or a client, where
+## the local body is all there is) the local player alone is the target set.
+var player_targets: Callable = Callable()
+
 ## Authority mode (Phase 18): creature AI runs on the host only. On a client
 ## the creature bodies are driven by host state broadcasts, never local AI.
 var is_authoritative: bool = true
@@ -88,9 +97,11 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if not is_authoritative:
 		return
-	if creature_slice == null or player_slice == null:
+	if creature_slice == null:
 		return
-	var player_pos: Vector3 = player_slice.get_position()
+	var targets := _player_targets()
+	if targets.is_empty():
+		return
 	var instances: Array = creature_slice.get_all_instances()
 	for inst in instances:
 		var iid: String = inst["instance_id"]
@@ -101,7 +112,34 @@ func _process(delta: float) -> void:
 		if _is_companion(iid):
 			_tick_companion(iid, inst, delta)
 			continue
-		_tick_instance(iid, inst, player_pos, delta)
+		# Phase 36 — the NEAREST of every player, not only the host's own body: a
+		# creature used to stand still while a remote peer walked through its
+		# territory, because the only position it ever looked at was this machine's.
+		var target := _nearest_target(inst["position"], targets)
+		_tick_instance(iid, inst, target["position"], delta, str(target["id"]))
+
+## The player targets on this machine (see `player_targets`).
+func _player_targets() -> Dictionary:
+	if player_targets.is_valid():
+		var provided = player_targets.call()
+		if provided is Dictionary:
+			return provided
+	if player_slice == null:
+		return {}
+	return { "player": player_slice.get_position() }
+
+## The target nearest to `from`, as { id, position }. A dictionary's iteration order
+## is insertion order, so the strict `<` keeps the first target on a tie — which, for
+## a tie between the local player and a peer, means the local one, the same
+## preference an un-wired slice had.
+func _nearest_target(from: Vector3, targets: Dictionary) -> Dictionary:
+	var best := {}
+	for id in targets:
+		var pos: Vector3 = targets[id]
+		var d: float = from.distance_to(pos)
+		if best.is_empty() or d < float(best["distance"]):
+			best = { "id": str(id), "position": pos, "distance": d }
+	return best
 
 # ---------------------------------------------------------------------------
 # Companion (Phase 35)
@@ -150,7 +188,11 @@ func _is_companion(iid: String) -> bool:
 # Per-instance tick
 # ---------------------------------------------------------------------------
 
-func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: float) -> void:
+## `target_id` is the identity of the player `player_pos` belongs to: "player" for
+## this machine's own (the defender id the bus has always carried for it), or a
+## remote peer's player id (Phase 36). It defaults to "player" so a caller that only
+## has a position — every isolated test — keeps the single-player behaviour.
+func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: float, target_id: String = "player") -> void:
 	var ai: Dictionary     = _ai[iid]
 	var pos: Vector3       = inst["position"]
 	var ai_state: String   = ai["state"]
@@ -206,8 +248,17 @@ func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: f
 			ai["attack_timer"] += delta
 			if ai["attack_timer"] >= ATTACK_INTERVAL:
 				ai["attack_timer"] = 0.0
-				if dist <= attack_r:
-					GameBus.combat_round_requested.emit(iid, "player")
+				if dist <= attack_r and target_id == "player":
+					# Phase 36 — a remote peer is chased and fled from, but no round
+					# is opened against it: damage to a peer belongs to that peer's
+					# own client, which is the machine that simulates its health.
+					# The host has no simulation of a peer's HP to hit or to persist
+					# (the same reason PlayerRegistry.record_hp refuses a
+					# client-declared value), and handing a player id to the battle
+					# slice would run it through the CREATURE path — hit points and a
+					# creature_died on somebody's id. Peer damage over the wire is the
+					# deferred half of this fix (see ROADMAP).
+					GameBus.combat_round_requested.emit(iid, target_id)
 
 		"fleeing":
 			if hp <= 0.0:

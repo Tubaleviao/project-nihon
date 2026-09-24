@@ -223,6 +223,7 @@ func run() -> void:
 	_run_test("ai: herd shares fleeing state",                 _test_ai_herd_shares_flee)
 	_run_test("ai: solitary creature does not propagate",      _test_ai_solitary_no_propagation)
 	_run_test("ai: group behavior reads from fabric",          _test_ai_group_behavior_reads_fabric)
+	_run_test("ai: targets the nearest of every player",        _test_ai_targets_nearest_of_all_players)
 	_run_test("player: respawn resets hp and alive flag",      _test_player_respawn)
 	_run_test("chunk: desired set within view distance",        _test_chunk_desired_set)
 	_run_test("chunk: world/chunk coordinate round-trip",       _test_chunk_coordinate_round_trip)
@@ -277,6 +278,7 @@ func run() -> void:
 	_run_test("net: tree chop needs handshake + reach",          _test_net_tree_intent_requires_handshake_and_reach)
 	_run_test("net: client packet size is capped",               _test_net_client_packet_size_capped)
 	_run_test("net: client packet rate is limited per peer",     _test_net_client_packet_rate_limited)
+	_run_test("boot: the automated suite is gated",              _test_boot_suite_is_gated)
 	_run_test("net: AOI center defaults to spawn; in_aoi gates", _test_net_aoi_center_and_in_aoi)
 	_run_test("net: AOI recipients are near peers only",         _test_net_aoi_recipients)
 	_run_test("net: AOI region floors to grid cell",             _test_net_aoi_region)
@@ -3873,6 +3875,23 @@ func _test_net_client_packet_rate_limited() -> void:
 	assert_true(n._allow_packet(3, later), "a disconnected peer's bucket goes with its transport state")
 	n.free()
 
+func _test_boot_suite_is_gated() -> void:
+	# The automated suite no longer runs on EVERY boot: a release export that was
+	# never asked for it must boot without the 7000-assertion development harness,
+	# while a debug build (and an explicit --run-tests) still runs it. Asserted on
+	# the pure predicate, so the rule is pinned without booting twice.
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	assert_false(root_script.should_run_tests([], false),
+		"a release boot without the flag runs no suite")
+	assert_false(root_script.should_run_tests(["--server"], false),
+		"and neither does a matching --server boot")
+	assert_true(root_script.should_run_tests([], true),
+		"a debug build runs the suite by default")
+	assert_true(root_script.should_run_tests(["--run-tests"], false),
+		"and --run-tests asks for it explicitly")
+	assert_true(root_script.should_run_tests(["--client", "127.0.0.1"], true),
+		"the flag is independent of the network role")
+
 func _test_net_aoi_center_and_in_aoi() -> void:
 	# Interest management (Phase 29): a peer with no reported position falls back
 	# to the spawn AOI center, and in_aoi gates on the AOI radius.
@@ -6405,10 +6424,72 @@ func _test_net_own_state_push_is_peer_scoped() -> void:
 	host.free()
 	client.free()
 
+## Phase 36 — a creature aggros the nearest player, remote peers included. Before
+## this the AI compared against `player_slice` alone, which on a host is the host's
+## own body: a peer could walk through a wolf's territory untouched, because the
+## wolf literally never looked at where that peer was.
+func _test_ai_targets_nearest_of_all_players() -> void:
+	var rig := _make_ai_rig()
+	var c: CreatureSlice = rig["creature"]
+	var ai: CreatureAI   = rig["ai"]
+	var instances: Array = c.get_all_instances()
+	assert_true(instances.size() > 0, "need at least one creature instance")
+
+	# A CinderGargoyle (aggressionLevel 2) chases without an alert pause, so the
+	# chase is visible in one tick.
+	var iid := ""
+	var pos := Vector3.ZERO
+	for inst in instances:
+		var res: Resource = GameData.CREATURES.get(inst["creature_id"], null)
+		if res != null and int(res.get("aggressionLevel")) == 2:
+			iid = str(inst["instance_id"])
+			pos = inst["position"]
+			break
+	assert_true(iid != "", "need an AGGRESSIVE creature instance (aggressionLevel == 2)")
+
+	var peer_pos := pos + Vector3(2.0, 0.0, 0.0)
+	var host_pos := pos + Vector3(400.0, 0.0, 0.0)
+	var targets := { "player": host_pos, "player_peer": peer_pos }
+	ai.player_targets = func() -> Dictionary:
+		return targets
+	var nearest: Dictionary = ai._nearest_target(pos, ai._player_targets())
+	assert_eq(str(nearest.get("id", "")), "player_peer",
+		"the nearest player is the peer, not the host's own body")
+
+	ai.force_state(iid, "idle")
+	ai._process(0.1)
+	assert_eq(ai.get_state(iid), "aggressive", "the creature aggros the nearest player whatever machine it is")
+	# The idle → aggressive tick only transitions (it returns); the chase itself is
+	# the NEXT tick.
+	ai._process(0.1)
+	var moved: Vector3 = c._instances[iid]["position"]
+	assert_true(moved.distance_to(peer_pos) < pos.distance_to(peer_pos),
+		"and chases it (the peer, not the host 400 m away)")
+
+	# A remote target is chased but not struck: the host has no simulation of a
+	# peer's health, and handing its player id to the battle slice would run it
+	# through the creature path (hit points, then a creature_died on a player id).
+	var rounds: Array = []
+	var on_round := func(attacker: String, defender: String) -> void:
+		rounds.append([attacker, defender])
+	GameBus.combat_round_requested.connect(on_round)
+	ai.force_state(iid, "aggressive")
+	ai._ai[iid]["attack_timer"] = CreatureAI.ATTACK_INTERVAL
+	ai._tick_instance(iid, c._instances[iid], peer_pos, 0.01, "player_peer")
+	assert_eq(rounds.size(), 0, "a remote peer is chased, not turned into a combat round")
+
+	ai._ai[iid]["attack_timer"] = CreatureAI.ATTACK_INTERVAL
+	ai._tick_instance(iid, c._instances[iid], c._instances[iid]["position"] + Vector3(0.5, 0.0, 0.0), 0.01)
+	assert_eq(rounds.size(), 1, "the local player is still struck")
+	assert_eq(str(rounds[0][1]), "player", "under the defender id the bus has always used")
+
+	GameBus.combat_round_requested.disconnect(on_round)
+	rig["creature"].free()
+	rig["ai"].free()
+
 # ---------------------------------------------------------------------------
 # Phase 35 — creature taming
 # ---------------------------------------------------------------------------
-
 ## A taming rig: a creature population, the local player's registry + inventory,
 ## and the taming slice wired to both. `character_slice` is left null unless a
 ## test needs the bare-hands rule (see _test_taming_requires_unarmed), because a

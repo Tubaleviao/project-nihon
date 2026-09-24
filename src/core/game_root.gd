@@ -99,14 +99,19 @@ var _handshake_elapsed: float = 0.0
 var _handshake_retries: int = 0
 
 func _ready() -> void:
-	# Run the automated tests before any production slice enters the tree.
-	# The suite emits signals on the shared GameBus (creature_died, chunk_ready,
-	# combat, loot…). Running it first keeps those emissions from leaking into
-	# production state — previously the test creature_died calls were marking
-	# every freshly spawned creature dead and hiding its body on world boot.
-	_run_tests()
-
+	# Phase 36 — the role flags are read FIRST, because they decide whether the
+	# automated suite runs on this boot (see should_run_tests).
 	_parse_network_args()
+
+	# Run the automated tests before any production slice enters the tree — when
+	# this boot runs them at all. The suite emits signals on the shared GameBus
+	# (creature_died, chunk_ready, combat, loot…). Running it first keeps those
+	# emissions from leaking into production state — previously the test
+	# creature_died calls were marking every freshly spawned creature dead and
+	# hiding its body on world boot.
+	if should_run_tests(OS.get_cmdline_user_args(), OS.is_debug_build()):
+		_run_tests()
+
 	# Phase 33 — intercept the quit so records are written first.
 	_install_quit_guard()
 
@@ -144,6 +149,10 @@ func _ready() -> void:
 	_creature_ai.creature_slice = _creature
 	_creature_ai.player_slice   = _player
 	_creature_ai.battle_slice   = _battle
+	# Phase 36 — creature AI targets the nearest of ALL players, so it needs the
+	# targets this integration layer alone can assemble: the local body plus every
+	# connected peer's last recorded position (see _player_targets).
+	_creature_ai.player_targets = Callable(self, "_player_targets")
 
 	# Wire crafting + station cross-references before add_child so their _ready()
 	# methods see the correct dependencies if they ever emit signals during init.
@@ -358,6 +367,28 @@ func _run_tests() -> void:
 	add_child(suite)
 	suite.run()
 	suite.queue_free()
+
+## Phase 36 — the user arg that asks for the suite explicitly.
+const RUN_TESTS_ARG := "--run-tests"
+
+## Phase 36 — should THIS boot run the automated suite?
+##
+## It used to run unconditionally, so every boot of every build executed a
+## 7000-assertion suite inside `_ready()` — a production boot paid for the whole
+## development harness on every launch, and the world boot had to be sequenced
+## around its GameBus emissions. The suite is a development and CI tool, not a
+## boot step, so it now runs when either:
+##
+##   • `--run-tests` is passed on the user-args command line, or
+##   • this is a DEBUG build (`OS.is_debug_build()`: the editor and the debug
+##     export template). A release export reports false, so a SHIPPED build never
+##     runs the suite unless it is asked for by name.
+##
+## Static and argument-driven on purpose: the rule is a pure predicate the suite
+## can assert directly, rather than something that can only be observed by booting
+## twice. See `_test_boot_suite_is_gated`.
+static func should_run_tests(args: Array, is_debug_build: bool) -> bool:
+	return RUN_TESTS_ARG in args or is_debug_build
 
 ## Parse `--client [addr]` from OS user args to determine network role. Defaults
 ## to host (authoritative single-player) when no args are present. A malformed
@@ -699,6 +730,27 @@ func _snapshot_remote_players() -> void:
 		if player_id.is_empty():
 			continue
 		_fold_last_known_state(int(peer_id), player_id)
+
+## Phase 36 — every player CreatureAI can place on this machine, as
+## { target_id: Vector3 }: the local body under the id "player" (the defender id
+## `combat_round_requested` has always used for it) plus each connected peer's last
+## recorded position, under its player id.
+##
+## A peer that has never reported a position is deliberately NOT included: aiming a
+## creature at the world origin would be worse than not seeing that peer at all. The
+## position is the host's own evidence of where the peer is (recorded from the
+## peer's movement packets — see NetworkingSlice.remember_player_state), not a claim
+## from the client.
+func _player_targets() -> Dictionary:
+	var out := {}
+	if _player != null:
+		out["player"] = _player.get_position()
+	for peer_id in _networking.get_last_known_states():
+		var player_id := _registry.get_player_id(int(peer_id))
+		if player_id.is_empty():
+			continue
+		out[player_id] = _networking.get_last_known_state(int(peer_id))
+	return out
 
 ## Phase 29 — a client's movement may carry it into a new area of interest.
 ## When the AOI grid cell changes, re-send a scoped snapshot so the client gains
