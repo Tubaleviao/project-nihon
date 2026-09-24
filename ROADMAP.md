@@ -550,7 +550,8 @@ GDScript and adds the AI-specific fields to each creature entity.
 
 **Known simplifications deferred to later:**
 - Pack / herd behavior (creatures alerting nearby allies)
-- Taming (`tame` behavior modelled in fabric but not wired)
+- Taming (`tame` behavior modelled in fabric but not wired when this phase
+  landed; wired in Phase 35)
 - `NavigationAgent3D` path-finding — movement currently uses direct kinematic
   stepping; a proper nav-mesh baked from the voxel terrain and
   `NavigationAgent3D` per creature instance will be added in a later phase
@@ -2106,6 +2107,132 @@ runtime state, not what the fabric describes, so no `pnpm validate` /
 
 ---
 
+## Phase 35 — Creature taming ✅ Done
+
+**Goal:** Wire the `tame` capability the fabric has carried on creature entities
+since Phase 5 — GraywolfPack's "tame a surviving pup after defeating the alpha
+wolf" and GlimmerFox's "feed the fox to harvest shed fur without harming it" — so
+a player can win a companion and the `wolfBondHolder` flag the Ranger profession
+gate reads, and so the fabricated `tame` behavior stops being prose.
+
+**Newel dependency:** None. Reuses the existing `json` field type (already
+emitted by `generator-godot`) through a new `tameData()` helper in
+`fabric/world/creatures/shared.js`, exactly as `dropsData()` and `techData()`
+already do; no generator change. The fabric itself gained the structured `tame`
+field on GraywolfPack and GlimmerFox, and `pnpm validate`, `pnpm generate` and
+`pnpm check-drift` were all run.
+
+**Deliverables:**
+- `fabric/world/creatures/shared.js` — `tameData()`: result kind
+  (`companion` | `yield`), `requiresUnarmed`, `requiresSkill {skill, tier}`,
+  `requiresAnyItem` (alternatives), `requiresDefeated` (the alpha-down gate),
+  `grantsFlag`, `yields`, `cooldownSeconds`, `suppressRespawn`.
+- `fabric/world/creatures/temperate.js` / `twilight.js` — the `tame` field on
+  GraywolfPack (companion, bare hands, Unarmed:journeyman, alpha down, grants
+  `wolfBondHolder`, no respawn once tamed) and GlimmerFox (yield, bare hands,
+  Alchemy:apprentice, rations or raw meat, sheds `glimmer_fur_tuft`, 600 s
+  cooldown).
+- `src/creature/taming_slice.gd` — fabric-driven `can_tame()` / `tame()`:
+  requirement validation, the offering consumed from the tamer's own inventory,
+  the granted flag, the companion binding, wall-clock cooldown, record sync.
+- `src/core/bus.gd` — `tame_requested` / `tame_intent` / `tame_resolved` /
+  `creature_tamed`.
+- `src/creature/creature_slice.gd` — the instance's `tamed_by` binding plus
+  `mark_tamed` / `is_tamed` / `get_tamed_by` / `companions_of` /
+  `get_instance_position` / `has_defeated_species`; `nearest_creature()` skips a
+  companion; the respawn tick honours `suppressRespawn`.
+- `src/creature/creature_ai.gd` — a `tamed` state: a companion never aggros,
+  never patrols, follows its owner, and is exempt from pack escalation.
+- `src/persistence/player_registry.gd` — `flags` and `companions` on the player
+  record (a pre-Phase-35 payload restores to empty defaults).
+- `src/core/game_root.gd` — the slice wired and authority-gated; the flags and
+  companion bindings ride the join snapshot and the Phase 34 `own_state_synced`
+  push; restore on join, boot and autosave.
+- `src/networking/networking_slice.gd` — the `tame_intent` c2h route, with the
+  identity bound to the connection and the payload's `player_id` ignored.
+- `src/player/player_slice.gd` — `G` tames the nearest creature; the controls
+  panel lists it.
+- `src/inventory/inventory_slice.gd` — `glimmer_fur_tuft` weight, alongside the
+  other raw creature drops.
+- `src/tests/test_suite.gd` — 14 taming tests under a `Phase 35` banner.
+
+**Acceptance criteria:**
+- [x] The interaction is fabricated, not hardcoded: `tame_data()` is read for
+  every creature and a creature with no `tame` field is refused as
+  `not_tameable`, with its own test asserting the field-by-field contents (the
+  wolf's flag/alpha/skill gates, the fox's offerings, cooldown and yield).
+- [x] The wolf requires the alpha down before a pup can be tamed — "one instance
+  of that species is dead" is the runtime's reading of the pack rule
+  (`has_defeated_species`), and the test proves the gate is satisfied rather than
+  skipped by asserting the SKILL reason that answers next.
+- [x] The wolf grants `wolfBondHolder`, binds the instance as a companion, and
+  the companion is not offered as an attack target
+  (`nearest_creature()` skips it) and follows its owner instead of patrolling.
+- [x] The fox yields `glimmer_fur_tuft` without dying, consumes the offering, and
+  is refused for 600 s afterwards — the cooldown expired by hand in the test, so
+  a second feed succeeds.
+- [x] Requirements fail closed and name themselves: `armed`, `skill_locked:Unarmed:journeyman`
+  (novice and apprentice both refused), `missing_offer`, `too_far`,
+  `already_tamed`, `target_dead`, `on_cooldown`.
+- [x] A tamed companion does not respawn (fabric `suppressRespawn`), while a wild
+  creature with the same expired deadline does.
+- [x] The flag and the companion binding survive the record round-trip through
+  the player record, and a pre-Phase-35 payload restores to empty state.
+- [x] Taming is per-player: one player's tame sets that player's flag, binds that
+  player's companion and spends that player's offerings — a second player cannot
+  feed the same fox on the first player's rations.
+- [x] A client resolves nothing and forwards `tame_intent` with no identity.
+- [x] Headless suite green on both boot paths — `Results: 7118/7118 passed
+  (0 failed)` → `All tests passed ✓` with `[Server] listening on port 7777,
+  max_clients 64` on the server boot (6994 before this phase: 124 new
+  assertions).
+
+**Implementation notes:**
+- **An empty owner is not a thing.** `tamed_by` is the instance's owner id and
+  `""` means wild, so a companion needs an identified player. A tame resolved in
+  the `""` bucket (a client, or an isolated slice with no registry) cannot bind a
+  companion and is refused as `already_tamed` rather than silently writing a
+  wild-looking owner. Every taming test wires a PlayerRegistry for this reason —
+  a test that does not gets a refusal, not a binding.
+- **The alpha-down gate is defined against what the runtime models.** A pack is N
+  instances of one creature id; there is no separate alpha or pup instance, so
+  "the alpha is dead" is "one instance of that species is dead", which is also
+  what the pack's own `flee` rule implies. Stated in the slice docstring instead
+  of left implicit.
+- **Reason precedence is deliberate** (`can_tame`, documented in place):
+  not-a-tame → `already_tamed` → `target_dead` → `too_far` → `alpha_alive` →
+  `armed` → `skill_locked` → `missing_offer` → `inventory_full` → `on_cooldown`.
+  A distance failure answers before a state failure, because a player who cannot
+  reach the creature cannot act on its state either. The tests assert the
+  precedence, so changing it is a deliberate edit with a failing test.
+- **The shed yield must fit before the offering is consumed** (`can_add_items`),
+  or a full pack eats the player's rations and hands back nothing.
+- **Wall-clock deadlines**, like the market, trees, respawns and research already
+  are: a process-uptime cooldown means nothing in a new process.
+- **A companion is out of the pack.** A tamed wolf must not be dragged back into
+  its former pack's alert/flee by the Phase 30 propagation, and a packed
+  companion would otherwise fight its own owner — `_escalate_neighbor` refuses a
+  companion.
+- **The bare-hands rule reads the character slice for the LOCAL player only.** A
+  remote peer's equipment is not replicated and the intent carries no equipment
+  claim, so the rule cannot be evaluated for a peer and is reported as
+  satisfied.
+
+**Known simplifications (deferred):**
+- Skill tiers remain the per-process table the crafting gates use
+  (`CraftingSlice._skill_tiers`), not per-player progression — the same gap
+  Phase 34 recorded.
+- The `tamed_by` binding is not replicated: a peer learns its own companions from
+  its record (join snapshot / `own_state_synced`), and a peer's companion appears
+  as a wild creature in its AOI stream. The follow AI only runs on the host.
+- No end-to-end socket exercise of `tame_intent` — a headless client has no UI, so
+  the path is proven at the routing level plus the intent forward, not by driving
+  a real client's tame over the network (Phase 34's gap, unchanged).
+- Companion movement is still direct kinematic stepping, not a nav-mesh — the
+  NavigationAgent3D item below is unchanged.
+
+---
+
 ## Deferred (in priority order)
 
 - **Server sharding (final, not before maturity)** — split the authoritative
@@ -2125,8 +2252,6 @@ runtime state, not what the fabric describes, so no `pnpm validate` /
 - **`VoidTouched` special-case unlock** — the void-burst survivor unlock trigger
   is defined in the fabric but not wired to any runtime event (deferred from
   Phase 13).
-- **Taming** — the `tame` behavior is modelled on creature entities; requires
-  Phase 15 creature AI before it can be wired.
 - **Station placement UI** — currently stations are spawned programmatically;
   a build-mode placement flow is needed (deferred from Phase 16).
 - **NavigationAgent3D path-finding** — creature movement currently uses direct
