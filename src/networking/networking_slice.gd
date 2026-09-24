@@ -74,6 +74,12 @@ enum Role { OFFLINE, HOST, CLIENT }
 ## O(radius²)-cells query, not an O(peers) scan (Phase 29).
 const SpatialHash := preload("res://src/core/spatial_hash.gd")
 
+## Phase 36 — the registry's id-SHAPE predicate, preloaded for the redactor: it is a
+## pure static check on a string, and the redactor must recognise a bearer token even
+## when no registry is in the tree (an offline seller's id lives on inside a persisted
+## listing long after their record was evicted).
+const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
+
 const DEFAULT_PORT    := 7777
 const DEFAULT_CHANNEL := 0
 ## Default max peers for a dedicated/headless server (the single-player demo
@@ -121,6 +127,19 @@ const MAX_CLIENT_PACKET_BYTES := 8192
 ## Phase 19 dedup cannot: it rejects a REPLAYED seq, never a new one.
 const RATE_BUCKET_CAPACITY := 120.0
 const RATE_BUCKET_REFILL_PER_SEC := 40.0
+
+## Phase 36 — the replicated blobs whose CONTENTS name players: a listing's seller, a
+## trade's parties (values AND the keys of `offers`/`accepted`), a proposal's author
+## and its `votes` keys. Written with player ids on the authority side and redacted to
+## public handles before they cross the wire. One list, so the world snapshot
+## (game_root) and the delta broadcasts cannot disagree about which parts of the world
+## are identity-bearing.
+const IDENTIFIED_STATE_KEYS: PackedStringArray = ["market", "governance", "trade"]
+
+## Phase 36 — the public handle THIS client was told to call itself (see
+## `identity_assigned`). A client is shown its own handle back as the literal
+## "player", so its local view keeps the convention it has always had.
+var claimed_handle: String = ""
 
 var _peer: ENetMultiplayerPeer
 var _role: int = Role.OFFLINE
@@ -312,7 +331,11 @@ func set_player_id(peer_id: int, player_id: String) -> void:
 		return
 	_player_ids[peer_id] = player_id
 	if _role == Role.HOST:
-		_deliver(peer_id, { "type": "identity_assigned", "player_id": player_id })
+		_deliver(peer_id, {
+			"type": "identity_assigned",
+			"player_id": player_id,
+			"handle": _public_handle(player_id),
+		})
 
 func forget_player_id(peer_id: int) -> void:
 	_player_ids.erase(peer_id)
@@ -650,17 +673,19 @@ func _on_inventory_synced(contents: Dictionary, durabilities: Dictionary = {}) -
 func _on_market_synced(data: Dictionary) -> void:
 	if _role != Role.HOST:
 		return
-	_broadcast({ "type": "market_synced", "data": data })
+	# Phase 36 — the listings name their sellers; ids are redacted to handles here
+	# (see redact_for_client) because the wire has no business carrying a bearer token.
+	_broadcast({ "type": "market_synced", "data": redact_for_client(data) })
 
 func _on_governance_synced(data: Dictionary) -> void:
 	if _role != Role.HOST:
 		return
-	_broadcast({ "type": "governance_synced", "data": data })
+	_broadcast({ "type": "governance_synced", "data": redact_for_client(data) })
 
 func _on_trade_completed(trade: Dictionary) -> void:
 	if _role != Role.HOST:
 		return
-	_broadcast({ "type": "trade_completed", "trade": trade })
+	_broadcast({ "type": "trade_completed", "trade": redact_for_client(trade) })
 
 func _on_market_list_intent(seller: String, item_id: String, quantity: int, price: float) -> void:
 	if _role != Role.CLIENT:
@@ -690,7 +715,7 @@ func _on_proposal_supersede_intent(proposal_id: String, replacement_id: String) 
 func _on_trade_synced(data: Dictionary) -> void:
 	if _role != Role.HOST:
 		return
-	_broadcast({ "type": "trade_synced", "data": data })
+	_broadcast({ "type": "trade_synced", "data": redact_for_client(data) })
 
 func _on_trade_start_intent(party_a: String, party_b: String) -> void:
 	if _role != Role.CLIENT:
@@ -922,6 +947,81 @@ func _named_party(raw: String) -> String:
 	if not player_registry.has_method("resolve_named_party"):
 		return ""
 	return str(player_registry.resolve_named_party(raw))
+
+# ---------------------------------------------------------------------------
+# Phase 36 — identity redaction on the wire
+# ---------------------------------------------------------------------------
+
+## Host side: the public-handle form of a player id, or "" when no registry is wired
+## (then there is nothing to redact with; see redact_for_client).
+func _public_handle(player_id: String) -> String:
+	if player_registry == null or not player_registry.has_method("public_handle"):
+		return ""
+	return str(player_registry.public_handle(player_id))
+
+## Host side: replace every player id inside a host → client payload with its public
+## handle, recursively — dictionary KEYS as well as values, because a trade's `offers`
+## and `accepted` maps are keyed by party.
+##
+## The player id is a BEARER TOKEN (`resolve_identity` hands the record to whoever
+## presents it on join), so broadcasting it handed every client the means to take over
+## any player's record once that player disconnected — inventories, positions,
+## appearance, technology. Market listings, trade sessions, and proposals all named
+## players by id; this is where they stop. The handle is derived, opaque and stable
+## (see PlayerRegistry.public_handle), and it is not a claim: claiming it mints a new
+## identity.
+##
+## Non-id strings ("merchant", a proposal title, an item key) are untouched: the
+## shape test recognises a minted id and nothing else.
+func redact_for_client(value: Variant) -> Variant:
+	if player_registry == null:
+		return value
+	return _map_identities(value, func(s: String) -> String:
+		if PlayerRegistry.looks_like_player_id(s):
+			return _public_handle(s)
+		return s
+	)
+
+## Client side: show THIS client's own handle back to its own slices as the literal
+## "player" — the convention the local player has always had (`TradeSlice.PARTY_PLAYER`,
+## `MarketSlice`) — so a client recognises itself in synced state without ever holding
+## another player's identity. Every OTHER handle is left exactly as it arrived: opaque
+## is the point.
+func adopt_own_handle(value: Variant) -> Variant:
+	if claimed_handle == "":
+		return value
+	return _map_identities(value, func(s: String) -> String:
+		return "player" if s == claimed_handle else s
+	)
+
+## Walk `value`, mapping every STRING through `mapper` — values and dictionary keys
+## alike. Arrays and dictionaries are rebuilt; every other type is passed through. The
+## shapes walked here are the replicated social/economy state (dictionaries of
+## dictionaries of scalars), never a whole world snapshot.
+func _map_identities(value: Variant, mapper: Callable) -> Variant:
+	if value is String:
+		return mapper.call(value)
+	if value is Array:
+		var out_items: Array = []
+		for item in value:
+			out_items.append(_map_identities(item, mapper))
+		return out_items
+	if value is Dictionary:
+		var out: Dictionary = {}
+		for key in value:
+			out[_map_identities(key, mapper)] = _map_identities(value[key], mapper)
+		return out
+	return value
+
+## Client side: the world snapshot's identity-bearing blobs, restored to this client's
+## own view (see IDENTIFIED_STATE_KEYS). Only those keys are walked — a snapshot is
+## mostly terrain and entity data, and rewriting every string in it would cost a pass
+## over the whole world for no privacy gain.
+func _adopt_snapshot_identities(data: Dictionary) -> Dictionary:
+	for key in IDENTIFIED_STATE_KEYS:
+		if data.has(key):
+			data[key] = adopt_own_handle(data[key])
+	return data
 
 ## Route a client → host packet. Only client-originated types are accepted;
 ## host-only types sent by a malicious client are dropped and logged.
@@ -1175,13 +1275,15 @@ func _route_h2c(payload: Dictionary) -> void:
 				payload.get("durabilities", {})
 			)
 		"market_synced":
-			GameBus.market_synced.emit(payload.get("data", {}))
+			# Phase 36 — the payload names players by public handle; our OWN handle is
+			# shown back to the slices as "player" so the local view is unchanged.
+			GameBus.market_synced.emit(adopt_own_handle(payload.get("data", {})))
 		"governance_synced":
-			GameBus.governance_synced.emit(payload.get("data", {}))
+			GameBus.governance_synced.emit(adopt_own_handle(payload.get("data", {})))
 		"trade_synced":
-			GameBus.trade_synced.emit(payload.get("data", {}))
+			GameBus.trade_synced.emit(adopt_own_handle(payload.get("data", {})))
 		"trade_completed":
-			GameBus.trade_completed.emit(payload.get("trade", {}))
+			GameBus.trade_completed.emit(adopt_own_handle(payload.get("trade", {})))
 		"world_snapshot":
 			GameBus.world_snapshot_received.emit(payload.get("data", {}))
 		"own_state_synced":
@@ -1193,8 +1295,12 @@ func _route_h2c(payload: Dictionary) -> void:
 			GameBus.own_state_synced.emit(payload.get("data", {}))
 		"identity_assigned":
 			# Phase 33 — the host's answer to our join intent. Cache it so a
-			# reconnect claims the same record.
+			# reconnect claims the same record. Phase 36 — it now also carries our
+			# public HANDLE, which is what this client is called by in everything
+			# that is broadcast (a handle is not a claim: it is one-way and no record
+			# is keyed by it, so caching it is safe where caching an id would not be).
 			claimed_player_id = str(payload.get("player_id", ""))
+			claimed_handle = str(payload.get("handle", ""))
 			GameBus.player_identity_assigned.emit(claimed_player_id)
 		"snapshot_chunk":
 			_accumulate_snapshot_chunk(payload)
@@ -1242,7 +1348,7 @@ func _accumulate_snapshot_chunk(payload: Dictionary) -> void:
 			full += part
 		var data = JSON.parse_string(full)
 		if data is Dictionary:
-			GameBus.world_snapshot_received.emit(data)
+			GameBus.world_snapshot_received.emit(_adopt_snapshot_identities(data))
 		else:
 			push_error("NetworkingSlice: snapshot reassembly produced invalid JSON")
 

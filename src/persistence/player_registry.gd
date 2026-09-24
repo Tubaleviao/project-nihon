@@ -83,6 +83,11 @@ var _crypto := Crypto.new()
 ## Bytes of CSPRNG entropy in a minted id (128 bits).
 const ID_ENTROPY_BYTES := 16
 
+## Phase 36 — the public-handle format (see public_handle).
+const HANDLE_PREFIX := "p_"
+## Hex characters of the sha256 digest kept in a handle (64 bits).
+const HANDLE_HEX_CHARS := 16
+
 ## Loads a player record from durable storage (injected by game_root — the registry
 ## owns identity, not the save layout). Used to bring a record into memory the
 ## first time a peer claims it (see _ensure_record_loaded).
@@ -114,6 +119,56 @@ func mint_player_id() -> String:
 ## player id and returns the record dictionary (or {} when there is none).
 func set_record_loader(loader: Callable) -> void:
 	_record_loader = loader
+
+## Phase 36 — a player's PUBLIC HANDLE: the pseudonym every host → client payload
+## names a player by (a listing's seller, a trade's parties, a proposal's author and
+## voters). The PLAYER ID must never be broadcast: it is a bearer token — presenting
+## it on join claims the record (`resolve_identity`) — so a client that learned
+## another player's id could take that player's record (inventory, position,
+## appearance, technology) simply by waiting for them to disconnect, and the social
+## broadcasts were handing out every id in the world.
+##
+## DERIVED, not minted: `sha256(player_id)` truncated. That makes it storage-free and
+## stable — it needs no record, so it answers for an OFFLINE seller named in a
+## persisted listing whose record was long since evicted, and it survives a restart
+## with the id it derives from. It is one-way: recovering the id from the handle is a
+## preimage search over the id's 128 bits of CSPRNG entropy. A handle is also not a
+## claim: `resolve_identity` only honours an id the registry actually owns, and no
+## record is EVER keyed by a handle.
+func public_handle(player_id: String) -> String:
+	if player_id.is_empty():
+		return ""
+	return HANDLE_PREFIX + player_id.sha256_text().substr(0, HANDLE_HEX_CHARS)
+
+## The player id behind a public handle, among the players this process can see: the
+## online ones and the local player (both of which are exactly the players a session
+## can be opened with). "" when no such player is here — a handle names someone, but
+## only a player who is present can be acted with.
+func player_id_for_handle(handle: String) -> String:
+	if handle.is_empty() or not handle.begins_with(HANDLE_PREFIX):
+		return ""
+	if public_handle(local_player_id) == handle:
+		return local_player_id
+	for player_id in _players:
+		var pid := str(player_id)
+		if is_online(pid) and public_handle(pid) == handle:
+			return pid
+	return ""
+
+## True when `candidate` is a `mint_player_id()` value — the shape test, not a
+## registry lookup: an offline seller's id appears in a persisted listing (and in a
+## client's synced copy) long after their record was evicted, and that id is a bearer
+## token whether or not this process still holds the record for it. Used to find the
+## ids inside a payload that has to be redacted (see NetworkingSlice.redact_for_client).
+static func looks_like_player_id(candidate: String) -> bool:
+	if not candidate.begins_with("player_"):
+		return false
+	var parts: PackedStringArray = candidate.split("_")
+	if parts.size() != 4:
+		return false
+	if not parts[1].is_valid_int() or not parts[2].is_valid_int():
+		return false
+	return parts[3].length() == ID_ENTROPY_BYTES * 2 and parts[3].is_valid_hex_number(false)
 
 ## Bind the local player's identity to an existing inventory instance (the
 ## game's `_inventory`). Called by game_root on boot / after load.
@@ -214,6 +269,12 @@ func resolve_named_party(name: String) -> String:
 		return ""
 	if is_online(name):
 		return name
+	# Phase 36 — a client names the counterparty it saw in a broadcast, which is a
+	# public HANDLE now that player ids never travel. Resolve it to whoever is online
+	# by that handle (an offline player could not answer an invite anyway).
+	var pid := player_id_for_handle(name)
+	if pid != "" and is_online(pid):
+		return pid
 	return ""
 
 ## The live peer currently holding `player_id`, or 0 when the player is offline.

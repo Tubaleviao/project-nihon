@@ -872,9 +872,13 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true) -> Dictionar
 		"edits":     _voxel.get_chunk_manifest(),
 		"creatures": _scoped_creatures(peer_id),
 		"stations":  _station.get_station_data(),
-		"market":    _market.get_market_data(),
-		"governance": _proposal.get_governance_data(),
-		"trade":     _trade.get_trade_data(),
+		# Phase 36 — the snapshot carries the same social/economy state the deltas do,
+		# so it is redacted the same way: the listings' sellers, the trades' parties and
+		# the proposals' authors/voters reach a client as public handles, never as the
+		# player ids those records are claimed by.
+		"market":    _networking.redact_for_client(_market.get_market_data()),
+		"governance": _networking.redact_for_client(_proposal.get_governance_data()),
+		"trade":     _networking.redact_for_client(_trade.get_trade_data()),
 		"players":   players,
 	}
 	# The peer's own record exists only once the host resolved its identity, and it

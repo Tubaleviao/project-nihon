@@ -281,6 +281,9 @@ func run() -> void:
 	_run_test("net: client packet size is capped",               _test_net_client_packet_size_capped)
 	_run_test("net: client packet rate is limited per peer",     _test_net_client_packet_rate_limited)
 	_run_test("boot: the automated suite is gated",              _test_boot_suite_is_gated)
+	_run_test("identity: public handles are derived + opaque",   _test_identity_handles_are_derived_and_opaque)
+	_run_test("identity: social syncs carry handles, not ids",   _test_identity_syncs_are_redacted)
+	_run_test("identity: a client adopts its own handle",        _test_client_adopts_its_own_handle)
 	_run_test("net: AOI center defaults to spawn; in_aoi gates", _test_net_aoi_center_and_in_aoi)
 	_run_test("net: AOI recipients are near peers only",         _test_net_aoi_recipients)
 	_run_test("net: AOI region floors to grid cell",             _test_net_aoi_region)
@@ -3948,6 +3951,138 @@ func _test_net_client_packet_rate_limited() -> void:
 
 	n.forget_player_id(3)
 	assert_true(n._allow_packet(3, later), "a disconnected peer's bucket goes with its transport state")
+	n.free()
+
+func _test_identity_handles_are_derived_and_opaque() -> void:
+	# The player id is a BEARER TOKEN: presenting it on join claims the record. A
+	# public handle is the pseudonym a payload may name a player by — derived from the
+	# id, so it needs no storage and answers for an offline player, and one-way, so it
+	# cannot be turned back into the token it came from.
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var handle := reg.public_handle("player_host_1")
+	assert_eq(handle, reg.public_handle("player_host_1"), "a handle is stable")
+	assert_eq(handle.length(), PlayerRegistry.HANDLE_PREFIX.length() + PlayerRegistry.HANDLE_HEX_CHARS,
+		"with a fixed width")
+	assert_false(handle.contains("player_host_1"), "and reveals nothing of the id")
+	assert_false(PlayerRegistry.looks_like_player_id(handle), "a handle is not id-shaped")
+	assert_eq(reg.public_handle("player_host_1"), handle, "derivation needs no record to be resident")
+	assert_true(reg.public_handle("player_host_2") != handle, "two players get different handles")
+
+	var guest := "player_1700000000_1_" + "ab".repeat(16)
+	assert_true(PlayerRegistry.looks_like_player_id(guest), "a minted id is id-shaped")
+	assert_false(PlayerRegistry.looks_like_player_id("merchant"), "a demo party name is not")
+	assert_false(PlayerRegistry.looks_like_player_id("player_1700000000_1_zz"), "nor is a malformed one")
+
+	# Reverse lookup goes through players this process can actually act with.
+	assert_eq(reg.player_id_for_handle(handle), "player_host_1", "the local player resolves by handle")
+	assert_eq(reg.player_id_for_handle(reg.public_handle(guest)), "", "an offline stranger does not")
+
+	# THE TAKEOVER: what a leaked id would have bought, and what a handle does not.
+	var victim := str(reg.resolve_identity(1))
+	reg.get_record(victim)["hp"] = 42.0
+	assert_eq(reg.unbind_peer(1), victim, "the victim disconnects")
+	assert_eq(reg.resolve_identity(2, victim), victim,
+		"a leaked ID is honoured as that player's reconnect (the leak's value)")
+	assert_eq(reg.unbind_peer(2), victim, "…and let go again")
+	assert_true(reg.resolve_identity(3, reg.public_handle(victim)) != victim,
+		"a leaked HANDLE claims nothing: it mints a fresh identity")
+	reg.free()
+
+func _test_identity_syncs_are_redacted() -> void:
+	# Market, trade and governance state named players by id on the wire.
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.player_registry = reg
+
+	var alice := "player_1700000000_7_" + "11".repeat(16)
+	var bob := "player_1700000001_8_" + "22".repeat(16)
+	var alice_h := reg.public_handle(alice)
+	var bob_h := reg.public_handle(bob)
+
+	var market = n.redact_for_client({ "listing_0": { "seller": alice, "item_id": "wolf_fang", "quantity": 2 } })
+	assert_eq(str(market["listing_0"]["seller"]), alice_h, "a listing's seller is a handle")
+	assert_eq(str(market["listing_0"]["item_id"]), "wolf_fang", "and nothing else is touched")
+
+	var trade = n.redact_for_client({
+		"trades": { "trade_0": { "parties": [alice, bob], "offers": { alice: { "give": {} } }, "accepted": { bob: true } } },
+		"next_id": 1,
+	})
+	var t: Dictionary = trade["trades"]["trade_0"]
+	assert_eq(str(t["parties"][0]), alice_h, "a trade party is a handle")
+	assert_eq(str(t["parties"][1]), bob_h, "both of them")
+	assert_true(t["offers"].has(alice_h), "and the offers map is keyed by handle")
+	assert_true(t["accepted"].has(bob_h), "so is the accepted map")
+	assert_eq(int(trade["next_id"]), 1, "counters pass through")
+
+	var gov = n.redact_for_client({
+		"proposals": { "proposal_0": { "author": alice, "votes": { bob: "for" }, "title": "Open a road" } },
+		"decisions_log": [{ "author": bob, "title": "Old" }],
+	})
+	assert_eq(str(gov["proposals"]["proposal_0"]["author"]), alice_h, "a proposal's author is a handle")
+	assert_eq(str(gov["proposals"]["proposal_0"]["title"]), "Open a road", "its title is not")
+	assert_true(gov["proposals"]["proposal_0"]["votes"].has(bob_h), "and its votes are keyed by handle")
+	assert_eq(str(gov["decisions_log"][0]["author"]), bob_h, "the decisions log too")
+
+	# The merchant scaffolding party is a literal, not an id: it must survive untouched,
+	# or single-player listings would lose their seller.
+	var demo = n.redact_for_client({ "listing_0": { "seller": "merchant" } })
+	assert_eq(str(demo["listing_0"]["seller"]), "merchant", "a demo party name is not redacted")
+
+	# And no raw id survives the encoding.
+	var json := JSON.stringify(n.redact_for_client({ "trades": { "t": { "parties": [alice, bob] } } }))
+	assert_false(json.contains(alice), "no raw id survives the encoding")
+	assert_false(json.contains(bob), "for either party")
+	n.free()
+	reg.free()
+
+func _test_client_adopts_its_own_handle() -> void:
+	# A client is named by its own handle in everything broadcast; it shows that back to
+	# its own slices as the literal "player" (the convention the local player has always
+	# had), while every other handle stays opaque.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.CLIENT
+	assert_eq(n.claimed_handle, "", "no handle before the handshake")
+
+	n._route_h2c({
+		"type": "identity_assigned",
+		"player_id": "player_1700000000_3_" + "cd".repeat(16),
+		"handle": "p_0123456789abcdef",
+	})
+	assert_eq(n.claimed_player_id, "player_1700000000_3_" + "cd".repeat(16), "the id is cached for reconnect")
+	assert_eq(n.claimed_handle, "p_0123456789abcdef", "and so is the handle")
+
+	var applied: Array = []
+	var on_market := func(data: Dictionary) -> void:
+		applied.append(data)
+	GameBus.market_synced.connect(on_market)
+	n._route_h2c({ "type": "market_synced", "data": {
+		"listing_0": { "seller": "p_0123456789abcdef" },
+		"listing_1": { "seller": "p_ffffffffffffffff" },
+	} })
+	GameBus.market_synced.disconnect(on_market)
+	assert_eq(applied.size(), 1, "the payload reaches the market slice")
+	var rows: Dictionary = applied[0]
+	assert_eq(str(rows["listing_0"]["seller"]), "player", "our own handle reads as the local player")
+	assert_eq(str(rows["listing_1"]["seller"]), "p_ffffffffffffffff", "another player's stays opaque")
+
+	# The snapshot path maps the same three blobs.
+	var snapshot: Dictionary = n._adopt_snapshot_identities({
+		"heightmaps": { "0,0": [1.0] },
+		"market": { "listing_0": { "seller": "p_0123456789abcdef" } },
+		"governance": { "proposals": {} },
+		"trade": { "trades": { "trade_0": { "parties": ["p_0123456789abcdef", "p_ffffffffffffffff"] } } },
+	})
+	assert_eq(str(snapshot["market"]["listing_0"]["seller"]), "player", "the snapshot's market is mapped")
+	assert_eq(str(snapshot["trade"]["trades"]["trade_0"]["parties"][0]), "player", "so are its trade parties")
+	assert_eq(str(snapshot["trade"]["trades"]["trade_0"]["parties"][1]), "p_ffffffffffffffff", "and only ours")
+	assert_true(snapshot["heightmaps"].has("0,0"), "world data is left alone")
 	n.free()
 
 func _test_boot_suite_is_gated() -> void:
