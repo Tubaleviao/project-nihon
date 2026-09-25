@@ -79,4 +79,32 @@ function dropsData(drops) {
   }
 }
 
-module.exports = { defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS, dropsData }
+// Structured taming spec consumed by TamingSlice (src/creature/taming_slice.gd).
+// The `tame` behavior on the entity carries the prose design bible; this json
+// field is the single source of truth for in-game taming resolution.
+//
+//   result              'companion' — the creature becomes the tamer's companion;
+//                       'yield'     — the creature stays alive and sheds items.
+//   requiresUnarmed     the tamer must have nothing equipped in the main hand.
+//   requiresSkill       { skill, tier } — the tamer's own skill progression.
+//   requiresAnyItem     [{ item, quantity }] — ANY ONE entry satisfies the offer
+//                       and is consumed (the fabric rules name alternatives:
+//                       "offer field rations or raw meat while unarmed").
+//   requiresDefeated    a same-species instance in the world is already dead —
+//                       the pack's alpha-down gate ("tame a surviving pup after
+//                       defeating the alpha wolf").
+//   grantsFlag          a durable player flag set on success ("" = none).
+//   yields              [{ item, quantity }] given to the tamer on success.
+//   cooldownSeconds     wall-clock seconds before this SAME instance can be
+//                       tamed again (0 = no cooldown).
+//   suppressRespawn     a tamed instance of this creature does not respawn.
+function tameData(tame) {
+  return {
+    type: 'json',
+    description:
+      'Structured taming spec: result kind (companion / yield), bare-hands and skill requirements, the offered item consumed, the defeated-alpha gate, the granted player flag, shed items, cooldown (seconds) and whether a tamed instance respawns.',
+    defaultValue: tame,
+  }
+}
+
+module.exports = { defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS, dropsData, tameData }

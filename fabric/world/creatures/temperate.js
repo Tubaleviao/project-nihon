@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, dropsData, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS } = require('./shared')
+const { defineEntity, creatureStateMachine, dropsData, tameData, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS } = require('./shared')
 
 module.exports = {
 
@@ -106,6 +106,17 @@ module.exports = {
         { item: 'wolf_fang',       chance: 0.4, minQty: 0, maxQty: 1 },
         { item: 'alpha_wolf_fang', chance: 1.0, minQty: 1, maxQty: 1 },
       ]),
+      tame: tameData({
+        result: 'companion',
+        requiresUnarmed: true,
+        requiresSkill: { skill: 'Unarmed', tier: 'journeyman' },
+        requiresAnyItem: [],
+        requiresDefeated: true,
+        grantsFlag: 'wolfBondHolder',
+        yields: [],
+        cooldownSeconds: 0,
+        suppressRespawn: true,
+      }),
     },
     stateMachine: creatureStateMachine({ conditionalAlertSkip: true }),
     behaviors: {

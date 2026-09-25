@@ -83,7 +83,19 @@ signal remote_player_state(peer_id: int, position: Vector3)
 ## Host → clients: authoritative inventory contents (replace local state), plus
 ## the per-instance durability map (item_id -> Array) so worn tools don't come
 ## back pristine after a sync.
-signal inventory_synced(contents: Dictionary, durabilities: Dictionary)
+##
+## Phase 37 — an inventory belongs to ONE player, so the sync NAMES that owner and
+## every InventorySlice decides whether it is the addressee (see
+## InventorySlice.owner_id). Without it the signal was global: one process can hold
+## several inventories at once (the local player's, one per connected peer created
+## by the registry, the demo merchant's), and every one of them replaced its
+## contents with whatever was synced — a peer's sync clobbered the host's own pack
+## and the merchant's stock.
+##
+## owner_id : String — the player whose inventory this is. "" and the literal
+##                     "player" both mean THIS machine's own player (the Phase 34
+##                     `resolve_player` convention); any other value is a player id.
+signal inventory_synced(owner_id: String, contents: Dictionary, durabilities: Dictionary)
 
 # ---------------------------------------------------------------------------
 # Persistence
@@ -338,10 +350,17 @@ signal tree_respawned(tree_id: String)
 # Player
 # ---------------------------------------------------------------------------
 
-## Emitted by BattleSlice when a creature's attack lands on the player.
+## Emitted by BattleSlice when a creature's attack lands on a player.
 ## damage      : float   — amount of damage dealt this round
 ## attacker_id : String  — creature instance_id that attacked
-signal player_damaged(damage: float, attacker_id: String)
+## target_id   : String  — WHICH player took the hit: the literal "player" for this
+##                         machine's own body, or a remote peer's player id (Phase
+##                         37 — upstream, `combat_round_requested` names the player
+##                         the creature actually engaged, so the round is routed by
+##                         that target instead of being opened for the local body
+##                         only). The host forwards a remote target's damage over
+##                         the wire; the machine that simulates that body applies it.
+signal player_damaged(damage: float, attacker_id: String, target_id: String)
 
 ## Emitted by PlayerSlice when the player's HP reaches zero.
 ## position  : Vector3 — world position at time of death
@@ -472,3 +491,45 @@ signal proposal_supersede_intent(proposal_id: String, replacement_id: String)
 
 ## Host → clients: authoritative governance state (proposals + decisions log).
 signal governance_synced(data: Dictionary)
+
+# ---------------------------------------------------------------------------
+# Taming (Phase 35)
+# ---------------------------------------------------------------------------
+
+## Request to tame a creature instance (emitted by PlayerSlice on a tame input,
+## or any host-side system). The interaction is resolved against the creature's
+## structured `tame` field in the fabric (fabric/world/creatures/*.js) — the
+## requirements, the granted flag, the shed items and the cooldown all come from
+## there, never from a table in GDScript.
+## instance_id : String — CreatureSlice instance id
+signal tame_requested(instance_id: String)
+
+## Client → host (Phase 34/35 identity rule): a non-authoritative slice cannot
+## resolve a tame, because the companion binding, the granted player flag and the
+## consumed offering all belong to a player record the host owns. The client emits
+## this with an empty player_id ("me"); networking forwards it, and the host
+## re-emits it with the identity bound to that connection, so the offering comes
+## off that player's own inventory and only that player's flags move. Host-local
+## taming stays on `tame_requested`.
+##
+## `unarmed` is the client's claim about its OWN hands (Phase 36), which is the only
+## equipment evidence a host can have for a peer: a body's worn gear is not
+## replicated, so the bare-hands requirement (`requiresUnarmed` in the fabric)
+## cannot be evaluated from the host's own state. It is a CLAIM — client-declared,
+## never persisted, and consumed by the resolution it accompanies — and a peer that
+## claims nothing fails the requirement closed instead of passing it for free.
+## instance_id : String — CreatureSlice instance id
+## player_id   : String — the tamer; "" means "the local player"
+## unarmed     : bool — the tamer's claim that its hands are empty (see above)
+signal tame_intent(instance_id: String, player_id: String, unarmed: bool)
+
+## Emitted by TamingSlice with the outcome of a tame attempt.
+## result : Dictionary — { instance_id, creature_id, success, reason, result,
+##          player_id, flag, yields }
+signal tame_resolved(result: Dictionary)
+
+## Emitted by TamingSlice when an instance becomes a player's companion.
+## instance_id : String — CreatureSlice instance id
+## creature_id : String — fabric key (e.g. "GraywolfPack")
+## player_id   : String — the companion's owner
+signal creature_tamed(instance_id: String, creature_id: String, player_id: String)

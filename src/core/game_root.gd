@@ -20,6 +20,7 @@ const InventorySlice   := preload("res://src/inventory/inventory_slice.gd")
 const CharacterSlice   := preload("res://src/character/character_slice.gd")
 const CraftingSlice    := preload("res://src/crafting/crafting_slice.gd")
 const TechnologySlice  := preload("res://src/technology/technology_slice.gd")
+const TamingSlice      := preload("res://src/creature/taming_slice.gd")
 const StationSlice     := preload("res://src/world/station_slice.gd")
 const TreeSlice        := preload("res://src/world/tree_slice.gd")
 const MarketSlice      := preload("res://src/world/market_slice.gd")
@@ -45,6 +46,7 @@ var _inventory:   InventorySlice
 var _character:   CharacterSlice
 var _crafting:    CraftingSlice
 var _technology:  TechnologySlice
+var _taming:      TamingSlice
 var _station:     StationSlice
 var _tree:        TreeSlice
 var _market:      MarketSlice
@@ -97,14 +99,19 @@ var _handshake_elapsed: float = 0.0
 var _handshake_retries: int = 0
 
 func _ready() -> void:
-	# Run the automated tests before any production slice enters the tree.
-	# The suite emits signals on the shared GameBus (creature_died, chunk_ready,
-	# combat, loot…). Running it first keeps those emissions from leaking into
-	# production state — previously the test creature_died calls were marking
-	# every freshly spawned creature dead and hiding its body on world boot.
-	_run_tests()
-
+	# Phase 36 — the role flags are read FIRST, because they decide whether the
+	# automated suite runs on this boot (see should_run_tests).
 	_parse_network_args()
+
+	# Run the automated tests before any production slice enters the tree — when
+	# this boot runs them at all. The suite emits signals on the shared GameBus
+	# (creature_died, chunk_ready, combat, loot…). Running it first keeps those
+	# emissions from leaking into production state — previously the test
+	# creature_died calls were marking every freshly spawned creature dead and
+	# hiding its body on world boot.
+	if should_run_tests(OS.get_cmdline_user_args(), OS.is_debug_build()):
+		_run_tests()
+
 	# Phase 33 — intercept the quit so records are written first.
 	_install_quit_guard()
 
@@ -124,6 +131,7 @@ func _ready() -> void:
 	_character   = CharacterSlice.new()
 	_crafting    = CraftingSlice.new()
 	_technology  = TechnologySlice.new()
+	_taming      = TamingSlice.new()
 	_station     = StationSlice.new()
 	_tree        = TreeSlice.new()
 	_market      = MarketSlice.new()
@@ -141,6 +149,10 @@ func _ready() -> void:
 	_creature_ai.creature_slice = _creature
 	_creature_ai.player_slice   = _player
 	_creature_ai.battle_slice   = _battle
+	# Phase 36 — creature AI targets the nearest of ALL players, so it needs the
+	# targets this integration layer alone can assemble: the local body plus every
+	# connected peer's last recorded position (see _player_targets).
+	_creature_ai.player_targets = Callable(self, "_player_targets")
 
 	# Wire crafting + station cross-references before add_child so their _ready()
 	# methods see the correct dependencies if they ever emit signals during init.
@@ -157,7 +169,7 @@ func _ready() -> void:
 	# The UI (Phase 14) is presentation only, so a headless dedicated server
 	# (Phase 27) keeps it out of the tree — its _ready() would otherwise build
 	# windows nothing can render or click.
-	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _inventory, _character, _crafting, _technology, _station, _tree, _market, _trade, _proposal]
+	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _inventory, _character, _crafting, _technology, _taming, _station, _tree, _market, _trade, _proposal]
 	if not _is_server:
 		slices.append(_ui)
 	for s in slices:
@@ -182,9 +194,27 @@ func _ready() -> void:
 	# player's tree only, so the slice needs the registry that owns one inventory
 	# per player (see TechnologySlice).
 	_technology.player_registry = _registry
+	# Phase 35 — taming is per-player too: the granted flag, the companion binding
+	# and the consumed offering all belong to one player's record and inventory, so
+	# the slice needs the registry, the creature population, the skill table and
+	# the character (for the bare-hands rule).
+	_taming.creature_slice   = _creature
+	_taming.creature_ai      = _creature_ai
+	_taming.player_slice     = _player
+	_taming.player_registry  = _registry
+	_taming.crafting_slice   = _crafting
+	_taming.character_slice  = _character
+	_taming.inventory_slice  = _inventory
+	_creature_ai.taming_slice = _taming
 	_voxel.terrain_slice      = _terrain
 	_voxel.inventory_slice    = _inventory
 	_tree.inventory_slice     = _inventory
+	# Phase 36 — the wire is policed with evidence the bus cannot carry: a tree chop
+	# intent names only a tree id (its position for the reach check comes from the tree
+	# slice) and a trade invite names a counterparty (resolved against the registry's
+	# online set). Both checks fail closed when unwired.
+	_networking.tree_slice      = _tree
+	_networking.player_registry = _registry
 	if not _is_server:
 		_ui.inventory_slice       = _inventory
 		_ui.crafting_slice        = _crafting
@@ -204,6 +234,10 @@ func _ready() -> void:
 		# scaffolding — it must not run in a production boot.
 		var merchant_inv := InventorySlice.new()
 		merchant_inv.name = "MerchantInventory"
+		# Phase 37 — the merchant's inventory answers to "merchant" and to nothing
+		# else: unstamped it looked like the LOCAL bucket, so any sync addressed to this
+		# machine's own player would have overwritten the merchant's stock.
+		merchant_inv.owner_id = "merchant"
 		add_child(merchant_inv)
 		merchant_inv.add_item("hawk_feather", 10)
 		merchant_inv.add_item("wolf_fang", 3)
@@ -232,6 +266,10 @@ func _ready() -> void:
 	# Phase 34 — same rule for the technology tree: a client owns no records, so it
 	# forwards a research intent instead of resolving one against its synced copy.
 	_technology.is_authoritative = not _is_client
+	# Phase 35 — same rule for taming: the flag and the companion binding live on a
+	# player record the host owns, so a client forwards a tame intent instead of
+	# resolving one against its synced world.
+	_taming.is_authoritative = not _is_client
 
 	# Chunk streaming (Phase 17) — wire the manager to its collaborators.
 	_chunk_manager.terrain_slice  = _terrain
@@ -277,6 +315,7 @@ func _ready() -> void:
 	GameBus.craft_resolved.connect(_on_craft_resolved)
 	GameBus.repair_resolved.connect(_on_repair_resolved)
 	GameBus.research_resolved.connect(_on_research_resolved)
+	GameBus.tame_resolved.connect(_on_tame_resolved)
 	GameBus.technology_unlocked.connect(_on_technology_unlocked)
 	GameBus.own_state_synced.connect(_on_own_state_synced)
 	GameBus.block_mined.connect(_on_block_mined)
@@ -332,6 +371,28 @@ func _run_tests() -> void:
 	add_child(suite)
 	suite.run()
 	suite.queue_free()
+
+## Phase 36 — the user arg that asks for the suite explicitly.
+const RUN_TESTS_ARG := "--run-tests"
+
+## Phase 36 — should THIS boot run the automated suite?
+##
+## It used to run unconditionally, so every boot of every build executed a
+## 7000-assertion suite inside `_ready()` — a production boot paid for the whole
+## development harness on every launch, and the world boot had to be sequenced
+## around its GameBus emissions. The suite is a development and CI tool, not a
+## boot step, so it now runs when either:
+##
+##   • `--run-tests` is passed on the user-args command line, or
+##   • this is a DEBUG build (`OS.is_debug_build()`: the editor and the debug
+##     export template). A release export reports false, so a SHIPPED build never
+##     runs the suite unless it is asked for by name.
+##
+## Static and argument-driven on purpose: the rule is a pure predicate the suite
+## can assert directly, rather than something that can only be observed by booting
+## twice. See `_test_boot_suite_is_gated`.
+static func should_run_tests(args: Array, is_debug_build: bool) -> bool:
+	return RUN_TESTS_ARG in args or is_debug_build
 
 ## Parse `--client [addr]` from OS user args to determine network role. Defaults
 ## to host (authoritative single-player) when no args are present. A malformed
@@ -591,6 +652,10 @@ func _on_player_joined(peer_id: int, player_id: String, reconnected: bool) -> vo
 	var tech: Variant = _registry.get_record(player_id).get("technology", {})
 	if tech is Dictionary:
 		_technology.apply_statuses(tech, player_id)
+	# Phase 35 — the peer's taming flags and companion bindings ride the same
+	# record: a reconnecting peer keeps its `wolfBondHolder` flag and its tamed
+	# wolf (re-bound to the creature instance when that instance is resident).
+	_taming.apply_record(_registry.get_record(player_id), player_id)
 	print("[Server] %s player '%s' as %s" % ["reconnected" if reconnected else "joined", player_id, "peer_%d" % peer_id])
 	_networking.send_snapshot(peer_id, _build_snapshot(peer_id))
 
@@ -635,6 +700,12 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	_trade.clear_party_inventory(player_id)
 	_market.clear_party_inventory(player_id)
 	_registry.evict_player(player_id)
+	# Phase 37 — and the taming slice's per-player mirrors (flags, companion bindings,
+	# cooldowns) go with it. They are the same kind of memory: the durable copy is the
+	# record just written, so a server that has seen a thousand tamers no longer holds
+	# a thousand tables for the rest of the session, and a reconnect re-applies the
+	# record it claims (see _on_player_joined).
+	_taming.forget_player_id(player_id)
 	GameBus.player_left.emit(player_id)
 
 ## Fold everything the host knows about a LIVE remote peer into its registry record:
@@ -645,13 +716,15 @@ func _on_peer_disconnected(peer_id: int) -> void:
 ## unconditionally would reset a returning player's record to the world origin
 ## from a peer that connected but never sent a state packet.
 ##
-## HP is deliberately NOT folded. The HP the host holds for a remote peer is the
-## value that peer declared on the wire (`player_moved`), and the host has no
-## simulation of that peer to check it against, so writing it into a durable
-## record made a client-declared number survive a reconnect, a restart and every
-## later save — a durable, restart-proof cheat. `PlayerRegistry.record_hp` refuses
-## it at the choke point too; this call site is gone rather than left as a silent
-## no-op. Only the LOCAL player's host-simulated HP is persisted.
+## HP is not folded EITHER — but for the opposite reason to before Phase 38. The HP
+## this host holds for a remote peer is now its OWN simulation of that body
+## (`PlayerRegistry.record_simulated_hp`, written the moment the host resolves a
+## creature's round against it), not a value read back out of the wire's movement
+## packets, so there is nothing left to fold: the record is already current. What is
+## still refused at every door is the peer's DECLARED hp — `_route_c2h` ignores the
+## `hp` that rides `player_moved` and `PlayerRegistry.record_hp` refuses a remote id —
+## because that is a claim about a body this process cannot check. Only the local
+## player's live body and the host's own hit resolution may write a record's health.
 func _fold_last_known_state(peer_id: int, player_id: String) -> void:
 	if _networking.has_last_known_state(peer_id):
 		_registry.record_position(player_id, _networking.get_last_known_state(peer_id))
@@ -661,14 +734,36 @@ func _fold_last_known_state(peer_id: int, player_id: String) -> void:
 ## is KILLED (or whose host is) never reaches _on_peer_disconnected, so the durable
 ## record would otherwise still hold whatever was loaded from disk — a returning
 ## player resurrected at the world origin. The autosave interval is now the bound
-## on how much of a remote peer's live position a hard kill can lose. (Its HP is
-## not folded at all — see _fold_last_known_state.)
+## on how much of a remote peer's live position a hard kill can lose. (Its HP needs no
+## folding — the host's own simulated value is written when the hit is resolved; see
+## _fold_last_known_state.)
 func _snapshot_remote_players() -> void:
 	for peer_id in _networking.get_last_known_states():
 		var player_id := _registry.get_player_id(int(peer_id))
 		if player_id.is_empty():
 			continue
 		_fold_last_known_state(int(peer_id), player_id)
+
+## Phase 36 — every player CreatureAI can place on this machine, as
+## { target_id: Vector3 }: the local body under the id "player" (the defender id
+## `combat_round_requested` has always used for it) plus each connected peer's last
+## recorded position, under its player id.
+##
+## A peer that has never reported a position is deliberately NOT included: aiming a
+## creature at the world origin would be worse than not seeing that peer at all. The
+## position is the host's own evidence of where the peer is (recorded from the
+## peer's movement packets — see NetworkingSlice.remember_player_state), not a claim
+## from the client.
+func _player_targets() -> Dictionary:
+	var out := {}
+	if _player != null:
+		out["player"] = _player.get_position()
+	for peer_id in _networking.get_last_known_states():
+		var player_id := _registry.get_player_id(int(peer_id))
+		if player_id.is_empty():
+			continue
+		out[player_id] = _networking.get_last_known_state(int(peer_id))
+	return out
 
 ## Phase 29 — a client's movement may carry it into a new area of interest.
 ## When the AOI grid cell changes, re-send a scoped snapshot so the client gains
@@ -790,11 +885,17 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true) -> Dictionar
 		"edits":     _voxel.get_chunk_manifest(),
 		"creatures": _scoped_creatures(peer_id),
 		"stations":  _station.get_station_data(),
-		"market":    _market.get_market_data(),
-		"governance": _proposal.get_governance_data(),
-		"trade":     _trade.get_trade_data(),
 		"players":   players,
 	}
+	# Phase 36/38 — the social/economy state the snapshot carries is redacted the same
+	# way the deltas are (the listings' sellers, the trades' parties and the proposals'
+	# authors/voters reach a client as public handles, never as the player ids those
+	# records are claimed by), and it travels under exactly the keys the receiving side
+	# walks to adopt its OWN handle — `NetworkingSlice.IDENTIFIED_STATE_KEYS`. Iterating
+	# that one list is what keeps the two halves from drifting: three literals here and
+	# the constant there were two places to update, and the failure mode was a blob a
+	# client would adopt but nobody would redact.
+	snapshot.merge(_networking.redact_social_state(_social_state()))
 	# The peer's own record exists only once the host resolved its identity, and it
 	# is shipped only on the handshake snapshot — an AOI re-scope omits the keys
 	# entirely, so the client keeps the state it already holds.
@@ -803,8 +904,27 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true) -> Dictionar
 		snapshot["inventory"] = own.get("inventory", {})
 		snapshot["inventory_durability"] = own.get("inventory_durability", {})
 		snapshot["technology"] = own.get("technology", {})
+		# Phase 35 — taming flags (`wolfBondHolder`) and the companion bindings are
+		# part of the peer's own record, so they ride the same own-record payload.
+		snapshot["flags"] = own.get("flags", {})
+		snapshot["companions"] = own.get("companions", [])
 		snapshot["player"] = { "position": own.get("position", []), "hp": own.get("hp", -1.0) }
 	return snapshot
+
+## Phase 38 — the replicated social/economy state, keyed by the names the wire uses
+## (`NetworkingSlice.IDENTIFIED_STATE_KEYS`).
+##
+## One mapping, so the snapshot needs no literals of its own: a fourth social slice is
+## added HERE and its key added to that constant, and both the redaction the snapshot
+## does and the identity walk the receiving client does pick it up. The three keys are
+## still named in exactly one place each — this table says where the data lives, the
+## constant says which blobs carry identities.
+func _social_state() -> Dictionary:
+	return {
+		"market":     _market.get_market_data(),
+		"governance": _proposal.get_governance_data(),
+		"trade":      _trade.get_trade_data(),
+	}
 
 ## Phase 29 — the creature subset of the snapshot, filtered to the joining
 ## peer's AOI so a client seeds only the population it can actually see.
@@ -843,6 +963,12 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 		# A client has no registry identity: its own tree is the only one it holds,
 		# which is the "" bucket resolve_player() falls back to.
 		_technology.apply_statuses(data["technology"], _registry.local_player_id)
+	if data.has("flags") or data.has("companions"):
+		# Phase 35 — the peer's own taming record, same "" bucket rule as above.
+		_taming.apply_record({
+			"flags":      data.get("flags", {}),
+			"companions": data.get("companions", []),
+		}, _registry.local_player_id)
 	var own: Variant = data.get("player", {})
 	if own is Dictionary:
 		var arr = own.get("position", [])
@@ -936,6 +1062,8 @@ func _snapshot_local_player() -> void:
 	_registry.record_position(pid, _player.get_position())
 	_registry.record_hp(pid, _player.get_hp())
 	_registry.record_technology(pid, _technology.get_statuses(pid))
+	# Phase 35 — the live taming flags and companion bindings ride the same record.
+	_taming.sync_record(pid)
 	# Appearance is part of the identity ("owning their inventory, HP, position,
 	# and appearance"): the character's recipe is stored, not its visual nodes.
 	var char_id := _character.get_player_character()
@@ -1119,6 +1247,8 @@ func _restore_local_player() -> void:
 	var tech: Variant = rec.get("technology", {})
 	if tech is Dictionary and not (tech as Dictionary).is_empty():
 		_technology.apply_statuses(tech, pid)
+	# Phase 35 — the local player's taming flags and companion bindings.
+	_taming.apply_record(rec, pid)
 
 ## Read the world record and the LOCAL player's record off disk. A missing world
 ## record is NOT an error — a server with no save boots a fresh world.
@@ -1241,6 +1371,18 @@ func _on_research_resolved(result: Dictionary) -> void:
 func _on_technology_unlocked(_tech_id: String, _player_id: String) -> void:
 	pass
 
+## Phase 35 — a tame the host resolved for a REMOTE peer granted that peer a flag
+## (e.g. `wolfBondHolder`) and possibly bound a companion, both of which live on its
+## record. Fold the new flags and companions into the record first, so the durable
+## copy and the copy pushed to its client cannot diverge, then push.
+func _on_tame_resolved(result: Dictionary) -> void:
+	if _is_client:
+		return
+	var pid := str(result.get("player_id", ""))
+	if pid != "":
+		_taming.sync_record(pid)
+	_sync_peer_own_state(result)
+
 ## Host → the peer whose own record just changed. Nothing to do for a local player
 ## (its state is already live in this process) and nothing to send for a failed
 ## action (nothing changed).
@@ -1267,6 +1409,8 @@ func _own_state_payload(player_id: String) -> Dictionary:
 		"inventory": own.get("inventory", {}),
 		"inventory_durability": own.get("inventory_durability", {}),
 		"technology": own.get("technology", {}),
+		"flags": own.get("flags", {}),
+		"companions": own.get("companions", []),
 	}
 
 ## Client-side: the host changed our own record while acting on our behalf (a craft,
@@ -1279,6 +1423,13 @@ func _on_own_state_synced(data: Dictionary) -> void:
 		_inventory.replace_contents(data["inventory"], data.get("inventory_durability", {}))
 	if data.has("technology") and data["technology"] is Dictionary:
 		_technology.apply_statuses(data["technology"], _registry.local_player_id)
+	if data.has("flags") or data.has("companions"):
+		# Phase 35 — the same own-state route carries the taming flags and the
+		# companion bindings a host resolved on our behalf.
+		_taming.apply_record({
+			"flags":      data.get("flags", {}),
+			"companions": data.get("companions", []),
+		}, _registry.local_player_id)
 
 func _on_trade_completed(trade: Dictionary) -> void:
 	pass
@@ -1289,8 +1440,48 @@ func _on_block_mined(material: String, quantity: int, position: Vector3) -> void
 func _on_block_placed(material: String, position: Vector3) -> void:
 	pass
 
-func _on_player_damaged(damage: float, attacker_id: String) -> void:
-	pass
+## Phase 37/38 — a combat round landed on a player. The damage is applied by the machine
+## that SIMULATES that body: the local body in-process (PlayerSlice listens to this
+## signal itself), and a remote peer's body HERE, on the host.
+##
+## This is the other half of routing rounds by target id (CreatureAI emits the round
+## against whoever the creature engaged): the host owns the authoritative simulation and
+## therefore knows a creature struck a peer.
+##
+## Phase 38 — the host no longer takes the peer's word for the outcome. The Phase 37 pass
+## forwarded the round and left the peer's HP to the peer's own client, which meant a
+## client that simply ignored the packet was unkillable: the host had resolved the round
+## itself and then discarded the only evidence it had, and the peer's health reset to
+## whatever its client said on the next reconnect or restart. The host now applies the
+## hit to its OWN simulation of that peer's health first (`record_simulated_hp`), which
+## rides the peer's durable record, and THEN sends the round on as a display update. A
+## client that drops it diverges from a truth it does not hold, instead of being the
+## truth.
+##
+## The peer's DECLARED hp is still never believed — `_route_c2h` ignores the `hp` its
+## `player_moved` packets carry, and `PlayerRegistry.record_hp` refuses a remote id. Only
+## a number this process resolved itself is persisted (see
+## `PlayerRegistry.simulated_hp_after_hit`).
+##
+## The local body is skipped: its damage is already applied in-process by PlayerSlice
+## (this signal is emitted by BattleSlice, which PlayerSlice itself listens to), and
+## there is no peer to send it to.
+func _on_player_damaged(damage: float, attacker_id: String, target_id: String) -> void:
+	if _is_client:
+		return
+	if target_id == "" or target_id == "player" or target_id == _registry.local_player_id:
+		return
+	var peer := _registry.get_peer_id(target_id)
+	if peer == 0:
+		return   # an offline or unknown target: nobody is simulating that body
+	# The host's own resolution: a body it has never modelled starts at full health
+	# (an unmodelled body has no evidence behind it, and the peer's word is not
+	# evidence — see PlayerRegistry.simulated_hp_after_hit), then the hit lands on the
+	# number this process holds.
+	var simulated := PlayerRegistry.simulated_hp_after_hit(
+		_registry.get_hp(target_id), damage, PlayerSlice.MAX_HP)
+	_registry.record_simulated_hp(target_id, simulated)
+	_networking.send_player_damaged(peer, damage, attacker_id)
 
 func _on_player_died(position: Vector3, killer_id: String) -> void:
 	if _character.get_player_character() != "":

@@ -17,8 +17,10 @@ extends Node
 ##     and it is released again when the connection drops (`evict_player`) — the
 ##     disk copy is the durable half, so the registry holds records only for the
 ##     players who are actually online right now.
-##   • A remote peer's HP is NOT durable here: it arrives client-declared, so
-##     only the local player's HP may be written into a record (see `record_hp`).
+##   • Health is written from EVIDENCE, never from a claim. The local player's HP
+##     comes off the live body (`record_hp`); a remote peer's HP is written only
+##     when the HOST itself resolved it (`record_simulated_hp`). A value that
+##     arrived client-declared is refused by both — see the two docstrings.
 ##   • Clients never mint, load, or store anything: `is_authoritative` is false
 ##     there and every mutating entry point returns early.
 ##
@@ -33,13 +35,22 @@ extends Node
 ##   resolve_identity(peer_id, claimed_id) -> String
 ##   unbind_peer(peer_id) -> String
 ##   get_player_id(peer_id) -> String            — "" when unknown
+##   resolve_named_party(name) -> String         — a named counterparty (HANDLES only, Phase 37)
 ##   get_peer_id(player_id) -> int               — 0 when offline
 ##   is_online(player_id) -> bool
 ##   has_player(player_id) / get_player_ids() -> Array
 ##   get_online_player_ids() -> Array            — the ids a save should write
 ##   get_record(player_id) -> Dictionary
 ##   record_position(player_id, pos) / record_hp(player_id, hp)
+##   get_hp(player_id) -> float                 — -1.0 when this machine holds none
+##   record_simulated_hp(player_id, hp)         — the HOST's own hit resolution (Phase 38)
+##   simulated_hp_after_hit(hp, damage, max) -> float  — pure rule (static, Phase 38)
 ##   record_appearance(player_id, recipe) / record_technology(player_id, statuses)
+##   record_flags(player_id, flags) / record_companions(player_id, ids)  — Phase 35
+##   record_cooldowns(player_id, cooldowns) / get_cooldowns(player_id)   — Phase 37
+##   live_cooldowns(cooldowns, now := -1.0) -> Dictionary  — pure prune (static)
+##   get_skill_tier(player_id, skill) / record_skill(player_id, skill, tier)  — Phase 36
+##   record_skills(player_id, tiers)
 ##   get_inventory(player_id) -> InventorySlice  — created on first access
 ##   set_inventory(player_id, inventory)
 ##   evict_player(player_id) -> bool             — drop an offline player's memory
@@ -62,7 +73,8 @@ var local_player_id: String = ""
 ## connection, and it is thrown away on disconnect.
 var _peer_ids: Dictionary = {}
 
-## player_id → record: { player_id, position, hp, appearance, technology }.
+## player_id → record: { player_id, position, hp, appearance, technology, flags,
+## companions, skills }.
 var _players: Dictionary = {}
 
 ## player_id → InventorySlice. The local player's entry is the game's existing
@@ -77,6 +89,11 @@ var _crypto := Crypto.new()
 
 ## Bytes of CSPRNG entropy in a minted id (128 bits).
 const ID_ENTROPY_BYTES := 16
+
+## Phase 36 — the public-handle format (see public_handle).
+const HANDLE_PREFIX := "p_"
+## Hex characters of the sha256 digest kept in a handle (64 bits).
+const HANDLE_HEX_CHARS := 16
 
 ## Loads a player record from durable storage (injected by game_root — the registry
 ## owns identity, not the save layout). Used to bring a record into memory the
@@ -109,6 +126,56 @@ func mint_player_id() -> String:
 ## player id and returns the record dictionary (or {} when there is none).
 func set_record_loader(loader: Callable) -> void:
 	_record_loader = loader
+
+## Phase 36 — a player's PUBLIC HANDLE: the pseudonym every host → client payload
+## names a player by (a listing's seller, a trade's parties, a proposal's author and
+## voters). The PLAYER ID must never be broadcast: it is a bearer token — presenting
+## it on join claims the record (`resolve_identity`) — so a client that learned
+## another player's id could take that player's record (inventory, position,
+## appearance, technology) simply by waiting for them to disconnect, and the social
+## broadcasts were handing out every id in the world.
+##
+## DERIVED, not minted: `sha256(player_id)` truncated. That makes it storage-free and
+## stable — it needs no record, so it answers for an OFFLINE seller named in a
+## persisted listing whose record was long since evicted, and it survives a restart
+## with the id it derives from. It is one-way: recovering the id from the handle is a
+## preimage search over the id's 128 bits of CSPRNG entropy. A handle is also not a
+## claim: `resolve_identity` only honours an id the registry actually owns, and no
+## record is EVER keyed by a handle.
+func public_handle(player_id: String) -> String:
+	if player_id.is_empty():
+		return ""
+	return HANDLE_PREFIX + player_id.sha256_text().substr(0, HANDLE_HEX_CHARS)
+
+## The player id behind a public handle, among the players this process can see: the
+## online ones and the local player (both of which are exactly the players a session
+## can be opened with). "" when no such player is here — a handle names someone, but
+## only a player who is present can be acted with.
+func player_id_for_handle(handle: String) -> String:
+	if handle.is_empty() or not handle.begins_with(HANDLE_PREFIX):
+		return ""
+	if public_handle(local_player_id) == handle:
+		return local_player_id
+	for player_id in _players:
+		var pid := str(player_id)
+		if is_online(pid) and public_handle(pid) == handle:
+			return pid
+	return ""
+
+## True when `candidate` is a `mint_player_id()` value — the shape test, not a
+## registry lookup: an offline seller's id appears in a persisted listing (and in a
+## client's synced copy) long after their record was evicted, and that id is a bearer
+## token whether or not this process still holds the record for it. Used to find the
+## ids inside a payload that has to be redacted (see NetworkingSlice.redact_for_client).
+static func looks_like_player_id(candidate: String) -> bool:
+	if not candidate.begins_with("player_"):
+		return false
+	var parts: PackedStringArray = candidate.split("_")
+	if parts.size() != 4:
+		return false
+	if not parts[1].is_valid_int() or not parts[2].is_valid_int():
+		return false
+	return parts[3].length() == ID_ENTROPY_BYTES * 2 and parts[3].is_valid_hex_number(false)
 
 ## Bind the local player's identity to an existing inventory instance (the
 ## game's `_inventory`). Called by game_root on boot / after load.
@@ -195,6 +262,30 @@ func unbind_peer(peer_id: int) -> String:
 func get_player_id(peer_id: int) -> String:
 	return str(_peer_ids.get(peer_id, ""))
 
+## Phase 36 — resolve a counterparty NAME from a client payload to the player id it
+## denotes, or "" when nothing this host can open a session with.
+##
+## A trade invite is the only client payload that names another player on purpose
+## (every acting half is bound to its own connection instead), so this is the one
+## place a name from the wire has to be resolved — and it is resolved against the
+## ONLINE set: a session with an offline id could never be answered, so the invite
+## is dropped rather than parked in the trade table. `is_online` covers the listen
+## host's own player, who is an ordinary trade partner.
+##
+## Phase 37 — HANDLES ONLY. This used to answer an online player's RAW ID as well,
+## which made it an online-status oracle: `resolve_named_party("player_<…>")` told a
+## client whether that exact id was connected, and an id is a BEARER TOKEN (presenting
+## it on join claims the record — see resolve_identity). A client learns ids nowhere
+## legitimate any more (see NetworkingSlice.redact_for_client), so the only use left
+## for accepting one was probing. A public handle is the name a payload may carry:
+## derived, opaque, and a claim to nothing.
+func resolve_named_party(name: String) -> String:
+	if name.is_empty():
+		return ""
+	# player_id_for_handle is the whole rule: it answers "" unless the name is one of
+	# OUR handles (the local player's included) for a player who is present here.
+	return player_id_for_handle(name)
+
 ## The live peer currently holding `player_id`, or 0 when the player is offline.
 func get_peer_id(player_id: String) -> int:
 	for pid in _peer_ids:
@@ -255,7 +346,11 @@ func ensure_player(player_id: String) -> Dictionary:
 			"hp":         -1.0,
 			"appearance": {},
 			"technology": {},
-		}
+			"flags":      {},
+			"companions": [],
+			"skills":     {},
+			"cooldowns":  {},
+			}
 	return _players[player_id]
 
 func get_record(player_id: String) -> Dictionary:
@@ -281,6 +376,11 @@ func record_position(player_id: String, position: Vector3) -> void:
 ##
 ## The local player's HP IS host-simulated and durable (see `is_online` for the
 ## same local-vs-remote split). Pure predicate, so the rule is testable alone.
+##
+## Phase 38 — a remote peer's HP is durable too, but through a DIFFERENT door:
+## what the host RESOLVES itself is evidence and is written by
+## `record_simulated_hp`. This method stays the live-body writer and still refuses
+## a remote id, so the wire's declared value has no path into a record at all.
 static func hp_is_authoritative_locally(player_id: String, local_player_id: String) -> bool:
 	return player_id != "" and player_id == local_player_id
 
@@ -288,6 +388,54 @@ func record_hp(player_id: String, hp: float) -> void:
 	if not hp_is_authoritative_locally(player_id, local_player_id):
 		return
 	var rec := ensure_player(player_id)
+	if rec.is_empty():
+		return
+	rec["hp"] = hp
+
+## The HP this machine holds for `player_id`, or -1.0 when it holds none.
+##
+## -1.0 is the "no number here" sentinel the record itself starts with
+## (`ensure_player`), so a caller can tell a body it has never modelled from one at
+## zero health. A simulation must seed such a body from full health rather than from
+## a declared value — see `simulated_hp_after_hit`.
+func get_hp(player_id: String) -> float:
+	return float(get_record(player_id).get("hp", -1.0))
+
+## Phase 38 — pure: a peer's host-simulated HP after a resolved hit.
+##
+## An UNMODELLED body (the -1.0 sentinel) starts at FULL health. That is the only
+## honest seed: the host holds no record of that peer's health, and it will not take
+## the peer's own word for it — the value a peer declares on `player_moved` is what
+## made a durable record a restart-proof cheat in the first place. A body the host has
+## never resolved a hit against is therefore treated as fresh, and from that first hit
+## onward the number is the host's own. Clamped to [0, max_hp]: a hit cannot heal, and
+## a body this process simulates cannot exceed the same ceiling a local body has.
+static func simulated_hp_after_hit(current_hp: float, damage: float, max_hp: float) -> float:
+	var base := current_hp if current_hp >= 0.0 else max_hp
+	return clampf(base - damage, 0.0, max_hp)
+
+## Phase 38 — write the HOST's OWN resolution of a remote peer's health.
+##
+## The counterpart to `record_hp`, and the split between them is the whole point. A
+## remote peer's HP that arrives over the wire is client-declared and refused. HP the
+## host RESOLVED ITSELF — a creature's combat round, opened against a peer the host was
+## already tracking (`game_root._on_player_damaged`) — is the host's own evidence, the
+## same standing as that peer's last-known position. Before this method existed there
+## was nowhere to put it: Phase 37 forwarded the round to the peer's own client and let
+## that client keep the number, so a modified client could ignore every hit and an
+## honest one lost its health on every reconnect and every restart, because nothing on
+## this machine was allowed to remember it.
+##
+## Refused for the LOCAL player (its live body owns that number, via `record_hp`), for
+## an empty id, for a player this host holds no record for (fail closed rather than
+## mint a record for a stranger), and on a non-authoritative machine (a client holds no
+## records at all).
+func record_simulated_hp(player_id: String, hp: float) -> void:
+	if not is_authoritative:
+		return
+	if player_id.is_empty() or hp_is_authoritative_locally(player_id, local_player_id):
+		return
+	var rec := get_record(player_id)
 	if rec.is_empty():
 		return
 	rec["hp"] = hp
@@ -304,12 +452,103 @@ func record_technology(player_id: String, statuses: Dictionary) -> void:
 		return
 	rec["technology"] = statuses
 
+## Phase 36 — one player's skill tier (e.g. Smithing → journeyman): the gate every
+## crafting recipe and repair step is resolved against. Per-player, because a
+## shared table let the first player to reach a tier unlock that tier's recipes for
+## everybody on the server.
+##
+## Returns "" when the record holds no tier for that skill — the caller decides what
+## a missing tier means (CraftingSlice reads it as the seed tier, novice), so the
+## default lives in one place instead of two.
+func get_skill_tier(player_id: String, skill: String) -> String:
+	if skill == "":
+		return ""
+	var skills = get_record(player_id).get("skills", {})
+	if skills is Dictionary:
+		return str((skills as Dictionary).get(skill, ""))
+	return ""
+
+## Record one skill tier on a player's record (durable progression).
+func record_skill(player_id: String, skill: String, tier: String) -> void:
+	if skill == "" or tier == "":
+		return
+	var rec := ensure_player(player_id)
+	if rec.is_empty():
+		return
+	var skills: Dictionary = rec.get("skills", {})
+	if not (skills is Dictionary):
+		skills = {}
+	skills[skill] = tier
+	rec["skills"] = skills
+
+## Replace a player's whole tier table (restore path / bulk write).
+func record_skills(player_id: String, tiers: Dictionary) -> void:
+	var rec := ensure_player(player_id)
+	if rec.is_empty():
+		return
+	rec["skills"] = tiers.duplicate()
+
+## The player's taming flags (Phase 35) — e.g. `wolfBondHolder`, which the Ranger
+## profession gate reads. Durable, because a flag is progression, not scenery.
+func record_flags(player_id: String, flags: Dictionary) -> void:
+	var rec := ensure_player(player_id)
+	if rec.is_empty():
+		return
+	rec["flags"] = flags
+
+## The instance ids this player has tamed (Phase 35). Instance ids are derived
+## from the chunk, creature and spawn index, so they are stable across restarts
+## and a restored binding resolves to the same creature.
+func record_companions(player_id: String, companion_ids: Array) -> void:
+	var rec := ensure_player(player_id)
+	if rec.is_empty():
+		return
+	var out: Array = []
+	for iid in companion_ids:
+		out.append(str(iid))
+	out.sort()
+	rec["companions"] = out
+
+## Phase 37 — the per-player interaction cooldowns (instance_id → wall-clock Unix
+## deadline), e.g. the GlimmerFox feed. Durable, because a cooldown is a rule about
+## the PLAYER, not about this process: keeping it in memory meant a host restart
+## handed every player a fresh set of cooldowns, so a fox could be milked in a loop
+## by reconnecting. Only LIVE deadlines are stored — an elapsed one bounds nothing
+## and would otherwise accumulate forever on the record.
+func record_cooldowns(player_id: String, cooldowns: Dictionary) -> void:
+	var rec := ensure_player(player_id)
+	if rec.is_empty():
+		return
+	rec["cooldowns"] = live_cooldowns(cooldowns)
+
+## The player's stored cooldowns (instance_id → deadline), already pruned to live
+## deadlines. A pre-Phase-37 record has no such key and answers empty.
+func get_cooldowns(player_id: String) -> Dictionary:
+	return live_cooldowns(get_record(player_id).get("cooldowns", {}))
+
+## Pure: the entries of a cooldown table whose deadline is still in the future,
+## measured against wall-clock Unix seconds — the same clock every other deadline in
+## the project uses. Static so the pruning rule is testable on its own.
+static func live_cooldowns(cooldowns: Variant, now: float = -1.0) -> Dictionary:
+	var out := {}
+	if not (cooldowns is Dictionary):
+		return out
+	var at: float = Time.get_unix_time_from_system() if now < 0.0 else now
+	for iid in cooldowns:
+		if float(cooldowns[iid]) > at:
+			out[str(iid)] = float(cooldowns[iid])
+	return out
+
 # ---------------------------------------------------------------------------
 # Per-player inventory
 # ---------------------------------------------------------------------------
 
 ## The inventory owned by `player_id`, creating (and parenting) one on first
 ## access so every player has their own — never the host's shared instance.
+##
+## Phase 37 — the created inventory is STAMPED with its owner (`owner_id`), which is
+## what stops a bus-wide `inventory_synced` meant for one player from replacing every
+## other inventory's contents in the process (see InventorySlice.is_owned_by).
 func get_inventory(player_id: String) -> Node:
 	if player_id.is_empty():
 		return null
@@ -319,11 +558,18 @@ func get_inventory(player_id: String) -> Node:
 		return null
 	var inv := InventorySlice.new()
 	inv.name = "Inventory_%s" % player_id
+	inv.owner_id = player_id
 	add_child(inv)
 	_inventories[player_id] = inv
 	return inv
 
 ## Bind an existing inventory instance to a player (the local player's).
+##
+## Deliberately does NOT stamp an owner: the local player's inventory IS the game's
+## own `_inventory` instance, and the local bucket is what every local sync is
+## addressed to (`""` / `"player"` — see InventorySlice.LOCAL_OWNER_LITERALS). An
+## inventory the registry CREATES for a peer is stamped in `get_inventory`, because
+## that one has to be told apart from this machine's.
 func set_inventory(player_id: String, inventory: Node) -> void:
 	if player_id.is_empty() or inventory == null:
 		return
@@ -381,6 +627,10 @@ func get_player_data(player_id: String) -> Dictionary:
 		"hp":        float(rec.get("hp", -1.0)),
 		"appearance": rec.get("appearance", {}),
 		"technology": rec.get("technology", {}),
+		"flags":      rec.get("flags", {}),
+		"companions": rec.get("companions", []),
+		"skills":     rec.get("skills", {}),
+		"cooldowns":  live_cooldowns(rec.get("cooldowns", {})),
 		"inventory": {},
 		"inventory_durability": {},
 	}
@@ -400,6 +650,18 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	rec["hp"] = float(data.get("hp", -1.0))
 	rec["appearance"] = data.get("appearance", {})
 	rec["technology"] = data.get("technology", {})
+	# Phase 35: taming flags and companion bindings are per-player progression, so
+	# they ride the same record. A saved payload from before this phase simply
+	# carries neither key and restores to the empty defaults.
+	rec["flags"]      = data.get("flags", {})
+	rec["companions"] = data.get("companions", [])
+	# Phase 36: skill tiers are per-player progression too, so they ride the same
+	# record. A payload from before this phase carries no `skills` key and restores
+	# to the empty table — every skill then reads as its seed tier (novice).
+	rec["skills"]     = data.get("skills", {})
+	# Phase 37: so are the interaction cooldowns (an expired deadline is dropped on
+	# the way in — see live_cooldowns). A pre-Phase-37 payload carries no key.
+	rec["cooldowns"]  = live_cooldowns(data.get("cooldowns", {}))
 	var contents: Variant = data.get("inventory", {})
 	if contents is Dictionary and not contents.is_empty():
 		var inv = get_inventory(player_id)

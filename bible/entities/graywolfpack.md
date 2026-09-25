@@ -26,6 +26,7 @@ A coordinated hunting pack of gray wolves that roam temperate forest edges and c
 | `groupBehavior` | enum (`none`, `pack`, `herd`) | yes | How group members coordinate: none (solitary), pack (share alert/aggressive), herd (share flee) |
 | `packRadius` | decimal | yes | Distance in metres within which group members coordinate with each other |
 | `drops` | json | yes | Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system. |
+| `tame` | json | yes | Structured taming spec: result kind (companion / yield), bare-hands and skill requirements, the offered item consumed, the defeated-alpha gate, the granted player flag, shed items, cooldown (seconds) and whether a tamed instance respawns. |
 
 ### State machine
 

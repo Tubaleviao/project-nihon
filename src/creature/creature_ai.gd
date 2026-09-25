@@ -15,11 +15,12 @@ extends Node
 ##   fleeing     — run away from player until safe distance or dead
 ##   dead        — static; CreatureSlice handles respawn
 ##   respawning  — CreatureSlice brings instance back to idle
+##   tamed       — a companion (Phase 35): never aggros, follows its owner
 ##
 ## Plug contract (GameBus signals consumed / emitted):
 ##   IN  : creature_died(entity_id, position, killer_id)
 ##         creature_respawned(instance_id, creature_id)
-##         player_damaged(damage, attacker_id)   — ignored (bus parity)
+##         player_damaged(damage, attacker_id, target_id) — ignored (bus parity)
 ##   OUT : creature_alert(instance_id)
 ##         creature_aggressive(instance_id)
 ##         creature_fleeing(instance_id)
@@ -28,6 +29,7 @@ extends Node
 ## Public API:
 ##   get_state(instance_id) -> String
 ##   force_state(instance_id, state)   -- test helper
+##   on_companion_tamed(instance_id, player_id)  -- Phase 35: enter the tamed state
 
 ## Seconds between creature melee strikes while aggressive.
 const ATTACK_INTERVAL  := 1.5
@@ -40,6 +42,12 @@ const SPEED_IDLE       := 1.2
 const SPEED_ALERT      := 0.0   # alert = stationary, watching
 const SPEED_AGGRESSIVE := 3.5
 const SPEED_FLEE       := 4.5
+## Companion (Phase 35): a tamed creature keeps pace with its owner and stops
+## short of them instead of climbing inside the player's body.
+const SPEED_COMPANION  := 4.0
+const COMPANION_FOLLOW_STOP := 2.0
+## AI state name for a tamed companion.
+const STATE_TAMED := "tamed"
 
 ## Group coordination (pack/herd) — fabric `groupBehavior` enum values (Phase 30).
 ##   0 NONE — solitary; no cross-creature coordination
@@ -63,6 +71,20 @@ var creature_slice: Node = null
 var player_slice:   Node = null
 var battle_slice:   Node = null
 
+## Set by game_root (Phase 35): resolves where a companion's owner is, so a tamed
+## creature follows instead of patrolling. Left null in isolated tests — a
+## companion then simply holds position.
+var taming_slice:   Node = null
+
+## Phase 36 — every player the host can place on THIS machine, as
+## { target_id: Vector3 }: the local player's body under the id "player" (the
+## defender id `combat_round_requested` has always used for it) plus each remote
+## peer's last recorded position under its player id. Wired by game_root, which is
+## the only place that knows both the networking slice's last-known states and the
+## registry's peer → player mapping; unwired (an isolated test, or a client, where
+## the local body is all there is) the local player alone is the target set.
+var player_targets: Callable = Callable()
+
 ## Authority mode (Phase 18): creature AI runs on the host only. On a client
 ## the creature bodies are driven by host state broadcasts, never local AI.
 var is_authoritative: bool = true
@@ -75,23 +97,106 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if not is_authoritative:
 		return
-	if creature_slice == null or player_slice == null:
+	if creature_slice == null:
 		return
-	var player_pos: Vector3 = player_slice.get_position()
-	var instances: Array = creature_slice.get_all_instances()
+	var targets := _player_targets()
+	if targets.is_empty():
+		return
+	# Phase 37 — the cached READ-ONLY view, not `get_all_instances()`: the latter builds
+	# a fresh dictionary per instance on every call, and this loop runs once per frame.
+	# The view is rebuilt only when the population's membership changes (see
+	# CreatureSlice.instances_view), and the records in it are the live ones.
+	var instances: Array = creature_slice.instances_view()
 	for inst in instances:
 		var iid: String = inst["instance_id"]
 		var c_state: String = inst["state"]
 		if c_state == "dead" or c_state == "respawning":
 			continue
 		_ensure_ai_record(iid, inst["position"])
-		_tick_instance(iid, inst, player_pos, delta)
+		if _is_companion(iid):
+			_tick_companion(iid, inst, delta)
+			continue
+		# Phase 36 — the NEAREST of every player, not only the host's own body: a
+		# creature used to stand still while a remote peer walked through its
+		# territory, because the only position it ever looked at was this machine's.
+		var target := _nearest_target(inst["position"], targets)
+		_tick_instance(iid, inst, target["position"], delta, str(target["id"]))
+
+## The player targets on this machine (see `player_targets`).
+func _player_targets() -> Dictionary:
+	if player_targets.is_valid():
+		var provided = player_targets.call()
+		if provided is Dictionary:
+			return provided
+	if player_slice == null:
+		return {}
+	return { "player": player_slice.get_position() }
+
+## The target nearest to `from`, as { id, position }. A dictionary's iteration order
+## is insertion order, so the strict `<` keeps the first target on a tie — which, for
+## a tie between the local player and a peer, means the local one, the same
+## preference an un-wired slice had.
+func _nearest_target(from: Vector3, targets: Dictionary) -> Dictionary:
+	var best := {}
+	for id in targets:
+		var pos: Vector3 = targets[id]
+		var d: float = from.distance_to(pos)
+		if best.is_empty() or d < float(best["distance"]):
+			best = { "id": str(id), "position": pos, "distance": d }
+	return best
+
+# ---------------------------------------------------------------------------
+# Companion (Phase 35)
+# ---------------------------------------------------------------------------
+
+## Called by TamingSlice the moment an instance becomes a player's companion.
+## Idempotent, and the state is re-asserted every tick anyway (see _tick_companion)
+## so a restore or a respawn cannot leave a companion in a hostile state.
+func on_companion_tamed(instance_id: String, _player_id: String) -> void:
+	var pos := Vector3.ZERO
+	if creature_slice != null:
+		pos = creature_slice.get_instance_position(instance_id)
+	_ensure_ai_record(instance_id, pos)
+	_ai[instance_id]["state"] = STATE_TAMED
+
+## A companion never aggros, never attacks and never patrols: it walks toward its
+## owner and stops just short of them. The owner's position comes from TamingSlice,
+## which resolves the local player's body or a remote peer's recorded position;
+## when neither is knowable the companion holds position rather than guessing.
+func _tick_companion(iid: String, inst: Dictionary, delta: float) -> void:
+	if _ai[iid]["state"] != STATE_TAMED:
+		_transition(iid, STATE_TAMED, inst)
+	if taming_slice == null or not taming_slice.has_method("companion_target"):
+		return
+	if creature_slice == null or not creature_slice.has_method("get_tamed_by"):
+		return
+	var owner := str(creature_slice.get_tamed_by(iid))
+	if owner == "":
+		return
+	var target = taming_slice.companion_target(owner)
+	if not (target is Vector3):
+		return
+	var tgt: Vector3 = target
+	var pos: Vector3 = inst["position"]
+	if pos.distance_to(tgt) <= COMPANION_FOLLOW_STOP:
+		return
+	_move_instance(iid, inst, tgt, SPEED_COMPANION, delta)
+
+## Whether an instance is somebody's companion (CreatureSlice owns the binding).
+func _is_companion(iid: String) -> bool:
+	if creature_slice == null or not creature_slice.has_method("is_tamed"):
+		return false
+	return bool(creature_slice.is_tamed(iid))
 
 # ---------------------------------------------------------------------------
 # Per-instance tick
 # ---------------------------------------------------------------------------
 
-func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: float) -> void:
+## `target_id` is the identity of the player `player_pos` belongs to: "player" for
+## this machine's own (the defender id the bus has always carried for it), or a
+## remote peer's player id (Phase 36). It defaults to "player" so a caller that only
+## has a position — every isolated test — keeps the single-player behaviour.
+func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: float, target_id: String = "player") -> void:
 	var ai: Dictionary     = _ai[iid]
 	var pos: Vector3       = inst["position"]
 	var ai_state: String   = ai["state"]
@@ -148,7 +253,17 @@ func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: f
 			if ai["attack_timer"] >= ATTACK_INTERVAL:
 				ai["attack_timer"] = 0.0
 				if dist <= attack_r:
-					GameBus.combat_round_requested.emit(iid, "player")
+					# Phase 37 — the round is routed by the TARGET the creature engaged,
+					# remote peers included. Phase 36 chased a peer but opened no round
+					# against it ("damage to a peer belongs to that peer's own client"),
+					# which left a creature that had closed on a remote player swinging at
+					# nothing at all. The id the round carries is the one the battle slice
+					# routes on: the literal "player" for this machine's own body, or the
+					# peer's player id, which the host forwards to that peer's own client as
+					# a damage event (see GameRoot._on_player_damaged) — the machine that
+					# simulates that body is the one that applies the hit, because the host
+					# holds no verifiable HP for a peer (PlayerRegistry.record_hp).
+					GameBus.combat_round_requested.emit(iid, target_id)
 
 		"fleeing":
 			if hp <= 0.0:
@@ -267,6 +382,10 @@ func _propagate_group_state(iid: String, inst: Dictionary, new_state: String) ->
 ## ticks its own state machine.
 func _escalate_neighbor(nid: String, new_state: String) -> void:
 	if not _ai.has(nid):
+		return
+	# A companion is not a pack member any more (Phase 35): a wolf that joined a
+	# player must not be dragged into its former pack's alert or flee.
+	if _is_companion(nid):
 		return
 	var cur: String = _ai[nid]["state"]
 	if cur == "dead" or cur == "respawning":

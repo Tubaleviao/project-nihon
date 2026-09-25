@@ -11,6 +11,7 @@ extends Node
 const BattleSlice     := preload("res://src/battle/battle_slice.gd")
 const CreatureSlice   := preload("res://src/creature/creature_slice.gd")
 const CreatureAI      := preload("res://src/creature/creature_ai.gd")
+const TamingSlice     := preload("res://src/creature/taming_slice.gd")
 const TerrainSlice    := preload("res://src/terrain/terrain_slice.gd")
 const ChunkManager    := preload("res://src/terrain/chunk_manager.gd")
 const PersistenceSlice:= preload("res://src/persistence/persistence_slice.gd")
@@ -131,6 +132,7 @@ func run() -> void:
 	_run_test("crafting: missing inputs fail",                _test_crafting_missing_inputs)
 	_run_test("crafting: unknown recipe rejected",            _test_crafting_unknown_recipe)
 	_run_test("crafting: can_craft does not mutate",          _test_crafting_can_craft_no_mutate)
+	_run_test("crafting: skill tiers are per-player",         _test_craft_skill_tiers_are_per_player)
 	_run_test("station: gate blocks without nearby station",           _test_station_gate_blocks)
 	_run_test("station: gate passes when station nearby",             _test_station_gate_passes)
 	_run_test("station: wrong station type still blocks",             _test_station_wrong_type_blocks)
@@ -179,6 +181,22 @@ func run() -> void:
 	_run_test("technology: tree and materials are per-player",  _test_research_is_per_player)
 	_run_test("technology: client forwards research intent",    _test_technology_client_forwards_intent)
 	_run_test("technology: client does not resolve research",  _test_technology_client_resolves_nothing)
+	_run_test("taming: fabric spec drives the interaction",    _test_taming_fabric_spec)
+	_run_test("taming: a creature with no tame field is refused", _test_taming_not_tameable)
+	_run_test("taming: wolf needs the alpha down",             _test_taming_wolf_requires_alpha_down)
+	_run_test("taming: wolf grants flag and companion",        _test_taming_wolf_grants_flag_companion)
+	_run_test("taming: unidentified tamer refused atomically", _test_taming_refusal_is_atomic)
+	_run_test("taming: skill gate fails closed",               _test_taming_requires_skill)
+	_run_test("taming: bare hands required",                   _test_taming_requires_unarmed)
+	_run_test("taming: a peer's bare hands are a claim",        _test_taming_peer_bare_hands_claim)
+	_run_test("taming: fox feed yields and consumes the offer", _test_taming_fox_feed_yields)
+	_run_test("taming: fox feed needs an offering",            _test_taming_fox_needs_offer)
+	_run_test("taming: cooldown blocks a second feed",         _test_taming_cooldown)
+	_run_test("taming: flags and offerings are per-player",    _test_taming_is_per_player)
+	_run_test("taming: client forwards intent, mutates nothing", _test_taming_client_forwards_intent)
+	_run_test("taming: a companion does not respawn",          _test_taming_companion_respawn_suppressed)
+	_run_test("taming: companion is no target and follows owner", _test_taming_companion_follows)
+	_run_test("taming: record round-trip keeps flag + companion", _test_taming_record_round_trip)
 	_run_test("voxel: mine lowers height and yields material", _test_voxel_mine_yields_material)
 	_run_test("voxel: mine at bedrock fails",                  _test_voxel_mine_bedrock)
 	_run_test("voxel: side-face mine targets hit block",       _test_voxel_mine_side_face)
@@ -207,6 +225,7 @@ func run() -> void:
 	_run_test("ai: herd shares fleeing state",                 _test_ai_herd_shares_flee)
 	_run_test("ai: solitary creature does not propagate",      _test_ai_solitary_no_propagation)
 	_run_test("ai: group behavior reads from fabric",          _test_ai_group_behavior_reads_fabric)
+	_run_test("ai: targets the nearest of every player",        _test_ai_targets_nearest_of_all_players)
 	_run_test("player: respawn resets hp and alive flag",      _test_player_respawn)
 	_run_test("chunk: desired set within view distance",        _test_chunk_desired_set)
 	_run_test("chunk: world/chunk coordinate round-trip",       _test_chunk_coordinate_round_trip)
@@ -254,7 +273,17 @@ func run() -> void:
 	_run_test("net: inventory replace_contents is idempotent",   _test_net_inventory_replace_idempotent)
 	_run_test("net: host persists last-known state across disconnect", _test_net_reconnect_last_known_state)
 	_run_test("net: emulated loss+reorder — all delivered packets accepted", _test_net_two_peer_loss_reorder)
-	_run_test("net: client self-reference is peer-scoped",       _test_net_peer_party_scopes_identity)
+	_run_test("net: acting identity is the bound connection",    _test_net_peer_party_scopes_identity)
+	_run_test("net: social intents bind connection identity",    _test_net_social_intents_bind_connection_identity)
+	_run_test("net: trade intents bind connection identity",     _test_net_trade_intents_bind_connection_identity)
+	_run_test("net: block edit needs handshake + reach",         _test_net_block_intent_requires_handshake_and_reach)
+	_run_test("net: tree chop needs handshake + reach",          _test_net_tree_intent_requires_handshake_and_reach)
+	_run_test("net: client packet size is capped",               _test_net_client_packet_size_capped)
+	_run_test("net: client packet rate is limited per peer",     _test_net_client_packet_rate_limited)
+	_run_test("boot: the automated suite is gated",              _test_boot_suite_is_gated)
+	_run_test("identity: public handles are derived + opaque",   _test_identity_handles_are_derived_and_opaque)
+	_run_test("identity: social syncs carry handles, not ids",   _test_identity_syncs_are_redacted)
+	_run_test("identity: a client adopts its own handle",        _test_client_adopts_its_own_handle)
 	_run_test("net: AOI center defaults to spawn; in_aoi gates", _test_net_aoi_center_and_in_aoi)
 	_run_test("net: AOI recipients are near peers only",         _test_net_aoi_recipients)
 	_run_test("net: AOI region floors to grid cell",             _test_net_aoi_region)
@@ -352,6 +381,23 @@ func run() -> void:
 	_run_test("persistence: failed write reports + keeps record",  _test_failed_write_reports_and_preserves)
 	_run_test("craft: craft uses the crafter's own inventory",    _test_craft_uses_crafter_inventory)
 	_run_test("craft: client forwards a craft intent",            _test_craft_client_forwards_intent)
+
+	# Phase 37 review fixes
+	_run_test("net: inventory sync is owner-scoped",              _test_inventory_sync_is_owner_scoped)
+	_run_test("net: inventory sync is peer-scoped on the wire",   _test_net_inventory_sync_is_peer_scoped)
+	_run_test("net: incomplete snapshot is evicted on disconnect", _test_net_incomplete_snapshot_evicted_on_disconnect)
+	_run_test("net: a player's damage is routed to their peer",   _test_net_peer_damage_is_peer_scoped)
+	_run_test("identity: a named party is a handle, not an id",   _test_named_party_accepts_handles_only)
+	_run_test("taming: cooldowns are durable",                    _test_taming_cooldowns_are_durable)
+	_run_test("taming: per-player mirrors are evicted",           _test_taming_mirrors_evicted_on_forget)
+	_run_test("battle: player rounds route by target id",         _test_battle_routes_player_rounds_by_target)
+	_run_test("creature: instances_view is cached and live",      _test_creature_instances_view_cached)
+
+	# Phase 38 review fixes
+	_run_test("identity: the host simulates a peer's hp",         _test_host_simulates_peer_hp)
+	_run_test("net: snapshot social keys are one list",           _test_snapshot_social_keys_are_identified)
+	_run_test("net: snapshot buffer clears when host is lost",    _test_net_snapshot_buffer_cleared_when_host_lost)
+	_run_test("taming: cooldown mirror prunes in place",          _test_taming_cooldown_mirror_pruned_in_place)
 
 	# Self-check: the _run_test list above is manual, so a test function can be
 	# written but forgotten from the list. Fail loudly instead of silently
@@ -1617,6 +1663,79 @@ func _test_crafting_can_craft_no_mutate() -> void:
 	assert_eq(inv.get_item_count("Ferrite"), 2, "can_craft does not consume inputs")
 	c.free()
 	inv.free()
+
+func _test_craft_skill_tiers_are_per_player() -> void:
+	# Skill tiers used to be ONE process-wide table, so every player shared every
+	# gate: the first peer to reach journeyman unlocked those recipes for the whole
+	# server, and a peer's craft was gated by whoever had levelled last.
+	# Phase 36 moves the tiers onto the player record — this proves two players in
+	# one process can hold different tiers, that neither reads the other's, and that
+	# a tier survives the record round-trip.
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var c := CraftingSlice.new()
+	add_child(c)
+	c.player_registry = reg
+
+	# Any recipe carrying a skill guard: the gate answers before the inputs do.
+	var recipe_id := ""
+	var skill := ""
+	var required := ""
+	for key in GameData.RECIPES:
+		var spec: Dictionary = c.get_recipe(str(key))
+		var guards: Array = spec.get("skillGuards", [])
+		if guards.size() > 0:
+			recipe_id = str(key)
+			skill = str(guards[0].get("skill", ""))
+			required = str(guards[0].get("tier", "novice"))
+			break
+	assert_true(recipe_id != "" and skill != "" and required != "",
+		"need a recipe with a skill guard (fabric defines several)")
+
+	var peer_a := "player_peer_a_1_cafe"
+	var peer_b := "player_peer_b_2_beef"
+	# The exact guard this test is about: a recipe may carry several skill guards, and
+	# only THIS one's tier is being raised.
+	var gate := "skill_requirement:%s:%s" % [skill, required]
+	assert_eq(str(c.can_craft(recipe_id, peer_a)["reason"]), gate, "a player with no tier is gated")
+	assert_eq(c.get_skill_for(peer_a, skill), "novice", "and reads as the seed tier")
+
+	# The earning player lifts their own gate...
+	assert_true(c.set_skill_for(peer_a, skill, required), "a valid tier is applied")
+	assert_true(str(c.can_craft(recipe_id, peer_a)["reason"]) != gate,
+		"their own tier lifts their own gate")
+	assert_eq(c.get_skill_for(peer_a, skill), required, "and only theirs")
+
+	# ...while a second player is still gated, and still reads novice.
+	assert_eq(str(c.can_craft(recipe_id, peer_b)["reason"]), gate,
+		"a second player is NOT unlocked by the first player's tier")
+	assert_eq(c.get_skill_for(peer_b, skill), "novice", "a peer with no tier reads as novice")
+
+	# The LOCAL player's live table must not leak into a peer's gate either: the
+	# demo/UI path writes via set_skill(), which is the local player's own store.
+	c.set_skill(skill, required)
+	assert_eq(c.get_skill_for("player_host_1", skill), required, "the local player reads their own tier")
+	assert_eq(str(c.can_craft(recipe_id, peer_b)["reason"]), gate,
+		"and the local player's tier still does not unlock a peer")
+
+	# Durable: the tier rides the record, and an older payload (no `skills` key)
+	# restores to the seed tier rather than to somebody else's numbers.
+	var data: Dictionary = reg.get_player_data(peer_a)
+	assert_eq(str(data.get("skills", {}).get(skill, "")), required, "the tier rides the record")
+	var restored := PlayerRegistry.new()
+	add_child(restored)
+	restored.apply_player_data(peer_a, data)
+	assert_eq(restored.get_skill_tier(peer_a, skill), required, "and restores from it")
+	var legacy := PlayerRegistry.new()
+	add_child(legacy)
+	legacy.apply_player_data(peer_b, { "position": [1.0, 2.0, 3.0] })
+	assert_eq(legacy.get_skill_tier(peer_b, skill), "", "a pre-Phase-36 payload has no tiers in it")
+
+	c.free()
+	reg.free()
+	restored.free()
+	legacy.free()
 
 # ---------------------------------------------------------------------------
 # StationSlice tests (Phase 16 station-gated crafting)
@@ -3590,12 +3709,424 @@ func _test_net_two_peer_loss_reorder() -> void:
 	receiver.free()
 
 func _test_net_peer_party_scopes_identity() -> void:
+	# The acting party behind a connection is the identity the host bound to it —
+	# whatever a payload names, and nothing at all before the handshake. `party_id_for`
+	# keeps answering a transport label for display, but never authorizes anything.
 	var n := NetworkingSlice.new()
 	add_child(n)
-	assert_eq(n._peer_party(5, "player"), "peer_5", "client 'player' self-reference is peer-scoped")
-	assert_eq(n._peer_party(5, "merchant"), "merchant", "non-self party id passes through unchanged")
-	assert_eq(n._peer_party(5, "peer_9"), "peer_9", "already-scoped id passes through unchanged")
+	n._role = NetworkingSlice.Role.HOST
+	assert_eq(n._actor_id(5), "", "an un-handshaked peer has no acting identity")
+	assert_eq(n.party_id_for(5), "peer_5", "its diagnostic label falls back to the transport id")
+	n.set_player_id(5, "player_5_1_beef")
+	assert_eq(n._actor_id(5), "player_5_1_beef", "the bound identity is the acting party")
 	n.free()
+
+func _test_net_social_intents_bind_connection_identity() -> void:
+	# Market and governance intents carry an identity the host must IGNORE: a client
+	# that could name one could sell a victim's goods (the escrow debit empties their
+	# inventory), buy into a victim's own listing, or cast a victim's vote — a quorum
+	# of one. The connection decides who is acting; un-handshaked peers cannot act.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	var listed: Array = []
+	var bought: Array = []
+	var authored: Array = []
+	var voted: Array = []
+	var superseded: Array = []
+	var on_list := func(seller: String, item_id: String, qty: int, price: float) -> void:
+		listed.append([seller, item_id, qty, price])
+	var on_buy := func(listing_id: String, buyer: String) -> void:
+		bought.append([listing_id, buyer])
+	var on_submit := func(author: String, title: String, _body: String) -> void:
+		authored.append([author, title])
+	var on_vote := func(proposal_id: String, voter: String, verdict: String) -> void:
+		voted.append([proposal_id, voter, verdict])
+	var on_supersede := func(proposal_id: String, replacement_id: String) -> void:
+		superseded.append([proposal_id, replacement_id])
+	GameBus.market_list_intent.connect(on_list)
+	GameBus.market_buy_intent.connect(on_buy)
+	GameBus.proposal_submit_intent.connect(on_submit)
+	GameBus.proposal_vote_intent.connect(on_vote)
+	GameBus.proposal_supersede_intent.connect(on_supersede)
+
+	var spoof := "player_victim_1_deadbeef"
+	n._route_c2h(7, { "type": "market_list_intent", "seller": spoof, "item_id": "wolf_fang", "quantity": 2, "price": 5.0 })
+	n._route_c2h(7, { "type": "market_buy_intent", "listing_id": "listing_0", "buyer": spoof })
+	n._route_c2h(7, { "type": "proposal_submit_intent", "author": spoof, "title": "T", "body": "B" })
+	n._route_c2h(7, { "type": "proposal_vote_intent", "proposal_id": "proposal_0", "voter": spoof, "verdict": "for" })
+	n._route_c2h(7, { "type": "proposal_supersede_intent", "proposal_id": "proposal_0", "replacement_id": "proposal_1" })
+	assert_eq(listed.size(), 0, "an un-handshaked peer cannot list")
+	assert_eq(bought.size(), 0, "nor buy")
+	assert_eq(authored.size(), 0, "nor author a proposal")
+	assert_eq(voted.size(), 0, "nor vote")
+	assert_eq(superseded.size(), 0, "nor move the decisions log")
+
+	n.set_player_id(7, "player_7_1_cafe")
+	n._route_c2h(7, { "type": "market_list_intent", "seller": spoof, "item_id": "wolf_fang", "quantity": 2, "price": 5.0 })
+	n._route_c2h(7, { "type": "market_buy_intent", "listing_id": "listing_0", "buyer": spoof })
+	n._route_c2h(7, { "type": "proposal_submit_intent", "author": spoof, "title": "T", "body": "B" })
+	n._route_c2h(7, { "type": "proposal_vote_intent", "proposal_id": "proposal_0", "voter": spoof, "verdict": "for" })
+	n._route_c2h(7, { "type": "proposal_supersede_intent", "proposal_id": "proposal_0", "replacement_id": "proposal_1" })
+	assert_eq(str(listed[0][0]), "player_7_1_cafe", "the seller is the connection's player, not the name")
+	assert_eq(str(bought[0][1]), "player_7_1_cafe", "and so is the buyer")
+	assert_eq(str(authored[0][0]), "player_7_1_cafe", "and the proposal author")
+	assert_eq(str(voted[0][1]), "player_7_1_cafe", "and the voter")
+	assert_eq(voted[0][2], "for", "with the verdict it did send")
+	assert_eq(superseded.size(), 1, "a bound peer's supersede is re-emitted")
+
+	GameBus.market_list_intent.disconnect(on_list)
+	GameBus.market_buy_intent.disconnect(on_buy)
+	GameBus.proposal_submit_intent.disconnect(on_submit)
+	GameBus.proposal_vote_intent.disconnect(on_vote)
+	GameBus.proposal_supersede_intent.disconnect(on_supersede)
+	n.free()
+
+func _test_net_trade_intents_bind_connection_identity() -> void:
+	# Every trade step acts as the connection's own player: a spoofed accept used to
+	# commit the OTHER side's goods. An invite may name a counterparty, but only one
+	# the host can resolve to an online player — nobody can be dragged into a session
+	# that cannot be answered.
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.player_registry = reg
+	var started: Array = []
+	var proposed: Array = []
+	var accepted: Array = []
+	var rejected: Array = []
+	var on_start := func(party_a: String, party_b: String) -> void:
+		started.append([party_a, party_b])
+	var on_propose := func(trade_id: String, party: String, _give: Dictionary, _want: Dictionary) -> void:
+		proposed.append([trade_id, party])
+	var on_accept := func(trade_id: String, party: String) -> void:
+		accepted.append([trade_id, party])
+	var on_reject := func(trade_id: String, party: String) -> void:
+		rejected.append([trade_id, party])
+	GameBus.trade_start_intent.connect(on_start)
+	GameBus.trade_propose_intent.connect(on_propose)
+	GameBus.trade_accept_intent.connect(on_accept)
+	GameBus.trade_reject_intent.connect(on_reject)
+
+	var spoof := "player_victim_1_deadbeef"
+	n._route_c2h(7, { "type": "trade_accept_intent", "trade_id": "trade_0", "party": spoof })
+	n._route_c2h(7, { "type": "trade_propose_intent", "trade_id": "trade_0", "party": spoof, "give": {}, "want": {} })
+	n._route_c2h(7, { "type": "trade_reject_intent", "trade_id": "trade_0", "party": spoof })
+	n._route_c2h(7, { "type": "trade_start_intent", "party_a": spoof, "party_b": "player_host_1" })
+	assert_eq(accepted.size(), 0, "an un-handshaked peer cannot accept")
+	assert_eq(proposed.size(), 0, "nor propose")
+	assert_eq(rejected.size(), 0, "nor reject")
+	assert_eq(started.size(), 0, "nor open a session")
+
+	n.set_player_id(7, "player_7_1_cafe")
+	n._route_c2h(7, { "type": "trade_accept_intent", "trade_id": "trade_0", "party": spoof })
+	n._route_c2h(7, { "type": "trade_propose_intent", "trade_id": "trade_0", "party": spoof, "give": {}, "want": {} })
+	n._route_c2h(7, { "type": "trade_reject_intent", "trade_id": "trade_0", "party": spoof })
+	assert_eq(str(accepted[0][1]), "player_7_1_cafe", "the accepter is the connection's player")
+	assert_eq(str(proposed[0][1]), "player_7_1_cafe", "and the proposer")
+	assert_eq(str(rejected[0][1]), "player_7_1_cafe", "and the rejecter")
+
+	# Invites: the named counterparty must resolve. Phase 37 — the name is a public
+	# HANDLE, which is the only identity a client is ever told, so that is what an
+	# invite carries.
+	var host_handle: String = reg.public_handle("player_host_1")
+	n._route_c2h(7, { "type": "trade_start_intent", "party_a": spoof, "party_b": host_handle })
+	assert_eq(started.size(), 1, "an invite to an online player's handle is opened")
+	assert_eq(str(started[0][0]), "player_7_1_cafe", "in the sender's own name")
+	assert_eq(str(started[0][1]), "player_host_1", "naming the counterparty it resolved")
+
+	# Phase 37 — a RAW PLAYER ID is no longer a name an invite may carry, even a real
+	# online player's: answering it turned this into a yes/no oracle for "is that exact
+	# id connected", and an id is a bearer token (see resolve_identity). Nothing
+	# legitimate still sends one — a client learns ids nowhere (redact_for_client).
+	n._route_c2h(7, { "type": "trade_start_intent", "party_a": "player_7_1_cafe", "party_b": "player_host_1" })
+	assert_eq(started.size(), 1, "a raw online player id is refused")
+	n._route_c2h(7, { "type": "trade_start_intent", "party_a": "player_7_1_cafe", "party_b": "player_nobody_9_0" })
+	n._route_c2h(7, { "type": "trade_start_intent", "party_a": "player_7_1_cafe", "party_b": "" })
+	n._route_c2h(7, { "type": "trade_start_intent", "party_a": "player_7_1_cafe", "party_b": "player_7_1_cafe" })
+	assert_eq(started.size(), 1, "an unresolvable, empty or self counterparty is refused")
+
+	GameBus.trade_start_intent.disconnect(on_start)
+	GameBus.trade_propose_intent.disconnect(on_propose)
+	GameBus.trade_accept_intent.disconnect(on_accept)
+	GameBus.trade_reject_intent.disconnect(on_reject)
+	n.free()
+	reg.free()
+
+func _test_net_block_intent_requires_handshake_and_reach() -> void:
+	# A block edit is the world's state, so it needs a bound identity and a target the
+	# host can place relative to where it last saw the peer: without the reach check a
+	# client could mine or build anywhere (another player's feet included).
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	var mined: Array = []
+	var on_mine := func(pos: Vector3, normal: Vector3) -> void:
+		mined.append([pos, normal])
+	GameBus.block_mine_requested.connect(on_mine)
+
+	var near := Vector3(30.0, 4.0, 0.0)
+	var edit := { "type": "block_edit_intent", "action": "mine", "position": [near.x, near.y, near.z], "normal": [0, 1, 0] }
+	n._route_c2h(7, edit)
+	assert_eq(mined.size(), 0, "an un-handshaked peer cannot edit the world")
+
+	n.set_player_id(7, "player_7_1_cafe")
+	n._route_c2h(7, edit)
+	assert_eq(mined.size(), 0, "a peer with no recorded position has no reach to check")
+
+	n.remember_player_state(7, Vector3.ZERO)
+	n._route_c2h(7, edit)
+	assert_eq(mined.size(), 1, "an edit within reach is applied")
+	assert_eq(mined[0][0], near, "at the position the client asked for")
+
+	var far := Vector3(2000.0, 4.0, 2000.0)
+	n._route_c2h(7, { "type": "block_edit_intent", "action": "place", "position": [far.x, far.y, far.z], "normal": [0, 1, 0] })
+	assert_eq(mined.size(), 1, "an edit beyond reach is dropped")
+
+	GameBus.block_mine_requested.disconnect(on_mine)
+	n.free()
+
+func _test_net_tree_intent_requires_handshake_and_reach() -> void:
+	# The chop intent names only a tree id, so the reach check resolves the tree's own
+	# position through the wired TreeSlice — and fails closed when no tree is known.
+	var trees := TreeSlice.new()
+	add_child(trees)
+	trees.spawn_for_chunk(Vector2i(0, 0))
+	var all_trees: Array = trees.get_all_trees()
+	assert_true(all_trees.size() > 0, "the rig has trees to chop")
+	var target: Dictionary = all_trees[0]
+	var tree_pos: Vector3 = target["position"]
+
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.tree_slice = trees
+	var chops: Array = []
+	var on_chop := func(tree_id: String) -> void:
+		chops.append(tree_id)
+	GameBus.tree_chop_requested.connect(on_chop)
+
+	var intent := { "type": "tree_chop_intent", "tree_id": str(target["tree_id"]) }
+	n._route_c2h(7, intent)
+	assert_eq(chops.size(), 0, "an un-handshaked peer cannot chop")
+
+	n.set_player_id(7, "player_7_1_cafe")
+	n._route_c2h(7, { "type": "tree_chop_intent", "tree_id": "tree_999_999_9" })
+	assert_eq(chops.size(), 0, "a tree the host does not have is not chopable")
+
+	n.remember_player_state(7, tree_pos + Vector3(10.0, 0.0, 0.0))
+	n._route_c2h(7, intent)
+	assert_eq(chops.size(), 1, "a chop within reach is re-emitted for TreeSlice")
+	assert_eq(str(chops[0]), str(target["tree_id"]), "for the tree the client named")
+
+	n.remember_player_state(7, tree_pos + Vector3(500.0, 0.0, 500.0))
+	n._route_c2h(7, { "type": "tree_chop_intent", "tree_id": str(all_trees[1]["tree_id"]) })
+	assert_eq(chops.size(), 1, "a chop beyond reach is dropped")
+
+	GameBus.tree_chop_requested.disconnect(on_chop)
+	n.free()
+	trees.free()
+
+func _test_net_client_packet_size_capped() -> void:
+	# An oversized client packet is dropped before it is parsed: the cap is what keeps
+	# one peer from making the authoritative process chew on an arbitrarily large JSON
+	# string.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	# `_rpc_c2h` reads the sender off the multiplayer API, so the rig has to bind the
+	# identity to whatever this isolated slice reports as the remote sender.
+	var sender := multiplayer.get_remote_sender_id()
+	n.set_player_id(sender, "player_7_1_cafe")
+	var crafts: Array = []
+	var on_craft := func(recipe_id: String, player_id: String) -> void:
+		crafts.append([recipe_id, player_id])
+	GameBus.craft_intent.connect(on_craft)
+
+	n._rpc_c2h(JSON.stringify({ "type": "craft_intent", "recipe_id": "R" }))
+	assert_eq(crafts.size(), 1, "a packet within the cap is routed")
+	var filler := "x".repeat(NetworkingSlice.MAX_CLIENT_PACKET_BYTES)
+	n._rpc_c2h(JSON.stringify({ "type": "craft_intent", "recipe_id": "R", "filler": filler }))
+	assert_eq(crafts.size(), 1, "a packet over the cap is dropped")
+
+	GameBus.craft_intent.disconnect(on_craft)
+	n.free()
+
+func _test_net_client_packet_rate_limited() -> void:
+	# A per-peer token bucket: a burst is capped, the bucket refills at the sustained
+	# rate, and a reconnecting peer starts fresh instead of inheriting the debt.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	var allowed := 0
+	for i in range(int(NetworkingSlice.RATE_BUCKET_CAPACITY) + 10):
+		if n._allow_packet(3, 0.0):
+			allowed += 1
+	assert_eq(allowed, int(NetworkingSlice.RATE_BUCKET_CAPACITY), "a burst is capped at the bucket capacity")
+
+	var later := 500.0
+	assert_true(n._allow_packet(3, later), "the bucket refills over time")
+	var refilled := 0
+	for i in range(1000):
+		if n._allow_packet(3, later):
+			refilled += 1
+	assert_eq(refilled, int(NetworkingSlice.RATE_BUCKET_REFILL_PER_SEC * 0.5) - 1,
+		"and is then held to the sustained refill rate")
+
+	n.forget_player_id(3)
+	assert_true(n._allow_packet(3, later), "a disconnected peer's bucket goes with its transport state")
+	n.free()
+
+func _test_identity_handles_are_derived_and_opaque() -> void:
+	# The player id is a BEARER TOKEN: presenting it on join claims the record. A
+	# public handle is the pseudonym a payload may name a player by — derived from the
+	# id, so it needs no storage and answers for an offline player, and one-way, so it
+	# cannot be turned back into the token it came from.
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var handle := reg.public_handle("player_host_1")
+	assert_eq(handle, reg.public_handle("player_host_1"), "a handle is stable")
+	assert_eq(handle.length(), PlayerRegistry.HANDLE_PREFIX.length() + PlayerRegistry.HANDLE_HEX_CHARS,
+		"with a fixed width")
+	assert_false(handle.contains("player_host_1"), "and reveals nothing of the id")
+	assert_false(PlayerRegistry.looks_like_player_id(handle), "a handle is not id-shaped")
+	assert_eq(reg.public_handle("player_host_1"), handle, "derivation needs no record to be resident")
+	assert_true(reg.public_handle("player_host_2") != handle, "two players get different handles")
+
+	var guest := "player_1700000000_1_" + "ab".repeat(16)
+	assert_true(PlayerRegistry.looks_like_player_id(guest), "a minted id is id-shaped")
+	assert_false(PlayerRegistry.looks_like_player_id("merchant"), "a demo party name is not")
+	assert_false(PlayerRegistry.looks_like_player_id("player_1700000000_1_zz"), "nor is a malformed one")
+
+	# Reverse lookup goes through players this process can actually act with.
+	assert_eq(reg.player_id_for_handle(handle), "player_host_1", "the local player resolves by handle")
+	assert_eq(reg.player_id_for_handle(reg.public_handle(guest)), "", "an offline stranger does not")
+
+	# THE TAKEOVER: what a leaked id would have bought, and what a handle does not.
+	var victim := str(reg.resolve_identity(1))
+	reg.get_record(victim)["hp"] = 42.0
+	assert_eq(reg.unbind_peer(1), victim, "the victim disconnects")
+	assert_eq(reg.resolve_identity(2, victim), victim,
+		"a leaked ID is honoured as that player's reconnect (the leak's value)")
+	assert_eq(reg.unbind_peer(2), victim, "…and let go again")
+	assert_true(reg.resolve_identity(3, reg.public_handle(victim)) != victim,
+		"a leaked HANDLE claims nothing: it mints a fresh identity")
+	reg.free()
+
+func _test_identity_syncs_are_redacted() -> void:
+	# Market, trade and governance state named players by id on the wire.
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.player_registry = reg
+
+	var alice := "player_1700000000_7_" + "11".repeat(16)
+	var bob := "player_1700000001_8_" + "22".repeat(16)
+	var alice_h := reg.public_handle(alice)
+	var bob_h := reg.public_handle(bob)
+
+	var market = n.redact_for_client({ "listing_0": { "seller": alice, "item_id": "wolf_fang", "quantity": 2 } })
+	assert_eq(str(market["listing_0"]["seller"]), alice_h, "a listing's seller is a handle")
+	assert_eq(str(market["listing_0"]["item_id"]), "wolf_fang", "and nothing else is touched")
+
+	var trade = n.redact_for_client({
+		"trades": { "trade_0": { "parties": [alice, bob], "offers": { alice: { "give": {} } }, "accepted": { bob: true } } },
+		"next_id": 1,
+	})
+	var t: Dictionary = trade["trades"]["trade_0"]
+	assert_eq(str(t["parties"][0]), alice_h, "a trade party is a handle")
+	assert_eq(str(t["parties"][1]), bob_h, "both of them")
+	assert_true(t["offers"].has(alice_h), "and the offers map is keyed by handle")
+	assert_true(t["accepted"].has(bob_h), "so is the accepted map")
+	assert_eq(int(trade["next_id"]), 1, "counters pass through")
+
+	var gov = n.redact_for_client({
+		"proposals": { "proposal_0": { "author": alice, "votes": { bob: "for" }, "title": "Open a road" } },
+		"decisions_log": [{ "author": bob, "title": "Old" }],
+	})
+	assert_eq(str(gov["proposals"]["proposal_0"]["author"]), alice_h, "a proposal's author is a handle")
+	assert_eq(str(gov["proposals"]["proposal_0"]["title"]), "Open a road", "its title is not")
+	assert_true(gov["proposals"]["proposal_0"]["votes"].has(bob_h), "and its votes are keyed by handle")
+	assert_eq(str(gov["decisions_log"][0]["author"]), bob_h, "the decisions log too")
+
+	# The merchant scaffolding party is a literal, not an id: it must survive untouched,
+	# or single-player listings would lose their seller.
+	var demo = n.redact_for_client({ "listing_0": { "seller": "merchant" } })
+	assert_eq(str(demo["listing_0"]["seller"]), "merchant", "a demo party name is not redacted")
+
+	# And no raw id survives the encoding.
+	var json := JSON.stringify(n.redact_for_client({ "trades": { "t": { "parties": [alice, bob] } } }))
+	assert_false(json.contains(alice), "no raw id survives the encoding")
+	assert_false(json.contains(bob), "for either party")
+	n.free()
+	reg.free()
+
+func _test_client_adopts_its_own_handle() -> void:
+	# A client is named by its own handle in everything broadcast; it shows that back to
+	# its own slices as the literal "player" (the convention the local player has always
+	# had), while every other handle stays opaque.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.CLIENT
+	assert_eq(n.claimed_handle, "", "no handle before the handshake")
+
+	n._route_h2c({
+		"type": "identity_assigned",
+		"player_id": "player_1700000000_3_" + "cd".repeat(16),
+		"handle": "p_0123456789abcdef",
+	})
+	assert_eq(n.claimed_player_id, "player_1700000000_3_" + "cd".repeat(16), "the id is cached for reconnect")
+	assert_eq(n.claimed_handle, "p_0123456789abcdef", "and so is the handle")
+
+	var applied: Array = []
+	var on_market := func(data: Dictionary) -> void:
+		applied.append(data)
+	GameBus.market_synced.connect(on_market)
+	n._route_h2c({ "type": "market_synced", "data": {
+		"listing_0": { "seller": "p_0123456789abcdef" },
+		"listing_1": { "seller": "p_ffffffffffffffff" },
+	} })
+	GameBus.market_synced.disconnect(on_market)
+	assert_eq(applied.size(), 1, "the payload reaches the market slice")
+	var rows: Dictionary = applied[0]
+	assert_eq(str(rows["listing_0"]["seller"]), "player", "our own handle reads as the local player")
+	assert_eq(str(rows["listing_1"]["seller"]), "p_ffffffffffffffff", "another player's stays opaque")
+
+	# The snapshot path maps the same three blobs.
+	var snapshot: Dictionary = n._adopt_snapshot_identities({
+		"heightmaps": { "0,0": [1.0] },
+		"market": { "listing_0": { "seller": "p_0123456789abcdef" } },
+		"governance": { "proposals": {} },
+		"trade": { "trades": { "trade_0": { "parties": ["p_0123456789abcdef", "p_ffffffffffffffff"] } } },
+	})
+	assert_eq(str(snapshot["market"]["listing_0"]["seller"]), "player", "the snapshot's market is mapped")
+	assert_eq(str(snapshot["trade"]["trades"]["trade_0"]["parties"][0]), "player", "so are its trade parties")
+	assert_eq(str(snapshot["trade"]["trades"]["trade_0"]["parties"][1]), "p_ffffffffffffffff", "and only ours")
+	assert_true(snapshot["heightmaps"].has("0,0"), "world data is left alone")
+	n.free()
+
+func _test_boot_suite_is_gated() -> void:
+	# The automated suite no longer runs on EVERY boot: a release export that was
+	# never asked for it must boot without the 7000-assertion development harness,
+	# while a debug build (and an explicit --run-tests) still runs it. Asserted on
+	# the pure predicate, so the rule is pinned without booting twice.
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	assert_false(root_script.should_run_tests([], false),
+		"a release boot without the flag runs no suite")
+	assert_false(root_script.should_run_tests(["--server"], false),
+		"and neither does a matching --server boot")
+	assert_true(root_script.should_run_tests([], true),
+		"a debug build runs the suite by default")
+	assert_true(root_script.should_run_tests(["--run-tests"], false),
+		"and --run-tests asks for it explicitly")
+	assert_true(root_script.should_run_tests(["--client", "127.0.0.1"], true),
+		"the flag is independent of the network role")
 
 func _test_net_aoi_center_and_in_aoi() -> void:
 	# Interest management (Phase 29): a peer with no reported position falls back
@@ -6128,6 +6659,1257 @@ func _test_net_own_state_push_is_peer_scoped() -> void:
 		"carrying the peer's own inventory")
 	host.free()
 	client.free()
+
+## Phase 36 — a creature aggros the nearest player, remote peers included. Before
+## this the AI compared against `player_slice` alone, which on a host is the host's
+## own body: a peer could walk through a wolf's territory untouched, because the
+## wolf literally never looked at where that peer was.
+func _test_ai_targets_nearest_of_all_players() -> void:
+	var rig := _make_ai_rig()
+	var c: CreatureSlice = rig["creature"]
+	var ai: CreatureAI   = rig["ai"]
+	var instances: Array = c.get_all_instances()
+	assert_true(instances.size() > 0, "need at least one creature instance")
+
+	# A CinderGargoyle (aggressionLevel 2) chases without an alert pause, so the
+	# chase is visible in one tick.
+	var iid := ""
+	var pos := Vector3.ZERO
+	for inst in instances:
+		var res: Resource = GameData.CREATURES.get(inst["creature_id"], null)
+		if res != null and int(res.get("aggressionLevel")) == 2:
+			iid = str(inst["instance_id"])
+			pos = inst["position"]
+			break
+	assert_true(iid != "", "need an AGGRESSIVE creature instance (aggressionLevel == 2)")
+
+	var peer_pos := pos + Vector3(2.0, 0.0, 0.0)
+	var host_pos := pos + Vector3(400.0, 0.0, 0.0)
+	var targets := { "player": host_pos, "player_peer": peer_pos }
+	ai.player_targets = func() -> Dictionary:
+		return targets
+	var nearest: Dictionary = ai._nearest_target(pos, ai._player_targets())
+	assert_eq(str(nearest.get("id", "")), "player_peer",
+		"the nearest player is the peer, not the host's own body")
+
+	ai.force_state(iid, "idle")
+	ai._process(0.1)
+	assert_eq(ai.get_state(iid), "aggressive", "the creature aggros the nearest player whatever machine it is")
+	# The idle → aggressive tick only transitions (it returns); the chase itself is
+	# the NEXT tick.
+	ai._process(0.1)
+	var moved: Vector3 = c._instances[iid]["position"]
+	assert_true(moved.distance_to(peer_pos) < pos.distance_to(peer_pos),
+		"and chases it (the peer, not the host 400 m away)")
+
+	# Phase 37 — and it IS struck: the round is routed by the target the creature
+	# engaged, so a remote peer's id rides `combat_round_requested` and the host can
+	# deliver the hit to that peer's own client (see BattleSlice.is_player_target and
+	# GameRoot._on_player_damaged). Phase 36 closed on the opposite: a peer was chased
+	# and then swung at nothing at all.
+	var rounds: Array = []
+	var on_round := func(attacker: String, defender: String) -> void:
+		rounds.append([attacker, defender])
+	GameBus.combat_round_requested.connect(on_round)
+	ai.force_state(iid, "aggressive")
+	ai._ai[iid]["attack_timer"] = CreatureAI.ATTACK_INTERVAL
+	# In attack range by construction (0.5 m), so the round does not depend on how far
+	# the chase above happened to get this tick.
+	ai._tick_instance(iid, c._instances[iid], c._instances[iid]["position"] + Vector3(0.5, 0.0, 0.0), 0.01, "player_peer")
+	assert_eq(rounds.size(), 1, "a remote peer is struck, not merely chased")
+	assert_eq(str(rounds[0][1]), "player_peer", "under the id the creature actually engaged")
+
+	ai._ai[iid]["attack_timer"] = CreatureAI.ATTACK_INTERVAL
+	ai._tick_instance(iid, c._instances[iid], c._instances[iid]["position"] + Vector3(0.5, 0.0, 0.0), 0.01)
+	assert_eq(rounds.size(), 2, "the local player is struck too")
+	assert_eq(str(rounds[1][1]), "player", "under the defender id the bus has always used")
+
+	GameBus.combat_round_requested.disconnect(on_round)
+	rig["creature"].free()
+	rig["ai"].free()
+
+# ---------------------------------------------------------------------------
+# Phase 35 — creature taming
+# ---------------------------------------------------------------------------
+## A taming rig: a creature population, the local player's registry + inventory,
+## and the taming slice wired to both. `character_slice` is left null unless a
+## test needs the bare-hands rule (see _test_taming_requires_unarmed), because a
+## null character slice means "no equipment model here" and the rule is skipped.
+func _make_taming_rig() -> Dictionary:
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
+	var crafting := CraftingSlice.new()
+	add_child(crafting)
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	registry.set_local_player(registry.mint_player_id())
+	var taming := TamingSlice.new()
+	add_child(taming)
+	taming.creature_slice  = c
+	taming.crafting_slice  = crafting
+	taming.player_registry = registry
+	taming.inventory_slice = null   # prove the registry is what answers
+	# Phase 36 — the crafting slice is wired to the same registry game_root wires it
+	# to, because skill tiers are resolved per player through it: without it the
+	# slice has no notion of "this machine's player" and would read every tier as
+	# novice (`get_skill_for` cannot tell a peer from a nameless local player).
+	crafting.player_registry = registry
+	return { "creature": c, "taming": taming, "crafting": crafting, "registry": registry }
+
+## Resolve a tame for a REMOTE player the way the host does: through the intent the
+## networking slice re-emits, carrying that peer's bare-hands claim (Phase 36). A
+## direct `tame(instance_id, player_id)` call is the HOST-LOCAL path — for someone
+## else's player id it now fails closed on the bare-hands rule, exactly because no
+## claim accompanied it.
+func _taming_tame_via_intent(instance_id: String, player_id: String, unarmed: bool = true) -> Dictionary:
+	var captured: Array = []
+	var on_resolved := func(result: Dictionary) -> void:
+		captured.append(result)
+	GameBus.tame_resolved.connect(on_resolved)
+	GameBus.tame_intent.emit(instance_id, player_id, unarmed)
+	GameBus.tame_resolved.disconnect(on_resolved)
+	if captured.is_empty():
+		return {}
+	return captured[0]
+
+## The first instance id of a fabric creature key, or "" when the population has
+## none. Spawn order is deterministic but not alphabetical, so tests must look the
+## species up rather than index the array.
+func _taming_instance_of(c: Node, creature_id: String) -> String:
+	for inst in c.get_all_instances():
+		if str(inst["creature_id"]) == creature_id:
+			return str(inst["instance_id"])
+	return ""
+
+## Every instance id of one species, in population order.
+func _taming_instances_of(c: Node, creature_id: String) -> Array:
+	var out: Array = []
+	for inst in c.get_all_instances():
+		if str(inst["creature_id"]) == creature_id:
+			out.append(str(inst["instance_id"]))
+	return out
+
+## Put a player next to a creature. The approach rule is real (TamingSlice re-checks
+## the distance), and a fresh record sits at the world origin, so a test that
+## forgets this reads "too_far" instead of the reason it meant to assert.
+func _taming_stand_near(registry: Node, player_id: String, c: Node, instance_id: String) -> void:
+	registry.record_position(player_id, c.get_instance_position(instance_id))
+
+func _test_taming_fabric_spec() -> void:
+	# The interaction is data: every rule the slice enforces comes off the creature's
+	# `tame` json field, so the assertions here are on the FABRIC, not on a table in
+	# GDScript. If the fabric changes, these fail — which is the point.
+	var rig := _make_taming_rig()
+	var taming: Node = rig["taming"]
+	var wolf: Dictionary = taming.tame_data("GraywolfPack")
+	assert_eq(str(wolf.get("result", "")), "companion", "the wolf tame yields a companion")
+	assert_eq(str(wolf.get("grantsFlag", "")), "wolfBondHolder", "and sets the Ranger flag")
+	assert_true(bool(wolf.get("requiresDefeated", false)), "and needs the alpha down")
+	assert_true(bool(wolf.get("suppressRespawn", false)), "a tamed wolf does not respawn")
+	assert_true(bool(wolf.get("requiresUnarmed", false)), "and needs bare hands")
+	var wolf_skill: Dictionary = wolf.get("requiresSkill", {})
+	assert_eq(str(wolf_skill.get("skill", "")), "Unarmed", "gated on the Unarmed skill")
+	assert_eq(str(wolf_skill.get("tier", "")), "journeyman", "at journeyman")
+
+	var fox: Dictionary = taming.tame_data("GlimmerFox")
+	assert_eq(str(fox.get("result", "")), "yield", "the fox tame yields items, not a companion")
+	assert_eq(int(fox.get("cooldownSeconds", 0)), 600, "with the fabric's 10-minute cooldown")
+	assert_true(bool(fox.get("requiresUnarmed", false)), "and needs bare hands too")
+	assert_false(str(fox.get("grantsFlag", "")) != "", "but grants no flag")
+	var offers: Array = fox.get("requiresAnyItem", [])
+	assert_eq(offers.size(), 2, "the fabric names two alternative offerings")
+	assert_eq(str((offers[0] as Dictionary).get("item", "")), "FieldRations", "rations first")
+	var yields: Array = fox.get("yields", [])
+	assert_eq(yields.size(), 1, "and one shed item")
+	assert_eq(str((yields[0] as Dictionary).get("item", "")), "glimmer_fur_tuft", "the fur tuft")
+
+	assert_true(taming.is_tameable("GlimmerFox"), "the fox is tameable")
+	assert_false(taming.is_tameable("ForestBoar"), "the boar is not")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_not_tameable() -> void:
+	# A creature with no `tame` field is refused, and an unknown instance is refused
+	# with a different reason — the UI needs to tell "not tameable" from "gone".
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var boar := _taming_instance_of(c, "ForestBoar")
+	assert_true(boar != "", "a ForestBoar instance exists")
+	_taming_stand_near(rig["registry"], str(rig["registry"].local_player_id), c, boar)
+	assert_eq(str(taming.can_tame(boar, "")["reason"]), "not_tameable", "the boar is not tameable")
+	assert_eq(taming.tame_data("ForestBoar").size(), 0, "and carries no tame data")
+	assert_eq(str(taming.can_tame("creature_nope", "")["reason"]), "unknown_instance",
+		"an unknown instance is refused as unknown")
+	assert_false(bool(taming.tame(boar, "")["success"]), "tame() fails on it too")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_wolf_requires_alpha_down() -> void:
+	# The fabric rule is "tame a surviving pup AFTER defeating the alpha wolf". The
+	# runtime models a pack as N instances of one creature id, so the gate is "one
+	# member of this species is dead".
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var wolves := _taming_instances_of(c, "GraywolfPack")
+	assert_true(wolves.size() >= 2, "the fabric spawns at least two pack members")
+	var target := str(wolves[1])
+	_taming_stand_near(registry, pid, c, target)
+
+	# Too far away: the creature must be approached, not summoned.
+	registry.record_position(pid, Vector3(500.0, 0.0, 500.0))
+	assert_eq(str(taming.can_tame(target, "")["reason"]), "too_far", "a distant target cannot be tamed")
+	_taming_stand_near(registry, pid, c, target)
+
+	assert_eq(str(taming.can_tame(target, "")["reason"]), "alpha_alive",
+		"not tameable while the whole pack stands")
+	assert_false(c.has_defeated_species("GraywolfPack"), "no pack member is down yet")
+
+	# The template has no skill either, so kill a member and confirm the gate that
+	# answers next is the SKILL one: the alpha gate is satisfied, not skipped.
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	assert_true(c.has_defeated_species("GraywolfPack"), "a pack member is dead")
+	assert_eq(str(taming.can_tame(target, "")["reason"]), "skill_locked:Unarmed:journeyman",
+		"the alpha gate is satisfied and the skill gate answers next")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_wolf_grants_flag_companion() -> void:
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var wolves := _taming_instances_of(c, "GraywolfPack")
+	var target := str(wolves[1])
+	_taming_stand_near(registry, pid, c, target)
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	assert_true(bool(rig["crafting"].set_skill("Unarmed", "journeyman")), "Unarmed: journeyman")
+
+	var result: Dictionary = taming.tame(target, "")
+	assert_true(bool(result["success"]), "the tame resolves")
+	assert_eq(str(result["result"]), "companion", "as a companion")
+	assert_eq(str(result["flag"]), "wolfBondHolder", "granting the flag")
+	assert_true(taming.has_flag(pid, "wolfBondHolder"), "the player holds the flag")
+	assert_eq(c.get_tamed_by(target), pid, "and the instance is bound to them")
+	assert_true(c.is_tamed(target), "the instance reports tamed")
+	assert_true((taming.get_companions(pid) as Array).has(target), "the companion is listed")
+
+	# Idempotence: a second tame of the same instance is refused, not doubled.
+	assert_eq(str(taming.can_tame(target, "")["reason"]), "already_tamed", "already tamed")
+	assert_eq((taming.get_companions(pid) as Array).size(), 1, "and it is still one companion")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_refusal_is_atomic() -> void:
+	# An isolated slice with NO registry has no identified player, and `tamed_by` is
+	# an owner id ("" means wild) — so an unidentified tamer cannot bind a companion
+	# and is refused as `already_tamed` (see the class docstring). That refusal must
+	# be ATOMIC: it may not leave the wolf's `wolfBondHolder` flag set (progression)
+	# or an offering spent — the same rule `inventory_full` already follows. This is
+	# the one rig that reaches the refusal: every other taming test wires a registry,
+	# precisely because a rig without one gets a refusal, not a binding.
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
+	var crafting := CraftingSlice.new()
+	add_child(crafting)
+	var inventory := InventorySlice.new()
+	add_child(inventory)
+	var taming := TamingSlice.new()
+	add_child(taming)
+	taming.creature_slice  = c
+	taming.crafting_slice  = crafting
+	# No registry: inventory_for("") falls back to the slice's own inventory.
+	taming.inventory_slice = inventory
+	var wolves := _taming_instances_of(c, "GraywolfPack")
+	var target := str(wolves[1])
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	assert_true(bool(crafting.set_skill("Unarmed", "journeyman")), "Unarmed: journeyman")
+	assert_true(bool(taming.can_tame(target, "")["ok"]), "every requirement but the owner is met")
+
+	var refused: Dictionary = taming.tame(target, "")
+	assert_false(bool(refused["success"]), "an unidentified tamer cannot bind a companion")
+	assert_eq(str(refused["reason"]), "already_tamed",
+		"refused as already_tamed rather than bound to a wild owner")
+	assert_false(c.is_tamed(target), "so the instance stays wild")
+	assert_eq(c.get_tamed_by(target), "", "with no owner written on it")
+	assert_false(taming.has_flag("", "wolfBondHolder"), "and the refusal left no flag behind")
+	assert_eq((taming.get_companions("") as Array).size(), 0, "nor listed a companion")
+	c.free()
+	crafting.free()
+	inventory.free()
+	taming.free()
+
+func _test_taming_requires_skill() -> void:
+	# The skill gate fails CLOSED: an unwired/unadvanced table reads as "novice", so a
+	# journeyman requirement is refused rather than skipped.
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var wolves := _taming_instances_of(c, "GraywolfPack")
+	var target := str(wolves[1])
+	_taming_stand_near(registry, pid, c, target)
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+
+	assert_eq(taming.skill_tier(pid, "Unarmed"), "novice", "a fresh table is novice")
+	var refused: Dictionary = taming.tame(target, "")
+	assert_false(bool(refused["success"]), "a novice cannot tame the pup")
+	assert_eq(str(refused["reason"]), "skill_locked:Unarmed:journeyman", "reason names the gate")
+	assert_false(c.is_tamed(target), "and nothing was tamed")
+
+	# apprentice is still below journeyman — the gate is a rank, not an exact match.
+	rig["crafting"].set_skill("Unarmed", "apprentice")
+	assert_false(bool(taming.can_tame(target, "")["ok"]), "apprentice is not enough")
+	rig["crafting"].set_skill("Unarmed", "journeyman")
+	assert_true(bool(taming.can_tame(target, "")["ok"]), "journeyman passes")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_requires_unarmed() -> void:
+	# "Player must approach the pup while unarmed": an equipped main hand is what the
+	# rule reads. Only the local player's character is modelled, so the check runs
+	# against the character slice's own view of that character's equipment.
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var wolves := _taming_instances_of(c, "GraywolfPack")
+	var target := str(wolves[1])
+	_taming_stand_near(registry, pid, c, target)
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	rig["crafting"].set_skill("Unarmed", "journeyman")
+
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	taming.character_slice = ch
+	var char_id := ch.create_character("TravellerHuman", Vector3.ZERO)
+	assert_true(char_id != "", "the player character exists")
+	ch.set_player_character(char_id)
+	assert_true(taming.is_unarmed(""), "empty hands by default")
+	assert_true(bool(taming.can_tame(target, "")["ok"]), "so the tame is allowed")
+
+	assert_true(ch.apply_equipment(char_id, "MainHand", "VeilsteelLongsword"), "a sword is equipped")
+	assert_false(taming.is_unarmed(""), "an equipped weapon is not bare hands")
+	var refused: Dictionary = taming.tame(target, "")
+	assert_false(bool(refused["success"]), "a drawn weapon blocks the tame")
+	assert_eq(str(refused["reason"]), "armed", "reason is armed")
+	assert_false(c.is_tamed(target), "and nothing was tamed")
+
+	ch.clear_equipment(char_id, "MainHand")
+	assert_true(taming.is_unarmed(""), "clearing the slot frees the hands")
+	assert_true(bool(taming.tame(target, "")["success"]), "and the tame goes through")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+## Phase 36 — a remote peer's hands are a CLAIM. A peer's worn gear is not
+## replicated, so the host cannot read it, and the bare-hands requirement used to be
+## reported as satisfied for every peer (i.e. every remote tamer passed it for free).
+## The claim now rides the tame intent, is consumed by the resolution it accompanied,
+## and an unclaimed peer fails closed.
+func _test_taming_peer_bare_hands_claim() -> void:
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var fox := _taming_instance_of(c, "GlimmerFox")
+	var peer := str(registry.resolve_identity(2))
+	rig["crafting"].set_skill_for(peer, "Alchemy", "apprentice")
+	var inv: Node = registry.get_inventory(peer)
+	assert_true(inv.add_item("FieldRations", 1), "the peer carries a ration")
+	_taming_stand_near(registry, peer, c, fox)
+
+	# No claim: the host cannot verify the peer's hands, so the rule fails closed.
+	assert_false(taming.is_unarmed(peer), "a peer with no claim is not assumed unarmed")
+	var unclaimed: Dictionary = taming.tame(fox, peer)
+	assert_false(bool(unclaimed["success"]), "and cannot feed the fox")
+	assert_eq(str(unclaimed["reason"]), "armed", "the reason names the hands")
+	assert_eq(inv.get_item_count("FieldRations"), 1, "with the ration unspent")
+
+	# The claim travels WITH the attempt (through the bus, as networking re-emits it)
+	# and is consumed by that resolution.
+	var claimed: Array = []
+	var on_resolved := func(result: Dictionary) -> void:
+		claimed.append(result)
+	GameBus.tame_resolved.connect(on_resolved)
+	GameBus.tame_intent.emit(fox, peer, true)
+	GameBus.tame_resolved.disconnect(on_resolved)
+	assert_eq(claimed.size(), 1, "the intent resolved")
+	assert_true(bool(claimed[0]["success"]), "a bare-hands claim satisfies the rule")
+	assert_eq(str(claimed[0]["player_id"]), peer, "for the claimant")
+	assert_eq(inv.get_item_count("FieldRations"), 0, "and the offering is spent")
+	assert_false(taming.is_unarmed(peer), "the claim does not outlive its attempt")
+
+	# A peer that claims to be ARMED is refused, and refused before the fox's
+	# cooldown is even consulted.
+	_taming_stand_near(registry, peer, c, fox)
+	inv.add_item("FieldRations", 1)
+	var armed: Array = []
+	var on_armed := func(result: Dictionary) -> void:
+		armed.append(result)
+	GameBus.tame_resolved.connect(on_armed)
+	GameBus.tame_intent.emit(fox, peer, false)
+	GameBus.tame_resolved.disconnect(on_armed)
+	assert_eq(armed.size(), 1, "the armed attempt resolved too")
+	assert_eq(str(armed[0]["reason"]), "armed", "an armed claim is refused")
+	assert_eq(inv.get_item_count("FieldRations"), 1, "spending nothing")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_fox_feed_yields() -> void:
+	# The fox tame is the non-lethal half: the creature stays alive, sheds its fur and
+	# the offering comes off the TAMER's inventory.
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var fox := _taming_instance_of(c, "GlimmerFox")
+	assert_true(fox != "", "a GlimmerFox instance exists")
+	_taming_stand_near(registry, pid, c, fox)
+	rig["crafting"].set_skill("Alchemy", "apprentice")
+	var inventory: Node = taming.inventory_for(pid)
+	assert_true(inventory.add_item("FieldRations", 1), "the tamer carries rations")
+
+	var result: Dictionary = taming.tame(fox, "")
+	assert_true(bool(result["success"]), "the fox accepts the offer")
+	assert_eq(str(result["result"]), "yield", "it is a yield tame")
+	assert_eq(inventory.get_item_count("glimmer_fur_tuft"), 1, "the fox shed a fur tuft")
+	assert_eq(inventory.get_item_count("FieldRations"), 0, "and the ration was consumed by it")
+	assert_eq(str(c.get_tamed_by(fox)), "", "the fox is not a companion")
+	assert_eq(str(c._instances[fox]["state"]), "idle", "and it did not die")
+	var granted: Array = result["yields"]
+	assert_eq(granted.size(), 1, "the result reports the shed yield")
+	assert_eq(str((granted[0] as Dictionary).get("item", "")), "glimmer_fur_tuft", "as the fur tuft")
+	assert_eq(int((granted[0] as Dictionary).get("quantity", 0)), 1, "one of them")
+	assert_false(taming.has_flag(pid, "wolfBondHolder"), "a feed grants no flag")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_fox_needs_offer() -> void:
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var fox := _taming_instance_of(c, "GlimmerFox")
+	_taming_stand_near(registry, pid, c, fox)
+	rig["crafting"].set_skill("Alchemy", "apprentice")
+
+	assert_eq(str(taming.can_tame(fox, "")["reason"]), "missing_offer", "an empty-handed feed is refused")
+	var refused: Dictionary = taming.tame(fox, "")
+	assert_false(bool(refused["success"]), "and nothing is resolved")
+	assert_eq(str(refused["reason"]), "missing_offer", "reason is missing_offer")
+
+	# The raw-meat alternative satisfies the same rule, and is what gets consumed.
+	var inventory: Node = taming.inventory_for(pid)
+	assert_true(inventory.add_item("raw_boar_meat", 1), "raw meat is carried")
+	assert_true(bool(taming.tame(fox, "")["success"]), "the alternative offering works")
+	assert_eq(inventory.get_item_count("raw_boar_meat"), 0, "and it was the item consumed")
+	assert_eq(inventory.get_item_count("glimmer_fur_tuft"), 1, "still yielding the fur tuft")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_cooldown() -> void:
+	# A yield tame leaves the creature alive, so the fabric's cooldown is the only
+	# thing that stops the same fox being fed in a loop. Wall-clock, like every other
+	# deadline in the project.
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var fox := _taming_instance_of(c, "GlimmerFox")
+	_taming_stand_near(registry, pid, c, fox)
+	rig["crafting"].set_skill("Alchemy", "apprentice")
+	var inventory: Node = taming.inventory_for(pid)
+	inventory.add_item("FieldRations", 3)
+
+	assert_true(bool(taming.tame(fox, "")["success"]), "the first feed succeeds")
+	assert_true(taming.cooldown_remaining(fox, pid) > 0.0, "a cooldown is running")
+	assert_true(taming.cooldown_remaining(fox, pid) <= 600.0, "and it is bounded by the fabric's 600 s")
+	assert_eq(str(taming.can_tame(fox, "")["reason"]), "on_cooldown", "a second feed is refused")
+	assert_eq(inventory.get_item_count("FieldRations"), 2, "and the ration was NOT eaten")
+	assert_eq(inventory.get_item_count("glimmer_fur_tuft"), 1, "nor is a second tuft shed")
+	assert_false(bool(taming.tame(fox, "")["success"]), "tame() refuses it as well")
+
+	# Expire the deadline: the same fox can be fed again.
+	taming._cooldowns[pid][fox] = Time.get_unix_time_from_system() - 1.0
+	assert_eq(taming.cooldown_remaining(fox, pid), 0.0, "the cooldown has elapsed")
+	assert_true(bool(taming.tame(fox, "")["success"]), "so the fox can be fed again")
+	assert_eq(inventory.get_item_count("glimmer_fur_tuft"), 2, "shedding a second tuft")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_is_per_player() -> void:
+	# Taming is per-player for the same reason research is: the granted flag, the
+	# companion binding and the consumed offering all belong to ONE player's record and
+	# ONE player's inventory.
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var local_pid := str(registry.local_player_id)
+	var wolves := _taming_instances_of(c, "GraywolfPack")
+	var target := str(wolves[1])
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+
+	var alice: String = str(registry.resolve_identity(2))
+	var bob: String = str(registry.resolve_identity(3))
+	# Phase 36 — the tier is the TAMER's, so each tamer is given their own: a single
+	# process-wide set_skill() no longer stands in for every player's progression.
+	for tamer in [alice, bob]:
+		rig["crafting"].set_skill_for(str(tamer), "Unarmed", "journeyman")
+		rig["crafting"].set_skill_for(str(tamer), "Alchemy", "apprentice")
+	_taming_stand_near(registry, alice, c, target)
+	_taming_stand_near(registry, bob, c, target)
+	# Only BOB carries the offering: a feed by alice must not spend bob's ration.
+	var bob_inv: Node = registry.get_inventory(bob)
+	assert_true(bob_inv.add_item("FieldRations", 1), "bob carries a ration")
+
+	var alice_result: Dictionary = _taming_tame_via_intent(target, alice)
+	assert_true(bool(alice_result["success"]), "alice tames the pup with her own hands")
+	assert_eq(str(alice_result["player_id"]), alice, "and the result names alice")
+	assert_true(taming.has_flag(alice, "wolfBondHolder"), "alice holds the flag")
+	assert_false(taming.has_flag(bob, "wolfBondHolder"), "bob does not")
+	assert_eq(c.get_tamed_by(target), alice, "the companion belongs to alice")
+	assert_true((taming.get_companions(alice) as Array).has(target), "and is listed for her")
+	assert_false((taming.get_companions(bob) as Array).has(target), "not for bob")
+
+	# The offering is per-player: bob's ration is invisible to alice's feed, and alice
+	# has no ration of her own.
+	var fox := _taming_instance_of(c, "GlimmerFox")
+	_taming_stand_near(registry, alice, c, fox)
+	var fed: Dictionary = _taming_tame_via_intent(fox, alice)
+	assert_false(bool(fed["success"]), "alice cannot feed the fox on bob's ration")
+	assert_eq(str(fed["reason"]), "missing_offer", "reason is missing_offer")
+	assert_eq(bob_inv.get_item_count("FieldRations"), 1, "bob's ration is untouched")
+
+	# ...and bob, standing next to the same fox, does get fed.
+	_taming_stand_near(registry, bob, c, fox)
+	assert_true(bool(_taming_tame_via_intent(fox, bob)["success"]), "bob feeds it with his own ration")
+	assert_eq(bob_inv.get_item_count("FieldRations"), 0, "spending his own")
+	assert_eq(bob_inv.get_item_count("glimmer_fur_tuft"), 1, "and receiving the tuft")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_client_forwards_intent() -> void:
+	# A client owns no records, so it must FORWARD a tame to the host rather than
+	# resolve one against its synced world: the flag, the companion binding and the
+	# consumed offering all belong to a record only the host can write.
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
+	var taming := TamingSlice.new()
+	add_child(taming)
+	taming.creature_slice = c
+	taming.is_authoritative = false
+	var target := _taming_instance_of(c, "GraywolfPack")
+	var forwarded: Array = []
+	var on_intent := func(instance_id: String, player_id: String, unarmed: bool) -> void:
+		forwarded.append([instance_id, player_id, unarmed])
+	GameBus.tame_intent.connect(on_intent)
+	GameBus.tame_requested.emit(target)
+	GameBus.tame_intent.disconnect(on_intent)
+	assert_eq(forwarded.size(), 1, "the client forwarded exactly one intent")
+	assert_eq(str(forwarded[0][0]), target, "carrying the instance id")
+	assert_eq(str(forwarded[0][1]), "", "and no identity — the host decides who is taming")
+	# Phase 36 — but it DOES carry the client's own hands (the one machine that knows):
+	# no character slice is wired here, so the local player's hands are unmodelled and
+	# the claim is "unarmed".
+	assert_true(bool(forwarded[0][2]), "with this machine's own bare-hands claim")
+	assert_false(c.is_tamed(target), "nothing resolved locally")
+	c.free()
+	taming.free()
+
+func _test_taming_companion_respawn_suppressed() -> void:
+	# "Pup does not respawn if tamed": the tamed binding outlives the death, so the
+	# respawn tick must leave a dead companion dead — while a wild creature with the
+	# same expired deadline does come back.
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var wolves := _taming_instances_of(c, "GraywolfPack")
+	var target := str(wolves[1])
+	_taming_stand_near(registry, pid, c, target)
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	rig["crafting"].set_skill("Unarmed", "journeyman")
+	assert_true(bool(taming.tame(target, "")["success"]), "the pup is tamed")
+
+	GameBus.creature_died.emit(target, Vector3.ZERO, "player")
+	assert_eq(str(c._instances[target]["state"]), "dead", "the companion died")
+	c._instances[target]["respawn_at"] = Time.get_unix_time_from_system() - 1.0
+
+	var wild := _taming_instance_of(c, "ForestBoar")
+	assert_true(wild != "", "a wild creature exists to control against")
+	GameBus.creature_died.emit(wild, Vector3.ZERO, "player")
+	c._instances[wild]["respawn_at"] = Time.get_unix_time_from_system() - 1.0
+
+	c._tick_respawn()
+	assert_eq(str(c._instances[target]["state"]), "dead", "a tamed companion does not respawn")
+	assert_eq(str(c._instances[wild]["state"]), "idle", "a wild creature still does")
+	assert_eq(c.get_tamed_by(target), pid, "and the binding survives the death")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_companion_follows() -> void:
+	# A companion is not a target and not a pack member: the attack targeting skips it,
+	# and its AI walks it toward its owner instead of patrolling.
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var wolves := _taming_instances_of(c, "GraywolfPack")
+	var target := str(wolves[1])
+	_taming_stand_near(registry, pid, c, target)
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	rig["crafting"].set_skill("Unarmed", "journeyman")
+	assert_true(bool(taming.tame(target, "")["success"]), "the pup is tamed")
+
+	var at: Vector3 = c.get_instance_position(target)
+	assert_true(c.nearest_creature(at, 20.0) != target, "a companion is not offered as a target")
+	var wild := _taming_instance_of(c, "ForestBoar")
+	assert_true(c.nearest_creature(c.get_instance_position(wild), 20.0) != "",
+		"while a wild creature still is")
+
+	var ai := CreatureAI.new()
+	add_child(ai)
+	ai.creature_slice = c
+	ai.taming_slice = taming
+	ai.on_companion_tamed(target, pid)
+	assert_eq(ai.get_state(target), "tamed", "the companion enters the tamed state")
+	ai.on_companion_tamed(target, pid)
+	assert_eq(ai.get_state(target), "tamed", "and re-entering it is idempotent")
+
+	var owner_at := Vector3(40.0, 0.0, 40.0)
+	registry.record_position(pid, owner_at)
+	var before: float = c.get_instance_position(target).distance_to(owner_at)
+	ai._tick_companion(target, c._instances[target], 0.5)
+	var after: float = c.get_instance_position(target).distance_to(owner_at)
+	assert_true(after < before, "the companion closes on its owner")
+	assert_eq(ai.get_state(target), "tamed", "and stays tamed while following")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+func _test_taming_record_round_trip() -> void:
+	# The flag and the companion binding are per-player PROGRESSION, so they persist on
+	# the same record as position/HP/technology. A record written before this phase has
+	# neither key and restores to empty, not to a crash.
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var wolves := _taming_instances_of(c, "GraywolfPack")
+	var target := str(wolves[1])
+	_taming_stand_near(registry, pid, c, target)
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	rig["crafting"].set_skill("Unarmed", "journeyman")
+	assert_true(bool(taming.tame(target, "")["success"]), "the pup is tamed")
+
+	taming.sync_record(pid)
+	var data: Dictionary = registry.get_player_data(pid)
+	assert_true(data.has("flags"), "the record carries flags")
+	assert_true(data.has("companions"), "and companions")
+	assert_true(bool((data["flags"] as Dictionary).get("wolfBondHolder", false)), "the flag is written")
+	assert_true((data["companions"] as Array).has(target), "and the companion id")
+
+	# A fresh slice (a server boot) restores both from the record, and re-binds the
+	# companion to the creature instance that is resident again.
+	var restored := TamingSlice.new()
+	add_child(restored)
+	restored.creature_slice = c
+	restored.player_registry = registry
+	restored.apply_record(data, pid)
+	assert_true(restored.has_flag(pid, "wolfBondHolder"), "the flag is restored")
+	assert_true((restored.get_companions(pid) as Array).has(target), "so is the companion")
+	assert_eq(c.get_tamed_by(target), pid, "and the binding is re-applied to the instance")
+
+	# A pre-Phase-35 record applies to empty state.
+	var legacy := TamingSlice.new()
+	add_child(legacy)
+	legacy.apply_record({ "player_id": pid }, pid)
+	assert_eq(legacy.get_flags(pid).size(), 0, "an older record restores no flags")
+	assert_eq((legacy.get_companions(pid) as Array).size(), 0, "and no companions")
+	# Both extra slices are torn down like every other test slice: they are connected to
+	# `tame_intent`/`tame_requested` on the shared bus, so leaving them alive let a later
+	# test's tame be resolved — and refused — by an unwired leftover first.
+	restored.free()
+	legacy.free()
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+# ---------------------------------------------------------------------------
+# Phase 37 — review pass: owner-scoped syncs, durable cooldowns, bounded mirrors,
+# routed rounds, and a cached population view
+# ---------------------------------------------------------------------------
+
+## Phase 37 — an inventory sync NAMES its owner, and only that owner's inventory applies
+## it. Before this the signal was global and every InventorySlice in the process replaced
+## its contents with whatever was synced, so a peer's sync clobbered the host's own pack
+## and the demo merchant's stock.
+func _test_inventory_sync_is_owner_scoped() -> void:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	var local_pid := reg.mint_player_id()
+	reg.set_local_player(local_pid)
+	var local_inv := InventorySlice.new()
+	add_child(local_inv)
+	reg.set_inventory(local_pid, local_inv)
+	# A registry-CREATED inventory carries its owner (get_inventory stamps it).
+	var peer_pid := "player_peer_1"
+	var peer_inv: Node = reg.get_inventory(peer_pid)
+	var merchant := InventorySlice.new()
+	add_child(merchant)
+	merchant.owner_id = "merchant"
+
+	local_inv.add_item("Ferrite", 2)
+	peer_inv.add_item("Thornwood", 3)
+	merchant.add_item("hawk_feather", 5)
+
+	GameBus.inventory_synced.emit(peer_pid, { "Ashite": 7 }, {})
+	assert_eq(peer_inv.get_item_count("Ashite"), 7, "the peer's inventory takes its own sync")
+	assert_eq(local_inv.get_item_count("Ferrite"), 2, "the local pack is untouched")
+	assert_eq(merchant.get_item_count("hawk_feather"), 5, "and so is the merchant's stock")
+
+	# The local bucket answers for this machine's own inventory, under either literal.
+	GameBus.inventory_synced.emit("player", { "WolfFang": 1 }, {})
+	assert_eq(local_inv.get_item_count("WolfFang"), 1, "a local sync lands on the local pack")
+	assert_eq(peer_inv.get_item_count("Ashite"), 7, "and not on a peer's")
+	assert_eq(merchant.get_item_count("WolfFang"), 0, "nor on the merchant's")
+	GameBus.inventory_synced.emit("", { "Ferrite": 4 }, {})
+	assert_eq(local_inv.get_item_count("Ferrite"), 4, "the empty literal means the same thing")
+
+	# The stamp is what the filter reads.
+	assert_true(peer_inv.is_owned_by(peer_pid), "a peer's inventory answers to its own id")
+	assert_false(peer_inv.is_owned_by("merchant"), "and to nothing else")
+	assert_false(peer_inv.is_owned_by(""), "not even the local bucket")
+	assert_true(local_inv.is_owned_by(""), "the local pack answers the empty literal")
+	assert_true(local_inv.is_owned_by("player"), "and the \"player\" literal")
+	assert_false(local_inv.is_owned_by(peer_pid), "but not a peer's id")
+	merchant.free()
+	local_inv.free()
+	reg.free()   # frees the registry-created peer inventory with it
+
+## Phase 37 — and the wire half: an inventory is PRIVATE, so the host sends a sync to
+## the OWNER'S peer alone and never broadcasts it (and never falls back to a broadcast
+## when it cannot resolve the owner).
+func _test_net_inventory_sync_is_peer_scoped() -> void:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var peer_pid := str(reg.resolve_identity(5))
+	var host := NetworkingSlice.new()
+	add_child(host)
+	host.player_registry = reg
+	host.emulate_network = true
+	host._role = NetworkingSlice.Role.HOST
+
+	host._on_inventory_synced(peer_pid, { "Ferrite": 1 }, {})
+	assert_eq(host._pending.size(), 1, "one packet, for the owner's peer")
+	assert_eq(int(host._pending[0]["peer_id"]), 5, "addressed to that peer alone")
+	var packet: Dictionary = JSON.parse_string(str(host._pending[0]["json"]))
+	assert_eq(str(packet.get("type", "")), "inventory_synced", "of the inventory_synced type")
+	assert_eq(int(packet.get("contents", {}).get("Ferrite", 0)), 1, "carrying the contents")
+	assert_false(JSON.stringify(packet).contains(peer_pid), "and no player id — a bearer token stays off the wire")
+
+	# Nobody to send it to: the local bucket (this process's own inventory is already
+	# live here), an offline/unknown owner, or an unwired registry. Each FAILS CLOSED.
+	host._pending.clear()
+	host._on_inventory_synced("", { "Ferrite": 1 }, {})
+	host._on_inventory_synced("player", { "Ferrite": 1 }, {})
+	host._on_inventory_synced("player_nobody_9_0", { "Ferrite": 1 }, {})
+	assert_eq(host._pending.size(), 0, "a local or unresolvable owner is sent nothing")
+	host.player_registry = null
+	host._on_inventory_synced(peer_pid, { "Ferrite": 1 }, {})
+	assert_eq(host._pending.size(), 0, "an unwired registry does not fall back to a broadcast")
+
+	# The client half: the peer-scoped packet reaches the bus as the LOCAL bucket, so
+	# only this machine's own inventory applies it.
+	var client := NetworkingSlice.new()
+	add_child(client)
+	client._role = NetworkingSlice.Role.CLIENT
+	var seen: Array = []
+	var on_sync := func(owner: String, contents: Dictionary, _durabilities: Dictionary) -> void:
+		seen.append([owner, contents])
+	GameBus.inventory_synced.connect(on_sync)
+	client._route_h2c(packet)
+	GameBus.inventory_synced.disconnect(on_sync)
+	assert_eq(seen.size(), 1, "the client re-emits the sync for its own slices")
+	assert_eq(str(seen[0][0]), "", "under the local bucket")
+	assert_eq(int((seen[0][1] as Dictionary).get("Ferrite", 0)), 1, "with the synced contents")
+	client.free()
+	host.free()
+	reg.free()
+
+## Phase 37 — a snapshot that lost a chunk can never complete, so its reassembly entry
+## used to sit in the buffer for the rest of the session: one leak per lost chunk, on a
+## connection that may be long gone. It is transport state, so it goes with the
+## connection.
+func _test_net_incomplete_snapshot_evicted_on_disconnect() -> void:
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.CLIENT
+	n._accumulate_snapshot_chunk({ "snapshot_id": 1, "index": 0, "count": 2, "data": "{\"a\":" })
+	assert_eq(n._snapshot_buffer.size(), 1, "a partial snapshot is buffered")
+	n.forget_player_id(1)
+	assert_eq(n._snapshot_buffer.size(), 0, "the dropped connection's reassembly state goes with it")
+
+	# A complete snapshot still empties its own entry (the pre-existing path).
+	n._accumulate_snapshot_chunk({ "snapshot_id": 2, "index": 0, "count": 2, "data": "{\"a\":" })
+	n._accumulate_snapshot_chunk({ "snapshot_id": 2, "index": 1, "count": 2, "data": "1}" })
+	assert_eq(n._snapshot_buffer.size(), 0, "reassembly is unchanged for a snapshot that completes")
+	n.free()
+
+## Phase 37 — a creature's round is routed by the TARGET it engaged. Both a player's
+## shapes go down the damage-forwarding path: the local body ("player") and a remote
+## peer's player id. Neither may reach the creature path, which tracks hit points and
+## emits `creature_died` — on a player id that would be a corpse on somebody's identity.
+func _test_battle_routes_player_rounds_by_target() -> void:
+	assert_true(BattleSlice.is_player_target("player"), "the local body is a player target")
+	assert_true(BattleSlice.is_player_target("player_1700000000_1_" + "ab".repeat(16)),
+		"so is a server-minted player id")
+	assert_false(BattleSlice.is_player_target("ForestBoar"), "a fabric creature key is not")
+	assert_false(BattleSlice.is_player_target("creature_0_0_ForestBoar_0"), "nor an instance id")
+
+	var b := BattleSlice.new()
+	add_child(b)
+	var hits: Array = []
+	var on_damage := func(damage: float, attacker_id: String, target_id: String) -> void:
+		hits.append([damage, attacker_id, target_id])
+	var deaths: Array = []
+	var on_death := func(entity_id: String, _position: Vector3, _killer: String) -> void:
+		deaths.append(entity_id)
+	GameBus.player_damaged.connect(on_damage)
+	GameBus.creature_died.connect(on_death)
+
+	var peer := "player_1700000000_1_" + "cd".repeat(16)
+	for i in 20:
+		b.resolve_round("ForestBoar", peer)
+	GameBus.player_damaged.disconnect(on_damage)
+	GameBus.creature_died.disconnect(on_death)
+	assert_true(hits.size() > 0, "the rounds against a peer forward damage")
+	for h in hits:
+		assert_eq(str(h[2]), peer, "each one naming the target the round was routed by")
+		assert_eq(str(h[1]), "ForestBoar", "and the creature that struck")
+	assert_eq(deaths.size(), 0, "a player target never reaches the creature death path")
+	assert_eq(b.get_hp(peer), -1.0, "and no hit points are tracked for a player here")
+
+	# The local body routes the same way, under the id the bus has always used for it.
+	var local_hits: Array = []
+	var on_local := func(_damage: float, _attacker: String, target_id: String) -> void:
+		local_hits.append(target_id)
+	GameBus.player_damaged.connect(on_local)
+	for i in 20:
+		b.resolve_round("ForestBoar", "player")
+	GameBus.player_damaged.disconnect(on_local)
+	assert_true(local_hits.size() > 0, "the local body is struck too")
+	for t in local_hits:
+		assert_eq(str(t), "player", "under the local defender id")
+	b.free()
+
+## Phase 37 — the wire half of round routing: the host cannot apply a peer's damage
+## (it holds no verifiable HP for that peer), so it sends the round to the peer whose
+## body is simulated there; that client applies it to its own PlayerSlice.
+func _test_net_peer_damage_is_peer_scoped() -> void:
+	var host := NetworkingSlice.new()
+	add_child(host)
+	host.emulate_network = true
+	host.send_player_damaged(5, 12.0, "creature_0_0_ForestBoar_0")
+	assert_eq(host._pending.size(), 0, "a non-host cannot send damage")
+	host._role = NetworkingSlice.Role.HOST
+	host.send_player_damaged(5, 12.0, "creature_0_0_ForestBoar_0")
+	assert_eq(host._pending.size(), 1, "the host queues exactly one packet")
+	assert_eq(int(host._pending[0]["peer_id"]), 5, "addressed to the peer that was hit")
+	var packet: Dictionary = JSON.parse_string(str(host._pending[0]["json"]))
+	assert_eq(str(packet.get("type", "")), "player_damaged", "of the player_damaged type")
+
+	# The client half: the local body absorbs it, under the id the bus has always used.
+	var client := NetworkingSlice.new()
+	add_child(client)
+	client._role = NetworkingSlice.Role.CLIENT
+	var hits: Array = []
+	var on_damage := func(damage: float, attacker_id: String, target_id: String) -> void:
+		hits.append([damage, attacker_id, target_id])
+	GameBus.player_damaged.connect(on_damage)
+	client._route_h2c(packet)
+	GameBus.player_damaged.disconnect(on_damage)
+	assert_eq(hits.size(), 1, "the peer's client applies the hit")
+	assert_eq(float(hits[0][0]), 12.0, "for the damage the host resolved")
+	assert_eq(str(hits[0][1]), "creature_0_0_ForestBoar_0", "attributed to the creature")
+	assert_eq(str(hits[0][2]), "player", "addressed to the local body")
+
+	# And a round aimed at ANOTHER player is not this body's to absorb.
+	var player := PlayerSlice.new()
+	add_child(player)
+	assert_true(player._is_local_target("player"), "the local body takes the local rounds")
+	assert_true(player._is_local_target(""), "under the resolve_player literal too")
+	assert_false(player._is_local_target("player_someone_else_1_x"), "another player's is refused")
+	player.free()
+	client.free()
+	host.free()
+
+## Phase 37 — a named counterparty must be a public HANDLE. Accepting a raw player id as
+## well made the resolver a yes/no oracle for "is this exact id online", and an id is a
+## bearer token: presenting one on join claims the record.
+func _test_named_party_accepts_handles_only() -> void:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var guest := str(reg.resolve_identity(3))
+
+	assert_eq(reg.resolve_named_party(reg.public_handle(guest)), guest, "a handle resolves")
+	assert_eq(reg.resolve_named_party(reg.public_handle("player_host_1")), "player_host_1",
+		"the local player's handle resolves too")
+	assert_eq(reg.resolve_named_party(guest), "", "a raw ONLINE player id does not")
+	assert_eq(reg.resolve_named_party("player_host_1"), "", "not even the local player's own id")
+	assert_eq(reg.resolve_named_party("player_nobody_9_0"), "", "nor an unknown id")
+	assert_eq(reg.resolve_named_party("merchant"), "", "nor a demo scaffolding literal")
+	assert_eq(reg.resolve_named_party(""), "", "nor an empty name")
+	assert_eq(reg.resolve_named_party(reg.public_handle("player_nobody_9_0")), "",
+		"and an offline player's handle answers nothing")
+
+	# The offline case: dropping the connection takes the handle's answer with it.
+	reg.unbind_peer(3)
+	assert_eq(reg.resolve_named_party(reg.public_handle(guest)), "",
+		"a handle resolves only while its player is here")
+	reg.free()
+
+## Phase 37 — a tame cooldown is a rule about the PLAYER, so it rides the player record.
+## In memory alone, a host restart (or a reconnect) handed every player a clean table and
+## the fox could be fed in a loop again.
+func _test_taming_cooldowns_are_durable() -> void:
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var crafting: Node = rig["crafting"]
+	var pid := str(registry.local_player_id)
+	var fox := _taming_instance_of(c, "GlimmerFox")
+	_taming_stand_near(registry, pid, c, fox)
+	crafting.set_skill_for(pid, "Alchemy", "apprentice")
+	var inventory: Node = taming.inventory_for(pid)
+	assert_true(inventory.add_item("FieldRations", 2), "the tamer carries rations")
+
+	assert_true(bool(taming.tame(fox, "")["success"]), "the first feed succeeds")
+	assert_true(taming.cooldown_remaining(fox, pid) > 0.0, "and starts the fabric's cooldown")
+	taming.sync_record(pid)
+	var data: Dictionary = registry.get_player_data(pid)
+	assert_true(data.has("cooldowns"), "the record carries the cooldown table")
+	assert_true((data["cooldowns"] as Dictionary).has(fox), "with this fox's deadline")
+
+	# A fresh slice (the shape of a server restart) restores it from the record.
+	var restored := TamingSlice.new()
+	add_child(restored)
+	restored.creature_slice = c
+	restored.crafting_slice = crafting
+	restored.player_registry = registry
+	restored.apply_record(data, pid)
+	assert_true(restored.cooldown_remaining(fox, pid) > 0.0,
+		"the fox is still on cooldown after the restart")
+	assert_eq(str(restored.can_tame(fox, pid)["reason"]), "on_cooldown",
+		"and the feed is refused — the same refusal the pre-restart process gave")
+
+	# An EXPIRED deadline is not persisted: it bounds nothing, and keeping it would grow
+	# the record with every fox ever fed.
+	restored._cooldowns_for(pid)[fox] = Time.get_unix_time_from_system() - 1.0
+	restored.sync_record(pid)
+	assert_false(registry.get_cooldowns(pid).has(fox), "an elapsed cooldown is pruned from the record")
+	var live := PlayerRegistry.live_cooldowns({
+		"stale": Time.get_unix_time_from_system() - 1.0,
+		"fresh": Time.get_unix_time_from_system() + 60.0,
+	})
+	assert_eq(live.size(), 1, "the prune rule is pure and keeps only live deadlines")
+	assert_true(live.has("fresh"), "the live one")
+
+	restored.free()
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+## Phase 37 — the three per-player taming mirrors (flags, companion bindings, cooldowns)
+## only ever grew: a server that had seen a thousand tamers held a thousand tables for the
+## rest of the session. They are released on disconnect, and nothing is lost — the record
+## written at that moment is the durable copy, and a reconnect re-applies it.
+func _test_taming_mirrors_evicted_on_forget() -> void:
+	var rig := _make_taming_rig()
+	var c: Node = rig["creature"]
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var wolves := _taming_instances_of(c, "GraywolfPack")
+	var target := str(wolves[1])
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	var alice: String = str(registry.resolve_identity(2))
+	rig["crafting"].set_skill_for(alice, "Unarmed", "journeyman")
+	_taming_stand_near(registry, alice, c, target)
+	var tamed: Dictionary = _taming_tame_via_intent(target, alice)
+	assert_eq(str(tamed.get("reason", "no_result")), "", "alice's tame is not refused")
+	assert_true(bool(tamed.get("success", false)), "alice tames the pup")
+	assert_true(taming.has_flag(alice, "wolfBondHolder"), "the flag is mirrored")
+	taming._cooldowns_for(alice)[target] = Time.get_unix_time_from_system() + 60.0
+	taming.sync_record(alice)
+	var record: Dictionary = registry.get_player_data(alice)
+	assert_true(bool((record["flags"] as Dictionary).get("wolfBondHolder", false)),
+		"and written on the durable record first")
+
+	taming.forget_player_id(alice)
+	assert_false(taming._flags.has(alice), "the flags mirror is released")
+	assert_false(taming._companions.has(alice), "so is the companion mirror")
+	assert_false(taming._cooldowns.has(alice), "and the cooldown mirror")
+	assert_true(bool((registry.get_record(alice)["flags"] as Dictionary).get("wolfBondHolder", false)),
+		"while the record still holds the flag — the reconnect path reads it back")
+
+	# The reconnect path: apply_record re-applies the claimed record.
+	taming.apply_record(registry.get_record(alice), alice)
+	assert_true(taming.has_flag(alice, "wolfBondHolder"), "a reconnect restores the flag")
+	assert_true((taming.get_companions(alice) as Array).has(target), "and the companion binding")
+
+	# The local player is never evicted: it is online by definition, and its mirrors are
+	# this process's own (the same rule PlayerRegistry.evict_player follows).
+	taming.forget_player_id(str(registry.local_player_id))
+	taming.forget_player_id("")
+	assert_true(taming.has_flag(alice, "wolfBondHolder"), "forgetting a local id evicts nothing")
+	assert_true((taming.get_companions(alice) as Array).has(target), "neither the flags nor the companions")
+
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
+
+## Phase 37 — `get_all_instances()` builds a fresh dictionary per instance on every call,
+## and the AI ran it once per frame. `instances_view()` serves the same population without
+## the copies: it is cached until the population's MEMBERSHIP changes, and the records it
+## hands out are the slice's own (live) ones.
+func _test_creature_instances_view_cached() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.spawn_for_chunk(Vector2i(0, 0))
+	var view: Array = c.instances_view()
+	assert_eq(view.size(), c.get_all_instances().size(), "the view holds the whole live population")
+	var first: Dictionary = view[0]
+	assert_true(first.has("instance_id"), "each record carries its own id")
+	assert_true(is_same(c.instances_view(), view), "and the view is CACHED — no per-frame rebuild")
+
+	# The records ARE the slice's own, which is what makes the view cheap and what makes
+	# it read-only by contract: writing through it writes the world.
+	first["state"] = "alert"
+	assert_eq(str(c._instances[str(first["instance_id"])]["state"]), "alert",
+		"the view exposes the live record, not a copy")
+
+	# Membership changes are the one thing that invalidates it.
+	var before: int = c.instances_view().size()
+	c.despawn_for_chunk(Vector2i(0, 0))
+	assert_false(is_same(c.instances_view(), view), "a despawn rebuilds the view")
+	assert_true(c.instances_view().size() < before, "without the despawned instances")
+	c.free()
+
+# ---------------------------------------------------------------------------
+# Phase 38 review-fix tests
+# ---------------------------------------------------------------------------
+
+## Phase 38 — a peer's health is the HOST's to simulate. Phase 37 delivered the round to
+## the peer's own client and let THAT client keep the number, so a modified client could
+## ignore every hit and be unkillable, while an honest one lost its health on every
+## reconnect and every restart — the host had resolved the round and then discarded the
+## only evidence it had. The host now applies the hit to its own durable record for that
+## peer, while the DECLARED hp a peer sends is still refused at every door.
+func _test_host_simulates_peer_hp() -> void:
+	# The pure rule first. An unmodelled body starts at FULL health: the host holds no
+	# record of that peer's health and will not take the peer's word for it, so a fresh
+	# body is the only honest seed — and from the first resolved hit the number is the
+	# host's own.
+	assert_eq(PlayerRegistry.simulated_hp_after_hit(-1.0, 12.0, 100.0), 88.0,
+		"an unmodelled body starts at full health and takes the hit")
+	assert_eq(PlayerRegistry.simulated_hp_after_hit(50.0, 12.0, 100.0), 38.0,
+		"a modelled body continues from the number the host already holds")
+	assert_eq(PlayerRegistry.simulated_hp_after_hit(5.0, 12.0, 100.0), 0.0,
+		"a hit cannot drive a simulated body below zero")
+	assert_eq(PlayerRegistry.simulated_hp_after_hit(90.0, -12.0, 100.0), 100.0,
+		"and nothing here heals a body past its ceiling")
+
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var host_id := registry.mint_player_id()
+	registry.set_local_player(host_id)
+	var remote := str(registry.resolve_identity(7))
+	assert_eq(registry.get_hp(remote), -1.0, "the host begins holding no number for a peer")
+
+	registry.record_simulated_hp(remote, 88.0)
+	assert_eq(registry.get_hp(remote), 88.0, "the host's OWN resolution is recorded")
+	assert_eq(float(registry.get_record(remote).get("hp", -2.0)), 88.0, "on the peer's record")
+
+	# DURABLE: it rides the serializable record, so a reconnect or a restart does not hand
+	# the peer a full bar again — exactly the reset the Phase 37 behaviour produced.
+	var restored := PlayerRegistry.new()
+	add_child(restored)
+	restored.apply_player_data(remote, registry.get_player_data(remote))
+	assert_eq(restored.get_hp(remote), 88.0, "and survives the record round trip")
+
+	# The declared half still has no door, and the new one has no side entrances.
+	registry.record_hp(remote, 9999.0)
+	assert_eq(registry.get_hp(remote), 88.0, "a client-declared hp is still refused")
+	registry.record_simulated_hp(host_id, 1.0)
+	assert_eq(registry.get_hp(host_id), -1.0, "the local body's hp is record_hp's to write")
+	registry.record_simulated_hp("", 1.0)
+	var stranger := registry.mint_player_id()
+	registry.record_simulated_hp(stranger, 1.0)
+	assert_eq(registry.get_hp(stranger), -1.0,
+		"a player this host holds no record for is refused, not minted")
+	registry.record_simulated_hp(remote, 1.0)
+	assert_eq(registry.get_hp(remote), 1.0, "while a peer the host does hold updates")
+	# A client holds no records at all, even if a record should find its way into it.
+	var client_reg := PlayerRegistry.new()
+	add_child(client_reg)
+	client_reg.is_authoritative = false
+	client_reg._players[remote] = registry.get_record(remote).duplicate(true)
+	client_reg.record_simulated_hp(remote, 7.0)
+	assert_eq(client_reg.get_hp(remote), 1.0, "a non-authoritative registry writes nothing")
+	client_reg.free()
+	registry.free()
+	restored.free()
+
+## Phase 38 — the snapshot's social/economy blobs travel under the ONE list of
+## identity-bearing keys (`IDENTIFIED_STATE_KEYS`), the same list the receiving side walks
+## to adopt its own handle. Hardcoded literals in game_root meant a fourth entry in the
+## constant would have been adopted by every client while never being redacted on the way
+## out: a player id on the wire.
+func _test_snapshot_social_keys_are_identified() -> void:
+	assert_eq(NetworkingSlice.IDENTIFIED_STATE_KEYS.size(), 3,
+		"the list names three identity-bearing blobs")
+	for key in ["market", "governance", "trade"]:
+		assert_true(NetworkingSlice.IDENTIFIED_STATE_KEYS.has(key),
+			"%s is one of them" % key)
+
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_1000_1_" + "aa".repeat(16))
+	var seller := str(reg.resolve_identity(4))
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n.player_registry = reg
+
+	var sessions := {}
+	sessions[seller] = { "state": "open" }
+	var walked: Dictionary = n.redact_social_state({
+		"market":     { "listings": [{ "seller": seller, "price": 3.0 }] },
+		"governance": { "proposals": [{ "author": seller }] },
+		"trade":      { "sessions": sessions },
+		"creatures":  [{ "seller": seller }],
+	})
+	assert_eq(walked.size(), 3, "only the listed blobs are carried")
+	for key in NetworkingSlice.IDENTIFIED_STATE_KEYS:
+		assert_true(walked.has(key), "and %s is carried under its wire name" % key)
+	assert_false(walked.has("creatures"),
+		"a blob the list does not name is dropped, never passed through unredacted")
+
+	var market: Dictionary = walked["market"]
+	var listing: Dictionary = (market.get("listings", []) as Array)[0]
+	assert_eq(str(listing.get("seller", "")), reg.public_handle(seller),
+		"a listing's seller crosses the wire as a public handle")
+	var gov: Dictionary = walked["governance"]
+	var proposal: Dictionary = (gov.get("proposals", []) as Array)[0]
+	assert_eq(str(proposal.get("author", "")), reg.public_handle(seller),
+		"so does a proposal's author")
+	var trade: Dictionary = walked["trade"]
+	assert_true((trade.get("sessions", {}) as Dictionary).has(reg.public_handle(seller)),
+		"and a trade party does, even as a dictionary KEY")
+	assert_false(JSON.stringify(walked).contains(seller),
+		"with no player id left anywhere in the payload")
+	n.free()
+	reg.free()
+
+## Phase 38 — the snapshot buffer's clear sites were both on the HOST's side of the wire
+## (this slice's own teardown, and a PEER disconnecting), so a client that lost its host
+## kept a half-reassembled snapshot for the rest of the session. The host it was waiting
+## on is gone, and no chunk of that snapshot can still arrive.
+func _test_net_snapshot_buffer_cleared_when_host_lost() -> void:
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.CLIENT
+	n._accumulate_snapshot_chunk({ "snapshot_id": 1, "index": 0, "count": 2, "data": "{\"a\":" })
+	assert_eq(n._snapshot_buffer.size(), 1, "a partial snapshot is buffered")
+	n._on_server_disconnected()
+	assert_eq(n._snapshot_buffer.size(), 0,
+		"losing the host takes the half-reassembled snapshot with it")
+
+	# Role-gated: a host has no server to lose, and its own teardown (`disconnect_all`)
+	# already clears the buffer — this must not become a second, weaker clear.
+	n._role = NetworkingSlice.Role.HOST
+	n._accumulate_snapshot_chunk({ "snapshot_id": 2, "index": 0, "count": 2, "data": "{\"a\":" })
+	n._on_server_disconnected()
+	assert_eq(n._snapshot_buffer.size(), 1, "a host-role call changes nothing")
+	n.free()
+
+## Phase 38 — the cooldown MIRROR is pruned where it is read. The prune used to run only
+## on the way out (`get_cooldowns` hands the record a filtered copy), so the table the
+## slice held kept every deadline the player had ever set while the saved copy dropped
+## them: the mirror grew with every fox ever fed, for as long as the player stayed on.
+func _test_taming_cooldown_mirror_pruned_in_place() -> void:
+	var rig := _make_taming_rig()
+	var taming: Node = rig["taming"]
+	var registry: Node = rig["registry"]
+	var pid := str(registry.local_player_id)
+	var now := Time.get_unix_time_from_system()
+	taming._cooldowns[pid] = { "creature_elapsed": now - 1.0, "creature_live": now + 60.0 }
+
+	assert_eq(taming.get_cooldowns(pid).size(), 1, "only the live deadline is handed to the record")
+	var mirror: Dictionary = taming._cooldowns[pid]
+	assert_false(mirror.has("creature_elapsed"),
+		"and the elapsed one is gone from the MIRROR, not merely from the copy")
+	assert_true(mirror.has("creature_live"), "while the live deadline stays")
+	assert_eq(taming.cooldown_remaining("creature_elapsed", pid), 0.0,
+		"an elapsed cooldown is not in force")
+	assert_true(taming.cooldown_remaining("creature_live", pid) > 0.0, "and a live one still is")
+
+	# A new deadline still lands in the table the reader left behind, so the prune did not
+	# hand the write path a detached dictionary.
+	taming._cooldowns_for(pid)["creature_fresh"] = now + 30.0
+	assert_true((taming._cooldowns[pid] as Dictionary).has("creature_fresh"),
+		"a deadline written after a prune stays in the mirror")
+	assert_eq(taming.get_cooldowns(pid).size(), 2, "and is handed out with the other live one")
+	rig["creature"].free()
+	rig["taming"].free()
+	rig["crafting"].free()
+	rig["registry"].free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers
