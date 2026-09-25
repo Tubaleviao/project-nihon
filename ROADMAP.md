@@ -2640,6 +2640,111 @@ that was being saved.
 
 ---
 
+## Phase 39 — Two-client network harness: prove the wire over a real socket
+
+**Goal:** Make the network trust boundary real. Phases 34–38 hardened the client → host
+intent path — connection-bound identity, reach and rate guards, owner-scoped syncs,
+durable per-player records, host-simulated peer health — and every one of those
+guarantees is currently proven at the ROUTING level only: tests call `_route_c2h(sender,
+payload)` and read the bus, with the sender id handed in as an argument. No test has ever
+put a byte on a socket. This phase adds a harness that boots two real peers over ENet —
+the same `NetworkingSlice.host()` / `join()` the game itself uses — drives a full session
+lifecycle between them, and asserts on packets the transport actually carried. It closes
+the deferral re-stated in Phases 34, 35, 36, 37 and 38.
+
+**Newel dependency:** None. No fabric field changes — `pnpm validate` is clean and
+`pnpm check-drift` still reports 543 file(s) matching the manifest.
+
+**Deliverables:**
+- `src/tests/net_harness.gd` — the `await`-driven harness runner: a scenario step table
+  and a pump loop that yields real frames, so packets can leave and arrive. The existing
+  suite cannot host this (see the constraint note below).
+- `src/core/game_root.gd` — a `--net-harness <role>` user arg parsed beside `--server` /
+  `--client`, and the harness entry point that runs BEFORE the world boot, mirroring the
+  existing `should_run_tests` gate.
+- `tools/net_harness.sh` — the driver: boots one host process and one client process on
+  loopback, waits for a readiness line, runs the scenario, and fails on a missed
+  assertion, a deadline overrun, or a non-zero exit.
+- `src/tests/test_suite.gd` — registration of the harness's pure helpers (the step table,
+  the log-line format, the convergence predicates) so the synchronous suite still covers
+  the harness's own logic, under a `Phase 39` banner.
+- `.github/workflows/ci.yml` — a `net-harness` job running the driver on ubuntu-latest,
+  alongside `godot-tests`, `server-boot` and `fabric`.
+- `README.md` — phase table rows for 36, 37 and 38 (missing since those passes landed)
+  and for this phase.
+
+**Acceptance criteria:**
+- [ ] Two real peers handshake over loopback ENet, and the identity the host binds comes
+  from the CONNECTION: a client declaring a `player_id` it does not own is bound to its
+  transport-derived id anyway, and an un-handshaked peer's intent is refused.
+- [ ] The reach guard is exercised with real evidence: a chop intent for a tree the peer
+  cannot reach is dropped, and one for a tree inside reach consumes it — the tree's
+  position coming from the host's own `TreeSlice`, never the payload.
+- [ ] The inbound limits hold on a real socket: a packet above `MAX_CLIENT_PACKET_BYTES`
+  (8192) is refused without disconnecting the peer as a side effect, and the per-peer
+  token bucket throttles a burst without starving the steady stream that follows it.
+- [ ] An owner-scoped inventory sync reaches the owner alone: peer A's sync leaves peer
+  B's client inventory and the host's own bucket untouched.
+- [ ] A chunked snapshot completes across real packets (reassembly working with the
+  transport's own ordering, not the test's), and a client that loses its host clears its
+  buffer — the Phase 38 fix observed on the wire rather than over the bus.
+- [ ] A combat round routed at a peer arrives at that peer's own client, the host's
+  simulated HP for that peer survives a real reconnect, and the reconciled number is what
+  the reconnecting client sees.
+- [ ] A disconnect evicts transport state end to end: the peer's record is evicted, its
+  taming mirrors and snapshot buffer are forgotten, and a reconnect re-presents the join
+  intent and is re-answered.
+- [ ] The harness runs green on both the host-process and the client-process side and is
+  wired into CI, while the existing suite stays synchronous and unchanged in cost.
+- [ ] The suite remains green on both boot paths (`Results: N/N passed (0 failed)`,
+  `[Server] listening on port 7777, max_clients 64`), with the new assertion count
+  quoted.
+
+**Implementation notes:**
+- **ENet needs frames; the suite has none.** `TestSuite._run_tests()` is called
+  synchronously from `GameRoot._ready()` and there is not a single `await` in its ~7,900
+  lines — deliberate, because it runs before any production slice's emissions can leak
+  into world state. A harness cannot be added to that runner: an
+  `ENetMultiplayerPeer` only delivers when the tree ticks. The harness is therefore its
+  own boot mode with its own `await`-driven step loop, and the parts of it that are pure
+  (the step table, the assertion formatting, the convergence predicates) are registered
+  in the synchronous suite so they are still covered on every boot.
+- **Two peers in one process is possible, and still the wrong default.** Godot 4 supports
+  a second `MultiplayerAPI` bound to a separate node subtree, so both peers could live in
+  one process and the driver could read each side's state directly. The recommended shape
+  is nonetheless TWO PROCESSES over loopback, because it drives the production path
+  unmodified — the same `--server` / `--client` args the game ships with, the same
+  `NetworkingSlice.host()` / `join()`, real ENet peer-id reassignment — so an edit that
+  only works in-process is caught here rather than in the wild. The in-process variant
+  stays available as a fallback if log-driven comparison proves brittle.
+- **The comparison channel is a canonical log line, not shared memory.** Each process
+  prints one structured line per completed step (`HARNESS <step> <ok|refused> <detail>`)
+  and the driver asserts the host's and the client's lines agree. A text channel is what
+  lets the same scenario run against two processes, and it is the only channel that
+  survives a role flip.
+- **The Phase 19 network emulator is already here, and this is where it earns its keep.**
+  `NetworkingSlice` carries `emulate_network`, `emulator_loss_rate`,
+  `emulator_jitter_ms` and `emulator_reorder`. The scenario should run at least twice —
+  once clean, once through the emulator — so the conformance story covers reordering and
+  loss over a genuine socket, which is as close as a loopback harness gets to the
+  still-deferred WAN validation.
+- **Determinism beats coverage.** A wire test that flaps is worse than no wire test: every
+  step asserts on convergence (a predicate plus a bounded number of ticks) rather than on
+  a fixed frame index, and every step carries a deadline that fails loudly instead of
+  hanging CI.
+
+**Known simplifications (deferred):**
+- **Loopback only.** Two processes on one host exercise real ENet framing and the real
+  handshake, but not latency, MTU discovery or NAT behaviour. WAN / cross-region testing
+  stays deferred from Phase 19.
+- **No soak.** The harness runs a scripted session, not a long-lived one: memory growth
+  under hours of churn (the Phase 37 eviction classes) is still argued from the eviction
+  sites rather than measured.
+- **The harness does not replace the routing-level tests.** Those stay: they are cheaper,
+  they pin the refusal itself, and they run inside the suite the project already gates on.
+
+---
+
 ## Deferred (in priority order)
 
 - **Server sharding (final, not before maturity)** — split the authoritative
