@@ -2670,15 +2670,27 @@ end to end.
 - `src/persistence/player_registry.gd` — deliverable 1, the durable fix: a peer's
   simulated HP stops being a subtract-only counter. When a resolved hit takes it to zero
   the host writes a respawn deadline onto the same durable record (the Phase 37 deadline
-  shape, pruned the way `live_cooldowns` prunes), and resolves it lazily on READ:
-  `get_hp()` answers full health once the deadline has passed and rewrites the record
-  through the same `record_simulated_hp` door, so a downed peer recovers after the delay
-  instead of freezing at zero forever.
+  shape, pruned the way `live_cooldowns` prunes), and the deadline is resolved by a NEW
+  PURE RULE — `hp_after_respawn(hp, deadline, now, max_hp)` — that BOTH readers of the
+  field call, so a downed peer's recovery does not depend on which one asks. The two
+  readers are `get_hp()` (the live read) and `get_player_data()` (the saved copy, which the
+  handshake snapshot, the disconnect save and the autosave all go through — and which
+  currently reads `hp` raw at `player_registry.gd:627`). A resolution wired into the live
+  reader alone leaves the one the reconnect actually uses un-resolved, which is Phase 38's
+  lesson in mirror image: a rule that runs on one reader is a reader-dependent rule. No
+  write-on-read either: `get_hp()` stays pure and the deadline stays the durable fact. A
+  rewrite through `record_simulated_hp` would no-op on exactly the paths where it refuses —
+  a non-authoritative machine, the local id, a player with no resident record — while the
+  value the read returned claimed full health.
 - `src/player/player_slice.gd` — the client-side half of deliverable 1: `set_hp()` starts
-  the respawn countdown when the value it applies is zero (`_respawn_timer =
-  RESPAWN_DELAY`), so a body handed a zero — by a join snapshot, a save restore, or a
-  forwarded hit — can never sit `_alive == false` with no timer running. The soft-lock is
-  closed at the door rather than at the one caller that used to be blamed for it.
+  the respawn countdown when the value it applies is zero AND no countdown is already
+  running (`_respawn_timer == -1.0`) — it must START one, not restart it, or a repeated
+  zero would push the respawn further away on every application and the body would never
+  come back. One entry point, so a body handed a zero — by a join snapshot, a forwarded
+  hit, or a save restore — can never sit `_alive == false` with no timer running. That
+  incidentally closes the same soft-lock in single-player: `_restore_local_player` hands a
+  restored record's zero to the same door (`game_root.gd:1246`), so the fix covers the
+  local body too rather than only the peer it was found on.
 - `src/tests/net_harness.gd` — the `await`-driven harness runner: a scenario step table
   and a pump loop that yields real frames, so packets can leave and arrive. The existing
   suite cannot host this (see the constraint note below).
@@ -2714,12 +2726,17 @@ end to end.
 - [ ] A combat round routed at a peer arrives at that peer's own client, and the host's own
   simulated number for that peer survives a real reconnect unchanged.
 - [ ] A peer killed before it disconnects reconnects alive and controllable: the host's
-  respawn deadline resolves on the read that follows the reconnect, and the client's body
-  runs its own countdown rather than sitting dead with no timer.
+  respawn deadline resolves on the read that follows the reconnect — and resolves on BOTH
+  readers, since the handshake snapshot reads the saved copy (`get_player_data()`) rather
+  than `get_hp()` — and the client's body runs its own countdown rather than sitting dead
+  with no timer.
 - [ ] Deliverable 1 holds on both ends: a peer whose simulated HP reaches zero returns to
-  full health after the delay and survives a restart; a body handed a zero by `set_hp()`
-  starts its respawn countdown; and the declared value still has no path into a record —
-  the respawn deadline is not a second door for it. Each new rule is RED-proved first.
+  full health after the delay, survives a restart, and answers the same number through the
+  live reader and the saved copy; a body handed a zero by `set_hp()` starts its respawn
+  countdown, and a repeated zero does not restart it; the new rule is asserted pure and
+  alone, beside `simulated_hp_after_hit` and `live_cooldowns`; and the declared value still
+  has no path into a record — the respawn deadline is not a second door for it. Each new
+  rule is RED-proved first.
 - [ ] A disconnect evicts transport state end to end: the peer's record is evicted, its
   taming mirrors and snapshot buffer are forgotten, and a reconnect re-presents the join
   intent and is re-answered.
