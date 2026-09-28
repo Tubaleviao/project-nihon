@@ -3179,8 +3179,13 @@ chunk is queued further out than it is needed.
   `first_ring_progress() -> float`. The ring is Chebyshev distance 0..1 (9
   chunks) around the centre; the body is not placed until it exists.
 - `src/ui/loading_screen.gd` (new) — a CanvasLayer panel with a progress bar,
-  shown while the gate is unmet, with world input frozen (the same
-  mouse-capture/input gate `PlayerSlice` already applies while a window is open).
+  shown while the gate is unmet, with world input frozen through the loading
+  screen's OWN explicit input-freeze hook — not through
+  `UIControl.any_window_open()`. That predicate answers only for the panels the
+  UI slice holds (`src/ui/ui_slice.gd:107`) and a loading screen is not one of
+  them, so it covers nothing here; `PlayerSlice._input` gates world actions on
+  the mouse-capture state (`src/player/player_slice.gd:162`), which the loading
+  screen must drive itself while it is up.
 - `src/terrain/chunk_manager.gd` — a wider prefetch ring
   (`DEFAULT_PREFETCH_DISTANCE = view_distance + N`): the load ring leads the view
   ring so a crossing never requests a chunk at the moment it becomes needed.
@@ -3193,6 +3198,10 @@ chunk is queued further out than it is needed.
   number), and a tile whose neighbours differ still emits a valid 1×1 quad.
 - [ ] Booting against a fresh `user://` (empty world) shows the loading screen
   and does not place the player body until the first ring's chunks are built.
+- [ ] No world input resolves while the loading screen shows: an attack, mine,
+  chop or place attempted with the screen up is refused. The freeze is the
+  loading screen's own hook — `any_window_open()` is not consulted and would
+  answer `false`.
 - [ ] The suite is green on both boot paths, with tests for the pure builder and
   the merge registered in `test_suite.gd`.
 
@@ -3214,6 +3223,15 @@ chunk is queued further out than it is needed.
 - **The first-ring gate is a boot path, so both boot paths need it.** Host,
   `--server` and single-player take different tails of `_ready()` (Phase 32); a
   gate wired into one of them is a hole in the others.
+- **The loading screen's input freeze is its OWN hook, not an inherited gate.**
+  `UIControl.any_window_open()` (`src/ui/ui_slice.gd:107`) answers only for the
+  panel set the UI slice holds, and the loading screen is not one of them — so
+  it cannot see the gate, and the world does not freeze just because a window
+  predicate is false. The gate the player's `_input` actually consults is the
+  mouse-capture state (`src/player/player_slice.gd:162`), so the loading screen
+  must own an explicit freeze hook (its own `GameBus` signal, or a setter the
+  boot path calls) and that hook must be wired on BOTH boot paths above. Assume
+  no existing gate covers it.
 - **A prefetch ring needs an eviction rule too.** Chunks loaded further out
   still unload when they fall outside `view_distance`; what widens is when they
   are QUEUED, not how many stay loaded.
@@ -3250,8 +3268,7 @@ field cannot disagree with the prose it is derived from.
 on the material entities (`depthBand`, plus a ley-gating field, on
 `fabric/world/materials/*.js` — `Aethermite` already reads "Found deep underground
 near ley lines and in meteor craters"), authored from the prose each material
-carries today. The vein field's own constants ride a newel world-system entity the
-same way tree density does in Phase 44. `pnpm validate`, `pnpm generate` and
+carries today. `pnpm validate`, `pnpm generate` and
 `pnpm check-drift` re-run; no runtime band table may be hand-written in GDScript.
 
 **Closes:** item 7a, Phase 31 deferred.
@@ -3320,6 +3337,14 @@ same way tree density does in Phase 44. `pnpm validate`, `pnpm generate` and
   place the band is authored, so the field and the fabric can never drift.
 
 **Known simplifications (deferred):**
+- **The vein field's own noise constants stay GDScript.** What moves into the
+  fabric is the material's DEPTH/QUANTITY model — the `depthBand` and the ley
+  gate, entity fields on the material (`fabric/world/materials/*.js`). The SHAPE
+  of the field itself (noise frequency, blob threshold, blob size, the 2D
+  ley-noise frequency) stays a hand-written constant in `src/terrain/ore_field.gd`
+  and does not ride a newel world-system entity in this phase. That is a narrower
+  deferral than Phase 31 recorded, and a later separate change — the same one
+  Phase 44 carries for tree density (`fabric/world/world.js`, Phase 44's wording).
 - **No detection or prospecting skill interaction.** A deep vein has no surface
   tell beyond the raised marker on a vein that reaches the surface; finding ore
   with a skill/tech is a later feature.
