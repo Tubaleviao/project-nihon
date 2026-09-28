@@ -3027,6 +3027,677 @@ the foot-IK return value whose name collision caused the first of those bugs.
   which is what keeps the climb a walk. Adding a vertical impulse would have been the
   obvious-looking shortcut and is exactly the "jump" the finding rules out.
 
+## Phase 41 — Deterministic world and volumetric terrain
+
+**Goal:** Every boot generates a different world, and every column is one solid
+height with nothing above it. `TerrainSlice._noise.seed = randi()` means the
+ground a save was written against cannot be regenerated: a host and a client can
+only agree on the world by shipping heightmaps, a reload lands the player on
+different hills, and two players who share a seed still get different terrain.
+At the same time the terrain is a pure heightfield — one top face per column and
+walls down to whatever the neighbour's top is — so anything that should have a
+CEILING (a tunnel, a cave, an overhang, a roofed build) either cannot be carved
+or renders as a hole, the collision is per-row merged boxes that cannot describe
+a span of solid material, `MIN_HEIGHT` (`0.0`) is "bedrock" only in the sense
+that mining stops at zero rather than at a depth, the saved edits are a bare
+scalar height per tile, and the avatar's footing sampler (Phase 40's
+`get_voxel_height_at`) returns the TOP of a column — which under a roof is the
+roof itself. This phase makes the seed a persisted fact, turns a column into a
+sparse run of solid spans so ceilings exist and collide, gives the ground a real
+bedrock depth, and migrates the edit/save format the change invalidates.
+
+**Newel dependency:** None. No fabric field changes — `pnpm validate` is clean
+(IR v3.0.0) and `pnpm check-drift` reports 543 file(s) matching the manifest.
+
+**Closes:** item 1.
+
+**Deliverables:**
+- `src/terrain/terrain_slice.gd` — the seed is injected
+  (`set_world_seed(seed)`) instead of sampled with `randi()`, so the same seed
+  plus the existing fixed `BIOME_SEED` reproduce every height. Biome assignment
+  is already deterministic per chunk (`get_biome_at_chunk`); heights are the only
+  non-determinism, and this closes it. The seed travels on the world save and in
+  the join snapshot, so a client regenerates the host's terrain rather than
+  receiving heightmaps.
+- `src/terrain/voxel_slice.gd` — the column becomes a SPARSE list of solid runs
+  (`[{ bottom, top }]`) instead of one top ordinate plus `_column_layers`. Only
+  solid spans are stored, so a plain column is still a single entry and only a
+  real tunnel costs a second one.
+- `src/terrain/voxel_slice.gd` — the mesher emits a face wherever a neighbour run
+  ends above the local run. That is the mirror of the rule it already implements
+  ("a face exists where a neighbour is lower") and it is what makes a tunnel roof
+  a rendered, ordinary surface rather than a hole. `cull_mode = CULL_DISABLED`
+  stays, so the shell is never see-through regardless of winding.
+- `src/terrain/voxel_slice.gd` — collision becomes a `ConcavePolygonShape3D`
+  built from the same triangle soup the mesher produces, so ceilings and
+  overhangs collide. `TERRAIN_COLLISION_LAYER` (2) is unchanged, so the player's
+  block ray still targets terrain.
+- `src/terrain/voxel_slice.gd` — a real bedrock depth (`BEDROCK_DEPTH` below the
+  surface range, replacing `MIN_HEIGHT := 0.0` as the mining floor). Ground gains
+  thickness; mining descends one `STEP_HEIGHT` at a time until the floor is
+  reached, and `MAX_HEIGHT` (16.0) remains the build cap.
+- `src/terrain/voxel_slice.gd` + `src/persistence/persistence_slice.gd` — the
+  `_edits`/save migration. An edit was `{"tx,tz": absolute quantised height}`;
+  it becomes a typed run edit (add/remove a span), a world save carries a format
+  version, and a pre-Phase-41 save loads with its edits present (a scalar height
+  becomes the single run from bedrock up to that height).
+- `src/core/game_root.gd` — the avatar sampler gains a second mode:
+  `sample_support_height_at(world_xz, from_y)` returns the top of the highest run
+  at or below `from_y`, and `_sync_player_avatar` uses it, so an avatar inside a
+  tunnel stands on the tunnel floor. Phase 40's step-up, its pure
+  `resolve_step_up`, and `floor_snap_length = STEP_UP_HEIGHT` are unchanged.
+
+**Acceptance criteria:**
+- [ ] Two runs with the same seed produce identical heightmaps per chunk (assert
+  a `hash()` of the heightmap array), and a client's terrain matches the host's
+  with no heightmap in the snapshot.
+- [ ] A column can carry two or more solid runs: a chunk with a tunnel emits a
+  downward face (a ceiling), and the trimesh collision stops a body from passing
+  through it.
+- [ ] Mining a tunnel roof does not remove the tunnel floor; mining at
+  `BEDROCK_DEPTH` is refused while mining one `STEP_HEIGHT` above it succeeds.
+- [ ] A save written before this phase loads with its edits intact, and `pnpm
+  check-drift` is clean (no fabric change) — the migration is exercised by a
+  suite test, not only by hand.
+- [ ] The suite is green on both boot paths (`Results: N/N passed (0 failed)`,
+  count quoted in the commit) and `character: avatar root Y matches voxel ground`
+  still passes, plus the under-a-ceiling case.
+
+**Implementation notes:**
+- **The seed is the world's identity, so it is persisted, not sampled.** It
+  belongs on the WORLD save (`persistence_slice`), not on a player record: two
+  players in one world must regenerate the same ground, and a client that cannot
+  reproduce the host's terrain is a client whose voxel edits land elsewhere.
+- **Sparse runs are what keep a deep world cheap.** Storing "only solid spans"
+  means a column surfaced at 2.0 over bedrock at -32.0 is ONE run, not hundreds
+  of entries, so the memory cost of a real depth is unchanged and only an actual
+  tunnel (two runs) pays a second entry.
+- **Trimesh collision replaces the merged boxes deliberately.** The per-row
+  run-merge existed because `TILE_SIZE` 0.5 would otherwise emit 4096 boxes per
+  chunk; one `ConcavePolygonShape3D` per chunk is smaller than a handful of boxes
+  and describes everything the boxes never could. Nothing in this project stands
+  a `CharacterBody3D` on terrain via a concave shape directly — the body collides
+  with the static shape, which is the supported direction.
+- **A save migration is a deliverable, not a nicety.** The load path must be
+  tolerant of the old key shape and must never silently drop an edit; a migration
+  that "repairs" a world by discarding player work is worse than a refusal.
+- **The footing sampler must not be allowed to answer with the roof.** The
+  sampler is a function of the body's own Y for exactly this reason; a
+  column-top sampler is only correct in a world with no ceilings, which is the
+  world this phase ends.
+
+**Known simplifications (deferred):**
+- **No greedy meshing yet.** The mesher still emits one quad per tile; Phase 42
+  threads that build and merges the coplanar quads. Deferred deliberately so this
+  phase's diff stays about the world's SHAPE.
+- **No 3D material model.** Runs say where solid material is; which material a
+  span yields is still the per-biome table (`BIOME_MATERIALS`), which Phase 43
+  replaces with a 3D ore field.
+- **No procedural caves.** Tunnels exist only where a player or a build makes
+  them; a cave noise function is not this phase's job.
+- **The world remains finite** (`WORLD_RADIUS_CHUNKS` 128) and the spawn-plain
+  flattening remains a special case inside the height function.
+
+---
+
+## Phase 42 — Threaded chunk build and a loading screen
+
+**Goal:** A chunk build is the most expensive thing this game does, and it still
+runs on the main thread. `ChunkManager` already time-slices it
+(`DEFAULT_LOADS_PER_FRAME := 1`), which SPREADS the stall across frames instead of
+removing it: every boundary crossing spends its budget inside the render loop,
+the boot's first-ring chunks are built one per frame while the player is already
+standing in the world, and the mesher emits one quad per tile (4096 quads per
+chunk at `TILE_SIZE` 0.5) because nothing merges coplanar faces. This phase moves
+the pure build onto `WorkerThreadPool`, merges the coplanar quads greedily so the
+worker is cheap, gates the first ring behind a loading screen so the body is
+never placed on ground that does not exist yet, and widens the prefetch so a
+chunk is queued further out than it is needed.
+
+**Newel dependency:** None. No fabric field changes — `pnpm validate` is clean
+(IR v3.0.0) and `pnpm check-drift` reports 543 file(s) matching the manifest.
+
+**Closes:** item 2.
+
+**Deliverables:**
+- `src/terrain/voxel_slice.gd` — a PURE build.
+  `build_chunk_arrays(chunk_pos, heightmap, runs) -> Dictionary` returns the
+  `ArrayMesh` surface arrays (vertices/normals/colours/indices) and the collision
+  vertex arrays, touching no node, no bus and no slice state. `build_chunk()`
+  keeps its signature and becomes the consumer: it takes either a map or those
+  arrays and does the tree work.
+- `src/terrain/voxel_slice.gd` — greedy quad merge inside the pure builder:
+  coplanar, same-material quads merge into rectangles over the tile grid (the
+  classic greedy meshing pass), cutting the per-chunk vertex count by an order of
+  magnitude. The merge key is material/colour, which is exactly the attribute a
+  merged quad has to share.
+- `src/terrain/chunk_manager.gd` — the build dispatches to
+  `WorkerThreadPool.add_task` and polls (`is_task_completed`); results are
+  applied on the main thread. The worker owns no mutable slice state.
+- `src/terrain/chunk_manager.gd` — a first-ring gate:
+  `build_first_ring(center)` / `is_first_ring_ready()` /
+  `first_ring_progress() -> float`. The ring is Chebyshev distance 0..1 (9
+  chunks) around the centre; the body is not placed until it exists.
+- `src/ui/loading_screen.gd` (new) — a CanvasLayer panel with a progress bar,
+  shown while the gate is unmet, with world input frozen (the same
+  mouse-capture/input gate `PlayerSlice` already applies while a window is open).
+- `src/terrain/chunk_manager.gd` — a wider prefetch ring
+  (`DEFAULT_PREFETCH_DISTANCE = view_distance + N`): the load ring leads the view
+  ring so a crossing never requests a chunk at the moment it becomes needed.
+
+**Acceptance criteria:**
+- [ ] A chunk build does not run on the main thread: a frame-time probe across a
+  boundary crossing shows no single frame carrying the build cost, and the
+  builder is asserted directly by the suite as a pure function of its arguments.
+- [ ] Greedy merge cuts the per-chunk vertex count (quote the before/after
+  number), and a tile whose neighbours differ still emits a valid 1×1 quad.
+- [ ] Booting against a fresh `user://` (empty world) shows the loading screen
+  and does not place the player body until the first ring's chunks are built.
+- [ ] The suite is green on both boot paths, with tests for the pure builder and
+  the merge registered in `test_suite.gd`.
+
+**Implementation notes:**
+- **Godot's threading rule is what makes the split mandatory.** Scene-tree
+  mutation, resource saving and `GameBus` emission are main-thread work; the
+  worker may only produce plain arrays. The naive trap is
+  `add_task` immediately followed by `wait_for_task_completion` in the same
+  frame — that is the synchronous build again with extra ceremony. Poll.
+- **The gate is about the ground the body will STAND ON, not the whole ring.**
+  The view ring is ~49 chunks; the body needs the one beneath it and enough ring
+  to not immediately fall off the edge. Chebyshev 0..1 keeps the gate honest
+  without making the loading screen a long wait; the rest of the view ring
+  streams normally behind it.
+- **The worker must not read mutable slice state.** It takes the heightmap, the
+  runs and the constants as arguments. A worker reading `_chunks`, `_edits` or
+  `_heightmaps` while the main thread mutates them is a race that will present as
+  an intermittent visual glitch, which is the most expensive kind of bug to find.
+- **The first-ring gate is a boot path, so both boot paths need it.** Host,
+  `--server` and single-player take different tails of `_ready()` (Phase 32); a
+  gate wired into one of them is a hole in the others.
+- **A prefetch ring needs an eviction rule too.** Chunks loaded further out
+  still unload when they fall outside `view_distance`; what widens is when they
+  are QUEUED, not how many stay loaded.
+
+**Known simplifications (deferred):**
+- **No priority job queue or cancellation.** Loads are nearest-first, and a
+  chunk that falls out of range while queued is still built (and then unloaded).
+- **The loading screen is a progress bar, not a world preview** — no panorama, no
+  tips, no fade.
+- **Entities still spawn on the main thread.** Creatures and trees spawn in the
+  frame a chunk lands; this phase threads the TERRAIN build only.
+- **No runtime tuning UI** for `loads_per_frame` / the ring sizes; they stay
+  constants (overridable, as today).
+
+---
+
+## Phase 43 — Natural resource distribution
+
+**Goal:** Resources are a uniform draw. `BIOME_MATERIALS` gives every tile of a
+biome the same weighted distribution, so Aethermite is 17/100 of every volcanic
+tile a player ever mines — at every depth, in every chunk, forever. The
+material's own prose ("deep underground near ley lines") describes nothing the
+code does, and Phase 31 recorded the gap plainly: "Resource deposits have no
+depth/quantity model yet (mining still yields one unit per `STEP_HEIGHT`
+slice)". This phase replaces the biome-uniform draw with a deterministic 3D ore
+field — vein blobs with a depth band and a quantity — retires `BIOME_MATERIALS`
+to a bias rather than the distribution, and makes "deep near ley lines" a real
+condition the world can be asked about.
+
+**Newel dependency:** None required. The depth bands and quantities are
+transcribed from the biome prose already in the fabric
+(`fabric/world/biomes/*.js` `evaluateSpawn`) and the material entities are
+unchanged; a fabric world-system entity for the field is a follow-up once the
+runtime shape settles (see Known simplifications).
+
+**Closes:** item 7a, Phase 31 deferred.
+
+**Deliverables:**
+- `src/terrain/ore_field.gd` (new, pure) — the field:
+  `vein_at(chunk_pos, tile, depth) -> Dictionary` returning
+  `{ material, quantity }` or `{}`, derived from a 3D noise blob threshold plus a
+  per-material depth band. A vein is a BLOB of neighbouring tiles at a depth, not
+  an independent per-tile probability, so a rich spot is worth walking to.
+- `src/terrain/ore_field.gd` — the ley-line field:
+  `ley_line_value(world_xz) -> float` (2D noise) gates Aethermite, so a deep
+  volcanic tile far from a ley line yields none. This is the first code that
+  makes the material's own lore true.
+- `src/terrain/voxel_slice.gd` — `BIOME_MATERIALS` becomes `BIOME_BIAS` (the
+  dominant material a biome favours for a vein that is not depth-gated);
+  `material_for_biome` and the `_column_layers` path read the field.
+- `src/terrain/voxel_slice.gd` — `vein_deposits()` (the Phase 31 raised surface
+  marker) reads the same field, so the marker marks a vein that is actually
+  there, and takes its colour from the vein's material.
+- Mining yields the vein's `quantity` rather than a flat one per slice, and an
+  exhausted vein is recorded through the Phase 41 edit path (so its depletion
+  survives a chunk rebuild and a save).
+
+**Acceptance criteria:**
+- [ ] A fixed seed mines the same vein in the same place twice, and a client sees
+  the same veins as the host with no snapshot (assert the pure field, not a
+  visual).
+- [ ] Aethermite never appears above its depth band and never far from a ley
+  line, sampled over a grid of tiles.
+- [ ] The retired uniform draw is measurably gone: the per-chunk counts of a
+  given material over a sample of chunks are non-constant (assert the variance
+  against the old constant distribution).
+- [ ] Mining a vein yields more than one unit and the vein is exhausted by
+  repeated mining; mining surrounding rock yields the bias material and never the
+  gated ore.
+- [ ] The suite is green on both boot paths and the field is unit-tested (blob
+  continuity across a chunk border, depth gate, ley gate).
+
+**Implementation notes:**
+- **The field must be a pure function of (seed, world position, depth) — never of
+  chunk load order.** That is what lets a host and a client agree with no
+  replication at all: they evaluate the same function. The Phase 44 spawn work
+  has exactly the same constraint, and both fail the same way when it is broken
+  (a client's vein appears where the host has rock).
+- **Depth is why this phase follows Phase 41.** A depth band needs a depth to
+  index; before the volumetric column there was one surface and no "below".
+- **A vein may straddle a chunk border, and must.** The field is evaluated per
+  tile, so a blob crossing a border is continuous on both sides; do not "own" a
+  vein by its centre chunk, or the border becomes a visible seam.
+- **Vein identity, not per-tile depletion.** Depleting tile-by-tile makes a blob
+  a checkerboard and makes the save grow with every swing. Name the vein (a hash
+  of its blob origin) so "exhausted" is one recorded fact per vein, carried by
+  the edit path Phase 41 already persists.
+- **Depth gating is data, not code.** The band belongs beside the material's
+  other properties, where the fabric prose already states it; the runtime field
+  must not carry a hand-written `if material == "Aethermite"` table of bands.
+
+**Known simplifications (deferred):**
+- **No detection or prospecting skill interaction.** A deep vein has no surface
+  tell beyond the raised marker on a vein that reaches the surface; finding ore
+  with a skill/tech is a later feature.
+- **No richer tool gating by ore.** The existing pick/axe discriminator path is
+  unchanged; a depth-gated ore still yields to whatever pick the player holds
+  (durability cost aside).
+- **No vein regrowth.** A vein is a finite, depleting body; nothing replenishes
+  it, and the tree stump cooldown is still the only regrowth clock in the world.
+- **The field lives in GDScript, not the fabric.** Its constants are transcribed
+  from the biome prose and move to a fabric world-system entity the same way tree
+  density does in Phase 44.
+
+---
+
+## Phase 44 — Spawn scarcity
+
+**Goal:** Population is uniform and unbounded. `CreatureSlice.spawn_for_chunk`
+spawns exactly `spawnCount` of every creature whose biome matches the chunk —
+every chunk of a biome carries the same count, no chunk can be empty, nothing
+clusters, and nothing stops a long walk from accumulating an unbounded number of
+live instances. The field's own fabric description reads "Number of instances
+spawned per game world" while the runtime reads it as per chunk, so the fabric
+says one thing and the code does another. Trees have the mirror-image problem:
+`TREES_BY_BIOME`'s `per_chunk` is a GDScript constant, which Phase 31 explicitly
+deferred to a fabric world-system entity. This phase makes population a product
+of per-chunk chance, density noise and a global cap, reinterprets `spawnCount` as
+PACK size, and moves tree density into the fabric.
+
+**Newel dependency:** YES — the first phase in this run that changes the fabric.
+`fabric/world/creatures/*.js`: `spawnCount` becomes pack size (description and
+defaults), plus new `spawnChance` and `spawnDensity` fields; a new
+`fabric/world/world.js` (or the biome entities) carries `treeDensity` per biome,
+replacing `TREES_BY_BIOME.per_chunk`. `pnpm validate`, then `pnpm generate`, then
+`pnpm check-drift`. The generated diff is mostly `schemaHash` lines plus the IR
+snapshot — verify with check-drift rather than by reading it (`grep -v
+schemaHash` to see the real changes).
+
+**Closes:** item 7b, Phase 31 deferred.
+
+**Deliverables:**
+- `fabric/world/creatures/*.js` — `spawnCount` is documented as PACK size
+  ("instances placed together at one spawn point"), with `spawnChance` (0..1 per
+  chunk) and `spawnDensity` (the noise amplitude that clusters or thins packs
+  across the world) added to the shared creature field block.
+- `fabric/world/world.js` (or the biome entities) — `treeDensity` per biome,
+  the fabric home for what `TREES_BY_BIOME.per_chunk` holds today.
+- `src/creature/creature_slice.gd` — `spawn_for_chunk` becomes: a seeded
+  per-chunk chance roll, a density-noise multiplier, then `spawnCount` instances
+  as ONE pack around one deterministic centre, admitted only if the global cap
+  allows. `set_population_cap(n)` / `live_population()`, cap enforced host-only.
+- `src/world/tree_slice.gd` — density is read from the fabric `treeDensity`, with
+  the same chance/density-noise shape as creatures; a `TREES_BY_BIOME` fallback
+  remains for isolated unit tests that have no fabric wired, mirroring
+  `DEFAULT_BIOME`.
+- `src/tests/test_suite.gd` — the pure roll/density/cap helpers asserted
+  headless, including a small cap proving the ceiling holds and is released.
+
+**Acceptance criteria:**
+- [ ] The same seed produces the same pack centres and sizes on a host and a
+  client, with no snapshot carrying placement.
+- [ ] A chunk can roll no spawn at all, and the per-chunk counts of a species
+  across a sample of chunks have non-zero variance (assert against the retired
+  constant count).
+- [ ] With a small cap and a wide view ring, live instances never exceed the cap,
+  and a despawn returns budget that a later pack can use.
+- [ ] `pnpm validate`, `pnpm generate` and `pnpm check-drift` are clean; no
+  runtime code reads `spawnCount` as a per-chunk count anywhere
+  (`grep -rn spawnCount src/`), and the fabric description says pack size.
+- [ ] The suite is green on both boot paths.
+
+**Implementation notes:**
+- **A cap is only honest if it counts LIVE instances and is released on
+  despawn.** Retaining budget after a despawn is the same leak class Phase 37
+  fixed twice (an in-memory table with no eviction point); the cap must be
+  recomputed from what is alive, not decremented and forgotten.
+- **Determinism comes from the seed, not from `randi()`.** The roll is derived
+  from the world seed plus the chunk coordinate, so a client that never receives
+  the spawn decision still places the same pack. `spawn_for_chunk` is already a
+  no-op on a client without visuals; keep the roll pure anyway, so the host's
+  decision can be recomputed rather than trusted.
+- **A refused pack must be refused consistently.** The cap is a host-only
+  quantity, and the host is what streams a pack to a client — so a cap-refused
+  pack is simply never sent, which is what makes the client's view unable to
+  disagree. Do not let the client re-roll admission locally.
+- **Pack size changes what every biome's population MEANS.** `spawnCount: 3`
+  used to mean three separate instances per chunk of that biome; as pack size it
+  means three arriving together in one place, which is what the Phase 30
+  pack/herd AI was written to consume. Say so in the fabric description rather
+  than leaving a re-interpreted field looking unchanged.
+- **The tree-density move is a real fabric change with a big generated diff.**
+  Land it in the same commit as the creature fields and say so in the body; a
+  reader scanning `grep -v schemaHash` should see two real changes, not one.
+
+**Known simplifications (deferred):**
+- **No respawn or death-scarcity model.** The cap is on live instances, not on
+  how many may die per hour; hunting a biome to local extinction and watching it
+  recover is not modelled.
+- **No per-species cap** unless the fabric gains one — the cap in this phase is
+  global.
+- **Spawn clearance is still minimal.** A pack can spawn inside a player's build;
+  rejection near a built or claimed region is deferred (Phase 31 already recorded
+  the same gap for trees).
+- **The density field is 2D.** Surface population only; Phase 43's 3D field is
+  about materials, not about where a pack sits vertically.
+
+---
+
+## Phase 45 — Asset pipeline for meshes and animation
+
+**Goal:** The asset pipeline handles exactly one kind of asset. `AssetOverlay`
+resolves a canonical key to a texture and decodes raw PNG bytes; there is no mesh
+loader and no animation at all. Every character and creature body is a procedural
+`BoxMesh` built in `character_slice._make_avatar` / the creature builders, and
+`locomotion.gd` is a state machine that produces `get_state()` and
+`get_blend_weight()` for an `AnimationTree` that does not exist — Phase 20's
+deferrals ("No authored animation clips / `AnimationPlayer` / `AnimationTree`
+playback", "no real mesh + `Skin` asset production") are still open, and the
+private `assets-prod` submodule holds art that nothing but textures can load.
+This phase extends the overlay from textures to meshes and clips through a keyed
+manifest, wires a real `AnimationTree` to the locomotion state machine's existing
+outputs, and lands the first rig and clip set.
+
+**Newel dependency:** None for the loader. The manifest's keys are derived from
+the fabric's existing entity names (the same convention the overlay already uses
+for textures); emitting the manifest FROM the fabric is a newel-side follow-up
+(see Known simplifications).
+
+**Closes:** item 3, Phase 20 deferrals.
+
+**Deliverables:**
+- `assets/manifest.json` (committed, public) — the keyed manifest: canonical
+  asset keys to relative paths, for meshes and animation libraries as well as
+  textures. The private counterpart in `assets-prod/` overrides by KEY through
+  the same `res://_overlay/` mount mechanism `AssetOverlay.resolve_path` already
+  uses, so no code branches on which side is present.
+- `src/core/asset_overlay.gd` — `manifest()`, `keys()`, `load_mesh(rel)` and
+  `load_animation_library(rel)` beside `load_texture`. Both new loaders read bytes
+  with `FileAccess.get_file_as_bytes()` and parse with
+  `GLTFDocument`/`GLTFState.append_from_buffer` — never `load()` or
+  `Image.load()`, for the reason the module comment already states: import-machinery
+  paths cannot see pack-mounted content at the bare `res://` path. The `.raw`
+  convention extends to meshes (`models/x.glb.raw`).
+- `git submodule update --init assets-prod` — the private repo (requires access;
+  documented in `assets/README.md`) is what actually provides the first rig and
+  clips. Record the step in the README so a fresh clone knows why its avatar is
+  still boxes.
+- `src/character/character_slice.gd` — an `AnimationTree` per rig root, created
+  when a real rig loads: an `AnimationNodeStateMachine` with one node per
+  `Locomotion.State`, transitions driven by `state_name()`, a `BlendSpace1D` for
+  IDLE/WALK/RUN driven by `get_blend_weight()`, and one-shots for ATTACK / LAND
+  matching `ATTACK_DURATION` / `LAND_DURATION`. The state-to-node mapping is a
+  pure function so the suite can assert every enum value has a node.
+- The first rigged creature family and its clips — the same pipeline on a
+  non-character skeleton, proving the loader and the tree are not
+  character-specific.
+- Fallback: a missing mesh or animation key warns and falls back to today's
+  procedural body and an empty library, so a public clone still boots with zero
+  missing-resource errors (Phase 21's invariant).
+
+**Acceptance criteria:**
+- [ ] `load_mesh` and `load_animation_library` return a real `Mesh` and
+  `AnimationLibrary` from a `.raw` `.glb`, both from a mounted pack and from the
+  committed placeholder, and neither path calls `load()` on the asset.
+- [ ] A rigged avatar plays idle → walk → run continuously per
+  `get_blend_weight()` and holds attack/land one-shots for the state machine's
+  durations; the smooth blend reads as a cross-fade, not a snap.
+- [ ] With `assets-prod/` NOT initialised the game boots on placeholders with no
+  missing-resource errors; with it initialised the real rig is used, and
+  `AssetOverlay.asset_mode()` reports which.
+- [ ] The suite is green on both boot paths; the mapping and the manifest are
+  unit-tested, and the animated rig is stated as exercised in game only (the
+  suite has no frames).
+
+**Implementation notes:**
+- **The `.raw` convention is not optional for a mesh either.** An
+  importer-claimed `.glb` is compiled and dropped from a real export at the bare
+  path, exactly like a `.png` — so a shipped build would lose its models while a
+  dev run looked fine. Parse from bytes.
+- **Keys come from the fabric's names, not from file layout.** A key is derived
+  (`models/creatures/<EntityName>.glb.raw`) so generating new entities does not
+  require hand-editing a path. The manifest lists what EXISTS; a missing key is a
+  warning and a fallback, never a crash.
+- **Wiring an `AnimationTree` is not a rewrite of `locomotion.gd`.** The state
+  machine was written for this consumer: `get_state()` drives the state machine
+  node and `get_blend_weight()` drives the blend space. The single point where
+  the tree and the enum can drift is the mapping table — keep it pure and assert
+  total coverage of the enum, so a new locomotion state cannot silently animate
+  as idle.
+- **The submodule is a checkout step, not a code change.** A phase whose
+  deliverable is "the real rig exists" must say that the art is in a private repo
+  the reader may not have access to, and that the public path is the placeholder.
+- **The suite cannot see the renderer.** Assert the manifest, the key derivation
+  and the enum-to-node mapping; drive the actual animation in game only.
+
+**Known simplifications (deferred):**
+- **No root motion.** Still Phase 20's deferral: the controller drives
+  `CharacterBody3D.velocity` directly, not extracted displacement.
+- **No facial blendshapes and no per-leg IK** — Phase 20's deferrals stand; foot
+  placement remains the whole-body offset Phase 40 fixed.
+- **No fabric-generated manifest.** The manifest is a committed JSON keyed by
+  entity name; generating it from the fabric is a newel-side follow-up.
+- **One creature family only.** The rest keep procedural bodies until their rigs
+  and clips exist, and equipment attachment stays procedural
+  (`apply_equipment`, no animation-driven sockets).
+
+---
+
+## Phase 46 — UI shell
+
+**Goal:** The window system is functional and inert. Six `PanelContainer`s are
+built at fixed positions (`_build_window(key, title, content, position)` — no
+title-bar drag, nothing persisted), the inventory window is a single `Label` fed
+by `inventory_lines()`, so there is no slot grid, no icon, no hover, no
+right-click, and the only item identity a player sees is a line of text. There is
+no Controls legend at all — the key bindings exist only in the code. This phase
+gives the shell a generic draggable window with persisted positions, resolves
+item icons through the overlay, replaces the inventory text dump with a slot grid
+(tooltip and right-click menu), and adds a collapsible Controls panel behind `?`.
+
+**Newel dependency:** None. Item identity is the entity name the fabric already
+carries.
+
+**Closes:** items 4 and 6.
+
+**Deliverables:**
+- `src/ui/ui_slice.gd` — ONE drag handler installed on every window's title bar:
+  press starts a drag, motion moves the panel, release stores the position.
+  Positions persist per window key, so a restart reopens windows where they were
+  left. The layout is a per-player value and therefore needs a durable home and
+  an eviction point (Phase 37's rule) — state in the commit whether it rides the
+  player record or a client-only settings file.
+- `src/ui/ui_slice.gd` — item icons through the overlay: a derived canonical key
+  (`icons/items/<EntityName>.png.raw`) resolved with
+  `AssetOverlay.resolve_path`/`load_texture`, with a glyph placeholder when the
+  key is absent, so a clone without the private art still renders a readable slot.
+- `src/ui/ui_slice.gd` — the inventory slot grid: a `GridContainer` of slot
+  controls replacing `_inventory_items`, each showing icon, quantity and a
+  durability/wear indication; hover raises a tooltip (name, quantity, durability,
+  the item's description); right-click opens a menu whose actions are the bus
+  intents that already exist, so no new authority path is introduced.
+- `src/ui/ui_slice.gd` — the Controls panel behind `?`: a new window listing the
+  key bindings (`I / T / C / Y / M / G` and the movement/action keys), collapsed
+  by default.
+- `inventory_lines()` STAYS: it is the pure projection the suite asserts, and the
+  grid is built from a pure projection (`inventory_rows()` / a slot view) rather
+  than by reading `Control` state.
+
+**Acceptance criteria:**
+- [ ] Every window drags by its title bar and reopens at its stored position
+  across a restart; a window cannot be dragged fully off-screen.
+- [ ] An inventory of N items renders N slots in a grid; hovering shows
+  name/quantity/durability; right-clicking offers the actions the item supports
+  and each action emits the same bus intent the text UI emitted (assert the
+  projection and the intent, not the widget).
+- [ ] An item with no icon asset renders the placeholder glyph, and one whose
+  icon is present in a mounted pack renders the icon — `AssetOverlay.asset_mode()`
+  distinguishes the two.
+- [ ] `?` opens and closes the Controls panel; ESC still closes the topmost
+  window and the last close re-captures the mouse (the world-input gate is
+  unchanged and no attack/mine slips through an open menu).
+- [ ] The suite is green on both boot paths, with tests for the new projections.
+
+**Implementation notes:**
+- **Persisted position is per-player state, so it needs a record home and an
+  eviction point.** The same rule Phase 37 landed for flags, companions and
+  cooldowns. A layout is not authority-bearing — a client may own its own view —
+  so the choice between a player-record field (replicated, evicted by
+  `forget_player_id`) and a local settings file (client-only, not per-connection)
+  is legitimate, but leaving it in an in-memory dictionary that nobody evicts is
+  not. Say which one and why.
+- **The drag and the grid are `Control` code, and the suite cannot run them.**
+  Everything decidable outside the tree stays pure: the off-screen clamp, the
+  slot projection, the button-to-intent mapping and the key-to-window table.
+  Assert those.
+- **Reuse the existing intent paths.** Equipping, using and dropping go through
+  the bus signals the crafting/equipment paths already consume, so the owner
+  scoping and host binding rules (Phase 36/37) are inherited rather than
+  re-derived. A UI that invokes a slice method directly re-opens a hole the
+  network passes closed.
+- **Icons resolve at fill time, not once per item definition.** The overlay may
+  or may not have a pack mounted; caching a resolved path across that decision is
+  how a placeholder gets painted over real art.
+
+**Known simplifications (deferred):**
+- **No layout save/load UI, no snapping or docking, no resize handles** — drag
+  plus persist only.
+- **No drag-and-drop between slots or containers.** The right-click menu is the
+  only item action surface in this phase.
+- **No redesign of the crafting / technology / trade / market / proposals
+  windows.** They keep their contents and gain only the shared drag shell.
+- **No gamepad or keyboard navigation** of the windows.
+
+---
+
+## Phase 47 — Character window
+
+**Goal:** Equipment is a visual system with no interface and no numbers.
+`apply_equipment(instance_id, slot, item_key, state)` attaches a socketed
+placeholder to the rig and `equipmentSlot` is a fabric field on every
+equippable, but nothing shows what is worn, nothing totals what wearing it means
+(the armor entities carry prose — "reliable head protection" — and no numeric
+value), and a worn set is neither persisted nor shared: a peer's gear is not
+replicated, which is why the fabric's bare-hands rule is still evaluated against
+the claim riding that peer's tame intent (the open `Peer equipment replication`
+entry in the Deferred list, deferred from Phase 36). This phase gives the
+character its window: armor slots on the existing `apply_equipment`, a derived
+stats panel, equipped-state persistence, and peer equipment replication.
+
+**Newel dependency:** YES — the derived stats panel needs NUMBERS on the
+equippable items (`fabric/gameplay/items/shared.js`): a `defense`/`armorValue`
+(and any other derived-stat contribution the panel sums) per armor entity, so a
+stat is a sum of fabric values and never a reading of prose. `pnpm validate`,
+`pnpm generate`, `pnpm check-drift` re-run; no runtime stat may be authored in
+GDScript.
+
+**Closes:** item 5 and the Deferred list's `Peer equipment replication` entry
+(deferred from Phase 36).
+
+**Deliverables:**
+- `src/ui/ui_slice.gd` — a Character window (a new window key, toggled like the
+  others) listing one slot per `equipmentSlot` the fabric defines, each showing
+  the equipped item's Phase 46 icon and opening the shared right-click menu.
+  Equipping issues the existing intent, so `apply_equipment` remains the only
+  mutation path.
+- `src/character/character_slice.gd` — `derived_stats(instance_id) ->
+  Dictionary`, pure and headless-testable: it sums the equipped entries' fabric
+  values (defense total, wear/durability, and whatever else the phase adds) and
+  reports an empty set as zeros.
+- `src/persistence/player_registry.gd` — equipped state on the player record
+  (`record_equipment` / `get_equipment`, applied on join with `apply_record`), so
+  a worn set survives a restart the same way flags, companions and technology do,
+  with the eviction point that path already has.
+- `src/networking/networking_slice.gd` + `src/character/character_slice.gd` —
+  peer equipment replication: the host sends a peer's worn set to the peers whose
+  area of interest contains it (Phase 29), and a client applies it to that peer's
+  character instance, so the bare-hands rule and any defense check read
+  replicated truth instead of a payload's claim. Identity is bound to the
+  connection (a payload's `player_id` is ignored — Phase 36's rule).
+- The bare-hands rule's consumers are re-pointed at the replicated set, and the
+  tame-intent claim path is deleted or narrowed to the handshake window rather
+  than left alongside it.
+
+**Acceptance criteria:**
+- [ ] The Character window lists one slot per fabric `equipmentSlot`; equipping
+  from it changes the avatar's attachment AND the derived stats panel's numbers.
+- [ ] The panel's totals equal the sum of the equipped fabric values, asserted
+  against a synthetic set including the empty case (all zeros).
+- [ ] A worn set survives a host restart and a reconnect, asserted through the
+  player record rather than through a client's own view.
+- [ ] A second peer's client sees the first peer's worn set on that peer's
+  character instance, and a peer that forges a fully-armoured claim in its
+  payload does not change what the host believes the peer is wearing.
+- [ ] The suite is green on both boot paths, and the two-client harness still
+  reports `10/10 steps agreed across both peers` if the replication adds a step.
+
+**Implementation notes:**
+- **A derived stat may not be computed from prose.** Every number the panel shows
+  is a fabric field summed by a pure function; a stat that exists only in the UI
+  is a stat the host cannot validate and two clients can disagree about.
+- **Equipped state is per-player durable state, so it needs a record home and an
+  eviction point** — Phase 37's rule applied a third time. It travels on the join
+  snapshot plus the per-player push, and it is released by the same
+  `forget_player_id` path the flags and companions use.
+- **Replication is an interest-management problem, not a broadcast.** A peer's
+  gear travels with that peer's character record and is delivered to the peers
+  whose AOI contains it (Phase 29) — never `_broadcast`, and never through a
+  signal that fails to name its owner (the `inventory_synced(owner_id, …)` shape
+  Phase 37 established). A per-player signal with no owner is a signal every
+  instance of that slice will apply.
+- **The bare-hands rule is a security-relevant consumer, not a display.**
+  It gates a tame. Once equipment is replicated, the host evaluates the rule
+  against the host's own copy of the peer's worn set, so a client cannot claim a
+  free hand it does not have. Keeping the old claim path "just in case" keeps
+  exactly the hole the replication closes.
+- **Socket attachment is unchanged.** `apply_equipment` still resolves the item
+  definition, refuses an unknown slot and attaches through `_attach_equipment`;
+  the window and the replication both go through it, so there stays one mutation
+  path.
+
+**Known simplifications (deferred):**
+- **No combat effect beyond the displayed totals.** Unless defense becomes a term
+  in the damage formula in this phase, the panel shows a number nothing consumes —
+  say so plainly instead of implying the armor already reduces damage; wiring it
+  into `battle_slice` is a follow-up.
+- **No set bonuses, sockets or enchantments.**
+- **No upgrade/downgrade comparison** in the character window beyond the shared
+  slot tooltip.
+- **Equipment wear stays a visual indication** (`_wear_level`); the window is not
+  a repair gate — repair remains the Phase 25 path.
+
+---
+
 ## Deferred (in priority order)
 
 - **Server sharding (final, not before maturity)** — split the authoritative
