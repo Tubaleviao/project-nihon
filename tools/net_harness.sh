@@ -133,8 +133,8 @@ plan_of() {  # logfile -> comma-joined plan, once
   awk '$1=="HARNESS" && $2=="plan" {print $4}' "$1" | head -n 1
 }
 
-steps_of() {  # logfile -> "name verdict detail" per step line, plan/ready/done excluded
-  awk '$1=="HARNESS" && $2!="plan" && $2!="ready" && $2!="done" {print $2, $3, $4}' "$1"
+steps_reported() {  # logfile step -> how many lines that side printed for it
+  awk -v s="$2" '$1=="HARNESS" && $2==s' "$1" | wc -l | tr -d ' '
 }
 
 detail_of() {  # logfile step -> detail
@@ -166,6 +166,19 @@ while IFS=',' read -r entry; do
     *'*') compare=0; step="${entry%\*}" ;;
     *)    step="$entry" ;;
   esac
+
+  # A step reported TWICE is not a pass with a spare line: the scenario is a sequence, so a
+  # side that ran one step twice — a re-entered pump, a step table naming a step twice — has
+  # not run the scenario either log describes. Checked HERE because everything below reads
+  # the first matching line (`head -n 1`): without this, a second line is silently ignored
+  # and the step is judged on the first one, which is how this check used to be claimed in
+  # the header comment without existing in the code.
+  hn="$(steps_reported "$HOST_LOG" "$step")"
+  cn="$(steps_reported "$CLIENT_LOG" "$step")"
+  if [ "$hn" -gt 1 ] || [ "$cn" -gt 1 ]; then
+    fail "$step — reported twice (host=$hn client=$cn)"
+    continue
+  fi
 
   h="$(detail_of "$HOST_LOG" "$step")"
   c="$(detail_of "$CLIENT_LOG" "$step")"

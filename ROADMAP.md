@@ -2706,13 +2706,31 @@ end to end.
   `identity: set_hp announces and clears`.**
 - `src/tests/net_harness.gd` — the `await`-driven harness runner: a scenario step table
   and a pump loop that yields real frames, so packets can leave and arrive. The existing
-  suite cannot host this (see the constraint note below).
+  suite cannot host this (see the constraint note below). **Review pass — the runner now
+  audits its OWN source before either peer boots (`unawaited_waits` / `_self_audit`): a bare
+  `_await_…` call compiles and returns immediately, which is precisely how the twelve missing
+  `await`s in this file turned its waits into no-ops, and it is the one defect the
+  frame-less suite cannot observe. The runner also ends its process with the run's own verdict
+  as the exit code (`get_tree().quit(1 if _failed else 0)`): the driver reads the `fail` line
+  too, but a scenario that failed used to exit 0, which is the wrong answer to give the
+  cheapest question anyone asks a process.**
 - `src/core/game_root.gd` — a `--net-harness <role>` user arg parsed beside `--server` /
   `--client`, and the harness entry point that runs BEFORE the world boot, mirroring the
   existing `should_run_tests` gate.
 - `tools/net_harness.sh` — the driver: boots one host process and one client process on
   loopback, waits for a readiness line, runs the scenario, and fails on a missed
-  assertion, a deadline overrun, or a non-zero exit.
+  assertion, a deadline overrun, or a non-zero exit. **Review pass — the header claimed "a
+  side misses a step, or reports it TWICE" while the reader took `head -n 1` and nothing
+  counted: a second line for a step was silently ignored and the step judged on the first.
+  The check now exists (`steps_reported`), the dead `steps_of()` was removed, and the
+  per-step readers are unambiguously "the first line" because a duplicate can no longer
+  reach them.**
+- `src/core/player_rules.gd` — **review pass**: `MAX_HP` and `RESPAWN_DELAY` move off
+  `PlayerSlice` into a neutral module both layers preload, the `skill_tiers.gd` shape. The
+  persistence layer used to `preload("…/player_slice.gd")` for those two constants —
+  persistence importing presentation, in the wrong direction, for arithmetic neither layer
+  owns. The values are unchanged and `PlayerSlice` re-exports both names, so no existing
+  reader moved.
 - `src/tests/test_suite.gd` — registration of the harness's pure helpers (the step table,
   the log-line format, the convergence predicates) so the synchronous suite still covers
   the harness's own logic, under a `Phase 39` banner.
@@ -2776,34 +2794,47 @@ end to end.
   `identity: a downed peer comes back`, `identity: set_hp starts the respawn countdown`,
   and — review pass — `identity: set_hp announces and clears` for the two rules that door
   gained: a live body taken to zero is announced dead, and a value that leaves it up clears
-  the countdown rather than leaving it parked).
+  the countdown rather than leaving it parked). SECOND review pass — two more rules on the
+  same field, both registered as `identity: a sliver of health is down`: "down" is a RANGE
+  (`PlayerRegistry.is_downed`, `HP_EPSILON`) rather than the exact value `0.0`, because a hit
+  that lands a fraction short of cancelling the number leaves a body at ~1e-7 that the old
+  `hp > 0.0` WRITER cleared a deadline for while the old `hp != 0.0` READER handed it back as
+  health — a body that could never come back; and a restored record keeps its deadline only
+  while the body it belongs to is down, so a record arriving already resolved (alive) cannot
+  wear a spent deadline for the rest of the world's life. `is_downed` is the one predicate
+  both the writer and the reader use.
 - [x] A disconnect evicts transport state end to end: the peer's record is evicted, its
   taming mirrors and snapshot buffer are forgotten, and a reconnect re-presents the join
   intent and is re-answered (`disconnect_evicts` — the reconnected peer carries the SAME
   player id, and no dead peer id is still bound).
-- [~] The harness runs on both the host-process and the client-process side and is wired
+- [x] The harness runs on both the host-process and the client-process side and is wired
   into CI, while the existing suite stays synchronous and unchanged in cost
-  (`tools/net_harness.sh`). **Review pass — NOT independently reproduced. The driver was
-  green when this phase was written (`10/10 steps agreed across both peers`, quoted here
-  before), and this pass could not reproduce it on a second machine: FOUR consecutive runs
-  fail on `rate_bucket` with the identical detail
-  (`burst_not_throttled_or_steady_lost-steady1-min0-now119`). Read that detail: the tree
-  `packet_cap` already consumed is counted ONCE (so `packet_cap`'s consumption is what the
-  host saw), the burst DID empty the bucket (`min0`), and at the deadline the bucket was
-  FULL again (`now119` of 120) — so the limiter is not what starved the stream, which is
-  the failure the step's detail token names. The host logged no out-of-reach refusal and no
-  chop-channel seq gap after the burst, so the step's post-burst chops did not reach
-  `_route_c2h` at all: the money is on the client half of the step never getting its
-  intents onto the wire, or losing them behind the 200-packet burst. Widening the steady
-  window to 24 s (12 chops) did not change the outcome, which rules the timing out as the
-  whole story. This one is OPEN: until it is diagnosed, the harness is not evidence for
-  anything on a machine that reproduces it, and the phase should not be read as Done on the
-  strength of this criterion.**
+  (`tools/net_harness.sh`). **Review pass — NOT independently reproduced, and the reason was
+  in this file. The driver was green when the phase was written (`10/10 steps agreed across
+  both peers`) and failed four consecutive runs after it, on `rate_bucket`, always with the
+  same detail: `burst_not_throttled_or_steady_lost-steady1-min0-now119` — the tree
+  `packet_cap` consumed was counted ONCE, the burst HAD emptied the bucket (`min0`), and at
+  the deadline the bucket was full again (`now119` of 120), so the limiter was not what
+  starved the stream. The note's money was on "the client half never getting its intents onto
+  the wire": right about the symptom, wrong about the layer. SECOND review pass — every one
+  of the TWELVE `_await_settle` call sites in `src/tests/net_harness.gd` was missing its
+  `await`, so each one returned at its first yielded frame and waited NOTHING. The client's
+  post-burst chops therefore left in the SAME FRAME as the burst that had just emptied its
+  bucket, the host's limiter dropped them, and the step blamed the limiter for the harness's
+  own missing wait — the `steady`/`min`/`now` tokens the first pass added are what made the
+  mechanism legible. Reproduced on the pristine source before the fix (`rate_bucket` → the
+  identical token, 1 run of 1) and green after it (`10/10 steps agreed across both peers`,
+  two consecutive runs). A bare coroutine call is now impossible to reintroduce silently:
+  `NetHarness.unawaited_waits()` audits the source, `net: harness awaits are not bare` asserts
+  the rule in the suite, and `NetHarness._self_audit()` runs it on every boot.**
 - [x] The suite remains green on both boot paths (`Results: N/N passed (0 failed)`,
   `[Server] listening on port 7777, max_clients 64`), with the new assertion count
   quoted. **Review pass: `Results: 7508/7508 passed (0 failed)` on both boots — the count
   moved from 7499 with the two rules the review pass added to `set_hp()` (five assertions
-  RED-proved first, the run before the fix reading `5 failed`).**
+  RED-proved first, the run before the fix reading `5 failed`). Second review pass:
+  `Results: 7522/7522 passed (0 failed)` on both boots — the count moved from 7508 with
+  `identity: a sliver of health is down` and `net: harness awaits are not bare` (seven
+  assertions RED-proved first, the run with the two policies reverted reading `7 failed`).**
 
 **Implementation notes:**
 - **The scenario targets come from the ORIGIN CHUNK, because the two processes' tree
@@ -2819,7 +2850,17 @@ end to end.
   side is still waiting on a 25 s convergence deadline. A per-step observation window opened
   at the start of the observing step MISSED traffic that had already arrived and reported a
   guard failure for a guard that had worked — so `_chop_count()` counts over the run, and
-  each in-reach tree is named by exactly one step.
+  each in-reach tree is named by exactly one step. **Review pass — the second half of that
+  rule, found only once the waits above were real: a TRANSIENT is not a state. With the
+  missing `await`s in place the client ran the whole scenario in about a frame, so it was
+  always AHEAD of the host and always caught the 5 s death window; with the waits restored it
+  lags by seconds, the host forwards the hit on ITS timeline, and the body can be down AND
+  ALREADY BACK UP before the observing step opens — so `peer_damage_floor` and
+  `reconnect_alive` reported `no_countdown` / `not_recovered` for a peer whose body did
+  exactly the right thing. Both steps now take their "it went down" half from a whole-run
+  count (`_deaths`, the `_chops` shape; `player_died` is emitted only through the door that
+  arms the timer) and assert what the step is actually about: never down with nothing running
+  — still waiting the countdown out, or already back at full health.**
 - **ENet drops a quiet peer, so the scenario keeps the link alive while it waits.** A step
   that asserts an ABSENCE waits seconds for nothing to happen, and a step whose counterpart
   is busy waits 25 s; without a periodic keepalive the client was disconnected mid-scenario,
@@ -2873,6 +2914,11 @@ end to end.
   hanging CI.
 
 **Known simplifications (deferred):**
+- **The bare-`await` audit is a SOURCE check, and it says so when it cannot run.** The
+  runner reads its own `res://` file at start-up (a source boot, which is what the driver
+  launches) and prints `source-not-on-disk-skipped` when it cannot — never a pass — because
+  an audit that did not run is not evidence. What it cannot see is a bare coroutine call in
+  another file: the rule is enforced on this runner, not repo-wide.
 - **The un-handshaked refusal is still a routing-level assertion.** The harness cannot put
   an intent on the wire before the handshake: the client's boot presents its join intent the
   moment the connection comes up, so there is no window in which a real peer is connected

@@ -50,6 +50,11 @@ extends Node
 ##   format_line(step, verdict, detail) -> String  — one log line (static, pure)
 ##   parse_line(line) -> Dictionary                — the inverse (static, pure)
 ##   verdict(seen, expect_seen) -> String          — the convergence verdict (static, pure)
+##   unawaited_waits(lines) -> PackedStringArray   — the bare-coroutine audit (static, pure)
+##
+## `run()` audits its OWN source for a bare `_await_…` call before it boots either peer
+## (see `unawaited_waits`): that mistake compiles, runs, and turns this scenario's waits
+## into no-ops, and the synchronous suite cannot see it because it cannot host a pump.
 
 const PlayerSlice := preload("res://src/player/player_slice.gd")
 
@@ -97,6 +102,10 @@ const PROBE_ITEM := "Ferrite"
 var _root: Node = null
 var _role: String = ""
 var _lines: Array = []
+
+## True once any step of this side has reported `fail` — the run's verdict, which `_finish`
+## turns into the process exit code (see there).
+var _failed: bool = false
 
 ## The peer id this process handshook with (0 until step 1 resolves it, and always 1 on the
 ## client side — the host is ENet peer 1 to its peers). Note that ENet REASSIGNS peer ids,
@@ -185,6 +194,27 @@ static func verdict(seen: bool, expect_seen: bool) -> String:
 static func passed(verdict_text: String) -> bool:
 	return verdict_text == "ok" or verdict_text == "refused"
 
+## The one mistake in this file that no wire test can see, and that a bare coroutine turns
+## into a FALSE scenario failure: GDScript lets a coroutine be called without `await`, and
+## that call then returns immediately — the step runs with no wait at all. Not hypothetical:
+## every `_await_settle` call site in this runner was originally bare, so the post-burst
+## chops of the rate-limit step left in the SAME frame as the burst that had just emptied
+## the peer's token bucket, and the step blamed the limiter for its own missing wait (see
+## ROADMAP.md Phase 39, criterion 10, and `_step_rate_bucket`).
+##
+## Static and pure, and it takes the source as LINES, for one reason: the synchronous suite
+## cannot host this runner (it has no frames to yield), but it CAN assert this rule on
+## synthetic input — and the runner points the same function at its OWN source at start-up
+## (`_self_audit`), so the rule is enforced on every harness boot rather than only in review.
+## A line whose stripped form begins with `_await_` is a bare call; the function's own
+## `func _await_…` definition cannot match, because it begins with `func`.
+static func unawaited_waits(lines: PackedStringArray) -> PackedStringArray:
+	var offenders: PackedStringArray = PackedStringArray()
+	for i in lines.size():
+		if lines[i].strip_edges().begins_with("_await_"):
+			offenders.append("%d" % (i + 1))
+	return offenders
+
 ## Deterministic in-reach targets: every tree within `reach` of `origin` (XZ distance,
 ## which is where trees actually move in the world), sorted by tree id. `origin` is
 ## RENDEZVOUS and the tree table is deterministic, so a host and a client with no side
@@ -238,8 +268,12 @@ func run(root: Node, role: String) -> void:
 	# an intent the reach check let through. Connected (not watching a payload) so the
 	# observation cannot be faked by the other side: only the host's own router emits it.
 	GameBus.tree_chop_requested.connect(_on_chop_requested)
+	# Deaths are observed the same way, and for the same reason (see `_deaths`).
+	GameBus.player_died.connect(_on_player_died)
 	print(format_line("ready", "ok", role))
 	print(format_line("plan", "ok", plan_detail()))
+	if not _self_audit():
+		return
 	if _role == "host":
 		_root._boot_server()
 	else:
@@ -274,9 +308,43 @@ func run(root: Node, role: String) -> void:
 	await _step_disconnect_evicts()
 	_finish()
 
+## End this process, with the run's own verdict carried in the exit code.
+##
+## The harness quits itself (the driver deliberately passes no `--quit`), so the exit code
+## is the one thing the driver's process check can read, and it used to mean only "did not
+## crash": a scenario whose step reported `fail` still exited 0. The driver also reads the
+## `fail` line, so this is a second statement of the same fact rather than the only one —
+## but a CI wrapper (or a human) reaches for the exit code FIRST, and a failing scenario
+## that reports success there is the wrong answer to give the cheapest question.
 func _finish() -> void:
 	print(format_line("done", "ok", _role))
-	get_tree().quit()
+	get_tree().quit(1 if _failed else 0)
+
+## Audit this file's own source before either peer boots: no `_await_…` call may be bare
+## (see `unawaited_waits`). Returns false — and ends the run with a non-zero exit — when the
+## audit fails, because a scenario whose waits are no-ops reports on a run that did not
+## happen. Source that is not on disk (an exported build ships bytecode) reports `skipped`:
+## an audit that could not run is not a pass, and saying which of the two happened is the
+## whole value of running it here rather than trusting the file to stay correct.
+func _self_audit() -> bool:
+	var src := _own_source_lines()
+	if src.is_empty():
+		print(format_line("self_audit", "ok", "source-not-on-disk-skipped"))
+		return true
+	var offenders := unawaited_waits(src)
+	if offenders.is_empty():
+		print(format_line("self_audit", "ok", "awaits-present"))
+		return true
+	_report("self_audit", "fail", "bare-await-call-at-" + "-".join(offenders))
+	_finish()
+	return false
+
+## This runner's own source as lines, or an empty array when it is not readable off disk.
+func _own_source_lines() -> PackedStringArray:
+	var f := FileAccess.open("res://src/tests/net_harness.gd", FileAccess.READ)
+	if f == null:
+		return PackedStringArray()
+	return f.get_as_text().split("\n")
 
 # ---------------------------------------------------------------------------
 # Steps
@@ -347,9 +415,9 @@ func _step_chop_in_reach() -> void:
 		_report("chop_in_reach", verdict(ok, true), t if ok else "not_consumed")
 		return
 	_report_position()
-	_await_settle(1.0)
+	await _await_settle(1.0)
 	GameBus.tree_chop_requested.emit(t)
-	_await_settle(1.5)
+	await _await_settle(1.5)
 	_report("chop_in_reach", "ok", t)
 
 ## Step 4 — the reach guard, refusing half: a chop of a tree the peer cannot reach is
@@ -360,7 +428,7 @@ func _step_chop_out_of_reach() -> void:
 		_report("chop_out_of_reach", "fail", "no_distant_tree")
 		return
 	if _role == "host":
-		_await_settle(ABSENCE_WINDOW_SECS)
+		await _await_settle(ABSENCE_WINDOW_SECS)
 		# A chop that DID land here means the guard let an out-of-reach intent through —
 		# so the tree's position is the evidence, and this side reads it from its own
 		# TreeSlice rather than from anything the peer said.
@@ -369,9 +437,9 @@ func _step_chop_out_of_reach() -> void:
 			"none_seen" if not leaked else "consumed_out_of_reach")
 		return
 	_report_position()
-	_await_settle(0.5)
+	await _await_settle(0.5)
 	GameBus.tree_chop_requested.emit(t)
-	_await_settle(1.5)
+	await _await_settle(1.5)
 	_report("chop_out_of_reach", "refused", t)
 
 ## Step 5 — the inbound size cap.
@@ -397,14 +465,14 @@ func _step_packet_cap() -> void:
 			normal if (ok and not over_seen and alive) else "oversized_leaked")
 		return
 	_report_position()
-	_await_settle(1.0)
+	await _await_settle(1.0)
 	# 9000 chars of padding on top of the intent's own JSON: unambiguously over the 8192 cap.
 	GameBus.packet_send_requested.emit(1, {
 		"type": "tree_chop_intent", "tree_id": oversized, "pad": "x".repeat(9000),
 	})
-	_await_settle(1.0)
+	await _await_settle(1.0)
 	GameBus.tree_chop_requested.emit(normal)
-	_await_settle(1.5)
+	await _await_settle(1.5)
 	_report("packet_cap", "ok", normal)
 
 ## Step 6 — the per-peer token bucket.
@@ -434,7 +502,7 @@ func _step_rate_bucket() -> void:
 				_chop_count(t), int(_min_tokens), live_tokens])
 		return
 	_report_position()
-	_await_settle(1.0)
+	await _await_settle(1.0)
 	# The burst rides `player_moved`, NOT an unknown type: the point is the token bucket,
 	# which polices the CHANNEL before the payload is parsed (`_allow_packet` runs ahead of
 	# `_parse` in `_rpc_c2h`), and an unknown type would have the host emit 300 warnings
@@ -462,10 +530,10 @@ func _step_rate_bucket() -> void:
 	# host's frame can still be draining the burst while the first arrives, and the claim
 	# under test is "the stream that follows is not starved", not "the very next packet
 	# counts".
-	_await_settle(3.0)
+	await _await_settle(3.0)
 	for _i in range(3):
 		GameBus.tree_chop_requested.emit(t)
-		_await_settle(1.5)
+		await _await_settle(1.5)
 	_report("rate_bucket", "ok", t)
 
 ## Step 7 — an owner-scoped inventory sync reaches the owner alone.
@@ -518,11 +586,23 @@ func _step_peer_damage_floor() -> void:
 		_report("peer_damage_floor", verdict(ok and parked, true),
 			"floor-applied" if (ok and parked) else "no_floor_or_deadline")
 		return
-	var ok: bool = await _await_until(
-		func(): return _root._player.get_hp() == 0.0 and not _root._player._alive, STEP_TIMEOUT_SECS)
-	var counting: bool = _root._player._respawn_timer > 0.0
-	_report("peer_damage_floor", verdict(ok and counting, true),
-		"floor-applied" if (ok and counting) else "no_countdown")
+	# The "it went down" half is observed over the WHOLE run, not from a window opened here,
+	# and the difference is the whole step: the host emits the hit as soon as ITS timeline
+	# reaches this step, which can be several of this side's steps early — this peer's own
+	# countdown is only `PlayerRules.RESPAWN_DELAY` long, so a body that took the hit can
+	# already be back up by the time this step runs. What the step has to rule out is the
+	# soft-lock deliverable 1 closes: a body down here with NO countdown behind it. So: a
+	# death was announced (only ever emitted through the door that arms the timer), and the
+	# body is EITHER still waiting the timer out OR already back at full health — never down
+	# with nothing running. Asserting the transient itself would fail for a body that
+	# recovered, which is the outcome the fix exists to produce.
+	var died: bool = await _await_until(func(): return _deaths > 0, STEP_TIMEOUT_SECS)
+	var waiting: bool = not _root._player._alive and _root._player._respawn_timer > 0.0
+	var recovered: bool = _root._player._alive and _root._player.get_hp() == PlayerSlice.MAX_HP
+	var good: bool = died and (waiting or recovered)
+	_report("peer_damage_floor", verdict(good, true),
+		"floor-applied" if good else "no_floor-died%d-down%d-timer%.1f" % [
+			int(died), int(not _root._player._alive), _root._player._respawn_timer])
 
 ## Step 9 — a peer killed before it disconnects reconnects ALIVE.
 ##
@@ -543,14 +623,17 @@ func _step_reconnect_alive() -> void:
 		_report("reconnect_alive", verdict(ok and resolved_ok and snapshot_resolved == PlayerSlice.MAX_HP, true),
 			"alive-after-reconnect" if (ok and resolved_ok and snapshot_resolved == PlayerSlice.MAX_HP) else "still_down")
 		return
-	var dead_ok: bool = await _await_until(
-		func(): return not _root._player._alive and _root._player._respawn_timer > 0.0,
-		STEP_TIMEOUT_SECS)
+	# The "it was down" half is the same whole-run observation as step 8's, for the same
+	# reason: the hit is forwarded on the HOST's timeline while this side's own countdown runs
+	# on ITS own, so the death can be over before this step opens (see `_deaths`). A counted
+	# death is the evidence that the body was handed a zero with a timer; what this step
+	# asserts is the state AFTER the reconnect, below.
+	var was_down: bool = await _await_until(func(): return _deaths > 0, STEP_TIMEOUT_SECS)
 	_root._networking.disconnect_all()
 	# Phase 37/38 — the transport state dies with the connection, and the reassembly
 	# buffer is the part that leaks: a snapshot that lost a chunk can never complete.
 	var buffer_cleared: bool = _root._networking._snapshot_buffer.is_empty()
-	_await_settle(RECONNECT_WAIT_SECS)
+	await _await_settle(RECONNECT_WAIT_SECS)
 	var err: Error = _root._networking.join(_root._host_address, _root._networking.DEFAULT_PORT)
 	if err != OK:
 		_report("reconnect_alive", "fail", "rejoin_failed")
@@ -562,8 +645,8 @@ func _step_reconnect_alive() -> void:
 		func(): return _root._player._alive and _root._player.get_hp() == PlayerSlice.MAX_HP,
 		STEP_TIMEOUT_SECS)
 	var controlling: bool = _root._player._respawn_timer <= 0.0
-	_report("reconnect_alive", verdict(dead_ok and buffer_cleared and alive_ok and controlling, true),
-		"alive-after-reconnect" if (dead_ok and buffer_cleared and alive_ok and controlling) else "not_recovered")
+	_report("reconnect_alive", verdict(was_down and buffer_cleared and alive_ok and controlling, true),
+		"alive-after-reconnect" if (was_down and buffer_cleared and alive_ok and controlling) else "not_recovered")
 
 ## Step 10 — a disconnect evicts transport state, and a reconnect is re-answered.
 ##
@@ -607,6 +690,25 @@ func _step_disconnect_evicts() -> void:
 
 func _on_chop_requested(tree_id: String) -> void:
 	_chops.append(tree_id)
+
+## Deaths this side has announced over the whole run.
+##
+## The sibling of `_chops`, and it exists for the same class of reason. A step that means
+## "the peer took the hit" cannot open a window HERE and wait for the body to be DOWN: the two
+## processes are not synchronized (see the class docstring), the host forwards the hit as soon
+## as ITS timeline reaches that step — which can be several of this side's steps early — and a
+## countdown is only `PlayerRules.RESPAWN_DELAY` long, so the body can be back up, at full
+## health, before this side ever looks. Observed over the whole run, the transient is seen
+## wherever it happened.
+##
+## It is also the right evidence for "the countdown ran": `player_died` is emitted ONLY
+## through the door that arms it (`PlayerSlice.set_hp` / `_die`), so a counted death is proof
+## the body was handed a zero and a timer with it — which is what makes "still waiting, or
+## already back" an honest assertion rather than a race with the clock.
+var _deaths: int = 0
+
+func _on_player_died(_position: Vector3, _killer_id: String) -> void:
+	_deaths += 1
 
 ## The lowest token level seen for the peer while the rate-limit step waits. Sampled
 ## inside the convergence predicate rather than once at the end: the bucket refills at
@@ -671,6 +773,11 @@ func _await_until(predicate: Callable, timeout: float) -> bool:
 	return bool(predicate.call())
 
 ## Burn real frames (delivery, not wall-clock-only) for `secs`.
+##
+## A coroutine, so EVERY call site must `await` it: called bare it returns at the first
+## yielded frame and the step runs with no wait at all, which is how this runner's steps
+## once reported on a scenario that never waited (see `unawaited_waits`, which audits the
+## source for exactly this, and `_self_audit`, which runs the audit on every boot).
 func _await_settle(secs: float) -> void:
 	var deadline := Time.get_ticks_msec() + int(secs * 1000.0)
 	while Time.get_ticks_msec() < deadline:
@@ -704,6 +811,11 @@ func _keepalive() -> void:
 	_report_position()
 
 func _report(step: String, verdict_text: String, detail: String) -> void:
+	# A `fail` line is this side's assertion NOT holding, so it also decides the process's
+	# exit code (see `_finish`): the log is the cross-process channel, but the exit code is
+	# what a process check reads without parsing anything.
+	if verdict_text == "fail":
+		_failed = true
 	var line := format_line(step, verdict_text, str(detail).replace(" ", "_"))
 	_lines.append(line)
 	print(line)

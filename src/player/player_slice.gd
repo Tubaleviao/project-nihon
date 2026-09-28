@@ -38,7 +38,14 @@ const TERRAIN_COLLISION_MASK := 2  # layer 2 (bit 1) — terrain, for mine/build
 const CHOP_RANGE := 60.0      # metres — how far the player can reach a tree trunk
 const TREE_COLLISION_MASK := 8 # layer 4 (bit 3) — tree trunks, for the chop ray
 
-const MAX_HP := 100.0
+## The body's shared rules live in a neutral module (Phase 39 review pass): the
+## persistence layer has to agree with this slice about the health ceiling and the respawn
+## delay — it simulates a REMOTE peer's body — and reading them off this slice made
+## persistence preload presentation. Aliased here so every existing reader
+## (`_hp`, the HUD, the suite, the harness) keeps the same name.
+const PlayerRules := preload("res://src/core/player_rules.gd")
+
+const MAX_HP := PlayerRules.MAX_HP
 
 const MouseIconScript := preload("res://src/ui/mouse_icon.gd")
 
@@ -72,7 +79,7 @@ var _aimed_tree_species: String = ""
 var _hp_label: Label = null
 
 ## Respawn countdown in seconds; -1 when not respawning.
-const RESPAWN_DELAY := 5.0
+const RESPAWN_DELAY := PlayerRules.RESPAWN_DELAY
 var _respawn_timer: float = -1.0
 
 ## Remote player ghosts (Phase 18). Keyed by peer_id → { "mi": int, "from":

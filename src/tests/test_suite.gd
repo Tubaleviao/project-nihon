@@ -408,10 +408,12 @@ func run() -> void:
 	_run_test("identity: a downed peer comes back",               _test_host_simulated_hp_respawns)
 	_run_test("identity: set_hp starts the respawn countdown",    _test_player_set_hp_starts_respawn)
 	_run_test("identity: set_hp announces and clears",           _test_player_set_hp_announces_and_clears)
+	_run_test("identity: a sliver of health is down",             _test_hp_sliver_is_downed)
 	_run_test("net: harness step table is the driver contract",   _test_net_harness_step_table)
 	_run_test("net: harness log line round-trips",                _test_net_harness_line_round_trip)
 	_run_test("net: harness verdict treats refusal as a pass",    _test_net_harness_verdict)
 	_run_test("net: harness targets are deterministic",           _test_net_harness_target_selection)
+	_run_test("net: harness awaits are not bare",                 _test_net_harness_bare_await_audit)
 
 	# Self-check: the _run_test list above is manual, so a test function can be
 	# written but forgotten from the list. Fail loudly instead of silently
@@ -8028,6 +8030,56 @@ func _test_host_simulated_hp_respawns() -> void:
 	restored.free()
 	registry.free()
 
+## Phase 39 review pass — "down" is a RANGE, and both halves of the rule share one
+## predicate for it.
+##
+## (a) Float arithmetic does not land on exact zeroes: a hit that comes a fraction short of
+## cancelling the number leaves a body at ~1e-7. That body is alive by the letter of the old
+## `hp > 0.0` test and dead by every other measure — it cannot be healed, it cannot act, and
+## the writer CLEARED its respawn deadline, so it stayed at an invisible sliver for the rest
+## of the session and across every restart. `is_downed` counts it as down, so the deadline is
+## parked and the body comes back.
+## (b) The two halves used to test differently — `hp != 0.0` in the reader, `hp > 0.0` in the
+## writer — which is two chances to disagree about the same body. The remainder is the value
+## that lands between them.
+func _test_hp_sliver_is_downed() -> void:
+	assert_true(PlayerRegistry.is_downed(0.0), "an exact zero is down")
+	assert_true(PlayerRegistry.is_downed(1.0e-7), "and so is the remainder a hit leaves behind")
+	assert_false(PlayerRegistry.is_downed(PlayerRegistry.HP_EPSILON * 2.0),
+		"while real health is not — the threshold only ever catches arithmetic")
+	assert_false(PlayerRegistry.is_downed(-1.0),
+		"and the no-number-here sentinel is NOT down, so a stale deadline cannot invent health")
+	assert_eq(PlayerRegistry.hp_after_respawn(1.0e-7, 0.0, 1_000_000.0), 0.0,
+		"a remainder with no deadline parked reads as the canonical zero, not as 1e-7")
+	assert_eq(PlayerRegistry.hp_after_respawn(1.0e-7, 999_999.0, 1_000_000.0), PlayerSlice.MAX_HP,
+		"and with a passed deadline reads as full health — so it CAN come back")
+
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var host_id := registry.mint_player_id()
+	registry.set_local_player(host_id)
+	var remote := str(registry.resolve_identity(7))
+
+	registry.record_simulated_hp(remote, 1.0e-7)
+	assert_true(float(registry.get_record(remote).get("respawn_deadline", 0.0)) > Time.get_unix_time_from_system(),
+		"a hit that lands on a sliver PARKS a respawn instead of clearing it")
+	assert_eq(registry.get_hp(remote), 0.0, "and the body reads as down, not as a sliver")
+
+	# The restored-record half: `get_player_data` saves `hp` RESOLVED, so an alive record
+	# reaches `apply_player_data` wearing the deadline its own resolution has spent. Keeping
+	# it left a standing body carrying dead history forever.
+	registry.get_record(remote)["respawn_deadline"] = Time.get_unix_time_from_system() - 1.0
+	var restored := PlayerRegistry.new()
+	add_child(restored)
+	restored.apply_player_data(remote, registry.get_player_data(remote))
+	assert_eq(restored.get_hp(remote), PlayerSlice.MAX_HP,
+		"a record restored after its deadline is a live body")
+	assert_eq(float(restored.get_record(remote).get("respawn_deadline", -2.0)), 0.0,
+		"and wears no deadline its own resolution has already spent")
+
+	restored.free()
+	registry.free()
+
 ## Phase 39 — deliverable 1, client half: a body handed a zero starts its own countdown.
 ##
 ## The same soft-lock as the registry half, seen from the client: a peer's client that
@@ -8185,6 +8237,44 @@ func _test_net_harness_target_selection() -> void:
 		"only the far tree is beyond the refusal radius")
 	assert_eq(NetHarness.beyond_reach_target(trees, origin, 1000.0), "",
 		"and an empty selection is reported as empty, never as the nearest tree")
+
+## Phase 39 review pass — the pump's own audit, the ONE class the synchronous suite could
+## not otherwise reach, because it has no frames to give and so cannot host the pump.
+##
+## A coroutine called without `await` compiles, runs, and returns at its first yield: the
+## step stops waiting and the scenario reports on a run that did not happen. That is not
+## hypothetical — every `_await_settle` call site in the runner was bare, so the rate-limit
+## step fired its post-burst chops in the same frame as the burst that had emptied the peer's
+## step blamed the LIMITER for its own missing wait. The rule is
+## assertable without frames, so it lives as a pure function; the runner also points it at
+## its OWN source on every boot (`NetHarness._self_audit`), which is the half this test
+## cannot do for it.
+func _test_net_harness_bare_await_audit() -> void:
+	# The definition is not a call, an awaited call in an expression is fine, and a bare
+	# call is the offender — as a LINE NUMBER, so a failure names where to look.
+	var mixed := PackedStringArray([
+		"func _await_until(p: Callable, t: float) -> bool:",
+		"		_await_settle(1.0)",
+		"	await _await_until(func(): return true, 1.0)",
+		"	var ok: bool = await _await_until(f, 1.0)",
+		"",
+		"		await _await_settle(ABSENCE_WINDOW_SECS)",
+	])
+	var flagged := NetHarness.unawaited_waits(mixed)
+	assert_eq(flagged.size(), 1, "exactly one line of that sample is a bare coroutine call")
+	assert_true(flagged.has("2"), "and it is the bare call, reported by line number")
+	var clean := PackedStringArray(["", "await _await_until(f, 1.0)", "await _await_settle(1.0)"])
+	assert_true(NetHarness.unawaited_waits(clean).is_empty(), "an awaited file reports nothing")
+
+	# And the file the audit guards, audited. Skipped with a note rather than passed when the
+	# source is not on disk (an exported build ships bytecode) — an audit that could not run
+	# is not evidence, which is also what `NetHarness._self_audit` says out loud.
+	var src := FileAccess.open("res://src/tests/net_harness.gd", FileAccess.READ)
+	if src == null:
+		return
+	var offenders := NetHarness.unawaited_waits(src.get_as_text().split("\n"))
+	assert_true(offenders.is_empty(),
+		"NetHarness calls a bare coroutine at line(s) %s" % [", ".join(offenders)])
 
 # ---------------------------------------------------------------------------
 # Assertion helpers
