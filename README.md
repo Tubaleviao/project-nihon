@@ -56,6 +56,10 @@ pnpm generate   # generate the design bible into bible/
 | 33 | Player identity and server-side persistence | Done |
 | 34 | Per-player repair and research | Done |
 | 35 | Creature taming | Done |
+| 36 | Review pass: the network trust boundary, gated boots, per-player progression | Done |
+| 37 | Review pass: owner-scoped syncs, durable cooldowns, bounded memory, routed rounds | Done |
+| 38 | Review pass: host-simulated peer health, one key list, the missing clear, an in-place prune | Done |
+| 39 | Two-client network harness: prove the wire over a real socket | Done |
 
 See [ROADMAP.md](ROADMAP.md) for the full spec, deliverables, and acceptance criteria for each phase.
 
@@ -88,6 +92,28 @@ Slices do **not** hold each other by default. The bus carries every *event* and 
 4. **Implement the slice** — add `src/<system>/<system>_slice.gd`; wire it in `src/core/game_root.gd`; add bus signals in `src/core/bus.gd`.
 5. **Write tests** — extend `src/tests/test_suite.gd` with at least one test per acceptance criterion before marking the phase done.
 6. **Open a PR** — phases ship as pull requests; titles follow `feat(<system>): <short description>`. PRs for design changes to the fabric are separate from implementation PRs.
+
+### Testing
+
+Two entry points, deliberately separate:
+
+```bash
+# 1. The unit suite. Runs synchronously on boot — no frames, no sockets — so it is fast
+#    and its GameBus emissions cannot leak into world state. 7,000+ assertions.
+/tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --quit -- --run-tests
+
+# 2. The two-client network harness (Phase 39). Boots one host process and one client
+#    process on loopback, drives a scripted session over real ENet, and asserts the two
+#    sides' log lines agree. Needs a Godot 4.7 binary:
+GODOT=/tmp/godot/Godot_v4.7-stable_linux.x86_64 tools/net_harness.sh
+```
+
+`--run-tests` and `--net-harness <host|client>` are **user args**, so they go after the
+`--` separator. The harness cannot live in the suite — an `ENetMultiplayerPeer` only
+delivers when the tree ticks, and the suite has no frames to give it — so it is its own
+boot mode; the purely computational half of it (the step table, the log-line format and
+parser, the convergence verdict, the target selection) is still registered in the suite
+and covered on every boot.
 
 ### Branching strategy
 

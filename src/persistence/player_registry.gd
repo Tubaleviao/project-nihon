@@ -42,9 +42,11 @@ extends Node
 ##   get_online_player_ids() -> Array            — the ids a save should write
 ##   get_record(player_id) -> Dictionary
 ##   record_position(player_id, pos) / record_hp(player_id, hp)
-##   get_hp(player_id) -> float                 — -1.0 when this machine holds none
+##   get_hp(player_id) -> float                 — -1.0 when this machine holds none;
+##                                                resolves the respawn deadline (Phase 39)
 ##   record_simulated_hp(player_id, hp)         — the HOST's own hit resolution (Phase 38)
 ##   simulated_hp_after_hit(hp, damage, max) -> float  — pure rule (static, Phase 38)
+##   hp_after_respawn(hp, deadline, now, max) -> float — pure rule (static, Phase 39)
 ##   record_appearance(player_id, recipe) / record_technology(player_id, statuses)
 ##   record_flags(player_id, flags) / record_companions(player_id, ids)  — Phase 35
 ##   record_cooldowns(player_id, cooldowns) / get_cooldowns(player_id)   — Phase 37
@@ -59,6 +61,23 @@ extends Node
 ##   get_players_data() -> Dictionary / apply_players_data(data) -> void
 
 const InventorySlice := preload("res://src/inventory/inventory_slice.gd")
+
+## Phase 39 — the shared rules of a player BODY, from a neutral module rather than from the
+## local body's slice (`src/core/player_rules.gd`). Two of them matter here: the ceiling a
+## simulated body is clamped to (`MAX_HP`) and the delay a downed body waits before it comes
+## back (`RESPAWN_DELAY`). They must not be DUPLICATED — the host's floor for a PEER
+## drifting from the ceiling the peer's own client respawns to is exactly the
+## two-places-one-rule drift this phase is about — and they must not be read off
+## `PlayerSlice` either: persistence preloading presentation is the wrong direction, for two
+## numbers neither layer owns, and two review passes have now flagged it.
+## **Review pass — this was `preload("res://src/player/player_slice.gd")` for exactly those
+## two constants. The values are unchanged; only their home is, and `PlayerSlice` re-exports
+## both names so no reader moved.**
+const PlayerRules := preload("res://src/core/player_rules.gd")
+
+## Phase 39 — how long a host-simulated peer stays down before its health reads back
+## full. The Phase 37 cooldown shape, applied to the one deadline a body carries.
+const RESPAWN_DELAY := PlayerRules.RESPAWN_DELAY
 
 ## Authoritative (host / dedicated server) or not (client). A client owns no
 ## records: it caches the id the host assigned and receives its state in the
@@ -350,6 +369,9 @@ func ensure_player(player_id: String) -> Dictionary:
 			"companions": [],
 			"skills":     {},
 			"cooldowns":  {},
+			# Phase 39 — 0.0 = "no respawn pending", the same shape the -1.0 hp
+			# sentinel has: an absent deadline and a downed body are different facts.
+			"respawn_deadline": 0.0,
 			}
 	return _players[player_id]
 
@@ -398,8 +420,87 @@ func record_hp(player_id: String, hp: float) -> void:
 ## (`ensure_player`), so a caller can tell a body it has never modelled from one at
 ## zero health. A simulation must seed such a body from full health rather than from
 ## a declared value — see `simulated_hp_after_hit`.
+##
+## Phase 39 — this is ONE of the two readers of the durable `hp` field, and it
+## RESOLVES the respawn deadline rather than returning the stored value raw (the
+## resolution itself lives in `hp_after_respawn`). Still a pure read: it writes
+## nothing, which is why the deadline and not a rewritten `hp` is the durable fact —
+## a write-on-read through `record_simulated_hp` would no-op on exactly the paths
+## where that method refuses (a non-authoritative machine, the local id, a player with
+## no resident record) while this read had already claimed full health.
 func get_hp(player_id: String) -> float:
-	return float(get_record(player_id).get("hp", -1.0))
+	return _resolved_hp(get_record(player_id))
+
+## The smallest positive health that still counts as DOWN.
+##
+## Float arithmetic does not produce exact zeroes: a hit that lands a fraction short of the
+## number it cancels leaves the body at ~1e-7 — alive by the letter of a `> 0.0` test, dead
+## by every other measure, and (before this) with its respawn deadline CLEARED, so it stayed
+## at an invisible sliver for the rest of the session and across every restart. The
+## threshold is deliberately far below anything the game deals or heals (damage is
+## fractional but never sub-milli), so it can only ever catch an arithmetic remainder, never
+## a real hit point. **Review pass — the step was `hp != 0.0` in one place and `hp > 0.0`
+## in another, which are two different numbers to be wrong by.**
+const HP_EPSILON := 1.0e-4
+
+## Whether `hp` is the number that means DOWN. ONE predicate, because two callers have to
+## agree on it: `hp_after_respawn` decides whether a deadline applies, and
+## `record_simulated_hp` decides whether to park one or clear it. While they disagreed by an
+## epsilon the result was a body that could never come back — the writer cleared the deadline
+## an epsilon-off value would have parked, and the reader then handed that sliver out as
+## health forever.
+##
+## The `-1.0` "no number here" sentinel is NOT down (`hp >= 0.0`): this host never modelled
+## that body, and a stale deadline beside the sentinel must not be able to invent health for
+## it (see `hp_after_respawn`).
+static func is_downed(hp: float) -> bool:
+	return hp >= 0.0 and hp <= HP_EPSILON
+
+## Phase 39 — pure: the HP a body has, given the deadline its respawn was parked on.
+##
+## The mirror image of `simulated_hp_after_hit`: that rule is the only thing that can
+## take a body DOWN, and this is the only thing that can bring it back. Before it
+## existed a host-simulated peer's HP was a subtract-only counter — `clampf(…, 0.0,
+## max_hp)` cannot heal — so a peer a creature downed froze at zero for the rest of the
+## session and across every restart, and the client handed that zero ended up `_alive ==
+## false` with no countdown ever started (`PlayerSlice.set_hp` had no respawn half).
+##
+## Three cases, in this order:
+##   • a body that is not DOWN (see `is_downed`) — real health, or the -1.0 "no number
+##     here" sentinel — is returned unchanged. A deadline must not be able to invent health
+##     for a body this process never modelled (a stale deadline beside the sentinel would
+##     otherwise read as a full bar for a peer nothing here has ever hurt), nor for one that
+##     is standing at 37;
+##   • a downed body with no deadline (`deadline <= 0`) reads as the canonical ZERO, not as
+##     the raw stored number: nothing is parked to bring it back, so it stays down. The zero
+##     is returned rather than `hp` so a remainder left by float arithmetic cannot leak out
+##     as health — one reading for "down", whichever way the number got there;
+##   • a deadline still in the future reads as ZERO (the body is down, and waits), and one
+##     that has passed reads as `max_hp` (the body is up again). The deadline's own instant
+##     counts as passed.
+##
+## `now` is an argument (not a clock read) for the same reason `live_cooldowns` takes
+## one: the rule is then testable without waiting five seconds. Static and pure, so it
+## is asserted alone, beside `simulated_hp_after_hit`.
+static func hp_after_respawn(hp: float, deadline: float, now: float = -1.0, max_hp: float = PlayerRules.MAX_HP) -> float:
+	if not is_downed(hp):
+		return hp
+	if deadline <= 0.0:
+		return 0.0
+	var at: float = Time.get_unix_time_from_system() if now < 0.0 else now
+	return max_hp if at >= deadline else 0.0
+
+## The resolved HP of a record — the ONE place the deadline is applied to a stored
+## value, so the live reader (`get_hp`) and the saved copy (`get_player_data`) cannot
+## answer differently. Phase 38's lesson was a rule that ran on one reader being a
+## reader-dependent rule; this keeps the resolution in one expression rather than two.
+func _resolved_hp(rec: Dictionary) -> float:
+	return hp_after_respawn(
+		float(rec.get("hp", -1.0)),
+		float(rec.get("respawn_deadline", 0.0)),
+		-1.0,
+		PlayerRules.MAX_HP
+	)
 
 ## Phase 38 — pure: a peer's host-simulated HP after a resolved hit.
 ##
@@ -430,6 +531,16 @@ static func simulated_hp_after_hit(current_hp: float, damage: float, max_hp: flo
 ## an empty id, for a player this host holds no record for (fail closed rather than
 ## mint a record for a stranger), and on a non-authoritative machine (a client holds no
 ## records at all).
+##
+## Phase 39 — a resolved hit that takes the number to ZERO parks the peer's respawn on
+## the record as a wall-clock deadline (`respawn_deadline`), and a hit that leaves it
+## positive CLEARS that key. The deadline is the only thing that can bring a
+## host-simulated body back (`hp_after_respawn`), so it has to be written where the
+## number that needs it is written, and dropped the moment the body is up again — the
+## prune `live_cooldowns` performs on the cooldown table, applied to the one deadline a
+## body carries. A LIVE deadline is never replaced: a creature striking a peer that is
+## already down would otherwise push its respawn further away on every round and the
+## body would never come back, which is the soft-lock this phase exists to close.
 func record_simulated_hp(player_id: String, hp: float) -> void:
 	if not is_authoritative:
 		return
@@ -439,6 +550,20 @@ func record_simulated_hp(player_id: String, hp: float) -> void:
 	if rec.is_empty():
 		return
 	rec["hp"] = hp
+	if not is_downed(hp):
+		# Cleared to the "no respawn pending" value rather than erased, so the record's
+		# shape does not depend on its history: a reader can tell "no deadline" from
+		# "absent key" without a sentinel of its own.
+		#
+		# One predicate with the reader (`hp_after_respawn`), not a second `> 0.0` test:
+		# a hit that lands a fraction short of zero leaves a remainder here, and while
+		# this half said "up" and the reader said "down" the body could neither come back
+		# nor be counted as gone. Review pass.
+		rec["respawn_deadline"] = 0.0
+		return
+	var now := Time.get_unix_time_from_system()
+	if float(rec.get("respawn_deadline", 0.0)) <= now:
+		rec["respawn_deadline"] = now + RESPAWN_DELAY
 
 func record_appearance(player_id: String, recipe: Dictionary) -> void:
 	var rec := ensure_player(player_id)
@@ -619,12 +744,21 @@ func evict_player(player_id: String) -> bool:
 ## One player's full record: identity + state + inventory contents with
 ## per-instance durability. The inventory's durable-item array IS its stack
 ## (Phase 25), so durability round-trips per player with no shared state.
+##
+## Phase 39 — the `hp` in here is RESOLVED (`hp_after_respawn`), not the raw stored
+## value, for the same reason `get_hp` resolves: this is the copy the handshake
+## snapshot, the disconnect save and the autosave all go through, so a downed peer whose
+## deadline has passed has to read back ALIVE here too. Resolving on the live reader
+## alone left the reconnect — which reads this copy — replaying the zero, and the
+## reconnecting client then sat dead with no countdown (see the phase's deliverable 1).
+## The deadline travels with it so the fact survives the round trip.
 func get_player_data(player_id: String) -> Dictionary:
 	var rec := get_record(player_id)
 	var data := {
 		"player_id": player_id,
 		"position":  rec.get("position", [0.0, 0.0, 0.0]),
-		"hp":        float(rec.get("hp", -1.0)),
+		"hp":        _resolved_hp(rec),
+		"respawn_deadline": float(rec.get("respawn_deadline", 0.0)),
 		"appearance": rec.get("appearance", {}),
 		"technology": rec.get("technology", {}),
 		"flags":      rec.get("flags", {}),
@@ -647,7 +781,25 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 		return
 	var rec := ensure_player(player_id)
 	rec["position"] = data.get("position", [0.0, 0.0, 0.0])
-	rec["hp"] = float(data.get("hp", -1.0))
+	var restored_hp := float(data.get("hp", -1.0))
+	rec["hp"] = restored_hp
+	# Phase 39 — the respawn deadline rides the same record. The saved `hp` above is
+	# ALREADY resolved (see get_player_data), so a restored downed peer arrives here as
+	# either the zero it is waiting out or the full health its deadline already bought;
+	# the deadline is kept so the wait survives a restart that lands mid-countdown. A
+	# payload from before this phase carries no key and restores to 0.0 — no deadline,
+	# which is the pre-Phase-39 behaviour for a body with no pending respawn.
+	#
+	# Kept only while the body it belongs to is DOWN — the same `is_downed` the two readers
+	# use. Because the saved `hp` is resolved, a body whose deadline has already been spent
+	# arrives here ALIVE carrying that spent deadline, and keeping it would leave a standing
+	# body wearing a piece of dead history for the rest of the world's life: harmless to
+	# read (`hp_after_respawn` returns a standing body unchanged) and never true again, which
+	# is exactly the distinction `record_simulated_hp` draws when it clears the key the
+	# moment a hit leaves the body up. One rule for "the body is up", so the key cannot mean
+	# two things depending on which door the record came through. **Review pass.**
+	var deadline := float(data.get("respawn_deadline", 0.0))
+	rec["respawn_deadline"] = deadline if is_downed(restored_hp) else 0.0
 	rec["appearance"] = data.get("appearance", {})
 	rec["technology"] = data.get("technology", {})
 	# Phase 35: taming flags and companion bindings are per-player progression, so

@@ -29,6 +29,7 @@ const ProposalSlice    := preload("res://src/governance/proposal_slice.gd")
 const UiSlice          := preload("res://src/ui/ui_slice.gd")
 const Minimap          := preload("res://src/ui/minimap.gd")
 const TestSuite        := preload("res://src/tests/test_suite.gd")
+const NetHarness       := preload("res://src/tests/net_harness.gd")
 
 var _terrain:     TerrainSlice
 var _voxel:       VoxelSlice
@@ -63,6 +64,10 @@ var _is_client: bool = false
 var _is_server: bool = false
 var _host_address: String = "127.0.0.1"
 var _snapshot_pending: bool = false
+
+## Phase 39 — which side of the two-client network harness this boot drives ("" for a
+## normal boot). Set by `_parse_network_args`; see `_run_net_harness`.
+var _net_harness_role: String = ""
 
 ## Phase 29 — the AOI grid cell each connected peer last reported, so a client
 ## moving into a new region triggers a re-scoped snapshot (host side only).
@@ -109,7 +114,11 @@ func _ready() -> void:
 	# emissions from leaking into production state — previously the test
 	# creature_died calls were marking every freshly spawned creature dead and
 	# hiding its body on world boot.
-	if should_run_tests(OS.get_cmdline_user_args(), OS.is_debug_build()):
+	#
+	# Phase 39 — a harness boot skips the suite: the two are separate CI jobs, and the
+	# suite's own GameBus emissions would arrive at the harness's slices before the
+	# scenario started.
+	if _net_harness_role == "" and should_run_tests(OS.get_cmdline_user_args(), OS.is_debug_build()):
 		_run_tests()
 
 	# Phase 33 — intercept the quit so records are written first.
@@ -359,7 +368,29 @@ func _ready() -> void:
 	_check_game_data()
 
 	# Boot terrain — creatures are spawned by CreatureSlice._ready() via GameData.
+	# Phase 39 — the two-client network harness boots in place of the world boot: it is
+	# an `await`-driven scenario over a real socket, so it drives the role's OWN boot
+	# half itself (see `_run_net_harness`) and nothing after it in `_ready()` may run.
+	if _net_harness_role != "":
+		await _run_net_harness(_net_harness_role)
+		return
+
 	_boot_world()
+
+## Phase 39 — run the two-client network harness and let it end this process.
+##
+## Placed here, after every slice is built and wired and BEFORE the role boot, for the
+## same reason the suite is: the slices have to exist for the scenario to drive them, and
+## the boot half the role needs is the one the harness itself invokes (`_boot_server()` /
+## `join()`) so what runs is the shipped boot path, not a harness-only arrangement. The
+## scenario quits the process when it finishes, which is what makes the driver's "did
+## this side exit cleanly" check mean something.
+func _run_net_harness(role: String) -> void:
+	var harness := NetHarness.new()
+	harness.name = "NetHarness"
+	add_child(harness)
+	await harness.run(self, role)
+	harness.queue_free()
 
 # ---------------------------------------------------------------------------
 # Automated tests
@@ -374,6 +405,10 @@ func _run_tests() -> void:
 
 ## Phase 36 — the user arg that asks for the suite explicitly.
 const RUN_TESTS_ARG := "--run-tests"
+
+## Phase 39 — the user arg that asks for the two-client network harness, and which side
+## of it this process drives (`host` or `client`).
+const NET_HARNESS_ARG := "--net-harness"
 
 ## Phase 36 — should THIS boot run the automated suite?
 ##
@@ -394,6 +429,18 @@ const RUN_TESTS_ARG := "--run-tests"
 static func should_run_tests(args: Array, is_debug_build: bool) -> bool:
 	return RUN_TESTS_ARG in args or is_debug_build
 
+## Phase 39 — which side of the network harness this boot drives, or "" for a normal
+## boot. Static and argument-driven for the same reason `should_run_tests` is: the rule
+## is a pure predicate the suite can assert directly rather than something only a pair of
+## booted processes could show. An unrecognised or missing role is "" (a normal boot)
+## rather than a guess: the wrong side of this scenario would still boot a working game.
+static func net_harness_role(args: Array) -> String:
+	var i := args.find(NET_HARNESS_ARG)
+	if i < 0 or i + 1 >= args.size():
+		return ""
+	var role := str(args[i + 1])
+	return role if role == "host" or role == "client" else ""
+
 ## Parse `--client [addr]` from OS user args to determine network role. Defaults
 ## to host (authoritative single-player) when no args are present. A malformed
 ## address is rejected with a warning and falls back to localhost.
@@ -411,6 +458,15 @@ func _parse_network_args() -> void:
 				else:
 					push_warning("[Networking] invalid --client address '%s' — using 127.0.0.1" % addr)
 					_host_address = "127.0.0.1"
+	# Phase 39 — the harness role decides the network role too: `--net-harness host` is
+	# the dedicated server half of the pair and `--net-harness client` the joining half,
+	# so the driver names one side rather than having to keep two arguments consistent.
+	var harness_role := net_harness_role(args)
+	if harness_role == "host":
+		_is_server = true
+	elif harness_role == "client":
+		_is_client = true
+	_net_harness_role = harness_role
 
 ## Phase 33 — save-on-shutdown. `auto_accept_quit = false` turns the window
 ## manager's close request into a notification this node answers by writing the

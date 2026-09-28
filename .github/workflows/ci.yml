@@ -96,3 +96,38 @@ jobs:
 
       - name: Check generated files for fabric drift
         run: npm run check-drift
+
+  net-harness:
+    name: Two-client network harness (loopback ENet)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # Same submodule note as godot-tests: the public repo runs on the
+        # committed placeholders.
+
+      - name: Download Godot 4.7
+        run: |
+          mkdir -p /tmp/godot
+          curl -fsSL -o /tmp/godot/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          unzip -o /tmp/godot/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
+
+      - name: Run the two-client harness
+        env:
+          # The driver takes the binary from $GODOT (it is not on PATH) and writes both
+          # processes' logs under $NET_HARNESS_LOGDIR so the artifact step below can
+          # collect them when a step fails.
+          GODOT: /tmp/godot/Godot_v4.7-stable_linux.x86_64
+          NET_HARNESS_LOGDIR: ${{ runner.temp }}/net-harness
+        run: tools/net_harness.sh
+
+      - name: Upload harness logs
+        # Diagnostics only: the driver has already failed the job by this point, and the
+        # two processes' logs are what says WHICH step broke.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: net-harness-logs
+          path: ${{ runner.temp }}/net-harness
+          if-no-files-found: ignore

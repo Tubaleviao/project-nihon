@@ -38,7 +38,14 @@ const TERRAIN_COLLISION_MASK := 2  # layer 2 (bit 1) — terrain, for mine/build
 const CHOP_RANGE := 60.0      # metres — how far the player can reach a tree trunk
 const TREE_COLLISION_MASK := 8 # layer 4 (bit 3) — tree trunks, for the chop ray
 
-const MAX_HP := 100.0
+## The body's shared rules live in a neutral module (Phase 39 review pass): the
+## persistence layer has to agree with this slice about the health ceiling and the respawn
+## delay — it simulates a REMOTE peer's body — and reading them off this slice made
+## persistence preload presentation. Aliased here so every existing reader
+## (`_hp`, the HUD, the suite, the harness) keeps the same name.
+const PlayerRules := preload("res://src/core/player_rules.gd")
+
+const MAX_HP := PlayerRules.MAX_HP
 
 const MouseIconScript := preload("res://src/ui/mouse_icon.gd")
 
@@ -72,7 +79,7 @@ var _aimed_tree_species: String = ""
 var _hp_label: Label = null
 
 ## Respawn countdown in seconds; -1 when not respawning.
-const RESPAWN_DELAY := 5.0
+const RESPAWN_DELAY := PlayerRules.RESPAWN_DELAY
 var _respawn_timer: float = -1.0
 
 ## Remote player ghosts (Phase 18). Keyed by peer_id → { "mi": int, "from":
@@ -223,9 +230,47 @@ func get_hp() -> float:
 ## Restore HP from a save (Phase 33). Clamped to [0, MAX_HP]; the position half
 ## of a restore is `spawn_at()`. Restoring HP is what makes the boot snapshot's
 ## `player.hp` field actually read back instead of written and forgotten.
+##
+## Phase 39 — this is the ONE door a body can be handed a zero through (a join
+## snapshot, a forwarded hit, a save restore), so it is where the respawn countdown
+## starts: a zero applied to a body with NO countdown running sets `_respawn_timer`.
+## Without it a body could sit `_alive == false` with `_respawn_timer == -1.0` — dead,
+## and `_physics_process` ticking a timer that was never started, so it never came back.
+## That is exactly the soft-lock a peer downed by a creature then handed its own zero on
+## reconnect ended up in; it also covered the single-player case for free, because
+## `game_root._restore_local_player` and the load snapshot hand their saved zero to this
+## same method.
+##
+## It must START a countdown, not restart one: the guard below is what stops a REPEATED
+## zero (a host re-forwarding a hit at a body already at zero, a snapshot re-delivered)
+## from pushing the respawn further away on every application, which would leave the
+## body dead forever. `_die()` remains the other way in, and it always sets the timer.
+##
+## Review pass (Phase 39) — two more rules, both about what this door owes the callers
+## that were already using it:
+##
+##   • a body taken from ALIVE to zero here is announced dead THROUGH `_die()`. A zero
+##     applied through this method used to skip the death door: the body was dead on this
+##     machine with no `player_died` behind it, yet the countdown this method started
+##     still announced `player_respawned` when it ran out — a respawn with no death is
+##     half a pair, and every listener that pairs them sees the mistake. A zero applied to
+##     a body that is ALREADY down announces nothing: that death is not this call's news,
+##     and a re-delivered snapshot must not re-announce it;
+##   • a value that leaves the body UP clears any countdown parked on it.
+##     `_physics_process` ticks the timer only while `_alive` is false, so a leftover
+##     countdown would sit frozen on a living body and then be REUSED by the next zero
+##     instead of a fresh one — the body would come back early, on the seconds left over
+##     from a death it had already recovered from.
 func set_hp(hp: float) -> void:
 	_hp = clampf(hp, 0.0, MAX_HP)
-	_alive = _hp > 0.0
+	if _hp <= 0.0:
+		if _alive:
+			_die()   # the death door: arms the countdown AND emits player_died
+		elif _respawn_timer < 0.0:
+			_respawn_timer = RESPAWN_DELAY
+	else:
+		_alive = true
+		_respawn_timer = -1.0
 	_update_hp_bar()
 	_broadcast_state()
 
