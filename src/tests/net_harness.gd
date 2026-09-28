@@ -424,9 +424,14 @@ func _step_rate_bucket() -> void:
 		_min_tokens = 1.0e9
 		var ok: bool = await _await_until(func(): return _steady_check(t), STEP_TIMEOUT_SECS)
 		var throttled: bool = _min_tokens < _root._networking.RATE_BUCKET_CAPACITY
+		# The live token count is reported alongside the minimum: the minimum says the burst
+		# emptied the bucket, and this one says whether the limiter was still the reason the
+		# steady stream was missing when the deadline ran out (see the client half).
+		var live_tokens: int = int(float(
+			_root._networking._rate_buckets.get(_peer_id(), {}).get("tokens", -1.0)))
 		_report("rate_bucket", verdict(ok and throttled, true),
-			t if (ok and throttled) else "burst_not_throttled_or_steady_lost-steady%d-min%d" % [
-				_chop_count(t), int(_min_tokens)])
+			t if (ok and throttled) else "burst_not_throttled_or_steady_lost-steady%d-min%d-now%d" % [
+				_chop_count(t), int(_min_tokens), live_tokens])
 		return
 	_report_position()
 	_await_settle(1.0)

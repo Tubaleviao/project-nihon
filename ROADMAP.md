@@ -2690,7 +2690,20 @@ end to end.
   hit, or a save restore — can never sit `_alive == false` with no timer running. That
   incidentally closes the same soft-lock in single-player: `_restore_local_player` hands a
   restored record's zero to the same door (`game_root.gd:1246`), so the fix covers the
-  local body too rather than only the peer it was found on.
+  local body too rather than only the peer it was found on. **Review pass — two more rules
+  on that same door, both about what it owes the callers it already had. (a) A zero applied
+  to a LIVE body is announced THROUGH `_die()`, so `player_died` fires: this method used to
+  apply the number and start the countdown without ever reaching the death door, so the
+  body was dead here with no death announced — while that very countdown announced
+  `player_respawned` when it ran out, and `game_root` turns `player_died` into the
+  character-death consequence. A respawn with no death behind it is half a pair. A zero
+  applied to a body ALREADY down announces nothing, so a re-delivered snapshot cannot
+  re-announce a death that already happened. (b) A value that leaves the body UP clears the
+  countdown parked on it: `_physics_process` ticks the timer only while `_alive` is false,
+  so a leftover sat frozen on a living body and was then REUSED by the next zero instead of
+  a fresh one — the body came back early, on the seconds left over from the death it had
+  already recovered from. Both are registered as
+  `identity: set_hp announces and clears`.**
 - `src/tests/net_harness.gd` — the `await`-driven harness runner: a scenario step table
   and a pump loop that yields real frames, so packets can leave and arrive. The existing
   suite cannot host this (see the constraint note below).
@@ -2727,16 +2740,27 @@ end to end.
   B's client inventory and the host's own bucket untouched (`inventory_owner`; the host's
   own pack is compared before/after, because a dedicated server boots with its saved
   record restored and is not empty).
-- [x] A chunked snapshot completes across real packets (reassembly working with the
-  transport's own ordering, not the test's) (`snapshot_complete` — the world snapshot is
-  far larger than `SNAPSHOT_CHUNK_SIZE`, so it genuinely arrives as several reliable
-  packets). A client that loses its host clears its buffer: asserted on its own
-  `disconnect_all()` teardown in `reconnect_alive`; the
-  `NetworkingSlice._on_server_disconnected` path is NOT exercised on the wire (see the
-  known simplifications).
+- [x] A chunked snapshot completes across real packets (`snapshot_complete` — the world
+  snapshot is far larger than `SNAPSHOT_CHUNK_SIZE`, so it genuinely arrives as several
+  reliable packets, and the client reassembles them into one world). A client that loses
+  its host clears its buffer: asserted on its own `disconnect_all()` teardown in
+  `reconnect_alive`; the `NetworkingSlice._on_server_disconnected` path is NOT exercised
+  on the wire (see the known simplifications). **What this proves, exactly (review pass):
+  that the reassembler works over the TRANSPORT'S delivery on a real socket — several
+  chunked packets, one world. It does NOT prove the reassembler tolerates a chunk arriving
+  out of order, because a reliable ordered channel cannot deliver one: the ordering this
+  step relies on is the transport's, so the step would pass with no ordering logic in the
+  reassembler at all. Reordering and loss stay deferred with the emulator (see the note on
+  it) rather than being claimed here.**
 - [x] A combat round routed at a peer arrives at that peer's own client, and the host's own
-  simulated number for that peer survives a real reconnect unchanged (`peer_damage_floor`
-  and `reconnect_alive`).
+  simulated number for that peer survives a real reconnect AS THE HOST'S OWN
+  (`peer_damage_floor`, and the same peer in `reconnect_alive`). **Review pass — this
+  criterion and the next one are the two halves of one event and used to read as a
+  contradiction: "survives unchanged" is about AUTHORITY (nothing the peer declares
+  overwrites the host's number, and the floor the host recorded is still the value the
+  record holds), not about the value being frozen at zero — the resolution of a deadline
+  that has passed is the next criterion's claim, and both are asserted on the same peer in
+  the same step.**
 - [x] A peer killed before it disconnects reconnects alive and controllable: the host's
   respawn deadline resolves on the read that follows the reconnect — and resolves on BOTH
   readers, since the handshake snapshot reads the saved copy (`get_player_data()`) rather
@@ -2749,17 +2773,37 @@ end to end.
   alone, beside `simulated_hp_after_hit` and `live_cooldowns`; and the declared value still
   has no path into a record — the respawn deadline is not a second door for it. Each new
   rule is RED-proved first (`identity: the respawn rule is pure`,
-  `identity: a downed peer comes back`, `identity: set_hp starts the respawn countdown`).
+  `identity: a downed peer comes back`, `identity: set_hp starts the respawn countdown`,
+  and — review pass — `identity: set_hp announces and clears` for the two rules that door
+  gained: a live body taken to zero is announced dead, and a value that leaves it up clears
+  the countdown rather than leaving it parked).
 - [x] A disconnect evicts transport state end to end: the peer's record is evicted, its
   taming mirrors and snapshot buffer are forgotten, and a reconnect re-presents the join
   intent and is re-answered (`disconnect_evicts` — the reconnected peer carries the SAME
   player id, and no dead peer id is still bound).
-- [x] The harness runs green on both the host-process and the client-process side and is
-  wired into CI, while the existing suite stays synchronous and unchanged in cost
-  (`tools/net_harness.sh`: `10/10 steps agreed across both peers`).
+- [~] The harness runs on both the host-process and the client-process side and is wired
+  into CI, while the existing suite stays synchronous and unchanged in cost
+  (`tools/net_harness.sh`). **Review pass — NOT independently reproduced. The driver was
+  green when this phase was written (`10/10 steps agreed across both peers`, quoted here
+  before), and this pass could not reproduce it on a second machine: FOUR consecutive runs
+  fail on `rate_bucket` with the identical detail
+  (`burst_not_throttled_or_steady_lost-steady1-min0-now119`). Read that detail: the tree
+  `packet_cap` already consumed is counted ONCE (so `packet_cap`'s consumption is what the
+  host saw), the burst DID empty the bucket (`min0`), and at the deadline the bucket was
+  FULL again (`now119` of 120) — so the limiter is not what starved the stream, which is
+  the failure the step's detail token names. The host logged no out-of-reach refusal and no
+  chop-channel seq gap after the burst, so the step's post-burst chops did not reach
+  `_route_c2h` at all: the money is on the client half of the step never getting its
+  intents onto the wire, or losing them behind the 200-packet burst. Widening the steady
+  window to 24 s (12 chops) did not change the outcome, which rules the timing out as the
+  whole story. This one is OPEN: until it is diagnosed, the harness is not evidence for
+  anything on a machine that reproduces it, and the phase should not be read as Done on the
+  strength of this criterion.**
 - [x] The suite remains green on both boot paths (`Results: N/N passed (0 failed)`,
   `[Server] listening on port 7777, max_clients 64`), with the new assertion count
-  quoted.
+  quoted. **Review pass: `Results: 7508/7508 passed (0 failed)` on both boots — the count
+  moved from 7499 with the two rules the review pass added to `set_hp()` (five assertions
+  RED-proved first, the run before the fix reading `5 failed`).**
 
 **Implementation notes:**
 - **The scenario targets come from the ORIGIN CHUNK, because the two processes' tree
@@ -2812,12 +2856,17 @@ end to end.
   and the driver asserts the host's and the client's lines agree. A text channel is what
   lets the same scenario run against two processes, and it is the only channel that
   survives a role flip.
-- **The Phase 19 network emulator is already here, and this is where it earns its keep.**
-  `NetworkingSlice` carries `emulate_network`, `emulator_loss_rate`,
-  `emulator_jitter_ms` and `emulator_reorder`. The scenario should run at least twice —
-  once clean, once through the emulator — so the conformance story covers reordering and
-  loss over a genuine socket, which is as close as a loopback harness gets to the
-  still-deferred WAN validation.
+- **The Phase 19 network emulator is already here, and this is NOT where it earned its
+  keep.** `NetworkingSlice` carries `emulate_network`, `emulator_loss_rate`,
+  `emulator_jitter_ms` and `emulator_reorder`, and this note used to say the scenario should
+  run at least twice — once clean, once through the emulator. **Review pass: it does not,
+  and a second pass through that emulator would not have proven what the note promised. The
+  emulator drops and reorders packets BEFORE `_send_raw`, inside this process, so nothing it
+  does is socket loss: the packet never leaves the machine. A pass through it would test the
+  dedup and reassembly rules against an IN-PROCESS queue, which the routing-level suite
+  already covers cheaply. Reordering and loss over a real socket stay deferred with the WAN
+  validation (Phase 19), and the criterion above says so instead of borrowing confidence
+  from this.**
 - **Determinism beats coverage.** A wire test that flaps is worse than no wire test: every
   step asserts on convergence (a predicate plus a bounded number of ticks) rather than on
   a fixed frame index, and every step carries a deadline that fails loudly instead of

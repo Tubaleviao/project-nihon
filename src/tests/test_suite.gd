@@ -407,6 +407,7 @@ func run() -> void:
 	_run_test("identity: the respawn rule is pure",               _test_hp_after_respawn_is_pure)
 	_run_test("identity: a downed peer comes back",               _test_host_simulated_hp_respawns)
 	_run_test("identity: set_hp starts the respawn countdown",    _test_player_set_hp_starts_respawn)
+	_run_test("identity: set_hp announces and clears",           _test_player_set_hp_announces_and_clears)
 	_run_test("net: harness step table is the driver contract",   _test_net_harness_step_table)
 	_run_test("net: harness log line round-trips",                _test_net_harness_line_round_trip)
 	_run_test("net: harness verdict treats refusal as a pass",    _test_net_harness_verdict)
@@ -8054,6 +8055,49 @@ func _test_player_set_hp_starts_respawn() -> void:
 	p._respawn_timer = 2.0
 	p.set_hp(0.0)
 	assert_eq(p._respawn_timer, 2.0, "a repeated zero does not push the respawn away")
+	p.free()
+
+## Phase 39 review pass — the two rules `set_hp()` owes the callers it already had.
+##
+## (a) A zero that takes a LIVE body down has to be announced THROUGH the death door.
+## `set_hp` applied the number and started the countdown but never called `_die()`, so the
+## body was dead on this machine with no `player_died` behind it — while that same
+## countdown announced `player_respawned` when it ran out. A respawn with no death is half
+## a pair, and the pairing is what listeners see (game_root turns `player_died` into the
+## character-death consequence). A zero applied to a body ALREADY down is not news and must
+## not re-announce it.
+##
+## (b) A value that leaves the body UP has to clear the countdown parked on it.
+## `_physics_process` ticks the timer only while `_alive` is false, so on a living body a
+## leftover countdown sat frozen and was then REUSED by the next zero instead of a fresh
+## one: the body came back early, on the seconds left over from the death it had already
+## recovered from.
+func _test_player_set_hp_announces_and_clears() -> void:
+	var died: Array = []
+	GameBus.player_died.connect(func(_pos, _killer): died.append(1))
+	var p := PlayerSlice.new()
+	p.render_visuals = false
+	add_child(p)
+
+	p.set_hp(0.0)
+	assert_false(p._alive, "a zero takes a live body down")
+	assert_eq(died.size(), 1, "and announces the death it caused — the missing half")
+	assert_eq(p._respawn_timer, PlayerSlice.RESPAWN_DELAY, "with a countdown to come back on")
+
+	p.set_hp(0.0)
+	assert_eq(died.size(), 1, "a repeated zero does not re-announce the death")
+	assert_eq(p._respawn_timer, PlayerSlice.RESPAWN_DELAY, "and does not restart the countdown")
+
+	# A stale countdown left on a living body is the leftover this rule exists to drop.
+	p._respawn_timer = 2.0
+	p.set_hp(50.0)
+	assert_true(p._alive, "applying health brings the body up")
+	assert_eq(p._respawn_timer, -1.0, "and clears the countdown parked on it")
+
+	p.set_hp(0.0)
+	assert_eq(p._respawn_timer, PlayerSlice.RESPAWN_DELAY,
+		"so the next death gets a FULL countdown rather than the leftover seconds")
+	assert_eq(died.size(), 2, "and is announced like any other death")
 	p.free()
 
 # ---------------------------------------------------------------------------

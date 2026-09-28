@@ -238,11 +238,32 @@ func get_hp() -> float:
 ## zero (a host re-forwarding a hit at a body already at zero, a snapshot re-delivered)
 ## from pushing the respawn further away on every application, which would leave the
 ## body dead forever. `_die()` remains the other way in, and it always sets the timer.
+##
+## Review pass (Phase 39) — two more rules, both about what this door owes the callers
+## that were already using it:
+##
+##   • a body taken from ALIVE to zero here is announced dead THROUGH `_die()`. A zero
+##     applied through this method used to skip the death door: the body was dead on this
+##     machine with no `player_died` behind it, yet the countdown this method started
+##     still announced `player_respawned` when it ran out — a respawn with no death is
+##     half a pair, and every listener that pairs them sees the mistake. A zero applied to
+##     a body that is ALREADY down announces nothing: that death is not this call's news,
+##     and a re-delivered snapshot must not re-announce it;
+##   • a value that leaves the body UP clears any countdown parked on it.
+##     `_physics_process` ticks the timer only while `_alive` is false, so a leftover
+##     countdown would sit frozen on a living body and then be REUSED by the next zero
+##     instead of a fresh one — the body would come back early, on the seconds left over
+##     from a death it had already recovered from.
 func set_hp(hp: float) -> void:
 	_hp = clampf(hp, 0.0, MAX_HP)
-	_alive = _hp > 0.0
-	if not _alive and _respawn_timer < 0.0:
-		_respawn_timer = RESPAWN_DELAY
+	if _hp <= 0.0:
+		if _alive:
+			_die()   # the death door: arms the countdown AND emits player_died
+		elif _respawn_timer < 0.0:
+			_respawn_timer = RESPAWN_DELAY
+	else:
+		_alive = true
+		_respawn_timer = -1.0
 	_update_hp_bar()
 	_broadcast_state()
 
