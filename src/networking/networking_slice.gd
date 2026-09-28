@@ -371,8 +371,11 @@ func party_id_for(peer_id: int) -> String:
 	return pid
 
 ## Host → one client: send the initial world snapshot, split into fixed-size
-## chunks so a large world (many heightmaps + creatures + edits) never exceeds
-## a single reliable packet. The client reassembles chunks by snapshot_id.
+## chunks so a large world (the chunk-edit manifest + creatures + the peer's own
+## record) never exceeds a single reliable packet. Since Phase 41 the terrain
+## itself is NOT in the payload — the snapshot carries the world `seed` and the
+## client regenerates the ground from it. The client reassembles chunks by
+## snapshot_id.
 func send_snapshot(peer_id: int, data: Dictionary) -> void:
 	if not _role == Role.HOST:
 		push_warning("NetworkingSlice: send_snapshot called on non-host — dropped")

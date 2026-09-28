@@ -23,6 +23,7 @@ extends Node
 ##   get_edits() / get_edit_materials()   -> Dictionary
 ##   apply_edits(edits, materials)        -> void
 ##   legacy_edit_ops(height, base_top, materials) -> Array   (static, pure)
+##   runs_topping_at(runs, y)             -> Dictionary       (static, pure)
 ##   set_place_material / get_place_material / cycle_place_material
 ##   material_for_biome(biome, world_xz) -> String
 ##   vein_deposits(chunk_pos, heightmap) -> Array   (rare-vein raised deposits)
@@ -364,10 +365,11 @@ func get_heightmaps() -> Dictionary:
 ## quantity, position }.
 ##
 ## Phase 41 — the carve is the SPAN the ray landed on, not "lower the column by a
-## step": a top-face hit takes the topmost run's last step, any other hit takes
-## the block the ray hit. That is what lets a tunnel ROOF be mined without taking
-## the tunnel floor with it, and it is why mining is refused at BEDROCK_DEPTH —
-## there is nothing below the floor to yield.
+## step": a top-face hit takes the last step of the run whose top the ray landed
+## on (`runs_topping_at` — a tunnel floor is aimable even with the roof above it),
+## any other hit takes the block the ray hit. That is what lets a tunnel ROOF be
+## mined without taking the tunnel floor with it, and it is why mining is refused
+## at BEDROCK_DEPTH — there is nothing below the floor to yield.
 func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP) -> Dictionary:
 	# Resolve the span BEFORE spending tool durability, so a blocked mine never
 	# consumes the held pick (the repo's standing atomic-refusal rule).
@@ -709,6 +711,23 @@ static func remove_span(runs: Array, bottom: float, top: float) -> Array:
 			out.append({ "bottom": top, "top": rtop, "material": material })
 	return out
 
+## The run whose TOP is the plane `y` (within half a step), or {} when no run tops
+## there. Phase 41 — a top-face hit names the run it LANDED on, not the column's
+## topmost one: a tunnel FLOOR keeps an exposed top face with the roof above it, so
+## "the topmost run" answers with the roof and carves (or stacks on) the wrong span
+## from a click on the floor. Falls back to the caller's reading when the y is not
+## on any run boundary (the boot demo passes the spawn plain's height, not the
+## target tile's), which is what keeps a misaligned y behaving as it did before.
+## Pure, so the resolution rule is testable on its own.
+static func runs_topping_at(runs: Array, y: float) -> Dictionary:
+	var best: Dictionary = {}
+	for run in runs:
+		if absf(float(run["top"]) - y) > STEP_HEIGHT * 0.5:
+			continue
+		if best.is_empty() or float(run["top"]) > float(best["top"]):
+			best = run
+	return best
+
 ## True when any run covers the ordinate `y` (half-open [bottom, top]). The rule
 ## the mesher asks before emitting a top or an underside face.
 static func runs_cover_y(runs: Array, y: float) -> bool:
@@ -808,12 +827,23 @@ func _column_runs(heightmap: Array, chunk_pos: Vector2i, tx: int, tz: int) -> Ar
 		base.append({ "bottom": BEDROCK_DEPTH, "top": top, "material": "" })
 	return apply_run_ops(base, _edits.get(_tile_key(Vector2i(gx, gz)), []))
 
-## A neighbour tile's runs, or `null` when they are UNKNOWN — across a chunk edge
-## whose chunk is not built. Unknown means "no wall is invented": the outer edge of
-## the streamed window is an open cross-section, and at a loaded chunk seam the
-## side carrying the material emits the facing wall itself (its own subtraction
-## sees the pit). Pure geometry, no node state.
-func _neighbour_runs(heightmap: Array, chunk_pos: Vector2i, tx: int, tz: int) -> Variant:
+## A neighbour tile's runs, or an EMPTY list when they are UNKNOWN — a tile across a
+## chunk edge whose chunk is not built.
+##
+## An unknown neighbour reads as "nothing is there", so the column that HAS the
+## material emits the whole facing wall. That is what keeps the rendered shell
+## independent of the ORDER the streamed chunks were built in. It used to answer
+## `null` and emit no wall at all, which is not a guarantee a streamed world can
+## make: chunks are built nearest-first, so the neighbour that is *waited for* is
+## often the one built LATER — and nothing rebuilds a chunk when its neighbour
+## arrives, so a chunk built before its higher neighbour left that seam face
+## unemitted for good (a see-through slot at every such seam and around the
+## streamed window). Assuming the unknown side is empty closes it whatever the
+## order, and is duplicate-free either way: whichever side is built second
+## subtracts the first side's runs and finds nothing left to emit, so each of the
+## pair of facing walls is emitted exactly once — and a wall buried inside ground
+## both sides fill is invisible. Pure geometry, no node state.
+func _neighbour_runs(heightmap: Array, chunk_pos: Vector2i, tx: int, tz: int) -> Array:
 	if tx >= 0 and tx < CHUNK_SIZE and tz >= 0 and tz < CHUNK_SIZE:
 		return _column_runs(heightmap, chunk_pos, tx, tz)
 	var gx := chunk_pos.x * CHUNK_SIZE + tx
@@ -821,7 +851,7 @@ func _neighbour_runs(heightmap: Array, chunk_pos: Vector2i, tx: int, tz: int) ->
 	var chunk := _tile_to_chunk(Vector2i(gx, gz))
 	var ckey := _chunk_key(chunk)
 	if not _heightmaps.has(ckey):
-		return null
+		return []   # unknown neighbour: read it as empty (see above)
 	var hm: Array = _heightmaps[ckey]
 	return _column_runs(hm, chunk, gx - chunk.x * CHUNK_SIZE, gz - chunk.y * CHUNK_SIZE)
 
@@ -850,9 +880,7 @@ func _add_face(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, 
 ## the wall's two vertical edges in XZ; the wall is drawn only where this run has
 ## material the neighbour does not (see subtract_runs).
 func _add_wall_faces(st: SurfaceTool, run: Dictionary, color: Color, heightmap: Array, chunk_pos: Vector2i, ntx: int, ntz: int, e1: Vector2, e2: Vector2, normal: Vector3) -> void:
-	var neighbour: Variant = _neighbour_runs(heightmap, chunk_pos, ntx, ntz)
-	if neighbour == null:
-		return   # unknown neighbour: invent no wall (see _neighbour_runs)
+	var neighbour: Array = _neighbour_runs(heightmap, chunk_pos, ntx, ntz)
 	for seg in subtract_runs(run, neighbour):
 		var bottom := float(seg["bottom"])
 		var top := float(seg["top"])
@@ -925,16 +953,19 @@ func _resolve_edit_tile(action: String, position: Vector3, normal: Vector3) -> D
 		xz = xz - step if action == "mine" else xz + step
 	return { "tile": _world_to_tile(xz), "xz": xz }
 
-## The span a mine removes, or {} when it is refused. A top-face hit takes the
-## topmost run's last step and refuses at BEDROCK_DEPTH; any other hit takes the
-## STEP_HEIGHT block the ray landed on — preferring the block BELOW the hit plane
-## when the ray lands exactly on a step boundary, so aiming at the very top edge of
-## a wall still mines the wall instead of refusing.
+## The span a mine removes, or {} when it is refused. A top-face hit takes the last
+## step of the run whose top is the hit plane (see `runs_topping_at`) and refuses at
+## BEDROCK_DEPTH; any other hit takes the STEP_HEIGHT block the ray landed on —
+## preferring the block BELOW the hit plane when the ray lands exactly on a step
+## boundary, so aiming at the very top edge of a wall still mines the wall instead
+## of refusing.
 func _mine_span(runs: Array, world_pos: Vector3, normal: Vector3) -> Dictionary:
 	if runs.is_empty():
 		return {}
 	if normal.y > 0.5:
-		var top_run: Dictionary = runs[-1]
+		var top_run: Dictionary = runs_topping_at(runs, world_pos.y)
+		if top_run.is_empty():
+			top_run = runs[-1]   # a y on no run boundary: the column's own surface
 		var top := float(top_run["top"])
 		var bottom := top - STEP_HEIGHT
 		if bottom < BEDROCK_DEPTH:
@@ -952,14 +983,18 @@ func _mine_span(runs: Array, world_pos: Vector3, normal: Vector3) -> Dictionary:
 	return {}
 
 ## The span a place adds, or {} when it is refused (the cell is already solid, or
-## the build cap would be passed). A top-face hit stacks on the column's topmost
-## run; any other hit fills the STEP_HEIGHT cell the ray landed on, which is what
-## lets a player lay a ceiling under a tunnel roof.
+## the build cap would be passed). A top-face hit stacks on the run whose top is the
+## hit plane (see `runs_topping_at` — a click on a tunnel FLOOR stacks on the floor,
+## not on the roof above it); any other hit fills the STEP_HEIGHT cell the ray
+## landed on, which is what lets a player lay a ceiling under a tunnel roof.
 func _place_span(runs: Array, world_pos: Vector3, normal: Vector3) -> Dictionary:
 	var bottom := BEDROCK_DEPTH
 	if normal.y > 0.5:
-		if not runs.is_empty():
-			bottom = float(runs[-1]["top"])
+		var top_run: Dictionary = runs_topping_at(runs, world_pos.y)
+		if not top_run.is_empty():
+			bottom = float(top_run["top"])
+		elif not runs.is_empty():
+			bottom = float(runs[-1]["top"])   # a y on no run boundary: the column's surface
 	else:
 		bottom = maxf(floorf(world_pos.y / STEP_HEIGHT) * STEP_HEIGHT, BEDROCK_DEPTH)
 	var top := bottom + STEP_HEIGHT

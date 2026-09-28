@@ -3101,16 +3101,18 @@ bedrock depth, and migrates the edit/save format the change invalidates.
 - [x] Mining a tunnel roof does not remove the tunnel floor; mining at
   `BEDROCK_DEPTH` is refused while mining one `STEP_HEIGHT` above it succeeds
   (`voxel: a tunnel keeps its floor and its roof`, `voxel: mine at bedrock fails`).
+  An UP-face hit resolves to the run it actually landed on, so the tunnel FLOOR is
+  aimable too (review pass: `voxel: a tunnel floor top face mines the floor`).
 - [x] A save written before this phase loads with its edits intact
   (`voxel: a legacy save migrates to run edits`, which applies a version-1 manifest
   — scalar heights plus the placed-material stacks — and reads the edits back), and
   `pnpm check-drift` is clean: `✓ No drift detected (543 file(s) match manifest)`,
   no fabric change.
-- [x] The suite is green on both boot paths: `Results: 7566/7566 passed  (0 failed)`
-  on the listen host and the same `7566/7566` on `-- --server` (which also prints
-  `[Server] listening on port 7777`), and `character: avatar root Y matches voxel
-  ground` still passes, plus the under-a-ceiling case (`voxel: the support sampler
-  honours a ceiling`).
+- [x] The suite is green on both boot paths: `Results: 7579/7579 passed  (0 failed)`
+  on the listen host and the same `7579/7579` on `-- --server` (which also prints
+  `[Server] listening on port 7777`), `tools/net_harness.sh` is `10/10 steps agreed`
+  (review pass), and `character: avatar root Y matches voxel ground` still passes,
+  plus the under-a-ceiling case (`voxel: the support sampler honours a ceiling`).
 
 **Implementation notes:**
 - **The seed is the world's identity, so it is persisted, not sampled.** It
@@ -3146,12 +3148,15 @@ bedrock depth, and migrates the edit/save format the change invalidates.
   identity) and the chunk-edit manifest; `_on_world_snapshot_received` adopts the
   seed, applies the edits, then `_chunk_manager.start()` / `refresh()` around the
   position the record restored. Two consequences worth naming: the client's world
-  is now its OWN view window rather than whatever the host had loaded, and trees /
-  creatures need no placement payload at all — they are derived per chunk
-  coordinate on both sides, exactly the rule tree seeding already followed. A
-  client that did NOT stream would boot into an empty world with the right seed,
-  which is why the start call lives at the end of the snapshot handler, after the
-  player's position.
+  is now its OWN view window rather than whatever the host had loaded, and TREES
+  need no placement payload at all — `TreeSlice.spawn_for_chunk` derives them per
+  chunk coordinate on both sides, exactly the rule tree seeding already followed
+  (only a tree's chopped/standing STATE is replicated). CREATURES are NOT in that
+  category and do not need to be: `CreatureSlice.spawn_for_chunk` is
+  authoritative-only, so the client places the host's creatures from the snapshot
+  (`apply_snapshot_creatures`) as it always did. A client that did NOT stream would
+  boot into an empty world with the right seed, which is why the start call lives
+  at the end of the snapshot handler, after the player's position.
 - **The world record's `version` is a marker, not a gate.** `WORLD_FORMAT_VERSION`
   is 2 and a pre-Phase-41 record simply has no `version` key
   (`LEGACY_WORLD_FORMAT_VERSION`). The load path never branches on it: the
@@ -3167,18 +3172,48 @@ bedrock depth, and migrates the edit/save format the change invalidates.
   chunk streaming (the boot order) without guessing. This is also why
   `game_root._load_world_records` adopts the recorded seed first: the migration of
   a legacy edit is measured against the noise field the save was written on.
-- **An unknown neighbour emits no wall, which is a deliberate change.** The mesher
-  used to answer `0.0` for any tile outside the chunk and therefore built a
-  full-height wall at every chunk seam and around the whole streamed window. It
-  now returns `null` for a tile whose chunk is not built and skips those faces:
-  at a loaded seam the side that HAS the material emits the facing wall (its own
-  subtraction sees the pit), so nothing becomes see-through, and every seam loses
-  a redundant pair of walls.
+- **An unknown neighbour is read as EMPTY, so the shell does not depend on the
+  order chunks were built.** The mesher used to answer `0.0` for any tile outside
+  the chunk and therefore built a full-height wall at every seam and around the
+  streamed window; this phase first made it answer `null` (emit no wall), on the
+  argument that "the side that HAS the material emits the facing wall". That
+  argument does not survive the STREAMING order the same phase leans on
+  (`DEFAULT_LOADS_PER_FRAME := 1`, nearest-first): the neighbour a chunk waits for
+  is very often built LATER, so a chunk built before its higher neighbour emitted
+  nothing at that seam — and nothing rebuilds a chunk when its neighbour arrives,
+  which left every such seam (and the window's whole outer edge) see-through
+  (measured: 0 seam faces before the neighbour arrives, 128 after a rebuild). It
+  now reads an unknown neighbour as an empty list, so the column carrying the
+  material always emits the facing wall. That is duplicate-free whichever side is
+  built first — the second side subtracts the first and finds nothing left to
+  emit — and a wall buried inside ground both sides fill is invisible, so the
+  rendered shell is the same set of faces in either order. The streamed window's
+  outer edge is therefore a closed cross-section again, as it was before the
+  phase.
+
+- **An UP-face hit names the run it LANDED on, not the column's topmost one.** The
+  rule is one line away from the wrong answer, and the wrong answer is what the
+  phase's own new capability creates: a tunnel FLOOR keeps an exposed top face with
+  the roof above it, so "the column's topmost run" resolves a click on the floor to
+  the ROOF — mining the floor took the roof's last step and stacking on the floor
+  put the block on the roof. `VoxelSlice.runs_topping_at(runs, y)` picks the run
+  whose top is the hit plane (half a step of tolerance), falling back to the
+  topmost run for a y that sits on no run boundary (the boot demo passes the spawn
+  plain's height, not the target tile's), which is what keeps a misaligned y
+  behaving exactly as it did before. Both `_mine_span` and `_place_span` ask it.
+  Review pass: `voxel: a tunnel floor top face mines the floor`.
 
 **Known simplifications (deferred):**
 - **No greedy meshing yet.** The mesher still emits one quad per tile; Phase 42
   threads that build and merges the coplanar quads. Deferred deliberately so this
   phase's diff stays about the world's SHAPE.
+- **A version-1 world re-rolls its ground once, on the boot that loads it.** A
+  pre-Phase-41 world record has no seed — it was generated from `randi()` — so the
+  ground cannot be reproduced at all: the boot says so
+  (`world record carries no seed (format 1) — adopting the fresh seed …`) and the
+  next save pins that seed, so the shift happens once and never again. The saved
+  EDITS survive structurally (that is the migration), but a legacy edit's span is
+  measured against the new noise field, so it can land on a different hill.
 - **No 3D material model.** Runs say where solid material is; which material a
   span yields is still the per-biome table (`BIOME_MATERIALS`), which Phase 43
   replaces with a 3D ore field.

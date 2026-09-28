@@ -1061,10 +1061,12 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 				GameBus.remote_player_state.emit(int(pid), Vector3(float(pos[0]), float(pos[1]), float(pos[2])))
 	# Phase 41 — the client streams its OWN chunks now, from the seed above and
 	# around the position the snapshot just restored, because the snapshot no
-	# longer carries heightmaps to build them from. Trees and creatures are placed
-	# deterministically per chunk coordinate, so both sides land the same
-	# population without a per-entity payload — the rule tree seeding already
-	# followed (only a tree's chopped/standing STATE is replicated).
+	# longer carries heightmaps to build them from. TREES need no placement payload
+	# for it: `TreeSlice.spawn_for_chunk` derives every tree from the chunk
+	# coordinate on either side, and only a tree's chopped/standing STATE is
+	# replicated. CREATURES are the host's to place — the snapshot still carries
+	# them (`apply_snapshot_creatures`, above), because `CreatureSlice.spawn_for_chunk`
+	# refuses to run on a non-authoritative slice.
 	_chunk_manager.start()
 	_chunk_manager.refresh()
 	_snapshot_pending = false

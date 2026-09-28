@@ -219,6 +219,8 @@ func run() -> void:
 	_run_test("voxel: a tunnel keeps its floor and its roof",   _test_voxel_tunnel_runs)
 	_run_test("voxel: the support sampler honours a ceiling",   _test_voxel_support_sampler_under_ceiling)
 	_run_test("voxel: a legacy save migrates to run edits",     _test_voxel_legacy_edit_migration)
+	_run_test("voxel: a seam wall ignores the build order",      _test_voxel_seam_wall_order_independent)
+	_run_test("voxel: a tunnel floor top face mines the floor",  _test_voxel_tunnel_floor_top_face)
 	_run_test("ui: windows toggle open/close",                 _test_ui_window_toggle)
 	_run_test("ui: inventory lines reflect contents",          _test_ui_inventory_lines)
 	_run_test("ui: crafting rows gate on technology",          _test_ui_crafting_rows_tech_gate)
@@ -2957,6 +2959,85 @@ func _test_voxel_legacy_edit_migration() -> void:
 	assert_true(ops is Array, "a migrated edit is written back as typed run edits")
 	assert_eq(str(ops[0]["op"]), "remove", "naming the span it carved")
 	v.free()
+
+## Phase 41 review pass — the rendered shell must not depend on the ORDER the
+## streamed chunks were built in. ChunkManager streams one chunk per frame,
+## nearest-first, so a chunk's neighbour is very often built LATER, and nothing
+## rebuilds a chunk when its neighbour arrives: a mesher that skipped the seam face
+## while the neighbour was unknown therefore left it out for good, and every such
+## seam (and the whole streamed window) was see-through. An unknown neighbour is
+## read as EMPTY instead, so the column carrying the material always emits the
+## facing wall — and the pair of facing walls is still emitted exactly once,
+## whichever chunk was built first.
+func _test_voxel_seam_wall_order_independent() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var west: Array = []
+	west.resize(64 * 64)
+	west.fill(2.0)
+	var east: Array = []
+	east.resize(64 * 64)
+	east.fill(1.0)
+	# The west chunk is built FIRST, while its lower neighbour is unknown.
+	v.build_chunk(Vector2i(0, 0), west)
+	var before := _faces_on_plane_x(v.collision_faces(Vector2i(0, 0), west), 32.0)
+	assert_true(before > 0, "a chunk built before its lower neighbour still emits the seam wall")
+	# The lower neighbour arrives, then the same chunk is rebuilt now that its
+	# neighbour is known: the seam geometry is the same both ways.
+	v.build_chunk(Vector2i(1, 0), east)
+	v.build_chunk(Vector2i(0, 0), west)
+	var after := _faces_on_plane_x(v.collision_faces(Vector2i(0, 0), west), 32.0)
+	assert_eq(after, before, "and the seam does not change when its neighbour arrives later")
+	v.free()
+
+## Count the collision triangles that lie wholly on the vertical plane x = `plane`
+## (a chunk's facing wall at a seam is emitted at exactly that ordinate).
+func _faces_on_plane_x(faces: PackedVector3Array, plane: float) -> int:
+	var n := 0
+	for i in range(0, faces.size() - 2, 3):
+		if is_equal_approx(faces[i].x, plane) and is_equal_approx(faces[i + 1].x, plane) and is_equal_approx(faces[i + 2].x, plane):
+			n += 1
+	return n
+
+## Phase 41 review pass — an UP-face hit must resolve to the run whose TOP the ray
+## landed on, not to the column's topmost run. A tunnel FLOOR keeps an exposed top
+## face with the roof above it, and "the topmost run" answers with the ROOF: mining
+## the floor took the roof's last step, and stacking on the floor put the block on
+## the roof. Phase 41's whole point is that a column can carry a ceiling, so the
+## floor has to be aimable.
+func _test_voxel_tunnel_floor_top_face() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	# Carve a tunnel: a side-face hit at y = 1.5 on the east face of tile (32,32).
+	var r := v.mine_block(Vector3(16.5, 1.5, 16.25), Vector3(1, 0, 0))
+	assert_true(r.get("success", false), "the side-face mine succeeds")
+	var xz := Vector2(16.25, 16.25)
+	var runs: Array = v.get_column_runs_at(xz)
+	assert_eq(runs.size(), 2, "the column becomes a tunnel: a floor run and a roof run")
+	var floor_top: float = float(runs[0]["top"])
+	var roof_bottom: float = float(runs[1]["bottom"])
+	# Aim at the tunnel FLOOR's top face. The floor loses its last step and the roof
+	# above it is untouched.
+	var r2 := v.mine_block(Vector3(xz.x, floor_top, xz.y), Vector3.UP)
+	assert_true(r2.get("success", false), "the tunnel floor's top face can be mined")
+	var after: Array = v.get_column_runs_at(xz)
+	assert_eq(after.size(), 2, "still two runs after mining the floor")
+	assert_true(is_equal_approx(float(after[0]["top"]), floor_top - VoxelSlice.STEP_HEIGHT), "the FLOOR lost its last step")
+	assert_true(is_equal_approx(float(after[1]["bottom"]), roof_bottom), "and the ROOF is untouched")
+	# Placing on the same face stacks on the FLOOR (in the gap under the roof).
+	var new_floor_top: float = floor_top - VoxelSlice.STEP_HEIGHT
+	v.set_place_material("Ashite")
+	inv.add_item("Ashite", 1)
+	assert_true(v.place_block(Vector3(xz.x, new_floor_top, xz.y), Vector3.UP), "placing on the floor face succeeds")
+	var placed: Array = v.get_column_runs_at(xz)
+	assert_eq(placed.size(), 3, "the gap under the roof holds the placed block")
+	assert_true(is_equal_approx(float(placed[1]["bottom"]), new_floor_top), "sitting on the floor, not on the roof")
+	assert_eq(str(placed[1]["material"]), "Ashite", "and it is the placed block")
+	assert_true(is_equal_approx(float(placed[2]["top"]), 2.0), "the roof is still the column top")
+	v.free()
+	inv.free()
 
 func _test_voxel_placed_block_keeps_material_color() -> void:
 	var v := _make_voxel()
