@@ -3241,26 +3241,35 @@ depth/quantity model yet (mining still yields one unit per `STEP_HEIGHT`
 slice)". This phase replaces the biome-uniform draw with a deterministic 3D ore
 field — vein blobs with a depth band and a quantity — retires `BIOME_MATERIALS`
 to a bias rather than the distribution, and makes "deep near ley lines" a real
-condition the world can be asked about.
+condition the world can be asked about. The depth band and the ley gate are
+FABRIC VALUES on the material entities, not a GDScript table: this phase moves
+them into the source of truth (with the newel dependency that requires), so the
+field cannot disagree with the prose it is derived from.
 
-**Newel dependency:** None required. The depth bands and quantities are
-transcribed from the biome prose already in the fabric
-(`fabric/world/biomes/*.js` `evaluateSpawn`) and the material entities are
-unchanged; a fabric world-system entity for the field is a follow-up once the
-runtime shape settles (see Known simplifications).
+**Newel dependency:** YES. The depth band and the ley gate become fabric fields
+on the material entities (`depthBand`, plus a ley-gating field, on
+`fabric/world/materials/*.js` — `Aethermite` already reads "Found deep underground
+near ley lines and in meteor craters"), authored from the prose each material
+carries today. The vein field's own constants ride a newel world-system entity the
+same way tree density does in Phase 44. `pnpm validate`, `pnpm generate` and
+`pnpm check-drift` re-run; no runtime band table may be hand-written in GDScript.
 
 **Closes:** item 7a, Phase 31 deferred.
 
 **Deliverables:**
+- `fabric/world/materials/*.js` — the depth band and the ley gate as ENTITY
+  FIELDS, not GDScript: a `depthBand` (the min/max depth a material may appear at)
+  and a ley-gating field on every material, authored from the prose each material
+  already carries. The runtime field READS them through the generated resources.
 - `src/terrain/ore_field.gd` (new, pure) — the field:
   `vein_at(chunk_pos, tile, depth) -> Dictionary` returning
-  `{ material, quantity }` or `{}`, derived from a 3D noise blob threshold plus a
-  per-material depth band. A vein is a BLOB of neighbouring tiles at a depth, not
-  an independent per-tile probability, so a rich spot is worth walking to.
+  `{ material, quantity }` or `{}`, derived from a 3D noise blob threshold plus the
+  material's fabric `depthBand`. A vein is a BLOB of neighbouring tiles at a depth,
+  not an independent per-tile probability, so a rich spot is worth walking to.
 - `src/terrain/ore_field.gd` — the ley-line field:
-  `ley_line_value(world_xz) -> float` (2D noise) gates Aethermite, so a deep
-  volcanic tile far from a ley line yields none. This is the first code that
-  makes the material's own lore true.
+  `ley_line_value(world_xz) -> float` (2D noise) gates whichever materials carry
+  the fabric ley gate, so a deep volcanic tile far from a ley line yields none for
+  a ley-gated ore. This is the first code that makes the material's own lore true.
 - `src/terrain/voxel_slice.gd` — `BIOME_MATERIALS` becomes `BIOME_BIAS` (the
   dominant material a biome favours for a vein that is not depth-gated);
   `material_for_biome` and the `_column_layers` path read the field.
@@ -3285,6 +3294,9 @@ runtime shape settles (see Known simplifications).
   gated ore.
 - [ ] The suite is green on both boot paths and the field is unit-tested (blob
   continuity across a chunk border, depth gate, ley gate).
+- [ ] `pnpm validate`, `pnpm generate` and `pnpm check-drift` are green, and the
+  generated material resources carry `depthBand` and the ley gate — the field's
+  band cannot disagree with the fabric because it IS a fabric value.
 
 **Implementation notes:**
 - **The field must be a pure function of (seed, world position, depth) — never of
@@ -3301,9 +3313,11 @@ runtime shape settles (see Known simplifications).
   a checkerboard and makes the save grow with every swing. Name the vein (a hash
   of its blob origin) so "exhausted" is one recorded fact per vein, carried by
   the edit path Phase 41 already persists.
-- **Depth gating is data, not code.** The band belongs beside the material's
-  other properties, where the fabric prose already states it; the runtime field
-  must not carry a hand-written `if material == "Aethermite"` table of bands.
+- **Depth gating is data, not code.** The band is a fabric field on the material
+  (`depthBand`), beside the material's other properties, where the prose that
+  states it already lives; the runtime field must not carry a hand-written
+  `if material == "Aethermite"` table of bands. The generated resource is the only
+  place the band is authored, so the field and the fabric can never drift.
 
 **Known simplifications (deferred):**
 - **No detection or prospecting skill interaction.** A deep vein has no surface
@@ -3314,9 +3328,6 @@ runtime shape settles (see Known simplifications).
   (durability cost aside).
 - **No vein regrowth.** A vein is a finite, depleting body; nothing replenishes
   it, and the tree stump cooldown is still the only regrowth clock in the world.
-- **The field lives in GDScript, not the fabric.** Its constants are transcribed
-  from the biome prose and move to a fabric world-system entity the same way tree
-  density does in Phase 44.
 
 ---
 
@@ -3519,11 +3530,16 @@ for textures); emitting the manifest FROM the fabric is a newel-side follow-up
 built at fixed positions (`_build_window(key, title, content, position)` — no
 title-bar drag, nothing persisted), the inventory window is a single `Label` fed
 by `inventory_lines()`, so there is no slot grid, no icon, no hover, no
-right-click, and the only item identity a player sees is a line of text. There is
-no Controls legend at all — the key bindings exist only in the code. This phase
-gives the shell a generic draggable window with persisted positions, resolves
-item icons through the overlay, replaces the inventory text dump with a slot grid
-(tooltip and right-click menu), and adds a collapsible Controls panel behind `?`.
+right-click, and the only item identity a player sees is a line of text. A
+Controls legend already exists and is always on: `_build_shortcuts_menu()` builds
+a `Controls` panel at `player_slice.gd:781` and `_build_hud()` attaches it to the
+HUD at `:620`, so the key bindings are painted top-left for the whole session and
+are mouse-transparent. This phase gives the shell a generic draggable window with
+persisted positions, resolves item icons through the overlay, replaces the
+inventory text dump with a slot grid (tooltip and right-click menu), and MOVES
+that existing legend behind a collapsible `?` panel rather than adding one. The
+phase is independent of Phase 45's asset pipeline — the shell is texture-keyed UI
+work — and may land before it.
 
 **Newel dependency:** None. Item identity is the entity name the fabric already
 carries.
@@ -3538,17 +3554,29 @@ carries.
   an eviction point (Phase 37's rule) — state in the commit whether it rides the
   player record or a client-only settings file.
 - `src/ui/ui_slice.gd` — item icons through the overlay: a derived canonical key
-  (`icons/items/<EntityName>.png.raw`) resolved with
-  `AssetOverlay.resolve_path`/`load_texture`, with a glyph placeholder when the
-  key is absent, so a clone without the private art still renders a readable slot.
+  (`icons/items/<EntityName>.png.raw`) handed to `AssetOverlay.resolve_path` /
+  `load_texture`, with a glyph placeholder when the key is absent, so a clone
+  without the private art still renders a readable slot. **No overlay work is
+  required:** `resolve_path` and `load_texture` are already general — any relative
+  key resolves against a mounted pack first and the public `res://assets/`
+  placeholder second, and an absent key decodes to `null`. This deliverable is key
+  DERIVATION plus a `null` branch, not a loader change.
 - `src/ui/ui_slice.gd` — the inventory slot grid: a `GridContainer` of slot
   controls replacing `_inventory_items`, each showing icon, quantity and a
   durability/wear indication; hover raises a tooltip (name, quantity, durability,
   the item's description); right-click opens a menu whose actions are the bus
   intents that already exist, so no new authority path is introduced.
-- `src/ui/ui_slice.gd` — the Controls panel behind `?`: a new window listing the
-  key bindings (`I / T / C / Y / M / G` and the movement/action keys), collapsed
-  by default.
+- `src/ui/ui_slice.gd` — the Controls panel behind `?`: the EXISTING legend,
+  MOVED rather than authored. The `I / T / C / Y / M / G` and movement/action
+  bindings the HUD paints today are re-hosted in a new window that is collapsed by
+  default.
+- `src/player/player_slice.gd` — DELETION of the always-on legend:
+  `_build_shortcuts_menu()` (`:781`) and its call site in `_build_hud()` (`:620`)
+  both go, so the HUD paints no legend at all and the `?` panel is its only home.
+  The drawn mouse-button cues the legend uses move with it — `_add_mouse_row()`
+  and `mouse_icon.gd` (`src/ui/mouse_icon.gd`, loaded as `MouseIconScript`) are
+  PORTED into the `?` panel, so the moved legend keeps its icons instead of
+  degrading to a text list.
 - `inventory_lines()` STAYS: it is the pure projection the suite asserts, and the
   grid is built from a pure projection (`inventory_rows()` / a slot view) rather
   than by reading `Control` state.
@@ -3563,6 +3591,9 @@ carries.
 - [ ] An item with no icon asset renders the placeholder glyph, and one whose
   icon is present in a mounted pack renders the icon — `AssetOverlay.asset_mode()`
   distinguishes the two.
+- [ ] No Controls legend is visible on the HUD before `?` is pressed: the panel
+  `_build_hud()` used to paint is gone and `?` is the only way to see the bindings
+  (assert the HUD's child set, not a screenshot).
 - [ ] `?` opens and closes the Controls panel; ESC still closes the topmost
   window and the last close re-captures the mouse (the world-input gate is
   unchanged and no attack/mine slips through an open menu).
@@ -3695,6 +3726,15 @@ GDScript.
   slot tooltip.
 - **Equipment wear stays a visual indication** (`_wear_level`); the window is not
   a repair gate — repair remains the Phase 25 path.
+- **No attributes — deliberately excluded, pending a fabric decision.**
+  `fabric/gameplay/player.js` carries only `baseHp`, `currentHp` and `baseSpeed`:
+  there is no attribute model (no Strength/Dexterity/Intellect, no attribute-to-
+  stat derivation), and this phase does NOT invent one — the panel sums equipped
+  gear values only, and nothing here may author an attribute or a derived-stat
+  input in GDScript. Adding attributes is a design decision, so it belongs in
+  `fabric/constitution/decisions.js` (a `decision` entity taken through the
+  `proposed` → `accepted` state machine under community governance), not in a UI
+  phase that would then be read as the authority for it.
 
 ---
 
