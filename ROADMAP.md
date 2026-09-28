@@ -2625,7 +2625,12 @@ that was being saved.
 - **Peer health has a durable floor but no death consequence.** The host simulates and
   persists a peer's HP, but a peer reaching zero is still not resolved host-side (no
   `creature_died`-style outcome, no respawn): the downed body stays the peer's own client's
-  business, as the whole of its movement is.
+  business, as the whole of its movement is. **(closed in Phase 39, for the floor: the host
+  now writes a respawn deadline when its own simulation reaches zero and resolves it lazily
+  on read, and the client starts its own countdown the moment `set_hp()` hands it a zero, so
+  a downed peer recovers instead of freezing at zero across reconnects and restarts. What is
+  still deferred is the death CONSEQUENCE: no corpse, no loot, no kill credit is resolved
+  host-side.)**
 - **A hit is not sequenced against the hit that preceded it.** The host applies each
   resolved round as it comes, and `player_damaged` still carries only the delta, so a
   client that lost a packet converges on the host's number a round late rather than never.
@@ -2652,10 +2657,28 @@ the same `NetworkingSlice.host()` / `join()` the game itself uses — drives a f
 lifecycle between them, and asserts on packets the transport actually carried. It closes
 the deferral re-stated in Phases 34, 35, 36, 37 and 38.
 
+Deliverable 1 is the one durable fix the harness then proves on a real socket: a peer's
+simulated HP is a subtract-only counter that cannot heal, so a peer downed by a creature
+stays at zero across reconnects and restarts, and the client handed that zero ends up dead
+with no countdown running. The harness's reconnect step is where that fix is observed
+end to end.
+
 **Newel dependency:** None. No fabric field changes — `pnpm validate` is clean and
 `pnpm check-drift` still reports 543 file(s) matching the manifest.
 
 **Deliverables:**
+- `src/persistence/player_registry.gd` — deliverable 1, the durable fix: a peer's
+  simulated HP stops being a subtract-only counter. When a resolved hit takes it to zero
+  the host writes a respawn deadline onto the same durable record (the Phase 37 deadline
+  shape, pruned the way `live_cooldowns` prunes), and resolves it lazily on READ:
+  `get_hp()` answers full health once the deadline has passed and rewrites the record
+  through the same `record_simulated_hp` door, so a downed peer recovers after the delay
+  instead of freezing at zero forever.
+- `src/player/player_slice.gd` — the client-side half of deliverable 1: `set_hp()` starts
+  the respawn countdown when the value it applies is zero (`_respawn_timer =
+  RESPAWN_DELAY`), so a body handed a zero — by a join snapshot, a save restore, or a
+  forwarded hit — can never sit `_alive == false` with no timer running. The soft-lock is
+  closed at the door rather than at the one caller that used to be blamed for it.
 - `src/tests/net_harness.gd` — the `await`-driven harness runner: a scenario step table
   and a pump loop that yields real frames, so packets can leave and arrive. The existing
   suite cannot host this (see the constraint note below).
@@ -2688,9 +2711,15 @@ the deferral re-stated in Phases 34, 35, 36, 37 and 38.
 - [ ] A chunked snapshot completes across real packets (reassembly working with the
   transport's own ordering, not the test's), and a client that loses its host clears its
   buffer — the Phase 38 fix observed on the wire rather than over the bus.
-- [ ] A combat round routed at a peer arrives at that peer's own client, the host's
-  simulated HP for that peer survives a real reconnect, and the reconciled number is what
-  the reconnecting client sees.
+- [ ] A combat round routed at a peer arrives at that peer's own client, and the host's own
+  simulated number for that peer survives a real reconnect unchanged.
+- [ ] A peer killed before it disconnects reconnects alive and controllable: the host's
+  respawn deadline resolves on the read that follows the reconnect, and the client's body
+  runs its own countdown rather than sitting dead with no timer.
+- [ ] Deliverable 1 holds on both ends: a peer whose simulated HP reaches zero returns to
+  full health after the delay and survives a restart; a body handed a zero by `set_hp()`
+  starts its respawn countdown; and the declared value still has no path into a record —
+  the respawn deadline is not a second door for it. Each new rule is RED-proved first.
 - [ ] A disconnect evicts transport state end to end: the peer's record is evicted, its
   taming mirrors and snapshot buffer are forgotten, and a reconnect re-presents the join
   intent and is re-answered.
@@ -2742,6 +2771,10 @@ the deferral re-stated in Phases 34, 35, 36, 37 and 38.
   sites rather than measured.
 - **The harness does not replace the routing-level tests.** Those stay: they are cheaper,
   they pin the refusal itself, and they run inside the suite the project already gates on.
+- **A peer's death is still not resolved host-side.** Deliverable 1 makes the floor
+  recoverable — a downed peer's HP returns to full after the delay instead of freezing at
+  zero — but nothing happens TO the peer at zero: no corpse, no loot, no kill credit. The
+  death consequence stays deferred past this phase.
 
 ---
 
