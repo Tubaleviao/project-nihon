@@ -305,7 +305,14 @@ func attach_to_bone(bone_name: String, mesh: Node3D, local_offset: Vector3) -> v
 ## Foot IK — compute world-space foot targets that sit on the terrain surface
 ## (characters.md §37 "IK targets ... wired to terrain normal"). Pure and
 ## headless-testable. `terrain_height` is a Callable taking a Vector2 world XZ
-## and returning the surface height there. Returns { foot_l, foot_r, hip_y }.
+## and returning the surface height there.
+##
+## Returns { foot_l, foot_r, hip_world_y }. The hip key is named `hip_world_y`
+## and NOT `hip_y` on purpose: `compute_landmarks()` already publishes a local
+## `hip_y` (the hip height ABOVE the rig root, an offset) and the returned value
+## is a WORLD ordinate. Grabbing the wrong one by name is exactly how the avatar
+## came to be sunk into the ground (see `character_slice.sync_player_avatar`), so
+## the two live under different names.
 static func compute_foot_targets(
 	terrain_height: Callable,
 	body_pos: Vector3,
@@ -319,8 +326,8 @@ static func compute_foot_targets(
 	var right_x := body_pos.x + side_offset
 	var left_y := float(terrain_height.call(Vector2(left_x, z)))
 	var right_y := float(terrain_height.call(Vector2(right_x, z)))
-	var hip_y := body_pos.y + hip_height
+	var hip_world_y := body_pos.y + hip_height
 	# Clamp so a deep trench never over-extends the leg.
-	var foot_l := Vector3(left_x, clampf(left_y, hip_y - leg_length, hip_y), z)
-	var foot_r := Vector3(right_x, clampf(right_y, hip_y - leg_length, hip_y), z)
-	return { "foot_l": foot_l, "foot_r": foot_r, "hip_y": hip_y }
+	var foot_l := Vector3(left_x, clampf(left_y, hip_world_y - leg_length, hip_world_y), z)
+	var foot_r := Vector3(right_x, clampf(right_y, hip_world_y - leg_length, hip_world_y), z)
+	return { "foot_l": foot_l, "foot_r": foot_r, "hip_world_y": hip_world_y }

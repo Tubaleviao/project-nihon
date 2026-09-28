@@ -651,10 +651,18 @@ func sync_player_avatar(
 		var target_yaw := atan2(-horizontal_velocity.x, -horizontal_velocity.z)
 		root.rotation.y = rotate_toward(root.rotation.y, target_yaw, rig.get_turn_speed() * delta)
 
-	# Approximate foot IK — sample terrain under both feet at the controller's
-	# XZ position and pull the whole body up/down by the higher foot's height
-	# offset from its rest hip height, instead of leaving the avatar floating
-	# over slopes/stairs or sinking into them (no per-leg bone solver — §37).
+	# Approximate foot IK — sample the surface under both feet at the controller's
+	# XZ position and pull the whole body up/down to the higher foot's surface
+	# height, instead of leaving the avatar floating over slopes/stairs or sinking
+	# into them (no per-leg bone solver — §37).
+	#
+	# The rig root sits at the FEET: every body part is placed at
+	# `landmarks["hip_y"]` ABOVE it (`_make_avatar`), so the root's Y is the
+	# ground surface itself. The old expression subtracted `landmarks["hip_y"]`
+	# here — the LOCAL hip offset, read off the landmarks dict where the foot
+	# targets' own WORLD hip ordinate used to carry the same key name
+	# (`compute_foot_targets` now returns `hip_world_y`) — which dropped the
+	# whole avatar ~0.9 below the surface it was standing on.
 	var feet: Dictionary = SkeletonRig.compute_foot_targets(
 		terrain_height,
 		position,
@@ -663,7 +671,7 @@ func sync_player_avatar(
 		landmarks["foot_side"],
 		0.0
 	)
-	var ground_y: float = maxf(feet["foot_l"].y, feet["foot_r"].y) - landmarks["hip_y"]
+	var ground_y: float = maxf(feet["foot_l"].y, feet["foot_r"].y)
 	root.position = Vector3(position.x, ground_y, position.z)
 	root.set_meta("foot_ik_l", feet["foot_l"])
 	root.set_meta("foot_ik_r", feet["foot_r"])

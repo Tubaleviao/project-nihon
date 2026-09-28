@@ -107,6 +107,8 @@ func run() -> void:
 	_run_test("character: blend curve maps speed to 0..1",     _test_character_blend_curve)
 	_run_test("character: attack/death play on bus signals",  _test_character_attack_death_signals)
 	_run_test("character: foot IK tracks terrain surface",    _test_character_foot_ik)
+	_run_test("character: avatar root Y matches voxel ground", _test_avatar_root_y_matches_voxel_ground)
+	_run_test("player: step-up climbs a rise, not a wall",     _test_player_step_up)
 	_run_test("character: equipment SKINNED vs RIGID",        _test_character_deformation_modes)
 	_run_test("character: apply/clear equipment",             _test_character_apply_clear_equipment)
 	_run_test("character: RIGID socket offset places mesh",   _test_character_rigid_socket_offset)
@@ -1263,6 +1265,76 @@ func _test_character_foot_ik() -> void:
 	var t3 := SkeletonRig.compute_foot_targets(trench, Vector3(0.0, 1.0, 0.0), 0.5, 1.5, 0.2, 0.0)
 	var tl: Vector3 = t3["foot_l"]
 	assert_true(is_equal_approx(tl.y, 0.0), "deep trench clamps foot to leg reach")
+
+## The rig root sits at the FEET — every body part is placed at
+## `landmarks["hip_y"]` ABOVE it (`CharacterSlice._make_avatar`) — so
+## `sync_player_avatar` must put the root at the sampled surface height itself.
+## It used to subtract the LOCAL hip offset (`landmarks["hip_y"]`, ~0.9) from the
+## sampled surface, reading it off the landmarks dict where the foot targets' own
+## WORLD hip ordinate used to carry the same key name; the avatar therefore stood
+## ~0.9 BELOW the ground it was standing on. The sampler passed here is the voxel
+## height the collision boxes are built from (`VoxelSlice.get_voxel_height_at`).
+func _test_avatar_root_y_matches_voxel_ground() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	assert_true(iid != "", "character created")
+	var rig: Node3D = ch.get_part_node(iid, "body_legs").get_parent() as Node3D
+	assert_true(rig != null, "rig root reachable from the legs container")
+	var ground := 2.0
+	var voxel := func(_xz: Vector2) -> float: return ground
+	# The controller stands ON the surface, so its own Y is the surface height.
+	ch.sync_player_avatar(iid, Vector3(16.0, ground, 16.0), Vector3.ZERO, 0.0, true, 0.1, voxel)
+	assert_true(
+		is_equal_approx(rig.position.y, ground),
+		"avatar root Y equals the sampled voxel ground height (got %f, want %f)" % [rig.position.y, ground]
+	)
+	ch.free()
+
+## Walking into a one-step voxel rise must ADVANCE HORIZONTALLY without jumping:
+## `resolve_step_up` lifts the body by at most one step and moves it forward, and
+## produces a position only — no vertical velocity, so the step is walked, not
+## hopped. Pure: the collision is a fake Callable, because the suite runs
+## synchronously inside `GameRoot._ready()` with no physics frame (a
+## `move_and_slide()` there is a silent no-op, verified — see ROADMAP §Phase 39,
+## "the synchronous suite has no physics frame").
+func _test_player_step_up() -> void:
+	var step_h: float = VoxelSlice.STEP_HEIGHT          # 0.125 — one quantised rise
+	var floor_y := 1.0
+	var start := Transform3D(Basis.IDENTITY, Vector3(0.0, floor_y, 0.5))
+	var forward := Vector3(0.0, 0.0, -0.8)             # crosses the rise's face
+	# A solid rise on the far side of z = 0 whose top is `top`: a motion that ends
+	# up past the face with its feet still under the top is blocked.
+	var top_one := floor_y + step_h
+	var blocked_one := func(xform: Transform3D, motion: Vector3) -> bool:
+		var dest := xform.origin + motion
+		return dest.z < 0.0 and dest.y < top_one
+	assert_true(blocked_one.call(start, forward), "the fake blocks the floor-level attack on the step")
+
+	var cleared := PlayerSlice.resolve_step_up(blocked_one, start, forward, PlayerSlice.STEP_UP_HEIGHT)
+	assert_true(cleared.origin.z < start.origin.z,
+		"a one-step rise is advanced through (z %.3f -> %.3f)" % [start.origin.z, cleared.origin.z])
+	assert_true(is_equal_approx(cleared.origin.z - start.origin.z, forward.z),
+		"the horizontal advance is the cast, no more and no less")
+	assert_true(is_equal_approx(cleared.origin.y - start.origin.y, PlayerSlice.STEP_UP_HEIGHT),
+		"the rise is one step-up, not a jump (got %f)" % (cleared.origin.y - start.origin.y))
+	assert_true(PlayerSlice.STEP_UP_HEIGHT > step_h,
+		"STEP_UP_HEIGHT exceeds a voxel STEP_HEIGHT (%.3f > %.3f)" % [PlayerSlice.STEP_UP_HEIGHT, step_h])
+
+	# A rise taller than STEP_UP_HEIGHT is a wall, not a stair: refused, unmoved.
+	var top_wall := floor_y + 2.0 * PlayerSlice.STEP_UP_HEIGHT
+	var blocked_wall := func(xform: Transform3D, motion: Vector3) -> bool:
+		var dest := xform.origin + motion
+		return dest.z < 0.0 and dest.y < top_wall
+	var refused := PlayerSlice.resolve_step_up(blocked_wall, start, forward, PlayerSlice.STEP_UP_HEIGHT)
+	assert_true(refused == start, "a rise taller than STEP_UP_HEIGHT is not climbed")
+
+	# Nothing in the way: not a step-up at all — the body is left alone.
+	var free := func(_xform: Transform3D, _motion: Vector3) -> bool: return false
+	assert_true(
+		PlayerSlice.resolve_step_up(free, start, forward, PlayerSlice.STEP_UP_HEIGHT) == start,
+		"an unblocked move is not a step-up"
+	)
 
 func _test_character_deformation_modes() -> void:
 	var ch := CharacterSlice.new()

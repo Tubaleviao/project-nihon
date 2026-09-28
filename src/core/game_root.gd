@@ -894,7 +894,12 @@ func _sync_player_avatar(delta: float) -> void:
 		vel.y,
 		_player.is_grounded(),
 		delta,
-		_terrain.get_height_at
+		# The avatar's feet are driven by the surface the BODY actually stands on:
+		# the voxel columns carry the collision (layer 2) and are quantised to
+		# STEP_HEIGHT, so sampling `_terrain`'s raw noise heightmap floated the
+		# visual avatar off its own collision surface by up to a step. The voxel
+		# sampler is the same function the collision boxes are built from.
+		_voxel.get_voxel_height_at
 	)
 
 func _on_connection_failed() -> void:

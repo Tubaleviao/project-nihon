@@ -2961,6 +2961,72 @@ end to end.
 
 ---
 
+## Phase 40 — Review pass: the avatar's footing — the voxel surface, walked stairs ✅ Done
+
+**Goal:** The controller stands on the VOXEL columns (collision layer 2, quantised to
+`STEP_HEIGHT` 0.125), but everything drawn from it was sampled and placed off the other,
+legacy surface — and off the wrong quantity. A review of that seam found the avatar's whole
+body offset by the hip height into the ground, the foot sampler reading a heightmap the
+body does not collide with, and the controller unable to walk up a single voxel rise: it
+stopped dead at the foot of every step. This phase puts the visual avatar exactly where its
+collision is, gives the body a step-up so a stair is WALKED rather than blocked, and renames
+the foot-IK return value whose name collision caused the first of those bugs.
+
+**Deliverables / verifications:**
+- `src/character/character_slice.gd` — `sync_player_avatar` places the avatar's rig root at
+  the sampled surface height. The root sits at the FEET (`_make_avatar` places every body
+  part at `landmarks["hip_y"]` ABOVE it), so the old
+  `maxf(foot_l.y, foot_r.y) - landmarks["hip_y"]` subtracted the LOCAL hip offset from a
+  WORLD surface ordinate — read off the landmarks dict, because the foot targets' own world
+  hip ordinate used to carry the same key name. The avatar stood ~0.81 below the ground it
+  was standing on; RED-proved against the restored expression (`got 1.192500, want
+  2.000000`). Registered `character: avatar root Y matches voxel ground`.
+- `src/character/skeleton_rig.gd` — `compute_foot_targets` now returns `hip_world_y`. The
+  returned value is a WORLD ordinate and `compute_landmarks()` already publishes a LOCAL
+  `hip_y` offset, so the two can no longer be confused by name — the collision that produced
+  the bug above, made impossible rather than merely fixed.
+- `src/core/game_root.gd` — `_sync_player_avatar` samples `_voxel.get_voxel_height_at`
+  instead of `_terrain.get_height_at`. The voxel sampler is the same function the collision
+  boxes are built from (`_column_height`), so the visual feet track the surface the body
+  actually stands on; the raw noise heightmap sat up to a step away from its own collision.
+- `src/player/player_slice.gd` — `_build_body` sets `floor_snap_length = STEP_UP_HEIGHT`
+  (0.3, i.e. MORE than one quantised step of 0.125): the 0.1 default is shorter than the
+  rise the step-up climbs, so the body took the rise and then immediately lost its floor,
+  going briefly airborne on every stair.
+- `src/player/player_slice.gd` — `_move` climbs a stair: grounded, moving, and touching a
+  wall, it asks the pure `resolve_step_up(blocked, xform, horizontal, step_height)` whether
+  the rise can be cleared — `test_move` up by one step, then the horizontal cast from up
+  there — and takes the risen+advanced position when both are clear. No vertical velocity is
+  added and the horizontal velocity is untouched, so it is a walk, not a jump, and a rise
+  taller than `STEP_UP_HEIGHT` is left alone. `move_and_slide()` (with the longer
+  `floor_snap_length`) then settles the body onto the new surface. Registered
+  `player: step-up climbs a rise, not a wall`.
+- The findings' ALTERNATIVE to the above — a `SeparationRayShape3D` under the capsule for
+  automatic stair climbing — was NOT taken: it is presented as the alternative to the
+  `test_move` step-up and the two are mutually exclusive, so implementing both would be two
+  mechanisms for one behaviour.
+- `src/tests/test_suite.gd` — the two regression tests above, and the suite stays green on
+  both boot paths: `Results: 7532/7532 passed (0 failed)` (+10 assertions from 7522).
+- `README.md` — the phase table row for this pass.
+
+**Implementation notes:**
+- **The synchronous suite has no physics frame — verified, not assumed.** A probe run in the
+  suite's own context (a node added under the tree, probed from `_ready()`, project physics =
+  Jolt) shows `move_and_slide()`, `is_on_floor()` and `test_move()` all inert: a body dropped
+  over a static floor for 200 cascaded calls never registers a collision, reports
+  `on_floor = false` and does not move at all. So the findings' two suite tests are split
+  deliberately: the root-Y one is a real assertion through `sync_player_avatar`, while the
+  stair one asserts the pure DECISION (`resolve_step_up`) against a fake `blocked` Callable
+  — the same Callable-injection shape `compute_foot_targets` already uses for terrain
+  sampling — and the physics half is exercised in game only. What the suite proves is that a
+  one-step rise is advanced through with a rise of exactly one step-up (never more), that a
+  taller rise is refused with the body unmoved, and that an unblocked move is not a step-up
+  at all.
+- **The step-up is a position, never a velocity.** `resolve_step_up` returns a transform and
+  the caller assigns it; `_vel` keeps the input's horizontal value and gravity's vertical one,
+  which is what keeps the climb a walk. Adding a vertical impulse would have been the
+  obvious-looking shortcut and is exactly the "jump" the finding rules out.
+
 ## Deferred (in priority order)
 
 - **Server sharding (final, not before maturity)** — split the authoritative
