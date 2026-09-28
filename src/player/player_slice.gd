@@ -32,6 +32,13 @@ const ATTACK_RANGE := 3.0     # metres — melee interaction radius
 ## TamingSlice.TAME_RANGE, which re-checks it and is the authority.
 const TAME_RANGE := 4.0
 const PICKUP_RANGE := 60.0    # metres — how far the player can aim-pick (camera sits far back)
+## Step-up clearance for a voxel rise, in world units. Terrain is quantised to
+## `VoxelSlice.STEP_HEIGHT` (0.125), but the capsule's contact normal on a rise is
+## mostly horizontal, so a bare `move_and_slide()` stops the body dead at every
+## step. A rise no taller than this is climbed instead (`_move` →
+## `resolve_step_up`), and `floor_snap_length` uses the same length so stepping
+## DOWN a rise keeps the body glued to the surface instead of dropping it.
+const STEP_UP_HEIGHT := 0.3
 const PICKUP_COLLISION_MASK := 4   # layer 3 (bit 2) — matches loot pickup bodies
 const BUILD_RANGE := 60.0     # metres — how far the player can reach a block
 const TERRAIN_COLLISION_MASK := 2  # layer 2 (bit 1) — terrain, for mine/build ray
@@ -354,6 +361,12 @@ func _build_body() -> void:
 	_body.collision_layer = 1
 	_body.collision_mask = 3   # layer 1 (default) + layer 2 (terrain)
 
+	# Snap the body to the floor over more than one quantised voxel step
+	# (STEP_HEIGHT 0.125) — the default 0.1 is shorter than the rise the step-up
+	# in `_move` climbs, so the body would step UP onto a voxel and then lose the
+	# floor, briefly going airborne on every stair.
+	_body.floor_snap_length = STEP_UP_HEIGHT
+
 	# Spawn above the terrain origin so the player lands on the voxel surface.
 	_body.global_position = Vector3(16.0, 12.0, 16.0)
 
@@ -415,6 +428,25 @@ func _move(delta: float) -> void:
 
 	_vel.x = dir.x * SPEED
 	_vel.z = dir.z * SPEED
+
+	# Stair step-up. Voxel rises are quantised to STEP_HEIGHT (0.125), but the
+	# capsule's contact normal against a rise is mostly horizontal, so a bare
+	# `move_and_slide()` leaves the player stuck at the foot of every step. When
+	# we are grounded, pushing horizontally, and already touching a wall, ask the
+	# three-stage probe in `resolve_step_up` (rise, then forward) whether the step
+	# can be cleared; if it can, the body is lifted and advanced onto it and
+	# `move_and_slide()` (with `floor_snap_length = STEP_UP_HEIGHT`) settles it
+	# back down onto the new surface. Horizontal velocity is untouched and no
+	# vertical velocity is added, so the player WALKS up — never jumps.
+	if dir.length_squared() > 0.0 and _body.is_on_floor() and _body.is_on_wall():
+		var climbed: Transform3D = resolve_step_up(
+			func(xform: Transform3D, motion: Vector3) -> bool: return _body.test_move(xform, motion),
+			_body.global_transform,
+			Vector3(_vel.x, 0.0, _vel.z) * delta,
+			STEP_UP_HEIGHT
+		)
+		if climbed != _body.global_transform:
+			_body.global_position = climbed.origin
 
 	_body.velocity = _vel
 	_body.move_and_slide()
@@ -829,3 +861,43 @@ func _try_pickup_aimed() -> void:
 	_aimed_pickup_id = ""
 	_aimed_item_id = ""
 	_update_aim_hud()
+
+# ---------------------------------------------------------------------------
+# Pure helpers (headless-testable — no physics frame needed)
+# ---------------------------------------------------------------------------
+
+## Resolve a stair step-up as a pure motion plan, mirroring the Callable-injection
+## shape `SkeletonRig.compute_foot_targets` uses for terrain sampling.
+##
+## `blocked(xform, motion)` answers "would this motion collide?" — production
+## passes `PhysicsBody3D.test_move`, and the headless suite passes a fake, because
+## the suite runs synchronously inside `GameRoot._ready()` with no physics frame
+## to collide with (a `move_and_slide()` there is a silent no-op). The physics the
+## body actually performs stays in `_move`.
+##
+## Returns the transform the body should occupy after climbing a rise no taller
+## than `step_height` — RISEN by that step and ADVANCED by `horizontal` — or the
+## SAME transform when there is nothing to climb or the rise cannot be cleared
+## (a taller step is a wall, not a stair, and must not be climbed or jumped). Only
+## a position is produced; no velocity is involved, which is what keeps the
+## step-up a walk rather than a jump.
+static func resolve_step_up(
+	blocked: Callable,
+	xform: Transform3D,
+	horizontal: Vector3,
+	step_height: float
+) -> Transform3D:
+	# Nothing in the way: not a step-up, leave the body where it is.
+	if not blocked.call(xform, horizontal):
+		return xform
+	# Stage 1 — is there headroom to rise by one step?
+	var rise := Vector3.UP * step_height
+	if blocked.call(xform, rise):
+		return xform
+	var lifted := xform.translated(rise)
+	# Stage 2 — from up there, is the horizontal move clear?
+	if blocked.call(lifted, horizontal):
+		return xform
+	# Both casts clear: take the rise AND the advance. Settling back down onto the
+	# new surface is the physics step's job (`floor_snap_length`).
+	return lifted.translated(horizontal)

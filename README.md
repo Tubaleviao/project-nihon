@@ -60,6 +60,7 @@ pnpm generate   # generate the design bible into bible/
 | 37 | Review pass: owner-scoped syncs, durable cooldowns, bounded memory, routed rounds | Done |
 | 38 | Review pass: host-simulated peer health, one key list, the missing clear, an in-place prune | Done |
 | 39 | Two-client network harness: prove the wire over a real socket | Done |
+| 40 | Review pass: the avatar's footing — the voxel surface, walked stairs | Done |
 
 See [ROADMAP.md](ROADMAP.md) for the full spec, deliverables, and acceptance criteria for each phase.
 
