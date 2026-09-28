@@ -2625,7 +2625,12 @@ that was being saved.
 - **Peer health has a durable floor but no death consequence.** The host simulates and
   persists a peer's HP, but a peer reaching zero is still not resolved host-side (no
   `creature_died`-style outcome, no respawn): the downed body stays the peer's own client's
-  business, as the whole of its movement is.
+  business, as the whole of its movement is. **(closed in Phase 39, for the floor: the host
+  now writes a respawn deadline when its own simulation reaches zero and resolves it lazily
+  on read, and the client starts its own countdown the moment `set_hp()` hands it a zero, so
+  a downed peer recovers instead of freezing at zero across reconnects and restarts. What is
+  still deferred is the death CONSEQUENCE: no corpse, no loot, no kill credit is resolved
+  host-side.)**
 - **A hit is not sequenced against the hit that preceded it.** The host applies each
   resolved round as it comes, and `player_damaged` still carries only the delta, so a
   client that lost a packet converges on the host's number a round late rather than never.
@@ -2637,6 +2642,156 @@ that was being saved.
   level (`_route_c2h` / `_route_h2c`, the bus, `_pending`, and directly against the registry
   rule) rather than by driving two real clients through ENet (Phase 34/35/36/37's gap,
   unchanged).
+
+---
+
+## Phase 39 — Two-client network harness: prove the wire over a real socket
+
+**Goal:** Make the network trust boundary real. Phases 34–38 hardened the client → host
+intent path — connection-bound identity, reach and rate guards, owner-scoped syncs,
+durable per-player records, host-simulated peer health — and every one of those
+guarantees is currently proven at the ROUTING level only: tests call `_route_c2h(sender,
+payload)` and read the bus, with the sender id handed in as an argument. No test has ever
+put a byte on a socket. This phase adds a harness that boots two real peers over ENet —
+the same `NetworkingSlice.host()` / `join()` the game itself uses — drives a full session
+lifecycle between them, and asserts on packets the transport actually carried. It closes
+the deferral re-stated in Phases 34, 35, 36, 37 and 38.
+
+Deliverable 1 is the one durable fix the harness then proves on a real socket: a peer's
+simulated HP is a subtract-only counter that cannot heal, so a peer downed by a creature
+stays at zero across reconnects and restarts, and the client handed that zero ends up dead
+with no countdown running. The harness's reconnect step is where that fix is observed
+end to end.
+
+**Newel dependency:** None. No fabric field changes — `pnpm validate` is clean and
+`pnpm check-drift` still reports 543 file(s) matching the manifest.
+
+**Deliverables:**
+- `src/persistence/player_registry.gd` — deliverable 1, the durable fix: a peer's
+  simulated HP stops being a subtract-only counter. When a resolved hit takes it to zero
+  the host writes a respawn deadline onto the same durable record (the Phase 37 deadline
+  shape, pruned the way `live_cooldowns` prunes), and the deadline is resolved by a NEW
+  PURE RULE — `hp_after_respawn(hp, deadline, now, max_hp)` — that BOTH readers of the
+  field call, so a downed peer's recovery does not depend on which one asks. The two
+  readers are `get_hp()` (the live read) and `get_player_data()` (the saved copy, which the
+  handshake snapshot, the disconnect save and the autosave all go through — and which
+  currently reads `hp` raw at `player_registry.gd:627`). A resolution wired into the live
+  reader alone leaves the one the reconnect actually uses un-resolved, which is Phase 38's
+  lesson in mirror image: a rule that runs on one reader is a reader-dependent rule. No
+  write-on-read either: `get_hp()` stays pure and the deadline stays the durable fact. A
+  rewrite through `record_simulated_hp` would no-op on exactly the paths where it refuses —
+  a non-authoritative machine, the local id, a player with no resident record — while the
+  value the read returned claimed full health.
+- `src/player/player_slice.gd` — the client-side half of deliverable 1: `set_hp()` starts
+  the respawn countdown when the value it applies is zero AND no countdown is already
+  running (`_respawn_timer == -1.0`) — it must START one, not restart it, or a repeated
+  zero would push the respawn further away on every application and the body would never
+  come back. One entry point, so a body handed a zero — by a join snapshot, a forwarded
+  hit, or a save restore — can never sit `_alive == false` with no timer running. That
+  incidentally closes the same soft-lock in single-player: `_restore_local_player` hands a
+  restored record's zero to the same door (`game_root.gd:1246`), so the fix covers the
+  local body too rather than only the peer it was found on.
+- `src/tests/net_harness.gd` — the `await`-driven harness runner: a scenario step table
+  and a pump loop that yields real frames, so packets can leave and arrive. The existing
+  suite cannot host this (see the constraint note below).
+- `src/core/game_root.gd` — a `--net-harness <role>` user arg parsed beside `--server` /
+  `--client`, and the harness entry point that runs BEFORE the world boot, mirroring the
+  existing `should_run_tests` gate.
+- `tools/net_harness.sh` — the driver: boots one host process and one client process on
+  loopback, waits for a readiness line, runs the scenario, and fails on a missed
+  assertion, a deadline overrun, or a non-zero exit.
+- `src/tests/test_suite.gd` — registration of the harness's pure helpers (the step table,
+  the log-line format, the convergence predicates) so the synchronous suite still covers
+  the harness's own logic, under a `Phase 39` banner.
+- `.github/workflows/ci.yml` — a `net-harness` job running the driver on ubuntu-latest,
+  alongside `godot-tests`, `server-boot` and `fabric`.
+- `README.md` — phase table rows for 36, 37 and 38 (missing since those passes landed)
+  and for this phase.
+
+**Acceptance criteria:**
+- [ ] Two real peers handshake over loopback ENet, and the identity the host binds comes
+  from the CONNECTION: a client declaring a `player_id` it does not own is bound to its
+  transport-derived id anyway, and an un-handshaked peer's intent is refused.
+- [ ] The reach guard is exercised with real evidence: a chop intent for a tree the peer
+  cannot reach is dropped, and one for a tree inside reach consumes it — the tree's
+  position coming from the host's own `TreeSlice`, never the payload.
+- [ ] The inbound limits hold on a real socket: a packet above `MAX_CLIENT_PACKET_BYTES`
+  (8192) is refused without disconnecting the peer as a side effect, and the per-peer
+  token bucket throttles a burst without starving the steady stream that follows it.
+- [ ] An owner-scoped inventory sync reaches the owner alone: peer A's sync leaves peer
+  B's client inventory and the host's own bucket untouched.
+- [ ] A chunked snapshot completes across real packets (reassembly working with the
+  transport's own ordering, not the test's), and a client that loses its host clears its
+  buffer — the Phase 38 fix observed on the wire rather than over the bus.
+- [ ] A combat round routed at a peer arrives at that peer's own client, and the host's own
+  simulated number for that peer survives a real reconnect unchanged.
+- [ ] A peer killed before it disconnects reconnects alive and controllable: the host's
+  respawn deadline resolves on the read that follows the reconnect — and resolves on BOTH
+  readers, since the handshake snapshot reads the saved copy (`get_player_data()`) rather
+  than `get_hp()` — and the client's body runs its own countdown rather than sitting dead
+  with no timer.
+- [ ] Deliverable 1 holds on both ends: a peer whose simulated HP reaches zero returns to
+  full health after the delay, survives a restart, and answers the same number through the
+  live reader and the saved copy; a body handed a zero by `set_hp()` starts its respawn
+  countdown, and a repeated zero does not restart it; the new rule is asserted pure and
+  alone, beside `simulated_hp_after_hit` and `live_cooldowns`; and the declared value still
+  has no path into a record — the respawn deadline is not a second door for it. Each new
+  rule is RED-proved first.
+- [ ] A disconnect evicts transport state end to end: the peer's record is evicted, its
+  taming mirrors and snapshot buffer are forgotten, and a reconnect re-presents the join
+  intent and is re-answered.
+- [ ] The harness runs green on both the host-process and the client-process side and is
+  wired into CI, while the existing suite stays synchronous and unchanged in cost.
+- [ ] The suite remains green on both boot paths (`Results: N/N passed (0 failed)`,
+  `[Server] listening on port 7777, max_clients 64`), with the new assertion count
+  quoted.
+
+**Implementation notes:**
+- **ENet needs frames; the suite has none.** `TestSuite._run_tests()` is called
+  synchronously from `GameRoot._ready()` and there is not a single `await` in its ~7,900
+  lines — deliberate, because it runs before any production slice's emissions can leak
+  into world state. A harness cannot be added to that runner: an
+  `ENetMultiplayerPeer` only delivers when the tree ticks. The harness is therefore its
+  own boot mode with its own `await`-driven step loop, and the parts of it that are pure
+  (the step table, the assertion formatting, the convergence predicates) are registered
+  in the synchronous suite so they are still covered on every boot.
+- **Two peers in one process is possible, and still the wrong default.** Godot 4 supports
+  a second `MultiplayerAPI` bound to a separate node subtree, so both peers could live in
+  one process and the driver could read each side's state directly. The recommended shape
+  is nonetheless TWO PROCESSES over loopback, because it drives the production path
+  unmodified — the same `--server` / `--client` args the game ships with, the same
+  `NetworkingSlice.host()` / `join()`, real ENet peer-id reassignment — so an edit that
+  only works in-process is caught here rather than in the wild. The in-process variant
+  stays available as a fallback if log-driven comparison proves brittle.
+- **The comparison channel is a canonical log line, not shared memory.** Each process
+  prints one structured line per completed step (`HARNESS <step> <ok|refused> <detail>`)
+  and the driver asserts the host's and the client's lines agree. A text channel is what
+  lets the same scenario run against two processes, and it is the only channel that
+  survives a role flip.
+- **The Phase 19 network emulator is already here, and this is where it earns its keep.**
+  `NetworkingSlice` carries `emulate_network`, `emulator_loss_rate`,
+  `emulator_jitter_ms` and `emulator_reorder`. The scenario should run at least twice —
+  once clean, once through the emulator — so the conformance story covers reordering and
+  loss over a genuine socket, which is as close as a loopback harness gets to the
+  still-deferred WAN validation.
+- **Determinism beats coverage.** A wire test that flaps is worse than no wire test: every
+  step asserts on convergence (a predicate plus a bounded number of ticks) rather than on
+  a fixed frame index, and every step carries a deadline that fails loudly instead of
+  hanging CI.
+
+**Known simplifications (deferred):**
+- **Loopback only.** Two processes on one host exercise real ENet framing and the real
+  handshake, but not latency, MTU discovery or NAT behaviour. WAN / cross-region testing
+  stays deferred from Phase 19.
+- **No soak.** The harness runs a scripted session, not a long-lived one: memory growth
+  under hours of churn (the Phase 37 eviction classes) is still argued from the eviction
+  sites rather than measured.
+- **The harness does not replace the routing-level tests.** Those stay: they are cheaper,
+  they pin the refusal itself, and they run inside the suite the project already gates on.
+- **A peer's death is still not resolved host-side.** Deliverable 1 makes the floor
+  recoverable — a downed peer's HP returns to full after the delay instead of freezing at
+  zero — but nothing happens TO the peer at zero: no corpse, no loot, no kill credit. The
+  death consequence stays deferred past this phase.
 
 ---
 
