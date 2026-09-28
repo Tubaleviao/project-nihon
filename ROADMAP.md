@@ -2724,7 +2724,9 @@ end to end.
   counted: a second line for a step was silently ignored and the step judged on the first.
   The check now exists (`steps_reported`), the dead `steps_of()` was removed, and the
   per-step readers are unambiguously "the first line" because a duplicate can no longer
-  reach them.**
+  reach them. CI pass — on failure the driver now prints both processes' `HARNESS` lines and
+  their transport-lifecycle lines into the step output, so a CI failure says which step broke
+  without anyone downloading the artifact.**
 - `src/core/player_rules.gd` — **review pass**: `MAX_HP` and `RESPAWN_DELAY` move off
   `PlayerSlice` into a neutral module both layers preload, the `skill_tiers.gd` shape. The
   persistence layer used to `preload("…/player_slice.gd")` for those two constants —
@@ -2826,7 +2828,12 @@ end to end.
   identical token, 1 run of 1) and green after it (`10/10 steps agreed across both peers`,
   two consecutive runs). A bare coroutine call is now impossible to reintroduce silently:
   `NetHarness.unawaited_waits()` audits the source, `net: harness awaits are not bare` asserts
-  the rule in the suite, and `NetHarness._self_audit()` runs it on every boot.**
+  the rule in the suite, and `NetHarness._self_audit()` runs it on every boot. CI PASS — the
+  job still went red on the CI runner after that, for two reasons a local run could not show:
+  the rejoin did not mirror `game_root._boot_client()` (see the implementation note below),
+  and a failure printed only the summary. The driver now prints BOTH processes' step lines and
+  lifecycle lines into the step output on failure, so the next CI failure is diagnosable
+  without downloading the artifact.**
 - [x] The suite remains green on both boot paths (`Results: N/N passed (0 failed)`,
   `[Server] listening on port 7777, max_clients 64`), with the new assertion count
   quoted. **Review pass: `Results: 7508/7508 passed (0 failed)` on both boots — the count
@@ -2861,6 +2868,17 @@ end to end.
   count (`_deaths`, the `_chops` shape; `player_died` is emitted only through the door that
   arms the timer) and assert what the step is actually about: never down with nothing running
   — still waiting the countdown out, or already back at full health.**
+- **A rejoin has to mirror `game_root._boot_client()`, not merely call `join()`.** A client's
+  join intent is fire-and-forget and `_on_connected_to_server` is the only other thing that
+  re-presents it, so a rejoin whose ONE intent went out before the new socket was up (the log
+  shows the RPC erroring with "multiplayer peer which is not connected") presented no intent at
+  all: the host never bound the peer, while the client's own half still passed because it only
+  asserts its local body. Setting `_snapshot_pending = true` after the rejoin arms
+  `_tick_client_handshake`, which re-presents the intent every 3 s until the world arrives —
+  exactly what `_boot_client()` does for the first join. **CI pass.** `reconnect_alive`'s
+  failure detail now also carries the transport state (host: `live`/`same`/`online`/`buf`;
+  client: `conn`/`claim`), because `still_down` alone could not say whether the peer never
+  rejoined, rejoined as a different player, or rejoined and did not resolve.
 - **ENet drops a quiet peer, so the scenario keeps the link alive while it waits.** A step
   that asserts an ABSENCE waits seconds for nothing to happen, and a step whose counterpart
   is busy waits 25 s; without a periodic keepalive the client was disconnected mid-scenario,

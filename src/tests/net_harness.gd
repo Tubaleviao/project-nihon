@@ -620,8 +620,15 @@ func _step_reconnect_alive() -> void:
 		var resolved_ok: bool = await _await_until(
 			func(): return _root._registry.get_hp(target) == PlayerSlice.MAX_HP, STEP_TIMEOUT_SECS)
 		var snapshot_resolved: float = float(_root._registry.get_player_data(target).get("hp", -1.0))
-		_report("reconnect_alive", verdict(ok and resolved_ok and snapshot_resolved == PlayerSlice.MAX_HP, true),
-			"alive-after-reconnect" if (ok and resolved_ok and snapshot_resolved == PlayerSlice.MAX_HP) else "still_down")
+		var good := ok and resolved_ok and snapshot_resolved == PlayerSlice.MAX_HP
+		# The failure token says WHICH half of "the peer came back" was missing, because
+		# "still_down" alone cannot distinguish the three ways it can be false: the peer
+		# never rejoined (`live0`), it rejoined as a DIFFERENT player (`same0`), or it
+		# rejoined but its deadline did not resolve on the reader this step reads.
+		_report("reconnect_alive", verdict(good, true),
+			"alive-after-reconnect" if good else "still_down-live%d-same%d-online%d-buf%d" % [
+				int(_live_bound_id() != ""), int(_live_bound_id() == target),
+				int(_root._registry.is_online(target)), _root._networking._snapshot_buffer.size()])
 		return
 	# The "it was down" half is the same whole-run observation as step 8's, for the same
 	# reason: the hit is forwarded on the HOST's timeline while this side's own countdown runs
@@ -638,6 +645,15 @@ func _step_reconnect_alive() -> void:
 	if err != OK:
 		_report("reconnect_alive", "fail", "rejoin_failed")
 		return
+	# Mirror `game_root._boot_client()` exactly, which the first join in `run()` already did:
+	# a client that has just joined is WAITING for its world snapshot, and that flag is what
+	# arms the client's own handshake retry (`_tick_client_handshake`). Without it the rejoin
+	# got exactly ONE join intent, sent before the new socket was up — the RPC then errors
+	# out ("multiplayer peer which is not connected") and there is no second attempt, which is
+	# a harness that does not drive the shipped client's boot path after all.
+	_root._snapshot_pending = true
+	_root._handshake_elapsed = 0.0
+	_root._handshake_retries = 0
 	_root._networking.request_handshake()
 	# The client's own countdown is the half that makes the body CONTROLLABLE again: it
 	# must have run out (or be about to) and left the body up, not dead with no timer.
@@ -645,8 +661,20 @@ func _step_reconnect_alive() -> void:
 		func(): return _root._player._alive and _root._player.get_hp() == PlayerSlice.MAX_HP,
 		STEP_TIMEOUT_SECS)
 	var controlling: bool = _root._player._respawn_timer <= 0.0
-	_report("reconnect_alive", verdict(was_down and buffer_cleared and alive_ok and controlling, true),
-		"alive-after-reconnect" if (was_down and buffer_cleared and alive_ok and controlling) else "not_recovered")
+	var good := was_down and buffer_cleared and alive_ok and controlling
+	# The failure token names the TRANSPORT state as well as the body's: `conn` is the
+	# MultiplayerPeer's own connection status (2 == CONNECTED, and 0 when there is no peer at
+	# all) and `claim` is whether a player id is present, so "the client thinks it is fine but
+	# the host never bound it" is distinguishable from "the client never got its socket back
+	# at all" — which is the difference between a harness race and a transport one.
+	var mp: MultiplayerAPI = _root._networking.multiplayer
+	var conn: int = 0
+	if mp != null and mp.multiplayer_peer != null:
+		conn = int(mp.multiplayer_peer.get_connection_status())
+	_report("reconnect_alive", verdict(good, true),
+		"alive-after-reconnect" if good else "not_recovered-down%d-buf%d-alive%d-timer%.1f-conn%d-claim%d" % [
+			int(was_down), int(buffer_cleared), int(alive_ok), _root._player._respawn_timer,
+			conn, int(str(_root._networking.claimed_player_id) != "")])
 
 ## Step 10 — a disconnect evicts transport state, and a reconnect is re-answered.
 ##

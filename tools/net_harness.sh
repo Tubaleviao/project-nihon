@@ -214,7 +214,19 @@ PLANNED="$(printf '%s\n' "$HOST_PLAN" | tr ',' '\n' | grep -c .)"
 
 echo
 if [ "$FAILURES" -ne 0 ]; then
-  echo "net-harness FAILED — $FAILURES problem(s); logs in $LOGDIR"
+  # The two processes' logs are the only place that says WHICH step broke and why, and the
+  # step output is what a human (or an agent) reads first — the artifact upload is a second
+  # round trip. Both sides' step lines plus the lifecycle lines are short and are printed
+  # here so a CI failure is diagnosable without downloading anything.
+  echo "net-harness: --- steps (host) ---"
+  grep '^HARNESS' "$HOST_LOG" || true
+  echo "net-harness: --- steps (client) ---"
+  grep '^HARNESS' "$CLIENT_LOG" || true
+  echo "net-harness: --- transport events (host) ---"
+  grep -E 'disconnected|joined player|listening on port|failed to|connection' "$HOST_LOG" | head -n 40 || true
+  echo "net-harness: --- transport events (client) ---"
+  grep -E 'disconnected|joined player|listening on port|failed to|connection|no world snapshot' "$CLIENT_LOG" | head -n 40 || true
+  echo "net-harness FAILED — $FAILURES problem(s); full logs in $LOGDIR"
   exit 1
 fi
 echo "net-harness passed — $PASSED/$PLANNED steps agreed across both peers"
