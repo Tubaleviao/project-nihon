@@ -37,6 +37,7 @@ const SkillTiers      := preload("res://src/core/skill_tiers.gd")
 const MultimeshPool   := preload("res://src/core/multimesh_pool.gd")
 const SpatialHash     := preload("res://src/core/spatial_hash.gd")
 const PlayerRegistry  := preload("res://src/persistence/player_registry.gd")
+const NetHarness      := preload("res://src/tests/net_harness.gd")
 
 var _pass: int = 0
 var _fail: int = 0
@@ -398,6 +399,18 @@ func run() -> void:
 	_run_test("net: snapshot social keys are one list",           _test_snapshot_social_keys_are_identified)
 	_run_test("net: snapshot buffer clears when host is lost",    _test_net_snapshot_buffer_cleared_when_host_lost)
 	_run_test("taming: cooldown mirror prunes in place",          _test_taming_cooldown_mirror_pruned_in_place)
+
+	# Phase 39 — deliverable 1 (a downed body comes back) and the network harness's
+	# own pure logic. The harness's SOCKET half runs in its own boot mode
+	# (`--net-harness <role>`, see src/tests/net_harness.gd); everything here is the
+	# part that can be asserted without frames.
+	_run_test("identity: the respawn rule is pure",               _test_hp_after_respawn_is_pure)
+	_run_test("identity: a downed peer comes back",               _test_host_simulated_hp_respawns)
+	_run_test("identity: set_hp starts the respawn countdown",    _test_player_set_hp_starts_respawn)
+	_run_test("net: harness step table is the driver contract",   _test_net_harness_step_table)
+	_run_test("net: harness log line round-trips",                _test_net_harness_line_round_trip)
+	_run_test("net: harness verdict treats refusal as a pass",    _test_net_harness_verdict)
+	_run_test("net: harness targets are deterministic",           _test_net_harness_target_selection)
 
 	# Self-check: the _run_test list above is manual, so a test function can be
 	# written but forgotten from the list. Fail loudly instead of silently
@@ -7910,6 +7923,224 @@ func _test_taming_cooldown_mirror_pruned_in_place() -> void:
 	rig["taming"].free()
 	rig["crafting"].free()
 	rig["registry"].free()
+
+# ---------------------------------------------------------------------------
+# Phase 39 — a downed body comes back (deliverable 1) + the two-client harness
+# ---------------------------------------------------------------------------
+
+## Phase 39 — the respawn rule, asserted ALONE, the way `simulated_hp_after_hit` is.
+##
+## This is the missing half of a host-simulated peer's health: `simulated_hp_after_hit`
+## can only subtract (it clamps at zero), so before this rule a peer a creature downed
+## froze at zero for the rest of the session and across every restart.
+func _test_hp_after_respawn_is_pure() -> void:
+	var now := 1_000_000.0
+	assert_eq(PlayerRegistry.hp_after_respawn(0.0, now + 1.0, now), 0.0,
+		"a downed body waits out a deadline that has not passed")
+	assert_eq(PlayerRegistry.hp_after_respawn(0.0, now - 1.0, now), 100.0,
+		"and is back at full health once it has")
+	assert_eq(PlayerRegistry.hp_after_respawn(0.0, now, now), 100.0,
+		"the deadline's own instant counts as passed")
+	assert_eq(PlayerRegistry.hp_after_respawn(0.0, 0.0, now), 0.0,
+		"no deadline means no respawn is pending — the body stays down")
+	assert_eq(PlayerRegistry.hp_after_respawn(-1.0, 0.0, now), -1.0,
+		"the no-number sentinel is not a downed body")
+	assert_eq(PlayerRegistry.hp_after_respawn(-1.0, now - 1.0, now), -1.0,
+		"and a stale deadline cannot invent health for a body this host never modelled")
+	assert_eq(PlayerRegistry.hp_after_respawn(37.0, now - 1.0, now), 37.0,
+		"a live body is returned unchanged")
+	assert_eq(PlayerRegistry.hp_after_respawn(37.0, now + 1.0, now), 37.0,
+		"even with a deadline beside it — the number is returned raw")
+	assert_eq(PlayerRegistry.hp_after_respawn(0.0, now - 1.0, now, 60.0), 60.0,
+		"the ceiling is the caller's, so a peer respawns to the same MAX_HP the client uses")
+
+## Phase 39 — deliverable 1, registry half: a resolved hit that reaches zero parks the
+## respawn on the record, and BOTH readers of the field resolve it.
+##
+## The reader that matters is `get_player_data` — the saved copy the handshake snapshot
+## reads on a reconnect. Resolving on `get_hp` alone left the reconnect replaying the
+## zero, which is Phase 38's lesson in mirror image: a rule that runs on one reader is a
+## reader-dependent rule.
+func _test_host_simulated_hp_respawns() -> void:
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var host_id := registry.mint_player_id()
+	registry.set_local_player(host_id)
+	var remote := str(registry.resolve_identity(7))
+
+	# A resolved hit that does NOT reach zero leaves no deadline behind.
+	registry.record_simulated_hp(remote, 88.0)
+	assert_eq(float(registry.get_record(remote).get("respawn_deadline", -2.0)), 0.0,
+		"a positive resolution parks no respawn")
+	assert_eq(registry.get_player_data(remote).get("hp", -2.0), 88.0,
+		"and the saved copy carries the number")
+
+	# A hit that reaches zero takes the deadline down WITH the number.
+	registry.record_simulated_hp(remote, 0.0)
+	assert_eq(registry.get_hp(remote), 0.0, "a downed peer reads zero while its deadline is live")
+	var live: float = float(registry.get_record(remote).get("respawn_deadline", 0.0))
+	assert_true(live > Time.get_unix_time_from_system(), "and the deadline is a future instant")
+	assert_eq(registry.get_player_data(remote).get("hp", -2.0), 0.0,
+		"the saved copy agrees while the body is still down")
+
+	# A LIVE deadline is never replaced: a creature striking a body already at zero
+	# must not push the respawn further away on every round.
+	registry.record_simulated_hp(remote, 0.0)
+	assert_eq(float(registry.get_record(remote).get("respawn_deadline", 0.0)), live,
+		"a repeated zero does not restart a running deadline")
+
+	# The deadline passes (wound back rather than waited out): BOTH readers bring the
+	# body back, and they answer the SAME number.
+	var rec := registry.get_record(remote)
+	rec["respawn_deadline"] = Time.get_unix_time_from_system() - 1.0
+	assert_eq(registry.get_hp(remote), PlayerSlice.MAX_HP,
+		"the live reader resolves a passed deadline")
+	assert_eq(registry.get_player_data(remote).get("hp", -2.0), PlayerSlice.MAX_HP,
+		"and so does the saved copy — the one a reconnect reads")
+	assert_eq(registry.get_hp(remote), float(registry.get_player_data(remote).get("hp", -2.0)),
+		"the two readers cannot disagree")
+
+	# DURABLE: the resolved number and the deadline both ride the serializable record, so
+	# a restart lands mid-wait rather than at full health.
+	var restored := PlayerRegistry.new()
+	add_child(restored)
+	restored.apply_player_data(remote, registry.get_player_data(remote))
+	assert_eq(restored.get_hp(remote), PlayerSlice.MAX_HP, "a restart after the deadline is a live body")
+	var pending := PlayerRegistry.new()
+	add_child(pending)
+	var waiting := registry.get_player_data(remote).duplicate(true)
+	waiting["hp"] = 0.0
+	waiting["respawn_deadline"] = Time.get_unix_time_from_system() + 60.0
+	pending.apply_player_data(remote, waiting)
+	assert_eq(pending.get_hp(remote), 0.0, "while a restart INSIDE the wait stays down")
+	assert_true(float(pending.get_record(remote).get("respawn_deadline", 0.0)) > 0.0,
+		"with its deadline intact, so the wait is not silently forgiven")
+
+	# And a positive resolution clears the deadline, so a body that is up again carries
+	# no stale fact that a later read could act on.
+	registry.record_simulated_hp(remote, 1.0)
+	assert_eq(float(registry.get_record(remote).get("respawn_deadline", -2.0)), 0.0,
+		"a body back on its feet drops the deadline")
+	assert_eq(registry.get_hp(remote), 1.0, "and reads the number it was given")
+
+	pending.free()
+	restored.free()
+	registry.free()
+
+## Phase 39 — deliverable 1, client half: a body handed a zero starts its own countdown.
+##
+## The same soft-lock as the registry half, seen from the client: a peer's client that
+## received its own zero (on a join snapshot, or forwarded from a hit) ended up
+## `_alive == false` with `_respawn_timer == -1.0` — dead, with `_physics_process` ticking
+## a countdown that had never been started. `set_hp` is the ONE door such a zero comes
+## through. Starting rather than RESTARTING matters: a repeated zero would otherwise push
+## the respawn away on every application and the body would never come back.
+func _test_player_set_hp_starts_respawn() -> void:
+	var p := PlayerSlice.new()
+	p.render_visuals = false
+	add_child(p)
+	assert_eq(p._respawn_timer, -1.0, "a fresh body has no countdown running")
+	p.set_hp(40.0)
+	assert_eq(p._respawn_timer, -1.0, "applying health does not start one")
+	assert_true(p._alive, "and the body is up")
+
+	p.set_hp(0.0)
+	assert_false(p._alive, "a zero takes the body down")
+	assert_eq(p._respawn_timer, PlayerSlice.RESPAWN_DELAY,
+		"and starts the respawn countdown — the half that was missing")
+
+	# The countdown is STARTED, never restarted: a second zero (a re-forwarded hit, a
+	# re-delivered snapshot) leaves the one already running alone.
+	p._respawn_timer = 2.0
+	p.set_hp(0.0)
+	assert_eq(p._respawn_timer, 2.0, "a repeated zero does not push the respawn away")
+	p.free()
+
+# ---------------------------------------------------------------------------
+# Phase 39 — the network harness's own logic
+# ---------------------------------------------------------------------------
+#
+# The harness itself needs frames and a socket, so it runs in its own boot mode (see
+# src/tests/net_harness.gd). Its PURE half — the step table, the log-line format and
+# parser, the convergence verdict, and the deterministic target selection — is registered
+# here, so it is covered on every ordinary boot instead of only when two processes are
+# specially arranged. That matters most for the two pieces the driver's whole oracle
+# rests on: the line format (the only channel between the processes) and the verdict.
+
+## Phase 39 — the step table is the scenario's contract with the driver: the driver
+## asserts that BOTH processes reported every step in it, so a step silently dropped from
+## one side (a role that no longer runs it after an edit) is caught rather than passing
+## on the other side's line alone.
+func _test_net_harness_step_table() -> void:
+	var steps := NetHarness.steps()
+	assert_true(steps.size() >= 10, "the scenario carries a substantial step list")
+	var names: Dictionary = {}
+	for s in steps:
+		assert_true(s is Dictionary, "every entry is a step record")
+		assert_true(s.has("name"), "and names itself")
+		assert_true(s.has("compare"), "and says whether the driver must compare its details")
+		names[str(s.get("name", ""))] = true
+	assert_eq(names.size(), steps.size(), "step names are unique — the driver keys on them")
+	assert_eq(str(steps[0].get("name", "")), "handshake", "the scenario starts with the handshake")
+	assert_eq(str(steps[steps.size() - 1].get("name", "")), "disconnect_evicts",
+		"and ends with the eviction the reconnect produced")
+
+## Phase 39 — the wire is a text channel between two processes, so the line format and its
+## parser are load-bearing: if they disagreed, the driver would silently compare nothing
+## and every run would look green.
+func _test_net_harness_line_round_trip() -> void:
+	var line := NetHarness.format_line("chop_in_reach", "ok", "tree_0_0_1")
+	assert_eq(line, "HARNESS chop_in_reach ok tree_0_0_1", "the compiled line is the agreed format")
+	var parsed := NetHarness.parse_line(line)
+	assert_eq(str(parsed.get("step", "")), "chop_in_reach", "and parses back to its step")
+	assert_eq(str(parsed.get("verdict", "")), "ok", "its verdict")
+	assert_eq(str(parsed.get("detail", "")), "tree_0_0_1", "and its detail")
+	# Noise must not parse: the driver reads the WHOLE process log, which is full of the
+	# game's own output, and a false positive there would fake a step.
+	assert_true(NetHarness.parse_line("").is_empty(), "an empty line is not a harness line")
+	assert_true(NetHarness.parse_line("[Server] listening on port 7777, max_clients 64").is_empty(),
+		"nor is a server boot line")
+	assert_true(NetHarness.parse_line("HARNESS handshake ok").is_empty(),
+		"nor a line missing its detail")
+	assert_true(NetHarness.parse_line("harness handshake ok detail").is_empty(),
+		"and the tag is case-exact")
+
+## Phase 39 — the convergence verdict. "refused" is a PASS: half the scenario asserts that
+## something did NOT happen (an out-of-reach chop, an oversized packet), so a verdict
+## function that treated "not seen" as failure would turn the security steps into tests
+## that fail whenever they work.
+func _test_net_harness_verdict() -> void:
+	assert_eq(NetHarness.verdict(true, true), "ok", "an expected event that happened passes")
+	assert_eq(NetHarness.verdict(false, false), "refused", "an expected ABSENCE that held passes as a refusal")
+	assert_eq(NetHarness.verdict(false, true), "fail", "an expected event that never came fails")
+	assert_eq(NetHarness.verdict(true, false), "fail", "and so does an event that should not have happened")
+	assert_true(NetHarness.passed("ok"), "ok counts as a pass")
+	assert_true(NetHarness.passed("refused"), "and so does refused")
+	assert_false(NetHarness.passed("fail"), "while fail does not")
+
+## Phase 39 — the target selection. Both processes pick their scenario trees from their
+## OWN table with this rule, so it has to be a pure function of the tree table: any
+## dependence on dictionary order would have the two sides naming different trees.
+func _test_net_harness_target_selection() -> void:
+	var origin := Vector3(16.0, 12.0, 16.0)
+	var trees: Array = [
+		{ "tree_id": "tree_c", "position": Vector3(20.0, 3.0, 20.0) },   # near
+		{ "tree_id": "tree_a", "position": Vector3(30.0, 3.0, 16.0) },   # near
+		{ "tree_id": "tree_b", "position": Vector3(5.0, 3.0, 5.0) },     # near
+		{ "tree_id": "tree_far", "position": Vector3(200.0, 3.0, 200.0) },
+	]
+	var picked := NetHarness.in_reach_targets(trees, origin, 20.0, 3)
+	assert_eq(picked.size(), 3, "every tree inside the radius is a candidate")
+	assert_eq(str(picked[0]), "tree_a", "and they come back sorted by id, not by table order")
+	assert_eq(str(picked[2]), "tree_c", "so both processes agree without a side channel")
+	assert_eq(NetHarness.in_reach_targets(trees, origin, 20.0, 2).size(), 2,
+		"the caller's count caps the list")
+	# The out-of-reach half: beyond the radius, and again id-sorted so a small difference
+	# between the two sides' view of the world cannot change the answer.
+	assert_eq(NetHarness.beyond_reach_target(trees, origin, 70.0), "tree_far",
+		"only the far tree is beyond the refusal radius")
+	assert_eq(NetHarness.beyond_reach_target(trees, origin, 1000.0), "",
+		"and an empty selection is reported as empty, never as the nearest tree")
 
 # ---------------------------------------------------------------------------
 # Assertion helpers

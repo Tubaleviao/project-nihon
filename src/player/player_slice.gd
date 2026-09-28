@@ -223,9 +223,26 @@ func get_hp() -> float:
 ## Restore HP from a save (Phase 33). Clamped to [0, MAX_HP]; the position half
 ## of a restore is `spawn_at()`. Restoring HP is what makes the boot snapshot's
 ## `player.hp` field actually read back instead of written and forgotten.
+##
+## Phase 39 — this is the ONE door a body can be handed a zero through (a join
+## snapshot, a forwarded hit, a save restore), so it is where the respawn countdown
+## starts: a zero applied to a body with NO countdown running sets `_respawn_timer`.
+## Without it a body could sit `_alive == false` with `_respawn_timer == -1.0` — dead,
+## and `_physics_process` ticking a timer that was never started, so it never came back.
+## That is exactly the soft-lock a peer downed by a creature then handed its own zero on
+## reconnect ended up in; it also covered the single-player case for free, because
+## `game_root._restore_local_player` and the load snapshot hand their saved zero to this
+## same method.
+##
+## It must START a countdown, not restart one: the guard below is what stops a REPEATED
+## zero (a host re-forwarding a hit at a body already at zero, a snapshot re-delivered)
+## from pushing the respawn further away on every application, which would leave the
+## body dead forever. `_die()` remains the other way in, and it always sets the timer.
 func set_hp(hp: float) -> void:
 	_hp = clampf(hp, 0.0, MAX_HP)
 	_alive = _hp > 0.0
+	if not _alive and _respawn_timer < 0.0:
+		_respawn_timer = RESPAWN_DELAY
 	_update_hp_bar()
 	_broadcast_state()
 

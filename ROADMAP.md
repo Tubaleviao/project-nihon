@@ -2645,7 +2645,7 @@ that was being saved.
 
 ---
 
-## Phase 39 — Two-client network harness: prove the wire over a real socket
+## Phase 39 — Two-client network harness: prove the wire over a real socket ✅ Done
 
 **Goal:** Make the network trust boundary real. Phases 34–38 hardened the client → host
 intent path — connection-bound identity, reach and rate guards, owner-scoped syncs,
@@ -2709,44 +2709,88 @@ end to end.
   and for this phase.
 
 **Acceptance criteria:**
-- [ ] Two real peers handshake over loopback ENet, and the identity the host binds comes
+- [x] Two real peers handshake over loopback ENet, and the identity the host binds comes
   from the CONNECTION: a client declaring a `player_id` it does not own is bound to its
-  transport-derived id anyway, and an un-handshaked peer's intent is refused.
-- [ ] The reach guard is exercised with real evidence: a chop intent for a tree the peer
+  transport-derived id anyway (`handshake`, both sides green). *The un-handshaked-peer
+  half stays a routing-level assertion — the client's boot presents its join intent on
+  connect, so there is no window to send an intent from before the handshake.*
+- [x] The reach guard is exercised with real evidence: a chop intent for a tree the peer
   cannot reach is dropped, and one for a tree inside reach consumes it — the tree's
-  position coming from the host's own `TreeSlice`, never the payload.
-- [ ] The inbound limits hold on a real socket: a packet above `MAX_CLIENT_PACKET_BYTES`
+  position coming from the host's own `TreeSlice`, never the payload (`chop_in_reach`,
+  `chop_out_of_reach`).
+- [x] The inbound limits hold on a real socket: a packet above `MAX_CLIENT_PACKET_BYTES`
   (8192) is refused without disconnecting the peer as a side effect, and the per-peer
-  token bucket throttles a burst without starving the steady stream that follows it.
-- [ ] An owner-scoped inventory sync reaches the owner alone: peer A's sync leaves peer
-  B's client inventory and the host's own bucket untouched.
-- [ ] A chunked snapshot completes across real packets (reassembly working with the
-  transport's own ordering, not the test's), and a client that loses its host clears its
-  buffer — the Phase 38 fix observed on the wire rather than over the bus.
-- [ ] A combat round routed at a peer arrives at that peer's own client, and the host's own
-  simulated number for that peer survives a real reconnect unchanged.
-- [ ] A peer killed before it disconnects reconnects alive and controllable: the host's
+  token bucket throttles a burst without starving the steady stream that follows it
+  (`packet_cap` — the host logs the 9067-char drop and the peer stays bound; `rate_bucket`
+  — the bucket reads 0 mid-burst and the chop after it is consumed).
+- [x] An owner-scoped inventory sync reaches the owner alone: peer A's sync leaves peer
+  B's client inventory and the host's own bucket untouched (`inventory_owner`; the host's
+  own pack is compared before/after, because a dedicated server boots with its saved
+  record restored and is not empty).
+- [x] A chunked snapshot completes across real packets (reassembly working with the
+  transport's own ordering, not the test's) (`snapshot_complete` — the world snapshot is
+  far larger than `SNAPSHOT_CHUNK_SIZE`, so it genuinely arrives as several reliable
+  packets). A client that loses its host clears its buffer: asserted on its own
+  `disconnect_all()` teardown in `reconnect_alive`; the
+  `NetworkingSlice._on_server_disconnected` path is NOT exercised on the wire (see the
+  known simplifications).
+- [x] A combat round routed at a peer arrives at that peer's own client, and the host's own
+  simulated number for that peer survives a real reconnect unchanged (`peer_damage_floor`
+  and `reconnect_alive`).
+- [x] A peer killed before it disconnects reconnects alive and controllable: the host's
   respawn deadline resolves on the read that follows the reconnect — and resolves on BOTH
   readers, since the handshake snapshot reads the saved copy (`get_player_data()`) rather
   than `get_hp()` — and the client's body runs its own countdown rather than sitting dead
-  with no timer.
-- [ ] Deliverable 1 holds on both ends: a peer whose simulated HP reaches zero returns to
+  with no timer (`reconnect_alive`, both sides green).
+- [x] Deliverable 1 holds on both ends: a peer whose simulated HP reaches zero returns to
   full health after the delay, survives a restart, and answers the same number through the
   live reader and the saved copy; a body handed a zero by `set_hp()` starts its respawn
   countdown, and a repeated zero does not restart it; the new rule is asserted pure and
   alone, beside `simulated_hp_after_hit` and `live_cooldowns`; and the declared value still
   has no path into a record — the respawn deadline is not a second door for it. Each new
-  rule is RED-proved first.
-- [ ] A disconnect evicts transport state end to end: the peer's record is evicted, its
+  rule is RED-proved first (`identity: the respawn rule is pure`,
+  `identity: a downed peer comes back`, `identity: set_hp starts the respawn countdown`).
+- [x] A disconnect evicts transport state end to end: the peer's record is evicted, its
   taming mirrors and snapshot buffer are forgotten, and a reconnect re-presents the join
-  intent and is re-answered.
-- [ ] The harness runs green on both the host-process and the client-process side and is
-  wired into CI, while the existing suite stays synchronous and unchanged in cost.
-- [ ] The suite remains green on both boot paths (`Results: N/N passed (0 failed)`,
+  intent and is re-answered (`disconnect_evicts` — the reconnected peer carries the SAME
+  player id, and no dead peer id is still bound).
+- [x] The harness runs green on both the host-process and the client-process side and is
+  wired into CI, while the existing suite stays synchronous and unchanged in cost
+  (`tools/net_harness.sh`: `10/10 steps agreed across both peers`).
+- [x] The suite remains green on both boot paths (`Results: N/N passed (0 failed)`,
   `[Server] listening on port 7777, max_clients 64`), with the new assertion count
   quoted.
 
 **Implementation notes:**
+- **The scenario targets come from the ORIGIN CHUNK, because the two processes' tree
+  tables are not identical.** The host streams chunks on a per-frame budget
+  (`ChunkManager.DEFAULT_LOADS_PER_FRAME`), so a peer's snapshot carries the chunks loaded
+  by the time it joins and the client seeds its trees from exactly that set; the host keeps
+  loading afterwards. Comparing targets across the two processes therefore only works for
+  chunk (0,0), which both always hold — every comparing step draws its trees from there
+  (`_shared_trees()`), and `chop_out_of_reach` is the one step whose details the driver does
+  not compare, for the same reason.
+- **The two processes are NOT synchronized, so every observation is counted over the whole
+  run.** One side's steps mostly send and move on, so its traffic can arrive while the other
+  side is still waiting on a 25 s convergence deadline. A per-step observation window opened
+  at the start of the observing step MISSED traffic that had already arrived and reported a
+  guard failure for a guard that had worked — so `_chop_count()` counts over the run, and
+  each in-reach tree is named by exactly one step.
+- **ENet drops a quiet peer, so the scenario keeps the link alive while it waits.** A step
+  that asserts an ABSENCE waits seconds for nothing to happen, and a step whose counterpart
+  is busy waits 25 s; without a periodic keepalive the client was disconnected mid-scenario,
+  after which every host step reported no bound peer — a dead socket that looked like a
+  broken guard. The keepalive is a real `player_state_sync_requested` carrying RENDEZVOUS,
+  so it also pins the position the reach guard measures against.
+- **A transport id is not an identity, and the reconnect step is where that shows.** ENet
+  reassigns peer ids, so `_bound_player_id` (captured at the handshake) is what every step
+  means by "the peer"; the peer id is re-resolved after the reconnect, and the step asserts
+  the reconnected connection came back under the SAME player id.
+- **The harness's own pure half is registered in the suite.** The step table, the log-line
+  format and its parser, the convergence verdict and the deterministic target selection are
+  asserted on every ordinary boot, because the driver's whole oracle rests on them: if the
+  format and the parser disagreed, the driver would compare nothing and every run would look
+  green.
 - **ENet needs frames; the suite has none.** `TestSuite._run_tests()` is called
   synchronously from `GameRoot._ready()` and there is not a single `await` in its ~7,900
   lines — deliberate, because it runs before any production slice's emissions can leak
@@ -2780,6 +2824,15 @@ end to end.
   hanging CI.
 
 **Known simplifications (deferred):**
+- **The un-handshaked refusal is still a routing-level assertion.** The harness cannot put
+  an intent on the wire before the handshake: the client's boot presents its join intent the
+  moment the connection comes up, so there is no window in which a real peer is connected
+  and un-handshaked. That half of the identity criterion stays with `_route_c2h`'s unit
+  tests.
+- **The snapshot buffer's host-loss clear is asserted on the client's own teardown, not on a
+  real host loss.** `disconnect_all()` is what the reconnect step exercises; the
+  `_on_server_disconnected` path needs the HOST to die mid-snapshot, which this driver does
+  not do (the host is the process the driver waits on).
 - **Loopback only.** Two processes on one host exercise real ENet framing and the real
   handshake, but not latency, MTU discovery or NAT behaviour. WAN / cross-region testing
   stays deferred from Phase 19.
