@@ -3027,7 +3027,7 @@ the foot-IK return value whose name collision caused the first of those bugs.
   which is what keeps the climb a walk. Adding a vertical impulse would have been the
   obvious-looking shortcut and is exactly the "jump" the finding rules out.
 
-## Phase 41 — Deterministic world and volumetric terrain
+## Phase 41 — Deterministic world and volumetric terrain ✅ Done
 
 **Goal:** Every boot generates a different world, and every column is one solid
 height with nothing above it. `TerrainSlice._noise.seed = randi()` means the
@@ -3088,20 +3088,29 @@ bedrock depth, and migrates the edit/save format the change invalidates.
   `resolve_step_up`, and `floor_snap_length = STEP_UP_HEIGHT` are unchanged.
 
 **Acceptance criteria:**
-- [ ] Two runs with the same seed produce identical heightmaps per chunk (assert
-  a `hash()` of the heightmap array), and a client's terrain matches the host's
-  with no heightmap in the snapshot.
-- [ ] A column can carry two or more solid runs: a chunk with a tunnel emits a
-  downward face (a ceiling), and the trimesh collision stops a body from passing
-  through it.
-- [ ] Mining a tunnel roof does not remove the tunnel floor; mining at
-  `BEDROCK_DEPTH` is refused while mining one `STEP_HEIGHT` above it succeeds.
-- [ ] A save written before this phase loads with its edits intact, and `pnpm
-  check-drift` is clean (no fabric change) — the migration is exercised by a
-  suite test, not only by hand.
-- [ ] The suite is green on both boot paths (`Results: N/N passed (0 failed)`,
-  count quoted in the commit) and `character: avatar root Y matches voxel ground`
-  still passes, plus the under-a-ceiling case.
+- [x] Two runs with the same seed produce identical heightmaps per chunk (assert
+  a `hash()` of the heightmap array — `terrain: the world seed determines the
+  terrain` also asserts a different seed differs), and a client's terrain matches
+  the host's with no heightmap in the snapshot: the snapshot carries `seed`, and
+  the client adopts it and streams its OWN chunks.
+- [x] A column can carry two or more solid runs: a chunk with a tunnel emits a
+  downward face (a ceiling), and the trimesh collision is built from that same
+  soup — `voxel: a tunnel keeps its floor and its roof` asserts the face is in
+  `VoxelSlice.collision_faces`. What stops a body through it is exercised in GAME
+  only: the suite has no physics frame (ROADMAP §Phase 39).
+- [x] Mining a tunnel roof does not remove the tunnel floor; mining at
+  `BEDROCK_DEPTH` is refused while mining one `STEP_HEIGHT` above it succeeds
+  (`voxel: a tunnel keeps its floor and its roof`, `voxel: mine at bedrock fails`).
+- [x] A save written before this phase loads with its edits intact
+  (`voxel: a legacy save migrates to run edits`, which applies a version-1 manifest
+  — scalar heights plus the placed-material stacks — and reads the edits back), and
+  `pnpm check-drift` is clean: `✓ No drift detected (543 file(s) match manifest)`,
+  no fabric change.
+- [x] The suite is green on both boot paths: `Results: 7566/7566 passed  (0 failed)`
+  on the listen host and the same `7566/7566` on `-- --server` (which also prints
+  `[Server] listening on port 7777`), and `character: avatar root Y matches voxel
+  ground` still passes, plus the under-a-ceiling case (`voxel: the support sampler
+  honours a ceiling`).
 
 **Implementation notes:**
 - **The seed is the world's identity, so it is persisted, not sampled.** It
@@ -3125,6 +3134,46 @@ bedrock depth, and migrates the edit/save format the change invalidates.
   sampler is a function of the body's own Y for exactly this reason; a
   column-top sampler is only correct in a world with no ceilings, which is the
   world this phase ends.
+- **`BEDROCK_DEPTH` is `-8.0`, and the world floor slab moved under it.** The
+  surface range is `[0, MAX_HEIGHT]`, so eight units of rock is a real thickness
+  rather than a hair: it is 64 `STEP_HEIGHT` steps of descendable ground. The
+  dormant `WorldFloor` safety slab was at `y = -0.5` — INSIDE the new ground —
+  and would have blocked a player mining below it, so it now sits at
+  `BEDROCK_DEPTH - 0.5`: still the thing that catches a body if the terrain ever
+  fails, and no longer in the way of the floor the phase adds.
+- **The join snapshot carries the seed instead of the heightmaps, so the client
+  starts its own chunk streaming.** `_build_snapshot` sends `seed` (the world's
+  identity) and the chunk-edit manifest; `_on_world_snapshot_received` adopts the
+  seed, applies the edits, then `_chunk_manager.start()` / `refresh()` around the
+  position the record restored. Two consequences worth naming: the client's world
+  is now its OWN view window rather than whatever the host had loaded, and trees /
+  creatures need no placement payload at all — they are derived per chunk
+  coordinate on both sides, exactly the rule tree seeding already followed. A
+  client that did NOT stream would boot into an empty world with the right seed,
+  which is why the start call lives at the end of the snapshot handler, after the
+  player's position.
+- **The world record's `version` is a marker, not a gate.** `WORLD_FORMAT_VERSION`
+  is 2 and a pre-Phase-41 record simply has no `version` key
+  (`LEGACY_WORLD_FORMAT_VERSION`). The load path never branches on it: the
+  manifest shape itself is tolerant (`apply_edits` adopts an Array of typed edits
+  and MIGRATES a bare number against the tile's natural run), because a migration
+  that "repairs" a world by discarding player work is worse than a refusal. The
+  version is there so a future shape can be told apart, and so the boot can say
+  which world it loaded.
+- **A column's runs are replayed from the tile's natural run, so the migration
+  needs the ground.** `_base_top_for_tile` answers from the chunk's heightmap when
+  it is built and from `TerrainSlice.get_height_at` when it is not — the same
+  height by construction, which is what lets a load-time migration run BEFORE
+  chunk streaming (the boot order) without guessing. This is also why
+  `game_root._load_world_records` adopts the recorded seed first: the migration of
+  a legacy edit is measured against the noise field the save was written on.
+- **An unknown neighbour emits no wall, which is a deliberate change.** The mesher
+  used to answer `0.0` for any tile outside the chunk and therefore built a
+  full-height wall at every chunk seam and around the whole streamed window. It
+  now returns `null` for a tile whose chunk is not built and skips those faces:
+  at a loaded seam the side that HAS the material emits the facing wall (its own
+  subtraction sees the pit), so nothing becomes see-through, and every seam loses
+  a redundant pair of walls.
 
 **Known simplifications (deferred):**
 - **No greedy meshing yet.** The mesher still emits one quad per tile; Phase 42
@@ -3137,6 +3186,9 @@ bedrock depth, and migrates the edit/save format the change invalidates.
   them; a cave noise function is not this phase's job.
 - **The world remains finite** (`WORLD_RADIUS_CHUNKS` 128) and the spawn-plain
   flattening remains a special case inside the height function.
+- **One trimesh per chunk, rebuilt whole on every edit.** A `ConcavePolygonShape3D`
+  has no spatial split, so mining one tile re-serializes that chunk's whole surface
+  (mesh + collision). Phase 42 threads that build and merges the coplanar quads.
 
 ---
 

@@ -8,6 +8,8 @@ extends Node
 ## Public API:
 ##   request_chunk(pos: Vector2i) -> void   — kick off async generation
 ##   get_height_at(world_pos: Vector2) -> float — terrain height at world XZ
+##   set_world_seed(seed: int) -> void      — the world's identity (Phase 41)
+##   get_world_seed() -> int
 
 const CHUNK_SIZE := 64       # tiles per side (64 × 0.5 = 32 world units per chunk)
 const TILE_SIZE  := 0.5      # world units per tile (XZ) — each square is half its former 1.0 size
@@ -38,14 +40,37 @@ const BIOME_KEYS: Array = [
 	"VoidRift",
 ]
 
+## The world's seed. Phase 41 — this is the world's IDENTITY, not a per-boot
+## random: the same seed plus the fixed BIOME_SEED reproduce every height in
+## every chunk, so a host and a client (and a reload) generate the same ground
+## instead of one side having to ship heightmaps to the other. It is persisted
+## on the WORLD record (not on a player record — two players in one world must
+## regenerate the same terrain) and travels in the join snapshot.
+var _world_seed: int = 0
+
 var _noise := FastNoiseLite.new()
 
 func _ready() -> void:
 	_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	_noise.seed = randi()
+	# A fresh world still gets a random seed — but it is remembered and saved,
+	# so this is the LAST time the ground changes without a reason.
+	_world_seed = randi()
+	_noise.seed = _world_seed
 	_noise.frequency = 0.05
 	_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_noise.fractal_octaves = 3
+
+## Adopt `seed` as the world's identity. Called by game_root with the seed read
+## off the world record (authoritative boot) or out of the host's join snapshot
+## (client) BEFORE any chunk is requested, so every height in the session comes
+## from the same noise field.
+func set_world_seed(seed: int) -> void:
+	_world_seed = seed
+	_noise.seed = seed
+
+## The seed this world is generating from (see set_world_seed).
+func get_world_seed() -> int:
+	return _world_seed
 
 ## Generate a chunk and emit chunk_ready when done.
 func request_chunk(pos: Vector2i) -> void:

@@ -73,6 +73,7 @@ func run() -> void:
 	_run_test("terrain: chunk size is correct",               _test_terrain_chunk_size)
 	_run_test("terrain: height is non-negative",              _test_terrain_height_nonneg)
 	_run_test("terrain: two chunks are independent",          _test_terrain_two_chunks)
+	_run_test("terrain: the world seed determines the terrain", _test_terrain_seed_deterministic)
 	_run_test("persistence: save then load round-trip",       _test_persistence_round_trip)
 	_run_test("persistence: missing slot emits load_failed",  _test_persistence_missing_slot)
 	_run_test("loot: known creature produces drops",          _test_loot_known_creature)
@@ -215,6 +216,9 @@ func run() -> void:
 	_run_test("voxel: place after mine keeps placed colour",   _test_voxel_place_after_mine_keeps_colour)
 	_run_test("voxel: rare vein deposits on natural tiles",    _test_voxel_rare_vein_deposits)
 	_run_test("voxel: rare vein material list",                _test_voxel_rare_vein_materials)
+	_run_test("voxel: a tunnel keeps its floor and its roof",   _test_voxel_tunnel_runs)
+	_run_test("voxel: the support sampler honours a ceiling",   _test_voxel_support_sampler_under_ceiling)
+	_run_test("voxel: a legacy save migrates to run edits",     _test_voxel_legacy_edit_migration)
 	_run_test("ui: windows toggle open/close",                 _test_ui_window_toggle)
 	_run_test("ui: inventory lines reflect contents",          _test_ui_inventory_lines)
 	_run_test("ui: crafting rows gate on technology",          _test_ui_crafting_rows_tech_gate)
@@ -743,6 +747,31 @@ func _test_terrain_two_chunks() -> void:
 	t.request_chunk(Vector2i(5, 5))
 	assert_eq(maps.size(), 2, "two chunk_ready signals received")
 	t.free()
+
+## Phase 41 — the world seed is the world's IDENTITY: two runs with the same seed
+## must produce a byte-identical heightmap per chunk, which is what lets a host and
+## a client agree on the ground with no heightmap on the wire. The biome seed was
+## already fixed; heights were the only non-determinism (`_noise.seed = randi()`).
+func _test_terrain_seed_deterministic() -> void:
+	var a := TerrainSlice.new()
+	add_child(a)
+	var b := TerrainSlice.new()
+	add_child(b)
+	var c := TerrainSlice.new()
+	add_child(c)
+	a.set_world_seed(4242)
+	b.set_world_seed(4242)
+	c.set_world_seed(4243)
+	assert_eq(a.get_world_seed(), 4242, "the seed reads back")
+	var ha: Array = a._generate(Vector2i(0, 0))
+	var hb: Array = b._generate(Vector2i(0, 0))
+	var hc: Array = c._generate(Vector2i(0, 0))
+	assert_eq(ha.size(), TerrainSlice.CHUNK_SIZE * TerrainSlice.CHUNK_SIZE, "a full chunk of heights")
+	assert_eq(hash(ha), hash(hb), "the same seed generates the same chunk")
+	assert_true(hash(ha) != hash(hc), "a different seed generates a different chunk")
+	a.free()
+	b.free()
+	c.free()
 
 # ---------------------------------------------------------------------------
 # PersistenceSlice tests
@@ -2700,13 +2729,28 @@ func _test_voxel_mine_yields_material() -> void:
 	v.free()
 	inv.free()
 
+## Phase 41 — bedrock is a DEPTH now (BEDROCK_DEPTH), not zero: the ground has real
+## thickness, so a column can be mined below y = 0 and the floor refuses only when
+## there is no material above it left to yield.
 func _test_voxel_mine_bedrock() -> void:
 	var v := _make_voxel()
-	v.apply_edits({ "32,32": 0.0 })
-	var r := v.mine_block(Vector3(16.0, 0.0, 16.0))
-	assert_false(r.get("success", false), "mining at bedrock fails")
+	var floor_y: float = VoxelSlice.BEDROCK_DEPTH
+	var last_step: float = floor_y + VoxelSlice.STEP_HEIGHT
+	# A column whose only material is the last step above the floor.
+	v.apply_edits({ "32,32": last_step })
+	var xz := Vector2(16.25, 16.25)
+	assert_eq(v.get_voxel_height_at(xz), last_step, "the column stands on the last step above the floor")
+	var r := v.mine_block(Vector3(xz.x, last_step, xz.y))
+	assert_true(r.get("success", false), "mining one STEP_HEIGHT above bedrock succeeds")
+	assert_eq(v.get_column_runs_at(xz).size(), 0, "and leaves nothing above the floor")
+	var r2 := v.mine_block(Vector3(xz.x, last_step, xz.y))
+	assert_false(r2.get("success", false), "mining at BEDROCK_DEPTH is refused")
 	v.free()
 
+## A side-face hit lands on the boundary between two columns, so the ray is stepped
+## back into the block it aimed at — and, since Phase 41, the SPAN it removes is the
+## block at the height it hit, not the column's top. A mid-column carve therefore
+## leaves a floor run and a roof run: a tunnel.
 func _test_voxel_mine_side_face() -> void:
 	var v := _make_voxel()
 	var inv := InventorySlice.new()
@@ -2714,12 +2758,13 @@ func _test_voxel_mine_side_face() -> void:
 	v.inventory_slice = inv
 	# East-facing face (normal +X) at x=17.0: the hit block is tile 33 (west, world [16.5,17.0)).
 	v.mine_block(Vector3(17.0, 1.5, 16.5), Vector3(1, 0, 0))
-	assert_eq(v.get_voxel_height_at(Vector2(16.5, 16.5)), 1.875, "+X face mines the block west of the boundary")
-	assert_eq(v.get_voxel_height_at(Vector2(17.0, 16.5)), 2.0, "east block untouched")
+	assert_eq(v.get_column_runs_at(Vector2(16.75, 16.75)).size(), 2, "+X face carves the block west of the boundary")
+	assert_eq(v.get_voxel_height_at(Vector2(16.75, 16.75)), 2.0, "and leaves the block above it standing")
+	assert_eq(v.get_column_runs_at(Vector2(17.25, 16.75)).size(), 1, "east block untouched")
 	# West-facing face (normal -X) at x=19.0: the hit block is tile 38 (east, world [19.0,19.5)).
 	v.mine_block(Vector3(19.0, 1.5, 16.5), Vector3(-1, 0, 0))
-	assert_eq(v.get_voxel_height_at(Vector2(19.0, 16.5)), 1.875, "-X face mines the block east of the boundary")
-	assert_eq(v.get_voxel_height_at(Vector2(18.5, 16.5)), 2.0, "west block untouched")
+	assert_eq(v.get_column_runs_at(Vector2(19.25, 16.75)).size(), 2, "-X face carves the block east of the boundary")
+	assert_eq(v.get_column_runs_at(Vector2(18.75, 16.75)).size(), 1, "west block untouched")
 	v.free()
 	inv.free()
 
@@ -2812,9 +2857,105 @@ func _test_voxel_material_rarity() -> void:
 func _test_voxel_edits_round_trip() -> void:
 	var v := _make_voxel()
 	v.apply_edits({ "32,32": 1.0, "34,34": 3.5 })
-	assert_eq(v.get_edits().get("32,32", 0.0), 1.0, "edit 32,32 survives")
+	assert_true(v.get_edits().get("32,32", null) is Array, "an edit is stored as typed run edits")
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.0, "height reflects restored edit")
 	assert_eq(v.get_voxel_height_at(Vector2(17.0, 17.0)), 3.5, "second edit restored")
+	v.free()
+
+## Phase 41 — a column carries a SPARSE list of solid runs, and a mid-column carve
+## leaves TWO of them: a floor and a roof. Mining the roof must not touch the floor,
+## and the collision soup the trimesh is built from must carry a downward face at the
+## roof's underside, or a body inside the tunnel would fall straight through it.
+##
+## The physics half is exercised in GAME only: `_run_tests()` runs synchronously
+## inside `GameRoot._ready()`, where a `move_and_slide()` never registers a collision
+## (ROADMAP §Phase 39). What is asserted here is the geometry the trimesh is built
+## from — the same triangles the mesh shows.
+func _test_voxel_tunnel_runs() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	# A side-face hit at y = 1.5 on the east face of tile (32,32): the ray lands on
+	# the boundary x = 16.5, so the block it aimed at is the one west of it.
+	var r := v.mine_block(Vector3(16.5, 1.5, 16.25), Vector3(1, 0, 0))
+	assert_true(r.get("success", false), "the side-face mine succeeds")
+	var xz := Vector2(16.25, 16.25)
+	var runs: Array = v.get_column_runs_at(xz)
+	assert_eq(runs.size(), 2, "the column now has a floor run and a roof run")
+	assert_true(is_equal_approx(float(runs[0]["bottom"]), VoxelSlice.BEDROCK_DEPTH), "the floor run starts at the world floor")
+	assert_true(is_equal_approx(float(runs[0]["top"]), 1.5), "and ends where the block was carved")
+	assert_true(is_equal_approx(float(runs[1]["bottom"]), 1.625), "the roof run starts above the carve")
+	assert_true(is_equal_approx(float(runs[1]["top"]), 2.0), "and reaches the old surface")
+	assert_eq(v.get_voxel_height_at(xz), 2.0, "the column top is still the roof")
+	# The collision triangle soup carries the roof's underside: all three vertices of
+	# a triangle at y = 1.625, which is the downward face of the ceiling.
+	var faces: PackedVector3Array = v.collision_faces(Vector2i(0, 0), v._heightmaps["0,0"])
+	var ceiling_faces := 0
+	for i in range(0, faces.size() - 2, 3):
+		if is_equal_approx(faces[i].y, 1.625) and is_equal_approx(faces[i + 1].y, 1.625) and is_equal_approx(faces[i + 2].y, 1.625):
+			ceiling_faces += 1
+	assert_true(ceiling_faces > 0, "the collision soup carries the tunnel's ceiling (a face at y = 1.625)")
+	# Mining the ROOF from inside the tunnel leaves the floor alone.
+	var r2 := v.mine_block(Vector3(16.25, 1.625, 16.25), Vector3.DOWN)
+	assert_true(r2.get("success", false), "the roof can be mined from inside the tunnel")
+	var after: Array = v.get_column_runs_at(xz)
+	assert_eq(after.size(), 2, "still two runs — the tunnel is still a tunnel")
+	assert_true(is_equal_approx(float(after[0]["top"]), 1.5), "the tunnel floor is untouched")
+	assert_true(float(after[1]["bottom"]) > 1.625, "only the roof's lowest step went")
+	v.free()
+	inv.free()
+
+## Phase 41 — the footing sampler answers with the top of the highest run AT OR BELOW
+## the body's own Y. A column-top sampler would answer with the tunnel's ROOF, which
+## would stand the avatar on the ceiling it is walking under.
+func _test_voxel_support_sampler_under_ceiling() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	v.mine_block(Vector3(16.5, 1.5, 16.25), Vector3(1, 0, 0))
+	var xz := Vector2(16.25, 16.25)
+	assert_eq(v.get_voxel_height_at(xz), 2.0, "the column top is the roof")
+	assert_eq(v.sample_support_height_at(xz, 1.5), 1.5, "a body at y 1.5 stands on the tunnel floor")
+	assert_eq(v.sample_support_height_at(xz, 2.0), 2.0, "a body standing on the roof stands on the roof")
+	assert_eq(v.sample_support_height_at(xz, VoxelSlice.BEDROCK_DEPTH), VoxelSlice.BEDROCK_DEPTH, "and nothing below the floor supports anything")
+	v.free()
+	inv.free()
+
+## Phase 41 — a save written before this phase stored a bare absolute quantised height
+## per tile, with the placed-material stacks beside it. That shape must LOAD with the
+## edit intact: a scalar height becomes the single run from BEDROCK_DEPTH up to it, and
+## a placed stack stays its own runs above the natural ground.
+func _test_voxel_legacy_edit_migration() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+	v.build_chunk(Vector2i(0, 0), flat)
+	# The pre-Phase-41 manifest, exactly as a version-1 world record carries it.
+	var legacy := { "0,0": {
+		"edits":     { "32,32": 1.0, "34,34": 2.125 },
+		"materials": { "34,34": ["Ashite"] },
+	} }
+	v.apply_chunk_manifest(legacy)
+	var mined_xz := Vector2(16.25, 16.25)
+	assert_eq(v.get_voxel_height_at(mined_xz), 1.0, "a mined legacy edit migrates to its saved height")
+	var runs: Array = v.get_column_runs_at(mined_xz)
+	assert_eq(runs.size(), 1, "and migrates to ONE run")
+	assert_true(is_equal_approx(float(runs[0]["bottom"]), VoxelSlice.BEDROCK_DEPTH), "from the world floor")
+	assert_true(is_equal_approx(float(runs[0]["top"]), 1.0), "up to the saved height")
+	# A legacy edit that BUILT (a top above the natural surface) plus its placed stack.
+	var built_xz := Vector2(17.25, 17.25)
+	assert_eq(v.get_voxel_height_at(built_xz), 2.125, "a built legacy edit migrates too")
+	var built: Array = v.get_column_runs_at(built_xz)
+	assert_eq(built.size(), 2, "as natural ground plus the placed block")
+	assert_eq(str(built[-1]["material"]), "Ashite", "and the placed block keeps its material")
+	# The migrated save is re-serialized in the NEW shape.
+	var ops: Variant = v.get_chunk_manifest()["0,0"]["edits"]["32,32"]
+	assert_true(ops is Array, "a migrated edit is written back as typed run edits")
+	assert_eq(str(ops[0]["op"]), "remove", "naming the span it carved")
 	v.free()
 
 func _test_voxel_placed_block_keeps_material_color() -> void:
@@ -3384,7 +3525,10 @@ func _test_chunk_persistence_manifest() -> void:
 	var manifest: Dictionary = v.get_chunk_manifest()
 	assert_true(manifest.has("0,0"), "manifest groups chunk (0,0)")
 	assert_true(manifest.has("1,1"), "manifest groups chunk (1,1)")
-	assert_eq(float(manifest["0,0"]["edits"]["32,32"]), 1.0, "chunk (0,0) edit recorded")
+	var entry: Variant = manifest["0,0"]["edits"]["32,32"]
+	assert_true(entry is Array, "chunk (0,0) edit is a typed run edit")
+	assert_eq(str(entry[0]["op"]), "remove", "and names what the edit DID")
+	assert_eq(float(entry[0]["top"]), 2.0, "carving from the natural top down to the saved height")
 	var v2 := VoxelSlice.new()
 	add_child(v2)
 	v2.build_chunk(Vector2i(0, 0), flat)
@@ -5434,11 +5578,17 @@ func _find_chunk_with_biome(terrain: Node, biomes: Array) -> Vector2i:
 			return Vector2i(cx, 0)
 	return Vector2i(-1, -1)
 
-## Vertex count of the built chunk's visual surface (surface 0).
+## Vertex count of the built chunk's rendered surfaces: the terrain surface plus the
+## rare-vein deposit mesh. Phase 41 split those into two MeshInstance3Ds deliberately
+## (a deposit is decoration and must never enter the collision soup), so the count is
+## summed over the chunk's mesh children.
 func _chunk_surface_vertices(voxel: Node, chunk_pos: Vector2i) -> int:
 	var root: Node3D = voxel._chunks["%d,%d" % [chunk_pos.x, chunk_pos.y]]
-	var mesh_inst: MeshInstance3D = root.get_child(0)
-	return mesh_inst.mesh.surface_get_array_len(0)
+	var total := 0
+	for child in root.get_children():
+		if child is MeshInstance3D:
+			total += (child as MeshInstance3D).mesh.surface_get_array_len(0)
+	return total
 
 func _test_voxel_rare_vein_deposits() -> void:
 	var terrain := TerrainSlice.new()
@@ -5467,7 +5617,7 @@ func _test_voxel_rare_vein_deposits() -> void:
 	# A mined natural column is not a *placed* one, so its vein keeps its deposit
 	# — at the lowered height (only a player-placed surface is exempt).
 	var mined_tile: Vector2i = v._world_to_tile(Vector2(deposits[0]["position"].x, deposits[0]["position"].z))
-	v._edits[v._tile_key(mined_tile)] = 1.5
+	v._edits[v._tile_key(mined_tile)] = [{ "op": "remove", "bottom": 1.5, "top": VoxelSlice.MAX_HEIGHT }]
 	var mined: Array = v.vein_deposits(rare, flat)
 	assert_eq(mined.size(), deposits.size(), "mining a vein column does not remove its deposit")
 	assert_true(absf(float(mined[0]["position"].y) - (1.5 + VoxelSlice.VEIN_DEPOSIT_HEIGHT * 0.5)) < 0.0001,
@@ -5617,6 +5767,13 @@ func _test_identity_restart_round_trip() -> void:
 
 	var voxel2 := VoxelSlice.new()
 	add_child(voxel2)
+	# The terrain a reload regenerates: the same two flat chunks the writer held, so
+	# the stored run edits resolve against the ground they were made on.
+	var flat2: Array = []
+	flat2.resize(64 * 64)
+	flat2.fill(2.0)
+	voxel2.build_chunk(Vector2i(0, 0), flat2)
+	voxel2.build_chunk(Vector2i(1, 0), flat2)
 	voxel2.apply_chunk_manifest(world["chunks"])
 	assert_eq(voxel2.get_voxel_height_at(Vector2(16.0, 16.0)), 1.875, "the mined column comes back mined")
 	assert_eq(voxel2.get_voxel_height_at(Vector2(48.0, 16.0)), 1.875, "the second mined column too")

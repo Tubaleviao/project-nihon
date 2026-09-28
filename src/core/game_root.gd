@@ -887,19 +887,26 @@ func _sync_player_avatar(delta: float) -> void:
 	if player_char == "":
 		return
 	var vel: Vector3 = _player.get_velocity()
+	var pos: Vector3 = _player.get_position()
+	# The avatar's feet are driven by the surface the BODY actually stands on: the
+	# voxel columns carry the collision (layer 2) and are quantised to
+	# STEP_HEIGHT, so sampling `_terrain`'s raw noise heightmap floated the visual
+	# avatar off its own collision surface by up to a step. The voxel sampler is
+	# the same function the collision is built from.
+	#
+	# Phase 41 — it is a function of the body's own Y as well: a column's TOP is
+	# the ROOF of a tunnel, so a column-top sampler would stand the avatar on the
+	# ceiling it is walking under. The body's Y is closed over per frame.
+	var foot_sampler := func(xz: Vector2) -> float:
+		return _voxel.sample_support_height_at(xz, pos.y)
 	_character.sync_player_avatar(
 		player_char,
-		_player.get_position(),
+		pos,
 		Vector3(vel.x, 0.0, vel.z),
 		vel.y,
 		_player.is_grounded(),
 		delta,
-		# The avatar's feet are driven by the surface the BODY actually stands on:
-		# the voxel columns carry the collision (layer 2) and are quantised to
-		# STEP_HEIGHT, so sampling `_terrain`'s raw noise heightmap floated the
-		# visual avatar off its own collision surface by up to a step. The voxel
-		# sampler is the same function the collision boxes are built from.
-		_voxel.get_voxel_height_at
+		foot_sampler
 	)
 
 func _on_connection_failed() -> void:
@@ -942,7 +949,11 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true) -> Dictionar
 			players[str(pid)] = [last_pos.x, last_pos.y, last_pos.z]
 	var player_id := _registry.get_player_id(peer_id)
 	var snapshot := {
-		"heightmaps": _voxel.get_heightmaps(),
+		# Phase 41 — the world's SEED, not its heightmaps: the client regenerates
+		# the host's terrain from the same noise field instead of receiving every
+		# column of every loaded chunk. It is the world's identity, so it is small,
+		# exact, and the only thing that has to travel.
+		"seed":      _terrain.get_world_seed(),
 		"edits":     _voxel.get_chunk_manifest(),
 		"creatures": _scoped_creatures(peer_id),
 		"stations":  _station.get_station_data(),
@@ -1004,16 +1015,11 @@ func _scoped_creatures(peer_id: int) -> Array:
 func _on_world_snapshot_received(data: Dictionary) -> void:
 	if not _is_client:
 		return
-	if data.has("heightmaps") and data["heightmaps"] is Dictionary:
-		var heightmaps: Dictionary = data["heightmaps"]
-		_voxel.apply_heightmaps(heightmaps)
-		# Trees are placed deterministically from the chunk coordinate, so a
-		# client seeds its own rather than receiving them in the snapshot; only a
-		# tree's chopped/standing STATE is replicated (tree_chopped /
-		# tree_respawned). Mirrors the deterministic creature hash, which also
-		# needs no per-entity placement payload.
-		for ckey in heightmaps:
-			_tree.spawn_for_chunk(_chunk_key_to_pos(str(ckey)))
+	if data.has("seed"):
+		# Phase 41 — adopt the host's world seed BEFORE anything is streamed (a
+		# chunk built from this machine's own random seed would be a different
+		# world, and every voxel edit the host sends would land elsewhere).
+		_terrain.set_world_seed(int(data["seed"]))
 	if data.has("edits") and data["edits"] is Dictionary:
 		_voxel.apply_chunk_manifest(data["edits"])
 	# Phase 33 — stations and the client's OWN record (position / HP /
@@ -1053,6 +1059,14 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 			var pos = data["players"][pid]
 			if pos is Array and pos.size() >= 3:
 				GameBus.remote_player_state.emit(int(pid), Vector3(float(pos[0]), float(pos[1]), float(pos[2])))
+	# Phase 41 — the client streams its OWN chunks now, from the seed above and
+	# around the position the snapshot just restored, because the snapshot no
+	# longer carries heightmaps to build them from. Trees and creatures are placed
+	# deterministically per chunk coordinate, so both sides land the same
+	# population without a per-entity payload — the rule tree seeding already
+	# followed (only a tree's chopped/standing STATE is replicated).
+	_chunk_manager.start()
+	_chunk_manager.refresh()
 	_snapshot_pending = false
 
 # ---------------------------------------------------------------------------
@@ -1166,8 +1180,13 @@ func _collect_save_job(incremental: bool) -> Dictionary:
 	var creatures := _creature.get_snapshot_creatures()
 	var stations := _station.get_station_data()
 	var world := {
+		"version":         PersistenceSlice.WORLD_FORMAT_VERSION,
 		"timestamp":       Time.get_unix_time_from_system(),
 		"local_player_id": _registry.local_player_id,
+		# Phase 41 — the world's seed rides the WORLD record, not a player record:
+		# two players in one world must regenerate the same ground, and a reload
+		# that picked a fresh seed would land every saved edit on a different hill.
+		"seed":            _terrain.get_world_seed(),
 		"chunks":          manifest,
 		"stations":        stations,
 		"creatures":       creatures,
@@ -1333,6 +1352,18 @@ func _load_world_records() -> void:
 	if _loaded_world.is_empty():
 		print("[Server] no world record at %s — booting a fresh world" % _persistence.world_path())
 	else:
+		# Phase 41 — adopt the recorded world seed BEFORE any chunk is built or any
+		# edit is migrated: the ground a save was written against is the ground a
+		# reload must regenerate, and the migration of a pre-Phase-41 edit needs
+		# the tile's natural height, which comes from this noise field.
+		var recorded_seed: Variant = _loaded_world.get("seed", null)
+		if recorded_seed != null:
+			_terrain.set_world_seed(int(recorded_seed))
+			print("[Server] world seed %d restored from the world record" % int(recorded_seed))
+		else:
+			print("[Server] world record carries no seed (format %d) — adopting the fresh seed %d" % [
+				int(_loaded_world.get("version", PersistenceSlice.LEGACY_WORLD_FORMAT_VERSION)),
+				_terrain.get_world_seed()])
 		var chunks: Variant = _loaded_world.get("chunks", {})
 		if chunks is Dictionary and not (chunks as Dictionary).is_empty():
 			_voxel.apply_chunk_manifest(chunks)
@@ -1366,14 +1397,6 @@ func _apply_loaded_creature_state() -> void:
 # ---------------------------------------------------------------------------
 # Bus listeners
 # ---------------------------------------------------------------------------
-
-## Parse a "cx,cz" chunk key (as used by the world snapshot's heightmap map)
-## back into a chunk coordinate.
-func _chunk_key_to_pos(key: String) -> Vector2i:
-	var parts: PackedStringArray = key.split(",")
-	if parts.size() < 2:
-		return Vector2i.ZERO
-	return Vector2i(int(parts[0]), int(parts[1]))
 
 func _on_chunk_ready(chunk_pos: Vector2i, heightmap: Array) -> void:
 	pass
