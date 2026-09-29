@@ -269,6 +269,14 @@ func run() -> void:
 	_run_test("chunk: minimap reveals fog of war",              _test_chunk_minimap_fog_of_war)
 	_run_test("chunk: minimap zooms in and out",                _test_chunk_minimap_zoom)
 	_run_test("chunk: minimap arrow points at facing",          _test_chunk_minimap_arrow_direction)
+	# Phase 42 — threaded chunk build, greedy merge, the first-ring gate.
+	_run_test("chunk: the pure builder is a function of its args", _test_voxel_build_arrays_pure)
+	_run_test("chunk: greedy merge collapses a flat chunk",      _test_voxel_greedy_merge)
+	_run_test("chunk: the merge never spans a gap",              _test_voxel_merge_keeps_lone_quad)
+	_run_test("chunk: a load dispatches a worker build",         _test_chunk_load_dispatches_build)
+	_run_test("chunk: the first-ring gate opens when built",     _test_chunk_first_ring_gate)
+	_run_test("chunk: the prefetch ring widens the stream",      _test_chunk_prefetch_ring)
+	_run_test("player: the loading freeze refuses world input",  _test_player_world_input_freeze)
 	_run_test("player: facing is a normalized yaw vector",      _test_player_facing)
 	_run_test("net: client forwards block intent",               _test_net_voxel_client_forwards_intent)
 	_run_test("net: apply_block_change applies host edit",       _test_net_voxel_apply_block_change)
@@ -5870,6 +5878,22 @@ func _find_chunk_with_biome(terrain: Node, biomes: Array) -> Vector2i:
 ## rare-vein deposit mesh. Phase 41 split those into two MeshInstance3Ds deliberately
 ## (a deposit is decoration and must never enter the collision soup), so the count is
 ## summed over the chunk's mesh children.
+func _chunk_vein_vertices(voxel: Node, chunk_pos: Vector2i) -> int:
+	# The rare-vein overlay is the chunk's SECOND mesh child; the terrain surface is
+	# the first. Counted separately because the merged surface's vertex count is not a
+	# per-tile number any more (Phase 42).
+	var root: Node3D = voxel._chunks["%d,%d" % [chunk_pos.x, chunk_pos.y]]
+	var meshes: Array = []
+	for child in root.get_children():
+		if child is MeshInstance3D:
+			meshes.append(child)
+	if meshes.size() < 2:
+		return 0
+	return (meshes[1] as MeshInstance3D).mesh.surface_get_array_len(0)
+
+## Surface vertices of a chunk, from its committed mesh. Used where a test needs the
+## TRIANGLE SOUP's shape rather than a per-tile count (see `_chunk_vein_vertices` for
+## the overlay, which is unaffected by the merge).
 func _chunk_surface_vertices(voxel: Node, chunk_pos: Vector2i) -> int:
 	var root: Node3D = voxel._chunks["%d,%d" % [chunk_pos.x, chunk_pos.y]]
 	var total := 0
@@ -5913,13 +5937,16 @@ func _test_voxel_rare_vein_deposits() -> void:
 	# Undo the simulated mine: the mesh check below compares flat chunks.
 	v._edits.erase(v._tile_key(mined_tile))
 
-	# The deposits must actually reach the rendered mesh: a rare-biome chunk
-	# carries exactly one box per rare tile more than a ferrite-only chunk of the
-	# same (identical, flat) heightmap.
+	# The deposits must actually reach the rendered mesh. They are the chunk's SECOND
+	# mesh child (the terrain surface is the first), and they are counted on their own
+	# since Phase 42: the merged terrain surface no longer has a fixed per-tile vertex
+	# count, so comparing two whole chunks across BIOMES would be comparing their merge
+	# groups as much as their deposits. The overlay is a separate mesh, so it is exact.
 	v.build_chunk(rare, flat)
 	v.build_chunk(plain, flat)
-	var delta: int = _chunk_surface_vertices(v, rare) - _chunk_surface_vertices(v, plain)
-	assert_eq(delta, deposits.size() * MeshUtil.BOX_VERTEX_COUNT, "every deposit reaches the chunk mesh")
+	assert_eq(_chunk_vein_vertices(v, rare), deposits.size() * MeshUtil.BOX_VERTEX_COUNT,
+		"every deposit reaches the chunk mesh")
+	assert_eq(_chunk_vein_vertices(v, plain), 0, "and a common-biome chunk carries no deposit mesh")
 	v.free()
 	terrain.free()
 
@@ -8792,6 +8819,248 @@ func _test_net_harness_bare_await_audit() -> void:
 	var offenders := NetHarness.unawaited_waits(src.get_as_text().split("\n"))
 	assert_true(offenders.is_empty(),
 		"NetHarness calls a bare coroutine at line(s) %s" % [", ".join(offenders)])
+
+# ---------------------------------------------------------------------------
+# Phase 42 — threaded chunk build, greedy merge, the first-ring gate
+# ---------------------------------------------------------------------------
+#
+# The build is dispatched to a WorkerThreadPool task and applied on the main thread,
+# and the suite has no frames to give — so these tests drive the manager's pump by
+# hand: DRAIN (dispatch), BLOCK on each in-flight task, APPLY. That is exactly what
+# `ChunkManager._process` does across frames, with the wait made explicit.
+
+## A ChunkManager wired to a real TerrainSlice + VoxelSlice and a local player — what
+## the threaded build needs. An isolated manager with no terrain has nothing to
+## dispatch (see `_dispatch_build`'s early return, which the older rigs rely on).
+func _make_chunk_build_rig() -> Dictionary:
+	var cm := ChunkManager.new()
+	add_child(cm)
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	var voxel := VoxelSlice.new()
+	voxel.terrain_slice = terrain
+	add_child(voxel)
+	var player := PlayerSlice.new()
+	add_child(player)
+	cm.terrain_slice = terrain
+	cm.voxel_slice = voxel
+	cm.player_slice = player
+	player.spawn_at(Vector3(16.0, 40.0, 16.0))
+	return { "cm": cm, "terrain": terrain, "voxel": voxel, "player": player }
+
+## Drive the manager's build pump to quiescence: dispatch, BLOCK on the in-flight
+## builds, apply. `flush_builds` is the blocking variant of the frame loop's poll —
+## the suite cannot yield, so it waits rather than polling, which is also why it does
+## not call `WorkerThreadPool.is_task_completed` itself.
+func _wait_for_builds(cm: Node, rounds: int = 128) -> void:
+	for i in range(rounds):
+		if cm._builds.is_empty() and cm._load_queue.is_empty():
+			return
+		cm._drain_load_queue()
+		cm.flush_builds()
+
+## Phase 42 — the builder is what makes a worker legal: it must be a function of its
+## three arguments alone, with no slice state reachable from it.
+func _test_voxel_build_arrays_pure() -> void:
+	var a := VoxelSlice.new()
+	add_child(a)
+	var b := VoxelSlice.new()
+	add_child(b)
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+	# `b` carries state `a` does not: a different place material and an edit in another
+	# chunk. Neither may reach the build — the caller resolves the table, not the builder.
+	b.set_place_material("Ashite")
+	b._edits["900,900"] = [{ "op": "remove", "bottom": 0.0, "top": 1.0 }]
+	var runs: Dictionary = a.collect_build_runs(Vector2i(0, 0), flat)
+	var first: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), flat, runs)
+	var second: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), flat, runs)
+	assert_eq(int(first["quad_count"]), int(second["quad_count"]), "the same input builds the same quads")
+	assert_true(first["vertices"] == second["vertices"], "and the same vertices")
+	assert_true(first["indices"] == second["indices"], "and the same indices")
+	assert_true(first["collision"] == second["collision"], "and the same collision soup")
+	# A caller with only a map — no resolved table at all — still gets the chunk's own
+	# natural columns. That is the fallback the suite and a fresh probe rely on.
+	var bare: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), flat, {})
+	assert_true(int(bare["quad_count"]) > 0, "an empty table still builds the natural columns")
+	a.free()
+	b.free()
+
+## Phase 42 — the merge's effect as NUMBERS from one build. `cell_count` is what the
+## per-tile mesher emitted, `quad_count` what the merge left, so the acceptance
+## criterion's before/after comes out of the run rather than out of a comment.
+func _test_voxel_greedy_merge() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+	# A flat chunk with no resolved table: every tile is its own natural column, so
+	# 4096 top faces — and walls ONLY on the chunk's four EDGES (256), because a wall is
+	# emitted from the difference against a neighbour and the in-chunk neighbour is
+	# solid at the same height. 4352 faces, which is 26112 vertices as the per-tile
+	# mesher emitted them.
+	var bare: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), flat, {})
+	assert_eq(int(bare["cell_count"]), 64 * 64 + 64 * 4, "a top face per tile, walls on the edges")
+	assert_eq(int(bare["quad_count"]), 5, "and the merge leaves one quad per facing")
+	var bare_quads := int(bare["quad_count"])
+	assert_true(bare_quads * 4 < int(bare["cell_count"]),
+		"the merge leaves far fewer quads than faces (%d of %d)" % [bare_quads, int(bare["cell_count"])])
+	assert_eq(bare["vertices"].size(), bare_quads * 4, "a merged quad is four INDEXED vertices")
+	assert_eq(bare["indices"].size(), bare_quads * 6, "and two triangles")
+	assert_eq(bare["collision"].size(), bare_quads * 6, "the collision carries the same two triangles")
+	assert_eq(bare["normals"].size(), bare_quads * 4, "one normal per vertex")
+
+	# And a REAL chunk: noise terrain with its ring built, which is the number worth
+	# quoting (its walls mostly vanish against equal-height neighbours).
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	var w := VoxelSlice.new()
+	add_child(w)
+	w.terrain_slice = terrain
+	for cz in range(-1, 2):
+		for cx in range(-1, 2):
+			w._heightmaps["%d,%d" % [cx, cz]] = terrain._generate(Vector2i(cx, cz))
+	var hm: Array = terrain._generate(Vector2i(0, 0))
+	var natural: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), hm, w.collect_build_runs(Vector2i(0, 0), hm))
+	print("PROBE Phase 42 flat chunk:  %d faces -> %d quads (%d vertices)" % [
+		int(bare["cell_count"]), bare_quads, bare["vertices"].size()])
+	print("PROBE Phase 42 natural chunk: %d faces -> %d quads (%d vertices)" % [
+		int(natural["cell_count"]), int(natural["quad_count"]), natural["vertices"].size()])
+	assert_true(int(natural["quad_count"]) < int(natural["cell_count"]),
+		"a natural chunk merges too")
+	v.free()
+	w.free()
+	terrain.free()
+
+## Phase 42 — the merge is a greedy RECTANGLE sweep, so it must never cover a gap: a
+## cell with no neighbour of its own group is its own 1x1 quad, and scattered cells stay
+## separate. That is the "a tile whose neighbours differ still emits a valid 1×1 quad"
+## criterion, asserted on the pure sweep rather than through a whole chunk's geometry.
+func _test_voxel_merge_keeps_lone_quad() -> void:
+	var lone: Array = VoxelSlice._merge_rects({ 20 * 64 + 10: true })
+	assert_eq(lone.size(), 1, "a lone cell is its own rectangle")
+	assert_eq(int(lone[0]["w"]), 1, "one tile wide")
+	assert_eq(int(lone[0]["h"]), 1, "and one tile deep")
+
+	# Four cells, none of which touches another: (0,0), (5,0), (0,3) and (2,4).
+	var scattered: Array = VoxelSlice._merge_rects({ 0: true, 5: true, 64 * 3: true, 64 * 4 + 2: true })
+	assert_eq(scattered.size(), 4, "cells with no neighbour in the group never merge")
+
+	# A full row merges into ONE rectangle, and a second identical row below extends it.
+	var row: Dictionary = {}
+	for tx in range(64):
+		row[tx] = true
+	var row_rects: Array = VoxelSlice._merge_rects(row)
+	assert_eq(row_rects.size(), 1, "a full row is one rectangle")
+	assert_eq(int(row_rects[0]["w"]), 64, "the full chunk wide")
+	assert_eq(int(row_rects[0]["h"]), 1, "and one tile deep")
+	for tx in range(64):
+		row[64 + tx] = true
+	var block: Array = VoxelSlice._merge_rects(row)
+	assert_eq(block.size(), 1, "the row below extends it rather than splitting it")
+	assert_eq(int(block[0]["h"]), 2, "into a two-tile-deep rectangle")
+
+	# A row with a HOLE in it must not be covered: the sweep restarts after the gap.
+	var holed: Dictionary = {}
+	for tx in range(64):
+		if tx != 30:
+			holed[tx] = true
+	var holed_rects: Array = VoxelSlice._merge_rects(holed)
+	assert_eq(holed_rects.size(), 2, "a gap splits the row in two")
+
+## Phase 42 — a load dispatches instead of building, and a chunk counts as BUILT only
+## once the worker's arrays have been applied on the main thread.
+func _test_chunk_load_dispatches_build() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	cm.load_chunk(Vector2i(0, 0))
+	assert_true(cm._loaded.has("0,0"), "the chunk enters the streamed set")
+	assert_false(cm._built.has("0,0"), "but its build is in flight, not on the main thread")
+	assert_eq(voxel.get_loaded_chunks().size(), 0, "and no chunk mesh exists yet")
+	_wait_for_builds(cm)
+	assert_true(cm._built.has("0,0"), "the build lands once the worker has finished")
+	assert_eq(voxel.get_loaded_chunks().size(), 1, "and the chunk's mesh with it")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 — the boot gate: closed until every chunk of the Chebyshev 0..1 ring around
+## the centre has been BUILT, then open. The loading screen is shown for exactly this
+## window and the player body is placed at its end.
+func _test_chunk_first_ring_gate() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	cm.view_distance = 1
+	cm.prefetch_distance = 0
+	cm.refresh()
+	cm.build_first_ring(Vector2i(0, 0))
+	assert_eq(cm._first_ring.size(), 9, "the gate covers the 3x3 ring the body stands in")
+	assert_false(cm.is_first_ring_ready(), "and is closed before a single ring chunk is built")
+	assert_eq(cm.first_ring_progress(), 0.0, "reporting no progress")
+	_wait_for_builds(cm)
+	assert_true(cm.is_first_ring_ready(), "the gate opens once every ring chunk's ground exists")
+	assert_eq(cm.first_ring_progress(), 1.0, "and reports complete")
+	assert_true(voxel.get_loaded_chunks().size() >= 9, "with every ring chunk meshed")
+	# An UNARMED gate never blocks: a caller with no boot to hold must not be gated by
+	# a ring some other call site armed.
+	var loose := ChunkManager.new()
+	add_child(loose)
+	assert_true(loose.is_first_ring_ready(), "an unarmed gate is open")
+	assert_eq(loose.first_ring_progress(), 1.0, "and reports complete")
+	loose.free()
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 — the prefetch band: a chunk beyond the view ring is queued (and kept), so
+## a crossing never asks for ground at the moment it becomes needed.
+func _test_chunk_prefetch_ring() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.view_distance = 1
+	cm.prefetch_distance = 2
+	assert_eq(cm.stream_radius(), 3, "the streamed radius is the view ring plus the prefetch band")
+	cm.refresh()
+	var queued: Dictionary = {}
+	for c in cm._load_queue:
+		queued[c] = true
+	assert_true(queued.has(Vector2i(3, 0)), "a chunk one band beyond the view ring is queued")
+	assert_true(queued.has(Vector2i(0, 3)), "on both axes")
+	assert_false(queued.has(Vector2i(4, 0)), "and nothing beyond the prefetch band")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 — the loading screen's freeze, asserted at the predicate the player's input
+## consults. A headless run has no mouse capture at all, so the freeze has to be
+## assertable ON ITS OWN — which is also why it is a hook of the screen's own and not a
+## reuse of `any_window_open()` (asserted below to be false here).
+func _test_player_world_input_freeze() -> void:
+	var p := PlayerSlice.new()
+	add_child(p)
+	assert_false(p.is_world_input_frozen(), "a fresh slice is not frozen")
+	GameBus.world_input_frozen.emit(true)
+	assert_true(p.is_world_input_frozen(), "the loading screen's signal freezes the world")
+	assert_false(p.world_input_allowed(), "and no world action may resolve")
+	GameBus.world_input_frozen.emit(false)
+	assert_false(p.is_world_input_frozen(), "clearing the signal unfreezes it")
+
+	# The window predicate would have answered `false` for a loading screen: it only
+	# knows the panels the UI slice holds.
+	var ui := UiSlice.new()
+	add_child(ui)
+	assert_false(ui.any_window_open(), "no UI window is open while the loading screen shows")
+	p.set_world_input_frozen(true)
+	assert_false(p.world_input_allowed(), "so the freeze, not a window predicate, is what refuses")
+	p.free()
+	ui.free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers

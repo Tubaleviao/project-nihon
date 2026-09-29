@@ -28,6 +28,7 @@ const TradeSlice       := preload("res://src/trade/trade_slice.gd")
 const ProposalSlice    := preload("res://src/governance/proposal_slice.gd")
 const UiSlice          := preload("res://src/ui/ui_slice.gd")
 const Minimap          := preload("res://src/ui/minimap.gd")
+const LoadingScreen    := preload("res://src/ui/loading_screen.gd")
 const TestSuite        := preload("res://src/tests/test_suite.gd")
 const NetHarness       := preload("res://src/tests/net_harness.gd")
 
@@ -35,6 +36,7 @@ var _terrain:     TerrainSlice
 var _voxel:       VoxelSlice
 var _chunk_manager: ChunkManager
 var _minimap:     Minimap
+var _loading_screen: LoadingScreen
 var _battle:      BattleSlice
 var _creature:    CreatureSlice
 var _creature_ai: CreatureAI
@@ -64,6 +66,11 @@ var _is_client: bool = false
 var _is_server: bool = false
 var _host_address: String = "127.0.0.1"
 var _snapshot_pending: bool = false
+
+## Phase 42 — true while the host boot is waiting for the first ring of chunks to
+## finish building on the worker (see _boot_host / _finish_host_boot). Polled in
+## `_process`, which is the only place a worker result can be applied on time.
+var _pending_host_boot: bool = false
 
 ## Phase 39 — which side of the two-client network harness this boot drives ("" for a
 ## normal boot). Set by `_parse_network_args`; see `_run_net_harness`.
@@ -128,6 +135,10 @@ func _ready() -> void:
 	_voxel       = VoxelSlice.new()
 	_chunk_manager = ChunkManager.new()
 	_minimap     = Minimap.new()
+	# Phase 42 — the first-ring loading screen. Presentation only, added to the tree
+	# behind the same `not _is_server` guard the minimap uses; it owns the boot's
+	# world-input freeze (see LoadingScreen and GameBus.world_input_frozen).
+	_loading_screen = LoadingScreen.new()
 	_battle      = BattleSlice.new()
 	_creature    = CreatureSlice.new()
 	_creature_ai = CreatureAI.new()
@@ -307,6 +318,13 @@ func _ready() -> void:
 		_minimap.player_slice = _player
 		_minimap.terrain_slice = _terrain
 		minimap_layer.add_child(_minimap)
+
+		# Phase 42 — the first-ring loading screen, at its own layer ABOVE the minimap.
+		# Host-only like the minimap (a dedicated server has no body to place and no
+		# screen to show), and it starts hidden: the host boot path shows it (see
+		# _boot_host) for as long as the ground under the spawn point is being built.
+		if not _is_server:
+			add_child(_loading_screen)
 
 	# Bus listeners for integration-layer logging.
 	GameBus.chunk_ready.connect(_on_chunk_ready)
@@ -538,8 +556,41 @@ func _boot_world() -> void:
 ## `not _is_server` guard, so they are host-only and need no second path here.
 ## `render_visuals` on the creature/player/tree slices is likewise
 ## decided in `_ready()` — a host calling `_boot_server()` still renders.
+##
+## Phase 42 — the tail is no longer run in this frame. The terrain build is on a
+## worker now, so the first ring is NOT ready when `_boot_server()` returns and the
+## body would be placed on ground that does not exist yet. So the host boot shows the
+## loading screen, freezes world input, and lets `_process` call `_finish_host_boot()`
+## the moment `is_first_ring_ready()` opens — which is also the frame the player body
+## first exists. A ring that is somehow already built completes immediately.
 func _boot_host() -> void:
 	_boot_server()
+
+	_loading_screen.begin()
+	if _chunk_manager.is_first_ring_ready():
+		_finish_host_boot()
+		return
+	_pending_host_boot = true
+
+## Phase 42 — drive the waiting host boot: while `_pending_host_boot` is set, keep the
+## loading bar in step with the first ring's build progress and run the host tail as
+## soon as every ring chunk's ground exists. A no-op once the boot has completed.
+func _tick_pending_host_boot() -> void:
+	if not _pending_host_boot:
+		return
+	_loading_screen.set_progress(_chunk_manager.first_ring_progress())
+	if _chunk_manager.is_first_ring_ready():
+		_finish_host_boot()
+
+## The host tail, run once the first ring's ground exists: player spawn, avatar,
+## lighting/UI demos, and the legacy slot save. Split out of `_boot_host()` by
+## Phase 42 so it can run on a LATER frame (see there); it is still the same code in
+## the same order, and it is idempotent by way of `_pending_host_boot`.
+func _finish_host_boot() -> void:
+	_pending_host_boot = false
+	_loading_screen.finish()
+	print("[World] first ring built (%d chunks) — placing the player, %.2fs after boot" % [
+		_chunk_manager.first_ring_size(), float(Time.get_ticks_msec()) / 1000.0])
 
 	# Player spawn — above the terrain surface so it doesn't spawn embedded in
 	# (and fall through) the collision mesh.
@@ -681,6 +732,11 @@ func _boot_server() -> void:
 	_load_world_records()
 	_chunk_manager.start()
 	_chunk_manager.refresh()
+	# Phase 42 — arm the boot gate BEFORE the world is announced. Both boot paths
+	# inherit it here, which is what stops a gate wired into one of them from being a
+	# hole in the others. The centre is the player's chunk: pre-spawn that is the
+	# origin chunk, and the host's spawn point (16,16) lands in the same chunk (0,0).
+	_chunk_manager.build_first_ring(_chunk_manager.player_chunk())
 	_apply_loaded_creature_state()
 	_networking.host(_networking.DEFAULT_PORT, _networking.DEFAULT_MAX_CLIENTS)
 
@@ -838,6 +894,12 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	_networking.send_snapshot(peer_id, _build_snapshot(peer_id, false))
 
 func _process(delta: float) -> void:
+	# Phase 42 — complete a host boot whose first ring has finished building. It has
+	# to run FIRST: the rest of this frame's work (the avatar sync, the LOD pass) is
+	# written against a player body that only exists once the boot tail has run, and
+	# the loading screen must come down in the same frame the body appears.
+	_tick_pending_host_boot()
+
 	_sync_player_avatar(delta)
 	# Distance-driven LOD (Phase 23) — evaluate each character's world distance
 	# to the player each frame and swap fine detail / the impostor billboard in

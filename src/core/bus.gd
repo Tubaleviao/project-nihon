@@ -388,6 +388,17 @@ signal player_state_changed(payload: Dictionary)
 ## payload : Dictionary — same schema as player_state_changed payload
 signal player_state_sync_requested(payload: Dictionary)
 
+## Phase 42 — the loading screen's OWN world-input freeze hook.
+## frozen : bool — true while the first ring of chunks is still being built.
+##
+## This exists because the gate a world action actually consults is the mouse-capture
+## state (PlayerSlice._input), and `UIControl.any_window_open()` answers only for the
+## panels the UI slice holds — a loading screen is not one of them, so no existing
+## predicate covers it. The loading screen owns this hook and PlayerSlice is its
+## single listener; while it is true EVERY world action route (attack, mine, chop,
+## place, tame, station) is refused before it can emit.
+signal world_input_frozen(frozen: bool)
+
 # ---------------------------------------------------------------------------
 # Character
 # ---------------------------------------------------------------------------

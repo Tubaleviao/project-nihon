@@ -28,6 +28,9 @@ extends Node
 ##   set_place_material / get_place_material / cycle_place_material
 ##   material_for_biome(biome, world_xz) -> String
 ##   vein_deposits(chunk_pos, heightmap) -> Array   (rare-vein raised deposits)
+##   build_chunk_arrays(chunk_pos, heightmap, runs) -> Dictionary  (PURE, worker-safe)
+##   collect_build_runs(chunk_pos, heightmap) -> Dictionary
+##   chunk_revision(chunk_pos)                    -> int
 ##
 ## Phase 41 — a column is a SPARSE list of solid RUNS, bottom → top, not one top
 ## ordinate:
@@ -63,6 +66,23 @@ extends Node
 ## acted on, and resolving a column re-plays them over the tile's natural run. A
 ## pre-Phase-41 save stored a bare absolute height per tile; that shape still
 ## loads (see `legacy_edit_ops`) and is migrated to the same typed edits.
+##
+## Phase 42 — the build is a PURE FUNCTION of data the main thread hands it, so it
+## can run on a `WorkerThreadPool` task. `collect_build_runs()` is the main-thread
+## half (it reads `_edits`, `_heightmaps` and the terrain slice's biome lookup and
+## flattens them into a plain tile → runs table), `build_chunk_arrays()` is the
+## worker half (it reads only its three arguments and returns plain arrays), and
+## `build_chunk()` is the consumer that attaches the nodes. Scene-tree mutation,
+## resource saving and `GameBus` emission are all main-thread work in Godot, so the
+## split is not a style choice — it is the only shape that is legal off the main
+## thread, and the builder must never be given a slice reference to "help".
+##
+## The same pass GREEDY-MERGES the quads: coplanar faces of the same colour that
+## are adjacent in the tile grid collapse into one rectangle (`_merge_rects`), so a
+## chunk whose surface is largely uniform emits a handful of large quads instead of
+## one per tile. That is what makes building on another thread affordable in the
+## first place, and the merge key — material/colour — is exactly the attribute a
+## merged quad has to share.
 
 ## Shared box authoring for the rare-vein deposits (Phase 31).
 const MeshUtil := preload("res://src/core/mesh_util.gd")
@@ -163,6 +183,13 @@ var _edits: Dictionary = {}
 ## Drives the per-chunk persistence manifest so only dirty chunks are re-serialized.
 var _dirty_chunks: Dictionary = {}
 
+## Phase 42 — how many times a chunk has been (re)built, keyed by "cx,cz" string.
+## A build dispatched to a worker carries the revision it was dispatched AT, and
+## `build_chunk` refuses the result when the revision has moved on: the arrays then
+## describe terrain the player has already edited, and applying them would undo the
+## edit on screen (see `chunk_revision`).
+var _chunk_revision: Dictionary = {}
+
 ## Set by game_root: terrain (biome + base height) and inventory (material flow).
 var terrain_slice: Node = null
 var inventory_slice: Node = null
@@ -204,8 +231,16 @@ func _ready() -> void:
 	GameBus.block_changed.connect(_on_block_changed)
 
 ## Build (or rebuild) the mesh and collision for one chunk.
-func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
+##
+## Phase 42 — `arrays` is the optional result of a `build_chunk_arrays()` call made
+## on a WORKER, and `revision` is the `chunk_revision` it was dispatched at (see
+## `chunk_revision`); omit both for the synchronous build, which resolves its own
+## input and is what the bus path, the edit path and every isolated test use.
+func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {}, revision: int = -1) -> void:
 	var key := _chunk_key(chunk_pos)
+	if revision >= 0 and revision != chunk_revision(chunk_pos):
+		return   # stale worker result: this chunk was rebuilt while it was in flight
+	_chunk_revision[key] = chunk_revision(chunk_pos) + 1
 
 	# Remember the base heightmap so edits can be reapplied on rebuild.
 	_heightmaps[key] = heightmap
@@ -225,7 +260,10 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
 	# decoration, and a box the player can see but not stand on is the correct
 	# read for "a vein showing through the ground". Collision built from this
 	# surface can therefore never inherit one.
-	var surface := _build_terrain_surface(chunk_pos, heightmap)
+	var built: Dictionary = arrays
+	if built.is_empty():
+		built = build_chunk_arrays(chunk_pos, heightmap, collect_build_runs(chunk_pos, heightmap))
+	var surface := _mesh_from_arrays(built)
 	var mesh_inst := MeshInstance3D.new()
 	mesh_inst.mesh = surface
 	mesh_inst.material_override = _terrain_material()
@@ -254,7 +292,7 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
 	static_body.collision_mask = 0
 	var col_shape := CollisionShape3D.new()
 	var trimesh := ConcavePolygonShape3D.new()
-	trimesh.set_faces(_surface_vertices(surface))
+	trimesh.set_faces(built["collision"])
 	# Both sides of a wall collide, so a body inside a tunnel is held by the roof
 	# from below as well as by the floor from above.
 	trimesh.backface_collision = true
@@ -266,88 +304,330 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array) -> void:
 ## deposits, which are decoration. Built once per rebuild and shared by the
 ## MeshInstance3D and the trimesh, so what the player sees and what they stand on
 ## cannot drift apart.
+##
+## Phase 42 — a thin wrapper over the PURE builder, so the synchronous callers keep
+## one entry point: it resolves the column table on this (main) thread and builds the
+## mesh from the arrays, exactly like the worker path does, only without the worker.
 func _build_terrain_surface(chunk_pos: Vector2i, heightmap: Array) -> ArrayMesh:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	return _mesh_from_arrays(build_chunk_arrays(chunk_pos, heightmap, collect_build_runs(chunk_pos, heightmap)))
 
+## Resolve every column a chunk build must READ into a plain table the pure builder
+## can consume. MAIN THREAD ONLY — this is the half that reads mutable slice state
+## (`_edits`, `_heightmaps`, the terrain slice's biome lookup behind a natural run's
+## colour), so `build_chunk_arrays` can be handed to a worker and touch none of it.
+##
+## The table covers the chunk's own tiles AND its one-tile ring (the seam neighbours
+## whose runs the wall subtraction reads), keyed by global tile ("gx,gz") → Array of
+## run records carrying `bottom`, `top`, `material` and the resolved `color`. A ring
+## tile whose chunk is not built reads as an EMPTY list, which is the documented
+## UNKNOWN-column path: the side that HAS the material emits the facing wall.
+func collect_build_runs(chunk_pos: Vector2i, heightmap: Array) -> Dictionary:
+	var out: Dictionary = {}
+	# A memo private to this call, for the plain (uncoloured) resolution. It is
+	# deliberately NOT the table handed out: a tile's runs are read by the tile itself
+	# and by each neighbour's subtraction, and only the table carries colours.
+	var plain: Dictionary = {}
+	for tz in range(-1, CHUNK_SIZE + 1):
+		for tx in range(-1, CHUNK_SIZE + 1):
+			var gx := chunk_pos.x * CHUNK_SIZE + tx
+			var gz := chunk_pos.y * CHUNK_SIZE + tz
+			var world_xz := Vector2(gx * TILE_SIZE + TILE_SIZE * 0.5, gz * TILE_SIZE + TILE_SIZE * 0.5)
+			var coloured: Array = []
+			for run in _neighbour_runs(heightmap, chunk_pos, tx, tz, plain):
+				coloured.append({
+					"bottom":   float(run["bottom"]),
+					"top":      float(run["top"]),
+					"material": str(run.get("material", "")),
+					"color":    _run_color(run, world_xz),
+				})
+			out[_tile_key(Vector2i(gx, gz))] = coloured
+	return out
+
+## PURE chunk build — no node, no bus, no slice state, so it is legal to run on a
+## worker thread. Everything it touches arrives as an argument.
+##
+##   chunk_pos : the chunk to build
+##   heightmap : the chunk's own base heightmap
+##   runs      : the resolved column table from `collect_build_runs`, keyed by global
+##               tile. A tile ABSENT from it falls back to the NATURAL column derived
+##               from `heightmap`, which is what lets a caller holding only a map (the
+##               suite, a fresh probe) build a chunk with no slice state at all; a
+##               PRESENT but EMPTY list is the streamed world's UNKNOWN column.
+##
+## Returns `{ vertices, normals, colors, indices, collision, quad_count, cell_count }`
+## — the four arrays an ArrayMesh surface wants, plus the triangle soup the collision
+## uses, built from the SAME quads so what the player sees and what they stand on
+## cannot drift. `cell_count` is the faces a per-tile mesher would have emitted and
+## `quad_count` is what the merge left, so the merge's effect is a number, not a claim.
+##
+## STATIC on purpose: the per-chunk faces are the same for every world, so the builder
+## needs no instance state — and a worker task may hold no reference to a Node at all
+## (a task that outlives the tree would otherwise call into a freed slice). Callers
+## pass the script itself, not the wired slice (see ChunkManager.VoxelBuilder).
+##
+## The quads are GREEDY-MERGED: adjacent coplanar faces of one colour become a single
+## rectangle, so a chunk whose surface is largely uniform emits a handful of quads
+## instead of one per tile (4096 of them at TILE_SIZE 0.5). UVs are dropped with the
+## merge — the terrain's material is per-vertex colour with no texture, and a merged
+## rectangle has no per-tile UV mapping left to give.
+static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, runs: Dictionary) -> Dictionary:
 	var origin_x := chunk_pos.x * CHUNK_SIZE * TILE_SIZE
 	var origin_z := chunk_pos.y * CHUNK_SIZE * TILE_SIZE
-	# One memo for the whole build. A tile's runs are read by the tile itself AND
-	# by each of its four neighbours' wall subtractions, so the mesher resolved
-	# each column about six times per chunk; the resolved runs are a pure function
-	# of the tile's heightmap plus its edits, so the memo cannot go stale within a
-	# build (it lives exactly as long as this call).
-	var runs_cache: Dictionary = {}
+
+	# Emit-key → the group of tile cells that would emit the IDENTICAL face: same
+	# direction, same plane, same vertical span, same colour. Merging only ever happens
+	# INSIDE a group, which is what makes the merge key exactly the one attribute a
+	# merged quad has to share (material/colour).
+	var groups: Dictionary = {}
 
 	for tz in range(CHUNK_SIZE):
 		for tx in range(CHUNK_SIZE):
-			var runs := _column_runs(heightmap, chunk_pos, tx, tz, runs_cache)
-			if runs.is_empty():
+			var col := _column_for_cell(chunk_pos, heightmap, runs, tx, tz)
+			if col.is_empty():
 				continue
-			var bx := origin_x + tx * TILE_SIZE
-			var bz := origin_z + tz * TILE_SIZE
-			var world_xz := Vector2(bx + TILE_SIZE * 0.5, bz + TILE_SIZE * 0.5)
-			for run in runs:
+			for run in col:
 				var rbottom := float(run["bottom"])
 				var rtop := float(run["top"])
-				var color := _run_color(run, world_xz)
+				var color: Color = run.get("color", FALLBACK_TERRAIN_COLOR)
 
-				# Top face — only where nothing is solid directly above this run, so
-				# the natural ground under a placed block stays hidden (and a ledge
-				# under an overhang still shows).
-				if not runs_cover_y(runs, rtop + STEP_HEIGHT * 0.5):
-					_add_face(st,
-						Vector3(bx,              rtop, bz),
-						Vector3(bx,              rtop, bz + TILE_SIZE),
-						Vector3(bx + TILE_SIZE, rtop, bz + TILE_SIZE),
-						Vector3(bx + TILE_SIZE, rtop, bz),
-						Vector3.UP, color)
+				# Top face — only where nothing is solid directly above this run, so the
+				# natural ground under a placed block stays hidden (and a ledge under an
+				# overhang still shows).
+				if not runs_cover_y(col, rtop + STEP_HEIGHT * 0.5):
+					_group_cell(groups, "up", rtop, rtop, rtop, color, tx, tz)
 
-				# Underside face — the CEILING of a tunnel, or an overhang. The span
-				# below the run is empty per-column, which is the per-column reading
-				# of "a neighbour run ends above the local run". The base run never
-				# emits one: BEDROCK_DEPTH is the world's floor, not a gap.
-				if rbottom > BEDROCK_DEPTH and not runs_cover_y(runs, rbottom - STEP_HEIGHT * 0.5):
-					_add_face(st,
-						Vector3(bx,              rbottom, bz),
-						Vector3(bx + TILE_SIZE, rbottom, bz),
-						Vector3(bx + TILE_SIZE, rbottom, bz + TILE_SIZE),
-						Vector3(bx,              rbottom, bz + TILE_SIZE),
-						Vector3.DOWN, color)
+				# Underside face — the CEILING of a tunnel, or an overhang. The span below
+				# the run is empty per-column, which is the per-column reading of "a
+				# neighbour run ends above the local run". The base run never emits one:
+				# BEDROCK_DEPTH is the world's floor, not a gap.
+				if rbottom > BEDROCK_DEPTH and not runs_cover_y(col, rbottom - STEP_HEIGHT * 0.5):
+					_group_cell(groups, "down", rbottom, rbottom, rbottom, color, tx, tz)
 
 				# Side walls — every part of this run the neighbour does NOT fill.
-				# Subtracting per neighbour is what keeps a higher neighbour's own
-				# wall (it emits that one) from being drawn twice, and what lets a
-				# wall span a tunnel's height in one piece.
-				_add_wall_faces(st, run, color, heightmap, chunk_pos, tx, tz - 1,
-					Vector2(bx, bz), Vector2(bx + TILE_SIZE, bz), Vector3(0, 0, -1), runs_cache)
-				_add_wall_faces(st, run, color, heightmap, chunk_pos, tx, tz + 1,
-					Vector2(bx + TILE_SIZE, bz + TILE_SIZE), Vector2(bx, bz + TILE_SIZE), Vector3(0, 0, 1), runs_cache)
-				_add_wall_faces(st, run, color, heightmap, chunk_pos, tx - 1, tz,
-					Vector2(bx, bz + TILE_SIZE), Vector2(bx, bz), Vector3(-1, 0, 0), runs_cache)
-				_add_wall_faces(st, run, color, heightmap, chunk_pos, tx + 1, tz,
-					Vector2(bx + TILE_SIZE, bz), Vector2(bx + TILE_SIZE, bz + TILE_SIZE), Vector3(1, 0, 0), runs_cache)
+				# Subtracting per neighbour is what keeps a higher neighbour's own wall
+				# (it emits that one) from being drawn twice, and what lets a wall span a
+				# tunnel's height in one piece.
+				_wall_cells(groups, chunk_pos, heightmap, runs, tx, tz, run, color)
 
-	return st.commit()
+	var vertices  := PackedVector3Array()
+	var normals   := PackedVector3Array()
+	var colors    := PackedColorArray()
+	var indices   := PackedInt32Array()
+	var collision := PackedVector3Array()
+	var quad_count := 0
+	# `cell_count` is the number of faces BEFORE the merge — i.e. exactly what the
+	# per-tile mesher emitted, one quad per tile per face. Kept in the result so the
+	# merge's effect is a number a test can assert and a reviewer can quote, rather
+	# than a claim in a comment.
+	var cell_count := 0
+	for key in groups:
+		var g: Dictionary = groups[key]
+		cell_count += g["cells"].size()
+		for rect in _merge_rects(g["cells"]):
+			quad_count += _emit_rect(vertices, normals, colors, indices, collision,
+				g, rect, origin_x, origin_z)
+	return {
+		"vertices":    vertices,
+		"normals":     normals,
+		"colors":      colors,
+		"indices":     indices,
+		"collision":   collision,
+		"quad_count":  quad_count,
+		"cell_count":  cell_count,
+	}
 
-## The collision triangle soup for one chunk: exactly the triangles
-## `_build_terrain_surface` emits. `build_chunk` taps the surface it ALREADY built
-## (one mesh per chunk, not two); this entry point exists so a caller that has no
-## chunk node — the suite — can assert the trimesh's SHAPE headlessly. Physics
-## itself is INERT inside the suite (`_run_tests()` runs synchronously in
-## `GameRoot._ready()`, where a `move_and_slide()` never registers a collision,
-## verified in ROADMAP §Phase 39), so "the trimesh stops a body" is exercised in
-## GAME only and this proves the geometry it is built from.
+## Queue this run's exposed side walls against all four neighbours. The NEIGHBOUR
+## column comes from the same table the builder was handed — an EMPTY list is the
+## UNKNOWN neighbour, so this side emits its whole facing wall (see `_neighbour_runs`
+## for why that is the order-independent choice).
+static func _wall_cells(groups: Dictionary, chunk_pos: Vector2i, heightmap: Array, runs: Dictionary, tx: int, tz: int, run: Dictionary, color: Color) -> void:
+	var dirs: Array = [
+		{ "dir": "north", "ntx": tx,     "ntz": tz - 1 },
+		{ "dir": "south", "ntx": tx,     "ntz": tz + 1 },
+		{ "dir": "west",  "ntx": tx - 1, "ntz": tz     },
+		{ "dir": "east",  "ntx": tx + 1, "ntz": tz     },
+	]
+	for d in dirs:
+		var dir := str(d["dir"])
+		var neighbour := _column_for_tile(chunk_pos, heightmap, runs, int(d["ntx"]), int(d["ntz"]))
+		for seg in subtract_runs(run, neighbour):
+			var bottom := float(seg["bottom"])
+			var top := float(seg["top"])
+			if top <= bottom:
+				continue
+			_group_cell(groups, dir, _wall_plane(chunk_pos, dir, tx, tz), bottom, top, color, tx, tz)
+
+## The world coordinate a wall's plane sits at — its grouping coordinate, so two tiles'
+## walls only ever merge when they are actually coplanar.
+static func _wall_plane(chunk_pos: Vector2i, dir: String, tx: int, tz: int) -> float:
+	match dir:
+		"north": return chunk_pos.y * CHUNK_SIZE * TILE_SIZE + tz * TILE_SIZE
+		"south": return chunk_pos.y * CHUNK_SIZE * TILE_SIZE + (tz + 1) * TILE_SIZE
+		"west":  return chunk_pos.x * CHUNK_SIZE * TILE_SIZE + tx * TILE_SIZE
+	return chunk_pos.x * CHUNK_SIZE * TILE_SIZE + (tx + 1) * TILE_SIZE
+
+## Add one tile cell to the group of faces it would emit. The key carries everything a
+## merged quad has to share, at 4-decimal precision — every terrain colour is one of
+## the MATERIAL_COLORS constants (or the fallback), so colours compare exactly.
+static func _group_cell(groups: Dictionary, dir: String, plane: float, bottom: float, top: float, color: Color, tx: int, tz: int) -> void:
+	var key := "%s|%.4f|%.4f|%.4f|%s" % [dir, plane, bottom, top, color.to_html(false)]
+	if not groups.has(key):
+		groups[key] = {
+			"dir": dir, "plane": plane, "bottom": bottom, "top": top,
+			"color": color, "cells": {},
+		}
+	var cells: Dictionary = groups[key]["cells"]
+	cells[tz * CHUNK_SIZE + tx] = true
+
+## A column read from the resolve table, falling back to the NATURAL column off the
+## chunk's own heightmap when the caller did not resolve it (see `build_chunk_arrays`).
+static func _column_for_cell(chunk_pos: Vector2i, heightmap: Array, runs: Dictionary, tx: int, tz: int) -> Array:
+	var key := _tile_key(Vector2i(chunk_pos.x * CHUNK_SIZE + tx, chunk_pos.y * CHUNK_SIZE + tz))
+	if runs.has(key):
+		return runs[key]
+	var top := _voxel_height(float(heightmap[tz * CHUNK_SIZE + tx]))
+	if top <= BEDROCK_DEPTH:
+		return []
+	return [{ "bottom": BEDROCK_DEPTH, "top": top, "material": "", "color": FALLBACK_TERRAIN_COLOR }]
+
+## A column for an arbitrary tile: inside the chunk it is `_column_for_cell` (with the
+## same natural fallback), outside it must be IN the table or it is the UNKNOWN
+## neighbour — an empty list, never a guess.
+static func _column_for_tile(chunk_pos: Vector2i, heightmap: Array, runs: Dictionary, tx: int, tz: int) -> Array:
+	if tx >= 0 and tx < CHUNK_SIZE and tz >= 0 and tz < CHUNK_SIZE:
+		return _column_for_cell(chunk_pos, heightmap, runs, tx, tz)
+	var key := _tile_key(Vector2i(chunk_pos.x * CHUNK_SIZE + tx, chunk_pos.y * CHUNK_SIZE + tz))
+	if runs.has(key):
+		return runs[key]
+	return []
+
+## Greedy-mesh one group's tile cells into the fewest rectangles: sweep the cells in
+## row-major order, take the widest run of cells on the current row, then extend that
+## strip downward while every cell below it still belongs to the group. Deterministic
+## (the sweep order is the tile index), so a chunk's arrays are reproducible — which is
+## what lets a test compare two builds of the same chunk.
+static func _merge_rects(cells: Dictionary) -> Array:
+	var out: Array = []
+	var used: Dictionary = {}
+	var order: Array = cells.keys()
+	order.sort()
+	for idx in order:
+		if used.has(idx):
+			continue
+		var tx: int = int(idx) % CHUNK_SIZE
+		var tz: int = (int(idx) - tx) / CHUNK_SIZE
+		var w := 1
+		while tx + w < CHUNK_SIZE and cells.has(tz * CHUNK_SIZE + tx + w) and not used.has(tz * CHUNK_SIZE + tx + w):
+			w += 1
+		var h := 1
+		while tz + h < CHUNK_SIZE:
+			var complete := true
+			for dx in range(w):
+				var probe := (tz + h) * CHUNK_SIZE + tx + dx
+				if not cells.has(probe) or used.has(probe):
+					complete = false
+					break
+			if not complete:
+				break
+			h += 1
+		for dz in range(h):
+			for dx in range(w):
+				used[(tz + dz) * CHUNK_SIZE + tx + dx] = true
+		out.append({ "tx": tx, "tz": tz, "w": w, "h": h })
+	return out
+
+## Emit one merged rectangle as two triangles, and the same two into the collision
+## soup. The winding matches the per-tile quads the merge replaces, so a face's normal
+## points where it always did (the material renders both faces regardless; this is for
+## lighting). Returns the number of quads emitted (always 1) so the caller can count.
+static func _emit_rect(vertices: PackedVector3Array, normals: PackedVector3Array, colors: PackedColorArray, indices: PackedInt32Array, collision: PackedVector3Array, g: Dictionary, rect: Dictionary, origin_x: float, origin_z: float) -> int:
+	var bottom := float(g["bottom"])
+	var top    := float(g["top"])
+	var plane  := float(g["plane"])
+	var color: Color = g["color"]
+	var x0 := origin_x + int(rect["tx"]) * TILE_SIZE
+	var x1 := x0 + int(rect["w"]) * TILE_SIZE
+	var z0 := origin_z + int(rect["tz"]) * TILE_SIZE
+	var z1 := z0 + int(rect["h"]) * TILE_SIZE
+
+	var a := Vector3.ZERO
+	var b := Vector3.ZERO
+	var c := Vector3.ZERO
+	var d := Vector3.ZERO
+	var normal := Vector3.UP
+	match str(g["dir"]):
+		"up":   # horizontal: `plane` is the y both faces sit on
+			a = Vector3(x0, plane, z0); b = Vector3(x0, plane, z1)
+			c = Vector3(x1, plane, z1); d = Vector3(x1, plane, z0)
+		"down":
+			normal = Vector3.DOWN
+			a = Vector3(x0, plane, z0); b = Vector3(x1, plane, z0)
+			c = Vector3(x1, plane, z1); d = Vector3(x0, plane, z1)
+		"north":   # vertical walls: `plane` is the fixed x/z of the wall
+			normal = Vector3(0, 0, -1)
+			a = Vector3(x0, top, plane); b = Vector3(x1, top, plane)
+			c = Vector3(x1, bottom, plane); d = Vector3(x0, bottom, plane)
+		"south":
+			normal = Vector3(0, 0, 1)
+			a = Vector3(x1, top, plane); b = Vector3(x0, top, plane)
+			c = Vector3(x0, bottom, plane); d = Vector3(x1, bottom, plane)
+		"west":
+			normal = Vector3(-1, 0, 0)
+			a = Vector3(plane, top, z1); b = Vector3(plane, top, z0)
+			c = Vector3(plane, bottom, z0); d = Vector3(plane, bottom, z1)
+		_:
+			normal = Vector3(1, 0, 0)
+			a = Vector3(plane, top, z0); b = Vector3(plane, top, z1)
+			c = Vector3(plane, bottom, z1); d = Vector3(plane, bottom, z0)
+
+	var base := vertices.size()
+	vertices.append(a); normals.append(normal); colors.append(color)
+	vertices.append(b); normals.append(normal); colors.append(color)
+	vertices.append(c); normals.append(normal); colors.append(color)
+	vertices.append(d); normals.append(normal); colors.append(color)
+	indices.append(base); indices.append(base + 1); indices.append(base + 2)
+	indices.append(base); indices.append(base + 2); indices.append(base + 3)
+	collision.append(a); collision.append(b); collision.append(c)
+	collision.append(a); collision.append(c); collision.append(d)
+	return 1
+
+## Turn a `build_chunk_arrays()` result into the ArrayMesh a chunk node shows. Static
+## and pure: an empty result yields an empty mesh rather than a surface with no
+## triangles, which is what `add_surface_from_arrays` refuses.
+static func _mesh_from_arrays(arrays: Dictionary) -> ArrayMesh:
+	var mesh := ArrayMesh.new()
+	if arrays.is_empty():
+		return mesh
+	var verts: PackedVector3Array = arrays.get("vertices", PackedVector3Array())
+	if verts.is_empty():
+		return mesh
+	var surface: Array = []
+	surface.resize(Mesh.ARRAY_MAX)
+	surface[Mesh.ARRAY_VERTEX] = verts
+	surface[Mesh.ARRAY_NORMAL] = arrays["normals"]
+	surface[Mesh.ARRAY_COLOR]  = arrays["colors"]
+	surface[Mesh.ARRAY_INDEX]  = arrays["indices"]
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface)
+	return mesh
+
+## The collision triangle soup for one chunk: exactly the triangles the build emits.
+## `build_chunk` taps the arrays it ALREADY has (one build per chunk, not two); this
+## entry point exists so a caller that has no chunk node — the suite — can assert the
+## trimesh's SHAPE headlessly. Physics itself is INERT inside the suite (`_run_tests()`
+## runs synchronously in `GameRoot._ready()`, where a `move_and_slide()` never
+## registers a collision, verified in ROADMAP §Phase 39), so "the trimesh stops a body"
+## is exercised in GAME only and this proves the geometry it is built from.
 func collision_faces(chunk_pos: Vector2i, heightmap: Array) -> PackedVector3Array:
-	return _surface_vertices(_build_terrain_surface(chunk_pos, heightmap))
+	var built := build_chunk_arrays(chunk_pos, heightmap, collect_build_runs(chunk_pos, heightmap))
+	var collision: PackedVector3Array = built["collision"]
+	return collision
 
-## The triangles of a committed terrain surface, in order. Static and pure.
-static func _surface_vertices(mesh: ArrayMesh) -> PackedVector3Array:
-	if mesh == null or mesh.get_surface_count() == 0:
-		return PackedVector3Array()
-	var arrays := mesh.surface_get_arrays(0)
-	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-	return verts
+## How many times a chunk has been (re)built. A build dispatched to a worker carries
+## the revision it was dispatched AT, and `build_chunk` refuses a result whose revision
+## has moved on: a synchronous rebuild in the meantime (an edit) has already produced
+## the correct mesh, and the in-flight arrays describe the terrain before that edit.
+func chunk_revision(chunk_pos: Vector2i) -> int:
+	return int(_chunk_revision.get(_chunk_key(chunk_pos), 0))
 
 ## Free a chunk's visual + collision nodes without touching its base heightmap
 ## or any voxel edits. The heightmap is cached in `_heightmaps` so a later
@@ -894,7 +1174,7 @@ static func legacy_edit_ops(legacy_height: float, base_top: float, materials: Ar
 # Private
 # ---------------------------------------------------------------------------
 
-func _voxel_height(raw_height: float) -> float:
+static func _voxel_height(raw_height: float) -> float:
 	return floor(raw_height / STEP_HEIGHT) * STEP_HEIGHT
 
 ## A tile's natural (unedited) runs, from its chunk's heightmap when that chunk is
@@ -977,35 +1257,6 @@ func _run_color(run: Dictionary, world_xz: Vector2) -> Color:
 	if material != "":
 		return _material_color(material)
 	return _natural_color(world_xz)
-
-## Append one quad (two triangles) to the visual surface. a, b, c, d are in
-## counter-clockwise order seen from the normal side. color tints the face.
-func _add_face(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, normal: Vector3, color: Color) -> void:
-	st.set_normal(normal)
-	st.set_color(color)
-	st.set_uv(Vector2(0, 0)); st.add_vertex(a)
-	st.set_uv(Vector2(1, 0)); st.add_vertex(b)
-	st.set_uv(Vector2(1, 1)); st.add_vertex(c)
-	st.set_uv(Vector2(0, 0)); st.add_vertex(a)
-	st.set_uv(Vector2(1, 1)); st.add_vertex(c)
-	st.set_uv(Vector2(0, 1)); st.add_vertex(d)
-
-## Emit the exposed part of one run's side wall against one neighbour. e1/e2 are
-## the wall's two vertical edges in XZ; the wall is drawn only where this run has
-## material the neighbour does not (see subtract_runs).
-func _add_wall_faces(st: SurfaceTool, run: Dictionary, color: Color, heightmap: Array, chunk_pos: Vector2i, ntx: int, ntz: int, e1: Vector2, e2: Vector2, normal: Vector3, cache: Dictionary) -> void:
-	var neighbour: Array = _neighbour_runs(heightmap, chunk_pos, ntx, ntz, cache)
-	for seg in subtract_runs(run, neighbour):
-		var bottom := float(seg["bottom"])
-		var top := float(seg["top"])
-		if top <= bottom:
-			continue
-		_add_face(st,
-			Vector3(e1.x, top,    e1.y),
-			Vector3(e2.x, top,    e2.y),
-			Vector3(e2.x, bottom, e2.y),
-			Vector3(e1.x, bottom, e1.y),
-			normal, color)
 
 ## The terrain's per-chunk material: per-column vertex colour, both faces
 ## rendered, so the shell is never see-through regardless of triangle winding.
@@ -1249,7 +1500,7 @@ func _world_to_tile(xz: Vector2) -> Vector2i:
 func _tile_to_chunk(tile: Vector2i) -> Vector2i:
 	return Vector2i(floori(float(tile.x) / float(CHUNK_SIZE)), floori(float(tile.y) / float(CHUNK_SIZE)))
 
-func _tile_key(tile: Vector2i) -> String:
+static func _tile_key(tile: Vector2i) -> String:
 	return "%d,%d" % [tile.x, tile.y]
 
 func _chunk_key(chunk_pos: Vector2i) -> String:

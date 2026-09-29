@@ -111,6 +111,13 @@ var voxel_slice: Node = null
 var station_slice: Node = null
 var terrain_slice: Node = null
 
+## Phase 42 — set while the loading screen is up. It is its OWN gate, not a reuse of
+## `UIControl.any_window_open()`: that predicate answers only for the panels the UI
+## slice holds, and a loading screen is not among them, so nothing would be refused.
+## Driven by the `world_input_frozen` bus signal the loading screen emits, and also
+## settable directly (see `set_world_input_frozen`) for a caller that holds the slice.
+var _world_input_frozen: bool = false
+
 func _ready() -> void:
 	if render_visuals:
 		_build_body()
@@ -119,6 +126,25 @@ func _ready() -> void:
 	GameBus.block_place_material_changed.connect(_on_place_material_changed)
 	GameBus.player_damaged.connect(_on_player_damaged)
 	GameBus.remote_player_state.connect(_on_remote_player_state)
+	GameBus.world_input_frozen.connect(set_world_input_frozen)
+
+## Freeze / unfreeze every world action for as long as the loading screen is up.
+func set_world_input_frozen(frozen: bool) -> void:
+	_world_input_frozen = frozen
+
+func is_world_input_frozen() -> bool:
+	return _world_input_frozen
+
+## The ONE predicate `_input` consults before any world action: the mouse must be
+## captured (a UI window or a released mouse blocks everything below) AND the world
+## input freeze must be off (the loading screen blocks it until the ground the body
+## stands on exists). Public so the freeze is assertable without a display server —
+## a headless run has no mouse capture, which would make `_input`'s own guard pass
+## for the wrong reason.
+func world_input_allowed() -> bool:
+	if _world_input_frozen:
+		return false
+	return Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 
 func _physics_process(delta: float) -> void:
 	if not _alive:
@@ -155,11 +181,13 @@ func _input(event: InputEvent) -> void:
 			_zoom(-ZOOM_STEP)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			_zoom(ZOOM_STEP)
-	# All world actions below require a captured mouse. While a UI window is
-	# open the UI slice keeps the mouse visible, so this guard prevents
-	# attacking, mining, or placing through an open menu. ESC (mouse capture
-	# toggle) is owned by the UI slice now.
-	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+	# All world actions below require a captured mouse and an unfrozen world (Phase
+	# 42 — the loading screen owns the freeze hook; see `world_input_allowed`).
+	# While a UI window is open the UI slice keeps the mouse visible, so the mouse
+	# half prevents attacking, mining, or placing through an open menu, and the
+	# loading screen's freeze prevents any of it before the ground exists. ESC (mouse
+	# capture toggle) is owned by the UI slice now.
+	if not world_input_allowed():
 		return
 	# Left-click: pick up an aimed item if there is one, else chop an aimed tree,
 	# otherwise attack.

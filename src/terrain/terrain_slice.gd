@@ -77,6 +77,16 @@ func request_chunk(pos: Vector2i) -> void:
 	var heightmap := _generate(pos)
 	GameBus.chunk_ready.emit(pos, heightmap)
 
+## Generate a chunk's heightmap WITHOUT announcing it on the bus.
+##
+## Phase 42 — the streaming manager needs the map in hand to resolve a chunk's
+## column table and hand the build to a worker, and the `chunk_ready` signal is the
+## trigger for the SYNCHRONOUS build (VoxelSlice listens to it). Emitting it here
+## would build every streamed chunk twice: once on the main thread off the signal,
+## and once on the worker. So the manager asks for the map directly.
+func generate_heightmap(pos: Vector2i) -> Array:
+	return _generate(pos)
+
 ## Sample height at an arbitrary world position (matches the heightmap formula,
 ## including spawn-area flattening). Uses the same (raw+1)*0.5*HEIGHT_SCALE
 ## formula as _generate so values match the heightmap.
