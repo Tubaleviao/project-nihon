@@ -3424,7 +3424,11 @@ chunk is queued further out than it is needed.
   (a rebuild respects the in-flight cap, a queued chunk that leaves range cancels, a
   groundless chunk is re-armed, contents spawn once the ground exists, the build split
   probe, the loading freeze holds the body, the loading screen shows and hides), plus the
-  probe that prints the main-thread / worker split.)***
+  probe that prints the main-thread / worker split.) **THIRD review pass: `7735/7735 passed
+  (0 failed)` on `--quit` and on `--quit --server`, no `SCRIPT ERROR` — five more tests (a
+  stationary player re-arms a failed chunk, unloading drops a queued rebuild, an edit does
+  not re-spawn contents, a drain reads the window once, and a boot quits when its world is
+  up).** ***
 
 **Implementation notes:**
 - **Godot's threading rule is what makes the split mandatory.** Scene-tree
@@ -3567,6 +3571,9 @@ chunk is queued further out than it is needed.
     (and that the boot did NOT get there through the 15 s ring timeout). Verified locally
     against a FRESH `XDG_DATA_HOME`: the line prints 22.5 s after boot, and the boot saves
     36 creatures — the population the fix in (4) now spawns with the ground.
+    **(Amended by the third pass: the job no longer ends the boot on a frame count — it
+    passes `--quit-after-boot` and the boot quits itself when its tail has run; see note 6
+    below.)**
 
 Also landed in the same pass from the same list: the loading screen's own visibility is
 asserted by the suite instead of read by hand off a live boot; `TerrainSlice.request_chunk` is
@@ -3580,6 +3587,57 @@ screen up and nothing logged, it names how many ring chunks were built, and the 
 what makes the failure visible) and **the prefetch band's retention cost** (121 resident
 chunks against 49 is the price of the lead time the band exists for — reducing it is a tuning
 decision, not a defect).
+
+**THIRD review-pass notes (a third post-phase review — seven findings, all closed in
+`fix(terrain,core,ci,docs): Phase 42 review pass 3`):**
+
+1. **The self-heal never fired for a STATIONARY player.** The re-arm that a chunk whose build
+   gave up depends on was keyed on the window MOVING, and `refresh()` returned before reaching
+   it whenever the player stayed in the same chunk — which is a dedicated server's entire shape
+   (it streams around a fixed origin) and any host player standing still. So a groundless chunk
+   stayed a hole for the session in exactly the case the re-arm was written for. The loop is now
+   `_self_heal_failed(window_moved)`: a crossing still re-arms immediately, and an unmoved window
+   re-arms on a WALL-CLOCK interval (`self_heal_interval`, 5 s), so a permanently failing build
+   costs one dispatch per interval rather than a per-frame spin. RED-proved: with the old
+   move-only policy, `chunk: a stationary player re-arms a failed chunk` fails five assertions
+   (`expected 0, got 3` on the retry budget, no dispatch in flight, hole still there).
+2. **A rebuild re-derived the chunk's contents on every block edit.** `_spawn_chunk_contents`
+   ran from `_apply_build_entry` for EVERY build, including the rebuild an edit triggers — and
+   `CreatureSlice.spawn_for_chunk` walks every creature in the fabric while `TreeSlice`'s walks
+   every live tree, on each call, to arrive at a count that cannot have changed. Contents belong
+   to a chunk's RESIDENCY, not its build, so they are now spawned once per residency
+   (`_contents_spawned`, cleared by `unload_chunk`). RED-proved: `expected 2, got 4` on the spy's
+   spawn count after an edit rebuild.
+3. **`unload_chunk` cleared a queued rebuild's `_rebuild_pending` mark but left its entry in
+   `_rebuild_queue`.** The dedupe reads the MARK, so the next edit for that chunk appended a
+   SECOND entry — two dispatches for one chunk under one revision, both attaching.
+   `_remove_queued_rebuild` drops entry and mark together. RED-proved: `expected 0, got 1` on
+   the queue size after the unload.
+4. **The drain resolved the streamed window once per queued chunk.** `_within_stream` re-derived
+   `player_chunk()` — a `PlayerSlice.get_position()` call — and the radius for every candidate,
+   so draining a view ring paid one per chunk for a single answer. `_drain_load_queue` now reads
+   the window ONCE and tests candidates against it (`_within_stream_at`). RED-proved: a
+   position-read spy counted 5 reads for a drain that now takes 1.
+5. **The client's early return logged a release that never happened.** `_finish_client_boot`
+   runs on both the waiting path (which showed the loading screen) and the
+   `is_first_ring_ready()` early return in `_on_world_snapshot_received` (which never did), and
+   it printed "releasing the player" either way. It now asks the screen (`LoadingScreen.is_active()`)
+   and says which of the two actually happened — the ring was already built, so there was nothing
+   to release.
+6. **The CI host job ended a boot on a FRAME budget.** `--quit-after 1800` counts FRAMES while
+   the boot waits on `WorkerThreadPool` time, so a fast headless frame loop could burn the budget
+   before the ring's tasks landed and the job would fail for a boot that was working. The boot now
+   ends ITSELF the moment its tail has run, behind a new `--quit-after-boot` user arg
+   (`should_quit_after_boot`, asserted in the suite), and `--quit-after` is demoted to an outer
+   net for a boot that never gets there (raised to 100000). Verified on a fresh `XDG_DATA_HOME`:
+   `[World] first ring built (9 chunks) — placing the player, 24.63s after boot` then
+   `[World] host boot complete — quitting (--quit-after-boot)`, exit 0, no timeout warning.
+7. **One wait accumulator served both boot gates.** `_boot_wait_elapsed` was read by the host
+   gate and the client gate's deadlines. The roles are mutually exclusive TODAY, so it is
+   harmless — which is the whole point: the day both could be pending, whichever gate ticked
+   second would inherit the other's elapsed time and skip its own wait. Split into
+   `_host_boot_wait_elapsed` / `_client_boot_wait_elapsed`; structural, so there is no
+   behavioural assertion to make (both predicates stay pinned by `host_boot_may_proceed`'s test).
 
 **Known simplifications (deferred):**
 - **An edit's mesh lands a frame or two later.** Since the review pass, a mine/place

@@ -41,10 +41,19 @@ extends Node
 ## dropped. (2) A chunk that leaves the window while QUEUED is dropped rather than built,
 ## and its `_pending` mark is cleared so it is queued again if it returns (`_within_stream`
 ## in `_drain_load_queue`). (3) A chunk whose build exhausts MAX_BUILD_RETRIES is put in
-## `_failed` and re-armed by the next `refresh()` that re-centres the window, so a
-## transient failure heals instead of leaving a hole for the session. (4) A chunk's
+## `_failed` and re-armed by `_self_heal_failed`, so a transient failure heals instead of
+## leaving a hole for the session. (4) A chunk's
 ## creature and tree budgets spawn when its GROUND EXISTS (`_spawn_chunk_contents` from
 ## `_apply_build_entry`) instead of at load time, which is when the build was synchronous.
+##
+## Phase 42 review pass 3 — four more holes in the SAME loop, all four of them bookkeeping:
+## the self-heal was keyed on the window MOVING, so a stationary player (a dedicated
+## server's whole shape) never healed a groundless chunk; a rebuild re-derived the chunk's
+## creature/tree budgets on EVERY edit, re-scanning every live instance and tree; a rebuild
+## that left the streamed set kept its `_rebuild_pending` mark cleared but its `_rebuild_queue`
+## entry alive, so a later edit appended a duplicate; and the drain re-read the player's
+## chunk once per queued candidate. See `_self_heal_failed`, `_contents_spawned`,
+## `_remove_queued_rebuild` and `_within_stream_at`.
 ##
 ## Plug contract (GameBus signals emitted):
 ##   OUT : chunk_loaded(chunk_pos), chunk_unloaded(chunk_pos)
@@ -101,6 +110,14 @@ const DEFAULT_MAX_BUILDS_IN_FLIGHT := 4
 ## loop, never a rebuild the player asked for.
 const MAX_BUILD_RETRIES := 3
 
+## Phase 42 review pass 3 — seconds between self-heal attempts for a chunk whose build gave
+## up, while the window is NOT moving (see `_self_heal_failed`). A crossing skips the
+## throttle entirely, because a crossing is the signal the re-arm was always keyed on;
+## this interval is what makes the STATIONARY case — a dedicated server, or a player who
+## is standing still — heal at all without re-dispatching a permanently failing build
+## every frame. Overridable for tuning/tests.
+const DEFAULT_SELF_HEAL_INTERVAL := 5.0
+
 ## Set by game_root before the slices enter the tree.
 var terrain_slice: Node = null
 var voxel_slice: Node = null
@@ -119,6 +136,10 @@ var loads_per_frame: int = DEFAULT_LOADS_PER_FRAME
 
 ## Worker builds allowed in flight at once (see DEFAULT_MAX_BUILDS_IN_FLIGHT).
 var max_builds_in_flight: int = DEFAULT_MAX_BUILDS_IN_FLIGHT
+
+## Phase 42 review pass 3 — seconds between self-heal attempts while the window is not moving
+## (see DEFAULT_SELF_HEAL_INTERVAL / `_self_heal_failed`). Overridable for tests.
+var self_heal_interval: float = DEFAULT_SELF_HEAL_INTERVAL
 
 var _loaded: Dictionary = {}   # "cx,cz" -> true
 ## Phase 42 — chunks whose BUILD has landed (mesh + collision attached), as opposed
@@ -158,11 +179,28 @@ var _rebuild_queue: Array = []         # of Vector2i
 var _rebuild_pending: Dictionary = {}  # "cx,cz" -> true, dedupes _rebuild_queue
 
 ## Phase 42 review — chunks whose build exhausted MAX_BUILD_RETRIES and were reported
-## as groundless. They are re-armed by the next `refresh()` that re-centres the window
-## (i.e. the next chunk crossing) instead of staying a hole for the session: a build
-## failure that was transient heals, and a permanent one costs one dispatch per crossing
-## rather than a spin.
+## as groundless. They are re-armed by `_self_heal_failed` instead of staying a hole for
+## the session: a build failure that was transient heals, and a permanent one costs one
+## dispatch per re-arm rather than a spin.
+## **(Phase 42 review pass 3: a crossing re-arms immediately, and an UNMOVED window re-arms
+## on a wall-clock interval — keying it on the crossing alone meant a stationary player,
+## which is a dedicated server's whole shape, never healed at all.)**
 var _failed: Dictionary = {}           # "cx,cz" -> true
+
+## Phase 42 review pass 3 — the wall-clock throttle on the self-heal re-arm while the window
+## is NOT moving (`_self_heal_failed`). -1 is the "never attempted" sentinel, so the first
+## attempt after a chunk goes groundless is never throttled by how long the process has
+## been up.
+var _last_self_heal_msec: int = -1
+
+## Phase 42 review pass 3 — chunks whose per-chunk CONTENTS (the creature and tree budgets)
+## have already been spawned, keyed "cx,cz" -> true. Contents belong to a chunk's
+## RESIDENCY, not to its build: an edit rebuilds a loaded chunk, and the apply path used
+## to re-run `_spawn_chunk_contents` for it every time, which re-scanned every live
+## instance (once per creature in the fabric) and every live tree to re-derive a budget
+## that could not have changed. Cleared on unload, so a chunk that streams back in
+## repopulates.
+var _contents_spawned: Dictionary = {} # "cx,cz" -> true
 
 ## Phase 42 — the boot gate. `_first_ring` maps "cx,cz" -> built?, and an EMPTY map
 ## means the gate was never armed (so `is_first_ring_ready()` answers true for every
@@ -204,43 +242,61 @@ func stop() -> void:
 ## happens rather than being requested at that moment.
 func refresh() -> void:
 	var center := player_chunk()
-	if center == _last_center:
+	var window_moved := center != _last_center
+	if window_moved:
+		_last_center = center
+
+	if window_moved:
+		var radius := stream_radius()
+		var desired := _desired_chunks(center, radius)
+		var wanted: Dictionary = {}
+		for c in desired:
+			if _in_bounds(c):
+				wanted[_chunk_key(c)] = true
+
+		# Queue loads nearest-first. Dispatching is what is bounded per frame; the build
+		# itself runs on a worker.
+		var to_load: Array = []
+		for c in desired:
+			var key := _chunk_key(c)
+			if _in_bounds(c) and not _loaded.has(key) and not _pending.has(key):
+				to_load.append(c)
+		to_load.sort_custom(func(a, b): return _dist2(center, a) < _dist2(center, b))
+		for c in to_load:
+			_pending[_chunk_key(c)] = true
+			_load_queue.append(c)
+
+		# Unloads are cheap (queue_free only), so they run immediately.
+		for key in _loaded.keys():
+			if not wanted.has(key):
+				unload_chunk(_key_to_chunk(key))
+
+	_self_heal_failed(window_moved)
+
+## Phase 42 review — SELF-HEAL. A chunk in range that is loaded but has no built mesh
+## is one whose build exhausted MAX_BUILD_RETRIES (see `_apply_build_entry`) and was
+## reported as groundless. Left alone it stays a hole for the session: nothing else
+## re-dispatches a chunk that is already `_loaded`.
+##
+## Phase 42 review pass 3 — and it runs on EVERY `refresh()`, not only on one that
+## re-centres the window. Keying the re-arm on the window MOVING left a stationary
+## player with no self-heal at all: a dedicated server streams around a fixed origin
+## and a host player standing still never changes chunk, so `refresh()` returned before
+## ever reaching this loop — exactly the case where a groundless chunk persists. The
+## backoff is therefore WALL-CLOCK: a crossing re-arms immediately (it is the natural
+## signal, and the reason a crossing is still preferred), while an unmoved window
+## re-arms at most once per `self_heal_interval`. A build that fails forever costs one
+## dispatch per interval rather than a per-frame spin.
+func _self_heal_failed(window_moved: bool) -> void:
+	if _failed.is_empty():
 		return
-	_last_center = center
-
-	var radius := stream_radius()
-	var desired := _desired_chunks(center, radius)
-	var wanted: Dictionary = {}
-	for c in desired:
-		if _in_bounds(c):
-			wanted[_chunk_key(c)] = true
-
-	# Queue loads nearest-first. Dispatching is what is bounded per frame; the build
-	# itself runs on a worker.
-	var to_load: Array = []
-	for c in desired:
-		var key := _chunk_key(c)
-		if _in_bounds(c) and not _loaded.has(key) and not _pending.has(key):
-			to_load.append(c)
-	to_load.sort_custom(func(a, b): return _dist2(center, a) < _dist2(center, b))
-	for c in to_load:
-		_pending[_chunk_key(c)] = true
-		_load_queue.append(c)
-
-	# Unloads are cheap (queue_free only), so they run immediately.
-	for key in _loaded.keys():
-		if not wanted.has(key):
-			unload_chunk(_key_to_chunk(key))
-
-	# Phase 42 review — SELF-HEAL. A chunk in range that is loaded but has no built mesh
-	# is one whose build exhausted MAX_BUILD_RETRIES (see `_apply_build_entry`) and was
-	# reported as groundless. Left alone it stays a hole for the session: nothing else
-	# re-dispatches a chunk that is already `_loaded`. So the next re-centring of the
-	# window re-arms it — a fresh retry budget and a fresh dispatch, under the same
-	# in-flight cap. Keyed on the window MOVING, which is the backoff: a build that fails
-	# forever costs one dispatch per chunk crossing, never a per-frame spin.
+	if not window_moved:
+		var now := Time.get_ticks_msec()
+		if _last_self_heal_msec >= 0 and now - _last_self_heal_msec < int(self_heal_interval * 1000.0):
+			return
+		_last_self_heal_msec = now
 	for key in _failed.keys():
-		if wanted.has(key) and not _built.has(key) and not _has_in_flight(key):
+		if _within_stream(_key_to_chunk(key)) and not _built.has(key) and not _has_in_flight(key):
 			_failed.erase(key)
 			_build_attempts.erase(key)
 			_queue_rebuild(_key_to_chunk(key))
@@ -259,6 +315,12 @@ func stream_radius() -> int:
 ## a queued rebuild is never dropped, it waits.
 func _drain_load_queue() -> void:
 	var budget := loads_per_frame
+	# Phase 42 review pass 3 — the streamed window is resolved ONCE for the whole drain. The
+	# player's chunk cannot move during it (the position is re-read at the next frame's
+	# `refresh()`), and the per-chunk form re-derived it — a slice call — for every
+	# candidate, so a drain of a full view ring paid ~49 of them to reach the same answer.
+	var center := player_chunk()
+	var radius := stream_radius()
 	while budget > 0:
 		if _builds.size() >= max_builds_in_flight:
 			return   # the pool is busy: leave the rest queued for a later frame
@@ -282,7 +344,7 @@ func _drain_load_queue() -> void:
 		# its `_pending` mark was still set, so it was silently skipped instead. Dropping
 		# it here clears that mark, so a chunk that leaves range and returns is queued
 		# again rather than left as a hole.
-		if not _within_stream(chunk):
+		if not _within_stream_at(center, radius, chunk):
 			continue
 		if not _loaded.has(_chunk_key(chunk)):
 			load_chunk(chunk)
@@ -406,6 +468,19 @@ func _queue_rebuild(chunk_pos: Vector2i) -> void:
 	_rebuild_pending[key] = true
 	_rebuild_queue.append(chunk_pos)
 
+## Phase 42 review pass 3 — drop a chunk's queued-but-undispatched rebuild, entry AND mark.
+## `unload_chunk` needs this: the dedupe reads `_rebuild_pending`, so clearing the mark
+## while the queue entry survived made a later `_queue_rebuild` for the same chunk append
+## a second entry — two dispatches for one chunk under one revision.
+func _remove_queued_rebuild(key: String) -> void:
+	if _rebuild_queue.is_empty():
+		return
+	var kept: Array = []
+	for c in _rebuild_queue:
+		if _chunk_key(c) != key:
+			kept.append(c)
+	_rebuild_queue = kept
+
 ## True when a worker build for `key` is in flight (superseded or not).
 func _has_in_flight(key: String) -> bool:
 	for task_id in _builds.keys():
@@ -416,10 +491,15 @@ func _has_in_flight(key: String) -> bool:
 ## True when `chunk` still lies inside the streamed window around the player — the
 ## cancellation test in `_drain_load_queue` (Chebyshev, like `stream_radius`).
 func _within_stream(chunk: Vector2i) -> bool:
+	return _within_stream_at(player_chunk(), stream_radius(), chunk)
+
+## Phase 42 review pass 3 — the same test against a window the CALLER already resolved. The
+## drain reads the player's chunk and the radius ONCE and uses this per candidate, instead
+## of the accessor form which re-derived both — a `PlayerSlice.get_position()` call — for
+## every queued chunk in the drain.
+func _within_stream_at(center: Vector2i, radius: int, chunk: Vector2i) -> bool:
 	if not _in_bounds(chunk):
 		return false
-	var center := player_chunk()
-	var radius := stream_radius()
 	return absi(chunk.x - center.x) <= radius and absi(chunk.y - center.y) <= radius
 
 ## Never leave a worker build running past the tree: at shutdown a task could still
@@ -519,8 +599,13 @@ func _apply_build_entry(task_id: int) -> bool:
 	_failed.erase(key)
 	_built[key] = true
 	# The ground exists now, so its contents may: creatures and trees spawn HERE rather
-	# than at load time (see `_spawn_chunk_contents`).
-	_spawn_chunk_contents(chunk)
+	# than at load time (see `_spawn_chunk_contents`) — but ONCE per residency, not once
+	# per build. An EDIT rebuilds a loaded chunk, and re-deriving the population for it
+	# re-scanned every live instance and every live tree in the world to arrive at the
+	# same count (see `_contents_spawned`).
+	if not _contents_spawned.has(key):
+		_contents_spawned[key] = true
+		_spawn_chunk_contents(chunk)
 	_update_first_ring_progress()
 	return true
 
@@ -592,7 +677,15 @@ func unload_chunk(chunk_pos: Vector2i) -> void:
 	# and any queued rebuild go with it (it rebuilds from the edit log when it streams
 	# back in, see `request_rebuild`'s not-loaded branch).
 	_failed.erase(key)
+	# The residency ends here: the contents are despawned below, so a chunk that streams
+	# back in repopulates (`_apply_build_entry`).
+	_contents_spawned.erase(key)
 	_rebuild_pending.erase(key)
+	# Phase 42 review pass 3 — and the QUEUED entry goes with the mark. `_rebuild_queue` is
+	# deduped through `_rebuild_pending`, so a mark cleared while its queue entry lived
+	# on made the NEXT `_queue_rebuild` for the same chunk append a SECOND entry: two
+	# dispatches for one chunk, both under the same revision, both attaching.
+	_remove_queued_rebuild(key)
 	if voxel_slice != null and voxel_slice.has_method("unload_chunk"):
 		voxel_slice.unload_chunk(chunk_pos)
 	if creature_slice != null and creature_slice.has_method("despawn_for_chunk"):

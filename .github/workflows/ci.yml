@@ -101,10 +101,13 @@ jobs:
           # whole tail — which is why nothing here asserted the host boot any more.
           # `--quit-after N` runs real frames and reaches it.
           #
-          # The count is generous on purpose: the ring's nine chunks are built on
-          # WorkerThreadPool tasks, so what the boot waits on is WORKER time, not
-          # frames, and a fast headless frame loop must not exit before they land.
-          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --quit-after 1800 \
+          # Phase 42 review #2 — but N counts FRAMES while the boot waits on WORKER
+          # time, so a fast headless frame loop could burn the budget before the ring's
+          # tasks land and this job would fail for a boot that was working. The boot
+          # now ends ITSELF the moment its tail has run (`--quit-after-boot`), and
+          # `--quit-after` is demoted to an outer net that only catches a boot which
+          # never gets there — hence the very large count.
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --quit-after 100000 -- --quit-after-boot \
             2>&1 | tee /tmp/godot-host.log
           # Positive assertion: the tail RAN — the first ring was built and the player
           # was placed. That is the claim `--quit` used to cover by accident.

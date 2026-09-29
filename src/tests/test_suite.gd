@@ -291,6 +291,12 @@ func run() -> void:
 	_run_test("chunk: the build split is measured",              _test_chunk_build_split_probe)
 	_run_test("player: the loading freeze holds the body",       _test_player_movement_freeze)
 	_run_test("ui: the loading screen shows and hides",          _test_loading_screen_visibility)
+	# Phase 42 third review pass — the streaming loop's own bookkeeping, and the CI boot gate.
+	_run_test("chunk: a stationary player re-arms a failed chunk", _test_chunk_failed_chunk_is_rearmed_while_stationary)
+	_run_test("chunk: unloading drops a queued rebuild",         _test_chunk_unload_drops_queued_rebuild)
+	_run_test("chunk: an edit does not re-spawn contents",       _test_chunk_contents_spawn_once_per_residency)
+	_run_test("chunk: a drain reads the window once",            _test_chunk_drain_reads_window_once)
+	_run_test("boot: a boot quits when its world is up",         _test_quit_after_boot_predicate)
 	_run_test("player: facing is a normalized yaw vector",      _test_player_facing)
 	_run_test("net: client forwards block intent",               _test_net_voxel_client_forwards_intent)
 	_run_test("net: apply_block_change applies host edit",       _test_net_voxel_apply_block_change)
@@ -8843,6 +8849,30 @@ func _test_net_harness_bare_await_audit() -> void:
 # hand: DRAIN (dispatch), BLOCK on each in-flight task, APPLY. That is exactly what
 # `ChunkManager._process` does across frames, with the wait made explicit.
 
+## A duck-typed stand-in for a CONTENTS slice (creature or tree): the manager only asks
+## for `has_method("spawn_for_chunk")` / `despawn_for_chunk`, so a spy is enough to count
+## what the apply path asks for — which is the whole of the review-pass-3 finding that a
+## rebuild re-derived a chunk's budgets on every block edit.
+class ContentsSpy:
+	extends Node
+	var spawned: Array = []
+	var despawned: Array = []
+	func spawn_for_chunk(chunk_pos: Vector2i) -> void:
+		spawned.append(chunk_pos)
+	func despawn_for_chunk(chunk_pos: Vector2i) -> void:
+		despawned.append(chunk_pos)
+
+## A player stand-in that COUNTS how often its position is read. `ChunkManager.player_chunk()`
+## reaches the body through `player_slice.get_position()`, so the count is a direct measure of
+## how often the manager resolved the streamed window.
+class PlayerPosSpy:
+	extends Node
+	var reads: int = 0
+	var position: Vector3 = Vector3(16.0, 40.0, 16.0)
+	func get_position() -> Vector3:
+		reads += 1
+		return position
+
 ## A ChunkManager wired to a real TerrainSlice + VoxelSlice and a local player — what
 ## the threaded build needs. An isolated manager with no terrain has nothing to
 ## dispatch (see `_dispatch_build`'s early return, which the older rigs rely on).
@@ -9301,6 +9331,145 @@ func _test_chunk_contents_spawn_after_ground() -> void:
 	rig["terrain"].free()
 	rig["player"].free()
 	tree.free()
+
+## Phase 42 review pass 3 — the self-heal cannot be keyed on the window MOVING. A dedicated
+## server streams around a fixed origin and a host player standing still never changes
+## chunk, so `refresh()` returned before it ever reached the re-arm loop: a chunk whose
+## build gave up stayed a hole for the session, which is exactly the case the re-arm exists
+## for. A crossing still re-arms immediately; an unmoved window re-arms on a wall-clock
+## interval (set to 0 here — the interval is the backoff, not the behaviour under test).
+func _test_chunk_failed_chunk_is_rearmed_while_stationary() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.view_distance = 1
+	cm.prefetch_distance = 0
+	cm.self_heal_interval = 0.0
+	cm.refresh()
+	cm._load_queue.clear()
+	cm._pending.clear()
+	# The terminal state of a build that gave up, as in the crossing test above.
+	cm._loaded["0,0"] = true
+	cm._built.erase("0,0")
+	cm._failed["0,0"] = true
+	cm._build_attempts["0,0"] = cm.MAX_BUILD_RETRIES
+	# The player has NOT moved: the window does not re-centre.
+	cm.refresh()
+	assert_false(cm._failed.has("0,0"), "a stationary player still re-arms a groundless chunk")
+	assert_eq(int(cm._build_attempts.get("0,0", 0)), 0, "clearing the give-up state with it")
+	cm._drain_load_queue()
+	assert_eq(int(cm._build_attempts.get("0,0", 0)), 1, "with a fresh retry budget")
+	assert_true(cm._has_in_flight("0,0"), "and a fresh dispatch in flight")
+	_wait_for_builds(cm)
+	assert_true(cm._built.has("0,0"), "so the hole fills without a chunk crossing")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review pass 3 — `unload_chunk` cleared a queued rebuild's `_rebuild_pending`
+## mark but left its entry in `_rebuild_queue`. The dedupe reads the MARK, so the next
+## `_queue_rebuild` for that same chunk appended a SECOND entry — two dispatches for one
+## chunk under one revision, both attaching.
+func _test_chunk_unload_drops_queued_rebuild() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.load_chunk(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	cm.max_builds_in_flight = 1
+	cm.load_chunk(Vector2i(1, 0))   # takes the pool's one slot
+	cm.request_rebuild(Vector2i(0, 0))
+	assert_eq(cm._rebuild_queue.size(), 1, "the rebuild waits in the queue")
+	assert_true(cm._rebuild_pending.has("0,0"), "with its pending mark")
+	cm.unload_chunk(Vector2i(0, 0))
+	assert_eq(cm._rebuild_queue.size(), 0, "unloading a chunk drops its queued entry too")
+	assert_false(cm._rebuild_pending.has("0,0"), "and its pending mark")
+	# And the dedupe still holds afterwards: the chunk streams back in, is edited again
+	# behind the same full pool, and gets exactly ONE queue entry.
+	_wait_for_builds(cm)
+	cm.load_chunk(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	cm.load_chunk(Vector2i(2, 0))
+	cm.request_rebuild(Vector2i(0, 0))
+	assert_eq(cm._rebuild_queue.size(), 1, "a later rebuild for the same chunk is queued once")
+	_wait_for_builds(cm)
+	assert_eq(cm._rebuild_queue.size(), 0, "and drains")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review pass 3 — contents belong to a chunk's RESIDENCY, not to its build. An
+## edit rebuilds a loaded chunk, and the apply path re-ran `_spawn_chunk_contents` for it
+## every time: `spawn_for_chunk` walks every creature in the fabric and every live tree to
+## arrive at the count it already had. Counted through a spy, because the CALL is the
+## finding — the resulting population is identical either way.
+func _test_chunk_contents_spawn_once_per_residency() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var spy := ContentsSpy.new()
+	add_child(spy)
+	cm.creature_slice = spy
+	cm.tree_slice = spy
+	cm.load_chunk(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	assert_eq(spy.spawned.size(), 2, "the creature and tree budgets spawn with the ground")
+	# A block edit rebuilds the chunk — the population is already standing there.
+	cm.request_rebuild(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	assert_true(cm._built.has("0,0"), "the rebuild landed")
+	assert_eq(spy.spawned.size(), 2, "and did NOT re-derive the chunk's contents")
+	# Streaming out and back in is a NEW residency: it repopulates.
+	cm.unload_chunk(Vector2i(0, 0))
+	cm.load_chunk(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	assert_eq(spy.spawned.size(), 4, "a chunk that streams back in repopulates")
+	assert_eq(spy.despawned.size(), 2, "and its contents were despawned on the way out")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+	spy.free()
+
+## Phase 42 review pass 3 — the drain resolved the streamed window once per QUEUED chunk:
+## `_within_stream` re-derived `player_chunk()` (a slice call) and the radius for every
+## candidate, so one drain of a view ring paid dozens of position reads for one answer.
+func _test_chunk_drain_reads_window_once() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var spy := PlayerPosSpy.new()
+	add_child(spy)
+	cm.player_slice = spy
+	cm.view_distance = 2
+	cm.prefetch_distance = 0
+	cm.loads_per_frame = 64
+	cm.refresh()
+	assert_true(cm._load_queue.size() > 9,
+		"a full view ring is queued (%d chunks)" % cm._load_queue.size())
+	var before: int = spy.reads
+	cm._drain_load_queue()
+	assert_eq(spy.reads - before, 1,
+		"one drain resolves the player's chunk ONCE, not once per candidate")
+	# No `_wait_for_builds` on purpose here: the count IS the subject, and freeing the
+	# manager reaps whatever task is still in flight (`_exit_tree` awaits them).
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+	spy.free()
+
+## Phase 42 review pass 3 — the CI host job ended a boot with `--quit-after N`, a FRAME
+## budget, for a wait that is measured in WORKER time: a fast headless frame loop can burn
+## the budget before the ring's tasks land, and the job then fails for a boot that was
+## working. `--quit-after-boot` hands the decision to the boot itself. Static and
+## argument-driven, so the rule is pinned without booting (same shape as `should_run_tests`).
+func _test_quit_after_boot_predicate() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	assert_true(root_script.should_quit_after_boot([root_script.QUIT_AFTER_BOOT_ARG]),
+		"the flag is read from the user args")
+	assert_false(root_script.should_quit_after_boot([]),
+		"no flag leaves the exit to the engine's own budget")
+	assert_false(root_script.should_quit_after_boot(["--server", "--run-tests"]),
+		"and another arg is not it")
 
 ## Phase 42 review — the phase's headline claim ("the build is on a worker, the main
 ## thread does not build") is a QUANTITATIVE one, so it leaves a number behind rather than

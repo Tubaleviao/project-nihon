@@ -84,7 +84,15 @@ var _pending_client_boot: bool = false
 ## runs regardless and the warning says the ring was incomplete. Mirrors SNAPSHOT_TIMEOUT
 ## on the client side, which is the same shape for the same reason.
 const FIRST_RING_TIMEOUT := 15.0
-var _boot_wait_elapsed: float = 0.0
+
+## Phase 42 review pass 3 — the wait is accumulated PER GATE. `_pending_host_boot` and
+## `_pending_client_boot` are mutually exclusive today (the roles are), so one shared
+## accumulator only ever counted one of them — but a single variable read by two different
+## deadlines is a coupling waiting for the day both are set: whichever gate ticked second
+## would inherit the other's elapsed time and skip its own wait. Two variables, no
+## coupling, and each gate's timeout is now readable on its own.
+var _host_boot_wait_elapsed: float = 0.0
+var _client_boot_wait_elapsed: float = 0.0
 
 ## Phase 39 — which side of the two-client network harness this boot drives ("" for a
 ## normal boot). Set by `_parse_network_args`; see `_run_net_harness`.
@@ -128,6 +136,9 @@ func _ready() -> void:
 	# Phase 36 — the role flags are read FIRST, because they decide whether the
 	# automated suite runs on this boot (see should_run_tests).
 	_parse_network_args()
+	# Phase 42 review pass 3 — and whether this boot quits itself once its world is up
+	# (`--quit-after-boot`; see QUIT_AFTER_BOOT_ARG).
+	_quit_after_boot = should_quit_after_boot(OS.get_cmdline_user_args())
 
 	# Run the automated tests before any production slice enters the tree — when
 	# this boot runs them at all. The suite emits signals on the shared GameBus
@@ -448,6 +459,17 @@ const RUN_TESTS_ARG := "--run-tests"
 ## of it this process drives (`host` or `client`).
 const NET_HARNESS_ARG := "--net-harness"
 
+## Phase 42 review pass 3 — the user arg that asks a boot to QUIT itself once its world boot has
+## finished. A boot's first ring is built on `WorkerThreadPool` tasks, so what it waits on is
+## WALL-CLOCK time, while `--quit-after N` counts FRAMES: a fast headless frame loop can burn
+## the whole frame budget before the worker tasks land, and the CI job then reads a log with no
+## first-ring marker — a FAILURE for a boot that was working. With this arg the BOOT decides
+## when it is done; `--quit-after` stays only as the outer net for a boot that never finishes.
+const QUIT_AFTER_BOOT_ARG := "--quit-after-boot"
+
+## Phase 42 review pass 3 — see QUIT_AFTER_BOOT_ARG. Read in `_ready()`.
+var _quit_after_boot: bool = false
+
 ## Phase 36 — should THIS boot run the automated suite?
 ##
 ## It used to run unconditionally, so every boot of every build executed a
@@ -466,6 +488,13 @@ const NET_HARNESS_ARG := "--net-harness"
 ## twice. See `_test_boot_suite_is_gated`.
 static func should_run_tests(args: Array, is_debug_build: bool) -> bool:
 	return RUN_TESTS_ARG in args or is_debug_build
+
+## Phase 42 review pass 3 — is this boot asked to quit itself once its world boot is done?
+## Static and argument-driven for the same reason `should_run_tests` is: the rule is a pure
+## predicate the suite can assert directly. See QUIT_AFTER_BOOT_ARG for why a FRAME budget
+## is the wrong instrument for a boot whose wait is on worker time.
+static func should_quit_after_boot(args: Array) -> bool:
+	return QUIT_AFTER_BOOT_ARG in args
 
 ## Phase 39 — which side of the network harness this boot drives, or "" for a normal
 ## boot. Static and argument-driven for the same reason `should_run_tests` is: the rule
@@ -587,7 +616,7 @@ func _boot_host() -> void:
 	_boot_server()
 
 	_loading_screen.begin()
-	_boot_wait_elapsed = 0.0
+	_host_boot_wait_elapsed = 0.0
 	if _chunk_manager.is_first_ring_ready():
 		_finish_host_boot()
 		return
@@ -606,12 +635,12 @@ func _tick_pending_host_boot(delta: float) -> void:
 	if not _pending_host_boot:
 		return
 	_loading_screen.set_progress(_chunk_manager.first_ring_progress())
-	_boot_wait_elapsed += delta
-	if not host_boot_may_proceed(_chunk_manager.is_first_ring_ready(), _boot_wait_elapsed):
+	_host_boot_wait_elapsed += delta
+	if not host_boot_may_proceed(_chunk_manager.is_first_ring_ready(), _host_boot_wait_elapsed):
 		return
 	if not _chunk_manager.is_first_ring_ready():
 		push_warning("GameRoot: first ring still incomplete after %.1fs (%d of %d chunks built) — placing the player anyway" % [
-			_boot_wait_elapsed, int(round(_chunk_manager.first_ring_progress() * float(_chunk_manager.first_ring_size()))),
+			_host_boot_wait_elapsed, int(round(_chunk_manager.first_ring_progress() * float(_chunk_manager.first_ring_size()))),
 			_chunk_manager.first_ring_size()])
 	_finish_host_boot()
 
@@ -622,6 +651,17 @@ func _tick_pending_host_boot(delta: float) -> void:
 static func host_boot_may_proceed(ring_ready: bool, elapsed: float) -> bool:
 	return ring_ready or elapsed >= FIRST_RING_TIMEOUT
 
+## Phase 42 review pass 3 — leave the process the moment the world boot has finished, when this
+## boot was asked to (QUIT_AFTER_BOOT_ARG). Called at the END of both boot tails — the host's
+## after its save, the client's after it releases the player — because the tail IS the boot's
+## definition of "done". The alternative, `--quit-after N`, is a FRAME budget for a wait that
+## is measured in worker time, so it can expire first; see QUIT_AFTER_BOOT_ARG.
+func _quit_after_boot_if_asked(role: String) -> void:
+	if not _quit_after_boot:
+		return
+	print("[World] %s boot complete — quitting (%s)" % [role, QUIT_AFTER_BOOT_ARG])
+	get_tree().quit()
+
 ## Phase 42 review — the CLIENT's first-ring gate (see `_on_world_snapshot_received`).
 ## The client has no boot tail: its body already holds the snapshot position, so the only
 ## work is to drop the loading screen and release the movement freeze that stopped the
@@ -629,22 +669,33 @@ static func host_boot_may_proceed(ring_ready: bool, elapsed: float) -> bool:
 ## so a stalled build cannot leave a client frozen forever.
 func _finish_client_boot() -> void:
 	_pending_client_boot = false
+	# Phase 42 review pass 3 — this runs on BOTH paths: the waiting one (which showed the
+	# screen) and the ALREADY-READY early return in `_on_world_snapshot_received` (which
+	# did not). Only the first one ever held the player, so ask the screen whether
+	# anything was actually shown instead of announcing a release that never happened —
+	# a client whose ring was built before the snapshot arrived saw no bar and was never
+	# frozen, and the line claimed it was "releasing the player" regardless.
+	var was_shown := _loading_screen.is_active()
 	_loading_screen.finish()
-	print("[World] client first ring built (%d chunks) — releasing the player" % _chunk_manager.first_ring_size())
+	if was_shown:
+		print("[World] client first ring built (%d chunks) — releasing the player" % _chunk_manager.first_ring_size())
+	else:
+		print("[World] client first ring already built (%d chunks) — no loading screen to release" % _chunk_manager.first_ring_size())
+	_quit_after_boot_if_asked("client")
 
-## Phase 42 review — drive the waiting client join: keep the loading bar in step with the
+## Phase 42 review pass 3 — drive the waiting client join: keep the loading bar in step with the
 ## first ring's build progress and release the player the moment the ring's ground exists.
 ## A no-op once the join has completed (or when this is not a client at all).
 func _tick_pending_client_boot(delta: float) -> void:
 	if not _pending_client_boot:
 		return
 	_loading_screen.set_progress(_chunk_manager.first_ring_progress())
-	_boot_wait_elapsed += delta
-	if not host_boot_may_proceed(_chunk_manager.is_first_ring_ready(), _boot_wait_elapsed):
+	_client_boot_wait_elapsed += delta
+	if not host_boot_may_proceed(_chunk_manager.is_first_ring_ready(), _client_boot_wait_elapsed):
 		return
 	if not _chunk_manager.is_first_ring_ready():
 		push_warning("GameRoot: client first ring still incomplete after %.1fs (%d of %d chunks built) — releasing the player anyway" % [
-			_boot_wait_elapsed, int(round(_chunk_manager.first_ring_progress() * float(_chunk_manager.first_ring_size()))),
+			_client_boot_wait_elapsed, int(round(_chunk_manager.first_ring_progress() * float(_chunk_manager.first_ring_size()))),
 			_chunk_manager.first_ring_size()])
 	_finish_client_boot()
 
@@ -759,6 +810,11 @@ func _finish_host_boot() -> void:
 	# sample the client-side path and the older tests use; the server records are
 	# what an authoritative boot loads.
 	_save_everything(false)
+
+	# Phase 42 review pass 3 — the tail is the boot's own definition of "done" (see
+	# QUIT_AFTER_BOOT_ARG). A CI boot asks to exit HERE rather than being cut off by a
+	# FRAME budget: the wait above is on worker time, and `--quit-after N` counts frames.
+	_quit_after_boot_if_asked("host")
 
 ## Client boot path (Phase 18): do NOT run the authoritative simulation. Join
 ## the host and wait for the world snapshot before showing anything.
@@ -1217,7 +1273,7 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 		_finish_client_boot()
 		return
 	_loading_screen.begin()
-	_boot_wait_elapsed = 0.0
+	_client_boot_wait_elapsed = 0.0
 	_pending_client_boot = true
 
 # ---------------------------------------------------------------------------
