@@ -186,13 +186,22 @@ var _dirty_chunks: Dictionary = {}
 ## Phase 42 — how many times a chunk has been (re)built, keyed by "cx,cz" string.
 ## A build dispatched to a worker carries the revision it was dispatched AT, and
 ## `build_chunk` refuses the result when the revision has moved on: the arrays then
-## describe terrain the player has already edited, and applying them would undo the
-## edit on screen (see `chunk_revision`).
+## describe a chunk that has already been rebuilt, and applying them would undo what
+## that rebuild produced (see `chunk_revision`). The EDIT case is closed before it
+## reaches here — `ChunkManager.request_rebuild` supersedes a build already in flight
+## for an edited chunk — so this guard is what catches a chunk rebuilt under a build by
+## any other route.
 var _chunk_revision: Dictionary = {}
 
 ## Set by game_root: terrain (biome + base height) and inventory (material flow).
 var terrain_slice: Node = null
 var inventory_slice: Node = null
+
+## Phase 42 review — the chunk manager, so an edit can DISPATCH its rebuild instead of
+## building up to three chunks synchronously on the main thread. Optional: a slice with
+## no manager wired (the suite, a probe) keeps the synchronous build (see
+## `_rebuild_chunk_at_tile`), which is what the isolated edit tests assert against.
+var chunk_manager: Node = null
 
 ## Authority mode (Phase 18). When true (host / single-player), this slice owns
 ## world edits: mine/place requests are validated and applied here, and their
@@ -236,10 +245,20 @@ func _ready() -> void:
 ## on a WORKER, and `revision` is the `chunk_revision` it was dispatched at (see
 ## `chunk_revision`); omit both for the synchronous build, which resolves its own
 ## input and is what the bus path, the edit path and every isolated test use.
-func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {}, revision: int = -1) -> void:
+##
+## Returns TRUE when a mesh was attached, FALSE when the call was a no-op. Two refusals:
+## a worker result whose revision has moved on, and (Phase 42 review) a worker result that
+## carried NOTHING — a failed task. The second one used to fall through to the synchronous
+## branch below and rebuild the whole chunk on the main thread, which is exactly the stall
+## the worker exists to remove, done SILENTLY. It is a refusal now, and the manager answers
+## a refusal with a fresh dispatch (see `ChunkManager._apply_build_entry`). The 2-arg form
+## is untouched: an empty `arrays` with no revision means "build it here", on purpose.
+func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {}, revision: int = -1) -> bool:
 	var key := _chunk_key(chunk_pos)
 	if revision >= 0 and revision != chunk_revision(chunk_pos):
-		return   # stale worker result: this chunk was rebuilt while it was in flight
+		return false   # stale worker result: this chunk was rebuilt while it was in flight
+	if arrays.is_empty() and revision >= 0:
+		return false   # a worker build that produced nothing: refuse, do not rebuild here
 	_chunk_revision[key] = chunk_revision(chunk_pos) + 1
 
 	# Remember the base heightmap so edits can be reapplied on rebuild.
@@ -262,6 +281,8 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	# surface can therefore never inherit one.
 	var built: Dictionary = arrays
 	if built.is_empty():
+		# Only the SYNCHRONOUS path reaches this now: a worker result that carried nothing
+		# was refused above rather than quietly rebuilt here (Phase 42 review).
 		built = build_chunk_arrays(chunk_pos, heightmap, collect_build_runs(chunk_pos, heightmap))
 	var surface := _mesh_from_arrays(built)
 	var mesh_inst := MeshInstance3D.new()
@@ -299,6 +320,7 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	col_shape.shape = trimesh
 	static_body.add_child(col_shape)
 	root.add_child(static_body)
+	return true
 
 ## The terrain's visible AND collidable surface for one chunk — no rare-vein
 ## deposits, which are decoration. Built once per rebuild and shared by the
@@ -1549,16 +1571,45 @@ func _column_top_at_tile(tile: Vector2i) -> float:
 ##
 ## Only the four edge-ADJACENT chunks can read the tile, and only when the tile is
 ## actually on that edge, so this is one chunk build in a chunk's interior and at
-## most three at a corner. (Phase 42 moves the build onto a worker; the cost of a
-## rebuild is what the same phase's greedy merge is for.)
+## most three at a corner (see `_touched_chunks`).
+##
+## Phase 42 REVIEW — the rebuild is DISPATCHED, not built here. `ChunkManager.request_rebuild`
+## hands it to the worker like any other streamed chunk, which is the whole point of the
+## phase: this method used to build up to three chunks SYNCHRONOUSLY in the frame that
+## placed the block, the exact stall the worker exists to remove. Two cases it also fixes:
+##
+##   * a chunk whose build is still IN FLIGHT has no cached heightmap yet, so the old
+##     `_heightmaps.has(ckey)` guard skipped it entirely and the edit was LOST — the
+##     in-flight result then attached the pre-edit arrays. `request_rebuild` needs no
+##     cached map: it supersedes the in-flight build and dispatches a fresh one.
+##   * a chunk that is NOT in the streamed set is a no-op there, which is the existing
+##     rule: it has no node to refresh, and it rebuilds from the current edit log when it
+##     streams back in. Building it here would resurrect a chunk the manager has already
+##     streamed away (see `apply_edits`).
+##
+## A slice with NO manager wired (the suite, a probe) keeps the synchronous build, and only
+## for a chunk that already holds a cached heightmap — the same rule as before.
 func _rebuild_chunk_at_tile(tile: Vector2i) -> void:
-	var rebuilt: Dictionary = {}
+	for chunk in _touched_chunks(tile):
+		if chunk_manager != null and chunk_manager.has_method("request_rebuild"):
+			chunk_manager.request_rebuild(chunk)
+			continue
+		var ckey := _chunk_key(chunk)
+		if _heightmaps.has(ckey):
+			build_chunk(chunk, _heightmaps[ckey])
+
+## The chunks whose mesh reads `tile`, deduplicated: the tile's own chunk plus each
+## edge-adjacent one the tile sits on the edge of. A corner tile names three distinct
+## chunks; an interior tile names one.
+func _touched_chunks(tile: Vector2i) -> Array:
+	var out: Array = []
+	var seen: Dictionary = {}
 	for probe in [tile, Vector2i(tile.x - 1, tile.y), Vector2i(tile.x + 1, tile.y),
 			Vector2i(tile.x, tile.y - 1), Vector2i(tile.x, tile.y + 1)]:
 		var chunk := _tile_to_chunk(probe)
 		var ckey := _chunk_key(chunk)
-		if rebuilt.has(ckey):
+		if seen.has(ckey):
 			continue
-		rebuilt[ckey] = true
-		if _heightmaps.has(ckey):
-			build_chunk(chunk, _heightmaps[ckey])
+		seen[ckey] = true
+		out.append(chunk)
+	return out

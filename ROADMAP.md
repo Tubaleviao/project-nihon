@@ -3406,7 +3406,9 @@ chunk is queued further out than it is needed.
   *(`Results: 7663/7663 passed (0 failed)` + `All tests passed ✓` on both
   `--quit` and `--quit --server`; seven new tests registered in the `_run_test` list
   (builder purity, merge counts, merge-never-spans-a-gap, dispatch-then-apply, the
-  first-ring gate, the prefetch radius, the loading freeze).)*
+  first-ring gate, the prefetch radius, the loading freeze). **Re-run after the review
+  pass: `7682/7682 passed (0 failed)` on both boot paths** — five more tests, one per
+  closed finding that is assertable in the suite.)*
 
 **Implementation notes:**
 - **Godot's threading rule is what makes the split mandatory.** Scene-tree
@@ -3466,7 +3468,54 @@ chunk is queued further out than it is needed.
   `load_chunk()`, i.e. a frame or two BEFORE their chunk's mesh lands — unchanged from
   before this phase.
 
+**Review-pass notes (six findings from a post-phase review, all closed in
+`fix(terrain): Phase 42 review pass`):**
+
+1. **`_exit_tree` skipped the wait for an already-COMPLETED task** — the exit-134 leak
+   this phase's own notes describe, walked back in through a guard. `is_task_completed`
+   reports only that the work is DONE; the pool holds the task and its result until it is
+   AWAITED. The wait is now unconditional (`wait_for_task_completion` returns immediately
+   for a finished task, so dropping the guard costs nothing). **Measured, both
+   directions:** with the guard restored, `--quit-after 400` aborts (`exit 134`) and so does
+   the suite boot; with the fix, both are `exit 0`.
+2. **An edit to an in-flight chunk was LOST.** The edit path gated its rebuild on a cached
+   heightmap, and a chunk only gets one when its build LANDS — so an edit that arrived
+   while the build was on the worker rebuilt nothing, and the worker's PRE-edit arrays were
+   attached on top of it. `ChunkManager.request_rebuild` needs no cached map: it supersedes
+   any build already in flight for that chunk (marked `superseded`, still AWAITED, neither
+   attached nor re-dispatched) and dispatches a fresh one built from the current columns.
+   RED-proved: the attached mesh came back 16036 vertices against the post-edit build's
+   16008.
+3. **`stop()` abandoned in-flight builds.** `_process` returned before its apply pass while
+   streaming was stopped, so a build dispatched a moment earlier was applied by nobody and
+   awaited by nobody — no mesh, and the task's result held until shutdown. The apply pass now
+   runs whether or not streaming is active; `stop()` ends NEW work only.
+4. **A null worker result fell back to a synchronous main-thread build.** `build_chunk` now
+   REFUSES an empty result on the worker path (`arrays` empty with a `revision >= 0`) rather
+   than quietly rebuilding the whole chunk on the main thread — the stall this phase exists
+   to remove, done silently. The manager answers a refusal with a fresh dispatch, bounded by
+   `MAX_BUILD_RETRIES := 3` so a permanently failing build reports an error instead of
+   spinning. The 2-arg synchronous form is untouched.
+5. **Block edits still rebuilt up to three chunks SYNCHRONOUSLY.** `_rebuild_chunk_at_tile`
+   now DISPATCHES through `request_rebuild` (`VoxelSlice.chunk_manager`, wired both ways by
+   `game_root`) instead of calling `build_chunk` in the frame that placed the block; the
+   chunk keeps its old mesh until the new one lands. A slice with NO manager wired (the
+   suite, a probe) keeps the synchronous build, and only for a chunk that already holds a
+   cached heightmap — which is what the isolated edit tests assert against. The comment that
+   claimed Phase 42 had already threaded this path was false, and is corrected.
+6. **`_pending_host_boot` had no timeout.** The gate is a worker build, so a stalled ring
+   held the boot forever: loading screen up, no player, no UI, nothing logged. `_tick_pending_host_boot`
+   now runs the host tail after `FIRST_RING_TIMEOUT := 15.0` regardless and pushes a warning
+   naming how many ring chunks were built — the same shape `SNAPSHOT_TIMEOUT` already has on
+   the client side. The decision is a pure predicate (`GameRoot.host_boot_may_proceed`) so the
+   suite pins it without booting.
+
 **Known simplifications (deferred):**
+- **An edit's mesh lands a frame or two later.** Since the review pass, a mine/place
+  DISPATCHES its chunk rebuild (and any seam neighbour's) to the worker instead of building
+  it in the frame that applied the edit, so the visual update arrives when that build does.
+  The edit LOG is immediate, so everything that reads the world rather than the mesh —
+  footing (`sample_support_height_at`), further edits, persistence — is unaffected.
 - **No priority job queue or cancellation.** Loads are nearest-first, and a
   chunk that falls out of range while queued is still built (and then unloaded).
 - **The loading screen is a progress bar, not a world preview** — no panorama, no

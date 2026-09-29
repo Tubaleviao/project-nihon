@@ -72,6 +72,14 @@ var _snapshot_pending: bool = false
 ## `_process`, which is the only place a worker result can be applied on time.
 var _pending_host_boot: bool = false
 
+## Phase 42 — how long the host boot will wait for its first ring before placing the
+## player anyway. The gate is a BUILD ON A WORKER, and a stalled or dead task must not
+## hang the boot for good with the loading screen up and no player: past this the tail
+## runs regardless and the warning says the ring was incomplete. Mirrors SNAPSHOT_TIMEOUT
+## on the client side, which is the same shape for the same reason.
+const FIRST_RING_TIMEOUT := 15.0
+var _boot_wait_elapsed: float = 0.0
+
 ## Phase 39 — which side of the two-client network harness this boot drives ("" for a
 ## normal boot). Set by `_parse_network_args`; see `_run_net_harness`.
 var _net_harness_role: String = ""
@@ -297,6 +305,10 @@ func _ready() -> void:
 	_chunk_manager.player_slice   = _player
 	_chunk_manager.creature_slice = _creature
 	_chunk_manager.tree_slice     = _tree
+	# Phase 42 review — and back the other way, so an edit DISPATCHES its rebuild instead
+	# of building up to three chunks synchronously in the frame that placed the block.
+	# A voxel slice with no manager (an isolated rig) keeps the synchronous build.
+	_voxel.chunk_manager = _chunk_manager
 
 	# Minimap overlay (Phase 17) — top-right, biome-coloured chunk view. Pure
 	# presentation, so a headless dedicated server (Phase 27) skips it entirely,
@@ -567,6 +579,7 @@ func _boot_host() -> void:
 	_boot_server()
 
 	_loading_screen.begin()
+	_boot_wait_elapsed = 0.0
 	if _chunk_manager.is_first_ring_ready():
 		_finish_host_boot()
 		return
@@ -575,12 +588,31 @@ func _boot_host() -> void:
 ## Phase 42 — drive the waiting host boot: while `_pending_host_boot` is set, keep the
 ## loading bar in step with the first ring's build progress and run the host tail as
 ## soon as every ring chunk's ground exists. A no-op once the boot has completed.
-func _tick_pending_host_boot() -> void:
+##
+## Phase 42 review — and it TIMES OUT. A ring that never opens (a stalled build, a pool
+## that never runs the task) used to hold the boot forever: loading screen up, no player,
+## no UI, nothing logged. Past FIRST_RING_TIMEOUT the tail runs anyway and the warning
+## names what was missing, so a broken build is a slow boot that says so rather than a
+## hang with no evidence.
+func _tick_pending_host_boot(delta: float) -> void:
 	if not _pending_host_boot:
 		return
 	_loading_screen.set_progress(_chunk_manager.first_ring_progress())
-	if _chunk_manager.is_first_ring_ready():
-		_finish_host_boot()
+	_boot_wait_elapsed += delta
+	if not host_boot_may_proceed(_chunk_manager.is_first_ring_ready(), _boot_wait_elapsed):
+		return
+	if not _chunk_manager.is_first_ring_ready():
+		push_warning("GameRoot: first ring still incomplete after %.1fs (%d of %d chunks built) — placing the player anyway" % [
+			_boot_wait_elapsed, int(round(_chunk_manager.first_ring_progress() * float(_chunk_manager.first_ring_size()))),
+			_chunk_manager.first_ring_size()])
+	_finish_host_boot()
+
+## The boot gate's decision, as a pure predicate so it is assertable without a boot:
+## the tail may run once the ring is built, or once the wait has run past the timeout.
+## An UNARMED ring is "ready" (see ChunkManager.is_first_ring_ready), so a boot with no
+## gate to wait for completes on the first tick.
+static func host_boot_may_proceed(ring_ready: bool, elapsed: float) -> bool:
+	return ring_ready or elapsed >= FIRST_RING_TIMEOUT
 
 ## The host tail, run once the first ring's ground exists: player spawn, avatar,
 ## lighting/UI demos, and the legacy slot save. Split out of `_boot_host()` by
@@ -898,7 +930,7 @@ func _process(delta: float) -> void:
 	# to run FIRST: the rest of this frame's work (the avatar sync, the LOD pass) is
 	# written against a player body that only exists once the boot tail has run, and
 	# the loading screen must come down in the same frame the body appears.
-	_tick_pending_host_boot()
+	_tick_pending_host_boot(delta)
 
 	_sync_player_avatar(delta)
 	# Distance-driven LOD (Phase 23) — evaluate each character's world distance

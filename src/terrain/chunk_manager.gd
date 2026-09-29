@@ -26,6 +26,13 @@ extends Node
 ## `load_chunk()` still reports `chunk_loaded` when a chunk enters the streamed set
 ## (its build is dispatched at that point); "the mesh is there" is `_built`.
 ##
+## Phase 42 review — an EDIT rebuilds through the same worker. `request_rebuild(pos)`
+## is what `VoxelSlice._rebuild_chunk_at_tile` calls for every chunk whose mesh reads
+## the edited tile; it supersedes a build already in flight for that chunk (so an edit
+## that lands mid-build is not overwritten by the pre-edit arrays) and dispatches a
+## fresh one. A chunk that is not in the streamed set is a no-op — it rebuilds from the
+## current edit log when it streams back in.
+##
 ## Plug contract (GameBus signals emitted):
 ##   OUT : chunk_loaded(chunk_pos), chunk_unloaded(chunk_pos)
 ##
@@ -34,6 +41,7 @@ extends Node
 ##   refresh()                              — run one synchronous load/unload pass
 ##   player_chunk() -> Vector2i             — chunk under the player
 ##   load_chunk(pos) / unload_chunk(pos)    — explicit load/unload
+##   request_rebuild(pos)                   — re-dispatch a loaded chunk's build (an edit)
 ##   get_loaded_chunks() -> Array           — [{ chunk, biome }, ...]
 ##   build_first_ring(center)               — arm the boot gate
 ##   is_first_ring_ready() -> bool
@@ -70,6 +78,14 @@ const DEFAULT_LOADS_PER_FRAME := 1
 ## burst of dispatches can hold (each task holds its heightmap + column table) and
 ## keeps the pool available for other work; results are applied as they complete.
 const DEFAULT_MAX_BUILDS_IN_FLIGHT := 4
+
+## Phase 42 review — how many times one chunk's build may be dispatched before the
+## manager gives up on it and reports the failure. It exists because a worker result can
+## now be REFUSED (an empty result, or a chunk rebuilt under it) and a refusal is answered
+## with a fresh dispatch; without a cap a build that always fails would spin every frame.
+## A fresh edit (`request_rebuild`) resets the budget, so the cap only ever stops a retry
+## loop, never a rebuild the player asked for.
+const MAX_BUILD_RETRIES := 3
 
 ## Set by game_root before the slices enter the tree.
 var terrain_slice: Node = null
@@ -112,6 +128,11 @@ var _pending: Dictionary = {}  # "cx,cz" -> true
 ## `is_task_completed()` says the task is done.
 var _builds: Dictionary = {}
 
+## Phase 42 review — dispatches spent on each chunk, keyed "cx,cz" -> int, against
+## MAX_BUILD_RETRIES (see `_apply_build_entry`). Cleared when a build attaches, when a
+## fresh rebuild is requested, and when the chunk is unloaded.
+var _build_attempts: Dictionary = {}
+
 ## Phase 42 — the boot gate. `_first_ring` maps "cx,cz" -> built?, and an EMPTY map
 ## means the gate was never armed (so `is_first_ring_ready()` answers true for every
 ## caller that has no boot to hold).
@@ -119,9 +140,14 @@ var _first_ring: Dictionary = {}
 var _first_ring_center: Vector2i = Vector2i.ZERO
 
 func _process(_delta: float) -> void:
+	# Phase 42 review — the APPLY pass runs whether or not streaming is active. `stop()`
+	# only ends NEW work; a build already in flight belongs to a chunk that is still
+	# loaded, and while the poll sat behind the `_active` guard nothing applied it and
+	# nothing awaited it — the chunk was left without a mesh and the task's result sat in
+	# the pool until shutdown (the same exit-134 leak `_exit_tree` now closes there).
+	_apply_finished_builds()
 	if not _active:
 		return
-	_apply_finished_builds()
 	_drain_load_queue()
 	refresh()
 
@@ -227,6 +253,17 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 		_built[key] = true
 		_update_first_ring_progress()
 		return
+	# Phase 42 review — SUPERSEDE a build already in flight for this chunk. The caller
+	# reaches here for a chunk whose data changed under an in-flight build (see
+	# `request_rebuild`), and the older task's arrays describe the terrain BEFORE that
+	# change. It cannot simply be erased from `_builds`: the pool keeps a task alive until
+	# it is awaited, so it is marked instead and reaped by `_apply_build_entry`, which
+	# neither attaches it nor re-dispatches it. Without this the two tasks carry the same
+	# revision and BOTH attach, so the mesh could end up the pre-edit one.
+	for stale_id in _builds.keys():
+		if _builds[stale_id]["key"] == key:
+			_builds[stale_id]["superseded"] = true
+	_build_attempts[key] = int(_build_attempts.get(key, 0)) + 1
 	var heightmap: Array = terrain_slice.generate_heightmap(chunk_pos)
 	var runs: Dictionary = voxel_slice.collect_build_runs(chunk_pos, heightmap)
 	var revision: int = int(voxel_slice.chunk_revision(chunk_pos))
@@ -242,13 +279,35 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 		"result":    result,
 	}
 
+## Phase 42 review — rebuild an already-loaded chunk whose DATA changed under it: a voxel
+## edit (see `VoxelSlice._rebuild_chunk_at_tile`). It goes to a worker like every other
+## build, which is the point: an edit used to rebuild up to three chunks SYNCHRONOUSLY in
+## the frame that placed the block, which is exactly the stall the worker exists to remove.
+##
+## A chunk that is not in the streamed set is a no-op: it has no node to refresh, it
+## rebuilds from the current edit log when it streams back in (see `apply_edits`), and
+## building it here would resurrect a chunk the manager has already streamed away.
+func request_rebuild(chunk_pos: Vector2i) -> void:
+	if not _loaded.has(_chunk_key(chunk_pos)):
+		return
+	# A fresh request starts a fresh retry budget: it is a new edit, not a retry of one.
+	_build_attempts.erase(_chunk_key(chunk_pos))
+	_dispatch_build(chunk_pos)
+
 ## Never leave a worker build running past the tree: at shutdown a task could still
 ## be producing arrays for a world nobody owns (and on a `--quit` boot that is one
 ## frame after the dispatch). Waiting here is a bounded block — the tasks are short.
+##
+## Phase 42 review — the wait is UNCONDITIONAL, and that is the whole fix. It used to
+## be guarded by `is_task_completed`, which is exactly the leak: that call only reports
+## that the work is DONE, while the pool keeps the task and its result alive until it is
+## AWAITED, so a finished-but-never-awaited build still aborted the process at shutdown
+## (exit 134 — the leak this comment describes, walked straight back in through the
+## guard). `wait_for_task_completion` returns immediately for a finished task, so
+## dropping the guard costs nothing and closes the window.
 func _exit_tree() -> void:
 	for task_id in _builds.keys():
-		if not WorkerThreadPool.is_task_completed(task_id):
-			WorkerThreadPool.wait_for_task_completion(task_id)
+		WorkerThreadPool.wait_for_task_completion(task_id)
 	_builds.clear()
 
 ## Attach every worker build that has finished, on the main thread. A result whose
@@ -275,8 +334,7 @@ func flush_builds() -> int:
 	return applied
 
 ## Attach one task's arrays and clear it from the in-flight table. Returns false when
-## the result was dropped (the chunk streamed back out) — a drop is not a failure, it is
-## the reason the table is per-frame.
+## nothing was attached — a drop is not a failure, it is the reason the table is per-frame.
 ##
 ## It WAITS on the task before doing anything with it, and that is not belt-and-braces:
 ## `is_task_completed` only reports that the work is done, while the pool keeps the task
@@ -284,20 +342,42 @@ func flush_builds() -> int:
 ## builds accumulates until the pool aborts the process at shutdown (measured: exit 134
 ## on every boot that streamed one chunk window). On the frame path this call is
 ## therefore instantaneous, because the caller only reaches here for a finished task.
+##
+## Phase 42 review — three ways this answers FALSE, and each one now has a defined
+## consequence rather than a silent one:
+##   * SUPERSEDED — a later dispatch for the same chunk owns its mesh (an edit landed
+##     while this build was in flight). Nothing to do, and no re-dispatch: the newer
+##     task is already on its way.
+##   * the chunk streamed out while it built — nothing to attach it to.
+##   * `build_chunk` refused the result: the worker handed back NOTHING (a failed task;
+##     it is no longer answered with a synchronous main-thread build, which is the stall
+##     Phase 42 removed) or the chunk was rebuilt under it. Either way the chunk still
+##     needs a mesh, so the build is RE-DISPATCHED, bounded by MAX_BUILD_RETRIES so a
+##     permanently failing build reports an error instead of spinning.
 func _apply_build_entry(task_id: int) -> bool:
 	var entry: Dictionary = _builds.get(task_id, {})
 	if entry.is_empty():
 		return false
 	_builds.erase(task_id)
 	WorkerThreadPool.wait_for_task_completion(task_id)
-	if not _loaded.has(entry["key"]):
+	var key: String = str(entry["key"])
+	if bool(entry.get("superseded", false)):
+		return false   # a later dispatch for this chunk owns the mesh
+	if not _loaded.has(key):
 		return false   # streamed out while it built: nothing to attach it to
 	var result: Array = entry["result"]
 	var arrays: Dictionary = {}
 	if result[0] is Dictionary:
 		arrays = result[0]
-	voxel_slice.build_chunk(entry["chunk"], entry["heightmap"], arrays, int(entry["revision"]))
-	_built[entry["key"]] = true
+	var chunk: Vector2i = entry["chunk"]
+	if not voxel_slice.build_chunk(chunk, entry["heightmap"], arrays, int(entry["revision"])):
+		if int(_build_attempts.get(key, 0)) < MAX_BUILD_RETRIES:
+			_dispatch_build(chunk)
+		else:
+			push_error("ChunkManager: chunk %s could not be built after %d attempts — its ground is missing" % [key, MAX_BUILD_RETRIES])
+		return false
+	_build_attempts.erase(key)
+	_built[key] = true
 	_update_first_ring_progress()
 	return true
 
@@ -356,6 +436,7 @@ func unload_chunk(chunk_pos: Vector2i) -> void:
 		return
 	_loaded.erase(key)
 	_built.erase(key)
+	_build_attempts.erase(key)
 	if voxel_slice != null and voxel_slice.has_method("unload_chunk"):
 		voxel_slice.unload_chunk(chunk_pos)
 	if creature_slice != null and creature_slice.has_method("despawn_for_chunk"):

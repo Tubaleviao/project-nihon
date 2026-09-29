@@ -276,6 +276,12 @@ func run() -> void:
 	_run_test("chunk: a load dispatches a worker build",         _test_chunk_load_dispatches_build)
 	_run_test("chunk: the first-ring gate opens when built",     _test_chunk_first_ring_gate)
 	_run_test("chunk: the prefetch ring widens the stream",      _test_chunk_prefetch_ring)
+	# Phase 42 review — the worker-build follow-ups the review pass found.
+	_run_test("chunk: an edit during a build is not lost",       _test_chunk_edit_during_build_is_not_lost)
+	_run_test("chunk: an edit dispatches its rebuild",           _test_chunk_edit_dispatches_rebuild)
+	_run_test("chunk: stop still lands in-flight builds",        _test_chunk_stop_does_not_abandon_builds)
+	_run_test("voxel: an empty worker result is refused",        _test_voxel_empty_worker_result_is_refused)
+	_run_test("chunk: the first-ring gate times out",            _test_host_boot_first_ring_timeout)
 	_run_test("player: the loading freeze refuses world input",  _test_player_world_input_freeze)
 	_run_test("player: facing is a normalized yaw vector",      _test_player_facing)
 	_run_test("net: client forwards block intent",               _test_net_voxel_client_forwards_intent)
@@ -8845,6 +8851,10 @@ func _make_chunk_build_rig() -> Dictionary:
 	cm.terrain_slice = terrain
 	cm.voxel_slice = voxel
 	cm.player_slice = player
+	# Phase 42 review — the production wiring is two-way: game_root also points the voxel
+	# slice back at the manager, so an EDIT dispatches its rebuild to a worker instead of
+	# building the touched chunks synchronously (see `request_rebuild`).
+	voxel.chunk_manager = cm
 	player.spawn_at(Vector3(16.0, 40.0, 16.0))
 	return { "cm": cm, "terrain": terrain, "voxel": voxel, "player": player }
 
@@ -9037,6 +9047,117 @@ func _test_chunk_prefetch_ring() -> void:
 	rig["voxel"].free()
 	rig["terrain"].free()
 	rig["player"].free()
+
+## Phase 42 review — an edit to a chunk whose build is still IN FLIGHT is not lost.
+## Before the fix nothing rebuilt it: the edit path gated on a cached heightmap, which a
+## chunk only gets when its build LANDS, so the edit was skipped entirely and the worker's
+## PRE-edit arrays were attached on top of it. `request_rebuild` needs no cached map — it
+## supersedes the in-flight build and dispatches a fresh one — so the mesh that lands is
+## built from the current columns.
+func _test_chunk_edit_during_build_is_not_lost() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	cm.load_chunk(Vector2i(0, 0))
+	assert_false(voxel._heightmaps.has("0,0"),
+		"a chunk's heightmap is not cached until its build lands")
+	assert_true(voxel.mine_block(Vector3(16.0, 2.0, 16.0)).get("success", false),
+		"an edit lands while the chunk's build is in flight")
+	_wait_for_builds(cm)
+	assert_true(cm._built.has("0,0"), "the chunk's build lands")
+	# The mesh that landed must be the POST-edit one: a fresh build of the chunk's current
+	# columns (the edit log included) is exactly what the attached mesh has to agree with.
+	var hm: Array = voxel._heightmaps["0,0"]
+	var expected: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), hm,
+		voxel.collect_build_runs(Vector2i(0, 0), hm))
+	assert_eq(_chunk_surface_vertices(voxel, Vector2i(0, 0)),
+		int(expected["vertices"].size()) + _chunk_vein_vertices(voxel, Vector2i(0, 0)),
+		"the attached mesh is the post-edit build, not the pre-edit arrays")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review — an edit DISPATCHES its rebuild to the worker instead of building up to
+## three chunks synchronously in the frame that placed the block, which is the stall the
+## worker exists to remove. So the edited chunk keeps its old mesh for a frame or two and
+## the new one lands when the build does.
+func _test_chunk_edit_dispatches_rebuild() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	cm.load_chunk(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	var before: Node3D = voxel._chunks["0,0"]
+	assert_true(voxel.mine_block(Vector3(16.0, 2.0, 16.0)).get("success", false), "mine succeeds")
+	assert_true(voxel._chunks["0,0"] == before, "the mesh is NOT rebuilt in the edit's own frame")
+	assert_eq(cm._builds.size(), 1, "the rebuild went to a worker instead")
+	_wait_for_builds(cm)
+	assert_false(voxel._chunks["0,0"] == before, "and the mesh is replaced once the build lands")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review — `stop()` ends NEW streaming, not work already in flight. The frame
+## path used to return before its apply pass while streaming was stopped, so a build
+## dispatched a moment earlier was applied by nobody and AWAITED by nobody: the chunk was
+## left without a mesh and the task's result sat in the pool until shutdown (exit 134).
+func _test_chunk_stop_does_not_abandon_builds() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	cm.start()
+	cm.load_chunk(Vector2i(0, 0))
+	assert_false(cm._built.has("0,0"), "the build is in flight")
+	cm.stop()
+	assert_false(cm._active, "streaming is stopped")
+	# The frame path only applies FINISHED builds, so let the task finish first — this is
+	# the poll `_process` would make on a later frame, and the point is that it still makes
+	# it. (Without the fix the poll is behind the `_active` guard and never runs again.)
+	var deadline := Time.get_ticks_msec() + 5000
+	while not cm._builds.is_empty() and Time.get_ticks_msec() < deadline:
+		if WorkerThreadPool.is_task_completed(int(cm._builds.keys()[0])):
+			break
+	cm._process(0.016)
+	assert_true(cm._built.has("0,0"), "the in-flight build still lands")
+	assert_eq(voxel.get_loaded_chunks().size(), 1, "and its mesh with it")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review — a worker result that carried NOTHING is a failed task, and it is
+## REFUSED rather than answered with a synchronous main-thread rebuild of the whole chunk
+## (the stall the worker exists to remove, done silently). The 2-arg synchronous form is
+## untouched: no `arrays` and no revision means "resolve it here".
+func _test_voxel_empty_worker_result_is_refused() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+	assert_false(v.build_chunk(Vector2i(0, 0), flat, {}, 0), "an empty worker result is refused")
+	assert_eq(v.get_loaded_chunks().size(), 0, "and it builds no mesh")
+	assert_eq(v.chunk_revision(Vector2i(0, 0)), 0, "and it does not advance the revision")
+	assert_true(v.build_chunk(Vector2i(0, 0), flat), "the synchronous form still builds")
+	assert_eq(v.get_loaded_chunks().size(), 1, "with a mesh of its own")
+	v.free()
+
+## Phase 42 review — the first-ring gate TIMES OUT. The gate is a worker build, and a
+## stalled one used to hold the boot forever with the loading screen up and nothing
+## logged; past the timeout the host tail runs anyway. Asserted on the pure predicate, so
+## the rule is pinned without booting.
+func _test_host_boot_first_ring_timeout() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	assert_true(root_script.host_boot_may_proceed(true, 0.0),
+		"a built ring lets the boot through")
+	assert_false(root_script.host_boot_may_proceed(false, 0.0),
+		"an unbuilt ring holds the boot")
+	assert_false(root_script.host_boot_may_proceed(false, root_script.FIRST_RING_TIMEOUT - 0.1),
+		"and keeps holding it right up to the timeout")
+	assert_true(root_script.host_boot_may_proceed(false, root_script.FIRST_RING_TIMEOUT),
+		"past the timeout the tail runs anyway, so a stalled ring cannot hang the boot")
 
 ## Phase 42 — the loading screen's freeze, asserted at the predicate the player's input
 ## consults. A headless run has no mouse capture at all, so the freeze has to be
