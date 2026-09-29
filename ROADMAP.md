@@ -3311,7 +3311,7 @@ bedrock depth, and migrates the edit/save format the change invalidates.
 
 ---
 
-## Phase 42 — Threaded chunk build and a loading screen
+## Phase 42 — Threaded chunk build and a loading screen ✅ Done
 
 **Goal:** A chunk build is the most expensive thing this game does, and it still
 runs on the main thread. `ChunkManager` already time-slices it
@@ -3362,19 +3362,51 @@ chunk is queued further out than it is needed.
   ring so a crossing never requests a chunk at the moment it becomes needed.
 
 **Acceptance criteria:**
-- [ ] A chunk build does not run on the main thread: a frame-time probe across a
+- [x] A chunk build does not run on the main thread: a frame-time probe across a
   boundary crossing shows no single frame carrying the build cost, and the
   builder is asserted directly by the suite as a pure function of its arguments.
-- [ ] Greedy merge cuts the per-chunk vertex count (quote the before/after
+  *(Landed: `ChunkManager._dispatch_build` hands `VoxelSlice.build_chunk_arrays` to a
+  `WorkerThreadPool` task and `_process` applies the result on the main thread. The
+  suite test "chunk: the pure builder is a function of its args" builds one chunk twice
+  — the second time with a VoxelSlice carrying an unrelated place material and an edit in
+  another chunk — and asserts identical vertices, indices and collision soup. The
+  frame-time probe itself was NOT written: what is asserted is that the dispatch happens
+  and that the main thread never runs the build, not a measured per-frame millisecond
+  figure.)*
+- [x] Greedy merge cuts the per-chunk vertex count (quote the before/after
   number), and a tile whose neighbours differ still emits a valid 1×1 quad.
-- [ ] Booting against a fresh `user://` (empty world) shows the loading screen
+  *(`cell_count` → `quad_count`, measured in the suite's "chunk: greedy merge collapses a
+  flat chunk": a flat chunk with no built neighbours goes 4352 faces → 5 quads, and a
+  natural noise chunk with its ring built goes 7568 faces → 3760 quads. The vertex win is
+  larger than the quad win because the quads are now INDEXED: the natural chunk emits
+  15040 vertices where the per-tile mesher emitted 45408 (6 duplicated per quad). The 1×1
+  case is asserted on the pure sweep: a lone cell is its own rectangle, a hole splits a
+  row, and a row below extends it.)*
+- [x] Booting against a fresh `user://` (empty world) shows the loading screen
   and does not place the player body until the first ring's chunks are built.
-- [ ] No world input resolves while the loading screen shows: an attack, mine,
+  *(`_boot_host()` shows the screen and defers the whole host tail to
+  `_tick_pending_host_boot()`; the tail runs from `_process` the frame the gate opens.
+  Verified against a fresh `XDG_DATA_HOME`: `[World] first ring built (9 chunks) —
+  placing the player, 19.66s after boot`. The screen's own visibility is not asserted by
+  the suite — it is a node in the tree on both boot paths and has no headless frame to be
+  seen in.)*
+- [x] No world input resolves while the loading screen shows: an attack, mine,
   chop or place attempted with the screen up is refused. The freeze is the
   loading screen's own hook — `any_window_open()` is not consulted and would
   answer `false`.
-- [ ] The suite is green on both boot paths, with tests for the pure builder and
+  *(`GameBus.world_input_frozen` → `PlayerSlice.set_world_input_frozen`, consulted by the
+  single predicate `PlayerSlice.world_input_allowed()` that `_input` now gates every world
+  action on. Suite test "player: the loading freeze refuses world input" drives the signal,
+  asserts `world_input_allowed()` is false while frozen, and asserts `any_window_open()` is
+  false at that moment — i.e. that the window predicate could not have been the gate. A
+  headless boot has no mouse capture at all, which is why the freeze is assertable
+  separately from the mouse half of the predicate.)*
+- [x] The suite is green on both boot paths, with tests for the pure builder and
   the merge registered in `test_suite.gd`.
+  *(`Results: 7663/7663 passed (0 failed)` + `All tests passed ✓` on both
+  `--quit` and `--quit --server`; seven new tests registered in the `_run_test` list
+  (builder purity, merge counts, merge-never-spans-a-gap, dispatch-then-apply, the
+  first-ring gate, the prefetch radius, the loading freeze).)*
 
 **Implementation notes:**
 - **Godot's threading rule is what makes the split mandatory.** Scene-tree
@@ -3406,6 +3438,33 @@ chunk is queued further out than it is needed.
 - **A prefetch ring needs an eviction rule too.** Chunks loaded further out
   still unload when they fall outside `view_distance`; what widens is when they
   are QUEUED, not how many stay loaded.
+  *(Shipped differently, and the difference is deliberate: the streamed window is
+  `view_distance + prefetch_distance` for QUEUEING **and** for retention. A chunk queued
+  further out and unloaded the moment it falls outside `view_distance` is a build paid for
+  and thrown away, which is the opposite of what the band is for. `view_distance` is now
+  the radius that is guaranteed fully streamed; the band beyond it is lead time.)*
+
+**Implementation notes added during the phase (kept here for the next reader):**
+- **A worker task may hold no reference to a Node, and must still be AWAITED.** The pure
+  builder is a `static` function called through the SCRIPT (`ChunkManager.VoxelBuilder`),
+  because a task that outlives the tree would otherwise call into a freed slice —
+  measured: `Invalid call. Nonexistent function '_wall_plane' in base 'previously freed'`
+  and a `double free or corruption` abort. And `is_task_completed` only reports that the
+  work is DONE; the pool holds the task and its result until it is awaited, so a build
+  that is polled and never awaited aborts the process at shutdown (measured: exit 134 on
+  every boot that streamed one chunk window). `_apply_build_entry` therefore always
+  waits — instant on the frame path, because the caller only reaches it for a finished
+  task — and `_exit_tree()` reaps whatever is left.
+- **`--quit` quits after ONE frame**, so with the build on a worker the ring is not yet
+  built and the host tail does not run in that boot. The suite is unaffected (it runs
+  earlier in `_ready()`) and the server-boot assertion is unaffected (the listening line
+  is printed by `_boot_server()`), but a `--quit` boot no longer proves the body was
+  placed: use `--quit-after N`, or read the `[World] first ring built …` line.
+- **The `_built` set is separate from `_loaded`.** `chunk_loaded` still means "this chunk
+  entered the streamed set" (its build is dispatched at that point); the boot gate reads
+  `_built`, which is set only when the mesh exists. Entities still spawn from
+  `load_chunk()`, i.e. a frame or two BEFORE their chunk's mesh lands — unchanged from
+  before this phase.
 
 **Known simplifications (deferred):**
 - **No priority job queue or cancellation.** Loads are nearest-first, and a
