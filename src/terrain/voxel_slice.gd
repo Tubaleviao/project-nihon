@@ -16,11 +16,12 @@ extends Node
 ##   build_chunk(chunk_pos, heightmap) -> void
 ##   mine_block(world_pos, normal)     -> Dictionary  { success, material, quantity, position }
 ##   place_block(world_pos, normal)    -> bool
-##   get_voxel_height_at(world_pos)    -> float
+##   get_voxel_height_at(world_pos)    -> float      (the column's TOP, not the
+##                                                   footing read — see the method)
 ##   sample_support_height_at(world_pos, from_y) -> float
 ##   get_column_runs_at(world_xz)      -> Array      (the column's solid runs)
 ##   collision_faces(chunk_pos, heightmap) -> PackedVector3Array
-##   get_edits() / get_edit_materials()   -> Dictionary
+##   get_edits()                          -> Dictionary
 ##   apply_edits(edits, materials)        -> void
 ##   legacy_edit_ops(height, base_top, materials) -> Array   (static, pure)
 ##   runs_topping_at(runs, y)             -> Dictionary       (static, pure)
@@ -56,6 +57,7 @@ extends Node
 ##
 ##   { "op": "remove", "bottom": float, "top": float }
 ##   { "op": "add", "bottom": float, "top": float, "material": String }
+##   (any other kind is IGNORED on load and on replay — see `_normalise_ops`)
 ##
 ## Mining a roof therefore does not touch the floor: each edit names the span it
 ## acted on, and resolving a column re-plays them over the tile's natural run. A
@@ -77,6 +79,15 @@ const STEP_HEIGHT := 0.125     # world units per quantised height step (smooth, 
 ## a time until the floor refuses. MAX_HEIGHT stays the build cap.
 const BEDROCK_DEPTH := -8.0    # cannot mine below this — the world's floor
 const MAX_HEIGHT    := 16.0    # build cap — cannot place above this
+
+## A tile's op list is COMPACTED once it grows past this many ops (see
+## `_append_edit` / `_compact_ops`). Ops are an append-only log by design, so a
+## column mined and rebuilt in place would otherwise replay (and re-serialize)
+## every click forever — the replay is O(ops) on every column read, which is the
+## mesher, the collision soup, the footing sampler and the save manifest. Compaction
+## rewrites the list as the minimal description of what the column IS, bounded by
+## its run count (a tunnel is two adds and one remove), so the log is bounded too.
+const MAX_TILE_OPS := 8
 
 ## Terrain collision lives on its own layer (layer 2 / bit 1) so the player's
 ## block ray can target terrain without hitting the player's own body.
@@ -142,7 +153,8 @@ var _chunks: Dictionary = {}
 ## Base heightmaps keyed by "x,y" string (the unedited noise terrain).
 var _heightmaps: Dictionary = {}
 ## Voxel edits keyed by "gx,gz" string → Array of typed run edits, in the order
-## they were applied (see the class docstring). The column's runs are the tile's
+## they were applied (see the class docstring), compacted past MAX_TILE_OPS. The
+## column's runs are the tile's
 ## natural run with this list replayed over it, so an edit is a description of
 ## what the player DID, not a replacement of what the ground IS.
 var _edits: Dictionary = {}
@@ -260,10 +272,16 @@ func _build_terrain_surface(chunk_pos: Vector2i, heightmap: Array) -> ArrayMesh:
 
 	var origin_x := chunk_pos.x * CHUNK_SIZE * TILE_SIZE
 	var origin_z := chunk_pos.y * CHUNK_SIZE * TILE_SIZE
+	# One memo for the whole build. A tile's runs are read by the tile itself AND
+	# by each of its four neighbours' wall subtractions, so the mesher resolved
+	# each column about six times per chunk; the resolved runs are a pure function
+	# of the tile's heightmap plus its edits, so the memo cannot go stale within a
+	# build (it lives exactly as long as this call).
+	var runs_cache: Dictionary = {}
 
 	for tz in range(CHUNK_SIZE):
 		for tx in range(CHUNK_SIZE):
-			var runs := _column_runs(heightmap, chunk_pos, tx, tz)
+			var runs := _column_runs(heightmap, chunk_pos, tx, tz, runs_cache)
 			if runs.is_empty():
 				continue
 			var bx := origin_x + tx * TILE_SIZE
@@ -302,13 +320,13 @@ func _build_terrain_surface(chunk_pos: Vector2i, heightmap: Array) -> ArrayMesh:
 				# wall (it emits that one) from being drawn twice, and what lets a
 				# wall span a tunnel's height in one piece.
 				_add_wall_faces(st, run, color, heightmap, chunk_pos, tx, tz - 1,
-					Vector2(bx, bz), Vector2(bx + TILE_SIZE, bz), Vector3(0, 0, -1))
+					Vector2(bx, bz), Vector2(bx + TILE_SIZE, bz), Vector3(0, 0, -1), runs_cache)
 				_add_wall_faces(st, run, color, heightmap, chunk_pos, tx, tz + 1,
-					Vector2(bx + TILE_SIZE, bz + TILE_SIZE), Vector2(bx, bz + TILE_SIZE), Vector3(0, 0, 1))
+					Vector2(bx + TILE_SIZE, bz + TILE_SIZE), Vector2(bx, bz + TILE_SIZE), Vector3(0, 0, 1), runs_cache)
 				_add_wall_faces(st, run, color, heightmap, chunk_pos, tx - 1, tz,
-					Vector2(bx, bz + TILE_SIZE), Vector2(bx, bz), Vector3(-1, 0, 0))
+					Vector2(bx, bz + TILE_SIZE), Vector2(bx, bz), Vector3(-1, 0, 0), runs_cache)
 				_add_wall_faces(st, run, color, heightmap, chunk_pos, tx + 1, tz,
-					Vector2(bx + TILE_SIZE, bz), Vector2(bx + TILE_SIZE, bz + TILE_SIZE), Vector3(1, 0, 0))
+					Vector2(bx + TILE_SIZE, bz), Vector2(bx + TILE_SIZE, bz + TILE_SIZE), Vector3(1, 0, 0), runs_cache)
 
 	return st.commit()
 
@@ -335,11 +353,44 @@ static func _surface_vertices(mesh: ArrayMesh) -> PackedVector3Array:
 ## or any voxel edits. The heightmap is cached in `_heightmaps` so a later
 ## build_chunk() re-applies edits and restores the column exactly. Used by
 ## ChunkManager to stream chunks out of view.
+##
+## The cached map is then PRUNED down to what a loaded chunk can still ask about
+## (see `_prune_heightmaps`): session-long retention is the memory this streaming
+## is meant to bound, and a chunk nobody can reach for reads as UNKNOWN, which the
+## mesher already handles by construction.
 func unload_chunk(chunk_pos: Vector2i) -> void:
 	var key := _chunk_key(chunk_pos)
 	if _chunks.has(key):
 		_chunks[key].queue_free()
 		_chunks.erase(key)
+	_prune_heightmaps()
+
+## Drop the base heightmaps of chunks that are no longer worth remembering: one
+## that is unloaded AND not edge-adjacent to any loaded chunk.
+##
+## `_heightmaps` used to grow for the whole session — every chunk ever streamed in
+## kept its `CHUNK_SIZE²` floats so a streamed-out neighbour could still answer with
+## its real runs — which means a long walk held the whole route in memory. The KEPT
+## set is the loaded window plus its one-tile ring: exactly the set a visible chunk
+## can ask a NEIGHBOUR about, so a loaded chunk still subtracts against its
+## neighbour's real runs. A chunk outside that ring reads as UNKNOWN instead, which
+## is the documented, order-independent empty-neighbour path (the side carrying the
+## material emits the facing wall, and the pruned chunk rebuilds from its heightmap
+## when it is streamed back). Nothing is lost with the map: edits are keyed by
+## TILE, and a pruned chunk's natural run comes from the same height function the
+## map was sampled from.
+func _prune_heightmaps() -> void:
+	var keep: Dictionary = {}
+	for key in _chunks:
+		var parts: PackedStringArray = str(key).split(",")
+		var cx := int(parts[0])
+		var cz := int(parts[1])
+		for probe in [Vector2i(cx, cz), Vector2i(cx - 1, cz), Vector2i(cx + 1, cz),
+				Vector2i(cx, cz - 1), Vector2i(cx, cz + 1)]:
+			keep[_chunk_key(probe)] = true
+	for key in _heightmaps.keys():
+		if not keep.has(key):
+			_heightmaps.erase(key)
 
 ## Return the set of chunks currently holding live mesh nodes.
 func get_loaded_chunks() -> Array:
@@ -431,9 +482,14 @@ func place_block(world_pos: Vector3, normal: Vector3) -> bool:
 	return true
 
 ## Top of the column at a world XZ position — the highest solid run's top, or
-## BEDROCK_DEPTH when the column is mined out to the floor. This is still the
-## surface a WALKING body stands on. Inside a tunnel the body's own Y decides
-## which run supports it, which is what `sample_support_height_at` answers.
+## BEDROCK_DEPTH when the column is mined out to the floor.
+##
+## This is the column's TOP, not the surface a body stands on: inside a tunnel the
+## body's own Y decides which run holds it, which is what `sample_support_height_at`
+## answers — and that is the read production uses for footing
+## (`game_root._sync_player_avatar`). This accessor stays because it is how a
+## column's SHAPE is asserted (the suite), and because the pre-ceiling footing read
+## it used to be is still what a caller outside a tunnel means.
 func get_voxel_height_at(world_pos: Vector2) -> float:
 	return _column_top_at_tile(_world_to_tile(world_pos))
 
@@ -463,21 +519,6 @@ func get_runs_at_tile(tile: Vector2i) -> Array:
 func get_edits() -> Dictionary:
 	return _edits.duplicate(true)
 
-## The player-placed materials each edited tile carries, bottom → top, derived
-## from the tile's `add` ops. Kept as an accessor because the pre-Phase-41 save
-## shape stored the material stacks BESIDE the heights; nothing writes them
-## separately any more — the material travels inside the edit that placed it.
-func get_edit_materials() -> Dictionary:
-	var out: Dictionary = {}
-	for key in _edits:
-		var stack: Array = []
-		for op in _edits[key]:
-			if op is Dictionary and str(op.get("op", "")) == "add" and str(op.get("material", "")) != "":
-				stack.append(str(op["material"]))
-		if not stack.is_empty():
-			out[key] = stack
-	return out
-
 ## Restore voxel edits from a saved world snapshot and rebuild affected chunks.
 ##
 ## TOLERANT of both save shapes, deliberately: a value that is an Array is the
@@ -487,22 +528,68 @@ func get_edit_materials() -> Dictionary:
 ## a migration that "repairs" a world by discarding player work is worse than a
 ## refusal. `materials` maps "gx,gz" → Array of material keys, the other half of
 ## the legacy shape.
+##
+## Only the chunks whose edits actually CHANGED are rebuilt, and only the ones
+## that are LOADED. Both halves are load-path hygiene this method needs because
+## it is also the RE-SCOPE path (`game_root._on_world_snapshot_received`): a
+## snapshot re-sends the manifest a client already applied — or one that differs
+## in a chunk or two — and rebuilding every held chunk for that is a whole-frame
+## stall per scope change. And a chunk that was streamed out has no mesh to
+## refresh: building it here would resurrect the node `ChunkManager` has already
+## streamed away, which it will then never unload again.
 func apply_edits(edits: Dictionary, materials: Dictionary = {}) -> void:
-	_edits.clear()
+	var previous: Dictionary = _edits
+	var next: Dictionary = {}
 	for key in edits:
 		var value: Variant = edits[key]
 		if value is Array:
-			_edits[key] = _normalise_ops(value)
+			next[key] = _normalise_ops(value)
 			continue
 		var tile := _key_to_tile(str(key))
 		var stack: Array = materials.get(key, [])
-		_edits[key] = legacy_edit_ops(float(value), _base_top_for_tile(tile), stack)
+		next[key] = legacy_edit_ops(float(value), _base_top_for_tile(tile), stack)
 	# _dirty_chunks is NOT cleared here: dirty tracking is reset only by
 	# clear_dirty_chunks() after a successful save (called from game_root._on_save_completed).
 	# Restored on-disk edits are not dirty — they were already persisted.
-	for ckey in _heightmaps:
+	var touched: Dictionary = {}
+	for key in next:
+		if not _ops_equal(previous.get(key, null), next[key]):
+			touched[_chunk_key(_tile_to_chunk(_key_to_tile(str(key))))] = true
+	for key in previous:
+		if not next.has(key):
+			touched[_chunk_key(_tile_to_chunk(_key_to_tile(str(key))))] = true
+	_edits = next
+	for ckey in touched:
+		if not _chunks.has(ckey) or not _heightmaps.has(ckey):
+			continue   # nothing to refresh: unloaded chunks rebuild when streamed in
 		var parts: PackedStringArray = str(ckey).split(",")
 		build_chunk(Vector2i(int(parts[0]), int(parts[1])), _heightmaps[ckey])
+
+## True when two op lists describe exactly the same edits — the comparison a
+## re-scope snapshot needs before it decides a chunk's mesh is already correct.
+## Compared field by field rather than by container equality: both sides can come
+## from JSON, where the same span may arrive as `int` or `float`.
+static func _ops_equal(a: Variant, b: Variant) -> bool:
+	if not (a is Array) or not (b is Array):
+		return false
+	var x: Array = a
+	var y: Array = b
+	if x.size() != y.size():
+		return false
+	for i in range(x.size()):
+		if not (x[i] is Dictionary) or not (y[i] is Dictionary):
+			return false
+		var p: Dictionary = x[i]
+		var q: Dictionary = y[i]
+		if str(p.get("op", "")) != str(q.get("op", "")):
+			return false
+		if not is_equal_approx(float(p.get("bottom", 0.0)), float(q.get("bottom", 0.0))):
+			return false
+		if not is_equal_approx(float(p.get("top", 0.0)), float(q.get("top", 0.0))):
+			return false
+		if str(p.get("material", "")) != str(q.get("material", "")):
+			return false
+	return true
 
 ## Group voxel edits by chunk into a persistence manifest:
 ##   { "cx,cz": { "edits": { "gx,gz": [typed run edit, ...] } } }
@@ -621,9 +708,12 @@ func vein_deposits(chunk_pos: Vector2i, heightmap: Array) -> Array:
 		TILE_SIZE - VEIN_DEPOSIT_INSET * 2.0,
 		VEIN_DEPOSIT_HEIGHT,
 		TILE_SIZE - VEIN_DEPOSIT_INSET * 2.0)
+	# Same memo as the mesher: this walks every tile of the chunk too, and both
+	# walks ask the same questions about the same columns.
+	var deposits_cache: Dictionary = {}
 	for tz in range(CHUNK_SIZE):
 		for tx in range(CHUNK_SIZE):
-			var runs := _column_runs(heightmap, chunk_pos, tx, tz)
+			var runs := _column_runs(heightmap, chunk_pos, tx, tz, deposits_cache)
 			if runs.is_empty():
 				continue
 			var surface: Dictionary = runs[-1]
@@ -663,10 +753,14 @@ static func apply_run_ops(runs: Array, ops: Array) -> Array:
 		var top := float(o.get("top", 0.0))
 		if top <= bottom:
 			continue
-		if str(o.get("op", "")) == "add":
+		var kind := str(o.get("op", ""))
+		if kind == "add":
 			out = add_span(out, bottom, top, str(o.get("material", "")))
-		else:
+		elif kind == "remove":
 			out = remove_span(out, bottom, top)
+		# An unknown kind is IGNORED, never treated as a remove: the two kinds are
+		# not symmetric (one fills, one carves), and defaulting to the carving one
+		# is how a corrupt edit list silently eats terrain (see `_normalise_ops`).
 	return out
 
 ## Add a solid span, merging it with runs of the SAME material it touches or
@@ -763,18 +857,29 @@ static func subtract_runs(run: Dictionary, others: Array) -> Array:
 ## per-tile stack of placed blocks: the natural run ends that many steps BELOW the
 ## edited top, and each placed block becomes its own `add` span above it. Pure, so
 ## the migration rule is testable on its own.
+##
+## The stack survives every case, including the re-rolled-seed one: an edit whose
+## top reaches further than `placed` steps above the CURRENT base top means the
+## ground itself moved under the save (a version-1 world re-rolls once), not that
+## the stack vanished — so the natural span is re-added up to the stack's own base
+## and the materials still sit on top of it, still theirs. Collapsing that case
+## into one anonymous span (the pre-review behaviour) repaints a re-rolled world's
+## player work as natural ground, which is the one thing this migration exists to
+## refuse to do.
 static func legacy_edit_ops(legacy_height: float, base_top: float, materials: Array = []) -> Array:
 	var placed := materials.size()
 	var natural_top := legacy_height - float(placed) * STEP_HEIGHT
-	# Nothing can sit above the edited top, so a legacy height above the natural
-	# surface is one plain span up to it (the stacked-material reading degenerates
-	# to this when the player only ever built UP from natural ground).
-	if placed == 0 or natural_top > base_top:
+	# Nothing can sit above the edited top, so a legacy height with nothing
+	# stacked on it is one plain span (up to it, or down to it when the edit
+	# carved): the common shape, and the one that has to stay a single op.
+	if placed == 0:
 		if legacy_height >= base_top:
 			return [{ "op": "add", "bottom": base_top, "top": legacy_height, "material": "" }]
 		return [{ "op": "remove", "bottom": legacy_height, "top": base_top }]
 	var ops: Array = []
-	if natural_top < base_top:
+	if natural_top > base_top:
+		ops.append({ "op": "add", "bottom": base_top, "top": natural_top, "material": "" })
+	elif natural_top < base_top:
 		ops.append({ "op": "remove", "bottom": natural_top, "top": base_top })
 	for k in range(placed):
 		ops.append({
@@ -817,15 +922,24 @@ func _base_top_for_tile(tile: Vector2i) -> float:
 	return BEDROCK_DEPTH
 
 ## A tile's resolved runs straight off a chunk heightmap (the mesher's read path,
-## which never touches the terrain sampler).
-func _column_runs(heightmap: Array, chunk_pos: Vector2i, tx: int, tz: int) -> Array:
+## which never touches the terrain sampler). `cache` memoises the answer by global
+## tile key for the duration of ONE chunk build: a tile's runs are read by the tile
+## itself and by each of its four neighbours, and the answer is a pure function of
+## the heightmap plus the tile's edits, so a build's worth of reuse is exact (see
+## `_build_terrain_surface`).
+func _column_runs(heightmap: Array, chunk_pos: Vector2i, tx: int, tz: int, cache: Dictionary) -> Array:
 	var gx := chunk_pos.x * CHUNK_SIZE + tx
 	var gz := chunk_pos.y * CHUNK_SIZE + tz
+	var key := _tile_key(Vector2i(gx, gz))
+	if cache.has(key):
+		return cache[key]
 	var top := _voxel_height(float(heightmap[tz * CHUNK_SIZE + tx]))
 	var base: Array = []
 	if top > BEDROCK_DEPTH:
 		base.append({ "bottom": BEDROCK_DEPTH, "top": top, "material": "" })
-	return apply_run_ops(base, _edits.get(_tile_key(Vector2i(gx, gz)), []))
+	var runs := apply_run_ops(base, _edits.get(key, []))
+	cache[key] = runs
+	return runs
 
 ## A neighbour tile's runs, or an EMPTY list when they are UNKNOWN — a tile across a
 ## chunk edge whose chunk is not built.
@@ -843,9 +957,9 @@ func _column_runs(heightmap: Array, chunk_pos: Vector2i, tx: int, tz: int) -> Ar
 ## subtracts the first side's runs and finds nothing left to emit, so each of the
 ## pair of facing walls is emitted exactly once — and a wall buried inside ground
 ## both sides fill is invisible. Pure geometry, no node state.
-func _neighbour_runs(heightmap: Array, chunk_pos: Vector2i, tx: int, tz: int) -> Array:
+func _neighbour_runs(heightmap: Array, chunk_pos: Vector2i, tx: int, tz: int, cache: Dictionary) -> Array:
 	if tx >= 0 and tx < CHUNK_SIZE and tz >= 0 and tz < CHUNK_SIZE:
-		return _column_runs(heightmap, chunk_pos, tx, tz)
+		return _column_runs(heightmap, chunk_pos, tx, tz, cache)
 	var gx := chunk_pos.x * CHUNK_SIZE + tx
 	var gz := chunk_pos.y * CHUNK_SIZE + tz
 	var chunk := _tile_to_chunk(Vector2i(gx, gz))
@@ -853,7 +967,7 @@ func _neighbour_runs(heightmap: Array, chunk_pos: Vector2i, tx: int, tz: int) ->
 	if not _heightmaps.has(ckey):
 		return []   # unknown neighbour: read it as empty (see above)
 	var hm: Array = _heightmaps[ckey]
-	return _column_runs(hm, chunk, gx - chunk.x * CHUNK_SIZE, gz - chunk.y * CHUNK_SIZE)
+	return _column_runs(hm, chunk, gx - chunk.x * CHUNK_SIZE, gz - chunk.y * CHUNK_SIZE, cache)
 
 ## Angle a run's colour: a player-placed span takes its own material's colour, a
 ## natural one the biome material roll (which is also how a rare vein gets its
@@ -879,8 +993,8 @@ func _add_face(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, 
 ## Emit the exposed part of one run's side wall against one neighbour. e1/e2 are
 ## the wall's two vertical edges in XZ; the wall is drawn only where this run has
 ## material the neighbour does not (see subtract_runs).
-func _add_wall_faces(st: SurfaceTool, run: Dictionary, color: Color, heightmap: Array, chunk_pos: Vector2i, ntx: int, ntz: int, e1: Vector2, e2: Vector2, normal: Vector3) -> void:
-	var neighbour: Array = _neighbour_runs(heightmap, chunk_pos, ntx, ntz)
+func _add_wall_faces(st: SurfaceTool, run: Dictionary, color: Color, heightmap: Array, chunk_pos: Vector2i, ntx: int, ntz: int, e1: Vector2, e2: Vector2, normal: Vector3, cache: Dictionary) -> void:
+	var neighbour: Array = _neighbour_runs(heightmap, chunk_pos, ntx, ntz, cache)
 	for seg in subtract_runs(run, neighbour):
 		var bottom := float(seg["bottom"])
 		var top := float(seg["top"])
@@ -955,10 +1069,10 @@ func _resolve_edit_tile(action: String, position: Vector3, normal: Vector3) -> D
 
 ## The span a mine removes, or {} when it is refused. A top-face hit takes the last
 ## step of the run whose top is the hit plane (see `runs_topping_at`) and refuses at
-## BEDROCK_DEPTH; any other hit takes the STEP_HEIGHT block the ray landed on —
-## preferring the block BELOW the hit plane when the ray lands exactly on a step
-## boundary, so aiming at the very top edge of a wall still mines the wall instead
-## of refusing.
+## BEDROCK_DEPTH; any other hit takes the STEP_HEIGHT block the ray is INSIDE, and
+## falls back to the block below it — a y that lands exactly on a step boundary
+## names the cell ABOVE it first, so aiming at the very top edge of a wall (where
+## that cell is empty) still mines the wall instead of refusing.
 func _mine_span(runs: Array, world_pos: Vector3, normal: Vector3) -> Dictionary:
 	if runs.is_empty():
 		return {}
@@ -1004,27 +1118,91 @@ func _place_span(runs: Array, world_pos: Vector3, normal: Vector3) -> Dictionary
 		return {}   # the cell already holds material
 	return { "bottom": bottom, "top": top }
 
-## Append one typed run edit to a tile's op list.
+## Append one typed run edit to a tile's op list, and COMPACT the list once it
+## outgrows the column it describes.
+##
+## The list is an append-only log by design — an edit says what the player DID, and
+## the column is that log replayed over the natural run — but a log with no bound
+## grows forever. Mine and rebuild the same block a few dozen times and every click
+## adds a replay step to every column read (meshing, the collision soup, the footing
+## sampler, the save manifest) for the rest of the session, in the save file too,
+## and the replay is O(ops) per read, so an unbounded log is an unbounded per-frame
+## cost on a tile the player is standing next to.
+##
+## So: keep appending, and past MAX_TILE_OPS rewrite the list as the minimal
+## description of what the column IS (`_compact_ops`). The rewrite is exact — both
+## shapes resolve to the same runs — and it is bounded by the column's run count
+## (a plain column carrying one placed stack is one remove plus two adds), which
+## bounds the log until the next compaction. A column that has been mined and put
+## back is compacted to NOTHING, because it is its natural self again.
 func _append_edit(tile: Vector2i, op: Dictionary) -> void:
 	var key := _tile_key(tile)
 	if not _edits.has(key):
 		_edits[key] = []
-	_edits[key].append(op)
+	var ops: Array = _edits[key]
+	ops.append(op)
+	if ops.size() <= MAX_TILE_OPS:
+		return
+	var compacted := _compact_ops(tile)
+	if compacted.is_empty():
+		_edits.erase(key)   # back to natural: the whole log was cancelled work
+	else:
+		_edits[key] = compacted
+
+## The minimal op list resolving a tile's natural runs to the runs it has NOW: the
+## natural run(s) removed, then the resolved run(s) re-added. An EMPTY list means
+## the column is its natural self again (the mined-then-rebuilt case, where the log
+## would otherwise keep both halves of every cancelled pair forever).
+func _compact_ops(tile: Vector2i) -> Array:
+	var base := _base_runs_for_tile(tile)
+	var runs := apply_run_ops(base, _edits.get(_tile_key(tile), []))
+	if _runs_equal(runs, base):
+		return []
+	var ops: Array = []
+	for run in base:
+		ops.append({ "op": "remove", "bottom": float(run["bottom"]), "top": float(run["top"]) })
+	for run in runs:
+		ops.append({ "op": "add", "bottom": float(run["bottom"]), "top": float(run["top"]), "material": str(run["material"]) })
+	return ops
+
+## True when two run lists describe the same solid spans out of the same material.
+## Static and pure — the comparison compaction needs, and the one its own rewrite
+## is exact against.
+static func _runs_equal(a: Array, b: Array) -> bool:
+	if a.size() != b.size():
+		return false
+	for i in range(a.size()):
+		if not is_equal_approx(float(a[i]["bottom"]), float(b[i]["bottom"])):
+			return false
+		if not is_equal_approx(float(a[i]["top"]), float(b[i]["top"])):
+			return false
+		if str(a[i].get("material", "")) != str(b[i].get("material", "")):
+			return false
+	return true
 
 ## Coerce a loaded edit list into plain { bottom, top, material } / op dicts with
 ## numeric fields — JSON hands back Variants, and the run algebra compares floats.
+##
+## An op whose kind is not one of the two known ones is DROPPED, and so is an entry
+## that is not a dict at all. Never defaulted: `remove` CARVES and `add` FILLS, so
+## defaulting an unrecognized or corrupt op to `remove` turns a damaged save into
+## silent terrain damage, while a dropped op is inert — the only safe reading of an
+## op this version does not understand.
 func _normalise_ops(ops: Array) -> Array:
 	var out: Array = []
 	for op in ops:
 		if not (op is Dictionary):
 			continue
 		var o: Dictionary = op
+		var kind := str(o.get("op", ""))
+		if kind != "add" and kind != "remove":
+			continue
 		var entry := {
-			"op":     str(o.get("op", "remove")),
+			"op":     kind,
 			"bottom": float(o.get("bottom", 0.0)),
 			"top":    float(o.get("top", 0.0)),
 		}
-		if entry["op"] == "add":
+		if kind == "add":
 			entry["material"] = str(o.get("material", ""))
 		out.append(entry)
 	return out
@@ -1091,14 +1269,6 @@ func _biome_at(xz: Vector2) -> String:
 		return terrain_slice.get_biome_at(xz)
 	return "TemperateForest"
 
-## Tint for a column's top face at world_xz: the topmost player-placed material
-## if one is present, otherwise the biome material that mining it would yield.
-func _column_color(world_xz: Vector2) -> Color:
-	var runs := get_column_runs_at(world_xz)
-	if runs.is_empty():
-		return FALLBACK_TERRAIN_COLOR
-	return _run_color(runs[-1], world_xz)
-
 ## Colour a natural (unplaced) terrain column at world_xz, from its biome.
 func _natural_color(world_xz: Vector2) -> Color:
 	return _material_color(material_for_biome(_biome_at(world_xz), world_xz))
@@ -1108,24 +1278,6 @@ func _natural_color(world_xz: Vector2) -> Color:
 func _material_color(material: String) -> Color:
 	return MATERIAL_COLORS.get(material, FALLBACK_TERRAIN_COLOR)
 
-## Vertical colour layers for a column, bottom → top, one per solid RUN. Each entry
-## is { "bottom": float, "top": float, "color": Color }: a natural run takes the
-## biome's material colour, a player-placed run its own material's colour. A tunnel
-## therefore renders as its floor colour, its gap, and its roof colour — the
-## natural/placed split no longer has to be inferred from a block count.
-func _column_layers(chunk_pos: Vector2i, heightmap: Array, tx: int, tz: int) -> Array:
-	var gx := chunk_pos.x * CHUNK_SIZE + tx
-	var gz := chunk_pos.y * CHUNK_SIZE + tz
-	var world_xz := Vector2(gx * TILE_SIZE + TILE_SIZE * 0.5, gz * TILE_SIZE + TILE_SIZE * 0.5)
-	var layers: Array = []
-	for run in _column_runs(heightmap, chunk_pos, tx, tz):
-		layers.append({
-			"bottom": float(run["bottom"]),
-			"top":    float(run["top"]),
-			"color":  _run_color(run, world_xz),
-		})
-	return layers
-
 ## Top of a tile's highest solid run, or BEDROCK_DEPTH when nothing is solid.
 func _column_top_at_tile(tile: Vector2i) -> float:
 	var runs := get_runs_at_tile(tile)
@@ -1133,8 +1285,29 @@ func _column_top_at_tile(tile: Vector2i) -> float:
 		return BEDROCK_DEPTH
 	return float(runs[-1]["top"])
 
+## Rebuild the chunk holding `tile` — and every chunk whose mesh READS that tile.
+##
+## A wall face is emitted from the DIFFERENCE between a column's runs and its
+## neighbour's, so a chunk's mesh depends on the columns just ACROSS its edge. A
+## tile on a chunk boundary is a neighbour column to the next chunk's tiles, so
+## editing it changes what THOSE emit: rebuild only the tile's own chunk and the
+## neighbour keeps drawing the wall it had — a see-through slot where the seam
+## terrain now differs (mine a tunnel into a seam tile and the mouth is open), and
+## a ghost wall where it no longer does. Nothing else rebuilds a chunk when its
+## neighbour changes, so the hole would stay for the session.
+##
+## Only the four edge-ADJACENT chunks can read the tile, and only when the tile is
+## actually on that edge, so this is one chunk build in a chunk's interior and at
+## most three at a corner. (Phase 42 moves the build onto a worker; the cost of a
+## rebuild is what the same phase's greedy merge is for.)
 func _rebuild_chunk_at_tile(tile: Vector2i) -> void:
-	var chunk := _tile_to_chunk(tile)
-	var ckey := _chunk_key(chunk)
-	if _heightmaps.has(ckey):
-		build_chunk(chunk, _heightmaps[ckey])
+	var rebuilt: Dictionary = {}
+	for probe in [tile, Vector2i(tile.x - 1, tile.y), Vector2i(tile.x + 1, tile.y),
+			Vector2i(tile.x, tile.y - 1), Vector2i(tile.x, tile.y + 1)]:
+		var chunk := _tile_to_chunk(probe)
+		var ckey := _chunk_key(chunk)
+		if rebuilt.has(ckey):
+			continue
+		rebuilt[ckey] = true
+		if _heightmaps.has(ckey):
+			build_chunk(chunk, _heightmaps[ckey])
