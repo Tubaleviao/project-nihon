@@ -80,6 +80,12 @@ jobs:
   host-boot:
     name: Listen host reaches the world (first ring placed)
     runs-on: ubuntu-latest
+    # Phase 42 review pass 4 — a hard cap on this job. The boot below waits on
+    # WorkerThreadPool tasks, and `--quit-after 100000` (its outer net) is FRAMES: a boot
+    # that never reaches its tail would burn runner time up to GitHub's 360-minute default
+    # before anyone learned the ring never opened. The measured boot is ~50 s, so ten
+    # minutes is a wide margin that still fails fast.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         # Same submodule note as godot-tests: the public repo runs on the

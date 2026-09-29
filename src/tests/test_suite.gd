@@ -297,6 +297,13 @@ func run() -> void:
 	_run_test("chunk: an edit does not re-spawn contents",       _test_chunk_contents_spawn_once_per_residency)
 	_run_test("chunk: a drain reads the window once",            _test_chunk_drain_reads_window_once)
 	_run_test("boot: a boot quits when its world is up",         _test_quit_after_boot_predicate)
+	# Phase 42 fourth review pass — the self-heal sweep, the idle drain, and the rig path.
+	_run_test("chunk: a failed REBUILD of a built chunk heals",  _test_chunk_failed_rebuild_of_built_chunk_is_rearmed)
+	_run_test("chunk: the stationary throttle suppresses a re-arm", _test_chunk_self_heal_throttle_suppresses_rearm)
+	_run_test("chunk: a crossing stamps the self-heal clock",    _test_chunk_crossing_stamps_self_heal_clock)
+	_run_test("chunk: the self-heal reads the window once",      _test_chunk_self_heal_reads_window_once)
+	_run_test("chunk: an idle drain reads no position",          _test_chunk_idle_drain_reads_no_position)
+	_run_test("chunk: a rig dispatch keeps contents per residency", _test_chunk_rig_dispatch_respects_contents_residency)
 	_run_test("player: facing is a normalized yaw vector",      _test_player_facing)
 	_run_test("net: client forwards block intent",               _test_net_voxel_client_forwards_intent)
 	_run_test("net: apply_block_change applies host edit",       _test_net_voxel_apply_block_change)
@@ -9455,6 +9462,194 @@ func _test_chunk_drain_reads_window_once() -> void:
 	rig["voxel"].free()
 	rig["terrain"].free()
 	rig["player"].free()
+	spy.free()
+
+## Phase 42 review pass 4 — and the sweep overwrote `_last_self_heal_msec` only on the
+## THROTTLED path. A crossing re-armed immediately and left the clock at its old value
+## (often the -1 sentinel), so the very next frame — stationary, with a fresh failure —
+## was unthrottled and re-armed again. Stamping whenever the sweep proceeds makes "at most
+## once per interval" start at the crossing. Asserted through a chunk the sweep runs over
+## but cannot re-arm (a build already in flight), which is what keeps it in `_failed` with
+## its mark visible across the crossing.
+func _test_chunk_crossing_stamps_self_heal_clock() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var player: PlayerSlice = rig["player"]
+	cm.view_distance = 1
+	cm.prefetch_distance = 0
+	cm.self_heal_interval = 60.0
+	cm.refresh()
+	cm._load_queue.clear()
+	cm._pending.clear()
+	cm._loaded["0,0"] = true
+	cm._failed["0,0"] = true
+	cm._build_attempts["0,0"] = cm.MAX_BUILD_RETRIES
+	cm._builds[424242] = { "chunk": Vector2i(0, 0), "key": "0,0" }   # already in flight
+	player.spawn_at(Vector3(16.0 + 32.0, 40.0, 16.0))                # cross into chunk (1,0)
+	cm.refresh()
+	assert_true(cm._failed.has("0,0"),
+		"an in-flight build keeps the chunk groundless through the crossing")
+	# The in-flight build lands (it does not clear `_failed`), and the next frame is
+	# STATIONARY. The crossing stamped the clock, so this frame must be throttled.
+	cm._builds.erase(424242)
+	cm.refresh()
+	assert_true(cm._failed.has("0,0"), "the frame after a crossing is throttled, not unthrottled")
+	# And the throttle is the only reason: zeroing the interval re-arms the same state.
+	cm.self_heal_interval = 0.0
+	cm.refresh()
+	assert_false(cm._failed.has("0,0"), "clearing the interval re-arms it")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review pass 3 tested the stationary re-arm with `self_heal_interval = 0.0`,
+## which DISABLES the throttle: it proved the re-arm runs without a crossing, but nothing
+## proved the interval suppresses one. This pins the throttle: a second stationary sweep
+## inside the interval re-arms nothing, and zeroing the interval is the only thing that
+## re-arms again.
+func _test_chunk_self_heal_throttle_suppresses_rearm() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.view_distance = 1
+	cm.prefetch_distance = 0
+	cm.self_heal_interval = 60.0
+	cm.refresh()
+	cm._load_queue.clear()
+	cm._pending.clear()
+	cm._loaded["0,0"] = true
+	cm._failed["0,0"] = true
+	cm._build_attempts["0,0"] = cm.MAX_BUILD_RETRIES
+	# First stationary sweep: never attempted before (the -1 sentinel), so not throttled.
+	cm.refresh()
+	assert_false(cm._failed.has("0,0"), "the first stationary attempt is not throttled")
+	# The same terminal state again, INSIDE the interval: the sweep must refuse.
+	cm._failed["0,0"] = true
+	cm._build_attempts["0,0"] = cm.MAX_BUILD_RETRIES
+	cm.refresh()
+	assert_true(cm._failed.has("0,0"), "a second re-arm inside the interval is suppressed")
+	assert_eq(int(cm._build_attempts.get("0,0", 0)), cm.MAX_BUILD_RETRIES,
+		"and the give-up state is left untouched by it")
+	# The interval is the ONLY reason it was refused.
+	cm.self_heal_interval = 0.0
+	cm.refresh()
+	assert_false(cm._failed.has("0,0"), "clearing the interval re-arms on the next sweep")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review pass 4 — the sweep required `not _built`, and a chunk whose REBUILD gave
+## up IS `_built`: its old mesh is still attached, so the sweep skipped exactly the case the
+## re-arm exists for — an edit whose rebuild never landed, leaving the edited block invisible
+## for the session. `_failed` is what says the build gave up; a groundless chunk is re-armed
+## whatever `_built` says.
+func _test_chunk_failed_rebuild_of_built_chunk_is_rearmed() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var player: PlayerSlice = rig["player"]
+	cm.view_distance = 1
+	cm.prefetch_distance = 0
+	cm.self_heal_interval = 0.0
+	cm.refresh()
+	cm._load_queue.clear()
+	cm._pending.clear()
+	# Built ONCE (so `_built` is true and its stale mesh stands), then an edit whose rebuild
+	# exhausted its retries.
+	cm._loaded["0,0"] = true
+	cm._built["0,0"] = true
+	cm._failed["0,0"] = true
+	cm._build_attempts["0,0"] = cm.MAX_BUILD_RETRIES
+	player.spawn_at(Vector3(16.0 + 32.0, 40.0, 16.0))   # a crossing re-arms immediately
+	cm.refresh()
+	assert_false(cm._failed.has("0,0"), "a failed REBUILD of an already-built chunk is re-armed")
+	cm._drain_load_queue()
+	assert_eq(int(cm._build_attempts.get("0,0", 0)), 1, "with a fresh retry budget")
+	assert_true(cm._has_in_flight("0,0"), "and a fresh dispatch in flight")
+	_wait_for_builds(cm)
+	assert_true(cm._built.has("0,0"), "so the edit's mesh lands instead of staying invisible")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review pass 4 — the sweep re-derived the streamed window per groundless key
+## (`_within_stream`), a `PlayerSlice.get_position()` call each. The caller has already
+## resolved `center` for its own pass, so the sweep takes it and uses `_within_stream_at`.
+## Counted through the position spy, because the answer is identical either way.
+func _test_chunk_self_heal_reads_window_once() -> void:
+	var cm := ChunkManager.new()
+	add_child(cm)
+	var spy := PlayerPosSpy.new()
+	add_child(spy)
+	cm.player_slice = spy
+	cm.view_distance = 2
+	cm.prefetch_distance = 0
+	cm.self_heal_interval = 0.0
+	cm.refresh()
+	cm._load_queue.clear()
+	cm._pending.clear()
+	for k in ["-1,0", "0,-1", "0,1", "1,0"]:
+		cm._loaded[k] = true
+		cm._failed[k] = true
+		cm._build_attempts[k] = cm.MAX_BUILD_RETRIES
+	assert_eq(cm._failed.size(), 4, "four groundless chunks, all in range, to sweep")
+	var before: int = spy.reads
+	cm.refresh()
+	assert_eq(spy.reads - before, 1,
+		"one sweep resolves the player's window ONCE, not once per groundless key")
+	assert_eq(cm._failed.size(), 0, "and the sweep still re-armed every one of them")
+	cm.free()
+	spy.free()
+
+## Phase 42 review pass 4 — `_process` calls the drain every frame, and the drain resolved
+## the player's chunk before knowing whether there was anything to dispatch. A settled
+## window (the common case) drained nothing and paid a position read for it.
+func _test_chunk_idle_drain_reads_no_position() -> void:
+	var cm := ChunkManager.new()
+	add_child(cm)
+	var spy := PlayerPosSpy.new()
+	add_child(spy)
+	cm.player_slice = spy
+	cm.refresh()
+	cm._load_queue.clear()
+	cm._pending.clear()
+	assert_true(cm._load_queue.is_empty() and cm._rebuild_queue.is_empty(),
+		"nothing is queued now")
+	var before: int = spy.reads
+	for i in range(8):
+		cm._drain_load_queue()
+	assert_eq(spy.reads - before, 0,
+		"a drain with both queues empty does not resolve the player's position at all")
+	# Sanity: a NON-empty queue still drains and still resolves the window once.
+	cm._load_queue = [Vector2i(0, 0)]
+	cm._pending["0,0"] = true
+	cm._drain_load_queue()
+	assert_true(cm._loaded.has("0,0"), "a queued chunk still drains")
+	assert_eq(spy.reads - before, 1, "and a non-empty drain resolves the window once")
+	cm.free()
+	spy.free()
+
+## Phase 42 review pass 4 — the isolated fast path in `_dispatch_build` (no terrain/voxel)
+## spawned a chunk's contents unconditionally, ignoring `_contents_spawned`: the threaded
+## path's residency rule was fixed in pass 3, this one was not. An EDIT still reaches it
+## through `request_rebuild`, so the budgets were re-derived on every block edit there too.
+func _test_chunk_rig_dispatch_respects_contents_residency() -> void:
+	var cm := ChunkManager.new()
+	add_child(cm)
+	var spy := ContentsSpy.new()
+	add_child(spy)
+	cm.creature_slice = spy
+	cm.tree_slice = spy
+	cm.load_chunk(Vector2i(0, 0))
+	assert_eq(spy.spawned.size(), 2, "the rig spawns the creature and tree budgets once")
+	cm.request_rebuild(Vector2i(0, 0))
+	assert_eq(spy.spawned.size(), 2, "and an edit does not re-derive them")
+	# A new residency still repopulates.
+	cm.unload_chunk(Vector2i(0, 0))
+	cm.load_chunk(Vector2i(0, 0))
+	assert_eq(spy.spawned.size(), 4, "a chunk that streams back in repopulates")
+	cm.free()
 	spy.free()
 
 ## Phase 42 review pass 3 — the CI host job ended a boot with `--quit-after N`, a FRAME

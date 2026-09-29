@@ -3428,7 +3428,11 @@ chunk is queued further out than it is needed.
   (0 failed)` on `--quit` and on `--quit --server`, no `SCRIPT ERROR` — five more tests (a
   stationary player re-arms a failed chunk, unloading drops a queued rebuild, an edit does
   not re-spawn contents, a drain reads the window once, and a boot quits when its world is
-  up).** ***
+  up).** **FOURTH review pass: `7760/7760 passed (0 failed)` on `--quit` and on
+  `--quit --server`, no `SCRIPT ERROR` — six more tests (a failed REBUILD of an already-built
+  chunk heals, the stationary throttle suppresses a re-arm, a crossing stamps the self-heal
+  clock, the self-heal reads the window once, an idle drain reads no position, and a rig
+  dispatch keeps contents per residency).** ***
 
 **Implementation notes:**
 - **Godot's threading rule is what makes the split mandatory.** Scene-tree
@@ -3638,6 +3642,86 @@ decision, not a defect).
    second would inherit the other's elapsed time and skip its own wait. Split into
    `_host_boot_wait_elapsed` / `_client_boot_wait_elapsed`; structural, so there is no
    behavioural assertion to make (both predicates stay pinned by `host_boot_may_proceed`'s test).
+
+**FOURTH review-pass notes (a fourth post-phase review — TEN findings, all ten real and all
+closed in `fix(terrain,core,ci,docs): Phase 42 review pass 4`):**
+
+The reviewer's list was ten items: one Medium (the self-heal) and nine Low. Unlike Phase 39
+(13 of 19 wrong) and like Phases 40 and 42's own second and third passes, **every one landed** —
+the line numbers were off by a few (the reviewer's checkout), but each named identifier existed
+and each claim held. Four of them (2, 7, 10, and the test half of 6) are test/structural/doc
+rather than behaviour, which is what a pass over a phase that has already had three of them
+should look like.
+
+1. **The self-heal SKIPPED a chunk that was `_built` — i.e. exactly the chunk whose rebuild gave
+   up.** `_self_heal_failed`'s guard was `not _built.has(key)`, and `_failed` is set by a build
+   that exhausted its retries. For a chunk that failed its FIRST build, `_built` is false, so the
+   re-arm worked. For an already-built chunk — an EDIT whose rebuild gave up — `_built` is still
+   true (the pre-edit mesh stands in the world), so the sweep jumped over it and the edited block
+   stayed invisible for the session. The guard is gone: `_failed` is what says the ground needs
+   its build re-armed, whatever `_built` says. RED-proved: `chunk: a failed REBUILD of a
+   built chunk is re-armed` (with the old guard, the mark is not cleared and no dispatch follows).
+2. **Nothing proved the stationary throttle actually suppresses a re-arm.** The pass-3 test set
+   `self_heal_interval = 0.0`, which DISABLES the throttle — it proved the re-arm runs while
+   stationary, and the interval itself was untested. `chunk: the stationary throttle suppresses
+   a re-arm` now plants the terminal state twice inside a 60 s interval and asserts the second
+   sweep refuses (and that the sweep is unthrottled again once the interval is zeroed, so the
+   throttle is the only reason). RED-proved: with the throttle turned into an always-false
+   condition, `a second re-arm inside the interval is suppressed` fails (`expected 3, got 0` on
+   the retry budget it was supposed to leave untouched).
+3. **The isolated fast path in `_dispatch_build` spawned a chunk's contents unguarded.** Pass 3
+   gave the threaded apply path the `_contents_spawned` residency rule; the rig path (no
+   terrain/voxel, which the older tests rely on) still called `_spawn_chunk_contents`
+   unconditionally — and an edit reaches it through `request_rebuild`, so the budgets were
+   re-derived per block edit there too. RED-proved: `expected 2, got 4` on the spy's spawn count
+   after an edit, `expected 4, got 6` after the residency cycles.
+4. **`--quit-after-boot` never fired on a DEDICATED SERVER.** The flag's two call sites were the
+   two boot TAILS, and a `--server` boot has no tail: `_boot_world`'s server branch returns
+   straight after `_boot_server()`. So `--server --quit-after-boot` never quit itself and fell
+   through to the engine's `--quit-after` net. `_boot_world` now calls
+   `_quit_after_boot_if_asked("server")` at the end of that branch. Verified:
+   `--quit-after 100000 -- --server --quit-after-boot` prints
+   `[World] server boot complete — quitting (--quit-after-boot)` and exits 0.
+5. **The `host-boot` CI job had no `timeout-minutes`.** Its `--quit-after 100000` is a FRAME
+   count, so a boot that never reaches its tail would have run to GitHub's 360-minute default
+   before the job said anything. `timeout-minutes: 10` (the boot measures ~50 s) fails fast
+   instead.
+6. **The self-heal sweep re-resolved the window once per groundless key.** `_within_stream`
+   re-derived `player_chunk()` and the radius for every key — the same shape pass 3 fixed in the
+   drain, missed on the other loop. The sweep now takes the `center` its caller already resolved
+   and calls `_within_stream_at`. RED-proved: a position spy counted 5 reads where the sweep now
+   takes 1.
+7. **`refresh()` carried two consecutive identical `if window_moved:` blocks** — the sentinel
+   update and the load/unload diff, split across two `if`s of the same condition. Merged into one
+   decision with an early return; structural, so no behavioural assertion (the existing
+   streaming tests exercise it).
+8. **The drain resolved the player's chunk even with nothing to dispatch.** `_process` calls
+   `_drain_load_queue()` every frame and the window read sat above both queue checks, so a
+   settled window — the common case — paid a `PlayerSlice.get_position()` per frame for nothing.
+   Both queues empty now returns before the read. RED-proved: `expected 0, got 8` on 8 idle
+   drains.
+9. **A crossing never stamped `_last_self_heal_msec`.** The stamp sat inside the throttled
+   branch, so a crossing re-armed immediately and left the clock at its old value (often the -1
+   sentinel): the very next frame was unthrottled and re-armed again, and a stationary player's
+   interval effectively restarted at the crossing. The clock is stamped whenever the sweep
+   proceeds. RED-proved in an isolated boot (the probe on its own, so the assert cannot be
+   masked by another finding's inversion): `the frame after a crossing is throttled, not
+   unthrottled` was the ONLY failing assertion, `7759/7760 passed (1 failed)`.
+10. **Two stale texts.** The give-up `push_error` said the chunk is "re-armed on the next window
+    re-centre" and `_apply_build_entry`'s doc said the same — both false since pass 3 added the
+    stationary wall-clock re-arm. And `_within_stream`'s doc named itself "the cancellation test
+    in `_drain_load_queue`", which now calls `_within_stream_at`. All three corrected (the
+    accessor's doc now says what it is for: the single-check form, with the drains and the sweep
+    resolving the window once).
+
+**One thing this pass changed about how it proved itself.** Batching all six policy inversions
+into ONE boot (the pass-3 recipe) is cheap but not always honest: reverting finding 1's guard
+makes findings 2 and 9's asserts pass vacuously (the sweep skips those chunks, so the mark
+survives for the wrong reason). The batched boot gave 18 failures; a SECOND boot with findings
+2/3/6/8 only gave 8 and put each of their asserts on the board; finding 9 needed a THIRD boot
+with its probe alone to show its single failing line. Use the batched boot for a first sweep, but
+re-run any finding whose subject is SHARED STATE (a dictionary another finding's policy also
+gates) on its own.
 
 **Known simplifications (deferred):**
 - **An edit's mesh lands a frame or two later.** Since the review pass, a mine/place

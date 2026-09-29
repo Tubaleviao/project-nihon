@@ -579,6 +579,12 @@ const DEBUG := false
 ## Role dispatch (Phase 32): client → `_boot_client()`, dedicated server →
 ## `_boot_server()`, otherwise the listen host → `_boot_host()`. No boot logic
 ## lives here any more — the host path used to be inlined at this point.
+##
+## Phase 42 review pass 4 — the DEDICATED SERVER branch ends its boot here, so this is
+## where `--quit-after-boot` fires for it: a `--server` boot has no deferred tail (that is
+## the LISTEN host's, see `_boot_host`), and without this call the flag was silently a
+## no-op on a dedicated server — a `--server --quit-after-boot` boot never quit itself and
+## fell through to the engine's `--quit-after` net.
 func _boot_world() -> void:
 	if _is_client:
 		_boot_client()
@@ -586,6 +592,7 @@ func _boot_world() -> void:
 
 	if _is_server:
 		_boot_server()
+		_quit_after_boot_if_asked("server")
 		return
 
 	_boot_host()
