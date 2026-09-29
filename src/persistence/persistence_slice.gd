@@ -70,6 +70,18 @@ const DEFAULT_AUTOSAVE_SECS   := 300.0
 const DEFAULT_SHUTDOWN_POLL_SECS := 5.0
 const DEFAULT_SHUTDOWN_PATH   := "user://shutdown_requested"
 
+## The world record's format version. Phase 41 bumped it to 2: a chunk manifest's
+## edits changed from a bare absolute quantised height per tile to typed run edits
+## (see VoxelSlice's class docstring), and the record now carries the world `seed`
+## that the terrain is regenerated from. The version is a MARKER, not a gate: the
+## load path is tolerant of both shapes (VoxelSlice.apply_edits migrates a legacy
+## scalar against the tile's natural run), so a version-1 record loads with every
+## edit intact and is re-saved as version 2.
+const WORLD_FORMAT_VERSION := 2
+## The version a record written before Phase 41 has: identifiable by the absence
+## of a `version` key.
+const LEGACY_WORLD_FORMAT_VERSION := 1
+
 var server_save_dir: String = DEFAULT_SERVER_SAVE_DIR
 var world_file: String = DEFAULT_WORLD_FILE
 var player_prefix: String = DEFAULT_PLAYER_PREFIX

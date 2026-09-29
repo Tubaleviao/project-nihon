@@ -61,7 +61,7 @@ pnpm generate   # generate the design bible into bible/
 | 38 | Review pass: host-simulated peer health, one key list, the missing clear, an in-place prune | Done |
 | 39 | Two-client network harness: prove the wire over a real socket | Done |
 | 40 | Review pass: the avatar's footing — the voxel surface, walked stairs | Done |
-| 41 | Deterministic world and volumetric terrain | Planned |
+| 41 | Deterministic world and volumetric terrain | Done |
 | 42 | Threaded chunk build and a loading screen | Planned |
 | 43 | Natural resource distribution | Planned |
 | 44 | Spawn scarcity | Planned |

@@ -3027,7 +3027,7 @@ the foot-IK return value whose name collision caused the first of those bugs.
   which is what keeps the climb a walk. Adding a vertical impulse would have been the
   obvious-looking shortcut and is exactly the "jump" the finding rules out.
 
-## Phase 41 — Deterministic world and volumetric terrain
+## Phase 41 — Deterministic world and volumetric terrain ✅ Done
 
 **Goal:** Every boot generates a different world, and every column is one solid
 height with nothing above it. `TerrainSlice._noise.seed = randi()` means the
@@ -3060,7 +3060,11 @@ bedrock depth, and migrates the edit/save format the change invalidates.
   the join snapshot, so a client regenerates the host's terrain rather than
   receiving heightmaps.
 - `src/terrain/voxel_slice.gd` — the column becomes a SPARSE list of solid runs
-  (`[{ bottom, top }]`) instead of one top ordinate plus `_column_layers`. Only
+  (`[{ bottom, top }]`) instead of one top ordinate plus the per-column
+  colour-layer accessor it used to be read through. Both of those accessors
+  (`_column_color`, `_column_layers`) became dead once the mesher tinted each RUN,
+  and the review pass removed them; the suite now asserts the colours off the runs
+  it renders. Only
   solid spans are stored, so a plain column is still a single entry and only a
   real tunnel costs a second one.
 - `src/terrain/voxel_slice.gd` — the mesher emits a face wherever a neighbour run
@@ -3088,20 +3092,40 @@ bedrock depth, and migrates the edit/save format the change invalidates.
   `resolve_step_up`, and `floor_snap_length = STEP_UP_HEIGHT` are unchanged.
 
 **Acceptance criteria:**
-- [ ] Two runs with the same seed produce identical heightmaps per chunk (assert
-  a `hash()` of the heightmap array), and a client's terrain matches the host's
-  with no heightmap in the snapshot.
-- [ ] A column can carry two or more solid runs: a chunk with a tunnel emits a
-  downward face (a ceiling), and the trimesh collision stops a body from passing
-  through it.
-- [ ] Mining a tunnel roof does not remove the tunnel floor; mining at
-  `BEDROCK_DEPTH` is refused while mining one `STEP_HEIGHT` above it succeeds.
-- [ ] A save written before this phase loads with its edits intact, and `pnpm
-  check-drift` is clean (no fabric change) — the migration is exercised by a
-  suite test, not only by hand.
-- [ ] The suite is green on both boot paths (`Results: N/N passed (0 failed)`,
-  count quoted in the commit) and `character: avatar root Y matches voxel ground`
-  still passes, plus the under-a-ceiling case.
+- [x] Two runs with the same seed produce identical heightmaps per chunk (assert
+  a `hash()` of the heightmap array — `terrain: the world seed determines the
+  terrain` also asserts a different seed differs), and a client's terrain matches
+  the host's with no heightmap in the snapshot: the snapshot carries `seed`, and
+  the client adopts it and streams its OWN chunks.
+- [x] A column can carry two or more solid runs: a chunk with a tunnel emits a
+  downward face (a ceiling), and the trimesh collision is built from that same
+  soup — `voxel: a tunnel keeps its floor and its roof` asserts the face is in
+  `VoxelSlice.collision_faces`. What stops a body through it is exercised in GAME
+  only: the suite has no physics frame (ROADMAP §Phase 39).
+- [x] Mining a tunnel roof does not remove the tunnel floor; mining at
+  `BEDROCK_DEPTH` is refused while mining one `STEP_HEIGHT` above it succeeds
+  (`voxel: a tunnel keeps its floor and its roof`, `voxel: mine at bedrock fails`).
+  An UP-face hit resolves to the run it actually landed on, so the tunnel FLOOR is
+  aimable too (review pass: `voxel: a tunnel floor top face mines the floor`).
+- [x] A save written before this phase loads with its edits intact
+  (`voxel: a legacy save migrates to run edits`, which applies a version-1 manifest
+  — scalar heights plus the placed-material stacks — and reads the edits back), and
+  `pnpm check-drift` is clean: `✓ No drift detected (543 file(s) match manifest)`,
+  no fabric change. The MIGRATION keeps the placed-material stack in every case,
+  including the re-rolled-seed one (review pass: `voxel: a re-rolled legacy save
+  keeps its stack`).
+- [x] The suite is green on both boot paths: `Results: 7612/7612 passed  (0 failed)`
+  on the listen host and the same `7612/7612` on `-- --server` (which also prints
+  `[Server] listening on port 7777`), `tools/net_harness.sh` is `10/10 steps agreed`
+  on a FRESH world (`XDG_DATA_HOME=$(mktemp -d)`, the CI shape), and
+  `character: avatar root Y matches voxel ground` still passes,
+  plus the under-a-ceiling case (`voxel: the support sampler honours a ceiling`).
+  The review pass added six suite tests for the edit path's edge cases (the
+  migration case named above included, plus
+  `voxel: the edit log is compacted`, `voxel: an unknown edit op is ignored`,
+  `voxel: an edge edit rebuilds the neighbour chunk`, `voxel: unload prunes the
+  heightmap to the ring`, `voxel: a snapshot rebuilds only what changed`) and
+  turned the seam test into a GEOMETRY assertion.
 
 **Implementation notes:**
 - **The seed is the world's identity, so it is persisted, not sampled.** It
@@ -3125,11 +3149,155 @@ bedrock depth, and migrates the edit/save format the change invalidates.
   sampler is a function of the body's own Y for exactly this reason; a
   column-top sampler is only correct in a world with no ceilings, which is the
   world this phase ends.
+- **`BEDROCK_DEPTH` is `-8.0`, and the world floor slab moved under it.** The
+  terrain's surface range is `[0, HEIGHT_SCALE]` = `[0, 5.0]`
+  (`TerrainSlice.HEIGHT_SCALE`; `MAX_HEIGHT` 16.0 is the BUILD cap, not the ground),
+  so eight units of rock is a real thickness
+  rather than a hair: it is 64 `STEP_HEIGHT` steps of descendable ground. The
+  dormant `WorldFloor` safety slab was at `y = -0.5` — INSIDE the new ground —
+  and would have blocked a player mining below it, so it now sits at
+  `BEDROCK_DEPTH - 0.5`: still the thing that catches a body if the terrain ever
+  fails, and no longer in the way of the floor the phase adds.
+- **The join snapshot carries the seed instead of the heightmaps, so the client
+  starts its own chunk streaming.** `_build_snapshot` sends `seed` (the world's
+  identity) and the chunk-edit manifest; `_on_world_snapshot_received` adopts the
+  seed, applies the edits, then `_chunk_manager.start()` / `refresh()` around the
+  position the record restored. Two consequences worth naming: the client's world
+  is now its OWN view window rather than whatever the host had loaded, and TREES
+  need no placement payload at all — `TreeSlice.spawn_for_chunk` derives them per
+  chunk coordinate on both sides, exactly the rule tree seeding already followed
+  (only a tree's chopped/standing STATE is replicated). CREATURES are NOT in that
+  category and do not need to be: `CreatureSlice.spawn_for_chunk` is
+  authoritative-only, so the client places the host's creatures from the snapshot
+  (`apply_snapshot_creatures`) as it always did. A client that did NOT stream would
+  boot into an empty world with the right seed, which is why the start call lives
+  at the end of the snapshot handler, after the player's position.
+- **The world record's `version` is a marker, not a gate.** `WORLD_FORMAT_VERSION`
+  is 2 and a pre-Phase-41 record simply has no `version` key
+  (`LEGACY_WORLD_FORMAT_VERSION`). The load path never branches on it: the
+  manifest shape itself is tolerant (`apply_edits` adopts an Array of typed edits
+  and MIGRATES a bare number against the tile's natural run), because a migration
+  that "repairs" a world by discarding player work is worse than a refusal. The
+  version is there so a future shape can be told apart, and so the boot can say
+  which world it loaded.
+- **A column's runs are replayed from the tile's natural run, so the migration
+  needs the ground.** `_base_top_for_tile` answers from the chunk's heightmap when
+  it is built and from `TerrainSlice.get_height_at` when it is not — the same
+  height by construction, which is what lets a load-time migration run BEFORE
+  chunk streaming (the boot order) without guessing. This is also why
+  `game_root._load_world_records` adopts the recorded seed first: the migration of
+  a legacy edit is measured against the noise field the save was written on.
+- **An unknown neighbour is read as EMPTY, so the shell does not depend on the
+  order chunks were built.** The mesher used to answer `0.0` for any tile outside
+  the chunk and therefore built a full-height wall at every seam and around the
+  streamed window; this phase first made it answer `null` (emit no wall), on the
+  argument that "the side that HAS the material emits the facing wall". That
+  argument does not survive the STREAMING order the same phase leans on
+  (`DEFAULT_LOADS_PER_FRAME := 1`, nearest-first): the neighbour a chunk waits for
+  is very often built LATER, so a chunk built before its higher neighbour emitted
+  nothing at that seam — and nothing rebuilds a chunk when its neighbour arrives,
+  which left every such seam (and the window's whole outer edge) see-through
+  (measured: 0 seam faces before the neighbour arrives, 128 after a rebuild). It
+  now reads an unknown neighbour as an empty list, so the column carrying the
+  material always emits the facing wall. That is duplicate-free whichever side is
+  built first — the second side subtracts the first and finds nothing left to
+  emit — and a wall buried inside ground both sides fill is invisible, so the
+  rendered shell is the same set of faces in either order. The streamed window's
+  outer edge is therefore a closed cross-section again, as it was before the
+  phase.
+
+- **An UP-face hit names the run it LANDED on, not the column's topmost one.** The
+  rule is one line away from the wrong answer, and the wrong answer is what the
+  phase's own new capability creates: a tunnel FLOOR keeps an exposed top face with
+  the roof above it, so "the column's topmost run" resolves a click on the floor to
+  the ROOF — mining the floor took the roof's last step and stacking on the floor
+  put the block on the roof. `VoxelSlice.runs_topping_at(runs, y)` picks the run
+  whose top is the hit plane (half a step of tolerance) and answers `{}` for a y
+  that sits on no run boundary — the fallback to the topmost run is the CALLERS'
+  (`_mine_span` / `_place_span`), not the helper's, and it is what keeps a
+  misaligned y behaving exactly as it did before (the boot demo passes the spawn
+  plain's height, not the target tile's). Both ask it.
+  Review pass: `voxel: a tunnel floor top face mines the floor`.
+
+**Review pass — the edit path's edges (all landed from the numbered findings list):**
+- **A chunk's mesh depends on the columns ACROSS its edge, so an edit rebuilds the
+  neighbour chunk too.** A wall face is the difference between a column's runs and
+  its neighbour's, so a tile on a chunk boundary is a neighbour column to the next
+  chunk's tiles, and editing it changes what THEY emit. Rebuilding only the edited
+  tile's own chunk left the neighbour drawing the wall it had: a see-through slot
+  where a seam tile was carved open (mine a tunnel into a seam tile and the mouth
+  stays blind) and a ghost wall where the difference grew the other way. Nothing
+  else rebuilds a chunk when its neighbour changes, so it stayed all session.
+  `_rebuild_chunk_at_tile` now rebuilds the tile's own chunk plus the four
+  edge-adjacent chunks' — one build in a chunk's interior, at most three at a
+  corner, and the mesher's runs memo below is what pays for the extra ones.
+- **The edit log is BOUNDED (`MAX_TILE_OPS` 8, `_compact_ops`).** Ops stay an
+  append-only log — an edit says what the player DID — but a log with no bound
+  grows forever: mine and rebuild the same block and every click adds a replay step
+  to every column read (meshing, the collision soup, the footing sampler, the save
+  manifest) and to the save itself, and the replay is O(ops) per read. Past the cap
+  the list is rewritten as the minimal description of what the column IS (bounded
+  by its run count: one remove plus one add per run), and a column that is back to
+  its natural self is compacted AWAY. RED: 40 ops after twenty mine/place cycles.
+- **The mesher resolves each tile's runs ONCE per chunk build.** Every tile's runs
+  were read by the tile itself AND by each of its four neighbours' wall
+  subtractions — about six resolutions per column per chunk. The runs are a pure
+  function of the tile's heightmap plus its edits, so a per-build memo keyed by
+  global tile key (`_column_runs(..., cache)`) is exact and cannot go stale inside
+  the build; `vein_deposits` walks the same chunk and passes the same memo.
+- **The migration keeps the placed-material stack in EVERY case.** `legacy_edit_ops`
+  used to collapse a column whose saved top sat further above the CURRENT base than
+  the stack is tall — the re-rolled-seed case, where a version-1 world's ground is
+  generated afresh under an edit written against another noise field — into one
+  anonymous natural span, which repaints a player's placed blocks as natural
+  ground. The natural span is now re-added up to the stack's own base and the
+  materials sit on top of it, still theirs.
+- **An edit op this version does not understand is DROPPED, never defaulted.**
+  `_normalise_ops` keeps only `add` / `remove` and `apply_run_ops` ignores anything
+  else: the two kinds are not symmetric (one fills, one carves), so reading an
+  unknown kind as `remove` turns a damaged save into silent terrain damage.
+- **`apply_edits` is the RE-SCOPE path, so it rebuilds only the chunks whose edits
+  CHANGED — and only the ones that are LOADED.** A re-scope snapshot re-sends the
+  manifest a client already applied (or one that differs in a chunk or two), and
+  rebuilding every held chunk for that is a whole-frame stall per scope change
+  (`_ops_equal` compares op lists field by field, since JSON hands back `int` or
+  `float` for the same span). A chunk that is not loaded has no mesh to refresh,
+  and building it resurrects a node `ChunkManager` has already streamed away and
+  will not stream out again.
+- **The base heightmaps are bounded by the loaded window plus its one-tile ring.**
+  They were kept for the whole session so a streamed-out neighbour could still
+  answer with its real runs, which held every chunk the player ever walked past in
+  memory. `unload_chunk` now prunes to the window + ring: that is exactly the set a
+  VISIBLE chunk can ask a neighbour about, so a loaded chunk still subtracts
+  against real runs, while a chunk outside the ring reads as UNKNOWN — the
+  documented, order-independent empty-neighbour path. Nothing is lost with the map:
+  edits are keyed by TILE, and the natural run comes from the same height function
+  the map was sampled from.
+- **Dead accessors removed, and the surviving one says what it is.**
+  `get_edit_materials` (no caller anywhere), `_column_color` and `_column_layers`
+  (both superseded by the mesher's per-run tint, kept alive only by the suite) are
+  gone, and their assertions now read the colours off the runs the mesher tints.
+  `get_voxel_height_at` STAYS — it is how a column's shape is asserted, and it is
+  the read a caller outside a tunnel means — but its docstring now says what it is
+  (a column TOP, not the surface under a body's feet) and names the footing read
+  production actually uses (`sample_support_height_at`).
+- **The seam test asserts GEOMETRY, not a triangle count.** A wall emitted across
+  the wrong ordinates has the same count as the right one, which is what the old
+  `_faces_on_plane_x` comparison could not tell apart; `_plane_x_spans` compares the
+  distinct vertical spans on the seam plane (and that the pair of facing walls is
+  still ONE wall, not two).
 
 **Known simplifications (deferred):**
 - **No greedy meshing yet.** The mesher still emits one quad per tile; Phase 42
   threads that build and merges the coplanar quads. Deferred deliberately so this
   phase's diff stays about the world's SHAPE.
+- **A version-1 world re-rolls its ground once, on the boot that loads it.** A
+  pre-Phase-41 world record has no seed — it was generated from `randi()` — so the
+  ground cannot be reproduced at all: the boot says so
+  (`world record carries no seed (format 1) — adopting the fresh seed …`) and the
+  next save pins that seed, so the shift happens once and never again. The saved
+  EDITS survive structurally (that is the migration), but a legacy edit's span is
+  measured against the new noise field, so it can land on a different hill.
 - **No 3D material model.** Runs say where solid material is; which material a
   span yields is still the per-biome table (`BIOME_MATERIALS`), which Phase 43
   replaces with a 3D ore field.
@@ -3137,6 +3305,9 @@ bedrock depth, and migrates the edit/save format the change invalidates.
   them; a cave noise function is not this phase's job.
 - **The world remains finite** (`WORLD_RADIUS_CHUNKS` 128) and the spawn-plain
   flattening remains a special case inside the height function.
+- **One trimesh per chunk, rebuilt whole on every edit.** A `ConcavePolygonShape3D`
+  has no spatial split, so mining one tile re-serializes that chunk's whole surface
+  (mesh + collision). Phase 42 threads that build and merges the coplanar quads.
 
 ---
 
@@ -3289,7 +3460,7 @@ carries today. `pnpm validate`, `pnpm generate` and
   a ley-gated ore. This is the first code that makes the material's own lore true.
 - `src/terrain/voxel_slice.gd` — `BIOME_MATERIALS` becomes `BIOME_BIAS` (the
   dominant material a biome favours for a vein that is not depth-gated);
-  `material_for_biome` and the `_column_layers` path read the field.
+  `material_for_biome` and the mesher's per-run tint (`_run_color`) read the field.
 - `src/terrain/voxel_slice.gd` — `vein_deposits()` (the Phase 31 raised surface
   marker) reads the same field, so the marker marks a vein that is actually
   there, and takes its colour from the vein's material.
