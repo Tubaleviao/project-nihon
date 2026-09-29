@@ -322,17 +322,6 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	root.add_child(static_body)
 	return true
 
-## The terrain's visible AND collidable surface for one chunk — no rare-vein
-## deposits, which are decoration. Built once per rebuild and shared by the
-## MeshInstance3D and the trimesh, so what the player sees and what they stand on
-## cannot drift apart.
-##
-## Phase 42 — a thin wrapper over the PURE builder, so the synchronous callers keep
-## one entry point: it resolves the column table on this (main) thread and builds the
-## mesh from the arrays, exactly like the worker path does, only without the worker.
-func _build_terrain_surface(chunk_pos: Vector2i, heightmap: Array) -> ArrayMesh:
-	return _mesh_from_arrays(build_chunk_arrays(chunk_pos, heightmap, collect_build_runs(chunk_pos, heightmap)))
-
 ## Resolve every column a chunk build must READ into a plain table the pure builder
 ## can consume. MAIN THREAD ONLY — this is the half that reads mutable slice state
 ## (`_edits`, `_heightmaps`, the terrain slice's biome lookup behind a natural run's
@@ -1228,7 +1217,7 @@ func _base_top_for_tile(tile: Vector2i) -> float:
 ## tile key for the duration of ONE chunk build: a tile's runs are read by the tile
 ## itself and by each of its four neighbours, and the answer is a pure function of
 ## the heightmap plus the tile's edits, so a build's worth of reuse is exact (see
-## `_build_terrain_surface`).
+## `collect_build_runs`).
 func _column_runs(heightmap: Array, chunk_pos: Vector2i, tx: int, tz: int, cache: Dictionary) -> Array:
 	var gx := chunk_pos.x * CHUNK_SIZE + tx
 	var gz := chunk_pos.y * CHUNK_SIZE + tz

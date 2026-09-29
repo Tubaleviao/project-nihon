@@ -3372,7 +3372,11 @@ chunk is queued further out than it is needed.
   another chunk — and asserts identical vertices, indices and collision soup. The
   frame-time probe itself was NOT written: what is asserted is that the dispatch happens
   and that the main thread never runs the build, not a measured per-frame millisecond
-  figure.)*
+  figure. **(Second review pass: `PROBE Phase 42 build split` now prints the main-thread
+  half of a dispatch — heightmap generation plus column-table resolution — against the pure
+  builder the worker runs, so the split is a measured number rather than a claim. A true
+  per-FRAME millisecond figure still needs a frame-driven boot, which the synchronous suite
+  deliberately is not.)**
 - [x] Greedy merge cuts the per-chunk vertex count (quote the before/after
   number), and a tile whose neighbours differ still emits a valid 1×1 quad.
   *(`cell_count` → `quad_count`, measured in the suite's "chunk: greedy merge collapses a
@@ -3389,7 +3393,10 @@ chunk is queued further out than it is needed.
   Verified against a fresh `XDG_DATA_HOME`: `[World] first ring built (9 chunks) —
   placing the player, 19.66s after boot`. The screen's own visibility is not asserted by
   the suite — it is a node in the tree on both boot paths and has no headless frame to be
-  seen in.)*
+  seen in. **(Second review pass: it IS asserted now — `ui: the loading screen shows and
+  hides` drives `begin()` / `set_progress()` / `finish()` and asserts the visibility, the
+  bar and the `world_input_frozen` emissions directly, which needs no frames. The CLIENT
+  path arms the same gate, so the body is no longer placed on unbuilt ground on a join.)**
 - [x] No world input resolves while the loading screen shows: an attack, mine,
   chop or place attempted with the screen up is refused. The freeze is the
   loading screen's own hook — `any_window_open()` is not consulted and would
@@ -3401,6 +3408,10 @@ chunk is queued further out than it is needed.
   false at that moment — i.e. that the window predicate could not have been the gate. A
   headless boot has no mouse capture at all, which is why the freeze is assertable
   separately from the mouse half of the predicate.)*
+  **(Second review pass: the freeze holds the BODY too — `PlayerSlice._physics_process`
+  skips `_move` while frozen, asserted by `player: the loading freeze holds the body`. It
+  has to: a joining client's body exists from the snapshot while its ring is still being
+  built, so an input-only freeze left it falling through ground that was not there.)**
 - [x] The suite is green on both boot paths, with tests for the pure builder and
   the merge registered in `test_suite.gd`.
   *(`Results: 7663/7663 passed (0 failed)` + `All tests passed ✓` on both
@@ -3408,7 +3419,12 @@ chunk is queued further out than it is needed.
   (builder purity, merge counts, merge-never-spans-a-gap, dispatch-then-apply, the
   first-ring gate, the prefetch radius, the loading freeze). **Re-run after the review
   pass: `7682/7682 passed (0 failed)` on both boot paths** — five more tests, one per
-  closed finding that is assertable in the suite.)*
+  closed finding that is assertable in the suite. **SECOND review pass: `7716/7716 passed
+  (0 failed)` on `--quit` and on `--quit --server`, no `SCRIPT ERROR` — seven more tests
+  (a rebuild respects the in-flight cap, a queued chunk that leaves range cancels, a
+  groundless chunk is re-armed, contents spawn once the ground exists, the build split
+  probe, the loading freeze holds the body, the loading screen shows and hides), plus the
+  probe that prints the main-thread / worker split.)***
 
 **Implementation notes:**
 - **Godot's threading rule is what makes the split mandatory.** Scene-tree
@@ -3464,9 +3480,10 @@ chunk is queued further out than it is needed.
   placed: use `--quit-after N`, or read the `[World] first ring built …` line.
 - **The `_built` set is separate from `_loaded`.** `chunk_loaded` still means "this chunk
   entered the streamed set" (its build is dispatched at that point); the boot gate reads
-  `_built`, which is set only when the mesh exists. Entities still spawn from
-  `load_chunk()`, i.e. a frame or two BEFORE their chunk's mesh lands — unchanged from
-  before this phase.
+  `_built`, which is set only when the mesh exists.
+  **(Corrected by the second review pass: entities used to spawn from `load_chunk()` — a
+  frame or two BEFORE their chunk's mesh landed — and they now spawn from the apply path,
+  with the mesh, so the population is never ahead of its ground.)**
 
 **Review-pass notes (six findings from a post-phase review, all closed in
 `fix(terrain): Phase 42 review pass`):**
@@ -3510,6 +3527,60 @@ chunk is queued further out than it is needed.
    the client side. The decision is a pure predicate (`GameRoot.host_boot_may_proceed`) so the
    suite pins it without booting.
 
+**SECOND review-pass notes (a second post-phase review, closed in
+`fix(terrain): Phase 42 review pass 2`):**
+
+1. **`request_rebuild` and build RETRIES bypassed `max_builds_in_flight`.** The cap was
+   enforced only in `_drain_load_queue`, so a corner edit (three touched chunks) or a burst
+   of retries dispatched straight past it. Both now go through a `_rebuild_queue` drained
+   under the same cap — delayed a frame, never dropped — and the supersede is unconditional
+   so a pre-edit build cannot land while the fresh dispatch waits for a slot.
+2. **A queued chunk that left the window was still built, and stayed `_pending`.** It was
+   built and immediately unloaded, and — worse — a chunk that left the window and returned
+   was silently SKIPPED, because `refresh()` saw the stale `_pending` mark. `_drain_load_queue`
+   now drops a chunk outside `stream_radius` and clears the mark with it.
+3. **A build that exhausted MAX_BUILD_RETRIES left a hole for the session.** The chunk is now
+   marked in `_failed` and re-armed by the next `refresh()` that re-centres the window — a
+   fresh retry budget and a fresh dispatch. Keyed on the window MOVING, so a build that fails
+   forever costs one dispatch per crossing rather than a per-frame spin.
+4. **Creatures and trees spawned before their chunk's ground existed.** With the build on a
+   worker, spawning at load time put the population on a chunk whose mesh arrived a frame or
+   more later. They now spawn from `_apply_build_entry`, with the mesh (`_spawn_chunk_contents`).
+5. **A joining CLIENT never armed the gate.** `_on_world_snapshot_received` placed the body
+   from the snapshot and started streaming around it, so for the first frames the body stood
+   on a chunk still being built (the gate was host-only). The client now arms the same gate,
+   shows the same loading screen, and releases through `_finish_client_boot` when the ring's
+   ground exists — under the same timeout rule.
+6. **The loading freeze did not hold the BODY.** It gated `_input` only, so a client's body
+   (which exists from the snapshot while its ring builds) fell through ground that was not
+   there. `PlayerSlice._physics_process` now skips `_move` while frozen — see
+   `ui: the loading screen shows and hides` and `player: the loading freeze holds the body`.
+7. **`build_first_ring`'s front-queueing was dead code.** `_boot_server` called `refresh()`
+   FIRST, which marked every ring chunk `_pending`, so `build_first_ring`'s `wanted` list came
+   out empty and nothing was moved to the front. The gate is now armed BEFORE the refresh.
+8. **`VoxelSlice._build_terrain_surface` was dead code** — no callers since the pure builder
+   landed — and is deleted; the comment that still pointed at it is corrected.
+9. **A redundant nested `if not _is_server:`** framed the loading screen inside the minimap's
+   own `not _is_server` block. Removed.
+10. **`--quit` no longer proved the host boot, and CI had lost the assertion.** A new
+    `host-boot` CI job boots `--quit-after 1800` and asserts `[World] first ring built …`
+    (and that the boot did NOT get there through the 15 s ring timeout). Verified locally
+    against a FRESH `XDG_DATA_HOME`: the line prints 22.5 s after boot, and the boot saves
+    36 creatures — the population the fix in (4) now spawns with the ground.
+
+Also landed in the same pass from the same list: the loading screen's own visibility is
+asserted by the suite instead of read by hand off a live boot; `TerrainSlice.request_chunk` is
+documented as the TEST-ONLY trigger it now is; and `PROBE Phase 42 build split` prints the
+main-thread / worker split of one chunk build, so the phase's headline claim leaves a measured
+number behind rather than prose.
+
+Two items on that list were NOT closed, deliberately: **the boot timeout still places the
+player on ground that may not exist** (it is the deliberate alternative to a hang with the
+screen up and nothing logged, it names how many ring chunks were built, and the warning is
+what makes the failure visible) and **the prefetch band's retention cost** (121 resident
+chunks against 49 is the price of the lead time the band exists for — reducing it is a tuning
+decision, not a defect).
+
 **Known simplifications (deferred):**
 - **An edit's mesh lands a frame or two later.** Since the review pass, a mine/place
   DISPATCHES its chunk rebuild (and any seam neighbour's) to the worker instead of building
@@ -3518,10 +3589,20 @@ chunk is queued further out than it is needed.
   footing (`sample_support_height_at`), further edits, persistence — is unaffected.
 - **No priority job queue or cancellation.** Loads are nearest-first, and a
   chunk that falls out of range while queued is still built (and then unloaded).
+  **(Closed in the second review pass for the cancellation half: a queued chunk that leaves
+  the window is now DROPPED rather than built, and its `_pending` mark is cleared with it, so
+  a chunk that leaves and returns is queued again instead of being skipped. What is still
+  deferred: there is no priority ordering beyond nearest-first, and a rebuild cannot jump the
+  load queue — it is drained first, but only as a whole band.)**
 - **The loading screen is a progress bar, not a world preview** — no panorama, no
   tips, no fade.
 - **Entities still spawn on the main thread.** Creatures and trees spawn in the
   frame a chunk lands; this phase threads the TERRAIN build only.
+  **(Refined in the second review pass: they spawn from the apply path, i.e. WITH the chunk's
+  mesh, rather than at load time a frame or two before it. What is still deferred: the spawn
+  itself is still a main-thread call inside that apply pass, and the prefetch band's chunks —
+  121 resident against the view ring's 49 — spawn their population as eagerly as the near
+  ring's; how far out population should exist at all is a tuning decision this pass left open.)**
 - **No runtime tuning UI** for `loads_per_frame` / the ring sizes; they stay
   constants (overridable, as today).
 

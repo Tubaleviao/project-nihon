@@ -33,6 +33,19 @@ extends Node
 ## fresh one. A chunk that is not in the streamed set is a no-op — it rebuilds from the
 ## current edit log when it streams back in.
 ##
+## Phase 42 review — the same pass closed four holes the first one left in the streaming
+## loop itself: (1) EVERY dispatch is bounded by `max_builds_in_flight`, including a
+## rebuild (`request_rebuild`) and a retry, which used to call `_dispatch_build` outright
+## — one corner edit names three chunks, so a single edit or a burst of retries took the
+## pool over its own cap. A rebuild the cap defers waits in `_rebuild_queue`, it is never
+## dropped. (2) A chunk that leaves the window while QUEUED is dropped rather than built,
+## and its `_pending` mark is cleared so it is queued again if it returns (`_within_stream`
+## in `_drain_load_queue`). (3) A chunk whose build exhausts MAX_BUILD_RETRIES is put in
+## `_failed` and re-armed by the next `refresh()` that re-centres the window, so a
+## transient failure heals instead of leaving a hole for the session. (4) A chunk's
+## creature and tree budgets spawn when its GROUND EXISTS (`_spawn_chunk_contents` from
+## `_apply_build_entry`) instead of at load time, which is when the build was synchronous.
+##
 ## Plug contract (GameBus signals emitted):
 ##   OUT : chunk_loaded(chunk_pos), chunk_unloaded(chunk_pos)
 ##
@@ -43,7 +56,8 @@ extends Node
 ##   load_chunk(pos) / unload_chunk(pos)    — explicit load/unload
 ##   request_rebuild(pos)                   — re-dispatch a loaded chunk's build (an edit)
 ##   get_loaded_chunks() -> Array           — [{ chunk, biome }, ...]
-##   build_first_ring(center)               — arm the boot gate
+##   build_first_ring(center)               — arm the boot gate; call it BEFORE the first
+##                                            `refresh()` of the boot (see there)
 ##   is_first_ring_ready() -> bool
 ##   first_ring_progress() -> float         — 0..1, drives the loading bar
 
@@ -133,6 +147,23 @@ var _builds: Dictionary = {}
 ## fresh rebuild is requested, and when the chunk is unloaded.
 var _build_attempts: Dictionary = {}
 
+## Phase 42 review — rebuild requests that could NOT be dispatched yet because the
+## in-flight cap was reached. `_drain_load_queue` drains them under the SAME cap that
+## bounds a streamed load, because `request_rebuild` used to call `_dispatch_build`
+## directly: a corner edit (three touched chunks) or a burst of retries then put four,
+## five, six tasks in the pool against a `max_builds_in_flight` of four. A rebuild is
+## never DROPPED by the cap — it waits a frame, which is why it is a queue and not a
+## refusal.
+var _rebuild_queue: Array = []         # of Vector2i
+var _rebuild_pending: Dictionary = {}  # "cx,cz" -> true, dedupes _rebuild_queue
+
+## Phase 42 review — chunks whose build exhausted MAX_BUILD_RETRIES and were reported
+## as groundless. They are re-armed by the next `refresh()` that re-centres the window
+## (i.e. the next chunk crossing) instead of staying a hole for the session: a build
+## failure that was transient heals, and a permanent one costs one dispatch per crossing
+## rather than a spin.
+var _failed: Dictionary = {}           # "cx,cz" -> true
+
 ## Phase 42 — the boot gate. `_first_ring` maps "cx,cz" -> built?, and an EMPTY map
 ## means the gate was never armed (so `is_first_ring_ready()` answers true for every
 ## caller that has no boot to hold).
@@ -201,42 +232,91 @@ func refresh() -> void:
 		if not wanted.has(key):
 			unload_chunk(_key_to_chunk(key))
 
+	# Phase 42 review — SELF-HEAL. A chunk in range that is loaded but has no built mesh
+	# is one whose build exhausted MAX_BUILD_RETRIES (see `_apply_build_entry`) and was
+	# reported as groundless. Left alone it stays a hole for the session: nothing else
+	# re-dispatches a chunk that is already `_loaded`. So the next re-centring of the
+	# window re-arms it — a fresh retry budget and a fresh dispatch, under the same
+	# in-flight cap. Keyed on the window MOVING, which is the backoff: a build that fails
+	# forever costs one dispatch per chunk crossing, never a per-frame spin.
+	for key in _failed.keys():
+		if wanted.has(key) and not _built.has(key) and not _has_in_flight(key):
+			_failed.erase(key)
+			_build_attempts.erase(key)
+			_queue_rebuild(_key_to_chunk(key))
+
 ## The Chebyshev radius a chunk is queued and kept within (Phase 42).
 func stream_radius() -> int:
 	return view_distance + prefetch_distance
 
 ## Dispatch up to `loads_per_frame` queued chunks this frame, nearest-first, while
 ## respecting the in-flight build cap. The build itself runs on a worker.
+##
+## Phase 42 review — this is now the ONE place a build is dispatched from a queue, and
+## it drains the REBUILD queue first: `request_rebuild` and a build RETRY both enqueue
+## here instead of calling `_dispatch_build` directly, so the in-flight cap bounds every
+## dispatch and not just a streamed load. Dispatch is the only thing bounded per frame;
+## a queued rebuild is never dropped, it waits.
 func _drain_load_queue() -> void:
 	var budget := loads_per_frame
-	while not _load_queue.is_empty() and budget > 0:
+	while budget > 0:
 		if _builds.size() >= max_builds_in_flight:
 			return   # the pool is busy: leave the rest queued for a later frame
+		if not _rebuild_queue.is_empty():
+			var rebuild: Vector2i = _rebuild_queue.pop_front()
+			var rkey := _chunk_key(rebuild)
+			_rebuild_pending.erase(rkey)
+			# Streamed out while it waited: nothing to rebuild (it rebuilds from the
+			# current edit log when it streams back in).
+			if _loaded.has(rkey):
+				_dispatch_build(rebuild)
+				budget -= 1
+			continue
+		if _load_queue.is_empty():
+			return
 		var chunk: Vector2i = _load_queue.pop_front()
 		_pending.erase(_chunk_key(chunk))
+		# Phase 42 review — CANCELLATION. A chunk can leave the streamed window while it
+		# sits in the queue (the player turned around). Dispatching it anyway built ground
+		# nobody wants — and `refresh()` would not re-queue it on the way back in, because
+		# its `_pending` mark was still set, so it was silently skipped instead. Dropping
+		# it here clears that mark, so a chunk that leaves range and returns is queued
+		# again rather than left as a hole.
+		if not _within_stream(chunk):
+			continue
 		if not _loaded.has(_chunk_key(chunk)):
 			load_chunk(chunk)
 		budget -= 1
 
-## Take a chunk into the streamed set: spawn its per-chunk creature and tree budgets,
-## announce it, and dispatch its terrain build.
+## Take a chunk into the streamed set, announce it, and dispatch its terrain build.
 ##
 ## Phase 42 — the mesh is no longer produced here. The heightmap is generated and the
 ## column table resolved on this (main) thread, then `VoxelSlice.build_chunk_arrays`
 ## runs on a worker and `_apply_finished_builds()` attaches the result once it is
 ## done. `chunk_loaded` therefore means "this chunk is in the streamed set", and
 ## `_built` is what says its ground exists.
+##
+## Phase 42 review — the creature and tree budgets are NO LONGER spawned here. They are
+## the ground's contents, so they are spawned once the ground exists
+## (`_spawn_chunk_contents`, from the apply path). Spawning them at load time was free
+## while the build was synchronous; with the build on a worker it put the population on
+## a chunk whose mesh arrived a frame or more later.
 func load_chunk(chunk_pos: Vector2i) -> void:
 	var key := _chunk_key(chunk_pos)
 	if _loaded.has(key):
 		return
 	_loaded[key] = true
+	GameBus.chunk_loaded.emit(chunk_pos)
+	_dispatch_build(chunk_pos)
+
+## Phase 42 review — spawn a chunk's per-chunk creature and tree budgets. Called once the
+## chunk's GROUND EXISTS (see `_apply_build_entry`) rather than when it enters the
+## streamed set, so no body stands on a chunk that has not been built yet.
+func _spawn_chunk_contents(chunk_pos: Vector2i) -> void:
 	if creature_slice != null and creature_slice.has_method("spawn_for_chunk"):
 		creature_slice.spawn_for_chunk(chunk_pos)
 	if tree_slice != null and tree_slice.has_method("spawn_for_chunk"):
 		tree_slice.spawn_for_chunk(chunk_pos)
-	GameBus.chunk_loaded.emit(chunk_pos)
-	_dispatch_build(chunk_pos)
 
 ## Hand one chunk's build to a worker task. Main-thread work: the heightmap
 ## generation and the column-table resolution (that is where `_edits`, `_heightmaps`
@@ -251,6 +331,7 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 			or not terrain_slice.has_method("generate_heightmap") \
 			or not voxel_slice.has_method("build_chunk_arrays"):
 		_built[key] = true
+		_spawn_chunk_contents(chunk_pos)
 		_update_first_ring_progress()
 		return
 	# Phase 42 review — SUPERSEDE a build already in flight for this chunk. The caller
@@ -260,9 +341,7 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 	# it is awaited, so it is marked instead and reaped by `_apply_build_entry`, which
 	# neither attaches it nor re-dispatches it. Without this the two tasks carry the same
 	# revision and BOTH attach, so the mesh could end up the pre-edit one.
-	for stale_id in _builds.keys():
-		if _builds[stale_id]["key"] == key:
-			_builds[stale_id]["superseded"] = true
+	_supersede_in_flight(key)
 	_build_attempts[key] = int(_build_attempts.get(key, 0)) + 1
 	var heightmap: Array = terrain_slice.generate_heightmap(chunk_pos)
 	var runs: Dictionary = voxel_slice.collect_build_runs(chunk_pos, heightmap)
@@ -279,6 +358,16 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 		"result":    result,
 	}
 
+## Mark any build already in flight for `key` as stale, so `_apply_build_entry` reaps it
+## without attaching it and without re-dispatching. Split out of `_dispatch_build` by the
+## Phase 42 review because `request_rebuild` has to do it even when the fresh dispatch is
+## deferred by the in-flight cap: otherwise a pre-edit mesh would stay on screen until the
+## queued dispatch got a slot.
+func _supersede_in_flight(key: String) -> void:
+	for stale_id in _builds.keys():
+		if _builds[stale_id]["key"] == key:
+			_builds[stale_id]["superseded"] = true
+
 ## Phase 42 review — rebuild an already-loaded chunk whose DATA changed under it: a voxel
 ## edit (see `VoxelSlice._rebuild_chunk_at_tile`). It goes to a worker like every other
 ## build, which is the point: an edit used to rebuild up to three chunks SYNCHRONOUSLY in
@@ -287,12 +376,51 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 ## A chunk that is not in the streamed set is a no-op: it has no node to refresh, it
 ## rebuilds from the current edit log when it streams back in (see `apply_edits`), and
 ## building it here would resurrect a chunk the manager has already streamed away.
+##
+## Phase 42 review — the dispatch respects `max_builds_in_flight`, because this is the
+## call that used to bypass it: an edit at a chunk corner names three touched chunks, and
+## each one was dispatched outright, so one corner edit put the pool over its own cap and
+## so did every retry. It defers to the rebuild queue instead — never drops — and the
+## supersede happens UNCONDITIONALLY so the pre-edit build cannot land while it waits.
 func request_rebuild(chunk_pos: Vector2i) -> void:
-	if not _loaded.has(_chunk_key(chunk_pos)):
+	var key := _chunk_key(chunk_pos)
+	if not _loaded.has(key):
 		return
-	# A fresh request starts a fresh retry budget: it is a new edit, not a retry of one.
-	_build_attempts.erase(_chunk_key(chunk_pos))
+	# A fresh request starts a fresh retry budget: it is a new edit, not a retry of one,
+	# and it clears the groundless mark a previous give-up left behind.
+	_build_attempts.erase(key)
+	_failed.erase(key)
+	_supersede_in_flight(key)
+	if _builds.size() >= max_builds_in_flight:
+		_queue_rebuild(chunk_pos)
+		return
 	_dispatch_build(chunk_pos)
+
+## Enqueue a rebuild that could not be dispatched right now because the in-flight cap was
+## reached (`request_rebuild`, or a build RETRY in `_apply_build_entry`). Deduped, and
+## drained by `_drain_load_queue` under the same cap. A rebuild is delayed, never dropped.
+func _queue_rebuild(chunk_pos: Vector2i) -> void:
+	var key := _chunk_key(chunk_pos)
+	if _rebuild_pending.has(key):
+		return
+	_rebuild_pending[key] = true
+	_rebuild_queue.append(chunk_pos)
+
+## True when a worker build for `key` is in flight (superseded or not).
+func _has_in_flight(key: String) -> bool:
+	for task_id in _builds.keys():
+		if _builds[task_id]["key"] == key:
+			return true
+	return false
+
+## True when `chunk` still lies inside the streamed window around the player — the
+## cancellation test in `_drain_load_queue` (Chebyshev, like `stream_radius`).
+func _within_stream(chunk: Vector2i) -> bool:
+	if not _in_bounds(chunk):
+		return false
+	var center := player_chunk()
+	var radius := stream_radius()
+	return absi(chunk.x - center.x) <= radius and absi(chunk.y - center.y) <= radius
 
 ## Never leave a worker build running past the tree: at shutdown a task could still
 ## be producing arrays for a world nobody owns (and on a `--quit` boot that is one
@@ -354,6 +482,11 @@ func flush_builds() -> int:
 ##     Phase 42 removed) or the chunk was rebuilt under it. Either way the chunk still
 ##     needs a mesh, so the build is RE-DISPATCHED, bounded by MAX_BUILD_RETRIES so a
 ##     permanently failing build reports an error instead of spinning.
+##
+## Phase 42 review — and the retry itself now goes through the in-flight cap (it used to
+## call `_dispatch_build` outright and so was a second way past it), and giving up leaves
+## the chunk in `_failed` so the next `refresh()` that re-centres the window re-arms it
+## instead of leaving a hole for the session.
 func _apply_build_entry(task_id: int) -> bool:
 	var entry: Dictionary = _builds.get(task_id, {})
 	if entry.is_empty():
@@ -372,18 +505,36 @@ func _apply_build_entry(task_id: int) -> bool:
 	var chunk: Vector2i = entry["chunk"]
 	if not voxel_slice.build_chunk(chunk, entry["heightmap"], arrays, int(entry["revision"])):
 		if int(_build_attempts.get(key, 0)) < MAX_BUILD_RETRIES:
-			_dispatch_build(chunk)
+			# A retry is a dispatch like any other, so it waits for a slot rather than
+			# taking the pool over its cap (the entry just reaped usually frees one).
+			if _builds.size() >= max_builds_in_flight:
+				_queue_rebuild(chunk)
+			else:
+				_dispatch_build(chunk)
 		else:
-			push_error("ChunkManager: chunk %s could not be built after %d attempts — its ground is missing" % [key, MAX_BUILD_RETRIES])
+			_failed[key] = true
+			push_error("ChunkManager: chunk %s could not be built after %d attempts — its ground is missing (re-armed on the next window re-centre)" % [key, MAX_BUILD_RETRIES])
 		return false
 	_build_attempts.erase(key)
+	_failed.erase(key)
 	_built[key] = true
+	# The ground exists now, so its contents may: creatures and trees spawn HERE rather
+	# than at load time (see `_spawn_chunk_contents`).
+	_spawn_chunk_contents(chunk)
 	_update_first_ring_progress()
 	return true
 
 ## Arm the boot gate around `center`: the 9 chunks at Chebyshev 0..1 that the body
 ## stands in and may immediately step onto. They are queued AHEAD of whatever the
 ## wider ring already queued, so the gate opens as early as it can.
+##
+## Phase 42 review — that front-queueing only does anything when this runs BEFORE the
+## first `refresh()` of the boot, and the boot used to call `refresh()` first: every
+## ring chunk was already `_pending`, so `wanted` came out empty, NOTHING was moved to
+## the front, and the ring's head start was dead code. Both boot paths now arm the gate
+## first (`_boot_server` before its `refresh()`), so the ring is genuinely queued ahead
+## of the wider band. Arming after a refresh is still correct, just no longer front-queued
+## — the streaming sort is nearest-first, which puts the ring at the head anyway.
 func build_first_ring(center: Vector2i) -> void:
 	_first_ring_center = center
 	_first_ring = {}
@@ -437,6 +588,11 @@ func unload_chunk(chunk_pos: Vector2i) -> void:
 	_loaded.erase(key)
 	_built.erase(key)
 	_build_attempts.erase(key)
+	# Phase 42 review — a streamed-out chunk carries no retry state: its groundless mark
+	# and any queued rebuild go with it (it rebuilds from the edit log when it streams
+	# back in, see `request_rebuild`'s not-loaded branch).
+	_failed.erase(key)
+	_rebuild_pending.erase(key)
 	if voxel_slice != null and voxel_slice.has_method("unload_chunk"):
 		voxel_slice.unload_chunk(chunk_pos)
 	if creature_slice != null and creature_slice.has_method("despawn_for_chunk"):

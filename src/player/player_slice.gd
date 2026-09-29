@@ -116,6 +116,10 @@ var terrain_slice: Node = null
 ## slice holds, and a loading screen is not among them, so nothing would be refused.
 ## Driven by the `world_input_frozen` bus signal the loading screen emits, and also
 ## settable directly (see `set_world_input_frozen`) for a caller that holds the slice.
+##
+## Phase 42 review — it freezes the BODY as well as the input (see `_physics_process`):
+## the freeze is what holds a client's body still over ground that is still being built,
+## so it cannot be only an input gate.
 var _world_input_frozen: bool = false
 
 func _ready() -> void:
@@ -153,7 +157,13 @@ func _physics_process(delta: float) -> void:
 			if _respawn_timer <= 0.0:
 				_respawn()
 		return
-	if render_visuals:
+	# Phase 42 review — the loading freeze holds the BODY too, not just `_input`. It used
+	# to gate only the input arms above, so while the loading screen was up the body still
+	# ran its own physics: on the host it was inert only because it had not been spawned
+	# yet, and on a client (which placed the body from the snapshot while its ring built) it
+	# fell through ground that did not exist. Frozen means the body holds its position until
+	# the ground under it is there.
+	if render_visuals and not _world_input_frozen:
 		_move(delta)
 	_sync_tick += 1
 	if _sync_tick >= SYNC_INTERVAL:

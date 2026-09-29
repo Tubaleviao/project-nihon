@@ -72,6 +72,12 @@ var _snapshot_pending: bool = false
 ## `_process`, which is the only place a worker result can be applied on time.
 var _pending_host_boot: bool = false
 
+## Phase 42 review — true while a CLIENT join is waiting for the same first ring (see
+## `_on_world_snapshot_received` / `_finish_client_boot`). The client has no boot tail to
+## run, so it is a separate flag rather than a mode on the host one: all it holds is the
+## loading screen and the movement freeze, and all it does at the end is release both.
+var _pending_client_boot: bool = false
+
 ## Phase 42 — how long the host boot will wait for its first ring before placing the
 ## player anyway. The gate is a BUILD ON A WORKER, and a stalled or dead task must not
 ## hang the boot for good with the loading screen up and no player: past this the tail
@@ -333,10 +339,12 @@ func _ready() -> void:
 
 		# Phase 42 — the first-ring loading screen, at its own layer ABOVE the minimap.
 		# Host-only like the minimap (a dedicated server has no body to place and no
-		# screen to show), and it starts hidden: the host boot path shows it (see
-		# _boot_host) for as long as the ground under the spawn point is being built.
-		if not _is_server:
-			add_child(_loading_screen)
+		# screen to show), and it starts hidden: the boot path shows it (see _boot_host)
+		# for as long as the ground under the spawn point is being built.
+		#
+		# Phase 42 review — no second `not _is_server` guard here: this block is already
+		# inside one (the minimap's), so the nested copy was dead.
+		add_child(_loading_screen)
 
 	# Bus listeners for integration-layer logging.
 	GameBus.chunk_ready.connect(_on_chunk_ready)
@@ -614,6 +622,32 @@ func _tick_pending_host_boot(delta: float) -> void:
 static func host_boot_may_proceed(ring_ready: bool, elapsed: float) -> bool:
 	return ring_ready or elapsed >= FIRST_RING_TIMEOUT
 
+## Phase 42 review — the CLIENT's first-ring gate (see `_on_world_snapshot_received`).
+## The client has no boot tail: its body already holds the snapshot position, so the only
+## work is to drop the loading screen and release the movement freeze that stopped the
+## body falling through ground that had not been built yet. Same timeout rule as the host,
+## so a stalled build cannot leave a client frozen forever.
+func _finish_client_boot() -> void:
+	_pending_client_boot = false
+	_loading_screen.finish()
+	print("[World] client first ring built (%d chunks) — releasing the player" % _chunk_manager.first_ring_size())
+
+## Phase 42 review — drive the waiting client join: keep the loading bar in step with the
+## first ring's build progress and release the player the moment the ring's ground exists.
+## A no-op once the join has completed (or when this is not a client at all).
+func _tick_pending_client_boot(delta: float) -> void:
+	if not _pending_client_boot:
+		return
+	_loading_screen.set_progress(_chunk_manager.first_ring_progress())
+	_boot_wait_elapsed += delta
+	if not host_boot_may_proceed(_chunk_manager.is_first_ring_ready(), _boot_wait_elapsed):
+		return
+	if not _chunk_manager.is_first_ring_ready():
+		push_warning("GameRoot: client first ring still incomplete after %.1fs (%d of %d chunks built) — releasing the player anyway" % [
+			_boot_wait_elapsed, int(round(_chunk_manager.first_ring_progress() * float(_chunk_manager.first_ring_size()))),
+			_chunk_manager.first_ring_size()])
+	_finish_client_boot()
+
 ## The host tail, run once the first ring's ground exists: player spawn, avatar,
 ## lighting/UI demos, and the legacy slot save. Split out of `_boot_host()` by
 ## Phase 42 so it can run on a LATER frame (see there); it is still the same code in
@@ -763,12 +797,18 @@ func _boot_client() -> void:
 func _boot_server() -> void:
 	_load_world_records()
 	_chunk_manager.start()
-	_chunk_manager.refresh()
-	# Phase 42 — arm the boot gate BEFORE the world is announced. Both boot paths
-	# inherit it here, which is what stops a gate wired into one of them from being a
-	# hole in the others. The centre is the player's chunk: pre-spawn that is the
-	# origin chunk, and the host's spawn point (16,16) lands in the same chunk (0,0).
+	# Phase 42 — arm the boot gate BEFORE the first refresh, and not after it. Both boot
+	# paths inherit it here, which is what stops a gate wired into one of them from being a
+	# hole in the others. The centre is the player's chunk: pre-spawn that is the origin
+	# chunk, and the host's spawn point (16,16) lands in the same chunk (0,0).
+	#
+	# Phase 42 review — the ORDER matters, and the first pass had it wrong: `refresh()`
+	# marks every in-range chunk `_pending`, so arming afterwards found the ring already
+	# queued, moved nothing to the front, and the gate's head start was dead code. Arming
+	# first puts the 9 ring chunks at the head of `_load_queue`, and the `refresh()` below
+	# then appends the wider band behind them (it skips what is already `_pending`).
 	_chunk_manager.build_first_ring(_chunk_manager.player_chunk())
+	_chunk_manager.refresh()
 	_apply_loaded_creature_state()
 	_networking.host(_networking.DEFAULT_PORT, _networking.DEFAULT_MAX_CLIENTS)
 
@@ -931,6 +971,9 @@ func _process(delta: float) -> void:
 	# written against a player body that only exists once the boot tail has run, and
 	# the loading screen must come down in the same frame the body appears.
 	_tick_pending_host_boot(delta)
+	# Phase 42 review — and the client's identical gate (a no-op for every other role):
+	# a joining client holds the loading screen until its own first ring's ground exists.
+	_tick_pending_client_boot(delta)
 
 	_sync_player_avatar(delta)
 	# Distance-driven LOD (Phase 23) — evaluate each character's world distance
@@ -1162,8 +1205,20 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 	# them (`apply_snapshot_creatures`, above), because `CreatureSlice.spawn_for_chunk`
 	# refuses to run on a non-authoritative slice.
 	_chunk_manager.start()
+	# Phase 42 review — the CLIENT arms the same first-ring gate the host does, instead of
+	# placing the body from the snapshot into a world whose ground is still being built on
+	# a worker. The body is spawned from the snapshot ABOVE (so `player_chunk()` names the
+	# ground it will stand on and the streaming window centres on it), and it is held still
+	# by the loading screen's freeze until the ring is built (see `PlayerSlice`).
+	_chunk_manager.build_first_ring(_chunk_manager.player_chunk())
 	_chunk_manager.refresh()
 	_snapshot_pending = false
+	if _chunk_manager.is_first_ring_ready():
+		_finish_client_boot()
+		return
+	_loading_screen.begin()
+	_boot_wait_elapsed = 0.0
+	_pending_client_boot = true
 
 # ---------------------------------------------------------------------------
 # Phase 33 — authoritative persistence lifecycle

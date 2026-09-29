@@ -283,6 +283,14 @@ func run() -> void:
 	_run_test("voxel: an empty worker result is refused",        _test_voxel_empty_worker_result_is_refused)
 	_run_test("chunk: the first-ring gate times out",            _test_host_boot_first_ring_timeout)
 	_run_test("player: the loading freeze refuses world input",  _test_player_world_input_freeze)
+	# Phase 42 second review pass — the streaming-loop holes the first pass left.
+	_run_test("chunk: a rebuild respects the in-flight cap",     _test_chunk_rebuild_respects_inflight_cap)
+	_run_test("chunk: a queued chunk that leaves range cancels",  _test_chunk_queued_leaving_range_is_cancelled)
+	_run_test("chunk: a groundless chunk is re-armed",           _test_chunk_failed_chunk_is_rearmed)
+	_run_test("chunk: contents spawn once the ground exists",    _test_chunk_contents_spawn_after_ground)
+	_run_test("chunk: the build split is measured",              _test_chunk_build_split_probe)
+	_run_test("player: the loading freeze holds the body",       _test_player_movement_freeze)
+	_run_test("ui: the loading screen shows and hides",          _test_loading_screen_visibility)
 	_run_test("player: facing is a normalized yaw vector",      _test_player_facing)
 	_run_test("net: client forwards block intent",               _test_net_voxel_client_forwards_intent)
 	_run_test("net: apply_block_change applies host edit",       _test_net_voxel_apply_block_change)
@@ -8864,7 +8872,7 @@ func _make_chunk_build_rig() -> Dictionary:
 ## not call `WorkerThreadPool.is_task_completed` itself.
 func _wait_for_builds(cm: Node, rounds: int = 128) -> void:
 	for i in range(rounds):
-		if cm._builds.is_empty() and cm._load_queue.is_empty():
+		if cm._builds.is_empty() and cm._load_queue.is_empty() and cm._rebuild_queue.is_empty():
 			return
 		cm._drain_load_queue()
 		cm.flush_builds()
@@ -9182,6 +9190,193 @@ func _test_player_world_input_freeze() -> void:
 	assert_false(p.world_input_allowed(), "so the freeze, not a window predicate, is what refuses")
 	p.free()
 	ui.free()
+
+## Phase 42 review — a REBUILD cannot take the pool over its in-flight cap. An edit at a
+## chunk corner names three touched chunks and `request_rebuild` used to dispatch each one
+## outright, so a single corner edit — or a burst of build retries — put more builds in
+## flight than `max_builds_in_flight` allows. A rebuild the cap defers WAITS in
+## `_rebuild_queue`: delayed a frame, never dropped.
+func _test_chunk_rebuild_respects_inflight_cap() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.load_chunk(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	assert_true(cm._built.has("0,0"), "the chunk is built")
+	# One slot, and it is taken.
+	cm.max_builds_in_flight = 1
+	cm.load_chunk(Vector2i(1, 0))
+	assert_eq(cm._builds.size(), 1, "the pool holds one build, at its cap")
+	cm.request_rebuild(Vector2i(0, 0))
+	assert_eq(cm._builds.size(), 1, "an edit does not put the pool over its cap")
+	assert_true(cm._rebuild_pending.has("0,0"), "the rebuild is queued instead of dropped")
+	assert_eq(cm._rebuild_queue.size(), 1, "and waits for a slot")
+	_wait_for_builds(cm)
+	assert_eq(cm._builds.size(), 0, "the queued rebuild dispatches once the pool frees")
+	assert_eq(cm._rebuild_queue.size(), 0, "and the rebuild queue drains")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review — a chunk that leaves the streamed window while it is still QUEUED is
+## not built. It used to be dispatched regardless (the queue was drained without re-reading
+## the window), and its `_pending` mark stayed set — so a chunk that left the window and
+## came back was silently skipped instead of being queued again.
+func _test_chunk_queued_leaving_range_is_cancelled() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var player: PlayerSlice = rig["player"]
+	cm.view_distance = 2
+	cm.prefetch_distance = 0
+	cm.loads_per_frame = 64
+	# A chunk queued while it was in range, drained only after the player moved away.
+	cm._load_queue = [Vector2i(5, 0)]
+	cm._pending["5,0"] = true
+	assert_false(cm._within_stream(Vector2i(5, 0)), "the chunk is outside the window now")
+	cm._drain_load_queue()
+	assert_false(cm._loaded.has("5,0"), "a chunk that left the window while queued is not built")
+	assert_false(cm._pending.has("5,0"), "and its pending mark is cleared, not left behind")
+	# Coming back: the window re-centres on it and it is queued again — the cleared mark is
+	# what makes that work.
+	player.spawn_at(Vector3(5.0 * 32.0 + 16.0, 40.0, 16.0))
+	cm.refresh()
+	assert_true(cm._pending.has("5,0"), "a chunk that returns to the window is queued again")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review — a build that exhausts MAX_BUILD_RETRIES does not leave a hole for the
+## session. The chunk is marked groundless and RE-ARMED by the next `refresh()` that
+## re-centres the window, with a fresh retry budget. Keyed on the window MOVING, so a build
+## that fails forever costs one dispatch per crossing rather than a per-frame spin.
+func _test_chunk_failed_chunk_is_rearmed() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var player: PlayerSlice = rig["player"]
+	cm.view_distance = 1
+	cm.prefetch_distance = 0
+	cm.refresh()
+	cm._load_queue.clear()
+	cm._pending.clear()
+	# The terminal state of a build that gave up: loaded, no mesh, marked groundless.
+	cm._loaded["0,0"] = true
+	cm._built.erase("0,0")
+	cm._failed["0,0"] = true
+	cm._build_attempts["0,0"] = cm.MAX_BUILD_RETRIES
+	player.spawn_at(Vector3(16.0 + 32.0, 40.0, 16.0))   # cross into chunk (1,0)
+	cm.refresh()
+	assert_false(cm._failed.has("0,0"), "the re-centre clears the groundless mark")
+	cm._drain_load_queue()
+	assert_eq(int(cm._build_attempts.get("0,0", 0)), 1, "with a fresh retry budget")
+	assert_true(cm._has_in_flight("0,0"), "and a fresh dispatch in flight")
+	_wait_for_builds(cm)
+	assert_true(cm._built.has("0,0"), "so the hole fills itself instead of staying for the session")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review — a chunk's creature and tree budgets spawn when its GROUND EXISTS, not
+## when it enters the streamed set. The build is on a worker, so spawning at load time put
+## the population on a chunk whose mesh arrived a frame or more later.
+func _test_chunk_contents_spawn_after_ground() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var terrain: TerrainSlice = rig["terrain"]
+	var tree := TreeSlice.new()
+	add_child(tree)
+	tree.terrain_slice = terrain
+	cm.tree_slice = tree
+	cm.load_chunk(Vector2i(0, 0))
+	assert_false(cm._built.has("0,0"), "the build is in flight")
+	assert_eq(tree.trees_in_chunk(Vector2i(0, 0)).size(), 0,
+		"no trees exist while the chunk's ground does not")
+	_wait_for_builds(cm)
+	assert_true(cm._built.has("0,0"), "the ground lands")
+	assert_true(tree.trees_in_chunk(Vector2i(0, 0)).size() > 0,
+		"and the chunk's trees spawn with it")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+	tree.free()
+
+## Phase 42 review — the phase's headline claim ("the build is on a worker, the main
+## thread does not build") is a QUANTITATIVE one, so it leaves a number behind rather than
+## prose. This times the two halves of one chunk build on this machine: the main-thread
+## half (`_dispatch_build`'s heightmap generation + column-table resolution) against the
+## pure builder the worker runs. A true per-FRAME millisecond figure would need frames the
+## suite does not have — but the ratio here is what says the expensive half left the main
+## thread, and it is a number a reviewer can check.
+func _test_chunk_build_split_probe() -> void:
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	var voxel := VoxelSlice.new()
+	voxel.terrain_slice = terrain
+	add_child(voxel)
+	var t0 := Time.get_ticks_usec()
+	var hm: Array = terrain.generate_heightmap(Vector2i(0, 0))
+	var runs: Dictionary = voxel.collect_build_runs(Vector2i(0, 0), hm)
+	var main_us := Time.get_ticks_usec() - t0
+	t0 = Time.get_ticks_usec()
+	var built: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), hm, runs)
+	var worker_us := Time.get_ticks_usec() - t0
+	print("PROBE Phase 42 build split: main thread %d us, worker half %d us (%d faces -> %d quads)" % [
+		main_us, worker_us, int(built["cell_count"]), int(built["quad_count"])])
+	assert_true(int(built["cell_count"]) > 0, "the worker half produced a real chunk")
+	assert_true(worker_us > 0, "and its cost was measured")
+	terrain.free()
+	voxel.free()
+
+## Phase 42 review — the loading freeze holds the BODY, not just `_input`. On a joining
+## client the body exists from the snapshot while its ring is still building, so an
+## input-only freeze left it falling through ground that did not exist. Asserted through
+## gravity: the suite's physics is inert, so an unfrozen body accumulates `_vel.y` and a
+## frozen one does not move at all.
+func _test_player_movement_freeze() -> void:
+	var falling := PlayerSlice.new()
+	add_child(falling)
+	falling.spawn_at(Vector3(16.0, 40.0, 16.0))
+	GameBus.world_input_frozen.emit(false)
+	falling._physics_process(0.1)
+	assert_true(falling.get_velocity().y < 0.0, "an unfrozen body accumulates gravity")
+
+	var held := PlayerSlice.new()
+	add_child(held)
+	held.spawn_at(Vector3(16.0, 40.0, 16.0))
+	GameBus.world_input_frozen.emit(true)
+	held._physics_process(0.1)
+	assert_eq(held.get_velocity(), Vector3.ZERO, "the loading freeze holds the body too")
+	falling.free()
+	held.free()
+
+## Phase 42 review — the loading screen's own visibility contract, asserted by the suite
+## instead of by hand. It is presentation (a CanvasLayer), so nothing else in the run
+## observes it: before this test the only evidence that it ever appeared was a `visible`
+## flag read off a live boot.
+func _test_loading_screen_visibility() -> void:
+	var screen = load("res://src/ui/loading_screen.gd").new()
+	add_child(screen)
+	var emitted: Array = []
+	var cb := func(frozen: bool): emitted.append(frozen)
+	GameBus.world_input_frozen.connect(cb)
+	assert_false(screen.is_active(), "a fresh loading screen is down")
+	assert_false(screen.visible, "and hidden")
+	screen.begin()
+	assert_true(screen.is_active(), "begin shows it")
+	assert_true(screen.visible, "and makes it visible")
+	assert_eq(emitted.size(), 1, "and emits the freeze")
+	assert_true(bool(emitted[0]), "freezing world input")
+	screen.set_progress(0.5)
+	assert_eq(screen._bar.value, 50.0, "the bar tracks the progress fraction")
+	screen.finish()
+	assert_false(screen.is_active(), "finish puts it away")
+	assert_false(screen.visible, "and hides it")
+	assert_eq(emitted.size(), 2, "and emits the thaw")
+	assert_false(bool(emitted[1]), "releasing world input")
+	GameBus.world_input_frozen.disconnect(cb)
+	screen.free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers
