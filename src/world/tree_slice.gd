@@ -15,19 +15,21 @@ extends Node
 ## voxel-edit path.
 ##
 ## Plug contract (GameBus signals consumed / emitted):
-##   IN  : tree_chop_requested(tree_id)                    — player intent
+##   IN  : tree_chop_requested(tree_id, player_id)         — player intent
 ##         tree_chopped(tree_id, wood, state, respawn_at)  — host → client state
 ##         tree_respawned(tree_id)                         — host → client state
-##   OUT : tree_chop_requested(tree_id)                    — client → host
+##   OUT : tree_chop_requested(tree_id, player_id)         — client → host
 ##         tree_chopped(tree_id, wood, state, respawn_at)  — host authoritative
 ##         tree_respawned(tree_id)                         — host authoritative
+##         inventory_synced(owner_id, contents, durabilities) — a REMOTE actor's
+##           pack after a chop resolved for it (see `_push_inventory`)
 ##
 ## Public API:
 ##   spawn_for_chunk(chunk_pos) / despawn_for_chunk(chunk_pos)   — Phase 17 streaming
 ##   tree_entry_for_biome(biome) -> Dictionary  ({} when the biome grows no trees)
 ##   get_tree_record(tree_id) -> Dictionary
 ##   get_all_trees() / trees_in_chunk(chunk_pos) -> Array
-##   chop_tree(tree_id) -> Dictionary  { success, wood, quantity, reason }
+##   chop_tree(tree_id, player_id) -> Dictionary  { success, wood, quantity, reason }
 ##   apply_chop_state(tree_id, respawn_at) -> void   (client-side host state)
 
 const MultimeshPool := preload("res://src/core/multimesh_pool.gd")
@@ -84,6 +86,12 @@ var render_visuals: bool = true
 ## Set by game_root before the slices enter the tree.
 var terrain_slice: Node = null
 var inventory_slice: Node = null
+
+## Phase 42 review — the registry that owns one inventory PER PLAYER, so a chop the
+## host resolves for a REMOTE actor spends and credits THAT player's axe and pack
+## instead of this machine's. Optional: an isolated rig (the suite) leaves it null and
+## every player id falls back to `inventory_slice` (see `inventory_for`).
+var player_registry: Node = null
 
 ## Authority mode (Phase 18). When true (host / single-player) this slice resolves
 ## chops and regrowth; when false (client) it forwards the chop intent and applies
@@ -183,33 +191,76 @@ func trees_in_chunk(chunk_pos: Vector2i) -> Array:
 ## inventory, and leaves a stump that regrows after RESPAWN_SECONDS. On a client
 ## the intent is forwarded and the host's authoritative state is applied instead.
 ## Returns { success, wood, quantity, reason }; reason is "" on success.
-func chop_tree(tree_id: String) -> Dictionary:
+##
+## Phase 42 review — `player_id` names the actor whose axe wears and whose pack
+## receives the wood: `""` is this machine's own player, and the host re-emits a
+## client's intent with the identity bound to its connection (see `inventory_for`).
+## Every check and mutation below went through this slice's own `inventory_slice`
+## before, which is why a client's chop filled the HOST's pack while the client —
+## mirroring only its own pack — saw nothing.
+func chop_tree(tree_id: String, player_id: String = "") -> Dictionary:
 	if not is_authoritative:
-		GameBus.tree_chop_requested.emit(tree_id)
+		GameBus.tree_chop_requested.emit(tree_id, player_id)
 		return { "success": false, "wood": "", "quantity": 0, "reason": "forwarded" }
 	if not _trees.has(tree_id):
 		return _fail("no_tree")
 	var tree: Dictionary = _trees[tree_id]
 	if tree["state"] != "standing":
 		return _fail("not_standing")
-	var axe := _held_axe()
+	var inventory := inventory_for(player_id)
+	var axe := _held_axe(inventory)
 	if axe == "":
 		return _fail("axe_required")
 	var wood: String = str(tree["wood"])
 	# Refuse before spending durability so a full inventory never costs the axe.
-	if inventory_slice != null and inventory_slice.has_method("can_add_items"):
-		if not inventory_slice.can_add_items({ wood: CHOP_YIELD }):
+	if inventory != null and inventory.has_method("can_add_items"):
+		if not inventory.can_add_items({ wood: CHOP_YIELD }):
 			return _fail("no_inventory")
 	# Spend the axe's wear BEFORE the tree changes state, so a broken axe can
 	# never fell a tree for free (the ordering mine_block uses for the pick).
-	if inventory_slice != null and inventory_slice.has_method("use_item"):
-		if not inventory_slice.use_item(axe, "chop"):
+	if inventory != null and inventory.has_method("use_item"):
+		if not inventory.use_item(axe, "chop"):
 			return _fail("axe_broken")
-	if inventory_slice != null and inventory_slice.has_method("add_item"):
-		if not inventory_slice.add_item(wood, CHOP_YIELD):
+	if inventory != null and inventory.has_method("add_item"):
+		if not inventory.add_item(wood, CHOP_YIELD):
 			return _fail("no_inventory")
+	_push_inventory(player_id)
 	_set_chopped(tree_id)
 	return { "success": true, "wood": wood, "quantity": CHOP_YIELD, "reason": "" }
+
+## The inventory a chop by `player_id` resolves against: that player's own pack from
+## the registry when one is wired, else this slice's (`""` = this machine's own
+## player). The same resolve shape `CraftingSlice.inventory_for` uses (see
+## `VoxelSlice.inventory_for` for the full reasoning).
+func inventory_for(player_id: String) -> Node:
+	if player_id != "" and player_registry != null and player_registry.has_method("get_inventory"):
+		var inv: Node = player_registry.get_inventory(player_id)
+		if inv != null:
+			return inv
+	return inventory_slice
+
+## Is `player_id` a player whose own client mirrors this inventory over the wire?
+## False for `""` (this machine's own player) and for the local id, whose pack is live
+## in this process — the same test `game_root._sync_peer_own_state` makes.
+func _is_remote_actor(player_id: String) -> bool:
+	if player_id == "":
+		return false
+	if player_registry != null and "local_player_id" in player_registry:
+		return player_id != str(player_registry.local_player_id)
+	return true
+
+## Phase 42 review — a chop the host resolved for a REMOTE actor changed that player's
+## pack, which lives here (the registry's copy) but is mirrored by the peer's own client.
+## Without this the peer keeps rendering its pre-chop inventory until the next snapshot.
+## Addressed to its owner (Phase 37), so networking delivers it to that peer ALONE (the
+## mechanism the net harness's `inventory_owner` step pins).
+func _push_inventory(player_id: String) -> void:
+	if not _is_remote_actor(player_id):
+		return
+	var inv := inventory_for(player_id)
+	if inv == null or not inv.has_method("get_contents"):
+		return
+	GameBus.inventory_synced.emit(player_id, inv.get_contents(), inv.get_durability_data())
 
 ## Apply a host-authoritative chopped state to a local tree (client path). The
 ## regrowth deadline arrives as a wall-clock Unix second so it stays meaningful
@@ -258,12 +309,12 @@ func _tick_respawn() -> void:
 			_pool.set_transform(int(tree["mi"]), _visual_transform(tree["position"]))
 		GameBus.tree_respawned.emit(str(tid))
 
-## The held axe's item id, or "" when the player holds none. Delegates to the
+## The held axe's item id, or "" when `inventory` holds none. Delegates to the
 ## inventory's fabric-driven tool lookup ("axe" → CarpenterAxe today).
-func _held_axe() -> String:
-	if inventory_slice == null or not inventory_slice.has_method("find_tool"):
+func _held_axe(inventory: Node) -> String:
+	if inventory == null or not inventory.has_method("find_tool"):
 		return ""
-	return str(inventory_slice.find_tool("axe"))
+	return str(inventory.find_tool("axe"))
 
 ## Wall-clock seconds since the Unix epoch. NOT `Time.get_ticks_msec()` — that is
 ## process uptime, which makes a saved regrowth deadline meaningless after a
@@ -275,9 +326,9 @@ func _fail(reason: String) -> Dictionary:
 	push_warning("[Tree] chop FAILED — %s" % reason)
 	return { "success": false, "wood": "", "quantity": 0, "reason": reason }
 
-func _on_chop_requested(tree_id: String) -> void:
+func _on_chop_requested(tree_id: String, player_id: String) -> void:
 	if is_authoritative:
-		chop_tree(tree_id)
+		chop_tree(tree_id, player_id)
 
 func _on_tree_chopped(tree_id: String, _wood: String, _state: String, respawn_at: float) -> void:
 	if is_authoritative:

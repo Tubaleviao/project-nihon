@@ -416,7 +416,7 @@ func _step_chop_in_reach() -> void:
 		return
 	_report_position()
 	await _await_settle(1.0)
-	GameBus.tree_chop_requested.emit(t)
+	GameBus.tree_chop_requested.emit(t, "")
 	await _await_settle(1.5)
 	_report("chop_in_reach", "ok", t)
 
@@ -438,7 +438,7 @@ func _step_chop_out_of_reach() -> void:
 		return
 	_report_position()
 	await _await_settle(0.5)
-	GameBus.tree_chop_requested.emit(t)
+	GameBus.tree_chop_requested.emit(t, "")
 	await _await_settle(1.5)
 	_report("chop_out_of_reach", "refused", t)
 
@@ -471,7 +471,7 @@ func _step_packet_cap() -> void:
 		"type": "tree_chop_intent", "tree_id": oversized, "pad": "x".repeat(9000),
 	})
 	await _await_settle(1.0)
-	GameBus.tree_chop_requested.emit(normal)
+	GameBus.tree_chop_requested.emit(normal, "")
 	await _await_settle(1.5)
 	_report("packet_cap", "ok", normal)
 
@@ -532,7 +532,7 @@ func _step_rate_bucket() -> void:
 	# counts".
 	await _await_settle(3.0)
 	for _i in range(3):
-		GameBus.tree_chop_requested.emit(t)
+		GameBus.tree_chop_requested.emit(t, "")
 		await _await_settle(1.5)
 	_report("rate_bucket", "ok", t)
 
@@ -716,7 +716,7 @@ func _step_disconnect_evicts() -> void:
 # Plumbing
 # ---------------------------------------------------------------------------
 
-func _on_chop_requested(tree_id: String) -> void:
+func _on_chop_requested(tree_id: String, _player_id: String) -> void:
 	_chops.append(tree_id)
 
 ## Deaths this side has announced over the whole run.

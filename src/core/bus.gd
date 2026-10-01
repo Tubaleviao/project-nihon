@@ -278,11 +278,32 @@ signal station_placed(station_id: String, type: String, position: Vector3)
 ## on right-click). normal is the hit face normal, used to disambiguate which
 ## column to mine when the ray strikes a side face. VoxelSlice lowers the
 ## column and yields a material.
-signal block_mine_requested(position: Vector3, normal: Vector3)
+##
+## Phase 42 review — `player_id` names WHO is swinging the pick: `""` is this
+## machine's own player (the `resolve_player` convention, so the local emitter
+## passes it), and the host re-emits a client's intent with the identity bound to
+## that connection. The pick's wear and the yield resolve against THAT player's
+## inventory, which is what stops a client's mine from crediting the host's pack
+## (see `VoxelSlice.inventory_for`).
+## position  : Vector3 — the aimed world position
+## normal    : Vector3 — the hit face normal
+## player_id : String  — the acting player; "" means the local player
+signal block_mine_requested(position: Vector3, normal: Vector3, player_id: String)
 
 ## Request to place a voxel block against the hit face (PlayerSlice on
 ## middle-click). normal is the face normal used to pick the target column.
-signal block_place_requested(position: Vector3, normal: Vector3)
+##
+## Phase 42 review — `player_id` is the same acting identity as
+## `block_mine_requested`, and `material` is the material the actor selected: a
+## remote client's choice, which the host validates against the fabric's material
+## table and spends out of that actor's own pack. `""` means "the receiving
+## slice's own selection" (`VoxelSlice._place_material`), which is what the local
+## emitter passes.
+## position  : Vector3 — the aimed world position
+## normal    : Vector3 — the hit face normal
+## player_id : String  — the acting player; "" means the local player
+## material  : String  — the material to place; "" means the slice's own selection
+signal block_place_requested(position: Vector3, normal: Vector3, player_id: String, material: String)
 
 ## Request to advance the build material selection (PlayerSlice on R).
 signal block_cycle_material_requested()
@@ -331,8 +352,15 @@ signal technology_unlocked(tech_id: String, player_id: String)
 
 ## Request to fell a standing tree (emitted by PlayerSlice on a chop input, or
 ## forwarded by a client to the host). Handled by TreeSlice.
-## tree_id : String — TreeSlice tree id (carried as metadata on the trunk body)
-signal tree_chop_requested(tree_id: String)
+##
+## Phase 42 review — `player_id` names WHO is chopping: `""` is this machine's own
+## player, and the host re-emits a client's intent with the identity bound to that
+## connection. The axe's wear and the wood resolve against THAT player's
+## inventory, which is what stops a client's chop from filling the host's pack
+## (see `TreeSlice.inventory_for`).
+## tree_id   : String — TreeSlice tree id (carried as metadata on the trunk body)
+## player_id : String — the acting player; "" means the local player
+signal tree_chop_requested(tree_id: String, player_id: String)
 
 ## Emitted by TreeSlice with the authoritative result of a chop. A client applies
 ## this instead of chopping locally.

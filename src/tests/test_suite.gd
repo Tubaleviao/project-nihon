@@ -304,6 +304,12 @@ func run() -> void:
 	_run_test("chunk: the self-heal reads the window once",      _test_chunk_self_heal_reads_window_once)
 	_run_test("chunk: an idle drain reads no position",          _test_chunk_idle_drain_reads_no_position)
 	_run_test("chunk: a rig dispatch keeps contents per residency", _test_chunk_rig_dispatch_respects_contents_residency)
+	# Phase 42 fifth review pass — the per-actor harvest, the seam re-scope, the resurrect guard.
+	_run_test("net: a remote mine credits the actor",           _test_net_remote_mine_credits_the_actor)
+	_run_test("net: a remote place spends the actor's pack",    _test_net_remote_place_spends_the_actor)
+	_run_test("net: a remote chop credits the actor",           _test_net_remote_chop_credits_the_actor)
+	_run_test("voxel: a re-scope rebuilds a changed tile's seam", _test_voxel_apply_edits_rebuilds_seam_neighbours)
+	_run_test("voxel: an edit never resurrects an unloaded chunk", _test_voxel_edit_does_not_resurrect_unloaded_chunk)
 	_run_test("player: facing is a normalized yaw vector",      _test_player_facing)
 	_run_test("net: client forwards block intent",               _test_net_voxel_client_forwards_intent)
 	_run_test("net: apply_block_change applies host edit",       _test_net_voxel_apply_block_change)
@@ -3354,6 +3360,65 @@ func _test_voxel_snapshot_rebuild_is_scoped() -> void:
 	assert_true(v._chunks["0,0"] == correct_node, "and the untouched chunk is still not rebuilt")
 	v.free()
 
+## Phase 42 review (fifth pass) — the re-scope path's seam closure. A wall face is the
+## difference against the NEIGHBOUR column (`_wall_cells`), so a changed tile on a
+## chunk's EDGE changes the neighbour's mesh too. `_rebuild_chunk_at_tile` has closed
+## that since the Phase 41 review; `apply_edits` — the snapshot/re-scope path — was
+## rebuilding the tile's own chunk alone, which left a see-through slot (or a ghost
+## collision wall) at the seam until that chunk happened to restream.
+func _test_voxel_apply_edits_rebuilds_seam_neighbours() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+	v.build_chunk(Vector2i(0, 0), flat)
+	v.build_chunk(Vector2i(1, 0), flat)
+	v.build_chunk(Vector2i(5, 5), flat)
+	var own_node: Node3D = v._chunks["0,0"]
+	var seam_node: Node3D = v._chunks["1,0"]
+	var control_node: Node3D = v._chunks["5,5"]
+	# Tile 63 is the LAST column of chunk (0,0) (64 tiles × 0.5 units = 32 world units
+	# per chunk): its east wall is the difference against chunk (1,0)'s tile 64.
+	var edit: Array = [{ "op": "remove", "bottom": 1.0, "top": 2.0 }]
+	v.apply_chunk_manifest({ "0,0": { "edits": { "63,32": edit } } })
+	assert_true(v._chunks["0,0"] != own_node, "the changed tile's own chunk is rebuilt")
+	assert_true(v._chunks["1,0"] != seam_node, "and so is the chunk across the seam it changed")
+	assert_true(v._chunks["5,5"] == control_node, "a chunk that reads nothing of the edit is left alone")
+	# An INTERIOR tile (32 is nowhere near an edge) names its own chunk and no seam: the
+	# closure is not a blanket "rebuild every neighbour", so the scoping the previous pass
+	# added survives. (63,32 is unchanged by this snapshot, so only 32,32 is touched.)
+	var interior_node: Node3D = v._chunks["0,0"]
+	var seam_unmoved: Node3D = v._chunks["1,0"]
+	v.apply_chunk_manifest({ "0,0": { "edits": { "63,32": edit, "32,32": edit } } })
+	assert_true(v._chunks["0,0"] != interior_node, "an interior tile rebuilds its own chunk")
+	assert_true(v._chunks["1,0"] == seam_unmoved, "and names no seam")
+	v.free()
+
+## Phase 42 review (fifth pass) — an edit never resurrects a chunk that is not loaded,
+## on BOTH edit paths. The synchronous fallback (a slice with no manager — the suite)
+## guarded on `_heightmaps`, and since the Phase 41 pass that map deliberately RETAINS
+## the one-tile ring around the loaded window — so an edit on a chunk edge rebuilt, and
+## so resurrected, a chunk `ChunkManager` had already streamed away and would never
+## stream out again. `_chunks` is the guard, exactly as `ChunkManager.request_rebuild`
+## (`_loaded`) and `apply_edits` (`_chunks`) already do it.
+func _test_voxel_edit_does_not_resurrect_unloaded_chunk() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+	v.build_chunk(Vector2i(0, 0), flat)
+	v.build_chunk(Vector2i(1, 0), flat)
+	v.unload_chunk(Vector2i(1, 0))
+	assert_false(v._chunks.has("1,0"), "the neighbour is streamed out, as ChunkManager would")
+	assert_true(v.get_heightmaps().has("1,0"), "but its map is still retained for the loaded ring")
+	# World x 31.75 = tile 63, the last column of chunk (0,0): its seam names chunk (1,0).
+	var r := v.mine_block(Vector3(31.75, 2.0, 16.25))
+	assert_true(r.get("success", false), "the seam column was mined")
+	assert_false(v._chunks.has("1,0"), "and the streamed-out neighbour was not resurrected")
+	v.free()
+
 # ---------------------------------------------------------------------------
 # UiSlice tests (Phase 14 windows)
 # ---------------------------------------------------------------------------
@@ -3941,7 +4006,7 @@ func _test_net_voxel_client_forwards_intent() -> void:
 		intent["action"] = action
 		intent["material"] = material
 	)
-	v._on_mine_requested(Vector3(16.0, 2.0, 16.0), Vector3.UP)
+	v._on_mine_requested(Vector3(16.0, 2.0, 16.0), Vector3.UP, "")
 	assert_eq(intent.get("action", ""), "mine", "client forwards a mine intent")
 	assert_false(v._edits.has("32,32"), "mine_block did not edit this slice directly")
 	v.free()
@@ -4419,7 +4484,7 @@ func _test_net_block_intent_requires_handshake_and_reach() -> void:
 	add_child(n)
 	n._role = NetworkingSlice.Role.HOST
 	var mined: Array = []
-	var on_mine := func(pos: Vector3, normal: Vector3) -> void:
+	var on_mine := func(pos: Vector3, normal: Vector3, _player_id: String) -> void:
 		mined.append([pos, normal])
 	GameBus.block_mine_requested.connect(on_mine)
 
@@ -4460,7 +4525,7 @@ func _test_net_tree_intent_requires_handshake_and_reach() -> void:
 	n._role = NetworkingSlice.Role.HOST
 	n.tree_slice = trees
 	var chops: Array = []
-	var on_chop := func(tree_id: String) -> void:
+	var on_chop := func(tree_id: String, _player_id: String) -> void:
 		chops.append(tree_id)
 	GameBus.tree_chop_requested.connect(on_chop)
 
@@ -4484,6 +4549,167 @@ func _test_net_tree_intent_requires_handshake_and_reach() -> void:
 	GameBus.tree_chop_requested.disconnect(on_chop)
 	n.free()
 	trees.free()
+
+## Phase 42 review (fifth pass) — a world edit resolved on the host for a REMOTE peer is
+## the PEER's resource. Every check and mutation used to go through
+## `VoxelSlice.inventory_slice`, which is the HOST's own pack: a client's mine filled the
+## host's inventory while the client — whose own client mirrors only ITS pack — saw
+## nothing. The acting identity now rides the request (`_route_c2h` binds it to the
+## connection, never to a payload), the resolution goes through `inventory_for(actor)`,
+## and the actor's own client is pushed the result on `inventory_synced` (addressed to its
+## owner, so networking delivers it to that peer alone — Phase 37).
+func _test_net_remote_mine_credits_the_actor() -> void:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var host_inv := InventorySlice.new()
+	add_child(host_inv)
+	var peer_pid := "player_7_1_cafe"
+
+	var v := _make_voxel()
+	v.is_authoritative = true
+	v.inventory_slice = host_inv
+	v.player_registry = reg
+
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.set_player_id(7, peer_pid)
+	n.remember_player_state(7, Vector3.ZERO)
+
+	var mined: Array = []
+	var on_mined := func(material: String, _qty: int, _pos: Vector3) -> void:
+		mined.append(material)
+	GameBus.block_mined.connect(on_mined)
+	var synced: Array = []
+	var on_synced := func(owner: String, _contents: Dictionary, _durabilities: Dictionary) -> void:
+		synced.append(owner)
+	GameBus.inventory_synced.connect(on_synced)
+
+	n._route_c2h(7, { "type": "block_edit_intent", "action": "mine",
+		"position": [16.0, 2.0, 16.0], "normal": [0, 1, 0] })
+
+	assert_eq(mined.size(), 1, "the mine resolved (handshake + reach both pass)")
+	var material := str(mined[0])
+	var peer_inv: Node = reg.get_inventory(peer_pid)
+	assert_eq(peer_inv.get_item_count(material), 1, "the yield lands in the ACTOR's pack")
+	assert_eq(host_inv.get_item_count(material), 0, "and NOT in the host's own pack")
+	assert_true(synced.has(peer_pid), "and the actor's own client is pushed the change")
+
+	GameBus.block_mined.disconnect(on_mined)
+	GameBus.inventory_synced.disconnect(on_synced)
+	v.free()
+	n.free()
+	reg.free()
+
+## The placement half of the same rule: the block comes out of the ACTOR's pack, and the
+## material placed is the one the ACTOR named (not this host's own `_place_material`). A
+## material that is not in the fabric's table grants nothing even when the request "holds"
+## it — the request is a claim, `GameData.MATERIALS` is the authority.
+func _test_net_remote_place_spends_the_actor() -> void:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var host_inv := InventorySlice.new()
+	add_child(host_inv)
+	host_inv.add_item("Ferrite", 4)
+	var peer_pid := "player_7_1_cafe"
+
+	var v := _make_voxel()
+	v.is_authoritative = true
+	v.inventory_slice = host_inv
+	v.player_registry = reg
+	v.set_place_material("Ferrite")   # the HOST's selection — a peer must not inherit it
+
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.set_player_id(7, peer_pid)
+	n.remember_player_state(7, Vector3.ZERO)
+
+	var peer_inv: Node = reg.get_inventory(peer_pid)
+	peer_inv.add_item("Ashite", 2)
+
+	var placed: Array = []
+	var on_placed := func(material: String, _pos: Vector3) -> void:
+		placed.append(material)
+	GameBus.block_placed.connect(on_placed)
+
+	n._route_c2h(7, { "type": "block_edit_intent", "action": "place",
+		"position": [24.0, 2.0, 16.0], "normal": [0, 1, 0], "material": "Ashite" })
+	assert_eq(placed.size(), 1, "the placement resolved")
+	var placed_material := str(placed[0]) if placed.size() > 0 else ""
+	assert_eq(placed_material, "Ashite", "the material placed is the one the ACTOR named")
+	assert_eq(v.get_voxel_height_at(Vector2(24.25, 16.25)), 2.125, "and the block is really there")
+	assert_eq(peer_inv.get_item_count("Ashite"), 1, "spent out of the ACTOR's pack")
+	assert_eq(host_inv.get_item_count("Ashite"), 0, "the host's pack never held it")
+	assert_eq(host_inv.get_item_count("Ferrite"), 4, "and the host's own selection was not spent")
+
+	# A material the fabric does not know: refused before the debit, so it neither
+	# places a ghost block nor costs the actor anything. (Inside chunk "0,0", the only
+	# chunk this rig built — an unbuilt chunk answers BEDROCK_DEPTH and would mask it.)
+	peer_inv.add_item("NotAMaterial", 1)
+	n._route_c2h(7, { "type": "block_edit_intent", "action": "place",
+		"position": [20.0, 2.0, 16.0], "normal": [0, 1, 0], "material": "NotAMaterial" })
+	assert_eq(placed.size(), 1, "a fabricated material emits no placement")
+	assert_eq(v.get_voxel_height_at(Vector2(20.25, 16.25)), 2.0, "and places nothing")
+	assert_eq(peer_inv.get_item_count("NotAMaterial"), 1, "and costs the actor nothing")
+
+	GameBus.block_placed.disconnect(on_placed)
+	v.free()
+	n.free()
+	reg.free()
+
+## The chop half: the wood lands in the CHOPPER's pack and the axe that wears is the
+## chopper's own (a peer used to wear the host's axe and fill the host's pack).
+func _test_net_remote_chop_credits_the_actor() -> void:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var host_inv := InventorySlice.new()
+	add_child(host_inv)
+	host_inv.add_item("CarpenterAxe", 1)
+	var peer_pid := "player_7_1_cafe"
+
+	var t := TreeSlice.new()
+	add_child(t)
+	t.is_authoritative = true
+	t.inventory_slice = host_inv
+	t.player_registry = reg
+	t.spawn_for_chunk(Vector2i(0, 0))
+	var target: Dictionary = t.get_all_trees()[0]
+	var tid: String = str(target["tree_id"])
+	var tree_pos: Vector3 = target["position"]
+
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.tree_slice = t
+	n.set_player_id(7, peer_pid)
+	n.remember_player_state(7, tree_pos + Vector3(10.0, 0.0, 0.0))
+
+	var peer_inv: Node = reg.get_inventory(peer_pid)
+	peer_inv.add_item("CarpenterAxe", 1)
+	var wear_before: float = float(peer_inv.get_durability_data()["CarpenterAxe"][0])
+
+	var synced: Array = []
+	var on_synced := func(owner: String, _contents: Dictionary, _durabilities: Dictionary) -> void:
+		synced.append(owner)
+	GameBus.inventory_synced.connect(on_synced)
+
+	n._route_c2h(7, { "type": "tree_chop_intent", "tree_id": tid })
+
+	assert_eq(str(t.get_tree_record(tid)["state"]), "stump", "the chop resolved on the host")
+	assert_eq(peer_inv.get_item_count("Thornwood"), 2, "the wood lands in the CHOPPER's pack")
+	assert_eq(host_inv.get_item_count("Thornwood"), 0, "and NOT in the host's")
+	assert_true(float(peer_inv.get_durability_data()["CarpenterAxe"][0]) < wear_before,
+		"the axe that wore is the CHOPPER's")
+	assert_true(synced.has(peer_pid), "and the chopper's own client is pushed the change")
+
+	GameBus.inventory_synced.disconnect(on_synced)
+	t.free()
+	n.free()
+	reg.free()
 
 func _test_net_client_packet_size_capped() -> void:
 	# An oversized client packet is dropped before it is parsed: the cap is what keeps
@@ -5804,7 +6030,7 @@ func _test_tree_client_forwards_then_applies_host_chop() -> void:
 	t.spawn_for_chunk(Vector2i(0, 0))
 	var tid: String = str(t.get_all_trees()[0]["tree_id"])
 	var forwarded := {}
-	var listener := func(id): forwarded["id"] = id
+	var listener := func(id, _pid): forwarded["id"] = id
 	GameBus.tree_chop_requested.connect(listener)
 	t.is_authoritative = false
 	var result: Dictionary = t.chop_tree(tid)

@@ -253,7 +253,12 @@ func _ready() -> void:
 	_creature_ai.taming_slice = _taming
 	_voxel.terrain_slice      = _terrain
 	_voxel.inventory_slice    = _inventory
+	# Phase 42 review — the registry, so an edit the host resolves for a REMOTE peer
+	# charges and credits THAT peer's own pack instead of the host's (and pushes the
+	# result back to its client). Same collaborator CraftingSlice got in Phase 37.
+	_voxel.player_registry    = _registry
 	_tree.inventory_slice     = _inventory
+	_tree.player_registry     = _registry
 	# Phase 36 — the wire is policed with evidence the bus cannot carry: a tree chop
 	# intent names only a tree id (its position for the reach check comes from the tree
 	# slice) and a trade invite names a counterparty (resolved against the registry's

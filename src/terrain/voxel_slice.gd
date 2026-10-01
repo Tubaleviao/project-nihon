@@ -5,17 +5,20 @@ extends Node
 ##
 ## Plug contract (GameBus signals consumed / emitted):
 ##   IN  : chunk_ready(chunk_pos, heightmap)
-##         block_mine_requested(position, normal)
-##         block_place_requested(position, normal)
+##         block_mine_requested(position, normal, player_id)
+##         block_place_requested(position, normal, player_id, material)
 ##         block_cycle_material_requested()
 ##   OUT : block_mined(material, quantity, position)
 ##         block_placed(material, position)
 ##         block_place_material_changed(material)
+##         inventory_synced(owner_id, contents, durabilities) — a REMOTE actor's
+##           pack after an edit resolved for it (see `_push_inventory`)
 ##
 ## Public API:
 ##   build_chunk(chunk_pos, heightmap) -> void
-##   mine_block(world_pos, normal)     -> Dictionary  { success, material, quantity, position }
-##   place_block(world_pos, normal)    -> bool
+##   mine_block(world_pos, normal, player_id)  -> Dictionary  { success, material, quantity, position, player_id }
+##   place_block(world_pos, normal, material, player_id) -> bool
+##   inventory_for(player_id)          -> Node       (the actor's own pack)
 ##   get_voxel_height_at(world_pos)    -> float      (the column's TOP, not the
 ##                                                   footing read — see the method)
 ##   sample_support_height_at(world_pos, from_y) -> float
@@ -196,6 +199,13 @@ var _chunk_revision: Dictionary = {}
 ## Set by game_root: terrain (biome + base height) and inventory (material flow).
 var terrain_slice: Node = null
 var inventory_slice: Node = null
+
+## Phase 42 review — the registry that owns one inventory PER PLAYER, so an edit the
+## host resolves for a REMOTE actor spends and credits THAT player's pack instead of
+## this machine's. Optional: an isolated rig (the suite, a probe) leaves it null and
+## every player id falls back to `inventory_slice`, the local bucket (see
+## `inventory_for`).
+var player_registry: Node = null
 
 ## Phase 42 review — the chunk manager, so an edit can DISPATCH its rebuild instead of
 ## building up to three chunks synchronously on the main thread. Optional: a slice with
@@ -712,21 +722,33 @@ func get_heightmaps() -> Dictionary:
 ## any other hit takes the block the ray hit. That is what lets a tunnel ROOF be
 ## mined without taking the tunnel floor with it, and it is why mining is refused
 ## at BEDROCK_DEPTH — there is nothing below the floor to yield.
-func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP) -> Dictionary:
+##
+## Phase 42 review — `player_id` names the actor whose pack is charged and paid:
+## `""` is this machine's own player, and the host re-emits a client's intent with
+## the identity bound to its connection (see `inventory_for`). Resolving against
+## this slice's own `inventory_slice` for every actor was the silent transfer the
+## review found: a client's mine filled the HOST's pack, and the client — whose own
+## client mirrors only its own pack — saw nothing. The pick that wears is the
+## actor's too.
+func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: String = "") -> Dictionary:
 	# Resolve the span BEFORE spending tool durability, so a blocked mine never
 	# consumes the held pick (the repo's standing atomic-refusal rule).
 	var probe := _resolve_edit_tile("mine", world_pos, normal)
 	var tile: Vector2i = probe["tile"]
 	var span := _mine_span(get_runs_at_tile(tile), world_pos, normal)
 	if span.is_empty():
-		return { "success": false, "material": "", "quantity": 0, "position": world_pos }
+		return { "success": false, "material": "", "quantity": 0, "position": world_pos, "player_id": player_id }
+
+	# The ACTOR's own pack: the durability spent and the yield credited are the
+	# acting player's, which for a remote mine is the peer the intent came from.
+	var inventory := inventory_for(player_id)
 
 	# Tool durability: mining consumes the held pick. A broken pick blocks the
 	# mine; bare-handed (no pick) mining is still allowed.
-	var pick := _held_pick()
-	if pick != "" and inventory_slice != null and inventory_slice.has_method("use_item"):
-		if not inventory_slice.use_item(pick, "mine"):
-			return { "success": false, "material": "", "quantity": 0, "position": world_pos }
+	var pick := _held_pick(inventory)
+	if pick != "" and inventory != null and inventory.has_method("use_item"):
+		if not inventory.use_item(pick, "mine"):
+			return { "success": false, "material": "", "quantity": 0, "position": world_pos, "player_id": player_id }
 
 	_append_edit(tile, { "op": "remove", "bottom": span["bottom"], "top": span["top"] })
 	var material := str(span["material"])
@@ -735,20 +757,29 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP) -> Dictionary:
 	_mark_dirty(tile)
 	_rebuild_chunk_at_tile(tile)
 
-	if inventory_slice != null and inventory_slice.has_method("add_item"):
-		inventory_slice.add_item(material, 1)
+	if inventory != null and inventory.has_method("add_item"):
+		inventory.add_item(material, 1)
+	_push_inventory(player_id)
 
 	var pos := Vector3(world_pos.x, float(span["top"]), world_pos.z)
 	GameBus.block_mined.emit(material, 1, pos)
 	GameBus.block_changed.emit("mine", world_pos, normal, material)
-	return { "success": true, "material": material, "quantity": 1, "position": pos }
+	return { "success": true, "material": material, "quantity": 1, "position": pos, "player_id": player_id }
 
 ## Add one STEP_HEIGHT of the selected material on the column under world_pos.
 ## Consumes the material from the inventory. Returns true on success; false if no
 ## material is selected, the cell is already solid, or the build cap is reached.
-func place_block(world_pos: Vector3, normal: Vector3) -> bool:
-	var material := _place_material
-	if material == "":
+##
+## Phase 42 review — `material` is the ACTOR's selection and `player_id` the actor:
+## `""` for either means "this machine's own" (its `_place_material`, its pack), and
+## the host re-emits a client's intent with the identity bound to that connection
+## plus the material the client named. Two rules keep a client-declared material
+## from granting anything: it must be a real fabric material, and the debit lands on
+## the actor's own pack — so a peer can only ever place what it actually holds. Both
+## are checked BEFORE the debit and the edit (the atomic-refusal rule).
+func place_block(world_pos: Vector3, normal: Vector3, material: String = "", player_id: String = "") -> bool:
+	var chosen := material if material != "" else _place_material
+	if chosen == "" or not GameData.MATERIALS.has(chosen):
 		return false
 
 	# The placement is validated BEFORE anything is spent, so a refused placement
@@ -759,17 +790,19 @@ func place_block(world_pos: Vector3, normal: Vector3) -> bool:
 	if span.is_empty():
 		return false
 
-	if inventory_slice != null and inventory_slice.has_method("drop_item"):
-		if not inventory_slice.drop_item(material, 1):
+	var inventory := inventory_for(player_id)
+	if inventory != null and inventory.has_method("drop_item"):
+		if not inventory.drop_item(chosen, 1):
 			return false
 
-	_append_edit(tile, { "op": "add", "bottom": span["bottom"], "top": span["top"], "material": material })
+	_append_edit(tile, { "op": "add", "bottom": span["bottom"], "top": span["top"], "material": chosen })
 	_mark_dirty(tile)
 	_rebuild_chunk_at_tile(tile)
+	_push_inventory(player_id)
 
 	var pos := Vector3(probe["xz"].x, float(span["top"]), probe["xz"].y)
-	GameBus.block_placed.emit(material, pos)
-	GameBus.block_changed.emit("place", world_pos, normal, material)
+	GameBus.block_placed.emit(chosen, pos)
+	GameBus.block_changed.emit("place", world_pos, normal, chosen)
 	return true
 
 ## Top of the column at a world XZ position — the highest solid run's top, or
@@ -828,6 +861,14 @@ func get_edits() -> Dictionary:
 ## stall per scope change. And a chunk that was streamed out has no mesh to
 ## refresh: building it here would resurrect the node `ChunkManager` has already
 ## streamed away, which it will then never unload again.
+##
+## A changed TILE names the chunks whose mesh reads it (`_touched_chunks`), not just
+## the chunk the tile sits in: a wall face is the difference against the NEIGHBOUR
+## column, so an edit on a chunk's edge leaves the neighbour's old wall standing — a
+## see-through slot or a ghost wall at the seam — until that chunk happens to
+## restream. `_rebuild_chunk_at_tile` has closed this since the Phase 41 review; this
+## is the same closure on the re-scope path, which was still rebuilding the tile's own
+## chunk alone.
 func apply_edits(edits: Dictionary, materials: Dictionary = {}) -> void:
 	var previous: Dictionary = _edits
 	var next: Dictionary = {}
@@ -845,16 +886,23 @@ func apply_edits(edits: Dictionary, materials: Dictionary = {}) -> void:
 	var touched: Dictionary = {}
 	for key in next:
 		if not _ops_equal(previous.get(key, null), next[key]):
-			touched[_chunk_key(_tile_to_chunk(_key_to_tile(str(key))))] = true
+			_mark_touched_tile(touched, _key_to_tile(str(key)))
 	for key in previous:
 		if not next.has(key):
-			touched[_chunk_key(_tile_to_chunk(_key_to_tile(str(key))))] = true
+			_mark_touched_tile(touched, _key_to_tile(str(key)))
 	_edits = next
 	for ckey in touched:
 		if not _chunks.has(ckey) or not _heightmaps.has(ckey):
 			continue   # nothing to refresh: unloaded chunks rebuild when streamed in
 		var parts: PackedStringArray = str(ckey).split(",")
 		build_chunk(Vector2i(int(parts[0]), int(parts[1])), _heightmaps[ckey])
+
+## Mark every chunk whose mesh reads `tile` — the tile's own chunk plus each
+## edge-adjacent one it sits on the edge of (see `_touched_chunks`) — as needing a
+## rebuild. The one place a tile-level change is turned into chunk-level work.
+func _mark_touched_tile(touched: Dictionary, tile: Vector2i) -> void:
+	for chunk in _touched_chunks(tile):
+		touched[_chunk_key(chunk)] = true
 
 ## True when two op lists describe exactly the same edits — the comparison a
 ## re-scope snapshot needs before it decides a chunk's mesh is already correct.
@@ -1282,24 +1330,64 @@ func _terrain_material() -> StandardMaterial3D:
 func _on_chunk_ready(chunk_pos: Vector2i, heightmap: Array) -> void:
 	build_chunk(chunk_pos, heightmap)
 
-func _on_mine_requested(position: Vector3, normal: Vector3) -> void:
+func _on_mine_requested(position: Vector3, normal: Vector3, player_id: String) -> void:
 	if is_authoritative:
-		mine_block(position, normal)
+		mine_block(position, normal, player_id)
 	else:
 		GameBus.block_edit_intent.emit("mine", position, normal, "")
 
-## The held mining pick's item_id, or "" when the player has none. Delegates to
-## the inventory's fabric-driven tool lookup ("pick" → FerritePick/VeilsteelPick).
-func _held_pick() -> String:
-	if inventory_slice == null or not inventory_slice.has_method("find_tool"):
-		return ""
-	return str(inventory_slice.find_tool("pick"))
+## The inventory an edit by `player_id` resolves against: that player's own pack from
+## the registry when one is wired, else this slice's (`""` = this machine's own
+## player, the Phase 34 `resolve_player` convention). The same resolve shape
+## `CraftingSlice.inventory_for` uses, and for the same reason: one process holds one
+## inventory per player, so a host resolving an action for a peer must reach THAT
+## player's, never its own (see `mine_block`).
+func inventory_for(player_id: String) -> Node:
+	if player_id != "" and player_registry != null and player_registry.has_method("get_inventory"):
+		var inv: Node = player_registry.get_inventory(player_id)
+		if inv != null:
+			return inv
+	return inventory_slice
 
-func _on_place_requested(position: Vector3, normal: Vector3) -> void:
+## Is `player_id` a player whose own client mirrors this inventory over the wire? False
+## for `""` (this machine's own player) and for the local id, whose pack is live in this
+## process and already in sync — the same test `game_root._sync_peer_own_state` makes
+## before it sends. A slice with no registry (an isolated rig) answers true for any
+## non-empty id: it cannot tell, and the sync signal is addressee-filtered anyway.
+func _is_remote_actor(player_id: String) -> bool:
+	if player_id == "":
+		return false
+	if player_registry != null and "local_player_id" in player_registry:
+		return player_id != str(player_registry.local_player_id)
+	return true
+
+## Phase 42 review — an edit the host resolved for a REMOTE actor changed that player's
+## pack, which lives HERE (the registry's copy) but is mirrored by the peer's own
+## client. Without this the client keeps rendering its pre-edit inventory until the next
+## snapshot — the client's half of the transfer the review found missing. The signal is
+## addressed to its owner (Phase 37), so networking delivers it to that peer ALONE; it
+## is the same mechanism the net harness's `inventory_owner` step pins.
+func _push_inventory(player_id: String) -> void:
+	if not _is_remote_actor(player_id):
+		return
+	var inv := inventory_for(player_id)
+	if inv == null or not inv.has_method("get_contents"):
+		return
+	GameBus.inventory_synced.emit(player_id, inv.get_contents(), inv.get_durability_data())
+
+## The held mining pick's item id, or "" when `inventory` holds none. Delegates to the
+## inventory's fabric-driven tool lookup ("pick" → FerritePick/VeilsteelPick).
+func _held_pick(inventory: Node) -> String:
+	if inventory == null or not inventory.has_method("find_tool"):
+		return ""
+	return str(inventory.find_tool("pick"))
+
+func _on_place_requested(position: Vector3, normal: Vector3, player_id: String, material: String) -> void:
+	var chosen := material if material != "" else _place_material
 	if is_authoritative:
-		place_block(position, normal)
+		place_block(position, normal, chosen, player_id)
 	else:
-		GameBus.block_edit_intent.emit("place", position, normal, _place_material)
+		GameBus.block_edit_intent.emit("place", position, normal, chosen)
 
 func _on_cycle_requested() -> void:
 	cycle_place_material()
@@ -1577,14 +1665,21 @@ func _column_top_at_tile(tile: Vector2i) -> float:
 ##     streamed away (see `apply_edits`).
 ##
 ## A slice with NO manager wired (the suite, a probe) keeps the synchronous build, and only
-## for a chunk that already holds a cached heightmap — the same rule as before.
+## for a chunk that is LOADED — the same rule `ChunkManager.request_rebuild` applies on the
+## other path (`if not _loaded.has(key): return`), and the same rule `apply_edits` applies
+## for a re-scope. The guard used to be `_heightmaps.has(ckey)`, and since the Phase 41
+## review that map deliberately RETAINS the one-tile ring around the loaded window, so an
+## unloaded neighbour that a loaded chunk can still ask about answered TRUE: an edit on a
+## chunk edge rebuilt — and so RESURRECTED — a chunk `ChunkManager` had already streamed
+## away and would never stream out again. A loaded chunk always has its cached map
+## (`build_chunk` stores it and `_prune_heightmaps` keeps it), so `_chunks` is the guard.
 func _rebuild_chunk_at_tile(tile: Vector2i) -> void:
 	for chunk in _touched_chunks(tile):
 		if chunk_manager != null and chunk_manager.has_method("request_rebuild"):
 			chunk_manager.request_rebuild(chunk)
 			continue
 		var ckey := _chunk_key(chunk)
-		if _heightmaps.has(ckey):
+		if _chunks.has(ckey):
 			build_chunk(chunk, _heightmaps[ckey])
 
 ## The chunks whose mesh reads `tile`, deduplicated: the tile's own chunk plus each

@@ -3432,7 +3432,11 @@ chunk is queued further out than it is needed.
   `--quit --server`, no `SCRIPT ERROR` — six more tests (a failed REBUILD of an already-built
   chunk heals, the stationary throttle suppresses a re-arm, a crossing stamps the self-heal
   clock, the self-heal reads the window once, an idle drain reads no position, and a rig
-  dispatch keeps contents per residency).** ***
+  dispatch keeps contents per residency).** **FIFTH review pass: `7787/7787 passed (0 failed)`
+  on `--quit` and on `--quit --server`, no `SCRIPT ERROR`, and `10/10 steps agreed` from the net
+  harness — five more tests (a remote mine credits the actor, a remote place spends the actor's
+  own pack, a remote chop credits the actor, a re-scope rebuilds a changed tile's seam, and an
+  edit never resurrects an unloaded chunk).** ***
 
 **Implementation notes:**
 - **Godot's threading rule is what makes the split mandatory.** Scene-tree
@@ -3723,12 +3727,91 @@ with its probe alone to show its single failing line. Use the batched boot for a
 re-run any finding whose subject is SHARED STATE (a dictionary another finding's policy also
 gates) on its own.
 
+**FIFTH review-pass notes (a fifth post-phase review — three findings, all three real and all
+closed in `fix(terrain,world,net,test,docs): Phase 42 review pass 5`):**
+
+The list was three items: one Critical (a client's mine/chop/place crediting the HOST's
+inventory) and two Medium. It was written against `d2383db` — the Phase 41 review pass, i.e.
+BEFORE this phase — so every line reference was stale (the window it cites as
+`voxel_slice.gd:435-473` is `_wall_cells` on today's file, while on the reviewer's checkout it is
+`mine_block`'s inventory credit). Every claim was re-derived from the source; all three held,
+though item 3's real blast radius is narrower than its phrasing implies (see below).
+
+1. **A client's mine, chop or place credited the HOST's inventory — the client got nothing.**
+   The host resolves a peer's intent, and every check and mutation on that path went through
+   `VoxelSlice.inventory_slice` / `TreeSlice.inventory_slice`, which are the LOCAL player's own
+   pack: the material a client mined filled the host's inventory, the axe it swung wore the
+   host's, and a block it placed came out of the host's stack. The peer's own client mirrors only
+   ITS pack, so it never saw the yield at all — a silent transfer, not a visual desync. It could
+   not be fixed inside the slice either: `_route_c2h` deliberately refuses to read an identity
+   out of a payload (Phase 36), so the host had no name for the actor to begin with.
+   Fix, mirroring the Phase 37 crafting shape: `player_id` rides the three request signals
+   (`block_mine_requested`, `block_place_requested`, `tree_chop_requested`), the host's intent
+   arms pass `_actor_id(sender)` — the identity bound to the CONNECTION, never a payload claim —
+   both slices gained `player_registry` (wired in `game_root`) plus an `inventory_for(actor)`, and
+   an action resolved for a remote actor pushes the result on the owner-addressed
+   `inventory_synced` that networking already delivers to that peer alone (the mechanism the
+   harness's `inventory_owner` step pins). A placement's `material` is the client's claim again,
+   so two rules keep it from granting anything: it must be a real `GameData.MATERIALS` key, and
+   the debit lands on the actor's own pack — a peer can place only what it actually holds.
+   RED-proved: `net: a remote mine credits the actor` (`expected 1, got 0` on the actor's pack,
+   `expected 0, got 1` on the host's), `net: a remote chop credits the actor`, and
+   `net: a remote place spends the actor's pack` (nothing placed at all while the host's own
+   selection was what got spent: `expected 1, got 0`).
+2. **An edit could RESURRECT a streamed-out chunk through the synchronous fallback.** The
+   manager path has checked `_loaded` since pass 1; a slice with NO manager (the suite, a probe)
+   kept the older `if _heightmaps.has(ckey)` guard — and since the Phase 41 pass that map
+   deliberately RETAINS the one-tile ring around the loaded window, so an unloaded neighbour that
+   a loaded chunk can still ask about answered TRUE. An edit on a chunk edge then rebuilt it,
+   resurrecting a node `ChunkManager` had already streamed away and would never stream out again.
+   The guard is `_chunks` now: a loaded chunk always holds its cached map (`build_chunk` stores
+   it, `_prune_heightmaps` keeps it), which is the rule `request_rebuild` (`_loaded`) and
+   `apply_edits` (`_chunks` + `_heightmaps`) already apply on the other paths.
+   RED-proved: `voxel: an edit never resurrects an unloaded chunk` (the streamed-out neighbour
+   comes back into `_chunks`).
+3. **`apply_edits` closed no seam: a re-scope rebuilt the changed tile's own chunk alone.** A
+   wall face is the difference against the NEIGHBOUR column (`_wall_cells`), so a changed tile on
+   a chunk's EDGE changes the neighbour's mesh too. The Phase 41 pass closed that for
+   `_rebuild_chunk_at_tile` — which every LIVE edit path goes through — and left `apply_edits`
+   behind; `apply_edits` is the RE-SCOPE path (the join snapshot and every AOI re-scope).
+   Worth stating the real blast radius instead of the summary's: on a join the client streams the
+   snapshot's chunks AFTER adopting them (`world_snapshot_received` precedes that chunk's
+   `chunk_ready` build), so the seam is usually built correctly from the start, and any error
+   self-heals when the neighbour restreams — which is why this is Medium, not the see-through
+   world the item's phrasing suggests. What the fix closes is the residue: a re-scope that edits
+   a chunk the client ALREADY holds next to another held chunk, where the neighbour's old wall
+   stands until something else rebuilds it. `_mark_touched_tile` is now the one place a
+   tile-level change becomes chunk-level work, so the two paths cannot drift apart again.
+   RED-proved: `voxel: a re-scope rebuilds a changed tile's seam` (`and so is the chunk across
+   the seam it changed`). The same test pins the OTHER direction — an interior tile still names
+   its own chunk only, and a third chunk that reads nothing of the edit is left untouched — so
+   the seam closure cannot decay into a blanket neighbour rebuild.
+
+**A fifth pass over a phase's edit path is where the ARITY cost lives.** Three signals gained a
+parameter, and here that is never a one-file change: every emitter (`player_slice`'s three
+inputs, `tree_slice.chop_tree`'s client forward, `networking_slice`'s two host arms), every
+handler (`voxel_slice`'s two, `tree_slice`'s one, `networking_slice._on_tree_chop_requested`),
+the plug-contract docstrings of all three slices, and both test drivers (the suite passes the
+signal's owning slice by hand; the net harness drives the bus directly). A stale 2-argument
+emit or handler is a RUNTIME error in GDScript, not a parse error — and one stale DIRECT call
+(`test_suite` invoked `_on_mine_requested()` itself) aborted the whole suite's compile and
+printed a green-LOOKING boot with ZERO tests run. Grep each signal before and after, and check
+the test COUNT, not just "0 failed".
+
 **Known simplifications (deferred):**
 - **An edit's mesh lands a frame or two later.** Since the review pass, a mine/place
   DISPATCHES its chunk rebuild (and any seam neighbour's) to the worker instead of building
   it in the frame that applied the edit, so the visual update arrives when that build does.
   The edit LOG is immediate, so everything that reads the world rather than the mesh —
   footing (`sample_support_height_at`), further edits, persistence — is unaffected.
+- **A client's own harvest is confirmed by the host, never predicted.** Since the fifth review
+  pass the host resolves a peer's mine/chop/place against THAT peer's own pack and pushes the
+  result back on the owner-addressed `inventory_synced`, so the peer sees its yield only once the
+  round trip lands — there is no client-side prediction of the edit or of the material, for the
+  same reason the block's mesh arrives with the host's `block_changed`. The durability a remote
+  actor's pick or axe spends is the host's number too, so a client cannot wear its own tools
+  locally (only report the wear the host resolved). Making the remote half feel instant again
+  means client-side prediction plus reconciliation, which the phase does not carry.
 - **No priority job queue or cancellation.** Loads are nearest-first, and a
   chunk that falls out of range while queued is still built (and then unloaded).
   **(Closed in the second review pass for the cancellation half: a queued chunk that leaves

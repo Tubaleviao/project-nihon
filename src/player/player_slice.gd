@@ -205,7 +205,9 @@ func _input(event: InputEvent) -> void:
 		if _aimed_pickup_id != "":
 			_try_pickup_aimed()
 		elif _aimed_tree_id != "":
-			GameBus.tree_chop_requested.emit(_aimed_tree_id)
+			# "" = this machine's own player; the host binds the real actor to the
+			# connection when the intent reaches it (see bus.gd's signal note).
+			GameBus.tree_chop_requested.emit(_aimed_tree_id, "")
 		else:
 			_try_attack()
 	# F key → melee attack the nearest creature in range.
@@ -214,11 +216,14 @@ func _input(event: InputEvent) -> void:
 	# Right-click → mine the aimed terrain block.
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
 		if _aimed_block_hit:
-			GameBus.block_mine_requested.emit(_aimed_block_pos, _aimed_block_normal)
+			GameBus.block_mine_requested.emit(_aimed_block_pos, _aimed_block_normal, "")
 	# Middle-click → place a block against the aimed terrain face.
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_MIDDLE:
 		if _aimed_block_hit:
-			GameBus.block_place_requested.emit(_aimed_block_pos, _aimed_block_normal)
+			# Both trailing args are "" = this machine's own player and its own
+			# material selection; a client's placement travels to the host as a
+			# `block_edit_intent` carrying that selection (see `_on_place_requested`).
+			GameBus.block_place_requested.emit(_aimed_block_pos, _aimed_block_normal, "", "")
 	# R key → cycle the build material.
 	if event is InputEventKey and event.pressed and event.keycode == KEY_R:
 		GameBus.block_cycle_material_requested.emit()
