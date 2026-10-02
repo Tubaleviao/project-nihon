@@ -2128,11 +2128,16 @@ func _apply_edit(action: String, position: Vector3, normal: Vector3, material: S
 		# Phase 43 — the client records the SAME depletion the host did: both evaluate the
 		# same field over the same log, so the vein's reserve agrees with nothing extra on
 		# the wire (and a re-scope snapshot carries the deplete op if a change was missed).
+		# The yield is resolved BEFORE the remove (its depth is the span's), but recorded
+		# AFTER it — the host's order in `mine_block` — so an anchor tile's op log is
+		# identical on both sides (`_ops_equal` compares positionally) and an exhaustion
+		# rebuild never gathers the pre-mine column.
+		var yielded: Dictionary = {}
 		if str(span["material"]) == "":
-			var yielded := _natural_yield(tile, span)
-			if not (yielded["vein"] as Dictionary).is_empty():
-				_record_depletion(yielded["vein"], int(yielded["quantity"]))
+			yielded = _natural_yield(tile, span)
 		_append_edit(tile, { "op": "remove", "bottom": span["bottom"], "top": span["top"] })
+		if not yielded.is_empty() and not (yielded["vein"] as Dictionary).is_empty():
+			_record_depletion(yielded["vein"], int(yielded["quantity"]))
 		_rebuild_chunk_at_tile(tile)
 		return {
 			"applied": true, "tile": tile, "new_h": _column_top_at_tile(tile),
