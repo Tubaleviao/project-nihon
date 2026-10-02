@@ -1160,15 +1160,21 @@ func apply_edits(edits: Dictionary, materials: Dictionary = {}) -> void:
 	# task was left to be awaited by nobody but the frame path — the mesh that landed was
 	# whichever one won the race. With no manager wired (the suite, a probe) the synchronous
 	# build stays, and only for a chunk that is LOADED.
+	#
+	# Phase 42 review pass 11 — the manager path is NOT gated on `_chunks`: a chunk whose
+	# FIRST build is still on a worker is in the manager's streamed set but not yet in
+	# `_chunks`, and that build read the pre-snapshot edit log. Skipping it attached a mesh
+	# without the snapshot's edits and nothing ever rebuilt it. `request_rebuild` supersedes
+	# the in-flight build and is itself a no-op for a chunk outside the streamed set.
 	for ckey in touched:
-		if not _chunks.has(ckey) or not _heightmaps.has(ckey):
-			continue   # nothing to refresh: unloaded chunks rebuild when streamed in
 		# `ckey` is a CHUNK key ("cx,cz"); the same "x,y" parse as a tile key reads it.
 		var parts: PackedStringArray = str(ckey).split(",")
 		var chunk := Vector2i(int(parts[0]), int(parts[1]))
 		if chunk_manager != null and chunk_manager.has_method("request_rebuild"):
 			chunk_manager.request_rebuild(chunk)
 			continue
+		if not _chunks.has(ckey) or not _heightmaps.has(ckey):
+			continue   # nothing to refresh: unloaded chunks rebuild when streamed in
 		build_chunk(chunk, _heightmaps[ckey])
 
 ## Mark every chunk whose mesh reads `tile` — the tile's own chunk plus each

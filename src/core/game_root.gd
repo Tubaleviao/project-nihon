@@ -78,6 +78,12 @@ var _pending_host_boot: bool = false
 ## loading screen and the movement freeze, and all it does at the end is release both.
 var _pending_client_boot: bool = false
 
+## Phase 42 review pass 11 — true once this join's FIRST snapshot has released the player.
+## The host also sends a re-scope snapshot on every area-of-interest crossing, through the
+## same handler; those must not raise the loading screen (and freeze the body) mid-game.
+## Reset when a new connection starts, so a reconnect waits for its ring again.
+var _client_boot_done: bool = false
+
 ## Phase 42 — how long the host boot will wait for its first ring before placing the
 ## player anyway. The gate is a BUILD ON A WORKER, and a stalled or dead task must not
 ## hang the boot for good with the loading screen up and no player: past this the tail
@@ -628,6 +634,17 @@ func _boot_host() -> void:
 	_boot_server()
 
 	_loading_screen.begin()
+	# Phase 42 review pass 11 — `_boot_server` armed the ring around the PRE-SPAWN body,
+	# which is the origin chunk. A host who logged off elsewhere is moved there by
+	# `_restore_local_player` only in the tail, AFTER the gate opened, onto chunks nobody
+	# had dispatched. Place the (now frozen) body at the saved position first and re-arm
+	# the ring and the window around it; the origin chunks still queued fall outside the
+	# window and are dropped by the drain.
+	var saved_pos: Variant = _saved_local_position()
+	if saved_pos != null:
+		_player.spawn_at(saved_pos)
+		_chunk_manager.build_first_ring(_chunk_manager.player_chunk())
+		_chunk_manager.refresh()
 	_host_boot_wait_elapsed = 0.0
 	if _chunk_manager.is_first_ring_ready():
 		_finish_host_boot()
@@ -681,6 +698,7 @@ func _quit_after_boot_if_asked(role: String) -> void:
 ## so a stalled build cannot leave a client frozen forever.
 func _finish_client_boot() -> void:
 	_pending_client_boot = false
+	_client_boot_done = true
 	# Phase 42 review pass 3 — this runs on BOTH paths: the waiting one (which showed the
 	# screen) and the ALREADY-READY early return in `_on_world_snapshot_received` (which
 	# did not). Only the first one ever held the player, so ask the screen whether
@@ -842,6 +860,7 @@ func _boot_client() -> void:
 		_snapshot_pending = false
 		return
 	_snapshot_pending = true
+	_client_boot_done = false
 	_snapshot_elapsed = 0.0
 	_handshake_elapsed = 0.0
 	_handshake_retries = 0
@@ -1281,6 +1300,11 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 	_chunk_manager.build_first_ring(_chunk_manager.player_chunk())
 	_chunk_manager.refresh()
 	_snapshot_pending = false
+	# Phase 42 review pass 11 — a re-scope snapshot (the join is already released, or its
+	# wait is still running) keeps the ring's head start above but never (re)starts the
+	# wait: that popped the loading screen mid-game and reset a running wait's timeout.
+	if _client_boot_done or _pending_client_boot:
+		return
 	if _chunk_manager.is_first_ring_ready():
 		_finish_client_boot()
 		return
@@ -1537,9 +1561,9 @@ func _restore_local_player() -> void:
 	if pid.is_empty():
 		return
 	var rec := _registry.get_record(pid)
-	var arr = rec.get("position", [])
-	if arr is Array and (arr as Array).size() >= 3:
-		_player.spawn_at(Vector3(float(arr[0]), float(arr[1]), float(arr[2])))
+	var saved_pos: Variant = _saved_local_position()
+	if saved_pos != null:
+		_player.spawn_at(saved_pos)
 	var hp := float(rec.get("hp", -1.0))
 	if hp >= 0.0:
 		_player.set_hp(hp)
@@ -1548,6 +1572,18 @@ func _restore_local_player() -> void:
 		_technology.apply_statuses(tech, pid)
 	# Phase 35 — the local player's taming flags and companion bindings.
 	_taming.apply_record(rec, pid)
+
+## The local player's recorded position, or null when there is no identity or the
+## record carries none. Read by the host boot (to arm the first ring where the player
+## will stand) and by `_restore_local_player`.
+func _saved_local_position() -> Variant:
+	var pid := _registry.local_player_id
+	if pid.is_empty():
+		return null
+	var arr = _registry.get_record(pid).get("position", [])
+	if arr is Array and (arr as Array).size() >= 3:
+		return Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
+	return null
 
 ## Read the world record and the LOCAL player's record off disk. A missing world
 ## record is NOT an error — a server with no save boots a fresh world.
