@@ -190,6 +190,14 @@ var _heightmaps: Dictionary = {}
 ## what the player DID, not a replacement of what the ground IS.
 var _edits: Dictionary = {}
 
+## Phase 42 review pass 10 — `_edits` INDEXED BY CHUNK, so a build's gather reads only the
+## chunks it can reach instead of scanning (and string-splitting) the WHOLE log on every
+## dispatch. `_dirty_chunks` already keys by chunk for the write side; this is the read-side
+## counterpart — `"cx,cz"` → `{ "gx,gz": true }` — kept in step by `_set_edit_ops` (the one
+## place `_edits` is written), so `_gather_edits` is proportional to the edits a chunk and
+## its one-tile ring actually hold rather than to every edit in the world.
+var _edits_by_chunk: Dictionary = {}
+
 ## Chunks touched by an edit since the last save, keyed by "cx,cz" string → true.
 ## Drives the per-chunk persistence manifest so only dirty chunks are re-serialized.
 var _dirty_chunks: Dictionary = {}
@@ -253,8 +261,18 @@ func _ready() -> void:
 	# any worker can exist. `_biome_rolls` is a `static var` on THIS script, and this script
 	# is exactly what a chunk-build task holds (`ChunkManager.VoxelBuilder`), so a cache that
 	# filled lazily on first use was mutable class state reachable from a worker thread. After
-	# this loop the table is READ-ONLY by contract, and the worker half never even reads it:
-	# the colours it needs arrive resolved in the table it is handed (`collect_build_runs`).
+	# this loop the table is READ-ONLY by contract.
+	#
+	# Phase 42 review pass 10 — the safety is "WRITTEN on the main thread before any worker
+	# exists, read-only afterwards", not "never read by a worker": the worker DOES read it. A
+	# worker's resolve reaches it through `run_color` → `natural_color` → `material_for_biome`
+	# → `_biome_roll_table`, so the read is real and the read-only-after-warmup contract is
+	# what makes it safe. (The ninth pass's comment claimed the worker "never even reads it",
+	# which is false — the colours it is handed are keyed by material, and it resolves the
+	# material itself.) The read is also only well-defined because EVERY biome the gather can
+	# hand in has a table entry: `material_for_biome` silently answers Ferrite for a biome
+	# absent from `BIOME_MATERIALS`, so `BIOME_KEYS ⊆ BIOME_MATERIALS` is load-bearing and is
+	# pinned by `voxel: every canonical biome has a roll table`.
 	for biome in BIOME_MATERIALS:
 		_biome_roll_table(str(biome))
 	_world_floor = StaticBody3D.new()
@@ -427,29 +445,36 @@ func gather_build_input(chunk_pos: Vector2i, heightmap: Array) -> Dictionary:
 		"biomes":               gather_biomes_for(chunk_pos),
 	}
 
-## The edited tiles of the chunk + its one-tile ring, deep-copied. Iterating the edit LOG (rather
-## than the ring's 4356 tiles) keeps this proportional to how much has been edited; a fresh
-## world gathers nothing at all.
+## The edited tiles of the chunk + its one-tile ring, deep-copied. It walks the CHUNK INDEX
+## (`_edits_by_chunk`) and not the whole `_edits` log, so it is proportional to how much has
+## been edited around THIS chunk; a fresh world gathers nothing at all.
+##
+## Phase 42 review pass 10 — this used to iterate every key in `_edits` and `split(",")` its
+## string to test it against the window bounds, i.e. one string split per edit in the WORLD
+## per dispatch (the row's measurement), even when nothing near the chunk had been touched.
+## The ring is at most 3×3 chunks (`_ring_chunks`), and every tile of the chunk+ring window
+## belongs to one of those chunks, so reading their three buckets IS the window.
 func _gather_edits(chunk_pos: Vector2i) -> Dictionary:
 	var out: Dictionary = {}
-	if _edits.is_empty():
+	if _edits_by_chunk.is_empty():
 		return out
-	var gx0 := chunk_pos.x * CHUNK_SIZE - 1
-	var gz0 := chunk_pos.y * CHUNK_SIZE - 1
-	var gx1 := gx0 + CHUNK_SIZE + 1
-	var gz1 := gz0 + CHUNK_SIZE + 1
-	for key in _edits:
-		var parts: PackedStringArray = str(key).split(",")
-		if parts.size() != 2:
-			continue
-		var gx := int(parts[0])
-		var gz := int(parts[1])
-		if gx < gx0 or gx > gx1 or gz < gz0 or gz > gz1:
-			continue
-		out[key] = _edits[key].duplicate(true)
+	for chunk in _ring_chunks(chunk_pos):
+		var bucket: Dictionary = _edits_by_chunk.get(_chunk_key(chunk), {})
+		for key in bucket:
+			out[key] = _edits[key].duplicate(true)
 	return out
 
 ## The heightmaps of the chunks the ring reads across, when they are KNOWN.
+##
+## Phase 42 review pass 10 — the maps are shared BY REFERENCE, deliberately, and this is the
+## stated half of an asymmetry with `_gather_edits` (which DEEP-COPIES the op lists). The
+## reason is which of the two the main thread ever mutates in place: an edit op list is
+## APPENDED to (`_append_edit` does `ops.append` on the very array the worker may be reading),
+## so it must be copied; a heightmap array is only ever REPLACED wholesale (`build_chunk`
+## stores a freshly generated one, `_prune_heightmaps` erases the entry) and never mutated in
+## place, so sharing it is safe — the worker only reads it, and a rebuild that regenerates the
+## map hands the worker a NEW array rather than editing the array it holds. If a future change
+## ever writes a heightmap IN PLACE, it must copy here too.
 func _gather_neighbour_heightmaps(chunk_pos: Vector2i) -> Dictionary:
 	var out: Dictionary = {}
 	for chunk in _ring_chunks(chunk_pos):
@@ -1122,6 +1147,9 @@ func apply_edits(edits: Dictionary, materials: Dictionary = {}) -> void:
 		if not next.has(key):
 			_mark_touched_tile(touched, _key_to_tile(str(key)))
 	_edits = next
+	# The read-side chunk index is re-derived with it (Phase 42 review pass 10): the log was
+	# replaced in one assignment, so the index is rebuilt rather than diffed.
+	_reindex_edits()
 	# Phase 42 review pass 8 — this is the REBUILD half of the re-scope, and it goes through
 	# the manager exactly like an edit does (`_rebuild_chunk_at_tile`): `request_rebuild`
 	# dispatches the build to a WORKER (so a snapshot that changed a corner — three touched
@@ -1803,15 +1831,51 @@ func _append_edit(tile: Vector2i, op: Dictionary) -> void:
 	var key := _tile_key(tile)
 	if not _edits.has(key):
 		_edits[key] = []
+		_index_edit(key)
 	var ops: Array = _edits[key]
 	ops.append(op)
 	if ops.size() <= MAX_TILE_OPS:
 		return
 	var compacted := _compact_ops(tile)
 	if compacted.is_empty():
-		_edits.erase(key)   # back to natural: the whole log was cancelled work
+		_set_edit_ops(key, [])   # back to natural: the whole log was cancelled work
 	else:
 		_edits[key] = compacted
+
+## The ONE place a tile's op log is written, so the chunk index (`_edits_by_chunk`) cannot
+## drift from `_edits` (Phase 42 review pass 10). An EMPTY list drops the tile: it is back to
+## its natural self, and both the log entry and its index mark go.
+func _set_edit_ops(tile_key: String, ops: Array) -> void:
+	if ops.is_empty():
+		_edits.erase(tile_key)
+		_unindex_edit(tile_key)
+		return
+	_edits[tile_key] = ops
+	_index_edit(tile_key)
+
+## Record `tile_key` under its chunk in the read-side index (idempotent).
+func _index_edit(tile_key: String) -> void:
+	var ckey := _chunk_key(_tile_to_chunk(_key_to_tile(tile_key)))
+	var bucket: Dictionary = _edits_by_chunk.get(ckey, {})
+	bucket[tile_key] = true
+	_edits_by_chunk[ckey] = bucket
+
+## Drop `tile_key` from the read-side index, and the whole bucket with it when it empties.
+func _unindex_edit(tile_key: String) -> void:
+	var ckey := _chunk_key(_tile_to_chunk(_key_to_tile(tile_key)))
+	var bucket: Dictionary = _edits_by_chunk.get(ckey, {})
+	bucket.erase(tile_key)
+	if bucket.is_empty():
+		_edits_by_chunk.erase(ckey)
+	else:
+		_edits_by_chunk[ckey] = bucket
+
+## Rebuild the chunk index from the log — the wholesale path (`apply_edits` replaces `_edits`
+## in one assignment, so the index is re-derived rather than diffed).
+func _reindex_edits() -> void:
+	_edits_by_chunk = {}
+	for key in _edits:
+		_index_edit(str(key))
 
 ## The minimal op list resolving a tile's natural runs to the runs it has NOW: the
 ## natural run(s) removed, then the resolved run(s) re-added. An EMPTY list means
@@ -1982,12 +2046,22 @@ func _natural_color(world_xz: Vector2, biomes: Dictionary = {}, colours: Diction
 
 ## A caller with no gathered biome map (an isolated test, a direct call) gets the one answer the
 ## terrain slice owes for this world position.
+##
+## Phase 42 review pass 10 — the test is now a LOOKUP OF THIS POSITION'S CHUNK, not "is the map
+## non-empty". The old form returned any non-empty map untouched, so a PARTIALLY populated one —
+## the realistic case, since a caller that names one chunk does not necessarily name the one a
+## stray position falls in — passed straight through, and `biome_of` then answered
+## `DEFAULT_BIOME` for the missing chunk, silently tinting a real chunk as TemperateForest. A
+## miss is now resolved from the terrain slice (the same read `_biome_at` makes) and folded into
+## a COPY, so the caller's map is never mutated and the answer is the chunk's real biome.
 func _biomes_or_lookup(world_xz: Vector2, biomes: Dictionary) -> Dictionary:
-	if not biomes.is_empty() or terrain_slice == null:
-		return biomes
 	var extent := float(CHUNK_SIZE * TILE_SIZE)
 	var ckey := _chunk_key(Vector2i(floori(world_xz.x / extent), floori(world_xz.y / extent)))
-	return { ckey: _biome_at(world_xz) }
+	if biomes.has(ckey) or terrain_slice == null:
+		return biomes
+	var filled := biomes.duplicate()
+	filled[ckey] = _biome_at(world_xz)
+	return filled
 
 ## Resolve a material key to its terrain colour (falling back to green for
 ## unknown keys). Pure (a `const` lookup), so the worker half may call it.

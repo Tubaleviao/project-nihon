@@ -209,7 +209,13 @@ var _rebuild_pending: Dictionary = {}  # "cx,cz" -> true, dedupes _rebuild_queue
 ## Phase 42 review — chunks whose build exhausted MAX_BUILD_RETRIES and were reported
 ## as groundless. They are re-armed by `_self_heal_failed` instead of staying a hole for
 ## the session: a build failure that was transient heals, and a permanent one costs one
-## dispatch per re-arm rather than a spin.
+## RE-ARM per interval rather than a per-frame spin.
+##
+## **(Phase 42 review pass 10: a re-arm starts a FRESH retry budget — `_self_heal_failed`
+## clears `_build_attempts`, and three tests assert it — so one re-arm is up to
+## `MAX_BUILD_RETRIES` dispatches, not the single dispatch the older wording here and in the
+## give-up message implied. The throttle bounds the re-arm CADENCE (one re-arm per interval
+## while the window is stationary); the dispatches within a re-arm are the retry loop's.)**
 ## **(Phase 42 review pass 3: a crossing re-arms immediately, and an UNMOVED window re-arms
 ## on a wall-clock interval — keying it on the crossing alone meant a stationary player,
 ## which is a dedicated server's whole shape, never healed at all. Pass 4: the sweep no
@@ -339,8 +345,14 @@ func refresh() -> void:
 ## ever reaching this loop — exactly the case where a groundless chunk persists. The
 ## backoff is therefore WALL-CLOCK: a crossing re-arms immediately (it is the natural
 ## signal, and the reason a crossing is still preferred), while an unmoved window
-## re-arms at most once per `self_heal_interval`. A build that fails forever costs one
-## dispatch per interval rather than a per-frame spin.
+## re-arms at most once per `self_heal_interval`. A build that fails forever is therefore
+## re-armed once per interval rather than spun every frame.
+##
+## Phase 42 review pass 10 — but "re-armed once per interval" is NOT "one dispatch per
+## interval": the re-arm clears `_build_attempts` (a FRESH budget, which three tests assert),
+## so a re-armed build that keeps failing spends up to `MAX_BUILD_RETRIES` dispatches before it
+## gives up again. The throttle bounds how often a re-arm happens, not how many dispatches one
+## re-arm costs — the earlier wording here and in the give-up message claimed the wrong half.
 ##
 ## Phase 42 review pass 4 — three more things this sweep got wrong, all of them in the
 ## same twenty lines:
@@ -719,7 +731,7 @@ func _apply_build_entry(task_id: int) -> bool:
 			_dispatch_build(chunk)
 		else:
 			_failed[key] = true
-			push_error("ChunkManager: chunk %s could not be built after %d attempts — its ground is missing (re-armed by the self-heal: immediately on a window re-centre, otherwise at most once per self_heal_interval)" % [key, MAX_BUILD_RETRIES])
+			push_error("ChunkManager: chunk %s could not be built after %d attempts — its ground is missing (re-armed by the self-heal: immediately on a window re-centre, otherwise at most once per self_heal_interval, and each re-arm restarts this %d-attempt budget, so one interval costs up to that many dispatches)" % [key, MAX_BUILD_RETRIES, MAX_BUILD_RETRIES])
 		return false
 	_build_attempts.erase(key)
 	_failed.erase(key)
@@ -787,10 +799,17 @@ func first_ring_size() -> int:
 	return _first_ring.size()
 
 ## Re-read the built set into the gate. Called whenever a chunk's build lands.
+##
+## Phase 42 review pass 10 — this RECOMPUTES each ring key from `_built` rather than only ever
+## LATCHING it true. `unload_chunk` clears `_built` for a chunk that streams away, so a one-way
+## latch left `_first_ring` claiming a chunk was built when it no longer was — the gate and the
+## set it is supposed to mirror could disagree in the one direction the old code could not see.
+## Nothing regressed for a boot in practice (the ring is armed before the player can move, so a
+## ring chunk never unloads mid-boot), but the mirror is now exact: a ring key is built iff
+## `_built` holds it.
 func _update_first_ring_progress() -> void:
 	for key in _first_ring:
-		if _built.has(key):
-			_first_ring[key] = true
+		_first_ring[key] = _built.has(key)
 
 func unload_chunk(chunk_pos: Vector2i) -> void:
 	var key := _chunk_key(chunk_pos)

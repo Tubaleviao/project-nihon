@@ -324,6 +324,7 @@ func run() -> void:
 	_run_test("chunk: a direct load respects the in-flight cap", _test_chunk_load_respects_inflight_cap)
 	_run_test("voxel: the group key survives the colour band", _test_voxel_group_key_colour_band)
 	_run_test("voxel: the biome roll table is prebuilt",      _test_voxel_biome_roll_table_prebuilt)
+	_run_test("voxel: every canonical biome has a roll table", _test_voxel_every_canonical_biome_has_a_roll_table)
 	_run_test("voxel: the build payload shape is required",   _test_voxel_build_payload_shape_required)
 	_run_test("chunk: the gathered payload carries the ring", _test_chunk_gather_carries_the_ring)
 	_run_test("player: facing is a normalized yaw vector",      _test_player_facing)
@@ -3235,7 +3236,7 @@ func _test_voxel_edit_log_is_compacted() -> void:
 	for i in range(4):
 		cancel.append({ "op": "remove", "bottom": 1.875, "top": 2.0 })
 		cancel.append({ "op": "add", "bottom": 1.875, "top": 2.0, "material": "" })
-	v._edits[key] = cancel
+	v._set_edit_ops(key, cancel)
 	v._append_edit(tile, { "op": "add", "bottom": 1.875, "top": 2.0, "material": "" })
 	assert_false(v._edits.has(key), "a column back to its natural self compacts away entirely")
 	assert_eq(v.get_voxel_height_at(xz), 2.0, "and it resolves as its natural self")
@@ -6242,13 +6243,13 @@ func _test_voxel_rare_vein_deposits() -> void:
 	# A mined natural column is not a *placed* one, so its vein keeps its deposit
 	# — at the lowered height (only a player-placed surface is exempt).
 	var mined_tile: Vector2i = v._world_to_tile(Vector2(deposits[0]["position"].x, deposits[0]["position"].z))
-	v._edits[v._tile_key(mined_tile)] = [{ "op": "remove", "bottom": 1.5, "top": VoxelSlice.MAX_HEIGHT }]
+	v._set_edit_ops(v._tile_key(mined_tile), [{ "op": "remove", "bottom": 1.5, "top": VoxelSlice.MAX_HEIGHT }])
 	var mined: Array = v.vein_deposits(rare, flat)
 	assert_eq(mined.size(), deposits.size(), "mining a vein column does not remove its deposit")
 	assert_true(absf(float(mined[0]["position"].y) - (1.5 + VoxelSlice.VEIN_DEPOSIT_HEIGHT * 0.5)) < 0.0001,
 		"the deposit rides down to the mined column top")
 	# Undo the simulated mine: the mesh check below compares flat chunks.
-	v._edits.erase(v._tile_key(mined_tile))
+	v._set_edit_ops(v._tile_key(mined_tile), [])
 
 	# The deposits must actually reach the rendered mesh. They are the chunk's SECOND
 	# mesh child (the terrain surface is the first), and they are counted on their own
@@ -6895,7 +6896,7 @@ func _test_persistence_incremental_save_can_delete_a_chunk() -> void:
 	for i in range(4):
 		cancel.append({ "op": "remove", "bottom": 1.875, "top": 2.0 })
 		cancel.append({ "op": "add", "bottom": 1.875, "top": 2.0, "material": "" })
-	voxel._edits[key] = cancel
+	voxel._set_edit_ops(key, cancel)
 	voxel._append_edit(Vector2i(32, 32), { "op": "add", "bottom": 1.875, "top": 2.0, "material": "" })
 	assert_false(voxel.get_edits().has(key), "the column is back to its natural self")
 	assert_eq(voxel.get_dirty_chunk_keys(), ["0,0"], "and the chunk is still dirty")
@@ -9348,7 +9349,7 @@ func _test_voxel_build_arrays_pure() -> void:
 	# `b` carries state `a` does not: a different place material and an edit in another
 	# chunk. Neither may reach the build — the caller resolves the table, not the builder.
 	b.set_place_material("Ashite")
-	b._edits["900,900"] = [{ "op": "remove", "bottom": 0.0, "top": 1.0 }]
+	b._set_edit_ops("900,900", [{ "op": "remove", "bottom": 0.0, "top": 1.0 }])
 	var resolved_a: Dictionary = a.collect_build_runs(Vector2i(0, 0), flat)
 	var resolved_b: Dictionary = b.collect_build_runs(Vector2i(0, 0), flat)
 	var first: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), flat, resolved_a)
@@ -9448,9 +9449,15 @@ func _test_voxel_group_key_colour_band() -> void:
 ## Phase 42 review pass 9 — the per-biome roll table is main-thread state, prebuilt at
 ## `_ready()`. It is a `static var` on a script a WORKER TASK holds, so the lazy fill was
 ## mutable class state a worker could have raced; the table is warmed before anything streams
-## and read-only by contract afterwards. The cache is CLEARED first, because the static is
-## shared process-wide and one left over from an earlier test would make this assertion vacuous.
+## and read-only by contract afterwards.
+##
+## Phase 42 review pass 10 — and it SNAPSHOTS AND RESTORES the static rather than clearing it
+## and leaving the process without it. `_biome_rolls` is process-wide class state a worker could
+## be reading, so blanking it mid-suite is a window no reader has a guard against; the clear is
+## kept (it is what makes the assertion about `_ready` rather than about a leftover) but the
+## saved table is put back before the test ends.
 func _test_voxel_biome_roll_table_prebuilt() -> void:
+	var saved: Dictionary = VoxelSlice._biome_rolls.duplicate()
 	VoxelSlice._biome_rolls.clear()
 	assert_eq(VoxelSlice._biome_rolls.size(), 0, "the cache starts empty (the assertion is not vacuous)")
 	var v := VoxelSlice.new()
@@ -9461,6 +9468,25 @@ func _test_voxel_biome_roll_table_prebuilt() -> void:
 		assert_true(VoxelSlice._biome_rolls.has(str(biome)),
 			"including %s" % str(biome))
 	v.free()
+	# Restore the process-wide table. A leftover from an earlier test is the normal case (a
+	# slice has already run `_ready`); if it was somehow empty, keep the full table `_ready`
+	# just built rather than re-blanking it.
+	if not saved.is_empty():
+		VoxelSlice._biome_rolls = saved
+	assert_true(VoxelSlice._biome_rolls.size() == VoxelSlice.BIOME_MATERIALS.size(),
+		"and the process-wide table is left full, not cleared")
+
+## Phase 42 review pass 10 — the worker's biome read is safe only because EVERY biome the gather
+## can hand it has a roll table: `material_for_biome` answers Ferrite for a biome absent from
+## `BIOME_MATERIALS`, so a canonical biome missing from the table would silently mine as the
+## wrong material. The gathered strings come from `TerrainSlice.get_biome_at`, i.e. from
+## `TerrainSlice.BIOME_KEYS`, so that set — not voxel's own map — is what must be covered.
+func _test_voxel_every_canonical_biome_has_a_roll_table() -> void:
+	for biome in TerrainSlice.BIOME_KEYS:
+		assert_true(VoxelSlice.BIOME_MATERIALS.has(str(biome)),
+			"canonical biome %s has a BIOME_MATERIALS entry" % str(biome))
+		assert_true(VoxelSlice._biome_roll_table(str(biome)).size() > 0,
+			"and a non-empty roll table, so its roll never falls back to Ferrite")
 
 ## Phase 42 review pass 9 — the payload shape `build_chunk_arrays` takes is REQUIRED, not
 ## sniffed. The old fallback (`resolved.get("runs", resolved)`) meant a dictionary that merely
@@ -10385,6 +10411,42 @@ func _test_chunk_build_split_probe() -> void:
 	assert_true(steady_main < frame_us,
 		"one dispatch's main-thread half fits inside a frame (%d us of %d us, generate+gather %d)" % [
 			steady_main, frame_us, steady_resolve])
+
+	# Phase 42 review pass 10 — and the ceiling is asserted AGAIN over a POPULATED edit log,
+	# which is what the pass-9 probe could not do: it measured a FRESH slice, so `_edits` was
+	# empty, `_gather_edits` returned on its first line, and the gather cost — the one thing the
+	# chunk index exists to bound — was never in the number the ceiling checked. Populate a
+	# WORLD's worth of edits (a full chunk in the window, plus several chunks far outside it, so
+	# the LOG is large while the WINDOW is not) and time the same main-thread half. The far
+	# chunks are the point: the old gather walked and string-split EVERY one of them on each
+	# dispatch; only the window's are copied now.
+	var op_template := [{ "op": "remove", "bottom": 1.5, "top": 2.0 }]
+	for ty in range(64):
+		for tx in range(64):
+			voxel._set_edit_ops(VoxelSlice._tile_key(Vector2i(tx, ty)), op_template)
+	# ...plus 24 chunks well OUTSIDE the window (≈98k more edits), so the log is a long-played
+	# world's and dwarfs the window. That ratio is the assertion: with the OLD world-scan gather
+	# this log cost one string split per edit here per dispatch and blew the frame; with the
+	# index only the window's 4096 are copied, whatever the world holds.
+	for far_i in range(24):
+		var far := Vector2i(far_i % 6 + 4, far_i / 6 + 4)
+		for i in range(4096):
+			voxel._set_edit_ops(VoxelSlice._tile_key(Vector2i(far.x * 64 + (i % 64), far.y * 64 + (i / 64))), op_template)
+	var populated_pass: Array = []
+	var window_edits := 0
+	for i in range(3):
+		var t0p := Time.get_ticks_usec()
+		var hm2: Array = terrain.generate_heightmap(Vector2i(0, 0))
+		var gathered2: Dictionary = voxel.gather_build_input(Vector2i(0, 0), hm2)
+		window_edits = (gathered2["edits"] as Dictionary).size()
+		populated_pass.append(Time.get_ticks_usec() - t0p)
+	var steady_pop: int = int(populated_pass[populated_pass.size() - 1])
+	print("PROBE Phase 42 gather with a populated edit log: %d edits across %d chunks (%d in the window), main-thread generate+gather %s us (steady %d of %d)" % [
+		voxel._edits.size(), voxel._edits_by_chunk.size(), window_edits, str(populated_pass), steady_pop, frame_us])
+	assert_true(window_edits >= 4096, "the window's edit log is genuinely populated (%d tiles)" % window_edits)
+	assert_true(steady_pop < frame_us,
+		"and the main-thread half still fits a frame with a populated edit log (%d us of %d us, %d window edits)" % [
+			steady_pop, frame_us, window_edits])
 	terrain.free()
 	voxel.free()
 
@@ -10425,14 +10487,14 @@ func _test_chunk_gather_carries_the_ring() -> void:
 		"from the NEIGHBOUR's heightmap the payload carried, not this chunk's")
 
 	# And the ring chunk's OWN EDIT reaches the resolve through the same payload.
-	voxel._edits[ring_key] = [{ "op": "add", "bottom": 0.0, "top": 8.0, "material": "Ashite" }]
+	voxel._set_edit_ops(ring_key, [{ "op": "add", "bottom": 0.0, "top": 8.0, "material": "Ashite" }])
 	var edited: Dictionary = VoxelSlice.build_runs(centre, hm, voxel.gather_build_input(centre, hm))
 	var placed := false
 	for run in edited["runs"][ring_key]:
 		if str((run as Dictionary)["material"]) == "Ashite":
 			placed = true
 	assert_true(placed, "and a RING tile's edit reaches the worker-side resolve")
-	voxel._edits.erase(ring_key)
+	voxel._set_edit_ops(ring_key, [])
 	rig["cm"].free()
 	rig["voxel"].free()
 	rig["terrain"].free()

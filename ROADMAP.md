@@ -3475,6 +3475,16 @@ chunk is queued further out than it is needed.
   and then thrown away), and the RESOLVE moved off the main thread: the dispatch's main-thread
   half measured 44 900 us before and 2 526 us after (generate+gather 1 631 us) against a worker
   half of 77 159 us, with the probe now asserting that half inside ONE 16 667 us frame.** ***
+  **TENTH review pass: `7883/7883 passed (0 failed)` on `--quit` and on `--quit --server`, no
+  `SCRIPT ERROR` (+13 assertions from a new biome-coverage test and a second, POPULATED-edit-log
+  pass in the split probe) — the edit log is now INDEXED BY CHUNK, so a dispatch's gather walks
+  only the chunks it can reach instead of string-splitting every edit in the world
+  (`generate+gather` with 102 400 world edits: 44 012 us → 5 568 us, the old figure over TWO
+  frames), and the probe asserts the frame ceiling on that populated log; the first-ring gate
+  recomputes from `_built`, `_biomes_or_lookup` resolves a miss instead of falling back to
+  `DEFAULT_BIOME`, and four smaller items (the biome-map/roll-table invariant pinned, the
+  heightmap-by-reference asymmetry stated, the roll-table test's static snapshot/restored, and
+  the self-heal's dispatch-cost wording corrected).** ***
 
 **Implementation notes:**
 - **Godot's threading rule is what makes the split mandatory.** Scene-tree
@@ -4188,6 +4198,69 @@ it reported `7862/7868 passed (6 failed)` — the new test's own
 roof`). That collateral is the useful part: the ring's heightmaps and edits are what the seam
 geometry is computed FROM, so the gather is load-bearing for the existing voxel tests, not only
 for its own.
+
+**TENTH review pass (`fix(terrain,test,docs): Phase 42 review pass 10`):** an eight-row table
+(an Issue column, a Solution column, a Criticality column) with no line numbers and no `Closes`
+column. **All eight rows are real** — the sixth consecutive list with nothing to discard — and
+the list's own framing is right: it is a list of SMALL items, the largest being a per-dispatch
+cost the earlier passes kept narrowing but never bounded for a played world.
+
+1. **`_gather_edits` scanned the whole world edit log per dispatch (row 1) — REAL (Medium).**
+   The gather iterated EVERY key in `_edits` and `str(key).split(",")`-ed it to test it against
+   the chunk window's bounds: one string split per edit in the WORLD, per dispatch, however far
+   away those edits were. It now walks `_edits_by_chunk` — the log INDEXED BY CHUNK (`"cx,cz"` →
+   `{ "gx,gz": true }`), the read-side counterpart of `_dirty_chunks` — reading only the (≤ 3×3)
+   chunks the window spans. The index is kept in step by `_set_edit_ops`, now the ONE place a
+   tile's op log is written (`_append_edit` and `apply_edits` both route through it, the latter
+   re-deriving the index wholesale). **Measured on a 102 400-edit log with 4 096 in the window:
+   the dispatch's generate+gather was 44 012 us (2.6 frames) and is 5 568 us**, because the cost
+   is now proportional to the window and not to the world. The four tests that wrote `_edits`
+   directly were routed through `_set_edit_ops` so the index cannot drift from the log.
+2. **The frame-ceiling assertion ran on a FRESH slice, so it could not see row 1 (row 2) — REAL
+   (Medium).** The ninth pass's ceiling measured an empty `_edits`, where the gather returned on
+   its first line — so the one cost the index exists to bound was never in the number the ceiling
+   checked. `chunk: the build split is measured` now runs a SECOND pass over a POPULATED log (a
+   full chunk in the window plus 24 chunks ≈98k edits outside it) and asserts the same
+   `steady < 16 667 us` ceiling there; the far chunks are what makes the assertion bite, since
+   only the window's are copied. **RED with the old world-scan gather restored: `44 012 us of
+   16 667 us` — the row-1 fix is exactly what this assertion pins.**
+3. **Worker safety rests on `BIOME_KEYS ⊆ BIOME_MATERIALS`, unpinned, with a false comment (row
+   3) — REAL (Low-Medium).** A worker's resolve reaches `material_for_biome`, which silently
+   answers `Ferrite` for a biome absent from `BIOME_MATERIALS` — so a canonical biome missing
+   from the table mines as the wrong material, and nothing asserted the two sets agree. New test
+   `voxel: every canonical biome has a roll table` asserts it over `TerrainSlice.BIOME_KEYS` (the
+   set the gathered strings actually come from), each with a non-empty table. The `_ready()`
+   comment's claim that "the worker half never even reads it" was FALSE — the worker reads it
+   through `run_color` → `natural_color` → `material_for_biome` → `_biome_roll_table` — and is
+   rewritten to the real invariant (written on the main thread before any worker exists,
+   read-only afterwards).
+4. **Heightmaps are gathered by reference while edits are deep-copied, unstated (row 4) — REAL,
+   DOC-ONLY (Low).** The asymmetry is deliberate and now stated at `_gather_neighbour_heightmaps`:
+   an op list is APPENDED to in place (`ops.append` on the array a worker may be reading), so it
+   must be copied; a heightmap array is only ever REPLACED wholesale and never mutated in place,
+   so sharing it is safe — with the note that a future in-place write would have to copy here too.
+5. **`_biomes_or_lookup` passed an incomplete biome map through (row 5) — REAL (Low).** Its guard
+   was "is the map non-empty", so a PARTIALLY populated map — the realistic case — went straight
+   through and `biome_of` answered `DEFAULT_BIOME` for the missing chunk, silently tinting a real
+   chunk as TemperateForest. It now tests for THIS position's chunk and, on a miss, resolves that
+   one chunk from the terrain slice into a COPY of the map, so the caller's is untouched. (The
+   pure `biome_of` keeps the `DEFAULT_BIOME` fallback — it is static and has no slice to ask —
+   and that answer is now only reachable when there is no terrain slice at all.)
+6. **`voxel: the biome roll table is prebuilt` cleared a worker-reachable static mid-suite (row
+   6) — REAL (Low).** `_biome_rolls` is process-wide class state a worker reads, and the test
+   blanked it and left it blanked. It now SNAPSHOTS the table, clears (which is what makes the
+   assertion about `_ready` rather than a leftover), and RESTORES it, asserting it is left full.
+7. **`_update_first_ring_progress` only latched true while `unload_chunk` clears `_built` (row 7)
+   — REAL (Low).** A one-way latch cannot mirror a set that can lose members, so the gate could
+   claim a chunk was built after it had streamed away. It now RECOMPUTES each ring key from
+   `_built` (`_first_ring[key] = _built.has(key)`), so the mirror is exact. No boot regressed (the
+   ring is armed before the player can move, so a ring chunk never unloads mid-boot).
+8. **The self-heal's cost was described as one dispatch per interval (row 8) — REAL, DOC-ONLY
+   (Low).** A re-arm clears `_build_attempts` — a FRESH retry budget, which three tests assert —
+   so one re-arm is up to `MAX_BUILD_RETRIES` dispatches, not one; the throttle bounds the re-arm
+   CADENCE, not the dispatches within one. The row's first option ("don't reset `_build_attempts`
+   on a heal re-arm") was **not taken**: the reset is the tested, intended design. Both messages
+   (`_failed`'s doc, `_self_heal_failed`'s doc, and the give-up `push_error`) are corrected.
 
 **Known simplifications (deferred):**
 - **An edit's mesh lands a frame or two later.** Since the review pass, a mine/place
