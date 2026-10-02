@@ -17,6 +17,8 @@ Fibrous bark harvested from the Duskwood trees that grow only in twilight biomes
 | `hardness` | decimal | yes | Janka equivalent 0–1; low but flexible |
 | `conductivity` | decimal | yes | Thermal conductivity 0–1 |
 | `magicAffinity` | decimal | yes | Capacity to hold enchantment 0–1; moderate — bioluminescent nature enhances magical bonding |
+| `depthBand` | json | yes | Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. A wood: it grows as trees and is never mined from the ground. |
+| `leyGated` | boolean | yes | True when a vein of this material forms only near a ley line |
 | `isLuminous` | boolean | yes | Stamped true at process time when processed during twilight hours, false otherwise; must be read as stored state at treat time — not re-derived from current time-of-day; determines whether moon-oil treatment is valid |
 
 ### State machine

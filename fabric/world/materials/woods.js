@@ -1,4 +1,5 @@
 const { defineEntity } = require('@newel/core')
+const { depositFields } = require('./deposit')
 
 // NOTE: state keys in each factory must be kept in sync with the consumer entity's `state` enum values — the normalizer does not reconcile them.
 
@@ -53,6 +54,7 @@ module.exports = {
       hardness:     { type: 'decimal', description: 'Janka hardness equivalent 0–1', defaultValue: 0.7 },
       conductivity: { type: 'decimal', description: 'Thermal conductivity 0–1; low for wood', defaultValue: 0.12 },
       magicAffinity: { type: 'decimal', description: 'Capacity to hold enchantment 0–1; very low — dense wood resists magical binding', defaultValue: 0.05 },
+      ...depositFields({ min: 0, max: 0, why: 'A wood: it grows as trees and is never mined from the ground.' }),
     },
     stateMachine: lumberStateMachine(),
     behaviors: {
@@ -90,6 +92,7 @@ module.exports = {
       hardness:     { type: 'decimal', description: 'Janka equivalent 0–1; low but flexible', defaultValue: 0.2 },
       conductivity: { type: 'decimal', description: 'Thermal conductivity 0–1', defaultValue: 0.08 },
       magicAffinity: { type: 'decimal', description: 'Capacity to hold enchantment 0–1; moderate — bioluminescent nature enhances magical bonding', defaultValue: 0.45 },
+      ...depositFields({ min: 0, max: 0, why: 'A wood: it grows as trees and is never mined from the ground.' }),
       isLuminous:   { type: 'boolean', description: 'Stamped true at process time when processed during twilight hours, false otherwise; must be read as stored state at treat time — not re-derived from current time-of-day; determines whether moon-oil treatment is valid' },
     },
     stateMachine: fibreStateMachine(),

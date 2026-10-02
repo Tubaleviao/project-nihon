@@ -21,6 +21,8 @@ Pale silver ore that hums faintly in the presence of active magic. Found deep un
 | hardness | decimal | Mohs-equivalent scale 1–10 |
 | conductivity | decimal | Thermal conductivity rating 0–1 |
 | magicAffinity | decimal | Capacity to hold enchantment 0–1 |
+| depthBand | json | Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. Found deep underground near ley lines: never in the top four units, and only where a ley line runs. |
+| leyGated | boolean | True when a vein of this material forms only near a ley line |
 
 ## States
 

@@ -2,7 +2,7 @@ extends Node
 ## Tree slice (Phase 31) — deterministic per-biome trees, the only wood source.
 ##
 ## Wood materials (Thornwood / Duskfiber) deliberately do NOT spawn as ground in
-## VoxelSlice.BIOME_MATERIALS: the fabric's biome prose spawns them as *trees*, so
+## VoxelSlice.BIOME_BIAS (the ore field's biome bias, Phase 43): the fabric's biome prose spawns them as *trees*, so
 ## this slice is where a player actually gets lumber. Trees are placed
 ## deterministically inside each loaded chunk — the position and the id derive
 ## from the chunk coordinate, the species, and an index, so host and client agree

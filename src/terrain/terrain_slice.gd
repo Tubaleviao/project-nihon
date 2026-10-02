@@ -12,6 +12,7 @@ extends Node
 ##   get_height_at(world_pos: Vector2) -> float — terrain height at world XZ
 ##   set_world_seed(seed: int) -> void      — the world's identity (Phase 41)
 ##   get_world_seed() -> int
+##   biome_for_chunk(chunk_pos) -> String  — static, pure (Phase 43: the ore field's biome read)
 
 const CHUNK_SIZE := 64       # tiles per side (64 × 0.5 = 32 world units per chunk)
 const TILE_SIZE  := 0.5      # world units per tile (XZ) — each square is half its former 1.0 size
@@ -113,6 +114,12 @@ func get_biome_at(world_pos: Vector2) -> String:
 ## Uses integer multiply-mix (Knuth multiplicative hashing) for better distribution
 ## than converting integers to strings and calling .hash().
 func get_biome_at_chunk(chunk_pos: Vector2i) -> String:
+	return biome_for_chunk(chunk_pos)
+
+## Phase 43 — the STATIC form of `get_biome_at_chunk`: a pure function of the chunk and the
+## `BIOME_SEED` const, so the ore field (`src/terrain/ore_field.gd`) can ask a vein's biome on
+## a worker thread without a terrain-slice reference.
+static func biome_for_chunk(chunk_pos: Vector2i) -> String:
 	var h: int = BIOME_SEED + chunk_pos.x * 2654435761 + chunk_pos.y * 2246822519
 	var idx := posmod(h, BIOME_KEYS.size())
 	return str(BIOME_KEYS[idx])

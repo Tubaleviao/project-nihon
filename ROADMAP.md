@@ -4309,7 +4309,7 @@ cost the earlier passes kept narrowing but never bounded for a played world.
 
 ---
 
-## Phase 43 — Natural resource distribution
+## Phase 43 — Natural resource distribution ✅ Done
 
 **Goal:** Resources are a uniform draw. `BIOME_MATERIALS` gives every tile of a
 biome the same weighted distribution, so Aethermite is 17/100 of every volcanic
@@ -4359,22 +4359,52 @@ carries today. `pnpm validate`, `pnpm generate` and
   survives a chunk rebuild and a save).
 
 **Acceptance criteria:**
-- [ ] A fixed seed mines the same vein in the same place twice, and a client sees
+- [x] A fixed seed mines the same vein in the same place twice, and a client sees
   the same veins as the host with no snapshot (assert the pure field, not a
   visual).
-- [ ] Aethermite never appears above its depth band and never far from a ley
+  *(Landed: "ore: a fixed seed puts the same veins in the same place" samples 16 chunks × 12
+  depths twice and compares, and a second seed differs. "ore: a client sees the host's veins
+  with no snapshot" gives a host and a client slice their own `TerrainSlice` at one seed and
+  compares `material_at` over a grid AND the two `build_runs` resolves of a chunk — equal with
+  nothing exchanged.)*
+- [x] Aethermite never appears above its depth band and never far from a ley
   line, sampled over a grid of tiles.
-- [ ] The retired uniform draw is measurably gone: the per-chunk counts of a
+  *(Landed: "ore: aethermite keeps to its band and its ley lines" — 3 seeds × 144 chunks ×
+  1024 tiles × 26 depths; every Aethermite sample is at or below the fabric `depthBand.min`
+  and `near_ley_line`, and the sample is asserted non-empty so the gate is not vacuous. It
+  holds PER TILE, not just per vein centre: `vein_at` clips each tile by the same gate.)*
+- [x] The retired uniform draw is measurably gone: the per-chunk counts of a
   given material over a sample of chunks are non-constant (assert the variance
   against the old constant distribution).
-- [ ] Mining a vein yields more than one unit and the vein is exhausted by
+  *(Landed: "ore: the uniform draw is gone" counts Aethermite in 16 volcanic chunks at three
+  depths: the variance is asserted > 1 and most chunks sit more than half away from the
+  retired constant share (17% of the samples, every chunk).)*
+- [x] Mining a vein yields more than one unit and the vein is exhausted by
   repeated mining; mining surrounding rock yields the bias material and never the
   gated ore.
-- [ ] The suite is green on both boot paths and the field is unit-tested (blob
+  *(Landed: "ore: a vein yields more than one and runs out" mines a surfacing vein slice by
+  slice through `mine_block`: each live slice yields the vein's material × its `quantity`
+  (2–4), the vein pays out exactly its `reserve`, and the next slice of the same blob yields
+  host rock, one unit. "ore: surrounding rock is the bias, never the gated ore" mines
+  non-vein tiles of a volcanic chunk: Ashite, one unit, never Aethermite.)*
+- [x] The suite is green on both boot paths and the field is unit-tested (blob
   continuity across a chunk border, depth gate, ley gate).
-- [ ] `pnpm validate`, `pnpm generate` and `pnpm check-drift` are green, and the
+  *(Landed: 422/422 tests green, and the two-client net harness 10/10. "ore: a blob is
+  continuous across a chunk border" finds slices where one vein id covers tile 63 of chunk 0
+  and tile 0 of chunk 1, and asserts a tile's answer does not depend on which chunk asks;
+  the depth and ley gates are the Aethermite test above plus "ore: the ley field is a field
+  of lines". Depletion: "ore: depletion is one op per vein and persists" (one op however
+  many swings, dirty anchor chunk, JSON save round-trip, survives compaction, a malformed op
+  is dropped) and "ore: a client replays the host's depletion" (same depletion and same edit
+  log after `apply_block_change`).)*
+- [x] `pnpm validate`, `pnpm generate` and `pnpm check-drift` are green, and the
   generated material resources carry `depthBand` and the ley gate — the field's
   band cannot disagree with the fabric because it IS a fabric value.
+  *(Landed: `depthBand` (json `{ min, max }`) and `leyGated` (boolean) on all eight
+  materials via `fabric/world/materials/deposit.js`; the generated `.tres` carry them and
+  `OreField.warm()` reads them off `GameData.MATERIALS`. "ore: the bands are fabric values"
+  asserts the runtime table equals every resource's fields. No newel change was needed —
+  `json` and `boolean` fields with defaults already generate.)*
 
 **Implementation notes:**
 - **The field must be a pure function of (seed, world position, depth) — never of
@@ -4414,6 +4444,37 @@ carries today. `pnpm validate`, `pnpm generate` and
   (durability cost aside).
 - **No vein regrowth.** A vein is a finite, depleting body; nothing replenishes
   it, and the tree stump cooldown is still the only regrowth clock in the world.
+
+**As built (decisions the deliverables left open):**
+- **Depth is measured from the tile's NATURAL surface** (its quantised heightmap top), not
+  from world Y and not from the current column top: the datum is fixed by the seed, so a
+  vein does not move when a player digs above it, and both peers compute it from the same
+  heightmap.
+- **The blob is a cell-hashed ellipsoid with a noise-perturbed surface**, not a global
+  noise threshold. Space is cut into 16-tile × 4-unit cells, each holding at most one vein
+  whose centre sits far enough inside that the blob (radius × (1 + `SHAPE_NOISE`)) cannot
+  leave it — so a sample reads ONE cell, and the vein's identity is its cell id (the "hash
+  of its blob origin"). The XZ cell grid is offset half a cell from the chunk grid, which is
+  what makes veins straddle chunk borders. The top depth cell lets veins break the surface.
+- **A vein's material is picked once at its centre** from the centre's biome
+  (`TerrainSlice.biome_for_chunk`, now static): a weighted draw over the biome's non-host
+  bias materials the fabric admits there, else the host itself (a rich pocket — the only
+  kind TemperateForest has). Each tile is then clipped by the material's band and ley gate.
+- **The host rock is not band-gated.** `BIOME_BIAS`'s heaviest entry is what every tile
+  outside a live vein yields, at any depth — so a twilight tile is Lumenfite rock below
+  Lumenfite's shallow band, and only a Lumenfite VEIN honours it.
+- **Depletion is ONE edit-log op per vein**: `{ "op": "deplete", "vein": id, "taken": n }`
+  on the vein's anchor tile, replaced in place on each mine. It rides the per-chunk save
+  manifest and the join/re-scope snapshot, `apply_edits` re-derives `_vein_taken` from it,
+  compaction carries it over, and the client's `apply_block_change` records the same
+  depletion the host did. An exhausted vein renders and mines as host rock, and its chunks
+  are rebuilt when it runs out (or when a snapshot flips it).
+- **A natural run is still ONE colour**, the field's material at its top slice: a vein
+  shows where a column's top slice reaches it (and gets the raised marker there), not on
+  the side walls of a deeper cut. The marker now marks every live vein, ferrite included.
+- **Cost:** the field adds ~15 ms to a chunk's resolve (≈42 → ≈56 ms measured over six
+  noise chunks), all of it on the worker since Phase 42 moved the resolve there; the
+  ellipsoid test short-circuits the 3D noise for every sample it can decide alone.
 
 ---
 

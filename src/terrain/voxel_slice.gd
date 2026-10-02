@@ -29,8 +29,10 @@ extends Node
 ##   legacy_edit_ops(height, base_top, materials) -> Array   (static, pure)
 ##   runs_topping_at(runs, y)             -> Dictionary       (static, pure)
 ##   set_place_material / get_place_material / cycle_place_material
-##   material_for_biome(biome, world_xz) -> String
-##   vein_deposits(chunk_pos, heightmap, cache) -> Array   (rare-vein raised deposits)
+##   material_for_biome(biome, world_xz, depth, seed, depleted, veins) -> String
+##   material_at(world_xz, depth)           -> String   (the ore field, this world)
+##   vein_deposits(chunk_pos, heightmap, cache) -> Array   (raised markers on live veins)
+##   get_vein_depletion()                 -> Dictionary  (vein id → units taken)
 ##   build_chunk_arrays(chunk_pos, heightmap, resolved) -> Dictionary  (PURE, worker-safe;
 ##     `resolved` is the `{ runs, deposits }` pair from `collect_build_runs`)
 ##   collect_build_runs(chunk_pos, heightmap) -> Dictionary  ({ runs, deposits })
@@ -41,7 +43,7 @@ extends Node
 ##
 ##   [{ "bottom": float, "top": float, "material": String }]
 ##
-## `material` is "" for natural ground (tinted by the biome's material roll) and
+## `material` is "" for natural ground (tinted by the ore field — `OreField`, Phase 43) and
 ## the placed block's key for a player-placed span. A plain column is ONE run from
 ## BEDROCK_DEPTH up to its quantised surface; a tunnel is two — a floor and a roof
 ## — so a column can finally describe a CEILING. Only solid spans are stored, so a
@@ -91,8 +93,10 @@ extends Node
 ## first place, and the merge key — material/colour — is exactly the attribute a
 ## merged quad has to share.
 
-## Shared box authoring for the rare-vein deposits (Phase 31).
+## Shared box authoring for the vein deposits (Phase 31).
 const MeshUtil := preload("res://src/core/mesh_util.gd")
+## Phase 43 — the deterministic ore field: veins, their depth band and ley gate.
+const OreField := preload("res://src/terrain/ore_field.gd")
 
 ## CHUNK_SIZE is defined once on TerrainSlice and accessed via terrain_slice.CHUNK_SIZE.
 ## The local alias below keeps internal uses readable without duplicating the value.
@@ -124,29 +128,13 @@ const TERRAIN_COLLISION_LAYER := 2
 ## terrain slice to ask — the same answer an unwired `_biome_at` gives (Phase 42 review pass 9).
 const DEFAULT_BIOME := "TemperateForest"
 
-## Biome → weighted ground-material distribution (material key → weight out of
-## 100). A faithful transcription of each biome's fabric `evaluateSpawn` prose
-## (fabric/world/biomes/*.js), normalised to 100: the biome's dominant rock /
-## metal / crystal is the bulk of the surface, and a rarer ore appears only
-## where that biome's prose actually grants one (sparse veins). Wood materials
-## (Thornwood / Duskfiber) are deliberately absent — their prose spawns them as
-## trees, not as ground to mine, so trees (TreeSlice, Phase 31) are the only wood
-## source. Aethermite is a deep ley-line ore (see the Aethermite
-## entity: "deep underground near ley lines"), so it is granted only to the two
-## biomes whose prose spawns it — VolcanicBadlands (0.2) and TwilightGrove
-## (0.15) — and never invented for the temperate biomes.
-const BIOME_MATERIALS: Dictionary = {
-	# prose: ferrite outcrops 0.6; thornwood 0.8 is a tree, not ground
-	"TemperateForest":    { "Ferrite": 100 },
-	# prose: ferrite deposits 0.4; thornwood 0.1 is a tree, not ground
-	"TemperateGrassland": { "Ferrite": 100 },
-	# prose: ashite 0.9 / aethermite 0.2 / ferrite 0.1
-	"VolcanicBadlands":   { "Ashite": 75, "Aethermite": 17, "Ferrite": 8 },
-	# prose: lumenfite 0.5 / aethermite 0.15; duskfiber 0.9 is a tree, not ground
-	"TwilightGrove":      { "Lumenfite": 77, "Aethermite": 23 },
-	# prose: voidite 0.7 / ferrite 0.3
-	"VoidRift":           { "Voidite": 70, "Ferrite": 30 },
-}
+## Phase 43 — biome → weighted material BIAS. It used to be `BIOME_MATERIALS`, the whole
+## distribution: every tile of a biome rolled the same table, so a volcanic tile was 17/100
+## Aethermite at every depth. It is now a bias over the ore field (`OreField`, where the
+## authoritative copy lives): the heaviest entry is the biome's HOST rock — what a tile
+## outside a live vein yields — and the rest weight the draw for a vein's material, which
+## the material's fabric `depthBand` and `leyGated` then gate.
+const BIOME_BIAS: Dictionary = OreField.BIOME_BIAS
 
 ## Terrain tint per material key — makes each ground material visually distinct
 ## (the whole terrain was previously one flat green). Keyed by the fabric
@@ -165,15 +153,9 @@ const MATERIAL_COLORS: Dictionary = {
 ## Colour used for any material without an explicit entry above.
 const FALLBACK_TERRAIN_COLOR := Color(0.35, 0.60, 0.28)
 
-## Materials that read as SPARSE VEINS rather than bulk ground: Aethermite is a
-## deep ley-line ore, Lumenfite the twilight crystal, Voidite the rift ore. A
-## rare vein is tinted AND given a small raised deposit so it is recognizable
-## from a distance, while the common ground (Ferrite, Ashite) stays flat
-## dirt/rock — the "mostly plain ground with sparse valuable veins" read Phase 31
-## asks for.
-const RARE_VEIN_MATERIALS: Array = ["Aethermite", "Lumenfite", "Voidite"]
-## Small raised deposit geometry: purely VISUAL. The run's height and collision
-## are unchanged, so mining a vein still yields exactly one STEP_HEIGHT slice.
+## Small raised deposit geometry: purely VISUAL — a marker on a column whose top slice
+## lies inside a LIVE vein (Phase 43; it was every tile a uniform roll called rare). The
+## run's height and collision are unchanged.
 const VEIN_DEPOSIT_HEIGHT := 0.22
 ## Inset from the tile edge, so adjacent deposits never touch and the tile grid
 ## stays readable.
@@ -211,6 +193,13 @@ var _dirty_chunks: Dictionary = {}
 ## for an edited chunk — so this guard is what catches a chunk rebuilt under a build by
 ## any other route.
 var _chunk_revision: Dictionary = {}
+
+## Phase 43 — vein id → units mined out of it so far, DERIVED from the edit log: each
+## mined vein carries ONE `{ "op": "deplete", "vein": id, "taken": n }` op on its anchor
+## tile (see `_record_depletion`), so this index, like `_edits_by_chunk`, is re-derived when
+## the log is replaced wholesale (`_reindex_edits`) and kept in step on the one write path.
+## A vein is exhausted when `taken` reaches its reserve (`OreField.is_live`).
+var _vein_taken: Dictionary = {}
 
 ## Set by game_root: terrain (biome + base height) and inventory (material flow).
 var terrain_slice: Node = null
@@ -257,24 +246,14 @@ var _world_floor: StaticBody3D = null
 func _ready() -> void:
 	# One material for every terrain mesh this slice ever builds (see `_terrain_mat`).
 	_terrain_mat = _make_terrain_material()
-	# Phase 42 review pass 9 — fill the per-biome roll table HERE, on the main thread, before
-	# any worker can exist. `_biome_rolls` is a `static var` on THIS script, and this script
-	# is exactly what a chunk-build task holds (`ChunkManager.VoxelBuilder`), so a cache that
-	# filled lazily on first use was mutable class state reachable from a worker thread. After
-	# this loop the table is READ-ONLY by contract.
-	#
-	# Phase 42 review pass 10 — the safety is "WRITTEN on the main thread before any worker
-	# exists, read-only afterwards", not "never read by a worker": the worker DOES read it. A
-	# worker's resolve reaches it through `run_color` → `natural_color` → `material_for_biome`
-	# → `_biome_roll_table`, so the read is real and the read-only-after-warmup contract is
-	# what makes it safe. (The ninth pass's comment claimed the worker "never even reads it",
-	# which is false — the colours it is handed are keyed by material, and it resolves the
-	# material itself.) The read is also only well-defined because EVERY biome the gather can
-	# hand in has a table entry: `material_for_biome` silently answers Ferrite for a biome
-	# absent from `BIOME_MATERIALS`, so `BIOME_KEYS ⊆ BIOME_MATERIALS` is load-bearing and is
-	# pinned by `voxel: every canonical biome has a roll table`.
-	for biome in BIOME_MATERIALS:
-		_biome_roll_table(str(biome))
+	# Phase 43 — fill the ore field's material band table HERE, on the main thread, before any
+	# worker can exist. It replaces the Phase 42 per-biome roll table and inherits its contract:
+	# a `static var` on a script a chunk-build task reaches (`build_runs` → `natural_color` →
+	# `material_for_biome` → `OreField.vein_at` → `OreField.allows` → `OreField.band_of`), so it
+	# is WRITTEN here, before the tree streams anything, and read-only afterwards. The bands
+	# come off the generated fabric resources (`depthBand`, `leyGated`), which is why this
+	# cannot be a `const`.
+	OreField.warm()
 	_world_floor = StaticBody3D.new()
 	_world_floor.name = "WorldFloor"
 	_world_floor.collision_layer = TERRAIN_COLLISION_LAYER
@@ -437,12 +416,20 @@ func collect_build_runs(chunk_pos: Vector2i, heightmap: Array) -> Dictionary:
 ##     MEMBERSHIP IS THE ANSWER: a chunk absent here is the UNKNOWN neighbour `_neighbour_runs`
 ##     reads as empty, so the payload carries that decision rather than re-deriving it later.
 ##   * `biomes` — the biome of every chunk the ring touches, keyed by chunk. A tile's biome is
-##     its chunk's biome, so this is the whole input the colour step needs.
+##     its chunk's biome, so this is the host-rock half of the colour step.
+##
+## Phase 43 — and the ORE FIELD's two inputs, the other half of the colour step:
+##   * `seed` — the world seed the field is a function of (`_world_seed`).
+##   * `depleted` — vein id → units taken (`_vein_taken`, copied), so an exhausted vein
+##     renders as host rock. It is the whole index, not a window: a vein's anchor tile can
+##     sit outside the chunk's ring, and the index is one entry per vein ever mined.
 func gather_build_input(chunk_pos: Vector2i, heightmap: Array) -> Dictionary:
 	return {
 		"edits":                _gather_edits(chunk_pos),
 		"neighbour_heightmaps": _gather_neighbour_heightmaps(chunk_pos),
 		"biomes":               gather_biomes_for(chunk_pos),
+		"seed":                 _world_seed(),
+		"depleted":             _vein_taken.duplicate(),
 	}
 
 ## The edited tiles of the chunk + its one-tile ring, deep-copied. It walks the CHUNK INDEX
@@ -515,6 +502,9 @@ static func build_runs(chunk_pos: Vector2i, heightmap: Array, input: Dictionary)
 	var edits: Dictionary = input.get("edits", {})
 	var neighbours: Dictionary = input.get("neighbour_heightmaps", {})
 	var biomes: Dictionary = input.get("biomes", {})
+	# Phase 43 — the ore field's inputs, plus a per-call vein memo (cell → descriptor): a
+	# chunk asks the same few cells thousands of times.
+	var field := _field(int(input.get("seed", 0)), input.get("depleted", {}))
 	var out: Dictionary = {}
 	# A memo private to this call, for the plain (uncoloured) resolution. It is
 	# deliberately NOT the table handed out: a tile's runs are read by the tile itself
@@ -527,17 +517,42 @@ static func build_runs(chunk_pos: Vector2i, heightmap: Array, input: Dictionary)
 			var gz := chunk_pos.y * CHUNK_SIZE + tz
 			var world_xz := Vector2(gx * TILE_SIZE + TILE_SIZE * 0.5, gz * TILE_SIZE + TILE_SIZE * 0.5)
 			var coloured: Array = []
+			var surface := _natural_top(heightmap, chunk_pos, tx, tz, neighbours)
 			for run in _neighbour_runs(heightmap, chunk_pos, tx, tz, plain, edits, neighbours):
 				coloured.append({
 					"bottom":   float(run["bottom"]),
 					"top":      float(run["top"]),
 					"material": str(run.get("material", "")),
-					"color":    run_color(run, world_xz, biomes, colours),
+					"color":    run_color(run, world_xz, biomes, colours, surface, field),
 				})
 			out[_tile_key(Vector2i(gx, gz))] = coloured
 	# The deposits ride the SAME memo, so the chunk's own columns are not replayed twice:
 	# `plain` holds exactly the runs `_column_runs` would return for a tile of this chunk.
-	return { "runs": out, "deposits": vein_deposits_at(chunk_pos, heightmap, plain, edits, biomes) }
+	return { "runs": out, "deposits": vein_deposits_at(chunk_pos, heightmap, plain, edits, biomes, field) }
+
+## Phase 43 — the ore field's per-call input: the seed, the depletion record and a fresh
+## vein memo. Static and plain, so the worker half builds it from its payload.
+static func _field(seed: int, depleted: Dictionary) -> Dictionary:
+	return { "seed": seed, "depleted": depleted, "veins": {} }
+
+## The tile's NATURAL surface — its quantised heightmap top — read off the chunk's own map or
+## a ring neighbour's, or NAN when the neighbour is unknown. It is the datum the ore field's
+## depth is measured from, so a vein's depth is fixed by the world, not by what a player has
+## mined above it.
+static func _natural_top(heightmap: Array, chunk_pos: Vector2i, tx: int, tz: int, neighbours: Dictionary) -> float:
+	if tx >= 0 and tx < CHUNK_SIZE and tz >= 0 and tz < CHUNK_SIZE:
+		return _voxel_height(float(heightmap[tz * CHUNK_SIZE + tx]))
+	var g := Vector2i(chunk_pos.x * CHUNK_SIZE + tx, chunk_pos.y * CHUNK_SIZE + tz)
+	var chunk := _tile_to_chunk(g)
+	var hm: Variant = neighbours.get(_chunk_key(chunk), null)
+	if not (hm is Array):
+		return NAN
+	return _voxel_height(float((hm as Array)[(g.y - chunk.y * CHUNK_SIZE) * CHUNK_SIZE + (g.x - chunk.x * CHUNK_SIZE)]))
+
+## The depth (below the natural surface) the ore field reads for a run: the CENTRE of its top
+## STEP_HEIGHT slice — the slice the player sees on top and the one the next mine takes.
+static func _run_depth(run: Dictionary, surface: float) -> float:
+	return surface - (float(run["top"]) - STEP_HEIGHT * 0.5)
 
 ## PURE chunk build — no node, no bus, no slice state, so it is legal to run on a
 ## worker thread. Everything it touches arrives as an argument.
@@ -983,21 +998,105 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 		if not inventory.use_item(pick, "mine"):
 			return { "success": false, "material": "", "quantity": 0, "position": world_pos, "player_id": player_id }
 
-	_append_edit(tile, { "op": "remove", "bottom": span["bottom"], "top": span["top"] })
+	# Phase 43 — a NATURAL span yields what the ore field holds there: a live vein's
+	# material and per-slice quantity (capped by what is left of its reserve), else the
+	# biome's host rock, one unit. Resolved BEFORE the remove is appended, because the
+	# depth it reads is the span's, measured from the tile's natural surface.
 	var material := str(span["material"])
+	var quantity := 1
+	var vein: Dictionary = {}
 	if material == "":
-		material = material_for_biome(_biome_at(probe["xz"]), probe["xz"])
+		var yielded := _natural_yield(tile, span)
+		material = str(yielded["material"])
+		quantity = int(yielded["quantity"])
+		vein = yielded["vein"]
+	_append_edit(tile, { "op": "remove", "bottom": span["bottom"], "top": span["top"] })
 	_mark_dirty(tile)
+	if not vein.is_empty():
+		_record_depletion(vein, quantity)
+		_mark_dirty(vein["anchor"])
 	_rebuild_chunk_at_tile(tile)
 
 	if inventory != null and inventory.has_method("add_item"):
-		inventory.add_item(material, 1)
+		inventory.add_item(material, quantity)
 	_push_inventory(player_id)
 
 	var pos := Vector3(world_pos.x, float(span["top"]), world_pos.z)
-	GameBus.block_mined.emit(material, 1, pos)
+	GameBus.block_mined.emit(material, quantity, pos)
 	GameBus.block_changed.emit("mine", world_pos, normal, material)
-	return { "success": true, "material": material, "quantity": 1, "position": pos, "player_id": player_id }
+	return { "success": true, "material": material, "quantity": quantity, "position": pos, "player_id": player_id }
+
+## Phase 43 — what mining a NATURAL span of `tile` yields, off the ore field:
+## `{ material, quantity, vein }`. Inside a LIVE vein it is the vein's material and its
+## per-slice `quantity`, capped by the reserve still left; anywhere else (no vein, or one
+## mined out) the biome's host rock, one unit, with `vein` empty. Pure — the depletion it
+## implies is recorded by the caller (`_record_depletion`).
+func _natural_yield(tile: Vector2i, span: Dictionary) -> Dictionary:
+	var xz := Vector2(tile.x * TILE_SIZE + TILE_SIZE * 0.5, tile.y * TILE_SIZE + TILE_SIZE * 0.5)
+	var depth := _run_depth(span, _base_top_for_tile(tile))
+	var vein := _live_vein_at(xz, depth, _world_seed(), _vein_taken, {})
+	if vein.is_empty():
+		return { "material": OreField.host_material(_biome_at(xz)), "quantity": 1, "vein": {} }
+	var take := mini(int(vein["quantity"]), OreField.remaining(vein, _vein_taken))
+	return { "material": str(vein["material"]), "quantity": take, "vein": vein }
+
+## Record `take` more units mined out of `vein`, as ONE fact per vein on the edit path.
+##
+## The record is a `{ "op": "deplete", "vein": id, "taken": n }` op on the vein's ANCHOR
+## tile (the tile its blob centre sits in), REPLACED in place on every mine — never appended
+## — so a vein costs one op however many swings it took, and the save does not grow with
+## every click. Riding the tile op log is what makes it persist and travel for free: the
+## per-chunk manifest saves it, the join/re-scope snapshot carries it, and `apply_edits`
+## re-derives `_vein_taken` from it. Depletion is per VEIN, not per tile: depleting tile by
+## tile would turn a blob into a checkerboard.
+##
+## When the vein runs out, every chunk its blob can touch is rebuilt, so its tint and its
+## surface markers give way to host rock.
+func _record_depletion(vein: Dictionary, take: int) -> void:
+	if take <= 0:
+		return
+	var id := str(vein["id"])
+	var taken := int(_vein_taken.get(id, 0)) + take
+	_vein_taken[id] = taken
+	var key := _tile_key(vein["anchor"])
+	var ops: Array = (_edits.get(key, []) as Array).duplicate()
+	var replaced := false
+	for i in range(ops.size()):
+		var op: Dictionary = ops[i]
+		if str(op.get("op", "")) == "deplete" and str(op.get("vein", "")) == id:
+			ops[i] = { "op": "deplete", "vein": id, "taken": taken }
+			replaced = true
+			break
+	if not replaced:
+		ops.append({ "op": "deplete", "vein": id, "taken": taken })
+	_set_edit_ops(key, ops)
+	if not OreField.is_live(vein, _vein_taken):
+		_rebuild_vein_chunks(vein)
+
+## Rebuild every chunk a vein's blob can reach — its bounding box, widened by the blob's
+## noise margin — by the same route an edit takes (`_rebuild_chunk`).
+func _rebuild_vein_chunks(vein: Dictionary) -> void:
+	var center: Vector3 = vein["center"]
+	var reach := float(vein["radius"]) * (1.0 + OreField.SHAPE_NOISE) + 1.0
+	var seen: Dictionary = {}
+	for corner in [Vector2(-reach, -reach), Vector2(reach, -reach), Vector2(-reach, reach), Vector2(reach, reach)]:
+		var tile := Vector2i(floori(center.x + corner.x), floori(center.z + corner.y))
+		var chunk := _tile_to_chunk(tile)
+		var ckey := _chunk_key(chunk)
+		if seen.has(ckey):
+			continue
+		seen[ckey] = true
+		_rebuild_chunk(chunk)
+
+## The vein a depletion id names, re-derived from the field (the id IS its cell), or `{}`
+## for an id that does not parse or names an empty cell.
+func _vein_from_id(id: String) -> Dictionary:
+	var parts := id.split(",")
+	if parts.size() != 3:
+		return {}
+	var cell := Vector3i(int(parts[0]), int(parts[1]), int(parts[2]))
+	var vein := OreField.vein_in_cell(_world_seed(), cell)
+	return vein if not vein.is_empty() and str(vein["id"]) == id else {}
 
 ## Add one STEP_HEIGHT of the selected material on the column under world_pos.
 ## Consumes the material from the inventory. Returns true on success; false if no
@@ -1151,10 +1250,23 @@ func apply_edits(edits: Dictionary, materials: Dictionary = {}) -> void:
 	for key in previous:
 		if not next.has(key):
 			_mark_touched_tile(touched, _key_to_tile(str(key)))
+	var previous_taken: Dictionary = _vein_taken
 	_edits = next
 	# The read-side chunk index is re-derived with it (Phase 42 review pass 10): the log was
 	# replaced in one assignment, so the index is rebuilt rather than diffed.
 	_reindex_edits()
+	# Phase 43 — a vein whose EXHAUSTION changed with the new log repaints across its whole
+	# blob, which is wider than the anchor tile the deplete op sits on (the only tile the
+	# diff above marks). A count that moved without crossing the reserve changes nothing
+	# visible, so it rebuilds nothing.
+	var vein_ids: Dictionary = previous_taken.duplicate()
+	vein_ids.merge(_vein_taken)
+	for id in vein_ids:
+		var vein := _vein_from_id(str(id))
+		if vein.is_empty():
+			continue
+		if OreField.is_live(vein, previous_taken) != OreField.is_live(vein, _vein_taken):
+			_rebuild_vein_chunks(vein)
 	# Phase 42 review pass 8 — this is the REBUILD half of the re-scope, and it goes through
 	# the manager exactly like an edit does (`_rebuild_chunk_at_tile`): `request_rebuild`
 	# dispatches the build to a WORKER (so a snapshot that changed a corner — three touched
@@ -1212,6 +1324,8 @@ static func _ops_equal(a: Variant, b: Variant) -> bool:
 		if not is_equal_approx(float(p.get("top", 0.0)), float(q.get("top", 0.0))):
 			return false
 		if str(p.get("material", "")) != str(q.get("material", "")):
+			return false
+		if str(p.get("vein", "")) != str(q.get("vein", "")) or int(p.get("taken", 0)) != int(q.get("taken", 0)):
 			return false
 	return true
 
@@ -1302,82 +1416,81 @@ func _buildable_materials() -> Array:
 			out.append(str(key))
 	return out
 
-## Per-biome cumulative roll table, built ONCE from the BIOME_MATERIALS constant and
-## cached for the session. Phase 42 review pass 8 — `material_for_biome` re-summed the
-## biome's weight table for every tile it was asked about, and a chunk build asks 4356
-## times. A biome's table is a pure function of a `const`, so it never needs rebuilding.
+## Material at a natural tile, read off the ORE FIELD (Phase 43): the vein's material when
+## (tile, depth) is inside a LIVE vein, otherwise the biome's host rock (the heaviest
+## `BIOME_BIAS` entry). No wood materials — those come from trees, not the ground.
 ##
-## Phase 42 review pass 9 — and it is populated in `_ready()`, not on first use. A `static
-## var` on a script that a WORKER TASK holds is shared mutable class state, so the lazy fill
-## was a write a worker thread could have raced. Every biome is warmed on the main thread
-## before the tree streams anything, and the table is thereafter read-only by contract.
-static var _biome_rolls: Dictionary = {}
-
-## The biome's `[[cumulative_weight, material], ...]` table (see `_biome_rolls`). Order
-## matches the constant's own insertion order, which is what keeps the roll's tie-breaks
-## identical to the pre-memo version.
-static func _biome_roll_table(biome: String) -> Array:
-	if _biome_rolls.has(biome):
-		return _biome_rolls[biome]
-	var out: Array = []
-	var weights: Dictionary = BIOME_MATERIALS.get(biome, { "Ferrite": 1 })
-	var cumulative := 0
-	for material in weights:
-		cumulative += int(weights[material])
-		out.append([cumulative, str(material)])
-	_biome_rolls[biome] = out
-	return out
-
-## Material yielded by mining a tile in the given biome (deterministic per tile,
-## rarity-weighted). The common "rocky" material dominates; rarer ores appear as
-## sparse veins. No wood materials — those come from trees, not the ground.
+##   depth    : world units below the tile's NATURAL surface (0 is the top of the ground)
+##   seed     : the world seed (`_world_seed`)
+##   depleted : vein id → units taken (`get_vein_depletion`); an exhausted vein is host rock
+##   veins    : an optional per-caller vein memo (cell → descriptor)
 ##
-## Phase 42 review pass 9 — STATIC: it is a pure function of a `const` table and the tile
-## coordinate (see `_biome_roll_table`), so the worker half of a build may call it, and the
-## instance form (`v.material_for_biome(...)`) resolves to it unchanged.
-static func material_for_biome(biome: String, world_xz: Vector2) -> String:
-	var table := _biome_roll_table(biome)
-	if table.is_empty():
-		return "Ferrite"
+## It used to be a per-tile roll of the biome's whole weighted table, the same at every depth
+## — the uniform draw this phase retires. STATIC and pure, so the worker half of a build may
+## call it (through `natural_color`).
+static func material_for_biome(biome: String, world_xz: Vector2, depth: float = 0.0, seed: int = 0, depleted: Dictionary = {}, veins: Dictionary = {}) -> String:
+	var vein := _live_vein_at(world_xz, depth, seed, depleted, veins)
+	if not vein.is_empty():
+		return str(vein["material"])
+	return OreField.host_material(biome)
+
+## The LIVE vein at a world position and depth, or `{}` (absent or mined out).
+static func _live_vein_at(world_xz: Vector2, depth: float, seed: int, depleted: Dictionary, veins: Dictionary) -> Dictionary:
 	var tile := _world_to_tile(world_xz)
-	# Deterministic per-tile roll (stable across sessions, no randi()).
-	var roll := posmod(tile.x * 73856093 + tile.y * 19349663, 100)
-	for entry in table:
-		if roll < int(entry[0]):
-			return str(entry[1])
-	return str(table[0][1])
+	var chunk := _tile_to_chunk(tile)
+	var vein := OreField.vein_at(seed, chunk, tile - chunk * CHUNK_SIZE, depth, veins)
+	if vein.is_empty() or not OreField.is_live(vein, depleted):
+		return {}
+	return vein
 
-## Small raised deposits for the rare veins in one chunk, as
+## The ore field's answer for THIS world at a natural position and depth (the instance form
+## of `material_for_biome`, with this slice's seed, biome and depletion record).
+func material_at(world_xz: Vector2, depth: float) -> String:
+	return material_for_biome(_biome_at(world_xz), world_xz, depth, _world_seed(), _vein_taken)
+
+## Vein id → units mined out of it (a copy) — the depletion record the edit log carries.
+func get_vein_depletion() -> Dictionary:
+	return _vein_taken.duplicate()
+
+## The seed the ore field is evaluated with: the world's (Phase 41), or 0 for a slice with no
+## terrain wired (an isolated rig).
+func _world_seed() -> int:
+	if terrain_slice != null and terrain_slice.has_method("get_world_seed"):
+		return int(terrain_slice.get_world_seed())
+	return 0
+
+## Small raised markers on the VEINS in one chunk, as
 ## `[{ "position": Vector3, "size": Vector3, "color": Color }]` — the geometry
-## `build_chunk_arrays` emits on top of the flat ground. Only a NATURAL column qualifies: a
-## player-placed block is never a vein. Mining does NOT remove a deposit — the
-## mined block carries no placed material, so its material roll is unchanged and
-## the deposit simply rides down to the lowered column top with it. Pure, so the
-## rare-vein read is testable headlessly without a renderer.
+## `build_chunk_arrays` emits on top of the ground. A natural column carries one when its
+## top slice lies inside a LIVE vein (Phase 43): the marker marks a vein that is actually
+## there, in the vein's own colour — a ferrite vein in ferrite rock included, since the
+## marker is its only surface tell. A player-placed surface is never a vein, a column mined
+## down OUT of a vein loses its marker, and an exhausted vein shows none. Pure, so the read
+## is testable headlessly without a renderer.
 ##
-## Phase 42 review pass 8 — this is the RESOLVE half's job now, called from
+## Phase 42 review pass 8 — this is the RESOLVE half's job, called from
 ## `collect_build_runs`, which hands it the memo it already filled (`cache`): the walk below
 ## asks the same question about the same columns, so the chunk's own runs are replayed once
 ## rather than twice. Called on its own (a test, a probe) it builds its own memo.
 func vein_deposits(chunk_pos: Vector2i, heightmap: Array, cache: Dictionary = {}) -> Array:
-	return vein_deposits_at(chunk_pos, heightmap, cache, _edits, gather_biomes_for(chunk_pos))
+	return vein_deposits_at(chunk_pos, heightmap, cache, _edits, gather_biomes_for(chunk_pos),
+		_field(_world_seed(), _vein_taken))
 
-## Phase 42 review pass 9 — the PURE half of the walk above: the edits and the biomes arrive as
-## plain arguments (see `gather_build_input`/`gather_biomes_for`), so a worker can run it and the
-## instance form is a gather + a call. The chunk's own columns only, so the ring's heightmaps are
-## not part of its input.
-static func vein_deposits_at(chunk_pos: Vector2i, heightmap: Array, cache: Dictionary, edits: Dictionary, biomes: Dictionary) -> Array:
+## Phase 42 review pass 9 — the PURE half of the walk above: the edits, the biomes and (Phase 43)
+## the ore field's inputs arrive as plain arguments (see `gather_build_input`), so a worker can
+## run it. The chunk's own columns only, so the ring's heightmaps are not part of its input.
+static func vein_deposits_at(chunk_pos: Vector2i, heightmap: Array, cache: Dictionary, edits: Dictionary, biomes: Dictionary, field: Dictionary = {}) -> Array:
 	var out: Array = []
+	var seed := int(field.get("seed", 0))
+	var depleted: Dictionary = field.get("depleted", {})
+	var veins: Dictionary = field.get("veins", {})
 	var deposit_size := Vector3(
 		TILE_SIZE - VEIN_DEPOSIT_INSET * 2.0,
 		VEIN_DEPOSIT_HEIGHT,
 		TILE_SIZE - VEIN_DEPOSIT_INSET * 2.0)
-	# Same memo as the mesher: this walks every tile of the chunk too, and both
-	# walks ask the same questions about the same columns.
-	var deposits_cache: Dictionary = cache
 	for tz in range(CHUNK_SIZE):
 		for tx in range(CHUNK_SIZE):
-			var runs := _column_runs(heightmap, chunk_pos, tx, tz, deposits_cache, edits)
+			var runs := _column_runs(heightmap, chunk_pos, tx, tz, cache, edits)
 			if runs.is_empty():
 				continue
 			var surface: Dictionary = runs[-1]
@@ -1387,13 +1500,14 @@ static func vein_deposits_at(chunk_pos: Vector2i, heightmap: Array, cache: Dicti
 			var world_xz := Vector2(
 				(chunk_pos.x * CHUNK_SIZE + tx) * TILE_SIZE + TILE_SIZE * 0.5,
 				(chunk_pos.y * CHUNK_SIZE + tz) * TILE_SIZE + TILE_SIZE * 0.5)
-			var material := material_for_biome(biome_of(world_xz, biomes), world_xz)
-			if not RARE_VEIN_MATERIALS.has(material):
+			var depth := _run_depth(surface, _voxel_height(float(heightmap[tz * CHUNK_SIZE + tx])))
+			var vein := _live_vein_at(world_xz, depth, seed, depleted, veins)
+			if vein.is_empty():
 				continue
 			out.append({
 				"position": Vector3(world_xz.x, h + VEIN_DEPOSIT_HEIGHT * 0.5, world_xz.y),
 				"size":     deposit_size,
-				"color":    _material_color(material),
+				"color":    _material_color(str(vein["material"])),
 			})
 	return out
 
@@ -1642,8 +1756,8 @@ static func _neighbour_runs(heightmap: Array, chunk_pos: Vector2i, tx: int, tz: 
 	return _column_runs(hm, chunk, gx - chunk.x * CHUNK_SIZE, gz - chunk.y * CHUNK_SIZE, cache, edits)
 
 ## Angle a run's colour: a player-placed span takes its own material's colour, a
-## natural one the biome material roll (which is also how a rare vein gets its
-## tint and its deposit).
+## natural one the ore field's material at its top slice (which is also how a vein gets its
+## tint; its deposit marker reads the same field).
 ##
 ## Phase 42 review pass 8 — `biomes` and `colours` are the resolve pass's per-call memos
 ## (see `collect_build_runs`): a chunk build asks this 4356 times, and both the biome and
@@ -1653,14 +1767,22 @@ static func _neighbour_runs(heightmap: Array, chunk_pos: Vector2i, tx: int, tz: 
 ## from the gathered `biomes` map. `_run_color` below is the instance ACCESSOR, which fills that
 ## map from the terrain slice when a caller (a test) passes none — the same accessor/resolved
 ## pair as `_within_stream` / `_within_stream_at` on ChunkManager.
-static func run_color(run: Dictionary, world_xz: Vector2, biomes: Dictionary, colours: Dictionary) -> Color:
+##
+## Phase 43 — a natural run's colour is the ORE FIELD's material at the run's top slice
+## (`_run_depth` below `surface`, the tile's natural top), with `field` the resolve's
+## `{ seed, depleted, veins }` (`_field`). A run is one colour top to bottom, so a vein shows
+## where a column's top slice reaches it, not on the side walls of a deeper cut (a known
+## simplification). An unknown `surface` (NAN) reads depth 0.
+static func run_color(run: Dictionary, world_xz: Vector2, biomes: Dictionary, colours: Dictionary, surface: float = NAN, field: Dictionary = {}) -> Color:
 	var material := str(run.get("material", ""))
 	if material != "":
 		return _material_color(material)
-	return natural_color(world_xz, biomes, colours)
+	var depth := 0.0 if is_nan(surface) else _run_depth(run, surface)
+	return natural_color(world_xz, biomes, colours, depth, field)
 
 func _run_color(run: Dictionary, world_xz: Vector2, biomes: Dictionary = {}, colours: Dictionary = {}) -> Color:
-	return run_color(run, world_xz, _biomes_or_lookup(world_xz, biomes), colours)
+	return run_color(run, world_xz, _biomes_or_lookup(world_xz, biomes), colours,
+		_base_top_for_tile(_world_to_tile(world_xz)), _field(_world_seed(), _vein_taken))
 
 ## The terrain material this slice's chunk meshes share — ONE instance for the lifetime of
 ## the slice (see `_terrain_mat`). The lazy branch is for an isolated rig that drives
@@ -1885,25 +2007,39 @@ func _unindex_edit(tile_key: String) -> void:
 
 ## Rebuild the chunk index from the log — the wholesale path (`apply_edits` replaces `_edits`
 ## in one assignment, so the index is re-derived rather than diffed).
+##
+## Phase 43 — the vein depletion index (`_vein_taken`) is re-derived in the same pass: it is
+## read off the log's deplete ops, never stored beside it.
 func _reindex_edits() -> void:
 	_edits_by_chunk = {}
+	_vein_taken = {}
 	for key in _edits:
 		_index_edit(str(key))
+		for op in _edits[key]:
+			if op is Dictionary and str(op.get("op", "")) == "deplete":
+				_vein_taken[str(op["vein"])] = int(op["taken"])
 
 ## The minimal op list resolving a tile's natural runs to the runs it has NOW: the
 ## natural run(s) removed, then the resolved run(s) re-added. An EMPTY list means
 ## the column is its natural self again (the mined-then-rebuilt case, where the log
 ## would otherwise keep both halves of every cancelled pair forever).
+##
+## Phase 43 — a tile's vein DEPLETION ops are not run edits and are carried over verbatim:
+## compaction rewrites what the column IS, and a depletion record is what a vein HAS LOST,
+## which no replay of the runs can reconstruct.
 func _compact_ops(tile: Vector2i) -> Array:
+	var current: Array = _edits.get(_tile_key(tile), [])
 	var base := _base_runs_for_tile(tile)
-	var runs := apply_run_ops(base, _edits.get(_tile_key(tile), []))
-	if _runs_equal(runs, base):
-		return []
+	var runs := apply_run_ops(base, current)
 	var ops: Array = []
-	for run in base:
-		ops.append({ "op": "remove", "bottom": float(run["bottom"]), "top": float(run["top"]) })
-	for run in runs:
-		ops.append({ "op": "add", "bottom": float(run["bottom"]), "top": float(run["top"]), "material": str(run["material"]) })
+	if not _runs_equal(runs, base):
+		for run in base:
+			ops.append({ "op": "remove", "bottom": float(run["bottom"]), "top": float(run["top"]) })
+		for run in runs:
+			ops.append({ "op": "add", "bottom": float(run["bottom"]), "top": float(run["top"]), "material": str(run["material"]) })
+	for op in current:
+		if op is Dictionary and str(op.get("op", "")) == "deplete":
+			ops.append(op)
 	return ops
 
 ## True when two run lists describe the same solid spans out of the same material.
@@ -1955,6 +2091,14 @@ func _normalise_ops(ops: Array) -> Array:
 			continue
 		var o: Dictionary = op
 		var kind := str(o.get("op", ""))
+		if kind == "deplete":
+			# Phase 43 — a vein depletion record (see `_record_depletion`). Kept only when it
+			# names a vein and a non-negative count; it never touches the runs.
+			var vein_id := str(o.get("vein", ""))
+			var taken := int(o.get("taken", -1))
+			if vein_id != "" and taken >= 0:
+				out.append({ "op": "deplete", "vein": vein_id, "taken": taken })
+			continue
 		if kind != "add" and kind != "remove":
 			continue
 		var entry := {
@@ -1981,7 +2125,19 @@ func _apply_edit(action: String, position: Vector3, normal: Vector3, material: S
 		var span := _mine_span(get_runs_at_tile(tile), position, normal)
 		if span.is_empty():
 			return { "applied": false }
+		# Phase 43 — the client records the SAME depletion the host did: both evaluate the
+		# same field over the same log, so the vein's reserve agrees with nothing extra on
+		# the wire (and a re-scope snapshot carries the deplete op if a change was missed).
+		# The yield is resolved BEFORE the remove (its depth is the span's), but recorded
+		# AFTER it — the host's order in `mine_block` — so an anchor tile's op log is
+		# identical on both sides (`_ops_equal` compares positionally) and an exhaustion
+		# rebuild never gathers the pre-mine column.
+		var yielded: Dictionary = {}
+		if str(span["material"]) == "":
+			yielded = _natural_yield(tile, span)
 		_append_edit(tile, { "op": "remove", "bottom": span["bottom"], "top": span["top"] })
+		if not yielded.is_empty() and not (yielded["vein"] as Dictionary).is_empty():
+			_record_depletion(yielded["vein"], int(yielded["quantity"]))
 		_rebuild_chunk_at_tile(tile)
 		return {
 			"applied": true, "tile": tile, "new_h": _column_top_at_tile(tile),
@@ -2044,18 +2200,21 @@ static func biome_of(world_xz: Vector2, biomes: Dictionary) -> String:
 	var ckey := _chunk_key(Vector2i(floori(world_xz.x / extent), floori(world_xz.y / extent)))
 	return str(biomes.get(ckey, DEFAULT_BIOME))
 
-## Colour a natural (unplaced) terrain column at world_xz, from its biome — through the
-## resolve pass's per-call colour memo when it has one (see `run_color`).
-static func natural_color(world_xz: Vector2, biomes: Dictionary, colours: Dictionary) -> Color:
-	var material := material_for_biome(biome_of(world_xz, biomes), world_xz)
+## Colour a natural (unplaced) terrain column at world_xz and `depth`, from the ore field and
+## its biome's host rock — through the resolve pass's per-call colour memo when it has one
+## (see `run_color`).
+static func natural_color(world_xz: Vector2, biomes: Dictionary, colours: Dictionary, depth: float = 0.0, field: Dictionary = {}) -> Color:
+	var material := material_for_biome(biome_of(world_xz, biomes), world_xz, depth,
+		int(field.get("seed", 0)), field.get("depleted", {}), field.get("veins", {}))
 	if not colours.has(material):
 		colours[material] = _material_color(material)
 	return colours[material]
 
 ## The instance ACCESSOR form of `natural_color`: with no gathered map it asks the terrain slice
 ## for this position's biome, in exactly the shape `gather_biomes_for` builds.
-func _natural_color(world_xz: Vector2, biomes: Dictionary = {}, colours: Dictionary = {}) -> Color:
-	return natural_color(world_xz, _biomes_or_lookup(world_xz, biomes), colours)
+func _natural_color(world_xz: Vector2, biomes: Dictionary = {}, colours: Dictionary = {}, depth: float = 0.0) -> Color:
+	return natural_color(world_xz, _biomes_or_lookup(world_xz, biomes), colours, depth,
+		_field(_world_seed(), _vein_taken))
 
 ## A caller with no gathered biome map (an isolated test, a direct call) gets the one answer the
 ## terrain slice owes for this world position.
@@ -2128,12 +2287,17 @@ func _column_top_at_tile(tile: Vector2i) -> float:
 ## (`build_chunk` stores it and `_prune_heightmaps` keeps it), so `_chunks` is the guard.
 func _rebuild_chunk_at_tile(tile: Vector2i) -> void:
 	for chunk in _touched_chunks(tile):
-		if chunk_manager != null and chunk_manager.has_method("request_rebuild"):
-			chunk_manager.request_rebuild(chunk)
-			continue
-		var ckey := _chunk_key(chunk)
-		if _chunks.has(ckey):
-			build_chunk(chunk, _heightmaps[ckey])
+		_rebuild_chunk(chunk)
+
+## Rebuild ONE chunk by the route described above: dispatched through the manager when one is
+## wired, else synchronously and only when the chunk is loaded.
+func _rebuild_chunk(chunk: Vector2i) -> void:
+	if chunk_manager != null and chunk_manager.has_method("request_rebuild"):
+		chunk_manager.request_rebuild(chunk)
+		return
+	var ckey := _chunk_key(chunk)
+	if _chunks.has(ckey):
+		build_chunk(chunk, _heightmaps[ckey])
 
 ## The chunks whose mesh reads `tile`, deduplicated: the tile's own chunk plus each
 ## edge-adjacent one the tile sits on the edge of. A corner tile names three distinct
