@@ -224,6 +224,14 @@ var is_authoritative: bool = true
 ## the player cycles onto a material they actually hold in inventory.
 var _place_material: String = ""
 
+## The ONE terrain material every chunk mesh of this slice shares — the surface mesh and,
+## on a chunk that carries a rare vein, the deposit overlay. Built once, in `_ready()` (and
+## on first use for an isolated slice that never enters the tree), and reused for every
+## rebuild: it used to be a fresh `StandardMaterial3D` per `_terrain_material()` call, i.e.
+## twice per chunk build and two more on every edit rebuild, re-stream or self-heal, which
+## is material churn proportional to the (streamed) rebuild count rather than to the slice.
+var _terrain_mat: StandardMaterial3D = null
+
 ## Single world-level safety floor shared by all chunks (prevents the player from
 ## ever falling through the world). Created once in _ready(). It sits one unit
 ## BELOW BEDROCK_DEPTH: the terrain's own runs are the ground, and a floor slab
@@ -231,6 +239,8 @@ var _place_material: String = ""
 var _world_floor: StaticBody3D = null
 
 func _ready() -> void:
+	# One material for every terrain mesh this slice ever builds (see `_terrain_mat`).
+	_terrain_mat = _make_terrain_material()
 	_world_floor = StaticBody3D.new()
 	_world_floor.name = "WorldFloor"
 	_world_floor.collision_layer = TERRAIN_COLLISION_LAYER
@@ -1334,9 +1344,17 @@ func _run_color(run: Dictionary, world_xz: Vector2) -> Color:
 		return _material_color(material)
 	return _natural_color(world_xz)
 
+## The terrain material this slice's chunk meshes share — ONE instance for the lifetime of
+## the slice (see `_terrain_mat`). The lazy branch is for an isolated rig that drives
+## `build_chunk` without ever entering `_ready()`; in the game the material is already built.
+func _terrain_material() -> StandardMaterial3D:
+	if _terrain_mat == null:
+		_terrain_mat = _make_terrain_material()
+	return _terrain_mat
+
 ## The terrain's per-chunk material: per-column vertex colour, both faces
 ## rendered, so the shell is never see-through regardless of triangle winding.
-func _terrain_material() -> StandardMaterial3D:
+func _make_terrain_material() -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color.WHITE
 	mat.vertex_color_use_as_albedo = true

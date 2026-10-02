@@ -3439,7 +3439,12 @@ chunk is queued further out than it is needed.
   edit never resurrects an unloaded chunk).** **SIXTH review pass: `7809/7809 passed (0 failed)`
   on `--quit` and on `--quit --server`, no `SCRIPT ERROR` — two more tests (a legacy edit of an
   unknown shape is dropped, an incremental save can delete a chunk), and no test count lost to a
-  probe abort in the final run.** ***
+  probe abort in the final run.** **SEVENTH review pass: `7811/7811 passed (0 failed)` on `--quit`
+  and on `--quit --server`, no `SCRIPT ERROR`, and `10/10 steps agreed` from the net harness on
+  three consecutive fresh-world runs — one more test (the terrain material is one instance), one
+  harness hardening (step 4 waits for a distant tree, bounded by `STEP_TIMEOUT_SECS`, instead of
+  reporting `no_distant_tree` at whatever instant it arrives), and a doc correction (the quick start
+  now says `npm`, which is what CI runs). ***
 
 **Implementation notes:**
 - **Godot's threading rule is what makes the split mandatory.** Scene-tree
@@ -3859,6 +3864,60 @@ five `✗` lines are exact, but the total is 7 SHORT of the green 7809, because 
 probe means the payload does not carry `0,0` at all and the next assertion indexes it — an abort,
 not a failed assertion. Read the count as well as the `✗` lines, and quote the count you got in the
 GREEN run, never the probe's.
+
+**SEVENTH review pass (`fix(terrain,test,docs): Phase 42 review pass 7`):** a seven-row list
+(7a/7b/7c the flaky net-harness step, 4a/4b the terrain material, 6a/6b the npm/pnpm split). It
+cites no line numbers, so it dates itself only by its content — and that content lands on HEAD:
+`_terrain_material()` is the per-call allocation row 4a describes, step 4 is the `no_distant_tree`
+row 7a describes, and the `fabric` job really does run `npm ci` with `cache: npm`. Three of the
+seven are real, one is the list's own alternative and is not taken, one is already true, and one is
+a doc correction.
+
+1. **The flaky net-harness step (7a) — REAL as a RACE, and NOT reproduced in three fresh-world
+   runs.** 7c asks for the reproduction first, and it is the right order: `tools/net_harness.sh`
+   under a fresh `XDG_DATA_HOME` (which is what CI has and this machine's accumulated `user://`
+   does not) reported `10/10 steps agreed across both peers` three times in a row, with the same
+   client-side detail (`tree_-1_-2_1`) each time. So the failure recorded in the Phase 39 pass —
+   four runs failing on `rate_bucket` — does not stand today, and the step-four failure the list
+   names was never seen here at all. What IS real is the race the fix names: the target is drawn
+   from THIS side's own tree table, and a freshly-booted client's table is only what its snapshot
+   seeded, so a tree beyond `TARGET_BEYOND` may not have arrived when the step reaches it — and the
+   step reported `no_distant_tree` at that instant, which fails a correct guard for being early.
+   Step 4 now waits for the table to carry one, bounded by `STEP_TIMEOUT_SECS`, and only then
+   judges the guard; the wait is re-derived rather than captured, because a GDScript lambda
+   snapshots its captures by value. **The fix is therefore hardening, not a reproduced-defect fix**:
+   it cannot be RED-proved here, and it is not claimed to be.
+2. **Gating the harness on the full streamed window (7b) — NOT TAKEN.** It is the list's own
+   alternative to 7a for the same behaviour ("alternatively"), and 7a is the cheaper of the two: it
+   changes one step's precondition instead of the whole harness's boot gate. Two mechanisms for one
+   job is what the Phase 40 pass refused to do with the `SeparationRayShape3D`.
+3. **Material churn per rebuild (4a/4b) — REAL, one field, both halves.** `_terrain_material()`
+   minted a fresh `StandardMaterial3D` per call, and `build_chunk` calls it twice (the surface mesh
+   and the rare-vein deposit overlay), so every rebuild — an edit, a re-stream, the self-heal —
+   allocated two more materials. Both halves of the row are the same change: `_terrain_mat` is built
+   once in `_ready()` (and on first use, for an isolated rig that never enters the tree) and the one
+   instance is assigned to both `MeshInstance3D`s, which is what makes the churn track the slice
+   instead of the streamed rebuild count. RED-proved: `voxel: terrain material is one instance`
+   fails its three `is_same` assertions with the old per-call policy
+   (`the surface and the deposit overlay share ONE material instance`, `a rebuild reuses the same
+   material instance`, `and so does the rebuilt deposit overlay` — `7808/7811 passed (3 failed)`).
+4. **The npm/pnpm split (6a/6b) — 6a is ALREADY TRUE, 6b applied to `README.md` only.** `6a`
+   ("keep `package-lock.json`; CI's `npm ci` and `cache: npm` depend on it") is the state of the
+   repo: the lockfile is tracked, at `lockfileVersion` 3, and carries the `@newel/*` resolutions the
+   `fabric` job's `npm ci` installs from. Nothing to land. `6b`'s first alternative — the docs say
+   npm — is applied to `README.md` (quick start, the life-cycle diagram, "Adding a new system").
+   Two deviations from the row's letter: there is no `CLAUDE.md` in this repo (the agent notes live
+   in `AGENTS.md`, which names no package manager at all), and `ROADMAP.md`'s ~30 `pnpm …` mentions
+   are left alone — they are the per-phase record of commands that were actually run, and several
+   are quoted acceptance criteria, so rewriting them would falsify the log rather than fix a doc.
+   `pnpm-lock.yaml` is still tracked beside `package-lock.json`; removing it is the user's call, not
+   this pass's (it is a file deletion in a repo where `pnpm` also works).
+5. **A note for whoever reads the assertion count:** the suite's total is NOT a fixed number. The
+   seventh-pass count moved by −6 in `battle: player rounds route by target id`, whose `hits` array
+   is filled by `BattleSlice.resolve_round`'s `randf()` rolls: any earlier test that consumes the
+   global RNG stream shifts how many of its 20 rounds land, so the test asserts a different number of
+   times (56 vs 62 here). Green either way, and no assertion is lost — but a count quoted in this
+   file is a count for the revision and RNG stream it was measured on, not a constant to match.
 
 **Known simplifications (deferred):**
 - **An edit's mesh lands a frame or two later.** Since the review pass, a mine/place

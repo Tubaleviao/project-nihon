@@ -216,6 +216,7 @@ func run() -> void:
 	_run_test("voxel: place after mine keeps placed colour",   _test_voxel_place_after_mine_keeps_colour)
 	_run_test("voxel: rare vein deposits on natural tiles",    _test_voxel_rare_vein_deposits)
 	_run_test("voxel: rare vein material list",                _test_voxel_rare_vein_materials)
+	_run_test("voxel: terrain material is one instance",       _test_voxel_terrain_material_is_one_instance)
 	_run_test("voxel: a tunnel keeps its floor and its roof",   _test_voxel_tunnel_runs)
 	_run_test("voxel: the support sampler honours a ceiling",   _test_voxel_support_sampler_under_ceiling)
 	_run_test("voxel: a legacy save migrates to run edits",     _test_voxel_legacy_edit_migration)
@@ -6258,6 +6259,58 @@ func _test_voxel_rare_vein_materials() -> void:
 	assert_false(VoxelSlice.RARE_VEIN_MATERIALS.has("Ferrite"), "the common ground is not a vein")
 	assert_false(VoxelSlice.RARE_VEIN_MATERIALS.has("Ashite"), "the volcanic bulk rock is not a vein")
 	v.free()
+
+## The MeshInstance3D children of a built chunk, in attach order: the terrain surface
+## first, the rare-vein deposit overlay second when the chunk has one.
+func _chunk_mesh_instances(voxel: Node, chunk_pos: Vector2i) -> Array:
+	var root: Node3D = voxel._chunks["%d,%d" % [chunk_pos.x, chunk_pos.y]]
+	var meshes: Array = []
+	for child in root.get_children():
+		if child is MeshInstance3D:
+			meshes.append(child)
+	return meshes
+
+## Phase 42 review — ONE terrain material instance per slice, shared by every mesh it
+## builds and reused by a rebuild.
+##
+## The material used to be minted per `_terrain_material()` call: two allocations per
+## chunk build (surface + deposit overlay) and two more for every edit rebuild, re-stream
+## or self-heal, so the churn tracked the streamed rebuild count rather than the slice.
+## Asserted on the BUILT MESHES rather than on the private field, so the test describes the
+## guarantee (the meshes share one instance) and not the mechanism that happens to hold it.
+func _test_voxel_terrain_material_is_one_instance() -> void:
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	var v := VoxelSlice.new()
+	add_child(v)
+	v.terrain_slice = terrain
+	var rare := _find_chunk_with_biome(terrain, ["VolcanicBadlands", "TwilightGrove"])
+	assert_true(rare.x != -1, "found a biome that grants a rare vein")
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+
+	v.build_chunk(rare, flat)
+	var meshes := _chunk_mesh_instances(v, rare)
+	assert_eq(meshes.size(), 2, "the chunk carries a surface and a deposit overlay")
+	var surface_mat: Material = (meshes[0] as MeshInstance3D).material_override
+	var deposit_mat: Material = (meshes[1] as MeshInstance3D).material_override
+	assert_true(surface_mat is StandardMaterial3D, "the surface carries a terrain material")
+	assert_true(is_same(surface_mat, deposit_mat),
+		"the surface and the deposit overlay share ONE material instance")
+	assert_eq((surface_mat as StandardMaterial3D).cull_mode, BaseMaterial3D.CULL_DISABLED,
+		"and it is the terrain material (both faces rendered)")
+
+	# A rebuild — an edit, a re-stream, the self-heal — must not mint another one.
+	v.build_chunk(rare, flat)
+	var rebuilt := _chunk_mesh_instances(v, rare)
+	assert_eq(rebuilt.size(), 2, "the rebuild carries the same two meshes")
+	assert_true(is_same((rebuilt[0] as MeshInstance3D).material_override, surface_mat),
+		"a rebuild reuses the same material instance")
+	assert_true(is_same((rebuilt[1] as MeshInstance3D).material_override, surface_mat),
+		"and so does the rebuilt deposit overlay")
+	v.free()
+	terrain.free()
 
 # ---------------------------------------------------------------------------
 # Phase 33 — player identity + server-side persistence

@@ -9,10 +9,10 @@ The entire game design bible — materials, skills, creatures, items, world syst
 ## Quick start
 
 ```bash
-pnpm install
-pnpm validate   # validate the fabric against the schema
-pnpm inspect    # list all entities by name
-pnpm generate   # generate the design bible into bible/
+npm ci            # or `npm install` to resolve the lockfile fresh
+npm run validate  # validate the fabric against the schema
+npm run inspect   # list all entities by name
+npm run generate  # generate the design bible into bible/
 ```
 
 ---
@@ -81,7 +81,7 @@ public repo ships placeholders. See [assets/README.md](assets/README.md).
 Project Nihon follows a **fabric-first** discipline: every gameplay system is defined in the Newel fabric before it is implemented in GDScript. The flow is:
 
 ```
-fabric/ (design)  →  pnpm generate  →  godot/  (Godot resources)
+fabric/ (design)  →  npm run generate  →  godot/  (Godot resources)
                                     →  bible/  (design bible)
                                     →  wiki/   (player wiki)
 ```
@@ -94,9 +94,9 @@ Slices do **not** hold each other by default. The bus carries every *event* and 
 
 ### Adding a new system
 
-1. **Model it in the fabric** — add entities, fields, state machines, and behaviors in `fabric/`. Run `pnpm validate` before touching any GDScript.
-2. **Generate** — run `pnpm generate` to emit updated `.tres` resources into `godot/` and regenerate `bible/` and `wiki/`.
-3. **Check drift** — run `pnpm check-drift` to confirm the IR snapshot is up-to-date before importing in Godot.
+1. **Model it in the fabric** — add entities, fields, state machines, and behaviors in `fabric/`. Run `npm run validate` before touching any GDScript.
+2. **Generate** — run `npm run generate` to emit updated `.tres` resources into `godot/` and regenerate `bible/` and `wiki/`.
+3. **Check drift** — run `npm run check-drift` to confirm the IR snapshot is up-to-date before importing in Godot.
 4. **Implement the slice** — add `src/<system>/<system>_slice.gd`; wire it in `src/core/game_root.gd`; add bus signals in `src/core/bus.gd`.
 5. **Write tests** — extend `src/tests/test_suite.gd` with at least one test per acceptance criterion before marking the phase done.
 6. **Open a PR** — phases ship as pull requests; titles follow `feat(<system>): <short description>`. PRs for design changes to the fabric are separate from implementation PRs.
