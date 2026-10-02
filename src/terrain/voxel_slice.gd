@@ -853,6 +853,11 @@ func get_edits() -> Dictionary:
 ## refusal. `materials` maps "gx,gz" → Array of material keys, the other half of
 ## the legacy shape.
 ##
+## A value that is NEITHER shape is not player work, it is unreadable: it is DROPPED
+## with a warning (`_legacy_height_of`) rather than cast into a height, because the
+## cast was not a refusal — `float()` answers 0.0 for an unparsable string, which
+## migrates the column to the world floor.
+##
 ## Only the chunks whose edits actually CHANGED are rebuilt, and only the ones
 ## that are LOADED. Both halves are load-path hygiene this method needs because
 ## it is also the RE-SCOPE path (`game_root._on_world_snapshot_received`): a
@@ -877,9 +882,21 @@ func apply_edits(edits: Dictionary, materials: Dictionary = {}) -> void:
 		if value is Array:
 			next[key] = _normalise_ops(value)
 			continue
+		# The LEGACY half: a bare number (or a numeric string) is a pre-Phase-41
+		# absolute quantised height, migrated against the tile's natural run. Any
+		# OTHER shape is DROPPED with a warning rather than cast — `float()` answers
+		# 0.0 for a string that is not a number, so a corrupt entry used to migrate
+		# into a height AT THE WORLD FLOOR (the column carved away), and a dict raised
+		# a runtime error on the load path. Dropping is the policy `_normalise_ops`
+		# already applies to an op whose kind this version cannot read.
+		var legacy_height := _legacy_height_of(value)
+		if is_nan(legacy_height):
+			push_warning("VoxelSlice.apply_edits: dropping an unrecognized edit for '%s' (%s)"
+				% [str(key), type_string(typeof(value))])
+			continue
 		var tile := _key_to_tile(str(key))
 		var stack: Array = materials.get(key, [])
-		next[key] = legacy_edit_ops(float(value), _base_top_for_tile(tile), stack)
+		next[key] = legacy_edit_ops(legacy_height, _base_top_for_tile(tile), stack)
 	# _dirty_chunks is NOT cleared here: dirty tracking is reset only by
 	# clear_dirty_chunks() after a successful save (called from game_root._on_save_completed).
 	# Restored on-disk edits are not dirty — they were already persisted.
@@ -1529,6 +1546,25 @@ static func _runs_equal(a: Array, b: Array) -> bool:
 		if str(a[i].get("material", "")) != str(b[i].get("material", "")):
 			return false
 	return true
+
+## The height a pre-Phase-41 legacy edit stands for: a bare int or float, or a STRING
+## that parses as one (a save that round-tripped through JSON can carry either).
+## NAN means "not a legacy height at all", and `apply_edits` DROPS such an entry.
+##
+## Never defaulted to 0.0, for the reason `_normalise_ops` drops an op it cannot
+## read: a value that is not a number casts silently (GDScript's `float()` answers
+## 0.0 for a string like "not-a-height"), so defaulting turns a corrupt record into
+## an absolute height at the world FLOOR — the column carved away — while a dict or
+## an unsupported type raises. Both are worse than an inert dropped entry, which
+## leaves the tile its natural ground.
+static func _legacy_height_of(value: Variant) -> float:
+	match typeof(value):
+		TYPE_INT, TYPE_FLOAT:
+			return float(value)
+		TYPE_STRING, TYPE_STRING_NAME:
+			var text := str(value)
+			return text.to_float() if text.is_valid_float() else NAN
+	return NAN
 
 ## Coerce a loaded edit list into plain { bottom, top, material } / op dicts with
 ## numeric fields — JSON hands back Variants, and the run algebra compares floats.

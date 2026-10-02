@@ -310,6 +310,8 @@ func run() -> void:
 	_run_test("net: a remote chop credits the actor",           _test_net_remote_chop_credits_the_actor)
 	_run_test("voxel: a re-scope rebuilds a changed tile's seam", _test_voxel_apply_edits_rebuilds_seam_neighbours)
 	_run_test("voxel: an edit never resurrects an unloaded chunk", _test_voxel_edit_does_not_resurrect_unloaded_chunk)
+	# Phase 42 sixth review pass — a legacy edit shape the migration must refuse.
+	_run_test("voxel: a legacy edit of an unknown shape is dropped", _test_voxel_legacy_edit_type_guard)
 	_run_test("player: facing is a normalized yaw vector",      _test_player_facing)
 	_run_test("net: client forwards block intent",               _test_net_voxel_client_forwards_intent)
 	_run_test("net: apply_block_change applies host edit",       _test_net_voxel_apply_block_change)
@@ -420,6 +422,8 @@ func run() -> void:
 	_run_test("persistence: player id is path-safe",              _test_player_id_is_path_safe)
 	_run_test("persistence: non-canonical player id refused",     _test_non_canonical_player_id_refused)
 	_run_test("persistence: thread-safe write_job writes records", _test_write_job_writes_records)
+	# Phase 42 sixth review pass — an incremental save that can express a deleted chunk.
+	_run_test("persistence: an incremental save can delete a chunk", _test_persistence_incremental_save_can_delete_a_chunk)
 	_run_test("chunk: dirty clear is per key + re-markable",      _test_dirty_keys_clear_and_remark)
 	_run_test("identity: minted id carries 128-bit entropy",      _test_minted_id_has_crypto_entropy)
 	_run_test("identity: local player id is not claimable",       _test_local_player_id_not_claimable)
@@ -3417,6 +3421,48 @@ func _test_voxel_edit_does_not_resurrect_unloaded_chunk() -> void:
 	var r := v.mine_block(Vector3(31.75, 2.0, 16.25))
 	assert_true(r.get("success", false), "the seam column was mined")
 	assert_false(v._chunks.has("1,0"), "and the streamed-out neighbour was not resurrected")
+	v.free()
+
+## Phase 42 review (sixth pass) — the LEGACY half of `apply_edits` accepted any shape
+## and cast it with `float()`. That cast was not a refusal: `float()` answers 0.0 for
+## a string that is not a number (measured), so a corrupt or re-rolled record migrated
+## into an absolute height AT THE WORLD FLOOR — the column carved away — and a dict
+## value raised `Invalid call. Nonexistent 'float' constructor` on the load path. The
+## migration now admits exactly what a pre-Phase-41 edit could be — an int, a float, or
+## a numeric string — and DROPS anything else with a warning, the policy
+## `_normalise_ops` already applies to an op whose kind it cannot read. A dropped entry
+## is inert: the tile keeps its natural ground.
+func _test_voxel_legacy_edit_type_guard() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+	v.build_chunk(Vector2i(0, 0), flat)
+	# Tile (32,32) is the honest pre-Phase-41 shape (a bare number) and (40,40) is the
+	# other one a JSON round-trip can produce (a numeric string). The rest are not
+	# heights at all.
+	var junk := { "0,0": { "edits": {
+		"32,32": 1.0,
+		"40,40": "1.5",
+		"34,34": { "op": "remove", "bottom": 1.0, "top": 2.0 },
+		"36,36": "not-a-height",
+		"38,38": true,
+	} } }
+	v.apply_chunk_manifest(junk)
+	assert_eq(v.get_voxel_height_at(Vector2(16.25, 16.25)), 1.0,
+		"a bare numeric legacy height still migrates")
+	assert_eq(v.get_voxel_height_at(Vector2(20.25, 20.25)), 1.5,
+		"and so does a numeric string")
+	for key in ["34,34", "36,36", "38,38"]:
+		assert_false(v.get_edits().has(key),
+			"an edit of an unknown shape (%s) is dropped, never cast" % [key])
+	assert_eq(v.get_voxel_height_at(Vector2(17.25, 17.25)), 2.0,
+		"a dict value leaves the column at its natural height instead of raising")
+	assert_eq(v.get_voxel_height_at(Vector2(18.25, 18.25)), 2.0,
+		"an unparsable string no longer carves the column to the world floor")
+	assert_eq(v.get_voxel_height_at(Vector2(19.25, 19.25)), 2.0,
+		"and neither does a bool (it used to cast to 1.0)")
 	v.free()
 
 # ---------------------------------------------------------------------------
@@ -6748,6 +6794,80 @@ func _test_write_job_writes_records() -> void:
 	assert_true((world.get("chunks", {}) as Dictionary).has("0,0"), "the earlier chunk survived the merge")
 	assert_eq((world.get("creatures", []) as Array).size(), 1, "and the new creature state was folded in")
 	store.free()
+
+## Phase 42 review (sixth pass) — an incremental save could not express a DELETED
+## chunk. `_append_edit` ERASES a tile's op list once it compacts back to the
+## column's natural self (the player mined a block and put it back), and the chunk's
+## manifest entry goes with it — but dirty tracking is per CHUNK and is reset only by
+## the save that consumed it, so the chunk is still dirty with nothing left to
+## serialize. `dirty_chunk_subset` skipped a key the manifest did not have and
+## `_merge_world` only folded entries IN, so the record on disk kept the edits the
+## earlier FULL save wrote: reload and the terrain the player put back was still
+## carved. The payload now carries an EMPTY edit set for a dirty chunk with no edits,
+## and the merge reads that as a deletion.
+func _test_persistence_incremental_save_can_delete_a_chunk() -> void:
+	var dir := "user://saves/test_incremental_delete/"
+	_wipe_dir(dir)
+	var voxel := _make_voxel()
+	assert_true(voxel.mine_block(Vector3(16.25, 2.0, 16.25)).get("success", false),
+		"the column was mined")
+	var writer := PersistenceSlice.new()
+	add_child(writer)
+	writer.server_save_dir = dir
+	assert_eq(writer.save_world({ "local_player_id": "player_1_1_ab", "chunks": voxel.get_chunk_manifest() }, false), OK,
+		"the full world record writes")
+	assert_true((writer.load_world()["chunks"] as Dictionary).has("0,0"),
+		"the record on disk carries the edited chunk")
+
+	# The player puts it back: the op log compacts away ENTIRELY, so the chunk has no
+	# edits left to serialize — while it is still dirty (the second mine is a real edit
+	# and re-marks it).
+	voxel.clear_dirty_chunks()
+	voxel.mine_block(Vector3(16.25, 2.0, 16.25))
+	var key := voxel._tile_key(Vector2i(32, 32))
+	var cancel: Array = []
+	for i in range(4):
+		cancel.append({ "op": "remove", "bottom": 1.875, "top": 2.0 })
+		cancel.append({ "op": "add", "bottom": 1.875, "top": 2.0, "material": "" })
+	voxel._edits[key] = cancel
+	voxel._append_edit(Vector2i(32, 32), { "op": "add", "bottom": 1.875, "top": 2.0, "material": "" })
+	assert_false(voxel.get_edits().has(key), "the column is back to its natural self")
+	assert_eq(voxel.get_dirty_chunk_keys(), ["0,0"], "and the chunk is still dirty")
+	var manifest := voxel.get_chunk_manifest()
+	assert_false(manifest.has("0,0"), "there are no edits left to serialize")
+	var subset := PersistenceSlice.dirty_chunk_subset(manifest, voxel.get_dirty_chunk_keys())
+	assert_true(subset.has("0,0"), "the incremental payload still names the dirty chunk")
+	assert_true((subset["0,0"]["edits"] as Dictionary).is_empty(),
+		"and says it has no edits, which IS the deletion statement")
+
+	# The merge rule on its own: an empty edit set deletes the key, and a chunk the
+	# payload does not mention at all is kept.
+	var folded := writer._merge_world(
+		{ "chunks": { "0,0": { "edits": { "32,32": [] } } } },
+		{ "chunks": { "0,0": { "edits": {} } } })
+	assert_false((folded["chunks"] as Dictionary).has("0,0"),
+		"an empty edit set deletes the chunk from the record")
+	var kept := writer._merge_world(
+		{ "chunks": { "0,0": { "edits": { "32,32": [] } } } },
+		{ "chunks": { "2,2": { "edits": { "160,160": [] } } } })
+	assert_true((kept["chunks"] as Dictionary).has("0,0"),
+		"a chunk the payload does not mention is kept")
+	assert_false(PersistenceSlice.is_empty_edit_set({ "materials": {} }),
+		"an entry with no 'edits' key is not read as a deletion")
+
+	# ---- the disk path end to end ----
+	assert_eq(writer.save_world({ "local_player_id": "player_1_1_ab", "chunks": subset }, true), OK,
+		"the incremental world record writes")
+	var world := writer.load_world()
+	assert_false((world["chunks"] as Dictionary).has("0,0"),
+		"the deleted chunk is gone from the record on disk")
+	var reloaded := _make_voxel()
+	reloaded.apply_chunk_manifest(world["chunks"])
+	assert_eq(reloaded.get_voxel_height_at(Vector2(16.25, 16.25)), 2.0,
+		"and a reload regenerates natural ground, not the carved column")
+	reloaded.free()
+	writer.free()
+	voxel.free()
 
 func _test_dirty_keys_clear_and_remark() -> void:
 	# The authoritative save clears the dirty keys it SERIALIZED, on the main thread,

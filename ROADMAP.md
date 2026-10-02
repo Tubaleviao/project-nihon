@@ -3436,7 +3436,10 @@ chunk is queued further out than it is needed.
   on `--quit` and on `--quit --server`, no `SCRIPT ERROR`, and `10/10 steps agreed` from the net
   harness — five more tests (a remote mine credits the actor, a remote place spends the actor's
   own pack, a remote chop credits the actor, a re-scope rebuilds a changed tile's seam, and an
-  edit never resurrects an unloaded chunk).** ***
+  edit never resurrects an unloaded chunk).** **SIXTH review pass: `7809/7809 passed (0 failed)`
+  on `--quit` and on `--quit --server`, no `SCRIPT ERROR` — two more tests (a legacy edit of an
+  unknown shape is dropped, an incremental save can delete a chunk), and no test count lost to a
+  probe abort in the final run.** ***
 
 **Implementation notes:**
 - **Godot's threading rule is what makes the split mandatory.** Scene-tree
@@ -3797,6 +3800,65 @@ emit or handler is a RUNTIME error in GDScript, not a parse error — and one st
 (`test_suite` invoked `_on_mine_requested()` itself) aborted the whole suite's compile and
 printed a green-LOOKING boot with ZERO tests run. Grep each signal before and after, and check
 the test COUNT, not just "0 failed".
+
+**SIXTH review-pass notes (a sixth post-phase review — three findings over eight rows; one was
+already closed by the fifth pass, two were real and are closed in
+`fix(terrain,persistence,test,docs): Phase 42 review pass 6`):**
+
+The list was written against `e975ddd` — the Phase 41 MERGE, i.e. before this phase — and it dates
+itself the same way the fifth pass's did: `_rebuild_chunk_at_tile` is cited at
+`voxel_slice.gd:1312`, `apply_edits` at `:550` and `_append_edit` at `:1148`, while those three sit
+at 1303 / 540 / 1138 on `e975ddd` and at 1712 / 877 / 1505 on HEAD. (The ~10-line residual says the
+reviewer's checkout was a commit or two past the merge, not the merge itself; nothing in the list
+depended on that.) Every claim was re-derived from the source.
+
+1. **Chunk resurrection in `_rebuild_chunk_at_tile` (rows 1a/1b/1c) — REAL at the revision read,
+   and ALREADY CLOSED by the fifth pass (`89c8461`).** The reviewer read the guard as
+   `_heightmaps.has(ckey)`, which the Phase 41 ring retention had made TRUE for a streamed-out
+   neighbour; the fifth pass replaced it with `_chunks.has(ckey)` and documented the invariant in
+   the method's own docstring, and registered `voxel: an edit never resurrects an unloaded chunk`
+   — which is exactly the test row 1c asks for, on exactly the case it names (it mines tile 63,
+   the edge column of chunk (0,0), with neighbour chunk (1,0) already unloaded). Nothing to land
+   here; the reviewer was right about the revision they read.
+2. **An incremental save could not express a DELETED chunk (rows 2a/2b) — REAL.** `_append_edit`
+   ERASES a tile's op list when it compacts back to the column's natural self (a player who mines
+   a block and puts it back), and `get_chunk_manifest` then has no entry for that chunk — while
+   dirty tracking is per CHUNK and is cleared only by the save that CONSUMED it, so the chunk is
+   still dirty with nothing left to serialize. That combination was expressible nowhere:
+   `dirty_chunk_subset` skipped any dirty key the manifest did not carry, and `_merge_world` only
+   ever folded entries INTO the record. So the record on disk kept the edits the earlier FULL save
+   wrote, and a reload resurrected terrain the player had already put back — on the autosave, not
+   just at shutdown. Fix, both halves: `dirty_chunk_subset` carries an EMPTY edit set for a dirty
+   key with no manifest entry (the deletion statement, and the reason the marker is checked with
+   `is_empty_edit_set`, which requires the `edits` key to be present — a shape this version does
+   not understand is folded in, never read as a deletion), and `_merge_world` DELETES the chunk's
+   key when it sees one. ROW 2c (force a full save on shutdown instead of an incremental one) is
+   **NOT TAKEN**: it leaves the autosave path exactly as broken as it is and pays the full-record
+   cost this phase removed.
+   RED-proved: `persistence: an incremental save can delete a chunk` (`the incremental payload
+   still names the dirty chunk` — and the payload's `0,0` then indexed off the end of the dict,
+   aborting the rest of the test).
+3. **No type guard on the legacy branch of `apply_edits` (rows 3a/3b) — REAL, one fix, both halves
+   of the row.** The legacy half cast every non-Array value with `float()`, and that cast is not a
+   refusal — measured on this engine: `float("not-a-height")` → `0.0`, `float(true)` → `1.0`,
+   `float({…})` → `SCRIPT ERROR: Invalid call. Nonexistent 'float' constructor`. The first
+   migrated a corrupt string into an absolute height AT THE WORLD FLOOR, i.e. carved the column
+   away; the last raised on the load path. The migration now admits exactly what a pre-Phase-41
+   edit could be — an int, a float, or a numeric string (`_legacy_height_of`, NAN as the "not a
+   height" sentinel) — and DROPS anything else with a `push_warning`, which is the policy
+   `_normalise_ops` already applies to an op whose kind it cannot read. Row 3b's "matching
+   `_normalise_ops`'s drop policy" is therefore the warning-plus-drop it asks for, in one place.
+   RED-proved: `voxel: a legacy edit of an unknown shape is dropped` (`an unparsable string no
+   longer carves the column to the world floor: expected 2.0, got 0.0` and `and neither does a
+   bool: expected 2.0, got 1.0`).
+
+**Batched probes, and where the count lies for the SECOND pass in a row.** Both inversions went
+into one boot (the guard back to the raw cast; the subset back to `if manifest.has(k)` plus
+`is_empty_edit_set` disabled with an always-false `< 0`). It reported `7797/7802 (5 failed)`: the
+five `✗` lines are exact, but the total is 7 SHORT of the green 7809, because the persistence
+probe means the payload does not carry `0,0` at all and the next assertion indexes it — an abort,
+not a failed assertion. Read the count as well as the `✗` lines, and quote the count you got in the
+GREEN run, never the probe's.
 
 **Known simplifications (deferred):**
 - **An edit's mesh lands a frame or two later.** Since the review pass, a mine/place
