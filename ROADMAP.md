@@ -3383,7 +3383,16 @@ chunk is queued further out than it is needed.
   the worker's 235263 us, i.e. 1.81x. The criterion's other half — the builder is a pure
   function of its arguments — was VACUOUSLY tested until this pass: the test built the SAME
   resolved table twice, so its second, differently-stated slice was dead setup. It now resolves
-  the chunk from both slices and builds from each.)**
+  the chunk from both slices and builds from each.)** **(NINTH review pass: the resolve moved
+  OFF the main thread, and the probe asserts an absolute ceiling as well as the ratio. The
+  per-pass figures showed the main-thread half at 44900 us per dispatch — 2.7 frames at 60 Hz —
+  so the criterion's own headroom was gone even though the ratio passed; `gather_build_input()`
+  copies the resolve's inputs and the STATIC `build_runs()` resolves on the worker, which brings
+  the main-thread half to 2539 us steady state (generate+gather 1634 us) against a worker half of
+  77159 us, and the assertion is now `steady_main < 16667 us` — one dispatch per frame, inside
+  one frame. The per-frame millisecond figure this criterion originally wanted is therefore
+  answered for the DISPATCH; what still needs a frame-driven boot is the world's whole frame
+  budget.)**
 - [x] Greedy merge cuts the per-chunk vertex count (quote the before/after
   number), and a tile whose neighbours differ still emits a valid 1×1 quad.
   *(`cell_count` → `quad_count`, measured in the suite's "chunk: greedy merge collapses a
@@ -3456,7 +3465,16 @@ chunk is queued further out than it is needed.
   on a fresh world — three more tests (the kept window is the view ring, apply_edits dispatches a
   rebuild, flush_builds awaits its retries), plus the split probe promoted from a print to an
   assertion (`main-thread half 130071 us` — resolve 126938 + apply 3133 — `against the worker's
-  235263 us`, 1.81×).** ***
+  235263 us`, 1.81×).** **NINTH review pass: `7870/7870 passed (0 failed)` on `--quit` and on
+  `--quit --server`, no `SCRIPT ERROR`, and `10/10 steps agreed` from the net harness on a fresh
+  world — six tests added (or renamed: the kept window is the stream radius, a direct load
+  respects the in-flight cap, the gathered payload carries the ring, the group key survives the
+  colour band, the biome roll table is prebuilt, the build payload shape is required), the kept
+  window widened
+  back to the queue radius (`DEFAULT_PREFETCH_DISTANCE` 2 → 1, so a band chunk is no longer built
+  and then thrown away), and the RESOLVE moved off the main thread: the dispatch's main-thread
+  half measured 44 900 us before and 2 526 us after (generate+gather 1 631 us) against a worker
+  half of 77 159 us, with the probe now asserting that half inside ONE 16 667 us frame.** ***
 
 **Implementation notes:**
 - **Godot's threading rule is what makes the split mandatory.** Scene-tree
@@ -4057,6 +4075,120 @@ numbers were read rather than the verdict. This pass's red-caused failure total 
 its four subjects and no test aborted (7839 ≈ the green run's 7833 ± RNG), so nothing was lost to a
 crash rather than a failed assertion.
 
+**NINTH review pass (`fix(terrain,test,docs): Phase 42 review pass 9`):** an eight-row table (an
+Issue column, a Solution column, a Criticality column) with no line numbers and no `Closes`
+column. **All eight rows are real** — the fifth list in a row with nothing to discard — and this
+is the first pass whose evidence made one of the PHASE'S OWN criteria go red. Rows 3 and 4 ask for
+an absolute main-thread budget on the dispatch and for the probe to assert it; measuring it PER
+PASS (the probe had averaged three passes, and the one-time costs sat in the first of them) gave
+**44 900 us of resolve per dispatch against a 16 667 us frame**: the headline "the build is on a
+worker" was true of the BUILD and false of the DISPATCH, which still spent 2.7 frames of
+main-thread work per chunk loaded. That pair is therefore the pass's one structural change — the
+resolve itself moves to the worker — and the other six rows are the streaming window, the
+in-flight cap, and four small defects the table names.
+
+1. **Band chunks were built and then released before use (row 1) — REAL (Critical).** The eighth
+   pass had narrowed the KEPT window to `view_distance` while the load QUEUE still spanned
+   `stream_radius()`, and everything the queue spans is BUILT — so every crossing built a band of
+   chunks and then released them unless the player happened to move toward them (the row measured
+   65 redundant worker builds per crossing; at the defaults it is 121 chunks built against 49
+   kept). The kept window is the QUEUE window again, so **no chunk is ever unloaded while it still
+   lies inside the radius it was queued at**, and the memory the eighth pass was protecting is
+   bounded by the radius instead of by a second window: `DEFAULT_PREFETCH_DISTANCE` is **1**, so
+   the resident set is 81 chunks (9×9 — the 49-chunk view ring plus a one-chunk lead) against the
+   121 that pass was avoiding.
+2. **The kept-window test locked that waste in (row 2) — REAL (High).** It asserted that a
+   just-built in-radius chunk IS released, i.e. the assertion was the waste. It is now
+   `chunk: the kept window is the stream radius` and asserts the row's own invariant — nothing is
+   unloaded while it is still inside the queue radius — plus the retention arithmetic as a number:
+   a one-chunk crossing releases the seven chunks of the departing edge. (The eighth pass's test
+   name `chunk: the kept window is the view ring` is kept in the record above; this pass renamed
+   it because the assertion it carried is now the opposite one, and the Phase 42 line quoting it
+   is the measurement of that revision, not of today's.)
+3. **The main thread still resolved every chunk it dispatched (row 3) — REAL, and the pass's
+   structural change (High).** The resolve (`collect_build_runs`: the per-tile run replay, the
+   biome and colour resolution and the rare-vein deposits) was the main thread's half of every
+   dispatch, and it cost **43 974 us of steady-state work per chunk** — 2.6 frames at 60 Hz, paid
+   once per frame while streaming, on the SAME thread the phase had just taken the build off. The
+   split moves: `gather_build_input()` copies the plain state the resolve reads on the main thread
+   (the chunk's and ring's edited tiles, deep-copied; the ring chunks' heightmaps; the ring chunks'
+   biomes) and the STATIC `build_runs()` does all the per-tile work on the worker, which also runs
+   `build_chunk_arrays()` — so one dispatch's main-thread half is now the noise generation plus a
+   handful of copies. **Measured: 44 900 us → 2 539 us per dispatch (17.7×), of which the
+   generate+gather is 1 634 us**, with the worker half at 77 159 us/pass (resolve 42 957 + build
+   34 202). `collect_build_runs()` survives as the synchronous wrapper, so the bus path, the
+   isolated rigs and the tests keep the same entry point; the resolve's reads became arguments
+   (`edits`, `neighbour_heightmaps`, `biomes`), which is what makes it worker-legal, and the
+   instance colour helpers became accessors over the static resolved forms (the
+   `_within_stream` / `_within_stream_at` shape).
+4. **The probe's criterion let a 43 ms frame pass (row 4) — REAL (Medium).** `pure_us > main_us`
+   was satisfied by a dispatch whose main-thread half blew the frame, and the three-pass SUM hid
+   the steady state behind the first pass's one-time costs. The probe now keeps PER-PASS figures
+   and asserts, alongside the ratio, an ABSOLUTE ceiling: one dispatch's main-thread half must fit
+   inside one frame (16 667 us). This is the assertion the old criterion could not make — and it
+   is the one that was RED before row 3's fix (see the batched probe evidence below).
+5. **`load_chunk()` bypassed the in-flight cap (row 5) — REAL (Low-Medium).** Every internal
+   caller checked `max_builds_in_flight` before dispatching, but the PUBLIC `load_chunk` called
+   `_dispatch_build` outright, so a direct load put the pool over its own cap. The cap is now
+   enforced INSIDE `_dispatch_build` (nobody can route around it), the deferral goes to
+   `_rebuild_queue` — the chunk is already `_loaded`, so the drain's rebuild branch is exactly the
+   path that re-dispatches it — and `request_rebuild`'s and the retry's duplicate checks were
+   removed so the rule lives in ONE place. New test:
+   `chunk: a direct load respects the in-flight cap`.
+6. **The group key's packed colour does not fit int32 (row 6) — REAL as a DOC error (Low).** The
+   eighth-pass comment claimed `to_rgba32()` "is an int32 by definition"; it is a packed uint32,
+   so opaque white is **4294967295** and the `Vector4i` component reads back as **-1** (the high
+   bit kept as the sign; measured on 4.7). The wrap is a BIJECTION — the component reads back as
+   `& 0xFFFFFFFF` == the packed value — so two distinct colours cannot collide onto one key and
+   the grouping is exactly what the old string key grouped. What was wrong was the comment, and it
+   is fixed in both places (the comment and the eighth-pass paragraph above).
+   `voxel: the group key survives the colour band` pins the measured values, the round trip, the
+   injectivity of two colours sharing their low bits, and the grouping itself.
+7. **`_biome_rolls` is worker-reachable mutable class state (row 7) — REAL (Low).** It is a
+   `static var` on the script a chunk-build task holds (`ChunkManager.VoxelBuilder`), so the lazy
+   fill was a WRITE a worker thread could have raced. Every biome is warmed in `_ready()` now, on
+   the main thread, before anything streams — and the worker half never reads it either, because
+   the colours arrive resolved in the table it is handed. New test:
+   `voxel: the biome roll table is prebuilt` (it clears the static first, so the assertion cannot
+   be vacuous).
+8. **`build_chunk_arrays` sniffed a "runs" key (row 8) — REAL (Low).** `resolved.get("runs",
+   resolved)` meant "does this dictionary happen to hold a key called runs?", silently re-reading a
+   bare runs table as a payload. Every caller in the tree passes a `collect_build_runs()` payload
+   (the only bare tables were the `{}`-for-natural probes, now `{ "runs": {} }`), so the sniff is
+   gone and an absent `runs` key reads as NO resolved columns, i.e. the natural-column fallback.
+   New test: `voxel: the build payload shape is required`, which hands the builder a bare table
+   that WOULD change the build under the old fallback and requires the two builds to be identical.
+
+**Batched probes, and the one that had to be its own.** Six inversions went into ONE boot (the kept
+window narrowed back to `view_distance`; the `_dispatch_build` cap guard disabled with an
+always-false operand; the `_ready()` prebuild loop emptied; the "runs" sniff restored; the group
+key's colour folded to its low byte; and — for rows 3/4 — the PROBE put back on the pre-fix
+measurement, the resolve counted as the main thread's half). It reported `7839/7860 passed
+(21 failed)` and every one of the six subjects went red with its own line:
+`chunk: the kept window is the stream radius` (`a band chunk still inside the queue radius is NOT
+released`, and `expected 7, got 40` released), `chunk: a direct load respects the in-flight cap`
+(`expected 1, got 2` builds in flight), `voxel: the biome roll table is prebuilt`
+(`expected 5, got 0`), `voxel: the build payload shape is required` (`expected 4352, got 4354`),
+`voxel: the group key survives the colour band` (`a second colour is its own group: expected 2,
+got 1`), and `chunk: the build split is measured` (`one dispatch's main-thread half fits inside a
+frame (48135 us of 16667 us, generate+gather 47243)`) — the row-4 ceiling failing at the old
+split, which is the whole reason row 3 was worth doing. Two caveats recorded rather than smoothed
+over: disabling the cap guard also reddened `chunk: a rebuild respects the in-flight cap` and
+`chunk: unloading drops a queued rebuild` (the same guard is those tests' subject too — the guard
+going off moves the pooling they assert on), and the run's failure total (21, total 7860) is a
+superset of the six subjects because the RNG-dependent test (`battle: player rounds route by
+target id`) asserts a varying number of times per run. No test aborted, and the restored source is
+green on both boots.
+A SECOND, two-inversion boot proved the gather itself (`chunk: the gathered payload carries the
+ring`): with `_gather_neighbour_heightmaps` carrying nothing and `_gather_edits` returning early,
+it reported `7862/7868 passed (6 failed)` — the new test's own
+`a carried ring chunk resolves its real column`, plus THREE existing tests in its blast radius
+(`voxel: a seam wall ignores the build order` `expected [[1.0, 2.0]], got [[-8.0, 2.0]]`,
+`voxel: an edge edit rebuilds the neighbour chunk`, `voxel: a tunnel keeps its floor and its
+roof`). That collateral is the useful part: the ring's heightmaps and edits are what the seam
+geometry is computed FROM, so the gather is load-bearing for the existing voxel tests, not only
+for its own.
+
 **Known simplifications (deferred):**
 - **An edit's mesh lands a frame or two later.** Since the review pass, a mine/place
   DISPATCHES its chunk rebuild (and any seam neighbour's) to the worker instead of building
@@ -4093,6 +4225,12 @@ crash rather than a failed assertion.
   the band. What is still deferred: the spawn itself is still a main-thread call inside the
   apply pass, and a band chunk's population is spawned and then released unvisited — whether
   the band should carry population at all remains the tuning decision.)**
+  **(NINTH review pass: that window narrowing is REVERTED — it was the build-then-release waste
+  this pass's row 1 measures, so the kept window is the queue radius (`stream_radius()`) again
+  and a band chunk is released only once it is outside the radius it was queued at. The
+  resident set is bounded by the RADIUS instead (`DEFAULT_PREFETCH_DISTANCE` 1 → 81 chunks,
+  9×9). What is still deferred is unchanged: the spawn is a main-thread call inside the apply
+  pass, and how far out population should exist is still the tuning decision.)**
 - **No runtime tuning UI** for `loads_per_frame` / the ring sizes; they stay
   constants (overridable, as today).
 

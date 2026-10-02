@@ -11,13 +11,18 @@ extends Node
 ## Phase 42 — the BUILD runs on a worker. Building a chunk (surface mesh + per-column
 ## collision) is the single most expensive thing this game does, and time-slicing it
 ## only spread the stall across frames instead of removing it. So a load is now two
-## halves: the main thread generates the heightmap and resolves the chunk's column
-## table (`VoxelSlice.collect_build_runs`, which is where the mutable slice state is
-## read), and a `WorkerThreadPool` task runs the PURE build
-## (`VoxelSlice.build_chunk_arrays`) and hands back plain arrays. `_process` POLLS
-## the task and applies the result on the main thread — never
+## halves: the main thread generates the heightmap and GATHERS the plain state the resolve
+## reads (`VoxelSlice.gather_build_input`, which is where the mutable slice state — `_edits`,
+## `_heightmaps`, the biome lookup — is read), and a `WorkerThreadPool` task runs the RESOLVE
+## (`VoxelSlice.build_runs`) and the PURE build (`VoxelSlice.build_chunk_arrays`) and hands back
+## plain arrays. `_process` POLLS the task and applies the result on the main thread — never
 ## `add_task` + `wait_for_task_completion` in the same frame, which is the
 ## synchronous build again with extra ceremony.
+##
+## Phase 42 review pass 9 — the resolve is on the worker too. Until then the main thread paid it
+## per dispatch: ~43 ms of per-tile work (measured, see the split probe) against a 16.7 ms frame,
+## i.e. the stall the phase exists to remove was still being paid on the main thread, once per
+## frame. What the main thread keeps is the noise generation and a handful of copies.
 ##
 ## The phase also gates the BOOT on the first ring: `build_first_ring(center)` marks
 ## the 9 chunks at Chebyshev 0..1 and queues them ahead of the rest, and
@@ -95,7 +100,13 @@ const VoxelBuilder := preload("res://src/terrain/voxel_slice.gd")
 ## streamed window is `view_distance + prefetch_distance`: the load ring leads the
 ## player's heading, so crossing a boundary requests nothing at the moment it becomes
 ## needed. `view_distance` stays the radius that is guaranteed fully streamed.
-const DEFAULT_PREFETCH_DISTANCE := 2
+##
+## Phase 42 review pass 9 — it is 1, not 2. Everything the queue spans is BUILT, and the
+## KEPT window is the queue window again (see `refresh`), so the resident set is the 7×7
+## view ring (49) plus a one-chunk lead: 81 chunks (9×9) against the 121 (11×11) that pass 8
+## was avoiding, and no chunk is built and then thrown away. A one-chunk lead is already
+## enough for the ring a crossing walks into to be built when it arrives.
+const DEFAULT_PREFETCH_DISTANCE := 1
 
 ## Phase 42 — the boot gate's radius: Chebyshev 0..1 around the centre, the chunk the
 ## body stands in plus its eight neighbours. Wider would make the loading screen a
@@ -256,17 +267,22 @@ func stop() -> void:
 ## a new chunk since the last call. Loads are NOT built here — they go onto
 ## _load_queue and are drained a bounded number per frame by _drain_load_queue.
 ##
-## Phase 42 review pass 8 — the KEPT window and the LOAD window are two different radii,
-## and conflating them was a regression this pass fixes. The load queue still spans
-## `stream_radius()` (`view_distance + prefetch_distance`) so the ring that leads the
-## player's heading is ALREADY queued when the crossing happens. The KEPT window is
-## `view_distance`: what a crossing retains — a resident mesh, its trimesh, its creatures
-## and its trees — is the view ring, not the prefetch band. Phase 42 had widened `wanted`
-## to the stream radius too, which put 121 resident chunks (11×11) where the view ring
-## keeps 49 (7×7): 2.5× the meshes, collision shapes and spawned contents, for a band the
-## player may never walk into. A band chunk is therefore built ahead of its need and
-## released on the next crossing unless the player moved toward it — that is the trade
-## (build work in advance for a view ring's worth of memory) and it is the intended one.
+## Phase 42 review pass 8 — the KEPT window and the LOAD window are two different radii.
+## The load queue spans `stream_radius()` (`view_distance + prefetch_distance`) so the ring
+## that leads the player's heading is ALREADY queued when the crossing happens, and the KEPT
+## window was narrowed to `view_distance`: what a crossing retains — a resident mesh, its
+## trimesh, its creatures and its trees — was the view ring, not the prefetch band, which
+## put 49 resident chunks (7×7) where `stream_radius()` had kept 121 (11×11).
+##
+## **(NINTH review pass: that narrowing locked a WASTE in, and it is reverted. Everything in
+## the load queue is BUILT, so a band chunk was built on the worker and then released on the
+## next crossing unless the player happened to move toward it — the row measured 65 redundant
+## worker builds per crossing, forever. The kept window is the QUEUE window again
+## (`stream_radius()`), so nothing is ever unloaded while it still lies inside the radius it
+## was queued at, which is also what `_test_chunk_kept_window_is_stream_radius` now asserts.
+## The memory pass 8 was protecting is bounded by the radius instead of by a second window:
+## `DEFAULT_PREFETCH_DISTANCE` is 1, so the resident set is 81 chunks (9×9) — the 49-chunk
+## view ring plus a one-chunk lead — rather than 121.)**
 func refresh() -> void:
 	var center := player_chunk()
 	var window_moved := center != _last_center
@@ -281,13 +297,16 @@ func refresh() -> void:
 		return
 
 	_last_center = center
-	# Two radii on purpose: `wanted` (kept) is the view ring, `desired` (queued) is the
-	# stream radius that leads it. See the docstring above.
+	# ONE radius for WANTED and DESIRED on purpose (ninth review pass): `wanted` — what a
+	# crossing retains — is the same radius the queue spans, so no chunk that was queued (and
+	# therefore built) is released while it is still inside the window it was built for. See
+	# the docstring above for why the two radii were briefly different and why that was a waste.
 	var wanted: Dictionary = {}
-	for c in _desired_chunks(center, view_distance):
+	var radius := stream_radius()
+	for c in _desired_chunks(center, radius):
 		if _in_bounds(c):
 			wanted[_chunk_key(c)] = true
-	var desired := _desired_chunks(center, stream_radius())
+	var desired := _desired_chunks(center, radius)
 
 	# Queue loads nearest-first. Dispatching is what is bounded per frame; the build
 	# itself runs on a worker.
@@ -367,6 +386,9 @@ func stream_radius() -> int:
 ## here instead of calling `_dispatch_build` directly, so the in-flight cap bounds every
 ## dispatch and not just a streamed load. Dispatch is the only thing bounded per frame;
 ## a queued rebuild is never dropped, it waits.
+## **(Ninth review pass: those callers reach the queue through `_dispatch_build`'s OWN cap
+## guard now, and so does the public `load_chunk` — the cap bounds every dispatch, not only
+## the ones an internal caller happened to check first. See `_dispatch_build`.)**
 func _drain_load_queue() -> void:
 	# Phase 42 review pass 4 — a drain with NOTHING queued has nothing to dispatch, so it
 	# does not resolve the window at all. `_process` calls this every tick, and the read
@@ -440,12 +462,16 @@ func _spawn_chunk_contents(chunk_pos: Vector2i) -> void:
 	if tree_slice != null and tree_slice.has_method("spawn_for_chunk"):
 		tree_slice.spawn_for_chunk(chunk_pos)
 
-## Hand one chunk's build to a worker task. Main-thread work: the heightmap
-## generation and the resolve of the build's input (`collect_build_runs` — that is where
-## `_edits`, `_heightmaps` and the biome lookup are read, and it now resolves the chunk's
-## rare-vein DEPOSITS too, so the worker can emit their boxes rather than the main thread
-## attaching them after the fact). Worker work: the pure build, which returns plain
-## arrays. The result is applied later, on the main thread, by `_apply_finished_builds()`.
+## Hand one chunk's build to a worker task. Main-thread work: the heightmap generation and the
+## GATHER of the plain state the resolve reads (`gather_build_input` — that is where `_edits`,
+## `_heightmaps` and the biome lookup are read). Worker work: the whole resolve
+## (`VoxelSlice.build_runs`) AND the pure build (`build_chunk_arrays`), both of which return plain
+## arrays the main thread attaches later, in `_apply_finished_builds()`.
+##
+## Phase 42 review pass 9 — the resolve moved to the worker (see `gather_build_input` and
+## `build_runs`). It used to be the main thread's half of every dispatch, and at ~43 ms per chunk
+## it was the stall the phase exists to remove, still being paid on the main thread once per
+## frame; what remains there is the noise generation and a handful of copies.
 func _dispatch_build(chunk_pos: Vector2i) -> void:
 	var key := _chunk_key(chunk_pos)
 	# An isolated rig (the suite wires no terrain/voxel) has nothing to build, and the
@@ -464,6 +490,16 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 			_spawn_chunk_contents(chunk_pos)
 		_update_first_ring_progress()
 		return
+	# Phase 42 review pass 9 — the in-flight cap is enforced HERE, not only at the call
+	# sites. Every internal caller checked it before dispatching, but `load_chunk()` is
+	# PUBLIC and dispatched outright: a direct load (a test, a future caller) put the pool
+	# over `max_builds_in_flight`. The deferral goes to `_rebuild_queue`, which
+	# `_drain_load_queue` drains under this same cap; the chunk is already `_loaded` (both
+	# `load_chunk` and `request_rebuild` mark it first), so the drain's rebuild branch is
+	# exactly the path that re-dispatches it. Delayed a frame, never dropped.
+	if _builds.size() >= max_builds_in_flight:
+		_queue_rebuild(chunk_pos)
+		return
 	# Phase 42 review — SUPERSEDE a build already in flight for this chunk. The caller
 	# reaches here for a chunk whose data changed under an in-flight build (see
 	# `request_rebuild`), and the older task's arrays describe the terrain BEFORE that
@@ -474,11 +510,18 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 	_supersede_in_flight(key)
 	_build_attempts[key] = int(_build_attempts.get(key, 0)) + 1
 	var heightmap: Array = terrain_slice.generate_heightmap(chunk_pos)
-	var resolved: Dictionary = voxel_slice.collect_build_runs(chunk_pos, heightmap)
+	# Phase 42 review pass 9 — the RESOLVE runs on the worker too. The main thread only GATHERS the
+	# plain state it reads (`gather_build_input`); before this, resolving the chunk's runs, colours
+	# and deposits cost ~43 ms of per-tile work on the main thread per dispatch — 2.7 frames at
+	# 60 Hz, and the one main-thread cost the earlier passes left behind (measured; see the split
+	# probe). The payload is plain data only (heightmap arrays, deep-copied edit lists,
+	# chunk-keyed biomes), so the task may hold it.
+	var gathered: Dictionary = voxel_slice.gather_build_input(chunk_pos, heightmap)
 	var revision: int = int(voxel_slice.chunk_revision(chunk_pos))
 	var result: Array = [null]
 	var task_id := WorkerThreadPool.add_task(
-		func(): result[0] = VoxelBuilder.build_chunk_arrays(chunk_pos, heightmap, resolved),
+		func(): result[0] = VoxelBuilder.build_chunk_arrays(chunk_pos, heightmap,
+			VoxelBuilder.build_runs(chunk_pos, heightmap, gathered)),
 		false, "chunk build %s" % key)
 	_builds[task_id] = {
 		"chunk":     chunk_pos,
@@ -521,14 +564,15 @@ func request_rebuild(chunk_pos: Vector2i) -> void:
 	_build_attempts.erase(key)
 	_failed.erase(key)
 	_supersede_in_flight(key)
-	if _builds.size() >= max_builds_in_flight:
-		_queue_rebuild(chunk_pos)
-		return
+	# Phase 42 review pass 9 — no cap check here: `_dispatch_build` enforces the cap itself
+	# (deferring to `_rebuild_queue`), so the rule lives in ONE place. The supersede above
+	# stays unconditional on purpose — the pre-edit build must not land while it waits.
 	_dispatch_build(chunk_pos)
 
-## Enqueue a rebuild that could not be dispatched right now because the in-flight cap was
-## reached (`request_rebuild`, or a build RETRY in `_apply_build_entry`). Deduped, and
-## drained by `_drain_load_queue` under the same cap. A rebuild is delayed, never dropped.
+## Enqueue a build that could not be dispatched right now because the in-flight cap was
+## reached — `_dispatch_build`'s own cap guard is the one caller (ninth review pass: a
+## streamed load, `request_rebuild` and a build RETRY all arrive through it). Deduped, and
+## drained by `_drain_load_queue` under the same cap. A build is delayed, never dropped.
 func _queue_rebuild(chunk_pos: Vector2i) -> void:
 	var key := _chunk_key(chunk_pos)
 	if _rebuild_pending.has(key):
@@ -669,12 +713,10 @@ func _apply_build_entry(task_id: int) -> bool:
 	var chunk: Vector2i = entry["chunk"]
 	if not voxel_slice.build_chunk(chunk, entry["heightmap"], arrays, int(entry["revision"])):
 		if int(_build_attempts.get(key, 0)) < MAX_BUILD_RETRIES:
-			# A retry is a dispatch like any other, so it waits for a slot rather than
-			# taking the pool over its cap (the entry just reaped usually frees one).
-			if _builds.size() >= max_builds_in_flight:
-				_queue_rebuild(chunk)
-			else:
-				_dispatch_build(chunk)
+			# A retry is a dispatch like any other, and `_dispatch_build` enforces the
+			# in-flight cap itself (ninth review pass), deferring to `_rebuild_queue` when
+			# the pool is full — the entry just reaped usually frees the slot.
+			_dispatch_build(chunk)
 		else:
 			_failed[key] = true
 			push_error("ChunkManager: chunk %s could not be built after %d attempts — its ground is missing (re-armed by the self-heal: immediately on a window re-centre, otherwise at most once per self_heal_interval)" % [key, MAX_BUILD_RETRIES])

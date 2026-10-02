@@ -315,9 +315,17 @@ func run() -> void:
 	_run_test("voxel: a legacy edit of an unknown shape is dropped", _test_voxel_legacy_edit_type_guard)
 	# Phase 42 eighth review pass — the deposit build off the main thread, the kept window,
 	# the split assertion, the re-scope's rebuild route, and the flush's retries.
-	_run_test("chunk: the kept window is the view ring",     _test_chunk_kept_window_is_view_distance)
 	_run_test("chunk: apply_edits dispatches a rebuild",     _test_voxel_apply_edits_dispatches_rebuild)
 	_run_test("chunk: flush_builds awaits its retries",      _test_chunk_flush_builds_awaits_retries)
+	# Phase 42 ninth review pass — the kept window is the queue window, the in-flight cap is
+	# enforced at dispatch, the split probe's absolute frame ceiling, the packed colour's wrap,
+	# the prebuilt biome roll table, and the required build-payload shape.
+	_run_test("chunk: the kept window is the stream radius",  _test_chunk_kept_window_is_stream_radius)
+	_run_test("chunk: a direct load respects the in-flight cap", _test_chunk_load_respects_inflight_cap)
+	_run_test("voxel: the group key survives the colour band", _test_voxel_group_key_colour_band)
+	_run_test("voxel: the biome roll table is prebuilt",      _test_voxel_biome_roll_table_prebuilt)
+	_run_test("voxel: the build payload shape is required",   _test_voxel_build_payload_shape_required)
+	_run_test("chunk: the gathered payload carries the ring", _test_chunk_gather_carries_the_ring)
 	_run_test("player: facing is a normalized yaw vector",      _test_player_facing)
 	_run_test("net: client forwards block intent",               _test_net_voxel_client_forwards_intent)
 	_run_test("net: apply_block_change applies host edit",       _test_net_voxel_apply_block_change)
@@ -9359,7 +9367,7 @@ func _test_voxel_build_arrays_pure() -> void:
 	assert_true(first["collision"] == from_b["collision"], "collision included")
 	# A caller with only a map — no resolved table at all — still gets the chunk's own
 	# natural columns. That is the fallback the suite and a fresh probe rely on.
-	var bare: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), flat, {})
+	var bare: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), flat, { "runs": {} })
 	assert_true(int(bare["quad_count"]) > 0, "an empty table still builds the natural columns")
 	a.free()
 	b.free()
@@ -9378,7 +9386,7 @@ func _test_voxel_greedy_merge() -> void:
 	# emitted from the difference against a neighbour and the in-chunk neighbour is
 	# solid at the same height. 4352 faces, which is 26112 vertices as the per-tile
 	# mesher emitted them.
-	var bare: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), flat, {})
+	var bare: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), flat, { "runs": {} })
 	assert_eq(int(bare["cell_count"]), 64 * 64 + 64 * 4, "a top face per tile, walls on the edges")
 	assert_eq(int(bare["quad_count"]), 5, "and the merge leaves one quad per facing")
 	var bare_quads := int(bare["quad_count"])
@@ -9410,6 +9418,69 @@ func _test_voxel_greedy_merge() -> void:
 	v.free()
 	w.free()
 	terrain.free()
+
+## Phase 42 review pass 9 — the fourth component of the group key is a packed uint32 kept in an
+## int32 slot, and the pass-8 comment claimed it fit ("`to_rgba32()` is an int32 by
+## definition"). It does not: opaque white packs to 4294967295 and the component reads back as
+## -1, the high bit kept as the SIGN. What the grouping actually depends on is that the wrap is
+## a BIJECTION, and that is what this pins — at the exact values measured on 4.7, plus the
+## grouping itself (one colour = one group, two colours = two), so a key that dropped or folded
+## the colour's high bit would go red.
+func _test_voxel_group_key_colour_band() -> void:
+	var white := Color(1.0, 1.0, 1.0, 1.0)
+	assert_eq(white.to_rgba32(), 4294967295, "opaque white packs to the top of the uint32 range")
+	var packed_key := Vector4i(0, 0, 0, white.to_rgba32())
+	assert_eq(packed_key[3], -1, "and the int32 component keeps only the sign bit of it")
+	assert_eq(packed_key[3] & 0xFFFFFFFF, white.to_rgba32(),
+		"the wrap round-trips, so the packed colour is still exact in the key")
+	var a := Vector4i(0, 0, 0, Color(1.0, 0.0, 0.0, 1.0).to_rgba32())
+	var b := Vector4i(0, 0, 0, Color(1.0, 0.0, 1.0, 1.0).to_rgba32())
+	assert_true(a != b, "colours sharing the low bits do not collide onto one key")
+	# And the grouping: coplanar cells of ONE colour merge, a second colour is its own group.
+	var groups: Dictionary = {}
+	VoxelSlice._group_cell(groups, "up", 1.0, 1.0, 1.0, Color(1.0, 0.0, 0.0, 1.0), 0, 0)
+	VoxelSlice._group_cell(groups, "up", 1.0, 1.0, 1.0, Color(1.0, 0.0, 0.0, 1.0), 1, 0)
+	assert_eq(groups["up"].size(), 1, "the same plane and colour share one merge group")
+	assert_eq(groups["up"].values()[0]["cells"].size(), 2, "and both cells are in it")
+	VoxelSlice._group_cell(groups, "up", 1.0, 1.0, 1.0, Color(1.0, 0.0, 1.0, 1.0), 2, 0)
+	assert_eq(groups["up"].size(), 2, "a second colour is its own group (the colour is IN the key)")
+
+## Phase 42 review pass 9 — the per-biome roll table is main-thread state, prebuilt at
+## `_ready()`. It is a `static var` on a script a WORKER TASK holds, so the lazy fill was
+## mutable class state a worker could have raced; the table is warmed before anything streams
+## and read-only by contract afterwards. The cache is CLEARED first, because the static is
+## shared process-wide and one left over from an earlier test would make this assertion vacuous.
+func _test_voxel_biome_roll_table_prebuilt() -> void:
+	VoxelSlice._biome_rolls.clear()
+	assert_eq(VoxelSlice._biome_rolls.size(), 0, "the cache starts empty (the assertion is not vacuous)")
+	var v := VoxelSlice.new()
+	add_child(v)
+	assert_eq(VoxelSlice._biome_rolls.size(), VoxelSlice.BIOME_MATERIALS.size(),
+		"every biome's roll table is built at _ready, not on first use")
+	for biome in VoxelSlice.BIOME_MATERIALS:
+		assert_true(VoxelSlice._biome_rolls.has(str(biome)),
+			"including %s" % str(biome))
+	v.free()
+
+## Phase 42 review pass 9 — the payload shape `build_chunk_arrays` takes is REQUIRED, not
+## sniffed. The old fallback (`resolved.get("runs", resolved)`) meant a dictionary that merely
+## HELD a tile-coordinate key was silently read AS the runs table; the table below lifts one
+## tile's column well above the natural one, so under the old fallback it changes the build and
+## under the required shape it is ignored as "no resolved columns", which is the natural-column
+## fallback. The two builds must therefore be byte-identical.
+func _test_voxel_build_payload_shape_required() -> void:
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+	var natural: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), flat, { "runs": {} })
+	var sniffed: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), flat, {
+		"0,0": [{ "bottom": -8.0, "top": 6.0, "material": "", "color": Color(1.0, 0.0, 1.0) }],
+	})
+	assert_eq(int(sniffed["cell_count"]), int(natural["cell_count"]),
+		"a bare table is not reinterpreted as the runs table (the payload shape is required)")
+	assert_true(sniffed["vertices"] == natural["vertices"], "and the build is identical")
+	assert_eq(int(natural["cell_count"]), 64 * 64 + 64 * 4,
+		"both are the natural chunk (a top face per tile, walls on the edges)")
 
 ## Phase 42 — the merge is a greedy RECTANGLE sweep, so it must never cover a gap: a
 ## cell with no neighbour of its own group is its own 1x1 quad, and scattered cells stay
@@ -9498,10 +9569,10 @@ func _test_chunk_first_ring_gate() -> void:
 ## Phase 42 — the prefetch band: a chunk beyond the view ring is QUEUED, so a crossing never
 ## asks for ground at the moment it becomes needed.
 ##
-## Phase 42 review pass 8 — "and kept" was the Phase 42 behaviour and is no longer what
-## happens: the band is queued for the load queue's radius, but the KEPT window (what a
-## crossing retains, contents and all) is `view_distance`. See
-## `_test_chunk_kept_window_is_view_distance` for the retention half.
+## Phase 42 review pass 8 — "and kept" was questioned here and the KEPT window briefly narrowed
+## to `view_distance`. Ninth review pass: it is the QUEUE radius again (`stream_radius()`), so
+## the band is queued AND kept — see `_test_chunk_kept_window_is_stream_radius` for why (a band
+## chunk is BUILT, so releasing it on the next crossing throws that build away).
 func _test_chunk_prefetch_ring() -> void:
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
@@ -9520,17 +9591,15 @@ func _test_chunk_prefetch_ring() -> void:
 	rig["terrain"].free()
 	rig["player"].free()
 
-## Phase 42 review pass 8 — the KEPT window is `view_distance`, not the stream radius.
-## Phase 42 had widened `wanted` to `stream_radius()` too, so a crossing retained 121
-## resident chunks (11×11 at the defaults) where the view ring keeps 49 (7×7) — 2.5× the
-## meshes, collision shapes and spawned contents for a band the player may never enter. The
-## load queue still spans the band; what changed is what a crossing KEEPS.
-##
-## Asserted on the mechanism the row names: after a crossing, a chunk inside the view ring
-## is still resident, and one that only ever sat in the prefetch band (built, since the
-## queue drained it) is released. Both are checked on `_loaded`, which is exactly the set
-## whose meshes, trimeshes and contents exist.
-func _test_chunk_kept_window_is_view_distance() -> void:
+## Phase 42 review pass 9 — the KEPT window is the QUEUE window (`stream_radius()`), and that
+## is what stops a chunk being built and then thrown away. Pass 8 had narrowed it to
+## `view_distance`, so every band chunk — BUILT, because everything the queue spans is — was
+## released on the next crossing unless the player happened to move toward it; the row
+## measured 65 redundant worker builds per crossing, forever. Two assertions, in the order the
+## row asks for them: the invariant (nothing is ever unloaded while it still lies inside the
+## queue radius), and the retention arithmetic as an exact NUMBER — a one-chunk crossing
+## releases the seven chunks of the departing edge, not the forty a view-ring window releases.
+func _test_chunk_kept_window_is_stream_radius() -> void:
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
 	var player: PlayerSlice = rig["player"]
@@ -9539,27 +9608,32 @@ func _test_chunk_kept_window_is_view_distance() -> void:
 	cm.loads_per_frame = 64
 	cm.refresh()
 	_wait_for_builds(cm)
-	# The prefetch half is intact: the band was QUEUED and, with room in the queue, built.
-	assert_true(cm._loaded.has("2,0"), "a band chunk is loaded ahead of its need")
-	assert_true(cm._loaded.has("3,0"), "right out to the band's edge")
+	assert_true(cm._loaded.has("3,0"), "a band chunk out at the queue radius is loaded and built")
 	assert_true(cm._loaded.has("1,0"), "and so is one inside the view ring")
-	# Cross one chunk toward +x. The view ring re-centres on (1,0): x ∈ [0, 2]. (2,0) came
-	# with the player and is KEPT; (3,0) — built a moment ago, still well inside the stream
-	# radius — is RELEASED, which is the whole of this row: the kept window is the view ring.
+	# Cross one chunk toward +x: the window re-centres on (1,0) and still spans Chebyshev 3,
+	# so (3,0) is INSIDE it and must NOT be released — that release is the waste pass 8 locked in.
+	var before: Dictionary = cm._loaded.duplicate()
 	player.spawn_at(Vector3(32.0 + 16.0, 40.0, 16.0))
 	cm.refresh()
-	assert_true(cm._loaded.has("2,0"), "a chunk the player moved toward stays resident")
-	assert_false(cm._loaded.has("3,0"), "a band chunk beyond the new view ring is released")
-	assert_false(cm._loaded.has("0,2"), "on the z axis too")
-	# And the invariant, at a crossing where nothing on the old axis survives at all.
+	var released: Array = []
+	for key in before:
+		if not cm._loaded.has(key):
+			released.append(key)
+	assert_true(cm._loaded.has("3,0"), "a band chunk still inside the queue radius is NOT released")
+	assert_true(cm._loaded.has("2,0"), "nor one the player moved toward")
+	assert_eq(released.size(), 7,
+		"a one-chunk crossing releases only the departing edge's seven chunks, not the band")
+	# And the invariant, at a crossing where nothing of the old window survives: every resident
+	# chunk lies inside the radius it was queued at.
 	player.spawn_at(Vector3(16.0, 40.0, 160.0))
 	cm.refresh()
 	var center := cm.player_chunk()
+	var radius: int = cm.stream_radius()
 	for key in cm._loaded.keys():
 		var probe: PackedStringArray = str(key).split(",")
 		var c := Vector2i(int(probe[0]), int(probe[1]))
-		assert_true(cm._within_stream_at(center, cm.view_distance, c),
-			"every resident chunk is inside the view ring (%s)" % key)
+		assert_true(cm._within_stream_at(center, radius, c),
+			"every resident chunk is inside the queue radius (%s)" % key)
 	rig["cm"].free()
 	rig["voxel"].free()
 	rig["terrain"].free()
@@ -9773,6 +9847,32 @@ func _test_chunk_rebuild_respects_inflight_cap() -> void:
 	_wait_for_builds(cm)
 	assert_eq(cm._builds.size(), 0, "the queued rebuild dispatches once the pool frees")
 	assert_eq(cm._rebuild_queue.size(), 0, "and the rebuild queue drains")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review pass 9 — the in-flight cap is enforced by `_dispatch_build` ITSELF, so the
+## public `load_chunk` cannot bypass it. Every internal caller checked the cap first, but a
+## direct load dispatched outright and put more builds in the pool than
+## `max_builds_in_flight` allows. The deferred load WAITS in `_rebuild_queue` (it is already
+## `_loaded`, so the drain's rebuild branch is the path that re-dispatches it) and drains under
+## the same cap, exactly like a queued rebuild: delayed a frame, never dropped.
+func _test_chunk_load_respects_inflight_cap() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.max_builds_in_flight = 1
+	cm.load_chunk(Vector2i(0, 0))        # takes the pool's only slot
+	assert_eq(cm._builds.size(), 1, "the first load takes the slot")
+	cm.load_chunk(Vector2i(1, 0))        # a SECOND, direct load with the pool at its cap
+	assert_eq(cm._builds.size(), 1, "a direct load does not put the pool over its cap")
+	assert_true(cm._loaded.has("1,0"), "the chunk is still taken into the streamed set")
+	assert_true(cm._rebuild_pending.has("1,0"), "its build waits in the queue instead of being dropped")
+	assert_eq(cm._rebuild_queue.size(), 1, "as one queued entry")
+	_wait_for_builds(cm)
+	assert_true(cm._built.has("0,0"), "the chunk that held the slot was built")
+	assert_true(cm._built.has("1,0"), "and the deferred load lands once the pool frees")
+	assert_eq(cm._builds.size(), 0, "with nothing left in flight")
 	rig["cm"].free()
 	rig["voxel"].free()
 	rig["terrain"].free()
@@ -10191,38 +10291,57 @@ func _test_quit_after_boot_predicate() -> void:
 
 ## Phase 42 review — the phase's headline claim ("the build is on a worker, the main
 ## thread does not build") is a QUANTITATIVE one, so it leaves a number behind rather than
-## prose. This times the two halves of one chunk build on this machine: the main-thread
-## half (`_dispatch_build`'s heightmap generation + `collect_build_runs`, which is where the
-## edit log, the biome lookup and the deposit resolution live) against the pure builder the
-## worker runs.
+## prose. This times the two halves of one chunk build on this machine, as
+## `_dispatch_build` actually spends them.
 ##
 ## Phase 42 review pass 8 — and it now ASSERTS the split, which is the criterion the phase
-## was accepted on and which this test only PRINTED. The row's second half is here too: the
-## apply path's own main-thread cost (`_mesh_from_arrays` for the surface + the deposit
-## overlay, and the ConcavePolygonShape3D's `set_faces`) is measured as part of the
-## main-thread total, because a ratio that omitted what the main thread still does with the
-## worker's result would flatter itself. A true per-FRAME millisecond figure would need
-## frames the suite does not have — but the ratio is what says the expensive half left the
-## main thread, and it is a number a reviewer can check.
+## was accepted on and which this test only PRINTED.
+##
+## Phase 42 review pass 9 — THE SPLIT ITSELF MOVED. The resolve (runs, colours, deposits) was the
+## main thread's half and cost ~43 ms per dispatch — 2.7 frames at 60 Hz — which is exactly what
+## rows 3 and 4 of this pass found: the ratio assertion passed while the frame did not. The main
+## thread now only GENERATES the heightmap and GATHERS the plain state the resolve reads
+## (`VoxelSlice.gather_build_input`), and the worker runs the resolve (`build_runs`) AND the build
+## (`build_chunk_arrays`). So the probe measures the NEW halves: main = generate + gather + the
+## apply pass, worker = resolve + build. Both are kept PER PASS, because the first pass pays the
+## one-time costs and the steady state is what a frame actually gets.
+##
+## The ceiling is the row's: one dispatch's main-thread half must fit inside ONE FRAME at 60 Hz,
+## because the streaming loop dispatches one chunk per frame. The ratio is still asserted
+## alongside it — the worker half must also dominate, i.e. the expensive work is off the main
+## thread — and both numbers are printed for a reviewer to check.
 func _test_chunk_build_split_probe() -> void:
 	var terrain := TerrainSlice.new()
 	add_child(terrain)
 	var voxel := VoxelSlice.new()
 	voxel.terrain_slice = terrain
 	add_child(voxel)
-	var hm: Array = terrain.generate_heightmap(Vector2i(0, 0))
-	# Three passes, summed: the two halves differ by under 2x on this machine, so a
-	# single-shot pair would be a timing coin-flip. The FIRST pass also pays the one-time
-	# costs (the biome roll table, the first dictionary growth), so the loop is a fairer
-	# picture of the steady state than either sample alone.
-	var resolve_us := 0
-	var pure_us := 0
+	# A 3×3 ring of heightmaps, so the resolve has real ring tiles to subtract against — the
+	# production case. Without them every ring tile reads as an UNKNOWN neighbour and the measured
+	# cost would flatter itself.
+	for cz in range(-1, 2):
+		for cx in range(-1, 2):
+			var c := Vector2i(cx, cz)
+			voxel._heightmaps["%d,%d" % [cx, cz]] = terrain.generate_heightmap(c)
+	var resolve_us := 0            # the main-thread half, summed (see `main_pass` for per-pass)
+	var pure_us := 0               # the worker half (resolve + build), summed
 	var apply_us := 0
+	var worker_resolve_us := 0
+	var main_pass: Array = []      # per-pass main-thread half: generate + gather + apply
+	var resolve_pass: Array = []   # per-pass main-thread gather alone
 	var built: Dictionary = {}
 	for i in range(3):
+		# --- the MAIN-THREAD half of one dispatch, in `_dispatch_build`'s own order ---
 		var t0 := Time.get_ticks_usec()
-		var resolved: Dictionary = voxel.collect_build_runs(Vector2i(0, 0), hm)
-		resolve_us += Time.get_ticks_usec() - t0
+		var hm: Array = terrain.generate_heightmap(Vector2i(0, 0))
+		var gathered: Dictionary = voxel.gather_build_input(Vector2i(0, 0), hm)
+		var r_us := Time.get_ticks_usec() - t0
+		resolve_us += r_us
+		resolve_pass.append(r_us)
+		# --- the WORKER half: the resolve, then the pure build ---
+		t0 = Time.get_ticks_usec()
+		var resolved: Dictionary = VoxelSlice.build_runs(Vector2i(0, 0), hm, gathered)
+		worker_resolve_us += Time.get_ticks_usec() - t0
 		t0 = Time.get_ticks_usec()
 		built = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), hm, resolved)
 		pure_us += Time.get_ticks_usec() - t0
@@ -10238,23 +10357,86 @@ func _test_chunk_build_split_probe() -> void:
 			})
 		var trimesh := ConcavePolygonShape3D.new()
 		trimesh.set_faces(built["collision"])
-		apply_us += Time.get_ticks_usec() - t0
+		var a_us := Time.get_ticks_usec() - t0
+		apply_us += a_us
+		main_pass.append(r_us + a_us)
 	var main_us := resolve_us + apply_us
+	var steady_main: int = int(main_pass[main_pass.size() - 1])
+	var steady_resolve: int = int(resolve_pass[resolve_pass.size() - 1])
 	var deposit_verts: int = (built["deposit_vertices"] as PackedVector3Array).size()
-	print("PROBE Phase 42 build split (3 passes): main-thread half %d us (resolve %d + apply %d), worker half %d us (%d faces -> %d quads, %d deposit verts)" % [
-		main_us, resolve_us, apply_us, pure_us,
+	print("PROBE Phase 42 build split (3 passes): main-thread half %d us (generate+gather %d + apply %d), worker half %d us (resolve %d + build %d) (%d faces -> %d quads, %d deposit verts)" % [
+		main_us, resolve_us, apply_us, pure_us, worker_resolve_us, pure_us - worker_resolve_us,
 		int(built["cell_count"]), int(built["quad_count"]), deposit_verts])
+	print("PROBE Phase 42 build split per pass: main %s us (steady state %d, of which generate+gather %d), worker %s us" % [
+		str(main_pass), steady_main, steady_resolve, str(resolve_pass)])
 	assert_true(int(built["cell_count"]) > 0, "the worker half produced a real chunk")
 	assert_true((VoxelSlice._mesh_from_arrays(built)).get_surface_count() == 1,
 		"and its arrays commit to a mesh")
 	assert_true(resolve_us > 0 and pure_us > 0, "and both halves' costs were measured")
-	# THE criterion: the build is the expensive half and it is the half that runs off the
-	# main thread. Measured ~1.8x on the machine this pass ran on, so a strict `>` is the
-	# honest assertion — a ratio test tight enough to be interesting would be a flake.
+	# THE ratio criterion (row 8): the expensive half is the half that runs off the main thread.
+	# Measured ~1.8x on the machine that pass ran on, so a strict `>` is the honest assertion — a
+	# ratio test tight enough to be interesting would be a flake.
 	assert_true(pure_us > main_us,
-		"the build dominates the main thread's own work (%d us vs %d us)" % [pure_us, main_us])
+		"the worker half dominates the main thread's own work (%d us vs %d us)" % [pure_us, main_us])
+	# THE absolute ceiling (rows 3 and 4): one dispatch per frame means the main thread pays this
+	# every frame, so it must fit in a frame. The three-pass SUM is not the number a frame gets —
+	# the steady state is — and this is the assertion the old ratio let a 43 ms frame pass.
+	var frame_us: int = 16667   # one frame at 60 Hz
+	assert_true(steady_main < frame_us,
+		"one dispatch's main-thread half fits inside a frame (%d us of %d us, generate+gather %d)" % [
+			steady_main, frame_us, steady_resolve])
 	terrain.free()
 	voxel.free()
+
+## Phase 42 review pass 9 — the gathered payload has to carry the RING, or the resolve would run
+## on the worker with a silently wrong input: a ring tile whose chunk IS built would read as the
+## UNKNOWN neighbour (an empty column), and a ring chunk's own edits would be invisible. Both
+## halves are asserted on the table itself, where the answer is unambiguous — the ring tile at
+## (64, 32) belongs to chunk (1, 0), so its runs must come from THAT chunk's heightmap and its
+## edits, not from this chunk's.
+func _test_chunk_gather_carries_the_ring() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	var terrain: TerrainSlice = rig["terrain"]
+	var centre := Vector2i(0, 0)
+	cm.load_chunk(centre)
+	_wait_for_builds(cm)
+	var hm: Array = voxel._heightmaps["0,0"]
+	var ring_key := VoxelSlice._tile_key(Vector2i(64, 32))   # chunk (1, 0)'s own tile
+
+	# UNKNOWN: the neighbour the gather did not carry reads as empty, which is the documented
+	# unknown-column path (`_neighbour_runs`), not an error.
+	voxel._heightmaps.erase("1,0")
+	var unknown: Dictionary = VoxelSlice.build_runs(centre, hm, voxel.gather_build_input(centre, hm))
+	assert_true((unknown["runs"][ring_key] as Array).is_empty(),
+		"a ring chunk the gather did not carry resolves as the UNKNOWN neighbour")
+
+	# KNOWN: the ring tile resolves from the NEIGHBOUR's heightmap — a deliberately different one
+	# (6.0 against this chunk's noise), so the value names its source.
+	var flat6: Array = []
+	flat6.resize(64 * 64)
+	flat6.fill(6.0)
+	voxel._heightmaps["1,0"] = flat6
+	var known: Dictionary = VoxelSlice.build_runs(centre, hm, voxel.gather_build_input(centre, hm))
+	var ring_runs: Array = known["runs"][ring_key]
+	assert_true(ring_runs.size() > 0, "a carried ring chunk resolves its real column")
+	assert_eq(float((ring_runs[0] as Dictionary)["top"]), 6.0,
+		"from the NEIGHBOUR's heightmap the payload carried, not this chunk's")
+
+	# And the ring chunk's OWN EDIT reaches the resolve through the same payload.
+	voxel._edits[ring_key] = [{ "op": "add", "bottom": 0.0, "top": 8.0, "material": "Ashite" }]
+	var edited: Dictionary = VoxelSlice.build_runs(centre, hm, voxel.gather_build_input(centre, hm))
+	var placed := false
+	for run in edited["runs"][ring_key]:
+		if str((run as Dictionary)["material"]) == "Ashite":
+			placed = true
+	assert_true(placed, "and a RING tile's edit reaches the worker-side resolve")
+	voxel._edits.erase(ring_key)
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
 
 ## Phase 42 review — the loading freeze holds the BODY, not just `_input`. On a joining
 ## client the body exists from the snapshot while its ring is still building, so an
