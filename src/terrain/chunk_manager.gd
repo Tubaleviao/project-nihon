@@ -831,6 +831,12 @@ func unload_chunk(chunk_pos: Vector2i) -> void:
 	# on made the NEXT `_queue_rebuild` for the same chunk append a SECOND entry: two
 	# dispatches for one chunk, both under the same revision, both attaching.
 	_remove_queued_rebuild(key)
+	# A build still in flight belongs to THIS residency. Without the supersede it stays live
+	# in `_builds`, and if the chunk streams back in before it lands it attaches alongside
+	# the reload's own dispatch under the same revision: the older arrays (gathered before
+	# any edit made while the chunk was out) can win, and whichever lands second is refused
+	# as stale and spends a needless retry dispatch.
+	_supersede_in_flight(key)
 	if voxel_slice != null and voxel_slice.has_method("unload_chunk"):
 		voxel_slice.unload_chunk(chunk_pos)
 	if creature_slice != null and creature_slice.has_method("despawn_for_chunk"):
