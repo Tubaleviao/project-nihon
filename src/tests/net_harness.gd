@@ -416,15 +416,27 @@ func _step_chop_in_reach() -> void:
 		return
 	_report_position()
 	await _await_settle(1.0)
-	GameBus.tree_chop_requested.emit(t)
+	GameBus.tree_chop_requested.emit(t, "")
 	await _await_settle(1.5)
 	_report("chop_in_reach", "ok", t)
 
 ## Step 4 — the reach guard, refusing half: a chop of a tree the peer cannot reach is
 ## dropped, and nothing else about the peer changes.
 func _step_chop_out_of_reach() -> void:
+	# Phase 42 review — the target is drawn from THIS side's own tree table, and on a
+	# freshly-booted world (CI's, or any first run) the client's table is only what its
+	# snapshot seeded: the host streams chunks on a per-frame budget, so a tree beyond
+	# `TARGET_BEYOND` may simply not have arrived yet when the scenario reaches this step.
+	# Reporting `no_distant_tree` at that instant makes the step a race against the
+	# streamer rather than a test of the guard. Wait for the table to carry one, bounded by
+	# `STEP_TIMEOUT_SECS`, and only then judge the guard. The await is re-derived rather
+	# than captured: a GDScript lambda snapshots its captures by value, so a `t` assigned
+	# inside the predicate would not be visible here.
+	var found: bool = await _await_until(
+		func(): return beyond_reach_target(_trees(), RENDEZVOUS, TARGET_BEYOND) != "",
+		STEP_TIMEOUT_SECS)
 	var t := beyond_reach_target(_trees(), RENDEZVOUS, TARGET_BEYOND)
-	if t == "":
+	if not found or t == "":
 		_report("chop_out_of_reach", "fail", "no_distant_tree")
 		return
 	if _role == "host":
@@ -438,7 +450,7 @@ func _step_chop_out_of_reach() -> void:
 		return
 	_report_position()
 	await _await_settle(0.5)
-	GameBus.tree_chop_requested.emit(t)
+	GameBus.tree_chop_requested.emit(t, "")
 	await _await_settle(1.5)
 	_report("chop_out_of_reach", "refused", t)
 
@@ -471,7 +483,7 @@ func _step_packet_cap() -> void:
 		"type": "tree_chop_intent", "tree_id": oversized, "pad": "x".repeat(9000),
 	})
 	await _await_settle(1.0)
-	GameBus.tree_chop_requested.emit(normal)
+	GameBus.tree_chop_requested.emit(normal, "")
 	await _await_settle(1.5)
 	_report("packet_cap", "ok", normal)
 
@@ -532,7 +544,7 @@ func _step_rate_bucket() -> void:
 	# counts".
 	await _await_settle(3.0)
 	for _i in range(3):
-		GameBus.tree_chop_requested.emit(t)
+		GameBus.tree_chop_requested.emit(t, "")
 		await _await_settle(1.5)
 	_report("rate_bucket", "ok", t)
 
@@ -716,7 +728,7 @@ func _step_disconnect_evicts() -> void:
 # Plumbing
 # ---------------------------------------------------------------------------
 
-func _on_chop_requested(tree_id: String) -> void:
+func _on_chop_requested(tree_id: String, _player_id: String) -> void:
 	_chops.append(tree_id)
 
 ## Deaths this side has announced over the whole run.

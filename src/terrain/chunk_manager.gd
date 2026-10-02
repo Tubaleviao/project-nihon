@@ -3,20 +3,72 @@ extends Node
 ##
 ## Replaces the fixed single-chunk world with a view-distance window: every
 ## frame (once started) it computes the player's chunk, loads any chunk within
-## `view_distance` that isn't loaded yet, and unloads chunks that fell out of
-## range. Loading requests the heightmap from TerrainSlice (VoxelSlice builds the
-## mesh on chunk_ready) and spawns the per-chunk creature and tree budgets;
-## unloading frees the voxel mesh, despawns non-engaged creatures, and drops the
-## chunk's trees.
+## the streamed radius that isn't loaded yet, and unloads chunks that fell out of
+## range. Loading generates the heightmap and spawns the per-chunk creature and
+## tree budgets; unloading frees the voxel mesh, despawns non-engaged creatures,
+## and drops the chunk's trees.
 ##
-## Loading is time-sliced. Building a chunk (noise + surface mesh + per-column
-## collision) is the single most expensive thing this game does on the main
-## thread, and crossing a chunk boundary previously fired every new chunk's
-## build in the same frame — a multi-millisecond stall that froze movement.
-## Chunks are now queued (nearest-first) and drained a bounded number per frame,
-## so the build cost is spread across several frames and never blocks the render
-## loop. The `view_distance` buffer (3 chunks) gives enough lead time that a
-## chunk is almost always ready before the player reaches it.
+## Phase 42 — the BUILD runs on a worker. Building a chunk (surface mesh + per-column
+## collision) is the single most expensive thing this game does, and time-slicing it
+## only spread the stall across frames instead of removing it. So a load is now two
+## halves: the main thread generates the heightmap and GATHERS the plain state the resolve
+## reads (`VoxelSlice.gather_build_input`, which is where the mutable slice state — `_edits`,
+## `_heightmaps`, the biome lookup — is read), and a `WorkerThreadPool` task runs the RESOLVE
+## (`VoxelSlice.build_runs`) and the PURE build (`VoxelSlice.build_chunk_arrays`) and hands back
+## plain arrays. `_process` POLLS the task and applies the result on the main thread — never
+## `add_task` + `wait_for_task_completion` in the same frame, which is the
+## synchronous build again with extra ceremony.
+##
+## Phase 42 review pass 9 — the resolve is on the worker too. Until then the main thread paid it
+## per dispatch: ~43 ms of per-tile work (measured, see the split probe) against a 16.7 ms frame,
+## i.e. the stall the phase exists to remove was still being paid on the main thread, once per
+## frame. What the main thread keeps is the noise generation and a handful of copies.
+##
+## The phase also gates the BOOT on the first ring: `build_first_ring(center)` marks
+## the 9 chunks at Chebyshev 0..1 and queues them ahead of the rest, and
+## `is_first_ring_ready()` / `first_ring_progress()` let the boot path hold the
+## player body (and its loading screen) until the ground it will stand on EXISTS.
+## `load_chunk()` still reports `chunk_loaded` when a chunk enters the streamed set
+## (its build is dispatched at that point); "the mesh is there" is `_built`.
+##
+## Phase 42 review — an EDIT rebuilds through the same worker. `request_rebuild(pos)`
+## is what `VoxelSlice._rebuild_chunk_at_tile` calls for every chunk whose mesh reads
+## the edited tile; it supersedes a build already in flight for that chunk (so an edit
+## that lands mid-build is not overwritten by the pre-edit arrays) and dispatches a
+## fresh one. A chunk that is not in the streamed set is a no-op — it rebuilds from the
+## current edit log when it streams back in.
+##
+## Phase 42 review — the same pass closed four holes the first one left in the streaming
+## loop itself: (1) EVERY dispatch is bounded by `max_builds_in_flight`, including a
+## rebuild (`request_rebuild`) and a retry, which used to call `_dispatch_build` outright
+## — one corner edit names three chunks, so a single edit or a burst of retries took the
+## pool over its own cap. A rebuild the cap defers waits in `_rebuild_queue`, it is never
+## dropped. (2) A chunk that leaves the window while QUEUED is dropped rather than built,
+## and its `_pending` mark is cleared so it is queued again if it returns (`_within_stream`
+## in `_drain_load_queue`). (3) A chunk whose build exhausts MAX_BUILD_RETRIES is put in
+## `_failed` and re-armed by `_self_heal_failed`, so a transient failure heals instead of
+## leaving a hole for the session. (4) A chunk's
+## creature and tree budgets spawn when its GROUND EXISTS (`_spawn_chunk_contents` from
+## `_apply_build_entry`) instead of at load time, which is when the build was synchronous.
+##
+## Phase 42 review pass 3 — four more holes in the SAME loop, all four of them bookkeeping:
+## the self-heal was keyed on the window MOVING, so a stationary player (a dedicated
+## server's whole shape) never healed a groundless chunk; a rebuild re-derived the chunk's
+## creature/tree budgets on EVERY edit, re-scanning every live instance and tree; a rebuild
+## that left the streamed set kept its `_rebuild_pending` mark cleared but its `_rebuild_queue`
+## entry alive, so a later edit appended a duplicate; and the drain re-read the player's
+## chunk once per queued candidate. See `_self_heal_failed`, `_contents_spawned`,
+## `_remove_queued_rebuild` and `_within_stream_at`.
+##
+## Phase 42 review pass 4 — six more, all of them in the self-heal and the streaming
+## bookkeeping around it: the sweep SKIPPED a chunk that was `_built`, which is exactly the
+## chunk whose REBUILD gave up, so an edited block stayed invisible for the session; the
+## sweep re-resolved the player's window per groundless key; the re-arm clock was stamped
+## only on the throttled path, so the frame after a crossing was unthrottled; the drain
+## resolved the window even with nothing queued; `refresh()` carried two consecutive
+## identical `if window_moved:` blocks; and the isolated rig path spawned a chunk's contents
+## without the `_contents_spawned` guard the threaded path uses. See `_self_heal_failed`,
+## `_drain_load_queue`, `refresh` and `_dispatch_build`.
 ##
 ## Plug contract (GameBus signals emitted):
 ##   OUT : chunk_loaded(chunk_pos), chunk_unloaded(chunk_pos)
@@ -26,15 +78,73 @@ extends Node
 ##   refresh()                              — run one synchronous load/unload pass
 ##   player_chunk() -> Vector2i             — chunk under the player
 ##   load_chunk(pos) / unload_chunk(pos)    — explicit load/unload
+##   request_rebuild(pos)                   — re-dispatch a loaded chunk's build (an edit)
 ##   get_loaded_chunks() -> Array           — [{ chunk, biome }, ...]
+##   build_first_ring(center)               — arm the boot gate; call it BEFORE the first
+##                                            `refresh()` of the boot (see there)
+##   is_first_ring_ready() -> bool
+##   first_ring_progress() -> float         — 0..1, drives the loading bar
 
 ## Chunk size is owned by TerrainSlice; world_to_chunk() delegates to it.
 const DEFAULT_VIEW_DISTANCE := 3       # Chebyshev radius, in chunks
 
-## Chunk builds to drain from the load queue each frame. Keeping this small
-## (1–2) spreads the per-chunk mesh + collision build over several frames so no
-## single frame stalls. Overridable for tuning/tests.
+## Phase 42 — the PURE chunk builder, taken as a SCRIPT, not through the wired
+## `voxel_slice` node. That matters: the builder's static methods run on a worker,
+## and a task that outlives the tree (a boot that quits with builds in flight) would
+## otherwise call into a freed node — `Nonexistent function … in base 'previously
+## freed'`, and a crash. A static call through this constant touches no node at all,
+## and the lambda's captured value keeps the script resource alive for the task.
+const VoxelBuilder := preload("res://src/terrain/voxel_slice.gd")
+
+## Phase 42 — how far BEYOND the view ring a chunk is still queued and kept. The
+## streamed window is `view_distance + prefetch_distance`: the load ring leads the
+## player's heading, so crossing a boundary requests nothing at the moment it becomes
+## needed. `view_distance` stays the radius that is guaranteed fully streamed.
+##
+## Phase 42 review pass 9 — it is 1, not 2. Everything the queue spans is BUILT, and the
+## KEPT window is the queue window again (see `refresh`), so the resident set is the 7×7
+## view ring (49) plus a one-chunk lead: 81 chunks (9×9) against the 121 (11×11) that pass 8
+## was avoiding, and no chunk is built and then thrown away. A one-chunk lead is already
+## enough for the ring a crossing walks into to be built when it arrives.
+const DEFAULT_PREFETCH_DISTANCE := 1
+
+## Phase 42 — the boot gate's radius: Chebyshev 0..1 around the centre, the chunk the
+## body stands in plus its eight neighbours. Wider would make the loading screen a
+## long wait for ground the player cannot reach in the first second.
+const FIRST_RING_RADIUS := 1
+
+## Chunk builds to drain from the load queue each frame. Dispatching is cheap now (the
+## build itself is on a worker), so this bounds how many chunks are handed out per
+## frame rather than how much main-thread work is done. Overridable for tuning/tests.
 const DEFAULT_LOADS_PER_FRAME := 1
+
+## Phase 42 — how many worker builds may be in flight at once. Bounds the memory a
+## burst of dispatches can hold (each task holds its heightmap + column table) and
+## keeps the pool available for other work; results are applied as they complete.
+const DEFAULT_MAX_BUILDS_IN_FLIGHT := 4
+
+## Phase 42 review — how many times one chunk's build may be dispatched before the
+## manager gives up on it and reports the failure. It exists because a worker result can
+## now be REFUSED (an empty result, or a chunk rebuilt under it) and a refusal is answered
+## with a fresh dispatch; without a cap a build that always fails would spin every frame.
+## A fresh edit (`request_rebuild`) resets the budget, so the cap only ever stops a retry
+## loop, never a rebuild the player asked for.
+const MAX_BUILD_RETRIES := 3
+
+## Phase 42 review pass 8 — how many rounds `flush_builds()` may take before it gives up
+## waiting for the in-flight table to empty. One round reaps every task the previous round
+## dispatched, so the number of rounds is the length of the longest retry chain rather than
+## a frame budget; the cap is here so a build that fails forever cannot spin the blocking
+## caller (it ends up in `_failed` for the self-heal, and the retry cap stops it anyway).
+const FLUSH_MAX_ROUNDS := 16
+
+## Phase 42 review pass 3 — seconds between self-heal attempts for a chunk whose build gave
+## up, while the window is NOT moving (see `_self_heal_failed`). A crossing skips the
+## throttle entirely, because a crossing is the signal the re-arm was always keyed on;
+## this interval is what makes the STATIONARY case — a dedicated server, or a player who
+## is standing still — heal at all without re-dispatching a permanently failing build
+## every frame. Overridable for tuning/tests.
+const DEFAULT_SELF_HEAL_INTERVAL := 5.0
 
 ## Set by game_root before the slices enter the tree.
 var terrain_slice: Node = null
@@ -46,10 +156,25 @@ var tree_slice: Node = null
 ## Chebyshev radius in chunks. Overridable (tests use a small radius).
 var view_distance: int = DEFAULT_VIEW_DISTANCE
 
-## Chunk builds to process per _process tick (see DEFAULT_LOADS_PER_FRAME).
+## How far beyond `view_distance` a chunk is still queued and kept (Phase 42).
+var prefetch_distance: int = DEFAULT_PREFETCH_DISTANCE
+
+## Chunk dispatches to process per _process tick (see DEFAULT_LOADS_PER_FRAME).
 var loads_per_frame: int = DEFAULT_LOADS_PER_FRAME
 
+## Worker builds allowed in flight at once (see DEFAULT_MAX_BUILDS_IN_FLIGHT).
+var max_builds_in_flight: int = DEFAULT_MAX_BUILDS_IN_FLIGHT
+
+## Phase 42 review pass 3 — seconds between self-heal attempts while the window is not moving
+## (see DEFAULT_SELF_HEAL_INTERVAL / `_self_heal_failed`). Overridable for tests.
+var self_heal_interval: float = DEFAULT_SELF_HEAL_INTERVAL
+
 var _loaded: Dictionary = {}   # "cx,cz" -> true
+## Phase 42 — chunks whose BUILD has landed (mesh + collision attached), as opposed
+## to `_loaded`, which only says the chunk was taken into the streamed set. The
+## first-ring gate reads THIS: the body may stand on a built chunk, never on a queued
+## one.
+var _built: Dictionary = {}    # "cx,cz" -> true
 var _active: bool = false
 var _last_center: Vector2i = Vector2i(-9999, -9999)   # sentinel: no valid center yet
 
@@ -60,7 +185,72 @@ var _load_queue: Array = []    # of Vector2i
 ## pass never double-queues a chunk already waiting to load.
 var _pending: Dictionary = {}  # "cx,cz" -> true
 
+## Phase 42 — worker builds in flight, keyed by WorkerThreadPool task id:
+## { chunk, key, heightmap, revision, result }. `result` is a one-slot Array the
+## task writes its plain arrays into; the main thread reads it only after
+## `is_task_completed()` says the task is done.
+var _builds: Dictionary = {}
+
+## Phase 42 review — dispatches spent on each chunk, keyed "cx,cz" -> int, against
+## MAX_BUILD_RETRIES (see `_apply_build_entry`). Cleared when a build attaches, when a
+## fresh rebuild is requested, and when the chunk is unloaded.
+var _build_attempts: Dictionary = {}
+
+## Phase 42 review — rebuild requests that could NOT be dispatched yet because the
+## in-flight cap was reached. `_drain_load_queue` drains them under the SAME cap that
+## bounds a streamed load, because `request_rebuild` used to call `_dispatch_build`
+## directly: a corner edit (three touched chunks) or a burst of retries then put four,
+## five, six tasks in the pool against a `max_builds_in_flight` of four. A rebuild is
+## never DROPPED by the cap — it waits a frame, which is why it is a queue and not a
+## refusal.
+var _rebuild_queue: Array = []         # of Vector2i
+var _rebuild_pending: Dictionary = {}  # "cx,cz" -> true, dedupes _rebuild_queue
+
+## Phase 42 review — chunks whose build exhausted MAX_BUILD_RETRIES and were reported
+## as groundless. They are re-armed by `_self_heal_failed` instead of staying a hole for
+## the session: a build failure that was transient heals, and a permanent one costs one
+## RE-ARM per interval rather than a per-frame spin.
+##
+## **(Phase 42 review pass 10: a re-arm starts a FRESH retry budget — `_self_heal_failed`
+## clears `_build_attempts`, and three tests assert it — so one re-arm is up to
+## `MAX_BUILD_RETRIES` dispatches, not the single dispatch the older wording here and in the
+## give-up message implied. The throttle bounds the re-arm CADENCE (one re-arm per interval
+## while the window is stationary); the dispatches within a re-arm are the retry loop's.)**
+## **(Phase 42 review pass 3: a crossing re-arms immediately, and an UNMOVED window re-arms
+## on a wall-clock interval — keying it on the crossing alone meant a stationary player,
+## which is a dedicated server's whole shape, never healed at all. Pass 4: the sweep no
+## longer requires `not _built`, so a chunk whose REBUILD gave up — `_built` still true,
+## its old mesh still attached, the edit invisible — is re-armed too.)**
+var _failed: Dictionary = {}           # "cx,cz" -> true
+
+## Phase 42 review pass 3 — the wall-clock throttle on the self-heal re-arm while the window
+## is NOT moving (`_self_heal_failed`). -1 is the "never attempted" sentinel, so the first
+## attempt after a chunk goes groundless is never throttled by how long the process has
+## been up.
+var _last_self_heal_msec: int = -1
+
+## Phase 42 review pass 3 — chunks whose per-chunk CONTENTS (the creature and tree budgets)
+## have already been spawned, keyed "cx,cz" -> true. Contents belong to a chunk's
+## RESIDENCY, not to its build: an edit rebuilds a loaded chunk, and the apply path used
+## to re-run `_spawn_chunk_contents` for it every time, which re-scanned every live
+## instance (once per creature in the fabric) and every live tree to re-derive a budget
+## that could not have changed. Cleared on unload, so a chunk that streams back in
+## repopulates.
+var _contents_spawned: Dictionary = {} # "cx,cz" -> true
+
+## Phase 42 — the boot gate. `_first_ring` maps "cx,cz" -> built?, and an EMPTY map
+## means the gate was never armed (so `is_first_ring_ready()` answers true for every
+## caller that has no boot to hold).
+var _first_ring: Dictionary = {}
+var _first_ring_center: Vector2i = Vector2i.ZERO
+
 func _process(_delta: float) -> void:
+	# Phase 42 review — the APPLY pass runs whether or not streaming is active. `stop()`
+	# only ends NEW work; a build already in flight belongs to a chunk that is still
+	# loaded, and while the poll sat behind the `_active` guard nothing applied it and
+	# nothing awaited it — the chunk was left without a mesh and the task's result sat in
+	# the pool until shutdown (the same exit-134 leak `_exit_tree` now closes there).
+	_apply_finished_builds()
 	if not _active:
 		return
 	_drain_load_queue()
@@ -82,21 +272,50 @@ func stop() -> void:
 ## chunks out of range. Skips the diff entirely when the player hasn't moved to
 ## a new chunk since the last call. Loads are NOT built here — they go onto
 ## _load_queue and are drained a bounded number per frame by _drain_load_queue.
+##
+## Phase 42 review pass 8 — the KEPT window and the LOAD window are two different radii.
+## The load queue spans `stream_radius()` (`view_distance + prefetch_distance`) so the ring
+## that leads the player's heading is ALREADY queued when the crossing happens, and the KEPT
+## window was narrowed to `view_distance`: what a crossing retains — a resident mesh, its
+## trimesh, its creatures and its trees — was the view ring, not the prefetch band, which
+## put 49 resident chunks (7×7) where `stream_radius()` had kept 121 (11×11).
+##
+## **(NINTH review pass: that narrowing locked a WASTE in, and it is reverted. Everything in
+## the load queue is BUILT, so a band chunk was built on the worker and then released on the
+## next crossing unless the player happened to move toward it — the row measured 65 redundant
+## worker builds per crossing, forever. The kept window is the QUEUE window again
+## (`stream_radius()`), so nothing is ever unloaded while it still lies inside the radius it
+## was queued at, which is also what `_test_chunk_kept_window_is_stream_radius` now asserts.
+## The memory pass 8 was protecting is bounded by the radius instead of by a second window:
+## `DEFAULT_PREFETCH_DISTANCE` is 1, so the resident set is 81 chunks (9×9) — the 49-chunk
+## view ring plus a one-chunk lead — rather than 121.)**
 func refresh() -> void:
 	var center := player_chunk()
-	if center == _last_center:
+	var window_moved := center != _last_center
+	# Phase 42 review pass 4 — ONE `window_moved` decision, not two consecutive blocks.
+	# The sentinel update and the load/unload diff are the SAME pass; the early return
+	# below is what the second block's `if` was really expressing.
+	if not window_moved:
+		# Nothing to queue or unload — but the self-heal still runs, and it must: a
+		# STATIONARY player (a dedicated server's whole shape) is exactly the case a
+		# groundless chunk needs re-arming in. See `_self_heal_failed`.
+		_self_heal_failed(center, false)
 		return
-	_last_center = center
 
-	var desired := _desired_chunks(center, view_distance)
+	_last_center = center
+	# ONE radius for WANTED and DESIRED on purpose (ninth review pass): `wanted` — what a
+	# crossing retains — is the same radius the queue spans, so no chunk that was queued (and
+	# therefore built) is released while it is still inside the window it was built for. See
+	# the docstring above for why the two radii were briefly different and why that was a waste.
 	var wanted: Dictionary = {}
-	for c in desired:
+	var radius := stream_radius()
+	for c in _desired_chunks(center, radius):
 		if _in_bounds(c):
 			wanted[_chunk_key(c)] = true
+	var desired := _desired_chunks(center, radius)
 
-	# Queue loads nearest-first. Building a chunk is expensive, so spreading the
-	# new-ring load across frames (instead of call_deferring them all to the same
-	# frame end) is what removes the boundary-crossing freeze.
+	# Queue loads nearest-first. Dispatching is what is bounded per frame; the build
+	# itself runs on a worker.
 	var to_load: Array = []
 	for c in desired:
 		var key := _chunk_key(c)
@@ -112,34 +331,518 @@ func refresh() -> void:
 		if not wanted.has(key):
 			unload_chunk(_key_to_chunk(key))
 
-## Build up to `loads_per_frame` queued chunks this frame, nearest-first.
+	_self_heal_failed(center, true)
+
+## Phase 42 review — SELF-HEAL. A chunk in range that is loaded but has no built mesh
+## is one whose build exhausted MAX_BUILD_RETRIES (see `_apply_build_entry`) and was
+## reported as groundless. Left alone it stays a hole for the session: nothing else
+## re-dispatches a chunk that is already `_loaded`.
+##
+## Phase 42 review pass 3 — and it runs on EVERY `refresh()`, not only on one that
+## re-centres the window. Keying the re-arm on the window MOVING left a stationary
+## player with no self-heal at all: a dedicated server streams around a fixed origin
+## and a host player standing still never changes chunk, so `refresh()` returned before
+## ever reaching this loop — exactly the case where a groundless chunk persists. The
+## backoff is therefore WALL-CLOCK: a crossing re-arms immediately (it is the natural
+## signal, and the reason a crossing is still preferred), while an unmoved window
+## re-arms at most once per `self_heal_interval`. A build that fails forever is therefore
+## re-armed once per interval rather than spun every frame.
+##
+## Phase 42 review pass 10 — but "re-armed once per interval" is NOT "one dispatch per
+## interval": the re-arm clears `_build_attempts` (a FRESH budget, which three tests assert),
+## so a re-armed build that keeps failing spends up to `MAX_BUILD_RETRIES` dispatches before it
+## gives up again. The throttle bounds how often a re-arm happens, not how many dispatches one
+## re-arm costs — the earlier wording here and in the give-up message claimed the wrong half.
+##
+## Phase 42 review pass 4 — three more things this sweep got wrong, all of them in the
+## same twenty lines:
+##   * It SKIPPED a groundless chunk that was `_built`. `_failed` is set by a build that
+##     gave up, and for an already-built chunk that is a REBUILD which gave up (an edit):
+##     the OLD mesh is still attached, so `_built` is true and the old guard jumped over
+##     exactly the case where an edited block stays invisible forever.
+##   * It re-derived the streamed window per candidate (`_within_stream`), which re-read
+##     the player's position for every groundless key. The caller already resolved
+##     `center`, so the sweep takes it and uses `_within_stream_at`.
+##   * It stamped `_last_self_heal_msec` only on the THROTTLED path. A crossing re-armed
+##     and left the clock at its old value, so the very next (stationary) frame was
+##     unthrottled and re-armed again. The clock is stamped whenever the sweep proceeds,
+##     crossing or not.
+func _self_heal_failed(center: Vector2i, window_moved: bool) -> void:
+	if _failed.is_empty():
+		return
+	var now := Time.get_ticks_msec()
+	if not window_moved:
+		if _last_self_heal_msec >= 0 and now - _last_self_heal_msec < int(self_heal_interval * 1000.0):
+			return
+	# Phase 42 review pass 4 — the clock is stamped on BOTH paths. Stamping only the
+	# throttled one left the frame right after a crossing unthrottled (the crossing had
+	# re-armed immediately and left `_last_self_heal_msec` at its old value), so a
+	# stationary player resumed the interval from the crossing instead of after it.
+	_last_self_heal_msec = now
+	var radius := stream_radius()
+	for key in _failed.keys():
+		if _within_stream_at(center, radius, _key_to_chunk(key)) and not _has_in_flight(key):
+			_failed.erase(key)
+			_build_attempts.erase(key)
+			_queue_rebuild(_key_to_chunk(key))
+
+## The Chebyshev radius a chunk is queued and kept within (Phase 42).
+func stream_radius() -> int:
+	return view_distance + prefetch_distance
+
+## Dispatch up to `loads_per_frame` queued chunks this frame, nearest-first, while
+## respecting the in-flight build cap. The build itself runs on a worker.
+##
+## Phase 42 review — this is now the ONE place a build is dispatched from a queue, and
+## it drains the REBUILD queue first: `request_rebuild` and a build RETRY both enqueue
+## here instead of calling `_dispatch_build` directly, so the in-flight cap bounds every
+## dispatch and not just a streamed load. Dispatch is the only thing bounded per frame;
+## a queued rebuild is never dropped, it waits.
+## **(Ninth review pass: those callers reach the queue through `_dispatch_build`'s OWN cap
+## guard now, and so does the public `load_chunk` — the cap bounds every dispatch, not only
+## the ones an internal caller happened to check first. See `_dispatch_build`.)**
 func _drain_load_queue() -> void:
+	# Phase 42 review pass 4 — a drain with NOTHING queued has nothing to dispatch, so it
+	# does not resolve the window at all. `_process` calls this every tick, and the read
+	# below is a `PlayerSlice.get_position()` call; the empty case is the common one
+	# (a settled window drains nothing until the player crosses a chunk boundary).
+	if _load_queue.is_empty() and _rebuild_queue.is_empty():
+		return
 	var budget := loads_per_frame
-	while not _load_queue.is_empty() and budget > 0:
+	# Phase 42 review pass 3 — the streamed window is resolved ONCE for the whole drain. The
+	# player's chunk cannot move during it (the position is re-read at the next frame's
+	# `refresh()`), and the per-chunk form re-derived it — a slice call — for every
+	# candidate, so a drain of a full view ring paid ~49 of them to reach the same answer.
+	var center := player_chunk()
+	var radius := stream_radius()
+	while budget > 0:
+		if _builds.size() >= max_builds_in_flight:
+			return   # the pool is busy: leave the rest queued for a later frame
+		if not _rebuild_queue.is_empty():
+			var rebuild: Vector2i = _rebuild_queue.pop_front()
+			var rkey := _chunk_key(rebuild)
+			_rebuild_pending.erase(rkey)
+			# Streamed out while it waited: nothing to rebuild (it rebuilds from the
+			# current edit log when it streams back in).
+			if _loaded.has(rkey):
+				_dispatch_build(rebuild)
+				budget -= 1
+			continue
+		if _load_queue.is_empty():
+			return
 		var chunk: Vector2i = _load_queue.pop_front()
 		_pending.erase(_chunk_key(chunk))
+		# Phase 42 review — CANCELLATION. A chunk can leave the streamed window while it
+		# sits in the queue (the player turned around). Dispatching it anyway built ground
+		# nobody wants — and `refresh()` would not re-queue it on the way back in, because
+		# its `_pending` mark was still set, so it was silently skipped instead. Dropping
+		# it here clears that mark, so a chunk that leaves range and returns is queued
+		# again rather than left as a hole.
+		if not _within_stream_at(center, radius, chunk):
+			continue
 		if not _loaded.has(_chunk_key(chunk)):
 			load_chunk(chunk)
 		budget -= 1
 
+## Take a chunk into the streamed set, announce it, and dispatch its terrain build.
+##
+## Phase 42 — the mesh is no longer produced here. The heightmap is generated and the
+## column table resolved on this (main) thread, then `VoxelSlice.build_chunk_arrays`
+## runs on a worker and `_apply_finished_builds()` attaches the result once it is
+## done. `chunk_loaded` therefore means "this chunk is in the streamed set", and
+## `_built` is what says its ground exists.
+##
+## Phase 42 review — the creature and tree budgets are NO LONGER spawned here. They are
+## the ground's contents, so they are spawned once the ground exists
+## (`_spawn_chunk_contents`, from the apply path). Spawning them at load time was free
+## while the build was synchronous; with the build on a worker it put the population on
+## a chunk whose mesh arrived a frame or more later.
 func load_chunk(chunk_pos: Vector2i) -> void:
 	var key := _chunk_key(chunk_pos)
 	if _loaded.has(key):
 		return
 	_loaded[key] = true
-	if terrain_slice != null and terrain_slice.has_method("request_chunk"):
-		terrain_slice.request_chunk(chunk_pos)
+	GameBus.chunk_loaded.emit(chunk_pos)
+	_dispatch_build(chunk_pos)
+
+## Phase 42 review — spawn a chunk's per-chunk creature and tree budgets. Called once the
+## chunk's GROUND EXISTS (see `_apply_build_entry`) rather than when it enters the
+## streamed set, so no body stands on a chunk that has not been built yet.
+func _spawn_chunk_contents(chunk_pos: Vector2i) -> void:
 	if creature_slice != null and creature_slice.has_method("spawn_for_chunk"):
 		creature_slice.spawn_for_chunk(chunk_pos)
 	if tree_slice != null and tree_slice.has_method("spawn_for_chunk"):
 		tree_slice.spawn_for_chunk(chunk_pos)
-	GameBus.chunk_loaded.emit(chunk_pos)
+
+## Hand one chunk's build to a worker task. Main-thread work: the heightmap generation and the
+## GATHER of the plain state the resolve reads (`gather_build_input` — that is where `_edits`,
+## `_heightmaps` and the biome lookup are read). Worker work: the whole resolve
+## (`VoxelSlice.build_runs`) AND the pure build (`build_chunk_arrays`), both of which return plain
+## arrays the main thread attaches later, in `_apply_finished_builds()`.
+##
+## Phase 42 review pass 9 — the resolve moved to the worker (see `gather_build_input` and
+## `build_runs`). It used to be the main thread's half of every dispatch, and at ~43 ms per chunk
+## it was the stall the phase exists to remove, still being paid on the main thread once per
+## frame; what remains there is the noise generation and a handful of copies.
+func _dispatch_build(chunk_pos: Vector2i) -> void:
+	var key := _chunk_key(chunk_pos)
+	# An isolated rig (the suite wires no terrain/voxel) has nothing to build, and the
+	# chunk is "built" the moment it is loaded — otherwise a gate would hang forever.
+	if terrain_slice == null or voxel_slice == null \
+			or not terrain_slice.has_method("generate_heightmap") \
+			or not voxel_slice.has_method("build_chunk_arrays"):
+		_built[key] = true
+		# Phase 42 review pass 4 — and the CONTENTS obey the same residency rule as the
+		# threaded path (`_contents_spawned`): a rig with no terrain/voxel has nothing to
+		# build, but an edit still reaches here through `request_rebuild`, and spawning the
+		# chunk's budgets on every such call re-derived a population that was already standing
+		# there. The rig used to spawn unconditionally because it never had a second call.
+		if not _contents_spawned.has(key):
+			_contents_spawned[key] = true
+			_spawn_chunk_contents(chunk_pos)
+		_update_first_ring_progress()
+		return
+	# Phase 42 review pass 9 — the in-flight cap is enforced HERE, not only at the call
+	# sites. Every internal caller checked it before dispatching, but `load_chunk()` is
+	# PUBLIC and dispatched outright: a direct load (a test, a future caller) put the pool
+	# over `max_builds_in_flight`. The deferral goes to `_rebuild_queue`, which
+	# `_drain_load_queue` drains under this same cap; the chunk is already `_loaded` (both
+	# `load_chunk` and `request_rebuild` mark it first), so the drain's rebuild branch is
+	# exactly the path that re-dispatches it. Delayed a frame, never dropped.
+	if _builds.size() >= max_builds_in_flight:
+		_queue_rebuild(chunk_pos)
+		return
+	# Phase 42 review — SUPERSEDE a build already in flight for this chunk. The caller
+	# reaches here for a chunk whose data changed under an in-flight build (see
+	# `request_rebuild`), and the older task's arrays describe the terrain BEFORE that
+	# change. It cannot simply be erased from `_builds`: the pool keeps a task alive until
+	# it is awaited, so it is marked instead and reaped by `_apply_build_entry`, which
+	# neither attaches it nor re-dispatches it. Without this the two tasks carry the same
+	# revision and BOTH attach, so the mesh could end up the pre-edit one.
+	_supersede_in_flight(key)
+	# This dispatch satisfies any deferred one still waiting in `_rebuild_queue` (an earlier
+	# call the cap deferred). Left there, the drain would dispatch the chunk a second time and
+	# supersede the build just started — a wasted worker build and a spent retry.
+	if _rebuild_pending.has(key):
+		_rebuild_pending.erase(key)
+		_remove_queued_rebuild(key)
+	_build_attempts[key] = int(_build_attempts.get(key, 0)) + 1
+	var heightmap: Array = terrain_slice.generate_heightmap(chunk_pos)
+	# Phase 42 review pass 9 — the RESOLVE runs on the worker too. The main thread only GATHERS the
+	# plain state it reads (`gather_build_input`); before this, resolving the chunk's runs, colours
+	# and deposits cost ~43 ms of per-tile work on the main thread per dispatch — 2.7 frames at
+	# 60 Hz, and the one main-thread cost the earlier passes left behind (measured; see the split
+	# probe). The payload is plain data only (heightmap arrays, deep-copied edit lists,
+	# chunk-keyed biomes), so the task may hold it.
+	var gathered: Dictionary = voxel_slice.gather_build_input(chunk_pos, heightmap)
+	var revision: int = int(voxel_slice.chunk_revision(chunk_pos))
+	var result: Array = [null]
+	var task_id := WorkerThreadPool.add_task(
+		func(): result[0] = VoxelBuilder.build_chunk_arrays(chunk_pos, heightmap,
+			VoxelBuilder.build_runs(chunk_pos, heightmap, gathered)),
+		false, "chunk build %s" % key)
+	_builds[task_id] = {
+		"chunk":     chunk_pos,
+		"key":       key,
+		"heightmap": heightmap,
+		"revision":  revision,
+		"result":    result,
+	}
+
+## Mark any build already in flight for `key` as stale, so `_apply_build_entry` reaps it
+## without attaching it and without re-dispatching. Split out of `_dispatch_build` by the
+## Phase 42 review because `request_rebuild` has to do it even when the fresh dispatch is
+## deferred by the in-flight cap: otherwise a pre-edit mesh would stay on screen until the
+## queued dispatch got a slot.
+func _supersede_in_flight(key: String) -> void:
+	for stale_id in _builds.keys():
+		if _builds[stale_id]["key"] == key:
+			_builds[stale_id]["superseded"] = true
+
+## Phase 42 review — rebuild an already-loaded chunk whose DATA changed under it: a voxel
+## edit (see `VoxelSlice._rebuild_chunk_at_tile`). It goes to a worker like every other
+## build, which is the point: an edit used to rebuild up to three chunks SYNCHRONOUSLY in
+## the frame that placed the block, which is exactly the stall the worker exists to remove.
+##
+## A chunk that is not in the streamed set is a no-op: it has no node to refresh, it
+## rebuilds from the current edit log when it streams back in (see `apply_edits`), and
+## building it here would resurrect a chunk the manager has already streamed away.
+##
+## Phase 42 review — the dispatch respects `max_builds_in_flight`, because this is the
+## call that used to bypass it: an edit at a chunk corner names three touched chunks, and
+## each one was dispatched outright, so one corner edit put the pool over its own cap and
+## so did every retry. It defers to the rebuild queue instead — never drops — and the
+## supersede happens UNCONDITIONALLY so the pre-edit build cannot land while it waits.
+func request_rebuild(chunk_pos: Vector2i) -> void:
+	var key := _chunk_key(chunk_pos)
+	if not _loaded.has(key):
+		return
+	# A fresh request starts a fresh retry budget: it is a new edit, not a retry of one,
+	# and it clears the groundless mark a previous give-up left behind.
+	_build_attempts.erase(key)
+	_failed.erase(key)
+	_supersede_in_flight(key)
+	# Phase 42 review pass 9 — no cap check here: `_dispatch_build` enforces the cap itself
+	# (deferring to `_rebuild_queue`), so the rule lives in ONE place. The supersede above
+	# stays unconditional on purpose — the pre-edit build must not land while it waits.
+	_dispatch_build(chunk_pos)
+
+## Enqueue a build that could not be dispatched right now because the in-flight cap was
+## reached — `_dispatch_build`'s own cap guard is the one caller (ninth review pass: a
+## streamed load, `request_rebuild` and a build RETRY all arrive through it). Deduped, and
+## drained by `_drain_load_queue` under the same cap. A build is delayed, never dropped.
+func _queue_rebuild(chunk_pos: Vector2i) -> void:
+	var key := _chunk_key(chunk_pos)
+	if _rebuild_pending.has(key):
+		return
+	_rebuild_pending[key] = true
+	_rebuild_queue.append(chunk_pos)
+
+## Phase 42 review pass 3 — drop a chunk's queued-but-undispatched rebuild, entry AND mark.
+## `unload_chunk` needs this: the dedupe reads `_rebuild_pending`, so clearing the mark
+## while the queue entry survived made a later `_queue_rebuild` for the same chunk append
+## a second entry — two dispatches for one chunk under one revision.
+func _remove_queued_rebuild(key: String) -> void:
+	if _rebuild_queue.is_empty():
+		return
+	var kept: Array = []
+	for c in _rebuild_queue:
+		if _chunk_key(c) != key:
+			kept.append(c)
+	_rebuild_queue = kept
+
+## True when a worker build for `key` is in flight (superseded or not).
+func _has_in_flight(key: String) -> bool:
+	for task_id in _builds.keys():
+		if _builds[task_id]["key"] == key:
+			return true
+	return false
+
+## True when `chunk` still lies inside the streamed window around the player (Chebyshev,
+## like `stream_radius`). The single-check accessor form: it resolves the window itself, so
+## the loops that test MANY chunks — `_drain_load_queue`'s cancellation check and
+## `_self_heal_failed`'s sweep — resolve it once and call `_within_stream_at` instead.
+func _within_stream(chunk: Vector2i) -> bool:
+	return _within_stream_at(player_chunk(), stream_radius(), chunk)
+
+## Phase 42 review pass 3 — the same test against a window the CALLER already resolved. The
+## drain reads the player's chunk and the radius ONCE and uses this per candidate, instead
+## of the accessor form which re-derived both — a `PlayerSlice.get_position()` call — for
+## every queued chunk in the drain.
+func _within_stream_at(center: Vector2i, radius: int, chunk: Vector2i) -> bool:
+	if not _in_bounds(chunk):
+		return false
+	return absi(chunk.x - center.x) <= radius and absi(chunk.y - center.y) <= radius
+
+## Never leave a worker build running past the tree: at shutdown a task could still
+## be producing arrays for a world nobody owns (and on a `--quit` boot that is one
+## frame after the dispatch). Waiting here is a bounded block — the tasks are short.
+##
+## Phase 42 review — the wait is UNCONDITIONAL, and that is the whole fix. It used to
+## be guarded by `is_task_completed`, which is exactly the leak: that call only reports
+## that the work is DONE, while the pool keeps the task and its result alive until it is
+## AWAITED, so a finished-but-never-awaited build still aborted the process at shutdown
+## (exit 134 — the leak this comment describes, walked straight back in through the
+## guard). `wait_for_task_completion` returns immediately for a finished task, so
+## dropping the guard costs nothing and closes the window.
+func _exit_tree() -> void:
+	for task_id in _builds.keys():
+		WorkerThreadPool.wait_for_task_completion(task_id)
+	_builds.clear()
+
+## Attach every worker build that has finished, on the main thread. A result whose
+## chunk was streamed back out while it built is dropped, and so is one whose revision
+## has moved on (`VoxelSlice.build_chunk` refuses those itself — an edit rebuilt the
+## chunk synchronously in the meantime).
+func _apply_finished_builds() -> void:
+	if _builds.is_empty():
+		return
+	for task_id in _builds.keys():
+		if not WorkerThreadPool.is_task_completed(task_id):
+			continue
+		_apply_build_entry(task_id)
+
+## Apply every in-flight build NOW, blocking on each task. The frame path polls
+## (`_apply_finished_builds`); this is the blocking variant for a caller that has no
+## frames to give — a test, or a boot that must not move on until the ground exists.
+## Returns how many builds it attached.
+##
+## Phase 42 review pass 8 — it LOOPS, and the loop is the fix. `_apply_build_entry` can
+## DISPATCH (a build that exhausted its retries re-arms, and a failed worker result is
+## re-dispatched), so a single pass over a snapshot of `_builds.keys()` can leave a task
+## it just created in flight — and this is the blocking variant whose whole contract is
+## "nothing is left in flight after me". The snapshot is still taken per round; each round
+## therefore reaps what the previous one dispatched, so the number of rounds is the length
+## of the longest retry chain, bounded by `FLUSH_MAX_ROUNDS` so a build that fails forever
+## cannot spin here (it ends up in `_failed`, re-armed by the self-heal).
+func flush_builds() -> int:
+	var applied := 0
+	var round := 0
+	while not _builds.is_empty() and round < FLUSH_MAX_ROUNDS:
+		round += 1
+		for task_id in _builds.keys():
+			if _apply_build_entry(task_id):
+				applied += 1
+	return applied
+
+## Attach one task's arrays and clear it from the in-flight table. Returns false when
+## nothing was attached — a drop is not a failure, it is the reason the table is per-frame.
+##
+## It WAITS on the task before doing anything with it, and that is not belt-and-braces:
+## `is_task_completed` only reports that the work is done, while the pool keeps the task
+## — and its result — alive until it is awaited, so a stream of polled-but-never-awaited
+## builds accumulates until the pool aborts the process at shutdown (measured: exit 134
+## on every boot that streamed one chunk window). On the frame path this call is
+## therefore instantaneous, because the caller only reaches here for a finished task.
+##
+## Phase 42 review — three ways this answers FALSE, and each one now has a defined
+## consequence rather than a silent one:
+##   * SUPERSEDED — a later dispatch for the same chunk owns its mesh (an edit landed
+##     while this build was in flight). Nothing to do, and no re-dispatch: the newer
+##     task is already on its way.
+##   * the chunk streamed out while it built — nothing to attach it to.
+##   * `build_chunk` refused the result: the worker handed back NOTHING (a failed task;
+##     it is no longer answered with a synchronous main-thread build, which is the stall
+##     Phase 42 removed) or the chunk was rebuilt under it. Either way the chunk still
+##     needs a mesh, so the build is RE-DISPATCHED, bounded by MAX_BUILD_RETRIES so a
+##     permanently failing build reports an error instead of spinning.
+##
+## Phase 42 review — and the retry itself now goes through the in-flight cap (it used to
+## call `_dispatch_build` outright and so was a second way past it), and giving up leaves
+## the chunk in `_failed` so `_self_heal_failed` re-arms it — on the next crossing, or at
+## most once per `self_heal_interval` while the window is stationary — instead of leaving a
+## hole for the session. A chunk that gave up on a REBUILD is in there too: it is still
+## `_built` (its old mesh stands in the world) and the sweep re-arms it all the same.
+func _apply_build_entry(task_id: int) -> bool:
+	var entry: Dictionary = _builds.get(task_id, {})
+	if entry.is_empty():
+		return false
+	_builds.erase(task_id)
+	WorkerThreadPool.wait_for_task_completion(task_id)
+	var key: String = str(entry["key"])
+	if bool(entry.get("superseded", false)):
+		return false   # a later dispatch for this chunk owns the mesh
+	if not _loaded.has(key):
+		return false   # streamed out while it built: nothing to attach it to
+	var result: Array = entry["result"]
+	var arrays: Dictionary = {}
+	if result[0] is Dictionary:
+		arrays = result[0]
+	var chunk: Vector2i = entry["chunk"]
+	if not voxel_slice.build_chunk(chunk, entry["heightmap"], arrays, int(entry["revision"])):
+		if int(_build_attempts.get(key, 0)) < MAX_BUILD_RETRIES:
+			# A retry is a dispatch like any other, and `_dispatch_build` enforces the
+			# in-flight cap itself (ninth review pass), deferring to `_rebuild_queue` when
+			# the pool is full — the entry just reaped usually frees the slot.
+			_dispatch_build(chunk)
+		else:
+			_failed[key] = true
+			push_error("ChunkManager: chunk %s could not be built after %d attempts — its ground is missing (re-armed by the self-heal: immediately on a window re-centre, otherwise at most once per self_heal_interval, and each re-arm restarts this %d-attempt budget, so one interval costs up to that many dispatches)" % [key, MAX_BUILD_RETRIES, MAX_BUILD_RETRIES])
+		return false
+	_build_attempts.erase(key)
+	_failed.erase(key)
+	_built[key] = true
+	# The ground exists now, so its contents may: creatures and trees spawn HERE rather
+	# than at load time (see `_spawn_chunk_contents`) — but ONCE per residency, not once
+	# per build. An EDIT rebuilds a loaded chunk, and re-deriving the population for it
+	# re-scanned every live instance and every live tree in the world to arrive at the
+	# same count (see `_contents_spawned`).
+	if not _contents_spawned.has(key):
+		_contents_spawned[key] = true
+		_spawn_chunk_contents(chunk)
+	_update_first_ring_progress()
+	return true
+
+## Arm the boot gate around `center`: the 9 chunks at Chebyshev 0..1 that the body
+## stands in and may immediately step onto. They are queued AHEAD of whatever the
+## wider ring already queued, so the gate opens as early as it can.
+##
+## Phase 42 review — that front-queueing only does anything when this runs BEFORE the
+## first `refresh()` of the boot, and the boot used to call `refresh()` first: every
+## ring chunk was already `_pending`, so `wanted` came out empty, NOTHING was moved to
+## the front, and the ring's head start was dead code. Both boot paths now arm the gate
+## first (`_boot_server` before its `refresh()`), so the ring is genuinely queued ahead
+## of the wider band. Arming after a refresh is still correct, just no longer front-queued
+## — the streaming sort is nearest-first, which puts the ring at the head anyway.
+func build_first_ring(center: Vector2i) -> void:
+	_first_ring_center = center
+	_first_ring = {}
+	var wanted: Array = []
+	for c in _desired_chunks(center, FIRST_RING_RADIUS):
+		if not _in_bounds(c):
+			continue
+		var key := _chunk_key(c)
+		_first_ring[key] = _built.has(key)
+		if not _loaded.has(key) and not _pending.has(key):
+			wanted.append(c)
+	wanted.sort_custom(func(a, b): return _dist2(center, a) < _dist2(center, b))
+	for i in range(wanted.size() - 1, -1, -1):
+		_pending[_chunk_key(wanted[i])] = true
+		_load_queue.push_front(wanted[i])
+
+## True when every chunk of the armed first ring has been BUILT. An unarmed gate
+## answers true: a caller with no boot to hold must never be blocked by it.
+func is_first_ring_ready() -> bool:
+	if _first_ring.is_empty():
+		return true
+	for key in _first_ring:
+		if not _first_ring[key]:
+			return false
+	return true
+
+## Fraction of the armed first ring that has been built (1.0 when unarmed).
+func first_ring_progress() -> float:
+	if _first_ring.is_empty():
+		return 1.0
+	var done := 0
+	for key in _first_ring:
+		if _first_ring[key]:
+			done += 1
+	return float(done) / float(_first_ring.size())
+
+## How many chunks the armed first ring holds (0 when unarmed).
+func first_ring_size() -> int:
+	return _first_ring.size()
+
+## Re-read the built set into the gate. Called whenever a chunk's build lands.
+##
+## Phase 42 review pass 10 — this RECOMPUTES each ring key from `_built` rather than only ever
+## LATCHING it true. `unload_chunk` clears `_built` for a chunk that streams away, so a one-way
+## latch left `_first_ring` claiming a chunk was built when it no longer was — the gate and the
+## set it is supposed to mirror could disagree in the one direction the old code could not see.
+## Nothing regressed for a boot in practice (the ring is armed before the player can move, so a
+## ring chunk never unloads mid-boot), but the mirror is now exact: a ring key is built iff
+## `_built` holds it.
+func _update_first_ring_progress() -> void:
+	for key in _first_ring:
+		_first_ring[key] = _built.has(key)
 
 func unload_chunk(chunk_pos: Vector2i) -> void:
 	var key := _chunk_key(chunk_pos)
 	if not _loaded.has(key):
 		return
 	_loaded.erase(key)
+	_built.erase(key)
+	_build_attempts.erase(key)
+	# Phase 42 review — a streamed-out chunk carries no retry state: its groundless mark
+	# and any queued rebuild go with it (it rebuilds from the edit log when it streams
+	# back in, see `request_rebuild`'s not-loaded branch).
+	_failed.erase(key)
+	# The residency ends here: the contents are despawned below, so a chunk that streams
+	# back in repopulates (`_apply_build_entry`).
+	_contents_spawned.erase(key)
+	_rebuild_pending.erase(key)
+	# Phase 42 review pass 3 — and the QUEUED entry goes with the mark. `_rebuild_queue` is
+	# deduped through `_rebuild_pending`, so a mark cleared while its queue entry lived
+	# on made the NEXT `_queue_rebuild` for the same chunk append a SECOND entry: two
+	# dispatches for one chunk, both under the same revision, both attaching.
+	_remove_queued_rebuild(key)
+	# A build still in flight belongs to THIS residency. Without the supersede it stays live
+	# in `_builds`, and if the chunk streams back in before it lands it attaches alongside
+	# the reload's own dispatch under the same revision: the older arrays (gathered before
+	# any edit made while the chunk was out) can win, and whichever lands second is refused
+	# as stale and spends a needless retry dispatch.
+	_supersede_in_flight(key)
 	if voxel_slice != null and voxel_slice.has_method("unload_chunk"):
 		voxel_slice.unload_chunk(chunk_pos)
 	if creature_slice != null and creature_slice.has_method("despawn_for_chunk"):

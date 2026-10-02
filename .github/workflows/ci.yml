@@ -77,6 +77,61 @@ jobs:
             exit 1
           fi
 
+  host-boot:
+    name: Listen host reaches the world (first ring placed)
+    runs-on: ubuntu-latest
+    # Phase 42 review pass 4 — a hard cap on this job. The boot below waits on
+    # WorkerThreadPool tasks, and `--quit-after 100000` (its outer net) is FRAMES: a boot
+    # that never reaches its tail would burn runner time up to GitHub's 360-minute default
+    # before anyone learned the ring never opened. The measured boot is ~50 s, so ten
+    # minutes is a wide margin that still fails fast.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        # Same submodule note as godot-tests: the public repo runs on the
+        # committed placeholders.
+
+      - name: Download Godot 4.7
+        run: |
+          mkdir -p /tmp/godot
+          curl -fsSL -o /tmp/godot/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          unzip -o /tmp/godot/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
+
+      - name: Boot the LISTEN HOST and assert its world boot completed
+        run: |
+          # Phase 42 moved the host tail (player spawn, boot demos, slot save) onto
+          # `_process`, behind the first-ring gate, so it no longer runs inside
+          # `_ready()`. `--quit` runs exactly ONE frame and therefore SKIPPED that
+          # whole tail — which is why nothing here asserted the host boot any more.
+          # `--quit-after N` runs real frames and reaches it.
+          #
+          # Phase 42 review #2 — but N counts FRAMES while the boot waits on WORKER
+          # time, so a fast headless frame loop could burn the budget before the ring's
+          # tasks land and this job would fail for a boot that was working. The boot
+          # now ends ITSELF the moment its tail has run (`--quit-after-boot`), and
+          # `--quit-after` is demoted to an outer net that only catches a boot which
+          # never gets there — hence the very large count.
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --quit-after 100000 -- --quit-after-boot \
+            2>&1 | tee /tmp/godot-host.log
+          # Positive assertion: the tail RAN — the first ring was built and the player
+          # was placed. That is the claim `--quit` used to cover by accident.
+          if ! grep -q "\[World\] first ring built" /tmp/godot-host.log; then
+            echo "::error::the host boot never reached its tail (first ring placed)"
+            exit 1
+          fi
+          # And it must not have got there by TIMING OUT: the timeout warning names an
+          # incomplete ring, which is a slow boot that says so, not a working one.
+          if grep -q "first ring still incomplete" /tmp/godot-host.log; then
+            echo "::error::the host boot only completed through the first-ring timeout"
+            exit 1
+          fi
+          if grep -qE "SCRIPT ERROR|Parse Error|Compile Error" /tmp/godot-host.log; then
+            echo "::error::script/parse/compile errors present in the host boot log"
+            exit 1
+          fi
+
   fabric:
     name: Fabric validation + drift check
     runs-on: ubuntu-latest

@@ -28,6 +28,7 @@ const TradeSlice       := preload("res://src/trade/trade_slice.gd")
 const ProposalSlice    := preload("res://src/governance/proposal_slice.gd")
 const UiSlice          := preload("res://src/ui/ui_slice.gd")
 const Minimap          := preload("res://src/ui/minimap.gd")
+const LoadingScreen    := preload("res://src/ui/loading_screen.gd")
 const TestSuite        := preload("res://src/tests/test_suite.gd")
 const NetHarness       := preload("res://src/tests/net_harness.gd")
 
@@ -35,6 +36,7 @@ var _terrain:     TerrainSlice
 var _voxel:       VoxelSlice
 var _chunk_manager: ChunkManager
 var _minimap:     Minimap
+var _loading_screen: LoadingScreen
 var _battle:      BattleSlice
 var _creature:    CreatureSlice
 var _creature_ai: CreatureAI
@@ -64,6 +66,39 @@ var _is_client: bool = false
 var _is_server: bool = false
 var _host_address: String = "127.0.0.1"
 var _snapshot_pending: bool = false
+
+## Phase 42 — true while the host boot is waiting for the first ring of chunks to
+## finish building on the worker (see _boot_host / _finish_host_boot). Polled in
+## `_process`, which is the only place a worker result can be applied on time.
+var _pending_host_boot: bool = false
+
+## Phase 42 review — true while a CLIENT join is waiting for the same first ring (see
+## `_on_world_snapshot_received` / `_finish_client_boot`). The client has no boot tail to
+## run, so it is a separate flag rather than a mode on the host one: all it holds is the
+## loading screen and the movement freeze, and all it does at the end is release both.
+var _pending_client_boot: bool = false
+
+## Phase 42 review pass 11 — true once this join's FIRST snapshot has released the player.
+## The host also sends a re-scope snapshot on every area-of-interest crossing, through the
+## same handler; those must not raise the loading screen (and freeze the body) mid-game.
+## Reset when a new connection starts, so a reconnect waits for its ring again.
+var _client_boot_done: bool = false
+
+## Phase 42 — how long the host boot will wait for its first ring before placing the
+## player anyway. The gate is a BUILD ON A WORKER, and a stalled or dead task must not
+## hang the boot for good with the loading screen up and no player: past this the tail
+## runs regardless and the warning says the ring was incomplete. Mirrors SNAPSHOT_TIMEOUT
+## on the client side, which is the same shape for the same reason.
+const FIRST_RING_TIMEOUT := 15.0
+
+## Phase 42 review pass 3 — the wait is accumulated PER GATE. `_pending_host_boot` and
+## `_pending_client_boot` are mutually exclusive today (the roles are), so one shared
+## accumulator only ever counted one of them — but a single variable read by two different
+## deadlines is a coupling waiting for the day both are set: whichever gate ticked second
+## would inherit the other's elapsed time and skip its own wait. Two variables, no
+## coupling, and each gate's timeout is now readable on its own.
+var _host_boot_wait_elapsed: float = 0.0
+var _client_boot_wait_elapsed: float = 0.0
 
 ## Phase 39 — which side of the two-client network harness this boot drives ("" for a
 ## normal boot). Set by `_parse_network_args`; see `_run_net_harness`.
@@ -107,6 +142,9 @@ func _ready() -> void:
 	# Phase 36 — the role flags are read FIRST, because they decide whether the
 	# automated suite runs on this boot (see should_run_tests).
 	_parse_network_args()
+	# Phase 42 review pass 3 — and whether this boot quits itself once its world is up
+	# (`--quit-after-boot`; see QUIT_AFTER_BOOT_ARG).
+	_quit_after_boot = should_quit_after_boot(OS.get_cmdline_user_args())
 
 	# Run the automated tests before any production slice enters the tree — when
 	# this boot runs them at all. The suite emits signals on the shared GameBus
@@ -128,6 +166,10 @@ func _ready() -> void:
 	_voxel       = VoxelSlice.new()
 	_chunk_manager = ChunkManager.new()
 	_minimap     = Minimap.new()
+	# Phase 42 — the first-ring loading screen. Presentation only, added to the tree
+	# behind the same `not _is_server` guard the minimap uses; it owns the boot's
+	# world-input freeze (see LoadingScreen and GameBus.world_input_frozen).
+	_loading_screen = LoadingScreen.new()
 	_battle      = BattleSlice.new()
 	_creature    = CreatureSlice.new()
 	_creature_ai = CreatureAI.new()
@@ -217,7 +259,12 @@ func _ready() -> void:
 	_creature_ai.taming_slice = _taming
 	_voxel.terrain_slice      = _terrain
 	_voxel.inventory_slice    = _inventory
+	# Phase 42 review — the registry, so an edit the host resolves for a REMOTE peer
+	# charges and credits THAT peer's own pack instead of the host's (and pushes the
+	# result back to its client). Same collaborator CraftingSlice got in Phase 37.
+	_voxel.player_registry    = _registry
 	_tree.inventory_slice     = _inventory
+	_tree.player_registry     = _registry
 	# Phase 36 — the wire is policed with evidence the bus cannot carry: a tree chop
 	# intent names only a tree id (its position for the reach check comes from the tree
 	# slice) and a trade invite names a counterparty (resolved against the registry's
@@ -286,6 +333,10 @@ func _ready() -> void:
 	_chunk_manager.player_slice   = _player
 	_chunk_manager.creature_slice = _creature
 	_chunk_manager.tree_slice     = _tree
+	# Phase 42 review — and back the other way, so an edit DISPATCHES its rebuild instead
+	# of building up to three chunks synchronously in the frame that placed the block.
+	# A voxel slice with no manager (an isolated rig) keeps the synchronous build.
+	_voxel.chunk_manager = _chunk_manager
 
 	# Minimap overlay (Phase 17) — top-right, biome-coloured chunk view. Pure
 	# presentation, so a headless dedicated server (Phase 27) skips it entirely,
@@ -307,6 +358,15 @@ func _ready() -> void:
 		_minimap.player_slice = _player
 		_minimap.terrain_slice = _terrain
 		minimap_layer.add_child(_minimap)
+
+		# Phase 42 — the first-ring loading screen, at its own layer ABOVE the minimap.
+		# Host-only like the minimap (a dedicated server has no body to place and no
+		# screen to show), and it starts hidden: the boot path shows it (see _boot_host)
+		# for as long as the ground under the spawn point is being built.
+		#
+		# Phase 42 review — no second `not _is_server` guard here: this block is already
+		# inside one (the minimap's), so the nested copy was dead.
+		add_child(_loading_screen)
 
 	# Bus listeners for integration-layer logging.
 	GameBus.chunk_ready.connect(_on_chunk_ready)
@@ -410,6 +470,17 @@ const RUN_TESTS_ARG := "--run-tests"
 ## of it this process drives (`host` or `client`).
 const NET_HARNESS_ARG := "--net-harness"
 
+## Phase 42 review pass 3 — the user arg that asks a boot to QUIT itself once its world boot has
+## finished. A boot's first ring is built on `WorkerThreadPool` tasks, so what it waits on is
+## WALL-CLOCK time, while `--quit-after N` counts FRAMES: a fast headless frame loop can burn
+## the whole frame budget before the worker tasks land, and the CI job then reads a log with no
+## first-ring marker — a FAILURE for a boot that was working. With this arg the BOOT decides
+## when it is done; `--quit-after` stays only as the outer net for a boot that never finishes.
+const QUIT_AFTER_BOOT_ARG := "--quit-after-boot"
+
+## Phase 42 review pass 3 — see QUIT_AFTER_BOOT_ARG. Read in `_ready()`.
+var _quit_after_boot: bool = false
+
 ## Phase 36 — should THIS boot run the automated suite?
 ##
 ## It used to run unconditionally, so every boot of every build executed a
@@ -428,6 +499,13 @@ const NET_HARNESS_ARG := "--net-harness"
 ## twice. See `_test_boot_suite_is_gated`.
 static func should_run_tests(args: Array, is_debug_build: bool) -> bool:
 	return RUN_TESTS_ARG in args or is_debug_build
+
+## Phase 42 review pass 3 — is this boot asked to quit itself once its world boot is done?
+## Static and argument-driven for the same reason `should_run_tests` is: the rule is a pure
+## predicate the suite can assert directly. See QUIT_AFTER_BOOT_ARG for why a FRAME budget
+## is the wrong instrument for a boot whose wait is on worker time.
+static func should_quit_after_boot(args: Array) -> bool:
+	return QUIT_AFTER_BOOT_ARG in args
 
 ## Phase 39 — which side of the network harness this boot drives, or "" for a normal
 ## boot. Static and argument-driven for the same reason `should_run_tests` is: the rule
@@ -512,6 +590,12 @@ const DEBUG := false
 ## Role dispatch (Phase 32): client → `_boot_client()`, dedicated server →
 ## `_boot_server()`, otherwise the listen host → `_boot_host()`. No boot logic
 ## lives here any more — the host path used to be inlined at this point.
+##
+## Phase 42 review pass 4 — the DEDICATED SERVER branch ends its boot here, so this is
+## where `--quit-after-boot` fires for it: a `--server` boot has no deferred tail (that is
+## the LISTEN host's, see `_boot_host`), and without this call the flag was silently a
+## no-op on a dedicated server — a `--server --quit-after-boot` boot never quit itself and
+## fell through to the engine's `--quit-after` net.
 func _boot_world() -> void:
 	if _is_client:
 		_boot_client()
@@ -519,6 +603,7 @@ func _boot_world() -> void:
 
 	if _is_server:
 		_boot_server()
+		_quit_after_boot_if_asked("server")
 		return
 
 	_boot_host()
@@ -538,8 +623,121 @@ func _boot_world() -> void:
 ## `not _is_server` guard, so they are host-only and need no second path here.
 ## `render_visuals` on the creature/player/tree slices is likewise
 ## decided in `_ready()` — a host calling `_boot_server()` still renders.
+##
+## Phase 42 — the tail is no longer run in this frame. The terrain build is on a
+## worker now, so the first ring is NOT ready when `_boot_server()` returns and the
+## body would be placed on ground that does not exist yet. So the host boot shows the
+## loading screen, freezes world input, and lets `_process` call `_finish_host_boot()`
+## the moment `is_first_ring_ready()` opens — which is also the frame the player body
+## first exists. A ring that is somehow already built completes immediately.
 func _boot_host() -> void:
 	_boot_server()
+
+	_loading_screen.begin()
+	# Phase 42 review pass 11 — `_boot_server` armed the ring around the PRE-SPAWN body,
+	# which is the origin chunk. A host who logged off elsewhere is moved there by
+	# `_restore_local_player` only in the tail, AFTER the gate opened, onto chunks nobody
+	# had dispatched. Place the (now frozen) body at the saved position first and re-arm
+	# the ring and the window around it; the origin chunks still queued fall outside the
+	# window and are dropped by the drain.
+	var saved_pos: Variant = _saved_local_position()
+	if saved_pos != null:
+		_player.spawn_at(saved_pos)
+		_chunk_manager.build_first_ring(_chunk_manager.player_chunk())
+		_chunk_manager.refresh()
+	_host_boot_wait_elapsed = 0.0
+	if _chunk_manager.is_first_ring_ready():
+		_finish_host_boot()
+		return
+	_pending_host_boot = true
+
+## Phase 42 — drive the waiting host boot: while `_pending_host_boot` is set, keep the
+## loading bar in step with the first ring's build progress and run the host tail as
+## soon as every ring chunk's ground exists. A no-op once the boot has completed.
+##
+## Phase 42 review — and it TIMES OUT. A ring that never opens (a stalled build, a pool
+## that never runs the task) used to hold the boot forever: loading screen up, no player,
+## no UI, nothing logged. Past FIRST_RING_TIMEOUT the tail runs anyway and the warning
+## names what was missing, so a broken build is a slow boot that says so rather than a
+## hang with no evidence.
+func _tick_pending_host_boot(delta: float) -> void:
+	if not _pending_host_boot:
+		return
+	_loading_screen.set_progress(_chunk_manager.first_ring_progress())
+	_host_boot_wait_elapsed += delta
+	if not host_boot_may_proceed(_chunk_manager.is_first_ring_ready(), _host_boot_wait_elapsed):
+		return
+	if not _chunk_manager.is_first_ring_ready():
+		push_warning("GameRoot: first ring still incomplete after %.1fs (%d of %d chunks built) — placing the player anyway" % [
+			_host_boot_wait_elapsed, int(round(_chunk_manager.first_ring_progress() * float(_chunk_manager.first_ring_size()))),
+			_chunk_manager.first_ring_size()])
+	_finish_host_boot()
+
+## The boot gate's decision, as a pure predicate so it is assertable without a boot:
+## the tail may run once the ring is built, or once the wait has run past the timeout.
+## An UNARMED ring is "ready" (see ChunkManager.is_first_ring_ready), so a boot with no
+## gate to wait for completes on the first tick.
+static func host_boot_may_proceed(ring_ready: bool, elapsed: float) -> bool:
+	return ring_ready or elapsed >= FIRST_RING_TIMEOUT
+
+## Phase 42 review pass 3 — leave the process the moment the world boot has finished, when this
+## boot was asked to (QUIT_AFTER_BOOT_ARG). Called at the END of both boot tails — the host's
+## after its save, the client's after it releases the player — because the tail IS the boot's
+## definition of "done". The alternative, `--quit-after N`, is a FRAME budget for a wait that
+## is measured in worker time, so it can expire first; see QUIT_AFTER_BOOT_ARG.
+func _quit_after_boot_if_asked(role: String) -> void:
+	if not _quit_after_boot:
+		return
+	print("[World] %s boot complete — quitting (%s)" % [role, QUIT_AFTER_BOOT_ARG])
+	get_tree().quit()
+
+## Phase 42 review — the CLIENT's first-ring gate (see `_on_world_snapshot_received`).
+## The client has no boot tail: its body already holds the snapshot position, so the only
+## work is to drop the loading screen and release the movement freeze that stopped the
+## body falling through ground that had not been built yet. Same timeout rule as the host,
+## so a stalled build cannot leave a client frozen forever.
+func _finish_client_boot() -> void:
+	_pending_client_boot = false
+	_client_boot_done = true
+	# Phase 42 review pass 3 — this runs on BOTH paths: the waiting one (which showed the
+	# screen) and the ALREADY-READY early return in `_on_world_snapshot_received` (which
+	# did not). Only the first one ever held the player, so ask the screen whether
+	# anything was actually shown instead of announcing a release that never happened —
+	# a client whose ring was built before the snapshot arrived saw no bar and was never
+	# frozen, and the line claimed it was "releasing the player" regardless.
+	var was_shown := _loading_screen.is_active()
+	_loading_screen.finish()
+	if was_shown:
+		print("[World] client first ring built (%d chunks) — releasing the player" % _chunk_manager.first_ring_size())
+	else:
+		print("[World] client first ring already built (%d chunks) — no loading screen to release" % _chunk_manager.first_ring_size())
+	_quit_after_boot_if_asked("client")
+
+## Phase 42 review pass 3 — drive the waiting client join: keep the loading bar in step with the
+## first ring's build progress and release the player the moment the ring's ground exists.
+## A no-op once the join has completed (or when this is not a client at all).
+func _tick_pending_client_boot(delta: float) -> void:
+	if not _pending_client_boot:
+		return
+	_loading_screen.set_progress(_chunk_manager.first_ring_progress())
+	_client_boot_wait_elapsed += delta
+	if not host_boot_may_proceed(_chunk_manager.is_first_ring_ready(), _client_boot_wait_elapsed):
+		return
+	if not _chunk_manager.is_first_ring_ready():
+		push_warning("GameRoot: client first ring still incomplete after %.1fs (%d of %d chunks built) — releasing the player anyway" % [
+			_client_boot_wait_elapsed, int(round(_chunk_manager.first_ring_progress() * float(_chunk_manager.first_ring_size()))),
+			_chunk_manager.first_ring_size()])
+	_finish_client_boot()
+
+## The host tail, run once the first ring's ground exists: player spawn, avatar,
+## lighting/UI demos, and the legacy slot save. Split out of `_boot_host()` by
+## Phase 42 so it can run on a LATER frame (see there); it is still the same code in
+## the same order, and it is idempotent by way of `_pending_host_boot`.
+func _finish_host_boot() -> void:
+	_pending_host_boot = false
+	_loading_screen.finish()
+	print("[World] first ring built (%d chunks) — placing the player, %.2fs after boot" % [
+		_chunk_manager.first_ring_size(), float(Time.get_ticks_msec()) / 1000.0])
 
 	# Player spawn — above the terrain surface so it doesn't spawn embedded in
 	# (and fall through) the collision mesh.
@@ -643,6 +841,11 @@ func _boot_host() -> void:
 	# what an authoritative boot loads.
 	_save_everything(false)
 
+	# Phase 42 review pass 3 — the tail is the boot's own definition of "done" (see
+	# QUIT_AFTER_BOOT_ARG). A CI boot asks to exit HERE rather than being cut off by a
+	# FRAME budget: the wait above is on worker time, and `--quit-after N` counts frames.
+	_quit_after_boot_if_asked("host")
+
 ## Client boot path (Phase 18): do NOT run the authoritative simulation. Join
 ## the host and wait for the world snapshot before showing anything.
 ##
@@ -657,6 +860,7 @@ func _boot_client() -> void:
 		_snapshot_pending = false
 		return
 	_snapshot_pending = true
+	_client_boot_done = false
 	_snapshot_elapsed = 0.0
 	_handshake_elapsed = 0.0
 	_handshake_retries = 0
@@ -680,6 +884,17 @@ func _boot_client() -> void:
 func _boot_server() -> void:
 	_load_world_records()
 	_chunk_manager.start()
+	# Phase 42 — arm the boot gate BEFORE the first refresh, and not after it. Both boot
+	# paths inherit it here, which is what stops a gate wired into one of them from being a
+	# hole in the others. The centre is the player's chunk: pre-spawn that is the origin
+	# chunk, and the host's spawn point (16,16) lands in the same chunk (0,0).
+	#
+	# Phase 42 review — the ORDER matters, and the first pass had it wrong: `refresh()`
+	# marks every in-range chunk `_pending`, so arming afterwards found the ring already
+	# queued, moved nothing to the front, and the gate's head start was dead code. Arming
+	# first puts the 9 ring chunks at the head of `_load_queue`, and the `refresh()` below
+	# then appends the wider band behind them (it skips what is already `_pending`).
+	_chunk_manager.build_first_ring(_chunk_manager.player_chunk())
 	_chunk_manager.refresh()
 	_apply_loaded_creature_state()
 	_networking.host(_networking.DEFAULT_PORT, _networking.DEFAULT_MAX_CLIENTS)
@@ -838,6 +1053,15 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	_networking.send_snapshot(peer_id, _build_snapshot(peer_id, false))
 
 func _process(delta: float) -> void:
+	# Phase 42 — complete a host boot whose first ring has finished building. It has
+	# to run FIRST: the rest of this frame's work (the avatar sync, the LOD pass) is
+	# written against a player body that only exists once the boot tail has run, and
+	# the loading screen must come down in the same frame the body appears.
+	_tick_pending_host_boot(delta)
+	# Phase 42 review — and the client's identical gate (a no-op for every other role):
+	# a joining client holds the loading screen until its own first ring's ground exists.
+	_tick_pending_client_boot(delta)
+
 	_sync_player_avatar(delta)
 	# Distance-driven LOD (Phase 23) — evaluate each character's world distance
 	# to the player each frame and swap fine detail / the impostor billboard in
@@ -1068,8 +1292,25 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 	# them (`apply_snapshot_creatures`, above), because `CreatureSlice.spawn_for_chunk`
 	# refuses to run on a non-authoritative slice.
 	_chunk_manager.start()
+	# Phase 42 review — the CLIENT arms the same first-ring gate the host does, instead of
+	# placing the body from the snapshot into a world whose ground is still being built on
+	# a worker. The body is spawned from the snapshot ABOVE (so `player_chunk()` names the
+	# ground it will stand on and the streaming window centres on it), and it is held still
+	# by the loading screen's freeze until the ring is built (see `PlayerSlice`).
+	_chunk_manager.build_first_ring(_chunk_manager.player_chunk())
 	_chunk_manager.refresh()
 	_snapshot_pending = false
+	# Phase 42 review pass 11 — a re-scope snapshot (the join is already released, or its
+	# wait is still running) keeps the ring's head start above but never (re)starts the
+	# wait: that popped the loading screen mid-game and reset a running wait's timeout.
+	if _client_boot_done or _pending_client_boot:
+		return
+	if _chunk_manager.is_first_ring_ready():
+		_finish_client_boot()
+		return
+	_loading_screen.begin()
+	_client_boot_wait_elapsed = 0.0
+	_pending_client_boot = true
 
 # ---------------------------------------------------------------------------
 # Phase 33 — authoritative persistence lifecycle
@@ -1320,9 +1561,9 @@ func _restore_local_player() -> void:
 	if pid.is_empty():
 		return
 	var rec := _registry.get_record(pid)
-	var arr = rec.get("position", [])
-	if arr is Array and (arr as Array).size() >= 3:
-		_player.spawn_at(Vector3(float(arr[0]), float(arr[1]), float(arr[2])))
+	var saved_pos: Variant = _saved_local_position()
+	if saved_pos != null:
+		_player.spawn_at(saved_pos)
 	var hp := float(rec.get("hp", -1.0))
 	if hp >= 0.0:
 		_player.set_hp(hp)
@@ -1331,6 +1572,18 @@ func _restore_local_player() -> void:
 		_technology.apply_statuses(tech, pid)
 	# Phase 35 — the local player's taming flags and companion bindings.
 	_taming.apply_record(rec, pid)
+
+## The local player's recorded position, or null when there is no identity or the
+## record carries none. Read by the host boot (to arm the first ring where the player
+## will stand) and by `_restore_local_player`.
+func _saved_local_position() -> Variant:
+	var pid := _registry.local_player_id
+	if pid.is_empty():
+		return null
+	var arr = _registry.get_record(pid).get("position", [])
+	if arr is Array and (arr as Array).size() >= 3:
+		return Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
+	return null
 
 ## Read the world record and the LOCAL player's record off disk. A missing world
 ## record is NOT an error — a server with no save boots a fresh world.

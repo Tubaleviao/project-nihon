@@ -37,7 +37,8 @@ extends Node
 ##                                          (host → that player's peer only, Phase 37)
 ##         player_damaged(damage, attacker_id, target_id) — a round that landed on a
 ##                                          player (host → the target's peer, Phase 37)
-##         tree_chop_requested(tree_id)              — client wants to fell a tree
+##         tree_chop_requested(tree_id, player_id)   — client wants to fell a tree
+##                                          (the host re-emits the bound actor)
 ##         tree_chopped(tree_id, wood, state, at)    — host authoritative chop
 ##         tree_respawned(tree_id)                   — host authoritative regrowth
 ##         craft_intent(recipe_id, player_id)        — client wants to craft
@@ -568,11 +569,14 @@ func _on_block_changed(action: String, position: Vector3, normal: Vector3, mater
 	}
 	_broadcast_aoi(packet, position)
 
-func _on_tree_chop_requested(tree_id: String) -> void:
+func _on_tree_chop_requested(tree_id: String, _player_id: String) -> void:
 	if _role != Role.CLIENT:
 		# Host (and single-player) resolve the chop directly through TreeSlice;
 		# only clients forward the intent.
 		return
+	# The player id is dropped on purpose: the host binds the actor to the
+	# connection when the intent arrives (Phase 36), so a client naming one would
+	# only be a claim. Same rule as the craft/repair/tame intent arms.
 	_broadcast({ "type": "tree_chop_intent", "tree_id": tree_id })
 
 func _on_tree_chopped(tree_id: String, wood: String, state: String, respawn_at: float) -> void:
@@ -1176,6 +1180,13 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			# claim: with no reach check a client could mine or build anywhere in the
 			# world (under another player's feet included), and with no handshake
 			# requirement it could do so before the host knew who it was at all.
+			#
+			# Phase 42 review — the bound identity also RIDES the request now, so the
+			# action resolves against that player's own pack: without it the host
+			# credited its own inventory with a client's material (and spent its own on
+			# a client's placement). `action`/`material` are still the client's claims,
+			# but neither grants anything — the actor is the connection, the material
+			# must be a real fabric material, and the debit lands on the actor's pack.
 			if _actor_id(sender) == "":
 				_refuse_unhandshaked(sender, "block_edit_intent")
 				return
@@ -1186,9 +1197,10 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				push_warning("NetworkingSlice: block_edit_intent from peer %d is out of reach — dropped" % sender)
 				return
 			if action == "mine":
-				GameBus.block_mine_requested.emit(ipos, inorm)
+				GameBus.block_mine_requested.emit(ipos, inorm, _actor_id(sender))
 			elif action == "place":
-				GameBus.block_place_requested.emit(ipos, inorm)
+				GameBus.block_place_requested.emit(
+					ipos, inorm, _actor_id(sender), str(payload.get("material", "")))
 			else:
 				push_error("NetworkingSlice: unknown block_edit_intent action '%s'" % action)
 		"tree_chop_intent":
@@ -1197,6 +1209,9 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			# the wired TreeSlice (a tree the host does not have is not chopable
 			# either — TreeSlice re-checks that too, authoritatively). The host then
 			# re-runs the chop and broadcasts tree_chopped back to every client.
+			#
+			# Phase 42 review — and the bound identity rides the request, so the wood
+			# and the axe's wear are the CHOPPER's (see the block_edit_intent arm).
 			if _actor_id(sender) == "":
 				_refuse_unhandshaked(sender, "tree_chop_intent")
 				return
@@ -1204,7 +1219,7 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			if not _chop_is_in_reach(sender, tree_id):
 				push_warning("NetworkingSlice: tree_chop_intent from peer %d is out of reach — dropped" % sender)
 				return
-			GameBus.tree_chop_requested.emit(tree_id)
+			GameBus.tree_chop_requested.emit(tree_id, _actor_id(sender))
 		"market_list_intent":
 			# Phase 36 — a listing is the CONNECTION's player selling. `seller` used
 			# to be passed through verbatim unless it read exactly "player", so a

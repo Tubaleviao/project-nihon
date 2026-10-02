@@ -111,6 +111,17 @@ var voxel_slice: Node = null
 var station_slice: Node = null
 var terrain_slice: Node = null
 
+## Phase 42 — set while the loading screen is up. It is its OWN gate, not a reuse of
+## `UIControl.any_window_open()`: that predicate answers only for the panels the UI
+## slice holds, and a loading screen is not among them, so nothing would be refused.
+## Driven by the `world_input_frozen` bus signal the loading screen emits, and also
+## settable directly (see `set_world_input_frozen`) for a caller that holds the slice.
+##
+## Phase 42 review — it freezes the BODY as well as the input (see `_physics_process`):
+## the freeze is what holds a client's body still over ground that is still being built,
+## so it cannot be only an input gate.
+var _world_input_frozen: bool = false
+
 func _ready() -> void:
 	if render_visuals:
 		_build_body()
@@ -119,6 +130,25 @@ func _ready() -> void:
 	GameBus.block_place_material_changed.connect(_on_place_material_changed)
 	GameBus.player_damaged.connect(_on_player_damaged)
 	GameBus.remote_player_state.connect(_on_remote_player_state)
+	GameBus.world_input_frozen.connect(set_world_input_frozen)
+
+## Freeze / unfreeze every world action for as long as the loading screen is up.
+func set_world_input_frozen(frozen: bool) -> void:
+	_world_input_frozen = frozen
+
+func is_world_input_frozen() -> bool:
+	return _world_input_frozen
+
+## The ONE predicate `_input` consults before any world action: the mouse must be
+## captured (a UI window or a released mouse blocks everything below) AND the world
+## input freeze must be off (the loading screen blocks it until the ground the body
+## stands on exists). Public so the freeze is assertable without a display server —
+## a headless run has no mouse capture, which would make `_input`'s own guard pass
+## for the wrong reason.
+func world_input_allowed() -> bool:
+	if _world_input_frozen:
+		return false
+	return Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 
 func _physics_process(delta: float) -> void:
 	if not _alive:
@@ -127,7 +157,13 @@ func _physics_process(delta: float) -> void:
 			if _respawn_timer <= 0.0:
 				_respawn()
 		return
-	if render_visuals:
+	# Phase 42 review — the loading freeze holds the BODY too, not just `_input`. It used
+	# to gate only the input arms above, so while the loading screen was up the body still
+	# ran its own physics: on the host it was inert only because it had not been spawned
+	# yet, and on a client (which placed the body from the snapshot while its ring built) it
+	# fell through ground that did not exist. Frozen means the body holds its position until
+	# the ground under it is there.
+	if render_visuals and not _world_input_frozen:
 		_move(delta)
 	_sync_tick += 1
 	if _sync_tick >= SYNC_INTERVAL:
@@ -155,11 +191,13 @@ func _input(event: InputEvent) -> void:
 			_zoom(-ZOOM_STEP)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			_zoom(ZOOM_STEP)
-	# All world actions below require a captured mouse. While a UI window is
-	# open the UI slice keeps the mouse visible, so this guard prevents
-	# attacking, mining, or placing through an open menu. ESC (mouse capture
-	# toggle) is owned by the UI slice now.
-	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+	# All world actions below require a captured mouse and an unfrozen world (Phase
+	# 42 — the loading screen owns the freeze hook; see `world_input_allowed`).
+	# While a UI window is open the UI slice keeps the mouse visible, so the mouse
+	# half prevents attacking, mining, or placing through an open menu, and the
+	# loading screen's freeze prevents any of it before the ground exists. ESC (mouse
+	# capture toggle) is owned by the UI slice now.
+	if not world_input_allowed():
 		return
 	# Left-click: pick up an aimed item if there is one, else chop an aimed tree,
 	# otherwise attack.
@@ -167,7 +205,9 @@ func _input(event: InputEvent) -> void:
 		if _aimed_pickup_id != "":
 			_try_pickup_aimed()
 		elif _aimed_tree_id != "":
-			GameBus.tree_chop_requested.emit(_aimed_tree_id)
+			# "" = this machine's own player; the host binds the real actor to the
+			# connection when the intent reaches it (see bus.gd's signal note).
+			GameBus.tree_chop_requested.emit(_aimed_tree_id, "")
 		else:
 			_try_attack()
 	# F key → melee attack the nearest creature in range.
@@ -176,11 +216,14 @@ func _input(event: InputEvent) -> void:
 	# Right-click → mine the aimed terrain block.
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
 		if _aimed_block_hit:
-			GameBus.block_mine_requested.emit(_aimed_block_pos, _aimed_block_normal)
+			GameBus.block_mine_requested.emit(_aimed_block_pos, _aimed_block_normal, "")
 	# Middle-click → place a block against the aimed terrain face.
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_MIDDLE:
 		if _aimed_block_hit:
-			GameBus.block_place_requested.emit(_aimed_block_pos, _aimed_block_normal)
+			# Both trailing args are "" = this machine's own player and its own
+			# material selection; a client's placement travels to the host as a
+			# `block_edit_intent` carrying that selection (see `_on_place_requested`).
+			GameBus.block_place_requested.emit(_aimed_block_pos, _aimed_block_normal, "", "")
 	# R key → cycle the build material.
 	if event is InputEventKey and event.pressed and event.keycode == KEY_R:
 		GameBus.block_cycle_material_requested.emit()

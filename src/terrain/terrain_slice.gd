@@ -2,11 +2,13 @@ extends Node
 ## Terrain slice — procedural chunk generation via FastNoiseLite.
 ##
 ## Plug contract (GameBus signals consumed / emitted):
-##   IN  : none (generation is triggered by request_chunk())
+##   IN  : none (the streamed path calls `generate_heightmap` directly; `request_chunk`
+##              is the test-only trigger for the `chunk_ready` synchronous path)
 ##   OUT : chunk_ready(chunk_pos, heightmap)
 ##
 ## Public API:
-##   request_chunk(pos: Vector2i) -> void   — kick off async generation
+##   request_chunk(pos: Vector2i) -> void   — TEST ONLY: announce a chunk on the bus
+##   generate_heightmap(pos: Vector2i) -> Array — the production entry point (no signal)
 ##   get_height_at(world_pos: Vector2) -> float — terrain height at world XZ
 ##   set_world_seed(seed: int) -> void      — the world's identity (Phase 41)
 ##   get_world_seed() -> int
@@ -73,9 +75,26 @@ func get_world_seed() -> int:
 	return _world_seed
 
 ## Generate a chunk and emit chunk_ready when done.
+##
+## Phase 42 review — this is a TEST-ONLY path now, and the docstring says so rather than
+## leaving a reader to wonder. The streamed production path never announces a heightmap:
+## `ChunkManager` asks `generate_heightmap` for the map directly and hands it to the
+## worker, precisely so the `chunk_ready` signal does not also trigger VoxelSlice's
+## SYNCHRONOUS build (which would build every streamed chunk twice). Nothing in
+## `src/` outside `test_suite.gd` calls this; a new production caller should not.
 func request_chunk(pos: Vector2i) -> void:
 	var heightmap := _generate(pos)
 	GameBus.chunk_ready.emit(pos, heightmap)
+
+## Generate a chunk's heightmap WITHOUT announcing it on the bus.
+##
+## Phase 42 — the streaming manager needs the map in hand to resolve a chunk's
+## column table and hand the build to a worker, and the `chunk_ready` signal is the
+## trigger for the SYNCHRONOUS build (VoxelSlice listens to it). Emitting it here
+## would build every streamed chunk twice: once on the main thread off the signal,
+## and once on the worker. So the manager asks for the map directly.
+func generate_heightmap(pos: Vector2i) -> Array:
+	return _generate(pos)
 
 ## Sample height at an arbitrary world position (matches the heightmap formula,
 ## including spawn-area flattening). Uses the same (raw+1)*0.5*HEIGHT_SCALE

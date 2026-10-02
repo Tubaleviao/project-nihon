@@ -3311,7 +3311,7 @@ bedrock depth, and migrates the edit/save format the change invalidates.
 
 ---
 
-## Phase 42 — Threaded chunk build and a loading screen
+## Phase 42 — Threaded chunk build and a loading screen ✅ Done
 
 **Goal:** A chunk build is the most expensive thing this game does, and it still
 runs on the main thread. `ChunkManager` already time-slices it
@@ -3362,19 +3362,129 @@ chunk is queued further out than it is needed.
   ring so a crossing never requests a chunk at the moment it becomes needed.
 
 **Acceptance criteria:**
-- [ ] A chunk build does not run on the main thread: a frame-time probe across a
+- [x] A chunk build does not run on the main thread: a frame-time probe across a
   boundary crossing shows no single frame carrying the build cost, and the
   builder is asserted directly by the suite as a pure function of its arguments.
-- [ ] Greedy merge cuts the per-chunk vertex count (quote the before/after
+  *(Landed: `ChunkManager._dispatch_build` hands `VoxelSlice.build_chunk_arrays` to a
+  `WorkerThreadPool` task and `_process` applies the result on the main thread. The
+  suite test "chunk: the pure builder is a function of its args" builds one chunk twice
+  — the second time with a VoxelSlice carrying an unrelated place material and an edit in
+  another chunk — and asserts identical vertices, indices and collision soup. The
+  frame-time probe itself was NOT written: what is asserted is that the dispatch happens
+  and that the main thread never runs the build, not a measured per-frame millisecond
+  figure. **(Second review pass: `PROBE Phase 42 build split` now prints the main-thread
+  half of a dispatch — heightmap generation plus column-table resolution — against the pure
+  builder the worker runs, so the split is a measured number rather than a claim. A true
+  per-FRAME millisecond figure still needs a frame-driven boot, which the synchronous suite
+  deliberately is not.)** **(Eighth review pass: the probe ASSERTS the ratio now, and it
+  measures the other half of the main thread's work too — the apply path (`_mesh_from_arrays`
+  plus the collision `set_faces`) is inside the main-thread total, and three passes are summed
+  because the gap is under 2x. Measured: main 130071 us (resolve 126938 + apply 3133) against
+  the worker's 235263 us, i.e. 1.81x. The criterion's other half — the builder is a pure
+  function of its arguments — was VACUOUSLY tested until this pass: the test built the SAME
+  resolved table twice, so its second, differently-stated slice was dead setup. It now resolves
+  the chunk from both slices and builds from each.)** **(NINTH review pass: the resolve moved
+  OFF the main thread, and the probe asserts an absolute ceiling as well as the ratio. The
+  per-pass figures showed the main-thread half at 44900 us per dispatch — 2.7 frames at 60 Hz —
+  so the criterion's own headroom was gone even though the ratio passed; `gather_build_input()`
+  copies the resolve's inputs and the STATIC `build_runs()` resolves on the worker, which brings
+  the main-thread half to 2539 us steady state (generate+gather 1634 us) against a worker half of
+  77159 us, and the assertion is now `steady_main < 16667 us` — one dispatch per frame, inside
+  one frame. The per-frame millisecond figure this criterion originally wanted is therefore
+  answered for the DISPATCH; what still needs a frame-driven boot is the world's whole frame
+  budget.)**
+- [x] Greedy merge cuts the per-chunk vertex count (quote the before/after
   number), and a tile whose neighbours differ still emits a valid 1×1 quad.
-- [ ] Booting against a fresh `user://` (empty world) shows the loading screen
+  *(`cell_count` → `quad_count`, measured in the suite's "chunk: greedy merge collapses a
+  flat chunk": a flat chunk with no built neighbours goes 4352 faces → 5 quads, and a
+  natural noise chunk with its ring built goes 7568 faces → 3760 quads. The vertex win is
+  larger than the quad win because the quads are now INDEXED: the natural chunk emits
+  15040 vertices where the per-tile mesher emitted 45408 (6 duplicated per quad). The 1×1
+  case is asserted on the pure sweep: a lone cell is its own rectangle, a hole splits a
+  row, and a row below extends it.)*
+- [x] Booting against a fresh `user://` (empty world) shows the loading screen
   and does not place the player body until the first ring's chunks are built.
-- [ ] No world input resolves while the loading screen shows: an attack, mine,
+  *(`_boot_host()` shows the screen and defers the whole host tail to
+  `_tick_pending_host_boot()`; the tail runs from `_process` the frame the gate opens.
+  Verified against a fresh `XDG_DATA_HOME`: `[World] first ring built (9 chunks) —
+  placing the player, 19.66s after boot`. The screen's own visibility is not asserted by
+  the suite — it is a node in the tree on both boot paths and has no headless frame to be
+  seen in. **(Second review pass: it IS asserted now — `ui: the loading screen shows and
+  hides` drives `begin()` / `set_progress()` / `finish()` and asserts the visibility, the
+  bar and the `world_input_frozen` emissions directly, which needs no frames. The CLIENT
+  path arms the same gate, so the body is no longer placed on unbuilt ground on a join.)**
+- [x] No world input resolves while the loading screen shows: an attack, mine,
   chop or place attempted with the screen up is refused. The freeze is the
   loading screen's own hook — `any_window_open()` is not consulted and would
   answer `false`.
-- [ ] The suite is green on both boot paths, with tests for the pure builder and
+  *(`GameBus.world_input_frozen` → `PlayerSlice.set_world_input_frozen`, consulted by the
+  single predicate `PlayerSlice.world_input_allowed()` that `_input` now gates every world
+  action on. Suite test "player: the loading freeze refuses world input" drives the signal,
+  asserts `world_input_allowed()` is false while frozen, and asserts `any_window_open()` is
+  false at that moment — i.e. that the window predicate could not have been the gate. A
+  headless boot has no mouse capture at all, which is why the freeze is assertable
+  separately from the mouse half of the predicate.)*
+  **(Second review pass: the freeze holds the BODY too — `PlayerSlice._physics_process`
+  skips `_move` while frozen, asserted by `player: the loading freeze holds the body`. It
+  has to: a joining client's body exists from the snapshot while its ring is still being
+  built, so an input-only freeze left it falling through ground that was not there.)**
+- [x] The suite is green on both boot paths, with tests for the pure builder and
   the merge registered in `test_suite.gd`.
+  *(`Results: 7663/7663 passed (0 failed)` + `All tests passed ✓` on both
+  `--quit` and `--quit --server`; seven new tests registered in the `_run_test` list
+  (builder purity, merge counts, merge-never-spans-a-gap, dispatch-then-apply, the
+  first-ring gate, the prefetch radius, the loading freeze). **Re-run after the review
+  pass: `7682/7682 passed (0 failed)` on both boot paths** — five more tests, one per
+  closed finding that is assertable in the suite. **SECOND review pass: `7716/7716 passed
+  (0 failed)` on `--quit` and on `--quit --server`, no `SCRIPT ERROR` — seven more tests
+  (a rebuild respects the in-flight cap, a queued chunk that leaves range cancels, a
+  groundless chunk is re-armed, contents spawn once the ground exists, the build split
+  probe, the loading freeze holds the body, the loading screen shows and hides), plus the
+  probe that prints the main-thread / worker split.) **THIRD review pass: `7735/7735 passed
+  (0 failed)` on `--quit` and on `--quit --server`, no `SCRIPT ERROR` — five more tests (a
+  stationary player re-arms a failed chunk, unloading drops a queued rebuild, an edit does
+  not re-spawn contents, a drain reads the window once, and a boot quits when its world is
+  up).** **FOURTH review pass: `7760/7760 passed (0 failed)` on `--quit` and on
+  `--quit --server`, no `SCRIPT ERROR` — six more tests (a failed REBUILD of an already-built
+  chunk heals, the stationary throttle suppresses a re-arm, a crossing stamps the self-heal
+  clock, the self-heal reads the window once, an idle drain reads no position, and a rig
+  dispatch keeps contents per residency).** **FIFTH review pass: `7787/7787 passed (0 failed)`
+  on `--quit` and on `--quit --server`, no `SCRIPT ERROR`, and `10/10 steps agreed` from the net
+  harness — five more tests (a remote mine credits the actor, a remote place spends the actor's
+  own pack, a remote chop credits the actor, a re-scope rebuilds a changed tile's seam, and an
+  edit never resurrects an unloaded chunk).** **SIXTH review pass: `7809/7809 passed (0 failed)`
+  on `--quit` and on `--quit --server`, no `SCRIPT ERROR` — two more tests (a legacy edit of an
+  unknown shape is dropped, an incremental save can delete a chunk), and no test count lost to a
+  probe abort in the final run.** **SEVENTH review pass: `7811/7811 passed (0 failed)` on `--quit`
+  and on `--quit --server`, no `SCRIPT ERROR`, and `10/10 steps agreed` from the net harness on
+  three consecutive fresh-world runs — one more test (the terrain material is one instance), one
+  harness hardening (step 4 waits for a distant tree, bounded by `STEP_TIMEOUT_SECS`, instead of
+  reporting `no_distant_tree` at whatever instant it arrives), and a doc correction (the quick start
+  now says `npm`, which is what CI runs). **EIGHTH review pass: `7833/7833 passed (0 failed)` on
+  `--quit` and on `--quit --server`, no `SCRIPT ERROR`, and `10/10 steps agreed` from the net harness
+  on a fresh world — three more tests (the kept window is the view ring, apply_edits dispatches a
+  rebuild, flush_builds awaits its retries), plus the split probe promoted from a print to an
+  assertion (`main-thread half 130071 us` — resolve 126938 + apply 3133 — `against the worker's
+  235263 us`, 1.81×).** **NINTH review pass: `7870/7870 passed (0 failed)` on `--quit` and on
+  `--quit --server`, no `SCRIPT ERROR`, and `10/10 steps agreed` from the net harness on a fresh
+  world — six tests added (or renamed: the kept window is the stream radius, a direct load
+  respects the in-flight cap, the gathered payload carries the ring, the group key survives the
+  colour band, the biome roll table is prebuilt, the build payload shape is required), the kept
+  window widened
+  back to the queue radius (`DEFAULT_PREFETCH_DISTANCE` 2 → 1, so a band chunk is no longer built
+  and then thrown away), and the RESOLVE moved off the main thread: the dispatch's main-thread
+  half measured 44 900 us before and 2 526 us after (generate+gather 1 631 us) against a worker
+  half of 77 159 us, with the probe now asserting that half inside ONE 16 667 us frame.** ***
+  **TENTH review pass: `7883/7883 passed (0 failed)` on `--quit` and on `--quit --server`, no
+  `SCRIPT ERROR` (+13 assertions from a new biome-coverage test and a second, POPULATED-edit-log
+  pass in the split probe) — the edit log is now INDEXED BY CHUNK, so a dispatch's gather walks
+  only the chunks it can reach instead of string-splitting every edit in the world
+  (`generate+gather` with 102 400 world edits: 44 012 us → 5 568 us, the old figure over TWO
+  frames), and the probe asserts the frame ceiling on that populated log; the first-ring gate
+  recomputes from `_built`, `_biomes_or_lookup` resolves a miss instead of falling back to
+  `DEFAULT_BIOME`, and four smaller items (the biome-map/roll-table invariant pinned, the
+  heightmap-by-reference asymmetry stated, the roll-table test's static snapshot/restored, and
+  the self-heal's dispatch-cost wording corrected).** ***
 
 **Implementation notes:**
 - **Godot's threading rule is what makes the split mandatory.** Scene-tree
@@ -3406,14 +3516,794 @@ chunk is queued further out than it is needed.
 - **A prefetch ring needs an eviction rule too.** Chunks loaded further out
   still unload when they fall outside `view_distance`; what widens is when they
   are QUEUED, not how many stay loaded.
+  *(Shipped differently, and the difference is deliberate: the streamed window is
+  `view_distance + prefetch_distance` for QUEUEING **and** for retention. A chunk queued
+  further out and unloaded the moment it falls outside `view_distance` is a build paid for
+  and thrown away, which is the opposite of what the band is for. `view_distance` is now
+  the radius that is guaranteed fully streamed; the band beyond it is lead time.
+  **Reversed in the eighth review pass — the note's own advice was right and the
+  "shipped differently" was the regression: retention is `view_distance` and only the QUEUE
+  spans the band, because the retention it bought was 121 resident chunks against the view
+  ring's 49, i.e. 2.5x the meshes, trimeshes and population. The band is still lead time —
+  a band chunk is built ahead of its need — and it is released on the next crossing unless
+  the player moved toward it.)**
+
+**Implementation notes added during the phase (kept here for the next reader):**
+- **A worker task may hold no reference to a Node, and must still be AWAITED.** The pure
+  builder is a `static` function called through the SCRIPT (`ChunkManager.VoxelBuilder`),
+  because a task that outlives the tree would otherwise call into a freed slice —
+  measured: `Invalid call. Nonexistent function '_wall_plane' in base 'previously freed'`
+  and a `double free or corruption` abort. And `is_task_completed` only reports that the
+  work is DONE; the pool holds the task and its result until it is awaited, so a build
+  that is polled and never awaited aborts the process at shutdown (measured: exit 134 on
+  every boot that streamed one chunk window). `_apply_build_entry` therefore always
+  waits — instant on the frame path, because the caller only reaches it for a finished
+  task — and `_exit_tree()` reaps whatever is left.
+- **`--quit` quits after ONE frame**, so with the build on a worker the ring is not yet
+  built and the host tail does not run in that boot. The suite is unaffected (it runs
+  earlier in `_ready()`) and the server-boot assertion is unaffected (the listening line
+  is printed by `_boot_server()`), but a `--quit` boot no longer proves the body was
+  placed: use `--quit-after N`, or read the `[World] first ring built …` line.
+- **The `_built` set is separate from `_loaded`.** `chunk_loaded` still means "this chunk
+  entered the streamed set" (its build is dispatched at that point); the boot gate reads
+  `_built`, which is set only when the mesh exists.
+  **(Corrected by the second review pass: entities used to spawn from `load_chunk()` — a
+  frame or two BEFORE their chunk's mesh landed — and they now spawn from the apply path,
+  with the mesh, so the population is never ahead of its ground.)**
+
+**Review-pass notes (six findings from a post-phase review, all closed in
+`fix(terrain): Phase 42 review pass`):**
+
+1. **`_exit_tree` skipped the wait for an already-COMPLETED task** — the exit-134 leak
+   this phase's own notes describe, walked back in through a guard. `is_task_completed`
+   reports only that the work is DONE; the pool holds the task and its result until it is
+   AWAITED. The wait is now unconditional (`wait_for_task_completion` returns immediately
+   for a finished task, so dropping the guard costs nothing). **Measured, both
+   directions:** with the guard restored, `--quit-after 400` aborts (`exit 134`) and so does
+   the suite boot; with the fix, both are `exit 0`.
+2. **An edit to an in-flight chunk was LOST.** The edit path gated its rebuild on a cached
+   heightmap, and a chunk only gets one when its build LANDS — so an edit that arrived
+   while the build was on the worker rebuilt nothing, and the worker's PRE-edit arrays were
+   attached on top of it. `ChunkManager.request_rebuild` needs no cached map: it supersedes
+   any build already in flight for that chunk (marked `superseded`, still AWAITED, neither
+   attached nor re-dispatched) and dispatches a fresh one built from the current columns.
+   RED-proved: the attached mesh came back 16036 vertices against the post-edit build's
+   16008.
+3. **`stop()` abandoned in-flight builds.** `_process` returned before its apply pass while
+   streaming was stopped, so a build dispatched a moment earlier was applied by nobody and
+   awaited by nobody — no mesh, and the task's result held until shutdown. The apply pass now
+   runs whether or not streaming is active; `stop()` ends NEW work only.
+4. **A null worker result fell back to a synchronous main-thread build.** `build_chunk` now
+   REFUSES an empty result on the worker path (`arrays` empty with a `revision >= 0`) rather
+   than quietly rebuilding the whole chunk on the main thread — the stall this phase exists
+   to remove, done silently. The manager answers a refusal with a fresh dispatch, bounded by
+   `MAX_BUILD_RETRIES := 3` so a permanently failing build reports an error instead of
+   spinning. The 2-arg synchronous form is untouched.
+5. **Block edits still rebuilt up to three chunks SYNCHRONOUSLY.** `_rebuild_chunk_at_tile`
+   now DISPATCHES through `request_rebuild` (`VoxelSlice.chunk_manager`, wired both ways by
+   `game_root`) instead of calling `build_chunk` in the frame that placed the block; the
+   chunk keeps its old mesh until the new one lands. A slice with NO manager wired (the
+   suite, a probe) keeps the synchronous build, and only for a chunk that already holds a
+   cached heightmap — which is what the isolated edit tests assert against. The comment that
+   claimed Phase 42 had already threaded this path was false, and is corrected.
+6. **`_pending_host_boot` had no timeout.** The gate is a worker build, so a stalled ring
+   held the boot forever: loading screen up, no player, no UI, nothing logged. `_tick_pending_host_boot`
+   now runs the host tail after `FIRST_RING_TIMEOUT := 15.0` regardless and pushes a warning
+   naming how many ring chunks were built — the same shape `SNAPSHOT_TIMEOUT` already has on
+   the client side. The decision is a pure predicate (`GameRoot.host_boot_may_proceed`) so the
+   suite pins it without booting.
+
+**SECOND review-pass notes (a second post-phase review, closed in
+`fix(terrain): Phase 42 review pass 2`):**
+
+1. **`request_rebuild` and build RETRIES bypassed `max_builds_in_flight`.** The cap was
+   enforced only in `_drain_load_queue`, so a corner edit (three touched chunks) or a burst
+   of retries dispatched straight past it. Both now go through a `_rebuild_queue` drained
+   under the same cap — delayed a frame, never dropped — and the supersede is unconditional
+   so a pre-edit build cannot land while the fresh dispatch waits for a slot.
+2. **A queued chunk that left the window was still built, and stayed `_pending`.** It was
+   built and immediately unloaded, and — worse — a chunk that left the window and returned
+   was silently SKIPPED, because `refresh()` saw the stale `_pending` mark. `_drain_load_queue`
+   now drops a chunk outside `stream_radius` and clears the mark with it.
+3. **A build that exhausted MAX_BUILD_RETRIES left a hole for the session.** The chunk is now
+   marked in `_failed` and re-armed by the next `refresh()` that re-centres the window — a
+   fresh retry budget and a fresh dispatch. Keyed on the window MOVING, so a build that fails
+   forever costs one dispatch per crossing rather than a per-frame spin.
+4. **Creatures and trees spawned before their chunk's ground existed.** With the build on a
+   worker, spawning at load time put the population on a chunk whose mesh arrived a frame or
+   more later. They now spawn from `_apply_build_entry`, with the mesh (`_spawn_chunk_contents`).
+5. **A joining CLIENT never armed the gate.** `_on_world_snapshot_received` placed the body
+   from the snapshot and started streaming around it, so for the first frames the body stood
+   on a chunk still being built (the gate was host-only). The client now arms the same gate,
+   shows the same loading screen, and releases through `_finish_client_boot` when the ring's
+   ground exists — under the same timeout rule.
+6. **The loading freeze did not hold the BODY.** It gated `_input` only, so a client's body
+   (which exists from the snapshot while its ring builds) fell through ground that was not
+   there. `PlayerSlice._physics_process` now skips `_move` while frozen — see
+   `ui: the loading screen shows and hides` and `player: the loading freeze holds the body`.
+7. **`build_first_ring`'s front-queueing was dead code.** `_boot_server` called `refresh()`
+   FIRST, which marked every ring chunk `_pending`, so `build_first_ring`'s `wanted` list came
+   out empty and nothing was moved to the front. The gate is now armed BEFORE the refresh.
+8. **`VoxelSlice._build_terrain_surface` was dead code** — no callers since the pure builder
+   landed — and is deleted; the comment that still pointed at it is corrected.
+9. **A redundant nested `if not _is_server:`** framed the loading screen inside the minimap's
+   own `not _is_server` block. Removed.
+10. **`--quit` no longer proved the host boot, and CI had lost the assertion.** A new
+    `host-boot` CI job boots `--quit-after 1800` and asserts `[World] first ring built …`
+    (and that the boot did NOT get there through the 15 s ring timeout). Verified locally
+    against a FRESH `XDG_DATA_HOME`: the line prints 22.5 s after boot, and the boot saves
+    36 creatures — the population the fix in (4) now spawns with the ground.
+    **(Amended by the third pass: the job no longer ends the boot on a frame count — it
+    passes `--quit-after-boot` and the boot quits itself when its tail has run; see note 6
+    below.)**
+
+Also landed in the same pass from the same list: the loading screen's own visibility is
+asserted by the suite instead of read by hand off a live boot; `TerrainSlice.request_chunk` is
+documented as the TEST-ONLY trigger it now is; and `PROBE Phase 42 build split` prints the
+main-thread / worker split of one chunk build, so the phase's headline claim leaves a measured
+number behind rather than prose.
+
+Two items on that list were NOT closed, deliberately: **the boot timeout still places the
+player on ground that may not exist** (it is the deliberate alternative to a hang with the
+screen up and nothing logged, it names how many ring chunks were built, and the warning is
+what makes the failure visible) and **the prefetch band's retention cost** (121 resident
+chunks against 49 is the price of the lead time the band exists for — reducing it is a tuning
+decision, not a defect).
+**(That second deferral was taken back in the eighth review pass: the retention half IS
+closed — the kept window is `view_distance` again and only the QUEUE spans the band — so
+only the view ring's 49 hold meshes, trimeshes and population. What remains a tuning
+decision is a different question: whether the band should carry spawned population at all,
+since a band chunk's contents are now spawned and then released unvisited.)**
+
+**THIRD review-pass notes (a third post-phase review — seven findings, all closed in
+`fix(terrain,core,ci,docs): Phase 42 review pass 3`):**
+
+1. **The self-heal never fired for a STATIONARY player.** The re-arm that a chunk whose build
+   gave up depends on was keyed on the window MOVING, and `refresh()` returned before reaching
+   it whenever the player stayed in the same chunk — which is a dedicated server's entire shape
+   (it streams around a fixed origin) and any host player standing still. So a groundless chunk
+   stayed a hole for the session in exactly the case the re-arm was written for. The loop is now
+   `_self_heal_failed(window_moved)`: a crossing still re-arms immediately, and an unmoved window
+   re-arms on a WALL-CLOCK interval (`self_heal_interval`, 5 s), so a permanently failing build
+   costs one dispatch per interval rather than a per-frame spin. RED-proved: with the old
+   move-only policy, `chunk: a stationary player re-arms a failed chunk` fails five assertions
+   (`expected 0, got 3` on the retry budget, no dispatch in flight, hole still there).
+2. **A rebuild re-derived the chunk's contents on every block edit.** `_spawn_chunk_contents`
+   ran from `_apply_build_entry` for EVERY build, including the rebuild an edit triggers — and
+   `CreatureSlice.spawn_for_chunk` walks every creature in the fabric while `TreeSlice`'s walks
+   every live tree, on each call, to arrive at a count that cannot have changed. Contents belong
+   to a chunk's RESIDENCY, not its build, so they are now spawned once per residency
+   (`_contents_spawned`, cleared by `unload_chunk`). RED-proved: `expected 2, got 4` on the spy's
+   spawn count after an edit rebuild.
+3. **`unload_chunk` cleared a queued rebuild's `_rebuild_pending` mark but left its entry in
+   `_rebuild_queue`.** The dedupe reads the MARK, so the next edit for that chunk appended a
+   SECOND entry — two dispatches for one chunk under one revision, both attaching.
+   `_remove_queued_rebuild` drops entry and mark together. RED-proved: `expected 0, got 1` on
+   the queue size after the unload.
+4. **The drain resolved the streamed window once per queued chunk.** `_within_stream` re-derived
+   `player_chunk()` — a `PlayerSlice.get_position()` call — and the radius for every candidate,
+   so draining a view ring paid one per chunk for a single answer. `_drain_load_queue` now reads
+   the window ONCE and tests candidates against it (`_within_stream_at`). RED-proved: a
+   position-read spy counted 5 reads for a drain that now takes 1.
+5. **The client's early return logged a release that never happened.** `_finish_client_boot`
+   runs on both the waiting path (which showed the loading screen) and the
+   `is_first_ring_ready()` early return in `_on_world_snapshot_received` (which never did), and
+   it printed "releasing the player" either way. It now asks the screen (`LoadingScreen.is_active()`)
+   and says which of the two actually happened — the ring was already built, so there was nothing
+   to release.
+6. **The CI host job ended a boot on a FRAME budget.** `--quit-after 1800` counts FRAMES while
+   the boot waits on `WorkerThreadPool` time, so a fast headless frame loop could burn the budget
+   before the ring's tasks landed and the job would fail for a boot that was working. The boot now
+   ends ITSELF the moment its tail has run, behind a new `--quit-after-boot` user arg
+   (`should_quit_after_boot`, asserted in the suite), and `--quit-after` is demoted to an outer
+   net for a boot that never gets there (raised to 100000). Verified on a fresh `XDG_DATA_HOME`:
+   `[World] first ring built (9 chunks) — placing the player, 24.63s after boot` then
+   `[World] host boot complete — quitting (--quit-after-boot)`, exit 0, no timeout warning.
+7. **One wait accumulator served both boot gates.** `_boot_wait_elapsed` was read by the host
+   gate and the client gate's deadlines. The roles are mutually exclusive TODAY, so it is
+   harmless — which is the whole point: the day both could be pending, whichever gate ticked
+   second would inherit the other's elapsed time and skip its own wait. Split into
+   `_host_boot_wait_elapsed` / `_client_boot_wait_elapsed`; structural, so there is no
+   behavioural assertion to make (both predicates stay pinned by `host_boot_may_proceed`'s test).
+
+**FOURTH review-pass notes (a fourth post-phase review — TEN findings, all ten real and all
+closed in `fix(terrain,core,ci,docs): Phase 42 review pass 4`):**
+
+The reviewer's list was ten items: one Medium (the self-heal) and nine Low. Unlike Phase 39
+(13 of 19 wrong) and like Phases 40 and 42's own second and third passes, **every one landed** —
+the line numbers were off by a few (the reviewer's checkout), but each named identifier existed
+and each claim held. Four of them (2, 7, 10, and the test half of 6) are test/structural/doc
+rather than behaviour, which is what a pass over a phase that has already had three of them
+should look like.
+
+1. **The self-heal SKIPPED a chunk that was `_built` — i.e. exactly the chunk whose rebuild gave
+   up.** `_self_heal_failed`'s guard was `not _built.has(key)`, and `_failed` is set by a build
+   that exhausted its retries. For a chunk that failed its FIRST build, `_built` is false, so the
+   re-arm worked. For an already-built chunk — an EDIT whose rebuild gave up — `_built` is still
+   true (the pre-edit mesh stands in the world), so the sweep jumped over it and the edited block
+   stayed invisible for the session. The guard is gone: `_failed` is what says the ground needs
+   its build re-armed, whatever `_built` says. RED-proved: `chunk: a failed REBUILD of a
+   built chunk is re-armed` (with the old guard, the mark is not cleared and no dispatch follows).
+2. **Nothing proved the stationary throttle actually suppresses a re-arm.** The pass-3 test set
+   `self_heal_interval = 0.0`, which DISABLES the throttle — it proved the re-arm runs while
+   stationary, and the interval itself was untested. `chunk: the stationary throttle suppresses
+   a re-arm` now plants the terminal state twice inside a 60 s interval and asserts the second
+   sweep refuses (and that the sweep is unthrottled again once the interval is zeroed, so the
+   throttle is the only reason). RED-proved: with the throttle turned into an always-false
+   condition, `a second re-arm inside the interval is suppressed` fails (`expected 3, got 0` on
+   the retry budget it was supposed to leave untouched).
+3. **The isolated fast path in `_dispatch_build` spawned a chunk's contents unguarded.** Pass 3
+   gave the threaded apply path the `_contents_spawned` residency rule; the rig path (no
+   terrain/voxel, which the older tests rely on) still called `_spawn_chunk_contents`
+   unconditionally — and an edit reaches it through `request_rebuild`, so the budgets were
+   re-derived per block edit there too. RED-proved: `expected 2, got 4` on the spy's spawn count
+   after an edit, `expected 4, got 6` after the residency cycles.
+4. **`--quit-after-boot` never fired on a DEDICATED SERVER.** The flag's two call sites were the
+   two boot TAILS, and a `--server` boot has no tail: `_boot_world`'s server branch returns
+   straight after `_boot_server()`. So `--server --quit-after-boot` never quit itself and fell
+   through to the engine's `--quit-after` net. `_boot_world` now calls
+   `_quit_after_boot_if_asked("server")` at the end of that branch. Verified:
+   `--quit-after 100000 -- --server --quit-after-boot` prints
+   `[World] server boot complete — quitting (--quit-after-boot)` and exits 0.
+5. **The `host-boot` CI job had no `timeout-minutes`.** Its `--quit-after 100000` is a FRAME
+   count, so a boot that never reaches its tail would have run to GitHub's 360-minute default
+   before the job said anything. `timeout-minutes: 10` (the boot measures ~50 s) fails fast
+   instead.
+6. **The self-heal sweep re-resolved the window once per groundless key.** `_within_stream`
+   re-derived `player_chunk()` and the radius for every key — the same shape pass 3 fixed in the
+   drain, missed on the other loop. The sweep now takes the `center` its caller already resolved
+   and calls `_within_stream_at`. RED-proved: a position spy counted 5 reads where the sweep now
+   takes 1.
+7. **`refresh()` carried two consecutive identical `if window_moved:` blocks** — the sentinel
+   update and the load/unload diff, split across two `if`s of the same condition. Merged into one
+   decision with an early return; structural, so no behavioural assertion (the existing
+   streaming tests exercise it).
+8. **The drain resolved the player's chunk even with nothing to dispatch.** `_process` calls
+   `_drain_load_queue()` every frame and the window read sat above both queue checks, so a
+   settled window — the common case — paid a `PlayerSlice.get_position()` per frame for nothing.
+   Both queues empty now returns before the read. RED-proved: `expected 0, got 8` on 8 idle
+   drains.
+9. **A crossing never stamped `_last_self_heal_msec`.** The stamp sat inside the throttled
+   branch, so a crossing re-armed immediately and left the clock at its old value (often the -1
+   sentinel): the very next frame was unthrottled and re-armed again, and a stationary player's
+   interval effectively restarted at the crossing. The clock is stamped whenever the sweep
+   proceeds. RED-proved in an isolated boot (the probe on its own, so the assert cannot be
+   masked by another finding's inversion): `the frame after a crossing is throttled, not
+   unthrottled` was the ONLY failing assertion, `7759/7760 passed (1 failed)`.
+10. **Two stale texts.** The give-up `push_error` said the chunk is "re-armed on the next window
+    re-centre" and `_apply_build_entry`'s doc said the same — both false since pass 3 added the
+    stationary wall-clock re-arm. And `_within_stream`'s doc named itself "the cancellation test
+    in `_drain_load_queue`", which now calls `_within_stream_at`. All three corrected (the
+    accessor's doc now says what it is for: the single-check form, with the drains and the sweep
+    resolving the window once).
+
+**One thing this pass changed about how it proved itself.** Batching all six policy inversions
+into ONE boot (the pass-3 recipe) is cheap but not always honest: reverting finding 1's guard
+makes findings 2 and 9's asserts pass vacuously (the sweep skips those chunks, so the mark
+survives for the wrong reason). The batched boot gave 18 failures; a SECOND boot with findings
+2/3/6/8 only gave 8 and put each of their asserts on the board; finding 9 needed a THIRD boot
+with its probe alone to show its single failing line. Use the batched boot for a first sweep, but
+re-run any finding whose subject is SHARED STATE (a dictionary another finding's policy also
+gates) on its own.
+
+**FIFTH review-pass notes (a fifth post-phase review — three findings, all three real and all
+closed in `fix(terrain,world,net,test,docs): Phase 42 review pass 5`):**
+
+The list was three items: one Critical (a client's mine/chop/place crediting the HOST's
+inventory) and two Medium. It was written against `d2383db` — the Phase 41 review pass, i.e.
+BEFORE this phase — so every line reference was stale (the window it cites as
+`voxel_slice.gd:435-473` is `_wall_cells` on today's file, while on the reviewer's checkout it is
+`mine_block`'s inventory credit). Every claim was re-derived from the source; all three held,
+though item 3's real blast radius is narrower than its phrasing implies (see below).
+
+1. **A client's mine, chop or place credited the HOST's inventory — the client got nothing.**
+   The host resolves a peer's intent, and every check and mutation on that path went through
+   `VoxelSlice.inventory_slice` / `TreeSlice.inventory_slice`, which are the LOCAL player's own
+   pack: the material a client mined filled the host's inventory, the axe it swung wore the
+   host's, and a block it placed came out of the host's stack. The peer's own client mirrors only
+   ITS pack, so it never saw the yield at all — a silent transfer, not a visual desync. It could
+   not be fixed inside the slice either: `_route_c2h` deliberately refuses to read an identity
+   out of a payload (Phase 36), so the host had no name for the actor to begin with.
+   Fix, mirroring the Phase 37 crafting shape: `player_id` rides the three request signals
+   (`block_mine_requested`, `block_place_requested`, `tree_chop_requested`), the host's intent
+   arms pass `_actor_id(sender)` — the identity bound to the CONNECTION, never a payload claim —
+   both slices gained `player_registry` (wired in `game_root`) plus an `inventory_for(actor)`, and
+   an action resolved for a remote actor pushes the result on the owner-addressed
+   `inventory_synced` that networking already delivers to that peer alone (the mechanism the
+   harness's `inventory_owner` step pins). A placement's `material` is the client's claim again,
+   so two rules keep it from granting anything: it must be a real `GameData.MATERIALS` key, and
+   the debit lands on the actor's own pack — a peer can place only what it actually holds.
+   RED-proved: `net: a remote mine credits the actor` (`expected 1, got 0` on the actor's pack,
+   `expected 0, got 1` on the host's), `net: a remote chop credits the actor`, and
+   `net: a remote place spends the actor's pack` (nothing placed at all while the host's own
+   selection was what got spent: `expected 1, got 0`).
+2. **An edit could RESURRECT a streamed-out chunk through the synchronous fallback.** The
+   manager path has checked `_loaded` since pass 1; a slice with NO manager (the suite, a probe)
+   kept the older `if _heightmaps.has(ckey)` guard — and since the Phase 41 pass that map
+   deliberately RETAINS the one-tile ring around the loaded window, so an unloaded neighbour that
+   a loaded chunk can still ask about answered TRUE. An edit on a chunk edge then rebuilt it,
+   resurrecting a node `ChunkManager` had already streamed away and would never stream out again.
+   The guard is `_chunks` now: a loaded chunk always holds its cached map (`build_chunk` stores
+   it, `_prune_heightmaps` keeps it), which is the rule `request_rebuild` (`_loaded`) and
+   `apply_edits` (`_chunks` + `_heightmaps`) already apply on the other paths.
+   RED-proved: `voxel: an edit never resurrects an unloaded chunk` (the streamed-out neighbour
+   comes back into `_chunks`).
+3. **`apply_edits` closed no seam: a re-scope rebuilt the changed tile's own chunk alone.** A
+   wall face is the difference against the NEIGHBOUR column (`_wall_cells`), so a changed tile on
+   a chunk's EDGE changes the neighbour's mesh too. The Phase 41 pass closed that for
+   `_rebuild_chunk_at_tile` — which every LIVE edit path goes through — and left `apply_edits`
+   behind; `apply_edits` is the RE-SCOPE path (the join snapshot and every AOI re-scope).
+   Worth stating the real blast radius instead of the summary's: on a join the client streams the
+   snapshot's chunks AFTER adopting them (`world_snapshot_received` precedes that chunk's
+   `chunk_ready` build), so the seam is usually built correctly from the start, and any error
+   self-heals when the neighbour restreams — which is why this is Medium, not the see-through
+   world the item's phrasing suggests. What the fix closes is the residue: a re-scope that edits
+   a chunk the client ALREADY holds next to another held chunk, where the neighbour's old wall
+   stands until something else rebuilds it. `_mark_touched_tile` is now the one place a
+   tile-level change becomes chunk-level work, so the two paths cannot drift apart again.
+   RED-proved: `voxel: a re-scope rebuilds a changed tile's seam` (`and so is the chunk across
+   the seam it changed`). The same test pins the OTHER direction — an interior tile still names
+   its own chunk only, and a third chunk that reads nothing of the edit is left untouched — so
+   the seam closure cannot decay into a blanket neighbour rebuild.
+
+**A fifth pass over a phase's edit path is where the ARITY cost lives.** Three signals gained a
+parameter, and here that is never a one-file change: every emitter (`player_slice`'s three
+inputs, `tree_slice.chop_tree`'s client forward, `networking_slice`'s two host arms), every
+handler (`voxel_slice`'s two, `tree_slice`'s one, `networking_slice._on_tree_chop_requested`),
+the plug-contract docstrings of all three slices, and both test drivers (the suite passes the
+signal's owning slice by hand; the net harness drives the bus directly). A stale 2-argument
+emit or handler is a RUNTIME error in GDScript, not a parse error — and one stale DIRECT call
+(`test_suite` invoked `_on_mine_requested()` itself) aborted the whole suite's compile and
+printed a green-LOOKING boot with ZERO tests run. Grep each signal before and after, and check
+the test COUNT, not just "0 failed".
+
+**SIXTH review-pass notes (a sixth post-phase review — three findings over eight rows; one was
+already closed by the fifth pass, two were real and are closed in
+`fix(terrain,persistence,test,docs): Phase 42 review pass 6`):**
+
+The list was written against `e975ddd` — the Phase 41 MERGE, i.e. before this phase — and it dates
+itself the same way the fifth pass's did: `_rebuild_chunk_at_tile` is cited at
+`voxel_slice.gd:1312`, `apply_edits` at `:550` and `_append_edit` at `:1148`, while those three sit
+at 1303 / 540 / 1138 on `e975ddd` and at 1712 / 877 / 1505 on HEAD. (The ~10-line residual says the
+reviewer's checkout was a commit or two past the merge, not the merge itself; nothing in the list
+depended on that.) Every claim was re-derived from the source.
+
+1. **Chunk resurrection in `_rebuild_chunk_at_tile` (rows 1a/1b/1c) — REAL at the revision read,
+   and ALREADY CLOSED by the fifth pass (`89c8461`).** The reviewer read the guard as
+   `_heightmaps.has(ckey)`, which the Phase 41 ring retention had made TRUE for a streamed-out
+   neighbour; the fifth pass replaced it with `_chunks.has(ckey)` and documented the invariant in
+   the method's own docstring, and registered `voxel: an edit never resurrects an unloaded chunk`
+   — which is exactly the test row 1c asks for, on exactly the case it names (it mines tile 63,
+   the edge column of chunk (0,0), with neighbour chunk (1,0) already unloaded). Nothing to land
+   here; the reviewer was right about the revision they read.
+2. **An incremental save could not express a DELETED chunk (rows 2a/2b) — REAL.** `_append_edit`
+   ERASES a tile's op list when it compacts back to the column's natural self (a player who mines
+   a block and puts it back), and `get_chunk_manifest` then has no entry for that chunk — while
+   dirty tracking is per CHUNK and is cleared only by the save that CONSUMED it, so the chunk is
+   still dirty with nothing left to serialize. That combination was expressible nowhere:
+   `dirty_chunk_subset` skipped any dirty key the manifest did not carry, and `_merge_world` only
+   ever folded entries INTO the record. So the record on disk kept the edits the earlier FULL save
+   wrote, and a reload resurrected terrain the player had already put back — on the autosave, not
+   just at shutdown. Fix, both halves: `dirty_chunk_subset` carries an EMPTY edit set for a dirty
+   key with no manifest entry (the deletion statement, and the reason the marker is checked with
+   `is_empty_edit_set`, which requires the `edits` key to be present — a shape this version does
+   not understand is folded in, never read as a deletion), and `_merge_world` DELETES the chunk's
+   key when it sees one. ROW 2c (force a full save on shutdown instead of an incremental one) is
+   **NOT TAKEN**: it leaves the autosave path exactly as broken as it is and pays the full-record
+   cost this phase removed.
+   RED-proved: `persistence: an incremental save can delete a chunk` (`the incremental payload
+   still names the dirty chunk` — and the payload's `0,0` then indexed off the end of the dict,
+   aborting the rest of the test).
+3. **No type guard on the legacy branch of `apply_edits` (rows 3a/3b) — REAL, one fix, both halves
+   of the row.** The legacy half cast every non-Array value with `float()`, and that cast is not a
+   refusal — measured on this engine: `float("not-a-height")` → `0.0`, `float(true)` → `1.0`,
+   `float({…})` → `SCRIPT ERROR: Invalid call. Nonexistent 'float' constructor`. The first
+   migrated a corrupt string into an absolute height AT THE WORLD FLOOR, i.e. carved the column
+   away; the last raised on the load path. The migration now admits exactly what a pre-Phase-41
+   edit could be — an int, a float, or a numeric string (`_legacy_height_of`, NAN as the "not a
+   height" sentinel) — and DROPS anything else with a `push_warning`, which is the policy
+   `_normalise_ops` already applies to an op whose kind it cannot read. Row 3b's "matching
+   `_normalise_ops`'s drop policy" is therefore the warning-plus-drop it asks for, in one place.
+   RED-proved: `voxel: a legacy edit of an unknown shape is dropped` (`an unparsable string no
+   longer carves the column to the world floor: expected 2.0, got 0.0` and `and neither does a
+   bool: expected 2.0, got 1.0`).
+
+**Batched probes, and where the count lies for the SECOND pass in a row.** Both inversions went
+into one boot (the guard back to the raw cast; the subset back to `if manifest.has(k)` plus
+`is_empty_edit_set` disabled with an always-false `< 0`). It reported `7797/7802 (5 failed)`: the
+five `✗` lines are exact, but the total is 7 SHORT of the green 7809, because the persistence
+probe means the payload does not carry `0,0` at all and the next assertion indexes it — an abort,
+not a failed assertion. Read the count as well as the `✗` lines, and quote the count you got in the
+GREEN run, never the probe's.
+
+**SEVENTH review pass (`fix(terrain,test,docs): Phase 42 review pass 7`):** a seven-row list
+(7a/7b/7c the flaky net-harness step, 4a/4b the terrain material, 6a/6b the npm/pnpm split). It
+cites no line numbers, so it dates itself only by its content — and that content lands on HEAD:
+`_terrain_material()` is the per-call allocation row 4a describes, step 4 is the `no_distant_tree`
+row 7a describes, and the `fabric` job really does run `npm ci` with `cache: npm`. Three of the
+seven are real, one is the list's own alternative and is not taken, one is already true, and one is
+a doc correction.
+
+1. **The flaky net-harness step (7a) — REAL as a RACE, and NOT reproduced in three fresh-world
+   runs.** 7c asks for the reproduction first, and it is the right order: `tools/net_harness.sh`
+   under a fresh `XDG_DATA_HOME` (which is what CI has and this machine's accumulated `user://`
+   does not) reported `10/10 steps agreed across both peers` three times in a row, with the same
+   client-side detail (`tree_-1_-2_1`) each time. So the failure recorded in the Phase 39 pass —
+   four runs failing on `rate_bucket` — does not stand today, and the step-four failure the list
+   names was never seen here at all. What IS real is the race the fix names: the target is drawn
+   from THIS side's own tree table, and a freshly-booted client's table is only what its snapshot
+   seeded, so a tree beyond `TARGET_BEYOND` may not have arrived when the step reaches it — and the
+   step reported `no_distant_tree` at that instant, which fails a correct guard for being early.
+   Step 4 now waits for the table to carry one, bounded by `STEP_TIMEOUT_SECS`, and only then
+   judges the guard; the wait is re-derived rather than captured, because a GDScript lambda
+   snapshots its captures by value. **The fix is therefore hardening, not a reproduced-defect fix**:
+   it cannot be RED-proved here, and it is not claimed to be.
+2. **Gating the harness on the full streamed window (7b) — NOT TAKEN.** It is the list's own
+   alternative to 7a for the same behaviour ("alternatively"), and 7a is the cheaper of the two: it
+   changes one step's precondition instead of the whole harness's boot gate. Two mechanisms for one
+   job is what the Phase 40 pass refused to do with the `SeparationRayShape3D`.
+3. **Material churn per rebuild (4a/4b) — REAL, one field, both halves.** `_terrain_material()`
+   minted a fresh `StandardMaterial3D` per call, and `build_chunk` calls it twice (the surface mesh
+   and the rare-vein deposit overlay), so every rebuild — an edit, a re-stream, the self-heal —
+   allocated two more materials. Both halves of the row are the same change: `_terrain_mat` is built
+   once in `_ready()` (and on first use, for an isolated rig that never enters the tree) and the one
+   instance is assigned to both `MeshInstance3D`s, which is what makes the churn track the slice
+   instead of the streamed rebuild count. RED-proved: `voxel: terrain material is one instance`
+   fails its three `is_same` assertions with the old per-call policy
+   (`the surface and the deposit overlay share ONE material instance`, `a rebuild reuses the same
+   material instance`, `and so does the rebuilt deposit overlay` — `7808/7811 passed (3 failed)`).
+4. **The npm/pnpm split (6a/6b) — 6a is ALREADY TRUE, 6b applied to `README.md` only.** `6a`
+   ("keep `package-lock.json`; CI's `npm ci` and `cache: npm` depend on it") is the state of the
+   repo: the lockfile is tracked, at `lockfileVersion` 3, and carries the `@newel/*` resolutions the
+   `fabric` job's `npm ci` installs from. Nothing to land. `6b`'s first alternative — the docs say
+   npm — is applied to `README.md` (quick start, the life-cycle diagram, "Adding a new system").
+   Two deviations from the row's letter: there is no `CLAUDE.md` in this repo (the agent notes live
+   in `AGENTS.md`, which names no package manager at all), and `ROADMAP.md`'s ~30 `pnpm …` mentions
+   are left alone — they are the per-phase record of commands that were actually run, and several
+   are quoted acceptance criteria, so rewriting them would falsify the log rather than fix a doc.
+   `pnpm-lock.yaml` is still tracked beside `package-lock.json`; removing it is the user's call, not
+   this pass's (it is a file deletion in a repo where `pnpm` also works).
+5. **A note for whoever reads the assertion count:** the suite's total is NOT a fixed number. The
+   seventh-pass count moved by −6 in `battle: player rounds route by target id`, whose `hits` array
+   is filled by `BattleSlice.resolve_round`'s `randf()` rolls: any earlier test that consumes the
+   global RNG stream shifts how many of its 20 rounds land, so the test asserts a different number of
+   times (56 vs 62 here). Green either way, and no assertion is lost — but a count quoted in this
+   file is a count for the revision and RNG stream it was measured on, not a constant to match.
+
+**EIGHTH review pass (`fix(terrain,test,docs): Phase 42 review pass 8`):** an eight-row table (an
+Issue column, a Solution column, a Criticality column) with no line numbers and no `Closes` column —
+it dates itself by content, and all of that content lands on HEAD. **All eight rows are real**: the
+fourth list in a row with nothing to discard. Two are real as PERFORMANCE and must not move
+behaviour (rows 4 and 8), one is real only as a VACUOUS TEST rather than a defect in production code
+(row 5), and one is real by its own account — "the criterion has no assertion" is the finding
+(row 3). Row 3's second half and rows 4/8 are what makes this pass's proof unusual: three of the
+eight cannot be RED-proved at all, because the thing they change is a COST, and a cost that must not
+change behaviour has only an equivalence proof and a measured number.
+
+1. **`build_chunk()` resolved the rare-vein deposits on the main thread (row 1) — REAL, the headline
+   (High).** `vein_deposits()` walked all 4096 of the chunk's own columns with its OWN memo (a second
+   run replay per tile, plus a biome lookup and a material roll) and then emitted every deposit box
+   through a `SurfaceTool` — and `build_chunk` called it on the MAIN thread for every build,
+   including every build the worker had just finished: the stall the worker exists to remove, paid
+   on the main thread immediately after it. Measured on this machine, for a 695-deposit chunk: the
+   walk **24 245 us**, the `SurfaceTool` emission **6 531 us** (695 boxes → 25 020 verts), i.e.
+   **~30.8 ms of main-thread work per build**, of which the emission is now the worker's and the walk
+   is the resolve half's, sharing the mesher's memo (its marginal cost is the **6 791 us/pass** the
+   split probe measures). The fix is the row's own: the deposit list is resolved by
+   `collect_build_runs`, the pure builder emits the boxes as
+   `deposit_vertices/normals/colors/indices`, and `build_chunk` only attaches. The deposits stay a
+   SECOND mesh with no collision, which is what keeps "apply only geometry" honest — a deposit is
+   decoration the player must not stand on — and `MeshUtil.add_box_arrays` shares `_box_corners` and
+   `_box_faces` with `add_box`, so the two authoring paths cannot wind a face differently (the whole
+   reason that file exists). RED-proved in the batch: with the resolve returning `"deposits": []`,
+   `voxel: rare vein deposits on natural tiles` fails `every deposit reaches the chunk mesh: expected
+   25020, got 0`, and `voxel: terrain material is one instance` fails `the chunk carries a surface and
+   a deposit overlay: expected 2, got 1`.
+2. **`refresh()` kept the PREFETCH band resident (row 2) — REAL, and a Phase 42 regression the row
+   dates precisely (High).** Phase 42 had widened `wanted` to `stream_radius()`, so a crossing
+   retained 121 chunks (11×11 at the defaults) against the view ring's 49 (7×7): 2.5× the meshes,
+   trimeshes, creatures and trees for a band the player may never enter. `wanted` is
+   `view_distance` again and the load QUEUE still spans `stream_radius()`. What is traded, plainly:
+   a band chunk is still BUILT ahead of its need (that is the prefetch), but it is RELEASED on the
+   next crossing that leaves it in the band unless the player moved toward it — build work in
+   advance for a view ring's worth of memory, which is the row's intent. RED-proved:
+   `chunk: the kept window is the view ring` fails fifteen assertions with `wanted` back at the
+   stream radius (`a band chunk beyond the new view ring is released`, plus eleven
+   `every resident chunk is inside the view ring (…): expected true, got false`).
+3. **The split criterion was printed, never asserted (row 3) — REAL, and the row's own evidence
+   (High).** `_test_chunk_build_split_probe` measured both halves and asserted only that the work
+   happened (`cell_count > 0`, `worker_us > 0`), so the phase's headline claim — "the build does not
+   run on the main thread" — could have been false with the suite green. It now asserts the ratio,
+   and the row's second half is implemented too: the measured main-thread half INCLUDES the apply
+   path (`_mesh_from_arrays` for the surface and the deposit overlay, and the
+   `ConcavePolygonShape3D.set_faces` GDScript still pays to hand the worker's collision to physics).
+   Three passes are summed, because the two halves differ by under 2× on this machine and a
+   single-shot pair would be a timing coin-flip — **main 130 071 us (resolve 126 938 + apply 3 133),
+   worker 235 263 us** on the `--quit` boot, printed by the test for a reviewer to check. The
+   assertion is a strict `>` rather than a ratio: the gap is 1.81×, so a ratio tight enough to be
+   interesting would be a flake.
+4. **`collect_build_runs` redid two per-tile lookups 4356 times (row 4) — REAL, behaviour-preserving
+   (Medium-High).** The biome is a per-CHUNK property (`TerrainSlice.get_biome_at_chunk`), so the
+   66×66 ring — which spans at most four chunks — was asking the terrain slice 4356 questions to get
+   four answers; and `material_for_biome` re-summed the biome's weight table on every call, while
+   `_natural_color` re-derived a colour from a handful of possible materials. Both are memoised for
+   the pass (`_biome_at_memo`, a material → colour map) and the weight table is built once per biome
+   into a `static var` (`_biome_roll_table`, same insertion order, so the roll's tie-breaks are
+   unchanged). Measured: the resolve half runs **42 313 us/pass with the memos against 48 971
+   us/pass without them** (~14%), all 7833 assertions green both ways — this row has no RED by
+   construction, so it is proved by the equivalence and the number.
+5. **The purity test was vacuous (row 5) — REAL as a TEST defect (Medium).** `_test_voxel_build_
+   arrays_pure` built the SAME resolved table twice (`f(x) == f(x)`) and its second slice `b` — set
+   up with a different place material and an edit in another chunk precisely to show that slice state
+   cannot reach the build — was dead setup that was never read. It now resolves the chunk from BOTH
+   slices and builds from each: the two resolves must agree and the two builds must be identical, so
+   a resolve that leaked one slice's state into another's answer goes red, and so does a builder that
+   read back into the slice. Like row 4 this has no production defect behind it and cannot be
+   RED-proved; it guards against a leak that does not exist today.
+6. **`apply_edits` rebuilt touched chunks synchronously (row 6) — REAL (Medium).** The re-scope path
+   — a joining client's snapshot, a load — called `build_chunk` for every touched chunk in the frame
+   that applied it (up to three chunks of main-thread build work) AND advanced each chunk's revision
+   on the main thread, which made an in-flight worker result stale while its task was still the frame
+   path's to reap. It goes through `ChunkManager.request_rebuild` now, exactly like
+   `_rebuild_chunk_at_tile`, with the synchronous build kept for a slice with no manager wired (the
+   suite, a probe). RED-proved: `chunk: apply_edits dispatches a rebuild` fails both
+   `the snapshot's rebuild is NOT done in the frame that applied it` and `it went to a worker
+   instead: expected 1, got 0`.
+7. **`flush_builds()` iterated a snapshot and never awaited its retries (row 7) — REAL (Medium).**
+   `_apply_build_entry` can DISPATCH (a refused worker result is re-dispatched), so a task created
+   during the pass was invisible to the `_builds.keys()` snapshot taken before it — and this is the
+   BLOCKING variant, whose whole contract is that nothing is left in flight behind it. It loops now
+   (re-reading the table per round, bounded by `FLUSH_MAX_ROUNDS` so a build that fails forever ends
+   up in `_failed` for the self-heal instead of spinning). RED-proved: with the loop cut to one
+   round, `chunk: flush_builds awaits its retries` fails `the retry dispatched during the pass is
+   awaited by it: expected 0, got 1` and `and the chunk ends up built (0 meshes attached)`.
+8. **`_group_cell` formatted a String key per face cell (row 8) — REAL, behaviour-preserving
+   (Medium).** Three `%.4f` formattings plus `Color.to_html` per face cell is ~25k throwaway strings
+   for one 64×64 chunk, on the build's own budget and again on every edit rebuild. The key is a
+   `Vector4i` of the same four values quantised to 1/10000 — exactly the precision `%.4f` kept — with
+   the direction as the outer bucket (a fifth component has no axis, and direction must be in the
+   key: an "up" face and a "down" face at the same plane and span would otherwise merge into one
+   quad, i.e. a missing floor or ceiling). The quantised ints are bounded far inside int32 (a wall
+   plane is a multiple of `TILE_SIZE` and bounded by the world extent, a span by
+   `BEDROCK_DEPTH..MAX_HEIGHT`, and `to_rgba32()` is an int32 by definition). Proved by EQUIVALENCE,
+   not RED: with the string key restored the suite is green AND the merge probe prints the identical
+   numbers (`4352 faces -> 5 quads (20 vertices)` for the flat chunk, `7519 faces -> 3544 quads
+   (14176 vertices)` for the natural one — the natural figure is SEED-dependent, so the comparison
+   is only valid within one boot, which is exactly how it was taken) — the new key groups exactly
+   what the old one grouped, so no span merges that did not merge before.
+
+**Batched probes, and what an equivalence probe can and cannot show.** Five inversions went into ONE
+boot (the resolve's deposit list emptied; `wanted` back to the stream radius; `apply_edits` back to
+the synchronous build via an always-false operand; the flush loop cut to one round; the string key
+restored). It reported `7816/7839 passed (23 failed)`, and the `✗` lines are exact for the four
+probes' own subjects — with one honest caveat: reverting `apply_edits` also turned
+`net: a remote mine credits the actor` and `net: a remote place spends the actor's pack` red
+(`expected 1, got 2`), so that probe's blast radius is wider than its own test and those two are NOT
+evidence for row 6. The fifth inversion is the equivalence probe and its signal is not a `✗` at all:
+the GREEN merge numbers printed unchanged inside a run that was otherwise failing, which is why the
+numbers were read rather than the verdict. This pass's red-caused failure total (23) is a superset of
+its four subjects and no test aborted (7839 ≈ the green run's 7833 ± RNG), so nothing was lost to a
+crash rather than a failed assertion.
+
+**NINTH review pass (`fix(terrain,test,docs): Phase 42 review pass 9`):** an eight-row table (an
+Issue column, a Solution column, a Criticality column) with no line numbers and no `Closes`
+column. **All eight rows are real** — the fifth list in a row with nothing to discard — and this
+is the first pass whose evidence made one of the PHASE'S OWN criteria go red. Rows 3 and 4 ask for
+an absolute main-thread budget on the dispatch and for the probe to assert it; measuring it PER
+PASS (the probe had averaged three passes, and the one-time costs sat in the first of them) gave
+**44 900 us of resolve per dispatch against a 16 667 us frame**: the headline "the build is on a
+worker" was true of the BUILD and false of the DISPATCH, which still spent 2.7 frames of
+main-thread work per chunk loaded. That pair is therefore the pass's one structural change — the
+resolve itself moves to the worker — and the other six rows are the streaming window, the
+in-flight cap, and four small defects the table names.
+
+1. **Band chunks were built and then released before use (row 1) — REAL (Critical).** The eighth
+   pass had narrowed the KEPT window to `view_distance` while the load QUEUE still spanned
+   `stream_radius()`, and everything the queue spans is BUILT — so every crossing built a band of
+   chunks and then released them unless the player happened to move toward them (the row measured
+   65 redundant worker builds per crossing; at the defaults it is 121 chunks built against 49
+   kept). The kept window is the QUEUE window again, so **no chunk is ever unloaded while it still
+   lies inside the radius it was queued at**, and the memory the eighth pass was protecting is
+   bounded by the radius instead of by a second window: `DEFAULT_PREFETCH_DISTANCE` is **1**, so
+   the resident set is 81 chunks (9×9 — the 49-chunk view ring plus a one-chunk lead) against the
+   121 that pass was avoiding.
+2. **The kept-window test locked that waste in (row 2) — REAL (High).** It asserted that a
+   just-built in-radius chunk IS released, i.e. the assertion was the waste. It is now
+   `chunk: the kept window is the stream radius` and asserts the row's own invariant — nothing is
+   unloaded while it is still inside the queue radius — plus the retention arithmetic as a number:
+   a one-chunk crossing releases the seven chunks of the departing edge. (The eighth pass's test
+   name `chunk: the kept window is the view ring` is kept in the record above; this pass renamed
+   it because the assertion it carried is now the opposite one, and the Phase 42 line quoting it
+   is the measurement of that revision, not of today's.)
+3. **The main thread still resolved every chunk it dispatched (row 3) — REAL, and the pass's
+   structural change (High).** The resolve (`collect_build_runs`: the per-tile run replay, the
+   biome and colour resolution and the rare-vein deposits) was the main thread's half of every
+   dispatch, and it cost **43 974 us of steady-state work per chunk** — 2.6 frames at 60 Hz, paid
+   once per frame while streaming, on the SAME thread the phase had just taken the build off. The
+   split moves: `gather_build_input()` copies the plain state the resolve reads on the main thread
+   (the chunk's and ring's edited tiles, deep-copied; the ring chunks' heightmaps; the ring chunks'
+   biomes) and the STATIC `build_runs()` does all the per-tile work on the worker, which also runs
+   `build_chunk_arrays()` — so one dispatch's main-thread half is now the noise generation plus a
+   handful of copies. **Measured: 44 900 us → 2 539 us per dispatch (17.7×), of which the
+   generate+gather is 1 634 us**, with the worker half at 77 159 us/pass (resolve 42 957 + build
+   34 202). `collect_build_runs()` survives as the synchronous wrapper, so the bus path, the
+   isolated rigs and the tests keep the same entry point; the resolve's reads became arguments
+   (`edits`, `neighbour_heightmaps`, `biomes`), which is what makes it worker-legal, and the
+   instance colour helpers became accessors over the static resolved forms (the
+   `_within_stream` / `_within_stream_at` shape).
+4. **The probe's criterion let a 43 ms frame pass (row 4) — REAL (Medium).** `pure_us > main_us`
+   was satisfied by a dispatch whose main-thread half blew the frame, and the three-pass SUM hid
+   the steady state behind the first pass's one-time costs. The probe now keeps PER-PASS figures
+   and asserts, alongside the ratio, an ABSOLUTE ceiling: one dispatch's main-thread half must fit
+   inside one frame (16 667 us). This is the assertion the old criterion could not make — and it
+   is the one that was RED before row 3's fix (see the batched probe evidence below).
+5. **`load_chunk()` bypassed the in-flight cap (row 5) — REAL (Low-Medium).** Every internal
+   caller checked `max_builds_in_flight` before dispatching, but the PUBLIC `load_chunk` called
+   `_dispatch_build` outright, so a direct load put the pool over its own cap. The cap is now
+   enforced INSIDE `_dispatch_build` (nobody can route around it), the deferral goes to
+   `_rebuild_queue` — the chunk is already `_loaded`, so the drain's rebuild branch is exactly the
+   path that re-dispatches it — and `request_rebuild`'s and the retry's duplicate checks were
+   removed so the rule lives in ONE place. New test:
+   `chunk: a direct load respects the in-flight cap`.
+6. **The group key's packed colour does not fit int32 (row 6) — REAL as a DOC error (Low).** The
+   eighth-pass comment claimed `to_rgba32()` "is an int32 by definition"; it is a packed uint32,
+   so opaque white is **4294967295** and the `Vector4i` component reads back as **-1** (the high
+   bit kept as the sign; measured on 4.7). The wrap is a BIJECTION — the component reads back as
+   `& 0xFFFFFFFF` == the packed value — so two distinct colours cannot collide onto one key and
+   the grouping is exactly what the old string key grouped. What was wrong was the comment, and it
+   is fixed in both places (the comment and the eighth-pass paragraph above).
+   `voxel: the group key survives the colour band` pins the measured values, the round trip, the
+   injectivity of two colours sharing their low bits, and the grouping itself.
+7. **`_biome_rolls` is worker-reachable mutable class state (row 7) — REAL (Low).** It is a
+   `static var` on the script a chunk-build task holds (`ChunkManager.VoxelBuilder`), so the lazy
+   fill was a WRITE a worker thread could have raced. Every biome is warmed in `_ready()` now, on
+   the main thread, before anything streams — and the worker half never reads it either, because
+   the colours arrive resolved in the table it is handed. New test:
+   `voxel: the biome roll table is prebuilt` (it clears the static first, so the assertion cannot
+   be vacuous).
+8. **`build_chunk_arrays` sniffed a "runs" key (row 8) — REAL (Low).** `resolved.get("runs",
+   resolved)` meant "does this dictionary happen to hold a key called runs?", silently re-reading a
+   bare runs table as a payload. Every caller in the tree passes a `collect_build_runs()` payload
+   (the only bare tables were the `{}`-for-natural probes, now `{ "runs": {} }`), so the sniff is
+   gone and an absent `runs` key reads as NO resolved columns, i.e. the natural-column fallback.
+   New test: `voxel: the build payload shape is required`, which hands the builder a bare table
+   that WOULD change the build under the old fallback and requires the two builds to be identical.
+
+**Batched probes, and the one that had to be its own.** Six inversions went into ONE boot (the kept
+window narrowed back to `view_distance`; the `_dispatch_build` cap guard disabled with an
+always-false operand; the `_ready()` prebuild loop emptied; the "runs" sniff restored; the group
+key's colour folded to its low byte; and — for rows 3/4 — the PROBE put back on the pre-fix
+measurement, the resolve counted as the main thread's half). It reported `7839/7860 passed
+(21 failed)` and every one of the six subjects went red with its own line:
+`chunk: the kept window is the stream radius` (`a band chunk still inside the queue radius is NOT
+released`, and `expected 7, got 40` released), `chunk: a direct load respects the in-flight cap`
+(`expected 1, got 2` builds in flight), `voxel: the biome roll table is prebuilt`
+(`expected 5, got 0`), `voxel: the build payload shape is required` (`expected 4352, got 4354`),
+`voxel: the group key survives the colour band` (`a second colour is its own group: expected 2,
+got 1`), and `chunk: the build split is measured` (`one dispatch's main-thread half fits inside a
+frame (48135 us of 16667 us, generate+gather 47243)`) — the row-4 ceiling failing at the old
+split, which is the whole reason row 3 was worth doing. Two caveats recorded rather than smoothed
+over: disabling the cap guard also reddened `chunk: a rebuild respects the in-flight cap` and
+`chunk: unloading drops a queued rebuild` (the same guard is those tests' subject too — the guard
+going off moves the pooling they assert on), and the run's failure total (21, total 7860) is a
+superset of the six subjects because the RNG-dependent test (`battle: player rounds route by
+target id`) asserts a varying number of times per run. No test aborted, and the restored source is
+green on both boots.
+A SECOND, two-inversion boot proved the gather itself (`chunk: the gathered payload carries the
+ring`): with `_gather_neighbour_heightmaps` carrying nothing and `_gather_edits` returning early,
+it reported `7862/7868 passed (6 failed)` — the new test's own
+`a carried ring chunk resolves its real column`, plus THREE existing tests in its blast radius
+(`voxel: a seam wall ignores the build order` `expected [[1.0, 2.0]], got [[-8.0, 2.0]]`,
+`voxel: an edge edit rebuilds the neighbour chunk`, `voxel: a tunnel keeps its floor and its
+roof`). That collateral is the useful part: the ring's heightmaps and edits are what the seam
+geometry is computed FROM, so the gather is load-bearing for the existing voxel tests, not only
+for its own.
+
+**TENTH review pass (`fix(terrain,test,docs): Phase 42 review pass 10`):** an eight-row table
+(an Issue column, a Solution column, a Criticality column) with no line numbers and no `Closes`
+column. **All eight rows are real** — the sixth consecutive list with nothing to discard — and
+the list's own framing is right: it is a list of SMALL items, the largest being a per-dispatch
+cost the earlier passes kept narrowing but never bounded for a played world.
+
+1. **`_gather_edits` scanned the whole world edit log per dispatch (row 1) — REAL (Medium).**
+   The gather iterated EVERY key in `_edits` and `str(key).split(",")`-ed it to test it against
+   the chunk window's bounds: one string split per edit in the WORLD, per dispatch, however far
+   away those edits were. It now walks `_edits_by_chunk` — the log INDEXED BY CHUNK (`"cx,cz"` →
+   `{ "gx,gz": true }`), the read-side counterpart of `_dirty_chunks` — reading only the (≤ 3×3)
+   chunks the window spans. The index is kept in step by `_set_edit_ops`, now the ONE place a
+   tile's op log is written (`_append_edit` and `apply_edits` both route through it, the latter
+   re-deriving the index wholesale). **Measured on a 102 400-edit log with 4 096 in the window:
+   the dispatch's generate+gather was 44 012 us (2.6 frames) and is 5 568 us**, because the cost
+   is now proportional to the window and not to the world. The four tests that wrote `_edits`
+   directly were routed through `_set_edit_ops` so the index cannot drift from the log.
+2. **The frame-ceiling assertion ran on a FRESH slice, so it could not see row 1 (row 2) — REAL
+   (Medium).** The ninth pass's ceiling measured an empty `_edits`, where the gather returned on
+   its first line — so the one cost the index exists to bound was never in the number the ceiling
+   checked. `chunk: the build split is measured` now runs a SECOND pass over a POPULATED log (a
+   full chunk in the window plus 24 chunks ≈98k edits outside it) and asserts the same
+   `steady < 16 667 us` ceiling there; the far chunks are what makes the assertion bite, since
+   only the window's are copied. **RED with the old world-scan gather restored: `44 012 us of
+   16 667 us` — the row-1 fix is exactly what this assertion pins.**
+3. **Worker safety rests on `BIOME_KEYS ⊆ BIOME_MATERIALS`, unpinned, with a false comment (row
+   3) — REAL (Low-Medium).** A worker's resolve reaches `material_for_biome`, which silently
+   answers `Ferrite` for a biome absent from `BIOME_MATERIALS` — so a canonical biome missing
+   from the table mines as the wrong material, and nothing asserted the two sets agree. New test
+   `voxel: every canonical biome has a roll table` asserts it over `TerrainSlice.BIOME_KEYS` (the
+   set the gathered strings actually come from), each with a non-empty table. The `_ready()`
+   comment's claim that "the worker half never even reads it" was FALSE — the worker reads it
+   through `run_color` → `natural_color` → `material_for_biome` → `_biome_roll_table` — and is
+   rewritten to the real invariant (written on the main thread before any worker exists,
+   read-only afterwards).
+4. **Heightmaps are gathered by reference while edits are deep-copied, unstated (row 4) — REAL,
+   DOC-ONLY (Low).** The asymmetry is deliberate and now stated at `_gather_neighbour_heightmaps`:
+   an op list is APPENDED to in place (`ops.append` on the array a worker may be reading), so it
+   must be copied; a heightmap array is only ever REPLACED wholesale and never mutated in place,
+   so sharing it is safe — with the note that a future in-place write would have to copy here too.
+5. **`_biomes_or_lookup` passed an incomplete biome map through (row 5) — REAL (Low).** Its guard
+   was "is the map non-empty", so a PARTIALLY populated map — the realistic case — went straight
+   through and `biome_of` answered `DEFAULT_BIOME` for the missing chunk, silently tinting a real
+   chunk as TemperateForest. It now tests for THIS position's chunk and, on a miss, resolves that
+   one chunk from the terrain slice into a COPY of the map, so the caller's is untouched. (The
+   pure `biome_of` keeps the `DEFAULT_BIOME` fallback — it is static and has no slice to ask —
+   and that answer is now only reachable when there is no terrain slice at all.)
+6. **`voxel: the biome roll table is prebuilt` cleared a worker-reachable static mid-suite (row
+   6) — REAL (Low).** `_biome_rolls` is process-wide class state a worker reads, and the test
+   blanked it and left it blanked. It now SNAPSHOTS the table, clears (which is what makes the
+   assertion about `_ready` rather than a leftover), and RESTORES it, asserting it is left full.
+7. **`_update_first_ring_progress` only latched true while `unload_chunk` clears `_built` (row 7)
+   — REAL (Low).** A one-way latch cannot mirror a set that can lose members, so the gate could
+   claim a chunk was built after it had streamed away. It now RECOMPUTES each ring key from
+   `_built` (`_first_ring[key] = _built.has(key)`), so the mirror is exact. No boot regressed (the
+   ring is armed before the player can move, so a ring chunk never unloads mid-boot).
+8. **The self-heal's cost was described as one dispatch per interval (row 8) — REAL, DOC-ONLY
+   (Low).** A re-arm clears `_build_attempts` — a FRESH retry budget, which three tests assert —
+   so one re-arm is up to `MAX_BUILD_RETRIES` dispatches, not one; the throttle bounds the re-arm
+   CADENCE, not the dispatches within one. The row's first option ("don't reset `_build_attempts`
+   on a heal re-arm") was **not taken**: the reset is the tested, intended design. Both messages
+   (`_failed`'s doc, `_self_heal_failed`'s doc, and the give-up `push_error`) are corrected.
 
 **Known simplifications (deferred):**
+- **An edit's mesh lands a frame or two later.** Since the review pass, a mine/place
+  DISPATCHES its chunk rebuild (and any seam neighbour's) to the worker instead of building
+  it in the frame that applied the edit, so the visual update arrives when that build does.
+  The edit LOG is immediate, so everything that reads the world rather than the mesh —
+  footing (`sample_support_height_at`), further edits, persistence — is unaffected.
+- **A client's own harvest is confirmed by the host, never predicted.** Since the fifth review
+  pass the host resolves a peer's mine/chop/place against THAT peer's own pack and pushes the
+  result back on the owner-addressed `inventory_synced`, so the peer sees its yield only once the
+  round trip lands — there is no client-side prediction of the edit or of the material, for the
+  same reason the block's mesh arrives with the host's `block_changed`. The durability a remote
+  actor's pick or axe spends is the host's number too, so a client cannot wear its own tools
+  locally (only report the wear the host resolved). Making the remote half feel instant again
+  means client-side prediction plus reconciliation, which the phase does not carry.
 - **No priority job queue or cancellation.** Loads are nearest-first, and a
   chunk that falls out of range while queued is still built (and then unloaded).
+  **(Closed in the second review pass for the cancellation half: a queued chunk that leaves
+  the window is now DROPPED rather than built, and its `_pending` mark is cleared with it, so
+  a chunk that leaves and returns is queued again instead of being skipped. What is still
+  deferred: there is no priority ordering beyond nearest-first, and a rebuild cannot jump the
+  load queue — it is drained first, but only as a whole band.)**
 - **The loading screen is a progress bar, not a world preview** — no panorama, no
   tips, no fade.
 - **Entities still spawn on the main thread.** Creatures and trees spawn in the
   frame a chunk lands; this phase threads the TERRAIN build only.
+  **(Refined in the second review pass: they spawn from the apply path, i.e. WITH the chunk's
+  mesh, rather than at load time a frame or two before it. What is still deferred: the spawn
+  itself is still a main-thread call inside that apply pass, and the prefetch band's chunks —
+  then 121 resident against the view ring's 49 — spawn their population as eagerly as the near
+  ring's; how far out population should exist at all is a tuning decision this pass left open.)**
+  **(Closed in the eighth review pass for the WINDOW half: the kept window is `view_distance`
+  again, so only the view ring's 49 hold meshes, trimeshes and population; a prefetch-band
+  chunk is still built ahead of its need but is released on the next crossing that leaves it in
+  the band. What is still deferred: the spawn itself is still a main-thread call inside the
+  apply pass, and a band chunk's population is spawned and then released unvisited — whether
+  the band should carry population at all remains the tuning decision.)**
+  **(NINTH review pass: that window narrowing is REVERTED — it was the build-then-release waste
+  this pass's row 1 measures, so the kept window is the queue radius (`stream_radius()`) again
+  and a band chunk is released only once it is outside the radius it was queued at. The
+  resident set is bounded by the RADIUS instead (`DEFAULT_PREFETCH_DISTANCE` 1 → 81 chunks,
+  9×9). What is still deferred is unchanged: the spawn is a main-thread call inside the apply
+  pass, and how far out population should exist is still the tuning decision.)**
 - **No runtime tuning UI** for `loads_per_frame` / the ring sizes; they stay
   constants (overridable, as today).
 

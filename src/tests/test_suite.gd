@@ -216,6 +216,7 @@ func run() -> void:
 	_run_test("voxel: place after mine keeps placed colour",   _test_voxel_place_after_mine_keeps_colour)
 	_run_test("voxel: rare vein deposits on natural tiles",    _test_voxel_rare_vein_deposits)
 	_run_test("voxel: rare vein material list",                _test_voxel_rare_vein_materials)
+	_run_test("voxel: terrain material is one instance",       _test_voxel_terrain_material_is_one_instance)
 	_run_test("voxel: a tunnel keeps its floor and its roof",   _test_voxel_tunnel_runs)
 	_run_test("voxel: the support sampler honours a ceiling",   _test_voxel_support_sampler_under_ceiling)
 	_run_test("voxel: a legacy save migrates to run edits",     _test_voxel_legacy_edit_migration)
@@ -269,6 +270,63 @@ func run() -> void:
 	_run_test("chunk: minimap reveals fog of war",              _test_chunk_minimap_fog_of_war)
 	_run_test("chunk: minimap zooms in and out",                _test_chunk_minimap_zoom)
 	_run_test("chunk: minimap arrow points at facing",          _test_chunk_minimap_arrow_direction)
+	# Phase 42 — threaded chunk build, greedy merge, the first-ring gate.
+	_run_test("chunk: the pure builder is a function of its args", _test_voxel_build_arrays_pure)
+	_run_test("chunk: greedy merge collapses a flat chunk",      _test_voxel_greedy_merge)
+	_run_test("chunk: the merge never spans a gap",              _test_voxel_merge_keeps_lone_quad)
+	_run_test("chunk: a load dispatches a worker build",         _test_chunk_load_dispatches_build)
+	_run_test("chunk: the first-ring gate opens when built",     _test_chunk_first_ring_gate)
+	_run_test("chunk: the prefetch ring widens the stream",      _test_chunk_prefetch_ring)
+	# Phase 42 review — the worker-build follow-ups the review pass found.
+	_run_test("chunk: an edit during a build is not lost",       _test_chunk_edit_during_build_is_not_lost)
+	_run_test("chunk: an edit dispatches its rebuild",           _test_chunk_edit_dispatches_rebuild)
+	_run_test("chunk: stop still lands in-flight builds",        _test_chunk_stop_does_not_abandon_builds)
+	_run_test("voxel: an empty worker result is refused",        _test_voxel_empty_worker_result_is_refused)
+	_run_test("chunk: the first-ring gate times out",            _test_host_boot_first_ring_timeout)
+	_run_test("player: the loading freeze refuses world input",  _test_player_world_input_freeze)
+	# Phase 42 second review pass — the streaming-loop holes the first pass left.
+	_run_test("chunk: a rebuild respects the in-flight cap",     _test_chunk_rebuild_respects_inflight_cap)
+	_run_test("chunk: a queued chunk that leaves range cancels",  _test_chunk_queued_leaving_range_is_cancelled)
+	_run_test("chunk: a groundless chunk is re-armed",           _test_chunk_failed_chunk_is_rearmed)
+	_run_test("chunk: contents spawn once the ground exists",    _test_chunk_contents_spawn_after_ground)
+	_run_test("chunk: the build split is measured",              _test_chunk_build_split_probe)
+	_run_test("player: the loading freeze holds the body",       _test_player_movement_freeze)
+	_run_test("ui: the loading screen shows and hides",          _test_loading_screen_visibility)
+	# Phase 42 third review pass — the streaming loop's own bookkeeping, and the CI boot gate.
+	_run_test("chunk: a stationary player re-arms a failed chunk", _test_chunk_failed_chunk_is_rearmed_while_stationary)
+	_run_test("chunk: unloading drops a queued rebuild",         _test_chunk_unload_drops_queued_rebuild)
+	_run_test("chunk: an edit does not re-spawn contents",       _test_chunk_contents_spawn_once_per_residency)
+	_run_test("chunk: a drain reads the window once",            _test_chunk_drain_reads_window_once)
+	_run_test("boot: a boot quits when its world is up",         _test_quit_after_boot_predicate)
+	# Phase 42 fourth review pass — the self-heal sweep, the idle drain, and the rig path.
+	_run_test("chunk: a failed REBUILD of a built chunk heals",  _test_chunk_failed_rebuild_of_built_chunk_is_rearmed)
+	_run_test("chunk: the stationary throttle suppresses a re-arm", _test_chunk_self_heal_throttle_suppresses_rearm)
+	_run_test("chunk: a crossing stamps the self-heal clock",    _test_chunk_crossing_stamps_self_heal_clock)
+	_run_test("chunk: the self-heal reads the window once",      _test_chunk_self_heal_reads_window_once)
+	_run_test("chunk: an idle drain reads no position",          _test_chunk_idle_drain_reads_no_position)
+	_run_test("chunk: a rig dispatch keeps contents per residency", _test_chunk_rig_dispatch_respects_contents_residency)
+	# Phase 42 fifth review pass — the per-actor harvest, the seam re-scope, the resurrect guard.
+	_run_test("net: a remote mine credits the actor",           _test_net_remote_mine_credits_the_actor)
+	_run_test("net: a remote place spends the actor's pack",    _test_net_remote_place_spends_the_actor)
+	_run_test("net: a remote chop credits the actor",           _test_net_remote_chop_credits_the_actor)
+	_run_test("voxel: a re-scope rebuilds a changed tile's seam", _test_voxel_apply_edits_rebuilds_seam_neighbours)
+	_run_test("voxel: an edit never resurrects an unloaded chunk", _test_voxel_edit_does_not_resurrect_unloaded_chunk)
+	# Phase 42 sixth review pass — a legacy edit shape the migration must refuse.
+	_run_test("voxel: a legacy edit of an unknown shape is dropped", _test_voxel_legacy_edit_type_guard)
+	# Phase 42 eighth review pass — the deposit build off the main thread, the kept window,
+	# the split assertion, the re-scope's rebuild route, and the flush's retries.
+	_run_test("chunk: apply_edits dispatches a rebuild",     _test_voxel_apply_edits_dispatches_rebuild)
+	_run_test("chunk: flush_builds awaits its retries",      _test_chunk_flush_builds_awaits_retries)
+	# Phase 42 ninth review pass — the kept window is the queue window, the in-flight cap is
+	# enforced at dispatch, the split probe's absolute frame ceiling, the packed colour's wrap,
+	# the prebuilt biome roll table, and the required build-payload shape.
+	_run_test("chunk: the kept window is the stream radius",  _test_chunk_kept_window_is_stream_radius)
+	_run_test("chunk: a direct load respects the in-flight cap", _test_chunk_load_respects_inflight_cap)
+	_run_test("voxel: the group key survives the colour band", _test_voxel_group_key_colour_band)
+	_run_test("voxel: the biome roll table is prebuilt",      _test_voxel_biome_roll_table_prebuilt)
+	_run_test("voxel: every canonical biome has a roll table", _test_voxel_every_canonical_biome_has_a_roll_table)
+	_run_test("voxel: the build payload shape is required",   _test_voxel_build_payload_shape_required)
+	_run_test("chunk: the gathered payload carries the ring", _test_chunk_gather_carries_the_ring)
 	_run_test("player: facing is a normalized yaw vector",      _test_player_facing)
 	_run_test("net: client forwards block intent",               _test_net_voxel_client_forwards_intent)
 	_run_test("net: apply_block_change applies host edit",       _test_net_voxel_apply_block_change)
@@ -379,6 +437,8 @@ func run() -> void:
 	_run_test("persistence: player id is path-safe",              _test_player_id_is_path_safe)
 	_run_test("persistence: non-canonical player id refused",     _test_non_canonical_player_id_refused)
 	_run_test("persistence: thread-safe write_job writes records", _test_write_job_writes_records)
+	# Phase 42 sixth review pass — an incremental save that can express a deleted chunk.
+	_run_test("persistence: an incremental save can delete a chunk", _test_persistence_incremental_save_can_delete_a_chunk)
 	_run_test("chunk: dirty clear is per key + re-markable",      _test_dirty_keys_clear_and_remark)
 	_run_test("identity: minted id carries 128-bit entropy",      _test_minted_id_has_crypto_entropy)
 	_run_test("identity: local player id is not claimable",       _test_local_player_id_not_claimable)
@@ -3176,7 +3236,7 @@ func _test_voxel_edit_log_is_compacted() -> void:
 	for i in range(4):
 		cancel.append({ "op": "remove", "bottom": 1.875, "top": 2.0 })
 		cancel.append({ "op": "add", "bottom": 1.875, "top": 2.0, "material": "" })
-	v._edits[key] = cancel
+	v._set_edit_ops(key, cancel)
 	v._append_edit(tile, { "op": "add", "bottom": 1.875, "top": 2.0, "material": "" })
 	assert_false(v._edits.has(key), "a column back to its natural self compacts away entirely")
 	assert_eq(v.get_voxel_height_at(xz), 2.0, "and it resolves as its natural self")
@@ -3317,6 +3377,107 @@ func _test_voxel_snapshot_rebuild_is_scoped() -> void:
 	})
 	assert_false(v._chunks.has("1,0"), "an unloaded chunk is not resurrected by a snapshot")
 	assert_true(v._chunks["0,0"] == correct_node, "and the untouched chunk is still not rebuilt")
+	v.free()
+
+## Phase 42 review (fifth pass) — the re-scope path's seam closure. A wall face is the
+## difference against the NEIGHBOUR column (`_wall_cells`), so a changed tile on a
+## chunk's EDGE changes the neighbour's mesh too. `_rebuild_chunk_at_tile` has closed
+## that since the Phase 41 review; `apply_edits` — the snapshot/re-scope path — was
+## rebuilding the tile's own chunk alone, which left a see-through slot (or a ghost
+## collision wall) at the seam until that chunk happened to restream.
+func _test_voxel_apply_edits_rebuilds_seam_neighbours() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+	v.build_chunk(Vector2i(0, 0), flat)
+	v.build_chunk(Vector2i(1, 0), flat)
+	v.build_chunk(Vector2i(5, 5), flat)
+	var own_node: Node3D = v._chunks["0,0"]
+	var seam_node: Node3D = v._chunks["1,0"]
+	var control_node: Node3D = v._chunks["5,5"]
+	# Tile 63 is the LAST column of chunk (0,0) (64 tiles × 0.5 units = 32 world units
+	# per chunk): its east wall is the difference against chunk (1,0)'s tile 64.
+	var edit: Array = [{ "op": "remove", "bottom": 1.0, "top": 2.0 }]
+	v.apply_chunk_manifest({ "0,0": { "edits": { "63,32": edit } } })
+	assert_true(v._chunks["0,0"] != own_node, "the changed tile's own chunk is rebuilt")
+	assert_true(v._chunks["1,0"] != seam_node, "and so is the chunk across the seam it changed")
+	assert_true(v._chunks["5,5"] == control_node, "a chunk that reads nothing of the edit is left alone")
+	# An INTERIOR tile (32 is nowhere near an edge) names its own chunk and no seam: the
+	# closure is not a blanket "rebuild every neighbour", so the scoping the previous pass
+	# added survives. (63,32 is unchanged by this snapshot, so only 32,32 is touched.)
+	var interior_node: Node3D = v._chunks["0,0"]
+	var seam_unmoved: Node3D = v._chunks["1,0"]
+	v.apply_chunk_manifest({ "0,0": { "edits": { "63,32": edit, "32,32": edit } } })
+	assert_true(v._chunks["0,0"] != interior_node, "an interior tile rebuilds its own chunk")
+	assert_true(v._chunks["1,0"] == seam_unmoved, "and names no seam")
+	v.free()
+
+## Phase 42 review (fifth pass) — an edit never resurrects a chunk that is not loaded,
+## on BOTH edit paths. The synchronous fallback (a slice with no manager — the suite)
+## guarded on `_heightmaps`, and since the Phase 41 pass that map deliberately RETAINS
+## the one-tile ring around the loaded window — so an edit on a chunk edge rebuilt, and
+## so resurrected, a chunk `ChunkManager` had already streamed away and would never
+## stream out again. `_chunks` is the guard, exactly as `ChunkManager.request_rebuild`
+## (`_loaded`) and `apply_edits` (`_chunks`) already do it.
+func _test_voxel_edit_does_not_resurrect_unloaded_chunk() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+	v.build_chunk(Vector2i(0, 0), flat)
+	v.build_chunk(Vector2i(1, 0), flat)
+	v.unload_chunk(Vector2i(1, 0))
+	assert_false(v._chunks.has("1,0"), "the neighbour is streamed out, as ChunkManager would")
+	assert_true(v.get_heightmaps().has("1,0"), "but its map is still retained for the loaded ring")
+	# World x 31.75 = tile 63, the last column of chunk (0,0): its seam names chunk (1,0).
+	var r := v.mine_block(Vector3(31.75, 2.0, 16.25))
+	assert_true(r.get("success", false), "the seam column was mined")
+	assert_false(v._chunks.has("1,0"), "and the streamed-out neighbour was not resurrected")
+	v.free()
+
+## Phase 42 review (sixth pass) — the LEGACY half of `apply_edits` accepted any shape
+## and cast it with `float()`. That cast was not a refusal: `float()` answers 0.0 for
+## a string that is not a number (measured), so a corrupt or re-rolled record migrated
+## into an absolute height AT THE WORLD FLOOR — the column carved away — and a dict
+## value raised `Invalid call. Nonexistent 'float' constructor` on the load path. The
+## migration now admits exactly what a pre-Phase-41 edit could be — an int, a float, or
+## a numeric string — and DROPS anything else with a warning, the policy
+## `_normalise_ops` already applies to an op whose kind it cannot read. A dropped entry
+## is inert: the tile keeps its natural ground.
+func _test_voxel_legacy_edit_type_guard() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+	v.build_chunk(Vector2i(0, 0), flat)
+	# Tile (32,32) is the honest pre-Phase-41 shape (a bare number) and (40,40) is the
+	# other one a JSON round-trip can produce (a numeric string). The rest are not
+	# heights at all.
+	var junk := { "0,0": { "edits": {
+		"32,32": 1.0,
+		"40,40": "1.5",
+		"34,34": { "op": "remove", "bottom": 1.0, "top": 2.0 },
+		"36,36": "not-a-height",
+		"38,38": true,
+	} } }
+	v.apply_chunk_manifest(junk)
+	assert_eq(v.get_voxel_height_at(Vector2(16.25, 16.25)), 1.0,
+		"a bare numeric legacy height still migrates")
+	assert_eq(v.get_voxel_height_at(Vector2(20.25, 20.25)), 1.5,
+		"and so does a numeric string")
+	for key in ["34,34", "36,36", "38,38"]:
+		assert_false(v.get_edits().has(key),
+			"an edit of an unknown shape (%s) is dropped, never cast" % [key])
+	assert_eq(v.get_voxel_height_at(Vector2(17.25, 17.25)), 2.0,
+		"a dict value leaves the column at its natural height instead of raising")
+	assert_eq(v.get_voxel_height_at(Vector2(18.25, 18.25)), 2.0,
+		"an unparsable string no longer carves the column to the world floor")
+	assert_eq(v.get_voxel_height_at(Vector2(19.25, 19.25)), 2.0,
+		"and neither does a bool (it used to cast to 1.0)")
 	v.free()
 
 # ---------------------------------------------------------------------------
@@ -3906,7 +4067,7 @@ func _test_net_voxel_client_forwards_intent() -> void:
 		intent["action"] = action
 		intent["material"] = material
 	)
-	v._on_mine_requested(Vector3(16.0, 2.0, 16.0), Vector3.UP)
+	v._on_mine_requested(Vector3(16.0, 2.0, 16.0), Vector3.UP, "")
 	assert_eq(intent.get("action", ""), "mine", "client forwards a mine intent")
 	assert_false(v._edits.has("32,32"), "mine_block did not edit this slice directly")
 	v.free()
@@ -4384,7 +4545,7 @@ func _test_net_block_intent_requires_handshake_and_reach() -> void:
 	add_child(n)
 	n._role = NetworkingSlice.Role.HOST
 	var mined: Array = []
-	var on_mine := func(pos: Vector3, normal: Vector3) -> void:
+	var on_mine := func(pos: Vector3, normal: Vector3, _player_id: String) -> void:
 		mined.append([pos, normal])
 	GameBus.block_mine_requested.connect(on_mine)
 
@@ -4425,7 +4586,7 @@ func _test_net_tree_intent_requires_handshake_and_reach() -> void:
 	n._role = NetworkingSlice.Role.HOST
 	n.tree_slice = trees
 	var chops: Array = []
-	var on_chop := func(tree_id: String) -> void:
+	var on_chop := func(tree_id: String, _player_id: String) -> void:
 		chops.append(tree_id)
 	GameBus.tree_chop_requested.connect(on_chop)
 
@@ -4449,6 +4610,167 @@ func _test_net_tree_intent_requires_handshake_and_reach() -> void:
 	GameBus.tree_chop_requested.disconnect(on_chop)
 	n.free()
 	trees.free()
+
+## Phase 42 review (fifth pass) — a world edit resolved on the host for a REMOTE peer is
+## the PEER's resource. Every check and mutation used to go through
+## `VoxelSlice.inventory_slice`, which is the HOST's own pack: a client's mine filled the
+## host's inventory while the client — whose own client mirrors only ITS pack — saw
+## nothing. The acting identity now rides the request (`_route_c2h` binds it to the
+## connection, never to a payload), the resolution goes through `inventory_for(actor)`,
+## and the actor's own client is pushed the result on `inventory_synced` (addressed to its
+## owner, so networking delivers it to that peer alone — Phase 37).
+func _test_net_remote_mine_credits_the_actor() -> void:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var host_inv := InventorySlice.new()
+	add_child(host_inv)
+	var peer_pid := "player_7_1_cafe"
+
+	var v := _make_voxel()
+	v.is_authoritative = true
+	v.inventory_slice = host_inv
+	v.player_registry = reg
+
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.set_player_id(7, peer_pid)
+	n.remember_player_state(7, Vector3.ZERO)
+
+	var mined: Array = []
+	var on_mined := func(material: String, _qty: int, _pos: Vector3) -> void:
+		mined.append(material)
+	GameBus.block_mined.connect(on_mined)
+	var synced: Array = []
+	var on_synced := func(owner: String, _contents: Dictionary, _durabilities: Dictionary) -> void:
+		synced.append(owner)
+	GameBus.inventory_synced.connect(on_synced)
+
+	n._route_c2h(7, { "type": "block_edit_intent", "action": "mine",
+		"position": [16.0, 2.0, 16.0], "normal": [0, 1, 0] })
+
+	assert_eq(mined.size(), 1, "the mine resolved (handshake + reach both pass)")
+	var material := str(mined[0])
+	var peer_inv: Node = reg.get_inventory(peer_pid)
+	assert_eq(peer_inv.get_item_count(material), 1, "the yield lands in the ACTOR's pack")
+	assert_eq(host_inv.get_item_count(material), 0, "and NOT in the host's own pack")
+	assert_true(synced.has(peer_pid), "and the actor's own client is pushed the change")
+
+	GameBus.block_mined.disconnect(on_mined)
+	GameBus.inventory_synced.disconnect(on_synced)
+	v.free()
+	n.free()
+	reg.free()
+
+## The placement half of the same rule: the block comes out of the ACTOR's pack, and the
+## material placed is the one the ACTOR named (not this host's own `_place_material`). A
+## material that is not in the fabric's table grants nothing even when the request "holds"
+## it — the request is a claim, `GameData.MATERIALS` is the authority.
+func _test_net_remote_place_spends_the_actor() -> void:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var host_inv := InventorySlice.new()
+	add_child(host_inv)
+	host_inv.add_item("Ferrite", 4)
+	var peer_pid := "player_7_1_cafe"
+
+	var v := _make_voxel()
+	v.is_authoritative = true
+	v.inventory_slice = host_inv
+	v.player_registry = reg
+	v.set_place_material("Ferrite")   # the HOST's selection — a peer must not inherit it
+
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.set_player_id(7, peer_pid)
+	n.remember_player_state(7, Vector3.ZERO)
+
+	var peer_inv: Node = reg.get_inventory(peer_pid)
+	peer_inv.add_item("Ashite", 2)
+
+	var placed: Array = []
+	var on_placed := func(material: String, _pos: Vector3) -> void:
+		placed.append(material)
+	GameBus.block_placed.connect(on_placed)
+
+	n._route_c2h(7, { "type": "block_edit_intent", "action": "place",
+		"position": [24.0, 2.0, 16.0], "normal": [0, 1, 0], "material": "Ashite" })
+	assert_eq(placed.size(), 1, "the placement resolved")
+	var placed_material := str(placed[0]) if placed.size() > 0 else ""
+	assert_eq(placed_material, "Ashite", "the material placed is the one the ACTOR named")
+	assert_eq(v.get_voxel_height_at(Vector2(24.25, 16.25)), 2.125, "and the block is really there")
+	assert_eq(peer_inv.get_item_count("Ashite"), 1, "spent out of the ACTOR's pack")
+	assert_eq(host_inv.get_item_count("Ashite"), 0, "the host's pack never held it")
+	assert_eq(host_inv.get_item_count("Ferrite"), 4, "and the host's own selection was not spent")
+
+	# A material the fabric does not know: refused before the debit, so it neither
+	# places a ghost block nor costs the actor anything. (Inside chunk "0,0", the only
+	# chunk this rig built — an unbuilt chunk answers BEDROCK_DEPTH and would mask it.)
+	peer_inv.add_item("NotAMaterial", 1)
+	n._route_c2h(7, { "type": "block_edit_intent", "action": "place",
+		"position": [20.0, 2.0, 16.0], "normal": [0, 1, 0], "material": "NotAMaterial" })
+	assert_eq(placed.size(), 1, "a fabricated material emits no placement")
+	assert_eq(v.get_voxel_height_at(Vector2(20.25, 16.25)), 2.0, "and places nothing")
+	assert_eq(peer_inv.get_item_count("NotAMaterial"), 1, "and costs the actor nothing")
+
+	GameBus.block_placed.disconnect(on_placed)
+	v.free()
+	n.free()
+	reg.free()
+
+## The chop half: the wood lands in the CHOPPER's pack and the axe that wears is the
+## chopper's own (a peer used to wear the host's axe and fill the host's pack).
+func _test_net_remote_chop_credits_the_actor() -> void:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var host_inv := InventorySlice.new()
+	add_child(host_inv)
+	host_inv.add_item("CarpenterAxe", 1)
+	var peer_pid := "player_7_1_cafe"
+
+	var t := TreeSlice.new()
+	add_child(t)
+	t.is_authoritative = true
+	t.inventory_slice = host_inv
+	t.player_registry = reg
+	t.spawn_for_chunk(Vector2i(0, 0))
+	var target: Dictionary = t.get_all_trees()[0]
+	var tid: String = str(target["tree_id"])
+	var tree_pos: Vector3 = target["position"]
+
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.tree_slice = t
+	n.set_player_id(7, peer_pid)
+	n.remember_player_state(7, tree_pos + Vector3(10.0, 0.0, 0.0))
+
+	var peer_inv: Node = reg.get_inventory(peer_pid)
+	peer_inv.add_item("CarpenterAxe", 1)
+	var wear_before: float = float(peer_inv.get_durability_data()["CarpenterAxe"][0])
+
+	var synced: Array = []
+	var on_synced := func(owner: String, _contents: Dictionary, _durabilities: Dictionary) -> void:
+		synced.append(owner)
+	GameBus.inventory_synced.connect(on_synced)
+
+	n._route_c2h(7, { "type": "tree_chop_intent", "tree_id": tid })
+
+	assert_eq(str(t.get_tree_record(tid)["state"]), "stump", "the chop resolved on the host")
+	assert_eq(peer_inv.get_item_count("Thornwood"), 2, "the wood lands in the CHOPPER's pack")
+	assert_eq(host_inv.get_item_count("Thornwood"), 0, "and NOT in the host's")
+	assert_true(float(peer_inv.get_durability_data()["CarpenterAxe"][0]) < wear_before,
+		"the axe that wore is the CHOPPER's")
+	assert_true(synced.has(peer_pid), "and the chopper's own client is pushed the change")
+
+	GameBus.inventory_synced.disconnect(on_synced)
+	t.free()
+	n.free()
+	reg.free()
 
 func _test_net_client_packet_size_capped() -> void:
 	# An oversized client packet is dropped before it is parsed: the cap is what keeps
@@ -5769,7 +6091,7 @@ func _test_tree_client_forwards_then_applies_host_chop() -> void:
 	t.spawn_for_chunk(Vector2i(0, 0))
 	var tid: String = str(t.get_all_trees()[0]["tree_id"])
 	var forwarded := {}
-	var listener := func(id): forwarded["id"] = id
+	var listener := func(id, _pid): forwarded["id"] = id
 	GameBus.tree_chop_requested.connect(listener)
 	t.is_authoritative = false
 	var result: Dictionary = t.chop_tree(tid)
@@ -5870,6 +6192,22 @@ func _find_chunk_with_biome(terrain: Node, biomes: Array) -> Vector2i:
 ## rare-vein deposit mesh. Phase 41 split those into two MeshInstance3Ds deliberately
 ## (a deposit is decoration and must never enter the collision soup), so the count is
 ## summed over the chunk's mesh children.
+func _chunk_vein_vertices(voxel: Node, chunk_pos: Vector2i) -> int:
+	# The rare-vein overlay is the chunk's SECOND mesh child; the terrain surface is
+	# the first. Counted separately because the merged surface's vertex count is not a
+	# per-tile number any more (Phase 42).
+	var root: Node3D = voxel._chunks["%d,%d" % [chunk_pos.x, chunk_pos.y]]
+	var meshes: Array = []
+	for child in root.get_children():
+		if child is MeshInstance3D:
+			meshes.append(child)
+	if meshes.size() < 2:
+		return 0
+	return (meshes[1] as MeshInstance3D).mesh.surface_get_array_len(0)
+
+## Surface vertices of a chunk, from its committed mesh. Used where a test needs the
+## TRIANGLE SOUP's shape rather than a per-tile count (see `_chunk_vein_vertices` for
+## the overlay, which is unaffected by the merge).
 func _chunk_surface_vertices(voxel: Node, chunk_pos: Vector2i) -> int:
 	var root: Node3D = voxel._chunks["%d,%d" % [chunk_pos.x, chunk_pos.y]]
 	var total := 0
@@ -5905,21 +6243,24 @@ func _test_voxel_rare_vein_deposits() -> void:
 	# A mined natural column is not a *placed* one, so its vein keeps its deposit
 	# — at the lowered height (only a player-placed surface is exempt).
 	var mined_tile: Vector2i = v._world_to_tile(Vector2(deposits[0]["position"].x, deposits[0]["position"].z))
-	v._edits[v._tile_key(mined_tile)] = [{ "op": "remove", "bottom": 1.5, "top": VoxelSlice.MAX_HEIGHT }]
+	v._set_edit_ops(v._tile_key(mined_tile), [{ "op": "remove", "bottom": 1.5, "top": VoxelSlice.MAX_HEIGHT }])
 	var mined: Array = v.vein_deposits(rare, flat)
 	assert_eq(mined.size(), deposits.size(), "mining a vein column does not remove its deposit")
 	assert_true(absf(float(mined[0]["position"].y) - (1.5 + VoxelSlice.VEIN_DEPOSIT_HEIGHT * 0.5)) < 0.0001,
 		"the deposit rides down to the mined column top")
 	# Undo the simulated mine: the mesh check below compares flat chunks.
-	v._edits.erase(v._tile_key(mined_tile))
+	v._set_edit_ops(v._tile_key(mined_tile), [])
 
-	# The deposits must actually reach the rendered mesh: a rare-biome chunk
-	# carries exactly one box per rare tile more than a ferrite-only chunk of the
-	# same (identical, flat) heightmap.
+	# The deposits must actually reach the rendered mesh. They are the chunk's SECOND
+	# mesh child (the terrain surface is the first), and they are counted on their own
+	# since Phase 42: the merged terrain surface no longer has a fixed per-tile vertex
+	# count, so comparing two whole chunks across BIOMES would be comparing their merge
+	# groups as much as their deposits. The overlay is a separate mesh, so it is exact.
 	v.build_chunk(rare, flat)
 	v.build_chunk(plain, flat)
-	var delta: int = _chunk_surface_vertices(v, rare) - _chunk_surface_vertices(v, plain)
-	assert_eq(delta, deposits.size() * MeshUtil.BOX_VERTEX_COUNT, "every deposit reaches the chunk mesh")
+	assert_eq(_chunk_vein_vertices(v, rare), deposits.size() * MeshUtil.BOX_VERTEX_COUNT,
+		"every deposit reaches the chunk mesh")
+	assert_eq(_chunk_vein_vertices(v, plain), 0, "and a common-biome chunk carries no deposit mesh")
 	v.free()
 	terrain.free()
 
@@ -5932,6 +6273,58 @@ func _test_voxel_rare_vein_materials() -> void:
 	assert_false(VoxelSlice.RARE_VEIN_MATERIALS.has("Ferrite"), "the common ground is not a vein")
 	assert_false(VoxelSlice.RARE_VEIN_MATERIALS.has("Ashite"), "the volcanic bulk rock is not a vein")
 	v.free()
+
+## The MeshInstance3D children of a built chunk, in attach order: the terrain surface
+## first, the rare-vein deposit overlay second when the chunk has one.
+func _chunk_mesh_instances(voxel: Node, chunk_pos: Vector2i) -> Array:
+	var root: Node3D = voxel._chunks["%d,%d" % [chunk_pos.x, chunk_pos.y]]
+	var meshes: Array = []
+	for child in root.get_children():
+		if child is MeshInstance3D:
+			meshes.append(child)
+	return meshes
+
+## Phase 42 review — ONE terrain material instance per slice, shared by every mesh it
+## builds and reused by a rebuild.
+##
+## The material used to be minted per `_terrain_material()` call: two allocations per
+## chunk build (surface + deposit overlay) and two more for every edit rebuild, re-stream
+## or self-heal, so the churn tracked the streamed rebuild count rather than the slice.
+## Asserted on the BUILT MESHES rather than on the private field, so the test describes the
+## guarantee (the meshes share one instance) and not the mechanism that happens to hold it.
+func _test_voxel_terrain_material_is_one_instance() -> void:
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	var v := VoxelSlice.new()
+	add_child(v)
+	v.terrain_slice = terrain
+	var rare := _find_chunk_with_biome(terrain, ["VolcanicBadlands", "TwilightGrove"])
+	assert_true(rare.x != -1, "found a biome that grants a rare vein")
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+
+	v.build_chunk(rare, flat)
+	var meshes := _chunk_mesh_instances(v, rare)
+	assert_eq(meshes.size(), 2, "the chunk carries a surface and a deposit overlay")
+	var surface_mat: Material = (meshes[0] as MeshInstance3D).material_override
+	var deposit_mat: Material = (meshes[1] as MeshInstance3D).material_override
+	assert_true(surface_mat is StandardMaterial3D, "the surface carries a terrain material")
+	assert_true(is_same(surface_mat, deposit_mat),
+		"the surface and the deposit overlay share ONE material instance")
+	assert_eq((surface_mat as StandardMaterial3D).cull_mode, BaseMaterial3D.CULL_DISABLED,
+		"and it is the terrain material (both faces rendered)")
+
+	# A rebuild — an edit, a re-stream, the self-heal — must not mint another one.
+	v.build_chunk(rare, flat)
+	var rebuilt := _chunk_mesh_instances(v, rare)
+	assert_eq(rebuilt.size(), 2, "the rebuild carries the same two meshes")
+	assert_true(is_same((rebuilt[0] as MeshInstance3D).material_override, surface_mat),
+		"a rebuild reuses the same material instance")
+	assert_true(is_same((rebuilt[1] as MeshInstance3D).material_override, surface_mat),
+		"and so does the rebuilt deposit overlay")
+	v.free()
+	terrain.free()
 
 # ---------------------------------------------------------------------------
 # Phase 33 — player identity + server-side persistence
@@ -6468,6 +6861,80 @@ func _test_write_job_writes_records() -> void:
 	assert_true((world.get("chunks", {}) as Dictionary).has("0,0"), "the earlier chunk survived the merge")
 	assert_eq((world.get("creatures", []) as Array).size(), 1, "and the new creature state was folded in")
 	store.free()
+
+## Phase 42 review (sixth pass) — an incremental save could not express a DELETED
+## chunk. `_append_edit` ERASES a tile's op list once it compacts back to the
+## column's natural self (the player mined a block and put it back), and the chunk's
+## manifest entry goes with it — but dirty tracking is per CHUNK and is reset only by
+## the save that consumed it, so the chunk is still dirty with nothing left to
+## serialize. `dirty_chunk_subset` skipped a key the manifest did not have and
+## `_merge_world` only folded entries IN, so the record on disk kept the edits the
+## earlier FULL save wrote: reload and the terrain the player put back was still
+## carved. The payload now carries an EMPTY edit set for a dirty chunk with no edits,
+## and the merge reads that as a deletion.
+func _test_persistence_incremental_save_can_delete_a_chunk() -> void:
+	var dir := "user://saves/test_incremental_delete/"
+	_wipe_dir(dir)
+	var voxel := _make_voxel()
+	assert_true(voxel.mine_block(Vector3(16.25, 2.0, 16.25)).get("success", false),
+		"the column was mined")
+	var writer := PersistenceSlice.new()
+	add_child(writer)
+	writer.server_save_dir = dir
+	assert_eq(writer.save_world({ "local_player_id": "player_1_1_ab", "chunks": voxel.get_chunk_manifest() }, false), OK,
+		"the full world record writes")
+	assert_true((writer.load_world()["chunks"] as Dictionary).has("0,0"),
+		"the record on disk carries the edited chunk")
+
+	# The player puts it back: the op log compacts away ENTIRELY, so the chunk has no
+	# edits left to serialize — while it is still dirty (the second mine is a real edit
+	# and re-marks it).
+	voxel.clear_dirty_chunks()
+	voxel.mine_block(Vector3(16.25, 2.0, 16.25))
+	var key := voxel._tile_key(Vector2i(32, 32))
+	var cancel: Array = []
+	for i in range(4):
+		cancel.append({ "op": "remove", "bottom": 1.875, "top": 2.0 })
+		cancel.append({ "op": "add", "bottom": 1.875, "top": 2.0, "material": "" })
+	voxel._set_edit_ops(key, cancel)
+	voxel._append_edit(Vector2i(32, 32), { "op": "add", "bottom": 1.875, "top": 2.0, "material": "" })
+	assert_false(voxel.get_edits().has(key), "the column is back to its natural self")
+	assert_eq(voxel.get_dirty_chunk_keys(), ["0,0"], "and the chunk is still dirty")
+	var manifest := voxel.get_chunk_manifest()
+	assert_false(manifest.has("0,0"), "there are no edits left to serialize")
+	var subset := PersistenceSlice.dirty_chunk_subset(manifest, voxel.get_dirty_chunk_keys())
+	assert_true(subset.has("0,0"), "the incremental payload still names the dirty chunk")
+	assert_true((subset["0,0"]["edits"] as Dictionary).is_empty(),
+		"and says it has no edits, which IS the deletion statement")
+
+	# The merge rule on its own: an empty edit set deletes the key, and a chunk the
+	# payload does not mention at all is kept.
+	var folded := writer._merge_world(
+		{ "chunks": { "0,0": { "edits": { "32,32": [] } } } },
+		{ "chunks": { "0,0": { "edits": {} } } })
+	assert_false((folded["chunks"] as Dictionary).has("0,0"),
+		"an empty edit set deletes the chunk from the record")
+	var kept := writer._merge_world(
+		{ "chunks": { "0,0": { "edits": { "32,32": [] } } } },
+		{ "chunks": { "2,2": { "edits": { "160,160": [] } } } })
+	assert_true((kept["chunks"] as Dictionary).has("0,0"),
+		"a chunk the payload does not mention is kept")
+	assert_false(PersistenceSlice.is_empty_edit_set({ "materials": {} }),
+		"an entry with no 'edits' key is not read as a deletion")
+
+	# ---- the disk path end to end ----
+	assert_eq(writer.save_world({ "local_player_id": "player_1_1_ab", "chunks": subset }, true), OK,
+		"the incremental world record writes")
+	var world := writer.load_world()
+	assert_false((world["chunks"] as Dictionary).has("0,0"),
+		"the deleted chunk is gone from the record on disk")
+	var reloaded := _make_voxel()
+	reloaded.apply_chunk_manifest(world["chunks"])
+	assert_eq(reloaded.get_voxel_height_at(Vector2(16.25, 16.25)), 2.0,
+		"and a reload regenerates natural ground, not the carved column")
+	reloaded.free()
+	writer.free()
+	voxel.free()
 
 func _test_dirty_keys_clear_and_remark() -> void:
 	# The authoritative save clears the dirty keys it SERIALIZED, on the main thread,
@@ -8792,6 +9259,1295 @@ func _test_net_harness_bare_await_audit() -> void:
 	var offenders := NetHarness.unawaited_waits(src.get_as_text().split("\n"))
 	assert_true(offenders.is_empty(),
 		"NetHarness calls a bare coroutine at line(s) %s" % [", ".join(offenders)])
+
+# ---------------------------------------------------------------------------
+# Phase 42 — threaded chunk build, greedy merge, the first-ring gate
+# ---------------------------------------------------------------------------
+#
+# The build is dispatched to a WorkerThreadPool task and applied on the main thread,
+# and the suite has no frames to give — so these tests drive the manager's pump by
+# hand: DRAIN (dispatch), BLOCK on each in-flight task, APPLY. That is exactly what
+# `ChunkManager._process` does across frames, with the wait made explicit.
+
+## A duck-typed stand-in for a CONTENTS slice (creature or tree): the manager only asks
+## for `has_method("spawn_for_chunk")` / `despawn_for_chunk`, so a spy is enough to count
+## what the apply path asks for — which is the whole of the review-pass-3 finding that a
+## rebuild re-derived a chunk's budgets on every block edit.
+class ContentsSpy:
+	extends Node
+	var spawned: Array = []
+	var despawned: Array = []
+	func spawn_for_chunk(chunk_pos: Vector2i) -> void:
+		spawned.append(chunk_pos)
+	func despawn_for_chunk(chunk_pos: Vector2i) -> void:
+		despawned.append(chunk_pos)
+
+## A player stand-in that COUNTS how often its position is read. `ChunkManager.player_chunk()`
+## reaches the body through `player_slice.get_position()`, so the count is a direct measure of
+## how often the manager resolved the streamed window.
+class PlayerPosSpy:
+	extends Node
+	var reads: int = 0
+	var position: Vector3 = Vector3(16.0, 40.0, 16.0)
+	func get_position() -> Vector3:
+		reads += 1
+		return position
+
+## A ChunkManager wired to a real TerrainSlice + VoxelSlice and a local player — what
+## the threaded build needs. An isolated manager with no terrain has nothing to
+## dispatch (see `_dispatch_build`'s early return, which the older rigs rely on).
+func _make_chunk_build_rig() -> Dictionary:
+	var cm := ChunkManager.new()
+	add_child(cm)
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	var voxel := VoxelSlice.new()
+	voxel.terrain_slice = terrain
+	add_child(voxel)
+	var player := PlayerSlice.new()
+	add_child(player)
+	cm.terrain_slice = terrain
+	cm.voxel_slice = voxel
+	cm.player_slice = player
+	# Phase 42 review — the production wiring is two-way: game_root also points the voxel
+	# slice back at the manager, so an EDIT dispatches its rebuild to a worker instead of
+	# building the touched chunks synchronously (see `request_rebuild`).
+	voxel.chunk_manager = cm
+	player.spawn_at(Vector3(16.0, 40.0, 16.0))
+	return { "cm": cm, "terrain": terrain, "voxel": voxel, "player": player }
+
+## Drive the manager's build pump to quiescence: dispatch, BLOCK on the in-flight
+## builds, apply. `flush_builds` is the blocking variant of the frame loop's poll —
+## the suite cannot yield, so it waits rather than polling, which is also why it does
+## not call `WorkerThreadPool.is_task_completed` itself.
+func _wait_for_builds(cm: Node, rounds: int = 128) -> void:
+	for i in range(rounds):
+		if cm._builds.is_empty() and cm._load_queue.is_empty() and cm._rebuild_queue.is_empty():
+			return
+		cm._drain_load_queue()
+		cm.flush_builds()
+
+## Phase 42 — the builder is what makes a worker legal: it must be a function of its
+## three arguments alone, with no slice state reachable from it.
+##
+## Phase 42 review pass 8 — this test used to be vacuous. It built the SAME resolved table
+## twice, so it asserted `f(x) == f(x)` and its second slice `b` — created with a different
+## place material and an edit in another chunk, precisely to prove that slice state cannot
+## reach the build — was DEAD SETUP: nothing was ever resolved from `b`. It now resolves the
+## chunk from BOTH slices and builds from each. `b`'s state is in another chunk and on the
+## place path, so the two resolves must AGREE and the two builds must be identical; a
+## resolve that leaked one slice's state into another's answer turns the first assertion
+## red, and a builder that read back into the slice turns the second one red.
+func _test_voxel_build_arrays_pure() -> void:
+	var a := VoxelSlice.new()
+	add_child(a)
+	var b := VoxelSlice.new()
+	add_child(b)
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+	# `b` carries state `a` does not: a different place material and an edit in another
+	# chunk. Neither may reach the build — the caller resolves the table, not the builder.
+	b.set_place_material("Ashite")
+	b._set_edit_ops("900,900", [{ "op": "remove", "bottom": 0.0, "top": 1.0 }])
+	var resolved_a: Dictionary = a.collect_build_runs(Vector2i(0, 0), flat)
+	var resolved_b: Dictionary = b.collect_build_runs(Vector2i(0, 0), flat)
+	var first: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), flat, resolved_a)
+	var second: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), flat, resolved_a)
+	assert_eq(int(first["quad_count"]), int(second["quad_count"]), "the same input builds the same quads")
+	assert_true(first["vertices"] == second["vertices"], "and the same vertices")
+	assert_true(first["indices"] == second["indices"], "and the same indices")
+	assert_true(first["collision"] == second["collision"], "and the same collision soup")
+	# The two SLICES' resolves agree, so `b`'s differing state reached neither.
+	assert_true(resolved_a["runs"] == resolved_b["runs"],
+		"a differently-stated slice resolves the same columns for an untouched chunk")
+	# ...and building from `b`'s resolve is the same build, which is the actual claim: the
+	# builder reads its argument and nothing else.
+	var from_b: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), flat, resolved_b)
+	assert_true(first["vertices"] == from_b["vertices"], "and the other slice's table builds it identically")
+	assert_true(first["collision"] == from_b["collision"], "collision included")
+	# A caller with only a map — no resolved table at all — still gets the chunk's own
+	# natural columns. That is the fallback the suite and a fresh probe rely on.
+	var bare: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), flat, { "runs": {} })
+	assert_true(int(bare["quad_count"]) > 0, "an empty table still builds the natural columns")
+	a.free()
+	b.free()
+
+## Phase 42 — the merge's effect as NUMBERS from one build. `cell_count` is what the
+## per-tile mesher emitted, `quad_count` what the merge left, so the acceptance
+## criterion's before/after comes out of the run rather than out of a comment.
+func _test_voxel_greedy_merge() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+	# A flat chunk with no resolved table: every tile is its own natural column, so
+	# 4096 top faces — and walls ONLY on the chunk's four EDGES (256), because a wall is
+	# emitted from the difference against a neighbour and the in-chunk neighbour is
+	# solid at the same height. 4352 faces, which is 26112 vertices as the per-tile
+	# mesher emitted them.
+	var bare: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), flat, { "runs": {} })
+	assert_eq(int(bare["cell_count"]), 64 * 64 + 64 * 4, "a top face per tile, walls on the edges")
+	assert_eq(int(bare["quad_count"]), 5, "and the merge leaves one quad per facing")
+	var bare_quads := int(bare["quad_count"])
+	assert_true(bare_quads * 4 < int(bare["cell_count"]),
+		"the merge leaves far fewer quads than faces (%d of %d)" % [bare_quads, int(bare["cell_count"])])
+	assert_eq(bare["vertices"].size(), bare_quads * 4, "a merged quad is four INDEXED vertices")
+	assert_eq(bare["indices"].size(), bare_quads * 6, "and two triangles")
+	assert_eq(bare["collision"].size(), bare_quads * 6, "the collision carries the same two triangles")
+	assert_eq(bare["normals"].size(), bare_quads * 4, "one normal per vertex")
+
+	# And a REAL chunk: noise terrain with its ring built, which is the number worth
+	# quoting (its walls mostly vanish against equal-height neighbours).
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	var w := VoxelSlice.new()
+	add_child(w)
+	w.terrain_slice = terrain
+	for cz in range(-1, 2):
+		for cx in range(-1, 2):
+			w._heightmaps["%d,%d" % [cx, cz]] = terrain._generate(Vector2i(cx, cz))
+	var hm: Array = terrain._generate(Vector2i(0, 0))
+	var natural: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), hm, w.collect_build_runs(Vector2i(0, 0), hm))
+	print("PROBE Phase 42 flat chunk:  %d faces -> %d quads (%d vertices)" % [
+		int(bare["cell_count"]), bare_quads, bare["vertices"].size()])
+	print("PROBE Phase 42 natural chunk: %d faces -> %d quads (%d vertices)" % [
+		int(natural["cell_count"]), int(natural["quad_count"]), natural["vertices"].size()])
+	assert_true(int(natural["quad_count"]) < int(natural["cell_count"]),
+		"a natural chunk merges too")
+	v.free()
+	w.free()
+	terrain.free()
+
+## Phase 42 review pass 9 — the fourth component of the group key is a packed uint32 kept in an
+## int32 slot, and the pass-8 comment claimed it fit ("`to_rgba32()` is an int32 by
+## definition"). It does not: opaque white packs to 4294967295 and the component reads back as
+## -1, the high bit kept as the SIGN. What the grouping actually depends on is that the wrap is
+## a BIJECTION, and that is what this pins — at the exact values measured on 4.7, plus the
+## grouping itself (one colour = one group, two colours = two), so a key that dropped or folded
+## the colour's high bit would go red.
+func _test_voxel_group_key_colour_band() -> void:
+	var white := Color(1.0, 1.0, 1.0, 1.0)
+	assert_eq(white.to_rgba32(), 4294967295, "opaque white packs to the top of the uint32 range")
+	var packed_key := Vector4i(0, 0, 0, white.to_rgba32())
+	assert_eq(packed_key[3], -1, "and the int32 component keeps only the sign bit of it")
+	assert_eq(packed_key[3] & 0xFFFFFFFF, white.to_rgba32(),
+		"the wrap round-trips, so the packed colour is still exact in the key")
+	var a := Vector4i(0, 0, 0, Color(1.0, 0.0, 0.0, 1.0).to_rgba32())
+	var b := Vector4i(0, 0, 0, Color(1.0, 0.0, 1.0, 1.0).to_rgba32())
+	assert_true(a != b, "colours sharing the low bits do not collide onto one key")
+	# And the grouping: coplanar cells of ONE colour merge, a second colour is its own group.
+	var groups: Dictionary = {}
+	VoxelSlice._group_cell(groups, "up", 1.0, 1.0, 1.0, Color(1.0, 0.0, 0.0, 1.0), 0, 0)
+	VoxelSlice._group_cell(groups, "up", 1.0, 1.0, 1.0, Color(1.0, 0.0, 0.0, 1.0), 1, 0)
+	assert_eq(groups["up"].size(), 1, "the same plane and colour share one merge group")
+	assert_eq(groups["up"].values()[0]["cells"].size(), 2, "and both cells are in it")
+	VoxelSlice._group_cell(groups, "up", 1.0, 1.0, 1.0, Color(1.0, 0.0, 1.0, 1.0), 2, 0)
+	assert_eq(groups["up"].size(), 2, "a second colour is its own group (the colour is IN the key)")
+
+## Phase 42 review pass 9 — the per-biome roll table is main-thread state, prebuilt at
+## `_ready()`. It is a `static var` on a script a WORKER TASK holds, so the lazy fill was
+## mutable class state a worker could have raced; the table is warmed before anything streams
+## and read-only by contract afterwards.
+##
+## Phase 42 review pass 10 — and it SNAPSHOTS AND RESTORES the static rather than clearing it
+## and leaving the process without it. `_biome_rolls` is process-wide class state a worker could
+## be reading, so blanking it mid-suite is a window no reader has a guard against; the clear is
+## kept (it is what makes the assertion about `_ready` rather than about a leftover) but the
+## saved table is put back before the test ends.
+func _test_voxel_biome_roll_table_prebuilt() -> void:
+	var saved: Dictionary = VoxelSlice._biome_rolls.duplicate()
+	VoxelSlice._biome_rolls.clear()
+	assert_eq(VoxelSlice._biome_rolls.size(), 0, "the cache starts empty (the assertion is not vacuous)")
+	var v := VoxelSlice.new()
+	add_child(v)
+	assert_eq(VoxelSlice._biome_rolls.size(), VoxelSlice.BIOME_MATERIALS.size(),
+		"every biome's roll table is built at _ready, not on first use")
+	for biome in VoxelSlice.BIOME_MATERIALS:
+		assert_true(VoxelSlice._biome_rolls.has(str(biome)),
+			"including %s" % str(biome))
+	v.free()
+	# Restore the process-wide table. A leftover from an earlier test is the normal case (a
+	# slice has already run `_ready`); if it was somehow empty, keep the full table `_ready`
+	# just built rather than re-blanking it.
+	if not saved.is_empty():
+		VoxelSlice._biome_rolls = saved
+	assert_true(VoxelSlice._biome_rolls.size() == VoxelSlice.BIOME_MATERIALS.size(),
+		"and the process-wide table is left full, not cleared")
+
+## Phase 42 review pass 10 — the worker's biome read is safe only because EVERY biome the gather
+## can hand it has a roll table: `material_for_biome` answers Ferrite for a biome absent from
+## `BIOME_MATERIALS`, so a canonical biome missing from the table would silently mine as the
+## wrong material. The gathered strings come from `TerrainSlice.get_biome_at`, i.e. from
+## `TerrainSlice.BIOME_KEYS`, so that set — not voxel's own map — is what must be covered.
+func _test_voxel_every_canonical_biome_has_a_roll_table() -> void:
+	for biome in TerrainSlice.BIOME_KEYS:
+		assert_true(VoxelSlice.BIOME_MATERIALS.has(str(biome)),
+			"canonical biome %s has a BIOME_MATERIALS entry" % str(biome))
+		assert_true(VoxelSlice._biome_roll_table(str(biome)).size() > 0,
+			"and a non-empty roll table, so its roll never falls back to Ferrite")
+
+## Phase 42 review pass 9 — the payload shape `build_chunk_arrays` takes is REQUIRED, not
+## sniffed. The old fallback (`resolved.get("runs", resolved)`) meant a dictionary that merely
+## HELD a tile-coordinate key was silently read AS the runs table; the table below lifts one
+## tile's column well above the natural one, so under the old fallback it changes the build and
+## under the required shape it is ignored as "no resolved columns", which is the natural-column
+## fallback. The two builds must therefore be byte-identical.
+func _test_voxel_build_payload_shape_required() -> void:
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+	var natural: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), flat, { "runs": {} })
+	var sniffed: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), flat, {
+		"0,0": [{ "bottom": -8.0, "top": 6.0, "material": "", "color": Color(1.0, 0.0, 1.0) }],
+	})
+	assert_eq(int(sniffed["cell_count"]), int(natural["cell_count"]),
+		"a bare table is not reinterpreted as the runs table (the payload shape is required)")
+	assert_true(sniffed["vertices"] == natural["vertices"], "and the build is identical")
+	assert_eq(int(natural["cell_count"]), 64 * 64 + 64 * 4,
+		"both are the natural chunk (a top face per tile, walls on the edges)")
+
+## Phase 42 — the merge is a greedy RECTANGLE sweep, so it must never cover a gap: a
+## cell with no neighbour of its own group is its own 1x1 quad, and scattered cells stay
+## separate. That is the "a tile whose neighbours differ still emits a valid 1×1 quad"
+## criterion, asserted on the pure sweep rather than through a whole chunk's geometry.
+func _test_voxel_merge_keeps_lone_quad() -> void:
+	var lone: Array = VoxelSlice._merge_rects({ 20 * 64 + 10: true })
+	assert_eq(lone.size(), 1, "a lone cell is its own rectangle")
+	assert_eq(int(lone[0]["w"]), 1, "one tile wide")
+	assert_eq(int(lone[0]["h"]), 1, "and one tile deep")
+
+	# Four cells, none of which touches another: (0,0), (5,0), (0,3) and (2,4).
+	var scattered: Array = VoxelSlice._merge_rects({ 0: true, 5: true, 64 * 3: true, 64 * 4 + 2: true })
+	assert_eq(scattered.size(), 4, "cells with no neighbour in the group never merge")
+
+	# A full row merges into ONE rectangle, and a second identical row below extends it.
+	var row: Dictionary = {}
+	for tx in range(64):
+		row[tx] = true
+	var row_rects: Array = VoxelSlice._merge_rects(row)
+	assert_eq(row_rects.size(), 1, "a full row is one rectangle")
+	assert_eq(int(row_rects[0]["w"]), 64, "the full chunk wide")
+	assert_eq(int(row_rects[0]["h"]), 1, "and one tile deep")
+	for tx in range(64):
+		row[64 + tx] = true
+	var block: Array = VoxelSlice._merge_rects(row)
+	assert_eq(block.size(), 1, "the row below extends it rather than splitting it")
+	assert_eq(int(block[0]["h"]), 2, "into a two-tile-deep rectangle")
+
+	# A row with a HOLE in it must not be covered: the sweep restarts after the gap.
+	var holed: Dictionary = {}
+	for tx in range(64):
+		if tx != 30:
+			holed[tx] = true
+	var holed_rects: Array = VoxelSlice._merge_rects(holed)
+	assert_eq(holed_rects.size(), 2, "a gap splits the row in two")
+
+## Phase 42 — a load dispatches instead of building, and a chunk counts as BUILT only
+## once the worker's arrays have been applied on the main thread.
+func _test_chunk_load_dispatches_build() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	cm.load_chunk(Vector2i(0, 0))
+	assert_true(cm._loaded.has("0,0"), "the chunk enters the streamed set")
+	assert_false(cm._built.has("0,0"), "but its build is in flight, not on the main thread")
+	assert_eq(voxel.get_loaded_chunks().size(), 0, "and no chunk mesh exists yet")
+	_wait_for_builds(cm)
+	assert_true(cm._built.has("0,0"), "the build lands once the worker has finished")
+	assert_eq(voxel.get_loaded_chunks().size(), 1, "and the chunk's mesh with it")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 — the boot gate: closed until every chunk of the Chebyshev 0..1 ring around
+## the centre has been BUILT, then open. The loading screen is shown for exactly this
+## window and the player body is placed at its end.
+func _test_chunk_first_ring_gate() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	cm.view_distance = 1
+	cm.prefetch_distance = 0
+	cm.refresh()
+	cm.build_first_ring(Vector2i(0, 0))
+	assert_eq(cm._first_ring.size(), 9, "the gate covers the 3x3 ring the body stands in")
+	assert_false(cm.is_first_ring_ready(), "and is closed before a single ring chunk is built")
+	assert_eq(cm.first_ring_progress(), 0.0, "reporting no progress")
+	_wait_for_builds(cm)
+	assert_true(cm.is_first_ring_ready(), "the gate opens once every ring chunk's ground exists")
+	assert_eq(cm.first_ring_progress(), 1.0, "and reports complete")
+	assert_true(voxel.get_loaded_chunks().size() >= 9, "with every ring chunk meshed")
+	# An UNARMED gate never blocks: a caller with no boot to hold must not be gated by
+	# a ring some other call site armed.
+	var loose := ChunkManager.new()
+	add_child(loose)
+	assert_true(loose.is_first_ring_ready(), "an unarmed gate is open")
+	assert_eq(loose.first_ring_progress(), 1.0, "and reports complete")
+	loose.free()
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 — the prefetch band: a chunk beyond the view ring is QUEUED, so a crossing never
+## asks for ground at the moment it becomes needed.
+##
+## Phase 42 review pass 8 — "and kept" was questioned here and the KEPT window briefly narrowed
+## to `view_distance`. Ninth review pass: it is the QUEUE radius again (`stream_radius()`), so
+## the band is queued AND kept — see `_test_chunk_kept_window_is_stream_radius` for why (a band
+## chunk is BUILT, so releasing it on the next crossing throws that build away).
+func _test_chunk_prefetch_ring() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.view_distance = 1
+	cm.prefetch_distance = 2
+	assert_eq(cm.stream_radius(), 3, "the streamed radius is the view ring plus the prefetch band")
+	cm.refresh()
+	var queued: Dictionary = {}
+	for c in cm._load_queue:
+		queued[c] = true
+	assert_true(queued.has(Vector2i(3, 0)), "a chunk one band beyond the view ring is queued")
+	assert_true(queued.has(Vector2i(0, 3)), "on both axes")
+	assert_false(queued.has(Vector2i(4, 0)), "and nothing beyond the prefetch band")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review pass 9 — the KEPT window is the QUEUE window (`stream_radius()`), and that
+## is what stops a chunk being built and then thrown away. Pass 8 had narrowed it to
+## `view_distance`, so every band chunk — BUILT, because everything the queue spans is — was
+## released on the next crossing unless the player happened to move toward it; the row
+## measured 65 redundant worker builds per crossing, forever. Two assertions, in the order the
+## row asks for them: the invariant (nothing is ever unloaded while it still lies inside the
+## queue radius), and the retention arithmetic as an exact NUMBER — a one-chunk crossing
+## releases the seven chunks of the departing edge, not the forty a view-ring window releases.
+func _test_chunk_kept_window_is_stream_radius() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var player: PlayerSlice = rig["player"]
+	cm.view_distance = 1
+	cm.prefetch_distance = 2
+	cm.loads_per_frame = 64
+	cm.refresh()
+	_wait_for_builds(cm)
+	assert_true(cm._loaded.has("3,0"), "a band chunk out at the queue radius is loaded and built")
+	assert_true(cm._loaded.has("1,0"), "and so is one inside the view ring")
+	# Cross one chunk toward +x: the window re-centres on (1,0) and still spans Chebyshev 3,
+	# so (3,0) is INSIDE it and must NOT be released — that release is the waste pass 8 locked in.
+	var before: Dictionary = cm._loaded.duplicate()
+	player.spawn_at(Vector3(32.0 + 16.0, 40.0, 16.0))
+	cm.refresh()
+	var released: Array = []
+	for key in before:
+		if not cm._loaded.has(key):
+			released.append(key)
+	assert_true(cm._loaded.has("3,0"), "a band chunk still inside the queue radius is NOT released")
+	assert_true(cm._loaded.has("2,0"), "nor one the player moved toward")
+	assert_eq(released.size(), 7,
+		"a one-chunk crossing releases only the departing edge's seven chunks, not the band")
+	# And the invariant, at a crossing where nothing of the old window survives: every resident
+	# chunk lies inside the radius it was queued at.
+	player.spawn_at(Vector3(16.0, 40.0, 160.0))
+	cm.refresh()
+	var center := cm.player_chunk()
+	var radius: int = cm.stream_radius()
+	for key in cm._loaded.keys():
+		var probe: PackedStringArray = str(key).split(",")
+		var c := Vector2i(int(probe[0]), int(probe[1]))
+		assert_true(cm._within_stream_at(center, radius, c),
+			"every resident chunk is inside the queue radius (%s)" % key)
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review — an edit to a chunk whose build is still IN FLIGHT is not lost.
+## Before the fix nothing rebuilt it: the edit path gated on a cached heightmap, which a
+## chunk only gets when its build LANDS, so the edit was skipped entirely and the worker's
+## PRE-edit arrays were attached on top of it. `request_rebuild` needs no cached map — it
+## supersedes the in-flight build and dispatches a fresh one — so the mesh that lands is
+## built from the current columns.
+func _test_chunk_edit_during_build_is_not_lost() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	cm.load_chunk(Vector2i(0, 0))
+	assert_false(voxel._heightmaps.has("0,0"),
+		"a chunk's heightmap is not cached until its build lands")
+	assert_true(voxel.mine_block(Vector3(16.0, 2.0, 16.0)).get("success", false),
+		"an edit lands while the chunk's build is in flight")
+	_wait_for_builds(cm)
+	assert_true(cm._built.has("0,0"), "the chunk's build lands")
+	# The mesh that landed must be the POST-edit one: a fresh build of the chunk's current
+	# columns (the edit log included) is exactly what the attached mesh has to agree with.
+	var hm: Array = voxel._heightmaps["0,0"]
+	var expected: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), hm,
+		voxel.collect_build_runs(Vector2i(0, 0), hm))
+	assert_eq(_chunk_surface_vertices(voxel, Vector2i(0, 0)),
+		int(expected["vertices"].size()) + _chunk_vein_vertices(voxel, Vector2i(0, 0)),
+		"the attached mesh is the post-edit build, not the pre-edit arrays")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review — an edit DISPATCHES its rebuild to the worker instead of building up to
+## three chunks synchronously in the frame that placed the block, which is the stall the
+## worker exists to remove. So the edited chunk keeps its old mesh for a frame or two and
+## the new one lands when the build does.
+func _test_chunk_edit_dispatches_rebuild() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	cm.load_chunk(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	var before: Node3D = voxel._chunks["0,0"]
+	assert_true(voxel.mine_block(Vector3(16.0, 2.0, 16.0)).get("success", false), "mine succeeds")
+	assert_true(voxel._chunks["0,0"] == before, "the mesh is NOT rebuilt in the edit's own frame")
+	assert_eq(cm._builds.size(), 1, "the rebuild went to a worker instead")
+	_wait_for_builds(cm)
+	assert_false(voxel._chunks["0,0"] == before, "and the mesh is replaced once the build lands")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+
+## Phase 42 review pass 8 — the RE-SCOPE path takes the same route as an edit.
+## `apply_edits` (what `apply_chunk_manifest` calls, so what a joining client's snapshot and
+## a load both land in) used to call `build_chunk` SYNCHRONOUSLY for every touched chunk in
+## the frame that applied the snapshot — up to three chunks of main-thread build work — and
+## to advance each chunk's revision on the main thread, which made an in-flight worker result
+## stale while its task was still the frame path's to reap. It goes through
+## `ChunkManager.request_rebuild` now, exactly like `_rebuild_chunk_at_tile`.
+func _test_voxel_apply_edits_dispatches_rebuild() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	cm.load_chunk(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	var before: Node3D = voxel._chunks["0,0"]
+	# An interior tile, so exactly one chunk is touched.
+	voxel.apply_chunk_manifest({ "0,0": { "edits": { "32,32": [
+		{ "op": "remove", "bottom": 1.5, "top": 2.0 } ] } } })
+	assert_true(voxel._chunks["0,0"] == before,
+		"the snapshot's rebuild is NOT done in the frame that applied it")
+	assert_eq(cm._builds.size(), 1, "it went to a worker instead")
+	_wait_for_builds(cm)
+	assert_false(voxel._chunks["0,0"] == before, "and the mesh is replaced once the build lands")
+	assert_true(cm._built.has("0,0"), "with the chunk still counted as built")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review pass 8 — `flush_builds()` is the BLOCKING variant, so its contract is
+## that no build is left in flight behind it. It iterated a snapshot of `_builds.keys()`, so
+## a task that `_apply_build_entry` re-DISPATCHED during the pass (a refused worker result,
+## here a revision that moved under the build) was created after the snapshot and simply
+## never reaped: it sat in the pool awaited by nobody but the frame path — which in a
+## blocking caller (a test, a boot tail) may never come. The loop re-reads the table per
+## round, which is what makes the retry it just dispatched its own to await.
+func _test_chunk_flush_builds_awaits_retries() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	cm.load_chunk(Vector2i(0, 0))
+	assert_eq(cm._builds.size(), 1, "one build in flight")
+	# Simulate what an edit does to a chunk a build is in flight for: the revision it was
+	# dispatched at moves on, so its result is REFUSED on apply and the build is re-dispatched.
+	voxel._chunk_revision["0,0"] = int(voxel.chunk_revision(Vector2i(0, 0))) + 1
+	var applied := cm.flush_builds()
+	assert_eq(cm._builds.size(), 0, "the retry dispatched during the pass is awaited by it")
+	assert_true(cm._built.has("0,0"), "and the chunk ends up built (%d meshes attached)" % applied)
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review — `stop()` ends NEW streaming, not work already in flight. The frame
+## path used to return before its apply pass while streaming was stopped, so a build
+## dispatched a moment earlier was applied by nobody and AWAITED by nobody: the chunk was
+## left without a mesh and the task's result sat in the pool until shutdown (exit 134).
+func _test_chunk_stop_does_not_abandon_builds() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	cm.start()
+	cm.load_chunk(Vector2i(0, 0))
+	assert_false(cm._built.has("0,0"), "the build is in flight")
+	cm.stop()
+	assert_false(cm._active, "streaming is stopped")
+	# The frame path only applies FINISHED builds, so let the task finish first — this is
+	# the poll `_process` would make on a later frame, and the point is that it still makes
+	# it. (Without the fix the poll is behind the `_active` guard and never runs again.)
+	var deadline := Time.get_ticks_msec() + 5000
+	while not cm._builds.is_empty() and Time.get_ticks_msec() < deadline:
+		if WorkerThreadPool.is_task_completed(int(cm._builds.keys()[0])):
+			break
+	cm._process(0.016)
+	assert_true(cm._built.has("0,0"), "the in-flight build still lands")
+	assert_eq(voxel.get_loaded_chunks().size(), 1, "and its mesh with it")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review — a worker result that carried NOTHING is a failed task, and it is
+## REFUSED rather than answered with a synchronous main-thread rebuild of the whole chunk
+## (the stall the worker exists to remove, done silently). The 2-arg synchronous form is
+## untouched: no `arrays` and no revision means "resolve it here".
+func _test_voxel_empty_worker_result_is_refused() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+	assert_false(v.build_chunk(Vector2i(0, 0), flat, {}, 0), "an empty worker result is refused")
+	assert_eq(v.get_loaded_chunks().size(), 0, "and it builds no mesh")
+	assert_eq(v.chunk_revision(Vector2i(0, 0)), 0, "and it does not advance the revision")
+	assert_true(v.build_chunk(Vector2i(0, 0), flat), "the synchronous form still builds")
+	assert_eq(v.get_loaded_chunks().size(), 1, "with a mesh of its own")
+	v.free()
+
+## Phase 42 review — the first-ring gate TIMES OUT. The gate is a worker build, and a
+## stalled one used to hold the boot forever with the loading screen up and nothing
+## logged; past the timeout the host tail runs anyway. Asserted on the pure predicate, so
+## the rule is pinned without booting.
+func _test_host_boot_first_ring_timeout() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	assert_true(root_script.host_boot_may_proceed(true, 0.0),
+		"a built ring lets the boot through")
+	assert_false(root_script.host_boot_may_proceed(false, 0.0),
+		"an unbuilt ring holds the boot")
+	assert_false(root_script.host_boot_may_proceed(false, root_script.FIRST_RING_TIMEOUT - 0.1),
+		"and keeps holding it right up to the timeout")
+	assert_true(root_script.host_boot_may_proceed(false, root_script.FIRST_RING_TIMEOUT),
+		"past the timeout the tail runs anyway, so a stalled ring cannot hang the boot")
+
+## Phase 42 — the loading screen's freeze, asserted at the predicate the player's input
+## consults. A headless run has no mouse capture at all, so the freeze has to be
+## assertable ON ITS OWN — which is also why it is a hook of the screen's own and not a
+## reuse of `any_window_open()` (asserted below to be false here).
+func _test_player_world_input_freeze() -> void:
+	var p := PlayerSlice.new()
+	add_child(p)
+	assert_false(p.is_world_input_frozen(), "a fresh slice is not frozen")
+	GameBus.world_input_frozen.emit(true)
+	assert_true(p.is_world_input_frozen(), "the loading screen's signal freezes the world")
+	assert_false(p.world_input_allowed(), "and no world action may resolve")
+	GameBus.world_input_frozen.emit(false)
+	assert_false(p.is_world_input_frozen(), "clearing the signal unfreezes it")
+
+	# The window predicate would have answered `false` for a loading screen: it only
+	# knows the panels the UI slice holds.
+	var ui := UiSlice.new()
+	add_child(ui)
+	assert_false(ui.any_window_open(), "no UI window is open while the loading screen shows")
+	p.set_world_input_frozen(true)
+	assert_false(p.world_input_allowed(), "so the freeze, not a window predicate, is what refuses")
+	p.free()
+	ui.free()
+
+## Phase 42 review — a REBUILD cannot take the pool over its in-flight cap. An edit at a
+## chunk corner names three touched chunks and `request_rebuild` used to dispatch each one
+## outright, so a single corner edit — or a burst of build retries — put more builds in
+## flight than `max_builds_in_flight` allows. A rebuild the cap defers WAITS in
+## `_rebuild_queue`: delayed a frame, never dropped.
+func _test_chunk_rebuild_respects_inflight_cap() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.load_chunk(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	assert_true(cm._built.has("0,0"), "the chunk is built")
+	# One slot, and it is taken.
+	cm.max_builds_in_flight = 1
+	cm.load_chunk(Vector2i(1, 0))
+	assert_eq(cm._builds.size(), 1, "the pool holds one build, at its cap")
+	cm.request_rebuild(Vector2i(0, 0))
+	assert_eq(cm._builds.size(), 1, "an edit does not put the pool over its cap")
+	assert_true(cm._rebuild_pending.has("0,0"), "the rebuild is queued instead of dropped")
+	assert_eq(cm._rebuild_queue.size(), 1, "and waits for a slot")
+	_wait_for_builds(cm)
+	assert_eq(cm._builds.size(), 0, "the queued rebuild dispatches once the pool frees")
+	assert_eq(cm._rebuild_queue.size(), 0, "and the rebuild queue drains")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review pass 9 — the in-flight cap is enforced by `_dispatch_build` ITSELF, so the
+## public `load_chunk` cannot bypass it. Every internal caller checked the cap first, but a
+## direct load dispatched outright and put more builds in the pool than
+## `max_builds_in_flight` allows. The deferred load WAITS in `_rebuild_queue` (it is already
+## `_loaded`, so the drain's rebuild branch is the path that re-dispatches it) and drains under
+## the same cap, exactly like a queued rebuild: delayed a frame, never dropped.
+func _test_chunk_load_respects_inflight_cap() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.max_builds_in_flight = 1
+	cm.load_chunk(Vector2i(0, 0))        # takes the pool's only slot
+	assert_eq(cm._builds.size(), 1, "the first load takes the slot")
+	cm.load_chunk(Vector2i(1, 0))        # a SECOND, direct load with the pool at its cap
+	assert_eq(cm._builds.size(), 1, "a direct load does not put the pool over its cap")
+	assert_true(cm._loaded.has("1,0"), "the chunk is still taken into the streamed set")
+	assert_true(cm._rebuild_pending.has("1,0"), "its build waits in the queue instead of being dropped")
+	assert_eq(cm._rebuild_queue.size(), 1, "as one queued entry")
+	_wait_for_builds(cm)
+	assert_true(cm._built.has("0,0"), "the chunk that held the slot was built")
+	assert_true(cm._built.has("1,0"), "and the deferred load lands once the pool frees")
+	assert_eq(cm._builds.size(), 0, "with nothing left in flight")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review — a chunk that leaves the streamed window while it is still QUEUED is
+## not built. It used to be dispatched regardless (the queue was drained without re-reading
+## the window), and its `_pending` mark stayed set — so a chunk that left the window and
+## came back was silently skipped instead of being queued again.
+func _test_chunk_queued_leaving_range_is_cancelled() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var player: PlayerSlice = rig["player"]
+	cm.view_distance = 2
+	cm.prefetch_distance = 0
+	cm.loads_per_frame = 64
+	# A chunk queued while it was in range, drained only after the player moved away.
+	cm._load_queue = [Vector2i(5, 0)]
+	cm._pending["5,0"] = true
+	assert_false(cm._within_stream(Vector2i(5, 0)), "the chunk is outside the window now")
+	cm._drain_load_queue()
+	assert_false(cm._loaded.has("5,0"), "a chunk that left the window while queued is not built")
+	assert_false(cm._pending.has("5,0"), "and its pending mark is cleared, not left behind")
+	# Coming back: the window re-centres on it and it is queued again — the cleared mark is
+	# what makes that work.
+	player.spawn_at(Vector3(5.0 * 32.0 + 16.0, 40.0, 16.0))
+	cm.refresh()
+	assert_true(cm._pending.has("5,0"), "a chunk that returns to the window is queued again")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review — a build that exhausts MAX_BUILD_RETRIES does not leave a hole for the
+## session. The chunk is marked groundless and RE-ARMED by the next `refresh()` that
+## re-centres the window, with a fresh retry budget. Keyed on the window MOVING, so a build
+## that fails forever costs one dispatch per crossing rather than a per-frame spin.
+func _test_chunk_failed_chunk_is_rearmed() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var player: PlayerSlice = rig["player"]
+	cm.view_distance = 1
+	cm.prefetch_distance = 0
+	cm.refresh()
+	cm._load_queue.clear()
+	cm._pending.clear()
+	# The terminal state of a build that gave up: loaded, no mesh, marked groundless.
+	cm._loaded["0,0"] = true
+	cm._built.erase("0,0")
+	cm._failed["0,0"] = true
+	cm._build_attempts["0,0"] = cm.MAX_BUILD_RETRIES
+	player.spawn_at(Vector3(16.0 + 32.0, 40.0, 16.0))   # cross into chunk (1,0)
+	cm.refresh()
+	assert_false(cm._failed.has("0,0"), "the re-centre clears the groundless mark")
+	cm._drain_load_queue()
+	assert_eq(int(cm._build_attempts.get("0,0", 0)), 1, "with a fresh retry budget")
+	assert_true(cm._has_in_flight("0,0"), "and a fresh dispatch in flight")
+	_wait_for_builds(cm)
+	assert_true(cm._built.has("0,0"), "so the hole fills itself instead of staying for the session")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review — a chunk's creature and tree budgets spawn when its GROUND EXISTS, not
+## when it enters the streamed set. The build is on a worker, so spawning at load time put
+## the population on a chunk whose mesh arrived a frame or more later.
+func _test_chunk_contents_spawn_after_ground() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var terrain: TerrainSlice = rig["terrain"]
+	var tree := TreeSlice.new()
+	add_child(tree)
+	tree.terrain_slice = terrain
+	cm.tree_slice = tree
+	cm.load_chunk(Vector2i(0, 0))
+	assert_false(cm._built.has("0,0"), "the build is in flight")
+	assert_eq(tree.trees_in_chunk(Vector2i(0, 0)).size(), 0,
+		"no trees exist while the chunk's ground does not")
+	_wait_for_builds(cm)
+	assert_true(cm._built.has("0,0"), "the ground lands")
+	assert_true(tree.trees_in_chunk(Vector2i(0, 0)).size() > 0,
+		"and the chunk's trees spawn with it")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+	tree.free()
+
+## Phase 42 review pass 3 — the self-heal cannot be keyed on the window MOVING. A dedicated
+## server streams around a fixed origin and a host player standing still never changes
+## chunk, so `refresh()` returned before it ever reached the re-arm loop: a chunk whose
+## build gave up stayed a hole for the session, which is exactly the case the re-arm exists
+## for. A crossing still re-arms immediately; an unmoved window re-arms on a wall-clock
+## interval (set to 0 here — the interval is the backoff, not the behaviour under test).
+func _test_chunk_failed_chunk_is_rearmed_while_stationary() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.view_distance = 1
+	cm.prefetch_distance = 0
+	cm.self_heal_interval = 0.0
+	cm.refresh()
+	cm._load_queue.clear()
+	cm._pending.clear()
+	# The terminal state of a build that gave up, as in the crossing test above.
+	cm._loaded["0,0"] = true
+	cm._built.erase("0,0")
+	cm._failed["0,0"] = true
+	cm._build_attempts["0,0"] = cm.MAX_BUILD_RETRIES
+	# The player has NOT moved: the window does not re-centre.
+	cm.refresh()
+	assert_false(cm._failed.has("0,0"), "a stationary player still re-arms a groundless chunk")
+	assert_eq(int(cm._build_attempts.get("0,0", 0)), 0, "clearing the give-up state with it")
+	cm._drain_load_queue()
+	assert_eq(int(cm._build_attempts.get("0,0", 0)), 1, "with a fresh retry budget")
+	assert_true(cm._has_in_flight("0,0"), "and a fresh dispatch in flight")
+	_wait_for_builds(cm)
+	assert_true(cm._built.has("0,0"), "so the hole fills without a chunk crossing")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review pass 3 — `unload_chunk` cleared a queued rebuild's `_rebuild_pending`
+## mark but left its entry in `_rebuild_queue`. The dedupe reads the MARK, so the next
+## `_queue_rebuild` for that same chunk appended a SECOND entry — two dispatches for one
+## chunk under one revision, both attaching.
+func _test_chunk_unload_drops_queued_rebuild() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.load_chunk(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	cm.max_builds_in_flight = 1
+	cm.load_chunk(Vector2i(1, 0))   # takes the pool's one slot
+	cm.request_rebuild(Vector2i(0, 0))
+	assert_eq(cm._rebuild_queue.size(), 1, "the rebuild waits in the queue")
+	assert_true(cm._rebuild_pending.has("0,0"), "with its pending mark")
+	cm.unload_chunk(Vector2i(0, 0))
+	assert_eq(cm._rebuild_queue.size(), 0, "unloading a chunk drops its queued entry too")
+	assert_false(cm._rebuild_pending.has("0,0"), "and its pending mark")
+	# And the dedupe still holds afterwards: the chunk streams back in, is edited again
+	# behind the same full pool, and gets exactly ONE queue entry.
+	_wait_for_builds(cm)
+	cm.load_chunk(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	cm.load_chunk(Vector2i(2, 0))
+	cm.request_rebuild(Vector2i(0, 0))
+	assert_eq(cm._rebuild_queue.size(), 1, "a later rebuild for the same chunk is queued once")
+	_wait_for_builds(cm)
+	assert_eq(cm._rebuild_queue.size(), 0, "and drains")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review pass 3 — contents belong to a chunk's RESIDENCY, not to its build. An
+## edit rebuilds a loaded chunk, and the apply path re-ran `_spawn_chunk_contents` for it
+## every time: `spawn_for_chunk` walks every creature in the fabric and every live tree to
+## arrive at the count it already had. Counted through a spy, because the CALL is the
+## finding — the resulting population is identical either way.
+func _test_chunk_contents_spawn_once_per_residency() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var spy := ContentsSpy.new()
+	add_child(spy)
+	cm.creature_slice = spy
+	cm.tree_slice = spy
+	cm.load_chunk(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	assert_eq(spy.spawned.size(), 2, "the creature and tree budgets spawn with the ground")
+	# A block edit rebuilds the chunk — the population is already standing there.
+	cm.request_rebuild(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	assert_true(cm._built.has("0,0"), "the rebuild landed")
+	assert_eq(spy.spawned.size(), 2, "and did NOT re-derive the chunk's contents")
+	# Streaming out and back in is a NEW residency: it repopulates.
+	cm.unload_chunk(Vector2i(0, 0))
+	cm.load_chunk(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	assert_eq(spy.spawned.size(), 4, "a chunk that streams back in repopulates")
+	assert_eq(spy.despawned.size(), 2, "and its contents were despawned on the way out")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+	spy.free()
+
+## Phase 42 review pass 3 — the drain resolved the streamed window once per QUEUED chunk:
+## `_within_stream` re-derived `player_chunk()` (a slice call) and the radius for every
+## candidate, so one drain of a view ring paid dozens of position reads for one answer.
+func _test_chunk_drain_reads_window_once() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var spy := PlayerPosSpy.new()
+	add_child(spy)
+	cm.player_slice = spy
+	cm.view_distance = 2
+	cm.prefetch_distance = 0
+	cm.loads_per_frame = 64
+	cm.refresh()
+	assert_true(cm._load_queue.size() > 9,
+		"a full view ring is queued (%d chunks)" % cm._load_queue.size())
+	var before: int = spy.reads
+	cm._drain_load_queue()
+	assert_eq(spy.reads - before, 1,
+		"one drain resolves the player's chunk ONCE, not once per candidate")
+	# No `_wait_for_builds` on purpose here: the count IS the subject, and freeing the
+	# manager reaps whatever task is still in flight (`_exit_tree` awaits them).
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+	spy.free()
+
+## Phase 42 review pass 4 — and the sweep overwrote `_last_self_heal_msec` only on the
+## THROTTLED path. A crossing re-armed immediately and left the clock at its old value
+## (often the -1 sentinel), so the very next frame — stationary, with a fresh failure —
+## was unthrottled and re-armed again. Stamping whenever the sweep proceeds makes "at most
+## once per interval" start at the crossing. Asserted through a chunk the sweep runs over
+## but cannot re-arm (a build already in flight), which is what keeps it in `_failed` with
+## its mark visible across the crossing.
+func _test_chunk_crossing_stamps_self_heal_clock() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var player: PlayerSlice = rig["player"]
+	cm.view_distance = 1
+	cm.prefetch_distance = 0
+	cm.self_heal_interval = 60.0
+	cm.refresh()
+	cm._load_queue.clear()
+	cm._pending.clear()
+	cm._loaded["0,0"] = true
+	cm._failed["0,0"] = true
+	cm._build_attempts["0,0"] = cm.MAX_BUILD_RETRIES
+	cm._builds[424242] = { "chunk": Vector2i(0, 0), "key": "0,0" }   # already in flight
+	player.spawn_at(Vector3(16.0 + 32.0, 40.0, 16.0))                # cross into chunk (1,0)
+	cm.refresh()
+	assert_true(cm._failed.has("0,0"),
+		"an in-flight build keeps the chunk groundless through the crossing")
+	# The in-flight build lands (it does not clear `_failed`), and the next frame is
+	# STATIONARY. The crossing stamped the clock, so this frame must be throttled.
+	cm._builds.erase(424242)
+	cm.refresh()
+	assert_true(cm._failed.has("0,0"), "the frame after a crossing is throttled, not unthrottled")
+	# And the throttle is the only reason: zeroing the interval re-arms the same state.
+	cm.self_heal_interval = 0.0
+	cm.refresh()
+	assert_false(cm._failed.has("0,0"), "clearing the interval re-arms it")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review pass 3 tested the stationary re-arm with `self_heal_interval = 0.0`,
+## which DISABLES the throttle: it proved the re-arm runs without a crossing, but nothing
+## proved the interval suppresses one. This pins the throttle: a second stationary sweep
+## inside the interval re-arms nothing, and zeroing the interval is the only thing that
+## re-arms again.
+func _test_chunk_self_heal_throttle_suppresses_rearm() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.view_distance = 1
+	cm.prefetch_distance = 0
+	cm.self_heal_interval = 60.0
+	cm.refresh()
+	cm._load_queue.clear()
+	cm._pending.clear()
+	cm._loaded["0,0"] = true
+	cm._failed["0,0"] = true
+	cm._build_attempts["0,0"] = cm.MAX_BUILD_RETRIES
+	# First stationary sweep: never attempted before (the -1 sentinel), so not throttled.
+	cm.refresh()
+	assert_false(cm._failed.has("0,0"), "the first stationary attempt is not throttled")
+	# The same terminal state again, INSIDE the interval: the sweep must refuse.
+	cm._failed["0,0"] = true
+	cm._build_attempts["0,0"] = cm.MAX_BUILD_RETRIES
+	cm.refresh()
+	assert_true(cm._failed.has("0,0"), "a second re-arm inside the interval is suppressed")
+	assert_eq(int(cm._build_attempts.get("0,0", 0)), cm.MAX_BUILD_RETRIES,
+		"and the give-up state is left untouched by it")
+	# The interval is the ONLY reason it was refused.
+	cm.self_heal_interval = 0.0
+	cm.refresh()
+	assert_false(cm._failed.has("0,0"), "clearing the interval re-arms on the next sweep")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review pass 4 — the sweep required `not _built`, and a chunk whose REBUILD gave
+## up IS `_built`: its old mesh is still attached, so the sweep skipped exactly the case the
+## re-arm exists for — an edit whose rebuild never landed, leaving the edited block invisible
+## for the session. `_failed` is what says the build gave up; a groundless chunk is re-armed
+## whatever `_built` says.
+func _test_chunk_failed_rebuild_of_built_chunk_is_rearmed() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var player: PlayerSlice = rig["player"]
+	cm.view_distance = 1
+	cm.prefetch_distance = 0
+	cm.self_heal_interval = 0.0
+	cm.refresh()
+	cm._load_queue.clear()
+	cm._pending.clear()
+	# Built ONCE (so `_built` is true and its stale mesh stands), then an edit whose rebuild
+	# exhausted its retries.
+	cm._loaded["0,0"] = true
+	cm._built["0,0"] = true
+	cm._failed["0,0"] = true
+	cm._build_attempts["0,0"] = cm.MAX_BUILD_RETRIES
+	player.spawn_at(Vector3(16.0 + 32.0, 40.0, 16.0))   # a crossing re-arms immediately
+	cm.refresh()
+	assert_false(cm._failed.has("0,0"), "a failed REBUILD of an already-built chunk is re-armed")
+	cm._drain_load_queue()
+	assert_eq(int(cm._build_attempts.get("0,0", 0)), 1, "with a fresh retry budget")
+	assert_true(cm._has_in_flight("0,0"), "and a fresh dispatch in flight")
+	_wait_for_builds(cm)
+	assert_true(cm._built.has("0,0"), "so the edit's mesh lands instead of staying invisible")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review pass 4 — the sweep re-derived the streamed window per groundless key
+## (`_within_stream`), a `PlayerSlice.get_position()` call each. The caller has already
+## resolved `center` for its own pass, so the sweep takes it and uses `_within_stream_at`.
+## Counted through the position spy, because the answer is identical either way.
+func _test_chunk_self_heal_reads_window_once() -> void:
+	var cm := ChunkManager.new()
+	add_child(cm)
+	var spy := PlayerPosSpy.new()
+	add_child(spy)
+	cm.player_slice = spy
+	cm.view_distance = 2
+	cm.prefetch_distance = 0
+	cm.self_heal_interval = 0.0
+	cm.refresh()
+	cm._load_queue.clear()
+	cm._pending.clear()
+	for k in ["-1,0", "0,-1", "0,1", "1,0"]:
+		cm._loaded[k] = true
+		cm._failed[k] = true
+		cm._build_attempts[k] = cm.MAX_BUILD_RETRIES
+	assert_eq(cm._failed.size(), 4, "four groundless chunks, all in range, to sweep")
+	var before: int = spy.reads
+	cm.refresh()
+	assert_eq(spy.reads - before, 1,
+		"one sweep resolves the player's window ONCE, not once per groundless key")
+	assert_eq(cm._failed.size(), 0, "and the sweep still re-armed every one of them")
+	cm.free()
+	spy.free()
+
+## Phase 42 review pass 4 — `_process` calls the drain every frame, and the drain resolved
+## the player's chunk before knowing whether there was anything to dispatch. A settled
+## window (the common case) drained nothing and paid a position read for it.
+func _test_chunk_idle_drain_reads_no_position() -> void:
+	var cm := ChunkManager.new()
+	add_child(cm)
+	var spy := PlayerPosSpy.new()
+	add_child(spy)
+	cm.player_slice = spy
+	cm.refresh()
+	cm._load_queue.clear()
+	cm._pending.clear()
+	assert_true(cm._load_queue.is_empty() and cm._rebuild_queue.is_empty(),
+		"nothing is queued now")
+	var before: int = spy.reads
+	for i in range(8):
+		cm._drain_load_queue()
+	assert_eq(spy.reads - before, 0,
+		"a drain with both queues empty does not resolve the player's position at all")
+	# Sanity: a NON-empty queue still drains and still resolves the window once.
+	cm._load_queue = [Vector2i(0, 0)]
+	cm._pending["0,0"] = true
+	cm._drain_load_queue()
+	assert_true(cm._loaded.has("0,0"), "a queued chunk still drains")
+	assert_eq(spy.reads - before, 1, "and a non-empty drain resolves the window once")
+	cm.free()
+	spy.free()
+
+## Phase 42 review pass 4 — the isolated fast path in `_dispatch_build` (no terrain/voxel)
+## spawned a chunk's contents unconditionally, ignoring `_contents_spawned`: the threaded
+## path's residency rule was fixed in pass 3, this one was not. An EDIT still reaches it
+## through `request_rebuild`, so the budgets were re-derived on every block edit there too.
+func _test_chunk_rig_dispatch_respects_contents_residency() -> void:
+	var cm := ChunkManager.new()
+	add_child(cm)
+	var spy := ContentsSpy.new()
+	add_child(spy)
+	cm.creature_slice = spy
+	cm.tree_slice = spy
+	cm.load_chunk(Vector2i(0, 0))
+	assert_eq(spy.spawned.size(), 2, "the rig spawns the creature and tree budgets once")
+	cm.request_rebuild(Vector2i(0, 0))
+	assert_eq(spy.spawned.size(), 2, "and an edit does not re-derive them")
+	# A new residency still repopulates.
+	cm.unload_chunk(Vector2i(0, 0))
+	cm.load_chunk(Vector2i(0, 0))
+	assert_eq(spy.spawned.size(), 4, "a chunk that streams back in repopulates")
+	cm.free()
+	spy.free()
+
+## Phase 42 review pass 3 — the CI host job ended a boot with `--quit-after N`, a FRAME
+## budget, for a wait that is measured in WORKER time: a fast headless frame loop can burn
+## the budget before the ring's tasks land, and the job then fails for a boot that was
+## working. `--quit-after-boot` hands the decision to the boot itself. Static and
+## argument-driven, so the rule is pinned without booting (same shape as `should_run_tests`).
+func _test_quit_after_boot_predicate() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	assert_true(root_script.should_quit_after_boot([root_script.QUIT_AFTER_BOOT_ARG]),
+		"the flag is read from the user args")
+	assert_false(root_script.should_quit_after_boot([]),
+		"no flag leaves the exit to the engine's own budget")
+	assert_false(root_script.should_quit_after_boot(["--server", "--run-tests"]),
+		"and another arg is not it")
+
+## Phase 42 review — the phase's headline claim ("the build is on a worker, the main
+## thread does not build") is a QUANTITATIVE one, so it leaves a number behind rather than
+## prose. This times the two halves of one chunk build on this machine, as
+## `_dispatch_build` actually spends them.
+##
+## Phase 42 review pass 8 — and it now ASSERTS the split, which is the criterion the phase
+## was accepted on and which this test only PRINTED.
+##
+## Phase 42 review pass 9 — THE SPLIT ITSELF MOVED. The resolve (runs, colours, deposits) was the
+## main thread's half and cost ~43 ms per dispatch — 2.7 frames at 60 Hz — which is exactly what
+## rows 3 and 4 of this pass found: the ratio assertion passed while the frame did not. The main
+## thread now only GENERATES the heightmap and GATHERS the plain state the resolve reads
+## (`VoxelSlice.gather_build_input`), and the worker runs the resolve (`build_runs`) AND the build
+## (`build_chunk_arrays`). So the probe measures the NEW halves: main = generate + gather + the
+## apply pass, worker = resolve + build. Both are kept PER PASS, because the first pass pays the
+## one-time costs and the steady state is what a frame actually gets.
+##
+## The ceiling is the row's: one dispatch's main-thread half must fit inside ONE FRAME at 60 Hz,
+## because the streaming loop dispatches one chunk per frame. The ratio is still asserted
+## alongside it — the worker half must also dominate, i.e. the expensive work is off the main
+## thread — and both numbers are printed for a reviewer to check.
+func _test_chunk_build_split_probe() -> void:
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	var voxel := VoxelSlice.new()
+	voxel.terrain_slice = terrain
+	add_child(voxel)
+	# A 3×3 ring of heightmaps, so the resolve has real ring tiles to subtract against — the
+	# production case. Without them every ring tile reads as an UNKNOWN neighbour and the measured
+	# cost would flatter itself.
+	for cz in range(-1, 2):
+		for cx in range(-1, 2):
+			var c := Vector2i(cx, cz)
+			voxel._heightmaps["%d,%d" % [cx, cz]] = terrain.generate_heightmap(c)
+	var resolve_us := 0            # the main-thread half, summed (see `main_pass` for per-pass)
+	var pure_us := 0               # the worker half (resolve + build), summed
+	var apply_us := 0
+	var worker_resolve_us := 0
+	var main_pass: Array = []      # per-pass main-thread half: generate + gather + apply
+	var resolve_pass: Array = []   # per-pass main-thread gather alone
+	var built: Dictionary = {}
+	for i in range(3):
+		# --- the MAIN-THREAD half of one dispatch, in `_dispatch_build`'s own order ---
+		var t0 := Time.get_ticks_usec()
+		var hm: Array = terrain.generate_heightmap(Vector2i(0, 0))
+		var gathered: Dictionary = voxel.gather_build_input(Vector2i(0, 0), hm)
+		var r_us := Time.get_ticks_usec() - t0
+		resolve_us += r_us
+		resolve_pass.append(r_us)
+		# --- the WORKER half: the resolve, then the pure build ---
+		t0 = Time.get_ticks_usec()
+		var resolved: Dictionary = VoxelSlice.build_runs(Vector2i(0, 0), hm, gathered)
+		worker_resolve_us += Time.get_ticks_usec() - t0
+		t0 = Time.get_ticks_usec()
+		built = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), hm, resolved)
+		pure_us += Time.get_ticks_usec() - t0
+		# The apply half: exactly what `build_chunk` does with the worker's result on the
+		# main thread (minus the node attachment, a few object allocations either way).
+		t0 = Time.get_ticks_usec()
+		VoxelSlice._mesh_from_arrays(built)
+		var deposit_vertices: PackedVector3Array = built["deposit_vertices"]
+		if not deposit_vertices.is_empty():
+			VoxelSlice._mesh_from_arrays({
+				"vertices": built["deposit_vertices"], "normals": built["deposit_normals"],
+				"colors": built["deposit_colors"], "indices": built["deposit_indices"],
+			})
+		var trimesh := ConcavePolygonShape3D.new()
+		trimesh.set_faces(built["collision"])
+		var a_us := Time.get_ticks_usec() - t0
+		apply_us += a_us
+		main_pass.append(r_us + a_us)
+	var main_us := resolve_us + apply_us
+	var steady_main: int = int(main_pass[main_pass.size() - 1])
+	var steady_resolve: int = int(resolve_pass[resolve_pass.size() - 1])
+	var deposit_verts: int = (built["deposit_vertices"] as PackedVector3Array).size()
+	print("PROBE Phase 42 build split (3 passes): main-thread half %d us (generate+gather %d + apply %d), worker half %d us (resolve %d + build %d) (%d faces -> %d quads, %d deposit verts)" % [
+		main_us, resolve_us, apply_us, pure_us, worker_resolve_us, pure_us - worker_resolve_us,
+		int(built["cell_count"]), int(built["quad_count"]), deposit_verts])
+	print("PROBE Phase 42 build split per pass: main %s us (steady state %d, of which generate+gather %d), worker %s us" % [
+		str(main_pass), steady_main, steady_resolve, str(resolve_pass)])
+	assert_true(int(built["cell_count"]) > 0, "the worker half produced a real chunk")
+	assert_true((VoxelSlice._mesh_from_arrays(built)).get_surface_count() == 1,
+		"and its arrays commit to a mesh")
+	assert_true(resolve_us > 0 and pure_us > 0, "and both halves' costs were measured")
+	# THE ratio criterion (row 8): the expensive half is the half that runs off the main thread.
+	# Measured ~1.8x on the machine that pass ran on, so a strict `>` is the honest assertion — a
+	# ratio test tight enough to be interesting would be a flake.
+	assert_true(pure_us > main_us,
+		"the worker half dominates the main thread's own work (%d us vs %d us)" % [pure_us, main_us])
+	# THE absolute ceiling (rows 3 and 4): one dispatch per frame means the main thread pays this
+	# every frame, so it must fit in a frame. The three-pass SUM is not the number a frame gets —
+	# the steady state is — and this is the assertion the old ratio let a 43 ms frame pass.
+	var frame_us: int = 16667   # one frame at 60 Hz
+	assert_true(steady_main < frame_us,
+		"one dispatch's main-thread half fits inside a frame (%d us of %d us, generate+gather %d)" % [
+			steady_main, frame_us, steady_resolve])
+
+	# Phase 42 review pass 10 — and the ceiling is asserted AGAIN over a POPULATED edit log,
+	# which is what the pass-9 probe could not do: it measured a FRESH slice, so `_edits` was
+	# empty, `_gather_edits` returned on its first line, and the gather cost — the one thing the
+	# chunk index exists to bound — was never in the number the ceiling checked. Populate a
+	# WORLD's worth of edits (a full chunk in the window, plus several chunks far outside it, so
+	# the LOG is large while the WINDOW is not) and time the same main-thread half. The far
+	# chunks are the point: the old gather walked and string-split EVERY one of them on each
+	# dispatch; only the window's are copied now.
+	var op_template := [{ "op": "remove", "bottom": 1.5, "top": 2.0 }]
+	for ty in range(64):
+		for tx in range(64):
+			voxel._set_edit_ops(VoxelSlice._tile_key(Vector2i(tx, ty)), op_template)
+	# ...plus 24 chunks well OUTSIDE the window (≈98k more edits), so the log is a long-played
+	# world's and dwarfs the window. That ratio is the assertion: with the OLD world-scan gather
+	# this log cost one string split per edit here per dispatch and blew the frame; with the
+	# index only the window's 4096 are copied, whatever the world holds.
+	for far_i in range(24):
+		var far := Vector2i(far_i % 6 + 4, far_i / 6 + 4)
+		for i in range(4096):
+			voxel._set_edit_ops(VoxelSlice._tile_key(Vector2i(far.x * 64 + (i % 64), far.y * 64 + (i / 64))), op_template)
+	var populated_pass: Array = []
+	var window_edits := 0
+	for i in range(3):
+		var t0p := Time.get_ticks_usec()
+		var hm2: Array = terrain.generate_heightmap(Vector2i(0, 0))
+		var gathered2: Dictionary = voxel.gather_build_input(Vector2i(0, 0), hm2)
+		window_edits = (gathered2["edits"] as Dictionary).size()
+		populated_pass.append(Time.get_ticks_usec() - t0p)
+	var steady_pop: int = int(populated_pass[populated_pass.size() - 1])
+	print("PROBE Phase 42 gather with a populated edit log: %d edits across %d chunks (%d in the window), main-thread generate+gather %s us (steady %d of %d)" % [
+		voxel._edits.size(), voxel._edits_by_chunk.size(), window_edits, str(populated_pass), steady_pop, frame_us])
+	assert_true(window_edits >= 4096, "the window's edit log is genuinely populated (%d tiles)" % window_edits)
+	assert_true(steady_pop < frame_us,
+		"and the main-thread half still fits a frame with a populated edit log (%d us of %d us, %d window edits)" % [
+			steady_pop, frame_us, window_edits])
+	terrain.free()
+	voxel.free()
+
+## Phase 42 review pass 9 — the gathered payload has to carry the RING, or the resolve would run
+## on the worker with a silently wrong input: a ring tile whose chunk IS built would read as the
+## UNKNOWN neighbour (an empty column), and a ring chunk's own edits would be invisible. Both
+## halves are asserted on the table itself, where the answer is unambiguous — the ring tile at
+## (64, 32) belongs to chunk (1, 0), so its runs must come from THAT chunk's heightmap and its
+## edits, not from this chunk's.
+func _test_chunk_gather_carries_the_ring() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	var terrain: TerrainSlice = rig["terrain"]
+	var centre := Vector2i(0, 0)
+	cm.load_chunk(centre)
+	_wait_for_builds(cm)
+	var hm: Array = voxel._heightmaps["0,0"]
+	var ring_key := VoxelSlice._tile_key(Vector2i(64, 32))   # chunk (1, 0)'s own tile
+
+	# UNKNOWN: the neighbour the gather did not carry reads as empty, which is the documented
+	# unknown-column path (`_neighbour_runs`), not an error.
+	voxel._heightmaps.erase("1,0")
+	var unknown: Dictionary = VoxelSlice.build_runs(centre, hm, voxel.gather_build_input(centre, hm))
+	assert_true((unknown["runs"][ring_key] as Array).is_empty(),
+		"a ring chunk the gather did not carry resolves as the UNKNOWN neighbour")
+
+	# KNOWN: the ring tile resolves from the NEIGHBOUR's heightmap — a deliberately different one
+	# (6.0 against this chunk's noise), so the value names its source.
+	var flat6: Array = []
+	flat6.resize(64 * 64)
+	flat6.fill(6.0)
+	voxel._heightmaps["1,0"] = flat6
+	var known: Dictionary = VoxelSlice.build_runs(centre, hm, voxel.gather_build_input(centre, hm))
+	var ring_runs: Array = known["runs"][ring_key]
+	assert_true(ring_runs.size() > 0, "a carried ring chunk resolves its real column")
+	assert_eq(float((ring_runs[0] as Dictionary)["top"]), 6.0,
+		"from the NEIGHBOUR's heightmap the payload carried, not this chunk's")
+
+	# And the ring chunk's OWN EDIT reaches the resolve through the same payload.
+	voxel._set_edit_ops(ring_key, [{ "op": "add", "bottom": 0.0, "top": 8.0, "material": "Ashite" }])
+	var edited: Dictionary = VoxelSlice.build_runs(centre, hm, voxel.gather_build_input(centre, hm))
+	var placed := false
+	for run in edited["runs"][ring_key]:
+		if str((run as Dictionary)["material"]) == "Ashite":
+			placed = true
+	assert_true(placed, "and a RING tile's edit reaches the worker-side resolve")
+	voxel._set_edit_ops(ring_key, [])
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+## Phase 42 review — the loading freeze holds the BODY, not just `_input`. On a joining
+## client the body exists from the snapshot while its ring is still building, so an
+## input-only freeze left it falling through ground that did not exist. Asserted through
+## gravity: the suite's physics is inert, so an unfrozen body accumulates `_vel.y` and a
+## frozen one does not move at all.
+func _test_player_movement_freeze() -> void:
+	var falling := PlayerSlice.new()
+	add_child(falling)
+	falling.spawn_at(Vector3(16.0, 40.0, 16.0))
+	GameBus.world_input_frozen.emit(false)
+	falling._physics_process(0.1)
+	assert_true(falling.get_velocity().y < 0.0, "an unfrozen body accumulates gravity")
+
+	var held := PlayerSlice.new()
+	add_child(held)
+	held.spawn_at(Vector3(16.0, 40.0, 16.0))
+	GameBus.world_input_frozen.emit(true)
+	held._physics_process(0.1)
+	assert_eq(held.get_velocity(), Vector3.ZERO, "the loading freeze holds the body too")
+	falling.free()
+	held.free()
+
+## Phase 42 review — the loading screen's own visibility contract, asserted by the suite
+## instead of by hand. It is presentation (a CanvasLayer), so nothing else in the run
+## observes it: before this test the only evidence that it ever appeared was a `visible`
+## flag read off a live boot.
+func _test_loading_screen_visibility() -> void:
+	var screen = load("res://src/ui/loading_screen.gd").new()
+	add_child(screen)
+	var emitted: Array = []
+	var cb := func(frozen: bool): emitted.append(frozen)
+	GameBus.world_input_frozen.connect(cb)
+	assert_false(screen.is_active(), "a fresh loading screen is down")
+	assert_false(screen.visible, "and hidden")
+	screen.begin()
+	assert_true(screen.is_active(), "begin shows it")
+	assert_true(screen.visible, "and makes it visible")
+	assert_eq(emitted.size(), 1, "and emits the freeze")
+	assert_true(bool(emitted[0]), "freezing world input")
+	screen.set_progress(0.5)
+	assert_eq(screen._bar.value, 50.0, "the bar tracks the progress fraction")
+	screen.finish()
+	assert_false(screen.is_active(), "finish puts it away")
+	assert_false(screen.visible, "and hides it")
+	assert_eq(emitted.size(), 2, "and emits the thaw")
+	assert_false(bool(emitted[1]), "releasing world input")
+	GameBus.world_input_frozen.disconnect(cb)
+	screen.free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers

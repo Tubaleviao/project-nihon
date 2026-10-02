@@ -36,6 +36,11 @@ var proposal_slice: Node = null
 var trade_slice: Node = null
 
 var _ui: CanvasLayer = null
+## Set while the loading screen holds world input (`GameBus.world_input_frozen`). The
+## window keys and Escape are refused meanwhile: the loading screen restores the mouse
+## capture it saved on `finish()`, so a window opened during loading would be left open
+## under a captured mouse, and clicks would reach the world through the menu.
+var _world_input_frozen: bool = false
 var _panels: Dictionary = {}                 # panel name -> PanelContainer
 var _inventory_usage: Label = null
 var _inventory_items: Label = null
@@ -71,9 +76,15 @@ func _ready() -> void:
 	GameBus.market_listing_expired.connect(_on_market_listing_expired)
 	GameBus.proposal_submitted.connect(_on_proposal_submitted)
 	GameBus.proposal_ratified.connect(_on_proposal_ratified)
+	GameBus.world_input_frozen.connect(_on_world_input_frozen)
 	refresh_all()
 
+func _on_world_input_frozen(frozen: bool) -> void:
+	_world_input_frozen = frozen
+
 func _input(event: InputEvent) -> void:
+	if _world_input_frozen:
+		return
 	if event is InputEventKey and event.pressed:
 		match event.keycode:
 			KEY_I:

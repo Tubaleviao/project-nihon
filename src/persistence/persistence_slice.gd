@@ -343,14 +343,23 @@ static func resolved_shutdown_poll_interval(configured: float) -> float:
 
 ## The chunk manifests an INCREMENTAL save should carry: only the dirty keys, so
 ## an autosave re-serializes the chunks that changed instead of all ~49 loaded
-## ones. Returns { "cx,cz": manifest } for every dirty key present in `manifest`.
-## Pure, so the runtime path and the tests share one implementation.
+## ones. Pure, so the runtime path and the tests share one implementation.
+##
+## A dirty key with NO manifest entry is carried as an EMPTY edit set, not skipped.
+## A chunk's entry disappears the moment its last edit does — `_append_edit` ERASES
+## a tile's op list when it compacts back to the column's natural self (the player
+## mined a block and put it back), and the chunk goes with it — while dirty tracking
+## is per CHUNK and is reset only by the save that consumed it. So "this chunk has no
+## edits at all any more" is a STATE an incremental save must be able to express:
+## `_merge_world` folds the payload over the record on disk, so a chunk the payload
+## merely omits keeps the edits the earlier (full) save wrote, and a reload
+## resurrects terrain the player has already put back. The empty entry is that
+## statement; `_merge_world` reads it as a deletion.
 static func dirty_chunk_subset(manifest: Dictionary, dirty_keys: Array) -> Dictionary:
 	var out := {}
 	for key in dirty_keys:
 		var k := str(key)
-		if manifest.has(k):
-			out[k] = manifest[k]
+		out[k] = manifest[k] if manifest.has(k) else { "edits": {} }
 	return out
 
 ## Whether a host world snapshot may carry the PEER'S OWN record — inventory,
@@ -369,6 +378,21 @@ static func dirty_chunk_subset(manifest: Dictionary, dirty_keys: Array) -> Dicti
 static func snapshot_carries_own_record(is_handshake_snapshot: bool, player_id: String) -> bool:
 	return is_handshake_snapshot and not player_id.is_empty()
 
+## True when a chunk manifest entry states that the chunk has NO edits at all — the
+## deletion marker an incremental payload carries for a chunk whose edits compacted
+## away (see `dirty_chunk_subset`). The `edits` key must be PRESENT and an empty
+## Dictionary: an entry of a shape this version does not understand is folded in
+## rather than read as a deletion, the same "never default an unknown shape" policy
+## `_normalise_ops` applies to an op it cannot read.
+static func is_empty_edit_set(entry: Variant) -> bool:
+	if not (entry is Dictionary):
+		return false
+	var e: Dictionary = entry
+	if not e.has("edits"):
+		return false
+	var edits: Variant = e["edits"]
+	return edits is Dictionary and (edits as Dictionary).is_empty()
+
 # ---------------------------------------------------------------------------
 # Private
 # ---------------------------------------------------------------------------
@@ -378,6 +402,11 @@ static func snapshot_carries_own_record(is_handshake_snapshot: bool, player_id: 
 ## per instance_id (see merge_creature_states), and every other field (stations,
 ## the local player id, the timestamp) is replaced by the newer payload, since
 ## those are already small and fully re-serialized every save.
+##
+## An incoming chunk entry that is an EMPTY edit set DELETES the chunk's key rather
+## than folding in — the payload's way of saying the chunk has no edits at all any
+## more, which the record on disk cannot otherwise be told (see
+## `dirty_chunk_subset`).
 func _merge_world(base: Dictionary, inc: Dictionary) -> Dictionary:
 	var merged := base.duplicate(true)
 	for key in inc:
@@ -386,7 +415,11 @@ func _merge_world(base: Dictionary, inc: Dictionary) -> Dictionary:
 			var fresh: Variant = inc["chunks"]
 			if fresh is Dictionary:
 				for ckey in fresh:
-					chunks[ckey] = fresh[ckey]
+					var entry: Variant = fresh[ckey]
+					if is_empty_edit_set(entry):
+						chunks.erase(ckey)
+						continue
+					chunks[ckey] = entry
 			merged["chunks"] = chunks
 			continue
 		if key == "creatures":
