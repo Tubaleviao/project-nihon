@@ -3376,7 +3376,14 @@ chunk is queued further out than it is needed.
   half of a dispatch — heightmap generation plus column-table resolution — against the pure
   builder the worker runs, so the split is a measured number rather than a claim. A true
   per-FRAME millisecond figure still needs a frame-driven boot, which the synchronous suite
-  deliberately is not.)**
+  deliberately is not.)** **(Eighth review pass: the probe ASSERTS the ratio now, and it
+  measures the other half of the main thread's work too — the apply path (`_mesh_from_arrays`
+  plus the collision `set_faces`) is inside the main-thread total, and three passes are summed
+  because the gap is under 2x. Measured: main 130071 us (resolve 126938 + apply 3133) against
+  the worker's 235263 us, i.e. 1.81x. The criterion's other half — the builder is a pure
+  function of its arguments — was VACUOUSLY tested until this pass: the test built the SAME
+  resolved table twice, so its second, differently-stated slice was dead setup. It now resolves
+  the chunk from both slices and builds from each.)**
 - [x] Greedy merge cuts the per-chunk vertex count (quote the before/after
   number), and a tile whose neighbours differ still emits a valid 1×1 quad.
   *(`cell_count` → `quad_count`, measured in the suite's "chunk: greedy merge collapses a
@@ -3444,7 +3451,12 @@ chunk is queued further out than it is needed.
   three consecutive fresh-world runs — one more test (the terrain material is one instance), one
   harness hardening (step 4 waits for a distant tree, bounded by `STEP_TIMEOUT_SECS`, instead of
   reporting `no_distant_tree` at whatever instant it arrives), and a doc correction (the quick start
-  now says `npm`, which is what CI runs). ***
+  now says `npm`, which is what CI runs). **EIGHTH review pass: `7833/7833 passed (0 failed)` on
+  `--quit` and on `--quit --server`, no `SCRIPT ERROR`, and `10/10 steps agreed` from the net harness
+  on a fresh world — three more tests (the kept window is the view ring, apply_edits dispatches a
+  rebuild, flush_builds awaits its retries), plus the split probe promoted from a print to an
+  assertion (`main-thread half 130071 us` — resolve 126938 + apply 3133 — `against the worker's
+  235263 us`, 1.81×).** ***
 
 **Implementation notes:**
 - **Godot's threading rule is what makes the split mandatory.** Scene-tree
@@ -3480,7 +3492,13 @@ chunk is queued further out than it is needed.
   `view_distance + prefetch_distance` for QUEUEING **and** for retention. A chunk queued
   further out and unloaded the moment it falls outside `view_distance` is a build paid for
   and thrown away, which is the opposite of what the band is for. `view_distance` is now
-  the radius that is guaranteed fully streamed; the band beyond it is lead time.)*
+  the radius that is guaranteed fully streamed; the band beyond it is lead time.
+  **Reversed in the eighth review pass — the note's own advice was right and the
+  "shipped differently" was the regression: retention is `view_distance` and only the QUEUE
+  spans the band, because the retention it bought was 121 resident chunks against the view
+  ring's 49, i.e. 2.5x the meshes, trimeshes and population. The band is still lead time —
+  a band chunk is built ahead of its need — and it is released on the next crossing unless
+  the player moved toward it.)**
 
 **Implementation notes added during the phase (kept here for the next reader):**
 - **A worker task may hold no reference to a Node, and must still be AWAITED.** The pure
@@ -3603,6 +3621,11 @@ screen up and nothing logged, it names how many ring chunks were built, and the 
 what makes the failure visible) and **the prefetch band's retention cost** (121 resident
 chunks against 49 is the price of the lead time the band exists for — reducing it is a tuning
 decision, not a defect).
+**(That second deferral was taken back in the eighth review pass: the retention half IS
+closed — the kept window is `view_distance` again and only the QUEUE spans the band — so
+only the view ring's 49 hold meshes, trimeshes and population. What remains a tuning
+decision is a different question: whether the band should carry spawned population at all,
+since a band chunk's contents are now spawned and then released unvisited.)**
 
 **THIRD review-pass notes (a third post-phase review — seven findings, all closed in
 `fix(terrain,core,ci,docs): Phase 42 review pass 3`):**
@@ -3919,6 +3942,121 @@ a doc correction.
    times (56 vs 62 here). Green either way, and no assertion is lost — but a count quoted in this
    file is a count for the revision and RNG stream it was measured on, not a constant to match.
 
+**EIGHTH review pass (`fix(terrain,test,docs): Phase 42 review pass 8`):** an eight-row table (an
+Issue column, a Solution column, a Criticality column) with no line numbers and no `Closes` column —
+it dates itself by content, and all of that content lands on HEAD. **All eight rows are real**: the
+fourth list in a row with nothing to discard. Two are real as PERFORMANCE and must not move
+behaviour (rows 4 and 8), one is real only as a VACUOUS TEST rather than a defect in production code
+(row 5), and one is real by its own account — "the criterion has no assertion" is the finding
+(row 3). Row 3's second half and rows 4/8 are what makes this pass's proof unusual: three of the
+eight cannot be RED-proved at all, because the thing they change is a COST, and a cost that must not
+change behaviour has only an equivalence proof and a measured number.
+
+1. **`build_chunk()` resolved the rare-vein deposits on the main thread (row 1) — REAL, the headline
+   (High).** `vein_deposits()` walked all 4096 of the chunk's own columns with its OWN memo (a second
+   run replay per tile, plus a biome lookup and a material roll) and then emitted every deposit box
+   through a `SurfaceTool` — and `build_chunk` called it on the MAIN thread for every build,
+   including every build the worker had just finished: the stall the worker exists to remove, paid
+   on the main thread immediately after it. Measured on this machine, for a 695-deposit chunk: the
+   walk **24 245 us**, the `SurfaceTool` emission **6 531 us** (695 boxes → 25 020 verts), i.e.
+   **~30.8 ms of main-thread work per build**, of which the emission is now the worker's and the walk
+   is the resolve half's, sharing the mesher's memo (its marginal cost is the **6 791 us/pass** the
+   split probe measures). The fix is the row's own: the deposit list is resolved by
+   `collect_build_runs`, the pure builder emits the boxes as
+   `deposit_vertices/normals/colors/indices`, and `build_chunk` only attaches. The deposits stay a
+   SECOND mesh with no collision, which is what keeps "apply only geometry" honest — a deposit is
+   decoration the player must not stand on — and `MeshUtil.add_box_arrays` shares `_box_corners` and
+   `_box_faces` with `add_box`, so the two authoring paths cannot wind a face differently (the whole
+   reason that file exists). RED-proved in the batch: with the resolve returning `"deposits": []`,
+   `voxel: rare vein deposits on natural tiles` fails `every deposit reaches the chunk mesh: expected
+   25020, got 0`, and `voxel: terrain material is one instance` fails `the chunk carries a surface and
+   a deposit overlay: expected 2, got 1`.
+2. **`refresh()` kept the PREFETCH band resident (row 2) — REAL, and a Phase 42 regression the row
+   dates precisely (High).** Phase 42 had widened `wanted` to `stream_radius()`, so a crossing
+   retained 121 chunks (11×11 at the defaults) against the view ring's 49 (7×7): 2.5× the meshes,
+   trimeshes, creatures and trees for a band the player may never enter. `wanted` is
+   `view_distance` again and the load QUEUE still spans `stream_radius()`. What is traded, plainly:
+   a band chunk is still BUILT ahead of its need (that is the prefetch), but it is RELEASED on the
+   next crossing that leaves it in the band unless the player moved toward it — build work in
+   advance for a view ring's worth of memory, which is the row's intent. RED-proved:
+   `chunk: the kept window is the view ring` fails fifteen assertions with `wanted` back at the
+   stream radius (`a band chunk beyond the new view ring is released`, plus eleven
+   `every resident chunk is inside the view ring (…): expected true, got false`).
+3. **The split criterion was printed, never asserted (row 3) — REAL, and the row's own evidence
+   (High).** `_test_chunk_build_split_probe` measured both halves and asserted only that the work
+   happened (`cell_count > 0`, `worker_us > 0`), so the phase's headline claim — "the build does not
+   run on the main thread" — could have been false with the suite green. It now asserts the ratio,
+   and the row's second half is implemented too: the measured main-thread half INCLUDES the apply
+   path (`_mesh_from_arrays` for the surface and the deposit overlay, and the
+   `ConcavePolygonShape3D.set_faces` GDScript still pays to hand the worker's collision to physics).
+   Three passes are summed, because the two halves differ by under 2× on this machine and a
+   single-shot pair would be a timing coin-flip — **main 130 071 us (resolve 126 938 + apply 3 133),
+   worker 235 263 us** on the `--quit` boot, printed by the test for a reviewer to check. The
+   assertion is a strict `>` rather than a ratio: the gap is 1.81×, so a ratio tight enough to be
+   interesting would be a flake.
+4. **`collect_build_runs` redid two per-tile lookups 4356 times (row 4) — REAL, behaviour-preserving
+   (Medium-High).** The biome is a per-CHUNK property (`TerrainSlice.get_biome_at_chunk`), so the
+   66×66 ring — which spans at most four chunks — was asking the terrain slice 4356 questions to get
+   four answers; and `material_for_biome` re-summed the biome's weight table on every call, while
+   `_natural_color` re-derived a colour from a handful of possible materials. Both are memoised for
+   the pass (`_biome_at_memo`, a material → colour map) and the weight table is built once per biome
+   into a `static var` (`_biome_roll_table`, same insertion order, so the roll's tie-breaks are
+   unchanged). Measured: the resolve half runs **42 313 us/pass with the memos against 48 971
+   us/pass without them** (~14%), all 7833 assertions green both ways — this row has no RED by
+   construction, so it is proved by the equivalence and the number.
+5. **The purity test was vacuous (row 5) — REAL as a TEST defect (Medium).** `_test_voxel_build_
+   arrays_pure` built the SAME resolved table twice (`f(x) == f(x)`) and its second slice `b` — set
+   up with a different place material and an edit in another chunk precisely to show that slice state
+   cannot reach the build — was dead setup that was never read. It now resolves the chunk from BOTH
+   slices and builds from each: the two resolves must agree and the two builds must be identical, so
+   a resolve that leaked one slice's state into another's answer goes red, and so does a builder that
+   read back into the slice. Like row 4 this has no production defect behind it and cannot be
+   RED-proved; it guards against a leak that does not exist today.
+6. **`apply_edits` rebuilt touched chunks synchronously (row 6) — REAL (Medium).** The re-scope path
+   — a joining client's snapshot, a load — called `build_chunk` for every touched chunk in the frame
+   that applied it (up to three chunks of main-thread build work) AND advanced each chunk's revision
+   on the main thread, which made an in-flight worker result stale while its task was still the frame
+   path's to reap. It goes through `ChunkManager.request_rebuild` now, exactly like
+   `_rebuild_chunk_at_tile`, with the synchronous build kept for a slice with no manager wired (the
+   suite, a probe). RED-proved: `chunk: apply_edits dispatches a rebuild` fails both
+   `the snapshot's rebuild is NOT done in the frame that applied it` and `it went to a worker
+   instead: expected 1, got 0`.
+7. **`flush_builds()` iterated a snapshot and never awaited its retries (row 7) — REAL (Medium).**
+   `_apply_build_entry` can DISPATCH (a refused worker result is re-dispatched), so a task created
+   during the pass was invisible to the `_builds.keys()` snapshot taken before it — and this is the
+   BLOCKING variant, whose whole contract is that nothing is left in flight behind it. It loops now
+   (re-reading the table per round, bounded by `FLUSH_MAX_ROUNDS` so a build that fails forever ends
+   up in `_failed` for the self-heal instead of spinning). RED-proved: with the loop cut to one
+   round, `chunk: flush_builds awaits its retries` fails `the retry dispatched during the pass is
+   awaited by it: expected 0, got 1` and `and the chunk ends up built (0 meshes attached)`.
+8. **`_group_cell` formatted a String key per face cell (row 8) — REAL, behaviour-preserving
+   (Medium).** Three `%.4f` formattings plus `Color.to_html` per face cell is ~25k throwaway strings
+   for one 64×64 chunk, on the build's own budget and again on every edit rebuild. The key is a
+   `Vector4i` of the same four values quantised to 1/10000 — exactly the precision `%.4f` kept — with
+   the direction as the outer bucket (a fifth component has no axis, and direction must be in the
+   key: an "up" face and a "down" face at the same plane and span would otherwise merge into one
+   quad, i.e. a missing floor or ceiling). The quantised ints are bounded far inside int32 (a wall
+   plane is a multiple of `TILE_SIZE` and bounded by the world extent, a span by
+   `BEDROCK_DEPTH..MAX_HEIGHT`, and `to_rgba32()` is an int32 by definition). Proved by EQUIVALENCE,
+   not RED: with the string key restored the suite is green AND the merge probe prints the identical
+   numbers (`4352 faces -> 5 quads (20 vertices)` for the flat chunk, `7519 faces -> 3544 quads
+   (14176 vertices)` for the natural one — the natural figure is SEED-dependent, so the comparison
+   is only valid within one boot, which is exactly how it was taken) — the new key groups exactly
+   what the old one grouped, so no span merges that did not merge before.
+
+**Batched probes, and what an equivalence probe can and cannot show.** Five inversions went into ONE
+boot (the resolve's deposit list emptied; `wanted` back to the stream radius; `apply_edits` back to
+the synchronous build via an always-false operand; the flush loop cut to one round; the string key
+restored). It reported `7816/7839 passed (23 failed)`, and the `✗` lines are exact for the four
+probes' own subjects — with one honest caveat: reverting `apply_edits` also turned
+`net: a remote mine credits the actor` and `net: a remote place spends the actor's pack` red
+(`expected 1, got 2`), so that probe's blast radius is wider than its own test and those two are NOT
+evidence for row 6. The fifth inversion is the equivalence probe and its signal is not a `✗` at all:
+the GREEN merge numbers printed unchanged inside a run that was otherwise failing, which is why the
+numbers were read rather than the verdict. This pass's red-caused failure total (23) is a superset of
+its four subjects and no test aborted (7839 ≈ the green run's 7833 ± RNG), so nothing was lost to a
+crash rather than a failed assertion.
+
 **Known simplifications (deferred):**
 - **An edit's mesh lands a frame or two later.** Since the review pass, a mine/place
   DISPATCHES its chunk rebuild (and any seam neighbour's) to the worker instead of building
@@ -3947,8 +4085,14 @@ a doc correction.
   **(Refined in the second review pass: they spawn from the apply path, i.e. WITH the chunk's
   mesh, rather than at load time a frame or two before it. What is still deferred: the spawn
   itself is still a main-thread call inside that apply pass, and the prefetch band's chunks —
-  121 resident against the view ring's 49 — spawn their population as eagerly as the near
+  then 121 resident against the view ring's 49 — spawn their population as eagerly as the near
   ring's; how far out population should exist at all is a tuning decision this pass left open.)**
+  **(Closed in the eighth review pass for the WINDOW half: the kept window is `view_distance`
+  again, so only the view ring's 49 hold meshes, trimeshes and population; a prefetch-band
+  chunk is still built ahead of its need but is released on the next crossing that leaves it in
+  the band. What is still deferred: the spawn itself is still a main-thread call inside the
+  apply pass, and a band chunk's population is spawned and then released unvisited — whether
+  the band should carry population at all remains the tuning decision.)**
 - **No runtime tuning UI** for `loads_per_frame` / the ring sizes; they stay
   constants (overridable, as today).
 

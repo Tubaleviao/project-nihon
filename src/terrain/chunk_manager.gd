@@ -120,6 +120,13 @@ const DEFAULT_MAX_BUILDS_IN_FLIGHT := 4
 ## loop, never a rebuild the player asked for.
 const MAX_BUILD_RETRIES := 3
 
+## Phase 42 review pass 8 — how many rounds `flush_builds()` may take before it gives up
+## waiting for the in-flight table to empty. One round reaps every task the previous round
+## dispatched, so the number of rounds is the length of the longest retry chain rather than
+## a frame budget; the cap is here so a build that fails forever cannot spin the blocking
+## caller (it ends up in `_failed` for the self-heal, and the retry cap stops it anyway).
+const FLUSH_MAX_ROUNDS := 16
+
 ## Phase 42 review pass 3 — seconds between self-heal attempts for a chunk whose build gave
 ## up, while the window is NOT moving (see `_self_heal_failed`). A crossing skips the
 ## throttle entirely, because a crossing is the signal the re-arm was always keyed on;
@@ -249,9 +256,17 @@ func stop() -> void:
 ## a new chunk since the last call. Loads are NOT built here — they go onto
 ## _load_queue and are drained a bounded number per frame by _drain_load_queue.
 ##
-## Phase 42 — the queue AND the kept window are `view_distance + prefetch_distance`,
-## so the ring that leads the player's heading is already there when the crossing
-## happens rather than being requested at that moment.
+## Phase 42 review pass 8 — the KEPT window and the LOAD window are two different radii,
+## and conflating them was a regression this pass fixes. The load queue still spans
+## `stream_radius()` (`view_distance + prefetch_distance`) so the ring that leads the
+## player's heading is ALREADY queued when the crossing happens. The KEPT window is
+## `view_distance`: what a crossing retains — a resident mesh, its trimesh, its creatures
+## and its trees — is the view ring, not the prefetch band. Phase 42 had widened `wanted`
+## to the stream radius too, which put 121 resident chunks (11×11) where the view ring
+## keeps 49 (7×7): 2.5× the meshes, collision shapes and spawned contents, for a band the
+## player may never walk into. A band chunk is therefore built ahead of its need and
+## released on the next crossing unless the player moved toward it — that is the trade
+## (build work in advance for a view ring's worth of memory) and it is the intended one.
 func refresh() -> void:
 	var center := player_chunk()
 	var window_moved := center != _last_center
@@ -266,12 +281,13 @@ func refresh() -> void:
 		return
 
 	_last_center = center
-	var radius := stream_radius()
-	var desired := _desired_chunks(center, radius)
+	# Two radii on purpose: `wanted` (kept) is the view ring, `desired` (queued) is the
+	# stream radius that leads it. See the docstring above.
 	var wanted: Dictionary = {}
-	for c in desired:
+	for c in _desired_chunks(center, view_distance):
 		if _in_bounds(c):
 			wanted[_chunk_key(c)] = true
+	var desired := _desired_chunks(center, stream_radius())
 
 	# Queue loads nearest-first. Dispatching is what is bounded per frame; the build
 	# itself runs on a worker.
@@ -425,10 +441,11 @@ func _spawn_chunk_contents(chunk_pos: Vector2i) -> void:
 		tree_slice.spawn_for_chunk(chunk_pos)
 
 ## Hand one chunk's build to a worker task. Main-thread work: the heightmap
-## generation and the column-table resolution (that is where `_edits`, `_heightmaps`
-## and the biome lookup are read). Worker work: the pure build, which returns plain
-## arrays. The result is applied later, on the main thread, by
-## `_apply_finished_builds()`.
+## generation and the resolve of the build's input (`collect_build_runs` — that is where
+## `_edits`, `_heightmaps` and the biome lookup are read, and it now resolves the chunk's
+## rare-vein DEPOSITS too, so the worker can emit their boxes rather than the main thread
+## attaching them after the fact). Worker work: the pure build, which returns plain
+## arrays. The result is applied later, on the main thread, by `_apply_finished_builds()`.
 func _dispatch_build(chunk_pos: Vector2i) -> void:
 	var key := _chunk_key(chunk_pos)
 	# An isolated rig (the suite wires no terrain/voxel) has nothing to build, and the
@@ -457,11 +474,11 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 	_supersede_in_flight(key)
 	_build_attempts[key] = int(_build_attempts.get(key, 0)) + 1
 	var heightmap: Array = terrain_slice.generate_heightmap(chunk_pos)
-	var runs: Dictionary = voxel_slice.collect_build_runs(chunk_pos, heightmap)
+	var resolved: Dictionary = voxel_slice.collect_build_runs(chunk_pos, heightmap)
 	var revision: int = int(voxel_slice.chunk_revision(chunk_pos))
 	var result: Array = [null]
 	var task_id := WorkerThreadPool.add_task(
-		func(): result[0] = VoxelBuilder.build_chunk_arrays(chunk_pos, heightmap, runs),
+		func(): result[0] = VoxelBuilder.build_chunk_arrays(chunk_pos, heightmap, resolved),
 		false, "chunk build %s" % key)
 	_builds[task_id] = {
 		"chunk":     chunk_pos,
@@ -587,11 +604,23 @@ func _apply_finished_builds() -> void:
 ## (`_apply_finished_builds`); this is the blocking variant for a caller that has no
 ## frames to give — a test, or a boot that must not move on until the ground exists.
 ## Returns how many builds it attached.
+##
+## Phase 42 review pass 8 — it LOOPS, and the loop is the fix. `_apply_build_entry` can
+## DISPATCH (a build that exhausted its retries re-arms, and a failed worker result is
+## re-dispatched), so a single pass over a snapshot of `_builds.keys()` can leave a task
+## it just created in flight — and this is the blocking variant whose whole contract is
+## "nothing is left in flight after me". The snapshot is still taken per round; each round
+## therefore reaps what the previous one dispatched, so the number of rounds is the length
+## of the longest retry chain, bounded by `FLUSH_MAX_ROUNDS` so a build that fails forever
+## cannot spin here (it ends up in `_failed`, re-armed by the self-heal).
 func flush_builds() -> int:
 	var applied := 0
-	for task_id in _builds.keys():
-		if _apply_build_entry(task_id):
-			applied += 1
+	var round := 0
+	while not _builds.is_empty() and round < FLUSH_MAX_ROUNDS:
+		round += 1
+		for task_id in _builds.keys():
+			if _apply_build_entry(task_id):
+				applied += 1
 	return applied
 
 ## Attach one task's arrays and clear it from the in-flight table. Returns false when

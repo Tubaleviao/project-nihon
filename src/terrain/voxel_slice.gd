@@ -30,9 +30,10 @@ extends Node
 ##   runs_topping_at(runs, y)             -> Dictionary       (static, pure)
 ##   set_place_material / get_place_material / cycle_place_material
 ##   material_for_biome(biome, world_xz) -> String
-##   vein_deposits(chunk_pos, heightmap) -> Array   (rare-vein raised deposits)
-##   build_chunk_arrays(chunk_pos, heightmap, runs) -> Dictionary  (PURE, worker-safe)
-##   collect_build_runs(chunk_pos, heightmap) -> Dictionary
+##   vein_deposits(chunk_pos, heightmap, cache) -> Array   (rare-vein raised deposits)
+##   build_chunk_arrays(chunk_pos, heightmap, resolved) -> Dictionary  (PURE, worker-safe;
+##     `resolved` is the `{ runs, deposits }` pair from `collect_build_runs`)
+##   collect_build_runs(chunk_pos, heightmap) -> Dictionary  ({ runs, deposits })
 ##   chunk_revision(chunk_pos)                    -> int
 ##
 ## Phase 41 — a column is a SPARSE list of solid RUNS, bottom → top, not one top
@@ -73,12 +74,12 @@ extends Node
 ## Phase 42 — the build is a PURE FUNCTION of data the main thread hands it, so it
 ## can run on a `WorkerThreadPool` task. `collect_build_runs()` is the main-thread
 ## half (it reads `_edits`, `_heightmaps` and the terrain slice's biome lookup and
-## flattens them into a plain tile → runs table), `build_chunk_arrays()` is the
-## worker half (it reads only its three arguments and returns plain arrays), and
-## `build_chunk()` is the consumer that attaches the nodes. Scene-tree mutation,
-## resource saving and `GameBus` emission are all main-thread work in Godot, so the
-## split is not a style choice — it is the only shape that is legal off the main
-## thread, and the builder must never be given a slice reference to "help".
+## flattens them into a plain `{ runs, deposits }` payload), `build_chunk_arrays()` is
+## the worker half (it reads only its three arguments — the payload included — and
+## returns plain arrays), and `build_chunk()` is the consumer that attaches the nodes.
+## Scene-tree mutation, resource saving and `GameBus` emission are all main-thread work
+## in Godot, so the split is not a style choice — it is the only shape that is legal off
+## the main thread, and the builder must never be given a slice reference to "help".
 ##
 ## The same pass GREEDY-MERGES the quads: coplanar faces of the same colour that
 ## are adjacent in the tile grid collapse into one rectangle (`_merge_rects`), so a
@@ -310,14 +311,23 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	mesh_inst.material_override = _terrain_material()
 	root.add_child(mesh_inst)
 
-	var deposits := vein_deposits(chunk_pos, heightmap)
-	if not deposits.is_empty():
-		var deposit_st := SurfaceTool.new()
-		deposit_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		for deposit in deposits:
-			MeshUtil.add_box(deposit_st, deposit["position"], deposit["size"], deposit["color"])
+	# --- Rare-vein deposits: a SECOND mesh, from arrays the build already carries. ---
+	# Phase 42 review pass 8 — this used to call `vein_deposits()` HERE, on the main thread,
+	# walking all 4096 of the chunk's columns a second time (run replay + a biome and
+	# material roll per tile) after the worker had already finished. The list is resolved
+	# by `collect_build_runs` now and the boxes are emitted by `build_chunk_arrays`, so the
+	# main thread only attaches what it is handed. They stay a separate mesh with no
+	# collision, deliberately: they are decoration, and a box the player can see but not
+	# stand on is the correct read for "a vein showing through the ground".
+	var deposit_vertices: PackedVector3Array = built.get("deposit_vertices", PackedVector3Array())
+	if not deposit_vertices.is_empty():
 		var deposit_inst := MeshInstance3D.new()
-		deposit_inst.mesh = deposit_st.commit()
+		deposit_inst.mesh = _mesh_from_arrays({
+			"vertices": built["deposit_vertices"],
+			"normals":  built["deposit_normals"],
+			"colors":   built["deposit_colors"],
+			"indices":  built["deposit_indices"],
+		})
 		deposit_inst.material_override = _terrain_material()
 		root.add_child(deposit_inst)
 
@@ -343,21 +353,43 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	return true
 
 ## Resolve every column a chunk build must READ into a plain table the pure builder
-## can consume. MAIN THREAD ONLY — this is the half that reads mutable slice state
-## (`_edits`, `_heightmaps`, the terrain slice's biome lookup behind a natural run's
-## colour), so `build_chunk_arrays` can be handed to a worker and touch none of it.
+## can consume — plus the chunk's rare-vein deposit list. MAIN THREAD ONLY — this is
+## the half that reads mutable slice state (`_edits`, `_heightmaps`, the terrain
+## slice's biome lookup behind a natural run's colour), so `build_chunk_arrays` can be
+## handed to a worker and touch none of it.
 ##
 ## The table covers the chunk's own tiles AND its one-tile ring (the seam neighbours
 ## whose runs the wall subtraction reads), keyed by global tile ("gx,gz") → Array of
 ## run records carrying `bottom`, `top`, `material` and the resolved `color`. A ring
 ## tile whose chunk is not built reads as an EMPTY list, which is the documented
 ## UNKNOWN-column path: the side that HAS the material emits the facing wall.
+##
+## Returns `{ "runs": <that table>, "deposits": [ { position, size, color } ] }`.
+##
+## Phase 42 review pass 8 — three things this pass fixed in the resolve half:
+##   * the DEPOSITS are resolved here, not in `build_chunk`. `vein_deposits()` walked
+##     all 4096 of the chunk's own columns a second time (its own run replay, plus a
+##     biome lookup and a material roll per tile) on the MAIN thread, on every build —
+##     including every build the worker had just finished, i.e. the stall the worker
+##     exists to remove, paid on the main thread right after it. The pure builder emits
+##     the deposit BOXES from the list resolved here, so the worker owns all the
+##     geometry and `build_chunk` only attaches.
+##   * the BIOME is memoised by CHUNK (`_biome_at_memo`). Biome assignment is a
+##     per-chunk property, so a 66×66 ring asks four chunks' worth of questions rather
+##     than 4356 — and the terrain-slice call behind each one is a method lookup plus a
+##     world→chunk conversion.
+##   * the material → COLOUR map is memoised per call. A biome rolls a handful of
+##     materials out of a 100-weight table, so the same few colours came back 4356
+##     times, each resolution going through `material_for_biome` again.
 func collect_build_runs(chunk_pos: Vector2i, heightmap: Array) -> Dictionary:
 	var out: Dictionary = {}
 	# A memo private to this call, for the plain (uncoloured) resolution. It is
 	# deliberately NOT the table handed out: a tile's runs are read by the tile itself
 	# and by each neighbour's subtraction, and only the table carries colours.
 	var plain: Dictionary = {}
+	# The two per-call memos (see the docstring above).
+	var biomes: Dictionary = {}
+	var colours: Dictionary = {}
 	for tz in range(-1, CHUNK_SIZE + 1):
 		for tx in range(-1, CHUNK_SIZE + 1):
 			var gx := chunk_pos.x * CHUNK_SIZE + tx
@@ -369,27 +401,39 @@ func collect_build_runs(chunk_pos: Vector2i, heightmap: Array) -> Dictionary:
 					"bottom":   float(run["bottom"]),
 					"top":      float(run["top"]),
 					"material": str(run.get("material", "")),
-					"color":    _run_color(run, world_xz),
+					"color":    _run_color(run, world_xz, biomes, colours),
 				})
 			out[_tile_key(Vector2i(gx, gz))] = coloured
-	return out
+	# The deposits ride the SAME memo, so the chunk's own columns are not replayed twice:
+	# `plain` holds exactly the runs `_column_runs` would return for a tile of this chunk.
+	return { "runs": out, "deposits": vein_deposits(chunk_pos, heightmap, plain) }
 
 ## PURE chunk build — no node, no bus, no slice state, so it is legal to run on a
 ## worker thread. Everything it touches arrives as an argument.
 ##
 ##   chunk_pos : the chunk to build
 ##   heightmap : the chunk's own base heightmap
-##   runs      : the resolved column table from `collect_build_runs`, keyed by global
-##               tile. A tile ABSENT from it falls back to the NATURAL column derived
-##               from `heightmap`, which is what lets a caller holding only a map (the
-##               suite, a fresh probe) build a chunk with no slice state at all; a
-##               PRESENT but EMPTY list is the streamed world's UNKNOWN column.
+##   resolved  : the resolve result from `collect_build_runs`, i.e.
+##               `{ "runs": <tile → runs table>, "deposits": [...] }`. A tile ABSENT from
+##               the runs table falls back to the NATURAL column derived from `heightmap`,
+##               which is what lets a caller holding only a map (the suite, a fresh probe)
+##               build a chunk with no slice state at all; a PRESENT but EMPTY list is the
+##               streamed world's UNKNOWN column. A BARE runs table is still accepted (every
+##               resolved table is keyed by tile coordinates, so it can never hold a "runs"
+##               key) and reads as no deposits — which is the shape the older two-argument
+##               callers and the `{}`-for-natural probes already pass.
 ##
 ## Returns `{ vertices, normals, colors, indices, collision, quad_count, cell_count }`
 ## — the four arrays an ArrayMesh surface wants, plus the triangle soup the collision
 ## uses, built from the SAME quads so what the player sees and what they stand on
 ## cannot drift. `cell_count` is the faces a per-tile mesher would have emitted and
 ## `quad_count` is what the merge left, so the merge's effect is a number, not a claim.
+##
+## Phase 42 review pass 8 — and the rare-vein deposit BOXES are emitted here too, as
+## `deposit_vertices` / `deposit_normals` / `deposit_colors` / `deposit_indices`. They are
+## GEOMETRY ONLY: they never enter `collision`, because a deposit is decoration the player
+## must not be able to stand on. Resolving the list is the main thread's job (it reads the
+## edit log); turning it into triangles is not, so this is where the boxes are built.
 ##
 ## STATIC on purpose: the per-chunk faces are the same for every world, so the builder
 ## needs no instance state — and a worker task may hold no reference to a Node at all
@@ -401,14 +445,17 @@ func collect_build_runs(chunk_pos: Vector2i, heightmap: Array) -> Dictionary:
 ## instead of one per tile (4096 of them at TILE_SIZE 0.5). UVs are dropped with the
 ## merge — the terrain's material is per-vertex colour with no texture, and a merged
 ## rectangle has no per-tile UV mapping left to give.
-static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, runs: Dictionary) -> Dictionary:
+static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary) -> Dictionary:
 	var origin_x := chunk_pos.x * CHUNK_SIZE * TILE_SIZE
 	var origin_z := chunk_pos.y * CHUNK_SIZE * TILE_SIZE
+	var runs: Dictionary = resolved.get("runs", resolved)
+	var deposits: Array = resolved.get("deposits", [])
 
-	# Emit-key → the group of tile cells that would emit the IDENTICAL face: same
-	# direction, same plane, same vertical span, same colour. Merging only ever happens
-	# INSIDE a group, which is what makes the merge key exactly the one attribute a
-	# merged quad has to share (material/colour).
+	# dir → emit-key → the group of tile cells that would emit the IDENTICAL face: the
+	# same direction, plane, vertical span and colour. Merging only ever happens INSIDE a
+	# group, which is what makes the key exactly the set of attributes a merged quad has
+	# to share (direction, geometry, material/colour). Nested per DIRECTION so the key
+	# itself fits: see `_group_cell` for why it is not one string any more.
 	var groups: Dictionary = {}
 
 	for tz in range(CHUNK_SIZE):
@@ -451,12 +498,23 @@ static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, runs: Dict
 	# merge's effect is a number a test can assert and a reviewer can quote, rather
 	# than a claim in a comment.
 	var cell_count := 0
-	for key in groups:
-		var g: Dictionary = groups[key]
-		cell_count += g["cells"].size()
-		for rect in _merge_rects(g["cells"]):
-			quad_count += _emit_rect(vertices, normals, colors, indices, collision,
-				g, rect, origin_x, origin_z)
+	for dir in groups:
+		var buckets: Dictionary = groups[dir]
+		for key in buckets:
+			var g: Dictionary = buckets[key]
+			cell_count += g["cells"].size()
+			for rect in _merge_rects(g["cells"]):
+				quad_count += _emit_rect(vertices, normals, colors, indices, collision,
+					g, rect, origin_x, origin_z)
+	# The rare-vein deposit boxes (see the docstring): geometry only, never collision.
+	# Off the resolved list, so this half of the build is the worker's.
+	var deposit_vertices := PackedVector3Array()
+	var deposit_normals  := PackedVector3Array()
+	var deposit_colors   := PackedColorArray()
+	var deposit_indices  := PackedInt32Array()
+	for deposit in deposits:
+		MeshUtil.add_box_arrays(deposit_vertices, deposit_normals, deposit_colors, deposit_indices,
+			deposit["position"], deposit["size"], deposit["color"])
 	return {
 		"vertices":    vertices,
 		"normals":     normals,
@@ -465,6 +523,10 @@ static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, runs: Dict
 		"collision":   collision,
 		"quad_count":  quad_count,
 		"cell_count":  cell_count,
+		"deposit_vertices": deposit_vertices,
+		"deposit_normals":  deposit_normals,
+		"deposit_colors":   deposit_colors,
+		"deposit_indices":  deposit_indices,
 	}
 
 ## Queue this run's exposed side walls against all four neighbours. The NEIGHBOUR
@@ -497,18 +559,36 @@ static func _wall_plane(chunk_pos: Vector2i, dir: String, tx: int, tz: int) -> f
 		"west":  return chunk_pos.x * CHUNK_SIZE * TILE_SIZE + tx * TILE_SIZE
 	return chunk_pos.x * CHUNK_SIZE * TILE_SIZE + (tx + 1) * TILE_SIZE
 
-## Add one tile cell to the group of faces it would emit. The key carries everything a
-## merged quad has to share, at 4-decimal precision — every terrain colour is one of
-## the MATERIAL_COLORS constants (or the fallback), so colours compare exactly.
+## Add one tile cell to the group of faces it would emit, inside its DIRECTION's bucket.
+## The key carries everything a merged quad has to share: plane, vertical span and colour.
+##
+## Phase 42 review pass 8 — this used to build a STRING key (`"%s|%.4f|%.4f|%.4f|%s"` plus
+## `Color.to_html`), i.e. three float formattings and a hex colour string per face cell —
+## roughly 25k throwaway strings for one 64×64 chunk, on the builder's own (worker) budget
+## and again on every edit rebuild. The key is now a `Vector4i` of the same four values
+## QUANTISED to 1/10000, which is exactly the precision `%.4f` kept, so the grouping is
+## identical — no span merges that did not merge before. The quantised ints fit int32 by a
+## wide margin: a wall plane is a multiple of TILE_SIZE 0.5 and bounded by the world extent
+## (|plane·10⁴| ≤ 4.1e7), and a run's span is bounded by BEDROCK_DEPTH..MAX_HEIGHT
+## (|y·10⁴| ≤ 1.6e5), while `to_rgba32()` is an int32 by definition.
+##
+## The DIRECTION is the outer key rather than a fifth component, because a Vec4 runs out of
+## axes — and it must be in the key: an "up" face and a "down" face at the same plane and
+## span would otherwise merge into one quad with one direction, which is a missing floor or
+## a missing ceiling.
 static func _group_cell(groups: Dictionary, dir: String, plane: float, bottom: float, top: float, color: Color, tx: int, tz: int) -> void:
-	var key := "%s|%.4f|%.4f|%.4f|%s" % [dir, plane, bottom, top, color.to_html(false)]
-	if not groups.has(key):
-		groups[key] = {
+	var buckets: Dictionary = groups.get(dir, {})
+	var key := Vector4i(roundi(plane * 10000.0), roundi(bottom * 10000.0),
+		roundi(top * 10000.0), color.to_rgba32())
+	var g: Dictionary = buckets.get(key, {})
+	if g.is_empty():
+		g = {
 			"dir": dir, "plane": plane, "bottom": bottom, "top": top,
 			"color": color, "cells": {},
 		}
-	var cells: Dictionary = groups[key]["cells"]
-	cells[tz * CHUNK_SIZE + tx] = true
+		buckets[key] = g
+		groups[dir] = buckets
+	g["cells"][tz * CHUNK_SIZE + tx] = true
 
 ## A column read from the resolve table, falling back to the NATURAL column off the
 ## chunk's own heightmap when the caller did not resolve it (see `build_chunk_arrays`).
@@ -884,6 +964,12 @@ func get_edits() -> Dictionary:
 ## restream. `_rebuild_chunk_at_tile` has closed this since the Phase 41 review; this
 ## is the same closure on the re-scope path, which was still rebuilding the tile's own
 ## chunk alone.
+##
+## Phase 42 review pass 8 — and the rebuild now takes the SAME route as an edit:
+## `ChunkManager.request_rebuild` when a manager is wired, the synchronous `build_chunk`
+## otherwise. It used to always build synchronously, which both paid the whole build on the
+## main thread in the frame that applied a snapshot AND bumped the chunk's revision under
+## an in-flight worker build.
 func apply_edits(edits: Dictionary, materials: Dictionary = {}) -> void:
 	var previous: Dictionary = _edits
 	var next: Dictionary = {}
@@ -918,11 +1004,26 @@ func apply_edits(edits: Dictionary, materials: Dictionary = {}) -> void:
 		if not next.has(key):
 			_mark_touched_tile(touched, _key_to_tile(str(key)))
 	_edits = next
+	# Phase 42 review pass 8 — this is the REBUILD half of the re-scope, and it goes through
+	# the manager exactly like an edit does (`_rebuild_chunk_at_tile`): `request_rebuild`
+	# dispatches the build to a WORKER (so a snapshot that changed a corner — three touched
+	# chunks — no longer rebuilds them all synchronously in the frame that applied it) and,
+	# more importantly, it SUPERSEDES a build already in flight for the chunk. The
+	# synchronous `build_chunk` this used to call bumped the chunk's revision on the main
+	# thread, which made an in-flight worker result stale (refused) while the worker's pool
+	# task was left to be awaited by nobody but the frame path — the mesh that landed was
+	# whichever one won the race. With no manager wired (the suite, a probe) the synchronous
+	# build stays, and only for a chunk that is LOADED.
 	for ckey in touched:
 		if not _chunks.has(ckey) or not _heightmaps.has(ckey):
 			continue   # nothing to refresh: unloaded chunks rebuild when streamed in
+		# `ckey` is a CHUNK key ("cx,cz"); the same "x,y" parse as a tile key reads it.
 		var parts: PackedStringArray = str(ckey).split(",")
-		build_chunk(Vector2i(int(parts[0]), int(parts[1])), _heightmaps[ckey])
+		var chunk := Vector2i(int(parts[0]), int(parts[1]))
+		if chunk_manager != null and chunk_manager.has_method("request_rebuild"):
+			chunk_manager.request_rebuild(chunk)
+			continue
+		build_chunk(chunk, _heightmaps[ckey])
 
 ## Mark every chunk whose mesh reads `tile` — the tile's own chunk plus each
 ## edge-adjacent one it sits on the edge of (see `_touched_chunks`) — as needing a
@@ -1044,31 +1145,55 @@ func _buildable_materials() -> Array:
 			out.append(str(key))
 	return out
 
+## Per-biome cumulative roll table, built ONCE from the BIOME_MATERIALS constant and
+## cached for the session. Phase 42 review pass 8 — `material_for_biome` re-summed the
+## biome's weight table for every tile it was asked about, and a chunk build asks 4356
+## times. A biome's table is a pure function of a `const`, so it never needs rebuilding.
+static var _biome_rolls: Dictionary = {}
+
+## The biome's `[[cumulative_weight, material], ...]` table (see `_biome_rolls`). Order
+## matches the constant's own insertion order, which is what keeps the roll's tie-breaks
+## identical to the pre-memo version.
+static func _biome_roll_table(biome: String) -> Array:
+	if _biome_rolls.has(biome):
+		return _biome_rolls[biome]
+	var out: Array = []
+	var weights: Dictionary = BIOME_MATERIALS.get(biome, { "Ferrite": 1 })
+	var cumulative := 0
+	for material in weights:
+		cumulative += int(weights[material])
+		out.append([cumulative, str(material)])
+	_biome_rolls[biome] = out
+	return out
+
 ## Material yielded by mining a tile in the given biome (deterministic per tile,
 ## rarity-weighted). The common "rocky" material dominates; rarer ores appear as
 ## sparse veins. No wood materials — those come from trees, not the ground.
 func material_for_biome(biome: String, world_xz: Vector2) -> String:
-	var weights: Dictionary = BIOME_MATERIALS.get(biome, { "Ferrite": 1 })
-	if weights.is_empty():
+	var table := _biome_roll_table(biome)
+	if table.is_empty():
 		return "Ferrite"
 	var tile := _world_to_tile(world_xz)
 	# Deterministic per-tile roll (stable across sessions, no randi()).
 	var roll := posmod(tile.x * 73856093 + tile.y * 19349663, 100)
-	var cumulative := 0
-	for material in weights:
-		cumulative += int(weights[material])
-		if roll < cumulative:
-			return str(material)
-	return str(weights.keys()[0])
+	for entry in table:
+		if roll < int(entry[0]):
+			return str(entry[1])
+	return str(table[0][1])
 
 ## Small raised deposits for the rare veins in one chunk, as
 ## `[{ "position": Vector3, "size": Vector3, "color": Color }]` — the geometry
-## build_chunk adds on top of the flat ground. Only a NATURAL column qualifies: a
+## `build_chunk_arrays` emits on top of the flat ground. Only a NATURAL column qualifies: a
 ## player-placed block is never a vein. Mining does NOT remove a deposit — the
 ## mined block carries no placed material, so its material roll is unchanged and
 ## the deposit simply rides down to the lowered column top with it. Pure, so the
 ## rare-vein read is testable headlessly without a renderer.
-func vein_deposits(chunk_pos: Vector2i, heightmap: Array) -> Array:
+##
+## Phase 42 review pass 8 — this is the RESOLVE half's job now, called from
+## `collect_build_runs`, which hands it the memo it already filled (`cache`): the walk below
+## asks the same question about the same columns, so the chunk's own runs are replayed once
+## rather than twice. Called on its own (a test, a probe) it builds its own memo.
+func vein_deposits(chunk_pos: Vector2i, heightmap: Array, cache: Dictionary = {}) -> Array:
 	var out: Array = []
 	var deposit_size := Vector3(
 		TILE_SIZE - VEIN_DEPOSIT_INSET * 2.0,
@@ -1076,7 +1201,9 @@ func vein_deposits(chunk_pos: Vector2i, heightmap: Array) -> Array:
 		TILE_SIZE - VEIN_DEPOSIT_INSET * 2.0)
 	# Same memo as the mesher: this walks every tile of the chunk too, and both
 	# walks ask the same questions about the same columns.
-	var deposits_cache: Dictionary = {}
+	var deposits_cache: Dictionary = cache
+	# The biome is a per-CHUNK property, so the walk below needs at most four answers.
+	var biomes: Dictionary = {}
 	for tz in range(CHUNK_SIZE):
 		for tx in range(CHUNK_SIZE):
 			var runs := _column_runs(heightmap, chunk_pos, tx, tz, deposits_cache)
@@ -1089,7 +1216,7 @@ func vein_deposits(chunk_pos: Vector2i, heightmap: Array) -> Array:
 			var world_xz := Vector2(
 				(chunk_pos.x * CHUNK_SIZE + tx) * TILE_SIZE + TILE_SIZE * 0.5,
 				(chunk_pos.y * CHUNK_SIZE + tz) * TILE_SIZE + TILE_SIZE * 0.5)
-			var material := material_for_biome(_biome_at(world_xz), world_xz)
+			var material := material_for_biome(_biome_at_memo(world_xz, biomes), world_xz)
 			if not RARE_VEIN_MATERIALS.has(material):
 				continue
 			out.append({
@@ -1338,11 +1465,15 @@ func _neighbour_runs(heightmap: Array, chunk_pos: Vector2i, tx: int, tz: int, ca
 ## Angle a run's colour: a player-placed span takes its own material's colour, a
 ## natural one the biome material roll (which is also how a rare vein gets its
 ## tint and its deposit).
-func _run_color(run: Dictionary, world_xz: Vector2) -> Color:
+##
+## Phase 42 review pass 8 — `biomes` and `colours` are the resolve pass's per-call memos
+## (see `collect_build_runs`): a chunk build asks this 4356 times, and both the biome and
+## the material → colour map answer the same handful of values each time.
+func _run_color(run: Dictionary, world_xz: Vector2, biomes: Dictionary = {}, colours: Dictionary = {}) -> Color:
 	var material := str(run.get("material", ""))
 	if material != "":
 		return _material_color(material)
-	return _natural_color(world_xz)
+	return _natural_color(world_xz, biomes, colours)
 
 ## The terrain material this slice's chunk meshes share — ONE instance for the lifetime of
 ## the slice (see `_terrain_mat`). The lazy branch is for an isolated rig that drives
@@ -1673,9 +1804,25 @@ func _biome_at(xz: Vector2) -> String:
 		return terrain_slice.get_biome_at(xz)
 	return "TemperateForest"
 
-## Colour a natural (unplaced) terrain column at world_xz, from its biome.
-func _natural_color(world_xz: Vector2) -> Color:
-	return _material_color(material_for_biome(_biome_at(world_xz), world_xz))
+## Colour a natural (unplaced) terrain column at world_xz, from its biome — through the
+## resolve pass's per-call memos when it has them (see `_run_color`).
+func _natural_color(world_xz: Vector2, biomes: Dictionary = {}, colours: Dictionary = {}) -> Color:
+	var material := material_for_biome(_biome_at_memo(world_xz, biomes), world_xz)
+	if not colours.has(material):
+		colours[material] = _material_color(material)
+	return colours[material]
+
+## The biome at a world position, memoised by CHUNK for the duration of one resolve pass.
+## Biome assignment is a per-chunk property (`TerrainSlice.get_biome_at_chunk`), so a chunk
+## build's 66×66 ring — which spans at most four chunks — needs four answers, not 4356, and
+## the terrain-slice call behind each one is a method lookup plus a world→chunk conversion.
+## A pass with no memo (an isolated rig's own `_biome_at`) still gets the right answer.
+func _biome_at_memo(world_xz: Vector2, biomes: Dictionary) -> String:
+	var extent := float(CHUNK_SIZE * TILE_SIZE)
+	var ckey := _chunk_key(Vector2i(floori(world_xz.x / extent), floori(world_xz.y / extent)))
+	if not biomes.has(ckey):
+		biomes[ckey] = _biome_at(world_xz)
+	return str(biomes[ckey])
 
 ## Resolve a material key to its terrain colour (falling back to green for
 ## unknown keys).
