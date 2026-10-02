@@ -17,6 +17,8 @@ Common dark-grey metal found in surface veins across temperate biomes, volcanic 
 | `hardness` | decimal | yes | Mohs-equivalent scale 1–10 |
 | `conductivity` | decimal | yes | Thermal conductivity rating 0–1 |
 | `magicAffinity` | decimal | yes | Capacity to hold enchantment 0–1 |
+| `depthBand` | json | yes | Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. Surface veins: ferrite crops out near the top of the ground and thins with depth. |
+| `leyGated` | boolean | yes | True when a vein of this material forms only near a ley line |
 
 ### State machine
 

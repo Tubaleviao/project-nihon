@@ -14,4 +14,6 @@ enum State {
 @export var hardness: float
 @export var conductivity: float
 @export var magicAffinity: float
+@export var depthBand: Dictionary
+@export var leyGated: bool
 @export var isLuminous: bool

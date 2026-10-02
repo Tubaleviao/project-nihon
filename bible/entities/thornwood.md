@@ -17,6 +17,8 @@ Dense, dark-veined wood from the Thornwood tree that grows in lowland forests. C
 | `hardness` | decimal | yes | Janka hardness equivalent 0–1 |
 | `conductivity` | decimal | yes | Thermal conductivity 0–1; low for wood |
 | `magicAffinity` | decimal | yes | Capacity to hold enchantment 0–1; very low — dense wood resists magical binding |
+| `depthBand` | json | yes | Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. A wood: it grows as trees and is never mined from the ground. |
+| `leyGated` | boolean | yes | True when a vein of this material forms only near a ley line |
 
 ### State machine
 

@@ -20,6 +20,8 @@ Jet-black crystalline ore found only in void-touched biomes and deep rifts. Extr
 | hardness | decimal | Mohs-equivalent scale 1–10 |
 | conductivity | decimal | Thermal conductivity rating 0–1 |
 | magicAffinity | decimal | Capacity to hold enchantment 0–1 |
+| depthBand | json | Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. Found in void-touched biomes and deep rifts: below the topsoil, at any depth beneath it. |
+| leyGated | boolean | True when a vein of this material forms only near a ley line |
 
 ## States
 

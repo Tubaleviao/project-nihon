@@ -38,6 +38,7 @@ const MultimeshPool   := preload("res://src/core/multimesh_pool.gd")
 const SpatialHash     := preload("res://src/core/spatial_hash.gd")
 const PlayerRegistry  := preload("res://src/persistence/player_registry.gd")
 const NetHarness      := preload("res://src/tests/net_harness.gd")
+const OreField        := preload("res://src/terrain/ore_field.gd")
 
 var _pass: int = 0
 var _fail: int = 0
@@ -208,14 +209,14 @@ func run() -> void:
 	_run_test("voxel: place raises height and consumes",       _test_voxel_place_consumes)
 	_run_test("voxel: place beyond cap fails and refunds",     _test_voxel_place_cap)
 	_run_test("voxel: biome material mapping",                 _test_voxel_biome_materials)
-	_run_test("voxel: common material outnumbers rare",        _test_voxel_material_rarity)
+	_run_test("voxel: the surface never yields a deep ore",     _test_voxel_material_rarity)
 	_run_test("voxel: edits round-trip",                       _test_voxel_edits_round_trip)
 	_run_test("voxel: placed block keeps material colour",    _test_voxel_placed_block_keeps_material_color)
 	_run_test("voxel: mining placed block yields its material", _test_voxel_mine_placed_block_yields_material)
 	_run_test("voxel: placed block preserves base colour",     _test_voxel_placed_block_preserves_base_colour)
 	_run_test("voxel: place after mine keeps placed colour",   _test_voxel_place_after_mine_keeps_colour)
-	_run_test("voxel: rare vein deposits on natural tiles",    _test_voxel_rare_vein_deposits)
-	_run_test("voxel: rare vein material list",                _test_voxel_rare_vein_materials)
+	_run_test("voxel: vein markers mark live veins",           _test_voxel_rare_vein_deposits)
+	_run_test("voxel: an exhausted vein is host rock",         _test_voxel_rare_vein_materials)
 	_run_test("voxel: terrain material is one instance",       _test_voxel_terrain_material_is_one_instance)
 	_run_test("voxel: a tunnel keeps its floor and its roof",   _test_voxel_tunnel_runs)
 	_run_test("voxel: the support sampler honours a ceiling",   _test_voxel_support_sampler_under_ceiling)
@@ -323,10 +324,24 @@ func run() -> void:
 	_run_test("chunk: the kept window is the stream radius",  _test_chunk_kept_window_is_stream_radius)
 	_run_test("chunk: a direct load respects the in-flight cap", _test_chunk_load_respects_inflight_cap)
 	_run_test("voxel: the group key survives the colour band", _test_voxel_group_key_colour_band)
-	_run_test("voxel: the biome roll table is prebuilt",      _test_voxel_biome_roll_table_prebuilt)
-	_run_test("voxel: every canonical biome has a roll table", _test_voxel_every_canonical_biome_has_a_roll_table)
+	_run_test("ore: the band table is prebuilt",               _test_voxel_biome_roll_table_prebuilt)
+	_run_test("ore: every canonical biome has a bias",          _test_voxel_every_canonical_biome_has_a_roll_table)
 	_run_test("voxel: the build payload shape is required",   _test_voxel_build_payload_shape_required)
 	_run_test("chunk: the gathered payload carries the ring", _test_chunk_gather_carries_the_ring)
+	# Phase 43 — natural resource distribution: the ore field, its fabric gates, vein yield
+	# and depletion.
+	_run_test("ore: a fixed seed puts the same veins in the same place", _test_ore_deterministic)
+	_run_test("ore: a client sees the host's veins with no snapshot", _test_ore_client_agrees_without_snapshot)
+	_run_test("ore: aethermite keeps to its band and its ley lines", _test_ore_aethermite_gates)
+	_run_test("ore: the bands are fabric values",              _test_ore_bands_are_fabric)
+	_run_test("ore: the ley field is a field of lines",        _test_ore_ley_field)
+	_run_test("ore: the uniform draw is gone",                 _test_ore_uniform_draw_gone)
+	_run_test("ore: a blob is continuous across a chunk border", _test_ore_blob_crosses_chunk_border)
+	_run_test("ore: a vein yields more than one and runs out", _test_ore_vein_yields_and_exhausts)
+	_run_test("ore: surrounding rock is the bias, never the gated ore", _test_ore_host_rock_yield)
+	_run_test("ore: depletion is one op per vein and persists", _test_ore_depletion_persists)
+	_run_test("ore: a client replays the host's depletion",    _test_ore_client_replays_depletion)
+	_run_test("ore: the build payload carries the field",      _test_ore_build_payload_carries_field)
 	_run_test("player: facing is a normalized yaw vector",      _test_player_facing)
 	_run_test("net: client forwards block intent",               _test_net_voxel_client_forwards_intent)
 	_run_test("net: apply_block_change applies host edit",       _test_net_voxel_apply_block_change)
@@ -2891,6 +2906,8 @@ func _test_voxel_biome_materials() -> void:
 	assert_false(temperate.has("Thornwood") or temperate.has("Duskfiber"), "no wood from the temperate ground")
 	v.free()
 
+## Phase 43 — the uniform per-tile draw is retired: the surface (depth 0) is host rock and
+## shallow veins, and a DEEP ore never appears there however many tiles are asked.
 func _test_voxel_material_rarity() -> void:
 	var v := VoxelSlice.new()
 	# Fabric fidelity: the temperate prose grants no rare ground ore (ferrite
@@ -2901,11 +2918,11 @@ func _test_voxel_material_rarity() -> void:
 			var wc := Vector2(
 				tx * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5,
 				tz * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5)
-			if v.material_for_biome("TemperateForest", wc) != "Ferrite":
+			if v.material_for_biome("TemperateForest", wc) != "Ferrite" and \
+					OreField.vein_at(0, Vector2i.ZERO, Vector2i(tx, tz), 0.0).is_empty():
 				temperate_only_ferrite = false
-	assert_true(temperate_only_ferrite, "temperate ground is ferrite only (no invented rare ore)")
-	# Rarity: the volcanic prose grants ashite 0.9 / aethermite 0.2, so the
-	# common rock dominates the surface and the rare ore is sparse veins.
+	assert_true(temperate_only_ferrite, "temperate host rock is ferrite (no invented rare ore)")
+	# The volcanic host is ashite, and Aethermite — a DEEP ore — is never at the surface.
 	var ashite := 0
 	var aethermite := 0
 	for tz in range(64):
@@ -2913,13 +2930,13 @@ func _test_voxel_material_rarity() -> void:
 			var wc := Vector2(
 				tx * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5,
 				tz * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5)
-			var m := v.material_for_biome("VolcanicBadlands", wc)
+			var m := v.material_for_biome("VolcanicBadlands", wc, 0.0625)
 			if m == "Ashite":
 				ashite += 1
 			elif m == "Aethermite":
 				aethermite += 1
-	assert_true(ashite > aethermite, "common ashite outnumbers rare aethermite (%d vs %d)" % [ashite, aethermite])
-	assert_true(aethermite > 0, "rare aethermite appears as sparse veins")
+	assert_true(ashite > 0, "the volcanic surface is ashite host rock (%d tiles)" % ashite)
+	assert_eq(aethermite, 0, "and never surface aethermite (its band starts four units down)")
 	v.free()
 
 func _test_voxel_edits_round_trip() -> void:
@@ -6216,62 +6233,77 @@ func _chunk_surface_vertices(voxel: Node, chunk_pos: Vector2i) -> int:
 			total += (child as MeshInstance3D).mesh.surface_get_array_len(0)
 	return total
 
+## Phase 43 — the raised markers mark LIVE veins the field actually holds (they used to mark
+## every tile a uniform roll called rare), in the vein's own colour.
 func _test_voxel_rare_vein_deposits() -> void:
-	var terrain := TerrainSlice.new()
-	add_child(terrain)
 	var v := VoxelSlice.new()
 	add_child(v)
-	v.terrain_slice = terrain
-	var rare := _find_chunk_with_biome(terrain, ["VolcanicBadlands", "TwilightGrove"])
-	var plain := _find_chunk_with_biome(terrain, ["TemperateForest", "TemperateGrassland"])
-	assert_true(rare.x != -1, "found a biome that grants a rare vein")
-	assert_true(plain.x != -1, "found a biome with no rare vein")
-	var flat: Array = []
-	flat.resize(64 * 64)
-	flat.fill(2.0)
+	var found := _find_surface_vein(0)
+	assert_false(found.is_empty(), "a vein breaks the surface of a flat chunk somewhere")
+	if found.is_empty():
+		v.free()
+		return
+	var chunk: Vector2i = found["chunk"]
+	var vein: Dictionary = found["vein"]
+	var flat := _flat_heightmap(2.0)
 
-	var deposits: Array = v.vein_deposits(rare, flat)
-	assert_true(deposits.size() > 0, "rare vein tiles get a raised deposit")
+	var deposits: Array = v.vein_deposits(chunk, flat)
+	assert_true(deposits.size() > 0, "a surfacing vein gets raised markers")
 	# Vector3 holds 32-bit floats, so compare the deposit geometry approximately.
 	var expected_top: float = 2.0 + VoxelSlice.VEIN_DEPOSIT_HEIGHT * 0.5
 	var expected_size: float = VoxelSlice.TILE_SIZE - VoxelSlice.VEIN_DEPOSIT_INSET * 2.0
+	var every_marker_is_a_vein := true
 	for d in deposits:
 		assert_true(absf(float(d["position"].y) - expected_top) < 0.0001, "a deposit sits on the column top")
 		assert_true(absf(float(d["size"].x) - expected_size) < 0.0001, "a deposit is inset inside its tile")
-	assert_eq(v.vein_deposits(plain, flat).size(), 0, "common ground carries no deposit")
+		var t: Vector2i = VoxelSlice._world_to_tile(Vector2(d["position"].x, d["position"].z))
+		var hit := OreField.vein_at(0, chunk, t - chunk * 64, 0.0625)
+		if hit.is_empty() or d["color"] != VoxelSlice.MATERIAL_COLORS.get(str(hit["material"]), VoxelSlice.FALLBACK_TERRAIN_COLOR):
+			every_marker_is_a_vein = false
+	assert_true(every_marker_is_a_vein, "every marker sits on a vein tile, in that vein's colour")
 
-	# A mined natural column is not a *placed* one, so its vein keeps its deposit
-	# — at the lowered height (only a player-placed surface is exempt).
-	var mined_tile: Vector2i = v._world_to_tile(Vector2(deposits[0]["position"].x, deposits[0]["position"].z))
-	v._set_edit_ops(v._tile_key(mined_tile), [{ "op": "remove", "bottom": 1.5, "top": VoxelSlice.MAX_HEIGHT }])
-	var mined: Array = v.vein_deposits(rare, flat)
-	assert_eq(mined.size(), deposits.size(), "mining a vein column does not remove its deposit")
-	assert_true(absf(float(mined[0]["position"].y) - (1.5 + VoxelSlice.VEIN_DEPOSIT_HEIGHT * 0.5)) < 0.0001,
-		"the deposit rides down to the mined column top")
-	# Undo the simulated mine: the mesh check below compares flat chunks.
-	v._set_edit_ops(v._tile_key(mined_tile), [])
+	# A column mined down OUT of the vein loses its marker.
+	var tile: Vector2i = found["tile"]
+	var key := VoxelSlice._tile_key(chunk * 64 + tile)
+	var bottom := 2.0 - (float(vein["center"].y) + float(vein["half_height"]) * (1.0 + OreField.SHAPE_NOISE) + 0.125)
+	v._set_edit_ops(key, [{ "op": "remove", "bottom": bottom, "top": VoxelSlice.MAX_HEIGHT }])
+	var other := OreField.vein_at(0, chunk, tile, 2.0 - (bottom - VoxelSlice.STEP_HEIGHT * 0.5))
+	assert_true(other.is_empty() or str(other["id"]) != str(vein["id"]), "the cut goes below the vein")
+	var mined: Array = v.vein_deposits(chunk, flat)
+	assert_eq(mined.size(), deposits.size() - (1 if other.is_empty() else 0),
+		"a column mined below its vein loses that vein's marker")
+	v._set_edit_ops(key, [])
 
-	# The deposits must actually reach the rendered mesh. They are the chunk's SECOND
-	# mesh child (the terrain surface is the first), and they are counted on their own
-	# since Phase 42: the merged terrain surface no longer has a fixed per-tile vertex
-	# count, so comparing two whole chunks across BIOMES would be comparing their merge
-	# groups as much as their deposits. The overlay is a separate mesh, so it is exact.
-	v.build_chunk(rare, flat)
-	v.build_chunk(plain, flat)
-	assert_eq(_chunk_vein_vertices(v, rare), deposits.size() * MeshUtil.BOX_VERTEX_COUNT,
+	# The markers reach the rendered mesh as the chunk's second mesh child.
+	v.build_chunk(chunk, flat)
+	assert_eq(_chunk_vein_vertices(v, chunk), deposits.size() * MeshUtil.BOX_VERTEX_COUNT,
 		"every deposit reaches the chunk mesh")
-	assert_eq(_chunk_vein_vertices(v, plain), 0, "and a common-biome chunk carries no deposit mesh")
 	v.free()
-	terrain.free()
 
+## Phase 43 — an EXHAUSTED vein is host rock to the eye: no marker, no tint.
 func _test_voxel_rare_vein_materials() -> void:
 	var v := VoxelSlice.new()
 	add_child(v)
-	assert_true(VoxelSlice.RARE_VEIN_MATERIALS.has("Aethermite"), "aethermite is a vein material")
-	assert_true(VoxelSlice.RARE_VEIN_MATERIALS.has("Lumenfite"), "lumenfite is a vein material")
-	assert_true(VoxelSlice.RARE_VEIN_MATERIALS.has("Voidite"), "voidite is a vein material")
-	assert_false(VoxelSlice.RARE_VEIN_MATERIALS.has("Ferrite"), "the common ground is not a vein")
-	assert_false(VoxelSlice.RARE_VEIN_MATERIALS.has("Ashite"), "the volcanic bulk rock is not a vein")
+	var found := _find_surface_vein(0)
+	if found.is_empty():
+		assert_true(false, "a vein breaks the surface of a flat chunk somewhere")
+		v.free()
+		return
+	var chunk: Vector2i = found["chunk"]
+	var vein: Dictionary = found["vein"]
+	var flat := _flat_heightmap(2.0)
+	v.build_chunk(chunk, flat)
+	var g: Vector2i = chunk * 64 + (found["tile"] as Vector2i)
+	var xz := Vector2(g.x * 0.5 + 0.25, g.y * 0.5 + 0.25)
+	assert_eq(v.material_at(xz, 0.0625), str(vein["material"]), "a live vein reads as its material")
+	var before: int = v.vein_deposits(chunk, flat).size()
+	v._record_depletion(vein, int(vein["reserve"]))
+	assert_false(OreField.is_live(vein, v.get_vein_depletion()), "the reserve is mined out")
+	assert_eq(v.material_at(xz, 0.0625), OreField.host_material(VoxelSlice.DEFAULT_BIOME),
+		"an exhausted vein reads as host rock")
+	assert_true(v.vein_deposits(chunk, flat).size() < before, "and its markers are gone")
+	assert_eq(_chunk_vein_vertices(v, chunk), v.vein_deposits(chunk, flat).size() * MeshUtil.BOX_VERTEX_COUNT,
+		"the exhaustion rebuilt the chunk mesh")
 	v.free()
 
 ## The MeshInstance3D children of a built chunk, in attach order: the terrain surface
@@ -9446,47 +9478,29 @@ func _test_voxel_group_key_colour_band() -> void:
 	VoxelSlice._group_cell(groups, "up", 1.0, 1.0, 1.0, Color(1.0, 0.0, 1.0, 1.0), 2, 0)
 	assert_eq(groups["up"].size(), 2, "a second colour is its own group (the colour is IN the key)")
 
-## Phase 42 review pass 9 — the per-biome roll table is main-thread state, prebuilt at
-## `_ready()`. It is a `static var` on a script a WORKER TASK holds, so the lazy fill was
-## mutable class state a worker could have raced; the table is warmed before anything streams
-## and read-only by contract afterwards.
-##
-## Phase 42 review pass 10 — and it SNAPSHOTS AND RESTORES the static rather than clearing it
-## and leaving the process without it. `_biome_rolls` is process-wide class state a worker could
-## be reading, so blanking it mid-suite is a window no reader has a guard against; the clear is
-## kept (it is what makes the assertion about `_ready` rather than about a leftover) but the
-## saved table is put back before the test ends.
+## Phase 43 — the ore field's band table replaced the Phase 42 roll table and inherits its
+## contract: it is process-wide class state a WORKER reads, so it is filled at `_ready()` on the
+## main thread, not on a worker's first use. Snapshot-and-restore, as the roll table's test did.
 func _test_voxel_biome_roll_table_prebuilt() -> void:
-	var saved: Dictionary = VoxelSlice._biome_rolls.duplicate()
-	VoxelSlice._biome_rolls.clear()
-	assert_eq(VoxelSlice._biome_rolls.size(), 0, "the cache starts empty (the assertion is not vacuous)")
+	var saved: Dictionary = OreField._bands.duplicate()
+	OreField._bands.clear()
+	assert_eq(OreField._bands.size(), 0, "the band table starts empty (the assertion is not vacuous)")
 	var v := VoxelSlice.new()
 	add_child(v)
-	assert_eq(VoxelSlice._biome_rolls.size(), VoxelSlice.BIOME_MATERIALS.size(),
-		"every biome's roll table is built at _ready, not on first use")
-	for biome in VoxelSlice.BIOME_MATERIALS:
-		assert_true(VoxelSlice._biome_rolls.has(str(biome)),
-			"including %s" % str(biome))
+	assert_eq(OreField._bands.size(), GameData.MATERIALS.size(),
+		"every material's band is read at _ready, not on first use")
 	v.free()
-	# Restore the process-wide table. A leftover from an earlier test is the normal case (a
-	# slice has already run `_ready`); if it was somehow empty, keep the full table `_ready`
-	# just built rather than re-blanking it.
 	if not saved.is_empty():
-		VoxelSlice._biome_rolls = saved
-	assert_true(VoxelSlice._biome_rolls.size() == VoxelSlice.BIOME_MATERIALS.size(),
-		"and the process-wide table is left full, not cleared")
+		OreField._bands = saved
+	assert_eq(OreField._bands.size(), GameData.MATERIALS.size(), "and the table is left full")
 
-## Phase 42 review pass 10 — the worker's biome read is safe only because EVERY biome the gather
-## can hand it has a roll table: `material_for_biome` answers Ferrite for a biome absent from
-## `BIOME_MATERIALS`, so a canonical biome missing from the table would silently mine as the
-## wrong material. The gathered strings come from `TerrainSlice.get_biome_at`, i.e. from
-## `TerrainSlice.BIOME_KEYS`, so that set — not voxel's own map — is what must be covered.
+## Every canonical biome has a BIAS entry, so its host rock is its own and never the fallback.
 func _test_voxel_every_canonical_biome_has_a_roll_table() -> void:
 	for biome in TerrainSlice.BIOME_KEYS:
-		assert_true(VoxelSlice.BIOME_MATERIALS.has(str(biome)),
-			"canonical biome %s has a BIOME_MATERIALS entry" % str(biome))
-		assert_true(VoxelSlice._biome_roll_table(str(biome)).size() > 0,
-			"and a non-empty roll table, so its roll never falls back to Ferrite")
+		assert_true(VoxelSlice.BIOME_BIAS.has(str(biome)),
+			"canonical biome %s has a BIOME_BIAS entry" % str(biome))
+		assert_true(OreField.BIOME_BIAS[str(biome)].has(OreField.host_material(str(biome))),
+			"and its host rock is one of its own materials")
 
 ## Phase 42 review pass 9 — the payload shape `build_chunk_arrays` takes is REQUIRED, not
 ## sniffed. The old fallback (`resolved.get("runs", resolved)`) meant a dictionary that merely
@@ -10548,6 +10562,401 @@ func _test_loading_screen_visibility() -> void:
 	assert_false(bool(emitted[1]), "releasing world input")
 	GameBus.world_input_frozen.disconnect(cb)
 	screen.free()
+
+# ---------------------------------------------------------------------------
+# Phase 43 — natural resource distribution
+# ---------------------------------------------------------------------------
+
+func _flat_heightmap(h: float) -> Array:
+	var hm: Array = []
+	hm.resize(64 * 64)
+	hm.fill(h)
+	return hm
+
+## The first vein (searching chunks along +X) whose blob breaks the surface of a flat 2.0
+## chunk: `{ chunk, tile (chunk-local), vein }`, or `{}`.
+func _find_surface_vein(seed: int) -> Dictionary:
+	for cx in range(0, 16):
+		var chunk := Vector2i(cx, 0)
+		var cache: Dictionary = {}
+		for tz in range(64):
+			for tx in range(64):
+				var vein := OreField.vein_at(seed, chunk, Vector2i(tx, tz), 0.0625, cache)
+				if not vein.is_empty():
+					return { "chunk": chunk, "tile": Vector2i(tx, tz), "vein": vein }
+	return {}
+
+## A grid sample of the field: "gx,gz,k" → material ("" outside a vein).
+func _ore_sample(seed: int) -> Dictionary:
+	var out: Dictionary = {}
+	for cz in range(-2, 2):
+		for cx in range(-2, 2):
+			var chunk := Vector2i(cx, cz)
+			for tz in range(0, 64, 3):
+				for tx in range(0, 64, 3):
+					for k in range(0, 12):
+						var depth := 0.0625 + float(k) * 0.875
+						var vein := OreField.vein_at(seed, chunk, Vector2i(tx, tz), depth)
+						out["%d,%d,%d" % [cx * 64 + tx, cz * 64 + tz, k]] = "" if vein.is_empty() else str(vein["material"])
+	return out
+
+func _test_ore_deterministic() -> void:
+	var a := _ore_sample(12345)
+	var b := _ore_sample(12345)
+	assert_eq(a, b, "the same seed samples the same field twice")
+	var veins := 0
+	for key in a:
+		if str(a[key]) != "":
+			veins += 1
+	assert_true(veins > 0, "and the sample holds veins (%d samples)" % veins)
+	assert_true(veins < a.size(), "but is not all vein")
+	var c := _ore_sample(54321)
+	assert_true(a != c, "a different seed is a different field")
+	# The descriptor itself is a pure function of (seed, cell): no cache, no order.
+	var cell := Vector3i(3, 1, -2)
+	assert_eq(OreField.vein_in_cell(777, cell), OreField.vein_in_cell(777, cell, {}), "a cell's vein is cache-free")
+
+func _test_ore_client_agrees_without_snapshot() -> void:
+	var t_host := TerrainSlice.new()
+	add_child(t_host)
+	t_host.set_world_seed(424242)
+	var t_client := TerrainSlice.new()
+	add_child(t_client)
+	t_client.set_world_seed(424242)
+	var host := VoxelSlice.new()
+	host.terrain_slice = t_host
+	var client := VoxelSlice.new()
+	client.terrain_slice = t_client
+	client.is_authoritative = false
+	var same := true
+	var materials: Dictionary = {}
+	for i in range(0, 4000, 7):
+		var xz := Vector2(float(i % 200) * 0.5 - 50.0, float(i / 200) * 0.5 * 9.0 - 40.0)
+		for depth in [0.0625, 1.5625, 4.5625, 7.0625]:
+			var m: String = host.material_at(xz, depth)
+			materials[m] = true
+			if m != client.material_at(xz, depth):
+				same = false
+	assert_true(same, "host and client evaluate the same field from the seed alone")
+	assert_true(materials.size() > 1, "and the field is not one material (%s)" % str(materials.keys()))
+	# The rendered colours agree too: the resolve is the same pure function on both sides.
+	var flat := _flat_heightmap(2.0)
+	assert_eq(VoxelSlice.build_runs(Vector2i(1, 1), flat, host.gather_build_input(Vector2i(1, 1), flat)),
+		VoxelSlice.build_runs(Vector2i(1, 1), flat, client.gather_build_input(Vector2i(1, 1), flat)),
+		"and the two resolves are identical")
+	host.free()
+	client.free()
+	t_host.free()
+	t_client.free()
+
+func _test_ore_aethermite_gates() -> void:
+	var band := OreField.band_of("Aethermite")
+	var seen := 0
+	var above_band := 0
+	var off_ley := 0
+	for seed in [1, 2, 3]:
+		for cz in range(-6, 6):
+			for cx in range(-6, 6):
+				var chunk := Vector2i(cx, cz)
+				var cache: Dictionary = {}
+				for tz in range(0, 64, 2):
+					for tx in range(0, 64, 2):
+						for k in range(0, 26):
+							var depth := 0.0625 + float(k) * 0.5
+							var vein := OreField.vein_at(seed, chunk, Vector2i(tx, tz), depth, cache)
+							if vein.is_empty() or str(vein["material"]) != "Aethermite":
+								continue
+							seen += 1
+							if depth < float(band["min"]):
+								above_band += 1
+							var g := chunk * 64 + Vector2i(tx, tz)
+							if not OreField.near_ley_line(seed, Vector2(g.x * 0.5 + 0.25, g.y * 0.5 + 0.25)):
+								off_ley += 1
+	assert_true(seen > 0, "the sample found aethermite (%d tiles) — the gates are not vacuous" % seen)
+	assert_eq(above_band, 0, "aethermite never sits above its fabric depth band")
+	assert_eq(off_ley, 0, "aethermite never sits far from a ley line")
+
+func _test_ore_bands_are_fabric() -> void:
+	for key in GameData.MATERIALS:
+		var res: Resource = GameData.MATERIALS[key]
+		assert_true(res.get("depthBand") is Dictionary, "%s carries a fabric depthBand" % str(key))
+		assert_true(res.get("leyGated") != null, "%s carries a fabric leyGated" % str(key))
+		var band := OreField.band_of(str(key))
+		assert_eq(float(band["min"]), float(res.get("depthBand")["min"]), "%s band min is the fabric's" % str(key))
+		assert_eq(float(band["max"]), float(res.get("depthBand")["max"]), "%s band max is the fabric's" % str(key))
+		assert_eq(bool(band["ley"]), bool(res.get("leyGated")), "%s ley gate is the fabric's" % str(key))
+	assert_true(bool(OreField.band_of("Aethermite")["ley"]), "aethermite is the ley-gated ore")
+	assert_true(float(OreField.band_of("Aethermite")["min"]) > 0.0, "and a deep one")
+	# A wood is never a ground vein: its band is empty.
+	assert_false(OreField.allows("Thornwood", 1.0, Vector2.ZERO, 0), "a wood's band admits nothing")
+	assert_false(OreField.allows("Veilsteel", 1.0, Vector2.ZERO, 0), "nor does an alloy's")
+
+func _test_ore_ley_field() -> void:
+	var near := 0
+	var total := 0
+	var lo := 1.0
+	var hi := 0.0
+	for z in range(-200, 200, 3):
+		for x in range(-200, 200, 3):
+			var v := OreField.ley_line_value(99, Vector2(x, z))
+			lo = minf(lo, v)
+			hi = maxf(hi, v)
+			total += 1
+			if OreField.near_ley_line(99, Vector2(x, z)):
+				near += 1
+	assert_true(lo >= 0.0 and hi <= 1.0, "the ley value is in [0, 1]")
+	var frac := float(near) / float(total)
+	assert_true(frac > 0.05 and frac < 0.6, "ley lines cover some but not most of the world (%.2f)" % frac)
+	assert_eq(OreField.ley_line_value(99, Vector2(3.5, -7.25)), OreField.ley_line_value(99, Vector2(3.5, -7.25)),
+		"and the field is a pure function of position")
+
+## The retired draw gave every volcanic chunk the SAME Aethermite share (17/100, every
+## depth). Per-chunk counts from the field must now vary.
+func _test_ore_uniform_draw_gone() -> void:
+	var counts: Array = []
+	var seed := 7
+	for cz in range(-12, 12):
+		for cx in range(-12, 12):
+			var chunk := Vector2i(cx, cz)
+			if TerrainSlice.biome_for_chunk(chunk) != "VolcanicBadlands":
+				continue
+			var n := 0
+			var cache: Dictionary = {}
+			for tz in range(0, 64, 2):
+				for tx in range(0, 64, 2):
+					for depth in [4.5, 6.5, 8.5]:
+						var vein := OreField.vein_at(seed, chunk, Vector2i(tx, tz), depth, cache)
+						if not vein.is_empty() and str(vein["material"]) == "Aethermite":
+							n += 1
+			counts.append(n)
+			if counts.size() >= 16:
+				break
+		if counts.size() >= 16:
+			break
+	assert_true(counts.size() >= 8, "enough volcanic chunks sampled (%d)" % counts.size())
+	var mean := 0.0
+	for n in counts:
+		mean += float(n)
+	mean /= float(counts.size())
+	var variance := 0.0
+	for n in counts:
+		variance += (float(n) - mean) * (float(n) - mean)
+	variance /= float(counts.size())
+	assert_true(variance > 1.0, "per-chunk aethermite counts vary (mean %.1f, variance %.1f, %s)" % [mean, variance, str(counts)])
+	# The old constant share: 17% of the 32*32*3 samples = 522 per chunk, every chunk.
+	var old_constant := int(0.17 * 32.0 * 32.0 * 3.0)
+	var off := 0
+	for n in counts:
+		if absi(int(n) - old_constant) > old_constant / 2:
+			off += 1
+	assert_true(off > counts.size() / 2, "and most chunks are far from the retired constant share")
+
+func _test_ore_blob_crosses_chunk_border() -> void:
+	# Cells straddle chunk borders by construction (CELL_OFFSET_TILES), so some blob must
+	# cover tiles on both sides of the x = 64 border. Find one and check continuity.
+	var crossing := 0
+	var agree := true
+	for seed in [1, 2, 3, 4]:
+		for tz in range(0, 64):
+			for k in range(0, 24):
+				var depth := 0.0625 + float(k) * 0.5
+				var left := OreField.vein_at(seed, Vector2i(0, 0), Vector2i(63, tz), depth)
+				var right := OreField.vein_at(seed, Vector2i(1, 0), Vector2i(0, tz), depth)
+				# The same global tile asked through EITHER chunk is the same answer.
+				if OreField.vein_at(seed, Vector2i(0, 0), Vector2i(64, tz), depth) != right:
+					agree = false
+				if not left.is_empty() and not right.is_empty() and str(left["id"]) == str(right["id"]):
+					crossing += 1
+	assert_true(agree, "a tile's vein does not depend on which chunk asks")
+	assert_true(crossing > 0, "a vein blob spans the chunk border continuously (%d slices)" % crossing)
+
+## Mine a surfacing vein out slice by slice: each vein slice yields its quantity (> 1),
+## the reserve runs out exactly, and what is left of the blob yields host rock.
+func _test_ore_vein_yields_and_exhausts() -> void:
+	var found := _find_surface_vein(0)
+	if found.is_empty():
+		assert_true(false, "a vein breaks the surface of a flat chunk somewhere")
+		return
+	var chunk: Vector2i = found["chunk"]
+	var vein: Dictionary = found["vein"]
+	var id := str(vein["id"])
+	var v := VoxelSlice.new()
+	add_child(v)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	v.build_chunk(chunk, _flat_heightmap(2.0))
+	# Every (tile, slice) of THIS vein, top-down per tile.
+	var slices: Array = []
+	for tz in range(64):
+		for tx in range(64):
+			for k in range(0, 40):
+				var depth := 0.0625 + float(k) * VoxelSlice.STEP_HEIGHT
+				var hit := OreField.vein_at(0, chunk, Vector2i(tx, tz), depth)
+				if not hit.is_empty() and str(hit["id"]) == id:
+					slices.append([Vector2i(tx, tz), k])
+	assert_true(slices.size() * int(vein["quantity"]) > int(vein["reserve"]),
+		"the blob holds more slices than its reserve pays for (%d slices)" % slices.size())
+	var vein_units := 0
+	var max_yield := 0
+	var host_after := ""
+	var host_qty := 0
+	for entry in slices:
+		var t: Vector2i = entry[0]
+		var k: int = entry[1]
+		var g := chunk * 64 + t
+		var xz := Vector2(g.x * 0.5 + 0.25, g.y * 0.5 + 0.25)
+		# Mine the column down until its top slice is slice k, then mine slice k.
+		var target_top := 2.0 - float(k) * VoxelSlice.STEP_HEIGHT
+		while v.get_voxel_height_at(xz) > target_top + 0.0001:
+			v.mine_block(Vector3(xz.x, v.get_voxel_height_at(xz), xz.y), Vector3.UP)
+		var live := OreField.is_live(vein, v.get_vein_depletion())
+		var r := v.mine_block(Vector3(xz.x, v.get_voxel_height_at(xz), xz.y), Vector3.UP)
+		if live:
+			assert_eq(str(r["material"]), str(vein["material"]), "a live vein slice yields the vein's material")
+			vein_units += int(r["quantity"])
+			max_yield = maxi(max_yield, int(r["quantity"]))
+		else:
+			host_after = str(r["material"])
+			host_qty = int(r["quantity"])
+			break
+	assert_true(max_yield > 1, "a vein slice yields more than one unit (%d)" % max_yield)
+	assert_eq(vein_units, int(vein["reserve"]), "the vein pays out exactly its reserve")
+	assert_false(OreField.is_live(vein, v.get_vein_depletion()), "and is then exhausted")
+	assert_eq(host_after, OreField.host_material(VoxelSlice.DEFAULT_BIOME), "the rest of the blob is host rock")
+	assert_eq(host_qty, 1, "one unit per slice, like any host rock")
+	v.free()
+	inv.free()
+
+func _test_ore_host_rock_yield() -> void:
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	terrain.set_world_seed(31337)
+	var v := VoxelSlice.new()
+	add_child(v)
+	v.terrain_slice = terrain
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	var chunk := _find_chunk_with_biome(terrain, ["VolcanicBadlands"])
+	assert_true(chunk.x != -1, "found a volcanic chunk")
+	v.build_chunk(chunk, _flat_heightmap(2.0))
+	var host := 0
+	var gated := 0
+	var cache: Dictionary = {}
+	for tz in range(0, 64, 5):
+		for tx in range(0, 64, 5):
+			# Only tiles OUTSIDE every vein down to the slice mined: surrounding rock.
+			if not OreField.vein_at(31337, chunk, Vector2i(tx, tz), 0.0625, cache).is_empty():
+				continue
+			var g := chunk * 64 + Vector2i(tx, tz)
+			var r := v.mine_block(Vector3(g.x * 0.5 + 0.25, 2.0, g.y * 0.5 + 0.25), Vector3.UP)
+			if str(r["material"]) == "Ashite" and int(r["quantity"]) == 1:
+				host += 1
+			if str(r["material"]) == "Aethermite":
+				gated += 1
+	assert_true(host > 0, "surrounding volcanic rock yields ashite, one unit (%d tiles)" % host)
+	assert_eq(gated, 0, "and never the gated ore")
+	v.free()
+	inv.free()
+	terrain.free()
+
+func _test_ore_depletion_persists() -> void:
+	var found := _find_surface_vein(0)
+	if found.is_empty():
+		assert_true(false, "a vein breaks the surface of a flat chunk somewhere")
+		return
+	var chunk: Vector2i = found["chunk"]
+	var vein: Dictionary = found["vein"]
+	var id := str(vein["id"])
+	var v := VoxelSlice.new()
+	add_child(v)
+	v.build_chunk(chunk, _flat_heightmap(2.0))
+	var g: Vector2i = chunk * 64 + (found["tile"] as Vector2i)
+	var xz := Vector2(g.x * 0.5 + 0.25, g.y * 0.5 + 0.25)
+	var r := v.mine_block(Vector3(xz.x, 2.0, xz.y), Vector3.UP)
+	assert_eq(int(r["quantity"]), int(vein["quantity"]), "the first vein slice yields the vein's quantity")
+	assert_eq(int(v.get_vein_depletion().get(id, 0)), int(vein["quantity"]), "the depletion is recorded")
+	# More mining of the same vein REPLACES the record; it never appends one per swing.
+	v._record_depletion(vein, 1)
+	v._record_depletion(vein, 1)
+	var ops := 0
+	for key in v.get_edits():
+		for op in v.get_edits()[key]:
+			if str(op.get("op", "")) == "deplete" and str(op.get("vein", "")) == id:
+				ops += 1
+	assert_eq(ops, 1, "one deplete op per vein, however many swings")
+	var taken := int(v.get_vein_depletion()[id])
+	# The anchor's chunk is dirty, so the save carries it.
+	var anchor: Vector2i = vein["anchor"]
+	assert_true(v.get_dirty_chunk_keys().has(VoxelSlice._chunk_key(VoxelSlice._tile_to_chunk(anchor))),
+		"the vein's anchor chunk is marked dirty for the save")
+	# A save round-trip restores it.
+	var manifest := v.get_chunk_manifest()
+	var json: Variant = JSON.parse_string(JSON.stringify(manifest))
+	var w := VoxelSlice.new()
+	add_child(w)
+	w.apply_chunk_manifest(json)
+	assert_eq(int(w.get_vein_depletion().get(id, -1)), taken, "the depletion survives a save and load")
+	# Compaction rewrites a tile's run ops but keeps its depletion record.
+	var key := VoxelSlice._tile_key(anchor)
+	for i in range(VoxelSlice.MAX_TILE_OPS + 2):
+		w._append_edit(anchor, { "op": "remove", "bottom": 1.875, "top": 2.0 })
+		w._append_edit(anchor, { "op": "add", "bottom": 1.875, "top": 2.0, "material": "" })
+	var kept := false
+	for op in w.get_edits().get(key, []):
+		if str(op.get("op", "")) == "deplete":
+			kept = true
+	assert_true(kept, "compaction keeps the depletion record")
+	w._reindex_edits()
+	assert_eq(int(w.get_vein_depletion().get(id, -1)), taken, "and the index still reads it")
+	# An unreadable deplete op is dropped on load, never guessed.
+	var normalised: Array = w._normalise_ops([{ "op": "deplete", "vein": "", "taken": 3 }, { "op": "deplete", "vein": "1,0,1", "taken": -2 }])
+	assert_eq(normalised.size(), 0, "a deplete op with no vein or a negative count is dropped")
+	v.free()
+	w.free()
+
+func _test_ore_client_replays_depletion() -> void:
+	var found := _find_surface_vein(0)
+	if found.is_empty():
+		assert_true(false, "a vein breaks the surface of a flat chunk somewhere")
+		return
+	var chunk: Vector2i = found["chunk"]
+	var flat := _flat_heightmap(2.0)
+	var host := VoxelSlice.new()
+	add_child(host)
+	host.build_chunk(chunk, flat)
+	# The client is NOT in the tree, so it does not hear the host's block_changed on the bus;
+	# the edit is handed to it explicitly, exactly as the network would.
+	var client := VoxelSlice.new()
+	client.is_authoritative = false
+	client.build_chunk(chunk, flat)
+	var g: Vector2i = chunk * 64 + (found["tile"] as Vector2i)
+	var pos := Vector3(g.x * 0.5 + 0.25, 2.0, g.y * 0.5 + 0.25)
+	var r := host.mine_block(pos, Vector3.UP)
+	client.apply_block_change("mine", pos, Vector3.UP, str(r["material"]))
+	assert_eq(client.get_vein_depletion(), host.get_vein_depletion(), "the client records the host's depletion")
+	assert_eq(client.get_edits(), host.get_edits(), "and its edit log matches the host's")
+	host.free()
+	client.free()
+
+func _test_ore_build_payload_carries_field() -> void:
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	terrain.set_world_seed(2468)
+	var v := VoxelSlice.new()
+	add_child(v)
+	v.terrain_slice = terrain
+	var flat := _flat_heightmap(2.0)
+	var payload := v.gather_build_input(Vector2i.ZERO, flat)
+	assert_eq(int(payload["seed"]), 2468, "the payload carries the world seed")
+	assert_true(payload["depleted"] is Dictionary, "and the depletion record")
+	v._vein_taken["9,9,9"] = 3
+	var copied: Dictionary = v.gather_build_input(Vector2i.ZERO, flat)["depleted"]
+	v._vein_taken["9,9,9"] = 4
+	assert_eq(int(copied["9,9,9"]), 3, "the depletion record is COPIED for the worker, not shared")
+	v.free()
+	terrain.free()
 
 # ---------------------------------------------------------------------------
 # Assertion helpers

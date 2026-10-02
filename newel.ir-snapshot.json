@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:c4e54d285bb48fe2edd65211d7bdb71200a261ee3cf45cd14bb750c27581ddfa",
+  "schemaHash": "sha256:a664a172c7803ae9b7bff1adbde3d980b81795e50871b591cad36afe504f679d",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -1293,6 +1293,27 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0.1
+          },
+          "depthBand": {
+            "name": "depthBand",
+            "type": "json",
+            "description": "Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. Surface veins: ferrite crops out near the top of the ground and thins with depth.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 6
+            }
+          },
+          "leyGated": {
+            "name": "leyGated",
+            "type": "boolean",
+            "description": "True when a vein of this material forms only near a ley line",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
           }
         },
         "relations": {},
@@ -1432,6 +1453,27 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0.05
+          },
+          "depthBand": {
+            "name": "depthBand",
+            "type": "json",
+            "description": "Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. An alloy smelted from ferrite and aethermite: no veilsteel ore exists in the world.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 0
+            }
+          },
+          "leyGated": {
+            "name": "leyGated",
+            "type": "boolean",
+            "description": "True when a vein of this material forms only near a ley line",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
           }
         },
         "relations": {},
@@ -1586,6 +1628,27 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0.8
+          },
+          "depthBand": {
+            "name": "depthBand",
+            "type": "json",
+            "description": "Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. Found deep underground near ley lines: never in the top four units, and only where a ley line runs.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 4,
+              "max": 16
+            }
+          },
+          "leyGated": {
+            "name": "leyGated",
+            "type": "boolean",
+            "description": "True when a vein of this material forms only near a ley line",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
           }
         },
         "relations": {},
@@ -1755,6 +1818,27 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0.95
+          },
+          "depthBand": {
+            "name": "depthBand",
+            "type": "json",
+            "description": "Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. Found in void-touched biomes and deep rifts: below the topsoil, at any depth beneath it.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 2,
+              "max": 16
+            }
+          },
+          "leyGated": {
+            "name": "leyGated",
+            "type": "boolean",
+            "description": "True when a vein of this material forms only near a ley line",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
           }
         },
         "relations": {},
@@ -1896,6 +1980,27 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0.05
+          },
+          "depthBand": {
+            "name": "depthBand",
+            "type": "json",
+            "description": "Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. A wood: it grows as trees and is never mined from the ground.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 0
+            }
+          },
+          "leyGated": {
+            "name": "leyGated",
+            "type": "boolean",
+            "description": "True when a vein of this material forms only near a ley line",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
           }
         },
         "relations": {},
@@ -2035,6 +2140,27 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0.45
+          },
+          "depthBand": {
+            "name": "depthBand",
+            "type": "json",
+            "description": "Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. A wood: it grows as trees and is never mined from the ground.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 0
+            }
+          },
+          "leyGated": {
+            "name": "leyGated",
+            "type": "boolean",
+            "description": "True when a vein of this material forms only near a ley line",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
           },
           "isLuminous": {
             "name": "isLuminous",
@@ -2184,6 +2310,27 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0.15
+          },
+          "depthBand": {
+            "name": "depthBand",
+            "type": "json",
+            "description": "Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. Compressed volcanic ash: the bulk rock of the badlands from the surface down.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 16
+            }
+          },
+          "leyGated": {
+            "name": "leyGated",
+            "type": "boolean",
+            "description": "True when a vein of this material forms only near a ley line",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
           }
         },
         "relations": {},
@@ -2323,6 +2470,27 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0.75
+          },
+          "depthBand": {
+            "name": "depthBand",
+            "type": "json",
+            "description": "Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. Found in shallow cave systems and cliff faces: the top four units only.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 4
+            }
+          },
+          "leyGated": {
+            "name": "leyGated",
+            "type": "boolean",
+            "description": "True when a vein of this material forms only near a ley line",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
           }
         },
         "relations": {},
