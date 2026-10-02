@@ -107,4 +107,42 @@ function tameData(tame) {
   }
 }
 
-module.exports = { defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS, dropsData, tameData }
+
+// Phase 44 — how a creature populates the world, as ENTITY FIELDS the runtime spawn
+// roll (src/creature/creature_slice.gd) reads off the generated creature resources.
+//
+//   spawnCount   — PACK size: the instances placed TOGETHER around one spawn point when
+//                  a chunk's roll admits this creature. It used to read "per game world"
+//                  while the runtime spawned that many per chunk of the biome; it is now
+//                  neither — one chunk rolls at most one pack, and a pack of 3 means three
+//                  arriving together in one place, which is what the Phase 30 pack/herd AI
+//                  consumes.
+//   spawnChance  — 0..1, the per-chunk chance that a chunk of this creature's biome holds
+//                  a pack at all (before the density noise). Authored from the biome
+//                  prose's "spawn weight".
+//   spawnDensity — 0..1, the amplitude of a seeded 2D density noise that scales the chance
+//                  across the world: 0 = an even sprinkle, higher = packs cluster in some
+//                  regions and thin out to nothing in others.
+//
+// The `why` string is the prose claim the numbers come from.
+function spawnFields({ packSize, chance, density, why }) {
+  return {
+    spawnCount: {
+      type: 'integer',
+      description: `Pack size: instances placed together at one spawn point when a chunk rolls a spawn (not a per-chunk or per-world count). ${why}`,
+      defaultValue: packSize,
+    },
+    spawnChance: {
+      type: 'decimal',
+      description: 'Per-chunk chance (0–1) that a chunk of this biome holds a pack, before the density noise',
+      defaultValue: chance,
+    },
+    spawnDensity: {
+      type: 'decimal',
+      description: 'Amplitude (0–1) of the seeded density noise that clusters packs in some regions and thins them in others',
+      defaultValue: density,
+    },
+  }
+}
+
+module.exports = { spawnFields, defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS, dropsData, tameData }

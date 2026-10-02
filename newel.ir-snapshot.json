@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:a664a172c7803ae9b7bff1adbde3d980b81795e50871b591cad36afe504f679d",
+  "schemaHash": "sha256:c6d2aa3763b4e6e79a1e807dad1ae0e0e1cd6697f79f630a36db492180a25c9d",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -2583,6 +2583,15 @@
             "primaryKey": true,
             "pii": false
           },
+          "treeDensity": {
+            "name": "treeDensity",
+            "type": "decimal",
+            "description": "Mean trees per chunk (Phase 44), scaled per chunk by a seeded density noise so some chunks are bare and some thick; 0 = grows no trees. Thornwood trees are the dominant wood source at weight 0.8 — a wooded chunk.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 8
+          },
           "avgTemperature": {
             "name": "avgTemperature",
             "type": "decimal",
@@ -2655,6 +2664,15 @@
             "primaryKey": true,
             "pii": false
           },
+          "treeDensity": {
+            "name": "treeDensity",
+            "type": "decimal",
+            "description": "Mean trees per chunk (Phase 44), scaled per chunk by a seeded density noise so some chunks are bare and some thick; 0 = grows no trees. Thornwood is rare; only isolated copses at weight 0.1.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2
+          },
           "avgTemperature": {
             "name": "avgTemperature",
             "type": "decimal",
@@ -2726,6 +2744,15 @@
             "nullable": false,
             "primaryKey": true,
             "pii": false
+          },
+          "treeDensity": {
+            "name": "treeDensity",
+            "type": "decimal",
+            "description": "Mean trees per chunk (Phase 44), scaled per chunk by a seeded density noise so some chunks are bare and some thick; 0 = grows no trees. The badlands prose grants no conventional wood.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
           },
           "avgTemperature": {
             "name": "avgTemperature",
@@ -2813,6 +2840,15 @@
             "primaryKey": true,
             "pii": false
           },
+          "treeDensity": {
+            "name": "treeDensity",
+            "type": "decimal",
+            "description": "Mean trees per chunk (Phase 44), scaled per chunk by a seeded density noise so some chunks are bare and some thick; 0 = grows no trees. Duskwood trees dominate the canopy.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 8
+          },
           "avgTemperature": {
             "name": "avgTemperature",
             "type": "decimal",
@@ -2894,6 +2930,15 @@
             "nullable": false,
             "primaryKey": true,
             "pii": false
+          },
+          "treeDensity": {
+            "name": "treeDensity",
+            "type": "decimal",
+            "description": "Mean trees per chunk (Phase 44), scaled per chunk by a seeded density noise so some chunks are bare and some thick; 0 = grows no trees. The rift prose grants no conventional wood.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
           },
           "avgTemperature": {
             "name": "avgTemperature",
@@ -15891,11 +15936,29 @@
           "spawnCount": {
             "name": "spawnCount",
             "type": "integer",
-            "description": "Number of instances spawned per game world",
+            "description": "Pack size: instances placed together at one spawn point when a chunk rolls a spawn (not a per-chunk or per-world count). Biome prose: ForestBoar spawn weight 0.7 (a sounder of three rooting together).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 3
+          },
+          "spawnChance": {
+            "name": "spawnChance",
+            "type": "decimal",
+            "description": "Per-chunk chance (0–1) that a chunk of this biome holds a pack, before the density noise",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.7
+          },
+          "spawnDensity": {
+            "name": "spawnDensity",
+            "type": "decimal",
+            "description": "Amplitude (0–1) of the seeded density noise that clusters packs in some regions and thins them in others",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.4
           },
           "biome": {
             "name": "biome",
@@ -16311,11 +16374,29 @@
           "spawnCount": {
             "name": "spawnCount",
             "type": "integer",
-            "description": "Number of instances spawned per game world",
+            "description": "Pack size: instances placed together at one spawn point when a chunk rolls a spawn (not a per-chunk or per-world count). Biome prose: GraywolfPack spawn weight 0.4; a pack hunts together.",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 2
+          },
+          "spawnChance": {
+            "name": "spawnChance",
+            "type": "decimal",
+            "description": "Per-chunk chance (0–1) that a chunk of this biome holds a pack, before the density noise",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.4
+          },
+          "spawnDensity": {
+            "name": "spawnDensity",
+            "type": "decimal",
+            "description": "Amplitude (0–1) of the seeded density noise that clusters packs in some regions and thins them in others",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.6
           },
           "biome": {
             "name": "biome",
@@ -16790,11 +16871,29 @@
           "spawnCount": {
             "name": "spawnCount",
             "type": "integer",
-            "description": "Number of instances spawned per game world",
+            "description": "Pack size: instances placed together at one spawn point when a chunk rolls a spawn (not a per-chunk or per-world count). Biome prose: SteppeBison spawn weight 0.8; a herd grazes together.",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 2
+          },
+          "spawnChance": {
+            "name": "spawnChance",
+            "type": "decimal",
+            "description": "Per-chunk chance (0–1) that a chunk of this biome holds a pack, before the density noise",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.8
+          },
+          "spawnDensity": {
+            "name": "spawnDensity",
+            "type": "decimal",
+            "description": "Amplitude (0–1) of the seeded density noise that clusters packs in some regions and thins them in others",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.6
           },
           "biome": {
             "name": "biome",
@@ -17232,11 +17331,29 @@
           "spawnCount": {
             "name": "spawnCount",
             "type": "integer",
-            "description": "Number of instances spawned per game world",
+            "description": "Pack size: instances placed together at one spawn point when a chunk rolls a spawn (not a per-chunk or per-world count). Biome prose: RidgeHawk spawn weight 0.5.",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 2
+          },
+          "spawnChance": {
+            "name": "spawnChance",
+            "type": "decimal",
+            "description": "Per-chunk chance (0–1) that a chunk of this biome holds a pack, before the density noise",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "spawnDensity": {
+            "name": "spawnDensity",
+            "type": "decimal",
+            "description": "Amplitude (0–1) of the seeded density noise that clusters packs in some regions and thins them in others",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.3
           },
           "biome": {
             "name": "biome",
@@ -17639,11 +17756,29 @@
           "spawnCount": {
             "name": "spawnCount",
             "type": "integer",
-            "description": "Number of instances spawned per game world",
+            "description": "Pack size: instances placed together at one spawn point when a chunk rolls a spawn (not a per-chunk or per-world count). Biome prose: LavaSlug spawn weight 0.6.",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 2
+          },
+          "spawnChance": {
+            "name": "spawnChance",
+            "type": "decimal",
+            "description": "Per-chunk chance (0–1) that a chunk of this biome holds a pack, before the density noise",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.6
+          },
+          "spawnDensity": {
+            "name": "spawnDensity",
+            "type": "decimal",
+            "description": "Amplitude (0–1) of the seeded density noise that clusters packs in some regions and thins them in others",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.4
           },
           "biome": {
             "name": "biome",
@@ -18055,11 +18190,29 @@
           "spawnCount": {
             "name": "spawnCount",
             "type": "integer",
-            "description": "Number of instances spawned per game world",
+            "description": "Pack size: instances placed together at one spawn point when a chunk rolls a spawn (not a per-chunk or per-world count). Biome prose: CinderGargoyle spawn weight 0.2 (eruption events are not modelled).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 1
+          },
+          "spawnChance": {
+            "name": "spawnChance",
+            "type": "decimal",
+            "description": "Per-chunk chance (0–1) that a chunk of this biome holds a pack, before the density noise",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.2
+          },
+          "spawnDensity": {
+            "name": "spawnDensity",
+            "type": "decimal",
+            "description": "Amplitude (0–1) of the seeded density noise that clusters packs in some regions and thins them in others",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
           },
           "biome": {
             "name": "biome",
@@ -18473,11 +18626,29 @@
           "spawnCount": {
             "name": "spawnCount",
             "type": "integer",
-            "description": "Number of instances spawned per game world",
+            "description": "Pack size: instances placed together at one spawn point when a chunk rolls a spawn (not a per-chunk or per-world count). Biome prose: GlimmerFox spawn weight 0.7.",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 2
+          },
+          "spawnChance": {
+            "name": "spawnChance",
+            "type": "decimal",
+            "description": "Per-chunk chance (0–1) that a chunk of this biome holds a pack, before the density noise",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.7
+          },
+          "spawnDensity": {
+            "name": "spawnDensity",
+            "type": "decimal",
+            "description": "Amplitude (0–1) of the seeded density noise that clusters packs in some regions and thins them in others",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.4
           },
           "biome": {
             "name": "biome",
@@ -18932,11 +19103,29 @@
           "spawnCount": {
             "name": "spawnCount",
             "type": "integer",
-            "description": "Number of instances spawned per game world",
+            "description": "Pack size: instances placed together at one spawn point when a chunk rolls a spawn (not a per-chunk or per-world count). Biome prose: VeilStalker spawn weight 0.3; a solitary ambusher.",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 1
+          },
+          "spawnChance": {
+            "name": "spawnChance",
+            "type": "decimal",
+            "description": "Per-chunk chance (0–1) that a chunk of this biome holds a pack, before the density noise",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.3
+          },
+          "spawnDensity": {
+            "name": "spawnDensity",
+            "type": "decimal",
+            "description": "Amplitude (0–1) of the seeded density noise that clusters packs in some regions and thins them in others",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
           },
           "biome": {
             "name": "biome",
@@ -19350,11 +19539,29 @@
           "spawnCount": {
             "name": "spawnCount",
             "type": "integer",
-            "description": "Number of instances spawned per game world",
+            "description": "Pack size: instances placed together at one spawn point when a chunk rolls a spawn (not a per-chunk or per-world count). Biome prose: VoidSerpent spawn weight 0.5.",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 1
+          },
+          "spawnChance": {
+            "name": "spawnChance",
+            "type": "decimal",
+            "description": "Per-chunk chance (0–1) that a chunk of this biome holds a pack, before the density noise",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "spawnDensity": {
+            "name": "spawnDensity",
+            "type": "decimal",
+            "description": "Amplitude (0–1) of the seeded density noise that clusters packs in some regions and thins them in others",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.4
           },
           "biome": {
             "name": "biome",
@@ -19782,11 +19989,29 @@
           "spawnCount": {
             "name": "spawnCount",
             "type": "integer",
-            "description": "Number of instances spawned per game world; singleton per rift zone",
+            "description": "Pack size: instances placed together at one spawn point when a chunk rolls a spawn (not a per-chunk or per-world count). Biome prose: one instance per VoidRift zone, no probabilistic weight — every rift chunk holds its singleton.",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 1
+          },
+          "spawnChance": {
+            "name": "spawnChance",
+            "type": "decimal",
+            "description": "Per-chunk chance (0–1) that a chunk of this biome holds a pack, before the density noise",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "spawnDensity": {
+            "name": "spawnDensity",
+            "type": "decimal",
+            "description": "Amplitude (0–1) of the seeded density noise that clusters packs in some regions and thins them in others",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
           },
           "biome": {
             "name": "biome",

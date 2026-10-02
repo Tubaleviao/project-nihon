@@ -12,6 +12,7 @@ Broad mixed-leaf forests covering most mid-latitude landmass. Moderate rainfall,
 | Name | Type | Required | Description |
 | ---- | ---- | -------- | ----------- |
 | `id` | uuid | yes |  |
+| `treeDensity` | decimal | yes | Mean trees per chunk (Phase 44), scaled per chunk by a seeded density noise so some chunks are bare and some thick; 0 = grows no trees. Thornwood trees are the dominant wood source at weight 0.8 — a wooded chunk. |
 | `avgTemperature` | decimal | yes | °C annual average |
 | `avgRainfall` | decimal | yes | mm per in-game year |
 | `soilFertility` | decimal | yes | 0–1; affects crop growth rates |

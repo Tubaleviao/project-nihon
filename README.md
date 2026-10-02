@@ -63,8 +63,8 @@ npm run generate  # generate the design bible into bible/
 | 40 | Review pass: the avatar's footing — the voxel surface, walked stairs | Done |
 | 41 | Deterministic world and volumetric terrain | Done |
 | 42 | Threaded chunk build and a loading screen | Done |
-| 43 | Natural resource distribution | Planned |
-| 44 | Spawn scarcity | Planned |
+| 43 | Natural resource distribution | Done |
+| 44 | Spawn scarcity | Done |
 | 45 | Asset pipeline for meshes and animation | Planned |
 | 46 | UI shell | Planned |
 | 47 | Character window | Planned |

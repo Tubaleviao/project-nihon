@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, dropsData, tameData, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
+const { defineEntity, spawnFields, creatureStateMachine, dropsData, tameData, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
 
 module.exports = {
 
@@ -21,7 +21,7 @@ module.exports = {
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 3.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees; flees on weapon detect', defaultValue: 1.0 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 480 },
-      spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 2 },
+      ...spawnFields({ packSize: 2, chance: 0.7, density: 0.4, why: 'Biome prose: GlimmerFox spawn weight 0.7.' }),
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TwilightGrove' },
       drops: dropsData([
         { item: 'glimmer_pelt',        chance: 1.0, minQty: 1, maxQty: 1 },
@@ -123,7 +123,7 @@ module.exports = {
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 3.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees', defaultValue: 0.30 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 1080 },
-      spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 1 },
+      ...spawnFields({ packSize: 1, chance: 0.3, density: 0.5, why: 'Biome prose: VeilStalker spawn weight 0.3; a solitary ambusher.' }),
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TwilightGrove' },
       drops: dropsData([
         { item: 'veilstalker_venom_sac',    chance: 1.0, minQty: 1, maxQty: 1 },

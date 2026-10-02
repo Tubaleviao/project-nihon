@@ -24,7 +24,9 @@ An ancient construct of crystallised voidite that guards the innermost rift boun
 | attackRadius | decimal | Distance in metres at which creature begins attacking |
 | fleeThreshold | decimal | HP fraction (0–1) below which creature flees; 0 = never flees |
 | respawnSeconds | integer | Seconds before a dead creature respawns |
-| spawnCount | integer | Number of instances spawned per game world; singleton per rift zone |
+| spawnCount | integer | Pack size: instances placed together at one spawn point when a chunk rolls a spawn (not a per-chunk or per-world count). Biome prose: one instance per VoidRift zone, no probabilistic weight — every rift chunk holds its singleton. |
+| spawnChance | decimal | Per-chunk chance (0–1) that a chunk of this biome holds a pack, before the density noise |
+| spawnDensity | decimal | Amplitude (0–1) of the seeded density noise that clusters packs in some regions and thins them in others |
 | biome | `TemperateForest`, `TemperateGrassland`, `VolcanicBadlands`, `TwilightGrove`, `VoidRift` | Biome this creature belongs to |
 | drops | json | Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system. |
 

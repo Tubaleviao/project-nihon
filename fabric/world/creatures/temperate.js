@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, dropsData, tameData, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS } = require('./shared')
+const { defineEntity, spawnFields, creatureStateMachine, dropsData, tameData, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS } = require('./shared')
 
 module.exports = {
 
@@ -21,7 +21,7 @@ module.exports = {
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 3.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees', defaultValue: 0.25 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 300 },
-      spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 3 },
+      ...spawnFields({ packSize: 3, chance: 0.7, density: 0.4, why: 'Biome prose: ForestBoar spawn weight 0.7 (a sounder of three rooting together).' }),
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TemperateForest' },
       drops: dropsData([
         { item: 'raw_boar_meat', chance: 1.0, minQty: 1, maxQty: 3 },
@@ -97,7 +97,7 @@ module.exports = {
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 3.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees', defaultValue: 0.30 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 900 },
-      spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 2 },
+      ...spawnFields({ packSize: 2, chance: 0.4, density: 0.6, why: 'Biome prose: GraywolfPack spawn weight 0.4; a pack hunts together.' }),
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TemperateForest' },
       groupBehavior:  { type: 'enum', values: GROUP_BEHAVIORS, description: 'How group members coordinate: none (solitary), pack (share alert/aggressive), herd (share flee)', defaultValue: 'pack' },
       packRadius:     { type: 'decimal', description: 'Distance in metres within which group members coordinate with each other', defaultValue: 20.0 },
@@ -195,7 +195,7 @@ module.exports = {
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 4.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees', defaultValue: 0.20 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 1200 },
-      spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 2 },
+      ...spawnFields({ packSize: 2, chance: 0.8, density: 0.6, why: 'Biome prose: SteppeBison spawn weight 0.8; a herd grazes together.' }),
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TemperateGrassland' },
       groupBehavior:  { type: 'enum', values: GROUP_BEHAVIORS, description: 'How group members coordinate: none (solitary), pack (share alert/aggressive), herd (share flee)', defaultValue: 'herd' },
       packRadius:     { type: 'decimal', description: 'Distance in metres within which group members coordinate with each other', defaultValue: 20.0 },
@@ -277,7 +277,7 @@ module.exports = {
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 3.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees; flees on any damage', defaultValue: 1.0 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 600 },
-      spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 2 },
+      ...spawnFields({ packSize: 2, chance: 0.5, density: 0.3, why: 'Biome prose: RidgeHawk spawn weight 0.5.' }),
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TemperateGrassland' },
       drops: dropsData([
         { item: 'hawk_feather', chance: 1.0,  minQty: 1, maxQty: 3 },
