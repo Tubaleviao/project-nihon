@@ -1011,6 +1011,11 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 ## the actor's own pack — so a peer can only ever place what it actually holds. Both
 ## are checked BEFORE the debit and the edit (the atomic-refusal rule).
 func place_block(world_pos: Vector3, normal: Vector3, material: String = "", player_id: String = "") -> bool:
+	# `_place_material` is THIS machine's selection, so only the local actor may fall back
+	# to it: a remote actor that named no material (a client with nothing selected) must
+	# not place whatever the host happens to have selected.
+	if material == "" and _is_remote_actor(player_id):
+		return false
 	var chosen := material if material != "" else _place_material
 	if chosen == "" or not GameData.MATERIALS.has(chosen):
 		return false
@@ -1731,10 +1736,12 @@ func _held_pick(inventory: Node) -> String:
 	return str(inventory.find_tool("pick"))
 
 func _on_place_requested(position: Vector3, normal: Vector3, player_id: String, material: String) -> void:
-	var chosen := material if material != "" else _place_material
 	if is_authoritative:
-		place_block(position, normal, chosen, player_id)
+		# `material` as received: `place_block` decides whether "" may fall back to this
+		# machine's own selection (only for the local actor, never for a remote one).
+		place_block(position, normal, material, player_id)
 	else:
+		var chosen := material if material != "" else _place_material
 		GameBus.block_edit_intent.emit("place", position, normal, chosen)
 
 func _on_cycle_requested() -> void:

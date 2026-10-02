@@ -520,6 +520,12 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 	# neither attaches it nor re-dispatches it. Without this the two tasks carry the same
 	# revision and BOTH attach, so the mesh could end up the pre-edit one.
 	_supersede_in_flight(key)
+	# This dispatch satisfies any deferred one still waiting in `_rebuild_queue` (an earlier
+	# call the cap deferred). Left there, the drain would dispatch the chunk a second time and
+	# supersede the build just started — a wasted worker build and a spent retry.
+	if _rebuild_pending.has(key):
+		_rebuild_pending.erase(key)
+		_remove_queued_rebuild(key)
 	_build_attempts[key] = int(_build_attempts.get(key, 0)) + 1
 	var heightmap: Array = terrain_slice.generate_heightmap(chunk_pos)
 	# Phase 42 review pass 9 — the RESOLVE runs on the worker too. The main thread only GATHERS the
