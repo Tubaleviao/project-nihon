@@ -279,6 +279,8 @@ func unbind_peer(peer_id: int) -> String:
 		return ""
 	var player_id := str(_peer_ids[peer_id])
 	_peer_ids.erase(peer_id)
+	# A reconnect must report its worn set again; until it does the peer reads as armed.
+	_equipment_reported.erase(player_id)
 	return player_id
 
 func get_player_id(peer_id: int) -> String:
@@ -654,7 +656,7 @@ func record_equipment(player_id: String, worn: Dictionary) -> bool:
 	GameBus.equipment_changed.emit(player_id, clean.duplicate())
 	return true
 
-## Whether this player's client has reported a worn set this session. A peer that
+## Whether this player's client has reported a worn set on this connection. A peer that
 ## never does (a modified client omitting the intent) has no evidence of free hands.
 var _equipment_reported: Dictionary = {}
 

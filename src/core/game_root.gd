@@ -1421,9 +1421,15 @@ func _apply_local_equipment(worn: Variant) -> void:
 	var char_id: String = _character.get_player_character()
 	if char_id == "" or not (worn is Dictionary):
 		return
-	_applying_equipment = true
-	_character.apply_equipment_set(char_id, worn)
-	_applying_equipment = false
+	# An empty record (fresh player, or a pre-Phase-47 save with no worn set) carries no
+	# information: the avatar keeps the gear its appearance recipe gave it, and that
+	# set becomes the record instead of stripping the avatar bare.
+	if not (worn as Dictionary).is_empty():
+		_applying_equipment = true
+		_character.apply_equipment_set(char_id, worn)
+		_applying_equipment = false
+	elif not _is_client and not _registry.local_player_id.is_empty():
+		_registry.record_equipment(_registry.local_player_id, _character.get_equipment_set(char_id))
 	if _is_client:
 		# Seed the de-dup baseline with the restored set (so unequipping the last
 		# restored item still differs from it) and report the set to the host: the
