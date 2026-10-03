@@ -679,6 +679,22 @@ func send_peer_equipment_to(peer_id: int) -> void:
 		if not worn.is_empty():
 			_deliver(peer_id, { "type": "peer_equipment", "peer_id": o, "worn": worn })
 
+## Phase 47 — host: tell the peers whose AOI contains `peer_id` what it wears. Used when
+## a peer's position first becomes known: a reconnecting player's worn set is restored
+## from its record, which fires no `equipment_changed`, and at the handshake the peer has
+## no position yet to scope by (a reconnect gets a fresh ENet id, so the spawn default
+## would be used). Does nothing for a peer with no connection, no worn set or no position.
+func announce_equipment_to_aoi(peer_id: int) -> void:
+	if _role != Role.HOST or not _connected() or player_registry == null or not has_last_known_state(peer_id):
+		return
+	var worn: Dictionary = player_registry.get_equipment(str(player_registry.get_player_id(peer_id)))
+	if worn.is_empty():
+		return
+	var packet := { "type": "peer_equipment", "peer_id": peer_id, "worn": worn }
+	for pid in aoi_recipients(get_last_known_state(peer_id), multiplayer.get_peers()):
+		if int(pid) != peer_id:
+			_deliver(int(pid), packet.duplicate(true))
+
 ## Phase 34 — host → one client: the peer's OWN record slice changed on the host's
 ## side of an action it asked for (its inventory after a repair, its technology
 ## statuses after a research). Delivered to that peer alone: an inventory is
@@ -708,7 +724,10 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 		return
 	# Phase 19 — persist the client's last-known authoritative position so a
 	# rejoining client can resume from it.
+	var first_report := not has_last_known_state(peer_id)
 	remember_player_state(peer_id, position)
+	if first_report:
+		announce_equipment_to_aoi(peer_id)
 	var packet := {
 		"type":     "remote_player_state",
 		"peer_id":  peer_id,
