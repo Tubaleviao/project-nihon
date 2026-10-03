@@ -276,6 +276,7 @@ func _ready() -> void:
 	_networking.player_registry = _registry
 	if not _is_server:
 		_ui.inventory_slice       = _inventory
+		_ui.character_slice       = _character
 		_ui.crafting_slice        = _crafting
 		_ui.technology_slice      = _technology
 		_ui.market_slice          = _market
@@ -403,6 +404,8 @@ func _ready() -> void:
 	GameBus.player_joined.connect(_on_player_joined)
 	GameBus.player_identity_assigned.connect(_on_player_identity_assigned)
 	GameBus.remote_player_state.connect(_on_remote_player_state)
+	GameBus.character_appearance_changed.connect(_on_character_appearance_changed)
+	GameBus.peer_equipment_synced.connect(_character.set_peer_equipment)
 	GameBus.world_snapshot_received.connect(_on_world_snapshot_received)
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
@@ -771,6 +774,9 @@ func _finish_host_boot() -> void:
 	var player_char := _restore_or_create_player_character(_player.get_position())
 	_character.create_character("BoarRider", Vector3(spawn_xz.x - 3.0, ground_h + 1.0, spawn_xz.y))
 	_character.set_player_character(player_char)
+	# Phase 47 — the avatar exists only now, so the recorded worn set is applied here
+	# (the restore above runs before there is a character to wear it).
+	_apply_local_equipment(_registry.get_record(_registry.local_player_id).get("equipment", {}) if not _registry.local_player_id.is_empty() else {})
 
 	# CreatureSlice already spawned each chunk's budget via ChunkManager (Phase 17).
 	# Fire one combat round against the first spawned creature through the bus to
@@ -917,6 +923,7 @@ func _boot_server() -> void:
 func _on_player_joined(peer_id: int, player_id: String, reconnected: bool) -> void:
 	if _is_client:
 		return
+	_networking.send_peer_equipment_to(peer_id)
 	var inv = _registry.get_inventory(player_id)
 	if inv != null:
 		_trade.set_party_inventory(player_id, inv)
@@ -962,6 +969,7 @@ func _on_player_identity_assigned(player_id: String) -> void:
 ## The party bindings in trade/market are dropped with it: they hold a raw node
 ## reference, and a freed node is not null.
 func _on_peer_disconnected(peer_id: int) -> void:
+	_character.forget_peer(peer_id)
 	if _is_client:
 		return
 	var player_id := _registry.get_player_id(peer_id)
@@ -1209,6 +1217,8 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true) -> Dictionar
 		# part of the peer's own record, so they ride the same own-record payload.
 		snapshot["flags"] = own.get("flags", {})
 		snapshot["companions"] = own.get("companions", [])
+		# Phase 47 — the worn set rides the own-record payload too.
+		snapshot["equipment"] = own.get("equipment", {})
 		snapshot["player"] = { "position": own.get("position", []), "hp": own.get("hp", -1.0) }
 	return snapshot
 
@@ -1265,6 +1275,13 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 			"flags":      data.get("flags", {}),
 			"companions": data.get("companions", []),
 		}, _registry.local_player_id)
+	if data.has("equipment") and data["equipment"] is Dictionary:
+		# A client builds no avatar at boot, so the first snapshot creates it; without
+		# one there is nothing to wear the set, to show in the Character window, or to
+		# forward equipment intents from.
+		if _character.get_player_character() == "":
+			_character.set_player_character(_character.create_character("TravellerHuman", _player.get_position()))
+		_apply_local_equipment(data["equipment"])
 	var own: Variant = data.get("player", {})
 	if own is Dictionary:
 		var arr = own.get("position", [])
@@ -1392,6 +1409,47 @@ func _snapshot_local_player() -> void:
 	var char_id := _character.get_player_character()
 	if char_id != "":
 		_registry.record_appearance(pid, _character.get_appearance(char_id))
+		# Phase 47 — the worn set is its own record key (the Character window's source).
+		_registry.record_equipment(pid, _character.get_equipment_set(char_id))
+
+## Phase 47 — make the local avatar wear a recorded set. The `_applying_equipment`
+## guard keeps the restore from echoing back out as a fresh intent.
+var _applying_equipment: bool = false
+## Last worn set this client forwarded; an appearance change that leaves gear alone sends nothing.
+var _last_sent_equipment: Dictionary = {}
+func _apply_local_equipment(worn: Variant) -> void:
+	var char_id: String = _character.get_player_character()
+	if char_id == "" or not (worn is Dictionary):
+		return
+	# An empty record (fresh player, or a pre-Phase-47 save with no worn set) carries no
+	# information: the avatar keeps the gear its appearance recipe gave it, and that
+	# set becomes the record instead of stripping the avatar bare.
+	if not (worn as Dictionary).is_empty():
+		_applying_equipment = true
+		_character.apply_equipment_set(char_id, worn)
+		_applying_equipment = false
+	elif not _is_client and not _registry.local_player_id.is_empty():
+		_registry.record_equipment(_registry.local_player_id, _character.get_equipment_set(char_id))
+	if _is_client:
+		# Seed the de-dup baseline with the restored set (so unequipping the last
+		# restored item still differs from it) and report the set to the host: the
+		# host treats a peer that never reported as armed.
+		_last_sent_equipment = _character.get_equipment_set(char_id).duplicate()
+		GameBus.equipment_intent.emit("", _last_sent_equipment.duplicate())
+
+## Phase 47 — the local avatar's gear changed. A host records it; a client forwards
+## the set as an intent (the host validates it and replicates it to nearby peers).
+func _on_character_appearance_changed(instance_id: String, _appearance: Dictionary) -> void:
+	if _applying_equipment or instance_id != _character.get_player_character():
+		return
+	var worn: Dictionary = _character.get_equipment_set(instance_id)
+	if _is_client:
+		if worn == _last_sent_equipment:
+			return
+		_last_sent_equipment = worn.duplicate()
+		GameBus.equipment_intent.emit("", worn)
+	elif not _registry.local_player_id.is_empty():
+		_registry.record_equipment(_registry.local_player_id, worn)
 
 # ---------------------------------------------------------------------------
 # Phase 33 — the off-thread save
@@ -1577,6 +1635,8 @@ func _restore_local_player() -> void:
 		_technology.apply_statuses(tech, pid)
 	# Phase 35 — the local player's taming flags and companion bindings.
 	_taming.apply_record(rec, pid)
+	# Phase 47 — and the worn set.
+	_apply_local_equipment(rec.get("equipment", {}))
 
 ## The local player's recorded position, or null when there is no identity or the
 ## record carries none. Read by the host boot (to arm the first ring where the player

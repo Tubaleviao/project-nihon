@@ -23,6 +23,7 @@ module.exports = {
       }),
       ...equipmentVisualFields({
         slot: 'Head',
+        defense: 4,
         deformationMode: 'RIGID',
         masks: { primary: true, secondary: true, accent: true, metal: true, emission: false, wear: true },
         hideRegions: ['Hair'],
@@ -72,6 +73,7 @@ module.exports = {
       }),
       ...equipmentVisualFields({
         slot: 'Chest',
+        defense: 10,
         deformationMode: 'HYBRID',
         masks: { primary: true, secondary: true, accent: true, metal: true, emission: false, wear: true },
         hideRegions: ['BodyChest', 'BodyShoulders'],
@@ -128,6 +130,7 @@ module.exports = {
       }),
       ...equipmentVisualFields({
         slot: 'Cape',
+        defense: 2,
         deformationMode: 'SKINNED',
         masks: { primary: true, secondary: false, accent: false, metal: false, emission: false, wear: true },
         hideRegions: [],
@@ -180,6 +183,7 @@ module.exports = {
       }),
       ...equipmentVisualFields({
         slot: 'OffHand',
+        defense: 6,
         deformationMode: 'RIGID',
         masks: { primary: true, secondary: false, accent: true, metal: true, emission: false, wear: true },
         hideRegions: [],

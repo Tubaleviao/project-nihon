@@ -231,6 +231,8 @@ func _ready() -> void:
 	GameBus.creature_state_changed.connect(_on_creature_state_changed)
 	GameBus.remote_player_state.connect(_on_remote_player_state)
 	GameBus.inventory_synced.connect(_on_inventory_synced)
+	GameBus.equipment_intent.connect(_on_equipment_intent)
+	GameBus.equipment_changed.connect(_on_equipment_changed)
 	# Phase 31 — trees: a chop intent travels client → host, the resolved chop and
 	# the regrowth travel host → client.
 	GameBus.tree_chop_requested.connect(_on_tree_chop_requested)
@@ -636,10 +638,46 @@ func _on_research_intent(tech_id: String, _player_id: String) -> void:
 ## place that knows what it is holding), not a claim about anyone else, and the host
 ## evaluates the fabric's `requiresUnarmed` rule against it. A peer that sends no
 ## claim reads as armed (see TamingSlice.is_unarmed).
-func _on_tame_intent(instance_id: String, _player_id: String, unarmed: bool) -> void:
+func _on_tame_intent(instance_id: String, _player_id: String, _unarmed: bool) -> void:
 	if _role != Role.CLIENT:
 		return
-	_broadcast({ "type": "tame_intent", "instance_id": instance_id, "unarmed": unarmed })
+	_broadcast({ "type": "tame_intent", "instance_id": instance_id })
+
+## Phase 47 — client → host: this machine's worn set ({slot: item_key}). Carries no
+## identity: the host binds it to the connection.
+func _on_equipment_intent(_player_id: String, worn: Dictionary) -> void:
+	if _role != Role.CLIENT:
+		return
+	_broadcast({ "type": "equipment_intent", "worn": worn })
+
+## Phase 47 — host: a player's recorded worn set changed. It goes to the peers whose
+## AOI contains that player (never `_broadcast`), tagged with the OWNER's peer id; the
+## owner already holds its own set. A player with no connection or no known position
+## has no AOI to scope to and is not sent.
+func _on_equipment_changed(player_id: String, worn: Dictionary) -> void:
+	if _role != Role.HOST or not _connected() or player_registry == null:
+		return
+	var owner := int(player_registry.get_peer_id(player_id))
+	if owner == 0 or not has_last_known_state(owner):
+		return
+	var packet := { "type": "peer_equipment", "peer_id": owner, "worn": worn }
+	for pid in aoi_recipients(get_last_known_state(owner), multiplayer.get_peers()):
+		if int(pid) != owner:
+			_deliver(int(pid), packet.duplicate(true))
+
+## Phase 47 — host: a peer just bound its identity; tell it the worn sets of the other
+## connected players inside its AOI, because `_on_equipment_changed` only fires on a
+## change and a late joiner would otherwise never learn gear that was already on.
+func send_peer_equipment_to(peer_id: int) -> void:
+	if _role != Role.HOST or not _connected() or player_registry == null:
+		return
+	for other in multiplayer.get_peers():
+		var o := int(other)
+		if o == peer_id or not has_last_known_state(o) or not in_aoi(peer_id, get_last_known_state(o)):
+			continue
+		var worn: Dictionary = player_registry.get_equipment(str(player_registry.get_player_id(o)))
+		if not worn.is_empty():
+			_deliver(peer_id, { "type": "peer_equipment", "peer_id": o, "worn": worn })
 
 ## Phase 34 — host → one client: the peer's OWN record slice changed on the host's
 ## side of an action it asked for (its inventory after a repair, its technology
@@ -1161,10 +1199,9 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 		"tame_intent":
 			# Phase 35 — and the same for taming: the flag and the companion bind
 			# to the connection's own player, never to a name in the payload.
-			# Phase 36 — the sender's bare-hands claim is passed through: it is
-			# evidence about the sender itself (the only machine that knows what its
-			# body is holding), and the taming slice evaluates the fabric's rule
-			# against it, defaulting to "armed" when no claim arrived.
+			# Phase 47 — the payload's bare-hands claim is NOT read: the host
+			# evaluates the fabric's rule against its own copy of the sender's worn
+			# set (PlayerRegistry.get_equipment).
 			var tamer := _actor_id(sender)
 			if tamer == "":
 				_refuse_unhandshaked(sender, "tame_intent")
@@ -1172,8 +1209,18 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			GameBus.tame_intent.emit(
 				str(payload.get("instance_id", "")),
 				tamer,
-				bool(payload.get("unarmed", false))
+				false
 			)
+		"equipment_intent":
+			# Phase 47 — the worn set is recorded for the connection's player, never
+			# for a name in the payload; the registry filters it through the fabric.
+			var wearer := _actor_id(sender)
+			if wearer == "":
+				_refuse_unhandshaked(sender, "equipment_intent")
+				return
+			var claimed: Variant = payload.get("worn", {})
+			if claimed is Dictionary:
+				GameBus.equipment_intent.emit(wearer, claimed)
 		"block_edit_intent":
 			# Phase 36 — a world edit needs a bound identity AND a target within the
 			# host's evidence of arm's reach. The block position arrives as a bare
@@ -1371,6 +1418,11 @@ func _route_h2c(payload: Dictionary) -> void:
 			)
 		"remote_player_state":
 			_route_remote_player_state(payload)
+		"peer_equipment":
+			# Phase 47 — another peer's worn set, scoped to our AOI by the host.
+			var worn: Variant = payload.get("worn", {})
+			if worn is Dictionary:
+				GameBus.peer_equipment_synced.emit(int(payload.get("peer_id", 0)), worn)
 		"inventory_synced":
 			# Phase 37 — the packet is addressed to THIS client alone (the host sends it
 			# to the owner's peer, see _on_inventory_synced) and carries no identity: the
