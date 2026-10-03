@@ -385,6 +385,11 @@ func run() -> void:
 	_run_test("asset: placeholder resolves at canonical path",  _test_asset_placeholder_resolves)
 	_run_test("asset: no private-only paths hardcoded",          _test_asset_no_private_paths_hardcoded)
 	_run_test("asset: pck round-trip proves override works",    _test_asset_pck_round_trip_override)
+	_run_test("asset: manifest lists keys that exist on disk",   _test_asset_manifest_keys_exist)
+	_run_test("asset: load_mesh / load_animation_library from .glb.raw", _test_asset_load_mesh_and_animation)
+	_run_test("asset: missing model key warns and falls back",   _test_asset_missing_model_falls_back)
+	_run_test("asset: creature model key derived from entity name", _test_asset_creature_key)
+	_run_test("rig tree: every Locomotion.State maps to a node", _test_rig_tree_state_mapping_total)
 	_run_test("trade: both accept resolves exchange",           _test_trade_both_accept_resolves)
 	_run_test("trade: counter-offer requires prior offer",      _test_trade_counter_offer_requires_offer)
 	_run_test("trade: reject closes session",                   _test_trade_reject)
@@ -5037,6 +5042,39 @@ func _test_net_aoi_region() -> void:
 # ---------------------------------------------------------------------------
 # AssetOverlay tests (Phase 21 — asset separation)
 # ---------------------------------------------------------------------------
+
+func _test_asset_manifest_keys_exist() -> void:
+	for kind in ["textures", "meshes", "animations"]:
+		assert_true(AssetOverlay.keys(kind).size() > 0, "manifest has %s keys" % kind)
+		for k in AssetOverlay.keys(kind):
+			assert_true(FileAccess.file_exists(AssetOverlay.resolve_path(k)),
+				"manifest %s key %s resolves to a file" % [kind, k])
+	assert_false(AssetOverlay.has_key("meshes", "models/nope.glb.raw"), "unlisted key absent")
+
+func _test_asset_load_mesh_and_animation() -> void:
+	var mesh := AssetOverlay.load_mesh("models/placeholder_rig.glb.raw")
+	assert_true(mesh != null and mesh.get_surface_count() > 0, "load_mesh returns a real Mesh")
+	var lib := AssetOverlay.load_animation_library("models/placeholder_rig.glb.raw")
+	assert_true(lib.has_animation("idle"), "load_animation_library returns the idle clip")
+
+func _test_asset_missing_model_falls_back() -> void:
+	assert_true(AssetOverlay.load_mesh("models/missing.glb.raw") == null, "missing mesh -> null")
+	assert_eq(AssetOverlay.load_animation_library("models/missing.glb.raw").get_animation_list().size(), 0,
+		"missing animations -> empty library")
+
+func _test_asset_creature_key() -> void:
+	assert_eq(AssetOverlay.creature_model_key("Wolf"), "models/creatures/Wolf.glb.raw", "creature key")
+
+func _test_rig_tree_state_mapping_total() -> void:
+	const RigTree := preload("res://src/character/rig_tree.gd")
+	const Loco := preload("res://src/character/locomotion.gd")
+	for s in Loco.State.values():
+		assert_true(RigTree.node_for_state(s) != "", "state %d maps to a tree node" % s)
+	assert_eq(RigTree.node_for_state(Loco.State.IDLE), RigTree.node_for_state(Loco.State.RUN),
+		"idle/walk/run share the blend space")
+	var tree := RigTree.build_tree(AnimationPlayer.new())
+	assert_true(tree.tree_root is AnimationNodeStateMachine, "tree root is a state machine")
+	tree.free()
 
 func _test_asset_placeholder_resolves() -> void:
 	assert_true(FileAccess.file_exists(AssetOverlay.PLACEHOLDER_PATH),

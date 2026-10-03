@@ -43,6 +43,7 @@ extends Node
 
 const Locomotion  := preload("res://src/character/locomotion.gd")
 const SkeletonRig := preload("res://src/character/skeleton_rig.gd")
+const RigTree := preload("res://src/character/rig_tree.gd")
 const GameDataReader := preload("res://src/core/game_data_reader.gd")
 const CharacterMaterial := preload("res://src/character/character_material.gd")
 
@@ -578,6 +579,34 @@ func update_locomotion(instance_id: String, speed: float, grounded: bool, veloci
 		GameBus.character_state_changed.emit(instance_id, loco.state_name())
 	return after
 
+## Attach a real rig (glTF mesh + clips) to an instance when `rig_key` is in the
+## asset manifest, with an AnimationTree driven by the locomotion state machine
+## (Phase 45). Returns false and leaves the procedural body untouched when the key
+## is missing or fails to load, so a public clone still boots on boxes.
+func attach_rig(instance_id: String, rig_key: String) -> bool:
+	if not _instances.has(instance_id) or not AssetOverlay.has_key("meshes", rig_key):
+		return false
+	var mesh := AssetOverlay.load_mesh(rig_key)
+	var lib := AssetOverlay.load_animation_library(rig_key)
+	if mesh == null:
+		return false
+	var inst: Dictionary = _instances[instance_id]
+	var root: Node3D = inst["root"]
+	var mi := MeshInstance3D.new()
+	mi.name = "RigMesh"
+	mi.mesh = mesh
+	root.add_child(mi)
+	var player := AnimationPlayer.new()
+	player.name = "RigAnimationPlayer"
+	player.add_animation_library("", lib)
+	root.add_child(player)
+	var tree := RigTree.build_tree(player)
+	root.add_child(tree)
+	tree.anim_player = tree.get_path_to(player)
+	tree.active = true
+	inst["anim_tree"] = tree
+	return true
+
 func get_locomotion_state(instance_id: String) -> int:
 	if not _instances.has(instance_id):
 		return -1
@@ -678,6 +707,8 @@ func sync_player_avatar(
 
 	inst["position"] = root.position
 	update_locomotion(instance_id, speed, grounded, velocity_y, delta)
+	if inst.has("anim_tree") and is_instance_valid(inst["anim_tree"]):
+		RigTree.drive(inst["anim_tree"], inst["locomotion"])
 
 	# Procedural locomotion animation — advance the walk phase by distance
 	# travelled and swing the limb pivots. The blend weight (0 idle → 1 run)
