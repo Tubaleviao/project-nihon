@@ -109,6 +109,9 @@ var render_visuals: bool = true
 var creature_slice: Node = null
 var voxel_slice: Node = null
 var station_slice: Node = null
+
+## Station placement preview ghost toggled by N.
+var _station_preview_on: bool = false
 var terrain_slice: Node = null
 
 ## Phase 42 — set while the loading screen is up. It is its OWN gate, not a reuse of
@@ -173,6 +176,7 @@ func _physics_process(delta: float) -> void:
 func _process(delta: float) -> void:
 	if render_visuals:
 		_update_aim()
+		_update_station_preview()
 	_tick_ghosts(delta)
 
 func _input(event: InputEvent) -> void:
@@ -230,7 +234,12 @@ func _input(event: InputEvent) -> void:
 	# B key → cycle the station type to place.
 	if event is InputEventKey and event.pressed and event.keycode == KEY_B:
 		_cycle_station_type()
-	# V key → place the selected station at the player's feet.
+	# N key → toggle the station placement preview ghost.
+	if event is InputEventKey and event.pressed and event.keycode == KEY_N:
+		_station_preview_on = not _station_preview_on
+		if not _station_preview_on and station_slice != null and station_slice.has_method("hide_preview"):
+			station_slice.hide_preview()
+	# V key → place the selected station at the aimed spot (or the player's feet).
 	if event is InputEventKey and event.pressed and event.keycode == KEY_V:
 		_place_station()
 	# G key → tame the nearest creature in range (Phase 35). The rules live in
@@ -771,17 +780,38 @@ func _cycle_station_type() -> void:
 
 
 func _place_station() -> void:
-	if station_slice == null or not station_slice.has_method("place_station"):
+	if station_slice == null or not station_slice.has_method("try_place_station"):
 		return
 	var stype := ""
 	if station_slice.has_method("get_place_station_type"):
 		stype = str(station_slice.get_place_station_type())
 	if stype == "":
 		return
+	# Grid-snapped and overlap-checked by the slice; a refused spot places nothing.
+	station_slice.try_place_station(stype, _station_target())
+	_refresh_build_hint()
+
+
+## Where a station would go: on top of the aimed terrain block when the aimed
+## face points up, else at the player's feet.
+func _station_target() -> Vector3:
+	if _aimed_block_hit and _aimed_block_normal.y > 0.5:
+		return _aimed_block_pos + Vector3(0.0, 0.5, 0.0)
 	var pos := get_position()
 	pos.y -= 0.9   # sit the marker at the player's feet
-	station_slice.place_station(stype, pos)
-	_refresh_build_hint()
+	return pos
+
+
+## Keep the translucent placement ghost on the current target while the preview
+## is toggled on (N).
+func _update_station_preview() -> void:
+	if not _station_preview_on or station_slice == null or not station_slice.has_method("show_preview"):
+		return
+	var stype := str(station_slice.get_place_station_type()) if station_slice.has_method("get_place_station_type") else ""
+	if stype == "":
+		station_slice.hide_preview()
+		return
+	station_slice.show_preview(stype, _station_target())
 
 
 ## Ask to tame the nearest creature within TAME_RANGE (Phase 35). The request goes

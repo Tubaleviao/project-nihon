@@ -148,6 +148,7 @@ func run() -> void:
 	_run_test("station: master forge gates high-tier recipe",         _test_station_master_forge)
 	_run_test("station: nearest_station ignores wrong type",          _test_station_nearest_ignores_wrong_type)
 	_run_test("station: all canonical types accepted",                _test_station_all_canonical_types)
+	_run_test("station: placement snaps and refuses overlap",         _test_station_placement_validation)
 	_run_test("station: types derived from fabric",                   _test_station_types_from_fabric)
 	_run_test("durability: use decrements points",                    _test_durability_use_decrements)
 	_run_test("durability: broken tool emits item_broke",             _test_durability_broken_emits)
@@ -2098,6 +2099,23 @@ func _test_station_all_canonical_types() -> void:
 		var sid := station.place_station(t, Vector3(float(i), 0.0, 0.0))
 		assert_true(sid != "", "place_station('%s') returns a non-empty id" % t)
 		assert_true(station.station_near_player(t, 200.0), "station_near_player finds '%s'" % t)
+	station.free()
+
+func _test_station_placement_validation() -> void:
+	var station := StationSlice.new()
+	add_child(station)
+	var t: String = str(station.placeable_station_types()[0])
+	assert_eq(station.snap_to_grid(Vector3(2.3, 1.0, -0.2)), Vector3(2.5, 1.0, -0.5), "snaps x/z to cell centre")
+	assert_true(station.try_place_station(t, Vector3(2.3, 0.0, 2.3)) != "", "first placement accepted")
+	assert_eq(station.try_place_station(t, Vector3(2.9, 0.0, 2.1)), "", "same cell refused")
+	assert_true(station.placement_blocker(t, Vector3(2.5, 0.0, 2.5)) != "", "blocker names the overlap")
+	assert_true(station.try_place_station(t, Vector3(4.5, 0.0, 2.5)) != "", "adjacent cell accepted")
+	assert_eq(station.try_place_station("NoSuchStation", Vector3(9.5, 0.0, 9.5)), "", "unknown type refused")
+	assert_eq(station.get_all_stations().size(), 2, "only accepted placements stored")
+	station.show_preview(t, Vector3(2.5, 0.0, 2.5))
+	assert_true(station.is_preview_visible(), "preview shown")
+	station.hide_preview()
+	assert_true(not station.is_preview_visible(), "preview hidden")
 	station.free()
 
 # ---------------------------------------------------------------------------

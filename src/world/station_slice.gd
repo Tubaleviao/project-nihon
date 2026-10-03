@@ -35,6 +35,9 @@ var _markers: Dictionary = {}
 ## Currently selected station type for placement (cycled via cycle_station_type).
 var _place_type: String = ""
 
+## Translucent placement ghost (lazily built; null until the first preview).
+var _preview: MeshInstance3D = null
+
 ## Manual player-position override used when player_slice is null (tests).
 var _player_position_override: Vector3 = Vector3.ZERO
 
@@ -96,6 +99,62 @@ func place_station(type: String, position: Vector3) -> String:
 	_insert_station(id, type, position)
 	GameBus.station_placed.emit(id, type, position)
 	return id
+
+## Minimum centre-to-centre distance between two stations (the marker is 1 m wide,
+## so anything closer would interpenetrate).
+const MIN_STATION_SPACING: float = 1.0
+
+## Snap a world position to the 1 m placement grid on x/z (cell centres); y is kept.
+func snap_to_grid(position: Vector3) -> Vector3:
+	return Vector3(floorf(position.x) + 0.5, position.y, floorf(position.z) + 0.5)
+
+## "" when a station of `type` may be placed at `position`, otherwise a short
+## reason. Fails closed on an empty/unknown type and on overlap with any placed
+## station. Used by try_place_station and by the placement preview.
+func placement_blocker(type: String, position: Vector3) -> String:
+	if type == "" or not placeable_station_types().has(type):
+		return "unknown station type"
+	for id in _stations:
+		var other: Vector3 = _stations[id]["position"]
+		if other.distance_to(position) < MIN_STATION_SPACING:
+			return "too close to %s" % id
+	return ""
+
+## Validated placement: snaps to the grid, refuses on overlap. Returns the new
+## station id, or "" when refused (see placement_blocker).
+func try_place_station(type: String, position: Vector3) -> String:
+	var pos := snap_to_grid(position)
+	if placement_blocker(type, pos) != "":
+		return ""
+	return place_station(type, pos)
+
+## Show (or move) the translucent placement ghost at the snapped `position`;
+## green when placeable, red when blocked. No-op without a rendering context.
+func show_preview(type: String, position: Vector3) -> void:
+	var pos := snap_to_grid(position)
+	var ok := placement_blocker(type, pos) == ""
+	if _preview == null:
+		var mesh := BoxMesh.new()
+		mesh.size = Vector3(1.0, 1.0, 1.0)
+		var mat := StandardMaterial3D.new()
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_preview = MeshInstance3D.new()
+		_preview.mesh = mesh
+		_preview.material_override = mat
+		_preview.name = "StationPreview"
+		add_child(_preview)
+	_preview.position = pos
+	_preview.visible = true
+	(_preview.material_override as StandardMaterial3D).albedo_color = \
+		Color(0.2, 0.9, 0.3, 0.4) if ok else Color(0.95, 0.2, 0.2, 0.4)
+
+func hide_preview() -> void:
+	if _preview != null:
+		_preview.visible = false
+
+func is_preview_visible() -> bool:
+	return _preview != null and _preview.visible
 
 ## Insert a station under a KNOWN id and keep the allocator above it. Used by
 ## apply_station_data so a restored station keeps its saved id rather than being

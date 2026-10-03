@@ -4958,8 +4958,10 @@ compatibility but ignored — `TamingSlice.is_unarmed` reads the registry.
 - **`VoidTouched` special-case unlock** — the void-burst survivor unlock trigger
   is defined in the fabric but not wired to any runtime event (deferred from
   Phase 13).
-- **Station placement UI** — currently stations are spawned programmatically;
-  a build-mode placement flow is needed (deferred from Phase 16).
+- **Station placement UI** — **(closed: placement is grid-snapped to 1 m cells and
+  refuses overlap via `StationSlice.try_place_station`; N toggles a translucent
+  green/red preview ghost and V places at the aimed top face or the player's feet.
+  A full build-mode menu remains out of scope.)**
 - **NavigationAgent3D path-finding** — creature movement currently uses direct
   kinematic stepping; replacing it with nav-mesh baked from voxel terrain and
   `NavigationAgent3D` per-instance requires the chunk-streaming world from
