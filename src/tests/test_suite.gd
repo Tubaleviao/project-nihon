@@ -4498,6 +4498,9 @@ func _test_net_reconnect_last_known_state() -> void:
 	add_child(n)
 	n.remember_player_state(2, Vector3(4.0, 5.0, 6.0))
 	assert_eq(n.get_last_known_state(2), Vector3(4.0, 5.0, 6.0), "state remembered")
+	# Phase 47 — announcing gear is host-only and needs a connection: offline it is a no-op, not a crash.
+	n.announce_equipment_to_aoi(2)
+	n.announce_equipment_to_aoi(99)
 	n._on_peer_disconnected(2)
 	assert_eq(n.get_last_known_state(2), Vector3(4.0, 5.0, 6.0), "last-known state retained across disconnect")
 	assert_true(n.get_last_known_states().has(2), "retained state present for snapshot")
