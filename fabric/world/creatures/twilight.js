@@ -21,7 +21,9 @@ module.exports = {
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 3.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees; flees on weapon detect', defaultValue: 1.0 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 480 },
-      spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 2 },
+      spawnCount:     { type: 'integer', description: 'PACK size: instances placed together at one spawn point (not a per-chunk count)', defaultValue: 2 },
+      spawnChance:    { type: 'decimal', description: 'Probability (0–1) that a chunk of this creature\'s biome rolls a pack at all', defaultValue: 0.6 },
+      spawnDensity:   { type: 'decimal', description: 'Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world', defaultValue: 0.5 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TwilightGrove' },
       drops: dropsData([
         { item: 'glimmer_pelt',        chance: 1.0, minQty: 1, maxQty: 1 },
@@ -123,7 +125,9 @@ module.exports = {
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 3.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees', defaultValue: 0.30 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 1080 },
-      spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 1 },
+      spawnCount:     { type: 'integer', description: 'PACK size: instances placed together at one spawn point (not a per-chunk count)', defaultValue: 1 },
+      spawnChance:    { type: 'decimal', description: 'Probability (0–1) that a chunk of this creature\'s biome rolls a pack at all', defaultValue: 0.6 },
+      spawnDensity:   { type: 'decimal', description: 'Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world', defaultValue: 0.5 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TwilightGrove' },
       drops: dropsData([
         { item: 'veilstalker_venom_sac',    chance: 1.0, minQty: 1, maxQty: 1 },

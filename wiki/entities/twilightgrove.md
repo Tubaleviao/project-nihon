@@ -18,6 +18,7 @@ Eerie glades where day-night cycles run at an accelerated, unpredictable rate, b
 | avgTemperature | decimal | °C annual average; mild |
 | avgRainfall | decimal | mm per in-game year; moderate |
 | soilFertility | decimal | 0–1; moderate; unusual flora |
+| treeDensity | integer | Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here) |
 | dayNightSpeed | decimal | Multiplier on the global day-night cycle (1 = normal); varies per tile; drives weather pattern selection and duskfiber luminosity |
 
 ## Related

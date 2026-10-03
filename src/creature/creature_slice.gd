@@ -41,6 +41,10 @@ extends Node
 ## server keeps the same records with no rendering attached.
 const MultimeshPool := preload("res://src/core/multimesh_pool.gd")
 const SpatialHash    := preload("res://src/core/spatial_hash.gd")
+const SpawnRoll      := preload("res://src/world/spawn_roll.gd")
+
+## Global cap on live instances (0 = unbounded). Host-only; see `set_population_cap`.
+var _population_cap: int = 0
 
 var _instances: Dictionary = {}
 
@@ -312,12 +316,16 @@ func get_snapshot_creatures() -> Array:
 # Private
 # ---------------------------------------------------------------------------
 
-## Spawn the per-chunk creature budget: every creature whose biome matches this
-## chunk's biome, at its spawnCount, placed at deterministic positions inside the chunk.
-## When terrain_slice is not wired (isolated unit tests), chunk_biome is "" and
-## every creature is spawned regardless of biome.
+## Spawn this chunk's creature packs: for every creature whose biome matches the chunk's
+## biome, a seeded chance roll and density multiplier (`SpawnRoll.pack_size`) decide
+## whether a pack arrives and how large it is, and `spawnCount` is the pack's base size —
+## NOT a per-chunk count. The pack is placed around ONE deterministic centre. The roll is
+## a pure function of (world seed, chunk, creature), so a client recomputes the same
+## pack; only the host admits it, and only if the global population cap allows.
+## When terrain_slice is not wired (isolated unit tests) there is no world: chunk_biome is
+## "" and every creature spawns at its full pack size, whatever its chance.
 ## Accounts for engaged (aggressive/fleeing) survivors from a previous despawn so that
-## a chunk reload never exceeds the per-creature spawnCount budget.
+## a chunk reload never exceeds the pack size.
 func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 	if not is_authoritative:
 		return   # clients receive creatures from host broadcasts
@@ -331,16 +339,48 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 		var biome_key: String = biome_keys[biome_idx] if biome_idx < biome_keys.size() else biome_keys[0]
 		if chunk_biome != "" and biome_key != chunk_biome:
 			continue
-		var budget: int = int(res.get("spawnCount"))
+		var pack: int = int(res.get("spawnCount"))
+		if chunk_biome != "":
+			pack = SpawnRoll.pack_size(_world_seed(), chunk_pos, creature_id, pack,
+					float(res.get("spawnChance")), float(res.get("spawnDensity")))
 		# Count surviving instances (engaged creatures kept alive across a despawn).
 		var surviving: int = 0
 		for iid in _instances:
 			var inst: Dictionary = _instances[iid]
 			if inst.get("chunk") == chunk_pos and inst.get("creature_id") == creature_id:
 				surviving += 1
-		var to_spawn: int = budget - surviving
+		var to_spawn: int = pack - surviving
+		if to_spawn <= 0:
+			continue
+		# A pack the cap cannot hold is refused whole and never streamed: the cap is a
+		# host-only quantity, so a refusal is simply an absent pack.
+		if _population_cap > 0 and live_population() + to_spawn > _population_cap:
+			continue
 		for i in range(to_spawn):
 			_spawn(creature_id, chunk_pos, surviving + i)
+
+## Cap on live creature instances (0 = unbounded). Enforced host-only, at admission.
+func set_population_cap(cap: int) -> void:
+	_population_cap = maxi(0, cap)
+
+func get_population_cap() -> int:
+	return _population_cap
+
+## Creatures alive right now, counted from the instance table every call: a despawn
+## returns its budget by construction (nothing is decremented and forgotten), and a dead
+## creature awaiting respawn does not occupy a slot.
+func live_population() -> int:
+	var n: int = 0
+	for iid in _instances:
+		if _instances[iid].get("state", "") != "dead":
+			n += 1
+	return n
+
+## The world seed the spawn roll derives from; 0 when no terrain slice is wired.
+func _world_seed() -> int:
+	if terrain_slice != null and terrain_slice.has_method("get_world_seed"):
+		return int(terrain_slice.get_world_seed())
+	return 0
 
 ## Despawn creatures belonging to `chunk_pos` that are not engaged in combat.
 ## Engaged (aggressive / fleeing) creatures are kept so an in-progress fight is
@@ -391,14 +431,12 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 		return ""
 
 	var hp: float = float(res.get("baseHp"))
-	var xz: Vector2 = _deterministic_chunk_position(chunk_pos, creature_id, spawn_index)
-	# Pack/herd members cluster around a single deterministic centre so their
-	# group coordination (pack alert / herd flee) fires in practice instead of
-	# being scattered out of packRadius. Solitary creatures keep the scattered
-	# per-index spawn positions.
-	if _is_group_creature(creature_id):
-		var center: Vector2 = _deterministic_chunk_position(chunk_pos, creature_id, 0)
-		xz = center + _pack_member_offset(spawn_index)
+	var xz: Vector2
+	# A spawn is a PACK (Phase 44): its members cluster around a single deterministic
+	# centre, which is also what lets pack/herd coordination (alert / flee) fire in
+	# practice instead of being scattered out of packRadius.
+	var center: Vector2 = _deterministic_chunk_position(chunk_pos, creature_id, 0)
+	xz = center + _pack_member_offset(spawn_index)
 	var pos: Vector3 = Vector3(xz.x, 0.0, xz.y)
 
 	# Sit the creature on the terrain surface instead of a fixed height.

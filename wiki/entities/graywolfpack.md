@@ -24,7 +24,9 @@ A coordinated hunting pack of gray wolves that roam temperate forest edges and c
 | attackRadius | decimal | Distance in metres at which creature begins attacking |
 | fleeThreshold | decimal | HP fraction (0–1) below which creature flees |
 | respawnSeconds | integer | Seconds before a dead creature respawns |
-| spawnCount | integer | Number of instances spawned per game world |
+| spawnCount | integer | PACK size: instances placed together at one spawn point (not a per-chunk count) |
+| spawnChance | decimal | Probability (0–1) that a chunk of this creature's biome rolls a pack at all |
+| spawnDensity | decimal | Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world |
 | biome | `TemperateForest`, `TemperateGrassland`, `VolcanicBadlands`, `TwilightGrove`, `VoidRift` | Biome this creature belongs to |
 | groupBehavior | `none`, `pack`, `herd` | How group members coordinate: none (solitary), pack (share alert/aggressive), herd (share flee) |
 | packRadius | decimal | Distance in metres within which group members coordinate with each other |

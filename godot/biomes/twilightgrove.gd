@@ -7,4 +7,5 @@ extends Resource
 @export var avgTemperature: float
 @export var avgRainfall: float
 @export var soilFertility: float
+@export var treeDensity: int
 @export var dayNightSpeed: float

@@ -14,6 +14,7 @@ module.exports = {
       avgTemperature: { type: 'decimal', description: '°C annual average; extreme heat' },
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year; near zero' },
       soilFertility:  { type: 'decimal', description: '0–1; near zero; no conventional farming' },
+      treeDensity:    { type: 'integer', description: 'Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here)', defaultValue: 0 },
     },
     relations: {
       spawnLavaSlug:      { name: 'spawnLavaSlug',      kind: 'hasMany', target: 'LavaSlug' },

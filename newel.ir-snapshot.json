@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:a664a172c7803ae9b7bff1adbde3d980b81795e50871b591cad36afe504f679d",
+  "schemaHash": "sha256:ec228b4b1c1bee30eacf91fd769753c74870d0c243912c95960378e80dd74d55",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -2606,6 +2606,15 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "treeDensity": {
+            "name": "treeDensity",
+            "type": "integer",
+            "description": "Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 8
           }
         },
         "relations": {
@@ -2678,6 +2687,15 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "treeDensity": {
+            "name": "treeDensity",
+            "type": "integer",
+            "description": "Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2
           }
         },
         "relations": {
@@ -2750,6 +2768,15 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "treeDensity": {
+            "name": "treeDensity",
+            "type": "integer",
+            "description": "Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
           }
         },
         "relations": {
@@ -2837,6 +2864,15 @@
             "primaryKey": false,
             "pii": false
           },
+          "treeDensity": {
+            "name": "treeDensity",
+            "type": "integer",
+            "description": "Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 8
+          },
           "dayNightSpeed": {
             "name": "dayNightSpeed",
             "type": "decimal",
@@ -2918,6 +2954,15 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false
+          },
+          "treeDensity": {
+            "name": "treeDensity",
+            "type": "integer",
+            "description": "Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
           }
         },
         "relations": {
@@ -15891,11 +15936,29 @@
           "spawnCount": {
             "name": "spawnCount",
             "type": "integer",
-            "description": "Number of instances spawned per game world",
+            "description": "PACK size: instances placed together at one spawn point (not a per-chunk count)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 3
+          },
+          "spawnChance": {
+            "name": "spawnChance",
+            "type": "decimal",
+            "description": "Probability (0–1) that a chunk of this creature's biome rolls a pack at all",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.6
+          },
+          "spawnDensity": {
+            "name": "spawnDensity",
+            "type": "decimal",
+            "description": "Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
           },
           "biome": {
             "name": "biome",
@@ -16311,11 +16374,29 @@
           "spawnCount": {
             "name": "spawnCount",
             "type": "integer",
-            "description": "Number of instances spawned per game world",
+            "description": "PACK size: instances placed together at one spawn point (not a per-chunk count)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 2
+          },
+          "spawnChance": {
+            "name": "spawnChance",
+            "type": "decimal",
+            "description": "Probability (0–1) that a chunk of this creature's biome rolls a pack at all",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.6
+          },
+          "spawnDensity": {
+            "name": "spawnDensity",
+            "type": "decimal",
+            "description": "Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
           },
           "biome": {
             "name": "biome",
@@ -16790,11 +16871,29 @@
           "spawnCount": {
             "name": "spawnCount",
             "type": "integer",
-            "description": "Number of instances spawned per game world",
+            "description": "PACK size: instances placed together at one spawn point (not a per-chunk count)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 2
+          },
+          "spawnChance": {
+            "name": "spawnChance",
+            "type": "decimal",
+            "description": "Probability (0–1) that a chunk of this creature's biome rolls a pack at all",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.6
+          },
+          "spawnDensity": {
+            "name": "spawnDensity",
+            "type": "decimal",
+            "description": "Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
           },
           "biome": {
             "name": "biome",
@@ -17232,11 +17331,29 @@
           "spawnCount": {
             "name": "spawnCount",
             "type": "integer",
-            "description": "Number of instances spawned per game world",
+            "description": "PACK size: instances placed together at one spawn point (not a per-chunk count)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 2
+          },
+          "spawnChance": {
+            "name": "spawnChance",
+            "type": "decimal",
+            "description": "Probability (0–1) that a chunk of this creature's biome rolls a pack at all",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.6
+          },
+          "spawnDensity": {
+            "name": "spawnDensity",
+            "type": "decimal",
+            "description": "Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
           },
           "biome": {
             "name": "biome",
@@ -17639,11 +17756,29 @@
           "spawnCount": {
             "name": "spawnCount",
             "type": "integer",
-            "description": "Number of instances spawned per game world",
+            "description": "PACK size: instances placed together at one spawn point (not a per-chunk count)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 2
+          },
+          "spawnChance": {
+            "name": "spawnChance",
+            "type": "decimal",
+            "description": "Probability (0–1) that a chunk of this creature's biome rolls a pack at all",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.6
+          },
+          "spawnDensity": {
+            "name": "spawnDensity",
+            "type": "decimal",
+            "description": "Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
           },
           "biome": {
             "name": "biome",
@@ -18055,11 +18190,29 @@
           "spawnCount": {
             "name": "spawnCount",
             "type": "integer",
-            "description": "Number of instances spawned per game world",
+            "description": "PACK size: instances placed together at one spawn point (not a per-chunk count)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 1
+          },
+          "spawnChance": {
+            "name": "spawnChance",
+            "type": "decimal",
+            "description": "Probability (0–1) that a chunk of this creature's biome rolls a pack at all",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.6
+          },
+          "spawnDensity": {
+            "name": "spawnDensity",
+            "type": "decimal",
+            "description": "Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
           },
           "biome": {
             "name": "biome",
@@ -18473,11 +18626,29 @@
           "spawnCount": {
             "name": "spawnCount",
             "type": "integer",
-            "description": "Number of instances spawned per game world",
+            "description": "PACK size: instances placed together at one spawn point (not a per-chunk count)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 2
+          },
+          "spawnChance": {
+            "name": "spawnChance",
+            "type": "decimal",
+            "description": "Probability (0–1) that a chunk of this creature's biome rolls a pack at all",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.6
+          },
+          "spawnDensity": {
+            "name": "spawnDensity",
+            "type": "decimal",
+            "description": "Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
           },
           "biome": {
             "name": "biome",
@@ -18932,11 +19103,29 @@
           "spawnCount": {
             "name": "spawnCount",
             "type": "integer",
-            "description": "Number of instances spawned per game world",
+            "description": "PACK size: instances placed together at one spawn point (not a per-chunk count)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 1
+          },
+          "spawnChance": {
+            "name": "spawnChance",
+            "type": "decimal",
+            "description": "Probability (0–1) that a chunk of this creature's biome rolls a pack at all",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.6
+          },
+          "spawnDensity": {
+            "name": "spawnDensity",
+            "type": "decimal",
+            "description": "Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
           },
           "biome": {
             "name": "biome",
@@ -19350,11 +19539,29 @@
           "spawnCount": {
             "name": "spawnCount",
             "type": "integer",
-            "description": "Number of instances spawned per game world",
+            "description": "PACK size: instances placed together at one spawn point (not a per-chunk count)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 1
+          },
+          "spawnChance": {
+            "name": "spawnChance",
+            "type": "decimal",
+            "description": "Probability (0–1) that a chunk of this creature's biome rolls a pack at all",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.6
+          },
+          "spawnDensity": {
+            "name": "spawnDensity",
+            "type": "decimal",
+            "description": "Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
           },
           "biome": {
             "name": "biome",
@@ -19782,11 +19989,29 @@
           "spawnCount": {
             "name": "spawnCount",
             "type": "integer",
-            "description": "Number of instances spawned per game world; singleton per rift zone",
+            "description": "PACK size: instances placed together at one spawn point (not a per-chunk count); singleton per rift zone",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 1
+          },
+          "spawnChance": {
+            "name": "spawnChance",
+            "type": "decimal",
+            "description": "Probability (0–1) that a chunk of this creature's biome rolls a pack at all",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.6
+          },
+          "spawnDensity": {
+            "name": "spawnDensity",
+            "type": "decimal",
+            "description": "Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
           },
           "biome": {
             "name": "biome",

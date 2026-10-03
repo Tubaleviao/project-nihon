@@ -44,12 +44,9 @@ const TREE_COLLISION_LAYER := 8
 ## dominant wood source at weight 0.8", the grassland "rare; only isolated copses
 ## at weight 0.1", and the twilight grove has "Duskwood trees dominate the
 ## canopy". A biome absent from this table grows no trees — the volcanic
-## badlands prose grants no conventional wood. `per_chunk` follows the prose
-## weight: dominant → 8 trees, isolated copses → 2.
-##
-## GDScript-first on purpose: the roadmap lands trees as a runtime feature and
-## adds the fabric world-system entity once the runtime shape has settled (see
-## Phase 31's Newel dependency note).
+## badlands prose grants no conventional wood. `per_chunk` is the FALLBACK density
+## (dominant → 8 trees, isolated copses → 2) used only when no fabric is wired; the
+## live density is the biome entity's `treeDensity` (Phase 44), read via `density_for`.
 const TREES_BY_BIOME: Dictionary = {
 	"TemperateForest":    { "species": "Thornwood", "wood": "Thornwood", "per_chunk": 8 },
 	"TemperateGrassland": { "species": "Thornwood", "wood": "Thornwood", "per_chunk": 2 },
@@ -59,6 +56,13 @@ const TREES_BY_BIOME: Dictionary = {
 ## Biome assumed when no terrain slice is wired (isolated unit tests), mirroring
 ## CreatureSlice's "no terrain → spawn anyway" test path.
 const DEFAULT_BIOME := "TemperateForest"
+
+## Chance a chunk of a tree biome is a clearing with no trees at all, and the amplitude of
+## the smooth density noise that thickens and thins the stand across the world (Phase 44).
+const CLEARING_CHANCE := 0.1
+const DENSITY_NOISE := 0.5
+
+const SpawnRoll := preload("res://src/world/spawn_roll.gd")
 
 ## Trunk / canopy proportions of the shared placeholder tree mesh (world units).
 const TRUNK_RADIUS  := 0.30
@@ -121,7 +125,7 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 	var entry := tree_entry_for_biome(_chunk_biome(chunk_pos))
 	if entry.is_empty():
 		return
-	var budget: int = int(entry["per_chunk"])
+	var budget: int = tree_count_for(chunk_pos, _chunk_biome(chunk_pos))
 	var existing: int = 0
 	for tid in _trees:
 		if _trees[tid]["chunk"] == chunk_pos:
@@ -143,6 +147,29 @@ func despawn_for_chunk(chunk_pos: Vector2i) -> void:
 			_pool.release(int(tree["mi"]))
 		_free_collision(tree)
 		_trees.erase(tid)
+
+## Mean trees per chunk for a biome: the fabric `treeDensity` when the biome resource is
+## loaded, else the `TREES_BY_BIOME` fallback (isolated tests with no fabric wired).
+func density_for(biome: String) -> int:
+	var entry := tree_entry_for_biome(biome)
+	if entry.is_empty():
+		return 0
+	var b: Variant = GameData.BIOMES.get(biome if biome != "" else DEFAULT_BIOME, null)
+	if b != null and b.get("treeDensity") != null:
+		return int(b.get("treeDensity"))
+	return int(entry["per_chunk"])
+
+## Trees this chunk grows: a seeded clearing roll, then the biome density scaled by the
+## smooth density noise. Pure in (world seed, chunk, biome) so host and client agree.
+## With no terrain slice wired (biome "") the flat density applies — no world, no roll.
+func tree_count_for(chunk_pos: Vector2i, biome: String) -> int:
+	var mean: int = density_for(biome)
+	if mean <= 0 or biome == "":
+		return maxi(mean, 0)
+	var seed_v: int = 0
+	if terrain_slice != null and terrain_slice.has_method("get_world_seed"):
+		seed_v = int(terrain_slice.get_world_seed())
+	return SpawnRoll.pack_size(seed_v, chunk_pos, "trees", mean, 1.0 - CLEARING_CHANCE, DENSITY_NOISE)
 
 ## Tree entry for a biome, or {} when that biome grows no trees. An empty biome
 ## (no terrain slice wired — isolated tests) falls back to the default entry.

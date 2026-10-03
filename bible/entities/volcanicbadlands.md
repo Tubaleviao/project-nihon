@@ -15,6 +15,7 @@ Barren, heat-scorched terrain surrounding active or dormant volcanic calderas. T
 | `avgTemperature` | decimal | yes | °C annual average; extreme heat |
 | `avgRainfall` | decimal | yes | mm per in-game year; near zero |
 | `soilFertility` | decimal | yes | 0–1; near zero; no conventional farming |
+| `treeDensity` | integer | yes | Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here) |
 
 ## Relations
 

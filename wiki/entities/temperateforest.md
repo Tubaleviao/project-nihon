@@ -18,6 +18,7 @@ Broad mixed-leaf forests covering most mid-latitude landmass. Moderate rainfall,
 | avgTemperature | decimal | °C annual average |
 | avgRainfall | decimal | mm per in-game year |
 | soilFertility | decimal | 0–1; affects crop growth rates |
+| treeDensity | integer | Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here) |
 
 ## Related
 

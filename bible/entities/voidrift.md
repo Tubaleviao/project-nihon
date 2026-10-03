@@ -15,6 +15,7 @@ Fractured terrain surrounding permanent rifts in the fabric of reality. Reality 
 | `avgTemperature` | decimal | yes | °C; fluctuates wildly near active rifts |
 | `avgRainfall` | decimal | yes | mm per in-game year; negligible |
 | `soilFertility` | decimal | yes | 0–1; always zero — nothing biological grows near rifts; tile generation must set this to 0 and reject any non-zero value |
+| `treeDensity` | integer | yes | Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here) |
 
 ## Relations
 

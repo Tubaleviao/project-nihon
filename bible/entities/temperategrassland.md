@@ -15,6 +15,7 @@ Open rolling plains ideal for large settlements, agriculture, and mounted travel
 | `avgTemperature` | decimal | yes | °C annual average |
 | `avgRainfall` | decimal | yes | mm per in-game year |
 | `soilFertility` | decimal | yes | 0–1; highest of all biomes |
+| `treeDensity` | integer | yes | Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here) |
 
 ## Relations
 
