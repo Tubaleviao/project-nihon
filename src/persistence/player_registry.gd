@@ -654,6 +654,13 @@ func record_equipment(player_id: String, worn: Dictionary) -> bool:
 	GameBus.equipment_changed.emit(player_id, clean.duplicate())
 	return true
 
+## Whether this player's client has reported a worn set this session. A peer that
+## never does (a modified client omitting the intent) has no evidence of free hands.
+var _equipment_reported: Dictionary = {}
+
+func has_equipment_report(player_id: String) -> bool:
+	return _equipment_reported.has(player_id)
+
 func get_equipment(player_id: String) -> Dictionary:
 	var eq: Variant = get_record(player_id).get("equipment", {})
 	return (eq as Dictionary).duplicate() if eq is Dictionary else {}
@@ -752,6 +759,7 @@ func evict_player(player_id: String) -> bool:
 	if player_id.is_empty() or is_online(player_id):
 		return false
 	var had_record := _players.erase(player_id)
+	_equipment_reported.erase(player_id)
 	var inv: Variant = _inventories.get(player_id, null)
 	if inv != null:
 		_inventories.erase(player_id)
@@ -877,6 +885,7 @@ func _on_equipment_intent(player_id: String, worn: Dictionary) -> void:
 		for slot in worn:
 			if inv.get_item_count(str(worn[slot])) > 0:
 				owned[slot] = worn[slot]
+	_equipment_reported[player_id] = true
 	record_equipment(player_id, owned)
 
 func _on_player_join_intent(peer_id: int, claimed_id: String) -> void:

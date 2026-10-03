@@ -577,6 +577,11 @@ func bind_peer_character(peer_id: int, instance_id: String) -> void:
 	if _peer_equipment.has(peer_id):
 		apply_equipment_set(instance_id, _peer_equipment[peer_id])
 
+## Drop what was replicated for a peer that left, so a recycled peer id starts clean.
+func forget_peer(peer_id: int) -> void:
+	_peer_equipment.erase(peer_id)
+	_peer_characters.erase(peer_id)
+
 ## Unequip a slot (free the mesh and drop it from the appearance recipe).
 func clear_equipment(instance_id: String, slot: String) -> bool:
 	if not _instances.has(instance_id):

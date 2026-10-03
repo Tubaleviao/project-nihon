@@ -969,6 +969,7 @@ func _on_player_identity_assigned(player_id: String) -> void:
 ## The party bindings in trade/market are dropped with it: they hold a raw node
 ## reference, and a freed node is not null.
 func _on_peer_disconnected(peer_id: int) -> void:
+	_character.forget_peer(peer_id)
 	if _is_client:
 		return
 	var player_id := _registry.get_player_id(peer_id)
@@ -1423,6 +1424,12 @@ func _apply_local_equipment(worn: Variant) -> void:
 	_applying_equipment = true
 	_character.apply_equipment_set(char_id, worn)
 	_applying_equipment = false
+	if _is_client:
+		# Seed the de-dup baseline with the restored set (so unequipping the last
+		# restored item still differs from it) and report the set to the host: the
+		# host treats a peer that never reported as armed.
+		_last_sent_equipment = _character.get_equipment_set(char_id).duplicate()
+		GameBus.equipment_intent.emit("", _last_sent_equipment.duplicate())
 
 ## Phase 47 — the local avatar's gear changed. A host records it; a client forwards
 ## the set as an intent (the host validates it and replicates it to nearby peers).

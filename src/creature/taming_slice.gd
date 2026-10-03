@@ -206,11 +206,14 @@ func is_tameable(creature_id: String) -> bool:
 ## set reaches the host through the peer's equipment intent, which is validated
 ## against the fabric's slot table and recorded under the identity bound to the
 ## connection, so a client cannot claim a free hand it does not have by editing a
-## payload. A host with no registry wired fails closed (armed).
+## payload. A host with no registry wired, or a peer that has not reported a worn
+## set this session, fails closed (armed).
 func is_unarmed(player_id: String = "") -> bool:
 	var pid := resolve_player(player_id)
 	if pid != local_player_id():
 		if player_registry == null or not player_registry.has_method("get_equipment"):
+			return false
+		if player_registry.has_method("has_equipment_report") and not player_registry.has_equipment_report(pid):
 			return false
 		return EquipmentRules.hands_free(player_registry.get_equipment(pid))
 	if character_slice == null:

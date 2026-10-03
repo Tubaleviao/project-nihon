@@ -8245,6 +8245,7 @@ func _test_taming_peer_bare_hands_claim() -> void:
 	_taming_stand_near(registry, peer, c, fox)
 
 	# The host recorded a weapon in the peer's hand: a "bare hands" claim is ignored.
+	assert_false(taming.is_unarmed(peer), "a peer that never reported a worn set is treated as armed")
 	assert_true(registry.record_equipment(peer, { "MainHand": "VeilsteelLongsword" }), "the host records the worn sword")
 	assert_false(taming.is_unarmed(peer), "a peer wearing a sword is armed")
 	var forged: Dictionary = _taming_tame_via_intent(fox, peer, true)
@@ -8253,7 +8254,10 @@ func _test_taming_peer_bare_hands_claim() -> void:
 
 	# Hands recorded free: the tame goes through even when the payload claims armed.
 	registry.record_equipment(peer, {})
-	assert_true(taming.is_unarmed(peer), "an empty recorded set is bare hands")
+	assert_false(taming.is_unarmed(peer), "an empty record without a report is still armed")
+	GameBus.equipment_intent.emit(peer, {})
+	assert_true(registry.has_equipment_report(peer), "an equipment intent marks the peer as reported")
+	assert_true(taming.is_unarmed(peer), "a reported empty set is bare hands")
 	var honest: Dictionary = _taming_tame_via_intent(fox, peer, false)
 	assert_true(bool(honest.get("success", false)), "the recorded set satisfies the rule whatever the payload claims")
 	assert_eq(inv.get_item_count("FieldRations"), 0, "and the offering is spent")
@@ -8457,6 +8461,8 @@ func _test_taming_is_per_player() -> void:
 	for tamer in [alice, bob]:
 		rig["crafting"].set_skill_for(str(tamer), "Unarmed", "journeyman")
 		rig["crafting"].set_skill_for(str(tamer), "Alchemy", "apprentice")
+		# A real client reports its (empty) worn set on join; the host trusts nothing less.
+		GameBus.equipment_intent.emit(str(tamer), {})
 	_taming_stand_near(registry, alice, c, target)
 	_taming_stand_near(registry, bob, c, target)
 	# Only BOB carries the offering: a feed by alice must not spend bob's ration.
@@ -8949,6 +8955,7 @@ func _test_taming_mirrors_evicted_on_forget() -> void:
 	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
 	var alice: String = str(registry.resolve_identity(2))
 	rig["crafting"].set_skill_for(alice, "Unarmed", "journeyman")
+	GameBus.equipment_intent.emit(alice, {})
 	_taming_stand_near(registry, alice, c, target)
 	var tamed: Dictionary = _taming_tame_via_intent(target, alice)
 	assert_eq(str(tamed.get("reason", "no_result")), "", "alice's tame is not refused")
