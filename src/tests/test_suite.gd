@@ -38,6 +38,8 @@ const SkillTiers      := preload("res://src/core/skill_tiers.gd")
 const MultimeshPool   := preload("res://src/core/multimesh_pool.gd")
 const SpatialHash     := preload("res://src/core/spatial_hash.gd")
 const PlayerRegistry  := preload("res://src/persistence/player_registry.gd")
+const EquipmentRules   := preload("res://src/character/equipment_rules.gd")
+const GameDataReader   := preload("res://src/core/game_data_reader.gd")
 const NetHarness      := preload("res://src/tests/net_harness.gd")
 const OreField        := preload("res://src/terrain/ore_field.gd")
 
@@ -194,7 +196,10 @@ func run() -> void:
 	_run_test("taming: unidentified tamer refused atomically", _test_taming_refusal_is_atomic)
 	_run_test("taming: skill gate fails closed",               _test_taming_requires_skill)
 	_run_test("taming: bare hands required",                   _test_taming_requires_unarmed)
-	_run_test("taming: a peer's bare hands are a claim",        _test_taming_peer_bare_hands_claim)
+	_run_test("taming: a peer's hands are the host's record",   _test_taming_peer_bare_hands_claim)
+	_run_test("equipment: rules totals + sanitize",             _test_equipment_rules_totals)
+	_run_test("equipment: derived stats + record + replicate",  _test_character_derived_stats_and_record)
+	_run_test("ui: character window rows + equip",              _test_ui_character_rows)
 	_run_test("taming: fox feed yields and consumes the offer", _test_taming_fox_feed_yields)
 	_run_test("taming: fox feed needs an offering",            _test_taming_fox_needs_offer)
 	_run_test("taming: cooldown blocks a second feed",         _test_taming_cooldown)
@@ -8223,11 +8228,9 @@ func _test_taming_requires_unarmed() -> void:
 	rig["crafting"].free()
 	rig["registry"].free()
 
-## Phase 36 — a remote peer's hands are a CLAIM. A peer's worn gear is not
-## replicated, so the host cannot read it, and the bare-hands requirement used to be
-## reported as satisfied for every peer (i.e. every remote tamer passed it for free).
-## The claim now rides the tame intent, is consumed by the resolution it accompanied,
-## and an unclaimed peer fails closed.
+## Phase 47 — a remote peer's hands are the HOST's copy of its worn set, never the tame
+## intent's claim. Phase 36 evaluated a claim riding the intent; a client that lied
+## was believed. The registry now answers, and the claim argument is ignored.
 func _test_taming_peer_bare_hands_claim() -> void:
 	var rig := _make_taming_rig()
 	var c: Node = rig["creature"]
@@ -8240,44 +8243,107 @@ func _test_taming_peer_bare_hands_claim() -> void:
 	assert_true(inv.add_item("FieldRations", 1), "the peer carries a ration")
 	_taming_stand_near(registry, peer, c, fox)
 
-	# No claim: the host cannot verify the peer's hands, so the rule fails closed.
-	assert_false(taming.is_unarmed(peer), "a peer with no claim is not assumed unarmed")
-	var unclaimed: Dictionary = taming.tame(fox, peer)
-	assert_false(bool(unclaimed["success"]), "and cannot feed the fox")
-	assert_eq(str(unclaimed["reason"]), "armed", "the reason names the hands")
-	assert_eq(inv.get_item_count("FieldRations"), 1, "with the ration unspent")
+	# The host recorded a weapon in the peer's hand: a "bare hands" claim is ignored.
+	assert_true(registry.record_equipment(peer, { "MainHand": "VeilsteelLongsword" }), "the host records the worn sword")
+	assert_false(taming.is_unarmed(peer), "a peer wearing a sword is armed")
+	var forged: Dictionary = _taming_tame_via_intent(fox, peer, true)
+	assert_eq(str(forged.get("reason", "")), "armed", "a forged bare-hands claim does not change what the host believes")
+	assert_eq(inv.get_item_count("FieldRations"), 1, "and spends nothing")
 
-	# The claim travels WITH the attempt (through the bus, as networking re-emits it)
-	# and is consumed by that resolution.
-	var claimed: Array = []
-	var on_resolved := func(result: Dictionary) -> void:
-		claimed.append(result)
-	GameBus.tame_resolved.connect(on_resolved)
-	GameBus.tame_intent.emit(fox, peer, true)
-	GameBus.tame_resolved.disconnect(on_resolved)
-	assert_eq(claimed.size(), 1, "the intent resolved")
-	assert_true(bool(claimed[0]["success"]), "a bare-hands claim satisfies the rule")
-	assert_eq(str(claimed[0]["player_id"]), peer, "for the claimant")
+	# Hands recorded free: the tame goes through even when the payload claims armed.
+	registry.record_equipment(peer, {})
+	assert_true(taming.is_unarmed(peer), "an empty recorded set is bare hands")
+	var honest: Dictionary = _taming_tame_via_intent(fox, peer, false)
+	assert_true(bool(honest.get("success", false)), "the recorded set satisfies the rule whatever the payload claims")
 	assert_eq(inv.get_item_count("FieldRations"), 0, "and the offering is spent")
-	assert_false(taming.is_unarmed(peer), "the claim does not outlive its attempt")
-
-	# A peer that claims to be ARMED is refused, and refused before the fox's
-	# cooldown is even consulted.
-	_taming_stand_near(registry, peer, c, fox)
-	inv.add_item("FieldRations", 1)
-	var armed: Array = []
-	var on_armed := func(result: Dictionary) -> void:
-		armed.append(result)
-	GameBus.tame_resolved.connect(on_armed)
-	GameBus.tame_intent.emit(fox, peer, false)
-	GameBus.tame_resolved.disconnect(on_armed)
-	assert_eq(armed.size(), 1, "the armed attempt resolved too")
-	assert_eq(str(armed[0]["reason"]), "armed", "an armed claim is refused")
-	assert_eq(inv.get_item_count("FieldRations"), 1, "spending nothing")
 	rig["creature"].free()
 	rig["taming"].free()
 	rig["crafting"].free()
 	rig["registry"].free()
+
+## Phase 47 — the pure rules: slots come from the fabric, totals are sums of fabric
+## values (zeros for an empty set), and a claim is filtered through the slot table.
+func _test_equipment_rules_totals() -> void:
+	var slots: Array = EquipmentRules.slots()
+	for expected in ["Head", "Chest", "Cape", "OffHand", "MainHand"]:
+		assert_true(slots.has(expected), "the fabric defines slot %s" % expected)
+	assert_eq(int(EquipmentRules.totals({})["defense"]), 0, "an empty set totals zero")
+	var worn := { "Head": "FerriteHelmet", "Chest": "VeilsteelChestplate" }
+	var expect := 0
+	for item in worn.values():
+		expect += GameDataReader.int_field(GameData.ITEMS[item], "defense", 0)
+	assert_true(expect > 0, "armour carries a fabric defense value")
+	assert_eq(int(EquipmentRules.totals(worn)["defense"]), expect, "totals equal the sum of the fabric values")
+	var clean := EquipmentRules.sanitize({ "Head": "VeilsteelChestplate", "Bogus": "FerriteHelmet", "Chest": "VeilsteelChestplate", "Cape": "NoSuchItem" })
+	assert_eq(clean, { "Chest": "VeilsteelChestplate" }, "wrong-slot, unknown-slot and unknown-item claims are dropped")
+	assert_true(EquipmentRules.sanitize("junk").is_empty(), "a non-dictionary claim is empty")
+
+## Phase 47 — equipping changes the avatar AND the derived totals; a worn set
+## round-trips through the player record and survives an eviction-less reload.
+func _test_character_derived_stats_and_record() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var cid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	# The seeded character spawns in its recipe's base gear; start from bare.
+	for slot in ch.get_equipment_set(cid).keys():
+		ch.clear_equipment(cid, str(slot))
+	var before := int(ch.derived_stats(cid)["defense"])
+	assert_eq(before, 0, "a bare character totals zero")
+	assert_true(ch.apply_equipment(cid, "Head", "FerriteHelmet"), "helmet equips")
+	var after := int(ch.derived_stats(cid)["defense"])
+	assert_true(after > before, "equipping raises the derived defense")
+	assert_eq(ch.get_equipment_set(cid).get("Head", ""), "FerriteHelmet", "the set names the helmet")
+	assert_eq(int(ch.derived_stats("nope")["defense"]), 0, "an unknown instance reads zeros")
+
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var pid := str(registry.mint_player_id())
+	registry.record_equipment(pid, ch.get_equipment_set(cid))
+	var saved: Dictionary = registry.get_player_data(pid)
+	var registry2 := PlayerRegistry.new()
+	add_child(registry2)
+	registry2.apply_player_data(pid, saved)
+	assert_eq(registry2.get_equipment(pid), { "Head": "FerriteHelmet" }, "the worn set survives a restart through the record")
+	registry2.record_equipment(pid, { "Head": "VeilsteelLongsword" })
+	assert_eq(registry2.get_equipment(pid), {}, "a forged slot/item pairing never reaches the record")
+
+	var ch2 := CharacterSlice.new()
+	add_child(ch2)
+	var cid2 := ch2.create_character("TravellerHuman", Vector3.ZERO)
+	ch2.apply_equipment_set(cid2, registry2.get_equipment(pid))
+	ch2.apply_equipment_set(cid2, { "Chest": "VeilsteelChestplate" })
+	assert_eq(ch2.get_equipment_set(cid2), { "Chest": "VeilsteelChestplate" }, "apply_equipment_set replaces the whole set")
+
+	# Replication target: a peer's set lands on its bound character instance.
+	ch2.bind_peer_character(7, cid2)
+	ch2.set_peer_equipment(7, { "Head": "FerriteHelmet", "MainHand": "FerriteHelmet" })
+	assert_eq(ch2.get_equipment_set(cid2), { "Head": "FerriteHelmet" }, "the peer's character wears only the valid replicated entries")
+	ch.free()
+	ch2.free()
+	registry.free()
+	registry2.free()
+
+## Phase 47 — the Character window lists one row per fabric slot and its totals match.
+func _test_ui_character_rows() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var cid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	ch.set_player_character(cid)
+	for slot in ch.get_equipment_set(cid).keys():
+		ch.clear_equipment(cid, str(slot))
+	var ui := UiSlice.new()
+	ui.character_slice = ch
+	add_child(ui)
+	var rows: Array = ui.character_rows()
+	assert_eq(rows.size(), EquipmentRules.slots().size(), "one row per fabric slot")
+	assert_eq(ui.character_stats_text(), "Defense 0", "empty set totals zero")
+	assert_true(ui.dispatch_item_action("FerriteHelmet", "equip"), "equip goes through apply_equipment")
+	assert_eq(ch.get_equipment_set(cid).get("Head", ""), "FerriteHelmet", "the avatar wears it")
+	assert_true(ui.character_stats_text() != "Defense 0", "and the totals changed")
+	assert_true(ui.dispatch_item_action("FerriteHelmet", "unequip"), "unequip clears the slot")
+	assert_eq(ui.character_stats_text(), "Defense 0", "back to zero")
+	ui.free()
+	ch.free()
 
 func _test_taming_fox_feed_yields() -> void:
 	# The fox tame is the non-lethal half: the creature stays alive, sheds its fur and

@@ -62,6 +62,8 @@ extends Node
 
 const InventorySlice := preload("res://src/inventory/inventory_slice.gd")
 
+const EquipmentRules := preload("res://src/character/equipment_rules.gd")
+
 ## Phase 39 — the shared rules of a player BODY, from a neutral module rather than from the
 ## local body's slice (`src/core/player_rules.gd`). Two of them matter here: the ceiling a
 ## simulated body is clamped to (`MAX_HP`) and the delay a downed body waits before it comes
@@ -121,6 +123,7 @@ var _record_loader: Callable = Callable()
 
 func _ready() -> void:
 	GameBus.player_join_intent.connect(_on_player_join_intent)
+	GameBus.equipment_intent.connect(_on_equipment_intent)
 
 # ---------------------------------------------------------------------------
 # Identity
@@ -369,6 +372,8 @@ func ensure_player(player_id: String) -> Dictionary:
 			"companions": [],
 			"skills":     {},
 			"cooldowns":  {},
+			# Phase 47 — the worn set, { slot: item_key }.
+			"equipment":  {},
 			# Phase 39 — 0.0 = "no respawn pending", the same shape the -1.0 hp
 			# sentinel has: an absent deadline and a downed body are different facts.
 			"respawn_deadline": 0.0,
@@ -634,6 +639,25 @@ func record_companions(player_id: String, companion_ids: Array) -> void:
 	out.sort()
 	rec["companions"] = out
 
+## Phase 47 — the worn set ({ slot: item_key }). Durable per-player state, released
+## with the rest of the record by `evict_player`. The set is filtered through the
+## fabric slot check on the way in, so a record never holds an item that does not fit
+## its slot. Returns true when the stored set changed.
+func record_equipment(player_id: String, worn: Dictionary) -> bool:
+	var rec := ensure_player(player_id)
+	if rec.is_empty():
+		return false
+	var clean := EquipmentRules.sanitize(worn)
+	if clean == rec.get("equipment", {}):
+		return false
+	rec["equipment"] = clean
+	GameBus.equipment_changed.emit(player_id, clean.duplicate())
+	return true
+
+func get_equipment(player_id: String) -> Dictionary:
+	var eq: Variant = get_record(player_id).get("equipment", {})
+	return (eq as Dictionary).duplicate() if eq is Dictionary else {}
+
 ## Phase 37 — the per-player interaction cooldowns (instance_id → wall-clock Unix
 ## deadline), e.g. the GlimmerFox feed. Durable, because a cooldown is a rule about
 ## the PLAYER, not about this process: keeping it in memory meant a host restart
@@ -765,6 +789,7 @@ func get_player_data(player_id: String) -> Dictionary:
 		"companions": rec.get("companions", []),
 		"skills":     rec.get("skills", {}),
 		"cooldowns":  live_cooldowns(rec.get("cooldowns", {})),
+		"equipment":  get_equipment(player_id),
 		"inventory": {},
 		"inventory_durability": {},
 	}
@@ -814,6 +839,8 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	# Phase 37: so are the interaction cooldowns (an expired deadline is dropped on
 	# the way in — see live_cooldowns). A pre-Phase-37 payload carries no key.
 	rec["cooldowns"]  = live_cooldowns(data.get("cooldowns", {}))
+	# Phase 47: the worn set; a pre-Phase-47 payload carries no key (nothing worn).
+	rec["equipment"]  = EquipmentRules.sanitize(data.get("equipment", {}))
 	var contents: Variant = data.get("inventory", {})
 	if contents is Dictionary and not contents.is_empty():
 		var inv = get_inventory(player_id)
@@ -837,6 +864,13 @@ func apply_players_data(players: Dictionary) -> void:
 # ---------------------------------------------------------------------------
 # Bus
 # ---------------------------------------------------------------------------
+
+## Phase 47 — host: a peer's worn set arrived (the networking slice re-emits an
+## inbound intent under the identity bound to the connection, never a payload's).
+func _on_equipment_intent(player_id: String, worn: Dictionary) -> void:
+	if not is_authoritative or player_id.is_empty():
+		return
+	record_equipment(player_id, worn)
 
 func _on_player_join_intent(peer_id: int, claimed_id: String) -> void:
 	if not is_authoritative:

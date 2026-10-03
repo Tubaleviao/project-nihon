@@ -21,6 +21,7 @@ size = [0.7,0.55,0.42]
 metalTone = "veilsteel"
 emissionColor = 200
 compatibleTags = ["humanoid","has_hands"]
+defense = 10
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "Full torso armour forged from veilsteel plates over a ferrite under-layer. Exceptional physical protection; its anti-magic properties passively drain spell effects applied to the wearer."

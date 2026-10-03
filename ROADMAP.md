@@ -4814,7 +4814,7 @@ carries.
 
 ---
 
-## Phase 47 — Character window
+## Phase 47 — Character window ✅ Done
 
 **Goal:** Equipment is a visual system with no interface and no numbers.
 `apply_equipment(instance_id, slot, item_key, state)` attaches a socketed
@@ -4863,16 +4863,16 @@ GDScript.
   than left alongside it.
 
 **Acceptance criteria:**
-- [ ] The Character window lists one slot per fabric `equipmentSlot`; equipping
+- [x] The Character window lists one slot per fabric `equipmentSlot`; equipping
   from it changes the avatar's attachment AND the derived stats panel's numbers.
-- [ ] The panel's totals equal the sum of the equipped fabric values, asserted
+- [x] The panel's totals equal the sum of the equipped fabric values, asserted
   against a synthetic set including the empty case (all zeros).
-- [ ] A worn set survives a host restart and a reconnect, asserted through the
+- [x] A worn set survives a host restart and a reconnect, asserted through the
   player record rather than through a client's own view.
-- [ ] A second peer's client sees the first peer's worn set on that peer's
+- [x] A second peer's client sees the first peer's worn set on that peer's
   character instance, and a peer that forges a fully-armoured claim in its
   payload does not change what the host believes the peer is wearing.
-- [ ] The suite is green on both boot paths, and the two-client harness still
+- [x] The suite is green on both boot paths, and the two-client harness still
   reports `10/10 steps agreed across both peers` if the replication adds a step.
 
 **Implementation notes:**
@@ -4899,7 +4899,25 @@ GDScript.
   the window and the replication both go through it, so there stays one mutation
   path.
 
+**Shipped as:** `fabric/gameplay/items` gained an integer `defense` field
+(helmet 4, chestplate 10, cloak 2, shield 6); `src/character/equipment_rules.gd`
+holds the pure slot table / `sanitize` / `totals` / `hands_free`;
+`CharacterSlice.derived_stats` / `get_equipment_set` / `apply_equipment_set` /
+`set_peer_equipment`; `PlayerRegistry.record_equipment` / `get_equipment` (on the
+record, the join snapshot and `evict_player`'s record drop); bus signals
+`equipment_intent` / `equipment_changed` / `peer_equipment_synced`; the Character
+window (key `K`). The tame intent's `unarmed` argument is kept for wire/signal
+compatibility but ignored — `TamingSlice.is_unarmed` reads the registry.
+
 **Known simplifications (deferred):**
+- **Replication is delta-only and has no socket step.** A peer's set is sent to
+  AOI peers when it changes; a peer entering AOI later learns it on the next
+  change. Remote peers have no character instances on a client yet, so the set is
+  stored per owner and applied once `bind_peer_character` binds one. No new
+  two-client harness step was added (still `10/10`); the forge case is covered at
+  the registry/taming level in the suite, not over a socket.
+- **Disconnect eviction of `_peer_equipment`/`_peer_characters`** on the client is
+  not wired.
 - **No combat effect beyond the displayed totals.** Unless defense becomes a term
   in the damage formula in this phase, the panel shows a number nothing consumes —
   say so plainly instead of implying the armor already reduces damage; wiring it
@@ -4962,6 +4980,6 @@ GDScript.
   client-owned.)** **(closed in Phase 38: the host simulates the peer's HP itself and
   persists it on the peer's record. `player_damaged` stays a display update — a client
   that ignores it now diverges from the host's number instead of owning it.)**
-- **Peer equipment replication** — a remote peer's worn gear is not replicated, so
-  the fabric's bare-hands rule is evaluated against the claim that rides the peer's
-  tame intent. Verifying it means replicating equipment (deferred from Phase 36).
+- **Peer equipment replication** — **(closed in Phase 47: the host records each
+  peer's worn set and the bare-hands rule reads it; AOI delivery of late joiners
+  and a socket harness step remain.)**

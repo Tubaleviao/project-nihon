@@ -31,6 +31,7 @@ Two-handed longsword of veilsteel. Heavy and slow but capable of cracking enchan
 | metalTone | string | Metal tone for metal-mask regions (§21) |
 | emissionColor | integer | Palette index in the emission region (192–223) for emissive regions (§22) |
 | compatibleTags | json | Semantic tags required to equip (§39) |
+| defense | integer | Defense contributed to the character window total while worn (Phase 47); the panel sums this field, never prose |
 
 ## Related
 

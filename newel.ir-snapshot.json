@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:ec228b4b1c1bee30eacf91fd769753c74870d0c243912c95960378e80dd74d55",
+  "schemaHash": "sha256:3fece82bd46a236ecaee8ab60f297d3a2bcbf327f44f815bcae36e3eec08d448",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -9100,6 +9100,15 @@
               "has_hands",
               "can_wield_weapon"
             ]
+          },
+          "defense": {
+            "name": "defense",
+            "type": "integer",
+            "description": "Defense contributed to the character window total while worn (Phase 47); the panel sums this field, never prose",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
           }
         },
         "relations": {
@@ -9865,6 +9874,15 @@
               "humanoid",
               "can_wear_helmet"
             ]
+          },
+          "defense": {
+            "name": "defense",
+            "type": "integer",
+            "description": "Defense contributed to the character window total while worn (Phase 47); the panel sums this field, never prose",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 4
           }
         },
         "relations": {
@@ -10191,6 +10209,15 @@
               "humanoid",
               "has_hands"
             ]
+          },
+          "defense": {
+            "name": "defense",
+            "type": "integer",
+            "description": "Defense contributed to the character window total while worn (Phase 47); the panel sums this field, never prose",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
           }
         },
         "relations": {
@@ -10522,6 +10549,15 @@
             "defaultValue": [
               "has_back_socket"
             ]
+          },
+          "defense": {
+            "name": "defense",
+            "type": "integer",
+            "description": "Defense contributed to the character window total while worn (Phase 47); the panel sums this field, never prose",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2
           }
         },
         "relations": {
@@ -10845,6 +10881,15 @@
               "has_hands",
               "can_wield_weapon"
             ]
+          },
+          "defense": {
+            "name": "defense",
+            "type": "integer",
+            "description": "Defense contributed to the character window total while worn (Phase 47); the panel sums this field, never prose",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 6
           }
         },
         "relations": {

@@ -38,13 +38,15 @@ const WINDOW_TRADE      := "trade"
 const WINDOW_MARKET     := "market"
 const WINDOW_PROPOSALS  := "proposals"
 const WINDOW_CONTROLS   := "controls"
+const WINDOW_CHARACTER  := "character"
 
 const WINDOW_KEYS := [
 	WINDOW_INVENTORY, WINDOW_TECHNOLOGY, WINDOW_CRAFTING,
-	WINDOW_TRADE, WINDOW_MARKET, WINDOW_PROPOSALS, WINDOW_CONTROLS,
+	WINDOW_TRADE, WINDOW_MARKET, WINDOW_PROPOSALS, WINDOW_CONTROLS, WINDOW_CHARACTER,
 ]
 
 const MouseIconScript := preload("res://src/ui/mouse_icon.gd")
+const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 
 ## Pixels of a window that must stay reachable on every edge when dragged.
 const DRAG_VISIBLE_MARGIN := 48.0
@@ -55,6 +57,9 @@ const INVENTORY_COLUMNS := 5
 
 ## Set by game_root after instantiation.
 var inventory_slice: Node = null
+## Phase 47 — the character slice: the Character window reads the local avatar's
+## worn set and stats from it, and equips through its `apply_equipment`.
+var character_slice: Node = null
 var crafting_slice: Node = null
 var technology_slice: Node = null
 var market_slice: Node = null
@@ -71,6 +76,8 @@ var _panels: Dictionary = {}                 # panel name -> PanelContainer
 var _inventory_usage: Label = null
 var _inventory_grid: GridContainer = null
 var _inventory_empty: Label = null
+var _character_stats: Label = null
+var _character_grid: GridContainer = null
 var _slot_menu: PopupMenu = null
 var _slot_menu_item: String = ""
 var _slot_menu_actions: Array = []
@@ -106,6 +113,7 @@ func _ready() -> void:
 	GameBus.technology_unlocked.connect(_on_technology_unlocked)
 	GameBus.item_picked_up.connect(_on_item_picked_up)
 	GameBus.inventory_changed.connect(_on_inventory_changed)
+	GameBus.character_appearance_changed.connect(func(_iid, _app): refresh_character())
 	GameBus.block_mined.connect(_on_block_mined)
 	GameBus.block_placed.connect(_on_block_placed)
 	GameBus.market_listing_created.connect(_on_market_listing_created)
@@ -140,6 +148,8 @@ func _input(event: InputEvent) -> void:
 				toggle_window(WINDOW_MARKET)
 			KEY_G:
 				toggle_window(WINDOW_PROPOSALS)
+			KEY_K:
+				toggle_window(WINDOW_CHARACTER)
 			KEY_SLASH, KEY_QUESTION:
 				if event.keycode == KEY_QUESTION or event.shift_pressed:
 					toggle_window(WINDOW_CONTROLS)
@@ -204,6 +214,7 @@ func refresh_all() -> void:
 	refresh_market()
 	refresh_proposals()
 	refresh_trade()
+	refresh_character()
 
 # ---------------------------------------------------------------------------
 # Pure projections (testable without a scene tree)
@@ -276,6 +287,9 @@ func item_actions(item_id: String, repairable = null) -> Array:
 	var actions: Array = []
 	if repairable.has(item_id):
 		actions.append({"action": "repair", "label": "Repair"})
+	var slot := EquipmentRules.slot_of(item_id)
+	if slot != "" and character_slice != null:
+		actions.append({"action": "equip", "label": "Equip (%s)" % slot})
 	return actions
 
 ## The bus intent an action maps to: { signal, args }, or {} for an unknown action.
@@ -283,6 +297,10 @@ static func action_intent(item_id: String, action: String) -> Dictionary:
 	match action:
 		"repair":
 			return {"signal": "repair_requested", "args": [item_id]}
+		"equip":
+			return {"signal": "equip", "args": [item_id]}
+		"unequip":
+			return {"signal": "unequip", "args": [item_id]}
 	return {}
 
 ## Emit the bus intent for an item action. Returns false for an unknown action.
@@ -293,9 +311,53 @@ func dispatch_item_action(item_id: String, action: String) -> bool:
 	match str(intent["signal"]):
 		"repair_requested":
 			GameBus.repair_requested.emit(item_id)
+		"equip", "unequip":
+			return _dispatch_equipment(str(intent["signal"]), item_id)
 		_:
 			return false
 	return true
+
+## Phase 47 — equip / unequip on the local avatar. `apply_equipment` and
+## `clear_equipment` stay the only mutation path; the slot is the fabric's.
+func _dispatch_equipment(kind: String, item_id: String) -> bool:
+	if character_slice == null:
+		return false
+	var char_id := str(character_slice.get_player_character())
+	var slot := EquipmentRules.slot_of(item_id)
+	if char_id == "" or slot == "":
+		return false
+	if kind == "equip":
+		return bool(character_slice.apply_equipment(char_id, slot, item_id))
+	return bool(character_slice.clear_equipment(char_id, slot))
+
+## Phase 47 — one row per fabric `equipmentSlot` (sorted): { slot, item, icon_key,
+## tooltip, actions }. `item` is "" for an empty slot.
+func character_rows() -> Array:
+	var worn := _local_worn()
+	var rows: Array = []
+	for slot in EquipmentRules.slots():
+		var item := str(worn.get(slot, ""))
+		rows.append({
+			"slot": slot,
+			"item": item,
+			"icon_key": item_icon_key(item) if item != "" else "",
+			"tooltip": ("%s: %s" % [slot, item_description(item)]) if item != "" else "%s: empty" % slot,
+			"actions": [{"action": "unequip", "label": "Unequip"}] if item != "" else [],
+		})
+	return rows
+
+## The Character window's totals line, summed from fabric values only.
+func character_stats_text() -> String:
+	var totals := EquipmentRules.totals(_local_worn())
+	return "Defense %d" % int(totals.get("defense", 0))
+
+func _local_worn() -> Dictionary:
+	if character_slice == null:
+		return {}
+	var char_id := str(character_slice.get_player_character())
+	if char_id == "":
+		return {}
+	return character_slice.get_equipment_set(char_id)
 
 ## Fabric description of an item ("" when the item has no definition).
 static func item_description(item_id: String) -> String:
@@ -356,7 +418,7 @@ static func controls_rows() -> Array:
 		{"keys": "B · V", "desc": "Station cycle / place", "mouse": 0},
 		{"keys": "G", "desc": "Tame nearest creature (also Proposals)", "mouse": 0},
 		{"keys": "E", "desc": "Toggle equipment", "mouse": 0},
-		{"keys": "I · T · C · Y · M · G", "desc": "Inventory · Tech · Crafting · Trade · Market · Proposals", "mouse": 0},
+		{"keys": "I · T · C · Y · M · G · K", "desc": "Inventory · Tech · Crafting · Trade · Market · Proposals · Character", "mouse": 0},
 		{"keys": "?", "desc": "This panel", "mouse": 0},
 		{"keys": "ESC", "desc": "Cursor", "mouse": 0},
 	]
@@ -589,6 +651,29 @@ func _on_slot_menu_pressed(index: int) -> void:
 	if index < 0 or index >= _slot_menu_actions.size():
 		return
 	dispatch_item_action(_slot_menu_item, str(_slot_menu_actions[index]["action"]))
+	refresh_character()
+
+func refresh_character() -> void:
+	if _character_grid == null:
+		return
+	_character_stats.text = character_stats_text()
+	for c in _character_grid.get_children():
+		_character_grid.remove_child(c)
+		c.queue_free()
+	for row in character_rows():
+		var slot := Button.new()
+		slot.custom_minimum_size = SLOT_SIZE
+		slot.tooltip_text = str(row["tooltip"])
+		slot.clip_text = true
+		var tex: Texture2D = _load_item_icon(str(row["icon_key"])) if str(row["icon_key"]) != "" else null
+		if tex != null:
+			slot.icon = tex
+			slot.expand_icon = true
+			slot.text = str(row["slot"])
+		else:
+			slot.text = "%s\n%s" % [row["slot"], item_glyph(str(row["item"])) if str(row["item"]) != "" else "—"]
+		slot.gui_input.connect(_on_slot_gui_input.bind(str(row["item"]), row["actions"]))
+		_character_grid.add_child(slot)
 
 func refresh_crafting() -> void:
 	if _crafting_box == null:
@@ -908,6 +993,8 @@ func _build_ui() -> void:
 	_panels[WINDOW_PROPOSALS] = _build_window(WINDOW_PROPOSALS, "Proposals", _build_proposals_content(), Vector2(470, 700))
 	_panels[WINDOW_CONTROLS] = _build_window(WINDOW_CONTROLS, "Controls (?)", _build_controls_content(), Vector2(916, 24))
 
+	_panels[WINDOW_CHARACTER] = _build_window(WINDOW_CHARACTER, "Character (K)", _build_character_content(), Vector2(916, 360))
+
 	_slot_menu = PopupMenu.new()
 	_slot_menu.id_pressed.connect(_on_slot_menu_pressed)
 	_ui.add_child(_slot_menu)
@@ -1048,6 +1135,17 @@ func _build_inventory_content() -> Control:
 	_inventory_grid = GridContainer.new()
 	_inventory_grid.columns = INVENTORY_COLUMNS
 	scroll.add_child(_inventory_grid)
+	return vbox
+
+func _build_character_content() -> Control:
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	_character_stats = Label.new()
+	_character_stats.add_theme_font_size_override("font_size", 15)
+	vbox.add_child(_character_stats)
+	_character_grid = GridContainer.new()
+	_character_grid.columns = INVENTORY_COLUMNS
+	vbox.add_child(_character_grid)
 	return vbox
 
 func _build_crafting_content() -> Control:

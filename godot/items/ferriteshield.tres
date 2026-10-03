@@ -21,6 +21,7 @@ size = [0.55,0.75,0.08]
 metalTone = "ferrite"
 emissionColor = 200
 compatibleTags = ["has_hands","can_wield_weapon"]
+defense = 6
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "Round shield of ferrite-plated hardwood. Blocks melee and missile strikes at the cost of mobility; the standard off-hand defence for early-game fighters."

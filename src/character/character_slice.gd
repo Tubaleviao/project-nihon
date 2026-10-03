@@ -45,6 +45,7 @@ const Locomotion  := preload("res://src/character/locomotion.gd")
 const SkeletonRig := preload("res://src/character/skeleton_rig.gd")
 const RigTree := preload("res://src/character/rig_tree.gd")
 const GameDataReader := preload("res://src/core/game_data_reader.gd")
+const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const CharacterMaterial := preload("res://src/character/character_material.gd")
 
 const MIN_LOD := 0
@@ -105,6 +106,10 @@ var _instances: Dictionary = {}
 ## tests create and free many slices within a single synchronous run(), and a
 ## per-instance counter reissued "character_0" from each one.
 static var _next_id: int = 0
+## Phase 47 — replicated peer gear: owner peer id -> { slot: item_key }, and the
+## character instance (if any) each peer is bound to.
+var _peer_equipment: Dictionary = {}
+var _peer_characters: Dictionary = {}
 var _lod: int = 0
 var _lod_mode: int = LOD_MANUAL
 var _viewer_position: Vector3 = Vector3.ZERO
@@ -516,6 +521,61 @@ func apply_equipment(instance_id: String, slot: String, item_key: String, state:
 	_apply_lod(instance_id)
 	GameBus.character_appearance_changed.emit(instance_id, app)
 	return true
+
+## The worn set of an instance as { slot: item_key } (empty for an unknown id).
+func get_equipment_set(instance_id: String) -> Dictionary:
+	var out: Dictionary = {}
+	if not _instances.has(instance_id):
+		return out
+	var eq: Dictionary = _instances[instance_id]["appearance"].get("equipment", {})
+	for slot in eq:
+		var entry: Variant = eq[slot]
+		if entry is Dictionary:
+			var item := str((entry as Dictionary).get("item", ""))
+			if item != "":
+				out[str(slot)] = item
+	return out
+
+## Phase 47 — the Character window's totals for an instance: the sum of the worn
+## items' fabric values (`EquipmentRules.totals`), zeros for an empty or unknown set.
+func derived_stats(instance_id: String) -> Dictionary:
+	return EquipmentRules.totals(get_equipment_set(instance_id))
+
+## Make an instance wear exactly `worn` ({slot: item_key}): slots outside the set
+## are cleared, every entry goes through `apply_equipment` (the only mutation path).
+## Entries failing the fabric's slot check are skipped. Used for a restored record
+## and for a replicated peer set.
+func apply_equipment_set(instance_id: String, worn: Dictionary) -> void:
+	if not _instances.has(instance_id):
+		return
+	var clean := EquipmentRules.sanitize(worn)
+	for slot in get_equipment_set(instance_id).keys():
+		if not clean.has(slot):
+			clear_equipment(instance_id, str(slot))
+	for slot in clean:
+		if get_equipment_set(instance_id).get(slot, "") != clean[slot]:
+			apply_equipment(instance_id, str(slot), str(clean[slot]))
+
+## Phase 47 — client: another peer's worn set arrived (already scoped to our AOI by
+## the host, and named by its OWNER's peer id). Stored per owner; when that peer has a
+## character instance bound (`bind_peer_character`) the set is applied to it through
+## `apply_equipment`, so a replicated set and a local one share one mutation path.
+func set_peer_equipment(peer_id: int, worn: Dictionary) -> void:
+	var clean := EquipmentRules.sanitize(worn)
+	_peer_equipment[peer_id] = clean
+	var iid: String = str(_peer_characters.get(peer_id, ""))
+	if iid != "":
+		apply_equipment_set(iid, clean)
+
+func get_peer_equipment(peer_id: int) -> Dictionary:
+	return (_peer_equipment.get(peer_id, {}) as Dictionary).duplicate()
+
+## Bind a peer's character instance so replicated gear lands on it, applying any set
+## already received.
+func bind_peer_character(peer_id: int, instance_id: String) -> void:
+	_peer_characters[peer_id] = instance_id
+	if _peer_equipment.has(peer_id):
+		apply_equipment_set(instance_id, _peer_equipment[peer_id])
 
 ## Unequip a slot (free the mesh and drop it from the appearance recipe).
 func clear_equipment(instance_id: String, slot: String) -> bool:

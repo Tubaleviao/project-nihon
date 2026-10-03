@@ -64,7 +64,7 @@ function consumableStateMachine() {
 // §10, §16, §17, §21, §35, §39). Separate from the item's inventory/economic
 // fields — these describe how the item composes into a character's visual
 // appearance. Non-equippable items (ingots, food, components) omit these.
-function equipmentVisualFields({ slot, deformationMode, masks, hideRegions, attachments, minLodLevel, size, metalTone, emissionColor = 200, compatibleTags }) {
+function equipmentVisualFields({ slot, deformationMode, masks, hideRegions, attachments, minLodLevel, size, metalTone, emissionColor = 200, compatibleTags, defense = 0 }) {
   return {
     equipmentSlot:   { type: 'string', description: 'Equipment slot — what is equipped (§6)', defaultValue: slot },
     deformationMode: { type: 'string', description: 'SKINNED | RIGID | HYBRID (§10)', defaultValue: deformationMode },
@@ -76,6 +76,7 @@ function equipmentVisualFields({ slot, deformationMode, masks, hideRegions, atta
     metalTone:       { type: 'string', description: 'Metal tone for metal-mask regions (§21)', defaultValue: metalTone },
     emissionColor:   { type: 'integer', description: 'Palette index in the emission region (192–223) for emissive regions (§22)', defaultValue: emissionColor },
     compatibleTags:  { type: 'json', description: 'Semantic tags required to equip (§39)', defaultValue: compatibleTags },
+    defense:         { type: 'integer', description: 'Defense contributed to the character window total while worn (Phase 47); the panel sums this field, never prose', defaultValue: defense },
   }
 }
 

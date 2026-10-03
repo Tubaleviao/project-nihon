@@ -562,6 +562,20 @@ signal tame_requested(instance_id: String)
 ## unarmed     : bool — the tamer's claim that its hands are empty (see above)
 signal tame_intent(instance_id: String, player_id: String, unarmed: bool)
 
+## Phase 47 — a player's worn set, { slot: item_key }. CLIENT → host: emitted with an
+## empty player_id and forwarded; the host re-emits it under the identity bound to
+## that connection and PlayerRegistry records it (filtered through the fabric slot
+## table). Never a statement about another player.
+signal equipment_intent(player_id: String, worn: Dictionary)
+
+## Phase 47 — host: a player's recorded worn set changed. Networking scopes it to the
+## peers whose area of interest contains that player.
+signal equipment_changed(player_id: String, worn: Dictionary)
+
+## Phase 47 — client: another peer's worn set arrived from the host. `peer_id`
+## names the OWNER (the signal is never ownerless).
+signal peer_equipment_synced(peer_id: int, worn: Dictionary)
+
 ## Emitted by TamingSlice with the outcome of a tame attempt.
 ## result : Dictionary — { instance_id, creature_id, success, reason, result,
 ##          player_id, flag, yields }

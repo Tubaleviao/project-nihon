@@ -61,6 +61,7 @@ const SkillTiers := preload("res://src/core/skill_tiers.gd")
 ## saved with, restored through, and (since Phase 38) pruned in place with, so the record
 ## and the in-memory table can never disagree about which deadlines are still live.
 const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
+const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 
 ## Set by game_root: the creature population (tamed bindings, alpha-down gate).
 var creature_slice: Node = null
@@ -107,13 +108,6 @@ var _companions: Dictionary = {}
 ## every player a clean cooldown table, so the loop the cooldown exists to prevent was
 ## one restart (or one reconnect) away.
 var _cooldowns: Dictionary = {}
-
-## Phase 36 — player_id -> true when that player's tame intent CLAIMED its hands
-## were empty. Only ever populated for the duration of one resolution (see
-## _on_tame_intent): a peer's worn gear is not replicated, so the host has no other
-## evidence for the bare-hands rule, and a claim that outlived the attempt it came
-## with would silently arm or disarm every later one.
-var _unarmed_claims: Dictionary = {}
 
 func _ready() -> void:
 	GameBus.tame_requested.connect(_on_tame_requested)
@@ -207,20 +201,18 @@ func is_tameable(creature_id: String) -> bool:
 ## The LOCAL player's character body is simulated here, so its hands are READ from
 ## the equipped MainHand (the same rule the client applies to itself).
 ##
-## A REMOTE peer's body is not replicated, so the host has no equipment state to
-## read — the only evidence is the claim that rides that peer's tame intent
-## (Phase 36, see `_unarmed_claims`). That used to be papered over by reporting the
-## rule as SATISFIED for any peer, i.e. every remote tamer passed the bare-hands gate
-## for free; now the rule is evaluated against the claim, and a peer that claims
-## nothing (or claims to be holding something) is treated as armed — the
-## requirement fails CLOSED rather than being skipped. The claim is still a claim:
-## a client that lies about its hands is believed, exactly as it is believed about
-## its movement. Verifying it means replicating peer equipment, which is the
-## deferral recorded in the ROADMAP.
+## A REMOTE peer's hands are read from the HOST's own copy of that peer's worn set
+## (`PlayerRegistry.get_equipment`, Phase 47) — never from the tame intent. The
+## set reaches the host through the peer's equipment intent, which is validated
+## against the fabric's slot table and recorded under the identity bound to the
+## connection, so a client cannot claim a free hand it does not have by editing a
+## payload. A host with no registry wired fails closed (armed).
 func is_unarmed(player_id: String = "") -> bool:
 	var pid := resolve_player(player_id)
 	if pid != local_player_id():
-		return bool(_unarmed_claims.get(pid, false))
+		if player_registry == null or not player_registry.has_method("get_equipment"):
+			return false
+		return EquipmentRules.hands_free(player_registry.get_equipment(pid))
 	if character_slice == null:
 		return true
 	if not character_slice.has_method("get_player_character") or not character_slice.has_method("get_visual_state"):
@@ -330,7 +322,6 @@ func forget_player_id(player_id: String) -> void:
 	_flags.erase(player_id)
 	_companions.erase(player_id)
 	_cooldowns.erase(player_id)
-	_unarmed_claims.erase(player_id)
 
 ## Wall-clock seconds left on a creature's cooldown for `player_id` (0.0 when
 ## none). Unix-epoch based, like every other deadline in the project.
@@ -625,30 +616,22 @@ func _emit(result: Dictionary) -> Dictionary:
 ## Host-local tame request (the player input or any host-side system). A CLIENT
 ## does not resolve a tame at all — it owns no records, so it forwards an intent
 ## to the host, which is the only machine that can grant a flag or bind a companion.
-## The forwarded intent carries this machine's own bare-hands claim (Phase 36): the
-## client's character body is modelled locally, so it is the one place that knows
-## whether the tamer is holding something.
+## The forwarded intent carries the signal's legacy `unarmed` argument for wire
+## compatibility only: the host ignores it (Phase 47) and reads the peer's hands from
+## its own copy of the peer's worn set.
 func _on_tame_requested(instance_id: String) -> void:
 	if not is_authoritative:
 		GameBus.tame_intent.emit(instance_id, "", is_unarmed(""))
 		return
 	tame(instance_id, local_player_id())
 
-## A tame intent carrying a tamer and that tamer's bare-hands claim. On the host this
-## is the resolved path (the networking slice re-emits an inbound intent with the
-## identity it bound to that connection). On a client the same signal is the
-## OUTBOUND one — networking forwards it and this slice must not also resolve it
-## locally.
-##
-## Phase 36 — the claim is installed for exactly the resolution it arrived with and
-## dropped immediately after, so the only hands evidence in play for a peer is the
-## one that accompanied the attempt being resolved. `resolve_player` is applied here
-## (not left to `tame`) so an empty player_id claims under the same id the resolution
-## will read: the local player's.
-func _on_tame_intent(instance_id: String, player_id: String, unarmed: bool) -> void:
+## A tame intent carrying a tamer. On the host this is the resolved path (the
+## networking slice re-emits an inbound intent with the identity it bound to that
+## connection). On a client the same signal is the OUTBOUND one — networking
+## forwards it and this slice must not also resolve it locally. The `unarmed`
+## argument is ignored: Phase 47 replaced the claim with the host's copy of the
+## tamer's worn set (see `is_unarmed`).
+func _on_tame_intent(instance_id: String, player_id: String, _unarmed: bool) -> void:
 	if not is_authoritative:
 		return
-	var pid := resolve_player(player_id)
-	_unarmed_claims[pid] = unarmed
 	tame(instance_id, player_id)
-	_unarmed_claims.erase(pid)

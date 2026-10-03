@@ -34,3 +34,4 @@ enum Condition {
 @export var metalTone: String
 @export var emissionColor: int
 @export var compatibleTags: Array
+@export var defense: int
