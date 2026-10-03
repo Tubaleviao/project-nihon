@@ -660,7 +660,6 @@ func _build_hud() -> void:
 
 	_refresh_build_hint()
 
-	_build_shortcuts_menu()
 
 	add_child(_hud)
 
@@ -818,79 +817,6 @@ func _make_hint_label(text: String) -> Label:
 	var lbl := Label.new()
 	lbl.text = text
 	lbl.add_theme_font_size_override("font_size", 16)
-	return lbl
-
-
-func _build_shortcuts_menu() -> void:
-	var panel := PanelContainer.new()
-	panel.name = "ShortcutsMenu"
-	panel.position = Vector2(12, 12)
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.07, 0.07, 0.09, 0.55)
-	style.set_corner_radius_all(8)
-	style.content_margin_left = 12.0
-	style.content_margin_right = 12.0
-	style.content_margin_top = 10.0
-	style.content_margin_bottom = 10.0
-	panel.add_theme_stylebox_override("panel", style)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 5)
-	panel.add_child(vbox)
-
-	var title := Label.new()
-	title.text = "Controls"
-	title.add_theme_font_size_override("font_size", 17)
-	title.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 0.9))
-	vbox.add_child(title)
-
-	_add_key_row(vbox, "WASD", "Move")
-	_add_key_row(vbox, "Space", "Jump")
-	_add_key_row(vbox, "Mouse move", "Orbit camera")
-	_add_key_row(vbox, "Scroll", "Zoom")
-	_add_mouse_row(vbox, MOUSE_BUTTON_LEFT, "Attack / Pick up / Chop")
-	_add_mouse_row(vbox, MOUSE_BUTTON_RIGHT, "Mine")
-	_add_mouse_row(vbox, MOUSE_BUTTON_MIDDLE, "Place")
-	_add_key_row(vbox, "R", "Cycle material")
-	_add_key_row(vbox, "B · V", "Station cycle / place")
-	_add_key_row(vbox, "G", "Tame nearest creature")
-	_add_key_row(vbox, "E", "Toggle equipment")
-	_add_key_row(vbox, "I · T · C", "Windows")
-	_add_key_row(vbox, "ESC", "Cursor")
-
-	_hud.add_child(panel)
-	panel.reset_size()
-
-
-func _add_mouse_row(box: VBoxContainer, button: int, desc: String) -> void:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	var holder := CenterContainer.new()
-	holder.custom_minimum_size = Vector2(56, 30)
-	holder.add_child(_make_mouse_icon(button))
-	row.add_child(holder)
-	row.add_child(_make_menu_label(desc))
-	box.add_child(row)
-
-
-func _add_key_row(box: VBoxContainer, key: String, desc: String) -> void:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	var key_label := Label.new()
-	key_label.text = key
-	key_label.add_theme_font_size_override("font_size", 15)
-	key_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
-	key_label.custom_minimum_size = Vector2(56, 0)
-	row.add_child(key_label)
-	row.add_child(_make_menu_label(desc))
-	box.add_child(row)
-
-
-func _make_menu_label(text: String) -> Label:
-	var lbl := Label.new()
-	lbl.text = text
-	lbl.add_theme_font_size_override("font_size", 15)
 	return lbl
 
 func _on_place_material_changed(_material: String) -> void:

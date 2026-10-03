@@ -1,8 +1,9 @@
 extends Node
 ## UI slice — window system exposing inventory, technology, crafting, trade,
 ## market, and proposals. Each window is a PanelContainer on a shared CanvasLayer,
-## toggled with I / T / C / Y (trade) / M (market) / G (proposals) and closed
-## with ESC or the window's ✕ button. Opening a window
+## toggled with I / T / C / Y (trade) / M (market) / G (proposals) / ? (controls)
+## and closed with ESC or the window's ✕ button. Every window drags by its title
+## bar and reopens where it was left (Phase 46). Opening a window
 ## releases the mouse so buttons are clickable; closing the last window
 ## re-captures it. World input is gated in PlayerSlice on the mouse being
 ## captured, so no attack/mine slips through an open menu.
@@ -19,6 +20,16 @@ extends Node
 ##   inventory_lines()      -> Array[String]     (pure projection, testable)
 ##   crafting_rows()        -> Array[Dictionary] (pure projection, testable)
 ##   technology_rows()      -> Array[Dictionary] (pure projection, testable)
+##   inventory_rows()       -> Array[Dictionary] (slot grid projection, testable)
+##   controls_rows()        -> Array[Dictionary] (the `?` legend, testable)
+##   clamp_window_position / item_icon_key / item_actions / action_intent (pure)
+##
+## Window layout persistence: positions are a CLIENT-ONLY view setting, stored in
+## `user://ui_layout.json` (not on the player record). A layout carries no
+## authority, differs per machine and must not be replicated; the file holds at
+## most one entry per known window key, is overwritten in place, and unknown keys
+## are dropped on load, so nothing accumulates and there is no per-connection
+## state to evict.
 
 const WINDOW_INVENTORY  := "inventory"
 const WINDOW_TECHNOLOGY := "technology"
@@ -26,6 +37,21 @@ const WINDOW_CRAFTING   := "crafting"
 const WINDOW_TRADE      := "trade"
 const WINDOW_MARKET     := "market"
 const WINDOW_PROPOSALS  := "proposals"
+const WINDOW_CONTROLS   := "controls"
+
+const WINDOW_KEYS := [
+	WINDOW_INVENTORY, WINDOW_TECHNOLOGY, WINDOW_CRAFTING,
+	WINDOW_TRADE, WINDOW_MARKET, WINDOW_PROPOSALS, WINDOW_CONTROLS,
+]
+
+const MouseIconScript := preload("res://src/ui/mouse_icon.gd")
+
+## Pixels of a window that must stay reachable on every edge when dragged.
+const DRAG_VISIBLE_MARGIN := 48.0
+const LAYOUT_PATH := "user://ui_layout.json"
+const ICON_KEY_FORMAT := "icons/items/%s.png.raw"
+const SLOT_SIZE := Vector2(72, 72)
+const INVENTORY_COLUMNS := 5
 
 ## Set by game_root after instantiation.
 var inventory_slice: Node = null
@@ -43,7 +69,15 @@ var _ui: CanvasLayer = null
 var _world_input_frozen: bool = false
 var _panels: Dictionary = {}                 # panel name -> PanelContainer
 var _inventory_usage: Label = null
-var _inventory_items: Label = null
+var _inventory_grid: GridContainer = null
+var _inventory_empty: Label = null
+var _slot_menu: PopupMenu = null
+var _slot_menu_item: String = ""
+var _slot_menu_actions: Array = []
+var _drag_key: String = ""
+var _drag_grab: Vector2 = Vector2.ZERO
+var layout_path: String = LAYOUT_PATH
+var _layout: Dictionary = {}                 # window key -> Vector2
 var _crafting_box: VBoxContainer = null
 var _repair_feedback: Label = null
 var _technology_box: VBoxContainer = null
@@ -99,6 +133,9 @@ func _input(event: InputEvent) -> void:
 				toggle_window(WINDOW_MARKET)
 			KEY_G:
 				toggle_window(WINDOW_PROPOSALS)
+			KEY_SLASH, KEY_QUESTION:
+				if event.keycode == KEY_QUESTION or event.shift_pressed:
+					toggle_window(WINDOW_CONTROLS)
 			KEY_ESCAPE:
 				if any_window_open():
 					_close_all_windows()
@@ -176,6 +213,131 @@ func inventory_lines() -> Array:
 	for item_id in keys:
 		lines.append("%s ×%d%s" % [item_id, contents[item_id], durability_bar(item_id)])
 	return lines
+
+## Where a dragged window may sit: at least DRAG_VISIBLE_MARGIN px of it stays
+## inside the viewport on every edge, and the title bar (top) never leaves the
+## screen, so a window can never be dragged fully off-screen.
+static func clamp_window_position(pos: Vector2, window_size: Vector2, viewport: Vector2) -> Vector2:
+	var min_x := DRAG_VISIBLE_MARGIN - window_size.x
+	var max_x := maxf(min_x, viewport.x - DRAG_VISIBLE_MARGIN)
+	var max_y := maxf(0.0, viewport.y - DRAG_VISIBLE_MARGIN)
+	return Vector2(clampf(pos.x, min_x, max_x), clampf(pos.y, 0.0, max_y))
+
+## Parse a stored layout. Malformed JSON, unknown window keys and non-numeric
+## entries are dropped, so a hand-edited or stale file cannot inject state.
+static func parse_layout(text: String) -> Dictionary:
+	var out: Dictionary = {}
+	var parsed = JSON.parse_string(text)
+	if not (parsed is Dictionary):
+		return out
+	for key in WINDOW_KEYS:
+		var v = parsed.get(key, null)
+		if v is Array and v.size() == 2 and (v[0] is float or v[0] is int) and (v[1] is float or v[1] is int):
+			out[key] = Vector2(float(v[0]), float(v[1]))
+	return out
+
+static func layout_to_json(layout: Dictionary) -> String:
+	var d: Dictionary = {}
+	for key in WINDOW_KEYS:
+		if layout.has(key):
+			var v: Vector2 = layout[key]
+			d[key] = [v.x, v.y]
+	return JSON.stringify(d)
+
+## Canonical overlay key for an item's icon. Derivation only: the overlay
+## decides at fill time whether a pack or the public placeholder answers.
+static func item_icon_key(item_id: String) -> String:
+	return ICON_KEY_FORMAT % item_id
+
+## First glyph of the item name, painted when no icon asset exists.
+static func item_glyph(item_id: String) -> String:
+	return item_id.substr(0, 1).to_upper() if item_id != "" else "?"
+
+## Right-click actions an item supports. Only intents that already exist on the
+## bus are offered; today that is repair (a held, non-pristine item with a
+## fabric repair spec). Each entry: { action, label }.
+func item_actions(item_id: String) -> Array:
+	var actions: Array = []
+	for r in repair_rows():
+		if str(r["id"]) == item_id:
+			actions.append({"action": "repair", "label": "Repair"})
+	return actions
+
+## The bus intent an action maps to: { signal, args }, or {} for an unknown action.
+static func action_intent(item_id: String, action: String) -> Dictionary:
+	match action:
+		"repair":
+			return {"signal": "repair_requested", "args": [item_id]}
+	return {}
+
+## Emit the bus intent for an item action. Returns false for an unknown action.
+func dispatch_item_action(item_id: String, action: String) -> bool:
+	var intent := action_intent(item_id, action)
+	if intent.is_empty():
+		return false
+	GameBus.get(str(intent["signal"])).emit.callv(intent["args"])
+	return true
+
+## Fabric description of an item ("" when the item has no definition).
+static func item_description(item_id: String) -> String:
+	var path := "res://godot/items/%s.tres" % item_id.to_lower()
+	if not ResourceLoader.exists(path):
+		return ""
+	var res = load(path)
+	if res == null:
+		return ""
+	var d = res.get("description")
+	return str(d) if d != null else ""
+
+## One row per carried item for the slot grid: { id, quantity, durability,
+## icon_key, tooltip, actions }, sorted by key. `inventory_lines()` stays the
+## text projection; this is the structured one the grid is built from.
+func inventory_rows() -> Array:
+	var rows: Array = []
+	if inventory_slice == null:
+		return rows
+	var contents: Dictionary = inventory_slice.get_contents()
+	var keys: Array = contents.keys()
+	keys.sort()
+	for item_id in keys:
+		var iid := str(item_id)
+		var qty := int(contents[item_id])
+		var dur := durability_bar(iid).strip_edges()
+		var tip := "%s\nQuantity: %d" % [iid, qty]
+		if dur != "":
+			tip += "\nDurability: %s" % dur.trim_prefix("[").trim_suffix("]")
+		var desc := item_description(iid)
+		if desc != "":
+			tip += "\n" + desc
+		rows.append({
+			"id": iid,
+			"quantity": qty,
+			"durability": dur,
+			"icon_key": item_icon_key(iid),
+			"tooltip": tip,
+			"actions": item_actions(iid),
+		})
+	return rows
+
+## The `?` legend, moved here from the always-on HUD panel. Each row:
+## { keys, desc, mouse } where `mouse` is a MouseButton for a drawn cue, or 0.
+static func controls_rows() -> Array:
+	return [
+		{"keys": "WASD", "desc": "Move", "mouse": 0},
+		{"keys": "Space", "desc": "Jump", "mouse": 0},
+		{"keys": "Mouse move", "desc": "Orbit camera", "mouse": 0},
+		{"keys": "Scroll", "desc": "Zoom", "mouse": 0},
+		{"keys": "", "desc": "Attack / Pick up / Chop", "mouse": MOUSE_BUTTON_LEFT},
+		{"keys": "", "desc": "Mine", "mouse": MOUSE_BUTTON_RIGHT},
+		{"keys": "", "desc": "Place", "mouse": MOUSE_BUTTON_MIDDLE},
+		{"keys": "R", "desc": "Cycle material", "mouse": 0},
+		{"keys": "B · V", "desc": "Station cycle / place", "mouse": 0},
+		{"keys": "G", "desc": "Tame nearest creature", "mouse": 0},
+		{"keys": "E", "desc": "Toggle equipment", "mouse": 0},
+		{"keys": "I · T · C", "desc": "Windows", "mouse": 0},
+		{"keys": "?", "desc": "This panel", "mouse": 0},
+		{"keys": "ESC", "desc": "Cursor", "mouse": 0},
+	]
 
 func inventory_usage_text() -> String:
 	if inventory_slice == null:
@@ -346,11 +508,60 @@ func _can_research(tech_id: String, status: String, data: Dictionary) -> bool:
 # ---------------------------------------------------------------------------
 
 func refresh_inventory() -> void:
-	if _inventory_items == null:
+	if _inventory_grid == null:
 		return
-	var lines: Array = inventory_lines()
 	_inventory_usage.text = inventory_usage_text()
-	_inventory_items.text = "(empty)" if lines.is_empty() else "\n".join(lines)
+	for c in _inventory_grid.get_children():
+		_inventory_grid.remove_child(c)
+		c.queue_free()
+	var rows: Array = inventory_rows()
+	_inventory_empty.visible = rows.is_empty()
+	for row in rows:
+		_inventory_grid.add_child(_make_slot(row))
+
+## Icons resolve here, at fill time: caching the texture per item would paint a
+## placeholder over real art once a pack mounts (or the reverse).
+func _make_slot(row: Dictionary) -> Control:
+	var slot := Button.new()
+	slot.custom_minimum_size = SLOT_SIZE
+	slot.tooltip_text = str(row["tooltip"])
+	slot.clip_text = true
+	var tex: Texture2D = _load_item_icon(str(row["icon_key"]))
+	if tex != null:
+		slot.icon = tex
+		slot.expand_icon = true
+		slot.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		slot.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+		slot.text = "×%d" % int(row["quantity"])
+	else:
+		slot.text = "%s\n×%d" % [item_glyph(str(row["id"])), int(row["quantity"])]
+	if str(row["durability"]) != "":
+		slot.modulate = Color(1.0, 0.9, 0.8)
+	slot.gui_input.connect(_on_slot_gui_input.bind(str(row["id"]), row["actions"]))
+	return slot
+
+func _load_item_icon(key: String) -> Texture2D:
+	if not FileAccess.file_exists(AssetOverlay.resolve_path(key)):
+		return null
+	return AssetOverlay.load_texture(key)
+
+func _on_slot_gui_input(event: InputEvent, item_id: String, actions: Array) -> void:
+	if not (event is InputEventMouseButton) or not event.pressed or event.button_index != MOUSE_BUTTON_RIGHT:
+		return
+	if actions.is_empty() or _slot_menu == null:
+		return
+	_slot_menu.clear()
+	_slot_menu_item = item_id
+	_slot_menu_actions = actions
+	for i in actions.size():
+		_slot_menu.add_item(str(actions[i]["label"]), i)
+	_slot_menu.position = Vector2i(get_viewport().get_mouse_position())
+	_slot_menu.popup()
+
+func _on_slot_menu_pressed(index: int) -> void:
+	if index < 0 or index >= _slot_menu_actions.size():
+		return
+	dispatch_item_action(_slot_menu_item, str(_slot_menu_actions[index]["action"]))
 
 func refresh_crafting() -> void:
 	if _crafting_box == null:
@@ -668,6 +879,13 @@ func _build_ui() -> void:
 	_panels[WINDOW_TRADE] = _build_window(WINDOW_TRADE, "Trade", _build_trade_content(), Vector2(470, 360))
 	_panels[WINDOW_MARKET] = _build_window(WINDOW_MARKET, "Market", _build_market_content(), Vector2(24, 700))
 	_panels[WINDOW_PROPOSALS] = _build_window(WINDOW_PROPOSALS, "Proposals", _build_proposals_content(), Vector2(470, 700))
+	_panels[WINDOW_CONTROLS] = _build_window(WINDOW_CONTROLS, "Controls (?)", _build_controls_content(), Vector2(916, 24))
+
+	_slot_menu = PopupMenu.new()
+	_slot_menu.id_pressed.connect(_on_slot_menu_pressed)
+	_ui.add_child(_slot_menu)
+	_load_layout()
+	_apply_layout()
 
 func _build_window(key: String, title: String, content: Control, position: Vector2) -> PanelContainer:
 	var panel := PanelContainer.new()
@@ -688,6 +906,9 @@ func _build_window(key: String, title: String, content: Control, position: Vecto
 	margin.add_child(vbox)
 
 	var bar := HBoxContainer.new()
+	bar.mouse_filter = Control.MOUSE_FILTER_STOP
+	bar.mouse_default_cursor_shape = Control.CURSOR_MOVE
+	bar.gui_input.connect(_on_title_gui_input.bind(key))
 	vbox.add_child(bar)
 
 	var title_label := Label.new()
@@ -704,16 +925,95 @@ func _build_window(key: String, title: String, content: Control, position: Vecto
 	vbox.add_child(content)
 	return panel
 
+# ---------------------------------------------------------------------------
+# Window drag + layout persistence
+# ---------------------------------------------------------------------------
+
+func _viewport_size() -> Vector2:
+	if is_inside_tree():
+		return get_viewport().get_visible_rect().size
+	return Vector2(1280, 720)
+
+## ONE handler for every window's title bar: press grabs, motion moves, release
+## stores the position.
+func _on_title_gui_input(event: InputEvent, key: String) -> void:
+	var panel: Control = _panels.get(key, null)
+	if panel == null:
+		return
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			_drag_key = key
+			_drag_grab = panel.get_global_mouse_position() - panel.position
+		elif _drag_key == key:
+			_drag_key = ""
+			_layout[key] = panel.position
+			_save_layout()
+	elif event is InputEventMouseMotion and _drag_key == key:
+		panel.position = clamp_window_position(
+			panel.get_global_mouse_position() - _drag_grab, panel.size, _viewport_size())
+
+func _load_layout() -> void:
+	_layout = {}
+	if FileAccess.file_exists(layout_path):
+		_layout = parse_layout(FileAccess.get_file_as_string(layout_path))
+
+func _save_layout() -> void:
+	var f := FileAccess.open(layout_path, FileAccess.WRITE)
+	if f == null:
+		push_warning("[UiSlice] cannot write %s" % layout_path)
+		return
+	f.store_string(layout_to_json(_layout))
+
+func _apply_layout() -> void:
+	for key in _layout:
+		var panel: Control = _panels.get(key, null)
+		if panel != null:
+			panel.position = clamp_window_position(_layout[key], panel.custom_minimum_size, _viewport_size())
+
+func _build_controls_content() -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 5)
+	for row in controls_rows():
+		var line := HBoxContainer.new()
+		line.add_theme_constant_override("separation", 10)
+		if int(row["mouse"]) != 0:
+			var holder := CenterContainer.new()
+			holder.custom_minimum_size = Vector2(56, 30)
+			var icon: Control = MouseIconScript.new()
+			icon.button = int(row["mouse"])
+			icon.custom_minimum_size = Vector2(20, 30)
+			holder.add_child(icon)
+			line.add_child(holder)
+		else:
+			var key_label := Label.new()
+			key_label.text = str(row["keys"])
+			key_label.add_theme_font_size_override("font_size", 15)
+			key_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
+			key_label.custom_minimum_size = Vector2(90, 0)
+			line.add_child(key_label)
+		var desc := Label.new()
+		desc.text = str(row["desc"])
+		desc.add_theme_font_size_override("font_size", 15)
+		line.add_child(desc)
+		box.add_child(line)
+	return box
+
 func _build_inventory_content() -> Control:
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 6)
 	_inventory_usage = Label.new()
 	_inventory_usage.add_theme_font_size_override("font_size", 15)
 	vbox.add_child(_inventory_usage)
-	_inventory_items = Label.new()
-	_inventory_items.add_theme_font_size_override("font_size", 15)
-	_inventory_items.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	vbox.add_child(_inventory_items)
+	_inventory_empty = Label.new()
+	_inventory_empty.text = "(empty)"
+	vbox.add_child(_inventory_empty)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, 220)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vbox.add_child(scroll)
+	_inventory_grid = GridContainer.new()
+	_inventory_grid.columns = INVENTORY_COLUMNS
+	scroll.add_child(_inventory_grid)
 	return vbox
 
 func _build_crafting_content() -> Control:

@@ -232,6 +232,11 @@ func run() -> void:
 	_run_test("voxel: a snapshot rebuilds only what changed",    _test_voxel_snapshot_rebuild_is_scoped)
 	_run_test("ui: windows toggle open/close",                 _test_ui_window_toggle)
 	_run_test("ui: inventory lines reflect contents",          _test_ui_inventory_lines)
+	_run_test("ui: window drag clamps on-screen",              _test_ui_window_clamp)
+	_run_test("ui: layout parse/serialise drops junk",         _test_ui_layout_roundtrip)
+	_run_test("ui: inventory rows project N slots",            _test_ui_inventory_rows)
+	_run_test("ui: item icon key + action intent mapping",     _test_ui_icon_key_and_intent)
+	_run_test("ui: controls legend lives behind ?, not HUD",   _test_ui_controls_panel)
 	_run_test("ui: crafting rows gate on technology",          _test_ui_crafting_rows_tech_gate)
 	_run_test("ui: technology rows report status + prereqs",   _test_ui_technology_rows_status)
 	_run_test("ai: idle→alert when player within alertRadius", _test_ai_idle_to_alert)
@@ -3533,6 +3538,88 @@ func _test_ui_window_toggle() -> void:
 	ui.close_window("technology")
 	assert_false(ui.any_window_open(), "all windows closed")
 	ui.free()
+
+func _test_ui_window_clamp() -> void:
+	var vp := Vector2(1280, 720)
+	var sz := Vector2(420, 300)
+	assert_eq(UiSlice.clamp_window_position(Vector2(100, 100), sz, vp), Vector2(100, 100), "on-screen position unchanged")
+	var far := UiSlice.clamp_window_position(Vector2(99999, 99999), sz, vp)
+	assert_true(far.x < vp.x and far.y < vp.y, "far bottom-right is pulled back inside")
+	assert_true(far.x + sz.x > 0.0 and far.y >= 0.0, "still reachable")
+	var neg := UiSlice.clamp_window_position(Vector2(-99999, -99999), sz, vp)
+	assert_true(neg.x + sz.x >= UiSlice.DRAG_VISIBLE_MARGIN, "left edge keeps a margin visible")
+	assert_eq(neg.y, 0.0, "title bar never above the screen")
+
+func _test_ui_layout_roundtrip() -> void:
+	var layout := {"inventory": Vector2(10, 20), "controls": Vector2(300.5, 40)}
+	var back := UiSlice.parse_layout(UiSlice.layout_to_json(layout))
+	assert_eq(back, layout, "layout survives serialise/parse")
+	assert_eq(UiSlice.parse_layout("not json"), {}, "garbage parses to empty")
+	var junk := UiSlice.parse_layout('{"bogus":[1,2],"inventory":["a",2],"market":[5,6]}')
+	assert_false(junk.has("bogus"), "unknown window key dropped")
+	assert_false(junk.has("inventory"), "non-numeric entry dropped")
+	assert_eq(junk.get("market"), Vector2(5, 6), "valid entry kept")
+
+func _test_ui_inventory_rows() -> void:
+	var ui := UiSlice.new()
+	add_child(ui)
+	assert_eq(ui.inventory_rows().size(), 0, "no inventory -> no rows")
+	var inv := InventorySlice.new()
+	add_child(inv)
+	ui.inventory_slice = inv
+	inv.add_item("Ferrite", 5)
+	inv.add_item("Thornwood", 2)
+	var rows: Array = ui.inventory_rows()
+	assert_eq(rows.size(), 2, "N items -> N slots")
+	var r := _ui_row(rows, "Ferrite")
+	assert_eq(r["quantity"], 5, "row carries quantity")
+	assert_true(str(r["tooltip"]).contains("Ferrite") and str(r["tooltip"]).contains("5"), "tooltip names item and quantity")
+	assert_eq(r["icon_key"], "icons/items/Ferrite.png.raw", "icon key derived from entity name")
+	ui.refresh_inventory()
+	assert_eq(ui._inventory_grid.get_child_count(), 2, "grid renders one slot per row")
+	assert_true(ui.inventory_rows()[0]["actions"].is_empty(), "stackable material offers no actions")
+	ui.free()
+	inv.free()
+
+func _test_ui_icon_key_and_intent() -> void:
+	assert_eq(UiSlice.item_icon_key("FerritePick"), "icons/items/FerritePick.png.raw", "icon key")
+	assert_eq(UiSlice.item_glyph("ferrite"), "F", "placeholder glyph is the initial")
+	assert_eq(UiSlice.item_glyph(""), "?", "empty id glyph")
+	var intent := UiSlice.action_intent("FerritePick", "repair")
+	assert_eq(intent["signal"], "repair_requested", "repair maps to the existing bus intent")
+	assert_eq(intent["args"], ["FerritePick"], "intent carries the item id")
+	assert_true(UiSlice.action_intent("X", "nope").is_empty(), "unknown action maps to nothing")
+	var ui := UiSlice.new()
+	add_child(ui)
+	assert_false(ui.dispatch_item_action("X", "nope"), "unknown action is not dispatched")
+	var got: Array = []
+	var cb := func(id: String) -> void: got.append(id)
+	GameBus.repair_requested.connect(cb)
+	assert_true(ui.dispatch_item_action("FerritePick", "repair"), "repair dispatches")
+	GameBus.repair_requested.disconnect(cb)
+	assert_eq(got, ["FerritePick"], "same intent the text UI emitted")
+	ui.free()
+
+func _test_ui_controls_panel() -> void:
+	var rows := UiSlice.controls_rows()
+	var descs: Array = rows.map(func(r): return r["desc"])
+	assert_true(descs.has("Move") and descs.has("Mine") and descs.has("Place"), "legend rows moved into the panel")
+	var ui := UiSlice.new()
+	add_child(ui)
+	assert_false(ui.is_window_open("controls"), "controls collapsed by default")
+	ui.toggle_window("controls")
+	assert_true(ui.is_window_open("controls"), "? opens controls")
+	ui.toggle_window("controls")
+	assert_false(ui.is_window_open("controls"), "? closes controls")
+	ui.free()
+	var p := PlayerSlice.new()
+	p.render_visuals = true
+	add_child(p)
+	var names: Array = []
+	for c in p._hud.get_children():
+		names.append(str(c.name))
+	assert_false(names.has("ShortcutsMenu"), "HUD paints no always-on legend")
+	p.free()
 
 func _test_ui_inventory_lines() -> void:
 	var ui := UiSlice.new()
