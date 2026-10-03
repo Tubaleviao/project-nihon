@@ -341,8 +341,12 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 			continue
 		var pack: int = int(res.get("spawnCount"))
 		if chunk_biome != "":
+			# A resource lacking the Phase 44 fields keeps spawning (always, no noise)
+			# rather than silently vanishing from the world.
+			var chance: Variant = res.get("spawnChance")
+			var amp: Variant = res.get("spawnDensity")
 			pack = SpawnRoll.pack_size(_world_seed(), chunk_pos, creature_id, pack,
-					float(res.get("spawnChance")), float(res.get("spawnDensity")))
+					1.0 if chance == null else float(chance), 0.0 if amp == null else float(amp))
 		# Count surviving instances (engaged creatures kept alive across a despawn).
 		var surviving: int = 0
 		for iid in _instances:
@@ -356,8 +360,15 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 		# host-only quantity, so a refusal is simply an absent pack.
 		if _population_cap > 0 and live_population() + to_spawn > _population_cap:
 			continue
-		for i in range(to_spawn):
-			_spawn(creature_id, chunk_pos, surviving + i)
+		# Skip indices a surviving (engaged) member already holds, so a reload never
+		# overwrites its record.
+		var idx: int = 0
+		var spawned: int = 0
+		while spawned < to_spawn:
+			if not _instances.has(_instance_id(chunk_pos, creature_id, idx)):
+				_spawn(creature_id, chunk_pos, idx)
+				spawned += 1
+			idx += 1
 
 ## Cap on live creature instances (0 = unbounded). Enforced host-only, at admission.
 func set_population_cap(cap: int) -> void:
@@ -519,17 +530,7 @@ func _deterministic_chunk_position(chunk_pos: Vector2i, creature_id: String, spa
 		float(chunk_pos.y * cs + local_z) * ts + ts * 0.5
 	)
 
-## True when the creature is a pack/herd member (groupBehavior != none). Solitary
-## creatures (and any resource without the field) return false and keep their
-## per-index scattered spawn positions.
-func _is_group_creature(creature_id: String) -> bool:
-	var res: Resource = GameData.CREATURES.get(creature_id, null)
-	if res == null:
-		return false
-	var gb: Variant = res.get("groupBehavior")
-	return gb != null and int(gb) != 0
-
-## Small deterministic offsets for pack/herd members around the pack centre. Kept
+## Small deterministic offsets for pack members around the pack centre. Kept
 ## well inside a typical packRadius (20 m) so every member stays in coordination
 ## range of every other member.
 const PACK_MEMBER_OFFSETS: Array[Vector2] = [
@@ -544,8 +545,8 @@ const PACK_MEMBER_OFFSETS: Array[Vector2] = [
 	Vector2(2.5, -2.5),
 ]
 
-## The cluster offset for the Nth member of a pack/herd. Index wraps so a larger
-## spawnCount than the offset table stays deterministic.
+## The cluster offset for the Nth member of a pack. Index wraps so a larger
+## pack than the offset table stays deterministic.
 func _pack_member_offset(spawn_index: int) -> Vector2:
 	var idx: int = spawn_index % PACK_MEMBER_OFFSETS.size()
 	return PACK_MEMBER_OFFSETS[idx]
