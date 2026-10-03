@@ -12,6 +12,7 @@ module.exports = {
     goal: 'Cap-content biome requiring full equipment, team co-ordination, and void-specific knowledge',
     fields: {
       id:             { type: 'uuid', primaryKey: true },
+      treeDensity:    { type: 'decimal', description: 'Mean trees per chunk (Phase 44), scaled per chunk by a seeded density noise so some chunks are bare and some thick; 0 = grows no trees. The rift prose grants no conventional wood.', defaultValue: 0.0 },
       avgTemperature: { type: 'decimal', description: '°C; fluctuates wildly near active rifts' },
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year; negligible' },
       soilFertility:  { type: 'decimal', description: '0–1; always zero — nothing biological grows near rifts; tile generation must set this to 0 and reject any non-zero value' },

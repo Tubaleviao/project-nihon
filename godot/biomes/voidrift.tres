@@ -5,6 +5,7 @@
 [resource]
 script = ExtResource("1")
 id = ""
+treeDensity = 0.0
 avgTemperature = 0.0
 avgRainfall = 0.0
 soilFertility = 0.0

@@ -4478,7 +4478,7 @@ carries today. `pnpm validate`, `pnpm generate` and
 
 ---
 
-## Phase 44 — Spawn scarcity
+## Phase 44 — Spawn scarcity ✅ Done
 
 **Goal:** Population is uniform and unbounded. `CreatureSlice.spawn_for_chunk`
 spawns exactly `spawnCount` of every creature whose biome matches the chunk —
@@ -4522,17 +4522,36 @@ schemaHash` to see the real changes).
   headless, including a small cap proving the ceiling holds and is released.
 
 **Acceptance criteria:**
-- [ ] The same seed produces the same pack centres and sizes on a host and a
+- [x] The same seed produces the same pack centres and sizes on a host and a
   client, with no snapshot carrying placement.
-- [ ] A chunk can roll no spawn at all, and the per-chunk counts of a species
+  *(Landed: "spawn: a seed places the same packs on host and client" — two seeded slices
+  stream a 7×7 ring in opposite orders and hold the same instance ids at the same
+  positions; the pure `SpawnField.pack_rolls` / `pack_center` repeat, and another seed
+  changes them.)*
+- [x] A chunk can roll no spawn at all, and the per-chunk counts of a species
   across a sample of chunks have non-zero variance (assert against the retired
   constant count).
-- [ ] With a small cap and a wide view ring, live instances never exceed the cap,
+  *(Landed: "spawn: a chunk can be empty and counts vary" — 120 forest chunks: each holds
+  0 boars or exactly one pack of `spawnCount`, some are empty, variance > 0.5 against the
+  retired constant's 0, and the density noise moves the effective chance by > 0.2.
+  "spawn: a pack gathers around one centre" keeps every member within 4 m of its centre
+  and inside its chunk.)*
+- [x] With a small cap and a wide view ring, live instances never exceed the cap,
   and a despawn returns budget that a later pack can use.
-- [ ] `pnpm validate`, `pnpm generate` and `pnpm check-drift` are clean; no
+  *(Landed: "spawn: the cap holds and a despawn returns budget" — cap 12 over an 11×11
+  ring, asserted after every chunk; a rolled pack outside the ring is refused whole, the
+  ring is despawned (`live_population()` back to 0) and the same chunk then admits it.)*
+- [x] `pnpm validate`, `pnpm generate` and `pnpm check-drift` are clean; no
   runtime code reads `spawnCount` as a per-chunk count anywhere
   (`grep -rn spawnCount src/`), and the fabric description says pack size.
-- [ ] The suite is green on both boot paths.
+  *(Landed: the only runtime read is `pack_size` in `CreatureSlice.spawn_for_chunk`; the
+  fabric description reads "Pack size: instances placed together at one spawn point…".
+  "spawn: the spawn fields are fabric values" asserts every creature resource carries
+  `spawnChance` / `spawnDensity` in 0..1.)*
+- [x] The suite is green on both boot paths.
+  *(Landed: `Results: 7806/7806 passed (0 failed)` on `--run-tests` and on the debug
+  world boot (`--quit-after-boot`); the two-client net harness 10/10. The new roll and
+  cap tests were RED-proven with the roll and the cap disabled.)*
 
 **Implementation notes:**
 - **A cap is only honest if it counts LIVE instances and is released on
@@ -4568,6 +4587,33 @@ schemaHash` to see the real changes).
   the same gap for trees).
 - **The density field is 2D.** Surface population only; Phase 43's 3D field is
   about materials, not about where a pack sits vertically.
+
+**As built (decisions the deliverables left open):**
+- **Tree density lives on the biome entities** (`treeDensity` on
+  `fabric/world/biomes/*.js`, mean trees per chunk: 8 / 2 / 8 / 0 / 0), not a new
+  `fabric/world/world.js` — the biome is where the prose that justifies it already lives.
+  Species and wood stay in `TREES_BY_BIOME`; its `per_chunk` is now only the fallback for
+  a missing biome resource, and `tree_entry_for_biome` returns `density` instead.
+- **The roll lives in `src/world/spawn_field.gd`** (pure, static), shared by creatures and
+  trees, and reuses the Phase 43 ore field's integer hash and lattice value noise. Effective
+  chance = `spawnChance × (1 + spawnDensity × noise)`, clamped; the noise is per species
+  (and per biome for trees) at a 5-chunk wavelength. Trees plant
+  `round(treeDensity × (1 + noise) + jitter)`, so a forest chunk ranges 0..16.
+- **The chances are the biome prose's spawn weights** (ForestBoar 0.7, GraywolfPack 0.4,
+  SteppeBison 0.8, …); RiftWarden — "one per VoidRift zone, no probabilistic weight" — is
+  chance 1.0, density 0. Pack sizes keep the old `spawnCount` values.
+- **Every spawn is a pack now**, solitary creatures included: members sit around one
+  seeded centre (`pack_center`, inset 6 tiles) with the Phase 30 member offsets. Centres
+  are seeded by the WORLD seed; instance ids are unchanged (`creature_<cx>_<cz>_<id>_<i>`),
+  so old saves re-attach.
+- **The cap counts resident records** (`live_population()` = `_instances.size()`, dead
+  ones awaiting respawn included — they come back in place), recomputed, never a counter.
+  Default `DEFAULT_POPULATION_CAP = 512`. A pack is admitted all-or-nothing.
+- **An unwired rig does not roll.** With no terrain slice there is no seed and no biome,
+  so `spawn_for_chunk` places every creature's pack (the cap still applies) and trees plant
+  the rounded mean — the same isolated-test path `chunk_biome == ""` already was.
+- **A refused pack is not retried** while its chunk stays loaded; it is re-rolled (and may
+  be admitted) the next time the chunk streams.
 
 ---
 

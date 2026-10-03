@@ -12,6 +12,7 @@ Eerie glades where day-night cycles run at an accelerated, unpredictable rate, b
 | Name | Type | Required | Description |
 | ---- | ---- | -------- | ----------- |
 | `id` | uuid | yes |  |
+| `treeDensity` | decimal | yes | Mean trees per chunk (Phase 44), scaled per chunk by a seeded density noise so some chunks are bare and some thick; 0 = grows no trees. Duskwood trees dominate the canopy. |
 | `avgTemperature` | decimal | yes | °C annual average; mild |
 | `avgRainfall` | decimal | yes | mm per in-game year; moderate |
 | `soilFertility` | decimal | yes | 0–1; moderate; unusual flora |

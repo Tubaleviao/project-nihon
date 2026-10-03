@@ -15,6 +15,7 @@ Barren, heat-scorched terrain surrounding active or dormant volcanic calderas. T
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
+| treeDensity | decimal | Mean trees per chunk (Phase 44), scaled per chunk by a seeded density noise so some chunks are bare and some thick; 0 = grows no trees. The badlands prose grants no conventional wood. |
 | avgTemperature | decimal | °C annual average; extreme heat |
 | avgRainfall | decimal | mm per in-game year; near zero |
 | soilFertility | decimal | 0–1; near zero; no conventional farming |

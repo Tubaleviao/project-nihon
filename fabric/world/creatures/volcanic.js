@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, dropsData, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
+const { defineEntity, spawnFields, creatureStateMachine, dropsData, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
 
 module.exports = {
 
@@ -21,7 +21,7 @@ module.exports = {
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 3.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees', defaultValue: 0.10 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 1500 },
-      spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 2 },
+      ...spawnFields({ packSize: 2, chance: 0.6, density: 0.4, why: 'Biome prose: LavaSlug spawn weight 0.6.' }),
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'VolcanicBadlands' },
       drops: dropsData([
         { item: 'slug_shell_shard',       chance: 1.0,  minQty: 2, maxQty: 4 },
@@ -102,7 +102,7 @@ module.exports = {
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 4.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees', defaultValue: 0.20 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 2400 },
-      spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 1 },
+      ...spawnFields({ packSize: 1, chance: 0.2, density: 0.5, why: 'Biome prose: CinderGargoyle spawn weight 0.2 (eruption events are not modelled).' }),
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'VolcanicBadlands' },
       drops: dropsData([
         { item: 'gargoyle_wing_fragment',  chance: 1.0, minQty: 1, maxQty: 2 },

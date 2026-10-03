@@ -27,6 +27,7 @@ extends Node
 ## Public API:
 ##   spawn_for_chunk(chunk_pos) / despawn_for_chunk(chunk_pos)   — Phase 17 streaming
 ##   tree_entry_for_biome(biome) -> Dictionary  ({} when the biome grows no trees)
+##   tree_budget(chunk_pos) -> int               (Phase 44: fabric density × noise)
 ##   get_tree_record(tree_id) -> Dictionary
 ##   get_all_trees() / trees_in_chunk(chunk_pos) -> Array
 ##   chop_tree(tree_id, player_id) -> Dictionary  { success, wood, quantity, reason }
@@ -34,6 +35,7 @@ extends Node
 
 const MultimeshPool := preload("res://src/core/multimesh_pool.gd")
 const MeshUtil      := preload("res://src/core/mesh_util.gd")
+const SpawnField    := preload("res://src/world/spawn_field.gd")
 
 ## Trees own a collision layer (layer 4 / bit 3) so the player's chop aim ray can
 ## target a trunk without hitting terrain (layer 2) or loot pickups (layer 3).
@@ -44,12 +46,13 @@ const TREE_COLLISION_LAYER := 8
 ## dominant wood source at weight 0.8", the grassland "rare; only isolated copses
 ## at weight 0.1", and the twilight grove has "Duskwood trees dominate the
 ## canopy". A biome absent from this table grows no trees — the volcanic
-## badlands prose grants no conventional wood. `per_chunk` follows the prose
-## weight: dominant → 8 trees, isolated copses → 2.
+## badlands prose grants no conventional wood.
 ##
-## GDScript-first on purpose: the roadmap lands trees as a runtime feature and
-## adds the fabric world-system entity once the runtime shape has settled (see
-## Phase 31's Newel dependency note).
+## Phase 44 — HOW MANY trees a chunk holds is no longer this table's: it is the
+## biome's fabric `treeDensity` (mean trees per chunk, on `GameData.BIOMES`), scaled
+## per chunk by the seeded density noise (`SpawnField.tree_count`). `per_chunk`
+## here is only the FALLBACK for an isolated rig whose biome resource is missing,
+## mirroring `DEFAULT_BIOME`; the fabric value wins wherever it exists.
 const TREES_BY_BIOME: Dictionary = {
 	"TemperateForest":    { "species": "Thornwood", "wood": "Thornwood", "per_chunk": 8 },
 	"TemperateGrassland": { "species": "Thornwood", "wood": "Thornwood", "per_chunk": 2 },
@@ -117,11 +120,14 @@ func _process(_delta: float) -> void:
 ## Spawn the per-chunk tree budget for this chunk's biome. Positions, species,
 ## and ids are deterministic, so a reload restores the same trees; surviving trees
 ## are counted first so a chunk reload never exceeds the budget.
+##
+## Phase 44 — the budget is `tree_budget(chunk_pos)`: the fabric density scaled by
+## the seeded noise, so a forest has clearings and thickets and a chunk can be bare.
 func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 	var entry := tree_entry_for_biome(_chunk_biome(chunk_pos))
 	if entry.is_empty():
 		return
-	var budget: int = int(entry["per_chunk"])
+	var budget: int = tree_budget(chunk_pos)
 	var existing: int = 0
 	for tid in _trees:
 		if _trees[tid]["chunk"] == chunk_pos:
@@ -146,13 +152,44 @@ func despawn_for_chunk(chunk_pos: Vector2i) -> void:
 
 ## Tree entry for a biome, or {} when that biome grows no trees. An empty biome
 ## (no terrain slice wired — isolated tests) falls back to the default entry.
+## Phase 44 — the entry carries `density`, the biome's fabric `treeDensity` (mean
+## trees per chunk), falling back to the table's `per_chunk` only when the biome
+## resource is missing. A fabric density of 0 grows no trees.
 func tree_entry_for_biome(biome: String) -> Dictionary:
 	if biome == "":
 		biome = DEFAULT_BIOME
 	var entry: Variant = TREES_BY_BIOME.get(biome, null)
 	if entry == null:
 		return {}
-	return (entry as Dictionary).duplicate(true)
+	var out := (entry as Dictionary).duplicate(true)
+	out["density"] = float(out["per_chunk"])
+	var res: Resource = GameData.BIOMES.get(biome, null)
+	if res != null and res.get("treeDensity") != null:
+		out["density"] = float(res.get("treeDensity"))
+	out.erase("per_chunk")
+	if float(out["density"]) <= 0.0:
+		return {}
+	return out
+
+## How many trees `chunk_pos` holds. With a terrain slice wired, the biome's density
+## scaled by the seeded noise (`SpawnField.tree_count`) — a pure function of the world
+## seed and the chunk, so host and client plant the same count. An isolated rig (no
+## terrain, no seed) plants the rounded mean, so its counts stay fixed.
+func tree_budget(chunk_pos: Vector2i) -> int:
+	var biome := _chunk_biome(chunk_pos)
+	var entry := tree_entry_for_biome(biome)
+	if entry.is_empty():
+		return 0
+	var density := float(entry["density"])
+	if terrain_slice == null:
+		return roundi(density)
+	return SpawnField.tree_count(_world_seed(), chunk_pos, biome, density)
+
+## The world seed from the wired terrain slice, or 0 for an isolated rig.
+func _world_seed() -> int:
+	if terrain_slice != null and terrain_slice.has_method("get_world_seed"):
+		return int(terrain_slice.get_world_seed())
+	return 0
 
 # ---------------------------------------------------------------------------
 # Queries

@@ -51,6 +51,8 @@ enum State {
 @export var fleeThreshold: float
 @export var respawnSeconds: int
 @export var spawnCount: int
+@export var spawnChance: float
+@export var spawnDensity: float
 @export var biome: int
 @export var groupBehavior: int
 @export var packRadius: float

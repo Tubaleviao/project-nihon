@@ -12,6 +12,7 @@ Open rolling plains ideal for large settlements, agriculture, and mounted travel
 | Name | Type | Required | Description |
 | ---- | ---- | -------- | ----------- |
 | `id` | uuid | yes |  |
+| `treeDensity` | decimal | yes | Mean trees per chunk (Phase 44), scaled per chunk by a seeded density noise so some chunks are bare and some thick; 0 = grows no trees. Thornwood is rare; only isolated copses at weight 0.1. |
 | `avgTemperature` | decimal | yes | °C annual average |
 | `avgRainfall` | decimal | yes | mm per in-game year |
 | `soilFertility` | decimal | yes | 0–1; highest of all biomes |

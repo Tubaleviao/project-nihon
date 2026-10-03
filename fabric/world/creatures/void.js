@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, creatureStateValues, dropsData, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
+const { defineEntity, spawnFields, creatureStateMachine, creatureStateValues, dropsData, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
 
 module.exports = {
 
@@ -22,7 +22,7 @@ module.exports = {
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 4.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees', defaultValue: 0.15 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 3600 },
-      spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world', defaultValue: 1 },
+      ...spawnFields({ packSize: 1, chance: 0.5, density: 0.4, why: 'Biome prose: VoidSerpent spawn weight 0.5.' }),
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'VoidRift' },
       drops: dropsData([
         { item: 'void_scale',        chance: 1.0,  minQty: 2, maxQty: 4 },
@@ -108,7 +108,7 @@ module.exports = {
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 6.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees; 0 = never flees', defaultValue: 0.0 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 7200 },
-      spawnCount:     { type: 'integer', description: 'Number of instances spawned per game world; singleton per rift zone', defaultValue: 1 },
+      ...spawnFields({ packSize: 1, chance: 1.0, density: 0.0, why: 'Biome prose: one instance per VoidRift zone, no probabilistic weight — every rift chunk holds its singleton.' }),
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'VoidRift' },
       drops: dropsData([
         { item: 'rift_shard',        chance: 1.0,  minQty: 4, maxQty: 8 },

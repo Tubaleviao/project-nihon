@@ -21,7 +21,9 @@ A sleek, luminescent fox native to the Twilight Grove whose fur shifts in hue wi
 | `attackRadius` | decimal | yes | Distance in metres at which creature begins attacking |
 | `fleeThreshold` | decimal | yes | HP fraction (0–1) below which creature flees; flees on weapon detect |
 | `respawnSeconds` | integer | yes | Seconds before a dead creature respawns |
-| `spawnCount` | integer | yes | Number of instances spawned per game world |
+| `spawnCount` | integer | yes | Pack size: instances placed together at one spawn point when a chunk rolls a spawn (not a per-chunk or per-world count). Biome prose: GlimmerFox spawn weight 0.7. |
+| `spawnChance` | decimal | yes | Per-chunk chance (0–1) that a chunk of this biome holds a pack, before the density noise |
+| `spawnDensity` | decimal | yes | Amplitude (0–1) of the seeded density noise that clusters packs in some regions and thins them in others |
 | `biome` | enum (`TemperateForest`, `TemperateGrassland`, `VolcanicBadlands`, `TwilightGrove`, `VoidRift`) | yes | Biome this creature belongs to |
 | `drops` | json | yes | Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system. |
 | `tame` | json | yes | Structured taming spec: result kind (companion / yield), bare-hands and skill requirements, the offered item consumed, the defeated-alpha gate, the granted player flag, shed items, cooldown (seconds) and whether a tamed instance respawns. |

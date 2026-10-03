@@ -11,6 +11,7 @@ module.exports = {
     goal: 'Create a high-risk, high-reward biome that demands infrastructure investment before exploitation',
     fields: {
       id:             { type: 'uuid', primaryKey: true },
+      treeDensity:    { type: 'decimal', description: 'Mean trees per chunk (Phase 44), scaled per chunk by a seeded density noise so some chunks are bare and some thick; 0 = grows no trees. The badlands prose grants no conventional wood.', defaultValue: 0.0 },
       avgTemperature: { type: 'decimal', description: '°C annual average; extreme heat' },
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year; near zero' },
       soilFertility:  { type: 'decimal', description: '0–1; near zero; no conventional farming' },

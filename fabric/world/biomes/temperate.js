@@ -11,6 +11,7 @@ module.exports = {
     goal: 'Provide new players a gentle entry environment with abundant basic materials and manageable creatures',
     fields: {
       id:             { type: 'uuid', primaryKey: true },
+      treeDensity:    { type: 'decimal', description: 'Mean trees per chunk (Phase 44), scaled per chunk by a seeded density noise so some chunks are bare and some thick; 0 = grows no trees. Thornwood trees are the dominant wood source at weight 0.8 — a wooded chunk.', defaultValue: 8.0 },
       avgTemperature: { type: 'decimal', description: '°C annual average' },
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year' },
       soilFertility:  { type: 'decimal', description: '0–1; affects crop growth rates' },
@@ -41,6 +42,7 @@ module.exports = {
     goal: 'Push players toward inter-biome trade for lumber while rewarding agricultural investment',
     fields: {
       id:             { type: 'uuid', primaryKey: true },
+      treeDensity:    { type: 'decimal', description: 'Mean trees per chunk (Phase 44), scaled per chunk by a seeded density noise so some chunks are bare and some thick; 0 = grows no trees. Thornwood is rare; only isolated copses at weight 0.1.', defaultValue: 2.0 },
       avgTemperature: { type: 'decimal', description: '°C annual average' },
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year' },
       soilFertility:  { type: 'decimal', description: '0–1; highest of all biomes' },

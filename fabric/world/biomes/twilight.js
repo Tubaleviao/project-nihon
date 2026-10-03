@@ -12,6 +12,7 @@ module.exports = {
     goal: 'Introduce a distinctive environment that rewards exploration and alchemical knowledge',
     fields: {
       id:             { type: 'uuid', primaryKey: true },
+      treeDensity:    { type: 'decimal', description: 'Mean trees per chunk (Phase 44), scaled per chunk by a seeded density noise so some chunks are bare and some thick; 0 = grows no trees. Duskwood trees dominate the canopy.', defaultValue: 8.0 },
       avgTemperature: { type: 'decimal', description: '°C annual average; mild' },
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year; moderate' },
       soilFertility:  { type: 'decimal', description: '0–1; moderate; unusual flora' },

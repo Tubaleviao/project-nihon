@@ -12,6 +12,7 @@ Fractured terrain surrounding permanent rifts in the fabric of reality. Reality 
 | Name | Type | Required | Description |
 | ---- | ---- | -------- | ----------- |
 | `id` | uuid | yes |  |
+| `treeDensity` | decimal | yes | Mean trees per chunk (Phase 44), scaled per chunk by a seeded density noise so some chunks are bare and some thick; 0 = grows no trees. The rift prose grants no conventional wood. |
 | `avgTemperature` | decimal | yes | °C; fluctuates wildly near active rifts |
 | `avgRainfall` | decimal | yes | mm per in-game year; negligible |
 | `soilFertility` | decimal | yes | 0–1; always zero — nothing biological grows near rifts; tile generation must set this to 0 and reject any non-zero value |
