@@ -234,6 +234,8 @@ func run() -> void:
 	_run_test("ui: inventory lines reflect contents",          _test_ui_inventory_lines)
 	_run_test("ui: window drag clamps on-screen",              _test_ui_window_clamp)
 	_run_test("ui: layout parse/serialise drops junk",         _test_ui_layout_roundtrip)
+	_run_test("ui: layout persists through a file",            _test_ui_layout_file_roundtrip)
+	_run_test("ui: closing windows ends a drag",               _test_ui_drag_state_resets)
 	_run_test("ui: inventory rows project N slots",            _test_ui_inventory_rows)
 	_run_test("ui: item icon key + action intent mapping",     _test_ui_icon_key_and_intent)
 	_run_test("ui: controls legend lives behind ?, not HUD",   _test_ui_controls_panel)
@@ -3517,6 +3519,36 @@ func _test_voxel_legacy_edit_type_guard() -> void:
 # UiSlice tests (Phase 14 windows)
 # ---------------------------------------------------------------------------
 
+const TEST_UI_LAYOUT := "user://test_ui_layout.json"
+
+## UiSlice wired to a scratch layout file so tests never read the real one.
+func _new_test_ui() -> UiSlice:
+	DirAccess.remove_absolute(TEST_UI_LAYOUT)
+	var ui := UiSlice.new()
+	ui.layout_path = TEST_UI_LAYOUT
+	add_child(ui)
+	return ui
+
+func _test_ui_layout_file_roundtrip() -> void:
+	var ui := _new_test_ui()
+	ui._layout["inventory"] = Vector2(50, 60)
+	ui._save_layout()
+	ui.free()
+	var ui2 := UiSlice.new()
+	ui2.layout_path = TEST_UI_LAYOUT
+	add_child(ui2)
+	assert_eq(ui2._layout.get("inventory"), Vector2(50, 60), "layout reloaded from file")
+	assert_eq(ui2._panels["inventory"].position, Vector2(50, 60), "window reopens at stored position")
+	ui2.free()
+	DirAccess.remove_absolute(TEST_UI_LAYOUT)
+
+func _test_ui_drag_state_resets() -> void:
+	var ui := _new_test_ui()
+	ui._drag_key = "inventory"
+	ui._close_all_windows()
+	assert_eq(ui._drag_key, "", "closing windows ends a drag")
+	ui.free()
+
 func _ui_row(rows: Array, id: String) -> Dictionary:
 	for r in rows:
 		if str(r["id"]) == id:
@@ -3524,8 +3556,7 @@ func _ui_row(rows: Array, id: String) -> Dictionary:
 	return {}
 
 func _test_ui_window_toggle() -> void:
-	var ui := UiSlice.new()
-	add_child(ui)
+	var ui := _new_test_ui()
 	assert_false(ui.any_window_open(), "no windows open initially")
 	ui.toggle_window("inventory")
 	assert_true(ui.is_window_open("inventory"), "inventory opens on toggle")
@@ -3561,8 +3592,7 @@ func _test_ui_layout_roundtrip() -> void:
 	assert_eq(junk.get("market"), Vector2(5, 6), "valid entry kept")
 
 func _test_ui_inventory_rows() -> void:
-	var ui := UiSlice.new()
-	add_child(ui)
+	var ui := _new_test_ui()
 	assert_eq(ui.inventory_rows().size(), 0, "no inventory -> no rows")
 	var inv := InventorySlice.new()
 	add_child(inv)
@@ -3589,8 +3619,7 @@ func _test_ui_icon_key_and_intent() -> void:
 	assert_eq(intent["signal"], "repair_requested", "repair maps to the existing bus intent")
 	assert_eq(intent["args"], ["FerritePick"], "intent carries the item id")
 	assert_true(UiSlice.action_intent("X", "nope").is_empty(), "unknown action maps to nothing")
-	var ui := UiSlice.new()
-	add_child(ui)
+	var ui := _new_test_ui()
 	assert_false(ui.dispatch_item_action("X", "nope"), "unknown action is not dispatched")
 	var got: Array = []
 	var cb := func(id: String) -> void: got.append(id)
@@ -3604,8 +3633,7 @@ func _test_ui_controls_panel() -> void:
 	var rows := UiSlice.controls_rows()
 	var descs: Array = rows.map(func(r): return r["desc"])
 	assert_true(descs.has("Move") and descs.has("Mine") and descs.has("Place"), "legend rows moved into the panel")
-	var ui := UiSlice.new()
-	add_child(ui)
+	var ui := _new_test_ui()
 	assert_false(ui.is_window_open("controls"), "controls collapsed by default")
 	ui.toggle_window("controls")
 	assert_true(ui.is_window_open("controls"), "? opens controls")
@@ -3622,8 +3650,7 @@ func _test_ui_controls_panel() -> void:
 	p.free()
 
 func _test_ui_inventory_lines() -> void:
-	var ui := UiSlice.new()
-	add_child(ui)
+	var ui := _new_test_ui()
 	var inv := InventorySlice.new()
 	add_child(inv)
 	ui.inventory_slice = inv
@@ -3636,8 +3663,7 @@ func _test_ui_inventory_lines() -> void:
 	inv.free()
 
 func _test_ui_crafting_rows_tech_gate() -> void:
-	var ui := UiSlice.new()
-	add_child(ui)
+	var ui := _new_test_ui()
 	var inv := InventorySlice.new()
 	add_child(inv)
 	var tech := TechnologySlice.new()
@@ -3665,8 +3691,7 @@ func _test_ui_crafting_rows_tech_gate() -> void:
 	inv.free()
 
 func _test_ui_technology_rows_status() -> void:
-	var ui := UiSlice.new()
-	add_child(ui)
+	var ui := _new_test_ui()
 	var tech := TechnologySlice.new()
 	add_child(tech)
 	var inv := InventorySlice.new()

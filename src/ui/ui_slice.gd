@@ -75,6 +75,9 @@ var _slot_menu: PopupMenu = null
 var _slot_menu_item: String = ""
 var _slot_menu_actions: Array = []
 var _drag_key: String = ""
+var _drag_moved: bool = false
+## Resolved icon path -> Texture2D (or null); the path changes when a pack mounts.
+var _icon_cache: Dictionary = {}
 var _drag_grab: Vector2 = Vector2.ZERO
 var layout_path: String = LAYOUT_PATH
 var _layout: Dictionary = {}                 # window key -> Vector2
@@ -120,6 +123,10 @@ func _input(event: InputEvent) -> void:
 	if _world_input_frozen:
 		return
 	if event is InputEventKey and event.pressed:
+		# Typing into a text field must not trigger window hotkeys.
+		var focus := get_viewport().gui_get_focus_owner() if is_inside_tree() else null
+		if (focus is LineEdit or focus is TextEdit) and event.keycode != KEY_ESCAPE:
+			return
 		match event.keycode:
 			KEY_I:
 				toggle_window(WINDOW_INVENTORY)
@@ -165,6 +172,7 @@ func open_window(panel: String) -> void:
 	if panel == WINDOW_CRAFTING and _repair_feedback != null:
 		_repair_feedback.text = ""
 	p.visible = true
+	p.position = clamp_window_position(p.position, p.size, _viewport_size())
 	refresh_all()
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 
@@ -173,6 +181,7 @@ func close_window(panel: String) -> void:
 	if p == null:
 		return
 	p.visible = false
+	_drag_key = ""
 	if not any_window_open():
 		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
@@ -185,6 +194,7 @@ func toggle_window(panel: String) -> void:
 func _close_all_windows() -> void:
 	for panel in _panels:
 		_panels[panel].visible = false
+	_drag_key = ""
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 func refresh_all() -> void:
@@ -256,11 +266,16 @@ static func item_glyph(item_id: String) -> String:
 ## Right-click actions an item supports. Only intents that already exist on the
 ## bus are offered; today that is repair (a held, non-pristine item with a
 ## fabric repair spec). Each entry: { action, label }.
-func item_actions(item_id: String) -> Array:
+## `repairable` (item id -> true) may be passed to avoid recomputing
+## `repair_rows()` for every item; null means compute it here.
+func item_actions(item_id: String, repairable = null) -> Array:
+	if repairable == null:
+		repairable = {}
+		for r in repair_rows():
+			repairable[str(r["id"])] = true
 	var actions: Array = []
-	for r in repair_rows():
-		if str(r["id"]) == item_id:
-			actions.append({"action": "repair", "label": "Repair"})
+	if repairable.has(item_id):
+		actions.append({"action": "repair", "label": "Repair"})
 	return actions
 
 ## The bus intent an action maps to: { signal, args }, or {} for an unknown action.
@@ -275,7 +290,11 @@ func dispatch_item_action(item_id: String, action: String) -> bool:
 	var intent := action_intent(item_id, action)
 	if intent.is_empty():
 		return false
-	GameBus.get(str(intent["signal"])).emit.callv(intent["args"])
+	match str(intent["signal"]):
+		"repair_requested":
+			GameBus.repair_requested.emit(item_id)
+		_:
+			return false
 	return true
 
 ## Fabric description of an item ("" when the item has no definition).
@@ -299,6 +318,9 @@ func inventory_rows() -> Array:
 	var contents: Dictionary = inventory_slice.get_contents()
 	var keys: Array = contents.keys()
 	keys.sort()
+	var repairable := {}
+	for r in repair_rows():
+		repairable[str(r["id"])] = true
 	for item_id in keys:
 		var iid := str(item_id)
 		var qty := int(contents[item_id])
@@ -315,7 +337,7 @@ func inventory_rows() -> Array:
 			"durability": dur,
 			"icon_key": item_icon_key(iid),
 			"tooltip": tip,
-			"actions": item_actions(iid),
+			"actions": item_actions(iid, repairable),
 		})
 	return rows
 
@@ -332,9 +354,9 @@ static func controls_rows() -> Array:
 		{"keys": "", "desc": "Place", "mouse": MOUSE_BUTTON_MIDDLE},
 		{"keys": "R", "desc": "Cycle material", "mouse": 0},
 		{"keys": "B · V", "desc": "Station cycle / place", "mouse": 0},
-		{"keys": "G", "desc": "Tame nearest creature", "mouse": 0},
+		{"keys": "G", "desc": "Tame nearest creature (also Proposals)", "mouse": 0},
 		{"keys": "E", "desc": "Toggle equipment", "mouse": 0},
-		{"keys": "I · T · C", "desc": "Windows", "mouse": 0},
+		{"keys": "I · T · C · Y · M · G", "desc": "Inventory · Tech · Crafting · Trade · Market · Proposals", "mouse": 0},
 		{"keys": "?", "desc": "This panel", "mouse": 0},
 		{"keys": "ESC", "desc": "Cursor", "mouse": 0},
 	]
@@ -535,15 +557,20 @@ func _make_slot(row: Dictionary) -> Control:
 		slot.text = "×%d" % int(row["quantity"])
 	else:
 		slot.text = "%s\n×%d" % [item_glyph(str(row["id"])), int(row["quantity"])]
-	if str(row["durability"]) != "":
+	if str(row["durability"]).contains(" "):
 		slot.modulate = Color(1.0, 0.9, 0.8)
 	slot.gui_input.connect(_on_slot_gui_input.bind(str(row["id"]), row["actions"]))
 	return slot
 
 func _load_item_icon(key: String) -> Texture2D:
-	if not FileAccess.file_exists(AssetOverlay.resolve_path(key)):
-		return null
-	return AssetOverlay.load_texture(key)
+	var path := AssetOverlay.resolve_path(key)
+	if _icon_cache.has(path):
+		return _icon_cache[path]
+	var tex: Texture2D = null
+	if FileAccess.file_exists(path):
+		tex = AssetOverlay.load_texture(key)
+	_icon_cache[path] = tex
+	return tex
 
 func _on_slot_gui_input(event: InputEvent, item_id: String, actions: Array) -> void:
 	if not (event is InputEventMouseButton) or not event.pressed or event.button_index != MOUSE_BUTTON_RIGHT:
@@ -943,12 +970,18 @@ func _on_title_gui_input(event: InputEvent, key: String) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			_drag_key = key
+			_drag_moved = false
 			_drag_grab = panel.get_global_mouse_position() - panel.position
 		elif _drag_key == key:
 			_drag_key = ""
-			_layout[key] = panel.position
-			_save_layout()
+			if _drag_moved:
+				_layout[key] = panel.position
+				_save_layout()
 	elif event is InputEventMouseMotion and _drag_key == key:
+		if not (event.button_mask & MOUSE_BUTTON_MASK_LEFT):
+			_drag_key = ""
+			return
+		_drag_moved = true
 		panel.position = clamp_window_position(
 			panel.get_global_mouse_position() - _drag_grab, panel.size, _viewport_size())
 
@@ -963,6 +996,7 @@ func _save_layout() -> void:
 		push_warning("[UiSlice] cannot write %s" % layout_path)
 		return
 	f.store_string(layout_to_json(_layout))
+	f.close()
 
 func _apply_layout() -> void:
 	for key in _layout:
