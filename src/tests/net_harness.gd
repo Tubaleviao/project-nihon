@@ -276,6 +276,8 @@ func run(root: Node, role: String) -> void:
 		return
 	if _role == "host":
 		_pin_world_seed()
+		if _failed:
+			return
 		_root._boot_server()
 	else:
 		# The client's own `_broadcast_state()` is switched OFF for the run: it emits
@@ -887,6 +889,8 @@ func _pin_world_seed() -> void:
 		if _root._tree.tree_count_for(origin, biome) >= MIN_ORIGIN_TREES:
 			return
 	push_error("net-harness: no seed gives chunk (0,0) enough trees")
+	_failed = true
+	_finish()
 
 func _trees() -> Array:
 	var t: Variant = _root._tree

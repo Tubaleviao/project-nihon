@@ -11119,6 +11119,17 @@ func _test_spawn_population_cap() -> void:
 	for ch in chunks:
 		c.spawn_for_chunk(ch)
 	assert_true(c.live_population() <= 6, "the released budget is reused without breaching the cap")
+	# A death frees a slot a new pack may take; the dead creature's respawn must then wait
+	# for room instead of pushing the live count over the cap.
+	for iid in c._instances:
+		if c._instances[iid]["state"] != "dead":
+			c._instances[iid]["state"] = "dead"
+			c._instances[iid]["respawn_at"] = 1.0
+			break
+	for ch in chunks:
+		c.spawn_for_chunk(ch)
+	c._tick_respawn()
+	assert_true(c.live_population() <= 6, "a respawn never breaches the cap")
 	c.free()
 
 func _test_spawn_tree_density() -> void:

@@ -609,6 +609,10 @@ func _tick_respawn() -> void:
 				_dead_state.erase(iid)
 				inst["respawn_at"] = -1.0
 				continue
+			# A respawn re-admits a creature, so it obeys the cap like a spawn does: held
+			# dead (record and deadline kept) until a slot frees up.
+			if _population_cap > 0 and live_population() >= _population_cap:
+				continue
 			_dead_state.erase(iid)
 			var creature_id: String = inst["creature_id"]
 			var res: Resource = GameData.CREATURES.get(creature_id, null)
