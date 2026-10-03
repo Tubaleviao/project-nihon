@@ -586,22 +586,23 @@ func update_locomotion(instance_id: String, speed: float, grounded: bool, veloci
 func attach_rig(instance_id: String, rig_key: String) -> bool:
 	if not _instances.has(instance_id) or not AssetOverlay.has_key("meshes", rig_key):
 		return false
-	var mesh := AssetOverlay.load_mesh(rig_key)
-	var lib := AssetOverlay.load_animation_library(rig_key)
-	if mesh == null:
-		return false
 	var inst: Dictionary = _instances[instance_id]
+	if inst.has("anim_tree") and is_instance_valid(inst["anim_tree"]):
+		return true
+	# Instance the whole glTF scene (not just its mesh) so the clips' node paths and
+	# the skeleton stay valid and the AnimationTree actually moves the rig.
+	var rig_root := AssetOverlay.load_rig_scene(rig_key)
+	if rig_root == null:
+		return false
+	var player := rig_root.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if player == null:
+		rig_root.free()
+		return false
+	rig_root.name = "RigScene"
 	var root: Node3D = inst["root"]
-	var mi := MeshInstance3D.new()
-	mi.name = "RigMesh"
-	mi.mesh = mesh
-	root.add_child(mi)
-	var player := AnimationPlayer.new()
-	player.name = "RigAnimationPlayer"
-	player.add_animation_library("", lib)
-	root.add_child(player)
+	root.add_child(rig_root)
 	var tree := RigTree.build_tree(player)
-	root.add_child(tree)
+	rig_root.add_child(tree)
 	tree.anim_player = tree.get_path_to(player)
 	tree.active = true
 	inst["anim_tree"] = tree

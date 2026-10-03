@@ -54,6 +54,10 @@ static func build_tree(player: AnimationPlayer) -> AnimationTree:
 		for b in added:
 			if a != b:
 				sm.add_transition(a, b, AnimationNodeStateMachineTransition.new())
+	# Auto-enter the locomotion space so the machine runs before the first travel().
+	var entry := AnimationNodeStateMachineTransition.new()
+	entry.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_AUTO
+	sm.add_transition("Start", NODE_LOCOMOTION, entry)
 	tree.tree_root = sm
 	tree.anim_player = tree.get_path_to(player) if tree.is_inside_tree() else NodePath()
 	return tree

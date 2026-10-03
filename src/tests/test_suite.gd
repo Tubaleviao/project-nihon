@@ -390,6 +390,7 @@ func run() -> void:
 	_run_test("asset: missing model key warns and falls back",   _test_asset_missing_model_falls_back)
 	_run_test("asset: creature model key derived from entity name", _test_asset_creature_key)
 	_run_test("rig tree: every Locomotion.State maps to a node", _test_rig_tree_state_mapping_total)
+	_run_test("rig: attach_rig wires scene + tree, falls back on bad key", _test_attach_rig)
 	_run_test("trade: both accept resolves exchange",           _test_trade_both_accept_resolves)
 	_run_test("trade: counter-offer requires prior offer",      _test_trade_counter_offer_requires_offer)
 	_run_test("trade: reject closes session",                   _test_trade_reject)
@@ -5075,6 +5076,20 @@ func _test_rig_tree_state_mapping_total() -> void:
 	var tree := RigTree.build_tree(AnimationPlayer.new())
 	assert_true(tree.tree_root is AnimationNodeStateMachine, "tree root is a state machine")
 	tree.free()
+
+func _test_attach_rig() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character_from_recipe({"skeleton": "HumanoidSkeleton"}, Vector3.ZERO)
+	assert_false(ch.attach_rig(iid, "models/nope.glb.raw"), "unlisted key -> false")
+	assert_true(ch.attach_rig(iid, "models/placeholder_rig.glb.raw"), "listed key attaches")
+	var root: Node3D = ch._instances[iid]["root"]
+	var scene := root.get_node_or_null("RigScene")
+	assert_true(scene != null and scene.find_child("AnimationPlayer", true, false) != null,
+		"rig scene keeps its AnimationPlayer")
+	assert_true(ch.attach_rig(iid, "models/placeholder_rig.glb.raw"), "second attach is a no-op")
+	assert_eq(root.get_children().filter(func(c): return c.name == "RigScene").size(), 1, "no duplicate rig")
+	ch.free()
 
 func _test_asset_placeholder_resolves() -> void:
 	assert_true(FileAccess.file_exists(AssetOverlay.PLACEHOLDER_PATH),

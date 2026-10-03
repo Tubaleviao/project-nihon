@@ -145,6 +145,12 @@ static func _first_mesh(n: Node) -> Mesh:
 	return null
 
 
+## Load a canonical key as a full scene root (meshes, skeleton and AnimationPlayer
+## with node paths intact, so its clips resolve). Caller owns the node. Null on failure.
+func load_rig_scene(rel: String) -> Node3D:
+	return _load_gltf_scene(rel) as Node3D
+
+
 ## Load a canonical key as a Mesh (first mesh in the glTF). Null on failure.
 func load_mesh(rel: String) -> Mesh:
 	var root := _load_gltf_scene(rel)
