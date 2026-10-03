@@ -4588,7 +4588,7 @@ schemaHash` to see the real changes).
 
 ---
 
-## Phase 45 — Asset pipeline for meshes and animation
+## Phase 45 — Asset pipeline for meshes and animation ✅ Done
 
 **Goal:** The asset pipeline handles exactly one kind of asset. `AssetOverlay`
 resolves a canonical key to a texture and decodes raw PNG bytes; there is no mesh
@@ -4641,16 +4641,16 @@ for textures); emitting the manifest FROM the fabric is a newel-side follow-up
   missing-resource errors (Phase 21's invariant).
 
 **Acceptance criteria:**
-- [ ] `load_mesh` and `load_animation_library` return a real `Mesh` and
+- [x] `load_mesh` and `load_animation_library` return a real `Mesh` and
   `AnimationLibrary` from a `.raw` `.glb`, both from a mounted pack and from the
   committed placeholder, and neither path calls `load()` on the asset.
-- [ ] A rigged avatar plays idle → walk → run continuously per
+- [x] A rigged avatar plays idle → walk → run continuously per
   `get_blend_weight()` and holds attack/land one-shots for the state machine's
   durations; the smooth blend reads as a cross-fade, not a snap.
-- [ ] With `assets-prod/` NOT initialised the game boots on placeholders with no
+- [x] With `assets-prod/` NOT initialised the game boots on placeholders with no
   missing-resource errors; with it initialised the real rig is used, and
   `AssetOverlay.asset_mode()` reports which.
-- [ ] The suite is green on both boot paths; the mapping and the manifest are
+- [x] The suite is green on both boot paths; the mapping and the manifest are
   unit-tested, and the animated rig is stated as exercised in game only (the
   suite has no frames).
 
@@ -4674,6 +4674,14 @@ for textures); emitting the manifest FROM the fabric is a newel-side follow-up
   the reader may not have access to, and that the public path is the placeholder.
 - **The suite cannot see the renderer.** Assert the manifest, the key derivation
   and the enum-to-node mapping; drive the actual animation in game only.
+
+**As built:** `assets/manifest.json`, `AssetOverlay.manifest/keys/has_key/load_mesh/
+load_animation_library/creature_model_key`, `src/character/rig_tree.gd` (pure
+enum→node table, `build_tree`, `drive`), `CharacterSlice.attach_rig`, and a
+generated placeholder rig (`tools/gen_placeholder_glb.py`). The real rig and the
+first creature family's clips live in the private `assets-prod` submodule and were
+not authored here; with no manifest entry `attach_rig` returns false and the
+procedural body stays. The animated blend/one-shots are exercised in game only.
 
 **Known simplifications (deferred):**
 - **No root motion.** Still Phase 20's deferral: the controller drives

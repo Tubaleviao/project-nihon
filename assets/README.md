@@ -47,6 +47,16 @@ public clone**. This directory holds the public side of that split.
 - **DLC alignment.** The pack-mount mechanism is exactly how paid DLC content
   packs will be layered later: a `.pck` is the unit of optional content.
 
+## Meshes, animations and the manifest
+
+`assets/manifest.json` maps canonical keys to relative paths for `textures`,
+`meshes` and `animations`. `AssetOverlay.load_mesh()` /
+`load_animation_library()` parse `.glb.raw` bytes with `GLTFDocument` (never
+`load()`). A missing key warns and falls back to the procedural body. Real rigs
+come from the private `assets-prod` submodule (`git submodule update --init
+assets-prod`, requires access); without it the avatar stays boxes. Regenerate the
+placeholder rig with `python3 tools/gen_placeholder_glb.py`.
+
 ## Regenerating a placeholder
 
 ```bash

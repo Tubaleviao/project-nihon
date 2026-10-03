@@ -80,6 +80,106 @@ func load_texture(rel: String) -> ImageTexture:
 	return ImageTexture.create_from_image(img)
 
 
+## Committed public manifest: canonical key -> relative path, per asset kind
+## ("textures", "meshes", "animations"). Lists what EXISTS; an unlisted key is
+## never an error — callers warn and fall back. The private pack overrides by
+## key through `resolve_path`, so nothing branches on which side is present.
+const MANIFEST_REL := "manifest.json"
+
+var _manifest: Dictionary = {}
+
+
+## The parsed manifest ({} when missing or malformed).
+func manifest() -> Dictionary:
+	if _manifest.is_empty():
+		var path := resolve_path(MANIFEST_REL)
+		if FileAccess.file_exists(path):
+			var parsed = JSON.parse_string(FileAccess.get_file_as_string(path))
+			if parsed is Dictionary:
+				_manifest = parsed
+	return _manifest
+
+
+## Keys listed for `kind` ("textures" | "meshes" | "animations"), sorted.
+func keys(kind: String) -> Array:
+	var section = manifest().get(kind, {})
+	var out: Array = section.keys() if section is Dictionary else []
+	out.sort()
+	return out
+
+
+## True when the manifest lists `key` under `kind`.
+func has_key(kind: String, key: String) -> bool:
+	return key in keys(kind)
+
+
+## Canonical key for a creature-family model: `models/creatures/<Entity>.glb.raw`.
+static func creature_model_key(entity_name: String) -> String:
+	return "models/creatures/%s.glb.raw" % entity_name
+
+
+## Parse a `.glb.raw` key into a scene root via GLTFDocument (bytes only —
+## never `load()`). Null (with a warning) when missing or undecodable.
+func _load_gltf_scene(rel: String) -> Node:
+	var path := resolve_path(rel)
+	if not FileAccess.file_exists(path):
+		push_warning("[AssetOverlay] missing model %s" % rel)
+		return null
+	var bytes := FileAccess.get_file_as_bytes(path)
+	var doc := GLTFDocument.new()
+	var state := GLTFState.new()
+	var err := doc.append_from_buffer(bytes, "", state)
+	if err != OK:
+		push_warning("[AssetOverlay] failed to parse %s: %s" % [path, error_string(err)])
+		return null
+	return doc.generate_scene(state)
+
+
+static func _first_mesh(n: Node) -> Mesh:
+	if n is MeshInstance3D and n.mesh != null:
+		return n.mesh
+	for c in n.get_children():
+		var m := _first_mesh(c)
+		if m != null:
+			return m
+	return null
+
+
+## Load a canonical key as a full scene root (meshes, skeleton and AnimationPlayer
+## with node paths intact, so its clips resolve). Caller owns the node. Null on failure.
+func load_rig_scene(rel: String) -> Node3D:
+	return _load_gltf_scene(rel) as Node3D
+
+
+## Load a canonical key as a Mesh (first mesh in the glTF). Null on failure.
+func load_mesh(rel: String) -> Mesh:
+	var root := _load_gltf_scene(rel)
+	if root == null:
+		return null
+	var mesh := _first_mesh(root)
+	root.free()
+	if mesh == null:
+		push_warning("[AssetOverlay] %s contains no mesh" % rel)
+	return mesh
+
+
+## Load a canonical key's clips as an AnimationLibrary. Empty library (with a
+## warning) on failure, so callers can always attach the result.
+func load_animation_library(rel: String) -> AnimationLibrary:
+	var lib := AnimationLibrary.new()
+	var root := _load_gltf_scene(rel)
+	if root == null:
+		return lib
+	var player := root.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if player != null:
+		for lib_name in player.get_animation_library_list():
+			var src := player.get_animation_library(lib_name)
+			for clip in src.get_animation_list():
+				lib.add_animation(clip, src.get_animation(clip).duplicate())
+	root.free()
+	return lib
+
+
 ## Search well-known locations for the pack. No private path is hardcoded here —
 ## only the pack's file name and the standard binary/project directories.
 func _mount_production_pack() -> bool:
