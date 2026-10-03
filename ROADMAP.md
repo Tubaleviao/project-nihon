@@ -4917,7 +4917,9 @@ compatibility but ignored — `TamingSlice.is_unarmed` reads the registry.
   two-client harness step was added (still `10/10`); the forge case is covered at
   the registry/taming level in the suite, not over a socket.
 - **Disconnect eviction of `_peer_equipment`/`_peer_characters`** on the client is
-  not wired.
+  wired (`forget_peer` from `_on_peer_disconnected`, asserted in the suite). A joiner's
+  own restored set is now also pushed to the peers already in its AOI
+  (`send_peer_equipment_to`, both directions).
 - **No combat effect beyond the displayed totals.** Unless defense becomes a term
   in the damage formula in this phase, the panel shows a number nothing consumes —
   say so plainly instead of implying the armor already reduces damage; wiring it

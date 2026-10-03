@@ -678,6 +678,16 @@ func send_peer_equipment_to(peer_id: int) -> void:
 		var worn: Dictionary = player_registry.get_equipment(str(player_registry.get_player_id(o)))
 		if not worn.is_empty():
 			_deliver(peer_id, { "type": "peer_equipment", "peer_id": o, "worn": worn })
+	# The other direction: peers already in the room never heard the joiner's gear
+	# either (a reconnecting player's worn set was restored from its record, which
+	# fires no `equipment_changed`).
+	var own: Dictionary = player_registry.get_equipment(str(player_registry.get_player_id(peer_id)))
+	if own.is_empty():
+		return
+	for other in multiplayer.get_peers():
+		var o2 := int(other)
+		if o2 != peer_id and in_aoi(o2, get_aoi_center(peer_id)):
+			_deliver(o2, { "type": "peer_equipment", "peer_id": peer_id, "worn": own.duplicate(true) })
 
 ## Phase 34 — host → one client: the peer's OWN record slice changed on the host's
 ## side of an action it asked for (its inventory after a repair, its technology
