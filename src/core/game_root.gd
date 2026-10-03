@@ -91,6 +91,9 @@ var _client_boot_done: bool = false
 ## on the client side, which is the same shape for the same reason.
 const FIRST_RING_TIMEOUT := 15.0
 
+## Host-side global cap on live creature instances (Phase 44); see CreatureSlice.set_population_cap.
+const CREATURE_POPULATION_CAP := 512
+
 ## Phase 42 review pass 3 — the wait is accumulated PER GATE. `_pending_host_boot` and
 ## `_pending_client_boot` are mutually exclusive today (the roles are), so one shared
 ## accumulator only ever counted one of them — but a single variable read by two different
@@ -309,6 +312,8 @@ func _ready() -> void:
 	# single-player) keeps full simulation authority.
 	_voxel.is_authoritative     = not _is_client
 	_creature.is_authoritative  = not _is_client
+	if not _is_client:
+		_creature.set_population_cap(CREATURE_POPULATION_CAP)
 	_creature_ai.is_authoritative = not _is_client
 	_tree.is_authoritative      = not _is_client
 	_market.is_authoritative    = not _is_client

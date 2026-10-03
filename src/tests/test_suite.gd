@@ -13,6 +13,7 @@ const CreatureSlice   := preload("res://src/creature/creature_slice.gd")
 const CreatureAI      := preload("res://src/creature/creature_ai.gd")
 const TamingSlice     := preload("res://src/creature/taming_slice.gd")
 const TerrainSlice    := preload("res://src/terrain/terrain_slice.gd")
+const SpawnRoll       := preload("res://src/world/spawn_roll.gd")
 const ChunkManager    := preload("res://src/terrain/chunk_manager.gd")
 const PersistenceSlice:= preload("res://src/persistence/persistence_slice.gd")
 const LootSlice       := preload("res://src/loot/loot_slice.gd")
@@ -254,6 +255,10 @@ func run() -> void:
 	_run_test("chunk: unload preserves edits on reload",        _test_chunk_unload_preserves_edits)
 	_run_test("chunk: creature spawn scales per chunk",         _test_chunk_creature_spawn_per_chunk)
 	_run_test("chunk: tree spawn scales per chunk",             _test_chunk_tree_spawn_per_chunk)
+	_run_test("spawn: seeded roll, density and pack size",       _test_spawn_roll_pure)
+	_run_test("spawn: creature packs are scarce and seeded",     _test_spawn_creature_scarcity)
+	_run_test("spawn: the population cap holds and is released", _test_spawn_population_cap)
+	_run_test("spawn: tree density comes from the fabric",       _test_spawn_tree_density)
 	_run_test("tree: spawns the per-chunk budget",              _test_tree_spawn_for_chunk)
 	_run_test("tree: per-biome species and density",            _test_tree_per_biome_table)
 	_run_test("tree: chop yields wood and wears the axe",       _test_tree_chop_yields_wood_and_wears_axe)
@@ -10994,3 +10999,154 @@ func _run_test(name: String, fn: Callable) -> void:
 	fn.call()
 	var outcome := "✓" if _fail == fails_before else "✗"
 	print("  %s %s" % [outcome, name])
+
+
+# ---------------------------------------------------------------------------
+# Phase 44 — spawn scarcity
+# ---------------------------------------------------------------------------
+
+## A wired world for the spawn tests: a real terrain slice on `seed_v`, and the chunks of
+## `biome` found in a 24x24 sample (a creature only spawns in chunks of its own biome).
+func _spawn_world(seed_v: int, biome: String) -> Dictionary:
+	var terrain := TerrainSlice.new()
+	terrain.set_world_seed(seed_v)
+	var chunks: Array = []
+	for x in range(-12, 12):
+		for z in range(-12, 12):
+			if str(terrain.get_biome_at_chunk(Vector2i(x, z))) == biome:
+				chunks.append(Vector2i(x, z))
+	return { "terrain": terrain, "chunks": chunks }
+
+func _test_spawn_roll_pure() -> void:
+	var lo := 9.0
+	var hi := -9.0
+	for x in range(-20, 20):
+		var u := SpawnRoll.unit(7, Vector2i(x, 3), "x")
+		assert_true(u >= 0.0 and u < 1.0, "the roll is in [0, 1)")
+		var m := SpawnRoll.density(7, Vector2i(x, 3), 0.5)
+		lo = minf(lo, m)
+		hi = maxf(hi, m)
+	assert_true(lo >= 0.5 and hi <= 1.5, "the density multiplier stays within 1 +/- amplitude")
+	assert_true(hi - lo > 0.05, "the density multiplier actually varies")
+	assert_eq(SpawnRoll.density(7, Vector2i(4, 4), 0.0), 1.0, "amplitude 0 is flat")
+	assert_eq(SpawnRoll.unit(7, Vector2i(2, 5), "a"), SpawnRoll.unit(7, Vector2i(2, 5), "a"), "the roll is pure")
+	assert_true(SpawnRoll.unit(7, Vector2i(2, 5), "a") != SpawnRoll.unit(8, Vector2i(2, 5), "a"), "the seed changes the roll")
+	assert_eq(SpawnRoll.pack_size(1, Vector2i(0, 0), "s", 3, 0.0, 0.5), 0, "chance 0 never spawns")
+	assert_eq(SpawnRoll.pack_size(1, Vector2i(0, 0), "s", 3, 1.0, 0.0), 3, "chance 1, flat density spawns the full pack")
+	assert_eq(SpawnRoll.pack_size(1, Vector2i(0, 0), "s", 0, 1.0, 0.0), 0, "a zero pack is no spawn")
+	var empty := 0
+	var sizes := {}
+	for x in range(40):
+		var n := SpawnRoll.pack_size(1, Vector2i(x, 0), "s", 3, 0.6, 0.5)
+		sizes[n] = true
+		if n == 0:
+			empty += 1
+	assert_true(empty > 0 and empty < 40, "a chunk can roll no spawn, and not every chunk does")
+	assert_true(sizes.size() > 2, "pack sizes vary across chunks")
+
+func _test_spawn_creature_scarcity() -> void:
+	var w := _spawn_world(4242, "TemperateForest")
+	var chunks: Array = w["chunks"]
+	assert_true(chunks.size() >= 8, "the sample holds enough forest chunks")
+	var host := CreatureSlice.new()
+	host.render_visuals = false
+	host.terrain_slice = w["terrain"]
+	add_child(host)
+	var twin := CreatureSlice.new()
+	twin.render_visuals = false
+	twin.terrain_slice = w["terrain"]
+	add_child(twin)
+	var counts := {}
+	for ch in chunks:
+		host.spawn_for_chunk(ch)
+	for ch in chunks.slice(0, 20):
+		twin.spawn_for_chunk(ch)
+	for iid in host._instances:
+		var inst: Dictionary = host._instances[iid]
+		if inst["creature_id"] != "ForestBoar":
+			continue
+		counts[inst["chunk"]] = int(counts.get(inst["chunk"], 0)) + 1
+	var seen := {}
+	var empty := 0
+	for ch in chunks:
+		var n := int(counts.get(ch, 0))
+		seen[n] = true
+		if n == 0:
+			empty += 1
+	assert_true(empty > 0, "some chunk rolls no boar at all")
+	assert_true(seen.size() > 1, "boar counts per chunk have non-zero variance (not the retired constant 3)")
+	for ch in chunks.slice(0, 20):
+		var a := 0
+		var b := 0
+		for iid in host._instances:
+			if host._instances[iid]["chunk"] == ch:
+				a += 1
+		for iid in twin._instances:
+			if twin._instances[iid]["chunk"] == ch:
+				b += 1
+		assert_eq(a, b, "two peers on one seed place the same pack in %s" % str(ch))
+	host.free()
+	twin.free()
+
+func _test_spawn_population_cap() -> void:
+	var w := _spawn_world(4242, "TemperateForest")
+	var chunks: Array = w["chunks"]
+	var unbounded := CreatureSlice.new()
+	unbounded.render_visuals = false
+	unbounded.terrain_slice = w["terrain"]
+	add_child(unbounded)
+	for ch in chunks:
+		unbounded.spawn_for_chunk(ch)
+	var total: int = unbounded.live_population()
+	assert_true(total > 6, "the unbounded walk accumulates more than the cap under test")
+	unbounded.free()
+	var c := CreatureSlice.new()
+	c.render_visuals = false
+	c.terrain_slice = w["terrain"]
+	c.set_population_cap(6)
+	add_child(c)
+	for ch in chunks:
+		c.spawn_for_chunk(ch)
+		assert_true(c.live_population() <= 6, "live instances never exceed the cap")
+	var held: int = c.live_population()
+	assert_true(held > 0, "the cap still admits packs that fit")
+	var first_chunk: Variant = null
+	for iid in c._instances:
+		first_chunk = c._instances[iid]["chunk"]
+		break
+	c.despawn_for_chunk(first_chunk)
+	assert_true(c.live_population() < held, "a despawn returns budget")
+	for ch in chunks:
+		c.spawn_for_chunk(ch)
+	assert_true(c.live_population() <= 6, "the released budget is reused without breaching the cap")
+	# A death frees a slot a new pack may take; the dead creature's respawn must then wait
+	# for room instead of pushing the live count over the cap.
+	for iid in c._instances:
+		if c._instances[iid]["state"] != "dead":
+			c._instances[iid]["state"] = "dead"
+			c._instances[iid]["respawn_at"] = 1.0
+			break
+	for ch in chunks:
+		c.spawn_for_chunk(ch)
+	c._tick_respawn()
+	assert_true(c.live_population() <= 6, "a respawn never breaches the cap")
+	c.free()
+
+func _test_spawn_tree_density() -> void:
+	var w := _spawn_world(4242, "TemperateForest")
+	var t := _make_tree_slice()
+	t.terrain_slice = w["terrain"]
+	assert_eq(t.density_for("TemperateForest"), 8, "forest density is the fabric treeDensity")
+	assert_eq(t.density_for("TemperateGrassland"), 2, "grassland density is the fabric treeDensity")
+	assert_eq(t.density_for("VolcanicBadlands"), 0, "the badlands grow no trees")
+	var seen := {}
+	var clearings := 0
+	for ch in w["chunks"]:
+		var n: int = t.tree_count_for(ch, "TemperateForest")
+		seen[n] = true
+		if n == 0:
+			clearings += 1
+		assert_eq(n, t.tree_count_for(ch, "TemperateForest"), "the count is pure in (seed, chunk)")
+	assert_true(seen.size() > 1, "tree counts vary across chunks")
+	assert_eq(t.tree_count_for(Vector2i(0, 0), "VolcanicBadlands"), 0, "no trees in the badlands")
+	t.free()

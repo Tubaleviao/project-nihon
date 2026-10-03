@@ -14,6 +14,7 @@ module.exports = {
       avgTemperature: { type: 'decimal', description: '°C annual average' },
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year' },
       soilFertility:  { type: 'decimal', description: '0–1; affects crop growth rates' },
+      treeDensity:    { type: 'integer', description: 'Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here)', defaultValue: 8 },
     },
     relations: {
       spawnForestBoar:   { name: 'spawnForestBoar',   kind: 'hasMany', target: 'ForestBoar' },
@@ -44,6 +45,7 @@ module.exports = {
       avgTemperature: { type: 'decimal', description: '°C annual average' },
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year' },
       soilFertility:  { type: 'decimal', description: '0–1; highest of all biomes' },
+      treeDensity:    { type: 'integer', description: 'Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here)', defaultValue: 2 },
     },
     relations: {
       spawnSteppeBison: { name: 'spawnSteppeBison', kind: 'hasMany', target: 'SteppeBison' },

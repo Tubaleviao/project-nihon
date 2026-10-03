@@ -4478,7 +4478,7 @@ carries today. `pnpm validate`, `pnpm generate` and
 
 ---
 
-## Phase 44 — Spawn scarcity
+## Phase 44 — Spawn scarcity ✅ Done
 
 **Goal:** Population is uniform and unbounded. `CreatureSlice.spawn_for_chunk`
 spawns exactly `spawnCount` of every creature whose biome matches the chunk —
@@ -4522,17 +4522,17 @@ schemaHash` to see the real changes).
   headless, including a small cap proving the ceiling holds and is released.
 
 **Acceptance criteria:**
-- [ ] The same seed produces the same pack centres and sizes on a host and a
+- [x] The same seed produces the same pack centres and sizes on a host and a
   client, with no snapshot carrying placement.
-- [ ] A chunk can roll no spawn at all, and the per-chunk counts of a species
+- [x] A chunk can roll no spawn at all, and the per-chunk counts of a species
   across a sample of chunks have non-zero variance (assert against the retired
   constant count).
-- [ ] With a small cap and a wide view ring, live instances never exceed the cap,
+- [x] With a small cap and a wide view ring, live instances never exceed the cap,
   and a despawn returns budget that a later pack can use.
-- [ ] `pnpm validate`, `pnpm generate` and `pnpm check-drift` are clean; no
+- [x] `pnpm validate`, `pnpm generate` and `pnpm check-drift` are clean; no
   runtime code reads `spawnCount` as a per-chunk count anywhere
   (`grep -rn spawnCount src/`), and the fabric description says pack size.
-- [ ] The suite is green on both boot paths.
+- [x] The suite is green on both boot paths.
 
 **Implementation notes:**
 - **A cap is only honest if it counts LIVE instances and is released on
@@ -4556,6 +4556,23 @@ schemaHash` to see the real changes).
 - **The tree-density move is a real fabric change with a big generated diff.**
   Land it in the same commit as the creature fields and say so in the body; a
   reader scanning `grep -v schemaHash` should see two real changes, not one.
+
+**As built (decisions the deliverables left open):**
+- **The pure roll lives in `src/world/spawn_roll.gd`** (`SpawnRoll`): an integer hash of
+  (seed, chunk, salt) for the chance roll, and smooth bilinear value noise on a 4-chunk
+  lattice for density. `pack_size` scales the chance AND the pack by the density multiplier
+  (1 ± `spawnDensity`), so a dense region rolls packs more often and larger; size is at
+  least 1 when the roll passes. Trees reuse it with a 10% clearing chance and ±0.5 noise.
+- **No world, no roll.** With no terrain slice wired (isolated tests) a creature spawns at
+  its full `spawnCount` and a tree biome at its flat density, mirroring `DEFAULT_BIOME`.
+- **Every spawn is a pack**: all creatures, not just pack/herd ones, cluster around one
+  deterministic centre. The cap (`set_population_cap`, `live_population()`) is recounted from
+  `_instances` (dead creatures excluded) on every admission; a pack that does not fit is
+  refused whole.
+- **Fabric**: `spawnCount` re-described as pack size, plus `spawnChance` (default 0.6) and
+  `spawnDensity` (default 0.5) on every creature; `treeDensity` on every biome (8 / 2 / 8 /
+  0 / 0). Tree species and wood stay in `TREES_BY_BIOME`, whose `per_chunk` is now only the
+  no-fabric fallback.
 
 **Known simplifications (deferred):**
 - **No respawn or death-scarcity model.** The cap is on live instances, not on

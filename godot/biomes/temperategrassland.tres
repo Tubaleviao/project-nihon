@@ -8,5 +8,6 @@ id = ""
 avgTemperature = 0.0
 avgRainfall = 0.0
 soilFertility = 0.0
+treeDensity = 2
 description = "Open rolling plains ideal for large settlements, agriculture, and mounted travel. Sparse tree cover means lumber is scarce but soil fertility is highest."
 tags = ["biome"]

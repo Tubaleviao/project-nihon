@@ -275,6 +275,9 @@ func run(root: Node, role: String) -> void:
 	if not _self_audit():
 		return
 	if _role == "host":
+		_pin_world_seed()
+		if _failed:
+			return
 		_root._boot_server()
 	else:
 		# The client's own `_broadcast_state()` is switched OFF for the run: it emits
@@ -867,6 +870,27 @@ func _report_position() -> void:
 	GameBus.player_state_sync_requested.emit({
 		"position": RENDEZVOUS, "hp": PlayerSlice.MAX_HP, "max_hp": PlayerSlice.MAX_HP,
 	})
+
+## Trees chunk (0,0) must grow for the scenario to draw its targets from it, with margin
+## over `TARGETS_NEEDED` (Phase 44: tree count is a seeded roll, and a clearing has none).
+const MIN_ORIGIN_TREES := 5
+
+## Host side: replace the fresh world's random seed with the first seed whose origin chunk
+## is a tree biome with at least `MIN_ORIGIN_TREES` trees. Every target the driver compares
+## comes from chunk (0,0), so an unlucky random seed (a clearing, a treeless biome) would
+## fail the run for a reason unrelated to the guards under test. The client adopts the
+## host's seed from the snapshot, so only the host pins it.
+func _pin_world_seed() -> void:
+	var terrain: Variant = _root._terrain
+	var origin := Vector2i(0, 0)
+	for candidate in range(1, 1000):
+		terrain.set_world_seed(candidate)
+		var biome: String = str(terrain.get_biome_at_chunk(origin))
+		if _root._tree.tree_count_for(origin, biome) >= MIN_ORIGIN_TREES:
+			return
+	push_error("net-harness: no seed gives chunk (0,0) enough trees")
+	_failed = true
+	_finish()
 
 func _trees() -> Array:
 	var t: Variant = _root._tree

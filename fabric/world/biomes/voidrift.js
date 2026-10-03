@@ -15,6 +15,7 @@ module.exports = {
       avgTemperature: { type: 'decimal', description: '°C; fluctuates wildly near active rifts' },
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year; negligible' },
       soilFertility:  { type: 'decimal', description: '0–1; always zero — nothing biological grows near rifts; tile generation must set this to 0 and reject any non-zero value' },
+      treeDensity:    { type: 'integer', description: 'Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here)', defaultValue: 0 },
     },
     relations: {
       spawnVoidSerpent: { name: 'spawnVoidSerpent', kind: 'hasMany', target: 'VoidSerpent' },
