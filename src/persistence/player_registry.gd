@@ -870,7 +870,14 @@ func apply_players_data(players: Dictionary) -> void:
 func _on_equipment_intent(player_id: String, worn: Dictionary) -> void:
 	if not is_authoritative or player_id.is_empty():
 		return
-	record_equipment(player_id, worn)
+	# A peer can only wear what its own bag holds; the claim is filtered like any other.
+	var inv := get_inventory(player_id)
+	var owned: Dictionary = {}
+	if inv != null:
+		for slot in worn:
+			if inv.get_item_count(str(worn[slot])) > 0:
+				owned[slot] = worn[slot]
+	record_equipment(player_id, owned)
 
 func _on_player_join_intent(peer_id: int, claimed_id: String) -> void:
 	if not is_authoritative:

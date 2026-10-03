@@ -197,6 +197,7 @@ func run() -> void:
 	_run_test("taming: skill gate fails closed",               _test_taming_requires_skill)
 	_run_test("taming: bare hands required",                   _test_taming_requires_unarmed)
 	_run_test("taming: a peer's hands are the host's record",   _test_taming_peer_bare_hands_claim)
+	_run_test("equipment: an intent needs an owned item",       _test_equipment_intent_requires_ownership)
 	_run_test("equipment: rules totals + sanitize",             _test_equipment_rules_totals)
 	_run_test("equipment: derived stats + record + replicate",  _test_character_derived_stats_and_record)
 	_run_test("ui: character window rows + equip",              _test_ui_character_rows)
@@ -11381,3 +11382,16 @@ func _test_spawn_tree_density() -> void:
 	assert_true(seen.size() > 1, "tree counts vary across chunks")
 	assert_eq(t.tree_count_for(Vector2i(0, 0), "VolcanicBadlands"), 0, "no trees in the badlands")
 	t.free()
+
+## Phase 47 review — the host records only the gear the peer's own bag holds, so an
+## equipment intent cannot conjure an item the peer never owned.
+func _test_equipment_intent_requires_ownership() -> void:
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var peer := str(registry.resolve_identity(2))
+	GameBus.equipment_intent.emit(peer, { "Chest": "VeilsteelChestplate" })
+	assert_true(registry.get_equipment(peer).is_empty(), "an unowned chestplate is not recorded")
+	assert_true(registry.get_inventory(peer).add_item("VeilsteelChestplate", 1), "the peer picks one up")
+	GameBus.equipment_intent.emit(peer, { "Chest": "VeilsteelChestplate" })
+	assert_eq(registry.get_equipment(peer).get("Chest", ""), "VeilsteelChestplate", "an owned one is recorded")
+	registry.free()

@@ -532,7 +532,7 @@ func get_equipment_set(instance_id: String) -> Dictionary:
 		var entry: Variant = eq[slot]
 		if entry is Dictionary:
 			var item := str((entry as Dictionary).get("item", ""))
-			if item != "":
+			if item != "" and str((entry as Dictionary).get("state", "equipped")) == "equipped":
 				out[str(slot)] = item
 	return out
 

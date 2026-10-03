@@ -774,6 +774,9 @@ func _finish_host_boot() -> void:
 	var player_char := _restore_or_create_player_character(_player.get_position())
 	_character.create_character("BoarRider", Vector3(spawn_xz.x - 3.0, ground_h + 1.0, spawn_xz.y))
 	_character.set_player_character(player_char)
+	# Phase 47 — the avatar exists only now, so the recorded worn set is applied here
+	# (the restore above runs before there is a character to wear it).
+	_apply_local_equipment(_registry.get_record(_registry.local_player_id).get("equipment", {}) if not _registry.local_player_id.is_empty() else {})
 
 	# CreatureSlice already spawned each chunk's budget via ChunkManager (Phase 17).
 	# Fire one combat round against the first spawned creature through the bus to
@@ -920,6 +923,7 @@ func _boot_server() -> void:
 func _on_player_joined(peer_id: int, player_id: String, reconnected: bool) -> void:
 	if _is_client:
 		return
+	_networking.send_peer_equipment_to(peer_id)
 	var inv = _registry.get_inventory(player_id)
 	if inv != null:
 		_trade.set_party_inventory(player_id, inv)
@@ -1271,6 +1275,11 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 			"companions": data.get("companions", []),
 		}, _registry.local_player_id)
 	if data.has("equipment") and data["equipment"] is Dictionary:
+		# A client builds no avatar at boot, so the first snapshot creates it; without
+		# one there is nothing to wear the set, to show in the Character window, or to
+		# forward equipment intents from.
+		if _character.get_player_character() == "":
+			_character.set_player_character(_character.create_character("TravellerHuman", _player.get_position()))
 		_apply_local_equipment(data["equipment"])
 	var own: Variant = data.get("player", {})
 	if own is Dictionary:
@@ -1405,6 +1414,8 @@ func _snapshot_local_player() -> void:
 ## Phase 47 — make the local avatar wear a recorded set. The `_applying_equipment`
 ## guard keeps the restore from echoing back out as a fresh intent.
 var _applying_equipment: bool = false
+## Last worn set this client forwarded; an appearance change that leaves gear alone sends nothing.
+var _last_sent_equipment: Dictionary = {}
 func _apply_local_equipment(worn: Variant) -> void:
 	var char_id: String = _character.get_player_character()
 	if char_id == "" or not (worn is Dictionary):
@@ -1420,6 +1431,9 @@ func _on_character_appearance_changed(instance_id: String, _appearance: Dictiona
 		return
 	var worn: Dictionary = _character.get_equipment_set(instance_id)
 	if _is_client:
+		if worn == _last_sent_equipment:
+			return
+		_last_sent_equipment = worn.duplicate()
 		GameBus.equipment_intent.emit("", worn)
 	elif not _registry.local_player_id.is_empty():
 		_registry.record_equipment(_registry.local_player_id, worn)

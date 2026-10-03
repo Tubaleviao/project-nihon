@@ -113,7 +113,10 @@ func _ready() -> void:
 	GameBus.technology_unlocked.connect(_on_technology_unlocked)
 	GameBus.item_picked_up.connect(_on_item_picked_up)
 	GameBus.inventory_changed.connect(_on_inventory_changed)
-	GameBus.character_appearance_changed.connect(func(_iid, _app): refresh_character())
+	GameBus.character_appearance_changed.connect(func(iid, _app):
+		# Only the local avatar's gear is shown in the window; NPC changes are noise.
+		if character_slice == null or str(iid) == str(character_slice.get_player_character()):
+			refresh_character())
 	GameBus.block_mined.connect(_on_block_mined)
 	GameBus.block_placed.connect(_on_block_placed)
 	GameBus.market_listing_created.connect(_on_market_listing_created)

@@ -665,6 +665,20 @@ func _on_equipment_changed(player_id: String, worn: Dictionary) -> void:
 		if int(pid) != owner:
 			_deliver(int(pid), packet.duplicate(true))
 
+## Phase 47 — host: a peer just bound its identity; tell it the worn sets of the other
+## connected players inside its AOI, because `_on_equipment_changed` only fires on a
+## change and a late joiner would otherwise never learn gear that was already on.
+func send_peer_equipment_to(peer_id: int) -> void:
+	if _role != Role.HOST or not _connected() or player_registry == null:
+		return
+	for other in multiplayer.get_peers():
+		var o := int(other)
+		if o == peer_id or not has_last_known_state(o) or not in_aoi(peer_id, get_last_known_state(o)):
+			continue
+		var worn: Dictionary = player_registry.get_equipment(str(player_registry.get_player_id(o)))
+		if not worn.is_empty():
+			_deliver(peer_id, { "type": "peer_equipment", "peer_id": o, "worn": worn })
+
 ## Phase 34 — host → one client: the peer's OWN record slice changed on the host's
 ## side of an action it asked for (its inventory after a repair, its technology
 ## statuses after a research). Delivered to that peer alone: an inventory is
