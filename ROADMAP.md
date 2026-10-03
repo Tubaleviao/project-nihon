@@ -4696,7 +4696,7 @@ procedural body stays. The animated blend/one-shots are exercised in game only.
 
 ---
 
-## Phase 46 — UI shell
+## Phase 46 — UI shell ✅ Done
 
 **Goal:** The window system is functional and inert. Six `PanelContainer`s are
 built at fixed positions (`_build_window(key, title, content, position)` — no
@@ -4754,22 +4754,22 @@ carries.
   than by reading `Control` state.
 
 **Acceptance criteria:**
-- [ ] Every window drags by its title bar and reopens at its stored position
+- [x] Every window drags by its title bar and reopens at its stored position
   across a restart; a window cannot be dragged fully off-screen.
-- [ ] An inventory of N items renders N slots in a grid; hovering shows
+- [x] An inventory of N items renders N slots in a grid; hovering shows
   name/quantity/durability; right-clicking offers the actions the item supports
   and each action emits the same bus intent the text UI emitted (assert the
   projection and the intent, not the widget).
-- [ ] An item with no icon asset renders the placeholder glyph, and one whose
+- [x] An item with no icon asset renders the placeholder glyph, and one whose
   icon is present in a mounted pack renders the icon — `AssetOverlay.asset_mode()`
   distinguishes the two.
-- [ ] No Controls legend is visible on the HUD before `?` is pressed: the panel
+- [x] No Controls legend is visible on the HUD before `?` is pressed: the panel
   `_build_hud()` used to paint is gone and `?` is the only way to see the bindings
   (assert the HUD's child set, not a screenshot).
-- [ ] `?` opens and closes the Controls panel; ESC still closes the topmost
+- [x] `?` opens and closes the Controls panel; ESC still closes the topmost
   window and the last close re-captures the mouse (the world-input gate is
   unchanged and no attack/mine slips through an open menu).
-- [ ] The suite is green on both boot paths, with tests for the new projections.
+- [x] The suite is green on both boot paths, with tests for the new projections.
 
 **Implementation notes:**
 - **Persisted position is per-player state, so it needs a record home and an
@@ -4800,6 +4800,17 @@ carries.
 - **No redesign of the crafting / technology / trade / market / proposals
   windows.** They keep their contents and gain only the shared drag shell.
 - **No gamepad or keyboard navigation** of the windows.
+
+**As landed:**
+- Layout persistence is a **client-only settings file** (`user://ui_layout.json`):
+  a layout is a view preference with no authority, so it does not ride the player
+  record. One entry per known window key, overwritten in place, unknown keys
+  dropped on load — nothing accumulates, so there is no eviction point to miss.
+- The slot right-click menu offers only intents that already exist on the bus.
+  Today that is **Repair** (`repair_requested`) for held, non-pristine items with a
+  repair spec; there are no equip/use/drop bus intents yet, so none are offered.
+- No `icons/items/*` art is committed, so every slot paints the initial-letter
+  glyph until a pack provides the key.
 
 ---
 
