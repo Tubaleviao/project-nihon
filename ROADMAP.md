@@ -5098,7 +5098,7 @@ report, 2026-10-04).
   sample, at least 80% of axis-adjacent chunk pairs share a biome, and two
   seeds produce different layouts. This replaces the stripe pattern.
   `_test_chunk_biome_stable` still passes.
-- [ ] `voxel: concurrent seam is exact`: two adjacent chunks built from the same
+- [x] `voxel: concurrent seam is exact`: two adjacent chunks built from the same
   first-ring snapshot (neither built before the other) emit no wall at a seam
   where the surface is level. The faces match the sequential
   `_test_voxel_seam_wall_order_independent` result.
@@ -5111,6 +5111,10 @@ report, 2026-10-04).
 - [ ] An AOI re-scope snapshot's `edits` holds only chunks inside the AOI.
 - [ ] `pnpm check-drift` is clean and the suite is green on both boot paths.
   `tools/net_harness.sh` agrees on a fresh world.
+
+**Progress:** only the unbuilt-neighbour seam fix is in (`_generated_heightmap`); the
+climate field, topsoil, ore-field, frame-spike and AOI-edit items are still open, so the
+phase is not marked done.
 
 **Known simplifications:**
 - The grass is a vertex colour, with no texture and no grass blades. Textured
