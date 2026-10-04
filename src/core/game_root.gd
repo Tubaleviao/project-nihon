@@ -394,6 +394,7 @@ func _ready() -> void:
 	GameBus.tame_resolved.connect(_on_tame_resolved)
 	GameBus.technology_unlocked.connect(_on_technology_unlocked)
 	GameBus.own_state_synced.connect(_on_own_state_synced)
+	GameBus.equipment_revoked.connect(_on_equipment_revoked)
 	GameBus.block_mined.connect(_on_block_mined)
 	GameBus.block_placed.connect(_on_block_placed)
 	GameBus.player_damaged.connect(_on_player_damaged)
@@ -1442,6 +1443,25 @@ func _apply_local_equipment(worn: Variant) -> void:
 		_last_sent_equipment = _character.get_equipment_set(char_id).duplicate()
 		GameBus.equipment_intent.emit("", _last_sent_equipment.duplicate())
 
+## Phase 48 — the host force-cleared worn slots (an item left the bag). Unlike
+## `_apply_local_equipment` an EMPTY set is meaningful here and strips the avatar. The
+## de-dup baseline is reset to the applied set so re-wearing the item is sent again.
+func _apply_host_equipment(worn: Dictionary) -> void:
+	var char_id: String = _character.get_player_character()
+	if char_id == "":
+		return
+	_applying_equipment = true
+	_character.apply_equipment_set(char_id, worn)
+	_applying_equipment = false
+	_last_sent_equipment = _character.get_equipment_set(char_id).duplicate()
+
+## Listen host: its own bag lost a worn item; the record is already cleared, the avatar
+## is not. A remote owner is told by the networking slice instead.
+func _on_equipment_revoked(player_id: String, worn: Dictionary) -> void:
+	if _is_client or player_id.is_empty() or player_id != _registry.local_player_id:
+		return
+	_apply_host_equipment(worn)
+
 ## Phase 47 — the local avatar's gear changed. A host records it; a client forwards
 ## the set as an intent (the host validates it and replicates it to nearby peers).
 func _on_character_appearance_changed(instance_id: String, _appearance: Dictionary) -> void:
@@ -1828,6 +1848,8 @@ func _own_state_payload(player_id: String) -> Dictionary:
 func _on_own_state_synced(data: Dictionary) -> void:
 	if not _is_client:
 		return
+	if data.has("equipment") and data["equipment"] is Dictionary:
+		_apply_host_equipment(data["equipment"])
 	if data.has("inventory") and data["inventory"] is Dictionary:
 		_inventory.replace_contents(data["inventory"], data.get("inventory_durability", {}))
 	if data.has("technology") and data["technology"] is Dictionary:

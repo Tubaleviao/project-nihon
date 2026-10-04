@@ -910,9 +910,12 @@ func revalidate_equipment(player_id: String) -> void:
 	# is checked by that first report, and a bag still loading must not read as empty.
 	if not is_authoritative or not _players.has(player_id) or not _equipment_reported.has(player_id):
 		return
-	var worn := get_equipment(player_id)
-	if worn.is_empty():
+	# Read the stored set in place: most players wear nothing, and those must cost no
+	# copy at all (this runs for every resident player on every inventory event).
+	var stored: Variant = get_record(player_id).get("equipment", {})
+	if not (stored is Dictionary) or (stored as Dictionary).is_empty():
 		return
+	var worn: Dictionary = stored
 	var inv := get_inventory(player_id)
 	if inv == null:
 		return
@@ -920,11 +923,16 @@ func revalidate_equipment(player_id: String) -> void:
 	for slot in worn:
 		if inv.get_item_count(str(worn[slot])) > 0:
 			kept[slot] = worn[slot]
-	if kept.size() != worn.size():
-		record_equipment(player_id, kept)
+	if kept.size() != worn.size() and record_equipment(player_id, kept):
+		# Tell the owner: `equipment_changed` skips the owner, who still wears the item.
+		GameBus.equipment_revoked.emit(player_id, get_equipment(player_id))
 
+## `inventory_changed` carries no owner, so every resident player is checked; the
+## per-player early-outs in `revalidate_equipment` keep that pass allocation-free for
+## anyone with nothing worn. Kept synchronous so a worn item comes off in the same
+## frame its bag loses it (before the `equipment_changed` replication).
 func _on_inventory_changed_revalidate() -> void:
-	for player_id in _players.keys():
+	for player_id in _players:
 		revalidate_equipment(str(player_id))
 
 func _on_player_join_intent(peer_id: int, claimed_id: String) -> void:

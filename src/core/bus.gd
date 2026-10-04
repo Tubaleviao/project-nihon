@@ -572,6 +572,12 @@ signal equipment_intent(player_id: String, worn: Dictionary)
 ## peers whose area of interest contains that player.
 signal equipment_changed(player_id: String, worn: Dictionary)
 
+## Phase 48 — host: the host FORCED a player's worn set (an item left the bag, so its
+## slot was cleared). Unlike `equipment_changed` this goes to the OWNER alone (never
+## broadcast): the owner's avatar still wears the item and would otherwise stay
+## desynced from the record. `worn` is the set the owner must now show.
+signal equipment_revoked(player_id: String, worn: Dictionary)
+
 ## Phase 47 — client: another peer's worn set arrived from the host. `peer_id`
 ## names the OWNER (the signal is never ownerless).
 signal peer_equipment_synced(peer_id: int, worn: Dictionary)
