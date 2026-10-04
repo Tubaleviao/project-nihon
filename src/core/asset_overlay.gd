@@ -88,17 +88,51 @@ func load_texture(rel: String) -> ImageTexture:
 const MANIFEST_REL := "manifest.json"
 
 var _manifest: Dictionary = {}
+var _manifest_loaded := false
 
 
-## The parsed manifest ({} when missing or malformed).
+## The parsed manifest ({} when missing or malformed): the public manifest with the
+## mounted pack's `manifest.json` merged over it by key, so a private pack that lists
+## only its own keys does not hide the public ones. Parsed once and cached, including
+## the "nothing found" outcome, so a missing file is not re-read on every lookup.
 func manifest() -> Dictionary:
-	if _manifest.is_empty():
-		var path := resolve_path(MANIFEST_REL)
-		if FileAccess.file_exists(path):
-			var parsed = JSON.parse_string(FileAccess.get_file_as_string(path))
-			if parsed is Dictionary:
-				_manifest = parsed
+	if not _manifest_loaded:
+		_manifest = merge_manifests(
+			_read_manifest("res://assets/" + MANIFEST_REL),
+			_read_manifest(OVERLAY_PREFIX + MANIFEST_REL))
+		_manifest_loaded = true
 	return _manifest
+
+
+## `overlay` merged over `base`, per asset kind and per key (the overlay wins a clash).
+## Neither argument is modified.
+static func merge_manifests(base: Dictionary, overlay: Dictionary) -> Dictionary:
+	var out: Dictionary = {}
+	for source in [base, overlay]:
+		for kind in source:
+			var section = source[kind]
+			if not section is Dictionary:
+				continue
+			if not out.has(kind):
+				out[kind] = {}
+			for key in section:
+				out[kind][key] = section[key]
+	return out
+
+
+func _read_manifest(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		return {}
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(path))
+	return parsed if parsed is Dictionary else {}
+
+
+## The first of `candidates` the manifest lists under `kind`, or "" when none is.
+func first_key(kind: String, candidates: Array) -> String:
+	for key in candidates:
+		if has_key(kind, str(key)):
+			return str(key)
+	return ""
 
 
 ## Keys listed for `kind` ("textures" | "meshes" | "animations"), sorted.

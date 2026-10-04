@@ -279,6 +279,11 @@ func run() -> void:
 	_run_test("spawn: seeded roll, density and pack size",       _test_spawn_roll_pure)
 	_run_test("spawn: creature packs are scarce and seeded",     _test_spawn_creature_scarcity)
 	_run_test("spawn: the population cap holds and is released", _test_spawn_population_cap)
+	_run_test("spawn: packs stay in their chunk and retry",      _test_spawn_pack_bounds_and_retry)
+	_run_test("spawn: density noise is per species",            _test_spawn_density_per_species)
+	_run_test("rig tree: a missing clip falls back to idle",    _test_rig_tree_missing_clip_fallback)
+	_run_test("asset: manifest merges the private over public", _test_asset_manifest_merge)
+	_run_test("character: remote avatar move/remove",           _test_character_remote_avatar)
 	_run_test("spawn: tree density comes from the fabric",       _test_spawn_tree_density)
 	_run_test("tree: spawns the per-chunk budget",              _test_tree_spawn_for_chunk)
 	_run_test("tree: per-biome species and density",            _test_tree_per_biome_table)
@@ -5248,14 +5253,27 @@ func _test_attach_rig() -> void:
 			assert_false((child as Node3D).visible, "LOD change does not re-show the procedural body")
 	assert_true(ch.attach_rig(iid, "models/placeholder_rig.glb.raw"), "second attach is a no-op")
 	assert_eq(root.get_children().filter(func(c): return c.name == "RigScene").size(), 1, "no duplicate rig")
+	var old_tree: Node = ch._instances[iid]["anim_tree"]
 	ch.apply_appearance(iid, {"skeleton": "HumanoidSkeleton"})
-	assert_false(ch._instances[iid].has("anim_tree"), "appearance rebuild drops the stale rig tree")
+	var new_tree: Variant = ch._instances[iid].get("anim_tree", null)
+	assert_true(new_tree != null and new_tree != old_tree and is_instance_valid(new_tree),
+		"an appearance rebuild re-attaches the rig as a fresh tree, not the freed one")
 	var new_root: Node3D = ch._instances[iid]["root"]
-	var shown := false
 	for child in new_root.get_children():
+		if child is Node3D and child.name != "RigScene":
+			assert_false((child as Node3D).visible, "the rebuilt procedural body stays hidden under the rig")
+	# A character that never wore a rig keeps showing its body across a rebuild.
+	var bare := ch.create_character_from_recipe({"skeleton": "HumanoidSkeleton"}, Vector3.ZERO)
+	ch.apply_appearance(bare, {"skeleton": "HumanoidSkeleton"})
+	assert_false(ch._instances[bare].has("anim_tree"), "no rig is invented by a rebuild")
+	var shown := false
+	for child in (ch._instances[bare]["root"] as Node3D).get_children():
 		if child is Node3D and (child as Node3D).visible:
 			shown = true
-	assert_true(shown, "rebuilt procedural body is visible")
+	assert_true(shown, "a rig-less rebuild leaves the procedural body visible")
+	var dflt := ch.create_character_from_recipe({"skeleton": "HumanoidSkeleton"}, Vector3.ZERO)
+	assert_true(ch.attach_default_rig(dflt), "the default rig resolves through the manifest")
+	assert_eq(ch._instances[dflt]["rig_key"], "models/placeholder_rig.glb.raw", "to the public placeholder when no player rig is listed")
 	ch.free()
 
 func _test_asset_placeholder_resolves() -> void:
@@ -8395,11 +8413,22 @@ func _test_ui_character_rows() -> void:
 	var rows: Array = ui.character_rows()
 	assert_eq(rows.size(), EquipmentRules.slots(GameData.ITEMS).size(), "one row per fabric slot")
 	assert_eq(ui.character_stats_text(), "Defense 0", "empty set totals zero")
+	var bag := InventorySlice.new()
+	add_child(bag)
+	ui.inventory_slice = bag
+	assert_false(ui.dispatch_item_action("FerriteHelmet", "equip"), "an item the bag does not hold cannot be worn")
+	assert_false(ch.get_equipment_set(cid).has("Head"), "and the avatar stays bare")
+	bag.add_item("FerriteHelmet", 1)
 	assert_true(ui.dispatch_item_action("FerriteHelmet", "equip"), "equip goes through apply_equipment")
 	assert_eq(ch.get_equipment_set(cid).get("Head", ""), "FerriteHelmet", "the avatar wears it")
+	assert_eq(ui.item_actions("FerriteHelmet", {}).filter(func(a): return a["action"] == "equip").size(), 0,
+		"a worn item offers no Equip action")
 	assert_true(ui.character_stats_text() != "Defense 0", "and the totals changed")
 	assert_true(ui.dispatch_item_action("FerriteHelmet", "unequip"), "unequip clears the slot")
 	assert_eq(ui.character_stats_text(), "Defense 0", "back to zero")
+	assert_eq(ui.item_actions("FerriteHelmet", {}).filter(func(a): return a["action"] == "equip").size(), 1,
+		"an unworn held item offers Equip")
+	bag.free()
 	ui.free()
 	ch.free()
 
@@ -11435,6 +11464,112 @@ func _test_spawn_population_cap() -> void:
 	c._tick_respawn()
 	assert_true(c.live_population() <= 6, "a respawn never breaches the cap")
 	c.free()
+
+## Phase 57 follow-up — every member of a pack lands inside its chunk (also with packs
+## bigger than the offset table), and no two members share a spot.
+func _test_spawn_pack_bounds_and_retry() -> void:
+	var c := CreatureSlice.new()
+	c.render_visuals = false
+	add_child(c)
+	var cs: int = c._chunk_size()
+	for chunk in [Vector2i(0, 0), Vector2i(-3, 5), Vector2i(7, -2)]:
+		var seen := {}
+		for idx in range(CreatureSlice.MAX_PACK_MEMBERS):
+			var xz: Vector2 = c._deterministic_chunk_position(chunk, "Wolf", 0) + c._pack_member_offset(idx)
+			assert_true(xz.x >= chunk.x * cs and xz.x < (chunk.x + 1) * cs
+					and xz.y >= chunk.y * cs and xz.y < (chunk.y + 1) * cs,
+				"member %d of a full pack is inside its chunk" % idx)
+			seen[xz] = true
+		assert_eq(seen.size(), CreatureSlice.MAX_PACK_MEMBERS, "no two pack members stack")
+	c.free()
+	# A pack the cap refused is remembered and admitted once room frees up, with no
+	# chunk reload; leaving the chunk forgets it.
+	var w := _spawn_world(4242, "TemperateForest")
+	var capped := CreatureSlice.new()
+	capped.render_visuals = false
+	capped.terrain_slice = w["terrain"]
+	capped.set_population_cap(2)
+	add_child(capped)
+	for ch in w["chunks"]:
+		capped.spawn_for_chunk(ch)
+	assert_false(capped._deferred_packs.is_empty(), "a refused pack is remembered")
+	var before: int = capped.live_population()
+	capped.set_population_cap(0)
+	capped._retry_deferred_packs()
+	assert_true(capped.live_population() > before, "the deferred packs are admitted once the cap allows")
+	assert_true(capped._deferred_packs.is_empty(), "and are no longer pending")
+	capped.set_population_cap(1)
+	var gone: Variant = null
+	for ch in w["chunks"]:
+		capped.despawn_for_chunk(ch)
+		capped.spawn_for_chunk(ch)
+		if not capped._deferred_packs.is_empty():
+			gone = capped._deferred_packs.keys()[0][0]
+			break
+	if gone != null:
+		capped.despawn_for_chunk(gone)
+		for key in capped._deferred_packs:
+			assert_true(key[0] != gone, "leaving a chunk drops its deferred packs")
+	capped.free()
+
+## Species do not thicken and thin in lockstep: the density noise is salted per species.
+func _test_spawn_density_per_species() -> void:
+	var differs := false
+	for x in range(40):
+		var a := SpawnRoll.density(9, Vector2i(x, 1), 0.8, "Wolf")
+		var b := SpawnRoll.density(9, Vector2i(x, 1), 0.8, "Boar")
+		if not is_equal_approx(a, b):
+			differs = true
+		assert_eq(a, SpawnRoll.density(9, Vector2i(x, 1), 0.8, "Wolf"), "a salted field is still pure")
+	assert_true(differs, "two species see different density fields")
+	assert_eq(SpawnRoll.density(9, Vector2i(3, 3), 0.8), SpawnRoll.density(9, Vector2i(3, 3), 0.8, ""),
+		"no salt is the unsalted field")
+
+## A rig missing a clip plays idle for it rather than naming a clip the player lacks.
+func _test_rig_tree_missing_clip_fallback() -> void:
+	const RigTree := preload("res://src/character/rig_tree.gd")
+	var player := AnimationPlayer.new()
+	var lib := AnimationLibrary.new()
+	lib.add_animation("idle", Animation.new())
+	lib.add_animation("walk", Animation.new())
+	player.add_animation_library("", lib)
+	assert_eq(RigTree._resolve_clip(player, "walk"), "walk", "a present clip is used")
+	assert_eq(RigTree._resolve_clip(player, "death"), "idle", "a missing clip falls back to idle")
+	assert_true(RigTree._warned_missing.has("death"), "and is reported")
+	var bare := AnimationPlayer.new()
+	assert_eq(RigTree._resolve_clip(bare, "run"), "run", "with no idle either the name is left alone")
+	var tree := RigTree.build_tree(player)
+	assert_true(tree.tree_root is AnimationNodeStateMachine, "the tree still builds")
+	tree.free()
+	player.free()
+	bare.free()
+
+func _test_asset_manifest_merge() -> void:
+	var merged := AssetOverlay.merge_manifests(
+		{"meshes": {"a": "pub_a", "b": "pub_b"}, "textures": {"t": "pub_t"}},
+		{"meshes": {"b": "priv_b", "c": "priv_c"}, "junk": 5})
+	assert_eq(merged["meshes"], {"a": "pub_a", "b": "priv_b", "c": "priv_c"}, "private overrides by key, public-only keys survive")
+	assert_eq(merged["textures"], {"t": "pub_t"}, "a kind only the public manifest lists survives")
+	assert_false(merged.has("junk"), "a non-dictionary section is ignored")
+	assert_eq(AssetOverlay.merge_manifests({}, {}), {}, "two empty manifests merge to empty")
+	assert_eq(AssetOverlay.first_key("meshes", ["models/nope.glb.raw", "models/placeholder_rig.glb.raw"]),
+		"models/placeholder_rig.glb.raw", "first_key skips unlisted keys")
+	assert_eq(AssetOverlay.first_key("meshes", ["models/nope.glb.raw"]), "", "and is empty when none is listed")
+
+func _test_character_remote_avatar() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	ch.bind_peer_character(9, iid)
+	assert_true(ch.set_character_position(iid, Vector3(4, 0, 5)), "an instance can be moved")
+	assert_eq(ch.get_character_position(iid), Vector3(4, 0, 5), "and reports where it is")
+	assert_false(ch.set_character_position("nope", Vector3.ZERO), "an unknown instance cannot")
+	assert_true(ch.remove_character(iid), "an instance can be removed")
+	assert_true(ch.get_character_position(iid) == null, "and is gone")
+	ch.set_peer_equipment(9, { "Head": "FerriteHelmet" })
+	assert_eq(ch.get_peer_equipment(9), { "Head": "FerriteHelmet" }, "removal unbinds: later gear is stored, not applied to a ghost")
+	assert_false(ch.remove_character(iid), "removing twice is a no-op")
+	ch.free()
 
 func _test_spawn_tree_density() -> void:
 	var w := _spawn_world(4242, "TemperateForest")

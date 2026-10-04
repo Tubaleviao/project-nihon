@@ -103,6 +103,11 @@ var _players: Dictionary = {}
 ## inventory instance, so inventory is per-player without changing call sites.
 var _inventories: Dictionary = {}
 
+## player_id -> true once that player's CURRENT connection has reported a worn set.
+## Keyed by player id (the registry's own key) but scoped to the connection: `unbind_peer`
+## clears it, so a reconnect must report again.
+var _equipment_reported: Dictionary = {}
+
 ## Ids minted by this process, so two mints in the same second stay distinct.
 var _mint_counter: int = 0
 ## CSPRNG source for the id's entropy. `RandomNumberGenerator` is NOT suitable: it
@@ -664,8 +669,6 @@ func record_equipment(player_id: String, worn: Dictionary) -> bool:
 
 ## Whether this player's client has reported a worn set on this connection. A peer that
 ## never does (a modified client omitting the intent) has no evidence of free hands.
-var _equipment_reported: Dictionary = {}
-
 func has_equipment_report(player_id: String) -> bool:
 	return _equipment_reported.has(player_id)
 
@@ -892,6 +895,10 @@ func _on_equipment_intent(player_id: String, worn: Dictionary) -> void:
 		Diag.warn("PlayerRegistry: oversized worn claim from %s dropped" % player_id)
 		return
 	# A peer can only wear what its own bag holds; the claim is filtered like any other.
+	# Once a record is non-empty it is the authority: gear an avatar's appearance recipe
+	# grants but the bag does not hold is not part of it, so a reconnect restores the
+	# recorded set only. Making the recipe a grant would let a client write any item into
+	# its own appearance, so it stays out until equip is host-authoritative.
 	var claim := EquipmentRules.sanitize(worn, GameData.ITEMS)
 	var inv := get_inventory(player_id)
 	var owned: Dictionary = {}
