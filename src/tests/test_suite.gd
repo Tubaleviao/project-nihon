@@ -6438,6 +6438,16 @@ func _test_tree_despawn_is_per_chunk() -> void:
 	assert_eq(t.get_all_trees().size(), 8, "despawning a chunk removes only its trees")
 	t.spawn_for_chunk(Vector2i(1, 0))
 	assert_eq(t.trees_in_chunk(Vector2i(1, 0)).size(), 8, "a chunk reload restores its budget")
+	# The chunk index agrees with a full scan, and a re-spawn never doubles the budget.
+	t.spawn_for_chunk(Vector2i(1, 0))
+	var scanned := 0
+	for rec in t.get_all_trees():
+		if rec["chunk"] == Vector2i(1, 0):
+			scanned += 1
+	assert_eq(t.trees_in_chunk(Vector2i(1, 0)).size(), scanned, "chunk index matches a full scan")
+	assert_eq(scanned, 8, "re-spawning a loaded chunk adds no trees")
+	t.despawn_for_chunk(Vector2i(1, 0))
+	assert_eq(t.trees_in_chunk(Vector2i(1, 0)).size(), 0, "despawn empties the chunk index")
 	t.free()
 
 func _test_tree_client_forwards_then_applies_host_chop() -> void:
