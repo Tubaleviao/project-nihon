@@ -5247,6 +5247,14 @@ func _test_attach_rig() -> void:
 			assert_false((child as Node3D).visible, "LOD change does not re-show the procedural body")
 	assert_true(ch.attach_rig(iid, "models/placeholder_rig.glb.raw"), "second attach is a no-op")
 	assert_eq(root.get_children().filter(func(c): return c.name == "RigScene").size(), 1, "no duplicate rig")
+	ch.apply_appearance(iid, {"skeleton": "HumanoidSkeleton"})
+	assert_false(ch._instances[iid].has("anim_tree"), "appearance rebuild drops the stale rig tree")
+	var new_root: Node3D = ch._instances[iid]["root"]
+	var shown := false
+	for child in new_root.get_children():
+		if child is Node3D and (child as Node3D).visible:
+			shown = true
+	assert_true(shown, "rebuilt procedural body is visible")
 	ch.free()
 
 func _test_asset_placeholder_resolves() -> void:

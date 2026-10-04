@@ -201,6 +201,9 @@ func apply_appearance(instance_id: String, recipe: Dictionary) -> bool:
 	inst["impostor"] = built.get("impostor", null)
 	inst["limb_pivots"] = built.get("limb_pivots", {})
 	inst["anim_phase"] = 0.0
+	# The old root (and the attached rig's AnimationTree under it) is freed; keeping the
+	# stale handle would make `_apply_lod` hide the new procedural body for good.
+	inst.erase("anim_tree")
 	inst["base_equipment"] = normalized.get("equipment", {}).duplicate(true)
 	inst["equipment_visible"] = true
 	# The rebuilt rig's nodes default to visible; reset the early-out state so
