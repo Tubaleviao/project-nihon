@@ -5108,7 +5108,9 @@ report, 2026-10-04).
 - [ ] With the camera in-game at default view distance, walking 20 chunks in a
   straight line shows no frame over 33 ms in the frame-time log and no
   visible seam flicker (a manual check recorded with a screenshot).
-- [ ] An AOI re-scope snapshot's `edits` holds only chunks inside the AOI.
+- [x] An AOI re-scope snapshot's `edits` holds only chunks inside the AOI. _Suite
+  `net: re-scope snapshot edits hold only AOI chunks`; the snapshot names its scope
+  (`edits_aoi`) and the client keeps edits it holds outside it._
 - [ ] `pnpm check-drift` is clean and the suite is green on both boot paths.
   `tools/net_harness.sh` agrees on a fresh world.
 

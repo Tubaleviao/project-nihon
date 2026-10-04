@@ -1234,13 +1234,17 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true) -> Dictionar
 		if _networking.in_aoi(peer_id, last_pos):
 			players[str(pid)] = [last_pos.x, last_pos.y, last_pos.z]
 	var player_id := _registry.get_player_id(peer_id)
+	var aoi_center: Vector3 = _networking.get_aoi_center(peer_id)
 	var snapshot := {
 		# Phase 41 — the world's SEED, not its heightmaps: the client regenerates
 		# the host's terrain from the same noise field instead of receiving every
 		# column of every loaded chunk. It is the world's identity, so it is small,
 		# exact, and the only thing that has to travel.
 		"seed":      _terrain.get_world_seed(),
-		"edits":     _voxel.get_chunk_manifest(),
+		# Phase 49 — only the edits of chunks inside the peer's AOI, with the scope named so
+		# the client keeps what it holds outside it.
+		"edits":     _voxel.get_chunk_manifest_in_radius(aoi_center, NetworkingSlice.AOI_RADIUS),
+		"edits_aoi": [aoi_center.x, aoi_center.z, NetworkingSlice.AOI_RADIUS],
 		"creatures": _scoped_creatures(peer_id),
 		"stations":  _station.get_station_data(),
 		"players":   players,
@@ -1309,7 +1313,12 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 		# world, and every voxel edit the host sends would land elsewhere).
 		_terrain.set_world_seed(int(data["seed"]))
 	if data.has("edits") and data["edits"] is Dictionary:
-		_voxel.apply_chunk_manifest(data["edits"])
+		var scope: Variant = data.get("edits_aoi", null)
+		if scope is Array and scope.size() >= 3:
+			_voxel.apply_scoped_chunk_manifest(data["edits"],
+				Vector3(float(scope[0]), 0.0, float(scope[1])), float(scope[2]))
+		else:
+			_voxel.apply_chunk_manifest(data["edits"])
 	# Phase 33 — stations and the client's OWN record (position / HP /
 	# technologies). Stations are world data, so a client mirrors the host's set.
 	if data.has("stations") and data["stations"] is Array:

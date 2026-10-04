@@ -405,6 +405,7 @@ func run() -> void:
 	_run_test("identity: social syncs carry handles, not ids",   _test_identity_syncs_are_redacted)
 	_run_test("identity: a client adopts its own handle",        _test_client_adopts_its_own_handle)
 	_run_test("net: AOI center defaults to spawn; in_aoi gates", _test_net_aoi_center_and_in_aoi)
+	_run_test("net: re-scope snapshot edits hold only AOI chunks", _test_snapshot_edits_scoped_to_aoi)
 	_run_test("net: AOI recipients are near peers only",         _test_net_aoi_recipients)
 	_run_test("net: AOI region floors to grid cell",             _test_net_aoi_region)
 	_run_test("net: player intents bind connection identity",    _test_net_player_intents_bind_connection_identity)
@@ -5185,6 +5186,26 @@ func _test_net_aoi_center_and_in_aoi() -> void:
 	assert_true(n.in_aoi(2, Vector3(50.0, 0.0, 0.0)), "position within AOI radius is in AOI")
 	assert_false(n.in_aoi(2, Vector3(200.0, 0.0, 0.0)), "position beyond AOI radius is out of AOI")
 	n.free()
+
+func _test_snapshot_edits_scoped_to_aoi() -> void:
+	var host := VoxelSlice.new()
+	add_child(host)
+	# Chunk (0,0) is near the origin; chunk (20,20) is ~640 m away.
+	host.apply_edits({ "32,32": 1.0, "%d,%d" % [20 * 64 + 5, 20 * 64 + 5]: 3.0 })
+	var scoped: Dictionary = host.get_chunk_manifest_in_radius(Vector3.ZERO, NetworkingSlice.AOI_RADIUS)
+	assert_true(scoped.has("0,0"), "AOI manifest holds the chunk in range")
+	assert_false(scoped.has("20,20"), "AOI manifest omits the chunk out of range")
+	assert_eq(host.get_chunk_manifest().size(), 2, "full manifest still holds both")
+	# A client that already holds a far edit keeps it across a scoped apply.
+	var client := VoxelSlice.new()
+	add_child(client)
+	client.apply_edits({ "%d,%d" % [20 * 64 + 5, 20 * 64 + 5]: 3.0 })
+	client.apply_scoped_chunk_manifest(scoped, Vector3.ZERO, NetworkingSlice.AOI_RADIUS)
+	var held: Dictionary = client.get_chunk_manifest()
+	assert_true(held.has("0,0"), "client adopted the in-scope edit")
+	assert_true(held.has("20,20"), "client kept its out-of-scope edit")
+	host.free()
+	client.free()
 
 func _test_net_aoi_recipients() -> void:
 	# A delta is delivered only to peers whose AOI contains the entity: a near

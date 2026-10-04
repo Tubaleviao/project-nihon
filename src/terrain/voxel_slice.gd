@@ -1367,6 +1367,45 @@ func get_chunk_manifest() -> Dictionary:
 		manifest[chunk]["edits"][key] = _edits[key].duplicate(true)
 	return manifest
 
+## True when chunk `chunk_pos`'s square overlaps the disc of `radius` around the world
+## position `center` (XZ). Pure; the AOI scope of a re-scope snapshot's edits.
+static func chunk_in_radius(chunk_pos: Vector2i, center: Vector3, radius: float) -> bool:
+	var size := float(CHUNK_SIZE) * TILE_SIZE
+	var min_x := float(chunk_pos.x) * size
+	var min_z := float(chunk_pos.y) * size
+	var nx := clampf(center.x, min_x, min_x + size)
+	var nz := clampf(center.z, min_z, min_z + size)
+	return Vector2(center.x - nx, center.z - nz).length() <= radius
+
+## Phase 49 — `get_chunk_manifest` restricted to chunks inside an area of interest, so a
+## re-scope snapshot ships the edits a peer can see instead of the whole world's.
+func get_chunk_manifest_in_radius(center: Vector3, radius: float) -> Dictionary:
+	var manifest: Dictionary = {}
+	for key in _edits:
+		var chunk := _tile_to_chunk(_key_to_tile(str(key)))
+		if not chunk_in_radius(chunk, center, radius):
+			continue
+		var ckey := _chunk_key(chunk)
+		if not manifest.has(ckey):
+			manifest[ckey] = { "edits": {} }
+		manifest[ckey]["edits"][key] = _edits[key].duplicate(true)
+	return manifest
+
+## Phase 49 — apply a manifest produced by `get_chunk_manifest_in_radius`. It is
+## authoritative only INSIDE its scope: edits this slice holds for chunks outside the
+## disc are kept, because the host did not (and could not) restate them.
+func apply_scoped_chunk_manifest(manifest: Dictionary, center: Vector3, radius: float) -> void:
+	var merged: Dictionary = {}
+	for key in _edits:
+		if not chunk_in_radius(_tile_to_chunk(_key_to_tile(str(key))), center, radius):
+			merged[key] = _edits[key]
+	for ckey in manifest:
+		var chunk_data: Variant = manifest[ckey]
+		if chunk_data is Dictionary and chunk_data.has("edits"):
+			for key in chunk_data["edits"]:
+				merged[key] = chunk_data["edits"][key]
+	apply_edits(merged)
+
 ## Restore voxel edits from a chunk manifest (see get_chunk_manifest). Flattens
 ## the per-chunk grouping back into the global tile-keyed edit table. A manifest
 ## written before Phase 41 also carries a per-chunk "materials" map; it is read and
