@@ -124,6 +124,7 @@ var _record_loader: Callable = Callable()
 func _ready() -> void:
 	GameBus.player_join_intent.connect(_on_player_join_intent)
 	GameBus.equipment_intent.connect(_on_equipment_intent)
+	GameBus.inventory_changed.connect(_on_inventory_changed_revalidate)
 
 # ---------------------------------------------------------------------------
 # Identity
@@ -649,7 +650,7 @@ func record_equipment(player_id: String, worn: Dictionary) -> bool:
 	var rec := ensure_player(player_id)
 	if rec.is_empty():
 		return false
-	var clean := EquipmentRules.sanitize(worn)
+	var clean := EquipmentRules.sanitize(worn, GameData.ITEMS)
 	if clean == rec.get("equipment", {}):
 		return false
 	rec["equipment"] = clean
@@ -850,7 +851,7 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	# the way in — see live_cooldowns). A pre-Phase-37 payload carries no key.
 	rec["cooldowns"]  = live_cooldowns(data.get("cooldowns", {}))
 	# Phase 47: the worn set; a pre-Phase-47 payload carries no key (nothing worn).
-	rec["equipment"]  = EquipmentRules.sanitize(data.get("equipment", {}))
+	rec["equipment"]  = EquipmentRules.sanitize(data.get("equipment", {}), GameData.ITEMS)
 	var contents: Variant = data.get("inventory", {})
 	if contents is Dictionary and not contents.is_empty():
 		var inv = get_inventory(player_id)
@@ -880,15 +881,46 @@ func apply_players_data(players: Dictionary) -> void:
 func _on_equipment_intent(player_id: String, worn: Dictionary) -> void:
 	if not is_authoritative or player_id.is_empty():
 		return
+	# A claim can name at most one item per slot, so a bigger dictionary is not a worn
+	# set at all: dropped before any per-entry work (and before touching the record).
+	if worn.size() > EquipmentRules.slots(GameData.ITEMS).size():
+		push_warning("PlayerRegistry: oversized worn claim from %s dropped" % player_id)
+		return
 	# A peer can only wear what its own bag holds; the claim is filtered like any other.
+	var claim := EquipmentRules.sanitize(worn, GameData.ITEMS)
 	var inv := get_inventory(player_id)
 	var owned: Dictionary = {}
 	if inv != null:
-		for slot in worn:
-			if inv.get_item_count(str(worn[slot])) > 0:
-				owned[slot] = worn[slot]
+		for slot in claim:
+			if inv.get_item_count(str(claim[slot])) > 0:
+				owned[slot] = claim[slot]
 	_equipment_reported[player_id] = true
 	record_equipment(player_id, owned)
+
+## Phase 48 — host: the bag changed (drop, trade, craft, sale, ...), so any worn item
+## the bag no longer holds comes off. Clearing goes through `record_equipment`, the
+## same path (and the same `equipment_changed` replication) as an equip.
+func revalidate_equipment(player_id: String) -> void:
+	# Only a player that has reported on this connection: a restored record's worn set
+	# is checked by that first report, and a bag still loading must not read as empty.
+	if not is_authoritative or not _players.has(player_id) or not _equipment_reported.has(player_id):
+		return
+	var worn := get_equipment(player_id)
+	if worn.is_empty():
+		return
+	var inv := get_inventory(player_id)
+	if inv == null:
+		return
+	var kept: Dictionary = {}
+	for slot in worn:
+		if inv.get_item_count(str(worn[slot])) > 0:
+			kept[slot] = worn[slot]
+	if kept.size() != worn.size():
+		record_equipment(player_id, kept)
+
+func _on_inventory_changed_revalidate() -> void:
+	for player_id in _players.keys():
+		revalidate_equipment(str(player_id))
 
 func _on_player_join_intent(peer_id: int, claimed_id: String) -> void:
 	if not is_authoritative:

@@ -539,7 +539,7 @@ func get_equipment_set(instance_id: String) -> Dictionary:
 ## Phase 47 — the Character window's totals for an instance: the sum of the worn
 ## items' fabric values (`EquipmentRules.totals`), zeros for an empty or unknown set.
 func derived_stats(instance_id: String) -> Dictionary:
-	return EquipmentRules.totals(get_equipment_set(instance_id))
+	return EquipmentRules.totals(get_equipment_set(instance_id), GameData.ITEMS)
 
 ## Make an instance wear exactly `worn` ({slot: item_key}): slots outside the set
 ## are cleared, every entry goes through `apply_equipment` (the only mutation path).
@@ -548,7 +548,7 @@ func derived_stats(instance_id: String) -> Dictionary:
 func apply_equipment_set(instance_id: String, worn: Dictionary) -> void:
 	if not _instances.has(instance_id):
 		return
-	var clean := EquipmentRules.sanitize(worn)
+	var clean := EquipmentRules.sanitize(worn, GameData.ITEMS)
 	for slot in get_equipment_set(instance_id).keys():
 		if not clean.has(slot):
 			clear_equipment(instance_id, str(slot))
@@ -561,11 +561,16 @@ func apply_equipment_set(instance_id: String, worn: Dictionary) -> void:
 ## character instance bound (`bind_peer_character`) the set is applied to it through
 ## `apply_equipment`, so a replicated set and a local one share one mutation path.
 func set_peer_equipment(peer_id: int, worn: Dictionary) -> void:
-	var clean := EquipmentRules.sanitize(worn)
+	var clean := EquipmentRules.sanitize(worn, GameData.ITEMS)
 	_peer_equipment[peer_id] = clean
 	var iid: String = str(_peer_characters.get(peer_id, ""))
 	if iid != "":
 		apply_equipment_set(iid, clean)
+
+## Phase 48 — a peer left our AOI: forget its stored set (its binding is kept, so a
+## re-entry re-applies the set the host re-sends).
+func evict_peer_equipment(peer_id: int) -> void:
+	_peer_equipment.erase(peer_id)
 
 func get_peer_equipment(peer_id: int) -> Dictionary:
 	return (_peer_equipment.get(peer_id, {}) as Dictionary).duplicate()

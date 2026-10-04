@@ -290,7 +290,7 @@ func item_actions(item_id: String, repairable = null) -> Array:
 	var actions: Array = []
 	if repairable.has(item_id):
 		actions.append({"action": "repair", "label": "Repair"})
-	var slot := EquipmentRules.slot_of(item_id)
+	var slot := EquipmentRules.slot_of(item_id, GameData.ITEMS)
 	if slot != "" and character_slice != null:
 		actions.append({"action": "equip", "label": "Equip (%s)" % slot})
 	return actions
@@ -326,7 +326,7 @@ func _dispatch_equipment(kind: String, item_id: String) -> bool:
 	if character_slice == null:
 		return false
 	var char_id := str(character_slice.get_player_character())
-	var slot := EquipmentRules.slot_of(item_id)
+	var slot := EquipmentRules.slot_of(item_id, GameData.ITEMS)
 	if char_id == "" or slot == "":
 		return false
 	if kind == "equip":
@@ -338,7 +338,7 @@ func _dispatch_equipment(kind: String, item_id: String) -> bool:
 func character_rows() -> Array:
 	var worn := _local_worn()
 	var rows: Array = []
-	for slot in EquipmentRules.slots():
+	for slot in EquipmentRules.slots(GameData.ITEMS):
 		var item := str(worn.get(slot, ""))
 		rows.append({
 			"slot": slot,
@@ -351,7 +351,7 @@ func character_rows() -> Array:
 
 ## The Character window's totals line, summed from fabric values only.
 func character_stats_text() -> String:
-	var totals := EquipmentRules.totals(_local_worn())
+	var totals := EquipmentRules.totals(_local_worn(), GameData.ITEMS)
 	return "Defense %d" % int(totals.get("defense", 0))
 
 func _local_worn() -> Dictionary:

@@ -15,31 +15,42 @@ const SUMMED_FIELDS: Array = ["defense"]
 
 
 ## The slot an item equips into, or "" when the key is unknown / not equippable.
-static func slot_of(item_key: String, items: Dictionary = {}) -> String:
-	var table: Dictionary = items if not items.is_empty() else GameData.ITEMS
-	var res: Resource = table.get(item_key, null)
+## `items` is the item table to read; pass `GameData.ITEMS` explicitly (an empty table
+## is an empty fabric, not a request for the default).
+static func slot_of(item_key: String, items: Dictionary) -> String:
+	var res: Resource = items.get(item_key, null)
 	if res == null:
 		return ""
 	return GameDataReader.str_field(res, "equipmentSlot", "")
 
 
 ## Every distinct `equipmentSlot` the fabric defines, in a stable (sorted) order.
-static func slots(items: Dictionary = {}) -> Array:
-	var table: Dictionary = items if not items.is_empty() else GameData.ITEMS
+## Computed once per item table and cached; the cache is keyed by the table instance,
+## so a different table (a test's) is never answered from the fabric's.
+static var _slots_cache: Array = []
+static var _slots_cache_table: Dictionary = {}
+static var _slots_cache_valid: bool = false
+
+static func slots(items: Dictionary) -> Array:
+	if _slots_cache_valid and is_same(_slots_cache_table, items):
+		return _slots_cache.duplicate()
 	var seen: Dictionary = {}
-	for key in table:
-		var slot := slot_of(str(key), table)
+	for key in items:
+		var slot := slot_of(str(key), items)
 		if slot != "":
 			seen[slot] = true
 	var out: Array = seen.keys()
 	out.sort()
-	return out
+	_slots_cache = out
+	_slots_cache_table = items
+	_slots_cache_valid = true
+	return out.duplicate()
 
 
 ## Keep only entries of `claimed` ({slot: item_key}) whose item exists and fits that
 ## slot. A claim is evidence about nothing until it passes this: unknown slots,
 ## unknown items and items in the wrong slot are dropped.
-static func sanitize(claimed: Variant, items: Dictionary = {}) -> Dictionary:
+static func sanitize(claimed: Variant, items: Dictionary) -> Dictionary:
 	var out: Dictionary = {}
 	if not (claimed is Dictionary):
 		return out
@@ -51,13 +62,12 @@ static func sanitize(claimed: Variant, items: Dictionary = {}) -> Dictionary:
 
 
 ## Sum the fabric values of a worn set. An empty set reports every field as zero.
-static func totals(worn: Dictionary, items: Dictionary = {}) -> Dictionary:
-	var table: Dictionary = items if not items.is_empty() else GameData.ITEMS
+static func totals(worn: Dictionary, items: Dictionary) -> Dictionary:
 	var out: Dictionary = {}
 	for field in SUMMED_FIELDS:
 		out[field] = 0
 	for slot in worn:
-		var res: Resource = table.get(str(worn[slot]), null)
+		var res: Resource = items.get(str(worn[slot]), null)
 		if res == null:
 			continue
 		for field in SUMMED_FIELDS:

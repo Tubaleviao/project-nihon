@@ -650,34 +650,95 @@ func _on_equipment_intent(_player_id: String, worn: Dictionary) -> void:
 		return
 	_broadcast({ "type": "equipment_intent", "worn": worn })
 
+## Peer id the host addresses its own avatar by (the server peer).
+const HOST_PEER_ID := 1
+
+## Host: the listen host's avatar position, pushed by game_root. The host has no
+## `_last_known_states` entry (it never reports to itself), so its AOI membership is
+## evaluated from here.
+var _host_position: Vector3 = Vector3.ZERO
+var _host_position_known: bool = false
+
+## "viewer:subject" → true for every (viewer, subject) pair whose worn set the host has
+## sent, so a pair leaving AOI can be told to evict it and one entering can be sent it.
+var _equipment_sent: Dictionary = {}
+
+func set_host_position(position: Vector3) -> void:
+	if _role != Role.HOST:
+		return
+	var moved := not _host_position_known or _host_position.distance_squared_to(position) > 0.25
+	_host_position = position
+	_host_position_known = true
+	if moved and _connected() and player_registry != null:
+		_refresh_equipment_pairs(HOST_PEER_ID)
+
+## Peer id owning `player_id`'s avatar: its connection, or the server peer for the
+## listen host's own player. 0 when offline.
+func _equipment_owner(player_id: String) -> int:
+	if player_registry == null:
+		return 0
+	if player_id != "" and player_id == player_registry.local_player_id:
+		return HOST_PEER_ID
+	return int(player_registry.get_peer_id(player_id))
+
+func _has_subject_position(peer_id: int) -> bool:
+	return _host_position_known if peer_id == HOST_PEER_ID else has_last_known_state(peer_id)
+
+func _subject_position(peer_id: int) -> Vector3:
+	return _host_position if peer_id == HOST_PEER_ID else get_last_known_state(peer_id)
+
+func _worn_of_peer(peer_id: int) -> Dictionary:
+	if peer_id == HOST_PEER_ID:
+		return player_registry.get_equipment(player_registry.local_player_id)
+	return player_registry.get_equipment(str(player_registry.get_player_id(peer_id)))
+
+func _pair_key(viewer: int, subject: int) -> String:
+	return "%d:%d" % [viewer, subject]
+
+## Deliver `subject`'s worn set to `viewer` and remember that it was sent.
+func _send_equipment(viewer: int, subject: int, worn: Dictionary) -> void:
+	_equipment_sent[_pair_key(viewer, subject)] = true
+	_deliver(viewer, { "type": "peer_equipment", "peer_id": subject, "worn": worn.duplicate(true) })
+
 ## Phase 47 — host: a player's recorded worn set changed. It goes to the peers whose
 ## AOI contains that player (never `_broadcast`), tagged with the OWNER's peer id; the
-## owner already holds its own set. A player with no connection or no known position
-## has no AOI to scope to and is not sent.
+## owner already holds its own set. The listen host is an owner too (peer 1). A player
+## with no connection or no known position has no AOI to scope to and is not sent.
 func _on_equipment_changed(player_id: String, worn: Dictionary) -> void:
 	if _role != Role.HOST or not _connected() or player_registry == null:
 		return
-	var owner := int(player_registry.get_peer_id(player_id))
-	if owner == 0 or not has_last_known_state(owner):
+	var owner := _equipment_owner(player_id)
+	if owner == 0 or not _has_subject_position(owner):
 		return
-	var packet := { "type": "peer_equipment", "peer_id": owner, "worn": worn }
-	for pid in aoi_recipients(get_last_known_state(owner), multiplayer.get_peers()):
+	for pid in equipment_targets(owner):
+		_send_equipment(int(pid), owner, worn)
+
+## Peers (the host's own id excluded) whose AOI contains `owner`'s avatar.
+func equipment_targets(owner: int) -> Array:
+	var out: Array = []
+	if not _has_subject_position(owner):
+		return out
+	for pid in aoi_recipients(_subject_position(owner), multiplayer.get_peers()):
 		if int(pid) != owner:
-			_deliver(int(pid), packet.duplicate(true))
+			out.append(int(pid))
+	return out
 
 ## Phase 47 — host: a peer just bound its identity; tell it the worn sets of the other
-## connected players inside its AOI, because `_on_equipment_changed` only fires on a
-## change and a late joiner would otherwise never learn gear that was already on.
+## connected players (the host's own included) inside its AOI, because
+## `_on_equipment_changed` only fires on a change and a late joiner would otherwise
+## never learn gear that was already on.
 func send_peer_equipment_to(peer_id: int) -> void:
 	if _role != Role.HOST or not _connected() or player_registry == null:
 		return
-	for other in multiplayer.get_peers():
+	var others: Array = Array(multiplayer.get_peers())
+	others.append(HOST_PEER_ID)
+	for other in others:
 		var o := int(other)
-		if o == peer_id or not has_last_known_state(o) or not in_aoi(peer_id, get_last_known_state(o)):
+		if o == peer_id or not _has_subject_position(o) or not in_aoi(peer_id, _subject_position(o)):
 			continue
-		var worn: Dictionary = player_registry.get_equipment(str(player_registry.get_player_id(o)))
+		var worn := _worn_of_peer(o)
 		if not worn.is_empty():
-			_deliver(peer_id, { "type": "peer_equipment", "peer_id": o, "worn": worn })
+			_send_equipment(peer_id, o, worn)
 
 ## Phase 47 — host: tell the peers whose AOI contains `peer_id` what it wears. Used when
 ## a peer's position first becomes known: a reconnecting player's worn set is restored
@@ -687,13 +748,47 @@ func send_peer_equipment_to(peer_id: int) -> void:
 func announce_equipment_to_aoi(peer_id: int) -> void:
 	if _role != Role.HOST or not _connected() or player_registry == null or not has_last_known_state(peer_id):
 		return
-	var worn: Dictionary = player_registry.get_equipment(str(player_registry.get_player_id(peer_id)))
+	var worn := _worn_of_peer(peer_id)
 	if worn.is_empty():
 		return
-	var packet := { "type": "peer_equipment", "peer_id": peer_id, "worn": worn }
-	for pid in aoi_recipients(get_last_known_state(peer_id), multiplayer.get_peers()):
-		if int(pid) != peer_id:
-			_deliver(int(pid), packet.duplicate(true))
+	for pid in equipment_targets(peer_id):
+		_send_equipment(int(pid), peer_id, worn)
+
+## Phase 48 — host: `moved` changed position (or is the host avatar), so re-evaluate every
+## (viewer, subject) pair it is part of. A pair that ENTERED AOI is sent the subject's
+## set; a pair that LEFT is told to evict it.
+func _refresh_equipment_pairs(moved: int) -> void:
+	var others: Array = Array(multiplayer.get_peers())
+	others.append(HOST_PEER_ID)
+	for other in others:
+		var o := int(other)
+		if o == moved:
+			continue
+		_update_equipment_pair(moved, o)
+		_update_equipment_pair(o, moved)
+
+func _update_equipment_pair(viewer: int, subject: int) -> void:
+	# The host never needs its own view of anyone, and a viewer without a known
+	# position has no AOI yet (the handshake / first-report paths cover it).
+	if viewer == HOST_PEER_ID or not has_last_known_state(viewer) or not _has_subject_position(subject):
+		return
+	var key := _pair_key(viewer, subject)
+	var visible := in_aoi(viewer, _subject_position(subject))
+	if visible and not _equipment_sent.has(key):
+		var worn := _worn_of_peer(subject)
+		if worn.is_empty():
+			return
+		_send_equipment(viewer, subject, worn)
+	elif not visible and _equipment_sent.has(key):
+		_equipment_sent.erase(key)
+		_deliver(viewer, { "type": "peer_equipment_evict", "peer_id": subject })
+
+## Drop every sent-record involving a peer that disconnected.
+func _forget_equipment_pairs(peer_id: int) -> void:
+	for key in _equipment_sent.keys():
+		var parts := str(key).split(":")
+		if int(parts[0]) == peer_id or int(parts[1]) == peer_id:
+			_equipment_sent.erase(key)
 
 ## Phase 34 — host → one client: the peer's OWN record slice changed on the host's
 ## side of an action it asked for (its inventory after a repair, its technology
@@ -728,6 +823,7 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	remember_player_state(peer_id, position)
 	if first_report:
 		announce_equipment_to_aoi(peer_id)
+	_refresh_equipment_pairs(peer_id)
 	var packet := {
 		"type":     "remote_player_state",
 		"peer_id":  peer_id,
@@ -1437,6 +1533,9 @@ func _route_h2c(payload: Dictionary) -> void:
 			)
 		"remote_player_state":
 			_route_remote_player_state(payload)
+		"peer_equipment_evict":
+			# Phase 48 — the peer left our AOI; drop what we stored for it.
+			GameBus.peer_equipment_evicted.emit(int(payload.get("peer_id", 0)))
 		"peer_equipment":
 			# Phase 47 — another peer's worn set, scoped to our AOI by the host.
 			var worn: Variant = payload.get("worn", {})
@@ -1735,5 +1834,6 @@ func _on_peer_disconnected(id: int) -> void:
 	# with the same player id re-bind to it; game_root writes it and then releases
 	# the in-memory copy (PlayerRegistry.evict_player).
 	forget_player_id(id)
+	_forget_equipment_pairs(id)
 	if _last_known_states.has(id):
 		_last_known_timestamps[id] = Time.get_ticks_msec()

@@ -4975,15 +4975,19 @@ join. Close the host-side holes; display-only niceties stay out of scope.
   explicitly).
 
 **Acceptance criteria:**
-- [ ] A `worn` claim with more entries than there are slots is dropped without
+- [x] A `worn` claim with more entries than there are slots is dropped without
   touching the record, asserted in the suite.
-- [ ] Wearing an item, then trading/dropping it away, clears that slot on the
+- [x] Wearing an item, then trading/dropping it away, clears that slot on the
   player record and emits `equipment_changed`; asserted through the record.
 - [ ] A client sees the listen host's worn set (suite test on the replication
-  target list; the host is included).
+  target list; the host is included). _Implemented (peer 1, `set_host_position`,
+  `equipment_targets`); only exercised by `net-harness`, no suite test yet — the
+  suite has no multiplayer peers._
 - [ ] A peer that walks into AOI after the last gear change receives the set; a
-  peer that leaves AOI has its stored set evicted on the client.
-- [ ] Suite green on both boot paths; `net-harness` still reports
+  peer that leaves AOI has its stored set evicted on the client. _Implemented
+  (`_refresh_equipment_pairs`, `peer_equipment_evict`); suite covers the client
+  evict and pair cleanup, the enter/leave transitions still need a socket step._
+- [x] Suite green on both boot paths; `net-harness` still reports
   `11/11 steps agreed across both peers`.
 
 **Implementation notes:**
