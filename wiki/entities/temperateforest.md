@@ -19,6 +19,10 @@ Broad mixed-leaf forests covering most mid-latitude landmass. Moderate rainfall,
 | avgRainfall | decimal | mm per in-game year |
 | soilFertility | decimal | 0–1; affects crop growth rates |
 | treeDensity | integer | Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here) |
+| surfaceMaterial | string | Topsoil cover of unedited natural ground (Phase 49) |
+| surfaceTint | string | Hex colour of the natural top face |
+| soilTint | string | Hex colour of the side wall down to topsoilDepth; rock below |
+| topsoilDepth | decimal | World units of soil under the surface before rock shows on a wall |
 
 ## Related
 

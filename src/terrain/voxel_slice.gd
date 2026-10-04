@@ -541,16 +541,50 @@ static func build_runs(chunk_pos: Vector2i, heightmap: Array, input: Dictionary)
 			var coloured: Array = []
 			var surface := _natural_top(heightmap, chunk_pos, tx, tz, neighbours)
 			for run in _neighbour_runs(heightmap, chunk_pos, tx, tz, plain, edits, neighbours):
-				coloured.append({
+				var entry := {
 					"bottom":   float(run["bottom"]),
 					"top":      float(run["top"]),
 					"material": str(run.get("material", "")),
 					"color":    run_color(run, world_xz, biomes, colours, surface, field),
-				})
+				}
+				_apply_topsoil(entry, world_xz, biomes, surface, field)
+				coloured.append(entry)
 			out[_tile_key(Vector2i(gx, gz))] = coloured
 	# The deposits ride the SAME memo, so the chunk's own columns are not replayed twice:
 	# `plain` holds exactly the runs `_column_runs` would return for a tile of this chunk.
 	return { "runs": out, "deposits": vein_deposits_at(chunk_pos, heightmap, plain, edits, biomes, field) }
+
+## Phase 49 — a surface style (`top`, `soil` colours and `depth`) from the biome's fabric
+## fields (`surfaceTint`, `soilTint`, `topsoilDepth`); empty when the biome resource is not
+## loaded (an isolated rig), which leaves the plain rock colouring.
+static func surface_style(biome: String) -> Dictionary:
+	var b: Variant = GameData.BIOMES.get(biome, null)
+	if b == null or b.get("surfaceTint") == null:
+		return {}
+	return {
+		"top":   Color.from_string(str(b.get("surfaceTint")), FALLBACK_TERRAIN_COLOR),
+		"soil":  Color.from_string(str(b.get("soilTint")), FALLBACK_TERRAIN_COLOR),
+		"depth": float(b.get("topsoilDepth")),
+	}
+
+## Phase 49 — topsoil. An UNEDITED natural run whose top is the tile's natural surface gets a
+## `top_color` (the biome's surface tint) and a `soil_color` + `soil_depth`: its side walls wear
+## soil down to the soil line and the run's own `color` (rock) below it. A column whose surface
+## is a live vein keeps the vein's colour, and a placed block or a run cut below the natural
+## surface keeps its own. The tint is flat per biome so the greedy merge still fuses the top.
+static func _apply_topsoil(entry: Dictionary, world_xz: Vector2, biomes: Dictionary, surface: float, field: Dictionary) -> void:
+	if entry["material"] != "" or is_nan(surface) or absf(float(entry["top"]) - surface) > STEP_HEIGHT * 0.25:
+		return
+	var biome := biome_of(world_xz, biomes)
+	var style := surface_style(biome)
+	if style.is_empty():
+		return
+	if material_for_biome(biome, world_xz, 0.0, int(field.get("seed", 0)), field.get("depleted", {}),
+			field.get("veins", {})) != OreField.host_material(biome):
+		return
+	entry["top_color"] = style["top"]
+	entry["soil_color"] = style["soil"]
+	entry["soil_depth"] = float(style["depth"])
 
 ## Phase 43 — the ore field's per-call input: the seed, the depletion record and a fresh
 ## vein memo. Static and plain, so the worker half builds it from its payload.
@@ -644,7 +678,7 @@ static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: 
 				# natural ground under a placed block stays hidden (and a ledge under an
 				# overhang still shows).
 				if not runs_cover_y(col, rtop + STEP_HEIGHT * 0.5):
-					_group_cell(groups, "up", rtop, rtop, rtop, color, tx, tz)
+					_group_cell(groups, "up", rtop, rtop, rtop, run.get("top_color", color), tx, tz)
 
 				# Underside face — the CEILING of a tunnel, or an overhang. The span below
 				# the run is empty per-column, which is the per-column reading of "a
@@ -657,7 +691,8 @@ static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: 
 				# Subtracting per neighbour is what keeps a higher neighbour's own wall
 				# (it emits that one) from being drawn twice, and what lets a wall span a
 				# tunnel's height in one piece.
-				_wall_cells(groups, chunk_pos, heightmap, runs, tx, tz, run, color)
+				_wall_cells(groups, chunk_pos, heightmap, runs, tx, tz, run, color,
+					run.get("soil_color", color), rtop - float(run.get("soil_depth", 0.0)))
 
 	var vertices  := PackedVector3Array()
 	var normals   := PackedVector3Array()
@@ -705,7 +740,7 @@ static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: 
 ## column comes from the same table the builder was handed — an EMPTY list is the
 ## UNKNOWN neighbour, so this side emits its whole facing wall (see `_neighbour_runs`
 ## for why that is the order-independent choice).
-static func _wall_cells(groups: Dictionary, chunk_pos: Vector2i, heightmap: Array, runs: Dictionary, tx: int, tz: int, run: Dictionary, color: Color) -> void:
+static func _wall_cells(groups: Dictionary, chunk_pos: Vector2i, heightmap: Array, runs: Dictionary, tx: int, tz: int, run: Dictionary, color: Color, soil_color: Color = Color.BLACK, soil_line: float = INF) -> void:
 	var dirs: Array = [
 		{ "dir": "north", "ntx": tx,     "ntz": tz - 1 },
 		{ "dir": "south", "ntx": tx,     "ntz": tz + 1 },
@@ -720,7 +755,16 @@ static func _wall_cells(groups: Dictionary, chunk_pos: Vector2i, heightmap: Arra
 			var top := float(seg["top"])
 			if top <= bottom:
 				continue
-			_group_cell(groups, dir, _wall_plane(chunk_pos, dir, tx, tz), bottom, top, color, tx, tz)
+			var plane := _wall_plane(chunk_pos, dir, tx, tz)
+			# Soil above the soil line, rock below it (soil_line is INF with no topsoil, so
+			# the whole wall is the run's colour).
+			if soil_line == INF or top <= soil_line:
+				_group_cell(groups, dir, plane, bottom, top, color, tx, tz)
+			elif bottom >= soil_line:
+				_group_cell(groups, dir, plane, bottom, top, soil_color, tx, tz)
+			else:
+				_group_cell(groups, dir, plane, bottom, soil_line, color, tx, tz)
+				_group_cell(groups, dir, plane, soil_line, top, soil_color, tx, tz)
 
 ## The world coordinate a wall's plane sits at — its grouping coordinate, so two tiles'
 ## walls only ever merge when they are actually coplanar.

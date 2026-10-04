@@ -5102,9 +5102,10 @@ report, 2026-10-04).
   first-ring snapshot (neither built before the other) emit no wall at a seam
   where the surface is level. The faces match the sequential
   `_test_voxel_seam_wall_order_independent` result.
-- [ ] `voxel: grass top, soil side`: an unedited temperate column's top-face
+- [x] `voxel: grass top, soil side`: an unedited temperate column's top-face
   colour is the fabric grass tint and its side colour is soil.
-  `_test_voxel_biome_materials` is updated to assert rock under the topsoil.
+  `_test_voxel_biome_materials` is updated to assert rock under the topsoil. _Suite
+  `voxel: grass top, soil side` asserts grass top, soil within `topsoilDepth`, rock below._
 - [ ] With the camera in-game at default view distance, walking 20 chunks in a
   straight line shows no frame over 33 ms in the frame-time log and no
   visible seam flicker (a manual check recorded with a screenshot).
@@ -5116,7 +5117,7 @@ report, 2026-10-04).
 
 **Progress:** the unbuilt-neighbour seam fix is in (`_generated_heightmap`), and biomes are
 seeded Voronoi regions (`src/terrain/climate_field.gd`, 8-chunk cells; the temperature/moisture
-envelopes from the fabric are still open). Topsoil, ore-field, frame-spike and AOI-edit items are still open, so the
+envelopes from the fabric are still open). Topsoil colouring (biome `surfaceTint`/`soilTint`/`topsoilDepth` fabric fields, flat per biome, no dither or border blend yet; `Grass`/`Soil` material entities and mining-yields-Soil still open), ore-field and frame-spike items are still open, so the
 phase is not marked done.
 
 **Known simplifications:**

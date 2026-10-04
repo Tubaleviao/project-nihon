@@ -16,6 +16,10 @@ module.exports = {
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year; moderate' },
       soilFertility:  { type: 'decimal', description: '0–1; moderate; unusual flora' },
       treeDensity:    { type: 'integer', description: 'Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here)', defaultValue: 8 },
+      surfaceMaterial: { type: 'string', description: 'Topsoil cover of unedited natural ground (Phase 49)', defaultValue: 'Moss' },
+      surfaceTint:    { type: 'string', description: 'Hex colour of the natural top face', defaultValue: '#3f7a6a' },
+      soilTint:       { type: 'string', description: 'Hex colour of the side wall down to topsoilDepth; rock below', defaultValue: '#3b3a4a' },
+      topsoilDepth:   { type: 'decimal', description: 'World units of soil under the surface before rock shows on a wall', defaultValue: 2 },
       dayNightSpeed:  { type: 'decimal', description: 'Multiplier on the global day-night cycle (1 = normal); varies per tile; drives weather pattern selection and duskfiber luminosity' },
     },
     relations: {

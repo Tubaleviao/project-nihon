@@ -19,6 +19,10 @@ Eerie glades where day-night cycles run at an accelerated, unpredictable rate, b
 | avgRainfall | decimal | mm per in-game year; moderate |
 | soilFertility | decimal | 0–1; moderate; unusual flora |
 | treeDensity | integer | Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here) |
+| surfaceMaterial | string | Topsoil cover of unedited natural ground (Phase 49) |
+| surfaceTint | string | Hex colour of the natural top face |
+| soilTint | string | Hex colour of the side wall down to topsoilDepth; rock below |
+| topsoilDepth | decimal | World units of soil under the surface before rock shows on a wall |
 | dayNightSpeed | decimal | Multiplier on the global day-night cycle (1 = normal); varies per tile; drives weather pattern selection and duskfiber luminosity |
 
 ## Related

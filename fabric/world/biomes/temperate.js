@@ -15,6 +15,10 @@ module.exports = {
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year' },
       soilFertility:  { type: 'decimal', description: '0–1; affects crop growth rates' },
       treeDensity:    { type: 'integer', description: 'Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here)', defaultValue: 8 },
+      surfaceMaterial: { type: 'string', description: 'Topsoil cover of unedited natural ground (Phase 49)', defaultValue: 'Grass' },
+      surfaceTint:    { type: 'string', description: 'Hex colour of the natural top face', defaultValue: '#4f8a3a' },
+      soilTint:       { type: 'string', description: 'Hex colour of the side wall down to topsoilDepth; rock below', defaultValue: '#6b4a2e' },
+      topsoilDepth:   { type: 'decimal', description: 'World units of soil under the surface before rock shows on a wall', defaultValue: 3 },
     },
     relations: {
       spawnForestBoar:   { name: 'spawnForestBoar',   kind: 'hasMany', target: 'ForestBoar' },
@@ -46,6 +50,10 @@ module.exports = {
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year' },
       soilFertility:  { type: 'decimal', description: '0–1; highest of all biomes' },
       treeDensity:    { type: 'integer', description: 'Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here)', defaultValue: 2 },
+      surfaceMaterial: { type: 'string', description: 'Topsoil cover of unedited natural ground (Phase 49)', defaultValue: 'Grass' },
+      surfaceTint:    { type: 'string', description: 'Hex colour of the natural top face', defaultValue: '#7aa23f' },
+      soilTint:       { type: 'string', description: 'Hex colour of the side wall down to topsoilDepth; rock below', defaultValue: '#6b4a2e' },
+      topsoilDepth:   { type: 'decimal', description: 'World units of soil under the surface before rock shows on a wall', defaultValue: 4 },
     },
     relations: {
       spawnSteppeBison: { name: 'spawnSteppeBison', kind: 'hasMany', target: 'SteppeBison' },

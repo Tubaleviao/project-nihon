@@ -16,6 +16,10 @@ Fractured terrain surrounding permanent rifts in the fabric of reality. Reality 
 | `avgRainfall` | decimal | yes | mm per in-game year; negligible |
 | `soilFertility` | decimal | yes | 0–1; always zero — nothing biological grows near rifts; tile generation must set this to 0 and reject any non-zero value |
 | `treeDensity` | integer | yes | Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here) |
+| `surfaceMaterial` | string | yes | Topsoil cover of unedited natural ground (Phase 49) |
+| `surfaceTint` | string | yes | Hex colour of the natural top face |
+| `soilTint` | string | yes | Hex colour of the side wall down to topsoilDepth; rock below |
+| `topsoilDepth` | decimal | yes | World units of soil under the surface before rock shows on a wall |
 
 ## Relations
 
