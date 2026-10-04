@@ -342,6 +342,23 @@ func get_remote_ghost_count() -> int:
 ## (no local input, no physics) that interpolate between host snapshots.
 const GHOST_COLOR := Color(0.30, 0.55, 0.90)   # blue — distinct from the local player
 
+## Peers a richer body already represents (a CharacterSlice remote avatar): the capsule ghost
+## is not built for them, or is released when it already exists, so the same player is not
+## drawn twice. See `set_ghost_suppressed`.
+var _ghost_suppressed: Dictionary = {}
+
+## Stop (or resume) drawing the capsule ghost for `peer_id`. Suppressing releases an existing
+## ghost's pool slot immediately.
+func set_ghost_suppressed(peer_id: int, suppressed: bool) -> void:
+	if not suppressed:
+		_ghost_suppressed.erase(peer_id)
+		return
+	_ghost_suppressed[peer_id] = true
+	if _ghosts.has(peer_id):
+		if _ghost_pool != null:
+			_ghost_pool.release(int(_ghosts[peer_id]["mi"]))
+		_ghosts.erase(peer_id)
+
 func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	# A headless server renders nothing and has no local player — remote-player
 	# ghosts are a client-only concern, so never build a visual pool here.
@@ -351,6 +368,8 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	# to every peer (including the originator), and that echo must not spawn a
 	# ghost of ourselves.
 	if peer_id == multiplayer.get_unique_id():
+		return
+	if _ghost_suppressed.has(peer_id):
 		return
 	if not _ghosts.has(peer_id):
 		if _ghost_pool == null:

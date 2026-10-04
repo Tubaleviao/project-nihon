@@ -168,6 +168,14 @@ var _chunks: Dictionary = {}
 var _heightmaps: Dictionary = {}
 ## Phase 49 — generated (not built) neighbour maps, see `_generated_heightmap`.
 var _guess_heightmaps: Dictionary = {}
+## The world seed the cached guesses were generated under; a different seed throws them all
+## away (`_sync_guess_seed`), since the same chunk now has a different surface.
+var _guess_seed: int = 0
+## Hard bound on the guess cache. Pruning on unload keeps it to the ring in steady state, but
+## a guess whose requesting build was cancelled never gets an unload to sweep it; the oldest
+## entries are evicted instead (dictionary insertion order), so the worst case is a fixed
+## number of arrays, not a leak.
+const GUESS_CACHE_MAX := 48
 ## Voxel edits keyed by "gx,gz" string → Array of typed run edits, in the order
 ## they were applied (see the class docstring), compacted past MAX_TILE_OPS. The
 ## column's runs are the tile's
@@ -299,7 +307,10 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 
 	# Remember the base heightmap so edits can be reapplied on rebuild.
 	_heightmaps[key] = heightmap
-	_guess_heightmaps.erase(key)
+	if _guess_heightmaps.has(key):
+		if _guess_heightmaps[key] != heightmap:
+			Diag.warn("VoxelSlice: chunk %s was built from a heightmap that differs from the guess its neighbours were built against; seams may show" % key)
+		_guess_heightmaps.erase(key)
 
 	# Remove any previous version of this chunk.
 	if _chunks.has(key):
@@ -465,7 +476,10 @@ func _gather_edits(chunk_pos: Vector2i) -> Dictionary:
 ## stores a freshly generated one, `_prune_heightmaps` erases the entry) and never mutated in
 ## place, so sharing it is safe — the worker only reads it, and a rebuild that regenerates the
 ## map hands the worker a NEW array rather than editing the array it holds. If a future change
-## ever writes a heightmap IN PLACE, it must copy here too.
+## ever writes a heightmap IN PLACE, it must copy here too. The same holds for the cached
+## GUESS maps (`_generated_heightmap`): they are shared by reference too, and a guess is
+## assumed to equal the map the chunk's own build later stores — `build_chunk` warns when a
+## caller hands it a different one (tests, a future structure-flattening pass).
 func _gather_neighbour_heightmaps(chunk_pos: Vector2i) -> Dictionary:
 	var out: Dictionary = {}
 	for chunk in _ring_chunks(chunk_pos):
@@ -484,13 +498,43 @@ func _gather_neighbour_heightmaps(chunk_pos: Vector2i) -> Dictionary:
 ## bedrock-to-top seam wall. Kept apart from `_heightmaps` (which means "built"): a guess
 ## is dropped when that chunk builds or leaves the ring. Empty when no generator is wired.
 func _generated_heightmap(chunk: Vector2i, ckey: String) -> Array:
+	_sync_guess_seed()
 	if _guess_heightmaps.has(ckey):
 		return _guess_heightmaps[ckey]
 	if terrain_slice == null or not terrain_slice.has_method("generate_heightmap"):
 		return []
 	var hm: Array = terrain_slice.generate_heightmap(chunk)
 	_guess_heightmaps[ckey] = hm
+	while _guess_heightmaps.size() > GUESS_CACHE_MAX:
+		_guess_heightmaps.erase(_guess_heightmaps.keys()[0])
 	return hm
+
+## The heightmap a chunk's own build should use: a guess already generated for it when one is
+## cached (consumed, since `build_chunk` stores it as the real map), else a fresh one from the
+## generator. Each chunk's surface is therefore generated ONCE, whether a neighbour's gather
+## got to it first or its own dispatch did; the neighbour's guess used to be thrown away and
+## the same noise recomputed on the main thread at dispatch.
+## Callers that pass the result to `build_chunk` keep the guess == real-map invariant that the
+## neighbours' seams rely on. Empty when no generator is wired.
+func take_heightmap_for_build(chunk: Vector2i) -> Array:
+	_sync_guess_seed()
+	var ckey := _chunk_key(chunk)
+	if _guess_heightmaps.has(ckey):
+		var hm: Array = _guess_heightmaps[ckey]
+		_guess_heightmaps.erase(ckey)
+		return hm
+	if terrain_slice == null or not terrain_slice.has_method("generate_heightmap"):
+		return []
+	return terrain_slice.generate_heightmap(chunk)
+
+## Drop every cached guess when the world seed changed under them (`set_world_seed` runs
+## before any chunk streams in production, but a re-seed mid-session must not serve a map
+## of the old world).
+func _sync_guess_seed() -> void:
+	var seed_now := _world_seed()
+	if seed_now != _guess_seed:
+		_guess_seed = seed_now
+		_guess_heightmaps.clear()
 
 ## The biome of every chunk the ring touches, keyed by chunk — what the colour step needs.
 ## The gather is ≤ 9 terrain-slice calls, against the 4356 a per-tile lookup would make.
@@ -513,7 +557,7 @@ func _ring_chunks(chunk_pos: Vector2i) -> Array:
 	return out
 
 ## The world XZ centre of a chunk — a position `_biome_at` maps back to that same chunk.
-func _chunk_world_center(chunk_pos: Vector2i) -> Vector2:
+static func _chunk_world_center(chunk_pos: Vector2i) -> Vector2:
 	var extent := float(CHUNK_SIZE * TILE_SIZE)
 	return Vector2((float(chunk_pos.x) + 0.5) * extent, (float(chunk_pos.y) + 0.5) * extent)
 
@@ -533,6 +577,9 @@ static func build_runs(chunk_pos: Vector2i, heightmap: Array, input: Dictionary)
 	# and by each neighbour's subtraction, and only the table carries colours.
 	var plain: Dictionary = {}
 	var colours: Dictionary = {}
+	# Surface style per biome, resolved once per build: it is a function of the biome alone
+	# and a chunk's ring touches at most four biomes, against ~4000 runs that each asked.
+	var styles: Dictionary = {}
 	for tz in range(-1, CHUNK_SIZE + 1):
 		for tx in range(-1, CHUNK_SIZE + 1):
 			var gx := chunk_pos.x * CHUNK_SIZE + tx
@@ -547,7 +594,7 @@ static func build_runs(chunk_pos: Vector2i, heightmap: Array, input: Dictionary)
 					"material": str(run.get("material", "")),
 					"color":    run_color(run, world_xz, biomes, colours, surface, field),
 				}
-				_apply_topsoil(entry, world_xz, biomes, surface, field)
+				_apply_topsoil(entry, world_xz, biomes, surface, field, styles)
 				coloured.append(entry)
 			out[_tile_key(Vector2i(gx, gz))] = coloured
 	# The deposits ride the SAME memo, so the chunk's own columns are not replayed twice:
@@ -556,15 +603,25 @@ static func build_runs(chunk_pos: Vector2i, heightmap: Array, input: Dictionary)
 
 ## Phase 49 — a surface style (`top`, `soil` colours and `depth`) from the biome's fabric
 ## fields (`surfaceTint`, `soilTint`, `topsoilDepth`); empty when the biome resource is not
-## loaded (an isolated rig), which leaves the plain rock colouring.
+## loaded (an isolated rig), which leaves the plain rock colouring. `material` is the
+## biome's `surfaceMaterial` (e.g. Grass): nothing in the build consumes it yet — the
+## Grass/Soil material entities and mining-yields-Soil are still open — but it is part of
+## the style so that consumer has one place to read it, and a test pins that every biome
+## declares one.
+##
+## Thread note: the worker half of the build calls this through `build_runs`. It only READS
+## `GameData.BIOMES`, which is a fully preloaded constant table, so that is safe today; if
+## `GameData` ever fills lazily, resolve the styles on the main thread and pass them in the
+## gathered payload instead.
 static func surface_style(biome: String) -> Dictionary:
 	var b: Variant = GameData.BIOMES.get(biome, null)
 	if b == null or b.get("surfaceTint") == null:
 		return {}
 	return {
-		"top":   Color.from_string(str(b.get("surfaceTint")), FALLBACK_TERRAIN_COLOR),
-		"soil":  Color.from_string(str(b.get("soilTint")), FALLBACK_TERRAIN_COLOR),
-		"depth": float(b.get("topsoilDepth")),
+		"top":      Color.from_string(str(b.get("surfaceTint")), FALLBACK_TERRAIN_COLOR),
+		"soil":     Color.from_string(str(b.get("soilTint")), FALLBACK_TERRAIN_COLOR),
+		"depth":    float(b.get("topsoilDepth")),
+		"material": str(b.get("surfaceMaterial")),
 	}
 
 ## Phase 49 — topsoil. An UNEDITED natural run whose top is the tile's natural surface gets a
@@ -572,11 +629,14 @@ static func surface_style(biome: String) -> Dictionary:
 ## soil down to the soil line and the run's own `color` (rock) below it. A column whose surface
 ## is a live vein keeps the vein's colour, and a placed block or a run cut below the natural
 ## surface keeps its own. The tint is flat per biome so the greedy merge still fuses the top.
-static func _apply_topsoil(entry: Dictionary, world_xz: Vector2, biomes: Dictionary, surface: float, field: Dictionary) -> void:
+## `styles` is the caller's per-build memo (biome -> `surface_style`); pass `{}` for a one-off.
+static func _apply_topsoil(entry: Dictionary, world_xz: Vector2, biomes: Dictionary, surface: float, field: Dictionary, styles: Dictionary = {}) -> void:
 	if entry["material"] != "" or is_nan(surface) or absf(float(entry["top"]) - surface) > STEP_HEIGHT * 0.25:
 		return
 	var biome := biome_of(world_xz, biomes)
-	var style := surface_style(biome)
+	if not styles.has(biome):
+		styles[biome] = surface_style(biome)
+	var style: Dictionary = styles[biome]
 	if style.is_empty():
 		return
 	if material_for_biome(biome, world_xz, 0.0, int(field.get("seed", 0)), field.get("depleted", {}),
@@ -1300,7 +1360,11 @@ func get_edits() -> Dictionary:
 ## main thread in the frame that applied a snapshot AND bumped the chunk's revision under
 ## an in-flight worker build.
 func apply_edits(edits: Dictionary, materials: Dictionary = {}) -> void:
-	var previous: Dictionary = _edits
+	_commit_edits(_normalise_edit_table(edits, materials))
+
+## The normalising half of `apply_edits`: a typed op list is cleaned, a legacy height is
+## migrated against the tile's natural run, anything unreadable is dropped with a warning.
+func _normalise_edit_table(edits: Dictionary, materials: Dictionary) -> Dictionary:
 	var next: Dictionary = {}
 	for key in edits:
 		var value: Variant = edits[key]
@@ -1322,15 +1386,23 @@ func apply_edits(edits: Dictionary, materials: Dictionary = {}) -> void:
 		var tile := _key_to_tile(str(key))
 		var stack: Array = materials.get(key, [])
 		next[key] = legacy_edit_ops(legacy_height, _base_top_for_tile(tile), stack)
+	return next
+
+## The committing half of `apply_edits`: swap in `next` as the edit log and rebuild what
+## changed. `diff_keys` limits the change detection to those tile keys (the scoped re-scope
+## path knows nothing outside its disc moved); null compares the whole of both logs.
+func _commit_edits(next: Dictionary, diff_keys: Variant = null) -> void:
+	var previous: Dictionary = _edits
 	# _dirty_chunks is NOT cleared here: dirty tracking is reset only by
 	# clear_dirty_chunks() after a successful save (called from game_root._on_save_completed).
 	# Restored on-disk edits are not dirty — they were already persisted.
 	var touched: Dictionary = {}
-	for key in next:
-		if not _ops_equal(previous.get(key, null), next[key]):
-			_mark_touched_tile(touched, _key_to_tile(str(key)))
-	for key in previous:
-		if not next.has(key):
+	var keys: Array = (diff_keys as Array) if diff_keys is Array else _union_keys(previous, next)
+	for key in keys:
+		if next.has(key):
+			if not _ops_equal(previous.get(key, null), next[key]):
+				_mark_touched_tile(touched, _key_to_tile(str(key)))
+		elif previous.has(key):
 			_mark_touched_tile(touched, _key_to_tile(str(key)))
 	var previous_taken: Dictionary = _vein_taken
 	_edits = next
@@ -1367,14 +1439,20 @@ func apply_edits(edits: Dictionary, materials: Dictionary = {}) -> void:
 	# the in-flight build and is itself a no-op for a chunk outside the streamed set.
 	for ckey in touched:
 		# `ckey` is a CHUNK key ("cx,cz"); the same "x,y" parse as a tile key reads it.
-		var parts: PackedStringArray = str(ckey).split(",")
-		var chunk := Vector2i(int(parts[0]), int(parts[1]))
+		var chunk := _chunk_from_key(str(ckey))
 		if chunk_manager != null and chunk_manager.has_method("request_rebuild"):
 			chunk_manager.request_rebuild(chunk)
 			continue
 		if not _chunks.has(ckey) or not _heightmaps.has(ckey):
 			continue   # nothing to refresh: unloaded chunks rebuild when streamed in
 		build_chunk(chunk, _heightmaps[ckey])
+
+static func _union_keys(a: Dictionary, b: Dictionary) -> Array:
+	var keys: Array = b.keys()
+	for key in a:
+		if not b.has(key):
+			keys.append(key)
+	return keys
 
 ## Mark every chunk whose mesh reads `tile` — the tile's own chunk plus each
 ## edge-adjacent one it sits on the edge of (see `_touched_chunks`) — as needing a
@@ -1428,10 +1506,9 @@ func get_chunk_manifest() -> Dictionary:
 ## position `center` (XZ). Pure; the AOI scope of a re-scope snapshot's edits.
 static func chunk_in_radius(chunk_pos: Vector2i, center: Vector3, radius: float) -> bool:
 	var size := float(CHUNK_SIZE) * TILE_SIZE
-	var min_x := float(chunk_pos.x) * size
-	var min_z := float(chunk_pos.y) * size
-	var nx := clampf(center.x, min_x, min_x + size)
-	var nz := clampf(center.z, min_z, min_z + size)
+	var min_corner := _chunk_world_center(chunk_pos) - Vector2(size, size) * 0.5
+	var nx := clampf(center.x, min_corner.x, min_corner.x + size)
+	var nz := clampf(center.z, min_corner.y, min_corner.y + size)
 	return Vector2(center.x - nx, center.z - nz).length() <= radius
 
 ## Phase 49 — `get_chunk_manifest` restricted to chunks inside an area of interest, so a
@@ -1440,7 +1517,7 @@ static func chunk_in_radius(chunk_pos: Vector2i, center: Vector3, radius: float)
 func get_chunk_manifest_in_radius(center: Vector3, radius: float) -> Dictionary:
 	var manifest: Dictionary = {}
 	for ckey in _edits_by_chunk:
-		if not chunk_in_radius(_parse_chunk_key(str(ckey)), center, radius):
+		if not chunk_in_radius(_chunk_from_key(str(ckey)), center, radius):
 			continue
 		var edits: Dictionary = {}
 		for key in _edits_by_chunk[ckey]:
@@ -1450,15 +1527,19 @@ func get_chunk_manifest_in_radius(center: Vector3, radius: float) -> Dictionary:
 
 ## Phase 49 — apply a manifest produced by `get_chunk_manifest_in_radius`. It is
 ## authoritative only INSIDE its scope: edits this slice holds for chunks outside the
-## disc are kept, because the host did not (and could not) restate them.
+## disc are kept untouched, because the host did not (and could not) restate them. Only the
+## in-scope buckets are replaced and only their tiles are diffed; the rest of the log is
+## neither re-normalised nor compared.
 func apply_scoped_chunk_manifest(manifest: Dictionary, center: Vector3, radius: float) -> void:
+	var next: Dictionary = _edits.duplicate()   # shallow: the out-of-scope op lists are shared
+	var diff_keys: Array = []
+	for ckey in _edits_by_chunk:
+		if chunk_in_radius(_chunk_from_key(str(ckey)), center, radius):
+			for key in _edits_by_chunk[ckey]:
+				next.erase(key)
+				diff_keys.append(key)
 	var edits: Dictionary = {}
 	var materials: Dictionary = {}
-	for ckey in _edits_by_chunk:
-		if chunk_in_radius(_parse_chunk_key(str(ckey)), center, radius):
-			continue
-		for key in _edits_by_chunk[ckey]:
-			edits[key] = _edits[key]
 	for ckey in manifest:
 		var chunk_data: Dictionary = manifest[ckey]
 		if chunk_data.has("edits"):
@@ -1467,10 +1548,19 @@ func apply_scoped_chunk_manifest(manifest: Dictionary, center: Vector3, radius: 
 		if chunk_data.has("materials"):
 			for key in chunk_data["materials"]:
 				materials[key] = chunk_data["materials"][key]
-	apply_edits(edits, materials)
+	var incoming := _normalise_edit_table(edits, materials)
+	for key in incoming:
+		next[key] = incoming[key]
+		diff_keys.append(key)
+	_commit_edits(next, diff_keys)
 
-static func _parse_chunk_key(ckey: String) -> Vector2i:
-	var parts := ckey.split(",")
+## Parse a "cx,cz" chunk key — the same "x,y" form as a tile key (`_key_to_tile`), which is
+## the one parser.
+static func _chunk_from_key(ckey: String) -> Vector2i:
+	return _parse_xy(ckey)
+
+static func _parse_xy(key: String) -> Vector2i:
+	var parts: PackedStringArray = key.split(",")
 	return Vector2i(int(parts[0]), int(parts[1]))
 
 ## Restore voxel edits from a chunk manifest (see get_chunk_manifest). Flattens
@@ -2308,8 +2398,7 @@ static func _chunk_key(chunk_pos: Vector2i) -> String:
 
 ## Parse a "gx,gz" tile key back into a tile coordinate.
 func _key_to_tile(key: String) -> Vector2i:
-	var parts: PackedStringArray = str(key).split(",")
-	return Vector2i(int(parts[0]), int(parts[1]))
+	return _parse_xy(str(key))
 
 ## Mark the chunk containing `tile` as dirty for persistence.
 func _mark_dirty(tile: Vector2i) -> void:

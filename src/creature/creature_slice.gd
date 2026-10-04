@@ -49,6 +49,12 @@ var _population_cap: int = 0
 
 var _instances: Dictionary = {}
 
+## Phase 49 — chunk -> Array of instance ids spawned there by `_spawn`, so
+## `spawn_for_chunk` / `despawn_for_chunk` / the deferred-pack retry touch one chunk's
+## creatures instead of scanning every instance. Written only by `_spawn` and
+## `despawn_for_chunk`; client-side (`_instances` filled from host broadcasts) never uses it.
+var _by_chunk: Dictionary = {}
+
 ## Phase 37 — the cached read-only view of `_instances` (see `instances_view`) plus the
 ## staleness flag that guards it. Only MEMBERSHIP changes invalidate the view; the
 ## records it holds are the live ones, so a moved or state-changed creature is already
@@ -336,17 +342,15 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 		return   # clients receive creatures from host broadcasts
 	var chunk_biome := _chunk_biome(chunk_pos)
 	var biome_keys: Array = _biome_keys()
-	# One pass over the instance table serves every species of this chunk: the survivors
-	# per species and the live count the cap is judged against.
+	# Survivors per species come from this chunk's index alone; the live count the cap is
+	# judged against is only worth a table scan when a cap is set.
 	var surviving_by_species: Dictionary = {}
-	var live: int = 0
-	for iid in _instances:
-		var inst: Dictionary = _instances[iid]
-		if inst.get("state", "") != "dead":
-			live += 1
-		if inst.get("chunk") == chunk_pos:
-			var cid: String = str(inst.get("creature_id"))
-			surviving_by_species[cid] = int(surviving_by_species.get(cid, 0)) + 1
+	for iid in _by_chunk.get(chunk_pos, []):
+		if not _instances.has(iid):
+			continue   # index entry outlived its record (a direct table edit)
+		var cid: String = str(_instances[iid].get("creature_id"))
+		surviving_by_species[cid] = int(surviving_by_species.get(cid, 0)) + 1
+	var live: int = live_population() if _population_cap > 0 else 0
 	for creature_id in GameData.CREATURES:
 		var res: Resource = GameData.CREATURES[creature_id]
 		if res == null:
@@ -370,6 +374,13 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 		var to_spawn: int = pack - int(surviving_by_species.get(creature_id, 0))
 		if to_spawn <= 0:
 			continue
+		# World content therefore depends on visit order under a cap: a pack refused on the
+		# first visit can be admitted on a later one, once other creatures have despawned or
+		# died. That is accepted and intended (the cap bounds the population, not the layout);
+		# the pack's SIZE and CENTRE stay a pure function of (seed, chunk) either way.
+		# Solitary species take the same path as packs, a pack of `spawnCount` clustered around
+		# one centre, because the roll is per species per chunk; a species that should never
+		# cluster sets `spawnCount` to 1.
 		# A pack the cap cannot hold is refused whole and never streamed: the cap is a
 		# host-only quantity, so a refusal is simply an absent pack. It is remembered and
 		# retried as the population falls, instead of waiting for the chunk to reload.
@@ -405,9 +416,8 @@ func _retry_deferred_packs() -> void:
 		var chunk_pos: Vector2i = key[0]
 		var creature_id: String = key[1]
 		var surviving: int = 0
-		for iid in _instances:
-			var inst: Dictionary = _instances[iid]
-			if inst.get("chunk") == chunk_pos and inst.get("creature_id") == creature_id:
+		for iid in _by_chunk.get(chunk_pos, []):
+			if _instances.has(iid) and _instances[iid].get("creature_id") == creature_id:
 				surviving += 1
 		var to_spawn: int = int(_deferred_packs[key]) - surviving
 		if to_spawn <= 0:
@@ -451,22 +461,25 @@ func despawn_for_chunk(chunk_pos: Vector2i) -> void:
 	for key in _deferred_packs.keys():
 		if key[0] == chunk_pos:
 			_deferred_packs.erase(key)
-	var to_erase: Array = []
-	for iid in _instances:
-		var inst: Dictionary = _instances[iid]
-		if inst.get("chunk", Vector2i.ZERO) != chunk_pos:
+	var kept: Array = []
+	for iid in (_by_chunk.get(chunk_pos, []) as Array):
+		if not _instances.has(iid):
 			continue
+		var inst: Dictionary = _instances[iid]
 		if inst["state"] == "aggressive" or inst["state"] == "fleeing":
+			kept.append(iid)
 			continue
 		if inst["state"] == "dead":
 			_remember_death(iid, inst)
 		if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
 			_pool.release(int(inst["mi"]))
-		to_erase.append(iid)
-	for iid in to_erase:
 		_instances.erase(iid)
 		_last_broadcast.erase(iid)
 		_spatial.remove(iid)
+	if kept.is_empty():
+		_by_chunk.erase(chunk_pos)
+	else:
+		_by_chunk[chunk_pos] = kept
 	_invalidate_view()
 
 ## Keep a non-resident death record for `iid` from its live instance record. Only a
@@ -525,6 +538,10 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 		"mi":          mi,
 		"tamed_by":    "",
 	}
+	if not _by_chunk.has(chunk_pos):
+		_by_chunk[chunk_pos] = []
+	if not (_by_chunk[chunk_pos] as Array).has(iid):
+		(_by_chunk[chunk_pos] as Array).append(iid)
 	_invalidate_view()
 
 	# A creature that died before its chunk was despawned (or before this process
@@ -663,6 +680,10 @@ func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String
 
 func _tick_respawn() -> void:
 	var now := Time.get_unix_time_from_system()
+	# The live count the cap is judged against is read once, lazily (only when a creature is
+	# actually due and a cap is set) and kept up to date as this pass revives creatures. It
+	# used to be re-counted from the whole table for every creature that came due.
+	var live: int = -1
 	for iid in _instances:
 		var inst: Dictionary = _instances[iid]
 		if inst["state"] == "dead" and float(inst["respawn_at"]) > 0.0 and now >= float(inst["respawn_at"]):
@@ -676,8 +697,12 @@ func _tick_respawn() -> void:
 				continue
 			# A respawn re-admits a creature, so it obeys the cap like a spawn does: held
 			# dead (record and deadline kept) until a slot frees up.
-			if _population_cap > 0 and live_population() >= _population_cap:
-				continue
+			if _population_cap > 0:
+				if live < 0:
+					live = live_population()
+				if live >= _population_cap:
+					continue
+				live += 1
 			_dead_state.erase(iid)
 			var creature_id: String = inst["creature_id"]
 			var res: Resource = GameData.CREATURES.get(creature_id, null)

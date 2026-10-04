@@ -27,8 +27,11 @@ const DENSITY_CELL := 4
 
 static func _mix(seed: int, a: int, b: int, salt: int) -> int:
 	var h: int = seed * 374761393 + a * 668265263 + b * 2147483647 + salt * 1274126177
+	# Two multiply-xorshift rounds (the murmur3 finaliser's shape): one round left the low bits
+	# of neighbouring chunks and salts visibly correlated, since the input mix is linear.
 	h = (h ^ (h >> 13)) * 1274126177
-	h = h ^ (h >> 16)
+	h = (h ^ (h >> 16)) * 2246822519
+	h = h ^ (h >> 15)
 	return h & 0x7fffffff
 
 ## A hash roll in [0, 1) for (seed, chunk, salt).

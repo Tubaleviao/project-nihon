@@ -27,7 +27,10 @@ static func _feature_point(seed_v: int, ix: int, iz: int) -> Vector2:
 ## Biome key for a chunk: the cell whose feature point is nearest the chunk centre owns it.
 static func biome_for_chunk(seed_v: int, chunk_pos: Vector2i, keys: Array) -> String:
 	if keys.is_empty():
-		return ""
+		return ""   # also guards the `% keys.size()` below
+	# The 3x3 cell search below is exact only while a feature point stays within ~0.8 of a
+	# cell of its centre; a larger JITTER could put the true nearest point one ring further out.
+	assert(JITTER <= 0.8, "ClimateField.JITTER too large for the 3x3 nearest-point search")
 	var p := Vector2(chunk_pos.x + 0.5, chunk_pos.y + 0.5)
 	var cx := floori(p.x / CELL_CHUNKS)
 	var cz := floori(p.y / CELL_CHUNKS)
