@@ -4910,12 +4910,14 @@ window (key `K`). The tame intent's `unarmed` argument is kept for wire/signal
 compatibility but ignored — `TamingSlice.is_unarmed` reads the registry.
 
 **Known simplifications (deferred):**
-- **Replication is delta-only and has no socket step.** A peer's set is sent to
+- **Replication is delta-only.** A peer's set is sent to
   AOI peers when it changes; a peer entering AOI later learns it on the next
   change. Remote peers have no character instances on a client yet, so the set is
-  stored per owner and applied once `bind_peer_character` binds one. No new
-  two-client harness step was added (still `10/10`); the forge case is covered at
-  the registry/taming level in the suite, not over a socket.
+  stored per owner and applied once `bind_peer_character` binds one. The
+  two-client harness now has an `equipment_recorded` step (`11/11`): the host
+  grants the item, the client claims a set over the socket (plus a wrong-slot and an
+  unknown item) and the host records only the legitimate entry. Delivery of that
+  set to a third peer is still covered in the suite, not over a socket.
 - **Disconnect eviction of `_peer_equipment`/`_peer_characters`** on the client is
   wired (`forget_peer` from `_on_peer_disconnected`, asserted in the suite). A joiner's
   own restored set is now also pushed to the peers already in its AOI
@@ -4985,5 +4987,6 @@ compatibility but ignored — `TamingSlice.is_unarmed` reads the registry.
   persists it on the peer's record. `player_damaged` stays a display update — a client
   that ignores it now diverges from the host's number instead of owning it.)**
 - **Peer equipment replication** — **(closed in Phase 47: the host records each
-  peer's worn set and the bare-hands rule reads it; AOI delivery of late joiners
-  and a socket harness step remain.)**
+  peer's worn set and the bare-hands rule reads it; late joiners are announced to
+  their AOI, and the two-client harness step `equipment_recorded` proves the
+  intent over a real socket.)**

@@ -57,6 +57,7 @@ extends Node
 ## into no-ops, and the synchronous suite cannot see it because it cannot host a pump.
 
 const PlayerSlice := preload("res://src/player/player_slice.gd")
+const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 
 ## The id the client presents on its FIRST join, well-formed but owned by nobody: the
 ## shape `PlayerRegistry.looks_like_player_id` accepts, minted by no registry. The
@@ -147,6 +148,7 @@ static func steps() -> Array:
 		{ "name": "packet_cap",        "compare": true },
 		{ "name": "rate_bucket",       "compare": true },
 		{ "name": "inventory_owner",   "compare": true },
+		{ "name": "equipment_recorded", "compare": true },
 		{ "name": "peer_damage_floor", "compare": true },
 		{ "name": "reconnect_alive",   "compare": true },
 		{ "name": "disconnect_evicts", "compare": true },
@@ -306,6 +308,7 @@ func run(root: Node, role: String) -> void:
 	await _step_packet_cap()
 	await _step_rate_bucket()
 	await _step_inventory_owner()
+	await _step_equipment_recorded()
 	await _step_peer_damage_floor()
 	await _step_reconnect_alive()
 	await _step_disconnect_evicts()
@@ -581,6 +584,51 @@ func _step_inventory_owner() -> void:
 		return
 	var ok: bool = await _await_until(func(): return _root._inventory.get_contents().has(PROBE_ITEM), STEP_TIMEOUT_SECS)
 	_report("inventory_owner", verdict(ok, true), "owner-only" if ok else "sync_never_arrived")
+
+## Step 7b — a peer's worn set crosses the socket and is recorded by the host, filtered.
+##
+## The host first puts the item in the peer's bag and syncs it (ownership is the first filter).
+## The client sends the set the way the shipped client does (the `equipment_intent` bus
+## signal, which the networking slice forwards as a packet). Alongside one legitimate entry
+## it claims an item in the WRONG slot and an unknown item: the host must record only the
+## legitimate entry, under the connection's own player id.
+func _step_equipment_recorded() -> void:
+	var slot := ""
+	var item := ""
+	var keys: Array = GameData.ITEMS.keys()
+	keys.sort()
+	for k in keys:
+		var sl := EquipmentRules.slot_of(str(k))
+		if sl != "":
+			slot = sl
+			item = str(k)
+			break
+	if item == "":
+		_report("equipment_recorded", "fail", "no_equippable_item")
+		return
+	if _role == "host":
+		var owner := _bound_id()
+		# A peer can only wear what its own bag holds: grant the item, then tell the owner
+		# (the client waits on that sync before it claims the set).
+		var bag: Node = _root._registry.get_inventory(owner)
+		if bag == null or not bag.add_item(item, 1):
+			_report("equipment_recorded", "fail", "grant_failed")
+			return
+		GameBus.inventory_synced.emit(owner, bag.get_contents(), {})
+		var ok: bool = await _await_until(
+			func(): return _root._registry.get_equipment(owner) == { slot: item }, STEP_TIMEOUT_SECS)
+		_report("equipment_recorded", verdict(ok, true),
+			"filtered" if ok else "not_recorded-%s" % str(_root._registry.get_equipment(owner)))
+		return
+	var granted: bool = await _await_until(
+		func(): return int(_root._inventory.get_contents().get(item, 0)) > 0, STEP_TIMEOUT_SECS)
+	if not granted:
+		_report("equipment_recorded", "fail", "grant_never_arrived")
+		return
+	var claim: Dictionary = { slot: item, "nonexistent_slot": item, "%s_x" % slot: "no_such_item" }
+	GameBus.equipment_intent.emit("", claim)
+	var sent: bool = await _await_until(func(): return true, 1.0)
+	_report("equipment_recorded", verdict(sent, true), "filtered" if sent else "not_sent")
 
 ## Step 8 — a creature's round against the peer, resolved and floored on the HOST.
 ##
