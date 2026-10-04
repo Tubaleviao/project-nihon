@@ -658,6 +658,10 @@ const HOST_PEER_ID := 1
 ## evaluated from here.
 var _host_position: Vector3 = Vector3.ZERO
 var _host_position_known: bool = false
+## The position the pairs were last evaluated at. The "moved" threshold is measured
+## against THIS, not against the previous frame: a per-frame step is far below the
+## threshold, so a frame-to-frame comparison would never fire while walking.
+var _host_evaluated_position: Vector3 = Vector3.ZERO
 
 ## "viewer:subject" → true for every (viewer, subject) pair whose worn set the host has
 ## sent, so a pair leaving AOI can be told to evict it and one entering can be sent it.
@@ -666,10 +670,11 @@ var _equipment_sent: Dictionary = {}
 func set_host_position(position: Vector3) -> void:
 	if _role != Role.HOST:
 		return
-	var moved := not _host_position_known or _host_position.distance_squared_to(position) > 0.25
+	var moved := not _host_position_known or _host_evaluated_position.distance_squared_to(position) > 0.25
 	_host_position = position
 	_host_position_known = true
 	if moved and _connected() and player_registry != null:
+		_host_evaluated_position = position
 		_refresh_equipment_pairs(HOST_PEER_ID)
 
 ## Peer id owning `player_id`'s avatar: its connection, or the server peer for the
@@ -758,6 +763,8 @@ func announce_equipment_to_aoi(peer_id: int) -> void:
 ## (viewer, subject) pair it is part of. A pair that ENTERED AOI is sent the subject's
 ## set; a pair that LEFT is told to evict it.
 func _refresh_equipment_pairs(moved: int) -> void:
+	if not _connected() or player_registry == null:
+		return
 	var others: Array = Array(multiplayer.get_peers())
 	others.append(HOST_PEER_ID)
 	for other in others:
