@@ -651,6 +651,10 @@ func record_equipment(player_id: String, worn: Dictionary) -> bool:
 	if rec.is_empty():
 		return false
 	var clean := EquipmentRules.sanitize(worn, GameData.ITEMS)
+	if player_id == local_player_id:
+		# The listen host records its own avatar's set directly (no intent), so that
+		# record is its report: without it `revalidate_equipment` skips the host.
+		_equipment_reported[player_id] = true
 	if clean == rec.get("equipment", {}):
 		return false
 	rec["equipment"] = clean
