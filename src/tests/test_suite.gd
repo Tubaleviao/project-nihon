@@ -2115,6 +2115,7 @@ func _test_station_placement_validation() -> void:
 	assert_true(station.try_place_station(t, Vector3(2.3, 0.0, 2.3)) != "", "first placement accepted")
 	assert_eq(station.try_place_station(t, Vector3(2.9, 0.0, 2.1)), "", "same cell refused")
 	assert_true(station.placement_blocker(t, Vector3(2.5, 0.0, 2.5)) != "", "blocker names the overlap")
+	assert_true(station.placement_blocker(t, Vector3(2.5, 7.0, 2.5)) != "", "same cell at another height refused")
 	assert_true(station.try_place_station(t, Vector3(4.5, 0.0, 2.5)) != "", "adjacent cell accepted")
 	assert_eq(station.try_place_station("NoSuchStation", Vector3(9.5, 0.0, 9.5)), "", "unknown type refused")
 	assert_eq(station.get_all_stations().size(), 2, "only accepted placements stored")

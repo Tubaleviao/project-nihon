@@ -49,6 +49,15 @@ func set_player_position(pos: Vector3) -> void:
 ## sources of station types: a recipe or a repair spec can name a station that
 ## the other never uses, and every named station must be placeable.
 func placeable_station_types() -> Array:
+	if _placeable_types_cache.is_empty():
+		_placeable_types_cache = _compute_placeable_station_types()
+	return _placeable_types_cache
+
+## Cached result of `_compute_placeable_station_types` (fabric data is static, and
+## the placement preview asks every frame). Empty means not computed yet.
+var _placeable_types_cache: Array = []
+
+func _compute_placeable_station_types() -> Array:
 	var types := {}
 	for key in GameData.RECIPES:
 		var res: Resource = GameData.RECIPES[key]
@@ -116,7 +125,8 @@ func placement_blocker(type: String, position: Vector3) -> String:
 		return "unknown station type"
 	for id in _stations:
 		var other: Vector3 = _stations[id]["position"]
-		if other.distance_to(position) < MIN_STATION_SPACING:
+		# Compare on the x/z plane: the same cell at another height still collides.
+		if Vector2(other.x - position.x, other.z - position.z).length() < MIN_STATION_SPACING:
 			return "too close to %s" % id
 	return ""
 

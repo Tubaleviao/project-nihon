@@ -369,10 +369,7 @@ func _local_worn() -> Dictionary:
 
 ## Fabric description of an item ("" when the item has no definition).
 static func item_description(item_id: String) -> String:
-	var path := "res://godot/items/%s.tres" % item_id.to_lower()
-	if not ResourceLoader.exists(path):
-		return ""
-	var res = load(path)
+	var res: Resource = GameData.ITEMS.get(item_id, null)
 	if res == null:
 		return ""
 	var d = res.get("description")
