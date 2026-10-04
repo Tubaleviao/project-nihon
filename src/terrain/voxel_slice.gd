@@ -166,6 +166,8 @@ const VEIN_DEPOSIT_INSET := 0.16
 var _chunks: Dictionary = {}
 ## Base heightmaps keyed by "x,y" string (the unedited noise terrain).
 var _heightmaps: Dictionary = {}
+## Phase 49 — generated (not built) neighbour maps, see `_generated_heightmap`.
+var _guess_heightmaps: Dictionary = {}
 ## Voxel edits keyed by "gx,gz" string → Array of typed run edits, in the order
 ## they were applied (see the class docstring), compacted past MAX_TILE_OPS. The
 ## column's runs are the tile's
@@ -297,6 +299,7 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 
 	# Remember the base heightmap so edits can be reapplied on rebuild.
 	_heightmaps[key] = heightmap
+	_guess_heightmaps.erase(key)
 
 	# Remove any previous version of this chunk.
 	if _chunks.has(key):
@@ -469,7 +472,25 @@ func _gather_neighbour_heightmaps(chunk_pos: Vector2i) -> Dictionary:
 		var ckey := _chunk_key(chunk)
 		if _heightmaps.has(ckey):
 			out[ckey] = _heightmaps[ckey]
+		else:
+			var guess: Array = [] if chunk == chunk_pos else _generated_heightmap(chunk, ckey)
+			if not guess.is_empty():
+				out[ckey] = guess
 	return out
+
+## Phase 49 — an UNBUILT neighbour's heightmap, from the terrain's deterministic generator
+## (identical to what its own build will store), so two chunks built from the same first
+## ring each see the other's real surface instead of an empty column and neither emits a
+## bedrock-to-top seam wall. Kept apart from `_heightmaps` (which means "built"): a guess
+## is dropped when that chunk builds or leaves the ring. Empty when no generator is wired.
+func _generated_heightmap(chunk: Vector2i, ckey: String) -> Array:
+	if _guess_heightmaps.has(ckey):
+		return _guess_heightmaps[ckey]
+	if terrain_slice == null or not terrain_slice.has_method("generate_heightmap"):
+		return []
+	var hm: Array = terrain_slice.generate_heightmap(chunk)
+	_guess_heightmaps[ckey] = hm
+	return hm
 
 ## The biome of every chunk the ring touches, keyed by chunk — what the colour step needs.
 ## The gather is ≤ 9 terrain-slice calls, against the 4356 a per-tile lookup would make.
@@ -941,6 +962,9 @@ func _prune_heightmaps() -> void:
 	for key in _heightmaps.keys():
 		if not keep.has(key):
 			_heightmaps.erase(key)
+	for key in _guess_heightmaps.keys():
+		if not keep.has(key):
+			_guess_heightmaps.erase(key)
 
 ## Return the set of chunks currently holding live mesh nodes.
 func get_loaded_chunks() -> Array:

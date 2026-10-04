@@ -235,6 +235,7 @@ func run() -> void:
 	_run_test("voxel: the support sampler honours a ceiling",   _test_voxel_support_sampler_under_ceiling)
 	_run_test("voxel: a legacy save migrates to run edits",     _test_voxel_legacy_edit_migration)
 	_run_test("voxel: a seam wall ignores the build order",      _test_voxel_seam_wall_order_independent)
+	_run_test("voxel: concurrent seam is exact",                 _test_voxel_concurrent_seam_exact)
 	_run_test("voxel: a tunnel floor top face mines the floor",  _test_voxel_tunnel_floor_top_face)
 	_run_test("voxel: the edit log is compacted",                _test_voxel_edit_log_is_compacted)
 	_run_test("voxel: an unknown edit op is ignored",            _test_voxel_unknown_op_is_ignored)
@@ -10779,8 +10780,12 @@ func _test_chunk_gather_carries_the_ring() -> void:
 
 	# UNKNOWN: the neighbour the gather did not carry reads as empty, which is the documented
 	# unknown-column path (`_neighbour_runs`), not an error.
+	# (Phase 49: only with no generator wired — with one, the gather carries a generated map.)
 	voxel._heightmaps.erase("1,0")
+	voxel._guess_heightmaps.erase("1,0")
+	voxel.terrain_slice = null
 	var unknown: Dictionary = VoxelSlice.build_runs(centre, hm, voxel.gather_build_input(centre, hm))
+	voxel.terrain_slice = terrain
 	assert_true((unknown["runs"][ring_key] as Array).is_empty(),
 		"a ring chunk the gather did not carry resolves as the UNKNOWN neighbour")
 
@@ -11534,3 +11539,27 @@ func _test_equipment_phase48_misc() -> void:
 	assert_false(n._equipment_eval_positions.has(2), "a disconnect drops the peer's last-evaluated position")
 	assert_true(n._equipment_eval_positions.has(3), "other peers keep theirs")
 	n.free()
+
+
+## Phase 49 — a chunk built BEFORE its neighbour reads the neighbour's generated surface,
+## so it emits the same faces as when the neighbour was built first (no bedrock-to-top
+## wall from an "unknown" neighbour).
+func _test_voxel_concurrent_seam_exact() -> void:
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	var v := VoxelSlice.new()
+	add_child(v)
+	v.terrain_slice = terrain
+	var a := Vector2i(2, 3)
+	var b := Vector2i(3, 3)
+	var hm_a: Array = terrain.generate_heightmap(a)
+	var hm_b: Array = terrain.generate_heightmap(b)
+	v.build_chunk(a, hm_a)
+	var first := v.collision_faces(a, hm_a)
+	assert_eq(v.get_heightmaps().has("3,3"), false, "the neighbour is a guess, not a built chunk")
+	v.build_chunk(b, hm_b)
+	var second := v.collision_faces(a, hm_a)
+	assert_eq(first.size(), second.size(), "first-built and after-neighbour faces match")
+	assert_eq(first, second, "the seam geometry is identical either way")
+	v.free()
+	terrain.free()
