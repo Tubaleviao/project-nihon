@@ -155,7 +155,8 @@ func _input(event: InputEvent) -> void:
 			KEY_K:
 				toggle_window(WINDOW_CHARACTER)
 			KEY_SLASH, KEY_QUESTION:
-				if event.keycode == KEY_QUESTION or event.shift_pressed:
+				# Match the produced character too: `?` is not Shift+/ on every layout.
+				if event.keycode == KEY_QUESTION or event.shift_pressed or event.unicode == 63:
 					toggle_window(WINDOW_CONTROLS)
 			KEY_ESCAPE:
 				if any_window_open():
@@ -262,7 +263,10 @@ static func parse_layout(text: String) -> Dictionary:
 	for key in WINDOW_KEYS:
 		var v = parsed.get(key, null)
 		if v is Array and v.size() == 2 and (v[0] is float or v[0] is int) and (v[1] is float or v[1] is int):
-			out[key] = Vector2(float(v[0]), float(v[1]))
+			var pos := Vector2(float(v[0]), float(v[1]))
+			# NaN/inf from a hand-edited file would poison clamp; skip the entry.
+			if is_finite(pos.x) and is_finite(pos.y):
+				out[key] = pos
 	return out
 
 static func layout_to_json(layout: Dictionary) -> String:
@@ -421,7 +425,7 @@ static func controls_rows() -> Array:
 		{"keys": "", "desc": "Place", "mouse": MOUSE_BUTTON_MIDDLE},
 		{"keys": "R", "desc": "Cycle material", "mouse": 0},
 		{"keys": "B · V", "desc": "Station cycle / place", "mouse": 0},
-		{"keys": "G", "desc": "Tame nearest creature (also Proposals)", "mouse": 0},
+		{"keys": "G", "desc": "Tame nearest creature (G is shared with Proposals)", "mouse": 0},
 		{"keys": "E", "desc": "Toggle equipment", "mouse": 0},
 		{"keys": "I · T · C · Y · M · G · K", "desc": "Inventory · Tech · Crafting · Trade · Market · Proposals · Character", "mouse": 0},
 		{"keys": "?", "desc": "This panel", "mouse": 0},
@@ -1083,12 +1087,16 @@ func _load_layout() -> void:
 		_layout = parse_layout(FileAccess.get_file_as_string(layout_path))
 
 func _save_layout() -> void:
-	var f := FileAccess.open(layout_path, FileAccess.WRITE)
+	# Write a temp file then rename, so a crash mid-write cannot truncate the layout.
+	var tmp_path := layout_path + ".tmp"
+	var f := FileAccess.open(tmp_path, FileAccess.WRITE)
 	if f == null:
-		Diag.warn("[UiSlice] cannot write %s" % layout_path)
+		Diag.warn("[UiSlice] cannot write %s" % tmp_path)
 		return
 	f.store_string(layout_to_json(_layout))
 	f.close()
+	if DirAccess.rename_absolute(tmp_path, layout_path) != OK:
+		Diag.warn("[UiSlice] cannot replace %s" % layout_path)
 
 func _apply_layout() -> void:
 	for key in _layout:

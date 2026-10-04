@@ -123,10 +123,11 @@ func _process(_delta: float) -> void:
 ## and ids are deterministic, so a reload restores the same trees; surviving trees
 ## are counted first so a chunk reload never exceeds the budget.
 func spawn_for_chunk(chunk_pos: Vector2i) -> void:
-	var entry := tree_entry_for_biome(_chunk_biome(chunk_pos))
+	var biome := _chunk_biome(chunk_pos)
+	var entry := tree_entry_for_biome(biome)
 	if entry.is_empty():
 		return
-	var budget: int = tree_count_for(chunk_pos, _chunk_biome(chunk_pos))
+	var budget: int = tree_count_for(chunk_pos, biome)
 	var existing: int = 0
 	for tid in _trees:
 		if _trees[tid]["chunk"] == chunk_pos:
