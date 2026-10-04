@@ -4286,6 +4286,10 @@ func _test_chunk_minimap_cells() -> void:
 	assert_eq(mm.get_player_cell()["chunk"], Vector2i(0, 0), "player cell resolves to chunk (0,0)")
 	assert_true(mm.is_revealed(Vector2i(0, 0)), "player's own chunk is revealed")
 	assert_true(Minimap.BIOME_COLORS.has("TemperateForest"), "biome resolves to a colour")
+	var tf: Variant = GameData.BIOMES.get("TemperateForest", null)
+	if tf != null and tf.get("surfaceTint") != null:
+		assert_eq(mm.biome_color("TemperateForest"), Color.from_string(str(tf.get("surfaceTint")), Color.BLACK), "minimap uses the fabric surface tint")
+	assert_eq(mm.biome_color("NoSuchBiome"), Color(0.4, 0.4, 0.4), "unknown biome falls back to grey")
 	mm.free()
 
 func _test_chunk_minimap_fog_of_war() -> void:
