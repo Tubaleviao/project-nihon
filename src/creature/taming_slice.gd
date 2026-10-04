@@ -25,12 +25,11 @@ extends Node
 ##
 ## Plug contract (GameBus signals consumed / emitted):
 ##   IN  : tame_requested(instance_id)
-##         tame_intent(instance_id, player_id, unarmed)  — Phase 35/36: who is
-##                                          taming, and its claim about its hands
+##         tame_intent(instance_id, player_id)  — Phase 35: who is taming
 ##   OUT : tame_resolved(result)      { instance_id, creature_id, success,
 ##                                      reason, result, player_id, flag, yields }
 ##         creature_tamed(instance_id, creature_id, player_id)
-##         tame_intent(instance_id, "", unarmed)  — client forwards to the host
+##         tame_intent(instance_id, "")  — client forwards to the host
 ##
 ## Public API (every call takes an optional `player_id`; "" means THIS machine's
 ## local player — see `resolve_player`, the Phase 34 convention):
@@ -617,22 +616,18 @@ func _emit(result: Dictionary) -> Dictionary:
 ## Host-local tame request (the player input or any host-side system). A CLIENT
 ## does not resolve a tame at all — it owns no records, so it forwards an intent
 ## to the host, which is the only machine that can grant a flag or bind a companion.
-## The forwarded intent carries the signal's legacy `unarmed` argument for wire
-## compatibility only: the host ignores it (Phase 47) and reads the peer's hands from
-## its own copy of the peer's worn set.
 func _on_tame_requested(instance_id: String) -> void:
 	if not is_authoritative:
-		GameBus.tame_intent.emit(instance_id, "", is_unarmed(""))
+		GameBus.tame_intent.emit(instance_id, "")
 		return
 	tame(instance_id, local_player_id())
 
 ## A tame intent carrying a tamer. On the host this is the resolved path (the
 ## networking slice re-emits an inbound intent with the identity it bound to that
 ## connection). On a client the same signal is the OUTBOUND one — networking
-## forwards it and this slice must not also resolve it locally. The `unarmed`
-## argument is ignored: Phase 47 replaced the claim with the host's copy of the
-## tamer's worn set (see `is_unarmed`).
-func _on_tame_intent(instance_id: String, player_id: String, _unarmed: bool) -> void:
+## forwards it and this slice must not also resolve it locally. The tamer's hands
+## are read from the host's copy of its worn set (see `is_unarmed`).
+func _on_tame_intent(instance_id: String, player_id: String) -> void:
 	if not is_authoritative:
 		return
 	tame(instance_id, player_id)

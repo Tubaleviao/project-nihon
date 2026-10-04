@@ -551,16 +551,12 @@ signal tame_requested(instance_id: String)
 ## off that player's own inventory and only that player's flags move. Host-local
 ## taming stays on `tame_requested`.
 ##
-## `unarmed` is the client's claim about its OWN hands (Phase 36), which is the only
-## equipment evidence a host can have for a peer: a body's worn gear is not
-## replicated, so the bare-hands requirement (`requiresUnarmed` in the fabric)
-## cannot be evaluated from the host's own state. It is a CLAIM — client-declared,
-## never persisted, and consumed by the resolution it accompanies — and a peer that
-## claims nothing fails the requirement closed instead of passing it for free.
+## The signal carries no claim about the tamer's hands: the host evaluates the fabric's
+## `requiresUnarmed` rule against its own record of the tamer's worn set (Phase 47/review),
+## so there is nothing a client could say about its own hands that the host would read.
 ## instance_id : String — CreatureSlice instance id
 ## player_id   : String — the tamer; "" means "the local player"
-## unarmed     : bool — the tamer's claim that its hands are empty (see above)
-signal tame_intent(instance_id: String, player_id: String, unarmed: bool)
+signal tame_intent(instance_id: String, player_id: String)
 
 ## Phase 47/Review — one equip or unequip ACTION on a player's avatar: `item_key` is the
 ## fabric item to wear in `slot`, or "" to take that slot's item off. CLIENT → host: emitted
