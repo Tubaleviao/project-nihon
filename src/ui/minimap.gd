@@ -121,7 +121,12 @@ func get_player_cell() -> Dictionary:
 	return { "chunk": world_to_chunk(_player_pos) }
 
 ## Resolve a biome key to its minimap colour.
+## Phase 49: the biome's fabric `surfaceTint` (the colour the ground actually shows) wins;
+## the hard-coded table is the fallback when the biome resource is not loaded.
 func biome_color(biome: String) -> Color:
+	var b: Variant = GameData.BIOMES.get(biome, null)
+	if b != null and b.get("surfaceTint") != null:
+		return Color.from_string(str(b.get("surfaceTint")), BIOME_COLORS.get(biome, Color(0.4, 0.4, 0.4)))
 	return BIOME_COLORS.get(biome, Color(0.4, 0.4, 0.4))
 
 # ---------------------------------------------------------------------------
