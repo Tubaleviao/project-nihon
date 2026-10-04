@@ -234,6 +234,7 @@ func _ready() -> void:
 	GameBus.inventory_synced.connect(_on_inventory_synced)
 	GameBus.equipment_intent.connect(_on_equipment_intent)
 	GameBus.equipment_changed.connect(_on_equipment_changed)
+	GameBus.equipment_revoked.connect(_on_equipment_revoked)
 	# Phase 31 — trees: a chop intent travels client → host, the resolved chop and
 	# the regrowth travel host → client.
 	GameBus.tree_chop_requested.connect(_on_tree_chop_requested)
@@ -668,6 +669,17 @@ var _host_evaluated_position: Vector3 = Vector3.ZERO
 ## sent, so a pair leaving AOI can be told to evict it and one entering can be sent it.
 var _equipment_sent: Dictionary = {}
 
+## Squared distance a CLIENT must move from where its pairs were last evaluated before
+## they are evaluated again (the host's own movement uses the same 0.5 m). A pair only
+## changes state at the AOI boundary, so AOI entry/exit lags by at most this distance.
+const EQUIPMENT_REEVAL_DIST_SQ := 0.25
+## peer_id → position that peer's pairs were last evaluated at (see above). Erased on
+## disconnect with the peer's `_equipment_sent` entries.
+var _equipment_eval_positions: Dictionary = {}
+## Pair evaluations performed (`_update_equipment_pair` calls). Test/diagnostic counter:
+## in the common no-boundary case a position report must add none.
+var equipment_pair_evaluations: int = 0
+
 func set_host_position(position: Vector3) -> void:
 	if _role != Role.HOST:
 		return
@@ -719,6 +731,17 @@ func _on_equipment_changed(player_id: String, worn: Dictionary) -> void:
 	for pid in equipment_targets(owner):
 		_send_equipment(int(pid), owner, worn)
 
+## Phase 48 — host: a worn slot was force-cleared. The owner is told through the
+## owner-only `own_state_synced` channel (`equipment` key) so its avatar drops the item
+## and its de-dup baseline resets. The listen host's own avatar is handled by game_root.
+func _on_equipment_revoked(player_id: String, worn: Dictionary) -> void:
+	if _role != Role.HOST or not _connected() or player_registry == null:
+		return
+	var owner := _equipment_owner(player_id)
+	if owner == 0 or owner == HOST_PEER_ID:
+		return
+	send_own_state(owner, { "equipment": worn.duplicate() })
+
 ## Peers (the host's own id excluded) whose AOI contains `owner`'s avatar.
 func equipment_targets(owner: int) -> Array:
 	var out: Array = []
@@ -766,6 +789,14 @@ func announce_equipment_to_aoi(peer_id: int) -> void:
 func _refresh_equipment_pairs(moved: int) -> void:
 	if not _connected() or player_registry == null:
 		return
+	# A client reports at movement rate; its pairs only change at an AOI boundary, so
+	# skip the whole pass until it has moved EQUIPMENT_REEVAL_DIST_SQ from the last one.
+	if moved != HOST_PEER_ID and has_last_known_state(moved):
+		var at := get_last_known_state(moved)
+		if _equipment_eval_positions.has(moved) \
+				and (_equipment_eval_positions[moved] as Vector3).distance_squared_to(at) <= EQUIPMENT_REEVAL_DIST_SQ:
+			return
+		_equipment_eval_positions[moved] = at
 	var others: Array = Array(multiplayer.get_peers())
 	others.append(HOST_PEER_ID)
 	for other in others:
@@ -776,6 +807,7 @@ func _refresh_equipment_pairs(moved: int) -> void:
 		_update_equipment_pair(o, moved)
 
 func _update_equipment_pair(viewer: int, subject: int) -> void:
+	equipment_pair_evaluations += 1
 	# The host never needs its own view of anyone, and a viewer without a known
 	# position has no AOI yet (the handshake / first-report paths cover it).
 	if viewer == HOST_PEER_ID or not has_last_known_state(viewer) or not _has_subject_position(subject):
@@ -793,6 +825,7 @@ func _update_equipment_pair(viewer: int, subject: int) -> void:
 
 ## Drop every sent-record involving a peer that disconnected.
 func _forget_equipment_pairs(peer_id: int) -> void:
+	_equipment_eval_positions.erase(peer_id)
 	for key in _equipment_sent.keys():
 		var parts := str(key).split(":")
 		if int(parts[0]) == peer_id or int(parts[1]) == peer_id:

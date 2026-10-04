@@ -11464,9 +11464,17 @@ func _test_equipment_revalidated_on_bag_loss() -> void:
 	assert_eq(registry.get_equipment(peer).get("Chest", ""), "VeilsteelChestplate", "worn after the claim")
 	var seen: Array = []
 	var cb := func(pid: String, worn: Dictionary) -> void: seen.append([pid, worn])
+	var revoked: Array = []
+	var rcb := func(pid: String, worn: Dictionary) -> void: revoked.append([pid, worn])
 	GameBus.equipment_changed.connect(cb)
+	GameBus.equipment_revoked.connect(rcb)
 	assert_true(inv.drop_item("VeilsteelChestplate", 1), "the peer drops it")
 	GameBus.equipment_changed.disconnect(cb)
+	GameBus.equipment_revoked.disconnect(rcb)
+	assert_eq(revoked.size(), 1, "the owner is told about the forced clear")
+	if revoked.size() == 1:
+		assert_eq(revoked[0][0], peer, "the revocation names the owner")
+		assert_true((revoked[0][1] as Dictionary).is_empty(), "and carries the emptied set")
 	assert_true(registry.get_equipment(peer).is_empty(), "the slot is cleared once the bag no longer holds it")
 	assert_eq(seen.size(), 1, "exactly one equipment_changed was emitted")
 	if seen.size() == 1:
@@ -11490,6 +11498,10 @@ func _test_equipment_phase48_misc() -> void:
 	n._equipment_sent["2:1"] = true
 	n._equipment_sent["3:2"] = true
 	n._equipment_sent["3:4"] = true
+	n._equipment_eval_positions[2] = Vector3.ZERO
+	n._equipment_eval_positions[3] = Vector3.ONE
 	n._forget_equipment_pairs(2)
 	assert_eq(n._equipment_sent.keys(), ["3:4"], "a disconnect drops every pair that involved the peer")
+	assert_false(n._equipment_eval_positions.has(2), "a disconnect drops the peer's last-evaluated position")
+	assert_true(n._equipment_eval_positions.has(3), "other peers keep theirs")
 	n.free()
