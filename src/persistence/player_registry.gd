@@ -103,11 +103,6 @@ var _players: Dictionary = {}
 ## inventory instance, so inventory is per-player without changing call sites.
 var _inventories: Dictionary = {}
 
-## player_id -> true once that player's CURRENT connection has reported a worn set.
-## Keyed by player id (the registry's own key) but scoped to the connection: `unbind_peer`
-## clears it, so a reconnect must report again.
-var _equipment_reported: Dictionary = {}
-
 ## Ids minted by this process, so two mints in the same second stay distinct.
 var _mint_counter: int = 0
 ## CSPRNG source for the id's entropy. `RandomNumberGenerator` is NOT suitable: it
@@ -129,7 +124,7 @@ var _record_loader: Callable = Callable()
 
 func _ready() -> void:
 	GameBus.player_join_intent.connect(_on_player_join_intent)
-	GameBus.equipment_intent.connect(_on_equipment_intent)
+	GameBus.equip_intent.connect(_on_equip_intent)
 	GameBus.inventory_changed.connect(_on_inventory_changed_revalidate)
 
 # ---------------------------------------------------------------------------
@@ -286,8 +281,6 @@ func unbind_peer(peer_id: int) -> String:
 		return ""
 	var player_id := str(_peer_ids[peer_id])
 	_peer_ids.erase(peer_id)
-	# A reconnect must report its worn set again; until it does the peer reads as armed.
-	_equipment_reported.erase(player_id)
 	return player_id
 
 func get_player_id(peer_id: int) -> String:
@@ -657,20 +650,11 @@ func record_equipment(player_id: String, worn: Dictionary) -> bool:
 	if rec.is_empty():
 		return false
 	var clean := EquipmentRules.sanitize(worn, GameData.ITEMS)
-	if player_id == local_player_id:
-		# The listen host records its own avatar's set directly (no intent), so that
-		# record is its report: without it `revalidate_equipment` skips the host.
-		_equipment_reported[player_id] = true
 	if clean == rec.get("equipment", {}):
 		return false
 	rec["equipment"] = clean
 	GameBus.equipment_changed.emit(player_id, clean.duplicate())
 	return true
-
-## Whether this player's client has reported a worn set on this connection. A peer that
-## never does (a modified client omitting the intent) has no evidence of free hands.
-func has_equipment_report(player_id: String) -> bool:
-	return _equipment_reported.has(player_id)
 
 func get_equipment(player_id: String) -> Dictionary:
 	var eq: Variant = get_record(player_id).get("equipment", {})
@@ -770,7 +754,6 @@ func evict_player(player_id: String) -> bool:
 	if player_id.is_empty() or is_online(player_id):
 		return false
 	var had_record := _players.erase(player_id)
-	_equipment_reported.erase(player_id)
 	var inv: Variant = _inventories.get(player_id, null)
 	if inv != null:
 		_inventories.erase(player_id)
@@ -884,38 +867,50 @@ func apply_players_data(players: Dictionary) -> void:
 # Bus
 # ---------------------------------------------------------------------------
 
-## Phase 47 — host: a peer's worn set arrived (the networking slice re-emits an
-## inbound intent under the identity bound to the connection, never a payload's).
-func _on_equipment_intent(player_id: String, worn: Dictionary) -> void:
+## Phase 47 — host: a peer asked to wear `item_key` in `slot`, or to take the slot's item off
+## (`item_key` ""). The networking slice re-emits an inbound intent under the identity bound
+## to the connection, never a payload's. The host is the only author of the worn set: an
+## action changes exactly one slot of the RECORD, so a client cannot leave gear out of a
+## report (there is none), and what the host believes is in a peer's hand is what the host
+## recorded. A refused action changes nothing and tells the owner the set it must show, so
+## its optimistically-updated avatar falls back to the record.
+func _on_equip_intent(player_id: String, slot: String, item_key: String) -> void:
 	if not is_authoritative or player_id.is_empty():
 		return
-	# A claim can name at most one item per slot, so a bigger dictionary is not a worn
-	# set at all: dropped before any per-entry work (and before touching the record).
-	if worn.size() > EquipmentRules.slots(GameData.ITEMS).size():
-		Diag.warn("PlayerRegistry: oversized worn claim from %s dropped" % player_id)
+	var rec := ensure_player(player_id)
+	if rec.is_empty():
 		return
-	# A peer can only wear what its own bag holds; the claim is filtered like any other.
-	# Once a record is non-empty it is the authority: gear an avatar's appearance recipe
-	# grants but the bag does not hold is not part of it, so a reconnect restores the
-	# recorded set only. Making the recipe a grant would let a client write any item into
-	# its own appearance, so it stays out until equip is host-authoritative.
-	var claim := EquipmentRules.sanitize(worn, GameData.ITEMS)
+	var worn: Dictionary = get_equipment(player_id)
+	if item_key == "":
+		# Taking off: only a real slot can be emptied, and an already-empty one is a no-op.
+		if worn.has(slot):
+			worn.erase(slot)
+			record_equipment(player_id, worn)
+		return
+	if not equip_allowed(player_id, slot, item_key):
+		Diag.warn("PlayerRegistry: refused equip of '%s' into '%s' for %s" % [item_key, slot, player_id])
+		GameBus.equipment_revoked.emit(player_id, worn)
+		return
+	worn[slot] = item_key
+	record_equipment(player_id, worn)
+
+## Whether `player_id` may wear `item_key` in `slot` right now: the fabric says the item
+## fits the slot and the player's own bag holds it. Fails closed on anything unknown.
+func equip_allowed(player_id: String, slot: String, item_key: String) -> bool:
+	if slot == "" or item_key == "":
+		return false
+	if EquipmentRules.slot_of(item_key, GameData.ITEMS) != slot:
+		return false
 	var inv := get_inventory(player_id)
-	var owned: Dictionary = {}
-	if inv != null:
-		for slot in claim:
-			if inv.get_item_count(str(claim[slot])) > 0:
-				owned[slot] = claim[slot]
-	_equipment_reported[player_id] = true
-	record_equipment(player_id, owned)
+	return inv != null and inv.get_item_count(item_key) > 0
 
 ## Phase 48 — host: the bag changed (drop, trade, craft, sale, ...), so any worn item
 ## the bag no longer holds comes off. Clearing goes through `record_equipment`, the
 ## same path (and the same `equipment_changed` replication) as an equip.
 func revalidate_equipment(player_id: String) -> void:
-	# Only a player that has reported on this connection: a restored record's worn set
-	# is checked by that first report, and a bag still loading must not read as empty.
-	if not is_authoritative or not _players.has(player_id) or not _equipment_reported.has(player_id):
+	# Only a player who is online: an offline record's bag is not being played, and a
+	# restored set is checked when its owner binds (`_on_player_join_intent`).
+	if not is_authoritative or not _players.has(player_id) or not is_online(player_id):
 		return
 	# Read the stored set in place: most players wear nothing, and those must cost no
 	# copy at all (this runs for every resident player on every inventory event).
@@ -945,4 +940,6 @@ func _on_inventory_changed_revalidate() -> void:
 func _on_player_join_intent(peer_id: int, claimed_id: String) -> void:
 	if not is_authoritative:
 		return
-	resolve_identity(peer_id, claimed_id)
+	var bound := resolve_identity(peer_id, claimed_id)
+	# A restored worn set is checked against the restored bag before anyone sees it.
+	revalidate_equipment(str(bound))

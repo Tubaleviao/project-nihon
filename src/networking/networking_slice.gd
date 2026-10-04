@@ -236,7 +236,7 @@ func _ready() -> void:
 	GameBus.creature_state_changed.connect(_on_creature_state_changed)
 	GameBus.remote_player_state.connect(_on_remote_player_state)
 	GameBus.inventory_synced.connect(_on_inventory_synced)
-	GameBus.equipment_intent.connect(_on_equipment_intent)
+	GameBus.equip_intent.connect(_on_equip_intent)
 	GameBus.equipment_changed.connect(_on_equipment_changed)
 	GameBus.equipment_revoked.connect(_on_equipment_revoked)
 	# Phase 31 — trees: a chop intent travels client → host, the resolved chop and
@@ -655,12 +655,13 @@ func _on_tame_intent(instance_id: String, _player_id: String, _unarmed: bool) ->
 		return
 	_broadcast({ "type": "tame_intent", "instance_id": instance_id })
 
-## Phase 47 — client → host: this machine's worn set ({slot: item_key}). Carries no
-## identity: the host binds it to the connection.
-func _on_equipment_intent(_player_id: String, worn: Dictionary) -> void:
+## Phase 47 — client → host: one equip / unequip action on this machine's avatar (`item_key`
+## "" unequips `slot`). Carries no identity: the host binds it to the connection and decides
+## whether it holds; the client's own avatar only shows the result optimistically.
+func _on_equip_intent(_player_id: String, slot: String, item_key: String) -> void:
 	if _role != Role.CLIENT:
 		return
-	_broadcast({ "type": "equipment_intent", "worn": worn })
+	_broadcast({ "type": "equip_intent", "slot": slot, "item": item_key })
 
 ## Peer id the host addresses its own avatar by (the server peer).
 const HOST_PEER_ID := 1
@@ -1390,16 +1391,17 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				tamer,
 				false
 			)
-		"equipment_intent":
-			# Phase 47 — the worn set is recorded for the connection's player, never
-			# for a name in the payload; the registry filters it through the fabric.
+		"equip_intent":
+			# Phase 47 — a worn-slot action is applied to the connection's player, never
+			# to a name in the payload; the registry checks it against the fabric and the bag.
 			var wearer := _actor_id(sender)
 			if wearer == "":
-				_refuse_unhandshaked(sender, "equipment_intent")
+				_refuse_unhandshaked(sender, "equip_intent")
 				return
-			var claimed: Variant = payload.get("worn", {})
-			if claimed is Dictionary:
-				GameBus.equipment_intent.emit(wearer, claimed)
+			var slot: Variant = payload.get("slot", "")
+			var item: Variant = payload.get("item", "")
+			if slot is String and item is String:
+				GameBus.equip_intent.emit(wearer, slot, item)
 		"block_edit_intent":
 			# Phase 36 — a world edit needs a bound identity AND a target within the
 			# host's evidence of arm's reach. The block position arrives as a bare

@@ -78,3 +78,22 @@ static func totals(worn: Dictionary, items: Dictionary) -> Dictionary:
 ## Whether the MainHand holds something (the fabric's bare-hands rule reads this).
 static func hands_free(worn: Dictionary) -> bool:
 	return str(worn.get("MainHand", "")) == ""
+
+## The equip actions that turn worn set `from` into `to`: one { slot, item } per slot whose
+## item differs, `item` "" for a slot that was emptied. Sorted by slot so the order is stable.
+static func diff_actions(from: Dictionary, to: Dictionary) -> Array:
+	var slots: Array = []
+	for slot in from:
+		if not slots.has(slot):
+			slots.append(slot)
+	for slot in to:
+		if not slots.has(slot):
+			slots.append(slot)
+	slots.sort()
+	var out: Array = []
+	for slot in slots:
+		var was := str(from.get(slot, ""))
+		var now := str(to.get(slot, ""))
+		if was != now:
+			out.append({ "slot": str(slot), "item": now })
+	return out

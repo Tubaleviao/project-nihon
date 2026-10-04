@@ -202,7 +202,8 @@ func run() -> void:
 	_run_test("taming: bare hands required",                   _test_taming_requires_unarmed)
 	_run_test("taming: a peer's hands are the host's record",   _test_taming_peer_bare_hands_claim)
 	_run_test("equipment: an intent needs an owned item",       _test_equipment_intent_requires_ownership)
-	_run_test("equipment: oversized claim dropped",             _test_equipment_oversized_claim_dropped)
+	_run_test("equipment: equip actions are host-authoritative", _test_equip_intent_is_host_authoritative)
+	_run_test("equipment: the client diffs gear into actions",  _test_equip_actions_diff)
 	_run_test("equipment: bag loss clears the slot",            _test_equipment_revalidated_on_bag_loss)
 	_run_test("equipment: slots cached, peer evict, owner map", _test_equipment_phase48_misc)
 	_run_test("equipment: rules totals + sanitize",             _test_equipment_rules_totals)
@@ -8547,7 +8548,7 @@ func _test_taming_peer_bare_hands_claim() -> void:
 	_taming_stand_near(registry, peer, c, fox)
 
 	# The host recorded a weapon in the peer's hand: a "bare hands" claim is ignored.
-	assert_false(taming.is_unarmed(peer), "a peer that never reported a worn set is treated as armed")
+	assert_true(taming.is_unarmed(peer), "a peer with nothing recorded in hand is bare-handed (the host authors the set)")
 	assert_true(registry.record_equipment(peer, { "MainHand": "VeilsteelLongsword" }), "the host records the worn sword")
 	assert_false(taming.is_unarmed(peer), "a peer wearing a sword is armed")
 	var forged: Dictionary = _taming_tame_via_intent(fox, peer, true)
@@ -8555,11 +8556,8 @@ func _test_taming_peer_bare_hands_claim() -> void:
 	assert_eq(inv.get_item_count("FieldRations"), 1, "and spends nothing")
 
 	# Hands recorded free: the tame goes through even when the payload claims armed.
-	registry.record_equipment(peer, {})
-	assert_false(taming.is_unarmed(peer), "an empty record without a report is still armed")
-	GameBus.equipment_intent.emit(peer, {})
-	assert_true(registry.has_equipment_report(peer), "an equipment intent marks the peer as reported")
-	assert_true(taming.is_unarmed(peer), "a reported empty set is bare hands")
+	GameBus.equip_intent.emit(peer, "MainHand", "")
+	assert_true(taming.is_unarmed(peer), "unequipping the sword frees the hands")
 	var honest: Dictionary = _taming_tame_via_intent(fox, peer, false)
 	assert_true(bool(honest.get("success", false)), "the recorded set satisfies the rule whatever the payload claims")
 	assert_eq(inv.get_item_count("FieldRations"), 0, "and the offering is spent")
@@ -8778,8 +8776,6 @@ func _test_taming_is_per_player() -> void:
 	for tamer in [alice, bob]:
 		rig["crafting"].set_skill_for(str(tamer), "Unarmed", "journeyman")
 		rig["crafting"].set_skill_for(str(tamer), "Alchemy", "apprentice")
-		# A real client reports its (empty) worn set on join; the host trusts nothing less.
-		GameBus.equipment_intent.emit(str(tamer), {})
 	_taming_stand_near(registry, alice, c, target)
 	_taming_stand_near(registry, bob, c, target)
 	# Only BOB carries the offering: a feed by alice must not spend bob's ration.
@@ -9272,7 +9268,6 @@ func _test_taming_mirrors_evicted_on_forget() -> void:
 	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
 	var alice: String = str(registry.resolve_identity(2))
 	rig["crafting"].set_skill_for(alice, "Unarmed", "journeyman")
-	GameBus.equipment_intent.emit(alice, {})
 	_taming_stand_near(registry, alice, c, target)
 	var tamed: Dictionary = _taming_tame_via_intent(target, alice)
 	assert_eq(str(tamed.get("reason", "no_result")), "", "alice's tame is not refused")
@@ -11901,35 +11896,62 @@ func _test_spawn_tree_density() -> void:
 	t.free()
 
 ## Phase 47 review — the host records only the gear the peer's own bag holds, so an
-## equipment intent cannot conjure an item the peer never owned.
+## equip action cannot conjure an item the peer never owned.
 func _test_equipment_intent_requires_ownership() -> void:
 	var registry := PlayerRegistry.new()
 	add_child(registry)
 	var peer := str(registry.resolve_identity(2))
-	GameBus.equipment_intent.emit(peer, { "Chest": "VeilsteelChestplate" })
+	var revoked: Array = []
+	var rcb := func(pid: String, worn: Dictionary) -> void: revoked.append([pid, worn])
+	GameBus.equipment_revoked.connect(rcb)
+	GameBus.equip_intent.emit(peer, "Chest", "VeilsteelChestplate")
 	assert_true(registry.get_equipment(peer).is_empty(), "an unowned chestplate is not recorded")
+	assert_eq(revoked.size(), 1, "the refused equip tells the owner what it must show")
+	if revoked.size() == 1:
+		assert_eq(revoked[0][0], peer, "the correction names the owner")
+		assert_true((revoked[0][1] as Dictionary).is_empty(), "and carries the host's (empty) set")
 	assert_true(registry.get_inventory(peer).add_item("VeilsteelChestplate", 1), "the peer picks one up")
-	GameBus.equipment_intent.emit(peer, { "Chest": "VeilsteelChestplate" })
+	GameBus.equip_intent.emit(peer, "Chest", "VeilsteelChestplate")
 	assert_eq(registry.get_equipment(peer).get("Chest", ""), "VeilsteelChestplate", "an owned one is recorded")
+	assert_eq(revoked.size(), 1, "an accepted equip needs no correction")
+	GameBus.equipment_revoked.disconnect(rcb)
 	registry.free()
 
-
-## Phase 48 — a claim with more entries than there are slots is dropped before any
-## per-entry work, leaving the record untouched.
-func _test_equipment_oversized_claim_dropped() -> void:
+## Host-authoritative equip — an action touches exactly one slot of the record. A wrong-slot
+## item, an unknown item and an unknown slot are refused; taking an item off clears only
+## its slot; omitting gear is not expressible, so a worn weapon stays recorded.
+func _test_equip_intent_is_host_authoritative() -> void:
 	var registry := PlayerRegistry.new()
 	add_child(registry)
 	var peer := str(registry.resolve_identity(2))
-	registry.get_inventory(peer).add_item("VeilsteelChestplate", 1)
-	GameBus.equipment_intent.emit(peer, { "Chest": "VeilsteelChestplate" })
-	var before := registry.get_equipment(peer)
-	assert_false(before.is_empty(), "a sane claim is recorded")
-	var big: Dictionary = {}
-	for i in range(EquipmentRules.slots(GameData.ITEMS).size() + 1):
-		big["Slot%d" % i] = "VeilsteelChestplate"
-	GameBus.equipment_intent.emit(peer, big)
-	assert_eq(registry.get_equipment(peer), before, "an oversized claim leaves the record untouched")
+	var inv: Node = registry.get_inventory(peer)
+	inv.add_item("VeilsteelChestplate", 1)
+	inv.add_item("VeilsteelLongsword", 1)
+	GameBus.equip_intent.emit(peer, "Chest", "VeilsteelChestplate")
+	GameBus.equip_intent.emit(peer, "MainHand", "VeilsteelLongsword")
+	assert_eq(registry.get_equipment(peer), { "Chest": "VeilsteelChestplate", "MainHand": "VeilsteelLongsword" }, "two actions, two slots")
+	GameBus.equip_intent.emit(peer, "Head", "VeilsteelChestplate")
+	GameBus.equip_intent.emit(peer, "Head", "NoSuchItem")
+	GameBus.equip_intent.emit(peer, "NoSuchSlot", "VeilsteelChestplate")
+	GameBus.equip_intent.emit(peer, "Chest", "")
+	assert_eq(registry.get_equipment(peer), { "MainHand": "VeilsteelLongsword" }, "bad actions change nothing; unequip clears only its slot")
+	GameBus.equip_intent.emit(peer, "Chest", "")
+	assert_eq(registry.get_equipment(peer), { "MainHand": "VeilsteelLongsword" }, "unequipping an empty slot is a no-op")
+	assert_true(registry.equip_allowed(peer, "MainHand", "VeilsteelLongsword"), "equip_allowed accepts an owned, fitting item")
+	assert_false(registry.equip_allowed(peer, "Chest", "VeilsteelLongsword"), "a sword does not fit the chest")
+	assert_false(registry.equip_allowed(peer, "", "VeilsteelLongsword"), "an empty slot fails closed")
+	assert_false(registry.equip_allowed(peer, "MainHand", ""), "an empty item fails closed")
 	registry.free()
+
+## Host-authoritative equip — the client diffs its avatar's set into per-slot actions.
+func _test_equip_actions_diff() -> void:
+	assert_eq(EquipmentRules.diff_actions({}, {}), [], "no change, no action")
+	assert_eq(EquipmentRules.diff_actions({}, { "Chest": "A" }), [{ "slot": "Chest", "item": "A" }], "a new item is an equip")
+	assert_eq(EquipmentRules.diff_actions({ "Chest": "A" }, {}), [{ "slot": "Chest", "item": "" }], "a removed item is an unequip")
+	assert_eq(EquipmentRules.diff_actions({ "Chest": "A" }, { "Chest": "B" }), [{ "slot": "Chest", "item": "B" }], "a swap is one equip")
+	assert_eq(EquipmentRules.diff_actions({ "Chest": "A", "Head": "H" }, { "Chest": "A", "MainHand": "S" }),
+		[{ "slot": "Head", "item": "" }, { "slot": "MainHand", "item": "S" }], "only differing slots, sorted")
+
 
 ## Phase 48 — wearing an item and then losing it from the bag clears the slot and
 ## emits equipment_changed through the same record path as an equip.
@@ -11939,8 +11961,8 @@ func _test_equipment_revalidated_on_bag_loss() -> void:
 	var peer := str(registry.resolve_identity(2))
 	var inv: Node = registry.get_inventory(peer)
 	inv.add_item("VeilsteelChestplate", 1)
-	GameBus.equipment_intent.emit(peer, { "Chest": "VeilsteelChestplate" })
-	assert_eq(registry.get_equipment(peer).get("Chest", ""), "VeilsteelChestplate", "worn after the claim")
+	GameBus.equip_intent.emit(peer, "Chest", "VeilsteelChestplate")
+	assert_eq(registry.get_equipment(peer).get("Chest", ""), "VeilsteelChestplate", "worn after the action")
 	var seen: Array = []
 	var cb := func(pid: String, worn: Dictionary) -> void: seen.append([pid, worn])
 	var revoked: Array = []

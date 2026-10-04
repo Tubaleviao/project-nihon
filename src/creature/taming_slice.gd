@@ -202,20 +202,16 @@ func is_tameable(creature_id: String) -> bool:
 ## the equipped MainHand (the same rule the client applies to itself).
 ##
 ## A REMOTE peer's hands are read from the HOST's own copy of that peer's worn set
-## (`PlayerRegistry.get_equipment`, Phase 47) — never from the tame intent. The
-## set reaches the host through the peer's equipment intent, which is validated
-## against the fabric's slot table and recorded under the identity bound to the
-## connection, so a client cannot claim gear it does not hold. It does NOT stop a client
-## from OMITTING gear it does hold: the host never sees the equip action, so a modified
-## client reporting `worn = {}` reads as unarmed. Closing that needs host-authoritative
-## equip (Phase 48+). A host with no registry wired, or a peer that has not reported a
-## worn set this session, fails closed (armed).
+## (`PlayerRegistry.get_equipment`, Phase 47) — never from the tame intent. That set is
+## authored by the host: a peer's equip / unequip ACTIONS (`equip_intent`) are validated
+## against the fabric slot table and the peer's bag and applied to the record under the
+## identity bound to the connection. A client has no worn set to report, so it cannot
+## claim gear it does not hold, nor leave out gear it does: what is in the hand is what
+## the host recorded. A host with no registry wired fails closed (armed).
 func is_unarmed(player_id: String = "") -> bool:
 	var pid := resolve_player(player_id)
 	if pid != local_player_id():
 		if player_registry == null or not player_registry.has_method("get_equipment"):
-			return false
-		if player_registry.has_method("has_equipment_report") and not player_registry.has_equipment_report(pid):
 			return false
 		return EquipmentRules.hands_free(player_registry.get_equipment(pid))
 	if character_slice == null:

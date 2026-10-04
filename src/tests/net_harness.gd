@@ -606,10 +606,10 @@ const EQUIPMENT_FIXTURE_ITEM := "FerriteHelmet"
 ## Step 7b — a peer's worn set crosses the socket and is recorded by the host, filtered.
 ##
 ## The host first puts the item in the peer's bag and syncs it (ownership is the first filter).
-## The client sends the set the way the shipped client does (the `equipment_intent` bus
-## signal, which the networking slice forwards as a packet). Alongside one legitimate entry
-## it claims an item in the WRONG slot and an unknown item: the host must record only the
-## legitimate entry, under the connection's own player id.
+## The client sends equip ACTIONS the way the shipped client does (the `equip_intent` bus
+## signal, which the networking slice forwards as a packet). Alongside one legitimate action
+## it asks for an unknown slot and an unknown item in a real slot: the host must record only
+## the legitimate one, under the connection's own player id.
 func _step_equipment_recorded() -> void:
 	var slot := ""
 	var item := ""
@@ -646,24 +646,28 @@ func _step_equipment_recorded() -> void:
 	# record), so waiting on its own pack is no barrier: a claim sent before the host grants
 	# is filtered as unowned. The intent is idempotent, so it is re-sent while the host
 	# grants and records, and the host's record is the verdict.
-	# Beside the real claim: an item in an unknown slot, and an unknown item in a REAL slot
+	# Beside the real action: an item in an unknown slot, and an unknown item in a REAL slot
 	# (a different one, so it cannot overwrite the claimed slot's key).
-	var claim: Dictionary = { slot: item, "nonexistent_slot": item }
+	var bad_slot := ""
 	for other_slot in EquipmentRules.slots(GameData.ITEMS):
 		if other_slot != slot:
-			claim[other_slot] = "no_such_item"
+			bad_slot = str(other_slot)
 			break
-	# The client's verdict is that every claim actually went out: a counter on the intent
+	# The client's verdict is that every action actually went out: a counter on the intent
 	# signal, not an assumption (the host's record is still the real check). "not_sent" is
 	# reachable if the signal is ever rewired or a send is skipped.
 	var sent := [0]
-	var count := func(_player: String, _worn: Dictionary): sent[0] += 1
-	GameBus.equipment_intent.connect(count)
+	var count := func(_player: String, _slot: String, _item: String): sent[0] += 1
+	GameBus.equip_intent.connect(count)
 	for i in EQUIPMENT_RESENDS:
-		GameBus.equipment_intent.emit("", claim.duplicate())
+		GameBus.equip_intent.emit("", slot, item)
+		GameBus.equip_intent.emit("", "nonexistent_slot", item)
+		if bad_slot != "":
+			GameBus.equip_intent.emit("", bad_slot, "no_such_item")
 		await _await_settle(EQUIPMENT_RESEND_GAP)
-	GameBus.equipment_intent.disconnect(count)
-	var all_sent: bool = sent[0] == EQUIPMENT_RESENDS
+	GameBus.equip_intent.disconnect(count)
+	var expected_sent: int = EQUIPMENT_RESENDS * (3 if bad_slot != "" else 2)
+	var all_sent: bool = sent[0] == expected_sent
 	_report("equipment_recorded", verdict(all_sent, true), "filtered" if all_sent else "not_sent-%d" % sent[0])
 
 ## Step 8 — a creature's round against the peer, resolved and floored on the HOST.

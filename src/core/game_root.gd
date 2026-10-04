@@ -4,6 +4,7 @@ extends Node
 ## Slices communicate exclusively through GameBus signals. This script
 ## instantiates slices, sets cross-slice references that cannot travel the bus,
 ## and drives the startup sequence (tests → GameData check → terrain boot).
+const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const Diag := preload("res://src/core/diag.gd")
 
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
@@ -1500,11 +1501,18 @@ func _snapshot_local_player() -> void:
 ## Phase 47 — make the local avatar wear a recorded set. The `_applying_equipment`
 ## guard keeps the restore from echoing back out as a fresh intent.
 var _applying_equipment: bool = false
-## Last worn set this client forwarded; an appearance change that leaves gear alone sends nothing.
+## Worn set this client last matched against the host (what it has already sent actions for);
+## an appearance change that leaves gear alone sends nothing.
 var _last_sent_equipment: Dictionary = {}
 func _apply_local_equipment(worn: Variant) -> void:
 	var char_id: String = _character.get_player_character()
 	if char_id == "" or not (worn is Dictionary):
+		return
+	if _is_client:
+		# The host's record is the only worn set: the avatar shows exactly that, an empty
+		# record included (gear an appearance recipe lists but the host never granted is not
+		# worn). Nothing is reported back; the client only ever sends equip actions.
+		_apply_host_equipment(worn)
 		return
 	# An empty record (fresh player, or a pre-Phase-47 save with no worn set) carries no
 	# information: the avatar keeps the gear its appearance recipe gave it, and that
@@ -1513,14 +1521,8 @@ func _apply_local_equipment(worn: Variant) -> void:
 		_applying_equipment = true
 		_character.apply_equipment_set(char_id, worn)
 		_applying_equipment = false
-	elif not _is_client and not _registry.local_player_id.is_empty():
+	elif not _registry.local_player_id.is_empty():
 		_registry.record_equipment(_registry.local_player_id, _character.get_equipment_set(char_id))
-	if _is_client:
-		# Seed the de-dup baseline with the restored set (so unequipping the last
-		# restored item still differs from it) and report the set to the host: the
-		# host treats a peer that never reported as armed.
-		_last_sent_equipment = _character.get_equipment_set(char_id).duplicate()
-		GameBus.equipment_intent.emit("", _last_sent_equipment.duplicate())
 
 ## Phase 48 — the host force-cleared worn slots (an item left the bag). Unlike
 ## `_apply_local_equipment` an EMPTY set is meaningful here and strips the avatar. The
@@ -1541,17 +1543,17 @@ func _on_equipment_revoked(player_id: String, worn: Dictionary) -> void:
 		return
 	_apply_host_equipment(worn)
 
-## Phase 47 — the local avatar's gear changed. A host records it; a client forwards
-## the set as an intent (the host validates it and replicates it to nearby peers).
+## Phase 47 — the local avatar's gear changed. A host records it; a client turns the change
+## into one equip / unequip ACTION per differing slot (the host validates each against the
+## fabric and the bag, applies it to its own record and replicates it to nearby peers).
 func _on_character_appearance_changed(instance_id: String, _appearance: Dictionary) -> void:
 	if _applying_equipment or instance_id != _character.get_player_character():
 		return
 	var worn: Dictionary = _character.get_equipment_set(instance_id)
 	if _is_client:
-		if worn == _last_sent_equipment:
-			return
+		for action in EquipmentRules.diff_actions(_last_sent_equipment, worn):
+			GameBus.equip_intent.emit("", str(action["slot"]), str(action["item"]))
 		_last_sent_equipment = worn.duplicate()
-		GameBus.equipment_intent.emit("", worn)
 	elif not _registry.local_player_id.is_empty():
 		_registry.record_equipment(_registry.local_player_id, worn)
 
