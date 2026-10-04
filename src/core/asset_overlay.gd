@@ -23,6 +23,7 @@ extends Node
 ##
 ## This same pack-mount mechanism is how paid DLC content packs will be
 ## layered in later — a .pck is the unit of optional content.
+const Diag := preload("res://src/core/diag.gd")
 
 const PCK_NAME := "assets.pck"
 ## Internal namespace inside `assets.pck` for production-art overrides.

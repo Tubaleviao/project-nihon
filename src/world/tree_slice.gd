@@ -31,6 +31,7 @@ extends Node
 ##   get_all_trees() / trees_in_chunk(chunk_pos) -> Array
 ##   chop_tree(tree_id, player_id) -> Dictionary  { success, wood, quantity, reason }
 ##   apply_chop_state(tree_id, respawn_at) -> void   (client-side host state)
+const Diag := preload("res://src/core/diag.gd")
 
 const MultimeshPool := preload("res://src/core/multimesh_pool.gd")
 const MeshUtil      := preload("res://src/core/mesh_util.gd")

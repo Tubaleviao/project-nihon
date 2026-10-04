@@ -10,6 +10,7 @@ extends Node
 ##   get_position()   -> Vector3
 ##   get_hp()         -> float
 ##   take_damage(dmg) -> void
+const Diag := preload("res://src/core/diag.gd")
 
 const SPEED        := 4.5     # m/s horizontal
 const JUMP_FORCE   := 5.0     # m/s vertical

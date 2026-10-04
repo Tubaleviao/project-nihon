@@ -72,6 +72,7 @@ extends Node
 ##   get_last_known_states() -> Dictionary         — Phase 19
 ##   has_last_known_state(peer_id) -> bool
 ##   request_handshake() -> void                   — re-present the join intent
+const Diag := preload("res://src/core/diag.gd")
 
 enum Role { OFFLINE, HOST, CLIENT }
 

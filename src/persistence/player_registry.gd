@@ -59,6 +59,7 @@ extends Node
 ##   get_player_data(player_id) -> Dictionary    — serializable record
 ##   apply_player_data(player_id, data) -> void
 ##   get_players_data() -> Dictionary / apply_players_data(data) -> void
+const Diag := preload("res://src/core/diag.gd")
 
 const InventorySlice := preload("res://src/inventory/inventory_slice.gd")
 

@@ -40,6 +40,7 @@ extends Node
 ##   update_lod(viewer_pos) / lod_level_for_distance(d)    -> void / int
 ##   get_instance_lod(instance_id) / is_impostor_visible() -> int / bool
 ##   is_part_visible(instance_id, part_key)                -> bool
+const Diag := preload("res://src/core/diag.gd")
 
 const Locomotion  := preload("res://src/character/locomotion.gd")
 const SkeletonRig := preload("res://src/character/skeleton_rig.gd")

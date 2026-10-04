@@ -30,6 +30,7 @@ extends Node
 ## most one entry per known window key, is overwritten in place, and unknown keys
 ## are dropped on load, so nothing accumulates and there is no per-connection
 ## state to evict.
+const Diag := preload("res://src/core/diag.gd")
 
 const WINDOW_INVENTORY  := "inventory"
 const WINDOW_TECHNOLOGY := "technology"

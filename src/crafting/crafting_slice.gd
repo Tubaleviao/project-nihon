@@ -56,6 +56,7 @@ extends Node
 ## which live in the player's own inventory. It used to read `inventory_slice`
 ## directly, so a remote peer's repair either did nothing (no intent existed) or
 ## spent the host's materials on the host's tool.
+const Diag := preload("res://src/core/diag.gd")
 
 ## Shared skill-tier ordering (novice → master) — see src/core/skill_tiers.gd.
 const SkillTiers := preload("res://src/core/skill_tiers.gd")

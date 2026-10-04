@@ -35,6 +35,7 @@ extends Node
 ##   use_item(item_id, action_type)   -> bool
 ##   repair_item(item_id)             -> bool
 ##   transfer(src, dst, counts)       -> Dictionary { success, reason }  (static)
+const Diag := preload("res://src/core/diag.gd")
 
 ## Inventory capacity comes from the Inventory entity in the fabric
 ## (GameData.PLAYERS["Inventory"].maxSlots / maxWeightKg), loaded in _ready().

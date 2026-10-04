@@ -92,6 +92,7 @@ extends Node
 ## one per tile. That is what makes building on another thread affordable in the
 ## first place, and the merge key — material/colour — is exactly the attribute a
 ## merged quad has to share.
+const Diag := preload("res://src/core/diag.gd")
 
 ## Shared box authoring for the vein deposits (Phase 31).
 const MeshUtil := preload("res://src/core/mesh_util.gd")

@@ -1,4 +1,3 @@
-class_name Diag
 extends RefCounted
 ## Routes slice diagnostics to the engine log. The test suite deliberately drives
 ## refusal and failure paths; while `quiet` is set those lines print as one plain

@@ -4,6 +4,7 @@ extends Node
 ## Slices communicate exclusively through GameBus signals. This script
 ## instantiates slices, sets cross-slice references that cannot travel the bus,
 ## and drives the startup sequence (tests → GameData check → terrain boot).
+const Diag := preload("res://src/core/diag.gd")
 
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const VoxelSlice       := preload("res://src/terrain/voxel_slice.gd")

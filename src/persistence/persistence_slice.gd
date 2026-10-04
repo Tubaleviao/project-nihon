@@ -52,6 +52,7 @@ extends Node
 ##   poll_due(elapsed, interval)       -> bool  (static, pure, general cadence)
 ##   resolved_shutdown_poll_interval(v)-> float (static, pure)
 ##   merge_creature_states(base, inc)  -> Array (static, pure)
+const Diag := preload("res://src/core/diag.gd")
 
 const SAVE_DIR  := "user://saves/"
 const SAVE_EXT  := ".json"

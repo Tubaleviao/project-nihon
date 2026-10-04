@@ -6,6 +6,7 @@ extends Node
 ## Summary is printed to the Godot output log.
 ##
 ## Run from game_root by instantiating this node and calling run().
+const Diag := preload("res://src/core/diag.gd")
 
 # Preload slices so tests are isolated from the main scene tree.
 const BattleSlice     := preload("res://src/battle/battle_slice.gd")
