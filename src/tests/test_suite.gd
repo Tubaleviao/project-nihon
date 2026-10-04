@@ -11070,7 +11070,7 @@ func _test_ore_uniform_draw_gone() -> void:
 	for cz in range(-12, 12):
 		for cx in range(-12, 12):
 			var chunk := Vector2i(cx, cz)
-			if TerrainSlice.biome_for_chunk(chunk) != "VolcanicBadlands":
+			if TerrainSlice.biome_for_chunk(chunk, seed) != "VolcanicBadlands":
 				continue
 			var n := 0
 			var cache: Dictionary = {}

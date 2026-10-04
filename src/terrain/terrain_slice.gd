@@ -118,7 +118,7 @@ func get_biome_at_chunk(chunk_pos: Vector2i) -> String:
 	return biome_for_chunk(chunk_pos, _world_seed)
 
 ## Phase 43 — the STATIC form of `get_biome_at_chunk`: a pure function of the chunk and the
-## `BIOME_SEED` const, so the ore field (`src/terrain/ore_field.gd`) can ask a vein's biome on
+## world seed (default `BIOME_SEED`), so the ore field (`src/terrain/ore_field.gd`) can ask a vein's biome on
 ## a worker thread without a terrain-slice reference.
 static func biome_for_chunk(chunk_pos: Vector2i, seed_v: int = BIOME_SEED) -> String:
 	return ClimateField.biome_for_chunk(seed_v, chunk_pos, BIOME_KEYS)
