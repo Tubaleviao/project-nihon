@@ -91,6 +91,11 @@ const CELL_DEPTH := 4.0
 ## The chance a cell holds a vein at all (before the material gate, which can still empty it).
 const VEIN_CHANCE := 0.55
 
+## Of the veins whose blob reaches the natural surface, the share that is kept. A surface-
+## breaking vein (and its deposit marker) is the exception; the rest of the top cell's
+## veins are pushed out of view by this roll, so most ground is plain topsoil over rock.
+const SURFACE_VEIN_CHANCE := 0.2
+
 ## Blob size: horizontal radius in TILES, vertical half-height in world units.
 const RADIUS_MIN_TILES := 2.0
 const RADIUS_MAX_TILES := 4.0
@@ -128,6 +133,7 @@ const _SALT_QUANTITY := 8
 const _SALT_RESERVE := 9
 const _SALT_SHAPE := 10
 const _SALT_LEY := 11
+const _SALT_SURFACE := 12
 
 ## material key → `{ "min": float, "max": float, "ley": bool }`, read off the generated
 ## fabric resources (`depthBand`, `leyGated`). Filled on the MAIN thread by `warm()` —
@@ -213,6 +219,9 @@ static func _build_vein(seed: int, cell: Vector3i) -> Dictionary:
 	# shallow vein, and its marker, where a player can see it from above.
 	var top_margin := 0.0 if cell.y == 0 else vmargin
 	var cd := float(cell.y) * CELL_DEPTH + top_margin + _unit(_hash(seed, cell, _SALT_DEPTH)) * (CELL_DEPTH - vmargin - top_margin)
+	if cell.y == 0 and cd - HALF_HEIGHT_MAX * (1.0 + SHAPE_NOISE) < 0.0 \
+			and _unit(_hash(seed, cell, _SALT_SURFACE)) >= SURFACE_VEIN_CHANCE:
+		return {}
 	var anchor := Vector2i(floori(cx), floori(cz))
 	var center_xz := Vector2(cx * TILE_SIZE, cz * TILE_SIZE)
 	var biome := TerrainSlice.biome_for_chunk(Vector2i(
