@@ -116,10 +116,7 @@ func _ready() -> void:
 	GameBus.technology_unlocked.connect(_on_technology_unlocked)
 	GameBus.item_picked_up.connect(_on_item_picked_up)
 	GameBus.inventory_changed.connect(_on_inventory_changed)
-	GameBus.character_appearance_changed.connect(func(iid, _app):
-		# Only the local avatar's gear is shown in the window; NPC changes are noise.
-		if character_slice == null or str(iid) == str(character_slice.get_player_character()):
-			refresh_character())
+	GameBus.character_appearance_changed.connect(_on_character_appearance_changed)
 	GameBus.block_mined.connect(_on_block_mined)
 	GameBus.block_placed.connect(_on_block_placed)
 	GameBus.market_listing_created.connect(_on_market_listing_created)
@@ -666,8 +663,14 @@ func _on_slot_gui_input(event: InputEvent, item_id: String, actions: Array) -> v
 func _on_slot_menu_pressed(index: int) -> void:
 	if index < 0 or index >= _slot_menu_actions.size():
 		return
+	# No refresh here: a worn-set change emits `character_appearance_changed`, which is what
+	# redraws the window, and an action that changed nothing has nothing to redraw.
 	dispatch_item_action(_slot_menu_item, str(_slot_menu_actions[index]["action"]))
-	refresh_character()
+
+## Only the local avatar's gear is shown in the Character window; NPC changes are noise.
+func _on_character_appearance_changed(iid: String, _appearance: Dictionary) -> void:
+	if character_slice == null or str(iid) == str(character_slice.get_player_character()):
+		refresh_character()
 
 func refresh_character() -> void:
 	if _character_grid == null:

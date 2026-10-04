@@ -61,8 +61,11 @@ func placeable_station_types() -> Array:
 ## Cached result of `_compute_placeable_station_types` (fabric data is static, and
 ## the placement preview asks every frame). Empty means not computed yet.
 var _placeable_types_cache: Array = []
+## How many times the fabric scan ran (a counter for tests: the preview must not trigger one).
+var placeable_scan_count: int = 0
 
 func _compute_placeable_station_types() -> Array:
+	placeable_scan_count += 1
 	var types := {}
 	for key in GameData.RECIPES:
 		var res: Resource = GameData.RECIPES[key]

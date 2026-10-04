@@ -25,12 +25,11 @@ extends Node
 ##
 ## Plug contract (GameBus signals consumed / emitted):
 ##   IN  : tame_requested(instance_id)
-##         tame_intent(instance_id, player_id, unarmed)  — Phase 35/36: who is
-##                                          taming, and its claim about its hands
+##         tame_intent(instance_id, player_id)  — Phase 35: who is taming
 ##   OUT : tame_resolved(result)      { instance_id, creature_id, success,
 ##                                      reason, result, player_id, flag, yields }
 ##         creature_tamed(instance_id, creature_id, player_id)
-##         tame_intent(instance_id, "", unarmed)  — client forwards to the host
+##         tame_intent(instance_id, "")  — client forwards to the host
 ##
 ## Public API (every call takes an optional `player_id`; "" means THIS machine's
 ## local player — see `resolve_player`, the Phase 34 convention):
@@ -202,20 +201,16 @@ func is_tameable(creature_id: String) -> bool:
 ## the equipped MainHand (the same rule the client applies to itself).
 ##
 ## A REMOTE peer's hands are read from the HOST's own copy of that peer's worn set
-## (`PlayerRegistry.get_equipment`, Phase 47) — never from the tame intent. The
-## set reaches the host through the peer's equipment intent, which is validated
-## against the fabric's slot table and recorded under the identity bound to the
-## connection, so a client cannot claim gear it does not hold. It does NOT stop a client
-## from OMITTING gear it does hold: the host never sees the equip action, so a modified
-## client reporting `worn = {}` reads as unarmed. Closing that needs host-authoritative
-## equip (Phase 48+). A host with no registry wired, or a peer that has not reported a
-## worn set this session, fails closed (armed).
+## (`PlayerRegistry.get_equipment`, Phase 47) — never from the tame intent. That set is
+## authored by the host: a peer's equip / unequip ACTIONS (`equip_intent`) are validated
+## against the fabric slot table and the peer's bag and applied to the record under the
+## identity bound to the connection. A client has no worn set to report, so it cannot
+## claim gear it does not hold, nor leave out gear it does: what is in the hand is what
+## the host recorded. A host with no registry wired fails closed (armed).
 func is_unarmed(player_id: String = "") -> bool:
 	var pid := resolve_player(player_id)
 	if pid != local_player_id():
 		if player_registry == null or not player_registry.has_method("get_equipment"):
-			return false
-		if player_registry.has_method("has_equipment_report") and not player_registry.has_equipment_report(pid):
 			return false
 		return EquipmentRules.hands_free(player_registry.get_equipment(pid))
 	if character_slice == null:
@@ -621,22 +616,18 @@ func _emit(result: Dictionary) -> Dictionary:
 ## Host-local tame request (the player input or any host-side system). A CLIENT
 ## does not resolve a tame at all — it owns no records, so it forwards an intent
 ## to the host, which is the only machine that can grant a flag or bind a companion.
-## The forwarded intent carries the signal's legacy `unarmed` argument for wire
-## compatibility only: the host ignores it (Phase 47) and reads the peer's hands from
-## its own copy of the peer's worn set.
 func _on_tame_requested(instance_id: String) -> void:
 	if not is_authoritative:
-		GameBus.tame_intent.emit(instance_id, "", is_unarmed(""))
+		GameBus.tame_intent.emit(instance_id, "")
 		return
 	tame(instance_id, local_player_id())
 
 ## A tame intent carrying a tamer. On the host this is the resolved path (the
 ## networking slice re-emits an inbound intent with the identity it bound to that
 ## connection). On a client the same signal is the OUTBOUND one — networking
-## forwards it and this slice must not also resolve it locally. The `unarmed`
-## argument is ignored: Phase 47 replaced the claim with the host's copy of the
-## tamer's worn set (see `is_unarmed`).
-func _on_tame_intent(instance_id: String, player_id: String, _unarmed: bool) -> void:
+## forwards it and this slice must not also resolve it locally. The tamer's hands
+## are read from the host's copy of its worn set (see `is_unarmed`).
+func _on_tame_intent(instance_id: String, player_id: String) -> void:
 	if not is_authoritative:
 		return
 	tame(instance_id, player_id)

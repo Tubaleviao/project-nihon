@@ -149,6 +149,7 @@ static func steps() -> Array:
 		{ "name": "rate_bucket",       "compare": true },
 		{ "name": "inventory_owner",   "compare": true },
 		{ "name": "equipment_recorded", "compare": true },
+		{ "name": "equipment_delivered", "compare": true },
 		{ "name": "peer_damage_floor", "compare": true },
 		{ "name": "reconnect_alive",   "compare": true },
 		{ "name": "disconnect_evicts", "compare": true },
@@ -318,6 +319,7 @@ func run(root: Node, role: String) -> void:
 	await _step_rate_bucket()
 	await _step_inventory_owner()
 	await _step_equipment_recorded()
+	await _step_equipment_delivered()
 	await _step_peer_damage_floor()
 	await _step_reconnect_alive()
 	await _step_disconnect_evicts()
@@ -606,10 +608,10 @@ const EQUIPMENT_FIXTURE_ITEM := "FerriteHelmet"
 ## Step 7b — a peer's worn set crosses the socket and is recorded by the host, filtered.
 ##
 ## The host first puts the item in the peer's bag and syncs it (ownership is the first filter).
-## The client sends the set the way the shipped client does (the `equipment_intent` bus
-## signal, which the networking slice forwards as a packet). Alongside one legitimate entry
-## it claims an item in the WRONG slot and an unknown item: the host must record only the
-## legitimate entry, under the connection's own player id.
+## The client sends equip ACTIONS the way the shipped client does (the `equip_intent` bus
+## signal, which the networking slice forwards as a packet). Alongside one legitimate action
+## it asks for an unknown slot and an unknown item in a real slot: the host must record only
+## the legitimate one, under the connection's own player id.
 func _step_equipment_recorded() -> void:
 	var slot := ""
 	var item := ""
@@ -646,25 +648,81 @@ func _step_equipment_recorded() -> void:
 	# record), so waiting on its own pack is no barrier: a claim sent before the host grants
 	# is filtered as unowned. The intent is idempotent, so it is re-sent while the host
 	# grants and records, and the host's record is the verdict.
-	# Beside the real claim: an item in an unknown slot, and an unknown item in a REAL slot
+	# Beside the real action: an item in an unknown slot, and an unknown item in a REAL slot
 	# (a different one, so it cannot overwrite the claimed slot's key).
-	var claim: Dictionary = { slot: item, "nonexistent_slot": item }
+	var bad_slot := ""
 	for other_slot in EquipmentRules.slots(GameData.ITEMS):
 		if other_slot != slot:
-			claim[other_slot] = "no_such_item"
+			bad_slot = str(other_slot)
 			break
-	# The client's verdict is that every claim actually went out: a counter on the intent
+	# The client's verdict is that every action actually went out: a counter on the intent
 	# signal, not an assumption (the host's record is still the real check). "not_sent" is
 	# reachable if the signal is ever rewired or a send is skipped.
+	if not GameBus.peer_equipment_synced.is_connected(_note_peer_equipment):
+		GameBus.peer_equipment_synced.connect(_note_peer_equipment)
 	var sent := [0]
-	var count := func(_player: String, _worn: Dictionary): sent[0] += 1
-	GameBus.equipment_intent.connect(count)
+	var count := func(_player: String, _slot: String, _item: String): sent[0] += 1
+	GameBus.equip_intent.connect(count)
 	for i in EQUIPMENT_RESENDS:
-		GameBus.equipment_intent.emit("", claim.duplicate())
+		GameBus.equip_intent.emit("", slot, item)
+		GameBus.equip_intent.emit("", "nonexistent_slot", item)
+		if bad_slot != "":
+			GameBus.equip_intent.emit("", bad_slot, "no_such_item")
 		await _await_settle(EQUIPMENT_RESEND_GAP)
-	GameBus.equipment_intent.disconnect(count)
-	var all_sent: bool = sent[0] == EQUIPMENT_RESENDS
+	GameBus.equip_intent.disconnect(count)
+	var expected_sent: int = EQUIPMENT_RESENDS * (3 if bad_slot != "" else 2)
+	var all_sent: bool = sent[0] == expected_sent
 	_report("equipment_recorded", verdict(all_sent, true), "filtered" if all_sent else "not_sent-%d" % sent[0])
+
+## Step 7c — the host's own worn set is delivered to a peer inside its AOI.
+##
+## The listen host has no peer id, so its gear used to be the one set that never left the
+## host. The host records a worn set for its own player (holding the item); the
+## networking slice must fan it out to the client as `peer_equipment` for the server peer,
+## and the client's character slice must hold it. The host's verdict is the delivery
+## bookkeeping (the pair was sent), the client's is the set it now holds for peer 1; the
+## detail is the same string on both sides.
+func _step_equipment_delivered() -> void:
+	var slot := ""
+	var item := EQUIPMENT_FIXTURE_ITEM
+	if GameData.ITEMS.has(item):
+		slot = EquipmentRules.slot_of(item, GameData.ITEMS)
+	if slot == "":
+		_report("equipment_delivered", "fail", "no_equippable_item")
+		return
+	var want: Dictionary = { slot: item }
+	var host_id: int = _root._networking.HOST_PEER_ID
+	if _role == "host":
+		var local_id: String = _root._registry.local_player_id
+		if local_id == "":
+			_report("equipment_delivered", "fail", "no_local_player")
+			return
+		# The host records its own worn set the way its avatar does. It has to HOLD the item:
+		# a worn item the bag does not hold is cleared again on the next inventory event, which
+		# is how an unowned set would vanish from under this step.
+		if not _root._inventory.add_item(item, 1):
+			_report("equipment_delivered", "fail", "grant_failed")
+			return
+		_root._registry.record_equipment(local_id, want)
+		var key: String = _root._networking._pair_key(_bound_peer, host_id)
+		var ok: bool = await _await_until(
+			func(): return _root._networking._equipment_sent.has(key), STEP_TIMEOUT_SECS)
+		_report("equipment_delivered", verdict(ok, true), "delivered" if ok else "not_sent-%s" % key)
+		return
+	# Judged on what ARRIVED, not on what the character slice still holds: the host runs ahead
+	# and may drop this connection (the reconnect step) while this side is still finishing the
+	# previous step, and a dropped connection forgets the peer's stored set.
+	var got: bool = await _await_until(
+		func(): return _seen_peer_equipment.get(host_id, {}) == want, STEP_TIMEOUT_SECS)
+	_report("equipment_delivered", verdict(got, true),
+		"delivered" if got else "not_delivered-%s" % str(_seen_peer_equipment.get(host_id, {})))
+
+## Worn sets this client has been sent for other peers ({ peer_id: set }), noted as they arrive
+## (connected at the start of `_step_equipment_recorded`, the step before the delivery one).
+var _seen_peer_equipment: Dictionary = {}
+
+func _note_peer_equipment(peer_id: int, worn: Dictionary) -> void:
+	_seen_peer_equipment[peer_id] = worn.duplicate()
 
 ## Step 8 — a creature's round against the peer, resolved and floored on the HOST.
 ##

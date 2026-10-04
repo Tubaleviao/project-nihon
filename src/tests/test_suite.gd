@@ -153,6 +153,8 @@ func run() -> void:
 	_run_test("station: all canonical types accepted",                _test_station_all_canonical_types)
 	_run_test("station: placement snaps and refuses overlap",         _test_station_placement_validation)
 	_run_test("station: types derived from fabric",                   _test_station_types_from_fabric)
+	_run_test("station: placement cost and overlap rule",             _test_station_placement_cost_and_overlap)
+	_run_test("station: player placement target and gating",          _test_player_station_placement)
 	_run_test("durability: use decrements points",                    _test_durability_use_decrements)
 	_run_test("durability: broken tool emits item_broke",             _test_durability_broken_emits)
 	_run_test("durability: stackable materials excluded",             _test_durability_stackable_excluded)
@@ -202,7 +204,9 @@ func run() -> void:
 	_run_test("taming: bare hands required",                   _test_taming_requires_unarmed)
 	_run_test("taming: a peer's hands are the host's record",   _test_taming_peer_bare_hands_claim)
 	_run_test("equipment: an intent needs an owned item",       _test_equipment_intent_requires_ownership)
-	_run_test("equipment: oversized claim dropped",             _test_equipment_oversized_claim_dropped)
+	_run_test("equipment: equip actions are host-authoritative", _test_equip_intent_is_host_authoritative)
+	_run_test("equipment: the client diffs gear into actions",  _test_equip_actions_diff)
+	_run_test("equipment: restore paths on a host and a client", _test_apply_local_equipment_paths)
 	_run_test("equipment: bag loss clears the slot",            _test_equipment_revalidated_on_bag_loss)
 	_run_test("equipment: slots cached, peer evict, owner map", _test_equipment_phase48_misc)
 	_run_test("equipment: rules totals + sanitize",             _test_equipment_rules_totals)
@@ -2154,6 +2158,77 @@ func _test_station_placement_validation() -> void:
 	assert_true(station.is_preview_visible(), "preview shown")
 	station.hide_preview()
 	assert_true(not station.is_preview_visible(), "preview hidden")
+	station.free()
+
+## Phase 56 — placement is cheap per frame and the overlap rule is defined on snapped
+## cells: the fabric scan runs once however often the blocker / preview ask, two stations in
+## one x/z cell collide at any height, and neighbouring cells do not.
+func _test_station_placement_cost_and_overlap() -> void:
+	var station := StationSlice.new()
+	add_child(station)
+	var t: String = str(station.placeable_station_types()[0])
+	assert_eq(station.placeable_scan_count, 1, "the first ask scans the fabric once")
+	assert_true(station.try_place_station(t, Vector3(5.5, 0.0, 5.5)) != "", "a station is placed")
+	for i in 20:
+		station.placement_blocker(t, Vector3(7.5, 0.0, 7.5))
+		station.show_preview(t, Vector3(7.5, float(i), 7.5))
+	assert_eq(station.placeable_scan_count, 1, "twenty blocker checks and previews never rescan RECIPES/ITEMS")
+	assert_eq(station.try_place_station(t, Vector3(5.2, 9.0, 5.8)), "", "the same cell at another height collides")
+	assert_true(station.placement_blocker(t, Vector3(5.5, -3.0, 5.5)).begins_with("too close"), "and the reason says why")
+	assert_true(station.try_place_station(t, Vector3(6.5, 0.0, 5.5)) != "", "the adjacent cell on x is free")
+	assert_true(station.try_place_station(t, Vector3(5.5, 0.0, 6.5)) != "", "the adjacent cell on z is free")
+	assert_eq(station.snap_to_grid(Vector3(-0.1, 2.0, 0.9)), Vector3(-0.5, 2.0, 0.5), "negative coordinates snap to their own cell")
+	station.free()
+
+## Phase 56 — the player's placement target (aimed top face, side hit, feet), the V key
+## through `try_place_station` with its refusal reason on the label, and the preview ghost
+## hidden while a menu or the loading screen owns the input.
+func _test_player_station_placement() -> void:
+	var station := StationSlice.new()
+	add_child(station)
+	var p := PlayerSlice.new()
+	add_child(p)
+	p.station_slice = station
+	p.spawn_at(Vector3(10.0, 5.0, 10.0))
+	var feet: Vector3 = p.get_position() - Vector3(0.0, 0.4, 0.0)
+	# No aimed block: the feet fallback.
+	p._aimed_block_hit = false
+	assert_eq(p._station_target(), feet, "no aim: the target is at the player's feet")
+	# An aimed top face puts it on top of the block (half a block up).
+	p._aimed_block_hit = true
+	p._aimed_block_pos = Vector3(3.5, 2.0, 3.5)
+	p._aimed_block_normal = Vector3.UP
+	assert_eq(p._station_target(), Vector3(3.5, 2.5, 3.5), "aimed top face: on top of the block")
+	# A side or underside hit falls back to the feet rather than burying the marker.
+	p._aimed_block_normal = Vector3.RIGHT
+	assert_eq(p._station_target(), feet, "a side hit falls back to the feet")
+	p._aimed_block_normal = Vector3.DOWN
+	assert_eq(p._station_target(), feet, "an underside hit falls back to the feet")
+
+	# V through try_place_station: placed once, refused (with the reason) the second time.
+	p._aimed_block_hit = true
+	p._aimed_block_pos = Vector3(3.5, 2.0, 3.5)
+	p._aimed_block_normal = Vector3.UP
+	var label := Label.new()
+	p._station_label = label
+	p._place_station()
+	assert_eq(station.get_all_stations().size(), 1, "V places a station at the aimed spot")
+	p._place_station()
+	assert_eq(station.get_all_stations().size(), 1, "a second V on the same cell places nothing")
+	assert_true(label.text.contains("too close"), "and the refusal reason shows on the station label")
+	label.free()
+
+	# The ghost follows the target while the preview is on and input is allowed; while a menu
+	# or the loading freeze holds the input it is hidden instead.
+	p._station_preview_on = true
+	p.set_world_input_frozen(true)
+	station.show_preview(str(station.placeable_station_types()[0]), Vector3(1.5, 0.0, 1.5))
+	p._update_station_preview()
+	assert_false(station.is_preview_visible(), "a frozen world hides the placement ghost")
+	p._station_preview_on = false
+	p._update_station_preview()
+	assert_false(station.is_preview_visible(), "preview off: nothing is drawn")
+	p.free()
 	station.free()
 
 # ---------------------------------------------------------------------------
@@ -4287,9 +4362,11 @@ func _test_chunk_minimap_cells() -> void:
 	assert_true(mm.is_revealed(Vector2i(0, 0)), "player's own chunk is revealed")
 	assert_true(Minimap.BIOME_COLORS.has("TemperateForest"), "biome resolves to a colour")
 	var tf: Variant = GameData.BIOMES.get("TemperateForest", null)
+	assert_true(tf != null, "the TemperateForest biome resource is loaded")
 	assert_true(tf != null and tf.get("surfaceTint") != null, "TemperateForest declares a fabric surfaceTint")
-	if tf != null and tf.get("surfaceTint") != null:
-		assert_eq(mm.biome_color("TemperateForest"), Color.from_string(str(tf.get("surfaceTint")), Color.BLACK), "minimap uses the fabric surface tint")
+	var want_tint: Color = Color.from_string(str(tf.get("surfaceTint")), Color.BLACK) if tf != null and tf.get("surfaceTint") != null else Color.BLACK
+	assert_eq(mm.biome_color("TemperateForest"), want_tint, "minimap uses the fabric surface tint")
+	assert_eq(mm.biome_color("TemperateForest"), want_tint, "and a repeated lookup returns the cached colour")
 	assert_eq(mm.biome_color("NoSuchBiome"), Minimap.FALLBACK_COLOR, "unknown biome falls back to grey")
 	mm.free()
 
@@ -8268,16 +8345,14 @@ func _make_taming_rig() -> Dictionary:
 	return { "creature": c, "taming": taming, "crafting": crafting, "registry": registry }
 
 ## Resolve a tame for a REMOTE player the way the host does: through the intent the
-## networking slice re-emits, carrying that peer's bare-hands claim (Phase 36). A
-## direct `tame(instance_id, player_id)` call is the HOST-LOCAL path — for someone
-## else's player id it now fails closed on the bare-hands rule, exactly because no
-## claim accompanied it.
-func _taming_tame_via_intent(instance_id: String, player_id: String, unarmed: bool = true) -> Dictionary:
+## networking slice re-emits under the identity bound to the connection. The bare-hands
+## rule is read from the host's own record of that peer's worn set.
+func _taming_tame_via_intent(instance_id: String, player_id: String) -> Dictionary:
 	var captured: Array = []
 	var on_resolved := func(result: Dictionary) -> void:
 		captured.append(result)
 	GameBus.tame_resolved.connect(on_resolved)
-	GameBus.tame_intent.emit(instance_id, player_id, unarmed)
+	GameBus.tame_intent.emit(instance_id, player_id)
 	GameBus.tame_resolved.disconnect(on_resolved)
 	if captured.is_empty():
 		return {}
@@ -8546,22 +8621,19 @@ func _test_taming_peer_bare_hands_claim() -> void:
 	assert_true(inv.add_item("FieldRations", 1), "the peer carries a ration")
 	_taming_stand_near(registry, peer, c, fox)
 
-	# The host recorded a weapon in the peer's hand: a "bare hands" claim is ignored.
-	assert_false(taming.is_unarmed(peer), "a peer that never reported a worn set is treated as armed")
+	# The host recorded a weapon in the peer's hand: nothing the payload could say matters.
+	assert_true(taming.is_unarmed(peer), "a peer with nothing recorded in hand is bare-handed (the host authors the set)")
 	assert_true(registry.record_equipment(peer, { "MainHand": "VeilsteelLongsword" }), "the host records the worn sword")
 	assert_false(taming.is_unarmed(peer), "a peer wearing a sword is armed")
-	var forged: Dictionary = _taming_tame_via_intent(fox, peer, true)
-	assert_eq(str(forged.get("reason", "")), "armed", "a forged bare-hands claim does not change what the host believes")
+	var armed: Dictionary = _taming_tame_via_intent(fox, peer)
+	assert_eq(str(armed.get("reason", "")), "armed", "the host's recorded sword refuses the tame")
 	assert_eq(inv.get_item_count("FieldRations"), 1, "and spends nothing")
 
-	# Hands recorded free: the tame goes through even when the payload claims armed.
-	registry.record_equipment(peer, {})
-	assert_false(taming.is_unarmed(peer), "an empty record without a report is still armed")
-	GameBus.equipment_intent.emit(peer, {})
-	assert_true(registry.has_equipment_report(peer), "an equipment intent marks the peer as reported")
-	assert_true(taming.is_unarmed(peer), "a reported empty set is bare hands")
-	var honest: Dictionary = _taming_tame_via_intent(fox, peer, false)
-	assert_true(bool(honest.get("success", false)), "the recorded set satisfies the rule whatever the payload claims")
+	# Hands recorded free: the tame goes through.
+	GameBus.equip_intent.emit(peer, "MainHand", "")
+	assert_true(taming.is_unarmed(peer), "unequipping the sword frees the hands")
+	var honest: Dictionary = _taming_tame_via_intent(fox, peer)
+	assert_true(bool(honest.get("success", false)), "the recorded (empty) set satisfies the rule")
 	assert_eq(inv.get_item_count("FieldRations"), 0, "and the offering is spent")
 	rig["creature"].free()
 	rig["taming"].free()
@@ -8778,8 +8850,6 @@ func _test_taming_is_per_player() -> void:
 	for tamer in [alice, bob]:
 		rig["crafting"].set_skill_for(str(tamer), "Unarmed", "journeyman")
 		rig["crafting"].set_skill_for(str(tamer), "Alchemy", "apprentice")
-		# A real client reports its (empty) worn set on join; the host trusts nothing less.
-		GameBus.equipment_intent.emit(str(tamer), {})
 	_taming_stand_near(registry, alice, c, target)
 	_taming_stand_near(registry, bob, c, target)
 	# Only BOB carries the offering: a feed by alice must not spend bob's ration.
@@ -8827,18 +8897,15 @@ func _test_taming_client_forwards_intent() -> void:
 	taming.is_authoritative = false
 	var target := _taming_instance_of(c, "GraywolfPack")
 	var forwarded: Array = []
-	var on_intent := func(instance_id: String, player_id: String, unarmed: bool) -> void:
-		forwarded.append([instance_id, player_id, unarmed])
+	var on_intent := func(instance_id: String, player_id: String) -> void:
+		forwarded.append([instance_id, player_id])
 	GameBus.tame_intent.connect(on_intent)
 	GameBus.tame_requested.emit(target)
 	GameBus.tame_intent.disconnect(on_intent)
 	assert_eq(forwarded.size(), 1, "the client forwarded exactly one intent")
 	assert_eq(str(forwarded[0][0]), target, "carrying the instance id")
 	assert_eq(str(forwarded[0][1]), "", "and no identity — the host decides who is taming")
-	# Phase 36 — but it DOES carry the client's own hands (the one machine that knows):
-	# no character slice is wired here, so the local player's hands are unmodelled and
-	# the claim is "unarmed".
-	assert_true(bool(forwarded[0][2]), "with this machine's own bare-hands claim")
+	assert_eq(forwarded[0].size(), 2, "and nothing about its hands: the host reads those from its own record")
 	assert_false(c.is_tamed(target), "nothing resolved locally")
 	c.free()
 	taming.free()
@@ -9272,7 +9339,6 @@ func _test_taming_mirrors_evicted_on_forget() -> void:
 	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
 	var alice: String = str(registry.resolve_identity(2))
 	rig["crafting"].set_skill_for(alice, "Unarmed", "journeyman")
-	GameBus.equipment_intent.emit(alice, {})
 	_taming_stand_near(registry, alice, c, target)
 	var tamed: Dictionary = _taming_tame_via_intent(target, alice)
 	assert_eq(str(tamed.get("reason", "no_result")), "", "alice's tame is not refused")
@@ -11901,35 +11967,101 @@ func _test_spawn_tree_density() -> void:
 	t.free()
 
 ## Phase 47 review — the host records only the gear the peer's own bag holds, so an
-## equipment intent cannot conjure an item the peer never owned.
+## equip action cannot conjure an item the peer never owned.
 func _test_equipment_intent_requires_ownership() -> void:
 	var registry := PlayerRegistry.new()
 	add_child(registry)
 	var peer := str(registry.resolve_identity(2))
-	GameBus.equipment_intent.emit(peer, { "Chest": "VeilsteelChestplate" })
+	var revoked: Array = []
+	var rcb := func(pid: String, worn: Dictionary) -> void: revoked.append([pid, worn])
+	GameBus.equipment_revoked.connect(rcb)
+	GameBus.equip_intent.emit(peer, "Chest", "VeilsteelChestplate")
 	assert_true(registry.get_equipment(peer).is_empty(), "an unowned chestplate is not recorded")
+	assert_eq(revoked.size(), 1, "the refused equip tells the owner what it must show")
+	if revoked.size() == 1:
+		assert_eq(revoked[0][0], peer, "the correction names the owner")
+		assert_true((revoked[0][1] as Dictionary).is_empty(), "and carries the host's (empty) set")
 	assert_true(registry.get_inventory(peer).add_item("VeilsteelChestplate", 1), "the peer picks one up")
-	GameBus.equipment_intent.emit(peer, { "Chest": "VeilsteelChestplate" })
+	GameBus.equip_intent.emit(peer, "Chest", "VeilsteelChestplate")
 	assert_eq(registry.get_equipment(peer).get("Chest", ""), "VeilsteelChestplate", "an owned one is recorded")
+	assert_eq(revoked.size(), 1, "an accepted equip needs no correction")
+	GameBus.equipment_revoked.disconnect(rcb)
 	registry.free()
 
-
-## Phase 48 — a claim with more entries than there are slots is dropped before any
-## per-entry work, leaving the record untouched.
-func _test_equipment_oversized_claim_dropped() -> void:
+## Host-authoritative equip — an action touches exactly one slot of the record. A wrong-slot
+## item, an unknown item and an unknown slot are refused; taking an item off clears only
+## its slot; omitting gear is not expressible, so a worn weapon stays recorded.
+func _test_equip_intent_is_host_authoritative() -> void:
 	var registry := PlayerRegistry.new()
 	add_child(registry)
 	var peer := str(registry.resolve_identity(2))
-	registry.get_inventory(peer).add_item("VeilsteelChestplate", 1)
-	GameBus.equipment_intent.emit(peer, { "Chest": "VeilsteelChestplate" })
-	var before := registry.get_equipment(peer)
-	assert_false(before.is_empty(), "a sane claim is recorded")
-	var big: Dictionary = {}
-	for i in range(EquipmentRules.slots(GameData.ITEMS).size() + 1):
-		big["Slot%d" % i] = "VeilsteelChestplate"
-	GameBus.equipment_intent.emit(peer, big)
-	assert_eq(registry.get_equipment(peer), before, "an oversized claim leaves the record untouched")
+	var inv: Node = registry.get_inventory(peer)
+	inv.add_item("VeilsteelChestplate", 1)
+	inv.add_item("VeilsteelLongsword", 1)
+	GameBus.equip_intent.emit(peer, "Chest", "VeilsteelChestplate")
+	GameBus.equip_intent.emit(peer, "MainHand", "VeilsteelLongsword")
+	assert_eq(registry.get_equipment(peer), { "Chest": "VeilsteelChestplate", "MainHand": "VeilsteelLongsword" }, "two actions, two slots")
+	GameBus.equip_intent.emit(peer, "Head", "VeilsteelChestplate")
+	GameBus.equip_intent.emit(peer, "Head", "NoSuchItem")
+	GameBus.equip_intent.emit(peer, "NoSuchSlot", "VeilsteelChestplate")
+	GameBus.equip_intent.emit(peer, "Chest", "")
+	assert_eq(registry.get_equipment(peer), { "MainHand": "VeilsteelLongsword" }, "bad actions change nothing; unequip clears only its slot")
+	GameBus.equip_intent.emit(peer, "Chest", "")
+	assert_eq(registry.get_equipment(peer), { "MainHand": "VeilsteelLongsword" }, "unequipping an empty slot is a no-op")
+	assert_true(registry.equip_allowed(peer, "MainHand", "VeilsteelLongsword"), "equip_allowed accepts an owned, fitting item")
+	assert_false(registry.equip_allowed(peer, "Chest", "VeilsteelLongsword"), "a sword does not fit the chest")
+	assert_false(registry.equip_allowed(peer, "", "VeilsteelLongsword"), "an empty slot fails closed")
+	assert_false(registry.equip_allowed(peer, "MainHand", ""), "an empty item fails closed")
 	registry.free()
+
+## Host-authoritative equip — what the local avatar shows after a restore. A host keeps the
+## gear its recipe gave an avatar when the record is empty (and records it); a client shows
+## exactly the host's record, an empty one included, and rebases its diff on it so the
+## restore itself sends no action.
+func _test_apply_local_equipment_paths() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	for as_client in [false, true]:
+		var gr: Node = root_script.new()
+		var ch := CharacterSlice.new()
+		add_child(ch)
+		var reg := PlayerRegistry.new()
+		add_child(reg)
+		gr._character = ch
+		gr._registry = reg
+		gr._is_client = as_client
+		var iid: String = ch.create_character("TravellerHuman", Vector3.ZERO)
+		ch.set_player_character(iid)
+		reg.set_local_player(reg.mint_player_id())
+		ch.apply_equipment(iid, "Chest", "VeilsteelChestplate")
+		var sent: Array = []
+		var on_action := func(_p: String, slot: String, item: String) -> void: sent.append([slot, item])
+		GameBus.equip_intent.connect(on_action)
+		gr._apply_local_equipment({})
+		GameBus.equip_intent.disconnect(on_action)
+		var tag := "client" if as_client else "host"
+		assert_true(sent.is_empty(), "%s: a restore sends no equip action" % tag)
+		if as_client:
+			assert_true(ch.get_equipment_set(iid).is_empty(), "client: an empty host record strips the recipe's gear")
+			assert_true((gr._last_sent_equipment as Dictionary).is_empty(), "client: the diff baseline is the applied set")
+		else:
+			assert_eq(ch.get_equipment_set(iid).get("Chest", ""), "VeilsteelChestplate", "host: an empty record keeps the recipe's gear")
+			assert_eq(reg.get_equipment(reg.local_player_id).get("Chest", ""), "VeilsteelChestplate", "host: and records it")
+		# A recorded set is applied exactly.
+		gr._apply_local_equipment({ "Head": "FerriteHelmet" })
+		assert_eq(ch.get_equipment_set(iid).get("Head", ""), "FerriteHelmet", "%s: a recorded set is worn" % tag)
+		gr.free()
+		ch.free()
+		reg.free()
+
+## Host-authoritative equip — the client diffs its avatar's set into per-slot actions.
+func _test_equip_actions_diff() -> void:
+	assert_eq(EquipmentRules.diff_actions({}, {}), [], "no change, no action")
+	assert_eq(EquipmentRules.diff_actions({}, { "Chest": "A" }), [{ "slot": "Chest", "item": "A" }], "a new item is an equip")
+	assert_eq(EquipmentRules.diff_actions({ "Chest": "A" }, {}), [{ "slot": "Chest", "item": "" }], "a removed item is an unequip")
+	assert_eq(EquipmentRules.diff_actions({ "Chest": "A" }, { "Chest": "B" }), [{ "slot": "Chest", "item": "B" }], "a swap is one equip")
+	assert_eq(EquipmentRules.diff_actions({ "Chest": "A", "Head": "H" }, { "Chest": "A", "MainHand": "S" }),
+		[{ "slot": "Head", "item": "" }, { "slot": "MainHand", "item": "S" }], "only differing slots, sorted")
+
 
 ## Phase 48 — wearing an item and then losing it from the bag clears the slot and
 ## emits equipment_changed through the same record path as an equip.
@@ -11939,8 +12071,8 @@ func _test_equipment_revalidated_on_bag_loss() -> void:
 	var peer := str(registry.resolve_identity(2))
 	var inv: Node = registry.get_inventory(peer)
 	inv.add_item("VeilsteelChestplate", 1)
-	GameBus.equipment_intent.emit(peer, { "Chest": "VeilsteelChestplate" })
-	assert_eq(registry.get_equipment(peer).get("Chest", ""), "VeilsteelChestplate", "worn after the claim")
+	GameBus.equip_intent.emit(peer, "Chest", "VeilsteelChestplate")
+	assert_eq(registry.get_equipment(peer).get("Chest", ""), "VeilsteelChestplate", "worn after the action")
 	var seen: Array = []
 	var cb := func(pid: String, worn: Dictionary) -> void: seen.append([pid, worn])
 	var revoked: Array = []
