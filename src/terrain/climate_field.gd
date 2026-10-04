@@ -1,4 +1,3 @@
-class_name ClimateField
 extends RefCounted
 ## Phase 49 — world-seeded biome REGIONS. Pure and static so worker threads (the ore field)
 ## can ask it without a terrain-slice reference.
@@ -27,6 +26,8 @@ static func _feature_point(seed_v: int, ix: int, iz: int) -> Vector2:
 
 ## Biome key for a chunk: the cell whose feature point is nearest the chunk centre owns it.
 static func biome_for_chunk(seed_v: int, chunk_pos: Vector2i, keys: Array) -> String:
+	if keys.is_empty():
+		return ""
 	var p := Vector2(chunk_pos.x + 0.5, chunk_pos.y + 0.5)
 	var cx := floori(p.x / CELL_CHUNKS)
 	var cz := floori(p.y / CELL_CHUNKS)

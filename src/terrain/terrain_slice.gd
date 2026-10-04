@@ -18,6 +18,7 @@ const CHUNK_SIZE := 64       # tiles per side (64 × 0.5 = 32 world units per ch
 const TILE_SIZE  := 0.5      # world units per tile (XZ) — each square is half its former 1.0 size
 const HEIGHT_SCALE := 5.0    # world units peak-to-valley (gentle, even terrain)
 const BIOME_SEED := 20260815 # fixed seed so biome assignment is deterministic
+const ClimateField := preload("res://src/terrain/climate_field.gd")
 
 ## The starting area is flattened into a plain field so the player can walk
 ## freely from spawn without jumping. Spawn centre + radius + flat height below.
