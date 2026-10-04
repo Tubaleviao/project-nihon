@@ -277,10 +277,19 @@ func run(root: Node, role: String) -> void:
 	if not _self_audit():
 		return
 	if _role == "host":
+		_fresh_save_dir()
 		_pin_world_seed()
 		if _failed:
 			return
 		_root._boot_server()
+		# Booting adopts the seed of any world record on disk, which silently replaces the
+		# pinned one; a run on the wrong seed would fail for an unrelated reason.
+		if int(_root._terrain.get_world_seed()) != _pinned_seed:
+			push_error("net-harness: the pinned world seed %d was replaced by a world record (%d)"
+					% [_pinned_seed, int(_root._terrain.get_world_seed())])
+			_failed = true
+			_finish()
+			return
 	else:
 		# The client's own `_broadcast_state()` is switched OFF for the run: it emits
 		# `player_state_sync_requested` every 30 physics ticks with wherever the local
@@ -932,9 +941,26 @@ func _report_position() -> void:
 		"position": RENDEZVOUS, "hp": PlayerSlice.MAX_HP, "max_hp": PlayerSlice.MAX_HP,
 	})
 
+## The host saves into its own directory, emptied before the boot: a world record left by
+## any earlier run (or by the dev server) would be adopted by `_boot_server` and replace
+## the seed `_pin_world_seed` chose, and a stale player record would leak into the scenario.
+const HARNESS_SAVE_DIR := "user://net_harness/server/"
+
+func _fresh_save_dir() -> void:
+	_root._persistence.server_save_dir = HARNESS_SAVE_DIR
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(HARNESS_SAVE_DIR))
+	var dir := DirAccess.open(HARNESS_SAVE_DIR)
+	if dir == null:
+		return
+	for file in dir.get_files():
+		dir.remove(file)
+
 ## Trees chunk (0,0) must grow for the scenario to draw its targets from it, with margin
 ## over `TARGETS_NEEDED` (Phase 44: tree count is a seeded roll, and a clearing has none).
 const MIN_ORIGIN_TREES := 5
+
+## The seed `_pin_world_seed` chose; checked again once the world record has been loaded.
+var _pinned_seed := 0
 
 ## Host side: replace the fresh world's random seed with the first seed whose origin chunk
 ## is a tree biome with at least `MIN_ORIGIN_TREES` trees. Every target the driver compares
@@ -955,6 +981,7 @@ func _pin_world_seed() -> void:
 		var usable := _targets().size() >= TARGETS_NEEDED
 		_root._tree.despawn_for_chunk(origin)
 		if usable:
+			_pinned_seed = candidate
 			return
 	push_error("net-harness: no seed gives chunk (0,0) enough trees")
 	_failed = true

@@ -8,6 +8,7 @@ extends RefCounted
 ## `Locomotion.get_blend_weight()`. Exercised in game only (no frames in the suite).
 
 const Locomotion := preload("res://src/character/locomotion.gd")
+const Diag := preload("res://src/core/diag.gd")
 
 ## Tree node name per state. IDLE/WALK/RUN all live in the "Locomotion" blend
 ## space; the rest are single clips named after the state.
@@ -27,16 +28,33 @@ static func node_for_state(state: int) -> String:
 	return ""
 
 
+## Clip names already reported missing, so a rig that lacks one warns once per name
+## for the whole run instead of on every character built from it.
+static var _warned_missing: Dictionary = {}
+
+
+## The clip a tree node should play: `clip` when the player has it, else "idle" (when
+## the player has that), else `clip` unchanged. A missing clip warns once.
+static func _resolve_clip(player: AnimationPlayer, clip: String) -> String:
+	if player.has_animation(clip):
+		return clip
+	if not _warned_missing.has(clip):
+		_warned_missing[clip] = true
+		Diag.warn("[RigTree] rig has no '%s' clip; falling back to idle" % clip)
+	return "idle" if player.has_animation("idle") else clip
+
+
 ## Build the tree. Clips are looked up by lowercase state name ("idle", "walk",
-## "run", "fall", ...) in the player's library; a missing clip leaves that node
-## without an animation (warns once) rather than failing.
+## "run", "fall", ...) in the player's library; one the rig lacks plays "idle" instead
+## (and warns once) rather than leaving the engine to log "Animation not found" every
+## frame. The caller sets `anim_player` once the tree is inside the scene.
 static func build_tree(player: AnimationPlayer) -> AnimationTree:
 	var tree := AnimationTree.new()
 	var sm := AnimationNodeStateMachine.new()
 	var space := AnimationNodeBlendSpace1D.new()
 	for pair in [["idle", 0.0], ["walk", 0.5], ["run", 1.0]]:
 		var clip := AnimationNodeAnimation.new()
-		clip.animation = pair[0]
+		clip.animation = _resolve_clip(player, pair[0])
 		space.add_blend_point(clip, pair[1], -1, StringName(pair[0]))
 	space.min_space = 0.0
 	space.max_space = 1.0
@@ -47,7 +65,7 @@ static func build_tree(player: AnimationPlayer) -> AnimationTree:
 		if n == "" or added.has(n):
 			continue
 		var clip := AnimationNodeAnimation.new()
-		clip.animation = n.to_lower()
+		clip.animation = _resolve_clip(player, n.to_lower())
 		sm.add_node(n, clip)
 		added[n] = true
 	for a in added:
@@ -59,7 +77,6 @@ static func build_tree(player: AnimationPlayer) -> AnimationTree:
 	entry.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_AUTO
 	sm.add_transition("Start", NODE_LOCOMOTION, entry)
 	tree.tree_root = sm
-	tree.anim_player = tree.get_path_to(player) if tree.is_inside_tree() else NodePath()
 	return tree
 
 

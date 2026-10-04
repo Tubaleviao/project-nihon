@@ -5435,7 +5435,7 @@ consistent in height, honest when refused, and tested.
 
 ---
 
-## Phase 57 — Spawn determinism and cost follow-ups
+## Phase 57 — Spawn determinism and cost follow-ups ✅ Done
 
 **Goal:** Close the still-open PR #54 review notes (#55, #56, #57) on Phase 44
 spawning: pin the hash, keep pack members in their chunk, stop the O(instances)
@@ -5470,6 +5470,11 @@ RiftWarden are a fabric design question and stay out of scope).
 - [ ] Live counter equals a full scan after spawn/kill/respawn/tame sequences.
 - [ ] Missing-field warning asserted; suite green on both boot paths.
 
+_Implementation note:_ the running live counter was replaced by a single pass over the
+instance table per `spawn_for_chunk` (survivors per species and the live count together),
+which removes the per-species rescans without a second source of truth to keep in sync.
+A cap-refused pack is also remembered and retried every 5 s while its chunk is loaded.
+
 ---
 
 ## Phase 58 — UI layout file robustness
@@ -5500,7 +5505,7 @@ RiftWarden are a fabric design question and stay out of scope).
 
 ---
 
-## Phase 59 — Wire the Phase 45 rig into the game
+## Phase 59 — Wire the Phase 45 rig into the game ✅ Done
 
 **Goal:** `attach_rig`, `load_mesh`, `load_animation_library` and
 `creature_model_key` have no non-test caller (#59), so the asset pipeline is not

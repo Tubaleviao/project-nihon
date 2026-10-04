@@ -105,6 +105,8 @@ var _market_feedback: Label = null
 var _proposal_title: LineEdit = null
 var _proposal_body: LineEdit = null
 var _proposal_feedback: Label = null
+## `str(character_rows())` at the last grid build; an unchanged one skips the rebuild.
+var _character_rows_signature := ""
 
 func _ready() -> void:
 	_build_ui()
@@ -300,7 +302,8 @@ func item_actions(item_id: String, repairable = null) -> Array:
 	if repairable.has(item_id):
 		actions.append({"action": "repair", "label": "Repair"})
 	var slot := EquipmentRules.slot_of(item_id, GameData.ITEMS)
-	if slot != "" and character_slice != null:
+	# An item already on the avatar offers Unequip in the Character window, not Equip.
+	if slot != "" and character_slice != null and str(_local_worn().get(slot, "")) != item_id:
 		actions.append({"action": "equip", "label": "Equip (%s)" % slot})
 	return actions
 
@@ -339,6 +342,10 @@ func _dispatch_equipment(kind: String, item_id: String) -> bool:
 	if char_id == "" or slot == "":
 		return false
 	if kind == "equip":
+		# Only what the bag holds can be worn; the host would drop the claim anyway, and
+		# wearing it here first would leave this client showing gear the host disowns.
+		if inventory_slice == null or int(inventory_slice.get_item_count(item_id)) <= 0:
+			return false
 		return bool(character_slice.apply_equipment(char_id, slot, item_id))
 	return bool(character_slice.clear_equipment(char_id, slot))
 
@@ -666,10 +673,17 @@ func refresh_character() -> void:
 	if _character_grid == null:
 		return
 	_character_stats.text = character_stats_text()
+	# An appearance change that left the worn set alone (a palette tweak, a LOD swap)
+	# produces the same rows; rebuilding the whole grid for it is wasted work.
+	var rows := character_rows()
+	var signature := str(rows)
+	if signature == _character_rows_signature and _character_grid.get_child_count() > 0:
+		return
+	_character_rows_signature = signature
 	for c in _character_grid.get_children():
 		_character_grid.remove_child(c)
 		c.queue_free()
-	for row in character_rows():
+	for row in rows:
 		var slot := Button.new()
 		slot.custom_minimum_size = SLOT_SIZE
 		slot.tooltip_text = str(row["tooltip"])
