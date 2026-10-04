@@ -205,9 +205,11 @@ func is_tameable(creature_id: String) -> bool:
 ## (`PlayerRegistry.get_equipment`, Phase 47) — never from the tame intent. The
 ## set reaches the host through the peer's equipment intent, which is validated
 ## against the fabric's slot table and recorded under the identity bound to the
-## connection, so a client cannot claim a free hand it does not have by editing a
-## payload. A host with no registry wired, or a peer that has not reported a worn
-## set this session, fails closed (armed).
+## connection, so a client cannot claim gear it does not hold. It does NOT stop a client
+## from OMITTING gear it does hold: the host never sees the equip action, so a modified
+## client reporting `worn = {}` reads as unarmed. Closing that needs host-authoritative
+## equip (Phase 48+). A host with no registry wired, or a peer that has not reported a
+## worn set this session, fails closed (armed).
 func is_unarmed(player_id: String = "") -> bool:
 	var pid := resolve_player(player_id)
 	if pid != local_player_id():

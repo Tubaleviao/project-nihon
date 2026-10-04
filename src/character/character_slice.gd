@@ -671,6 +671,11 @@ func attach_rig(instance_id: String, rig_key: String) -> bool:
 		return false
 	rig_root.name = "RigScene"
 	var root: Node3D = inst["root"]
+	# The rig replaces the procedural box body: hide it (the limb swing stops too, see
+	# `_animate_limbs`) so both do not render over each other.
+	for child in root.get_children():
+		if child is Node3D:
+			(child as Node3D).visible = false
 	root.add_child(rig_root)
 	var tree := RigTree.build_tree(player)
 	rig_root.add_child(tree)
@@ -800,6 +805,9 @@ func sync_player_avatar(
 func _animate_limbs(inst: Dictionary, phase: float, amplitude: float) -> void:
 	var pivots: Dictionary = inst.get("limb_pivots", {})
 	if pivots.is_empty():
+		return
+	# An attached rig is driven by its AnimationTree; the procedural limbs are hidden.
+	if inst.has("anim_tree") and is_instance_valid(inst["anim_tree"]):
 		return
 	var swing: float = sin(phase) * amplitude
 	var leg_l: Node3D = pivots.get("leg_l", null)

@@ -8,9 +8,11 @@ extends RefCounted
 ## function of (world seed, chunk, salt) and nothing else.
 ##
 ## Pure and static: no node, no bus, no `randi()`. The roll comes from an integer hash of
-## the seed and the chunk coordinate, so a client that never receives the spawn decision
-## recomputes the same pack centre and size as the host, and the host's decision can be
-## re-derived rather than trusted. The cap is NOT here: it is a host-only quantity.
+## the seed and the chunk coordinate, so the same (seed, chunk) always gives the same
+## pack centre and size and the host's decision can be re-derived rather than trusted.
+## Only the host spawns creatures today (`spawn_for_chunk` returns on a non-authoritative
+## peer); a client path would reuse these rolls. The cap is NOT here: it is a host-only
+## quantity.
 ##
 ## Public API (all static):
 ##   unit(seed, chunk, salt) -> float                 a hash roll in [0, 1)
