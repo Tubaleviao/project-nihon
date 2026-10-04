@@ -585,6 +585,9 @@ func _step_inventory_owner() -> void:
 	var ok: bool = await _await_until(func(): return _root._inventory.get_contents().has(PROBE_ITEM), STEP_TIMEOUT_SECS)
 	_report("inventory_owner", verdict(ok, true), "owner-only" if ok else "sync_never_arrived")
 
+## Equippable item the equipment steps use (a fabric key; see `_step_equipment_recorded`).
+const EQUIPMENT_FIXTURE_ITEM := "FerriteHelmet"
+
 ## Step 7b — a peer's worn set crosses the socket and is recorded by the host, filtered.
 ##
 ## The host first puts the item in the peer's bag and syncs it (ownership is the first filter).
@@ -595,8 +598,12 @@ func _step_inventory_owner() -> void:
 func _step_equipment_recorded() -> void:
 	var slot := ""
 	var item := ""
-	var keys: Array = GameData.ITEMS.keys()
-	keys.sort()
+	# A pinned fixture keeps the step stable when GameData.ITEMS grows; the sorted scan is
+	# only the fallback if the fixture is ever renamed out of the fabric.
+	var keys: Array = [EQUIPMENT_FIXTURE_ITEM] + GameData.ITEMS.keys()
+	if not GameData.ITEMS.has(EQUIPMENT_FIXTURE_ITEM):
+		keys = GameData.ITEMS.keys()
+		keys.sort()
 	for k in keys:
 		var sl := EquipmentRules.slot_of(str(k), GameData.ITEMS)
 		if sl != "":
@@ -624,7 +631,13 @@ func _step_equipment_recorded() -> void:
 	# record), so waiting on its own pack is no barrier: a claim sent before the host grants
 	# is filtered as unowned. The intent is idempotent, so it is re-sent while the host
 	# grants and records, and the host's record is the verdict.
-	var claim: Dictionary = { slot: item, "nonexistent_slot": item, "%s_x" % slot: "no_such_item" }
+	# Beside the real claim: an item in an unknown slot, and an unknown item in a REAL slot
+	# (a different one, so it cannot overwrite the claimed slot's key).
+	var claim: Dictionary = { slot: item, "nonexistent_slot": item }
+	for other_slot in EquipmentRules.slots(GameData.ITEMS):
+		if other_slot != slot:
+			claim[other_slot] = "no_such_item"
+			break
 	for i in 6:
 		GameBus.equipment_intent.emit("", claim.duplicate())
 		await _await_settle(0.5)

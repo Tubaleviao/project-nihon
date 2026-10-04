@@ -425,7 +425,7 @@ static func controls_rows() -> Array:
 		{"keys": "", "desc": "Place", "mouse": MOUSE_BUTTON_MIDDLE},
 		{"keys": "R", "desc": "Cycle material", "mouse": 0},
 		{"keys": "B · V", "desc": "Station cycle / place", "mouse": 0},
-		{"keys": "G", "desc": "Tame nearest creature (also Proposals)", "mouse": 0},
+		{"keys": "G", "desc": "Tame nearest creature (G is shared with Proposals)", "mouse": 0},
 		{"keys": "E", "desc": "Toggle equipment", "mouse": 0},
 		{"keys": "I · T · C · Y · M · G · K", "desc": "Inventory · Tech · Crafting · Trade · Market · Proposals · Character", "mouse": 0},
 		{"keys": "?", "desc": "This panel", "mouse": 0},

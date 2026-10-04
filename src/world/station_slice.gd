@@ -12,7 +12,12 @@ extends Node
 ##   OUT : station_placed(station_id, type, position)
 ##
 ## Public API:
-##   place_station(type, position)      -> String    (station id)
+##   place_station(type, position)      -> String    (station id; UNVALIDATED, trusted callers
+##                                                    only — players go through try_place_station)
+##   try_place_station(type, position)  -> String    (snaps to grid, refuses overlap; "" if refused)
+##   placement_blocker(type, position)  -> String    ("" when placeable, else the reason)
+##   snap_to_grid(position)             -> Vector3
+##   show_preview(type, position) / hide_preview()   translucent placement ghost
 ##   remove_station(station_id)
 ##   get_station(station_id)            -> Dictionary
 ##   get_all_stations()                 -> Array

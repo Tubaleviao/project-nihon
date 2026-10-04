@@ -818,8 +818,8 @@ func _finish_host_boot() -> void:
 		GameBus.craft_requested.emit("RecipeFerriteIngot")      # FAIL: station_required:forge
 
 		var ppos: Vector3 = _player.get_position()
-		_station.place_station("forge", ppos + Vector3(2.0, 0.0, 0.0))
-		_station.place_station("carpentry bench", ppos + Vector3(-2.0, 0.0, 0.0))
+		_station.try_place_station("forge", ppos + Vector3(2.0, 0.0, 0.0))
+		_station.try_place_station("carpentry bench", ppos + Vector3(-2.0, 0.0, 0.0))
 
 		GameBus.craft_requested.emit("RecipeFerriteIngot")
 		GameBus.craft_requested.emit("RecipeFerriteIngot")
