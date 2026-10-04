@@ -63,11 +63,23 @@ npm run generate  # generate the design bible into bible/
 | 40 | Review pass: the avatar's footing — the voxel surface, walked stairs | Done |
 | 41 | Deterministic world and volumetric terrain | Done |
 | 42 | Threaded chunk build and a loading screen | Done |
-| 43 | Natural resource distribution | Planned |
-| 44 | Spawn scarcity | Planned |
-| 45 | Asset pipeline for meshes and animation | Planned |
-| 46 | UI shell | Planned |
-| 47 | Character window | Planned |
+| 43 | Natural resource distribution | Done |
+| 44 | Spawn scarcity | Done |
+| 45 | Asset pipeline for meshes and animation | Done |
+| 46 | UI shell | Done |
+| 47 | Character window | Done |
+| 48 | Review pass: the equipment trust boundary | Planned |
+| 49 | Two-client harness: equipment delivery over the socket | Planned |
+| 50 | Station placement follow-ups | Planned |
+| 51 | Spawn determinism and cost follow-ups | Planned |
+| 52 | UI layout file robustness | Planned |
+| 53 | Wire the Phase 45 rig into the game | Planned |
+| 54 | Zone crossing and natural ground | Planned |
+| 55 | Planet coordinates | Planned |
+| 56 | Continents, oceans and mountains | Planned |
+| 57 | Region storage and per-player server streaming | Planned |
+| 58 | Spawn placement and friend codes | Planned |
+| 59 | World clock, day and night, seasons | Planned |
 
 See [ROADMAP.md](ROADMAP.md) for the full spec, deliverables, and acceptance criteria for each phase.
 

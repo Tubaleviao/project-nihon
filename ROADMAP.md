@@ -5160,6 +5160,369 @@ exercised in play. Use it for the local avatar with a safe fallback.
 
 ---
 
+## Phase 54 — Zone crossing and natural ground
+
+**Goal:** Crossing a chunk edge glitches, and the ground does not look like
+ground. Four separate problems produce this:
+
+- **The biome is a stripe pattern.** `biome_for_chunk`
+  (`src/terrain/terrain_slice.gd:122`) computes
+  `posmod(BIOME_SEED + cx*2654435761 + cz*2246822519, 5)`. Modulo 5, those
+  constants are 0, 1 and −1, so the expression reduces to `(cx − cz) mod 5`. As
+  a result the biome changes on every axis-aligned chunk crossing (every 32 m) in
+  diagonal stripes. The layout is identical in every world because it ignores
+  the world seed. Each crossing therefore changes the ground colour, tree
+  density and creature table all at once.
+- **Concurrent builds produce seam walls.** A neighbour counts as "known" only
+  after it has been built (`voxel_slice.gd:298`, `_gather_neighbour_heightmaps`
+  `voxel_slice.gd:465`). With `DEFAULT_MAX_BUILDS_IN_FLIGHT := 4`, two adjacent
+  new chunks often each treat the other as empty. Both then emit a full
+  bedrock-to-top wall on the same plane. That wall z-fights under
+  `CULL_DISABLED` and nothing ever rebuilds it, because `chunk_loaded`
+  (`chunk_manager.gd:465`) has no consumer. The same wall is also in each
+  chunk's trimesh collision. The capsule catches on it and
+  `resolve_step_up` fires at the seam (`player_slice.gd:493`).
+- **Crossing causes frame spikes.** A crossing unloads 9–17 chunks in one frame,
+  and each unload runs `_prune_heightmaps`, which scans every heightmap key
+  (`voxel_slice.gd:931`). The frames that follow each run three expensive steps:
+  - a 4096-sample GDScript `generate_heightmap`;
+  - a main-thread `ConcavePolygonShape3D.set_faces`;
+  - a tree spawn that scans every live tree (`tree_slice.gd:130`).
+
+  On top of that, every 96 m AOI re-scope (`AOI_RADIUS`) sends the client the
+  whole world's edit manifest (`game_root.gd:1194`).
+- **There is no grass.** Ground colour is the biome's host material
+  (`ore_field.gd:69`). Temperate ground is pale-grey Ferrite and TwilightGrove
+  is solid gold. A run is one colour from top to sides, and the only green in
+  the game is `FALLBACK_TERRAIN_COLOR`.
+
+This phase makes chunk edges invisible, makes biomes large, seeded and blended,
+and covers most land with a grass topsoil so the world reads as Earth-like.
+
+**Newel dependency:** YES. Biome entities (`fabric/world/biomes/*.js`) gain the
+following fields, authored from each biome's prose:
+- `surfaceMaterial` (e.g. `Grass`, `Sand`, `Ash`, `Moss`);
+- a surface tint;
+- `topsoilDepth`;
+- a climate envelope (`temperature` and `moisture` ranges) that the climate
+  field selects with.
+
+A `Grass`/`Soil` material pair joins `fabric/world/materials/`. Run
+`pnpm validate`, `pnpm generate` and `pnpm check-drift`. No surface table may be
+hand-written in GDScript.
+
+**Closes:** the zone-crossing glitch and the non-natural zone materials (user
+report, 2026-10-04).
+
+**Deliverables:**
+- `src/terrain/voxel_slice.gd`: an unbuilt neighbour's heightmap comes from
+  `terrain_slice.generate_heightmap`, which is deterministic since Phase 41,
+  rather than being treated as "unknown". Seam walls are then exact whatever
+  the build order. Only the outer edge of the streamed window emits a skirt,
+  and that skirt stops at the neighbour's generated surface rather than
+  bedrock.
+- `src/terrain/chunk_manager.gd`: consume `chunk_loaded`. When a chunk's first
+  build guessed a neighbour that has since arrived with edits, rebuild that
+  chunk once.
+- `src/terrain/climate_field.gd` (new, pure): world-seeded, low-frequency
+  `temperature(world_xz)` and `moisture(world_xz)` noise. `biome_at(world_xz)`
+  picks the fabric biome whose climate envelope fits. Biomes become regions
+  hundreds of metres across, not 32 m stripes.
+  - `get_biome_at_chunk` stays as "the biome at the chunk centre" for spawn
+    tables.
+  - Colour and surface read the per-tile biome, blended across a border band
+    of a few tiles with a deterministic dither.
+- `src/terrain/voxel_slice.gd`: a topsoil model.
+  - An unedited natural column's top face takes the biome's
+    `surfaceMaterial` tint, with low-amplitude noise variation.
+  - Side walls show soil down to `topsoilDepth`, with rock (the ore field's
+    host material) below that.
+  - The mesher already groups faces by direction and colour, so a top colour
+    that differs from the side colour costs no extra draw calls.
+  - Mining the grass yields `Soil`. A placed block keeps its own colour.
+- `src/terrain/ore_field.gd`: a surface-breaking vein is the exception, not
+  55% of cells. A deposit marker shows only where the vein's top cell reaches
+  the surface, and its density comes from the fabric.
+- Crossing cost is spread over frames:
+  - unloads are budgeted per frame like loads;
+  - `_prune_heightmaps` is indexed by chunk, so it no longer scans every key;
+  - tree spawn uses the spatial hash rather than a scan of every live tree;
+  - the AOI re-scope snapshot carries only the edits of chunks inside the
+    peer's AOI.
+- `src/ui/minimap.gd` reads the per-tile biome and surface colour.
+
+**Acceptance criteria:**
+- [ ] `terrain: neighbouring chunks mostly share a biome`: over a 32×32-chunk
+  sample, at least 80% of axis-adjacent chunk pairs share a biome, and two
+  seeds produce different layouts. This replaces the stripe pattern.
+  `_test_chunk_biome_stable` still passes.
+- [ ] `voxel: concurrent seam is exact`: two adjacent chunks built from the same
+  first-ring snapshot (neither built before the other) emit no wall at a seam
+  where the surface is level. The faces match the sequential
+  `_test_voxel_seam_wall_order_independent` result.
+- [ ] `voxel: grass top, soil side`: an unedited temperate column's top-face
+  colour is the fabric grass tint and its side colour is soil.
+  `_test_voxel_biome_materials` is updated to assert rock under the topsoil.
+- [ ] With the camera in-game at default view distance, walking 20 chunks in a
+  straight line shows no frame over 33 ms in the frame-time log and no
+  visible seam flicker (a manual check recorded with a screenshot).
+- [ ] An AOI re-scope snapshot's `edits` holds only chunks inside the AOI.
+- [ ] `pnpm check-drift` is clean and the suite is green on both boot paths.
+  `tools/net_harness.sh` agrees on a fresh world.
+
+**Known simplifications:**
+- The grass is a vertex colour, with no texture and no grass blades. Textured
+  terrain needs UVs that greedy merging drops; deferred.
+- The climate field is planar here. Phase 56 makes temperature follow latitude
+  and altitude.
+
+---
+
+## Phase 55 — Planet coordinates
+
+**Goal:** The world is an 8 km square: `WORLD_RADIUS_CHUNKS := 128`,
+`clamp_to_world` at `terrain_slice.gd:152`, and float32 positions with no
+origin rebasing. The target is one persistent, Earth-sized world (about
+510 million km²) that players can locate each other in by coordinates.
+
+A literal voxel sphere is not attempted: gravity would vary per position, and
+a cube-sphere chunk grid distorts at its face seams. Instead the world takes
+**globe semantics on a flat chunk grid**:
+- X wraps (about 40,000 km around), so walking east eventually returns you
+  home.
+- Z is latitude, bounded by impassable polar ice.
+- Players see latitude, longitude and altitude.
+
+The terrain is already seed-deterministic and only edits are stored, so the
+huge world costs storage only where players build. Around 5×10¹¹ chunks are
+generated on demand and never written.
+
+**Newel dependency:** YES. A world-system entity in `fabric/world/world.js`
+holds `circumferenceKm`, `polarLatitude` and `seaLevel` (used by Phase 56), so
+the planet's size is a fabric fact.
+
+**Closes:** the world-size limit.
+
+**Deliverables:**
+- `src/terrain/terrain_slice.gd`: `wrap_chunk(chunk_pos)` and
+  `latitude_of(chunk_z)` / `longitude_of(chunk_x)` replace
+  `WORLD_RADIUS_CHUNKS` and `clamp_to_world`. Noise sampling is periodic in
+  X, so the wrap seam is invisible. Two options: 4D noise on a cylinder, or a
+  blend over the last chunk column.
+- A world position becomes `{ chunk: Vector2i, local: Vector3 }` everywhere it
+  is saved or sent: player records, the join snapshot, edit RPCs, AOI
+  centres, creature and station positions. An `int32` chunk index covers the
+  whole planet (about 1.25M chunks per axis).
+- The client rebases the scene origin when the player drifts more than about
+  2 km from it, shifting all streamed nodes in one frame. The physics and
+  render scene never see a large coordinate. The headless server keeps
+  chunk-relative positions per entity.
+- The HUD and minimap show latitude, longitude and altitude. `/where` prints
+  them.
+- Save migration: a pre-Phase-55 world maps its old origin to a fixed
+  latitude/longitude, and old float positions convert to chunk + local.
+
+**Acceptance criteria:**
+- [ ] `terrain: the world wraps east-west`: the heightmap of chunk
+  `(circumference_chunks − 1, z)` meets chunk `(0, z)` with no seam wall.
+- [ ] `player: rebased origin keeps the world position`: after a rebase, the
+  player's `{chunk, local}` is unchanged and every streamed chunk node is
+  shifted by the same offset.
+- [ ] A player teleported 10,000 km out walks, mines and builds with the same
+  0.125 step precision as at the origin (manual check plus a unit test on the
+  quantiser at large chunk indices).
+- [ ] A Phase 54 save loads with its edits at the mapped coordinates.
+- [ ] Suite green on both boot paths, and `tools/net_harness.sh` agrees.
+
+---
+
+## Phase 56 — Continents, oceans and mountains
+
+**Goal:** Terrain is a single gentle FBM field 0–5 m tall (`HEIGHT_SCALE := 5.0`,
+3 octaves at frequency 0.05) in a −8..16 m column. It has no sea level, no
+ocean, no mountain and no climate. This phase gives the planet a large-scale
+shape and makes biomes follow climate the way Earth's do.
+
+**Newel dependency:** YES.
+- Biome climate envelopes from Phase 54 are extended with altitude.
+- Earth-like biomes join the fantasy ones: Ocean, Beach, Desert, Tundra,
+  Alpine, Taiga and Savanna, each with `surfaceMaterial`, `treeDensity` and
+  spawn rules.
+- Fantasy biomes (TwilightGrove, VolcanicBadlands, VoidRift) become rare
+  climate niches, not equal-share zones.
+- `seaLevel` and the height range live on the world entity.
+
+**Closes:** none (new capability).
+
+**Deliverables:**
+- `src/terrain/terrain_slice.gd`: layered height built from three noise
+  fields:
+  - **continentalness**, at thousand-kilometre scale: ocean basin, shelf,
+    coast or inland;
+  - **erosion**: flat plains versus rugged land;
+  - **ridges and peaks**: mountain ranges.
+
+  These combine through a fabric-authored spline. Sea level is at 0, and the
+  vertical range grows to about −64..+512 m. Sparse runs (Phase 41) keep a
+  tall column cheap, and `BEDROCK_DEPTH` moves with the surface (a fixed
+  thickness below it).
+- `src/terrain/climate_field.gd`: temperature falls with `|latitude|` and with
+  altitude, and moisture follows distance to the ocean plus noise. The result
+  is snow-capped peaks, polar tundra and equatorial forest.
+- Water: a flat water surface mesh per chunk wherever terrain is below sea
+  level, and a swim/wade state in `player_slice.gd`. This is a static water
+  level only; the fluid CA stays deferred.
+- Distant terrain: coarse heightmap rings outside the 3-chunk voxel window,
+  render-only with no collision, so coastlines and mountains are visible from
+  afar.
+- Spawn tables (trees, creatures, ore bias) read the climate biome, and ocean
+  chunks spawn none of the land tables.
+
+**Acceptance criteria:**
+- [ ] Over a 1,000 km sample transect, the fraction of the transect below sea level
+  lands within the fabric's target ocean share (about 60–70%), and at least
+  one height above 300 m appears.
+- [ ] `climate: poles are cold, peaks are cold`: the biome at latitude 85° is
+  polar, and a 450 m peak at the equator is Alpine.
+- [ ] A player cannot walk into deep water as if it were ground: they swim at
+  the surface (a suite test on the movement state).
+- [ ] A distant-terrain ring renders at 10× the voxel window with no collision
+  bodies (asserted).
+- [ ] `pnpm check-drift` clean and the suite green on both boot paths.
+
+**Known simplifications:**
+- No rivers or lakes above sea level (Deferred).
+- No erosion simulation; the "erosion" field is noise.
+
+---
+
+## Phase 57 — Region storage and per-player server streaming
+
+**Goal:** Two things stop the planet from persisting and simulating where its
+players are.
+
+- **One file holds every edit.** `user://saves/server/world.json` stores all
+  edits and lives fully in RAM (`_edits`, `_edits_by_chunk`). Each save reads,
+  merges and rewrites the whole file (`persistence_slice.gd`). That is
+  O(total edits) and will not survive a planet.
+- **The server only simulates near the origin.** The headless server streams
+  chunks around a single centre, the idle body at `(16, 12, 16)`
+  (`player_slice.gd:423`). Creatures and trees therefore only live near the
+  origin, wherever the players actually are.
+
+**Newel dependency:** NO.
+
+**Closes:** none (scale prerequisite; sharding stays Deferred).
+
+**Deliverables:**
+- `src/persistence/region_store.gd` (new): edits are grouped into region files
+  of 32×32 chunks (`regions/r.<rx>.<rz>.json`, later binary). A region is
+  loaded when any of its chunks enters a streamed window, unloaded when none
+  remain, and only dirty regions are written.
+  - The interface is `load_region` / `save_region` / `list_dirty`, so a
+    database backend can replace files without touching callers.
+  - `world.json` keeps only global state: seed, market, governance and
+    stations index.
+- `src/terrain/chunk_manager.gd`: the server keeps a window per connected peer
+  around that peer's position, with per-chunk reference counts. A chunk loads
+  when its count first goes above zero and unloads when it returns to zero.
+  The listen host keeps its own window as today.
+- Creature and tree simulation, plus edit validation, run against the union
+  window, so a peer 5,000 km away has a live world around them.
+- Migration: a monolithic Phase 56 `world.json` splits into region files on
+  first boot.
+
+**Acceptance criteria:**
+- [ ] Two peers 100 km apart each have creatures simulated around them on a
+  headless server (net harness step `far_peers_simulated`).
+- [ ] A save after editing one chunk writes exactly one region file.
+- [ ] Server RSS with 1,000 edited regions on disk and one connected peer stays
+  within 10% of an empty world.
+- [ ] A Phase 56 save migrates with every edit intact.
+- [ ] Suite green on both boot paths, and `tools/net_harness.sh` agrees.
+
+---
+
+## Phase 58 — Spawn placement and friend codes
+
+**Goal:** Every new player spawns at the hard-coded `Vector3(16, 12, 16)`
+(`player_slice.gd:423`) on a terrain patch flattened for that purpose. On a
+planet that puts everyone in one crowded square metre. A new player should
+instead land on empty, habitable land. A group should be able to spawn
+together using a code: the friend's existing `p_` player handle
+(`player_registry.gd`, `HANDLE_PREFIX`), so no new entity is needed.
+
+**Newel dependency:** YES. A world-system spawn rule in the fabric sets which
+biomes count as habitable, the minimum distance from colonized regions, and
+the friend spawn radius.
+
+**Closes:** single spawn point.
+
+**Deliverables:**
+- `src/world/colonization_map.gd` (new): a per-region score built from edited
+  chunk count, player homes and recent player presence. It persists with the
+  Phase 57 region index.
+- New-player spawn: a deterministic search (seeded by the player id) for
+  habitable land (not ocean, ice or VoidRift) at least the fabric minimum
+  distance from any colonized region. It lands on solid ground found by
+  sampling the generated surface. The flattened `SPAWN_CENTER` disc is
+  retired.
+- Friend code: the join or new-character flow accepts an optional handle. A
+  new player with a valid handle spawns on safe ground within the fabric
+  radius (about 200 m) of that player's current position, or their last saved
+  position if they are offline. An unknown handle falls back to the normal
+  search, with a message.
+- The handle is shown in the character window with a copy button.
+
+**Acceptance criteria:**
+- [ ] `spawn: new players avoid colonized regions`: with 1,000 seeded colonized
+  regions, 100 spawns all land on habitable land outside them.
+- [ ] `spawn: friend code lands near the friend`: the spawn is within the
+  radius, on ground, and not in water.
+- [ ] An existing player reconnects at their saved position (Phase 33
+  behaviour unchanged).
+- [ ] Net harness step `spawn_near_friend` agrees over the socket.
+
+---
+
+## Phase 59 — World clock, day and night, seasons
+
+**Goal:** The only lighting is a static `DirectionalLight3D` at a fixed angle,
+with no clock, day/night cycle, seasons or weather. A planet with latitude
+should have days whose length varies, and seasons that are opposite in each
+hemisphere.
+
+**Newel dependency:** YES.
+- The world entity gets `dayLengthMinutes`, `yearLengthDays` and `axialTilt`.
+- Biomes get seasonal modifiers: foliage tint, snow line and growth or spawn
+  multipliers.
+- TwilightGrove's existing `dayNightSpeed` is reconciled with the global
+  clock.
+
+**Closes:** none.
+
+**Deliverables:**
+- `src/world/world_clock.gd` (new): the server-authoritative time is persisted
+  in `world.json`, sent in the join snapshot and corrected by a periodic tick.
+  The client interpolates between ticks.
+- Sun angle and day length come from the clock, the player's latitude and the
+  axial tilt. The southern hemisphere is in the opposite season.
+- Seasons tint grass and foliage, put snow cover on surfaces whose seasonal
+  temperature is below freezing, and apply the fabric growth and spawn
+  multipliers.
+- The HUD shows the time of day and season.
+
+**Acceptance criteria:**
+- [ ] `clock: hemispheres are opposite`: on the same date, latitude +45° is in
+  summer when −45° is in winter.
+- [ ] `clock: day length varies by latitude`: at the solstice, daylight is
+  longer at +60° than at the equator.
+- [ ] A client's clock stays within 1 s of the host's over 10 minutes (net
+  harness).
+- [ ] `pnpm check-drift` clean and the suite green on both boot paths.
+
+---
+
 ## Deferred (in priority order)
 
 - **Server sharding (final, not before maturity)** — split the authoritative
@@ -5171,6 +5534,24 @@ exercised in play. Use it for the local avatar with a safe fallback.
   make sharding possible — the Phase 27 sim/visual split and the Phase 28
   hash are the prerequisites, and both are already planned ahead of it. Revisit
   when Brazil-region load approaches one server's ceiling.
+
+- **Rivers, lakes and fluid flow** — water above sea level and flowing water
+  (the cellular-automaton idea from the GDVoxelPlayground evaluation) follow
+  Phase 56's static sea level.
+- **Fast travel** — a planet takes about 90 days to walk around. Some form of
+  travel network (roads, boats, waystones) is needed once players spread out
+  (after Phase 58).
+- **Voxel techniques from GDVoxelPlayground (evaluated, not adopted wholesale)** —
+  <https://github.com/JorisAR/GDVoxelPlayground> (MIT) ray-marches a FIXED 128³
+  voxel grid on the GPU via `RenderingDevice` compute. It does not fit Nihon,
+  which has an unbounded streamed world, a headless server with no
+  `RenderingDevice`, seed-deterministic CPU terrain, sparse-run columns with
+  trimesh collision, and per-edit authority and persistence. Three techniques
+  are worth borrowing later, each CPU-side and deterministic:
+  - a **cellular automaton** for sand, water and lava, run on dirty chunks
+    only;
+  - **WFC** for ruins, villages and dungeons;
+  - a **brick occupancy map** if meshing becomes the bottleneck.
 
 - **Public wiki deployment** — VitePress (or equivalent) static-site deployment
   and CI-triggered wiki regeneration from the fabric (deferred from Phase 9).
