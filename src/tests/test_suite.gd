@@ -355,6 +355,7 @@ func run() -> void:
 	# enforced at dispatch, the split probe's absolute frame ceiling, the packed colour's wrap,
 	# the prebuilt biome roll table, and the required build-payload shape.
 	_run_test("chunk: the kept window is the stream radius",  _test_chunk_kept_window_is_stream_radius)
+	_run_test("chunk: unloads are budgeted per frame",  _test_chunk_unloads_budgeted)
 	_run_test("chunk: a direct load respects the in-flight cap", _test_chunk_load_respects_inflight_cap)
 	_run_test("voxel: the group key survives the colour band", _test_voxel_group_key_colour_band)
 	_run_test("ore: the band table is prebuilt",               _test_voxel_biome_roll_table_prebuilt)
@@ -10069,6 +10070,29 @@ func _test_chunk_prefetch_ring() -> void:
 ## row asks for them: the invariant (nothing is ever unloaded while it still lies inside the
 ## queue radius), and the retention arithmetic as an exact NUMBER — a one-chunk crossing
 ## releases the seven chunks of the departing edge, not the forty a view-ring window releases.
+## Phase 49 — the `_process` path releases at most `unloads_per_frame` chunks per tick, and a
+## chunk the player walked back toward while it waited is kept.
+func _test_chunk_unloads_budgeted() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var player: PlayerSlice = rig["player"]
+	cm.view_distance = 1
+	cm.prefetch_distance = 0
+	cm.loads_per_frame = 64
+	cm.unloads_per_frame = 2
+	cm.refresh()
+	_wait_for_builds(cm)
+	var before: int = cm._loaded.size()
+	player.spawn_at(Vector3(16.0, 40.0, 160.0))   # nothing of the old window survives
+	cm.refresh(false)
+	assert_eq(cm._loaded.size(), before, "a budgeted refresh releases nothing by itself")
+	assert_eq(cm._unload_queue.size(), before, "every stale chunk waits in the unload queue")
+	cm._drain_unload_queue(cm.unloads_per_frame)
+	assert_eq(cm._loaded.size(), before - 2, "one tick releases exactly the budget")
+	cm._drain_unload_queue(64)
+	assert_true(cm._unload_queue.is_empty(), "the queue drains to empty")
+	assert_false(cm._loaded.has("0,0"), "the old window is gone")
+
 func _test_chunk_kept_window_is_stream_radius() -> void:
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
