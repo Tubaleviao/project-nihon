@@ -3456,6 +3456,12 @@ func _test_voxel_unload_prunes_heightmaps() -> void:
 	assert_true(v.get_heightmaps().has("0,0"), "while the loaded chunk's map stays")
 	v.unload_chunk(Vector2i(0, 0))
 	assert_true(v.get_heightmaps().is_empty(), "unloading the last chunk prunes it and its ring")
+	# A build guesses its DIAGONAL neighbours' maps too; unloading must drop them.
+	v._guess_heightmaps["6,6"] = flat
+	v.build_chunk(Vector2i(5, 5), flat)
+	v._guess_heightmaps["6,6"] = flat
+	v.unload_chunk(Vector2i(5, 5))
+	assert_false(v._guess_heightmaps.has("6,6"), "a diagonal guess is pruned with its chunk")
 	v.free()
 
 ## Review pass — a snapshot rebuilds only the chunks whose edits CHANGED, and never

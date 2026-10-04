@@ -999,17 +999,24 @@ func unload_chunk(chunk_pos: Vector2i) -> void:
 ## and its four edge neighbours, so only those five are probed (each against its own
 ## four neighbours) instead of scanning every loaded chunk and every stored map. A
 ## crossing unloads a dozen chunks in one frame; the full scan made that quadratic.
+##
+## The candidates are the full 3x3 around the unloaded chunk, not just its plus ring: a build
+## also guesses its DIAGONAL neighbours' maps (`_ring_chunks` is 3x3, for the corner tile),
+## and those guesses must be dropped when the chunk that caused them unloads. The keep rule
+## itself is unchanged (loaded or edge-adjacent to a loaded chunk).
 func _prune_heightmaps(around: Vector2i) -> void:
-	for candidate in _plus_ring(around):
-		var ckey := _chunk_key(candidate)
-		var kept := false
-		for probe in _plus_ring(candidate):
-			if _chunks.has(_chunk_key(probe)):
-				kept = true
-				break
-		if not kept:
-			_heightmaps.erase(ckey)
-			_guess_heightmaps.erase(ckey)
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			var candidate := Vector2i(around.x + dx, around.y + dz)
+			var kept := false
+			for probe in _plus_ring(candidate):
+				if _chunks.has(_chunk_key(probe)):
+					kept = true
+					break
+			if not kept:
+				var ckey := _chunk_key(candidate)
+				_heightmaps.erase(ckey)
+				_guess_heightmaps.erase(ckey)
 
 ## A chunk and its four edge neighbours.
 func _plus_ring(c: Vector2i) -> Array:
