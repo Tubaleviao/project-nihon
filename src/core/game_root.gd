@@ -1058,10 +1058,6 @@ func _player_targets() -> Dictionary:
 		out[player_id] = _networking.get_last_known_state(int(peer_id))
 	return out
 
-## Phase 29 — a client's movement may carry it into a new area of interest.
-## When the AOI grid cell changes, re-send a scoped snapshot so the client gains
-## the entities now in range — including static creatures that were never
-## "dirty" and therefore never re-broadcast as a delta.
 ## Phase 66 — client: the other players inside our AOI, as character instances.
 ## { peer_id: instance_id }. A peer's replicated gear lands on its instance (bound through
 ## `bind_peer_character`), so what the host sends is applied to something visible. An
@@ -1097,6 +1093,10 @@ func _remove_remote_avatar(peer_id: int) -> void:
 		_character.remove_character(str(_remote_avatars[peer_id]))
 		_remote_avatars.erase(peer_id)
 
+## Phase 29 — a client's movement may carry it into a new area of interest.
+## When the AOI grid cell changes, re-send a scoped snapshot so the client gains
+## the entities now in range — including static creatures that were never
+## "dirty" and therefore never re-broadcast as a delta.
 func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	if _is_client:
 		return
