@@ -274,6 +274,7 @@ func run() -> void:
 	_run_test("chunk: unload preserves edits on reload",        _test_chunk_unload_preserves_edits)
 	_run_test("chunk: creature spawn scales per chunk",         _test_chunk_creature_spawn_per_chunk)
 	_run_test("chunk: tree spawn scales per chunk",             _test_chunk_tree_spawn_per_chunk)
+	_run_test("spawn: hash output pinned",                       _test_spawn_roll_mix_pinned)
 	_run_test("spawn: seeded roll, density and pack size",       _test_spawn_roll_pure)
 	_run_test("spawn: creature packs are scarce and seeded",     _test_spawn_creature_scarcity)
 	_run_test("spawn: the population cap holds and is released", _test_spawn_population_cap)
@@ -3621,6 +3622,9 @@ func _test_ui_layout_roundtrip() -> void:
 	assert_false(junk.has("bogus"), "unknown window key dropped")
 	assert_false(junk.has("inventory"), "non-numeric entry dropped")
 	assert_eq(junk.get("market"), Vector2(5, 6), "valid entry kept")
+	var huge := UiSlice.parse_layout('{"inventory":[1e999,2],"market":[5,6]}')
+	assert_false(huge.has("inventory"), "non-finite entry dropped")
+	assert_eq(huge.get("market"), Vector2(5, 6), "finite entry beside it kept")
 
 func _test_ui_inventory_rows() -> void:
 	var ui := _new_test_ui()
@@ -11287,6 +11291,14 @@ func _spawn_world(seed_v: int, biome: String) -> Dictionary:
 			if str(terrain.get_biome_at_chunk(Vector2i(x, z))) == biome:
 				chunks.append(Vector2i(x, z))
 	return { "terrain": terrain, "chunks": chunks }
+
+## Pins the hash's raw output: it leans on 64-bit int wraparound, and any edit to it
+## silently reshuffles every world's spawns. Values computed with 64-bit wrap arithmetic.
+func _test_spawn_roll_mix_pinned() -> void:
+	assert_eq(SpawnRoll._mix(7, 0, 0, 0), 1062735684, "mix pinned: zero chunk")
+	assert_eq(SpawnRoll._mix(7, 3, -5, 12345), 705471667, "mix pinned: mixed-sign chunk")
+	assert_eq(SpawnRoll._mix(123456789, -2, 9, -77), 1738906673, "mix pinned: large seed, negative salt")
+	assert_eq(SpawnRoll._mix(1, 1, 1, 1), 28702025, "mix pinned: ones")
 
 func _test_spawn_roll_pure() -> void:
 	var lo := 9.0
