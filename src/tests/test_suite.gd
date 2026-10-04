@@ -268,6 +268,7 @@ func run() -> void:
 	_run_test("chunk: desired set within view distance",        _test_chunk_desired_set)
 	_run_test("chunk: world/chunk coordinate round-trip",       _test_chunk_coordinate_round_trip)
 	_run_test("chunk: per-chunk biome is stable",               _test_chunk_biome_stable)
+	_run_test("terrain: neighbouring chunks mostly share a biome", _test_biome_regions_coherent)
 	_run_test("chunk: load/unload emits signals",               _test_chunk_load_unload_signals)
 	_run_test("chunk: refresh queues nearest-first",            _test_chunk_refresh_queues_nearest_first)
 	_run_test("chunk: load queue respects per-frame budget",    _test_chunk_load_queue_respects_budget)
@@ -3994,6 +3995,25 @@ func _test_chunk_coordinate_round_trip() -> void:
 	assert_eq(t.world_to_chunk(Vector2(64.0, -96.0)), Vector2i(2, -3), "world round-trips to chunk")
 	assert_eq(t.world_to_chunk(Vector2(70.0, -90.0)), Vector2i(2, -3), "interior point maps to same chunk")
 	t.free()
+
+## Phase 49 — biomes are regions, not 32 m stripes, and the layout depends on the seed.
+func _test_biome_regions_coherent() -> void:
+	var same := 0
+	var pairs := 0
+	var differs := false
+	for cz in range(-16, 16):
+		for cx in range(-16, 16):
+			var b := TerrainSlice.biome_for_chunk(Vector2i(cx, cz))
+			if TerrainSlice.biome_for_chunk(Vector2i(cx + 1, cz)) == b:
+				same += 1
+			if TerrainSlice.biome_for_chunk(Vector2i(cx, cz + 1)) == b:
+				same += 1
+			pairs += 2
+			if b != TerrainSlice.biome_for_chunk(Vector2i(cx, cz), 12345):
+				differs = true
+	var frac := float(same) / float(pairs)
+	assert_true(frac >= 0.8, "neighbouring chunks mostly share a biome (%.2f)" % frac)
+	assert_true(differs, "a different seed lays the biomes out differently")
 
 func _test_chunk_biome_stable() -> void:
 	var t := TerrainSlice.new()
@@ -10285,13 +10305,15 @@ func _test_chunk_contents_spawn_after_ground() -> void:
 	add_child(tree)
 	tree.terrain_slice = terrain
 	cm.tree_slice = tree
-	cm.load_chunk(Vector2i(0, 0))
-	assert_false(cm._built.has("0,0"), "the build is in flight")
-	assert_eq(tree.trees_in_chunk(Vector2i(0, 0)).size(), 0,
+	var c := _find_chunk_with_biome(terrain, ["TemperateForest", "TwilightGrove"])
+	var key := "%d,%d" % [c.x, c.y]
+	cm.load_chunk(c)
+	assert_false(cm._built.has(key), "the build is in flight")
+	assert_eq(tree.trees_in_chunk(c).size(), 0,
 		"no trees exist while the chunk's ground does not")
 	_wait_for_builds(cm)
-	assert_true(cm._built.has("0,0"), "the ground lands")
-	assert_true(tree.trees_in_chunk(Vector2i(0, 0)).size() > 0,
+	assert_true(cm._built.has(key), "the ground lands")
+	assert_true(tree.trees_in_chunk(c).size() > 0,
 		"and the chunk's trees spawn with it")
 	rig["cm"].free()
 	rig["voxel"].free()

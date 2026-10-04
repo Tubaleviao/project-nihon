@@ -119,10 +119,8 @@ func get_biome_at_chunk(chunk_pos: Vector2i) -> String:
 ## Phase 43 — the STATIC form of `get_biome_at_chunk`: a pure function of the chunk and the
 ## `BIOME_SEED` const, so the ore field (`src/terrain/ore_field.gd`) can ask a vein's biome on
 ## a worker thread without a terrain-slice reference.
-static func biome_for_chunk(chunk_pos: Vector2i) -> String:
-	var h: int = BIOME_SEED + chunk_pos.x * 2654435761 + chunk_pos.y * 2246822519
-	var idx := posmod(h, BIOME_KEYS.size())
-	return str(BIOME_KEYS[idx])
+static func biome_for_chunk(chunk_pos: Vector2i, seed_v: int = BIOME_SEED) -> String:
+	return ClimateField.biome_for_chunk(seed_v, chunk_pos, BIOME_KEYS)
 
 ## Convert a world XZ position to its containing chunk coordinate.
 func world_to_chunk(world_pos: Vector2) -> Vector2i:
