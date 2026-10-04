@@ -374,6 +374,7 @@ func run() -> void:
 	_run_test("ore: a vein yields more than one and runs out", _test_ore_vein_yields_and_exhausts)
 	_run_test("ore: surrounding rock is the bias, never the gated ore", _test_ore_host_rock_yield)
 	_run_test("ore: depletion is one op per vein and persists", _test_ore_depletion_persists)
+	_run_test("ore: surface-breaking veins are the exception", _test_ore_surface_veins_rare)
 	_run_test("ore: a client replays the host's depletion",    _test_ore_client_replays_depletion)
 	_run_test("ore: the build payload carries the field",      _test_ore_build_payload_carries_field)
 	_run_test("player: facing is a normalized yaw vector",      _test_player_facing)
@@ -6678,11 +6679,18 @@ func _test_voxel_terrain_material_is_one_instance() -> void:
 	var v := VoxelSlice.new()
 	add_child(v)
 	v.terrain_slice = terrain
-	var rare := _find_chunk_with_biome(terrain, ["VolcanicBadlands", "TwilightGrove"])
-	assert_true(rare.x != -1, "found a biome that grants a rare vein")
 	var flat: Array = []
 	flat.resize(64 * 64)
 	flat.fill(2.0)
+	# Surface veins are rare (Phase 49), so scan the rare biomes' chunks for one with a deposit.
+	var rare := Vector2i(-1, -1)
+	for cx in range(-80, 80):
+		var cand := Vector2i(cx, 0)
+		if ["VolcanicBadlands", "TwilightGrove"].has(str(terrain.get_biome_at_chunk(cand))) \
+				and not v.vein_deposits(cand, flat).is_empty():
+			rare = cand
+			break
+	assert_true(rare.x != -1, "found a biome that grants a rare vein")
 
 	v.build_chunk(rare, flat)
 	var meshes := _chunk_mesh_instances(v, rare)
@@ -11320,6 +11328,23 @@ func _test_ore_host_rock_yield() -> void:
 	v.free()
 	inv.free()
 	terrain.free()
+
+func _test_ore_surface_veins_rare() -> void:
+	var top := 0
+	var top_surface := 0
+	for cx in range(-20, 20):
+		for cz in range(-20, 20):
+			var v0 := OreField.vein_in_cell(4242, Vector3i(cx, 0, cz))
+			if not v0.is_empty():
+				top += 1
+				var c: Vector3 = v0["center"]
+				if c.y - float(v0["half_height"]) * (1.0 + OreField.SHAPE_NOISE) < 0.0:
+					top_surface += 1
+	assert_true(top > 0, "the top cell holds veins")
+	# Few surface breakers: the roll keeps SURFACE_VEIN_CHANCE of them, so well under the
+	# unfiltered share of a deeper cell's veins that would poke out.
+	assert_true(float(top_surface) / float(top) < 0.2, "surface-breaking veins are a minority (%d of %d)" % [top_surface, top])
+	assert_eq(OreField.vein_in_cell(4242, Vector3i(3, 0, 3)), OreField.vein_in_cell(4242, Vector3i(3, 0, 3)), "still deterministic")
 
 func _test_ore_depletion_persists() -> void:
 	var found := _find_surface_vein(0)
