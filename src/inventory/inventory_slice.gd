@@ -468,7 +468,7 @@ static func transfer(src: Node, dst: Node, give: Dictionary, receive: Variant = 
 		var dvals: Array = (removed.get(item_id, []) as Array).duplicate()
 		dvals.sort()   # worst-first, so the fee burns the best instances
 		if not bool(dst.add_item(item_id, qty, dvals)):
-			push_warning("InventorySlice.transfer: add_item failed for '%s' ×%d after consuming from source — goods lost" % [item_id, qty])
+			Diag.warn("InventorySlice.transfer: add_item failed for '%s' ×%d after consuming from source — goods lost" % [item_id, qty])
 	return { "success": true, "reason": "" }
 
 # ---------------------------------------------------------------------------
@@ -485,12 +485,12 @@ func _on_pickup_requested(pickup_id: String) -> void:
 
 func _try_pickup(pickup_id: String, item_id: String, quantity: int) -> void:
 	if _is_full:
-		push_warning("InventorySlice: cannot pick up '%s' — inventory full" % item_id)
+		Diag.warn("InventorySlice: cannot pick up '%s' — inventory full" % item_id)
 		return
 
 	var add_weight := _item_weight(item_id) * float(quantity)
 	if _current_weight + add_weight > _max_weight:
-		push_warning("InventorySlice: '%s' ×%d would exceed weight limit (%.1f/%.1f kg)" % [
+		Diag.warn("InventorySlice: '%s' ×%d would exceed weight limit (%.1f/%.1f kg)" % [
 			item_id, quantity, _current_weight + add_weight, _max_weight])
 		GameBus.inventory_full.emit()
 		_is_full = true
@@ -500,7 +500,7 @@ func _try_pickup(pickup_id: String, item_id: String, quantity: int) -> void:
 	var already_have := get_item_count(item_id) > 0
 	var would_add_slot := not already_have
 	if would_add_slot and get_total_slots_used() >= _max_slots:
-		push_warning("InventorySlice: cannot pick up '%s' — no free slots (%d/%d)" % [
+		Diag.warn("InventorySlice: cannot pick up '%s' — no free slots (%d/%d)" % [
 			item_id, get_total_slots_used(), _max_slots])
 		GameBus.inventory_full.emit()
 		_is_full = true
@@ -515,7 +515,7 @@ func _try_pickup(pickup_id: String, item_id: String, quantity: int) -> void:
 	# Add to inventory. add_item re-checks capacity and handles durability init +
 	# weight bookkeeping + inventory_changed.
 	if not add_item(item_id, quantity):
-		push_warning("InventorySlice: add_item failed for '%s' during pickup" % item_id)
+		Diag.warn("InventorySlice: add_item failed for '%s' during pickup" % item_id)
 		return
 
 	GameBus.item_picked_up.emit(item_id, quantity)
@@ -561,7 +561,7 @@ func _build_weight_cache() -> void:
 			if GameData.ITEMS.has(item_id):
 				continue
 			if not _item_weight_cache.has(item_id):
-				push_warning("InventorySlice: drop item '%s' (from creature '%s') has no weight in RAW_DROP_WEIGHTS — defaulting to 0 kg. Add it to RAW_DROP_WEIGHTS." % [item_id, creature_id])
+				Diag.warn("InventorySlice: drop item '%s' (from creature '%s') has no weight in RAW_DROP_WEIGHTS — defaulting to 0 kg. Add it to RAW_DROP_WEIGHTS." % [item_id, creature_id])
 	# Fabric raw materials (mined from terrain) declare density (g/cm³); use that
 	# as a per-unit kg weight so mined items aren't weightless.
 	for key in GameData.MATERIALS:
@@ -617,10 +617,10 @@ func _resolve_durability(item_id: String, qty: int, durabilities: Dictionary) ->
 	var local: Array = _durability.get(item_id, [])
 	if local.is_empty():
 		if warn:
-			push_warning("InventorySlice: sync/save payload omits durability for durable item '%s' — granting pristine copies" % item_id)
+			Diag.warn("InventorySlice: sync/save payload omits durability for durable item '%s' — granting pristine copies" % item_id)
 		return _fresh_values(max_d, qty)
 	if warn:
-		push_warning("InventorySlice: sync/save payload omits durability for durable item '%s' — preserving local wear (worst-first)" % item_id)
+		Diag.warn("InventorySlice: sync/save payload omits durability for durable item '%s' — preserving local wear (worst-first)" % item_id)
 	if local.size() < qty:
 		# Preserve the local wear, pad the excess fresh (max) — those are new
 		# instances the player never held.

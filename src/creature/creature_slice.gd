@@ -438,7 +438,7 @@ func _remember_death(iid: String, inst: Dictionary) -> void:
 func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> String:
 	var res: Resource = GameData.CREATURES.get(creature_id, null)
 	if res == null:
-		push_error("CreatureSlice: unknown creature '%s' in GameData.CREATURES" % creature_id)
+		Diag.error("CreatureSlice: unknown creature '%s' in GameData.CREATURES" % creature_id)
 		return ""
 
 	var hp: float = float(res.get("baseHp"))

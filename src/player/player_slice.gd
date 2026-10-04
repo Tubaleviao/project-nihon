@@ -561,7 +561,7 @@ func _try_attack() -> void:
 	if not _alive:
 		return
 	if creature_slice == null:
-		push_warning("PlayerSlice: creature_slice not wired — cannot resolve attack target")
+		Diag.warn("PlayerSlice: creature_slice not wired — cannot resolve attack target")
 		return
 	var target_id: String = creature_slice.nearest_creature(get_position(), ATTACK_RANGE)
 	if target_id == "":

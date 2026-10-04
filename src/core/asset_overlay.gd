@@ -75,7 +75,7 @@ func load_texture(rel: String) -> ImageTexture:
 	var img := Image.new()
 	var err := img.load_png_from_buffer(bytes)
 	if err != OK:
-		push_warning("[AssetOverlay] failed to decode %s: %s" % [path, error_string(err)])
+		Diag.warn("[AssetOverlay] failed to decode %s: %s" % [path, error_string(err)])
 		return null
 	return ImageTexture.create_from_image(img)
 
@@ -123,14 +123,14 @@ static func creature_model_key(entity_name: String) -> String:
 func _load_gltf_scene(rel: String) -> Node:
 	var path := resolve_path(rel)
 	if not FileAccess.file_exists(path):
-		push_warning("[AssetOverlay] missing model %s" % rel)
+		Diag.warn("[AssetOverlay] missing model %s" % rel)
 		return null
 	var bytes := FileAccess.get_file_as_bytes(path)
 	var doc := GLTFDocument.new()
 	var state := GLTFState.new()
 	var err := doc.append_from_buffer(bytes, "", state)
 	if err != OK:
-		push_warning("[AssetOverlay] failed to parse %s: %s" % [path, error_string(err)])
+		Diag.warn("[AssetOverlay] failed to parse %s: %s" % [path, error_string(err)])
 		return null
 	return doc.generate_scene(state)
 
@@ -159,7 +159,7 @@ func load_mesh(rel: String) -> Mesh:
 	var mesh := _first_mesh(root)
 	root.free()
 	if mesh == null:
-		push_warning("[AssetOverlay] %s contains no mesh" % rel)
+		Diag.warn("[AssetOverlay] %s contains no mesh" % rel)
 	return mesh
 
 
@@ -188,7 +188,7 @@ func _mount_production_pack() -> bool:
 			var ok := ProjectSettings.load_resource_pack(candidate, true)
 			if ok:
 				return true
-			push_warning("[AssetOverlay] found %s but failed to mount it" % candidate)
+			Diag.warn("[AssetOverlay] found %s but failed to mount it" % candidate)
 	return false
 
 

@@ -58,6 +58,7 @@ func run() -> void:
 	print("\n╔══════════════════════════════════════╗")
 	print("║       Project Nihon — Test Suite     ║")
 	print("╚══════════════════════════════════════╝\n")
+	Diag.quiet = true
 
 	_run_test("battle: hit reduces defender hp",              _test_battle_hit_reduces_hp)
 	_run_test("battle: miss leaves hp unchanged",             _test_battle_miss_leaves_hp_unchanged)
@@ -541,6 +542,7 @@ func run() -> void:
 			push_error("TestSuite: '%s' is defined but never registered — add it to the _run_test list" % method_name)
 			_fail += 1
 
+	Diag.quiet = false
 	var total := _pass + _fail
 	print("\n────────────────────────────────────────")
 	print("Results: %d/%d passed  (%d failed)" % [_pass, total, _fail])

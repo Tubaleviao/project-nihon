@@ -287,7 +287,7 @@ func host(port: int = DEFAULT_PORT, max_clients: int = DEFAULT_MAX_CLIENTS) -> E
 	_peer = ENetMultiplayerPeer.new()
 	var err := _peer.create_server(port, max_clients)
 	if err != OK:
-		push_error("NetworkingSlice: failed to create server on port %d — %s" % [port, error_string(err)])
+		Diag.error("NetworkingSlice: failed to create server on port %d — %s" % [port, error_string(err)])
 		return err
 	_role = Role.HOST
 	_attach_peer()
@@ -299,7 +299,7 @@ func join(address: String = "127.0.0.1", port: int = DEFAULT_PORT) -> Error:
 	_peer = ENetMultiplayerPeer.new()
 	var err := _peer.create_client(address, port)
 	if err != OK:
-		push_error("NetworkingSlice: failed to connect to %s:%d — %s" % [address, port, error_string(err)])
+		Diag.error("NetworkingSlice: failed to connect to %s:%d — %s" % [address, port, error_string(err)])
 		return err
 	_role = Role.CLIENT
 	_attach_peer()
@@ -381,7 +381,7 @@ func party_id_for(peer_id: int) -> String:
 ## snapshot_id.
 func send_snapshot(peer_id: int, data: Dictionary) -> void:
 	if not _role == Role.HOST:
-		push_warning("NetworkingSlice: send_snapshot called on non-host — dropped")
+		Diag.warn("NetworkingSlice: send_snapshot called on non-host — dropped")
 		return
 	var json := JSON.stringify(data)
 	var chunk_count := maxi(1, ceili(float(json.length()) / float(SNAPSHOT_CHUNK_SIZE)))
@@ -805,7 +805,7 @@ func _forget_equipment_pairs(peer_id: int) -> void:
 ## { inventory, inventory_durability, technology }.
 func send_own_state(peer_id: int, data: Dictionary) -> void:
 	if _role != Role.HOST:
-		push_warning("NetworkingSlice: send_own_state called on non-host — dropped")
+		Diag.warn("NetworkingSlice: send_own_state called on non-host — dropped")
 		return
 	_deliver(peer_id, { "type": "own_state_synced", "data": data })
 
@@ -880,7 +880,7 @@ func _peer_for_inventory_owner(owner_id: String) -> int:
 ## player's damage is not world state.
 func send_player_damaged(peer_id: int, damage: float, attacker_id: String) -> void:
 	if _role != Role.HOST:
-		push_warning("NetworkingSlice: send_player_damaged called on non-host — dropped")
+		Diag.warn("NetworkingSlice: send_player_damaged called on non-host — dropped")
 		return
 	_deliver(peer_id, {
 		"type":        "player_damaged",
@@ -985,7 +985,7 @@ func _on_packet_send_requested(peer_id: int, payload: Dictionary) -> void:
 func _rpc_c2h(json: String) -> void:
 	var sender := multiplayer.get_remote_sender_id()
 	if json.length() > MAX_CLIENT_PACKET_BYTES:
-		push_warning("NetworkingSlice: client packet from peer %d is %d chars (cap %d) — dropped" \
+		Diag.warn("NetworkingSlice: client packet from peer %d is %d chars (cap %d) — dropped" \
 			% [sender, json.length(), MAX_CLIENT_PACKET_BYTES])
 		return
 	if not _allow_packet(sender, float(Time.get_ticks_msec())):
@@ -1013,10 +1013,10 @@ func _rpc_h2c(json: String) -> void:
 func _parse(json: String) -> Variant:
 	var payload = JSON.parse_string(json)
 	if payload == null:
-		push_error("NetworkingSlice: malformed JSON packet dropped")
+		Diag.error("NetworkingSlice: malformed JSON packet dropped")
 		return null
 	if not payload is Dictionary:
-		push_error("NetworkingSlice: expected Dictionary packet, got %s" % typeof(payload))
+		Diag.error("NetworkingSlice: expected Dictionary packet, got %s" % typeof(payload))
 		return null
 	return payload
 
@@ -1052,7 +1052,7 @@ func _dedup(sender: int, payload: Dictionary) -> bool:
 		var now_ms: float = float(Time.get_ticks_msec())
 		var gap_last: float = float(_seq_gap_warn_ms.get(key, -SEQ_GAP_WARN_INTERVAL_MS))
 		if now_ms - gap_last >= SEQ_GAP_WARN_INTERVAL_MS:
-			push_warning("NetworkingSlice: seq gap — peer %d type '%s' frontier %d got %d" \
+			Diag.warn("NetworkingSlice: seq gap — peer %d type '%s' frontier %d got %d" \
 				% [sender, ptype, last, seq])
 			_seq_gap_warn_ms[key] = now_ms
 
@@ -1094,7 +1094,7 @@ func _allow_packet(peer_id: int, now_ms: float) -> bool:
 		var last_warn: float = float(_rate_warn_ms.get(peer_id, -SEQ_GAP_WARN_INTERVAL_MS))
 		if now_ms - last_warn >= SEQ_GAP_WARN_INTERVAL_MS:
 			_rate_warn_ms[peer_id] = now_ms
-			push_warning("NetworkingSlice: peer %d exceeded the client packet rate — dropping" % peer_id)
+			Diag.warn("NetworkingSlice: peer %d exceeded the client packet rate — dropping" % peer_id)
 		return false
 	bucket["tokens"] = float(bucket["tokens"]) - 1.0
 	return true
@@ -1115,7 +1115,7 @@ func _actor_id(sender: int) -> String:
 ## Log and drop a client packet from a peer that has not completed the handshake.
 ## Every identity-bound intent shares this refusal, so the reason is worded once.
 func _refuse_unhandshaked(sender: int, ptype: String) -> void:
-	push_warning("NetworkingSlice: %s from un-handshaked peer %d — dropped" % [ptype, sender])
+	Diag.warn("NetworkingSlice: %s from un-handshaked peer %d — dropped" % [ptype, sender])
 
 ## Phase 36 — is `position` within `reach` metres of the peer's last recorded
 ## position? The host records that position from the peer's own movement packets
@@ -1363,7 +1363,7 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			var ipos := _vec3(payload.get("position", []))
 			var inorm := _vec3(payload.get("normal", [0, 1, 0]))
 			if not _within_reach(sender, ipos, MAX_EDIT_REACH):
-				push_warning("NetworkingSlice: block_edit_intent from peer %d is out of reach — dropped" % sender)
+				Diag.warn("NetworkingSlice: block_edit_intent from peer %d is out of reach — dropped" % sender)
 				return
 			if action == "mine":
 				GameBus.block_mine_requested.emit(ipos, inorm, _actor_id(sender))
@@ -1371,7 +1371,7 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				GameBus.block_place_requested.emit(
 					ipos, inorm, _actor_id(sender), str(payload.get("material", "")))
 			else:
-				push_error("NetworkingSlice: unknown block_edit_intent action '%s'" % action)
+				Diag.error("NetworkingSlice: unknown block_edit_intent action '%s'" % action)
 		"tree_chop_intent":
 			# Phase 36 — same two rules as block_edit_intent. The intent names only
 			# a tree id, so the reach check resolves the tree's own position through
@@ -1386,7 +1386,7 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				return
 			var tree_id := str(payload.get("tree_id", ""))
 			if not _chop_is_in_reach(sender, tree_id):
-				push_warning("NetworkingSlice: tree_chop_intent from peer %d is out of reach — dropped" % sender)
+				Diag.warn("NetworkingSlice: tree_chop_intent from peer %d is out of reach — dropped" % sender)
 				return
 			GameBus.tree_chop_requested.emit(tree_id, _actor_id(sender))
 		"market_list_intent":
@@ -1464,7 +1464,7 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				return
 			var other := _named_party(str(payload.get("party_b", "")))
 			if other == "" or other == actor:
-				push_warning("NetworkingSlice: trade_start_intent from peer %d names an unusable counterparty — dropped" % sender)
+				Diag.warn("NetworkingSlice: trade_start_intent from peer %d names an unusable counterparty — dropped" % sender)
 				return
 			GameBus.trade_start_intent.emit(actor, other)
 		"trade_propose_intent":
@@ -1505,7 +1505,7 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 		_:
 			# Clients may not send host-authoritative types (block_changed,
 			# inventory_synced, etc.) — drop anything else and log it.
-			push_warning("NetworkingSlice: unexpected type '%s' from client %d — dropped" \
+			Diag.warn("NetworkingSlice: unexpected type '%s' from client %d — dropped" \
 				% [payload.get("type", ""), sender])
 
 ## Route a host → client packet. Only host-originated types are handled.
@@ -1623,7 +1623,7 @@ func _accumulate_snapshot_chunk(payload: Dictionary) -> void:
 	var count: int = int(payload.get("count", 0))
 	var chunk: String = str(payload.get("data", ""))
 	if snapshot_id < 0 or count <= 0 or index < 0 or index >= count:
-		push_error("NetworkingSlice: malformed snapshot_chunk dropped")
+		Diag.error("NetworkingSlice: malformed snapshot_chunk dropped")
 		return
 	if not _snapshot_buffer.has(snapshot_id):
 		_snapshot_buffer[snapshot_id] = { "count": count, "received": 0, "parts": [] }
@@ -1644,7 +1644,7 @@ func _accumulate_snapshot_chunk(payload: Dictionary) -> void:
 		if data is Dictionary:
 			GameBus.world_snapshot_received.emit(_adopt_snapshot_identities(data))
 		else:
-			push_error("NetworkingSlice: snapshot reassembly produced invalid JSON")
+			Diag.error("NetworkingSlice: snapshot reassembly produced invalid JSON")
 
 func _vec3(arr) -> Vector3:
 	if arr is Array and arr.size() >= 3:

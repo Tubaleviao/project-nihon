@@ -210,7 +210,7 @@ func get_recipe(recipe_id: String) -> Dictionary:
 ## `player_id` defaults to "" = THIS machine's local player.
 func set_skill_for(player_id: String, skill: String, tier: String) -> bool:
 	if not SkillTiers.is_valid_tier(tier):
-		push_warning("CraftingSlice: ignoring unknown skill tier '%s' for '%s'" % [tier, skill])
+		Diag.warn("CraftingSlice: ignoring unknown skill tier '%s' for '%s'" % [tier, skill])
 		return false
 	var pid := _resolve_player(player_id)
 	if pid == "" or pid == local_player_id():
@@ -412,7 +412,7 @@ func _refund(counts: Dictionary, inventory: Node) -> void:
 		return
 	for item_id in counts:
 		if not inventory.add_item(str(item_id), int(counts[item_id])):
-			push_warning("CraftingSlice: refund of '%s' failed — inventory may be inconsistent" % item_id)
+			Diag.warn("CraftingSlice: refund of '%s' failed — inventory may be inconsistent" % item_id)
 
 ## The repair result shape. `player_id` rides along so the host knows WHOSE record
 ## to fold the outcome into and whose client to sync (Phase 34).

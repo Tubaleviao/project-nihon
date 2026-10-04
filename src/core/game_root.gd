@@ -543,7 +543,7 @@ func _parse_network_args() -> void:
 				if _valid_host_address(addr):
 					_host_address = addr
 				else:
-					push_warning("[Networking] invalid --client address '%s' — using 127.0.0.1" % addr)
+					Diag.warn("[Networking] invalid --client address '%s' — using 127.0.0.1" % addr)
 					_host_address = "127.0.0.1"
 	# Phase 39 — the harness role decides the network role too: `--net-harness host` is
 	# the dedicated server half of the pair and `--net-harness client` the joining half,
@@ -677,7 +677,7 @@ func _tick_pending_host_boot(delta: float) -> void:
 	if not host_boot_may_proceed(_chunk_manager.is_first_ring_ready(), _host_boot_wait_elapsed):
 		return
 	if not _chunk_manager.is_first_ring_ready():
-		push_warning("GameRoot: first ring still incomplete after %.1fs (%d of %d chunks built) — placing the player anyway" % [
+		Diag.warn("GameRoot: first ring still incomplete after %.1fs (%d of %d chunks built) — placing the player anyway" % [
 			_host_boot_wait_elapsed, int(round(_chunk_manager.first_ring_progress() * float(_chunk_manager.first_ring_size()))),
 			_chunk_manager.first_ring_size()])
 	_finish_host_boot()
@@ -733,7 +733,7 @@ func _tick_pending_client_boot(delta: float) -> void:
 	if not host_boot_may_proceed(_chunk_manager.is_first_ring_ready(), _client_boot_wait_elapsed):
 		return
 	if not _chunk_manager.is_first_ring_ready():
-		push_warning("GameRoot: client first ring still incomplete after %.1fs (%d of %d chunks built) — releasing the player anyway" % [
+		Diag.warn("GameRoot: client first ring still incomplete after %.1fs (%d of %d chunks built) — releasing the player anyway" % [
 			_client_boot_wait_elapsed, int(round(_chunk_manager.first_ring_progress() * float(_chunk_manager.first_ring_size()))),
 			_chunk_manager.first_ring_size()])
 	_finish_client_boot()
@@ -868,7 +868,7 @@ func _boot_client() -> void:
 	_networking.claimed_player_id = _persistence.load_client_identity()
 	var err: Error = _networking.join(_host_address, _networking.DEFAULT_PORT)
 	if err != OK:
-		push_error("[Networking] client failed to connect to %s — %s" % [_host_address, error_string(err)])
+		Diag.error("[Networking] client failed to connect to %s — %s" % [_host_address, error_string(err)])
 		_snapshot_pending = false
 		return
 	_snapshot_pending = true
@@ -1112,11 +1112,11 @@ func _tick_client_handshake(delta: float) -> void:
 	if _handshake_elapsed >= HANDSHAKE_RETRY_SECS and _handshake_retries < MAX_HANDSHAKE_RETRIES:
 		_handshake_elapsed = 0.0
 		_handshake_retries += 1
-		push_warning("[Networking] no world snapshot after %.1fs — re-presenting join intent (retry %d/%d)" % [
+		Diag.warn("[Networking] no world snapshot after %.1fs — re-presenting join intent (retry %d/%d)" % [
 			HANDSHAKE_RETRY_SECS, _handshake_retries, MAX_HANDSHAKE_RETRIES])
 		_networking.request_handshake()
 	if _snapshot_elapsed >= SNAPSHOT_TIMEOUT:
-		push_error("[Networking] world snapshot timed out after %.1fs — giving up" % SNAPSHOT_TIMEOUT)
+		Diag.error("[Networking] world snapshot timed out after %.1fs — giving up" % SNAPSHOT_TIMEOUT)
 		_snapshot_pending = false
 
 ## Drive the player's visual avatar from the real player controller every
@@ -1153,13 +1153,13 @@ func _sync_player_avatar(delta: float) -> void:
 func _on_connection_failed() -> void:
 	if not _is_client:
 		return
-	push_error("[Networking] connection to host failed")
+	Diag.error("[Networking] connection to host failed")
 	_snapshot_pending = false
 
 func _on_server_disconnected() -> void:
 	if not _is_client:
 		return
-	push_error("[Networking] disconnected from host")
+	Diag.error("[Networking] disconnected from host")
 	_snapshot_pending = false
 
 ## Host-side: serialize authoritative world state for a connecting client,
@@ -1538,7 +1538,7 @@ func _start_save_thread(job: Dictionary) -> void:
 	if err != OK:
 		# No thread available (or the OS refused one). Fall back to writing inline:
 		# a stalled frame beats a save that never happened.
-		push_error("[Server] save thread failed to start (%s) — saving inline" % error_string(err))
+		Diag.error("[Server] save thread failed to start (%s) — saving inline" % error_string(err))
 		_save_thread = null
 		_finish_save(_persistence.write_job(job))
 		return
@@ -1575,7 +1575,7 @@ func _flush_save() -> void:
 
 func _finish_save(result: int) -> void:
 	if result != OK:
-		push_error("[Server] world save failed — %s" % error_string(result))
+		Diag.error("[Server] world save failed — %s" % error_string(result))
 		GameBus.world_save_failed.emit(error_string(result))
 		# The dirty set was cleared when the payload was collected, so a failed write
 		# has to put its chunks back or the next save would skip them.
@@ -1973,4 +1973,4 @@ func _check_game_data() -> void:
 		var reg: Dictionary = registries[reg_name]
 		for key in reg:
 			if reg[key] == null:
-				push_error("%s → %s FAILED" % [reg_name, key])
+				Diag.error("%s → %s FAILED" % [reg_name, key])

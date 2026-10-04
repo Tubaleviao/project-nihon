@@ -737,7 +737,7 @@ func _apply_build_entry(task_id: int) -> bool:
 			_dispatch_build(chunk)
 		else:
 			_failed[key] = true
-			push_error("ChunkManager: chunk %s could not be built after %d attempts — its ground is missing (re-armed by the self-heal: immediately on a window re-centre, otherwise at most once per self_heal_interval, and each re-arm restarts this %d-attempt budget, so one interval costs up to that many dispatches)" % [key, MAX_BUILD_RETRIES, MAX_BUILD_RETRIES])
+			Diag.error("ChunkManager: chunk %s could not be built after %d attempts — its ground is missing (re-armed by the self-heal: immediately on a window re-centre, otherwise at most once per self_heal_interval, and each re-arm restarts this %d-attempt budget, so one interval costs up to that many dispatches)" % [key, MAX_BUILD_RETRIES, MAX_BUILD_RETRIES])
 		return false
 	_build_attempts.erase(key)
 	_failed.erase(key)

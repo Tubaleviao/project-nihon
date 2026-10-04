@@ -139,7 +139,7 @@ func _ready() -> void:
 func create_character(appearance_id: String, pos: Vector3) -> String:
 	var res: Resource = GameData.APPEARANCES.get(appearance_id, null)
 	if res == null:
-		push_warning("CharacterSlice: unknown appearance_id '%s'" % appearance_id)
+		Diag.warn("CharacterSlice: unknown appearance_id '%s'" % appearance_id)
 		return ""
 	return create_character_from_recipe(_appearance_to_recipe(res), pos)
 

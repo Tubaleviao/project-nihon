@@ -1234,7 +1234,7 @@ func apply_edits(edits: Dictionary, materials: Dictionary = {}) -> void:
 		# already applies to an op whose kind this version cannot read.
 		var legacy_height := _legacy_height_of(value)
 		if is_nan(legacy_height):
-			push_warning("VoxelSlice.apply_edits: dropping an unrecognized edit for '%s' (%s)"
+			Diag.warn("VoxelSlice.apply_edits: dropping an unrecognized edit for '%s' (%s)"
 				% [str(key), type_string(typeof(value))])
 			continue
 		var tile := _key_to_tile(str(key))
