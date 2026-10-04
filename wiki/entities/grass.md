@@ -7,7 +7,7 @@ title: "Grass"
 
 `material`
 
-Living turf that covers most temperate and twilight ground. It is the top face of natural land, tinted per biome; digging it turns it into Soil.
+Living turf that covers temperate ground (forest and grassland). It is the top face of natural land, tinted per biome; digging it turns it into Soil.
 
 > Make natural ground read as ground, and give the surface layer a name the biomes can point at
 

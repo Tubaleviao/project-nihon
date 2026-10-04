@@ -196,17 +196,16 @@ func _draw() -> void:
 	var min_cz := floori(_player_chunk.y - half)
 	var max_cz := ceili(_player_chunk.y + half)
 
+	var biomes: Dictionary = {}   # per-draw memo: chunk key -> biome
 	for cz in range(min_cz, max_cz):
 		for cx in range(min_cx, max_cx):
 			var c := Vector2i(cx, cz)
 			if not _revealed.has(_chunk_key(c)):
 				continue
-			var biome := _biome(c)
-			var col: Color = biome_color(biome)
 			var rx := size.x * 0.5 + (cx - _player_chunk.x) * cell_px - cell_px * 0.5
 			var ry := size.y * 0.5 + (cz - _player_chunk.y) * cell_px - cell_px * 0.5
 			var rect := Rect2(rx, ry, cell_px, cell_px)
-			draw_rect(rect, col)
+			_draw_chunk_cells(c, rect, biomes)
 			draw_rect(rect, Color(0.1, 0.1, 0.1, 0.5), false, 1.0)
 
 	# World boundary — a thin frame so the finite world's edge is visible when
@@ -251,6 +250,45 @@ func _draw_world_bounds(size: Vector2, cell_px: float) -> void:
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
+
+## Sub-cells per chunk edge in the minimap's per-tile surface colour.
+const CELLS_PER_CHUNK := 4
+
+## The biome of the chunk, memoised in `memo` for one draw.
+func _biome_memo(c: Vector2i, memo: Dictionary) -> String:
+	var k := _chunk_key(c)
+	if not memo.has(k):
+		memo[k] = _biome(c)
+	return memo[k]
+
+## Draw one chunk as CELLS_PER_CHUNK² cells. A cell on the chunk's border may wear the biome
+## across that border (the same deterministic dither the voxel surface uses), so a biome edge
+## reads as a ragged band, not a straight cut.
+func _draw_chunk_cells(c: Vector2i, rect: Rect2, memo: Dictionary) -> void:
+	var own := _biome_memo(c, memo)
+	var n := CELLS_PER_CHUNK
+	var cw := rect.size.x / n
+	var ch := rect.size.y / n
+	for j in n:
+		for i in n:
+			var biome := own
+			var edge_i := mini(i, n - 1 - i)
+			var edge_j := mini(j, n - 1 - j)
+			if mini(edge_i, edge_j) == 0:
+				var across := c
+				if edge_i <= edge_j:
+					across.x += -1 if i == 0 else 1
+				else:
+					across.y += -1 if j == 0 else 1
+				var other := _biome_memo(across, memo)
+				if other != own:
+					var gx := c.x * n + i
+					var gz := c.y * n + j
+					var roll := float(((gx * 73856093) ^ (gz * 19349663)) & 0xffff) / 65536.0
+					if roll < 0.25:
+						biome = other
+			draw_rect(Rect2(rect.position.x + i * cw, rect.position.y + j * ch, cw + 0.5, ch + 0.5),
+				biome_color(biome))
 
 func _biome(c: Vector2i) -> String:
 	if terrain_slice != null and terrain_slice.has_method("get_biome_at_chunk"):

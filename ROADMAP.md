@@ -5113,8 +5113,8 @@ report, 2026-10-04).
 - [x] An AOI re-scope snapshot's `edits` holds only chunks inside the AOI. _Suite
   `net: re-scope snapshot edits hold only AOI chunks`; the snapshot names its scope
   (`edits_aoi`) and the client keeps edits it holds outside it._
-- [ ] `pnpm check-drift` is clean and the suite is green on both boot paths.
-  `tools/net_harness.sh` agrees on a fresh world.
+- [x] `pnpm check-drift` is clean and the suite is green on both boot paths.
+  `tools/net_harness.sh` agrees on a fresh world. _check-drift clean, suite 7885/7885, net_harness 12/12._
 
 **Progress:** the unbuilt-neighbour seam fix is in (`_generated_heightmap`). Biomes are chosen by the
 fabric climate envelopes: biome entities carry `temperature`/`moisture` ranges (0–1) and
@@ -5124,10 +5124,12 @@ topsoil of a `Grass` biome yields `Soil`. Topsoil colouring uses the biome `surf
 `topsoilDepth` fields. Surface veins are the exception, with the density in the fabric
 (`surfaceVeinChance` on the biome). The minimap colours chunks by `surfaceTint`. Frame-spike items
 are in (`_prune_heightmaps`, tree and creature spawn/despawn indexed by chunk; unloads budgeted per frame; a chunk's heightmap is generated once).
-Still open: the per-tile biome blend with deterministic dither (colour is flat per chunk biome), the
-`chunk_loaded` consumer that rebuilds a chunk whose guessed neighbour arrived with edits, per-tile
-minimap colour, and the manual 20-chunk walk with a frame-time log and screenshot. `check-drift`
-is clean, the suite is green, and `net_harness.sh` reports 11/11. The phase is not marked done.
+The per-tile surface blend is in (`VoxelSlice.blended_biome`: a 4-tile border band with a
+coordinate-hash dither), `ChunkManager` rebuilds built neighbours once when a chunk with edits
+streams in, and the minimap draws 4x4 dithered cells per chunk. `ClimateField` and `OreField`
+read plain snapshots filled by `OreField.warm()`, so the worker half never touches a Resource.
+Still open, needs a human: the manual 20-chunk walk with a frame-time log and screenshot. `check-drift`
+is clean, the suite is green, and `net_harness.sh` reports 12/12. The phase is not marked done.
 
 **Net harness:** it has 11 steps now (the equipment step joined it), so the `10/10 steps
 agreed` lines in the older phase entries above are historical; a green run now reads `12/12`

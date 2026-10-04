@@ -96,12 +96,15 @@ const VEIN_CHANCE := 0.55
 ## veins are pushed out of view by this roll, so most ground is plain topsoil over rock.
 const SURFACE_VEIN_CHANCE := 0.2 ## fallback when the biome resource carries no `surfaceVeinChance`
 
+## biome key -> surface-vein chance, snapshotted from the fabric `surfaceVeinChance` by `warm()`
+## (main thread) and read-only afterwards, so a worker never touches a Resource for it.
+static var _surface_chances: Dictionary = {}
+
 ## The fraction of surface-reaching veins a biome keeps: its fabric `surfaceVeinChance`.
 static func surface_vein_chance(biome: String) -> float:
-	var b: Variant = GameData.BIOMES.get(biome, null)
-	if b != null and b.get("surfaceVeinChance") != null:
-		return float(b.get("surfaceVeinChance"))
-	return SURFACE_VEIN_CHANCE
+	if _bands.is_empty():
+		warm()
+	return float(_surface_chances.get(biome, SURFACE_VEIN_CHANCE))
 
 ## Blob size: horizontal radius in TILES, vertical half-height in world units.
 const RADIUS_MIN_TILES := 2.0
@@ -153,6 +156,11 @@ static var _bands: Dictionary = {}
 static func warm() -> void:
 	if not _bands.is_empty():
 		return
+	ClimateField.warm()
+	for key in GameData.BIOMES:
+		var b: Resource = GameData.BIOMES[key]
+		if b.get("surfaceVeinChance") != null:
+			_surface_chances[str(key)] = float(b.get("surfaceVeinChance"))
 	for key in GameData.MATERIALS:
 		var res: Resource = GameData.MATERIALS[key]
 		var band: Variant = res.get("depthBand")

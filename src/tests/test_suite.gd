@@ -228,6 +228,7 @@ func run() -> void:
 	_run_test("voxel: place beyond cap fails and refunds",     _test_voxel_place_cap)
 	_run_test("voxel: biome material mapping",                 _test_voxel_biome_materials)
 	_run_test("voxel: grass top, soil side",                   _test_voxel_grass_top_soil_side)
+	_run_test("voxel: biome border blends with a dither",      _test_voxel_biome_border_blend)
 	_run_test("voxel: the surface never yields a deep ore",     _test_voxel_material_rarity)
 	_run_test("voxel: edits round-trip",                       _test_voxel_edits_round_trip)
 	_run_test("voxel: placed block keeps material colour",    _test_voxel_placed_block_keeps_material_color)
@@ -6747,8 +6748,6 @@ func _test_chunk_tree_spawn_per_chunk() -> void:
 # Rare-vein deposit tests (Phase 31)
 # ---------------------------------------------------------------------------
 
-## First chunk (scanning along cz = 0) whose biome is one of `biomes`, or
-## Vector2i(-1, -1) when none is found.
 ## Phase 49 — the biome comes from the fabric's temperature/moisture envelopes.
 func _test_climate_envelope_selects() -> void:
 	var keys: Array = TerrainSlice.BIOME_KEYS
@@ -6761,24 +6760,66 @@ func _test_climate_envelope_selects() -> void:
 	assert_eq(ClimateField.biome_for_climate(0.5, 0.5, keys, {}), "", "no envelopes, no pick")
 	for ckey in keys:
 		var surf: float = OreField.surface_vein_chance(str(ckey))
-		assert_true(surf > 0.0 and surf < 1.0, "surfaceVeinChance is read from the fabric")
+		var res: Variant = GameData.BIOMES.get(str(ckey), null)
+		assert_true(res != null and res.get("surfaceVeinChance") != null, "%s carries surfaceVeinChance" % ckey)
+		assert_eq(surf, float(res.get("surfaceVeinChance")), "surface_vein_chance is the fabric value for %s" % ckey)
+
+## Phase 49 — a tile near a chunk border may wear the biome across it; the interior never does,
+## and the pick is a pure function of the tile.
+func _test_voxel_biome_border_blend() -> void:
+	var extent := float(VoxelSlice.CHUNK_SIZE * VoxelSlice.TILE_SIZE)
+	var biomes := { "0,0": "TemperateForest", "1,0": "VoidRift" }
+	var border_worn := 0
+	for tz in range(0, VoxelSlice.CHUNK_SIZE):
+		var xz := Vector2(extent - VoxelSlice.TILE_SIZE * 0.5, tz * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5)
+		var shown := VoxelSlice.blended_biome(xz, biomes, "TemperateForest")
+		assert_eq(VoxelSlice.blended_biome(xz, biomes, "TemperateForest"), shown, "blend is deterministic")
+		if shown == "VoidRift":
+			border_worn += 1
+	assert_true(border_worn > 0 and border_worn < VoxelSlice.CHUNK_SIZE, "the border column is dithered, not cut")
+	for tz in range(0, VoxelSlice.CHUNK_SIZE):
+		var inner := Vector2(extent * 0.5, tz * VoxelSlice.TILE_SIZE + 0.25)
+		assert_eq(VoxelSlice.blended_biome(inner, biomes, "TemperateForest"), "TemperateForest", "the interior keeps its biome")
 
 ## Phase 49 — digging a grass-covered biome's top yields Soil, not rock.
 func _test_mine_grass_yields_soil() -> void:
 	assert_true(GameData.MATERIALS.has("Soil") and GameData.MATERIALS.has("Grass"), "Grass and Soil are fabric materials")
 	var v := VoxelSlice.new()
 	add_child(v)
-	var tile := Vector2i(3, 3)
-	var xz := Vector2(tile.x * 0.5 + 0.25, tile.y * 0.5 + 0.25)
-	var span := { "bottom": 0.0, "top": v.get_voxel_height_at(xz) }
-	var y := v._natural_yield(tile, span)
-	var b: Variant = GameData.BIOMES.get(v._biome_at(xz), null)
-	if b != null and b.get("surfaceMaterial") == "Grass":
-		assert_eq(str(y["material"]), "Soil", "the topsoil of a grass biome yields Soil")
-	else:
-		assert_true(str(y["material"]) != "Soil", "a non-grass biome yields rock")
+	# A vein-free tile of a grass biome: a live vein at the tile would yield its ore instead.
+	var tile := Vector2i(-1, -1)
+	var xz := Vector2.ZERO
+	var span := {}
+	var depth_ok := false
+	for cx in range(-60, 60):
+		var t := Vector2i(cx * 32 + 3, 3)
+		var p := Vector2(t.x * 0.5 + 0.25, t.y * 0.5 + 0.25)
+		var gb: Variant = GameData.BIOMES.get(v._biome_at(p), null)
+		if gb == null or gb.get("surfaceMaterial") != "Grass":
+			continue
+		var sp := { "bottom": 0.0, "top": v.get_voxel_height_at(p) }
+		if v._live_vein_at(p, v._run_depth(sp, v._base_top_for_tile(t)), v._world_seed(), v._vein_taken, {}).is_empty():
+			tile = t
+			xz = p
+			span = sp
+			depth_ok = true
+			break
+	assert_true(depth_ok, "found a vein-free tile in a grass biome")
+	if depth_ok:
+		assert_eq(str(v._natural_yield(tile, span)["material"]), "Soil", "the topsoil of a grass biome yields Soil")
+		# A non-grass biome's topsoil yields rock, never Soil.
+		for cx in range(-60, 60):
+			var t2 := Vector2i(cx * 32 + 3, 3)
+			var p2 := Vector2(t2.x * 0.5 + 0.25, t2.y * 0.5 + 0.25)
+			var nb: Variant = GameData.BIOMES.get(v._biome_at(p2), null)
+			if nb != null and nb.get("surfaceMaterial") != "Grass":
+				var sp2 := { "bottom": 0.0, "top": v.get_voxel_height_at(p2) }
+				assert_true(str(v._natural_yield(t2, sp2)["material"]) != "Soil", "a non-grass biome yields no Soil")
+				break
 	v.free()
 
+## First chunk (scanning along cz = 0) whose biome is one of `biomes`, or
+## Vector2i(-1, -1) when none is found.
 func _find_chunk_with_biome(terrain: Node, biomes: Array) -> Vector2i:
 	for cx in range(-80, 80):
 		if biomes.has(str(terrain.get_biome_at_chunk(Vector2i(cx, 0)))):

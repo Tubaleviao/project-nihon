@@ -104,6 +104,7 @@ const OreField := preload("res://src/terrain/ore_field.gd")
 const CHUNK_SIZE  := 64        # alias — authoritative copy lives in TerrainSlice
 const TILE_SIZE   := 0.5       # world units per tile (XZ) — half the former 1.0 size
 const STEP_HEIGHT := 0.125     # world units per quantised height step (smooth, walkable — no jumps)
+const BLEND_TILES := 4.0     # width of the dithered biome border band, in tiles (Phase 49)
 ## Phase 41 — the world's FLOOR. It replaces the old `MIN_HEIGHT := 0.0`, which was
 ## "bedrock" only in the sense that mining stopped at zero: the ground has real
 ## thickness now, so a column is solid from BEDROCK_DEPTH up to its surface, a
@@ -141,6 +142,8 @@ const BIOME_BIAS: Dictionary = OreField.BIOME_BIAS
 ## (the whole terrain was previously one flat green). Keyed by the fabric
 ## material entity names in GameData.MATERIALS.
 const MATERIAL_COLORS: Dictionary = {
+	"Grass":      Color(0.31, 0.54, 0.23),  # turf green
+	"Soil":       Color(0.42, 0.29, 0.18),  # earth brown
 	"Ferrite":    Color(0.62, 0.62, 0.66),  # pale iron
 	"Thornwood":  Color(0.45, 0.32, 0.20),  # wood brown
 	"Ashite":     Color(0.28, 0.28, 0.31),  # charcoal
@@ -466,6 +469,10 @@ func _gather_edits(chunk_pos: Vector2i) -> Dictionary:
 			out[key] = _edits[key].duplicate(true)
 	return out
 
+## True when any tile of `chunk_pos` carries an edit op.
+func has_edits_in_chunk(chunk_pos: Vector2i) -> bool:
+	return _edits_by_chunk.has(_chunk_key(chunk_pos))
+
 ## The heightmaps of the chunks the ring reads across, when they are KNOWN.
 ##
 ## Phase 42 review pass 10 — the maps are shared BY REFERENCE, deliberately, and this is the
@@ -634,9 +641,10 @@ static func _apply_topsoil(entry: Dictionary, world_xz: Vector2, biomes: Diction
 	if entry["material"] != "" or is_nan(surface) or absf(float(entry["top"]) - surface) > STEP_HEIGHT * 0.25:
 		return
 	var biome := biome_of(world_xz, biomes)
-	if not styles.has(biome):
-		styles[biome] = surface_style(biome)
-	var style: Dictionary = styles[biome]
+	var shown := blended_biome(world_xz, biomes, biome)
+	if not styles.has(shown):
+		styles[shown] = surface_style(shown)
+	var style: Dictionary = styles[shown]
 	if style.is_empty():
 		return
 	if material_for_biome(biome, world_xz, 0.0, int(field.get("seed", 0)), field.get("depleted", {}),
@@ -645,6 +653,37 @@ static func _apply_topsoil(entry: Dictionary, world_xz: Vector2, biomes: Diction
 	entry["top_color"] = style["top"]
 	entry["soil_color"] = style["soil"]
 	entry["soil_depth"] = float(style["depth"])
+
+## Phase 49 — the biome whose surface a tile WEARS. Within `BLEND_TILES` of a chunk border, a
+## tile may show the biome across that border instead of its own: the chance falls from one half
+## at the border to zero at the band's inner edge, and a coordinate hash (no RNG, no thread
+## state) decides, so every build of the tile agrees and the border reads as a dithered band
+## rather than a straight cut. Only the colour is blended; the ore field still reads `own`.
+static func blended_biome(world_xz: Vector2, biomes: Dictionary, own: String) -> String:
+	var extent := float(CHUNK_SIZE * TILE_SIZE)
+	var cx := floori(world_xz.x / extent)
+	var cz := floori(world_xz.y / extent)
+	var lx := world_xz.x - cx * extent
+	var lz := world_xz.y - cz * extent
+	# Distance (in tiles) to the nearest border on each axis, and the chunk step across it.
+	var dx := minf(lx, extent - lx) / TILE_SIZE
+	var dz := minf(lz, extent - lz) / TILE_SIZE
+	var across := Vector2i(cx, cz)
+	var d := dx
+	if dx <= dz:
+		across.x += -1 if lx < extent - lx else 1
+	else:
+		d = dz
+		across.y += -1 if lz < extent - lz else 1
+	if d >= BLEND_TILES:
+		return own
+	var other := str(biomes.get(_chunk_key(across), own))
+	if other == own:
+		return own
+	var gx := floori(world_xz.x / TILE_SIZE)
+	var gz := floori(world_xz.y / TILE_SIZE)
+	var roll := float(((gx * 73856093) ^ (gz * 19349663)) & 0xffff) / 65536.0
+	return other if roll < 0.5 * (1.0 - d / BLEND_TILES) else own
 
 ## Phase 43 — the ore field's per-call input: the seed, the depletion record and a fresh
 ## vein memo. Static and plain, so the worker half builds it from its payload.

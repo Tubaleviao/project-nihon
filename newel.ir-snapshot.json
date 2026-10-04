@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:559fd724dc03df4b10bee887d1b359ce775d254b32af2348042c5e5d77fe0ffa",
+  "schemaHash": "sha256:37d96288992996ebb60724e6550cc5c473f892e37a8beb58e2b0db7902f41d24",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -2573,7 +2573,7 @@
         "tags": [
           "material"
         ],
-        "description": "Living turf that covers most temperate and twilight ground. It is the top face of natural land, tinted per biome; digging it turns it into Soil.",
+        "description": "Living turf that covers temperate ground (forest and grassland). It is the top face of natural land, tinted per biome; digging it turns it into Soil.",
         "goal": "Make natural ground read as ground, and give the surface layer a name the biomes can point at",
         "fields": {
           "id": {
