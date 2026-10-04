@@ -201,6 +201,9 @@ func apply_appearance(instance_id: String, recipe: Dictionary) -> bool:
 	inst["impostor"] = built.get("impostor", null)
 	inst["limb_pivots"] = built.get("limb_pivots", {})
 	inst["anim_phase"] = 0.0
+	# The old root (and the attached rig's AnimationTree under it) is freed; keeping the
+	# stale handle would make `_apply_lod` hide the new procedural body for good.
+	inst.erase("anim_tree")
 	inst["base_equipment"] = normalized.get("equipment", {}).duplicate(true)
 	inst["equipment_visible"] = true
 	# The rebuilt rig's nodes default to visible; reset the early-out state so
@@ -671,6 +674,11 @@ func attach_rig(instance_id: String, rig_key: String) -> bool:
 		return false
 	rig_root.name = "RigScene"
 	var root: Node3D = inst["root"]
+	# The rig replaces the procedural box body: hide it (the limb swing stops too, see
+	# `_animate_limbs`) so both do not render over each other.
+	for child in root.get_children():
+		if child is Node3D:
+			(child as Node3D).visible = false
 	root.add_child(rig_root)
 	var tree := RigTree.build_tree(player)
 	rig_root.add_child(tree)
@@ -800,6 +808,9 @@ func sync_player_avatar(
 func _animate_limbs(inst: Dictionary, phase: float, amplitude: float) -> void:
 	var pivots: Dictionary = inst.get("limb_pivots", {})
 	if pivots.is_empty():
+		return
+	# An attached rig is driven by its AnimationTree; the procedural limbs are hidden.
+	if inst.has("anim_tree") and is_instance_valid(inst["anim_tree"]):
 		return
 	var swing: float = sin(phase) * amplitude
 	var leg_l: Node3D = pivots.get("leg_l", null)
@@ -1047,16 +1058,18 @@ func _apply_lod(instance_id: String) -> void:
 	inst["_hidden"] = hidden
 
 	var use_impostor: bool = lod >= IMPOSTOR_LOD
+	# An attached rig replaces the procedural body, so LOD must not bring it back.
+	var has_rig: bool = inst.has("anim_tree") and is_instance_valid(inst["anim_tree"])
 	var parts: Dictionary = inst["parts"]
 	for key in parts:
 		var part: Dictionary = parts[key]
 		var node: Node3D = part["node"]
 		var max_lod: int = part.get("max_lod", MAX_LOD)
-		node.visible = (not use_impostor) and lod <= max_lod and not hidden.get(key, false)
+		node.visible = not has_rig and (not use_impostor) and lod <= max_lod and not hidden.get(key, false)
 
 	var impostor = inst.get("impostor", null)
 	if impostor != null:
-		impostor.visible = use_impostor
+		impostor.visible = use_impostor and not has_rig
 
 ## The LOD level that governs an instance right now: the manual override when in
 ## LOD_MANUAL mode, else distance-to-viewer when in LOD_AUTO mode (with

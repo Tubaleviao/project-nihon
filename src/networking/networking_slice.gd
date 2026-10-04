@@ -761,13 +761,26 @@ func send_peer_equipment_to(peer_id: int) -> void:
 		return
 	var others: Array = Array(multiplayer.get_peers())
 	others.append(HOST_PEER_ID)
+	var center := _joiner_aoi_center(peer_id)
 	for other in others:
 		var o := int(other)
-		if o == peer_id or not _has_subject_position(o) or not in_aoi(peer_id, _subject_position(o)):
+		if o == peer_id or not _has_subject_position(o) or center.distance_to(_subject_position(o)) > AOI_RADIUS:
 			continue
 		var worn := _worn_of_peer(o)
 		if not worn.is_empty():
 			_send_equipment(peer_id, o, worn)
+
+## AOI centre for a peer that has just joined: its reported position when it has one,
+## else the position restored from its record (a joiner has reported none yet, and the
+## spawn default would scope a reconnecting player to the wrong place), else the default.
+func _joiner_aoi_center(peer_id: int) -> Vector3:
+	if has_last_known_state(peer_id):
+		return get_aoi_center(peer_id)
+	var rec: Dictionary = player_registry.get_record(str(player_registry.get_player_id(peer_id)))
+	var pos = rec.get("position", null)
+	if pos is Array and pos.size() == 3:
+		return Vector3(float(pos[0]), float(pos[1]), float(pos[2]))
+	return DEFAULT_AOI_CENTER
 
 ## Phase 47 — host: tell the peers whose AOI contains `peer_id` what it wears. Used when
 ## a peer's position first becomes known: a reconnecting player's worn set is restored
