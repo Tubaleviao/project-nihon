@@ -40,10 +40,6 @@ func _ready() -> void:
 	_production_active = _mount_production_pack()
 	if _production_active:
 		reload_manifest()   # a lookup made before the mount cached the public-only view
-	if _production_active:
-		pass
-	else:
-		pass
 
 
 ## True once the production .pck has been mounted over res://.

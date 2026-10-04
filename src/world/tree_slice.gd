@@ -171,6 +171,7 @@ func _trim_chunk_to(chunk_pos: Vector2i, budget: int) -> void:
 		if keep.has(tid):
 			continue
 		(_by_chunk[chunk_pos] as Array).erase(tid)
+		_stump_memory.erase(tid)   # a trimmed tree never returns, so its deadline is dead weight
 		_remove_tree(str(tid), false)
 	if _by_chunk.has(chunk_pos) and (_by_chunk[chunk_pos] as Array).is_empty():
 		_by_chunk.erase(chunk_pos)
