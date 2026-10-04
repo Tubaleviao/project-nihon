@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:6cf4d6cb4efddd467a7c1b79ae319b78bbdd6ba5cb8b07c2869b98f09db0a665",
+  "schemaHash": "sha256:64acc20a0fef8e98ee52bb17017b78fae9e02f8a1aeb4fc542ca331a8e465899",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -2615,6 +2615,42 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 8
+          },
+          "surfaceMaterial": {
+            "name": "surfaceMaterial",
+            "type": "string",
+            "description": "Topsoil cover of unedited natural ground (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Grass"
+          },
+          "surfaceTint": {
+            "name": "surfaceTint",
+            "type": "string",
+            "description": "Hex colour of the natural top face",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#4f8a3a"
+          },
+          "soilTint": {
+            "name": "soilTint",
+            "type": "string",
+            "description": "Hex colour of the side wall down to topsoilDepth; rock below",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#6b4a2e"
+          },
+          "topsoilDepth": {
+            "name": "topsoilDepth",
+            "type": "decimal",
+            "description": "World units of soil under the surface before rock shows on a wall",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
           }
         },
         "relations": {
@@ -2696,6 +2732,42 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 2
+          },
+          "surfaceMaterial": {
+            "name": "surfaceMaterial",
+            "type": "string",
+            "description": "Topsoil cover of unedited natural ground (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Grass"
+          },
+          "surfaceTint": {
+            "name": "surfaceTint",
+            "type": "string",
+            "description": "Hex colour of the natural top face",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#7aa23f"
+          },
+          "soilTint": {
+            "name": "soilTint",
+            "type": "string",
+            "description": "Hex colour of the side wall down to topsoilDepth; rock below",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#6b4a2e"
+          },
+          "topsoilDepth": {
+            "name": "topsoilDepth",
+            "type": "decimal",
+            "description": "World units of soil under the surface before rock shows on a wall",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 4
           }
         },
         "relations": {
@@ -2777,6 +2849,42 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0
+          },
+          "surfaceMaterial": {
+            "name": "surfaceMaterial",
+            "type": "string",
+            "description": "Topsoil cover of unedited natural ground (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Ash"
+          },
+          "surfaceTint": {
+            "name": "surfaceTint",
+            "type": "string",
+            "description": "Hex colour of the natural top face",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#3a3a3e"
+          },
+          "soilTint": {
+            "name": "soilTint",
+            "type": "string",
+            "description": "Hex colour of the side wall down to topsoilDepth; rock below",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#2c2a2c"
+          },
+          "topsoilDepth": {
+            "name": "topsoilDepth",
+            "type": "decimal",
+            "description": "World units of soil under the surface before rock shows on a wall",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
           }
         },
         "relations": {
@@ -2873,6 +2981,42 @@
             "pii": false,
             "defaultValue": 8
           },
+          "surfaceMaterial": {
+            "name": "surfaceMaterial",
+            "type": "string",
+            "description": "Topsoil cover of unedited natural ground (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Moss"
+          },
+          "surfaceTint": {
+            "name": "surfaceTint",
+            "type": "string",
+            "description": "Hex colour of the natural top face",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#3f7a6a"
+          },
+          "soilTint": {
+            "name": "soilTint",
+            "type": "string",
+            "description": "Hex colour of the side wall down to topsoilDepth; rock below",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#3b3a4a"
+          },
+          "topsoilDepth": {
+            "name": "topsoilDepth",
+            "type": "decimal",
+            "description": "World units of soil under the surface before rock shows on a wall",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2
+          },
           "dayNightSpeed": {
             "name": "dayNightSpeed",
             "type": "decimal",
@@ -2963,6 +3107,42 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0
+          },
+          "surfaceMaterial": {
+            "name": "surfaceMaterial",
+            "type": "string",
+            "description": "Topsoil cover of unedited natural ground (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Void"
+          },
+          "surfaceTint": {
+            "name": "surfaceTint",
+            "type": "string",
+            "description": "Hex colour of the natural top face",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#2a1f3a"
+          },
+          "soilTint": {
+            "name": "soilTint",
+            "type": "string",
+            "description": "Hex colour of the side wall down to topsoilDepth; rock below",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#1e1630"
+          },
+          "topsoilDepth": {
+            "name": "topsoilDepth",
+            "type": "decimal",
+            "description": "World units of soil under the surface before rock shows on a wall",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
           }
         },
         "relations": {

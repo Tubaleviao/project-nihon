@@ -8,3 +8,7 @@ extends Resource
 @export var avgRainfall: float
 @export var soilFertility: float
 @export var treeDensity: int
+@export var surfaceMaterial: String
+@export var surfaceTint: String
+@export var soilTint: String
+@export var topsoilDepth: float

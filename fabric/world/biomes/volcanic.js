@@ -15,6 +15,10 @@ module.exports = {
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year; near zero' },
       soilFertility:  { type: 'decimal', description: '0–1; near zero; no conventional farming' },
       treeDensity:    { type: 'integer', description: 'Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here)', defaultValue: 0 },
+      surfaceMaterial: { type: 'string', description: 'Topsoil cover of unedited natural ground (Phase 49)', defaultValue: 'Ash' },
+      surfaceTint:    { type: 'string', description: 'Hex colour of the natural top face', defaultValue: '#3a3a3e' },
+      soilTint:       { type: 'string', description: 'Hex colour of the side wall down to topsoilDepth; rock below', defaultValue: '#2c2a2c' },
+      topsoilDepth:   { type: 'decimal', description: 'World units of soil under the surface before rock shows on a wall', defaultValue: 1 },
     },
     relations: {
       spawnLavaSlug:      { name: 'spawnLavaSlug',      kind: 'hasMany', target: 'LavaSlug' },

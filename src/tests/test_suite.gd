@@ -222,6 +222,7 @@ func run() -> void:
 	_run_test("voxel: place raises height and consumes",       _test_voxel_place_consumes)
 	_run_test("voxel: place beyond cap fails and refunds",     _test_voxel_place_cap)
 	_run_test("voxel: biome material mapping",                 _test_voxel_biome_materials)
+	_run_test("voxel: grass top, soil side",                   _test_voxel_grass_top_soil_side)
 	_run_test("voxel: the surface never yields a deep ore",     _test_voxel_material_rarity)
 	_run_test("voxel: edits round-trip",                       _test_voxel_edits_round_trip)
 	_run_test("voxel: placed block keeps material colour",    _test_voxel_placed_block_keeps_material_color)
@@ -2964,6 +2965,40 @@ func _test_voxel_biome_materials() -> void:
 	assert_false(temperate.has("Thornwood") or temperate.has("Duskfiber"), "no wood from the temperate ground")
 	v.free()
 
+## Phase 49 — an unedited natural column's top face wears the biome's fabric surface tint, its
+## wall wears the soil tint down to `topsoilDepth`, and rock (the host material's colour) shows
+## below that.
+func _test_voxel_grass_top_soil_side() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var style := VoxelSlice.surface_style("TemperateForest")
+	assert_false(style.is_empty(), "the temperate biome carries fabric surface fields")
+	var hm: Array = []
+	hm.resize(64 * 64)
+	hm.fill(8.0)
+	var arrays := VoxelSlice.build_chunk_arrays(Vector2i(0, 0), hm, v.collect_build_runs(Vector2i(0, 0), hm))
+	var rock := VoxelSlice._material_color(OreField.host_material("TemperateForest"))
+	var normals: PackedVector3Array = arrays["normals"]
+	var colors: PackedColorArray = arrays["colors"]
+	var verts: PackedVector3Array = arrays["vertices"]
+	var top_ok := true
+	var soil_seen := false
+	var rock_seen := false
+	var top_y := 8.0
+	for i in range(verts.size()):
+		if normals[i].y > 0.5:
+			top_ok = top_ok and colors[i].is_equal_approx(style["top"])
+		elif absf(normals[i].y) < 0.1:
+			if verts[i].y > top_y - float(style["depth"]) + 0.01:
+				soil_seen = soil_seen or colors[i].is_equal_approx(style["soil"])
+			elif verts[i].y < top_y - float(style["depth"]) - 0.01:
+				rock_seen = rock_seen or colors[i].is_equal_approx(rock)
+	assert_true(top_ok, "every unedited top face is the fabric grass tint")
+	assert_true(soil_seen, "the wall shows soil within topsoilDepth of the surface")
+	assert_true(rock_seen, "and rock below the topsoil")
+	assert_false(style["top"].is_equal_approx(rock), "grass is not the rock colour")
+	v.free()
+
 ## Phase 43 — the uniform per-tile draw is retired: the surface (depth 0) is host rock and
 ## shallow veins, and a DEEP ore never appears there however many tiles are asked.
 func _test_voxel_material_rarity() -> void:
@@ -3158,7 +3193,15 @@ func _plane_x_spans(faces: PackedVector3Array, plane: float) -> Array:
 		if not spans.has(span):
 			spans.append(span)
 	spans.sort_custom(func(a: Array, b: Array): return float(a[0]) < float(b[0]))
-	return spans
+	# Phase 49 — a wall is split at the soil line (two colours), so abutting spans are one
+	# wall's worth of geometry.
+	var merged: Array = []
+	for span in spans:
+		if not merged.is_empty() and is_equal_approx(float(merged[-1][1]), float(span[0])):
+			merged[-1][1] = span[1]
+		else:
+			merged.append(span)
+	return merged
 
 ## Phase 41 review pass — an UP-face hit must resolve to the run whose TOP the ray
 ## landed on, not to the column's topmost run. A tunnel FLOOR keeps an exposed top
