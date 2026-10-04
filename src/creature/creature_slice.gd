@@ -105,6 +105,10 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_tick_respawn()
 	if is_authoritative:
+		_deferred_accum += delta
+		if _deferred_accum >= DEFERRED_RETRY_INTERVAL:
+			_deferred_accum = 0.0
+			_retry_deferred_packs()
 		_sync_accum += delta
 		if _sync_accum >= CREATURE_SYNC_INTERVAL:
 			_sync_accum = 0.0
@@ -332,6 +336,17 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 		return   # clients receive creatures from host broadcasts
 	var chunk_biome := _chunk_biome(chunk_pos)
 	var biome_keys: Array = _biome_keys()
+	# One pass over the instance table serves every species of this chunk: the survivors
+	# per species and the live count the cap is judged against.
+	var surviving_by_species: Dictionary = {}
+	var live: int = 0
+	for iid in _instances:
+		var inst: Dictionary = _instances[iid]
+		if inst.get("state", "") != "dead":
+			live += 1
+		if inst.get("chunk") == chunk_pos:
+			var cid: String = str(inst.get("creature_id"))
+			surviving_by_species[cid] = int(surviving_by_species.get(cid, 0)) + 1
 	for creature_id in GameData.CREATURES:
 		var res: Resource = GameData.CREATURES[creature_id]
 		if res == null:
@@ -343,33 +358,63 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 		var pack: int = int(res.get("spawnCount"))
 		if chunk_biome != "":
 			# A resource lacking the Phase 44 fields keeps spawning (always, no noise)
-			# rather than silently vanishing from the world.
+			# rather than silently vanishing from the world; it warns once.
 			var chance: Variant = res.get("spawnChance")
 			var amp: Variant = res.get("spawnDensity")
+			if (chance == null or amp == null) and not _warned_spawn_fields.has(creature_id):
+				_warned_spawn_fields[creature_id] = true
+				Diag.warn("CreatureSlice: '%s' has no spawnChance/spawnDensity; spawning without a roll" % creature_id)
 			pack = SpawnRoll.pack_size(_world_seed(), chunk_pos, creature_id, pack,
 					1.0 if chance == null else float(chance), 0.0 if amp == null else float(amp))
-		# Count surviving instances (engaged creatures kept alive across a despawn).
+		pack = mini(pack, MAX_PACK_MEMBERS)
+		var to_spawn: int = pack - int(surviving_by_species.get(creature_id, 0))
+		if to_spawn <= 0:
+			continue
+		# A pack the cap cannot hold is refused whole and never streamed: the cap is a
+		# host-only quantity, so a refusal is simply an absent pack. It is remembered and
+		# retried as the population falls, instead of waiting for the chunk to reload.
+		if _population_cap > 0 and live + to_spawn > _population_cap:
+			_deferred_packs[[chunk_pos, creature_id]] = pack
+			continue
+		_deferred_packs.erase([chunk_pos, creature_id])
+		_spawn_members(creature_id, chunk_pos, to_spawn)
+		live += to_spawn
+
+## Spawn `count` more members of a pack, skipping indices a surviving (engaged) member
+## already holds so a reload never overwrites its record.
+func _spawn_members(creature_id: String, chunk_pos: Vector2i, count: int) -> void:
+	var idx: int = 0
+	var spawned: int = 0
+	while spawned < count:
+		if not _instances.has(_instance_id(chunk_pos, creature_id, idx)):
+			_spawn(creature_id, chunk_pos, idx)
+			spawned += 1
+		idx += 1
+
+## Packs the cap refused, { [chunk, creature_id]: pack size }, retried on a timer while
+## their chunk is still streamed in (`despawn_for_chunk` drops the chunk's entries).
+var _deferred_packs: Dictionary = {}
+var _deferred_accum: float = 0.0
+const DEFERRED_RETRY_INTERVAL := 5.0
+var _warned_spawn_fields: Dictionary = {}
+
+func _retry_deferred_packs() -> void:
+	if _deferred_packs.is_empty():
+		return
+	for key in _deferred_packs.keys():
+		var chunk_pos: Vector2i = key[0]
+		var creature_id: String = key[1]
 		var surviving: int = 0
 		for iid in _instances:
 			var inst: Dictionary = _instances[iid]
 			if inst.get("chunk") == chunk_pos and inst.get("creature_id") == creature_id:
 				surviving += 1
-		var to_spawn: int = pack - surviving
+		var to_spawn: int = int(_deferred_packs[key]) - surviving
 		if to_spawn <= 0:
-			continue
-		# A pack the cap cannot hold is refused whole and never streamed: the cap is a
-		# host-only quantity, so a refusal is simply an absent pack.
-		if _population_cap > 0 and live_population() + to_spawn > _population_cap:
-			continue
-		# Skip indices a surviving (engaged) member already holds, so a reload never
-		# overwrites its record.
-		var idx: int = 0
-		var spawned: int = 0
-		while spawned < to_spawn:
-			if not _instances.has(_instance_id(chunk_pos, creature_id, idx)):
-				_spawn(creature_id, chunk_pos, idx)
-				spawned += 1
-			idx += 1
+			_deferred_packs.erase(key)
+		elif _population_cap <= 0 or live_population() + to_spawn <= _population_cap:
+			_deferred_packs.erase(key)
+			_spawn_members(creature_id, chunk_pos, to_spawn)
 
 ## Cap on live creature instances (0 = unbounded). Enforced host-only, at admission.
 func set_population_cap(cap: int) -> void:
@@ -403,6 +448,9 @@ func _world_seed() -> int:
 ## the creature's persisted state, so dropping them meant walking out of a chunk and
 ## back respawned the creature ALIVE — the record was silently ignored.
 func despawn_for_chunk(chunk_pos: Vector2i) -> void:
+	for key in _deferred_packs.keys():
+		if key[0] == chunk_pos:
+			_deferred_packs.erase(key)
 	var to_erase: Array = []
 	for iid in _instances:
 		var inst: Dictionary = _instances[iid]
@@ -521,11 +569,15 @@ func _instance_id(chunk_pos: Vector2i, creature_id: String, spawn_index: int) ->
 func _deterministic_chunk_position(chunk_pos: Vector2i, creature_id: String, spawn_index: int) -> Vector2:
 	var cs: int = _chunk_size()
 	var ts: float = _tile_size()
-	var inner: int = cs - 2  # tiles available after 1-tile border inset
+	# Tiles kept clear on every side: the 1-tile border plus the farthest member offset,
+	# so every member of a pack lands inside the chunk. A chunk too small for that keeps
+	# a one-tile-wide band at its middle rather than a negative range.
+	var inset: int = 1 + int(ceil(PACK_MAX_EXTENT / ts))
+	var inner: int = maxi(cs - 2 * inset, 1)
 	var seed_x: int = (chunk_pos.x * 73856093) ^ (chunk_pos.y * 19349663) ^ (creature_id.hash() * 83492791) ^ (spawn_index * 1000003)
 	var seed_z: int = (chunk_pos.x * 19349663) ^ (chunk_pos.y * 83492791) ^ (creature_id.hash() * 1000003) ^ (spawn_index * 73856093)
-	var local_x: int = (abs(seed_x) % inner) + 1
-	var local_z: int = (abs(seed_z) % inner) + 1
+	var local_x: int = (abs(seed_x) % inner) + inset
+	var local_z: int = (abs(seed_z) % inner) + inset
 	return Vector2(
 		float(chunk_pos.x * cs + local_x) * ts + ts * 0.5,
 		float(chunk_pos.y * cs + local_z) * ts + ts * 0.5
@@ -546,11 +598,23 @@ const PACK_MEMBER_OFFSETS: Array[Vector2] = [
 	Vector2(2.5, -2.5),
 ]
 
-## The cluster offset for the Nth member of a pack. Index wraps so a larger
-## pack than the offset table stays deterministic.
+## A pack never exceeds this many members: the table above plus two outer rings of its
+## eight non-centre offsets, scaled out so no member shares a spot with another.
+const MAX_PACK_MEMBERS := 25
+## Farthest a member can sit from the pack centre (m): the outermost ring's scale
+## (3x) times the table's 2.5 m reach, per axis.
+const PACK_MAX_EXTENT := 7.5
+
+## The cluster offset for the Nth member of a pack. Members past the table go on
+## outer rings (the table's eight surrounding offsets, scaled 2x then 3x), so a
+## larger pack spreads out instead of stacking on a wrapped offset.
 func _pack_member_offset(spawn_index: int) -> Vector2:
-	var idx: int = spawn_index % PACK_MEMBER_OFFSETS.size()
-	return PACK_MEMBER_OFFSETS[idx]
+	var n: int = PACK_MEMBER_OFFSETS.size()
+	if spawn_index < n:
+		return PACK_MEMBER_OFFSETS[spawn_index]
+	var ring: int = 2 + (spawn_index - n) / (n - 1)
+	var idx: int = 1 + (spawn_index - n) % (n - 1)
+	return PACK_MEMBER_OFFSETS[idx] * float(mini(ring, 3))
 
 ## The biome key for a chunk, or "" when no terrain_slice is wired (isolated tests).
 func _chunk_biome(chunk_pos: Vector2i) -> String:

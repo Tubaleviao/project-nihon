@@ -177,6 +177,35 @@ func create_character_from_recipe(recipe: Dictionary, pos: Vector3) -> String:
 	GameBus.character_spawned.emit(iid, skeleton_id, pos)
 	return iid
 
+## Move an instance's body to `pos`. False for an unknown instance.
+func set_character_position(instance_id: String, pos: Vector3) -> bool:
+	if not _instances.has(instance_id):
+		return false
+	var inst: Dictionary = _instances[instance_id]
+	inst["position"] = pos
+	(inst["root"] as Node3D).position = pos
+	return true
+
+## Where an instance's body is, or null for an unknown instance.
+func get_character_position(instance_id: String) -> Variant:
+	if not _instances.has(instance_id):
+		return null
+	return _instances[instance_id]["position"]
+
+## Free an instance (its body and any peer binding to it). The player's own avatar stays
+## selected only while it exists. False for an unknown instance.
+func remove_character(instance_id: String) -> bool:
+	if not _instances.has(instance_id):
+		return false
+	(_instances[instance_id]["root"] as Node3D).queue_free()
+	_instances.erase(instance_id)
+	for peer_id in _peer_characters.keys():
+		if str(_peer_characters[peer_id]) == instance_id:
+			_peer_characters.erase(peer_id)
+	if _player_character_id == instance_id:
+		_player_character_id = ""
+	return true
+
 ## Replace an existing instance's appearance recipe (rebuilds the visual).
 func apply_appearance(instance_id: String, recipe: Dictionary) -> bool:
 	if not _instances.has(instance_id):
@@ -212,6 +241,10 @@ func apply_appearance(instance_id: String, recipe: Dictionary) -> bool:
 	inst["lod"] = -1
 	inst.erase("_hidden")
 	_apply_lod(instance_id)
+	# The rebuilt body is procedural again; a character that wore a rig gets it back.
+	var rig_key: String = str(inst.get("rig_key", ""))
+	if rig_key != "":
+		attach_rig(instance_id, rig_key)
 
 	GameBus.character_appearance_changed.emit(instance_id, normalized)
 	return true
@@ -685,7 +718,18 @@ func attach_rig(instance_id: String, rig_key: String) -> bool:
 	tree.anim_player = tree.get_path_to(player)
 	tree.active = true
 	inst["anim_tree"] = tree
+	inst["rig_key"] = rig_key
 	return true
+
+## Rig keys tried in order for an avatar: a production pack's player rig, then the public
+## placeholder. The first one the manifest lists wins.
+const DEFAULT_RIG_KEYS := ["models/player_rig.glb.raw", "models/placeholder_rig.glb.raw"]
+
+## Attach the first default rig the manifest lists. False (the procedural body stays)
+## when none is listed or the scene fails to load.
+func attach_default_rig(instance_id: String) -> bool:
+	var key: String = AssetOverlay.first_key("meshes", DEFAULT_RIG_KEYS)
+	return key != "" and attach_rig(instance_id, key)
 
 func get_locomotion_state(instance_id: String) -> int:
 	if not _instances.has(instance_id):

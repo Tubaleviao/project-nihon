@@ -409,6 +409,8 @@ func _ready() -> void:
 	GameBus.character_appearance_changed.connect(_on_character_appearance_changed)
 	GameBus.peer_equipment_synced.connect(_character.set_peer_equipment)
 	GameBus.peer_equipment_evicted.connect(_character.evict_peer_equipment)
+	GameBus.remote_player_state.connect(_on_remote_avatar_state)
+	GameBus.peer_equipment_evicted.connect(_remove_remote_avatar)
 	GameBus.world_snapshot_received.connect(_on_world_snapshot_received)
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
@@ -777,6 +779,9 @@ func _finish_host_boot() -> void:
 	var player_char := _restore_or_create_player_character(_player.get_position())
 	_character.create_character("BoarRider", Vector3(spawn_xz.x - 3.0, ground_h + 1.0, spawn_xz.y))
 	_character.set_player_character(player_char)
+	# Phase 59 — the avatar wears the rig when the manifest lists one; otherwise (or when
+	# the scene fails to load) the procedural body stays.
+	_character.attach_default_rig(player_char)
 	# Phase 47 — the avatar exists only now, so the recorded worn set is applied here
 	# (the restore above runs before there is a character to wear it).
 	_apply_local_equipment(_registry.get_record(_registry.local_player_id).get("equipment", {}) if not _registry.local_player_id.is_empty() else {})
@@ -972,6 +977,7 @@ func _on_player_identity_assigned(player_id: String) -> void:
 ## The party bindings in trade/market are dropped with it: they hold a raw node
 ## reference, and a freed node is not null.
 func _on_peer_disconnected(peer_id: int) -> void:
+	_remove_remote_avatar(peer_id)
 	_character.forget_peer(peer_id)
 	if _is_client:
 		return
@@ -1056,6 +1062,41 @@ func _player_targets() -> Dictionary:
 ## When the AOI grid cell changes, re-send a scoped snapshot so the client gains
 ## the entities now in range — including static creatures that were never
 ## "dirty" and therefore never re-broadcast as a delta.
+## Phase 66 — client: the other players inside our AOI, as character instances.
+## { peer_id: instance_id }. A peer's replicated gear lands on its instance (bound through
+## `bind_peer_character`), so what the host sends is applied to something visible. An
+## instance lives while the peer is inside AOI: leaving it (`peer_equipment_evicted`) or
+## disconnecting frees the body, and re-entry builds a fresh one the host's resend dresses.
+var _remote_avatars: Dictionary = {}
+
+func _on_remote_avatar_state(peer_id: int, position: Vector3) -> void:
+	if not _is_client or peer_id == multiplayer.get_unique_id():
+		return
+	var iid: String = str(_remote_avatars.get(peer_id, ""))
+	if iid != "" and _character.set_character_position(iid, position):
+		return
+	iid = _character.create_character("TravellerHuman", position)
+	if iid == "":
+		return
+	_remote_avatars[peer_id] = iid
+	_character.bind_peer_character(peer_id, iid)
+
+## A peer with nothing worn is never sent an evict, so a body that has drifted out of range
+## is dropped here as well (the host stops reporting its state once it leaves our AOI).
+func _prune_remote_avatars() -> void:
+	if _remote_avatars.is_empty() or _player == null:
+		return
+	var here: Vector3 = _player.get_position()
+	for peer_id in _remote_avatars.keys():
+		var at: Variant = _character.get_character_position(str(_remote_avatars[peer_id]))
+		if at is Vector3 and (at as Vector3).distance_to(here) > NetworkingSlice.AOI_RADIUS:
+			_remove_remote_avatar(int(peer_id))
+
+func _remove_remote_avatar(peer_id: int) -> void:
+	if _remote_avatars.has(peer_id):
+		_character.remove_character(str(_remote_avatars[peer_id]))
+		_remote_avatars.erase(peer_id)
+
 func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	if _is_client:
 		return
@@ -1079,6 +1120,8 @@ func _process(delta: float) -> void:
 	_tick_pending_client_boot(delta)
 
 	_sync_player_avatar(delta)
+	if _is_client:
+		_prune_remote_avatars()
 	if not _is_client and _player != null:
 		# Phase 48 — the host avatar's AOI membership drives peer-equipment sends.
 		_networking.set_host_position(_player.get_position())
@@ -1286,7 +1329,9 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 		# one there is nothing to wear the set, to show in the Character window, or to
 		# forward equipment intents from.
 		if _character.get_player_character() == "":
-			_character.set_player_character(_character.create_character("TravellerHuman", _player.get_position()))
+			var client_char: String = _character.create_character("TravellerHuman", _player.get_position())
+			_character.set_player_character(client_char)
+			_character.attach_default_rig(client_char)
 		_apply_local_equipment(data["equipment"])
 	var own: Variant = data.get("player", {})
 	if own is Dictionary:
