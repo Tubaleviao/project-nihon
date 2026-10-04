@@ -84,7 +84,10 @@ static func biome_for_climate(t: float, m: float, keys: Array, biomes: Dictionar
 ## the biome resources are loaded; an isolated rig without them falls back to Voronoi cells.
 static func biome_for_chunk(seed_v: int, chunk_pos: Vector2i, keys: Array) -> String:
 	if keys.is_empty():
-		return ""
+		return ""   # also guards the `% keys.size()` below
+	# The 3x3 cell search below is exact only while a feature point stays within ~0.8 of a
+	# cell of its centre; a larger JITTER could put the true nearest point one ring further out.
+	assert(JITTER <= 0.8, "ClimateField.JITTER too large for the 3x3 nearest-point search")
 	var p := Vector2(chunk_pos.x + 0.5, chunk_pos.y + 0.5)
 	var picked := biome_for_climate(temperature(seed_v, p), moisture(seed_v, p), keys, GameData.BIOMES)
 	if picked != "":

@@ -4905,9 +4905,10 @@ holds the pure slot table / `sanitize` / `totals` / `hands_free`;
 `CharacterSlice.derived_stats` / `get_equipment_set` / `apply_equipment_set` /
 `set_peer_equipment`; `PlayerRegistry.record_equipment` / `get_equipment` (on the
 record, the join snapshot and `evict_player`'s record drop); bus signals
-`equipment_intent` / `equipment_changed` / `peer_equipment_synced`; the Character
-window (key `K`). The tame intent's `unarmed` argument is kept for wire/signal
-compatibility but ignored — `TamingSlice.is_unarmed` reads the registry.
+`equip_intent` / `equipment_changed` / `peer_equipment_synced` (the client's first cut
+sent a whole worn set as `equipment_intent`; Phase 60 replaced it with per-slot host-validated
+actions); the Character window (key `K`). `TamingSlice.is_unarmed` reads the registry
+(the tame intent's dead `unarmed` argument is gone, see Phase 60).
 
 **Known simplifications (deferred):**
 - **Replication is delta-only.** A peer's set is sent to
@@ -5122,11 +5123,22 @@ biome whose envelope fits (`biome_for_climate`). `Grass`/`Soil` are fabric mater
 topsoil of a `Grass` biome yields `Soil`. Topsoil colouring uses the biome `surfaceTint`/`soilTint`/
 `topsoilDepth` fields. Surface veins are the exception, with the density in the fabric
 (`surfaceVeinChance` on the biome). The minimap colours chunks by `surfaceTint`. Frame-spike items
-are in (`_prune_heightmaps` and tree spawn/despawn indexed by chunk; unloads budgeted per frame).
+are in (`_prune_heightmaps`, tree and creature spawn/despawn indexed by chunk; unloads budgeted per frame; a chunk's heightmap is generated once).
 Still open: the per-tile biome blend with deterministic dither (colour is flat per chunk biome), the
 `chunk_loaded` consumer that rebuilds a chunk whose guessed neighbour arrived with edits, per-tile
 minimap colour, and the manual 20-chunk walk with a frame-time log and screenshot. `check-drift`
 is clean, the suite is green, and `net_harness.sh` reports 11/11. The phase is not marked done.
+
+**Net harness:** it has 11 steps now (the equipment step joined it), so the `10/10 steps
+agreed` lines in the older phase entries above are historical; a green run now reads `12/12`
+(Phase 55 added `equipment_delivered`).
+
+**Saved-world note (biome function change):** the Voronoi biome regions replaced the stripe
+biome hash, so a chunk's biome, and with it the host material of any ore vein anchored there,
+changed for worlds saved before it. Terrain heights and vein positions are unchanged; only the
+biome-dependent material (and spawn table) of an existing area can differ. Edits are keyed by
+tile and kept. There is no save-format version to migrate: the world is re-derived from the
+seed on load.
 
 **Known simplifications:**
 - The grass is a vertex colour, with no texture and no grass blades. Textured
@@ -5381,7 +5393,7 @@ hemisphere.
 
 ---
 
-## Phase 55 — Two-client harness: equipment delivery over the socket
+## Phase 55 — Two-client harness: equipment delivery over the socket ✅ Done
 
 **Goal:** The `equipment_recorded` harness step proves the host records a claim,
 but its client verdict is vacuous and AOI delivery to a peer is covered only in
@@ -5406,15 +5418,21 @@ step.
   updated with the new count.
 
 **Acceptance criteria:**
-- [ ] Breaking the client send (e.g. not emitting the intent) makes the step fail
+- [x] Breaking the client send (e.g. not emitting the intent) makes the step fail
   on the client side, not only on the host side.
-- [ ] Unknown item in a real slot is refused by the host and recorded as such.
-- [ ] `net-harness` reports `12/12 steps agreed across both peers` (or the new
-  total), with the delivery step verified on both peers.
+- [x] Unknown item in a real slot is refused by the host and recorded as such.
+- [x] `net-harness` reports `12/12 steps agreed across both peers`, with the delivery
+  step verified on both peers.
+
+_Implementation note:_ the delivery step uses the listen host as the subject (its worn set
+fans out to the client's AOI over the socket), and the client judges it on what ARRIVED
+(`peer_equipment_synced`), not on the character slice's stored set: the host runs ahead into
+the reconnect step and a dropped connection forgets the stored set. A worn item has to be in
+the host's own bag, or the Phase 48 revalidation clears it on the next inventory event.
 
 ---
 
-## Phase 56 — Station placement follow-ups
+## Phase 56 — Station placement follow-ups ✅ Done
 
 **Goal:** Close the PR #67 review findings (#68) so placement is cheap per frame,
 consistent in height, honest when refused, and tested.
@@ -5437,12 +5455,17 @@ consistent in height, honest when refused, and tested.
   the N toggle and V through `try_place_station`, including a refusal reason.
 
 **Acceptance criteria:**
-- [ ] `show_preview` per frame does not rescan RECIPES/ITEMS (asserted by a call
-  counter or by the cache being populated once).
-- [ ] Overlap rule is defined on snapped cells and asserted for same-cell /
+- [x] `show_preview` per frame does not rescan RECIPES/ITEMS (asserted by
+  `StationSlice.placeable_scan_count`).
+- [x] Overlap rule is defined on snapped cells and asserted for same-cell /
   different-height and adjacent-cell cases.
-- [ ] Preview ghost is hidden while a menu owns input.
-- [ ] A refused placement shows its reason; suite green on both boot paths.
+- [x] Preview ghost is hidden while a menu owns input.
+- [x] A refused placement shows its reason; suite green on both boot paths.
+
+
+_Shipped as:_ most of the deliverables had already landed with the Phase 49 review pass; this
+phase added the missing suite tests (`_station_target` aimed top / side / underside / feet, the
+V placement and its refusal reason on the label, the frozen-world ghost) and the scan counter.
 
 ---
 
@@ -5545,6 +5568,44 @@ exercised in play. Use it for the local avatar with a safe fallback.
 - [ ] With the rig key missing, the procedural body is used and nothing leaks.
 - [ ] Manifest merge asserted: a private key overrides, public-only keys survive.
 - [ ] Suite green on both boot paths.
+
+---
+
+## Phase 60 — Host-authoritative equip ✅ Done
+
+**Goal:** close the one hole Phase 48 left open: a client reported a whole worn set, so a
+modified client could report `worn = {}` while holding a weapon and pass the bare-hands taming
+rule (#88, with #63-#65 and #70). The host must decide what is in the hand.
+
+**Newel dependency:** NO.
+
+**Closes:** #88, #63, #64, #65, #70, #71 (with Phase 55) and the minimap/station notes in #107 and #68.
+
+**Deliverables:**
+- `src/core/bus.gd` — `equip_intent(player_id, slot, item_key)` replaces `equipment_intent`
+  (`item_key` "" unequips). A client emits one action per differing slot; there is no whole-set
+  report, so there is nothing to leave gear out of.
+- `src/persistence/player_registry.gd` — `_on_equip_intent` validates the action (the fabric
+  says the item fits the slot, the player's bag holds it) and changes ONE slot of the host's
+  own record through `record_equipment`; a refused action sends the owner the authoritative set
+  (`equipment_revoked`) so its optimistic avatar falls back. `has_equipment_report` is gone:
+  the record is always the truth, a peer with an empty record is bare-handed.
+- `src/networking/networking_slice.gd` — the `equip_intent` packet carries `{slot, item}`;
+  the join-time equipment send skips pairs already sent (a join-intent retry no longer repeats it).
+- `src/core/game_root.gd` — a client shows exactly the host's record on join (an empty one
+  strips recipe gear the host never granted) and diffs its avatar into actions
+  (`EquipmentRules.diff_actions`).
+- `tame_intent` lost its dead `unarmed` argument; `ui_slice` lost a redundant refresh and an
+  anonymous lambda; `Minimap.biome_color` caches per biome.
+
+**Acceptance criteria:**
+- [x] A wrong-slot item, an unknown item, an unknown slot and an unowned item change nothing;
+  an unequip clears only its slot (suite).
+- [x] A refused equip tells the owner the host's set (suite).
+- [x] A bare-handed record reads as unarmed and a recorded sword as armed, with no payload
+  claim on the wire (suite).
+- [x] `net-harness` still reports every step agreed, `equipment_recorded` driving the new
+  actions over a real socket.
 
 ---
 

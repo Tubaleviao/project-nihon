@@ -38,6 +38,9 @@ const BIOME_COLORS: Dictionary = {
 	"VoidRift":           Color(0.25, 0.10, 0.35),
 }
 
+## Colour for a biome with neither a fabric tint nor a table entry.
+const FALLBACK_COLOR := Color(0.4, 0.4, 0.4)
+
 ## Set by game_root: player position, terrain (biome + world bounds), and the
 ## chunk manager (kept for introspection; the minimap no longer reads it).
 var chunk_manager: Node = null
@@ -123,11 +126,20 @@ func get_player_cell() -> Dictionary:
 ## Resolve a biome key to its minimap colour.
 ## Phase 49: the biome's fabric `surfaceTint` (the colour the ground actually shows) wins;
 ## the hard-coded table is the fallback when the biome resource is not loaded.
+## Cached per biome: the tint string is parsed once, not per cell per draw (the fabric
+## table is static for the life of the process).
 func biome_color(biome: String) -> Color:
+	if _biome_color_cache.has(biome):
+		return _biome_color_cache[biome]
+	var fallback: Color = BIOME_COLORS.get(biome, FALLBACK_COLOR)
+	var out: Color = fallback
 	var b: Variant = GameData.BIOMES.get(biome, null)
 	if b != null and b.get("surfaceTint") != null:
-		return Color.from_string(str(b.get("surfaceTint")), BIOME_COLORS.get(biome, Color(0.4, 0.4, 0.4)))
-	return BIOME_COLORS.get(biome, Color(0.4, 0.4, 0.4))
+		out = Color.from_string(str(b.get("surfaceTint")), fallback)
+	_biome_color_cache[biome] = out
+	return out
+
+var _biome_color_cache: Dictionary = {}
 
 # ---------------------------------------------------------------------------
 # Zoom
@@ -189,7 +201,8 @@ func _draw() -> void:
 			var c := Vector2i(cx, cz)
 			if not _revealed.has(_chunk_key(c)):
 				continue
-			var col: Color = biome_color(_biome(c))
+			var biome := _biome(c)
+			var col: Color = biome_color(biome)
 			var rx := size.x * 0.5 + (cx - _player_chunk.x) * cell_px - cell_px * 0.5
 			var ry := size.y * 0.5 + (cz - _player_chunk.y) * cell_px - cell_px * 0.5
 			var rect := Rect2(rx, ry, cell_px, cell_px)

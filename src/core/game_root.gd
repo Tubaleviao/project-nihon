@@ -4,6 +4,7 @@ extends Node
 ## Slices communicate exclusively through GameBus signals. This script
 ## instantiates slices, sets cross-slice references that cannot travel the bus,
 ## and drives the startup sequence (tests → GameData check → terrain boot).
+const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const Diag := preload("res://src/core/diag.gd")
 
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
@@ -780,8 +781,10 @@ func _finish_host_boot() -> void:
 	_character.create_character("BoarRider", Vector3(spawn_xz.x - 3.0, ground_h + 1.0, spawn_xz.y))
 	_character.set_player_character(player_char)
 	# Phase 59 — the avatar wears the rig when the manifest lists one; otherwise (or when
-	# the scene fails to load) the procedural body stays.
-	_character.attach_default_rig(player_char)
+	# the scene fails to load) the procedural body stays. A dedicated server renders nothing,
+	# so it never loads the glTF scene.
+	if not _is_server:
+		_character.attach_default_rig(player_char)
 	# Phase 47 — the avatar exists only now, so the recorded worn set is applied here
 	# (the restore above runs before there is a character to wear it).
 	_apply_local_equipment(_registry.get_record(_registry.local_player_id).get("equipment", {}) if not _registry.local_player_id.is_empty() else {})
@@ -1076,6 +1079,13 @@ func _on_remote_avatar_state(peer_id: int, position: Vector3) -> void:
 		return
 	_remote_avatars[peer_id] = iid
 	_character.bind_peer_character(peer_id, iid)
+	# The avatar IS this peer now; the PlayerSlice capsule ghost would draw it a second time.
+	_player.set_ghost_suppressed(peer_id, true)
+
+## A remote avatar is dropped only once it is this far away, a margin PAST the host's AOI
+## edge. The host stops reporting a peer at exactly AOI_RADIUS, so pruning at the same radius
+## made an avatar standing on the edge flicker (dropped, re-created by the next report).
+const REMOTE_AVATAR_PRUNE_RADIUS := NetworkingSlice.AOI_RADIUS + 16.0
 
 ## A peer with nothing worn is never sent an evict, so a body that has drifted out of range
 ## is dropped here as well (the host stops reporting its state once it leaves our AOI).
@@ -1085,13 +1095,14 @@ func _prune_remote_avatars() -> void:
 	var here: Vector3 = _player.get_position()
 	for peer_id in _remote_avatars.keys():
 		var at: Variant = _character.get_character_position(str(_remote_avatars[peer_id]))
-		if at is Vector3 and (at as Vector3).distance_to(here) > NetworkingSlice.AOI_RADIUS:
+		if at is Vector3 and (at as Vector3).distance_to(here) > REMOTE_AVATAR_PRUNE_RADIUS:
 			_remove_remote_avatar(int(peer_id))
 
 func _remove_remote_avatar(peer_id: int) -> void:
 	if _remote_avatars.has(peer_id):
 		_character.remove_character(str(_remote_avatars[peer_id]))
 		_remote_avatars.erase(peer_id)
+		_player.set_ghost_suppressed(peer_id, false)
 
 ## Phase 29 — a client's movement may carry it into a new area of interest.
 ## When the AOI grid cell changes, re-send a scoped snapshot so the client gains
@@ -1109,7 +1120,7 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	# crossing (the record is written at load and at disconnect, not per frame).
 	# The crossing position is passed explicitly: this handler may run before the
 	# networking slice's own handler has recorded it, so get_aoi_center() can be stale.
-	_networking.send_snapshot(peer_id, _build_snapshot(peer_id, false, position))
+	_networking.send_snapshot(peer_id, _build_snapshot(peer_id, false, position, false))
 
 func _process(delta: float) -> void:
 	# Phase 42 — complete a host boot whose first ring has finished building. It has
@@ -1224,26 +1235,30 @@ func _on_server_disconnected() -> void:
 ## would teleport the client to its last-saved position and roll its inventory and
 ## technology back to that instant.
 func _build_snapshot(peer_id: int, include_own_record: bool = true,
-		aoi_center_override: Variant = null) -> Dictionary:
+		aoi_center_override: Variant = null, full_edits_override: Variant = null) -> Dictionary:
+	# Every AOI test below reads the SAME centre: the override when a re-scope names the
+	# crossing position (the networking slice may not have recorded it yet), else the peer's
+	# last known one.
+	var aoi_center: Vector3 = _networking.get_aoi_center(peer_id)
+	if aoi_center_override is Vector3:
+		aoi_center = aoi_center_override
 	var players := {}
 	var host_pos := _player.get_position()
-	if _networking.in_aoi(peer_id, host_pos):
+	if NetworkingSlice.within_aoi(aoi_center, host_pos):
 		players[str(multiplayer.get_unique_id())] = [host_pos.x, host_pos.y, host_pos.z]
 	# Phase 19 — include last-known remote player states so a rejoining client
 	# resumes from its last authoritative position after a disconnect.
 	var last_known := _networking.get_last_known_states()
 	for pid in last_known:
 		var last_pos: Vector3 = last_known[pid]
-		if _networking.in_aoi(peer_id, last_pos):
+		if NetworkingSlice.within_aoi(aoi_center, last_pos):
 			players[str(pid)] = [last_pos.x, last_pos.y, last_pos.z]
 	var player_id := _registry.get_player_id(peer_id)
 	# A join/reconnect snapshot (own record included) carries the full edit manifest: the
 	# peer's real position may be unknown (AOI centre defaults to spawn). Re-scopes send
-	# only the edits within EDITS_SCOPE_RADIUS and name that scope.
-	var full_edits := include_own_record
-	var aoi_center: Vector3 = _networking.get_aoi_center(peer_id)
-	if aoi_center_override is Vector3:
-		aoi_center = aoi_center_override
+	# only the edits within EDITS_SCOPE_RADIUS and name that scope. The two are separate
+	# decisions that happen to coincide today, so the manifest scope has its own parameter.
+	var full_edits: bool = include_own_record if not (full_edits_override is bool) else full_edits_override
 	var snapshot := {
 		# Phase 41 — the world's SEED, not its heightmaps: the client regenerates
 		# the host's terrain from the same noise field instead of receiving every
@@ -1254,7 +1269,7 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true,
 		# the client keeps what it holds outside it.
 		"edits":     (_voxel.get_chunk_manifest() if full_edits
 				else _voxel.get_chunk_manifest_in_radius(aoi_center, NetworkingSlice.EDITS_SCOPE_RADIUS)),
-		"creatures": _scoped_creatures(peer_id),
+		"creatures": _scoped_creatures(aoi_center),
 		"stations":  _station.get_station_data(),
 		"players":   players,
 	}
@@ -1303,14 +1318,14 @@ func _social_state() -> Dictionary:
 
 ## Phase 29 — the creature subset of the snapshot, filtered to the joining
 ## peer's AOI so a client seeds only the population it can actually see.
-func _scoped_creatures(peer_id: int) -> Array:
+func _scoped_creatures(aoi_center: Vector3) -> Array:
 	var out: Array = []
 	for c in _creature.get_snapshot_creatures():
 		var arr = c.get("position", [0.0, 0.0, 0.0])
 		var pos := Vector3.ZERO
 		if arr is Array and arr.size() >= 3:
 			pos = Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
-		if _networking.in_aoi(peer_id, pos):
+		if NetworkingSlice.within_aoi(aoi_center, pos):
 			out.append(c)
 	return out
 
@@ -1486,11 +1501,18 @@ func _snapshot_local_player() -> void:
 ## Phase 47 — make the local avatar wear a recorded set. The `_applying_equipment`
 ## guard keeps the restore from echoing back out as a fresh intent.
 var _applying_equipment: bool = false
-## Last worn set this client forwarded; an appearance change that leaves gear alone sends nothing.
+## Worn set this client last matched against the host (what it has already sent actions for);
+## an appearance change that leaves gear alone sends nothing.
 var _last_sent_equipment: Dictionary = {}
 func _apply_local_equipment(worn: Variant) -> void:
 	var char_id: String = _character.get_player_character()
 	if char_id == "" or not (worn is Dictionary):
+		return
+	if _is_client:
+		# The host's record is the only worn set: the avatar shows exactly that, an empty
+		# record included (gear an appearance recipe lists but the host never granted is not
+		# worn). Nothing is reported back; the client only ever sends equip actions.
+		_apply_host_equipment(worn)
 		return
 	# An empty record (fresh player, or a pre-Phase-47 save with no worn set) carries no
 	# information: the avatar keeps the gear its appearance recipe gave it, and that
@@ -1499,14 +1521,8 @@ func _apply_local_equipment(worn: Variant) -> void:
 		_applying_equipment = true
 		_character.apply_equipment_set(char_id, worn)
 		_applying_equipment = false
-	elif not _is_client and not _registry.local_player_id.is_empty():
+	elif not _registry.local_player_id.is_empty():
 		_registry.record_equipment(_registry.local_player_id, _character.get_equipment_set(char_id))
-	if _is_client:
-		# Seed the de-dup baseline with the restored set (so unequipping the last
-		# restored item still differs from it) and report the set to the host: the
-		# host treats a peer that never reported as armed.
-		_last_sent_equipment = _character.get_equipment_set(char_id).duplicate()
-		GameBus.equipment_intent.emit("", _last_sent_equipment.duplicate())
 
 ## Phase 48 — the host force-cleared worn slots (an item left the bag). Unlike
 ## `_apply_local_equipment` an EMPTY set is meaningful here and strips the avatar. The
@@ -1527,17 +1543,17 @@ func _on_equipment_revoked(player_id: String, worn: Dictionary) -> void:
 		return
 	_apply_host_equipment(worn)
 
-## Phase 47 — the local avatar's gear changed. A host records it; a client forwards
-## the set as an intent (the host validates it and replicates it to nearby peers).
+## Phase 47 — the local avatar's gear changed. A host records it; a client turns the change
+## into one equip / unequip ACTION per differing slot (the host validates each against the
+## fabric and the bag, applies it to its own record and replicates it to nearby peers).
 func _on_character_appearance_changed(instance_id: String, _appearance: Dictionary) -> void:
 	if _applying_equipment or instance_id != _character.get_player_character():
 		return
 	var worn: Dictionary = _character.get_equipment_set(instance_id)
 	if _is_client:
-		if worn == _last_sent_equipment:
-			return
+		for action in EquipmentRules.diff_actions(_last_sent_equipment, worn):
+			GameBus.equip_intent.emit("", str(action["slot"]), str(action["item"]))
 		_last_sent_equipment = worn.duplicate()
-		GameBus.equipment_intent.emit("", worn)
 	elif not _registry.local_player_id.is_empty():
 		_registry.record_equipment(_registry.local_player_id, worn)
 

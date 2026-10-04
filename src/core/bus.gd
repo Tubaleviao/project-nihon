@@ -551,22 +551,21 @@ signal tame_requested(instance_id: String)
 ## off that player's own inventory and only that player's flags move. Host-local
 ## taming stays on `tame_requested`.
 ##
-## `unarmed` is the client's claim about its OWN hands (Phase 36), which is the only
-## equipment evidence a host can have for a peer: a body's worn gear is not
-## replicated, so the bare-hands requirement (`requiresUnarmed` in the fabric)
-## cannot be evaluated from the host's own state. It is a CLAIM — client-declared,
-## never persisted, and consumed by the resolution it accompanies — and a peer that
-## claims nothing fails the requirement closed instead of passing it for free.
+## The signal carries no claim about the tamer's hands: the host evaluates the fabric's
+## `requiresUnarmed` rule against its own record of the tamer's worn set (Phase 47/review),
+## so there is nothing a client could say about its own hands that the host would read.
 ## instance_id : String — CreatureSlice instance id
 ## player_id   : String — the tamer; "" means "the local player"
-## unarmed     : bool — the tamer's claim that its hands are empty (see above)
-signal tame_intent(instance_id: String, player_id: String, unarmed: bool)
+signal tame_intent(instance_id: String, player_id: String)
 
-## Phase 47 — a player's worn set, { slot: item_key }. CLIENT → host: emitted with an
-## empty player_id and forwarded; the host re-emits it under the identity bound to
-## that connection and PlayerRegistry records it (filtered through the fabric slot
-## table). Never a statement about another player.
-signal equipment_intent(player_id: String, worn: Dictionary)
+## Phase 47/Review — one equip or unequip ACTION on a player's avatar: `item_key` is the
+## fabric item to wear in `slot`, or "" to take that slot's item off. CLIENT → host: emitted
+## with an empty player_id and forwarded; the host re-emits it under the identity bound to
+## that connection and PlayerRegistry validates it (the slot exists, the item fits it, the
+## bag holds it) before changing its own record. The client never reports a whole worn
+## set, so there is no way to leave gear out of one: the host is what decides what is in
+## the hand. Never a statement about another player.
+signal equip_intent(player_id: String, slot: String, item_key: String)
 
 ## Phase 47 — host: a player's recorded worn set changed. Networking scopes it to the
 ## peers whose area of interest contains that player.
