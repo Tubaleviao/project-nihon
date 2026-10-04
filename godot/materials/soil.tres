@@ -1,0 +1,13 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/materials/soil.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+density = 1.5
+hardness = 1.0
+depthBand = {"min":0,"max":0}
+leyGated = false
+description = "Loose earth under the turf, down to the biome's topsoil depth. It is what mining natural grass-covered ground yields, and what farmland is made of."
+tags = ["material"]

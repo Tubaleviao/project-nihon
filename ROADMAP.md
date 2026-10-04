@@ -5115,10 +5115,18 @@ report, 2026-10-04).
 - [ ] `pnpm check-drift` is clean and the suite is green on both boot paths.
   `tools/net_harness.sh` agrees on a fresh world.
 
-**Progress:** the unbuilt-neighbour seam fix is in (`_generated_heightmap`), and biomes are
-seeded Voronoi regions (`src/terrain/climate_field.gd`, 8-chunk cells; the temperature/moisture
-envelopes from the fabric are still open). Topsoil colouring (biome `surfaceTint`/`soilTint`/`topsoilDepth` fabric fields, flat per biome, no dither or border blend yet; `Grass`/`Soil` material entities and mining-yields-Soil still open), ore-field surface veins are now the exception (`SURFACE_VEIN_CHANCE` in `ore_field.gd`, a GDScript constant; moving the density into the fabric is still open), `src/ui/minimap.gd` now colours chunks by the biome's fabric `surfaceTint` (per-chunk biome; per-tile blend still open), and the remaining frame-spike items (`_prune_heightmaps` is now indexed by chunk; tree spawn/despawn are now indexed by chunk in `tree_slice.gd`; unloads are budgeted per frame via `unloads_per_frame` in `chunk_manager.gd`) are still open, so the
-phase is not marked done.
+**Progress:** the unbuilt-neighbour seam fix is in (`_generated_heightmap`). Biomes are chosen by the
+fabric climate envelopes: biome entities carry `temperature`/`moisture` ranges (0–1) and
+`src/terrain/climate_field.gd` samples world-seeded value noise (12-chunk wavelength) and picks the
+biome whose envelope fits (`biome_for_climate`). `Grass`/`Soil` are fabric materials, and mining the
+topsoil of a `Grass` biome yields `Soil`. Topsoil colouring uses the biome `surfaceTint`/`soilTint`/
+`topsoilDepth` fields. Surface veins are the exception, with the density in the fabric
+(`surfaceVeinChance` on the biome). The minimap colours chunks by `surfaceTint`. Frame-spike items
+are in (`_prune_heightmaps` and tree spawn/despawn indexed by chunk; unloads budgeted per frame).
+Still open: the per-tile biome blend with deterministic dither (colour is flat per chunk biome), the
+`chunk_loaded` consumer that rebuilds a chunk whose guessed neighbour arrived with edits, per-tile
+minimap colour, and the manual 20-chunk walk with a frame-time log and screenshot. `check-drift`
+is clean, the suite is green, and `net_harness.sh` reports 11/11. The phase is not marked done.
 
 **Known simplifications:**
 - The grass is a vertex colour, with no texture and no grass blades. Textured

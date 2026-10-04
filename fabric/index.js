@@ -68,6 +68,8 @@ module.exports = defineFabric({
       Duskfiber:  materials.Duskfiber,
       Ashite:     materials.Ashite,
       Lumenfite:  materials.Lumenfite,
+      Grass:      materials.Grass,
+      Soil:       materials.Soil,
     },
     // World — Biomes + Systems
     {

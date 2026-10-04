@@ -19,6 +19,9 @@ module.exports = {
       surfaceTint:    { type: 'string', description: 'Hex colour of the natural top face', defaultValue: '#4f8a3a' },
       soilTint:       { type: 'string', description: 'Hex colour of the side wall down to topsoilDepth; rock below', defaultValue: '#6b4a2e' },
       topsoilDepth:   { type: 'decimal', description: 'World units of soil under the surface before rock shows on a wall', defaultValue: 3 },
+      temperature:    { type: 'json', description: 'Climate envelope, normalised 0 (coldest) to 1 (hottest): the climate field selects this biome where its temperature lies in [min, max] (Phase 49)', defaultValue: { min: 0.3, max: 0.7 } },
+      moisture:       { type: 'json', description: 'Climate envelope, normalised 0 (driest) to 1 (wettest), as for temperature', defaultValue: { min: 0.5, max: 1 } },
+      surfaceVeinChance: { type: 'decimal', description: 'Fraction of veins that reach the surface and break through it; the rest stay buried (Phase 49)', defaultValue: 0.2 },
     },
     relations: {
       spawnForestBoar:   { name: 'spawnForestBoar',   kind: 'hasMany', target: 'ForestBoar' },
@@ -54,6 +57,9 @@ module.exports = {
       surfaceTint:    { type: 'string', description: 'Hex colour of the natural top face', defaultValue: '#7aa23f' },
       soilTint:       { type: 'string', description: 'Hex colour of the side wall down to topsoilDepth; rock below', defaultValue: '#6b4a2e' },
       topsoilDepth:   { type: 'decimal', description: 'World units of soil under the surface before rock shows on a wall', defaultValue: 4 },
+      temperature:    { type: 'json', description: 'Climate envelope, normalised 0 (coldest) to 1 (hottest): the climate field selects this biome where its temperature lies in [min, max] (Phase 49)', defaultValue: { min: 0.3, max: 0.7 } },
+      moisture:       { type: 'json', description: 'Climate envelope, normalised 0 (driest) to 1 (wettest), as for temperature', defaultValue: { min: 0, max: 0.5 } },
+      surfaceVeinChance: { type: 'decimal', description: 'Fraction of veins that reach the surface and break through it; the rest stay buried (Phase 49)', defaultValue: 0.2 },
     },
     relations: {
       spawnSteppeBison: { name: 'spawnSteppeBison', kind: 'hasMany', target: 'SteppeBison' },

@@ -23,6 +23,9 @@ Eerie glades where day-night cycles run at an accelerated, unpredictable rate, b
 | surfaceTint | string | Hex colour of the natural top face |
 | soilTint | string | Hex colour of the side wall down to topsoilDepth; rock below |
 | topsoilDepth | decimal | World units of soil under the surface before rock shows on a wall |
+| temperature | json | Climate envelope, normalised 0 (coldest) to 1 (hottest): the climate field selects this biome where its temperature lies in [min, max] (Phase 49) |
+| moisture | json | Climate envelope, normalised 0 (driest) to 1 (wettest), as for temperature |
+| surfaceVeinChance | decimal | Fraction of veins that reach the surface and break through it; the rest stay buried (Phase 49) |
 | dayNightSpeed | decimal | Multiplier on the global day-night cycle (1 = normal); varies per tile; drives weather pattern selection and duskfiber luminosity |
 
 ## Related

@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:64acc20a0fef8e98ee52bb17017b78fae9e02f8a1aeb4fc542ca331a8e465899",
+  "schemaHash": "sha256:559fd724dc03df4b10bee887d1b359ce775d254b32af2348042c5e5d77fe0ffa",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -2568,6 +2568,126 @@
         "pii": [],
         "gdpr": {}
       },
+      "Grass": {
+        "name": "Grass",
+        "tags": [
+          "material"
+        ],
+        "description": "Living turf that covers most temperate and twilight ground. It is the top face of natural land, tinted per biome; digging it turns it into Soil.",
+        "goal": "Make natural ground read as ground, and give the surface layer a name the biomes can point at",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "density": {
+            "name": "density",
+            "type": "decimal",
+            "description": "g/cm³; loose, root-bound",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1.1
+          },
+          "hardness": {
+            "name": "hardness",
+            "type": "decimal",
+            "description": "Mohs equivalent 1–10",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "depthBand": {
+            "name": "depthBand",
+            "type": "json",
+            "description": "Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. A surface cover, never a buried vein.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 0
+            }
+          },
+          "leyGated": {
+            "name": "leyGated",
+            "type": "boolean",
+            "description": "True when a vein of this material forms only near a ley line",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "Soil": {
+        "name": "Soil",
+        "tags": [
+          "material"
+        ],
+        "description": "Loose earth under the turf, down to the biome's topsoil depth. It is what mining natural grass-covered ground yields, and what farmland is made of.",
+        "goal": "Give digging the surface a yield that is not rock",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "density": {
+            "name": "density",
+            "type": "decimal",
+            "description": "g/cm³",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1.5
+          },
+          "hardness": {
+            "name": "hardness",
+            "type": "decimal",
+            "description": "Mohs equivalent 1–10",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "depthBand": {
+            "name": "depthBand",
+            "type": "json",
+            "description": "Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. A topsoil layer, never a buried vein.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 0
+            }
+          },
+          "leyGated": {
+            "name": "leyGated",
+            "type": "boolean",
+            "description": "True when a vein of this material forms only near a ley line",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
       "TemperateForest": {
         "name": "TemperateForest",
         "tags": [
@@ -2651,6 +2771,39 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 3
+          },
+          "temperature": {
+            "name": "temperature",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (coldest) to 1 (hottest): the climate field selects this biome where its temperature lies in [min, max] (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0.3,
+              "max": 0.7
+            }
+          },
+          "moisture": {
+            "name": "moisture",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (driest) to 1 (wettest), as for temperature",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0.5,
+              "max": 1
+            }
+          },
+          "surfaceVeinChance": {
+            "name": "surfaceVeinChance",
+            "type": "decimal",
+            "description": "Fraction of veins that reach the surface and break through it; the rest stay buried (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.2
           }
         },
         "relations": {
@@ -2768,6 +2921,39 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 4
+          },
+          "temperature": {
+            "name": "temperature",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (coldest) to 1 (hottest): the climate field selects this biome where its temperature lies in [min, max] (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0.3,
+              "max": 0.7
+            }
+          },
+          "moisture": {
+            "name": "moisture",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (driest) to 1 (wettest), as for temperature",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 0.5
+            }
+          },
+          "surfaceVeinChance": {
+            "name": "surfaceVeinChance",
+            "type": "decimal",
+            "description": "Fraction of veins that reach the surface and break through it; the rest stay buried (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.2
           }
         },
         "relations": {
@@ -2885,6 +3071,39 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 1
+          },
+          "temperature": {
+            "name": "temperature",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (coldest) to 1 (hottest): the climate field selects this biome where its temperature lies in [min, max] (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0.7,
+              "max": 1
+            }
+          },
+          "moisture": {
+            "name": "moisture",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (driest) to 1 (wettest), as for temperature",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 1
+            }
+          },
+          "surfaceVeinChance": {
+            "name": "surfaceVeinChance",
+            "type": "decimal",
+            "description": "Fraction of veins that reach the surface and break through it; the rest stay buried (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.2
           }
         },
         "relations": {
@@ -3017,6 +3236,39 @@
             "pii": false,
             "defaultValue": 2
           },
+          "temperature": {
+            "name": "temperature",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (coldest) to 1 (hottest): the climate field selects this biome where its temperature lies in [min, max] (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 0.3
+            }
+          },
+          "moisture": {
+            "name": "moisture",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (driest) to 1 (wettest), as for temperature",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0.4,
+              "max": 1
+            }
+          },
+          "surfaceVeinChance": {
+            "name": "surfaceVeinChance",
+            "type": "decimal",
+            "description": "Fraction of veins that reach the surface and break through it; the rest stay buried (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.2
+          },
           "dayNightSpeed": {
             "name": "dayNightSpeed",
             "type": "decimal",
@@ -3143,6 +3395,39 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 1
+          },
+          "temperature": {
+            "name": "temperature",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (coldest) to 1 (hottest): the climate field selects this biome where its temperature lies in [min, max] (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 0.3
+            }
+          },
+          "moisture": {
+            "name": "moisture",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (driest) to 1 (wettest), as for temperature",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 0.4
+            }
+          },
+          "surfaceVeinChance": {
+            "name": "surfaceVeinChance",
+            "type": "decimal",
+            "description": "Fraction of veins that reach the surface and break through it; the rest stay buried (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.2
           }
         },
         "relations": {

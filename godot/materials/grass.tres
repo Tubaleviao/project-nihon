@@ -1,0 +1,13 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/materials/grass.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+density = 1.1
+hardness = 0.5
+depthBand = {"min":0,"max":0}
+leyGated = false
+description = "Living turf that covers most temperate and twilight ground. It is the top face of natural land, tinted per biome; digging it turns it into Soil."
+tags = ["material"]

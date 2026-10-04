@@ -270,6 +270,8 @@ func run() -> void:
 	_run_test("chunk: world/chunk coordinate round-trip",       _test_chunk_coordinate_round_trip)
 	_run_test("chunk: per-chunk biome is stable",               _test_chunk_biome_stable)
 	_run_test("terrain: neighbouring chunks mostly share a biome", _test_biome_regions_coherent)
+	_run_test("climate: fabric envelopes select the biome",     _test_climate_envelope_selects)
+	_run_test("voxel: mining grass yields Soil",                _test_mine_grass_yields_soil)
 	_run_test("chunk: load/unload emits signals",               _test_chunk_load_unload_signals)
 	_run_test("chunk: refresh queues nearest-first",            _test_chunk_refresh_queues_nearest_first)
 	_run_test("chunk: load queue respects per-frame budget",    _test_chunk_load_queue_respects_budget)
@@ -6552,6 +6554,36 @@ func _test_chunk_tree_spawn_per_chunk() -> void:
 
 ## First chunk (scanning along cz = 0) whose biome is one of `biomes`, or
 ## Vector2i(-1, -1) when none is found.
+## Phase 49 — the biome comes from the fabric's temperature/moisture envelopes.
+func _test_climate_envelope_selects() -> void:
+	var keys: Array = TerrainSlice.BIOME_KEYS
+	var B: Dictionary = GameData.BIOMES
+	assert_eq(ClimateField.biome_for_climate(0.5, 0.8, keys, B), "TemperateForest", "mild and wet is forest")
+	assert_eq(ClimateField.biome_for_climate(0.5, 0.1, keys, B), "TemperateGrassland", "mild and dry is grassland")
+	assert_eq(ClimateField.biome_for_climate(0.95, 0.5, keys, B), "VolcanicBadlands", "hot is badlands")
+	assert_eq(ClimateField.biome_for_climate(0.1, 0.8, keys, B), "TwilightGrove", "cold and wet is twilight")
+	assert_eq(ClimateField.biome_for_climate(0.1, 0.1, keys, B), "VoidRift", "cold and dry is the rift")
+	assert_eq(ClimateField.biome_for_climate(0.5, 0.5, keys, {}), "", "no envelopes, no pick")
+	for ckey in keys:
+		var surf: float = OreField.surface_vein_chance(str(ckey))
+		assert_true(surf > 0.0 and surf < 1.0, "surfaceVeinChance is read from the fabric")
+
+## Phase 49 — digging a grass-covered biome's top yields Soil, not rock.
+func _test_mine_grass_yields_soil() -> void:
+	assert_true(GameData.MATERIALS.has("Soil") and GameData.MATERIALS.has("Grass"), "Grass and Soil are fabric materials")
+	var v := VoxelSlice.new()
+	add_child(v)
+	var tile := Vector2i(3, 3)
+	var xz := Vector2(tile.x * 0.5 + 0.25, tile.y * 0.5 + 0.25)
+	var span := { "bottom": 0.0, "top": v.get_voxel_height_at(xz) }
+	var y := v._natural_yield(tile, span)
+	var b: Variant = GameData.BIOMES.get(v._biome_at(xz), null)
+	if b != null and b.get("surfaceMaterial") == "Grass":
+		assert_eq(str(y["material"]), "Soil", "the topsoil of a grass biome yields Soil")
+	else:
+		assert_true(str(y["material"]) != "Soil", "a non-grass biome yields rock")
+	v.free()
+
 func _find_chunk_with_biome(terrain: Node, biomes: Array) -> Vector2i:
 	for cx in range(-80, 80):
 		if biomes.has(str(terrain.get_biome_at_chunk(Vector2i(cx, 0)))):
@@ -10454,7 +10486,15 @@ func _test_chunk_contents_spawn_after_ground() -> void:
 	add_child(tree)
 	tree.terrain_slice = terrain
 	cm.tree_slice = tree
-	var c := _find_chunk_with_biome(terrain, ["TemperateForest", "TwilightGrove"])
+	# A forest chunk whose density roll is not zero (the climate field makes biomes regions, so
+	# the first forest chunk along the row can legitimately roll an empty budget).
+	var c := Vector2i(-1, -1)
+	for cx in range(-80, 80):
+		var cand := Vector2i(cx, 0)
+		var cb := str(terrain.get_biome_at_chunk(cand))
+		if ["TemperateForest", "TwilightGrove"].has(cb) and tree.tree_count_for(cand, cb) > 0:
+			c = cand
+			break
 	var key := "%d,%d" % [c.x, c.y]
 	cm.load_chunk(c)
 	assert_false(cm._built.has(key), "the build is in flight")
@@ -11295,7 +11335,9 @@ func _test_ore_vein_yields_and_exhausts() -> void:
 	assert_true(max_yield > 1, "a vein slice yields more than one unit (%d)" % max_yield)
 	assert_eq(vein_units, int(vein["reserve"]), "the vein pays out exactly its reserve")
 	assert_false(OreField.is_live(vein, v.get_vein_depletion()), "and is then exhausted")
-	assert_eq(host_after, OreField.host_material(VoxelSlice.DEFAULT_BIOME), "the rest of the blob is host rock")
+	# A vein within the topsoil mines out to Soil (Phase 49); deeper it is the host rock.
+	assert_true(host_after == OreField.host_material(VoxelSlice.DEFAULT_BIOME) or host_after == "Soil",
+		"the rest of the blob is host rock or topsoil (%s)" % host_after)
 	assert_eq(host_qty, 1, "one unit per slice, like any host rock")
 	v.free()
 	inv.free()
