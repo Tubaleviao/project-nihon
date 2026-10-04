@@ -18,6 +18,7 @@ const CHUNK_SIZE := 64       # tiles per side (64 × 0.5 = 32 world units per ch
 const TILE_SIZE  := 0.5      # world units per tile (XZ) — each square is half its former 1.0 size
 const HEIGHT_SCALE := 5.0    # world units peak-to-valley (gentle, even terrain)
 const BIOME_SEED := 20260815 # fixed seed so biome assignment is deterministic
+const ClimateField := preload("res://src/terrain/climate_field.gd")
 
 ## The starting area is flattened into a plain field so the player can walk
 ## freely from spawn without jumping. Spawn centre + radius + flat height below.
@@ -110,19 +111,17 @@ func get_biome_at(world_pos: Vector2) -> String:
 	return get_biome_at_chunk(world_to_chunk(world_pos))
 
 ## Return the biome key for a whole chunk, deterministically derived from the
-## chunk coordinate and BIOME_SEED. Same (cx, cz) always yields the same biome.
+## chunk coordinate and the world seed, so two worlds lay their biome regions out differently.
 ## Uses integer multiply-mix (Knuth multiplicative hashing) for better distribution
 ## than converting integers to strings and calling .hash().
 func get_biome_at_chunk(chunk_pos: Vector2i) -> String:
-	return biome_for_chunk(chunk_pos)
+	return biome_for_chunk(chunk_pos, _world_seed)
 
 ## Phase 43 — the STATIC form of `get_biome_at_chunk`: a pure function of the chunk and the
-## `BIOME_SEED` const, so the ore field (`src/terrain/ore_field.gd`) can ask a vein's biome on
+## world seed (default `BIOME_SEED`), so the ore field (`src/terrain/ore_field.gd`) can ask a vein's biome on
 ## a worker thread without a terrain-slice reference.
-static func biome_for_chunk(chunk_pos: Vector2i) -> String:
-	var h: int = BIOME_SEED + chunk_pos.x * 2654435761 + chunk_pos.y * 2246822519
-	var idx := posmod(h, BIOME_KEYS.size())
-	return str(BIOME_KEYS[idx])
+static func biome_for_chunk(chunk_pos: Vector2i, seed_v: int = BIOME_SEED) -> String:
+	return ClimateField.biome_for_chunk(seed_v, chunk_pos, BIOME_KEYS)
 
 ## Convert a world XZ position to its containing chunk coordinate.
 func world_to_chunk(world_pos: Vector2) -> Vector2i:

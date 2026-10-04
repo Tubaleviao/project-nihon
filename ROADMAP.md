@@ -5094,7 +5094,7 @@ report, 2026-10-04).
 - `src/ui/minimap.gd` reads the per-tile biome and surface colour.
 
 **Acceptance criteria:**
-- [ ] `terrain: neighbouring chunks mostly share a biome`: over a 32×32-chunk
+- [x] `terrain: neighbouring chunks mostly share a biome`: over a 32×32-chunk
   sample, at least 80% of axis-adjacent chunk pairs share a biome, and two
   seeds produce different layouts. This replaces the stripe pattern.
   `_test_chunk_biome_stable` still passes.
@@ -5112,8 +5112,9 @@ report, 2026-10-04).
 - [ ] `pnpm check-drift` is clean and the suite is green on both boot paths.
   `tools/net_harness.sh` agrees on a fresh world.
 
-**Progress:** only the unbuilt-neighbour seam fix is in (`_generated_heightmap`); the
-climate field, topsoil, ore-field, frame-spike and AOI-edit items are still open, so the
+**Progress:** the unbuilt-neighbour seam fix is in (`_generated_heightmap`), and biomes are
+seeded Voronoi regions (`src/terrain/climate_field.gd`, 8-chunk cells; the temperature/moisture
+envelopes from the fabric are still open). Topsoil, ore-field, frame-spike and AOI-edit items are still open, so the
 phase is not marked done.
 
 **Known simplifications:**
