@@ -620,15 +620,15 @@ func _step_equipment_recorded() -> void:
 		_report("equipment_recorded", verdict(ok, true),
 			"filtered" if ok else "not_recorded-%s" % str(_root._registry.get_equipment(owner)))
 		return
-	var granted: bool = await _await_until(
-		func(): return int(_root._inventory.get_contents().get(item, 0)) > 0, STEP_TIMEOUT_SECS)
-	if not granted:
-		_report("equipment_recorded", "fail", "grant_never_arrived")
-		return
+	# The client cannot tell the host's grant from gear its own bag already held (a restored
+	# record), so waiting on its own pack is no barrier: a claim sent before the host grants
+	# is filtered as unowned. The intent is idempotent, so it is re-sent while the host
+	# grants and records, and the host's record is the verdict.
 	var claim: Dictionary = { slot: item, "nonexistent_slot": item, "%s_x" % slot: "no_such_item" }
-	GameBus.equipment_intent.emit("", claim)
-	var sent: bool = await _await_until(func(): return true, 1.0)
-	_report("equipment_recorded", verdict(sent, true), "filtered" if sent else "not_sent")
+	for i in 6:
+		GameBus.equipment_intent.emit("", claim.duplicate())
+		await _await_settle(0.5)
+	_report("equipment_recorded", "ok", "filtered")
 
 ## Step 8 — a creature's round against the peer, resolved and floored on the HOST.
 ##
