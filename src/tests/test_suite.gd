@@ -5240,6 +5240,11 @@ func _test_attach_rig() -> void:
 	for child in root.get_children():
 		if child is Node3D and child.name != "RigScene":
 			assert_false((child as Node3D).visible, "procedural body hidden once a rig is attached")
+	ch.set_lod(CharacterSlice.IMPOSTOR_LOD)
+	ch.set_lod(CharacterSlice.MIN_LOD)
+	for child in root.get_children():
+		if child is Node3D and child.name != "RigScene":
+			assert_false((child as Node3D).visible, "LOD change does not re-show the procedural body")
 	assert_true(ch.attach_rig(iid, "models/placeholder_rig.glb.raw"), "second attach is a no-op")
 	assert_eq(root.get_children().filter(func(c): return c.name == "RigScene").size(), 1, "no duplicate rig")
 	ch.free()

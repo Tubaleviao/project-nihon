@@ -1055,16 +1055,18 @@ func _apply_lod(instance_id: String) -> void:
 	inst["_hidden"] = hidden
 
 	var use_impostor: bool = lod >= IMPOSTOR_LOD
+	# An attached rig replaces the procedural body, so LOD must not bring it back.
+	var has_rig: bool = inst.has("anim_tree") and is_instance_valid(inst["anim_tree"])
 	var parts: Dictionary = inst["parts"]
 	for key in parts:
 		var part: Dictionary = parts[key]
 		var node: Node3D = part["node"]
 		var max_lod: int = part.get("max_lod", MAX_LOD)
-		node.visible = (not use_impostor) and lod <= max_lod and not hidden.get(key, false)
+		node.visible = not has_rig and (not use_impostor) and lod <= max_lod and not hidden.get(key, false)
 
 	var impostor = inst.get("impostor", null)
 	if impostor != null:
-		impostor.visible = use_impostor
+		impostor.visible = use_impostor and not has_rig
 
 ## The LOD level that governs an instance right now: the manual override when in
 ## LOD_MANUAL mode, else distance-to-viewer when in LOD_AUTO mode (with
