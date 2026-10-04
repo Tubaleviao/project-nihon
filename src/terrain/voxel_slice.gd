@@ -1367,6 +1367,55 @@ func get_chunk_manifest() -> Dictionary:
 		manifest[chunk]["edits"][key] = _edits[key].duplicate(true)
 	return manifest
 
+## True when chunk `chunk_pos`'s square overlaps the disc of `radius` around the world
+## position `center` (XZ). Pure; the AOI scope of a re-scope snapshot's edits.
+static func chunk_in_radius(chunk_pos: Vector2i, center: Vector3, radius: float) -> bool:
+	var size := float(CHUNK_SIZE) * TILE_SIZE
+	var min_x := float(chunk_pos.x) * size
+	var min_z := float(chunk_pos.y) * size
+	var nx := clampf(center.x, min_x, min_x + size)
+	var nz := clampf(center.z, min_z, min_z + size)
+	return Vector2(center.x - nx, center.z - nz).length() <= radius
+
+## Phase 49 — `get_chunk_manifest` restricted to chunks inside an area of interest, so a
+## re-scope snapshot ships the edits a peer can see instead of the whole world's. Walks the
+## chunk index (one parse per EDITED CHUNK, not per edit).
+func get_chunk_manifest_in_radius(center: Vector3, radius: float) -> Dictionary:
+	var manifest: Dictionary = {}
+	for ckey in _edits_by_chunk:
+		if not chunk_in_radius(_parse_chunk_key(str(ckey)), center, radius):
+			continue
+		var edits: Dictionary = {}
+		for key in _edits_by_chunk[ckey]:
+			edits[key] = _edits[key].duplicate(true)
+		manifest[ckey] = { "edits": edits }
+	return manifest
+
+## Phase 49 — apply a manifest produced by `get_chunk_manifest_in_radius`. It is
+## authoritative only INSIDE its scope: edits this slice holds for chunks outside the
+## disc are kept, because the host did not (and could not) restate them.
+func apply_scoped_chunk_manifest(manifest: Dictionary, center: Vector3, radius: float) -> void:
+	var edits: Dictionary = {}
+	var materials: Dictionary = {}
+	for ckey in _edits_by_chunk:
+		if chunk_in_radius(_parse_chunk_key(str(ckey)), center, radius):
+			continue
+		for key in _edits_by_chunk[ckey]:
+			edits[key] = _edits[key]
+	for ckey in manifest:
+		var chunk_data: Dictionary = manifest[ckey]
+		if chunk_data.has("edits"):
+			for key in chunk_data["edits"]:
+				edits[key] = chunk_data["edits"][key]
+		if chunk_data.has("materials"):
+			for key in chunk_data["materials"]:
+				materials[key] = chunk_data["materials"][key]
+	apply_edits(edits, materials)
+
+static func _parse_chunk_key(ckey: String) -> Vector2i:
+	var parts := ckey.split(",")
+	return Vector2i(int(parts[0]), int(parts[1]))
+
 ## Restore voxel edits from a chunk manifest (see get_chunk_manifest). Flattens
 ## the per-chunk grouping back into the global tile-keyed edit table. A manifest
 ## written before Phase 41 also carries a per-chunk "materials" map; it is read and

@@ -103,6 +103,10 @@ const MAX_LOSS_RATE := 30.0
 ## not sent. 96 units = 3 chunks (CHUNK_SIZE 32), matching the chunk-streaming
 ## view distance so interest and streaming agree.
 const AOI_RADIUS := 96.0
+## Radius of the voxel-edit scope of a re-scope snapshot. Wider than AOI_RADIUS: a peer may
+## roam anywhere in its AOI grid cell (up to ~136 m from the crossing point) before the next
+## re-scope, and the chunk streamer renders ~4 chunks (128 m, ~181 m diagonal) beyond it.
+const EDITS_SCOPE_RADIUS := AOI_RADIUS * 4.0
 ## AOI center used for a peer that has not reported a position yet (freshly
 ## connected). Matches the world spawn point so the initial snapshot is scoped
 ## around where players first appear.
