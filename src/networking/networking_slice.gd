@@ -455,7 +455,13 @@ func get_aoi_center(peer_id: int) -> Vector3:
 
 ## True when `position` lies within `peer_id`'s area of interest. Pure.
 func in_aoi(peer_id: int, position: Vector3) -> bool:
-	return get_aoi_center(peer_id).distance_to(position) <= AOI_RADIUS
+	return within_aoi(get_aoi_center(peer_id), position)
+
+## True when `position` lies within AOI_RADIUS of an explicit `center` — `in_aoi` with the
+## centre supplied, for a caller (a re-scope snapshot) that knows a fresher centre than the
+## last position this slice recorded. Pure.
+static func within_aoi(center: Vector3, position: Vector3) -> bool:
+	return center.distance_to(position) <= AOI_RADIUS
 
 ## The AOI grid cell for a world position (cell = AOI_RADIUS). A peer crossing a
 ## cell boundary re-scopes its snapshot (see game_root). Pure.

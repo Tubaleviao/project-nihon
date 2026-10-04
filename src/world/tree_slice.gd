@@ -87,6 +87,16 @@ var _trees: Dictionary = {}
 ## with `_trees` by `_spawn` and `despawn_for_chunk`, the only two writers.
 var _by_chunk: Dictionary = {}
 
+## Ids of the trees currently in the `stump` state, so `_tick_respawn` walks the (few)
+## stumps instead of every live tree each frame. Kept in step by `_set_chopped`,
+## `_tick_respawn`, `_spawn` and `despawn_for_chunk`.
+var _stumps: Dictionary = {}
+
+## tree_id -> respawn_at (wall-clock Unix seconds) for stumps whose chunk unloaded before
+## they regrew. `_spawn` restores the stump instead of a standing tree, so chunk-hopping
+## cannot skip the regrowth cooldown. Entries expire the first time the chunk reloads.
+var _stump_memory: Dictionary = {}
+
 ## Shared MultiMesh pool; null when render_visuals is false (headless server).
 var _pool: Node = null
 ## When false (headless server / `--server`), no pool and no collision bodies are
@@ -133,22 +143,67 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 	if entry.is_empty():
 		return
 	var budget: int = tree_count_for(chunk_pos, biome)
-	var existing: int = (_by_chunk.get(chunk_pos, []) as Array).size()
-	for i in range(existing, budget):
-		_spawn(str(entry["species"]), str(entry["wood"]), chunk_pos, i)
+	# Reconcile by id, not by count: a shrunken budget (a density change between visits)
+	# drops the surplus trees, and a gap in the 0..budget-1 ids is refilled.
+	_trim_chunk_to(chunk_pos, budget)
+	for i in budget:
+		if not _trees.has(_tree_id(chunk_pos, i)):
+			_spawn(str(entry["species"]), str(entry["wood"]), chunk_pos, i)
 
 ## Remove every tree belonging to `chunk_pos`, freeing its visual instance and
 ## trunk collision. Trees carry no combat state, so unlike creatures none are
 ## kept alive across a despawn.
 func despawn_for_chunk(chunk_pos: Vector2i) -> void:
-	var to_erase: Array = _by_chunk.get(chunk_pos, []) as Array
-	for tid in to_erase:
-		var tree: Dictionary = _trees[tid]
-		if _pool != null and int(tree["mi"]) >= 0:
-			_pool.release(int(tree["mi"]))
-		_free_collision(tree)
-		_trees.erase(tid)
+	# Take the index entry out first so nothing reached from the loop can see (or append
+	# to) the array being walked.
+	var ids: Array = _by_chunk.get(chunk_pos, []) as Array
 	_by_chunk.erase(chunk_pos)
+	for tid in ids:
+		_remove_tree(str(tid), true)
+
+## Drop this chunk's trees whose spawn index is >= `budget`.
+func _trim_chunk_to(chunk_pos: Vector2i, budget: int) -> void:
+	var ids: Array = (_by_chunk.get(chunk_pos, []) as Array).duplicate()
+	var keep: Dictionary = {}
+	for i in budget:
+		keep[_tree_id(chunk_pos, i)] = true
+	for tid in ids:
+		if keep.has(tid):
+			continue
+		(_by_chunk[chunk_pos] as Array).erase(tid)
+		_remove_tree(str(tid), false)
+	if _by_chunk.has(chunk_pos) and (_by_chunk[chunk_pos] as Array).is_empty():
+		_by_chunk.erase(chunk_pos)
+
+## Free one tree's visual, collision and bookkeeping. `remember` keeps a stump's regrowth
+## deadline across the unload (see `_stump_memory`); a trimmed tree is gone for good.
+func _remove_tree(tree_id: String, remember: bool) -> void:
+	var tree: Dictionary = _trees.get(tree_id, {})
+	if tree.is_empty():
+		return
+	if remember and tree["state"] == "stump" and float(tree["respawn_at"]) > 0.0:
+		_stump_memory[tree_id] = float(tree["respawn_at"])
+	if _pool != null and int(tree["mi"]) >= 0:
+		_pool.release(int(tree["mi"]))
+	_free_collision(tree)
+	_stumps.erase(tree_id)
+	_trees.erase(tree_id)
+
+## True when `_by_chunk`, `_trees` and `_stumps` agree: every indexed id is a live record
+## filed under its own chunk, every record is indexed once, every stump is tracked.
+func index_is_consistent() -> bool:
+	var indexed := 0
+	for chunk in _by_chunk:
+		for tid in _by_chunk[chunk]:
+			indexed += 1
+			if not _trees.has(tid) or _trees[tid]["chunk"] != chunk:
+				return false
+	if indexed != _trees.size():
+		return false
+	for tid in _trees:
+		if (_trees[tid]["state"] == "stump") != _stumps.has(tid):
+			return false
+	return true
 
 ## Mean trees per chunk for a biome: the fabric `treeDensity` when the biome resource is
 ## loaded, else the `TREES_BY_BIOME` fallback (isolated tests with no fabric wired).
@@ -314,6 +369,7 @@ func _set_chopped(tree_id: String) -> void:
 	if float(tree["respawn_at"]) <= 0.0:
 		tree["respawn_at"] = _now() + RESPAWN_SECONDS
 	_free_collision(tree)
+	_stumps[tree_id] = true
 	if _pool != null and int(tree["mi"]) >= 0:
 		# Squat, dark stump shape (the shared mesh is truncated, not swapped).
 		_pool.set_color(int(tree["mi"]), _stump_color())
@@ -321,21 +377,27 @@ func _set_chopped(tree_id: String) -> void:
 	GameBus.tree_chopped.emit(tree_id, str(tree["wood"]), "stump", float(tree["respawn_at"]))
 
 func _tick_respawn() -> void:
+	if _stumps.is_empty():
+		return
 	var now := _now()
-	for tid in _trees:
+	for tid in _stumps.keys():
 		var tree: Dictionary = _trees[tid]
-		if tree["state"] != "stump" or float(tree["respawn_at"]) <= 0.0:
+		if float(tree["respawn_at"]) <= 0.0 or now < float(tree["respawn_at"]):
 			continue
-		if now < float(tree["respawn_at"]):
-			continue
-		tree["state"] = "standing"
-		tree["respawn_at"] = -1.0
-		if render_visuals:
-			tree["body"] = _build_collision(str(tid), tree["position"], str(tree["species"]))
-		if _pool != null and int(tree["mi"]) >= 0:
-			_pool.set_color(int(tree["mi"]), _species_color(str(tree["species"])))
-			_pool.set_transform(int(tree["mi"]), _visual_transform(tree["position"]))
-		GameBus.tree_respawned.emit(str(tid))
+		_regrow(str(tid))
+
+## Stump -> standing: restore collision, visual and the regrowth bookkeeping.
+func _regrow(tree_id: String) -> void:
+	var tree: Dictionary = _trees[tree_id]
+	tree["state"] = "standing"
+	tree["respawn_at"] = -1.0
+	_stumps.erase(tree_id)
+	if render_visuals:
+		tree["body"] = _build_collision(tree_id, tree["position"], str(tree["species"]))
+	if _pool != null and int(tree["mi"]) >= 0:
+		_pool.set_color(int(tree["mi"]), _species_color(str(tree["species"])))
+		_pool.set_transform(int(tree["mi"]), _visual_transform(tree["position"]))
+	GameBus.tree_respawned.emit(tree_id)
 
 ## The held axe's item id, or "" when `inventory` holds none. Delegates to the
 ## inventory's fabric-driven tool lookup ("axe" → CarpenterAxe today).
@@ -394,7 +456,7 @@ func _spawn(species: String, wood: String, chunk_pos: Vector2i, spawn_index: int
 	# counter: a tree id is the only identity the wire carries, so it has to agree
 	# between peers (whose chunk streaming order differs) and survive a chunk reload
 	# (which respawns a chunk's trees from scratch).
-	var tree_id := "tree_%d_%d_%d" % [chunk_pos.x, chunk_pos.y, spawn_index]
+	var tree_id := _tree_id(chunk_pos, spawn_index)
 	var mi := _alloc_visual(species, pos)
 	var body: StaticBody3D = null
 	if render_visuals:
@@ -414,7 +476,24 @@ func _spawn(species: String, wood: String, chunk_pos: Vector2i, spawn_index: int
 	if not _by_chunk.has(chunk_pos):
 		_by_chunk[chunk_pos] = []
 	(_by_chunk[chunk_pos] as Array).append(tree_id)
+	_restore_remembered_stump(tree_id)
 	return tree_id
+
+static func _tree_id(chunk_pos: Vector2i, spawn_index: int) -> String:
+	return "tree_%d_%d_%d" % [chunk_pos.x, chunk_pos.y, spawn_index]
+
+## A tree whose stump was still regrowing when its chunk unloaded comes back as a stump
+## with the same deadline; an expired memory just means a standing tree.
+func _restore_remembered_stump(tree_id: String) -> void:
+	if not _stump_memory.has(tree_id):
+		return
+	var respawn_at: float = _stump_memory[tree_id]
+	_stump_memory.erase(tree_id)
+	if _now() >= respawn_at:
+		return
+	var tree: Dictionary = _trees[tree_id]
+	tree["respawn_at"] = respawn_at
+	_set_chopped(tree_id)
 
 ## Deterministic world XZ inside the chunk footprint (inset one tile from the
 ## edge), derived from the chunk coordinate, species, and index — the same tree

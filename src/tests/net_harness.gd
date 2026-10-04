@@ -594,6 +594,12 @@ func _step_inventory_owner() -> void:
 	var ok: bool = await _await_until(func(): return _root._inventory.get_contents().has(PROBE_ITEM), STEP_TIMEOUT_SECS)
 	_report("inventory_owner", verdict(ok, true), "owner-only" if ok else "sync_never_arrived")
 
+## The client re-sends its equipment claim this many times, this far apart, while the host
+## grants the item and records the set: 6 x 0.5 s covers a host that is a few seconds slower
+## than the client reaches this step.
+const EQUIPMENT_RESENDS := 6
+const EQUIPMENT_RESEND_GAP := 0.5
+
 ## Equippable item the equipment steps use (a fabric key; see `_step_equipment_recorded`).
 const EQUIPMENT_FIXTURE_ITEM := "FerriteHelmet"
 
@@ -647,10 +653,18 @@ func _step_equipment_recorded() -> void:
 		if other_slot != slot:
 			claim[other_slot] = "no_such_item"
 			break
-	for i in 6:
+	# The client's verdict is that every claim actually went out: a counter on the intent
+	# signal, not an assumption (the host's record is still the real check). "not_sent" is
+	# reachable if the signal is ever rewired or a send is skipped.
+	var sent := [0]
+	var count := func(_player: String, _worn: Dictionary): sent[0] += 1
+	GameBus.equipment_intent.connect(count)
+	for i in EQUIPMENT_RESENDS:
 		GameBus.equipment_intent.emit("", claim.duplicate())
-		await _await_settle(0.5)
-	_report("equipment_recorded", "ok", "filtered")
+		await _await_settle(EQUIPMENT_RESEND_GAP)
+	GameBus.equipment_intent.disconnect(count)
+	var all_sent: bool = sent[0] == EQUIPMENT_RESENDS
+	_report("equipment_recorded", verdict(all_sent, true), "filtered" if all_sent else "not_sent-%d" % sent[0])
 
 ## Step 8 — a creature's round against the peer, resolved and floored on the HOST.
 ##
@@ -947,6 +961,12 @@ func _report_position() -> void:
 const HARNESS_SAVE_DIR := "user://net_harness/server/"
 
 func _fresh_save_dir() -> void:
+	# This empties a directory, so refuse anything that is not the harness's own scratch dir
+	# under user:// (a future edit pointing the constant at a real save folder must fail loudly).
+	if not HARNESS_SAVE_DIR.begins_with("user://net_harness/") or ".." in HARNESS_SAVE_DIR:
+		push_error("net-harness: refusing to clear '%s' (not under user://net_harness/)" % HARNESS_SAVE_DIR)
+		_failed = true
+		return
 	_root._persistence.server_save_dir = HARNESS_SAVE_DIR
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(HARNESS_SAVE_DIR))
 	var dir := DirAccess.open(HARNESS_SAVE_DIR)

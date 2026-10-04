@@ -233,6 +233,7 @@ func apply_appearance(instance_id: String, recipe: Dictionary) -> bool:
 	# The old root (and the attached rig's AnimationTree under it) is freed; keeping the
 	# stale handle would make `_apply_lod` hide the new procedural body for good.
 	inst.erase("anim_tree")
+	inst.erase("rig_node")
 	inst["base_equipment"] = normalized.get("equipment", {}).duplicate(true)
 	inst["equipment_visible"] = true
 	# The rebuilt rig's nodes default to visible; reset the early-out state so
@@ -240,11 +241,13 @@ func apply_appearance(instance_id: String, recipe: Dictionary) -> bool:
 	# them (which would leave the full rig showing at impostor distance).
 	inst["lod"] = -1
 	inst.erase("_hidden")
-	_apply_lod(instance_id)
-	# The rebuilt body is procedural again; a character that wore a rig gets it back.
+	# The rebuilt body is procedural again; a character that wore a rig gets it back. The rig
+	# goes on BEFORE the LOD pass so that pass already knows about it (a rig attached after
+	# it stayed visible whatever the distance until the next LOD transition).
 	var rig_key: String = str(inst.get("rig_key", ""))
 	if rig_key != "":
 		attach_rig(instance_id, rig_key)
+	_apply_lod(instance_id)
 
 	GameBus.character_appearance_changed.emit(instance_id, normalized)
 	return true
@@ -709,8 +712,11 @@ func attach_rig(instance_id: String, rig_key: String) -> bool:
 	var root: Node3D = inst["root"]
 	# The rig replaces the procedural box body: hide it (the limb swing stops too, see
 	# `_animate_limbs`) so both do not render over each other.
+	# The distance impostor is the exception: it stands in for the rig far away, and the LOD
+	# pass owns its visibility.
+	var impostor: Variant = inst.get("impostor", null)
 	for child in root.get_children():
-		if child is Node3D:
+		if child is Node3D and child != impostor:
 			(child as Node3D).visible = false
 	root.add_child(rig_root)
 	var tree := RigTree.build_tree(player)
@@ -718,7 +724,13 @@ func attach_rig(instance_id: String, rig_key: String) -> bool:
 	tree.anim_player = tree.get_path_to(player)
 	tree.active = true
 	inst["anim_tree"] = tree
+	inst["rig_node"] = rig_root
 	inst["rig_key"] = rig_key
+	# Re-run the LOD pass: the early-out would otherwise skip it, leaving the rig showing at
+	# whatever level this instance already resolved to.
+	inst["lod"] = -1
+	inst.erase("_hidden")
+	_apply_lod(instance_id)
 	return true
 
 ## Rig keys tried in order for an avatar: a production pack's player rig, then the public
@@ -1111,9 +1123,14 @@ func _apply_lod(instance_id: String) -> void:
 		var max_lod: int = part.get("max_lod", MAX_LOD)
 		node.visible = not has_rig and (not use_impostor) and lod <= max_lod and not hidden.get(key, false)
 
+	# An attached rig is a full-detail body: at impostor distance it gives way to the billboard
+	# like the procedural body does, instead of rendering a skinned mesh nobody can resolve.
+	var rig_node: Variant = inst.get("rig_node", null)
+	if has_rig and rig_node != null and is_instance_valid(rig_node):
+		(rig_node as Node3D).visible = not use_impostor
 	var impostor = inst.get("impostor", null)
 	if impostor != null:
-		impostor.visible = use_impostor and not has_rig
+		impostor.visible = use_impostor
 
 ## The LOD level that governs an instance right now: the manual override when in
 ## LOD_MANUAL mode, else distance-to-viewer when in LOD_AUTO mode (with

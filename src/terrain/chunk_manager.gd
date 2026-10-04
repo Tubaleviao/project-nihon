@@ -196,8 +196,9 @@ var _load_queue: Array = []    # of Vector2i
 var _pending: Dictionary = {}  # "cx,cz" -> true
 
 ## Phase 49 — loaded chunks that fell out of the window and wait for their unload slot,
-## drained `unloads_per_frame` per tick by `_drain_unload_queue`. Re-checked against the
-## window at drain time, so a chunk the player walked back toward is kept.
+## drained `unloads_per_frame` per tick by `_drain_unload_queue`. The queue is rebuilt from
+## scratch on every window move (`refresh`), so a chunk the player walked back toward is
+## dropped from it by the next move and never unloaded.
 var _unload_queue: Array = []  # of "cx,cz" keys
 
 ## Phase 42 — worker builds in flight, keyed by WorkerThreadPool task id:
@@ -351,12 +352,16 @@ func refresh(unload_now: bool = true) -> void:
 				unload_chunk(_key_to_chunk(key))
 		_unload_queue.clear()
 	else:
-		_unload_queue.clear()
+		# Farthest first. The distance is computed once per stale chunk (decorate, sort,
+		# undecorate) rather than twice per comparison, which parsed two keys per compare.
+		var stale: Array = []
 		for key in _loaded.keys():
 			if not wanted.has(key):
-				_unload_queue.append(key)
-		var c0 := center
-		_unload_queue.sort_custom(func(a, b): return _dist2(c0, _key_to_chunk(a)) > _dist2(c0, _key_to_chunk(b)))
+				stale.append([_dist2(center, _key_to_chunk(key)), key])
+		stale.sort_custom(func(a, b): return a[0] > b[0])
+		_unload_queue.clear()
+		for entry in stale:
+			_unload_queue.append(entry[1])
 
 	_self_heal_failed(center, true)
 
@@ -563,7 +568,11 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 		_rebuild_pending.erase(key)
 		_remove_queued_rebuild(key)
 	_build_attempts[key] = int(_build_attempts.get(key, 0)) + 1
-	var heightmap: Array = terrain_slice.generate_heightmap(chunk_pos)
+	# A neighbour's gather may already have generated this chunk's map (its seam guess);
+	# the voxel slice hands that one over instead of recomputing the noise here.
+	var heightmap: Array = voxel_slice.take_heightmap_for_build(chunk_pos) \
+		if voxel_slice.has_method("take_heightmap_for_build") \
+		else terrain_slice.generate_heightmap(chunk_pos)
 	# Phase 42 review pass 9 — the RESOLVE runs on the worker too. The main thread only GATHERS the
 	# plain state it reads (`gather_build_input`); before this, resolving the chunk's runs, colours
 	# and deposits cost ~43 ms of per-tile work on the main thread per dispatch — 2.7 frames at

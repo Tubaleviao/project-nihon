@@ -33,6 +33,7 @@ const ProposalSlice   := preload("res://src/governance/proposal_slice.gd")
 const Minimap         := preload("res://src/ui/minimap.gd")
 const PlayerSlice     := preload("res://src/player/player_slice.gd")
 const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
+const ClimateField := preload("res://src/terrain/climate_field.gd")
 const Locomotion      := preload("res://src/character/locomotion.gd")
 const SkeletonRig     := preload("res://src/character/skeleton_rig.gd")
 const SkillTiers      := preload("res://src/core/skill_tiers.gd")
@@ -237,6 +238,20 @@ func run() -> void:
 	_run_test("voxel: a legacy save migrates to run edits",     _test_voxel_legacy_edit_migration)
 	_run_test("voxel: a seam wall ignores the build order",      _test_voxel_seam_wall_order_independent)
 	_run_test("voxel: concurrent seam is exact",                 _test_voxel_concurrent_seam_exact)
+	_run_test("voxel: seam exact for both chunks and the worker path", _test_voxel_seam_exact_both_ways)
+	_run_test("voxel: every biome declares a surface style",    _test_voxel_surface_style_complete)
+	_run_test("voxel: topsoil style is memoised per build",     _test_voxel_topsoil_style_memoised)
+	_run_test("asset: reload_manifest drops the cached view",   _test_asset_reload_manifest)
+	_run_test("creature: respawns share one cap budget",         _test_creature_respawns_share_cap)
+	_run_test("creature: chunk index matches the instance table", _test_creature_chunk_index)
+	_run_test("player: a suppressed ghost is not drawn twice",   _test_player_ghost_suppression)
+	_run_test("net: a scoped apply replaces only its disc",     _test_snapshot_scoped_apply_in_place)
+	_run_test("net: within_aoi takes an explicit centre",       _test_net_within_aoi_explicit_center)
+	_run_test("climate: 3x3 search is exact at the jitter bound", _test_climate_search_window_exact)
+	_run_test("voxel: guess cache is bounded",                  _test_voxel_guess_cache_bounded)
+	_run_test("voxel: a build reuses its neighbour's guess",    _test_voxel_build_reuses_guess)
+	_run_test("voxel: a re-seed drops cached guesses",          _test_voxel_reseed_drops_guesses)
+	_run_test("voxel: an abandoned guess is swept by its unload", _test_voxel_abandoned_guess_swept)
 	_run_test("voxel: a tunnel floor top face mines the floor",  _test_voxel_tunnel_floor_top_face)
 	_run_test("voxel: the edit log is compacted",                _test_voxel_edit_log_is_compacted)
 	_run_test("voxel: an unknown edit op is ignored",            _test_voxel_unknown_op_is_ignored)
@@ -277,6 +292,7 @@ func run() -> void:
 	_run_test("chunk: unload preserves edits on reload",        _test_chunk_unload_preserves_edits)
 	_run_test("chunk: creature spawn scales per chunk",         _test_chunk_creature_spawn_per_chunk)
 	_run_test("chunk: tree spawn scales per chunk",             _test_chunk_tree_spawn_per_chunk)
+	_run_test("spawn: hash bits are independent",                _test_spawn_roll_mix_avalanche)
 	_run_test("spawn: hash output pinned",                       _test_spawn_roll_mix_pinned)
 	_run_test("spawn: seeded roll, density and pack size",       _test_spawn_roll_pure)
 	_run_test("spawn: creature packs are scarce and seeded",     _test_spawn_creature_scarcity)
@@ -293,6 +309,9 @@ func run() -> void:
 	_run_test("tree: chop requires an axe",                     _test_tree_chop_requires_axe)
 	_run_test("tree: stump regrows on its cooldown",            _test_tree_stump_regrows_on_cooldown)
 	_run_test("tree: despawn is per chunk",                     _test_tree_despawn_is_per_chunk)
+	_run_test("tree: chunk hop keeps the stump cooldown",       _test_tree_chunk_hop_keeps_stump_cooldown)
+	_run_test("tree: shrinking budget drops surplus trees",     _test_tree_shrinking_budget_reconciles)
+	_run_test("tree: chunk index stays consistent",             _test_tree_index_is_consistent)
 	_run_test("tree: client forwards then applies host chop",   _test_tree_client_forwards_then_applies_host_chop)
 	_run_test("tree: ids agree across peer spawn order",        _test_tree_ids_agree_across_peer_spawn_order)
 	_run_test("tree: ids survive a chunk reload",               _test_tree_ids_survive_chunk_reload)
@@ -3158,7 +3177,7 @@ func _test_voxel_seam_wall_order_independent() -> void:
 	east.fill(1.0)
 	# The west chunk is built FIRST, while its lower neighbour is unknown.
 	v.build_chunk(Vector2i(0, 0), west)
-	var before := _plane_x_spans(v.collision_faces(Vector2i(0, 0), west), 32.0)
+	var before := _plane_x_wall_spans(v.collision_faces(Vector2i(0, 0), west), 32.0)
 	assert_true(before.size() > 0, "a chunk built before its lower neighbour still emits the seam wall")
 	assert_eq(before, [[VoxelSlice.BEDROCK_DEPTH, 2.0]],
 		"and it spans the whole column while the neighbour is still unknown")
@@ -3170,7 +3189,7 @@ func _test_voxel_seam_wall_order_independent() -> void:
 	# triangle count: a wall emitted across the wrong ordinates has the same count.
 	v.build_chunk(Vector2i(1, 0), east)
 	v.build_chunk(Vector2i(0, 0), west)
-	var after := _plane_x_spans(v.collision_faces(Vector2i(0, 0), west), 32.0)
+	var after := _plane_x_wall_spans(v.collision_faces(Vector2i(0, 0), west), 32.0)
 	assert_eq(after, [[1.0, 2.0]], "the seam converges on the exposed span when its neighbour arrives")
 	assert_eq(after.size(), before.size(), "and it is still ONE wall along the seam, not two")
 	# Duplicate-free from the other side: the lower chunk emits nothing at the same
@@ -3195,10 +3214,14 @@ func _plane_x_spans(faces: PackedVector3Array, plane: float) -> Array:
 		if not spans.has(span):
 			spans.append(span)
 	spans.sort_custom(func(a: Array, b: Array): return float(a[0]) < float(b[0]))
-	# Phase 49 — a wall is split at the soil line (two colours), so abutting spans are one
-	# wall's worth of geometry.
+	return spans
+
+## `_plane_x_spans` with abutting spans fused. Phase 49 splits a wall at the soil line (two
+## colours), so a wall is one fused span; only callers on a topsoiled wall should use this —
+## the raw form above is what catches a genuinely split wall.
+func _plane_x_wall_spans(faces: PackedVector3Array, plane: float) -> Array:
 	var merged: Array = []
-	for span in spans:
+	for span in _plane_x_spans(faces, plane):
 		if not merged.is_empty() and is_equal_approx(float(merged[-1][1]), float(span[0])):
 			merged[-1][1] = span[1]
 		else:
@@ -4056,23 +4079,36 @@ func _test_chunk_coordinate_round_trip() -> void:
 	t.free()
 
 ## Phase 49 — biomes are regions, not 32 m stripes, and the layout depends on the seed.
+## Coherence is checked at several seeds with a cutoff well under the measured ~0.87, so a
+## one-seed fluke cannot fail it; the seed check goes through `get_biome_at_chunk` (the
+## production path) and wants a real fraction of chunks to move, not a single one.
 func _test_biome_regions_coherent() -> void:
-	var same := 0
-	var pairs := 0
-	var differs := false
-	for cz in range(-16, 16):
-		for cx in range(-16, 16):
-			var b := TerrainSlice.biome_for_chunk(Vector2i(cx, cz))
-			if TerrainSlice.biome_for_chunk(Vector2i(cx + 1, cz)) == b:
-				same += 1
-			if TerrainSlice.biome_for_chunk(Vector2i(cx, cz + 1)) == b:
-				same += 1
-			pairs += 2
-			if b != TerrainSlice.biome_for_chunk(Vector2i(cx, cz), 12345):
-				differs = true
-	var frac := float(same) / float(pairs)
-	assert_true(frac >= 0.8, "neighbouring chunks mostly share a biome (%.2f)" % frac)
-	assert_true(differs, "a different seed lays the biomes out differently")
+	for seed_v in [TerrainSlice.BIOME_SEED, 12345, 777]:
+		var same := 0
+		var pairs := 0
+		for cz in range(-16, 16):
+			for cx in range(-16, 16):
+				var b := TerrainSlice.biome_for_chunk(Vector2i(cx, cz), seed_v)
+				if TerrainSlice.biome_for_chunk(Vector2i(cx + 1, cz), seed_v) == b:
+					same += 1
+				if TerrainSlice.biome_for_chunk(Vector2i(cx, cz + 1), seed_v) == b:
+					same += 1
+				pairs += 2
+		var frac := float(same) / float(pairs)
+		assert_true(frac >= 0.75, "neighbouring chunks mostly share a biome at seed %d (%.2f)" % [seed_v, frac])
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	terrain.set_world_seed(111)
+	var layout_a: Array = []
+	for cx in range(-16, 16):
+		layout_a.append(terrain.get_biome_at_chunk(Vector2i(cx, 3)))
+	terrain.set_world_seed(222)
+	var moved := 0
+	for i in layout_a.size():
+		if terrain.get_biome_at_chunk(Vector2i(i - 16, 3)) != layout_a[i]:
+			moved += 1
+	assert_true(moved >= 4, "a different world seed re-lays out the biomes through get_biome_at_chunk (%d of 32 moved)" % moved)
+	terrain.free()
 
 func _test_chunk_biome_stable() -> void:
 	var t := TerrainSlice.new()
@@ -5248,8 +5284,10 @@ func _test_snapshot_edits_scoped_to_aoi() -> void:
 	var scoped: Dictionary = host.get_chunk_manifest_in_radius(Vector3.ZERO, NetworkingSlice.EDITS_SCOPE_RADIUS)
 	assert_true(scoped.has("0,0"), "AOI manifest holds the chunk in range")
 	assert_false(scoped.has("20,20"), "AOI manifest omits the chunk out of range")
-	assert_true(NetworkingSlice.EDITS_SCOPE_RADIUS > 3.0 * 32.0 + NetworkingSlice.AOI_RADIUS,
-		"edit scope covers the streamed view ring plus an AOI cell of roaming")
+	var extent := float(VoxelSlice.CHUNK_SIZE) * VoxelSlice.TILE_SIZE
+	var streamed := float(ChunkManager.DEFAULT_VIEW_DISTANCE + ChunkManager.DEFAULT_PREFETCH_DISTANCE) * extent
+	assert_true(NetworkingSlice.EDITS_SCOPE_RADIUS >= (streamed + NetworkingSlice.AOI_RADIUS) * sqrt(2.0),
+		"edit scope covers the streamed window plus an AOI cell of roaming, on the diagonal")
 	assert_eq(host.get_chunk_manifest().size(), 2, "full manifest still holds both")
 	# A client that already holds a far edit keeps it across a scoped apply.
 	var client := VoxelSlice.new()
@@ -5342,8 +5380,13 @@ func _test_attach_rig() -> void:
 	for child in root.get_children():
 		if child is Node3D and child.name != "RigScene":
 			assert_false((child as Node3D).visible, "procedural body hidden once a rig is attached")
+	assert_true((scene as Node3D).visible, "the rig shows at full detail")
 	ch.set_lod(CharacterSlice.IMPOSTOR_LOD)
+	assert_false((scene as Node3D).visible, "the rig gives way to the billboard at impostor distance")
+	assert_true(ch.is_impostor_visible(iid), "and the impostor stands in for it")
 	ch.set_lod(CharacterSlice.MIN_LOD)
+	assert_true((scene as Node3D).visible, "the rig is back when the camera is")
+	assert_false(ch.is_impostor_visible(iid), "and the impostor is gone")
 	for child in root.get_children():
 		if child is Node3D and child.name != "RigScene":
 			assert_false((child as Node3D).visible, "LOD change does not re-show the procedural body")
@@ -5358,6 +5401,14 @@ func _test_attach_rig() -> void:
 	for child in new_root.get_children():
 		if child is Node3D and child.name != "RigScene":
 			assert_false((child as Node3D).visible, "the rebuilt procedural body stays hidden under the rig")
+	# A rebuild at impostor distance attaches the rig already LOD-correct: no frame of a rig
+	# showing at a distance only the billboard should cover.
+	ch.set_lod(CharacterSlice.IMPOSTOR_LOD)
+	ch.apply_appearance(iid, {"skeleton": "HumanoidSkeleton"})
+	var far_scene := (ch._instances[iid]["root"] as Node3D).get_node_or_null("RigScene") as Node3D
+	assert_true(far_scene != null and not far_scene.visible, "a rig re-attached at impostor distance starts hidden")
+	assert_true(ch.is_impostor_visible(iid), "with the billboard shown")
+	ch.set_lod(CharacterSlice.MIN_LOD)
 	# A character that never wore a rig keeps showing its body across a rebuild.
 	var bare := ch.create_character_from_recipe({"skeleton": "HumanoidSkeleton"}, Vector3.ZERO)
 	ch.apply_appearance(bare, {"skeleton": "HumanoidSkeleton"})
@@ -6450,6 +6501,72 @@ func _test_tree_despawn_is_per_chunk() -> void:
 	assert_eq(scanned, 8, "re-spawning a loaded chunk adds no trees")
 	t.despawn_for_chunk(Vector2i(1, 0))
 	assert_eq(t.trees_in_chunk(Vector2i(1, 0)).size(), 0, "despawn empties the chunk index")
+	t.free()
+
+func _test_tree_chunk_hop_keeps_stump_cooldown() -> void:
+	var t := _make_tree_slice()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv.add_item("CarpenterAxe", 1)
+	t.inventory_slice = inv
+	var chunk := Vector2i(0, 0)
+	t.spawn_for_chunk(chunk)
+	var tid: String = str(t.trees_in_chunk(chunk)[0])
+	t.chop_tree(tid)
+	var deadline: float = float(t.get_tree_record(tid)["respawn_at"])
+	t.despawn_for_chunk(chunk)
+	t.spawn_for_chunk(chunk)
+	var back: Dictionary = t.get_tree_record(tid)
+	assert_eq(str(back["state"]), "stump", "a stump is still a stump after the chunk reloads")
+	assert_eq(float(back["respawn_at"]), deadline, "the original regrowth deadline survives the hop")
+	assert_true(t.index_is_consistent(), "index consistent after the stump reload")
+	# A deadline that passed while unloaded just means a standing tree.
+	t.chop_tree(tid) # already a stump: no-op
+	t.despawn_for_chunk(chunk)
+	t._stump_memory[tid] = Time.get_unix_time_from_system() - 5.0
+	t.spawn_for_chunk(chunk)
+	assert_eq(str(t.get_tree_record(tid)["state"]), "standing", "an expired stump reloads standing")
+	assert_false(t._stump_memory.has(tid), "the memory entry is consumed on reload")
+	t.free()
+	inv.free()
+
+func _test_tree_shrinking_budget_reconciles() -> void:
+	var t := _make_tree_slice()
+	var chunk := Vector2i(0, 0)
+	t.spawn_for_chunk(chunk)
+	var budget: int = t.trees_in_chunk(chunk).size()
+	assert_true(budget >= 2, "fixture chunk carries at least two trees")
+	# Pretend a previous visit saw a bigger budget: an extra tree past the current one.
+	t._spawn("Thornwood", "Thornwood", chunk, budget)
+	assert_eq(t.trees_in_chunk(chunk).size(), budget + 1, "surplus tree injected")
+	t.spawn_for_chunk(chunk)
+	assert_eq(t.trees_in_chunk(chunk).size(), budget, "re-spawn trims trees past the budget")
+	assert_false(t._trees.has(t._tree_id(chunk, budget)), "the surplus record is gone")
+	# A hole in the id range is refilled rather than shifting indices.
+	var hole: String = t._tree_id(chunk, 0)
+	t._by_chunk[chunk].erase(hole)
+	t._remove_tree(hole, false)
+	t.spawn_for_chunk(chunk)
+	assert_true(t._trees.has(hole), "a missing spawn index is refilled")
+	assert_eq(t.trees_in_chunk(chunk).size(), budget, "budget restored exactly")
+	assert_true(t.index_is_consistent(), "index consistent after reconciling")
+	t.free()
+
+func _test_tree_index_is_consistent() -> void:
+	var t := _make_tree_slice()
+	assert_true(t.index_is_consistent(), "an empty slice is consistent")
+	t.spawn_for_chunk(Vector2i(0, 0))
+	t.spawn_for_chunk(Vector2i(1, 0))
+	assert_true(t.index_is_consistent(), "consistent after spawning")
+	var tid: String = str(t.trees_in_chunk(Vector2i(0, 0))[0])
+	t._trees[tid]["chunk"] = Vector2i(9, 9)
+	assert_false(t.index_is_consistent(), "a record filed under the wrong chunk is caught")
+	t._trees[tid]["chunk"] = Vector2i(0, 0)
+	t._trees[tid]["state"] = "stump"
+	assert_false(t.index_is_consistent(), "a stump missing from the stump set is caught")
+	t._trees[tid]["state"] = "standing"
+	t.despawn_for_chunk(Vector2i(0, 0))
+	assert_true(t.index_is_consistent(), "consistent after despawn")
 	t.free()
 
 func _test_tree_client_forwards_then_applies_host_chop() -> void:
@@ -10070,14 +10187,6 @@ func _test_chunk_prefetch_ring() -> void:
 	rig["terrain"].free()
 	rig["player"].free()
 
-## Phase 42 review pass 9 — the KEPT window is the QUEUE window (`stream_radius()`), and that
-## is what stops a chunk being built and then thrown away. Pass 8 had narrowed it to
-## `view_distance`, so every band chunk — BUILT, because everything the queue spans is — was
-## released on the next crossing unless the player happened to move toward it; the row
-## measured 65 redundant worker builds per crossing, forever. Two assertions, in the order the
-## row asks for them: the invariant (nothing is ever unloaded while it still lies inside the
-## queue radius), and the retention arithmetic as an exact NUMBER — a one-chunk crossing
-## releases the seven chunks of the departing edge, not the forty a view-ring window releases.
 ## Phase 49 — the `_process` path releases at most `unloads_per_frame` chunks per tick, and a
 ## chunk the player walked back toward while it waited is kept.
 func _test_chunk_unloads_budgeted() -> void:
@@ -10100,7 +10209,40 @@ func _test_chunk_unloads_budgeted() -> void:
 	cm._drain_unload_queue(64)
 	assert_true(cm._unload_queue.is_empty(), "the queue drains to empty")
 	assert_false(cm._loaded.has("0,0"), "the old window is gone")
+	# Farthest first, and a chunk the player walks back toward is dropped from the queue.
+	player.spawn_at(Vector3(16.0, 40.0, 16.0))
+	cm.refresh()
+	_wait_for_builds(cm)
+	var held: int = cm._loaded.size()
+	player.spawn_at(Vector3(16.0, 40.0, 160.0))
+	cm.refresh(false)
+	var center := cm.player_chunk()
+	var last := -1
+	var ordered := true
+	for key in cm._unload_queue:
+		var d: int = cm._dist2(center, cm._key_to_chunk(key))
+		if last >= 0 and d > last:
+			ordered = false
+		last = d
+	assert_true(ordered, "the unload queue runs farthest first")
+	assert_eq(cm._unload_queue.size(), held, "the whole old window is queued")
+	player.spawn_at(Vector3(16.0, 40.0, 16.0))   # walk straight back before any slot is used
+	cm.refresh(false)
+	assert_true(cm._unload_queue.size() < held, "walking back removes chunks from the queue")
+	assert_false(cm._unload_queue.has("0,0"), "the chunk under the player is no longer queued")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
 
+## Phase 42 review pass 9 — the KEPT window is the QUEUE window (`stream_radius()`), and that
+## is what stops a chunk being built and then thrown away. Pass 8 had narrowed it to
+## `view_distance`, so every band chunk — BUILT, because everything the queue spans is — was
+## released on the next crossing unless the player happened to move toward it; the row
+## measured 65 redundant worker builds per crossing, forever. Two assertions, in the order the
+## row asks for them: the invariant (nothing is ever unloaded while it still lies inside the
+## queue radius), and the retention arithmetic as an exact NUMBER — a one-chunk crossing
+## releases the seven chunks of the departing edge, not the forty a view-ring window releases.
 func _test_chunk_kept_window_is_stream_radius() -> void:
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
@@ -10450,7 +10592,15 @@ func _test_chunk_contents_spawn_after_ground() -> void:
 	add_child(tree)
 	tree.terrain_slice = terrain
 	cm.tree_slice = tree
-	var c := _find_chunk_with_biome(terrain, ["TemperateForest", "TwilightGrove"])
+	# The world seed is random per run and a chunk of a tree biome can roll as a clearing
+	# (Phase 44), so pick one that actually grows trees — otherwise this fails ~10% of runs.
+	var c := Vector2i(-1, -1)
+	for cx in range(-80, 80):
+		var cand := Vector2i(cx, 0)
+		var biome := str(terrain.get_biome_at_chunk(cand))
+		if ["TemperateForest", "TwilightGrove"].has(biome) and tree.tree_count_for(cand, biome) > 0:
+			c = cand
+			break
 	var key := "%d,%d" % [c.x, c.y]
 	cm.load_chunk(c)
 	assert_false(cm._built.has(key), "the build is in flight")
@@ -11500,10 +11650,10 @@ func _spawn_world(seed_v: int, biome: String) -> Dictionary:
 ## Pins the hash's raw output: it leans on 64-bit int wraparound, and any edit to it
 ## silently reshuffles every world's spawns. Values computed with 64-bit wrap arithmetic.
 func _test_spawn_roll_mix_pinned() -> void:
-	assert_eq(SpawnRoll._mix(7, 0, 0, 0), 1062735684, "mix pinned: zero chunk")
-	assert_eq(SpawnRoll._mix(7, 3, -5, 12345), 705471667, "mix pinned: mixed-sign chunk")
-	assert_eq(SpawnRoll._mix(123456789, -2, 9, -77), 1738906673, "mix pinned: large seed, negative salt")
-	assert_eq(SpawnRoll._mix(1, 1, 1, 1), 28702025, "mix pinned: ones")
+	assert_eq(SpawnRoll._mix(7, 0, 0, 0), 1245989457, "mix pinned: zero chunk")
+	assert_eq(SpawnRoll._mix(7, 3, -5, 12345), 1437575032, "mix pinned: mixed-sign chunk")
+	assert_eq(SpawnRoll._mix(123456789, -2, 9, -77), 1142957741, "mix pinned: large seed, negative salt")
+	assert_eq(SpawnRoll._mix(1, 1, 1, 1), 1444049576, "mix pinned: ones")
 
 func _test_spawn_roll_pure() -> void:
 	var lo := 9.0
@@ -11853,3 +12003,344 @@ func _test_voxel_concurrent_seam_exact() -> void:
 	assert_eq(first, second, "the seam geometry is identical either way")
 	v.free()
 	terrain.free()
+
+
+## Both chunks of a seam, and the worker path (`gather_build_input` -> `build_runs` ->
+## `build_chunk_arrays`, what the chunk manager dispatches), come out identical whichever
+## builds first. Several pairs, and the check is not vacuous: at least one pair has a seam
+## whose faces differ from the same chunk built against an UNKNOWN neighbour.
+func _test_voxel_seam_exact_both_ways() -> void:
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	var pairs: Array = [[Vector2i(2, 3), Vector2i(3, 3)], [Vector2i(-4, 1), Vector2i(-3, 1)],
+			[Vector2i(7, -2), Vector2i(7, -1)], [Vector2i(0, 9), Vector2i(1, 9)]]
+	var seam_mattered := false
+	for pair in pairs:
+		var a: Vector2i = pair[0]
+		var b: Vector2i = pair[1]
+		var hm_a: Array = terrain.generate_heightmap(a)
+		var hm_b: Array = terrain.generate_heightmap(b)
+		var v := VoxelSlice.new()
+		add_child(v)
+		v.terrain_slice = terrain
+		# Worker path: gather while the neighbour is only a guess, then again once it is built.
+		var guessed_a: Dictionary = VoxelSlice.build_chunk_arrays(a, hm_a,
+				VoxelSlice.build_runs(a, hm_a, v.gather_build_input(a, hm_a)))
+		var guessed_b: Dictionary = VoxelSlice.build_chunk_arrays(b, hm_b,
+				VoxelSlice.build_runs(b, hm_b, v.gather_build_input(b, hm_b)))
+		v.build_chunk(a, hm_a)
+		v.build_chunk(b, hm_b)
+		var built_a: Dictionary = VoxelSlice.build_chunk_arrays(a, hm_a,
+				VoxelSlice.build_runs(a, hm_a, v.gather_build_input(a, hm_a)))
+		var built_b: Dictionary = VoxelSlice.build_chunk_arrays(b, hm_b,
+				VoxelSlice.build_runs(b, hm_b, v.gather_build_input(b, hm_b)))
+		assert_eq(guessed_a.hash(), built_a.hash(), "chunk a: guess-built == neighbour-built at %s" % a)
+		assert_eq(guessed_b.hash(), built_b.hash(), "chunk b: guess-built == neighbour-built at %s" % b)
+		# And an unknown neighbour (no terrain wired) is what the guess replaces.
+		var bare := VoxelSlice.new()
+		add_child(bare)
+		var unknown_a: Dictionary = VoxelSlice.build_chunk_arrays(a, hm_a,
+				VoxelSlice.build_runs(a, hm_a, bare.gather_build_input(a, hm_a)))
+		if unknown_a.hash() != built_a.hash():
+			seam_mattered = true
+		bare.free()
+		v.free()
+	assert_true(seam_mattered, "at least one seam differs from the unknown-neighbour build")
+	terrain.free()
+
+func _test_voxel_guess_cache_bounded() -> void:
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	var v := VoxelSlice.new()
+	add_child(v)
+	v.terrain_slice = terrain
+	for i in VoxelSlice.GUESS_CACHE_MAX + 20:
+		var c := Vector2i(i, 100)
+		v._generated_heightmap(c, v._chunk_key(c))
+	assert_eq(v._guess_heightmaps.size(), VoxelSlice.GUESS_CACHE_MAX, "the guess cache stops at its bound")
+	assert_false(v._guess_heightmaps.has("0,100"), "the oldest guess is the one evicted")
+	var newest := Vector2i(VoxelSlice.GUESS_CACHE_MAX + 19, 100)
+	assert_true(v._guess_heightmaps.has(v._chunk_key(newest)), "the newest guess is kept")
+	v.free()
+	terrain.free()
+
+func _test_voxel_build_reuses_guess() -> void:
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	var v := VoxelSlice.new()
+	add_child(v)
+	v.terrain_slice = terrain
+	var a := Vector2i(2, 3)
+	var b := Vector2i(3, 3)
+	var hm_a: Array = terrain.generate_heightmap(a)
+	v.gather_build_input(a, hm_a)   # guesses b (and the rest of a's ring)
+	assert_true(v._guess_heightmaps.has("3,3"), "gathering a guessed its neighbour b")
+	var guess: Array = v._guess_heightmaps["3,3"]
+	var taken: Array = v.take_heightmap_for_build(b)
+	assert_true(is_same(taken, guess), "b's own build takes the guess instead of regenerating")
+	assert_false(v._guess_heightmaps.has("3,3"), "the guess is consumed")
+	assert_eq(taken, terrain.generate_heightmap(b), "and it is exactly what the generator gives")
+	var fresh: Array = v.take_heightmap_for_build(Vector2i(40, 40))
+	assert_eq(fresh.size(), taken.size(), "with no guess cached it generates a map")
+	var bare := VoxelSlice.new()
+	add_child(bare)
+	assert_true(bare.take_heightmap_for_build(b).is_empty(), "no generator wired reads as empty")
+	bare.free()
+	v.free()
+	terrain.free()
+
+func _test_voxel_reseed_drops_guesses() -> void:
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	terrain.set_world_seed(1234)
+	var v := VoxelSlice.new()
+	add_child(v)
+	v.terrain_slice = terrain
+	var c := Vector2i(5, 5)
+	var old_map: Array = v._generated_heightmap(c, v._chunk_key(c))
+	terrain.set_world_seed(98765)
+	var new_map: Array = v._generated_heightmap(c, v._chunk_key(c))
+	assert_true(old_map != new_map, "a re-seed does not serve the old world's cached map")
+	assert_eq(new_map, terrain.generate_heightmap(c), "the guess matches the new world's generator")
+	v.free()
+	terrain.free()
+
+## A guess made for a chunk whose build never landed is swept by the unload of any chunk
+## in its 3x3, driven through the real gather path rather than a hand-planted entry.
+func _test_voxel_abandoned_guess_swept() -> void:
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	var v := VoxelSlice.new()
+	add_child(v)
+	v.terrain_slice = terrain
+	var a := Vector2i(2, 3)
+	v.gather_build_input(a, terrain.generate_heightmap(a))   # dispatch that is then abandoned
+	assert_true(v._guess_heightmaps.size() >= 8, "the gather guessed the whole ring")
+	v.unload_chunk(Vector2i(3, 3))   # an edge neighbour unloads; nothing is loaded anywhere
+	assert_false(v._guess_heightmaps.has("3,3"), "the unloaded chunk's own guess goes")
+	assert_false(v._guess_heightmaps.has("2,4"), "and so does a guess in its 3x3")
+	assert_true(v._guess_heightmaps.has("1,2"), "while a guess outside it stays until its own sweep")
+	v.free()
+	terrain.free()
+
+## `surfaceMaterial` is not consumed by the build yet, so nothing else would notice a biome
+## that lost it: pin it, with the tints and depth the topsoil does use.
+func _test_voxel_surface_style_complete() -> void:
+	assert_true(GameData.BIOMES.size() > 0, "the fabric declares biomes")
+	for key in GameData.BIOMES:
+		var style: Dictionary = VoxelSlice.surface_style(str(key))
+		assert_false(style.is_empty(), "%s has a surface style" % key)
+		assert_true(str(style.get("material", "")) != "", "%s names a surface material" % key)
+		assert_true(float(style.get("depth", 0.0)) > 0.0, "%s has a topsoil depth" % key)
+	assert_true(VoxelSlice.surface_style("NoSuchBiome").is_empty(), "an unknown biome has no style")
+
+## One style lookup per biome per build, however many runs ask.
+func _test_voxel_topsoil_style_memoised() -> void:
+	var styles: Dictionary = {}
+	var biome := str(GameData.BIOMES.keys()[0])
+	var biomes := { "0,0": biome }
+	var surface := 2.0
+	for i in 5:
+		var entry := { "material": "", "top": surface, "bottom": 0.0 }
+		VoxelSlice._apply_topsoil(entry, Vector2(1.0, 1.0), biomes, surface, VoxelSlice._field(0, {}), styles)
+	assert_eq(styles.size(), 1, "five runs of one biome resolve its style once")
+	assert_true(styles.has(biome), "keyed by biome")
+
+## The re-scope path touches only the disc it names: an in-scope edit the host no longer
+## lists is dropped, a changed one is replaced, and everything outside is left as it was.
+func _test_snapshot_scoped_apply_in_place() -> void:
+	var far_key := "%d,%d" % [20 * 64 + 5, 20 * 64 + 5]
+	var client := VoxelSlice.new()
+	add_child(client)
+	client.apply_edits({ "32,32": 1.0, "33,32": 1.0, far_key: 3.0 })
+	assert_true(VoxelSlice.chunk_in_radius(Vector2i(0, 0), Vector3.ZERO, 10.0), "the origin chunk is in a small disc")
+	assert_false(VoxelSlice.chunk_in_radius(Vector2i(20, 20), Vector3.ZERO, 100.0), "a far chunk is not")
+	assert_true(VoxelSlice.chunk_in_radius(Vector2i(1, 0), Vector3(30.0, 0.0, 10.0), 2.5), "a disc reaches a neighbour by its edge")
+	assert_false(VoxelSlice.chunk_in_radius(Vector2i(1, 0), Vector3(20.0, 0.0, 10.0), 2.5), "and stops short of it")
+	var far_before: Array = (client._edits[far_key] as Array)
+	var host := VoxelSlice.new()
+	add_child(host)
+	host.apply_edits({ "32,32": 2.0 })   # same tile, different edit; "33,32" is gone
+	var scoped: Dictionary = host.get_chunk_manifest_in_radius(Vector3.ZERO, 100.0)
+	client.apply_scoped_chunk_manifest(scoped, Vector3.ZERO, 100.0)
+	assert_false(client._edits.has("33,32"), "an in-scope edit the host dropped is dropped here")
+	assert_true(client._edits.has("32,32"), "the in-scope edit the host holds stays")
+	assert_true(VoxelSlice._ops_equal(client._edits["32,32"], host._edits["32,32"]), "and takes the host's value")
+	assert_true(is_same(client._edits[far_key], far_before), "an out-of-scope op list is the very same object")
+	assert_eq(client._edits_by_chunk.size(), 2, "the chunk index tracks the result (near chunk and far chunk)")
+	host.free()
+	client.free()
+
+func _test_net_within_aoi_explicit_center() -> void:
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n.remember_player_state(2, Vector3.ZERO)
+	var pos := Vector3(500.0, 0.0, 0.0)
+	assert_false(n.in_aoi(2, pos), "the recorded centre does not reach it")
+	assert_true(NetworkingSlice.within_aoi(Vector3(480.0, 0.0, 0.0), pos), "a fresher centre does")
+	assert_eq(NetworkingSlice.within_aoi(Vector3.ZERO, Vector3(50.0, 0.0, 0.0)), n.in_aoi(2, Vector3(50.0, 0.0, 0.0)),
+		"in_aoi is within_aoi at the recorded centre")
+	n.free()
+
+## `ClimateField.biome_for_chunk` searches the 3x3 cells round the chunk's own; that is exact
+## only while a feature point cannot wander further than that. Pin the bound, and check the
+## 3x3 answer against a 5x5 brute force over a spread of seeds and chunks.
+func _test_climate_search_window_exact() -> void:
+	assert_true(ClimateField.JITTER <= 0.8, "JITTER stays within what the 3x3 search can see")
+	assert_eq(ClimateField.biome_for_chunk(1, Vector2i(3, 3), []), "", "no keys reads as no biome")
+	var keys := ["A", "B", "C", "D", "E"]
+	for seed_v in [1, 77, 20260815, -5]:
+		for i in 60:
+			var chunk := Vector2i(i * 7 - 200, i * 13 - 300)
+			var p := Vector2(chunk.x + 0.5, chunk.y + 0.5)
+			var cx := floori(p.x / ClimateField.CELL_CHUNKS)
+			var cz := floori(p.y / ClimateField.CELL_CHUNKS)
+			var best := INF
+			var bx := cx
+			var bz := cz
+			for dz in range(-2, 3):
+				for dx in range(-2, 3):
+					var d := ClimateField._feature_point(seed_v, cx + dx, cz + dz).distance_squared_to(p)
+					if d < best:
+						best = d
+						bx = cx + dx
+						bz = cz + dz
+			var wide: String = keys[ClimateField._mix(seed_v, bx, bz, 3) % keys.size()]
+			assert_eq(ClimateField.biome_for_chunk(seed_v, chunk, keys), wide, "3x3 == 5x5 at seed %d chunk %s" % [seed_v, chunk])
+
+## A peer with a CharacterSlice avatar has no capsule ghost: suppressing releases an existing
+## ghost, blocks a new one, and lifting it lets the next report draw the ghost again.
+func _test_player_ghost_suppression() -> void:
+	var p := PlayerSlice.new()
+	add_child(p)
+	p._on_remote_player_state(2, Vector3(1.0, 0.0, 1.0))
+	assert_eq(p.get_remote_ghost_count(), 1, "a ghost exists before the avatar does")
+	p.set_ghost_suppressed(2, true)
+	assert_eq(p.get_remote_ghost_count(), 0, "the avatar's arrival releases the ghost")
+	p._on_remote_player_state(2, Vector3(2.0, 0.0, 1.0))
+	assert_eq(p.get_remote_ghost_count(), 0, "later reports do not rebuild it")
+	p._on_remote_player_state(3, Vector3(5.0, 0.0, 5.0))
+	assert_eq(p.get_remote_ghost_count(), 1, "other peers keep theirs")
+	p.set_ghost_suppressed(2, false)
+	p._on_remote_player_state(2, Vector3(3.0, 0.0, 1.0))
+	assert_eq(p.get_remote_ghost_count(), 2, "with the avatar gone the ghost returns")
+	p.free()
+
+## Phase 49 — `spawn_for_chunk` / `despawn_for_chunk` work off a per-chunk index. It agrees
+## with a scan of the table, keeps an engaged survivor across a despawn (and counts it
+## against the pack on reload), and drops the chunk's entry once nothing is left.
+func _test_creature_chunk_index() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	var a := Vector2i(4, 4)
+	var b := Vector2i(5, 4)
+	c.spawn_for_chunk(a)
+	c.spawn_for_chunk(b)
+	assert_true(c.get_all_instances().size() > 0, "the fixture chunks carry creatures")
+	for chunk in [a, b]:
+		var scanned := 0
+		for rec in c.get_all_instances():
+			if rec["chunk"] == chunk:
+				scanned += 1
+		assert_eq((c._by_chunk.get(chunk, []) as Array).size(), scanned, "index == scan for %s" % chunk)
+	var total_b := (c._by_chunk[b] as Array).size()
+	var engaged: String = str((c._by_chunk[a] as Array)[0])
+	c._instances[engaged]["state"] = "aggressive"
+	c.despawn_for_chunk(a)
+	assert_eq((c._by_chunk[a] as Array).size(), 1, "only the engaged survivor stays indexed")
+	assert_true(c._instances.has(engaged), "and its record stays")
+	assert_eq((c._by_chunk[b] as Array).size(), total_b, "another chunk's index is untouched")
+	var before_reload := c.get_all_instances().size()
+	c.spawn_for_chunk(a)
+	var reloaded := 0
+	for rec in c.get_all_instances():
+		if rec["chunk"] == a:
+			reloaded += 1
+	assert_eq((c._by_chunk[a] as Array).size(), reloaded, "the index follows a reload")
+	assert_true(c.get_all_instances().size() >= before_reload, "a reload restores the pack around the survivor")
+	c._instances[engaged]["state"] = "idle"
+	c.despawn_for_chunk(a)
+	c.despawn_for_chunk(b)
+	assert_false(c._by_chunk.has(a), "an emptied chunk drops its index entry")
+	assert_eq(c.get_all_instances().size(), 0, "nothing is left once every chunk is despawned")
+	c.free()
+
+## Several creatures coming due in the same tick are admitted against ONE running live count:
+## with room for exactly one, exactly one revives and the rest stay dead with their deadlines.
+func _test_creature_respawns_share_cap() -> void:
+	var c := CreatureSlice.new()
+	c.render_visuals = false
+	add_child(c)
+	c.spawn_for_chunk(Vector2i(4, 4))
+	var ids: Array = []
+	for rec in c.get_all_instances():
+		ids.append(str(rec["instance_id"]))
+	assert_true(ids.size() >= 3, "need three creatures to kill")
+	var due := Time.get_unix_time_from_system() - 1.0
+	for i in 3:
+		var inst: Dictionary = c._instances[ids[i]]
+		inst["state"] = "dead"
+		inst["hp"] = 0.0
+		inst["respawn_at"] = due
+	c.set_population_cap(c.live_population() + 1)
+	c._tick_respawn()
+	var alive := 0
+	for i in 3:
+		if c._instances[ids[i]]["state"] != "dead":
+			alive += 1
+	assert_eq(alive, 1, "a cap with one free slot revives exactly one of three")
+	assert_eq(c.live_population(), c.get_population_cap(), "and the population sits at the cap")
+	for i in 3:
+		if c._instances[ids[i]]["state"] == "dead":
+			assert_true(float(c._instances[ids[i]]["respawn_at"]) > 0.0, "a held creature keeps its deadline")
+	c.set_population_cap(0)
+	c._tick_respawn()
+	assert_eq(c.live_population(), ids.size(), "lifting the cap lets the rest return")
+	c.free()
+
+## The hash feeds every chunk's spawn roll, so adjacent chunks and salts must not move
+## together. Flipping one input bit should flip about half of the 31 output bits (avalanche),
+## and the low bit - the one a `% 2` style use would read - must not track a neighbouring chunk.
+func _test_spawn_roll_mix_avalanche() -> void:
+	var flipped := 0
+	var trials := 0
+	for seed_v in [3, 91, 20260815]:
+		for i in 64:
+			var base: int = SpawnRoll._mix(seed_v, i, 2 * i - 7, 1000 + i)
+			for bit in [0, 1, 5, 9]:
+				var other: int = SpawnRoll._mix(seed_v, i ^ (1 << bit), 2 * i - 7, 1000 + i)
+				var diff: int = base ^ other
+				while diff != 0:
+					flipped += diff & 1
+					diff >>= 1
+				trials += 1
+	var mean := float(flipped) / float(trials)
+	assert_true(mean > 13.0 and mean < 18.0, "one flipped input bit flips ~15.5 of 31 output bits (got %.2f)" % mean)
+	# Neighbouring chunks: the low output bit agrees about half the time, not (nearly) always.
+	var same := 0
+	var n := 400
+	for i in n:
+		if (SpawnRoll._mix(5, i, 0, 7) & 1) == (SpawnRoll._mix(5, i + 1, 0, 7) & 1):
+			same += 1
+	var frac := float(same) / float(n)
+	assert_true(frac > 0.40 and frac < 0.60, "adjacent chunks' low bits are uncorrelated (agree %.2f)" % frac)
+	# The roll stays in range and varies across a row of chunks.
+	var lo := 1.0
+	var hi := 0.0
+	for i in 200:
+		var u := SpawnRoll.unit(11, Vector2i(i, 3), "pack")
+		lo = minf(lo, u)
+		hi = maxf(hi, u)
+	assert_true(lo >= 0.0 and hi < 1.0 and hi - lo > 0.8, "unit rolls spread across [0, 1)")
+
+## The manifest is cached (including an empty result); `reload_manifest` is how a mount that
+## happens after the first lookup gets seen.
+func _test_asset_reload_manifest() -> void:
+	AssetOverlay._manifest = { "meshes": { "models/not_a_real_key.glb.raw": "x" } }
+	AssetOverlay._manifest_loaded = true
+	assert_true(AssetOverlay.has_key("meshes", "models/not_a_real_key.glb.raw"), "the cached view answers")
+	assert_false(AssetOverlay.has_key("meshes", "models/placeholder_rig.glb.raw"), "and hides what it does not hold")
+	AssetOverlay.reload_manifest()
+	assert_false(AssetOverlay._manifest_loaded, "the cache is marked stale")
+	assert_true(AssetOverlay.has_key("meshes", "models/placeholder_rig.glb.raw"), "the next lookup re-reads the manifest")
+	assert_false(AssetOverlay.has_key("meshes", "models/not_a_real_key.glb.raw"), "and the stale entry is gone")

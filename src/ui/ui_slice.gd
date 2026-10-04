@@ -106,7 +106,7 @@ var _proposal_title: LineEdit = null
 var _proposal_body: LineEdit = null
 var _proposal_feedback: Label = null
 ## `str(character_rows())` at the last grid build; an unchanged one skips the rebuild.
-var _character_rows_signature := ""
+var _character_rows_signature: int = 0
 
 func _ready() -> void:
 	_build_ui()
@@ -676,7 +676,7 @@ func refresh_character() -> void:
 	# An appearance change that left the worn set alone (a palette tweak, a LOD swap)
 	# produces the same rows; rebuilding the whole grid for it is wasted work.
 	var rows := character_rows()
-	var signature := str(rows)
+	var signature: int = rows.hash()
 	if signature == _character_rows_signature and _character_grid.get_child_count() > 0:
 		return
 	_character_rows_signature = signature

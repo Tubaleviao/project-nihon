@@ -39,6 +39,8 @@ var _production_active := false
 func _ready() -> void:
 	_production_active = _mount_production_pack()
 	if _production_active:
+		reload_manifest()   # a lookup made before the mount cached the public-only view
+	if _production_active:
 		pass
 	else:
 		pass
@@ -102,6 +104,15 @@ func manifest() -> Dictionary:
 			_read_manifest(OVERLAY_PREFIX + MANIFEST_REL))
 		_manifest_loaded = true
 	return _manifest
+
+
+## Forget the cached manifest so the next lookup re-reads it. The cache holds the "nothing
+## found" outcome too (a missing file is not re-read on every lookup), so anything that changes
+## what is mounted under res:// after a first lookup must call this: `_ready` does after it
+## mounts the production pack, and a caller that mounts one later should do the same.
+func reload_manifest() -> void:
+	_manifest = {}
+	_manifest_loaded = false
 
 
 ## `overlay` merged over `base`, per asset kind and per key (the overlay wins a clash).
