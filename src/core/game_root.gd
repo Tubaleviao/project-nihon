@@ -1107,7 +1107,9 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	# Phase 33 — world/entity data only: the peer's own record is NOT re-sent, or
 	# the client would re-apply a stale position/HP/inventory on every region
 	# crossing (the record is written at load and at disconnect, not per frame).
-	_networking.send_snapshot(peer_id, _build_snapshot(peer_id, false))
+	# The crossing position is passed explicitly: this handler may run before the
+	# networking slice's own handler has recorded it, so get_aoi_center() can be stale.
+	_networking.send_snapshot(peer_id, _build_snapshot(peer_id, false, position))
 
 func _process(delta: float) -> void:
 	# Phase 42 — complete a host boot whose first ring has finished building. It has
@@ -1221,7 +1223,8 @@ func _on_server_disconnected() -> void:
 ## it receives as authoritative — so carrying a stale record on an AOI re-scope
 ## would teleport the client to its last-saved position and roll its inventory and
 ## technology back to that instant.
-func _build_snapshot(peer_id: int, include_own_record: bool = true) -> Dictionary:
+func _build_snapshot(peer_id: int, include_own_record: bool = true,
+		aoi_center_override: Variant = null) -> Dictionary:
 	var players := {}
 	var host_pos := _player.get_position()
 	if _networking.in_aoi(peer_id, host_pos):
@@ -1239,6 +1242,8 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true) -> Dictionar
 	# only the edits within EDITS_SCOPE_RADIUS and name that scope.
 	var full_edits := include_own_record
 	var aoi_center: Vector3 = _networking.get_aoi_center(peer_id)
+	if aoi_center_override is Vector3:
+		aoi_center = aoi_center_override
 	var snapshot := {
 		# Phase 41 — the world's SEED, not its heightmaps: the client regenerates
 		# the host's terrain from the same noise field instead of receiving every

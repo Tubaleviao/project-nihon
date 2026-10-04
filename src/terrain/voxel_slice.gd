@@ -1403,9 +1403,7 @@ func apply_scoped_chunk_manifest(manifest: Dictionary, center: Vector3, radius: 
 		for key in _edits_by_chunk[ckey]:
 			edits[key] = _edits[key]
 	for ckey in manifest:
-		var chunk_data: Variant = manifest[ckey]
-		if not (chunk_data is Dictionary):
-			continue
+		var chunk_data: Dictionary = manifest[ckey]
 		if chunk_data.has("edits"):
 			for key in chunk_data["edits"]:
 				edits[key] = chunk_data["edits"][key]
