@@ -216,7 +216,7 @@ static func _build_vein(seed: int, cell: Vector3i) -> Dictionary:
 	var anchor := Vector2i(floori(cx), floori(cz))
 	var center_xz := Vector2(cx * TILE_SIZE, cz * TILE_SIZE)
 	var biome := TerrainSlice.biome_for_chunk(Vector2i(
-		floori(float(anchor.x) / float(CHUNK_SIZE)), floori(float(anchor.y) / float(CHUNK_SIZE))))
+		floori(float(anchor.x) / float(CHUNK_SIZE)), floori(float(anchor.y) / float(CHUNK_SIZE))), seed)
 	var material := _pick_material(seed, biome, cd, center_xz, _unit(_hash(seed, cell, _SALT_MATERIAL)))
 	if material == "":
 		return {}

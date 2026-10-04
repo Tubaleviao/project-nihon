@@ -947,7 +947,14 @@ func _pin_world_seed() -> void:
 	for candidate in range(1, 1000):
 		terrain.set_world_seed(candidate)
 		var biome: String = str(terrain.get_biome_at_chunk(origin))
-		if _root._tree.tree_count_for(origin, biome) >= MIN_ORIGIN_TREES:
+		if _root._tree.tree_count_for(origin, biome) < MIN_ORIGIN_TREES:
+			continue
+		# Count alone is not enough: the scenario needs `TARGETS_NEEDED` trees within reach
+		# of the rendezvous, so trial-spawn the chunk and look at where the trees stand.
+		_root._tree.spawn_for_chunk(origin)
+		var usable := _targets().size() >= TARGETS_NEEDED
+		_root._tree.despawn_for_chunk(origin)
+		if usable:
 			return
 	push_error("net-harness: no seed gives chunk (0,0) enough trees")
 	_failed = true

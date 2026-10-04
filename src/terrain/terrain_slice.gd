@@ -111,11 +111,11 @@ func get_biome_at(world_pos: Vector2) -> String:
 	return get_biome_at_chunk(world_to_chunk(world_pos))
 
 ## Return the biome key for a whole chunk, deterministically derived from the
-## chunk coordinate and BIOME_SEED. Same (cx, cz) always yields the same biome.
+## chunk coordinate and the world seed, so two worlds lay their biome regions out differently.
 ## Uses integer multiply-mix (Knuth multiplicative hashing) for better distribution
 ## than converting integers to strings and calling .hash().
 func get_biome_at_chunk(chunk_pos: Vector2i) -> String:
-	return biome_for_chunk(chunk_pos)
+	return biome_for_chunk(chunk_pos, _world_seed)
 
 ## Phase 43 — the STATIC form of `get_biome_at_chunk`: a pure function of the chunk and the
 ## `BIOME_SEED` const, so the ore field (`src/terrain/ore_field.gd`) can ask a vein's biome on
