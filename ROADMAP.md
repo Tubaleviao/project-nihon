@@ -5117,7 +5117,7 @@ report, 2026-10-04).
 
 **Progress:** the unbuilt-neighbour seam fix is in (`_generated_heightmap`), and biomes are
 seeded Voronoi regions (`src/terrain/climate_field.gd`, 8-chunk cells; the temperature/moisture
-envelopes from the fabric are still open). Topsoil colouring (biome `surfaceTint`/`soilTint`/`topsoilDepth` fabric fields, flat per biome, no dither or border blend yet; `Grass`/`Soil` material entities and mining-yields-Soil still open), ore-field and frame-spike items are still open, so the
+envelopes from the fabric are still open). Topsoil colouring (biome `surfaceTint`/`soilTint`/`topsoilDepth` fabric fields, flat per biome, no dither or border blend yet; `Grass`/`Soil` material entities and mining-yields-Soil still open), ore-field and the remaining frame-spike items (`_prune_heightmaps` is now indexed by chunk; budgeted unloads, tree-spawn spatial hash still open) are still open, so the
 phase is not marked done.
 
 **Known simplifications:**

@@ -978,7 +978,7 @@ func unload_chunk(chunk_pos: Vector2i) -> void:
 	if _chunks.has(key):
 		_chunks[key].queue_free()
 		_chunks.erase(key)
-	_prune_heightmaps()
+	_prune_heightmaps(chunk_pos)
 
 ## Drop the base heightmaps of chunks that are no longer worth remembering: one
 ## that is unloaded AND not edge-adjacent to any loaded chunk.
@@ -994,21 +994,34 @@ func unload_chunk(chunk_pos: Vector2i) -> void:
 ## when it is streamed back). Nothing is lost with the map: edits are keyed by
 ## TILE, and a pruned chunk's natural run comes from the same height function the
 ## map was sampled from.
-func _prune_heightmaps() -> void:
-	var keep: Dictionary = {}
-	for key in _chunks:
-		var parts: PackedStringArray = str(key).split(",")
-		var cx := int(parts[0])
-		var cz := int(parts[1])
-		for probe in [Vector2i(cx, cz), Vector2i(cx - 1, cz), Vector2i(cx + 1, cz),
-				Vector2i(cx, cz - 1), Vector2i(cx, cz + 1)]:
-			keep[_chunk_key(probe)] = true
-	for key in _heightmaps.keys():
-		if not keep.has(key):
-			_heightmaps.erase(key)
-	for key in _guess_heightmaps.keys():
-		if not keep.has(key):
-			_guess_heightmaps.erase(key)
+##
+## Indexed by chunk: unloading one chunk can only change the keep verdict of that chunk
+## and its four edge neighbours, so only those five are probed (each against its own
+## four neighbours) instead of scanning every loaded chunk and every stored map. A
+## crossing unloads a dozen chunks in one frame; the full scan made that quadratic.
+##
+## The candidates are the full 3x3 around the unloaded chunk, not just its plus ring: a build
+## also guesses its DIAGONAL neighbours' maps (`_ring_chunks` is 3x3, for the corner tile),
+## and those guesses must be dropped when the chunk that caused them unloads. The keep rule
+## itself is unchanged (loaded or edge-adjacent to a loaded chunk).
+func _prune_heightmaps(around: Vector2i) -> void:
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			var candidate := Vector2i(around.x + dx, around.y + dz)
+			var kept := false
+			for probe in _plus_ring(candidate):
+				if _chunks.has(_chunk_key(probe)):
+					kept = true
+					break
+			if not kept:
+				var ckey := _chunk_key(candidate)
+				_heightmaps.erase(ckey)
+				_guess_heightmaps.erase(ckey)
+
+## A chunk and its four edge neighbours.
+func _plus_ring(c: Vector2i) -> Array:
+	return [c, Vector2i(c.x - 1, c.y), Vector2i(c.x + 1, c.y),
+			Vector2i(c.x, c.y - 1), Vector2i(c.x, c.y + 1)]
 
 ## Return the set of chunks currently holding live mesh nodes.
 func get_loaded_chunks() -> Array:
