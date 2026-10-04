@@ -3454,6 +3454,8 @@ func _test_voxel_unload_prunes_heightmaps() -> void:
 	v.unload_chunk(Vector2i(9, 9))
 	assert_false(v.get_heightmaps().has("9,9"), "an unloaded chunk with no loaded neighbour is pruned")
 	assert_true(v.get_heightmaps().has("0,0"), "while the loaded chunk's map stays")
+	v.unload_chunk(Vector2i(0, 0))
+	assert_true(v.get_heightmaps().is_empty(), "unloading the last chunk prunes it and its ring")
 	v.free()
 
 ## Review pass — a snapshot rebuilds only the chunks whose edits CHANGED, and never
