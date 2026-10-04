@@ -575,6 +575,8 @@ signal equipment_changed(player_id: String, worn: Dictionary)
 ## Phase 47 — client: another peer's worn set arrived from the host. `peer_id`
 ## names the OWNER (the signal is never ownerless).
 signal peer_equipment_synced(peer_id: int, worn: Dictionary)
+## Phase 48 — host → client: that peer left our AOI; forget its stored worn set.
+signal peer_equipment_evicted(peer_id: int)
 
 ## Emitted by TamingSlice with the outcome of a tame attempt.
 ## result : Dictionary — { instance_id, creature_id, success, reason, result,

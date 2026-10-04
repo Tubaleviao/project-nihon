@@ -406,6 +406,7 @@ func _ready() -> void:
 	GameBus.remote_player_state.connect(_on_remote_player_state)
 	GameBus.character_appearance_changed.connect(_on_character_appearance_changed)
 	GameBus.peer_equipment_synced.connect(_character.set_peer_equipment)
+	GameBus.peer_equipment_evicted.connect(_character.evict_peer_equipment)
 	GameBus.world_snapshot_received.connect(_on_world_snapshot_received)
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
@@ -1076,6 +1077,9 @@ func _process(delta: float) -> void:
 	_tick_pending_client_boot(delta)
 
 	_sync_player_avatar(delta)
+	if not _is_client and _player != null:
+		# Phase 48 — the host avatar's AOI membership drives peer-equipment sends.
+		_networking.set_host_position(_player.get_position())
 	# Distance-driven LOD (Phase 23) — evaluate each character's world distance
 	# to the player each frame and swap fine detail / the impostor billboard in
 	# and out. No-op until characters exist and on clients (no spawned visuals).

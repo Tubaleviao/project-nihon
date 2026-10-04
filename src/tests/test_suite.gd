@@ -199,6 +199,9 @@ func run() -> void:
 	_run_test("taming: bare hands required",                   _test_taming_requires_unarmed)
 	_run_test("taming: a peer's hands are the host's record",   _test_taming_peer_bare_hands_claim)
 	_run_test("equipment: an intent needs an owned item",       _test_equipment_intent_requires_ownership)
+	_run_test("equipment: oversized claim dropped",             _test_equipment_oversized_claim_dropped)
+	_run_test("equipment: bag loss clears the slot",            _test_equipment_revalidated_on_bag_loss)
+	_run_test("equipment: slots cached, peer evict, owner map", _test_equipment_phase48_misc)
 	_run_test("equipment: rules totals + sanitize",             _test_equipment_rules_totals)
 	_run_test("equipment: derived stats + record + replicate",  _test_character_derived_stats_and_record)
 	_run_test("ui: character window rows + equip",              _test_ui_character_rows)
@@ -8290,19 +8293,19 @@ func _test_taming_peer_bare_hands_claim() -> void:
 ## Phase 47 — the pure rules: slots come from the fabric, totals are sums of fabric
 ## values (zeros for an empty set), and a claim is filtered through the slot table.
 func _test_equipment_rules_totals() -> void:
-	var slots: Array = EquipmentRules.slots()
+	var slots: Array = EquipmentRules.slots(GameData.ITEMS)
 	for expected in ["Head", "Chest", "Cape", "OffHand", "MainHand"]:
 		assert_true(slots.has(expected), "the fabric defines slot %s" % expected)
-	assert_eq(int(EquipmentRules.totals({})["defense"]), 0, "an empty set totals zero")
+	assert_eq(int(EquipmentRules.totals({}, GameData.ITEMS)["defense"]), 0, "an empty set totals zero")
 	var worn := { "Head": "FerriteHelmet", "Chest": "VeilsteelChestplate" }
 	var expect := 0
 	for item in worn.values():
 		expect += GameDataReader.int_field(GameData.ITEMS[item], "defense", 0)
 	assert_true(expect > 0, "armour carries a fabric defense value")
-	assert_eq(int(EquipmentRules.totals(worn)["defense"]), expect, "totals equal the sum of the fabric values")
-	var clean := EquipmentRules.sanitize({ "Head": "VeilsteelChestplate", "Bogus": "FerriteHelmet", "Chest": "VeilsteelChestplate", "Cape": "NoSuchItem" })
+	assert_eq(int(EquipmentRules.totals(worn, GameData.ITEMS)["defense"]), expect, "totals equal the sum of the fabric values")
+	var clean := EquipmentRules.sanitize({ "Head": "VeilsteelChestplate", "Bogus": "FerriteHelmet", "Chest": "VeilsteelChestplate", "Cape": "NoSuchItem" }, GameData.ITEMS)
 	assert_eq(clean, { "Chest": "VeilsteelChestplate" }, "wrong-slot, unknown-slot and unknown-item claims are dropped")
-	assert_true(EquipmentRules.sanitize("junk").is_empty(), "a non-dictionary claim is empty")
+	assert_true(EquipmentRules.sanitize("junk", GameData.ITEMS).is_empty(), "a non-dictionary claim is empty")
 
 ## Phase 47 — equipping changes the avatar AND the derived totals; a worn set
 ## round-trips through the player record and survives an eviction-less reload.
@@ -8365,7 +8368,7 @@ func _test_ui_character_rows() -> void:
 	ui.character_slice = ch
 	add_child(ui)
 	var rows: Array = ui.character_rows()
-	assert_eq(rows.size(), EquipmentRules.slots().size(), "one row per fabric slot")
+	assert_eq(rows.size(), EquipmentRules.slots(GameData.ITEMS).size(), "one row per fabric slot")
 	assert_eq(ui.character_stats_text(), "Defense 0", "empty set totals zero")
 	assert_true(ui.dispatch_item_action("FerriteHelmet", "equip"), "equip goes through apply_equipment")
 	assert_eq(ch.get_equipment_set(cid).get("Head", ""), "FerriteHelmet", "the avatar wears it")
@@ -11427,3 +11430,63 @@ func _test_equipment_intent_requires_ownership() -> void:
 	GameBus.equipment_intent.emit(peer, { "Chest": "VeilsteelChestplate" })
 	assert_eq(registry.get_equipment(peer).get("Chest", ""), "VeilsteelChestplate", "an owned one is recorded")
 	registry.free()
+
+
+## Phase 48 — a claim with more entries than there are slots is dropped before any
+## per-entry work, leaving the record untouched.
+func _test_equipment_oversized_claim_dropped() -> void:
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var peer := str(registry.resolve_identity(2))
+	registry.get_inventory(peer).add_item("VeilsteelChestplate", 1)
+	GameBus.equipment_intent.emit(peer, { "Chest": "VeilsteelChestplate" })
+	var before := registry.get_equipment(peer)
+	assert_false(before.is_empty(), "a sane claim is recorded")
+	var big: Dictionary = {}
+	for i in range(EquipmentRules.slots(GameData.ITEMS).size() + 1):
+		big["Slot%d" % i] = "VeilsteelChestplate"
+	GameBus.equipment_intent.emit(peer, big)
+	assert_eq(registry.get_equipment(peer), before, "an oversized claim leaves the record untouched")
+	registry.free()
+
+## Phase 48 — wearing an item and then losing it from the bag clears the slot and
+## emits equipment_changed through the same record path as an equip.
+func _test_equipment_revalidated_on_bag_loss() -> void:
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var peer := str(registry.resolve_identity(2))
+	var inv: Node = registry.get_inventory(peer)
+	inv.add_item("VeilsteelChestplate", 1)
+	GameBus.equipment_intent.emit(peer, { "Chest": "VeilsteelChestplate" })
+	assert_eq(registry.get_equipment(peer).get("Chest", ""), "VeilsteelChestplate", "worn after the claim")
+	var seen: Array = []
+	var cb := func(pid: String, worn: Dictionary) -> void: seen.append([pid, worn])
+	GameBus.equipment_changed.connect(cb)
+	assert_true(inv.drop_item("VeilsteelChestplate", 1), "the peer drops it")
+	GameBus.equipment_changed.disconnect(cb)
+	assert_true(registry.get_equipment(peer).is_empty(), "the slot is cleared once the bag no longer holds it")
+	assert_eq(seen.size(), 1, "exactly one equipment_changed was emitted")
+	if seen.size() == 1:
+		assert_true((seen[0][1] as Dictionary).is_empty(), "the change carries the emptied set")
+	registry.free()
+
+func _test_equipment_phase48_misc() -> void:
+	var first := EquipmentRules.slots(GameData.ITEMS)
+	first.append("Mutated")
+	assert_false(EquipmentRules.slots(GameData.ITEMS).has("Mutated"), "slots() hands out copies of its cache")
+	assert_true(EquipmentRules.slots({}).is_empty(), "an empty item table is an empty fabric, not GameData.ITEMS")
+	assert_eq(EquipmentRules.slots(GameData.ITEMS), EquipmentRules.slots(GameData.ITEMS), "cached result is stable")
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	ch.set_peer_equipment(9, { "Chest": "VeilsteelChestplate" })
+	ch.evict_peer_equipment(9)
+	assert_eq(ch.get_peer_equipment(9), {}, "an AOI exit evicts the stored set")
+	ch.free()
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._equipment_sent["2:1"] = true
+	n._equipment_sent["3:2"] = true
+	n._equipment_sent["3:4"] = true
+	n._forget_equipment_pairs(2)
+	assert_eq(n._equipment_sent.keys(), ["3:4"], "a disconnect drops every pair that involved the peer")
+	n.free()

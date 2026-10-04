@@ -598,7 +598,7 @@ func _step_equipment_recorded() -> void:
 	var keys: Array = GameData.ITEMS.keys()
 	keys.sort()
 	for k in keys:
-		var sl := EquipmentRules.slot_of(str(k))
+		var sl := EquipmentRules.slot_of(str(k), GameData.ITEMS)
 		if sl != "":
 			slot = sl
 			item = str(k)
