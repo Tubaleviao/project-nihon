@@ -1234,6 +1234,10 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true) -> Dictionar
 		if _networking.in_aoi(peer_id, last_pos):
 			players[str(pid)] = [last_pos.x, last_pos.y, last_pos.z]
 	var player_id := _registry.get_player_id(peer_id)
+	# A join/reconnect snapshot (own record included) carries the full edit manifest: the
+	# peer's real position may be unknown (AOI centre defaults to spawn). Re-scopes send
+	# only the edits within EDITS_SCOPE_RADIUS and name that scope.
+	var full_edits := include_own_record
 	var aoi_center: Vector3 = _networking.get_aoi_center(peer_id)
 	var snapshot := {
 		# Phase 41 — the world's SEED, not its heightmaps: the client regenerates
@@ -1243,8 +1247,8 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true) -> Dictionar
 		"seed":      _terrain.get_world_seed(),
 		# Phase 49 — only the edits of chunks inside the peer's AOI, with the scope named so
 		# the client keeps what it holds outside it.
-		"edits":     _voxel.get_chunk_manifest_in_radius(aoi_center, NetworkingSlice.AOI_RADIUS),
-		"edits_aoi": [aoi_center.x, aoi_center.z, NetworkingSlice.AOI_RADIUS],
+		"edits":     (_voxel.get_chunk_manifest() if full_edits
+				else _voxel.get_chunk_manifest_in_radius(aoi_center, NetworkingSlice.EDITS_SCOPE_RADIUS)),
 		"creatures": _scoped_creatures(peer_id),
 		"stations":  _station.get_station_data(),
 		"players":   players,
@@ -1258,6 +1262,8 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true) -> Dictionar
 	# the constant there were two places to update, and the failure mode was a blob a
 	# client would adopt but nobody would redact.
 	snapshot.merge(_networking.redact_social_state(_social_state()))
+	if not full_edits:
+		snapshot["edits_aoi"] = [aoi_center.x, aoi_center.z, NetworkingSlice.EDITS_SCOPE_RADIUS]
 	# The peer's own record exists only once the host resolved its identity, and it
 	# is shipped only on the handshake snapshot — an AOI re-scope omits the keys
 	# entirely, so the client keeps the state it already holds.

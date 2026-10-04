@@ -5192,15 +5192,17 @@ func _test_snapshot_edits_scoped_to_aoi() -> void:
 	add_child(host)
 	# Chunk (0,0) is near the origin; chunk (20,20) is ~640 m away.
 	host.apply_edits({ "32,32": 1.0, "%d,%d" % [20 * 64 + 5, 20 * 64 + 5]: 3.0 })
-	var scoped: Dictionary = host.get_chunk_manifest_in_radius(Vector3.ZERO, NetworkingSlice.AOI_RADIUS)
+	var scoped: Dictionary = host.get_chunk_manifest_in_radius(Vector3.ZERO, NetworkingSlice.EDITS_SCOPE_RADIUS)
 	assert_true(scoped.has("0,0"), "AOI manifest holds the chunk in range")
 	assert_false(scoped.has("20,20"), "AOI manifest omits the chunk out of range")
+	assert_true(NetworkingSlice.EDITS_SCOPE_RADIUS > 3.0 * 32.0 + NetworkingSlice.AOI_RADIUS,
+		"edit scope covers the streamed view ring plus an AOI cell of roaming")
 	assert_eq(host.get_chunk_manifest().size(), 2, "full manifest still holds both")
 	# A client that already holds a far edit keeps it across a scoped apply.
 	var client := VoxelSlice.new()
 	add_child(client)
 	client.apply_edits({ "%d,%d" % [20 * 64 + 5, 20 * 64 + 5]: 3.0 })
-	client.apply_scoped_chunk_manifest(scoped, Vector3.ZERO, NetworkingSlice.AOI_RADIUS)
+	client.apply_scoped_chunk_manifest(scoped, Vector3.ZERO, NetworkingSlice.EDITS_SCOPE_RADIUS)
 	var held: Dictionary = client.get_chunk_manifest()
 	assert_true(held.has("0,0"), "client adopted the in-scope edit")
 	assert_true(held.has("20,20"), "client kept its out-of-scope edit")
