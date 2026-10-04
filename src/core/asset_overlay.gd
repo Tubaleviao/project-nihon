@@ -111,7 +111,8 @@ func keys(kind: String) -> Array:
 
 ## True when the manifest lists `key` under `kind`.
 func has_key(kind: String, key: String) -> bool:
-	return key in keys(kind)
+	var section = manifest().get(kind, {})
+	return section is Dictionary and key in section
 
 
 ## Canonical key for a creature-family model: `models/creatures/<Entity>.glb.raw`.
@@ -149,7 +150,14 @@ static func _first_mesh(n: Node) -> Mesh:
 ## Load a canonical key as a full scene root (meshes, skeleton and AnimationPlayer
 ## with node paths intact, so its clips resolve). Caller owns the node. Null on failure.
 func load_rig_scene(rel: String) -> Node3D:
-	return _load_gltf_scene(rel) as Node3D
+	var root := _load_gltf_scene(rel)
+	if root == null:
+		return null
+	if not root is Node3D:
+		Diag.warn("[AssetOverlay] %s root is not a Node3D" % rel)
+		root.free()
+		return null
+	return root as Node3D
 
 
 ## Load a canonical key as a Mesh (first mesh in the glTF). Null on failure.

@@ -111,7 +111,7 @@ module.exports = {
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees; 0 = never flees', defaultValue: 0.0 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 7200 },
       spawnCount:     { type: 'integer', description: 'PACK size: instances placed together at one spawn point (not a per-chunk count); singleton per rift zone', defaultValue: 1 },
-      spawnChance:    { type: 'decimal', description: 'Probability (0–1) that a chunk of this creature\'s biome rolls a pack at all', defaultValue: 0.6 },
+      spawnChance:    { type: 'decimal', description: 'Probability (0–1) that a chunk of this creature\'s biome rolls a pack at all; kept low so the warden stays rare', defaultValue: 0.05 },
       spawnDensity:   { type: 'decimal', description: 'Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world', defaultValue: 0.5 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'VoidRift' },
       drops: dropsData([

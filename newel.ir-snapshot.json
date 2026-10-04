@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:3fece82bd46a236ecaee8ab60f297d3a2bcbf327f44f815bcae36e3eec08d448",
+  "schemaHash": "sha256:6cf4d6cb4efddd467a7c1b79ae319b78bbdd6ba5cb8b07c2869b98f09db0a665",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -20043,11 +20043,11 @@
           "spawnChance": {
             "name": "spawnChance",
             "type": "decimal",
-            "description": "Probability (0–1) that a chunk of this creature's biome rolls a pack at all",
+            "description": "Probability (0–1) that a chunk of this creature's biome rolls a pack at all; kept low so the warden stays rare",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 0.6
+            "defaultValue": 0.05
           },
           "spawnDensity": {
             "name": "spawnDensity",

@@ -799,7 +799,7 @@ func _station_target() -> Vector3:
 	if _aimed_block_hit and _aimed_block_normal.y > 0.5:
 		return _aimed_block_pos + Vector3(0.0, 0.5, 0.0)
 	var pos := get_position()
-	pos.y -= 0.9   # sit the marker at the player's feet
+	pos.y -= 0.4   # feet (-0.9) plus the half-height lift the aimed branch uses
 	return pos
 
 
@@ -807,6 +807,10 @@ func _station_target() -> Vector3:
 ## is toggled on (N).
 func _update_station_preview() -> void:
 	if not _station_preview_on or station_slice == null or not station_slice.has_method("show_preview"):
+		return
+	# The ghost must not track the view under an open menu or the loading freeze.
+	if not world_input_allowed():
+		station_slice.hide_preview()
 		return
 	var stype := str(station_slice.get_place_station_type()) if station_slice.has_method("get_place_station_type") else ""
 	if stype == "":
