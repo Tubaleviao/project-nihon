@@ -124,6 +124,12 @@ const DEFAULT_LOADS_PER_FRAME := 1
 ## keeps the pool available for other work; results are applied as they complete.
 const DEFAULT_MAX_BUILDS_IN_FLIGHT := 4
 
+## Phase 49 — chunk unloads per `_process` tick. A crossing releases 9-17 chunks at once and
+## each unload frees a mesh, a trimesh and the chunk's creatures and trees; spreading them
+## over frames, like loads, removes that spike. `refresh()` itself still unloads everything
+## synchronously (its contract); only the per-frame `_process` path is budgeted.
+const DEFAULT_UNLOADS_PER_FRAME := 4
+
 ## Phase 42 review — how many times one chunk's build may be dispatched before the
 ## manager gives up on it and reports the failure. It exists because a worker result can
 ## now be REFUSED (an empty result, or a chunk rebuilt under it) and a refusal is answered
@@ -163,6 +169,9 @@ var prefetch_distance: int = DEFAULT_PREFETCH_DISTANCE
 ## Chunk dispatches to process per _process tick (see DEFAULT_LOADS_PER_FRAME).
 var loads_per_frame: int = DEFAULT_LOADS_PER_FRAME
 
+## Chunk unloads to process per _process tick (see DEFAULT_UNLOADS_PER_FRAME).
+var unloads_per_frame: int = DEFAULT_UNLOADS_PER_FRAME
+
 ## Worker builds allowed in flight at once (see DEFAULT_MAX_BUILDS_IN_FLIGHT).
 var max_builds_in_flight: int = DEFAULT_MAX_BUILDS_IN_FLIGHT
 
@@ -185,6 +194,11 @@ var _load_queue: Array = []    # of Vector2i
 ## Chunks enqueued but not yet built; dedupes against _load_queue so a refresh
 ## pass never double-queues a chunk already waiting to load.
 var _pending: Dictionary = {}  # "cx,cz" -> true
+
+## Phase 49 — loaded chunks that fell out of the window and wait for their unload slot,
+## drained `unloads_per_frame` per tick by `_drain_unload_queue`. Re-checked against the
+## window at drain time, so a chunk the player walked back toward is kept.
+var _unload_queue: Array = []  # of "cx,cz" keys
 
 ## Phase 42 — worker builds in flight, keyed by WorkerThreadPool task id:
 ## { chunk, key, heightmap, revision, result }. `result` is a one-slot Array the
@@ -255,7 +269,8 @@ func _process(_delta: float) -> void:
 	if not _active:
 		return
 	_drain_load_queue()
-	refresh()
+	refresh(false)
+	_drain_unload_queue(unloads_per_frame)
 
 ## Begin automatic streaming (driven by _process). The first `refresh()` is what
 ## centres the window, so the caller places the player before calling it —
@@ -290,7 +305,7 @@ func stop() -> void:
 ## The memory pass 8 was protecting is bounded by the radius instead of by a second window:
 ## `DEFAULT_PREFETCH_DISTANCE` is 1, so the resident set is 81 chunks (9×9) — the 49-chunk
 ## view ring plus a one-chunk lead — rather than 121.)**
-func refresh() -> void:
+func refresh(unload_now: bool = true) -> void:
 	var center := player_chunk()
 	var window_moved := center != _last_center
 	# Phase 42 review pass 4 — ONE `window_moved` decision, not two consecutive blocks.
@@ -327,12 +342,32 @@ func refresh() -> void:
 		_pending[_chunk_key(c)] = true
 		_load_queue.append(c)
 
-	# Unloads are cheap (queue_free only), so they run immediately.
-	for key in _loaded.keys():
-		if not wanted.has(key):
-			unload_chunk(_key_to_chunk(key))
+	# Phase 49 — a synchronous `refresh()` unloads everything now; the `_process` path
+	# (`unload_now == false`) queues the stale chunks and `_drain_unload_queue` releases a
+	# bounded number per frame.
+	if unload_now:
+		for key in _loaded.keys():
+			if not wanted.has(key):
+				unload_chunk(_key_to_chunk(key))
+		_unload_queue.clear()
+	else:
+		_unload_queue.clear()
+		for key in _loaded.keys():
+			if not wanted.has(key):
+				_unload_queue.append(key)
+		var c0 := center
+		_unload_queue.sort_custom(func(a, b): return _dist2(c0, _key_to_chunk(a)) > _dist2(c0, _key_to_chunk(b)))
 
 	_self_heal_failed(center, true)
+
+## Phase 49 — release up to `budget` queued chunks, farthest first. The queue is rebuilt from
+## scratch on every window move, so it never holds a chunk that is inside the current window.
+func _drain_unload_queue(budget: int) -> void:
+	while budget > 0 and not _unload_queue.is_empty():
+		var key: String = _unload_queue.pop_front()
+		if _loaded.has(key):
+			unload_chunk(_key_to_chunk(key))
+			budget -= 1
 
 ## Phase 42 review — SELF-HEAL. A chunk in range that is loaded but has no built mesh
 ## is one whose build exhausted MAX_BUILD_RETRIES (see `_apply_build_entry`) and was
