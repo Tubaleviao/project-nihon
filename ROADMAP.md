@@ -4943,7 +4943,7 @@ compatibility but ignored — `TamingSlice.is_unarmed` reads the registry.
 
 ---
 
-## Phase 48 — Review pass: the equipment trust boundary
+## Phase 48 — Review pass: the equipment trust boundary ✅ Done
 
 **Goal:** Phase 47 made the host the owner of a peer's worn set, but the review
 follow-ups (#63, #64, #65, #66, #70) list the places where that ownership still
@@ -5002,169 +5002,7 @@ join. Close the host-side holes; display-only niceties stay out of scope.
 
 ---
 
-## Phase 49 — Two-client harness: equipment delivery over the socket
-
-**Goal:** The `equipment_recorded` harness step proves the host records a claim,
-but its client verdict is vacuous and AOI delivery to a peer is covered only in
-the suite (#71, #73, #74). Make the step's client side real and add a delivery
-step.
-
-**Newel dependency:** NO.
-
-**Closes:** #71, #73, #74.
-
-**Deliverables:**
-- `src/tests/net_harness.gd` — `_step_equipment_recorded`: the client verdict
-  asserts the packet was actually sent (drop the always-true `_await_until`), and
-  the resend loop is replaced by a host-driven ready signal (the host acks the
-  grant before the client claims).
-- The step pins a fixture item (a named equippable key, not "first sorted key")
-  and adds the case of an unknown item claimed under a REAL slot key.
-- A new `equipment_delivered` step: the client equips, and the host's AOI fan-out
-  delivers `peer_equipment` back to a second connection (or to the host's
-  client-side view), asserted on both peers.
-- `tools/net_harness.sh` planned-step count bumped; ROADMAP Phase 47 note
-  updated with the new count.
-
-**Acceptance criteria:**
-- [ ] Breaking the client send (e.g. not emitting the intent) makes the step fail
-  on the client side, not only on the host side.
-- [ ] Unknown item in a real slot is refused by the host and recorded as such.
-- [ ] `net-harness` reports `12/12 steps agreed across both peers` (or the new
-  total), with the delivery step verified on both peers.
-
----
-
-## Phase 50 — Station placement follow-ups
-
-**Goal:** Close the PR #67 review findings (#68) so placement is cheap per frame,
-consistent in height, honest when refused, and tested.
-
-**Newel dependency:** NO.
-
-**Closes:** #68.
-
-**Deliverables:**
-- `src/world/station_slice.gd` — `placeable_station_types()` cached (computed
-  once from RECIPES/ITEMS); `placement_blocker` compares snapped cells (x/z on the
-  1 m grid plus snapped y) instead of raw 3D distance, so two stations at the same
-  x/z cell but different heights are judged by a defined rule; Public API header
-  updated; `game_root` demo stations placed through `try_place_station`.
-- `src/player/player_slice.gd` — `_station_target` feet fallback uses the same
-  +0.5 y offset as the aimed branch; `_update_station_preview` is gated by
-  `world_input_allowed()`; a refused `V` surfaces the `placement_blocker` reason
-  (toast/status line via the UI shell).
-- Suite tests for `_station_target` (aimed top face, side hit, feet fallback),
-  the N toggle and V through `try_place_station`, including a refusal reason.
-
-**Acceptance criteria:**
-- [ ] `show_preview` per frame does not rescan RECIPES/ITEMS (asserted by a call
-  counter or by the cache being populated once).
-- [ ] Overlap rule is defined on snapped cells and asserted for same-cell /
-  different-height and adjacent-cell cases.
-- [ ] Preview ghost is hidden while a menu owns input.
-- [ ] A refused placement shows its reason; suite green on both boot paths.
-
----
-
-## Phase 51 — Spawn determinism and cost follow-ups
-
-**Goal:** Close the still-open PR #54 review notes (#55, #56, #57) on Phase 44
-spawning: pin the hash, keep pack members in their chunk, stop the O(instances)
-rescans, and fix docs that claim a client path that does not exist.
-
-**Newel dependency:** NO (per-species density/chance values for bosses such as
-RiftWarden are a fabric design question and stay out of scope).
-
-**Closes:** the code items of #55, #56, #57.
-
-**Deliverables:**
-- `src/tests/test_suite.gd` — a test pinning `SpawnRoll._mix` (and the roll
-  helpers built on it) to known output values, so an accidental hash change fails.
-- `src/creature/creature_slice.gd` — a running live-population counter (updated on
-  spawn, death, respawn, tame, despawn) replacing the per-call `live_population()`
-  scan in `spawn_for_chunk` / `_tick_respawn`; the counter is asserted equal to a
-  full scan after a mixed sequence.
-- Pack centre inset by the maximum member offset so every member lands inside the
-  chunk; packs larger than the offset table no longer stack on wrapped offsets.
-- A creature resource missing `spawnChance`/`spawnDensity` logs one warning
-  instead of silently never spawning.
-- Per-species density salt (derived from the species key) so densities of
-  different species/trees are not fully correlated.
-- `src/world/tree_slice.gd` — `_chunk_biome` computed once per `spawn_for_chunk`.
-- `spawn_roll.gd` header + ROADMAP Phase 44 wording: clients do not spawn
-  creatures; the determinism is a host reload guarantee.
-
-**Acceptance criteria:**
-- [ ] Hash-pin test exists and passes; changing `_mix` makes it fail.
-- [ ] Every spawned member position lies inside its chunk (asserted over many
-  seeds/chunks).
-- [ ] Live counter equals a full scan after spawn/kill/respawn/tame sequences.
-- [ ] Missing-field warning asserted; suite green on both boot paths.
-
----
-
-## Phase 52 — UI layout file robustness
-
-**Goal:** Close the PR #60 review notes (#61) so a hand-edited or truncated
-`ui_layout.json` and non-US keyboards behave.
-
-**Newel dependency:** NO.
-
-**Closes:** #61.
-
-**Deliverables:**
-- `src/ui/ui_slice.gd` — `parse_layout` rejects non-finite (NaN/inf) and absurd
-  magnitudes per entry (that window falls back to its default); `_save_layout`
-  writes to a temp file and renames over the target; `_apply_layout` clamps
-  against the control's real size once laid out.
-- The `?` controls-legend hotkey matches on `event.unicode == 63` (with the
-  existing keycode path kept as a fallback) so non-US layouts open it.
-- `parse_layout('not json')` test uses an input that does not log an engine
-  ERROR line (or the parse path avoids `JSON.parse_string` noise).
-
-**Acceptance criteria:**
-- [ ] A layout with `NaN`/`1e308` coordinates parses to defaults for that window,
-  asserted in the suite.
-- [ ] Save leaves either the old or the new complete file (temp + rename),
-  asserted by checking no partial file remains after a save.
-- [ ] Suite output contains no engine ERROR line from the layout tests.
-
----
-
-## Phase 53 — Wire the Phase 45 rig into the game
-
-**Goal:** `attach_rig`, `load_mesh`, `load_animation_library` and
-`creature_model_key` have no non-test caller (#59), so the asset pipeline is not
-exercised in play. Use it for the local avatar with a safe fallback.
-
-**Newel dependency:** NO.
-
-**Closes:** #59.
-
-**Deliverables:**
-- `src/character/character_slice.gd` — `attach_rig` hides the procedural box body
-  and stops the procedural limb swing on success; on failure (missing scene,
-  non-Node3D root — freed, not leaked) the procedural body stays.
-- `RigTree.build_tree` checks the required clips (idle/walk/run/fall/land/attack/
-  death), warns once per missing clip and maps missing ones to `idle`, so the
-  placeholder rig does not spam "Animation not found"; the dead `anim_player`
-  assignment / unused `player` param are removed or made real.
-- Asset manifest: parsed once and cached; a private-pack `manifest.json` merges by
-  key over the public one instead of replacing it.
-- `game_root` / player boot calls `attach_rig` for the local avatar when a rig key
-  resolves.
-
-**Acceptance criteria:**
-- [ ] With the public placeholder rig, the avatar renders the rig only (no box
-  body) and no "Animation not found" errors are logged.
-- [ ] With the rig key missing, the procedural body is used and nothing leaks.
-- [ ] Manifest merge asserted: a private key overrides, public-only keys survive.
-- [ ] Suite green on both boot paths.
-
----
-
-## Phase 54 — Zone crossing and natural ground
+## Phase 49 — Zone crossing and natural ground
 
 **Goal:** Crossing a chunk edge glitches, and the ground does not look like
 ground. Four separate problems produce this:
@@ -5277,12 +5115,12 @@ report, 2026-10-04).
 **Known simplifications:**
 - The grass is a vertex colour, with no texture and no grass blades. Textured
   terrain needs UVs that greedy merging drops; deferred.
-- The climate field is planar here. Phase 56 makes temperature follow latitude
+- The climate field is planar here. Phase 51 makes temperature follow latitude
   and altitude.
 
 ---
 
-## Phase 55 — Planet coordinates
+## Phase 50 — Planet coordinates
 
 **Goal:** The world is an 8 km square: `WORLD_RADIUS_CHUNKS := 128`,
 `clamp_to_world` at `terrain_slice.gd:152`, and float32 positions with no
@@ -5302,7 +5140,7 @@ huge world costs storage only where players build. Around 5×10¹¹ chunks are
 generated on demand and never written.
 
 **Newel dependency:** YES. A world-system entity in `fabric/world/world.js`
-holds `circumferenceKm`, `polarLatitude` and `seaLevel` (used by Phase 56), so
+holds `circumferenceKm`, `polarLatitude` and `seaLevel` (used by Phase 51), so
 the planet's size is a fabric fact.
 
 **Closes:** the world-size limit.
@@ -5335,12 +5173,12 @@ the planet's size is a fabric fact.
 - [ ] A player teleported 10,000 km out walks, mines and builds with the same
   0.125 step precision as at the origin (manual check plus a unit test on the
   quantiser at large chunk indices).
-- [ ] A Phase 54 save loads with its edits at the mapped coordinates.
+- [ ] A Phase 49 save loads with its edits at the mapped coordinates.
 - [ ] Suite green on both boot paths, and `tools/net_harness.sh` agrees.
 
 ---
 
-## Phase 56 — Continents, oceans and mountains
+## Phase 51 — Continents, oceans and mountains
 
 **Goal:** Terrain is a single gentle FBM field 0–5 m tall (`HEIGHT_SCALE := 5.0`,
 3 octaves at frequency 0.05) in a −8..16 m column. It has no sea level, no
@@ -5348,7 +5186,7 @@ ocean, no mountain and no climate. This phase gives the planet a large-scale
 shape and makes biomes follow climate the way Earth's do.
 
 **Newel dependency:** YES.
-- Biome climate envelopes from Phase 54 are extended with altitude.
+- Biome climate envelopes from Phase 49 are extended with altitude.
 - Earth-like biomes join the fantasy ones: Ocean, Beach, Desert, Tundra,
   Alpine, Taiga and Savanna, each with `surfaceMaterial`, `treeDensity` and
   spawn rules.
@@ -5400,7 +5238,7 @@ shape and makes biomes follow climate the way Earth's do.
 
 ---
 
-## Phase 57 — Region storage and per-player server streaming
+## Phase 52 — Region storage and per-player server streaming
 
 **Goal:** Two things stop the planet from persisting and simulating where its
 players are.
@@ -5433,7 +5271,7 @@ players are.
   The listen host keeps its own window as today.
 - Creature and tree simulation, plus edit validation, run against the union
   window, so a peer 5,000 km away has a live world around them.
-- Migration: a monolithic Phase 56 `world.json` splits into region files on
+- Migration: a monolithic Phase 51 `world.json` splits into region files on
   first boot.
 
 **Acceptance criteria:**
@@ -5442,12 +5280,12 @@ players are.
 - [ ] A save after editing one chunk writes exactly one region file.
 - [ ] Server RSS with 1,000 edited regions on disk and one connected peer stays
   within 10% of an empty world.
-- [ ] A Phase 56 save migrates with every edit intact.
+- [ ] A Phase 51 save migrates with every edit intact.
 - [ ] Suite green on both boot paths, and `tools/net_harness.sh` agrees.
 
 ---
 
-## Phase 58 — Spawn placement and friend codes
+## Phase 53 — Spawn placement and friend codes
 
 **Goal:** Every new player spawns at the hard-coded `Vector3(16, 12, 16)`
 (`player_slice.gd:423`) on a terrain patch flattened for that purpose. On a
@@ -5465,7 +5303,7 @@ the friend spawn radius.
 **Deliverables:**
 - `src/world/colonization_map.gd` (new): a per-region score built from edited
   chunk count, player homes and recent player presence. It persists with the
-  Phase 57 region index.
+  Phase 52 region index.
 - New-player spawn: a deterministic search (seeded by the player id) for
   habitable land (not ocean, ice or VoidRift) at least the fabric minimum
   distance from any colonized region. It lands on solid ground found by
@@ -5489,7 +5327,7 @@ the friend spawn radius.
 
 ---
 
-## Phase 59 — World clock, day and night, seasons
+## Phase 54 — World clock, day and night, seasons
 
 **Goal:** The only lighting is a static `DirectionalLight3D` at a fixed angle,
 with no clock, day/night cycle, seasons or weather. A planet with latitude
@@ -5527,6 +5365,168 @@ hemisphere.
 
 ---
 
+## Phase 55 — Two-client harness: equipment delivery over the socket
+
+**Goal:** The `equipment_recorded` harness step proves the host records a claim,
+but its client verdict is vacuous and AOI delivery to a peer is covered only in
+the suite (#71, #73, #74). Make the step's client side real and add a delivery
+step.
+
+**Newel dependency:** NO.
+
+**Closes:** #71, #73, #74.
+
+**Deliverables:**
+- `src/tests/net_harness.gd` — `_step_equipment_recorded`: the client verdict
+  asserts the packet was actually sent (drop the always-true `_await_until`), and
+  the resend loop is replaced by a host-driven ready signal (the host acks the
+  grant before the client claims).
+- The step pins a fixture item (a named equippable key, not "first sorted key")
+  and adds the case of an unknown item claimed under a REAL slot key.
+- A new `equipment_delivered` step: the client equips, and the host's AOI fan-out
+  delivers `peer_equipment` back to a second connection (or to the host's
+  client-side view), asserted on both peers.
+- `tools/net_harness.sh` planned-step count bumped; ROADMAP Phase 47 note
+  updated with the new count.
+
+**Acceptance criteria:**
+- [ ] Breaking the client send (e.g. not emitting the intent) makes the step fail
+  on the client side, not only on the host side.
+- [ ] Unknown item in a real slot is refused by the host and recorded as such.
+- [ ] `net-harness` reports `12/12 steps agreed across both peers` (or the new
+  total), with the delivery step verified on both peers.
+
+---
+
+## Phase 56 — Station placement follow-ups
+
+**Goal:** Close the PR #67 review findings (#68) so placement is cheap per frame,
+consistent in height, honest when refused, and tested.
+
+**Newel dependency:** NO.
+
+**Closes:** #68.
+
+**Deliverables:**
+- `src/world/station_slice.gd` — `placeable_station_types()` cached (computed
+  once from RECIPES/ITEMS); `placement_blocker` compares snapped cells (x/z on the
+  1 m grid plus snapped y) instead of raw 3D distance, so two stations at the same
+  x/z cell but different heights are judged by a defined rule; Public API header
+  updated; `game_root` demo stations placed through `try_place_station`.
+- `src/player/player_slice.gd` — `_station_target` feet fallback uses the same
+  +0.5 y offset as the aimed branch; `_update_station_preview` is gated by
+  `world_input_allowed()`; a refused `V` surfaces the `placement_blocker` reason
+  (toast/status line via the UI shell).
+- Suite tests for `_station_target` (aimed top face, side hit, feet fallback),
+  the N toggle and V through `try_place_station`, including a refusal reason.
+
+**Acceptance criteria:**
+- [ ] `show_preview` per frame does not rescan RECIPES/ITEMS (asserted by a call
+  counter or by the cache being populated once).
+- [ ] Overlap rule is defined on snapped cells and asserted for same-cell /
+  different-height and adjacent-cell cases.
+- [ ] Preview ghost is hidden while a menu owns input.
+- [ ] A refused placement shows its reason; suite green on both boot paths.
+
+---
+
+## Phase 57 — Spawn determinism and cost follow-ups
+
+**Goal:** Close the still-open PR #54 review notes (#55, #56, #57) on Phase 44
+spawning: pin the hash, keep pack members in their chunk, stop the O(instances)
+rescans, and fix docs that claim a client path that does not exist.
+
+**Newel dependency:** NO (per-species density/chance values for bosses such as
+RiftWarden are a fabric design question and stay out of scope).
+
+**Closes:** the code items of #55, #56, #57.
+
+**Deliverables:**
+- `src/tests/test_suite.gd` — a test pinning `SpawnRoll._mix` (and the roll
+  helpers built on it) to known output values, so an accidental hash change fails.
+- `src/creature/creature_slice.gd` — a running live-population counter (updated on
+  spawn, death, respawn, tame, despawn) replacing the per-call `live_population()`
+  scan in `spawn_for_chunk` / `_tick_respawn`; the counter is asserted equal to a
+  full scan after a mixed sequence.
+- Pack centre inset by the maximum member offset so every member lands inside the
+  chunk; packs larger than the offset table no longer stack on wrapped offsets.
+- A creature resource missing `spawnChance`/`spawnDensity` logs one warning
+  instead of silently never spawning.
+- Per-species density salt (derived from the species key) so densities of
+  different species/trees are not fully correlated.
+- `src/world/tree_slice.gd` — `_chunk_biome` computed once per `spawn_for_chunk`.
+- `spawn_roll.gd` header + ROADMAP Phase 44 wording: clients do not spawn
+  creatures; the determinism is a host reload guarantee.
+
+**Acceptance criteria:**
+- [ ] Hash-pin test exists and passes; changing `_mix` makes it fail.
+- [ ] Every spawned member position lies inside its chunk (asserted over many
+  seeds/chunks).
+- [ ] Live counter equals a full scan after spawn/kill/respawn/tame sequences.
+- [ ] Missing-field warning asserted; suite green on both boot paths.
+
+---
+
+## Phase 58 — UI layout file robustness
+
+**Goal:** Close the PR #60 review notes (#61) so a hand-edited or truncated
+`ui_layout.json` and non-US keyboards behave.
+
+**Newel dependency:** NO.
+
+**Closes:** #61.
+
+**Deliverables:**
+- `src/ui/ui_slice.gd` — `parse_layout` rejects non-finite (NaN/inf) and absurd
+  magnitudes per entry (that window falls back to its default); `_save_layout`
+  writes to a temp file and renames over the target; `_apply_layout` clamps
+  against the control's real size once laid out.
+- The `?` controls-legend hotkey matches on `event.unicode == 63` (with the
+  existing keycode path kept as a fallback) so non-US layouts open it.
+- `parse_layout('not json')` test uses an input that does not log an engine
+  ERROR line (or the parse path avoids `JSON.parse_string` noise).
+
+**Acceptance criteria:**
+- [ ] A layout with `NaN`/`1e308` coordinates parses to defaults for that window,
+  asserted in the suite.
+- [ ] Save leaves either the old or the new complete file (temp + rename),
+  asserted by checking no partial file remains after a save.
+- [ ] Suite output contains no engine ERROR line from the layout tests.
+
+---
+
+## Phase 59 — Wire the Phase 45 rig into the game
+
+**Goal:** `attach_rig`, `load_mesh`, `load_animation_library` and
+`creature_model_key` have no non-test caller (#59), so the asset pipeline is not
+exercised in play. Use it for the local avatar with a safe fallback.
+
+**Newel dependency:** NO.
+
+**Closes:** #59.
+
+**Deliverables:**
+- `src/character/character_slice.gd` — `attach_rig` hides the procedural box body
+  and stops the procedural limb swing on success; on failure (missing scene,
+  non-Node3D root — freed, not leaked) the procedural body stays.
+- `RigTree.build_tree` checks the required clips (idle/walk/run/fall/land/attack/
+  death), warns once per missing clip and maps missing ones to `idle`, so the
+  placeholder rig does not spam "Animation not found"; the dead `anim_player`
+  assignment / unused `player` param are removed or made real.
+- Asset manifest: parsed once and cached; a private-pack `manifest.json` merges by
+  key over the public one instead of replacing it.
+- `game_root` / player boot calls `attach_rig` for the local avatar when a rig key
+  resolves.
+
+**Acceptance criteria:**
+- [ ] With the public placeholder rig, the avatar renders the rig only (no box
+  body) and no "Animation not found" errors are logged.
+- [ ] With the rig key missing, the procedural body is used and nothing leaks.
+- [ ] Manifest merge asserted: a private key overrides, public-only keys survive.
+- [ ] Suite green on both boot paths.
+
+---
+
 ## Deferred (in priority order)
 
 - **Server sharding (final, not before maturity)** — split the authoritative
@@ -5541,10 +5541,10 @@ hemisphere.
 
 - **Rivers, lakes and fluid flow** — water above sea level and flowing water
   (the cellular-automaton idea from the GDVoxelPlayground evaluation) follow
-  Phase 56's static sea level.
+  Phase 51's static sea level.
 - **Fast travel** — a planet takes about 90 days to walk around. Some form of
   travel network (roads, boats, waystones) is needed once players spread out
-  (after Phase 58).
+  (after Phase 53).
 - **Voxel techniques from GDVoxelPlayground (evaluated, not adopted wholesale)** —
   <https://github.com/JorisAR/GDVoxelPlayground> (MIT) ray-marches a FIXED 128³
   voxel grid on the GPU via `RenderingDevice` compute. It does not fit Nihon,
