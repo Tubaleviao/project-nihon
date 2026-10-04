@@ -82,6 +82,11 @@ const RESPAWN_SECONDS := 120.0
 ## StaticBody3D (null headless, or while chopped) — never a rendered Node3D tree.
 var _trees: Dictionary = {}
 
+## Phase 49 — chunk -> Array of tree ids, so spawn / despawn / `trees_in_chunk` touch one
+## chunk's trees instead of scanning every live tree on each chunk crossing. Kept in step
+## with `_trees` by `_spawn` and `despawn_for_chunk`, the only two writers.
+var _by_chunk: Dictionary = {}
+
 ## Shared MultiMesh pool; null when render_visuals is false (headless server).
 var _pool: Node = null
 ## When false (headless server / `--server`), no pool and no collision bodies are
@@ -128,10 +133,7 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 	if entry.is_empty():
 		return
 	var budget: int = tree_count_for(chunk_pos, biome)
-	var existing: int = 0
-	for tid in _trees:
-		if _trees[tid]["chunk"] == chunk_pos:
-			existing += 1
+	var existing: int = (_by_chunk.get(chunk_pos, []) as Array).size()
 	for i in range(existing, budget):
 		_spawn(str(entry["species"]), str(entry["wood"]), chunk_pos, i)
 
@@ -139,16 +141,14 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 ## trunk collision. Trees carry no combat state, so unlike creatures none are
 ## kept alive across a despawn.
 func despawn_for_chunk(chunk_pos: Vector2i) -> void:
-	var to_erase: Array = []
-	for tid in _trees:
-		if _trees[tid]["chunk"] == chunk_pos:
-			to_erase.append(tid)
+	var to_erase: Array = _by_chunk.get(chunk_pos, []) as Array
 	for tid in to_erase:
 		var tree: Dictionary = _trees[tid]
 		if _pool != null and int(tree["mi"]) >= 0:
 			_pool.release(int(tree["mi"]))
 		_free_collision(tree)
 		_trees.erase(tid)
+	_by_chunk.erase(chunk_pos)
 
 ## Mean trees per chunk for a biome: the fabric `treeDensity` when the biome resource is
 ## loaded, else the `TREES_BY_BIOME` fallback (isolated tests with no fabric wired).
@@ -206,9 +206,8 @@ func get_all_trees() -> Array:
 ## Ids of the trees in one chunk.
 func trees_in_chunk(chunk_pos: Vector2i) -> Array:
 	var out: Array = []
-	for tid in _trees:
-		if _trees[tid]["chunk"] == chunk_pos:
-			out.append(str(tid))
+	for tid in _by_chunk.get(chunk_pos, []):
+		out.append(str(tid))
 	return out
 
 # ---------------------------------------------------------------------------
@@ -412,6 +411,9 @@ func _spawn(species: String, wood: String, chunk_pos: Vector2i, spawn_index: int
 		"mi":         mi,
 		"body":       body,
 	}
+	if not _by_chunk.has(chunk_pos):
+		_by_chunk[chunk_pos] = []
+	(_by_chunk[chunk_pos] as Array).append(tree_id)
 	return tree_id
 
 ## Deterministic world XZ inside the chunk footprint (inset one tile from the
