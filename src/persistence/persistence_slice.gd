@@ -52,6 +52,7 @@ extends Node
 ##   poll_due(elapsed, interval)       -> bool  (static, pure, general cadence)
 ##   resolved_shutdown_poll_interval(v)-> float (static, pure)
 ##   merge_creature_states(base, inc)  -> Array (static, pure)
+const Diag := preload("res://src/core/diag.gd")
 
 const SAVE_DIR  := "user://saves/"
 const SAVE_EXT  := ".json"
@@ -145,13 +146,13 @@ func load_slot(slot: int) -> Dictionary:
 	var path := slot_path(slot)
 	if not FileAccess.file_exists(path):
 		var reason := "slot %d not found at %s" % [slot, path]
-		push_warning("PersistenceSlice: " + reason)
+		Diag.warn("PersistenceSlice: " + reason)
 		GameBus.load_failed.emit(slot, reason)
 		return {}
 	var data := _read_json(path)
 	if data.is_empty():
 		var reason := "slot %d contains invalid JSON" % slot
-		push_error("PersistenceSlice: " + reason)
+		Diag.error("PersistenceSlice: " + reason)
 		GameBus.load_failed.emit(slot, reason)
 		return {}
 	GameBus.load_completed.emit(slot, data)
@@ -225,7 +226,7 @@ func has_world() -> bool:
 ## would change) is refused rather than written to a path derived from it.
 func save_player(player_id: String, data: Dictionary) -> Error:
 	if player_id.is_empty() or sanitize_player_id(player_id) != player_id:
-		push_error("PersistenceSlice: refusing to save a player record with a non-canonical id '%s'" % player_id)
+		Diag.error("PersistenceSlice: refusing to save a player record with a non-canonical id '%s'" % player_id)
 		return ERR_INVALID_PARAMETER
 	var err := _write_json(player_path(player_id), data)
 	if err == OK:
@@ -237,7 +238,7 @@ func save_player(player_id: String, data: Dictionary) -> Error:
 ## DIFFERENT record (the sanitized id's) rather than the one asked for.
 func load_player(player_id: String) -> Dictionary:
 	if player_id.is_empty() or sanitize_player_id(player_id) != player_id:
-		push_warning("PersistenceSlice: refusing to load a non-canonical player id '%s'" % player_id)
+		Diag.warn("PersistenceSlice: refusing to load a non-canonical player id '%s'" % player_id)
 		return {}
 	var path := player_path(player_id)
 	if not FileAccess.file_exists(path):
@@ -476,7 +477,7 @@ func _write_json(path: String, data: Dictionary) -> Error:
 	var file := FileAccess.open(target, FileAccess.WRITE)
 	if file == null:
 		var err := FileAccess.get_open_error()
-		push_error("PersistenceSlice: cannot open %s for write — %s" % [target, error_string(err)])
+		Diag.error("PersistenceSlice: cannot open %s for write — %s" % [target, error_string(err)])
 		return err
 	file.store_string(JSON.stringify(data, "\t"))
 	file.close()
@@ -485,20 +486,20 @@ func _write_json(path: String, data: Dictionary) -> Error:
 		# needed; error_string() reports a failed rename.
 		var rename_err := DirAccess.rename_absolute(target, path)
 		if rename_err != OK:
-			push_error("PersistenceSlice: rename %s → %s failed — %s" % [target, path, error_string(rename_err)])
+			Diag.error("PersistenceSlice: rename %s → %s failed — %s" % [target, path, error_string(rename_err)])
 			return rename_err
 	return OK
 
 func _read_json(path: String) -> Dictionary:
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
-		push_error("PersistenceSlice: cannot open %s for read — %s" % [path, error_string(FileAccess.get_open_error())])
+		Diag.error("PersistenceSlice: cannot open %s for read — %s" % [path, error_string(FileAccess.get_open_error())])
 		return {}
 	var text := file.get_as_text()
 	file.close()
 	var data = JSON.parse_string(text)
 	if data == null or not data is Dictionary:
-		push_error("PersistenceSlice: %s contains invalid JSON" % path)
+		Diag.error("PersistenceSlice: %s contains invalid JSON" % path)
 		return {}
 	return data
 

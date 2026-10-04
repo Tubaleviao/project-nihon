@@ -30,6 +30,7 @@ extends Node
 ## most one entry per known window key, is overwritten in place, and unknown keys
 ## are dropped on load, so nothing accumulates and there is no per-connection
 ## state to evict.
+const Diag := preload("res://src/core/diag.gd")
 
 const WINDOW_INVENTORY  := "inventory"
 const WINDOW_TECHNOLOGY := "technology"
@@ -251,7 +252,11 @@ static func clamp_window_position(pos: Vector2, window_size: Vector2, viewport: 
 ## entries are dropped, so a hand-edited or stale file cannot inject state.
 static func parse_layout(text: String) -> Dictionary:
 	var out: Dictionary = {}
-	var parsed = JSON.parse_string(text)
+	# Instance parse() returns an error code instead of printing one to the log.
+	var json := JSON.new()
+	if json.parse(text) != OK:
+		return out
+	var parsed = json.data
 	if not (parsed is Dictionary):
 		return out
 	for key in WINDOW_KEYS:
@@ -1083,7 +1088,7 @@ func _load_layout() -> void:
 func _save_layout() -> void:
 	var f := FileAccess.open(layout_path, FileAccess.WRITE)
 	if f == null:
-		push_warning("[UiSlice] cannot write %s" % layout_path)
+		Diag.warn("[UiSlice] cannot write %s" % layout_path)
 		return
 	f.store_string(layout_to_json(_layout))
 	f.close()

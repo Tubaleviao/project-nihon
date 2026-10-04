@@ -59,6 +59,7 @@ extends Node
 ##   get_player_data(player_id) -> Dictionary    — serializable record
 ##   apply_player_data(player_id, data) -> void
 ##   get_players_data() -> Dictionary / apply_players_data(data) -> void
+const Diag := preload("res://src/core/diag.gd")
 
 const InventorySlice := preload("res://src/inventory/inventory_slice.gd")
 
@@ -224,7 +225,7 @@ func resolve_identity(peer_id: int, claimed_id: String = "") -> String:
 	# Id authority sits on the server: a client never mints, never resolves, and
 	# never bundles a record. It waits for the host's player_identity_assigned.
 	if not is_authoritative:
-		push_warning("PlayerRegistry: resolve_identity on a non-authoritative registry — ignored")
+		Diag.warn("PlayerRegistry: resolve_identity on a non-authoritative registry — ignored")
 		return ""
 	if _peer_ids.has(peer_id):
 		# An ALREADY-bound peer asking again is a retry, not a new join: the
@@ -248,7 +249,7 @@ func resolve_identity(peer_id: int, claimed_id: String = "") -> String:
 		reconnected = true
 	else:
 		if claimed_id != "":
-			push_warning("PlayerRegistry: peer %d claimed unavailable id '%s' — minting a fresh identity" % [peer_id, claimed_id])
+			Diag.warn("PlayerRegistry: peer %d claimed unavailable id '%s' — minting a fresh identity" % [peer_id, claimed_id])
 		player_id = mint_player_id()
 	_peer_ids[peer_id] = player_id
 	ensure_player(player_id)
@@ -888,7 +889,7 @@ func _on_equipment_intent(player_id: String, worn: Dictionary) -> void:
 	# A claim can name at most one item per slot, so a bigger dictionary is not a worn
 	# set at all: dropped before any per-entry work (and before touching the record).
 	if worn.size() > EquipmentRules.slots(GameData.ITEMS).size():
-		push_warning("PlayerRegistry: oversized worn claim from %s dropped" % player_id)
+		Diag.warn("PlayerRegistry: oversized worn claim from %s dropped" % player_id)
 		return
 	# A peer can only wear what its own bag holds; the claim is filtered like any other.
 	var claim := EquipmentRules.sanitize(worn, GameData.ITEMS)

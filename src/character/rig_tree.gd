@@ -37,7 +37,7 @@ static func build_tree(player: AnimationPlayer) -> AnimationTree:
 	for pair in [["idle", 0.0], ["walk", 0.5], ["run", 1.0]]:
 		var clip := AnimationNodeAnimation.new()
 		clip.animation = pair[0]
-		space.add_blend_point(clip, pair[1])
+		space.add_blend_point(clip, pair[1], -1, StringName(pair[0]))
 	space.min_space = 0.0
 	space.max_space = 1.0
 	sm.add_node(NODE_LOCOMOTION, space)

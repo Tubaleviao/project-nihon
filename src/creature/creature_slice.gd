@@ -31,6 +31,7 @@ extends Node
 ## listings and tree regrowth use, so a deadline persisted in the world record
 ## still means what it says after a restart. (It used to be process uptime via
 ## Time.get_ticks_msec(), which is meaningless in a new process.)
+const Diag := preload("res://src/core/diag.gd")
 
 ## CHUNK_SIZE and BIOME_KEYS live in TerrainSlice (single source of truth).
 ## Spawning uses _chunk_biome() which delegates to terrain_slice, so no local
@@ -438,7 +439,7 @@ func _remember_death(iid: String, inst: Dictionary) -> void:
 func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> String:
 	var res: Resource = GameData.CREATURES.get(creature_id, null)
 	if res == null:
-		push_error("CreatureSlice: unknown creature '%s' in GameData.CREATURES" % creature_id)
+		Diag.error("CreatureSlice: unknown creature '%s' in GameData.CREATURES" % creature_id)
 		return ""
 
 	var hp: float = float(res.get("baseHp"))

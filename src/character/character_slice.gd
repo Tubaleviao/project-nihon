@@ -40,6 +40,7 @@ extends Node
 ##   update_lod(viewer_pos) / lod_level_for_distance(d)    -> void / int
 ##   get_instance_lod(instance_id) / is_impostor_visible() -> int / bool
 ##   is_part_visible(instance_id, part_key)                -> bool
+const Diag := preload("res://src/core/diag.gd")
 
 const Locomotion  := preload("res://src/character/locomotion.gd")
 const SkeletonRig := preload("res://src/character/skeleton_rig.gd")
@@ -139,7 +140,7 @@ func _ready() -> void:
 func create_character(appearance_id: String, pos: Vector3) -> String:
 	var res: Resource = GameData.APPEARANCES.get(appearance_id, null)
 	if res == null:
-		push_warning("CharacterSlice: unknown appearance_id '%s'" % appearance_id)
+		Diag.warn("CharacterSlice: unknown appearance_id '%s'" % appearance_id)
 		return ""
 	return create_character_from_recipe(_appearance_to_recipe(res), pos)
 

@@ -31,6 +31,7 @@ extends Node
 ##   get_all_trees() / trees_in_chunk(chunk_pos) -> Array
 ##   chop_tree(tree_id, player_id) -> Dictionary  { success, wood, quantity, reason }
 ##   apply_chop_state(tree_id, respawn_at) -> void   (client-side host state)
+const Diag := preload("res://src/core/diag.gd")
 
 const MultimeshPool := preload("res://src/core/multimesh_pool.gd")
 const MeshUtil      := preload("res://src/core/mesh_util.gd")
@@ -350,7 +351,7 @@ func _now() -> float:
 	return Time.get_unix_time_from_system()
 
 func _fail(reason: String) -> Dictionary:
-	push_warning("[Tree] chop FAILED — %s" % reason)
+	Diag.warn("[Tree] chop FAILED — %s" % reason)
 	return { "success": false, "wood": "", "quantity": 0, "reason": reason }
 
 func _on_chop_requested(tree_id: String, player_id: String) -> void:

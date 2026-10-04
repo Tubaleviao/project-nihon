@@ -135,7 +135,7 @@ func _on_creature_respawned(instance_id: String, _creature_id: String) -> void:
 ## Resolve a creature instance_id to its fabric key, then load from GameData.
 func _lookup(entity_id: String) -> Resource:
 	if entity_id == "player":
-		push_warning("BattleSlice: 'player' entity has no GameData resource — using stat fallbacks")
+		# The player has no GameData resource by design; callers use stat fallbacks.
 		return null
 	# Direct fabric key lookup first.
 	if GameData.CREATURES.has(entity_id):

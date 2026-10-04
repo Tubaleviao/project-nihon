@@ -10,6 +10,7 @@ extends Node
 ##   get_position()   -> Vector3
 ##   get_hp()         -> float
 ##   take_damage(dmg) -> void
+const Diag := preload("res://src/core/diag.gd")
 
 const SPEED        := 4.5     # m/s horizontal
 const JUMP_FORCE   := 5.0     # m/s vertical
@@ -561,7 +562,7 @@ func _try_attack() -> void:
 	if not _alive:
 		return
 	if creature_slice == null:
-		push_warning("PlayerSlice: creature_slice not wired — cannot resolve attack target")
+		Diag.warn("PlayerSlice: creature_slice not wired — cannot resolve attack target")
 		return
 	var target_id: String = creature_slice.nearest_creature(get_position(), ATTACK_RANGE)
 	if target_id == "":

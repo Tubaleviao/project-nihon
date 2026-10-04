@@ -92,6 +92,7 @@ extends Node
 ## one per tile. That is what makes building on another thread affordable in the
 ## first place, and the merge key — material/colour — is exactly the attribute a
 ## merged quad has to share.
+const Diag := preload("res://src/core/diag.gd")
 
 ## Shared box authoring for the vein deposits (Phase 31).
 const MeshUtil := preload("res://src/core/mesh_util.gd")
@@ -1234,7 +1235,7 @@ func apply_edits(edits: Dictionary, materials: Dictionary = {}) -> void:
 		# already applies to an op whose kind this version cannot read.
 		var legacy_height := _legacy_height_of(value)
 		if is_nan(legacy_height):
-			push_warning("VoxelSlice.apply_edits: dropping an unrecognized edit for '%s' (%s)"
+			Diag.warn("VoxelSlice.apply_edits: dropping an unrecognized edit for '%s' (%s)"
 				% [str(key), type_string(typeof(value))])
 			continue
 		var tile := _key_to_tile(str(key))
