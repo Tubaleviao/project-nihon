@@ -5611,7 +5611,12 @@ func _test_asset_placeholder_rig_is_a_body() -> void:
 		for state in Locomotion.State.values():
 			var clip: String = Locomotion.State.keys()[state].to_lower()
 			assert_true(player.has_animation(clip), "the placeholder rig ships the '%s' clip" % clip)
-		assert_true(RigTree.build_tree(player).tree_root != null, "the locomotion tree builds off the placeholder's clips")
+		# Free the tree: it is a Node with no parent, and an orphan Node leaks to process
+		# exit (measured — the suite's teardown rule is the note after `_run_tests`, and
+		# both other `build_tree` callers free theirs the same way).
+		var tree := RigTree.build_tree(player)
+		assert_true(tree.tree_root != null, "the locomotion tree builds off the placeholder's clips")
+		tree.free()
 	root.free()
 
 ## Recursively collect every MeshInstance3D under `node` into `out`.

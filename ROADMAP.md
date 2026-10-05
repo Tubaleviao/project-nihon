@@ -5625,13 +5625,31 @@ invisible from behind and a gray sliver from the front. `tools/gen_placeholder_g
 now emits a BODY — a torso, a head, two arms and two legs as cubes on a flat node tree,
 1.73 m tall with the feet on the root's ground plane — and the seven clips the tree
 looks up (`idle`/`walk`/`run`/`fall`/`land`/`attack`/`death`, it shipped only `idle`),
-so the clone logs no `[RigTree] rig has no …`. The regeneration also fixed a silent
-loss in the old generator: glTF links nodes through each node's `children` array, so a
-node defined but never listed there is an orphan Godot imports without its mesh. The
+so the clone logs no `[RigTree] rig has no …`. The six parts also had to be LINKED, which
+the one-node triangle never needed: glTF reaches a node through its parent's `children`
+array, so a node defined but never listed there is an orphan Godot imports without its
+mesh — the root now names every part. The
 suite pins the shape at `asset: placeholder rig is a visible body (#112)` — several
 parts, ≥ 1 m tall, thickness on BOTH horizontal axes (a flat card fails here, which is
 the exact regression), feet on the ground plane, every clip present. Measured: 6 parts,
 merged AABB `size (0.84, 1.73, 0.30)`, `min y 0.000`.
+
+**Review pass (self-driven, this branch).** Two items, both fixed in this pass. (1) The new
+`asset: placeholder rig is a visible body` test built an `AnimationTree` and never freed it.
+An orphan Node leaks to process exit — measured with a standalone `--script` probe: two
+orphan `AnimationTree`s → `2 ObjectDB instances were leaked at exit` — and the rule the file
+states after `_run_tests` plus both older `build_tree` callers free theirs. This one object
+graph was 33 of the boot's leaked instances: the host boot's leak line went **44 → 11** and
+the server's **53 → 20**, with the suite still `8781/8781` on both paths. (2) This note used
+to claim the regeneration "fixed a silent loss in the old generator" — false, and the wording
+above is corrected: the old file had ONE node and no `children` array, so nothing was orphaned
+and nothing was lost (its single triangle rendered, which IS the reported bug); the orphan
+hazard belongs to the new multi-part layout. Checked and found sound, no change needed: the
+committed `.glb.raw` is byte-identical to a fresh `python3 tools/gen_placeholder_glb.py` run
+(md5 `218d1100…`, two runs); re-derived from the bytes, all six faces' winding cross-product
+equals their outward normal (no face is backface-culled — that is the mechanism the triangle
+bug came from), the tree carries no orphan node, and the merged AABB is exactly the quoted
+`(0.84, 1.73, 0.30)` with `min y 0.000`.
 
 ---
 
