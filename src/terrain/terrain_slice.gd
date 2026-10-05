@@ -150,7 +150,7 @@ static func _world_field(field: String, fallback: float) -> float:
 ## Chunks around the equator; X wraps after this many (1,250,000 at 40,000 km).
 static func circumference_chunks() -> int:
 	if _circumference_cache < 0:   # the fabric value is fixed for the process; resolve it once
-		_circumference_cache = maxi(2, roundi(_world_field("circumferenceKm", DEFAULT_CIRCUMFERENCE_KM) * 1000.0 / CHUNK_METERS))
+		_circumference_cache = maxi(4, roundi(_world_field("circumferenceKm", DEFAULT_CIRCUMFERENCE_KM) * 1000.0 / CHUNK_METERS))
 	return _circumference_cache
 
 ## Chunks from the equator to a pole (a quarter of the circumference).

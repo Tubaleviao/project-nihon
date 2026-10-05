@@ -410,9 +410,11 @@ static func _has_chunk_local(rec: Dictionary) -> bool:
 	var l: Variant = rec.get("local", null)
 	if not (c is Array and l is Array and (c as Array).size() == 2 and (l as Array).size() == 3):
 		return false
-	var limit := float(TerrainSlice.circumference_chunks())
-	for v in c:
-		if not (v is int or v is float) or not is_finite(float(v)) or absf(float(v)) > limit:
+	# X may be any lap count (world_pos_of wraps it); Z must lie between the poles.
+	var limits := [float(TerrainSlice.circumference_chunks()), float(TerrainSlice.pole_chunks())]
+	for i in range(2):
+		var v: Variant = c[i]
+		if not (v is int or v is float) or not is_finite(float(v)) or absf(float(v)) > limits[i]:
 			return false
 	for v in l:
 		if not (v is int or v is float) or not is_finite(float(v)) or absf(float(v)) > 1.0e6:
@@ -426,10 +428,12 @@ static func world_pos_of(rec: Dictionary) -> Dictionary:
 	var c: Variant = rec.get("chunk", null)
 	var l: Variant = rec.get("local", null)
 	if _has_chunk_local(rec):
-		return WorldPos.normalized({
+		var wp := WorldPos.normalized({
 			"chunk": Vector2i(int(c[0]), int(c[1])),
 			"local": Vector3(float(l[0]), float(l[1]), float(l[2])),
 		})
+		wp["chunk"] = TerrainSlice.wrap_chunk(wp["chunk"])   # canonical X, so a full lap is the same chunk
+		return wp
 	var p: Variant = rec.get("position", [0.0, 0.0, 0.0])
 	if not (p is Array) or (p as Array).size() < 3:
 		p = [0.0, 0.0, 0.0]

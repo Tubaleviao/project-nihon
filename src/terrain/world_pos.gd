@@ -14,10 +14,11 @@ const REBASE_DISTANCE := 2000.0   ## the client rebases once the player drifts t
 static func from_world(x: float, y: float, z: float) -> Dictionary:
 	var cx := floori(x / CHUNK_METERS)
 	var cz := floori(z / CHUNK_METERS)
-	return {
+	# Renormalise: the float32 Vector3 can round a local just below CHUNK_METERS up to exactly it.
+	return normalized({
 		"chunk": Vector2i(cx, cz),
 		"local": Vector3(x - cx * CHUNK_METERS, y, z - cz * CHUNK_METERS),
-	}
+	})
 
 ## Normalise a record so `local` lies inside its chunk (after adding a movement delta).
 static func normalized(pos: Dictionary) -> Dictionary:
