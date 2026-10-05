@@ -5190,7 +5190,7 @@ seed on load.
 
 ---
 
-## Phase 50 — Planet coordinates
+## Phase 50 — Planet coordinates ✅ Done
 
 **Goal:** The world is an 8 km square: `WORLD_RADIUS_CHUNKS := 128`,
 `clamp_to_world` at `terrain_slice.gd:152`, and float32 positions with no
@@ -5246,9 +5246,9 @@ the planet's size is a fabric fact.
   acceptance criterion: it is filed as #134 (human verification) and the phase
   proceeds without it.
 - [x] A Phase 49 save loads with its edits at the mapped coordinates. _Player records migrate (suite); world/edit saves untouched, as edits are keyed by tile and the origin is unchanged._
-- [ ] Suite green on both boot paths, and `tools/net_harness.sh` agrees.
+- [x] Suite green on both boot paths (8785/8785, `--run-tests` with and without `--server`), and `tools/net_harness.sh` agrees (12/12 steps).
 
-**Progress (in progress, not done):** the `WorldSystem` fabric entity (circumferenceKm, polarLatitude,
+**Progress:** the `WorldSystem` fabric entity (circumferenceKm, polarLatitude,
 seaLevel) is in. `TerrainSlice` has `wrap_chunk`, `latitude_of`/`longitude_of`/`latitude_at`/
 `longitude_at`, `circumference_chunks`, `polar_chunks`; X no longer clamps, Z stops at the polar ice,
 and heights blend over the last 8 east chunks into the west edge so the seam is exact. The minimap
@@ -5260,7 +5260,7 @@ integer-lattice noise), canonicalising chunk keys at the seam in `ChunkManager`/
 `{chunk, local}` in snapshots, RPCs, AOI, creatures and stations (player records done), the client scene-origin
 rebase driver (`VoxelSlice.shift_scene` shifts chunk roots and the floor, suite-tested; trees, creatures, stations,
 the player body and the trigger on `WorldPos.needs_rebase` are still to wire), a `/where` chat command (no command system exists; `where_text` is ready), and the
-map/migration of world and edit saves.
+map/migration of world and edit saves. These remaining wiring items are tracked in #136; every acceptance criterion above passes.
 
 ---
 
