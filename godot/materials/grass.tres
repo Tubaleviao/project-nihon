@@ -9,5 +9,5 @@ density = 1.1
 hardness = 0.5
 depthBand = {"min":0,"max":0}
 leyGated = false
-description = "Living turf that covers temperate ground (forest and grassland). It is the top face of natural land, tinted per biome; digging it turns it into Soil."
+description = "Living turf that covers temperate ground (forest and grassland). It is the top face of natural land, tinted per biome; what digging it yields is the biome's own `soilMaterial`, so a verbatim `Grass` cover is not what decides Soil."
 tags = ["material"]

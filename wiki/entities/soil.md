@@ -7,7 +7,7 @@ title: "Soil"
 
 `material`
 
-Loose earth under the turf, down to the biome's topsoil depth. It is what mining natural grass-covered ground yields, and what farmland is made of.
+Loose earth under a biome's cover, down to its `topsoilDepth`. It is what mining a slice of natural topsoil yields, whatever cover (`surfaceMaterial`) it wears — Grass, Moss, Ash and Void ground alike — and what farmland is made of.
 
 > Give digging the surface a yield that is not rock
 
