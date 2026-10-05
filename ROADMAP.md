@@ -5044,9 +5044,15 @@ and covers most land with a grass topsoil so the world reads as Earth-like.
 
 **Newel dependency:** YES. Biome entities (`fabric/world/biomes/*.js`) gain the
 following fields, authored from each biome's prose:
-- `surfaceMaterial` (e.g. `Grass`, `Sand`, `Ash`, `Moss`);
-- a surface tint;
+- `surfaceMaterial` (e.g. `Grass`, `Moss`, `Ash`, `Void` — the covers the five
+  biomes actually declare);
+- a surface tint (`surfaceTint`) and a side-wall tint (`soilTint`);
 - `topsoilDepth`;
+- `soilMaterial` (issue #111: what mining a slice within `topsoilDepth` yields —
+  the surface-material → soil-material mapping, authored here so no GDScript
+  branch decides which cover becomes which soil);
+- `surfaceVeinChance` (the per-biome share of the surface-reaching top-cell veins
+  kept, read by `OreField.surface_vein_chance`);
 - a climate envelope (`temperature` and `moisture` ranges) that the climate
   field selects with.
 
@@ -5148,6 +5154,12 @@ kept share per biome off the ore field).
 surface style` asserts each biome's `soilMaterial` names a declared fabric material, because
 `_natural_yield` returns it verbatim as the mined item and a fabric typo would otherwise mint a phantom
 material.
+
+**Issue #111 follow-up, second review pass (docs-only):** the phase's own **Newel dependency** list now
+names every field the phase adds — `soilMaterial` (this branch's new biome field) and the per-biome
+`surfaceVeinChance` the Deliverables already cite, plus the real `surfaceTint`/`soilTint` names. The
+list was the pre-#111 inventory and its `surfaceMaterial` example named `Sand`, a cover no biome
+declares (the five biomes declare `Grass`/`Moss`/`Ash`/`Void`).
 
 **Net harness:** it has 11 steps now (the equipment step joined it), so the `10/10 steps
 agreed` lines in the older phase entries above are historical; a green run now reads `12/12`
