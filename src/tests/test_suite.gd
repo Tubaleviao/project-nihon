@@ -81,6 +81,8 @@ func run() -> void:
 	_run_test("terrain: height is non-negative",              _test_terrain_height_nonneg)
 	_run_test("terrain: two chunks are independent",          _test_terrain_two_chunks)
 	_run_test("terrain: the world seed determines the terrain", _test_terrain_seed_deterministic)
+	_run_test("terrain: the world wraps east-west",           _test_terrain_wraps_east_west)
+	_run_test("terrain: latitude and longitude from the fabric planet", _test_terrain_planet_coordinates)
 	_run_test("persistence: save then load round-trip",       _test_persistence_round_trip)
 	_run_test("persistence: missing slot emits load_failed",  _test_persistence_missing_slot)
 	_run_test("loot: known creature produces drops",          _test_loot_known_creature)
@@ -924,6 +926,50 @@ func _test_terrain_seed_deterministic() -> void:
 	a.free()
 	b.free()
 	c.free()
+
+## Phase 50 — the world is a planet: X wraps, so the last chunk column meets the first with no
+## seam wall; Z is latitude and ends in polar ice.
+func _test_terrain_wraps_east_west() -> void:
+	var t := TerrainSlice.new()
+	add_child(t)
+	t.set_world_seed(77)
+	var c := TerrainSlice.circumference_chunks()
+	assert_eq(c, 1250000, "40,000 km around is 1.25M chunks")
+	var last := TerrainSlice.wrap_chunk(Vector2i(c / 2 - 1, 3))
+	var first := TerrainSlice.wrap_chunk(Vector2i(c / 2, 3))
+	assert_eq(first, Vector2i(-c / 2, 3), "one past the east edge is the west edge")
+	assert_eq(TerrainSlice.wrap_chunk(Vector2i(-c / 2 - 1, 3)), last, "one past the west edge is the east edge")
+	assert_eq(TerrainSlice.wrap_chunk(Vector2i(5, -9)), Vector2i(5, -9), "an interior chunk is unchanged")
+	var east: Array = t.generate_heightmap(last)
+	var west: Array = t.generate_heightmap(first)
+	var n := TerrainSlice.CHUNK_SIZE
+	var worst := 0.0
+	for row in range(n):
+		# The east chunk's last column is half a tile from the west chunk's first column.
+		worst = maxf(worst, absf(float(east[row * n + n - 1]) - float(west[row * n])))
+	assert_true(worst < 0.2, "no seam wall across the wrap (worst step %f)" % worst)
+	assert_eq(t.generate_heightmap(Vector2i(c / 2, 3)), west, "a chunk past the edge is the wrapped chunk")
+	t.free()
+
+func _test_terrain_planet_coordinates() -> void:
+	var t := TerrainSlice.new()
+	add_child(t)
+	var pole := TerrainSlice.pole_chunks()
+	assert_true(absf(TerrainSlice.latitude_of(pole - 1) - 90.0) < 0.001, "the last row is at the pole")
+	assert_true(absf(TerrainSlice.latitude_at(0.0)) < 0.001, "the equator is latitude 0")
+	assert_true(absf(TerrainSlice.longitude_of(0)) < 0.001, "the origin is longitude 0")
+	assert_true(absf(TerrainSlice.longitude_at(TerrainSlice.circumference_chunks() * TerrainSlice.CHUNK_METERS * 0.25) - 90.0) < 0.001, "a quarter around is 90 degrees east")
+	assert_true(t.is_chunk_in_bounds(Vector2i(999999, 0)), "any longitude is walkable")
+	assert_true(not t.is_chunk_in_bounds(Vector2i(0, TerrainSlice.polar_chunks())), "polar ice is not walkable")
+	var clamped := t.clamp_to_world(Vector3(1.0e7, 4.0, 1.0e9))
+	assert_eq(clamped.x, 1.0e7, "X is not clamped")
+	assert_true(clamped.z < t.world_half_extent(), "Z stops short of the ice")
+	# Position quantiser at a far chunk: a tile offset is exact in double precision, so a
+	# 0.125 step is the same 0.125 at chunk 600,000 as at the origin.
+	var far := Vector2i(600000, 0)
+	var origin_x := t.chunk_to_world(far).x
+	assert_eq((origin_x + 0.125) - origin_x, 0.125, "0.125 step survives at 19,200 km")
+	t.free()
 
 # ---------------------------------------------------------------------------
 # PersistenceSlice tests

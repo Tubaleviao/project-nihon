@@ -26,12 +26,16 @@ const SPAWN_CENTER := Vector2(16.0, 16.0)  # world XZ — matches the player spa
 const SPAWN_FLATTEN_RADIUS := 20.0         # world units — a generous, walkable starting plain
 const SPAWN_HEIGHT := 2.0                  # flat height of the starting plain
 
-## Finite world extent: the playable area spans chunk coordinates
-## [-WORLD_RADIUS_CHUNKS, WORLD_RADIUS_CHUNKS) on each axis — a
-## (2*WORLD_RADIUS_CHUNKS)² chunk square (256² chunks at the default 128).
-## Very large, but not infinite: the player and chunk streaming are both
-## clamped to this so the world has a real edge.
-const WORLD_RADIUS_CHUNKS := 128
+## The planet (Phase 50). Globe semantics on a flat chunk grid: X wraps around the
+## circumference, Z is latitude and ends in impassable polar ice. The sizes are fabric facts
+## (`WorldSystem`: circumferenceKm, polarLatitude); these are the fallbacks for a rig without
+## the generated resources.
+const DEFAULT_CIRCUMFERENCE_KM := 40000.0
+const DEFAULT_POLAR_LATITUDE := 85.0
+const CHUNK_METERS := CHUNK_SIZE * TILE_SIZE
+## Width of the east-edge band over which heights blend into the west edge's, so the wrap seam
+## has no cliff (the noise is not periodic).
+const WRAP_BLEND_CHUNKS := 8
 
 ## Canonical biome keys, in the same order as the fabric biome enum
 ## (mirrors creature_slice.BIOME_KEYS). Phase 17: biome assignment is per-chunk,
@@ -132,29 +136,67 @@ func world_to_chunk(world_pos: Vector2) -> Vector2i:
 func chunk_to_world(chunk_pos: Vector2i) -> Vector2:
 	return Vector2(chunk_pos.x * CHUNK_SIZE * TILE_SIZE, chunk_pos.y * CHUNK_SIZE * TILE_SIZE)
 
-## True when `chunk_pos` lies inside the finite world (see WORLD_RADIUS_CHUNKS).
+## Fabric value of the `WorldSystem` entity's `field`, or `fallback` without the resource.
+static func _world_field(field: String, fallback: float) -> float:
+	var ws: Variant = GameData.WORLD_SYSTEMS.get("WorldSystem", null)
+	if ws == null:
+		return fallback
+	var v: Variant = ws.get(field)
+	return float(v) if v != null else fallback
+
+## Chunks around the equator; X wraps after this many (1,250,000 at 40,000 km).
+static func circumference_chunks() -> int:
+	return maxi(2, roundi(_world_field("circumferenceKm", DEFAULT_CIRCUMFERENCE_KM) * 1000.0 / CHUNK_METERS))
+
+## Chunks from the equator to a pole (a quarter of the circumference).
+static func pole_chunks() -> int:
+	return circumference_chunks() / 4
+
+## |chunk z| at which the polar ice begins (the chunks beyond it are not walkable).
+static func polar_chunks() -> int:
+	var deg := clampf(_world_field("polarLatitude", DEFAULT_POLAR_LATITUDE), 0.0, 90.0)
+	return roundi(pole_chunks() * deg / 90.0)
+
+## Canonical chunk: X wrapped into [-C/2, C/2) where C is the circumference; Z unchanged.
+static func wrap_chunk(chunk_pos: Vector2i) -> Vector2i:
+	var c := circumference_chunks()
+	return Vector2i(posmod(chunk_pos.x + c / 2, c) - c / 2, chunk_pos.y)
+
+## Latitude in degrees (north positive) of the middle of chunk row `chunk_z`.
+static func latitude_of(chunk_z: int) -> float:
+	return (float(chunk_z) + 0.5) * 90.0 / float(pole_chunks())
+
+## Longitude in degrees, in [-180, 180), of the west edge of chunk column `chunk_x`.
+static func longitude_of(chunk_x: int) -> float:
+	var c := circumference_chunks()
+	return float(posmod(chunk_x + c / 2, c) - c / 2) * 360.0 / float(c)
+
+## Latitude in degrees at a world Z (metres).
+static func latitude_at(world_z: float) -> float:
+	return world_z / CHUNK_METERS * 90.0 / float(pole_chunks())
+
+## Longitude in degrees at a world X (metres), wrapped into [-180, 180).
+static func longitude_at(world_x: float) -> float:
+	return fposmod(world_x / CHUNK_METERS / float(circumference_chunks()) * 360.0 + 180.0, 360.0) - 180.0
+
+## True when `chunk_pos` is walkable ground: any longitude, short of the polar ice.
 func is_chunk_in_bounds(chunk_pos: Vector2i) -> bool:
-	return absi(chunk_pos.x) < WORLD_RADIUS_CHUNKS and absi(chunk_pos.y) < WORLD_RADIUS_CHUNKS
+	return absi(chunk_pos.y) < polar_chunks()
 
-## Half the world's extent in world units (the playable XZ range is ±this).
+## The polar ice line in world units (the playable Z range is +-this).
 func world_half_extent() -> float:
-	return float(WORLD_RADIUS_CHUNKS * CHUNK_SIZE * TILE_SIZE)
+	return float(polar_chunks()) * CHUNK_METERS
 
-## The finite world's chunk-radius (see WORLD_RADIUS_CHUNKS).
+## Chunk row at which the polar ice begins.
 func world_radius_chunks() -> int:
-	return WORLD_RADIUS_CHUNKS
+	return polar_chunks()
 
-## Clamp a world position's X/Z so the player cannot walk past the world edge.
-## Y is left untouched (gravity/terrain handle vertical). Insets the boundary by
-## a hair so the body stays on the final chunk's collision instead of straddling
-## the exact edge.
+## Keep the player short of the polar ice. X is free: it wraps. Y is left untouched
+## (gravity/terrain handle vertical). Insets the boundary by 2 m so the body stays on the
+## final chunk's collision instead of straddling the exact edge.
 func clamp_to_world(pos: Vector3) -> Vector3:
-	var half := world_half_extent() - 0.5
-	return Vector3(
-		clampf(pos.x, -half, half),
-		pos.y,
-		clampf(pos.z, -half, half)
-	)
+	var half := world_half_extent() - 2.0   # float32 positions are 1 m apart out here
+	return Vector3(pos.x, pos.y, clampf(pos.z, -half, half))
 
 # ---------------------------------------------------------------------------
 # Private
@@ -175,6 +217,18 @@ func _generate(pos: Vector2i) -> Array:
 ## the player starts on walkable ground. Shared by _generate and get_height_at so
 ## the heightmap and direct samples always agree.
 func _height_at(x: float, z: float) -> float:
+	var w := float(circumference_chunks()) * CHUNK_METERS
+	var half_w := w * 0.5
+	var wx := fposmod(x + half_w, w) - half_w   # canonical X in [-w/2, w/2)
+	var band := WRAP_BLEND_CHUNKS * CHUNK_METERS
+	if wx > half_w - band:
+		# East edge: ease into the west edge's heights, so x = +w/2 meets x = -w/2 exactly.
+		var t := (wx - (half_w - band)) / band
+		t = t * t * (3.0 - 2.0 * t)
+		return lerpf(_raw_height_at(wx, z), _raw_height_at(wx - w, z), t)
+	return _raw_height_at(wx, z)
+
+func _raw_height_at(x: float, z: float) -> float:
 	var raw := _noise.get_noise_2d(x, z)
 	var h := (raw + 1.0) * 0.5 * HEIGHT_SCALE
 	var dx := x - SPAWN_CENTER.x

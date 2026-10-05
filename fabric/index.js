@@ -7,6 +7,7 @@ const monetization = require('./constitution/monetization')
 const materials    = require('./world/materials')
 const biomes       = require('./world/biomes')
 const weather      = require('./world/weather')
+const world        = require('./world/world')
 const creatures    = require('./world/creatures')
 const skills       = require('./gameplay/skills')
 const professions  = require('./gameplay/professions')
@@ -79,6 +80,7 @@ module.exports = defineFabric({
       TwilightGrove:      biomes.TwilightGrove,
       VoidRift:           biomes.VoidRift,
       WeatherSystem:      weather.WeatherSystem,
+      WorldSystem:        world.WorldSystem,
     },
     // Gameplay — Skills
     {

@@ -225,23 +225,17 @@ func _draw() -> void:
 	var right := back - perp * half_w
 	draw_colored_polygon(PackedVector2Array([tip, left, right]), Color(1.0, 1.0, 1.0))
 
-## Draw the finite world's boundary line where it falls inside the visible
-## window. The playable chunks span [-R, R) on each axis.
+## Draw the polar ice lines where they fall inside the visible window. The world wraps in X,
+## so only the north and south limits are edges.
 func _draw_world_bounds(size: Vector2, cell_px: float) -> void:
 	if terrain_slice == null or not terrain_slice.has_method("world_radius_chunks"):
 		return
 	var r: int = terrain_slice.world_radius_chunks()
 	var edge_col := Color(0.0, 0.0, 0.0, 0.8)
 
-	var left_x := size.x * 0.5 + (-r - _player_chunk.x) * cell_px
-	var right_x := size.x * 0.5 + (r - _player_chunk.x) * cell_px
 	var top_z := size.y * 0.5 + (-r - _player_chunk.y) * cell_px
 	var bottom_z := size.y * 0.5 + (r - _player_chunk.y) * cell_px
 
-	if left_x > 0.0 and left_x < size.x:
-		draw_line(Vector2(left_x, 0.0), Vector2(left_x, size.y), edge_col, 2.0)
-	if right_x > 0.0 and right_x < size.x:
-		draw_line(Vector2(right_x, 0.0), Vector2(right_x, size.y), edge_col, 2.0)
 	if top_z > 0.0 and top_z < size.y:
 		draw_line(Vector2(0.0, top_z), Vector2(size.x, top_z), edge_col, 2.0)
 	if bottom_z > 0.0 and bottom_z < size.y:
