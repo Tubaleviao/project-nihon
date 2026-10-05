@@ -3733,6 +3733,8 @@ func _test_ui_layout_file_roundtrip() -> void:
 	add_child(ui2)
 	assert_eq(ui2._layout.get("inventory"), Vector2(50, 60), "layout reloaded from file")
 	assert_eq(ui2._panels["inventory"].position, Vector2(50, 60), "window reopens at stored position")
+	assert_false(FileAccess.file_exists(TEST_UI_LAYOUT + ".tmp"), "no partial temp file remains after save")
+	assert_true(UiSlice.parse_layout(FileAccess.get_file_as_string(TEST_UI_LAYOUT)).has("inventory"), "saved file is complete and parseable")
 	ui2.free()
 	DirAccess.remove_absolute(TEST_UI_LAYOUT)
 
@@ -3787,6 +3789,14 @@ func _test_ui_layout_roundtrip() -> void:
 	var huge := UiSlice.parse_layout('{"inventory":[1e999,2],"market":[5,6]}')
 	assert_false(huge.has("inventory"), "non-finite entry dropped")
 	assert_eq(huge.get("market"), Vector2(5, 6), "finite entry beside it kept")
+	var absurd := UiSlice.parse_layout('{"inventory":[1e308,2],"market":[5,-1e308],"controls":[7,8]}')
+	assert_false(absurd.has("inventory"), "1e308 x dropped to default")
+	assert_false(absurd.has("market"), "-1e308 y dropped to default")
+	assert_eq(absurd.get("controls"), Vector2(7, 8), "sane entry beside absurd ones kept")
+	var nan_text := UiSlice.parse_layout('{"inventory":[NaN,2],"market":[5,6]}')
+	assert_false(nan_text.has("inventory"), "NaN entry dropped")
+	# The JSON parser rejects a bare NaN token outright, so the whole file falls back to defaults.
+	assert_false(nan_text.has("market"), "NaN token makes the file parse to defaults")
 
 func _test_ui_inventory_rows() -> void:
 	var ui := _new_test_ui()

@@ -51,6 +51,8 @@ const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 
 ## Pixels of a window that must stay reachable on every edge when dragged.
 const DRAG_VISIBLE_MARGIN := 48.0
+## Largest stored window coordinate a layout file may carry; beyond it the entry is junk.
+const LAYOUT_MAX_COORD := 100000.0
 const LAYOUT_PATH := "user://ui_layout.json"
 const ICON_KEY_FORMAT := "icons/items/%s.png.raw"
 const SLOT_SIZE := Vector2(72, 72)
@@ -263,8 +265,8 @@ static func parse_layout(text: String) -> Dictionary:
 		var v = parsed.get(key, null)
 		if v is Array and v.size() == 2 and (v[0] is float or v[0] is int) and (v[1] is float or v[1] is int):
 			var pos := Vector2(float(v[0]), float(v[1]))
-			# NaN/inf from a hand-edited file would poison clamp; skip the entry.
-			if is_finite(pos.x) and is_finite(pos.y):
+			# NaN/inf or an absurd magnitude from a hand-edited file would poison clamp; skip the entry.
+			if is_finite(pos.x) and is_finite(pos.y) and absf(pos.x) <= LAYOUT_MAX_COORD and absf(pos.y) <= LAYOUT_MAX_COORD:
 				out[key] = pos
 	return out
 
@@ -1119,7 +1121,7 @@ func _apply_layout() -> void:
 	for key in _layout:
 		var panel: Control = _panels.get(key, null)
 		if panel != null:
-			panel.position = clamp_window_position(_layout[key], panel.custom_minimum_size, _viewport_size())
+			panel.position = clamp_window_position(_layout[key], panel.custom_minimum_size.max(panel.size), _viewport_size())
 
 func _build_controls_content() -> Control:
 	var box := VBoxContainer.new()
