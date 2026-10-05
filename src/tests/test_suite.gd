@@ -81,6 +81,10 @@ func run() -> void:
 	_run_test("terrain: height is non-negative",              _test_terrain_height_nonneg)
 	_run_test("terrain: two chunks are independent",          _test_terrain_two_chunks)
 	_run_test("terrain: the world seed determines the terrain", _test_terrain_seed_deterministic)
+	_run_test("terrain: the world wraps east-west",           _test_terrain_wraps_east_west)
+	_run_test("terrain: latitude and longitude from the fabric planet", _test_terrain_planet_coordinates)
+	_run_test("player: rebased origin keeps the world position", _test_world_pos_rebase)
+	_run_test("persistence: position saved as chunk + local, old saves migrate", _test_registry_world_pos)
 	_run_test("persistence: save then load round-trip",       _test_persistence_round_trip)
 	_run_test("persistence: missing slot emits load_failed",  _test_persistence_missing_slot)
 	_run_test("loot: known creature produces drops",          _test_loot_known_creature)
@@ -924,6 +928,125 @@ func _test_terrain_seed_deterministic() -> void:
 	a.free()
 	b.free()
 	c.free()
+
+## Phase 50 — the world is a planet: X wraps, so the last chunk column meets the first with no
+## seam wall; Z is latitude and ends in polar ice.
+func _test_terrain_wraps_east_west() -> void:
+	var t := TerrainSlice.new()
+	add_child(t)
+	t.set_world_seed(77)
+	var c := TerrainSlice.circumference_chunks()
+	assert_eq(c, 1250000, "40,000 km around is 1.25M chunks")
+	var last := TerrainSlice.wrap_chunk(Vector2i(c / 2 - 1, 3))
+	var first := TerrainSlice.wrap_chunk(Vector2i(c / 2, 3))
+	assert_eq(first, Vector2i(-c / 2, 3), "one past the east edge is the west edge")
+	assert_eq(TerrainSlice.wrap_chunk(Vector2i(-c / 2 - 1, 3)), last, "one past the west edge is the east edge")
+	assert_eq(TerrainSlice.wrap_chunk(Vector2i(5, -9)), Vector2i(5, -9), "an interior chunk is unchanged")
+	var east: Array = t.generate_heightmap(last)
+	var west: Array = t.generate_heightmap(first)
+	var n := TerrainSlice.CHUNK_SIZE
+	var worst := 0.0
+	for row in range(n):
+		# The east chunk's last column is half a tile from the west chunk's first column.
+		worst = maxf(worst, absf(float(east[row * n + n - 1]) - float(west[row * n])))
+	assert_true(worst < 0.2, "no seam wall across the wrap (worst step %f)" % worst)
+	assert_eq(t.generate_heightmap(Vector2i(c / 2, 3)), west, "a chunk past the edge is the wrapped chunk")
+	t.free()
+
+func _test_terrain_planet_coordinates() -> void:
+	var t := TerrainSlice.new()
+	add_child(t)
+	var pole := TerrainSlice.pole_chunks()
+	assert_true(absf(TerrainSlice.latitude_of(pole - 1) - 90.0) < 0.001, "the last row is at the pole")
+	assert_true(absf(TerrainSlice.latitude_at(0.0)) < 0.001, "the equator is latitude 0")
+	assert_true(absf(TerrainSlice.longitude_of(0)) < 0.001, "the origin is longitude 0")
+	assert_true(absf(TerrainSlice.longitude_at(TerrainSlice.circumference_chunks() * TerrainSlice.CHUNK_METERS * 0.25) - 90.0) < 0.001, "a quarter around is 90 degrees east")
+	assert_true(t.is_chunk_in_bounds(Vector2i(999999, 0)), "any longitude is walkable")
+	assert_true(not t.is_chunk_in_bounds(Vector2i(0, TerrainSlice.polar_chunks())), "polar ice is not walkable")
+	assert_eq(TerrainSlice.where_text(Vector3(0.0, 4.2, 0.0)), "0.000\u00b0N 0.000\u00b0E  alt 4 m", "where: the origin")
+	assert_eq(TerrainSlice.where_text(Vector3(-0.5, 0.0, 0.0)), "0.000\u00b0N 0.000\u00b0E  alt 0 m", "where: just west of the meridian rounds to 0.000, no \"0.000 W\"")
+	assert_true(PlayerRegistry.world_pos_of({"chunk": [0, TerrainSlice.pole_chunks()], "local": [0.0, 0.0, 1.0e6]})["chunk"].y <= TerrainSlice.pole_chunks(), "world_pos_of: a huge local cannot push the chunk past the pole")
+	assert_true(TerrainSlice.where_text(Vector3(-3200.0, 0.0, 3200.0)).contains("W"), "where: west of the origin")
+	var clamped := t.clamp_to_world(Vector3(1.0e7, 4.0, 1.0e9))
+	assert_eq(clamped.x, 1.0e7, "X is not clamped")
+	assert_true(clamped.z < t.world_half_extent(), "Z stops short of the ice")
+	var south := t.clamp_to_world(Vector3(0.0, 4.0, -1.0e9))
+	assert_true(t.is_chunk_in_bounds(t.world_to_chunk(Vector2(south.x, south.z))), "the south clamp lands in a walkable chunk")
+	var north := t.clamp_to_world(Vector3(0.0, 4.0, 1.0e9))
+	assert_true(t.is_chunk_in_bounds(t.world_to_chunk(Vector2(north.x, north.z))), "the north clamp lands in a walkable chunk")
+	# Position quantiser at a far chunk: a tile offset is exact in double precision, so a
+	# 0.125 step is the same 0.125 at chunk 600,000 as at the origin.
+	var far := Vector2i(600000, 0)
+	var origin_x := t.chunk_to_world(far).x
+	assert_eq((origin_x + 0.125) - origin_x, 0.125, "0.125 step survives at 19,200 km")
+	t.free()
+
+const WorldPos := preload("res://src/terrain/world_pos.gd")
+
+func _test_world_pos_rebase() -> void:
+	# A player 10,000 km east: chunk 312,500, local offset exact.
+	var far := WorldPos.from_world(1.0e7 + 5.125, 2.0, -70.25)
+	assert_eq(far["chunk"], Vector2i(312500, -3), "split into the right chunk")
+	var local: Vector3 = far["local"]
+	assert_true(local.x >= 0.0 and local.x < 32.0 and local.z >= 0.0 and local.z < 32.0, "local lies inside its chunk")
+	assert_eq(local.z, 25.75, "local keeps the 0.125 step")
+	# Rebase: the world position ({chunk, local}) is unchanged and every node shifts by one offset.
+	var old_origin := Vector2i(100, 100)
+	var pos := {"chunk": Vector2i(100 + 70, 100 - 3), "local": Vector3(5.125, 1.0, 9.5)}
+	var scene_before := WorldPos.to_scene(pos, old_origin)
+	assert_true(WorldPos.needs_rebase(scene_before), "2.2 km out needs a rebase")
+	var new_origin := WorldPos.rebase_origin(pos)
+	var shift := WorldPos.rebase_shift(old_origin, new_origin)
+	var scene_after := WorldPos.to_scene(pos, new_origin)
+	assert_eq(scene_after, scene_before + shift, "the player moves by exactly the shift")
+	assert_eq(WorldPos.from_scene(scene_after, new_origin), WorldPos.normalized(pos), "chunk + local unchanged by the rebase")
+	assert_eq(WorldPos.to_scene(pos, new_origin), pos["local"], "the player sits at their local offset")
+	assert_true(not WorldPos.needs_rebase(scene_after), "no rebase needed afterwards")
+	# A chunk node 3 chunks east of the player's chunk shifts by the same offset.
+	var node_chunk := Vector2i(173, 97)
+	assert_eq(WorldPos.to_scene({"chunk": node_chunk, "local": Vector3.ZERO}, new_origin),
+		WorldPos.to_scene({"chunk": node_chunk, "local": Vector3.ZERO}, old_origin) + shift, "streamed nodes shift together")
+	# The 0.125 step quantiser holds at a large chunk index: 400 steps east of 10,000 km, each
+	# step lands on a multiple of 0.125 and the chunk + local sum advances by exactly one step.
+	var stepper := {"chunk": far["chunk"], "local": far["local"]}
+	for i in 400:
+		var before_local: Vector3 = stepper["local"]
+		var before_chunk: Vector2i = stepper["chunk"]
+		stepper = WorldPos.normalized({"chunk": before_chunk, "local": before_local + Vector3(0.125, 0.0, 0.0)})
+		var after_local: Vector3 = stepper["local"]
+		var advanced: float = float(stepper["chunk"].x - before_chunk.x) * 32.0 + after_local.x - before_local.x
+		assert_eq(advanced, 0.125, "step %d advances exactly 0.125 m at chunk 312,500" % i)
+		assert_eq(fmod(after_local.x, 0.125), 0.0, "step %d stays on the 0.125 lattice" % i)
+	assert_eq(stepper["chunk"].x, 312500 + (floori(far["local"].x + 50.0) / 32), "400 steps = 50 m east")
+	# Walking across a chunk edge normalises.
+	var walked := WorldPos.normalized({"chunk": Vector2i(5, 5), "local": Vector3(33.0, 0.0, -1.0)})
+	assert_eq(walked["chunk"], Vector2i(6, 4), "walking over an edge changes the chunk")
+	assert_eq(walked["local"], Vector3(1.0, 0.0, 31.0), "and wraps the local offset")
+
+func _test_registry_world_pos() -> void:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.record_position("p1", Vector3(70.5, 3.0, -10.25))
+	var wp: Dictionary = reg.get_world_pos("p1")
+	assert_eq(wp["chunk"], Vector2i(2, -1), "recorded into chunk coordinates")
+	assert_eq(wp["local"], Vector3(6.5, 3.0, 21.75), "with the local offset")
+	var data: Dictionary = reg.get_player_data("p1")
+	assert_eq(data["chunk"], [2, -1], "the save payload carries the chunk")
+	# A Phase 49 payload has only `position`: it maps to the same coordinates.
+	reg.apply_player_data("old", {"position": [70.5, 3.0, -10.25], "hp": 10.0})
+	assert_eq(reg.get_world_pos("old"), wp, "an old save loads at the mapped coordinates")
+	# A far payload keeps its exact local offset.
+	reg.apply_player_data("far", {"chunk": [600000, -40], "local": [5.125, 2.0, 9.5], "hp": 10.0})
+	var far: Dictionary = reg.get_world_pos("far")
+	assert_eq(far["chunk"], Vector2i(600000, -40), "a far chunk survives the round trip")
+	assert_eq(far["local"], Vector3(5.125, 2.0, 9.5), "at 0.125 precision")
+	assert_eq(reg.get_player_data("far")["local"], [5.125, 2.0, 9.5], "and re-saves identically")
+	assert_eq(reg.get_record("far")["position"][0], 600000 * 32.0 + 5.125, "position is rebuilt in doubles, not float32")
+	# A malformed chunk keeps the saved position instead of resetting to the origin.
+	reg.apply_player_data("bad", {"chunk": [1, 2, 3], "local": [1.0, 2.0, 3.0], "position": [70.5, 3.0, -10.25], "hp": 10.0})
+	assert_eq(reg.get_world_pos("bad"), wp, "a malformed chunk falls back to position")
+	assert_eq(reg.get_record("bad")["position"], [70.5, 3.0, -10.25], "and position is untouched")
+	reg.free()
 
 # ---------------------------------------------------------------------------
 # PersistenceSlice tests

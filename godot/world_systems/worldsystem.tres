@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/world_systems/worldsystem.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+circumferenceKm = 40000.0
+polarLatitude = 85.0
+seaLevel = 0.0
+description = "The planet as a fact of the fabric. The world takes globe semantics on a flat chunk grid: X wraps around the circumference, Z is latitude bounded by impassable polar ice, and players locate each other by latitude, longitude and altitude. Terrain is seed-deterministic, so only player edits are ever stored."
+tags = ["world-system"]

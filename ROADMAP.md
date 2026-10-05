@@ -5195,16 +5195,29 @@ the planet's size is a fabric fact.
   latitude/longitude, and old float positions convert to chunk + local.
 
 **Acceptance criteria:**
-- [ ] `terrain: the world wraps east-west`: the heightmap of chunk
+- [x] `terrain: the world wraps east-west`: the heightmap of chunk
   `(circumference_chunks − 1, z)` meets chunk `(0, z)` with no seam wall.
 - [ ] `player: rebased origin keeps the world position`: after a rebase, the
   player's `{chunk, local}` is unchanged and every streamed chunk node is
   shifted by the same offset.
 - [ ] A player teleported 10,000 km out walks, mines and builds with the same
   0.125 step precision as at the origin (manual check plus a unit test on the
-  quantiser at large chunk indices).
-- [ ] A Phase 49 save loads with its edits at the mapped coordinates.
+  quantiser at large chunk indices). _Unit test on the quantiser at chunk 312,500 is in the suite; the manual walk is open._
+- [ ] A Phase 49 save loads with its edits at the mapped coordinates. _Player records migrate (suite); world/edit saves untouched, as edits are keyed by tile and the origin is unchanged._
 - [ ] Suite green on both boot paths, and `tools/net_harness.sh` agrees.
+
+**Progress (in progress, not done):** the `WorldSystem` fabric entity (circumferenceKm, polarLatitude,
+seaLevel) is in. `TerrainSlice` has `wrap_chunk`, `latitude_of`/`longitude_of`/`latitude_at`/
+`longitude_at`, `circumference_chunks`, `polar_chunks`; X no longer clamps, Z stops at the polar ice,
+and heights blend over the last 8 east chunks into the west edge so the seam is exact. The minimap
+draws only the polar lines. `src/terrain/world_pos.gd` holds the pure `{chunk, local}` conversion and
+rebase math, covered by the suite. Player records save `chunk` + `local` beside `position` (old saves migrate
+onto the same coordinates, `PlayerRegistry.world_pos_of`), and the minimap shows latitude/longitude/altitude
+(`TerrainSlice.where_text`). Still open: float32 noise precision far from the origin (needs an
+integer-lattice noise), canonicalising chunk keys at the seam in `ChunkManager`/`VoxelSlice`,
+`{chunk, local}` in snapshots, RPCs, AOI, creatures and stations (player records done), the client scene-origin
+rebase that shifts streamed nodes, a `/where` chat command (no command system exists; `where_text` is ready), and the
+map/migration of world and edit saves.
 
 ---
 

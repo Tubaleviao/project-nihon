@@ -15,7 +15,8 @@ extends Control
 ## projections (world_to_chunk / get_player_cell / reveal tracking) are pure and
 ## are what the automated test suite asserts against.
 
-const CHUNK_SIZE := 32                 # world units per chunk — must match TerrainSlice.CHUNK_SIZE × TILE_SIZE
+const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const CHUNK_SIZE := TerrainSlice.CHUNK_METERS   # world units per chunk
 
 ## Reveal this many chunks around the player's current chunk (Chebyshev radius).
 ## 1 reveals a 3×3 neighbourhood — enough to see where you are and where you
@@ -212,6 +213,12 @@ func _draw() -> void:
 	# the view reaches it.
 	_draw_world_bounds(size, cell_px)
 
+	# Latitude, longitude and altitude (Phase 50).
+	if player_slice != null and player_slice.has_method("get_position"):
+		var font := ThemeDB.fallback_font
+		draw_string(font, Vector2(4.0, size.y - 4.0), TerrainSlice.where_text(player_slice.get_position()),
+			HORIZONTAL_ALIGNMENT_LEFT, size.x - 8.0, 11, Color(1, 1, 1, 0.9))
+
 	# Player arrow — points in the player's facing direction.
 	var dir := _facing_screen_dir(_facing)
 	var angle := atan2(dir.y, dir.x)
@@ -225,23 +232,17 @@ func _draw() -> void:
 	var right := back - perp * half_w
 	draw_colored_polygon(PackedVector2Array([tip, left, right]), Color(1.0, 1.0, 1.0))
 
-## Draw the finite world's boundary line where it falls inside the visible
-## window. The playable chunks span [-R, R) on each axis.
+## Draw the polar ice lines where they fall inside the visible window. The world wraps in X,
+## so only the north and south limits are edges.
 func _draw_world_bounds(size: Vector2, cell_px: float) -> void:
 	if terrain_slice == null or not terrain_slice.has_method("world_radius_chunks"):
 		return
 	var r: int = terrain_slice.world_radius_chunks()
 	var edge_col := Color(0.0, 0.0, 0.0, 0.8)
 
-	var left_x := size.x * 0.5 + (-r - _player_chunk.x) * cell_px
-	var right_x := size.x * 0.5 + (r - _player_chunk.x) * cell_px
-	var top_z := size.y * 0.5 + (-r - _player_chunk.y) * cell_px
+	var top_z := size.y * 0.5 + (-(r - 1) - _player_chunk.y) * cell_px
 	var bottom_z := size.y * 0.5 + (r - _player_chunk.y) * cell_px
 
-	if left_x > 0.0 and left_x < size.x:
-		draw_line(Vector2(left_x, 0.0), Vector2(left_x, size.y), edge_col, 2.0)
-	if right_x > 0.0 and right_x < size.x:
-		draw_line(Vector2(right_x, 0.0), Vector2(right_x, size.y), edge_col, 2.0)
 	if top_z > 0.0 and top_z < size.y:
 		draw_line(Vector2(0.0, top_z), Vector2(size.x, top_z), edge_col, 2.0)
 	if bottom_z > 0.0 and bottom_z < size.y:

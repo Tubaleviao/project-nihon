@@ -184,6 +184,7 @@ const WORLD_SYSTEMS: Dictionary = {
 		"MarketSystem": preload("res://godot/world_systems/marketsystem.tres"),
 		"PersistenceSystem": preload("res://godot/world_systems/persistencesystem.tres"),
 		"TradeSystem": preload("res://godot/world_systems/tradesystem.tres"),
-		"WeatherSystem": preload("res://godot/world_systems/weathersystem.tres")
+		"WeatherSystem": preload("res://godot/world_systems/weathersystem.tres"),
+		"WorldSystem": preload("res://godot/world_systems/worldsystem.tres")
 }
 

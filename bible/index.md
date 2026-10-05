@@ -189,4 +189,5 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [PersistenceSystem](entities/persistencesystem.md) — Defines the authoritative save lifecycle: which directory the world and per-player records live in, how often the server autosaves, how a headless server is asked to shut down cleanly, and how a record is written so a kill mid-write cannot truncate it
 - [TradeSystem](entities/tradesystem.md) — Defines the rules governing player-to-player trade
 - [WeatherSystem](entities/weathersystem.md) — Simulates weather across biomes as an emergent world system
+- [WorldSystem](entities/worldsystem.md) — The planet as a fact of the fabric
 

@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:37d96288992996ebb60724e6550cc5c473f892e37a8beb58e2b0db7902f41d24",
+  "schemaHash": "sha256:04e93de94471dd11f1749e47015c2c0c70944e4c0b2f75815e8996c5e780b311",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -3545,6 +3545,54 @@
             }
           }
         },
+        "pii": [],
+        "gdpr": {}
+      },
+      "WorldSystem": {
+        "name": "WorldSystem",
+        "tags": [
+          "world-system"
+        ],
+        "description": "The planet as a fact of the fabric. The world takes globe semantics on a flat chunk grid: X wraps around the circumference, Z is latitude bounded by impassable polar ice, and players locate each other by latitude, longitude and altitude. Terrain is seed-deterministic, so only player edits are ever stored.",
+        "goal": "Make one persistent, Earth-sized world whose size is a design fact rather than a code constant",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "circumferenceKm": {
+            "name": "circumferenceKm",
+            "type": "decimal",
+            "description": "Length of the equator in km; X wraps after this distance (Phase 50)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 40000
+          },
+          "polarLatitude": {
+            "name": "polarLatitude",
+            "type": "decimal",
+            "description": "Degrees of latitude at which impassable polar ice begins (north and south); the world spans pole to pole at 90 (Phase 50)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 85
+          },
+          "seaLevel": {
+            "name": "seaLevel",
+            "type": "decimal",
+            "description": "World Y in metres of the ocean surface (used by Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          }
+        },
+        "relations": {},
+        "behaviors": {},
         "pii": [],
         "gdpr": {}
       },
