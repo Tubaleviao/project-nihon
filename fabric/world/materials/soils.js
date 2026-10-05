@@ -1,15 +1,17 @@
 const { defineEntity } = require('@newel/core')
 const { depositFields } = require('./deposit')
 
-// Phase 49 — natural ground cover. Neither is ever a ground vein (empty depth band): Grass is the
-// living top face of a biome's `surfaceMaterial`, Soil is what digging through it yields.
+// Phase 49 — natural ground cover. Neither is ever a ground vein (empty depth band): Grass is one
+// of the covers a biome's `surfaceMaterial` can name, and Soil is what mining a slice of a biome's
+// topsoil yields — the mapping is the biome's own `soilMaterial`, not a Grass-only rule.
 module.exports = {
 
   Grass: defineEntity({
     tags: ['material'],
     description:
       'Living turf that covers temperate ground (forest and grassland). It is the top face of ' +
-      'natural land, tinted per biome; digging it turns it into Soil.',
+      'natural land, tinted per biome; what digging it yields is the biome\'s own `soilMaterial`, ' +
+      'so a verbatim `Grass` cover is not what decides Soil.',
     goal: 'Make natural ground read as ground, and give the surface layer a name the biomes can point at',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
@@ -22,8 +24,9 @@ module.exports = {
   Soil: defineEntity({
     tags: ['material'],
     description:
-      'Loose earth under the turf, down to the biome\'s topsoil depth. It is what mining ' +
-      'natural grass-covered ground yields, and what farmland is made of.',
+      'Loose earth under a biome\'s cover, down to its `topsoilDepth`. It is what mining a ' +
+      'slice of natural topsoil yields, whatever cover (`surfaceMaterial`) it wears — Grass, ' +
+      'Moss, Ash and Void ground alike — and what farmland is made of.',
     goal: 'Give digging the surface a yield that is not rock',
     fields: {
       id:       { type: 'uuid', primaryKey: true },
