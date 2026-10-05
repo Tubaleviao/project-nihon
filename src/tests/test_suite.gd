@@ -12538,6 +12538,13 @@ func _test_voxel_surface_style_complete() -> void:
 		assert_false(style.is_empty(), "%s has a surface style" % key)
 		assert_true(str(style.get("material", "")) != "", "%s names a surface material" % key)
 		assert_true(float(style.get("depth", 0.0)) > 0.0, "%s has a topsoil depth" % key)
+	# Phase 49 — the biome's `soilMaterial` reaches the inventory VERBATIM (`_natural_yield`
+	# returns it as the mined material), so a typo would mint a phantom item nothing can use.
+	# The fabric cannot type it (a plain string, like `surfaceMaterial`), so pin it here.
+	for key in GameData.BIOMES:
+		var res: Variant = GameData.BIOMES[key]
+		var soil := str(res.get("soilMaterial"))
+		assert_true(GameData.MATERIALS.has(soil), "%s names a declared soil material (%s)" % [key, soil])
 	assert_true(VoxelSlice.surface_style("NoSuchBiome").is_empty(), "an unknown biome has no style")
 
 ## One style lookup per biome per build, however many runs ask.

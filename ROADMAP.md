@@ -5116,7 +5116,7 @@ report, 2026-10-04).
   `net: re-scope snapshot edits hold only AOI chunks`; the snapshot names its scope
   (`edits_aoi`) and the client keeps edits it holds outside it._
 - [x] `pnpm check-drift` is clean and the suite is green on both boot paths.
-  `tools/net_harness.sh` agrees on a fresh world. _check-drift clean, suite 8762/8762, net_harness 12/12._
+  `tools/net_harness.sh` agrees on a fresh world. _check-drift clean, suite 8767/8767, net_harness 12/12._
 
 **Progress:** the unbuilt-neighbour seam fix is in (`_generated_heightmap`). Biomes are chosen by the
 fabric climate envelopes: biome entities carry `temperature`/`moisture` ranges (0–1) and
@@ -5134,7 +5134,7 @@ coordinate-hash dither), `ChunkManager` rebuilds built neighbours once when a ch
 streams in, and the minimap draws 4x4 dithered cells per chunk. `ClimateField` and `OreField`
 read plain snapshots filled by `OreField.warm()`, so the worker half never touches a Resource.
 Still open, needs a human: the manual 20-chunk walk with a frame-time log and screenshot. `check-drift`
-is clean, the suite is green (8762/8762, both boot paths), and `net_harness.sh` reports 12/12. The phase
+is clean, the suite is green (8767/8767, both boot paths), and `net_harness.sh` reports 12/12. The phase
 is not marked done.
 
 **Issue #111 follow-up (PR #110 review):** the surface-material → soil-material mapping is no longer a
@@ -5143,6 +5143,11 @@ GDScript branch on `surfaceMaterial == "Grass"` — it is the biome's fabric `so
 per-biome `surfaceVeinChance` values were varied from the uniform 0.2 default so the fabric field
 actually gates the field (pinned by `ore: surface-vein chance is the fabric value`, which measures the
 kept share per biome off the ore field).
+
+**Issue #111 follow-up, review pass:** the field's TARGET is now pinned — `voxel: every biome declares a
+surface style` asserts each biome's `soilMaterial` names a declared fabric material, because
+`_natural_yield` returns it verbatim as the mined item and a fabric typo would otherwise mint a phantom
+material.
 
 **Net harness:** it has 11 steps now (the equipment step joined it), so the `10/10 steps
 agreed` lines in the older phase entries above are historical; a green run now reads `12/12`
