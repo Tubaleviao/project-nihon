@@ -1220,7 +1220,7 @@ func _natural_yield(tile: Vector2i, span: Dictionary) -> Dictionary:
 		var biome := _biome_at(xz)
 		var b: Variant = GameData.BIOMES.get(biome, null)
 		# Phase 49 — digging through a grass-covered biome's topsoil yields Soil, not rock.
-		if b != null and b.get("surfaceMaterial") == "Grass" and depth < float(b.get("topsoilDepth")):
+		if b != null and b.get("surfaceMaterial") == "Grass" and depth < float(b.get("topsoilDepth") if b.get("topsoilDepth") != null else 0.0):
 			return { "material": "Soil", "quantity": 1, "vein": {} }
 		return { "material": OreField.host_material(biome), "quantity": 1, "vein": {} }
 	var take := mini(int(vein["quantity"]), OreField.remaining(vein, _vein_taken))

@@ -59,11 +59,13 @@ static func moisture(seed_v: int, p: Vector2) -> float:
 ## field asks `biome_for_chunk` from a chunk-build worker, so the lookup reads this plain
 ## data rather than Resource properties, and costs a few float compares per biome.
 static var _envelopes: Dictionary = {}
+static var _warmed := false
 
 ## Fill the envelope table from `GameData.BIOMES` (idempotent). Main thread only.
 static func warm() -> void:
-	if not _envelopes.is_empty():
+	if _warmed:
 		return
+	_warmed = true
 	for key in GameData.BIOMES:
 		var env := _envelope_of(GameData.BIOMES[key])
 		if not env.is_empty():
@@ -114,7 +116,7 @@ static func biome_for_chunk(seed_v: int, chunk_pos: Vector2i, keys: Array) -> St
 	# The 3x3 cell search below is exact only while a feature point stays within ~0.8 of a
 	# cell of its centre; a larger JITTER could put the true nearest point one ring further out.
 	assert(JITTER <= 0.8, "ClimateField.JITTER too large for the 3x3 nearest-point search")
-	if _envelopes.is_empty():
+	if not _warmed:
 		warm()   # an isolated caller that never warmed it: a main-thread call
 	var p := Vector2(chunk_pos.x + 0.5, chunk_pos.y + 0.5)
 	var picked := _pick(temperature(seed_v, p), moisture(seed_v, p), keys, _envelopes)

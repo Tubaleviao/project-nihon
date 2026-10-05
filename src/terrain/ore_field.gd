@@ -99,10 +99,11 @@ const SURFACE_VEIN_CHANCE := 0.2 ## fallback when the biome resource carries no 
 ## biome key -> surface-vein chance, snapshotted from the fabric `surfaceVeinChance` by `warm()`
 ## (main thread) and read-only afterwards, so a worker never touches a Resource for it.
 static var _surface_chances: Dictionary = {}
+static var _warmed := false
 
 ## The fraction of surface-reaching veins a biome keeps: its fabric `surfaceVeinChance`.
 static func surface_vein_chance(biome: String) -> float:
-	if _bands.is_empty():
+	if not _warmed:
 		warm()
 	return float(_surface_chances.get(biome, SURFACE_VEIN_CHANCE))
 
@@ -154,8 +155,9 @@ static var _bands: Dictionary = {}
 
 ## Fill the band table from `GameData.MATERIALS` (idempotent). Main thread only.
 static func warm() -> void:
-	if not _bands.is_empty():
+	if _warmed:
 		return
+	_warmed = true
 	ClimateField.warm()
 	for key in GameData.BIOMES:
 		var b: Resource = GameData.BIOMES[key]
@@ -173,7 +175,7 @@ static func warm() -> void:
 
 ## A material's fabric band and ley gate. An unknown material has an EMPTY band.
 static func band_of(material: String) -> Dictionary:
-	if _bands.is_empty():
+	if not _warmed:
 		warm()
 	return _bands.get(material, { "min": 0.0, "max": 0.0, "ley": false })
 

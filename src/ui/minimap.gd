@@ -261,34 +261,38 @@ func _biome_memo(c: Vector2i, memo: Dictionary) -> String:
 		memo[k] = _biome(c)
 	return memo[k]
 
-## Draw one chunk as CELLS_PER_CHUNK² cells. A cell on the chunk's border may wear the biome
-## across that border (the same deterministic dither the voxel surface uses), so a biome edge
-## reads as a ragged band, not a straight cut.
+## Draw one chunk. The interior is one rect; only the border cells are drawn individually, and
+## one may wear the biome across that border (a coordinate-hash dither like the voxel surface's,
+## flatter: a fixed one-in-four), so a biome edge reads as a ragged band, not a straight cut.
+## Only REVEALED neighbours are blended toward, so the fog of war never leaks an unexplored biome.
 func _draw_chunk_cells(c: Vector2i, rect: Rect2, memo: Dictionary) -> void:
 	var own := _biome_memo(c, memo)
+	var own_col := biome_color(own)
 	var n := CELLS_PER_CHUNK
 	var cw := rect.size.x / n
 	var ch := rect.size.y / n
+	draw_rect(Rect2(rect.position.x + cw, rect.position.y + ch, cw * (n - 2) + 0.5, ch * (n - 2) + 0.5), own_col)
 	for j in n:
 		for i in n:
-			var biome := own
 			var edge_i := mini(i, n - 1 - i)
 			var edge_j := mini(j, n - 1 - j)
-			if mini(edge_i, edge_j) == 0:
-				var across := c
-				if edge_i <= edge_j:
-					across.x += -1 if i == 0 else 1
-				else:
-					across.y += -1 if j == 0 else 1
+			if mini(edge_i, edge_j) != 0 and n > 2:
+				continue
+			var col := own_col
+			var across := c
+			if edge_i <= edge_j:
+				across.x += -1 if i == 0 else 1
+			else:
+				across.y += -1 if j == 0 else 1
+			if _revealed.has(_chunk_key(across)):
 				var other := _biome_memo(across, memo)
 				if other != own:
 					var gx := c.x * n + i
 					var gz := c.y * n + j
 					var roll := float(((gx * 73856093) ^ (gz * 19349663)) & 0xffff) / 65536.0
 					if roll < 0.25:
-						biome = other
-			draw_rect(Rect2(rect.position.x + i * cw, rect.position.y + j * ch, cw + 0.5, ch + 0.5),
-				biome_color(biome))
+						col = biome_color(other)
+			draw_rect(Rect2(rect.position.x + i * cw, rect.position.y + j * ch, cw + 0.5, ch + 0.5), col)
 
 func _biome(c: Vector2i) -> String:
 	if terrain_slice != null and terrain_slice.has_method("get_biome_at_chunk"):

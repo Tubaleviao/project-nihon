@@ -10184,6 +10184,7 @@ func _test_voxel_group_key_colour_band() -> void:
 func _test_voxel_biome_roll_table_prebuilt() -> void:
 	var saved: Dictionary = OreField._bands.duplicate()
 	OreField._bands.clear()
+	OreField._warmed = false
 	assert_eq(OreField._bands.size(), 0, "the band table starts empty (the assertion is not vacuous)")
 	var v := VoxelSlice.new()
 	add_child(v)
