@@ -54,6 +54,7 @@ extends RefCounted
 ## `leyGated` on `fabric/world/materials/*.js`), read here off `GameData.MATERIALS`.
 
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const ClimateField := preload("res://src/terrain/climate_field.gd")
 
 ## Mirrors of VoxelSlice's grid (authoritative copies live there and on TerrainSlice).
 const CHUNK_SIZE := 64
@@ -157,7 +158,6 @@ static var _bands: Dictionary = {}
 static func warm() -> void:
 	if _warmed:
 		return
-	_warmed = true
 	ClimateField.warm()
 	for key in GameData.BIOMES:
 		var b: Resource = GameData.BIOMES[key]
@@ -172,6 +172,8 @@ static func warm() -> void:
 			entry["max"] = float((band as Dictionary).get("max", 0.0))
 		entry["ley"] = bool(res.get("leyGated")) if res.get("leyGated") != null else false
 		_bands[str(key)] = entry
+	# Latch only once the tables are filled, so an early call before GameData loads retries.
+	_warmed = not _bands.is_empty()
 
 ## A material's fabric band and ley gate. An unknown material has an EMPTY band.
 static func band_of(material: String) -> Dictionary:

@@ -268,6 +268,10 @@ func _biome_memo(c: Vector2i, memo: Dictionary) -> String:
 func _draw_chunk_cells(c: Vector2i, rect: Rect2, memo: Dictionary) -> void:
 	var own := _biome_memo(c, memo)
 	var own_col := biome_color(own)
+	# At far zoom a chunk is a few pixels: sub-cells are sub-pixel, so one rect is enough.
+	if rect.size.x < 12.0:
+		draw_rect(Rect2(rect.position, rect.size + Vector2(0.5, 0.5)), own_col)
+		return
 	var n := CELLS_PER_CHUNK
 	var cw := rect.size.x / n
 	var ch := rect.size.y / n

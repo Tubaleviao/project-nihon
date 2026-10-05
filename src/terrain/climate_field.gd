@@ -65,11 +65,11 @@ static var _warmed := false
 static func warm() -> void:
 	if _warmed:
 		return
-	_warmed = true
 	for key in GameData.BIOMES:
 		var env := _envelope_of(GameData.BIOMES[key])
 		if not env.is_empty():
 			_envelopes[str(key)] = env
+	_warmed = not _envelopes.is_empty()
 
 ## [temp_min, temp_max, moist_min, moist_max] of a biome resource, or [] without an envelope.
 static func _envelope_of(biome: Variant) -> Array:
