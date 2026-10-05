@@ -60,6 +60,7 @@ extends Node
 ##   apply_player_data(player_id, data) -> void
 ##   get_players_data() -> Dictionary / apply_players_data(data) -> void
 const Diag := preload("res://src/core/diag.gd")
+const WorldPos := preload("res://src/terrain/world_pos.gd")
 
 const InventorySlice := preload("res://src/inventory/inventory_slice.gd")
 
@@ -390,6 +391,34 @@ func record_position(player_id: String, position: Vector3) -> void:
 	if rec.is_empty():
 		return
 	rec["position"] = [position.x, position.y, position.z]
+	_store_world_pos(rec, WorldPos.from_world(position.x, position.y, position.z))
+
+## Phase 50 — a record keeps its position as `chunk` [cx, cz] + `local` [x, y, z] (exact at any
+## distance from the origin); `position` stays beside them for the readers that want a Vector3.
+static func _store_world_pos(rec: Dictionary, wp: Dictionary) -> void:
+	var chunk: Vector2i = wp["chunk"]
+	var local: Vector3 = wp["local"]
+	rec["chunk"] = [chunk.x, chunk.y]
+	rec["local"] = [local.x, local.y, local.z]
+
+## A record's position as { chunk, local }. A pre-Phase-50 record carries only the float
+## `position`, which maps onto the chunk grid at the same coordinates (the old origin is the
+## new origin), so an old save loads with its edits where they were.
+static func world_pos_of(rec: Dictionary) -> Dictionary:
+	var c: Variant = rec.get("chunk", null)
+	var l: Variant = rec.get("local", null)
+	if c is Array and l is Array and (c as Array).size() == 2 and (l as Array).size() == 3:
+		return WorldPos.normalized({
+			"chunk": Vector2i(int(c[0]), int(c[1])),
+			"local": Vector3(float(l[0]), float(l[1]), float(l[2])),
+		})
+	var p: Variant = rec.get("position", [0.0, 0.0, 0.0])
+	if not (p is Array) or (p as Array).size() < 3:
+		p = [0.0, 0.0, 0.0]
+	return WorldPos.from_world(float(p[0]), float(p[1]), float(p[2]))
+
+func get_world_pos(player_id: String) -> Dictionary:
+	return world_pos_of(get_record(player_id))
 
 ## Record a player's HP — but ONLY for the local (host-simulated) player.
 ##
@@ -780,9 +809,12 @@ func evict_player(player_id: String) -> bool:
 ## The deadline travels with it so the fact survives the round trip.
 func get_player_data(player_id: String) -> Dictionary:
 	var rec := get_record(player_id)
+	var wp := world_pos_of(rec)
 	var data := {
 		"player_id": player_id,
 		"position":  rec.get("position", [0.0, 0.0, 0.0]),
+		"chunk":     [wp["chunk"].x, wp["chunk"].y],
+		"local":     [wp["local"].x, wp["local"].y, wp["local"].z],
 		"hp":        _resolved_hp(rec),
 		"respawn_deadline": float(rec.get("respawn_deadline", 0.0)),
 		"appearance": rec.get("appearance", {}),
@@ -808,6 +840,13 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 		return
 	var rec := ensure_player(player_id)
 	rec["position"] = data.get("position", [0.0, 0.0, 0.0])
+	# Phase 50 — a payload with chunk + local is authoritative (and rebuilds `position`); an old
+	# payload with only `position` is migrated onto the chunk grid.
+	var wp := world_pos_of(data)
+	_store_world_pos(rec, wp)
+	if data.has("chunk") and data.has("local"):
+		var sc := WorldPos.to_scene(wp, Vector2i.ZERO)
+		rec["position"] = [sc.x, sc.y, sc.z]
 	var restored_hp := float(data.get("hp", -1.0))
 	rec["hp"] = restored_hp
 	# Phase 39 — the respawn deadline rides the same record. The saved `hp` above is

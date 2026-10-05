@@ -179,6 +179,15 @@ static func latitude_at(world_z: float) -> float:
 static func longitude_at(world_x: float) -> float:
 	return fposmod(world_x / CHUNK_METERS / float(circumference_chunks()) * 360.0 + 180.0, 360.0) - 180.0
 
+## What `/where` prints and the HUD shows: latitude, longitude and altitude of a world position.
+static func where_text(world_pos: Vector3) -> String:
+	var lat := latitude_at(world_pos.z)
+	var lon := longitude_at(world_pos.x)
+	return "%.3f\u00b0%s %.3f\u00b0%s  alt %d m" % [
+		absf(lat), "N" if lat >= 0.0 else "S",
+		absf(lon), "E" if lon >= 0.0 else "W",
+		roundi(world_pos.y)]
+
 ## True when `chunk_pos` is walkable ground: any longitude, short of the polar ice.
 func is_chunk_in_bounds(chunk_pos: Vector2i) -> bool:
 	return absi(chunk_pos.y) < polar_chunks()

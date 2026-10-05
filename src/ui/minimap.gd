@@ -15,6 +15,7 @@ extends Control
 ## projections (world_to_chunk / get_player_cell / reveal tracking) are pure and
 ## are what the automated test suite asserts against.
 
+const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const CHUNK_SIZE := 32                 # world units per chunk — must match TerrainSlice.CHUNK_SIZE × TILE_SIZE
 
 ## Reveal this many chunks around the player's current chunk (Chebyshev radius).
@@ -211,6 +212,12 @@ func _draw() -> void:
 	# World boundary — a thin frame so the finite world's edge is visible when
 	# the view reaches it.
 	_draw_world_bounds(size, cell_px)
+
+	# Latitude, longitude and altitude (Phase 50).
+	if player_slice != null and player_slice.has_method("get_position"):
+		var font := ThemeDB.fallback_font
+		draw_string(font, Vector2(4.0, size.y - 4.0), TerrainSlice.where_text(player_slice.get_position()),
+			HORIZONTAL_ALIGNMENT_LEFT, size.x - 8.0, 11, Color(1, 1, 1, 0.9))
 
 	# Player arrow — points in the player's facing direction.
 	var dir := _facing_screen_dir(_facing)

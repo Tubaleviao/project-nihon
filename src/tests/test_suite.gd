@@ -84,6 +84,7 @@ func run() -> void:
 	_run_test("terrain: the world wraps east-west",           _test_terrain_wraps_east_west)
 	_run_test("terrain: latitude and longitude from the fabric planet", _test_terrain_planet_coordinates)
 	_run_test("player: rebased origin keeps the world position", _test_world_pos_rebase)
+	_run_test("persistence: position saved as chunk + local, old saves migrate", _test_registry_world_pos)
 	_run_test("persistence: save then load round-trip",       _test_persistence_round_trip)
 	_run_test("persistence: missing slot emits load_failed",  _test_persistence_missing_slot)
 	_run_test("loot: known creature produces drops",          _test_loot_known_creature)
@@ -962,6 +963,8 @@ func _test_terrain_planet_coordinates() -> void:
 	assert_true(absf(TerrainSlice.longitude_at(TerrainSlice.circumference_chunks() * TerrainSlice.CHUNK_METERS * 0.25) - 90.0) < 0.001, "a quarter around is 90 degrees east")
 	assert_true(t.is_chunk_in_bounds(Vector2i(999999, 0)), "any longitude is walkable")
 	assert_true(not t.is_chunk_in_bounds(Vector2i(0, TerrainSlice.polar_chunks())), "polar ice is not walkable")
+	assert_eq(TerrainSlice.where_text(Vector3(0.0, 4.2, 0.0)), "0.000\u00b0N 0.000\u00b0E  alt 4 m", "where: the origin")
+	assert_true(TerrainSlice.where_text(Vector3(-3200.0, 0.0, 3200.0)).contains("W"), "where: west of the origin")
 	var clamped := t.clamp_to_world(Vector3(1.0e7, 4.0, 1.0e9))
 	assert_eq(clamped.x, 1.0e7, "X is not clamped")
 	assert_true(clamped.z < t.world_half_extent(), "Z stops short of the ice")
@@ -1001,6 +1004,26 @@ func _test_world_pos_rebase() -> void:
 	var walked := WorldPos.normalized({"chunk": Vector2i(5, 5), "local": Vector3(33.0, 0.0, -1.0)})
 	assert_eq(walked["chunk"], Vector2i(6, 4), "walking over an edge changes the chunk")
 	assert_eq(walked["local"], Vector3(1.0, 0.0, 31.0), "and wraps the local offset")
+
+func _test_registry_world_pos() -> void:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.record_position("p1", Vector3(70.5, 3.0, -10.25))
+	var wp: Dictionary = reg.get_world_pos("p1")
+	assert_eq(wp["chunk"], Vector2i(2, -1), "recorded into chunk coordinates")
+	assert_eq(wp["local"], Vector3(6.5, 3.0, 21.75), "with the local offset")
+	var data: Dictionary = reg.get_player_data("p1")
+	assert_eq(data["chunk"], [2, -1], "the save payload carries the chunk")
+	# A Phase 49 payload has only `position`: it maps to the same coordinates.
+	reg.apply_player_data("old", {"position": [70.5, 3.0, -10.25], "hp": 10.0})
+	assert_eq(reg.get_world_pos("old"), wp, "an old save loads at the mapped coordinates")
+	# A far payload keeps its exact local offset.
+	reg.apply_player_data("far", {"chunk": [600000, -40], "local": [5.125, 2.0, 9.5], "hp": 10.0})
+	var far: Dictionary = reg.get_world_pos("far")
+	assert_eq(far["chunk"], Vector2i(600000, -40), "a far chunk survives the round trip")
+	assert_eq(far["local"], Vector3(5.125, 2.0, 9.5), "at 0.125 precision")
+	assert_eq(reg.get_player_data("far")["local"], [5.125, 2.0, 9.5], "and re-saves identically")
+	reg.free()
 
 # ---------------------------------------------------------------------------
 # PersistenceSlice tests
