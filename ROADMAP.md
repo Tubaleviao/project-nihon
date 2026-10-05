@@ -5646,10 +5646,30 @@ above is corrected: the old file had ONE node and no `children` array, so nothin
 and nothing was lost (its single triangle rendered, which IS the reported bug); the orphan
 hazard belongs to the new multi-part layout. Checked and found sound, no change needed: the
 committed `.glb.raw` is byte-identical to a fresh `python3 tools/gen_placeholder_glb.py` run
-(md5 `218d1100…`, two runs); re-derived from the bytes, all six faces' winding cross-product
+(md5 `218d1100…` then, `95a5283d…` after the stride fix below, two runs each);
+re-derived from the bytes, all six faces' winding cross-product
 equals their outward normal (no face is backface-culled — that is the mechanism the triangle
 bug came from), the tree carries no orphan node, and the merged AABB is exactly the quoted
 `(0.84, 1.73, 0.30)` with `min y 0.000`.
+
+**Review pass 2 (self-driven, same branch).** One item, fixed. The generator declared no
+`byteStride` on the mesh's two vertex `bufferView`s, so Godot's glTF importer logged
+`Buffer view byte stride should be declared for vertex attributes. Assuming packed data and
+reading anyway.` three times on EVERY load of the rig — 24 lines across the 8 parses of one
+`--verbose` boot (the seven asset tests plus the world boot's own `attach_rig`). `Blob.add`
+now takes an optional stride and the POSITION/NORMAL views declare `12` (one tightly-packed
+VEC3 float); the indices view must not declare one, so it does not. Re-measured on the same
+verbose boot: **24 → 0 stride warnings**, the suite still `8781/8781` on both paths, and the
+shape unchanged — the regenerated `.glb.raw` reads back the identical `(0.84, 1.73, 0.30)`
+AABB at `min y 0.000`, the same seven clips, the same six-of-six outward winding, and no
+orphan node, only 32 bytes larger (10 320 → 10 352). Independently verified this pass and
+deliberately left alone: the world boot's exit noise — `11 ObjectDB instances were leaked at
+exit` and `1 resources still in use` (`res://src/terrain/terrain_slice.gd`, named by a
+`--verbose` run) — is IDENTICAL on `origin/main` with the old triangle, so it is pre-existing
+and not this branch's. The world boot itself was exercised for the first time on this branch
+(`--quit-after-boot`): the rig parses (`glTF: Total animations '7'`, six parts created) and
+the run logs no `[RigTree] rig has no …` for the player's own rig — the only such lines are
+the two deliberate negative tests.
 
 ---
 

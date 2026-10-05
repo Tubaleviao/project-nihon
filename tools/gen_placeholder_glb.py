@@ -128,7 +128,7 @@ class Blob:
         self.data = bytearray()
         self.views: list = []
 
-    def add(self, payload: bytes, target: int) -> int:
+    def add(self, payload: bytes, target: int, stride: int = 0) -> int:
         while len(self.data) % 4:
             self.data.append(0)
         offset = len(self.data)
@@ -136,6 +136,12 @@ class Blob:
         view = {"buffer": 0, "byteOffset": offset, "byteLength": len(payload)}
         if target:
             view["target"] = target
+        if stride:
+            # A vertex view must declare its stride or Godot's glTF importer warns
+            # ("Buffer view byte stride should be declared for vertex attributes")
+            # on EVERY load of this rig. The indices view must NOT declare one
+            # (glTF forbids byteStride on an ELEMENT_ARRAY_BUFFER view).
+            view["byteStride"] = stride
         self.views.append(view)
         return len(self.views) - 1
 
@@ -152,9 +158,10 @@ def build() -> bytes:
     blob = Blob()
     accessors: list = []
     mesh_views = [
-        # target 34962 = ARRAY_BUFFER (vertex data), 34963 = ELEMENT_ARRAY_BUFFER
-        blob.add(struct.pack("<%df" % len(positions), *positions), 34962),
-        blob.add(struct.pack("<%df" % len(normals), *normals), 34962),
+        # target 34962 = ARRAY_BUFFER (vertex data), 34963 = ELEMENT_ARRAY_BUFFER.
+        # stride 12 = one tightly-packed VEC3 float, declared explicitly; see Blob.add.
+        blob.add(struct.pack("<%df" % len(positions), *positions), 34962, 12),
+        blob.add(struct.pack("<%df" % len(normals), *normals), 34962, 12),
         blob.add(struct.pack("<%dH" % len(indices), *indices), 34963),
     ]
     accessors.extend([
