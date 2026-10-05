@@ -5082,10 +5082,12 @@ report, 2026-10-04).
     host material) below that.
   - The mesher already groups faces by direction and colour, so a top colour
     that differs from the side colour costs no extra draw calls.
-  - Mining the grass yields `Soil`. A placed block keeps its own colour.
+  - Mining a slice within the topsoil yields the biome's fabric `soilMaterial`
+    (Grass, Moss, Ash and Void covers alike), the host rock below. A placed block
+    keeps its own colour.
 - `src/terrain/ore_field.gd`: a surface-breaking vein is the exception, not
   55% of cells. A deposit marker shows only where the vein's top cell reaches
-  the surface, and its density comes from the fabric.
+  the surface, and its density is the biome's fabric `surfaceVeinChance`.
 - Crossing cost is spread over frames:
   - unloads are budgeted per frame like loads;
   - `_prune_heightmaps` is indexed by chunk, so it no longer scans every key;
@@ -5114,22 +5116,33 @@ report, 2026-10-04).
   `net: re-scope snapshot edits hold only AOI chunks`; the snapshot names its scope
   (`edits_aoi`) and the client keeps edits it holds outside it._
 - [x] `pnpm check-drift` is clean and the suite is green on both boot paths.
-  `tools/net_harness.sh` agrees on a fresh world. _check-drift clean, suite 7885/7885, net_harness 12/12._
+  `tools/net_harness.sh` agrees on a fresh world. _check-drift clean, suite 8762/8762, net_harness 12/12._
 
 **Progress:** the unbuilt-neighbour seam fix is in (`_generated_heightmap`). Biomes are chosen by the
 fabric climate envelopes: biome entities carry `temperature`/`moisture` ranges (0–1) and
 `src/terrain/climate_field.gd` samples world-seeded value noise (12-chunk wavelength) and picks the
-biome whose envelope fits (`biome_for_climate`). `Grass`/`Soil` are fabric materials, and mining the
-topsoil of a `Grass` biome yields `Soil`. Topsoil colouring uses the biome `surfaceTint`/`soilTint`/
-`topsoilDepth` fields. Surface veins are the exception, with the density in the fabric
-(`surfaceVeinChance` on the biome). The minimap colours chunks by `surfaceTint`. Frame-spike items
+biome whose envelope fits (`biome_for_climate`). `Grass`/`Soil` are fabric materials. Mining a slice
+within a biome's `topsoilDepth` yields that biome's fabric `soilMaterial` — Grass, Moss, Ash and Void
+covers alike yield `Soil`, not only the temperate one — with the host rock below. Topsoil colouring uses
+the biome `surfaceTint`/`soilTint`/`topsoilDepth` fields. Surface veins are the exception, and the
+density is each biome's own fabric `surfaceVeinChance` (badlands 0.25 … rift 0.05; the GDScript constant
+is now a fallback for a missing resource only), so the field is observable. The minimap colours chunks
+by `surfaceTint`. Frame-spike items
 are in (`_prune_heightmaps`, tree and creature spawn/despawn indexed by chunk; unloads budgeted per frame; a chunk's heightmap is generated once).
 The per-tile surface blend is in (`VoxelSlice.blended_biome`: a 4-tile border band with a
 coordinate-hash dither), `ChunkManager` rebuilds built neighbours once when a chunk with edits
 streams in, and the minimap draws 4x4 dithered cells per chunk. `ClimateField` and `OreField`
 read plain snapshots filled by `OreField.warm()`, so the worker half never touches a Resource.
 Still open, needs a human: the manual 20-chunk walk with a frame-time log and screenshot. `check-drift`
-is clean, the suite is green, and `net_harness.sh` reports 12/12. The phase is not marked done.
+is clean, the suite is green (8762/8762, both boot paths), and `net_harness.sh` reports 12/12. The phase
+is not marked done.
+
+**Issue #111 follow-up (PR #110 review):** the surface-material → soil-material mapping is no longer a
+GDScript branch on `surfaceMaterial == "Grass"` — it is the biome's fabric `soilMaterial` field
+(`VoxelSlice._natural_yield`), so every cover yields soil and a new biome needs no code. The
+per-biome `surfaceVeinChance` values were varied from the uniform 0.2 default so the fabric field
+actually gates the field (pinned by `ore: surface-vein chance is the fabric value`, which measures the
+kept share per biome off the ore field).
 
 **Net harness:** it has 11 steps now (the equipment step joined it), so the `10/10 steps
 agreed` lines in the older phase entries above are historical; a green run now reads `12/12`

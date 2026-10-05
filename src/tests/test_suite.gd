@@ -295,7 +295,7 @@ func run() -> void:
 	_run_test("chunk: per-chunk biome is stable",               _test_chunk_biome_stable)
 	_run_test("terrain: neighbouring chunks mostly share a biome", _test_biome_regions_coherent)
 	_run_test("climate: fabric envelopes select the biome",     _test_climate_envelope_selects)
-	_run_test("voxel: mining grass yields Soil",                _test_mine_grass_yields_soil)
+	_run_test("voxel: topsoil yields the biome's fabric soil", _test_mine_topsoil_yields_biome_soil)
 	_run_test("chunk: load/unload emits signals",               _test_chunk_load_unload_signals)
 	_run_test("chunk: refresh queues nearest-first",            _test_chunk_refresh_queues_nearest_first)
 	_run_test("chunk: load queue respects per-frame budget",    _test_chunk_load_queue_respects_budget)
@@ -405,6 +405,7 @@ func run() -> void:
 	_run_test("ore: surrounding rock is the bias, never the gated ore", _test_ore_host_rock_yield)
 	_run_test("ore: depletion is one op per vein and persists", _test_ore_depletion_persists)
 	_run_test("ore: surface-breaking veins are the exception", _test_ore_surface_veins_rare)
+	_run_test("ore: surface-vein chance is the fabric value",  _test_ore_surface_vein_chance_gates_by_biome)
 	_run_test("ore: a client replays the host's depletion",    _test_ore_client_replays_depletion)
 	_run_test("ore: the build payload carries the field",      _test_ore_build_payload_carries_field)
 	_run_test("player: facing is a normalized yaw vector",      _test_player_facing)
@@ -6914,42 +6915,52 @@ func _test_voxel_biome_border_blend() -> void:
 		var inner := Vector2(extent * 0.5, tz * VoxelSlice.TILE_SIZE + 0.25)
 		assert_eq(VoxelSlice.blended_biome(inner, biomes, "TemperateForest"), "TemperateForest", "the interior keeps its biome")
 
-## Phase 49 — digging a grass-covered biome's top yields Soil, not rock.
-func _test_mine_grass_yields_soil() -> void:
+## Phase 49 — mining a NATURAL slice within a biome's topsoil yields that biome's fabric
+## `soilMaterial`, whatever the cover: Grass, Moss, Ash and Void ground all yield soil, not
+## only the temperate Grass biome. Below `topsoilDepth` the same column yields the biome's
+## host rock. The surface-material → soil-material mapping is the biome's own fabric field,
+## so no GDScript branch decides it (issue #111).
+func _test_mine_topsoil_yields_biome_soil() -> void:
 	assert_true(GameData.MATERIALS.has("Soil") and GameData.MATERIALS.has("Grass"), "Grass and Soil are fabric materials")
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	terrain.set_world_seed(31337)
 	var v := VoxelSlice.new()
 	add_child(v)
-	# A vein-free tile of a grass biome: a live vein at the tile would yield its ore instead.
-	var tile := Vector2i(-1, -1)
-	var xz := Vector2.ZERO
-	var span := {}
-	var depth_ok := false
+	v.terrain_slice = terrain
+	var checked := {}
 	for cx in range(-60, 60):
-		var t := Vector2i(cx * 32 + 3, 3)
-		var p := Vector2(t.x * 0.5 + 0.25, t.y * 0.5 + 0.25)
-		var gb: Variant = GameData.BIOMES.get(v._biome_at(p), null)
-		if gb == null or gb.get("surfaceMaterial") != "Grass":
-			continue
-		var sp := { "bottom": 0.0, "top": v.get_voxel_height_at(p) }
-		if v._live_vein_at(p, v._run_depth(sp, v._base_top_for_tile(t)), v._world_seed(), v._vein_taken, {}).is_empty():
-			tile = t
-			xz = p
-			span = sp
-			depth_ok = true
-			break
-	assert_true(depth_ok, "found a vein-free tile in a grass biome")
-	if depth_ok:
-		assert_eq(str(v._natural_yield(tile, span)["material"]), "Soil", "the topsoil of a grass biome yields Soil")
-		# A non-grass biome's topsoil yields rock, never Soil.
-		for cx in range(-60, 60):
-			var t2 := Vector2i(cx * 32 + 3, 3)
-			var p2 := Vector2(t2.x * 0.5 + 0.25, t2.y * 0.5 + 0.25)
-			var nb: Variant = GameData.BIOMES.get(v._biome_at(p2), null)
-			if nb != null and nb.get("surfaceMaterial") != "Grass":
-				var sp2 := { "bottom": 0.0, "top": v.get_voxel_height_at(p2) }
-				assert_true(str(v._natural_yield(t2, sp2)["material"]) != "Soil", "a non-grass biome yields no Soil")
-				break
+		for cz in range(-60, 60):
+			var t := Vector2i(cx * 32 + 3, cz * 32 + 3)
+			var p := Vector2(t.x * 0.5 + 0.25, t.y * 0.5 + 0.25)
+			var biome := v._biome_at(p)
+			var b: Variant = GameData.BIOMES.get(biome, null)
+			if b == null or b.get("soilMaterial") == null or checked.has(biome):
+				continue
+			var base := v._base_top_for_tile(t)
+			var top_span := { "bottom": 0.0, "top": v.get_voxel_height_at(p) }
+			# A live vein at the tile would yield its ore instead, so skip those tiles.
+			if not v._live_vein_at(p, v._run_depth(top_span, base), v._world_seed(), v._vein_taken, {}).is_empty():
+				continue
+			checked[biome] = true
+			var soil := str(b.get("soilMaterial"))
+			assert_eq(str(v._natural_yield(t, top_span)["material"]), soil,
+				"%s topsoil yields its fabric soilMaterial (%s)" % [biome, soil])
+			# One unit below the topsoil, the same column is the host rock (when no vein sits there).
+			var depth := float(b.get("topsoilDepth"))
+			var deep_span := { "bottom": base - depth - 1.5, "top": base - depth - 1.0 }
+			if v._live_vein_at(p, v._run_depth(deep_span, base), v._world_seed(), v._vein_taken, {}).is_empty():
+				assert_eq(str(v._natural_yield(t, deep_span)["material"]), OreField.host_material(biome),
+					"%s below topsoilDepth yields host rock, not soil" % biome)
+	# Every cover the fabric names was actually mined, not just the temperate Grass.
+	for surface in ["Grass", "Moss", "Ash", "Void"]:
+		var hit := false
+		for key in checked:
+			var res: Variant = GameData.BIOMES.get(key, null)
+			hit = hit or (res != null and res.get("surfaceMaterial") == surface)
+		assert_true(hit, "a %s-covered biome was found and its topsoil mined" % surface)
 	v.free()
+	terrain.free()
 
 ## First chunk (scanning along cz = 0) whose biome is one of `biomes`, or
 ## Vector2i(-1, -1) when none is found.
@@ -11740,20 +11751,36 @@ func _test_ore_host_rock_yield() -> void:
 	assert_true(chunk.x != -1, "found a volcanic chunk")
 	v.build_chunk(chunk, _flat_heightmap(2.0))
 	var host := 0
+	var soil := 0
 	var gated := 0
 	var cache: Dictionary = {}
-	for tz in range(0, 64, 5):
-		for tx in range(0, 64, 5):
-			# Only tiles OUTSIDE every vein down to the slice mined: surrounding rock.
-			if not OreField.vein_at(31337, chunk, Vector2i(tx, tz), 0.0625, cache).is_empty():
-				continue
+	for tz in range(0, 64, 16):
+		for tx in range(0, 64, 16):
 			var g := chunk * 64 + Vector2i(tx, tz)
-			var r := v.mine_block(Vector3(g.x * 0.5 + 0.25, 2.0, g.y * 0.5 + 0.25), Vector3.UP)
-			if str(r["material"]) == "Ashite" and int(r["quantity"]) == 1:
-				host += 1
-			if str(r["material"]) == "Aethermite":
-				gated += 1
-	assert_true(host > 0, "surrounding volcanic rock yields ashite, one unit (%d tiles)" % host)
+			var xz := Vector3(g.x * 0.5 + 0.25, 2.0, g.y * 0.5 + 0.25)
+			# Only tiles with NO vein anywhere in the band mined: surrounding rock.
+			var veinous := false
+			for k in range(13):
+				if not OreField.vein_at(31337, chunk, Vector2i(tx, tz), float(k) * 0.125 + 0.0625, cache).is_empty():
+					veinous = true
+					break
+			if veinous:
+				continue
+			# Mine one column down: the topsoil yields soil, then the rock below the biome's host
+			# material — and never the gated ore.
+			for _k in range(12):
+				var r := v.mine_block(xz, Vector3.UP)
+				if not bool(r["success"]):
+					break
+				var mat := str(r["material"])
+				if mat == "Aethermite":
+					gated += 1
+				elif mat == "Soil":
+					soil += 1
+				elif mat == "Ashite" and int(r["quantity"]) == 1:
+					host += 1
+	assert_true(soil > 0, "the volcanic topsoil yields soil (%d slices)" % soil)
+	assert_true(host > 0, "the rock below yields the host ashite, one unit (%d slices)" % host)
 	assert_eq(gated, 0, "and never the gated ore")
 	v.free()
 	inv.free()
@@ -11771,10 +11798,43 @@ func _test_ore_surface_veins_rare() -> void:
 				if c.y - float(v0["half_height"]) * (1.0 + OreField.SHAPE_NOISE) < 0.0:
 					top_surface += 1
 	assert_true(top > 0, "the top cell holds veins")
-	# Few surface breakers: the roll keeps SURFACE_VEIN_CHANCE of them, so well under the
-	# unfiltered share of a deeper cell's veins that would poke out.
+	# Few surface breakers: each biome keeps only its fabric `surfaceVeinChance` of them, so
+	# the kept share stays well under the unfiltered share that would poke out.
 	assert_true(float(top_surface) / float(top) < 0.2, "surface-breaking veins are a minority (%d of %d)" % [top_surface, top])
 	assert_eq(OreField.vein_in_cell(4242, Vector3i(3, 0, 3)), OreField.vein_in_cell(4242, Vector3i(3, 0, 3)), "still deterministic")
+
+## Phase 49 — the surface-vein density is the BIOME's fabric `surfaceVeinChance`, not one
+## code constant: a biome with a higher fabric chance keeps a larger share of its own
+## surface-breaking top-cell veins, measured off the field itself. Proves the fabric value
+## gates `_build_vein` (issue #111).
+func _test_ore_surface_vein_chance_gates_by_biome() -> void:
+	var kept := {}
+	var total := {}
+	for cx in range(-80, 80):
+		for cz in range(-80, 80):
+			var vein := OreField.vein_in_cell(4242, Vector3i(cx, 0, cz))
+			if vein.is_empty():
+				continue
+			var biome := str(vein["biome"])
+			total[biome] = int(total.get(biome, 0)) + 1
+			var c: Vector3 = vein["center"]
+			if c.y - float(vein["half_height"]) * (1.0 + OreField.SHAPE_NOISE) < 0.0:
+				kept[biome] = int(kept.get(biome, 0)) + 1
+	var share := {}
+	for biome in total:
+		if int(total[biome]) >= 20:
+			share[biome] = float(kept.get(biome, 0)) / float(total[biome])
+	for biome in ["VolcanicBadlands", "TemperateForest", "VoidRift"]:
+		assert_true(share.has(biome), "%s has top-cell veins in the sample" % biome)
+	assert_true(float(share["VolcanicBadlands"]) > float(share["TemperateForest"]),
+		"the 0.25 biome breaks the surface more than the 0.2 one (%s vs %s)" % [share["VolcanicBadlands"], share["TemperateForest"]])
+	assert_true(float(share["TemperateForest"]) > float(share["VoidRift"]),
+		"the 0.2 biome breaks the surface more than the 0.05 one (%s vs %s)" % [share["TemperateForest"], share["VoidRift"]])
+	# The chance varies per biome, so the fabric field is observable rather than one default.
+	var distinct := {}
+	for biome in total:
+		distinct[OreField.surface_vein_chance(biome)] = true
+	assert_true(distinct.size() > 1, "surfaceVeinChance is per-biome, not one fabric default everywhere")
 
 func _test_ore_depletion_persists() -> void:
 	var found := _find_surface_vein(0)
