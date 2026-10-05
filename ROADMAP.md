@@ -5216,7 +5216,8 @@ onto the same coordinates, `PlayerRegistry.world_pos_of`), and the minimap shows
 (`TerrainSlice.where_text`). Still open: float32 noise precision far from the origin (needs an
 integer-lattice noise), canonicalising chunk keys at the seam in `ChunkManager`/`VoxelSlice`,
 `{chunk, local}` in snapshots, RPCs, AOI, creatures and stations (player records done), the client scene-origin
-rebase that shifts streamed nodes, a `/where` chat command (no command system exists; `where_text` is ready), and the
+rebase driver (`VoxelSlice.shift_scene` shifts chunk roots and the floor, suite-tested; trees, creatures, stations,
+the player body and the trigger on `WorldPos.needs_rebase` are still to wire), a `/where` chat command (no command system exists; `where_text` is ready), and the
 map/migration of world and edit saves.
 
 ---

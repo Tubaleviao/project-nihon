@@ -257,6 +257,23 @@ var _terrain_mat: StandardMaterial3D = null
 ## higher than them would block a player mining down to the floor.
 var _world_floor: StaticBody3D = null
 
+## Phase 50: the scene-origin offset applied to every chunk root. Chunk geometry is built in
+## absolute chunk-index metres; a client rebase moves the roots (not the vertices) so the physics
+## and render scene never see a large coordinate. Zero until the first rebase.
+var _scene_offset: Vector3 = Vector3.ZERO
+
+## Shift every streamed chunk node, and the world floor, by `shift` in one call. Chunks built
+## later pick the accumulated offset up, so a rebase never leaves a mix of frames.
+func shift_scene(shift: Vector3) -> void:
+	_scene_offset += shift
+	for key in _chunks:
+		_chunks[key].position += shift
+	if _world_floor != null:
+		_world_floor.position += shift
+
+func scene_offset() -> Vector3:
+	return _scene_offset
+
 func _ready() -> void:
 	# One material for every terrain mesh this slice ever builds (see `_terrain_mat`).
 	_terrain_mat = _make_terrain_material()
@@ -322,6 +339,7 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 
 	var root := Node3D.new()
 	root.name = "Chunk_%s" % key
+	root.position = _scene_offset
 	add_child(root)
 	_chunks[key] = root
 

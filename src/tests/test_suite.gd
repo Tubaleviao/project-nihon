@@ -1006,6 +1006,24 @@ func _test_world_pos_rebase() -> void:
 	var node_chunk := Vector2i(173, 97)
 	assert_eq(WorldPos.to_scene({"chunk": node_chunk, "local": Vector3.ZERO}, new_origin),
 		WorldPos.to_scene({"chunk": node_chunk, "local": Vector3.ZERO}, old_origin) + shift, "streamed nodes shift together")
+	# The real nodes: a VoxelSlice shifts every chunk root by the same offset, and a chunk built
+	# after the rebase lands in the same frame.
+	var v := VoxelSlice.new()
+	add_child(v)
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(1.0)
+	v.build_chunk(Vector2i(0, 0), flat)
+	v.build_chunk(Vector2i(1, 0), flat)
+	var floor_before: Vector3 = v.get_node("WorldFloor").position
+	v.shift_scene(shift)
+	for key in ["0,0", "1,0"]:
+		assert_eq(v.get_node("Chunk_%s" % key).position, shift, "chunk %s root shifted by the rebase offset" % key)
+	assert_eq(v.get_node("WorldFloor").position, floor_before + shift, "the world floor shifts with the chunks")
+	v.build_chunk(Vector2i(2, 0), flat)
+	assert_eq(v.get_node("Chunk_2,0").position, shift, "a chunk built after the rebase uses the shifted frame")
+	remove_child(v)
+	v.free()
 	# The 0.125 step quantiser holds at a large chunk index: 400 steps east of 10,000 km, each
 	# step lands on a multiple of 0.125 and the chunk + local sum advances by exactly one step.
 	var stepper := {"chunk": far["chunk"], "local": far["local"]}
