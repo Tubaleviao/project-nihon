@@ -80,7 +80,9 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [Ashite](entities/ashite.md) — Pale grey volcanic rock formed from compressed volcanic ash
 - [Duskfiber](entities/duskfiber.md) — Fibrous bark harvested from the Duskwood trees that grow only in twilight biomes where day and night cycle at unusual speeds
 - [Ferrite](entities/ferrite.md) — Common dark-grey metal found in surface veins across temperate biomes, volcanic lava-tube edges, and stabilised sections of void rifts
+- [Grass](entities/grass.md) — Living turf that covers temperate ground (forest and grassland)
 - [Lumenfite](entities/lumenfite.md) — Translucent crystalline mineral that absorbs ambient light during the day and releases it slowly at night
+- [Soil](entities/soil.md) — Loose earth under the turf, down to the biome's topsoil depth
 - [Thornwood](entities/thornwood.md) — Dense, dark-veined wood from the Thornwood tree that grows in lowland forests
 - [Veilsteel](entities/veilsteel.md) — Blue-black alloy smelted from ferrite ingots and aethermite shards under high heat
 - [Voidite](entities/voidite.md) — Jet-black crystalline ore found only in void-touched biomes and deep rifts

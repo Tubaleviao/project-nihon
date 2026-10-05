@@ -54,6 +54,7 @@ extends RefCounted
 ## `leyGated` on `fabric/world/materials/*.js`), read here off `GameData.MATERIALS`.
 
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const ClimateField := preload("res://src/terrain/climate_field.gd")
 
 ## Mirrors of VoxelSlice's grid (authoritative copies live there and on TerrainSlice).
 const CHUNK_SIZE := 64
@@ -94,7 +95,18 @@ const VEIN_CHANCE := 0.55
 ## Of the veins whose blob reaches the natural surface, the share that is kept. A surface-
 ## breaking vein (and its deposit marker) is the exception; the rest of the top cell's
 ## veins are pushed out of view by this roll, so most ground is plain topsoil over rock.
-const SURFACE_VEIN_CHANCE := 0.2
+const SURFACE_VEIN_CHANCE := 0.2 ## fallback when the biome resource carries no `surfaceVeinChance`
+
+## biome key -> surface-vein chance, snapshotted from the fabric `surfaceVeinChance` by `warm()`
+## (main thread) and read-only afterwards, so a worker never touches a Resource for it.
+static var _surface_chances: Dictionary = {}
+static var _warmed := false
+
+## The fraction of surface-reaching veins a biome keeps: its fabric `surfaceVeinChance`.
+static func surface_vein_chance(biome: String) -> float:
+	if not _warmed:
+		warm()
+	return float(_surface_chances.get(biome, SURFACE_VEIN_CHANCE))
 
 ## Blob size: horizontal radius in TILES, vertical half-height in world units.
 const RADIUS_MIN_TILES := 2.0
@@ -144,8 +156,13 @@ static var _bands: Dictionary = {}
 
 ## Fill the band table from `GameData.MATERIALS` (idempotent). Main thread only.
 static func warm() -> void:
-	if not _bands.is_empty():
+	if _warmed:
 		return
+	ClimateField.warm()
+	for key in GameData.BIOMES:
+		var b: Resource = GameData.BIOMES[key]
+		if b.get("surfaceVeinChance") != null:
+			_surface_chances[str(key)] = float(b.get("surfaceVeinChance"))
 	for key in GameData.MATERIALS:
 		var res: Resource = GameData.MATERIALS[key]
 		var band: Variant = res.get("depthBand")
@@ -155,10 +172,12 @@ static func warm() -> void:
 			entry["max"] = float((band as Dictionary).get("max", 0.0))
 		entry["ley"] = bool(res.get("leyGated")) if res.get("leyGated") != null else false
 		_bands[str(key)] = entry
+	# Latch only once the tables are filled, so an early call before GameData loads retries.
+	_warmed = not _bands.is_empty()
 
 ## A material's fabric band and ley gate. An unknown material has an EMPTY band.
 static func band_of(material: String) -> Dictionary:
-	if _bands.is_empty():
+	if not _warmed:
 		warm()
 	return _bands.get(material, { "min": 0.0, "max": 0.0, "ley": false })
 
@@ -219,13 +238,13 @@ static func _build_vein(seed: int, cell: Vector3i) -> Dictionary:
 	# shallow vein, and its marker, where a player can see it from above.
 	var top_margin := 0.0 if cell.y == 0 else vmargin
 	var cd := float(cell.y) * CELL_DEPTH + top_margin + _unit(_hash(seed, cell, _SALT_DEPTH)) * (CELL_DEPTH - vmargin - top_margin)
-	if cell.y == 0 and cd - HALF_HEIGHT_MAX * (1.0 + SHAPE_NOISE) < 0.0 \
-			and _unit(_hash(seed, cell, _SALT_SURFACE)) >= SURFACE_VEIN_CHANCE:
-		return {}
 	var anchor := Vector2i(floori(cx), floori(cz))
 	var center_xz := Vector2(cx * TILE_SIZE, cz * TILE_SIZE)
 	var biome := TerrainSlice.biome_for_chunk(Vector2i(
 		floori(float(anchor.x) / float(CHUNK_SIZE)), floori(float(anchor.y) / float(CHUNK_SIZE))), seed)
+	if cell.y == 0 and cd - HALF_HEIGHT_MAX * (1.0 + SHAPE_NOISE) < 0.0 \
+			and _unit(_hash(seed, cell, _SALT_SURFACE)) >= surface_vein_chance(biome):
+		return {}
 	var material := _pick_material(seed, biome, cd, center_xz, _unit(_hash(seed, cell, _SALT_MATERIAL)))
 	if material == "":
 		return {}

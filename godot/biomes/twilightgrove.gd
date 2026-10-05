@@ -12,4 +12,7 @@ extends Resource
 @export var surfaceTint: String
 @export var soilTint: String
 @export var topsoilDepth: float
+@export var temperature: Dictionary
+@export var moisture: Dictionary
+@export var surfaceVeinChance: float
 @export var dayNightSpeed: float

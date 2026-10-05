@@ -504,7 +504,25 @@ func load_chunk(chunk_pos: Vector2i) -> void:
 		return
 	_loaded[key] = true
 	GameBus.chunk_loaded.emit(chunk_pos)
+	_rebuild_guessing_neighbours(chunk_pos)
 	_dispatch_build(chunk_pos)
+
+## Phase 49 — a built neighbour of a chunk that just entered the streamed set saw it as a
+## GUESS (its generated heightmap, because the chunk was not yet known). When the arriving chunk
+## carries edits, that guess may no longer match what the chunk shows, so each built neighbour
+## rebuilds once, now that the real column data is available. A chunk with no edits is exactly
+## its generated guess, so nothing rebuilds and a fresh world pays nothing.
+func _rebuild_guessing_neighbours(chunk_pos: Vector2i) -> void:
+	if voxel_slice == null or not voxel_slice.has_method("has_edits_in_chunk") \
+			or not voxel_slice.has_edits_in_chunk(chunk_pos):
+		return
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			if dx == 0 and dz == 0:
+				continue
+			var n := chunk_pos + Vector2i(dx, dz)
+			if _built.has(_chunk_key(n)):
+				request_rebuild(n)
 
 ## Phase 42 review — spawn a chunk's per-chunk creature and tree budgets. Called once the
 ## chunk's GROUND EXISTS (see `_apply_build_entry`) rather than when it enters the

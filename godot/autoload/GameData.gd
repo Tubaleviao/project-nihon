@@ -74,7 +74,9 @@ const MATERIALS: Dictionary = {
 		"Ashite": preload("res://godot/materials/ashite.tres"),
 		"Duskfiber": preload("res://godot/materials/duskfiber.tres"),
 		"Ferrite": preload("res://godot/materials/ferrite.tres"),
+		"Grass": preload("res://godot/materials/grass.tres"),
 		"Lumenfite": preload("res://godot/materials/lumenfite.tres"),
+		"Soil": preload("res://godot/materials/soil.tres"),
 		"Thornwood": preload("res://godot/materials/thornwood.tres"),
 		"Veilsteel": preload("res://godot/materials/veilsteel.tres"),
 		"Voidite": preload("res://godot/materials/voidite.tres")

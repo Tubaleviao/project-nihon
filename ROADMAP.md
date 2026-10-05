@@ -5113,13 +5113,23 @@ report, 2026-10-04).
 - [x] An AOI re-scope snapshot's `edits` holds only chunks inside the AOI. _Suite
   `net: re-scope snapshot edits hold only AOI chunks`; the snapshot names its scope
   (`edits_aoi`) and the client keeps edits it holds outside it._
-- [ ] `pnpm check-drift` is clean and the suite is green on both boot paths.
-  `tools/net_harness.sh` agrees on a fresh world.
+- [x] `pnpm check-drift` is clean and the suite is green on both boot paths.
+  `tools/net_harness.sh` agrees on a fresh world. _check-drift clean, suite 7885/7885, net_harness 12/12._
 
-**Progress:** the unbuilt-neighbour seam fix is in (`_generated_heightmap`), and biomes are
-seeded Voronoi regions (`src/terrain/climate_field.gd`, 8-chunk cells; the temperature/moisture
-envelopes from the fabric are still open). Topsoil colouring (biome `surfaceTint`/`soilTint`/`topsoilDepth` fabric fields, flat per biome, no dither or border blend yet; `Grass`/`Soil` material entities and mining-yields-Soil still open), ore-field surface veins are now the exception (`SURFACE_VEIN_CHANCE` in `ore_field.gd`, a GDScript constant; moving the density into the fabric is still open), `src/ui/minimap.gd` now colours chunks by the biome's fabric `surfaceTint` (per-chunk biome; per-tile blend still open), and the remaining frame-spike items (`_prune_heightmaps` is now indexed by chunk; tree spawn/despawn are now indexed by chunk in `tree_slice.gd`, and so are creature spawn/despawn in `creature_slice.gd`; unloads are budgeted per frame via `unloads_per_frame` in `chunk_manager.gd`; a chunk's heightmap is generated once, whether its neighbour's seam guess or its own dispatch gets there first) are still open, so the
-phase is not marked done.
+**Progress:** the unbuilt-neighbour seam fix is in (`_generated_heightmap`). Biomes are chosen by the
+fabric climate envelopes: biome entities carry `temperature`/`moisture` ranges (0–1) and
+`src/terrain/climate_field.gd` samples world-seeded value noise (12-chunk wavelength) and picks the
+biome whose envelope fits (`biome_for_climate`). `Grass`/`Soil` are fabric materials, and mining the
+topsoil of a `Grass` biome yields `Soil`. Topsoil colouring uses the biome `surfaceTint`/`soilTint`/
+`topsoilDepth` fields. Surface veins are the exception, with the density in the fabric
+(`surfaceVeinChance` on the biome). The minimap colours chunks by `surfaceTint`. Frame-spike items
+are in (`_prune_heightmaps`, tree and creature spawn/despawn indexed by chunk; unloads budgeted per frame; a chunk's heightmap is generated once).
+The per-tile surface blend is in (`VoxelSlice.blended_biome`: a 4-tile border band with a
+coordinate-hash dither), `ChunkManager` rebuilds built neighbours once when a chunk with edits
+streams in, and the minimap draws 4x4 dithered cells per chunk. `ClimateField` and `OreField`
+read plain snapshots filled by `OreField.warm()`, so the worker half never touches a Resource.
+Still open, needs a human: the manual 20-chunk walk with a frame-time log and screenshot. `check-drift`
+is clean, the suite is green, and `net_harness.sh` reports 12/12. The phase is not marked done.
 
 **Net harness:** it has 11 steps now (the equipment step joined it), so the `10/10 steps
 agreed` lines in the older phase entries above are historical; a green run now reads `12/12`
