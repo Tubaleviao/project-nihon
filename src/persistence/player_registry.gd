@@ -432,12 +432,23 @@ static func world_pos_of(rec: Dictionary) -> Dictionary:
 			"chunk": Vector2i(int(c[0]), int(c[1])),
 			"local": Vector3(float(l[0]), float(l[1]), float(l[2])),
 		})
-		wp["chunk"] = TerrainSlice.wrap_chunk(wp["chunk"])   # canonical X, so a full lap is the same chunk
-		return wp
+		return _canonical(wp)
 	var p: Variant = rec.get("position", [0.0, 0.0, 0.0])
 	if not (p is Array) or (p as Array).size() < 3:
 		p = [0.0, 0.0, 0.0]
-	return WorldPos.from_world(float(p[0]), float(p[1]), float(p[2]))
+	for v in p:
+		if not (v is int or v is float) or not is_finite(float(v)) or absf(float(v)) > 1.0e9:
+			p = [0.0, 0.0, 0.0]
+			break
+	return _canonical(WorldPos.from_world(float(p[0]), float(p[1]), float(p[2])))
+
+## Canonical X (a full lap is the same chunk) and Z held between the poles, after `local` has
+## been folded into the chunk, so no per-element check can be bypassed through `local`.
+static func _canonical(wp: Dictionary) -> Dictionary:
+	var chunk: Vector2i = TerrainSlice.wrap_chunk(wp["chunk"])
+	var pole := TerrainSlice.pole_chunks()
+	wp["chunk"] = Vector2i(chunk.x, clampi(chunk.y, -pole, pole))
+	return wp
 
 func get_world_pos(player_id: String) -> Dictionary:
 	return world_pos_of(get_record(player_id))

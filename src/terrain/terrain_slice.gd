@@ -150,7 +150,8 @@ static func _world_field(field: String, fallback: float) -> float:
 ## Chunks around the equator; X wraps after this many (1,250,000 at 40,000 km).
 static func circumference_chunks() -> int:
 	if _circumference_cache < 0:   # the fabric value is fixed for the process; resolve it once
-		_circumference_cache = maxi(4, roundi(_world_field("circumferenceKm", DEFAULT_CIRCUMFERENCE_KM) * 1000.0 / CHUNK_METERS))
+		# A multiple of 4: an even half (the seam sits on a chunk edge) and a whole pole_chunks quarter.
+		_circumference_cache = maxi(4, roundi(_world_field("circumferenceKm", DEFAULT_CIRCUMFERENCE_KM) * 1000.0 / CHUNK_METERS / 4.0) * 4)
 	return _circumference_cache
 
 ## Chunks from the equator to a pole (a quarter of the circumference).
@@ -188,8 +189,12 @@ static func longitude_at(world_x: float) -> float:
 
 ## What `/where` prints and the HUD shows: latitude, longitude and altitude of a world position.
 static func where_text(world_pos: Vector3) -> String:
-	var lat := latitude_at(world_pos.z)
-	var lon := longitude_at(world_pos.x)
+	# Round first, then pick the hemisphere: 179.9996 prints as 180.000 (wrap it to -180.000 W),
+	# and -0.0004 prints as 0.000 (not "0.000\u00b0W").
+	var lat := snappedf(latitude_at(world_pos.z), 0.001)
+	var lon := snappedf(longitude_at(world_pos.x), 0.001)
+	if lon >= 180.0:
+		lon -= 360.0
 	return "%.3f\u00b0%s %.3f\u00b0%s  alt %d m" % [
 		absf(lat), "N" if lat >= 0.0 else "S",
 		absf(lon), "E" if lon >= 0.0 else "W",

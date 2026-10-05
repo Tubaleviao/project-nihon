@@ -964,6 +964,8 @@ func _test_terrain_planet_coordinates() -> void:
 	assert_true(t.is_chunk_in_bounds(Vector2i(999999, 0)), "any longitude is walkable")
 	assert_true(not t.is_chunk_in_bounds(Vector2i(0, TerrainSlice.polar_chunks())), "polar ice is not walkable")
 	assert_eq(TerrainSlice.where_text(Vector3(0.0, 4.2, 0.0)), "0.000\u00b0N 0.000\u00b0E  alt 4 m", "where: the origin")
+	assert_eq(TerrainSlice.where_text(Vector3(-0.5, 0.0, 0.0)), "0.000\u00b0N 0.000\u00b0E  alt 0 m", "where: just west of the meridian rounds to 0.000, no \"0.000 W\"")
+	assert_true(PlayerRegistry.world_pos_of({"chunk": [0, TerrainSlice.pole_chunks()], "local": [0.0, 0.0, 1.0e6]})["chunk"].y <= TerrainSlice.pole_chunks(), "world_pos_of: a huge local cannot push the chunk past the pole")
 	assert_true(TerrainSlice.where_text(Vector3(-3200.0, 0.0, 3200.0)).contains("W"), "where: west of the origin")
 	var clamped := t.clamp_to_world(Vector3(1.0e7, 4.0, 1.0e9))
 	assert_eq(clamped.x, 1.0e7, "X is not clamped")
