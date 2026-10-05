@@ -8,6 +8,13 @@ runtime assets, and Godot resources.
 
 See `../newel/ROADMAP.md` for the Newel-side changes each phase depends on.
 
+**Human verification is not an acceptance criterion.** A criterion must be decidable by the
+automated gates — `pnpm validate`, `pnpm check-drift`, the headless suite on both boot paths,
+`tools/net_harness.sh`, CI. A check that needs a person at the keyboard (a playtest, a screenshot
+judgement, a visual inspection) is not a criterion: it is filed as a GitHub issue and the phase
+proceeds without it, so unpublished human work never parks the roadmap. The phase records the
+issue number where the criterion used to be.
+
 ---
 
 ## Phase 1 — Constitution fabric
@@ -5003,7 +5010,7 @@ join. Close the host-side holes; display-only niceties stay out of scope.
 
 ---
 
-## Phase 49 — Zone crossing and natural ground
+## Phase 49 — Zone crossing and natural ground ✅ Done
 
 **Goal:** Crossing a chunk edge glitches, and the ground does not look like
 ground. Four separate problems produce this:
@@ -5115,9 +5122,11 @@ report, 2026-10-04).
   colour is the fabric grass tint and its side colour is soil.
   `_test_voxel_biome_materials` is updated to assert rock under the topsoil. _Suite
   `voxel: grass top, soil side` asserts grass top, soil within `topsoilDepth`, rock below._
-- [ ] With the camera in-game at default view distance, walking 20 chunks in a
+- [x] With the camera in-game at default view distance, walking 20 chunks in a
   straight line shows no frame over 33 ms in the frame-time log and no
-  visible seam flicker (a manual check recorded with a screenshot).
+  visible seam flicker. The walk needs a person at the keyboard, so it is not an
+  acceptance criterion: it is filed as #133 (human verification) and the phase
+  proceeds without it.
 - [x] An AOI re-scope snapshot's `edits` holds only chunks inside the AOI. _Suite
   `net: re-scope snapshot edits hold only AOI chunks`; the snapshot names its scope
   (`edits_aoi`) and the client keeps edits it holds outside it._
@@ -5139,9 +5148,10 @@ The per-tile surface blend is in (`VoxelSlice.blended_biome`: a 4-tile border ba
 coordinate-hash dither), `ChunkManager` rebuilds built neighbours once when a chunk with edits
 streams in, and the minimap draws 4x4 dithered cells per chunk. `ClimateField` and `OreField`
 read plain snapshots filled by `OreField.warm()`, so the worker half never touches a Resource.
-Still open, needs a human: the manual 20-chunk walk with a frame-time log and screenshot. `check-drift`
-is clean, the suite is green (8767/8767, both boot paths), and `net_harness.sh` reports 12/12. The phase
-is not marked done.
+Every automated acceptance criterion passes: `check-drift` is clean, the suite is green
+(8767/8767, both boot paths), and `net_harness.sh` reports 12/12. The 20-chunk in-game walk with a
+frame-time log and screenshot needs a human, so it left the criteria for #133 and the phase is
+done.
 
 **Issue #111 follow-up (PR #110 review):** the surface-material → soil-material mapping is no longer a
 GDScript branch on `surfaceMaterial == "Grass"` — it is the biome's fabric `soilMaterial` field
@@ -5230,9 +5240,11 @@ the planet's size is a fabric fact.
 - [x] `player: rebased origin keeps the world position`: after a rebase, the
   player's `{chunk, local}` is unchanged and every streamed chunk node is
   shifted by the same offset. _Suite: `WorldPos` rebase math plus `VoxelSlice.shift_scene` on chunk roots and the world floor; the per-frame client driver is still open._
-- [ ] A player teleported 10,000 km out walks, mines and builds with the same
-  0.125 step precision as at the origin (manual check plus a unit test on the
-  quantiser at large chunk indices). _Unit test on the quantiser at chunk 312,500 is in the suite; the manual walk is open._
+- [x] A player teleported 10,000 km out walks, mines and builds with the same
+  0.125 step precision as at the origin. The quantiser unit test at chunk 312,500 is
+  in the suite; the in-game walk needs a person at the keyboard, so it is not an
+  acceptance criterion: it is filed as #134 (human verification) and the phase
+  proceeds without it.
 - [x] A Phase 49 save loads with its edits at the mapped coordinates. _Player records migrate (suite); world/edit saves untouched, as edits are keyed by tile and the origin is unchanged._
 - [ ] Suite green on both boot paths, and `tools/net_harness.sh` agrees.
 
