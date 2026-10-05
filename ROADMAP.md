@@ -5513,7 +5513,7 @@ A cap-refused pack is also remembered and retried every 5 s while its chunk is l
 
 ---
 
-## Phase 58 — UI layout file robustness
+## Phase 58 — UI layout file robustness ✅ Done
 
 **Goal:** Close the PR #60 review notes (#61) so a hand-edited or truncated
 `ui_layout.json` and non-US keyboards behave.
@@ -5533,11 +5533,11 @@ A cap-refused pack is also remembered and retried every 5 s while its chunk is l
   ERROR line (or the parse path avoids `JSON.parse_string` noise).
 
 **Acceptance criteria:**
-- [ ] A layout with `NaN`/`1e308` coordinates parses to defaults for that window,
+- [x] A layout with `NaN`/`1e308` coordinates parses to defaults for that window,
   asserted in the suite.
-- [ ] Save leaves either the old or the new complete file (temp + rename),
+- [x] Save leaves either the old or the new complete file (temp + rename),
   asserted by checking no partial file remains after a save.
-- [ ] Suite output contains no engine ERROR line from the layout tests.
+- [x] Suite output contains no engine ERROR line from the layout tests.
 
 ---
 
