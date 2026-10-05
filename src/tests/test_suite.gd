@@ -979,8 +979,8 @@ const WorldPos := preload("res://src/terrain/world_pos.gd")
 
 func _test_world_pos_rebase() -> void:
 	# A player 10,000 km east: chunk 312,500, local offset exact.
-	var far := WorldPos.from_world(1.0e10 / 1000.0 * 1000.0 + 5.125, 2.0, -70.25)
-	assert_eq(far["chunk"], Vector2i(floori((1.0e10 + 5.125) / 32.0), -3), "split into the right chunk")
+	var far := WorldPos.from_world(1.0e7 + 5.125, 2.0, -70.25)
+	assert_eq(far["chunk"], Vector2i(312500, -3), "split into the right chunk")
 	var local: Vector3 = far["local"]
 	assert_true(local.x >= 0.0 and local.x < 32.0 and local.z >= 0.0 and local.z < 32.0, "local lies inside its chunk")
 	assert_eq(local.z, 25.75, "local keeps the 0.125 step")
@@ -1000,6 +1000,18 @@ func _test_world_pos_rebase() -> void:
 	var node_chunk := Vector2i(173, 97)
 	assert_eq(WorldPos.to_scene({"chunk": node_chunk, "local": Vector3.ZERO}, new_origin),
 		WorldPos.to_scene({"chunk": node_chunk, "local": Vector3.ZERO}, old_origin) + shift, "streamed nodes shift together")
+	# The 0.125 step quantiser holds at a large chunk index: 400 steps east of 10,000 km, each
+	# step lands on a multiple of 0.125 and the chunk + local sum advances by exactly one step.
+	var stepper := {"chunk": far["chunk"], "local": far["local"]}
+	for i in 400:
+		var before_local: Vector3 = stepper["local"]
+		var before_chunk: Vector2i = stepper["chunk"]
+		stepper = WorldPos.normalized({"chunk": before_chunk, "local": before_local + Vector3(0.125, 0.0, 0.0)})
+		var after_local: Vector3 = stepper["local"]
+		var advanced: float = float(stepper["chunk"].x - before_chunk.x) * 32.0 + after_local.x - before_local.x
+		assert_eq(advanced, 0.125, "step %d advances exactly 0.125 m at chunk 312,500" % i)
+		assert_eq(fmod(after_local.x, 0.125), 0.0, "step %d stays on the 0.125 lattice" % i)
+	assert_eq(stepper["chunk"].x, 312500 + (floori(far["local"].x + 50.0) / 32), "400 steps = 50 m east")
 	# Walking across a chunk edge normalises.
 	var walked := WorldPos.normalized({"chunk": Vector2i(5, 5), "local": Vector3(33.0, 0.0, -1.0)})
 	assert_eq(walked["chunk"], Vector2i(6, 4), "walking over an edge changes the chunk")

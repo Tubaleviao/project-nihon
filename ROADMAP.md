@@ -5202,7 +5202,7 @@ the planet's size is a fabric fact.
   shifted by the same offset.
 - [ ] A player teleported 10,000 km out walks, mines and builds with the same
   0.125 step precision as at the origin (manual check plus a unit test on the
-  quantiser at large chunk indices).
+  quantiser at large chunk indices). _Unit test on the quantiser at chunk 312,500 is in the suite; the manual walk is open._
 - [ ] A Phase 49 save loads with its edits at the mapped coordinates. _Player records migrate (suite); world/edit saves untouched, as edits are keyed by tile and the origin is unchanged._
 - [ ] Suite green on both boot paths, and `tools/net_harness.sh` agrees.
 
