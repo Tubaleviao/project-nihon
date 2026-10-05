@@ -83,6 +83,7 @@ func run() -> void:
 	_run_test("terrain: the world seed determines the terrain", _test_terrain_seed_deterministic)
 	_run_test("terrain: the world wraps east-west",           _test_terrain_wraps_east_west)
 	_run_test("terrain: latitude and longitude from the fabric planet", _test_terrain_planet_coordinates)
+	_run_test("player: rebased origin keeps the world position", _test_world_pos_rebase)
 	_run_test("persistence: save then load round-trip",       _test_persistence_round_trip)
 	_run_test("persistence: missing slot emits load_failed",  _test_persistence_missing_slot)
 	_run_test("loot: known creature produces drops",          _test_loot_known_creature)
@@ -970,6 +971,36 @@ func _test_terrain_planet_coordinates() -> void:
 	var origin_x := t.chunk_to_world(far).x
 	assert_eq((origin_x + 0.125) - origin_x, 0.125, "0.125 step survives at 19,200 km")
 	t.free()
+
+const WorldPos := preload("res://src/terrain/world_pos.gd")
+
+func _test_world_pos_rebase() -> void:
+	# A player 10,000 km east: chunk 312,500, local offset exact.
+	var far := WorldPos.from_world(1.0e10 / 1000.0 * 1000.0 + 5.125, 2.0, -70.25)
+	assert_eq(far["chunk"], Vector2i(floori((1.0e10 + 5.125) / 32.0), -3), "split into the right chunk")
+	var local: Vector3 = far["local"]
+	assert_true(local.x >= 0.0 and local.x < 32.0 and local.z >= 0.0 and local.z < 32.0, "local lies inside its chunk")
+	assert_eq(local.z, 25.75, "local keeps the 0.125 step")
+	# Rebase: the world position ({chunk, local}) is unchanged and every node shifts by one offset.
+	var old_origin := Vector2i(100, 100)
+	var pos := {"chunk": Vector2i(100 + 70, 100 - 3), "local": Vector3(5.125, 1.0, 9.5)}
+	var scene_before := WorldPos.to_scene(pos, old_origin)
+	assert_true(WorldPos.needs_rebase(scene_before), "2.2 km out needs a rebase")
+	var new_origin := WorldPos.rebase_origin(pos)
+	var shift := WorldPos.rebase_shift(old_origin, new_origin)
+	var scene_after := WorldPos.to_scene(pos, new_origin)
+	assert_eq(scene_after, scene_before + shift, "the player moves by exactly the shift")
+	assert_eq(WorldPos.from_scene(scene_after, new_origin), WorldPos.normalized(pos), "chunk + local unchanged by the rebase")
+	assert_eq(WorldPos.to_scene(pos, new_origin), pos["local"], "the player sits at their local offset")
+	assert_true(not WorldPos.needs_rebase(scene_after), "no rebase needed afterwards")
+	# A chunk node 3 chunks east of the player's chunk shifts by the same offset.
+	var node_chunk := Vector2i(173, 97)
+	assert_eq(WorldPos.to_scene({"chunk": node_chunk, "local": Vector3.ZERO}, new_origin),
+		WorldPos.to_scene({"chunk": node_chunk, "local": Vector3.ZERO}, old_origin) + shift, "streamed nodes shift together")
+	# Walking across a chunk edge normalises.
+	var walked := WorldPos.normalized({"chunk": Vector2i(5, 5), "local": Vector3(33.0, 0.0, -1.0)})
+	assert_eq(walked["chunk"], Vector2i(6, 4), "walking over an edge changes the chunk")
+	assert_eq(walked["local"], Vector3(1.0, 0.0, 31.0), "and wraps the local offset")
 
 # ---------------------------------------------------------------------------
 # PersistenceSlice tests

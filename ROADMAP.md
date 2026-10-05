@@ -5195,7 +5195,7 @@ the planet's size is a fabric fact.
   latitude/longitude, and old float positions convert to chunk + local.
 
 **Acceptance criteria:**
-- [ ] `terrain: the world wraps east-west`: the heightmap of chunk
+- [x] `terrain: the world wraps east-west`: the heightmap of chunk
   `(circumference_chunks − 1, z)` meets chunk `(0, z)` with no seam wall.
 - [ ] `player: rebased origin keeps the world position`: after a rebase, the
   player's `{chunk, local}` is unchanged and every streamed chunk node is
@@ -5205,6 +5205,17 @@ the planet's size is a fabric fact.
   quantiser at large chunk indices).
 - [ ] A Phase 49 save loads with its edits at the mapped coordinates.
 - [ ] Suite green on both boot paths, and `tools/net_harness.sh` agrees.
+
+**Progress (in progress, not done):** the `WorldSystem` fabric entity (circumferenceKm, polarLatitude,
+seaLevel) is in. `TerrainSlice` has `wrap_chunk`, `latitude_of`/`longitude_of`/`latitude_at`/
+`longitude_at`, `circumference_chunks`, `polar_chunks`; X no longer clamps, Z stops at the polar ice,
+and heights blend over the last 8 east chunks into the west edge so the seam is exact. The minimap
+draws only the polar lines. `src/terrain/world_pos.gd` holds the pure `{chunk, local}` conversion and
+rebase math, covered by the suite. Still open: float32 noise precision far from the origin (needs an
+integer-lattice noise), canonicalising chunk keys at the seam in `ChunkManager`/`VoxelSlice`,
+`{chunk, local}` in saves, snapshots, RPCs, AOI, creatures and stations, the client scene-origin
+rebase that shifts streamed nodes, HUD/minimap lat/lon/alt and `/where`, the Phase 49 save migration,
+and `net_harness.sh`.
 
 ---
 
