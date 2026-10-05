@@ -449,6 +449,7 @@ func run() -> void:
 	_run_test("asset: pck round-trip proves override works",    _test_asset_pck_round_trip_override)
 	_run_test("asset: manifest lists keys that exist on disk",   _test_asset_manifest_keys_exist)
 	_run_test("asset: load_mesh / load_animation_library from .glb.raw", _test_asset_load_mesh_and_animation)
+	_run_test("asset: placeholder rig is a visible body (#112)", _test_asset_placeholder_rig_is_a_body)
 	_run_test("asset: missing model key warns and falls back",   _test_asset_missing_model_falls_back)
 	_run_test("asset: creature model key derived from entity name", _test_asset_creature_key)
 	_run_test("rig tree: every Locomotion.State maps to a node", _test_rig_tree_state_mapping_total)
@@ -5567,6 +5568,64 @@ func _test_asset_load_mesh_and_animation() -> void:
 	var lib := AssetOverlay.load_animation_library("models/placeholder_rig.glb.raw")
 	assert_true(lib.has_animation("idle"), "load_animation_library returns the idle clip")
 
+## Issue #112 — the public placeholder rig IS the avatar a fresh clone renders:
+## `game_root._finish_host_boot` calls `CharacterSlice.attach_default_rig`, which
+## prefers the private `models/player_rig.glb.raw` and falls back to this public key,
+## and `attach_rig` HIDES the procedural box body on success. The placeholder used to
+## be a SINGLE 1x1 TRIANGLE in the XY plane — flat and single-sided, so a public clone
+## showed nothing from behind and a gray sliver from the front: the player's own
+## character was invisible. A rig that stands in for the player must be a BODY —
+## several parts, human height, thickness on BOTH horizontal axes (so it renders from
+## any angle, unlike a flat card), feet on the root's ground plane, and every clip the
+## locomotion tree asks for so a fresh clone logs no "[RigTree] rig has no …".
+func _test_asset_placeholder_rig_is_a_body() -> void:
+	const RigTree := preload("res://src/character/rig_tree.gd")
+	const Locomotion := preload("res://src/character/locomotion.gd")
+	var root := AssetOverlay.load_rig_scene("models/placeholder_rig.glb.raw")
+	assert_true(root != null, "the placeholder rig parses into a scene")
+	if root == null:
+		return
+	var parts: Array = []
+	_collect_mesh_instances(root, parts)
+	assert_true(parts.size() >= 5, "the placeholder rig is a body of several parts (%d)" % parts.size())
+	var box := AABB()
+	var first := true
+	for part in parts:
+		var mi: MeshInstance3D = part
+		var local := mi.transform * mi.get_aabb()
+		if first:
+			box = local
+			first = false
+		else:
+			box = box.merge(local)
+	assert_true(box.size.y >= 1.0, "the body is human-scale tall (%.2f m)" % box.size.y)
+	assert_true(box.size.x > 0.1 and box.size.z > 0.1,
+		"the body has thickness on BOTH horizontal axes (%.2f x %.2f) — a flat quad reads as invisible edge-on" % [box.size.x, box.size.z])
+	assert_true(box.position.y > -0.05 and box.position.y < 0.15,
+		"the feet sit on the rig root's ground plane (min y %.2f)" % box.position.y)
+	var player := root.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	assert_true(player != null, "the rig carries an AnimationPlayer")
+	if player != null:
+		# Node names in the tree are the lowercase state names, so this is exactly what
+		# RigTree._resolve_clip looks up — one miss and the clone warns and plays idle.
+		for state in Locomotion.State.values():
+			var clip: String = Locomotion.State.keys()[state].to_lower()
+			assert_true(player.has_animation(clip), "the placeholder rig ships the '%s' clip" % clip)
+		# Free the tree: it is a Node with no parent, and an orphan Node leaks to process
+		# exit (measured — the suite's teardown rule is the note after `_run_tests`, and
+		# both other `build_tree` callers free theirs the same way).
+		var tree := RigTree.build_tree(player)
+		assert_true(tree.tree_root != null, "the locomotion tree builds off the placeholder's clips")
+		tree.free()
+	root.free()
+
+## Recursively collect every MeshInstance3D under `node` into `out`.
+func _collect_mesh_instances(node: Node, out: Array) -> void:
+	if node is MeshInstance3D:
+		out.append(node)
+	for child in node.get_children():
+		_collect_mesh_instances(child, out)
+
 func _test_asset_missing_model_falls_back() -> void:
 	assert_true(AssetOverlay.load_mesh("models/missing.glb.raw") == null, "missing mesh -> null")
 	assert_eq(AssetOverlay.load_animation_library("models/missing.glb.raw").get_animation_list().size(), 0,
@@ -5582,9 +5641,14 @@ func _test_rig_tree_state_mapping_total() -> void:
 		assert_true(RigTree.node_for_state(s) != "", "state %d maps to a tree node" % s)
 	assert_eq(RigTree.node_for_state(Loco.State.IDLE), RigTree.node_for_state(Loco.State.RUN),
 		"idle/walk/run share the blend space")
-	var tree := RigTree.build_tree(AnimationPlayer.new())
+	# The player is a bare Node with no parent, so freeing it is on us: an orphan Node is
+	# leaked to process exit (measured — it is the one `Leaked instance: AnimationPlayer`
+	# in the boot's exit noise). Same rule `_test_rig_tree_missing_clip_fallback` follows.
+	var player := AnimationPlayer.new()
+	var tree := RigTree.build_tree(player)
 	assert_true(tree.tree_root is AnimationNodeStateMachine, "tree root is a state machine")
 	tree.free()
+	player.free()
 
 func _test_attach_rig() -> void:
 	var ch := CharacterSlice.new()

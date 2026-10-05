@@ -5608,11 +5608,103 @@ exercised in play. Use it for the local avatar with a safe fallback.
   resolves.
 
 **Acceptance criteria:**
-- [ ] With the public placeholder rig, the avatar renders the rig only (no box
-  body) and no "Animation not found" errors are logged.
-- [ ] With the rig key missing, the procedural body is used and nothing leaks.
-- [ ] Manifest merge asserted: a private key overrides, public-only keys survive.
-- [ ] Suite green on both boot paths.
+- [x] With the public placeholder rig, the avatar renders the rig only (no box
+  body) and no "Animation not found" errors are logged. (See the Issue #112 note
+  below — this criterion was false until the placeholder stopped being a triangle.)
+- [x] With the rig key missing, the procedural body is used and nothing leaks.
+- [x] Manifest merge asserted: a private key overrides, public-only keys survive.
+- [x] Suite green on both boot paths.
+
+**Issue #112 — the public placeholder rig was a single triangle.** Criterion 1 was
+false on a public clone, and that was the whole of the bug: `attach_default_rig`
+resolves to the committed `models/placeholder_rig.glb.raw` when no private player rig
+is listed, `attach_rig` HIDES the procedural box body on success, and that placeholder
+was ONE flat, single-sided 1x1 triangle in the XY plane (Phase 45 generated it as a
+loader fixture, before anything rendered it). The player's own character was therefore
+invisible from behind and a gray sliver from the front. `tools/gen_placeholder_glb.py`
+now emits a BODY — a torso, a head, two arms and two legs as cubes on a flat node tree,
+1.73 m tall with the feet on the root's ground plane — and the seven clips the tree
+looks up (`idle`/`walk`/`run`/`fall`/`land`/`attack`/`death`, it shipped only `idle`),
+so the clone logs no `[RigTree] rig has no …`. The six parts also had to be LINKED, which
+the one-node triangle never needed: glTF reaches a node through its parent's `children`
+array, so a node defined but never listed there is an orphan Godot imports without its
+mesh — the root now names every part. The
+suite pins the shape at `asset: placeholder rig is a visible body (#112)` — several
+parts, ≥ 1 m tall, thickness on BOTH horizontal axes (a flat card fails here, which is
+the exact regression), feet on the ground plane, every clip present. Measured: 6 parts,
+merged AABB `size (0.84, 1.73, 0.30)`, `min y 0.000`.
+
+**Review pass (self-driven, this branch).** Two items, both fixed in this pass. (1) The new
+`asset: placeholder rig is a visible body` test built an `AnimationTree` and never freed it.
+An orphan Node leaks to process exit — measured with a standalone `--script` probe: two
+orphan `AnimationTree`s → `2 ObjectDB instances were leaked at exit` — and the rule the file
+states after `_run_tests` plus both older `build_tree` callers free theirs. This one object
+graph was 33 of the boot's leaked instances: the host boot's leak line went **44 → 11** and
+the server's **53 → 20**, with the suite still `8781/8781` on both paths. (2) This note used
+to claim the regeneration "fixed a silent loss in the old generator" — false, and the wording
+above is corrected: the old file had ONE node and no `children` array, so nothing was orphaned
+and nothing was lost (its single triangle rendered, which IS the reported bug); the orphan
+hazard belongs to the new multi-part layout. Checked and found sound, no change needed: the
+committed `.glb.raw` is byte-identical to a fresh `python3 tools/gen_placeholder_glb.py` run
+(md5 `218d1100…` then, `95a5283d…` after the stride fix below, two runs each);
+re-derived from the bytes, all six faces' winding cross-product
+equals their outward normal (no face is backface-culled — that is the mechanism the triangle
+bug came from), the tree carries no orphan node, and the merged AABB is exactly the quoted
+`(0.84, 1.73, 0.30)` with `min y 0.000`.
+
+**Review pass 2 (self-driven, same branch).** One item, fixed. The generator declared no
+`byteStride` on the mesh's two vertex `bufferView`s, so Godot's glTF importer logged
+`Buffer view byte stride should be declared for vertex attributes. Assuming packed data and
+reading anyway.` three times on EVERY load of the rig — 24 lines across the 8 parses of one
+`--verbose` boot (the seven asset tests plus the world boot's own `attach_rig`). `Blob.add`
+now takes an optional stride and the POSITION/NORMAL views declare `12` (one tightly-packed
+VEC3 float); the indices view must not declare one, so it does not. Re-measured on the same
+verbose boot: **24 → 0 stride warnings**, the suite still `8781/8781` on both paths, and the
+shape unchanged — the regenerated `.glb.raw` reads back the identical `(0.84, 1.73, 0.30)`
+AABB at `min y 0.000`, the same seven clips, the same six-of-six outward winding, and no
+orphan node, only 32 bytes larger (10 320 → 10 352). Independently verified this pass and
+deliberately left alone: the world boot's exit noise — `11 ObjectDB instances were leaked at
+exit` and `1 resources still in use` (`res://src/terrain/terrain_slice.gd`, named by a
+`--verbose` run) — is IDENTICAL on `origin/main` with the old triangle, so it is pre-existing
+and not this branch's. The world boot itself was exercised for the first time on this branch
+(`--quit-after-boot`): the rig parses (`glTF: Total animations '7'`, six parts created) and
+the run logs no `[RigTree] rig has no …` for the player's own rig — the only such lines are
+the two deliberate negative tests.
+
+**Review pass 3 (self-driven, same branch).** One item, fixed. The exit noise pass 2 recorded
+as pre-existing had exactly one source inside this repo's test file:
+`_test_rig_tree_state_mapping_total` (`src/tests/test_suite.gd:5637`) written
+`RigTree.build_tree(AnimationPlayer.new())` — a bare `AnimationPlayer` with no parent, never
+freed, so it survived to process exit as the single `Leaked instance: AnimationPlayer - Node
+path: ` in the boot's leak report (the empty path is the tell: an orphan, not a world node —
+the avatar's own player IS in the tree and is freed with it). It is pre-existing (`origin/main`
+leaks the same instance and the same count) but it is the same defect class pass 2 fixed in the
+test thirty lines above, in the file this branch edits, and the two-line fix is a strict
+improvement rather than a re-roll: keep the player in a local and `player.free()` it after
+`tree.free()`. Measured before/after on one boot each — host `11 → 10` leaked and the
+`AnimationPlayer` **gone from the list**, `--server` `20 → 19`, the suite still `8781/8781`
+`(0 failed)` on both paths (plus `[Server] listening on port 7777, max_clients 64`). No
+behaviour changed — the player is only ever read by the tree builder.
+
+Gates for this pass, all reproducing the branch's claims: `pnpm validate` ✓ Schema valid
+(IR v3.0.0); `pnpm check-drift` ✓ No drift detected (555 file(s) match manifest); host
+`--quit -- --run-tests` `8781/8781 passed (0 failed)`; `--server --quit -- --run-tests`
+`8781/8781` + listening; `tools/net_harness.sh` under a fresh `XDG_DATA_HOME`
+(`mktemp -d`) — `12/12 steps agreed across both peers`; the committed `.glb.raw`
+byte-identical to a fresh `python3 tools/gen_placeholder_glb.py` run (md5
+`95a5283d…`, no diff); `scripts/probe_glb.py` re-derived from the bytes — 7 nodes all
+reachable, 0 orphans, clips `idle walk run fall land attack death`, **6 of 6 faces' winding
+cross-product equal to their outward normal**, merged AABB exactly `(0.84, 1.73, 0.30)` at
+`min y 0.000`. Also checked and found sound, no change needed: the new test's `root.free()` and
+`tree.free()` are on every path (nothing leaks from it — the boot's lines are now dominated by
+the four `FastNoiseLite` + four `Node` instances `origin/main` shares); the `_warned_missing`
+static does not interact with the new test (the placeholder ships all seven clips, so it warns
+for none — the only `[RigTree] rig has no …` lines in a full boot remain the two deliberate
+negative tests); and the remaining exit noise (`1 resources still in use` —
+`res://src/terrain/terrain_slice.gd` — and the five `Cannot get path of node` lines) is
+identical on a `git worktree` of `origin/main` run side by side on the same `user://`, so it is
+still not this branch's. `assets-prod` shows as a modified submodule in `git status` and was
+left untouched, as in both earlier passes.
 
 ---
 
