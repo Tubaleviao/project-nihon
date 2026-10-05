@@ -61,6 +61,7 @@ extends Node
 ##   get_players_data() -> Dictionary / apply_players_data(data) -> void
 const Diag := preload("res://src/core/diag.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
+const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 
 const InventorySlice := preload("res://src/inventory/inventory_slice.gd")
 
@@ -401,14 +402,26 @@ static func _store_world_pos(rec: Dictionary, wp: Dictionary) -> void:
 	rec["chunk"] = [chunk.x, chunk.y]
 	rec["local"] = [local.x, local.y, local.z]
 
-## A record's position as { chunk, local }. A pre-Phase-50 record carries only the float
-## `position`, which maps onto the chunk grid at the same coordinates (the old origin is the
-## new origin), so an old save loads with its edits where they were.
+## True when `chunk` is two finite ints-in-range and `local` three finite numbers: element types
+## and magnitudes are checked, not just the array sizes, so a bad save or payload falls back to
+## `position` rather than reaching int()/float() casts.
 static func _has_chunk_local(rec: Dictionary) -> bool:
 	var c: Variant = rec.get("chunk", null)
 	var l: Variant = rec.get("local", null)
-	return c is Array and l is Array and (c as Array).size() == 2 and (l as Array).size() == 3
+	if not (c is Array and l is Array and (c as Array).size() == 2 and (l as Array).size() == 3):
+		return false
+	var limit := float(TerrainSlice.circumference_chunks())
+	for v in c:
+		if not (v is int or v is float) or not is_finite(float(v)) or absf(float(v)) > limit:
+			return false
+	for v in l:
+		if not (v is int or v is float) or not is_finite(float(v)) or absf(float(v)) > 1.0e6:
+			return false
+	return true
 
+## A record's position as { chunk, local }. A pre-Phase-50 record carries only the float
+## `position`, which maps onto the chunk grid at the same coordinates (the old origin is the
+## new origin), so an old save loads with its edits where they were.
 static func world_pos_of(rec: Dictionary) -> Dictionary:
 	var c: Variant = rec.get("chunk", null)
 	var l: Variant = rec.get("local", null)
@@ -844,16 +857,15 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	if player_id.is_empty() or data.is_empty():
 		return
 	var rec := ensure_player(player_id)
-	rec["position"] = data.get("position", [0.0, 0.0, 0.0])
 	# Phase 50 — a payload with chunk + local is authoritative (and rebuilds `position`); an old
 	# payload with only `position` is migrated onto the chunk grid.
 	var wp := world_pos_of(data)
 	_store_world_pos(rec, wp)
-	if _has_chunk_local(data):
-		# Doubles, not a Vector3: a float32 scene position would round the exact chunk + local.
-		var chunk: Vector2i = wp["chunk"]
-		var local: Vector3 = wp["local"]
-		rec["position"] = [chunk.x * WorldPos.CHUNK_METERS + local.x, local.y, chunk.y * WorldPos.CHUNK_METERS + local.z]
+	# `position` is derived from the validated chunk + local, so the two never disagree. Doubles,
+	# not a Vector3: a float32 scene position would round the exact chunk + local.
+	var chunk: Vector2i = wp["chunk"]
+	var local: Vector3 = wp["local"]
+	rec["position"] = [chunk.x * WorldPos.CHUNK_METERS + local.x, local.y, chunk.y * WorldPos.CHUNK_METERS + local.z]
 	var restored_hp := float(data.get("hp", -1.0))
 	rec["hp"] = restored_hp
 	# Phase 39 — the respawn deadline rides the same record. The saved `hp` above is
