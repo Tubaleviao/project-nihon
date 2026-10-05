@@ -5671,6 +5671,41 @@ and not this branch's. The world boot itself was exercised for the first time on
 the run logs no `[RigTree] rig has no …` for the player's own rig — the only such lines are
 the two deliberate negative tests.
 
+**Review pass 3 (self-driven, same branch).** One item, fixed. The exit noise pass 2 recorded
+as pre-existing had exactly one source inside this repo's test file:
+`_test_rig_tree_state_mapping_total` (`src/tests/test_suite.gd:5637`) written
+`RigTree.build_tree(AnimationPlayer.new())` — a bare `AnimationPlayer` with no parent, never
+freed, so it survived to process exit as the single `Leaked instance: AnimationPlayer - Node
+path: ` in the boot's leak report (the empty path is the tell: an orphan, not a world node —
+the avatar's own player IS in the tree and is freed with it). It is pre-existing (`origin/main`
+leaks the same instance and the same count) but it is the same defect class pass 2 fixed in the
+test thirty lines above, in the file this branch edits, and the two-line fix is a strict
+improvement rather than a re-roll: keep the player in a local and `player.free()` it after
+`tree.free()`. Measured before/after on one boot each — host `11 → 10` leaked and the
+`AnimationPlayer` **gone from the list**, `--server` `20 → 19`, the suite still `8781/8781`
+`(0 failed)` on both paths (plus `[Server] listening on port 7777, max_clients 64`). No
+behaviour changed — the player is only ever read by the tree builder.
+
+Gates for this pass, all reproducing the branch's claims: `pnpm validate` ✓ Schema valid
+(IR v3.0.0); `pnpm check-drift` ✓ No drift detected (555 file(s) match manifest); host
+`--quit -- --run-tests` `8781/8781 passed (0 failed)`; `--server --quit -- --run-tests`
+`8781/8781` + listening; `tools/net_harness.sh` under a fresh `XDG_DATA_HOME`
+(`mktemp -d`) — `12/12 steps agreed across both peers`; the committed `.glb.raw`
+byte-identical to a fresh `python3 tools/gen_placeholder_glb.py` run (md5
+`95a5283d…`, no diff); `scripts/probe_glb.py` re-derived from the bytes — 7 nodes all
+reachable, 0 orphans, clips `idle walk run fall land attack death`, **6 of 6 faces' winding
+cross-product equal to their outward normal**, merged AABB exactly `(0.84, 1.73, 0.30)` at
+`min y 0.000`. Also checked and found sound, no change needed: the new test's `root.free()` and
+`tree.free()` are on every path (nothing leaks from it — the boot's lines are now dominated by
+the four `FastNoiseLite` + four `Node` instances `origin/main` shares); the `_warned_missing`
+static does not interact with the new test (the placeholder ships all seven clips, so it warns
+for none — the only `[RigTree] rig has no …` lines in a full boot remain the two deliberate
+negative tests); and the remaining exit noise (`1 resources still in use` —
+`res://src/terrain/terrain_slice.gd` — and the five `Cannot get path of node` lines) is
+identical on a `git worktree` of `origin/main` run side by side on the same `user://`, so it is
+still not this branch's. `assets-prod` shows as a modified submodule in `git status` and was
+left untouched, as in both earlier passes.
+
 ---
 
 ## Phase 60 — Host-authoritative equip ✅ Done

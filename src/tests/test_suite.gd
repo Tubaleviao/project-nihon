@@ -5641,9 +5641,14 @@ func _test_rig_tree_state_mapping_total() -> void:
 		assert_true(RigTree.node_for_state(s) != "", "state %d maps to a tree node" % s)
 	assert_eq(RigTree.node_for_state(Loco.State.IDLE), RigTree.node_for_state(Loco.State.RUN),
 		"idle/walk/run share the blend space")
-	var tree := RigTree.build_tree(AnimationPlayer.new())
+	# The player is a bare Node with no parent, so freeing it is on us: an orphan Node is
+	# leaked to process exit (measured — it is the one `Leaked instance: AnimationPlayer`
+	# in the boot's exit noise). Same rule `_test_rig_tree_missing_clip_fallback` follows.
+	var player := AnimationPlayer.new()
+	var tree := RigTree.build_tree(player)
 	assert_true(tree.tree_root is AnimationNodeStateMachine, "tree root is a state machine")
 	tree.free()
+	player.free()
 
 func _test_attach_rig() -> void:
 	var ch := CharacterSlice.new()
