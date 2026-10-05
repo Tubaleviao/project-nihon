@@ -54,7 +54,10 @@ public clone**. This directory holds the public side of that split.
 `load_animation_library()` parse `.glb.raw` bytes with `GLTFDocument` (never
 `load()`). A missing key warns and falls back to the procedural body. Real rigs
 come from the private `assets-prod` submodule (`git submodule update --init
-assets-prod`, requires access); without it the avatar stays boxes. Regenerate the
+assets-prod`, requires access); without it the local avatar renders the committed
+placeholder rig — a blocky humanoid body (torso, head, arms, legs) carrying every
+clip the locomotion tree looks up (issue #112: it used to be a single flat
+triangle, which left the player's own character invisible). Regenerate the
 placeholder rig with `python3 tools/gen_placeholder_glb.py`.
 
 ## Regenerating a placeholder

@@ -5608,11 +5608,30 @@ exercised in play. Use it for the local avatar with a safe fallback.
   resolves.
 
 **Acceptance criteria:**
-- [ ] With the public placeholder rig, the avatar renders the rig only (no box
-  body) and no "Animation not found" errors are logged.
-- [ ] With the rig key missing, the procedural body is used and nothing leaks.
-- [ ] Manifest merge asserted: a private key overrides, public-only keys survive.
-- [ ] Suite green on both boot paths.
+- [x] With the public placeholder rig, the avatar renders the rig only (no box
+  body) and no "Animation not found" errors are logged. (See the Issue #112 note
+  below — this criterion was false until the placeholder stopped being a triangle.)
+- [x] With the rig key missing, the procedural body is used and nothing leaks.
+- [x] Manifest merge asserted: a private key overrides, public-only keys survive.
+- [x] Suite green on both boot paths.
+
+**Issue #112 — the public placeholder rig was a single triangle.** Criterion 1 was
+false on a public clone, and that was the whole of the bug: `attach_default_rig`
+resolves to the committed `models/placeholder_rig.glb.raw` when no private player rig
+is listed, `attach_rig` HIDES the procedural box body on success, and that placeholder
+was ONE flat, single-sided 1x1 triangle in the XY plane (Phase 45 generated it as a
+loader fixture, before anything rendered it). The player's own character was therefore
+invisible from behind and a gray sliver from the front. `tools/gen_placeholder_glb.py`
+now emits a BODY — a torso, a head, two arms and two legs as cubes on a flat node tree,
+1.73 m tall with the feet on the root's ground plane — and the seven clips the tree
+looks up (`idle`/`walk`/`run`/`fall`/`land`/`attack`/`death`, it shipped only `idle`),
+so the clone logs no `[RigTree] rig has no …`. The regeneration also fixed a silent
+loss in the old generator: glTF links nodes through each node's `children` array, so a
+node defined but never listed there is an orphan Godot imports without its mesh. The
+suite pins the shape at `asset: placeholder rig is a visible body (#112)` — several
+parts, ≥ 1 m tall, thickness on BOTH horizontal axes (a flat card fails here, which is
+the exact regression), feet on the ground plane, every clip present. Measured: 6 parts,
+merged AABB `size (0.84, 1.73, 0.30)`, `min y 0.000`.
 
 ---
 
