@@ -629,10 +629,10 @@ static func build_runs(chunk_pos: Vector2i, heightmap: Array, input: Dictionary)
 ## Phase 49 — a surface style (`top`, `soil` colours and `depth`) from the biome's fabric
 ## fields (`surfaceTint`, `soilTint`, `topsoilDepth`); empty when the biome resource is not
 ## loaded (an isolated rig), which leaves the plain rock colouring. `material` is the
-## biome's `surfaceMaterial` (e.g. Grass): nothing in the build consumes it yet — the
-## Grass/Soil material entities and mining-yields-Soil are still open — but it is part of
-## the style so that consumer has one place to read it, and a test pins that every biome
-## declares one.
+## biome's `surfaceMaterial` cover name (e.g. Grass): the mesher never reads it (colour is
+## what it needs), and the yield it implies is the biome's own `soilMaterial`, read by
+## `_natural_yield` — the style carries the cover so a consumer has one place to read it,
+## and a test pins that every biome declares one.
 ##
 ## Thread note: the worker half of the build calls this through `build_runs`. It only READS
 ## `GameData.BIOMES`, which is a fully preloaded constant table, so that is safe today; if
@@ -1227,9 +1227,14 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 
 ## Phase 43 — what mining a NATURAL span of `tile` yields, off the ore field:
 ## `{ material, quantity, vein }`. Inside a LIVE vein it is the vein's material and its
-## per-slice `quantity`, capped by the reserve still left; anywhere else (no vein, or one
-## mined out) the biome's host rock, one unit, with `vein` empty. Pure — the depletion it
-## implies is recorded by the caller (`_record_depletion`).
+## per-slice `quantity`, capped by the reserve still left; anywhere else the biome's ground,
+## one unit, with `vein` empty. Pure — the depletion it implies is recorded by the caller
+## (`_record_depletion`).
+##
+## Phase 49 — the ground is layered: a slice within the biome's `topsoilDepth` yields that
+## biome's fabric `soilMaterial` (Grass/Moss/Ash/Void ground alike), and only below it the
+## biome's host rock. The surface-material → soil-material mapping is a BIOME field, so no
+## GDScript branch decides which cover becomes which soil (issue #111).
 func _natural_yield(tile: Vector2i, span: Dictionary) -> Dictionary:
 	var xz := Vector2(tile.x * TILE_SIZE + TILE_SIZE * 0.5, tile.y * TILE_SIZE + TILE_SIZE * 0.5)
 	var depth := _run_depth(span, _base_top_for_tile(tile))
@@ -1237,9 +1242,9 @@ func _natural_yield(tile: Vector2i, span: Dictionary) -> Dictionary:
 	if vein.is_empty():
 		var biome := _biome_at(xz)
 		var b: Variant = GameData.BIOMES.get(biome, null)
-		# Phase 49 — digging through a grass-covered biome's topsoil yields Soil, not rock.
-		if b != null and b.get("surfaceMaterial") == "Grass" and depth < float(b.get("topsoilDepth") if b.get("topsoilDepth") != null else 0.0):
-			return { "material": "Soil", "quantity": 1, "vein": {} }
+		if b != null and b.get("soilMaterial") != null \
+				and depth < float(b.get("topsoilDepth") if b.get("topsoilDepth") != null else 0.0):
+			return { "material": str(b.get("soilMaterial")), "quantity": 1, "vein": {} }
 		return { "material": OreField.host_material(biome), "quantity": 1, "vein": {} }
 	var take := mini(int(vein["quantity"]), OreField.remaining(vein, _vein_taken))
 	return { "material": str(vein["material"]), "quantity": take, "vein": vein }

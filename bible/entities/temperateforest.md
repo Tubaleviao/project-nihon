@@ -20,9 +20,10 @@ Broad mixed-leaf forests covering most mid-latitude landmass. Moderate rainfall,
 | `surfaceTint` | string | yes | Hex colour of the natural top face |
 | `soilTint` | string | yes | Hex colour of the side wall down to topsoilDepth; rock below |
 | `topsoilDepth` | decimal | yes | World units of soil under the surface before rock shows on a wall |
+| `soilMaterial` | string | yes | Material a mined slice of this biome's topsoil yields, within topsoilDepth of the surface (Phase 49). The surface-material → soil-material mapping, authored here so no GDScript branch decides it |
 | `temperature` | json | yes | Climate envelope, normalised 0 (coldest) to 1 (hottest): the climate field selects this biome where its temperature lies in [min, max] (Phase 49) |
 | `moisture` | json | yes | Climate envelope, normalised 0 (driest) to 1 (wettest), as for temperature |
-| `surfaceVeinChance` | decimal | yes | Fraction of veins that reach the surface and break through it; the rest stay buried (Phase 49) |
+| `surfaceVeinChance` | decimal | yes | Share of this biome's top-cell veins that break the surface and keep their deposit marker (Phase 49); the rest are pushed out of view. Authored from the biome prose — ferrite outcrops are TemperateForest's named feature, so its ground stays the visible one |
 
 ## Relations
 

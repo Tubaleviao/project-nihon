@@ -13,6 +13,7 @@ surfaceMaterial = "Grass"
 surfaceTint = "#4f8a3a"
 soilTint = "#6b4a2e"
 topsoilDepth = 3.0
+soilMaterial = "Soil"
 temperature = {"min":0.3,"max":0.7}
 moisture = {"min":0.5,"max":1}
 surfaceVeinChance = 0.2

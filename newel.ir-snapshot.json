@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:04e93de94471dd11f1749e47015c2c0c70944e4c0b2f75815e8996c5e780b311",
+  "schemaHash": "sha256:60f0a28870b8ba6e9deb8c75d61949a8e7554f5094a034b22478126e76ed8841",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -2573,7 +2573,7 @@
         "tags": [
           "material"
         ],
-        "description": "Living turf that covers temperate ground (forest and grassland). It is the top face of natural land, tinted per biome; digging it turns it into Soil.",
+        "description": "Living turf that covers temperate ground (forest and grassland). It is the top face of natural land, tinted per biome; what digging it yields is the biome's own `soilMaterial`, so a verbatim `Grass` cover is not what decides Soil.",
         "goal": "Make natural ground read as ground, and give the surface layer a name the biomes can point at",
         "fields": {
           "id": {
@@ -2633,7 +2633,7 @@
         "tags": [
           "material"
         ],
-        "description": "Loose earth under the turf, down to the biome's topsoil depth. It is what mining natural grass-covered ground yields, and what farmland is made of.",
+        "description": "Loose earth under a biome's cover, down to its `topsoilDepth`. It is what mining a slice of natural topsoil yields, whatever cover (`surfaceMaterial`) it wears — Grass, Moss, Ash and Void ground alike — and what farmland is made of.",
         "goal": "Give digging the surface a yield that is not rock",
         "fields": {
           "id": {
@@ -2772,6 +2772,15 @@
             "pii": false,
             "defaultValue": 3
           },
+          "soilMaterial": {
+            "name": "soilMaterial",
+            "type": "string",
+            "description": "Material a mined slice of this biome's topsoil yields, within topsoilDepth of the surface (Phase 49). The surface-material → soil-material mapping, authored here so no GDScript branch decides it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Soil"
+          },
           "temperature": {
             "name": "temperature",
             "type": "json",
@@ -2799,7 +2808,7 @@
           "surfaceVeinChance": {
             "name": "surfaceVeinChance",
             "type": "decimal",
-            "description": "Fraction of veins that reach the surface and break through it; the rest stay buried (Phase 49)",
+            "description": "Share of this biome's top-cell veins that break the surface and keep their deposit marker (Phase 49); the rest are pushed out of view. Authored from the biome prose — ferrite outcrops are TemperateForest's named feature, so its ground stays the visible one",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -2922,6 +2931,15 @@
             "pii": false,
             "defaultValue": 4
           },
+          "soilMaterial": {
+            "name": "soilMaterial",
+            "type": "string",
+            "description": "Material a mined slice of this biome's topsoil yields, within topsoilDepth of the surface (Phase 49). The surface-material → soil-material mapping, authored here so no GDScript branch decides it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Soil"
+          },
           "temperature": {
             "name": "temperature",
             "type": "json",
@@ -2949,11 +2967,11 @@
           "surfaceVeinChance": {
             "name": "surfaceVeinChance",
             "type": "decimal",
-            "description": "Fraction of veins that reach the surface and break through it; the rest stay buried (Phase 49)",
+            "description": "Share of this biome's top-cell veins that break the surface and keep their deposit marker (Phase 49); the rest are pushed out of view. Authored from the biome prose — grassland holds shallow SUBSURFACE deposits, so its outcrops are rarer than the forest's",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 0.2
+            "defaultValue": 0.15
           }
         },
         "relations": {
@@ -3072,6 +3090,15 @@
             "pii": false,
             "defaultValue": 1
           },
+          "soilMaterial": {
+            "name": "soilMaterial",
+            "type": "string",
+            "description": "Material a mined slice of this biome's topsoil yields, within topsoilDepth of the surface (Phase 49). The surface-material → soil-material mapping, authored here so no GDScript branch decides it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Soil"
+          },
           "temperature": {
             "name": "temperature",
             "type": "json",
@@ -3099,11 +3126,11 @@
           "surfaceVeinChance": {
             "name": "surfaceVeinChance",
             "type": "decimal",
-            "description": "Fraction of veins that reach the surface and break through it; the rest stay buried (Phase 49)",
+            "description": "Share of this biome's top-cell veins that break the surface and keep their deposit marker (Phase 49); the rest are pushed out of view. Authored from the biome prose — aethermite rides ley-line VENTS, and a vent is a surface breach, so its ground shows more of them",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 0.2
+            "defaultValue": 0.25
           }
         },
         "relations": {
@@ -3236,6 +3263,15 @@
             "pii": false,
             "defaultValue": 2
           },
+          "soilMaterial": {
+            "name": "soilMaterial",
+            "type": "string",
+            "description": "Material a mined slice of this biome's topsoil yields, within topsoilDepth of the surface (Phase 49). The surface-material → soil-material mapping, authored here so no GDScript branch decides it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Soil"
+          },
           "temperature": {
             "name": "temperature",
             "type": "json",
@@ -3263,11 +3299,11 @@
           "surfaceVeinChance": {
             "name": "surfaceVeinChance",
             "type": "decimal",
-            "description": "Fraction of veins that reach the surface and break through it; the rest stay buried (Phase 49)",
+            "description": "Share of this biome's top-cell veins that break the surface and keep their deposit marker (Phase 49); the rest are pushed out of view. Authored from the biome prose — its metals sit in shallow CAVE systems and cliff faces, so few veins crop out through the ground",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 0.2
+            "defaultValue": 0.1
           },
           "dayNightSpeed": {
             "name": "dayNightSpeed",
@@ -3396,6 +3432,15 @@
             "pii": false,
             "defaultValue": 1
           },
+          "soilMaterial": {
+            "name": "soilMaterial",
+            "type": "string",
+            "description": "Material a mined slice of this biome's topsoil yields, within topsoilDepth of the surface (Phase 49). The surface-material → soil-material mapping, authored here so no GDScript branch decides it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Soil"
+          },
           "temperature": {
             "name": "temperature",
             "type": "json",
@@ -3423,11 +3468,11 @@
           "surfaceVeinChance": {
             "name": "surfaceVeinChance",
             "type": "decimal",
-            "description": "Fraction of veins that reach the surface and break through it; the rest stay buried (Phase 49)",
+            "description": "Share of this biome's top-cell veins that break the surface and keep their deposit marker (Phase 49); the rest are pushed out of view. Authored from the biome prose — voidite shows in STABILISED sections only, so its rifts stay mostly closed ground",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 0.2
+            "defaultValue": 0.05
           }
         },
         "relations": {
