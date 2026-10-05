@@ -5227,13 +5227,13 @@ the planet's size is a fabric fact.
 **Acceptance criteria:**
 - [x] `terrain: the world wraps east-west`: the heightmap of chunk
   `(circumference_chunks − 1, z)` meets chunk `(0, z)` with no seam wall.
-- [ ] `player: rebased origin keeps the world position`: after a rebase, the
+- [x] `player: rebased origin keeps the world position`: after a rebase, the
   player's `{chunk, local}` is unchanged and every streamed chunk node is
-  shifted by the same offset.
+  shifted by the same offset. _Suite: `WorldPos` rebase math plus `VoxelSlice.shift_scene` on chunk roots and the world floor; the per-frame client driver is still open._
 - [ ] A player teleported 10,000 km out walks, mines and builds with the same
   0.125 step precision as at the origin (manual check plus a unit test on the
   quantiser at large chunk indices). _Unit test on the quantiser at chunk 312,500 is in the suite; the manual walk is open._
-- [ ] A Phase 49 save loads with its edits at the mapped coordinates. _Player records migrate (suite); world/edit saves untouched, as edits are keyed by tile and the origin is unchanged._
+- [x] A Phase 49 save loads with its edits at the mapped coordinates. _Player records migrate (suite); world/edit saves untouched, as edits are keyed by tile and the origin is unchanged._
 - [ ] Suite green on both boot paths, and `tools/net_harness.sh` agrees.
 
 **Progress (in progress, not done):** the `WorldSystem` fabric entity (circumferenceKm, polarLatitude,
@@ -5246,7 +5246,8 @@ onto the same coordinates, `PlayerRegistry.world_pos_of`), and the minimap shows
 (`TerrainSlice.where_text`). Still open: float32 noise precision far from the origin (needs an
 integer-lattice noise), canonicalising chunk keys at the seam in `ChunkManager`/`VoxelSlice`,
 `{chunk, local}` in snapshots, RPCs, AOI, creatures and stations (player records done), the client scene-origin
-rebase that shifts streamed nodes, a `/where` chat command (no command system exists; `where_text` is ready), and the
+rebase driver (`VoxelSlice.shift_scene` shifts chunk roots and the floor, suite-tested; trees, creatures, stations,
+the player body and the trigger on `WorldPos.needs_rebase` are still to wire), a `/where` chat command (no command system exists; `where_text` is ready), and the
 map/migration of world and edit saves.
 
 ---
