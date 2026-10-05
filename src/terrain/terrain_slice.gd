@@ -216,9 +216,10 @@ func _generate(pos: Vector2i) -> Array:
 	out.resize(CHUNK_SIZE * CHUNK_SIZE)
 	var origin_x := pos.x * CHUNK_SIZE * TILE_SIZE
 	var origin_z := pos.y * CHUNK_SIZE * TILE_SIZE
+	var w := float(circumference_chunks()) * CHUNK_METERS   # one fabric lookup per chunk, not per tile
 	for ty in range(CHUNK_SIZE):
 		for tx in range(CHUNK_SIZE):
-			out[ty * CHUNK_SIZE + tx] = _height_at(origin_x + tx * TILE_SIZE, origin_z + ty * TILE_SIZE)
+			out[ty * CHUNK_SIZE + tx] = _height_wrapped(origin_x + tx * TILE_SIZE, origin_z + ty * TILE_SIZE, w)
 	return out
 
 ## Continuous terrain height at a world XZ position: noise scaled by HEIGHT_SCALE,
@@ -226,7 +227,10 @@ func _generate(pos: Vector2i) -> Array:
 ## the player starts on walkable ground. Shared by _generate and get_height_at so
 ## the heightmap and direct samples always agree.
 func _height_at(x: float, z: float) -> float:
-	var w := float(circumference_chunks()) * CHUNK_METERS
+	return _height_wrapped(x, z, float(circumference_chunks()) * CHUNK_METERS)
+
+## `_height_at` with the circumference `w` (metres) already resolved.
+func _height_wrapped(x: float, z: float, w: float) -> float:
 	var half_w := w * 0.5
 	var wx := fposmod(x + half_w, w) - half_w   # canonical X in [-w/2, w/2)
 	var band := WRAP_BLEND_CHUNKS * CHUNK_METERS
