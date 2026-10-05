@@ -6,7 +6,8 @@ extends RefCounted
 ## from that chunk's origin corner (X/Z in [0, CHUNK_METERS), Y as is), small enough for float32.
 ## Pure and static: the server, the client and the save code share it.
 
-const CHUNK_METERS := 32.0   ## TerrainSlice.CHUNK_SIZE * TILE_SIZE
+const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const CHUNK_METERS := TerrainSlice.CHUNK_METERS
 const REBASE_DISTANCE := 2000.0   ## the client rebases once the player drifts this far from the scene origin
 
 ## Split an XZ-planar world position (double precision, e.g. from a save) into chunk + local.

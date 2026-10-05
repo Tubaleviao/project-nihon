@@ -16,7 +16,7 @@ extends Control
 ## are what the automated test suite asserts against.
 
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
-const CHUNK_SIZE := 32                 # world units per chunk — must match TerrainSlice.CHUNK_SIZE × TILE_SIZE
+const CHUNK_SIZE := TerrainSlice.CHUNK_METERS   # world units per chunk
 
 ## Reveal this many chunks around the player's current chunk (Chebyshev radius).
 ## 1 reveals a 3×3 neighbourhood — enough to see where you are and where you
@@ -240,7 +240,7 @@ func _draw_world_bounds(size: Vector2, cell_px: float) -> void:
 	var r: int = terrain_slice.world_radius_chunks()
 	var edge_col := Color(0.0, 0.0, 0.0, 0.8)
 
-	var top_z := size.y * 0.5 + (-r - _player_chunk.y) * cell_px
+	var top_z := size.y * 0.5 + (-(r - 1) - _player_chunk.y) * cell_px
 	var bottom_z := size.y * 0.5 + (r - _player_chunk.y) * cell_px
 
 	if top_z > 0.0 and top_z < size.y:

@@ -968,6 +968,10 @@ func _test_terrain_planet_coordinates() -> void:
 	var clamped := t.clamp_to_world(Vector3(1.0e7, 4.0, 1.0e9))
 	assert_eq(clamped.x, 1.0e7, "X is not clamped")
 	assert_true(clamped.z < t.world_half_extent(), "Z stops short of the ice")
+	var south := t.clamp_to_world(Vector3(0.0, 4.0, -1.0e9))
+	assert_true(t.is_chunk_in_bounds(t.world_to_chunk(Vector2(south.x, south.z))), "the south clamp lands in a walkable chunk")
+	var north := t.clamp_to_world(Vector3(0.0, 4.0, 1.0e9))
+	assert_true(t.is_chunk_in_bounds(t.world_to_chunk(Vector2(north.x, north.z))), "the north clamp lands in a walkable chunk")
 	# Position quantiser at a far chunk: a tile offset is exact in double precision, so a
 	# 0.125 step is the same 0.125 at chunk 600,000 as at the origin.
 	var far := Vector2i(600000, 0)
@@ -1035,6 +1039,11 @@ func _test_registry_world_pos() -> void:
 	assert_eq(far["chunk"], Vector2i(600000, -40), "a far chunk survives the round trip")
 	assert_eq(far["local"], Vector3(5.125, 2.0, 9.5), "at 0.125 precision")
 	assert_eq(reg.get_player_data("far")["local"], [5.125, 2.0, 9.5], "and re-saves identically")
+	assert_eq(reg.get_record("far")["position"][0], 600000 * 32.0 + 5.125, "position is rebuilt in doubles, not float32")
+	# A malformed chunk keeps the saved position instead of resetting to the origin.
+	reg.apply_player_data("bad", {"chunk": [1, 2, 3], "local": [1.0, 2.0, 3.0], "position": [70.5, 3.0, -10.25], "hp": 10.0})
+	assert_eq(reg.get_world_pos("bad"), wp, "a malformed chunk falls back to position")
+	assert_eq(reg.get_record("bad")["position"], [70.5, 3.0, -10.25], "and position is untouched")
 	reg.free()
 
 # ---------------------------------------------------------------------------

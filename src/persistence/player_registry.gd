@@ -404,10 +404,15 @@ static func _store_world_pos(rec: Dictionary, wp: Dictionary) -> void:
 ## A record's position as { chunk, local }. A pre-Phase-50 record carries only the float
 ## `position`, which maps onto the chunk grid at the same coordinates (the old origin is the
 ## new origin), so an old save loads with its edits where they were.
+static func _has_chunk_local(rec: Dictionary) -> bool:
+	var c: Variant = rec.get("chunk", null)
+	var l: Variant = rec.get("local", null)
+	return c is Array and l is Array and (c as Array).size() == 2 and (l as Array).size() == 3
+
 static func world_pos_of(rec: Dictionary) -> Dictionary:
 	var c: Variant = rec.get("chunk", null)
 	var l: Variant = rec.get("local", null)
-	if c is Array and l is Array and (c as Array).size() == 2 and (l as Array).size() == 3:
+	if _has_chunk_local(rec):
 		return WorldPos.normalized({
 			"chunk": Vector2i(int(c[0]), int(c[1])),
 			"local": Vector3(float(l[0]), float(l[1]), float(l[2])),
@@ -844,9 +849,11 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	# payload with only `position` is migrated onto the chunk grid.
 	var wp := world_pos_of(data)
 	_store_world_pos(rec, wp)
-	if data.has("chunk") and data.has("local"):
-		var sc := WorldPos.to_scene(wp, Vector2i.ZERO)
-		rec["position"] = [sc.x, sc.y, sc.z]
+	if _has_chunk_local(data):
+		# Doubles, not a Vector3: a float32 scene position would round the exact chunk + local.
+		var chunk: Vector2i = wp["chunk"]
+		var local: Vector3 = wp["local"]
+		rec["position"] = [chunk.x * WorldPos.CHUNK_METERS + local.x, local.y, chunk.y * WorldPos.CHUNK_METERS + local.z]
 	var restored_hp := float(data.get("hp", -1.0))
 	rec["hp"] = restored_hp
 	# Phase 39 — the respawn deadline rides the same record. The saved `hp` above is

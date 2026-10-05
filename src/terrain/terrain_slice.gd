@@ -136,6 +136,9 @@ func world_to_chunk(world_pos: Vector2) -> Vector2i:
 func chunk_to_world(chunk_pos: Vector2i) -> Vector2:
 	return Vector2(chunk_pos.x * CHUNK_SIZE * TILE_SIZE, chunk_pos.y * CHUNK_SIZE * TILE_SIZE)
 
+static var _circumference_cache := -1
+static var _polar_cache := -1
+
 ## Fabric value of the `WorldSystem` entity's `field`, or `fallback` without the resource.
 static func _world_field(field: String, fallback: float) -> float:
 	var ws: Variant = GameData.WORLD_SYSTEMS.get("WorldSystem", null)
@@ -146,7 +149,9 @@ static func _world_field(field: String, fallback: float) -> float:
 
 ## Chunks around the equator; X wraps after this many (1,250,000 at 40,000 km).
 static func circumference_chunks() -> int:
-	return maxi(2, roundi(_world_field("circumferenceKm", DEFAULT_CIRCUMFERENCE_KM) * 1000.0 / CHUNK_METERS))
+	if _circumference_cache < 0:   # the fabric value is fixed for the process; resolve it once
+		_circumference_cache = maxi(2, roundi(_world_field("circumferenceKm", DEFAULT_CIRCUMFERENCE_KM) * 1000.0 / CHUNK_METERS))
+	return _circumference_cache
 
 ## Chunks from the equator to a pole (a quarter of the circumference).
 static func pole_chunks() -> int:
@@ -154,8 +159,10 @@ static func pole_chunks() -> int:
 
 ## |chunk z| at which the polar ice begins (the chunks beyond it are not walkable).
 static func polar_chunks() -> int:
-	var deg := clampf(_world_field("polarLatitude", DEFAULT_POLAR_LATITUDE), 0.0, 90.0)
-	return roundi(pole_chunks() * deg / 90.0)
+	if _polar_cache < 0:
+		var deg := clampf(_world_field("polarLatitude", DEFAULT_POLAR_LATITUDE), 0.0, 90.0)
+		_polar_cache = maxi(1, roundi(pole_chunks() * deg / 90.0))   # at least one walkable row
+	return _polar_cache
 
 ## Canonical chunk: X wrapped into [-C/2, C/2) where C is the circumference; Z unchanged.
 static func wrap_chunk(chunk_pos: Vector2i) -> Vector2i:
@@ -204,8 +211,11 @@ func world_radius_chunks() -> int:
 ## (gravity/terrain handle vertical). Insets the boundary by 2 m so the body stays on the
 ## final chunk's collision instead of straddling the exact edge.
 func clamp_to_world(pos: Vector3) -> Vector3:
-	var half := world_half_extent() - 2.0   # float32 positions are 1 m apart out here
-	return Vector3(pos.x, pos.y, clampf(pos.z, -half, half))
+	# Walkable rows are |chunk z| < polar_chunks, i.e. z in [-(polar-1)*32, polar*32).
+	var polar := polar_chunks()
+	var north := float(polar) * CHUNK_METERS - 2.0
+	var south := -float(polar - 1) * CHUNK_METERS + 2.0
+	return Vector3(pos.x, pos.y, clampf(pos.z, minf(south, north), north))
 
 # ---------------------------------------------------------------------------
 # Private
