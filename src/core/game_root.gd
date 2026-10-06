@@ -10,6 +10,7 @@ const Diag := preload("res://src/core/diag.gd")
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const VoxelSlice       := preload("res://src/terrain/voxel_slice.gd")
 const ChunkManager     := preload("res://src/terrain/chunk_manager.gd")
+const RegionStreamer   := preload("res://src/persistence/region_streamer.gd")
 const DistantTerrain   := preload("res://src/terrain/distant_terrain.gd")
 const BattleSlice      := preload("res://src/battle/battle_slice.gd")
 const CreatureSlice    := preload("res://src/creature/creature_slice.gd")
@@ -911,6 +912,9 @@ func _boot_client() -> void:
 ##   4. open the host socket.
 func _boot_server() -> void:
 	_load_world_records()
+	# Phase 52 — voxel edits stream in by region around every window (the local player's
+	# and each connected peer's) instead of loading from the world record up front.
+	_chunk_manager.region_streamer = RegionStreamer.new(_persistence.region_store, _voxel)
 	_chunk_manager.start()
 	# Phase 42 — arm the boot gate BEFORE the first refresh, and not after it. Both boot
 	# paths inherit it here, which is what stops a gate wired into one of them from being a
@@ -957,6 +961,10 @@ func _on_player_joined(peer_id: int, player_id: String, reconnected: bool) -> vo
 	# wolf (re-bound to the creature instance when that instance is resident).
 	_taming.apply_record(_registry.get_record(player_id), player_id)
 	print("[Server] %s player '%s' as %s" % ["reconnected" if reconnected else "joined", player_id, "peer_%d" % peer_id])
+	# Phase 52 — the peer's window opens NOW, so the regions around its saved position are
+	# resident (and its snapshot carries their edits) before the snapshot is built.
+	_chunk_manager.set_peer_center(peer_id, _peer_window_chunk(peer_id))
+	_chunk_manager.refresh(false)
 	_networking.send_snapshot(peer_id, _build_snapshot(peer_id))
 
 ## Phase 33 — host: a connection came up. There is deliberately nothing to send yet:
@@ -990,6 +998,7 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	_character.forget_peer(peer_id)
 	if _is_client:
 		return
+	_chunk_manager.clear_peer_center(peer_id)
 	var player_id := _registry.get_player_id(peer_id)
 	if player_id.is_empty():
 		return
@@ -1128,6 +1137,34 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	# networking slice's own handler has recorded it, so get_aoi_center() can be stale.
 	_networking.send_snapshot(peer_id, _build_snapshot(peer_id, false, position, false))
 
+## Phase 52 — seconds between re-centring the connected peers' streaming windows.
+const PEER_WINDOW_INTERVAL := 0.5
+var _peer_window_elapsed := 0.0
+
+## The chunk a peer's window is centred on: its last reported position, else the position
+## its record holds (a joining peer has not sent a state packet yet).
+func _peer_window_chunk(peer_id: int) -> Vector2i:
+	if _networking.has_last_known_state(peer_id):
+		var p: Vector3 = _networking.get_last_known_state(peer_id)
+		return _chunk_manager.world_to_chunk(Vector2(p.x, p.z))
+	var player_id := _registry.get_player_id(peer_id)
+	if player_id.is_empty():
+		return _chunk_manager.player_chunk()
+	return _registry.get_world_pos(player_id)["chunk"]
+
+## Phase 52 — keep one streaming window per connected peer, so creatures, trees and edit
+## validation run around every player and not only near the server's own body. Throttled:
+## a window moves by whole chunks, so twice a second is ample.
+func _sync_peer_windows(delta: float) -> void:
+	_peer_window_elapsed += delta
+	if _peer_window_elapsed < PEER_WINDOW_INTERVAL:
+		return
+	_peer_window_elapsed = 0.0
+	for pid in _registry.get_online_player_ids():
+		var peer_id := _registry.get_peer_id(str(pid))
+		if peer_id > 0:
+			_chunk_manager.set_peer_center(peer_id, _peer_window_chunk(peer_id))
+
 func _process(delta: float) -> void:
 	# Phase 42 — complete a host boot whose first ring has finished building. It has
 	# to run FIRST: the rest of this frame's work (the avatar sync, the LOD pass) is
@@ -1148,6 +1185,7 @@ func _process(delta: float) -> void:
 	if not _is_client and _player != null:
 		# Phase 48 — the host avatar's AOI membership drives peer-equipment sends.
 		_networking.set_host_position(_player.get_position())
+		_sync_peer_windows(delta)
 	# Distance-driven LOD (Phase 23) — evaluate each character's world distance
 	# to the player each frame and swap fine detail / the impostor billboard in
 	# and out. No-op until characters exist and on clients (no spawned visuals).
@@ -1599,6 +1637,12 @@ func _collect_save_job(incremental: bool) -> Dictionary:
 	# creatures) is small and always rewritten.
 	if incremental:
 		manifest = PersistenceSlice.dirty_chunk_subset(manifest, dirty)
+	else:
+		# A full save still carries the empty-edit-set marker for a dirty chunk whose edits
+		# compacted away, so its stale entry is erased from the region file.
+		for key in dirty:
+			if not manifest.has(str(key)):
+				manifest[str(key)] = { "edits": {} }
 	var creatures := _creature.get_snapshot_creatures()
 	var stations := _station.get_station_data()
 	var world := {
@@ -1630,6 +1674,7 @@ func _collect_save_job(incremental: bool) -> Dictionary:
 	# second, racy bookkeeping pass; clearing before it but on failure re-marking is
 	# exact in both directions.
 	_voxel.clear_dirty_chunk_keys(dirty)
+	_voxel.begin_inflight_chunks(dirty)
 	_save_summary = {
 		"dirty":       dirty,
 		"incremental": incremental,
@@ -1686,6 +1731,7 @@ func _flush_save() -> void:
 	_reap_save_thread()
 
 func _finish_save(result: int) -> void:
+	_voxel.end_inflight_chunks(_save_summary.get("dirty", []))
 	if result != OK:
 		Diag.error("[Server] world save failed — %s" % error_string(result))
 		GameBus.world_save_failed.emit(error_string(result))
@@ -1781,7 +1827,15 @@ func _saved_local_position() -> Variant:
 ## one in the first time a peer CLAIMS it (a reconnect). That is the only moment a
 ## remote record is needed.
 func _load_world_records() -> void:
-	_loaded_world = _persistence.load_world()
+	# Phase 52 — the GLOBAL record only; a Phase 51 monolithic record is split into region
+	# files by this read, and the edits themselves stream in by region.
+	_loaded_world = _persistence.load_world_record()
+	# A failed region migration hands the record back WITH its chunks: apply them and mark
+	# them dirty so the next save writes them to regions instead of dropping them.
+	var legacy_chunks: Variant = _loaded_world.get("chunks", null)
+	if legacy_chunks is Dictionary and not (legacy_chunks as Dictionary).is_empty():
+		_voxel.apply_chunk_manifest(legacy_chunks)
+		_voxel.mark_dirty_chunks((legacy_chunks as Dictionary).keys())
 	_bind_local_identity()
 	# Lazy reader for every other player's record (see the docstring above).
 	_registry.set_record_loader(_persistence.load_player)
@@ -1800,9 +1854,6 @@ func _load_world_records() -> void:
 			print("[Server] world record carries no seed (format %d) — adopting the fresh seed %d" % [
 				int(_loaded_world.get("version", PersistenceSlice.LEGACY_WORLD_FORMAT_VERSION)),
 				_terrain.get_world_seed()])
-		var chunks: Variant = _loaded_world.get("chunks", {})
-		if chunks is Dictionary and not (chunks as Dictionary).is_empty():
-			_voxel.apply_chunk_manifest(chunks)
 		_station.apply_station_data(_loaded_world.get("stations", []))
 		print("[Server] world loaded from %s" % _persistence.world_path())
 	# The local player's record: position, HP, inventory (with per-instance

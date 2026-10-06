@@ -39,7 +39,9 @@ extends Node
 ##   save(slot: int, data: Dictionary) -> Error
 ##   load_slot(slot: int)              -> Dictionary  (empty dict on failure)
 ##   save_world(data: Dictionary, incremental := false) -> Error
-##   load_world()                      -> Dictionary  (empty dict when absent)
+##   load_world_record()               -> Dictionary  (global record, no chunks — Phase 52)
+##   load_world()                      -> Dictionary  (record + every region's chunks; eager)
+##   load_region_chunks(regions)       -> Dictionary  (the streaming read)
 ##   has_world()                       -> bool
 ##   save_player(player_id, data)      -> Error
 ##   load_player(player_id)            -> Dictionary
@@ -53,6 +55,7 @@ extends Node
 ##   resolved_shutdown_poll_interval(v)-> float (static, pure)
 ##   merge_creature_states(base, inc)  -> Array (static, pure)
 const Diag := preload("res://src/core/diag.gd")
+const RegionStore := preload("res://src/persistence/region_store.gd")
 
 const SAVE_DIR  := "user://saves/"
 const SAVE_EXT  := ".json"
@@ -79,17 +82,29 @@ const DEFAULT_SHUTDOWN_PATH   := "user://shutdown_requested"
 ## scalar against the tile's natural run), so a version-1 record loads with every
 ## edit intact and is re-saved as version 2.
 const WORLD_FORMAT_VERSION := 2
+## Where the region files live, relative to `server_save_dir`.
+const REGIONS_SUBDIR := "regions/"
 ## The version a record written before Phase 41 has: identifiable by the absence
 ## of a `version` key.
 const LEGACY_WORLD_FORMAT_VERSION := 1
 
-var server_save_dir: String = DEFAULT_SERVER_SAVE_DIR
+var server_save_dir: String = DEFAULT_SERVER_SAVE_DIR:
+	set(value):
+		server_save_dir = value
+		_rebuild_region_store()
 var world_file: String = DEFAULT_WORLD_FILE
 var player_prefix: String = DEFAULT_PLAYER_PREFIX
 var autosave_interval: float = DEFAULT_AUTOSAVE_SECS
 var shutdown_poll_interval: float = DEFAULT_SHUTDOWN_POLL_SECS
 var shutdown_request_path: String = DEFAULT_SHUTDOWN_PATH
-var atomic_writes: bool = true
+var atomic_writes: bool = true:
+	set(value):
+		atomic_writes = value
+		_rebuild_region_store()
+## Phase 52 — the voxel edits live in region files beside the world record
+## (`<server_save_dir>regions/r.<rx>.<rz>.json`); `world.json` carries no chunks. Rebuilt by
+## the `server_save_dir` / `atomic_writes` setters so it always follows them.
+var region_store: RegionStore = RegionStore.new(DEFAULT_SERVER_SAVE_DIR + REGIONS_SUBDIR)
 
 func _ready() -> void:
 	_load_config()
@@ -102,6 +117,7 @@ func _ready() -> void:
 ## back to the constants above so a slice built before GameData loads (or a
 ## headless test) still works.
 func _load_config() -> void:
+	_rebuild_region_store()
 	var res: Resource = GameData.WORLD_SYSTEMS.get("PersistenceSystem", null)
 	if res == null:
 		return
@@ -127,6 +143,10 @@ func _load_config() -> void:
 	# "never notice a shutdown request", which is the same class of bug as the
 	# autosave one above, so it falls back to the default cadence.
 	shutdown_poll_interval = resolved_shutdown_poll_interval(shutdown_poll_interval)
+	_rebuild_region_store()
+
+func _rebuild_region_store() -> void:
+	region_store = RegionStore.new(server_save_dir + REGIONS_SUBDIR, atomic_writes)
 
 # ---------------------------------------------------------------------------
 # Legacy slot path
@@ -203,20 +223,75 @@ func write_job(job: Dictionary) -> int:
 ## record and merge an incremental payload into it, then write. Split out of
 ## save_world() so write_job() can run it on a worker.
 func _write_world_payload(data: Dictionary, incremental: bool) -> Error:
-	var payload := data
+	# Phase 52 — the chunk manifests go to the region files, folded region by region (only
+	# the regions a carried chunk belongs to are read and rewritten); the world record keeps
+	# the global state and no chunks. Regions are written FIRST: a kill between the two
+	# leaves new edits plus the older global state, never a record that points at edits
+	# that were not written.
+	var payload := data.duplicate()
+	var chunks: Variant = payload.get("chunks", null)
+	payload.erase("chunks")
+	if chunks is Dictionary and not (chunks as Dictionary).is_empty():
+		var region_err := region_store.write_chunks(chunks)
+		if region_err != OK:
+			return region_err
 	if incremental:
-		var existing := load_world()
+		var existing := load_world_record()
 		if not existing.is_empty():
-			payload = _merge_world(existing, data)
+			payload = _merge_world(existing, payload)
 	return _write_json(world_path(), payload)
 
-## The world record on disk, or an empty dict when there is none / it is
-## unreadable. A missing record is NOT an error — the server boots a fresh world.
-func load_world() -> Dictionary:
+## The GLOBAL world record on disk (seed, stations, creatures, local player id), or an
+## empty dict when there is none / it is unreadable. A missing record is NOT an error —
+## the server boots a fresh world. It carries NO chunks: a Phase 51 monolithic record is
+## split into region files here, on first read (`_migrate_monolith`), so the record a
+## caller sees is always the Phase 52 shape. Voxel edits come from `load_region_chunks`.
+func load_world_record() -> Dictionary:
 	var path := world_path()
 	if not FileAccess.file_exists(path):
 		return {}
-	return _read_json(path)
+	var world := _read_json(path)
+	return _migrate_monolith(world)
+
+## The whole world: the global record with every region's chunks folded back into its
+## `chunks` key. EAGER — it reads every region file — so the running server never calls
+## it (it streams regions instead); it is the compatibility read for tools and tests.
+func load_world() -> Dictionary:
+	var world := load_world_record()
+	if world.is_empty() and region_store.list_regions().is_empty():
+		return {}
+	var chunks := {}
+	for region in region_store.list_regions():
+		chunks.merge(region_store.load_region(region))
+	world["chunks"] = chunks
+	return world
+
+## The chunk entries of the regions in `regions` (Vector2i coordinates), merged into one
+## manifest. Missing regions contribute nothing. This is the streaming read.
+func load_region_chunks(regions: Array) -> Dictionary:
+	var out := {}
+	for region in regions:
+		out.merge(region_store.load_region(region))
+	return out
+
+## Phase 52 — split a monolithic Phase 51 record's `chunks` into region files and rewrite
+## the record without them. Regions are written before the record is rewritten, and a
+## second run folds over what the first left, so a crash mid-migration is resumable. A
+## record with no (or empty) `chunks` is returned unchanged.
+func _migrate_monolith(world: Dictionary) -> Dictionary:
+	if not world.has("chunks"):
+		return world
+	var chunks: Variant = world["chunks"]
+	var slim := world.duplicate()
+	slim.erase("chunks")
+	if chunks is Dictionary and not (chunks as Dictionary).is_empty():
+		var err := region_store.migrate_manifest(chunks)
+		if err != OK:
+			Diag.error("PersistenceSlice: migrating the monolithic world record into regions failed — %s" % error_string(err))
+			return world
+		Diag.warn("PersistenceSlice: migrated %d chunk(s) from the monolithic world record into region files" % (chunks as Dictionary).size())
+	_write_json(world_path(), slim)   # a failed rewrite is retried by the next read; migrate_manifest never overwrites a chunk a region already holds
+	return slim
 
 func has_world() -> bool:
 	return FileAccess.file_exists(world_path())
@@ -386,13 +461,7 @@ static func snapshot_carries_own_record(is_handshake_snapshot: bool, player_id: 
 ## rather than read as a deletion, the same "never default an unknown shape" policy
 ## `_normalise_ops` applies to an op it cannot read.
 static func is_empty_edit_set(entry: Variant) -> bool:
-	if not (entry is Dictionary):
-		return false
-	var e: Dictionary = entry
-	if not e.has("edits"):
-		return false
-	var edits: Variant = e["edits"]
-	return edits is Dictionary and (edits as Dictionary).is_empty()
+	return RegionStore.is_empty_edit_set(entry)
 
 # ---------------------------------------------------------------------------
 # Private

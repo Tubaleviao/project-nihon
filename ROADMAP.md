@@ -5336,7 +5336,7 @@ Polar land is Tundra (the "polar" biome).
 
 ---
 
-## Phase 52 — Region storage and per-player server streaming
+## Phase 52 — Region storage and per-player server streaming ✅ Done
 
 **Goal:** Two things stop the planet from persisting and simulating where its
 players are.
@@ -5373,13 +5373,28 @@ players are.
   first boot.
 
 **Acceptance criteria:**
-- [ ] Two peers 100 km apart each have creatures simulated around them on a
+- [x] Two peers 100 km apart each have creatures simulated around them on a
   headless server (net harness step `far_peers_simulated`).
-- [ ] A save after editing one chunk writes exactly one region file.
-- [ ] Server RSS with 1,000 edited regions on disk and one connected peer stays
+- [x] A save after editing one chunk writes exactly one region file.
+- [x] Server RSS with 1,000 edited regions on disk and one connected peer stays
   within 10% of an empty world.
-- [ ] A Phase 51 save migrates with every edit intact.
-- [ ] Suite green on both boot paths, and `tools/net_harness.sh` agrees.
+- [x] A Phase 51 save migrates with every edit intact.
+- [x] Suite green on both boot paths, and `tools/net_harness.sh` agrees.
+
+**Progress:** done. Verified: suite 10332/10332 on both boot paths, `tools/net_harness.sh` 13/13. `src/persistence/region_store.gd` (32×32-chunk region files `regions/r.<rx>.<rz>.json`,
+`load_region` / `save_region` / `list_dirty`, pure region maths), `PersistenceSlice` writes a save's chunk
+manifests region by region and keeps `world.json` to global state (`load_world_record`; `load_world()` is the
+eager compatibility read; a Phase 51 monolithic record is split into regions on first read), and
+`src/persistence/region_streamer.gd` keeps resident only the regions the streamed windows touch (clean regions
+are released, dirty ones stay until a save). `ChunkManager` holds one window per connected peer
+(`set_peer_center` / `clear_peer_center`) beside the local player's, with per-chunk reference counts; `game_root`
+re-centres the peer windows twice a second and opens a joining peer's window before its snapshot is built.
+The net harness gained `far_peers_simulated`.
+
+**Known simplifications:**
+- Region files are JSON; a binary format is a later swap behind the same interface.
+- Region reads are synchronous on the main thread when a window first touches a region.
+- The server always keeps the local (idle-body) window beside the peers' windows.
 
 ---
 
