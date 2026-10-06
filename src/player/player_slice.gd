@@ -40,6 +40,13 @@ const PICKUP_RANGE := 60.0    # metres — how far the player can aim-pick (came
 ## `resolve_step_up`), and `floor_snap_length` uses the same length so stepping
 ## DOWN a rise keeps the body glued to the surface instead of dropping it.
 const STEP_UP_HEIGHT := 0.3
+## Phase 51 — water. Ground deeper than WADE_DEPTH under the surface is swum, not walked: the body
+## floats with its feet SWIM_FLOAT below the surface and moves at SWIM_SPEED_FACTOR of walking speed.
+const WADE_DEPTH := 1.2
+const SWIM_FLOAT := 1.0
+const SWIM_SPEED_FACTOR := 0.6
+const SWIM_RISE_RATE := 4.0   # 1/s — how hard buoyancy pulls the feet to the float line
+const SWIM_MAX_VERTICAL := 3.0 # m/s
 const PICKUP_COLLISION_MASK := 4   # layer 3 (bit 2) — matches loot pickup bodies
 const BUILD_RANGE := 60.0     # metres — how far the player can reach a block
 const TERRAIN_COLLISION_MASK := 2  # layer 2 (bit 1) — terrain, for mine/build ray
@@ -52,6 +59,7 @@ const TREE_COLLISION_MASK := 8 # layer 4 (bit 3) — tree trunks, for the chop r
 ## persistence preload presentation. Aliased here so every existing reader
 ## (`_hp`, the HUD, the suite, the harness) keeps the same name.
 const PlayerRules := preload("res://src/core/player_rules.gd")
+const WorldShape := preload("res://src/terrain/world_shape.gd")
 
 const MAX_HP := PlayerRules.MAX_HP
 
@@ -473,16 +481,39 @@ func _build_body() -> void:
 	_camera.current  = true
 	cam_arm.add_child(_camera)
 
+## True when the ground under a body is deep enough below the sea surface that it swims.
+static func is_swimming(ground_y: float, sea_level: float) -> bool:
+	return sea_level - ground_y > WADE_DEPTH
+
+## Vertical velocity of a swimming body: buoyancy pulls its feet to `sea_level - SWIM_FLOAT`
+## (up from the sea floor, down from a jump), capped at SWIM_MAX_VERTICAL.
+static func swim_vertical_velocity(feet_y: float, sea_level: float) -> float:
+	return clampf((sea_level - SWIM_FLOAT - feet_y) * SWIM_RISE_RATE, -SWIM_MAX_VERTICAL, SWIM_MAX_VERTICAL)
+
+## Whether the local body is swimming now (needs a terrain slice to read the ground).
+func _swimming_now() -> bool:
+	if terrain_slice == null or not terrain_slice.has_method("get_height_at"):
+		return false
+	var p := _body.global_position
+	var sea := WorldShape.sea_level()
+	# Only a body at or below the surface swims: one on a platform or falling in from a cliff does not.
+	if p.y > sea + WADE_DEPTH:
+		return false
+	return is_swimming(float(terrain_slice.get_height_at(Vector2(p.x, p.z))), sea)
+
 func _move(delta: float) -> void:
+	var swimming := _swimming_now()
 	# Apply gravity.
-	if not _body.is_on_floor():
+	if swimming:
+		_vel.y = swim_vertical_velocity(_body.global_position.y, WorldShape.sea_level())
+	elif not _body.is_on_floor():
 		_vel.y += GRAVITY * delta
 	else:
 		if _vel.y < 0.0:
 			_vel.y = 0.0
 
 	# Jump.
-	if Input.is_action_just_pressed("ui_accept") and _body.is_on_floor():
+	if not swimming and Input.is_action_just_pressed("ui_accept") and _body.is_on_floor():
 		_vel.y = JUMP_FORCE
 
 	# Horizontal movement relative to camera yaw.
@@ -498,8 +529,9 @@ func _move(delta: float) -> void:
 		var basis := _pivot.global_transform.basis
 		dir = (basis.x * dir.x + basis.z * dir.z).normalized()
 
-	_vel.x = dir.x * SPEED
-	_vel.z = dir.z * SPEED
+	var speed := SPEED * (SWIM_SPEED_FACTOR if swimming else 1.0)
+	_vel.x = dir.x * speed
+	_vel.z = dir.z * speed
 
 	# Stair step-up. Voxel rises are quantised to STEP_HEIGHT (0.125), but the
 	# capsule's contact normal against a rise is mostly horizontal, so a bare

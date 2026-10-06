@@ -7,3 +7,8 @@ extends Resource
 @export var circumferenceKm: float
 @export var polarLatitude: float
 @export var seaLevel: float
+@export var minHeight: float
+@export var maxHeight: float
+@export var oceanShare: float
+@export var heightSpline: Array
+@export var ridgeAmplitude: float

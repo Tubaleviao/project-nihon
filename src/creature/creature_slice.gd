@@ -655,7 +655,7 @@ func _tile_size() -> float:
 func _biome_keys() -> Array:
 	if terrain_slice != null and "BIOME_KEYS" in terrain_slice:
 		return terrain_slice.BIOME_KEYS
-	return ["TemperateForest", "TemperateGrassland", "VolcanicBadlands", "TwilightGrove", "VoidRift"]
+	return ["TemperateForest", "TemperateGrassland", "VolcanicBadlands", "TwilightGrove", "VoidRift", "Ocean", "Beach", "Desert", "Tundra", "Alpine", "Taiga", "Savanna"]
 
 func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String) -> void:
 	if entity_id == "player":

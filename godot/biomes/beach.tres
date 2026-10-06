@@ -1,0 +1,23 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/biomes/beach.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+avgTemperature = 18.0
+avgRainfall = 600.0
+soilFertility = 0.1
+treeDensity = 0
+surfaceMaterial = "Sand"
+surfaceTint = "#e3d49b"
+soilTint = "#b3a36d"
+topsoilDepth = 3.0
+soilMaterial = "Soil"
+temperature = {"min":0,"max":1}
+moisture = {"min":0,"max":1}
+altitude = {"min":0,"max":1.5}
+rarity = 1.0
+surfaceVeinChance = 0.1
+description = "The first metre and a half of shore above the waterline: pale sand and no trees."
+tags = ["biome"]

@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:60f0a28870b8ba6e9deb8c75d61949a8e7554f5094a034b22478126e76ed8841",
+  "schemaHash": "sha256:9c80237d623864d3b0e4804fd221b22823f2879d2f3bb51208191f6f8308cfea",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -2688,6 +2688,126 @@
         "pii": [],
         "gdpr": {}
       },
+      "Sand": {
+        "name": "Sand",
+        "tags": [
+          "material"
+        ],
+        "description": "Loose grains that cover beaches, deserts and the sea floor. Digging it yields Soil. A surface cover named by a biome's `surfaceMaterial` (Phase 51).",
+        "goal": "Let the new Earth-like biomes wear a cover that is not turf",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "density": {
+            "name": "density",
+            "type": "decimal",
+            "description": "g/cm³",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1.6
+          },
+          "hardness": {
+            "name": "hardness",
+            "type": "decimal",
+            "description": "Mohs equivalent 1–10",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "depthBand": {
+            "name": "depthBand",
+            "type": "json",
+            "description": "Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. A surface cover, never a buried vein.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 0
+            }
+          },
+          "leyGated": {
+            "name": "leyGated",
+            "type": "boolean",
+            "description": "True when a vein of this material forms only near a ley line",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "Snow": {
+        "name": "Snow",
+        "tags": [
+          "material"
+        ],
+        "description": "Packed snow that caps alpine peaks and the polar ground. Digging it yields Soil. A surface cover named by a biome's `surfaceMaterial` (Phase 51).",
+        "goal": "Let the new Earth-like biomes wear a cover that is not turf",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "density": {
+            "name": "density",
+            "type": "decimal",
+            "description": "g/cm³",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.3
+          },
+          "hardness": {
+            "name": "hardness",
+            "type": "decimal",
+            "description": "Mohs equivalent 1–10",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "depthBand": {
+            "name": "depthBand",
+            "type": "json",
+            "description": "Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. A surface cover, never a buried vein.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 0
+            }
+          },
+          "leyGated": {
+            "name": "leyGated",
+            "type": "boolean",
+            "description": "True when a vein of this material forms only near a ley line",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
       "TemperateForest": {
         "name": "TemperateForest",
         "tags": [
@@ -2804,6 +2924,27 @@
               "min": 0.5,
               "max": 1
             }
+          },
+          "altitude": {
+            "name": "altitude",
+            "type": "json",
+            "description": "Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 1.5,
+              "max": 250
+            }
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "decimal",
+            "description": "Share of the world where this biome may appear: 1 = anywhere its envelope fits; below 1 it is a rare climate niche, eligible only where a low-frequency niche field falls under this value (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
           },
           "surfaceVeinChance": {
             "name": "surfaceVeinChance",
@@ -2964,6 +3105,27 @@
               "max": 0.5
             }
           },
+          "altitude": {
+            "name": "altitude",
+            "type": "json",
+            "description": "Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 1.5,
+              "max": 250
+            }
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "decimal",
+            "description": "Share of the world where this biome may appear: 1 = anywhere its envelope fits; below 1 it is a rare climate niche, eligible only where a low-frequency niche field falls under this value (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
           "surfaceVeinChance": {
             "name": "surfaceVeinChance",
             "type": "decimal",
@@ -3107,7 +3269,7 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
-              "min": 0.7,
+              "min": 0.8,
               "max": 1
             }
           },
@@ -3120,8 +3282,29 @@
             "pii": false,
             "defaultValue": {
               "min": 0,
-              "max": 1
+              "max": 0.6
             }
+          },
+          "altitude": {
+            "name": "altitude",
+            "type": "json",
+            "description": "Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 1.5,
+              "max": 250
+            }
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "decimal",
+            "description": "Share of the world where this biome may appear: 1 = anywhere its envelope fits; below 1 it is a rare climate niche, eligible only where a low-frequency niche field falls under this value (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.1
           },
           "surfaceVeinChance": {
             "name": "surfaceVeinChance",
@@ -3280,8 +3463,8 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
-              "min": 0,
-              "max": 0.3
+              "min": 0.15,
+              "max": 0.45
             }
           },
           "moisture": {
@@ -3295,6 +3478,27 @@
               "min": 0.4,
               "max": 1
             }
+          },
+          "altitude": {
+            "name": "altitude",
+            "type": "json",
+            "description": "Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 1.5,
+              "max": 250
+            }
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "decimal",
+            "description": "Share of the world where this biome may appear: 1 = anywhere its envelope fits; below 1 it is a rare climate niche, eligible only where a low-frequency niche field falls under this value (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.08
           },
           "surfaceVeinChance": {
             "name": "surfaceVeinChance",
@@ -3449,8 +3653,8 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
-              "min": 0,
-              "max": 0.3
+              "min": 0.1,
+              "max": 0.4
             }
           },
           "moisture": {
@@ -3464,6 +3668,27 @@
               "min": 0,
               "max": 0.4
             }
+          },
+          "altitude": {
+            "name": "altitude",
+            "type": "json",
+            "description": "Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 1.5,
+              "max": 250
+            }
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "decimal",
+            "description": "Share of the world where this biome may appear: 1 = anywhere its envelope fits; below 1 it is a rare climate niche, eligible only where a low-frequency niche field falls under this value (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.05
           },
           "surfaceVeinChance": {
             "name": "surfaceVeinChance",
@@ -3511,6 +3736,1196 @@
               "Players accumulate void corruption at 1 point per minute without void-lined armour; void-lined armour is crafted from refined voidite plate",
               "Corruption above 80 triggers involuntary void-pulse AoE damaging nearby allies",
               "A void burst event (triggered by failed voidite refining or corruption overflow inside a VoidRift tile) is survivable; surviving one grants the player the voidBurstSurvivor flag required to learn enchanting voidite — void bursts triggered during refining outside a VoidRift tile (see Voidite.refine) also grant this flag"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "Ocean": {
+        "name": "Ocean",
+        "tags": [
+          "biome"
+        ],
+        "description": "Open water over the continental shelf and the deep basins. The sea floor is sand and silt; the surface sits at the world's sea level and a player wades or swims it.",
+        "goal": "Give the planet its oceans: the barrier between continents",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "avgTemperature": {
+            "name": "avgTemperature",
+            "type": "decimal",
+            "description": "°C annual average",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 12
+          },
+          "avgRainfall": {
+            "name": "avgRainfall",
+            "type": "decimal",
+            "description": "mm per in-game year",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
+          "soilFertility": {
+            "name": "soilFertility",
+            "type": "decimal",
+            "description": "0–1; affects crop growth rates",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
+          "treeDensity": {
+            "name": "treeDensity",
+            "type": "integer",
+            "description": "Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
+          "surfaceMaterial": {
+            "name": "surfaceMaterial",
+            "type": "string",
+            "description": "Topsoil cover of unedited natural ground (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Sand"
+          },
+          "surfaceTint": {
+            "name": "surfaceTint",
+            "type": "string",
+            "description": "Hex colour of the natural top face",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#c9b97a"
+          },
+          "soilTint": {
+            "name": "soilTint",
+            "type": "string",
+            "description": "Hex colour of the side wall down to topsoilDepth; rock below",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#8a7d55"
+          },
+          "topsoilDepth": {
+            "name": "topsoilDepth",
+            "type": "decimal",
+            "description": "World units of soil under the surface before rock shows on a wall",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 6
+          },
+          "soilMaterial": {
+            "name": "soilMaterial",
+            "type": "string",
+            "description": "Material a mined slice of this biome's topsoil yields, within topsoilDepth of the surface (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Soil"
+          },
+          "temperature": {
+            "name": "temperature",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (coldest) to 1 (hottest): the climate field selects this biome where its temperature lies in [min, max] (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 1
+            }
+          },
+          "moisture": {
+            "name": "moisture",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (driest) to 1 (wettest), as for temperature",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 1
+            }
+          },
+          "altitude": {
+            "name": "altitude",
+            "type": "json",
+            "description": "Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": -10000,
+              "max": 0
+            }
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "decimal",
+            "description": "Share of the world where this biome may appear: 1 = anywhere its envelope fits (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "surfaceVeinChance": {
+            "name": "surfaceVeinChance",
+            "type": "decimal",
+            "description": "Share of this biome's top-cell veins that break the surface and keep their deposit marker (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.05
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "evaluateSpawn": {
+            "name": "evaluateSpawn",
+            "description": "Determine which materials, trees and creatures spawn in a generated tile of this biome",
+            "rules": [
+              "No land creature, tree or ore-surface table spawns in an Ocean chunk",
+              "The sea floor is sand and silt, with ore only deep in the bedrock"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "Beach": {
+        "name": "Beach",
+        "tags": [
+          "biome"
+        ],
+        "description": "The first metre and a half of shore above the waterline: pale sand and no trees.",
+        "goal": "Make coasts readable where land meets sea",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "avgTemperature": {
+            "name": "avgTemperature",
+            "type": "decimal",
+            "description": "°C annual average",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 18
+          },
+          "avgRainfall": {
+            "name": "avgRainfall",
+            "type": "decimal",
+            "description": "mm per in-game year",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 600
+          },
+          "soilFertility": {
+            "name": "soilFertility",
+            "type": "decimal",
+            "description": "0–1; affects crop growth rates",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.1
+          },
+          "treeDensity": {
+            "name": "treeDensity",
+            "type": "integer",
+            "description": "Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
+          "surfaceMaterial": {
+            "name": "surfaceMaterial",
+            "type": "string",
+            "description": "Topsoil cover of unedited natural ground (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Sand"
+          },
+          "surfaceTint": {
+            "name": "surfaceTint",
+            "type": "string",
+            "description": "Hex colour of the natural top face",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#e3d49b"
+          },
+          "soilTint": {
+            "name": "soilTint",
+            "type": "string",
+            "description": "Hex colour of the side wall down to topsoilDepth; rock below",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#b3a36d"
+          },
+          "topsoilDepth": {
+            "name": "topsoilDepth",
+            "type": "decimal",
+            "description": "World units of soil under the surface before rock shows on a wall",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
+          },
+          "soilMaterial": {
+            "name": "soilMaterial",
+            "type": "string",
+            "description": "Material a mined slice of this biome's topsoil yields, within topsoilDepth of the surface (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Soil"
+          },
+          "temperature": {
+            "name": "temperature",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (coldest) to 1 (hottest): the climate field selects this biome where its temperature lies in [min, max] (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 1
+            }
+          },
+          "moisture": {
+            "name": "moisture",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (driest) to 1 (wettest), as for temperature",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 1
+            }
+          },
+          "altitude": {
+            "name": "altitude",
+            "type": "json",
+            "description": "Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 1.5
+            }
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "decimal",
+            "description": "Share of the world where this biome may appear: 1 = anywhere its envelope fits (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "surfaceVeinChance": {
+            "name": "surfaceVeinChance",
+            "type": "decimal",
+            "description": "Share of this biome's top-cell veins that break the surface and keep their deposit marker (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.1
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "evaluateSpawn": {
+            "name": "evaluateSpawn",
+            "description": "Determine which materials, trees and creatures spawn in a generated tile of this biome",
+            "rules": [
+              "No trees grow on a beach",
+              "Creature spawns come from the inland biome, not the shore"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "Desert": {
+        "name": "Desert",
+        "tags": [
+          "biome"
+        ],
+        "description": "Hot, dry sand and rock: the dry half of the tropics.",
+        "goal": "A sparse, hostile low-latitude biome that rewards travel with exposed ore",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "avgTemperature": {
+            "name": "avgTemperature",
+            "type": "decimal",
+            "description": "°C annual average",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 34
+          },
+          "avgRainfall": {
+            "name": "avgRainfall",
+            "type": "decimal",
+            "description": "mm per in-game year",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 80
+          },
+          "soilFertility": {
+            "name": "soilFertility",
+            "type": "decimal",
+            "description": "0–1; affects crop growth rates",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.05
+          },
+          "treeDensity": {
+            "name": "treeDensity",
+            "type": "integer",
+            "description": "Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
+          "surfaceMaterial": {
+            "name": "surfaceMaterial",
+            "type": "string",
+            "description": "Topsoil cover of unedited natural ground (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Sand"
+          },
+          "surfaceTint": {
+            "name": "surfaceTint",
+            "type": "string",
+            "description": "Hex colour of the natural top face",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#d8b768"
+          },
+          "soilTint": {
+            "name": "soilTint",
+            "type": "string",
+            "description": "Hex colour of the side wall down to topsoilDepth; rock below",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#a8844a"
+          },
+          "topsoilDepth": {
+            "name": "topsoilDepth",
+            "type": "decimal",
+            "description": "World units of soil under the surface before rock shows on a wall",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2
+          },
+          "soilMaterial": {
+            "name": "soilMaterial",
+            "type": "string",
+            "description": "Material a mined slice of this biome's topsoil yields, within topsoilDepth of the surface (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Soil"
+          },
+          "temperature": {
+            "name": "temperature",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (coldest) to 1 (hottest): the climate field selects this biome where its temperature lies in [min, max] (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0.65,
+              "max": 1
+            }
+          },
+          "moisture": {
+            "name": "moisture",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (driest) to 1 (wettest), as for temperature",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 0.25
+            }
+          },
+          "altitude": {
+            "name": "altitude",
+            "type": "json",
+            "description": "Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 1.5,
+              "max": 250
+            }
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "decimal",
+            "description": "Share of the world where this biome may appear: 1 = anywhere its envelope fits (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "surfaceVeinChance": {
+            "name": "surfaceVeinChance",
+            "type": "decimal",
+            "description": "Share of this biome's top-cell veins that break the surface and keep their deposit marker (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.3
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "evaluateSpawn": {
+            "name": "evaluateSpawn",
+            "description": "Determine which materials, trees and creatures spawn in a generated tile of this biome",
+            "rules": [
+              "No trees grow in a desert",
+              "Ferrite veins outcrop at weight 0.5 on bare rock"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "Tundra": {
+        "name": "Tundra",
+        "tags": [
+          "biome"
+        ],
+        "description": "Frozen, treeless plains at the high latitudes, down to the polar ice.",
+        "goal": "The cold pole of the climate: cold ground with little to harvest",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "avgTemperature": {
+            "name": "avgTemperature",
+            "type": "decimal",
+            "description": "°C annual average",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": -12
+          },
+          "avgRainfall": {
+            "name": "avgRainfall",
+            "type": "decimal",
+            "description": "mm per in-game year",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 250
+          },
+          "soilFertility": {
+            "name": "soilFertility",
+            "type": "decimal",
+            "description": "0–1; affects crop growth rates",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.05
+          },
+          "treeDensity": {
+            "name": "treeDensity",
+            "type": "integer",
+            "description": "Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
+          "surfaceMaterial": {
+            "name": "surfaceMaterial",
+            "type": "string",
+            "description": "Topsoil cover of unedited natural ground (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Snow"
+          },
+          "surfaceTint": {
+            "name": "surfaceTint",
+            "type": "string",
+            "description": "Hex colour of the natural top face",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#dfe8ea"
+          },
+          "soilTint": {
+            "name": "soilTint",
+            "type": "string",
+            "description": "Hex colour of the side wall down to topsoilDepth; rock below",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#7d7a6e"
+          },
+          "topsoilDepth": {
+            "name": "topsoilDepth",
+            "type": "decimal",
+            "description": "World units of soil under the surface before rock shows on a wall",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1.5
+          },
+          "soilMaterial": {
+            "name": "soilMaterial",
+            "type": "string",
+            "description": "Material a mined slice of this biome's topsoil yields, within topsoilDepth of the surface (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Soil"
+          },
+          "temperature": {
+            "name": "temperature",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (coldest) to 1 (hottest): the climate field selects this biome where its temperature lies in [min, max] (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 0.2
+            }
+          },
+          "moisture": {
+            "name": "moisture",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (driest) to 1 (wettest), as for temperature",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 1
+            }
+          },
+          "altitude": {
+            "name": "altitude",
+            "type": "json",
+            "description": "Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 1.5,
+              "max": 250
+            }
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "decimal",
+            "description": "Share of the world where this biome may appear: 1 = anywhere its envelope fits (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "surfaceVeinChance": {
+            "name": "surfaceVeinChance",
+            "type": "decimal",
+            "description": "Share of this biome's top-cell veins that break the surface and keep their deposit marker (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.2
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "evaluateSpawn": {
+            "name": "evaluateSpawn",
+            "description": "Determine which materials, trees and creatures spawn in a generated tile of this biome",
+            "rules": [
+              "No trees grow on the tundra",
+              "Ferrite veins outcrop at weight 0.3"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "Alpine": {
+        "name": "Alpine",
+        "tags": [
+          "biome"
+        ],
+        "description": "Snow-capped peaks above the tree line, at any latitude.",
+        "goal": "Make mountains a biome of their own: cold, bare and high",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "avgTemperature": {
+            "name": "avgTemperature",
+            "type": "decimal",
+            "description": "°C annual average",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": -5
+          },
+          "avgRainfall": {
+            "name": "avgRainfall",
+            "type": "decimal",
+            "description": "mm per in-game year",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 900
+          },
+          "soilFertility": {
+            "name": "soilFertility",
+            "type": "decimal",
+            "description": "0–1; affects crop growth rates",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
+          "treeDensity": {
+            "name": "treeDensity",
+            "type": "integer",
+            "description": "Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
+          "surfaceMaterial": {
+            "name": "surfaceMaterial",
+            "type": "string",
+            "description": "Topsoil cover of unedited natural ground (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Snow"
+          },
+          "surfaceTint": {
+            "name": "surfaceTint",
+            "type": "string",
+            "description": "Hex colour of the natural top face",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#f2f6f7"
+          },
+          "soilTint": {
+            "name": "soilTint",
+            "type": "string",
+            "description": "Hex colour of the side wall down to topsoilDepth; rock below",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#8c8c93"
+          },
+          "topsoilDepth": {
+            "name": "topsoilDepth",
+            "type": "decimal",
+            "description": "World units of soil under the surface before rock shows on a wall",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "soilMaterial": {
+            "name": "soilMaterial",
+            "type": "string",
+            "description": "Material a mined slice of this biome's topsoil yields, within topsoilDepth of the surface (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Soil"
+          },
+          "temperature": {
+            "name": "temperature",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (coldest) to 1 (hottest): the climate field selects this biome where its temperature lies in [min, max] (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 1
+            }
+          },
+          "moisture": {
+            "name": "moisture",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (driest) to 1 (wettest), as for temperature",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 1
+            }
+          },
+          "altitude": {
+            "name": "altitude",
+            "type": "json",
+            "description": "Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 250,
+              "max": 100000
+            }
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "decimal",
+            "description": "Share of the world where this biome may appear: 1 = anywhere its envelope fits (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "surfaceVeinChance": {
+            "name": "surfaceVeinChance",
+            "type": "decimal",
+            "description": "Share of this biome's top-cell veins that break the surface and keep their deposit marker (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.4
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "evaluateSpawn": {
+            "name": "evaluateSpawn",
+            "description": "Determine which materials, trees and creatures spawn in a generated tile of this biome",
+            "rules": [
+              "No trees grow above the tree line",
+              "Ferrite and Aethermite veins outcrop at weight 0.5 on bare peaks"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "Taiga": {
+        "name": "Taiga",
+        "tags": [
+          "biome"
+        ],
+        "description": "Cold, wet conifer forest between the tundra and the temperate belt.",
+        "goal": "A northern timber biome: thinner stands than the temperate forest",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "avgTemperature": {
+            "name": "avgTemperature",
+            "type": "decimal",
+            "description": "°C annual average",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
+          "avgRainfall": {
+            "name": "avgRainfall",
+            "type": "decimal",
+            "description": "mm per in-game year",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 600
+          },
+          "soilFertility": {
+            "name": "soilFertility",
+            "type": "decimal",
+            "description": "0–1; affects crop growth rates",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.3
+          },
+          "treeDensity": {
+            "name": "treeDensity",
+            "type": "integer",
+            "description": "Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 5
+          },
+          "surfaceMaterial": {
+            "name": "surfaceMaterial",
+            "type": "string",
+            "description": "Topsoil cover of unedited natural ground (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Grass"
+          },
+          "surfaceTint": {
+            "name": "surfaceTint",
+            "type": "string",
+            "description": "Hex colour of the natural top face",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#3f6b4a"
+          },
+          "soilTint": {
+            "name": "soilTint",
+            "type": "string",
+            "description": "Hex colour of the side wall down to topsoilDepth; rock below",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#5a4632"
+          },
+          "topsoilDepth": {
+            "name": "topsoilDepth",
+            "type": "decimal",
+            "description": "World units of soil under the surface before rock shows on a wall",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2.5
+          },
+          "soilMaterial": {
+            "name": "soilMaterial",
+            "type": "string",
+            "description": "Material a mined slice of this biome's topsoil yields, within topsoilDepth of the surface (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Soil"
+          },
+          "temperature": {
+            "name": "temperature",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (coldest) to 1 (hottest): the climate field selects this biome where its temperature lies in [min, max] (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0.15,
+              "max": 0.35
+            }
+          },
+          "moisture": {
+            "name": "moisture",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (driest) to 1 (wettest), as for temperature",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0.3,
+              "max": 1
+            }
+          },
+          "altitude": {
+            "name": "altitude",
+            "type": "json",
+            "description": "Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 1.5,
+              "max": 250
+            }
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "decimal",
+            "description": "Share of the world where this biome may appear: 1 = anywhere its envelope fits (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "surfaceVeinChance": {
+            "name": "surfaceVeinChance",
+            "type": "decimal",
+            "description": "Share of this biome's top-cell veins that break the surface and keep their deposit marker (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.15
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "evaluateSpawn": {
+            "name": "evaluateSpawn",
+            "description": "Determine which materials, trees and creatures spawn in a generated tile of this biome",
+            "rules": [
+              "Thornwood trees grow at about two thirds of the temperate forest's density",
+              "Ferrite veins outcrop at weight 0.3"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "Savanna": {
+        "name": "Savanna",
+        "tags": [
+          "biome"
+        ],
+        "description": "Warm grassland with scattered trees in the seasonal tropics.",
+        "goal": "The warm counterpart of the temperate grassland",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "avgTemperature": {
+            "name": "avgTemperature",
+            "type": "decimal",
+            "description": "°C annual average",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 26
+          },
+          "avgRainfall": {
+            "name": "avgRainfall",
+            "type": "decimal",
+            "description": "mm per in-game year",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 700
+          },
+          "soilFertility": {
+            "name": "soilFertility",
+            "type": "decimal",
+            "description": "0–1; affects crop growth rates",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "treeDensity": {
+            "name": "treeDensity",
+            "type": "integer",
+            "description": "Mean trees per chunk before the density noise and clearing roll (0 = no trees grow here)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "surfaceMaterial": {
+            "name": "surfaceMaterial",
+            "type": "string",
+            "description": "Topsoil cover of unedited natural ground (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Grass"
+          },
+          "surfaceTint": {
+            "name": "surfaceTint",
+            "type": "string",
+            "description": "Hex colour of the natural top face",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#b3a64a"
+          },
+          "soilTint": {
+            "name": "soilTint",
+            "type": "string",
+            "description": "Hex colour of the side wall down to topsoilDepth; rock below",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#7a5a36"
+          },
+          "topsoilDepth": {
+            "name": "topsoilDepth",
+            "type": "decimal",
+            "description": "World units of soil under the surface before rock shows on a wall",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
+          },
+          "soilMaterial": {
+            "name": "soilMaterial",
+            "type": "string",
+            "description": "Material a mined slice of this biome's topsoil yields, within topsoilDepth of the surface (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Soil"
+          },
+          "temperature": {
+            "name": "temperature",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (coldest) to 1 (hottest): the climate field selects this biome where its temperature lies in [min, max] (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0.6,
+              "max": 1
+            }
+          },
+          "moisture": {
+            "name": "moisture",
+            "type": "json",
+            "description": "Climate envelope, normalised 0 (driest) to 1 (wettest), as for temperature",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0.25,
+              "max": 0.55
+            }
+          },
+          "altitude": {
+            "name": "altitude",
+            "type": "json",
+            "description": "Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 1.5,
+              "max": 250
+            }
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "decimal",
+            "description": "Share of the world where this biome may appear: 1 = anywhere its envelope fits (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "surfaceVeinChance": {
+            "name": "surfaceVeinChance",
+            "type": "decimal",
+            "description": "Share of this biome's top-cell veins that break the surface and keep their deposit marker (Phase 49)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.2
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "evaluateSpawn": {
+            "name": "evaluateSpawn",
+            "description": "Determine which materials, trees and creatures spawn in a generated tile of this biome",
+            "rules": [
+              "Thornwood grows only as isolated trees",
+              "Ferrite veins in shallow subsurface deposits at weight 0.4"
             ],
             "auth": {
               "roles": [
@@ -3629,11 +5044,89 @@
           "seaLevel": {
             "name": "seaLevel",
             "type": "decimal",
-            "description": "World Y in metres of the ocean surface (used by Phase 51)",
+            "description": "World Y in metres of the ocean surface (Phase 51)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0
+          },
+          "minHeight": {
+            "name": "minHeight",
+            "type": "decimal",
+            "description": "Lowest terrain surface, in metres: the deepest ocean floor (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": -64
+          },
+          "maxHeight": {
+            "name": "maxHeight",
+            "type": "decimal",
+            "description": "Highest terrain surface, in metres: the tallest peak (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 512
+          },
+          "oceanShare": {
+            "name": "oceanShare",
+            "type": "decimal",
+            "description": "Target fraction of the planet below sea level, 0–1 (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.65
+          },
+          "heightSpline": {
+            "name": "heightSpline",
+            "type": "json",
+            "description": "Continentalness (0–1) to base height in metres: ocean basin, shelf, coast, inland. Points are [continentalness, height], ascending (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              [
+                0,
+                -64
+              ],
+              [
+                0.35,
+                -52
+              ],
+              [
+                0.55,
+                -24
+              ],
+              [
+                0.64,
+                -2
+              ],
+              [
+                0.68,
+                3
+              ],
+              [
+                0.75,
+                30
+              ],
+              [
+                0.88,
+                90
+              ],
+              [
+                1,
+                140
+              ]
+            ]
+          },
+          "ridgeAmplitude": {
+            "name": "ridgeAmplitude",
+            "type": "decimal",
+            "description": "Metres a mountain ridge adds on rugged inland ground (Phase 51)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 400
           }
         },
         "relations": {},
@@ -16574,7 +18067,14 @@
               "TemperateGrassland",
               "VolcanicBadlands",
               "TwilightGrove",
-              "VoidRift"
+              "VoidRift",
+              "Ocean",
+              "Beach",
+              "Desert",
+              "Tundra",
+              "Alpine",
+              "Taiga",
+              "Savanna"
             ],
             "pii": false,
             "defaultValue": "TemperateForest"
@@ -17012,7 +18512,14 @@
               "TemperateGrassland",
               "VolcanicBadlands",
               "TwilightGrove",
-              "VoidRift"
+              "VoidRift",
+              "Ocean",
+              "Beach",
+              "Desert",
+              "Tundra",
+              "Alpine",
+              "Taiga",
+              "Savanna"
             ],
             "pii": false,
             "defaultValue": "TemperateForest"
@@ -17509,7 +19016,14 @@
               "TemperateGrassland",
               "VolcanicBadlands",
               "TwilightGrove",
-              "VoidRift"
+              "VoidRift",
+              "Ocean",
+              "Beach",
+              "Desert",
+              "Tundra",
+              "Alpine",
+              "Taiga",
+              "Savanna"
             ],
             "pii": false,
             "defaultValue": "TemperateGrassland"
@@ -17969,7 +19483,14 @@
               "TemperateGrassland",
               "VolcanicBadlands",
               "TwilightGrove",
-              "VoidRift"
+              "VoidRift",
+              "Ocean",
+              "Beach",
+              "Desert",
+              "Tundra",
+              "Alpine",
+              "Taiga",
+              "Savanna"
             ],
             "pii": false,
             "defaultValue": "TemperateGrassland"
@@ -18394,7 +19915,14 @@
               "TemperateGrassland",
               "VolcanicBadlands",
               "TwilightGrove",
-              "VoidRift"
+              "VoidRift",
+              "Ocean",
+              "Beach",
+              "Desert",
+              "Tundra",
+              "Alpine",
+              "Taiga",
+              "Savanna"
             ],
             "pii": false,
             "defaultValue": "VolcanicBadlands"
@@ -18828,7 +20356,14 @@
               "TemperateGrassland",
               "VolcanicBadlands",
               "TwilightGrove",
-              "VoidRift"
+              "VoidRift",
+              "Ocean",
+              "Beach",
+              "Desert",
+              "Tundra",
+              "Alpine",
+              "Taiga",
+              "Savanna"
             ],
             "pii": false,
             "defaultValue": "VolcanicBadlands"
@@ -19264,7 +20799,14 @@
               "TemperateGrassland",
               "VolcanicBadlands",
               "TwilightGrove",
-              "VoidRift"
+              "VoidRift",
+              "Ocean",
+              "Beach",
+              "Desert",
+              "Tundra",
+              "Alpine",
+              "Taiga",
+              "Savanna"
             ],
             "pii": false,
             "defaultValue": "TwilightGrove"
@@ -19741,7 +21283,14 @@
               "TemperateGrassland",
               "VolcanicBadlands",
               "TwilightGrove",
-              "VoidRift"
+              "VoidRift",
+              "Ocean",
+              "Beach",
+              "Desert",
+              "Tundra",
+              "Alpine",
+              "Taiga",
+              "Savanna"
             ],
             "pii": false,
             "defaultValue": "TwilightGrove"
@@ -20177,7 +21726,14 @@
               "TemperateGrassland",
               "VolcanicBadlands",
               "TwilightGrove",
-              "VoidRift"
+              "VoidRift",
+              "Ocean",
+              "Beach",
+              "Desert",
+              "Tundra",
+              "Alpine",
+              "Taiga",
+              "Savanna"
             ],
             "pii": false,
             "defaultValue": "VoidRift"
@@ -20627,7 +22183,14 @@
               "TemperateGrassland",
               "VolcanicBadlands",
               "TwilightGrove",
-              "VoidRift"
+              "VoidRift",
+              "Ocean",
+              "Beach",
+              "Desert",
+              "Tundra",
+              "Alpine",
+              "Taiga",
+              "Savanna"
             ],
             "pii": false,
             "defaultValue": "VoidRift"

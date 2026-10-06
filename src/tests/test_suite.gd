@@ -34,6 +34,8 @@ const Minimap         := preload("res://src/ui/minimap.gd")
 const PlayerSlice     := preload("res://src/player/player_slice.gd")
 const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
 const ClimateField := preload("res://src/terrain/climate_field.gd")
+const WorldShape := preload("res://src/terrain/world_shape.gd")
+const DistantTerrainScript := preload("res://src/terrain/distant_terrain.gd")
 const Locomotion      := preload("res://src/character/locomotion.gd")
 const SkeletonRig     := preload("res://src/character/skeleton_rig.gd")
 const SkillTiers      := preload("res://src/core/skill_tiers.gd")
@@ -81,6 +83,15 @@ func run() -> void:
 	_run_test("terrain: height is non-negative",              _test_terrain_height_nonneg)
 	_run_test("terrain: two chunks are independent",          _test_terrain_two_chunks)
 	_run_test("terrain: the world seed determines the terrain", _test_terrain_seed_deterministic)
+	_run_test("terrain: ocean share and mountains over a transect", _test_terrain_ocean_share_transect)
+	_run_test("terrain: the spawn plain is dry land",         _test_terrain_spawn_plain_dry)
+	_run_test("terrain: the shape wraps and stays in range",  _test_world_shape_wraps_in_range)
+	_run_test("climate: poles are cold, peaks are cold",      _test_climate_poles_and_peaks)
+	_run_test("climate: ocean chunks are Ocean, fantasy biomes are niches", _test_climate_ocean_and_niches)
+	_run_test("water: spans cover exactly the tiles below sea level", _test_water_spans)
+	_run_test("player: deep water is swum, not walked",       _test_player_swims_in_deep_water)
+	_run_test("terrain: the distant ring is 10x the window with no collision", _test_distant_ring)
+	_run_test("spawn: ocean chunks grow no trees",            _test_ocean_spawns_no_land_tables)
 	_run_test("terrain: the world wraps east-west",           _test_terrain_wraps_east_west)
 	_run_test("terrain: latitude and longitude from the fabric planet", _test_terrain_planet_coordinates)
 	_run_test("player: rebased origin keeps the world position", _test_world_pos_rebase)
@@ -6971,7 +6982,7 @@ func _test_climate_envelope_selects() -> void:
 	assert_eq(ClimateField.biome_for_climate(0.5, 0.8, keys, B), "TemperateForest", "mild and wet is forest")
 	assert_eq(ClimateField.biome_for_climate(0.5, 0.1, keys, B), "TemperateGrassland", "mild and dry is grassland")
 	assert_eq(ClimateField.biome_for_climate(0.95, 0.5, keys, B), "VolcanicBadlands", "hot is badlands")
-	assert_eq(ClimateField.biome_for_climate(0.1, 0.8, keys, B), "TwilightGrove", "cold and wet is twilight")
+	assert_eq(ClimateField.biome_for_climate(0.4, 0.8, keys, B), "TwilightGrove", "cool and wet is twilight")
 	assert_eq(ClimateField.biome_for_climate(0.1, 0.1, keys, B), "VoidRift", "cold and dry is the rift")
 	assert_eq(ClimateField.biome_for_climate(0.5, 0.5, keys, {}), "", "no envelopes, no pick")
 	for ckey in keys:
@@ -7011,9 +7022,19 @@ func _test_mine_topsoil_yields_biome_soil() -> void:
 	add_child(v)
 	v.terrain_slice = terrain
 	var checked := {}
+	# The tiles to probe: a coarse grid round the origin, plus a chunk of each fantasy biome
+	# (Phase 51: they are rare climate niches at the temperate latitudes, not near the equator).
+	var tiles: Array = []
 	for cx in range(-60, 60):
 		for cz in range(-60, 60):
-			var t := Vector2i(cx * 32 + 3, cz * 32 + 3)
+			tiles.append(Vector2i(cx * 32 + 3, cz * 32 + 3))
+	for fantasy in ["VolcanicBadlands", "TwilightGrove", "VoidRift"]:
+		for chunk_v in _biome_chunks(terrain, [fantasy], 1):
+			var chunk: Vector2i = chunk_v
+			tiles.append(chunk * 64 + Vector2i(3, 3))
+	for t_v in tiles:
+		if true:
+			var t: Vector2i = t_v
 			var p := Vector2(t.x * 0.5 + 0.25, t.y * 0.5 + 0.25)
 			var biome := v._biome_at(p)
 			var b: Variant = GameData.BIOMES.get(biome, null)
@@ -7044,13 +7065,31 @@ func _test_mine_topsoil_yields_biome_soil() -> void:
 	v.free()
 	terrain.free()
 
-## First chunk (scanning along cz = 0) whose biome is one of `biomes`, or
-## Vector2i(-1, -1) when none is found.
+## First chunk whose biome is one of `biomes`, or Vector2i(-1, -1) when none is found.
+## Phase 51: biomes follow latitude and the continents, so the scan walks a few latitude rows
+## (the equator, then the temperate and subpolar belts of both hemispheres) and sweeps each east.
 func _find_chunk_with_biome(terrain: Node, biomes: Array) -> Vector2i:
-	for cx in range(-80, 80):
-		if biomes.has(str(terrain.get_biome_at_chunk(Vector2i(cx, 0)))):
-			return Vector2i(cx, 0)
+	for chunk in _biome_chunks(terrain, biomes, 1):
+		return chunk
 	return Vector2i(-1, -1)
+
+## Up to `count` chunks whose biome is one of `biomes`, spread over the latitude rows.
+func _biome_chunks(terrain: Node, biomes: Array, count: int) -> Array:
+	var out: Array = []
+	var pole := TerrainSlice.pole_chunks()
+	for row in [0.0, 0.1, -0.1, 0.2, -0.2, 0.3, -0.3, 0.45, -0.45, 0.55, -0.55, 0.65, -0.65, 0.75, -0.75]:
+		var cz := int(row * float(pole))
+		# Continents are thousands of kilometres across: a coarse sweep of the whole circumference
+		# finds land, and a fine sweep round each landfall finds the wanted biome.
+		for coarse in range(-600000, 600000, 500):
+			if str(terrain.get_biome_at_chunk(Vector2i(coarse, cz))) == "Ocean":
+				continue
+			for cx in range(coarse - 1500, coarse + 1500, 4):
+				if biomes.has(str(terrain.get_biome_at_chunk(Vector2i(cx, cz)))):
+					out.append(Vector2i(cx, cz))
+					if out.size() >= count:
+						return out
+	return out
 
 ## Vertex count of the built chunk's rendered surfaces: the terrain surface plus the
 ## rare-vein deposit mesh. Phase 41 split those into two MeshInstance3Ds deliberately
@@ -7182,10 +7221,8 @@ func _test_voxel_terrain_material_is_one_instance() -> void:
 	flat.fill(2.0)
 	# Surface veins are rare (Phase 49), so scan the rare biomes' chunks for one with a deposit.
 	var rare := Vector2i(-1, -1)
-	for cx in range(-80, 80):
-		var cand := Vector2i(cx, 0)
-		if ["VolcanicBadlands", "TwilightGrove"].has(str(terrain.get_biome_at_chunk(cand))) \
-				and not v.vein_deposits(cand, flat).is_empty():
+	for cand in _biome_chunks(terrain, ["VolcanicBadlands", "TwilightGrove"], 60):
+		if not v.vein_deposits(cand, flat).is_empty():
 			rare = cand
 			break
 	assert_true(rare.x != -1, "found a biome that grants a rare vein")
@@ -11619,8 +11656,11 @@ func _test_ore_client_agrees_without_snapshot() -> void:
 	client.is_authoritative = false
 	var same := true
 	var materials: Dictionary = {}
+	var volcanic := _find_chunk_with_biome(t_host, ["VolcanicBadlands"])
+	assert_true(volcanic != Vector2i(-1, -1), "a volcanic chunk exists to sample")
+	var anchor := Vector2(float(volcanic.x) * 32.0, float(volcanic.y) * 32.0)
 	for i in range(0, 4000, 7):
-		var xz := Vector2(float(i % 200) * 0.5 - 50.0, float(i / 200) * 0.5 * 9.0 - 40.0)
+		var xz := anchor + Vector2(float(i % 200) * 0.5 - 50.0, float(i / 200) * 0.5 * 9.0 - 40.0)
 		for depth in [0.0625, 1.5625, 4.5625, 7.0625]:
 			var m: String = host.material_at(xz, depth)
 			materials[m] = true
@@ -11643,10 +11683,14 @@ func _test_ore_aethermite_gates() -> void:
 	var seen := 0
 	var above_band := 0
 	var off_ley := 0
+	var scan := TerrainSlice.new()
+	add_child(scan)
 	for seed in [1, 2, 3]:
-		for cz in range(-6, 6):
-			for cx in range(-6, 6):
-				var chunk := Vector2i(cx, cz)
+		scan.set_world_seed(seed)
+		# Aethermite lives in volcanic and twilight ground, which Phase 51 made climate niches.
+		for chunk_v in _biome_chunks(scan, ["VolcanicBadlands", "TwilightGrove"], 14):
+			if true:
+				var chunk: Vector2i = chunk_v
 				var cache: Dictionary = {}
 				for tz in range(0, 64, 2):
 					for tx in range(0, 64, 2):
@@ -11661,6 +11705,7 @@ func _test_ore_aethermite_gates() -> void:
 							var g := chunk * 64 + Vector2i(tx, tz)
 							if not OreField.near_ley_line(seed, Vector2(g.x * 0.5 + 0.25, g.y * 0.5 + 0.25)):
 								off_ley += 1
+	scan.free()
 	assert_true(seen > 0, "the sample found aethermite (%d tiles) — the gates are not vacuous" % seen)
 	assert_eq(above_band, 0, "aethermite never sits above its fabric depth band")
 	assert_eq(off_ley, 0, "aethermite never sits far from a ley line")
@@ -11892,9 +11937,23 @@ func _test_ore_surface_veins_rare() -> void:
 func _test_ore_surface_vein_chance_gates_by_biome() -> void:
 	var kept := {}
 	var total := {}
-	for cx in range(-80, 80):
-		for cz in range(-80, 80):
-			var vein := OreField.vein_in_cell(4242, Vector3i(cx, 0, cz))
+	# Cells of a block of chunks of each biome (Phase 51: the biomes are spread over the planet by
+	# latitude, so a patch round the origin holds one or two of them).
+	var scan := TerrainSlice.new()
+	add_child(scan)
+	scan.set_world_seed(4242)
+	var cells: Array = []
+	for biome_name in ["VolcanicBadlands", "TemperateForest", "VoidRift"]:
+		for chunk_v in _biome_chunks(scan, [biome_name], 160):
+			var chunk: Vector2i = chunk_v
+			for dx in range(4):
+				for dz in range(4):
+					cells.append(Vector2i(chunk.x * 4 + dx, chunk.y * 4 + dz))
+	scan.free()
+	for cell_v in cells:
+		var cell: Vector2i = cell_v
+		if true:
+			var vein := OreField.vein_in_cell(4242, Vector3i(cell.x, 0, cell.y))
 			if vein.is_empty():
 				continue
 			var biome := str(vein["biome"])
@@ -12839,3 +12898,185 @@ func _test_asset_reload_manifest() -> void:
 	assert_false(AssetOverlay._manifest_loaded, "the cache is marked stale")
 	assert_true(AssetOverlay.has_key("meshes", "models/placeholder_rig.glb.raw"), "the next lookup re-reads the manifest")
 	assert_false(AssetOverlay.has_key("meshes", "models/not_a_real_key.glb.raw"), "and the stale entry is gone")
+
+
+# ---------------------------------------------------------------------------
+# Phase 51 — continents, oceans and mountains
+# ---------------------------------------------------------------------------
+
+## The fraction of a 1,000 km east-west transect (sampled every 2 km) below sea level, pooled over
+## several seeds and latitudes (one transect is under half a continental wavelength, so a single
+## one is a coin toss by design), lands within the fabric's target ocean share; and at least one
+## height above 300 m appears on land.
+func _test_terrain_ocean_share_transect() -> void:
+	var w := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var below := 0
+	var total := 0
+	var peak := -1000.0
+	var trough := 1000.0
+	var sea := WorldShape.sea_level()
+	for seed_v in [3, 17, 99, 2026, 777777, 31337, 424242, 8]:
+		for lat_row in [-4000.0e3, -1500.0e3, 0.0, 1800.0e3, 3500.0e3]:
+			for i in range(500):
+				var x := 6000.0e3 + float(i) * 2000.0
+				var h := WorldShape.height(seed_v, x, lat_row, w)
+				total += 1
+				if h < sea:
+					below += 1
+				peak = maxf(peak, h)
+				trough = minf(trough, h)
+	var share := float(below) / float(total)
+	var target := WorldShape.ocean_share()
+	assert_true(absf(share - target) <= 0.07, "ocean share %.3f is within 0.07 of the fabric target %.2f" % [share, target])
+	assert_true(share >= 0.55 and share <= 0.75, "and inside the 55-75%% band (%.3f)" % share)
+	assert_true(peak > 300.0, "a peak above 300 m appears (%.0f m)" % peak)
+	assert_true(peak <= WorldShape.max_height() and trough >= WorldShape.min_height(), "heights stay in the fabric's range (%.0f..%.0f)" % [trough, peak])
+
+func _test_terrain_spawn_plain_dry() -> void:
+	var w := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	for seed_v in [1, 2, 3, 99, 12345, 777777]:
+		for off in [Vector2(0, 0), Vector2(900, 0), Vector2(0, -1200), Vector2(-1400, 1000)]:
+			var h := WorldShape.height(seed_v, 16.0 + off.x, 16.0 + off.y, w)
+			assert_true(h > WorldShape.sea_level(), "land within the spawn plain at seed %d offset %s (%.1f)" % [seed_v, off, h])
+		assert_true(TerrainSlice.biome_for_chunk(Vector2i(0, 0), seed_v) != "Ocean", "the spawn chunk is never Ocean at seed %d" % seed_v)
+	var t := TerrainSlice.new()
+	add_child(t)
+	assert_true(t.get_height_at(Vector2(16.0, 16.0)) > 1.5, "the player spawns above the waterline")
+	t.free()
+
+func _test_world_shape_wraps_in_range() -> void:
+	var w := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	for seed_v in [5, 6]:
+		for z in [-2000.0e3, 0.0, 777.0e3]:
+			assert_true(absf(WorldShape.height(seed_v, -w * 0.5, z, w) - WorldShape.height(seed_v, w * 0.5, z, w)) < 0.001, "the shape is periodic around the planet")
+			assert_true(absf(WorldShape.height(seed_v, 123456.0, z, w) - WorldShape.height(seed_v, 123456.0 + w, z, w)) < 0.001, "one lap east is the same ground")
+	assert_eq(WorldShape.height(9, 6.0e6, 1.0e6, w), WorldShape.height(9, 6.0e6, 1.0e6, w), "and the shape is pure in (seed, position)")
+	assert_true(WorldShape.height(9, 6.0e6, 1.0e6, w) != WorldShape.height(10, 6.0e6, 1.0e6, w) or WorldShape.height(9, 7.1e6, -3.0e6, w) != WorldShape.height(10, 7.1e6, -3.0e6, w), "a different seed shapes different continents")
+
+## At latitude 85 degrees the land biome is the polar one (Tundra), and a 450 m peak at the equator is Alpine.
+func _test_climate_poles_and_peaks() -> void:
+	var keys: Array = TerrainSlice.BIOME_KEYS
+	var B: Dictionary = GameData.BIOMES
+	for seed_v in [1, 42, 9001]:
+		for cx in [-300, 0, 77, 4000]:
+			var pole := ClimateField.biome_for_chunk(seed_v, Vector2i(cx, 0), keys, 85.0, 20.0)
+			assert_eq(pole, "Tundra", "land at 85 degrees is polar at seed %d chunk %d" % [seed_v, cx])
+			var peak := ClimateField.biome_for_chunk(seed_v, Vector2i(cx, 0), keys, 0.0, 450.0)
+			assert_eq(peak, "Alpine", "a 450 m peak at the equator is Alpine at seed %d chunk %d" % [seed_v, cx])
+	assert_true(ClimateField.temperature_at(1, Vector2(5, 5), 85.0, 20.0) < 0.2, "85 degrees is cold")
+	assert_true(ClimateField.temperature_at(1, Vector2(5, 5), 0.0, 450.0) < ClimateField.temperature_at(1, Vector2(5, 5), 0.0, 0.0), "height cools the equator")
+	assert_eq(ClimateField.biome_for_climate(0.5, 0.5, keys, B, 450.0, 1.0), "Alpine", "pure envelope pick: high ground is Alpine")
+	assert_eq(ClimateField.biome_for_climate(0.5, 0.5, keys, B, -30.0, 1.0), "Ocean", "below sea level is Ocean")
+	assert_eq(ClimateField.biome_for_climate(0.5, 0.5, keys, B, 0.5, 1.0), "Beach", "the first metre of shore is Beach")
+	assert_eq(ClimateField.biome_for_climate(0.85, 0.8, keys, B, 10.0, 1.0) in ["Beach", "Ocean"], false, "hot wet ground 10 m up is land, not shore")
+	assert_eq(ClimateField.biome_for_climate(0.7, 0.1, keys, B, 50.0, 1.0), "Desert", "hot and dry is desert")
+	assert_eq(ClimateField.biome_for_climate(0.7, 0.4, keys, B, 50.0, 1.0), "Savanna", "hot and middling is savanna")
+	assert_eq(ClimateField.biome_for_climate(0.25, 0.7, keys, B, 50.0, 1.0), "Taiga", "cool and wet is taiga")
+	for key in ["Ocean", "Beach", "Desert", "Tundra", "Alpine", "Taiga", "Savanna"]:
+		var res: Variant = GameData.BIOMES.get(key, null)
+		assert_true(res != null, "%s is a fabric biome" % key)
+		assert_true(res.get("surfaceMaterial") != null and res.get("treeDensity") != null, "%s carries surfaceMaterial and treeDensity" % key)
+		assert_true(TerrainSlice.BIOME_KEYS.has(key), "%s is a canonical biome key" % key)
+
+func _test_climate_ocean_and_niches() -> void:
+	var w := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var seed_v := 20260
+	var counts := {}
+	var n := 0
+	var ocean_ok := true
+	for cz in range(-400, 400, 8):
+		for cx in range(100000, 100000 + 800, 8):
+			var chunk := Vector2i(cx * 40, cz * 40)
+			var b := TerrainSlice.biome_for_chunk(chunk, seed_v)
+			counts[b] = int(counts.get(b, 0)) + 1
+			n += 1
+			var alt := TerrainSlice.biome_altitude(seed_v, (float(chunk.x) + 0.5) * TerrainSlice.CHUNK_METERS, (float(chunk.y) + 0.5) * TerrainSlice.CHUNK_METERS, w)
+			if (alt < 0.0) != (b == "Ocean"):
+				ocean_ok = false
+	assert_true(ocean_ok, "a chunk is Ocean exactly when its large-scale ground is below sea level")
+	var fantasy := 0
+	for key in ["VolcanicBadlands", "TwilightGrove", "VoidRift"]:
+		fantasy += int(counts.get(key, 0))
+	assert_true(float(fantasy) / float(n) < 0.15, "fantasy biomes are rare climate niches (%d of %d)" % [fantasy, n])
+	assert_true(counts.size() >= 4, "several biomes appear across the sample (%s)" % [counts])
+
+func _test_water_spans() -> void:
+	var n := TerrainSlice.CHUNK_SIZE
+	var hm: Array = []
+	hm.resize(n * n)
+	hm.fill(3.0)
+	assert_eq(VoxelSlice.water_spans(hm, 0.0).size(), 0, "dry ground has no water")
+	assert_true(VoxelSlice.water_mesh_for(Vector2i(0, 0), hm) == null, "and no water mesh")
+	for tx in range(10, 20):
+		hm[5 * n + tx] = -4.0
+	hm[5 * n + 63] = -1.0
+	hm[6 * n + 0] = -1.0
+	var spans := VoxelSlice.water_spans(hm, 0.0)
+	assert_eq(spans, [Vector3i(5, 10, 20), Vector3i(5, 63, 64), Vector3i(6, 0, 1)], "wet tiles merge into row spans")
+	var mesh := VoxelSlice.water_mesh_for(Vector2i(2, -1), hm)
+	assert_true(mesh != null and mesh.get_surface_count() == 1, "wet ground gets a water surface")
+	var aabb := mesh.get_aabb()
+	assert_true(is_equal_approx(aabb.position.y, 0.0) and is_equal_approx(aabb.size.y, 0.0), "flat at the sea level")
+	assert_true(is_equal_approx(aabb.position.x, (2.0 * n + 0.0) * VoxelSlice.TILE_SIZE), "placed at the chunk's world origin")
+
+func _test_player_swims_in_deep_water() -> void:
+	var sea := 0.0
+	assert_false(PlayerSlice.is_swimming(-0.5, sea), "shallows are waded")
+	assert_false(PlayerSlice.is_swimming(2.0, sea), "dry ground is walked")
+	assert_true(PlayerSlice.is_swimming(-PlayerSlice.WADE_DEPTH - 0.5, sea), "deep water is swum")
+	assert_true(PlayerSlice.is_swimming(-40.0, sea), "the ocean floor is far below a swimmer")
+	# A body standing on a deep sea floor is lifted to the surface and holds there.
+	var y := -30.0
+	for _i in range(1500):
+		y += PlayerSlice.swim_vertical_velocity(y, sea) / 60.0
+	assert_true(absf(y - (sea - PlayerSlice.SWIM_FLOAT)) < 0.05, "a swimmer settles at the surface (%.2f)" % y)
+	assert_true(PlayerSlice.swim_vertical_velocity(-30.0, sea) > 0.0, "buoyancy lifts it off the floor")
+	assert_true(PlayerSlice.swim_vertical_velocity(5.0, sea) < 0.0, "and drops a body that was above the water")
+	assert_true(absf(PlayerSlice.swim_vertical_velocity(-80.0, sea)) <= PlayerSlice.SWIM_MAX_VERTICAL, "the rise rate is capped")
+	assert_true(PlayerSlice.SWIM_SPEED_FACTOR < 1.0, "swimming is slower than walking")
+
+func _test_distant_ring() -> void:
+	var radius := 3
+	var d := DistantTerrainScript.new()
+	add_child(d)
+	d.world_seed = 7
+	assert_true(d.rebuild(Vector2(16.0, 16.0), radius), "the first call builds the ring")
+	var window_m := (float(radius) + 0.5) * 32.0
+	assert_true(is_equal_approx(d.ring_half_m, 10.0 * window_m), "the ring reaches 10x the voxel window")
+	assert_eq(d.collision_body_count(), 0, "the distant ring has no collision bodies")
+	assert_false(d.rebuild(Vector2(17.0, 16.5), radius), "a small move does not rebuild")
+	var mesh: ArrayMesh = (d.get_child(0) as MeshInstance3D).mesh
+	var aabb := mesh.get_aabb()
+	assert_true(aabb.size.x > 1.8 * d.ring_half_m * 0.95, "the mesh spans the ring (%.0f m)" % aabb.size.x)
+	assert_true(aabb.size.x <= 2.0 * d.ring_half_m + 1.0, "and no further")
+	# The voxel window is a hole: no ring vertex lies strictly inside it.
+	var verts: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var inside := 0
+	for v in verts:
+		# The hole is the window less one ring cell and one chunk; a kept cell may poke one cell into it.
+		var cell_m := 2.0 * d.ring_half_m / 64.0
+		var hole_m := window_m - cell_m - 32.0
+		if absf(v.x - 16.0) < hole_m - cell_m - 1.0 and absf(v.z - 16.0) < hole_m - cell_m - 1.0:
+			inside += 1
+	assert_eq(inside, 0, "the ring leaves the voxel window to the voxel chunks")
+	var normals: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_NORMAL]
+	assert_eq(normals.size(), verts.size(), "every ring vertex has a normal")
+	assert_true(normals.size() > 0 and normals[0].y > 0.0, "ring normals face up")
+	d.world_seed = 8
+	assert_true(d.rebuild(Vector2(16.0, 16.5), radius), "a new world seed rebuilds the ring in place")
+	d.free()
+
+func _test_ocean_spawns_no_land_tables() -> void:
+	assert_true(TreeSlice.TREES_BY_BIOME.get("Ocean", {}).is_empty(), "Ocean grows no trees")
+	assert_true(TreeSlice.TREES_BY_BIOME.get("Alpine", {}).is_empty(), "nor does Alpine")
+	var ts := TreeSlice.new()
+	assert_eq(ts.tree_count_for(Vector2i(3, 3), "Ocean"), 0, "an Ocean chunk's tree budget is zero")
+	ts.free()
+	var creature := CreatureSlice.new()
+	var keys: Array = TerrainSlice.BIOME_KEYS
+	assert_eq(creature._biome_keys(), keys, "the creature slice's fallback list matches the terrain's")
+	assert_true(keys.has("Ocean"), "Ocean is a canonical biome key")
+	for res in GameData.CREATURES.values():
+		var idx: int = int(res.get("biome"))
+		assert_true(str(keys[idx]) != "Ocean", "no creature table names the Ocean")
+	creature.free()

@@ -14,5 +14,10 @@ The planet as a fact of the fabric. The world takes globe semantics on a flat ch
 | `id` | uuid | yes |  |
 | `circumferenceKm` | decimal | yes | Length of the equator in km; X wraps after this distance (Phase 50) |
 | `polarLatitude` | decimal | yes | Degrees of latitude at which impassable polar ice begins (north and south); the world spans pole to pole at 90 (Phase 50) |
-| `seaLevel` | decimal | yes | World Y in metres of the ocean surface (used by Phase 51) |
+| `seaLevel` | decimal | yes | World Y in metres of the ocean surface (Phase 51) |
+| `minHeight` | decimal | yes | Lowest terrain surface, in metres: the deepest ocean floor (Phase 51) |
+| `maxHeight` | decimal | yes | Highest terrain surface, in metres: the tallest peak (Phase 51) |
+| `oceanShare` | decimal | yes | Target fraction of the planet below sea level, 0–1 (Phase 51) |
+| `heightSpline` | json | yes | Continentalness (0–1) to base height in metres: ocean basin, shelf, coast, inland. Points are [continentalness, height], ascending (Phase 51) |
+| `ridgeAmplitude` | decimal | yes | Metres a mountain ridge adds on rugged inland ground (Phase 51) |
 

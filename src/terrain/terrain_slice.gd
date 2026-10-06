@@ -16,9 +16,10 @@ extends Node
 
 const CHUNK_SIZE := 64       # tiles per side (64 × 0.5 = 32 world units per chunk)
 const TILE_SIZE  := 0.5      # world units per tile (XZ) — each square is half its former 1.0 size
-const HEIGHT_SCALE := 5.0    # world units peak-to-valley (gentle, even terrain)
+const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DETAIL noise (Phase 51: the large shape is WorldShape)
 const BIOME_SEED := 20260815 # fixed seed so biome assignment is deterministic
 const ClimateField := preload("res://src/terrain/climate_field.gd")
+const WorldShape := preload("res://src/terrain/world_shape.gd")
 
 ## The starting area is flattened into a plain field so the player can walk
 ## freely from spawn without jumping. Spawn centre + radius + flat height below.
@@ -46,6 +47,13 @@ const BIOME_KEYS: Array = [
 	"VolcanicBadlands",
 	"TwilightGrove",
 	"VoidRift",
+	"Ocean",
+	"Beach",
+	"Desert",
+	"Tundra",
+	"Alpine",
+	"Taiga",
+	"Savanna",
 ]
 
 ## The world's seed. Phase 41 — this is the world's IDENTITY, not a per-boot
@@ -59,6 +67,7 @@ var _world_seed: int = 0
 var _noise := FastNoiseLite.new()
 
 func _ready() -> void:
+	WorldShape.warm()   # main thread, before any chunk worker reads the shape
 	_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	# A fresh world still gets a random seed — but it is remembered and saved,
 	# so this is the LAST time the ground changes without a reason.
@@ -74,6 +83,7 @@ func _ready() -> void:
 ## from the same noise field.
 func set_world_seed(seed: int) -> void:
 	_world_seed = seed
+	_corner_key = Vector2i(2147483647, 2147483647)
 	_noise.seed = seed
 
 ## The seed this world is generating from (see set_world_seed).
@@ -124,8 +134,20 @@ func get_biome_at_chunk(chunk_pos: Vector2i) -> String:
 ## Phase 43 — the STATIC form of `get_biome_at_chunk`: a pure function of the chunk and the
 ## world seed (default `BIOME_SEED`), so the ore field (`src/terrain/ore_field.gd`) can ask a vein's biome on
 ## a worker thread without a terrain-slice reference.
+##
+## Phase 51 — the climate reads the chunk's latitude and its large-scale altitude (`WorldShape`),
+## so poles and peaks are cold and a chunk below sea level is Ocean.
 static func biome_for_chunk(chunk_pos: Vector2i, seed_v: int = BIOME_SEED) -> String:
-	return ClimateField.biome_for_chunk(seed_v, chunk_pos, BIOME_KEYS)
+	var w := float(circumference_chunks()) * CHUNK_METERS
+	var cx := (float(chunk_pos.x) + 0.5) * CHUNK_METERS
+	var cz := (float(chunk_pos.y) + 0.5) * CHUNK_METERS
+	return ClimateField.biome_for_chunk(seed_v, chunk_pos, BIOME_KEYS, latitude_of(chunk_pos.y),
+		biome_altitude(seed_v, cx, cz, w))
+
+## The altitude the biome pick reads: the large-scale shape plus the mean of the 0..HEIGHT_SCALE
+## detail noise, so it matches the mean ground the heightmap actually lays down.
+static func biome_altitude(seed_v: int, x: float, z: float, w: float) -> float:
+	return WorldShape.altitude(seed_v, x, z, w) + HEIGHT_SCALE * 0.5
 
 ## Convert a world XZ position to its containing chunk coordinate.
 func world_to_chunk(world_pos: Vector2) -> Vector2i:
@@ -256,9 +278,18 @@ func _height_wrapped(x: float, z: float, w: float) -> float:
 		return lerpf(_raw_height_at(wx, z), _raw_height_at(wx - w, z), t)
 	return _raw_height_at(wx, z)
 
+## Phase 51 — the large-scale shape (`WorldShape`: ocean basins, coasts, mountains) plus the old
+## small-scale noise as detail, never below the fabric's `minHeight` or above `maxHeight`.
+##
+## The shape has no feature finer than tens of kilometres, so it is sampled at the four corners of
+## the 32 m chunk cell holding (x, z) and interpolated bilinearly: a corner is shared by the
+## neighbouring cells, so the surface is continuous across chunk borders, and a 64×64 heightmap
+## costs four shape evaluations instead of 4096.
 func _raw_height_at(x: float, z: float) -> float:
-	var raw := _noise.get_noise_2d(x, z)
-	var h := (raw + 1.0) * 0.5 * HEIGHT_SCALE
+	var w := float(circumference_chunks()) * CHUNK_METERS
+	var shape := _shape_at(x, z, w)
+	var detail := (_noise.get_noise_2d(x, z) + 1.0) * 0.5 * HEIGHT_SCALE
+	var h := clampf(shape + detail, WorldShape.min_height(), WorldShape.max_height())
 	var dx := x - SPAWN_CENTER.x
 	var dz := z - SPAWN_CENTER.y
 	var d := sqrt(dx * dx + dz * dz)
@@ -267,3 +298,27 @@ func _raw_height_at(x: float, z: float) -> float:
 		t = t * t * (3.0 - 2.0 * t)   # smoothstep: 0 at centre → 1 at edge
 		h = lerp(SPAWN_HEIGHT, h, t)
 	return h
+
+## `WorldShape.height` interpolated between the corners of the chunk cell holding (x, z).
+func _shape_at(x: float, z: float, w: float) -> float:
+	var gx := x / CHUNK_METERS
+	var gz := z / CHUNK_METERS
+	var ix := floori(gx)
+	var iz := floori(gz)
+	var key := Vector2i(ix, iz)
+	if key != _corner_key:   # a heightmap walks one cell for 4096 tiles: reuse its corners
+		_corner_key = key
+		var x0 := float(ix) * CHUNK_METERS
+		var z0 := float(iz) * CHUNK_METERS
+		_corners = [
+			WorldShape.height(_world_seed, x0, z0, w),
+			WorldShape.height(_world_seed, x0 + CHUNK_METERS, z0, w),
+			WorldShape.height(_world_seed, x0, z0 + CHUNK_METERS, w),
+			WorldShape.height(_world_seed, x0 + CHUNK_METERS, z0 + CHUNK_METERS, w),
+		]
+	var fx := gx - float(ix)
+	var fz := gz - float(iz)
+	return lerpf(lerpf(_corners[0], _corners[1], fx), lerpf(_corners[2], _corners[3], fx), fz)
+
+var _corner_key := Vector2i(2147483647, 2147483647)
+var _corners: Array = [0.0, 0.0, 0.0, 0.0]

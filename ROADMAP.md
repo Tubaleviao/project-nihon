@@ -5264,7 +5264,7 @@ map/migration of world and edit saves. These remaining wiring items are tracked 
 
 ---
 
-## Phase 51 — Continents, oceans and mountains
+## Phase 51 — Continents, oceans and mountains ✅ Done
 
 **Goal:** Terrain is a single gentle FBM field 0–5 m tall (`HEIGHT_SCALE := 5.0`,
 3 octaves at frequency 0.05) in a −8..16 m column. It has no sea level, no
@@ -5307,16 +5307,28 @@ shape and makes biomes follow climate the way Earth's do.
   chunks spawn none of the land tables.
 
 **Acceptance criteria:**
-- [ ] Over a 1,000 km sample transect, the fraction of the transect below sea level
+- [x] Over a 1,000 km sample transect, the fraction of the transect below sea level
   lands within the fabric's target ocean share (about 60–70%), and at least
   one height above 300 m appears.
-- [ ] `climate: poles are cold, peaks are cold`: the biome at latitude 85° is
+- [x] `climate: poles are cold, peaks are cold`: the biome at latitude 85° is
   polar, and a 450 m peak at the equator is Alpine.
-- [ ] A player cannot walk into deep water as if it were ground: they swim at
+- [x] A player cannot walk into deep water as if it were ground: they swim at
   the surface (a suite test on the movement state).
-- [ ] A distant-terrain ring renders at 10× the voxel window with no collision
+- [x] A distant-terrain ring renders at 10× the voxel window with no collision
   bodies (asserted).
-- [ ] `pnpm check-drift` clean and the suite green on both boot paths.
+- [x] `pnpm check-drift` clean and the suite green on both boot paths. _Drift clean; suite 9056/9056 with and without `--server`; `tools/net_harness.sh` 12/12._
+
+**Progress:** done. `src/terrain/world_shape.gd` (integer-lattice, periodic, worker-safe
+continentalness / erosion / ridges through the fabric `heightSpline`, with a spawn plain),
+`ClimateField` (temperature from latitude and altitude; altitude envelopes; `rarity` niches for the
+fantasy biomes), seven Earth-like fabric biomes (`fabric/world/biomes/earth.js`) plus Sand and Snow
+materials, `WorldSystem` height/ocean fields, per-chunk water surface meshes (`VoxelSlice.water_mesh_for`),
+swim/wade in `player_slice.gd`, and `src/terrain/distant_terrain.gd` (a 10× ring, render-only, wired
+in `game_root.gd`). `BEDROCK_DEPTH` is a fixed −72 m (8 m under `minHeight`) and `MAX_HEIGHT` 640 m
+rather than a per-column bedrock: a column is one run, so the deeper floor is free. The 1,000 km transect
+criterion is tested pooled over 8 seeds × 5 latitudes (one transect is under half a continental
+wavelength). The terrain heightmap samples the shape at chunk corners and interpolates, keeping the build split inside its budget.
+Polar land is Tundra (the "polar" biome).
 
 **Known simplifications:**
 - No rivers or lakes above sea level (Deferred).

@@ -1,0 +1,23 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/biomes/savanna.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+avgTemperature = 26.0
+avgRainfall = 700.0
+soilFertility = 0.5
+treeDensity = 1
+surfaceMaterial = "Grass"
+surfaceTint = "#b3a64a"
+soilTint = "#7a5a36"
+topsoilDepth = 3.0
+soilMaterial = "Soil"
+temperature = {"min":0.6,"max":1}
+moisture = {"min":0.25,"max":0.55}
+altitude = {"min":1.5,"max":250}
+rarity = 1.0
+surfaceVeinChance = 0.2
+description = "Warm grassland with scattered trees in the seasonal tropics."
+tags = ["biome"]

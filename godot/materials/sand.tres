@@ -1,0 +1,13 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/materials/sand.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+density = 1.6
+hardness = 0.5
+depthBand = {"min":0,"max":0}
+leyGated = false
+description = "Loose grains that cover beaches, deserts and the sea floor. Digging it yields Soil. A surface cover named by a biome's `surfaceMaterial` (Phase 51)."
+tags = ["material"]

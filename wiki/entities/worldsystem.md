@@ -17,5 +17,10 @@ The planet as a fact of the fabric. The world takes globe semantics on a flat ch
 | ----- | ---- | ----------- |
 | circumferenceKm | decimal | Length of the equator in km; X wraps after this distance (Phase 50) |
 | polarLatitude | decimal | Degrees of latitude at which impassable polar ice begins (north and south); the world spans pole to pole at 90 (Phase 50) |
-| seaLevel | decimal | World Y in metres of the ocean surface (used by Phase 51) |
+| seaLevel | decimal | World Y in metres of the ocean surface (Phase 51) |
+| minHeight | decimal | Lowest terrain surface, in metres: the deepest ocean floor (Phase 51) |
+| maxHeight | decimal | Highest terrain surface, in metres: the tallest peak (Phase 51) |
+| oceanShare | decimal | Target fraction of the planet below sea level, 0–1 (Phase 51) |
+| heightSpline | json | Continentalness (0–1) to base height in metres: ocean basin, shelf, coast, inland. Points are [continentalness, height], ascending (Phase 51) |
+| ridgeAmplitude | decimal | Metres a mountain ridge adds on rugged inland ground (Phase 51) |
 
