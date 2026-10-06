@@ -74,7 +74,7 @@ npm run generate  # generate the design bible into bible/
 | 51 | Continents, oceans and mountains | Done |
 | 52 | Region storage and per-player server streaming | Done |
 | 53 | Spawn placement and friend codes | Planned |
-| 54 | World clock, day and night, seasons | Planned |
+| 54 | World clock, day and night, seasons | Done |
 | 55 | Two-client harness: equipment delivery over the socket | Planned |
 | 56 | Station placement follow-ups | Planned |
 | 57 | Spawn determinism and cost follow-ups | Planned |

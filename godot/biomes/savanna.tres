@@ -5,6 +5,11 @@
 [resource]
 script = ExtResource("1")
 id = ""
+seasonSwing = 10.0
+summerTint = "#ffffff"
+winterTint = "#c9d3dc"
+seasonGrowth = {"summer":1.25,"winter":0.5}
+seasonSpawn = {"summer":1.15,"winter":0.7}
 avgTemperature = 26.0
 avgRainfall = 700.0
 soilFertility = 0.5

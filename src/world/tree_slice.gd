@@ -66,6 +66,8 @@ const CLEARING_CHANCE := 0.1
 const DENSITY_NOISE := 0.5
 
 const SpawnRoll := preload("res://src/world/spawn_roll.gd")
+const WorldClock := preload("res://src/world/world_clock.gd")
+const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 
 ## Trunk / canopy proportions of the shared placeholder tree mesh (world units).
 const TRUNK_RADIUS  := 0.30
@@ -107,6 +109,10 @@ var render_visuals: bool = true
 
 ## Set by game_root before the slices enter the tree.
 var terrain_slice: Node = null
+
+## Phase 54 — the world clock: a stump regrows faster in its biome's summer and slower in its
+## winter (fabric `seasonGrowth`). Null (an isolated rig) leaves the flat RESPAWN_SECONDS.
+var world_clock: RefCounted = null
 var inventory_slice: Node = null
 
 ## Phase 42 review — the registry that owns one inventory PER PLAYER, so a chop the
@@ -364,13 +370,22 @@ func apply_chop_state(tree_id: String, respawn_at: float) -> void:
 # Private — chopping / regrowth
 # ---------------------------------------------------------------------------
 
+## Seconds a stump in `chunk` takes to regrow right now: RESPAWN_SECONDS divided by the
+## season's growth multiplier for the chunk's biome and latitude (Phase 54).
+func regrow_seconds(chunk_pos: Vector2i) -> float:
+	if world_clock == null:
+		return RESPAWN_SECONDS
+	var biome: Variant = GameData.BIOMES.get(_chunk_biome(chunk_pos), null)
+	var w: float = world_clock.warmth_at(TerrainSlice.latitude_of(chunk_pos.y))
+	return RESPAWN_SECONDS / WorldClock.growth_multiplier(biome, w)
+
 func _set_chopped(tree_id: String) -> void:
 	var tree: Dictionary = _trees.get(tree_id, {})
 	if tree.is_empty() or tree["state"] != "standing":
 		return
 	tree["state"] = "stump"
 	if float(tree["respawn_at"]) <= 0.0:
-		tree["respawn_at"] = _now() + RESPAWN_SECONDS
+		tree["respawn_at"] = _now() + regrow_seconds(tree["chunk"])
 	_free_collision(tree)
 	_stumps[tree_id] = true
 	if _pool != null and int(tree["mi"]) >= 0:

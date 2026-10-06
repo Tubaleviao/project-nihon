@@ -15,4 +15,7 @@ extends Resource
 @export var spawnHabitableBiomes: Array
 @export var spawnMinColonizedDistance: float
 @export var colonizedScore: float
+@export var dayLengthMinutes: float
+@export var yearLengthDays: float
+@export var axialTilt: float
 @export var friendSpawnRadius: float

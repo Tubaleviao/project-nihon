@@ -4,6 +4,11 @@ extends Resource
 
 
 @export var id: String
+@export var seasonSwing: float
+@export var summerTint: String
+@export var winterTint: String
+@export var seasonGrowth: Dictionary
+@export var seasonSpawn: Dictionary
 @export var avgTemperature: float
 @export var avgRainfall: float
 @export var soilFertility: float

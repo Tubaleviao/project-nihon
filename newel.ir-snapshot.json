@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:7aab9fc8246ae8bf24a04c2c1a9d88a71ee80738aa07cbacb78ea70d52298945",
+  "schemaHash": "sha256:2bf66bb02fc08db6b4216c27c4e1b033e4a719dc27f87e120487bdfd9eff015a",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -2823,6 +2823,57 @@
             "primaryKey": true,
             "pii": false
           },
+          "seasonSwing": {
+            "name": "seasonSwing",
+            "type": "decimal",
+            "description": "°C the biome's temperature rises above and falls below its annual average over the year, at full seasonal latitude (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
+          },
+          "summerTint": {
+            "name": "summerTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the height of summer (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#ffffff"
+          },
+          "winterTint": {
+            "name": "winterTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#c9d3dc"
+          },
+          "seasonGrowth": {
+            "name": "seasonGrowth",
+            "type": "json",
+            "description": "Multiplier on tree regrowth speed (and growth rates) at the height of summer and the depth of winter; it varies linearly between (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.25,
+              "winter": 0.5
+            }
+          },
+          "seasonSpawn": {
+            "name": "seasonSpawn",
+            "type": "json",
+            "description": "Multiplier on creature spawn chance at the height of summer and the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.15,
+              "winter": 0.7
+            }
+          },
           "avgTemperature": {
             "name": "avgTemperature",
             "type": "decimal",
@@ -3003,6 +3054,57 @@
             "primaryKey": true,
             "pii": false
           },
+          "seasonSwing": {
+            "name": "seasonSwing",
+            "type": "decimal",
+            "description": "°C the biome's temperature rises above and falls below its annual average over the year, at full seasonal latitude (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
+          },
+          "summerTint": {
+            "name": "summerTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the height of summer (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#ffffff"
+          },
+          "winterTint": {
+            "name": "winterTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#c9d3dc"
+          },
+          "seasonGrowth": {
+            "name": "seasonGrowth",
+            "type": "json",
+            "description": "Multiplier on tree regrowth speed (and growth rates) at the height of summer and the depth of winter; it varies linearly between (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.25,
+              "winter": 0.5
+            }
+          },
+          "seasonSpawn": {
+            "name": "seasonSpawn",
+            "type": "json",
+            "description": "Multiplier on creature spawn chance at the height of summer and the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.15,
+              "winter": 0.7
+            }
+          },
           "avgTemperature": {
             "name": "avgTemperature",
             "type": "decimal",
@@ -3182,6 +3284,57 @@
             "nullable": false,
             "primaryKey": true,
             "pii": false
+          },
+          "seasonSwing": {
+            "name": "seasonSwing",
+            "type": "decimal",
+            "description": "°C the biome's temperature rises above and falls below its annual average over the year, at full seasonal latitude (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
+          },
+          "summerTint": {
+            "name": "summerTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the height of summer (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#ffffff"
+          },
+          "winterTint": {
+            "name": "winterTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#c9d3dc"
+          },
+          "seasonGrowth": {
+            "name": "seasonGrowth",
+            "type": "json",
+            "description": "Multiplier on tree regrowth speed (and growth rates) at the height of summer and the depth of winter; it varies linearly between (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.25,
+              "winter": 0.5
+            }
+          },
+          "seasonSpawn": {
+            "name": "seasonSpawn",
+            "type": "json",
+            "description": "Multiplier on creature spawn chance at the height of summer and the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.15,
+              "winter": 0.7
+            }
           },
           "avgTemperature": {
             "name": "avgTemperature",
@@ -3377,6 +3530,57 @@
             "primaryKey": true,
             "pii": false
           },
+          "seasonSwing": {
+            "name": "seasonSwing",
+            "type": "decimal",
+            "description": "°C the biome's temperature rises above and falls below its annual average over the year, at full seasonal latitude (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
+          },
+          "summerTint": {
+            "name": "summerTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the height of summer (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#ffffff"
+          },
+          "winterTint": {
+            "name": "winterTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#c9d3dc"
+          },
+          "seasonGrowth": {
+            "name": "seasonGrowth",
+            "type": "json",
+            "description": "Multiplier on tree regrowth speed (and growth rates) at the height of summer and the depth of winter; it varies linearly between (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.25,
+              "winter": 0.5
+            }
+          },
+          "seasonSpawn": {
+            "name": "seasonSpawn",
+            "type": "json",
+            "description": "Multiplier on creature spawn chance at the height of summer and the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.15,
+              "winter": 0.7
+            }
+          },
           "avgTemperature": {
             "name": "avgTemperature",
             "type": "decimal",
@@ -3512,10 +3716,11 @@
           "dayNightSpeed": {
             "name": "dayNightSpeed",
             "type": "decimal",
-            "description": "Multiplier on the global day-night cycle (1 = normal); varies per tile; drives weather pattern selection and duskfiber luminosity",
+            "description": "Multiplier on how deep this biome's night runs relative to the global WorldClock (1 = it follows the clock exactly, 0 = perpetual dusk); varies per tile; drives weather pattern selection and duskfiber luminosity (Phase 54)",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 1
           }
         },
         "relations": {
@@ -3566,6 +3771,57 @@
             "nullable": false,
             "primaryKey": true,
             "pii": false
+          },
+          "seasonSwing": {
+            "name": "seasonSwing",
+            "type": "decimal",
+            "description": "°C the biome's temperature rises above and falls below its annual average over the year, at full seasonal latitude (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
+          },
+          "summerTint": {
+            "name": "summerTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the height of summer (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#ffffff"
+          },
+          "winterTint": {
+            "name": "winterTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#c9d3dc"
+          },
+          "seasonGrowth": {
+            "name": "seasonGrowth",
+            "type": "json",
+            "description": "Multiplier on tree regrowth speed (and growth rates) at the height of summer and the depth of winter; it varies linearly between (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.25,
+              "winter": 0.5
+            }
+          },
+          "seasonSpawn": {
+            "name": "seasonSpawn",
+            "type": "json",
+            "description": "Multiplier on creature spawn chance at the height of summer and the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.15,
+              "winter": 0.7
+            }
           },
           "avgTemperature": {
             "name": "avgTemperature",
@@ -3762,6 +4018,57 @@
             "primaryKey": true,
             "pii": false
           },
+          "seasonSwing": {
+            "name": "seasonSwing",
+            "type": "decimal",
+            "description": "°C the biome's temperature rises above and falls below its annual average over the year, at full seasonal latitude (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
+          },
+          "summerTint": {
+            "name": "summerTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the height of summer (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#ffffff"
+          },
+          "winterTint": {
+            "name": "winterTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#c9d3dc"
+          },
+          "seasonGrowth": {
+            "name": "seasonGrowth",
+            "type": "json",
+            "description": "Multiplier on tree regrowth speed (and growth rates) at the height of summer and the depth of winter; it varies linearly between (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.25,
+              "winter": 0.5
+            }
+          },
+          "seasonSpawn": {
+            "name": "seasonSpawn",
+            "type": "json",
+            "description": "Multiplier on creature spawn chance at the height of summer and the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.15,
+              "winter": 0.7
+            }
+          },
           "avgTemperature": {
             "name": "avgTemperature",
             "type": "decimal",
@@ -3931,6 +4238,57 @@
             "nullable": false,
             "primaryKey": true,
             "pii": false
+          },
+          "seasonSwing": {
+            "name": "seasonSwing",
+            "type": "decimal",
+            "description": "°C the biome's temperature rises above and falls below its annual average over the year, at full seasonal latitude (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
+          },
+          "summerTint": {
+            "name": "summerTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the height of summer (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#ffffff"
+          },
+          "winterTint": {
+            "name": "winterTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#c9d3dc"
+          },
+          "seasonGrowth": {
+            "name": "seasonGrowth",
+            "type": "json",
+            "description": "Multiplier on tree regrowth speed (and growth rates) at the height of summer and the depth of winter; it varies linearly between (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.25,
+              "winter": 0.5
+            }
+          },
+          "seasonSpawn": {
+            "name": "seasonSpawn",
+            "type": "json",
+            "description": "Multiplier on creature spawn chance at the height of summer and the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.15,
+              "winter": 0.7
+            }
           },
           "avgTemperature": {
             "name": "avgTemperature",
@@ -4102,6 +4460,57 @@
             "primaryKey": true,
             "pii": false
           },
+          "seasonSwing": {
+            "name": "seasonSwing",
+            "type": "decimal",
+            "description": "°C the biome's temperature rises above and falls below its annual average over the year, at full seasonal latitude (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
+          },
+          "summerTint": {
+            "name": "summerTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the height of summer (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#ffffff"
+          },
+          "winterTint": {
+            "name": "winterTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#c9d3dc"
+          },
+          "seasonGrowth": {
+            "name": "seasonGrowth",
+            "type": "json",
+            "description": "Multiplier on tree regrowth speed (and growth rates) at the height of summer and the depth of winter; it varies linearly between (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.25,
+              "winter": 0.5
+            }
+          },
+          "seasonSpawn": {
+            "name": "seasonSpawn",
+            "type": "json",
+            "description": "Multiplier on creature spawn chance at the height of summer and the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.15,
+              "winter": 0.7
+            }
+          },
           "avgTemperature": {
             "name": "avgTemperature",
             "type": "decimal",
@@ -4271,6 +4680,57 @@
             "nullable": false,
             "primaryKey": true,
             "pii": false
+          },
+          "seasonSwing": {
+            "name": "seasonSwing",
+            "type": "decimal",
+            "description": "°C the biome's temperature rises above and falls below its annual average over the year, at full seasonal latitude (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 14
+          },
+          "summerTint": {
+            "name": "summerTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the height of summer (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#ffffff"
+          },
+          "winterTint": {
+            "name": "winterTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#c9d3dc"
+          },
+          "seasonGrowth": {
+            "name": "seasonGrowth",
+            "type": "json",
+            "description": "Multiplier on tree regrowth speed (and growth rates) at the height of summer and the depth of winter; it varies linearly between (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.25,
+              "winter": 0.5
+            }
+          },
+          "seasonSpawn": {
+            "name": "seasonSpawn",
+            "type": "json",
+            "description": "Multiplier on creature spawn chance at the height of summer and the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.15,
+              "winter": 0.7
+            }
           },
           "avgTemperature": {
             "name": "avgTemperature",
@@ -4442,6 +4902,57 @@
             "primaryKey": true,
             "pii": false
           },
+          "seasonSwing": {
+            "name": "seasonSwing",
+            "type": "decimal",
+            "description": "°C the biome's temperature rises above and falls below its annual average over the year, at full seasonal latitude (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 14
+          },
+          "summerTint": {
+            "name": "summerTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the height of summer (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#ffffff"
+          },
+          "winterTint": {
+            "name": "winterTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#c9d3dc"
+          },
+          "seasonGrowth": {
+            "name": "seasonGrowth",
+            "type": "json",
+            "description": "Multiplier on tree regrowth speed (and growth rates) at the height of summer and the depth of winter; it varies linearly between (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.25,
+              "winter": 0.5
+            }
+          },
+          "seasonSpawn": {
+            "name": "seasonSpawn",
+            "type": "json",
+            "description": "Multiplier on creature spawn chance at the height of summer and the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.15,
+              "winter": 0.7
+            }
+          },
           "avgTemperature": {
             "name": "avgTemperature",
             "type": "decimal",
@@ -4612,6 +5123,57 @@
             "primaryKey": true,
             "pii": false
           },
+          "seasonSwing": {
+            "name": "seasonSwing",
+            "type": "decimal",
+            "description": "°C the biome's temperature rises above and falls below its annual average over the year, at full seasonal latitude (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
+          },
+          "summerTint": {
+            "name": "summerTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the height of summer (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#ffffff"
+          },
+          "winterTint": {
+            "name": "winterTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#c9d3dc"
+          },
+          "seasonGrowth": {
+            "name": "seasonGrowth",
+            "type": "json",
+            "description": "Multiplier on tree regrowth speed (and growth rates) at the height of summer and the depth of winter; it varies linearly between (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.25,
+              "winter": 0.5
+            }
+          },
+          "seasonSpawn": {
+            "name": "seasonSpawn",
+            "type": "json",
+            "description": "Multiplier on creature spawn chance at the height of summer and the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.15,
+              "winter": 0.7
+            }
+          },
           "avgTemperature": {
             "name": "avgTemperature",
             "type": "decimal",
@@ -4781,6 +5343,57 @@
             "nullable": false,
             "primaryKey": true,
             "pii": false
+          },
+          "seasonSwing": {
+            "name": "seasonSwing",
+            "type": "decimal",
+            "description": "°C the biome's temperature rises above and falls below its annual average over the year, at full seasonal latitude (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
+          },
+          "summerTint": {
+            "name": "summerTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the height of summer (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#ffffff"
+          },
+          "winterTint": {
+            "name": "winterTint",
+            "type": "string",
+            "description": "Hex multiplier on the ground and foliage colour at the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "#c9d3dc"
+          },
+          "seasonGrowth": {
+            "name": "seasonGrowth",
+            "type": "json",
+            "description": "Multiplier on tree regrowth speed (and growth rates) at the height of summer and the depth of winter; it varies linearly between (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.25,
+              "winter": 0.5
+            }
+          },
+          "seasonSpawn": {
+            "name": "seasonSpawn",
+            "type": "json",
+            "description": "Multiplier on creature spawn chance at the height of summer and the depth of winter (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "summer": 1.15,
+              "winter": 0.7
+            }
           },
           "avgTemperature": {
             "name": "avgTemperature",
@@ -5161,6 +5774,33 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 1
+          },
+          "dayLengthMinutes": {
+            "name": "dayLengthMinutes",
+            "type": "decimal",
+            "description": "Real minutes one in-game day lasts: the world clock advances 1/dayLengthMinutes of a day per real minute (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 24
+          },
+          "yearLengthDays": {
+            "name": "yearLengthDays",
+            "type": "decimal",
+            "description": "In-game days in one year; the seasons cycle once per year (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 32
+          },
+          "axialTilt": {
+            "name": "axialTilt",
+            "type": "decimal",
+            "description": "Degrees the planet's axis leans from its orbit: the sun's declination swings ±axialTilt over a year, which sets day length and season strength by latitude (Phase 54)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 23.5
           },
           "friendSpawnRadius": {
             "name": "friendSpawnRadius",

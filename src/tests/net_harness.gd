@@ -147,6 +147,7 @@ static func steps() -> Array:
 		{ "name": "chop_out_of_reach", "compare": false },
 		{ "name": "packet_cap",        "compare": true },
 		{ "name": "rate_bucket",       "compare": true },
+		{ "name": "clock_synced",      "compare": true },
 		{ "name": "inventory_owner",   "compare": true },
 		{ "name": "equipment_recorded", "compare": true },
 		{ "name": "equipment_delivered", "compare": true },
@@ -325,6 +326,7 @@ func run(root: Node, role: String) -> void:
 	await _step_chop_out_of_reach()
 	await _step_packet_cap()
 	await _step_rate_bucket()
+	await _step_clock_synced()
 	await _step_inventory_owner()
 	await _step_equipment_recorded()
 	await _step_equipment_delivered()
@@ -937,6 +939,38 @@ func _new_identity(old_id: String) -> String:
 		if bound != "" and bound != old_id:
 			return bound
 	return ""
+
+## Step (Phase 54) — the client's world clock tracks the host's.
+##
+## The host shortens its tick to 0.5 s (for the rest of the run) and reports once it has sent
+## six. The client skews its own clock by 0.5 s, waits for six host samples, and then judges
+## its clock against the LAST sample (aged by the real time since it arrived): within a second
+## is agreed. The 10-minute drift bound is the suite's simulated `clock: client stays within
+## 1 s over 10 minutes`; this step proves the same correction over the real socket.
+func _step_clock_synced() -> void:
+	const TICKS := 6
+	if _role == "host":
+		_root.clock_tick_seconds = 0.5
+		var base: int = _root.clock_ticks_sent
+		var ok: bool = await _await_until(func(): return _root.clock_ticks_sent >= base + TICKS, STEP_TIMEOUT_SECS)
+		_report("clock_synced", verdict(ok, true), "synced" if ok else "host_sent_%d" % (_root.clock_ticks_sent - base))
+		return
+	var clock: RefCounted = _root._clock
+	var last := { "days": -1.0, "at": 0 }
+	var on_tick := func(days: float) -> void:
+		last["days"] = days
+		last["at"] = Time.get_ticks_msec()
+	GameBus.world_clock_received.connect(on_tick)
+	clock.time_days += 0.5 / clock.day_seconds()
+	var base_rx: int = _root.clock_ticks_received
+	var got: bool = await _await_until(func(): return _root.clock_ticks_received >= base_rx + TICKS, STEP_TIMEOUT_SECS)
+	GameBus.world_clock_received.disconnect(on_tick)
+	var err_s: float = 1.0e9
+	if got and float(last["days"]) >= 0.0:
+		var aged: float = float(last["days"]) + float(Time.get_ticks_msec() - int(last["at"])) / 1000.0 / clock.day_seconds()
+		err_s = absf(clock.time_days - aged) * clock.day_seconds()
+	var good: bool = got and err_s <= 1.0
+	_report("clock_synced", verdict(good, true), "synced" if good else "got%d-err%.2fs" % [int(got), err_s])
 
 ## Step 14 (Phase 53) — a new player given a friend code spawns beside that friend.
 ##

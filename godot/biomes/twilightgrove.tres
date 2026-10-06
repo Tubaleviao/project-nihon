@@ -5,6 +5,11 @@
 [resource]
 script = ExtResource("1")
 id = ""
+seasonSwing = 10.0
+summerTint = "#ffffff"
+winterTint = "#c9d3dc"
+seasonGrowth = {"summer":1.25,"winter":0.5}
+seasonSpawn = {"summer":1.15,"winter":0.7}
 avgTemperature = 0.0
 avgRainfall = 0.0
 soilFertility = 0.0
@@ -19,6 +24,6 @@ moisture = {"min":0.4,"max":1}
 altitude = {"min":1.5,"max":250}
 rarity = 0.08
 surfaceVeinChance = 0.1
-dayNightSpeed = 0.0
+dayNightSpeed = 1.0
 description = "Eerie glades where day-night cycles run at an accelerated, unpredictable rate, bathing the land in perpetual half-light. Duskwood trees dominate the canopy; lumenfite crystals stud shallow cave walls. Politically neutral zones prized by traders and magic-users."
 tags = ["biome"]

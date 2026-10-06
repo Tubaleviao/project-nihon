@@ -852,6 +852,11 @@ func _update_equipment_pair(viewer: int, subject: int) -> void:
 		_equipment_sent.erase(key)
 		_deliver(viewer, { "type": "peer_equipment_evict", "peer_id": subject })
 
+## Phase 54 — host: send every peer the world clock sample `days` (in-game days).
+func broadcast_world_clock(days: float) -> void:
+	if _role == Role.HOST:
+		_broadcast({ "type": "world_clock", "days": days })
+
 ## Drop every sent-record involving a peer that disconnected.
 func _forget_equipment_pairs(peer_id: int) -> void:
 	_equipment_eval_positions.erase(peer_id)
@@ -1603,6 +1608,9 @@ func _route_h2c(payload: Dictionary) -> void:
 			)
 		"remote_player_state":
 			_route_remote_player_state(payload)
+		"world_clock":
+			# Phase 54 — the host's clock sample; game_root's WorldClock slews to it.
+			GameBus.world_clock_received.emit(float(payload.get("days", 0.0)))
 		"peer_equipment_evict":
 			# Phase 48 — the peer left our AOI; drop what we stored for it.
 			GameBus.peer_equipment_evicted.emit(int(payload.get("peer_id", 0)))

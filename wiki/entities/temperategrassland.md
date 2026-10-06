@@ -15,6 +15,11 @@ Open rolling plains ideal for large settlements, agriculture, and mounted travel
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
+| seasonSwing | decimal | °C the biome's temperature rises above and falls below its annual average over the year, at full seasonal latitude (Phase 54) |
+| summerTint | string | Hex multiplier on the ground and foliage colour at the height of summer (Phase 54) |
+| winterTint | string | Hex multiplier on the ground and foliage colour at the depth of winter (Phase 54) |
+| seasonGrowth | json | Multiplier on tree regrowth speed (and growth rates) at the height of summer and the depth of winter; it varies linearly between (Phase 54) |
+| seasonSpawn | json | Multiplier on creature spawn chance at the height of summer and the depth of winter (Phase 54) |
 | avgTemperature | decimal | °C annual average |
 | avgRainfall | decimal | mm per in-game year |
 | soilFertility | decimal | 0–1; highest of all biomes |

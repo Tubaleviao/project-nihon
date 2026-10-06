@@ -43,6 +43,8 @@ const Diag := preload("res://src/core/diag.gd")
 const MultimeshPool := preload("res://src/core/multimesh_pool.gd")
 const SpatialHash    := preload("res://src/core/spatial_hash.gd")
 const SpawnRoll      := preload("res://src/world/spawn_roll.gd")
+const WorldClock     := preload("res://src/world/world_clock.gd")
+const TerrainSlice   := preload("res://src/terrain/terrain_slice.gd")
 
 ## Global cap on live instances (0 = unbounded). Host-only; see `set_population_cap`.
 var _population_cap: int = 0
@@ -337,6 +339,17 @@ func get_snapshot_creatures() -> Array:
 ## "" and every creature spawns at its full pack size, whatever its chance.
 ## Accounts for engaged (aggressive/fleeing) survivors from a previous despawn so that
 ## a chunk reload never exceeds the pack size.
+## Phase 54 — the world clock: a pack's spawn chance is scaled by the season (fabric
+## `seasonSpawn`) for the chunk's biome and latitude. Null (an isolated rig) leaves it flat.
+var world_clock: RefCounted = null
+
+## The creature spawn-chance multiplier for `chunk_pos` right now (1.0 without a clock).
+func season_spawn_multiplier(chunk_pos: Vector2i, chunk_biome: String) -> float:
+	if world_clock == null:
+		return 1.0
+	var w: float = world_clock.warmth_at(TerrainSlice.latitude_of(chunk_pos.y))
+	return WorldClock.spawn_multiplier(GameData.BIOMES.get(chunk_biome, null), w)
+
 func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 	if not is_authoritative:
 		return   # clients receive creatures from host broadcasts
@@ -351,6 +364,7 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 		var cid: String = str(_instances[iid].get("creature_id"))
 		surviving_by_species[cid] = int(surviving_by_species.get(cid, 0)) + 1
 	var live: int = live_population() if _population_cap > 0 else 0
+	var season_mult: float = season_spawn_multiplier(chunk_pos, chunk_biome)
 	for creature_id in GameData.CREATURES:
 		var res: Resource = GameData.CREATURES[creature_id]
 		if res == null:
@@ -369,7 +383,7 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 				_warned_spawn_fields[creature_id] = true
 				Diag.warn("CreatureSlice: '%s' has no spawnChance/spawnDensity; spawning without a roll" % creature_id)
 			pack = SpawnRoll.pack_size(_world_seed(), chunk_pos, creature_id, pack,
-					1.0 if chance == null else float(chance), 0.0 if amp == null else float(amp))
+					1.0 if chance == null else float(chance) * season_mult, 0.0 if amp == null else float(amp))
 		pack = mini(pack, MAX_PACK_MEMBERS)
 		var to_spawn: int = pack - int(surviving_by_species.get(creature_id, 0))
 		if to_spawn <= 0:

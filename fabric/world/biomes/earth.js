@@ -5,13 +5,19 @@ const { defineEntity } = require('@newel/core')
 // land default is [1.5, 250], so Ocean sits below the sea surface, Beach on the first metre and a
 // half of shore, and Alpine above the tree line.
 function earthBiome({ description, goal, treeDensity, surfaceMaterial, surfaceTint, soilTint, topsoilDepth,
-  temperature, moisture, altitude, avgTemperature, avgRainfall, soilFertility, surfaceVeinChance, rules }) {
+  temperature, moisture, altitude, avgTemperature, avgRainfall, soilFertility, surfaceVeinChance, rules, season = {} }) {
+  const S = { swing: 10, summer: '#ffffff', winter: '#c9d3dc', growth: { summer: 1.25, winter: 0.5 }, spawn: { summer: 1.15, winter: 0.7 }, ...season }
   return defineEntity({
     tags: ['biome'],
     description,
     goal,
     fields: {
       id:             { type: 'uuid', primaryKey: true },
+      seasonSwing:    { type: 'decimal', description: '°C the biome\'s temperature rises above and falls below its annual average over the year, at full seasonal latitude (Phase 54)', defaultValue: S.swing },
+      summerTint:     { type: 'string', description: 'Hex multiplier on the ground and foliage colour at the height of summer (Phase 54)', defaultValue: S.summer },
+      winterTint:     { type: 'string', description: 'Hex multiplier on the ground and foliage colour at the depth of winter (Phase 54)', defaultValue: S.winter },
+      seasonGrowth:   { type: 'json', description: 'Multiplier on tree regrowth speed (and growth rates) at the height of summer and the depth of winter; it varies linearly between (Phase 54)', defaultValue: S.growth },
+      seasonSpawn:    { type: 'json', description: 'Multiplier on creature spawn chance at the height of summer and the depth of winter (Phase 54)', defaultValue: S.spawn },
       avgTemperature: { type: 'decimal', description: '°C annual average', defaultValue: avgTemperature },
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year', defaultValue: avgRainfall },
       soilFertility:  { type: 'decimal', description: '0–1; affects crop growth rates', defaultValue: soilFertility },
@@ -75,7 +81,7 @@ module.exports = {
     goal: 'The cold pole of the climate: cold ground with little to harvest',
     treeDensity: 0, surfaceMaterial: 'Snow', surfaceTint: '#dfe8ea', soilTint: '#7d7a6e', topsoilDepth: 1.5,
     temperature: { min: 0, max: 0.2 }, moisture: ALL, altitude: LAND,
-    avgTemperature: -12, avgRainfall: 250, soilFertility: 0.05, surfaceVeinChance: 0.2,
+    season: { swing: 14 }, avgTemperature: -12, avgRainfall: 250, soilFertility: 0.05, surfaceVeinChance: 0.2,
     rules: ['No trees grow on the tundra', 'Ferrite veins outcrop at weight 0.3'],
   }),
 
@@ -84,7 +90,7 @@ module.exports = {
     goal: 'Make mountains a biome of their own: cold, bare and high',
     treeDensity: 0, surfaceMaterial: 'Snow', surfaceTint: '#f2f6f7', soilTint: '#8c8c93', topsoilDepth: 1,
     temperature: ALL, moisture: ALL, altitude: { min: 250, max: 100000 },
-    avgTemperature: -5, avgRainfall: 900, soilFertility: 0, surfaceVeinChance: 0.4,
+    season: { swing: 14 }, avgTemperature: -5, avgRainfall: 900, soilFertility: 0, surfaceVeinChance: 0.4,
     rules: ['No trees grow above the tree line', 'Ferrite and Aethermite veins outcrop at weight 0.5 on bare peaks'],
   }),
 

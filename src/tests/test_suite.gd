@@ -15,6 +15,7 @@ const CreatureAI      := preload("res://src/creature/creature_ai.gd")
 const TamingSlice     := preload("res://src/creature/taming_slice.gd")
 const TerrainSlice    := preload("res://src/terrain/terrain_slice.gd")
 const SpawnRoll       := preload("res://src/world/spawn_roll.gd")
+const WorldClock      := preload("res://src/world/world_clock.gd")
 const ChunkManager    := preload("res://src/terrain/chunk_manager.gd")
 const PersistenceSlice:= preload("res://src/persistence/persistence_slice.gd")
 const LootSlice       := preload("res://src/loot/loot_slice.gd")
@@ -314,6 +315,12 @@ func run() -> void:
 	_run_test("chunk: unload preserves edits on reload",        _test_chunk_unload_preserves_edits)
 	_run_test("chunk: creature spawn scales per chunk",         _test_chunk_creature_spawn_per_chunk)
 	_run_test("chunk: tree spawn scales per chunk",             _test_chunk_tree_spawn_per_chunk)
+	_run_test("clock: hemispheres are opposite",                 _test_clock_hemispheres_opposite)
+	_run_test("clock: day length varies by latitude",            _test_clock_day_length_by_latitude)
+	_run_test("clock: sun follows the hour and the season",      _test_clock_sun_elevation)
+	_run_test("clock: seasonal temperature, tint and snow",      _test_clock_season_effects)
+	_run_test("clock: client stays within 1 s over 10 minutes",  _test_clock_client_sync)
+	_run_test("clock: persistence, HUD text and fabric values",  _test_clock_persistence_and_fabric)
 	_run_test("spawn: hash bits are independent",                _test_spawn_roll_mix_avalanche)
 	_run_test("spawn: hash output pinned",                       _test_spawn_roll_mix_pinned)
 	_run_test("spawn: seeded roll, density and pack size",       _test_spawn_roll_pure)
@@ -13473,3 +13480,116 @@ func _test_spawn_registry_placement() -> void:
 	reg.set_friend_locator(func(h: String) -> Variant: return Vector3(5.0, 5.0, 5.0) if h == ghost else null)
 	assert_eq(reg.friend_position(ghost), Vector3(5.0, 5.0, 5.0), "an offline friend is located by the disk locator")
 	reg.free()
+
+
+# ---------------------------------------------------------------------------
+# World clock tests (Phase 54)
+# ---------------------------------------------------------------------------
+
+func _clock_at_year_fraction(yf: float) -> RefCounted:
+	var c := WorldClock.new()
+	c.time_days = yf * c.year_length_days + 0.5   # solar noon
+	return c
+
+func _test_clock_hemispheres_opposite() -> void:
+	var summer_north := _clock_at_year_fraction(0.25)
+	assert_eq(summer_north.season_at(45.0), "summer", "+45 is in summer at the northern solstice")
+	assert_eq(summer_north.season_at(-45.0), "winter", "-45 is in winter on the same date")
+	assert_true(summer_north.warmth_at(45.0) > 0.99 and summer_north.warmth_at(-45.0) < -0.99, "warmth is +1 / -1")
+	var winter_north := _clock_at_year_fraction(0.75)
+	assert_eq(winter_north.season_at(45.0), "winter", "+45 in winter half a year on")
+	assert_eq(winter_north.season_at(-45.0), "summer", "-45 in summer half a year on")
+	assert_eq(_clock_at_year_fraction(0.0).season_at(45.0), "spring", "equinox: northern spring")
+	assert_eq(_clock_at_year_fraction(0.0).season_at(-45.0), "autumn", "equinox: southern autumn")
+	assert_true(absf(summer_north.warmth_at(0.0)) < 1e-6, "no seasons on the equator")
+	assert_true(summer_north.declination() > 23.0, "declination is +tilt at the northern solstice")
+
+func _test_clock_day_length_by_latitude() -> void:
+	var tilt: float = WorldClock.new().axial_tilt
+	var decl: float = WorldClock.declination_deg(0.25, tilt)
+	assert_true(WorldClock.daylight_fraction(60.0, decl) > WorldClock.daylight_fraction(0.0, decl),
+			"daylight is longer at +60 than at the equator at the solstice")
+	assert_true(absf(WorldClock.daylight_fraction(0.0, decl) - 0.5) < 1e-6, "the equator always has half a day")
+	assert_true(WorldClock.daylight_fraction(-60.0, decl) < 0.5, "and the south has the short day")
+	assert_eq(WorldClock.daylight_fraction(85.0, decl), 1.0, "polar day")
+	assert_eq(WorldClock.daylight_fraction(-85.0, decl), 0.0, "polar night")
+	assert_true(absf(WorldClock.daylight_fraction(60.0, 0.0) - 0.5) < 1e-6, "equinox: 12 h everywhere")
+
+func _test_clock_sun_elevation() -> void:
+	var noon: float = WorldClock.sun_elevation_deg(45.0, 0.0, 0.5)
+	assert_true(absf(noon - 45.0) < 1e-6, "equinox noon at 45 N: sun 45 degrees up")
+	assert_true(WorldClock.sun_elevation_deg(45.0, 0.0, 0.0) < 0.0, "midnight: below the horizon")
+	assert_true(WorldClock.sun_elevation_deg(45.0, 23.5, 0.5) > WorldClock.sun_elevation_deg(45.0, -23.5, 0.5),
+			"the summer sun stands higher than the winter sun")
+	assert_eq(WorldClock.daylight_level(-20.0), 0.0, "night is dark")
+	assert_eq(WorldClock.daylight_level(40.0), 1.0, "high sun is full light")
+	assert_eq(WorldClock.biome_daylight(0.0, 1.0), 0.0, "night speed 1 follows the clock")
+	assert_eq(WorldClock.biome_daylight(0.0, 0.0), 0.5, "night speed 0 stays at dusk")
+
+func _test_clock_season_effects() -> void:
+	var forest: Variant = GameData.BIOMES["TemperateForest"]
+	var tundra: Variant = GameData.BIOMES["Tundra"]
+	assert_true(WorldClock.growth_multiplier(forest, 1.0) > 1.0, "trees regrow faster in summer")
+	assert_true(WorldClock.growth_multiplier(forest, -1.0) < 1.0, "and slower in winter")
+	assert_true(WorldClock.spawn_multiplier(forest, 1.0) > WorldClock.spawn_multiplier(forest, -1.0), "more spawns in summer")
+	assert_true(WorldClock.season_tint(forest, 1.0) != WorldClock.season_tint(forest, -1.0), "the tint changes with the season")
+	assert_eq(WorldClock.season_tint(null, 1.0), Color.WHITE, "no biome, no tint")
+	var swing: float = float(forest.get("seasonSwing"))
+	var winter_t: float = WorldClock.seasonal_temperature(float(forest.get("avgTemperature")), swing, -1.0)
+	var summer_t: float = WorldClock.seasonal_temperature(float(forest.get("avgTemperature")), swing, 1.0)
+	assert_true(summer_t > winter_t, "summer is warmer than winter")
+	assert_true(WorldClock.is_snowing_ground(WorldClock.seasonal_temperature(float(tundra.get("avgTemperature")), float(tundra.get("seasonSwing")), 0.0)),
+			"tundra ground is snow-covered at an equinox")
+	assert_false(WorldClock.is_snowing_ground(summer_t), "temperate summer ground is bare")
+	# Slices consult the clock; without a biome (isolated rig) they stay flat.
+	var t := _make_tree_slice()
+	var c := WorldClock.new()
+	t.world_clock = c
+	assert_eq(t.regrow_seconds(Vector2i(0, 0)) > 0.0, true, "regrow seconds is positive with a clock")
+	t.world_clock = null
+	assert_eq(t.regrow_seconds(Vector2i(0, 0)), TreeSlice.RESPAWN_SECONDS, "no clock: flat regrow time")
+	t.free()
+
+## A client advancing 0.2 % fast (a worst-case frame-time skew), corrected by a host tick every
+## 5 s with 100 ms of latency, never strays more than a second from the host over 10 minutes.
+func _test_clock_client_sync() -> void:
+	var host := WorldClock.new()
+	var client := WorldClock.new()
+	client.time_days = host.time_days + 0.4 / host.day_seconds()   # starts 0.4 s ahead
+	var worst: float = 0.0
+	var step := 0.05
+	var elapsed := 0.0
+	var next_tick := WorldClock.TICK_SECONDS
+	while elapsed < 600.0:
+		host.advance(step)
+		client.advance(step * 1.002)
+		elapsed += step
+		if elapsed >= next_tick:
+			next_tick += WorldClock.TICK_SECONDS
+			# The sample left the host 100 ms ago: the client applies the time it WAS.
+			client.apply_host_time(host.time_days - 0.1 / host.day_seconds())
+		worst = maxf(worst, absf(host.time_days - client.time_days) * host.day_seconds())
+	assert_true(worst < 1.0, "client within 1 s of the host over 10 minutes (worst %.3f s)" % worst)
+	# A large error snaps rather than crawling.
+	client.apply_host_time(host.time_days + 100.0 / host.day_seconds())
+	assert_true(absf(client.time_days - (host.time_days + 100.0 / host.day_seconds())) < 1e-9, "a >2 s error snaps to the host")
+
+func _test_clock_persistence_and_fabric() -> void:
+	var a := WorldClock.new()
+	a.time_days = 11.625
+	var b := WorldClock.new()
+	b.from_data(a.to_data())
+	assert_eq(b.time_days, 11.625, "the clock round-trips through the world record")
+	b.from_data({ "time_days": -3.0 })
+	assert_eq(b.time_days, 11.625, "a negative time is ignored")
+	b.from_data("junk")
+	assert_eq(b.time_days, 11.625, "a malformed record is ignored")
+	assert_eq(WorldClock.hud_text(11.625, 32.0, 45.0), "Day 12 \u00b7 15:00 \u00b7 Summer", "HUD line: day, time, season")
+	var ws: Variant = GameData.WORLD_SYSTEMS["WorldSystem"]
+	assert_eq(a.day_length_minutes, float(ws.get("dayLengthMinutes")), "day length is a fabric fact")
+	assert_eq(a.year_length_days, float(ws.get("yearLengthDays")), "year length is a fabric fact")
+	assert_eq(a.axial_tilt, float(ws.get("axialTilt")), "axial tilt is a fabric fact")
+	for key in GameData.BIOMES:
+		var biome: Variant = GameData.BIOMES[key]
+		assert_true(biome.get("seasonSwing") != null and biome.get("seasonGrowth") is Dictionary and biome.get("seasonSpawn") is Dictionary,
+				"%s declares its seasonal modifiers" % key)
