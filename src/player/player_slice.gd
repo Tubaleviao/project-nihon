@@ -495,7 +495,11 @@ func _swimming_now() -> bool:
 	if terrain_slice == null or not terrain_slice.has_method("get_height_at"):
 		return false
 	var p := _body.global_position
-	return is_swimming(float(terrain_slice.get_height_at(Vector2(p.x, p.z))), WorldShape.sea_level())
+	var sea := WorldShape.sea_level()
+	# Only a body at or below the surface swims: one on a platform or falling in from a cliff does not.
+	if p.y > sea + WADE_DEPTH:
+		return false
+	return is_swimming(float(terrain_slice.get_height_at(Vector2(p.x, p.z))), sea)
 
 func _move(delta: float) -> void:
 	var swimming := _swimming_now()

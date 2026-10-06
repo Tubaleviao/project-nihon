@@ -290,6 +290,7 @@ func _ready() -> void:
 	# come off the generated fabric resources (`depthBand`, `leyGated`), which is why this
 	# cannot be a `const`.
 	OreField.warm()
+	WorldShape.warm()
 	_world_floor = StaticBody3D.new()
 	_world_floor.name = "WorldFloor"
 	_world_floor.collision_layer = TERRAIN_COLLISION_LAYER

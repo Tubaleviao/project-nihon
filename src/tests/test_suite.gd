@@ -13052,10 +13052,17 @@ func _test_distant_ring() -> void:
 	var verts: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 	var inside := 0
 	for v in verts:
-		# A kept cell may poke one cell (35 m) into the window; nothing reaches further in.
-		if absf(v.x - 16.0) < window_m - 40.0 and absf(v.z - 16.0) < window_m - 40.0:
+		# The hole is the window less one ring cell and one chunk; a kept cell may poke one cell into it.
+		var cell_m := 2.0 * d.ring_half_m / 64.0
+		var hole_m := window_m - cell_m - 32.0
+		if absf(v.x - 16.0) < hole_m - cell_m - 1.0 and absf(v.z - 16.0) < hole_m - cell_m - 1.0:
 			inside += 1
 	assert_eq(inside, 0, "the ring leaves the voxel window to the voxel chunks")
+	var normals: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_NORMAL]
+	assert_eq(normals.size(), verts.size(), "every ring vertex has a normal")
+	assert_true(normals.size() > 0 and normals[0].y > 0.0, "ring normals face up")
+	d.world_seed = 8
+	assert_true(d.rebuild(Vector2(16.0, 16.5), radius), "a new world seed rebuilds the ring in place")
 	d.free()
 
 func _test_ocean_spawns_no_land_tables() -> void:
