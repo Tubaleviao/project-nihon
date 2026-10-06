@@ -343,6 +343,7 @@ func _ensure_record_loaded(player_id: String) -> void:
 ## safe (which is why a reconnect re-loads rather than re-binds). Returns the id
 ## the connection held ("" when the peer was never bound).
 func unbind_peer(peer_id: int) -> String:
+	_friend_codes.erase(peer_id)
 	if not _peer_ids.has(peer_id):
 		return ""
 	var player_id := str(_peer_ids[peer_id])

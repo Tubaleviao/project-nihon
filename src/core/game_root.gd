@@ -120,6 +120,8 @@ var _colonization := ColonizationMap.new()
 var _friend_code_arg: String = ""
 ## Phase 53 — where the LOCAL player (host or offline) was placed on a first boot, or null.
 var _local_spawn: Variant = null
+## Phase 53 — client: the respawn point was taken from the first snapshot's own position.
+var _client_respawn_point_set: bool = false
 
 ## Phase 29 — the AOI grid cell each connected peer last reported, so a client
 ## moving into a new region triggers a re-scoped snapshot (host side only).
@@ -1513,7 +1515,11 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 		var arr = own.get("position", [])
 		if arr is Array and (arr as Array).size() >= 3:
 			_player.spawn_at(Vector3(float(arr[0]), float(arr[1]), float(arr[2])))
-			_player.respawn_point = _player.get_position()
+			if not _client_respawn_point_set:
+				# Only the first snapshot carries the placement; later AOI re-scoped snapshots
+				# carry wherever the player has since walked, which is not a spawn point.
+				_player.respawn_point = _player.get_position()
+				_client_respawn_point_set = true
 		var hp := float(own.get("hp", -1.0))
 		if hp >= 0.0:
 			_player.set_hp(hp)
