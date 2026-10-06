@@ -80,6 +80,10 @@ var _inventory_usage: Label = null
 var _inventory_grid: GridContainer = null
 var _inventory_empty: Label = null
 var _character_stats: Label = null
+## Phase 53 — the player's own public handle (their friend code) and the spawn note.
+var own_handle: String = ""
+var _friend_code_label: Label = null
+var _spawn_notice_label: Label = null
 var _character_grid: GridContainer = null
 var _slot_menu: PopupMenu = null
 var _slot_menu_item: String = ""
@@ -113,6 +117,7 @@ var _character_rows_signature: int = 0
 func _ready() -> void:
 	_build_ui()
 	GameBus.craft_resolved.connect(_on_craft_resolved)
+	GameBus.spawn_notice.connect(_on_spawn_notice)
 	GameBus.repair_resolved.connect(_on_repair_resolved)
 	GameBus.research_resolved.connect(_on_research_resolved)
 	GameBus.technology_unlocked.connect(_on_technology_unlocked)
@@ -674,6 +679,23 @@ func _on_character_appearance_changed(iid: String, _appearance: Dictionary) -> v
 	if character_slice == null or str(iid) == str(character_slice.get_player_character()):
 		refresh_character()
 
+## The friend-code line of the Character window. Pure.
+static func friend_code_text(handle: String) -> String:
+	return "Friend code: %s" % (handle if handle != "" else "(not assigned yet)")
+
+func set_own_handle(handle: String) -> void:
+	own_handle = handle
+	if _friend_code_label != null:
+		_friend_code_label.text = friend_code_text(handle)
+
+func _on_copy_friend_code_pressed() -> void:
+	if own_handle != "":
+		DisplayServer.clipboard_set(own_handle)
+
+func _on_spawn_notice(message: String) -> void:
+	if _spawn_notice_label != null:
+		_spawn_notice_label.text = message
+
 func refresh_character() -> void:
 	if _character_grid == null:
 		return
@@ -1175,6 +1197,20 @@ func _build_character_content() -> Control:
 	_character_stats = Label.new()
 	_character_stats.add_theme_font_size_override("font_size", 15)
 	vbox.add_child(_character_stats)
+	# Phase 53 — the friend code: the handle another player enters to spawn beside this one.
+	var code_row := HBoxContainer.new()
+	code_row.add_theme_constant_override("separation", 6)
+	_friend_code_label = Label.new()
+	_friend_code_label.text = friend_code_text(own_handle)
+	code_row.add_child(_friend_code_label)
+	var copy_btn := Button.new()
+	copy_btn.text = "Copy"
+	copy_btn.pressed.connect(_on_copy_friend_code_pressed)
+	code_row.add_child(copy_btn)
+	vbox.add_child(code_row)
+	_spawn_notice_label = Label.new()
+	_spawn_notice_label.add_theme_font_size_override("font_size", 13)
+	vbox.add_child(_spawn_notice_label)
 	_character_grid = GridContainer.new()
 	_character_grid.columns = INVENTORY_COLUMNS
 	vbox.add_child(_character_grid)

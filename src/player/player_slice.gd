@@ -579,12 +579,16 @@ func _die(killer_id: String = "") -> void:
 	_respawn_timer = RESPAWN_DELAY
 	GameBus.player_died.emit(get_position(), killer_id)
 
+## Phase 53 — where a respawn puts the body: the player's own spawn point (game_root sets it from
+## the placement), not a fixed world coordinate that may now be open ocean.
+var respawn_point := Vector3(16.0, 12.0, 16.0)
+
 func _respawn() -> void:
 	_hp = MAX_HP
 	_alive = true
 	_respawn_timer = -1.0
 	# Teleport back to the world spawn point.
-	var spawn_pos := Vector3(16.0, 12.0, 16.0)
+	var spawn_pos := respawn_point
 	spawn_at(spawn_pos)
 	_update_hp_bar()
 	_broadcast_state()

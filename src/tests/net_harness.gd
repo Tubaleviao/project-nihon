@@ -154,6 +154,7 @@ static func steps() -> Array:
 		{ "name": "reconnect_alive",   "compare": true },
 		{ "name": "disconnect_evicts", "compare": true },
 		{ "name": "far_peers_simulated", "compare": true },
+		{ "name": "spawn_near_friend", "compare": true },
 	]
 
 ## The step names, comma-joined — the payload of the `plan` line the runner prints
@@ -284,6 +285,12 @@ func run(root: Node, role: String) -> void:
 		if _failed:
 			return
 		_root._boot_server()
+		# Every scenario step stands its peer at RENDEZVOUS (the pinned seed's tree chunk), so a
+		# join WITHOUT a friend code is placed there; the friend-code step uses the real placer.
+		_root._registry.set_spawn_placer(func(player_id: String, code: String) -> Dictionary:
+			if code == "":
+				return { "position": RENDEZVOUS, "source": "search", "message": "" }
+			return _root._place_new_player(player_id, code))
 		# Booting adopts the seed of any world record on disk, which silently replaces the
 		# pinned one; a run on the wrong seed would fail for an unrelated reason.
 		if int(_root._terrain.get_world_seed()) != _pinned_seed:
@@ -325,6 +332,7 @@ func run(root: Node, role: String) -> void:
 	await _step_reconnect_alive()
 	await _step_disconnect_evicts()
 	await _step_far_peers_simulated()
+	await _step_spawn_near_friend()
 	_finish()
 
 ## End this process, with the run's own verdict carried in the exit code.
@@ -920,6 +928,60 @@ func _step_far_peers_simulated() -> void:
 		})
 		await _await_settle(1.0)
 	_report("far_peers_simulated", "ok", "far-window-simulated")
+
+## A player id bound to some connection that is not `old_id` ("" when none): the identity the
+## rejoining client was minted.
+func _new_identity(old_id: String) -> String:
+	for pid in _root._networking._player_ids:
+		var bound := str(_root._networking._player_ids[pid])
+		if bound != "" and bound != old_id:
+			return bound
+	return ""
+
+## Step 14 (Phase 53) — a new player given a friend code spawns beside that friend.
+##
+## The client drops its connection and rejoins as a NEW player (no claimed id) carrying the
+## handle of the identity it just had, which is OFFLINE by now and whose record on disk still
+## holds the RENDEZVOUS it was placed at — so the host finds the friend through the disk and
+## places the newcomer within the fabric's radius of it. The client's own body arrives within
+## the same radius of RENDEZVOUS. Both sides report the same token.
+func _step_spawn_near_friend() -> void:
+	var friend_pos := Vector2(RENDEZVOUS.x, RENDEZVOUS.z)
+	var radius: float = float(_root.SpawnFinder.rule()["friend_radius"]) + 1.0
+	if _role == "host":
+		var old_id := _bound_player_id
+		var ok: bool = await _await_until(func(): return _new_identity(old_id) != "", 60.0)
+		if not ok:
+			_report("spawn_near_friend", "fail", "no_new_identity")
+			return
+		var fresh := _new_identity(old_id)
+		var arr: Variant = _root._registry.get_record(fresh).get("position", [])
+		var d: float = 1.0e12
+		if arr is Array and (arr as Array).size() >= 3:
+			d = Vector2(float(arr[0]), float(arr[2])).distance_to(friend_pos)
+		_report("spawn_near_friend", verdict(d <= radius, true),
+			"near-friend" if d <= radius else "placed_%dm_away" % int(d))
+		return
+	var old_handle := str(_root._networking.claimed_handle)
+	_root._networking.disconnect_all()
+	await _await_settle(RECONNECT_WAIT_SECS)
+	_root._networking.claimed_player_id = ""
+	_root._networking.friend_code = old_handle
+	if _root._networking.join(_root._host_address, _root._networking.DEFAULT_PORT) != OK:
+		_report("spawn_near_friend", "fail", "rejoin_failed")
+		return
+	_root._snapshot_pending = true
+	_root._handshake_elapsed = 0.0
+	_root._handshake_retries = 0
+	_root._networking.request_handshake()
+	var arrived: bool = await _await_until(
+		func(): return str(_root._networking.claimed_handle) not in ["", old_handle] and not _root._snapshot_pending,
+		STEP_TIMEOUT_SECS * 2.0)
+	var body: Vector3 = _root._player.get_position()
+	var d: float = Vector2(body.x, body.z).distance_to(friend_pos)
+	var good: bool = arrived and d <= radius
+	_report("spawn_near_friend", verdict(good, true),
+		"near-friend" if good else "not_near-arrived%d-%dm" % [int(arrived), int(d)])
 
 # ---------------------------------------------------------------------------
 # Plumbing

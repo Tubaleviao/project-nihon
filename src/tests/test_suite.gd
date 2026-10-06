@@ -545,6 +545,10 @@ func run() -> void:
 	_run_test("region: a Phase 51 save migrates with every edit intact", _test_region_migrates_monolith)
 	_run_test("region: a full save erases compacted chunks; migration keeps newer region data", _test_region_full_save_erases_and_migration_keeps_newer)
 	_run_test("region: an unreadable region file is never overwritten by a save", _test_region_unreadable_not_overwritten)
+	_run_test("spawn: new players avoid colonized regions", _test_spawn_avoids_colonized)
+	_run_test("spawn: friend code lands near the friend", _test_spawn_friend_near)
+	_run_test("spawn: the colonization map scores, persists and drops malformed data", _test_colonization_map)
+	_run_test("spawn: a fresh join is placed, a reconnect is not", _test_spawn_registry_placement)
 	_run_test("region: 1,000 regions on disk, only the ones near a window are resident", _test_region_streams_only_near_windows)
 	_run_test("chunk: each peer has a window and chunks are reference counted", _test_chunk_peer_windows_refcount)
 	_run_test("chunk: two peers 100 km apart each have creatures simulated", _test_chunk_far_peers_simulated)
@@ -10166,8 +10170,8 @@ func _test_net_harness_step_table() -> void:
 		names[str(s.get("name", ""))] = true
 	assert_eq(names.size(), steps.size(), "step names are unique — the driver keys on them")
 	assert_eq(str(steps[0].get("name", "")), "handshake", "the scenario starts with the handshake")
-	assert_eq(str(steps[steps.size() - 1].get("name", "")), "far_peers_simulated",
-		"and ends with the far peer's window (Phase 52), after the eviction the reconnect produced")
+	assert_eq(str(steps[steps.size() - 1].get("name", "")), "spawn_near_friend",
+		"and ends with the friend-code spawn (Phase 53), the far peer rejoining as a new player")
 
 ## Phase 39 — the wire is a text channel between two processes, so the line format and its
 ## parser are load-bearing: if they disagreed, the driver would silently compare nothing
@@ -13314,3 +13318,158 @@ func _test_chunk_far_peers_simulated() -> void:
 	for k in ["cm", "voxel", "terrain", "player"]:
 		rig[k].free()
 	creatures.free()
+
+
+# ---------------------------------------------------------------------------
+# Phase 53 — spawn placement and friend codes
+# ---------------------------------------------------------------------------
+
+const SpawnFinderScript := preload("res://src/world/spawn_finder.gd")
+const WorldShapeScript := preload("res://src/terrain/world_shape.gd")
+const ColonizationMapScript := preload("res://src/world/colonization_map.gd")
+
+## Distance in metres from world (x, z) to the rectangle of `region`, X the short way round.
+## Independent of `ColonizationMap.is_near_colonized`, so the avoidance test is not circular.
+func _dist_to_region(x: float, z: float, region: Vector2i) -> float:
+	var m := ColonizationMapScript.REGION_METERS
+	var circ := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var dx := absf(fposmod(x - (float(region.x) + 0.5) * m + circ * 0.5, circ) - circ * 0.5)
+	var dz := absf(z - (float(region.y) + 0.5) * m)
+	return Vector2(maxf(dx - m * 0.5, 0.0), maxf(dz - m * 0.5, 0.0)).length()
+
+func _test_spawn_avoids_colonized() -> void:
+	var terrain := TerrainSlice.new()
+	terrain.set_world_seed(7)
+	var height_fn := func(p: Vector2) -> float: return terrain.get_height_at(p)
+	var rule := SpawnFinderScript.rule()
+	var min_d := float(rule["min_colonized_distance"])
+	var empty := ColonizationMapScript.new()
+	# 1,000 colonized regions: the regions the first 100 spawns would have taken (so the
+	# avoidance has to move them), plus a spread of others.
+	var map := ColonizationMapScript.new()
+	var first: Array = []
+	for i in range(100):
+		var p: Variant = SpawnFinderScript.find_new(7, "player_%d" % i, empty, height_fn)
+		assert_true(p != null, "an empty world has a spawn for player %d" % i)
+		first.append(p)
+		map.note_home(Vector2i(floori(p.x / TerrainSlice.CHUNK_METERS), floori(p.z / TerrainSlice.CHUNK_METERS)))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 53
+	while map.region_count() < 1000:
+		map.note_home(Vector2i(rng.randi_range(-3000, 3000) * 32, rng.randi_range(-3000, 3000) * 32))
+	var regions := map.colonized_regions(float(rule["colonized_score"]))
+	assert_eq(regions.size(), 1000, "1,000 colonized regions are seeded")
+	var moved := 0
+	for i in range(100):
+		var p: Variant = SpawnFinderScript.find_new(7, "player_%d" % i, map, height_fn)
+		assert_true(p != null, "a colonized world still has a spawn for player %d" % i)
+		if p == null:
+			continue
+		var clear := true
+		for r in regions:
+			if _dist_to_region(p.x, p.z, r) < min_d:
+				clear = false
+				break
+		assert_true(clear, "spawn %d is at least %.0f m from every colonized region" % [i, min_d])
+		assert_true(SpawnFinderScript.is_standable(7, p.x, p.z, rule["habitable"], height_fn), "spawn %d is habitable, dry, flat land" % i)
+		assert_true(absf(p.y - 1.0 - float(height_fn.call(Vector2(p.x, p.z)))) <= 0.001, "spawn %d stands on the sampled surface" % i)
+		if first[i] != null and (p.x != first[i].x or p.z != first[i].z):
+			moved += 1
+	assert_true(moved > 0, "the colonized regions pushed some spawns elsewhere")
+	var a: Variant = SpawnFinderScript.find_new(7, "player_3", map, height_fn)
+	var b: Variant = SpawnFinderScript.find_new(7, "player_3", map, height_fn)
+	assert_eq(a, b, "the search is deterministic for one player id")
+	terrain.free()
+
+func _test_spawn_friend_near() -> void:
+	var terrain := TerrainSlice.new()
+	terrain.set_world_seed(7)
+	var height_fn := func(p: Vector2) -> float: return terrain.get_height_at(p)
+	var radius := float(SpawnFinderScript.rule()["friend_radius"])
+	for i in range(5):
+		var friend: Variant = SpawnFinderScript.find_new(7, "friend_%d" % i, null, height_fn)
+		assert_true(friend != null, "friend %d stands somewhere" % i)
+		var center := Vector2(friend.x, friend.z)
+		var p: Variant = SpawnFinderScript.find_near(7, "newcomer_%d" % i, center, radius, height_fn)
+		assert_true(p != null, "a spawn exists near friend %d" % i)
+		if p == null:
+			continue
+		assert_true(Vector2(p.x, p.z).distance_to(center) <= radius + 0.01, "spawn %d is within the friend radius" % i)
+		var ground := float(height_fn.call(Vector2(p.x, p.z)))
+		assert_true(absf(p.y - 1.0 - ground) <= 0.001, "spawn %d is on the ground" % i)
+		assert_true(ground > WorldShapeScript.sea_level(), "spawn %d is not in water" % i)
+		var chunk := Vector2i(floori(p.x / TerrainSlice.CHUNK_METERS), floori(p.z / TerrainSlice.CHUNK_METERS))
+		assert_true(not (["Ocean", "VoidRift"] as Array).has(TerrainSlice.biome_for_chunk(chunk, 7)), "spawn %d is not in an unsafe biome" % i)
+	# Open ocean: nothing qualifies, and the caller gets null rather than a drowned spawn.
+	var ocean := Vector2.ZERO
+	for cx in range(0, 4000, 40):
+		var c := Vector2i(cx, 900)
+		if TerrainSlice.biome_for_chunk(c, 7) == "Ocean" and float(height_fn.call(Vector2(cx * 32.0, 900 * 32.0))) < -10.0:
+			ocean = Vector2(cx * 32.0, 900 * 32.0)
+			break
+	if ocean != Vector2.ZERO:
+		assert_eq(SpawnFinderScript.find_near(7, "newcomer", ocean, 20.0, height_fn), null, "no spawn in open water")
+	terrain.free()
+
+func _test_colonization_map() -> void:
+	var m := ColonizationMapScript.new()
+	assert_true(not m.is_colonized(Vector2i(2, 3), 1.0), "an untouched region is not colonized")
+	assert_true(m.note_edited_chunk(Vector2i(70, 100)), "the first edit of a chunk counts")
+	assert_true(not m.note_edited_chunk(Vector2i(70, 100)), "a second edit of the same chunk does not")
+	assert_eq(m.score(Vector2i(2, 3)), 1.0, "one edited chunk scores one")
+	m.note_home(Vector2i(70, 100))
+	assert_eq(m.score(Vector2i(2, 3)), 11.0, "a home adds ten")
+	m.note_presence(Vector2i(500, 500), 1000.0)
+	assert_eq(m.score(Vector2i(15, 15), 1000.0), 1.0, "recent presence scores one")
+	assert_eq(m.score(Vector2i(15, 15), 1000.0 + 8.0 * 86400.0), 0.0, "old presence scores nothing")
+	var copy := ColonizationMapScript.new()
+	copy.from_data(m.to_data())
+	assert_eq(copy.score(Vector2i(2, 3)), 11.0, "the map survives a to_data / from_data round trip")
+	copy.from_data({ "regions": { "1,2": { "edits": 4 }, "bad": { "edits": 9 }, "3,4": "x", "5,6": { "edits": -3, "homes": "no" } } })
+	assert_eq(copy.region_count(), 2, "malformed entries are dropped")
+	assert_eq(copy.score(Vector2i(1, 2)), 4.0, "a good entry keeps its score")
+	copy.from_data("not a dictionary")
+	assert_eq(copy.region_count(), 0, "a non-dictionary record yields an empty map")
+	var wrap := ColonizationMapScript.new()
+	wrap.note_home(Vector2i(0, 0))
+	var ring := TerrainSlice.circumference_chunks() / 32
+	assert_true(wrap.is_near_colonized(-10.0, 10.0, 100.0, 1.0), "distance is measured from the region's edge")
+	assert_true(wrap.is_near_colonized(float(ring) * ColonizationMapScript.REGION_METERS - 50.0, 10.0, 100.0, 1.0), "distance wraps across the antimeridian")
+	assert_true(not wrap.is_near_colonized(5000.0, 10.0, 100.0, 1.0), "a far point is not near")
+	var seeded := ColonizationMapScript.new()
+	seeded.seed_from_regions([Vector2i(4, 4)])
+	seeded.seed_from_regions([Vector2i(4, 4)])
+	assert_eq(seeded.score(Vector2i(4, 4)), 1.0, "seeding from region files is idempotent")
+
+func _test_spawn_registry_placement() -> void:
+	var reg := PlayerRegistry.new()
+	reg.is_authoritative = true
+	var calls: Array = []
+	reg.set_spawn_placer(func(pid: String, code: String) -> Dictionary:
+		calls.append([pid, code])
+		return { "position": Vector3(1234.0, 9.0, -777.0), "source": "search", "message": "" })
+	var friend_handle := reg.public_handle("player_1_1_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	reg.note_friend_code(5, friend_handle)
+	var pid := reg.resolve_identity(5)
+	assert_eq(calls.size(), 1, "a fresh join is placed once")
+	assert_eq(calls[0][1], friend_handle, "the friend code the join carried reaches the placer")
+	var rec := reg.get_record(pid)
+	assert_true(absf(float(rec["position"][0]) - 1234.0) <= 0.01, "the record holds the placed position")
+	reg.unbind_peer(5)
+	var again := reg.resolve_identity(6, pid)
+	assert_eq(again, pid, "the same player reconnects")
+	assert_eq(calls.size(), 1, "a reconnect is not placed again")
+	assert_true(absf(float(reg.get_record(pid)["position"][0]) - 1234.0) <= 0.01, "a reconnect keeps its saved position")
+	reg.note_friend_code(7, "../../etc/passwd")
+	reg.resolve_identity(7)
+	assert_eq(calls[1][1], "", "a malformed friend code never reaches the placer")
+	assert_true(not PlayerRegistry.is_valid_friend_code("p_zzzzzzzzzzzzzzzz"), "a handle is hex")
+	assert_true(PlayerRegistry.is_valid_friend_code(friend_handle), "a real handle is a valid code")
+	# friend_position: a player in memory, else the disk locator.
+	reg.record_position(pid, Vector3(10.0, 2.0, 20.0))
+	assert_eq(reg.friend_position(reg.public_handle(pid)), Vector3(10.0, 2.0, 20.0), "an in-memory friend is located")
+	var ghost := "p_" + "0123456789abcdef"
+	assert_eq(reg.friend_position(ghost), null, "an unknown handle locates nobody")
+	reg.set_friend_locator(func(h: String) -> Variant: return Vector3(5.0, 5.0, 5.0) if h == ghost else null)
+	assert_eq(reg.friend_position(ghost), Vector3(5.0, 5.0, 5.0), "an offline friend is located by the disk locator")
+	reg.free()

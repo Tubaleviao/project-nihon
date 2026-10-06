@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:9c80237d623864d3b0e4804fd221b22823f2879d2f3bb51208191f6f8308cfea",
+  "schemaHash": "sha256:7aab9fc8246ae8bf24a04c2c1a9d88a71ee80738aa07cbacb78ea70d52298945",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -5127,6 +5127,49 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 400
+          },
+          "spawnHabitableBiomes": {
+            "name": "spawnHabitableBiomes",
+            "type": "json",
+            "description": "Biomes a new player may spawn in; ocean, ice and VoidRift are left out on purpose (Phase 53)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "TemperateForest",
+              "TemperateGrassland",
+              "Savanna",
+              "Taiga",
+              "Desert",
+              "Tundra"
+            ]
+          },
+          "spawnMinColonizedDistance": {
+            "name": "spawnMinColonizedDistance",
+            "type": "decimal",
+            "description": "Minimum distance in metres from any colonized region for a new player spawn (Phase 53)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2000
+          },
+          "colonizedScore": {
+            "name": "colonizedScore",
+            "type": "decimal",
+            "description": "Colonization score (edited chunks + homes x 10 + recent presence) at which a region counts as colonized (Phase 53)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "friendSpawnRadius": {
+            "name": "friendSpawnRadius",
+            "type": "decimal",
+            "description": "Metres around a friend within which a friend-code spawn lands (Phase 53)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 200
           }
         },
         "relations": {},

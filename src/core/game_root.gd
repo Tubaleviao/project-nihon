@@ -35,6 +35,8 @@ const Minimap          := preload("res://src/ui/minimap.gd")
 const LoadingScreen    := preload("res://src/ui/loading_screen.gd")
 const TestSuite        := preload("res://src/tests/test_suite.gd")
 const NetHarness       := preload("res://src/tests/net_harness.gd")
+const SpawnFinder      := preload("res://src/world/spawn_finder.gd")
+const ColonizationMap  := preload("res://src/world/colonization_map.gd")
 
 var _terrain:     TerrainSlice
 var _voxel:       VoxelSlice
@@ -111,6 +113,15 @@ var _client_boot_wait_elapsed: float = 0.0
 ## Phase 39 — which side of the two-client network harness this boot drives ("" for a
 ## normal boot). Set by `_parse_network_args`; see `_run_net_harness`.
 var _net_harness_role: String = ""
+
+## Phase 53 — how settled each region is; new-player spawns keep away from the settled ones.
+var _colonization := ColonizationMap.new()
+## Phase 53 — a friend's handle given on the command line (`--friend p_…`), "" for none.
+var _friend_code_arg: String = ""
+## Phase 53 — where the LOCAL player (host or offline) was placed on a first boot, or null.
+var _local_spawn: Variant = null
+## Phase 53 — client: the respawn point was taken from the first snapshot's own position.
+var _client_respawn_point_set: bool = false
 
 ## Phase 29 — the AOI grid cell each connected peer last reported, so a client
 ## moving into a new region triggers a re-scoped snapshot (host side only).
@@ -557,6 +568,9 @@ func _parse_network_args() -> void:
 				else:
 					Diag.warn("[Networking] invalid --client address '%s' — using 127.0.0.1" % addr)
 					_host_address = "127.0.0.1"
+	for i in range(args.size()):
+		if args[i] == "--friend" and i + 1 < args.size():
+			_friend_code_arg = str(args[i + 1])
 	# Phase 39 — the harness role decides the network role too: `--net-harness host` is
 	# the dedicated server half of the pair and `--net-harness client` the joining half,
 	# so the driver names one side rather than having to keep two arguments consistent.
@@ -662,6 +676,9 @@ func _boot_host() -> void:
 	# the ring and the window around it; the origin chunks still queued fall outside the
 	# window and are dropped by the drain.
 	var saved_pos: Variant = _saved_local_position()
+	if saved_pos == null:
+		# Phase 53 — a first boot: the same placement a joining peer gets.
+		saved_pos = _first_boot_spawn()
 	if saved_pos != null:
 		_player.spawn_at(saved_pos)
 		_chunk_manager.build_first_ring(_chunk_manager.player_chunk())
@@ -762,9 +779,14 @@ func _finish_host_boot() -> void:
 
 	# Player spawn — above the terrain surface so it doesn't spawn embedded in
 	# (and fall through) the collision mesh.
-	var spawn_xz := Vector2(16.0, 16.0)
-	var ground_h := _terrain.get_height_at(spawn_xz)
-	_player.spawn_at(Vector3(spawn_xz.x, ground_h + 1.0, spawn_xz.y))
+	# Phase 53 — a first boot lands on habitable land away from colonized regions (see
+	# `_first_boot_spawn`); a saved player is put back by `_restore_local_player` below.
+	var first_spawn: Variant = _first_boot_spawn()
+	var spawn_pos: Vector3 = first_spawn if first_spawn != null else Vector3(16.0, _terrain.get_height_at(Vector2(16.0, 16.0)) + 1.0, 16.0)
+	var spawn_xz := Vector2(spawn_pos.x, spawn_pos.z)
+	var ground_h := spawn_pos.y - 1.0
+	_player.spawn_at(spawn_pos)
+	_player.respawn_point = spawn_pos
 
 	# Phase 33 — the local player's own record (position / HP / technologies) is
 	# restored on top of the spawn point, so a restart puts the player back where
@@ -795,6 +817,8 @@ func _finish_host_boot() -> void:
 	# Phase 47 — the avatar exists only now, so the recorded worn set is applied here
 	# (the restore above runs before there is a character to wear it).
 	_apply_local_equipment(_registry.get_record(_registry.local_player_id).get("equipment", {}) if not _registry.local_player_id.is_empty() else {})
+	if _ui != null and not _registry.local_player_id.is_empty():
+		_ui.set_own_handle(_registry.public_handle(_registry.local_player_id))
 
 	# CreatureSlice already spawned each chunk's budget via ChunkManager (Phase 17).
 	# Fire one combat round against the first spawned creature through the bus to
@@ -883,6 +907,7 @@ func _finish_host_boot() -> void:
 ## host; the client only ever holds the id.
 func _boot_client() -> void:
 	_networking.claimed_player_id = _persistence.load_client_identity()
+	_networking.friend_code = _friend_code_arg
 	var err: Error = _networking.join(_host_address, _networking.DEFAULT_PORT)
 	if err != OK:
 		Diag.error("[Networking] client failed to connect to %s — %s" % [_host_address, error_string(err)])
@@ -974,12 +999,79 @@ func _on_player_joined(peer_id: int, player_id: String, reconnected: bool) -> vo
 func _on_peer_connected(_peer_id: int) -> void:
 	pass
 
+## Phase 53 — the local (host / offline) player's placement on a boot with no saved position:
+## the friend named by `--friend` if any, else habitable land away from colonized regions. Cached,
+## so the boot and its tail agree. null when a saved position exists or nothing qualifies.
+func _first_boot_spawn() -> Variant:
+	if _saved_local_position() != null:
+		return null
+	if _local_spawn == null:
+		var placed := _place_new_player(_registry.local_player_id, _friend_code_arg)
+		if placed.has("position"):
+			_local_spawn = placed["position"]
+			_colonization.note_home(Vector2i(floori(_local_spawn.x / TerrainSlice.CHUNK_METERS), floori(_local_spawn.z / TerrainSlice.CHUNK_METERS)))
+			if not str(placed.get("message", "")).is_empty():
+				print("[Spawn] %s" % placed["message"])
+	return _local_spawn
+
+## Phase 53 — where a NEW player lands: beside the friend whose handle they gave, else on habitable
+## land far from every colonized region. Returns { position, source, message } (empty when the
+## world has no qualifying spot, and the caller keeps its old default).
+func _place_new_player(player_id: String, friend_code: String) -> Dictionary:
+	var height_fn := func(p: Vector2) -> float: return _terrain.get_height_at(p)
+	var world_seed := _terrain.get_world_seed()
+	var message := ""
+	var source := "search"
+	if friend_code != "":
+		var friend_pos: Variant = _friend_position(friend_code)
+		if friend_pos != null:
+			var radius := float(SpawnFinder.rule()["friend_radius"])
+			var near: Variant = SpawnFinder.find_near(world_seed, player_id, Vector2(friend_pos.x, friend_pos.z), radius, height_fn)
+			if near != null:
+				_colonization.note_home(Vector2i(floori(near.x / TerrainSlice.CHUNK_METERS), floori(near.z / TerrainSlice.CHUNK_METERS)))
+				return { "position": near, "source": "friend", "message": "" }
+			message = "No safe ground near that friend — placed on open land instead."
+		else:
+			message = "Unknown friend code — placed on open land instead."
+		source = "friend_unknown"
+	var found: Variant = SpawnFinder.find_new(world_seed, player_id, _colonization, height_fn, Time.get_unix_time_from_system())
+	if found == null:
+		return {}
+	_colonization.note_home(Vector2i(floori(found.x / TerrainSlice.CHUNK_METERS), floori(found.z / TerrainSlice.CHUNK_METERS)))
+	return { "position": found, "source": source, "message": message }
+
+## The live position of the player behind `handle`: the local player's body, else the registry.
+func _friend_position(handle: String) -> Variant:
+	if _registry.public_handle(_registry.local_player_id) == handle and _player != null:
+		return _player.get_position()
+	return _registry.friend_position(handle)
+
+## The saved position of an OFFLINE player behind `handle`, found by hashing the ids of the
+## records on disk. null when no record matches.
+func _locate_friend_on_disk(handle: String) -> Variant:
+	for pid in _persistence.list_player_records():
+		if _registry.public_handle(str(pid)) != handle:
+			continue
+		var rec := _persistence.load_player(str(pid))
+		var arr: Variant = rec.get("position", [])
+		if arr is Array and (arr as Array).size() >= 3:
+			return Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
+	return null
+
+func _note_presence(pos: Vector3) -> void:
+	_colonization.note_presence(Vector2i(floori(pos.x / TerrainSlice.CHUNK_METERS), floori(pos.z / TerrainSlice.CHUNK_METERS)), Time.get_unix_time_from_system())
+
+func _on_block_changed_colonization(_action: String, position: Vector3, _normal: Vector3, _material: String) -> void:
+	_colonization.note_edited_chunk(Vector2i(floori(position.x / TerrainSlice.CHUNK_METERS), floori(position.z / TerrainSlice.CHUNK_METERS)))
+
 ## Phase 33 — client: the host told us which record we are. Cache the id so the
 ## next connection can claim it, and read our own state out of it.
 func _on_player_identity_assigned(player_id: String) -> void:
 	if not _is_client or player_id.is_empty():
 		return
 	_persistence.save_client_identity(player_id)
+	if _ui != null:
+		_ui.set_own_handle(_networking.claimed_handle)
 	print("[Client] identity assigned: %s" % player_id)
 
 ## Phase 33 — host: a connection dropped. Write the player's record before the
@@ -1054,6 +1146,8 @@ func _snapshot_remote_players() -> void:
 		if player_id.is_empty():
 			continue
 		_fold_last_known_state(int(peer_id), player_id)
+		if _networking.has_last_known_state(int(peer_id)):
+			_note_presence(_networking.get_last_known_state(int(peer_id)))
 
 ## Phase 36 — every player CreatureAI can place on this machine, as
 ## { target_id: Vector3 }: the local body under the id "player" (the defender id
@@ -1421,6 +1515,11 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 		var arr = own.get("position", [])
 		if arr is Array and (arr as Array).size() >= 3:
 			_player.spawn_at(Vector3(float(arr[0]), float(arr[1]), float(arr[2])))
+			if not _client_respawn_point_set:
+				# Only the first snapshot carries the placement; later AOI re-scoped snapshots
+				# carry wherever the player has since walked, which is not a spawn point.
+				_player.respawn_point = _player.get_position()
+				_client_respawn_point_set = true
 		var hp := float(own.get("hp", -1.0))
 		if hp >= 0.0:
 			_player.set_hp(hp)
@@ -1534,6 +1633,7 @@ func _snapshot_local_player() -> void:
 	if pid.is_empty():
 		return
 	_registry.record_position(pid, _player.get_position())
+	_note_presence(_player.get_position())
 	_registry.record_hp(pid, _player.get_hp())
 	_registry.record_technology(pid, _technology.get_statuses(pid))
 	# Phase 35 — the live taming flags and companion bindings ride the same record.
@@ -1656,6 +1756,7 @@ func _collect_save_job(incremental: bool) -> Dictionary:
 		"chunks":          manifest,
 		"stations":        stations,
 		"creatures":       creatures,
+		"colonization":    _colonization.to_data(),
 	}
 	# NOTE: no `dirty_chunks` key. It used to ride the record, but nothing ever read
 	# it back — dirty tracking lives in memory (VoxelSlice) and is reset by the save
@@ -1839,6 +1940,12 @@ func _load_world_records() -> void:
 	_bind_local_identity()
 	# Lazy reader for every other player's record (see the docstring above).
 	_registry.set_record_loader(_persistence.load_player)
+	_registry.set_spawn_placer(_place_new_player)
+	_registry.set_friend_locator(_locate_friend_on_disk)
+	_colonization.from_data(_loaded_world.get("colonization", {}))
+	_colonization.seed_from_regions(_persistence.region_store.list_regions())
+	if not GameBus.block_changed.is_connected(_on_block_changed_colonization):
+		GameBus.block_changed.connect(_on_block_changed_colonization)
 	if _loaded_world.is_empty():
 		print("[Server] no world record at %s — booting a fresh world" % _persistence.world_path())
 	else:

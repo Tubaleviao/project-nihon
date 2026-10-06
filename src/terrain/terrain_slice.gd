@@ -23,9 +23,8 @@ const WorldShape := preload("res://src/terrain/world_shape.gd")
 
 ## The starting area is flattened into a plain field so the player can walk
 ## freely from spawn without jumping. Spawn centre + radius + flat height below.
-const SPAWN_CENTER := Vector2(16.0, 16.0)  # world XZ — matches the player spawn point
-const SPAWN_FLATTEN_RADIUS := 20.0         # world units — a generous, walkable starting plain
-const SPAWN_HEIGHT := 2.0                  # flat height of the starting plain
+# Phase 53 — the flattened spawn disc is retired: a new player is placed by `SpawnFinder` on land
+# the planet already made habitable, so no terrain is forced flat around a fixed point.
 
 ## The planet (Phase 50). Globe semantics on a flat chunk grid: X wraps around the
 ## circumference, Z is latitude and ends in impassable polar ice. The sizes are fabric facts
@@ -259,9 +258,8 @@ func _generate(pos: Vector2i) -> Array:
 			out[ty * CHUNK_SIZE + tx] = _height_wrapped(origin_x + tx * TILE_SIZE, origin_z + ty * TILE_SIZE, w)
 	return out
 
-## Continuous terrain height at a world XZ position: noise scaled by HEIGHT_SCALE,
-## then flattened to a plain field inside SPAWN_FLATTEN_RADIUS of SPAWN_CENTER so
-## the player starts on walkable ground. Shared by _generate and get_height_at so
+## Continuous terrain height at a world XZ position: the large-scale shape plus the detail noise.
+## Shared by _generate and get_height_at so
 ## the heightmap and direct samples always agree.
 func _height_at(x: float, z: float) -> float:
 	return _height_wrapped(x, z, float(circumference_chunks()) * CHUNK_METERS)
@@ -290,13 +288,6 @@ func _raw_height_at(x: float, z: float) -> float:
 	var shape := _shape_at(x, z, w)
 	var detail := (_noise.get_noise_2d(x, z) + 1.0) * 0.5 * HEIGHT_SCALE
 	var h := clampf(shape + detail, WorldShape.min_height(), WorldShape.max_height())
-	var dx := x - SPAWN_CENTER.x
-	var dz := z - SPAWN_CENTER.y
-	var d := sqrt(dx * dx + dz * dz)
-	if d < SPAWN_FLATTEN_RADIUS:
-		var t := d / SPAWN_FLATTEN_RADIUS
-		t = t * t * (3.0 - 2.0 * t)   # smoothstep: 0 at centre → 1 at edge
-		h = lerp(SPAWN_HEIGHT, h, t)
 	return h
 
 ## `WorldShape.height` interpolated between the corners of the chunk cell holding (x, z).

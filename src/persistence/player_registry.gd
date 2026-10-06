@@ -124,6 +124,17 @@ const HANDLE_HEX_CHARS := 16
 ## first time a peer claims it (see _ensure_record_loaded).
 var _record_loader: Callable = Callable()
 
+## Phase 53 — where a FRESH player lands. Injected by game_root (the registry owns identity, not
+## the terrain): `(player_id, friend_code) -> { position: Vector3, source: String, message: String }`.
+var _spawn_placer: Callable = Callable()
+## Phase 53 — locates a friend by public handle among players that are not in memory (offline,
+## evicted): `(handle) -> Variant` a Vector3 position or null.
+var _friend_locator: Callable = Callable()
+## peer_id -> the friend code that peer's join intent carried; consumed by the placement.
+var _friend_codes: Dictionary = {}
+## Longest friend code a join intent may carry; a handle is `p_` + HANDLE_HEX_CHARS.
+const MAX_FRIEND_CODE_LENGTH := 2 + HANDLE_HEX_CHARS
+
 func _ready() -> void:
 	GameBus.player_join_intent.connect(_on_player_join_intent)
 	GameBus.equip_intent.connect(_on_equip_intent)
@@ -147,6 +158,57 @@ func mint_player_id() -> String:
 	var stamp: int = int(Time.get_unix_time_from_system())
 	var entropy: String = _crypto.generate_random_bytes(ID_ENTROPY_BYTES).hex_encode()
 	return "player_%d_%d_%s" % [stamp, _mint_counter, entropy]
+
+func set_spawn_placer(placer: Callable) -> void:
+	_spawn_placer = placer
+
+func set_friend_locator(locator: Callable) -> void:
+	_friend_locator = locator
+
+## Remember the friend code a peer's join intent carried, until its identity is resolved. A code
+## that is not shaped like a handle is dropped here, so no wire string reaches the placement.
+func note_friend_code(peer_id: int, code: String) -> void:
+	if is_valid_friend_code(code):
+		_friend_codes[peer_id] = code
+	else:
+		_friend_codes.erase(peer_id)
+
+static func is_valid_friend_code(code: String) -> bool:
+	if not code.begins_with(HANDLE_PREFIX) or code.length() != MAX_FRIEND_CODE_LENGTH:
+		return false
+	for i in range(HANDLE_PREFIX.length(), code.length()):
+		var c := code[i]
+		if not ((c >= "0" and c <= "9") or (c >= "a" and c <= "f")):
+			return false
+	return true
+
+## The last known world position of the player behind `handle`: the live record of a player in
+## memory, else the locator's disk lookup. null when nobody has that handle.
+func friend_position(handle: String) -> Variant:
+	if not is_valid_friend_code(handle):
+		return null
+	for player_id in _players:
+		if public_handle(str(player_id)) == handle:
+			var p: Variant = _players[player_id].get("position", [])
+			if p is Array and (p as Array).size() >= 3:
+				return Vector3(float(p[0]), float(p[1]), float(p[2]))
+	if _friend_locator.is_valid():
+		return _friend_locator.call(handle)
+	return null
+
+## Place a freshly minted player: ask the injected placer (friend code first, else the
+## colonization-aware search), record the position, and announce it.
+func _place_new_player(peer_id: int, player_id: String) -> void:
+	var code := str(_friend_codes.get(peer_id, ""))
+	_friend_codes.erase(peer_id)
+	if not _spawn_placer.is_valid():
+		return
+	var placed: Variant = _spawn_placer.call(player_id, code)
+	if not (placed is Dictionary) or not ((placed as Dictionary).get("position", null) is Vector3):
+		return
+	var pos: Vector3 = placed["position"]
+	record_position(player_id, pos)
+	GameBus.spawn_placed.emit(player_id, pos, str(placed.get("source", "search")), str(placed.get("message", "")))
 
 ## Inject the durable-storage reader used for a lazy record load. `loader` takes a
 ## player id and returns the record dictionary (or {} when there is none).
@@ -255,6 +317,8 @@ func resolve_identity(peer_id: int, claimed_id: String = "") -> String:
 		player_id = mint_player_id()
 	_peer_ids[peer_id] = player_id
 	ensure_player(player_id)
+	if not reconnected:
+		_place_new_player(peer_id, player_id)
 	GameBus.player_joined.emit(peer_id, player_id, reconnected)
 	return player_id
 
@@ -279,6 +343,7 @@ func _ensure_record_loaded(player_id: String) -> void:
 ## safe (which is why a reconnect re-loads rather than re-binds). Returns the id
 ## the connection held ("" when the peer was never bound).
 func unbind_peer(peer_id: int) -> String:
+	_friend_codes.erase(peer_id)
 	if not _peer_ids.has(peer_id):
 		return ""
 	var player_id := str(_peer_ids[peer_id])

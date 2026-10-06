@@ -5398,7 +5398,7 @@ The net harness gained `far_peers_simulated`.
 
 ---
 
-## Phase 53 — Spawn placement and friend codes
+## Phase 53 — Spawn placement and friend codes ✅ Done
 
 **Goal:** Every new player spawns at the hard-coded `Vector3(16, 12, 16)`
 (`player_slice.gd:423`) on a terrain patch flattened for that purpose. On a
@@ -5430,13 +5430,31 @@ the friend spawn radius.
 - The handle is shown in the character window with a copy button.
 
 **Acceptance criteria:**
-- [ ] `spawn: new players avoid colonized regions`: with 1,000 seeded colonized
+- [x] `spawn: new players avoid colonized regions`: with 1,000 seeded colonized
   regions, 100 spawns all land on habitable land outside them.
-- [ ] `spawn: friend code lands near the friend`: the spawn is within the
+- [x] `spawn: friend code lands near the friend`: the spawn is within the
   radius, on ground, and not in water.
-- [ ] An existing player reconnects at their saved position (Phase 33
+- [x] An existing player reconnects at their saved position (Phase 33
   behaviour unchanged).
-- [ ] Net harness step `spawn_near_friend` agrees over the socket.
+- [x] Net harness step `spawn_near_friend` agrees over the socket.
+
+_Implementation notes:_
+- Fabric: `WorldSystem` gained `spawnHabitableBiomes`, `spawnMinColonizedDistance` (2,000 m),
+  `colonizedScore` and `friendSpawnRadius` (200 m). `SpawnFinder.rule()` reads them.
+- `src/world/colonization_map.gd` persists as the `colonization` key of the world record and is
+  seeded from the Phase 52 region files (one file = at least one edited chunk). There is no
+  separate region index file: the region files are the index.
+- The 20 m flattened disc in `TerrainSlice` is retired. `WorldShape`'s 1,500 m spawn plain (Phase 51)
+  stays: the dev rig, the suite and the net harness stand on it, and nothing places a new player
+  by it any more.
+- Respawn after death goes to `PlayerSlice.respawn_point` (the player's placement), not the old
+  fixed `(16, 12, 16)`.
+- Friend codes ride the `join_intent` packet (`friend_code`, shape-checked as a handle on the host).
+  An offline friend is found by hashing the ids of the player records on disk, which is linear in
+  the number of records: fine per first join, worth an index if records reach the tens of thousands.
+- The harness host answers a join with no code with RENDEZVOUS (the scenario's fixed stand-point);
+  the `spawn_near_friend` step uses the real placer. `net-harness` reports
+  `14/14 steps agreed across both peers`.
 
 ---
 

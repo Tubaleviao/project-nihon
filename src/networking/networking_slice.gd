@@ -150,6 +150,8 @@ const IDENTIFIED_STATE_KEYS: PackedStringArray = ["market", "governance", "trade
 ## `identity_assigned`). A client is shown its own handle back as the literal
 ## "player", so its local view keeps the convention it has always had.
 var claimed_handle: String = ""
+## Phase 53 — a friend's handle to spawn beside on a first join ("" = none). Set before connecting.
+var friend_code: String = ""
 
 var _peer: ENetMultiplayerPeer
 var _role: int = Role.OFFLINE
@@ -270,6 +272,7 @@ func _ready() -> void:
 	# Phase 33 — the identity handshake: the host answers a join with the
 	# server-issued player id for that connection.
 	GameBus.player_joined.connect(_on_player_joined)
+	GameBus.spawn_placed.connect(_on_spawn_placed)
 
 ## Phase 19 — drain the emulator queue and (on clients) the jitter buffer.
 ## Eviction of stale last-known-states runs unconditionally (no ENet overhead).
@@ -1338,6 +1341,9 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 		"join_intent":
 			# Phase 33 — the client presents its cached id ("" on a first join).
 			# The registry owns resolution; the host answers with player_joined.
+			# Phase 53 — a first join may carry a friend's handle to spawn beside.
+			if player_registry != null and player_registry.has_method("note_friend_code"):
+				player_registry.note_friend_code(sender, str(payload.get("friend_code", "")))
 			GameBus.player_join_intent.emit(sender, str(payload.get("claimed_id", "")))
 		"player_moved":
 			var pos := _vec3(payload.get("position", []))
@@ -1653,6 +1659,8 @@ func _route_h2c(payload: Dictionary) -> void:
 			claimed_player_id = str(payload.get("player_id", ""))
 			claimed_handle = str(payload.get("handle", ""))
 			GameBus.player_identity_assigned.emit(claimed_player_id)
+		"spawn_notice":
+			GameBus.spawn_notice.emit(str(payload.get("message", "")).left(200))
 		"snapshot_chunk":
 			_accumulate_snapshot_chunk(payload)
 		_:
@@ -1865,7 +1873,17 @@ func _on_connected_to_server() -> void:
 func request_handshake() -> void:
 	if _role != Role.CLIENT:
 		return
-	_deliver(1, { "type": "join_intent", "claimed_id": claimed_player_id })
+	_deliver(1, { "type": "join_intent", "claimed_id": claimed_player_id, "friend_code": friend_code })
+
+## Phase 53 — host side: tell the peer where it was placed when there is something to say (an
+## unknown friend code fell back to the normal search). The message is host text, short, and
+## carries no id.
+func _on_spawn_placed(player_id: String, _position: Vector3, _source: String, message: String) -> void:
+	if _role != Role.HOST or message.is_empty():
+		return
+	var peer := _equipment_owner(player_id)
+	if peer > 1:
+		_deliver(peer, { "type": "spawn_notice", "message": message })
 
 ## Phase 33 — host side: an identity was bound to a connection. Record the
 ## transport mapping and ship the assigned id back to that peer.

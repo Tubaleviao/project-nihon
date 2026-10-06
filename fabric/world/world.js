@@ -20,6 +20,10 @@ module.exports = {
       oceanShare:      { type: 'decimal', description: 'Target fraction of the planet below sea level, 0–1 (Phase 51)', defaultValue: 0.65 },
       heightSpline:    { type: 'json', description: 'Continentalness (0–1) to base height in metres: ocean basin, shelf, coast, inland. Points are [continentalness, height], ascending (Phase 51)', defaultValue: [[0, -64], [0.35, -52], [0.55, -24], [0.64, -2], [0.68, 3], [0.75, 30], [0.88, 90], [1, 140]] },
       ridgeAmplitude:  { type: 'decimal', description: 'Metres a mountain ridge adds on rugged inland ground (Phase 51)', defaultValue: 400 },
+      spawnHabitableBiomes:     { type: 'json', description: 'Biomes a new player may spawn in; ocean, ice and VoidRift are left out on purpose (Phase 53)', defaultValue: ['TemperateForest', 'TemperateGrassland', 'Savanna', 'Taiga', 'Desert', 'Tundra'] },
+      spawnMinColonizedDistance: { type: 'decimal', description: 'Minimum distance in metres from any colonized region for a new player spawn (Phase 53)', defaultValue: 2000 },
+      colonizedScore:           { type: 'decimal', description: 'Colonization score (edited chunks + homes x 10 + recent presence) at which a region counts as colonized (Phase 53)', defaultValue: 1 },
+      friendSpawnRadius:        { type: 'decimal', description: 'Metres around a friend within which a friend-code spawn lands (Phase 53)', defaultValue: 200 },
     },
   }),
 
