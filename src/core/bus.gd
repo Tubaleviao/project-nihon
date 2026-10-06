@@ -126,6 +126,13 @@ signal load_requested(slot: int)
 ## claimed_id : String — the client's cached id ("" when it has none)
 signal player_join_intent(peer_id: int, claimed_id: String)
 
+## Phase 53 — a NEW player was placed in the world. `source` is "search" (habitable land away from
+## colonized regions), "friend" (near the friend whose code they gave) or "friend_unknown" (the
+## code matched nobody, so the normal search ran); `message` is shown to the player ("" = none).
+signal spawn_placed(player_id: String, position: Vector3, source: String, message: String)
+## Phase 53 — client side: the host's note about where we were placed.
+signal spawn_notice(message: String)
+
 ## Host → client: the server-issued player_id for this connection. The client
 ## caches it so a reconnect can claim the same record.
 signal player_identity_assigned(player_id: String)

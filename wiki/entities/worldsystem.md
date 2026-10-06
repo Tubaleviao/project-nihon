@@ -23,4 +23,8 @@ The planet as a fact of the fabric. The world takes globe semantics on a flat ch
 | oceanShare | decimal | Target fraction of the planet below sea level, 0–1 (Phase 51) |
 | heightSpline | json | Continentalness (0–1) to base height in metres: ocean basin, shelf, coast, inland. Points are [continentalness, height], ascending (Phase 51) |
 | ridgeAmplitude | decimal | Metres a mountain ridge adds on rugged inland ground (Phase 51) |
+| spawnHabitableBiomes | json | Biomes a new player may spawn in; ocean, ice and VoidRift are left out on purpose (Phase 53) |
+| spawnMinColonizedDistance | decimal | Minimum distance in metres from any colonized region for a new player spawn (Phase 53) |
+| colonizedScore | decimal | Colonization score (edited chunks + homes x 10 + recent presence) at which a region counts as colonized (Phase 53) |
+| friendSpawnRadius | decimal | Metres around a friend within which a friend-code spawn lands (Phase 53) |
 

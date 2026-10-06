@@ -12,3 +12,7 @@ extends Resource
 @export var oceanShare: float
 @export var heightSpline: Array
 @export var ridgeAmplitude: float
+@export var spawnHabitableBiomes: Array
+@export var spawnMinColonizedDistance: float
+@export var colonizedScore: float
+@export var friendSpawnRadius: float

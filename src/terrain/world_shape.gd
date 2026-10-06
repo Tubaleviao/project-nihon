@@ -27,7 +27,9 @@ const EROSION_CELLS := 64
 const RIDGE_CELLS := 320
 const CONTRAST := 1.9 ## stretches the fbm (which clusters near 0.5) toward the extremes
 
-## The spawn plain: the height is forced to SPAWN_HEIGHT within SPAWN_PLAIN_M of the spawn and
+## Phase 53 retired the 20 m flattened disc in `TerrainSlice`; this large-scale plain stays, so the
+## origin region is dry land for every seed (the dev rig and the suite stand on it) and `SpawnFinder`
+## places new players by the planet's habitable land, not by this. The height is forced to SPAWN_HEIGHT within SPAWN_PLAIN_M of the spawn and
 ## eases back to the natural shape by SPAWN_EASE_M, so the player always starts on dry, flat ground.
 const SPAWN_CENTER := Vector2(16.0, 16.0)
 const SPAWN_HEIGHT := 2.0
