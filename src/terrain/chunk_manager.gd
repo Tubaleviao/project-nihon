@@ -188,6 +188,23 @@ var _built: Dictionary = {}    # "cx,cz" -> true
 var _active: bool = false
 var _last_center: Vector2i = Vector2i(-9999, -9999)   # sentinel: no valid center yet
 
+## Phase 52 — per-peer windows. The dedicated server used to stream around ONE centre, the idle
+## body at the origin, so creatures and trees only lived near it. Each connected peer now adds a
+## window centred on that peer's chunk (`set_peer_center`), and the server streams the UNION of
+## them with the local player's own window (the listen host's, or the idle body's).
+## `_peer_centers` maps peer_id -> chunk; `_last_centers` is the window set the last refresh
+## resolved (so a peer crossing a chunk is a window move); `_chunk_refs` counts, per chunk, how
+## many windows cover it — a chunk loads when its count first goes above zero and unloads when
+## it returns to zero.
+var _peer_centers: Dictionary = {}
+var _last_centers: Array = []
+var _chunk_refs: Dictionary = {}   # "cx,cz" -> number of windows covering it
+
+## Phase 52 — the region streamer (src/persistence/region_streamer.gd), or null on a client /
+## in an isolated rig. Told which chunks the windows want on every window move so the edits of
+## the regions around every player are resident before their chunks are built.
+var region_streamer = null
+
 ## Chunks queued for loading, ordered nearest-first to the player. Drained a
 ## bounded number per frame by _drain_load_queue().
 var _load_queue: Array = []    # of Vector2i
@@ -308,7 +325,8 @@ func stop() -> void:
 ## view ring plus a one-chunk lead — rather than 121.)**
 func refresh(unload_now: bool = true) -> void:
 	var center := player_chunk()
-	var window_moved := center != _last_center
+	var centers := _centers_around(center)
+	var window_moved := centers != _last_centers
 	# Phase 42 review pass 4 — ONE `window_moved` decision, not two consecutive blocks.
 	# The sentinel update and the load/unload diff are the SAME pass; the early return
 	# below is what the second block's `if` was really expressing.
@@ -316,20 +334,34 @@ func refresh(unload_now: bool = true) -> void:
 		# Nothing to queue or unload — but the self-heal still runs, and it must: a
 		# STATIONARY player (a dedicated server's whole shape) is exactly the case a
 		# groundless chunk needs re-arming in. See `_self_heal_failed`.
-		_self_heal_failed(center, false)
+		_self_heal_failed(centers, false)
 		return
 
 	_last_center = center
+	_last_centers = centers
 	# ONE radius for WANTED and DESIRED on purpose (ninth review pass): `wanted` — what a
 	# crossing retains — is the same radius the queue spans, so no chunk that was queued (and
 	# therefore built) is released while it is still inside the window it was built for. See
 	# the docstring above for why the two radii were briefly different and why that was a waste.
 	var wanted: Dictionary = {}
 	var radius := stream_radius()
-	for c in _desired_chunks(center, radius):
-		if _in_bounds(c):
-			wanted[_chunk_key(c)] = true
-	var desired := _desired_chunks(center, radius)
+	var desired: Array = []
+	var refs: Dictionary = {}
+	for win_center in centers:
+		for c in _desired_chunks(win_center, radius):
+			if not _in_bounds(c):
+				continue
+			var ckey := _chunk_key(c)
+			if not refs.has(ckey):
+				desired.append(c)
+				wanted[ckey] = true
+				refs[ckey] = 0
+			refs[ckey] += 1
+	_chunk_refs = refs
+	# Phase 52 — the edits of every region the windows touch are resident BEFORE a chunk is
+	# queued, so no build reads a log that is missing its region.
+	if region_streamer != null:
+		region_streamer.sync(region_streamer.regions_for_chunks(desired))
 
 	# Queue loads nearest-first. Dispatching is what is bounded per frame; the build
 	# itself runs on a worker.
@@ -338,7 +370,7 @@ func refresh(unload_now: bool = true) -> void:
 		var key := _chunk_key(c)
 		if _in_bounds(c) and not _loaded.has(key) and not _pending.has(key):
 			to_load.append(c)
-	to_load.sort_custom(func(a, b): return _dist2(center, a) < _dist2(center, b))
+	to_load.sort_custom(func(a, b): return _nearest_dist2(centers, a) < _nearest_dist2(centers, b))
 	for c in to_load:
 		_pending[_chunk_key(c)] = true
 		_load_queue.append(c)
@@ -357,13 +389,13 @@ func refresh(unload_now: bool = true) -> void:
 		var stale: Array = []
 		for key in _loaded.keys():
 			if not wanted.has(key):
-				stale.append([_dist2(center, _key_to_chunk(key)), key])
+				stale.append([_nearest_dist2(centers, _key_to_chunk(key)), key])
 		stale.sort_custom(func(a, b): return a[0] > b[0])
 		_unload_queue.clear()
 		for entry in stale:
 			_unload_queue.append(entry[1])
 
-	_self_heal_failed(center, true)
+	_self_heal_failed(centers, true)
 
 ## Phase 49 — release up to `budget` queued chunks, farthest first. The queue is rebuilt from
 ## scratch on every window move, so it never holds a chunk that is inside the current window.
@@ -408,7 +440,7 @@ func _drain_unload_queue(budget: int) -> void:
 ##     and left the clock at its old value, so the very next (stationary) frame was
 ##     unthrottled and re-armed again. The clock is stamped whenever the sweep proceeds,
 ##     crossing or not.
-func _self_heal_failed(center: Vector2i, window_moved: bool) -> void:
+func _self_heal_failed(centers: Array, window_moved: bool) -> void:
 	if _failed.is_empty():
 		return
 	var now := Time.get_ticks_msec()
@@ -422,7 +454,7 @@ func _self_heal_failed(center: Vector2i, window_moved: bool) -> void:
 	_last_self_heal_msec = now
 	var radius := stream_radius()
 	for key in _failed.keys():
-		if _within_stream_at(center, radius, _key_to_chunk(key)) and not _has_in_flight(key):
+		if _within_windows(centers, radius, _key_to_chunk(key)) and not _has_in_flight(key):
 			_failed.erase(key)
 			_build_attempts.erase(key)
 			_queue_rebuild(_key_to_chunk(key))
@@ -454,7 +486,7 @@ func _drain_load_queue() -> void:
 	# player's chunk cannot move during it (the position is re-read at the next frame's
 	# `refresh()`), and the per-chunk form re-derived it — a slice call — for every
 	# candidate, so a drain of a full view ring paid ~49 of them to reach the same answer.
-	var center := player_chunk()
+	var centers := window_centers()
 	var radius := stream_radius()
 	while budget > 0:
 		if _builds.size() >= max_builds_in_flight:
@@ -479,7 +511,7 @@ func _drain_load_queue() -> void:
 		# its `_pending` mark was still set, so it was silently skipped instead. Dropping
 		# it here clears that mark, so a chunk that leaves range and returns is queued
 		# again rather than left as a hole.
-		if not _within_stream_at(center, radius, chunk):
+		if not _within_windows(centers, radius, chunk):
 			continue
 		if not _loaded.has(_chunk_key(chunk)):
 			load_chunk(chunk)
@@ -686,7 +718,52 @@ func _has_in_flight(key: String) -> bool:
 ## the loops that test MANY chunks — `_drain_load_queue`'s cancellation check and
 ## `_self_heal_failed`'s sweep — resolve it once and call `_within_stream_at` instead.
 func _within_stream(chunk: Vector2i) -> bool:
-	return _within_stream_at(player_chunk(), stream_radius(), chunk)
+	return _within_windows(window_centers(), stream_radius(), chunk)
+
+## Phase 52 — the same test against EVERY window: a chunk is in the streamed set when any one
+## window (the local player's, or a peer's) covers it.
+func _within_windows(centers: Array, radius: int, chunk: Vector2i) -> bool:
+	for c in centers:
+		if _within_stream_at(c, radius, chunk):
+			return true
+	return false
+
+## Squared distance from `chunk` to the NEAREST window centre — the load order across windows.
+func _nearest_dist2(centers: Array, chunk: Vector2i) -> int:
+	var best := 1 << 60
+	for c in centers:
+		best = mini(best, _dist2(c, chunk))
+	return best
+
+## Phase 52 — the window centres: the local player's chunk plus one per connected peer.
+## A peer standing in the local player's own chunk adds no second window (same centre).
+func window_centers() -> Array:
+	return _centers_around(player_chunk())
+
+## `window_centers` for a caller that has already resolved the local player's chunk (one
+## `PlayerSlice.get_position()` read per pass, not two).
+func _centers_around(local: Vector2i) -> Array:
+	var out: Array = [local]
+	for peer_id in _peer_centers:
+		var c: Vector2i = _peer_centers[peer_id]
+		if not out.has(c):
+			out.append(c)
+	return out
+
+## Phase 52 — place (or move) a connected peer's window. Takes effect on the next `refresh`.
+func set_peer_center(peer_id: int, chunk: Vector2i) -> void:
+	_peer_centers[peer_id] = chunk
+
+## Phase 52 — drop a peer's window (disconnect). Chunks only that window covered unload.
+func clear_peer_center(peer_id: int) -> void:
+	_peer_centers.erase(peer_id)
+
+func peer_window_count() -> int:
+	return _peer_centers.size()
+
+## How many windows cover `chunk` (0 when none): the reference count behind load/unload.
+func chunk_ref_count(chunk: Vector2i) -> int:
+	return int(_chunk_refs.get(_chunk_key(chunk), 0))
 
 ## Phase 42 review pass 3 — the same test against a window the CALLER already resolved. The
 ## drain reads the player's chunk and the radius ONCE and uses this per candidate, instead

@@ -1715,6 +1715,55 @@ func apply_chunk_manifest(manifest: Dictionary) -> void:
 				materials[key] = chunk_data["materials"][key]
 	apply_edits(edits, materials)
 
+## Phase 52 — ADD a region's edits to the log without disturbing the rest of it. The
+## streaming counterpart of `apply_chunk_manifest` (which replaces the whole log): a region
+## file is read when a window first needs it, and what it carries joins the edits already
+## resident. A chunk the log already holds is left alone — memory is at least as new as disk.
+func apply_region_chunks(manifest: Dictionary) -> void:
+	var edits: Dictionary = {}
+	var materials: Dictionary = {}
+	for ckey in manifest:
+		if _edits_by_chunk.has(str(ckey)):
+			continue
+		var chunk_data: Dictionary = manifest[ckey]
+		if chunk_data.has("edits"):
+			for key in chunk_data["edits"]:
+				edits[key] = chunk_data["edits"][key]
+		if chunk_data.has("materials"):
+			for key in chunk_data["materials"]:
+				materials[key] = chunk_data["materials"][key]
+	if edits.is_empty():
+		return
+	var incoming := _normalise_edit_table(edits, materials)
+	var next: Dictionary = _edits.duplicate()   # shallow: resident op lists are shared
+	for key in incoming:
+		next[key] = incoming[key]
+	_commit_edits(next, incoming.keys())
+
+## Phase 52 — drop the resident edits of the chunks in `chunk_keys` ("cx,cz") that are NOT
+## dirty, so a region that left every window stops costing memory. A dirty chunk keeps its
+## edits: they exist nowhere else until the next save carries them. Returns how many
+## chunks were released. Callers only name chunks outside every streamed window, so no
+## build is reading them.
+func evict_clean_chunks(chunk_keys: Array) -> int:
+	var released := 0
+	var next: Dictionary = _edits.duplicate()
+	for ckey in chunk_keys:
+		var k := str(ckey)
+		if _dirty_chunks.has(k) or not _edits_by_chunk.has(k):
+			continue
+		for key in _edits_by_chunk[k].keys():
+			next.erase(key)
+		released += 1
+	if released > 0:
+		_edits = next
+		_reindex_edits()
+	return released
+
+## The "cx,cz" keys of every chunk that currently has resident edits.
+func edited_chunk_keys() -> Array:
+	return _edits_by_chunk.keys()
+
 ## Return the "cx,cz" keys of chunks modified since the last save/clear.
 func get_dirty_chunk_keys() -> Array:
 	return _dirty_chunks.keys()

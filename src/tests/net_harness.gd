@@ -153,6 +153,7 @@ static func steps() -> Array:
 		{ "name": "peer_damage_floor", "compare": true },
 		{ "name": "reconnect_alive",   "compare": true },
 		{ "name": "disconnect_evicts", "compare": true },
+		{ "name": "far_peers_simulated", "compare": true },
 	]
 
 ## The step names, comma-joined — the payload of the `plan` line the runner prints
@@ -323,6 +324,7 @@ func run(root: Node, role: String) -> void:
 	await _step_peer_damage_floor()
 	await _step_reconnect_alive()
 	await _step_disconnect_evicts()
+	await _step_far_peers_simulated()
 	_finish()
 
 ## End this process, with the run's own verdict carried in the exit code.
@@ -868,6 +870,56 @@ func _step_disconnect_evicts() -> void:
 		STEP_TIMEOUT_SECS)
 	_report("disconnect_evicts", verdict(ok and resumed != "", true),
 		"evicted" if (ok and resumed != "") else "no_identity")
+
+## Phase 52 — the chunk 100 km from the origin (3,125 chunks of 32 m, east) that the far peer
+## stands in, with its Z walked until the biome is land (an ocean chunk spawns no land table).
+## Both sides derive it from the same seed, so they agree without a message.
+func _far_chunk() -> Vector2i:
+	for cx in range(3125, 9000, 25):
+		for cz in range(-200, 200, 25):
+			var c := Vector2i(cx, cz)
+			if str(_root._terrain.get_biome_at_chunk(c)) != "Ocean":
+				return c
+	return Vector2i(3125, 0)   # all ocean: the step then checks the window, not creatures
+
+## Step 13 (Phase 52) — a peer 100 km from the origin has a live world around it.
+##
+## The client reports a position 100 km away; the host's per-peer streaming window opens
+## around it, loads the chunks there, and the creature simulation spawns into them. The
+## client's half is the report (it keeps sending it, because the host re-centres the peer's
+## window on the last position it heard); the host's half is the assertion.
+func _step_far_peers_simulated() -> void:
+	var chunk := _far_chunk()
+	var pos := Vector3(float(chunk.x) * 32.0 + 16.0, 40.0, float(chunk.y) * 32.0 + 16.0)
+	if _role == "host":
+		var simulated := func() -> bool:
+			if not _root._chunk_manager._built.has("%d,%d" % [chunk.x, chunk.y]):
+				return false
+			# An ocean window has no land creatures to spawn (Phase 51): there the proof is
+			# that the window's chunk was loaded and built at all, 100 km from the origin.
+			if str(_root._terrain.get_biome_at_chunk(chunk)) == "Ocean":
+				return true
+			for dx in range(-1, 2):
+				for dz in range(-1, 2):
+					if (_root._creature._by_chunk.get(chunk + Vector2i(dx, dz), []) as Array).size() > 0:
+						return true
+			return false
+		var ok: bool = await _await_until(simulated, 60.0)
+		_report("far_peers_simulated", verdict(ok, true), "far-window-simulated" if ok else "far_window_empty-chunk%s-refs%d-built%d-loaded%d-peers%d-biome%s-online%s-lk%d" % [
+			str(chunk), _root._chunk_manager.chunk_ref_count(chunk), int(_root._chunk_manager._built.has("%d,%d" % [chunk.x, chunk.y])),
+			int(_root._chunk_manager._loaded.has("%d,%d" % [chunk.x, chunk.y])), _root._chunk_manager.peer_window_count(),
+			str(_root._terrain.get_biome_at_chunk(chunk)), str(_root._registry.get_online_player_ids()).replace(" ", ""),
+			int(_root._networking.has_last_known_state(_peer_id()))])
+		return
+	# Re-sent for as long as the host needs to stream the window in (a build per chunk on
+	# a worker): the client has no view of the host's verdict, so it sends for a fixed time.
+	for _i in range(45):
+		GameBus.packet_send_requested.emit(1, {
+			"type": "player_moved",
+			"position": [pos.x, pos.y, pos.z],
+		})
+		await _await_settle(1.0)
+	_report("far_peers_simulated", "ok", "far-window-simulated")
 
 # ---------------------------------------------------------------------------
 # Plumbing

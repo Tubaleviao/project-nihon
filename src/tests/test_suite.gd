@@ -539,6 +539,13 @@ func run() -> void:
 	_run_test("persistence: thread-safe write_job writes records", _test_write_job_writes_records)
 	# Phase 42 sixth review pass — an incremental save that can express a deleted chunk.
 	_run_test("persistence: an incremental save can delete a chunk", _test_persistence_incremental_save_can_delete_a_chunk)
+	# Phase 52 — region storage and per-peer streaming.
+	_run_test("region: chunks map onto 32x32 regions, negatives floor", _test_region_mapping)
+	_run_test("region: a save after editing one chunk writes exactly one region file", _test_region_save_writes_one_file)
+	_run_test("region: a Phase 51 save migrates with every edit intact", _test_region_migrates_monolith)
+	_run_test("region: 1,000 regions on disk, only the ones near a window are resident", _test_region_streams_only_near_windows)
+	_run_test("chunk: each peer has a window and chunks are reference counted", _test_chunk_peer_windows_refcount)
+	_run_test("chunk: two peers 100 km apart each have creatures simulated", _test_chunk_far_peers_simulated)
 	_run_test("chunk: dirty clear is per key + re-markable",      _test_dirty_keys_clear_and_remark)
 	_run_test("identity: minted id carries 128-bit entropy",      _test_minted_id_has_crypto_entropy)
 	_run_test("identity: local player id is not claimable",       _test_local_player_id_not_claimable)
@@ -10157,8 +10164,8 @@ func _test_net_harness_step_table() -> void:
 		names[str(s.get("name", ""))] = true
 	assert_eq(names.size(), steps.size(), "step names are unique — the driver keys on them")
 	assert_eq(str(steps[0].get("name", "")), "handshake", "the scenario starts with the handshake")
-	assert_eq(str(steps[steps.size() - 1].get("name", "")), "disconnect_evicts",
-		"and ends with the eviction the reconnect produced")
+	assert_eq(str(steps[steps.size() - 1].get("name", "")), "far_peers_simulated",
+		"and ends with the far peer's window (Phase 52), after the eviction the reconnect produced")
 
 ## Phase 39 — the wire is a text channel between two processes, so the line format and its
 ## parser are load-bearing: if they disagreed, the driver would silently compare nothing
@@ -13080,3 +13087,173 @@ func _test_ocean_spawns_no_land_tables() -> void:
 		var idx: int = int(res.get("biome"))
 		assert_true(str(keys[idx]) != "Ocean", "no creature table names the Ocean")
 	creature.free()
+
+
+# ---------------------------------------------------------------------------
+# Phase 52 — region storage and per-peer streaming
+# ---------------------------------------------------------------------------
+
+const RegionStoreScript := preload("res://src/persistence/region_store.gd")
+const RegionStreamerScript := preload("res://src/persistence/region_streamer.gd")
+
+func _fresh_region_dir(name: String) -> String:
+	var dir := "user://saves/%s/" % name
+	_wipe_dir(dir)
+	_wipe_dir(dir + "regions/")
+	return dir
+
+func _test_region_mapping() -> void:
+	var R := RegionStoreScript
+	assert_eq(R.region_of_chunk(Vector2i(0, 0)), Vector2i(0, 0), "chunk 0,0 is in region 0,0")
+	assert_eq(R.region_of_chunk(Vector2i(31, 31)), Vector2i(0, 0), "chunk 31,31 is the last of region 0,0")
+	assert_eq(R.region_of_chunk(Vector2i(32, 0)), Vector2i(1, 0), "chunk 32,0 opens region 1,0")
+	assert_eq(R.region_of_chunk(Vector2i(-1, -32)), Vector2i(-1, -1), "negative chunks floor into negative regions")
+	assert_eq(R.region_of_chunk(Vector2i(-33, 0)), Vector2i(-2, 0), "chunk -33 is in region -2")
+	assert_eq(R.file_name(Vector2i(-1, 2)), "r.-1.2.json", "the file name carries the signed coordinates")
+	var parsed: Dictionary = R.region_from_file_name("r.-1.2.json")
+	assert_true(bool(parsed["ok"]) and parsed["region"] == Vector2i(-1, 2), "a region file name parses back")
+	assert_false(bool(R.region_from_file_name("world.json")["ok"]), "world.json is not a region file")
+	assert_false(bool(R.region_from_file_name("r.x.1.json")["ok"]), "a non-numeric name is not a region file")
+	var grouped: Dictionary = R.group_manifest({ "0,0": { "edits": { "1": [] } }, "5,5": { "edits": { "2": [] } }, "40,0": { "edits": { "3": [] } } })
+	assert_eq(grouped.size(), 2, "three chunks in two regions group into two")
+	assert_eq((grouped["0,0"] as Dictionary).size(), 2, "chunks 0,0 and 5,5 share region 0,0")
+	var folded: Dictionary = R.fold_chunks({ "0,0": { "edits": { "1": [1] } }, "1,1": { "edits": { "2": [2] } } },
+		{ "0,0": { "edits": {} }, "2,2": { "edits": { "3": [3] } } })
+	assert_false(folded.has("0,0"), "an empty edit set deletes the chunk")
+	assert_true(folded.has("1,1") and folded.has("2,2"), "the other chunks are kept and added")
+
+func _region_files(dir: String) -> Array:
+	var out: Array = []
+	var d := DirAccess.open(dir)
+	if d != null:
+		for f in d.get_files():
+			if f.begins_with("r.") and f.ends_with(".json"):
+				out.append(f)
+	out.sort()
+	return out
+
+func _test_region_save_writes_one_file() -> void:
+	var dir := _fresh_region_dir("test_p52_one_file")
+	var writer := PersistenceSlice.new()
+	add_child(writer)
+	writer.server_save_dir = dir
+	writer._rebuild_region_store()
+	var edit := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	var manifest := { "0,0": edit, "40,0": edit, "-1,0": edit }
+	assert_eq(writer.save_world({ "local_player_id": "p" , "chunks": manifest }, false), OK, "the first save writes")
+	assert_eq(_region_files(dir + "regions/"), ["r.-1.0.json", "r.0.0.json", "r.1.0.json"], "three regions, three files")
+	assert_false("chunks" in writer.load_world_record(), "world.json keeps no chunks")
+	# Remove two of the files; a save carrying ONE dirty chunk must recreate only its own.
+	DirAccess.remove_absolute(dir + "regions/r.1.0.json")
+	DirAccess.remove_absolute(dir + "regions/r.-1.0.json")
+	var subset := PersistenceSlice.dirty_chunk_subset(manifest, ["0,0"])
+	assert_eq(writer.save_world({ "local_player_id": "p", "chunks": subset }, true), OK, "the incremental save writes")
+	assert_eq(_region_files(dir + "regions/"), ["r.0.0.json"], "exactly the dirty chunk's region file was written")
+	assert_eq(writer.region_store.list_dirty(["0,0", "3,3"]).size(), 1, "list_dirty names one region for two chunks in it")
+	writer.free()
+
+func _test_region_migrates_monolith() -> void:
+	var dir := _fresh_region_dir("test_p52_migrate")
+	var voxel := _make_voxel()
+	assert_true(voxel.mine_block(Vector3(16.25, 2.0, 16.25)).get("success", false), "an edit exists in chunk 0,0")
+	var manifest := voxel.get_chunk_manifest()
+	# A Phase 51 record: one world.json carrying every chunk.
+	DirAccess.make_dir_recursive_absolute(dir)
+	var f := FileAccess.open(dir + "world.json", FileAccess.WRITE)
+	f.store_string(JSON.stringify({ "version": 2, "seed": 7, "local_player_id": "p", "chunks": manifest }))
+	f.close()
+	var store := PersistenceSlice.new()
+	add_child(store)
+	store.server_save_dir = dir
+	store._rebuild_region_store()
+	var record := store.load_world_record()
+	assert_false(record.has("chunks"), "the migrated record carries no chunks")
+	assert_eq(int(record.get("seed", -1)), 7, "and keeps its global state")
+	assert_eq(_region_files(dir + "regions/"), ["r.0.0.json"], "the chunks split into region files on first boot")
+	var on_disk := JSON.parse_string(FileAccess.get_file_as_string(dir + "world.json")) as Dictionary
+	assert_false(on_disk.has("chunks"), "world.json was rewritten without them")
+	var voxel2 := _make_voxel()
+	voxel2.apply_chunk_manifest(store.load_world()["chunks"])
+	assert_true(voxel2.get_chunk_manifest() == manifest, "every edit survives the migration")
+	voxel.free()
+	voxel2.free()
+	store.free()
+
+func _test_region_streams_only_near_windows() -> void:
+	var dir := _fresh_region_dir("test_p52_rss")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	# 1,000 edited regions on disk, none of them the origin's. A chunk is 64 tiles a side.
+	for i in range(1000):
+		var region := Vector2i(10 + i % 40, 10 + i / 40)
+		var edit := { "edits": { "%d,%d" % [region.x * 32 * 64, region.y * 32 * 64]: [{ "op": "raise", "n": 1 }] } }
+		assert_eq(store.save_region(region, { "%d,%d" % [region.x * 32, region.y * 32]: edit }), OK, "region %d written" % i)
+	var edit := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	cm.region_streamer = RegionStreamerScript.new(store, voxel)
+	cm.view_distance = 1
+	cm.prefetch_distance = 0
+	cm.refresh()
+	assert_eq(voxel.edited_chunk_keys().size(), 0, "with a window at the origin no far region's edits are resident")
+	assert_true(cm.region_streamer.resident_regions().size() <= 4, "only the regions at the origin (a corner plus its margin) are resident")
+	# A peer window 10 regions away pulls in exactly its own region, and releases it again.
+	cm.set_peer_center(7, Vector2i(10 * 32 + 3, 10 * 32 + 3))
+	cm.refresh()
+	assert_eq(voxel.edited_chunk_keys().size(), 1, "the peer's region edits are resident")
+	cm.clear_peer_center(7)
+	cm.refresh()
+	assert_eq(voxel.edited_chunk_keys().size(), 0, "leaving every window releases a clean region's edits")
+	# A dirty chunk is never dropped: its edits exist nowhere else until a save.
+	voxel.apply_region_chunks({ "0,0": edit })
+	voxel.mark_dirty_chunks(["0,0"])
+	cm.set_peer_center(7, Vector2i(500, 500))
+	cm.refresh()
+	assert_true(voxel.edited_chunk_keys().has("0,0"), "a dirty chunk keeps its edits after its region leaves every window")
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+
+func _test_chunk_peer_windows_refcount() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.view_distance = 1
+	cm.prefetch_distance = 0
+	cm.loads_per_frame = 64
+	cm.refresh()
+	_wait_for_builds(cm)
+	assert_eq(cm._loaded.size(), 9, "the local window alone holds 3x3 chunks")
+	assert_eq(cm.chunk_ref_count(Vector2i(0, 0)), 1, "a chunk one window covers has a count of one")
+	cm.set_peer_center(3, Vector2i(1, 0))
+	cm.refresh()
+	assert_eq(cm.chunk_ref_count(Vector2i(0, 0)), 2, "two overlapping windows count the shared chunk twice")
+	assert_eq(cm.chunk_ref_count(Vector2i(2, 0)), 1, "a chunk only the peer covers counts once")
+	_wait_for_builds(cm)
+	assert_true(cm._loaded.has("2,0"), "a chunk only the peer's window covers is loaded")
+	cm.clear_peer_center(3)
+	cm.refresh()
+	assert_false(cm._loaded.has("2,0"), "the chunk unloads when its count returns to zero")
+	assert_true(cm._loaded.has("0,0"), "while a still-covered chunk stays")
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+
+func _test_chunk_far_peers_simulated() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var creatures := CreatureSlice.new()
+	add_child(creatures)
+	cm.creature_slice = creatures
+	cm.view_distance = 0
+	cm.prefetch_distance = 0
+	cm.loads_per_frame = 16
+	var far := Vector2i(3125, 0)   # 100 km at 32 m a chunk
+	cm.refresh()
+	cm.set_peer_center(1, far)
+	cm.set_peer_center(2, Vector2i(0, 3125))
+	cm.refresh()
+	_wait_for_builds(cm)
+	for chunk in [Vector2i(0, 0), far, Vector2i(0, 3125)]:
+		assert_true(creatures._by_chunk.get(chunk, []).size() > 0,
+			"creatures are simulated in the window around %s" % str(chunk))
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+	creatures.free()

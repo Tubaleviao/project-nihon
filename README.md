@@ -72,7 +72,7 @@ npm run generate  # generate the design bible into bible/
 | 49 | Zone crossing and natural ground | Planned |
 | 50 | Planet coordinates | Done |
 | 51 | Continents, oceans and mountains | Done |
-| 52 | Region storage and per-player server streaming | Planned |
+| 52 | Region storage and per-player server streaming | Done |
 | 53 | Spawn placement and friend codes | Planned |
 | 54 | World clock, day and night, seasons | Planned |
 | 55 | Two-client harness: equipment delivery over the socket | Planned |
