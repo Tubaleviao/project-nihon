@@ -12968,6 +12968,7 @@ func _test_climate_poles_and_peaks() -> void:
 	assert_eq(ClimateField.biome_for_climate(0.5, 0.5, keys, B, 450.0, 1.0), "Alpine", "pure envelope pick: high ground is Alpine")
 	assert_eq(ClimateField.biome_for_climate(0.5, 0.5, keys, B, -30.0, 1.0), "Ocean", "below sea level is Ocean")
 	assert_eq(ClimateField.biome_for_climate(0.5, 0.5, keys, B, 0.5, 1.0), "Beach", "the first metre of shore is Beach")
+	assert_eq(ClimateField.biome_for_climate(0.85, 0.8, keys, B, 10.0, 1.0) in ["Beach", "Ocean"], false, "hot wet ground 10 m up is land, not shore")
 	assert_eq(ClimateField.biome_for_climate(0.7, 0.1, keys, B, 50.0, 1.0), "Desert", "hot and dry is desert")
 	assert_eq(ClimateField.biome_for_climate(0.7, 0.4, keys, B, 50.0, 1.0), "Savanna", "hot and middling is savanna")
 	assert_eq(ClimateField.biome_for_climate(0.25, 0.7, keys, B, 50.0, 1.0), "Taiga", "cool and wet is taiga")
@@ -12989,7 +12990,7 @@ func _test_climate_ocean_and_niches() -> void:
 			var b := TerrainSlice.biome_for_chunk(chunk, seed_v)
 			counts[b] = int(counts.get(b, 0)) + 1
 			n += 1
-			var alt := WorldShape.altitude(seed_v, (float(chunk.x) + 0.5) * TerrainSlice.CHUNK_METERS, (float(chunk.y) + 0.5) * TerrainSlice.CHUNK_METERS, w)
+			var alt := TerrainSlice.biome_altitude(seed_v, (float(chunk.x) + 0.5) * TerrainSlice.CHUNK_METERS, (float(chunk.y) + 0.5) * TerrainSlice.CHUNK_METERS, w)
 			if (alt < 0.0) != (b == "Ocean"):
 				ocean_ok = false
 	assert_true(ocean_ok, "a chunk is Ocean exactly when its large-scale ground is below sea level")

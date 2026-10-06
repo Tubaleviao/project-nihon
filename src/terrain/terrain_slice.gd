@@ -142,7 +142,12 @@ static func biome_for_chunk(chunk_pos: Vector2i, seed_v: int = BIOME_SEED) -> St
 	var cx := (float(chunk_pos.x) + 0.5) * CHUNK_METERS
 	var cz := (float(chunk_pos.y) + 0.5) * CHUNK_METERS
 	return ClimateField.biome_for_chunk(seed_v, chunk_pos, BIOME_KEYS, latitude_of(chunk_pos.y),
-		WorldShape.altitude(seed_v, cx, cz, w))
+		biome_altitude(seed_v, cx, cz, w))
+
+## The altitude the biome pick reads: the large-scale shape plus the mean of the 0..HEIGHT_SCALE
+## detail noise, so it matches the mean ground the heightmap actually lays down.
+static func biome_altitude(seed_v: int, x: float, z: float, w: float) -> float:
+	return WorldShape.altitude(seed_v, x, z, w) + HEIGHT_SCALE * 0.5
 
 ## Convert a world XZ position to its containing chunk coordinate.
 func world_to_chunk(world_pos: Vector2) -> Vector2i:

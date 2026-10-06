@@ -106,7 +106,7 @@ static func _envelope_of(biome: Variant) -> Array:
 		float(rar) if rar != null else 1.0]
 
 ## Metres of altitude that weigh as much as one whole unit of temperature or moisture gap.
-const ALTITUDE_GAP_M := 100.0
+const ALTITUDE_GAP_M := 10.0
 ## Width of a niche cell, in chunks: a rare biome is eligible in a whole cell or none of it.
 const NICHE_CELL_CHUNKS := 10
 
