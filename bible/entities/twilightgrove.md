@@ -12,6 +12,11 @@ Eerie glades where day-night cycles run at an accelerated, unpredictable rate, b
 | Name | Type | Required | Description |
 | ---- | ---- | -------- | ----------- |
 | `id` | uuid | yes |  |
+| `seasonSwing` | decimal | yes | °C the biome's temperature rises above and falls below its annual average over the year, at full seasonal latitude (Phase 54) |
+| `summerTint` | string | yes | Hex multiplier on the ground and foliage colour at the height of summer (Phase 54) |
+| `winterTint` | string | yes | Hex multiplier on the ground and foliage colour at the depth of winter (Phase 54) |
+| `seasonGrowth` | json | yes | Multiplier on tree regrowth speed (and growth rates) at the height of summer and the depth of winter; it varies linearly between (Phase 54) |
+| `seasonSpawn` | json | yes | Multiplier on creature spawn chance at the height of summer and the depth of winter (Phase 54) |
 | `avgTemperature` | decimal | yes | °C annual average; mild |
 | `avgRainfall` | decimal | yes | mm per in-game year; moderate |
 | `soilFertility` | decimal | yes | 0–1; moderate; unusual flora |
@@ -26,7 +31,7 @@ Eerie glades where day-night cycles run at an accelerated, unpredictable rate, b
 | `altitude` | json | yes | Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51) |
 | `rarity` | decimal | yes | Share of the world where this biome may appear: 1 = anywhere its envelope fits; below 1 it is a rare climate niche, eligible only where a low-frequency niche field falls under this value (Phase 51) |
 | `surfaceVeinChance` | decimal | yes | Share of this biome's top-cell veins that break the surface and keep their deposit marker (Phase 49); the rest are pushed out of view. Authored from the biome prose — its metals sit in shallow CAVE systems and cliff faces, so few veins crop out through the ground |
-| `dayNightSpeed` | decimal | yes | Multiplier on the global day-night cycle (1 = normal); varies per tile; drives weather pattern selection and duskfiber luminosity |
+| `dayNightSpeed` | decimal | yes | Multiplier on how deep this biome's night runs relative to the global WorldClock (1 = it follows the clock exactly, 0 = perpetual dusk); varies per tile; drives weather pattern selection and duskfiber luminosity (Phase 54) |
 
 ## Relations
 

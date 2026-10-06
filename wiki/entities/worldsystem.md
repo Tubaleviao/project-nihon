@@ -26,5 +26,8 @@ The planet as a fact of the fabric. The world takes globe semantics on a flat ch
 | spawnHabitableBiomes | json | Biomes a new player may spawn in; ocean, ice and VoidRift are left out on purpose (Phase 53) |
 | spawnMinColonizedDistance | decimal | Minimum distance in metres from any colonized region for a new player spawn (Phase 53) |
 | colonizedScore | decimal | Colonization score (edited chunks + homes x 10 + recent presence) at which a region counts as colonized (Phase 53) |
+| dayLengthMinutes | decimal | Real minutes one in-game day lasts: the world clock advances 1/dayLengthMinutes of a day per real minute (Phase 54) |
+| yearLengthDays | decimal | In-game days in one year; the seasons cycle once per year (Phase 54) |
+| axialTilt | decimal | Degrees the planet's axis leans from its orbit: the sun's declination swings ±axialTilt over a year, which sets day length and season strength by latitude (Phase 54) |
 | friendSpawnRadius | decimal | Metres around a friend within which a friend-code spawn lands (Phase 53) |
 

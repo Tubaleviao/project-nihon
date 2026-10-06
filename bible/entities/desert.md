@@ -12,6 +12,11 @@ Hot, dry sand and rock: the dry half of the tropics.
 | Name | Type | Required | Description |
 | ---- | ---- | -------- | ----------- |
 | `id` | uuid | yes |  |
+| `seasonSwing` | decimal | yes | °C the biome's temperature rises above and falls below its annual average over the year, at full seasonal latitude (Phase 54) |
+| `summerTint` | string | yes | Hex multiplier on the ground and foliage colour at the height of summer (Phase 54) |
+| `winterTint` | string | yes | Hex multiplier on the ground and foliage colour at the depth of winter (Phase 54) |
+| `seasonGrowth` | json | yes | Multiplier on tree regrowth speed (and growth rates) at the height of summer and the depth of winter; it varies linearly between (Phase 54) |
+| `seasonSpawn` | json | yes | Multiplier on creature spawn chance at the height of summer and the depth of winter (Phase 54) |
 | `avgTemperature` | decimal | yes | °C annual average |
 | `avgRainfall` | decimal | yes | mm per in-game year |
 | `soilFertility` | decimal | yes | 0–1; affects crop growth rates |

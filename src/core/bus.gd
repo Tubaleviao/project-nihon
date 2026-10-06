@@ -65,6 +65,10 @@ signal world_snapshot_requested(peer_id: int)
 ## data : Dictionary — { chunks, edits, creatures, players }
 signal world_snapshot_received(data: Dictionary)
 
+## Phase 54 — the host's world clock sample, broadcast every WorldClock.TICK_SECONDS.
+## host_days : float — the host's time_days when it sent the tick.
+signal world_clock_received(host_days: float)
+
 ## Client → host: a player wants to mine/place a block. The host re-runs the
 ## edit authoritatively and broadcasts the result via block_changed.
 ## action : String — "mine" or "place"

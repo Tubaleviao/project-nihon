@@ -37,6 +37,7 @@ const TestSuite        := preload("res://src/tests/test_suite.gd")
 const NetHarness       := preload("res://src/tests/net_harness.gd")
 const SpawnFinder      := preload("res://src/world/spawn_finder.gd")
 const ColonizationMap  := preload("res://src/world/colonization_map.gd")
+const WorldClock       := preload("res://src/world/world_clock.gd")
 
 var _terrain:     TerrainSlice
 var _voxel:       VoxelSlice
@@ -116,6 +117,15 @@ var _net_harness_role: String = ""
 
 ## Phase 53 — how settled each region is; new-player spawns keep away from the settled ones.
 var _colonization := ColonizationMap.new()
+## Phase 54 — the world clock. The host advances and saves it and ticks it to clients; a client
+## advances locally and slews to each tick.
+var _clock := WorldClock.new()
+var _clock_tick_elapsed: float = 0.0
+## Seconds between host ticks (the net harness shortens it); `clock_ticks_sent` counts them.
+var clock_tick_seconds: float = WorldClock.TICK_SECONDS
+var clock_ticks_sent: int = 0
+var clock_ticks_received: int = 0
+var _last_clock_text: String = ""
 ## Phase 53 — a friend's handle given on the command line (`--friend p_…`), "" for none.
 var _friend_code_arg: String = ""
 ## Phase 53 — where the LOCAL player (host or offline) was placed on a first boot, or null.
@@ -212,8 +222,10 @@ func _ready() -> void:
 	# CreatureSlice needs the terrain to place spawns on the surface; wire it
 	# before the slices enter the tree so its _ready() can use it.
 	_creature.terrain_slice = _terrain
+	_creature.world_clock = _clock
 	# TreeSlice likewise stands its trees on the terrain surface.
 	_tree.terrain_slice = _terrain
+	_tree.world_clock = _clock
 
 	# CreatureAI needs creature_slice, player_slice, and battle_slice for queries.
 	_creature_ai.creature_slice = _creature
@@ -431,6 +443,7 @@ func _ready() -> void:
 	GameBus.remote_player_state.connect(_on_remote_avatar_state)
 	GameBus.peer_equipment_evicted.connect(_remove_remote_avatar)
 	GameBus.world_snapshot_received.connect(_on_world_snapshot_received)
+	GameBus.world_clock_received.connect(_on_world_clock_received)
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
 
@@ -1269,6 +1282,7 @@ func _process(delta: float) -> void:
 	# a joining client holds the loading screen until its own first ring's ground exists.
 	_tick_pending_client_boot(delta)
 
+	_tick_world_clock(delta)
 	_sync_player_avatar(delta)
 	if _distant != null and _player != null and _chunk_manager != null:
 		_distant.world_seed = _terrain.get_world_seed()
@@ -1298,6 +1312,71 @@ func _process(delta: float) -> void:
 	if not _snapshot_pending:
 		return
 	_tick_client_handshake(delta)
+
+## Phase 54 — advance the clock, tick it to clients (host), and drive the sun, the season tint
+## and the HUD line (anything with a renderer). A server runs no renderer, so it only advances,
+## saves and ticks.
+func _tick_world_clock(delta: float) -> void:
+	_clock.advance(delta)
+	if not _is_client and _networking != null and _networking.is_host():
+		_clock_tick_elapsed += delta
+		if _clock_tick_elapsed >= clock_tick_seconds:
+			_clock_tick_elapsed = 0.0
+			clock_ticks_sent += 1
+			_networking.broadcast_world_clock(_clock.time_days)
+	if _is_server or _player == null:
+		return
+	var ppos: Vector3 = _player.get_position()
+	var lat: float = TerrainSlice.latitude_at(ppos.z)
+	_apply_sun(lat)
+	_apply_season_look(ppos, lat)
+	var text := _clock.text_for(lat)
+	if text != _last_clock_text:
+		_last_clock_text = text
+		if _minimap != null:
+			_minimap.clock_text = text
+			_minimap.queue_redraw()
+
+func _on_world_clock_received(host_days: float) -> void:
+	if not _is_client:
+		return
+	clock_ticks_received += 1
+	_clock.apply_host_time(host_days)
+
+## The sun follows the clock: elevation from latitude, declination and the hour of day; azimuth
+## swings east to west with the hour angle. It dims and warms toward the horizon and the sky
+## and ambient light fall with it at night.
+func _apply_sun(lat: float) -> void:
+	var sun := get_node_or_null("Sun") as DirectionalLight3D
+	if sun == null:
+		return
+	var elev: float = _clock.sun_elevation_at(lat)
+	var daylight: float = WorldClock.daylight_level(elev)
+	var hour: float = WorldClock.hour_angle_deg(WorldClock.day_phase(_clock.time_days))
+	sun.rotation_degrees = Vector3(-clampf(elev, 2.0, 90.0), 90.0 + hour, 0.0)
+	sun.light_energy = 1.4 * daylight
+	sun.visible = elev > -6.0
+	var low: float = clampf(1.0 - elev / 40.0, 0.0, 1.0)
+	sun.light_color = Color(1.0, 0.95, 0.85).lerp(Color(1.0, 0.6, 0.35), low * low)
+	var env_node := get_node_or_null("Environment") as WorldEnvironment
+	if env_node != null and env_node.environment != null:
+		env_node.environment.background_color = Color(0.02, 0.03, 0.08).lerp(Color(0.45, 0.62, 0.85), daylight)
+		env_node.environment.ambient_light_energy = lerpf(0.08, 0.5, daylight)
+
+## Season look: the shared terrain material is tinted by the biome underfoot for the season
+## at this latitude, and goes snow-white where that biome's seasonal temperature is below
+## freezing. One tint for the loaded window rather than per-chunk re-meshing.
+func _apply_season_look(ppos: Vector3, lat: float) -> void:
+	var chunk := Vector2i(floori(ppos.x / TerrainSlice.CHUNK_METERS), floori(ppos.z / TerrainSlice.CHUNK_METERS))
+	var biome: Variant = GameData.BIOMES.get(_terrain.get_biome_at_chunk(chunk), null)
+	if biome == null:
+		return
+	var w: float = _clock.warmth_at(lat)
+	var tint: Color = WorldClock.season_tint(biome, w)
+	var temp: float = WorldClock.seasonal_temperature(float(biome.get("avgTemperature")), float(biome.get("seasonSwing")), w)
+	if WorldClock.is_snowing_ground(temp):
+		tint = tint.lerp(Color(1.6, 1.6, 1.7), clampf(-temp / 10.0, 0.0, 0.7))
+	_voxel.set_season_tint(tint)
 
 ## Client-side: wait for the host's world snapshot, re-presenting the join intent
 ## while it does not arrive. The handshake is the only route to an identity and a
@@ -1407,6 +1486,8 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true,
 		# column of every loaded chunk. It is the world's identity, so it is small,
 		# exact, and the only thing that has to travel.
 		"seed":      _terrain.get_world_seed(),
+		# Phase 54 — the host's clock, so the client starts in step and only slews afterwards.
+		"clock":     _clock.to_data(),
 		# Phase 49 — only the edits of chunks inside the peer's AOI, with the scope named so
 		# the client keeps what it holds outside it.
 		"edits":     (_voxel.get_chunk_manifest() if full_edits
@@ -1480,6 +1561,8 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 		# chunk built from this machine's own random seed would be a different
 		# world, and every voxel edit the host sends would land elsewhere).
 		_terrain.set_world_seed(int(data["seed"]))
+	if data.has("clock"):
+		_clock.from_data(data["clock"])
 	if data.has("edits") and data["edits"] is Dictionary:
 		var scope: Variant = data.get("edits_aoi", null)
 		if scope is Array and scope.size() >= 3:
@@ -1757,6 +1840,7 @@ func _collect_save_job(incremental: bool) -> Dictionary:
 		"stations":        stations,
 		"creatures":       creatures,
 		"colonization":    _colonization.to_data(),
+		"clock":           _clock.to_data(),
 	}
 	# NOTE: no `dirty_chunks` key. It used to ride the record, but nothing ever read
 	# it back — dirty tracking lives in memory (VoxelSlice) and is reset by the save
@@ -1943,6 +2027,7 @@ func _load_world_records() -> void:
 	_registry.set_spawn_placer(_place_new_player)
 	_registry.set_friend_locator(_locate_friend_on_disk)
 	_colonization.from_data(_loaded_world.get("colonization", {}))
+	_clock.from_data(_loaded_world.get("clock", {}))
 	_colonization.seed_from_regions(_persistence.region_store.list_regions())
 	if not GameBus.block_changed.is_connected(_on_block_changed_colonization):
 		GameBus.block_changed.connect(_on_block_changed_colonization)

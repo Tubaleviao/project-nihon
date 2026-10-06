@@ -12,6 +12,11 @@ module.exports = {
     goal: 'Cap-content biome requiring full equipment, team co-ordination, and void-specific knowledge',
     fields: {
       id:             { type: 'uuid', primaryKey: true },
+      seasonSwing:    { type: 'decimal', description: '°C the biome\'s temperature rises above and falls below its annual average over the year, at full seasonal latitude (Phase 54)', defaultValue: 10 },
+      summerTint:     { type: 'string', description: 'Hex multiplier on the ground and foliage colour at the height of summer (Phase 54)', defaultValue: '#ffffff' },
+      winterTint:     { type: 'string', description: 'Hex multiplier on the ground and foliage colour at the depth of winter (Phase 54)', defaultValue: '#c9d3dc' },
+      seasonGrowth:   { type: 'json', description: 'Multiplier on tree regrowth speed (and growth rates) at the height of summer and the depth of winter; it varies linearly between (Phase 54)', defaultValue: { summer: 1.25, winter: 0.5 } },
+      seasonSpawn:    { type: 'json', description: 'Multiplier on creature spawn chance at the height of summer and the depth of winter (Phase 54)', defaultValue: { summer: 1.15, winter: 0.7 } },
       avgTemperature: { type: 'decimal', description: '°C; fluctuates wildly near active rifts' },
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year; negligible' },
       soilFertility:  { type: 'decimal', description: '0–1; always zero — nothing biological grows near rifts; tile generation must set this to 0 and reject any non-zero value' },

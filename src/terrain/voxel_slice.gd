@@ -2213,6 +2213,13 @@ func _terrain_material() -> StandardMaterial3D:
 
 ## The terrain's per-chunk material: per-column vertex colour, both faces
 ## rendered, so the shell is never see-through regardless of triangle winding.
+## Phase 54 — multiply the shared terrain material's albedo by the season's tint (Color.WHITE
+## clears it). Every chunk mesh shares the one material, so this re-tints the whole window.
+func set_season_tint(tint: Color) -> void:
+	var mat := _terrain_material()
+	if not mat.albedo_color.is_equal_approx(tint):
+		mat.albedo_color = tint
+
 func _make_terrain_material() -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color.WHITE

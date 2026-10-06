@@ -46,6 +46,8 @@ const FALLBACK_COLOR := Color(0.4, 0.4, 0.4)
 ## chunk manager (kept for introspection; the minimap no longer reads it).
 var chunk_manager: Node = null
 var player_slice: Node = null
+## Phase 54 — the HUD's time-of-day and season line, set by game_root when it changes.
+var clock_text: String = ""
 var terrain_slice: Node = null
 
 ## Explored chunks, keyed "cx,cz" -> true. Persistent for the session: once
@@ -212,6 +214,10 @@ func _draw() -> void:
 	# World boundary — a thin frame so the finite world's edge is visible when
 	# the view reaches it.
 	_draw_world_bounds(size, cell_px)
+
+	if clock_text != "":
+		draw_string(ThemeDB.fallback_font, Vector2(4.0, size.y - 17.0), clock_text,
+			HORIZONTAL_ALIGNMENT_LEFT, size.x - 8.0, 11, Color(1, 0.95, 0.7, 0.95))
 
 	# Latitude, longitude and altitude (Phase 50).
 	if player_slice != null and player_slice.has_method("get_position"):

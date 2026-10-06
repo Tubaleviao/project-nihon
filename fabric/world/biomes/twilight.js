@@ -12,6 +12,11 @@ module.exports = {
     goal: 'Introduce a distinctive environment that rewards exploration and alchemical knowledge',
     fields: {
       id:             { type: 'uuid', primaryKey: true },
+      seasonSwing:    { type: 'decimal', description: '°C the biome\'s temperature rises above and falls below its annual average over the year, at full seasonal latitude (Phase 54)', defaultValue: 10 },
+      summerTint:     { type: 'string', description: 'Hex multiplier on the ground and foliage colour at the height of summer (Phase 54)', defaultValue: '#ffffff' },
+      winterTint:     { type: 'string', description: 'Hex multiplier on the ground and foliage colour at the depth of winter (Phase 54)', defaultValue: '#c9d3dc' },
+      seasonGrowth:   { type: 'json', description: 'Multiplier on tree regrowth speed (and growth rates) at the height of summer and the depth of winter; it varies linearly between (Phase 54)', defaultValue: { summer: 1.25, winter: 0.5 } },
+      seasonSpawn:    { type: 'json', description: 'Multiplier on creature spawn chance at the height of summer and the depth of winter (Phase 54)', defaultValue: { summer: 1.15, winter: 0.7 } },
       avgTemperature: { type: 'decimal', description: '°C annual average; mild' },
       avgRainfall:    { type: 'decimal', description: 'mm per in-game year; moderate' },
       soilFertility:  { type: 'decimal', description: '0–1; moderate; unusual flora' },
@@ -26,7 +31,7 @@ module.exports = {
       altitude:       { type: 'json', description: 'Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51)', defaultValue: { min: 1.5, max: 250 } },
       rarity:         { type: 'decimal', description: 'Share of the world where this biome may appear: 1 = anywhere its envelope fits; below 1 it is a rare climate niche, eligible only where a low-frequency niche field falls under this value (Phase 51)', defaultValue: 0.08 },
       surfaceVeinChance: { type: 'decimal', description: 'Share of this biome\'s top-cell veins that break the surface and keep their deposit marker (Phase 49); the rest are pushed out of view. Authored from the biome prose — its metals sit in shallow CAVE systems and cliff faces, so few veins crop out through the ground', defaultValue: 0.1 },
-      dayNightSpeed:  { type: 'decimal', description: 'Multiplier on the global day-night cycle (1 = normal); varies per tile; drives weather pattern selection and duskfiber luminosity' },
+      dayNightSpeed:  { type: 'decimal', description: 'Multiplier on how deep this biome\'s night runs relative to the global WorldClock (1 = it follows the clock exactly, 0 = perpetual dusk); varies per tile; drives weather pattern selection and duskfiber luminosity (Phase 54)', defaultValue: 1 },
     },
     relations: {
       spawnGlimmerFox:  { name: 'spawnGlimmerFox',  kind: 'hasMany', target: 'GlimmerFox' },

@@ -5458,7 +5458,7 @@ _Implementation notes:_
 
 ---
 
-## Phase 54 — World clock, day and night, seasons
+## Phase 54 — World clock, day and night, seasons ✅ Done
 
 **Goal:** The only lighting is a static `DirectionalLight3D` at a fixed angle,
 with no clock, day/night cycle, seasons or weather. A planet with latitude
@@ -5486,13 +5486,25 @@ hemisphere.
 - The HUD shows the time of day and season.
 
 **Acceptance criteria:**
-- [ ] `clock: hemispheres are opposite`: on the same date, latitude +45° is in
+- [x] `clock: hemispheres are opposite`: on the same date, latitude +45° is in
   summer when −45° is in winter.
-- [ ] `clock: day length varies by latitude`: at the solstice, daylight is
+- [x] `clock: day length varies by latitude`: at the solstice, daylight is
   longer at +60° than at the equator.
-- [ ] A client's clock stays within 1 s of the host's over 10 minutes (net
+- [x] A client's clock stays within 1 s of the host's over 10 minutes (net
   harness).
-- [ ] `pnpm check-drift` clean and the suite green on both boot paths.
+- [x] `pnpm check-drift` clean and the suite green on both boot paths.
+
+_Implementation note:_ `src/world/world_clock.gd` holds the clock (`time_days`, host-owned, saved as
+`clock` on the world record, sent in the join snapshot, ticked every 5 s as a `world_clock` packet) and
+every projection as a static pure function. Fabric: `WorldSystem.dayLengthMinutes` / `yearLengthDays` /
+`axialTilt`; every biome gets `seasonSwing`, `summerTint`, `winterTint`, `seasonGrowth`, `seasonSpawn`;
+`dayNightSpeed` is now a 0–1 scale on how deep the biome's night runs against the global clock
+(`WorldClock.biome_daylight`, 1 = follows the clock). Growth scales stump regrowth (`TreeSlice.regrow_seconds`)
+and spawn scales a pack's chance (`CreatureSlice.season_spawn_multiplier`). The terrain tint and snow cover
+are ONE tint on the shared terrain material, driven by the biome underfoot (no per-chunk re-meshing), so
+snow whitens the whole loaded window rather than individual surfaces. The "within 1 s over 10 minutes"
+criterion is asserted by a simulated 10-minute run in the suite (a 0.2 % fast client, 100 ms latency, ticks
+every 5 s); the net harness step `clock_synced` (`15/15`) proves the same correction over the real socket.
 
 ---
 
