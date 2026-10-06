@@ -78,6 +78,9 @@ static func region_from_file_name(name: String) -> Dictionary:
 static func group_manifest(chunks: Dictionary) -> Dictionary:
 	var out: Dictionary = {}
 	for ckey in chunks:
+		if str(ckey).split(",").size() != 2:
+			Diag.warn("RegionStore: skipping malformed chunk key '%s'" % str(ckey))
+			continue
 		var rkey := region_key(region_of_chunk_key(str(ckey)))
 		if not out.has(rkey):
 			out[rkey] = {}
@@ -127,21 +130,34 @@ func has_region(region: Vector2i) -> bool:
 
 ## The chunk entries a region file holds, or an empty dict when absent / unreadable.
 func load_region(region: Vector2i) -> Dictionary:
+	return read_region(region)["chunks"]
+
+## Like `load_region`, but `ok` is false when the file EXISTS and could not be read or
+## parsed. A writer must not fold into the empty base of an unreadable file: that would
+## replace it and lose every chunk it held. Non-Dictionary chunk entries are dropped.
+func read_region(region: Vector2i) -> Dictionary:
 	var path := path_of(region)
 	if not FileAccess.file_exists(path):
-		return {}
+		return { "ok": true, "chunks": {} }
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
 		Diag.error("RegionStore: cannot open %s for read — %s" % [path, error_string(FileAccess.get_open_error())])
-		return {}
+		return { "ok": false, "chunks": {} }
 	var text := file.get_as_text()
 	file.close()
 	var data: Variant = JSON.parse_string(text)
 	if not (data is Dictionary):
 		Diag.error("RegionStore: %s contains invalid JSON" % path)
-		return {}
-	var chunks: Variant = (data as Dictionary).get("chunks", {})
-	return chunks if chunks is Dictionary else {}
+		return { "ok": false, "chunks": {} }
+	var raw: Variant = (data as Dictionary).get("chunks", {})
+	var chunks := {}
+	if raw is Dictionary:
+		for ckey in raw:
+			if raw[ckey] is Dictionary:
+				chunks[ckey] = raw[ckey]
+			else:
+				Diag.warn("RegionStore: %s: dropping malformed chunk entry '%s'" % [path, str(ckey)])
+	return { "ok": true, "chunks": chunks }
 
 ## Write one region's chunk entries (replacing the file). An EMPTY chunk set removes the
 ## file instead, so a region whose last edit was put back leaves nothing on disk.
@@ -174,7 +190,10 @@ func write_chunks(chunks: Dictionary, deletions := true) -> Error:
 	var grouped := group_manifest(chunks)
 	for rkey in grouped:
 		var region := region_from_key(str(rkey))
-		var folded := fold_chunks(load_region(region), grouped[rkey], deletions)
+		var read := read_region(region)
+		if not bool(read["ok"]):
+			return ERR_FILE_CORRUPT   # leave the unreadable file alone rather than replace it
+		var folded := fold_chunks(read["chunks"], grouped[rkey], deletions)
 		var err := save_region(region, folded)
 		if err != OK:
 			return err
@@ -208,7 +227,10 @@ func migrate_manifest(chunks: Dictionary) -> Error:
 	var grouped := group_manifest(chunks)
 	for rkey in grouped:
 		var region := region_from_key(str(rkey))
-		var base := load_region(region)
+		var read := read_region(region)
+		if not bool(read["ok"]):
+			return ERR_FILE_CORRUPT
+		var base: Dictionary = read["chunks"]
 		var missing := {}
 		for ckey in grouped[rkey]:
 			if not base.has(ckey):

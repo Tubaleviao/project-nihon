@@ -544,6 +544,7 @@ func run() -> void:
 	_run_test("region: a save after editing one chunk writes exactly one region file", _test_region_save_writes_one_file)
 	_run_test("region: a Phase 51 save migrates with every edit intact", _test_region_migrates_monolith)
 	_run_test("region: a full save erases compacted chunks; migration keeps newer region data", _test_region_full_save_erases_and_migration_keeps_newer)
+	_run_test("region: an unreadable region file is never overwritten by a save", _test_region_unreadable_not_overwritten)
 	_run_test("region: 1,000 regions on disk, only the ones near a window are resident", _test_region_streams_only_near_windows)
 	_run_test("chunk: each peer has a window and chunks are reference counted", _test_chunk_peer_windows_refcount)
 	_run_test("chunk: two peers 100 km apart each have creatures simulated", _test_chunk_far_peers_simulated)
@@ -13200,6 +13201,25 @@ func _test_region_migrates_monolith() -> void:
 	voxel.free()
 	voxel2.free()
 	store.free()
+
+func _test_region_unreadable_not_overwritten() -> void:
+	var dir := _fresh_region_dir("test_p52_unreadable")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	DirAccess.make_dir_recursive_absolute(dir + "regions/")
+	var path := store.path_of(Vector2i.ZERO)
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string("{ not json")
+	f.close()
+	var entry := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	assert_true(store.write_chunks({ "1,1": entry }) != OK, "a save into an unreadable region reports an error")
+	assert_true(store.migrate_manifest({ "1,1": entry }) != OK, "a migration into an unreadable region reports an error")
+	assert_eq(FileAccess.get_file_as_string(path), "{ not json", "the unreadable file is left untouched")
+	# Malformed entries are dropped on read; malformed manifest keys are skipped, not filed under 0,0.
+	var g := FileAccess.open(path, FileAccess.WRITE)
+	g.store_string(JSON.stringify({ "version": 1, "chunks": { "3,4": 5, "1,1": entry } }))
+	g.close()
+	assert_eq(store.load_region(Vector2i.ZERO).keys(), ["1,1"], "a non-Dictionary chunk entry is dropped on read")
+	assert_eq(RegionStoreScript.group_manifest({ "a": entry, "2,2": entry }).size(), 1, "a malformed chunk key is skipped")
 
 func _test_region_streams_only_near_windows() -> void:
 	var dir := _fresh_region_dir("test_p52_rss")

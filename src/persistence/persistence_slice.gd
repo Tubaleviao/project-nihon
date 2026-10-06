@@ -103,7 +103,7 @@ var atomic_writes: bool = true:
 		_rebuild_region_store()
 ## Phase 52 — the voxel edits live in region files beside the world record
 ## (`<server_save_dir>regions/r.<rx>.<rz>.json`); `world.json` carries no chunks. Rebuilt by
-## by the `server_save_dir` / `atomic_writes` setters so it always follows them.
+## the `server_save_dir` / `atomic_writes` setters so it always follows them.
 var region_store: RegionStore = RegionStore.new(DEFAULT_SERVER_SAVE_DIR + REGIONS_SUBDIR)
 
 func _ready() -> void:
