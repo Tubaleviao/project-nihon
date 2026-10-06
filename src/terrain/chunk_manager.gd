@@ -335,6 +335,7 @@ func refresh(unload_now: bool = true) -> void:
 		# STATIONARY player (a dedicated server's whole shape) is exactly the case a
 		# groundless chunk needs re-arming in. See `_self_heal_failed`.
 		_self_heal_failed(centers, false)
+		_retry_stranded_regions()
 		return
 
 	_last_center = center
@@ -396,6 +397,21 @@ func refresh(unload_now: bool = true) -> void:
 			_unload_queue.append(entry[1])
 
 	_self_heal_failed(centers, true)
+
+## Phase 52 — a region released while its chunks were dirty stays resident until a save has
+## cleaned them. A stationary window never reaches `RegionStreamer.sync`, so retry here,
+## throttled: saves land every autosave interval, not every frame.
+const STRANDED_RETRY_MSEC := 2000
+var _last_stranded_retry_msec: int = 0
+
+func _retry_stranded_regions() -> void:
+	if region_streamer == null or not region_streamer.has_stranded():
+		return
+	var now := Time.get_ticks_msec()
+	if now - _last_stranded_retry_msec < STRANDED_RETRY_MSEC:
+		return
+	_last_stranded_retry_msec = now
+	region_streamer.release_stranded()
 
 ## Phase 49 — release up to `budget` queued chunks, farthest first. The queue is rebuilt from
 ## scratch on every window move, so it never holds a chunk that is inside the current window.

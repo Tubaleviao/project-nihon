@@ -88,16 +88,22 @@ const REGIONS_SUBDIR := "regions/"
 ## of a `version` key.
 const LEGACY_WORLD_FORMAT_VERSION := 1
 
-var server_save_dir: String = DEFAULT_SERVER_SAVE_DIR
+var server_save_dir: String = DEFAULT_SERVER_SAVE_DIR:
+	set(value):
+		server_save_dir = value
+		_rebuild_region_store()
 var world_file: String = DEFAULT_WORLD_FILE
 var player_prefix: String = DEFAULT_PLAYER_PREFIX
 var autosave_interval: float = DEFAULT_AUTOSAVE_SECS
 var shutdown_poll_interval: float = DEFAULT_SHUTDOWN_POLL_SECS
 var shutdown_request_path: String = DEFAULT_SHUTDOWN_PATH
-var atomic_writes: bool = true
+var atomic_writes: bool = true:
+	set(value):
+		atomic_writes = value
+		_rebuild_region_store()
 ## Phase 52 — the voxel edits live in region files beside the world record
 ## (`<server_save_dir>regions/r.<rx>.<rz>.json`); `world.json` carries no chunks. Rebuilt by
-## `_load_config` so it follows `server_save_dir`.
+## by the `server_save_dir` / `atomic_writes` setters so it always follows them.
 var region_store: RegionStore = RegionStore.new(DEFAULT_SERVER_SAVE_DIR + REGIONS_SUBDIR)
 
 func _ready() -> void:

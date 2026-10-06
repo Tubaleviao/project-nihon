@@ -10,6 +10,7 @@ extends RefCounted
 ## Region reads are synchronous file reads on the calling (main) thread: a region file is
 ## the edits of one 32×32-chunk square, and a window crosses into a new region rarely.
 const RegionStore := preload("res://src/persistence/region_store.gd")
+const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 
 var _store: RegionStore
 var _voxel: Object
@@ -32,11 +33,12 @@ static func regions_for_chunks(chunks: Array) -> Dictionary:
 		out[RegionStore.region_key(RegionStore.region_of_chunk(chunk))] = true
 		# The margin matters only on a region's edge: a chunk there is rebuilt against its
 		# neighbour's real edits, which live in the next region.
-		var lo := RegionStore.region_of_chunk(chunk - Vector2i.ONE)
-		var hi := RegionStore.region_of_chunk(chunk + Vector2i.ONE)
-		for rx in range(lo.x, hi.x + 1):
-			for rz in range(lo.y, hi.y + 1):
-				out[RegionStore.region_key(Vector2i(rx, rz))] = true
+		# Neighbours are wrapped in X like every chunk key, so a seam chunk's margin is the
+		# region on the far side of the seam.
+		for dx in range(-1, 2):
+			for dz in range(-1, 2):
+				var n := TerrainSlice.wrap_chunk(chunk + Vector2i(dx, dz))
+				out[RegionStore.region_key(RegionStore.region_of_chunk(n))] = true
 	return out
 
 ## Make exactly `wanted` ("rx,rz" keys) resident: read the missing ones, release the rest.
@@ -66,25 +68,36 @@ func sync(wanted: Dictionary) -> Dictionary:
 				if not by_region.has(rk):
 					by_region[rk] = []
 				by_region[rk].append(ckey)
+		var evicted_from: Array = []
 		for rkey in _stranded.keys():
 			if wanted.has(rkey):
 				_stranded.erase(rkey)   # wanted again: re-read above, and memory won
 				continue
-			var keys: Array = by_region.get(rkey, [])
-			released += _voxel.evict_clean_chunks(keys)
-			# Dirty chunks stay (and the region stays stranded) until a save cleans them.
-			if still_resident(keys, _voxel) == 0:
+			released += _voxel.evict_clean_chunks(by_region.get(rkey, []))
+			evicted_from.append(rkey)
+		# Dirty chunks stay (and their region stays stranded) until a save cleans them.
+		var edited := {}
+		for ckey in _voxel.edited_chunk_keys():
+			edited[ckey] = true
+		for rkey in evicted_from:
+			var left := false
+			for ckey in by_region.get(rkey, []):
+				if edited.has(ckey):
+					left = true
+					break
+			if not left:
 				_stranded.erase(rkey)
 	return { "loaded": loaded, "released": released }
 
-## How many of `keys` are STILL resident edits (i.e. were dirty and so survived eviction).
-static func still_resident(keys: Array, voxel: Object) -> int:
-	var edited: Array = voxel.edited_chunk_keys()
-	var n := 0
-	for k in keys:
-		if edited.has(k):
-			n += 1
-	return n
+## Retry the stranded regions without a window move: a save may have cleaned their dirty
+## chunks since. Cheap when nothing is stranded. Returns how many chunks were released.
+func release_stranded() -> int:
+	if _stranded.is_empty():
+		return 0
+	return int(sync(_resident.duplicate())["released"])
+
+func has_stranded() -> bool:
+	return not _stranded.is_empty()
 
 func resident_regions() -> Array:
 	return _resident.keys()

@@ -98,7 +98,7 @@ static func regions_of_chunk_keys(chunk_keys: Array) -> Array:
 ## edits compacted away; `deletions` false stores every entry verbatim (a full save or a
 ## migration never carries the marker). Pure.
 static func fold_chunks(base: Dictionary, incoming: Dictionary, deletions := true) -> Dictionary:
-	var out := base.duplicate(true)
+	var out := base.duplicate()   # shallow: an entry is replaced or erased wholesale, never edited in place
 	for ckey in incoming:
 		var entry: Variant = incoming[ckey]
 		if deletions and entry is Dictionary and (entry as Dictionary).has("edits") \
@@ -151,7 +151,7 @@ func save_region(region: Vector2i, chunks: Dictionary) -> Error:
 		var err := FileAccess.get_open_error()
 		Diag.error("RegionStore: cannot open %s for write — %s" % [target, error_string(err)])
 		return err
-	file.store_string(JSON.stringify({ "version": REGION_FORMAT_VERSION, "chunks": chunks }, "\t"))
+	file.store_string(JSON.stringify({ "version": REGION_FORMAT_VERSION, "chunks": chunks }))
 	file.close()
 	if atomic_writes:
 		var rename_err := DirAccess.rename_absolute(target, path)

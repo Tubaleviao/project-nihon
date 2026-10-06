@@ -13210,6 +13210,21 @@ func _test_region_streams_only_near_windows() -> void:
 	cm.set_peer_center(7, Vector2i(500, 500))
 	cm.refresh()
 	assert_true(voxel.edited_chunk_keys().has("0,0"), "a dirty chunk keeps its edits after its region leaves every window")
+	# A collected-but-unwritten chunk (in flight) is not evicted either, and a stale region
+	# re-read cannot overwrite it; once the write settles it is released without a window move.
+	var far_edit := { "edits": { "%d,%d" % [320 * 64, 320 * 64]: [{ "op": "raise", "n": 1 }] } }
+	cm.set_peer_center(7, Vector2i(323, 323))
+	cm.refresh()
+	voxel.apply_region_chunks({ "320,320": far_edit })   # an edit made inside the peer's window
+	cm.set_peer_center(7, Vector2i(500, 500))
+	voxel.begin_inflight_chunks(["320,320"])
+	assert_true(voxel.edited_chunk_keys().has("320,320"), "the far chunk's edit is resident")
+	cm.refresh()
+	assert_true(voxel.edited_chunk_keys().has("320,320"), "an in-flight chunk keeps its edits once its region is unwanted")
+	voxel.end_inflight_chunks(["320,320"])
+	cm._last_stranded_retry_msec = -10000
+	cm.refresh()
+	assert_false(voxel.edited_chunk_keys().has("320,320"), "a settled clean chunk is released without a window move")
 	for k in ["cm", "voxel", "terrain", "player"]:
 		rig[k].free()
 

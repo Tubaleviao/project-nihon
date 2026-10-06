@@ -1668,6 +1668,7 @@ func _collect_save_job(incremental: bool) -> Dictionary:
 	# second, racy bookkeeping pass; clearing before it but on failure re-marking is
 	# exact in both directions.
 	_voxel.clear_dirty_chunk_keys(dirty)
+	_voxel.begin_inflight_chunks(dirty)
 	_save_summary = {
 		"dirty":       dirty,
 		"incremental": incremental,
@@ -1724,6 +1725,7 @@ func _flush_save() -> void:
 	_reap_save_thread()
 
 func _finish_save(result: int) -> void:
+	_voxel.end_inflight_chunks(_save_summary.get("dirty", []))
 	if result != OK:
 		Diag.error("[Server] world save failed — %s" % error_string(result))
 		GameBus.world_save_failed.emit(error_string(result))

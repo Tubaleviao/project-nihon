@@ -202,6 +202,10 @@ var _edits_by_chunk: Dictionary = {}
 ## Chunks touched by an edit since the last save, keyed by "cx,cz" string → true.
 ## Drives the per-chunk persistence manifest so only dirty chunks are re-serialized.
 var _dirty_chunks: Dictionary = {}
+## Phase 52 — chunks whose edits a save has collected but whose write has not yet landed.
+## They are no longer dirty, yet disk does not hold them: they must not be evicted (a failed
+## write would then lose them) nor overwritten by a region re-read (it would be stale).
+var _inflight_chunks: Dictionary = {}
 
 ## Phase 42 — how many times a chunk has been (re)built, keyed by "cx,cz" string.
 ## A build dispatched to a worker carries the revision it was dispatched AT, and
@@ -1723,7 +1727,8 @@ func apply_region_chunks(manifest: Dictionary) -> void:
 	var edits: Dictionary = {}
 	var materials: Dictionary = {}
 	for ckey in manifest:
-		if _edits_by_chunk.has(str(ckey)):
+		var rk := str(ckey)
+		if _edits_by_chunk.has(rk) or _dirty_chunks.has(rk) or _inflight_chunks.has(rk):
 			continue
 		var chunk_data: Dictionary = manifest[ckey]
 		if chunk_data.has("edits"):
@@ -1750,7 +1755,7 @@ func evict_clean_chunks(chunk_keys: Array) -> int:
 	var next: Dictionary = _edits.duplicate()
 	for ckey in chunk_keys:
 		var k := str(ckey)
-		if _dirty_chunks.has(k) or not _edits_by_chunk.has(k):
+		if _dirty_chunks.has(k) or _inflight_chunks.has(k) or not _edits_by_chunk.has(k):
 			continue
 		for key in _edits_by_chunk[k].keys():
 			next.erase(key)
@@ -1781,6 +1786,15 @@ func clear_dirty_chunks() -> void:
 func clear_dirty_chunk_keys(keys: Array) -> void:
 	for key in keys:
 		_dirty_chunks.erase(str(key))
+
+## Phase 52 — mark `keys` as being written (collected, not yet on disk) / as settled.
+func begin_inflight_chunks(keys: Array) -> void:
+	for key in keys:
+		_inflight_chunks[str(key)] = true
+
+func end_inflight_chunks(keys: Array) -> void:
+	for key in keys:
+		_inflight_chunks.erase(str(key))
 
 ## Re-mark `keys` dirty — the rollback for a save whose write failed, so a failed
 ## write cannot lose the chunks it claimed to persist.
