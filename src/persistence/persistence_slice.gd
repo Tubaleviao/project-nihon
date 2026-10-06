@@ -232,7 +232,7 @@ func _write_world_payload(data: Dictionary, incremental: bool) -> Error:
 	var chunks: Variant = payload.get("chunks", null)
 	payload.erase("chunks")
 	if chunks is Dictionary and not (chunks as Dictionary).is_empty():
-		var region_err := region_store.write_chunks(chunks, incremental)
+		var region_err := region_store.write_chunks(chunks)
 		if region_err != OK:
 			return region_err
 	if incremental:
@@ -290,7 +290,7 @@ func _migrate_monolith(world: Dictionary) -> Dictionary:
 			Diag.error("PersistenceSlice: migrating the monolithic world record into regions failed — %s" % error_string(err))
 			return world
 		Diag.warn("PersistenceSlice: migrated %d chunk(s) from the monolithic world record into region files" % (chunks as Dictionary).size())
-	_write_json(world_path(), slim)   # a failed rewrite is retried by the next read; the regions are folded, not lost
+	_write_json(world_path(), slim)   # a failed rewrite is retried by the next read; migrate_manifest never overwrites a chunk a region already holds
 	return slim
 
 func has_world() -> bool:
@@ -461,13 +461,7 @@ static func snapshot_carries_own_record(is_handshake_snapshot: bool, player_id: 
 ## rather than read as a deletion, the same "never default an unknown shape" policy
 ## `_normalise_ops` applies to an op it cannot read.
 static func is_empty_edit_set(entry: Variant) -> bool:
-	if not (entry is Dictionary):
-		return false
-	var e: Dictionary = entry
-	if not e.has("edits"):
-		return false
-	var edits: Variant = e["edits"]
-	return edits is Dictionary and (edits as Dictionary).is_empty()
+	return RegionStore.is_empty_edit_set(entry)
 
 # ---------------------------------------------------------------------------
 # Private

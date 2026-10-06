@@ -93,6 +93,14 @@ static func regions_of_chunk_keys(chunk_keys: Array) -> Array:
 	out.sort()
 	return out
 
+## True when `entry` is the deletion marker `{ "edits": {} }` (the `edits` key present and an
+## empty Dictionary; any other shape is folded in, never read as a deletion). Pure.
+static func is_empty_edit_set(entry: Variant) -> bool:
+	if not (entry is Dictionary):
+		return false
+	var edits: Variant = (entry as Dictionary).get("edits", null)
+	return edits is Dictionary and (edits as Dictionary).is_empty()
+
 ## Fold `incoming` chunk entries over `base`. An incoming entry that is an EMPTY edit set
 ## (`{ "edits": {} }`) deletes the chunk — the incremental save's way of saying a chunk's
 ## edits compacted away; `deletions` false stores every entry verbatim (a full save or a
@@ -101,8 +109,7 @@ static func fold_chunks(base: Dictionary, incoming: Dictionary, deletions := tru
 	var out := base.duplicate()   # shallow: an entry is replaced or erased wholesale, never edited in place
 	for ckey in incoming:
 		var entry: Variant = incoming[ckey]
-		if deletions and entry is Dictionary and (entry as Dictionary).has("edits") \
-				and (entry as Dictionary)["edits"] is Dictionary and ((entry as Dictionary)["edits"] as Dictionary).is_empty():
+		if deletions and is_empty_edit_set(entry):
 			out.erase(ckey)
 			continue
 		out[ckey] = entry
@@ -193,6 +200,22 @@ func list_regions() -> Array:
 	return out
 
 ## Split a monolithic chunk manifest (a Phase 51 `world.json`'s "chunks") into region
-## files. Folds over what is already on disk, so re-running after a crash is harmless.
+## files. A chunk a region file already holds WINS over the monolith's copy: the file is
+## either an earlier run of this same migration (identical data) or newer saves written
+## after a migration whose `world.json` rewrite failed, and the stale monolith must never
+## overwrite those. Re-running after a crash is therefore harmless.
 func migrate_manifest(chunks: Dictionary) -> Error:
-	return write_chunks(chunks, false)
+	var grouped := group_manifest(chunks)
+	for rkey in grouped:
+		var region := region_from_key(str(rkey))
+		var base := load_region(region)
+		var missing := {}
+		for ckey in grouped[rkey]:
+			if not base.has(ckey):
+				missing[ckey] = grouped[rkey][ckey]
+		if missing.is_empty():
+			continue
+		var err := save_region(region, fold_chunks(base, missing, false))
+		if err != OK:
+			return err
+	return OK

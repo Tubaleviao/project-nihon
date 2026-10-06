@@ -1155,9 +1155,9 @@ func _peer_window_chunk(peer_id: int) -> Vector2i:
 ## Phase 52 — keep one streaming window per connected peer, so creatures, trees and edit
 ## validation run around every player and not only near the server's own body. Throttled:
 ## a window moves by whole chunks, so twice a second is ample.
-func _sync_peer_windows(delta: float, force: bool = false) -> void:
+func _sync_peer_windows(delta: float) -> void:
 	_peer_window_elapsed += delta
-	if not force and _peer_window_elapsed < PEER_WINDOW_INTERVAL:
+	if _peer_window_elapsed < PEER_WINDOW_INTERVAL:
 		return
 	_peer_window_elapsed = 0.0
 	for pid in _registry.get_online_player_ids():
@@ -1637,6 +1637,12 @@ func _collect_save_job(incremental: bool) -> Dictionary:
 	# creatures) is small and always rewritten.
 	if incremental:
 		manifest = PersistenceSlice.dirty_chunk_subset(manifest, dirty)
+	else:
+		# A full save still carries the empty-edit-set marker for a dirty chunk whose edits
+		# compacted away, so its stale entry is erased from the region file.
+		for key in dirty:
+			if not manifest.has(str(key)):
+				manifest[str(key)] = { "edits": {} }
 	var creatures := _creature.get_snapshot_creatures()
 	var stations := _station.get_station_data()
 	var world := {
@@ -1824,6 +1830,12 @@ func _load_world_records() -> void:
 	# Phase 52 — the GLOBAL record only; a Phase 51 monolithic record is split into region
 	# files by this read, and the edits themselves stream in by region.
 	_loaded_world = _persistence.load_world_record()
+	# A failed region migration hands the record back WITH its chunks: apply them and mark
+	# them dirty so the next save writes them to regions instead of dropping them.
+	var legacy_chunks: Variant = _loaded_world.get("chunks", null)
+	if legacy_chunks is Dictionary and not (legacy_chunks as Dictionary).is_empty():
+		_voxel.apply_chunk_manifest(legacy_chunks)
+		_voxel.mark_dirty_chunks((legacy_chunks as Dictionary).keys())
 	_bind_local_identity()
 	# Lazy reader for every other player's record (see the docstring above).
 	_registry.set_record_loader(_persistence.load_player)

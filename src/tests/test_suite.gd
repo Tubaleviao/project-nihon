@@ -543,6 +543,7 @@ func run() -> void:
 	_run_test("region: chunks map onto 32x32 regions, negatives floor", _test_region_mapping)
 	_run_test("region: a save after editing one chunk writes exactly one region file", _test_region_save_writes_one_file)
 	_run_test("region: a Phase 51 save migrates with every edit intact", _test_region_migrates_monolith)
+	_run_test("region: a full save erases compacted chunks; migration keeps newer region data", _test_region_full_save_erases_and_migration_keeps_newer)
 	_run_test("region: 1,000 regions on disk, only the ones near a window are resident", _test_region_streams_only_near_windows)
 	_run_test("chunk: each peer has a window and chunks are reference counted", _test_chunk_peer_windows_refcount)
 	_run_test("chunk: two peers 100 km apart each have creatures simulated", _test_chunk_far_peers_simulated)
@@ -7769,7 +7770,7 @@ func _test_write_job_writes_records() -> void:
 	store.server_save_dir = dir
 	var pid := "player_1_1_abc"
 	var job := {
-		"world":       { "local_player_id": pid, "chunks": { "0,0": { "edits": {}, "materials": {} } } },
+		"world":       { "local_player_id": pid, "chunks": { "0,0": { "edits": { "1,1": [{ "op": "raise", "n": 1 }] } } } },
 		"incremental": false,
 		"players":     { pid: { "player_id": pid, "hp": 12.0 } },
 	}
@@ -13150,6 +13151,27 @@ func _test_region_save_writes_one_file() -> void:
 	assert_eq(writer.save_world({ "local_player_id": "p", "chunks": subset }, true), OK, "the incremental save writes")
 	assert_eq(_region_files(dir + "regions/"), ["r.0.0.json"], "exactly the dirty chunk's region file was written")
 	assert_eq(writer.region_store.list_dirty(["0,0", "3,3"]).size(), 1, "list_dirty names one region for two chunks in it")
+	writer.free()
+
+func _test_region_full_save_erases_and_migration_keeps_newer() -> void:
+	var dir := _fresh_region_dir("test_p52_full_erase")
+	var writer := PersistenceSlice.new()
+	add_child(writer)
+	writer.server_save_dir = dir
+	writer._rebuild_region_store()
+	var old_edit := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	assert_eq(writer.save_world({ "local_player_id": "p", "chunks": { "0,0": old_edit, "1,0": old_edit } }, false), OK, "seed save")
+	# A FULL save whose dirty chunk 0,0 compacted away carries the deletion marker.
+	assert_eq(writer.save_world({ "local_player_id": "p", "chunks": { "0,0": { "edits": {} }, "1,0": old_edit } }, false), OK, "full save with a marker")
+	var chunks := writer.load_region_chunks([Vector2i(0, 0)])
+	assert_false(chunks.has("0,0"), "a full save erases a chunk whose edits compacted away")
+	assert_true(chunks.has("1,0"), "and keeps the others")
+	# A migration never overwrites a chunk a region already holds (stale monolith vs newer saves).
+	var stale := { "1,0": { "edits": { "9,9": [{ "op": "raise", "n": 5 }] } }, "2,0": old_edit }
+	assert_eq(writer.region_store.migrate_manifest(stale), OK, "migration runs")
+	chunks = writer.load_region_chunks([Vector2i(0, 0)])
+	assert_false((chunks["1,0"]["edits"] as Dictionary).has("9,9"), "the newer region entry wins over the stale monolith")
+	assert_true(chunks.has("2,0"), "a chunk the region lacked is migrated in")
 	writer.free()
 
 func _test_region_migrates_monolith() -> void:

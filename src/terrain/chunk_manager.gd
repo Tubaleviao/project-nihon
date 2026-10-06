@@ -186,7 +186,6 @@ var _loaded: Dictionary = {}   # "cx,cz" -> true
 ## one.
 var _built: Dictionary = {}    # "cx,cz" -> true
 var _active: bool = false
-var _last_center: Vector2i = Vector2i(-9999, -9999)   # sentinel: no valid center yet
 
 ## Phase 52 — per-peer windows. The dedicated server used to stream around ONE centre, the idle
 ## body at the origin, so creatures and trees only lived near it. Each connected peer now adds a
@@ -194,8 +193,8 @@ var _last_center: Vector2i = Vector2i(-9999, -9999)   # sentinel: no valid cente
 ## them with the local player's own window (the listen host's, or the idle body's).
 ## `_peer_centers` maps peer_id -> chunk; `_last_centers` is the window set the last refresh
 ## resolved (so a peer crossing a chunk is a window move); `_chunk_refs` counts, per chunk, how
-## many windows cover it — a chunk loads when its count first goes above zero and unloads when
-## it returns to zero.
+## many windows cover it (a chunk is wanted while its count is above zero; the load/unload
+## queues themselves run off the `wanted` set).
 var _peer_centers: Dictionary = {}
 var _last_centers: Array = []
 var _chunk_refs: Dictionary = {}   # "cx,cz" -> number of windows covering it
@@ -338,7 +337,6 @@ func refresh(unload_now: bool = true) -> void:
 		_retry_stranded_regions()
 		return
 
-	_last_center = center
 	_last_centers = centers
 	# ONE radius for WANTED and DESIRED on purpose (ninth review pass): `wanted` — what a
 	# crossing retains — is the same radius the queue spans, so no chunk that was queued (and
