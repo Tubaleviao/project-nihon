@@ -26,6 +26,8 @@ Barren, heat-scorched terrain surrounding active or dormant volcanic calderas. T
 | soilMaterial | string | Material a mined slice of this biome's topsoil yields, within topsoilDepth of the surface (Phase 49). The surface-material → soil-material mapping, authored here so no GDScript branch decides it |
 | temperature | json | Climate envelope, normalised 0 (coldest) to 1 (hottest): the climate field selects this biome where its temperature lies in [min, max] (Phase 49) |
 | moisture | json | Climate envelope, normalised 0 (driest) to 1 (wettest), as for temperature |
+| altitude | json | Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51) |
+| rarity | decimal | Share of the world where this biome may appear: 1 = anywhere its envelope fits; below 1 it is a rare climate niche, eligible only where a low-frequency niche field falls under this value (Phase 51) |
 | surfaceVeinChance | decimal | Share of this biome's top-cell veins that break the surface and keep their deposit marker (Phase 49); the rest are pushed out of view. Authored from the biome prose — aethermite rides ley-line VENTS, and a vent is a surface breach, so its ground shows more of them |
 
 ## Related

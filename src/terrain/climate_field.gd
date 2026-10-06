@@ -49,6 +49,20 @@ static func _value_noise(seed_v: int, p: Vector2, salt: int) -> float:
 static func temperature(seed_v: int, p: Vector2) -> float:
 	return clampf(0.5 + (_value_noise(seed_v, p, 11) - 0.5) * CONTRAST, 0.0, 1.0)
 
+## Temperature drop per metre of altitude, in normalised units: a 1,200 m peak is a whole unit colder.
+const LAPSE_PER_M := 1.0 / 1200.0
+## Normalised temperature at the equator at sea level; it falls with the cosine of latitude to 0 at the pole.
+const EQUATOR_TEMPERATURE := 0.8
+const CLIMATE_NOISE := 0.4 ## amplitude of the regional noise around the latitude and altitude baseline
+
+## Phase 51 — temperature that follows the planet: warm at the equator, cold at the poles
+## (`lat_deg`), and falling with altitude above sea level (`altitude_m`), plus regional noise.
+static func temperature_at(seed_v: int, p: Vector2, lat_deg: float, altitude_m: float) -> float:
+	var base := EQUATOR_TEMPERATURE * cos(deg_to_rad(clampf(absf(lat_deg), 0.0, 90.0)))
+	# The regional noise fades toward the poles, so the polar cap is cold everywhere.
+	var noise := (_value_noise(seed_v, p, 11) - 0.5) * CONTRAST * CLIMATE_NOISE * cos(deg_to_rad(clampf(absf(lat_deg), 0.0, 90.0)))
+	return clampf(base + noise - maxf(altitude_m, 0.0) * LAPSE_PER_M, 0.0, 1.0)
+
 ## World-seeded moisture in [0, 1] at a point in chunk units (0 driest).
 static func moisture(seed_v: int, p: Vector2) -> float:
 	return clampf(0.5 + (_value_noise(seed_v, p, 12) - 0.5) * CONTRAST, 0.0, 1.0)
@@ -71,7 +85,9 @@ static func warm() -> void:
 			_envelopes[str(key)] = env
 	_warmed = not _envelopes.is_empty()
 
-## [temp_min, temp_max, moist_min, moist_max] of a biome resource, or [] without an envelope.
+## [temp_min, temp_max, moist_min, moist_max, alt_min, alt_max, rarity] of a biome resource, or []
+## without a climate envelope. A biome with no altitude envelope fits any height; no rarity is 1.
+## (Phase 51 added the last three.)
 static func _envelope_of(biome: Variant) -> Array:
 	if biome == null:
 		return []
@@ -79,38 +95,73 @@ static func _envelope_of(biome: Variant) -> Array:
 	var me: Variant = biome.get("moisture")
 	if not (te is Dictionary) or not (me is Dictionary) or (te as Dictionary).is_empty() or (me as Dictionary).is_empty():
 		return []
-	return [float(te["min"]), float(te["max"]), float(me["min"]), float(me["max"])]
+	var al: Variant = biome.get("altitude")
+	var amin := -100000.0
+	var amax := 100000.0
+	if al is Dictionary and not (al as Dictionary).is_empty():
+		amin = float(al["min"])
+		amax = float(al["max"])
+	var rar: Variant = biome.get("rarity")
+	return [float(te["min"]), float(te["max"]), float(me["min"]), float(me["max"]), amin, amax,
+		float(rar) if rar != null else 1.0]
 
-## How far (t, m) lies outside an envelope; 0 inside it. `.y` is the distance to the envelope's
-## centre, which breaks ties between overlapping envelopes.
-static func _envelope_gap(t: float, m: float, env: Array) -> Vector2:
+## Metres of altitude that weigh as much as one whole unit of temperature or moisture gap.
+const ALTITUDE_GAP_M := 100.0
+## Width of a niche cell, in chunks: a rare biome is eligible in a whole cell or none of it.
+const NICHE_CELL_CHUNKS := 10
+
+## Share-exact niche draw in [0, 1) for the cell holding chunk-unit point `p`; `salt` is per biome,
+## so two rare biomes do not claim the same cells.
+static func niche_value(seed_v: int, p: Vector2, salt: int) -> float:
+	var ix := floori(p.x / NICHE_CELL_CHUNKS)
+	var iz := floori(p.y / NICHE_CELL_CHUNKS)
+	return float(_mix(seed_v, ix, iz, 100 + salt) % 10000) / 10000.0
+
+## How far (t, m, altitude) lies outside an envelope; 0 inside it. `.y` is 0 for a rare (niche)
+## biome and 1 for a common one, so where both fit a niche wins; `.z` is the distance to the
+## envelope's centre, which breaks the remaining ties.
+static func _envelope_gap(t: float, m: float, alt: float, env: Array, niche: float = 0.0) -> Vector3:
 	if env.is_empty():
-		return Vector2(INF, INF)
-	var gap := maxf(maxf(env[0] - t, t - env[1]), 0.0) + maxf(maxf(env[2] - m, m - env[3]), 0.0)
+		return Vector3(INF, INF, INF)
+	var rarity: float = env[6] if env.size() > 6 else 1.0
+	if rarity < 1.0 and niche >= rarity:
+		return Vector3(INF, INF, INF)   # a rare biome outside its niche
+	var amin: float = env[4] if env.size() > 4 else -100000.0
+	var amax: float = env[5] if env.size() > 5 else 100000.0
+	var gap := maxf(maxf(env[0] - t, t - env[1]), 0.0) + maxf(maxf(env[2] - m, m - env[3]), 0.0) \
+		+ maxf(maxf(amin - alt, alt - amax), 0.0) / ALTITUDE_GAP_M
 	var centre := absf(t - (env[0] + env[1]) * 0.5) + absf(m - (env[2] + env[3]) * 0.5)
-	return Vector2(gap, centre)
+	return Vector3(gap, 0.0 if rarity < 1.0 else 1.0, centre)
 
-## The biome whose fabric climate envelope fits (temperature, moisture): the smallest gap to its
-## envelope, then the nearest envelope centre. "" when no biome carries an envelope.
-static func biome_for_climate(t: float, m: float, keys: Array, biomes: Dictionary) -> String:
+## The biome whose fabric climate envelope fits (temperature, moisture, altitude): the smallest
+## gap to its envelope, then a niche biome over a common one, then the nearest envelope centre.
+## "" when no biome carries an envelope. `niche` is the niche draw (a rare biome is eligible where
+## it is below that biome's `rarity`); the default 0 makes every biome eligible.
+static func biome_for_climate(t: float, m: float, keys: Array, biomes: Dictionary, altitude: float = 50.0, niche: float = 0.0) -> String:
 	var envs: Dictionary = {}
 	for key in keys:
 		envs[str(key)] = _envelope_of(biomes.get(key, null))
-	return _pick(t, m, keys, envs)
+	return _pick(t, m, altitude, keys, envs, niche, false)
 
-static func _pick(t: float, m: float, keys: Array, envs: Dictionary) -> String:
+static func _pick(t: float, m: float, alt: float, keys: Array, envs: Dictionary, niche: Variant, per_biome_niche: bool, seed_v: int = 0, p: Vector2 = Vector2.ZERO) -> String:
 	var best := ""
-	var best_g := Vector2(INF, INF)
+	var best_g := Vector3(INF, INF, INF)
+	var i := 0
 	for key in keys:
-		var g := _envelope_gap(t, m, envs.get(str(key), []))
-		if g.x < best_g.x or (g.x == best_g.x and g.y < best_g.y):
+		var nv: float = niche_value(seed_v, p, i) if per_biome_niche else float(niche)
+		i += 1
+		var g := _envelope_gap(t, m, alt, envs.get(str(key), []), nv)
+		if g.x < best_g.x or (g.x == best_g.x and (g.y < best_g.y or (g.y == best_g.y and g.z < best_g.z))):
 			best_g = g
 			best = str(key)
 	return best
 
 ## Biome key for a chunk, read at its centre. Climate envelopes from the fabric choose it when
 ## the biome resources are loaded; an isolated rig without them falls back to Voronoi cells.
-static func biome_for_chunk(seed_v: int, chunk_pos: Vector2i, keys: Array) -> String:
+##
+## Phase 51 — `lat_deg` (the chunk's latitude) and `altitude_m` (its large-scale height above sea
+## level) feed the temperature and the altitude envelope; the defaults are the equator at 50 m.
+static func biome_for_chunk(seed_v: int, chunk_pos: Vector2i, keys: Array, lat_deg: float = 0.0, altitude_m: float = 50.0) -> String:
 	if keys.is_empty():
 		return ""   # also guards the `% keys.size()` below
 	# The 3x3 cell search below is exact only while a feature point stays within ~0.8 of a
@@ -119,7 +170,7 @@ static func biome_for_chunk(seed_v: int, chunk_pos: Vector2i, keys: Array) -> St
 	if not _warmed:
 		warm()   # an isolated caller that never warmed it: a main-thread call
 	var p := Vector2(chunk_pos.x + 0.5, chunk_pos.y + 0.5)
-	var picked := _pick(temperature(seed_v, p), moisture(seed_v, p), keys, _envelopes)
+	var picked := _pick(temperature_at(seed_v, p, lat_deg, altitude_m), moisture(seed_v, p), altitude_m, keys, _envelopes, 0.0, true, seed_v, p)
 	if picked != "":
 		return picked
 	return _voronoi_biome(seed_v, chunk_pos, keys)

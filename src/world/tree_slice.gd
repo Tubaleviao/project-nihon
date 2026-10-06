@@ -52,6 +52,8 @@ const TREES_BY_BIOME: Dictionary = {
 	"TemperateForest":    { "species": "Thornwood", "wood": "Thornwood", "per_chunk": 8 },
 	"TemperateGrassland": { "species": "Thornwood", "wood": "Thornwood", "per_chunk": 2 },
 	"TwilightGrove":      { "species": "Duskwood",  "wood": "Duskfiber", "per_chunk": 8 },
+	"Taiga":              { "species": "Thornwood", "wood": "Thornwood", "per_chunk": 5 },
+	"Savanna":            { "species": "Thornwood", "wood": "Thornwood", "per_chunk": 1 },
 }
 
 ## Biome assumed when no terrain slice is wired (isolated unit tests), mirroring

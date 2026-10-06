@@ -98,6 +98,7 @@ const Diag := preload("res://src/core/diag.gd")
 const MeshUtil := preload("res://src/core/mesh_util.gd")
 ## Phase 43 — the deterministic ore field: veins, their depth band and ley gate.
 const OreField := preload("res://src/terrain/ore_field.gd")
+const WorldShape := preload("res://src/terrain/world_shape.gd")
 
 ## CHUNK_SIZE is defined once on TerrainSlice and accessed via terrain_slice.CHUNK_SIZE.
 ## The local alias below keeps internal uses readable without duplicating the value.
@@ -110,8 +111,12 @@ const BLEND_TILES := 4.0     # width of the dithered biome border band, in tiles
 ## thickness now, so a column is solid from BEDROCK_DEPTH up to its surface, a
 ## tunnel has room to exist underneath it, and mining descends one STEP_HEIGHT at
 ## a time until the floor refuses. MAX_HEIGHT stays the build cap.
-const BEDROCK_DEPTH := -8.0    # cannot mine below this — the world's floor
-const MAX_HEIGHT    := 16.0    # build cap — cannot place above this
+## Phase 51 — the surface now spans the fabric's −64..+512 m, so the floor sits a fixed 8 m below
+## the lowest possible surface (`WorldShape` clamps heights at `minHeight`) and the build cap a
+## little above the tallest peak. (A per-column bedrock that rides the surface is not needed: a
+## column is one run from here up, so a deeper floor costs nothing.)
+const BEDROCK_DEPTH := -72.0   # cannot mine below this — the world's floor
+const MAX_HEIGHT    := 640.0   # build cap — cannot place above this
 
 ## A tile's op list is COMPACTED once it grows past this many ops (see
 ## `_append_edit` / `_compact_ops`). Ops are an append-only log by design, so a
@@ -359,6 +364,15 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	mesh_inst.material_override = _terrain_material()
 	root.add_child(mesh_inst)
 
+	# --- Water (Phase 51): a flat, collision-free surface where the ground is below sea level. ---
+	var water_mesh := water_mesh_for(chunk_pos, heightmap)
+	if water_mesh != null:
+		var water_inst := MeshInstance3D.new()
+		water_inst.name = "Water"
+		water_inst.mesh = water_mesh
+		water_inst.material_override = _water_material()
+		root.add_child(water_inst)
+
 	# --- Rare-vein deposits: a SECOND mesh, from arrays the build already carries. ---
 	# Phase 42 review pass 8 — this used to call `vein_deposits()` HERE, on the main thread,
 	# walking all 4096 of the chunk's columns a second time (run replay + a biome and
@@ -399,6 +413,59 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	static_body.add_child(col_shape)
 	root.add_child(static_body)
 	return true
+
+## Phase 51 — the static water level. Rows of tiles whose ground lies below the sea surface,
+## merged into spans: each span is `Vector3i(tile_z, first_tile_x, last_tile_x + 1)`. Pure.
+static func water_spans(heightmap: Array, sea_level: float) -> Array:
+	var spans: Array = []
+	for tz in range(CHUNK_SIZE):
+		var start := -1
+		for tx in range(CHUNK_SIZE + 1):
+			var wet := tx < CHUNK_SIZE and float(heightmap[tz * CHUNK_SIZE + tx]) < sea_level
+			if wet and start < 0:
+				start = tx
+			elif not wet and start >= 0:
+				spans.append(Vector3i(tz, start, tx))
+				start = -1
+	return spans
+
+## The chunk's water surface at the sea level (world coordinates, like the terrain mesh), or null on dry ground.
+## Render-only: the mesh has no collision body, so the player sinks through it and swims.
+static func water_mesh_for(chunk_pos: Vector2i, heightmap: Array) -> ArrayMesh:
+	var sea := WorldShape.sea_level()
+	var spans := water_spans(heightmap, sea)
+	if spans.is_empty():
+		return null
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var indices := PackedInt32Array()
+	for sp in spans:
+		var z0 := (float(chunk_pos.y * CHUNK_SIZE) + float(sp.x)) * TILE_SIZE
+		var z1 := z0 + TILE_SIZE
+		var x0 := (float(chunk_pos.x * CHUNK_SIZE) + float(sp.y)) * TILE_SIZE
+		var x1 := (float(chunk_pos.x * CHUNK_SIZE) + float(sp.z)) * TILE_SIZE
+		var base := vertices.size()
+		vertices.append_array([Vector3(x0, sea, z0), Vector3(x1, sea, z0), Vector3(x1, sea, z1), Vector3(x0, sea, z1)])
+		for _i in 4:
+			normals.append(Vector3.UP)
+		indices.append_array([base, base + 2, base + 1, base, base + 3, base + 2])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+var _water_mat: StandardMaterial3D = null
+func _water_material() -> StandardMaterial3D:
+	if _water_mat == null:
+		_water_mat = StandardMaterial3D.new()
+		_water_mat.albedo_color = Color(0.15, 0.35, 0.6, 0.6)
+		_water_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_water_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return _water_mat
 
 ## Resolve every column a chunk build must READ into a plain table the pure builder can
 ## consume — plus the chunk's rare-vein deposit list.
@@ -903,7 +970,7 @@ static func _wall_plane(chunk_pos: Vector2i, dir: String, tx: int, tz: int) -> f
 ## identical — no span merges that did not merge before. The three GEOMETRY components fit
 ## int32 by a wide margin: a wall plane is a multiple of TILE_SIZE 0.5 and bounded by the
 ## world extent (|plane·10⁴| ≤ 4.1e7), and a run's span is bounded by
-## BEDROCK_DEPTH..MAX_HEIGHT (|y·10⁴| ≤ 1.6e5).
+## BEDROCK_DEPTH..MAX_HEIGHT (|y·10⁴| ≤ 6.4e6).
 ##
 ## Phase 42 review pass 9 — the fourth component does NOT fit, and the old comment claimed it
 ## did ("`to_rgba32()` is an int32 by definition"): it is a packed uint32, so opaque white is

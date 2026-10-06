@@ -8,8 +8,15 @@ const APPEARANCES: Dictionary = {
 }
 
 const BIOMES: Dictionary = {
+		"Alpine": preload("res://godot/biomes/alpine.tres"),
+		"Beach": preload("res://godot/biomes/beach.tres"),
+		"Desert": preload("res://godot/biomes/desert.tres"),
+		"Ocean": preload("res://godot/biomes/ocean.tres"),
+		"Savanna": preload("res://godot/biomes/savanna.tres"),
+		"Taiga": preload("res://godot/biomes/taiga.tres"),
 		"TemperateForest": preload("res://godot/biomes/temperateforest.tres"),
 		"TemperateGrassland": preload("res://godot/biomes/temperategrassland.tres"),
+		"Tundra": preload("res://godot/biomes/tundra.tres"),
 		"TwilightGrove": preload("res://godot/biomes/twilightgrove.tres"),
 		"VoidRift": preload("res://godot/biomes/voidrift.tres"),
 		"VolcanicBadlands": preload("res://godot/biomes/volcanicbadlands.tres")
@@ -76,6 +83,8 @@ const MATERIALS: Dictionary = {
 		"Ferrite": preload("res://godot/materials/ferrite.tres"),
 		"Grass": preload("res://godot/materials/grass.tres"),
 		"Lumenfite": preload("res://godot/materials/lumenfite.tres"),
+		"Sand": preload("res://godot/materials/sand.tres"),
+		"Snow": preload("res://godot/materials/snow.tres"),
 		"Soil": preload("res://godot/materials/soil.tres"),
 		"Thornwood": preload("res://godot/materials/thornwood.tres"),
 		"Veilsteel": preload("res://godot/materials/veilsteel.tres"),

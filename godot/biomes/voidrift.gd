@@ -15,4 +15,6 @@ extends Resource
 @export var soilMaterial: String
 @export var temperature: Dictionary
 @export var moisture: Dictionary
+@export var altitude: Dictionary
+@export var rarity: float
 @export var surfaceVeinChance: float

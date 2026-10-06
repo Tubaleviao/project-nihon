@@ -36,4 +36,28 @@ module.exports = {
     },
   }),
 
+  Sand: defineEntity({
+    tags: ['material'],
+    description: 'Loose grains that cover beaches, deserts and the sea floor. Digging it yields Soil. A surface cover named by a biome\'s `surfaceMaterial` (Phase 51).',
+    goal: 'Let the new Earth-like biomes wear a cover that is not turf',
+    fields: {
+      id:       { type: 'uuid', primaryKey: true },
+      density:  { type: 'decimal', description: 'g/cm³', defaultValue: 1.6 },
+      hardness: { type: 'decimal', description: 'Mohs equivalent 1–10', defaultValue: 0.5 },
+      ...depositFields({ min: 0, max: 0, why: 'A surface cover, never a buried vein.' }),
+    },
+  }),
+
+  Snow: defineEntity({
+    tags: ['material'],
+    description: 'Packed snow that caps alpine peaks and the polar ground. Digging it yields Soil. A surface cover named by a biome\'s `surfaceMaterial` (Phase 51).',
+    goal: 'Let the new Earth-like biomes wear a cover that is not turf',
+    fields: {
+      id:       { type: 'uuid', primaryKey: true },
+      density:  { type: 'decimal', description: 'g/cm³', defaultValue: 0.3 },
+      hardness: { type: 'decimal', description: 'Mohs equivalent 1–10', defaultValue: 0.5 },
+      ...depositFields({ min: 0, max: 0, why: 'A surface cover, never a buried vein.' }),
+    },
+  }),
+
 }

@@ -12,8 +12,15 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 
 ## Biome
 
+- [Alpine](entities/alpine.md) — Snow-capped peaks above the tree line, at any latitude
+- [Beach](entities/beach.md) — The first metre and a half of shore above the waterline: pale sand and no trees
+- [Desert](entities/desert.md) — Hot, dry sand and rock: the dry half of the tropics
+- [Ocean](entities/ocean.md) — Open water over the continental shelf and the deep basins
+- [Savanna](entities/savanna.md) — Warm grassland with scattered trees in the seasonal tropics
+- [Taiga](entities/taiga.md) — Cold, wet conifer forest between the tundra and the temperate belt
 - [TemperateForest](entities/temperateforest.md) — Broad mixed-leaf forests covering most mid-latitude landmass
 - [TemperateGrassland](entities/temperategrassland.md) — Open rolling plains ideal for large settlements, agriculture, and mounted travel
+- [Tundra](entities/tundra.md) — Frozen, treeless plains at the high latitudes, down to the polar ice
 - [TwilightGrove](entities/twilightgrove.md) — Eerie glades where day-night cycles run at an accelerated, unpredictable rate, bathing the land in perpetual half-light
 - [VoidRift](entities/voidrift.md) — Fractured terrain surrounding permanent rifts in the fabric of reality
 - [VolcanicBadlands](entities/volcanicbadlands.md) — Barren, heat-scorched terrain surrounding active or dormant volcanic calderas
@@ -80,6 +87,8 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [Ferrite](entities/ferrite.md) — Common dark-grey metal found in surface veins across temperate biomes, volcanic lava-tube edges, and stabilised sections of void rifts
 - [Grass](entities/grass.md) — Living turf that covers temperate ground (forest and grassland)
 - [Lumenfite](entities/lumenfite.md) — Translucent crystalline mineral that absorbs ambient light during the day and releases it slowly at night
+- [Sand](entities/sand.md) — Loose grains that cover beaches, deserts and the sea floor
+- [Snow](entities/snow.md) — Packed snow that caps alpine peaks and the polar ground
 - [Soil](entities/soil.md) — Loose earth under a biome's cover, down to its `topsoilDepth`
 - [Thornwood](entities/thornwood.md) — Dense, dark-veined wood from the Thornwood tree that grows in lowland forests
 - [Veilsteel](entities/veilsteel.md) — Blue-black alloy smelted from ferrite ingots and aethermite shards under high heat

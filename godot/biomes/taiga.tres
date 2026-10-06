@@ -1,0 +1,23 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/biomes/taiga.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+avgTemperature = 0.0
+avgRainfall = 600.0
+soilFertility = 0.3
+treeDensity = 5
+surfaceMaterial = "Grass"
+surfaceTint = "#3f6b4a"
+soilTint = "#5a4632"
+topsoilDepth = 2.5
+soilMaterial = "Soil"
+temperature = {"min":0.15,"max":0.35}
+moisture = {"min":0.3,"max":1}
+altitude = {"min":1.5,"max":250}
+rarity = 1.0
+surfaceVeinChance = 0.15
+description = "Cold, wet conifer forest between the tundra and the temperate belt."
+tags = ["biome"]

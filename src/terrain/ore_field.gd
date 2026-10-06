@@ -76,6 +76,15 @@ const BIOME_BIAS: Dictionary = {
 	"TwilightGrove":      { "Lumenfite": 77, "Aethermite": 23 },
 	# prose: voidite 0.7 / ferrite 0.3
 	"VoidRift":           { "Voidite": 70, "Ferrite": 30 },
+	# Phase 51 prose: ferrite outcrops on every Earth-like biome (the sea floor and beach hold it
+	# only as host rock); alpine peaks also show aethermite along ley lines
+	"Ocean":              { "Ferrite": 100 },
+	"Beach":              { "Ferrite": 100 },
+	"Desert":             { "Ferrite": 100 },
+	"Tundra":             { "Ferrite": 100 },
+	"Alpine":             { "Ferrite": 80, "Aethermite": 20 },
+	"Taiga":              { "Ferrite": 100 },
+	"Savanna":            { "Ferrite": 100 },
 }
 
 ## The host a biome missing from BIOME_BIAS falls back to (no canonical biome is missing —

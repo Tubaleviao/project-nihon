@@ -1,0 +1,23 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/biomes/tundra.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+avgTemperature = -12.0
+avgRainfall = 250.0
+soilFertility = 0.05
+treeDensity = 0
+surfaceMaterial = "Snow"
+surfaceTint = "#dfe8ea"
+soilTint = "#7d7a6e"
+topsoilDepth = 1.5
+soilMaterial = "Soil"
+temperature = {"min":0,"max":0.2}
+moisture = {"min":0,"max":1}
+altitude = {"min":1.5,"max":250}
+rarity = 1.0
+surfaceVeinChance = 0.2
+description = "Frozen, treeless plains at the high latitudes, down to the polar ice."
+tags = ["biome"]

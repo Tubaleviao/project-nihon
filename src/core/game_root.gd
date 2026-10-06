@@ -10,6 +10,7 @@ const Diag := preload("res://src/core/diag.gd")
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const VoxelSlice       := preload("res://src/terrain/voxel_slice.gd")
 const ChunkManager     := preload("res://src/terrain/chunk_manager.gd")
+const DistantTerrain   := preload("res://src/terrain/distant_terrain.gd")
 const BattleSlice      := preload("res://src/battle/battle_slice.gd")
 const CreatureSlice    := preload("res://src/creature/creature_slice.gd")
 const CreatureAI       := preload("res://src/creature/creature_ai.gd")
@@ -38,6 +39,7 @@ var _terrain:     TerrainSlice
 var _voxel:       VoxelSlice
 var _chunk_manager: ChunkManager
 var _minimap:     Minimap
+var _distant:     Node   # Phase 51 — render-only coarse ring outside the voxel window
 var _loading_screen: LoadingScreen
 var _battle:      BattleSlice
 var _creature:    CreatureSlice
@@ -350,6 +352,10 @@ func _ready() -> void:
 	# presentation, so a headless dedicated server (Phase 27) skips it entirely,
 	# the same way the lighting block below does.
 	if not _is_server:
+		_distant = DistantTerrain.new()
+		_distant.name = "DistantTerrain"
+		_distant.circumference_m = float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+		add_child(_distant)
 		var minimap_layer := CanvasLayer.new()
 		minimap_layer.name = "MinimapLayer"
 		minimap_layer.layer = 20
@@ -1133,6 +1139,10 @@ func _process(delta: float) -> void:
 	_tick_pending_client_boot(delta)
 
 	_sync_player_avatar(delta)
+	if _distant != null and _player != null and _chunk_manager != null:
+		_distant.world_seed = _terrain.get_world_seed()
+		var pp := _player.get_position()
+		_distant.rebuild(Vector2(pp.x, pp.z), _chunk_manager.stream_radius())
 	if _is_client:
 		_prune_remote_avatars()
 	if not _is_client and _player != null:

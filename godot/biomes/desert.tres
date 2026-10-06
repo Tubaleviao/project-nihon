@@ -1,0 +1,23 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/biomes/desert.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+avgTemperature = 34.0
+avgRainfall = 80.0
+soilFertility = 0.05
+treeDensity = 0
+surfaceMaterial = "Sand"
+surfaceTint = "#d8b768"
+soilTint = "#a8844a"
+topsoilDepth = 2.0
+soilMaterial = "Soil"
+temperature = {"min":0.65,"max":1}
+moisture = {"min":0,"max":0.25}
+altitude = {"min":1.5,"max":250}
+rarity = 1.0
+surfaceVeinChance = 0.3
+description = "Hot, dry sand and rock: the dry half of the tropics."
+tags = ["biome"]

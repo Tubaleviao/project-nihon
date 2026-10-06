@@ -1,0 +1,23 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/biomes/alpine.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+avgTemperature = -5.0
+avgRainfall = 900.0
+soilFertility = 0.0
+treeDensity = 0
+surfaceMaterial = "Snow"
+surfaceTint = "#f2f6f7"
+soilTint = "#8c8c93"
+topsoilDepth = 1.0
+soilMaterial = "Soil"
+temperature = {"min":0,"max":1}
+moisture = {"min":0,"max":1}
+altitude = {"min":250,"max":100000}
+rarity = 1.0
+surfaceVeinChance = 0.4
+description = "Snow-capped peaks above the tree line, at any latitude."
+tags = ["biome"]

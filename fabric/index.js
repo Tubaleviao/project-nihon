@@ -71,6 +71,8 @@ module.exports = defineFabric({
       Lumenfite:  materials.Lumenfite,
       Grass:      materials.Grass,
       Soil:       materials.Soil,
+      Sand:       materials.Sand,
+      Snow:       materials.Snow,
     },
     // World — Biomes + Systems
     {
@@ -79,6 +81,13 @@ module.exports = defineFabric({
       VolcanicBadlands:   biomes.VolcanicBadlands,
       TwilightGrove:      biomes.TwilightGrove,
       VoidRift:           biomes.VoidRift,
+      Ocean:              biomes.Ocean,
+      Beach:              biomes.Beach,
+      Desert:             biomes.Desert,
+      Tundra:             biomes.Tundra,
+      Alpine:             biomes.Alpine,
+      Taiga:              biomes.Taiga,
+      Savanna:            biomes.Savanna,
       WeatherSystem:      weather.WeatherSystem,
       WorldSystem:        world.WorldSystem,
     },

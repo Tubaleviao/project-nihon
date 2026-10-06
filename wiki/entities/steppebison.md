@@ -27,7 +27,7 @@ A massive, shaggy bison that grazes temperate grasslands in loose herds. Slow an
 | spawnCount | integer | PACK size: instances placed together at one spawn point (not a per-chunk count) |
 | spawnChance | decimal | Probability (0–1) that a chunk of this creature's biome rolls a pack at all |
 | spawnDensity | decimal | Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world |
-| biome | `TemperateForest`, `TemperateGrassland`, `VolcanicBadlands`, `TwilightGrove`, `VoidRift` | Biome this creature belongs to |
+| biome | `TemperateForest`, `TemperateGrassland`, `VolcanicBadlands`, `TwilightGrove`, `VoidRift`, `Ocean`, `Beach`, `Desert`, `Tundra`, `Alpine`, `Taiga`, `Savanna` | Biome this creature belongs to |
 | groupBehavior | `none`, `pack`, `herd` | How group members coordinate: none (solitary), pack (share alert/aggressive), herd (share flee) |
 | packRadius | decimal | Distance in metres within which group members coordinate with each other |
 | drops | json | Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system. |
