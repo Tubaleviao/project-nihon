@@ -5316,7 +5316,7 @@ shape and makes biomes follow climate the way Earth's do.
   the surface (a suite test on the movement state).
 - [x] A distant-terrain ring renders at 10× the voxel window with no collision
   bodies (asserted).
-- [x] `pnpm check-drift` clean and the suite green on both boot paths.
+- [x] `pnpm check-drift` clean and the suite green on both boot paths. _Drift clean; suite 9056/9056 with and without `--server`; `tools/net_harness.sh` 12/12._
 
 **Progress:** done. `src/terrain/world_shape.gd` (integer-lattice, periodic, worker-safe
 continentalness / erosion / ridges through the fabric `heightSpline`, with a spawn plain),
