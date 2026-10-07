@@ -116,6 +116,7 @@ func run() -> void:
 	_run_test("persistence: save then load round-trip",       _test_persistence_round_trip)
 	_run_test("persistence: worldgen stamp on a new world",   _test_worldgen_stamp_new_world)
 	_run_test("persistence: worldgen mismatch warns once and keeps the stamp", _test_worldgen_stamp_mismatch)
+	_run_test("game_root: worldgen stamp wiring on load",     _test_worldgen_stamp_game_root_wiring)
 	_run_test("persistence: missing slot emits load_failed",  _test_persistence_missing_slot)
 	_run_test("loot: known creature produces drops",          _test_loot_known_creature)
 	_run_test("loot: drops read from fabric (LavaSlug)",     _test_loot_drops_from_fabric)
@@ -245,6 +246,9 @@ func run() -> void:
 	_run_test("equipment: join payload carries a revalidated set", _test_equipment_revalidated_before_join)
 	_run_test("equipment: a stale revoke does not wipe a newer equip", _test_equipment_stale_revoke_ignored)
 	_run_test("equipment: refused intents are rate limited",    _test_equipment_refusals_rate_limited)
+	_run_test("equipment: a suppressed refusal still revokes once", _test_equipment_trailing_revoke)
+	_run_test("equipment: bookkeeping is dropped with the player", _test_equipment_bookkeeping_evicted)
+	_run_test("equipment: the sequence number never rewinds",   _test_equipment_seq_monotonic)
 	_run_test("equipment: slots cached, peer evict, owner map", _test_equipment_phase48_misc)
 	_run_test("equipment: host worn set + AOI enter/leave",      _test_equipment_host_and_aoi_transitions)
 	_run_test("net: broadcasts go through _test_peers",          _test_network_broadcast_uses_test_peers)
@@ -1368,6 +1372,29 @@ func _test_worldgen_stamp_mismatch() -> void:
 	voxel.free()
 	writer.free()
 	_wipe_dir(dir)
+
+## Phase 71 — the game_root half: loading a record sets the stamp the next save carries and
+## raises the bus signal exactly when the record's generator is not the running one.
+func _test_worldgen_stamp_game_root_wiring() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	var gr: Node = root_script.new()
+	assert_eq(gr._worldgen_stamp, TerrainSlice.WORLDGEN_VERSION, "a process that loads nothing stamps the running version")
+	var seen: Array = []
+	var cb := func(recorded: int, running: int) -> void: seen.append([recorded, running])
+	GameBus.worldgen_version_mismatch.connect(cb)
+	gr._loaded_world = {}
+	gr._note_worldgen_version()
+	assert_true(seen.is_empty(), "a new world raises no mismatch")
+	assert_eq(gr._worldgen_stamp, TerrainSlice.WORLDGEN_VERSION, "and takes the running stamp")
+	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION }
+	gr._note_worldgen_version()
+	assert_true(seen.is_empty(), "a matching record raises none")
+	gr._loaded_world = { "seed": 7 }
+	gr._note_worldgen_version()
+	assert_eq(seen, [[0, TerrainSlice.WORLDGEN_VERSION]], "an unstamped record reads as v0 and raises once")
+	assert_eq(gr._worldgen_stamp, 0, "and the next save keeps that original stamp")
+	GameBus.worldgen_version_mismatch.disconnect(cb)
+	gr.free()
 
 func _test_persistence_round_trip() -> void:
 	var p := PersistenceSlice.new()
@@ -13030,6 +13057,66 @@ func _test_equipment_refusals_rate_limited() -> void:
 	assert_eq(Diag.warn_count - warns_before, 1, "and one warn")
 	assert_eq(registry.equip_refused_suppressed, 99, "the rest are counted")
 	assert_eq(registry.equip_seq_of(peer), 100, "the host remembers the newest sequence it processed")
+	registry.free()
+
+## Review of #181 — a refusal the rate limit swallows must not leave the owner showing a
+## refused item: one trailing revoke answers the burst, carrying the record as it then is.
+func _test_equipment_trailing_revoke() -> void:
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var peer := str(registry.resolve_identity(2))
+	var revoked: Array = []
+	var rcb := func(pid: String, _worn: Dictionary) -> void: revoked.append(pid)
+	GameBus.equipment_revoked.connect(rcb)
+	GameBus.equip_intent.emit(peer, "Chest", "VeilsteelChestplate")
+	assert_eq(revoked.size(), 1, "the first refusal revokes at once")
+	GameBus.equip_intent.emit(peer, "Chest", "VeilsteelChestplate")
+	assert_eq(revoked.size(), 1, "the second is suppressed")
+	assert_true(registry._equip_revoke_pending.has(peer), "but a trailing revoke is scheduled")
+	for i in 5:
+		GameBus.equip_intent.emit(peer, "Chest", "VeilsteelChestplate")
+	assert_eq(registry._equip_revoke_pending.size(), 1, "a burst schedules one trailing revoke, not one per refusal")
+	registry._flush_trailing_revoke(peer)
+	assert_eq(revoked.size(), 2, "the trailing revoke goes out when the interval ends")
+	assert_false(registry._equip_revoke_pending.has(peer), "and clears the pending mark")
+	registry._flush_trailing_revoke(peer)
+	assert_eq(revoked.size(), 2, "a second flush is a no-op")
+	GameBus.equipment_revoked.disconnect(rcb)
+	registry.free()
+
+## Review of #181 — nothing equip-related outlives the record it describes.
+func _test_equipment_bookkeeping_evicted() -> void:
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var peer := str(registry.resolve_identity(2))
+	registry.note_equip_seq(peer, 4)
+	GameBus.equip_intent.emit(peer, "Chest", "VeilsteelChestplate")
+	GameBus.equip_intent.emit(peer, "Chest", "VeilsteelChestplate")
+	assert_true(registry._equip_seq.has(peer) and registry._equip_refusals.has(peer), "the entries exist while the player is resident")
+	registry.unbind_peer(2)
+	assert_true(registry.evict_player(peer), "the player is evicted")
+	assert_false(registry._equip_seq.has(peer), "the sequence entry goes with it")
+	assert_false(registry._equip_refusals.has(peer), "so does the refusal timestamp")
+	assert_false(registry._equip_revoke_pending.has(peer), "and the pending trailing revoke")
+	var revoked: Array = []
+	var rcb := func(pid: String, _worn: Dictionary) -> void: revoked.append(pid)
+	GameBus.equipment_revoked.connect(rcb)
+	registry._flush_trailing_revoke(peer)
+	GameBus.equipment_revoked.disconnect(rcb)
+	assert_true(revoked.is_empty(), "a timer firing after eviction revokes nothing")
+	registry.free()
+
+## Review of #181 — a client sending a lower number than before cannot rewind the host's tag.
+func _test_equipment_seq_monotonic() -> void:
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	registry.note_equip_seq("p", 5)
+	registry.note_equip_seq("p", 2)
+	assert_eq(registry.equip_seq_of("p"), 5, "a lower number is ignored")
+	registry.note_equip_seq("p", -3)
+	assert_eq(registry.equip_seq_of("p"), 5, "a negative one too")
+	registry.note_equip_seq("p", 6)
+	assert_eq(registry.equip_seq_of("p"), 6, "a higher one advances")
 	registry.free()
 
 func _test_equipment_phase48_misc() -> void:

@@ -2085,14 +2085,18 @@ func _saved_local_position() -> Variant:
 ## brought in on demand: the registry is given a reader (set_record_loader) and pulls
 ## one in the first time a peer CLAIMS it (a reconnect). That is the only moment a
 ## remote record is needed.
+## Phase 71 — keep the loaded record's original stamp when re-saving (a new world takes the
+## running one), and tell the bus when that stamp is not the running generator's.
+func _note_worldgen_version() -> void:
+	_worldgen_stamp = PersistenceSlice.worldgen_stamp_for_save(_loaded_world, TerrainSlice.WORLDGEN_VERSION)
+	if PersistenceSlice.check_worldgen_version(_loaded_world, TerrainSlice.WORLDGEN_VERSION):
+		GameBus.worldgen_version_mismatch.emit(_worldgen_stamp, TerrainSlice.WORLDGEN_VERSION)
+
 func _load_world_records() -> void:
 	# Phase 52 — the GLOBAL record only; a Phase 51 monolithic record is split into region
 	# files by this read, and the edits themselves stream in by region.
 	_loaded_world = _persistence.load_world_record()
-	# Phase 71 — keep the record's original stamp when re-saving; a new world takes the running one.
-	_worldgen_stamp = PersistenceSlice.worldgen_stamp_for_save(_loaded_world, TerrainSlice.WORLDGEN_VERSION)
-	if PersistenceSlice.check_worldgen_version(_loaded_world, TerrainSlice.WORLDGEN_VERSION):
-		GameBus.worldgen_version_mismatch.emit(_worldgen_stamp, TerrainSlice.WORLDGEN_VERSION)
+	_note_worldgen_version()
 	_bind_local_identity()
 	# Lazy reader for every other player's record (see the docstring above).
 	_registry.set_record_loader(_persistence.load_player)
