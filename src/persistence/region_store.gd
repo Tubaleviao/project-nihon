@@ -170,6 +170,10 @@ static func _chunk_entry_valid(entry: Dictionary) -> bool:
 		return false
 	return true
 
+## True when `entry` is a Dictionary whose `edits` and `materials`, where present, are Dictionaries. Pure.
+static func is_valid_chunk_entry(entry: Variant) -> bool:
+	return entry is Dictionary and _chunk_entry_valid(entry)
+
 ## Write one region's chunk entries (replacing the file). An EMPTY chunk set removes the
 ## file instead, so a region whose last edit was put back leaves nothing on disk.
 func save_region(region: Vector2i, chunks: Dictionary) -> Error:

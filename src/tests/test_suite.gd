@@ -97,6 +97,11 @@ func run() -> void:
 	_run_test("terrain: the distant ring is 10x the window with no collision", _test_distant_ring)
 	_run_test("terrain: the distant ring builds off the main thread", _test_distant_ring_async)
 	_run_test("terrain: concurrent height sampling matches single-threaded", _test_height_concurrent)
+	_run_test("chunk: deplete-only edits request no neighbour rebuild", _test_seam_deplete_only)
+	_run_test("chunk: a border height edit rebuilds only that neighbour", _test_seam_east_border_edit)
+	_run_test("chunk: late edits rebuild the neighbour across the border", _test_seam_late_edits)
+	_run_test("chunk: edits synced while unloaded still rebuild neighbours on stream-in", _test_seam_unloaded_then_streamed)
+	_run_test("chunk: removing a corner edit rebuilds the diagonal neighbour", _test_seam_corner_removal)
 	_run_test("spawn: ocean chunks grow no trees",            _test_ocean_spawns_no_land_tables)
 	_run_test("terrain: the world wraps east-west",           _test_terrain_wraps_east_west)
 	_run_test("terrain: chunk keys are canonical across the seam", _test_chunk_key_canonical_at_seam)
@@ -572,6 +577,10 @@ func run() -> void:
 	_run_test("region: a Phase 51 save migrates with every edit intact", _test_region_migrates_monolith)
 	_run_test("region: a full save erases compacted chunks; migration keeps newer region data", _test_region_full_save_erases_and_migration_keeps_newer)
 	_run_test("region: an unreadable region file is never overwritten by a save", _test_region_unreadable_not_overwritten)
+	_run_test("region: one unreadable region does not block the others' save", _test_region_partial_save)
+	_run_test("region: only edge chunks pull in neighbouring regions", _test_region_neighbour_expansion_edges_only)
+	_run_test("region: a failed region read is retried, not marked resident", _test_region_failed_read_retried)
+	_run_test("registry: bound peer ids come straight off the peer map", _test_registry_bound_peer_ids)
 	_run_test("spawn: new players avoid colonized regions", _test_spawn_avoids_colonized)
 	_run_test("spawn: friend code lands near the friend", _test_spawn_friend_near)
 	_run_test("spawn: respawn point survives a move + reload (host and client)", _test_spawn_point_persists)
@@ -13697,6 +13706,42 @@ func _test_region_unreadable_not_overwritten() -> void:
 	assert_eq(store.load_region(Vector2i.ZERO).keys(), ["1,1"], "a non-Dictionary chunk entry is dropped on read")
 	assert_eq(RegionStoreScript.group_manifest({ "a": entry, "2,2": entry }).size(), 1, "a malformed chunk key is skipped")
 
+## Phase 52 follow-up — a save into several regions writes every region it can; the unreadable
+## one is left alone and reported, and a malformed `edits` / `materials` entry is dropped on read.
+func _test_region_partial_save() -> void:
+	var dir := _fresh_region_dir("test_p52_partial")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	DirAccess.make_dir_recursive_absolute(dir + "regions/")
+	var bad_path := store.path_of(Vector2i(0, 0))
+	var f := FileAccess.open(bad_path, FileAccess.WRITE)
+	f.store_string("{ not json")
+	f.close()
+	var entry := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	var err := store.write_chunks({ "1,1": entry, "40,40": entry })   # region 0,0 (bad) and region 1,1
+	assert_true(err != OK, "the unreadable region is reported")
+	assert_eq(FileAccess.get_file_as_string(bad_path), "{ not json", "and left untouched")
+	assert_true(store.has_region(Vector2i(1, 1)), "the readable region was still written")
+	assert_eq(store.load_region(Vector2i(1, 1)).keys(), ["40,40"], "with its own chunk")
+	var g := FileAccess.open(bad_path, FileAccess.WRITE)
+	g.store_string(JSON.stringify({ "version": 1, "chunks": {
+		"1,1": entry, "2,2": { "edits": [1] }, "3,3": { "edits": {}, "materials": "x" }, "4,4": { "materials": {} } } }))
+	g.close()
+	var keys: Array = store.load_region(Vector2i(0, 0)).keys()
+	keys.sort()
+	assert_eq(keys, ["1,1", "4,4"], "entries whose edits or materials are not Dictionaries are dropped")
+	assert_true(RegionStoreScript.is_valid_chunk_entry({ "edits": {}, "materials": {} }), "a well-formed entry is valid")
+	assert_false(RegionStoreScript.is_valid_chunk_entry(5), "a non-Dictionary entry is not")
+
+func _test_region_neighbour_expansion_edges_only() -> void:
+	var interior := RegionStreamerScript.regions_for_chunks([Vector2i(10, 10)])
+	assert_eq(interior.keys(), ["0,0"], "an interior chunk wants only its own region")
+	var corner := RegionStreamerScript.regions_for_chunks([Vector2i(0, 0)])
+	assert_true(corner.has("0,0") and corner.has("-1,-1") and corner.has("-1,0") and corner.has("0,-1"),
+		"a corner chunk also wants the regions across its edges")
+	var east := RegionStreamerScript.regions_for_chunks([Vector2i(31, 10)])
+	assert_true(east.has("0,0") and east.has("1,0") and not east.has("0,1") and not east.has("0,-1"),
+		"an east-edge chunk reaches the next region east and no other")
+
 func _test_region_evict_keeps_vein_depletion() -> void:
 	var found := _find_surface_vein(0)
 	if found.is_empty():
@@ -13745,6 +13790,42 @@ func _test_region_failed_write_saves_the_rest() -> void:
 	assert_true(store.has_world(), "world.json was still written")
 	assert_eq(float(store.load_player(pid).get("hp", -1.0)), 7.0, "and so was the player record")
 	store.free()
+
+## Phase 52 follow-up — a region whose file cannot be read is not marked resident, so a later
+## sync retries it once the file is readable.
+func _test_region_failed_read_retried() -> void:
+	var dir := _fresh_region_dir("test_p52_retry")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	DirAccess.make_dir_recursive_absolute(dir + "regions/")
+	var path := store.path_of(Vector2i(0, 0))
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string("{ not json")
+	f.close()
+	var voxel := _make_voxel()
+	var streamer := RegionStreamerScript.new(store, voxel)
+	var first := streamer.sync({ "0,0": true })
+	assert_eq(int(first["failed"]), 1, "the unreadable region is reported as failed")
+	assert_eq(int(first["loaded"]), 0, "and not as loaded")
+	assert_false(streamer.is_resident(Vector2i(0, 0)), "it is not resident")
+	var edit := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	assert_eq(store.save_region(Vector2i(0, 0), { "1,1": edit }), OK, "the file is repaired")
+	var second := streamer.sync({ "0,0": true })
+	assert_eq(int(second["loaded"]), 1, "the next sync reads it")
+	assert_true(streamer.is_resident(Vector2i(0, 0)), "and it is resident now")
+	voxel.free()
+
+func _test_registry_bound_peer_ids() -> void:
+	var reg := PlayerRegistry.new()
+	reg.is_authoritative = true
+	assert_eq(reg.get_bound_peer_ids().size(), 0, "no peers, no ids")
+	var a := reg.resolve_identity(4)
+	var b := reg.resolve_identity(9)
+	assert_true(a != "" and b != "", "two peers bind")
+	var ids: Array = reg.get_bound_peer_ids()
+	ids.sort()
+	assert_eq(ids, [4, 9], "both bound peers are listed")
+	reg.unbind_peer(4)
+	assert_eq(reg.get_bound_peer_ids(), [9], "an unbound peer drops out")
 
 func _test_region_failed_read_not_resident() -> void:
 	var dir := _fresh_region_dir("test_p61_read")
@@ -14324,3 +14405,92 @@ func _test_clock_persistence_and_fabric() -> void:
 		var biome: Variant = GameData.BIOMES[key]
 		assert_true(biome.get("seasonSwing") != null and biome.get("seasonGrowth") is Dictionary and biome.get("seasonSpawn") is Dictionary,
 				"%s declares its seasonal modifiers" % key)
+
+
+## Phase 69 — a loaded rig with the 3×3 block around (0,0) built except (0,0) itself.
+func _seam_rig() -> Dictionary:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.max_builds_in_flight = 16
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			if dx != 0 or dz != 0:
+				cm.load_chunk(Vector2i(dx, dz))
+	_wait_for_builds(cm)
+	cm.rebuild_requests.clear()
+	return rig
+
+func _seam_rig_free(rig: Dictionary) -> void:
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+func _seam_requested(cm: ChunkManager) -> Array:
+	var out: Array = cm.rebuild_requests.keys()
+	out.sort()
+	return out
+
+func _test_seam_deplete_only() -> void:
+	var rig := _seam_rig()
+	var cm: ChunkManager = rig["cm"]
+	var v: VoxelSlice = rig["voxel"]
+	# Tile 63,10 is on chunk (0,0)'s east border; a deplete op never changes a height.
+	v._set_edit_ops("63,10", [{ "op": "deplete", "vein": "9,9,9", "taken": 1 }])
+	assert_eq(v.seam_borders(Vector2i(0, 0)).size(), 0, "a deplete-only chunk reports no seam border")
+	cm.load_chunk(Vector2i(0, 0))
+	assert_eq(_seam_requested(cm).size(), 0, "streaming it in requests no neighbour rebuild")
+	_seam_rig_free(rig)
+
+func _test_seam_east_border_edit() -> void:
+	var rig := _seam_rig()
+	var cm: ChunkManager = rig["cm"]
+	var v: VoxelSlice = rig["voxel"]
+	v._set_edit_ops("63,10", [{ "op": "remove", "bottom": 1.0, "top": 2.0 }])
+	assert_eq(v.seam_borders(Vector2i(0, 0)), [Vector2i(1, 0)], "the east border is the only seam")
+	cm.load_chunk(Vector2i(0, 0))
+	assert_eq(_seam_requested(cm), ["1,0"], "only the east neighbour is rebuilt")
+	cm.rebuild_seam_neighbours(Vector2i(0, 0))
+	assert_eq(int(cm.rebuild_requests["1,0"]), 1, "and at most once per edit revision")
+	_seam_rig_free(rig)
+
+func _test_seam_late_edits() -> void:
+	var rig := _seam_rig()
+	var cm: ChunkManager = rig["cm"]
+	var v: VoxelSlice = rig["voxel"]
+	cm.load_chunk(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	cm.rebuild_requests.clear()
+	# Edits for the already-loaded chunk arrive by sync, with a corner edit (south-east).
+	var edit: Array = [{ "op": "remove", "bottom": 1.0, "top": 2.0 }]
+	v.apply_edits({ "63,63": edit })
+	var got := _seam_requested(cm)
+	assert_true(got.has("1,0") and got.has("0,1") and got.has("1,1"), "east, south and the diagonal neighbour rebuild (%s)" % str(got))
+	assert_false(got.has("-1,0") or got.has("0,-1"), "the far borders do not")
+	_seam_rig_free(rig)
+
+func _test_seam_unloaded_then_streamed() -> void:
+	var rig := _seam_rig()
+	var cm: ChunkManager = rig["cm"]
+	var v: VoxelSlice = rig["voxel"]
+	# Edits arrive while (0,0) is not streamed in: nothing is requested and no revision is recorded.
+	v.apply_edits({ "63,10": [{ "op": "remove", "bottom": 1.0, "top": 2.0 }] })
+	cm.rebuild_requests.clear()
+	cm.rebuild_seam_neighbours(Vector2i(0, 0))
+	assert_eq(_seam_requested(cm).size(), 0, "an unloaded chunk requests nothing")
+	cm.load_chunk(Vector2i(0, 0))
+	assert_eq(_seam_requested(cm), ["1,0"], "streaming it in still rebuilds the east neighbour")
+	_seam_rig_free(rig)
+
+func _test_seam_corner_removal() -> void:
+	var rig := _seam_rig()
+	var cm: ChunkManager = rig["cm"]
+	var v: VoxelSlice = rig["voxel"]
+	cm.load_chunk(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	v.apply_edits({ "63,63": [{ "op": "remove", "bottom": 1.0, "top": 2.0 }] })
+	_wait_for_builds(cm)
+	cm.rebuild_requests.clear()
+	v.apply_edits({})
+	assert_true(_seam_requested(cm).has("1,1"), "removing the corner edit rebuilds the diagonal neighbour")
+	_seam_rig_free(rig)

@@ -6063,7 +6063,7 @@ player crosses a ring cell, and the terrain corner cache is unsynchronised share
 
 ---
 
-## Phase 69 — Neighbour seam rebuilds that match the edits
+## Phase 69 — Neighbour seam rebuilds that match the edits ✅ Done
 
 **Goal:** `ChunkManager._rebuild_guessing_neighbours` runs only when an edited chunk enters the
 streamed set, and then rebuilds all 8 built neighbours even when no edit touches a border or the
@@ -6085,13 +6085,13 @@ guess (#113, #114, #115, #116, #118).
   path through `apply_edits` / `_commit_edits`), not only at `load_chunk`.
 
 **Acceptance criteria:**
-- [ ] Suite: a chunk whose only edits are vein-deplete ops streams in with zero neighbour
+- [x] Suite: a chunk whose only edits are vein-deplete ops streams in with zero neighbour
   rebuilds requested.
-- [ ] Suite: a chunk with one height edit on its east border streams in and requests a rebuild
+- [x] Suite: a chunk with one height edit on its east border streams in and requests a rebuild
   of the east neighbour only.
-- [ ] Suite: edits applied through `apply_edits` to an already-loaded chunk with a built
+- [x] Suite: edits applied through `apply_edits` to an already-loaded chunk with a built
   neighbour across the edited border request that neighbour's rebuild.
-- [ ] Suite green on both boot paths.
+- [x] Suite green on both boot paths — `Results: 13966/13966 passed (0 failed)` with `[Server] listening on port 7777` on the server boot.
 
 ---
 
