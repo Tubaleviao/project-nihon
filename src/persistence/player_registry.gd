@@ -378,7 +378,6 @@ func resolve_named_party(name: String) -> String:
 	# OUR handles (the local player's included) for a player who is present here.
 	return player_id_for_handle(name)
 
-## The live peer currently holding `player_id`, or 0 when the player is offline.
 ## Every peer id bound to a player (the connected remote players), in one pass over the peer map.
 func get_bound_peer_ids() -> Array:
 	var out: Array = []
@@ -387,6 +386,7 @@ func get_bound_peer_ids() -> Array:
 			out.append(int(pid))
 	return out
 
+## The live peer currently holding `player_id`, or 0 when the player is offline.
 func get_peer_id(player_id: String) -> int:
 	for pid in _peer_ids:
 		if str(_peer_ids[pid]) == player_id:
@@ -1008,8 +1008,6 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	var saved_spawn: Variant = parse_spawn(data.get("spawn", null))
 	if saved_spawn != null:
 		rec["spawn"] = [saved_spawn.x, saved_spawn.y, saved_spawn.z]
-	else:
-		rec.erase("spawn")
 	rec["technology"] = data.get("technology", {})
 	# Phase 35: taming flags and companion bindings are per-player progression, so
 	# they ride the same record. A saved payload from before this phase simply

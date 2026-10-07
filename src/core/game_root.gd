@@ -1029,7 +1029,6 @@ func _first_boot_spawn() -> Variant:
 		var placed := _place_new_player(_registry.local_player_id, _friend_code_arg)
 		if placed.has("position"):
 			_local_spawn = placed["position"]
-			_colonization.note_home(Vector2i(floori(_local_spawn.x / TerrainSlice.CHUNK_METERS), floori(_local_spawn.z / TerrainSlice.CHUNK_METERS)), Time.get_unix_time_from_system())
 			if not str(placed.get("message", "")).is_empty():
 				print("[Spawn] %s" % placed["message"])
 	return _local_spawn
