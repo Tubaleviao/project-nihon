@@ -13553,13 +13553,6 @@ func _test_region_neighbour_expansion_edges_only() -> void:
 	assert_true(east.has("0,0") and east.has("1,0") and not east.has("0,1") and not east.has("0,-1"),
 		"an east-edge chunk reaches the next region east and no other")
 
-## Phase 52 follow-up — a region whose file cannot be read is not marked resident, so a later
-## sync retries it once the file is readable.
-func _test_region_failed_read_retried() -> void:
-	var dir := _fresh_region_dir("test_p52_retry")
-	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
-	DirAccess.make_dir_recursive_absolute(dir + "regions/")
-	var path := store.path_of(Vector2i(0, 0))
 func _test_region_evict_keeps_vein_depletion() -> void:
 	var found := _find_surface_vein(0)
 	if found.is_empty():
@@ -13609,11 +13602,13 @@ func _test_region_failed_write_saves_the_rest() -> void:
 	assert_eq(float(store.load_player(pid).get("hp", -1.0)), 7.0, "and so was the player record")
 	store.free()
 
-func _test_region_failed_read_not_resident() -> void:
-	var dir := _fresh_region_dir("test_p61_read")
+## Phase 52 follow-up — a region whose file cannot be read is not marked resident, so a later
+## sync retries it once the file is readable.
+func _test_region_failed_read_retried() -> void:
+	var dir := _fresh_region_dir("test_p52_retry")
 	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
 	DirAccess.make_dir_recursive_absolute(dir + "regions/")
-	var path := store.path_of(Vector2i.ZERO)
+	var path := store.path_of(Vector2i(0, 0))
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	f.store_string("{ not json")
 	f.close()
