@@ -1272,10 +1272,6 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	# crossing (the record is written at load and at disconnect, not per frame).
 	# The crossing position is passed explicitly: this handler may run before the
 	# networking slice's own handler has recorded it, so get_aoi_center() can be stale.
-	# The peer's window and regions are re-centred FIRST (as the join path does), so a teleport or
-	# respawn into a region that was not resident still carries that region's edits.
-	_chunk_manager.set_peer_center(peer_id, _chunk_manager.world_to_chunk(Vector2(position.x, position.z)))
-	_chunk_manager.refresh(false)
 	_networking.send_snapshot(peer_id, _build_snapshot(peer_id, false, position, false))
 
 ## Phase 52 — seconds between re-centring the connected peers' streaming windows.

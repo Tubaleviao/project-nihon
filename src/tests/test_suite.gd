@@ -14124,6 +14124,8 @@ func _test_voxel_season_tint_per_biome() -> void:
 	var b: Variant = _biome_chunks(terrain, ["TemperateForest"], 1)
 	assert_true(not (a as Array).is_empty() and not (b as Array).is_empty(), "found a tundra chunk and a forest chunk")
 	if (a as Array).is_empty() or (b as Array).is_empty():
+		v.free()
+		terrain.free()
 		return
 	v.build_chunk(a[0], flat)
 	v.build_chunk(b[0], flat)
@@ -14136,6 +14138,8 @@ func _test_voxel_season_tint_per_biome() -> void:
 	v.build_chunk(a[0], flat)
 	assert_true(is_same(tundra_mat, (_chunk_mesh_instances(v, a[0])[0] as MeshInstance3D).material_override),
 		"a rebuilt chunk reuses its biome's material")
+	v.free()
+	terrain.free()
 
 func _test_clock_season_effects() -> void:
 	var forest: Variant = GameData.BIOMES["TemperateForest"]
