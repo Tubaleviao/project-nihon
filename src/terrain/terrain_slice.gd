@@ -67,6 +67,7 @@ var _noise := FastNoiseLite.new()
 
 func _ready() -> void:
 	WorldShape.warm()   # main thread, before any chunk worker reads the shape
+	ClimateField.warm()   # likewise the biome envelope table
 	_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	# A fresh world still gets a random seed — but it is remembered and saved,
 	# so this is the LAST time the ground changes without a reason.

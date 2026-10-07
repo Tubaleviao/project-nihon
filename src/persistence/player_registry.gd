@@ -378,6 +378,13 @@ func resolve_named_party(name: String) -> String:
 	# OUR handles (the local player's included) for a player who is present here.
 	return player_id_for_handle(name)
 
+## The live peer currently holding `player_id`, or 0 when the player is offline.
+func get_peer_id(player_id: String) -> int:
+	for pid in _peer_ids:
+		if str(_peer_ids[pid]) == player_id:
+			return int(pid)
+	return 0
+
 ## Every peer id bound to a player (the connected remote players), in one pass over the peer map.
 func get_bound_peer_ids() -> Array:
 	var out: Array = []
@@ -385,13 +392,6 @@ func get_bound_peer_ids() -> Array:
 		if int(pid) > 0:
 			out.append(int(pid))
 	return out
-
-## The live peer currently holding `player_id`, or 0 when the player is offline.
-func get_peer_id(player_id: String) -> int:
-	for pid in _peer_ids:
-		if str(_peer_ids[pid]) == player_id:
-			return int(pid)
-	return 0
 
 ## The peer ids currently bound to a player (the peer map's keys), in no particular order.
 func get_peer_ids() -> Array:
@@ -472,31 +472,29 @@ func record_position(player_id: String, position: Vector3) -> void:
 	rec["position"] = [position.x, position.y, position.z]
 	_store_world_pos(rec, WorldPos.from_world(position.x, position.y, position.z))
 
-## Phase 53 follow-up — the point a player was FIRST placed at, kept on the record apart from
-## where they have since walked, so a returning host or client respawns at its own placement
-## rather than at wherever it logged off. Written once per record: a later placement never
-## replaces it (use `clear_spawn` to forget it first).
+## Phase 66 — remember where a player was PLACED, as `{chunk, local}` beside the live position, so
+## a respawn after a restart or a reconnect goes back to the original spawn point rather than a
+## fixed default. Only a placement writes it; walking about never does.
 func record_spawn(player_id: String, position: Vector3) -> void:
 	var rec := ensure_player(player_id)
-	if rec.is_empty() or rec.has("spawn"):
+	if rec.is_empty():
 		return
-	rec["spawn"] = [position.x, position.y, position.z]
+	var wp := WorldPos.from_world(position.x, position.y, position.z)
+	rec["spawn"] = WorldPos.pos_to_wire(wp)
 
-## The recorded placement of `player_id`, or null when it has none (or the stored value is
-## malformed: three finite numbers or nothing).
+## The recorded spawn point as a world position, or null when the record has none (a record from
+## before Phase 66, or a malformed one) — the caller falls back to the saved position.
 func spawn_of(player_id: String) -> Variant:
-	return parse_spawn(get_record(player_id).get("spawn", null))
+	return spawn_from_record(get_record(player_id))
 
-func clear_spawn(player_id: String) -> void:
-	get_record(player_id).erase("spawn")
-
-static func parse_spawn(v: Variant) -> Variant:
-	if not (v is Array) or (v as Array).size() != 3:
+static func spawn_from_record(rec: Dictionary) -> Variant:
+	var sp: Variant = rec.get("spawn", null)
+	if not (sp is Dictionary) or not _has_chunk_local(sp):
 		return null
-	for n in v:
-		if not (n is float or n is int) or not is_finite(float(n)):
-			return null
-	return Vector3(float(v[0]), float(v[1]), float(v[2]))
+	var wp := world_pos_of(sp)
+	var chunk: Vector2i = wp["chunk"]
+	var local: Vector3 = wp["local"]
+	return Vector3(chunk.x * WorldPos.CHUNK_METERS + local.x, local.y, chunk.y * WorldPos.CHUNK_METERS + local.z)
 
 ## Phase 50 — a record keeps its position as `chunk` [cx, cz] + `local` [x, y, z] (exact at any
 ## distance from the origin); `position` stays beside them for the readers that want a Vector3.
@@ -964,9 +962,8 @@ func get_player_data(player_id: String) -> Dictionary:
 		"inventory": {},
 		"inventory_durability": {},
 	}
-	var spawn: Variant = parse_spawn(rec.get("spawn", null))
-	if spawn != null:
-		data["spawn"] = [spawn.x, spawn.y, spawn.z]
+	if rec.get("spawn", null) is Dictionary and spawn_from_record(rec) != null:
+		data["spawn"] = rec["spawn"]
 	var inv = _inventories.get(player_id, null)
 	if inv != null and is_instance_valid(inv):
 		data["inventory"] = inv.get_contents()
@@ -988,6 +985,12 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	var chunk: Vector2i = wp["chunk"]
 	var local: Vector3 = wp["local"]
 	rec["position"] = [chunk.x * WorldPos.CHUNK_METERS + local.x, local.y, chunk.y * WorldPos.CHUNK_METERS + local.z]
+	# Phase 66 — the original spawn point; a payload without one (or with a malformed one) leaves
+	# the record without, and the respawn falls back to the saved position.
+	if spawn_from_record(data) != null:
+		rec["spawn"] = (data["spawn"] as Dictionary).duplicate(true)
+	else:
+		rec.erase("spawn")
 	var restored_hp := float(data.get("hp", -1.0))
 	rec["hp"] = restored_hp
 	# Phase 39 — the respawn deadline rides the same record. The saved `hp` above is
@@ -1008,10 +1011,6 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	var deadline := float(data.get("respawn_deadline", 0.0))
 	rec["respawn_deadline"] = deadline if is_downed(restored_hp) else 0.0
 	rec["appearance"] = data.get("appearance", {})
-	# Phase 53 follow-up: the original placement; a pre-follow-up payload carries none.
-	var saved_spawn: Variant = parse_spawn(data.get("spawn", null))
-	if saved_spawn != null:
-		rec["spawn"] = [saved_spawn.x, saved_spawn.y, saved_spawn.z]
 	rec["technology"] = data.get("technology", {})
 	# Phase 35: taming flags and companion bindings are per-player progression, so
 	# they ride the same record. A saved payload from before this phase simply

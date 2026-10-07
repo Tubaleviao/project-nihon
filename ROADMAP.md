@@ -5947,12 +5947,12 @@ unexplored biomes across fog, and the dither hash exists twice with different th
 - `ore_field.gd` — the biome lookup moves after the cheap surface-vein hash cull.
 
 **Acceptance criteria:**
-- [ ] Suite: for every tile in a border band, the biome used for yield equals the biome used for
+- [x] Suite: for every tile in a border band, the biome used for yield equals the biome used for
   the surface style.
-- [ ] Suite: the minimap colour of a revealed border cell next to an unrevealed chunk never uses
+- [x] Suite: the minimap colour of a revealed border cell next to an unrevealed chunk never uses
   the unrevealed chunk's biome.
-- [ ] Suite: a partial envelope dict does not error in `warm()` and the other envelopes load.
-- [ ] Suite green on both boot paths.
+- [x] Suite: a partial envelope dict does not error in `warm()` and the other envelopes load.
+- [x] Suite green on both boot paths.
 
 ---
 
@@ -5972,11 +5972,11 @@ tint repaints every loaded chunk with the biome underfoot (#150).
   own biome), so a freezing biome turns its own chunks white and not its neighbours.
 
 **Acceptance criteria:**
-- [ ] Suite: with the player in a biome whose `dayNightSpeed` is 0, the applied sun energy equals
+- [x] Suite: with the player in a biome whose `dayNightSpeed` is 0, the applied sun energy equals
   `biome_daylight(d, 0)` at midnight and noon.
-- [ ] Suite: with the player in a freezing biome, a loaded chunk of a temperate biome keeps its
+- [x] Suite: with the player in a freezing biome, a loaded chunk of a temperate biome keeps its
   non-snow tint.
-- [ ] Suite green on both boot paths.
+- [x] Suite green on both boot paths.
 
 ---
 
@@ -5998,10 +5998,10 @@ spawn point, and the colonization map over-counts after a restart (#148).
   raise its region's count.
 
 **Acceptance criteria:**
-- [ ] Suite: a host placed at spawn S, moved away and reloaded respawns at S.
-- [ ] Suite: a client reconnecting after moving away respawns at its original spawn point.
-- [ ] Suite: edit chunk K, save, reload, edit K again — the region's edit count is unchanged.
-- [ ] Suite green on both boot paths.
+- [x] Suite: a host placed at spawn S, moved away and reloaded respawns at S.
+- [x] Suite: a client reconnecting after moving away respawns at its original spawn point.
+- [x] Suite: edit chunk K, save, reload, edit K again — the region's edit count is unchanged.
+- [x] Suite green on both boot paths.
 
 ---
 
@@ -6025,12 +6025,12 @@ spawn point, and the colonization map over-counts after a restart (#148).
   on unicode only (#129).
 
 **Acceptance criteria:**
-- [ ] `grep -n "multiplayer.get_peers()" src/networking/networking_slice.gd` matches only inside
+- [x] `grep -n "multiplayer.get_peers()" src/networking/networking_slice.gd` matches only inside
   `_connected_peers`.
-- [ ] Suite: a broadcast with `_test_peers` set reaches exactly those peers through both
+- [x] Suite: a broadcast with `_test_peers` set reaches exactly those peers through both
   `_broadcast` and `_broadcast_aoi`.
-- [ ] Suite: a failed layout rename leaves no `.tmp` file.
-- [ ] Suite green on both boot paths.
+- [x] Suite: a failed layout rename leaves no `.tmp` file.
+- [x] Suite green on both boot paths.
 
 ---
 
@@ -6062,7 +6062,7 @@ player crosses a ring cell, and the terrain corner cache is unsynchronised share
 
 ---
 
-## Phase 69 — Neighbour seam rebuilds that match the edits
+## Phase 69 — Neighbour seam rebuilds that match the edits ✅ Done
 
 **Goal:** `ChunkManager._rebuild_guessing_neighbours` runs only when an edited chunk enters the
 streamed set, and then rebuilds all 8 built neighbours even when no edit touches a border or the
@@ -6084,13 +6084,13 @@ guess (#113, #114, #115, #116, #118).
   path through `apply_edits` / `_commit_edits`), not only at `load_chunk`.
 
 **Acceptance criteria:**
-- [ ] Suite: a chunk whose only edits are vein-deplete ops streams in with zero neighbour
+- [x] Suite: a chunk whose only edits are vein-deplete ops streams in with zero neighbour
   rebuilds requested.
-- [ ] Suite: a chunk with one height edit on its east border streams in and requests a rebuild
+- [x] Suite: a chunk with one height edit on its east border streams in and requests a rebuild
   of the east neighbour only.
-- [ ] Suite: edits applied through `apply_edits` to an already-loaded chunk with a built
+- [x] Suite: edits applied through `apply_edits` to an already-loaded chunk with a built
   neighbour across the edited border request that neighbour's rebuild.
-- [ ] Suite green on both boot paths.
+- [x] Suite green on both boot paths — `Results: 13966/13966 passed (0 failed)` with `[Server] listening on port 7777` on the server boot.
 
 ---
 

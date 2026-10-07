@@ -16,6 +16,7 @@ extends Control
 ## are what the automated test suite asserts against.
 
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const BiomeBlend := preload("res://src/terrain/biome_blend.gd")
 const CHUNK_SIZE := TerrainSlice.CHUNK_METERS   # world units per chunk
 
 ## Reveal this many chunks around the player's current chunk (Chebyshev radius).
@@ -269,9 +270,10 @@ func _biome_memo(c: Vector2i, memo: Dictionary) -> String:
 	return memo[k]
 
 ## Draw one chunk. The interior is one rect; only the border cells are drawn individually, and
-## one may wear the biome across that border (a coordinate-hash dither like the voxel surface's,
-## flatter: a fixed one-in-four), so a biome edge reads as a ragged band, not a straight cut.
-## Only REVEALED neighbours are blended toward, so the fog of war never leaks an unexplored biome.
+## one may wear the biome across that border (`BiomeBlend`, the voxel surface's own dither rule,
+## sampled at the cell's centre), so a biome edge reads as a ragged band, not a straight cut.
+## Only REVEALED neighbours inside the world are blended toward, so the fog of war never leaks
+## an unexplored biome. A chunk none of whose neighbours would blend draws one rect.
 func _draw_chunk_cells(c: Vector2i, rect: Rect2, memo: Dictionary) -> void:
 	var own := _biome_memo(c, memo)
 	var own_col := biome_color(own)
@@ -280,6 +282,9 @@ func _draw_chunk_cells(c: Vector2i, rect: Rect2, memo: Dictionary) -> void:
 		draw_rect(Rect2(rect.position, rect.size + Vector2(0.5, 0.5)), own_col)
 		return
 	var n := CELLS_PER_CHUNK
+	if not _has_blend_neighbour(c, own, memo):
+		draw_rect(Rect2(rect.position, rect.size + Vector2(0.5, 0.5)), own_col)
+		return
 	var cw := rect.size.x / n
 	var ch := rect.size.y / n
 	draw_rect(Rect2(rect.position.x + cw, rect.position.y + ch, cw * (n - 2) + 0.5, ch * (n - 2) + 0.5), own_col)
@@ -289,21 +294,46 @@ func _draw_chunk_cells(c: Vector2i, rect: Rect2, memo: Dictionary) -> void:
 			var edge_j := mini(j, n - 1 - j)
 			if mini(edge_i, edge_j) != 0 and n > 2:
 				continue
-			var col := own_col
-			var across := c
-			if edge_i <= edge_j:
-				across.x += -1 if i == 0 else 1
-			else:
-				across.y += -1 if j == 0 else 1
-			if _revealed.has(_chunk_key(across)):
-				var other := _biome_memo(across, memo)
-				if other != own:
-					var gx := c.x * n + i
-					var gz := c.y * n + j
-					var roll := float(((gx * 73856093) ^ (gz * 19349663)) & 0xffff) / 65536.0
-					if roll < 0.25:
-						col = biome_color(other)
+			var col := biome_color(_cell_biome(c, i, j, own, memo))
 			draw_rect(Rect2(rect.position.x + i * cw, rect.position.y + j * ch, cw + 0.5, ch + 0.5), col)
+
+## The biome sub-cell (i, j) of chunk `c` wears: `own`, or a blendable neighbour's across the
+## nearest border, per `BiomeBlend`. Never an unrevealed or off-world chunk's biome.
+func _cell_biome(c: Vector2i, i: int, j: int, own: String, memo: Dictionary) -> String:
+	var n := CELLS_PER_CHUNK
+	var across := c
+	if mini(i, n - 1 - i) <= mini(j, n - 1 - j):
+		across.x += -1 if i < n - 1 - i else 1
+	else:
+		across.y += -1 if j < n - 1 - j else 1
+	if across == c or not _blendable(across):
+		return own
+	var other := _biome_memo(across, memo)
+	if other == own:
+		return own
+	# The voxel band scaled to one cell: the cell's centre is half a band in.
+	var cell_tiles := float(TerrainSlice.CHUNK_SIZE) / n
+	if BiomeBlend.wears_neighbour(c.x * n + i, c.y * n + j, cell_tiles * 0.5, cell_tiles):
+		return other
+	return own
+
+## True when chunk `c` may lend its colour to a neighbour: revealed, and inside the world.
+func _blendable(c: Vector2i) -> bool:
+	if not _revealed.has(_chunk_key(c)):
+		return false
+	if terrain_slice != null and terrain_slice.has_method("world_radius_chunks"):
+		var r: int = terrain_slice.world_radius_chunks()
+		if c.y < -(r - 1) or c.y > r - 1:
+			return false
+	return true
+
+## True when any of the four neighbours of `c` would lend a different biome's colour.
+func _has_blend_neighbour(c: Vector2i, own: String, memo: Dictionary) -> bool:
+	for off in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]:
+		var nb: Vector2i = c + off
+		if _blendable(nb) and _biome_memo(nb, memo) != own:
+			return true
+	return false
 
 func _biome(c: Vector2i) -> String:
 	if terrain_slice != null and terrain_slice.has_method("get_biome_at_chunk"):

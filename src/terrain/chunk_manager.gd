@@ -563,25 +563,51 @@ func load_chunk(chunk_pos: Vector2i) -> void:
 		return
 	_loaded[key] = true
 	GameBus.chunk_loaded.emit(chunk_pos)
-	_rebuild_guessing_neighbours(chunk_pos)
+	rebuild_seam_neighbours(chunk_pos)
 	_dispatch_build(chunk_pos)
 
-## Phase 49 — a built neighbour of a chunk that just entered the streamed set saw it as a
+## Phase 49/69 — a built neighbour of a chunk that just entered the streamed set saw it as a
 ## GUESS (its generated heightmap, because the chunk was not yet known). When the arriving chunk
 ## carries edits, that guess may no longer match what the chunk shows, so each built neighbour
-## rebuilds once, now that the real column data is available. A chunk with no edits is exactly
-## its generated guess, so nothing rebuilds and a fresh world pays nothing.
-func _rebuild_guessing_neighbours(chunk_pos: Vector2i) -> void:
-	if voxel_slice == null or not voxel_slice.has_method("has_edits_in_chunk") \
-			or not voxel_slice.has_edits_in_chunk(chunk_pos):
+## rebuilds once, now that the real column data is available. A chunk with no height-changing
+## edit is exactly its generated guess, so nothing rebuilds and a fresh world pays nothing.
+## Phase 69 — rebuild the built neighbours of `chunk_pos` across the borders that carry a
+## height-changing edit (`VoxelSlice.seam_borders`; deplete-only edits count for nothing), at most
+## once per chunk per edit revision. `skip` is a chunk-key set the caller has already requested.
+## Called when a chunk streams in and when edits for an already-loaded chunk arrive.
+func rebuild_seam_neighbours(chunk_pos: Vector2i, skip: Dictionary = {}) -> void:
+	if voxel_slice == null or not voxel_slice.has_method("seam_borders") \
+			or not voxel_slice.has_method("edit_revision"):
 		return
-	for dz in range(-1, 2):
-		for dx in range(-1, 2):
-			if dx == 0 and dz == 0:
-				continue
-			var n := chunk_pos + Vector2i(dx, dz)
-			if _built.has(_chunk_key(n)):
-				request_rebuild(n)
+	var key := _chunk_key(chunk_pos)
+	# A chunk outside the streamed set records nothing: it must still rebuild its neighbours when
+	# it streams in, and an entry here would never be cleared by `unload_chunk`.
+	if not _loaded.has(key):
+		return
+	var rev: int = voxel_slice.edit_revision(chunk_pos)
+	if _seam_revision.get(key, -1) == rev:
+		return
+	var complete := true
+	for off in voxel_slice.seam_borders(chunk_pos):
+		var n: Vector2i = chunk_pos + off
+		var nkey := _chunk_key(n)
+		if skip.has(nkey):
+			continue
+		if not _built.has(nkey):
+			# Loaded but still building: its build may predate the edit, so leave the revision
+			# open and let a later call retry.
+			if _loaded.has(nkey):
+				complete = false
+			continue
+		request_rebuild(n)
+	if complete:
+		_seam_revision[key] = rev
+
+## Phase 69 — how many rebuilds each loaded chunk has been asked for (chunk key → count).
+var rebuild_requests: Dictionary = {}
+
+## Phase 69 — the edit revision each chunk's seams were last rebuilt for.
+var _seam_revision: Dictionary = {}
 
 ## Phase 42 review — spawn a chunk's per-chunk creature and tree budgets. Called once the
 ## chunk's GROUND EXISTS (see `_apply_build_entry`) rather than when it enters the
@@ -699,6 +725,7 @@ func request_rebuild(chunk_pos: Vector2i) -> void:
 	var key := _chunk_key(chunk_pos)
 	if not _loaded.has(key):
 		return
+	rebuild_requests[key] = int(rebuild_requests.get(key, 0)) + 1
 	# A fresh request starts a fresh retry budget: it is a new edit, not a retry of one,
 	# and it clears the groundless mark a previous give-up left behind.
 	_build_attempts.erase(key)
@@ -1025,6 +1052,8 @@ func unload_chunk(chunk_pos: Vector2i) -> void:
 	if not _loaded.has(key):
 		return
 	_loaded.erase(key)
+	_seam_revision.erase(key)
+	rebuild_requests.erase(key)
 	_built.erase(key)
 	_build_attempts.erase(key)
 	# Phase 42 review — a streamed-out chunk carries no retry state: its groundless mark

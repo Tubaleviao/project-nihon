@@ -98,6 +98,7 @@ const Diag := preload("res://src/core/diag.gd")
 const MeshUtil := preload("res://src/core/mesh_util.gd")
 ## Phase 43 — the deterministic ore field: veins, their depth band and ley gate.
 const OreField := preload("res://src/terrain/ore_field.gd")
+const BiomeBlend := preload("res://src/terrain/biome_blend.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 
@@ -267,7 +268,11 @@ var _place_material: String = ""
 ## twice per chunk build and two more on every edit rebuild, re-stream or self-heal, which
 ## is material churn proportional to the (streamed) rebuild count rather than to the slice.
 var _terrain_mat: StandardMaterial3D = null
-## biome key -> that biome's copy of the terrain material, tinted for the season (Phase 54).
+
+## Phase 65 — season tint per biome (`set_season_tints`) and the terrain material each biome's
+## chunks wear. A chunk's surface and deposit overlay share its biome's instance; a biome with no
+## tint yet is white until `set_season_tints` reaches it.
+var _season_tints: Dictionary = {}
 var _biome_mats: Dictionary = {}
 
 ## Single world-level safety floor shared by all chunks (prevents the player from
@@ -376,8 +381,8 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	var surface := _mesh_from_arrays(built)
 	var mesh_inst := MeshInstance3D.new()
 	mesh_inst.mesh = surface
-	var terrain_mat := _chunk_terrain_material(chunk_pos)
-	mesh_inst.material_override = terrain_mat
+	var chunk_mat := _terrain_material_for(_biome_at(_chunk_center_xz(chunk_pos)))
+	mesh_inst.material_override = chunk_mat
 	root.add_child(mesh_inst)
 
 	# --- Water (Phase 51): a flat, collision-free surface where the ground is below sea level. ---
@@ -406,7 +411,7 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 			"colors":   built["deposit_colors"],
 			"indices":  built["deposit_indices"],
 		})
-		deposit_inst.material_override = terrain_mat
+		deposit_inst.material_override = chunk_mat
 		root.add_child(deposit_inst)
 
 	# --- Collision: ONE ConcavePolygonShape3D per chunk, from the same triangles
@@ -570,9 +575,41 @@ func _gather_edits(chunk_pos: Vector2i) -> Dictionary:
 			out[key] = _edits[key].duplicate(true)
 	return out
 
-## True when any tile of `chunk_pos` carries an edit op.
-func has_edits_in_chunk(chunk_pos: Vector2i) -> bool:
-	return _edits_by_chunk.has(_chunk_key(chunk_pos))
+## Phase 69 — bumped whenever a chunk's edit bucket changes, so a consumer can do work "once per
+## edit revision" (`ChunkManager` gates its seam rebuilds on it).
+var _edit_rev: Dictionary = {}
+
+func edit_revision(chunk_pos: Vector2i) -> int:
+	return int(_edit_rev.get(_chunk_key(chunk_pos), 0))
+
+## Phase 69 — the neighbour offsets (each component in -1..1, never (0,0)) across which `chunk_pos`
+## carries a height-changing edit on a border tile. Deplete ops never change a height, so a
+## chunk whose only edits are deplete ops reports none. A tile on a corner names both edge
+## neighbours and the diagonal one.
+func seam_borders(chunk_pos: Vector2i) -> Array:
+	var found: Dictionary = {}
+	var bucket: Dictionary = _edits_by_chunk.get(_chunk_key(chunk_pos), {})
+	var last := CHUNK_SIZE - 1
+	for tile_key in bucket:
+		var shapes := false
+		for op in _edits.get(tile_key, []):
+			if op is Dictionary and str(op.get("op", "")) != "deplete":
+				shapes = true
+				break
+		if not shapes:
+			continue
+		var tile := _key_to_tile(str(tile_key))
+		var lx := posmod(tile.x, CHUNK_SIZE)
+		var lz := posmod(tile.y, CHUNK_SIZE)
+		var dx := -1 if lx == 0 else (1 if lx == last else 0)
+		var dz := -1 if lz == 0 else (1 if lz == last else 0)
+		if dx != 0:
+			found[Vector2i(dx, 0)] = true
+		if dz != 0:
+			found[Vector2i(0, dz)] = true
+		if dx != 0 and dz != 0:
+			found[Vector2i(dx, dz)] = true
+	return found.keys()
 
 ## The heightmaps of the chunks the ring reads across, when they are KNOWN.
 ##
@@ -725,10 +762,11 @@ static func surface_style(biome: String) -> Dictionary:
 	var b: Variant = GameData.BIOMES.get(biome, null)
 	if b == null or b.get("surfaceTint") == null:
 		return {}
+	var depth: Variant = b.get("topsoilDepth")
 	return {
 		"top":      Color.from_string(str(b.get("surfaceTint")), FALLBACK_TERRAIN_COLOR),
 		"soil":     Color.from_string(str(b.get("soilTint")), FALLBACK_TERRAIN_COLOR),
-		"depth":    float(b.get("topsoilDepth")),
+		"depth":    float(depth if depth != null else 0.0),
 		"material": str(b.get("surfaceMaterial")),
 	}
 
@@ -759,7 +797,8 @@ static func _apply_topsoil(entry: Dictionary, world_xz: Vector2, biomes: Diction
 ## tile may show the biome across that border instead of its own: the chance falls from one half
 ## at the border to zero at the band's inner edge, and a coordinate hash (no RNG, no thread
 ## state) decides, so every build of the tile agrees and the border reads as a dithered band
-## rather than a straight cut. Only the colour is blended; the ore field still reads `own`.
+## rather than a straight cut (`BiomeBlend` holds the rule, shared with the minimap). The colour
+## and the soil yield follow it (`_natural_yield`); the ore field still reads `own`.
 static func blended_biome(world_xz: Vector2, biomes: Dictionary, own: String) -> String:
 	var extent := float(CHUNK_SIZE * TILE_SIZE)
 	var cx := floori(world_xz.x / extent)
@@ -783,8 +822,7 @@ static func blended_biome(world_xz: Vector2, biomes: Dictionary, own: String) ->
 		return own
 	var gx := floori(world_xz.x / TILE_SIZE)
 	var gz := floori(world_xz.y / TILE_SIZE)
-	var roll := float(((gx * 73856093) ^ (gz * 19349663)) & 0xffff) / 65536.0
-	return other if roll < 0.5 * (1.0 - d / BLEND_TILES) else own
+	return other if BiomeBlend.wears_neighbour(gx, gz, d, BLEND_TILES) else own
 
 ## Phase 43 — the ore field's per-call input: the seed, the depletion record and a fresh
 ## vein memo. Static and plain, so the worker half builds it from its payload.
@@ -1324,9 +1362,11 @@ func _natural_yield(tile: Vector2i, span: Dictionary) -> Dictionary:
 	var vein := _live_vein_at(xz, depth, _world_seed(), _vein_taken, {})
 	if vein.is_empty():
 		var biome := _biome_at(xz)
-		var b: Variant = GameData.BIOMES.get(biome, null)
+		# The soil is the one the surface draws: the tile's BLENDED biome (Phase 64).
+		var b: Variant = GameData.BIOMES.get(shown_biome_at(xz), null)
+		var topsoil: Variant = b.get("topsoilDepth") if b != null else null
 		if b != null and b.get("soilMaterial") != null \
-				and depth < float(b.get("topsoilDepth") if b.get("topsoilDepth") != null else 0.0):
+				and depth < float(topsoil if topsoil != null else 0.0):
 			return { "material": str(b.get("soilMaterial")), "quantity": 1, "vein": {} }
 		return { "material": OreField.host_material(biome), "quantity": 1, "vein": {} }
 	var take := mini(int(vein["quantity"]), OreField.remaining(vein, _vein_taken))
@@ -1549,18 +1589,25 @@ func _commit_edits(next: Dictionary, diff_keys: Variant = null) -> void:
 	# clear_dirty_chunks() after a successful save (called from game_root._on_save_completed).
 	# Restored on-disk edits are not dirty — they were already persisted.
 	var touched: Dictionary = {}
+	var changed: Dictionary = {}   # chunks that own a changed tile (Phase 69: their seams)
 	var keys: Array = (diff_keys as Array) if diff_keys is Array else _union_keys(previous, next)
 	for key in keys:
 		if next.has(key):
 			if not _ops_equal(previous.get(key, null), next[key]):
 				_mark_touched_tile(touched, _key_to_tile(str(key)))
+				changed[_chunk_key(_tile_to_chunk(_key_to_tile(str(key))))] = true
 		elif previous.has(key):
 			_mark_touched_tile(touched, _key_to_tile(str(key)))
+			changed[_chunk_key(_tile_to_chunk(_key_to_tile(str(key))))] = true
 	var previous_taken: Dictionary = _vein_taken
 	_edits = next
 	# The read-side chunk index is re-derived with it (Phase 42 review pass 10): the log was
 	# replaced in one assignment, so the index is rebuilt rather than diffed.
 	_reindex_edits()
+	# Phase 69 — only the chunks that own a changed tile get a new revision (the re-index above
+	# rewrites every bucket, which must not look like an edit to the seam gate).
+	for ckey in changed:
+		_bump_chunk_rev(str(ckey))
 	# Phase 43 — a vein whose EXHAUSTION changed with the new log repaints across its whole
 	# blob, which is wider than the anchor tile the deplete op sits on (the only tile the
 	# diff above marks). A count that moved without crossing the reserve changes nothing
@@ -1598,6 +1645,36 @@ func _commit_edits(next: Dictionary, diff_keys: Variant = null) -> void:
 		if not _chunks.has(ckey) or not _heightmaps.has(ckey):
 			continue   # nothing to refresh: unloaded chunks rebuild when streamed in
 		build_chunk(chunk, _heightmaps[ckey])
+	# Phase 69 — edits that arrive after a chunk loaded reach the diagonal neighbour of a changed
+	# corner tile too; the edge neighbours were requested just above. Judged on the old AND the new
+	# ops, so removing a shaping edit (or turning it deplete-only) repairs the neighbour as well.
+	if chunk_manager != null and chunk_manager.has_method("request_rebuild"):
+		var diagonals: Dictionary = {}
+		for key in keys:
+			var shaped := _ops_shape(previous.get(key, [])) or _ops_shape(next.get(key, []))
+			if not shaped:
+				continue
+			var tile := _key_to_tile(str(key))
+			var lx := posmod(tile.x, CHUNK_SIZE)
+			var lz := posmod(tile.y, CHUNK_SIZE)
+			if (lx != 0 and lx != CHUNK_SIZE - 1) or (lz != 0 and lz != CHUNK_SIZE - 1):
+				continue
+			if not _ops_equal(previous.get(key, null), next.get(key, null)):
+				var off := Vector2i(-1 if lx == 0 else 1, -1 if lz == 0 else 1)
+				var dkey := _chunk_key(_tile_to_chunk(tile) + off)
+				if not touched.has(dkey):
+					diagonals[dkey] = _tile_to_chunk(tile) + off
+		for dkey in diagonals:
+			chunk_manager.request_rebuild(diagonals[dkey])
+
+## True when `ops` holds an op that can change a height (anything but a deplete).
+static func _ops_shape(ops: Variant) -> bool:
+	if not ops is Array:
+		return false
+	for op in ops:
+		if op is Dictionary and str(op.get("op", "")) != "deplete":
+			return true
+	return false
 
 static func _union_keys(a: Dictionary, b: Dictionary) -> Array:
 	var keys: Array = b.keys()
@@ -2230,27 +2307,23 @@ func _terrain_material() -> StandardMaterial3D:
 
 ## The terrain's per-chunk material: per-column vertex colour, both faces
 ## rendered, so the shell is never see-through regardless of triangle winding.
-## Phase 54 — a biome's season tint (Color.WHITE clears it): that biome's terrain material has its
-## albedo multiplied by it. Each chunk wears the material of the biome it sits in
-## (`_chunk_terrain_material`), so a tint applies to that biome's chunks and no others.
-func set_biome_season_tint(biome_key: String, tint: Color) -> void:
-	var mat := _biome_material(biome_key)
-	if not mat.albedo_color.is_equal_approx(tint):
-		mat.albedo_color = tint
+## Phase 65 — set the season tint of every biome in one call (`{biome: Color}`). Each chunk's
+## material belongs to its own biome, so one biome's snow never tints another biome's chunks.
+func set_season_tints(tints: Dictionary) -> void:
+	_season_tints = tints.duplicate()
+	for biome in _biome_mats:
+		var mat: StandardMaterial3D = _biome_mats[biome]
+		var tint: Color = _season_tints.get(biome, Color.WHITE)
+		if not mat.albedo_color.is_equal_approx(tint):
+			mat.albedo_color = tint
 
-## The terrain material for `biome_key`: a copy of the shared one, minted once per biome (a
-## handful for the slice's lifetime, however many chunks are built).
-func _biome_material(biome_key: String) -> StandardMaterial3D:
-	if not _biome_mats.has(biome_key):
-		_biome_mats[biome_key] = _terrain_material().duplicate() as StandardMaterial3D
-	return _biome_mats[biome_key]
-
-## The material a chunk's terrain meshes carry. Without a terrain slice (an isolated rig) it is
-## the shared material.
-func _chunk_terrain_material(chunk_pos: Vector2i) -> StandardMaterial3D:
-	if terrain_slice == null or not terrain_slice.has_method("get_biome_at_chunk"):
-		return _terrain_material()
-	return _biome_material(str(terrain_slice.get_biome_at_chunk(chunk_pos)))
+## The terrain material the chunks of `biome` share. ONE instance per biome for the slice's life.
+func _terrain_material_for(biome: String) -> StandardMaterial3D:
+	if not _biome_mats.has(biome):
+		var mat := _make_terrain_material()
+		mat.albedo_color = _season_tints.get(biome, Color.WHITE)
+		_biome_mats[biome] = mat
+	return _biome_mats[biome]
 
 func _make_terrain_material() -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
@@ -2442,9 +2515,17 @@ func _set_edit_ops(tile_key: String, ops: Array) -> void:
 	if ops.is_empty():
 		_edits.erase(tile_key)
 		_unindex_edit(tile_key)
+		_bump_edit_rev(tile_key)
 		return
 	_edits[tile_key] = ops
 	_index_edit(tile_key)
+	_bump_edit_rev(tile_key)
+
+func _bump_edit_rev(tile_key: String) -> void:
+	_bump_chunk_rev(_chunk_key(_tile_to_chunk(_key_to_tile(tile_key))))
+
+func _bump_chunk_rev(ckey: String) -> void:
+	_edit_rev[ckey] = int(_edit_rev.get(ckey, 0)) + 1
 
 ## Record `tile_key` under its chunk in the read-side index (idempotent).
 func _index_edit(tile_key: String) -> void:
@@ -2658,6 +2739,10 @@ func _mark_dirty(tile: Vector2i) -> void:
 
 ## The biome a resolve falls back to when nothing asked a terrain slice — see the
 ## `DEFAULT_BIOME` constant (Phase 42 review pass 9).
+func _chunk_center_xz(chunk_pos: Vector2i) -> Vector2:
+	var extent := float(CHUNK_SIZE * TILE_SIZE)
+	return (Vector2(chunk_pos) + Vector2(0.5, 0.5)) * extent
+
 func _biome_at(xz: Vector2) -> String:
 	if terrain_slice != null and terrain_slice.has_method("get_biome_at"):
 		return terrain_slice.get_biome_at(xz)
@@ -2681,6 +2766,18 @@ static func natural_color(world_xz: Vector2, biomes: Dictionary, colours: Dictio
 	if not colours.has(material):
 		colours[material] = _material_color(material)
 	return colours[material]
+
+## Phase 64 — the biome whose surface the tile at `world_xz` WEARS, resolved from the terrain
+## slice: the same `blended_biome` answer the mesher gets from the gathered map.
+func shown_biome_at(world_xz: Vector2) -> String:
+	var extent := float(CHUNK_SIZE * TILE_SIZE)
+	var c := Vector2i(floori(world_xz.x / extent), floori(world_xz.y / extent))
+	var biomes: Dictionary = {}
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			var n := c + Vector2i(dx, dz)
+			biomes[_chunk_key(n)] = _biome_at(_chunk_world_center(n))
+	return blended_biome(world_xz, biomes, str(biomes[_chunk_key(c)]))
 
 ## The instance ACCESSOR form of `natural_color`: with no gathered map it asks the terrain slice
 ## for this position's biome, in exactly the shape `gather_biomes_for` builds.

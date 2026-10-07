@@ -111,6 +111,15 @@ const SURFACE_VEIN_CHANCE := 0.2 ## fallback when the biome resource carries no 
 static var _surface_chances: Dictionary = {}
 static var _warmed := false
 
+## The largest surface-vein chance any biome keeps: a roll at or above it is culled whatever the biome.
+static func max_surface_vein_chance() -> float:
+	if not _warmed:
+		warm()
+	var best := SURFACE_VEIN_CHANCE
+	for k in _surface_chances:
+		best = maxf(best, float(_surface_chances[k]))
+	return best
+
 ## The fraction of surface-reaching veins a biome keeps: its fabric `surfaceVeinChance`.
 static func surface_vein_chance(biome: String) -> float:
 	if not _warmed:
@@ -249,10 +258,15 @@ static func _build_vein(seed: int, cell: Vector3i) -> Dictionary:
 	var cd := float(cell.y) * CELL_DEPTH + top_margin + _unit(_hash(seed, cell, _SALT_DEPTH)) * (CELL_DEPTH - vmargin - top_margin)
 	var anchor := Vector2i(floori(cx), floori(cz))
 	var center_xz := Vector2(cx * TILE_SIZE, cz * TILE_SIZE)
+	# The surface-vein hash is cheap; the biome lookup is not. Cull on the hash against the best
+	# any biome could keep first, and only then ask the biome for the exact chance.
+	var reaches_surface := cell.y == 0 and cd - HALF_HEIGHT_MAX * (1.0 + SHAPE_NOISE) < 0.0
+	var surface_roll := _unit(_hash(seed, cell, _SALT_SURFACE))
+	if reaches_surface and surface_roll >= max_surface_vein_chance():
+		return {}
 	var biome := TerrainSlice.biome_for_chunk(Vector2i(
 		floori(float(anchor.x) / float(CHUNK_SIZE)), floori(float(anchor.y) / float(CHUNK_SIZE))), seed)
-	if cell.y == 0 and cd - HALF_HEIGHT_MAX * (1.0 + SHAPE_NOISE) < 0.0 \
-			and _unit(_hash(seed, cell, _SALT_SURFACE)) >= surface_vein_chance(biome):
+	if reaches_surface and surface_roll >= surface_vein_chance(biome):
 		return {}
 	var material := _pick_material(seed, biome, cd, center_xz, _unit(_hash(seed, cell, _SALT_MATERIAL)))
 	if material == "":

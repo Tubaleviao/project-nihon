@@ -488,7 +488,7 @@ func _broadcast_aoi(payload: Dictionary, position: Vector3) -> void:
 	if not _connected():
 		return
 	if _role == Role.HOST:
-		for pid in aoi_recipients(position, multiplayer.get_peers()):
+		for pid in aoi_recipients(position, _connected_peers()):
 			_deliver(int(pid), payload.duplicate(true))
 	elif _role == Role.CLIENT:
 		_deliver(1, payload)
@@ -499,8 +499,24 @@ func _broadcast_aoi(payload: Dictionary, position: Vector3) -> void:
 
 ## Test seam: when non-null, the suite has no sockets, so `_connected_peers()` answers this
 ## list and `_deliver` appends to `_test_outbox` instead of sending. Never set in the game.
-var _test_peers: Variant = null
-var _test_outbox: Array = []
+## Setting either outside a suite boot asserts and is ignored, so a game can never silently
+## swap its sockets for the outbox.
+var _test_peers: Variant = null:
+	set(value):
+		if not _test_seam_allowed():
+			assert(false, "[NetworkingSlice] _test_peers set outside a --run-tests boot")
+			return
+		_test_peers = value
+var _test_outbox: Array = []:
+	set(value):
+		if not _test_seam_allowed():
+			assert(false, "[NetworkingSlice] _test_outbox set outside a --run-tests boot")
+			return
+		_test_outbox = value
+
+## The suite boots with `--run-tests` (or in a debug build, see `GameRoot.should_run_tests`).
+static func _test_seam_allowed() -> bool:
+	return OS.get_cmdline_user_args().has("--run-tests") or OS.is_debug_build()
 
 ## Peers the host would fan out to.
 func _connected_peers() -> Array:
@@ -522,8 +538,8 @@ func _broadcast(payload: Dictionary) -> void:
 	if not _connected():
 		return
 	if _role == Role.HOST:
-		for pid in multiplayer.get_peers():
-			_deliver(pid, payload.duplicate(true))
+		for pid in _connected_peers():
+			_deliver(int(pid), payload.duplicate(true))
 	elif _role == Role.CLIENT:
 		_deliver(1, payload)
 

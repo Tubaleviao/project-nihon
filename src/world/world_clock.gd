@@ -171,13 +171,13 @@ static func season_tint(biome: Variant, warmth_v: float) -> Color:
 	var winter := Color.from_string(str(biome.get("winterTint")), Color.WHITE)
 	return winter.lerp(summer, summer_share(warmth_v))
 
-## The biome's terrain tint for a warmth: the seasonal tint, lerped toward snow white once its
-## seasonal temperature is below freezing.
-static func biome_look(biome: Variant, warmth_v: float) -> Color:
-	var tint := season_tint(biome, warmth_v)
+## The colour a biome's terrain wears for a warmth: its season tint, whitened toward snow where
+## the seasonal temperature is below freezing.
+static func season_look(biome: Variant, warmth_v: float) -> Color:
+	var tint: Color = season_tint(biome, warmth_v)
 	if biome == null or biome.get("avgTemperature") == null or biome.get("seasonSwing") == null:
 		return tint
-	var temp := seasonal_temperature(float(biome.get("avgTemperature")), float(biome.get("seasonSwing")), warmth_v)
+	var temp: float = seasonal_temperature(float(biome.get("avgTemperature")), float(biome.get("seasonSwing")), warmth_v)
 	if is_snowing_ground(temp):
 		tint = tint.lerp(Color(1.6, 1.6, 1.7), clampf(-temp / 10.0, 0.0, 0.7))
 	return tint
@@ -207,13 +207,6 @@ static func spawn_multiplier(biome: Variant, warmth_v: float) -> float:
 ## runs. `daylight` is the global 0..1 light level; speed 1 follows it, 0 stays at dusk (0.5).
 static func biome_daylight(daylight: float, night_speed: float) -> float:
 	return clampf(lerpf(0.5, daylight, clampf(night_speed, 0.0, 1.0)), 0.0, 1.0)
-
-## A biome's `dayNightSpeed` (fabric; 1 = follows the clock). Biomes without the field, and no
-## biome at all, follow the clock.
-static func biome_night_speed(biome: Variant) -> float:
-	if biome == null or biome.get("dayNightSpeed") == null:
-		return 1.0
-	return float(biome.get("dayNightSpeed"))
 
 ## 0..1 light level from the sun elevation: dark below -6° (past civil twilight), full by +25°.
 static func daylight_level(elevation_deg: float) -> float:

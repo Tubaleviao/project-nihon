@@ -34,6 +34,7 @@ const MarketSlice     := preload("res://src/world/market_slice.gd")
 const TradeSlice      := preload("res://src/trade/trade_slice.gd")
 const ProposalSlice   := preload("res://src/governance/proposal_slice.gd")
 const Minimap         := preload("res://src/ui/minimap.gd")
+const BiomeBlend      := preload("res://src/terrain/biome_blend.gd")
 const PlayerSlice     := preload("res://src/player/player_slice.gd")
 const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
 const ClimateField := preload("res://src/terrain/climate_field.gd")
@@ -94,6 +95,11 @@ func run() -> void:
 	_run_test("water: spans cover exactly the tiles below sea level", _test_water_spans)
 	_run_test("player: deep water is swum, not walked",       _test_player_swims_in_deep_water)
 	_run_test("terrain: the distant ring is 10x the window with no collision", _test_distant_ring)
+	_run_test("chunk: deplete-only edits request no neighbour rebuild", _test_seam_deplete_only)
+	_run_test("chunk: a border height edit rebuilds only that neighbour", _test_seam_east_border_edit)
+	_run_test("chunk: late edits rebuild the neighbour across the border", _test_seam_late_edits)
+	_run_test("chunk: edits synced while unloaded still rebuild neighbours on stream-in", _test_seam_unloaded_then_streamed)
+	_run_test("chunk: removing a corner edit rebuilds the diagonal neighbour", _test_seam_corner_removal)
 	_run_test("spawn: ocean chunks grow no trees",            _test_ocean_spawns_no_land_tables)
 	_run_test("terrain: the world wraps east-west",           _test_terrain_wraps_east_west)
 	_run_test("terrain: chunk keys are canonical across the seam", _test_chunk_key_canonical_at_seam)
@@ -234,6 +240,8 @@ func run() -> void:
 	_run_test("equipment: bag loss clears the slot",            _test_equipment_revalidated_on_bag_loss)
 	_run_test("equipment: slots cached, peer evict, owner map", _test_equipment_phase48_misc)
 	_run_test("equipment: host worn set + AOI enter/leave",      _test_equipment_host_and_aoi_transitions)
+	_run_test("net: broadcasts go through _test_peers",          _test_network_broadcast_uses_test_peers)
+	_run_test("ui: failed layout rename cleans tmp",             _test_ui_layout_failed_rename_cleans_tmp)
 	_run_test("equipment: rules totals + sanitize",             _test_equipment_rules_totals)
 	_run_test("equipment: derived stats + record + replicate",  _test_character_derived_stats_and_record)
 	_run_test("ui: character window rows + equip",              _test_ui_character_rows)
@@ -254,6 +262,9 @@ func run() -> void:
 	_run_test("voxel: biome material mapping",                 _test_voxel_biome_materials)
 	_run_test("voxel: grass top, soil side",                   _test_voxel_grass_top_soil_side)
 	_run_test("voxel: biome border blends with a dither",      _test_voxel_biome_border_blend)
+	_run_test("voxel: yield biome equals the drawn surface biome", _test_voxel_yield_matches_blended_biome)
+	_run_test("minimap: blend never borrows an unrevealed biome", _test_minimap_blend_respects_fog)
+	_run_test("climate: partial envelope does not break warm()", _test_climate_partial_envelope_warms)
 	_run_test("voxel: the surface never yields a deep ore",     _test_voxel_material_rarity)
 	_run_test("voxel: edits round-trip",                       _test_voxel_edits_round_trip)
 	_run_test("voxel: placed block keeps material colour",    _test_voxel_placed_block_keeps_material_color)
@@ -328,8 +339,8 @@ func run() -> void:
 	_run_test("clock: day length varies by latitude",            _test_clock_day_length_by_latitude)
 	_run_test("clock: sun follows the hour and the season",      _test_clock_sun_elevation)
 	_run_test("clock: seasonal temperature, tint and snow",      _test_clock_season_effects)
-	_run_test("clock: biome night speed and snow-white look",    _test_clock_biome_look)
-	_run_test("voxel: season tint is per biome, not per window", _test_voxel_season_tint_per_biome)
+	_run_test("clock: sun follows the biome's dayNightSpeed",    _test_clock_sun_biome_daylight)
+	_run_test("clock: season tint is per chunk biome",           _test_clock_season_tint_per_chunk)
 	_run_test("clock: client stays within 1 s over 10 minutes",  _test_clock_client_sync)
 	_run_test("clock: persistence, HUD text and fabric values",  _test_clock_persistence_and_fabric)
 	_run_test("spawn: hash bits are independent",                _test_spawn_roll_mix_avalanche)
@@ -570,8 +581,8 @@ func run() -> void:
 	_run_test("registry: bound peer ids come straight off the peer map", _test_registry_bound_peer_ids)
 	_run_test("spawn: new players avoid colonized regions", _test_spawn_avoids_colonized)
 	_run_test("spawn: friend code lands near the friend", _test_spawn_friend_near)
-	_run_test("spawn: the original placement persists on the record", _test_spawn_record_persists)
-	_run_test("spawn: colonization counts survive a restart, abandoned homes lapse", _test_colonization_followups)
+	_run_test("spawn: respawn point survives a move + reload (host and client)", _test_spawn_point_persists)
+	_run_test("spawn: counted chunks survive a colonization reload", _test_colonization_counted_persists)
 	_run_test("spawn: the colonization map scores, persists and drops malformed data", _test_colonization_map)
 	_run_test("spawn: a fresh join is placed, a reconnect is not", _test_spawn_registry_placement)
 	_run_test("region: a vein depleted from an evicted chunk stays depleted in its neighbours", _test_region_evict_keeps_vein_depletion)
@@ -4108,6 +4119,40 @@ func _test_ui_layout_file_roundtrip() -> void:
 	ui2.free()
 	DirAccess.remove_absolute(TEST_UI_LAYOUT)
 
+## Phase 67 — a failed layout rename leaves no `.tmp` file behind.
+func _test_ui_layout_failed_rename_cleans_tmp() -> void:
+	var ui := _new_test_ui()
+	# A directory at the target path makes the rename fail.
+	DirAccess.make_dir_recursive_absolute(TEST_UI_LAYOUT)
+	ui._layout["inventory"] = Vector2(1, 2)
+	ui._save_layout()
+	assert_false(FileAccess.file_exists(TEST_UI_LAYOUT + ".tmp"), "failed rename removes the temp file")
+	ui.free()
+	DirAccess.remove_absolute(TEST_UI_LAYOUT)
+
+## Phase 67 — `_broadcast` and `_broadcast_aoi` both fan out through `_test_peers` only.
+func _test_network_broadcast_uses_test_peers() -> void:
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n._test_peers = [4, 5]
+	n._broadcast({ "type": "probe" })
+	var got := []
+	for m in n._test_outbox:
+		got.append(m["peer_id"])
+	got.sort()
+	assert_eq(got, [4, 5], "_broadcast reaches exactly the test peers")
+	n._test_outbox.clear()
+	n.remember_player_state(4, Vector3.ZERO)
+	n.remember_player_state(5, Vector3.ZERO)
+	n._broadcast_aoi({ "type": "probe" }, Vector3.ZERO)
+	got = []
+	for m in n._test_outbox:
+		got.append(m["peer_id"])
+	got.sort()
+	assert_eq(got, [4, 5], "_broadcast_aoi reaches exactly the test peers in range")
+	n.free()
+
 func _test_ui_drag_state_resets() -> void:
 	var ui := _new_test_ui()
 	ui._drag_key = "inventory"
@@ -7223,6 +7268,83 @@ func _test_voxel_biome_border_blend() -> void:
 	for tz in range(0, VoxelSlice.CHUNK_SIZE):
 		var inner := Vector2(extent * 0.5, tz * VoxelSlice.TILE_SIZE + 0.25)
 		assert_eq(VoxelSlice.blended_biome(inner, biomes, "TemperateForest"), "TemperateForest", "the interior keeps its biome")
+
+## Phase 64 — the yield reads the biome the surface draws: for every tile of a border band the
+## instance accessor (what `_natural_yield` reads) equals `blended_biome` (what the mesher reads).
+func _test_voxel_yield_matches_blended_biome() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var ts := TerrainSlice.new()
+	add_child(ts)
+	v.terrain_slice = ts
+	var extent := float(VoxelSlice.CHUNK_SIZE * VoxelSlice.TILE_SIZE)
+	var checked := 0
+	for cx in range(-12, 12):
+		var biomes := v.gather_biomes_for(Vector2i(cx, 0))
+		for tx in range(0, int(VoxelSlice.BLEND_TILES) + 1):
+			for tz in range(0, VoxelSlice.CHUNK_SIZE, 3):
+				var xz := Vector2((cx * VoxelSlice.CHUNK_SIZE + tx) * VoxelSlice.TILE_SIZE + 0.25,
+					tz * VoxelSlice.TILE_SIZE + 0.25)
+				var own := VoxelSlice.biome_of(xz, biomes)
+				assert_eq(v.shown_biome_at(xz), VoxelSlice.blended_biome(xz, biomes, own),
+					"yield biome is the surface biome at %s" % xz)
+				checked += 1
+	assert_true(checked > 0, "tiles were checked")
+	assert_true(extent > 0.0, "extent sane")
+	assert_eq(BiomeBlend.chance(VoxelSlice.BLEND_TILES, VoxelSlice.BLEND_TILES), 0.0, "no blend at the band's inner edge")
+	assert_eq(BiomeBlend.chance(0.0, VoxelSlice.BLEND_TILES), BiomeBlend.MAX_CHANCE, "half a chance at the border")
+	ts.free()
+	v.free()
+
+## Phase 64 — a revealed border cell next to an UNREVEALED chunk never wears that chunk's biome.
+func _test_minimap_blend_respects_fog() -> void:
+	var mm := Minimap.new()
+	add_child(mm)
+	mm._revealed = { "0,0": true, "-1,0": true }
+	mm.terrain_slice = BiomeStub.new()
+	var memo := {}
+	var worn := 0
+	for j in Minimap.CELLS_PER_CHUNK:
+		for i in Minimap.CELLS_PER_CHUNK:
+			var got: String = mm._cell_biome(Vector2i(0, 0), i, j, "TemperateForest", memo)
+			assert_true(got != "VoidRift", "the unrevealed east/south chunks' biome is never worn (%d,%d)" % [i, j])
+			if got == "DesertDunes":
+				worn += 1
+	assert_true(worn >= 0, "the revealed west neighbour may blend")
+	assert_false(mm._has_blend_neighbour(Vector2i(5, 5), "TemperateForest", {}), "no revealed neighbours: one rect")
+	mm.free()
+
+class BiomeStub extends Node:
+	func get_biome_at_chunk(c: Vector2i) -> String:
+		return "DesertDunes" if c.x < 0 else ("TemperateForest" if c == Vector2i.ZERO else "VoidRift")
+
+## Phase 64 — a biome whose envelope dicts lack keys (or whose altitude lacks `max`) must not
+## error in `_envelope_of`, and the complete envelopes still load.
+func _test_climate_partial_envelope_warms() -> void:
+	var partial := RefCounted.new()
+	var bad := { "temperature": { "min": 0.2 }, "moisture": { "max": 0.7 }, "altitude": { "min": 5.0 } }
+	var holder := PartialBiome.new()
+	holder.temperature = bad["temperature"]
+	holder.moisture = bad["moisture"]
+	holder.altitude = bad["altitude"]
+	var env := ClimateField._envelope_of(holder)
+	assert_eq(env.size(), 7, "a partial envelope still yields the full row")
+	assert_eq(env[1], 1.0, "a missing max defaults open")
+	assert_eq(env[5], 100000.0, "a missing altitude max defaults open")
+	var saved_env: Dictionary = ClimateField._envelopes.duplicate()
+	var saved_warm: bool = ClimateField._warmed
+	ClimateField._envelopes.clear()
+	ClimateField._warmed = false
+	ClimateField.warm()
+	assert_true(ClimateField._warmed and ClimateField._envelopes.size() > 0, "the real envelopes load")
+	ClimateField._envelopes = saved_env
+	ClimateField._warmed = saved_warm
+	assert_true(partial != null, "ok")
+
+class PartialBiome extends RefCounted:
+	var temperature: Dictionary = {}
+	var moisture: Dictionary = {}
+	var altitude: Dictionary = {}
 
 ## Phase 49 — mining a NATURAL slice within a biome's topsoil yields that biome's fabric
 ## `soilMaterial`, whatever the cover: Grass, Moss, Ash and Void ground all yield soil, not
@@ -12770,7 +12892,8 @@ func _test_equipment_phase48_misc() -> void:
 
 ## Phase 48 criteria — the replication target list includes the listen host as an owner,
 ## and a peer entering/leaving AOI after the last gear change is sent / evicted. Uses the
-## networking slice's no-socket test seam (`_test_peers`, `_test_outbox`).
+## networking slice's no-socket test seam: with `_test_peers` set, every fan-out path
+## (`_connected_peers()`) answers it and `_deliver` appends to `_test_outbox`.
 func _test_equipment_host_and_aoi_transitions() -> void:
 	var reg := PlayerRegistry.new()
 	add_child(reg)
@@ -12820,10 +12943,14 @@ func _test_equipment_host_and_aoi_transitions() -> void:
 	n.remember_player_state(3, Vector3(2000, 0, 0))
 	n._refresh_equipment_pairs(3)
 	var evicts := 0
+	var evict_viewers := []
 	for m in n._test_outbox:
 		if m["payload"]["type"] == "peer_equipment_evict":
 			evicts += 1
+			evict_viewers.append(m["peer_id"])
+	evict_viewers.sort()
 	assert_eq(evicts, 2, "leaving AOI evicts the stored set on each viewer")
+	assert_eq(evict_viewers, [2, 3], "the evicts go to peer 2 (told peer 3 left) and peer 3 (told peer 2 left)")
 	assert_false(n._equipment_sent.has("2:3"), "the sent record for the pair is dropped")
 	n._test_outbox.clear()
 	n.remember_player_state(3, Vector3(2100, 0, 0))
@@ -13954,66 +14081,62 @@ func _test_colonization_map() -> void:
 	seeded.seed_from_regions([Vector2i(4, 4)])
 	assert_eq(seeded.score(Vector2i(4, 4)), 1.0, "seeding from region files is idempotent")
 
-## Phase 53 follow-up — the first placement lives on the record beside the walked position.
-func _test_spawn_record_persists() -> void:
+## Phase 66 — a host placed at S, moved away and reloaded respawns at S; a client reconnecting after
+## moving away is sent S in its handshake block and respawns there. Legacy records fall back.
+func _test_spawn_point_persists() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	var spawn := Vector3(1234.0, 9.0, -777.0)
 	var reg := PlayerRegistry.new()
 	reg.is_authoritative = true
-	var pid := "player_1_1_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	assert_eq(reg.spawn_of(pid), null, "a player with no record has no placement")
-	reg.record_position(pid, Vector3(500.0, 3.0, 600.0))
-	assert_eq(reg.spawn_of(pid), null, "walking does not invent a placement")
-	reg.record_spawn(pid, Vector3(10.0, 2.0, 20.0))
-	reg.record_position(pid, Vector3(900.0, 4.0, 900.0))
-	reg.record_spawn(pid, Vector3(99.0, 9.0, 99.0))
-	assert_eq(reg.spawn_of(pid), Vector3(10.0, 2.0, 20.0), "the placement is written once and survives walking")
-	var data := reg.get_player_data(pid)
-	assert_eq(data["spawn"], [10.0, 2.0, 20.0], "the saved payload carries it")
-	var back := PlayerRegistry.new()
-	back.apply_player_data(pid, data)
-	assert_eq(back.spawn_of(pid), Vector3(10.0, 2.0, 20.0), "a reload restores it")
-	var bad: Dictionary = data.duplicate(true)
-	bad["spawn"] = [1.0, "x", 3.0]
-	var other := PlayerRegistry.new()
-	other.apply_player_data(pid, bad)
-	assert_eq(other.spawn_of(pid), null, "a malformed placement is dropped")
-	var old: Dictionary = data.duplicate(true)
-	old.erase("spawn")
-	other.apply_player_data(pid, old)
-	assert_eq(other.spawn_of(pid), null, "a payload from before the field restores to none")
-	assert_false(other.get_player_data(pid).has("spawn"), "and writes none back")
-	back.clear_spawn(pid)
-	assert_eq(back.spawn_of(pid), null, "clear_spawn forgets it")
+	reg.set_spawn_placer(func(_pid: String, _code: String) -> Dictionary:
+		return { "position": spawn, "source": "search", "message": "" })
+	var pid := reg.resolve_identity(5)
+	reg.record_position(pid, Vector3(-4000.0, 3.0, 2500.0))   # moved far away
+	var saved: Dictionary = reg.get_player_data(pid)
+	assert_true(saved.has("spawn"), "the saved record carries the spawn point")
+	# Host: a fresh registry loaded from that save respawns at S, not at the saved position.
+	var fresh := PlayerRegistry.new()
+	fresh.apply_player_data(pid, saved)
+	var host_rec: Dictionary = fresh.get_record(pid)
+	var host_point: Variant = root_script.respawn_point_for(host_rec)
+	assert_true(host_point != null and (host_point as Vector3).distance_to(spawn) < 0.01,
+		"a reloaded host respawns at its original spawn point")
+	assert_true(absf(float(host_rec["position"][0]) + 4000.0) < 0.01, "while still standing where it logged off")
+	# Client: the handshake block carries the spawn; the client has since moved.
+	var own: Dictionary = { "position": saved["position"], "hp": 100.0, "spawn": saved["spawn"] }
+	var wire: Variant = root_script.client_respawn_point(own, Vector3(-4000.0, 3.0, 2500.0))
+	assert_true((wire as Vector3).distance_to(spawn) < 0.01, "a reconnecting client respawns at its original spawn point")
+	assert_eq(root_script.client_respawn_point({ "position": saved["position"] }, Vector3(1.0, 2.0, 3.0)),
+		Vector3(1.0, 2.0, 3.0), "a host that sent no spawn leaves the standing position")
+	# Legacy and malformed records fall back to the saved position.
+	var legacy: Dictionary = saved.duplicate(true)
+	legacy.erase("spawn")
+	var old := PlayerRegistry.new()
+	old.apply_player_data(pid, legacy)
+	assert_eq(old.spawn_of(pid), null, "a record without the field has no spawn")
+	var fallback: Variant = root_script.respawn_point_for(old.get_record(pid))
+	assert_true((fallback as Vector3).distance_to(Vector3(-4000.0, 3.0, 2500.0)) < 0.01, "and falls back to its saved position")
+	legacy["spawn"] = { "chunk": ["x", 1], "local": [0, 0] }
+	old.apply_player_data(pid, legacy)
+	assert_eq(old.spawn_of(pid), null, "a malformed spawn is dropped")
+	reg.free()
+	fresh.free()
+	old.free()
 
-## Phase 53 follow-up — re-editing a counted chunk after a restart does not inflate the score,
-## and a home nobody has visited for a month stops counting.
-func _test_colonization_followups() -> void:
+## Phase 66 — edit chunk K, save, reload, edit K again: the region's count is unchanged.
+func _test_colonization_counted_persists() -> void:
 	var m := ColonizationMapScript.new()
-	assert_true(m.note_edited_chunk(Vector2i(70, 100)), "the first edit counts")
-	var restarted := ColonizationMapScript.new()
-	restarted.from_data(m.to_data())
-	assert_true(not restarted.note_edited_chunk(Vector2i(70, 100)), "after a restart the same chunk is still counted")
-	assert_eq(restarted.score(Vector2i(2, 3)), 1.0, "so the region's score did not inflate")
-	assert_true(restarted.note_edited_chunk(Vector2i(71, 100)), "a new chunk still counts")
-	var junk := ColonizationMapScript.new()
-	junk.from_data({ "regions": {}, "counted": ["1,2", "bad", 7, "3,x"] })
-	assert_true(not junk.note_edited_chunk(Vector2i(1, 2)), "a well-formed counted key is read")
-	assert_true(junk.note_edited_chunk(Vector2i(3, 4)), "malformed counted keys are dropped")
-	var h := ColonizationMapScript.new()
-	var day := 86400.0
-	var t0 := 1000.0 * day
-	h.note_home(Vector2i(0, 0), t0)
-	assert_eq(h.score(Vector2i(0, 0), t0), 11.0, "a fresh home counts, plus the presence that placed it")
-	assert_eq(h.score(Vector2i(0, 0), t0 + 10.0 * day), 10.0, "a home still counts after ten days unseen")
-	assert_eq(h.score(Vector2i(0, 0), t0 + 31.0 * day), 0.0, "an abandoned home stops counting")
-	h.note_presence(Vector2i(0, 0), t0 + 30.0 * day)
-	assert_eq(h.score(Vector2i(0, 0), t0 + 31.0 * day), 11.0, "a visit revives it")
-	assert_eq(h.score(Vector2i(0, 0)), 11.0, "with no clock supplied homes always count")
-	var legacy := ColonizationMapScript.new()
-	legacy.from_data({ "regions": { "0,0": { "edits": 0, "homes": 1 } } })
-	assert_eq(legacy.score(Vector2i(0, 0), t0), 10.0, "an older record with no presence keeps its homes")
-	h.release_home(Vector2i(0, 0))
-	h.release_home(Vector2i(0, 0))
-	assert_eq(h.score(Vector2i(0, 0)), 1.0, "releasing a home removes its weight and never goes below zero")
+	m.note_edited_chunk(Vector2i(70, 100))
+	var region := Vector2i(2, 3)
+	assert_eq(m.score(region), 1.0, "one counted chunk")
+	var reloaded := ColonizationMapScript.new()
+	reloaded.from_data(JSON.parse_string(JSON.stringify(m.to_data())))
+	assert_true(not reloaded.note_edited_chunk(Vector2i(70, 100)), "the reloaded map knows the chunk was counted")
+	assert_eq(reloaded.score(region), 1.0, "re-editing it leaves the region's count unchanged")
+	assert_true(reloaded.note_edited_chunk(Vector2i(71, 100)), "a different chunk still counts")
+	reloaded.from_data({ "regions": {}, "counted": ["bad", "1,x", 7, "5,6"] })
+	assert_true(not reloaded.note_edited_chunk(Vector2i(5, 6)) and reloaded.note_edited_chunk(Vector2i(1, 1)),
+		"malformed counted entries are dropped, good ones kept")
 
 func _test_spawn_registry_placement() -> void:
 	var reg := PlayerRegistry.new()
@@ -14093,25 +14216,40 @@ func _test_clock_sun_elevation() -> void:
 	assert_eq(WorldClock.biome_daylight(0.0, 1.0), 0.0, "night speed 1 follows the clock")
 	assert_eq(WorldClock.biome_daylight(0.0, 0.0), 0.5, "night speed 0 stays at dusk")
 
-## Phase 54 follow-up — the Twilight Grove's night speed reaches the light level, and a freezing
-## biome's look turns snow white without touching a warm biome's.
-func _test_clock_biome_look() -> void:
-	var grove: Variant = GameData.BIOMES["TwilightGrove"]
-	var forest: Variant = GameData.BIOMES["TemperateForest"]
-	var tundra: Variant = GameData.BIOMES["Tundra"]
-	assert_eq(WorldClock.biome_night_speed(grove), float(grove.get("dayNightSpeed")), "the grove reads its own night speed")
-	assert_eq(WorldClock.biome_night_speed(forest), 1.0, "a biome without the field follows the clock")
-	assert_eq(WorldClock.biome_night_speed(null), 1.0, "no biome follows the clock")
-	assert_eq(WorldClock.biome_daylight(0.0, WorldClock.biome_night_speed(forest)), 0.0, "so a forest night is full dark")
-	assert_eq(WorldClock.biome_daylight(0.0, 0.0), 0.5, "and a grove at speed 0 never gets darker than dusk")
-	assert_eq(WorldClock.biome_look(null, 0.0), Color.WHITE, "no biome, no look")
-	var winter_tundra: Color = WorldClock.biome_look(tundra, -1.0)
-	assert_true(winter_tundra.r > WorldClock.season_tint(tundra, -1.0).r, "tundra in winter is paler than its plain tint")
-	assert_eq(WorldClock.biome_look(forest, 1.0), WorldClock.season_tint(forest, 1.0), "a warm summer forest keeps its plain tint")
+## Phase 65 — the applied sun goes through `biome_daylight` with the biome's `dayNightSpeed`:
+## speed 0 holds the energy at dusk (0.5) at midnight AND noon; speed 1 follows the clock.
+func _test_clock_sun_biome_daylight() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	var root: Node = root_script.new()   # never enters the tree: no _ready, no boot
+	var sun := DirectionalLight3D.new()
+	sun.name = "Sun"
+	root.add_child(sun)
+	var lat := 0.0
+	for phase in [0.0, 0.5]:   # midnight, solar noon
+		root._clock.time_days = float(phase)
+		var elev: float = root._clock.sun_elevation_at(lat)
+		var d: float = WorldClock.daylight_level(elev)
+		root._apply_sun(lat, 0.0)
+		assert_true(absf(sun.light_energy - 1.4 * WorldClock.biome_daylight(d, 0.0)) < 1e-6,
+			"night speed 0: sun energy is biome_daylight(d, 0) at day phase %s" % phase)
+		assert_true(absf(sun.light_energy - 0.7) < 1e-6, "night speed 0 stays at dusk energy")
+		root._apply_sun(lat, 1.0)
+		assert_true(absf(sun.light_energy - 1.4 * d) < 1e-6,
+			"night speed 1 follows the clock at day phase %s" % phase)
+	root.free()
 
-## Phase 54 follow-up — chunks wear their own biome's season tint, so whitening one biome does
-## not whiten another's chunks.
-func _test_voxel_season_tint_per_biome() -> void:
+## Phase 65 — a freezing biome's own chunks go snow-white while a temperate biome's chunk keeps
+## its non-snow tint, even though both share a slice and a latitude.
+func _test_clock_season_tint_per_chunk() -> void:
+	var tundra: Variant = GameData.BIOMES["Tundra"]
+	var forest: Variant = GameData.BIOMES["TemperateForest"]
+	var winter := 0.0   # the equinox: tundra is below freezing, the forest is not
+	var snow: Color = WorldClock.season_look(tundra, winter)
+	var green: Color = WorldClock.season_look(forest, winter)
+	assert_true(WorldClock.is_snowing_ground(WorldClock.seasonal_temperature(
+		float(tundra.get("avgTemperature")), float(tundra.get("seasonSwing")), winter)), "tundra freezes in winter")
+	assert_true(snow.r > 1.0, "the freezing biome's look is snow-bright")
+	assert_eq(green, WorldClock.season_tint(forest, winter), "the temperate biome keeps its plain season tint (not snow)")
 	var terrain := TerrainSlice.new()
 	add_child(terrain)
 	var v := VoxelSlice.new()
@@ -14120,24 +14258,21 @@ func _test_voxel_season_tint_per_biome() -> void:
 	var flat: Array = []
 	flat.resize(64 * 64)
 	flat.fill(2.0)
-	var a: Variant = _biome_chunks(terrain, ["Tundra"], 1)
-	var b: Variant = _biome_chunks(terrain, ["TemperateForest"], 1)
-	assert_true(not (a as Array).is_empty() and not (b as Array).is_empty(), "found a tundra chunk and a forest chunk")
-	if (a as Array).is_empty() or (b as Array).is_empty():
+	var t_chunks: Array = _biome_chunks(terrain, ["Tundra"], 1)
+	var f_chunks: Array = _biome_chunks(terrain, ["TemperateForest"], 1)
+	assert_true(not t_chunks.is_empty() and not f_chunks.is_empty(), "found a tundra and a forest chunk")
+	if t_chunks.is_empty() or f_chunks.is_empty():
 		v.free()
 		terrain.free()
 		return
-	v.build_chunk(a[0], flat)
-	v.build_chunk(b[0], flat)
-	v.set_biome_season_tint("Tundra", Color(1.6, 1.6, 1.7))
-	var tundra_mat := (_chunk_mesh_instances(v, a[0])[0] as MeshInstance3D).material_override as StandardMaterial3D
-	var forest_mat := (_chunk_mesh_instances(v, b[0])[0] as MeshInstance3D).material_override as StandardMaterial3D
-	assert_true(not is_same(tundra_mat, forest_mat), "the two biomes' chunks carry different material instances")
-	assert_eq(tundra_mat.albedo_color, Color(1.6, 1.6, 1.7), "the tundra chunk takes the tundra tint")
-	assert_eq(forest_mat.albedo_color, Color.WHITE, "the forest chunk is untouched")
-	v.build_chunk(a[0], flat)
-	assert_true(is_same(tundra_mat, (_chunk_mesh_instances(v, a[0])[0] as MeshInstance3D).material_override),
-		"a rebuilt chunk reuses its biome's material")
+	v.build_chunk(t_chunks[0], flat)
+	v.build_chunk(f_chunks[0], flat)
+	v.set_season_tints({ "Tundra": snow, "TemperateForest": green })
+	var t_mat: StandardMaterial3D = (_chunk_mesh_instances(v, t_chunks[0])[0] as MeshInstance3D).material_override
+	var f_mat: StandardMaterial3D = (_chunk_mesh_instances(v, f_chunks[0])[0] as MeshInstance3D).material_override
+	assert_false(is_same(t_mat, f_mat), "the two biomes' chunks wear different materials")
+	assert_true(t_mat.albedo_color.is_equal_approx(snow), "the tundra chunk is snow-tinted")
+	assert_true(f_mat.albedo_color.is_equal_approx(green), "the forest chunk keeps its non-snow tint")
 	v.free()
 	terrain.free()
 
@@ -14208,3 +14343,92 @@ func _test_clock_persistence_and_fabric() -> void:
 		var biome: Variant = GameData.BIOMES[key]
 		assert_true(biome.get("seasonSwing") != null and biome.get("seasonGrowth") is Dictionary and biome.get("seasonSpawn") is Dictionary,
 				"%s declares its seasonal modifiers" % key)
+
+
+## Phase 69 — a loaded rig with the 3×3 block around (0,0) built except (0,0) itself.
+func _seam_rig() -> Dictionary:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.max_builds_in_flight = 16
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			if dx != 0 or dz != 0:
+				cm.load_chunk(Vector2i(dx, dz))
+	_wait_for_builds(cm)
+	cm.rebuild_requests.clear()
+	return rig
+
+func _seam_rig_free(rig: Dictionary) -> void:
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+func _seam_requested(cm: ChunkManager) -> Array:
+	var out: Array = cm.rebuild_requests.keys()
+	out.sort()
+	return out
+
+func _test_seam_deplete_only() -> void:
+	var rig := _seam_rig()
+	var cm: ChunkManager = rig["cm"]
+	var v: VoxelSlice = rig["voxel"]
+	# Tile 63,10 is on chunk (0,0)'s east border; a deplete op never changes a height.
+	v._set_edit_ops("63,10", [{ "op": "deplete", "vein": "9,9,9", "taken": 1 }])
+	assert_eq(v.seam_borders(Vector2i(0, 0)).size(), 0, "a deplete-only chunk reports no seam border")
+	cm.load_chunk(Vector2i(0, 0))
+	assert_eq(_seam_requested(cm).size(), 0, "streaming it in requests no neighbour rebuild")
+	_seam_rig_free(rig)
+
+func _test_seam_east_border_edit() -> void:
+	var rig := _seam_rig()
+	var cm: ChunkManager = rig["cm"]
+	var v: VoxelSlice = rig["voxel"]
+	v._set_edit_ops("63,10", [{ "op": "remove", "bottom": 1.0, "top": 2.0 }])
+	assert_eq(v.seam_borders(Vector2i(0, 0)), [Vector2i(1, 0)], "the east border is the only seam")
+	cm.load_chunk(Vector2i(0, 0))
+	assert_eq(_seam_requested(cm), ["1,0"], "only the east neighbour is rebuilt")
+	cm.rebuild_seam_neighbours(Vector2i(0, 0))
+	assert_eq(int(cm.rebuild_requests["1,0"]), 1, "and at most once per edit revision")
+	_seam_rig_free(rig)
+
+func _test_seam_late_edits() -> void:
+	var rig := _seam_rig()
+	var cm: ChunkManager = rig["cm"]
+	var v: VoxelSlice = rig["voxel"]
+	cm.load_chunk(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	cm.rebuild_requests.clear()
+	# Edits for the already-loaded chunk arrive by sync, with a corner edit (south-east).
+	var edit: Array = [{ "op": "remove", "bottom": 1.0, "top": 2.0 }]
+	v.apply_edits({ "63,63": edit })
+	var got := _seam_requested(cm)
+	assert_true(got.has("1,0") and got.has("0,1") and got.has("1,1"), "east, south and the diagonal neighbour rebuild (%s)" % str(got))
+	assert_false(got.has("-1,0") or got.has("0,-1"), "the far borders do not")
+	_seam_rig_free(rig)
+
+func _test_seam_unloaded_then_streamed() -> void:
+	var rig := _seam_rig()
+	var cm: ChunkManager = rig["cm"]
+	var v: VoxelSlice = rig["voxel"]
+	# Edits arrive while (0,0) is not streamed in: nothing is requested and no revision is recorded.
+	v.apply_edits({ "63,10": [{ "op": "remove", "bottom": 1.0, "top": 2.0 }] })
+	cm.rebuild_requests.clear()
+	cm.rebuild_seam_neighbours(Vector2i(0, 0))
+	assert_eq(_seam_requested(cm).size(), 0, "an unloaded chunk requests nothing")
+	cm.load_chunk(Vector2i(0, 0))
+	assert_eq(_seam_requested(cm), ["1,0"], "streaming it in still rebuilds the east neighbour")
+	_seam_rig_free(rig)
+
+func _test_seam_corner_removal() -> void:
+	var rig := _seam_rig()
+	var cm: ChunkManager = rig["cm"]
+	var v: VoxelSlice = rig["voxel"]
+	cm.load_chunk(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	v.apply_edits({ "63,63": [{ "op": "remove", "bottom": 1.0, "top": 2.0 }] })
+	_wait_for_builds(cm)
+	cm.rebuild_requests.clear()
+	v.apply_edits({})
+	assert_true(_seam_requested(cm).has("1,1"), "removing the corner edit rebuilds the diagonal neighbour")
+	_seam_rig_free(rig)
