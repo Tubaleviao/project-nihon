@@ -112,7 +112,11 @@ func is_near_colonized(x: float, z: float, min_distance_m: float, threshold: flo
 	return false
 
 func to_data() -> Dictionary:
-	return { "regions": _regions.duplicate(true) }
+	# The counted-chunk set persists too: without it a restart forgot which chunks were counted and
+	# the first re-edit of an already-counted chunk raised its region's count a second time.
+	var counted: Array = _counted_chunks.keys()
+	counted.sort()
+	return { "regions": _regions.duplicate(true), "counted": counted }
 
 ## Replace the map from `data`. Malformed entries are dropped, never trusted.
 func from_data(data: Variant) -> void:
@@ -120,6 +124,12 @@ func from_data(data: Variant) -> void:
 	_counted_chunks.clear()
 	if not (data is Dictionary):
 		return
+	var counted: Variant = (data as Dictionary).get("counted", [])
+	if counted is Array:
+		for ckey in counted:
+			var cp: PackedStringArray = str(ckey).split(",")
+			if cp.size() == 2 and cp[0].is_valid_int() and cp[1].is_valid_int():
+				_counted_chunks[str(ckey)] = true
 	var regions: Variant = (data as Dictionary).get("regions", null)
 	if not (regions is Dictionary):
 		return

@@ -208,6 +208,7 @@ func _place_new_player(peer_id: int, player_id: String) -> void:
 		return
 	var pos: Vector3 = placed["position"]
 	record_position(player_id, pos)
+	record_spawn(player_id, pos)
 	GameBus.spawn_placed.emit(player_id, pos, str(placed.get("source", "search")), str(placed.get("message", "")))
 
 ## Inject the durable-storage reader used for a lazy record load. `loader` takes a
@@ -462,6 +463,30 @@ func record_position(player_id: String, position: Vector3) -> void:
 		return
 	rec["position"] = [position.x, position.y, position.z]
 	_store_world_pos(rec, WorldPos.from_world(position.x, position.y, position.z))
+
+## Phase 66 — remember where a player was PLACED, as `{chunk, local}` beside the live position, so
+## a respawn after a restart or a reconnect goes back to the original spawn point rather than a
+## fixed default. Only a placement writes it; walking about never does.
+func record_spawn(player_id: String, position: Vector3) -> void:
+	var rec := ensure_player(player_id)
+	if rec.is_empty():
+		return
+	var wp := WorldPos.from_world(position.x, position.y, position.z)
+	rec["spawn"] = WorldPos.pos_to_wire(wp)
+
+## The recorded spawn point as a world position, or null when the record has none (a record from
+## before Phase 66, or a malformed one) — the caller falls back to the saved position.
+func spawn_of(player_id: String) -> Variant:
+	return spawn_from_record(get_record(player_id))
+
+static func spawn_from_record(rec: Dictionary) -> Variant:
+	var sp: Variant = rec.get("spawn", null)
+	if not (sp is Dictionary) or not _has_chunk_local(sp):
+		return null
+	var wp := world_pos_of(sp)
+	var chunk: Vector2i = wp["chunk"]
+	var local: Vector3 = wp["local"]
+	return Vector3(chunk.x * WorldPos.CHUNK_METERS + local.x, local.y, chunk.y * WorldPos.CHUNK_METERS + local.z)
 
 ## Phase 50 — a record keeps its position as `chunk` [cx, cz] + `local` [x, y, z] (exact at any
 ## distance from the origin); `position` stays beside them for the readers that want a Vector3.
@@ -929,6 +954,8 @@ func get_player_data(player_id: String) -> Dictionary:
 		"inventory": {},
 		"inventory_durability": {},
 	}
+	if rec.get("spawn", null) is Dictionary and spawn_from_record(rec) != null:
+		data["spawn"] = rec["spawn"]
 	var inv = _inventories.get(player_id, null)
 	if inv != null and is_instance_valid(inv):
 		data["inventory"] = inv.get_contents()
@@ -950,6 +977,12 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	var chunk: Vector2i = wp["chunk"]
 	var local: Vector3 = wp["local"]
 	rec["position"] = [chunk.x * WorldPos.CHUNK_METERS + local.x, local.y, chunk.y * WorldPos.CHUNK_METERS + local.z]
+	# Phase 66 — the original spawn point; a payload without one (or with a malformed one) leaves
+	# the record without, and the respawn falls back to the saved position.
+	if spawn_from_record(data) != null:
+		rec["spawn"] = (data["spawn"] as Dictionary).duplicate(true)
+	else:
+		rec.erase("spawn")
 	var restored_hp := float(data.get("hp", -1.0))
 	rec["hp"] = restored_hp
 	# Phase 39 — the respawn deadline rides the same record. The saved `hp` above is
