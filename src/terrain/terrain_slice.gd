@@ -83,7 +83,9 @@ func _ready() -> void:
 ## from the same noise field.
 func set_world_seed(seed: int) -> void:
 	_world_seed = seed
-	_corner_key = Vector2i(2147483647, 2147483647)
+	_corner_mutex.lock()
+	_corner_caches.clear()
+	_corner_mutex.unlock()
 	_noise.seed = seed
 
 ## The seed this world is generating from (see set_world_seed).
@@ -308,39 +310,41 @@ func detail_at(x: float, z: float) -> float:
 	return (_noise.get_noise_2d(noise_coord(x), noise_coord(z)) + 1.0) * 0.5 * HEIGHT_SCALE
 
 ## `WorldShape.height` interpolated between the corners of the chunk cell holding (x, z).
+## Phase 68: the corner cache is per thread (chunk workers and the distant-ring worker all sample
+## through this), keyed on the cell, the seed and the circumference, so no thread ever reads
+## another's half-written corners.
 func _shape_at(x: float, z: float, w: float) -> float:
 	var gx := x / CHUNK_METERS
 	var gz := z / CHUNK_METERS
 	var ix := floori(gx)
 	var iz := floori(gz)
-	var key := Vector2i(ix, iz)
-	# Heightmaps are built on worker threads and the main thread at once, and the cache is
-	# shared: the key and the corners must change together, so both are read and written under
-	# the lock (and the lerp, which touches only locals, runs outside it).
-	var c0: float
-	var c1: float
-	var c2: float
-	var c3: float
-	_corner_mutex.lock()
-	if key != _corner_key:   # a heightmap walks one cell for 4096 tiles: reuse its corners
-		_corner_key = key
+	var cache := _corner_cache()
+	if cache[0] != ix or cache[1] != iz or cache[2] != _world_seed or cache[3] != w:   # a heightmap walks one cell for 4096 tiles: reuse its corners
 		var x0 := float(ix) * CHUNK_METERS
 		var z0 := float(iz) * CHUNK_METERS
-		_corners = [
-			WorldShape.height(_world_seed, x0, z0, w),
-			WorldShape.height(_world_seed, x0 + CHUNK_METERS, z0, w),
-			WorldShape.height(_world_seed, x0, z0 + CHUNK_METERS, w),
-			WorldShape.height(_world_seed, x0 + CHUNK_METERS, z0 + CHUNK_METERS, w),
-		]
-	c0 = _corners[0]
-	c1 = _corners[1]
-	c2 = _corners[2]
-	c3 = _corners[3]
-	_corner_mutex.unlock()
+		cache[0] = ix
+		cache[1] = iz
+		cache[2] = _world_seed
+		cache[3] = w
+		cache[4] = WorldShape.height(_world_seed, x0, z0, w)
+		cache[5] = WorldShape.height(_world_seed, x0 + CHUNK_METERS, z0, w)
+		cache[6] = WorldShape.height(_world_seed, x0, z0 + CHUNK_METERS, w)
+		cache[7] = WorldShape.height(_world_seed, x0 + CHUNK_METERS, z0 + CHUNK_METERS, w)
 	var fx := gx - float(ix)
 	var fz := gz - float(iz)
-	return lerpf(lerpf(c0, c1, fx), lerpf(c2, c3, fx), fz)
+	return lerpf(lerpf(cache[4], cache[5], fx), lerpf(cache[6], cache[7], fx), fz)
 
+## This thread's corner cache: [ix, iz, seed, w, c00, c10, c01, c11]. The map is guarded; each
+## entry is only ever touched by the thread that owns it.
+var _corner_caches: Dictionary = {}
 var _corner_mutex := Mutex.new()
-var _corner_key := Vector2i(2147483647, 2147483647)
-var _corners: Array = [0.0, 0.0, 0.0, 0.0]
+
+func _corner_cache() -> Array:
+	var tid := OS.get_thread_caller_id()
+	_corner_mutex.lock()
+	var cache: Array = _corner_caches.get(tid, [])
+	if cache.is_empty():
+		cache = [2147483647, 2147483647, 0, 0.0, 0.0, 0.0, 0.0, 0.0]
+		_corner_caches[tid] = cache
+	_corner_mutex.unlock()
+	return cache

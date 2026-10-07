@@ -95,6 +95,8 @@ func run() -> void:
 	_run_test("water: spans cover exactly the tiles below sea level", _test_water_spans)
 	_run_test("player: deep water is swum, not walked",       _test_player_swims_in_deep_water)
 	_run_test("terrain: the distant ring is 10x the window with no collision", _test_distant_ring)
+	_run_test("terrain: the distant ring builds off the main thread", _test_distant_ring_async)
+	_run_test("terrain: concurrent height sampling matches single-threaded", _test_height_concurrent)
 	_run_test("chunk: deplete-only edits request no neighbour rebuild", _test_seam_deplete_only)
 	_run_test("chunk: a border height edit rebuilds only that neighbour", _test_seam_east_border_edit)
 	_run_test("chunk: late edits rebuild the neighbour across the border", _test_seam_late_edits)
@@ -13473,6 +13475,7 @@ func _test_distant_ring() -> void:
 	add_child(d)
 	d.world_seed = 7
 	assert_true(d.rebuild(Vector2(16.0, 16.0), radius), "the first call builds the ring")
+	d.poll(true)
 	var window_m := (float(radius) + 0.5) * 32.0
 	assert_true(is_equal_approx(d.ring_half_m, 10.0 * window_m), "the ring reaches 10x the voxel window")
 	assert_eq(d.collision_body_count(), 0, "the distant ring has no collision bodies")
@@ -13496,7 +13499,66 @@ func _test_distant_ring() -> void:
 	assert_true(normals.size() > 0 and normals[0].y > 0.0, "ring normals face up")
 	d.world_seed = 8
 	assert_true(d.rebuild(Vector2(16.0, 16.5), radius), "a new world seed rebuilds the ring in place")
+	d.poll(true)
 	d.free()
+
+## Phase 68 — `rebuild` never evaluates the lattice on the main thread; the swapped-in mesh equals a
+## synchronous build for the same centre.
+func _test_distant_ring_async() -> void:
+	var radius := 2
+	var d := DistantTerrainScript.new()
+	add_child(d)
+	d.world_seed = 11
+	var before: int = DistantTerrainScript.main_thread_builds
+	assert_true(d.rebuild(Vector2(100.0, -40.0), radius), "the request is accepted")
+	assert_true(d.is_building() or d.get_child_count() == 0, "no mesh is built synchronously")
+	assert_eq(d.get_child_count(), 0, "rebuild returns before any mesh exists")
+	assert_true(d.poll(true), "the finished mesh is swapped in")
+	assert_eq(DistantTerrainScript.main_thread_builds, before, "no lattice evaluation ran on the main thread")
+	var cell := d.ring_half_m * 2.0 / 64.0
+	var origin := Vector2i(floori(100.0 / cell), floori(-40.0 / cell))
+	var snapped := Vector2(float(origin.x) * cell, float(origin.y) * cell)
+	var sync_mesh: ArrayMesh = DistantTerrainScript.build_mesh(11, d.circumference_m, snapped, d.ring_half_m, d.window_half_m, Vector2(100.0, -40.0))
+	assert_eq(DistantTerrainScript.main_thread_builds, before + 1, "the reference build counts as a main-thread build")
+	var got: ArrayMesh = (d.get_child(0) as MeshInstance3D).mesh
+	assert_eq(got.surface_get_arrays(0)[Mesh.ARRAY_VERTEX], sync_mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX], "the async mesh equals a synchronous build")
+	# A request that arrives mid-build supersedes it; the newest wins.
+	assert_true(d.rebuild(Vector2(5000.0, 5000.0), radius), "a far move starts a build")
+	assert_true(d.rebuild(Vector2(-9000.0, 3000.0), radius), "a second far move queues behind it")
+	d.poll(true)
+	assert_false(d.is_building(), "everything drains")
+	assert_false(d.rebuild(Vector2(-9000.0, 3000.0), radius), "the newest centre is the one built")
+	d.free()
+
+## Phase 68 — heights sampled from several worker tasks at once equal the single-threaded samples
+## (the corner cache is per thread).
+func _test_height_concurrent() -> void:
+	var t := TerrainSlice.new()
+	t.set_world_seed(31)
+	var pts := PackedVector2Array()
+	for i in 400:
+		pts.append(Vector2(float(i * 37 % 900) * 3.1 - 1200.0, float(i * 53 % 700) * 2.7 - 900.0))
+	var expect := PackedFloat32Array()
+	for p in pts:
+		expect.append(t.get_height_at(p))
+	var tasks := 4
+	var out: Array = []
+	out.resize(tasks)
+	var job := func(idx: int) -> void:
+		var r := PackedFloat32Array()
+		for k in pts.size():
+			var p := pts[(k + idx * 97) % pts.size()]   # each task walks the cells in its own order
+			r.append(t.get_height_at(p))
+		out[idx] = r
+	var gid := WorkerThreadPool.add_group_task(job, tasks)
+	WorkerThreadPool.wait_for_group_task_completion(gid)
+	var ok := true
+	for idx in tasks:
+		var r: PackedFloat32Array = out[idx]
+		for k in pts.size():
+			if r[k] != expect[(k + idx * 97) % pts.size()]:
+				ok = false
+	assert_true(ok, "concurrent samples equal single-threaded samples")
 
 func _test_ocean_spawns_no_land_tables() -> void:
 	assert_true(TreeSlice.TREES_BY_BIOME.get("Ocean", {}).is_empty(), "Ocean grows no trees")

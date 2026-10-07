@@ -22,8 +22,23 @@ var circumference_m: float = 40000.0 * 1000.0
 var window_half_m: float = 0.0
 var ring_half_m: float = 0.0
 var _cell_origin := Vector2i(-999999, -999999)
-var _built_key := ""   # seed, radius and circumference the current mesh was built for
+## What the current (or in-flight) build is for, as plain fields so the per-frame `rebuild` check
+## allocates nothing.
+var _built_seed := 0
+var _built_radius := -1
+var _built_circ := -1.0
 var _mesh_inst: MeshInstance3D = null
+
+## Phase 68 — the lattice build runs on a `WorkerThreadPool` task; the main thread only swaps the
+## finished mesh in. `_task` is the task id in flight (-1 when idle); `_result` is what the task
+## produced (written by the worker, read after `wait_for_task_completion`).
+var _task := -1
+var _task_args: Dictionary = {}
+var _result: ArrayMesh = null
+var _queued: Dictionary = {}   # a newer request that arrived while a build was in flight
+
+## Lattice builds evaluated on the main thread (the suite asserts this stays 0 through `rebuild`).
+static var main_thread_builds := 0
 
 ## Phase 63: the scene-origin offset a client rebase has applied (see `shift_scene`).
 var _scene_offset: Vector3 = Vector3.ZERO
@@ -51,22 +66,69 @@ static func color_for(alt: float) -> Color:
 		return ROCK_COLOR
 	return LAND_COLOR
 
-## Build (or re-centre) the ring around world XZ `center` for a voxel window of `radius_chunks`.
-## Returns true when the mesh was rebuilt (the centre moved a whole cell, or first call).
+## Request the ring around world XZ `center` for a voxel window of `radius_chunks`. Returns true
+## when a build was started or queued (the centre moved a whole cell, or first call); the finished
+## mesh is swapped in by `poll` (called every frame from `_process`).
 func rebuild(center: Vector2, radius_chunks: int) -> bool:
 	window_half_m = (float(radius_chunks) + 0.5) * CHUNK_METERS
 	ring_half_m = ring_half_extent(radius_chunks)
 	var cell := ring_half_m * 2.0 / float(GRID)
 	var origin := Vector2i(floori(center.x / cell), floori(center.y / cell))
-	var key := "%d:%d:%f" % [world_seed, radius_chunks, circumference_m]
-	if origin == _cell_origin and _mesh_inst != null and key == _built_key:
+	if origin == _cell_origin and _built_radius == radius_chunks and _built_seed == world_seed \
+			and _built_circ == circumference_m and (_mesh_inst != null or _task >= 0):
 		return false
 	_cell_origin = origin
-	_built_key = key
-	var snapped := Vector2(float(origin.x) * cell, float(origin.y) * cell)
+	_built_seed = world_seed
+	_built_radius = radius_chunks
+	_built_circ = circumference_m
+	WorldShape.warm()   # the fabric snapshot is taken here, never first on a worker
+	var args := {
+		"seed": world_seed, "w": circumference_m,
+		"ring_center": Vector2(float(origin.x) * cell, float(origin.y) * cell),
+		"half_m": ring_half_m, "window_half_m": window_half_m, "window_center": center,
+	}
+	if _task >= 0:
+		_queued = args
+	else:
+		_start(args)
+	return true
+
+func _start(args: Dictionary) -> void:
+	_task_args = args
+	_result = null
+	_task = WorkerThreadPool.add_task(_build_job)
+
+func _build_job() -> void:
+	var a := _task_args
+	_result = build_mesh(a["seed"], a["w"], a["ring_center"], a["half_m"], a["window_half_m"], a["window_center"])
+
+## True while a lattice build is in flight or queued.
+func is_building() -> bool:
+	return _task >= 0
+
+## Swap in a finished build (non-blocking). With `block` true, waits for every pending build.
+## Returns true when a mesh was swapped in.
+func poll(block: bool = false) -> bool:
+	var swapped := false
+	while _task >= 0:
+		if not block and not WorkerThreadPool.is_task_completed(_task):
+			break
+		WorkerThreadPool.wait_for_task_completion(_task)
+		_task = -1
+		var mesh := _result
+		_result = null
+		if _queued.is_empty():
+			_swap_in(mesh)
+			swapped = true
+		else:   # superseded while building: drop this one, build the newest request
+			var next := _queued
+			_queued = {}
+			_start(next)
+	return swapped
+
+func _swap_in(mesh: ArrayMesh) -> void:
 	if _mesh_inst != null:
 		_mesh_inst.queue_free()
-	var mesh := build_mesh(world_seed, circumference_m, snapped, ring_half_m, window_half_m, center)
 	_mesh_inst = MeshInstance3D.new()
 	_mesh_inst.name = "DistantRing"
 	_mesh_inst.mesh = mesh
@@ -76,7 +138,14 @@ func rebuild(center: Vector2, radius_chunks: int) -> bool:
 	_mesh_inst.material_override = mat
 	_mesh_inst.position = _scene_offset
 	add_child(_mesh_inst)
-	return true
+
+func _process(_delta: float) -> void:
+	poll()
+
+func _exit_tree() -> void:
+	if _task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_task)
+		_task = -1
 
 ## The ring's mesh: GRID × GRID cells centred on `ring_center` spanning ±`half_m`, skipping any
 ## cell wholly inside the voxel window (`window_half_m` around `window_center`). The hole is
@@ -84,6 +153,8 @@ func rebuild(center: Vector2, radius_chunks: int) -> bool:
 ## behind between rebuilds (the player moves up to a cell, the window snaps to chunks). Heights are the
 ## shape's, floored at the sea level so the ocean reads as a flat sheet.
 static func build_mesh(seed_v: int, w: float, ring_center: Vector2, half_m: float, window_half_m: float, window_center: Vector2) -> ArrayMesh:
+	if OS.get_thread_caller_id() == OS.get_main_thread_id():
+		main_thread_builds += 1
 	var cell := half_m * 2.0 / float(GRID)
 	var sea := WorldShape.sea_level()
 	var heights := PackedFloat32Array()
