@@ -145,6 +145,10 @@ func _input(event: InputEvent) -> void:
 		var focus := get_viewport().gui_get_focus_owner() if is_inside_tree() else null
 		if (focus is LineEdit or focus is TextEdit) and event.keycode != KEY_ESCAPE:
 			return
+		# `?` is matched on the character it produces: it is not Shift+/ on every layout.
+		if event.unicode == 63:
+			toggle_window(WINDOW_CONTROLS)
+			return
 		match event.keycode:
 			KEY_I:
 				toggle_window(WINDOW_INVENTORY)
@@ -160,10 +164,6 @@ func _input(event: InputEvent) -> void:
 				toggle_window(WINDOW_PROPOSALS)
 			KEY_K:
 				toggle_window(WINDOW_CHARACTER)
-			KEY_SLASH, KEY_QUESTION:
-				# Match the produced character too: `?` is not Shift+/ on every layout.
-				if event.keycode == KEY_QUESTION or event.shift_pressed or event.unicode == 63:
-					toggle_window(WINDOW_CONTROLS)
 			KEY_ESCAPE:
 				if any_window_open():
 					_close_all_windows()
@@ -1138,6 +1138,7 @@ func _save_layout() -> void:
 	f.close()
 	if DirAccess.rename_absolute(tmp_path, layout_path) != OK:
 		Diag.warn("[UiSlice] cannot replace %s" % layout_path)
+		DirAccess.remove_absolute(tmp_path)
 
 func _apply_layout() -> void:
 	for key in _layout:

@@ -6025,12 +6025,12 @@ spawn point, and the colonization map over-counts after a restart (#148).
   on unicode only (#129).
 
 **Acceptance criteria:**
-- [ ] `grep -n "multiplayer.get_peers()" src/networking/networking_slice.gd` matches only inside
+- [x] `grep -n "multiplayer.get_peers()" src/networking/networking_slice.gd` matches only inside
   `_connected_peers`.
-- [ ] Suite: a broadcast with `_test_peers` set reaches exactly those peers through both
+- [x] Suite: a broadcast with `_test_peers` set reaches exactly those peers through both
   `_broadcast` and `_broadcast_aoi`.
-- [ ] Suite: a failed layout rename leaves no `.tmp` file.
-- [ ] Suite green on both boot paths.
+- [x] Suite: a failed layout rename leaves no `.tmp` file.
+- [x] Suite green on both boot paths.
 
 ---
 
