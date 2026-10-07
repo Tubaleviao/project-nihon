@@ -5972,11 +5972,11 @@ tint repaints every loaded chunk with the biome underfoot (#150).
   own biome), so a freezing biome turns its own chunks white and not its neighbours.
 
 **Acceptance criteria:**
-- [ ] Suite: with the player in a biome whose `dayNightSpeed` is 0, the applied sun energy equals
+- [x] Suite: with the player in a biome whose `dayNightSpeed` is 0, the applied sun energy equals
   `biome_daylight(d, 0)` at midnight and noon.
-- [ ] Suite: with the player in a freezing biome, a loaded chunk of a temperate biome keeps its
+- [x] Suite: with the player in a freezing biome, a loaded chunk of a temperate biome keeps its
   non-snow tint.
-- [ ] Suite green on both boot paths.
+- [x] Suite green on both boot paths.
 
 ---
 
