@@ -6218,7 +6218,7 @@ up to 6 m below the voxel ground, hiding the shallow sea near the window edge (#
 
 ---
 
-## Phase 74 — Minimap redraw cost and first-apply layout clamp
+## Phase 74 — Minimap redraw cost and first-apply layout clamp ✅ Done
 
 **Goal:** the minimap recomputes every chunk's biome (a `WorldShape.height` evaluation each) on
 every redraw because the memo lives for one draw, and at `ZOOM_MAX` it issues ~14 `draw_rect`
@@ -6241,12 +6241,12 @@ position off-screen is only fixed on a later re-apply (#116, #117, #129, #140).
   first frame it is visible.
 
 **Acceptance criteria:**
-- [ ] Suite: two consecutive redraws of the same view call the biome lookup zero times on the
+- [x] Suite: two consecutive redraws of the same view call the biome lookup zero times on the
   second.
-- [ ] Suite: at a zoom where cells are under 2 px, the draw issues one rect per revealed chunk.
-- [ ] Suite: a layout entry at x = 10,000 places the panel fully inside an 800×600 viewport
+- [x] Suite: at a zoom where cells are under 2 px, the draw issues one rect per revealed chunk.
+- [x] Suite: a layout entry at x = 10,000 places the panel fully inside an 800×600 viewport
   after the first apply plus one frame.
-- [ ] Suite green on both boot paths.
+- [x] Suite green on both boot paths — `Results: 34640/34640 passed (0 failed)`, harness 15/15 steps.
 
 ---
 

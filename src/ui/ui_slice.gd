@@ -257,6 +257,13 @@ static func clamp_window_position(pos: Vector2, window_size: Vector2, viewport: 
 	var max_y := maxf(0.0, viewport.y - DRAG_VISIBLE_MARGIN)
 	return Vector2(clampf(pos.x, min_x, max_x), clampf(pos.y, 0.0, max_y))
 
+## Where a stored window sits so it is wholly inside the viewport (top-left pinned if it is
+## larger than the viewport). Stricter than `clamp_window_position`, which only keeps a margin
+## of a dragged window on screen.
+static func fit_window_position(pos: Vector2, window_size: Vector2, viewport: Vector2) -> Vector2:
+	return Vector2(clampf(pos.x, 0.0, maxf(0.0, viewport.x - window_size.x)),
+		clampf(pos.y, 0.0, maxf(0.0, viewport.y - window_size.y)))
+
 ## Parse a stored layout. Malformed JSON, unknown window keys and non-numeric
 ## entries are dropped, so a hand-edited or stale file cannot inject state.
 static func parse_layout(text: String) -> Dictionary:
@@ -1057,6 +1064,8 @@ func _build_ui() -> void:
 	_ui.add_child(_slot_menu)
 	_load_layout()
 	_apply_layout()
+	# The panels have no real size until their first layout pass: re-fit once it has run.
+	_apply_layout.call_deferred()
 
 func _build_window(key: String, title: String, content: Control, position: Vector2) -> PanelContainer:
 	var panel := PanelContainer.new()
@@ -1100,7 +1109,12 @@ func _build_window(key: String, title: String, content: Control, position: Vecto
 # Window drag + layout persistence
 # ---------------------------------------------------------------------------
 
+## Test seam: a non-zero value stands in for the viewport size.
+var viewport_size_override := Vector2.ZERO
+
 func _viewport_size() -> Vector2:
+	if viewport_size_override != Vector2.ZERO:
+		return viewport_size_override
 	if is_inside_tree():
 		return get_viewport().get_visible_rect().size
 	return Vector2(1280, 720)
@@ -1147,11 +1161,13 @@ func _save_layout() -> void:
 		Diag.warn("[UiSlice] cannot replace %s" % layout_path)
 		DirAccess.remove_absolute(tmp_path)
 
+## Put every stored window where it lies fully inside the viewport. Runs once at build and again
+## after the first layout pass, when the panels' real sizes are known.
 func _apply_layout() -> void:
 	for key in _layout:
 		var panel: Control = _panels.get(key, null)
 		if panel != null:
-			panel.position = clamp_window_position(_layout[key], panel.custom_minimum_size.max(panel.size), _viewport_size())
+			panel.position = fit_window_position(_layout[key], panel.custom_minimum_size.max(panel.size), _viewport_size())
 
 func _build_controls_content() -> Control:
 	var box := VBoxContainer.new()
