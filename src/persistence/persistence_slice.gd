@@ -244,6 +244,12 @@ func write_job(job: Dictionary) -> int:
 ## The world-record half of a save, without the bus signals: read the existing
 ## record and merge an incremental payload into it, then write. Split out of
 ## save_world() so write_job() can run it on a worker.
+## The chunk keys of the regions the last world write could not save (empty when every region
+## landed, or when the failure was in the global record or a player file). Read it only after
+## the write has finished; the save worker is joined first.
+func failed_chunk_keys() -> Array:
+	return region_store.last_failed_chunk_keys.duplicate()
+
 func _write_world_payload(data: Dictionary, incremental: bool) -> Error:
 	# Phase 52 — the chunk manifests go to the region files, folded region by region (only
 	# the regions a carried chunk belongs to are read and rewritten); the world record keeps

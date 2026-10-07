@@ -249,6 +249,7 @@ func run() -> void:
 	_run_test("equipment: a suppressed refusal still revokes once", _test_equipment_trailing_revoke)
 	_run_test("equipment: bookkeeping is dropped with the player", _test_equipment_bookkeeping_evicted)
 	_run_test("equipment: the sequence number never rewinds",   _test_equipment_seq_monotonic)
+	_run_test("region: a failed save re-marks only failed chunks", _test_region_failed_keys_and_remark)
 	_run_test("rebase: an unshiftable target is reported",      _test_rebase_driver_reports_unshiftable)
 	_run_test("game_root: implausible peer positions dropped",  _test_remote_state_plausibility)
 	_run_test("equipment: slots cached, peer evict, owner map", _test_equipment_phase48_misc)
@@ -14016,6 +14017,34 @@ func _test_region_partial_save() -> void:
 	assert_eq(keys, ["1,1", "4,4"], "entries whose edits or materials are not Dictionaries are dropped")
 	assert_true(RegionStoreScript.is_valid_chunk_entry({ "edits": {}, "materials": {} }), "a well-formed entry is valid")
 	assert_false(RegionStoreScript.is_valid_chunk_entry(5), "a non-Dictionary entry is not")
+
+## Review of #159 — a failed save re-marks only the chunks of the regions that failed.
+func _test_region_failed_keys_and_remark() -> void:
+	var dir := _fresh_region_dir("test_failed_keys")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	DirAccess.make_dir_recursive_absolute(dir + "regions/")
+	var f := FileAccess.open(store.path_of(Vector2i(0, 0)), FileAccess.WRITE)
+	f.store_string("{ not json")
+	f.close()
+	var entry := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	assert_true(store.write_chunks({ "1,1": entry, "2,2": entry, "40,40": entry }) != OK, "one region fails")
+	var failed: Array = store.last_failed_chunk_keys.duplicate()
+	failed.sort()
+	assert_eq(failed, ["1,1", "2,2"], "exactly the chunks of the unreadable region are reported")
+	assert_eq(store.write_chunks({ "40,40": entry }), OK, "a clean write succeeds")
+	assert_true(store.last_failed_chunk_keys.is_empty(), "and clears the report")
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	assert_eq(root_script._chunks_to_remark(["1,1", "40,40", "2,2"], ["1,1", "2,2"]), ["1,1", "2,2"],
+		"only the failed region's dirty chunks go back")
+	assert_eq(root_script._chunks_to_remark(["1,1", "40,40"], []), ["1,1", "40,40"],
+		"with no region failure (record or player write failed) every chunk stays dirty")
+	assert_eq(root_script._chunks_to_remark(["40,40"], ["1,1"]), [],
+		"a failed chunk that was not part of this save is not invented")
+	var persistence := PersistenceSlice.new()
+	add_child(persistence)
+	persistence.region_store = store
+	assert_eq(persistence.failed_chunk_keys(), [], "the slice reports the store's last write")
+	persistence.free()
 
 func _test_region_neighbour_expansion_edges_only() -> void:
 	var interior := RegionStreamerScript.regions_for_chunks([Vector2i(10, 10)])

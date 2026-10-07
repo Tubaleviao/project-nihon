@@ -27,6 +27,9 @@ const FILE_EXT := ".json"
 
 var dir: String = "user://saves/server/regions/"
 var atomic_writes: bool = true
+## The "cx,cz" keys of the chunks in regions the LAST `write_chunks` could not write (read or
+## save failed). A save that failed in one region should put back only those chunks as dirty.
+var last_failed_chunk_keys: Array = []
 
 func _init(region_dir: String = "", atomic: bool = true) -> void:
 	if not region_dir.is_empty():
@@ -212,6 +215,7 @@ func save_region(region: Vector2i, chunks: Dictionary) -> Error:
 func write_chunks(chunks: Dictionary, deletions := true) -> Error:
 	var grouped := group_manifest(chunks)
 	var first_error: Error = OK
+	last_failed_chunk_keys = []
 	for rkey in grouped:
 		var region := region_from_key(str(rkey))
 		var read := read_region(region)
@@ -219,11 +223,14 @@ func write_chunks(chunks: Dictionary, deletions := true) -> Error:
 			# Leave the unreadable file alone rather than replace it — and keep saving the rest.
 			if first_error == OK:
 				first_error = ERR_FILE_CORRUPT
+			last_failed_chunk_keys.append_array(grouped[rkey].keys())
 			continue
 		var folded := fold_chunks(read["chunks"], grouped[rkey], deletions)
 		var err := save_region(region, folded)
-		if err != OK and first_error == OK:
-			first_error = err
+		if err != OK:
+			last_failed_chunk_keys.append_array(grouped[rkey].keys())
+			if first_error == OK:
+				first_error = err
 	return first_error
 
 ## The regions that must be rewritten for a set of dirty "cx,cz" chunk keys.

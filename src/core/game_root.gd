@@ -1973,6 +1973,18 @@ func _poll_save_completion() -> void:
 func _flush_save() -> void:
 	_reap_save_thread()
 
+## Which of a failed save's chunks go back into the dirty set: just the ones whose region could
+## not be written. When no region failed (the global record or a player file did) the chunk
+## files landed, but the record that points at them did not, so every chunk is kept in play.
+static func _chunks_to_remark(dirty: Array, failed: Array) -> Array:
+	if failed.is_empty():
+		return dirty
+	var out: Array = []
+	for key in dirty:
+		if failed.has(str(key)):
+			out.append(key)
+	return out
+
 func _finish_save(result: int) -> void:
 	_voxel.end_inflight_chunks(_save_summary.get("dirty", []))
 	if result != OK:
@@ -1980,7 +1992,7 @@ func _finish_save(result: int) -> void:
 		GameBus.world_save_failed.emit(error_string(result))
 		# The dirty set was cleared when the payload was collected, so a failed write
 		# has to put its chunks back or the next save would skip them.
-		_voxel.mark_dirty_chunks(_save_summary.get("dirty", []))
+		_voxel.mark_dirty_chunks(_chunks_to_remark(_save_summary.get("dirty", []), _persistence.failed_chunk_keys()))
 		_save_summary = {}
 		return
 	print("[Server] world saved (%s) — %d chunk manifest(s), %d creature(s), %d station(s), %d player record(s)" % [
