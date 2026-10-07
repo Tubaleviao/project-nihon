@@ -902,6 +902,13 @@ func _step_far_peers_simulated() -> void:
 	var chunk := _far_chunk()
 	var pos := Vector3(float(chunk.x) * 32.0 + 16.0, 40.0, float(chunk.y) * 32.0 + 16.0)
 	if _role == "host":
+		# Phase 62 — a client's claimed position can no longer teleport its window 100 km (the
+		# re-centre is rate-limited and capped per move). A peer only gets there when the HOST
+		# places it, as a spawn placement does: the host records where it put the peer and opens
+		# the window there, then the client's own reports agree with it.
+		var placed := _peer_id()
+		_root._networking.remember_player_state(placed, pos)
+		_root._chunk_manager.set_peer_center(placed, chunk, true)
 		var simulated := func() -> bool:
 			if not _root._chunk_manager._built.has("%d,%d" % [chunk.x, chunk.y]):
 				return false

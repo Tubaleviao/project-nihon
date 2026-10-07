@@ -1001,7 +1001,7 @@ func _on_player_joined(peer_id: int, player_id: String, reconnected: bool) -> vo
 	print("[Server] %s player '%s' as %s" % ["reconnected" if reconnected else "joined", player_id, "peer_%d" % peer_id])
 	# Phase 52 — the peer's window opens NOW, so the regions around its saved position are
 	# resident (and its snapshot carries their edits) before the snapshot is built.
-	_chunk_manager.set_peer_center(peer_id, _peer_window_chunk(peer_id))
+	_chunk_manager.set_peer_center(peer_id, _peer_window_chunk(peer_id), true)
 	_chunk_manager.refresh(false)
 	_networking.send_snapshot(peer_id, _build_snapshot(peer_id))
 
@@ -1237,6 +1237,13 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	if _peer_aoi_regions.get(peer_id, null) == region:
 		return
 	_peer_aoi_regions[peer_id] = region
+	# Phase 62 — re-centre the peer's window and make the regions around the new position
+	# resident BEFORE the snapshot is built, as the join path does: a teleport into a region
+	# with stored edits must carry those edits in the re-scope snapshot. The re-centre is
+	# rate-limited and clamped (`set_peer_center`), so this cannot be used to flood reads.
+	if _chunk_manager != null and _registry.get_player_id(peer_id) != "":
+		if _chunk_manager.set_peer_center(peer_id, _chunk_manager.world_to_chunk(Vector2(position.x, position.z))):
+			_chunk_manager.refresh(false)
 	# Phase 33 — world/entity data only: the peer's own record is NOT re-sent, or
 	# the client would re-apply a stale position/HP/inventory on every region
 	# crossing (the record is written at load and at disconnect, not per frame).
@@ -1267,10 +1274,9 @@ func _sync_peer_windows(delta: float) -> void:
 	if _peer_window_elapsed < PEER_WINDOW_INTERVAL:
 		return
 	_peer_window_elapsed = 0.0
-	for pid in _registry.get_online_player_ids():
-		var peer_id := _registry.get_peer_id(str(pid))
-		if peer_id > 0:
-			_chunk_manager.set_peer_center(peer_id, _peer_window_chunk(peer_id))
+	for peer_id in _registry.get_peer_ids():
+		if int(peer_id) > 0:
+			_chunk_manager.set_peer_center(int(peer_id), _peer_window_chunk(int(peer_id)))
 
 func _process(delta: float) -> void:
 	# Phase 42 — complete a host boot whose first ring has finished building. It has

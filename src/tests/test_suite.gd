@@ -562,6 +562,9 @@ func run() -> void:
 	_run_test("region: one unwritable region does not stop the rest of the save", _test_region_failed_write_saves_the_rest)
 	_run_test("region: a region whose read fails is not resident and is retried", _test_region_failed_read_not_resident)
 	_run_test("region: a chunk entry with edits or materials of the wrong type is skipped with one warning", _test_region_malformed_entry_skipped)
+	_run_test("peer window: a flood of far claims moves the window at most once", _test_peer_window_rate_limited)
+	_run_test("peer window: a host-driven move recentres at once", _test_peer_window_host_driven)
+	_run_test("peer window: a move into a stored region makes its edits resident", _test_peer_window_move_loads_region_edits)
 	_run_test("region: 1,000 regions on disk, only the ones near a window are resident", _test_region_streams_only_near_windows)
 	_run_test("chunk: each peer has a window and chunks are reference counted", _test_chunk_peer_windows_refcount)
 	_run_test("chunk: two peers 100 km apart each have creatures simulated", _test_chunk_far_peers_simulated)
@@ -13412,6 +13415,57 @@ func _test_region_malformed_entry_skipped() -> void:
 	assert_eq(chunks.keys(), ["1,1"], "the well-formed chunk loads")
 	assert_eq(Diag.warn_count - before, 2, "one warning per malformed entry")
 
+func _test_peer_window_rate_limited() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	assert_true(cm.set_peer_center(5, Vector2i(2, 2)), "the first placement lands")
+	var moves := 0
+	for i in range(100):
+		if cm.set_peer_center(5, Vector2i(100000 + i * 156, 100000)):
+			moves += 1
+	assert_true(moves <= 1, "100 claims 10 km apart within one interval move the window at most once")
+	assert_eq(cm.peer_recenter_refused, 100, "every claim was refused or clamped")
+	var centre: Vector2i = cm._peer_centers[5]
+	assert_true(maxi(absi(centre.x - 2), absi(centre.y - 2)) <= ChunkManager.PEER_RECENTER_MAX_CHUNKS,
+		"and the window never travelled farther than the cap")
+	cm._peer_last_move_msec[5] = -1000000
+	assert_true(cm.set_peer_center(5, Vector2i(3, 2)), "a near claim after the interval is accepted")
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+
+func _test_peer_window_host_driven() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.set_peer_center(5, Vector2i(2, 2))
+	var far := Vector2i(50000, -40000)
+	assert_true(cm.set_peer_center(5, far, true), "a host-driven move is accepted inside the interval")
+	assert_eq(cm._peer_centers[5], far, "and lands exactly on the target")
+	assert_eq(cm.peer_recenter_refused, 0, "without counting as a refusal")
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+
+func _test_peer_window_move_loads_region_edits() -> void:
+	var dir := _fresh_region_dir("test_p62_teleport")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	var edit := { "edits": { "%d,0" % (34 * 64): [{ "op": "raise", "n": 1 }] } }
+	assert_eq(store.save_region(Vector2i(1, 0), { "34,0": edit }), OK, "region (1,0) holds an edit")
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	cm.region_streamer = RegionStreamerScript.new(store, voxel)
+	cm.view_distance = 1
+	cm.prefetch_distance = 0
+	cm.set_peer_center(7, Vector2i(28, 0), true)
+	cm.refresh(false)
+	assert_false(voxel.edited_chunk_keys().has("34,0"), "the edit is not resident before the move")
+	cm._peer_last_move_msec[7] = -1000000
+	# The order the re-scope handler uses: recentre, refresh, THEN read the edits for the snapshot.
+	assert_true(cm.set_peer_center(7, Vector2i(34, 0)), "the claim is within the cap")
+	cm.refresh(false)
+	assert_true(voxel.get_edits().has("%d,0" % (34 * 64)), "the edits the re-scope snapshot reads include the stored ones")
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+
 func _test_region_streams_only_near_windows() -> void:
 	var dir := _fresh_region_dir("test_p52_rss")
 	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
@@ -13440,16 +13494,16 @@ func _test_region_streams_only_near_windows() -> void:
 	# A dirty chunk is never dropped: its edits exist nowhere else until a save.
 	voxel.apply_region_chunks({ "0,0": edit })
 	voxel.mark_dirty_chunks(["0,0"])
-	cm.set_peer_center(7, Vector2i(500, 500))
+	cm.set_peer_center(7, Vector2i(500, 500), true)
 	cm.refresh()
 	assert_true(voxel.edited_chunk_keys().has("0,0"), "a dirty chunk keeps its edits after its region leaves every window")
 	# A collected-but-unwritten chunk (in flight) is not evicted either, and a stale region
 	# re-read cannot overwrite it; once the write settles it is released without a window move.
 	var far_edit := { "edits": { "%d,%d" % [320 * 64, 320 * 64]: [{ "op": "raise", "n": 1 }] } }
-	cm.set_peer_center(7, Vector2i(323, 323))
+	cm.set_peer_center(7, Vector2i(323, 323), true)
 	cm.refresh()
 	voxel.apply_region_chunks({ "320,320": far_edit })   # an edit made inside the peer's window
-	cm.set_peer_center(7, Vector2i(500, 500))
+	cm.set_peer_center(7, Vector2i(500, 500), true)
 	voxel.begin_inflight_chunks(["320,320"])
 	assert_true(voxel.edited_chunk_keys().has("320,320"), "the far chunk's edit is resident")
 	cm.refresh()
@@ -13495,8 +13549,8 @@ func _test_chunk_far_peers_simulated() -> void:
 	cm.loads_per_frame = 16
 	var far := Vector2i(3125, 0)   # 100 km at 32 m a chunk
 	cm.refresh()
-	cm.set_peer_center(1, far)
-	cm.set_peer_center(2, Vector2i(0, 3125))
+	cm.set_peer_center(1, far, true)
+	cm.set_peer_center(2, Vector2i(0, 3125), true)
 	cm.refresh()
 	_wait_for_builds(cm)
 	for chunk in [Vector2i(0, 0), far, Vector2i(0, 3125)]:
