@@ -579,6 +579,42 @@ func _gather_edits(chunk_pos: Vector2i) -> Dictionary:
 func has_edits_in_chunk(chunk_pos: Vector2i) -> bool:
 	return _edits_by_chunk.has(_chunk_key(chunk_pos))
 
+## Phase 69 — bumped whenever a chunk's edit bucket changes, so a consumer can do work "once per
+## edit revision" (`ChunkManager` gates its seam rebuilds on it).
+var _edit_rev: Dictionary = {}
+
+func edit_revision(chunk_pos: Vector2i) -> int:
+	return int(_edit_rev.get(_chunk_key(chunk_pos), 0))
+
+## Phase 69 — the neighbour offsets (each component in -1..1, never (0,0)) across which `chunk_pos`
+## carries a height-changing edit on a border tile. Deplete ops never change a height, so a
+## chunk whose only edits are deplete ops reports none. A tile on a corner names both edge
+## neighbours and the diagonal one.
+func seam_borders(chunk_pos: Vector2i) -> Array:
+	var found: Dictionary = {}
+	var bucket: Dictionary = _edits_by_chunk.get(_chunk_key(chunk_pos), {})
+	var last := CHUNK_SIZE - 1
+	for tile_key in bucket:
+		var shapes := false
+		for op in _edits.get(tile_key, []):
+			if op is Dictionary and str(op.get("op", "")) != "deplete":
+				shapes = true
+				break
+		if not shapes:
+			continue
+		var tile := _key_to_tile(str(tile_key))
+		var lx := posmod(tile.x, CHUNK_SIZE)
+		var lz := posmod(tile.y, CHUNK_SIZE)
+		var dx := -1 if lx == 0 else (1 if lx == last else 0)
+		var dz := -1 if lz == 0 else (1 if lz == last else 0)
+		if dx != 0:
+			found[Vector2i(dx, 0)] = true
+		if dz != 0:
+			found[Vector2i(0, dz)] = true
+		if dx != 0 and dz != 0:
+			found[Vector2i(dx, dz)] = true
+	return found.keys()
+
 ## The heightmaps of the chunks the ring reads across, when they are KNOWN.
 ##
 ## Phase 42 review pass 10 — the maps are shared BY REFERENCE, deliberately, and this is the
@@ -1557,13 +1593,16 @@ func _commit_edits(next: Dictionary, diff_keys: Variant = null) -> void:
 	# clear_dirty_chunks() after a successful save (called from game_root._on_save_completed).
 	# Restored on-disk edits are not dirty — they were already persisted.
 	var touched: Dictionary = {}
+	var changed: Dictionary = {}   # chunks that own a changed tile (Phase 69: their seams)
 	var keys: Array = (diff_keys as Array) if diff_keys is Array else _union_keys(previous, next)
 	for key in keys:
 		if next.has(key):
 			if not _ops_equal(previous.get(key, null), next[key]):
 				_mark_touched_tile(touched, _key_to_tile(str(key)))
+				changed[_chunk_key(_tile_to_chunk(_key_to_tile(str(key))))] = true
 		elif previous.has(key):
 			_mark_touched_tile(touched, _key_to_tile(str(key)))
+			changed[_chunk_key(_tile_to_chunk(_key_to_tile(str(key))))] = true
 	var previous_taken: Dictionary = _vein_taken
 	_edits = next
 	# The read-side chunk index is re-derived with it (Phase 42 review pass 10): the log was
@@ -1606,6 +1645,11 @@ func _commit_edits(next: Dictionary, diff_keys: Variant = null) -> void:
 		if not _chunks.has(ckey) or not _heightmaps.has(ckey):
 			continue   # nothing to refresh: unloaded chunks rebuild when streamed in
 		build_chunk(chunk, _heightmaps[ckey])
+	# Phase 69 — edits that arrive after a chunk loaded (the client sync path) reach the diagonal
+	# neighbour of a corner edit too; the edge neighbours were requested just above.
+	if chunk_manager != null and chunk_manager.has_method("rebuild_seam_neighbours"):
+		for ckey in changed:
+			chunk_manager.rebuild_seam_neighbours(_chunk_from_key(str(ckey)), touched)
 
 static func _union_keys(a: Dictionary, b: Dictionary) -> Array:
 	var keys: Array = b.keys()
@@ -2446,9 +2490,15 @@ func _set_edit_ops(tile_key: String, ops: Array) -> void:
 	if ops.is_empty():
 		_edits.erase(tile_key)
 		_unindex_edit(tile_key)
+		_bump_edit_rev(tile_key)
 		return
 	_edits[tile_key] = ops
 	_index_edit(tile_key)
+	_bump_edit_rev(tile_key)
+
+func _bump_edit_rev(tile_key: String) -> void:
+	var ckey := _chunk_key(_tile_to_chunk(_key_to_tile(tile_key)))
+	_edit_rev[ckey] = int(_edit_rev.get(ckey, 0)) + 1
 
 ## Record `tile_key` under its chunk in the read-side index (idempotent).
 func _index_edit(tile_key: String) -> void:
@@ -2477,6 +2527,7 @@ func _reindex_edits() -> void:
 	_vein_taken = {}
 	for key in _edits:
 		_index_edit(str(key))
+		_bump_edit_rev(str(key))
 		for op in _edits[key]:
 			if op is Dictionary and str(op.get("op", "")) == "deplete":
 				_vein_taken[str(op["vein"])] = int(op["taken"])
