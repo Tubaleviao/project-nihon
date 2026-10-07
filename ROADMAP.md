@@ -5821,6 +5821,247 @@ rule (#88, with #63-#65 and #70). The host must decide what is in the hand.
 
 ---
 
+## Phase 61 — Region storage correctness
+
+**Goal:** Close the Medium items left open by the Phase 52 review passes (#143, #144, #145,
+#146): an evicted chunk must not resurrect a vein, one bad region file must not stop the whole
+save, and a failed region read must not be marked resident.
+
+**Newel dependency:** NO.
+
+**Closes:** the persistence/eviction items of #144 and #146 (items 1, 2, 3, 6), #143 item 2.
+
+**Deliverables:**
+- `src/terrain/voxel_slice.gd` — `evict_clean_chunks` keeps vein depletion totals for veins
+  that still have a resident tile: `_vein_taken` is no longer rebuilt only from resident edits,
+  or a released chunk's deplete ops are retained in a per-vein carry table until the vein has no
+  resident tile and its region is on disk. `edited_chunk_keys()` is built once per `sync`.
+- `src/persistence/persistence_slice.gd` — a failing `region_store.write_chunks` no longer
+  returns before `world.json` and player records are written; every region that can be saved is
+  saved, and the first error is returned after the rest of the save completes.
+- `src/persistence/region_streamer.gd` — `sync()` uses the status-returning region read; a
+  region whose read fails is not marked resident and is retried on the next sync.
+- `src/persistence/region_store.gd` — `read_region` validates `edits` (Dictionary of Arrays)
+  and `materials` types per chunk entry; a malformed chunk entry is skipped with one warning.
+- `src/core/game_root.gd` — legacy (pre-Phase-41) chunks from a failed migration are applied
+  after the world seed is restored, not before.
+
+**Acceptance criteria:**
+- [ ] Suite: a vein spanning two chunks, depleted from a tile in chunk A, stays depleted in
+  chunk B after A is evicted (`OreField.is_live` false), and after A is re-read.
+- [ ] Suite: with one region file made unreadable, a save still writes the other regions,
+  `world.json` and player records, and returns a non-OK status.
+- [ ] Suite: a region whose read fails is absent from the resident set and is read again on the
+  next `sync`.
+- [ ] Suite: a region file whose chunk carries `edits: 5` or `materials: "x"` loads the other
+  chunks and logs one warning.
+- [ ] Suite green on both boot paths; `tools/net_harness.sh` agrees on every step.
+
+---
+
+## Phase 62 — Peer streaming window limits
+
+**Goal:** A peer's streaming window follows the position its client reports, with no bound
+on distance or rate (#143 item 1, #145, #146 items 4, 5, 10). A modified client can make the
+host read regions and build chunks on the main thread as fast as it can send packets. Bound
+it, and fix the snapshot ordering on a teleport.
+
+**Newel dependency:** NO.
+
+**Closes:** #143 item 1, #146 items 4, 5 and 10, the matching lines of #144 and #145.
+
+**Deliverables:**
+- `src/terrain/chunk_manager.gd` — `set_peer_center` rate-limits recentring per peer (at most one
+  move per `PEER_RECENTER_INTERVAL`) and caps how far a window may move per accepted update
+  unless the host itself moved the peer (respawn, spawn placement). Rejected moves are counted
+  (`peer_recenter_refused`).
+- `src/core/game_root.gd` — `_on_remote_player_state` re-centres the peer window and refreshes
+  regions BEFORE building the AOI re-scope snapshot, as the join path already does.
+  `_sync_peer_windows` iterates the peer map instead of a per-player linear lookup.
+- `src/terrain/chunk_manager.gd` — `_chunk_refs` is either read by production code or removed.
+
+**Acceptance criteria:**
+- [ ] Suite: a peer reporting 100 positions 10 km apart within one interval moves its window at
+  most once, and the refusal counter rises.
+- [ ] Suite: a host-driven respawn far away recentres the window immediately.
+- [ ] Suite: after a teleport into a region with stored edits, the re-scope snapshot carries
+  those edits.
+- [ ] Suite green on both boot paths; `tools/net_harness.sh` agrees on every step.
+
+---
+
+## Phase 63 — Planet coordinates wiring
+
+**Goal:** Phase 50 passed its criteria with wiring still open (#136, also #120–#127). Finish the
+parts a headless suite can prove: canonical chunk keys at the east-west seam, `{chunk, local}`
+on the wire, and the client rebase driver.
+
+**Newel dependency:** NO.
+
+**Closes:** #136 and the duplicate remainder issues #120, #121, #122, #123, #124, #125, #126,
+#127 (except the manual far walk, #134).
+
+**Deliverables:**
+- `ChunkManager` and `VoxelSlice` key chunks through `TerrainSlice.wrap_chunk`, so chunk
+  `(C/2, z)` and `(-C/2, z)` are one key; the player's X wraps when it crosses the seam.
+- The join snapshot, edit RPCs, AOI centres, creature and station positions carry
+  `{chunk, local}` (the `WorldPos` form player records already use); old float payloads are still
+  accepted on read.
+- A client-side driver calls `VoxelSlice.shift_scene` and shifts trees, creatures, stations and the
+  player body in the same frame when `WorldPos.needs_rebase` fires.
+- Terrain noise sampled from chunk-relative coordinates (integer lattice plus local offset), so
+  heights at chunk 312,500 match the shape at the origin to the 0.125 m step.
+- A `/where` chat command printing `TerrainSlice.where_text`.
+
+**Acceptance criteria:**
+- [ ] Suite: an edit made at chunk `(C/2, z)` is found when reading chunk `(-C/2, z)`.
+- [ ] Suite: after a forced rebase, the player, one tree, one creature and one station keep their
+  `{chunk, local}`, and their scene positions shift by the same offset.
+- [ ] Suite: heights sampled in a chunk at index 312,500 quantise to 0.125 m steps with no
+  terracing (no two adjacent samples differ by a float32 rounding artefact).
+- [ ] `tools/net_harness.sh` agrees on every step with `{chunk, local}` on the wire.
+- [ ] Suite green on both boot paths.
+
+---
+
+## Phase 64 — Biome blend consistency
+
+**Goal:** The 4-tile biome dither band shows one biome and yields another, the minimap leaks
+unexplored biomes across fog, and the dither hash exists twice with different thresholds
+(#113–#118).
+
+**Newel dependency:** NO.
+
+**Closes:** the biome-blend items of #113, #114, #115, #116, #117, #118.
+
+**Deliverables:**
+- One shared dither helper (in `ClimateField` or a new `BiomeBlend`) used by
+  `VoxelSlice.blended_biome` and `minimap.gd`, with one falloff rule.
+- `voxel_slice.gd` `_natural_yield` uses the blended biome of the tile, so the yield matches the
+  surface drawn; `topsoilDepth` reads are null-guarded.
+- `minimap.gd` border dither only borrows a neighbour's colour when that neighbour is revealed and
+  inside the world; a chunk whose neighbours share its biome draws one rect.
+- `climate_field.gd` — `biome_for_chunk` never calls `warm()` lazily from a worker; warming is
+  explicit on the main thread with a `_warmed` flag; `_envelope_of` tolerates partial envelopes;
+  the header describes the envelope model.
+- `ore_field.gd` — the biome lookup moves after the cheap surface-vein hash cull.
+
+**Acceptance criteria:**
+- [ ] Suite: for every tile in a border band, the biome used for yield equals the biome used for
+  the surface style.
+- [ ] Suite: the minimap colour of a revealed border cell next to an unrevealed chunk never uses
+  the unrevealed chunk's biome.
+- [ ] Suite: a partial envelope dict does not error in `warm()` and the other envelopes load.
+- [ ] Suite green on both boot paths.
+
+---
+
+## Phase 65 — World clock and season follow-ups
+
+**Goal:** Phase 54 shipped `WorldClock.biome_daylight` with no runtime caller, and the season
+tint repaints every loaded chunk with the biome underfoot (#150).
+
+**Newel dependency:** NO.
+
+**Closes:** #150 items 1 and 2.
+
+**Deliverables:**
+- `src/core/game_root.gd` — `_apply_sun` passes the daylight through `WorldClock.biome_daylight`
+  with the `dayNightSpeed` of the biome the player is in (TwilightGrove stays at dusk).
+- Season tint applied per chunk (per-chunk material override or vertex colour from the chunk's
+  own biome), so a freezing biome turns its own chunks white and not its neighbours.
+
+**Acceptance criteria:**
+- [ ] Suite: with the player in a biome whose `dayNightSpeed` is 0, the applied sun energy equals
+  `biome_daylight(d, 0)` at midnight and noon.
+- [ ] Suite: with the player in a freezing biome, a loaded chunk of a temperate biome keeps its
+  non-snow tint.
+- [ ] Suite green on both boot paths.
+
+---
+
+## Phase 66 — Spawn point and colonization follow-ups
+
+**Goal:** A returning player respawns at the legacy (16, y, 16) default instead of their own
+spawn point, and the colonization map over-counts after a restart (#148).
+
+**Newel dependency:** NO.
+
+**Closes:** #148 items 1 and 2.
+
+**Deliverables:**
+- `src/persistence/player_registry.gd` — the player record stores the original spawn point
+  (`{chunk, local}`) at placement; `game_root` restores `respawn_point` from it for a returning
+  host and client. Records without the field fall back to the saved position.
+- `src/world/colonization_map.gd` — `to_data`/`from_data` persist the counted-chunk set (or a
+  per-region counted list), so re-editing an already-counted chunk after a restart does not
+  raise its region's count.
+
+**Acceptance criteria:**
+- [ ] Suite: a host placed at spawn S, moved away and reloaded respawns at S.
+- [ ] Suite: a client reconnecting after moving away respawns at its original spawn point.
+- [ ] Suite: edit chunk K, save, reload, edit K again — the region's edit count is unchanged.
+- [ ] Suite green on both boot paths.
+
+---
+
+## Phase 67 — Network test seam cleanup
+
+**Goal:** `NetworkingSlice` broadcasts still call `multiplayer.get_peers()` directly, so the
+`_test_peers` seam is bypassed on two paths, and the seam can be set outside the suite
+(#153, #155).
+
+**Newel dependency:** NO.
+
+**Closes:** #153 and #155 (the code items).
+
+**Deliverables:**
+- `src/networking/networking_slice.gd` — `_broadcast_aoi` and `_broadcast` go through
+  `_connected_peers()`; setting `_test_peers`/`_test_outbox` outside a `--run-tests` boot asserts
+  and is ignored.
+- `src/tests/test_suite.gd` — `_test_equipment_host_and_aoi_transitions` comment rewritten, and
+  its evict assertion names which viewers receive the evicts.
+- `UiSlice._save_layout` removes the `.tmp` file when the rename fails; the `?` hotkey matches
+  on unicode only (#129).
+
+**Acceptance criteria:**
+- [ ] `grep -n "multiplayer.get_peers()" src/networking/networking_slice.gd` matches only inside
+  `_connected_peers`.
+- [ ] Suite: a broadcast with `_test_peers` set reaches exactly those peers through both
+  `_broadcast` and `_broadcast_aoi`.
+- [ ] Suite: a failed layout rename leaves no `.tmp` file.
+- [ ] Suite green on both boot paths.
+
+---
+
+## Phase 68 — Distant terrain off the main thread
+
+**Goal:** `DistantTerrain.rebuild` evaluates a 65×65 lattice on the main thread every time the
+player crosses a ring cell, and the terrain corner cache is unsynchronised shared state
+(#139, #140, #141, #145).
+
+**Newel dependency:** NO.
+
+**Closes:** the distant-terrain and corner-cache items of #139, #140, #141, #145.
+
+**Deliverables:**
+- `src/terrain/distant_terrain.gd` — the lattice build runs on `WorkerThreadPool`; the main
+  thread only swaps in the finished mesh. The per-frame string key in `_process` becomes cached
+  integer fields.
+- `src/terrain/terrain_slice.gd` — the `_shape_at` corner cache is per-thread (or replaced by a
+  pure function), keyed on seed and width.
+- `WorldShape.SPAWN_CENTER`/`SPAWN_HEIGHT` reference the `TerrainSlice` constants instead of
+  duplicating them.
+
+**Acceptance criteria:**
+- [ ] Suite: `rebuild` returns without building the mesh synchronously (a counter of main-thread
+  lattice evaluations stays 0), and the finished mesh equals a synchronous build for the same
+  centre.
+- [ ] Suite: heights sampled concurrently from several worker tasks equal single-threaded samples.
+- [ ] Suite green on both boot paths.
+
+---
+
 ## Deferred (in priority order)
 
 - **Server sharding (final, not before maturity)** — split the authoritative
