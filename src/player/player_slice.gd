@@ -61,6 +61,7 @@ const TREE_COLLISION_MASK := 8 # layer 4 (bit 3) — tree trunks, for the chop r
 ## (`_hp`, the HUD, the suite, the harness) keeps the same name.
 const PlayerRules := preload("res://src/core/player_rules.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
+const VoxelSliceScript := preload("res://src/terrain/voxel_slice.gd")
 
 const MAX_HP := PlayerRules.MAX_HP
 
@@ -522,7 +523,21 @@ func _swimming_now() -> bool:
 	# Only a body at or below the surface swims: one on a platform or falling in from a cliff does not.
 	if p.y > sea + WADE_DEPTH:
 		return false
-	return is_swimming(float(terrain_slice.get_height_at(Vector2(p.x, p.z))), sea)
+	var xz := Vector2(p.x, p.z)
+	var natural := float(terrain_slice.get_height_at(xz))
+	# Water lies only over ground that is naturally below the sea: a pit dug on land holds none.
+	if natural >= sea:
+		return false
+	return is_swimming(_ground_top_at(xz, natural), sea)
+
+## The ground a body at `xz` stands over: the top of the voxel column (player edits included —
+## ground built up out of the sea), or `natural` (the generated height) in a rig with no voxel
+## slice wired.
+func _ground_top_at(xz: Vector2, natural: float) -> float:
+	if voxel_slice != null and voxel_slice.has_method("get_column_runs_at"):
+		var runs: Array = voxel_slice.get_column_runs_at(xz)
+		return float(runs[-1]["top"]) if not runs.is_empty() else VoxelSliceScript.BEDROCK_DEPTH
+	return natural
 
 func _move(delta: float) -> void:
 	var swimming := _swimming_now()

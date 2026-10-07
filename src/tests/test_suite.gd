@@ -97,6 +97,8 @@ func run() -> void:
 	_run_test("water: spans cover exactly the tiles below sea level", _test_water_spans)
 	_run_test("player: deep water is swum, not walked",       _test_player_swims_in_deep_water)
 	_run_test("terrain: the distant ring is 10x the window with no collision", _test_distant_ring)
+	_run_test("terrain: the ring meets the voxel ground at the window edge", _test_distant_ring_window_edge)
+	_run_test("player: swimming reads the voxel column, not the generated height", _test_swim_reads_voxel_column)
 	_run_test("terrain: the distant ring builds off the main thread", _test_distant_ring_async)
 	_run_test("terrain: concurrent height sampling matches single-threaded", _test_height_concurrent)
 	_run_test("chunk: deplete-only edits request no neighbour rebuild", _test_seam_deplete_only)
@@ -13832,14 +13834,11 @@ func _test_distant_ring() -> void:
 	var aabb := mesh.get_aabb()
 	assert_true(aabb.size.x > 1.8 * d.ring_half_m * 0.95, "the mesh spans the ring (%.0f m)" % aabb.size.x)
 	assert_true(aabb.size.x <= 2.0 * d.ring_half_m + 1.0, "and no further")
-	# The voxel window is a hole: no ring vertex lies strictly inside it.
+	# The voxel window is a hole: no ring vertex lies strictly inside it (Phase 73: the whole window).
 	var verts: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 	var inside := 0
 	for v in verts:
-		# The hole is the window less one ring cell and one chunk; a kept cell may poke one cell into it.
-		var cell_m := 2.0 * d.ring_half_m / 64.0
-		var hole_m := window_m - cell_m - 32.0
-		if absf(v.x - 16.0) < hole_m - cell_m - 1.0 and absf(v.z - 16.0) < hole_m - cell_m - 1.0:
+		if absf(v.x - 16.0) < window_m - 0.001 and absf(v.z - 16.0) < window_m - 0.001:
 			inside += 1
 	assert_eq(inside, 0, "the ring leaves the voxel window to the voxel chunks")
 	var normals: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_NORMAL]
@@ -13849,6 +13848,115 @@ func _test_distant_ring() -> void:
 	assert_true(d.rebuild(Vector2(16.0, 16.5), radius), "a new world seed rebuilds the ring in place")
 	d.poll(true)
 	d.free()
+
+## Phase 73 — the ring's height at the window edge meets the voxel ground (shape + detail).
+func _test_distant_ring_window_edge() -> void:
+	var seed_v := 7
+	var t := TerrainSlice.new()
+	add_child(t)   # _ready configures the detail noise
+	t.set_world_seed(seed_v)
+	var w := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var half := 3.5 * 32.0
+	var wc := Vector2(16.0, 16.0)
+	var ring_half := DistantTerrainScript.ring_half_extent(3)
+	var cell := ring_half * 2.0 / 64.0
+	var rc := Vector2(floorf(wc.x / cell) * cell, floorf(wc.y / cell) * cell)
+	var mesh: ArrayMesh = DistantTerrainScript.build_mesh(seed_v, w, rc, ring_half, half, wc)
+	var arrays := mesh.surface_get_arrays(0)
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	for v in verts:
+		assert_false(absf(v.x - wc.x) < half - 0.001 and absf(v.z - wc.y) < half - 0.001, "no ring vertex inside the window")
+		if absf(v.x - wc.x) < half - 0.001 and absf(v.z - wc.y) < half - 0.001:
+			break
+	# 64 points around the edge: the topmost ring surface there (a triangle containing the point,
+	# or a vertex on it) is within 1 m of the voxel ground.
+	var sea := WorldShape.sea_level()
+	var worst := 0.0
+	var checked := 0
+	for k in 64:
+		var f := float(k) / 16.0   # 0..4 around the perimeter
+		var side := int(f)
+		var u := (f - float(side)) * 2.0 * half - half
+		var pt := Vector2.ZERO
+		match side:
+			0: pt = wc + Vector2(u, -half)
+			1: pt = wc + Vector2(half, u)
+			2: pt = wc + Vector2(-u, half)
+			_: pt = wc + Vector2(-half, -u)
+		var ground := t.get_height_at(pt)
+		if ground < sea:
+			continue   # the voxel window shows the water sheet here; the ring is a flat sea at the edge
+		var best := -INF
+		for ti in range(0, idx.size(), 3):
+			var a := verts[idx[ti]]
+			var b := verts[idx[ti + 1]]
+			var c := verts[idx[ti + 2]]
+			if absf(a.x - b.x) < 0.0001 and absf(b.x - c.x) < 0.0001 and absf(a.z - b.z) < 0.0001:
+				continue   # vertical skirt
+			var y := _tri_height_at(a, b, c, pt)
+			if not is_nan(y):
+				best = maxf(best, y)
+		if best > -INF:
+			checked += 1
+			worst = maxf(worst, absf(best - ground))
+	assert_true(checked > 0, "some of the edge points are land (%d)" % checked)
+	assert_true(worst <= 1.0, "the ring is within 1 m of the voxel ground at the window edge (worst %.2f m)" % worst)
+	t.free()
+
+## Height of triangle (a, b, c) at the XZ of `pt`, or NAN when the point lies outside it.
+func _tri_height_at(a: Vector3, b: Vector3, c: Vector3, pt: Vector2) -> float:
+	var d := (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z)
+	if absf(d) < 0.000001:
+		return NAN
+	var l1 := ((b.z - c.z) * (pt.x - c.x) + (c.x - b.x) * (pt.y - c.z)) / d
+	var l2 := ((c.z - a.z) * (pt.x - c.x) + (a.x - c.x) * (pt.y - c.z)) / d
+	var l3 := 1.0 - l1 - l2
+	var e := -0.0001
+	if l1 < e or l2 < e or l3 < e:
+		return NAN
+	return l1 * a.y + l2 * b.y + l3 * c.y
+
+class SwimTerrainStub extends Node:
+	var height := 0.0
+	func get_height_at(_p: Vector2) -> float:
+		return height
+
+class SwimVoxelStub extends Node:
+	var runs: Array = []
+	func get_column_runs_at(_p: Vector2) -> Array:
+		return runs
+
+## Phase 73 — a body swims only where there is water over ground that is, as edited, deep enough.
+func _test_swim_reads_voxel_column() -> void:
+	var sea := WorldShape.sea_level()
+	var p := PlayerSlice.new()
+	add_child(p)
+	var terr := SwimTerrainStub.new()
+	var vox := SwimVoxelStub.new()
+	add_child(terr)
+	add_child(vox)
+	p.terrain_slice = terr
+	p.spawn_at(Vector3(10.0, sea - 0.2, 10.0))
+	# Open ocean, unedited column: swims.
+	terr.height = sea - 20.0
+	vox.runs = [{"bottom": -72.0, "top": sea - 20.0}]
+	p.voxel_slice = null
+	assert_true(p._swimming_now(), "isolated rig: the generated sea floor is deep, so it swims")
+	p.voxel_slice = vox
+	assert_true(p._swimming_now(), "wired: an unedited deep column swims")
+	# The player filled the column up to sea level + 1 m.
+	vox.runs = [{"bottom": -72.0, "top": sea + 1.0}]
+	assert_false(p._swimming_now(), "ground built up out of the sea does not swim")
+	# A land pit dug below sea level holds no water.
+	terr.height = sea + 6.0
+	vox.runs = [{"bottom": -72.0, "top": sea - 10.0}]
+	assert_false(p._swimming_now(), "a dry pit below sea level does not swim")
+	vox.runs = []
+	assert_false(p._swimming_now(), "nor does one mined out to the floor")
+	p.free()
+	terr.free()
+	vox.free()
 
 ## Phase 68 — `rebuild` never evaluates the lattice on the main thread; the swapped-in mesh equals a
 ## synchronous build for the same centre.
@@ -13864,7 +13972,7 @@ func _test_distant_ring_async() -> void:
 	var cell := d.ring_half_m * 2.0 / 64.0
 	var origin := Vector2i(floori(100.0 / cell), floori(-40.0 / cell))
 	var snapped := Vector2(float(origin.x) * cell, float(origin.y) * cell)
-	var sync_mesh: ArrayMesh = DistantTerrainScript.build_mesh(11, d.circumference_m, snapped, d.ring_half_m, d.window_half_m, Vector2(100.0, -40.0))
+	var sync_mesh: ArrayMesh = DistantTerrainScript.build_mesh(11, d.circumference_m, snapped, d.ring_half_m, d.window_half_m, Vector2(112.0, -48.0))   # the chunk-snapped window centre
 	var got: ArrayMesh = (d.get_child(0) as MeshInstance3D).mesh
 	assert_eq(got.surface_get_arrays(0)[Mesh.ARRAY_VERTEX], sync_mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX], "the async mesh equals a synchronous build")
 	# A request that arrives mid-build supersedes it; the newest wins.

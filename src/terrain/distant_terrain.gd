@@ -8,6 +8,7 @@ extends Node3D
 ## re-centred whenever the player moves a whole cell.
 
 const WorldShape := preload("res://src/terrain/world_shape.gd")
+const TerrainSliceScript := preload("res://src/terrain/terrain_slice.gd")
 const CHUNK_METERS := 32.0   # TerrainSlice.CHUNK_SIZE * TILE_SIZE
 const RING_FACTOR := 10      ## the ring reaches this many times the voxel window's extent
 const GRID := 64             ## cells per side of the ring's lattice
@@ -15,6 +16,9 @@ const LAND_COLOR := Color(0.36, 0.5, 0.28)
 const ROCK_COLOR := Color(0.5, 0.48, 0.45)
 const SNOW_COLOR := Color(0.95, 0.97, 0.98)
 const SEA_FLOOR_COLOR := Color(0.2, 0.32, 0.5)
+const RING_DROP := 0.5       ## land is drawn this far below the shape + detail height
+const EDGE_STEP := 2.0       ## ring vertices are this far apart along the window's edge
+const SKIRT_DEPTH := 12.0    ## the wall at the window's edge drops this far below the ring there
 
 var world_seed: int = 0
 var circumference_m: float = 40000.0 * 1000.0
@@ -25,6 +29,7 @@ var _cell_origin := Vector2i(-999999, -999999)
 ## What the current (or in-flight) build is for, as plain fields so the per-frame `rebuild` check
 ## allocates nothing.
 var _built_seed := 0
+var _built_window := Vector2(INF, INF)
 var _built_radius := -1
 var _built_circ := -1.0
 var _mesh_inst: MeshInstance3D = null
@@ -71,10 +76,15 @@ func rebuild(center: Vector2, radius_chunks: int) -> bool:
 	ring_half_m = ring_half_extent(radius_chunks)
 	var cell := ring_half_m * 2.0 / float(GRID)
 	var origin := Vector2i(floori(center.x / cell), floori(center.y / cell))
-	if origin == _cell_origin and _built_radius == radius_chunks and _built_seed == world_seed \
+	# The voxel window is chunk-snapped around the player: the hole is exactly that rectangle, so the
+	# ring rebuilds when the player's chunk changes as well as when the lattice cell does.
+	var win_center := Vector2((floorf(center.x / CHUNK_METERS) + 0.5) * CHUNK_METERS,
+		(floorf(center.y / CHUNK_METERS) + 0.5) * CHUNK_METERS)
+	if origin == _cell_origin and win_center == _built_window and _built_radius == radius_chunks and _built_seed == world_seed \
 			and _built_circ == circumference_m and (_mesh_inst != null or _task >= 0):
 		return false
 	_cell_origin = origin
+	_built_window = win_center
 	_built_seed = world_seed
 	_built_radius = radius_chunks
 	_built_circ = circumference_m
@@ -82,7 +92,7 @@ func rebuild(center: Vector2, radius_chunks: int) -> bool:
 	var args := {
 		"seed": world_seed, "w": circumference_m,
 		"ring_center": Vector2(float(origin.x) * cell, float(origin.y) * cell),
-		"half_m": ring_half_m, "window_half_m": window_half_m, "window_center": center,
+		"half_m": ring_half_m, "window_half_m": window_half_m, "window_center": win_center,
 	}
 	if _task >= 0:
 		_queued = args
@@ -144,45 +154,64 @@ func _exit_tree() -> void:
 		WorkerThreadPool.wait_for_task_completion(_task)
 		_task = -1
 
-## The ring's mesh: GRID × GRID cells centred on `ring_center` spanning ±`half_m`, skipping any
-## cell wholly inside the voxel window (`window_half_m` around `window_center`). The hole is
-## shrunk by one ring cell plus one chunk, so the ring still covers the ground the window has left
-## behind between rebuilds (the player moves up to a cell, the window snaps to chunks). Heights are the
-## shape's, floored at the sea level so the ocean reads as a flat sheet.
+## The ring's mesh: GRID × GRID cells centred on `ring_center` spanning ±`half_m`, with the voxel
+## window (`window_half_m` around `window_center`) cut out EXACTLY: a cell wholly inside is skipped, a
+## cell the window edge crosses is clipped to the part outside it, and a skirt wall drops below the
+## ring along the window's edge so no gap shows between the ring and the voxel chunks' side.
+##
+## Heights are the shape's PLUS the detail noise the voxel ground adds (a land vertex sits `RING_DROP`
+## below the voxel ground there), floored at the sea level so the ocean reads as a flat sheet. Clipped
+## vertices are sampled where they lie rather than interpolated, so the ring meets the voxel ground at
+## the window edge to within the sub-metre difference between the shape's chunk-cell interpolation and
+## its direct evaluation. Farther out the lattice is coarse (a cell is 10 × the window's chunk
+## width / 64 across) and the detail is sampled, not filtered: the ring is a backdrop, not ground.
+## Only the LOCAL player's window is cut; a remote peer's window lies under the ring's sheet.
 static func build_mesh(seed_v: int, w: float, ring_center: Vector2, half_m: float, window_half_m: float, window_center: Vector2) -> ArrayMesh:
 	var cell := half_m * 2.0 / float(GRID)
 	var sea := WorldShape.sea_level()
+	var noise := FastNoiseLite.new()   # this build's own: FastNoiseLite is not shared across threads
+	TerrainSliceScript.configure_noise(noise, seed_v)
 	var heights := PackedFloat32Array()
 	heights.resize((GRID + 1) * (GRID + 1))
 	for j in GRID + 1:
 		for i in GRID + 1:
 			var x := ring_center.x - half_m + float(i) * cell
 			var z := ring_center.y - half_m + float(j) * cell
-			heights[j * (GRID + 1) + i] = WorldShape.height(seed_v, x, z, w)
+			heights[j * (GRID + 1) + i] = ground_at(noise, seed_v, x, z, w)
 	var vertices := PackedVector3Array()
 	var colors := PackedColorArray()
 	var normals := PackedVector3Array()
 	var indices := PackedInt32Array()
+	var wl := window_center.x - window_half_m
+	var wr := window_center.x + window_half_m
+	var wb := window_center.y - window_half_m
+	var wt := window_center.y + window_half_m
 	for j in GRID:
 		for i in GRID:
 			var x0 := ring_center.x - half_m + float(i) * cell
 			var z0 := ring_center.y - half_m + float(j) * cell
-			var cx := x0 + cell * 0.5
-			var cz := z0 + cell * 0.5
-			var hole_half := window_half_m - cell - CHUNK_METERS
-			if absf(cx - window_center.x) + cell * 0.5 <= hole_half and absf(cz - window_center.y) + cell * 0.5 <= hole_half:
+			var x1 := x0 + cell
+			var z1 := z0 + cell
+			if x1 <= wl or x0 >= wr or z1 <= wb or z0 >= wt:   # clear of the window: the whole cell
+				_add_quad(vertices, colors, normals, indices, sea, x0, z0, x1, z1,
+					heights[j * (GRID + 1) + i], heights[j * (GRID + 1) + i + 1],
+					heights[(j + 1) * (GRID + 1) + i + 1], heights[(j + 1) * (GRID + 1) + i])
+				continue
+			if x0 >= wl and x1 <= wr and z0 >= wb and z1 <= wt:
 				continue   # wholly inside the voxel window: the voxel chunks draw it
-			var base := vertices.size()
-			for c in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1), Vector2i(0, 1)]:
-				var h := heights[(j + c.y) * (GRID + 1) + i + c.x]
-				vertices.append(Vector3(x0 + float(c.x) * cell, maxf(h, sea) - 1.0, z0 + float(c.y) * cell))
-				colors.append(color_for(h - sea))
-			var n := (vertices[base + 2] - vertices[base]).cross(vertices[base + 1] - vertices[base]).normalized()
-			if n.y < 0.0:
-				n = -n
-			for _k in 4:
-				normals.append(n)
-			indices.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+			# The window edge crosses this cell: the part outside it is up to four strips, each cut finely
+			# along the window edge (see `_add_strip`) so the ring follows the voxel ground there.
+			if x0 < wl:
+				_add_strip(vertices, colors, normals, indices, noise, seed_v, w, sea, x0, z0, wl, z1, true, true)
+			if x1 > wr:
+				_add_strip(vertices, colors, normals, indices, noise, seed_v, w, sea, wr, z0, x1, z1, true, false)
+			var mx0 := maxf(x0, wl)
+			var mx1 := minf(x1, wr)
+			if z0 < wb:
+				_add_strip(vertices, colors, normals, indices, noise, seed_v, w, sea, mx0, z0, mx1, wb, false, true)
+			if z1 > wt:
+				_add_strip(vertices, colors, normals, indices, noise, seed_v, w, sea, mx0, wt, mx1, z1, false, false)
+	_add_skirt(vertices, colors, normals, indices, noise, seed_v, w, sea, window_center, window_half_m)
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = vertices
@@ -193,6 +222,113 @@ static func build_mesh(seed_v: int, w: float, ring_center: Vector2, half_m: floa
 	if not vertices.is_empty():
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
+
+## The ground height the voxel ground has at (x, z) to within the shape's interpolation: the
+## shape plus the detail noise, clamped to the fabric's height range.
+static func ground_at(noise: FastNoiseLite, seed_v: int, x: float, z: float, w: float) -> float:
+	var h := WorldShape.height(seed_v, x, z, w) + TerrainSliceScript.detail_of(noise, x, z)
+	return clampf(h, WorldShape.min_height(), WorldShape.max_height())
+
+## The y a ring vertex at ground height `h` is drawn at.
+static func ring_y(h: float, sea: float) -> float:
+	return maxf(h, sea) - RING_DROP
+
+## A rectangle outside the window with its window-side edge on the window's edge. `along_z` says that
+## edge runs along Z (else X); `near_high` that it is the rectangle's high side. The rectangle is cut
+## every `EDGE_STEP` along that edge: window-side vertices are sampled exactly, far-side ones
+## interpolate the exact far corners.
+static func _add_strip(vertices: PackedVector3Array, colors: PackedColorArray, normals: PackedVector3Array,
+		indices: PackedInt32Array, noise: FastNoiseLite, seed_v: int, w: float, sea: float,
+		x0: float, z0: float, x1: float, z1: float, along_z: bool, near_high: bool) -> void:
+	var lo := z0 if along_z else x0
+	var hi := z1 if along_z else x1
+	var n := maxi(int(ceil((hi - lo) / EDGE_STEP)), 1)
+	var near := (x1 if near_high else x0) if along_z else (z1 if near_high else z0)
+	var far := (x0 if near_high else x1) if along_z else (z0 if near_high else z1)
+	var far_lo := ground_at(noise, seed_v, far, lo, w) if along_z else ground_at(noise, seed_v, lo, far, w)
+	var far_hi := ground_at(noise, seed_v, far, hi, w) if along_z else ground_at(noise, seed_v, hi, far, w)
+	var prev_t := lo
+	var prev_near := ground_at(noise, seed_v, near, lo, w) if along_z else ground_at(noise, seed_v, lo, near, w)
+	var prev_far := far_lo
+	for k in range(1, n + 1):
+		var t := lerpf(lo, hi, float(k) / float(n))
+		var h_near := ground_at(noise, seed_v, near, t, w) if along_z else ground_at(noise, seed_v, t, near, w)
+		var h_far := lerpf(far_lo, far_hi, float(k) / float(n))
+		if along_z:
+			var xa := minf(near, far)
+			var xb := maxf(near, far)
+			var lo_x := prev_far if near_high else prev_near
+			var hi_x := prev_near if near_high else prev_far
+			var lo_x2 := h_far if near_high else h_near
+			var hi_x2 := h_near if near_high else h_far
+			_add_quad(vertices, colors, normals, indices, sea, xa, prev_t, xb, t, lo_x, hi_x, hi_x2, lo_x2)
+		else:
+			var za := minf(near, far)
+			var zb := maxf(near, far)
+			var lo_z := prev_far if near_high else prev_near
+			var hi_z := prev_near if near_high else prev_far
+			var lo_z2 := h_far if near_high else h_near
+			var hi_z2 := h_near if near_high else h_far
+			_add_quad(vertices, colors, normals, indices, sea, prev_t, za, t, zb, lo_z, lo_z2, hi_z2, hi_z)
+		prev_t = t
+		prev_near = h_near
+		prev_far = h_far
+
+static func _add_quad(vertices: PackedVector3Array, colors: PackedColorArray, normals: PackedVector3Array,
+		indices: PackedInt32Array, sea: float, x0: float, z0: float, x1: float, z1: float,
+		h00: float, h10: float, h11: float, h01: float) -> void:
+	var base := vertices.size()
+	vertices.append(Vector3(x0, ring_y(h00, sea), z0))
+	vertices.append(Vector3(x1, ring_y(h10, sea), z0))
+	vertices.append(Vector3(x1, ring_y(h11, sea), z1))
+	vertices.append(Vector3(x0, ring_y(h01, sea), z1))
+	for h in [h00, h10, h11, h01]:
+		colors.append(color_for(h - sea))
+	var n := (vertices[base + 2] - vertices[base]).cross(vertices[base + 1] - vertices[base]).normalized()
+	if n.y < 0.0:
+		n = -n
+	for _k in 4:
+		normals.append(n)
+	indices.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+
+## The wall around the window's edge: a strip of quads per side, sampled every ~2 m, from the ring's
+## height down `SKIRT_DEPTH`, so the ring never shows a sliver of sky between itself and the voxel
+## chunks' outer wall.
+static func _add_skirt(vertices: PackedVector3Array, colors: PackedColorArray, normals: PackedVector3Array,
+		indices: PackedInt32Array, noise: FastNoiseLite, seed_v: int, w: float, sea: float,
+		window_center: Vector2, window_half_m: float) -> void:
+	var steps := maxi(int(ceil(window_half_m)), 1)   # ~2 m per step along each 2 * window_half_m side
+	var corners := [
+		Vector2(window_center.x - window_half_m, window_center.y - window_half_m),
+		Vector2(window_center.x + window_half_m, window_center.y - window_half_m),
+		Vector2(window_center.x + window_half_m, window_center.y + window_half_m),
+		Vector2(window_center.x - window_half_m, window_center.y + window_half_m),
+	]
+	for side in 4:
+		var a: Vector2 = corners[side]
+		var b: Vector2 = corners[(side + 1) % 4]
+		var out_n := Vector3((b - a).y, 0.0, -(b - a).x).normalized()   # outward-facing for this winding
+		var prev_top := Vector3.ZERO
+		var prev_h := 0.0
+		for k in steps + 1:
+			var p := a.lerp(b, float(k) / float(steps))
+			var h := ground_at(noise, seed_v, p.x, p.y, w)
+			var top := Vector3(p.x, ring_y(h, sea), p.y)
+			if k > 0:
+				var base := vertices.size()
+				vertices.append(prev_top)
+				vertices.append(top)
+				vertices.append(top - Vector3(0.0, SKIRT_DEPTH, 0.0))
+				vertices.append(prev_top - Vector3(0.0, SKIRT_DEPTH, 0.0))
+				colors.append(color_for(prev_h - sea))
+				colors.append(color_for(h - sea))
+				colors.append(color_for(h - sea))
+				colors.append(color_for(prev_h - sea))
+				for _k in 4:
+					normals.append(out_n)
+				indices.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+			prev_top = top
+			prev_h = h
 
 ## Number of collision bodies in this ring's subtree — always 0 (asserted by the suite).
 func collision_body_count() -> int:
