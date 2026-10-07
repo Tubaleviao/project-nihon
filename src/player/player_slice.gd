@@ -792,9 +792,9 @@ func _update_aim() -> void:
 			var bhit := space.intersect_ray(bquery)
 			if not bhit.is_empty():
 				_aimed_block_hit = true
-				_aimed_block_pos = bhit.get("position", Vector3.ZERO)
+				_aimed_block_pos = (bhit.get("position", Vector3.ZERO) as Vector3) - _scene_offset
 				_aimed_block_normal = bhit.get("normal", Vector3.UP)
-				block_dist = from.distance_to(_aimed_block_pos)
+				block_dist = from.distance_to(_aimed_block_pos + _scene_offset)
 
 			# Tree ray (layer 4) — chop target. Trees are not on the terrain
 			# layer, so this is its own ray; a trunk is only accepted when it is

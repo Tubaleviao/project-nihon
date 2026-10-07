@@ -43,6 +43,8 @@ func shift_scene(shift: Vector3) -> void:
 	_scene_offset += shift
 	for id in _markers:
 		(_markers[id] as Node3D).position += shift
+	if _preview != null:
+		_preview.position += shift
 
 func scene_offset() -> Vector3:
 	return _scene_offset
@@ -176,7 +178,7 @@ func show_preview(type: String, position: Vector3) -> void:
 		_preview.material_override = mat
 		_preview.name = "StationPreview"
 		add_child(_preview)
-	_preview.position = pos
+	_preview.position = pos + _scene_offset
 	_preview.visible = true
 	(_preview.material_override as StandardMaterial3D).albedo_color = \
 		Color(0.2, 0.9, 0.3, 0.4) if ok else Color(0.95, 0.2, 0.2, 0.4)

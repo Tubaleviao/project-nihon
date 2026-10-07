@@ -102,6 +102,7 @@ func run() -> void:
 	_run_test("terrain: detail noise stays exact far from the origin", _test_far_noise_quantised)
 	_run_test("chat: /where prints latitude and longitude", _test_where_command)
 	_run_test("terrain: latitude and longitude from the fabric planet", _test_terrain_planet_coordinates)
+	_run_test("rebase: loot, avatars and the station preview follow the shift", _test_rebase_extras)
 	_run_test("player: rebased origin keeps the world position", _test_world_pos_rebase)
 	_run_test("persistence: position saved as chunk + local, old saves migrate", _test_registry_world_pos)
 	_run_test("persistence: save then load round-trip",       _test_persistence_round_trip)
@@ -1060,6 +1061,31 @@ func _test_wire_chunk_local() -> void:
 	station.apply_station_data([{ "id": "station_2", "type": "Forge", "position": [1.0, 2.0, 3.0] }])
 	assert_true(station.get_station_data().size() == 1, "a legacy float-array station still loads")
 	station.free()
+
+func _test_rebase_extras() -> void:
+	var loot := LootSlice.new()
+	add_child(loot)
+	var pickup := loot._make_pickup_visual("p1", "wood", Vector3(10.0, 1.0, 5.0))
+	loot.add_child(pickup)
+	var station := StationSlice.new()
+	add_child(station)
+	station.show_preview("Forge", Vector3(10.0, 1.0, 5.0))
+	var preview_before := station._preview.position
+	var pickup_before := pickup.position
+	var shift := Vector3(-3000.0, 0.0, 0.0)
+	var driver := RebaseDriver.new([loot, station])
+	driver.rebase_to(Vector2i(94, 0))
+	var applied: Vector3 = driver.targets[0].scene_offset()
+	assert_true(applied != Vector3.ZERO, "the loot slice took the shift")
+	assert_eq(pickup.position, pickup_before + applied, "a pickup shifts by the rebase offset")
+	assert_eq(station._preview.position, preview_before + applied, "the preview shifts with the markers")
+	station.show_preview("Forge", Vector3(10.0, 1.0, 5.0))
+	assert_eq(station._preview.position, preview_before + applied, "a re-shown preview uses the shifted frame")
+	var pickup2 := loot._make_pickup_visual("p2", "wood", Vector3(10.0, 1.0, 5.0))
+	assert_eq(pickup2.position, pickup_before + applied, "a pickup spawned after the rebase uses the shifted frame")
+	pickup2.free()
+	station.free()
+	loot.free()
 
 func _test_rebase_driver() -> void:
 	var voxel := VoxelSlice.new()

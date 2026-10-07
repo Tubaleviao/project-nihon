@@ -259,7 +259,7 @@ func _ready() -> void:
 	if not _is_server:
 		slices.append(_ui)
 	if not _is_server:
-		_rebase = RebaseDriver.new([_voxel, _tree, _creature, _station, _player])
+		_rebase = RebaseDriver.new([_voxel, _tree, _creature, _station, _player, _loot, _character])
 	for s in slices:
 		s.name = s.get_script().resource_path.get_file().get_basename()
 		add_child(s)
@@ -386,6 +386,8 @@ func _ready() -> void:
 		_distant.name = "DistantTerrain"
 		_distant.circumference_m = float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
 		add_child(_distant)
+		if _rebase != null:
+			_rebase.targets.append(_distant)
 		var minimap_layer := CanvasLayer.new()
 		minimap_layer.name = "MinimapLayer"
 		minimap_layer.layer = 20
@@ -1547,7 +1549,12 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true,
 		snapshot["companions"] = own.get("companions", [])
 		# Phase 47 — the worn set rides the own-record payload too.
 		snapshot["equipment"] = own.get("equipment", {})
-		snapshot["player"] = { "position": WorldPos.to_wire(WorldPos.from_wire(own.get("position", []))), "hp": own.get("hp", -1.0) }
+		var own_pos = own.get("position", [])
+		# Re-encode a legacy float-array record as {chunk, local}; a record with no position stays
+		# empty so the client leaves its spawn alone.
+		if WorldPos.is_wire(own_pos):
+			own_pos = WorldPos.to_wire(WorldPos.from_wire(own_pos))
+		snapshot["player"] = { "position": own_pos, "hp": own.get("hp", -1.0) }
 	return snapshot
 
 ## Phase 38 — the replicated social/economy state, keyed by the names the wire uses

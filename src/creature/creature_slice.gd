@@ -848,8 +848,7 @@ func _apply_creature_entries(list: Array, create_missing: bool) -> void:
 		if not create_missing and not _instances.has(iid):
 			_hold_death_record(iid, entry)
 			continue
-		var pos := Vector3.ZERO
-		pos = WorldPos.from_wire(entry.get("position", []))
+		var pos := WorldPos.from_wire(entry.get("position", []))
 		apply_creature_state(
 			iid,
 			str(entry.get("creature_id", "")),
@@ -868,8 +867,7 @@ func _hold_death_record(iid: String, entry: Dictionary) -> void:
 	var deadline := float(entry.get("respawn_at", -1.0))
 	if deadline <= Time.get_unix_time_from_system():
 		return
-	var pos := Vector3.ZERO
-	pos = WorldPos.from_wire(entry.get("position", []))
+	var pos := WorldPos.from_wire(entry.get("position", []))
 	_dead_state[iid] = {
 		"creature_id": str(entry.get("creature_id", "")),
 		"respawn_at":  deadline,
