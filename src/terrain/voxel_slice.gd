@@ -591,25 +591,27 @@ func seam_borders(chunk_pos: Vector2i) -> Array:
 	var bucket: Dictionary = _edits_by_chunk.get(_chunk_key(chunk_pos), {})
 	var last := CHUNK_SIZE - 1
 	for tile_key in bucket:
-		var shapes := false
-		for op in _edits.get(tile_key, []):
-			if op is Dictionary and str(op.get("op", "")) != "deplete":
-				shapes = true
-				break
-		if not shapes:
+		if not _ops_shape(_edits.get(tile_key, [])):
 			continue
-		var tile := _key_to_tile(str(tile_key))
-		var lx := posmod(tile.x, CHUNK_SIZE)
-		var lz := posmod(tile.y, CHUNK_SIZE)
-		var dx := -1 if lx == 0 else (1 if lx == last else 0)
-		var dz := -1 if lz == 0 else (1 if lz == last else 0)
-		if dx != 0:
-			found[Vector2i(dx, 0)] = true
-		if dz != 0:
-			found[Vector2i(0, dz)] = true
-		if dx != 0 and dz != 0:
-			found[Vector2i(dx, dz)] = true
+		for off in _border_offsets(_key_to_tile(str(tile_key))):
+			found[off] = true
 	return found.keys()
+
+## Phase 69 — the neighbour offsets `tile` sits against: one per chunk edge it is on, plus the
+## diagonal when it is on a corner (the one place that offset math lives).
+static func _border_offsets(tile: Vector2i) -> Array:
+	var lx := posmod(tile.x, CHUNK_SIZE)
+	var lz := posmod(tile.y, CHUNK_SIZE)
+	var dx := -1 if lx == 0 else (1 if lx == CHUNK_SIZE - 1 else 0)
+	var dz := -1 if lz == 0 else (1 if lz == CHUNK_SIZE - 1 else 0)
+	var out: Array = []
+	if dx != 0:
+		out.append(Vector2i(dx, 0))
+	if dz != 0:
+		out.append(Vector2i(0, dz))
+	if dx != 0 and dz != 0:
+		out.append(Vector2i(dx, dz))
+	return out
 
 ## The heightmaps of the chunks the ring reads across, when they are KNOWN.
 ##
@@ -1655,15 +1657,13 @@ func _commit_edits(next: Dictionary, diff_keys: Variant = null) -> void:
 			if not shaped:
 				continue
 			var tile := _key_to_tile(str(key))
-			var lx := posmod(tile.x, CHUNK_SIZE)
-			var lz := posmod(tile.y, CHUNK_SIZE)
-			if (lx != 0 and lx != CHUNK_SIZE - 1) or (lz != 0 and lz != CHUNK_SIZE - 1):
-				continue
-			if not _ops_equal(previous.get(key, null), next.get(key, null)):
-				var off := Vector2i(-1 if lx == 0 else 1, -1 if lz == 0 else 1)
-				var dkey := _chunk_key(_tile_to_chunk(tile) + off)
-				if not touched.has(dkey):
-					diagonals[dkey] = _tile_to_chunk(tile) + off
+			var offs := _border_offsets(tile)
+			if offs.size() < 3 or _ops_equal(previous.get(key, null), next.get(key, null)):
+				continue   # not a corner tile, or nothing moved
+			var dchunk: Vector2i = _tile_to_chunk(tile) + offs[2]
+			var dkey := _chunk_key(dchunk)
+			if not touched.has(dkey):
+				diagonals[dkey] = dchunk
 		for dkey in diagonals:
 			chunk_manager.request_rebuild(diagonals[dkey])
 

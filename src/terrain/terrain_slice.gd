@@ -256,19 +256,21 @@ func _generate(pos: Vector2i) -> Array:
 	var origin_x := pos.x * CHUNK_SIZE * TILE_SIZE
 	var origin_z := pos.y * CHUNK_SIZE * TILE_SIZE
 	var w := float(circumference_chunks()) * CHUNK_METERS   # one fabric lookup per chunk, not per tile
+	var cache := _corner_cache()   # and one cache lock per chunk
 	for ty in range(CHUNK_SIZE):
 		for tx in range(CHUNK_SIZE):
-			out[ty * CHUNK_SIZE + tx] = _height_wrapped(origin_x + tx * TILE_SIZE, origin_z + ty * TILE_SIZE, w)
+			out[ty * CHUNK_SIZE + tx] = _height_wrapped(origin_x + tx * TILE_SIZE, origin_z + ty * TILE_SIZE, w, cache)
 	return out
 
 ## Continuous terrain height at a world XZ position: the large-scale shape plus the detail noise.
 ## Shared by _generate and get_height_at so
 ## the heightmap and direct samples always agree.
 func _height_at(x: float, z: float) -> float:
-	return _height_wrapped(x, z, float(circumference_chunks()) * CHUNK_METERS)
+	return _height_wrapped(x, z, float(circumference_chunks()) * CHUNK_METERS, _corner_cache())
 
-## `_height_at` with the circumference `w` (metres) already resolved.
-func _height_wrapped(x: float, z: float, w: float) -> float:
+## `_height_at` with the circumference `w` (metres) and this thread's corner `cache` already
+## resolved, so a whole heightmap takes the cache lock once rather than once per tile.
+func _height_wrapped(x: float, z: float, w: float, cache: Array) -> float:
 	var half_w := w * 0.5
 	var wx := fposmod(x + half_w, w) - half_w   # canonical X in [-w/2, w/2)
 	var band := WRAP_BLEND_CHUNKS * CHUNK_METERS
@@ -276,8 +278,8 @@ func _height_wrapped(x: float, z: float, w: float) -> float:
 		# East edge: ease into the west edge's heights, so x = +w/2 meets x = -w/2 exactly.
 		var t := (wx - (half_w - band)) / band
 		t = t * t * (3.0 - 2.0 * t)
-		return lerpf(_raw_height_at(wx, z), _raw_height_at(wx - w, z), t)
-	return _raw_height_at(wx, z)
+		return lerpf(_raw_height_at(wx, z, w, cache), _raw_height_at(wx - w, z, w, cache), t)
+	return _raw_height_at(wx, z, w, cache)
 
 ## Phase 51 — the large-scale shape (`WorldShape`: ocean basins, coasts, mountains) plus the old
 ## small-scale noise as detail, never below the fabric's `minHeight` or above `maxHeight`.
@@ -286,9 +288,8 @@ func _height_wrapped(x: float, z: float, w: float) -> float:
 ## the 32 m chunk cell holding (x, z) and interpolated bilinearly: a corner is shared by the
 ## neighbouring cells, so the surface is continuous across chunk borders, and a 64×64 heightmap
 ## costs four shape evaluations instead of 4096.
-func _raw_height_at(x: float, z: float) -> float:
-	var w := float(circumference_chunks()) * CHUNK_METERS
-	var shape := _shape_at(x, z, w)
+func _raw_height_at(x: float, z: float, w: float, cache: Array) -> float:
+	var shape := _shape_at(x, z, w, cache)
 	var detail := (_noise.get_noise_2d(noise_coord(x), noise_coord(z)) + 1.0) * 0.5 * HEIGHT_SCALE
 	var h := clampf(shape + detail, WorldShape.min_height(), WorldShape.max_height())
 	return h
@@ -311,14 +312,13 @@ func detail_at(x: float, z: float) -> float:
 
 ## `WorldShape.height` interpolated between the corners of the chunk cell holding (x, z).
 ## Phase 68: the corner cache is per thread (chunk workers and the distant-ring worker all sample
-## through this), keyed on the cell, the seed and the circumference, so no thread ever reads
+## through this; the caller passes its own thread's `cache`, see `_corner_cache`), keyed on the cell, the seed and the circumference, so no thread ever reads
 ## another's half-written corners.
-func _shape_at(x: float, z: float, w: float) -> float:
+func _shape_at(x: float, z: float, w: float, cache: Array) -> float:
 	var gx := x / CHUNK_METERS
 	var gz := z / CHUNK_METERS
 	var ix := floori(gx)
 	var iz := floori(gz)
-	var cache := _corner_cache()
 	if cache[0] != ix or cache[1] != iz or cache[2] != _world_seed or cache[3] != w:   # a heightmap walks one cell for 4096 tiles: reuse its corners
 		var x0 := float(ix) * CHUNK_METERS
 		var z0 := float(iz) * CHUNK_METERS

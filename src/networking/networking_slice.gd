@@ -514,9 +514,14 @@ var _test_outbox: Array = []:
 			return
 		_test_outbox = value
 
-## The suite boots with `--run-tests` (or in a debug build, see `GameRoot.should_run_tests`).
+## The suite boots with `--run-tests` (or in a debug build): the rule is `GameRoot.should_run_tests`,
+## loaded on demand because `GameRoot` already depends on this slice.
 static func _test_seam_allowed() -> bool:
-	return OS.get_cmdline_user_args().has("--run-tests") or OS.is_debug_build()
+	return _test_seam_allowed_for(OS.get_cmdline_user_args(), OS.is_debug_build())
+
+static func _test_seam_allowed_for(args: Array, is_debug_build: bool) -> bool:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	return root_script.should_run_tests(args, is_debug_build)
 
 ## Peers the host would fan out to.
 func _connected_peers() -> Array:

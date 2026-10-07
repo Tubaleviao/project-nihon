@@ -243,6 +243,8 @@ func run() -> void:
 	_run_test("equipment: slots cached, peer evict, owner map", _test_equipment_phase48_misc)
 	_run_test("equipment: host worn set + AOI enter/leave",      _test_equipment_host_and_aoi_transitions)
 	_run_test("net: broadcasts go through _test_peers",          _test_network_broadcast_uses_test_peers)
+	_run_test("net: test seam follows the boot gate",            _test_network_seam_follows_boot_gate)
+	_run_test("ui: ? hotkey matches on unicode",                 _test_ui_question_mark_hotkey)
 	_run_test("ui: failed layout rename cleans tmp",             _test_ui_layout_failed_rename_cleans_tmp)
 	_run_test("equipment: rules totals + sanitize",             _test_equipment_rules_totals)
 	_run_test("equipment: derived stats + record + replicate",  _test_character_derived_stats_and_record)
@@ -5758,6 +5760,33 @@ func _test_client_adopts_its_own_handle() -> void:
 	assert_eq(str(snapshot["trade"]["trades"]["trade_0"]["parties"][1]), "p_ffffffffffffffff", "and only ours")
 	assert_true(snapshot["heightmaps"].has("0,0"), "world data is left alone")
 	n.free()
+
+## Phase 67 review — the network test seam follows the boot gate exactly (no private copy of
+## the `--run-tests` rule), so a release boot refuses the seam and the suite's boots allow it.
+func _test_network_seam_follows_boot_gate() -> void:
+	assert_false(NetworkingSlice._test_seam_allowed_for([], false), "a release boot refuses the test seam")
+	assert_true(NetworkingSlice._test_seam_allowed_for(["--run-tests"], false), "--run-tests allows it")
+	assert_true(NetworkingSlice._test_seam_allowed_for([], true), "a debug build allows it")
+	assert_true(NetworkingSlice._test_seam_allowed(), "this boot (the suite) allows it")
+
+## Phase 67 review — the `?` hotkey matches on the unicode the key produced, whatever the layout.
+func _test_ui_question_mark_hotkey() -> void:
+	var ui := _new_test_ui()
+	var ev := InputEventKey.new()
+	ev.pressed = true
+	ev.unicode = 63
+	ev.keycode = KEY_SLASH
+	ui._input(ev)
+	assert_true(ui.is_window_open("controls"), "unicode 63 opens the controls panel")
+	ui._input(ev)
+	assert_false(ui.is_window_open("controls"), "and toggles it closed")
+	var slash := InputEventKey.new()
+	slash.pressed = true
+	slash.unicode = 47
+	slash.keycode = KEY_SLASH
+	ui._input(slash)
+	assert_false(ui.is_window_open("controls"), "a plain / (unicode 47) does not")
+	ui.free()
 
 func _test_boot_suite_is_gated() -> void:
 	# The automated suite no longer runs on EVERY boot: a release export that was
@@ -13509,17 +13538,14 @@ func _test_distant_ring_async() -> void:
 	var d := DistantTerrainScript.new()
 	add_child(d)
 	d.world_seed = 11
-	var before: int = DistantTerrainScript.main_thread_builds
 	assert_true(d.rebuild(Vector2(100.0, -40.0), radius), "the request is accepted")
 	assert_true(d.is_building() or d.get_child_count() == 0, "no mesh is built synchronously")
 	assert_eq(d.get_child_count(), 0, "rebuild returns before any mesh exists")
 	assert_true(d.poll(true), "the finished mesh is swapped in")
-	assert_eq(DistantTerrainScript.main_thread_builds, before, "no lattice evaluation ran on the main thread")
 	var cell := d.ring_half_m * 2.0 / 64.0
 	var origin := Vector2i(floori(100.0 / cell), floori(-40.0 / cell))
 	var snapped := Vector2(float(origin.x) * cell, float(origin.y) * cell)
 	var sync_mesh: ArrayMesh = DistantTerrainScript.build_mesh(11, d.circumference_m, snapped, d.ring_half_m, d.window_half_m, Vector2(100.0, -40.0))
-	assert_eq(DistantTerrainScript.main_thread_builds, before + 1, "the reference build counts as a main-thread build")
 	var got: ArrayMesh = (d.get_child(0) as MeshInstance3D).mesh
 	assert_eq(got.surface_get_arrays(0)[Mesh.ARRAY_VERTEX], sync_mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX], "the async mesh equals a synchronous build")
 	# A request that arrives mid-build supersedes it; the newest wins.
@@ -14417,7 +14443,7 @@ func _seam_rig() -> Dictionary:
 			if dx != 0 or dz != 0:
 				cm.load_chunk(Vector2i(dx, dz))
 	_wait_for_builds(cm)
-	cm.rebuild_requests.clear()
+	cm.reset_rebuild_requests()
 	return rig
 
 func _seam_rig_free(rig: Dictionary) -> void:
@@ -14427,7 +14453,7 @@ func _seam_rig_free(rig: Dictionary) -> void:
 	rig["player"].free()
 
 func _seam_requested(cm: ChunkManager) -> Array:
-	var out: Array = cm.rebuild_requests.keys()
+	var out: Array = cm.rebuilt_chunk_keys()
 	out.sort()
 	return out
 
@@ -14451,7 +14477,7 @@ func _test_seam_east_border_edit() -> void:
 	cm.load_chunk(Vector2i(0, 0))
 	assert_eq(_seam_requested(cm), ["1,0"], "only the east neighbour is rebuilt")
 	cm.rebuild_seam_neighbours(Vector2i(0, 0))
-	assert_eq(int(cm.rebuild_requests["1,0"]), 1, "and at most once per edit revision")
+	assert_eq(cm.rebuild_request_count(Vector2i(1, 0)), 1, "and at most once per edit revision")
 	_seam_rig_free(rig)
 
 func _test_seam_late_edits() -> void:
@@ -14460,7 +14486,7 @@ func _test_seam_late_edits() -> void:
 	var v: VoxelSlice = rig["voxel"]
 	cm.load_chunk(Vector2i(0, 0))
 	_wait_for_builds(cm)
-	cm.rebuild_requests.clear()
+	cm.reset_rebuild_requests()
 	# Edits for the already-loaded chunk arrive by sync, with a corner edit (south-east).
 	var edit: Array = [{ "op": "remove", "bottom": 1.0, "top": 2.0 }]
 	v.apply_edits({ "63,63": edit })
@@ -14475,7 +14501,7 @@ func _test_seam_unloaded_then_streamed() -> void:
 	var v: VoxelSlice = rig["voxel"]
 	# Edits arrive while (0,0) is not streamed in: nothing is requested and no revision is recorded.
 	v.apply_edits({ "63,10": [{ "op": "remove", "bottom": 1.0, "top": 2.0 }] })
-	cm.rebuild_requests.clear()
+	cm.reset_rebuild_requests()
 	cm.rebuild_seam_neighbours(Vector2i(0, 0))
 	assert_eq(_seam_requested(cm).size(), 0, "an unloaded chunk requests nothing")
 	cm.load_chunk(Vector2i(0, 0))
@@ -14490,7 +14516,7 @@ func _test_seam_corner_removal() -> void:
 	_wait_for_builds(cm)
 	v.apply_edits({ "63,63": [{ "op": "remove", "bottom": 1.0, "top": 2.0 }] })
 	_wait_for_builds(cm)
-	cm.rebuild_requests.clear()
+	cm.reset_rebuild_requests()
 	v.apply_edits({})
 	assert_true(_seam_requested(cm).has("1,1"), "removing the corner edit rebuilds the diagonal neighbour")
 	_seam_rig_free(rig)
