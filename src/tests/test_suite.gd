@@ -95,6 +95,11 @@ func run() -> void:
 	_run_test("water: spans cover exactly the tiles below sea level", _test_water_spans)
 	_run_test("player: deep water is swum, not walked",       _test_player_swims_in_deep_water)
 	_run_test("terrain: the distant ring is 10x the window with no collision", _test_distant_ring)
+	_run_test("chunk: deplete-only edits request no neighbour rebuild", _test_seam_deplete_only)
+	_run_test("chunk: a border height edit rebuilds only that neighbour", _test_seam_east_border_edit)
+	_run_test("chunk: late edits rebuild the neighbour across the border", _test_seam_late_edits)
+	_run_test("chunk: edits synced while unloaded still rebuild neighbours on stream-in", _test_seam_unloaded_then_streamed)
+	_run_test("chunk: removing a corner edit rebuilds the diagonal neighbour", _test_seam_corner_removal)
 	_run_test("spawn: ocean chunks grow no trees",            _test_ocean_spawns_no_land_tables)
 	_run_test("terrain: the world wraps east-west",           _test_terrain_wraps_east_west)
 	_run_test("terrain: chunk keys are canonical across the seam", _test_chunk_key_canonical_at_seam)
@@ -14262,3 +14267,92 @@ func _test_clock_persistence_and_fabric() -> void:
 		var biome: Variant = GameData.BIOMES[key]
 		assert_true(biome.get("seasonSwing") != null and biome.get("seasonGrowth") is Dictionary and biome.get("seasonSpawn") is Dictionary,
 				"%s declares its seasonal modifiers" % key)
+
+
+## Phase 69 — a loaded rig with the 3×3 block around (0,0) built except (0,0) itself.
+func _seam_rig() -> Dictionary:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.max_builds_in_flight = 16
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			if dx != 0 or dz != 0:
+				cm.load_chunk(Vector2i(dx, dz))
+	_wait_for_builds(cm)
+	cm.rebuild_requests.clear()
+	return rig
+
+func _seam_rig_free(rig: Dictionary) -> void:
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+func _seam_requested(cm: ChunkManager) -> Array:
+	var out: Array = cm.rebuild_requests.keys()
+	out.sort()
+	return out
+
+func _test_seam_deplete_only() -> void:
+	var rig := _seam_rig()
+	var cm: ChunkManager = rig["cm"]
+	var v: VoxelSlice = rig["voxel"]
+	# Tile 63,10 is on chunk (0,0)'s east border; a deplete op never changes a height.
+	v._set_edit_ops("63,10", [{ "op": "deplete", "vein": "9,9,9", "taken": 1 }])
+	assert_eq(v.seam_borders(Vector2i(0, 0)).size(), 0, "a deplete-only chunk reports no seam border")
+	cm.load_chunk(Vector2i(0, 0))
+	assert_eq(_seam_requested(cm).size(), 0, "streaming it in requests no neighbour rebuild")
+	_seam_rig_free(rig)
+
+func _test_seam_east_border_edit() -> void:
+	var rig := _seam_rig()
+	var cm: ChunkManager = rig["cm"]
+	var v: VoxelSlice = rig["voxel"]
+	v._set_edit_ops("63,10", [{ "op": "remove", "bottom": 1.0, "top": 2.0 }])
+	assert_eq(v.seam_borders(Vector2i(0, 0)), [Vector2i(1, 0)], "the east border is the only seam")
+	cm.load_chunk(Vector2i(0, 0))
+	assert_eq(_seam_requested(cm), ["1,0"], "only the east neighbour is rebuilt")
+	cm.rebuild_seam_neighbours(Vector2i(0, 0))
+	assert_eq(int(cm.rebuild_requests["1,0"]), 1, "and at most once per edit revision")
+	_seam_rig_free(rig)
+
+func _test_seam_late_edits() -> void:
+	var rig := _seam_rig()
+	var cm: ChunkManager = rig["cm"]
+	var v: VoxelSlice = rig["voxel"]
+	cm.load_chunk(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	cm.rebuild_requests.clear()
+	# Edits for the already-loaded chunk arrive by sync, with a corner edit (south-east).
+	var edit: Array = [{ "op": "remove", "bottom": 1.0, "top": 2.0 }]
+	v.apply_edits({ "63,63": edit })
+	var got := _seam_requested(cm)
+	assert_true(got.has("1,0") and got.has("0,1") and got.has("1,1"), "east, south and the diagonal neighbour rebuild (%s)" % str(got))
+	assert_false(got.has("-1,0") or got.has("0,-1"), "the far borders do not")
+	_seam_rig_free(rig)
+
+func _test_seam_unloaded_then_streamed() -> void:
+	var rig := _seam_rig()
+	var cm: ChunkManager = rig["cm"]
+	var v: VoxelSlice = rig["voxel"]
+	# Edits arrive while (0,0) is not streamed in: nothing is requested and no revision is recorded.
+	v.apply_edits({ "63,10": [{ "op": "remove", "bottom": 1.0, "top": 2.0 }] })
+	cm.rebuild_requests.clear()
+	cm.rebuild_seam_neighbours(Vector2i(0, 0))
+	assert_eq(_seam_requested(cm).size(), 0, "an unloaded chunk requests nothing")
+	cm.load_chunk(Vector2i(0, 0))
+	assert_eq(_seam_requested(cm), ["1,0"], "streaming it in still rebuilds the east neighbour")
+	_seam_rig_free(rig)
+
+func _test_seam_corner_removal() -> void:
+	var rig := _seam_rig()
+	var cm: ChunkManager = rig["cm"]
+	var v: VoxelSlice = rig["voxel"]
+	cm.load_chunk(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	v.apply_edits({ "63,63": [{ "op": "remove", "bottom": 1.0, "top": 2.0 }] })
+	_wait_for_builds(cm)
+	cm.rebuild_requests.clear()
+	v.apply_edits({})
+	assert_true(_seam_requested(cm).has("1,1"), "removing the corner edit rebuilds the diagonal neighbour")
+	_seam_rig_free(rig)

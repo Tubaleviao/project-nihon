@@ -575,9 +575,41 @@ func _gather_edits(chunk_pos: Vector2i) -> Dictionary:
 			out[key] = _edits[key].duplicate(true)
 	return out
 
-## True when any tile of `chunk_pos` carries an edit op.
-func has_edits_in_chunk(chunk_pos: Vector2i) -> bool:
-	return _edits_by_chunk.has(_chunk_key(chunk_pos))
+## Phase 69 — bumped whenever a chunk's edit bucket changes, so a consumer can do work "once per
+## edit revision" (`ChunkManager` gates its seam rebuilds on it).
+var _edit_rev: Dictionary = {}
+
+func edit_revision(chunk_pos: Vector2i) -> int:
+	return int(_edit_rev.get(_chunk_key(chunk_pos), 0))
+
+## Phase 69 — the neighbour offsets (each component in -1..1, never (0,0)) across which `chunk_pos`
+## carries a height-changing edit on a border tile. Deplete ops never change a height, so a
+## chunk whose only edits are deplete ops reports none. A tile on a corner names both edge
+## neighbours and the diagonal one.
+func seam_borders(chunk_pos: Vector2i) -> Array:
+	var found: Dictionary = {}
+	var bucket: Dictionary = _edits_by_chunk.get(_chunk_key(chunk_pos), {})
+	var last := CHUNK_SIZE - 1
+	for tile_key in bucket:
+		var shapes := false
+		for op in _edits.get(tile_key, []):
+			if op is Dictionary and str(op.get("op", "")) != "deplete":
+				shapes = true
+				break
+		if not shapes:
+			continue
+		var tile := _key_to_tile(str(tile_key))
+		var lx := posmod(tile.x, CHUNK_SIZE)
+		var lz := posmod(tile.y, CHUNK_SIZE)
+		var dx := -1 if lx == 0 else (1 if lx == last else 0)
+		var dz := -1 if lz == 0 else (1 if lz == last else 0)
+		if dx != 0:
+			found[Vector2i(dx, 0)] = true
+		if dz != 0:
+			found[Vector2i(0, dz)] = true
+		if dx != 0 and dz != 0:
+			found[Vector2i(dx, dz)] = true
+	return found.keys()
 
 ## The heightmaps of the chunks the ring reads across, when they are KNOWN.
 ##
@@ -1557,18 +1589,25 @@ func _commit_edits(next: Dictionary, diff_keys: Variant = null) -> void:
 	# clear_dirty_chunks() after a successful save (called from game_root._on_save_completed).
 	# Restored on-disk edits are not dirty — they were already persisted.
 	var touched: Dictionary = {}
+	var changed: Dictionary = {}   # chunks that own a changed tile (Phase 69: their seams)
 	var keys: Array = (diff_keys as Array) if diff_keys is Array else _union_keys(previous, next)
 	for key in keys:
 		if next.has(key):
 			if not _ops_equal(previous.get(key, null), next[key]):
 				_mark_touched_tile(touched, _key_to_tile(str(key)))
+				changed[_chunk_key(_tile_to_chunk(_key_to_tile(str(key))))] = true
 		elif previous.has(key):
 			_mark_touched_tile(touched, _key_to_tile(str(key)))
+			changed[_chunk_key(_tile_to_chunk(_key_to_tile(str(key))))] = true
 	var previous_taken: Dictionary = _vein_taken
 	_edits = next
 	# The read-side chunk index is re-derived with it (Phase 42 review pass 10): the log was
 	# replaced in one assignment, so the index is rebuilt rather than diffed.
 	_reindex_edits()
+	# Phase 69 — only the chunks that own a changed tile get a new revision (the re-index above
+	# rewrites every bucket, which must not look like an edit to the seam gate).
+	for ckey in changed:
+		_bump_chunk_rev(str(ckey))
 	# Phase 43 — a vein whose EXHAUSTION changed with the new log repaints across its whole
 	# blob, which is wider than the anchor tile the deplete op sits on (the only tile the
 	# diff above marks). A count that moved without crossing the reserve changes nothing
@@ -1606,6 +1645,36 @@ func _commit_edits(next: Dictionary, diff_keys: Variant = null) -> void:
 		if not _chunks.has(ckey) or not _heightmaps.has(ckey):
 			continue   # nothing to refresh: unloaded chunks rebuild when streamed in
 		build_chunk(chunk, _heightmaps[ckey])
+	# Phase 69 — edits that arrive after a chunk loaded reach the diagonal neighbour of a changed
+	# corner tile too; the edge neighbours were requested just above. Judged on the old AND the new
+	# ops, so removing a shaping edit (or turning it deplete-only) repairs the neighbour as well.
+	if chunk_manager != null and chunk_manager.has_method("request_rebuild"):
+		var diagonals: Dictionary = {}
+		for key in keys:
+			var shaped := _ops_shape(previous.get(key, [])) or _ops_shape(next.get(key, []))
+			if not shaped:
+				continue
+			var tile := _key_to_tile(str(key))
+			var lx := posmod(tile.x, CHUNK_SIZE)
+			var lz := posmod(tile.y, CHUNK_SIZE)
+			if (lx != 0 and lx != CHUNK_SIZE - 1) or (lz != 0 and lz != CHUNK_SIZE - 1):
+				continue
+			if not _ops_equal(previous.get(key, null), next.get(key, null)):
+				var off := Vector2i(-1 if lx == 0 else 1, -1 if lz == 0 else 1)
+				var dkey := _chunk_key(_tile_to_chunk(tile) + off)
+				if not touched.has(dkey):
+					diagonals[dkey] = _tile_to_chunk(tile) + off
+		for dkey in diagonals:
+			chunk_manager.request_rebuild(diagonals[dkey])
+
+## True when `ops` holds an op that can change a height (anything but a deplete).
+static func _ops_shape(ops: Variant) -> bool:
+	if not ops is Array:
+		return false
+	for op in ops:
+		if op is Dictionary and str(op.get("op", "")) != "deplete":
+			return true
+	return false
 
 static func _union_keys(a: Dictionary, b: Dictionary) -> Array:
 	var keys: Array = b.keys()
@@ -2446,9 +2515,17 @@ func _set_edit_ops(tile_key: String, ops: Array) -> void:
 	if ops.is_empty():
 		_edits.erase(tile_key)
 		_unindex_edit(tile_key)
+		_bump_edit_rev(tile_key)
 		return
 	_edits[tile_key] = ops
 	_index_edit(tile_key)
+	_bump_edit_rev(tile_key)
+
+func _bump_edit_rev(tile_key: String) -> void:
+	_bump_chunk_rev(_chunk_key(_tile_to_chunk(_key_to_tile(tile_key))))
+
+func _bump_chunk_rev(ckey: String) -> void:
+	_edit_rev[ckey] = int(_edit_rev.get(ckey, 0)) + 1
 
 ## Record `tile_key` under its chunk in the read-side index (idempotent).
 func _index_edit(tile_key: String) -> void:
