@@ -592,6 +592,9 @@ func run() -> void:
 	_run_test("region: a vein depleted from an evicted chunk stays depleted in its neighbours", _test_region_evict_keeps_vein_depletion)
 	_run_test("region: one unwritable region does not stop the rest of the save", _test_region_failed_write_saves_the_rest)
 	_run_test("region: a region whose read fails is not resident and is retried", _test_region_failed_read_not_resident)
+	_run_test("chat: /where is spelled once",                       _test_chat_command_constant)
+	_run_test("region: a failed read backs off",                    _test_region_failed_read_backs_off)
+	_run_test("region: op lists with non-dictionary ops are dropped", _test_region_entry_rejects_bad_ops)
 	_run_test("region: a chunk entry with edits or materials of the wrong type is skipped with one warning", _test_region_malformed_entry_skipped)
 	_run_test("peer window: a flood of far claims moves the window at most once", _test_peer_window_rate_limited)
 	_run_test("peer window: a seam crossing is a short step, not a planet-wide one", _test_peer_window_clamps_across_seam)
@@ -7325,6 +7328,14 @@ func _test_voxel_yield_matches_blended_biome() -> void:
 	ts.free()
 	v.free()
 
+## Phase 63 — the one chat command is spelled in one place.
+func _test_chat_command_constant() -> void:
+	var ChatCommands: GDScript = load("res://src/core/chat_commands.gd")
+	assert_true(ChatCommands.is_command(ChatCommands.WHERE), "the constant is a command")
+	assert_true(ChatCommands.is_command("  /WHERE "), "case and padding are ignored")
+	assert_eq(ChatCommands.run("/where", Vector3.ZERO), TerrainSlice.where_text(Vector3.ZERO), "run answers it")
+	assert_eq(ChatCommands.run("/nope", Vector3.ZERO), "", "anything else answers nothing")
+
 ## Phase 64 — a revealed border cell next to an UNREVEALED chunk never wears that chunk's biome.
 func _test_minimap_blend_respects_fog() -> void:
 	var mm := Minimap.new()
@@ -13829,12 +13840,15 @@ func _test_region_failed_read_retried() -> void:
 	f.close()
 	var voxel := _make_voxel()
 	var streamer := RegionStreamerScript.new(store, voxel)
+	var clock := [0]
+	streamer._now = func() -> int: return clock[0]
 	var first := streamer.sync({ "0,0": true })
 	assert_eq(int(first["failed"]), 1, "the unreadable region is reported as failed")
 	assert_eq(int(first["loaded"]), 0, "and not as loaded")
 	assert_false(streamer.is_resident(Vector2i(0, 0)), "it is not resident")
 	var edit := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
 	assert_eq(store.save_region(Vector2i(0, 0), { "1,1": edit }), OK, "the file is repaired")
+	clock[0] += RegionStreamerScript.BACKOFF_START_MSEC   # the first backoff has elapsed
 	var second := streamer.sync({ "0,0": true })
 	assert_eq(int(second["loaded"]), 1, "the next sync reads it")
 	assert_true(streamer.is_resident(Vector2i(0, 0)), "and it is resident now")
@@ -13853,6 +13867,44 @@ func _test_registry_bound_peer_ids() -> void:
 	reg.unbind_peer(4)
 	assert_eq(reg.get_bound_peer_ids(), [9], "an unbound peer drops out")
 
+## An unreadable region is not re-read (or re-logged) on every sync: the delay doubles per failure
+## up to the cap, and a successful read forgets it.
+func _test_region_failed_read_backs_off() -> void:
+	var dir := _fresh_region_dir("test_p61_backoff")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	DirAccess.make_dir_recursive_absolute(dir + "regions/")
+	var f := FileAccess.open(store.path_of(Vector2i.ZERO), FileAccess.WRITE)
+	f.store_string("{ not json")
+	f.close()
+	var voxel := _make_voxel()
+	var streamer := RegionStreamerScript.new(store, voxel)
+	var clock := [0]
+	streamer._now = func() -> int: return clock[0]
+	var wanted := { "0,0": true }
+	streamer.sync(wanted)
+	assert_true(streamer.is_backing_off(Vector2i.ZERO), "a failed read starts a backoff")
+	var base: int = RegionStreamerScript.BACKOFF_START_MSEC
+	clock[0] = base - 1
+	var during := streamer.sync(wanted)
+	assert_eq(int(during["failed"]), 1, "a sync inside the backoff still reports the region as failed")
+	assert_true(streamer.is_backing_off(Vector2i.ZERO), "and keeps backing off")
+	clock[0] = base
+	assert_false(streamer.is_backing_off(Vector2i.ZERO), "the backoff elapses")
+	streamer.sync(wanted)   # fails again: the delay doubles
+	clock[0] = base + base * 2 - 1
+	assert_true(streamer.is_backing_off(Vector2i.ZERO), "the second delay is twice the first")
+	for i in 12:
+		clock[0] += RegionStreamerScript.BACKOFF_MAX_MSEC
+		streamer.sync(wanted)
+	clock[0] += RegionStreamerScript.BACKOFF_MAX_MSEC - 1
+	assert_true(streamer.is_backing_off(Vector2i.ZERO), "the delay is capped, not unbounded")
+	clock[0] += 1
+	assert_false(streamer.is_backing_off(Vector2i.ZERO), "and the cap is the longest wait")
+	assert_eq(store.save_region(Vector2i.ZERO, { "0,0": { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } } }), OK, "the file is repaired")
+	assert_eq(int(streamer.sync(wanted)["loaded"]), 1, "the first read after the backoff loads it")
+	assert_false(streamer.is_backing_off(Vector2i.ZERO), "and clears the backoff")
+	voxel.free()
+
 func _test_region_failed_read_not_resident() -> void:
 	var dir := _fresh_region_dir("test_p61_read")
 	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
@@ -13863,17 +13915,27 @@ func _test_region_failed_read_not_resident() -> void:
 	f.close()
 	var voxel := _make_voxel()
 	var streamer := RegionStreamerScript.new(store, voxel)
+	var clock := [0]
+	streamer._now = func() -> int: return clock[0]
 	var wanted := { "0,0": true }
 	var r := streamer.sync(wanted)
 	assert_eq(int(r["loaded"]), 0, "nothing loaded from an unreadable region")
 	assert_false(streamer.is_resident(Vector2i.ZERO), "the region is not marked resident")
 	var entry := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
 	assert_eq(store.save_region(Vector2i.ZERO, { "0,0": entry }), OK, "the file is repaired")
+	clock[0] += RegionStreamerScript.BACKOFF_START_MSEC
 	r = streamer.sync(wanted)
 	assert_eq(int(r["loaded"]), 1, "the next sync reads it again")
 	assert_true(streamer.is_resident(Vector2i.ZERO), "and it is resident")
 	assert_true(voxel.edited_chunk_keys().has("0,0"), "with its edits applied")
 	voxel.free()
+
+## A tile's op list must hold ops (Dictionaries) — or, for a legacy entry, a bare number.
+func _test_region_entry_rejects_bad_ops() -> void:
+	assert_true(RegionStoreScript.is_valid_chunk_entry({ "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }), "an op list of ops is valid")
+	assert_true(RegionStoreScript.is_valid_chunk_entry({ "edits": { "0,0": 1.5 } }), "a legacy bare height is left to the voxel slice")
+	assert_false(RegionStoreScript.is_valid_chunk_entry({ "edits": { "0,0": [5, "x"] } }), "an op list of non-ops is not")
+	assert_false(RegionStoreScript.is_valid_chunk_entry({ "edits": { "0,0": [{ "op": "raise" }, null] } }), "one bad op spoils the list")
 
 func _test_region_malformed_entry_skipped() -> void:
 	var dir := _fresh_region_dir("test_p61_entry")

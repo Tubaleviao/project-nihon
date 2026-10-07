@@ -161,11 +161,18 @@ func read_region(region: Vector2i) -> Dictionary:
 
 ## Phase 61 — a chunk entry's `edits`, when present, must be a Dictionary (tile key → op list)
 ## and its `materials`, when present, a Dictionary. Only the container types are checked: the
-## values inside (legacy entries carry bare numbers) are left to `VoxelSlice` to migrate. Pure.
+## tile's value is left to `VoxelSlice` to migrate (legacy entries carry bare numbers), except that
+## an op LIST must hold only ops (Dictionaries). Pure.
 static func _chunk_entry_valid(entry: Dictionary) -> bool:
 	if entry.has("edits"):
 		if not (entry["edits"] is Dictionary):
 			return false
+		for tile_key in entry["edits"]:
+			var ops: Variant = entry["edits"][tile_key]
+			if ops is Array:
+				for op in ops:
+					if not (op is Dictionary):
+						return false
 	if entry.has("materials") and not (entry["materials"] is Dictionary):
 		return false
 	return true
