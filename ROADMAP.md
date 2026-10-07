@@ -5821,7 +5821,7 @@ rule (#88, with #63-#65 and #70). The host must decide what is in the hand.
 
 ---
 
-## Phase 61 — Region storage correctness
+## Phase 61 — Region storage correctness ✅ Done
 
 **Goal:** Close the Medium items left open by the Phase 52 review passes (#143, #144, #145,
 #146): an evicted chunk must not resurrect a vein, one bad region file must not stop the whole
@@ -5847,15 +5847,15 @@ save, and a failed region read must not be marked resident.
   after the world seed is restored, not before.
 
 **Acceptance criteria:**
-- [ ] Suite: a vein spanning two chunks, depleted from a tile in chunk A, stays depleted in
+- [x] Suite: a vein spanning two chunks, depleted from a tile in chunk A, stays depleted in
   chunk B after A is evicted (`OreField.is_live` false), and after A is re-read.
-- [ ] Suite: with one region file made unreadable, a save still writes the other regions,
+- [x] Suite: with one region file made unreadable, a save still writes the other regions,
   `world.json` and player records, and returns a non-OK status.
-- [ ] Suite: a region whose read fails is absent from the resident set and is read again on the
+- [x] Suite: a region whose read fails is absent from the resident set and is read again on the
   next `sync`.
-- [ ] Suite: a region file whose chunk carries `edits: 5` or `materials: "x"` loads the other
+- [x] Suite: a region file whose chunk carries `edits: 5` or `materials: "x"` loads the other
   chunks and logs one warning.
-- [ ] Suite green on both boot paths; `tools/net_harness.sh` agrees on every step.
+- [x] Suite green on both boot paths; `tools/net_harness.sh` agrees on every step.
 
 ---
 

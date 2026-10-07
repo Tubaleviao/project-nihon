@@ -153,11 +153,22 @@ func read_region(region: Vector2i) -> Dictionary:
 	var chunks := {}
 	if raw is Dictionary:
 		for ckey in raw:
-			if raw[ckey] is Dictionary:
+			if raw[ckey] is Dictionary and _chunk_entry_valid(raw[ckey]):
 				chunks[ckey] = raw[ckey]
 			else:
 				Diag.warn("RegionStore: %s: dropping malformed chunk entry '%s'" % [path, str(ckey)])
 	return { "ok": true, "chunks": chunks }
+
+## Phase 61 — a chunk entry's `edits` must be a Dictionary of Arrays (tile key → op list) and
+## its `materials`, when present, a Dictionary. Legacy entries may carry bare numbers as edit
+## values; those are left to `VoxelSlice` to migrate. Pure.
+static func _chunk_entry_valid(entry: Dictionary) -> bool:
+	if entry.has("edits"):
+		if not (entry["edits"] is Dictionary):
+			return false
+	if entry.has("materials") and not (entry["materials"] is Dictionary):
+		return false
+	return true
 
 ## Write one region's chunk entries (replacing the file). An EMPTY chunk set removes the
 ## file instead, so a region whose last edit was put back leaves nothing on disk.
@@ -185,19 +196,24 @@ func save_region(region: Vector2i, chunks: Dictionary) -> Error:
 
 ## Fold `chunks` (a manifest, possibly incremental) into the regions they belong to. Each
 ## affected region is read, folded and rewritten; no other region file is touched. Returns
-## the first Error, or OK. This is the whole write path of a world save.
+## the first Error, or OK — a region that fails does not stop the others from being written
+## (Phase 61). This is the whole write path of a world save.
 func write_chunks(chunks: Dictionary, deletions := true) -> Error:
 	var grouped := group_manifest(chunks)
+	var first_error: Error = OK
 	for rkey in grouped:
 		var region := region_from_key(str(rkey))
 		var read := read_region(region)
 		if not bool(read["ok"]):
-			return ERR_FILE_CORRUPT   # leave the unreadable file alone rather than replace it
+			# Leave the unreadable file alone rather than replace it — and keep saving the rest.
+			if first_error == OK:
+				first_error = ERR_FILE_CORRUPT
+			continue
 		var folded := fold_chunks(read["chunks"], grouped[rkey], deletions)
 		var err := save_region(region, folded)
-		if err != OK:
-			return err
-	return OK
+		if err != OK and first_error == OK:
+			first_error = err
+	return first_error
 
 ## The regions that must be rewritten for a set of dirty "cx,cz" chunk keys.
 func list_dirty(dirty_chunk_keys: Array) -> Array:

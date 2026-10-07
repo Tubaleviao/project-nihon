@@ -558,6 +558,10 @@ func run() -> void:
 	_run_test("spawn: friend code lands near the friend", _test_spawn_friend_near)
 	_run_test("spawn: the colonization map scores, persists and drops malformed data", _test_colonization_map)
 	_run_test("spawn: a fresh join is placed, a reconnect is not", _test_spawn_registry_placement)
+	_run_test("region: a vein depleted from an evicted chunk stays depleted in its neighbours", _test_region_evict_keeps_vein_depletion)
+	_run_test("region: one unwritable region does not stop the rest of the save", _test_region_failed_write_saves_the_rest)
+	_run_test("region: a region whose read fails is not resident and is retried", _test_region_failed_read_not_resident)
+	_run_test("region: a chunk entry with edits or materials of the wrong type is skipped with one warning", _test_region_malformed_entry_skipped)
 	_run_test("region: 1,000 regions on disk, only the ones near a window are resident", _test_region_streams_only_near_windows)
 	_run_test("chunk: each peer has a window and chunks are reference counted", _test_chunk_peer_windows_refcount)
 	_run_test("chunk: two peers 100 km apart each have creatures simulated", _test_chunk_far_peers_simulated)
@@ -13322,6 +13326,91 @@ func _test_region_unreadable_not_overwritten() -> void:
 	g.close()
 	assert_eq(store.load_region(Vector2i.ZERO).keys(), ["1,1"], "a non-Dictionary chunk entry is dropped on read")
 	assert_eq(RegionStoreScript.group_manifest({ "a": entry, "2,2": entry }).size(), 1, "a malformed chunk key is skipped")
+
+func _test_region_evict_keeps_vein_depletion() -> void:
+	var found := _find_surface_vein(0)
+	if found.is_empty():
+		assert_true(false, "a vein breaks the surface of a flat chunk somewhere")
+		return
+	var vein: Dictionary = found["vein"]
+	var id := str(vein["id"])
+	var v := VoxelSlice.new()
+	add_child(v)
+	# Deplete the whole reserve: the op lands on the anchor tile's chunk (chunk A).
+	v._record_depletion(vein, int(vein["reserve"]))
+	var a_key := VoxelSlice._chunk_key(VoxelSlice._tile_to_chunk(vein["anchor"]))
+	assert_false(OreField.is_live(vein, v.get_vein_depletion()), "the vein is exhausted")
+	var manifest := v.get_chunk_manifest()
+	v.clear_dirty_chunks()
+	assert_eq(v.evict_clean_chunks([a_key]), 1, "chunk A is evicted")
+	assert_false(v.edited_chunk_keys().has(a_key), "no edit of chunk A stays resident")
+	assert_false(OreField.is_live(vein, v.get_vein_depletion()), "the vein stays depleted for chunk B after A is evicted")
+	assert_eq(int(v.get_vein_depletion().get(id, 0)), int(vein["reserve"]), "with its full count")
+	v.apply_region_chunks(manifest)
+	assert_false(OreField.is_live(vein, v.get_vein_depletion()), "and after A is re-read")
+	assert_true(v._vein_carry.is_empty(), "the carry is dropped once the op is resident again")
+	v.free()
+
+func _test_region_failed_write_saves_the_rest() -> void:
+	var dir := _fresh_region_dir("test_p61_save")
+	var store := PersistenceSlice.new()
+	add_child(store)
+	store.server_save_dir = dir
+	var entry := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	# Region (0,0) is unreadable; region (1,0) is fine.
+	DirAccess.make_dir_recursive_absolute(dir + "regions/")
+	var bad := store.region_store.path_of(Vector2i.ZERO)
+	var f := FileAccess.open(bad, FileAccess.WRITE)
+	f.store_string("{ not json")
+	f.close()
+	var pid := "player_1_1_abc"
+	var job := {
+		"world":       { "local_player_id": pid, "chunks": { "1,1": entry, "40,1": entry } },
+		"incremental": false,
+		"players":     { pid: { "player_id": pid, "hp": 7.0 } },
+	}
+	assert_true(int(store.write_job(job)) != OK, "the save reports the unreadable region")
+	assert_true(store.region_store.has_region(Vector2i(1, 0)), "the readable region was still written")
+	assert_eq(FileAccess.get_file_as_string(bad), "{ not json", "the unreadable file is untouched")
+	assert_true(store.has_world(), "world.json was still written")
+	assert_eq(float(store.load_player(pid).get("hp", -1.0)), 7.0, "and so was the player record")
+	store.free()
+
+func _test_region_failed_read_not_resident() -> void:
+	var dir := _fresh_region_dir("test_p61_read")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	DirAccess.make_dir_recursive_absolute(dir + "regions/")
+	var path := store.path_of(Vector2i.ZERO)
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string("{ not json")
+	f.close()
+	var voxel := _make_voxel()
+	var streamer := RegionStreamerScript.new(store, voxel)
+	var wanted := { "0,0": true }
+	var r := streamer.sync(wanted)
+	assert_eq(int(r["loaded"]), 0, "nothing loaded from an unreadable region")
+	assert_false(streamer.is_resident(Vector2i.ZERO), "the region is not marked resident")
+	var entry := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	assert_eq(store.save_region(Vector2i.ZERO, { "0,0": entry }), OK, "the file is repaired")
+	r = streamer.sync(wanted)
+	assert_eq(int(r["loaded"]), 1, "the next sync reads it again")
+	assert_true(streamer.is_resident(Vector2i.ZERO), "and it is resident")
+	assert_true(voxel.edited_chunk_keys().has("0,0"), "with its edits applied")
+	voxel.free()
+
+func _test_region_malformed_entry_skipped() -> void:
+	var dir := _fresh_region_dir("test_p61_entry")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	DirAccess.make_dir_recursive_absolute(dir + "regions/")
+	var good := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	var f := FileAccess.open(store.path_of(Vector2i.ZERO), FileAccess.WRITE)
+	f.store_string(JSON.stringify({ "version": 1, "chunks": {
+		"1,1": good, "2,2": { "edits": 5 }, "3,3": { "edits": {}, "materials": "x" } } }))
+	f.close()
+	var before := Diag.warn_count
+	var chunks := store.load_region(Vector2i.ZERO)
+	assert_eq(chunks.keys(), ["1,1"], "the well-formed chunk loads")
+	assert_eq(Diag.warn_count - before, 2, "one warning per malformed entry")
 
 func _test_region_streams_only_near_windows() -> void:
 	var dir := _fresh_region_dir("test_p52_rss")

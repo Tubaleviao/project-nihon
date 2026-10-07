@@ -49,8 +49,11 @@ func sync(wanted: Dictionary) -> Dictionary:
 	for rkey in wanted:
 		if _resident.has(rkey):
 			continue
-		var chunks := _store.load_region(RegionStore.region_from_key(str(rkey)))
-		_voxel.apply_region_chunks(chunks)
+		var read := _store.read_region(RegionStore.region_from_key(str(rkey)))
+		if not bool(read["ok"]):
+			# Not resident: the next sync retries the read instead of treating the region as loaded.
+			continue
+		_voxel.apply_region_chunks(read["chunks"])
 		_resident[rkey] = true
 		loaded += 1
 	for rkey in _resident.keys():
@@ -62,7 +65,8 @@ func sync(wanted: Dictionary) -> Dictionary:
 	# region that had no file yet, is just as resident.
 	if not _stranded.is_empty():
 		var by_region: Dictionary = {}
-		for ckey in _voxel.edited_chunk_keys():
+		var edited_keys: Array = _voxel.edited_chunk_keys()   # once per sync
+		for ckey in edited_keys:
 			var rk := RegionStore.region_key(RegionStore.region_of_chunk_key(str(ckey)))
 			if _stranded.has(rk):
 				if not by_region.has(rk):

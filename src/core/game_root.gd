@@ -2015,12 +2015,6 @@ func _load_world_records() -> void:
 	# Phase 52 — the GLOBAL record only; a Phase 51 monolithic record is split into region
 	# files by this read, and the edits themselves stream in by region.
 	_loaded_world = _persistence.load_world_record()
-	# A failed region migration hands the record back WITH its chunks: apply them and mark
-	# them dirty so the next save writes them to regions instead of dropping them.
-	var legacy_chunks: Variant = _loaded_world.get("chunks", null)
-	if legacy_chunks is Dictionary and not (legacy_chunks as Dictionary).is_empty():
-		_voxel.apply_chunk_manifest(legacy_chunks)
-		_voxel.mark_dirty_chunks((legacy_chunks as Dictionary).keys())
 	_bind_local_identity()
 	# Lazy reader for every other player's record (see the docstring above).
 	_registry.set_record_loader(_persistence.load_player)
@@ -2048,6 +2042,14 @@ func _load_world_records() -> void:
 				_terrain.get_world_seed()])
 		_station.apply_station_data(_loaded_world.get("stations", []))
 		print("[Server] world loaded from %s" % _persistence.world_path())
+	# A failed region migration hands the record back WITH its chunks: apply them and mark
+	# them dirty so the next save writes them to regions instead of dropping them. Phase 61 —
+	# applied AFTER the world seed is restored above: a pre-Phase-41 height migrates against
+	# the tile's natural run, which comes from that seed.
+	var legacy_chunks: Variant = _loaded_world.get("chunks", null)
+	if legacy_chunks is Dictionary and not (legacy_chunks as Dictionary).is_empty():
+		_voxel.apply_chunk_manifest(legacy_chunks)
+		_voxel.mark_dirty_chunks((legacy_chunks as Dictionary).keys())
 	# The local player's record: position, HP, inventory (with per-instance
 	# durability), and technology. It lands in the game's own slices because
 	# _bind_local_identity() ran first.
