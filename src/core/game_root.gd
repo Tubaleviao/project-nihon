@@ -1555,6 +1555,10 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true,
 		if WorldPos.is_wire(own_pos):
 			own_pos = WorldPos.to_wire(WorldPos.from_wire(own_pos))
 		snapshot["player"] = { "position": own_pos, "hp": own.get("hp", -1.0) }
+		# Phase 66 — the original spawn point, so a reconnecting client respawns there and not
+		# where it happened to be standing when it rejoined.
+		if own.has("spawn"):
+			snapshot["player"]["spawn"] = own["spawn"]
 	return snapshot
 
 ## Phase 38 — the replicated social/economy state, keyed by the names the wire uses
@@ -1631,7 +1635,7 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 			if not _client_respawn_point_set:
 				# Only the first snapshot carries the placement; later AOI re-scoped snapshots
 				# carry wherever the player has since walked, which is not a spawn point.
-				_player.respawn_point = _player.get_position()
+				_player.respawn_point = client_respawn_point(own, _player.get_position())
 				_client_respawn_point_set = true
 		var hp := float(own.get("hp", -1.0))
 		if hp >= 0.0:
@@ -2004,6 +2008,13 @@ func _restore_local_player() -> void:
 	var saved_pos: Variant = _saved_local_position()
 	if saved_pos != null:
 		_player.spawn_at(saved_pos)
+	# Phase 66 — a respawn goes to the ORIGINAL spawn point: the recorded one, else (a record from
+	# before the field existed) the saved position; a fresh player's placement is recorded now.
+	var spawn: Variant = respawn_point_for(rec)
+	if spawn != null:
+		_player.respawn_point = spawn
+	else:
+		_registry.record_spawn(pid, _player.respawn_point)
 	var hp := float(rec.get("hp", -1.0))
 	if hp >= 0.0:
 		_player.set_hp(hp)
@@ -2014,6 +2025,24 @@ func _restore_local_player() -> void:
 	_taming.apply_record(rec, pid)
 	# Phase 47 — and the worn set.
 	_apply_local_equipment(rec.get("equipment", {}))
+
+## Phase 66 — the respawn point a player RECORD implies: its original spawn, else (a record from
+## before the field existed) its saved position, else null (a player never placed).
+static func respawn_point_for(rec: Dictionary) -> Variant:
+	var spawn: Variant = PlayerRegistry.spawn_from_record(rec)
+	if spawn != null:
+		return spawn
+	var arr: Variant = rec.get("position", [])
+	if arr is Array and (arr as Array).size() >= 3:
+		return Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
+	return null
+
+## Phase 66 — the respawn point of a client from its handshake `player` block: the host's
+## recorded spawn when it sent one, else where the body stands now.
+static func client_respawn_point(own: Dictionary, standing: Vector3) -> Vector3:
+	if WorldPos.is_wire(own.get("spawn", null)):
+		return WorldPos.from_wire(own["spawn"], standing)
+	return standing
 
 ## The local player's recorded position, or null when there is no identity or the
 ## record carries none. Read by the host boot (to arm the first ring where the player

@@ -5998,10 +5998,10 @@ spawn point, and the colonization map over-counts after a restart (#148).
   raise its region's count.
 
 **Acceptance criteria:**
-- [ ] Suite: a host placed at spawn S, moved away and reloaded respawns at S.
-- [ ] Suite: a client reconnecting after moving away respawns at its original spawn point.
-- [ ] Suite: edit chunk K, save, reload, edit K again — the region's edit count is unchanged.
-- [ ] Suite green on both boot paths.
+- [x] Suite: a host placed at spawn S, moved away and reloaded respawns at S.
+- [x] Suite: a client reconnecting after moving away respawns at its original spawn point.
+- [x] Suite: edit chunk K, save, reload, edit K again — the region's edit count is unchanged.
+- [x] Suite green on both boot paths.
 
 ---
 

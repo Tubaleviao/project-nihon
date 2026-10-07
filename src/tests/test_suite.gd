@@ -568,6 +568,8 @@ func run() -> void:
 	_run_test("region: an unreadable region file is never overwritten by a save", _test_region_unreadable_not_overwritten)
 	_run_test("spawn: new players avoid colonized regions", _test_spawn_avoids_colonized)
 	_run_test("spawn: friend code lands near the friend", _test_spawn_friend_near)
+	_run_test("spawn: respawn point survives a move + reload (host and client)", _test_spawn_point_persists)
+	_run_test("spawn: counted chunks survive a colonization reload", _test_colonization_counted_persists)
 	_run_test("spawn: the colonization map scores, persists and drops malformed data", _test_colonization_map)
 	_run_test("spawn: a fresh join is placed, a reconnect is not", _test_spawn_registry_placement)
 	_run_test("region: a vein depleted from an evicted chunk stays depleted in its neighbours", _test_region_evict_keeps_vein_depletion)
@@ -13954,6 +13956,63 @@ func _test_colonization_map() -> void:
 	seeded.seed_from_regions([Vector2i(4, 4)])
 	seeded.seed_from_regions([Vector2i(4, 4)])
 	assert_eq(seeded.score(Vector2i(4, 4)), 1.0, "seeding from region files is idempotent")
+
+## Phase 66 — a host placed at S, moved away and reloaded respawns at S; a client reconnecting after
+## moving away is sent S in its handshake block and respawns there. Legacy records fall back.
+func _test_spawn_point_persists() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	var spawn := Vector3(1234.0, 9.0, -777.0)
+	var reg := PlayerRegistry.new()
+	reg.is_authoritative = true
+	reg.set_spawn_placer(func(_pid: String, _code: String) -> Dictionary:
+		return { "position": spawn, "source": "search", "message": "" })
+	var pid := reg.resolve_identity(5)
+	reg.record_position(pid, Vector3(-4000.0, 3.0, 2500.0))   # moved far away
+	var saved: Dictionary = reg.get_player_data(pid)
+	assert_true(saved.has("spawn"), "the saved record carries the spawn point")
+	# Host: a fresh registry loaded from that save respawns at S, not at the saved position.
+	var fresh := PlayerRegistry.new()
+	fresh.apply_player_data(pid, saved)
+	var host_rec: Dictionary = fresh.get_record(pid)
+	var host_point: Variant = root_script.respawn_point_for(host_rec)
+	assert_true(host_point != null and (host_point as Vector3).distance_to(spawn) < 0.01,
+		"a reloaded host respawns at its original spawn point")
+	assert_true(absf(float(host_rec["position"][0]) + 4000.0) < 0.01, "while still standing where it logged off")
+	# Client: the handshake block carries the spawn; the client has since moved.
+	var own: Dictionary = { "position": saved["position"], "hp": 100.0, "spawn": saved["spawn"] }
+	var wire: Variant = root_script.client_respawn_point(own, Vector3(-4000.0, 3.0, 2500.0))
+	assert_true((wire as Vector3).distance_to(spawn) < 0.01, "a reconnecting client respawns at its original spawn point")
+	assert_eq(root_script.client_respawn_point({ "position": saved["position"] }, Vector3(1.0, 2.0, 3.0)),
+		Vector3(1.0, 2.0, 3.0), "a host that sent no spawn leaves the standing position")
+	# Legacy and malformed records fall back to the saved position.
+	var legacy: Dictionary = saved.duplicate(true)
+	legacy.erase("spawn")
+	var old := PlayerRegistry.new()
+	old.apply_player_data(pid, legacy)
+	assert_eq(old.spawn_of(pid), null, "a record without the field has no spawn")
+	var fallback: Variant = root_script.respawn_point_for(old.get_record(pid))
+	assert_true((fallback as Vector3).distance_to(Vector3(-4000.0, 3.0, 2500.0)) < 0.01, "and falls back to its saved position")
+	legacy["spawn"] = { "chunk": ["x", 1], "local": [0, 0] }
+	old.apply_player_data(pid, legacy)
+	assert_eq(old.spawn_of(pid), null, "a malformed spawn is dropped")
+	reg.free()
+	fresh.free()
+	old.free()
+
+## Phase 66 — edit chunk K, save, reload, edit K again: the region's count is unchanged.
+func _test_colonization_counted_persists() -> void:
+	var m := ColonizationMapScript.new()
+	m.note_edited_chunk(Vector2i(70, 100))
+	var region := Vector2i(2, 3)
+	assert_eq(m.score(region), 1.0, "one counted chunk")
+	var reloaded := ColonizationMapScript.new()
+	reloaded.from_data(JSON.parse_string(JSON.stringify(m.to_data())))
+	assert_true(not reloaded.note_edited_chunk(Vector2i(70, 100)), "the reloaded map knows the chunk was counted")
+	assert_eq(reloaded.score(region), 1.0, "re-editing it leaves the region's count unchanged")
+	assert_true(reloaded.note_edited_chunk(Vector2i(71, 100)), "a different chunk still counts")
+	reloaded.from_data({ "regions": {}, "counted": ["bad", "1,x", 7, "5,6"] })
+	assert_true(not reloaded.note_edited_chunk(Vector2i(5, 6)) and reloaded.note_edited_chunk(Vector2i(1, 1)),
+		"malformed counted entries are dropped, good ones kept")
 
 func _test_spawn_registry_placement() -> void:
 	var reg := PlayerRegistry.new()
