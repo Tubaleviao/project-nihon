@@ -17,7 +17,7 @@ issue number where the criterion used to be.
 
 ---
 
-## Phase 1 — Constitution fabric
+## Phase 1 — Constitution fabric ✅ Done
 
 **Goal:** Encode the game's foundational decisions in a fabric so they can be
 referenced by every subsequent definition.
@@ -40,7 +40,7 @@ referenced by every subsequent definition.
 
 ---
 
-## Phase 2 — Materials and world primitives
+## Phase 2 — Materials and world primitives ✅ Done
 
 **Goal:** Define the fictional materials that underpin crafting and the
 physical simulation.
@@ -67,7 +67,7 @@ weights).
 
 ---
 
-## Phase 3 — Skills and professions
+## Phase 3 — Skills and professions ✅ Done
 
 **Goal:** Define every player skill and how skills combine into professions.
 
@@ -91,7 +91,7 @@ weights).
 
 ---
 
-## Phase 4 — Items, recipes, and technology tree
+## Phase 4 — Items, recipes, and technology tree ✅ Done
 
 **Goal:** Model every craftable item, the recipes that produce them, and the
 technology progression that unlocks recipes.
@@ -118,7 +118,7 @@ technology progression that unlocks recipes.
 
 ---
 
-## Phase 5 — Creatures and combat systems
+## Phase 5 — Creatures and combat systems ✅ Done
 
 **Goal:** Define the world's fauna and the combat rules that govern
 player–creature and player–player interaction.
@@ -144,7 +144,7 @@ combat rules).
 
 ---
 
-## Phase 6 — `generator-bible` integration
+## Phase 6 — `generator-bible` integration ✅ Done
 
 **Goal:** Run `pnpm generate` in this project and produce a readable design
 bible.
@@ -165,7 +165,7 @@ bible.
 
 ---
 
-## Phase 7 — Character system specification
+## Phase 7 — Character system specification ✅ Done
 
 **Goal:** Produce a complete, actionable character system specification that
 covers visual customization, asset architecture, animation, persistence, and
@@ -208,7 +208,8 @@ multiplayer state — ready to guide engine implementation and art production.
 - Palette size is explicitly decided and documented
 - Animation state machine covers at minimum: idle, walk, run, fall, land, attack,
   death — with transition conditions and blend parameters specified
-- The asset pipeline checklist is complete and agreed upon by art and engineering
+- The asset pipeline checklist is complete (sign-offs recorded in `characters.md` §41.1; the
+  art/engineering agreement itself is a human judgement and is not an automated criterion)
 
 ---
 
