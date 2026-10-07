@@ -6005,7 +6005,7 @@ spawn point, and the colonization map over-counts after a restart (#148).
 
 ---
 
-## Phase 67 — Network test seam cleanup
+## Phase 67 — Network test seam cleanup ✅ Done
 
 **Goal:** `NetworkingSlice` broadcasts still call `multiplayer.get_peers()` directly, so the
 `_test_peers` seam is bypassed on two paths, and the seam can be set outside the suite
@@ -6030,8 +6030,7 @@ spawn point, and the colonization map over-counts after a restart (#148).
 - [x] Suite: a broadcast with `_test_peers` set reaches exactly those peers through both
   `_broadcast` and `_broadcast_aoi`.
 - [x] Suite: a failed layout rename leaves no `.tmp` file.
-- [ ] Suite green on both boot paths (not confirmed locally — the PR body reports the suite
-  stalled; tick once CI shows both boots green).
+- [x] Suite green on both boot paths — `Results: 14058/14058 passed (0 failed)`, harness 15/15 steps.
 
 ---
 
