@@ -261,14 +261,6 @@ var is_authoritative: bool = true
 ## the player cycles onto a material they actually hold in inventory.
 var _place_material: String = ""
 
-## The ONE terrain material every chunk mesh of this slice shares — the surface mesh and,
-## on a chunk that carries a rare vein, the deposit overlay. Built once, in `_ready()` (and
-## on first use for an isolated slice that never enters the tree), and reused for every
-## rebuild: it used to be a fresh `StandardMaterial3D` per `_terrain_material()` call, i.e.
-## twice per chunk build and two more on every edit rebuild, re-stream or self-heal, which
-## is material churn proportional to the (streamed) rebuild count rather than to the slice.
-var _terrain_mat: StandardMaterial3D = null
-
 ## Phase 65 — season tint per biome (`set_season_tints`) and the terrain material each biome's
 ## chunks wear. A chunk's surface and deposit overlay share its biome's instance; a biome with no
 ## tint yet is white until `set_season_tints` reaches it.
@@ -299,8 +291,6 @@ func scene_offset() -> Vector3:
 	return _scene_offset
 
 func _ready() -> void:
-	# One material for every terrain mesh this slice ever builds (see `_terrain_mat`).
-	_terrain_mat = _make_terrain_material()
 	# Phase 43 — fill the ore field's material band table HERE, on the main thread, before any
 	# worker can exist. It replaces the Phase 42 per-biome roll table and inherits its contract:
 	# a `static var` on a script a chunk-build task reaches (`build_runs` → `natural_color` →
@@ -2297,16 +2287,6 @@ func _run_color(run: Dictionary, world_xz: Vector2, biomes: Dictionary = {}, col
 	return run_color(run, world_xz, _biomes_or_lookup(world_xz, biomes), colours,
 		_base_top_for_tile(_world_to_tile(world_xz)), _field(_world_seed(), _vein_taken))
 
-## The terrain material this slice's chunk meshes share — ONE instance for the lifetime of
-## the slice (see `_terrain_mat`). The lazy branch is for an isolated rig that drives
-## `build_chunk` without ever entering `_ready()`; in the game the material is already built.
-func _terrain_material() -> StandardMaterial3D:
-	if _terrain_mat == null:
-		_terrain_mat = _make_terrain_material()
-	return _terrain_mat
-
-## The terrain's per-chunk material: per-column vertex colour, both faces
-## rendered, so the shell is never see-through regardless of triangle winding.
 ## Phase 65 — set the season tint of every biome in one call (`{biome: Color}`). Each chunk's
 ## material belongs to its own biome, so one biome's snow never tints another biome's chunks.
 func set_season_tints(tints: Dictionary) -> void:
@@ -2318,6 +2298,8 @@ func set_season_tints(tints: Dictionary) -> void:
 			mat.albedo_color = tint
 
 ## The terrain material the chunks of `biome` share. ONE instance per biome for the slice's life.
+## A chunk's material is chosen when it is BUILT: one built before `terrain_slice` is assigned
+## resolves `DEFAULT_BIOME` and keeps that biome's material until its next rebuild.
 func _terrain_material_for(biome: String) -> StandardMaterial3D:
 	if not _biome_mats.has(biome):
 		var mat := _make_terrain_material()
@@ -2325,6 +2307,8 @@ func _terrain_material_for(biome: String) -> StandardMaterial3D:
 		_biome_mats[biome] = mat
 	return _biome_mats[biome]
 
+## The terrain's per-chunk material: per-column vertex colour, both faces
+## rendered, so the shell is never see-through regardless of triangle winding.
 func _make_terrain_material() -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color.WHITE
@@ -2737,12 +2721,13 @@ func _key_to_tile(key: String) -> Vector2i:
 func _mark_dirty(tile: Vector2i) -> void:
 	_dirty_chunks[_chunk_key(_tile_to_chunk(tile))] = true
 
-## The biome a resolve falls back to when nothing asked a terrain slice — see the
-## `DEFAULT_BIOME` constant (Phase 42 review pass 9).
+## World XZ of a chunk's centre.
 func _chunk_center_xz(chunk_pos: Vector2i) -> Vector2:
 	var extent := float(CHUNK_SIZE * TILE_SIZE)
 	return (Vector2(chunk_pos) + Vector2(0.5, 0.5)) * extent
 
+## The biome a resolve falls back to when nothing asked a terrain slice — see the
+## `DEFAULT_BIOME` constant (Phase 42 review pass 9).
 func _biome_at(xz: Vector2) -> String:
 	if terrain_slice != null and terrain_slice.has_method("get_biome_at"):
 		return terrain_slice.get_biome_at(xz)

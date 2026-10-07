@@ -7308,7 +7308,6 @@ func _test_voxel_yield_matches_blended_biome() -> void:
 	var ts := TerrainSlice.new()
 	add_child(ts)
 	v.terrain_slice = ts
-	var extent := float(VoxelSlice.CHUNK_SIZE * VoxelSlice.TILE_SIZE)
 	var checked := 0
 	for cx in range(-12, 12):
 		var biomes := v.gather_biomes_for(Vector2i(cx, 0))
@@ -7321,7 +7320,6 @@ func _test_voxel_yield_matches_blended_biome() -> void:
 					"yield biome is the surface biome at %s" % xz)
 				checked += 1
 	assert_true(checked > 0, "tiles were checked")
-	assert_true(extent > 0.0, "extent sane")
 	assert_eq(BiomeBlend.chance(VoxelSlice.BLEND_TILES, VoxelSlice.BLEND_TILES), 0.0, "no blend at the band's inner edge")
 	assert_eq(BiomeBlend.chance(0.0, VoxelSlice.BLEND_TILES), BiomeBlend.MAX_CHANCE, "half a chance at the border")
 	ts.free()
@@ -7334,14 +7332,18 @@ func _test_minimap_blend_respects_fog() -> void:
 	mm._revealed = { "0,0": true, "-1,0": true }
 	mm.terrain_slice = BiomeStub.new()
 	var memo := {}
-	var worn := 0
-	for j in Minimap.CELLS_PER_CHUNK:
-		for i in Minimap.CELLS_PER_CHUNK:
+	var n := Minimap.CELLS_PER_CHUNK
+	var cell_tiles := float(TerrainSlice.CHUNK_SIZE) / n
+	var west_cells := 0
+	for j in n:
+		for i in n:
 			var got: String = mm._cell_biome(Vector2i(0, 0), i, j, "TemperateForest", memo)
 			assert_true(got != "VoidRift", "the unrevealed east/south chunks' biome is never worn (%d,%d)" % [i, j])
-			if got == "DesertDunes":
-				worn += 1
-	assert_true(worn >= 0, "the revealed west neighbour may blend")
+			if i < n - 1 - i and i <= mini(j, n - 1 - j):   # nearest border is the revealed west one
+				west_cells += 1
+				var expect := "DesertDunes" if BiomeBlend.wears_neighbour(i, j, cell_tiles * 0.5, cell_tiles) else "TemperateForest"
+				assert_eq(got, expect, "a west-border cell wears the revealed neighbour exactly when the blend rule says so (%d,%d)" % [i, j])
+	assert_true(west_cells > 0, "the revealed west neighbour has border cells to check")
 	assert_false(mm._has_blend_neighbour(Vector2i(5, 5), "TemperateForest", {}), "no revealed neighbours: one rect")
 	mm.free()
 
@@ -7352,7 +7354,6 @@ class BiomeStub extends Node:
 ## Phase 64 — a biome whose envelope dicts lack keys (or whose altitude lacks `max`) must not
 ## error in `_envelope_of`, and the complete envelopes still load.
 func _test_climate_partial_envelope_warms() -> void:
-	var partial := RefCounted.new()
 	var bad := { "temperature": { "min": 0.2 }, "moisture": { "max": 0.7 }, "altitude": { "min": 5.0 } }
 	var holder := PartialBiome.new()
 	holder.temperature = bad["temperature"]
@@ -7370,7 +7371,6 @@ func _test_climate_partial_envelope_warms() -> void:
 	assert_true(ClimateField._warmed and ClimateField._envelopes.size() > 0, "the real envelopes load")
 	ClimateField._envelopes = saved_env
 	ClimateField._warmed = saved_warm
-	assert_true(partial != null, "ok")
 
 class PartialBiome extends RefCounted:
 	var temperature: Dictionary = {}
