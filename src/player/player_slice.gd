@@ -276,6 +276,8 @@ func shift_scene(shift: Vector3) -> void:
 	_scene_offset += shift
 	if _body:
 		_body.global_position += shift
+	if _ghost_pool != null:
+		_ghost_pool.shift_scene(shift)
 
 func scene_offset() -> Vector3:
 	return _scene_offset
@@ -432,6 +434,9 @@ func _build_ghost_pool() -> void:
 	_ghost_pool.name = "GhostPool"
 	_ghost_pool.setup(cap, true)
 	add_child(_ghost_pool)
+	# A pool built after a rebase starts in the shifted frame too.
+	if _scene_offset != Vector3.ZERO:
+		_ghost_pool.shift_scene(_scene_offset)
 
 ## World position → ghost instance transform (capsule half-height 0.9 offset).
 func _ghost_transform(pos: Vector3) -> Transform3D:

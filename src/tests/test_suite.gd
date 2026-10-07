@@ -1108,6 +1108,8 @@ func _test_rebase_driver() -> void:
 	player.render_visuals = true
 	add_child(player)
 	player.spawn_at(far_pos)
+	player._on_remote_player_state(7, Vector3(3010.0, 1.0, 40.0))
+	var ghost_pool_before: Vector3 = player._ghost_pool.scene_position() if player._ghost_pool != null else Vector3.ZERO
 	var world_before: Vector3 = player.get_position()
 	var tree_pool_before: Vector3 = trees._pool.scene_position()
 	var creature_pool_before: Vector3 = creature._pool.scene_position()
@@ -1124,6 +1126,8 @@ func _test_rebase_driver() -> void:
 	assert_eq(player.get_position(), world_before, "the player keeps its world position")
 	assert_eq(player.get_scene_position(), world_before + shift, "the player body shifts by the offset")
 	assert_eq(trees._pool.scene_position(), tree_pool_before + shift, "trees shift by the same offset")
+	if player._ghost_pool != null:
+		assert_eq(player._ghost_pool.scene_position(), ghost_pool_before + shift, "remote ghosts shift by the same offset")
 	assert_eq(creature._pool.scene_position(), creature_pool_before + shift, "creatures shift by the same offset")
 	assert_eq(marker.position, marker_before + shift, "stations shift by the same offset")
 	assert_eq(station.get_station_data()[0]["position"], WorldPos.to_wire(far_pos), "the station keeps its {chunk, local}")

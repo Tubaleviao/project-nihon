@@ -849,11 +849,12 @@ func sync_player_avatar(
 		0.0
 	)
 	var ground_y: float = maxf(feet["foot_l"].y, feet["foot_r"].y)
-	root.position = Vector3(position.x, ground_y, position.z) + _scene_offset
+	var world_pos := Vector3(position.x, ground_y, position.z)
+	root.position = world_pos + _scene_offset
 	root.set_meta("foot_ik_l", feet["foot_l"])
 	root.set_meta("foot_ik_r", feet["foot_r"])
 
-	inst["position"] = root.position
+	inst["position"] = world_pos
 	update_locomotion(instance_id, speed, grounded, velocity_y, delta)
 	if inst.has("anim_tree") and is_instance_valid(inst["anim_tree"]):
 		RigTree.drive(inst["anim_tree"], inst["locomotion"])
