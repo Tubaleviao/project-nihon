@@ -240,6 +240,9 @@ func run() -> void:
 	_run_test("equipment: the client diffs gear into actions",  _test_equip_actions_diff)
 	_run_test("equipment: restore paths on a host and a client", _test_apply_local_equipment_paths)
 	_run_test("equipment: bag loss clears the slot",            _test_equipment_revalidated_on_bag_loss)
+	_run_test("equipment: join payload carries a revalidated set", _test_equipment_revalidated_before_join)
+	_run_test("equipment: a stale revoke does not wipe a newer equip", _test_equipment_stale_revoke_ignored)
+	_run_test("equipment: refused intents are rate limited",    _test_equipment_refusals_rate_limited)
 	_run_test("equipment: slots cached, peer evict, owner map", _test_equipment_phase48_misc)
 	_run_test("equipment: host worn set + AOI enter/leave",      _test_equipment_host_and_aoi_transitions)
 	_run_test("net: broadcasts go through _test_peers",          _test_network_broadcast_uses_test_peers)
@@ -12864,6 +12867,80 @@ func _test_equipment_revalidated_on_bag_loss() -> void:
 	assert_eq(seen.size(), 1, "exactly one equipment_changed was emitted")
 	if seen.size() == 1:
 		assert_true((seen[0][1] as Dictionary).is_empty(), "the change carries the emptied set")
+	registry.free()
+
+## Phase 70 — a returning player's worn item the bag no longer holds is gone from the record
+## by the time `player_joined` fires, which is when the handshake snapshot is built.
+func _test_equipment_revalidated_before_join() -> void:
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	registry.apply_player_data("returning", { "equipment": { "Chest": "VeilsteelChestplate" } })
+	registry.record_equipment("returning", { "Chest": "VeilsteelChestplate" })
+	assert_eq(registry.get_equipment("returning").size(), 1, "the saved record wears a chestplate")
+	var at_join: Array = []
+	var cb := func(_peer: int, pid: String, _re: bool) -> void: at_join.append(registry.get_equipment(pid).duplicate())
+	GameBus.player_joined.connect(cb)
+	var bound := registry.resolve_identity(3, "returning")
+	GameBus.player_joined.disconnect(cb)
+	assert_eq(bound, "returning", "the player is rebound to its record")
+	assert_eq(at_join.size(), 1, "one join was announced")
+	if at_join.size() == 1:
+		assert_true((at_join[0] as Dictionary).is_empty(), "the slot is already empty in the join payload")
+	registry.free()
+
+## Phase 70 — refused intent N then valid intent N+1: the host answers N with a revoke
+## numbered N (no Chest), then N+1 with the item. The client has already sent N+1, so the
+## older correction is skipped and it ends up showing N+1's item.
+func _test_equipment_stale_revoke_ignored() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	var gr: Node = root_script.new()
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	var net := NetworkingSlice.new()
+	add_child(net)
+	gr._character = ch
+	gr._registry = reg
+	gr._networking = net
+	gr._is_client = true
+	var iid: String = ch.create_character("TravellerHuman", Vector3.ZERO)
+	ch.set_player_character(iid)
+	reg.set_local_player(reg.mint_player_id())
+	net._role = NetworkingSlice.Role.CLIENT
+	net._on_equip_intent("", "Head", "NoSuchHelmet")      # seq 1 — will be refused
+	net._on_equip_intent("", "Chest", "VeilsteelChestplate")  # seq 2 — valid
+	assert_eq(net.equip_seq_sent(), 2, "each action advances the sequence")
+	ch.apply_equipment(iid, "Chest", "VeilsteelChestplate")
+	# Replies arrive in order: the revoke for #1 (host had no Chest yet), then the record for #2.
+	gr._on_own_state_synced({ "equipment": {}, "equipment_seq": 1 })
+	assert_eq(ch.get_equipment_set(iid).get("Chest", ""), "VeilsteelChestplate", "the older revoke is ignored")
+	gr._on_own_state_synced({ "equipment": { "Chest": "VeilsteelChestplate" }, "equipment_seq": 2 })
+	assert_eq(ch.get_equipment_set(iid).get("Chest", ""), "VeilsteelChestplate", "the newer reply keeps the item")
+	gr._on_own_state_synced({ "equipment": {}, "equipment_seq": 2 })
+	assert_true(ch.get_equipment_set(iid).is_empty(), "a revoke answering the newest action is applied")
+	gr.free()
+	net.free()
+	ch.free()
+	reg.free()
+
+## Phase 70 — a peer spamming refused equips costs one warn and one revoke per interval.
+func _test_equipment_refusals_rate_limited() -> void:
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var peer := str(registry.resolve_identity(2))
+	var revoked: Array = []
+	var rcb := func(pid: String, _worn: Dictionary) -> void: revoked.append(pid)
+	GameBus.equipment_revoked.connect(rcb)
+	var warns_before: int = Diag.warn_count
+	for i in 100:
+		registry.note_equip_seq(peer, i + 1)
+		GameBus.equip_intent.emit(peer, "Chest", "VeilsteelChestplate")
+	GameBus.equipment_revoked.disconnect(rcb)
+	assert_eq(revoked.size(), 1, "one revoke for 100 refusals in an interval")
+	assert_eq(Diag.warn_count - warns_before, 1, "and one warn")
+	assert_eq(registry.equip_refused_suppressed, 99, "the rest are counted")
+	assert_eq(registry.equip_seq_of(peer), 100, "the host remembers the newest sequence it processed")
 	registry.free()
 
 func _test_equipment_phase48_misc() -> void:

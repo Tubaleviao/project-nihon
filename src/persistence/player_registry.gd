@@ -320,6 +320,12 @@ func resolve_identity(peer_id: int, claimed_id: String = "") -> String:
 	ensure_player(player_id)
 	if not reconnected:
 		_place_new_player(peer_id, player_id)
+	# A restored worn set is checked against the restored bag BEFORE `player_joined`: the
+	# handshake snapshot is built from the record when that signal fires, so a later
+	# check would hand the joiner a set it must then be told to take off.
+	_equip_seq.erase(player_id)
+	_equip_refusals.erase(player_id)
+	revalidate_equipment(player_id)
 	GameBus.player_joined.emit(peer_id, player_id, reconnected)
 	return player_id
 
@@ -1057,6 +1063,13 @@ func apply_players_data(players: Dictionary) -> void:
 ## report (there is none), and what the host believes is in a peer's hand is what the host
 ## recorded. A refused action changes nothing and tells the owner the set it must show, so
 ## its optimistically-updated avatar falls back to the record.
+const EQUIP_REFUSE_INTERVAL_MSEC := 1000
+
+## Refused equip actions swallowed by the per-player rate limit since boot.
+var equip_refused_suppressed: int = 0
+var _equip_refusals: Dictionary = {}  # player_id -> msec of the last reported refusal
+var _equip_seq: Dictionary = {}       # player_id -> newest equip sequence number processed
+
 func _on_equip_intent(player_id: String, slot: String, item_key: String) -> void:
 	if not is_authoritative or player_id.is_empty():
 		return
@@ -1071,11 +1084,33 @@ func _on_equip_intent(player_id: String, slot: String, item_key: String) -> void
 			record_equipment(player_id, worn)
 		return
 	if not equip_allowed(player_id, slot, item_key):
-		Diag.warn("PlayerRegistry: refused equip of '%s' into '%s' for %s" % [item_key, slot, player_id])
-		GameBus.equipment_revoked.emit(player_id, worn)
+		_refuse_equip(player_id, slot, item_key, worn)
 		return
 	worn[slot] = item_key
 	record_equipment(player_id, worn)
+
+## Phase 70 — a refused equip costs a warn, a revoke and a state send, and a peer can
+## refuse as fast as it can send. One of each per player per `EQUIP_REFUSE_INTERVAL_MSEC`;
+## the rest are only counted in `equip_refused_suppressed`.
+func _refuse_equip(player_id: String, slot: String, item_key: String, worn: Dictionary) -> void:
+	var now := Time.get_ticks_msec()
+	var last: int = int(_equip_refusals.get(player_id, -EQUIP_REFUSE_INTERVAL_MSEC))
+	if now - last < EQUIP_REFUSE_INTERVAL_MSEC:
+		equip_refused_suppressed += 1
+		return
+	_equip_refusals[player_id] = now
+	Diag.warn("PlayerRegistry: refused equip of '%s' into '%s' for %s" % [item_key, slot, player_id])
+	GameBus.equipment_revoked.emit(player_id, worn)
+
+## Phase 70 — host: the sequence number of the equip action being applied for `player_id`
+## (the networking slice calls this just before it emits the intent). A revoke answers the
+## newest one the host has processed, so the client can tell a stale correction from a
+## current one.
+func note_equip_seq(player_id: String, seq: int) -> void:
+	_equip_seq[player_id] = seq
+
+func equip_seq_of(player_id: String) -> int:
+	return int(_equip_seq.get(player_id, 0))
 
 ## Whether `player_id` may wear `item_key` in `slot` right now: the fabric says the item
 ## fits the slot and the player's own bag holds it. Fails closed on anything unknown.
@@ -1123,6 +1158,5 @@ func _on_inventory_changed_revalidate() -> void:
 func _on_player_join_intent(peer_id: int, claimed_id: String) -> void:
 	if not is_authoritative:
 		return
-	var bound := resolve_identity(peer_id, claimed_id)
-	# A restored worn set is checked against the restored bag before anyone sees it.
-	revalidate_equipment(str(bound))
+	# `resolve_identity` revalidates the restored worn set before it announces the join.
+	resolve_identity(peer_id, claimed_id)
