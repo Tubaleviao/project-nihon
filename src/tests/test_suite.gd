@@ -225,6 +225,7 @@ func run() -> void:
 	_run_test("equipment: restore paths on a host and a client", _test_apply_local_equipment_paths)
 	_run_test("equipment: bag loss clears the slot",            _test_equipment_revalidated_on_bag_loss)
 	_run_test("equipment: slots cached, peer evict, owner map", _test_equipment_phase48_misc)
+	_run_test("equipment: host worn set + AOI enter/leave",      _test_equipment_host_and_aoi_transitions)
 	_run_test("equipment: rules totals + sanitize",             _test_equipment_rules_totals)
 	_run_test("equipment: derived stats + record + replicate",  _test_character_derived_stats_and_record)
 	_run_test("ui: character window rows + equip",              _test_ui_character_rows)
@@ -322,6 +323,7 @@ func run() -> void:
 	_run_test("clock: client stays within 1 s over 10 minutes",  _test_clock_client_sync)
 	_run_test("clock: persistence, HUD text and fabric values",  _test_clock_persistence_and_fabric)
 	_run_test("spawn: hash bits are independent",                _test_spawn_roll_mix_avalanche)
+	_run_test("spawn: missing fields warn once",                 _test_spawn_missing_fields_warns_once)
 	_run_test("spawn: hash output pinned",                       _test_spawn_roll_mix_pinned)
 	_run_test("spawn: seeded roll, density and pack size",       _test_spawn_roll_pure)
 	_run_test("spawn: creature packs are scarce and seeded",     _test_spawn_creature_scarcity)
@@ -12318,6 +12320,30 @@ func _test_spawn_pack_bounds_and_retry() -> void:
 			assert_true(key[0] != gone, "leaving a chunk drops its deferred packs")
 	capped.free()
 
+## Phase 57 — a creature resource lacking spawnChance/spawnDensity warns once (the flag is
+## the once-latch the warning sits behind) and still spawns, without a roll.
+func _test_spawn_missing_fields_warns_once() -> void:
+	var src := GDScript.new()
+	src.source_code = "extends Resource\nvar biome: int = 0\nvar spawnCount: int = 1\n"
+	assert_eq(src.reload(), OK, "the field-less stand-in compiles")
+	var fake: Resource = src.new()
+	var c := CreatureSlice.new()
+	c.render_visuals = false
+	add_child(c)
+	var was_quiet: bool = Diag.quiet
+	Diag.quiet = true
+	assert_false(c._warned_spawn_fields.has("NoFields"), "nothing warned before the first read")
+	var fields: Array = c._spawn_fields("NoFields", fake)
+	assert_true(fields[0] == null and fields[1] == null, "missing fields read as null (spawn without a roll)")
+	assert_true(c._warned_spawn_fields.has("NoFields"), "the missing fields are reported")
+	c._spawn_fields("NoFields", fake)
+	assert_eq(c._warned_spawn_fields.size(), 1, "once per species, however often it is read")
+	for key in GameData.CREATURES:
+		c._spawn_fields(str(key), GameData.CREATURES[key])
+	assert_eq(c._warned_spawn_fields.size(), 1, "the fabric's own creatures all carry both fields")
+	Diag.quiet = was_quiet
+	c.free()
+
 ## Species do not thicken and thin in lockstep: the density noise is salted per species.
 func _test_spawn_density_per_species() -> void:
 	var differs := false
@@ -12546,6 +12572,71 @@ func _test_equipment_phase48_misc() -> void:
 	assert_false(n._equipment_eval_positions.has(2), "a disconnect drops the peer's last-evaluated position")
 	assert_true(n._equipment_eval_positions.has(3), "other peers keep theirs")
 	n.free()
+
+
+## Phase 48 criteria — the replication target list includes the listen host as an owner,
+## and a peer entering/leaving AOI after the last gear change is sent / evicted. Uses the
+## networking slice's no-socket test seam (`_test_peers`, `_test_outbox`).
+func _test_equipment_host_and_aoi_transitions() -> void:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.player_registry = reg
+	n._test_peers = [2, 3]
+	var pid2 := str(reg.resolve_identity(2))
+	var pid3 := str(reg.resolve_identity(3))
+	n.remember_player_state(2, Vector3(0, 0, 0))
+	n.remember_player_state(3, Vector3(1000, 0, 0))
+	n.set_host_position(Vector3(5, 0, 0))
+
+	# Host as owner: peer 2 (in AOI) is a target, peer 3 (far) is not, the host never is.
+	assert_eq(n.equipment_targets(NetworkingSlice.HOST_PEER_ID), [2], "the host's set goes to peers in its AOI only")
+	assert_eq(n.equipment_targets(2), [], "a lone nearby peer has no other peer to tell (host excluded)")
+	n._test_outbox.clear()
+	n._on_equipment_changed("player_host_1", { "Chest": "VeilsteelChestplate" })
+	assert_eq(n._test_outbox.size(), 1, "one delivery for the host's gear change")
+	if n._test_outbox.size() == 1:
+		assert_eq(n._test_outbox[0]["peer_id"], 2, "to the peer in AOI")
+		assert_eq(n._test_outbox[0]["payload"]["type"], "peer_equipment", "as a peer_equipment packet")
+		assert_eq(n._test_outbox[0]["payload"]["peer_id"], NetworkingSlice.HOST_PEER_ID, "tagged with the host's id")
+
+	# Enter: peer 3 wears something at range, then walks into peer 2's... host's AOI.
+	reg.record_equipment(pid3, { "Chest": "VeilsteelChestplate" })
+	reg.record_equipment(pid2, { "Chest": "VeilsteelChestplate" })
+	n._test_outbox.clear()
+	n._equipment_sent.clear()
+	n.remember_player_state(3, Vector3(10, 0, 0))
+	n._refresh_equipment_pairs(3)
+	var sent_to_2 := false
+	var sent_to_3 := false
+	for m in n._test_outbox:
+		var pl: Dictionary = m["payload"]
+		if pl["type"] == "peer_equipment" and pl["peer_id"] == 3 and m["peer_id"] == 2:
+			sent_to_2 = true
+		if pl["type"] == "peer_equipment" and pl["peer_id"] == 2 and m["peer_id"] == 3:
+			sent_to_3 = true
+	assert_true(sent_to_2, "a peer walking into AOI after the last change is sent to the viewer")
+	assert_true(sent_to_3, "and receives the viewer's set")
+
+	# Leave: peer 3 walks away; both viewers are told to evict, once.
+	n._test_outbox.clear()
+	n.remember_player_state(3, Vector3(2000, 0, 0))
+	n._refresh_equipment_pairs(3)
+	var evicts := 0
+	for m in n._test_outbox:
+		if m["payload"]["type"] == "peer_equipment_evict":
+			evicts += 1
+	assert_eq(evicts, 2, "leaving AOI evicts the stored set on each viewer")
+	assert_false(n._equipment_sent.has("2:3"), "the sent record for the pair is dropped")
+	n._test_outbox.clear()
+	n.remember_player_state(3, Vector3(2100, 0, 0))
+	n._refresh_equipment_pairs(3)
+	assert_eq(n._test_outbox.size(), 0, "no repeat eviction while it stays away")
+	n.free()
+	reg.free()
 
 
 ## Phase 49 — a chunk built BEFORE its neighbour reads the neighbour's generated surface,
