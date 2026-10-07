@@ -385,6 +385,14 @@ func get_peer_id(player_id: String) -> int:
 			return int(pid)
 	return 0
 
+## Every peer id bound to a player (the connected remote players), in one pass over the peer map.
+func get_bound_peer_ids() -> Array:
+	var out: Array = []
+	for pid in _peer_ids:
+		if int(pid) > 0:
+			out.append(int(pid))
+	return out
+
 ## The peer ids currently bound to a player (the peer map's keys), in no particular order.
 func get_peer_ids() -> Array:
 	return _peer_ids.keys()

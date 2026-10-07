@@ -46,12 +46,14 @@ static func regions_for_chunks(chunks: Array) -> Dictionary:
 func sync(wanted: Dictionary) -> Dictionary:
 	var loaded := 0
 	var released := 0
+	var failed := 0
 	for rkey in wanted:
 		if _resident.has(rkey):
 			continue
 		var read := _store.read_region(RegionStore.region_from_key(str(rkey)))
 		if not bool(read["ok"]):
 			# Not resident: a later sync (the next window move) retries the read instead of treating the region as loaded.
+			failed += 1
 			continue
 		_voxel.apply_region_chunks(read["chunks"])
 		_resident[rkey] = true
@@ -91,7 +93,7 @@ func sync(wanted: Dictionary) -> Dictionary:
 					break
 			if not left:
 				_stranded.erase(rkey)
-	return { "loaded": loaded, "released": released }
+	return { "loaded": loaded, "released": released, "failed": failed }
 
 ## Retry the stranded regions without a window move: a save may have cleaned their dirty
 ## chunks since. Cheap when nothing is stranded. Returns how many chunks were released.

@@ -314,6 +314,14 @@ func _shape_at(x: float, z: float, w: float) -> float:
 	var ix := floori(gx)
 	var iz := floori(gz)
 	var key := Vector2i(ix, iz)
+	# Heightmaps are built on worker threads and the main thread at once, and the cache is
+	# shared: the key and the corners must change together, so both are read and written under
+	# the lock (and the lerp, which touches only locals, runs outside it).
+	var c0: float
+	var c1: float
+	var c2: float
+	var c3: float
+	_corner_mutex.lock()
 	if key != _corner_key:   # a heightmap walks one cell for 4096 tiles: reuse its corners
 		_corner_key = key
 		var x0 := float(ix) * CHUNK_METERS
@@ -324,9 +332,15 @@ func _shape_at(x: float, z: float, w: float) -> float:
 			WorldShape.height(_world_seed, x0, z0 + CHUNK_METERS, w),
 			WorldShape.height(_world_seed, x0 + CHUNK_METERS, z0 + CHUNK_METERS, w),
 		]
+	c0 = _corners[0]
+	c1 = _corners[1]
+	c2 = _corners[2]
+	c3 = _corners[3]
+	_corner_mutex.unlock()
 	var fx := gx - float(ix)
 	var fz := gz - float(iz)
-	return lerpf(lerpf(_corners[0], _corners[1], fx), lerpf(_corners[2], _corners[3], fx), fz)
+	return lerpf(lerpf(c0, c1, fx), lerpf(c2, c3, fx), fz)
 
+var _corner_mutex := Mutex.new()
 var _corner_key := Vector2i(2147483647, 2147483647)
 var _corners: Array = [0.0, 0.0, 0.0, 0.0]

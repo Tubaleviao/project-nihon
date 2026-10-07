@@ -575,6 +575,10 @@ func run() -> void:
 	_run_test("region: a Phase 51 save migrates with every edit intact", _test_region_migrates_monolith)
 	_run_test("region: a full save erases compacted chunks; migration keeps newer region data", _test_region_full_save_erases_and_migration_keeps_newer)
 	_run_test("region: an unreadable region file is never overwritten by a save", _test_region_unreadable_not_overwritten)
+	_run_test("region: one unreadable region does not block the others' save", _test_region_partial_save)
+	_run_test("region: only edge chunks pull in neighbouring regions", _test_region_neighbour_expansion_edges_only)
+	_run_test("region: a failed region read is retried, not marked resident", _test_region_failed_read_retried)
+	_run_test("registry: bound peer ids come straight off the peer map", _test_registry_bound_peer_ids)
 	_run_test("spawn: new players avoid colonized regions", _test_spawn_avoids_colonized)
 	_run_test("spawn: friend code lands near the friend", _test_spawn_friend_near)
 	_run_test("spawn: respawn point survives a move + reload (host and client)", _test_spawn_point_persists)
@@ -13640,6 +13644,42 @@ func _test_region_unreadable_not_overwritten() -> void:
 	assert_eq(store.load_region(Vector2i.ZERO).keys(), ["1,1"], "a non-Dictionary chunk entry is dropped on read")
 	assert_eq(RegionStoreScript.group_manifest({ "a": entry, "2,2": entry }).size(), 1, "a malformed chunk key is skipped")
 
+## Phase 52 follow-up — a save into several regions writes every region it can; the unreadable
+## one is left alone and reported, and a malformed `edits` / `materials` entry is dropped on read.
+func _test_region_partial_save() -> void:
+	var dir := _fresh_region_dir("test_p52_partial")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	DirAccess.make_dir_recursive_absolute(dir + "regions/")
+	var bad_path := store.path_of(Vector2i(0, 0))
+	var f := FileAccess.open(bad_path, FileAccess.WRITE)
+	f.store_string("{ not json")
+	f.close()
+	var entry := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	var err := store.write_chunks({ "1,1": entry, "40,40": entry })   # region 0,0 (bad) and region 1,1
+	assert_true(err != OK, "the unreadable region is reported")
+	assert_eq(FileAccess.get_file_as_string(bad_path), "{ not json", "and left untouched")
+	assert_true(store.has_region(Vector2i(1, 1)), "the readable region was still written")
+	assert_eq(store.load_region(Vector2i(1, 1)).keys(), ["40,40"], "with its own chunk")
+	var g := FileAccess.open(bad_path, FileAccess.WRITE)
+	g.store_string(JSON.stringify({ "version": 1, "chunks": {
+		"1,1": entry, "2,2": { "edits": [1] }, "3,3": { "edits": {}, "materials": "x" }, "4,4": { "materials": {} } } }))
+	g.close()
+	var keys: Array = store.load_region(Vector2i(0, 0)).keys()
+	keys.sort()
+	assert_eq(keys, ["1,1", "4,4"], "entries whose edits or materials are not Dictionaries are dropped")
+	assert_true(RegionStoreScript.is_valid_chunk_entry({ "edits": {}, "materials": {} }), "a well-formed entry is valid")
+	assert_false(RegionStoreScript.is_valid_chunk_entry(5), "a non-Dictionary entry is not")
+
+func _test_region_neighbour_expansion_edges_only() -> void:
+	var interior := RegionStreamerScript.regions_for_chunks([Vector2i(10, 10)])
+	assert_eq(interior.keys(), ["0,0"], "an interior chunk wants only its own region")
+	var corner := RegionStreamerScript.regions_for_chunks([Vector2i(0, 0)])
+	assert_true(corner.has("0,0") and corner.has("-1,-1") and corner.has("-1,0") and corner.has("0,-1"),
+		"a corner chunk also wants the regions across its edges")
+	var east := RegionStreamerScript.regions_for_chunks([Vector2i(31, 10)])
+	assert_true(east.has("0,0") and east.has("1,0") and not east.has("0,1") and not east.has("0,-1"),
+		"an east-edge chunk reaches the next region east and no other")
+
 func _test_region_evict_keeps_vein_depletion() -> void:
 	var found := _find_surface_vein(0)
 	if found.is_empty():
@@ -13688,6 +13728,42 @@ func _test_region_failed_write_saves_the_rest() -> void:
 	assert_true(store.has_world(), "world.json was still written")
 	assert_eq(float(store.load_player(pid).get("hp", -1.0)), 7.0, "and so was the player record")
 	store.free()
+
+## Phase 52 follow-up — a region whose file cannot be read is not marked resident, so a later
+## sync retries it once the file is readable.
+func _test_region_failed_read_retried() -> void:
+	var dir := _fresh_region_dir("test_p52_retry")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	DirAccess.make_dir_recursive_absolute(dir + "regions/")
+	var path := store.path_of(Vector2i(0, 0))
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string("{ not json")
+	f.close()
+	var voxel := _make_voxel()
+	var streamer := RegionStreamerScript.new(store, voxel)
+	var first := streamer.sync({ "0,0": true })
+	assert_eq(int(first["failed"]), 1, "the unreadable region is reported as failed")
+	assert_eq(int(first["loaded"]), 0, "and not as loaded")
+	assert_false(streamer.is_resident(Vector2i(0, 0)), "it is not resident")
+	var edit := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	assert_eq(store.save_region(Vector2i(0, 0), { "1,1": edit }), OK, "the file is repaired")
+	var second := streamer.sync({ "0,0": true })
+	assert_eq(int(second["loaded"]), 1, "the next sync reads it")
+	assert_true(streamer.is_resident(Vector2i(0, 0)), "and it is resident now")
+	voxel.free()
+
+func _test_registry_bound_peer_ids() -> void:
+	var reg := PlayerRegistry.new()
+	reg.is_authoritative = true
+	assert_eq(reg.get_bound_peer_ids().size(), 0, "no peers, no ids")
+	var a := reg.resolve_identity(4)
+	var b := reg.resolve_identity(9)
+	assert_true(a != "" and b != "", "two peers bind")
+	var ids: Array = reg.get_bound_peer_ids()
+	ids.sort()
+	assert_eq(ids, [4, 9], "both bound peers are listed")
+	reg.unbind_peer(4)
+	assert_eq(reg.get_bound_peer_ids(), [9], "an unbound peer drops out")
 
 func _test_region_failed_read_not_resident() -> void:
 	var dir := _fresh_region_dir("test_p61_read")
