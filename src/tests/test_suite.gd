@@ -92,6 +92,8 @@ func run() -> void:
 	_run_test("terrain: the shape wraps and stays in range",  _test_world_shape_wraps_in_range)
 	_run_test("climate: poles are cold, peaks are cold",      _test_climate_poles_and_peaks)
 	_run_test("climate: ocean chunks are Ocean, fantasy biomes are niches", _test_climate_ocean_and_niches)
+	_run_test("climate: niches are index-stable, share-exact and smooth", _test_climate_niches_stable_and_smooth)
+	_run_test("climate: the Voronoi fallback is land-only", _test_climate_fallback_is_land_only)
 	_run_test("water: spans cover exactly the tiles below sea level", _test_water_spans)
 	_run_test("player: deep water is swum, not walked",       _test_player_swims_in_deep_water)
 	_run_test("terrain: the distant ring is 10x the window with no collision", _test_distant_ring)
@@ -7326,12 +7328,12 @@ func _test_chunk_tree_spawn_per_chunk() -> void:
 func _test_climate_envelope_selects() -> void:
 	var keys: Array = TerrainSlice.BIOME_KEYS
 	var B: Dictionary = GameData.BIOMES
-	assert_eq(ClimateField.biome_for_climate(0.5, 0.8, keys, B), "TemperateForest", "mild and wet is forest")
-	assert_eq(ClimateField.biome_for_climate(0.5, 0.1, keys, B), "TemperateGrassland", "mild and dry is grassland")
-	assert_eq(ClimateField.biome_for_climate(0.95, 0.5, keys, B), "VolcanicBadlands", "hot is badlands")
-	assert_eq(ClimateField.biome_for_climate(0.4, 0.8, keys, B), "TwilightGrove", "cool and wet is twilight")
-	assert_eq(ClimateField.biome_for_climate(0.1, 0.1, keys, B), "VoidRift", "cold and dry is the rift")
-	assert_eq(ClimateField.biome_for_climate(0.5, 0.5, keys, {}), "", "no envelopes, no pick")
+	assert_eq(_climate_pick(0.5, 0.8, keys, B), "TemperateForest", "mild and wet is forest")
+	assert_eq(_climate_pick(0.5, 0.1, keys, B), "TemperateGrassland", "mild and dry is grassland")
+	assert_eq(_climate_pick(0.95, 0.5, keys, B), "VolcanicBadlands", "hot is badlands")
+	assert_eq(_climate_pick(0.4, 0.8, keys, B), "TwilightGrove", "cool and wet is twilight")
+	assert_eq(_climate_pick(0.1, 0.1, keys, B), "VoidRift", "cold and dry is the rift")
+	assert_eq(_climate_pick(0.5, 0.5, keys, {}), "", "no envelopes, no pick")
 	for ckey in keys:
 		var surf: float = OreField.surface_vein_chance(str(ckey))
 		var res: Variant = GameData.BIOMES.get(str(ckey), null)
@@ -12181,8 +12183,8 @@ func _test_ore_ley_field() -> void:
 func _test_ore_uniform_draw_gone() -> void:
 	var counts: Array = []
 	var seed := 7
-	for cz in range(-12, 12):
-		for cx in range(-12, 12):
+	for cz in range(-400, 400, 5):   # rare niches are blobs now: scan wide to find volcanic ground
+		for cx in range(-400, 400, 5):
 			var chunk := Vector2i(cx, cz)
 			if TerrainSlice.biome_for_chunk(chunk, seed) != "VolcanicBadlands":
 				continue
@@ -13565,18 +13567,77 @@ func _test_climate_poles_and_peaks() -> void:
 			assert_eq(peak, "Alpine", "a 450 m peak at the equator is Alpine at seed %d chunk %d" % [seed_v, cx])
 	assert_true(ClimateField.temperature_at(1, Vector2(5, 5), 85.0, 20.0) < 0.2, "85 degrees is cold")
 	assert_true(ClimateField.temperature_at(1, Vector2(5, 5), 0.0, 450.0) < ClimateField.temperature_at(1, Vector2(5, 5), 0.0, 0.0), "height cools the equator")
-	assert_eq(ClimateField.biome_for_climate(0.5, 0.5, keys, B, 450.0, 1.0), "Alpine", "pure envelope pick: high ground is Alpine")
-	assert_eq(ClimateField.biome_for_climate(0.5, 0.5, keys, B, -30.0, 1.0), "Ocean", "below sea level is Ocean")
-	assert_eq(ClimateField.biome_for_climate(0.5, 0.5, keys, B, 0.5, 1.0), "Beach", "the first metre of shore is Beach")
-	assert_eq(ClimateField.biome_for_climate(0.85, 0.8, keys, B, 10.0, 1.0) in ["Beach", "Ocean"], false, "hot wet ground 10 m up is land, not shore")
-	assert_eq(ClimateField.biome_for_climate(0.7, 0.1, keys, B, 50.0, 1.0), "Desert", "hot and dry is desert")
-	assert_eq(ClimateField.biome_for_climate(0.7, 0.4, keys, B, 50.0, 1.0), "Savanna", "hot and middling is savanna")
-	assert_eq(ClimateField.biome_for_climate(0.25, 0.7, keys, B, 50.0, 1.0), "Taiga", "cool and wet is taiga")
+	assert_eq(_climate_pick(0.5, 0.5, keys, B, 450.0, 1.0), "Alpine", "pure envelope pick: high ground is Alpine")
+	assert_eq(_climate_pick(0.5, 0.5, keys, B, -30.0, 1.0), "Ocean", "below sea level is Ocean")
+	assert_eq(_climate_pick(0.5, 0.5, keys, B, 0.5, 1.0), "Beach", "the first metre of shore is Beach")
+	assert_eq(_climate_pick(0.85, 0.8, keys, B, 10.0, 1.0) in ["Beach", "Ocean"], false, "hot wet ground 10 m up is land, not shore")
+	assert_eq(_climate_pick(0.7, 0.1, keys, B, 50.0, 1.0), "Desert", "hot and dry is desert")
+	assert_eq(_climate_pick(0.7, 0.4, keys, B, 50.0, 1.0), "Savanna", "hot and middling is savanna")
+	assert_eq(_climate_pick(0.25, 0.7, keys, B, 50.0, 1.0), "Taiga", "cool and wet is taiga")
 	for key in ["Ocean", "Beach", "Desert", "Tundra", "Alpine", "Taiga", "Savanna"]:
 		var res: Variant = GameData.BIOMES.get(key, null)
 		assert_true(res != null, "%s is a fabric biome" % key)
 		assert_true(res.get("surfaceMaterial") != null and res.get("treeDensity") != null, "%s carries surfaceMaterial and treeDensity" % key)
 		assert_true(TerrainSlice.BIOME_KEYS.has(key), "%s is a canonical biome key" % key)
+
+## Pure envelope pick over `biomes`' resources at (t, m, altitude); `niche` stands in for every
+## biome's niche draw. Was `ClimateField.biome_for_climate`, which only the suite called.
+func _climate_pick(t: float, m: float, keys: Array, biomes: Dictionary, altitude: float = 50.0, niche: float = 0.0) -> String:
+	var envs: Dictionary = {}
+	for key in keys:
+		envs[str(key)] = ClimateField._envelope_of(biomes.get(key, null))
+	return ClimateField._pick(t, m, altitude, keys, envs, niche, false)
+
+func _test_climate_niches_stable_and_smooth() -> void:
+	var keys: Array = TerrainSlice.BIOME_KEYS.duplicate()
+	var shifted: Array = keys.duplicate()
+	shifted.insert(2, "DummyBiome")
+	for key in ["VolcanicBadlands", "TwilightGrove", "VoidRift"]:
+		var salt := ClimateField.niche_salt(key)
+		assert_true(shifted.find(key) != keys.find(key), "%s moved index when a biome was inserted" % key)
+		var same := true
+		for i in 1000:
+			var p := Vector2(float(i * 37 % 4001) - 2000.0, float(i * 91 % 4001) - 2000.0)
+			if ClimateField.niche_value(5, p, salt) != ClimateField.niche_value(5, p, ClimateField.niche_salt(str(shifted[shifted.find(key)]))):
+				same = false
+		assert_true(same, "%s niche value ignores its index in the key list" % key)
+	assert_true(ClimateField.niche_salt("VoidRift") != ClimateField.niche_salt("TwilightGrove"), "two biomes get distinct niche salts")
+	# Share and smoothness over a 400x400-chunk sample.
+	for key in ["VolcanicBadlands", "TwilightGrove", "VoidRift"]:
+		var rarity: float = float(GameData.BIOMES[key].get("rarity"))
+		var salt := ClimateField.niche_salt(key)
+		var inside := 0
+		var total := 0
+		var runs := 0
+		for seed_v in [11, 12, 13]:   # a 400x400 sample holds only ~200 features, so average a few worlds
+			for cz in range(0, 400, 2):
+				var in_run := false
+				for cx in 400:
+					var hit := ClimateField.niche_value(seed_v, Vector2(cx + 0.5, cz + 0.5), salt) < rarity
+					total += 1
+					if hit:
+						inside += 1
+						if not in_run:
+							runs += 1
+					in_run = hit
+		var share := float(inside) / float(total)
+		assert_true(absf(share - rarity) <= rarity * 0.2, "%s niche covers its rarity %.2f (got %.3f)" % [key, rarity, share])
+		assert_true(runs > 0 and float(inside) / float(runs) > float(ClimateField.NICHE_CELL_CHUNKS),
+			"%s niche runs along a row exceed one niche cell (mean %.1f)" % [key, float(inside) / maxf(float(runs), 1.0)])
+
+func _test_climate_fallback_is_land_only() -> void:
+	var saved_env: Dictionary = ClimateField._envelopes.duplicate()
+	var saved_warm: bool = ClimateField._warmed
+	ClimateField._envelopes.clear()
+	ClimateField._warmed = true   # nothing loaded and nothing to warm: the Voronoi fallback decides
+	var seen := {}
+	for i in 600:
+		var b := ClimateField.biome_for_chunk(i % 7 + 1, Vector2i(i * 11 - 3000, i * 17 - 5000), TerrainSlice.BIOME_KEYS)
+		seen[b] = true
+		assert_false(b in ["Ocean", "Beach", "Alpine"], "fallback never hands out %s" % b)
+	assert_true(seen.size() >= 3, "the fallback still varies (%s)" % [seen.keys()])
+	ClimateField._envelopes = saved_env
+	ClimateField._warmed = saved_warm
 
 func _test_climate_ocean_and_niches() -> void:
 	var w := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
