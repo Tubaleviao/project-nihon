@@ -159,9 +159,9 @@ func read_region(region: Vector2i) -> Dictionary:
 				Diag.warn("RegionStore: %s: dropping malformed chunk entry '%s'" % [path, str(ckey)])
 	return { "ok": true, "chunks": chunks }
 
-## Phase 61 — a chunk entry's `edits` must be a Dictionary of Arrays (tile key → op list) and
-## its `materials`, when present, a Dictionary. Legacy entries may carry bare numbers as edit
-## values; those are left to `VoxelSlice` to migrate. Pure.
+## Phase 61 — a chunk entry's `edits`, when present, must be a Dictionary (tile key → op list)
+## and its `materials`, when present, a Dictionary. Only the container types are checked: the
+## values inside (legacy entries carry bare numbers) are left to `VoxelSlice` to migrate. Pure.
 static func _chunk_entry_valid(entry: Dictionary) -> bool:
 	if entry.has("edits"):
 		if not (entry["edits"] is Dictionary):
