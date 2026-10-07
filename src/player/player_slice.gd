@@ -10,6 +10,7 @@ extends Node
 ##   get_position()   -> Vector3
 ##   get_hp()         -> float
 ##   take_damage(dmg) -> void
+const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
 
 const SPEED        := 4.5     # m/s horizontal
@@ -260,7 +261,26 @@ func _input(event: InputEvent) -> void:
 		GameBus.character_equipment_toggle_requested.emit()
 
 func get_position() -> Vector3:
+	return _body.global_position - _scene_offset if _body else Vector3.ZERO
+
+## Phase 63: the scene-origin offset a client rebase has applied. The body sits at world + offset;
+## `get_position` and `spawn_at` still speak world coordinates.
+var _scene_offset: Vector3 = Vector3.ZERO
+
+## The body's raw scene position (what the physics server sees).
+func get_scene_position() -> Vector3:
 	return _body.global_position if _body else Vector3.ZERO
+
+## Shift the body by `shift` in the same frame the world shifts; its world position is unchanged.
+func shift_scene(shift: Vector3) -> void:
+	_scene_offset += shift
+	if _body:
+		_body.global_position += shift
+	if _ghost_pool != null:
+		_ghost_pool.shift_scene(shift)
+
+func scene_offset() -> Vector3:
+	return _scene_offset
 
 func get_velocity() -> Vector3:
 	return _vel
@@ -282,7 +302,7 @@ func get_facing() -> Vector2:
 
 func spawn_at(pos: Vector3) -> void:
 	if _body:
-		_body.global_position = pos
+		_body.global_position = pos + _scene_offset
 		_vel = Vector3.ZERO
 
 ## Adjust the orbit camera's distance from the player (scroll-wheel zoom),
@@ -414,6 +434,9 @@ func _build_ghost_pool() -> void:
 	_ghost_pool.name = "GhostPool"
 	_ghost_pool.setup(cap, true)
 	add_child(_ghost_pool)
+	# A pool built after a rebase starts in the shifted frame too.
+	if _scene_offset != Vector3.ZERO:
+		_ghost_pool.shift_scene(_scene_offset)
 
 ## World position → ghost instance transform (capsule half-height 0.9 offset).
 func _ghost_transform(pos: Vector3) -> Transform3D:
@@ -494,7 +517,7 @@ static func swim_vertical_velocity(feet_y: float, sea_level: float) -> float:
 func _swimming_now() -> bool:
 	if terrain_slice == null or not terrain_slice.has_method("get_height_at"):
 		return false
-	var p := _body.global_position
+	var p := get_position()
 	var sea := WorldShape.sea_level()
 	# Only a body at or below the surface swims: one on a platform or falling in from a cliff does not.
 	if p.y > sea + WADE_DEPTH:
@@ -561,7 +584,7 @@ func _move(delta: float) -> void:
 	# body is moved directly so the clamp is authoritative for both the visible
 	# avatar and collision, without relying on a wall at the world edge.
 	if terrain_slice != null and terrain_slice.has_method("clamp_to_world"):
-		_body.global_position = terrain_slice.clamp_to_world(_body.global_position)
+		_body.global_position = WorldPos.wrap_world(terrain_slice.clamp_to_world(_body.global_position - _scene_offset)) + _scene_offset
 
 func _broadcast_state() -> void:
 	if not render_visuals:
@@ -774,9 +797,9 @@ func _update_aim() -> void:
 			var bhit := space.intersect_ray(bquery)
 			if not bhit.is_empty():
 				_aimed_block_hit = true
-				_aimed_block_pos = bhit.get("position", Vector3.ZERO)
+				_aimed_block_pos = (bhit.get("position", Vector3.ZERO) as Vector3) - _scene_offset
 				_aimed_block_normal = bhit.get("normal", Vector3.UP)
-				block_dist = from.distance_to(_aimed_block_pos)
+				block_dist = from.distance_to(_aimed_block_pos + _scene_offset)
 
 			# Tree ray (layer 4) — chop target. Trees are not on the terrain
 			# layer, so this is its own ray; a trunk is only accepted when it is

@@ -28,10 +28,26 @@ extends Node
 ##   cycle_station_type()               -> String    (advance the selection)
 
 ## Set by game_root so station_near_player can resolve the player's position.
+const WorldPos := preload("res://src/terrain/world_pos.gd")
+
 var player_slice: Node = null
 
 ## Placed stations keyed by station id.
 var _stations: Dictionary = {}
+
+## Phase 63: the scene-origin offset a client rebase has applied to every marker (see `shift_scene`).
+var _scene_offset: Vector3 = Vector3.ZERO
+
+## Shift every placed marker by `shift`. Station records keep their world position untouched.
+func shift_scene(shift: Vector3) -> void:
+	_scene_offset += shift
+	for id in _markers:
+		(_markers[id] as Node3D).position += shift
+	if _preview != null:
+		_preview.position += shift
+
+func scene_offset() -> Vector3:
+	return _scene_offset
 var _next_id: int = 0
 
 ## Visual markers keyed by station id (MeshInstance3D).
@@ -162,7 +178,7 @@ func show_preview(type: String, position: Vector3) -> void:
 		_preview.material_override = mat
 		_preview.name = "StationPreview"
 		add_child(_preview)
-	_preview.position = pos
+	_preview.position = pos + _scene_offset
 	_preview.visible = true
 	(_preview.material_override as StandardMaterial3D).albedo_color = \
 		Color(0.2, 0.9, 0.3, 0.4) if ok else Color(0.95, 0.2, 0.2, 0.4)
@@ -198,7 +214,7 @@ func get_station_data() -> Array:
 		out.append({
 			"id":       str(s["id"]),
 			"type":     str(s["type"]),
-			"position": [pos.x, pos.y, pos.z],
+			"position": WorldPos.to_wire(pos),
 		})
 	out.sort_custom(func(a, b): return str(a["id"]) < str(b["id"]))
 	return out
@@ -215,9 +231,9 @@ func apply_station_data(data: Array) -> void:
 			continue
 		var stype := str(entry.get("type", ""))
 		var arr = entry.get("position", [])
-		if stype.is_empty() or not (arr is Array) or (arr as Array).size() < 3:
+		if stype.is_empty() or not WorldPos.is_wire(arr):
 			continue
-		var pos := Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
+		var pos := WorldPos.from_wire(arr)
 		var id := str(entry.get("id", ""))
 		if id.is_empty():
 			id = "station_%d" % _next_id
@@ -275,7 +291,7 @@ func _add_marker(id: String, type: String, position: Vector3) -> void:
 	var inst := MeshInstance3D.new()
 	inst.mesh = mesh
 	inst.material_override = mat
-	inst.position = position
+	inst.position = position + _scene_offset
 	inst.name = "Station_%s" % id
 	add_child(inst)
 	_markers[id] = inst

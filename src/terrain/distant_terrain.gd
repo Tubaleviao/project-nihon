@@ -25,6 +25,18 @@ var _cell_origin := Vector2i(-999999, -999999)
 var _built_key := ""   # seed, radius and circumference the current mesh was built for
 var _mesh_inst: MeshInstance3D = null
 
+## Phase 63: the scene-origin offset a client rebase has applied (see `shift_scene`).
+var _scene_offset: Vector3 = Vector3.ZERO
+
+## Shift every ring node by `shift`; its world position is unchanged.
+func shift_scene(shift: Vector3) -> void:
+	_scene_offset += shift
+	if _mesh_inst != null:
+		_mesh_inst.position += shift
+
+func scene_offset() -> Vector3:
+	return _scene_offset
+
 ## Ring half-extent in metres for a voxel window of `radius_chunks` (Chebyshev radius).
 static func ring_half_extent(radius_chunks: int) -> float:
 	return float(RING_FACTOR) * (float(radius_chunks) + 0.5) * CHUNK_METERS
@@ -62,6 +74,7 @@ func rebuild(center: Vector2, radius_chunks: int) -> bool:
 	mat.vertex_color_use_as_albedo = true
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_mesh_inst.material_override = mat
+	_mesh_inst.position = _scene_offset
 	add_child(_mesh_inst)
 	return true
 

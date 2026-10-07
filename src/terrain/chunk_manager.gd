@@ -786,6 +786,8 @@ func _centers_around(local: Vector2i) -> Array:
 ## `peer_recenter_refused`). Returns true when the window actually moved.
 func set_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool = false) -> bool:
 	var now := Time.get_ticks_msec()
+	# X is a wrapped planet coordinate: store and compare the canonical chunk.
+	chunk = TerrainSlice.wrap_chunk(chunk)
 	if host_driven or not _peer_centers.has(peer_id):
 		var moved: bool = _peer_centers.get(peer_id, null) != chunk
 		_peer_centers[peer_id] = chunk
@@ -1098,7 +1100,9 @@ func _in_bounds(chunk: Vector2i) -> bool:
 	return true
 
 func _chunk_key(chunk_pos: Vector2i) -> String:
-	return "%d,%d" % [chunk_pos.x, chunk_pos.y]
+	# Phase 63: canonical key across the east-west seam.
+	var c := TerrainSlice.wrap_chunk(chunk_pos)
+	return "%d,%d" % [c.x, c.y]
 
 func _key_to_chunk(key: String) -> Vector2i:
 	var parts: PackedStringArray = str(key).split(",")

@@ -533,6 +533,21 @@ func _deterministic_chunk_position(chunk_pos: Vector2i, species: String, spawn_i
 ## Build the shared MultiMesh pool: one trunk + canopy mesh for every tree of
 ## every species, tinted per instance by the species' wood colour. The canopy
 ## keeps its own vertex tint so the per-instance colour only drives the trunk.
+## Phase 63: the scene-origin offset a client rebase has applied (see `shift_scene`).
+var _scene_offset: Vector3 = Vector3.ZERO
+
+## Shift the pool (every standing tree's mesh) and every trunk body by `shift`.
+func shift_scene(shift: Vector3) -> void:
+	_scene_offset += shift
+	if _pool != null:
+		_pool.shift_scene(shift)
+	for child in get_children():
+		if child is Node3D:
+			(child as Node3D).position += shift
+
+func scene_offset() -> Vector3:
+	return _scene_offset
+
 func _build_pool() -> void:
 	_pool = MultimeshPool.new()
 	_pool.name = "TreePool"
@@ -592,7 +607,7 @@ func _build_collision(tree_id: String, pos: Vector3, species: String) -> StaticB
 	body.collision_mask = 0
 	body.set_meta("tree_id", tree_id)
 	body.set_meta("species", species)
-	body.position = pos
+	body.position = pos + _scene_offset
 	var shape := CollisionShape3D.new()
 	var cylinder := CylinderShape3D.new()
 	cylinder.radius = TRUNK_RADIUS

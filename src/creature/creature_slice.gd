@@ -31,6 +31,7 @@ extends Node
 ## listings and tree regrowth use, so a deadline persisted in the world record
 ## still means what it says after a restart. (It used to be process uptime via
 ## Time.get_ticks_msec(), which is meaningless in a new process.)
+const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
 
 ## CHUNK_SIZE and BIOME_KEYS live in TerrainSlice (single source of truth).
@@ -306,7 +307,7 @@ func get_snapshot_creatures() -> Array:
 			"instance_id": iid,
 			"creature_id": inst["creature_id"],
 			"state":       inst["state"],
-			"position":    [pos.x, pos.y, pos.z],
+			"position":    WorldPos.to_wire(pos),
 			"hp":          float(inst.get("hp", 0.0)),
 			"respawn_at":  float(inst.get("respawn_at", -1.0)),
 		})
@@ -314,7 +315,7 @@ func get_snapshot_creatures() -> Array:
 		if _instances.has(iid):
 			continue
 		var dead: Dictionary = _dead_state[iid]
-		var dead_pos: Variant = dead.get("position", [0.0, 0.0, 0.0])
+		var dead_pos: Variant = dead.get("position", WorldPos.to_wire(Vector3.ZERO))
 		out.append({
 			"instance_id": iid,
 			"creature_id": str(dead.get("creature_id", "")),
@@ -516,7 +517,7 @@ func _remember_death(iid: String, inst: Dictionary) -> void:
 	_dead_state[iid] = {
 		"creature_id": str(inst.get("creature_id", "")),
 		"respawn_at":  deadline,
-		"position":    [pos.x, pos.y, pos.z],
+		"position":    WorldPos.to_wire(pos),
 	}
 
 func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> String:
@@ -847,10 +848,7 @@ func _apply_creature_entries(list: Array, create_missing: bool) -> void:
 		if not create_missing and not _instances.has(iid):
 			_hold_death_record(iid, entry)
 			continue
-		var pos := Vector3.ZERO
-		var arr = entry.get("position", [])
-		if arr is Array and arr.size() >= 3:
-			pos = Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
+		var pos := WorldPos.from_wire(entry.get("position", []))
 		apply_creature_state(
 			iid,
 			str(entry.get("creature_id", "")),
@@ -869,14 +867,11 @@ func _hold_death_record(iid: String, entry: Dictionary) -> void:
 	var deadline := float(entry.get("respawn_at", -1.0))
 	if deadline <= Time.get_unix_time_from_system():
 		return
-	var pos := Vector3.ZERO
-	var arr = entry.get("position", [])
-	if arr is Array and arr.size() >= 3:
-		pos = Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
+	var pos := WorldPos.from_wire(entry.get("position", []))
 	_dead_state[iid] = {
 		"creature_id": str(entry.get("creature_id", "")),
 		"respawn_at":  deadline,
-		"position":    [pos.x, pos.y, pos.z],
+		"position":    WorldPos.to_wire(pos),
 	}
 
 # ---------------------------------------------------------------------------
@@ -886,6 +881,18 @@ func _hold_death_record(iid: String, entry: Dictionary) -> void:
 ## Build the shared MultiMesh pool for all creature bodies (one draw call).
 ## The box mesh is shared; the per-creature tint lives in the per-instance
 ## colour, and the 0.5 half-height offset is baked into each instance transform.
+## Phase 63: the scene-origin offset a client rebase has applied (see `shift_scene`).
+var _scene_offset: Vector3 = Vector3.ZERO
+
+## Shift the creature pool (every creature's mesh) by `shift`. Instance records keep world positions.
+func shift_scene(shift: Vector3) -> void:
+	_scene_offset += shift
+	if _pool != null:
+		_pool.shift_scene(shift)
+
+func scene_offset() -> Vector3:
+	return _scene_offset
+
 func _build_pool() -> void:
 	var box := BoxMesh.new()
 	box.size = Vector3(0.8, 1.0, 1.2)
