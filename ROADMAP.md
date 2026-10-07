@@ -5859,7 +5859,7 @@ save, and a failed region read must not be marked resident.
 
 ---
 
-## Phase 62 — Peer streaming window limits
+## Phase 62 — Peer streaming window limits ✅ Done
 
 **Goal:** A peer's streaming window follows the position its client reports, with no bound
 on distance or rate (#143 item 1, #145, #146 items 4, 5, 10). A modified client can make the
@@ -5881,12 +5881,12 @@ it, and fix the snapshot ordering on a teleport.
 - `src/terrain/chunk_manager.gd` — `_chunk_refs` is either read by production code or removed.
 
 **Acceptance criteria:**
-- [ ] Suite: a peer reporting 100 positions 10 km apart within one interval moves its window at
+- [x] Suite: a peer reporting 100 positions 10 km apart within one interval moves its window at
   most once, and the refusal counter rises.
-- [ ] Suite: a host-driven respawn far away recentres the window immediately.
-- [ ] Suite: after a teleport into a region with stored edits, the re-scope snapshot carries
+- [x] Suite: a host-driven respawn far away recentres the window immediately.
+- [x] Suite: after a teleport into a region with stored edits, the re-scope snapshot carries
   those edits.
-- [ ] Suite green on both boot paths; `tools/net_harness.sh` agrees on every step.
+- [x] Suite green on both boot paths; `tools/net_harness.sh` agrees on every step.
 
 ---
 

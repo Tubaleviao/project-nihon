@@ -384,6 +384,10 @@ func get_peer_id(player_id: String) -> int:
 			return int(pid)
 	return 0
 
+## The peer ids currently bound to a player (the peer map's keys), in no particular order.
+func get_peer_ids() -> Array:
+	return _peer_ids.keys()
+
 ## True when a live connection holds `player_id` — or when it is THIS machine's own
 ## local player, which is online by definition (it is the human at this keyboard).
 ##

@@ -197,7 +197,19 @@ var _active: bool = false
 ## queues themselves run off the `wanted` set).
 var _peer_centers: Dictionary = {}
 var _last_centers: Array = []
-var _chunk_refs: Dictionary = {}   # "cx,cz" -> number of windows covering it
+var _chunk_refs: Dictionary = {}   # "cx,cz" -> number of windows covering it (read by `chunk_ref_count`)
+
+## Phase 62 — a peer's window follows the position its CLIENT reports, so it is bounded: at most
+## one recentre per peer per `PEER_RECENTER_INTERVAL` seconds, and a single accepted move
+## travels at most `PEER_RECENTER_MAX_CHUNKS` chunks (Chebyshev) toward the reported chunk.
+## A move the host itself orders (join, spawn placement) is exempt. Without it a modified
+## client could make the host read regions and queue chunk builds as fast as it can send packets.
+const PEER_RECENTER_INTERVAL := 0.25
+const PEER_RECENTER_MAX_CHUNKS := 8
+## peer_id -> `Time.get_ticks_msec()` of the last accepted client-driven move.
+var _peer_last_move_msec: Dictionary = {}
+## Client-driven moves refused (rate-limited) or clamped (too far in one step), for the log line and tests.
+var peer_recenter_refused: int = 0
 
 ## Phase 52 — the region streamer (src/persistence/region_streamer.gd), or null on a client /
 ## in an isolated rig. Told which chunks the windows want on every window move so the edits of
@@ -765,12 +777,40 @@ func _centers_around(local: Vector2i) -> Array:
 	return out
 
 ## Phase 52 — place (or move) a connected peer's window. Takes effect on the next `refresh`.
-func set_peer_center(peer_id: int, chunk: Vector2i) -> void:
-	_peer_centers[peer_id] = chunk
+##
+## Phase 62 — `host_driven` is true when the HOST placed the peer (join, spawn placement): the
+## window goes exactly there, immediately. Otherwise `chunk` is a client claim: a move inside
+## `PEER_RECENTER_INTERVAL` of the last one is refused, and one farther than
+## `PEER_RECENTER_MAX_CHUNKS` is clamped to that distance (both counted in
+## `peer_recenter_refused`). Returns true when the window actually moved.
+func set_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool = false) -> bool:
+	var now := Time.get_ticks_msec()
+	if host_driven or not _peer_centers.has(peer_id):
+		var moved: bool = _peer_centers.get(peer_id, null) != chunk
+		_peer_centers[peer_id] = chunk
+		_peer_last_move_msec[peer_id] = now
+		return moved
+	var current: Vector2i = _peer_centers[peer_id]
+	if current == chunk:
+		return false
+	if now - int(_peer_last_move_msec.get(peer_id, -1000000)) < int(PEER_RECENTER_INTERVAL * 1000.0):
+		peer_recenter_refused += 1
+		return false
+	var step := chunk - current
+	var reach := maxi(absi(step.x), absi(step.y))
+	if reach > PEER_RECENTER_MAX_CHUNKS:
+		peer_recenter_refused += 1
+		step = Vector2i(
+			roundi(float(step.x) * PEER_RECENTER_MAX_CHUNKS / float(reach)),
+			roundi(float(step.y) * PEER_RECENTER_MAX_CHUNKS / float(reach)))
+	_peer_centers[peer_id] = current + step
+	_peer_last_move_msec[peer_id] = now
+	return true
 
 ## Phase 52 — drop a peer's window (disconnect). Chunks only that window covered unload.
 func clear_peer_center(peer_id: int) -> void:
 	_peer_centers.erase(peer_id)
+	_peer_last_move_msec.erase(peer_id)
 
 func peer_window_count() -> int:
 	return _peer_centers.size()
