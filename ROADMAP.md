@@ -6034,7 +6034,7 @@ spawn point, and the colonization map over-counts after a restart (#148).
 
 ---
 
-## Phase 68 — Distant terrain off the main thread
+## Phase 68 — Distant terrain off the main thread ✅ Done
 
 **Goal:** `DistantTerrain.rebuild` evaluates a 65×65 lattice on the main thread every time the
 player crosses a ring cell, and the terrain corner cache is unsynchronised shared state
@@ -6051,14 +6051,15 @@ player crosses a ring cell, and the terrain corner cache is unsynchronised share
 - `src/terrain/terrain_slice.gd` — the `_shape_at` corner cache is per-thread (or replaced by a
   pure function), keyed on seed and width.
 - `WorldShape.SPAWN_CENTER`/`SPAWN_HEIGHT` reference the `TerrainSlice` constants instead of
-  duplicating them.
+  duplicating them. (Audit: `TerrainSlice` holds no copy of either; they live only in `WorldShape`
+  and nothing else duplicates them, so there is nothing to change.)
 
 **Acceptance criteria:**
-- [ ] Suite: `rebuild` returns without building the mesh synchronously (a counter of main-thread
+- [x] Suite: `rebuild` returns without building the mesh synchronously (a counter of main-thread
   lattice evaluations stays 0), and the finished mesh equals a synchronous build for the same
   centre.
-- [ ] Suite: heights sampled concurrently from several worker tasks equal single-threaded samples.
-- [ ] Suite green on both boot paths.
+- [x] Suite: heights sampled concurrently from several worker tasks equal single-threaded samples.
+- [x] Suite green on both boot paths — `Results: 13968/13968 passed (0 failed)` with `[Server] listening on port 7777` on the server boot.
 
 ---
 
