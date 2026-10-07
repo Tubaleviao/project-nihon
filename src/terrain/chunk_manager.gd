@@ -1098,7 +1098,9 @@ func _in_bounds(chunk: Vector2i) -> bool:
 	return true
 
 func _chunk_key(chunk_pos: Vector2i) -> String:
-	return "%d,%d" % [chunk_pos.x, chunk_pos.y]
+	# Phase 63: canonical key across the east-west seam.
+	var c := TerrainSlice.wrap_chunk(chunk_pos)
+	return "%d,%d" % [c.x, c.y]
 
 func _key_to_chunk(key: String) -> Vector2i:
 	var parts: PackedStringArray = str(key).split(",")

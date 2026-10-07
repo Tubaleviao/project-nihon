@@ -94,6 +94,7 @@ func run() -> void:
 	_run_test("terrain: the distant ring is 10x the window with no collision", _test_distant_ring)
 	_run_test("spawn: ocean chunks grow no trees",            _test_ocean_spawns_no_land_tables)
 	_run_test("terrain: the world wraps east-west",           _test_terrain_wraps_east_west)
+	_run_test("terrain: chunk keys are canonical across the seam", _test_chunk_key_canonical_at_seam)
 	_run_test("terrain: latitude and longitude from the fabric planet", _test_terrain_planet_coordinates)
 	_run_test("player: rebased origin keeps the world position", _test_world_pos_rebase)
 	_run_test("persistence: position saved as chunk + local, old saves migrate", _test_registry_world_pos)
@@ -995,6 +996,18 @@ func _test_terrain_wraps_east_west() -> void:
 	assert_true(worst < 0.2, "no seam wall across the wrap (worst step %f)" % worst)
 	assert_eq(t.generate_heightmap(Vector2i(c / 2, 3)), west, "a chunk past the edge is the wrapped chunk")
 	t.free()
+
+func _test_chunk_key_canonical_at_seam() -> void:
+	var c := TerrainSlice.circumference_chunks()
+	var voxel := VoxelSlice.new()
+	assert_eq(voxel._chunk_key(Vector2i(c / 2, 4)), voxel._chunk_key(Vector2i(-c / 2, 4)),
+		"VoxelSlice keys chunk (C/2, z) and (-C/2, z) as one chunk")
+	assert_eq(voxel._chunk_key(Vector2i(7, -2)), "7,-2", "an interior key is unchanged")
+	var cm := ChunkManager.new()
+	assert_eq(cm._chunk_key(Vector2i(c / 2, 4)), cm._chunk_key(Vector2i(-c / 2, 4)),
+		"ChunkManager keys both sides of the seam as one chunk")
+	cm.free()
+	voxel.free()
 
 func _test_terrain_planet_coordinates() -> void:
 	var t := TerrainSlice.new()

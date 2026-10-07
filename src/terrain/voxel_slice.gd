@@ -98,6 +98,7 @@ const Diag := preload("res://src/core/diag.gd")
 const MeshUtil := preload("res://src/core/mesh_util.gd")
 ## Phase 43 — the deterministic ore field: veins, their depth band and ley gate.
 const OreField := preload("res://src/terrain/ore_field.gd")
+const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 
 ## CHUNK_SIZE is defined once on TerrainSlice and accessed via terrain_slice.CHUNK_SIZE.
@@ -2618,7 +2619,9 @@ static func _tile_key(tile: Vector2i) -> String:
 
 ## Phase 42 review pass 9 — STATIC: the worker half of a build keys chunks too (`_neighbour_runs`).
 static func _chunk_key(chunk_pos: Vector2i) -> String:
-	return "%d,%d" % [chunk_pos.x, chunk_pos.y]
+	# Phase 63: canonical key — chunk (C/2, z) and (-C/2, z) are the same chunk across the seam.
+	var c := TerrainSlice.wrap_chunk(chunk_pos)
+	return "%d,%d" % [c.x, c.y]
 
 ## Parse a "gx,gz" tile key back into a tile coordinate.
 func _key_to_tile(key: String) -> Vector2i:
