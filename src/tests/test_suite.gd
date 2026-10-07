@@ -114,6 +114,8 @@ func run() -> void:
 	_run_test("player: rebased origin keeps the world position", _test_world_pos_rebase)
 	_run_test("persistence: position saved as chunk + local, old saves migrate", _test_registry_world_pos)
 	_run_test("persistence: save then load round-trip",       _test_persistence_round_trip)
+	_run_test("persistence: worldgen stamp on a new world",   _test_worldgen_stamp_new_world)
+	_run_test("persistence: worldgen mismatch warns once and keeps the stamp", _test_worldgen_stamp_mismatch)
 	_run_test("persistence: missing slot emits load_failed",  _test_persistence_missing_slot)
 	_run_test("loot: known creature produces drops",          _test_loot_known_creature)
 	_run_test("loot: drops read from fabric (LavaSlug)",     _test_loot_drops_from_fabric)
@@ -1311,6 +1313,53 @@ func _test_registry_world_pos() -> void:
 # ---------------------------------------------------------------------------
 # PersistenceSlice tests
 # ---------------------------------------------------------------------------
+
+## Phase 71 — a new world is stamped with the running generator version.
+func _test_worldgen_stamp_new_world() -> void:
+	var dir := "user://saves/test_worldgen_new/"
+	_wipe_dir(dir)
+	var writer := PersistenceSlice.new()
+	add_child(writer)
+	writer.server_save_dir = dir
+	var stamp := PersistenceSlice.worldgen_stamp_for_save({}, TerrainSlice.WORLDGEN_VERSION)
+	assert_eq(writer.save_world({ "local_player_id": "player_1_1_ab", "worldgenVersion": stamp }, false), OK, "the record writes")
+	var loaded := writer.load_world_record()
+	assert_eq(PersistenceSlice.worldgen_version_of(loaded), TerrainSlice.WORLDGEN_VERSION, "a new world saves worldgenVersion == WORLDGEN_VERSION")
+	var warns := Diag.warn_count
+	assert_false(PersistenceSlice.check_worldgen_version(loaded, TerrainSlice.WORLDGEN_VERSION), "a matching record is no mismatch")
+	assert_false(PersistenceSlice.check_worldgen_version({}, TerrainSlice.WORLDGEN_VERSION), "a new world is no mismatch")
+	assert_eq(Diag.warn_count, warns, "and neither warns")
+	writer.free()
+	_wipe_dir(dir)
+
+## Phase 71 — an unstamped or older record loads with its edits intact, warns exactly once, and is
+## re-saved with its ORIGINAL stamp.
+func _test_worldgen_stamp_mismatch() -> void:
+	var dir := "user://saves/test_worldgen_old/"
+	_wipe_dir(dir)
+	var voxel := _make_voxel()
+	assert_true(voxel.mine_block(Vector3(16.25, 2.0, 16.25)).get("success", false), "the column was mined")
+	var writer := PersistenceSlice.new()
+	add_child(writer)
+	writer.server_save_dir = dir
+	for original in [0, TerrainSlice.WORLDGEN_VERSION - 1]:
+		var record := { "local_player_id": "player_1_1_ab", "chunks": voxel.get_chunk_manifest() }
+		if original > 0:
+			record["worldgenVersion"] = original
+		assert_eq(writer.save_world(record, false), OK, "the old record writes")
+		var loaded := writer.load_world_record()
+		assert_eq(PersistenceSlice.worldgen_version_of(loaded), original, "a missing stamp reads as 0, an old one as itself")
+		var warns := Diag.warn_count
+		assert_true(PersistenceSlice.check_worldgen_version(loaded, TerrainSlice.WORLDGEN_VERSION), "the mismatch is reported")
+		assert_eq(Diag.warn_count - warns, 1, "with exactly one warning")
+		var stamp := PersistenceSlice.worldgen_stamp_for_save(loaded, TerrainSlice.WORLDGEN_VERSION)
+		assert_eq(stamp, original, "a re-save keeps the original stamp")
+		assert_eq(writer.save_world({ "local_player_id": "player_1_1_ab", "worldgenVersion": stamp }, true), OK, "the re-save writes")
+		assert_eq(PersistenceSlice.worldgen_version_of(writer.load_world_record()), original, "and the stamp on disk is unchanged")
+		assert_true((writer.load_world()["chunks"] as Dictionary).has("0,0"), "every edit is intact")
+	voxel.free()
+	writer.free()
+	_wipe_dir(dir)
 
 func _test_persistence_round_trip() -> void:
 	var p := PersistenceSlice.new()

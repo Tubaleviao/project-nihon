@@ -111,6 +111,7 @@ Slices do **not** hold each other by default. The bus carries every *event* and 
 3. **Check drift** — run `npm run check-drift` to confirm the IR snapshot is up-to-date before importing in Godot.
 4. **Implement the slice** — add `src/<system>/<system>_slice.gd`; wire it in `src/core/game_root.gd`; add bus signals in `src/core/bus.gd`.
 5. **Write tests** — extend `src/tests/test_suite.gd` with at least one test per acceptance criterion before marking the phase done.
+   A phase that changes world-generation output (heights, biome placement, climate, continents) also bumps `TerrainSlice.WORLDGEN_VERSION` and adds a line to its history comment, so older saves are flagged on load.
 6. **Open a PR** — phases ship as pull requests; titles follow `feat(<system>): <short description>`. PRs for design changes to the fabric are separate from implementation PRs.
 
 ### Testing

@@ -17,6 +17,12 @@ extends Node
 const CHUNK_SIZE := 64       # tiles per side (64 × 0.5 = 32 world units per chunk)
 const TILE_SIZE  := 0.5      # world units per tile (XZ) — each square is half its former 1.0 size
 const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DETAIL noise (Phase 51: the large shape is WorldShape)
+## Phase 71 — which generator produced the terrain and biome layout a world record was
+## written against. Bump it in any phase that changes generation output (heights, biome
+## placement, climate, continents), so an older save is flagged on load instead of silently
+## meeting a different layout. History: 1 = pre-Phase-49 layout; 2 = Phase 49 biomes and
+## Phase 51 continent shape (the layout this constant first shipped with).
+const WORLDGEN_VERSION := 2
 const BIOME_SEED := 20260815 # fixed seed so biome assignment is deterministic
 const ClimateField := preload("res://src/terrain/climate_field.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
