@@ -85,6 +85,7 @@ extends Node
 ##   is_first_ring_ready() -> bool
 ##   first_ring_progress() -> float         — 0..1, drives the loading bar
 const Diag := preload("res://src/core/diag.gd")
+const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 
 ## Chunk size is owned by TerrainSlice; world_to_chunk() delegates to it.
 const DEFAULT_VIEW_DISTANCE := 3       # Chebyshev radius, in chunks

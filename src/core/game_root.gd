@@ -1249,7 +1249,8 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 		var target: Vector2i = _chunk_manager.world_to_chunk(Vector2(position.x, position.z))
 		if _chunk_manager.set_peer_center(peer_id, target):
 			_chunk_manager.refresh(false)
-		if _chunk_manager.peer_center(peer_id) != target:
+		# The window centre is stored wrapped past the seam; compare like with like.
+		if _chunk_manager.peer_center(peer_id) != TerrainSlice.wrap_chunk(target):
 			_peer_aoi_regions.erase(peer_id)
 			return
 	# Phase 33 — world/entity data only: the peer's own record is NOT re-sent, or
