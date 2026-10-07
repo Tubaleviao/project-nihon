@@ -225,6 +225,7 @@ func run() -> void:
 	_run_test("equipment: restore paths on a host and a client", _test_apply_local_equipment_paths)
 	_run_test("equipment: bag loss clears the slot",            _test_equipment_revalidated_on_bag_loss)
 	_run_test("equipment: slots cached, peer evict, owner map", _test_equipment_phase48_misc)
+	_run_test("equipment: host worn set + AOI enter/leave",      _test_equipment_host_and_aoi_transitions)
 	_run_test("equipment: rules totals + sanitize",             _test_equipment_rules_totals)
 	_run_test("equipment: derived stats + record + replicate",  _test_character_derived_stats_and_record)
 	_run_test("ui: character window rows + equip",              _test_ui_character_rows)
@@ -324,6 +325,7 @@ func run() -> void:
 	_run_test("clock: client stays within 1 s over 10 minutes",  _test_clock_client_sync)
 	_run_test("clock: persistence, HUD text and fabric values",  _test_clock_persistence_and_fabric)
 	_run_test("spawn: hash bits are independent",                _test_spawn_roll_mix_avalanche)
+	_run_test("spawn: missing fields warn once",                 _test_spawn_missing_fields_warns_once)
 	_run_test("spawn: hash output pinned",                       _test_spawn_roll_mix_pinned)
 	_run_test("spawn: seeded roll, density and pack size",       _test_spawn_roll_pure)
 	_run_test("spawn: creature packs are scarce and seeded",     _test_spawn_creature_scarcity)
@@ -564,6 +566,14 @@ func run() -> void:
 	_run_test("spawn: colonization counts survive a restart, abandoned homes lapse", _test_colonization_followups)
 	_run_test("spawn: the colonization map scores, persists and drops malformed data", _test_colonization_map)
 	_run_test("spawn: a fresh join is placed, a reconnect is not", _test_spawn_registry_placement)
+	_run_test("region: a vein depleted from an evicted chunk stays depleted in its neighbours", _test_region_evict_keeps_vein_depletion)
+	_run_test("region: one unwritable region does not stop the rest of the save", _test_region_failed_write_saves_the_rest)
+	_run_test("region: a region whose read fails is not resident and is retried", _test_region_failed_read_not_resident)
+	_run_test("region: a chunk entry with edits or materials of the wrong type is skipped with one warning", _test_region_malformed_entry_skipped)
+	_run_test("peer window: a flood of far claims moves the window at most once", _test_peer_window_rate_limited)
+	_run_test("peer window: a seam crossing is a short step, not a planet-wide one", _test_peer_window_clamps_across_seam)
+	_run_test("peer window: a host-driven move recentres at once", _test_peer_window_host_driven)
+	_run_test("peer window: a move into a stored region makes its edits resident", _test_peer_window_move_loads_region_edits)
 	_run_test("region: 1,000 regions on disk, only the ones near a window are resident", _test_region_streams_only_near_windows)
 	_run_test("chunk: each peer has a window and chunks are reference counted", _test_chunk_peer_windows_refcount)
 	_run_test("chunk: two peers 100 km apart each have creatures simulated", _test_chunk_far_peers_simulated)
@@ -12326,6 +12336,30 @@ func _test_spawn_pack_bounds_and_retry() -> void:
 			assert_true(key[0] != gone, "leaving a chunk drops its deferred packs")
 	capped.free()
 
+## Phase 57 — a creature resource lacking spawnChance/spawnDensity warns once (the flag is
+## the once-latch the warning sits behind) and still spawns, without a roll.
+func _test_spawn_missing_fields_warns_once() -> void:
+	var src := GDScript.new()
+	src.source_code = "extends Resource\nvar biome: int = 0\nvar spawnCount: int = 1\n"
+	assert_eq(src.reload(), OK, "the field-less stand-in compiles")
+	var fake: Resource = src.new()
+	var c := CreatureSlice.new()
+	c.render_visuals = false
+	add_child(c)
+	var was_quiet: bool = Diag.quiet
+	Diag.quiet = true
+	assert_false(c._warned_spawn_fields.has("NoFields"), "nothing warned before the first read")
+	var fields: Array = c._spawn_fields("NoFields", fake)
+	assert_true(fields[0] == null and fields[1] == null, "missing fields read as null (spawn without a roll)")
+	assert_true(c._warned_spawn_fields.has("NoFields"), "the missing fields are reported")
+	c._spawn_fields("NoFields", fake)
+	assert_eq(c._warned_spawn_fields.size(), 1, "once per species, however often it is read")
+	for key in GameData.CREATURES:
+		c._spawn_fields(str(key), GameData.CREATURES[key])
+	assert_eq(c._warned_spawn_fields.size(), 1, "the fabric's own creatures all carry both fields")
+	Diag.quiet = was_quiet
+	c.free()
+
 ## Species do not thicken and thin in lockstep: the density noise is salted per species.
 func _test_spawn_density_per_species() -> void:
 	var differs := false
@@ -12554,6 +12588,71 @@ func _test_equipment_phase48_misc() -> void:
 	assert_false(n._equipment_eval_positions.has(2), "a disconnect drops the peer's last-evaluated position")
 	assert_true(n._equipment_eval_positions.has(3), "other peers keep theirs")
 	n.free()
+
+
+## Phase 48 criteria — the replication target list includes the listen host as an owner,
+## and a peer entering/leaving AOI after the last gear change is sent / evicted. Uses the
+## networking slice's no-socket test seam (`_test_peers`, `_test_outbox`).
+func _test_equipment_host_and_aoi_transitions() -> void:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.player_registry = reg
+	n._test_peers = [2, 3]
+	var pid2 := str(reg.resolve_identity(2))
+	var pid3 := str(reg.resolve_identity(3))
+	n.remember_player_state(2, Vector3(0, 0, 0))
+	n.remember_player_state(3, Vector3(1000, 0, 0))
+	n.set_host_position(Vector3(5, 0, 0))
+
+	# Host as owner: peer 2 (in AOI) is a target, peer 3 (far) is not, the host never is.
+	assert_eq(n.equipment_targets(NetworkingSlice.HOST_PEER_ID), [2], "the host's set goes to peers in its AOI only")
+	assert_eq(n.equipment_targets(2), [], "a lone nearby peer has no other peer to tell (host excluded)")
+	n._test_outbox.clear()
+	n._on_equipment_changed("player_host_1", { "Chest": "VeilsteelChestplate" })
+	assert_eq(n._test_outbox.size(), 1, "one delivery for the host's gear change")
+	if n._test_outbox.size() == 1:
+		assert_eq(n._test_outbox[0]["peer_id"], 2, "to the peer in AOI")
+		assert_eq(n._test_outbox[0]["payload"]["type"], "peer_equipment", "as a peer_equipment packet")
+		assert_eq(n._test_outbox[0]["payload"]["peer_id"], NetworkingSlice.HOST_PEER_ID, "tagged with the host's id")
+
+	# Enter: peer 3 wears something at range, then walks into peer 2's... host's AOI.
+	reg.record_equipment(pid3, { "Chest": "VeilsteelChestplate" })
+	reg.record_equipment(pid2, { "Chest": "VeilsteelChestplate" })
+	n._test_outbox.clear()
+	n._equipment_sent.clear()
+	n.remember_player_state(3, Vector3(10, 0, 0))
+	n._refresh_equipment_pairs(3)
+	var sent_to_2 := false
+	var sent_to_3 := false
+	for m in n._test_outbox:
+		var pl: Dictionary = m["payload"]
+		if pl["type"] == "peer_equipment" and pl["peer_id"] == 3 and m["peer_id"] == 2:
+			sent_to_2 = true
+		if pl["type"] == "peer_equipment" and pl["peer_id"] == 2 and m["peer_id"] == 3:
+			sent_to_3 = true
+	assert_true(sent_to_2, "a peer walking into AOI after the last change is sent to the viewer")
+	assert_true(sent_to_3, "and receives the viewer's set")
+
+	# Leave: peer 3 walks away; both viewers are told to evict, once.
+	n._test_outbox.clear()
+	n.remember_player_state(3, Vector3(2000, 0, 0))
+	n._refresh_equipment_pairs(3)
+	var evicts := 0
+	for m in n._test_outbox:
+		if m["payload"]["type"] == "peer_equipment_evict":
+			evicts += 1
+	assert_eq(evicts, 2, "leaving AOI evicts the stored set on each viewer")
+	assert_false(n._equipment_sent.has("2:3"), "the sent record for the pair is dropped")
+	n._test_outbox.clear()
+	n.remember_player_state(3, Vector3(2100, 0, 0))
+	n._refresh_equipment_pairs(3)
+	assert_eq(n._test_outbox.size(), 0, "no repeat eviction while it stays away")
+	n.free()
+	reg.free()
 
 
 ## Phase 49 — a chunk built BEFORE its neighbour reads the neighbour's generated surface,
@@ -13283,6 +13382,60 @@ func _test_region_failed_read_retried() -> void:
 	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
 	DirAccess.make_dir_recursive_absolute(dir + "regions/")
 	var path := store.path_of(Vector2i(0, 0))
+func _test_region_evict_keeps_vein_depletion() -> void:
+	var found := _find_surface_vein(0)
+	if found.is_empty():
+		assert_true(false, "a vein breaks the surface of a flat chunk somewhere")
+		return
+	var vein: Dictionary = found["vein"]
+	var id := str(vein["id"])
+	var v := VoxelSlice.new()
+	add_child(v)
+	# Deplete the whole reserve: the op lands on the anchor tile's chunk (chunk A).
+	v._record_depletion(vein, int(vein["reserve"]))
+	var a_key := VoxelSlice._chunk_key(VoxelSlice._tile_to_chunk(vein["anchor"]))
+	assert_false(OreField.is_live(vein, v.get_vein_depletion()), "the vein is exhausted")
+	var manifest := v.get_chunk_manifest()
+	v.clear_dirty_chunks()
+	assert_eq(v.evict_clean_chunks([a_key]), 1, "chunk A is evicted")
+	assert_false(v.edited_chunk_keys().has(a_key), "no edit of chunk A stays resident")
+	assert_false(OreField.is_live(vein, v.get_vein_depletion()), "the vein stays depleted for chunk B after A is evicted")
+	assert_eq(int(v.get_vein_depletion().get(id, 0)), int(vein["reserve"]), "with its full count")
+	v.apply_region_chunks(manifest)
+	assert_false(OreField.is_live(vein, v.get_vein_depletion()), "and after A is re-read")
+	assert_true(v._vein_carry.is_empty(), "the carry is dropped once the op is resident again")
+	v.free()
+
+func _test_region_failed_write_saves_the_rest() -> void:
+	var dir := _fresh_region_dir("test_p61_save")
+	var store := PersistenceSlice.new()
+	add_child(store)
+	store.server_save_dir = dir
+	var entry := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	# Region (0,0) is unreadable; region (1,0) is fine.
+	DirAccess.make_dir_recursive_absolute(dir + "regions/")
+	var bad := store.region_store.path_of(Vector2i.ZERO)
+	var f := FileAccess.open(bad, FileAccess.WRITE)
+	f.store_string("{ not json")
+	f.close()
+	var pid := "player_1_1_abc"
+	var job := {
+		"world":       { "local_player_id": pid, "chunks": { "1,1": entry, "40,1": entry } },
+		"incremental": false,
+		"players":     { pid: { "player_id": pid, "hp": 7.0 } },
+	}
+	assert_true(int(store.write_job(job)) != OK, "the save reports the unreadable region")
+	assert_true(store.region_store.has_region(Vector2i(1, 0)), "the readable region was still written")
+	assert_eq(FileAccess.get_file_as_string(bad), "{ not json", "the unreadable file is untouched")
+	assert_true(store.has_world(), "world.json was still written")
+	assert_eq(float(store.load_player(pid).get("hp", -1.0)), 7.0, "and so was the player record")
+	store.free()
+
+func _test_region_failed_read_not_resident() -> void:
+	var dir := _fresh_region_dir("test_p61_read")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	DirAccess.make_dir_recursive_absolute(dir + "regions/")
+	var path := store.path_of(Vector2i.ZERO)
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	f.store_string("{ not json")
 	f.close()
@@ -13311,6 +13464,95 @@ func _test_registry_bound_peer_ids() -> void:
 	assert_eq(ids, [4, 9], "both bound peers are listed")
 	reg.unbind_peer(4)
 	assert_eq(reg.get_bound_peer_ids(), [9], "an unbound peer drops out")
+	var wanted := { "0,0": true }
+	var r := streamer.sync(wanted)
+	assert_eq(int(r["loaded"]), 0, "nothing loaded from an unreadable region")
+	assert_false(streamer.is_resident(Vector2i.ZERO), "the region is not marked resident")
+	var entry := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	assert_eq(store.save_region(Vector2i.ZERO, { "0,0": entry }), OK, "the file is repaired")
+	r = streamer.sync(wanted)
+	assert_eq(int(r["loaded"]), 1, "the next sync reads it again")
+	assert_true(streamer.is_resident(Vector2i.ZERO), "and it is resident")
+	assert_true(voxel.edited_chunk_keys().has("0,0"), "with its edits applied")
+	voxel.free()
+
+func _test_region_malformed_entry_skipped() -> void:
+	var dir := _fresh_region_dir("test_p61_entry")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	DirAccess.make_dir_recursive_absolute(dir + "regions/")
+	var good := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	var f := FileAccess.open(store.path_of(Vector2i.ZERO), FileAccess.WRITE)
+	f.store_string(JSON.stringify({ "version": 1, "chunks": {
+		"1,1": good, "2,2": { "edits": 5 }, "3,3": { "edits": {}, "materials": "x" } } }))
+	f.close()
+	var before := Diag.warn_count
+	var chunks := store.load_region(Vector2i.ZERO)
+	assert_eq(chunks.keys(), ["1,1"], "the well-formed chunk loads")
+	assert_eq(Diag.warn_count - before, 2, "one warning per malformed entry")
+
+func _test_peer_window_rate_limited() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	assert_true(cm.set_peer_center(5, Vector2i(2, 2)), "the first placement lands")
+	var moves := 0
+	for i in range(100):
+		if cm.set_peer_center(5, Vector2i(100000 + i * 156, 100000)):
+			moves += 1
+	assert_true(moves <= 1, "100 claims 10 km apart within one interval move the window at most once")
+	assert_eq(cm.peer_recenter_refused, 100, "every claim was refused or clamped")
+	var centre: Vector2i = cm._peer_centers[5]
+	assert_true(maxi(absi(centre.x - 2), absi(centre.y - 2)) <= ChunkManager.PEER_RECENTER_MAX_CHUNKS,
+		"and the window never travelled farther than the cap")
+	cm._peer_last_move_msec[5] = -1000000
+	assert_true(cm.set_peer_center(5, Vector2i(3, 2)), "a near claim after the interval is accepted")
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+
+func _test_peer_window_clamps_across_seam() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var half := TerrainSlice.circumference_chunks() / 2
+	cm.set_peer_center(5, Vector2i(half - 1, 0), true)
+	cm._peer_last_move_msec[5] = -1000000
+	# One chunk east of the seam is one chunk away, not a planet-width: no clamp, no refusal.
+	assert_true(cm.set_peer_center(5, Vector2i(-half, 0)), "a seam crossing moves the window")
+	assert_eq(cm.peer_recenter_refused, 0, "a one-chunk seam step is not clamped")
+	assert_eq(cm.peer_center(5), Vector2i(-half, 0), "and lands on the wrapped chunk")
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+
+func _test_peer_window_host_driven() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.set_peer_center(5, Vector2i(2, 2))
+	var far := Vector2i(50000, -40000)
+	assert_true(cm.set_peer_center(5, far, true), "a host-driven move is accepted inside the interval")
+	assert_eq(cm._peer_centers[5], far, "and lands exactly on the target")
+	assert_eq(cm.peer_recenter_refused, 0, "without counting as a refusal")
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+
+func _test_peer_window_move_loads_region_edits() -> void:
+	var dir := _fresh_region_dir("test_p62_teleport")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	var edit := { "edits": { "%d,0" % (34 * 64): [{ "op": "raise", "n": 1 }] } }
+	assert_eq(store.save_region(Vector2i(1, 0), { "34,0": edit }), OK, "region (1,0) holds an edit")
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	cm.region_streamer = RegionStreamerScript.new(store, voxel)
+	cm.view_distance = 1
+	cm.prefetch_distance = 0
+	cm.set_peer_center(7, Vector2i(28, 0), true)
+	cm.refresh(false)
+	assert_false(voxel.edited_chunk_keys().has("34,0"), "the edit is not resident before the move")
+	cm._peer_last_move_msec[7] = -1000000
+	# The order the re-scope handler uses: recentre, refresh, THEN read the edits for the snapshot.
+	assert_true(cm.set_peer_center(7, Vector2i(34, 0)), "the claim is within the cap")
+	cm.refresh(false)
+	assert_true(voxel.get_edits().has("%d,0" % (34 * 64)), "the edits the re-scope snapshot reads include the stored ones")
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
 
 func _test_region_streams_only_near_windows() -> void:
 	var dir := _fresh_region_dir("test_p52_rss")
@@ -13340,16 +13582,16 @@ func _test_region_streams_only_near_windows() -> void:
 	# A dirty chunk is never dropped: its edits exist nowhere else until a save.
 	voxel.apply_region_chunks({ "0,0": edit })
 	voxel.mark_dirty_chunks(["0,0"])
-	cm.set_peer_center(7, Vector2i(500, 500))
+	cm.set_peer_center(7, Vector2i(500, 500), true)
 	cm.refresh()
 	assert_true(voxel.edited_chunk_keys().has("0,0"), "a dirty chunk keeps its edits after its region leaves every window")
 	# A collected-but-unwritten chunk (in flight) is not evicted either, and a stale region
 	# re-read cannot overwrite it; once the write settles it is released without a window move.
 	var far_edit := { "edits": { "%d,%d" % [320 * 64, 320 * 64]: [{ "op": "raise", "n": 1 }] } }
-	cm.set_peer_center(7, Vector2i(323, 323))
+	cm.set_peer_center(7, Vector2i(323, 323), true)
 	cm.refresh()
 	voxel.apply_region_chunks({ "320,320": far_edit })   # an edit made inside the peer's window
-	cm.set_peer_center(7, Vector2i(500, 500))
+	cm.set_peer_center(7, Vector2i(500, 500), true)
 	voxel.begin_inflight_chunks(["320,320"])
 	assert_true(voxel.edited_chunk_keys().has("320,320"), "the far chunk's edit is resident")
 	cm.refresh()
@@ -13395,8 +13637,8 @@ func _test_chunk_far_peers_simulated() -> void:
 	cm.loads_per_frame = 16
 	var far := Vector2i(3125, 0)   # 100 km at 32 m a chunk
 	cm.refresh()
-	cm.set_peer_center(1, far)
-	cm.set_peer_center(2, Vector2i(0, 3125))
+	cm.set_peer_center(1, far, true)
+	cm.set_peer_center(2, Vector2i(0, 3125), true)
 	cm.refresh()
 	_wait_for_builds(cm)
 	for chunk in [Vector2i(0, 0), far, Vector2i(0, 3125)]:

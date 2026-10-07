@@ -32,14 +32,9 @@ static func regions_for_chunks(chunks: Array) -> Dictionary:
 		var chunk: Vector2i = c
 		out[RegionStore.region_key(RegionStore.region_of_chunk(chunk))] = true
 		# The margin matters only on a region's edge: a chunk there is rebuilt against its
-		# neighbour's real edits, which live in the next region. An interior chunk's
-		# neighbours are all in its own region, so it skips the nine-way expansion.
+		# neighbour's real edits, which live in the next region.
 		# Neighbours are wrapped in X like every chunk key, so a seam chunk's margin is the
 		# region on the far side of the seam.
-		var lx := posmod(chunk.x, RegionStore.REGION_SIZE)
-		var lz := posmod(chunk.y, RegionStore.REGION_SIZE)
-		if lx > 0 and lx < RegionStore.REGION_SIZE - 1 and lz > 0 and lz < RegionStore.REGION_SIZE - 1:
-			continue
 		for dx in range(-1, 2):
 			for dz in range(-1, 2):
 				var n := TerrainSlice.wrap_chunk(chunk + Vector2i(dx, dz))
@@ -47,9 +42,7 @@ static func regions_for_chunks(chunks: Array) -> Dictionary:
 	return out
 
 ## Make exactly `wanted` ("rx,rz" keys) resident: read the missing ones, release the rest.
-## A region whose file exists but cannot be read is NOT marked resident, so the next sync
-## retries it (a save that was mid-write when it was read has finished by then).
-## Returns { "loaded": n, "released": n, "failed": n } for the log line and the tests.
+## Returns { "loaded": n, "released": n } for the log line and the tests.
 func sync(wanted: Dictionary) -> Dictionary:
 	var loaded := 0
 	var released := 0
@@ -59,6 +52,7 @@ func sync(wanted: Dictionary) -> Dictionary:
 			continue
 		var read := _store.read_region(RegionStore.region_from_key(str(rkey)))
 		if not bool(read["ok"]):
+			# Not resident: a later sync (the next window move) retries the read instead of treating the region as loaded.
 			failed += 1
 			continue
 		_voxel.apply_region_chunks(read["chunks"])
@@ -73,7 +67,8 @@ func sync(wanted: Dictionary) -> Dictionary:
 	# region that had no file yet, is just as resident.
 	if not _stranded.is_empty():
 		var by_region: Dictionary = {}
-		for ckey in _voxel.edited_chunk_keys():
+		var edited_keys: Array = _voxel.edited_chunk_keys()   # once per sync
+		for ckey in edited_keys:
 			var rk := RegionStore.region_key(RegionStore.region_of_chunk_key(str(ckey)))
 			if _stranded.has(rk):
 				if not by_region.has(rk):

@@ -224,6 +224,13 @@ var _chunk_revision: Dictionary = {}
 ## A vein is exhausted when `taken` reaches its reserve (`OreField.is_live`).
 var _vein_taken: Dictionary = {}
 
+## Phase 61 — vein id → units taken, for deplete ops whose anchor chunk was EVICTED
+## (`evict_clean_chunks`). A vein's blob can span chunks while its one deplete op sits on the
+## anchor tile's chunk; releasing that chunk must not make the vein live again in its
+## neighbours. `_reindex_edits` folds this table into `_vein_taken`, and drops an entry once
+## the op is resident again (the log then carries the count itself).
+var _vein_carry: Dictionary = {}
+
 ## Set by game_root: terrain (biome + base height) and inventory (material flow).
 var terrain_slice: Node = null
 var inventory_slice: Node = null
@@ -1502,6 +1509,8 @@ func get_edits() -> Dictionary:
 ## main thread in the frame that applied a snapshot AND bumped the chunk's revision under
 ## an in-flight worker build.
 func apply_edits(edits: Dictionary, materials: Dictionary = {}) -> void:
+	# A wholesale replace is the authority on depletion: evicted-chunk carry is stale.
+	_vein_carry = {}
 	_commit_edits(_normalise_edit_table(edits, materials))
 
 ## The normalising half of `apply_edits`: a typed op list is cleaned, a legacy height is
@@ -1761,6 +1770,10 @@ func evict_clean_chunks(chunk_keys: Array) -> int:
 		if _dirty_chunks.has(k) or _inflight_chunks.has(k) or not _edits_by_chunk.has(k):
 			continue
 		for key in _edits_by_chunk[k].keys():
+			for op in _edits.get(key, []):
+				if op is Dictionary and str(op.get("op", "")) == "deplete":
+					var vid := str(op["vein"])
+					_vein_carry[vid] = maxi(int(_vein_carry.get(vid, 0)), int(op["taken"]))
 			next.erase(key)
 		released += 1
 	if released > 0:
@@ -2462,6 +2475,12 @@ func _reindex_edits() -> void:
 		for op in _edits[key]:
 			if op is Dictionary and str(op.get("op", "")) == "deplete":
 				_vein_taken[str(op["vein"])] = int(op["taken"])
+	# Phase 61 — veins whose op is not resident keep the count their evicted chunk carried.
+	for vid in _vein_carry.keys():
+		if _vein_taken.has(vid):
+			_vein_carry.erase(vid)
+		else:
+			_vein_taken[vid] = int(_vein_carry[vid])
 
 ## The minimal op list resolving a tile's natural runs to the runs it has NOW: the
 ## natural run(s) removed, then the resolved run(s) re-added. An EMPTY list means

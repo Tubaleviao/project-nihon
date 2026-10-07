@@ -145,14 +145,8 @@ func _load_config() -> void:
 	shutdown_poll_interval = resolved_shutdown_poll_interval(shutdown_poll_interval)
 	_rebuild_region_store()
 
-## Rebuilt only when the directory or the write mode actually changed, so a caller holding
-## `region_store` is not left with a stale instance by a setter that assigned the same value
-## (`_load_config` runs the setters back to back).
 func _rebuild_region_store() -> void:
-	var target := server_save_dir + REGIONS_SUBDIR
-	if region_store != null and region_store.dir == target and region_store.atomic_writes == atomic_writes:
-		return
-	region_store = RegionStore.new(target, atomic_writes)
+	region_store = RegionStore.new(server_save_dir + REGIONS_SUBDIR, atomic_writes)
 
 # ---------------------------------------------------------------------------
 # Legacy slot path
@@ -208,16 +202,12 @@ func save_world(data: Dictionary, incremental: bool = false) -> Error:
 ## game_root's save thread, which is the whole point: serializing a full record
 ## inline stalls the frame that triggered the autosave). Returns OK, or the first
 ## Error encountered — the caller reports it, because a worker cannot emit.
-##
-## One failing part (an unreadable region file, one player record) does not stop the rest from
-## being written; the first error is returned once everything that could be saved has been.
 func write_job(job: Dictionary) -> int:
-	var first_err: int = OK
+	var first_error: int = OK
 	var world: Variant = job.get("world", {})
 	if world is Dictionary and not (world as Dictionary).is_empty():
-		var world_err := _write_world_payload(world, bool(job.get("incremental", false)))
-		if world_err != OK:
-			first_err = world_err
+		# Phase 61 — a failed world write does not stop the player records from being saved.
+		first_error = _write_world_payload(world, bool(job.get("incremental", false)))
 	var players: Variant = job.get("players", {})
 	if players is Dictionary:
 		for player_id in players:
@@ -225,9 +215,9 @@ func write_job(job: Dictionary) -> int:
 			if not (data is Dictionary):
 				continue
 			var err := _write_json(player_path(str(player_id)), data)
-			if err != OK and first_err == OK:
-				first_err = err
-	return first_err
+			if err != OK and first_error == OK:
+				first_error = err
+	return first_error
 
 ## The world-record half of a save, without the bus signals: read the existing
 ## record and merge an incremental payload into it, then write. Split out of
@@ -241,17 +231,18 @@ func _write_world_payload(data: Dictionary, incremental: bool) -> Error:
 	var payload := data.duplicate()
 	var chunks: Variant = payload.get("chunks", null)
 	payload.erase("chunks")
-	var region_err: Error = OK
+	# Phase 61 — one unwritable region does not stop the rest of the save: `write_chunks`
+	# saves every region it can and reports the first error, and the global record is still
+	# written; the first error is returned once everything that could be saved has been.
+	var first_error: Error = OK
 	if chunks is Dictionary and not (chunks as Dictionary).is_empty():
-		region_err = region_store.write_chunks(chunks)
+		first_error = region_store.write_chunks(chunks)
 	if incremental:
 		var existing := load_world_record()
 		if not existing.is_empty():
 			payload = _merge_world(existing, payload)
-	# The global record is written even when a region failed (its edits stay dirty in memory
-	# and are retried); the region error wins as the job's result.
-	var record_err := _write_json(world_path(), payload)
-	return region_err if region_err != OK else record_err
+	var world_err := _write_json(world_path(), payload)
+	return first_error if first_error != OK else world_err
 
 ## The GLOBAL world record on disk (seed, stations, creatures, local player id), or an
 ## empty dict when there is none / it is unreadable. A missing record is NOT an error —

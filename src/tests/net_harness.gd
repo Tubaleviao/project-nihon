@@ -902,7 +902,20 @@ func _step_far_peers_simulated() -> void:
 	var chunk := _far_chunk()
 	var pos := Vector3(float(chunk.x) * 32.0 + 16.0, 40.0, float(chunk.y) * 32.0 + 16.0)
 	if _role == "host":
+		# Phase 62 — a client's claimed position can no longer teleport its window 100 km (the
+		# re-centre is rate-limited and capped per move). A peer only gets there when the HOST
+		# places it, as a spawn placement does: the host records where it put the peer and opens
+		# the window there, then the client's own reports agree with it.
+		# The placement is repeated until the window is there: the client may still be mid-
+		# reconnect (new peer id) or sending its earlier near-origin reports when this step starts.
+		var place := func() -> void:
+			var placed: int = _root._registry.get_peer_id(_bound_id())
+			if placed <= 0:
+				return
+			_root._networking.remember_player_state(placed, pos)
+			_root._chunk_manager.set_peer_center(placed, chunk, true)
 		var simulated := func() -> bool:
+			place.call()
 			if not _root._chunk_manager._built.has("%d,%d" % [chunk.x, chunk.y]):
 				return false
 			# An ocean window has no land creatures to spawn (Phase 51): there the proof is
