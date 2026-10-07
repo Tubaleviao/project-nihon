@@ -5890,7 +5890,7 @@ it, and fix the snapshot ordering on a teleport.
 
 ---
 
-## Phase 63 — Planet coordinates wiring
+## Phase 63 — Planet coordinates wiring ✅ Done
 
 **Goal:** Phase 50 passed its criteria with wiring still open (#136, also #120–#127). Finish the
 parts a headless suite can prove: canonical chunk keys at the east-west seam, `{chunk, local}`
@@ -5914,13 +5914,13 @@ on the wire, and the client rebase driver.
 - A `/where` chat command printing `TerrainSlice.where_text`.
 
 **Acceptance criteria:**
-- [ ] Suite: an edit made at chunk `(C/2, z)` is found when reading chunk `(-C/2, z)`.
-- [ ] Suite: after a forced rebase, the player, one tree, one creature and one station keep their
+- [x] Suite: an edit made at chunk `(C/2, z)` is found when reading chunk `(-C/2, z)`.
+- [x] Suite: after a forced rebase, the player, one tree, one creature and one station keep their
   `{chunk, local}`, and their scene positions shift by the same offset.
-- [ ] Suite: heights sampled in a chunk at index 312,500 quantise to 0.125 m steps with no
+- [x] Suite: heights sampled in a chunk at index 312,500 quantise to 0.125 m steps with no
   terracing (no two adjacent samples differ by a float32 rounding artefact).
-- [ ] `tools/net_harness.sh` agrees on every step with `{chunk, local}` on the wire.
-- [ ] Suite green on both boot paths.
+- [x] `tools/net_harness.sh` agrees on every step with `{chunk, local}` on the wire.
+- [x] Suite green on both boot paths.
 
 ---
 

@@ -4,6 +4,8 @@ extends Node
 ## Slices communicate exclusively through GameBus signals. This script
 ## instantiates slices, sets cross-slice references that cannot travel the bus,
 ## and drives the startup sequence (tests → GameData check → terrain boot).
+const WorldPos := preload("res://src/terrain/world_pos.gd")
+const RebaseDriver := preload("res://src/terrain/rebase_driver.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const Diag := preload("res://src/core/diag.gd")
 
@@ -60,6 +62,8 @@ var _technology:  TechnologySlice
 var _taming:      TamingSlice
 var _station:     StationSlice
 var _tree:        TreeSlice
+## Phase 63: the origin-rebase driver (see rebase_driver.gd); built once the slices exist.
+var _rebase: RebaseDriver = null
 var _market:      MarketSlice
 var _trade:       TradeSlice
 var _proposal:    ProposalSlice
@@ -254,6 +258,8 @@ func _ready() -> void:
 	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _inventory, _character, _crafting, _technology, _taming, _station, _tree, _market, _trade, _proposal]
 	if not _is_server:
 		slices.append(_ui)
+	if not _is_server:
+		_rebase = RebaseDriver.new([_voxel, _tree, _creature, _station, _player, _loot, _character])
 	for s in slices:
 		s.name = s.get_script().resource_path.get_file().get_basename()
 		add_child(s)
@@ -380,6 +386,8 @@ func _ready() -> void:
 		_distant.name = "DistantTerrain"
 		_distant.circumference_m = float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
 		add_child(_distant)
+		if _rebase != null:
+			_rebase.targets.append(_distant)
 		var minimap_layer := CanvasLayer.new()
 		minimap_layer.name = "MinimapLayer"
 		minimap_layer.layer = 20
@@ -1298,6 +1306,11 @@ func _sync_peer_windows(delta: float) -> void:
 			_chunk_manager.set_peer_center(int(peer_id), _peer_window_chunk(int(peer_id)))
 
 func _process(delta: float) -> void:
+	# Phase 63 — a client far from its scene origin shifts the whole scene back (float32 precision).
+	if _rebase != null and _player != null and _player.has_method("get_scene_position"):
+		var scene_pos: Vector3 = _player.get_scene_position()
+		var world_pos: Vector3 = _player.get_position()
+		_rebase.tick(scene_pos, WorldPos.from_world(world_pos.x, world_pos.y, world_pos.z)["chunk"])
 	# Phase 42 — complete a host boot whose first ring has finished building. It has
 	# to run FIRST: the rest of this frame's work (the avatar sync, the LOD pass) is
 	# written against a player body that only exists once the boot tail has run, and
@@ -1492,14 +1505,14 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true,
 	var players := {}
 	var host_pos := _player.get_position()
 	if NetworkingSlice.within_aoi(aoi_center, host_pos):
-		players[str(multiplayer.get_unique_id())] = [host_pos.x, host_pos.y, host_pos.z]
+		players[str(multiplayer.get_unique_id())] = WorldPos.to_wire(host_pos)
 	# Phase 19 — include last-known remote player states so a rejoining client
 	# resumes from its last authoritative position after a disconnect.
 	var last_known := _networking.get_last_known_states()
 	for pid in last_known:
 		var last_pos: Vector3 = last_known[pid]
 		if NetworkingSlice.within_aoi(aoi_center, last_pos):
-			players[str(pid)] = [last_pos.x, last_pos.y, last_pos.z]
+			players[str(pid)] = WorldPos.to_wire(last_pos)
 	var player_id := _registry.get_player_id(peer_id)
 	# A join/reconnect snapshot (own record included) carries the full edit manifest: the
 	# peer's real position may be unknown (AOI centre defaults to spawn). Re-scopes send
@@ -1547,7 +1560,12 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true,
 		snapshot["companions"] = own.get("companions", [])
 		# Phase 47 — the worn set rides the own-record payload too.
 		snapshot["equipment"] = own.get("equipment", {})
-		snapshot["player"] = { "position": own.get("position", []), "hp": own.get("hp", -1.0) }
+		var own_pos = own.get("position", [])
+		# Re-encode a legacy float-array record as {chunk, local}; a record with no position stays
+		# empty so the client leaves its spawn alone.
+		if WorldPos.is_wire(own_pos):
+			own_pos = WorldPos.to_wire(WorldPos.from_wire(own_pos))
+		snapshot["player"] = { "position": own_pos, "hp": own.get("hp", -1.0) }
 	return snapshot
 
 ## Phase 38 — the replicated social/economy state, keyed by the names the wire uses
@@ -1570,10 +1588,7 @@ func _social_state() -> Dictionary:
 func _scoped_creatures(aoi_center: Vector3) -> Array:
 	var out: Array = []
 	for c in _creature.get_snapshot_creatures():
-		var arr = c.get("position", [0.0, 0.0, 0.0])
-		var pos := Vector3.ZERO
-		if arr is Array and arr.size() >= 3:
-			pos = Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
+		var pos := WorldPos.from_wire(c.get("position", []))
 		if NetworkingSlice.within_aoi(aoi_center, pos):
 			out.append(c)
 	return out
@@ -1622,8 +1637,8 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 	var own: Variant = data.get("player", {})
 	if own is Dictionary:
 		var arr = own.get("position", [])
-		if arr is Array and (arr as Array).size() >= 3:
-			_player.spawn_at(Vector3(float(arr[0]), float(arr[1]), float(arr[2])))
+		if WorldPos.is_wire(arr):
+			_player.spawn_at(WorldPos.from_wire(arr))
 			if not _client_respawn_point_set:
 				# Only the first snapshot carries the placement; later AOI re-scoped snapshots
 				# carry wherever the player has since walked, which is not a spawn point. The
@@ -1647,8 +1662,8 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 	if data.has("players") and data["players"] is Dictionary:
 		for pid in data["players"]:
 			var pos = data["players"][pid]
-			if pos is Array and pos.size() >= 3:
-				GameBus.remote_player_state.emit(int(pid), Vector3(float(pos[0]), float(pos[1]), float(pos[2])))
+			if WorldPos.is_wire(pos):
+				GameBus.remote_player_state.emit(int(pid), WorldPos.from_wire(pos))
 	# Phase 41 — the client streams its OWN chunks now, from the seed above and
 	# around the position the snapshot just restored, because the snapshot no
 	# longer carries heightmaps to build them from. TREES need no placement payload

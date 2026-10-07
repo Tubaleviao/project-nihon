@@ -72,6 +72,7 @@ extends Node
 ##   get_last_known_states() -> Dictionary         — Phase 19
 ##   has_last_known_state(peer_id) -> bool
 ##   request_handshake() -> void                   — re-present the join intent
+const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
 
 enum Role { OFFLINE, HOST, CLIENT }
@@ -570,7 +571,7 @@ func _on_player_state_sync_requested(payload: Dictionary) -> void:
 	var packet := {
 		"type":     "player_moved",
 		"peer_id":  multiplayer.get_unique_id(),
-		"position": [pos.x, pos.y, pos.z],
+		"position": WorldPos.to_wire(pos),
 		"hp":       payload.get("hp",     100.0),
 		"max_hp":   payload.get("max_hp", 100.0),
 	}
@@ -584,7 +585,7 @@ func _on_block_edit_intent(action: String, position: Vector3, normal: Vector3, m
 	var packet := {
 		"type":     "block_edit_intent",
 		"action":   action,
-		"position": [position.x, position.y, position.z],
+		"position": WorldPos.to_wire(position),
 		"normal":   [normal.x, normal.y, normal.z],
 		"material": material,
 	}
@@ -596,7 +597,7 @@ func _on_block_changed(action: String, position: Vector3, normal: Vector3, mater
 	var packet := {
 		"type":     "block_changed",
 		"action":   action,
-		"position": [position.x, position.y, position.z],
+		"position": WorldPos.to_wire(position),
 		"normal":   [normal.x, normal.y, normal.z],
 		"material": material,
 	}
@@ -810,8 +811,8 @@ func _joiner_aoi_center(peer_id: int) -> Vector3:
 		return get_aoi_center(peer_id)
 	var rec: Dictionary = player_registry.get_record(str(player_registry.get_player_id(peer_id)))
 	var pos = rec.get("position", null)
-	if pos is Array and pos.size() == 3:
-		return Vector3(float(pos[0]), float(pos[1]), float(pos[2]))
+	if WorldPos.is_wire(pos):
+		return WorldPos.from_wire(pos)
 	return DEFAULT_AOI_CENTER
 
 ## Phase 47 — host: tell the peers whose AOI contains `peer_id` what it wears. Used when
@@ -901,7 +902,7 @@ func _on_creature_state_changed(instance_id: String, creature_id: String, state:
 		"instance_id": instance_id,
 		"creature_id": creature_id,
 		"state":       state,
-		"position":    [position.x, position.y, position.z],
+		"position":    WorldPos.to_wire(position),
 	}
 	_broadcast_aoi(packet, position)
 
@@ -918,7 +919,7 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	var packet := {
 		"type":     "remote_player_state",
 		"peer_id":  peer_id,
-		"position": [position.x, position.y, position.z],
+		"position": WorldPos.to_wire(position),
 	}
 	_broadcast_aoi(packet, position)
 
@@ -1735,10 +1736,10 @@ func _accumulate_snapshot_chunk(payload: Dictionary) -> void:
 		else:
 			Diag.error("NetworkingSlice: snapshot reassembly produced invalid JSON")
 
+## Decode a wire vector. Positions arrive as `{chunk, local}` (Phase 63) or the legacy `[x, y, z]`
+## array; normals and other plain vectors are always the array form.
 func _vec3(arr) -> Vector3:
-	if arr is Array and arr.size() >= 3:
-		return Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
-	return Vector3.ZERO
+	return WorldPos.from_wire(arr)
 
 # ---------------------------------------------------------------------------
 # Phase 19 — network emulator

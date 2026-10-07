@@ -12,6 +12,16 @@ extends Node
 const GROW_STEP := 256
 
 var _multimesh_instance: MultiMeshInstance3D
+
+## Phase 63 — a client rebase moves the one draw-call node; the per-instance transforms stay in world
+## coordinates, so every instance (and any added later) lands in the shifted frame.
+func shift_scene(shift: Vector3) -> void:
+	if _multimesh_instance != null:
+		_multimesh_instance.position += shift
+
+## Where the draw-call node sits (the accumulated rebase shift).
+func scene_position() -> Vector3:
+	return _multimesh_instance.position if _multimesh_instance != null else Vector3.ZERO
 var _multimesh: MultiMesh
 var _use_color: bool = false
 var _free: Array[int] = []

@@ -25,6 +25,8 @@ const CraftingSlice   := preload("res://src/crafting/crafting_slice.gd")
 const TechnologySlice := preload("res://src/technology/technology_slice.gd")
 const UiSlice         := preload("res://src/ui/ui_slice.gd")
 const VoxelSlice      := preload("res://src/terrain/voxel_slice.gd")
+const RebaseDriver    := preload("res://src/terrain/rebase_driver.gd")
+const ChatCommands    := preload("res://src/core/chat_commands.gd")
 const StationSlice    := preload("res://src/world/station_slice.gd")
 const TreeSlice       := preload("res://src/world/tree_slice.gd")
 const MeshUtil        := preload("res://src/core/mesh_util.gd")
@@ -94,7 +96,13 @@ func run() -> void:
 	_run_test("terrain: the distant ring is 10x the window with no collision", _test_distant_ring)
 	_run_test("spawn: ocean chunks grow no trees",            _test_ocean_spawns_no_land_tables)
 	_run_test("terrain: the world wraps east-west",           _test_terrain_wraps_east_west)
+	_run_test("terrain: chunk keys are canonical across the seam", _test_chunk_key_canonical_at_seam)
+	_run_test("wire: positions travel as chunk + local; old float arrays still read", _test_wire_chunk_local)
+	_run_test("rebase: driver shifts player, tree, creature, station and chunks together", _test_rebase_driver)
+	_run_test("terrain: detail noise stays exact far from the origin", _test_far_noise_quantised)
+	_run_test("chat: /where prints latitude and longitude", _test_where_command)
 	_run_test("terrain: latitude and longitude from the fabric planet", _test_terrain_planet_coordinates)
+	_run_test("rebase: loot, avatars and the station preview follow the shift", _test_rebase_extras)
 	_run_test("player: rebased origin keeps the world position", _test_world_pos_rebase)
 	_run_test("persistence: position saved as chunk + local, old saves migrate", _test_registry_world_pos)
 	_run_test("persistence: save then load round-trip",       _test_persistence_round_trip)
@@ -1000,9 +1008,179 @@ func _test_terrain_wraps_east_west() -> void:
 	for row in range(n):
 		# The east chunk's last column is half a tile from the west chunk's first column.
 		worst = maxf(worst, absf(float(east[row * n + n - 1]) - float(west[row * n])))
-	assert_true(worst < 0.2, "no seam wall across the wrap (worst step %f)" % worst)
+	# One tile of real detail-noise slope (Phase 63 samples it exactly out here; float32 used to flatten it).
+	assert_true(worst < 0.5, "no seam wall across the wrap (worst step %f)" % worst)
 	assert_eq(t.generate_heightmap(Vector2i(c / 2, 3)), west, "a chunk past the edge is the wrapped chunk")
 	t.free()
+
+func _test_chunk_key_canonical_at_seam() -> void:
+	var c := TerrainSlice.circumference_chunks()
+	var voxel := VoxelSlice.new()
+	assert_eq(voxel._chunk_key(Vector2i(c / 2, 4)), voxel._chunk_key(Vector2i(-c / 2, 4)),
+		"VoxelSlice keys chunk (C/2, z) and (-C/2, z) as one chunk")
+	assert_eq(voxel._chunk_key(Vector2i(7, -2)), "7,-2", "an interior key is unchanged")
+	var east_tile := Vector2i(c / 2 * TerrainSlice.CHUNK_SIZE + 3, 70)
+	var west_tile := Vector2i(-c / 2 * TerrainSlice.CHUNK_SIZE + 3, 70)
+	assert_eq(VoxelSlice._tile_key(east_tile), VoxelSlice._tile_key(west_tile),
+		"a tile east of the seam is the same edit key as the tile west of it")
+	voxel._set_edit_ops(VoxelSlice._tile_key(east_tile), [{ "op": "raise", "n": 1 }])
+	assert_true(voxel.edited_chunk_keys().has(voxel._chunk_key(Vector2i(-c / 2, 1))),
+		"an edit made at chunk (C/2, z) is found when reading chunk (-C/2, z)")
+	var cm := ChunkManager.new()
+	assert_eq(cm._chunk_key(Vector2i(c / 2, 4)), cm._chunk_key(Vector2i(-c / 2, 4)),
+		"ChunkManager keys both sides of the seam as one chunk")
+	cm.free()
+	voxel.free()
+
+func _test_wire_chunk_local() -> void:
+	var far := Vector3(1.0e7 + 5.0, 2.0, -70.25)   # a Vector3 is float32: 1 m steps this far out
+	var wire := WorldPos.to_wire(far)
+	assert_eq(wire["chunk"], [312500, -3], "the chunk index is an exact int on the wire")
+	assert_eq(wire["local"], [5.0, 2.0, 25.75], "local is small and exact")
+	assert_eq(WorldPos.pos_to_wire(WorldPos.from_world(1.0e7 + 5.125, 2.0, -70.25))["local"], [5.125, 2.0, 25.75],
+		"a double-precision position keeps the 0.125 step on the wire")
+	var round_trip: Variant = JSON.parse_string(JSON.stringify(wire))
+	assert_eq(WorldPos.from_wire(round_trip), far, "the wire form survives a JSON round trip")
+	assert_eq(WorldPos.from_wire([1.5, 2.0, 3.5]), Vector3(1.5, 2.0, 3.5), "an old float array is still accepted")
+	assert_eq(WorldPos.from_wire("junk", Vector3.ONE), Vector3.ONE, "garbage decodes to the fallback")
+	assert_true(WorldPos.is_wire(wire) and WorldPos.is_wire([0, 0, 0]) and not WorldPos.is_wire([0, 0]), "is_wire")
+	var c := TerrainSlice.circumference_chunks()
+	assert_eq(WorldPos.wire_chunk({"chunk": [c / 2, 4], "local": [0, 0, 0]}), Vector2i(-c / 2, 4), "a wire chunk past the seam is canonical")
+	var w := float(c) * TerrainSlice.CHUNK_METERS
+	assert_eq(WorldPos.wrap_world(Vector3(w / 2.0 + 3.0, 1.0, 9.0)), Vector3(-w / 2.0 + 3.0, 1.0, 9.0), "X wraps when it crosses the seam")
+	var creature := CreatureSlice.new()
+	creature.render_visuals = false
+	add_child(creature)
+	creature.apply_snapshot_creatures([{ "instance_id": "w1", "creature_id": "Wolf", "state": "idle",
+		"position": WorldPos.to_wire(far), "hp": 10.0, "respawn_at": -1.0 }])
+	var out: Array = creature.get_snapshot_creatures()
+	var found := false
+	for e in out:
+		if e["instance_id"] == "w1":
+			found = true
+			assert_true(e["position"] is Dictionary and e["position"].has("chunk"), "snapshot creature positions carry {chunk, local}")
+	assert_true(found or out.size() == 0, "the creature snapshot round trips")
+	creature.free()
+	var station := StationSlice.new()
+	add_child(station)
+	station._insert_station("station_1", "Forge", far)
+	var sdata: Array = station.get_station_data()
+	assert_true(sdata[0]["position"] is Dictionary, "station positions carry {chunk, local}")
+	station.apply_station_data([{ "id": "station_2", "type": "Forge", "position": [1.0, 2.0, 3.0] }])
+	assert_true(station.get_station_data().size() == 1, "a legacy float-array station still loads")
+	station.free()
+
+func _test_rebase_extras() -> void:
+	var loot := LootSlice.new()
+	add_child(loot)
+	var pickup := loot._make_pickup_visual("p1", "wood", Vector3(10.0, 1.0, 5.0))
+	loot.add_child(pickup)
+	var station := StationSlice.new()
+	add_child(station)
+	station.show_preview("Forge", Vector3(10.0, 1.0, 5.0))
+	var preview_before := station._preview.position
+	var pickup_before := pickup.position
+	var shift := Vector3(-3000.0, 0.0, 0.0)
+	var driver := RebaseDriver.new([loot, station])
+	driver.rebase_to(Vector2i(94, 0))
+	var applied: Vector3 = driver.targets[0].scene_offset()
+	assert_true(applied != Vector3.ZERO, "the loot slice took the shift")
+	assert_eq(pickup.position, pickup_before + applied, "a pickup shifts by the rebase offset")
+	assert_eq(station._preview.position, preview_before + applied, "the preview shifts with the markers")
+	station.show_preview("Forge", Vector3(10.0, 1.0, 5.0))
+	assert_eq(station._preview.position, preview_before + applied, "a re-shown preview uses the shifted frame")
+	var pickup2 := loot._make_pickup_visual("p2", "wood", Vector3(10.0, 1.0, 5.0))
+	assert_eq(pickup2.position, pickup_before + applied, "a pickup spawned after the rebase uses the shifted frame")
+	pickup2.free()
+	station.free()
+	loot.free()
+
+func _test_rebase_driver() -> void:
+	var voxel := VoxelSlice.new()
+	add_child(voxel)
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(1.0)
+	voxel.build_chunk(Vector2i(0, 0), flat)
+	var trees := TreeSlice.new()
+	trees.render_visuals = true
+	add_child(trees)
+	var creature := CreatureSlice.new()
+	creature.render_visuals = true
+	add_child(creature)
+	var station := StationSlice.new()
+	add_child(station)
+	var far_pos := Vector3(3000.0, 1.0, 40.0)
+	station._insert_station("station_1", "Forge", far_pos)
+	var player := PlayerSlice.new()
+	player.render_visuals = true
+	add_child(player)
+	player.spawn_at(far_pos)
+	player._on_remote_player_state(7, Vector3(3010.0, 1.0, 40.0))
+	var ghost_pool_before: Vector3 = player._ghost_pool.scene_position() if player._ghost_pool != null else Vector3.ZERO
+	var world_before: Vector3 = player.get_position()
+	var tree_pool_before: Vector3 = trees._pool.scene_position()
+	var creature_pool_before: Vector3 = creature._pool.scene_position()
+	var marker := station._markers["station_1"] as Node3D
+	var marker_before := marker.position
+	var chunk_root := voxel._chunks.values()[0] as Node3D
+	var chunk_before := chunk_root.position
+	var driver := RebaseDriver.new([voxel, trees, creature, station, player])
+	var chunk: Vector2i = WorldPos.from_world(far_pos.x, far_pos.y, far_pos.z)["chunk"]
+	assert_true(not driver.tick(Vector3(100.0, 0.0, 0.0), chunk), "a nearby player does not rebase")
+	assert_true(driver.tick(player.get_scene_position(), chunk), "a player 3 km out rebases")
+	var shift := WorldPos.rebase_shift(Vector2i.ZERO, chunk)
+	assert_true(shift.x < 0.0, "the shift moves the world back toward the origin")
+	assert_eq(player.get_position(), world_before, "the player keeps its world position")
+	assert_eq(player.get_scene_position(), world_before + shift, "the player body shifts by the offset")
+	assert_eq(trees._pool.scene_position(), tree_pool_before + shift, "trees shift by the same offset")
+	if player._ghost_pool != null:
+		assert_eq(player._ghost_pool.scene_position(), ghost_pool_before + shift, "remote ghosts shift by the same offset")
+	assert_eq(creature._pool.scene_position(), creature_pool_before + shift, "creatures shift by the same offset")
+	assert_eq(marker.position, marker_before + shift, "stations shift by the same offset")
+	assert_eq(station.get_station_data()[0]["position"], WorldPos.to_wire(far_pos), "the station keeps its {chunk, local}")
+	assert_eq(chunk_root.position, chunk_before + shift, "terrain chunks shift by the same offset")
+	assert_true(not driver.tick(player.get_scene_position(), chunk), "no second rebase straight after")
+	assert_eq(driver.rebase_count, 1, "one rebase happened")
+	player.free()
+	station.free()
+	creature.free()
+	trees.free()
+	voxel.free()
+
+func _test_far_noise_quantised() -> void:
+	var t := TerrainSlice.new()
+	add_child(t)
+	t.set_world_seed(1234)
+	# Inside the span the coordinate is untouched: ground near the origin does not change.
+	assert_eq(TerrainSlice.noise_coord(123.5), 123.5, "the fold is the identity near the origin")
+	assert_eq(TerrainSlice.noise_coord(-8000.25), -8000.25, "and for negative coordinates")
+	var far_x := 312500.0 * TerrainSlice.CHUNK_METERS
+	var prev := -1.0
+	var distinct := 0
+	for i in range(64):
+		var x := far_x + float(i) * TerrainSlice.TILE_SIZE
+		var coord := TerrainSlice.noise_coord(x)
+		assert_true(absf(coord) <= TerrainSlice.NOISE_SPAN, "the folded coordinate stays small")
+		assert_eq(coord, snappedf(coord, 0.125), "the folded coordinate is exact to the 0.125 step")
+		var d := t.detail_at(x, 77.5)
+		if absf(d - prev) > 0.0:
+			distinct += 1
+		assert_true(prev < 0.0 or absf(d - prev) < 1.0, "adjacent tiles differ by terrain slope, not a rounding jump")
+		prev = d
+	assert_eq(distinct, 64, "no terracing: every tile steps to a new value")
+	# Continuous across the fold: a half-step either side of the fold agrees to within one tile of slope.
+	var fold := TerrainSlice.NOISE_SPAN
+	assert_true(absf(t.detail_at(fold - 0.25, 5.0) - t.detail_at(fold + 0.25, 5.0)) < 1.0, "the fold has no cliff")
+	t.free()
+
+func _test_where_command() -> void:
+	var pos := Vector3(0.0, 12.0, 0.0)
+	assert_true(ChatCommands.is_command("/where"), "/where is a command")
+	assert_true(ChatCommands.is_command("  /WHERE "), "case and padding are ignored")
+	assert_true(not ChatCommands.is_command("hello"), "plain chat is not a command")
+	assert_eq(ChatCommands.run("/where", pos), TerrainSlice.where_text(pos), "/where prints where_text")
+	assert_eq(ChatCommands.run("hello", pos), "", "plain chat prints nothing")
 
 func _test_terrain_planet_coordinates() -> void:
 	var t := TerrainSlice.new()

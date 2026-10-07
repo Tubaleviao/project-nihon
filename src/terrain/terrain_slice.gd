@@ -286,9 +286,25 @@ func _height_wrapped(x: float, z: float, w: float) -> float:
 func _raw_height_at(x: float, z: float) -> float:
 	var w := float(circumference_chunks()) * CHUNK_METERS
 	var shape := _shape_at(x, z, w)
-	var detail := (_noise.get_noise_2d(x, z) + 1.0) * 0.5 * HEIGHT_SCALE
+	var detail := (_noise.get_noise_2d(noise_coord(x), noise_coord(z)) + 1.0) * 0.5 * HEIGHT_SCALE
 	var h := clampf(shape + detail, WorldShape.min_height(), WorldShape.max_height())
 	return h
+
+## Phase 63 — half the span (m) over which the detail noise is sampled directly. FastNoiseLite takes
+## float32, whose step is 1 m at 10 million metres and would terrace the 0.5 m tiles, so the lattice
+## index is folded into this range first (a triangle wave: continuous at the folds, and the identity
+## for |coordinate| <= NOISE_SPAN, so ground near the origin is unchanged). 65,536 m keeps float32
+## exact to 1/128 m, finer than the 0.125 m step.
+const NOISE_SPAN := 65536.0
+
+## The detail-noise coordinate for a world coordinate (double precision in, small and exact out).
+static func noise_coord(v: float) -> float:
+	var t := fposmod(v + NOISE_SPAN, 4.0 * NOISE_SPAN)
+	return t - NOISE_SPAN if t < 2.0 * NOISE_SPAN else 3.0 * NOISE_SPAN - t
+
+## The detail noise term (0..HEIGHT_SCALE) at a world XZ; what `_raw_height_at` adds to the shape.
+func detail_at(x: float, z: float) -> float:
+	return (_noise.get_noise_2d(noise_coord(x), noise_coord(z)) + 1.0) * 0.5 * HEIGHT_SCALE
 
 ## `WorldShape.height` interpolated between the corners of the chunk cell holding (x, z).
 func _shape_at(x: float, z: float, w: float) -> float:
