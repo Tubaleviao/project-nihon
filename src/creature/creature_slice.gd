@@ -350,6 +350,16 @@ func season_spawn_multiplier(chunk_pos: Vector2i, chunk_biome: String) -> float:
 	var w: float = world_clock.warmth_at(TerrainSlice.latitude_of(chunk_pos.y))
 	return WorldClock.spawn_multiplier(GameData.BIOMES.get(chunk_biome, null), w)
 
+## `[spawnChance, spawnDensity]` of a creature resource (null for a missing field); a
+## resource lacking either warns once per species.
+func _spawn_fields(creature_id: String, res: Resource) -> Array:
+	var chance: Variant = res.get("spawnChance")
+	var amp: Variant = res.get("spawnDensity")
+	if (chance == null or amp == null) and not _warned_spawn_fields.has(creature_id):
+		_warned_spawn_fields[creature_id] = true
+		Diag.warn("CreatureSlice: '%s' has no spawnChance/spawnDensity; spawning without a roll" % creature_id)
+	return [chance, amp]
+
 func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 	if not is_authoritative:
 		return   # clients receive creatures from host broadcasts
@@ -377,11 +387,9 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 		if chunk_biome != "":
 			# A resource lacking the Phase 44 fields keeps spawning (always, no noise)
 			# rather than silently vanishing from the world; it warns once.
-			var chance: Variant = res.get("spawnChance")
-			var amp: Variant = res.get("spawnDensity")
-			if (chance == null or amp == null) and not _warned_spawn_fields.has(creature_id):
-				_warned_spawn_fields[creature_id] = true
-				Diag.warn("CreatureSlice: '%s' has no spawnChance/spawnDensity; spawning without a roll" % creature_id)
+			var fields := _spawn_fields(creature_id, res)
+			var chance: Variant = fields[0]
+			var amp: Variant = fields[1]
 			pack = SpawnRoll.pack_size(_world_seed(), chunk_pos, creature_id, pack,
 					1.0 if chance == null else float(chance) * season_mult, 0.0 if amp == null else float(amp))
 		pack = mini(pack, MAX_PACK_MEMBERS)

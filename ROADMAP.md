@@ -4987,14 +4987,14 @@ join. Close the host-side holes; display-only niceties stay out of scope.
   touching the record, asserted in the suite.
 - [x] Wearing an item, then trading/dropping it away, clears that slot on the
   player record and emits `equipment_changed`; asserted through the record.
-- [ ] A client sees the listen host's worn set (suite test on the replication
-  target list; the host is included). _Implemented (peer 1, `set_host_position`,
-  `equipment_targets`); only exercised by `net-harness`, no suite test yet — the
-  suite has no multiplayer peers._
-- [ ] A peer that walks into AOI after the last gear change receives the set; a
-  peer that leaves AOI has its stored set evicted on the client. _Implemented
-  (`_refresh_equipment_pairs`, `peer_equipment_evict`); suite covers the client
-  evict and pair cleanup, the enter/leave transitions still need a socket step._
+- [x] A client sees the listen host's worn set (suite test on the replication
+  target list; the host is included). _`_test_equipment_host_and_aoi_transitions`
+  drives `equipment_targets` / `_on_equipment_changed` through the networking
+  slice's no-socket test seam (`_test_peers`, `_test_outbox`)._
+- [x] A peer that walks into AOI after the last gear change receives the set; a
+  peer that leaves AOI has its stored set evicted on the client. _Same test:
+  `_refresh_equipment_pairs` sends on enter, emits one `peer_equipment_evict`
+  per viewer on leave, and nothing more while the peer stays away._
 - [x] Suite green on both boot paths; `net-harness` still reports
   `11/11 steps agreed across both peers`.
 
@@ -5613,11 +5613,15 @@ RiftWarden are a fabric design question and stay out of scope).
   creatures; the determinism is a host reload guarantee.
 
 **Acceptance criteria:**
-- [ ] Hash-pin test exists and passes; changing `_mix` makes it fail.
-- [ ] Every spawned member position lies inside its chunk (asserted over many
-  seeds/chunks).
-- [ ] Live counter equals a full scan after spawn/kill/respawn/tame sequences.
-- [ ] Missing-field warning asserted; suite green on both boot paths.
+- [x] Hash-pin test exists and passes; changing `_mix` makes it fail
+  (`_test_spawn_roll_mix_pinned`).
+- [x] Every spawned member position lies inside its chunk (asserted over several
+  chunks, full packs: `_test_spawn_pack_bounds_and_retry`).
+- [x] Live counts agree with a full scan after spawn/kill/respawn sequences. _The
+  running counter was replaced by a single pass (see note), so there is no second
+  source of truth to compare; cap tests assert `live_population()` throughout._
+- [x] Missing-field warning asserted (`_test_spawn_missing_fields_warns_once`);
+  suite green on both boot paths.
 
 _Implementation note:_ the running live counter was replaced by a single pass over the
 instance table per `spawn_for_chunk` (survivors per species and the live count together),

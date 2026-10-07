@@ -496,7 +496,20 @@ func _broadcast_aoi(payload: Dictionary, position: Vector3) -> void:
 # Private
 # ---------------------------------------------------------------------------
 
+## Test seam: when non-null, the suite has no sockets, so `_connected_peers()` answers this
+## list and `_deliver` appends to `_test_outbox` instead of sending. Never set in the game.
+var _test_peers: Variant = null
+var _test_outbox: Array = []
+
+## Peers the host would fan out to.
+func _connected_peers() -> Array:
+	if _test_peers != null:
+		return Array(_test_peers)
+	return Array(multiplayer.get_peers())
+
 func _connected() -> bool:
+	if _test_peers != null:
+		return true
 	var mp_peer := multiplayer.multiplayer_peer
 	if mp_peer == null:
 		return false
@@ -517,6 +530,9 @@ func _broadcast(payload: Dictionary) -> void:
 ## either send immediately (emulation disabled — zero overhead) or queue for
 ## emulated delivery (loss / jitter / reorder).
 func _deliver(peer_id: int, payload: Dictionary) -> void:
+	if _test_peers != null:
+		_test_outbox.append({ "peer_id": peer_id, "payload": payload })
+		return
 	var ptype: String = str(payload.get("type", "_"))
 	if not _send_seq.has(ptype):
 		_send_seq[ptype] = 0
@@ -758,7 +774,7 @@ func equipment_targets(owner: int) -> Array:
 	var out: Array = []
 	if not _has_subject_position(owner):
 		return out
-	for pid in aoi_recipients(_subject_position(owner), multiplayer.get_peers()):
+	for pid in aoi_recipients(_subject_position(owner), _connected_peers()):
 		if int(pid) != owner:
 			out.append(int(pid))
 	return out
@@ -770,7 +786,7 @@ func equipment_targets(owner: int) -> Array:
 func send_peer_equipment_to(peer_id: int) -> void:
 	if _role != Role.HOST or not _connected() or player_registry == null:
 		return
-	var others: Array = Array(multiplayer.get_peers())
+	var others: Array = Array(_connected_peers())
 	others.append(HOST_PEER_ID)
 	var center := _joiner_aoi_center(peer_id)
 	for other in others:
@@ -826,7 +842,7 @@ func _refresh_equipment_pairs(moved: int) -> void:
 				and (_equipment_eval_positions[moved] as Vector3).distance_squared_to(at) <= EQUIPMENT_REEVAL_DIST_SQ:
 			return
 		_equipment_eval_positions[moved] = at
-	var others: Array = Array(multiplayer.get_peers())
+	var others: Array = Array(_connected_peers())
 	others.append(HOST_PEER_ID)
 	for other in others:
 		var o := int(other)
