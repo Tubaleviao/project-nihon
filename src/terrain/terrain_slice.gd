@@ -21,8 +21,10 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## written against. Bump it in any phase that changes generation output (heights, biome
 ## placement, climate, continents), so an older save is flagged on load instead of silently
 ## meeting a different layout. History: 1 = pre-Phase-49 layout; 2 = Phase 49 biomes and
-## Phase 51 continent shape (the layout this constant first shipped with).
-const WORLDGEN_VERSION := 2
+## Phase 51 continent shape (the layout this constant first shipped with); 3 = Phase 72
+## stable, low-frequency rare-biome niches, the land-only Voronoi fallback, and one 10000
+## lattice modulus for all climate noise (it was 9999 for temperature and moisture).
+const WORLDGEN_VERSION := 3
 const BIOME_SEED := 20260815 # fixed seed so biome assignment is deterministic
 const ClimateField := preload("res://src/terrain/climate_field.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")

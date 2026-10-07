@@ -6154,7 +6154,7 @@ continents) loads its edits and deplete records over a different layout with no 
 
 ---
 
-## Phase 72 — Stable, low-frequency rare-biome niches
+## Phase 72 — Stable, low-frequency rare-biome niches ✅ Done
 
 **Goal:** `ClimateField.niche_value` is salted by biome INDEX, so adding or reordering a biome
 re-rolls every rare biome's placement, and it is white noise per 10-chunk cell where the fabric
@@ -6179,12 +6179,12 @@ Voronoi fallback also hands out Ocean/Beach/Alpine when no envelopes are loaded 
 - `WORLDGEN_VERSION` bumped.
 
 **Acceptance criteria:**
-- [ ] Suite: inserting a dummy biome into the key list leaves every other rare biome's niche
+- [x] Suite: inserting a dummy biome into the key list leaves every other rare biome's niche
   value unchanged at 1,000 sampled chunks.
-- [ ] Suite: over a 400×400-chunk sample, each rare biome's niche covers its `rarity` share
+- [x] Suite: over a 400×400-chunk sample, each rare biome's niche covers its `rarity` share
   ±20 %, and the mean run length along a row exceeds one niche cell.
-- [ ] Suite: with no envelopes loaded, the fallback never returns Ocean, Beach or Alpine.
-- [ ] Suite green on both boot paths.
+- [x] Suite: with no envelopes loaded, the fallback never returns Ocean, Beach or Alpine.
+- [x] Suite green on both boot paths — `Results: 14672/14672 passed (0 failed)`, harness 15/15 steps.
 
 ---
 
