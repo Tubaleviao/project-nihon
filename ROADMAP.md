@@ -6187,7 +6187,7 @@ Voronoi fallback also hands out Ocean/Beach/Alpine when no envelopes are loaded 
 
 ---
 
-## Phase 73 — Swimming and the distant ring follow the real ground
+## Phase 73 — Swimming and the distant ring follow the real ground ✅ Done
 
 **Goal:** `PlayerSlice._swimming_now` reads the natural heightmap, so ground a player built up
 out of the sea still counts as water and a pit dug below sea level on land does not; and the
@@ -6209,12 +6209,12 @@ up to 6 m below the voxel ground, hiding the shallow sea near the window edge (#
   bounded and documented.
 
 **Acceptance criteria:**
-- [ ] Suite: a body standing on an ocean column the player filled up to sea level + 1 m does
+- [x] Suite: a body standing on an ocean column the player filled up to sea level + 1 m does
   not swim; a body in a land pit dug below sea level with no water does not swim.
-- [ ] Suite: no vertex of the ring mesh lies strictly inside the voxel window rectangle.
-- [ ] Suite: at 64 sampled points on the window edge, the ring height is within 1 m of the
+- [x] Suite: no vertex of the ring mesh lies strictly inside the voxel window rectangle.
+- [x] Suite: at 64 sampled points on the window edge, the ring height is within 1 m of the
   voxel-ground height.
-- [ ] Suite green on both boot paths.
+- [x] Suite green on both boot paths — `Results: 34629/34629 passed (0 failed)`, harness 15/15 steps.
 
 ---
 

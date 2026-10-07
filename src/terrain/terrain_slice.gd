@@ -76,14 +76,23 @@ var _noise := FastNoiseLite.new()
 func _ready() -> void:
 	WorldShape.warm()   # main thread, before any chunk worker reads the shape
 	ClimateField.warm()   # likewise the biome envelope table
-	_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	# A fresh world still gets a random seed — but it is remembered and saved,
 	# so this is the LAST time the ground changes without a reason.
 	_world_seed = randi()
-	_noise.seed = _world_seed
-	_noise.frequency = 0.05
-	_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
-	_noise.fractal_octaves = 3
+	configure_noise(_noise, _world_seed)
+
+## Phase 73 — the detail-noise settings, shared with the distant ring (which samples the same detail
+## on its worker thread from its own noise object, so the ring's edge meets the voxel ground).
+static func configure_noise(n: FastNoiseLite, seed_v: int) -> void:
+	n.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	n.seed = seed_v
+	n.frequency = 0.05
+	n.fractal_type = FastNoiseLite.FRACTAL_FBM
+	n.fractal_octaves = 3
+
+## The detail term (0..HEIGHT_SCALE) of `n` (see `configure_noise`) at a world XZ.
+static func detail_of(n: FastNoiseLite, x: float, z: float) -> float:
+	return (n.get_noise_2d(noise_coord(x), noise_coord(z)) + 1.0) * 0.5 * HEIGHT_SCALE
 
 ## Adopt `seed` as the world's identity. Called by game_root with the seed read
 ## off the world record (authoritative boot) or out of the host's join snapshot
