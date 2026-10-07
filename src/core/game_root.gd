@@ -1240,13 +1240,22 @@ func _remove_remote_avatar(peer_id: int) -> void:
 ## When the AOI grid cell changes, re-send a scoped snapshot so the client gains
 ## the entities now in range — including static creatures that were never
 ## "dirty" and therefore never re-broadcast as a delta.
+## Coordinates beyond this are no position on the planet (circumference is ~40,000 km in X).
+const MAX_CLAIMED_COORD := 1.0e8
+
+static func _is_plausible_position(p: Vector3) -> bool:
+	return is_finite(p.x) and is_finite(p.y) and is_finite(p.z) \
+		and absf(p.x) <= MAX_CLAIMED_COORD and absf(p.y) <= MAX_CLAIMED_COORD and absf(p.z) <= MAX_CLAIMED_COORD
+
 func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	if _is_client:
 		return
+	# A non-finite or absurd claim is dropped before ANY consumer reads it (the region lookup
+	# below included); a planet is far smaller than MAX_CLAIMED_COORD.
+	if not _is_plausible_position(position):
+		return
 	var region: Vector2i = _networking.aoi_region(position)
 	if _peer_aoi_regions.get(peer_id, null) == region:
-		return
-	if not (is_finite(position.x) and is_finite(position.y) and is_finite(position.z)):
 		return
 	_peer_aoi_regions[peer_id] = region
 	# Phase 62 — re-centre the peer's window and make the regions around the new position
@@ -1964,6 +1973,18 @@ func _poll_save_completion() -> void:
 func _flush_save() -> void:
 	_reap_save_thread()
 
+## Which of a failed save's chunks go back into the dirty set: just the ones whose region could
+## not be written. When no region failed (the global record or a player file did) the chunk
+## files landed, but the record that points at them did not, so every chunk is kept in play.
+static func _chunks_to_remark(dirty: Array, failed: Array) -> Array:
+	if failed.is_empty():
+		return dirty
+	var out: Array = []
+	for key in dirty:
+		if failed.has(str(key)):
+			out.append(key)
+	return out
+
 func _finish_save(result: int) -> void:
 	_voxel.end_inflight_chunks(_save_summary.get("dirty", []))
 	if result != OK:
@@ -1971,7 +1992,7 @@ func _finish_save(result: int) -> void:
 		GameBus.world_save_failed.emit(error_string(result))
 		# The dirty set was cleared when the payload was collected, so a failed write
 		# has to put its chunks back or the next save would skip them.
-		_voxel.mark_dirty_chunks(_save_summary.get("dirty", []))
+		_voxel.mark_dirty_chunks(_chunks_to_remark(_save_summary.get("dirty", []), _persistence.failed_chunk_keys()))
 		_save_summary = {}
 		return
 	print("[Server] world saved (%s) — %d chunk manifest(s), %d creature(s), %d station(s), %d player record(s)" % [
@@ -2085,14 +2106,18 @@ func _saved_local_position() -> Variant:
 ## brought in on demand: the registry is given a reader (set_record_loader) and pulls
 ## one in the first time a peer CLAIMS it (a reconnect). That is the only moment a
 ## remote record is needed.
+## Phase 71 — keep the loaded record's original stamp when re-saving (a new world takes the
+## running one), and tell the bus when that stamp is not the running generator's.
+func _note_worldgen_version() -> void:
+	_worldgen_stamp = PersistenceSlice.worldgen_stamp_for_save(_loaded_world, TerrainSlice.WORLDGEN_VERSION)
+	if PersistenceSlice.check_worldgen_version(_loaded_world, TerrainSlice.WORLDGEN_VERSION):
+		GameBus.worldgen_version_mismatch.emit(_worldgen_stamp, TerrainSlice.WORLDGEN_VERSION)
+
 func _load_world_records() -> void:
 	# Phase 52 — the GLOBAL record only; a Phase 51 monolithic record is split into region
 	# files by this read, and the edits themselves stream in by region.
 	_loaded_world = _persistence.load_world_record()
-	# Phase 71 — keep the record's original stamp when re-saving; a new world takes the running one.
-	_worldgen_stamp = PersistenceSlice.worldgen_stamp_for_save(_loaded_world, TerrainSlice.WORLDGEN_VERSION)
-	if PersistenceSlice.check_worldgen_version(_loaded_world, TerrainSlice.WORLDGEN_VERSION):
-		GameBus.worldgen_version_mismatch.emit(_worldgen_stamp, TerrainSlice.WORLDGEN_VERSION)
+	_note_worldgen_version()
 	_bind_local_identity()
 	# Lazy reader for every other player's record (see the docstring above).
 	_registry.set_record_loader(_persistence.load_player)

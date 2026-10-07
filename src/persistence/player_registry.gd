@@ -325,6 +325,7 @@ func resolve_identity(peer_id: int, claimed_id: String = "") -> String:
 	# check would hand the joiner a set it must then be told to take off.
 	_equip_seq.erase(player_id)
 	_equip_refusals.erase(player_id)
+	_equip_revoke_pending.erase(player_id)
 	revalidate_equipment(player_id)
 	GameBus.player_joined.emit(peer_id, player_id, reconnected)
 	return player_id
@@ -924,6 +925,10 @@ func evict_player(player_id: String) -> bool:
 	if player_id.is_empty() or is_online(player_id):
 		return false
 	var had_record := _players.erase(player_id)
+	# The equip bookkeeping is per live player: nothing may outlive the record it describes.
+	_equip_seq.erase(player_id)
+	_equip_refusals.erase(player_id)
+	_equip_revoke_pending.erase(player_id)
 	var inv: Variant = _inventories.get(player_id, null)
 	if inv != null:
 		_inventories.erase(player_id)
@@ -1069,6 +1074,7 @@ const EQUIP_REFUSE_INTERVAL_MSEC := 1000
 var equip_refused_suppressed: int = 0
 var _equip_refusals: Dictionary = {}  # player_id -> msec of the last reported refusal
 var _equip_seq: Dictionary = {}       # player_id -> newest equip sequence number processed
+var _equip_revoke_pending: Dictionary = {}  # player_id -> true while a trailing revoke is scheduled
 
 func _on_equip_intent(player_id: String, slot: String, item_key: String) -> void:
 	if not is_authoritative or player_id.is_empty():
@@ -1097,6 +1103,7 @@ func _refuse_equip(player_id: String, slot: String, item_key: String, worn: Dict
 	var last: int = int(_equip_refusals.get(player_id, -EQUIP_REFUSE_INTERVAL_MSEC))
 	if now - last < EQUIP_REFUSE_INTERVAL_MSEC:
 		equip_refused_suppressed += 1
+		_schedule_trailing_revoke(player_id, EQUIP_REFUSE_INTERVAL_MSEC - (now - last))
 		return
 	_equip_refusals[player_id] = now
 	Diag.warn("PlayerRegistry: refused equip of '%s' into '%s' for %s" % [item_key, slot, player_id])
@@ -1107,7 +1114,27 @@ func _refuse_equip(player_id: String, slot: String, item_key: String, worn: Dict
 ## newest one the host has processed, so the client can tell a stale correction from a
 ## current one.
 func note_equip_seq(player_id: String, seq: int) -> void:
-	_equip_seq[player_id] = seq
+	# Monotonic: a client replaying a lower number must not rewind what the host answers.
+	_equip_seq[player_id] = maxi(seq, equip_seq_of(player_id))
+
+## A refusal the rate limit swallowed would otherwise leave the owner showing an item the
+## host refused (the earlier revoke is ignored as stale once a newer action was sent). One
+## trailing revoke per player goes out when the interval ends, carrying the record as it
+## is THEN, so a burst costs two sends at most.
+func _schedule_trailing_revoke(player_id: String, delay_msec: int) -> void:
+	if _equip_revoke_pending.has(player_id) or not is_inside_tree():
+		return
+	_equip_revoke_pending[player_id] = true
+	get_tree().create_timer(maxf(delay_msec, 1) / 1000.0).timeout.connect(
+		_flush_trailing_revoke.bind(player_id))
+
+func _flush_trailing_revoke(player_id: String) -> void:
+	if not _equip_revoke_pending.erase(player_id):
+		return
+	if not has_player(player_id):
+		return
+	_equip_refusals[player_id] = Time.get_ticks_msec()
+	GameBus.equipment_revoked.emit(player_id, get_equipment(player_id))
 
 func equip_seq_of(player_id: String) -> int:
 	return int(_equip_seq.get(player_id, 0))

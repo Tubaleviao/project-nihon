@@ -226,6 +226,7 @@ func save_world(data: Dictionary, incremental: bool = false) -> Error:
 ## Error encountered — the caller reports it, because a worker cannot emit.
 func write_job(job: Dictionary) -> int:
 	var first_error: int = OK
+	region_store.last_failed_chunk_keys = []
 	var world: Variant = job.get("world", {})
 	if world is Dictionary and not (world as Dictionary).is_empty():
 		# Phase 61 — a failed world write does not stop the player records from being saved.
@@ -237,9 +238,18 @@ func write_job(job: Dictionary) -> int:
 			if not (data is Dictionary):
 				continue
 			var err := _write_json(player_path(str(player_id)), data)
-			if err != OK and first_error == OK:
-				first_error = err
+			if err != OK:
+				region_store.last_failed_chunk_keys = []
+				if first_error == OK:
+					first_error = err
 	return first_error
+
+## The chunk keys of the regions the last world write could not save (empty when every region
+## landed, or when the failure was in the global record or a player file). Read it only after
+## the write has finished; the save worker is joined first. Also empty when a region failure
+## was joined by a record/player failure: the record is stale against every chunk, so all stay.
+func failed_chunk_keys() -> Array:
+	return region_store.last_failed_chunk_keys.duplicate()
 
 ## The world-record half of a save, without the bus signals: read the existing
 ## record and merge an incremental payload into it, then write. Split out of
@@ -264,6 +274,8 @@ func _write_world_payload(data: Dictionary, incremental: bool) -> Error:
 		if not existing.is_empty():
 			payload = _merge_world(existing, payload)
 	var world_err := _write_json(world_path(), payload)
+	if world_err != OK:
+		region_store.last_failed_chunk_keys = []
 	return first_error if first_error != OK else world_err
 
 ## The GLOBAL world record on disk (seed, stations, creatures, local player id), or an
