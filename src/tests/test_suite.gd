@@ -249,6 +249,8 @@ func run() -> void:
 	_run_test("equipment: a suppressed refusal still revokes once", _test_equipment_trailing_revoke)
 	_run_test("equipment: bookkeeping is dropped with the player", _test_equipment_bookkeeping_evicted)
 	_run_test("equipment: the sequence number never rewinds",   _test_equipment_seq_monotonic)
+	_run_test("rebase: an unshiftable target is reported",      _test_rebase_driver_reports_unshiftable)
+	_run_test("game_root: implausible peer positions dropped",  _test_remote_state_plausibility)
 	_run_test("equipment: slots cached, peer evict, owner map", _test_equipment_phase48_misc)
 	_run_test("equipment: host worn set + AOI enter/leave",      _test_equipment_host_and_aoi_transitions)
 	_run_test("net: broadcasts go through _test_peers",          _test_network_broadcast_uses_test_peers)
@@ -1122,6 +1124,37 @@ func _test_rebase_extras() -> void:
 	station.free()
 	loot.free()
 
+## Review of #165 — a target with no `shift_scene` is reported, not silently left behind.
+func _test_rebase_driver_reports_unshiftable() -> void:
+	var good := LootSlice.new()
+	add_child(good)
+	var bad := Node3D.new()
+	add_child(bad)
+	var driver := RebaseDriver.new([good, null, bad])
+	driver.rebase_to(Vector2i(94, 0))
+	assert_eq(driver.unshiftable_skipped, 1, "the node without shift_scene is counted; null is not")
+	assert_true(good.scene_offset() != Vector3.ZERO, "the shiftable target still moved")
+	driver.rebase_to(Vector2i(188, 0))
+	assert_eq(driver.unshiftable_skipped, 2, "it is counted on every rebase")
+	assert_eq(driver._reported_unshiftable.size(), 1, "but reported once")
+	bad.free()
+	good.free()
+
+## Review of #165 — drop non-finite or absurd positions before any consumer reads them.
+func _test_remote_state_plausibility() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	assert_true(root_script._is_plausible_position(Vector3(10.0, 2.0, -5.0)), "an ordinary position passes")
+	assert_true(root_script._is_plausible_position(Vector3(-2.0e7, 0.0, 2.0e7)), "a far planet position passes")
+	assert_false(root_script._is_plausible_position(Vector3(NAN, 0.0, 0.0)), "NaN is dropped")
+	assert_false(root_script._is_plausible_position(Vector3(0.0, INF, 0.0)), "infinity is dropped")
+	assert_false(root_script._is_plausible_position(Vector3(0.0, 0.0, -INF)), "negative infinity is dropped")
+	assert_false(root_script._is_plausible_position(Vector3(1.0e9, 0.0, 0.0)), "a coordinate past the planet is dropped")
+	var gr: Node = root_script.new()
+	gr._is_client = false
+	gr._on_remote_player_state(3, Vector3(NAN, 0.0, 0.0))
+	assert_true(gr._peer_aoi_regions.is_empty(), "a rejected claim records no AOI region (and needs no networking slice)")
+	gr.free()
+
 func _test_rebase_driver() -> void:
 	var voxel := VoxelSlice.new()
 	add_child(voxel)
@@ -1208,6 +1241,8 @@ func _test_where_command() -> void:
 	assert_true(not ChatCommands.is_command("hello"), "plain chat is not a command")
 	assert_eq(ChatCommands.run("/where", pos), TerrainSlice.where_text(pos), "/where prints where_text")
 	assert_eq(ChatCommands.run("hello", pos), "", "plain chat prints nothing")
+	assert_false(ChatCommands.is_command("/wherever"), "only the exact command matches")
+	assert_eq(ChatCommands.run("/WHERE ", pos), TerrainSlice.where_text(pos), "run and is_command agree on spelling")
 
 func _test_terrain_planet_coordinates() -> void:
 	var t := TerrainSlice.new()

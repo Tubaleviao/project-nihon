@@ -1240,13 +1240,22 @@ func _remove_remote_avatar(peer_id: int) -> void:
 ## When the AOI grid cell changes, re-send a scoped snapshot so the client gains
 ## the entities now in range — including static creatures that were never
 ## "dirty" and therefore never re-broadcast as a delta.
+## Coordinates beyond this are no position on the planet (circumference is ~40,000 km in X).
+const MAX_CLAIMED_COORD := 1.0e8
+
+static func _is_plausible_position(p: Vector3) -> bool:
+	return is_finite(p.x) and is_finite(p.y) and is_finite(p.z) \
+		and absf(p.x) <= MAX_CLAIMED_COORD and absf(p.y) <= MAX_CLAIMED_COORD and absf(p.z) <= MAX_CLAIMED_COORD
+
 func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	if _is_client:
 		return
+	# A non-finite or absurd claim is dropped before ANY consumer reads it (the region lookup
+	# below included); a planet is far smaller than MAX_CLAIMED_COORD.
+	if not _is_plausible_position(position):
+		return
 	var region: Vector2i = _networking.aoi_region(position)
 	if _peer_aoi_regions.get(peer_id, null) == region:
-		return
-	if not (is_finite(position.x) and is_finite(position.y) and is_finite(position.z)):
 		return
 	_peer_aoi_regions[peer_id] = region
 	# Phase 62 — re-centre the peer's window and make the regions around the new position

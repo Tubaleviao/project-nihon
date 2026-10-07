@@ -7,13 +7,16 @@ const WHERE := "/where"
 
 ## True when `text` is a command this module answers.
 static func is_command(text: String) -> bool:
-	return _command_of(text) == WHERE
+	return _command_of(text) != ""
 
 ## The reply to `text` for a player standing at `world_pos`, or "" when it is not a command.
 static func run(text: String, world_pos: Vector3) -> String:
-	if _command_of(text) == WHERE:
-		return TerrainSlice.where_text(world_pos)
+	match _command_of(text):
+		WHERE:
+			return TerrainSlice.where_text(world_pos)
 	return ""
 
+## The command `text` names ("" when it names none): the one place the known commands are listed.
 static func _command_of(text: String) -> String:
-	return text.strip_edges().to_lower()
+	var typed := text.strip_edges().to_lower()
+	return typed if typed in [WHERE] else ""
