@@ -800,11 +800,18 @@ func _finish_host_boot() -> void:
 	var ground_h := spawn_pos.y - 1.0
 	_player.spawn_at(spawn_pos)
 	_player.respawn_point = spawn_pos
+	# Phase 53 follow-up — a first placement is kept on the record, so a later boot respawns here
+	# rather than at the legacy default or the saved logoff position.
+	if first_spawn != null and not _registry.local_player_id.is_empty():
+		_registry.record_spawn(_registry.local_player_id, spawn_pos)
 
 	# Phase 33 — the local player's own record (position / HP / technologies) is
 	# restored on top of the spawn point, so a restart puts the player back where
 	# they logged off instead of at the world origin.
 	_restore_local_player()
+	var own_spawn: Variant = _registry.spawn_of(_registry.local_player_id)
+	if own_spawn != null:
+		_player.respawn_point = own_spawn
 
 	# Chunk streaming (Phase 17) — the authoritative half above streamed the
 	# window around the origin, so re-centre it on the spawn point. VoxelSlice
@@ -1022,7 +1029,7 @@ func _first_boot_spawn() -> Variant:
 		var placed := _place_new_player(_registry.local_player_id, _friend_code_arg)
 		if placed.has("position"):
 			_local_spawn = placed["position"]
-			_colonization.note_home(Vector2i(floori(_local_spawn.x / TerrainSlice.CHUNK_METERS), floori(_local_spawn.z / TerrainSlice.CHUNK_METERS)))
+			_colonization.note_home(Vector2i(floori(_local_spawn.x / TerrainSlice.CHUNK_METERS), floori(_local_spawn.z / TerrainSlice.CHUNK_METERS)), Time.get_unix_time_from_system())
 			if not str(placed.get("message", "")).is_empty():
 				print("[Spawn] %s" % placed["message"])
 	return _local_spawn
@@ -1041,7 +1048,7 @@ func _place_new_player(player_id: String, friend_code: String) -> Dictionary:
 			var radius := float(SpawnFinder.rule()["friend_radius"])
 			var near: Variant = SpawnFinder.find_near(world_seed, player_id, Vector2(friend_pos.x, friend_pos.z), radius, height_fn)
 			if near != null:
-				_colonization.note_home(Vector2i(floori(near.x / TerrainSlice.CHUNK_METERS), floori(near.z / TerrainSlice.CHUNK_METERS)))
+				_colonization.note_home(Vector2i(floori(near.x / TerrainSlice.CHUNK_METERS), floori(near.z / TerrainSlice.CHUNK_METERS)), Time.get_unix_time_from_system())
 				return { "position": near, "source": "friend", "message": "" }
 			message = "No safe ground near that friend — placed on open land instead."
 		else:
@@ -1050,7 +1057,7 @@ func _place_new_player(player_id: String, friend_code: String) -> Dictionary:
 	var found: Variant = SpawnFinder.find_new(world_seed, player_id, _colonization, height_fn, Time.get_unix_time_from_system())
 	if found == null:
 		return {}
-	_colonization.note_home(Vector2i(floori(found.x / TerrainSlice.CHUNK_METERS), floori(found.z / TerrainSlice.CHUNK_METERS)))
+	_colonization.note_home(Vector2i(floori(found.x / TerrainSlice.CHUNK_METERS), floori(found.z / TerrainSlice.CHUNK_METERS)), Time.get_unix_time_from_system())
 	return { "position": found, "source": source, "message": message }
 
 ## The live position of the player behind `handle`: the local player's body, else the registry.
@@ -1242,6 +1249,10 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	# crossing (the record is written at load and at disconnect, not per frame).
 	# The crossing position is passed explicitly: this handler may run before the
 	# networking slice's own handler has recorded it, so get_aoi_center() can be stale.
+	# The peer's window and regions are re-centred FIRST (as the join path does), so a teleport or
+	# respawn into a region that was not resident still carries that region's edits.
+	_chunk_manager.set_peer_center(peer_id, _chunk_manager.world_to_chunk(Vector2(position.x, position.z)))
+	_chunk_manager.refresh(false)
 	_networking.send_snapshot(peer_id, _build_snapshot(peer_id, false, position, false))
 
 ## Phase 52 — seconds between re-centring the connected peers' streaming windows.
@@ -1267,10 +1278,8 @@ func _sync_peer_windows(delta: float) -> void:
 	if _peer_window_elapsed < PEER_WINDOW_INTERVAL:
 		return
 	_peer_window_elapsed = 0.0
-	for pid in _registry.get_online_player_ids():
-		var peer_id := _registry.get_peer_id(str(pid))
-		if peer_id > 0:
-			_chunk_manager.set_peer_center(peer_id, _peer_window_chunk(peer_id))
+	for peer_id in _registry.get_bound_peer_ids():
+		_chunk_manager.set_peer_center(peer_id, _peer_window_chunk(peer_id))
 
 func _process(delta: float) -> void:
 	# Phase 42 — complete a host boot whose first ring has finished building. It has
@@ -1328,8 +1337,8 @@ func _tick_world_clock(delta: float) -> void:
 		return
 	var ppos: Vector3 = _player.get_position()
 	var lat: float = TerrainSlice.latitude_at(ppos.z)
-	_apply_sun(lat)
-	_apply_season_look(ppos, lat)
+	_apply_sun(lat, _biome_underfoot(ppos))
+	_apply_season_look(lat)
 	var text := _clock.text_for(lat)
 	if text != _last_clock_text:
 		_last_clock_text = text
@@ -1346,16 +1355,18 @@ func _on_world_clock_received(host_days: float) -> void:
 ## The sun follows the clock: elevation from latitude, declination and the hour of day; azimuth
 ## swings east to west with the hour angle. It dims and warms toward the horizon and the sky
 ## and ambient light fall with it at night.
-func _apply_sun(lat: float) -> void:
+func _apply_sun(lat: float, biome: Variant = null) -> void:
 	var sun := get_node_or_null("Sun") as DirectionalLight3D
 	if sun == null:
 		return
 	var elev: float = _clock.sun_elevation_at(lat)
-	var daylight: float = WorldClock.daylight_level(elev)
+	# A biome with its own `dayNightSpeed` (the Twilight Grove) reconciles the global light level
+	# with its own: the sun, sky and ambient follow the biome underfoot.
+	var daylight: float = WorldClock.biome_daylight(WorldClock.daylight_level(elev), WorldClock.biome_night_speed(biome))
 	var hour: float = WorldClock.hour_angle_deg(WorldClock.day_phase(_clock.time_days))
 	sun.rotation_degrees = Vector3(-clampf(elev, 2.0, 90.0), 90.0 + hour, 0.0)
 	sun.light_energy = 1.4 * daylight
-	sun.visible = elev > -6.0
+	sun.visible = daylight > 0.0
 	var low: float = clampf(1.0 - elev / 40.0, 0.0, 1.0)
 	sun.light_color = Color(1.0, 0.95, 0.85).lerp(Color(1.0, 0.6, 0.35), low * low)
 	var env_node := get_node_or_null("Environment") as WorldEnvironment
@@ -1363,20 +1374,19 @@ func _apply_sun(lat: float) -> void:
 		env_node.environment.background_color = Color(0.02, 0.03, 0.08).lerp(Color(0.45, 0.62, 0.85), daylight)
 		env_node.environment.ambient_light_energy = lerpf(0.08, 0.5, daylight)
 
-## Season look: the shared terrain material is tinted by the biome underfoot for the season
-## at this latitude, and goes snow-white where that biome's seasonal temperature is below
-## freezing. One tint for the loaded window rather than per-chunk re-meshing.
-func _apply_season_look(ppos: Vector3, lat: float) -> void:
+## The biome resource under `ppos` (null when it names none).
+func _biome_underfoot(ppos: Vector3) -> Variant:
 	var chunk := Vector2i(floori(ppos.x / TerrainSlice.CHUNK_METERS), floori(ppos.z / TerrainSlice.CHUNK_METERS))
-	var biome: Variant = GameData.BIOMES.get(_terrain.get_biome_at_chunk(chunk), null)
-	if biome == null:
-		return
+	return GameData.BIOMES.get(_terrain.get_biome_at_chunk(chunk), null)
+
+## Season look: every biome's terrain material is tinted for the season at this latitude, and
+## goes snow-white where THAT biome's seasonal temperature is below freezing. A chunk wears
+## its own biome's tint, so standing in a freezing biome does not whiten the forest beside it.
+func _apply_season_look(lat: float) -> void:
 	var w: float = _clock.warmth_at(lat)
-	var tint: Color = WorldClock.season_tint(biome, w)
-	var temp: float = WorldClock.seasonal_temperature(float(biome.get("avgTemperature")), float(biome.get("seasonSwing")), w)
-	if WorldClock.is_snowing_ground(temp):
-		tint = tint.lerp(Color(1.6, 1.6, 1.7), clampf(-temp / 10.0, 0.0, 0.7))
-	_voxel.set_season_tint(tint)
+	for biome_key in GameData.BIOMES:
+		var biome: Variant = GameData.BIOMES[biome_key]
+		_voxel.set_biome_season_tint(str(biome_key), WorldClock.biome_look(biome, w))
 
 ## Client-side: wait for the host's world snapshot, re-presenting the join intent
 ## while it does not arrive. The handshake is the only route to an identity and a
@@ -1600,8 +1610,10 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 			_player.spawn_at(Vector3(float(arr[0]), float(arr[1]), float(arr[2])))
 			if not _client_respawn_point_set:
 				# Only the first snapshot carries the placement; later AOI re-scoped snapshots
-				# carry wherever the player has since walked, which is not a spawn point.
-				_player.respawn_point = _player.get_position()
+				# carry wherever the player has since walked, which is not a spawn point. The
+				# record's own `spawn` wins (a returning client's saved position is not it).
+				var client_spawn: Variant = PlayerRegistry.parse_spawn(own.get("spawn", null))
+				_player.respawn_point = client_spawn if client_spawn != null else _player.get_position()
 				_client_respawn_point_set = true
 		var hp := float(own.get("hp", -1.0))
 		if hp >= 0.0:

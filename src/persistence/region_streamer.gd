@@ -32,9 +32,14 @@ static func regions_for_chunks(chunks: Array) -> Dictionary:
 		var chunk: Vector2i = c
 		out[RegionStore.region_key(RegionStore.region_of_chunk(chunk))] = true
 		# The margin matters only on a region's edge: a chunk there is rebuilt against its
-		# neighbour's real edits, which live in the next region.
+		# neighbour's real edits, which live in the next region. An interior chunk's
+		# neighbours are all in its own region, so it skips the nine-way expansion.
 		# Neighbours are wrapped in X like every chunk key, so a seam chunk's margin is the
 		# region on the far side of the seam.
+		var lx := posmod(chunk.x, RegionStore.REGION_SIZE)
+		var lz := posmod(chunk.y, RegionStore.REGION_SIZE)
+		if lx > 0 and lx < RegionStore.REGION_SIZE - 1 and lz > 0 and lz < RegionStore.REGION_SIZE - 1:
+			continue
 		for dx in range(-1, 2):
 			for dz in range(-1, 2):
 				var n := TerrainSlice.wrap_chunk(chunk + Vector2i(dx, dz))
@@ -42,15 +47,21 @@ static func regions_for_chunks(chunks: Array) -> Dictionary:
 	return out
 
 ## Make exactly `wanted` ("rx,rz" keys) resident: read the missing ones, release the rest.
-## Returns { "loaded": n, "released": n } for the log line and the tests.
+## A region whose file exists but cannot be read is NOT marked resident, so the next sync
+## retries it (a save that was mid-write when it was read has finished by then).
+## Returns { "loaded": n, "released": n, "failed": n } for the log line and the tests.
 func sync(wanted: Dictionary) -> Dictionary:
 	var loaded := 0
 	var released := 0
+	var failed := 0
 	for rkey in wanted:
 		if _resident.has(rkey):
 			continue
-		var chunks := _store.load_region(RegionStore.region_from_key(str(rkey)))
-		_voxel.apply_region_chunks(chunks)
+		var read := _store.read_region(RegionStore.region_from_key(str(rkey)))
+		if not bool(read["ok"]):
+			failed += 1
+			continue
+		_voxel.apply_region_chunks(read["chunks"])
 		_resident[rkey] = true
 		loaded += 1
 	for rkey in _resident.keys():
@@ -87,7 +98,7 @@ func sync(wanted: Dictionary) -> Dictionary:
 					break
 			if not left:
 				_stranded.erase(rkey)
-	return { "loaded": loaded, "released": released }
+	return { "loaded": loaded, "released": released, "failed": failed }
 
 ## Retry the stranded regions without a window move: a save may have cleaned their dirty
 ## chunks since. Cheap when nothing is stranded. Returns how many chunks were released.

@@ -259,6 +259,8 @@ var _place_material: String = ""
 ## twice per chunk build and two more on every edit rebuild, re-stream or self-heal, which
 ## is material churn proportional to the (streamed) rebuild count rather than to the slice.
 var _terrain_mat: StandardMaterial3D = null
+## biome key -> that biome's copy of the terrain material, tinted for the season (Phase 54).
+var _biome_mats: Dictionary = {}
 
 ## Single world-level safety floor shared by all chunks (prevents the player from
 ## ever falling through the world). Created once in _ready(). It sits one unit
@@ -366,7 +368,8 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	var surface := _mesh_from_arrays(built)
 	var mesh_inst := MeshInstance3D.new()
 	mesh_inst.mesh = surface
-	mesh_inst.material_override = _terrain_material()
+	var terrain_mat := _chunk_terrain_material(chunk_pos)
+	mesh_inst.material_override = terrain_mat
 	root.add_child(mesh_inst)
 
 	# --- Water (Phase 51): a flat, collision-free surface where the ground is below sea level. ---
@@ -395,7 +398,7 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 			"colors":   built["deposit_colors"],
 			"indices":  built["deposit_indices"],
 		})
-		deposit_inst.material_override = _terrain_material()
+		deposit_inst.material_override = terrain_mat
 		root.add_child(deposit_inst)
 
 	# --- Collision: ONE ConcavePolygonShape3D per chunk, from the same triangles
@@ -2213,12 +2216,27 @@ func _terrain_material() -> StandardMaterial3D:
 
 ## The terrain's per-chunk material: per-column vertex colour, both faces
 ## rendered, so the shell is never see-through regardless of triangle winding.
-## Phase 54 — multiply the shared terrain material's albedo by the season's tint (Color.WHITE
-## clears it). Every chunk mesh shares the one material, so this re-tints the whole window.
-func set_season_tint(tint: Color) -> void:
-	var mat := _terrain_material()
+## Phase 54 — a biome's season tint (Color.WHITE clears it): that biome's terrain material has its
+## albedo multiplied by it. Each chunk wears the material of the biome it sits in
+## (`_chunk_terrain_material`), so a tint applies to that biome's chunks and no others.
+func set_biome_season_tint(biome_key: String, tint: Color) -> void:
+	var mat := _biome_material(biome_key)
 	if not mat.albedo_color.is_equal_approx(tint):
 		mat.albedo_color = tint
+
+## The terrain material for `biome_key`: a copy of the shared one, minted once per biome (a
+## handful for the slice's lifetime, however many chunks are built).
+func _biome_material(biome_key: String) -> StandardMaterial3D:
+	if not _biome_mats.has(biome_key):
+		_biome_mats[biome_key] = _terrain_material().duplicate() as StandardMaterial3D
+	return _biome_mats[biome_key]
+
+## The material a chunk's terrain meshes carry. Without a terrain slice (an isolated rig) it is
+## the shared material.
+func _chunk_terrain_material(chunk_pos: Vector2i) -> StandardMaterial3D:
+	if terrain_slice == null or not terrain_slice.has_method("get_biome_at_chunk"):
+		return _terrain_material()
+	return _biome_material(str(terrain_slice.get_biome_at_chunk(chunk_pos)))
 
 func _make_terrain_material() -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()

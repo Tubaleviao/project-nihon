@@ -104,6 +104,16 @@ static func is_empty_edit_set(entry: Variant) -> bool:
 	var edits: Variant = (entry as Dictionary).get("edits", null)
 	return edits is Dictionary and (edits as Dictionary).is_empty()
 
+## True when `entry` is a Dictionary whose `edits` and `materials`, where present, are
+## Dictionaries too (the voxel log iterates both). Pure.
+static func is_valid_chunk_entry(entry: Variant) -> bool:
+	if not (entry is Dictionary):
+		return false
+	for field in ["edits", "materials"]:
+		if (entry as Dictionary).has(field) and not ((entry as Dictionary)[field] is Dictionary):
+			return false
+	return true
+
 ## Fold `incoming` chunk entries over `base`. An incoming entry that is an EMPTY edit set
 ## (`{ "edits": {} }`) deletes the chunk — the incremental save's way of saying a chunk's
 ## edits compacted away; `deletions` false stores every entry verbatim (a full save or a
@@ -134,7 +144,7 @@ func load_region(region: Vector2i) -> Dictionary:
 
 ## Like `load_region`, but `ok` is false when the file EXISTS and could not be read or
 ## parsed. A writer must not fold into the empty base of an unreadable file: that would
-## replace it and lose every chunk it held. Non-Dictionary chunk entries are dropped.
+## replace it and lose every chunk it held. Malformed chunk entries (see `is_valid_chunk_entry`) are dropped.
 func read_region(region: Vector2i) -> Dictionary:
 	var path := path_of(region)
 	if not FileAccess.file_exists(path):
@@ -153,7 +163,7 @@ func read_region(region: Vector2i) -> Dictionary:
 	var chunks := {}
 	if raw is Dictionary:
 		for ckey in raw:
-			if raw[ckey] is Dictionary:
+			if is_valid_chunk_entry(raw[ckey]):
 				chunks[ckey] = raw[ckey]
 			else:
 				Diag.warn("RegionStore: %s: dropping malformed chunk entry '%s'" % [path, str(ckey)])
@@ -186,18 +196,25 @@ func save_region(region: Vector2i, chunks: Dictionary) -> Error:
 ## Fold `chunks` (a manifest, possibly incremental) into the regions they belong to. Each
 ## affected region is read, folded and rewritten; no other region file is touched. Returns
 ## the first Error, or OK. This is the whole write path of a world save.
+##
+## One failing region does not stop the others: every region that CAN be written is, and the
+## first error is returned at the end, so the caller knows the save was partial.
 func write_chunks(chunks: Dictionary, deletions := true) -> Error:
 	var grouped := group_manifest(chunks)
+	var first_err: Error = OK
 	for rkey in grouped:
 		var region := region_from_key(str(rkey))
 		var read := read_region(region)
 		if not bool(read["ok"]):
-			return ERR_FILE_CORRUPT   # leave the unreadable file alone rather than replace it
+			# Leave the unreadable file alone rather than replace it.
+			if first_err == OK:
+				first_err = ERR_FILE_CORRUPT
+			continue
 		var folded := fold_chunks(read["chunks"], grouped[rkey], deletions)
 		var err := save_region(region, folded)
-		if err != OK:
-			return err
-	return OK
+		if err != OK and first_err == OK:
+			first_err = err
+	return first_err
 
 ## The regions that must be rewritten for a set of dirty "cx,cz" chunk keys.
 func list_dirty(dirty_chunk_keys: Array) -> Array:

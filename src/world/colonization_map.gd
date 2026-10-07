@@ -14,6 +14,10 @@ const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const HOME_WEIGHT := 10.0
 ## A player seen in a region counts toward its score for a week.
 const PRESENCE_WINDOW_SECONDS := 7.0 * 86400.0
+## A home stops counting once nobody has been seen in its region for this long (a month): an
+## abandoned spawn does not keep land colonized forever. Edited chunks are built things and
+## never lapse. A region with no recorded presence (an older world) keeps counting its homes.
+const HOME_ABANDON_SECONDS := 30.0 * 86400.0
 ## Metres on a side of one region.
 const REGION_METERS := float(RegionStore.REGION_SIZE) * TerrainSlice.CHUNK_METERS
 
@@ -42,10 +46,20 @@ func note_edited_chunk(chunk: Vector2i) -> bool:
 	e["edits"] = int(e["edits"]) + 1
 	return true
 
-## A player made a home (their spawn point, for now) in `chunk`'s region.
-func note_home(chunk: Vector2i) -> void:
+## A player made a home (their spawn point, for now) in `chunk`'s region. `now` (Unix seconds,
+## 0 = unknown) also counts as that player's presence, so the home starts its abandonment clock.
+func note_home(chunk: Vector2i, now: float = 0.0) -> void:
 	var e := _entry(RegionStore.region_of_chunk(TerrainSlice.wrap_chunk(chunk)))
 	e["homes"] = int(e["homes"]) + 1
+	if now > 0.0:
+		e["presence_at"] = maxf(float(e["presence_at"]), now)
+
+## A home in `chunk`'s region was given up. Never goes below zero.
+func release_home(chunk: Vector2i) -> void:
+	var key := RegionStore.region_key(RegionStore.region_of_chunk(TerrainSlice.wrap_chunk(chunk)))
+	if _regions.has(key):
+		var e: Dictionary = _regions[key]
+		e["homes"] = maxi(int(e["homes"]) - 1, 0)
 
 ## A player was seen in `chunk`'s region at `now` (Unix seconds).
 func note_presence(chunk: Vector2i, now: float) -> void:
@@ -64,8 +78,10 @@ func score(region: Vector2i, now: float = 0.0) -> float:
 	var e: Variant = _regions.get(RegionStore.region_key(region), null)
 	if e == null:
 		return 0.0
-	var s := float(e["edits"]) + float(e["homes"]) * HOME_WEIGHT
 	var seen := float(e["presence_at"])
+	var s := float(e["edits"])
+	if now <= 0.0 or seen <= 0.0 or now - seen <= HOME_ABANDON_SECONDS:
+		s += float(e["homes"]) * HOME_WEIGHT
 	if seen > 0.0 and now - seen <= PRESENCE_WINDOW_SECONDS:
 		s += 1.0
 	return s
@@ -111,8 +127,10 @@ func is_near_colonized(x: float, z: float, min_distance_m: float, threshold: flo
 				return true
 	return false
 
+## The counted chunks ride along ("cx,cz" keys), so a restart does not forget which chunks
+## already count and let a re-edit of one inflate its region's score a second time.
 func to_data() -> Dictionary:
-	return { "regions": _regions.duplicate(true) }
+	return { "regions": _regions.duplicate(true), "counted": _counted_chunks.keys() }
 
 ## Replace the map from `data`. Malformed entries are dropped, never trusted.
 func from_data(data: Variant) -> void:
@@ -120,6 +138,12 @@ func from_data(data: Variant) -> void:
 	_counted_chunks.clear()
 	if not (data is Dictionary):
 		return
+	var counted: Variant = (data as Dictionary).get("counted", null)
+	if counted is Array:
+		for ckey in counted:
+			var cparts: PackedStringArray = str(ckey).split(",")
+			if cparts.size() == 2 and cparts[0].is_valid_int() and cparts[1].is_valid_int():
+				_counted_chunks[str(ckey)] = true
 	var regions: Variant = (data as Dictionary).get("regions", null)
 	if not (regions is Dictionary):
 		return

@@ -319,6 +319,8 @@ func run() -> void:
 	_run_test("clock: day length varies by latitude",            _test_clock_day_length_by_latitude)
 	_run_test("clock: sun follows the hour and the season",      _test_clock_sun_elevation)
 	_run_test("clock: seasonal temperature, tint and snow",      _test_clock_season_effects)
+	_run_test("clock: biome night speed and snow-white look",    _test_clock_biome_look)
+	_run_test("voxel: season tint is per biome, not per window", _test_voxel_season_tint_per_biome)
 	_run_test("clock: client stays within 1 s over 10 minutes",  _test_clock_client_sync)
 	_run_test("clock: persistence, HUD text and fabric values",  _test_clock_persistence_and_fabric)
 	_run_test("spawn: hash bits are independent",                _test_spawn_roll_mix_avalanche)
@@ -552,8 +554,14 @@ func run() -> void:
 	_run_test("region: a Phase 51 save migrates with every edit intact", _test_region_migrates_monolith)
 	_run_test("region: a full save erases compacted chunks; migration keeps newer region data", _test_region_full_save_erases_and_migration_keeps_newer)
 	_run_test("region: an unreadable region file is never overwritten by a save", _test_region_unreadable_not_overwritten)
+	_run_test("region: one unreadable region does not block the others' save", _test_region_partial_save)
+	_run_test("region: only edge chunks pull in neighbouring regions", _test_region_neighbour_expansion_edges_only)
+	_run_test("region: a failed region read is retried, not marked resident", _test_region_failed_read_retried)
+	_run_test("registry: bound peer ids come straight off the peer map", _test_registry_bound_peer_ids)
 	_run_test("spawn: new players avoid colonized regions", _test_spawn_avoids_colonized)
 	_run_test("spawn: friend code lands near the friend", _test_spawn_friend_near)
+	_run_test("spawn: the original placement persists on the record", _test_spawn_record_persists)
+	_run_test("spawn: colonization counts survive a restart, abandoned homes lapse", _test_colonization_followups)
 	_run_test("spawn: the colonization map scores, persists and drops malformed data", _test_colonization_map)
 	_run_test("spawn: a fresh join is placed, a reconnect is not", _test_spawn_registry_placement)
 	_run_test("region: 1,000 regions on disk, only the ones near a window are resident", _test_region_streams_only_near_windows)
@@ -13232,6 +13240,78 @@ func _test_region_unreadable_not_overwritten() -> void:
 	assert_eq(store.load_region(Vector2i.ZERO).keys(), ["1,1"], "a non-Dictionary chunk entry is dropped on read")
 	assert_eq(RegionStoreScript.group_manifest({ "a": entry, "2,2": entry }).size(), 1, "a malformed chunk key is skipped")
 
+## Phase 52 follow-up — a save into several regions writes every region it can; the unreadable
+## one is left alone and reported, and a malformed `edits` / `materials` entry is dropped on read.
+func _test_region_partial_save() -> void:
+	var dir := _fresh_region_dir("test_p52_partial")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	DirAccess.make_dir_recursive_absolute(dir + "regions/")
+	var bad_path := store.path_of(Vector2i(0, 0))
+	var f := FileAccess.open(bad_path, FileAccess.WRITE)
+	f.store_string("{ not json")
+	f.close()
+	var entry := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	var err := store.write_chunks({ "1,1": entry, "40,40": entry })   # region 0,0 (bad) and region 1,1
+	assert_true(err != OK, "the unreadable region is reported")
+	assert_eq(FileAccess.get_file_as_string(bad_path), "{ not json", "and left untouched")
+	assert_true(store.has_region(Vector2i(1, 1)), "the readable region was still written")
+	assert_eq(store.load_region(Vector2i(1, 1)).keys(), ["40,40"], "with its own chunk")
+	var g := FileAccess.open(bad_path, FileAccess.WRITE)
+	g.store_string(JSON.stringify({ "version": 1, "chunks": {
+		"1,1": entry, "2,2": { "edits": [1] }, "3,3": { "edits": {}, "materials": "x" }, "4,4": { "materials": {} } } }))
+	g.close()
+	var keys: Array = store.load_region(Vector2i(0, 0)).keys()
+	keys.sort()
+	assert_eq(keys, ["1,1", "4,4"], "entries whose edits or materials are not Dictionaries are dropped")
+	assert_true(RegionStoreScript.is_valid_chunk_entry({ "edits": {}, "materials": {} }), "a well-formed entry is valid")
+	assert_false(RegionStoreScript.is_valid_chunk_entry(5), "a non-Dictionary entry is not")
+
+func _test_region_neighbour_expansion_edges_only() -> void:
+	var interior := RegionStreamerScript.regions_for_chunks([Vector2i(10, 10)])
+	assert_eq(interior.keys(), ["0,0"], "an interior chunk wants only its own region")
+	var corner := RegionStreamerScript.regions_for_chunks([Vector2i(0, 0)])
+	assert_true(corner.has("0,0") and corner.has("-1,-1") and corner.has("-1,0") and corner.has("0,-1"),
+		"a corner chunk also wants the regions across its edges")
+	var east := RegionStreamerScript.regions_for_chunks([Vector2i(31, 10)])
+	assert_true(east.has("0,0") and east.has("1,0") and not east.has("0,1") and not east.has("0,-1"),
+		"an east-edge chunk reaches the next region east and no other")
+
+## Phase 52 follow-up — a region whose file cannot be read is not marked resident, so a later
+## sync retries it once the file is readable.
+func _test_region_failed_read_retried() -> void:
+	var dir := _fresh_region_dir("test_p52_retry")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	DirAccess.make_dir_recursive_absolute(dir + "regions/")
+	var path := store.path_of(Vector2i(0, 0))
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string("{ not json")
+	f.close()
+	var voxel := _make_voxel()
+	var streamer := RegionStreamerScript.new(store, voxel)
+	var first := streamer.sync({ "0,0": true })
+	assert_eq(int(first["failed"]), 1, "the unreadable region is reported as failed")
+	assert_eq(int(first["loaded"]), 0, "and not as loaded")
+	assert_false(streamer.is_resident(Vector2i(0, 0)), "it is not resident")
+	var edit := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	assert_eq(store.save_region(Vector2i(0, 0), { "1,1": edit }), OK, "the file is repaired")
+	var second := streamer.sync({ "0,0": true })
+	assert_eq(int(second["loaded"]), 1, "the next sync reads it")
+	assert_true(streamer.is_resident(Vector2i(0, 0)), "and it is resident now")
+	voxel.free()
+
+func _test_registry_bound_peer_ids() -> void:
+	var reg := PlayerRegistry.new()
+	reg.is_authoritative = true
+	assert_eq(reg.get_bound_peer_ids().size(), 0, "no peers, no ids")
+	var a := reg.resolve_identity(4)
+	var b := reg.resolve_identity(9)
+	assert_true(a != "" and b != "", "two peers bind")
+	var ids: Array = reg.get_bound_peer_ids()
+	ids.sort()
+	assert_eq(ids, [4, 9], "both bound peers are listed")
+	reg.unbind_peer(4)
+	assert_eq(reg.get_bound_peer_ids(), [9], "an unbound peer drops out")
+
 func _test_region_streams_only_near_windows() -> void:
 	var dir := _fresh_region_dir("test_p52_rss")
 	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
@@ -13448,6 +13528,67 @@ func _test_colonization_map() -> void:
 	seeded.seed_from_regions([Vector2i(4, 4)])
 	assert_eq(seeded.score(Vector2i(4, 4)), 1.0, "seeding from region files is idempotent")
 
+## Phase 53 follow-up — the first placement lives on the record beside the walked position.
+func _test_spawn_record_persists() -> void:
+	var reg := PlayerRegistry.new()
+	reg.is_authoritative = true
+	var pid := "player_1_1_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	assert_eq(reg.spawn_of(pid), null, "a player with no record has no placement")
+	reg.record_position(pid, Vector3(500.0, 3.0, 600.0))
+	assert_eq(reg.spawn_of(pid), null, "walking does not invent a placement")
+	reg.record_spawn(pid, Vector3(10.0, 2.0, 20.0))
+	reg.record_position(pid, Vector3(900.0, 4.0, 900.0))
+	reg.record_spawn(pid, Vector3(99.0, 9.0, 99.0))
+	assert_eq(reg.spawn_of(pid), Vector3(10.0, 2.0, 20.0), "the placement is written once and survives walking")
+	var data := reg.get_player_data(pid)
+	assert_eq(data["spawn"], [10.0, 2.0, 20.0], "the saved payload carries it")
+	var back := PlayerRegistry.new()
+	back.apply_player_data(pid, data)
+	assert_eq(back.spawn_of(pid), Vector3(10.0, 2.0, 20.0), "a reload restores it")
+	var bad: Dictionary = data.duplicate(true)
+	bad["spawn"] = [1.0, "x", 3.0]
+	var other := PlayerRegistry.new()
+	other.apply_player_data(pid, bad)
+	assert_eq(other.spawn_of(pid), null, "a malformed placement is dropped")
+	var old: Dictionary = data.duplicate(true)
+	old.erase("spawn")
+	other.apply_player_data(pid, old)
+	assert_eq(other.spawn_of(pid), null, "a payload from before the field restores to none")
+	assert_false(other.get_player_data(pid).has("spawn"), "and writes none back")
+	back.clear_spawn(pid)
+	assert_eq(back.spawn_of(pid), null, "clear_spawn forgets it")
+
+## Phase 53 follow-up — re-editing a counted chunk after a restart does not inflate the score,
+## and a home nobody has visited for a month stops counting.
+func _test_colonization_followups() -> void:
+	var m := ColonizationMapScript.new()
+	assert_true(m.note_edited_chunk(Vector2i(70, 100)), "the first edit counts")
+	var restarted := ColonizationMapScript.new()
+	restarted.from_data(m.to_data())
+	assert_true(not restarted.note_edited_chunk(Vector2i(70, 100)), "after a restart the same chunk is still counted")
+	assert_eq(restarted.score(Vector2i(2, 3)), 1.0, "so the region's score did not inflate")
+	assert_true(restarted.note_edited_chunk(Vector2i(71, 100)), "a new chunk still counts")
+	var junk := ColonizationMapScript.new()
+	junk.from_data({ "regions": {}, "counted": ["1,2", "bad", 7, "3,x"] })
+	assert_true(not junk.note_edited_chunk(Vector2i(1, 2)), "a well-formed counted key is read")
+	assert_true(junk.note_edited_chunk(Vector2i(3, 4)), "malformed counted keys are dropped")
+	var h := ColonizationMapScript.new()
+	var day := 86400.0
+	var t0 := 1000.0 * day
+	h.note_home(Vector2i(0, 0), t0)
+	assert_eq(h.score(Vector2i(0, 0), t0), 11.0, "a fresh home counts, plus the presence that placed it")
+	assert_eq(h.score(Vector2i(0, 0), t0 + 10.0 * day), 10.0, "a home still counts after ten days unseen")
+	assert_eq(h.score(Vector2i(0, 0), t0 + 31.0 * day), 0.0, "an abandoned home stops counting")
+	h.note_presence(Vector2i(0, 0), t0 + 30.0 * day)
+	assert_eq(h.score(Vector2i(0, 0), t0 + 31.0 * day), 11.0, "a visit revives it")
+	assert_eq(h.score(Vector2i(0, 0)), 11.0, "with no clock supplied homes always count")
+	var legacy := ColonizationMapScript.new()
+	legacy.from_data({ "regions": { "0,0": { "edits": 0, "homes": 1 } } })
+	assert_eq(legacy.score(Vector2i(0, 0), t0), 10.0, "an older record with no presence keeps its homes")
+	h.release_home(Vector2i(0, 0))
+	h.release_home(Vector2i(0, 0))
+	assert_eq(h.score(Vector2i(0, 0)), 1.0, "releasing a home removes its weight and never goes below zero")
+
 func _test_spawn_registry_placement() -> void:
 	var reg := PlayerRegistry.new()
 	reg.is_authoritative = true
@@ -13525,6 +13666,50 @@ func _test_clock_sun_elevation() -> void:
 	assert_eq(WorldClock.daylight_level(40.0), 1.0, "high sun is full light")
 	assert_eq(WorldClock.biome_daylight(0.0, 1.0), 0.0, "night speed 1 follows the clock")
 	assert_eq(WorldClock.biome_daylight(0.0, 0.0), 0.5, "night speed 0 stays at dusk")
+
+## Phase 54 follow-up — the Twilight Grove's night speed reaches the light level, and a freezing
+## biome's look turns snow white without touching a warm biome's.
+func _test_clock_biome_look() -> void:
+	var grove: Variant = GameData.BIOMES["TwilightGrove"]
+	var forest: Variant = GameData.BIOMES["TemperateForest"]
+	var tundra: Variant = GameData.BIOMES["Tundra"]
+	assert_eq(WorldClock.biome_night_speed(grove), float(grove.get("dayNightSpeed")), "the grove reads its own night speed")
+	assert_eq(WorldClock.biome_night_speed(forest), 1.0, "a biome without the field follows the clock")
+	assert_eq(WorldClock.biome_night_speed(null), 1.0, "no biome follows the clock")
+	assert_eq(WorldClock.biome_daylight(0.0, WorldClock.biome_night_speed(forest)), 0.0, "so a forest night is full dark")
+	assert_eq(WorldClock.biome_daylight(0.0, 0.0), 0.5, "and a grove at speed 0 never gets darker than dusk")
+	assert_eq(WorldClock.biome_look(null, 0.0), Color.WHITE, "no biome, no look")
+	var winter_tundra: Color = WorldClock.biome_look(tundra, -1.0)
+	assert_true(winter_tundra.r > WorldClock.season_tint(tundra, -1.0).r, "tundra in winter is paler than its plain tint")
+	assert_eq(WorldClock.biome_look(forest, 1.0), WorldClock.season_tint(forest, 1.0), "a warm summer forest keeps its plain tint")
+
+## Phase 54 follow-up — chunks wear their own biome's season tint, so whitening one biome does
+## not whiten another's chunks.
+func _test_voxel_season_tint_per_biome() -> void:
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	var v := VoxelSlice.new()
+	add_child(v)
+	v.terrain_slice = terrain
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+	var a: Variant = _biome_chunks(terrain, ["Tundra"], 1)
+	var b: Variant = _biome_chunks(terrain, ["TemperateForest"], 1)
+	assert_true(not (a as Array).is_empty() and not (b as Array).is_empty(), "found a tundra chunk and a forest chunk")
+	if (a as Array).is_empty() or (b as Array).is_empty():
+		return
+	v.build_chunk(a[0], flat)
+	v.build_chunk(b[0], flat)
+	v.set_biome_season_tint("Tundra", Color(1.6, 1.6, 1.7))
+	var tundra_mat := (_chunk_mesh_instances(v, a[0])[0] as MeshInstance3D).material_override as StandardMaterial3D
+	var forest_mat := (_chunk_mesh_instances(v, b[0])[0] as MeshInstance3D).material_override as StandardMaterial3D
+	assert_true(not is_same(tundra_mat, forest_mat), "the two biomes' chunks carry different material instances")
+	assert_eq(tundra_mat.albedo_color, Color(1.6, 1.6, 1.7), "the tundra chunk takes the tundra tint")
+	assert_eq(forest_mat.albedo_color, Color.WHITE, "the forest chunk is untouched")
+	v.build_chunk(a[0], flat)
+	assert_true(is_same(tundra_mat, (_chunk_mesh_instances(v, a[0])[0] as MeshInstance3D).material_override),
+		"a rebuilt chunk reuses its biome's material")
 
 func _test_clock_season_effects() -> void:
 	var forest: Variant = GameData.BIOMES["TemperateForest"]
