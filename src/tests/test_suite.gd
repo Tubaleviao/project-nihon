@@ -563,6 +563,7 @@ func run() -> void:
 	_run_test("region: a region whose read fails is not resident and is retried", _test_region_failed_read_not_resident)
 	_run_test("region: a chunk entry with edits or materials of the wrong type is skipped with one warning", _test_region_malformed_entry_skipped)
 	_run_test("peer window: a flood of far claims moves the window at most once", _test_peer_window_rate_limited)
+	_run_test("peer window: a seam crossing is a short step, not a planet-wide one", _test_peer_window_clamps_across_seam)
 	_run_test("peer window: a host-driven move recentres at once", _test_peer_window_host_driven)
 	_run_test("peer window: a move into a stored region makes its edits resident", _test_peer_window_move_loads_region_edits)
 	_run_test("region: 1,000 regions on disk, only the ones near a window are resident", _test_region_streams_only_near_windows)
@@ -13430,6 +13431,19 @@ func _test_peer_window_rate_limited() -> void:
 		"and the window never travelled farther than the cap")
 	cm._peer_last_move_msec[5] = -1000000
 	assert_true(cm.set_peer_center(5, Vector2i(3, 2)), "a near claim after the interval is accepted")
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+
+func _test_peer_window_clamps_across_seam() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var half := TerrainSlice.circumference_chunks() / 2
+	cm.set_peer_center(5, Vector2i(half - 1, 0), true)
+	cm._peer_last_move_msec[5] = -1000000
+	# One chunk east of the seam is one chunk away, not a planet-width: no clamp, no refusal.
+	assert_true(cm.set_peer_center(5, Vector2i(-half, 0)), "a seam crossing moves the window")
+	assert_eq(cm.peer_recenter_refused, 0, "a one-chunk seam step is not clamped")
+	assert_eq(cm.peer_center(5), Vector2i(-half, 0), "and lands on the wrapped chunk")
 	for k in ["cm", "voxel", "terrain", "player"]:
 		rig[k].free()
 

@@ -796,16 +796,22 @@ func set_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool = false) -
 	if now - int(_peer_last_move_msec.get(peer_id, -1000000)) < int(PEER_RECENTER_INTERVAL * 1000.0):
 		peer_recenter_refused += 1
 		return false
-	var step := chunk - current
+	# X is a wrapped planet coordinate: measure the step the short way round the seam.
+	var c := TerrainSlice.circumference_chunks()
+	var step := Vector2i(posmod(chunk.x - current.x + c / 2, c) - c / 2, chunk.y - current.y)
 	var reach := maxi(absi(step.x), absi(step.y))
 	if reach > PEER_RECENTER_MAX_CHUNKS:
 		peer_recenter_refused += 1
 		step = Vector2i(
 			roundi(float(step.x) * PEER_RECENTER_MAX_CHUNKS / float(reach)),
 			roundi(float(step.y) * PEER_RECENTER_MAX_CHUNKS / float(reach)))
-	_peer_centers[peer_id] = current + step
+	_peer_centers[peer_id] = TerrainSlice.wrap_chunk(current + step)
 	_peer_last_move_msec[peer_id] = now
 	return true
+
+## The chunk a peer's window is centred on, or null when it has none.
+func peer_center(peer_id: int) -> Variant:
+	return _peer_centers.get(peer_id, null)
 
 ## Phase 52 — drop a peer's window (disconnect). Chunks only that window covered unload.
 func clear_peer_center(peer_id: int) -> void:

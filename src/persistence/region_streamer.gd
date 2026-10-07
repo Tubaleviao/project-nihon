@@ -51,7 +51,7 @@ func sync(wanted: Dictionary) -> Dictionary:
 			continue
 		var read := _store.read_region(RegionStore.region_from_key(str(rkey)))
 		if not bool(read["ok"]):
-			# Not resident: the next sync retries the read instead of treating the region as loaded.
+			# Not resident: a later sync (the next window move) retries the read instead of treating the region as loaded.
 			continue
 		_voxel.apply_region_chunks(read["chunks"])
 		_resident[rkey] = true

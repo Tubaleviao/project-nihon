@@ -1236,14 +1236,22 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	var region: Vector2i = _networking.aoi_region(position)
 	if _peer_aoi_regions.get(peer_id, null) == region:
 		return
+	if not (is_finite(position.x) and is_finite(position.y) and is_finite(position.z)):
+		return
 	_peer_aoi_regions[peer_id] = region
 	# Phase 62 — re-centre the peer's window and make the regions around the new position
 	# resident BEFORE the snapshot is built, as the join path does: a teleport into a region
 	# with stored edits must carry those edits in the re-scope snapshot. The re-centre is
 	# rate-limited and clamped (`set_peer_center`), so this cannot be used to flood reads.
+	# When the window could not reach the target yet (refused or clamped) the snapshot would
+	# miss the destination's edits: forget the crossing so the next state packet retries it.
 	if _chunk_manager != null and _registry.get_player_id(peer_id) != "":
-		if _chunk_manager.set_peer_center(peer_id, _chunk_manager.world_to_chunk(Vector2(position.x, position.z))):
+		var target: Vector2i = _chunk_manager.world_to_chunk(Vector2(position.x, position.z))
+		if _chunk_manager.set_peer_center(peer_id, target):
 			_chunk_manager.refresh(false)
+		if _chunk_manager.peer_center(peer_id) != target:
+			_peer_aoi_regions.erase(peer_id)
+			return
 	# Phase 33 — world/entity data only: the peer's own record is NOT re-sent, or
 	# the client would re-apply a stale position/HP/inventory on every region
 	# crossing (the record is written at load and at disconnect, not per frame).
