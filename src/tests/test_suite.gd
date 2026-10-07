@@ -98,6 +98,8 @@ func run() -> void:
 	_run_test("chunk: deplete-only edits request no neighbour rebuild", _test_seam_deplete_only)
 	_run_test("chunk: a border height edit rebuilds only that neighbour", _test_seam_east_border_edit)
 	_run_test("chunk: late edits rebuild the neighbour across the border", _test_seam_late_edits)
+	_run_test("chunk: edits synced while unloaded still rebuild neighbours on stream-in", _test_seam_unloaded_then_streamed)
+	_run_test("chunk: removing a corner edit rebuilds the diagonal neighbour", _test_seam_corner_removal)
 	_run_test("spawn: ocean chunks grow no trees",            _test_ocean_spawns_no_land_tables)
 	_run_test("terrain: the world wraps east-west",           _test_terrain_wraps_east_west)
 	_run_test("terrain: chunk keys are canonical across the seam", _test_chunk_key_canonical_at_seam)
@@ -14327,4 +14329,30 @@ func _test_seam_late_edits() -> void:
 	var got := _seam_requested(cm)
 	assert_true(got.has("1,0") and got.has("0,1") and got.has("1,1"), "east, south and the diagonal neighbour rebuild (%s)" % str(got))
 	assert_false(got.has("-1,0") or got.has("0,-1"), "the far borders do not")
+	_seam_rig_free(rig)
+
+func _test_seam_unloaded_then_streamed() -> void:
+	var rig := _seam_rig()
+	var cm: ChunkManager = rig["cm"]
+	var v: VoxelSlice = rig["voxel"]
+	# Edits arrive while (0,0) is not streamed in: nothing is requested and no revision is recorded.
+	v.apply_edits({ "63,10": [{ "op": "remove", "bottom": 1.0, "top": 2.0 }] })
+	cm.rebuild_requests.clear()
+	cm.rebuild_seam_neighbours(Vector2i(0, 0))
+	assert_eq(_seam_requested(cm).size(), 0, "an unloaded chunk requests nothing")
+	cm.load_chunk(Vector2i(0, 0))
+	assert_eq(_seam_requested(cm), ["1,0"], "streaming it in still rebuilds the east neighbour")
+	_seam_rig_free(rig)
+
+func _test_seam_corner_removal() -> void:
+	var rig := _seam_rig()
+	var cm: ChunkManager = rig["cm"]
+	var v: VoxelSlice = rig["voxel"]
+	cm.load_chunk(Vector2i(0, 0))
+	_wait_for_builds(cm)
+	v.apply_edits({ "63,63": [{ "op": "remove", "bottom": 1.0, "top": 2.0 }] })
+	_wait_for_builds(cm)
+	cm.rebuild_requests.clear()
+	v.apply_edits({})
+	assert_true(_seam_requested(cm).has("1,1"), "removing the corner edit rebuilds the diagonal neighbour")
 	_seam_rig_free(rig)
