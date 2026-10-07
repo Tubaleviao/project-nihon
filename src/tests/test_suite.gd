@@ -332,6 +332,8 @@ func run() -> void:
 	_run_test("clock: day length varies by latitude",            _test_clock_day_length_by_latitude)
 	_run_test("clock: sun follows the hour and the season",      _test_clock_sun_elevation)
 	_run_test("clock: seasonal temperature, tint and snow",      _test_clock_season_effects)
+	_run_test("clock: sun follows the biome's dayNightSpeed",    _test_clock_sun_biome_daylight)
+	_run_test("clock: season tint is per chunk biome",           _test_clock_season_tint_per_chunk)
 	_run_test("clock: client stays within 1 s over 10 minutes",  _test_clock_client_sync)
 	_run_test("clock: persistence, HUD text and fabric values",  _test_clock_persistence_and_fabric)
 	_run_test("spawn: hash bits are independent",                _test_spawn_roll_mix_avalanche)
@@ -14091,6 +14093,66 @@ func _test_clock_sun_elevation() -> void:
 	assert_eq(WorldClock.daylight_level(40.0), 1.0, "high sun is full light")
 	assert_eq(WorldClock.biome_daylight(0.0, 1.0), 0.0, "night speed 1 follows the clock")
 	assert_eq(WorldClock.biome_daylight(0.0, 0.0), 0.5, "night speed 0 stays at dusk")
+
+## Phase 65 — the applied sun goes through `biome_daylight` with the biome's `dayNightSpeed`:
+## speed 0 holds the energy at dusk (0.5) at midnight AND noon; speed 1 follows the clock.
+func _test_clock_sun_biome_daylight() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	var root: Node = root_script.new()   # never enters the tree: no _ready, no boot
+	var sun := DirectionalLight3D.new()
+	sun.name = "Sun"
+	root.add_child(sun)
+	var lat := 0.0
+	for phase in [0.0, 0.5]:   # midnight, solar noon
+		root._clock.time_days = float(phase)
+		var elev: float = root._clock.sun_elevation_at(lat)
+		var d: float = WorldClock.daylight_level(elev)
+		root._apply_sun(lat, 0.0)
+		assert_true(absf(sun.light_energy - 1.4 * WorldClock.biome_daylight(d, 0.0)) < 1e-6,
+			"night speed 0: sun energy is biome_daylight(d, 0) at day phase %s" % phase)
+		assert_true(absf(sun.light_energy - 0.7) < 1e-6, "night speed 0 stays at dusk energy")
+		root._apply_sun(lat, 1.0)
+		assert_true(absf(sun.light_energy - 1.4 * d) < 1e-6,
+			"night speed 1 follows the clock at day phase %s" % phase)
+	root.free()
+
+## Phase 65 — a freezing biome's own chunks go snow-white while a temperate biome's chunk keeps
+## its non-snow tint, even though both share a slice and a latitude.
+func _test_clock_season_tint_per_chunk() -> void:
+	var tundra: Variant = GameData.BIOMES["Tundra"]
+	var forest: Variant = GameData.BIOMES["TemperateForest"]
+	var winter := 0.0   # the equinox: tundra is below freezing, the forest is not
+	var snow: Color = WorldClock.season_look(tundra, winter)
+	var green: Color = WorldClock.season_look(forest, winter)
+	assert_true(WorldClock.is_snowing_ground(WorldClock.seasonal_temperature(
+		float(tundra.get("avgTemperature")), float(tundra.get("seasonSwing")), winter)), "tundra freezes in winter")
+	assert_true(snow.r > 1.0, "the freezing biome's look is snow-bright")
+	assert_eq(green, WorldClock.season_tint(forest, winter), "the temperate biome keeps its plain season tint (not snow)")
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	var v := VoxelSlice.new()
+	add_child(v)
+	v.terrain_slice = terrain
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+	var t_chunks: Array = _biome_chunks(terrain, ["Tundra"], 1)
+	var f_chunks: Array = _biome_chunks(terrain, ["TemperateForest"], 1)
+	assert_true(not t_chunks.is_empty() and not f_chunks.is_empty(), "found a tundra and a forest chunk")
+	if t_chunks.is_empty() or f_chunks.is_empty():
+		v.free()
+		terrain.free()
+		return
+	v.build_chunk(t_chunks[0], flat)
+	v.build_chunk(f_chunks[0], flat)
+	v.set_season_tints({ "Tundra": snow, "TemperateForest": green })
+	var t_mat: StandardMaterial3D = (_chunk_mesh_instances(v, t_chunks[0])[0] as MeshInstance3D).material_override
+	var f_mat: StandardMaterial3D = (_chunk_mesh_instances(v, f_chunks[0])[0] as MeshInstance3D).material_override
+	assert_false(is_same(t_mat, f_mat), "the two biomes' chunks wear different materials")
+	assert_true(t_mat.albedo_color.is_equal_approx(snow), "the tundra chunk is snow-tinted")
+	assert_true(f_mat.albedo_color.is_equal_approx(green), "the forest chunk keeps its non-snow tint")
+	v.free()
+	terrain.free()
 
 func _test_clock_season_effects() -> void:
 	var forest: Variant = GameData.BIOMES["TemperateForest"]

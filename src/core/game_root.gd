@@ -1356,8 +1356,8 @@ func _tick_world_clock(delta: float) -> void:
 		return
 	var ppos: Vector3 = _player.get_position()
 	var lat: float = TerrainSlice.latitude_at(ppos.z)
-	_apply_sun(lat)
-	_apply_season_look(ppos, lat)
+	_apply_sun(lat, _night_speed_at(ppos))
+	_apply_season_look(lat)
 	var text := _clock.text_for(lat)
 	if text != _last_clock_text:
 		_last_clock_text = text
@@ -1373,13 +1373,14 @@ func _on_world_clock_received(host_days: float) -> void:
 
 ## The sun follows the clock: elevation from latitude, declination and the hour of day; azimuth
 ## swings east to west with the hour angle. It dims and warms toward the horizon and the sky
-## and ambient light fall with it at night.
-func _apply_sun(lat: float) -> void:
+## and ambient light fall with it at night. `night_speed` is the `dayNightSpeed` of the biome the
+## player stands in (1 follows the clock, 0 stays at dusk — see `WorldClock.biome_daylight`).
+func _apply_sun(lat: float, night_speed: float = 1.0) -> void:
 	var sun := get_node_or_null("Sun") as DirectionalLight3D
 	if sun == null:
 		return
 	var elev: float = _clock.sun_elevation_at(lat)
-	var daylight: float = WorldClock.daylight_level(elev)
+	var daylight: float = WorldClock.biome_daylight(WorldClock.daylight_level(elev), night_speed)
 	var hour: float = WorldClock.hour_angle_deg(WorldClock.day_phase(_clock.time_days))
 	sun.rotation_degrees = Vector3(-clampf(elev, 2.0, 90.0), 90.0 + hour, 0.0)
 	sun.light_energy = 1.4 * daylight
@@ -1391,20 +1392,25 @@ func _apply_sun(lat: float) -> void:
 		env_node.environment.background_color = Color(0.02, 0.03, 0.08).lerp(Color(0.45, 0.62, 0.85), daylight)
 		env_node.environment.ambient_light_energy = lerpf(0.08, 0.5, daylight)
 
-## Season look: the shared terrain material is tinted by the biome underfoot for the season
-## at this latitude, and goes snow-white where that biome's seasonal temperature is below
-## freezing. One tint for the loaded window rather than per-chunk re-meshing.
-func _apply_season_look(ppos: Vector3, lat: float) -> void:
+## `dayNightSpeed` of the biome under `ppos` (1.0 when it declares none, or the biome is unknown).
+func _night_speed_at(ppos: Vector3) -> float:
+	if _terrain == null:
+		return 1.0
 	var chunk := Vector2i(floori(ppos.x / TerrainSlice.CHUNK_METERS), floori(ppos.z / TerrainSlice.CHUNK_METERS))
 	var biome: Variant = GameData.BIOMES.get(_terrain.get_biome_at_chunk(chunk), null)
-	if biome == null:
-		return
+	if biome == null or biome.get("dayNightSpeed") == null:
+		return 1.0
+	return float(biome.get("dayNightSpeed"))
+
+## Season look: every biome gets its own tint for the season at this latitude (snow-white where
+## that biome's seasonal temperature is below freezing), and each chunk wears its own biome's
+## tint — a freezing biome whitens its own chunks and not its temperate neighbours.
+func _apply_season_look(lat: float) -> void:
 	var w: float = _clock.warmth_at(lat)
-	var tint: Color = WorldClock.season_tint(biome, w)
-	var temp: float = WorldClock.seasonal_temperature(float(biome.get("avgTemperature")), float(biome.get("seasonSwing")), w)
-	if WorldClock.is_snowing_ground(temp):
-		tint = tint.lerp(Color(1.6, 1.6, 1.7), clampf(-temp / 10.0, 0.0, 0.7))
-	_voxel.set_season_tint(tint)
+	var tints: Dictionary = {}
+	for key in GameData.BIOMES:
+		tints[key] = WorldClock.season_look(GameData.BIOMES[key], w)
+	_voxel.set_season_tints(tints)
 
 ## Client-side: wait for the host's world snapshot, re-presenting the join intent
 ## while it does not arrive. The handshake is the only route to an identity and a

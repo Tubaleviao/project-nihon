@@ -171,6 +171,17 @@ static func season_tint(biome: Variant, warmth_v: float) -> Color:
 	var winter := Color.from_string(str(biome.get("winterTint")), Color.WHITE)
 	return winter.lerp(summer, summer_share(warmth_v))
 
+## The colour a biome's terrain wears for a warmth: its season tint, whitened toward snow where
+## the seasonal temperature is below freezing.
+static func season_look(biome: Variant, warmth_v: float) -> Color:
+	var tint: Color = season_tint(biome, warmth_v)
+	if biome == null or biome.get("avgTemperature") == null or biome.get("seasonSwing") == null:
+		return tint
+	var temp: float = seasonal_temperature(float(biome.get("avgTemperature")), float(biome.get("seasonSwing")), warmth_v)
+	if is_snowing_ground(temp):
+		tint = tint.lerp(Color(1.6, 1.6, 1.7), clampf(-temp / 10.0, 0.0, 0.7))
+	return tint
+
 ## Linear blend of a `{summer, winter}` fabric pair for a warmth; 1.0 when absent.
 static func seasonal_multiplier(pair: Variant, warmth_v: float) -> float:
 	if not (pair is Dictionary):
