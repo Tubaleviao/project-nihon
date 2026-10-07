@@ -203,11 +203,11 @@ func save_world(data: Dictionary, incremental: bool = false) -> Error:
 ## inline stalls the frame that triggered the autosave). Returns OK, or the first
 ## Error encountered — the caller reports it, because a worker cannot emit.
 func write_job(job: Dictionary) -> int:
+	var first_error: int = OK
 	var world: Variant = job.get("world", {})
 	if world is Dictionary and not (world as Dictionary).is_empty():
-		var world_err := _write_world_payload(world, bool(job.get("incremental", false)))
-		if world_err != OK:
-			return world_err
+		# Phase 61 — a failed world write does not stop the player records from being saved.
+		first_error = _write_world_payload(world, bool(job.get("incremental", false)))
 	var players: Variant = job.get("players", {})
 	if players is Dictionary:
 		for player_id in players:
@@ -215,9 +215,9 @@ func write_job(job: Dictionary) -> int:
 			if not (data is Dictionary):
 				continue
 			var err := _write_json(player_path(str(player_id)), data)
-			if err != OK:
-				return err
-	return OK
+			if err != OK and first_error == OK:
+				first_error = err
+	return first_error
 
 ## The world-record half of a save, without the bus signals: read the existing
 ## record and merge an incremental payload into it, then write. Split out of
@@ -231,15 +231,18 @@ func _write_world_payload(data: Dictionary, incremental: bool) -> Error:
 	var payload := data.duplicate()
 	var chunks: Variant = payload.get("chunks", null)
 	payload.erase("chunks")
+	# Phase 61 — one unwritable region does not stop the rest of the save: `write_chunks`
+	# saves every region it can and reports the first error, and the global record is still
+	# written; the first error is returned once everything that could be saved has been.
+	var first_error: Error = OK
 	if chunks is Dictionary and not (chunks as Dictionary).is_empty():
-		var region_err := region_store.write_chunks(chunks)
-		if region_err != OK:
-			return region_err
+		first_error = region_store.write_chunks(chunks)
 	if incremental:
 		var existing := load_world_record()
 		if not existing.is_empty():
 			payload = _merge_world(existing, payload)
-	return _write_json(world_path(), payload)
+	var world_err := _write_json(world_path(), payload)
+	return first_error if first_error != OK else world_err
 
 ## The GLOBAL world record on disk (seed, stations, creatures, local player id), or an
 ## empty dict when there is none / it is unreadable. A missing record is NOT an error —

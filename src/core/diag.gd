@@ -5,7 +5,11 @@ extends RefCounted
 
 static var quiet: bool = false
 
+## How many warnings have been raised this process; the suite reads it to pin "logs one warning".
+static var warn_count: int = 0
+
 static func warn(msg: String) -> void:
+	warn_count += 1
 	if quiet:
 		print("    · ", msg)
 	else:
