@@ -125,9 +125,13 @@ const NICHE_CELL_CHUNKS := 10
 const NICHE_FEATURE_CELLS := 3
 
 ## Stable per-biome salt: a hash of the biome KEY, so adding or reordering biomes never moves
-## another biome's niche.
+## another biome's niche. FNV-1a over the UTF-8 bytes, owned here rather than the engine's
+## `String.hash()`, whose algorithm may change between Godot versions and re-roll every niche.
 static func niche_salt(key: String) -> int:
-	return int(key.hash() & 0x7fffffff)
+	var h := 2166136261
+	for b in key.to_utf8_buffer():
+		h = ((h ^ b) * 16777619) & 0xffffffff
+	return h & 0x7fffffff
 
 ## Quantiles (0, 1/128, ..., 1) of the raw smooth niche noise. The noise clusters around 0.5, so
 ## `niche_value` maps it through this table to a uniform draw; that keeps a rare biome's covered
@@ -188,8 +192,12 @@ static func _pick(t: float, m: float, alt: float, keys: Array, envs: Dictionary,
 	var best := ""
 	var best_g := Vector3(INF, INF, INF)
 	for key in keys:
-		var nv: float = niche_value(seed_v, p, niche_salt(str(key))) if per_biome_niche else float(niche)
-		var g := _envelope_gap(t, m, alt, envs.get(str(key), []), nv)
+		var env: Array = envs.get(str(key), [])
+		var nv := float(niche)
+		# Only a rare biome reads its niche, so common biomes skip the noise and the salt hash.
+		if per_biome_niche and env.size() > 6 and float(env[6]) < 1.0:
+			nv = niche_value(seed_v, p, niche_salt(str(key)))
+		var g := _envelope_gap(t, m, alt, env, nv)
 		if g.x < best_g.x or (g.x == best_g.x and (g.y < best_g.y or (g.y == best_g.y and g.z < best_g.z))):
 			best_g = g
 			best = str(key)

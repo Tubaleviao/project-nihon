@@ -13592,15 +13592,19 @@ func _test_climate_niches_stable_and_smooth() -> void:
 	var keys: Array = TerrainSlice.BIOME_KEYS.duplicate()
 	var shifted: Array = keys.duplicate()
 	shifted.insert(2, "DummyBiome")
+	ClimateField.warm()
 	for key in ["VolcanicBadlands", "TwilightGrove", "VoidRift"]:
-		var salt := ClimateField.niche_salt(key)
 		assert_true(shifted.find(key) != keys.find(key), "%s moved index when a biome was inserted" % key)
-		var same := true
-		for i in 1000:
-			var p := Vector2(float(i * 37 % 4001) - 2000.0, float(i * 91 % 4001) - 2000.0)
-			if ClimateField.niche_value(5, p, salt) != ClimateField.niche_value(5, p, ClimateField.niche_salt(str(shifted[shifted.find(key)]))):
-				same = false
-		assert_true(same, "%s niche value ignores its index in the key list" % key)
+	# The same chunks must pick the same biomes whether or not a dummy sits in the key list.
+	var same := true
+	for i in 1500:
+		var p := Vector2(float(i * 37 % 4001) - 2000.0, float(i * 91 % 4001) - 2000.0)
+		var t := float(i * 13 % 101) / 100.0
+		var m := float(i * 29 % 101) / 100.0
+		var alt := float(i * 7 % 300) + 1.0
+		if ClimateField._pick(t, m, alt, keys, ClimateField._envelopes, 0.0, true, 5, p) != ClimateField._pick(t, m, alt, shifted, ClimateField._envelopes, 0.0, true, 5, p):
+			same = false
+	assert_true(same, "inserting a biome leaves every other biome's pick unchanged")
 	assert_true(ClimateField.niche_salt("VoidRift") != ClimateField.niche_salt("TwilightGrove"), "two biomes get distinct niche salts")
 	# Share and smoothness over a 400x400-chunk sample.
 	for key in ["VolcanicBadlands", "TwilightGrove", "VoidRift"]:
@@ -13626,18 +13630,12 @@ func _test_climate_niches_stable_and_smooth() -> void:
 			"%s niche runs along a row exceed one niche cell (mean %.1f)" % [key, float(inside) / maxf(float(runs), 1.0)])
 
 func _test_climate_fallback_is_land_only() -> void:
-	var saved_env: Dictionary = ClimateField._envelopes.duplicate()
-	var saved_warm: bool = ClimateField._warmed
-	ClimateField._envelopes.clear()
-	ClimateField._warmed = true   # nothing loaded and nothing to warm: the Voronoi fallback decides
 	var seen := {}
 	for i in 600:
-		var b := ClimateField.biome_for_chunk(i % 7 + 1, Vector2i(i * 11 - 3000, i * 17 - 5000), TerrainSlice.BIOME_KEYS)
+		var b := ClimateField._voronoi_biome(i % 7 + 1, Vector2i(i * 11 - 3000, i * 17 - 5000), TerrainSlice.BIOME_KEYS)
 		seen[b] = true
 		assert_false(b in ["Ocean", "Beach", "Alpine"], "fallback never hands out %s" % b)
 	assert_true(seen.size() >= 3, "the fallback still varies (%s)" % [seen.keys()])
-	ClimateField._envelopes = saved_env
-	ClimateField._warmed = saved_warm
 
 func _test_climate_ocean_and_niches() -> void:
 	var w := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
