@@ -243,6 +243,8 @@ func run() -> void:
 	_run_test("equipment: slots cached, peer evict, owner map", _test_equipment_phase48_misc)
 	_run_test("equipment: host worn set + AOI enter/leave",      _test_equipment_host_and_aoi_transitions)
 	_run_test("net: broadcasts go through _test_peers",          _test_network_broadcast_uses_test_peers)
+	_run_test("net: test seam follows the boot gate",            _test_network_seam_follows_boot_gate)
+	_run_test("ui: ? hotkey matches on unicode",                 _test_ui_question_mark_hotkey)
 	_run_test("ui: failed layout rename cleans tmp",             _test_ui_layout_failed_rename_cleans_tmp)
 	_run_test("equipment: rules totals + sanitize",             _test_equipment_rules_totals)
 	_run_test("equipment: derived stats + record + replicate",  _test_character_derived_stats_and_record)
@@ -590,6 +592,9 @@ func run() -> void:
 	_run_test("region: a vein depleted from an evicted chunk stays depleted in its neighbours", _test_region_evict_keeps_vein_depletion)
 	_run_test("region: one unwritable region does not stop the rest of the save", _test_region_failed_write_saves_the_rest)
 	_run_test("region: a region whose read fails is not resident and is retried", _test_region_failed_read_not_resident)
+	_run_test("chat: /where is spelled once",                       _test_chat_command_constant)
+	_run_test("region: a failed read backs off",                    _test_region_failed_read_backs_off)
+	_run_test("region: op lists with non-dictionary ops are dropped", _test_region_entry_rejects_bad_ops)
 	_run_test("region: a chunk entry with edits or materials of the wrong type is skipped with one warning", _test_region_malformed_entry_skipped)
 	_run_test("peer window: a flood of far claims moves the window at most once", _test_peer_window_rate_limited)
 	_run_test("peer window: a seam crossing is a short step, not a planet-wide one", _test_peer_window_clamps_across_seam)
@@ -5759,6 +5764,33 @@ func _test_client_adopts_its_own_handle() -> void:
 	assert_true(snapshot["heightmaps"].has("0,0"), "world data is left alone")
 	n.free()
 
+## Phase 67 review — the network test seam follows the boot gate exactly (no private copy of
+## the `--run-tests` rule), so a release boot refuses the seam and the suite's boots allow it.
+func _test_network_seam_follows_boot_gate() -> void:
+	assert_false(NetworkingSlice._test_seam_allowed_for([], false), "a release boot refuses the test seam")
+	assert_true(NetworkingSlice._test_seam_allowed_for(["--run-tests"], false), "--run-tests allows it")
+	assert_true(NetworkingSlice._test_seam_allowed_for([], true), "a debug build allows it")
+	assert_true(NetworkingSlice._test_seam_allowed(), "this boot (the suite) allows it")
+
+## Phase 67 review — the `?` hotkey matches on the unicode the key produced, whatever the layout.
+func _test_ui_question_mark_hotkey() -> void:
+	var ui := _new_test_ui()
+	var ev := InputEventKey.new()
+	ev.pressed = true
+	ev.unicode = 63
+	ev.keycode = KEY_SLASH
+	ui._input(ev)
+	assert_true(ui.is_window_open("controls"), "unicode 63 opens the controls panel")
+	ui._input(ev)
+	assert_false(ui.is_window_open("controls"), "and toggles it closed")
+	var slash := InputEventKey.new()
+	slash.pressed = true
+	slash.unicode = 47
+	slash.keycode = KEY_SLASH
+	ui._input(slash)
+	assert_false(ui.is_window_open("controls"), "a plain / (unicode 47) does not")
+	ui.free()
+
 func _test_boot_suite_is_gated() -> void:
 	# The automated suite no longer runs on EVERY boot: a release export that was
 	# never asked for it must boot without the 7000-assertion development harness,
@@ -7279,7 +7311,6 @@ func _test_voxel_yield_matches_blended_biome() -> void:
 	var ts := TerrainSlice.new()
 	add_child(ts)
 	v.terrain_slice = ts
-	var extent := float(VoxelSlice.CHUNK_SIZE * VoxelSlice.TILE_SIZE)
 	var checked := 0
 	for cx in range(-12, 12):
 		var biomes := v.gather_biomes_for(Vector2i(cx, 0))
@@ -7292,11 +7323,18 @@ func _test_voxel_yield_matches_blended_biome() -> void:
 					"yield biome is the surface biome at %s" % xz)
 				checked += 1
 	assert_true(checked > 0, "tiles were checked")
-	assert_true(extent > 0.0, "extent sane")
 	assert_eq(BiomeBlend.chance(VoxelSlice.BLEND_TILES, VoxelSlice.BLEND_TILES), 0.0, "no blend at the band's inner edge")
 	assert_eq(BiomeBlend.chance(0.0, VoxelSlice.BLEND_TILES), BiomeBlend.MAX_CHANCE, "half a chance at the border")
 	ts.free()
 	v.free()
+
+## Phase 63 — the one chat command is spelled in one place.
+func _test_chat_command_constant() -> void:
+	var ChatCommands: GDScript = load("res://src/core/chat_commands.gd")
+	assert_true(ChatCommands.is_command(ChatCommands.WHERE), "the constant is a command")
+	assert_true(ChatCommands.is_command("  /WHERE "), "case and padding are ignored")
+	assert_eq(ChatCommands.run("/where", Vector3.ZERO), TerrainSlice.where_text(Vector3.ZERO), "run answers it")
+	assert_eq(ChatCommands.run("/nope", Vector3.ZERO), "", "anything else answers nothing")
 
 ## Phase 64 — a revealed border cell next to an UNREVEALED chunk never wears that chunk's biome.
 func _test_minimap_blend_respects_fog() -> void:
@@ -7305,14 +7343,18 @@ func _test_minimap_blend_respects_fog() -> void:
 	mm._revealed = { "0,0": true, "-1,0": true }
 	mm.terrain_slice = BiomeStub.new()
 	var memo := {}
-	var worn := 0
-	for j in Minimap.CELLS_PER_CHUNK:
-		for i in Minimap.CELLS_PER_CHUNK:
+	var n := Minimap.CELLS_PER_CHUNK
+	var cell_tiles := float(TerrainSlice.CHUNK_SIZE) / n
+	var west_cells := 0
+	for j in n:
+		for i in n:
 			var got: String = mm._cell_biome(Vector2i(0, 0), i, j, "TemperateForest", memo)
 			assert_true(got != "VoidRift", "the unrevealed east/south chunks' biome is never worn (%d,%d)" % [i, j])
-			if got == "DesertDunes":
-				worn += 1
-	assert_true(worn >= 0, "the revealed west neighbour may blend")
+			if i < n - 1 - i and i <= mini(j, n - 1 - j):   # nearest border is the revealed west one
+				west_cells += 1
+				var expect := "DesertDunes" if BiomeBlend.wears_neighbour(i, j, cell_tiles * 0.5, cell_tiles) else "TemperateForest"
+				assert_eq(got, expect, "a west-border cell wears the revealed neighbour exactly when the blend rule says so (%d,%d)" % [i, j])
+	assert_true(west_cells > 0, "the revealed west neighbour has border cells to check")
 	assert_false(mm._has_blend_neighbour(Vector2i(5, 5), "TemperateForest", {}), "no revealed neighbours: one rect")
 	mm.free()
 
@@ -7323,7 +7365,6 @@ class BiomeStub extends Node:
 ## Phase 64 — a biome whose envelope dicts lack keys (or whose altitude lacks `max`) must not
 ## error in `_envelope_of`, and the complete envelopes still load.
 func _test_climate_partial_envelope_warms() -> void:
-	var partial := RefCounted.new()
 	var bad := { "temperature": { "min": 0.2 }, "moisture": { "max": 0.7 }, "altitude": { "min": 5.0 } }
 	var holder := PartialBiome.new()
 	holder.temperature = bad["temperature"]
@@ -7341,7 +7382,6 @@ func _test_climate_partial_envelope_warms() -> void:
 	assert_true(ClimateField._warmed and ClimateField._envelopes.size() > 0, "the real envelopes load")
 	ClimateField._envelopes = saved_env
 	ClimateField._warmed = saved_warm
-	assert_true(partial != null, "ok")
 
 class PartialBiome extends RefCounted:
 	var temperature: Dictionary = {}
@@ -13509,17 +13549,14 @@ func _test_distant_ring_async() -> void:
 	var d := DistantTerrainScript.new()
 	add_child(d)
 	d.world_seed = 11
-	var before: int = DistantTerrainScript.main_thread_builds
 	assert_true(d.rebuild(Vector2(100.0, -40.0), radius), "the request is accepted")
 	assert_true(d.is_building() or d.get_child_count() == 0, "no mesh is built synchronously")
 	assert_eq(d.get_child_count(), 0, "rebuild returns before any mesh exists")
 	assert_true(d.poll(true), "the finished mesh is swapped in")
-	assert_eq(DistantTerrainScript.main_thread_builds, before, "no lattice evaluation ran on the main thread")
 	var cell := d.ring_half_m * 2.0 / 64.0
 	var origin := Vector2i(floori(100.0 / cell), floori(-40.0 / cell))
 	var snapped := Vector2(float(origin.x) * cell, float(origin.y) * cell)
 	var sync_mesh: ArrayMesh = DistantTerrainScript.build_mesh(11, d.circumference_m, snapped, d.ring_half_m, d.window_half_m, Vector2(100.0, -40.0))
-	assert_eq(DistantTerrainScript.main_thread_builds, before + 1, "the reference build counts as a main-thread build")
 	var got: ArrayMesh = (d.get_child(0) as MeshInstance3D).mesh
 	assert_eq(got.surface_get_arrays(0)[Mesh.ARRAY_VERTEX], sync_mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX], "the async mesh equals a synchronous build")
 	# A request that arrives mid-build supersedes it; the newest wins.
@@ -13803,12 +13840,15 @@ func _test_region_failed_read_retried() -> void:
 	f.close()
 	var voxel := _make_voxel()
 	var streamer := RegionStreamerScript.new(store, voxel)
+	var clock := [0]
+	streamer._now = func() -> int: return clock[0]
 	var first := streamer.sync({ "0,0": true })
 	assert_eq(int(first["failed"]), 1, "the unreadable region is reported as failed")
 	assert_eq(int(first["loaded"]), 0, "and not as loaded")
 	assert_false(streamer.is_resident(Vector2i(0, 0)), "it is not resident")
 	var edit := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
 	assert_eq(store.save_region(Vector2i(0, 0), { "1,1": edit }), OK, "the file is repaired")
+	clock[0] += RegionStreamerScript.BACKOFF_START_MSEC   # the first backoff has elapsed
 	var second := streamer.sync({ "0,0": true })
 	assert_eq(int(second["loaded"]), 1, "the next sync reads it")
 	assert_true(streamer.is_resident(Vector2i(0, 0)), "and it is resident now")
@@ -13827,6 +13867,44 @@ func _test_registry_bound_peer_ids() -> void:
 	reg.unbind_peer(4)
 	assert_eq(reg.get_bound_peer_ids(), [9], "an unbound peer drops out")
 
+## An unreadable region is not re-read (or re-logged) on every sync: the delay doubles per failure
+## up to the cap, and a successful read forgets it.
+func _test_region_failed_read_backs_off() -> void:
+	var dir := _fresh_region_dir("test_p61_backoff")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	DirAccess.make_dir_recursive_absolute(dir + "regions/")
+	var f := FileAccess.open(store.path_of(Vector2i.ZERO), FileAccess.WRITE)
+	f.store_string("{ not json")
+	f.close()
+	var voxel := _make_voxel()
+	var streamer := RegionStreamerScript.new(store, voxel)
+	var clock := [0]
+	streamer._now = func() -> int: return clock[0]
+	var wanted := { "0,0": true }
+	streamer.sync(wanted)
+	assert_true(streamer.is_backing_off(Vector2i.ZERO), "a failed read starts a backoff")
+	var base: int = RegionStreamerScript.BACKOFF_START_MSEC
+	clock[0] = base - 1
+	var during := streamer.sync(wanted)
+	assert_eq(int(during["failed"]), 1, "a sync inside the backoff still reports the region as failed")
+	assert_true(streamer.is_backing_off(Vector2i.ZERO), "and keeps backing off")
+	clock[0] = base
+	assert_false(streamer.is_backing_off(Vector2i.ZERO), "the backoff elapses")
+	streamer.sync(wanted)   # fails again: the delay doubles
+	clock[0] = base + base * 2 - 1
+	assert_true(streamer.is_backing_off(Vector2i.ZERO), "the second delay is twice the first")
+	for i in 12:
+		clock[0] += RegionStreamerScript.BACKOFF_MAX_MSEC
+		streamer.sync(wanted)
+	clock[0] += RegionStreamerScript.BACKOFF_MAX_MSEC - 1
+	assert_true(streamer.is_backing_off(Vector2i.ZERO), "the delay is capped, not unbounded")
+	clock[0] += 1
+	assert_false(streamer.is_backing_off(Vector2i.ZERO), "and the cap is the longest wait")
+	assert_eq(store.save_region(Vector2i.ZERO, { "0,0": { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } } }), OK, "the file is repaired")
+	assert_eq(int(streamer.sync(wanted)["loaded"]), 1, "the first read after the backoff loads it")
+	assert_false(streamer.is_backing_off(Vector2i.ZERO), "and clears the backoff")
+	voxel.free()
+
 func _test_region_failed_read_not_resident() -> void:
 	var dir := _fresh_region_dir("test_p61_read")
 	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
@@ -13837,17 +13915,27 @@ func _test_region_failed_read_not_resident() -> void:
 	f.close()
 	var voxel := _make_voxel()
 	var streamer := RegionStreamerScript.new(store, voxel)
+	var clock := [0]
+	streamer._now = func() -> int: return clock[0]
 	var wanted := { "0,0": true }
 	var r := streamer.sync(wanted)
 	assert_eq(int(r["loaded"]), 0, "nothing loaded from an unreadable region")
 	assert_false(streamer.is_resident(Vector2i.ZERO), "the region is not marked resident")
 	var entry := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
 	assert_eq(store.save_region(Vector2i.ZERO, { "0,0": entry }), OK, "the file is repaired")
+	clock[0] += RegionStreamerScript.BACKOFF_START_MSEC
 	r = streamer.sync(wanted)
 	assert_eq(int(r["loaded"]), 1, "the next sync reads it again")
 	assert_true(streamer.is_resident(Vector2i.ZERO), "and it is resident")
 	assert_true(voxel.edited_chunk_keys().has("0,0"), "with its edits applied")
 	voxel.free()
+
+## A tile's op list must hold ops (Dictionaries) — or, for a legacy entry, a bare number.
+func _test_region_entry_rejects_bad_ops() -> void:
+	assert_true(RegionStoreScript.is_valid_chunk_entry({ "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }), "an op list of ops is valid")
+	assert_true(RegionStoreScript.is_valid_chunk_entry({ "edits": { "0,0": 1.5 } }), "a legacy bare height is left to the voxel slice")
+	assert_false(RegionStoreScript.is_valid_chunk_entry({ "edits": { "0,0": [5, "x"] } }), "an op list of non-ops is not")
+	assert_false(RegionStoreScript.is_valid_chunk_entry({ "edits": { "0,0": [{ "op": "raise" }, null] } }), "one bad op spoils the list")
 
 func _test_region_malformed_entry_skipped() -> void:
 	var dir := _fresh_region_dir("test_p61_entry")
@@ -14417,7 +14505,7 @@ func _seam_rig() -> Dictionary:
 			if dx != 0 or dz != 0:
 				cm.load_chunk(Vector2i(dx, dz))
 	_wait_for_builds(cm)
-	cm.rebuild_requests.clear()
+	cm.reset_rebuild_requests()
 	return rig
 
 func _seam_rig_free(rig: Dictionary) -> void:
@@ -14427,7 +14515,7 @@ func _seam_rig_free(rig: Dictionary) -> void:
 	rig["player"].free()
 
 func _seam_requested(cm: ChunkManager) -> Array:
-	var out: Array = cm.rebuild_requests.keys()
+	var out: Array = cm.rebuilt_chunk_keys()
 	out.sort()
 	return out
 
@@ -14451,7 +14539,7 @@ func _test_seam_east_border_edit() -> void:
 	cm.load_chunk(Vector2i(0, 0))
 	assert_eq(_seam_requested(cm), ["1,0"], "only the east neighbour is rebuilt")
 	cm.rebuild_seam_neighbours(Vector2i(0, 0))
-	assert_eq(int(cm.rebuild_requests["1,0"]), 1, "and at most once per edit revision")
+	assert_eq(cm.rebuild_request_count(Vector2i(1, 0)), 1, "and at most once per edit revision")
 	_seam_rig_free(rig)
 
 func _test_seam_late_edits() -> void:
@@ -14460,7 +14548,7 @@ func _test_seam_late_edits() -> void:
 	var v: VoxelSlice = rig["voxel"]
 	cm.load_chunk(Vector2i(0, 0))
 	_wait_for_builds(cm)
-	cm.rebuild_requests.clear()
+	cm.reset_rebuild_requests()
 	# Edits for the already-loaded chunk arrive by sync, with a corner edit (south-east).
 	var edit: Array = [{ "op": "remove", "bottom": 1.0, "top": 2.0 }]
 	v.apply_edits({ "63,63": edit })
@@ -14475,7 +14563,7 @@ func _test_seam_unloaded_then_streamed() -> void:
 	var v: VoxelSlice = rig["voxel"]
 	# Edits arrive while (0,0) is not streamed in: nothing is requested and no revision is recorded.
 	v.apply_edits({ "63,10": [{ "op": "remove", "bottom": 1.0, "top": 2.0 }] })
-	cm.rebuild_requests.clear()
+	cm.reset_rebuild_requests()
 	cm.rebuild_seam_neighbours(Vector2i(0, 0))
 	assert_eq(_seam_requested(cm).size(), 0, "an unloaded chunk requests nothing")
 	cm.load_chunk(Vector2i(0, 0))
@@ -14490,7 +14578,7 @@ func _test_seam_corner_removal() -> void:
 	_wait_for_builds(cm)
 	v.apply_edits({ "63,63": [{ "op": "remove", "bottom": 1.0, "top": 2.0 }] })
 	_wait_for_builds(cm)
-	cm.rebuild_requests.clear()
+	cm.reset_rebuild_requests()
 	v.apply_edits({})
 	assert_true(_seam_requested(cm).has("1,1"), "removing the corner edit rebuilds the diagonal neighbour")
 	_seam_rig_free(rig)

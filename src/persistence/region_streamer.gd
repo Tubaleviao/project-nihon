@@ -20,6 +20,15 @@ var _resident: Dictionary = {}
 ## memory until a save carries them). Retried on every sync until a save has cleaned them.
 var _stranded: Dictionary = {}
 
+## Failed reads back off: "rx,rz" -> { "until": msec before which the read is not retried,
+## "delay": the current backoff }. A region that cannot be read (a corrupt or unreadable file)
+## would otherwise log an error and hit the disk on every sync. A successful read forgets it.
+var _backoff: Dictionary = {}
+const BACKOFF_START_MSEC := 1000
+const BACKOFF_MAX_MSEC := 60000
+## The clock the backoff reads; a test swaps it for a deterministic one.
+var _now: Callable = Time.get_ticks_msec
+
 func _init(store: RegionStore, voxel: Object) -> void:
 	_store = store
 	_voxel = voxel
@@ -50,11 +59,19 @@ func sync(wanted: Dictionary) -> Dictionary:
 	for rkey in wanted:
 		if _resident.has(rkey):
 			continue
+		var now: int = _now.call()
+		if _backoff.has(rkey) and now < int(_backoff[rkey]["until"]):
+			failed += 1   # still backing off: no read, no log line
+			continue
 		var read := _store.read_region(RegionStore.region_from_key(str(rkey)))
 		if not bool(read["ok"]):
-			# Not resident: a later sync (the next window move) retries the read instead of treating the region as loaded.
+			# Not resident: a later sync (the next window move) retries the read once the backoff
+			# has elapsed, instead of treating the region as loaded.
+			var delay := mini(int(_backoff.get(rkey, { "delay": BACKOFF_START_MSEC / 2 })["delay"]) * 2, BACKOFF_MAX_MSEC)
+			_backoff[rkey] = { "until": now + delay, "delay": delay }
 			failed += 1
 			continue
+		_backoff.erase(rkey)
 		_voxel.apply_region_chunks(read["chunks"])
 		_resident[rkey] = true
 		loaded += 1
@@ -101,6 +118,11 @@ func release_stranded() -> int:
 	if _stranded.is_empty():
 		return 0
 	return int(sync(_resident.duplicate())["released"])
+
+## True while a failed region read is being backed off.
+func is_backing_off(region: Vector2i) -> bool:
+	var rkey := RegionStore.region_key(region)
+	return _backoff.has(rkey) and int(_now.call()) < int(_backoff[rkey]["until"])
 
 func has_stranded() -> bool:
 	return not _stranded.is_empty()

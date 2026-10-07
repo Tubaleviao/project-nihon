@@ -573,9 +573,9 @@ func load_chunk(chunk_pos: Vector2i) -> void:
 ## edit is exactly its generated guess, so nothing rebuilds and a fresh world pays nothing.
 ## Phase 69 — rebuild the built neighbours of `chunk_pos` across the borders that carry a
 ## height-changing edit (`VoxelSlice.seam_borders`; deplete-only edits count for nothing), at most
-## once per chunk per edit revision. `skip` is a chunk-key set the caller has already requested.
+## once per chunk per edit revision.
 ## Called when a chunk streams in and when edits for an already-loaded chunk arrive.
-func rebuild_seam_neighbours(chunk_pos: Vector2i, skip: Dictionary = {}) -> void:
+func rebuild_seam_neighbours(chunk_pos: Vector2i) -> void:
 	if voxel_slice == null or not voxel_slice.has_method("seam_borders") \
 			or not voxel_slice.has_method("edit_revision"):
 		return
@@ -591,8 +591,6 @@ func rebuild_seam_neighbours(chunk_pos: Vector2i, skip: Dictionary = {}) -> void
 	for off in voxel_slice.seam_borders(chunk_pos):
 		var n: Vector2i = chunk_pos + off
 		var nkey := _chunk_key(n)
-		if skip.has(nkey):
-			continue
 		if not _built.has(nkey):
 			# Loaded but still building: its build may predate the edit, so leave the revision
 			# open and let a later call retry.
@@ -603,8 +601,19 @@ func rebuild_seam_neighbours(chunk_pos: Vector2i, skip: Dictionary = {}) -> void
 	if complete:
 		_seam_revision[key] = rev
 
-## Phase 69 — how many rebuilds each loaded chunk has been asked for (chunk key → count).
-var rebuild_requests: Dictionary = {}
+## Phase 69 — how many rebuilds each loaded chunk has been asked for (chunk key → count). Read
+## only through the test hooks below.
+var _rebuild_requests: Dictionary = {}
+
+## Test hooks over the rebuild counter (the game never reads it).
+func rebuild_request_count(chunk_pos: Vector2i) -> int:
+	return int(_rebuild_requests.get(_chunk_key(chunk_pos), 0))
+
+func rebuilt_chunk_keys() -> Array:
+	return _rebuild_requests.keys()
+
+func reset_rebuild_requests() -> void:
+	_rebuild_requests.clear()
 
 ## Phase 69 — the edit revision each chunk's seams were last rebuilt for.
 var _seam_revision: Dictionary = {}
@@ -725,7 +734,7 @@ func request_rebuild(chunk_pos: Vector2i) -> void:
 	var key := _chunk_key(chunk_pos)
 	if not _loaded.has(key):
 		return
-	rebuild_requests[key] = int(rebuild_requests.get(key, 0)) + 1
+	_rebuild_requests[key] = int(_rebuild_requests.get(key, 0)) + 1
 	# A fresh request starts a fresh retry budget: it is a new edit, not a retry of one,
 	# and it clears the groundless mark a previous give-up left behind.
 	_build_attempts.erase(key)
@@ -1053,7 +1062,7 @@ func unload_chunk(chunk_pos: Vector2i) -> void:
 		return
 	_loaded.erase(key)
 	_seam_revision.erase(key)
-	rebuild_requests.erase(key)
+	_rebuild_requests.erase(key)
 	_built.erase(key)
 	_build_attempts.erase(key)
 	# Phase 42 review — a streamed-out chunk carries no retry state: its groundless mark

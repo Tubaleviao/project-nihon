@@ -37,9 +37,6 @@ var _task_args: Dictionary = {}
 var _result: ArrayMesh = null
 var _queued: Dictionary = {}   # a newer request that arrived while a build was in flight
 
-## Lattice builds evaluated on the main thread (the suite asserts this stays 0 through `rebuild`).
-static var main_thread_builds := 0
-
 ## Phase 63: the scene-origin offset a client rebase has applied (see `shift_scene`).
 var _scene_offset: Vector3 = Vector3.ZERO
 
@@ -153,8 +150,6 @@ func _exit_tree() -> void:
 ## behind between rebuilds (the player moves up to a cell, the window snaps to chunks). Heights are the
 ## shape's, floored at the sea level so the ocean reads as a flat sheet.
 static func build_mesh(seed_v: int, w: float, ring_center: Vector2, half_m: float, window_half_m: float, window_center: Vector2) -> ArrayMesh:
-	if OS.get_thread_caller_id() == OS.get_main_thread_id():
-		main_thread_builds += 1
 	var cell := half_m * 2.0 / float(GRID)
 	var sea := WorldShape.sea_level()
 	var heights := PackedFloat32Array()

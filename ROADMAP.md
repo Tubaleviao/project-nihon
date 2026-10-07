@@ -6030,7 +6030,8 @@ spawn point, and the colonization map over-counts after a restart (#148).
 - [x] Suite: a broadcast with `_test_peers` set reaches exactly those peers through both
   `_broadcast` and `_broadcast_aoi`.
 - [x] Suite: a failed layout rename leaves no `.tmp` file.
-- [x] Suite green on both boot paths.
+- [ ] Suite green on both boot paths (not confirmed locally — the PR body reports the suite
+  stalled; tick once CI shows both boots green).
 
 ---
 

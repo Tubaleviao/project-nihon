@@ -1402,11 +1402,17 @@ func _night_speed_at(ppos: Vector3) -> float:
 		return 1.0
 	return float(biome.get("dayNightSpeed"))
 
+## Warmth the season tints were last computed for (NAN before the first apply).
+var _season_warmth: float = NAN
+
 ## Season look: every biome gets its own tint for the season at this latitude (snow-white where
 ## that biome's seasonal temperature is below freezing), and each chunk wears its own biome's
 ## tint — a freezing biome whitens its own chunks and not its temperate neighbours.
 func _apply_season_look(lat: float) -> void:
 	var w: float = _clock.warmth_at(lat)
+	if is_equal_approx(w, _season_warmth):
+		return   # the tints are a pure function of warmth: nothing to recompute or re-apply
+	_season_warmth = w
 	var tints: Dictionary = {}
 	for key in GameData.BIOMES:
 		tints[key] = WorldClock.season_look(GameData.BIOMES[key], w)

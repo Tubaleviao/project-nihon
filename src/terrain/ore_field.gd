@@ -109,16 +109,14 @@ const SURFACE_VEIN_CHANCE := 0.2 ## fallback when the biome resource carries no 
 ## biome key -> surface-vein chance, snapshotted from the fabric `surfaceVeinChance` by `warm()`
 ## (main thread) and read-only afterwards, so a worker never touches a Resource for it.
 static var _surface_chances: Dictionary = {}
+static var _max_surface_chance := SURFACE_VEIN_CHANCE   ## cached by `warm()`
 static var _warmed := false
 
 ## The largest surface-vein chance any biome keeps: a roll at or above it is culled whatever the biome.
 static func max_surface_vein_chance() -> float:
 	if not _warmed:
 		warm()
-	var best := SURFACE_VEIN_CHANCE
-	for k in _surface_chances:
-		best = maxf(best, float(_surface_chances[k]))
-	return best
+	return _max_surface_chance
 
 ## The fraction of surface-reaching veins a biome keeps: its fabric `surfaceVeinChance`.
 static func surface_vein_chance(biome: String) -> float:
@@ -181,6 +179,9 @@ static func warm() -> void:
 		var b: Resource = GameData.BIOMES[key]
 		if b.get("surfaceVeinChance") != null:
 			_surface_chances[str(key)] = float(b.get("surfaceVeinChance"))
+	_max_surface_chance = SURFACE_VEIN_CHANCE
+	for k in _surface_chances:
+		_max_surface_chance = maxf(_max_surface_chance, float(_surface_chances[k]))
 	for key in GameData.MATERIALS:
 		var res: Resource = GameData.MATERIALS[key]
 		var band: Variant = res.get("depthBand")
