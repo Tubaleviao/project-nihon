@@ -55,3 +55,53 @@ static func rebase_origin(pos: Dictionary) -> Vector2i:
 ## The offset every streamed node shifts by when the origin moves `from_chunk` -> `to_chunk`.
 static func rebase_shift(from_chunk: Vector2i, to_chunk: Vector2i) -> Vector3:
 	return Vector3((from_chunk.x - to_chunk.x) * CHUNK_METERS, 0.0, (from_chunk.y - to_chunk.y) * CHUNK_METERS)
+
+## --- Phase 63: the wire form -------------------------------------------------------------
+## A position on the wire is `{ "chunk": [cx, cz], "local": [x, y, z] }`: the chunk index is an exact
+## int and `local` is small, so nothing sent over JSON loses precision far from the origin. The old
+## `[x, y, z]` float array is still accepted on read (saves, an older peer).
+
+## Encode a world position (metres) as the wire dictionary.
+static func to_wire(world: Vector3) -> Dictionary:
+	return pos_to_wire(from_world(world.x, world.y, world.z))
+
+## Encode a `{chunk, local}` record as the wire dictionary.
+static func pos_to_wire(pos: Dictionary) -> Dictionary:
+	var chunk: Vector2i = pos["chunk"]
+	var local: Vector3 = pos["local"]
+	return { "chunk": [chunk.x, chunk.y], "local": [local.x, local.y, local.z] }
+
+## Decode either wire form (the `{chunk, local}` dictionary or a legacy `[x, y, z]` array) to a world
+## position. Anything else decodes to `fallback`.
+static func from_wire(data: Variant, fallback: Vector3 = Vector3.ZERO) -> Vector3:
+	if data is Dictionary and data.has("chunk") and data.has("local"):
+		var c = data["chunk"]
+		var l = data["local"]
+		if c is Array and c.size() >= 2 and l is Array and l.size() >= 3:
+			return Vector3(
+				int(c[0]) * CHUNK_METERS + float(l[0]),
+				float(l[1]),
+				int(c[1]) * CHUNK_METERS + float(l[2]))
+	elif data is Array and data.size() >= 3:
+		return Vector3(float(data[0]), float(data[1]), float(data[2]))
+	return fallback
+
+## Wire form of a world position X wrapped to the seam: the canonical `{chunk, local}`.
+static func wire_chunk(data: Variant) -> Vector2i:
+	if data is Dictionary and data.has("chunk"):
+		var c = data["chunk"]
+		if c is Array and c.size() >= 2:
+			return TerrainSlice.wrap_chunk(Vector2i(int(c[0]), int(c[1])))
+	return Vector2i.ZERO
+
+## Move a world position that crossed the east-west seam back inside [-w/2, w/2).
+static func wrap_world(world: Vector3) -> Vector3:
+	var w := float(TerrainSlice.circumference_chunks()) * CHUNK_METERS
+	return Vector3(fposmod(world.x + w * 0.5, w) - w * 0.5, world.y, world.z)
+
+## True for a decodable wire position: the `{chunk, local}` dictionary or a legacy `[x, y, z]` array.
+static func is_wire(data: Variant) -> bool:
+	if data is Dictionary:
+		return data.get("chunk") is Array and data["chunk"].size() >= 2 \
+			and data.get("local") is Array and data["local"].size() >= 3
+	return data is Array and data.size() >= 3
