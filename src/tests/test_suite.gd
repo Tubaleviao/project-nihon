@@ -235,6 +235,8 @@ func run() -> void:
 	_run_test("equipment: bag loss clears the slot",            _test_equipment_revalidated_on_bag_loss)
 	_run_test("equipment: slots cached, peer evict, owner map", _test_equipment_phase48_misc)
 	_run_test("equipment: host worn set + AOI enter/leave",      _test_equipment_host_and_aoi_transitions)
+	_run_test("net: broadcasts go through _test_peers",          _test_network_broadcast_uses_test_peers)
+	_run_test("ui: failed layout rename cleans tmp",             _test_ui_layout_failed_rename_cleans_tmp)
 	_run_test("equipment: rules totals + sanitize",             _test_equipment_rules_totals)
 	_run_test("equipment: derived stats + record + replicate",  _test_character_derived_stats_and_record)
 	_run_test("ui: character window rows + equip",              _test_ui_character_rows)
@@ -4107,6 +4109,40 @@ func _test_ui_layout_file_roundtrip() -> void:
 	assert_true(UiSlice.parse_layout(FileAccess.get_file_as_string(TEST_UI_LAYOUT)).has("inventory"), "saved file is complete and parseable")
 	ui2.free()
 	DirAccess.remove_absolute(TEST_UI_LAYOUT)
+
+## Phase 67 — a failed layout rename leaves no `.tmp` file behind.
+func _test_ui_layout_failed_rename_cleans_tmp() -> void:
+	var ui := _new_test_ui()
+	# A directory at the target path makes the rename fail.
+	DirAccess.make_dir_recursive_absolute(TEST_UI_LAYOUT)
+	ui._layout["inventory"] = Vector2(1, 2)
+	ui._save_layout()
+	assert_false(FileAccess.file_exists(TEST_UI_LAYOUT + ".tmp"), "failed rename removes the temp file")
+	ui.free()
+	DirAccess.remove_absolute(TEST_UI_LAYOUT)
+
+## Phase 67 — `_broadcast` and `_broadcast_aoi` both fan out through `_test_peers` only.
+func _test_network_broadcast_uses_test_peers() -> void:
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n._test_peers = [4, 5]
+	n._broadcast({ "type": "probe" })
+	var got := []
+	for m in n._test_outbox:
+		got.append(m["peer_id"])
+	got.sort()
+	assert_eq(got, [4, 5], "_broadcast reaches exactly the test peers")
+	n._test_outbox.clear()
+	n.remember_player_state(4, Vector3.ZERO)
+	n.remember_player_state(5, Vector3.ZERO)
+	n._broadcast_aoi({ "type": "probe" }, Vector3.ZERO)
+	got = []
+	for m in n._test_outbox:
+		got.append(m["peer_id"])
+	got.sort()
+	assert_eq(got, [4, 5], "_broadcast_aoi reaches exactly the test peers in range")
+	n.free()
 
 func _test_ui_drag_state_resets() -> void:
 	var ui := _new_test_ui()
@@ -12847,7 +12883,8 @@ func _test_equipment_phase48_misc() -> void:
 
 ## Phase 48 criteria — the replication target list includes the listen host as an owner,
 ## and a peer entering/leaving AOI after the last gear change is sent / evicted. Uses the
-## networking slice's no-socket test seam (`_test_peers`, `_test_outbox`).
+## networking slice's no-socket test seam: with `_test_peers` set, every fan-out path
+## (`_connected_peers()`) answers it and `_deliver` appends to `_test_outbox`.
 func _test_equipment_host_and_aoi_transitions() -> void:
 	var reg := PlayerRegistry.new()
 	add_child(reg)
@@ -12897,10 +12934,14 @@ func _test_equipment_host_and_aoi_transitions() -> void:
 	n.remember_player_state(3, Vector3(2000, 0, 0))
 	n._refresh_equipment_pairs(3)
 	var evicts := 0
+	var evict_viewers := []
 	for m in n._test_outbox:
 		if m["payload"]["type"] == "peer_equipment_evict":
 			evicts += 1
+			evict_viewers.append(m["peer_id"])
+	evict_viewers.sort()
 	assert_eq(evicts, 2, "leaving AOI evicts the stored set on each viewer")
+	assert_eq(evict_viewers, [2, 3], "the evicts go to peer 2 (told peer 3 left) and peer 3 (told peer 2 left)")
 	assert_false(n._equipment_sent.has("2:3"), "the sent record for the pair is dropped")
 	n._test_outbox.clear()
 	n.remember_player_state(3, Vector3(2100, 0, 0))
