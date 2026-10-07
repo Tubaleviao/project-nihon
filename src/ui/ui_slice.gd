@@ -84,6 +84,7 @@ var _character_stats: Label = null
 var own_handle: String = ""
 var _friend_code_label: Label = null
 var _spawn_notice_label: Label = null
+var _worldgen_notice_label: Label = null
 var _character_grid: GridContainer = null
 var _slot_menu: PopupMenu = null
 var _slot_menu_item: String = ""
@@ -118,6 +119,7 @@ func _ready() -> void:
 	_build_ui()
 	GameBus.craft_resolved.connect(_on_craft_resolved)
 	GameBus.spawn_notice.connect(_on_spawn_notice)
+	GameBus.worldgen_version_mismatch.connect(_on_worldgen_version_mismatch)
 	GameBus.repair_resolved.connect(_on_repair_resolved)
 	GameBus.research_resolved.connect(_on_research_resolved)
 	GameBus.technology_unlocked.connect(_on_technology_unlocked)
@@ -696,6 +698,11 @@ func _on_spawn_notice(message: String) -> void:
 	if _spawn_notice_label != null:
 		_spawn_notice_label.text = message
 
+## Phase 71 — the host's world record came from another generator version.
+func _on_worldgen_version_mismatch(recorded: int, running: int) -> void:
+	if _worldgen_notice_label != null:
+		_worldgen_notice_label.text = "World saved with generator v%d, running v%d: terrain may not match saved edits." % [recorded, running]
+
 func refresh_character() -> void:
 	if _character_grid == null:
 		return
@@ -1212,6 +1219,9 @@ func _build_character_content() -> Control:
 	_spawn_notice_label = Label.new()
 	_spawn_notice_label.add_theme_font_size_override("font_size", 13)
 	vbox.add_child(_spawn_notice_label)
+	_worldgen_notice_label = Label.new()
+	_worldgen_notice_label.add_theme_font_size_override("font_size", 13)
+	vbox.add_child(_worldgen_notice_label)
 	_character_grid = GridContainer.new()
 	_character_grid.columns = INVENTORY_COLUMNS
 	vbox.add_child(_character_grid)

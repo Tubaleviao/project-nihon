@@ -50,6 +50,8 @@ var _loading_screen: LoadingScreen
 var _battle:      BattleSlice
 var _creature:    CreatureSlice
 var _creature_ai: CreatureAI
+## Phase 71 — the worldgen version stamped into every world record this process writes.
+var _worldgen_stamp: int = TerrainSlice.WORLDGEN_VERSION
 var _networking:  NetworkingSlice
 var _persistence: PersistenceSlice
 var _registry:    PlayerRegistry
@@ -1882,6 +1884,7 @@ func _collect_save_job(incremental: bool) -> Dictionary:
 		# two players in one world must regenerate the same ground, and a reload
 		# that picked a fresh seed would land every saved edit on a different hill.
 		"seed":            _terrain.get_world_seed(),
+		"worldgenVersion": _worldgen_stamp,
 		"chunks":          manifest,
 		"stations":        stations,
 		"creatures":       creatures,
@@ -2086,6 +2089,10 @@ func _load_world_records() -> void:
 	# Phase 52 — the GLOBAL record only; a Phase 51 monolithic record is split into region
 	# files by this read, and the edits themselves stream in by region.
 	_loaded_world = _persistence.load_world_record()
+	# Phase 71 — keep the record's original stamp when re-saving; a new world takes the running one.
+	_worldgen_stamp = PersistenceSlice.worldgen_stamp_for_save(_loaded_world, TerrainSlice.WORLDGEN_VERSION)
+	if PersistenceSlice.check_worldgen_version(_loaded_world, TerrainSlice.WORLDGEN_VERSION):
+		GameBus.worldgen_version_mismatch.emit(_worldgen_stamp, TerrainSlice.WORLDGEN_VERSION)
 	_bind_local_identity()
 	# Lazy reader for every other player's record (see the docstring above).
 	_registry.set_record_loader(_persistence.load_player)

@@ -137,6 +137,10 @@ signal spawn_placed(player_id: String, position: Vector3, source: String, messag
 ## Phase 53 — client side: the host's note about where we were placed.
 signal spawn_notice(message: String)
 
+## Phase 71 — host: the loaded world record was written by a different world generator than
+## the one running, so its saved edits sit over a layout they were not made against.
+signal worldgen_version_mismatch(recorded: int, running: int)
+
 ## Host → client: the server-issued player_id for this connection. The client
 ## caches it so a reconnect can claim the same record.
 signal player_identity_assigned(player_id: String)

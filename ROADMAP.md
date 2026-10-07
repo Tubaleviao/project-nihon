@@ -6147,10 +6147,10 @@ continents) loads its edits and deplete records over a different layout with no 
 - `ROADMAP.md` / docs: any later phase that changes generation output bumps the constant.
 
 **Acceptance criteria:**
-- [ ] Suite: a new world saves `worldgenVersion == WORLDGEN_VERSION`.
-- [ ] Suite: a record with no stamp, or an older stamp, loads with every edit intact and emits
+- [x] Suite: a new world saves `worldgenVersion == WORLDGEN_VERSION`.
+- [x] Suite: a record with no stamp, or an older stamp, loads with every edit intact and emits
   exactly one mismatch warning; re-saving keeps its original stamp.
-- [ ] Suite green on both boot paths.
+- [x] Suite green on both boot paths — `Results: 14031/14031 passed (0 failed)`.
 
 ---
 
