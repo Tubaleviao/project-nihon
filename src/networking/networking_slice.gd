@@ -696,10 +696,18 @@ func _on_tame_intent(instance_id: String, _player_id: String) -> void:
 ## Phase 47 — client → host: one equip / unequip action on this machine's avatar (`item_key`
 ## "" unequips `slot`). Carries no identity: the host binds it to the connection and decides
 ## whether it holds; the client's own avatar only shows the result optimistically.
+## Phase 70 — client: sequence number of the newest equip action sent. A host correction
+## older than this answers an action the client has since superseded and is ignored.
+var _equip_seq_sent: int = 0
+
+func equip_seq_sent() -> int:
+	return _equip_seq_sent
+
 func _on_equip_intent(_player_id: String, slot: String, item_key: String) -> void:
 	if _role != Role.CLIENT:
 		return
-	_broadcast({ "type": "equip_intent", "slot": slot, "item": item_key })
+	_equip_seq_sent += 1
+	_broadcast({ "type": "equip_intent", "slot": slot, "item": item_key, "seq": _equip_seq_sent })
 
 ## Peer id the host addresses its own avatar by (the server peer).
 const HOST_PEER_ID := 1
@@ -789,7 +797,7 @@ func _on_equipment_revoked(player_id: String, worn: Dictionary) -> void:
 	var owner := _equipment_owner(player_id)
 	if owner == 0 or owner == HOST_PEER_ID:
 		return
-	send_own_state(owner, { "equipment": worn.duplicate() })
+	send_own_state(owner, { "equipment": worn.duplicate(), "equipment_seq": player_registry.equip_seq_of(player_id) })
 
 ## Peers (the host's own id excluded) whose AOI contains `owner`'s avatar.
 func equipment_targets(owner: int) -> Array:
@@ -1448,6 +1456,8 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			var slot: Variant = payload.get("slot", "")
 			var item: Variant = payload.get("item", "")
 			if slot is String and item is String:
+				var seq: Variant = payload.get("seq", 0)
+				player_registry.note_equip_seq(wearer, int(seq) if (seq is int or seq is float) else 0)
 				GameBus.equip_intent.emit(wearer, slot, item)
 		"block_edit_intent":
 			# Phase 36 — a world edit needs a bound identity AND a target within the
@@ -1905,6 +1915,7 @@ func _on_server_disconnected() -> void:
 ## The host answers with the id it binds us to (the same one on a reconnect, a
 ## fresh one on a first join, and a fresh one for a claim it refuses).
 func _on_connected_to_server() -> void:
+	_equip_seq_sent = 0  # the host numbers a fresh bind from zero too
 	if _role != Role.CLIENT:
 		return
 	request_handshake()

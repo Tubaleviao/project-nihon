@@ -6117,12 +6117,12 @@ costs a `Diag.warn`, a revoke and a state send with no rate limit.
   refusals in the interval are counted in `equip_refused_suppressed`).
 
 **Acceptance criteria:**
-- [ ] Suite: a returning player whose bag no longer holds a worn item joins with that slot
+- [x] Suite: a returning player whose bag no longer holds a worn item joins with that slot
   already empty in the `player_joined` payload.
-- [ ] Suite: refused intent N followed by valid intent N+1 leaves the client showing N+1's item
+- [x] Suite: refused intent N followed by valid intent N+1 leaves the client showing N+1's item
   after both replies are delivered in order.
-- [ ] Suite: 100 refused intents in one interval produce one warn and one revoke.
-- [ ] Suite green on both boot paths; `tools/net_harness.sh` agrees on every step.
+- [x] Suite: 100 refused intents in one interval produce one warn and one revoke.
+- [x] Suite green on both boot paths; `tools/net_harness.sh` agrees on every step — `Results: 14009/14009 passed (0 failed)`, harness 15/15 steps.
 
 ---
 

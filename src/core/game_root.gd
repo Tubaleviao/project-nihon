@@ -2263,7 +2263,11 @@ func _on_own_state_synced(data: Dictionary) -> void:
 	if not _is_client:
 		return
 	if data.has("equipment") and data["equipment"] is Dictionary:
-		_apply_host_equipment(data["equipment"])
+		# Phase 70 — a correction that answers an action older than the newest one sent
+		# would wipe the newer item; the newer action's own reply sets the record.
+		var answers: int = int(data.get("equipment_seq", _networking.equip_seq_sent()))
+		if answers >= _networking.equip_seq_sent():
+			_apply_host_equipment(data["equipment"])
 	if data.has("inventory") and data["inventory"] is Dictionary:
 		_inventory.replace_contents(data["inventory"], data.get("inventory_durability", {}))
 	if data.has("technology") and data["technology"] is Dictionary:
