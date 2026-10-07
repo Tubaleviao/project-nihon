@@ -98,6 +98,7 @@ const Diag := preload("res://src/core/diag.gd")
 const MeshUtil := preload("res://src/core/mesh_util.gd")
 ## Phase 43 — the deterministic ore field: veins, their depth band and ley gate.
 const OreField := preload("res://src/terrain/ore_field.gd")
+const BiomeBlend := preload("res://src/terrain/biome_blend.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 
@@ -722,10 +723,11 @@ static func surface_style(biome: String) -> Dictionary:
 	var b: Variant = GameData.BIOMES.get(biome, null)
 	if b == null or b.get("surfaceTint") == null:
 		return {}
+	var depth: Variant = b.get("topsoilDepth")
 	return {
 		"top":      Color.from_string(str(b.get("surfaceTint")), FALLBACK_TERRAIN_COLOR),
 		"soil":     Color.from_string(str(b.get("soilTint")), FALLBACK_TERRAIN_COLOR),
-		"depth":    float(b.get("topsoilDepth")),
+		"depth":    float(depth if depth != null else 0.0),
 		"material": str(b.get("surfaceMaterial")),
 	}
 
@@ -756,7 +758,8 @@ static func _apply_topsoil(entry: Dictionary, world_xz: Vector2, biomes: Diction
 ## tile may show the biome across that border instead of its own: the chance falls from one half
 ## at the border to zero at the band's inner edge, and a coordinate hash (no RNG, no thread
 ## state) decides, so every build of the tile agrees and the border reads as a dithered band
-## rather than a straight cut. Only the colour is blended; the ore field still reads `own`.
+## rather than a straight cut (`BiomeBlend` holds the rule, shared with the minimap). The colour
+## and the soil yield follow it (`_natural_yield`); the ore field still reads `own`.
 static func blended_biome(world_xz: Vector2, biomes: Dictionary, own: String) -> String:
 	var extent := float(CHUNK_SIZE * TILE_SIZE)
 	var cx := floori(world_xz.x / extent)
@@ -780,8 +783,7 @@ static func blended_biome(world_xz: Vector2, biomes: Dictionary, own: String) ->
 		return own
 	var gx := floori(world_xz.x / TILE_SIZE)
 	var gz := floori(world_xz.y / TILE_SIZE)
-	var roll := float(((gx * 73856093) ^ (gz * 19349663)) & 0xffff) / 65536.0
-	return other if roll < 0.5 * (1.0 - d / BLEND_TILES) else own
+	return other if BiomeBlend.wears_neighbour(gx, gz, d, BLEND_TILES) else own
 
 ## Phase 43 — the ore field's per-call input: the seed, the depletion record and a fresh
 ## vein memo. Static and plain, so the worker half builds it from its payload.
@@ -1321,9 +1323,11 @@ func _natural_yield(tile: Vector2i, span: Dictionary) -> Dictionary:
 	var vein := _live_vein_at(xz, depth, _world_seed(), _vein_taken, {})
 	if vein.is_empty():
 		var biome := _biome_at(xz)
-		var b: Variant = GameData.BIOMES.get(biome, null)
+		# The soil is the one the surface draws: the tile's BLENDED biome (Phase 64).
+		var b: Variant = GameData.BIOMES.get(shown_biome_at(xz), null)
+		var topsoil: Variant = b.get("topsoilDepth") if b != null else null
 		if b != null and b.get("soilMaterial") != null \
-				and depth < float(b.get("topsoilDepth") if b.get("topsoilDepth") != null else 0.0):
+				and depth < float(topsoil if topsoil != null else 0.0):
 			return { "material": str(b.get("soilMaterial")), "quantity": 1, "vein": {} }
 		return { "material": OreField.host_material(biome), "quantity": 1, "vein": {} }
 	var take := mini(int(vein["quantity"]), OreField.remaining(vein, _vein_taken))
@@ -2663,6 +2667,18 @@ static func natural_color(world_xz: Vector2, biomes: Dictionary, colours: Dictio
 	if not colours.has(material):
 		colours[material] = _material_color(material)
 	return colours[material]
+
+## Phase 64 — the biome whose surface the tile at `world_xz` WEARS, resolved from the terrain
+## slice: the same `blended_biome` answer the mesher gets from the gathered map.
+func shown_biome_at(world_xz: Vector2) -> String:
+	var extent := float(CHUNK_SIZE * TILE_SIZE)
+	var c := Vector2i(floori(world_xz.x / extent), floori(world_xz.y / extent))
+	var biomes: Dictionary = {}
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			var n := c + Vector2i(dx, dz)
+			biomes[_chunk_key(n)] = _biome_at(_chunk_world_center(n))
+	return blended_biome(world_xz, biomes, str(biomes[_chunk_key(c)]))
 
 ## The instance ACCESSOR form of `natural_color`: with no gathered map it asks the terrain slice
 ## for this position's biome, in exactly the shape `gather_biomes_for` builds.

@@ -34,6 +34,7 @@ const MarketSlice     := preload("res://src/world/market_slice.gd")
 const TradeSlice      := preload("res://src/trade/trade_slice.gd")
 const ProposalSlice   := preload("res://src/governance/proposal_slice.gd")
 const Minimap         := preload("res://src/ui/minimap.gd")
+const BiomeBlend      := preload("res://src/terrain/biome_blend.gd")
 const PlayerSlice     := preload("res://src/player/player_slice.gd")
 const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
 const ClimateField := preload("res://src/terrain/climate_field.gd")
@@ -254,6 +255,9 @@ func run() -> void:
 	_run_test("voxel: biome material mapping",                 _test_voxel_biome_materials)
 	_run_test("voxel: grass top, soil side",                   _test_voxel_grass_top_soil_side)
 	_run_test("voxel: biome border blends with a dither",      _test_voxel_biome_border_blend)
+	_run_test("voxel: yield biome equals the drawn surface biome", _test_voxel_yield_matches_blended_biome)
+	_run_test("minimap: blend never borrows an unrevealed biome", _test_minimap_blend_respects_fog)
+	_run_test("climate: partial envelope does not break warm()", _test_climate_partial_envelope_warms)
 	_run_test("voxel: the surface never yields a deep ore",     _test_voxel_material_rarity)
 	_run_test("voxel: edits round-trip",                       _test_voxel_edits_round_trip)
 	_run_test("voxel: placed block keeps material colour",    _test_voxel_placed_block_keeps_material_color)
@@ -7215,6 +7219,83 @@ func _test_voxel_biome_border_blend() -> void:
 	for tz in range(0, VoxelSlice.CHUNK_SIZE):
 		var inner := Vector2(extent * 0.5, tz * VoxelSlice.TILE_SIZE + 0.25)
 		assert_eq(VoxelSlice.blended_biome(inner, biomes, "TemperateForest"), "TemperateForest", "the interior keeps its biome")
+
+## Phase 64 — the yield reads the biome the surface draws: for every tile of a border band the
+## instance accessor (what `_natural_yield` reads) equals `blended_biome` (what the mesher reads).
+func _test_voxel_yield_matches_blended_biome() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var ts := TerrainSlice.new()
+	add_child(ts)
+	v.terrain_slice = ts
+	var extent := float(VoxelSlice.CHUNK_SIZE * VoxelSlice.TILE_SIZE)
+	var checked := 0
+	for cx in range(-12, 12):
+		var biomes := v.gather_biomes_for(Vector2i(cx, 0))
+		for tx in range(0, int(VoxelSlice.BLEND_TILES) + 1):
+			for tz in range(0, VoxelSlice.CHUNK_SIZE, 3):
+				var xz := Vector2((cx * VoxelSlice.CHUNK_SIZE + tx) * VoxelSlice.TILE_SIZE + 0.25,
+					tz * VoxelSlice.TILE_SIZE + 0.25)
+				var own := VoxelSlice.biome_of(xz, biomes)
+				assert_eq(v.shown_biome_at(xz), VoxelSlice.blended_biome(xz, biomes, own),
+					"yield biome is the surface biome at %s" % xz)
+				checked += 1
+	assert_true(checked > 0, "tiles were checked")
+	assert_true(extent > 0.0, "extent sane")
+	assert_eq(BiomeBlend.chance(VoxelSlice.BLEND_TILES, VoxelSlice.BLEND_TILES), 0.0, "no blend at the band's inner edge")
+	assert_eq(BiomeBlend.chance(0.0, VoxelSlice.BLEND_TILES), BiomeBlend.MAX_CHANCE, "half a chance at the border")
+	ts.free()
+	v.free()
+
+## Phase 64 — a revealed border cell next to an UNREVEALED chunk never wears that chunk's biome.
+func _test_minimap_blend_respects_fog() -> void:
+	var mm := Minimap.new()
+	add_child(mm)
+	mm._revealed = { "0,0": true, "-1,0": true }
+	mm.terrain_slice = BiomeStub.new()
+	var memo := {}
+	var worn := 0
+	for j in Minimap.CELLS_PER_CHUNK:
+		for i in Minimap.CELLS_PER_CHUNK:
+			var got: String = mm._cell_biome(Vector2i(0, 0), i, j, "TemperateForest", memo)
+			assert_true(got != "VoidRift", "the unrevealed east/south chunks' biome is never worn (%d,%d)" % [i, j])
+			if got == "DesertDunes":
+				worn += 1
+	assert_true(worn >= 0, "the revealed west neighbour may blend")
+	assert_false(mm._has_blend_neighbour(Vector2i(5, 5), "TemperateForest", {}), "no revealed neighbours: one rect")
+	mm.free()
+
+class BiomeStub extends Node:
+	func get_biome_at_chunk(c: Vector2i) -> String:
+		return "DesertDunes" if c.x < 0 else ("TemperateForest" if c == Vector2i.ZERO else "VoidRift")
+
+## Phase 64 — a biome whose envelope dicts lack keys (or whose altitude lacks `max`) must not
+## error in `_envelope_of`, and the complete envelopes still load.
+func _test_climate_partial_envelope_warms() -> void:
+	var partial := RefCounted.new()
+	var bad := { "temperature": { "min": 0.2 }, "moisture": { "max": 0.7 }, "altitude": { "min": 5.0 } }
+	var holder := PartialBiome.new()
+	holder.temperature = bad["temperature"]
+	holder.moisture = bad["moisture"]
+	holder.altitude = bad["altitude"]
+	var env := ClimateField._envelope_of(holder)
+	assert_eq(env.size(), 7, "a partial envelope still yields the full row")
+	assert_eq(env[1], 1.0, "a missing max defaults open")
+	assert_eq(env[5], 100000.0, "a missing altitude max defaults open")
+	var saved_env: Dictionary = ClimateField._envelopes.duplicate()
+	var saved_warm: bool = ClimateField._warmed
+	ClimateField._envelopes.clear()
+	ClimateField._warmed = false
+	ClimateField.warm()
+	assert_true(ClimateField._warmed and ClimateField._envelopes.size() > 0, "the real envelopes load")
+	ClimateField._envelopes = saved_env
+	ClimateField._warmed = saved_warm
+	assert_true(partial != null, "ok")
+
+class PartialBiome extends RefCounted:
+	var temperature: Dictionary = {}
+	var moisture: Dictionary = {}
+	var altitude: Dictionary = {}
 
 ## Phase 49 — mining a NATURAL slice within a biome's topsoil yields that biome's fabric
 ## `soilMaterial`, whatever the cover: Grass, Moss, Ash and Void ground all yield soil, not

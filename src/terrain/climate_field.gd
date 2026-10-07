@@ -67,11 +67,17 @@ static func temperature_at(seed_v: int, p: Vector2, lat_deg: float, altitude_m: 
 static func moisture(seed_v: int, p: Vector2) -> float:
 	return clampf(0.5 + (_value_noise(seed_v, p, 12) - 0.5) * CONTRAST, 0.0, 1.0)
 
-## biome key -> [temp_min, temp_max, moist_min, moist_max], snapshotted from the fabric biome
-## resources by `warm()` on the MAIN thread (OreField.warm calls it from VoxelSlice._ready,
-## before any worker exists) and read-only afterwards, like OreField's band table. The ore
-## field asks `biome_for_chunk` from a chunk-build worker, so the lookup reads this plain
-## data rather than Resource properties, and costs a few float compares per biome.
+## Envelope model: each fabric biome declares a temperature range, a moisture range and
+## optionally an altitude range and a `rarity`. A chunk's (temperature, moisture, altitude) is
+## matched to the biome whose envelope it sits inside (or nearest to); a rare biome is only
+## eligible inside its niche cells (see `niche_value`). A biome with no climate envelope never
+## wins, and when no biome has one the Voronoi fallback picks.
+##
+## biome key -> [temp_min, temp_max, moist_min, moist_max, alt_min, alt_max, rarity], snapshotted
+## from the fabric biome resources by `warm()` on the MAIN thread (TerrainSlice and OreField warm
+## it from `_ready`, before any worker exists) and read-only afterwards, like OreField's band
+## table. The ore field asks `biome_for_chunk` from a chunk-build worker, so the lookup reads
+## this plain data rather than Resource properties, and costs a few float compares per biome.
 static var _envelopes: Dictionary = {}
 static var _warmed := false
 
@@ -99,10 +105,13 @@ static func _envelope_of(biome: Variant) -> Array:
 	var amin := -100000.0
 	var amax := 100000.0
 	if al is Dictionary and not (al as Dictionary).is_empty():
-		amin = float(al["min"])
-		amax = float(al["max"])
+		amin = float((al as Dictionary).get("min", amin))
+		amax = float((al as Dictionary).get("max", amax))
 	var rar: Variant = biome.get("rarity")
-	return [float(te["min"]), float(te["max"]), float(me["min"]), float(me["max"]), amin, amax,
+	var tmap := te as Dictionary
+	var mmap := me as Dictionary
+	return [float(tmap.get("min", 0.0)), float(tmap.get("max", 1.0)),
+		float(mmap.get("min", 0.0)), float(mmap.get("max", 1.0)), amin, amax,
 		float(rar) if rar != null else 1.0]
 
 ## Metres of altitude that weigh as much as one whole unit of temperature or moisture gap.
@@ -167,8 +176,8 @@ static func biome_for_chunk(seed_v: int, chunk_pos: Vector2i, keys: Array, lat_d
 	# The 3x3 cell search below is exact only while a feature point stays within ~0.8 of a
 	# cell of its centre; a larger JITTER could put the true nearest point one ring further out.
 	assert(JITTER <= 0.8, "ClimateField.JITTER too large for the 3x3 nearest-point search")
-	if not _warmed:
-		warm()   # an isolated caller that never warmed it: a main-thread call
+	if not _warmed and OS.get_thread_caller_id() == OS.get_main_thread_id():
+		warm()   # an isolated main-thread caller that never warmed it; a worker never writes the table
 	var p := Vector2(chunk_pos.x + 0.5, chunk_pos.y + 0.5)
 	var picked := _pick(temperature_at(seed_v, p, lat_deg, altitude_m), moisture(seed_v, p), altitude_m, keys, _envelopes, 0.0, true, seed_v, p)
 	if picked != "":

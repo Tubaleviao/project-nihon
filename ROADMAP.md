@@ -5947,12 +5947,12 @@ unexplored biomes across fog, and the dither hash exists twice with different th
 - `ore_field.gd` — the biome lookup moves after the cheap surface-vein hash cull.
 
 **Acceptance criteria:**
-- [ ] Suite: for every tile in a border band, the biome used for yield equals the biome used for
+- [x] Suite: for every tile in a border band, the biome used for yield equals the biome used for
   the surface style.
-- [ ] Suite: the minimap colour of a revealed border cell next to an unrevealed chunk never uses
+- [x] Suite: the minimap colour of a revealed border cell next to an unrevealed chunk never uses
   the unrevealed chunk's biome.
-- [ ] Suite: a partial envelope dict does not error in `warm()` and the other envelopes load.
-- [ ] Suite green on both boot paths.
+- [x] Suite: a partial envelope dict does not error in `warm()` and the other envelopes load.
+- [x] Suite green on both boot paths.
 
 ---
 
