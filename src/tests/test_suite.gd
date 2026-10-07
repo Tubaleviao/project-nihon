@@ -13464,6 +13464,17 @@ func _test_registry_bound_peer_ids() -> void:
 	assert_eq(ids, [4, 9], "both bound peers are listed")
 	reg.unbind_peer(4)
 	assert_eq(reg.get_bound_peer_ids(), [9], "an unbound peer drops out")
+
+func _test_region_failed_read_not_resident() -> void:
+	var dir := _fresh_region_dir("test_p61_read")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	DirAccess.make_dir_recursive_absolute(dir + "regions/")
+	var path := store.path_of(Vector2i.ZERO)
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string("{ not json")
+	f.close()
+	var voxel := _make_voxel()
+	var streamer := RegionStreamerScript.new(store, voxel)
 	var wanted := { "0,0": true }
 	var r := streamer.sync(wanted)
 	assert_eq(int(r["loaded"]), 0, "nothing loaded from an unreadable region")
