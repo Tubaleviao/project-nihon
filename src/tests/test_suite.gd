@@ -1003,6 +1003,13 @@ func _test_chunk_key_canonical_at_seam() -> void:
 	assert_eq(voxel._chunk_key(Vector2i(c / 2, 4)), voxel._chunk_key(Vector2i(-c / 2, 4)),
 		"VoxelSlice keys chunk (C/2, z) and (-C/2, z) as one chunk")
 	assert_eq(voxel._chunk_key(Vector2i(7, -2)), "7,-2", "an interior key is unchanged")
+	var east_tile := Vector2i(c / 2 * TerrainSlice.CHUNK_SIZE + 3, 70)
+	var west_tile := Vector2i(-c / 2 * TerrainSlice.CHUNK_SIZE + 3, 70)
+	assert_eq(VoxelSlice._tile_key(east_tile), VoxelSlice._tile_key(west_tile),
+		"a tile east of the seam is the same edit key as the tile west of it")
+	voxel._set_edit_ops(VoxelSlice._tile_key(east_tile), [{ "op": "raise", "n": 1 }])
+	assert_true(voxel.edited_chunk_keys().has(voxel._chunk_key(Vector2i(-c / 2, 1))),
+		"an edit made at chunk (C/2, z) is found when reading chunk (-C/2, z)")
 	var cm := ChunkManager.new()
 	assert_eq(cm._chunk_key(Vector2i(c / 2, 4)), cm._chunk_key(Vector2i(-c / 2, 4)),
 		"ChunkManager keys both sides of the seam as one chunk")

@@ -2615,7 +2615,14 @@ static func _tile_to_chunk(tile: Vector2i) -> Vector2i:
 	return Vector2i(floori(float(tile.x) / float(CHUNK_SIZE)), floori(float(tile.y) / float(CHUNK_SIZE)))
 
 static func _tile_key(tile: Vector2i) -> String:
-	return "%d,%d" % [tile.x, tile.y]
+	# Phase 63: canonical across the seam, so an edit east of it is the edit west of it.
+	var t := canonical_tile(tile)
+	return "%d,%d" % [t.x, t.y]
+
+## Tile X wrapped into [-C*CHUNK_SIZE/2, C*CHUNK_SIZE/2) where C is the circumference in chunks.
+static func canonical_tile(tile: Vector2i) -> Vector2i:
+	var w := TerrainSlice.circumference_chunks() * CHUNK_SIZE
+	return Vector2i(posmod(tile.x + w / 2, w) - w / 2, tile.y)
 
 ## Phase 42 review pass 9 — STATIC: the worker half of a build keys chunks too (`_neighbour_runs`).
 static func _chunk_key(chunk_pos: Vector2i) -> String:
