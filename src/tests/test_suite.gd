@@ -117,6 +117,7 @@ func run() -> void:
 	_run_test("terrain: latitude and longitude from the fabric planet", _test_terrain_planet_coordinates)
 	_run_test("rebase: loot, avatars and the station preview follow the shift", _test_rebase_extras)
 	_run_test("player: rebased origin keeps the world position", _test_world_pos_rebase)
+	_run_test("player: exact chunk + local far from the origin", _test_player_exact_far_position)
 	_run_test("persistence: position saved as chunk + local, old saves migrate", _test_registry_world_pos)
 	_run_test("persistence: save then load round-trip",       _test_persistence_round_trip)
 	_run_test("persistence: worldgen stamp on a new world",   _test_worldgen_stamp_new_world)
@@ -1170,6 +1171,40 @@ func _test_remote_state_plausibility() -> void:
 	gr._on_remote_player_state(3, Vector3(NAN, 0.0, 0.0))
 	assert_true(gr._peer_aoi_regions.is_empty(), "a rejected claim records no AOI region (and needs no networking slice)")
 	gr.free()
+
+## Phase 78 — the player's exact `{chunk, local}` survives a far rebase, a save → reload and the
+## snapshot's own-record position.
+func _test_player_exact_far_position() -> void:
+	var chunk := Vector2i(1500000, 3)
+	var want := {"chunk": chunk, "local": Vector3(0.25, 10.0, 0.75)}
+	var player := PlayerSlice.new()
+	player.render_visuals = true
+	add_child(player)
+	player.shift_scene(WorldPos.rebase_shift(Vector2i.ZERO, chunk))   # what the rebase driver does
+	player.place_at_world_pos(want)
+	var got := player.get_world_pos()
+	assert_eq(got["chunk"], chunk, "the far player reports its chunk")
+	assert_true((got["local"] as Vector3).distance_to(want["local"]) < 0.001, "and its local within 1 mm")
+	# A second rebase (the player walked on) keeps the world position.
+	player.shift_scene(WorldPos.rebase_shift(chunk, chunk + Vector2i(1, 0)))
+	var walked := player.get_world_pos()
+	assert_eq(walked["chunk"], chunk, "a later rebase leaves the chunk alone")
+	assert_true((walked["local"] as Vector3).distance_to(want["local"]) < 0.001, "and the local")
+	# Save -> reload through the registry record.
+	var reg := PlayerRegistry.new()
+	reg.record_world_pos("p1", got)
+	var rec: Dictionary = reg.get_record("p1").duplicate(true)
+	var reg2 := PlayerRegistry.new()
+	reg2.apply_player_data("p1", JSON.parse_string(JSON.stringify(rec)))
+	var back: Dictionary = reg2.get_world_pos("p1")
+	assert_eq(back["chunk"], TerrainSlice.wrap_chunk(chunk), "a reloaded player is in the same chunk (chunk 1,500,000 is past one lap, so the registry folds it)")
+	assert_true((back["local"] as Vector3).distance_to(want["local"]) < 0.001, "at the same local within 1 mm")
+	# The snapshot's own-record position is the stored one, exactly.
+	var snap_pos: Dictionary = PlayerRegistry.snapshot_position(reg2.get_record("p1"))
+	var stored: Dictionary = reg2.get_record("p1")
+	assert_eq(snap_pos["chunk"], stored["chunk"], "the snapshot carries the stored chunk exactly")
+	assert_eq(snap_pos["local"], stored["local"], "and the stored local exactly")
+	player.free()
 
 func _test_rebase_driver() -> void:
 	var voxel := VoxelSlice.new()

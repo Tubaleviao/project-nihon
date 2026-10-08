@@ -1310,8 +1310,7 @@ func _process(delta: float) -> void:
 	# Phase 63 — a client far from its scene origin shifts the whole scene back (float32 precision).
 	if _rebase != null and _player != null and _player.has_method("get_scene_position"):
 		var scene_pos: Vector3 = _player.get_scene_position()
-		var world_pos: Vector3 = _player.get_position()
-		_rebase.tick(scene_pos, WorldPos.from_world(world_pos.x, world_pos.y, world_pos.z)["chunk"])
+		_rebase.tick(scene_pos, _player.get_world_pos()["chunk"])
 	# Phase 42 — complete a host boot whose first ring has finished building. It has
 	# to run FIRST: the rest of this frame's work (the avatar sync, the LOD pass) is
 	# written against a player body that only exists once the boot tail has run, and
@@ -1517,7 +1516,7 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true,
 	var players := {}
 	var host_pos := _player.get_position()
 	if NetworkingSlice.within_aoi(aoi_center, host_pos):
-		players[str(multiplayer.get_unique_id())] = WorldPos.to_wire(host_pos)
+		players[str(multiplayer.get_unique_id())] = WorldPos.pos_to_wire(_player.get_world_pos())
 	# Phase 19 — include last-known remote player states so a rejoining client
 	# resumes from its last authoritative position after a disconnect.
 	var last_known := _networking.get_last_known_states()
@@ -1572,11 +1571,10 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true,
 		snapshot["companions"] = own.get("companions", [])
 		# Phase 47 — the worn set rides the own-record payload too.
 		snapshot["equipment"] = own.get("equipment", {})
-		var own_pos = own.get("position", [])
-		# Re-encode a legacy float-array record as {chunk, local}; a record with no position stays
-		# empty so the client leaves its spawn alone.
-		if WorldPos.is_wire(own_pos):
-			own_pos = WorldPos.to_wire(WorldPos.from_wire(own_pos))
+		# The stored exact {chunk, local} goes out as stored, no float round trip (Phase 78); a legacy
+		# float-array record is re-encoded, and a record with no position stays empty so the client
+		# leaves its spawn alone.
+		var own_pos = PlayerRegistry.snapshot_position(own)
 		snapshot["player"] = { "position": own_pos, "hp": own.get("hp", -1.0) }
 		# Phase 66 — the original spawn point, so a reconnecting client respawns there and not
 		# where it happened to be standing when it rejoined.
@@ -1654,7 +1652,15 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 	if own is Dictionary:
 		var arr = own.get("position", [])
 		if WorldPos.is_wire(arr):
-			_player.spawn_at(WorldPos.from_wire(arr))
+			if arr is Dictionary and _rebase != null:
+				# Exact placement: rebase to the target chunk, then land on its small local offset.
+				var l: Array = arr["local"]
+				var exact := WorldPos.normalized({"chunk": WorldPos.wire_chunk(arr),
+					"local": Vector3(float(l[0]), float(l[1]), float(l[2]))})
+				_rebase.rebase_to(exact["chunk"])
+				_player.place_at_world_pos(exact)
+			else:
+				_player.spawn_at(WorldPos.from_wire(arr))
 			if not _client_respawn_point_set:
 				# Only the first snapshot carries the placement; later AOI re-scoped snapshots
 				# carry wherever the player has since walked, which is not a spawn point.
@@ -1772,7 +1778,7 @@ func _snapshot_local_player() -> void:
 	var pid := _registry.local_player_id
 	if pid.is_empty():
 		return
-	_registry.record_position(pid, _player.get_position())
+	_registry.record_world_pos(pid, _player.get_world_pos())
 	_note_presence(_player.get_position())
 	_registry.record_hp(pid, _player.get_hp())
 	_registry.record_technology(pid, _technology.get_statuses(pid))

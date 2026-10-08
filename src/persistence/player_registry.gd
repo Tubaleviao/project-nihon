@@ -479,6 +479,27 @@ func record_position(player_id: String, position: Vector3) -> void:
 	rec["position"] = [position.x, position.y, position.z]
 	_store_world_pos(rec, WorldPos.from_world(position.x, position.y, position.z))
 
+## Phase 78 — record an exact `{chunk, local}` position: no float round trip, so a player far from
+## the origin is stored as walked. `position` is derived in doubles, as `apply_player_data` does.
+func record_world_pos(player_id: String, wp: Dictionary) -> void:
+	var rec := ensure_player(player_id)
+	if rec.is_empty():
+		return
+	wp = WorldPos.normalized(wp)
+	_store_world_pos(rec, wp)
+	var chunk: Vector2i = wp["chunk"]
+	var local: Vector3 = wp["local"]
+	rec["position"] = [chunk.x * WorldPos.CHUNK_METERS + local.x, local.y, chunk.y * WorldPos.CHUNK_METERS + local.z]
+
+## Phase 78 — the position a snapshot's own record carries: the stored exact `{chunk, local}` as
+## wire form (a legacy float-array record is migrated by `world_pos_of`), or the record's raw value
+## when it holds no decodable position, so the client leaves its spawn alone.
+static func snapshot_position(rec: Dictionary) -> Variant:
+	var pos: Variant = rec.get("position", [])
+	if WorldPos.is_wire(pos):
+		return WorldPos.pos_to_wire(world_pos_of(rec))
+	return pos
+
 ## Phase 66 — remember where a player was PLACED, as `{chunk, local}` beside the live position, so
 ## a respawn after a restart or a reconnect goes back to the original spawn point rather than a
 ## fixed default. Only a placement writes it; walking about never does.

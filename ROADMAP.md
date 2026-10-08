@@ -6361,7 +6361,7 @@ window-edge test asserts per vertex and `break`s, so a failure reports one verte
 
 ---
 
-## Phase 78 — Exact player position far from the origin
+## Phase 78 — Exact player position far from the origin ✅ Done
 
 **Goal:** `PlayerSlice.get_position` returns `body.global_position - _scene_offset` in float32, so
 10,000 km out the world position is quantised to metres and the chunk derived from it can flicker
@@ -6386,11 +6386,11 @@ reason (#168, #166).
   already wire form; no float round trip.
 
 **Acceptance criteria:**
-- [ ] Suite: a player placed at chunk (1,500,000, 3) local (0.25, 10, 0.75), after a rebase,
+- [x] Suite: a player placed at chunk (1,500,000, 3) local (0.25, 10, 0.75), after a rebase,
   reports `get_world_pos()` equal to that chunk and local within 1e-3 m.
-- [ ] Suite: save → reload of that player restores the same chunk and local within 1e-3 m.
-- [ ] Suite: the own-record wire position in a snapshot equals the stored one exactly.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite: save → reload of that player restores the same chunk and local within 1e-3 m.
+- [x] Suite: the own-record wire position in a snapshot equals the stored one exactly.
+- [x] Suite green on both boot paths, harness green. — `Results: 34747/34747 passed (0 failed)`, harness 15/15 steps.
 
 ---
 

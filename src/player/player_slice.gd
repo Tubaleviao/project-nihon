@@ -261,12 +261,31 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and event.keycode == KEY_E:
 		GameBus.character_equipment_toggle_requested.emit()
 
+## APPROXIMATE far from the origin: a float32 world position is quantised to metres 10,000 km out.
+## Fine for callers near the origin (UI, range checks); anything that persists or sends the
+## position uses `get_world_pos`.
 func get_position() -> Vector3:
 	return _body.global_position - _scene_offset if _body else Vector3.ZERO
+
+## Phase 78 — the exact world position as `{chunk, local}`: the integer scene-origin chunk plus the
+## body's small scene position, so nothing is quantised however far from the origin the player is.
+func get_world_pos() -> Dictionary:
+	return WorldPos.from_scene(get_scene_position(), _scene_origin_chunk)
+
+## Place the body at an exact `{chunk, local}` world position. The scene origin is not moved here
+## (the rebase driver owns that): a caller placing a player far from the current origin rebases to
+## `pos["chunk"]` first, or the scene position it lands on is a large float32.
+func place_at_world_pos(pos: Dictionary) -> void:
+	if _body:
+		_body.global_position = WorldPos.to_scene(pos, _scene_origin_chunk)
+		_vel = Vector3.ZERO
 
 ## Phase 63: the scene-origin offset a client rebase has applied. The body sits at world + offset;
 ## `get_position` and `spawn_at` still speak world coordinates.
 var _scene_offset: Vector3 = Vector3.ZERO
+## Phase 78 — the same offset as an exact integer chunk (the scene origin, in chunks): the source
+## of truth for `get_world_pos`. `_scene_offset == -_scene_origin_chunk * CHUNK_METERS`.
+var _scene_origin_chunk := Vector2i.ZERO
 
 ## The body's raw scene position (what the physics server sees).
 func get_scene_position() -> Vector3:
@@ -275,6 +294,7 @@ func get_scene_position() -> Vector3:
 ## Shift the body by `shift` in the same frame the world shifts; its world position is unchanged.
 func shift_scene(shift: Vector3) -> void:
 	_scene_offset += shift
+	_scene_origin_chunk -= Vector2i(roundi(shift.x / WorldPos.CHUNK_METERS), roundi(shift.z / WorldPos.CHUNK_METERS))
 	if _body:
 		_body.global_position += shift
 	if _ghost_pool != null:
