@@ -5924,7 +5924,7 @@ on the wire, and the client rebase driver.
 
 ---
 
-## Phase 64 — Biome blend consistency
+## Phase 64 — Biome blend consistency ✅ Done
 
 **Goal:** The 4-tile biome dither band shows one biome and yields another, the minimap leaks
 unexplored biomes across fog, and the dither hash exists twice with different thresholds
@@ -5956,7 +5956,7 @@ unexplored biomes across fog, and the dither hash exists twice with different th
 
 ---
 
-## Phase 65 — World clock and season follow-ups
+## Phase 65 — World clock and season follow-ups ✅ Done
 
 **Goal:** Phase 54 shipped `WorldClock.biome_daylight` with no runtime caller, and the season
 tint repaints every loaded chunk with the biome underfoot (#150).
@@ -5980,7 +5980,7 @@ tint repaints every loaded chunk with the biome underfoot (#150).
 
 ---
 
-## Phase 66 — Spawn point and colonization follow-ups
+## Phase 66 — Spawn point and colonization follow-ups ✅ Done
 
 **Goal:** A returning player respawns at the legacy (16, y, 16) default instead of their own
 spawn point, and the colonization map over-counts after a restart (#148).
@@ -6095,7 +6095,7 @@ guess (#113, #114, #115, #116, #118).
 
 ---
 
-## Phase 70 — Equip intent ordering and refusal cost
+## Phase 70 — Equip intent ordering and refusal cost ✅ Done
 
 **Goal:** Phase 60 made the host the author of the worn set, but three paths still misbehave
 (#116): `revalidate_equipment` runs after `resolve_identity` has already emitted
@@ -6125,7 +6125,7 @@ costs a `Diag.warn`, a revoke and a state send with no rate limit.
 
 ---
 
-## Phase 71 — World-generation version stamp
+## Phase 71 — World-generation version stamp ✅ Done
 
 **Goal:** the world record has a format `version` but nothing records which generator produced
 the terrain and biome layout. A save from before a generator change (Phase 49 biomes, Phase 51
