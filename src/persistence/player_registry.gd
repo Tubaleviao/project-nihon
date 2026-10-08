@@ -479,6 +479,27 @@ func record_position(player_id: String, position: Vector3) -> void:
 	rec["position"] = [position.x, position.y, position.z]
 	_store_world_pos(rec, WorldPos.from_world(position.x, position.y, position.z))
 
+## Phase 78 — record an exact `{chunk, local}` position: no float round trip, so a player far from
+## the origin is stored as walked. `position` is derived in doubles, as `apply_player_data` does.
+func record_world_pos(player_id: String, wp: Dictionary) -> void:
+	var rec := ensure_player(player_id)
+	if rec.is_empty():
+		return
+	wp = _canonical(WorldPos.normalized(wp))
+	_store_world_pos(rec, wp)
+	var chunk: Vector2i = wp["chunk"]
+	var local: Vector3 = wp["local"]
+	rec["position"] = [chunk.x * WorldPos.CHUNK_METERS + local.x, local.y, chunk.y * WorldPos.CHUNK_METERS + local.z]
+
+## Phase 78 — the position a snapshot's own record carries: the stored exact `{chunk, local}` as
+## wire form (a legacy float-array record is migrated by `world_pos_of`), or the record's raw value
+## when it holds no decodable position, so the client leaves its spawn alone.
+static func snapshot_position(rec: Dictionary) -> Variant:
+	var pos: Variant = rec.get("position", [])
+	if WorldPos.is_wire(pos) or _has_chunk_local(rec):
+		return WorldPos.pos_to_wire(world_pos_of(rec))
+	return pos
+
 ## Phase 66 — remember where a player was PLACED, as `{chunk, local}` beside the live position, so
 ## a respawn after a restart or a reconnect goes back to the original spawn point rather than a
 ## fixed default. Only a placement writes it; walking about never does.
@@ -510,6 +531,11 @@ static func _store_world_pos(rec: Dictionary, wp: Dictionary) -> void:
 	var local: Vector3 = wp["local"]
 	rec["chunk"] = [chunk.x, chunk.y]
 	rec["local"] = [local.x, local.y, local.z]
+
+## Phase 78 — true when a wire `{chunk, local}` dictionary is finite and in range (Z between the
+## poles, `local` small): safe to rebase to and place at.
+static func is_valid_wire_pos(wire: Dictionary) -> bool:
+	return _has_chunk_local(wire)
 
 ## True when `chunk` is two finite ints-in-range and `local` three finite numbers: element types
 ## and magnitudes are checked, not just the array sizes, so a bad save or payload falls back to

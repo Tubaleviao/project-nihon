@@ -1094,6 +1094,9 @@ func unload_chunk(chunk_pos: Vector2i) -> void:
 
 ## Chunk coordinate under the player's current XZ position.
 func player_chunk() -> Vector2i:
+	# Phase 78 — the exact chunk, so a player far from the origin does not flicker at a boundary.
+	if player_slice != null and player_slice.has_method("get_world_pos"):
+		return player_slice.get_world_pos()["chunk"]
 	if player_slice != null and player_slice.has_method("get_position"):
 		var p: Vector3 = player_slice.get_position()
 		return world_to_chunk(Vector2(p.x, p.z))
