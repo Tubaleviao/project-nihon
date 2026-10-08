@@ -12,6 +12,7 @@ extends Node
 ##   take_damage(dmg) -> void
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
+const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 
 const SPEED        := 4.5     # m/s horizontal
 const JUMP_FORCE   := 5.0     # m/s vertical
@@ -261,12 +262,31 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and event.keycode == KEY_E:
 		GameBus.character_equipment_toggle_requested.emit()
 
+## APPROXIMATE far from the origin: a float32 world position is quantised to metres 10,000 km out.
+## Fine for callers near the origin (UI, range checks); anything that persists or sends the
+## position uses `get_world_pos`.
 func get_position() -> Vector3:
 	return _body.global_position - _scene_offset if _body else Vector3.ZERO
+
+## Phase 78 — the exact world position as `{chunk, local}`: the integer scene-origin chunk plus the
+## body's small scene position, so nothing is quantised however far from the origin the player is.
+func get_world_pos() -> Dictionary:
+	return WorldPos.from_scene(get_scene_position(), _scene_origin_chunk)
+
+## Place the body at an exact `{chunk, local}` world position. The scene origin is not moved here
+## (the rebase driver owns that): a caller placing a player far from the current origin rebases to
+## `pos["chunk"]` first, or the scene position it lands on is a large float32.
+func place_at_world_pos(pos: Dictionary) -> void:
+	if _body:
+		_body.global_position = WorldPos.to_scene(pos, _scene_origin_chunk)
+		_vel = Vector3.ZERO
 
 ## Phase 63: the scene-origin offset a client rebase has applied. The body sits at world + offset;
 ## `get_position` and `spawn_at` still speak world coordinates.
 var _scene_offset: Vector3 = Vector3.ZERO
+## Phase 78 — the same offset as an exact integer chunk (the scene origin, in chunks): the source
+## of truth for `get_world_pos`. `_scene_offset == -_scene_origin_chunk * CHUNK_METERS`.
+var _scene_origin_chunk := Vector2i.ZERO
 
 ## The body's raw scene position (what the physics server sees).
 func get_scene_position() -> Vector3:
@@ -275,6 +295,7 @@ func get_scene_position() -> Vector3:
 ## Shift the body by `shift` in the same frame the world shifts; its world position is unchanged.
 func shift_scene(shift: Vector3) -> void:
 	_scene_offset += shift
+	_scene_origin_chunk -= Vector2i(roundi(shift.x / WorldPos.CHUNK_METERS), roundi(shift.z / WorldPos.CHUNK_METERS))
 	if _body:
 		_body.global_position += shift
 	if _ghost_pool != null:
@@ -599,7 +620,25 @@ func _move(delta: float) -> void:
 	# body is moved directly so the clamp is authoritative for both the visible
 	# avatar and collision, without relying on a wall at the world edge.
 	if terrain_slice != null and terrain_slice.has_method("clamp_to_world"):
-		_body.global_position = WorldPos.wrap_world(terrain_slice.clamp_to_world(_body.global_position - _scene_offset)) + _scene_offset
+		_clamp_to_world_exact()
+
+## Phase 78 — the world clamp and the seam wrap, worked out on the exact `{chunk, local}` position
+## and applied to the body as a small scene-space delta. Going through `body - _scene_offset` would
+## quantise the position to metres far from the origin and eat the player's steps.
+func _clamp_to_world_exact() -> void:
+	var wp := get_world_pos()
+	var chunk: Vector2i = wp["chunk"]
+	var local: Vector3 = wp["local"]
+	var world_x: float = chunk.x * WorldPos.CHUNK_METERS + local.x   # doubles
+	var world_z: float = chunk.y * WorldPos.CHUNK_METERS + local.z
+	# `clamp_to_world` only touches z, so probe its bounds with the two extremes.
+	var hi: Vector3 = terrain_slice.clamp_to_world(Vector3(0.0, 0.0, INF))
+	var lo: Vector3 = terrain_slice.clamp_to_world(Vector3(0.0, 0.0, -INF))
+	var dz := clampf(world_z, lo.z, hi.z) - world_z
+	var w := float(TerrainSlice.circumference_chunks()) * WorldPos.CHUNK_METERS
+	var dx := (fposmod(world_x + w * 0.5, w) - w * 0.5) - world_x
+	if dx != 0.0 or dz != 0.0:
+		_body.global_position += Vector3(dx, 0.0, dz)
 
 func _broadcast_state() -> void:
 	if not render_visuals:
