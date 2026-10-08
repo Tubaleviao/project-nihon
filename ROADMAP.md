@@ -6422,6 +6422,151 @@ deliverable says production code reads it or it goes (#161).
 
 ---
 
+## Phase 80 — Rebase in the physics step and explicit shift sets
+
+**Goal:** the origin rebase runs from `GameRoot._process` while the player body moves in
+`_physics_process`, so on a frame where both fire the rebase can shift the scene between a
+physics step's input and its result. `TreeSlice.shift_scene` and `LootSlice.shift_scene` shift
+EVERY `Node3D` child, so any helper node later parented under them (a debug gizmo, a pool, a
+preview) is moved twice or moved when it should not be (#167).
+
+**Newel dependency:** NO.
+
+**Closes:** the `shift_scene` child-walk and `RebaseDriver` scheduling items of #167.
+
+**Depends on:** Phase 78 (the rebase reads the player's exact chunk).
+
+**Deliverables:**
+- `src/core/game_root.gd` — the `_rebase.tick` call moves to the start of `_physics_process`,
+  before any slice's movement step reads a scene position; `_process` no longer calls it.
+- `src/world/tree_slice.gd` and `src/loot/loot_slice.gd` — each keeps an explicit set of the
+  nodes it spawned in world space (trunk bodies, pickup nodes; entries removed when the node is
+  freed) and `shift_scene` shifts only those plus the pool; other children are left alone.
+
+**Acceptance criteria:**
+- [ ] Suite: a `TreeSlice` with two trunks and an extra non-world `Node3D` child, shifted by
+  (−4096, 0, 0): both trunks move by the shift, the extra child does not, the pool moves once.
+- [ ] Suite: the same check for `LootSlice` with two pickups, one of them collected (freed)
+  before the shift — no error and the survivor moves.
+- [ ] Suite: a player walked across `WorldPos` rebase distance in physics steps reports a
+  world position that never jumps by more than one step's travel across the rebase frame.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 81 — Pole-aware tile biome and a mined-tile biome memo
+
+**Goal:** `VoxelSlice.blended_biome` / `shown_biome_at` take a neighbour's biome across ANY
+border, while the minimap's `_blendable` refuses chunks past the world's pole rows
+(`world_radius_chunks`). On a border tile next to an off-world chunk the voxel surface (and its
+soil yield) can wear a biome the minimap never shows. `shown_biome_at` also rebuilds nine biome
+lookups for every mined tile (#170).
+
+**Newel dependency:** NO.
+
+**Closes:** the pole-exclusion and per-tile lookup items of #170.
+
+**Deliverables:**
+- `src/terrain/voxel_slice.gd` — `blended_biome` (and `gather_biomes_for`, which feeds the
+  mesher) treats a chunk outside the world's Z range as not lendable, the same rule as
+  `Minimap._blendable`; the rule lives in one helper both call (e.g. on `BiomeBlend` or
+  `TerrainSlice`).
+- `shown_biome_at` reads the chunk biomes through a small per-slice memo keyed on chunk
+  (bounded, cleared on world reset / seed change), so mining a run of tiles in one chunk does
+  one lookup per distinct chunk.
+
+**Acceptance criteria:**
+- [ ] Suite: on the last in-world chunk row next to the pole, every tile in the blend band
+  facing the pole has `shown_biome_at == own`, and the mesher's tile colour agrees.
+- [ ] Suite: for 64 border tiles inside the map, the voxel answer and the minimap cell answer
+  still agree (Phase 64 test unchanged and green).
+- [ ] Suite: 100 `shown_biome_at` calls inside one chunk trigger at most 9 terrain-slice biome
+  lookups (counter).
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 82 — Honest peer-window refusal count and a thread-safe warning counter
+
+**Goal:** `GameRoot._sync_peer_windows` re-centres every peer twice a second through the
+rate-limited client path of `ChunkManager.set_peer_center`, so the host's own periodic sync
+increments `peer_recenter_refused` whenever it lands inside the interval; the counter no longer
+measures client abuse. `Diag.warn_count` is a plain static int incremented from worker threads
+(chunk builds, region reads), so concurrent warnings can be lost and a "logs one warning" test
+can flake (#162).
+
+**Newel dependency:** NO.
+
+**Closes:** the `_sync_peer_windows` refusal and `Diag.warn_count` items of #162.
+
+**Depends on:** Phase 79 (the injectable clock the tests use).
+
+**Deliverables:**
+- `src/core/game_root.gd` / `src/terrain/chunk_manager.gd` — the host's periodic sync either
+  goes through the `host_driven` path or a separate entry point that does not touch
+  `peer_recenter_refused`; only a client-reported move can be refused and counted.
+- `src/core/diag.gd` — `warn_count` is incremented under a `Mutex` (or a per-thread tally
+  summed on read); readers use an accessor.
+
+**Acceptance criteria:**
+- [ ] Suite: with a fake clock, ten `_sync_peer_windows` ticks for a peer that has not moved
+  and five that track a moving peer leave `peer_recenter_refused` at 0.
+- [ ] Suite: a client move inside `PEER_RECENTER_INTERVAL` still counts one refusal.
+- [ ] Suite: four `WorkerThreadPool` tasks each raising 1,000 `Diag.warn` calls (quiet mode)
+  raise the count by exactly 4,000.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 83 — Distant-ring teardown that does not stall
+
+**Goal:** `DistantTerrain._exit_tree` calls `WorkerThreadPool.wait_for_task_completion` on an
+in-flight ring build, so leaving the world (or freeing the ring in a test) blocks the main
+thread for the rest of a full lattice build (#179).
+
+**Newel dependency:** NO.
+
+**Closes:** the `_exit_tree` item of #179.
+
+**Deliverables:**
+- `src/terrain/distant_terrain.gd` — the worker build checks a shared abort flag between rows
+  and returns early with no result; `_exit_tree` sets the flag before waiting, and a result
+  that arrives after the flag is discarded rather than applied to a freed node.
+
+**Acceptance criteria:**
+- [ ] Suite: a ring build started and the node freed immediately: `_exit_tree` returns after the
+  worker has processed at most one more row (row counter), and no error is logged.
+- [ ] Suite: a build that is not aborted produces the same vertex hash as before the change.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 84 — The suite exits with no leaked objects
+
+**Goal:** the suite's exit log reports leaked `ObjectDB` instances and resources still in use
+(#158). Leaks at exit hide real leaks in the game (a slice that never frees its chunk meshes
+looks the same as a test that forgot `free()`), and the count is not checked anywhere.
+
+**Newel dependency:** NO.
+
+**Closes:** the exit-leak item of #158.
+
+**Deliverables:**
+- `src/tests/test_suite.gd` — every test frees (or `queue_free`s and awaits a frame for) the
+  nodes it creates; shared fixtures are torn down at the end of the run.
+- Production leaks found on the way (nodes created but never parented or freed) are fixed in
+  their slice, each with a comment naming the owner.
+- A final suite step reads `Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT)` after
+  teardown and asserts it is 0.
+
+**Acceptance criteria:**
+- [ ] `godot --headless --path . --quit -- --run-tests` (both boot paths) ends with no "ObjectDB instances
+  leaked" and no "resources still in use" lines in its output.
+- [ ] Suite: the orphan-node assertion is the last check and passes.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
 ## Deferred (in priority order)
 
 - **Server sharding (final, not before maturity)** — split the authoritative
