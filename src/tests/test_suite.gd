@@ -101,6 +101,9 @@ func run() -> void:
 	_run_test("terrain: the ring meets the voxel ground at the window edge", _test_distant_ring_window_edge)
 	_run_test("player: swimming reads the voxel column, not the generated height", _test_swim_reads_voxel_column)
 	_run_test("terrain: the distant ring builds off the main thread", _test_distant_ring_async)
+	_run_test("terrain: the distant ring's vertices are pinned by a hash", _test_distant_ring_vertex_hash)
+	_run_test("terrain: detail noise has one formula", _test_detail_noise_single_formula)
+	_run_test("terrain: walking 5 chunks requests at most 5 ring rebuilds", _test_distant_ring_rebuild_counter)
 	_run_test("terrain: concurrent height sampling matches single-threaded", _test_height_concurrent)
 	_run_test("chunk: deplete-only edits request no neighbour rebuild", _test_seam_deplete_only)
 	_run_test("chunk: a border height edit rebuilds only that neighbour", _test_seam_east_border_edit)
@@ -14027,10 +14030,11 @@ func _test_distant_ring_window_edge() -> void:
 	var arrays := mesh.surface_get_arrays(0)
 	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var inside := 0
 	for v in verts:
-		assert_false(absf(v.x - wc.x) < half - 0.001 and absf(v.z - wc.y) < half - 0.001, "no ring vertex inside the window")
 		if absf(v.x - wc.x) < half - 0.001 and absf(v.z - wc.y) < half - 0.001:
-			break
+			inside += 1
+	assert_eq(inside, 0, "no ring vertex inside the window")
 	# 64 points around the edge: the topmost ring surface there (a triangle containing the point,
 	# or a vertex on it) is within 1 m of the voxel ground.
 	var sea := WorldShape.sea_level()
@@ -14143,6 +14147,69 @@ func _test_distant_ring_async() -> void:
 	d.poll(true)
 	assert_false(d.is_building(), "everything drains")
 	assert_false(d.rebuild(Vector2(-9000.0, 3000.0), radius), "the newest centre is the one built")
+	d.free()
+
+## Phase 77 — the ring's vertex array for a fixed seed and centre is pinned by a hash (recorded
+## before the strip and detail-noise refactors), so neither can move a vertex.
+func _test_distant_ring_vertex_hash() -> void:
+	var seed_v := 7
+	var w := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var half := 3.5 * 32.0
+	var wc := Vector2(16.0, 16.0)
+	var ring_half := DistantTerrainScript.ring_half_extent(3)
+	var cell := ring_half * 2.0 / 64.0
+	var rc := Vector2(floorf(wc.x / cell) * cell, floorf(wc.y / cell) * cell)
+	var mesh: ArrayMesh = DistantTerrainScript.build_mesh(seed_v, w, rc, ring_half, half, wc)
+	var verts: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	assert_eq(verts.size(), 19908, "the ring for seed 7 has the recorded vertex count")
+	assert_eq(hash(verts), 391342816, "the ring for seed 7 has the recorded vertex hash")
+
+## Phase 77 — `detail_at`, `detail_of` and the detail term inside `_raw_height_at` are one formula.
+func _test_detail_noise_single_formula() -> void:
+	var t := TerrainSlice.new()
+	add_child(t)
+	t.set_world_seed(23)
+	var w := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var noise := FastNoiseLite.new()
+	TerrainSlice.configure_noise(noise, 23)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 77
+	var cache := t._corner_cache()
+	var bad := 0
+	for _i in 256:
+		var x := rng.randf_range(-3.0e6, 3.0e6)
+		var z := rng.randf_range(-3.0e6, 3.0e6)
+		var d := TerrainSlice.detail_of(noise, x, z)
+		if t.detail_at(x, z) != d:
+			bad += 1
+		var expect := clampf(t._shape_at(x, z, w, cache) + d, WorldShape.min_height(), WorldShape.max_height())
+		if t._raw_height_at(x, z, w, cache) != expect:
+			bad += 1
+	assert_eq(bad, 0, "detail_at, detail_of and _raw_height_at's detail term agree at 256 points")
+	t.free()
+
+## Phase 77 — walking the player across 5 chunks asks for at most 5 ring rebuilds, and the worker
+## never has more than one build running plus one queued.
+func _test_distant_ring_rebuild_counter() -> void:
+	var radius := 3   # a lattice cell (35 m) is wider than a chunk (32 m): one request per chunk step
+	var d := DistantTerrainScript.new()
+	add_child(d)
+	d.world_seed = 5
+	d.rebuild(Vector2(16.0, 16.0), radius)
+	d.poll(true)
+	var base := d.rebuilds_requested
+	var worst_in_flight := 0
+	for chunk in range(1, 6):
+		d.rebuild(Vector2(float(chunk) * 32.0 + 16.0, 16.0), radius)
+		d.rebuild(Vector2(float(chunk) * 32.0 + 17.0, 16.0), radius)   # same chunk and cell: no request
+		var in_flight := d.rebuilds_requested - d.rebuilds_completed - d.rebuilds_dropped
+		worst_in_flight = maxi(worst_in_flight, in_flight)
+		if chunk % 2 == 0:
+			d.poll(true)
+	d.poll(true)
+	assert_true(d.rebuilds_requested - base <= 5, "5 chunks request at most 5 rebuilds (%d)" % (d.rebuilds_requested - base))
+	assert_true(worst_in_flight <= 2, "at most one build running and one queued (%d)" % worst_in_flight)
+	assert_eq(d.rebuilds_requested, d.rebuilds_completed + d.rebuilds_dropped, "every request is completed or dropped once drained")
 	d.free()
 
 ## Phase 68 — heights sampled from several worker tasks at once equal the single-threaded samples

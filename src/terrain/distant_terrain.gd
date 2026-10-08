@@ -42,6 +42,12 @@ var _task_args: Dictionary = {}
 var _result: ArrayMesh = null
 var _queued: Dictionary = {}   # a newer request that arrived while a build was in flight
 
+## Phase 77 — build counters, read by the suite: requests accepted by `rebuild`, builds whose mesh
+## was swapped in, and builds dropped because a newer request superseded them.
+var rebuilds_requested := 0
+var rebuilds_completed := 0
+var rebuilds_dropped := 0
+
 ## Phase 63: the scene-origin offset a client rebase has applied (see `shift_scene`).
 var _scene_offset: Vector3 = Vector3.ZERO
 
@@ -94,7 +100,10 @@ func rebuild(center: Vector2, radius_chunks: int) -> bool:
 		"ring_center": Vector2(float(origin.x) * cell, float(origin.y) * cell),
 		"half_m": ring_half_m, "window_half_m": window_half_m, "window_center": win_center,
 	}
+	rebuilds_requested += 1
 	if _task >= 0:
+		if not _queued.is_empty():
+			rebuilds_dropped += 1   # the queued request never ran
 		_queued = args
 	else:
 		_start(args)
@@ -126,8 +135,10 @@ func poll(block: bool = false) -> bool:
 		_result = null
 		if _queued.is_empty():
 			_swap_in(mesh)
+			rebuilds_completed += 1
 			swapped = true
 		else:   # superseded while building: drop this one, build the newest request
+			rebuilds_dropped += 1
 			var next := _queued
 			_queued = {}
 			_start(next)
@@ -245,34 +256,35 @@ static func _add_strip(vertices: PackedVector3Array, colors: PackedColorArray, n
 	var n := maxi(int(ceil((hi - lo) / EDGE_STEP)), 1)
 	var near := (x1 if near_high else x0) if along_z else (z1 if near_high else z0)
 	var far := (x0 if near_high else x1) if along_z else (z0 if near_high else z1)
-	var far_lo := ground_at(noise, seed_v, far, lo, w) if along_z else ground_at(noise, seed_v, lo, far, w)
-	var far_hi := ground_at(noise, seed_v, far, hi, w) if along_z else ground_at(noise, seed_v, hi, far, w)
+	var far_lo := _ground_along(noise, seed_v, w, lo, far, along_z)
+	var far_hi := _ground_along(noise, seed_v, w, hi, far, along_z)
 	var prev_t := lo
-	var prev_near := ground_at(noise, seed_v, near, lo, w) if along_z else ground_at(noise, seed_v, lo, near, w)
+	var prev_near := _ground_along(noise, seed_v, w, lo, near, along_z)
 	var prev_far := far_lo
 	for k in range(1, n + 1):
 		var t := lerpf(lo, hi, float(k) / float(n))
-		var h_near := ground_at(noise, seed_v, near, t, w) if along_z else ground_at(noise, seed_v, t, near, w)
+		var h_near := _ground_along(noise, seed_v, w, t, near, along_z)
 		var h_far := lerpf(far_lo, far_hi, float(k) / float(n))
+		var a := minf(near, far)
+		var b := maxf(near, far)
+		var lo_h := prev_far if near_high else prev_near
+		var hi_h := prev_near if near_high else prev_far
+		var lo_h2 := h_far if near_high else h_near
+		var hi_h2 := h_near if near_high else h_far
 		if along_z:
-			var xa := minf(near, far)
-			var xb := maxf(near, far)
-			var lo_x := prev_far if near_high else prev_near
-			var hi_x := prev_near if near_high else prev_far
-			var lo_x2 := h_far if near_high else h_near
-			var hi_x2 := h_near if near_high else h_far
-			_add_quad(vertices, colors, normals, indices, sea, xa, prev_t, xb, t, lo_x, hi_x, hi_x2, lo_x2)
+			_add_quad(vertices, colors, normals, indices, sea, a, prev_t, b, t, lo_h, hi_h, hi_h2, lo_h2)
 		else:
-			var za := minf(near, far)
-			var zb := maxf(near, far)
-			var lo_z := prev_far if near_high else prev_near
-			var hi_z := prev_near if near_high else prev_far
-			var lo_z2 := h_far if near_high else h_near
-			var hi_z2 := h_near if near_high else h_far
-			_add_quad(vertices, colors, normals, indices, sea, prev_t, za, t, zb, lo_z, lo_z2, hi_z2, hi_z)
+			_add_quad(vertices, colors, normals, indices, sea, prev_t, a, t, b, lo_h, lo_h2, hi_h2, hi_h)
 		prev_t = t
 		prev_near = h_near
 		prev_far = h_far
+
+## `ground_at` for a point given as (`along`, `across`): along the strip's cut direction and across
+## it. `along_z` strips run along Z (x = across, z = along); the others along X.
+static func _ground_along(noise: FastNoiseLite, seed_v: int, w: float, along: float, across: float, along_z: bool) -> float:
+	if along_z:
+		return ground_at(noise, seed_v, across, along, w)
+	return ground_at(noise, seed_v, along, across, w)
 
 static func _add_quad(vertices: PackedVector3Array, colors: PackedColorArray, normals: PackedVector3Array,
 		indices: PackedInt32Array, sea: float, x0: float, z0: float, x1: float, z1: float,

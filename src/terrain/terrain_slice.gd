@@ -308,7 +308,7 @@ func _height_wrapped(x: float, z: float, w: float, cache: Array) -> float:
 ## costs four shape evaluations instead of 4096.
 func _raw_height_at(x: float, z: float, w: float, cache: Array) -> float:
 	var shape := _shape_at(x, z, w, cache)
-	var detail := (_noise.get_noise_2d(noise_coord(x), noise_coord(z)) + 1.0) * 0.5 * HEIGHT_SCALE
+	var detail := detail_of(_noise, x, z)
 	var h := clampf(shape + detail, WorldShape.min_height(), WorldShape.max_height())
 	return h
 
@@ -326,7 +326,7 @@ static func noise_coord(v: float) -> float:
 
 ## The detail noise term (0..HEIGHT_SCALE) at a world XZ; what `_raw_height_at` adds to the shape.
 func detail_at(x: float, z: float) -> float:
-	return (_noise.get_noise_2d(noise_coord(x), noise_coord(z)) + 1.0) * 0.5 * HEIGHT_SCALE
+	return detail_of(_noise, x, z)
 
 ## `WorldShape.height` interpolated between the corners of the chunk cell holding (x, z).
 ## Phase 68: the corner cache is per thread (chunk workers and the distant-ring worker all sample
