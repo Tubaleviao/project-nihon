@@ -41,7 +41,7 @@ var _caption: Label = null
 var _active: bool = false
 ## What `Input.mouse_mode` was before `begin()`, so `finish()` hands the mouse back
 ## rather than assuming capture is what the caller wanted.
-var _restore_mouse: int = Input.MOUSE_MODE_CAPTURED
+var _restore_mouse: int = Input.MOUSE_MODE_VISIBLE
 
 func _ready() -> void:
 	layer = LAYER

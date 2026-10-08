@@ -608,3 +608,21 @@ signal tame_resolved(result: Dictionary)
 ## creature_id : String — fabric key (e.g. "GraywolfPack")
 ## player_id   : String — the companion's owner
 signal creature_tamed(instance_id: String, creature_id: String, player_id: String)
+
+# ---------------------------------------------------------------------------
+# Chat and admin commands (Phase 85)
+# ---------------------------------------------------------------------------
+
+## A line the local player submitted in the chat box. `player_id` is "" for this machine's own player.
+## A client forwards it to the host as a `chat_intent` packet (the host binds the sender to the
+## connection and ignores any identity in the payload); the host's ChatSlice acts on it.
+signal chat_intent(text: String, player_id: String)
+
+## A chat line or command reply to show. `channel` is "chat" | "announce" | "system". `target_id` is ""
+## for everyone, else the one player it is for. The host emits it; networking carries it to the
+## clients (broadcast, or to the target's peer alone), where it is re-emitted with `target_id` "".
+signal chat_posted(channel: String, sender: String, text: String, target_id: String)
+
+## Move THIS machine's own player to a world position (an admin teleport). The host emits it for
+## itself and sends a `teleport` packet to a remote player's client, which re-emits it here.
+signal player_teleport(position: Vector3)

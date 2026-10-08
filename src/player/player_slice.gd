@@ -75,6 +75,9 @@ var _hp:     float = MAX_HP
 var _vel:    Vector3 = Vector3.ZERO
 var _sync_tick: int = 0
 var _alive: bool = true
+## Phase 85 — right button held: the camera orbits and the mouse is captured.
+var _looking: bool = false
+var _look_restore_pos: Vector2 = Vector2.ZERO
 
 ## Aim raycast state + HUD.
 var _hud: CanvasLayer = null
@@ -141,7 +144,7 @@ func _ready() -> void:
 	if render_visuals:
 		_build_body()
 		_build_hud()
-		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	GameBus.block_place_material_changed.connect(_on_place_material_changed)
 	GameBus.player_damaged.connect(_on_player_damaged)
 	GameBus.remote_player_state.connect(_on_remote_player_state)
@@ -150,20 +153,46 @@ func _ready() -> void:
 ## Freeze / unfreeze every world action for as long as the loading screen is up.
 func set_world_input_frozen(frozen: bool) -> void:
 	_world_input_frozen = frozen
+	if frozen:
+		_end_look()
 
 func is_world_input_frozen() -> bool:
 	return _world_input_frozen
 
-## The ONE predicate `_input` consults before any world action: the mouse must be
-## captured (a UI window or a released mouse blocks everything below) AND the world
-## input freeze must be off (the loading screen blocks it until the ground the body
-## stands on exists). Public so the freeze is assertable without a display server —
-## a headless run has no mouse capture, which would make `_input`'s own guard pass
-## for the wrong reason.
+## The ONE predicate a world action consults before it resolves: the world input freeze must be off
+## (the loading screen blocks it until the ground the body stands on exists) and no text field may
+## hold the keyboard (typing in chat must not mine, tame or equip). The mouse is no longer captured
+## between looks, so it says nothing here: a click that lands on a window or the chat box is consumed
+## by that control before it reaches `_unhandled_input`, which is what keeps a menu click out of the
+## world. Public so the freeze is assertable without a display server.
 func world_input_allowed() -> bool:
 	if _world_input_frozen:
 		return false
-	return Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	if is_inside_tree():
+		var focus := get_viewport().gui_get_focus_owner()
+		if focus is LineEdit or focus is TextEdit:
+			return false
+	return true
+
+## Phase 85 — true while the right button is held: the mouse is captured and moves the camera.
+func is_looking() -> bool:
+	return _looking
+
+## Capture the mouse and start orbiting. Remembers where the pointer was so `_end_look` can put it back.
+func _begin_look() -> void:
+	if _looking or _camera == null:
+		return
+	_looking = true
+	_look_restore_pos = get_viewport().get_mouse_position()
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+## Release the mouse where it was before the look began.
+func _end_look() -> void:
+	if not _looking:
+		return
+	_looking = false
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	Input.warp_mouse(_look_restore_pos)
 
 func _physics_process(delta: float) -> void:
 	if not _alive:
@@ -192,33 +221,43 @@ func _process(delta: float) -> void:
 	_tick_ghosts(delta)
 
 func _input(event: InputEvent) -> void:
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		# Yaw (horizontal) — rotate the body pivot
-		_pivot.rotate_y(-event.relative.x * MOUSE_SENS)
-		# Pitch (vertical) — rotate only the camera arm
-		var cam_arm: Node3D = _camera.get_parent()
-		cam_arm.rotation_degrees.x = clamp(
-			cam_arm.rotation_degrees.x - event.relative.y * rad_to_deg(MOUSE_SENS),
-			CAMERA_PITCH_MIN, CAMERA_PITCH_MAX
-		)
-	# Scroll wheel → zoom the orbit camera in/out (captured mouse only).
-	if event is InputEventMouseButton and event.pressed and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	# The look is owned here, not in `_unhandled_input`: releasing the button over a window must still
+	# end it, and a captured pointer reports motion no control would see.
+	if _looking:
+		if event is InputEventMouseMotion:
+			# Yaw (horizontal) — rotate the body pivot
+			_pivot.rotate_y(-event.relative.x * MOUSE_SENS)
+			# Pitch (vertical) — rotate only the camera arm
+			var cam_arm: Node3D = _camera.get_parent()
+			cam_arm.rotation_degrees.x = clamp(
+				cam_arm.rotation_degrees.x - event.relative.y * rad_to_deg(MOUSE_SENS),
+				CAMERA_PITCH_MIN, CAMERA_PITCH_MAX
+			)
+		elif event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+			_end_look()
+
+func _unhandled_input(event: InputEvent) -> void:
+	# Only input no control consumed reaches here: a click on a window, the chat box or the minimap
+	# never becomes a world action.
+	if not world_input_allowed():
+		return
+	# Right button held → orbit the camera (Phase 85); the cursor is hidden for the duration.
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		_begin_look()
+		return
+	# Scroll wheel → zoom the orbit camera in/out.
+	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_zoom(-ZOOM_STEP)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			_zoom(ZOOM_STEP)
-	# All world actions below require a captured mouse and an unfrozen world (Phase
-	# 42 — the loading screen owns the freeze hook; see `world_input_allowed`).
-	# While a UI window is open the UI slice keeps the mouse visible, so the mouse
-	# half prevents attacking, mining, or placing through an open menu, and the
-	# loading screen's freeze prevents any of it before the ground exists. ESC (mouse
-	# capture toggle) is owned by the UI slice now.
-	if not world_input_allowed():
-		return
-	# Left-click: pick up an aimed item if there is one, else chop an aimed tree,
-	# otherwise attack.
+	# Left-click what the pointer is on: Shift mines the terrain block; otherwise pick up an
+	# item, else chop a tree, otherwise attack.
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		if _aimed_pickup_id != "":
+		if event.shift_pressed:
+			if _aimed_block_hit:
+				GameBus.block_mine_requested.emit(_aimed_block_pos, _aimed_block_normal, "")
+		elif _aimed_pickup_id != "":
 			_try_pickup_aimed()
 		elif _aimed_tree_id != "":
 			# "" = this machine's own player; the host binds the real actor to the
@@ -229,10 +268,6 @@ func _input(event: InputEvent) -> void:
 	# F key → melee attack the nearest creature in range.
 	if event is InputEventKey and event.pressed and event.keycode == KEY_F:
 		_try_attack()
-	# Right-click → mine the aimed terrain block.
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
-		if _aimed_block_hit:
-			GameBus.block_mine_requested.emit(_aimed_block_pos, _aimed_block_normal, "")
 	# Middle-click → place a block against the aimed terrain face.
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_MIDDLE:
 		if _aimed_block_hit:
@@ -711,23 +746,6 @@ func _build_hud() -> void:
 	_hud.name = "HUD"
 	_hud.layer = 10
 
-	# Crosshair at screen centre (aim reference point).
-	var crosshair := Label.new()
-	crosshair.name = "Crosshair"
-	crosshair.text = "+"
-	crosshair.anchor_left = 0.5
-	crosshair.anchor_right = 0.5
-	crosshair.anchor_top = 0.5
-	crosshair.anchor_bottom = 0.5
-	crosshair.offset_left = -12.0
-	crosshair.offset_right = 12.0
-	crosshair.offset_top = -12.0
-	crosshair.offset_bottom = 12.0
-	crosshair.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	crosshair.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	crosshair.add_theme_font_size_override("font_size", 22)
-	_hud.add_child(crosshair)
-
 	# HP bar — bottom-left corner, updates on every damage/heal event.
 	var hp_label := Label.new()
 	hp_label.name = "HpLabel"
@@ -745,19 +763,13 @@ func _build_hud() -> void:
 	_hp_label = hp_label
 	_update_hp_bar()
 
-	# Aimed item name (shown only when a pickup is under the crosshair).
+	# Aimed item name: a tooltip that follows the pointer (see `_update_aim_hud`).
 	var aim_label := Label.new()
 	aim_label.name = "AimLabel"
-	aim_label.anchor_left = 0.5
-	aim_label.anchor_right = 0.5
-	aim_label.anchor_top = 0.5
-	aim_label.anchor_bottom = 0.5
-	aim_label.offset_left = -200.0
-	aim_label.offset_right = 200.0
-	aim_label.offset_top = 28.0
-	aim_label.offset_bottom = 56.0
-	aim_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	aim_label.add_theme_font_size_override("font_size", 20)
+	aim_label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	aim_label.add_theme_constant_override("outline_size", 6)
+	aim_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	aim_label.visible = false
 	_hud.add_child(aim_label)
 	_aim_label = aim_label
@@ -783,6 +795,10 @@ func _build_hud() -> void:
 
 	hint.add_child(_make_sep_label())
 	hint.add_child(_make_mouse_icon(MOUSE_BUTTON_RIGHT))
+	hint.add_child(_make_hint_label("Look"))
+	hint.add_child(_make_sep_label())
+	hint.add_child(_make_hint_label("Shift+"))
+	hint.add_child(_make_mouse_icon(MOUSE_BUTTON_LEFT))
 	hint.add_child(_make_hint_label("Mine"))
 	hint.add_child(_make_sep_label())
 	hint.add_child(_make_mouse_icon(MOUSE_BUTTON_MIDDLE))
@@ -825,9 +841,12 @@ func _update_aim() -> void:
 	if _camera != null and _alive:
 		var viewport := _camera.get_viewport()
 		if viewport != null:
+			# The pointer is the aim; while the right button holds the camera it is hidden, so the
+			# screen centre stands in for it.
 			var center := viewport.get_visible_rect().size * 0.5
-			var from := _camera.project_ray_origin(center)
-			var dir := _camera.project_ray_normal(center)
+			var aim_point := center if _looking else viewport.get_mouse_position()
+			var from := _camera.project_ray_origin(aim_point)
+			var dir := _camera.project_ray_normal(aim_point)
 			var space := _camera.get_world_3d().direct_space_state
 			var block_dist := INF
 
@@ -878,6 +897,10 @@ func _update_aim() -> void:
 func _update_aim_hud() -> void:
 	if _aim_label == null:
 		return
+	if _looking or _aim_label.get_viewport() == null:
+		_aim_label.visible = false
+		return
+	_aim_label.position = _aim_label.get_viewport().get_mouse_position() + Vector2(18.0, 22.0)
 	if _aimed_item_id != "":
 		_aim_label.text = "Pick up: %s" % _aimed_item_id
 		_aim_label.visible = true

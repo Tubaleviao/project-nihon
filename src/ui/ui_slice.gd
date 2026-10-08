@@ -4,9 +4,9 @@ extends Node
 ## toggled with I / T / C / Y (trade) / M (market) / G (proposals) / ? (controls)
 ## and closed with ESC or the window's ✕ button. Every window drags by its title
 ## bar and reopens where it was left (Phase 46). Opening a window
-## releases the mouse so buttons are clickable; closing the last window
-## re-captures it. World input is gated in PlayerSlice on the mouse being
-## captured, so no attack/mine slips through an open menu.
+## never touches the mouse: the pointer is always free (Phase 85) and only
+## held-right-click captures it for the camera. A click on a window is consumed
+## by the window, so no attack/mine slips through an open menu.
 ##
 ## Plug contract (GameBus signals consumed / emitted):
 ##   IN  : inventory_changed, item_picked_up, block_mined, block_placed,
@@ -167,12 +167,7 @@ func _input(event: InputEvent) -> void:
 			KEY_K:
 				toggle_window(WINDOW_CHARACTER)
 			KEY_ESCAPE:
-				if any_window_open():
-					_close_all_windows()
-				elif Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-					Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-				else:
-					Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+				_close_all_windows()
 
 # ---------------------------------------------------------------------------
 # Window state
@@ -197,7 +192,6 @@ func open_window(panel: String) -> void:
 	p.visible = true
 	p.position = clamp_window_position(p.position, p.size, _viewport_size())
 	refresh_all()
-	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 
 func close_window(panel: String) -> void:
 	var p: Control = _panels.get(panel, null)
@@ -205,8 +199,6 @@ func close_window(panel: String) -> void:
 		return
 	p.visible = false
 	_drag_key = ""
-	if not any_window_open():
-		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 func toggle_window(panel: String) -> void:
 	if is_window_open(panel):
@@ -218,7 +210,6 @@ func _close_all_windows() -> void:
 	for panel in _panels:
 		_panels[panel].visible = false
 	_drag_key = ""
-	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 func refresh_all() -> void:
 	refresh_inventory()
@@ -438,10 +429,10 @@ static func controls_rows() -> Array:
 	return [
 		{"keys": "WASD", "desc": "Move", "mouse": 0},
 		{"keys": "Space", "desc": "Jump", "mouse": 0},
-		{"keys": "Mouse move", "desc": "Orbit camera", "mouse": 0},
+		{"keys": "Hold", "desc": "Look around (the cursor hides while held)", "mouse": MOUSE_BUTTON_RIGHT},
 		{"keys": "Scroll", "desc": "Zoom", "mouse": 0},
-		{"keys": "", "desc": "Attack / Pick up / Chop", "mouse": MOUSE_BUTTON_LEFT},
-		{"keys": "", "desc": "Mine", "mouse": MOUSE_BUTTON_RIGHT},
+		{"keys": "", "desc": "Click: Attack / Pick up / Chop", "mouse": MOUSE_BUTTON_LEFT},
+		{"keys": "Shift +", "desc": "Mine", "mouse": MOUSE_BUTTON_LEFT},
 		{"keys": "", "desc": "Place", "mouse": MOUSE_BUTTON_MIDDLE},
 		{"keys": "R", "desc": "Cycle material", "mouse": 0},
 		{"keys": "B · V", "desc": "Station cycle / place", "mouse": 0},
@@ -449,7 +440,8 @@ static func controls_rows() -> Array:
 		{"keys": "E", "desc": "Toggle equipment", "mouse": 0},
 		{"keys": "I · T · C · Y · M · G · K", "desc": "Inventory · Tech · Crafting · Trade · Market · Proposals · Character", "mouse": 0},
 		{"keys": "?", "desc": "This panel", "mouse": 0},
-		{"keys": "ESC", "desc": "Cursor", "mouse": 0},
+		{"keys": "Enter · /", "desc": "Chat and commands (/help)", "mouse": 0},
+		{"keys": "ESC", "desc": "Close windows", "mouse": 0},
 	]
 
 func inventory_usage_text() -> String:

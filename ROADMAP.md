@@ -105,6 +105,7 @@ issue number where the criterion used to be.
 | 82 | Honest peer-window refusal count and a thread-safe warning counter | Planned | below |
 | 83 | Distant-ring teardown that does not stall | Planned | below |
 | 84 | The suite exits with no leaked objects | Planned | below |
+| 85 | Free pointer, right-click look, chat box and admin commands | Done | below |
 
 ---
 
@@ -421,6 +422,42 @@ looks the same as a test that forgot `free()`), and the count is not checked any
 - [ ] `godot --headless --path . --quit -- --run-tests` (both boot paths) ends with no "ObjectDB instances
   leaked" and no "resources still in use" lines in its output.
 - [ ] Suite: the orphan-node assertion is the last check and passes.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 85 — Free pointer, right-click look, chat box and admin commands ✅ Done
+
+**Goal:** the mouse was captured at the screen centre for the whole session, so nothing in the world
+or the UI could be clicked without first opening a window. The pointer is now always free, the camera
+orbits only while the right button is held, a click acts on what the pointer is over, and a chat box
+carries messages and slash commands (admins can teleport, create items, kill players and announce).
+
+**Newel dependency:** NO.
+
+**Deliverables:**
+- `src/player/player_slice.gd` — no capture between looks; holding the right button captures the
+  mouse and orbits, releasing it puts the pointer back where it was. Aiming (pickup, tree, block)
+  casts from the pointer; the crosshair is gone and the aim label follows the pointer. World actions
+  run from `_unhandled_input`, so a click a window or the chat box consumed never reaches the world.
+  Mining moved from the right button to Shift+left-click. `world_input_allowed()` is the freeze plus
+  "no text field holds the keyboard".
+- `src/ui/ui_slice.gd`, `src/ui/loading_screen.gd` — windows no longer touch the mouse mode; Escape
+  closes windows; the controls legend is updated.
+- `src/chat/chat_slice.gd` (new), `src/core/chat_commands.gd` — Enter or `/` opens the box. Plain
+  text goes to everyone; `/help`, `/players`, `/where` are open; `/say`, `/tp`, `/bring`, `/give`,
+  `/kill` are admin-only. An admin is the host's own local player or an id in `user://admins.json`.
+- `src/networking/networking_slice.gd`, `src/core/bus.gd` — `chat_intent` (client → host, identity
+  bound to the connection), `chat_message` and `teleport` (host → peer); `chat_posted`,
+  `player_teleport` on the bus. A remote kill reuses `send_player_damaged`; a remote give reuses
+  `inventory_synced`.
+
+**Acceptance criteria:**
+- [x] Suite: slash parsing, sanitising, coordinate and quantity validation, item matching.
+- [x] Suite: an admin's `/give`, `/tp`, `/say`, `/kill` take effect; a non-admin is refused each, with
+  the refusal addressed to them alone; the admins file grants admin to the ids it lists.
+- [x] Suite: a client forwards a line with no identity, the host speaks as the connection's player,
+  an un-handshaked peer is dropped, hosted lines and teleports are re-emitted on the client.
 - [ ] Suite green on both boot paths, harness green.
 
 ---

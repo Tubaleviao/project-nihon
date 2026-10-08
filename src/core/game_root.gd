@@ -33,6 +33,7 @@ const MarketSlice      := preload("res://src/world/market_slice.gd")
 const TradeSlice       := preload("res://src/trade/trade_slice.gd")
 const ProposalSlice    := preload("res://src/governance/proposal_slice.gd")
 const UiSlice          := preload("res://src/ui/ui_slice.gd")
+const ChatSlice        := preload("res://src/chat/chat_slice.gd")
 const Minimap          := preload("res://src/ui/minimap.gd")
 const LoadingScreen    := preload("res://src/ui/loading_screen.gd")
 const TestSuite        := preload("res://src/tests/test_suite.gd")
@@ -70,6 +71,7 @@ var _market:      MarketSlice
 var _trade:       TradeSlice
 var _proposal:    ProposalSlice
 var _ui:          UiSlice
+var _chat:        ChatSlice
 
 ## Network role (Phase 18/27). HOST = authoritative simulation (default, matches
 ## single-player); CLIENT = receives world state from a host; SERVER = headless
@@ -224,6 +226,7 @@ func _ready() -> void:
 	_trade       = TradeSlice.new()
 	_proposal    = ProposalSlice.new()
 	_ui          = UiSlice.new()
+	_chat        = ChatSlice.new()
 
 	# CreatureSlice needs the terrain to place spawns on the surface; wire it
 	# before the slices enter the tree so its _ready() can use it.
@@ -253,11 +256,12 @@ func _ready() -> void:
 	_creature.render_visuals = not _is_server
 	_player.render_visuals   = not _is_server
 	_tree.render_visuals     = not _is_server
+	_chat.render_visuals     = not _is_server
 
 	# The UI (Phase 14) is presentation only, so a headless dedicated server
 	# (Phase 27) keeps it out of the tree — its _ready() would otherwise build
 	# windows nothing can render or click.
-	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _inventory, _character, _crafting, _technology, _taming, _station, _tree, _market, _trade, _proposal]
+	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _inventory, _character, _crafting, _technology, _taming, _station, _tree, _market, _trade, _proposal, _chat]
 	if not _is_server:
 		slices.append(_ui)
 	if not _is_server:
@@ -310,6 +314,14 @@ func _ready() -> void:
 	# online set). Both checks fail closed when unwired.
 	_networking.tree_slice      = _tree
 	_networking.player_registry = _registry
+	# Phase 85 — chat and admin commands act on the registry's players, the local body and pack,
+	# and reach a remote player through the networking slice's host → peer doors. A headless
+	# server builds no box.
+	_chat.player_registry  = _registry
+	_chat.player_slice     = _player
+	_chat.inventory_slice  = _inventory
+	_chat.networking       = _networking
+	GameBus.player_teleport.connect(_on_player_teleport)
 	if not _is_server:
 		_ui.inventory_slice       = _inventory
 		_ui.character_slice       = _character
@@ -2097,6 +2109,18 @@ func _saved_local_position() -> Variant:
 	if arr is Array and (arr as Array).size() >= 3:
 		return Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
 	return null
+
+## Phase 85 — an admin teleport: land the local body at the world position `pos`, rebasing the scene
+## first so a far target lands on a small float32 (the same door a saved position uses).
+func _on_player_teleport(pos: Vector3) -> void:
+	if _player == null:
+		return
+	if _rebase != null:
+		var wp := WorldPos.from_world(pos.x, pos.y, pos.z)
+		_rebase.rebase_to(wp["chunk"])
+		_player.place_at_world_pos(wp)
+	else:
+		_player.spawn_at(pos)
 
 ## Phase 78 — put the local player at `pos`. A saved position is placed from the record's exact
 ## `{chunk, local}` (rebasing the scene first, so the body lands on a small float32), not from the
