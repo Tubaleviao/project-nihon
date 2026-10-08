@@ -91,6 +91,9 @@ static func warm() -> void:
 		if not env.is_empty():
 			_envelopes[str(key)] = env
 	_warmed = not _envelopes.is_empty()
+	_pool_mutex.lock()
+	_pool_cache.clear()   # the land pool reads the envelopes
+	_pool_mutex.unlock()
 
 ## [temp_min, temp_max, moist_min, moist_max, alt_min, alt_max, rarity] of a biome resource, or []
 ## without a climate envelope. A biome with no altitude envelope fits any height; no rarity is 1.
@@ -137,7 +140,7 @@ static func niche_salt(key: String) -> int:
 ## `niche_value` maps it through this table to a uniform draw; that keeps a rare biome's covered
 ## share equal to its `rarity`.
 const _NICHE_QUANTILES: Array = [
-	.0005, 0.0602, 0.0843, 0.1028, 0.1185, 0.1327, 0.1454, 0.1572, 0.1679, 0.1778,
+	0.0, 0.0602, 0.0843, 0.1028, 0.1185, 0.1327, 0.1454, 0.1572, 0.1679, 0.1778,
 	0.1874, 0.1962, 0.2048, 0.2134, 0.2213, 0.2293, 0.2370, 0.2445, 0.2516, 0.2586,
 	0.2653, 0.2718, 0.2783, 0.2848, 0.2911, 0.2973, 0.3035, 0.3096, 0.3155, 0.3212,
 	0.3271, 0.3328, 0.3384, 0.3440, 0.3496, 0.3552, 0.3606, 0.3659, 0.3712, 0.3765,
@@ -149,13 +152,24 @@ const _NICHE_QUANTILES: Array = [
 	0.6322, 0.6374, 0.6430, 0.6485, 0.6540, 0.6597, 0.6654, 0.6710, 0.6768, 0.6825,
 	0.6883, 0.6944, 0.7004, 0.7064, 0.7128, 0.7190, 0.7255, 0.7321, 0.7388, 0.7456,
 	0.7528, 0.7602, 0.7676, 0.7753, 0.7833, 0.7914, 0.7997, 0.8085, 0.8173, 0.8269,
-	0.8373, 0.8479, 0.8592, 0.8713, 0.8855, 0.9006, 0.9184, 0.9419, 0.9995,
+	0.8373, 0.8479, 0.8592, 0.8713, 0.8855, 0.9006, 0.9184, 0.9419, 1.0,
 ]
 
-## Smooth, low-frequency niche draw, uniform in [0, 1], at chunk-unit point `p`; `salt` is
-## `niche_salt(biome key)`, so two rare biomes do not claim the same ground.
-static func niche_value(seed_v: int, p: Vector2, salt: int) -> float:
-	var q := p / float(NICHE_CELL_CHUNKS * NICHE_FEATURE_CELLS)
+## Chunks around the equator when the caller does not say (1,250,000 at 40,000 km); the real
+## value is `TerrainSlice.circumference_chunks()`, passed down by `TerrainSlice.biome_for_chunk`.
+const DEFAULT_CIRCUMFERENCE_CHUNKS := 1250000
+
+## Phase 76 — niche lattice cells around a circumference of `circ` chunks. The X lattice is
+## periodic with this period, so a rare biome's blob continues across the antimeridian.
+static func niche_period(circ: int) -> int:
+	return maxi(1, roundi(float(circ) / float(NICHE_CELL_CHUNKS * NICHE_FEATURE_CELLS)))
+
+## Raw smooth niche noise in [0, 1] (before the quantile map). X wraps: the sample point is
+## rescaled so the lattice period spans exactly one circumference, and the lattice index is
+## taken modulo the period.
+static func _niche_raw(seed_v: int, p: Vector2, salt: int, circ: int) -> float:
+	var period := niche_period(circ)
+	var q := Vector2(p.x / float(circ) * float(period), p.y / float(NICHE_CELL_CHUNKS * NICHE_FEATURE_CELLS))
 	var ix := floori(q.x)
 	var iz := floori(q.y)
 	var fx := q.x - ix
@@ -163,8 +177,42 @@ static func niche_value(seed_v: int, p: Vector2, salt: int) -> float:
 	fx = fx * fx * (3.0 - 2.0 * fx)
 	fz = fz * fz * (3.0 - 2.0 * fz)
 	var s := 100 + salt
-	var raw := lerpf(lerpf(_lattice(seed_v, ix, iz, s), _lattice(seed_v, ix + 1, iz, s), fx),
-		lerpf(_lattice(seed_v, ix, iz + 1, s), _lattice(seed_v, ix + 1, iz + 1, s), fx), fz)
+	var x0 := posmod(ix, period)
+	var x1 := posmod(ix + 1, period)
+	return lerpf(lerpf(_lattice(seed_v, x0, iz, s), _lattice(seed_v, x1, iz, s), fx),
+		lerpf(_lattice(seed_v, x0, iz + 1, s), _lattice(seed_v, x1, iz + 1, s), fx), fz)
+
+## Quantiles (0, 1/128, ..., 1) of the raw niche noise, recomputed from `samples` points spread
+## over many seeds and a wide plane. The two ends are the support's bounds, 0 and 1, since a
+## sample's own extremes are noise. `_NICHE_QUANTILES` stays a constant for speed; the suite
+## checks it against this, so a change to `LATTICE_MOD` or the interpolation cannot skew every
+## rare biome's share unnoticed.
+static func niche_quantiles(samples: int) -> Array:
+	var circ := DEFAULT_CIRCUMFERENCE_CHUNKS
+	var raws: Array = []
+	raws.resize(samples)
+	for i in samples:
+		var h := _mix(i % 97 + 1, i, i / 97, 7)
+		var px := float(h % 100000) / 100000.0 * float(circ)
+		var pz := float(_mix(i % 97 + 1, i, i / 97, 8) % 20000 - 10000)
+		raws[i] = _niche_raw(i % 97 + 1, Vector2(px, pz), 0, circ)
+	raws.sort()
+	var out: Array = []
+	var last := _NICHE_QUANTILES.size() - 1
+	for k in last + 1:
+		if k == 0:
+			out.append(0.0)
+		elif k == last:
+			out.append(1.0)
+		else:
+			out.append(float(raws[mini(int(float(k) / float(last) * float(samples)), samples - 1)]))
+	return out
+
+## Smooth, low-frequency niche draw, uniform in [0, 1], at chunk-unit point `p`; `salt` is
+## `niche_salt(biome key)`, so two rare biomes do not claim the same ground. `circ` is the
+## circumference in chunks: the niche field wraps around it in X.
+static func niche_value(seed_v: int, p: Vector2, salt: int, circ: int = DEFAULT_CIRCUMFERENCE_CHUNKS) -> float:
+	var raw := _niche_raw(seed_v, p, salt, circ)
 	var last := _NICHE_QUANTILES.size() - 1
 	var idx := clampi(_NICHE_QUANTILES.bsearch(raw), 1, last)
 	var lo: float = _NICHE_QUANTILES[idx - 1]
@@ -188,7 +236,7 @@ static func _envelope_gap(t: float, m: float, alt: float, env: Array, niche: flo
 	var centre := absf(t - (env[0] + env[1]) * 0.5) + absf(m - (env[2] + env[3]) * 0.5)
 	return Vector3(gap, 0.0 if rarity < 1.0 else 1.0, centre)
 
-static func _pick(t: float, m: float, alt: float, keys: Array, envs: Dictionary, niche: Variant, per_biome_niche: bool, seed_v: int = 0, p: Vector2 = Vector2.ZERO) -> String:
+static func _pick(t: float, m: float, alt: float, keys: Array, envs: Dictionary, niche: Variant, per_biome_niche: bool, seed_v: int = 0, p: Vector2 = Vector2.ZERO, circ: int = DEFAULT_CIRCUMFERENCE_CHUNKS) -> String:
 	var best := ""
 	var best_g := Vector3(INF, INF, INF)
 	for key in keys:
@@ -196,7 +244,7 @@ static func _pick(t: float, m: float, alt: float, keys: Array, envs: Dictionary,
 		var nv := float(niche)
 		# Only a rare biome reads its niche, so common biomes skip the noise and the salt hash.
 		if per_biome_niche and env.size() > 6 and float(env[6]) < 1.0:
-			nv = niche_value(seed_v, p, niche_salt(str(key)))
+			nv = niche_value(seed_v, p, niche_salt(str(key)), circ)
 		var g := _envelope_gap(t, m, alt, env, nv)
 		if g.x < best_g.x or (g.x == best_g.x and (g.y < best_g.y or (g.y == best_g.y and g.z < best_g.z))):
 			best_g = g
@@ -208,7 +256,7 @@ static func _pick(t: float, m: float, alt: float, keys: Array, envs: Dictionary,
 ##
 ## Phase 51 — `lat_deg` (the chunk's latitude) and `altitude_m` (its large-scale height above sea
 ## level) feed the temperature and the altitude envelope; the defaults are the equator at 50 m.
-static func biome_for_chunk(seed_v: int, chunk_pos: Vector2i, keys: Array, lat_deg: float = 0.0, altitude_m: float = 50.0) -> String:
+static func biome_for_chunk(seed_v: int, chunk_pos: Vector2i, keys: Array, lat_deg: float = 0.0, altitude_m: float = 50.0, circ: int = DEFAULT_CIRCUMFERENCE_CHUNKS) -> String:
 	if keys.is_empty():
 		return ""   # also guards the `% keys.size()` below
 	# The 3x3 cell search below is exact only while a feature point stays within ~0.8 of a
@@ -217,21 +265,42 @@ static func biome_for_chunk(seed_v: int, chunk_pos: Vector2i, keys: Array, lat_d
 	if not _warmed and OS.get_thread_caller_id() == OS.get_main_thread_id():
 		warm()   # an isolated main-thread caller that never warmed it; a worker never writes the table
 	var p := Vector2(chunk_pos.x + 0.5, chunk_pos.y + 0.5)
-	var picked := _pick(temperature_at(seed_v, p, lat_deg, altitude_m), moisture(seed_v, p), altitude_m, keys, _envelopes, 0.0, true, seed_v, p)
+	var picked := _pick(temperature_at(seed_v, p, lat_deg, altitude_m), moisture(seed_v, p), altitude_m, keys, _envelopes, 0.0, true, seed_v, p, circ)
 	if picked != "":
 		return picked
 	return _voronoi_biome(seed_v, chunk_pos, keys)
 
-const FALLBACK_BIOMES: Array = ["TemperateForest", "TemperateGrassland", "VolcanicBadlands", "TwilightGrove", "VoidRift"]
+## Phase 76 — the land biomes the Voronoi fallback may hand out, from the biome data: those whose
+## altitude envelope is bounded on both sides and sits above sea level (so not Ocean, Beach or
+## Alpine, which need altitude to be right). Built once per key set; a worker thread may ask.
+const LAND_ALT_MIN := 1.0
+const LAND_ALT_MAX := 1000.0
+static var _pool_cache: Dictionary = {}
+static var _pool_mutex := Mutex.new()
+static var pool_builds := 0 ## how many fallback pools were built (suite counter)
+
+static func _fallback_pool(keys: Array) -> Array:
+	var id := keys.hash()
+	_pool_mutex.lock()
+	var cached: Variant = _pool_cache.get(id, null)
+	if cached != null and (cached as Dictionary).get("keys") == keys:
+		_pool_mutex.unlock()
+		return (cached as Dictionary)["pool"]
+	var pool: Array = keys.filter(func(k):
+		var env: Array = _envelopes.get(str(k), [])
+		return env.size() > 5 and float(env[4]) >= LAND_ALT_MIN and float(env[5]) <= LAND_ALT_MAX)
+	if pool.is_empty():
+		pool = keys   # an isolated rig with its own key set
+	pool_builds += 1
+	_pool_cache[id] = {"keys": keys.duplicate(), "pool": pool}
+	_pool_mutex.unlock()
+	return pool
 
 ## Voronoi fallback: the cell whose feature point is nearest the chunk centre owns it.
 static func _voronoi_biome(seed_v: int, chunk_pos: Vector2i, keys: Array) -> String:
 	if keys.is_empty():
 		return ""
-	# Only the original land biomes: never Ocean, Beach or Alpine, which need altitude to be right.
-	var pool: Array = keys.filter(func(k): return FALLBACK_BIOMES.has(str(k)))
-	if pool.is_empty():
-		pool = keys   # an isolated rig with its own key set
+	var pool := _fallback_pool(keys)
 	var p := Vector2(chunk_pos.x + 0.5, chunk_pos.y + 0.5)
 	var cx := floori(p.x / CELL_CHUNKS)
 	var cz := floori(p.y / CELL_CHUNKS)
