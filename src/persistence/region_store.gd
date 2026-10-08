@@ -199,7 +199,9 @@ func read_region(region: Vector2i, warn := true) -> Dictionary:
 		return { "ok": false, "chunks": {} }
 	var text := file.get_as_text()
 	file.close()
-	var data: Variant = JSON.parse_string(text)
+	# JSON.new().parse() reports through its return code; parse_string() also logs an engine error.
+	var json := JSON.new()
+	var data: Variant = json.data if json.parse(text) == OK else null
 	if not (data is Dictionary):
 		Diag.error("RegionStore: %s contains invalid JSON" % path)
 		return { "ok": false, "chunks": {} }
