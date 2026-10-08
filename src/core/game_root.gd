@@ -1870,7 +1870,7 @@ var _save_thread: Thread = null
 var _save_summary: Dictionary = {}
 
 func _collect_save_job(incremental: bool) -> Dictionary:
-	var manifest := _voxel.get_chunk_manifest()
+	var manifest := _voxel.get_save_manifest()
 	var dirty := _voxel.get_dirty_chunk_keys()
 	# An incremental save carries ONLY the dirty chunk manifests; save_world() then
 	# merges them into the record already on disk. The rest of the world (stations,

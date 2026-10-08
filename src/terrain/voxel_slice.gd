@@ -101,6 +101,7 @@ const OreField := preload("res://src/terrain/ore_field.gd")
 const BiomeBlend := preload("res://src/terrain/biome_blend.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
+const RegionStore := preload("res://src/persistence/region_store.gd")
 
 ## CHUNK_SIZE is defined once on TerrainSlice and accessed via terrain_slice.CHUNK_SIZE.
 ## The local alias below keeps internal uses readable without duplicating the value.
@@ -232,6 +233,13 @@ var _vein_taken: Dictionary = {}
 ## neighbours. `_reindex_edits` folds this table into `_vein_taken`, and drops an entry once
 ## the op is resident again (the log then carries the count itself).
 var _vein_carry: Dictionary = {}
+
+## Phase 75 — chunks whose resident edits are PARTIAL: a depletion was written onto an anchor
+## tile while the chunk held no edits in memory (never loaded, or evicted), so the log holds the
+## depletion but not what the region file stores for the chunk. The save marks such an entry
+## `merge` (see `get_save_manifest`) and the region fold overlays it on the stored entry instead
+## of replacing it. Cleared when the chunk is evicted or the log is replaced wholesale.
+var _partial_chunks: Dictionary = {}
 
 ## Set by game_root: terrain (biome + base height) and inventory (material flow).
 var terrain_slice: Node = null
@@ -1393,6 +1401,9 @@ func _record_depletion(vein: Dictionary, take: int) -> void:
 			break
 	if not replaced:
 		ops.append({ "op": "deplete", "vein": id, "taken": taken })
+	var anchor_chunk := _chunk_key(_tile_to_chunk(vein["anchor"]))
+	if not _edits_by_chunk.has(anchor_chunk):
+		_partial_chunks[anchor_chunk] = true
 	_set_edit_ops(key, ops)
 	if not OreField.is_live(vein, _vein_taken):
 		_rebuild_vein_chunks(vein)
@@ -1577,6 +1588,8 @@ func _normalise_edit_table(edits: Dictionary, materials: Dictionary) -> Dictiona
 ## path knows nothing outside its disc moved); null compares the whole of both logs.
 func _commit_edits(next: Dictionary, diff_keys: Variant = null) -> void:
 	var previous: Dictionary = _edits
+	if diff_keys == null:
+		_partial_chunks.clear()   # the log is replaced wholesale: what it holds is the whole truth
 	# _dirty_chunks is NOT cleared here: dirty tracking is reset only by
 	# clear_dirty_chunks() after a successful save (called from game_root._on_save_completed).
 	# Restored on-disk edits are not dirty — they were already persisted.
@@ -1721,6 +1734,16 @@ func get_chunk_manifest() -> Dictionary:
 		manifest[chunk]["edits"][key] = _edits[key].duplicate(true)
 	return manifest
 
+## `get_chunk_manifest` for the SAVE: an entry of a chunk whose resident edits are partial
+## (`_partial_chunks`) carries `"merge": true`, so the region store overlays it on the stored
+## entry rather than replacing it (Phase 75). The wire snapshots use the plain manifest.
+func get_save_manifest() -> Dictionary:
+	var manifest := get_chunk_manifest()
+	for ckey in _partial_chunks:
+		if manifest.has(ckey):
+			manifest[ckey]["merge"] = true
+	return manifest
+
 ## True when chunk `chunk_pos`'s square overlaps the disc of `radius` around the world
 ## position `center` (XZ). Pure; the AOI scope of a re-scope snapshot's edits.
 static func chunk_in_radius(chunk_pos: Vector2i, center: Vector3, radius: float) -> bool:
@@ -1808,9 +1831,21 @@ func apply_region_chunks(manifest: Dictionary) -> void:
 	var materials: Dictionary = {}
 	for ckey in manifest:
 		var rk := str(ckey)
+		var chunk_data: Dictionary = manifest[ckey]
+		if _partial_chunks.has(rk) and _edits_by_chunk.has(rk):
+			# Phase 75 — the resident ops are only the depletions written while the chunk was
+			# evicted: lay them over what the region file stores, and the chunk is whole again.
+			var resident: Dictionary = get_chunk_manifest().get(rk, { "edits": {} })
+			var whole: Dictionary = RegionStore.overlay_entry(chunk_data, resident)
+			for key in whole["edits"]:
+				edits[key] = whole["edits"][key]
+			if whole.has("materials"):
+				for key in whole["materials"]:
+					materials[key] = whole["materials"][key]
+			_partial_chunks.erase(rk)
+			continue
 		if _edits_by_chunk.has(rk) or _dirty_chunks.has(rk) or _inflight_chunks.has(rk):
 			continue
-		var chunk_data: Dictionary = manifest[ckey]
 		if chunk_data.has("edits"):
 			for key in chunk_data["edits"]:
 				edits[key] = chunk_data["edits"][key]
@@ -1843,6 +1878,7 @@ func evict_clean_chunks(chunk_keys: Array) -> int:
 					var vid := str(op["vein"])
 					_vein_carry[vid] = maxi(int(_vein_carry.get(vid, 0)), int(op["taken"]))
 			next.erase(key)
+		_partial_chunks.erase(k)
 		released += 1
 	if released > 0:
 		_edits = next

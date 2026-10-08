@@ -6250,7 +6250,7 @@ position off-screen is only fixed on a later re-apply (#116, #117, #129, #140).
 
 ---
 
-## Phase 75 — Region edits survive eviction and malformed neighbours
+## Phase 75 — Region edits survive eviction and malformed neighbours ✅ Done
 
 **Goal:** two paths still lose saved terrain edits. `VoxelSlice._record_depletion` writes a
 `deplete` op onto a vein's ANCHOR tile even when the anchor chunk is evicted, so `_edits` holds
@@ -6275,14 +6275,14 @@ item of #163 and #164.
   write them back unchanged unless the save carries a valid replacement for that chunk key.
 
 **Acceptance criteria:**
-- [ ] Suite: a chunk saved with three tile edits, then evicted, then a vein anchored in it is
+- [x] Suite: a chunk saved with three tile edits, then evicted, then a vein anchored in it is
   mined from a neighbouring resident chunk; after save and reload the chunk holds the three edits
   and the depletion.
-- [ ] Suite: a region file with one malformed and one valid chunk entry; saving an edit to a
+- [x] Suite: a region file with one malformed and one valid chunk entry; saving an edit to a
   third chunk in that region leaves the malformed entry byte-identical in the rewritten file and
   emits its warning once per read, not once per save.
-- [ ] Suite: a save that carries a valid entry for the malformed chunk's key replaces it.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite: a save that carries a valid entry for the malformed chunk's key replaces it.
+- [x] Suite green on both boot paths — `Results: 34668/34668 passed (0 failed)`, harness 15/15 steps.
 
 ---
 

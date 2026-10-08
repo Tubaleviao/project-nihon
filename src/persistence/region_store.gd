@@ -111,6 +111,11 @@ static func is_empty_edit_set(entry: Variant) -> bool:
 ## (`{ "edits": {} }`) deletes the chunk — the incremental save's way of saying a chunk's
 ## edits compacted away; `deletions` false stores every entry verbatim (a full save or a
 ## migration never carries the marker). Pure.
+##
+## Phase 75 — an incoming entry flagged `"merge": true` (a chunk whose resident edits are only
+## the vein depletions written while it was evicted) is OVERLAID on the stored entry: per tile,
+## the stored ops stay, minus any op the entry repeats and any `deplete` of a vein the entry
+## depletes, followed by the entry's ops. The flag is never stored.
 static func fold_chunks(base: Dictionary, incoming: Dictionary, deletions := true) -> Dictionary:
 	var out := base.duplicate()   # shallow: an entry is replaced or erased wholesale, never edited in place
 	for ckey in incoming:
@@ -118,8 +123,52 @@ static func fold_chunks(base: Dictionary, incoming: Dictionary, deletions := tru
 		if deletions and is_empty_edit_set(entry):
 			out.erase(ckey)
 			continue
+		if entry is Dictionary and bool((entry as Dictionary).get("merge", false)):
+			out[ckey] = overlay_entry(out.get(ckey, null), entry)
+			continue
 		out[ckey] = entry
 	return out
+
+## `entry` laid over `stored` (a chunk entry or null), without the `merge` flag. Pure.
+static func overlay_entry(stored: Variant, entry: Dictionary) -> Dictionary:
+	var result: Dictionary = (stored as Dictionary).duplicate(true) if stored is Dictionary else {}
+	var edits: Dictionary = result.get("edits", {}) if result.get("edits", {}) is Dictionary else {}
+	var incoming_edits: Variant = entry.get("edits", {})
+	if incoming_edits is Dictionary:
+		for tile in incoming_edits:
+			var ops_in: Array = incoming_edits[tile] if incoming_edits[tile] is Array else []
+			var depleted: Dictionary = {}
+			for op in ops_in:
+				if op is Dictionary and str(op.get("op", "")) == "deplete":
+					depleted[str(op.get("vein", ""))] = true
+			var merged: Array = []
+			var old: Variant = edits.get(tile, [])
+			var stored_taken: Dictionary = {}
+			if old is Array:
+				for op in old:
+					if ops_in.has(op):
+						continue
+					if op is Dictionary and str(op.get("op", "")) == "deplete" and depleted.has(str(op.get("vein", ""))):
+						# A vein the entry depletes: the larger count wins, the stored one may be ahead.
+						var vid := str(op.get("vein", ""))
+						stored_taken[vid] = maxi(int(stored_taken.get(vid, 0)), int(op.get("taken", 0)))
+						continue
+					merged.append(op)
+			for op in ops_in:
+				if op is Dictionary and str(op.get("op", "")) == "deplete" and stored_taken.has(str(op.get("vein", ""))):
+					var lifted: Dictionary = (op as Dictionary).duplicate()
+					lifted["taken"] = maxi(int(lifted.get("taken", 0)), int(stored_taken[str(op.get("vein", ""))]))
+					merged.append(lifted)
+				else:
+					merged.append(op)
+			edits[tile] = merged
+	result["edits"] = edits
+	var materials: Variant = entry.get("materials", null)
+	if materials is Dictionary:
+		var mats: Dictionary = result.get("materials", {}) if result.get("materials", {}) is Dictionary else {}
+		mats.merge(materials, true)
+		result["materials"] = mats
+	return result
 
 # ---------------------------------------------------------------------------
 # Files
@@ -137,11 +186,13 @@ func load_region(region: Vector2i) -> Dictionary:
 
 ## Like `load_region`, but `ok` is false when the file EXISTS and could not be read or
 ## parsed. A writer must not fold into the empty base of an unreadable file: that would
-## replace it and lose every chunk it held. Non-Dictionary chunk entries are dropped.
-func read_region(region: Vector2i) -> Dictionary:
+## replace it and lose every chunk it held. Malformed chunk entries are NOT in `chunks`; they are
+## returned in `raw_invalid` ({ "cx,cz": raw value }) so a rewrite of the region keeps them. `warn`
+## false is the save path's quiet re-read: the warning belongs to the read that surfaced the entry.
+func read_region(region: Vector2i, warn := true) -> Dictionary:
 	var path := path_of(region)
 	if not FileAccess.file_exists(path):
-		return { "ok": true, "chunks": {} }
+		return { "ok": true, "chunks": {}, "raw_invalid": {} }
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
 		Diag.error("RegionStore: cannot open %s for read — %s" % [path, error_string(FileAccess.get_open_error())])
@@ -154,13 +205,17 @@ func read_region(region: Vector2i) -> Dictionary:
 		return { "ok": false, "chunks": {} }
 	var raw: Variant = (data as Dictionary).get("chunks", {})
 	var chunks := {}
+	var raw_invalid := {}
 	if raw is Dictionary:
 		for ckey in raw:
 			if raw[ckey] is Dictionary and _chunk_entry_valid(raw[ckey]):
 				chunks[ckey] = raw[ckey]
 			else:
-				Diag.warn("RegionStore: %s: dropping malformed chunk entry '%s'" % [path, str(ckey)])
-	return { "ok": true, "chunks": chunks }
+				# Phase 75 — not handed to a caller as an edit, but kept so a rewrite can put it back.
+				raw_invalid[ckey] = raw[ckey]
+				if warn:
+					Diag.warn("RegionStore: %s: skipping malformed chunk entry '%s'" % [path, str(ckey)])
+	return { "ok": true, "chunks": chunks, "raw_invalid": raw_invalid }
 
 ## Phase 61 — a chunk entry's `edits`, when present, must be a Dictionary (tile key → op list)
 ## and its `materials`, when present, a Dictionary. Only the container types are checked: the
@@ -218,7 +273,7 @@ func write_chunks(chunks: Dictionary, deletions := true) -> Error:
 	last_failed_chunk_keys = []
 	for rkey in grouped:
 		var region := region_from_key(str(rkey))
-		var read := read_region(region)
+		var read := read_region(region, false)
 		if not bool(read["ok"]):
 			# Leave the unreadable file alone rather than replace it — and keep saving the rest.
 			if first_error == OK:
@@ -226,6 +281,12 @@ func write_chunks(chunks: Dictionary, deletions := true) -> Error:
 			last_failed_chunk_keys.append_array(grouped[rkey].keys())
 			continue
 		var folded := fold_chunks(read["chunks"], grouped[rkey], deletions)
+		# Phase 75 — a malformed entry survives the rewrite unchanged unless this save carries a
+		# valid entry (or the deletion marker) for its key.
+		var kept: Dictionary = read.get("raw_invalid", {})
+		for ckey in kept:
+			if not grouped[rkey].has(ckey):
+				folded[ckey] = kept[ckey]
 		var err := save_region(region, folded)
 		if err != OK:
 			last_failed_chunk_keys.append_array(grouped[rkey].keys())
@@ -261,17 +322,22 @@ func migrate_manifest(chunks: Dictionary) -> Error:
 	var grouped := group_manifest(chunks)
 	for rkey in grouped:
 		var region := region_from_key(str(rkey))
-		var read := read_region(region)
+		var read := read_region(region, false)
 		if not bool(read["ok"]):
 			return ERR_FILE_CORRUPT
 		var base: Dictionary = read["chunks"]
+		var kept: Dictionary = read.get("raw_invalid", {})
 		var missing := {}
 		for ckey in grouped[rkey]:
 			if not base.has(ckey):
 				missing[ckey] = grouped[rkey][ckey]
 		if missing.is_empty():
 			continue
-		var err := save_region(region, fold_chunks(base, missing, false))
+		var folded := fold_chunks(base, missing, false)
+		for ckey in kept:
+			if not missing.has(ckey):
+				folded[ckey] = kept[ckey]
+		var err := save_region(region, folded)
 		if err != OK:
 			return err
 	return OK
