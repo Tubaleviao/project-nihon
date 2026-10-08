@@ -485,7 +485,7 @@ func record_world_pos(player_id: String, wp: Dictionary) -> void:
 	var rec := ensure_player(player_id)
 	if rec.is_empty():
 		return
-	wp = WorldPos.normalized(wp)
+	wp = _canonical(WorldPos.normalized(wp))
 	_store_world_pos(rec, wp)
 	var chunk: Vector2i = wp["chunk"]
 	var local: Vector3 = wp["local"]
@@ -496,7 +496,7 @@ func record_world_pos(player_id: String, wp: Dictionary) -> void:
 ## when it holds no decodable position, so the client leaves its spawn alone.
 static func snapshot_position(rec: Dictionary) -> Variant:
 	var pos: Variant = rec.get("position", [])
-	if WorldPos.is_wire(pos):
+	if WorldPos.is_wire(pos) or _has_chunk_local(rec):
 		return WorldPos.pos_to_wire(world_pos_of(rec))
 	return pos
 

@@ -1204,6 +1204,9 @@ func _test_player_exact_far_position() -> void:
 	var stored: Dictionary = reg2.get_record("p1")
 	assert_eq(snap_pos["chunk"], stored["chunk"], "the snapshot carries the stored chunk exactly")
 	assert_eq(snap_pos["local"], stored["local"], "and the stored local exactly")
+	var damaged: Dictionary = stored.duplicate(true)
+	damaged["position"] = "garbage"
+	assert_true(PlayerRegistry.snapshot_position(damaged) is Dictionary, "a damaged position field still yields the exact stored one")
 	player.free()
 
 func _test_rebase_driver() -> void:

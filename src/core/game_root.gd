@@ -703,7 +703,7 @@ func _boot_host() -> void:
 		# Phase 53 — a first boot: the same placement a joining peer gets.
 		saved_pos = _first_boot_spawn()
 	if saved_pos != null:
-		_player.spawn_at(saved_pos)
+		_place_local_player(saved_pos)
 		_chunk_manager.build_first_ring(_chunk_manager.player_chunk())
 		_chunk_manager.refresh()
 	_host_boot_wait_elapsed = 0.0
@@ -2049,7 +2049,7 @@ func _restore_local_player() -> void:
 	var rec := _registry.get_record(pid)
 	var saved_pos: Variant = _saved_local_position()
 	if saved_pos != null:
-		_player.spawn_at(saved_pos)
+		_place_local_player(saved_pos)
 	# Phase 66 — a respawn goes to the ORIGINAL spawn point: the recorded one, else (a record from
 	# before the field existed) the saved position; a fresh player's placement is recorded now.
 	var spawn: Variant = respawn_point_for(rec)
@@ -2097,6 +2097,19 @@ func _saved_local_position() -> Variant:
 	if arr is Array and (arr as Array).size() >= 3:
 		return Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
 	return null
+
+## Phase 78 — put the local player at `pos`. A saved position is placed from the record's exact
+## `{chunk, local}` (rebasing the scene first, so the body lands on a small float32), not from the
+## quantised double `position`; a position with no saved record (a first-boot spawn) and a headless
+## server, which has no rebase driver, place by world position.
+func _place_local_player(pos: Vector3) -> void:
+	var pid := _registry.local_player_id
+	if _rebase != null and not pid.is_empty() and _saved_local_position() != null:
+		var wp := _registry.get_world_pos(pid)
+		_rebase.rebase_to(wp["chunk"])
+		_player.place_at_world_pos(wp)
+	else:
+		_player.spawn_at(pos)
 
 ## Read the world record and the LOCAL player's record off disk. A missing world
 ## record is NOT an error — a server with no save boots a fresh world.
