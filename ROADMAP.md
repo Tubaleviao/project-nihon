@@ -6422,7 +6422,7 @@ deliverable says production code reads it or it goes (#161).
 
 ---
 
-## Phase 80 — Rebase in the physics step and explicit shift sets
+## Phase 80 — Rebase in the physics step and explicit shift sets ✅ Done
 
 **Goal:** the origin rebase runs from `GameRoot._process` while the player body moves in
 `_physics_process`, so on a frame where both fire the rebase can shift the scene between a
@@ -6444,13 +6444,13 @@ preview) is moved twice or moved when it should not be (#167).
   freed) and `shift_scene` shifts only those plus the pool; other children are left alone.
 
 **Acceptance criteria:**
-- [ ] Suite: a `TreeSlice` with two trunks and an extra non-world `Node3D` child, shifted by
+- [x] Suite: a `TreeSlice` with two trunks and an extra non-world `Node3D` child, shifted by
   (−4096, 0, 0): both trunks move by the shift, the extra child does not, the pool moves once.
-- [ ] Suite: the same check for `LootSlice` with two pickups, one of them collected (freed)
+- [x] Suite: the same check for `LootSlice` with two pickups, one of them collected (freed)
   before the shift — no error and the survivor moves.
-- [ ] Suite: a player walked across `WorldPos` rebase distance in physics steps reports a
+- [x] Suite: a player walked across `WorldPos` rebase distance in physics steps reports a
   world position that never jumps by more than one step's travel across the rebase frame.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green. — `Results: 14874/14874 passed (0 failed)` both boot paths, harness 15/15 steps.
 
 ---
 

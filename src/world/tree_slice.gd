@@ -536,14 +536,21 @@ func _deterministic_chunk_position(chunk_pos: Vector2i, species: String, spawn_i
 ## Phase 63: the scene-origin offset a client rebase has applied (see `shift_scene`).
 var _scene_offset: Vector3 = Vector3.ZERO
 
-## Shift the pool (every standing tree's mesh) and every trunk body by `shift`.
+## Phase 80 — the trunk bodies this slice spawned in world space. `shift_scene` moves exactly
+## these plus the pool, so a helper node parented under the slice is never shifted by accident.
+var _world_nodes: Array = []
+
+## Shift the pool (every standing tree's mesh) and every trunk body by `shift`. Freed bodies drop out.
 func shift_scene(shift: Vector3) -> void:
 	_scene_offset += shift
 	if _pool != null:
 		_pool.shift_scene(shift)
-	for child in get_children():
-		if child is Node3D:
-			(child as Node3D).position += shift
+	var live: Array = []
+	for n in _world_nodes:
+		if is_instance_valid(n):
+			(n as Node3D).position += shift
+			live.append(n)
+	_world_nodes = live
 
 func scene_offset() -> Vector3:
 	return _scene_offset
@@ -617,6 +624,7 @@ func _build_collision(tree_id: String, pos: Vector3, species: String) -> StaticB
 	shape.position = Vector3(0.0, TRUNK_COLLISION_HEIGHT * 0.5, 0.0)
 	body.add_child(shape)
 	add_child(body)
+	_world_nodes.append(body)
 	return body
 
 ## Free a tree's trunk collision so a felled tree stops being an aim target.
