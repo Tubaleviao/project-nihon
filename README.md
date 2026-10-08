@@ -30,16 +30,16 @@ npm run generate  # generate the design bible into bible/
 | 7 | Character system specification | Done |
 | 8 | `generator-godot` integration | Done |
 | 9 | Public wiki | Done |
-| 10 | Vertical slices — playable game loop with creature combat | Done |
-| 11 | Crafting slice — fabric-driven recipe resolution | Done |
+| 10 | Vertical slices: playable game loop | Done |
+| 11 | Crafting slice | Done |
 | 12 | Voxel mining and building | Done |
 | 13 | Technology unlock gates | Done |
-| 14 | Player UI (inventory, technology tree, crafting) | Done |
+| 14 | Player UI: inventory, technology tree, crafting | Done |
 | 15 | Creature AI and behavior | Done |
 | 16 | Station-gated crafting and tool durability | Done |
 | 17 | Chunk streaming and world expansion | Done |
 | 18 | Multiplayer world sync (core) | Done |
-| 19 | Multiplayer chaos resilience (jitter + packet loss) | Done |
+| 19 | Multiplayer chaos resilience | Done |
 | 20 | Skeleton rig and animation | Done |
 | 21 | Asset separation and public placeholders | Done |
 | 22 | Material and palette pipeline | Done |
@@ -69,19 +69,44 @@ npm run generate  # generate the design bible into bible/
 | 46 | UI shell | Done |
 | 47 | Character window | Done |
 | 48 | Review pass: the equipment trust boundary | Done |
-| 49 | Zone crossing and natural ground | Planned |
+| 49 | Zone crossing and natural ground | Done |
 | 50 | Planet coordinates | Done |
 | 51 | Continents, oceans and mountains | Done |
 | 52 | Region storage and per-player server streaming | Done |
-| 53 | Spawn placement and friend codes | Planned |
+| 53 | Spawn placement and friend codes | Done |
 | 54 | World clock, day and night, seasons | Done |
-| 55 | Two-client harness: equipment delivery over the socket | Planned |
-| 56 | Station placement follow-ups | Planned |
-| 57 | Spawn determinism and cost follow-ups | Planned |
-| 58 | UI layout file robustness | Planned |
-| 59 | Wire the Phase 45 rig into the game | Planned |
+| 55 | Two-client harness: equipment delivery over the socket | Done |
+| 56 | Station placement follow-ups | Done |
+| 57 | Spawn determinism and cost follow-ups | Done |
+| 58 | UI layout file robustness | Done |
+| 59 | Wire the Phase 45 rig into the game | Done |
+| 60 | Host-authoritative equip | Done |
+| 61 | Region storage correctness | Done |
+| 62 | Peer streaming window limits | Done |
+| 63 | Planet coordinates wiring | Done |
+| 64 | Biome blend consistency | Done |
+| 65 | World clock and season follow-ups | Done |
+| 66 | Spawn point and colonization follow-ups | Done |
+| 67 | Network test seam cleanup | Done |
+| 68 | Distant terrain off the main thread | Done |
+| 69 | Neighbour seam rebuilds that match the edits | Done |
+| 70 | Equip intent ordering and refusal cost | Done |
+| 71 | World-generation version stamp | Done |
+| 72 | Stable, low-frequency rare-biome niches | Done |
+| 73 | Swimming and the distant ring follow the real ground | Done |
+| 74 | Minimap redraw cost and first-apply layout clamp | Done |
+| 75 | Region edits survive eviction and malformed neighbours | Done |
+| 76 | Niche field wraps the planet and is calibrated by a test | Done |
+| 77 | One detail-noise formula and the ring's strip helper | Done |
+| 78 | Exact player position far from the origin | Done |
+| 79 | Deterministic peer-window rate limit and a production ref-count reader | Planned |
+| 80 | Rebase in the physics step and explicit shift sets | Planned |
+| 81 | Pole-aware tile biome and a mined-tile biome memo | Planned |
+| 82 | Honest peer-window refusal count and a thread-safe warning counter | Planned |
+| 83 | Distant-ring teardown that does not stall | Planned |
+| 84 | The suite exits with no leaked objects | Planned |
 
-See [ROADMAP.md](ROADMAP.md) for the full spec, deliverables, and acceptance criteria for each phase.
+See [ROADMAP.md](ROADMAP.md) for open phases and deferred work. Completed phases are archived in [docs/roadmap-history/](docs/roadmap-history/README.md) with their full spec and acceptance criteria.
 
 Production art lives in a private `assets-prod/` git submodule (Git LFS); the
 public repo ships placeholders. See [assets/README.md](assets/README.md).

@@ -611,7 +611,7 @@ func _parse_network_args() -> void:
 ##
 ## A headless server has no window, and Godot 4.7 delivers NO notification for
 ## SIGTERM — the process is simply killed (verified with a probe; see the Phase
-## 33 implementation notes in ROADMAP.md). That case is covered by the autosave
+## 33 implementation notes in docs/roadmap-history/phases-33-38.md). That case is covered by the autosave
 ## interval plus the shutdown-request file polled in _tick_save_lifecycle().
 func _install_quit_guard() -> void:
 	if not _is_client:
