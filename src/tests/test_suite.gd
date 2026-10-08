@@ -254,6 +254,9 @@ func run() -> void:
 	_run_test("equipment: bookkeeping is dropped with the player", _test_equipment_bookkeeping_evicted)
 	_run_test("equipment: the sequence number never rewinds",   _test_equipment_seq_monotonic)
 	_run_test("region: a failed save re-marks only failed chunks", _test_region_failed_keys_and_remark)
+	_run_test("region: a depletion in an evicted chunk keeps its other edits", _test_region_depletion_merges_evicted)
+	_run_test("region: a malformed entry survives a neighbour's save", _test_region_malformed_entry_kept)
+	_run_test("region: a valid entry replaces a malformed one", _test_region_malformed_entry_replaced)
 	_run_test("rebase: an unshiftable target is reported",      _test_rebase_driver_reports_unshiftable)
 	_run_test("game_root: implausible peer positions dropped",  _test_remote_state_plausibility)
 	_run_test("equipment: slots cached, peer evict, owner map", _test_equipment_phase48_misc)
@@ -14325,6 +14328,98 @@ func _test_region_neighbour_expansion_edges_only() -> void:
 	var east := RegionStreamerScript.regions_for_chunks([Vector2i(31, 10)])
 	assert_true(east.has("0,0") and east.has("1,0") and not east.has("0,1") and not east.has("0,-1"),
 		"an east-edge chunk reaches the next region east and no other")
+
+## Phase 75 — mining a vein anchored in an EVICTED chunk must not replace that chunk's stored
+## entry with the lone depletion op.
+func _test_region_depletion_merges_evicted() -> void:
+	var found := _find_surface_vein(0)
+	if found.is_empty():
+		assert_true(false, "a vein breaks the surface of a flat chunk somewhere")
+		return
+	var vein: Dictionary = found["vein"]
+	var anchor: Vector2i = vein["anchor"]
+	var a_key := VoxelSlice._chunk_key(VoxelSlice._tile_to_chunk(anchor))
+	var dir := _fresh_region_dir("test_p75_depletion")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	var v := VoxelSlice.new()
+	add_child(v)
+	var edit_keys: Array = []
+	for off in [Vector2i(-2, 0), Vector2i(2, 0), Vector2i(0, -2), Vector2i(0, 2), Vector2i(-1, -1), Vector2i(1, 1)]:
+		var tile: Vector2i = anchor + off
+		if edit_keys.size() < 3 and VoxelSlice._chunk_key(VoxelSlice._tile_to_chunk(tile)) == a_key:
+			edit_keys.append(VoxelSlice._tile_key(tile))
+	assert_eq(edit_keys.size(), 3, "three tiles of the anchor's chunk to edit")
+	for k in edit_keys:
+		v._set_edit_ops(k, [{ "op": "remove", "bottom": 0.0, "top": 1.0 }])
+	v.mark_dirty_chunks([a_key])
+	assert_eq(store.write_chunks(v.get_save_manifest()), OK, "the three edits are saved")
+	v.clear_dirty_chunks()
+	assert_eq(v.evict_clean_chunks([a_key]), 1, "the chunk is evicted")
+	# Mined from a neighbour: the depletion lands on the anchor of the evicted chunk.
+	v._record_depletion(vein, 1)
+	v.mark_dirty_chunks([a_key])
+	var manifest := v.get_save_manifest()
+	assert_true(bool(manifest[a_key].get("merge", false)), "the partial entry is flagged for merging")
+	assert_false(v.get_chunk_manifest()[a_key].has("merge"), "the wire manifest carries no flag")
+	assert_eq(store.write_chunks(PersistenceSlice.dirty_chunk_subset(manifest, [a_key])), OK, "the depletion is saved")
+	var stored: Dictionary = store.load_region(RegionStoreScript.region_of_chunk_key(a_key))[a_key]
+	assert_false(stored.has("merge"), "the merge flag is not stored")
+	for k in edit_keys:
+		assert_true(stored["edits"].has(k), "stored edit %s survives" % k)
+	var deplete_ops := 0
+	for op in stored["edits"][VoxelSlice._tile_key(anchor)]:
+		if str(op.get("op", "")) == "deplete":
+			deplete_ops += 1
+	assert_eq(deplete_ops, 1, "and the depletion is stored once")
+	# A second save of the same partial chunk neither duplicates nor loses anything.
+	assert_eq(store.write_chunks(PersistenceSlice.dirty_chunk_subset(v.get_save_manifest(), [a_key])), OK, "saved again")
+	var again: Dictionary = store.load_region(RegionStoreScript.region_of_chunk_key(a_key))[a_key]
+	assert_true(again == stored, "a repeated merge is idempotent")
+	var w := VoxelSlice.new()
+	add_child(w)
+	w.apply_region_chunks(store.load_region(RegionStoreScript.region_of_chunk_key(a_key)))
+	assert_eq(w.get_edits().size(), 4, "after reload the chunk holds the three edits and the depletion")
+	assert_eq(int(w.get_vein_depletion().get(str(vein["id"]), 0)), 1, "with the vein's count")
+	v.free()
+	w.free()
+
+func _write_region_file(store: RegionStoreScript, chunks: Dictionary) -> void:
+	DirAccess.make_dir_recursive_absolute(store.dir)
+	var f := FileAccess.open(store.path_of(Vector2i.ZERO), FileAccess.WRITE)
+	f.store_string(JSON.stringify({ "version": 1, "chunks": chunks }))
+	f.close()
+
+## Phase 75 — a malformed entry is not handed out, is rewritten unchanged by a neighbour's save,
+## and warns once per read (not per save).
+func _test_region_malformed_entry_kept() -> void:
+	var dir := _fresh_region_dir("test_p75_malformed")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	var good := { "edits": { "0,0": [{ "op": "remove", "bottom": 0.0, "top": 1.0 }] } }
+	_write_region_file(store, { "1,1": { "edits": "x" }, "2,2": good })
+	var warns := Diag.warn_count
+	var read := store.read_region(Vector2i.ZERO)
+	assert_eq(Diag.warn_count - warns, 1, "one warning for the one malformed entry on a read")
+	assert_eq(read["chunks"].keys(), ["2,2"], "only the valid entry is handed out")
+	assert_eq(read["raw_invalid"].keys(), ["1,1"], "the malformed one is reported separately")
+	warns = Diag.warn_count
+	assert_eq(store.write_chunks({ "3,3": good }), OK, "a neighbour is saved")
+	assert_eq(store.write_chunks({ "3,3": good }), OK, "and again")
+	assert_eq(Diag.warn_count - warns, 0, "saves do not re-warn")
+	var parsed: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(store.path_of(Vector2i.ZERO)))
+	assert_eq(JSON.stringify(parsed["chunks"]["1,1"]), JSON.stringify({ "edits": "x" }), "the malformed entry is rewritten unchanged")
+	var keys: Array = parsed["chunks"].keys()
+	keys.sort()
+	assert_eq(keys, ["1,1", "2,2", "3,3"], "with both valid entries")
+
+func _test_region_malformed_entry_replaced() -> void:
+	var dir := _fresh_region_dir("test_p75_malformed_replace")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	var good := { "edits": { "0,0": [{ "op": "remove", "bottom": 0.0, "top": 1.0 }] } }
+	_write_region_file(store, { "1,1": { "edits": "x" } })
+	assert_eq(store.write_chunks({ "1,1": good }), OK, "a save carrying the key")
+	var read := store.read_region(Vector2i.ZERO)
+	assert_true(read["raw_invalid"].is_empty(), "no malformed entry remains")
+	assert_true(read["chunks"]["1,1"] == good, "the valid entry replaced it")
 
 func _test_region_evict_keeps_vein_depletion() -> void:
 	var found := _find_surface_vein(0)
