@@ -93,6 +93,7 @@ func run() -> void:
 	_run_test("climate: poles are cold, peaks are cold",      _test_climate_poles_and_peaks)
 	_run_test("climate: ocean chunks are Ocean, fantasy biomes are niches", _test_climate_ocean_and_niches)
 	_run_test("climate: niches are index-stable, share-exact and smooth", _test_climate_niches_stable_and_smooth)
+	_run_test("climate: niche field wraps, table is calibrated, fallback pool is cached", _test_climate_niche_wraps_and_is_calibrated)
 	_run_test("climate: the Voronoi fallback is land-only", _test_climate_fallback_is_land_only)
 	_run_test("water: spans cover exactly the tiles below sea level", _test_water_spans)
 	_run_test("player: deep water is swum, not walked",       _test_player_swims_in_deep_water)
@@ -12352,11 +12353,8 @@ func _test_ore_ley_field() -> void:
 	assert_eq(OreField.ley_line_value(99, Vector2(3.5, -7.25)), OreField.ley_line_value(99, Vector2(3.5, -7.25)),
 		"and the field is a pure function of position")
 
-## The retired draw gave every volcanic chunk the SAME Aethermite share (17/100, every
-## depth). Per-chunk counts from the field must now vary.
-func _test_ore_uniform_draw_gone() -> void:
-	var counts: Array = []
-	var seed := 7
+## Aethermite vein counts of up to 16 volcanic chunks of world `seed` (appended to `counts`).
+func _collect_volcanic_counts(seed: int, counts: Array) -> void:
 	for cz in range(-400, 400, 5):   # rare niches are blobs now: scan wide to find volcanic ground
 		for cx in range(-400, 400, 5):
 			var chunk := Vector2i(cx, cz)
@@ -12374,6 +12372,17 @@ func _test_ore_uniform_draw_gone() -> void:
 			if counts.size() >= 16:
 				break
 		if counts.size() >= 16:
+			break
+
+## The retired draw gave every volcanic chunk the SAME Aethermite share (17/100, every
+## depth). Per-chunk counts from the field must now vary.
+func _test_ore_uniform_draw_gone() -> void:
+	var counts: Array = []
+	# Volcanic ground is a rare, latitude-bound niche: take the first world that has enough of it near spawn.
+	for seed in range(7, 40):
+		counts.clear()
+		_collect_volcanic_counts(seed, counts)
+		if counts.size() >= 8:
 			break
 	assert_true(counts.size() >= 8, "enough volcanic chunks sampled (%d)" % counts.size())
 	var mean := 0.0
@@ -13862,6 +13871,50 @@ func _test_climate_niches_stable_and_smooth() -> void:
 		assert_true(absf(share - rarity) <= rarity * 0.2, "%s niche covers its rarity %.2f (got %.3f)" % [key, rarity, share])
 		assert_true(runs > 0 and float(inside) / float(runs) > float(ClimateField.NICHE_CELL_CHUNKS),
 			"%s niche runs along a row exceed one niche cell (mean %.1f)" % [key, float(inside) / maxf(float(runs), 1.0)])
+
+func _test_climate_niche_wraps_and_is_calibrated() -> void:
+	ClimateField.warm()
+	var c := TerrainSlice.circumference_chunks()
+	var fixed_bound := 0.1
+	for key in ["VolcanicBadlands", "TwilightGrove", "VoidRift"]:
+		var salt := ClimateField.niche_salt(key)
+		var worst_seam := 0.0
+		var worst_inside := 0.0
+		for i in 200:
+			var cz := float(i * 37 % 4000 - 2000) + 0.5
+			var seed_v := i % 5 + 1
+			var a := ClimateField.niche_value(seed_v, Vector2(c - 0.5, cz), salt, c)
+			var b := ClimateField.niche_value(seed_v, Vector2(0.5, cz), salt, c)
+			worst_seam = maxf(worst_seam, absf(a - b))
+			var m := float(i * 53 % 4000) + 0.5
+			var m1 := ClimateField.niche_value(seed_v, Vector2(m, cz), salt, c)
+			var m2 := ClimateField.niche_value(seed_v, Vector2(m + 1.0, cz), salt, c)
+			worst_inside = maxf(worst_inside, absf(m1 - m2))
+		assert_true(worst_seam < fixed_bound, "%s niche is continuous across the antimeridian (worst %.4f)" % [key, worst_seam])
+		assert_true(worst_seam <= worst_inside + fixed_bound, "%s seam step is no worse than an interior step" % key)
+	# The field is periodic in X: a point one circumference away draws the same value.
+	for i in 50:
+		var pt := Vector2(float(i * 977 % 5000) + 0.5, float(i * 31 % 800 - 400) + 0.5)
+		# Vector2 is float32: at 1.25 million chunks the point itself is only exact to 0.125.
+		assert_true(absf(ClimateField.niche_value(3, pt, 9, c) - ClimateField.niche_value(3, pt + Vector2(c, 0.0), 9, c)) < 0.01, "niche repeats after one circumference")
+	# The table is a cache of this generator.
+	var q := ClimateField.niche_quantiles(60000)
+	assert_eq(q.size(), ClimateField._NICHE_QUANTILES.size(), "recomputed quantile table has the same length")
+	var worst := 0.0
+	for k in q.size():
+		worst = maxf(worst, absf(float(q[k]) - float(ClimateField._NICHE_QUANTILES[k])))
+	assert_true(worst <= 0.005, "recomputed quantiles match _NICHE_QUANTILES within 0.005 (worst %.4f)" % worst)
+	# The fallback pool is built once per key set and holds land biomes read from the data.
+	var keys: Array = TerrainSlice.BIOME_KEYS.duplicate()
+	ClimateField._voronoi_biome(1, Vector2i(0, 0), keys)
+	var before := ClimateField.pool_builds
+	for i in 1000:
+		ClimateField._voronoi_biome(i % 7 + 1, Vector2i(i * 5, i * 3), keys)
+	assert_eq(ClimateField.pool_builds, before, "1,000 fallback calls with one key array build the pool once")
+	var pool := ClimateField._fallback_pool(keys)
+	for k in ["Ocean", "Beach", "Alpine"]:
+		assert_false(pool.has(k), "land fallback pool excludes %s" % k)
+	assert_true(pool.size() >= 3, "land fallback pool is not empty")
 
 func _test_climate_fallback_is_land_only() -> void:
 	var seen := {}

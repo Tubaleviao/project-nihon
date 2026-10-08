@@ -6286,7 +6286,7 @@ item of #163 and #164.
 
 ---
 
-## Phase 76 — Niche field wraps the planet and is calibrated by a test
+## Phase 76 — Niche field wraps the planet and is calibrated by a test ✅ Done
 
 **Goal:** `ClimateField.niche_value` samples lattice indices with no wrap, so a rare-biome blob is
 cut in two at the antimeridian (the chunks on either side of the X seam draw from unrelated
@@ -6316,13 +6316,13 @@ lattice cells). `_NICHE_QUANTILES` is an offline table with no generator, so a c
 - `WORLDGEN_VERSION` bumped.
 
 **Acceptance criteria:**
-- [ ] Suite: for 200 sampled Z rows and every rare biome, `niche_value` at chunk X = c − 1 and
+- [x] Suite: for 200 sampled Z rows and every rare biome, `niche_value` at chunk X = c − 1 and
   X = 0 (c = circumference in chunks) differ by no more than at two adjacent chunks inside the
   map (a continuity bound, e.g. < 0.1).
-- [ ] Suite: recomputed quantiles match `_NICHE_QUANTILES` within 0.005 per entry.
-- [ ] Suite: Phase 72's coverage (rarity ± 20 %) and key-insertion stability tests still pass.
-- [ ] Suite: 1,000 fallback calls with the same key array allocate the pool once (counter).
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite: recomputed quantiles match `_NICHE_QUANTILES` within 0.005 per entry.
+- [x] Suite: Phase 72's coverage (rarity ± 20 %) and key-insertion stability tests still pass.
+- [x] Suite: 1,000 fallback calls with the same key array allocate the pool once (counter).
+- [x] Suite green on both boot paths — `Results: 34739/34739 passed (0 failed)`, harness 15/15 steps.
 
 ---
 
