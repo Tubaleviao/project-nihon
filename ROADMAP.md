@@ -6250,6 +6250,178 @@ position off-screen is only fixed on a later re-apply (#116, #117, #129, #140).
 
 ---
 
+## Phase 75 — Region edits survive eviction and malformed neighbours
+
+**Goal:** two paths still lose saved terrain edits. `VoxelSlice._record_depletion` writes a
+`deplete` op onto a vein's ANCHOR tile even when the anchor chunk is evicted, so `_edits` holds
+that one op and the chunk is marked dirty; the save then folds a chunk entry carrying only the
+depletion over the on-disk entry and the chunk's other edits are gone. And
+`RegionStore.read_region` drops a chunk entry that fails `_chunk_entry_valid`, after which
+`write_chunks` rewrites the region without it, so one bad entry (a hand edit, an older bug) is
+deleted the next time any neighbour in the region is saved (#164, #163).
+
+**Newel dependency:** NO.
+
+**Closes:** the `_record_depletion` eviction item of #164 and the `read_region` malformed-entry
+item of #163 and #164.
+
+**Deliverables:**
+- `src/terrain/voxel_slice.gd` — a depletion whose anchor chunk is not resident either loads the
+  anchor chunk's stored edits first (through the same region read the streamer uses) or is kept
+  in a pending-depletion set that the save MERGES into the on-disk entry (only the `deplete` op
+  for that vein is replaced), never a whole-entry replacement.
+- `src/persistence/region_store.gd` — `read_region` returns malformed entries separately
+  (e.g. `"raw_invalid"`), they are not handed to `VoxelSlice`, and `fold_chunks` / `save_region`
+  write them back unchanged unless the save carries a valid replacement for that chunk key.
+
+**Acceptance criteria:**
+- [ ] Suite: a chunk saved with three tile edits, then evicted, then a vein anchored in it is
+  mined from a neighbouring resident chunk; after save and reload the chunk holds the three edits
+  and the depletion.
+- [ ] Suite: a region file with one malformed and one valid chunk entry; saving an edit to a
+  third chunk in that region leaves the malformed entry byte-identical in the rewritten file and
+  emits its warning once per read, not once per save.
+- [ ] Suite: a save that carries a valid entry for the malformed chunk's key replaces it.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 76 — Niche field wraps the planet and is calibrated by a test
+
+**Goal:** `ClimateField.niche_value` samples lattice indices with no wrap, so a rare-biome blob is
+cut in two at the antimeridian (the chunks on either side of the X seam draw from unrelated
+lattice cells). `_NICHE_QUANTILES` is an offline table with no generator, so a change to
+`LATTICE_MOD` or the interpolation silently skews every rare biome's share inside the suite's
+±20 % tolerance. `FALLBACK_BIOMES` hardcodes biome names in the generic climate module and
+`_voronoi_biome` allocates a filtered pool on every call (#187).
+
+**Newel dependency:** NO.
+
+**Closes:** #187.
+
+**Depends on:** Phase 71 (the wrap changes generation output near the seam; bump
+`WORLDGEN_VERSION`).
+
+**Deliverables:**
+- `src/terrain/climate_field.gd` — the niche lattice is periodic in X: the X lattice period is
+  `round(circumference_chunks / (NICHE_CELL_CHUNKS * NICHE_FEATURE_CELLS))` (at least 1), the
+  sample point is rescaled so that period spans exactly one circumference, and `ix`, `ix + 1` are
+  taken modulo the period.
+- A static `niche_quantiles(samples)` that recomputes the table from the raw noise, plus a suite
+  check that it matches `_NICHE_QUANTILES` within 0.005 per entry (the table stays a constant for
+  speed; the check is the generator).
+- The fallback pool is computed once per key set (cached on the keys array's hash) and the
+  land-biome list comes from the biome data (biomes with no altitude envelope / not flagged
+  ocean, beach or alpine) rather than a name list, or the constant moves next to `GameData.BIOMES`.
+- `WORLDGEN_VERSION` bumped.
+
+**Acceptance criteria:**
+- [ ] Suite: for 200 sampled Z rows and every rare biome, `niche_value` at chunk X = c − 1 and
+  X = 0 (c = circumference in chunks) differ by no more than at two adjacent chunks inside the
+  map (a continuity bound, e.g. < 0.1).
+- [ ] Suite: recomputed quantiles match `_NICHE_QUANTILES` within 0.005 per entry.
+- [ ] Suite: Phase 72's coverage (rarity ± 20 %) and key-insertion stability tests still pass.
+- [ ] Suite: 1,000 fallback calls with the same key array allocate the pool once (counter).
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 77 — One detail-noise formula and the ring's strip helper
+
+**Goal:** the detail-noise height formula lives in three places — `TerrainSlice.detail_of`,
+`detail_at` and `_raw_height_at` — so a change to one (scale, offset, the far-origin fold) leaves
+the voxel ground and the distant ring out of step again, the gap Phase 73 closed.
+`DistantTerrain._add_strip` duplicates every computation for its `along_z` branches. The Phase 73
+window-edge test asserts per vertex and `break`s, so a failure reports one vertex, not how many
+(#190).
+
+**Newel dependency:** NO.
+
+**Closes:** #190.
+
+**Deliverables:**
+- `src/terrain/terrain_slice.gd` — `detail_at` and `_raw_height_at` call `detail_of(_noise, x, z)`;
+  no other copy of `* 0.5 * HEIGHT_SCALE` detail math remains in `src/terrain/`.
+- `src/terrain/distant_terrain.gd` — `_add_strip` maps (along, across) to (x, z) through one
+  helper, and `ground_at`'s near/far ternaries become a helper taking (along, t, near); output is
+  unchanged.
+- `src/tests/test_suite.gd` — `_test_distant_ring_window_edge` counts vertices inside the window
+  and makes one `assert_eq(count, 0)`, like `_test_distant_ring`.
+- A `DistantTerrain` counter of ring rebuilds requested and completed, read by the suite.
+
+**Acceptance criteria:**
+- [ ] Suite: for 256 random (x, z) points, `detail_at`, `detail_of` and the detail term of
+  `_raw_height_at` agree exactly.
+- [ ] Suite: the ring mesh for a fixed seed and centre is vertex-for-vertex identical before and
+  after the refactor (hash of the vertex array recorded in the test).
+- [ ] Suite: walking the player across 5 chunks requests at most 5 ring rebuilds and the worker
+  never has more than one queued.
+- [ ] `grep -n "0.5 \* HEIGHT_SCALE" src/terrain/` shows only `detail_of`.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 78 — Exact player position far from the origin
+
+**Goal:** `PlayerSlice.get_position` returns `body.global_position - _scene_offset` in float32, so
+10,000 km out the world position is quantised to metres and the chunk derived from it can flicker
+at a boundary. `game_root` round-trips the snapshot's own-record position through
+`WorldPos.to_wire(WorldPos.from_wire(...))`, losing the exact `{chunk, local}` form for the same
+reason (#168, #166).
+
+**Newel dependency:** NO.
+
+**Closes:** the `get_position` precision item of #168 and the own-record round-trip item of #166.
+
+**Depends on:** Phase 63 (rebase driver and `WorldPos` wire form).
+
+**Deliverables:**
+- `src/player/player_slice.gd` — the integer scene-origin chunk is the source of truth
+  (`_scene_origin_chunk: Vector2i`); a `get_world_pos()` returns `{chunk, local}` built from it
+  plus the body's small scene position. `get_position()` stays for callers near the origin and is
+  documented as approximate.
+- Callers that persist or send the player position (save job, `player_moved`, AOI centre) use
+  `get_world_pos()`.
+- `src/core/game_root.gd` — the snapshot's own-record position is kept in wire form when it is
+  already wire form; no float round trip.
+
+**Acceptance criteria:**
+- [ ] Suite: a player placed at chunk (1,500,000, 3) local (0.25, 10, 0.75), after a rebase,
+  reports `get_world_pos()` equal to that chunk and local within 1e-3 m.
+- [ ] Suite: save → reload of that player restores the same chunk and local within 1e-3 m.
+- [ ] Suite: the own-record wire position in a snapshot equals the stored one exactly.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 79 — Deterministic peer-window rate limit and a production ref-count reader
+
+**Goal:** `ChunkManager.set_peer_center` reads `Time.get_ticks_msec()` directly, so the suite
+cannot test `PEER_RECENTER_INTERVAL` without sleeping, and the interval branch is untested.
+`_chunk_refs` / `chunk_ref_count` are read only by tests and the net harness, though the Phase 62
+deliverable says production code reads it or it goes (#161).
+
+**Newel dependency:** NO.
+
+**Closes:** the injectable-clock and `_chunk_refs` items of #161.
+
+**Deliverables:**
+- `src/terrain/chunk_manager.gd` — a `now_msec: Callable` (default `Time.get_ticks_msec`) used by
+  `set_peer_center` and the other two `Time.get_ticks_msec()` sites in the file.
+- Either eviction uses `chunk_ref_count` (a chunk is unloaded only when its count is 0 and it is
+  outside the local window), or `_chunk_refs` and `chunk_ref_count` are removed and the harness
+  step that read them switches to the peer-window keys it actually needs.
+
+**Acceptance criteria:**
+- [ ] Suite: with a fake clock, a client move 100 ms after the last is refused and counted in
+  `peer_recenter_refused`; at `PEER_RECENTER_INTERVAL` + 1 ms it is accepted.
+- [ ] Suite: a client move of 20 chunks is clamped to `PEER_RECENTER_MAX_CHUNKS`, across the X
+  seam as well as inside the map.
+- [ ] `grep -n "Time.get_ticks_msec" src/terrain/chunk_manager.gd` shows only the default.
+- [ ] Suite green on both boot paths, harness 15/15 steps.
+
+---
+
 ## Deferred (in priority order)
 
 - **Server sharding (final, not before maturity)** — split the authoritative
