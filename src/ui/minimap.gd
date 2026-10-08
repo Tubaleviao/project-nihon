@@ -133,6 +133,7 @@ func get_player_cell() -> Dictionary:
 ## Cached per biome: the tint string is parsed once, not per cell per draw (the fabric
 ## table is static for the life of the process).
 func biome_color(biome: String) -> Color:
+	_check_biome_table()
 	if _biome_color_cache.has(biome):
 		return _biome_color_cache[biome]
 	var fallback: Color = BIOME_COLORS.get(biome, FALLBACK_COLOR)
@@ -144,6 +145,18 @@ func biome_color(biome: String) -> Color:
 	return out
 
 var _biome_color_cache: Dictionary = {}
+var _biomes_seen: Dictionary = {}   # the GameData.BIOMES the colour cache was built from
+var _biomes_seen_size: int = -1
+
+## Drop the colour and biome caches when the fabric biome table is not the one they were built
+## from (a hot reload, or a test swapping it).
+func _check_biome_table() -> void:
+	if is_same(_biomes_seen, GameData.BIOMES) and _biomes_seen_size == GameData.BIOMES.size():
+		return
+	_biomes_seen = GameData.BIOMES
+	_biomes_seen_size = GameData.BIOMES.size()
+	_biome_color_cache.clear()
+	_biome_cache.clear()
 
 # ---------------------------------------------------------------------------
 # Zoom
@@ -194,23 +207,9 @@ func _draw() -> void:
 		return
 
 	var cell_px := minf(size.x, size.y) / _chunks_across
-	var half := _chunks_across / 2.0
-	var min_cx := floori(_player_chunk.x - half)
-	var max_cx := ceili(_player_chunk.x + half)
-	var min_cz := floori(_player_chunk.y - half)
-	var max_cz := ceili(_player_chunk.y + half)
 
-	var biomes: Dictionary = {}   # per-draw memo: chunk key -> biome
-	for cz in range(min_cz, max_cz):
-		for cx in range(min_cx, max_cx):
-			var c := Vector2i(cx, cz)
-			if not _revealed.has(_chunk_key(c)):
-				continue
-			var rx := size.x * 0.5 + (cx - _player_chunk.x) * cell_px - cell_px * 0.5
-			var ry := size.y * 0.5 + (cz - _player_chunk.y) * cell_px - cell_px * 0.5
-			var rect := Rect2(rx, ry, cell_px, cell_px)
-			_draw_chunk_cells(c, rect, biomes)
-			draw_rect(rect, Color(0.1, 0.1, 0.1, 0.5), false, 1.0)
+	for item in _view_rects(size):
+		draw_rect(item[0], item[1], item[2], item[3])
 
 	# World boundary — a thin frame so the finite world's edge is visible when
 	# the view reaches it.
@@ -262,44 +261,104 @@ func _draw_world_bounds(size: Vector2, cell_px: float) -> void:
 ## Sub-cells per chunk edge in the minimap's per-tile surface colour.
 const CELLS_PER_CHUNK := 4
 
-## The biome of the chunk, memoised in `memo` for one draw.
-func _biome_memo(c: Vector2i, memo: Dictionary) -> String:
-	var k := _chunk_key(c)
-	if not memo.has(k):
-		memo[k] = _biome(c)
-	return memo[k]
+## Biome lookups are persistent across redraws (a chunk's biome never changes for a seed), so a
+## redraw of the same view asks the terrain nothing. Bounded: past BIOME_CACHE_MAX the entries
+## outside the current view are dropped, and the whole cache if that is not enough.
+const BIOME_CACHE_MAX := 8192   # above the largest view (ZOOM_MAX + 1)^2 chunks, so a full view never thrashes
 
-## Draw one chunk. The interior is one rect; only the border cells are drawn individually, and
-## one may wear the biome across that border (`BiomeBlend`, the voxel surface's own dither rule,
-## sampled at the cell's centre), so a biome edge reads as a ragged band, not a straight cut.
-## Only REVEALED neighbours inside the world are blended toward, so the fog of war never leaks
-## an unexplored biome. A chunk none of whose neighbours would blend draws one rect.
-func _draw_chunk_cells(c: Vector2i, rect: Rect2, memo: Dictionary) -> void:
-	var own := _biome_memo(c, memo)
-	var own_col := biome_color(own)
-	# At far zoom a chunk is a few pixels: sub-cells are sub-pixel, so one rect is enough.
-	if rect.size.x < 12.0:
-		draw_rect(Rect2(rect.position, rect.size + Vector2(0.5, 0.5)), own_col)
+## Below this cell size in pixels a chunk is one rect: sub-cells would be sub-pixel.
+const MIN_CELL_PX := 2.0
+
+const NEIGHBOUR_OFFSETS: Array[Vector2i] = [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]
+
+var _biome_cache: Dictionary = {}   # chunk key -> biome
+var _biome_cache_seed: int = 0
+
+## Everything the visible window draws, as [rect, colour, filled, width] items in draw order.
+## Pure, so the suite can count them (`draw_*` only works inside `_draw`).
+func _view_rects(size: Vector2) -> Array:
+	var out: Array = []
+	if _player_chunk == Vector2i(-9999, -9999):
+		return out
+	_check_biome_table()
+	_check_seed()
+	var cell_px := minf(size.x, size.y) / _chunks_across
+	var half := _chunks_across / 2.0
+	var min_cx := floori(_player_chunk.x - half)
+	var max_cx := ceili(_player_chunk.x + half)
+	var min_cz := floori(_player_chunk.y - half)
+	var max_cz := ceili(_player_chunk.y + half)
+	if _biome_cache.size() > BIOME_CACHE_MAX:
+		_prune_biome_cache(min_cx, max_cx, min_cz, max_cz)
+	for cz in range(min_cz, max_cz):
+		for cx in range(min_cx, max_cx):
+			var c := Vector2i(cx, cz)
+			if not _revealed.has(_chunk_key(c)):
+				continue
+			var rx := size.x * 0.5 + (cx - _player_chunk.x) * cell_px - cell_px * 0.5
+			var ry := size.y * 0.5 + (cz - _player_chunk.y) * cell_px - cell_px * 0.5
+			var rect := Rect2(rx, ry, cell_px, cell_px)
+			_chunk_cell_rects(c, rect, out)
+			if cell_px / CELLS_PER_CHUNK >= MIN_CELL_PX:
+				out.append([rect, Color(0.1, 0.1, 0.1, 0.5), false, 1.0])
+	return out
+
+## Forget every cached biome when the world seed changes.
+func _check_seed() -> void:
+	if terrain_slice == null or not terrain_slice.has_method("get_world_seed"):
 		return
+	var seed_v: int = terrain_slice.get_world_seed()
+	if seed_v != _biome_cache_seed:
+		_biome_cache_seed = seed_v
+		_biome_cache.clear()
+
+func _prune_biome_cache(min_cx: int, max_cx: int, min_cz: int, max_cz: int) -> void:
+	for k in _biome_cache.keys():
+		var c := _key_to_chunk(k)
+		if c.x < min_cx - 1 or c.x > max_cx or c.y < min_cz - 1 or c.y > max_cz:
+			_biome_cache.erase(k)
+	if _biome_cache.size() > BIOME_CACHE_MAX:
+		_biome_cache.clear()
+
+## The biome of the chunk, memoised across redraws.
+## Not cached when no terrain is wired: that fallback must not outlive the wiring.
+func _biome_memo(c: Vector2i) -> String:
+	var k := _chunk_key(c)
+	if _biome_cache.has(k):
+		return _biome_cache[k]
+	var b := _biome(c)
+	if terrain_slice != null and terrain_slice.has_method("get_biome_at_chunk"):
+		_biome_cache[k] = b
+	return b
+
+## The fill rects of one chunk, appended to `out` as [rect, colour, true, 0.0]. The interior is
+## one rect; only the border cells are drawn individually, and one may wear the biome across that
+## border (`BiomeBlend`, the voxel surface's own dither rule, sampled at the cell's centre), so a
+## biome edge reads as a ragged band, not a straight cut. Only REVEALED neighbours inside the
+## world are blended toward, so the fog of war never leaks an unexplored biome. A chunk none of
+## whose neighbours would blend, or whose sub-cells would be under MIN_CELL_PX, is one rect.
+func _chunk_cell_rects(c: Vector2i, rect: Rect2, out: Array) -> void:
+	var own := _biome_memo(c)
+	var own_col := biome_color(own)
 	var n := CELLS_PER_CHUNK
-	if not _has_blend_neighbour(c, own, memo):
-		draw_rect(Rect2(rect.position, rect.size + Vector2(0.5, 0.5)), own_col)
+	if rect.size.x / n < MIN_CELL_PX or not _has_blend_neighbour(c, own):
+		out.append([Rect2(rect.position, rect.size + Vector2(0.5, 0.5)), own_col, true, 0.0])
 		return
 	var cw := rect.size.x / n
 	var ch := rect.size.y / n
-	draw_rect(Rect2(rect.position.x + cw, rect.position.y + ch, cw * (n - 2) + 0.5, ch * (n - 2) + 0.5), own_col)
+	out.append([Rect2(rect.position.x + cw, rect.position.y + ch, cw * (n - 2) + 0.5, ch * (n - 2) + 0.5), own_col, true, 0.0])
 	for j in n:
 		for i in n:
 			var edge_i := mini(i, n - 1 - i)
 			var edge_j := mini(j, n - 1 - j)
 			if mini(edge_i, edge_j) != 0 and n > 2:
 				continue
-			var col := biome_color(_cell_biome(c, i, j, own, memo))
-			draw_rect(Rect2(rect.position.x + i * cw, rect.position.y + j * ch, cw + 0.5, ch + 0.5), col)
+			var col := biome_color(_cell_biome(c, i, j, own))
+			out.append([Rect2(rect.position.x + i * cw, rect.position.y + j * ch, cw + 0.5, ch + 0.5), col, true, 0.0])
 
 ## The biome sub-cell (i, j) of chunk `c` wears: `own`, or a blendable neighbour's across the
 ## nearest border, per `BiomeBlend`. Never an unrevealed or off-world chunk's biome.
-func _cell_biome(c: Vector2i, i: int, j: int, own: String, memo: Dictionary) -> String:
+func _cell_biome(c: Vector2i, i: int, j: int, own: String) -> String:
 	var n := CELLS_PER_CHUNK
 	var across := c
 	if mini(i, n - 1 - i) <= mini(j, n - 1 - j):
@@ -308,7 +367,7 @@ func _cell_biome(c: Vector2i, i: int, j: int, own: String, memo: Dictionary) -> 
 		across.y += -1 if j < n - 1 - j else 1
 	if across == c or not _blendable(across):
 		return own
-	var other := _biome_memo(across, memo)
+	var other := _biome_memo(across)
 	if other == own:
 		return own
 	# The voxel band scaled to one cell: the cell's centre is half a band in.
@@ -328,10 +387,10 @@ func _blendable(c: Vector2i) -> bool:
 	return true
 
 ## True when any of the four neighbours of `c` would lend a different biome's colour.
-func _has_blend_neighbour(c: Vector2i, own: String, memo: Dictionary) -> bool:
-	for off in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]:
+func _has_blend_neighbour(c: Vector2i, own: String) -> bool:
+	for off in NEIGHBOUR_OFFSETS:
 		var nb: Vector2i = c + off
-		if _blendable(nb) and _biome_memo(nb, memo) != own:
+		if _blendable(nb) and _biome_memo(nb) != own:
 			return true
 	return false
 

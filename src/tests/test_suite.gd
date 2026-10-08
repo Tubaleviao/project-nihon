@@ -284,6 +284,10 @@ func run() -> void:
 	_run_test("voxel: biome border blends with a dither",      _test_voxel_biome_border_blend)
 	_run_test("voxel: yield biome equals the drawn surface biome", _test_voxel_yield_matches_blended_biome)
 	_run_test("minimap: blend never borrows an unrevealed biome", _test_minimap_blend_respects_fog)
+	_run_test("minimap: a second redraw looks up no biome",      _test_minimap_redraw_uses_cache)
+	_run_test("minimap: sub-2px cells draw one rect per chunk",  _test_minimap_far_zoom_one_rect)
+	_run_test("minimap: biome cache is bounded and seed-keyed",  _test_minimap_cache_bounded_and_seeded)
+	_run_test("ui: saved layout past the edge lands inside",     _test_ui_layout_first_apply_fits)
 	_run_test("climate: partial envelope does not break warm()", _test_climate_partial_envelope_warms)
 	_run_test("voxel: the surface never yields a deep ore",     _test_voxel_material_rarity)
 	_run_test("voxel: edits round-trip",                       _test_voxel_edits_round_trip)
@@ -7461,25 +7465,124 @@ func _test_minimap_blend_respects_fog() -> void:
 	add_child(mm)
 	mm._revealed = { "0,0": true, "-1,0": true }
 	mm.terrain_slice = BiomeStub.new()
-	var memo := {}
 	var n := Minimap.CELLS_PER_CHUNK
 	var cell_tiles := float(TerrainSlice.CHUNK_SIZE) / n
 	var west_cells := 0
 	for j in n:
 		for i in n:
-			var got: String = mm._cell_biome(Vector2i(0, 0), i, j, "TemperateForest", memo)
+			var got: String = mm._cell_biome(Vector2i(0, 0), i, j, "TemperateForest")
 			assert_true(got != "VoidRift", "the unrevealed east/south chunks' biome is never worn (%d,%d)" % [i, j])
 			if i < n - 1 - i and i <= mini(j, n - 1 - j):   # nearest border is the revealed west one
 				west_cells += 1
 				var expect := "DesertDunes" if BiomeBlend.wears_neighbour(i, j, cell_tiles * 0.5, cell_tiles) else "TemperateForest"
 				assert_eq(got, expect, "a west-border cell wears the revealed neighbour exactly when the blend rule says so (%d,%d)" % [i, j])
 	assert_true(west_cells > 0, "the revealed west neighbour has border cells to check")
-	assert_false(mm._has_blend_neighbour(Vector2i(5, 5), "TemperateForest", {}), "no revealed neighbours: one rect")
+	assert_false(mm._has_blend_neighbour(Vector2i(5, 5), "TemperateForest"), "no revealed neighbours: one rect")
 	mm.free()
 
 class BiomeStub extends Node:
+	var lookups := 0
+	var world_seed := 1
 	func get_biome_at_chunk(c: Vector2i) -> String:
+		lookups += 1
 		return "DesertDunes" if c.x < 0 else ("TemperateForest" if c == Vector2i.ZERO else "VoidRift")
+	func get_world_seed() -> int:
+		return world_seed
+
+## Phase 74 — a persistent biome cache: the second redraw of an unchanged view asks the terrain
+## nothing.
+func _test_minimap_redraw_uses_cache() -> void:
+	var mm := Minimap.new()
+	add_child(mm)
+	var stub := BiomeStub.new()
+	mm.terrain_slice = stub
+	mm.set_zoom(Minimap.ZOOM_DEFAULT)
+	mm.set_player_pos(Vector2(16.0, 16.0))
+	var first: Array = mm._view_rects(Vector2(180, 180))
+	assert_true(stub.lookups > 0, "the first redraw looks biomes up")
+	var after_first := stub.lookups
+	var second: Array = mm._view_rects(Vector2(180, 180))
+	assert_eq(stub.lookups, after_first, "the second redraw of the same view looks up zero biomes")
+	assert_eq(second.size(), first.size(), "and draws the same thing")
+	stub.free()
+	mm.free()
+
+## Phase 74 — at a zoom where a sub-cell is under 2 px, a revealed chunk is a single rect.
+func _test_minimap_far_zoom_one_rect() -> void:
+	var mm := Minimap.new()
+	add_child(mm)
+	mm.terrain_slice = BiomeStub.new()
+	mm.set_player_pos(Vector2(16.0, 16.0))
+	mm._revealed = { "0,0": true, "-1,0": true, "1,0": true, "0,1": true }   # mixed biomes: blend would split
+	mm.set_zoom(Minimap.ZOOM_MAX)
+	var size := Vector2(120, 120)   # 120 / 65 = 1.8 px per chunk
+	var rects: Array = mm._view_rects(size)
+	assert_eq(rects.size(), mm._revealed.size(), "one rect per revealed chunk, no outlines")
+	mm.set_zoom(Minimap.ZOOM_MIN)
+	assert_true(mm._view_rects(Vector2(400, 400)).size() > mm._revealed.size(), "zoomed in, the blend cells and outlines draw")
+	mm.terrain_slice.free()
+	mm.free()
+
+## Phase 74 — the cache is bounded and forgets everything when the seed changes.
+func _test_minimap_cache_bounded_and_seeded() -> void:
+	var mm := Minimap.new()
+	add_child(mm)
+	var stub := BiomeStub.new()
+	mm.terrain_slice = stub
+	mm.set_player_pos(Vector2(16.0, 16.0))
+	mm._view_rects(Vector2(180, 180))
+	var before := stub.lookups
+	stub.world_seed = 2
+	mm._view_rects(Vector2(180, 180))
+	assert_true(stub.lookups > before, "a new world seed re-asks every biome")
+	for i in Minimap.BIOME_CACHE_MAX + 10:
+		mm._biome_cache["%d,999" % i] = "TemperateForest"
+	mm._view_rects(Vector2(180, 180))
+	assert_true(mm._biome_cache.size() <= Minimap.BIOME_CACHE_MAX, "the cache is pruned past its bound")
+	stub.free()
+	mm.free()
+
+	# A fully revealed ZOOM_MAX view fits the cache: the second redraw asks nothing.
+	var big := Minimap.new()
+	add_child(big)
+	var bstub := BiomeStub.new()
+	big.terrain_slice = bstub
+	big.set_zoom(Minimap.ZOOM_MAX)
+	big.set_player_pos(Vector2(16.0, 16.0))
+	for cz in range(-35, 36):
+		for cx in range(-35, 36):
+			big._revealed["%d,%d" % [cx, cz]] = true
+	big._view_rects(Vector2(400, 400))
+	var filled := bstub.lookups
+	big._view_rects(Vector2(400, 400))
+	assert_eq(bstub.lookups, filled, "a full ZOOM_MAX view does not thrash the cache")
+	bstub.free()
+	big.free()
+
+	# With no terrain wired the fallback biome is not remembered.
+	var bare := Minimap.new()
+	add_child(bare)
+	bare.set_player_pos(Vector2(16.0, 16.0))
+	bare._view_rects(Vector2(180, 180))
+	assert_eq(bare._biome_cache.size(), 0, "the no-terrain fallback is not cached")
+	bare.free()
+
+## Phase 74 — a saved window position at x = 10,000 ends up wholly inside an 800x600 viewport
+## after the first apply plus the deferred one.
+func _test_ui_layout_first_apply_fits() -> void:
+	var ui := _new_test_ui()
+	ui.viewport_size_override = Vector2(800, 600)
+	ui._layout["inventory"] = Vector2(10000, 10000)
+	ui._apply_layout()
+	var panel: Control = ui._panels["inventory"]
+	panel.size = Vector2(520, 380)   # the real size, known only after the first layout pass
+	ui._apply_layout()
+	assert_true(panel.position.x >= 0.0 and panel.position.x + panel.size.x <= 800.0, "fully inside horizontally")
+	assert_true(panel.position.y >= 0.0 and panel.position.y + panel.size.y <= 600.0, "fully inside vertically")
+	assert_eq(UiSlice.fit_window_position(Vector2(-50, -50), Vector2(100, 100), Vector2(800, 600)), Vector2.ZERO, "negative pulled in")
+	assert_eq(UiSlice.fit_window_position(Vector2(5, 5), Vector2(900, 900), Vector2(800, 600)), Vector2.ZERO, "oversized window pins to the origin")
+	ui.free()
+	DirAccess.remove_absolute(TEST_UI_LAYOUT)
 
 ## Phase 64 — a biome whose envelope dicts lack keys (or whose altitude lacks `max`) must not
 ## error in `_envelope_of`, and the complete envelopes still load.
