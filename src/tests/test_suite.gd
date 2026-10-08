@@ -628,6 +628,8 @@ func run() -> void:
 	_run_test("region: op lists with non-dictionary ops are dropped", _test_region_entry_rejects_bad_ops)
 	_run_test("region: a chunk entry with edits or materials of the wrong type is skipped with one warning", _test_region_malformed_entry_skipped)
 	_run_test("peer window: a flood of far claims moves the window at most once", _test_peer_window_rate_limited)
+	_run_test("peer window: the interval is measured on the injected clock", _test_peer_window_fake_clock)
+	_run_test("peer window: a 20-chunk claim is clamped inside the map and across the seam", _test_peer_window_clamp_cap)
 	_run_test("peer window: a seam crossing is a short step, not a planet-wide one", _test_peer_window_clamps_across_seam)
 	_run_test("peer window: a host-driven move recentres at once", _test_peer_window_host_driven)
 	_run_test("peer window: a move into a stored region makes its edits resident", _test_peer_window_move_loads_region_edits)
@@ -14831,6 +14833,42 @@ func _test_peer_window_rate_limited() -> void:
 		"and the window never travelled farther than the cap")
 	cm._peer_last_move_msec[5] = -1000000
 	assert_true(cm.set_peer_center(5, Vector2i(3, 2)), "a near claim after the interval is accepted")
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+
+func _test_peer_window_fake_clock() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var clock := [1000]
+	cm.now_msec = func() -> int: return clock[0]
+	cm.set_peer_center(5, Vector2i(2, 2), true)
+	clock[0] += 100
+	assert_false(cm.set_peer_center(5, Vector2i(3, 2)), "a claim 100 ms after the last is refused")
+	assert_eq(cm.peer_recenter_refused, 1, "and counted")
+	clock[0] = 1000 + int(ChunkManager.PEER_RECENTER_INTERVAL * 1000.0) - 1
+	assert_false(cm.set_peer_center(5, Vector2i(3, 2)), "1 ms inside the interval is still refused")
+	clock[0] += 2
+	assert_true(cm.set_peer_center(5, Vector2i(3, 2)), "one ms past the interval is accepted")
+	assert_eq(cm.peer_center(5), Vector2i(3, 2), "and the window moved")
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+
+func _test_peer_window_clamp_cap() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var cap := ChunkManager.PEER_RECENTER_MAX_CHUNKS
+	cm.now_msec = func() -> int: return 0
+	cm.set_peer_center(5, Vector2i(10, 10), true)
+	cm.now_msec = func() -> int: return 10000
+	assert_true(cm.set_peer_center(5, Vector2i(30, 10)), "a 20-chunk claim moves the window")
+	assert_eq(cm.peer_center(5), Vector2i(10 + cap, 10), "but only by the cap")
+	assert_eq(cm.peer_recenter_refused, 1, "and is counted")
+	var c := TerrainSlice.circumference_chunks()
+	cm.now_msec = func() -> int: return 20000
+	cm.set_peer_center(6, Vector2i(c - 2, 10), true)
+	cm.now_msec = func() -> int: return 30000
+	assert_true(cm.set_peer_center(6, Vector2i(18, 10)), "a 20-chunk claim across the seam moves the window")
+	assert_eq(cm.peer_center(6), Vector2i(posmod(c - 2 + cap, c), 10), "by the cap, the short way round")
 	for k in ["cm", "voxel", "terrain", "player"]:
 		rig[k].free()
 

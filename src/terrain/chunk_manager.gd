@@ -195,7 +195,7 @@ var _active: bool = false
 ## `_peer_centers` maps peer_id -> chunk; `_last_centers` is the window set the last refresh
 ## resolved (so a peer crossing a chunk is a window move); `_chunk_refs` counts, per chunk, how
 ## many windows cover it (a chunk is wanted while its count is above zero; the load/unload
-## queues themselves run off the `wanted` set).
+## unload paths release a chunk only at count zero).
 var _peer_centers: Dictionary = {}
 var _last_centers: Array = []
 var _chunk_refs: Dictionary = {}   # "cx,cz" -> number of windows covering it (read by `chunk_ref_count`)
@@ -207,8 +207,10 @@ var _chunk_refs: Dictionary = {}   # "cx,cz" -> number of windows covering it (r
 ## client could make the host read regions and queue chunk builds as fast as it can send packets.
 const PEER_RECENTER_INTERVAL := 0.25
 const PEER_RECENTER_MAX_CHUNKS := 8
-## peer_id -> `Time.get_ticks_msec()` of the last accepted client-driven move.
+## peer_id -> `now_msec` time of the last accepted client-driven move.
 var _peer_last_move_msec: Dictionary = {}
+## Millisecond clock for the peer-window rate limit, self-heal and stranded-region retry; a test swaps it for a fake.
+var now_msec: Callable = Time.get_ticks_msec
 ## Client-driven moves refused (rate-limited) or clamped (too far in one step), for the log line and tests.
 var peer_recenter_refused: int = 0
 
@@ -355,7 +357,6 @@ func refresh(unload_now: bool = true) -> void:
 	# crossing retains — is the same radius the queue spans, so no chunk that was queued (and
 	# therefore built) is released while it is still inside the window it was built for. See
 	# the docstring above for why the two radii were briefly different and why that was a waste.
-	var wanted: Dictionary = {}
 	var radius := stream_radius()
 	var desired: Array = []
 	var refs: Dictionary = {}
@@ -366,7 +367,6 @@ func refresh(unload_now: bool = true) -> void:
 			var ckey := _chunk_key(c)
 			if not refs.has(ckey):
 				desired.append(c)
-				wanted[ckey] = true
 				refs[ckey] = 0
 			refs[ckey] += 1
 	_chunk_refs = refs
@@ -392,7 +392,7 @@ func refresh(unload_now: bool = true) -> void:
 	# bounded number per frame.
 	if unload_now:
 		for key in _loaded.keys():
-			if not wanted.has(key):
+			if chunk_ref_count(_key_to_chunk(key)) == 0:
 				unload_chunk(_key_to_chunk(key))
 		_unload_queue.clear()
 	else:
@@ -400,7 +400,7 @@ func refresh(unload_now: bool = true) -> void:
 		# undecorate) rather than twice per comparison, which parsed two keys per compare.
 		var stale: Array = []
 		for key in _loaded.keys():
-			if not wanted.has(key):
+			if chunk_ref_count(_key_to_chunk(key)) == 0:
 				stale.append([_nearest_dist2(centers, _key_to_chunk(key)), key])
 		stale.sort_custom(func(a, b): return a[0] > b[0])
 		_unload_queue.clear()
@@ -418,7 +418,7 @@ var _last_stranded_retry_msec: int = 0
 func _retry_stranded_regions() -> void:
 	if region_streamer == null or not region_streamer.has_stranded():
 		return
-	var now := Time.get_ticks_msec()
+	var now: int = now_msec.call()
 	if now - _last_stranded_retry_msec < STRANDED_RETRY_MSEC:
 		return
 	_last_stranded_retry_msec = now
@@ -429,7 +429,8 @@ func _retry_stranded_regions() -> void:
 func _drain_unload_queue(budget: int) -> void:
 	while budget > 0 and not _unload_queue.is_empty():
 		var key: String = _unload_queue.pop_front()
-		if _loaded.has(key):
+		# A chunk a window has covered again since it was queued stays loaded.
+		if _loaded.has(key) and chunk_ref_count(_key_to_chunk(key)) == 0:
 			unload_chunk(_key_to_chunk(key))
 			budget -= 1
 
@@ -470,7 +471,7 @@ func _drain_unload_queue(budget: int) -> void:
 func _self_heal_failed(centers: Array, window_moved: bool) -> void:
 	if _failed.is_empty():
 		return
-	var now := Time.get_ticks_msec()
+	var now: int = now_msec.call()
 	if not window_moved:
 		if _last_self_heal_msec >= 0 and now - _last_self_heal_msec < int(self_heal_interval * 1000.0):
 			return
@@ -821,7 +822,7 @@ func _centers_around(local: Vector2i) -> Array:
 ## `PEER_RECENTER_MAX_CHUNKS` is clamped to that distance (both counted in
 ## `peer_recenter_refused`). Returns true when the window actually moved.
 func set_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool = false) -> bool:
-	var now := Time.get_ticks_msec()
+	var now: int = now_msec.call()
 	# X is a wrapped planet coordinate: store and compare the canonical chunk.
 	chunk = TerrainSlice.wrap_chunk(chunk)
 	if host_driven or not _peer_centers.has(peer_id):

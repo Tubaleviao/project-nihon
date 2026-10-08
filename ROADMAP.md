@@ -6394,7 +6394,7 @@ reason (#168, #166).
 
 ---
 
-## Phase 79 — Deterministic peer-window rate limit and a production ref-count reader
+## Phase 79 — Deterministic peer-window rate limit and a production ref-count reader ✅ Done
 
 **Goal:** `ChunkManager.set_peer_center` reads `Time.get_ticks_msec()` directly, so the suite
 cannot test `PEER_RECENTER_INTERVAL` without sleeping, and the interval branch is untested.
@@ -6413,12 +6413,12 @@ deliverable says production code reads it or it goes (#161).
   step that read them switches to the peer-window keys it actually needs.
 
 **Acceptance criteria:**
-- [ ] Suite: with a fake clock, a client move 100 ms after the last is refused and counted in
+- [x] Suite: with a fake clock, a client move 100 ms after the last is refused and counted in
   `peer_recenter_refused`; at `PEER_RECENTER_INTERVAL` + 1 ms it is accepted.
-- [ ] Suite: a client move of 20 chunks is clamped to `PEER_RECENTER_MAX_CHUNKS`, across the X
+- [x] Suite: a client move of 20 chunks is clamped to `PEER_RECENTER_MAX_CHUNKS`, across the X
   seam as well as inside the map.
-- [ ] `grep -n "Time.get_ticks_msec" src/terrain/chunk_manager.gd` shows only the default.
-- [ ] Suite green on both boot paths, harness 15/15 steps.
+- [x] `grep -n "Time.get_ticks_msec" src/terrain/chunk_manager.gd` shows only the default.
+- [x] Suite green on both boot paths, harness 15/15 steps. — `Results: 14866/14866 passed (0 failed)` both boot paths, harness 15/15 steps.
 
 ---
 
