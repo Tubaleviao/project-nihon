@@ -1066,6 +1066,9 @@ func _build_ui() -> void:
 	_apply_layout()
 	# The panels have no real size until their first layout pass: re-fit once it has run.
 	_apply_layout.call_deferred()
+	# A viewport resize (window drag, fullscreen toggle) re-fits too.
+	if is_inside_tree() and not get_viewport().size_changed.is_connected(_apply_layout):
+		get_viewport().size_changed.connect(_apply_layout)
 
 func _build_window(key: String, title: String, content: Control, position: Vector2) -> PanelContainer:
 	var panel := PanelContainer.new()
