@@ -6326,7 +6326,7 @@ lattice cells). `_NICHE_QUANTILES` is an offline table with no generator, so a c
 
 ---
 
-## Phase 77 — One detail-noise formula and the ring's strip helper
+## Phase 77 — One detail-noise formula and the ring's strip helper ✅ Done
 
 **Goal:** the detail-noise height formula lives in three places — `TerrainSlice.detail_of`,
 `detail_at` and `_raw_height_at` — so a change to one (scale, offset, the far-origin fold) leaves
@@ -6350,14 +6350,14 @@ window-edge test asserts per vertex and `break`s, so a failure reports one verte
 - A `DistantTerrain` counter of ring rebuilds requested and completed, read by the suite.
 
 **Acceptance criteria:**
-- [ ] Suite: for 256 random (x, z) points, `detail_at`, `detail_of` and the detail term of
+- [x] Suite: for 256 random (x, z) points, `detail_at`, `detail_of` and the detail term of
   `_raw_height_at` agree exactly.
-- [ ] Suite: the ring mesh for a fixed seed and centre is vertex-for-vertex identical before and
+- [x] Suite: the ring mesh for a fixed seed and centre is vertex-for-vertex identical before and
   after the refactor (hash of the vertex array recorded in the test).
-- [ ] Suite: walking the player across 5 chunks requests at most 5 ring rebuilds and the worker
+- [x] Suite: walking the player across 5 chunks requests at most 5 ring rebuilds and the worker
   never has more than one queued.
-- [ ] `grep -n "0.5 \* HEIGHT_SCALE" src/terrain/` shows only `detail_of`.
-- [ ] Suite green on both boot paths, harness green.
+- [x] `grep -n "0.5 \* HEIGHT_SCALE" src/terrain/` shows only `detail_of`.
+- [x] Suite green on both boot paths, harness green. — `Results: 14839/14839 passed (0 failed)`, harness 15/15 steps.
 
 ---
 
