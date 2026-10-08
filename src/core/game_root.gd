@@ -1652,7 +1652,7 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 	if own is Dictionary:
 		var arr = own.get("position", [])
 		if WorldPos.is_wire(arr):
-			if arr is Dictionary and _rebase != null:
+			if arr is Dictionary and _rebase != null and PlayerRegistry.is_valid_wire_pos(arr):
 				# Exact placement: rebase to the target chunk, then land on its small local offset.
 				var l: Array = arr["local"]
 				var exact := WorldPos.normalized({"chunk": WorldPos.wire_chunk(arr),

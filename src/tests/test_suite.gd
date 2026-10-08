@@ -1190,6 +1190,29 @@ func _test_player_exact_far_position() -> void:
 	var walked := player.get_world_pos()
 	assert_eq(walked["chunk"], chunk, "a later rebase leaves the chunk alone")
 	assert_true((walked["local"] as Vector3).distance_to(want["local"]) < 0.001, "and the local")
+	# The per-step world clamp works on the exact position: a small step far out is not quantised
+	# away, and a player past the seam is wrapped by a whole lap.
+	var ts := TerrainSlice.new()
+	add_child(ts)
+	var inside := TerrainSlice.wrap_chunk(chunk)
+	var p2 := PlayerSlice.new()
+	p2.render_visuals = true
+	add_child(p2)
+	p2.terrain_slice = ts
+	p2.shift_scene(WorldPos.rebase_shift(Vector2i.ZERO, inside))
+	p2.place_at_world_pos({"chunk": inside, "local": want["local"]})
+	var before := p2.get_scene_position()
+	p2._body.global_position += Vector3(0.1, 0.0, 0.0)
+	p2._clamp_to_world_exact()
+	assert_true(absf(p2.get_scene_position().x - (before.x + 0.1)) < 0.001, "the clamp leaves a 0.1 m step alone far from the origin")
+	assert_eq(p2.get_world_pos()["chunk"], inside, "and the chunk")
+	player.terrain_slice = ts
+	player._clamp_to_world_exact()
+	assert_eq(TerrainSlice.wrap_chunk(player.get_world_pos()["chunk"]), inside, "a player past the seam stays on the same wrapped chunk")
+	assert_true(absf(player.get_world_pos()["chunk"].x) <= TerrainSlice.circumference_chunks() / 2 + 1, "after a lap wrap")
+	player.terrain_slice = null
+	p2.free()
+	ts.free()
 	# Save -> reload through the registry record.
 	var reg := PlayerRegistry.new()
 	reg.record_world_pos("p1", got)

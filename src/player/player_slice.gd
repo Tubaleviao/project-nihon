@@ -12,6 +12,7 @@ extends Node
 ##   take_damage(dmg) -> void
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
+const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 
 const SPEED        := 4.5     # m/s horizontal
 const JUMP_FORCE   := 5.0     # m/s vertical
@@ -619,7 +620,25 @@ func _move(delta: float) -> void:
 	# body is moved directly so the clamp is authoritative for both the visible
 	# avatar and collision, without relying on a wall at the world edge.
 	if terrain_slice != null and terrain_slice.has_method("clamp_to_world"):
-		_body.global_position = WorldPos.wrap_world(terrain_slice.clamp_to_world(_body.global_position - _scene_offset)) + _scene_offset
+		_clamp_to_world_exact()
+
+## Phase 78 — the world clamp and the seam wrap, worked out on the exact `{chunk, local}` position
+## and applied to the body as a small scene-space delta. Going through `body - _scene_offset` would
+## quantise the position to metres far from the origin and eat the player's steps.
+func _clamp_to_world_exact() -> void:
+	var wp := get_world_pos()
+	var chunk: Vector2i = wp["chunk"]
+	var local: Vector3 = wp["local"]
+	var world_x: float = chunk.x * WorldPos.CHUNK_METERS + local.x   # doubles
+	var world_z: float = chunk.y * WorldPos.CHUNK_METERS + local.z
+	# `clamp_to_world` only touches z, so probe its bounds with the two extremes.
+	var hi: Vector3 = terrain_slice.clamp_to_world(Vector3(0.0, 0.0, INF))
+	var lo: Vector3 = terrain_slice.clamp_to_world(Vector3(0.0, 0.0, -INF))
+	var dz := clampf(world_z, lo.z, hi.z) - world_z
+	var w := float(TerrainSlice.circumference_chunks()) * WorldPos.CHUNK_METERS
+	var dx := (fposmod(world_x + w * 0.5, w) - w * 0.5) - world_x
+	if dx != 0.0 or dz != 0.0:
+		_body.global_position += Vector3(dx, 0.0, dz)
 
 func _broadcast_state() -> void:
 	if not render_visuals:

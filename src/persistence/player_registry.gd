@@ -532,6 +532,11 @@ static func _store_world_pos(rec: Dictionary, wp: Dictionary) -> void:
 	rec["chunk"] = [chunk.x, chunk.y]
 	rec["local"] = [local.x, local.y, local.z]
 
+## Phase 78 — true when a wire `{chunk, local}` dictionary is finite and in range (Z between the
+## poles, `local` small): safe to rebase to and place at.
+static func is_valid_wire_pos(wire: Dictionary) -> bool:
+	return _has_chunk_local(wire)
+
 ## True when `chunk` is two finite ints-in-range and `local` three finite numbers: element types
 ## and magnitudes are checked, not just the array sizes, so a bad save or payload falls back to
 ## `position` rather than reaching int()/float() casts.
