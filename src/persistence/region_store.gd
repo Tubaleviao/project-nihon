@@ -124,13 +124,13 @@ static func fold_chunks(base: Dictionary, incoming: Dictionary, deletions := tru
 			out.erase(ckey)
 			continue
 		if entry is Dictionary and bool((entry as Dictionary).get("merge", false)):
-			out[ckey] = _overlay_entry(out.get(ckey, null), entry)
+			out[ckey] = overlay_entry(out.get(ckey, null), entry)
 			continue
 		out[ckey] = entry
 	return out
 
 ## `entry` laid over `stored` (a chunk entry or null), without the `merge` flag. Pure.
-static func _overlay_entry(stored: Variant, entry: Dictionary) -> Dictionary:
+static func overlay_entry(stored: Variant, entry: Dictionary) -> Dictionary:
 	var result: Dictionary = (stored as Dictionary).duplicate(true) if stored is Dictionary else {}
 	var edits: Dictionary = result.get("edits", {}) if result.get("edits", {}) is Dictionary else {}
 	var incoming_edits: Variant = entry.get("edits", {})
@@ -143,14 +143,24 @@ static func _overlay_entry(stored: Variant, entry: Dictionary) -> Dictionary:
 					depleted[str(op.get("vein", ""))] = true
 			var merged: Array = []
 			var old: Variant = edits.get(tile, [])
+			var stored_taken: Dictionary = {}
 			if old is Array:
 				for op in old:
 					if ops_in.has(op):
 						continue
 					if op is Dictionary and str(op.get("op", "")) == "deplete" and depleted.has(str(op.get("vein", ""))):
+						# A vein the entry depletes: the larger count wins, the stored one may be ahead.
+						var vid := str(op.get("vein", ""))
+						stored_taken[vid] = maxi(int(stored_taken.get(vid, 0)), int(op.get("taken", 0)))
 						continue
 					merged.append(op)
-			merged.append_array(ops_in)
+			for op in ops_in:
+				if op is Dictionary and str(op.get("op", "")) == "deplete" and stored_taken.has(str(op.get("vein", ""))):
+					var lifted: Dictionary = (op as Dictionary).duplicate()
+					lifted["taken"] = maxi(int(lifted.get("taken", 0)), int(stored_taken[str(op.get("vein", ""))]))
+					merged.append(lifted)
+				else:
+					merged.append(op)
 			edits[tile] = merged
 	result["edits"] = edits
 	var materials: Variant = entry.get("materials", null)
@@ -319,12 +329,14 @@ func migrate_manifest(chunks: Dictionary) -> Error:
 		var kept: Dictionary = read.get("raw_invalid", {})
 		var missing := {}
 		for ckey in grouped[rkey]:
-			if not base.has(ckey) and not kept.has(ckey):
+			if not base.has(ckey):
 				missing[ckey] = grouped[rkey][ckey]
 		if missing.is_empty():
 			continue
 		var folded := fold_chunks(base, missing, false)
-		folded.merge(kept)
+		for ckey in kept:
+			if not missing.has(ckey):
+				folded[ckey] = kept[ckey]
 		var err := save_region(region, folded)
 		if err != OK:
 			return err

@@ -257,6 +257,9 @@ func run() -> void:
 	_run_test("region: a depletion in an evicted chunk keeps its other edits", _test_region_depletion_merges_evicted)
 	_run_test("region: a malformed entry survives a neighbour's save", _test_region_malformed_entry_kept)
 	_run_test("region: a valid entry replaces a malformed one", _test_region_malformed_entry_replaced)
+	_run_test("region: a partial chunk loads its stored edits when the region streams in", _test_region_partial_chunk_loads_stored)
+	_run_test("region: an overlay keeps the larger stored depletion count", _test_region_overlay_keeps_larger_taken)
+	_run_test("region: migration recovers a monolith chunk whose region entry is malformed", _test_region_migrate_malformed_recovers)
 	_run_test("rebase: an unshiftable target is reported",      _test_rebase_driver_reports_unshiftable)
 	_run_test("game_root: implausible peer positions dropped",  _test_remote_state_plausibility)
 	_run_test("equipment: slots cached, peer evict, owner map", _test_equipment_phase48_misc)
@@ -14420,6 +14423,45 @@ func _test_region_malformed_entry_replaced() -> void:
 	var read := store.read_region(Vector2i.ZERO)
 	assert_true(read["raw_invalid"].is_empty(), "no malformed entry remains")
 	assert_true(read["chunks"]["1,1"] == good, "the valid entry replaced it")
+
+func _test_region_partial_chunk_loads_stored() -> void:
+	var found := _find_surface_vein(0)
+	if found.is_empty():
+		assert_true(false, "a vein breaks the surface of a flat chunk somewhere")
+		return
+	var vein: Dictionary = found["vein"]
+	var anchor: Vector2i = vein["anchor"]
+	var a_key := VoxelSlice._chunk_key(VoxelSlice._tile_to_chunk(anchor))
+	var other: Vector2i = anchor + Vector2i(2, 0)
+	if VoxelSlice._chunk_key(VoxelSlice._tile_to_chunk(other)) != a_key:
+		other = anchor - Vector2i(2, 0)
+	var other_key := VoxelSlice._tile_key(other)
+	var stored := { a_key: { "edits": { other_key: [{ "op": "remove", "bottom": 0.0, "top": 1.0 }] } } }
+	var v := VoxelSlice.new()
+	add_child(v)
+	v._record_depletion(vein, 1)   # the anchor chunk holds no edits: the depletion is partial
+	v.apply_region_chunks(stored)
+	assert_true(v.get_edits().has(other_key), "the stored edit is applied beneath the depletion")
+	assert_eq(int(v.get_vein_depletion().get(str(vein["id"]), 0)), 1, "the depletion is kept")
+	assert_false(v.get_save_manifest()[a_key].has("merge"), "the chunk is whole, so the next save replaces")
+	v.free()
+
+func _test_region_overlay_keeps_larger_taken() -> void:
+	var stored := { "edits": { "0,0": [{ "op": "deplete", "vein": "v", "taken": 40 }] } }
+	var entry := { "merge": true, "edits": { "0,0": [{ "op": "deplete", "vein": "v", "taken": 3 }] } }
+	var out := RegionStoreScript.overlay_entry(stored, entry)
+	assert_eq(out["edits"]["0,0"].size(), 1, "one depletion op remains")
+	assert_eq(int(out["edits"]["0,0"][0]["taken"]), 40, "with the larger count")
+
+func _test_region_migrate_malformed_recovers() -> void:
+	var dir := _fresh_region_dir("test_p75_migrate_malformed")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	var good := { "edits": { "0,0": [{ "op": "remove", "bottom": 0.0, "top": 1.0 }] } }
+	_write_region_file(store, { "1,1": { "edits": "x" }, "2,2": { "edits": "y" } })
+	assert_eq(store.migrate_manifest({ "1,1": good }), OK, "migrated")
+	var read := store.read_region(Vector2i.ZERO, false)
+	assert_true(read["chunks"]["1,1"] == good, "the monolith's valid copy fills the malformed slot")
+	assert_eq(read["raw_invalid"].keys(), ["2,2"], "an unrelated malformed entry stays")
 
 func _test_region_evict_keeps_vein_depletion() -> void:
 	var found := _find_surface_vein(0)

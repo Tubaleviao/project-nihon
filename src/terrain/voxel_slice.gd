@@ -101,6 +101,7 @@ const OreField := preload("res://src/terrain/ore_field.gd")
 const BiomeBlend := preload("res://src/terrain/biome_blend.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
+const RegionStore := preload("res://src/persistence/region_store.gd")
 
 ## CHUNK_SIZE is defined once on TerrainSlice and accessed via terrain_slice.CHUNK_SIZE.
 ## The local alias below keeps internal uses readable without duplicating the value.
@@ -1830,9 +1831,21 @@ func apply_region_chunks(manifest: Dictionary) -> void:
 	var materials: Dictionary = {}
 	for ckey in manifest:
 		var rk := str(ckey)
+		var chunk_data: Dictionary = manifest[ckey]
+		if _partial_chunks.has(rk) and _edits_by_chunk.has(rk):
+			# Phase 75 — the resident ops are only the depletions written while the chunk was
+			# evicted: lay them over what the region file stores, and the chunk is whole again.
+			var resident: Dictionary = get_chunk_manifest().get(rk, { "edits": {} })
+			var whole: Dictionary = RegionStore.overlay_entry(chunk_data, resident)
+			for key in whole["edits"]:
+				edits[key] = whole["edits"][key]
+			if whole.has("materials"):
+				for key in whole["materials"]:
+					materials[key] = whole["materials"][key]
+			_partial_chunks.erase(rk)
+			continue
 		if _edits_by_chunk.has(rk) or _dirty_chunks.has(rk) or _inflight_chunks.has(rk):
 			continue
-		var chunk_data: Dictionary = manifest[ckey]
 		if chunk_data.has("edits"):
 			for key in chunk_data["edits"]:
 				edits[key] = chunk_data["edits"][key]
