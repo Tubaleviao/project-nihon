@@ -132,7 +132,7 @@ func run() -> void:
 	_run_test("rebase: loot, avatars and the station preview follow the shift", _test_rebase_extras)
 	_run_test("player: rebased origin keeps the world position", _test_world_pos_rebase)
 	_run_test("player: the scene origin is the driver's integer chunk", _test_scene_origin_single_source)
-	_run_test("terrain: z_bounds matches clamp_to_world at infinity", _test_z_bounds_match_clamp)
+	_run_test("terrain: walking over a pole or round the planet folds the position", _test_globe_fold)
 	_run_test("wire: one validator for dictionaries and records", _test_one_wire_validator)
 	_run_test("player: exact chunk + local far from the origin", _test_player_exact_far_position)
 	_run_test("rebase: TreeSlice shifts its trunks and pool, not other children", _test_tree_shift_explicit_set)
@@ -1346,12 +1346,47 @@ func _test_scene_origin_single_source() -> void:
 	assert_eq(player.scene_offset(), want, "the offset is exactly -origin_chunk * CHUNK_METERS")
 	player.free()
 
-func _test_z_bounds_match_clamp() -> void:
-	var t := TerrainSlice.new()
-	var b := t.z_bounds()
-	assert_eq(b.y, t.clamp_to_world(Vector3(0.0, 0.0, INF)).z, "the upper z bound is the +INF clamp")
-	assert_eq(b.x, t.clamp_to_world(Vector3(0.0, 0.0, -INF)).z, "the lower z bound is the -INF clamp")
-	t.free()
+## Phase 91 — the planet is a globe: every direction leads round it.
+func _test_globe_fold() -> void:
+	var c := TerrainSlice.circumference_chunks()
+	var pole := TerrainSlice.pole_chunks()
+	var m := TerrainSlice.FOLD_MARGIN_CHUNKS
+	var cm := TerrainSlice.CHUNK_METERS
+	# Inside the slack nothing moves: pacing over a line costs no fold.
+	for chunk in [Vector2i(0, pole + m - 1), Vector2i(0, -pole - m), Vector2i(c / 2 + m - 1, 0), Vector2i(-c / 2 - m, 0)]:
+		var still := TerrainSlice.fold_world_pos({"chunk": chunk, "local": Vector3(1.0, 2.0, 3.0)})
+		assert_false(still["folded"], "no fold inside the slack at %s" % chunk)
+	# Over the north pole: back down the meridian 180 degrees round, turned about.
+	var north := TerrainSlice.fold_world_pos({"chunk": Vector2i(10, pole + m), "local": Vector3(5.0, 7.0, 4.0)})
+	assert_true(north["folded"] and north["turned"], "past the north pole the position folds and turns")
+	var np: Dictionary = north["pos"]
+	var z_before := float(pole + m) * cm + 4.0
+	var z_after: float = float(np["chunk"].y) * cm + (np["local"] as Vector3).z
+	assert_true(absf((z_before - float(pole) * cm) + (z_after - float(pole) * cm)) < 0.001, "Z mirrors about the pole")
+	assert_eq(np["chunk"].x, 10 - c / 2, "X moves half a lap (canonical)")
+	assert_eq(np["local"].x, 5.0, "local X is kept")
+	assert_eq(np["local"].y, 7.0, "and the height")
+	assert_true(absf(TerrainSlice.latitude_at(z_before) - TerrainSlice.latitude_at(z_after)) < 0.001, "the same latitude on both sides")
+	# Over the south pole.
+	var south := TerrainSlice.fold_world_pos({"chunk": Vector2i(-3, -pole - m - 1), "local": Vector3(0.0, 0.0, 0.0)})
+	assert_true(south["turned"], "past the south pole too")
+	var sp: Dictionary = south["pos"]
+	var sz: float = float(sp["chunk"].y) * cm + (sp["local"] as Vector3).z
+	assert_true(absf(sz - (-2.0 * float(pole) * cm - float(-pole - m - 1) * cm)) < 0.001, "Z mirrors about the south pole")
+	assert_true((sp["local"] as Vector3).z >= 0.0 and (sp["local"] as Vector3).z < cm, "the folded local stays inside its chunk")
+	# Round the antimeridian: one lap, no turn.
+	var east := TerrainSlice.fold_world_pos({"chunk": Vector2i(c / 2 + m, 7), "local": Vector3(1.0, 0.0, 2.0)})
+	assert_true(east["folded"] and not east["turned"], "past the seam the position folds without a turn")
+	assert_eq(east["pos"]["chunk"], Vector2i(-c / 2 + m, 7), "one lap west")
+	var west := TerrainSlice.fold_world_pos({"chunk": Vector2i(-c / 2 - m - 1, 7), "local": Vector3(1.0, 0.0, 2.0)})
+	assert_eq(west["pos"]["chunk"], Vector2i(c / 2 - m - 1, 7), "and one lap east")
+	# The folded position is a valid wire position, and a peer may stand in the slack.
+	assert_true(WorldPos.is_wire(WorldPos.pos_to_wire(np)), "the folded position goes on the wire")
+	assert_true(WorldPos.is_wire({"chunk": [0, pole + m - 1], "local": [0, 0, 0]}), "a player in the slack past a pole is a valid position")
+	# A saved position past a pole loads folded.
+	var saved := PlayerRegistry.world_pos_of({"chunk": [4, pole + 2], "local": [1.0, 0.0, 1.0]})
+	assert_true(saved["chunk"].y < pole, "a record past the pole loads on the canonical planet")
+	assert_eq(saved["chunk"].x, 4 - c / 2, "half a lap round")
 
 func _test_one_wire_validator() -> void:
 	var good_dict := {"chunk": [3, -4], "local": [1.0, 2.0, 3.0]}
@@ -1363,7 +1398,7 @@ func _test_one_wire_validator() -> void:
 	assert_false(WorldPos.is_wire({"chunk": [1.5, 2], "local": [0, 0, 0]}), "a non-integer chunk is refused")
 	assert_false(WorldPos.is_wire({"chunk": [1, 2], "local": [0.0, NAN, 0.0]}), "a NaN component is refused")
 	assert_false(WorldPos.is_wire({"chunk": [NAN, 2], "local": [0, 0, 0]}), "a NaN chunk is refused")
-	assert_false(WorldPos.is_wire({"chunk": [0, TerrainSlice.pole_chunks() + 1], "local": [0, 0, 0]}), "a chunk past the pole is refused")
+	assert_false(WorldPos.is_wire({"chunk": [0, TerrainSlice.pole_chunks() + TerrainSlice.FOLD_MARGIN_CHUNKS + 1], "local": [0, 0, 0]}), "a chunk past the pole and its fold slack is refused")
 	assert_false(WorldPos.is_wire({"chunk": [0, 0], "local": [2.0e6, 0, 0]}), "a local beyond a chunk's reach is refused")
 	assert_false(WorldPos.is_wire({"chunk": [0, 0, 0], "local": [0, 0, 0]}), "a three-element chunk is refused")
 	assert_true(PlayerRegistry.world_pos_of(good_dict)["chunk"] == Vector2i(3, -4), "the registry decodes through the same rule")
@@ -1384,29 +1419,22 @@ func _test_player_exact_far_position() -> void:
 	var walked := player.get_world_pos()
 	assert_eq(walked["chunk"], chunk, "a later rebase leaves the chunk alone")
 	assert_true((walked["local"] as Vector3).distance_to(want["local"]) < 0.001, "and the local")
-	# The per-step world clamp works on the exact position: a small step far out is not quantised
-	# away, and a player past the seam is wrapped by a whole lap.
-	var ts := TerrainSlice.new()
-	add_child(ts)
+	# A fold (Phase 91) lands on the exact position: a player past the seam, once rebased onto the
+	# folded chunk, is on the same wrapped chunk at the same local.
 	var inside := TerrainSlice.wrap_chunk(chunk)
 	var p2 := PlayerSlice.new()
 	p2.render_visuals = true
 	add_child(p2)
-	p2.terrain_slice = ts
 	p2.shift_scene(WorldPos.rebase_shift(Vector2i.ZERO, inside))
-	p2.place_at_world_pos({"chunk": inside, "local": want["local"]})
-	var before := p2.get_scene_position()
-	p2._body.global_position += Vector3(0.1, 0.0, 0.0)
-	p2._clamp_to_world_exact()
-	assert_true(absf(p2.get_scene_position().x - (before.x + 0.1)) < 0.001, "the clamp leaves a 0.1 m step alone far from the origin")
-	assert_eq(p2.get_world_pos()["chunk"], inside, "and the chunk")
-	player.terrain_slice = ts
-	player._clamp_to_world_exact()
-	assert_eq(TerrainSlice.wrap_chunk(player.get_world_pos()["chunk"]), inside, "a player past the seam stays on the same wrapped chunk")
-	assert_true(absf(player.get_world_pos()["chunk"].x) <= TerrainSlice.circumference_chunks() / 2 + 1, "after a lap wrap")
-	player.terrain_slice = null
+	p2.fold_to({"chunk": inside, "local": want["local"]}, false)
+	assert_eq(p2.get_world_pos()["chunk"], inside, "a folded player is on the wrapped chunk")
+	assert_true((p2.get_world_pos()["local"] as Vector3).distance_to(want["local"]) < 0.001, "at the same local")
+	var facing := p2.get_facing()
+	p2._vel = Vector3(1.0, -2.0, 3.0)
+	p2.fold_to({"chunk": inside, "local": want["local"]}, true)
+	assert_true(p2.get_facing().distance_to(-facing) < 0.001, "a pole fold turns the view about")
+	assert_true(p2.get_velocity().distance_to(Vector3(-1.0, -2.0, -3.0)) < 0.001, "and the motion, keeping the fall")
 	p2.free()
-	ts.free()
 	# Save -> reload through the registry record.
 	var reg := PlayerRegistry.new()
 	_own(reg)
@@ -1526,18 +1554,12 @@ func _test_terrain_planet_coordinates() -> void:
 	assert_true(absf(TerrainSlice.longitude_of(0)) < 0.001, "the origin is longitude 0")
 	assert_true(absf(TerrainSlice.longitude_at(TerrainSlice.circumference_chunks() * TerrainSlice.CHUNK_METERS * 0.25) - 90.0) < 0.001, "a quarter around is 90 degrees east")
 	assert_true(t.is_chunk_in_bounds(Vector2i(999999, 0)), "any longitude is walkable")
-	assert_true(not t.is_chunk_in_bounds(Vector2i(0, TerrainSlice.polar_chunks())), "polar ice is not walkable")
+	assert_true(t.is_chunk_in_bounds(Vector2i(0, TerrainSlice.polar_chunks())), "polar ice is walkable")
+	assert_true(t.is_chunk_in_bounds(Vector2i(0, -TerrainSlice.pole_chunks())), "up to the south pole")
 	assert_eq(TerrainSlice.where_text(Vector3(0.0, 4.2, 0.0)), "0.000\u00b0N 0.000\u00b0E  alt 4 m", "where: the origin")
 	assert_eq(TerrainSlice.where_text(Vector3(-0.5, 0.0, 0.0)), "0.000\u00b0N 0.000\u00b0E  alt 0 m", "where: just west of the meridian rounds to 0.000, no \"0.000 W\"")
 	assert_true(PlayerRegistry.world_pos_of({"chunk": [0, TerrainSlice.pole_chunks()], "local": [0.0, 0.0, 1.0e6]})["chunk"].y <= TerrainSlice.pole_chunks(), "world_pos_of: a huge local cannot push the chunk past the pole")
 	assert_true(TerrainSlice.where_text(Vector3(-3200.0, 0.0, 3200.0)).contains("W"), "where: west of the origin")
-	var clamped := t.clamp_to_world(Vector3(1.0e7, 4.0, 1.0e9))
-	assert_eq(clamped.x, 1.0e7, "X is not clamped")
-	assert_true(clamped.z < t.world_half_extent(), "Z stops short of the ice")
-	var south := t.clamp_to_world(Vector3(0.0, 4.0, -1.0e9))
-	assert_true(t.is_chunk_in_bounds(t.world_to_chunk(Vector2(south.x, south.z))), "the south clamp lands in a walkable chunk")
-	var north := t.clamp_to_world(Vector3(0.0, 4.0, 1.0e9))
-	assert_true(t.is_chunk_in_bounds(t.world_to_chunk(Vector2(north.x, north.z))), "the north clamp lands in a walkable chunk")
 	# Position quantiser at a far chunk: a tile offset is exact in double precision, so a
 	# 0.125 step is the same 0.125 at chunk 600,000 as at the origin.
 	var far := Vector2i(600000, 0)
@@ -14409,13 +14431,25 @@ func _test_locomotion_reset_after_death() -> void:
 func _test_polar_ice() -> void:
 	var t := TerrainSlice.new()
 	var polar := TerrainSlice.polar_chunks()
-	assert_true(not t.is_chunk_in_bounds(Vector2i(0, polar)), "polar ice is still not walkable")
-	assert_true(t.is_chunk_loadable(Vector2i(0, polar)), "but it is streamed in: no void past the ice line")
-	assert_true(t.is_chunk_loadable(Vector2i(0, TerrainSlice.pole_chunks() - 1)), "all the way to the pole")
-	assert_true(not t.is_chunk_loadable(Vector2i(0, TerrainSlice.pole_chunks())), "and no further")
+	var pole := TerrainSlice.pole_chunks()
+	assert_true(t.is_chunk_in_bounds(Vector2i(0, polar)), "polar ice is walkable")
+	assert_true(t.is_chunk_loadable(Vector2i(0, pole + 4)), "and streamed in past the pole: no void there")
+	# The ice sheet: flat at the shelf from the polar line, over the pole and past it.
+	t.set_world_seed(12345)
+	var cm := TerrainSlice.CHUNK_METERS
+	var shelf := WorldShape.sea_level() + TerrainSlice.ICE_SHELF_M
+	for zc in [polar, pole - 1, pole, pole + 5, -pole, -pole - 5, -polar - 1]:
+		for xm in [0.0, 1234.5, -98765.0]:
+			assert_eq(t.get_height_at(Vector2(xm, float(zc) * cm + 7.0)), shelf, "flat ice at row %d" % zc)
+	# Frozen sea: from the shelf latitude the ground never lies below the ice, so no water.
+	var metres_per_deg := float(pole) * cm / 90.0
+	for xm in range(0, 200000, 5000):
+		assert_true(t.get_height_at(Vector2(float(xm), 82.0 * metres_per_deg)) >= shelf, "no open sea at 82 N (x %d)" % xm)
 	t.free()
+	# Rows past a pole read the latitude they have on the far meridian.
+	assert_true(absf(TerrainSlice.latitude_of(pole) - TerrainSlice.latitude_of(pole - 1)) < 0.001, "the row past the pole mirrors the last row")
+	assert_true(absf(TerrainSlice.latitude_at(float(pole + 1) * cm) - TerrainSlice.latitude_at(float(pole - 1) * cm)) < 0.001, "latitude folds over the pole")
 	var grass := Color(0.35, 0.6, 0.28)
-	var metres_per_deg := float(TerrainSlice.pole_chunks()) * TerrainSlice.CHUNK_METERS / 90.0
 	assert_eq(VoxelSlice.icy(grass, 45.0 * metres_per_deg), grass, "temperate ground is untouched")
 	assert_eq(VoxelSlice.icy(grass, 85.0 * metres_per_deg), VoxelSlice.ICE_COLOR, "the polar cap is ice")
 	assert_eq(VoxelSlice.icy(grass, -85.0 * metres_per_deg), VoxelSlice.ICE_COLOR, "south as well")

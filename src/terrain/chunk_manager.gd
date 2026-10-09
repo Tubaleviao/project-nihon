@@ -1076,6 +1076,23 @@ func _update_first_ring_progress() -> void:
 	for key in _first_ring:
 		_first_ring[key] = _built.has(key)
 
+## Phase 91 — release the whole streamed set and queue the window afresh on the next `refresh`.
+## A fold over a pole or round the antimeridian needs it: chunks are keyed by their canonical
+## position but built where the window first met them, so after a fold a chunk still loaded from
+## before it (or still queued) sits a whole lap away from where the window now wants it, and a
+## kept key would never be rebuilt in the right place.
+func restream() -> void:
+	for key in _loaded.keys():
+		unload_chunk(_key_to_chunk(key))
+	_load_queue.clear()
+	_pending.clear()
+	_unload_queue.clear()
+	_last_centers = []
+
+## True when `chunk_pos` is loaded and its ground has been built.
+func is_chunk_built(chunk_pos: Vector2i) -> bool:
+	return _built.has(_chunk_key(chunk_pos))
+
 func unload_chunk(chunk_pos: Vector2i) -> void:
 	var key := _chunk_key(chunk_pos)
 	if not _loaded.has(key):

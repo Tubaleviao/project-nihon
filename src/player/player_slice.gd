@@ -140,6 +140,10 @@ var terrain_slice: Node = null
 ## so it cannot be only an input gate.
 var _world_input_frozen: bool = false
 
+## Phase 91 — set by the game root after a fold re-streams the window: the body holds still (input
+## stays live) until the ground under it has been rebuilt, so it does not fall through the gap.
+var ground_hold: bool = false
+
 func _ready() -> void:
 	if render_visuals:
 		_build_body()
@@ -207,7 +211,7 @@ func _physics_process(delta: float) -> void:
 	# yet, and on a client (which placed the body from the snapshot while its ring built) it
 	# fell through ground that did not exist. Frozen means the body holds its position until
 	# the ground under it is there.
-	if render_visuals and not _world_input_frozen:
+	if render_visuals and not _world_input_frozen and not ground_hold:
 		_move(delta)
 	_sync_tick += 1
 	if _sync_tick >= SYNC_INTERVAL:
@@ -658,27 +662,21 @@ func _move(delta: float) -> void:
 	# Sync velocity after slide so gravity accumulation is correct.
 	_vel = _body.velocity
 
-	# Keep the player inside the finite world. The CharacterBody3D's physics
-	# body is moved directly so the clamp is authoritative for both the visible
-	# avatar and collision, without relying on a wall at the world edge.
-	if terrain_slice != null and terrain_slice.has_method("z_bounds"):
-		_clamp_to_world_exact()
-
-## Phase 78 — the world clamp and the seam wrap, worked out on the exact `{chunk, local}` position
-## and applied to the body as a small scene-space delta. Going through `body - _scene_offset` would
-## quantise the position to metres far from the origin and eat the player's steps.
-func _clamp_to_world_exact() -> void:
-	var wp := get_world_pos()
-	var chunk: Vector2i = wp["chunk"]
-	var local: Vector3 = wp["local"]
-	var world_x: float = chunk.x * WorldPos.CHUNK_METERS + local.x   # doubles
-	var world_z: float = chunk.y * WorldPos.CHUNK_METERS + local.z
-	var z_bounds: Vector2 = terrain_slice.z_bounds()
-	var dz := clampf(world_z, z_bounds.x, z_bounds.y) - world_z
-	var w := float(TerrainSlice.circumference_chunks()) * WorldPos.CHUNK_METERS
-	var dx := (fposmod(world_x + w * 0.5, w) - w * 0.5) - world_x
-	if dx != 0.0 or dz != 0.0:
-		_body.global_position += Vector3(dx, 0.0, dz)
+## Phase 91 — a fold over a pole or round the antimeridian (`TerrainSlice.fold_world_pos`), applied by
+## the game root once it has rebased the scene to `pos`'s chunk: land on `pos` keeping the motion, and
+## after a pole crossing turn the view and the motion half a turn, so the walk carries on down the
+## far meridian as it would over the top of a globe.
+func fold_to(pos: Dictionary, turned: bool) -> void:
+	if _body == null:
+		return
+	var vel := _vel
+	place_at_world_pos(pos)
+	if turned:
+		vel = Vector3(-vel.x, vel.y, -vel.z)
+		if _pivot != null:
+			_pivot.rotate_y(PI)
+	_vel = vel
+	_body.velocity = vel
 
 func _broadcast_state() -> void:
 	if not render_visuals:

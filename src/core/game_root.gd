@@ -1337,6 +1337,37 @@ func _physics_process(_delta: float) -> void:
 	if _rebase != null and _player != null and _player.has_method("get_scene_position"):
 		var scene_pos: Vector3 = _player.get_scene_position()
 		_rebase.tick(scene_pos, _player.get_world_pos()["chunk"])
+		_fold_local_player()
+
+## Phase 91 — the planet is a globe: a player who walks over a pole or round the antimeridian is
+## folded back onto the canonical planet (`TerrainSlice.fold_world_pos`), landing where the globe
+## puts them. The streamed chunks were built for the pre-fold frame, so the window is re-streamed and
+## the body held until the ground under it is back.
+const FOLD_HOLD_MAX_MSEC := 5000   ## give the hold up after this long, so a failed build cannot pin the player
+var _fold_hold_since_msec := -1
+
+func _fold_local_player() -> void:
+	if not _player.has_method("fold_to"):
+		return
+	if _player.ground_hold:
+		_release_fold_hold()
+		return
+	var fold := TerrainSlice.fold_world_pos(_player.get_world_pos())
+	if not fold["folded"]:
+		return
+	var pos: Dictionary = fold["pos"]
+	if _chunk_manager != null:
+		_chunk_manager.restream()
+	_rebase.rebase_to(pos["chunk"])
+	_player.fold_to(pos, fold["turned"])
+	if _chunk_manager != null:
+		_player.ground_hold = true
+		_fold_hold_since_msec = Time.get_ticks_msec()
+
+func _release_fold_hold() -> void:
+	var waited := Time.get_ticks_msec() - _fold_hold_since_msec
+	if _chunk_manager.is_chunk_built(_player.get_world_pos()["chunk"]) or waited > FOLD_HOLD_MAX_MSEC:
+		_player.ground_hold = false
 
 func _process(delta: float) -> void:
 	# Phase 42 — complete a host boot whose first ring has finished building. It has
