@@ -6000,8 +6000,8 @@ func _test_boot_suite_is_gated() -> void:
 		"a release boot without the flag runs no suite")
 	assert_false(root_script.should_run_tests(["--server"], false),
 		"and neither does a matching --server boot")
-	assert_true(root_script.should_run_tests([], true),
-		"a debug build runs the suite by default")
+	assert_false(root_script.should_run_tests([], true),
+		"a debug build does not run the suite unless asked")
 	assert_true(root_script.should_run_tests(["--run-tests"], false),
 		"and --run-tests asks for it explicitly")
 	assert_true(root_script.should_run_tests(["--client", "127.0.0.1"], true),
