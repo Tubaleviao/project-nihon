@@ -657,6 +657,8 @@ func run() -> void:
 	_run_test("peer window: a host-driven move recentres at once", _test_peer_window_host_driven)
 	_run_test("peer window: the host's periodic sync is never a counted refusal", _test_peer_window_host_sync)
 	_run_test("peer window: syncs and claims keep separate interval clocks", _test_peer_window_separate_clocks)
+	_run_test("peer window: a far host sync is counted apart from refusals", _test_peer_window_sync_far_hops)
+	_run_test("chunks: set_clock resets the self-heal and stranded-retry throttles", _test_chunk_set_clock_resets_throttles)
 	_run_test("diag: warn_count survives concurrent warnings from worker threads", _test_diag_warn_concurrent)
 	_run_test("peer window: a move into a stored region makes its edits resident", _test_peer_window_move_loads_region_edits)
 	_run_test("region: 1,000 regions on disk, only the ones near a window are resident", _test_region_streams_only_near_windows)
@@ -15349,7 +15351,7 @@ func _test_peer_window_fake_clock() -> void:
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
 	var clock := [1000]
-	cm.now_msec = func() -> int: return clock[0]
+	cm.set_clock(func() -> int: return clock[0])
 	cm.set_peer_center(5, Vector2i(2, 2), true)
 	clock[0] += 100
 	assert_false(cm.set_peer_center(5, Vector2i(3, 2)), "a claim 100 ms after the last is refused")
@@ -15366,16 +15368,16 @@ func _test_peer_window_clamp_cap() -> void:
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
 	var cap := ChunkManager.PEER_RECENTER_MAX_CHUNKS
-	cm.now_msec = func() -> int: return 0
+	cm.set_clock(func() -> int: return 0)
 	cm.set_peer_center(5, Vector2i(10, 10), true)
-	cm.now_msec = func() -> int: return 10000
+	cm.set_clock(func() -> int: return 10000)
 	assert_true(cm.set_peer_center(5, Vector2i(30, 10)), "a 20-chunk claim moves the window")
 	assert_eq(cm.peer_center(5), Vector2i(10 + cap, 10), "but only by the cap")
 	assert_eq(cm.peer_recenter_refused, 1, "and is counted")
 	var c := TerrainSlice.circumference_chunks()
-	cm.now_msec = func() -> int: return 20000
+	cm.set_clock(func() -> int: return 20000)
 	cm.set_peer_center(6, Vector2i(c - 2, 10), true)
-	cm.now_msec = func() -> int: return 30000
+	cm.set_clock(func() -> int: return 30000)
 	assert_true(cm.set_peer_center(6, Vector2i(18, 10)), "a 20-chunk claim across the seam moves the window")
 	assert_eq(cm.peer_center(6), Vector2i(posmod(c - 2 + cap, c), 10), "by the cap, the short way round")
 	for k in ["cm", "voxel", "terrain", "player"]:
@@ -15409,7 +15411,7 @@ func _test_peer_window_host_sync() -> void:
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
 	var clock := [1000]
-	cm.now_msec = func() -> int: return clock[0]
+	cm.set_clock(func() -> int: return clock[0])
 	cm.sync_peer_center(5, Vector2i(2, 2))
 	for i in 10:
 		clock[0] += 50
@@ -15434,11 +15436,68 @@ func _test_peer_window_host_sync() -> void:
 	for k in ["cm", "voxel", "terrain", "player"]:
 		rig[k].free()
 
+func _test_peer_window_sync_far_hops() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var clock := [1000]
+	cm.set_clock(func() -> int: return clock[0])
+	cm.sync_peer_center(5, Vector2i(2, 2))
+	clock[0] += 1000
+	assert_true(cm.sync_peer_center(5, Vector2i(3, 2)), "a one-chunk sync move lands")
+	assert_eq(cm.peer_sync_far_hops, 0, "and is not a far hop")
+	clock[0] += 1000
+	assert_true(cm.sync_peer_center(5, Vector2i(3, 500)), "a sync past the claim clamp still applies the move")
+	assert_eq(cm.peer_center(5), Vector2i(3, 2 + ChunkManager.PEER_RECENTER_MAX_CHUNKS), "up to the clamp")
+	assert_eq(cm.peer_sync_far_hops, 1, "and raises the far-hop counter by exactly one")
+	assert_eq(cm.peer_recenter_refused, 0, "without touching the refusal counter")
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+
+class _StrandedStub:
+	var releases := 0
+	func has_stranded() -> bool:
+		return true
+	func release_stranded() -> int:
+		releases += 1
+		return 0
+
+func _test_chunk_set_clock_resets_throttles() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.view_distance = 1
+	cm.prefetch_distance = 0
+	cm.self_heal_interval = 60.0
+	cm.refresh()
+	cm._load_queue.clear()
+	cm._pending.clear()
+	var stub := _StrandedStub.new()
+	cm.region_streamer = stub
+	var clock := [50000]
+	cm.set_clock(func() -> int: return clock[0])
+	cm._loaded["0,0"] = true
+	cm._failed["0,0"] = true
+	cm._build_attempts["0,0"] = cm.MAX_BUILD_RETRIES
+	cm.refresh()
+	assert_false(cm._failed.has("0,0"), "the first self-heal runs")
+	assert_eq(stub.releases, 1, "the first stranded retry runs")
+	cm._failed["0,0"] = true
+	cm._build_attempts["0,0"] = cm.MAX_BUILD_RETRIES
+	cm.refresh()
+	assert_true(cm._failed.has("0,0"), "a second self-heal inside the interval is throttled")
+	assert_eq(stub.releases, 1, "and so is the stranded retry")
+	cm.set_clock(func() -> int: return 0)
+	cm.refresh()
+	assert_false(cm._failed.has("0,0"), "a fresh clock at 0 lets the self-heal run at once")
+	assert_eq(stub.releases, 2, "and the stranded retry")
+	cm.region_streamer = null
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+
 func _test_peer_window_separate_clocks() -> void:
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
 	var clock := [1000]
-	cm.now_msec = func() -> int: return clock[0]
+	cm.set_clock(func() -> int: return clock[0])
 	cm.sync_peer_center(5, Vector2i(2, 2))
 	clock[0] += 1000
 	assert_true(cm.sync_peer_center(5, Vector2i(3, 2)), "a sync move lands")
