@@ -308,6 +308,8 @@ func run() -> void:
 	_run_test("voxel: no biome is borrowed across the pole", _test_voxel_pole_blend)
 	_run_test("voxel: in-world border tiles unchanged by the pole rule", _test_voxel_inworld_border_unchanged)
 	_run_test("voxel: shown_biome_at memoises per chunk", _test_shown_biome_memo)
+	_run_test("voxel: the shown-biome memo follows the terrain slice", _test_shown_biome_follows_slice)
+	_run_test("voxel: the pole bound follows the terrain slice", _test_pole_bound_follows_slice)
 	_run_test("minimap: blend never borrows an unrevealed biome", _test_minimap_blend_respects_fog)
 	_run_test("minimap: a second redraw looks up no biome",      _test_minimap_redraw_uses_cache)
 	_run_test("minimap: sub-2px cells draw one rect per chunk",  _test_minimap_far_zoom_one_rect)
@@ -7760,6 +7762,60 @@ func _test_shown_biome_memo() -> void:
 	for i in 100:
 		v.shown_biome_at(Vector2(0.25 + (i % 10) * VoxelSlice.TILE_SIZE, 0.25 + (i / 10) * VoxelSlice.TILE_SIZE))
 	assert_true(v.biome_lookups - base <= 9, "at most 9 lookups for 100 calls (got %d)" % (v.biome_lookups - base))
+	v.free()
+	ts.free()
+
+## Phase 92 — a fake terrain slice for the memo and pole-bound tests: a fixed biome, an optional
+## polar bound.
+class FixedBiomeStub extends Node:
+	var biome := "DesertDunes"
+	var radius := -1
+	var world_seed := 1
+	func get_biome_at(_xz: Vector2) -> String:
+		return biome
+	func get_world_seed() -> int:
+		return world_seed
+	func world_radius_chunks() -> int:
+		return radius if radius >= 0 else TerrainSlice.polar_chunks()
+
+## Phase 92 — a swapped terrain slice drops the shown-biome memo.
+func _test_shown_biome_follows_slice() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var a := FixedBiomeStub.new()
+	var b := FixedBiomeStub.new()
+	b.biome = "TemperateForest"
+	add_child(a)
+	add_child(b)
+	v.terrain_slice = a
+	var xz := Vector2(16.0, 16.0)
+	assert_eq(v.shown_biome_at(xz), "DesertDunes", "slice A's biome is memoised")
+	v.terrain_slice = b
+	assert_eq(v.shown_biome_at(xz), "TemperateForest", "assigning slice B serves B's answer")
+	v.free()
+	a.free()
+	b.free()
+
+## Phase 92 — a terrain slice with a smaller polar bound leaves a chunk between the bounds out of
+## both the gather and the shown blend.
+func _test_pole_bound_follows_slice() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var ts := FixedBiomeStub.new()
+	ts.radius = 5
+	add_child(ts)
+	v.terrain_slice = ts
+	assert_true(TerrainSlice.polar_chunks() > 6, "the static bound is wider than the fake one")
+	var own := Vector2i(0, 4)
+	var between := Vector2i(0, 5)   # inside the static bound, past the fake one
+	var gathered := v.gather_biomes_for(own)
+	assert_true(gathered.has(VoxelSlice._chunk_key(own)), "the chunk itself is always gathered")
+	assert_false(gathered.has(VoxelSlice._chunk_key(between)), "gather leaves the chunk past the slice's bound out")
+	var lent := v._lending_ring(own, [own, between, Vector2i(0, 3)])
+	assert_eq(lent, [own, Vector2i(0, 3)], "shown_biome_at's ring leaves it out too")
+	var before := v.biome_lookups
+	v.shown_biome_at(Vector2(16.0, (4.0 * 32.0) + 16.0))
+	assert_true(v.biome_lookups - before <= 6, "and the blend never asks for it (%d lookups)" % (v.biome_lookups - before))
 	v.free()
 	ts.free()
 
