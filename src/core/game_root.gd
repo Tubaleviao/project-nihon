@@ -1304,7 +1304,7 @@ func _sync_peer_windows(delta: float) -> void:
 	_peer_window_elapsed = 0.0
 	for peer_id in _registry.get_peer_ids():
 		if int(peer_id) > 0:
-			_chunk_manager.set_peer_center(int(peer_id), _peer_window_chunk(int(peer_id)))
+			_chunk_manager.sync_peer_center(int(peer_id), _peer_window_chunk(int(peer_id)))
 
 ## Phase 80 — the origin rebase runs at the START of the physics step (the root is earlier in
 ## the tree than the player body, so its `_physics_process` fires first): no slice's movement

@@ -344,7 +344,7 @@ lookups for every mined tile (#170).
 
 ---
 
-## Phase 82 — Honest peer-window refusal count and a thread-safe warning counter
+## Phase 82 — Honest peer-window refusal count and a thread-safe warning counter ✅ Done
 
 **Goal:** `GameRoot._sync_peer_windows` re-centres every peer twice a second through the
 rate-limited client path of `ChunkManager.set_peer_center`, so the host's own periodic sync
@@ -367,12 +367,12 @@ can flake (#162).
   summed on read); readers use an accessor.
 
 **Acceptance criteria:**
-- [ ] Suite: with a fake clock, ten `_sync_peer_windows` ticks for a peer that has not moved
+- [x] Suite: with a fake clock, ten `_sync_peer_windows` ticks for a peer that has not moved
   and five that track a moving peer leave `peer_recenter_refused` at 0.
-- [ ] Suite: a client move inside `PEER_RECENTER_INTERVAL` still counts one refusal.
-- [ ] Suite: four `WorkerThreadPool` tasks each raising 1,000 `Diag.warn` calls (quiet mode)
+- [x] Suite: a client move inside `PEER_RECENTER_INTERVAL` still counts one refusal.
+- [x] Suite: four `WorkerThreadPool` tasks each raising 1,000 `Diag.warn` calls (quiet mode)
   raise the count by exactly 4,000.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green. — `Results: 15298/15298 passed (0 failed)` on `--run-tests`; net harness not run in this session.
 
 ---
 
