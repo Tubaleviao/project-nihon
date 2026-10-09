@@ -192,7 +192,7 @@ func _ready() -> void:
 	# suite's own GameBus emissions would arrive at the harness's slices before the
 	# scenario started.
 	if _net_harness_role == "" and should_run_tests(OS.get_cmdline_user_args(), OS.is_debug_build()):
-		await _run_tests()
+		_run_tests()
 
 	# Phase 33 — intercept the quit so records are written first.
 	_install_quit_guard()
@@ -515,7 +515,7 @@ func _run_tests() -> void:
 	var suite := TestSuite.new()
 	suite.name = "TestSuite"
 	add_child(suite)
-	await suite.run()
+	suite.run()
 	suite.queue_free()
 
 ## Phase 36 — the user arg that asks for the suite explicitly.

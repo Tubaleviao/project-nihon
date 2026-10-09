@@ -63,7 +63,6 @@ var _registered_names: Dictionary = {}
 # ---------------------------------------------------------------------------
 
 func run() -> void:
-	# A coroutine: the last step waits one frame so `queue_free`d nodes are gone before the orphan check.
 	print("\n╔══════════════════════════════════════╗")
 	print("║       Project Nihon — Test Suite     ║")
 	print("╚══════════════════════════════════════╝\n")
@@ -706,12 +705,10 @@ func run() -> void:
 			push_error("TestSuite: '%s' is defined but never registered — add it to the _run_test list" % method_name)
 			_fail += 1
 
-	# Phase 84 — the LAST check. Production code frees with `queue_free` (UI rows, evicted
-	# inventories), which only lands at the end of a frame; wait one, then count what is
-	# left parentless. A test that forgot `free()` shows up here.
-	await get_tree().process_frame
-	await get_tree().process_frame
-	_test_no_orphan_nodes()
+	# Phase 84 — the LAST check. Nothing here waits a frame (`--quit` ends the boot before one
+	# lands), so every test frees what it made with `free()`, and a `queue_free` the code under
+	# test made is freed by the test too. A node left parentless shows up in the engine's count.
+	_assert_no_orphan_nodes()
 
 	Diag.quiet = false
 	var total := _pass + _fail
@@ -1311,9 +1308,11 @@ func _test_player_exact_far_position() -> void:
 	ts.free()
 	# Save -> reload through the registry record.
 	var reg := PlayerRegistry.new()
+	_own(reg)
 	reg.record_world_pos("p1", got)
 	var rec: Dictionary = reg.get_record("p1").duplicate(true)
 	var reg2 := PlayerRegistry.new()
+	_own(reg2)
 	reg2.apply_player_data("p1", JSON.parse_string(JSON.stringify(rec)))
 	var back: Dictionary = reg2.get_world_pos("p1")
 	assert_eq(back["chunk"], TerrainSlice.wrap_chunk(chunk), "a reloaded player is in the same chunk (chunk 1,500,000 is past one lap, so the registry folds it)")
@@ -7628,7 +7627,7 @@ func _test_minimap_blend_respects_fog() -> void:
 	var mm := Minimap.new()
 	add_child(mm)
 	mm._revealed = { "0,0": true, "-1,0": true }
-	mm.terrain_slice = BiomeStub.new()
+	mm.terrain_slice = _own(BiomeStub.new())
 	var n := Minimap.CELLS_PER_CHUNK
 	var cell_tiles := float(TerrainSlice.CHUNK_SIZE) / n
 	var west_cells := 0
@@ -8990,6 +8989,7 @@ func _test_disconnect_evicts_player() -> void:
 	assert_false(registry.has_inventory(remote), "nor is the inventory node")
 	assert_true(remote_inv.get_parent() == null, "the registry-owned node was detached for freeing")
 	assert_false(registry.evict_player(remote), "eviction is idempotent")
+	remote_inv.free()   # evict_player queue_frees it; the suite never reaches a frame, so free it now
 
 	# The LOCAL player is never evicted: it is online by definition and its
 	# inventory is the game's own instance, not this slice's to free.
@@ -12960,17 +12960,32 @@ func _ko(msg: String) -> void:
 
 ## Phase 84 — nothing the suite or the code it drove left parentless. Reads the engine's own
 ## orphan monitor, so it covers production leaks too (a node created but never parented or freed).
-func _test_no_orphan_nodes() -> void:
+func _assert_no_orphan_nodes() -> void:
 	var orphans := int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
 	if orphans != 0:
 		Node.print_orphan_nodes()
 	assert_eq(orphans, 0, "the suite leaves no orphan nodes")
+
+## Phase 84 — nodes a test helper created and handed back: freed right after the test, so a
+## helper (`_spawn_world`) does not need every caller to remember a `free()`.
+var _owned: Array = []
+
+func _own(n: Node) -> Node:
+	_owned.append(n)
+	return n
+
+func _free_owned() -> void:
+	for n in _owned:
+		if is_instance_valid(n):
+			n.free()
+	_owned.clear()
 
 func _run_test(name: String, fn: Callable) -> void:
 	_current_test = name
 	_registered_names[str(fn.get_method())] = true
 	var fails_before := _fail
 	fn.call()
+	_free_owned()
 	var outcome := "✓" if _fail == fails_before else "✗"
 	print("  %s %s" % [outcome, name])
 
@@ -12983,6 +12998,7 @@ func _run_test(name: String, fn: Callable) -> void:
 ## `biome` found in a 24x24 sample (a creature only spawns in chunks of its own biome).
 func _spawn_world(seed_v: int, biome: String) -> Dictionary:
 	var terrain := TerrainSlice.new()
+	_own(terrain)
 	terrain.set_world_seed(seed_v)
 	var chunks: Array = []
 	for x in range(-12, 12):
@@ -13498,7 +13514,10 @@ func _test_equipment_bookkeeping_evicted() -> void:
 	GameBus.equip_intent.emit(peer, "Chest", "VeilsteelChestplate")
 	assert_true(registry._equip_seq.has(peer) and registry._equip_refusals.has(peer), "the entries exist while the player is resident")
 	registry.unbind_peer(2)
+	var peer_inv = registry.get_inventory(peer)
 	assert_true(registry.evict_player(peer), "the player is evicted")
+	if peer_inv != null:
+		peer_inv.free()   # evict_player queue_frees it; the suite never reaches a frame
 	assert_false(registry._equip_seq.has(peer), "the sequence entry goes with it")
 	assert_false(registry._equip_refusals.has(peer), "so does the refusal timestamp")
 	assert_false(registry._equip_revoke_pending.has(peer), "and the pending trailing revoke")
@@ -14490,6 +14509,7 @@ func _test_distant_ring_rebuild_counter() -> void:
 ## (the corner cache is per thread).
 func _test_height_concurrent() -> void:
 	var t := TerrainSlice.new()
+	_own(t)
 	t.set_world_seed(31)
 	var pts := PackedVector2Array()
 	for i in 400:
@@ -14934,6 +14954,7 @@ func _test_region_failed_read_retried() -> void:
 
 func _test_registry_bound_peer_ids() -> void:
 	var reg := PlayerRegistry.new()
+	_own(reg)
 	reg.is_authoritative = true
 	assert_eq(reg.get_bound_peer_ids().size(), 0, "no peers, no ids")
 	var a := reg.resolve_identity(4)
