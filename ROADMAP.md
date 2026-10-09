@@ -109,7 +109,7 @@ issue number where the criterion used to be.
 | 86 | Remote peers' positions stay exact far from the origin | Done | below |
 | 87 | Exact spawn and respawn points | Planned | below |
 | 88 | The distant ring survives a reparent and its abort is proven | Done | below |
-| 89 | A malformed region entry warns once per session | Planned | below |
+| 89 | A malformed region entry warns once per session | Done | below |
 | 90 | One scene-origin source and one wire-position validator | Planned | below |
 | 91 | A legacy tile height survives a depletion overlay | Planned | below |
 | 92 | The shown-biome memo follows the terrain slice and one pole-ring rule | Planned | below |
@@ -561,7 +561,7 @@ the abort never fires (#212).
 
 ---
 
-## Phase 89 — A malformed region entry warns once per session
+## Phase 89 — A malformed region entry warns once per session ✅ Done
 
 **Goal:** since Phase 75 a malformed chunk entry is kept on rewrite, but `RegionStore.read_region`
 warns about it on every streaming read, so one bad entry floods the log (and `Diag.warn_count`)
@@ -579,11 +579,11 @@ for as long as the player stays nearby (#196).
   tests and for a world switch.
 
 **Acceptance criteria:**
-- [ ] Suite: a region file with one malformed entry read 50 times raises `Diag.warn_count` by
+- [x] Suite: a region file with one malformed entry read 50 times raises `Diag.warn_count` by
   exactly 1; a second malformed entry in another region raises it by one more.
-- [ ] Suite: after the reset accessor (or a new store on another world) the first read warns again.
-- [ ] Suite: the malformed entry still survives a rewrite unchanged (Phase 75 behaviour kept).
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite: after the reset accessor (or a new store on another world) the first read warns again.
+- [x] Suite: the malformed entry still survives a rewrite unchanged (Phase 75 behaviour kept).
+- [x] Suite green on both boot paths, harness green. — `Results: 15418/15418 passed (0 failed)` on `--run-tests`; harness 15/15 steps.
 
 ---
 

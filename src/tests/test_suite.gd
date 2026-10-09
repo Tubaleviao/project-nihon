@@ -271,6 +271,7 @@ func run() -> void:
 	_run_test("equipment: the sequence number never rewinds",   _test_equipment_seq_monotonic)
 	_run_test("region: a failed save re-marks only failed chunks", _test_region_failed_keys_and_remark)
 	_run_test("region: a depletion in an evicted chunk keeps its other edits", _test_region_depletion_merges_evicted)
+	_run_test("region: a malformed entry warns once per store", _test_region_malformed_warns_once)
 	_run_test("region: a malformed entry survives a neighbour's save", _test_region_malformed_entry_kept)
 	_run_test("region: a valid entry replaces a malformed one", _test_region_malformed_entry_replaced)
 	_run_test("region: a partial chunk loads its stored edits when the region streams in", _test_region_partial_chunk_loads_stored)
@@ -14911,6 +14912,37 @@ func _test_region_malformed_entry_kept() -> void:
 	var keys: Array = parsed["chunks"].keys()
 	keys.sort()
 	assert_eq(keys, ["1,1", "2,2", "3,3"], "with both valid entries")
+
+## Phase 89 — a malformed entry warns once per store, not on every streaming read.
+func _test_region_malformed_warns_once() -> void:
+	var dir := _fresh_region_dir("test_p89_warn_once")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	var good := { "edits": { "0,0": [{ "op": "remove", "bottom": 0.0, "top": 1.0 }] } }
+	_write_region_file(store, { "1,1": { "edits": "x" }, "2,2": good })
+	var warns := Diag.warn_count()
+	for _i in 50:
+		store.read_region(Vector2i.ZERO)
+	assert_eq(Diag.warn_count() - warns, 1, "50 reads of one malformed entry warn once")
+	var f := FileAccess.open(store.path_of(Vector2i(1, 0)), FileAccess.WRITE)
+	f.store_string(JSON.stringify({ "version": 1, "chunks": { "33,1": { "edits": 5 } } }))
+	f.close()
+	warns = Diag.warn_count()
+	for _i in 50:
+		store.read_region(Vector2i(1, 0))
+		store.read_region(Vector2i.ZERO)
+	assert_eq(Diag.warn_count() - warns, 1, "a malformed entry in another region warns once more")
+	store.reset_warnings()
+	warns = Diag.warn_count()
+	store.read_region(Vector2i.ZERO)
+	store.read_region(Vector2i.ZERO)
+	assert_eq(Diag.warn_count() - warns, 1, "after the reset the first read warns again")
+	var other: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	warns = Diag.warn_count()
+	other.read_region(Vector2i.ZERO)
+	assert_eq(Diag.warn_count() - warns, 1, "a new store warns on its first read")
+	assert_eq(store.write_chunks({ "3,3": good }), OK, "a neighbour is saved")
+	var parsed: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(store.path_of(Vector2i.ZERO)))
+	assert_eq(JSON.stringify(parsed["chunks"]["1,1"]), JSON.stringify({ "edits": "x" }), "the malformed entry survives the rewrite unchanged")
 
 func _test_region_malformed_entry_replaced() -> void:
 	var dir := _fresh_region_dir("test_p75_malformed_replace")

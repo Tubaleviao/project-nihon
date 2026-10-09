@@ -30,6 +30,10 @@ var atomic_writes: bool = true
 ## The "cx,cz" keys of the chunks in regions the LAST `write_chunks` could not write (read or
 ## save failed). A save that failed in one region should put back only those chunks as dirty.
 var last_failed_chunk_keys: Array = []
+## Phase 89 — malformed-entry warnings already raised by this store, keyed "path|chunk key". Reads
+## run on worker threads, so the set is guarded.
+var _warned: Dictionary = {}
+var _warned_mutex := Mutex.new()
 
 func _init(region_dir: String = "", atomic: bool = true) -> void:
 	if not region_dir.is_empty():
@@ -215,9 +219,24 @@ func read_region(region: Vector2i, warn := true) -> Dictionary:
 			else:
 				# Phase 75 — not handed to a caller as an edit, but kept so a rewrite can put it back.
 				raw_invalid[ckey] = raw[ckey]
-				if warn:
+				if warn and _first_warning("%s|%s" % [path, str(ckey)]):
 					Diag.warn("RegionStore: %s: skipping malformed chunk entry '%s'" % [path, str(ckey)])
 	return { "ok": true, "chunks": chunks, "raw_invalid": raw_invalid }
+
+## Phase 89 — true the first time `key` is seen since construction or `reset_warnings`.
+func _first_warning(key: String) -> bool:
+	_warned_mutex.lock()
+	var first := not _warned.has(key)
+	_warned[key] = true
+	_warned_mutex.unlock()
+	return first
+
+## Forget which malformed entries were warned about, so the next read of each warns again (tests,
+## and a switch to another world).
+func reset_warnings() -> void:
+	_warned_mutex.lock()
+	_warned.clear()
+	_warned_mutex.unlock()
 
 ## Phase 61 — a chunk entry's `edits`, when present, must be a Dictionary (tile key → op list)
 ## and its `materials`, when present, a Dictionary. Only the container types are checked: the
