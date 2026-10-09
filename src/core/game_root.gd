@@ -1306,11 +1306,16 @@ func _sync_peer_windows(delta: float) -> void:
 		if int(peer_id) > 0:
 			_chunk_manager.set_peer_center(int(peer_id), _peer_window_chunk(int(peer_id)))
 
-func _process(delta: float) -> void:
+## Phase 80 — the origin rebase runs at the START of the physics step (the root is earlier in
+## the tree than the player body, so its `_physics_process` fires first): no slice's movement
+## step reads a scene position that a later `_process` rebase then shifts under it.
+func _physics_process(_delta: float) -> void:
 	# Phase 63 — a client far from its scene origin shifts the whole scene back (float32 precision).
 	if _rebase != null and _player != null and _player.has_method("get_scene_position"):
 		var scene_pos: Vector3 = _player.get_scene_position()
 		_rebase.tick(scene_pos, _player.get_world_pos()["chunk"])
+
+func _process(delta: float) -> void:
 	# Phase 42 — complete a host boot whose first ring has finished building. It has
 	# to run FIRST: the rest of this frame's work (the avatar sync, the LOD pass) is
 	# written against a player body that only exists once the boot tail has run, and

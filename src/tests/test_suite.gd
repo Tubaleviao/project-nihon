@@ -121,6 +121,9 @@ func run() -> void:
 	_run_test("rebase: loot, avatars and the station preview follow the shift", _test_rebase_extras)
 	_run_test("player: rebased origin keeps the world position", _test_world_pos_rebase)
 	_run_test("player: exact chunk + local far from the origin", _test_player_exact_far_position)
+	_run_test("rebase: TreeSlice shifts its trunks and pool, not other children", _test_tree_shift_explicit_set)
+	_run_test("rebase: LootSlice shifts its pickups, survives a freed one", _test_loot_shift_explicit_set)
+	_run_test("rebase: a physics-step rebase never jumps the world position", _test_rebase_in_physics_step)
 	_run_test("persistence: position saved as chunk + local, old saves migrate", _test_registry_world_pos)
 	_run_test("persistence: save then load round-trip",       _test_persistence_round_trip)
 	_run_test("persistence: worldgen stamp on a new world",   _test_worldgen_stamp_new_world)
@@ -628,6 +631,8 @@ func run() -> void:
 	_run_test("region: op lists with non-dictionary ops are dropped", _test_region_entry_rejects_bad_ops)
 	_run_test("region: a chunk entry with edits or materials of the wrong type is skipped with one warning", _test_region_malformed_entry_skipped)
 	_run_test("peer window: a flood of far claims moves the window at most once", _test_peer_window_rate_limited)
+	_run_test("peer window: the interval is measured on the injected clock", _test_peer_window_fake_clock)
+	_run_test("peer window: a 20-chunk claim is clamped inside the map and across the seam", _test_peer_window_clamp_cap)
 	_run_test("peer window: a seam crossing is a short step, not a planet-wide one", _test_peer_window_clamps_across_seam)
 	_run_test("peer window: a host-driven move recentres at once", _test_peer_window_host_driven)
 	_run_test("peer window: a move into a stored region makes its edits resident", _test_peer_window_move_loads_region_edits)
@@ -1124,6 +1129,7 @@ func _test_rebase_extras() -> void:
 	add_child(loot)
 	var pickup := loot._make_pickup_visual("p1", "wood", Vector3(10.0, 1.0, 5.0))
 	loot.add_child(pickup)
+	loot._world_nodes.append(pickup)
 	var station := StationSlice.new()
 	add_child(station)
 	station.show_preview("Forge", Vector3(10.0, 1.0, 5.0))
@@ -1174,6 +1180,78 @@ func _test_remote_state_plausibility() -> void:
 	gr._on_remote_player_state(3, Vector3(NAN, 0.0, 0.0))
 	assert_true(gr._peer_aoi_regions.is_empty(), "a rejected claim records no AOI region (and needs no networking slice)")
 	gr.free()
+
+## Phase 80 — `TreeSlice.shift_scene` moves its own trunks and the pool, nothing else.
+func _test_tree_shift_explicit_set() -> void:
+	var trees := TreeSlice.new()
+	trees.render_visuals = true
+	add_child(trees)
+	var a := trees._build_collision("t_a", Vector3(10.0, 0.0, 5.0), "oak")
+	var b := trees._build_collision("t_b", Vector3(20.0, 0.0, 7.0), "oak")
+	var extra := Node3D.new()
+	extra.position = Vector3(1.0, 2.0, 3.0)
+	trees.add_child(extra)
+	var pool_before: Vector3 = trees._pool.scene_position()
+	var shift := Vector3(-4096.0, 0.0, 0.0)
+	trees.shift_scene(shift)
+	assert_eq(a.position, Vector3(10.0, 0.0, 5.0) + shift, "the first trunk moves by the shift")
+	assert_eq(b.position, Vector3(20.0, 0.0, 7.0) + shift, "the second trunk moves by the shift")
+	assert_eq(extra.position, Vector3(1.0, 2.0, 3.0), "a non-world child does not move")
+	assert_eq(trees._pool.scene_position(), pool_before + shift, "the pool moves exactly once")
+	b.free()
+	assert_eq(trees._world_nodes.size(), 1, "a freed trunk leaves the world set at once")
+	trees.shift_scene(shift)
+	assert_eq(a.position, Vector3(10.0, 0.0, 5.0) + shift * 2.0, "a freed trunk is dropped and the survivor still moves")
+	trees.free()
+
+## Phase 80 — the same for pickups, one of them collected before the shift.
+func _test_loot_shift_explicit_set() -> void:
+	var l := LootSlice.new()
+	add_child(l)
+	GameBus.creature_died.emit("ForestBoar", Vector3(10.0, 1.0, 5.0), "player")
+	var ids: Array = l._pickups.keys()
+	assert_true(ids.size() >= 2, "a boar drops at least two pickups")
+	var extra := Node3D.new()
+	extra.position = Vector3(1.0, 2.0, 3.0)
+	l.add_child(extra)
+	var gone: Dictionary = l._pickups[ids[0]]
+	var kept: Node3D = l._pickups[ids[1]]["body"]
+	var kept_before := kept.position
+	(gone["body"] as Node).free()
+	var shift := Vector3(-4096.0, 0.0, 0.0)
+	l.shift_scene(shift)
+	assert_eq(kept.position, kept_before + shift, "the surviving pickup moves")
+	assert_eq(extra.position, Vector3(1.0, 2.0, 3.0), "a non-world child does not move")
+	l.free()
+
+## Phase 80 — walking across the rebase distance in physics steps: the world position moves by
+## one step's travel per step, including on the step the rebase fires.
+func _test_rebase_in_physics_step() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	var gr: Node = root_script.new()
+	var player := PlayerSlice.new()
+	player.render_visuals = true
+	add_child(player)
+	player.spawn_at(Vector3(WorldPos.REBASE_DISTANCE - 5.0, 1.0, 0.0))
+	gr._player = player
+	gr._rebase = RebaseDriver.new([player])
+	var step := 0.5
+	var prev := _continuous_x(player)
+	var worst := 0.0
+	for i in range(30):
+		gr._physics_process(0.016)   # the rebase runs first, as in the engine
+		player._body.global_position += Vector3(step, 0.0, 0.0)   # then the movement step
+		var now := _continuous_x(player)
+		worst = maxf(worst, absf(now - prev))
+		prev = now
+	assert_true(gr._rebase.rebase_count >= 1, "the walk crossed the rebase distance")
+	assert_true(worst <= step + 0.01, "the world position never jumped by more than one step (worst %f)" % worst)
+	player.free()
+	gr.free()
+
+func _continuous_x(player: PlayerSlice) -> float:
+	var wp := player.get_world_pos()
+	return float((wp["chunk"] as Vector2i).x) * WorldPos.CHUNK_METERS + (wp["local"] as Vector3).x
 
 ## Phase 78 — the player's exact `{chunk, local}` survives a far rebase, a save → reload and the
 ## snapshot's own-record position.
@@ -14831,6 +14909,42 @@ func _test_peer_window_rate_limited() -> void:
 		"and the window never travelled farther than the cap")
 	cm._peer_last_move_msec[5] = -1000000
 	assert_true(cm.set_peer_center(5, Vector2i(3, 2)), "a near claim after the interval is accepted")
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+
+func _test_peer_window_fake_clock() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var clock := [1000]
+	cm.now_msec = func() -> int: return clock[0]
+	cm.set_peer_center(5, Vector2i(2, 2), true)
+	clock[0] += 100
+	assert_false(cm.set_peer_center(5, Vector2i(3, 2)), "a claim 100 ms after the last is refused")
+	assert_eq(cm.peer_recenter_refused, 1, "and counted")
+	clock[0] = 1000 + int(ChunkManager.PEER_RECENTER_INTERVAL * 1000.0) - 1
+	assert_false(cm.set_peer_center(5, Vector2i(3, 2)), "1 ms inside the interval is still refused")
+	clock[0] += 2
+	assert_true(cm.set_peer_center(5, Vector2i(3, 2)), "one ms past the interval is accepted")
+	assert_eq(cm.peer_center(5), Vector2i(3, 2), "and the window moved")
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+
+func _test_peer_window_clamp_cap() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var cap := ChunkManager.PEER_RECENTER_MAX_CHUNKS
+	cm.now_msec = func() -> int: return 0
+	cm.set_peer_center(5, Vector2i(10, 10), true)
+	cm.now_msec = func() -> int: return 10000
+	assert_true(cm.set_peer_center(5, Vector2i(30, 10)), "a 20-chunk claim moves the window")
+	assert_eq(cm.peer_center(5), Vector2i(10 + cap, 10), "but only by the cap")
+	assert_eq(cm.peer_recenter_refused, 1, "and is counted")
+	var c := TerrainSlice.circumference_chunks()
+	cm.now_msec = func() -> int: return 20000
+	cm.set_peer_center(6, Vector2i(c - 2, 10), true)
+	cm.now_msec = func() -> int: return 30000
+	assert_true(cm.set_peer_center(6, Vector2i(18, 10)), "a 20-chunk claim across the seam moves the window")
+	assert_eq(cm.peer_center(6), Vector2i(posmod(c - 2 + cap, c), 10), "by the cap, the short way round")
 	for k in ["cm", "voxel", "terrain", "player"]:
 		rig[k].free()
 

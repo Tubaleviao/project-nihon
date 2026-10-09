@@ -252,7 +252,7 @@ reason (#168, #166).
 
 ---
 
-## Phase 79 — Deterministic peer-window rate limit and a production ref-count reader
+## Phase 79 — Deterministic peer-window rate limit and a production ref-count reader ✅ Done
 
 **Goal:** `ChunkManager.set_peer_center` reads `Time.get_ticks_msec()` directly, so the suite
 cannot test `PEER_RECENTER_INTERVAL` without sleeping, and the interval branch is untested.
@@ -271,16 +271,16 @@ deliverable says production code reads it or it goes (#161).
   step that read them switches to the peer-window keys it actually needs.
 
 **Acceptance criteria:**
-- [ ] Suite: with a fake clock, a client move 100 ms after the last is refused and counted in
+- [x] Suite: with a fake clock, a client move 100 ms after the last is refused and counted in
   `peer_recenter_refused`; at `PEER_RECENTER_INTERVAL` + 1 ms it is accepted.
-- [ ] Suite: a client move of 20 chunks is clamped to `PEER_RECENTER_MAX_CHUNKS`, across the X
+- [x] Suite: a client move of 20 chunks is clamped to `PEER_RECENTER_MAX_CHUNKS`, across the X
   seam as well as inside the map.
-- [ ] `grep -n "Time.get_ticks_msec" src/terrain/chunk_manager.gd` shows only the default.
-- [ ] Suite green on both boot paths, harness 15/15 steps.
+- [x] `grep -n "Time.get_ticks_msec" src/terrain/chunk_manager.gd` shows only the default.
+- [x] Suite green on both boot paths, harness 15/15 steps. — `Results: 14866/14866 passed (0 failed)` both boot paths, harness 15/15 steps.
 
 ---
 
-## Phase 80 — Rebase in the physics step and explicit shift sets
+## Phase 80 — Rebase in the physics step and explicit shift sets ✅ Done
 
 **Goal:** the origin rebase runs from `GameRoot._process` while the player body moves in
 `_physics_process`, so on a frame where both fire the rebase can shift the scene between a
@@ -302,13 +302,13 @@ preview) is moved twice or moved when it should not be (#167).
   freed) and `shift_scene` shifts only those plus the pool; other children are left alone.
 
 **Acceptance criteria:**
-- [ ] Suite: a `TreeSlice` with two trunks and an extra non-world `Node3D` child, shifted by
+- [x] Suite: a `TreeSlice` with two trunks and an extra non-world `Node3D` child, shifted by
   (−4096, 0, 0): both trunks move by the shift, the extra child does not, the pool moves once.
-- [ ] Suite: the same check for `LootSlice` with two pickups, one of them collected (freed)
+- [x] Suite: the same check for `LootSlice` with two pickups, one of them collected (freed)
   before the shift — no error and the survivor moves.
-- [ ] Suite: a player walked across `WorldPos` rebase distance in physics steps reports a
+- [x] Suite: a player walked across `WorldPos` rebase distance in physics steps reports a
   world position that never jumps by more than one step's travel across the rebase frame.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green. — `Results: 14874/14874 passed (0 failed)` both boot paths, harness 15/15 steps.
 
 ---
 

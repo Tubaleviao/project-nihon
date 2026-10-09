@@ -98,6 +98,8 @@ func _on_creature_died(entity_id: String, position: Vector3, _killer_id: String)
 			# Build a visible body so the item actually appears on the ground.
 			var body := _make_pickup_visual(pid, item_id, position)
 			add_child(body)
+			_world_nodes.append(body)
+			body.tree_exited.connect(_forget_world_node.bind(body))
 			_pickups[pid] = {
 				"item_id":    item_id,
 				"quantity":   qty,
@@ -144,12 +146,23 @@ func _tick_despawn() -> void:
 ## Phase 63: the scene-origin offset a client rebase has applied (see `shift_scene`).
 var _scene_offset: Vector3 = Vector3.ZERO
 
-## Shift every pickup node by `shift`; its world position is unchanged.
+## Phase 80 — the pickup nodes this slice spawned in world space. `shift_scene` moves exactly
+## these, so a helper node parented under the slice is never shifted by accident.
+var _world_nodes: Array = []
+
+## Shift every pickup node by `shift`; its world position is unchanged. Freed nodes drop out.
 func shift_scene(shift: Vector3) -> void:
 	_scene_offset += shift
-	for c in get_children():
-		if c is Node3D:
-			(c as Node3D).position += shift
+	var live: Array = []
+	for n in _world_nodes:
+		if is_instance_valid(n):
+			(n as Node3D).position += shift
+			live.append(n)
+	_world_nodes = live
+
+## Drop a freed world node from the shift set.
+func _forget_world_node(node: Node) -> void:
+	_world_nodes.erase(node)
 
 func scene_offset() -> Vector3:
 	return _scene_offset
