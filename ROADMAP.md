@@ -111,8 +111,8 @@ issue number where the criterion used to be.
 | 88 | The distant ring survives a reparent and its abort is proven | Planned | below |
 | 89 | A malformed region entry warns once per session | Planned | below |
 | 90 | One scene-origin source and one wire-position validator | Done | below |
-| 91 | A legacy tile height survives a depletion overlay | Planned | below |
-| 92 | The shown-biome memo follows the terrain slice and one pole-ring rule | Planned | below |
+| 91 | A legacy tile height survives a depletion overlay | Done | below |
+| 92 | The shown-biome memo follows the terrain slice and one pole-ring rule | Done | below |
 | 93 | Host-sync window moves are counted and a clock swap resets the throttles | Planned | below |
 | 94 | A test eviction helper and a bounded UI retire list | Planned | below |
 | 95 | Free pointer, right-click look, chat box and admin commands | Done | below |
@@ -618,7 +618,7 @@ different rules (#200, #201, #202).
 
 ---
 
-## Phase 91 — A legacy tile height survives a depletion overlay
+## Phase 91 — A legacy tile height survives a depletion overlay ✅ Done
 
 **Goal:** `RegionStore.overlay_entry` reads a tile's stored value with `edits.get(tile, [])` and
 only merges it when it is an `Array`. A pre-Phase-41 tile stores a bare absolute height (a number,
@@ -643,17 +643,17 @@ base height, so it cannot convert the number itself.
 - `src/persistence/region_store.gd` — `_chunk_entry_valid` accepts the new op shape.
 
 **Acceptance criteria:**
-- [ ] Suite: a region entry whose tile holds the bare height `h`, overlaid with one deplete op and
+- [x] Suite: a region entry whose tile holds the bare height `h`, overlaid with one deplete op and
   reloaded through `VoxelSlice.apply_edits`, yields the same column top as the bare `h` alone and
   keeps the depletion's `taken` count.
-- [ ] Suite: overlaying a second deplete on the result keeps exactly one legacy op (no duplicates).
-- [ ] Suite: a tile already stored as a typed op list overlays exactly as before (Phase 75 tests
+- [x] Suite: overlaying a second deplete on the result keeps exactly one legacy op (no duplicates).
+- [x] Suite: a tile already stored as a typed op list overlays exactly as before (Phase 75 tests
   unchanged and green).
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green. — `Results: 15423/15423 passed (0 failed)` on `--run-tests`; harness 15/15 steps.
 
 ---
 
-## Phase 92 — The shown-biome memo follows the terrain slice and one pole-ring rule
+## Phase 92 — The shown-biome memo follows the terrain slice and one pole-ring rule ✅ Done
 
 **Goal:** `VoxelSlice._shown_biomes` is cleared only on a world-seed change or
 `reset_shown_biomes()`, so assigning a different `terrain_slice` at runtime keeps serving the old
@@ -675,12 +675,12 @@ instance's `world_radius_chunks()`; equal today, but free to drift (#209, #213).
   otherwise); `gather_biomes_for` and `shown_biome_at` both use it.
 
 **Acceptance criteria:**
-- [ ] Suite: after `shown_biome_at` memoises a chunk against slice A, assigning a fake slice B
+- [x] Suite: after `shown_biome_at` memoises a chunk against slice A, assigning a fake slice B
   that reports a different biome makes the next `shown_biome_at` return B's answer.
-- [ ] Suite: with a fake terrain slice whose polar bound is smaller than the static one, a chunk
+- [x] Suite: with a fake terrain slice whose polar bound is smaller than the static one, a chunk
   between the two bounds is left out by both `gather_biomes_for` and `shown_biome_at`.
-- [ ] Suite: the Phase 64 and Phase 81 voxel/minimap agreement tests stay green.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite: the Phase 64 and Phase 81 voxel/minimap agreement tests stay green.
+- [x] Suite green on both boot paths, harness green. — `Results: 15412/15412 passed (0 failed)` on `--run-tests`; harness 15/15 steps.
 
 ---
 

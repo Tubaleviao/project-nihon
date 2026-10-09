@@ -250,7 +250,14 @@ var _vein_carry: Dictionary = {}
 var _partial_chunks: Dictionary = {}
 
 ## Set by game_root: terrain (biome + base height) and inventory (material flow).
-var terrain_slice: Node = null
+## Phase 92 — assigning a different slice drops everything derived from the old one (the guessed
+## heightmaps and the shown-biome memo), so a swap never serves the previous slice's answers.
+var terrain_slice: Node = null:
+	set(value):
+		if value != terrain_slice:
+			_guess_heightmaps.clear()
+			_shown_biomes.clear()
+		terrain_slice = value
 var inventory_slice: Node = null
 
 ## Phase 42 review — the registry that owns one inventory PER PLAYER, so an edit the
@@ -696,10 +703,25 @@ func _sync_guess_seed() -> void:
 ## `own`), the same rule as `Minimap._blendable`; the chunk itself is always in the map.
 func gather_biomes_for(chunk_pos: Vector2i) -> Dictionary:
 	var out: Dictionary = {}
-	for chunk in _ring_chunks(chunk_pos):
-		if chunk != chunk_pos and not TerrainSlice.lends_biome(chunk, TerrainSlice.polar_chunks()):
-			continue
+	for chunk in _lending_ring(chunk_pos, _ring_chunks(chunk_pos)):
 		out[_chunk_key(chunk)] = _biome_at(_chunk_world_center(chunk))
+	return out
+
+## Phase 92 — the polar row from which a chunk no longer lends its biome: the terrain slice's own
+## bound when it reports one (as the minimap asks), else the static one.
+func _polar_bound() -> int:
+	if terrain_slice != null and terrain_slice.has_method("world_radius_chunks"):
+		return int(terrain_slice.world_radius_chunks())
+	return TerrainSlice.polar_chunks()
+
+## Phase 92 — the one pole-ring rule: of `candidates` (the chunks around `own`), `own` itself and
+## every chunk short of the polar ice, in order. Both `gather_biomes_for` and `shown_biome_at` use it.
+func _lending_ring(own: Vector2i, candidates: Array) -> Array:
+	var bound := _polar_bound()
+	var out: Array = []
+	for chunk in candidates:
+		if chunk == own or TerrainSlice.lends_biome(chunk, bound):
+			out.append(chunk)
 	return out
 
 ## The distinct chunks a chunk's tile+ring spans: at most 3×3, because the ring is one tile wide.
@@ -1577,7 +1599,7 @@ func _normalise_edit_table(edits: Dictionary, materials: Dictionary) -> Dictiona
 	for key in edits:
 		var value: Variant = edits[key]
 		if value is Array:
-			next[key] = _normalise_ops(value)
+			next[key] = _normalise_tile_ops(key, value, materials)
 			continue
 		# The LEGACY half: a bare number (or a numeric string) is a pre-Phase-41
 		# absolute quantised height, migrated against the tile's natural run. Any
@@ -1595,6 +1617,27 @@ func _normalise_edit_table(edits: Dictionary, materials: Dictionary) -> Dictiona
 		var stack: Array = materials.get(key, [])
 		next[key] = legacy_edit_ops(legacy_height, _base_top_for_tile(tile), stack)
 	return next
+
+## Phase 91 — a typed op list, with a leading `legacy` op (a bare pre-Phase-41 height the region
+## store carried through a depletion overlay) migrated exactly as a bare number is, then the other
+## ops after it. A `legacy` op with an unreadable height is dropped with a warning.
+func _normalise_tile_ops(key: Variant, value: Array, materials: Dictionary) -> Array:
+	var rest: Array = []
+	var migrated: Array = []
+	var seen_legacy := false
+	for op in value:
+		if op is Dictionary and str(op.get("op", "")) == "legacy":
+			if seen_legacy:
+				continue
+			seen_legacy = true
+			var h := _legacy_height_of(op.get("height", null))
+			if is_nan(h):
+				Diag.warn("VoxelSlice.apply_edits: dropping an unreadable legacy height for '%s'" % str(key))
+				continue
+			migrated = legacy_edit_ops(h, _base_top_for_tile(_key_to_tile(str(key))), materials.get(key, []))
+		else:
+			rest.append(op)
+	return migrated + _normalise_ops(rest)
 
 ## The committing half of `apply_edits`: swap in `next` as the edit log and rebuild what
 ## changed. `diff_keys` limits the change detection to those tile keys (the scoped re-scope
@@ -2808,13 +2851,13 @@ func shown_biome_at(world_xz: Vector2) -> String:
 	_sync_guess_seed()
 	var extent := float(CHUNK_SIZE * TILE_SIZE)
 	var c := Vector2i(floori(world_xz.x / extent), floori(world_xz.y / extent))
-	var biomes: Dictionary = {}
+	var around: Array = []
 	for dz in range(-1, 2):
 		for dx in range(-1, 2):
-			var n := c + Vector2i(dx, dz)
-			if n != c and not TerrainSlice.lends_biome(n, TerrainSlice.polar_chunks()):
-				continue
-			biomes[_chunk_key(n)] = _chunk_biome_memo(n)
+			around.append(c + Vector2i(dx, dz))
+	var biomes: Dictionary = {}
+	for n in _lending_ring(c, around):
+		biomes[_chunk_key(n)] = _chunk_biome_memo(n)
 	return blended_biome(world_xz, biomes, str(biomes[_chunk_key(c)]))
 
 func _chunk_biome_memo(chunk: Vector2i) -> String:
