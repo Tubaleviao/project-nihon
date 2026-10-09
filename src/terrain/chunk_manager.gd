@@ -214,8 +214,22 @@ var _peer_last_claim_msec: Dictionary = {}
 var _peer_last_sync_msec: Dictionary = {}
 ## Millisecond clock for the peer-window rate limit, self-heal and stranded-region retry; a test swaps it for a fake.
 var now_msec: Callable = Time.get_ticks_msec
+## Swap the millisecond clock and forget every timestamp taken from the old one (stranded-retry,
+## self-heal and per-peer interval), so a stale stamp never throttles against the new clock.
+func set_clock(c: Callable) -> void:
+	now_msec = c
+	_last_stranded_retry_msec = -STRANDED_RETRY_MSEC
+	_last_self_heal_msec = -1
+	for peer_id in _peer_last_claim_msec:
+		_peer_last_claim_msec[peer_id] = -1000000
+	for peer_id in _peer_last_sync_msec:
+		_peer_last_sync_msec[peer_id] = -1000000
+
 ## Client-driven moves refused (rate-limited) or clamped (too far in one step), for the log line and tests.
 var peer_recenter_refused: int = 0
+## Host syncs (`sync_peer_center`) that moved a window farther than `PEER_RECENTER_MAX_CHUNKS` in one step
+## (the move still applies, clamped): an abuse signal that never inflates `peer_recenter_refused`.
+var peer_sync_far_hops: int = 0
 
 ## Phase 52 — the region streamer (src/persistence/region_streamer.gd), or null on a client /
 ## in an isolated rig. Told which chunks the windows want on every window move so the edits of
@@ -850,7 +864,9 @@ func _move_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool, is_sync
 	var step := Vector2i(posmod(chunk.x - current.x + c / 2, c) - c / 2, chunk.y - current.y)
 	var reach := maxi(absi(step.x), absi(step.y))
 	if reach > PEER_RECENTER_MAX_CHUNKS:
-		if not is_sync:
+		if is_sync:
+			peer_sync_far_hops += 1
+		else:
 			peer_recenter_refused += 1
 		step = Vector2i(
 			roundi(float(step.x) * PEER_RECENTER_MAX_CHUNKS / float(reach)),
@@ -863,7 +879,10 @@ func _move_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool, is_sync
 ## still client-reported, so it gets the same interval limit and clamp as a claim (a hostile
 ## client cannot hop the window across the planet every tick); the difference is that a deferral
 ## here is the sync simply retrying on its next tick, so it is NOT counted in
-## `peer_recenter_refused`. Returns true when the window moved.
+## `peer_recenter_refused`. A sync that is clamped still moves the window, and is counted in
+## `peer_sync_far_hops`. Trust relied on: the caller passes the position the HOST tracks for the
+## peer's connection (never a raw client claim), so a far hop here means the tracked position itself
+## jumped and is worth surfacing, not refusing. Returns true when the window moved.
 func sync_peer_center(peer_id: int, chunk: Vector2i) -> bool:
 	return _move_peer_center(peer_id, chunk, false, true)
 

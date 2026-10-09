@@ -113,7 +113,7 @@ issue number where the criterion used to be.
 | 90 | One scene-origin source and one wire-position validator | Done | below |
 | 91 | A legacy tile height survives a depletion overlay | Done | below |
 | 92 | The shown-biome memo follows the terrain slice and one pole-ring rule | Done | below |
-| 93 | Host-sync window moves are counted and a clock swap resets the throttles | Planned | below |
+| 93 | Host-sync window moves are counted and a clock swap resets the throttles | Done | below |
 | 94 | A test eviction helper and a bounded UI retire list | Planned | below |
 | 95 | Free pointer, right-click look, chat box and admin commands | Done | below |
 
@@ -684,7 +684,7 @@ instance's `world_radius_chunks()`; equal today, but free to drift (#209, #213).
 
 ---
 
-## Phase 93 — Host-sync window moves are counted and a clock swap resets the throttles
+## Phase 93 — Host-sync window moves are counted and a clock swap resets the throttles ✅ Done
 
 **Goal:** `ChunkManager.sync_peer_center` skips the clamp and rate limit because it trusts the
 host-tracked position, but nothing states or tests that assumption, and a hostile far hop that
@@ -706,13 +706,13 @@ from the old clock, so a test that swaps mid-run sees stale throttles (#207).
   the stranded-retry, self-heal and per-peer interval timestamps. Tests use it.
 
 **Acceptance criteria:**
-- [ ] Suite: a sync move of one chunk leaves `peer_sync_far_hops` at 0; a sync move past the
+- [x] Suite: a sync move of one chunk leaves `peer_sync_far_hops` at 0; a sync move past the
   claim clamp applies the move and raises it by exactly 1; neither changes
   `peer_recenter_refused`.
-- [ ] Suite: after a fake clock drives the self-heal and stranded-retry throttles, `set_clock`
+- [x] Suite: after a fake clock drives the self-heal and stranded-retry throttles, `set_clock`
   with a fresh clock at 0 lets the next self-heal and stranded retry run immediately.
-- [ ] `grep -n "now_msec =" src/tests/test_suite.gd` finds no direct assignments.
-- [ ] Suite green on both boot paths, harness green.
+- [x] `grep -n "now_msec =" src/tests/test_suite.gd` finds no direct assignments.
+- [x] Suite green on both boot paths, harness green. — `Results: 15466/15466 passed (0 failed)`, harness 15/15 steps.
 
 ---
 
