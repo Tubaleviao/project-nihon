@@ -672,6 +672,7 @@ func run() -> void:
 	_run_test("creature: state delta keeps the respawn deadline", _test_creature_state_delta_keeps_deadline)
 	_run_test("persistence: shutdown poll is independent of autosave", _test_shutdown_poll_cadence)
 	_run_test("identity: client-declared hp is never persisted",   _test_remote_hp_not_persisted)
+	_run_test("ui: retiring 1,000 controls prunes the list a handful of times", _test_ui_retire_prunes_amortised)
 	_run_test("identity: disconnect evicts record + inventory",   _test_disconnect_evicts_player)
 	_run_test("identity: handshake retry re-answers a bound peer", _test_handshake_retry_reanswers_peer)
 	_run_test("net: retry re-presents the join intent",           _test_retry_represents_join_intent)
@@ -4494,6 +4495,22 @@ func _new_test_ui() -> UiSlice:
 	ui.layout_path = TEST_UI_LAYOUT
 	add_child(ui)
 	return ui
+
+func _test_ui_retire_prunes_amortised() -> void:
+	var ui := _new_test_ui()
+	var controls: Array = []
+	for i in 1000:
+		var c := Control.new()
+		controls.append(c)
+		ui._retire(c)
+	assert_true(ui.retired_prunes <= 11, "retiring 1,000 controls prunes at most 11 times (%d)" % ui.retired_prunes)
+	assert_true(ui.retired_prunes >= 1, "and the prune does run")
+	ui.free()
+	var leaked := 0
+	for c in controls:
+		if is_instance_valid(c):
+			leaked += 1
+	assert_eq(leaked, 0, "freeing the slice frees every retired control still valid")
 
 func _test_ui_layout_file_roundtrip() -> void:
 	var ui := _new_test_ui()
@@ -9111,6 +9128,15 @@ func _test_remote_hp_not_persisted() -> void:
 		"so the local player's hp is still persisted")
 	registry.free()
 
+## `evict_player` only `queue_free`s the inventory node it detaches, and the suite never reaches a
+## frame, so the node would leak into Phase 84's orphan check. Every test that evicts goes through here.
+func _evict_and_free(registry: PlayerRegistry, player_id: String) -> bool:
+	var inv: Variant = registry.get_inventory(player_id) if registry.has_inventory(player_id) else null
+	var evicted: bool = registry.evict_player(player_id)
+	if inv != null and is_instance_valid(inv) and (inv as Node).get_parent() == null:
+		(inv as Node).free()
+	return evicted
+
 func _test_disconnect_evicts_player() -> void:
 	# The registry used to retain every record and every inventory node forever, so a
 	# long-lived server grew with every peer that had EVER connected — and a record
@@ -9136,12 +9162,11 @@ func _test_disconnect_evicts_player() -> void:
 	assert_true(remote_inv.get_parent() == registry, "which the registry created and parents")
 
 	registry.unbind_peer(4)
-	assert_true(registry.evict_player(remote), "the disconnected player's record is evicted")
+	assert_true(_evict_and_free(registry, remote), "the disconnected player's record is evicted")
 	assert_false(registry.has_player(remote), "the record is no longer resident")
 	assert_false(registry.has_inventory(remote), "nor is the inventory node")
-	assert_true(remote_inv.get_parent() == null, "the registry-owned node was detached for freeing")
+	assert_false(is_instance_valid(remote_inv), "the registry-owned node was detached and freed")
 	assert_false(registry.evict_player(remote), "eviction is idempotent")
-	remote_inv.free()   # evict_player queue_frees it; the suite never reaches a frame, so free it now
 
 	# The LOCAL player is never evicted: it is online by definition and its
 	# inventory is the game's own instance, not this slice's to free.
@@ -13666,10 +13691,7 @@ func _test_equipment_bookkeeping_evicted() -> void:
 	GameBus.equip_intent.emit(peer, "Chest", "VeilsteelChestplate")
 	assert_true(registry._equip_seq.has(peer) and registry._equip_refusals.has(peer), "the entries exist while the player is resident")
 	registry.unbind_peer(2)
-	var peer_inv = registry.get_inventory(peer)
-	assert_true(registry.evict_player(peer), "the player is evicted")
-	if peer_inv != null:
-		peer_inv.free()   # evict_player queue_frees it; the suite never reaches a frame
+	assert_true(_evict_and_free(registry, peer), "the player is evicted")
 	assert_false(registry._equip_seq.has(peer), "the sequence entry goes with it")
 	assert_false(registry._equip_refusals.has(peer), "so does the refusal timestamp")
 	assert_false(registry._equip_revoke_pending.has(peer), "and the pending trailing revoke")

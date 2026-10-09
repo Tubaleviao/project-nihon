@@ -114,7 +114,7 @@ issue number where the criterion used to be.
 | 91 | A legacy tile height survives a depletion overlay | Done | below |
 | 92 | The shown-biome memo follows the terrain slice and one pole-ring rule | Done | below |
 | 93 | Host-sync window moves are counted and a clock swap resets the throttles | Planned | below |
-| 94 | A test eviction helper and a bounded UI retire list | Planned | below |
+| 94 | A test eviction helper and a bounded UI retire list | Done | below |
 | 95 | Free pointer, right-click look, chat box and admin commands | Done | below |
 
 ---
@@ -716,7 +716,7 @@ from the old clock, so a test that swaps mid-run sees stale throttles (#207).
 
 ---
 
-## Phase 94 — A test eviction helper and a bounded UI retire list
+## Phase 94 — A test eviction helper and a bounded UI retire list ✅ Done
 
 **Goal:** Phase 84's leak check relies on each test manually `free()`ing the nodes that
 `evict_player` only `queue_free`s (the suite never reaches a frame), a pattern a new test can
@@ -736,12 +736,12 @@ entire `_retired` array on every call, so a burst of N retirements costs O(N²) 
   since the last prune) instead of on every call; the `NOTIFICATION_PREDELETE` free pass is unchanged.
 
 **Acceptance criteria:**
-- [ ] Suite: retiring 1,000 controls runs the prune at most 11 times (counter), and freeing the
+- [x] Suite: retiring 1,000 controls runs the prune at most 11 times (counter), and freeing the
   UI slice still frees every retired control that is still valid.
-- [ ] No test frees an evicted player's nodes inline after `evict_player`; every such site calls
+- [x] No test frees an evicted player's nodes inline after `evict_player`; every such site calls
   the helper.
-- [ ] The Phase 84 orphan check still reports zero leaked objects.
-- [ ] Suite green on both boot paths, harness green.
+- [x] The Phase 84 orphan check still reports zero leaked objects.
+- [x] Suite green on both boot paths, harness green. — `Results: 15455/15455 passed (0 failed)`, harness 15/15 steps.
 
 ---
 
