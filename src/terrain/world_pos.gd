@@ -71,6 +71,18 @@ static func pos_to_wire(pos: Dictionary) -> Dictionary:
 	var local: Vector3 = pos["local"]
 	return { "chunk": [chunk.x, chunk.y], "local": [local.x, local.y, local.z] }
 
+## Decode the `{chunk, local}` wire dictionary to a `{chunk, local}` record with no float round trip, or
+## an empty dictionary when `data` is not that form (a legacy array has no exact chunk to keep).
+static func pos_from_wire(data: Variant) -> Dictionary:
+	if data is Dictionary and is_wire(data):
+		var c: Array = data["chunk"]
+		var l: Array = data["local"]
+		return normalized({
+			"chunk": Vector2i(int(c[0]), int(c[1])),
+			"local": Vector3(float(l[0]), float(l[1]), float(l[2])),
+		})
+	return {}
+
 ## Decode either wire form (the `{chunk, local}` dictionary or a legacy `[x, y, z]` array) to a world
 ## position. Anything else decodes to `fallback`.
 static func from_wire(data: Variant, fallback: Vector3 = Vector3.ZERO) -> Vector3:
@@ -100,8 +112,22 @@ static func wrap_world(world: Vector3) -> Vector3:
 	return Vector3(fposmod(world.x + w * 0.5, w) - w * 0.5, world.y, world.z)
 
 ## True for a decodable wire position: the `{chunk, local}` dictionary or a legacy `[x, y, z]` array.
+## Every element must be a finite number of sane size, so a hostile packet cannot reach `int()` /
+## `float()` with a non-number or feed NaN / infinity into `normalized`.
 static func is_wire(data: Variant) -> bool:
 	if data is Dictionary:
 		return data.get("chunk") is Array and data["chunk"].size() >= 2 \
-			and data.get("local") is Array and data["local"].size() >= 3
-	return data is Array and data.size() >= 3
+			and data.get("local") is Array and data["local"].size() >= 3 \
+			and _sane(data["chunk"], 2) and _sane(data["local"], 3)
+	return data is Array and data.size() >= 3 and _sane(data, 3)
+
+## The first `count` elements of `arr` are numbers, finite, and within +/- WIRE_LIMIT.
+const WIRE_LIMIT := 1.0e9
+static func _sane(arr: Array, count: int) -> bool:
+	for i in count:
+		var v: Variant = arr[i]
+		if not (v is int or v is float):
+			return false
+		if is_nan(float(v)) or absf(float(v)) > WIRE_LIMIT:
+			return false
+	return true

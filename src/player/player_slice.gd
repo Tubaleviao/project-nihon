@@ -680,6 +680,7 @@ func _broadcast_state() -> void:
 		return
 	var payload := {
 		"position": get_position(),
+		"world_pos": get_world_pos(),
 		"hp":       _hp,
 		"max_hp":   MAX_HP,
 	}

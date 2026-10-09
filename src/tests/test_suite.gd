@@ -277,6 +277,7 @@ func run() -> void:
 	_run_test("region: migration recovers a monolith chunk whose region entry is malformed", _test_region_migrate_malformed_recovers)
 	_run_test("rebase: an unshiftable target is reported",      _test_rebase_driver_reports_unshiftable)
 	_run_test("game_root: implausible peer positions dropped",  _test_remote_state_plausibility)
+	_run_test("networking: a remote peer's exact position is saved exactly", _test_remote_peer_exact_position)
 	_run_test("equipment: slots cached, peer evict, owner map", _test_equipment_phase48_misc)
 	_run_test("equipment: host worn set + AOI enter/leave",      _test_equipment_host_and_aoi_transitions)
 	_run_test("net: broadcasts go through _test_peers",          _test_network_broadcast_uses_test_peers)
@@ -646,6 +647,7 @@ func run() -> void:
 	_run_test("peer window: a seam crossing is a short step, not a planet-wide one", _test_peer_window_clamps_across_seam)
 	_run_test("peer window: a host-driven move recentres at once", _test_peer_window_host_driven)
 	_run_test("peer window: the host's periodic sync is never a counted refusal", _test_peer_window_host_sync)
+	_run_test("peer window: syncs and claims keep separate interval clocks", _test_peer_window_separate_clocks)
 	_run_test("diag: warn_count survives concurrent warnings from worker threads", _test_diag_warn_concurrent)
 	_run_test("peer window: a move into a stored region makes its edits resident", _test_peer_window_move_loads_region_edits)
 	_run_test("region: 1,000 regions on disk, only the ones near a window are resident", _test_region_streams_only_near_windows)
@@ -1197,6 +1199,49 @@ func _test_remote_state_plausibility() -> void:
 	gr._on_remote_player_state(3, Vector3(NAN, 0.0, 0.0))
 	assert_true(gr._peer_aoi_regions.is_empty(), "a rejected claim records no AOI region (and needs no networking slice)")
 	gr.free()
+
+## Phase 86 — a peer's report carries `{chunk, local}`; the host keeps it and the fold persists it exactly.
+func _test_remote_peer_exact_position() -> void:
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	var chunk := Vector2i(250000, 1000)
+	var local := Vector3(12.345, 40.0, 7.891)
+	var wire := WorldPos.pos_to_wire({ "chunk": chunk, "local": local })
+	n._route_c2h(5, { "type": "player_moved", "position": wire })
+	assert_eq(n.get_last_known_exact(5)["chunk"], chunk, "the host holds the exact chunk")
+	var reg := PlayerRegistry.new()
+	_own(reg)
+	var gr: Node = (load("res://src/core/game_root.gd") as GDScript).new()
+	gr._networking = n
+	gr._registry = reg
+	gr._fold_last_known_state(5, "p5")
+	var rec: Dictionary = JSON.parse_string(JSON.stringify(reg.get_record("p5")))
+	var reg2 := PlayerRegistry.new()
+	_own(reg2)
+	reg2.apply_player_data("p5", rec)
+	var back: Dictionary = reg2.get_world_pos("p5")
+	assert_eq(back["chunk"], chunk, "the saved record reloads in the same chunk")
+	assert_true((back["local"] as Vector3).distance_to(local) < 1e-4, "and at the same local, not float32 metres")
+	# A malformed report is refused and leaves the previous state alone.
+	var was_quiet := Diag.quiet
+	Diag.quiet = true
+	n._route_c2h(5, { "type": "player_moved", "position": { "chunk": "x", "local": [1, 2] } })
+	n._route_c2h(5, { "type": "player_moved" })
+	n._route_c2h(5, { "type": "player_moved", "position": { "chunk": [0, 0], "local": [{}, null, "x"] } })
+	n._route_c2h(5, { "type": "player_moved", "position": [NAN, 0.0, 0.0] })
+	n._route_c2h(5, { "type": "player_moved", "position": { "chunk": [0, 0], "local": [INF, 0.0, 0.0] } })
+	Diag.quiet = was_quiet
+	assert_eq(n.get_last_known_exact(5)["chunk"], chunk, "a malformed report leaves the exact state")
+	assert_true(n.get_last_known_state(5).distance_to(WorldPos.from_wire(wire)) < 1.0, "and the Vector3 state")
+	# A legacy array report still records a position, with no exact entry.
+	n._route_c2h(6, { "type": "player_moved", "position": [10.0, 2.0, -5.0] })
+	assert_eq(n.get_last_known_state(6), Vector3(10.0, 2.0, -5.0), "a legacy report records its Vector3")
+	assert_true(n.get_last_known_exact(6).is_empty(), "with no exact position")
+	gr._fold_last_known_state(6, "p6")
+	assert_eq(reg.get_world_pos("p6")["chunk"], Vector2i(0, -1), "and the fold falls back to record_position")
+	gr.free()
+	n.free()
 
 ## Phase 80 — `TreeSlice.shift_scene` moves its own trunks and the pool, nothing else.
 func _test_tree_shift_explicit_set() -> void:
@@ -15068,7 +15113,7 @@ func _test_peer_window_rate_limited() -> void:
 	var centre: Vector2i = cm._peer_centers[5]
 	assert_true(maxi(absi(centre.x - 2), absi(centre.y - 2)) <= ChunkManager.PEER_RECENTER_MAX_CHUNKS,
 		"and the window never travelled farther than the cap")
-	cm._peer_last_move_msec[5] = -1000000
+	cm._peer_last_claim_msec[5] = -1000000
 	assert_true(cm.set_peer_center(5, Vector2i(3, 2)), "a near claim after the interval is accepted")
 	for k in ["cm", "voxel", "terrain", "player"]:
 		rig[k].free()
@@ -15114,7 +15159,7 @@ func _test_peer_window_clamps_across_seam() -> void:
 	var cm: ChunkManager = rig["cm"]
 	var half := TerrainSlice.circumference_chunks() / 2
 	cm.set_peer_center(5, Vector2i(half - 1, 0), true)
-	cm._peer_last_move_msec[5] = -1000000
+	cm._peer_last_claim_msec[5] = -1000000
 	# One chunk east of the seam is one chunk away, not a planet-width: no clamp, no refusal.
 	assert_true(cm.set_peer_center(5, Vector2i(-half, 0)), "a seam crossing moves the window")
 	assert_eq(cm.peer_recenter_refused, 0, "a one-chunk seam step is not clamped")
@@ -15162,6 +15207,29 @@ func _test_peer_window_host_sync() -> void:
 	for k in ["cm", "voxel", "terrain", "player"]:
 		rig[k].free()
 
+func _test_peer_window_separate_clocks() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var clock := [1000]
+	cm.now_msec = func() -> int: return clock[0]
+	cm.sync_peer_center(5, Vector2i(2, 2))
+	clock[0] += 1000
+	assert_true(cm.sync_peer_center(5, Vector2i(3, 2)), "a sync move lands")
+	clock[0] += 100
+	assert_true(cm.set_peer_center(5, Vector2i(4, 2)), "a claim 100 ms after a sync is accepted")
+	assert_eq(cm.peer_recenter_refused, 0, "and is not counted as a refusal")
+	# Two claims 100 ms apart still count exactly one refusal.
+	clock[0] += 1000
+	assert_true(cm.set_peer_center(5, Vector2i(5, 2)), "a claim after the interval lands")
+	clock[0] += 100
+	assert_false(cm.set_peer_center(5, Vector2i(6, 2)), "a second claim 100 ms later is refused")
+	assert_eq(cm.peer_recenter_refused, 1, "and counted once")
+	cm.clear_peer_center(5)
+	assert_false(cm._peer_last_claim_msec.has(5), "clearing a peer drops its claim timestamp")
+	assert_false(cm._peer_last_sync_msec.has(5), "and its sync timestamp")
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+
 func _test_diag_warn_concurrent() -> void:
 	var was_quiet := Diag.quiet
 	Diag.quiet = true
@@ -15188,7 +15256,7 @@ func _test_peer_window_move_loads_region_edits() -> void:
 	cm.set_peer_center(7, Vector2i(28, 0), true)
 	cm.refresh(false)
 	assert_false(voxel.edited_chunk_keys().has("34,0"), "the edit is not resident before the move")
-	cm._peer_last_move_msec[7] = -1000000
+	cm._peer_last_claim_msec[7] = -1000000
 	# The order the re-scope handler uses: recentre, refresh, THEN read the edits for the snapshot.
 	assert_true(cm.set_peer_center(7, Vector2i(34, 0)), "the claim is within the cap")
 	cm.refresh(false)
