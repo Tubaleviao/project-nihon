@@ -63,6 +63,7 @@ var _registered_names: Dictionary = {}
 # ---------------------------------------------------------------------------
 
 func run() -> void:
+	# A coroutine: the last step waits one frame so `queue_free`d nodes are gone before the orphan check.
 	print("\n╔══════════════════════════════════════╗")
 	print("║       Project Nihon — Test Suite     ║")
 	print("╚══════════════════════════════════════╝\n")
@@ -704,6 +705,13 @@ func run() -> void:
 		if method_name.begins_with("_test_") and not _registered_names.has(method_name):
 			push_error("TestSuite: '%s' is defined but never registered — add it to the _run_test list" % method_name)
 			_fail += 1
+
+	# Phase 84 — the LAST check. Production code frees with `queue_free` (UI rows, evicted
+	# inventories), which only lands at the end of a frame; wait one, then count what is
+	# left parentless. A test that forgot `free()` shows up here.
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_test_no_orphan_nodes()
 
 	Diag.quiet = false
 	var total := _pass + _fail
@@ -12949,6 +12957,14 @@ func _ok() -> void:
 func _ko(msg: String) -> void:
 	_fail += 1
 	push_error("  ✗ [%s] %s" % [_current_test, msg])
+
+## Phase 84 — nothing the suite or the code it drove left parentless. Reads the engine's own
+## orphan monitor, so it covers production leaks too (a node created but never parented or freed).
+func _test_no_orphan_nodes() -> void:
+	var orphans := int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
+	if orphans != 0:
+		Node.print_orphan_nodes()
+	assert_eq(orphans, 0, "the suite leaves no orphan nodes")
 
 func _run_test(name: String, fn: Callable) -> void:
 	_current_test = name
