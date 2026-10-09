@@ -246,6 +246,11 @@ static func where_text(world_pos: Vector3) -> String:
 func is_chunk_in_bounds(chunk_pos: Vector2i) -> bool:
 	return absi(chunk_pos.y) < polar_chunks()
 
+## True when chunk `c` may lend its biome to a neighbour: its row is a walkable one, short of
+## the polar ice at row `radius` (`world_radius_chunks`). One rule for the voxel surface and the minimap.
+static func lends_biome(c: Vector2i, radius: int) -> bool:
+	return absi(c.y) < radius
+
 ## The polar ice line in world units (the playable Z range is +-this).
 func world_half_extent() -> float:
 	return float(polar_chunks()) * CHUNK_METERS
