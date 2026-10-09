@@ -612,13 +612,30 @@ func _can_research(tech_id: String, status: String, data: Dictionary) -> bool:
 # Rendering
 # ---------------------------------------------------------------------------
 
+## A row removed from a grid is `queue_free`d (it may be the control whose signal is running), but it
+## has no parent until that lands, so the slice keeps it: freed with the slice if the frame never
+## comes (a `--quit` boot, the test suite) rather than left an orphan. Owner: this slice.
+var _retired: Array = []
+
+func _retire(c: Node) -> void:
+	_retired = _retired.filter(func(n): return is_instance_valid(n))
+	c.queue_free()
+	_retired.append(c)
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		for n in _retired:
+			if is_instance_valid(n):
+				n.free()
+		_retired.clear()
+
 func refresh_inventory() -> void:
 	if _inventory_grid == null:
 		return
 	_inventory_usage.text = inventory_usage_text()
 	for c in _inventory_grid.get_children():
 		_inventory_grid.remove_child(c)
-		c.queue_free()
+		_retire(c)
 	var rows: Array = inventory_rows()
 	_inventory_empty.visible = rows.is_empty()
 	for row in rows:
@@ -715,7 +732,7 @@ func refresh_character() -> void:
 	_character_rows_signature = signature
 	for c in _character_grid.get_children():
 		_character_grid.remove_child(c)
-		c.queue_free()
+		_retire(c)
 	for row in rows:
 		var slot := Button.new()
 		slot.custom_minimum_size = SLOT_SIZE

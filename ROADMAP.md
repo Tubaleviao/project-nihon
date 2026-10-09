@@ -99,13 +99,23 @@ issue number where the criterion used to be.
 | 76 | Niche field wraps the planet and is calibrated by a test | Done | below |
 | 77 | One detail-noise formula and the ring's strip helper | Done | below |
 | 78 | Exact player position far from the origin | Done | below |
-| 79 | Deterministic peer-window rate limit and a production ref-count reader | Planned | below |
-| 80 | Rebase in the physics step and explicit shift sets | Planned | below |
-| 81 | Pole-aware tile biome and a mined-tile biome memo | Planned | below |
-| 82 | Honest peer-window refusal count and a thread-safe warning counter | Planned | below |
-| 83 | Distant-ring teardown that does not stall | Planned | below |
-| 84 | The suite exits with no leaked objects | Planned | below |
-| 85 | Free pointer, right-click look, chat box and admin commands | Done | below |
+| 79 | Deterministic peer-window rate limit and a production ref-count reader | Done | below |
+| 80 | Rebase in the physics step and explicit shift sets | Done | below |
+| 81 | Pole-aware tile biome and a mined-tile biome memo | Done | below |
+| 82 | Honest peer-window refusal count and a thread-safe warning counter | Done | below |
+| 83 | Distant-ring teardown that does not stall | Done | below |
+| 84 | The suite exits with no leaked objects | Done | below |
+| 85 | Peer claims and host syncs keep separate interval clocks | Planned | below |
+| 86 | Remote peers' positions stay exact far from the origin | Planned | below |
+| 87 | Exact spawn and respawn points | Planned | below |
+| 88 | The distant ring survives a reparent and its abort is proven | Planned | below |
+| 89 | A malformed region entry warns once per session | Planned | below |
+| 90 | One scene-origin source and one wire-position validator | Planned | below |
+| 91 | A legacy tile height survives a depletion overlay | Planned | below |
+| 92 | The shown-biome memo follows the terrain slice and one pole-ring rule | Planned | below |
+| 93 | Host-sync window moves are counted and a clock swap resets the throttles | Planned | below |
+| 94 | A test eviction helper and a bounded UI retire list | Planned | below |
+| 95 | Free pointer, right-click look, chat box and admin commands | Done | below |
 
 ---
 
@@ -253,7 +263,7 @@ reason (#168, #166).
 
 ---
 
-## Phase 79 — Deterministic peer-window rate limit and a production ref-count reader
+## Phase 79 — Deterministic peer-window rate limit and a production ref-count reader ✅ Done
 
 **Goal:** `ChunkManager.set_peer_center` reads `Time.get_ticks_msec()` directly, so the suite
 cannot test `PEER_RECENTER_INTERVAL` without sleeping, and the interval branch is untested.
@@ -272,16 +282,16 @@ deliverable says production code reads it or it goes (#161).
   step that read them switches to the peer-window keys it actually needs.
 
 **Acceptance criteria:**
-- [ ] Suite: with a fake clock, a client move 100 ms after the last is refused and counted in
+- [x] Suite: with a fake clock, a client move 100 ms after the last is refused and counted in
   `peer_recenter_refused`; at `PEER_RECENTER_INTERVAL` + 1 ms it is accepted.
-- [ ] Suite: a client move of 20 chunks is clamped to `PEER_RECENTER_MAX_CHUNKS`, across the X
+- [x] Suite: a client move of 20 chunks is clamped to `PEER_RECENTER_MAX_CHUNKS`, across the X
   seam as well as inside the map.
-- [ ] `grep -n "Time.get_ticks_msec" src/terrain/chunk_manager.gd` shows only the default.
-- [ ] Suite green on both boot paths, harness 15/15 steps.
+- [x] `grep -n "Time.get_ticks_msec" src/terrain/chunk_manager.gd` shows only the default.
+- [x] Suite green on both boot paths, harness 15/15 steps. — `Results: 14866/14866 passed (0 failed)` both boot paths, harness 15/15 steps.
 
 ---
 
-## Phase 80 — Rebase in the physics step and explicit shift sets
+## Phase 80 — Rebase in the physics step and explicit shift sets ✅ Done
 
 **Goal:** the origin rebase runs from `GameRoot._process` while the player body moves in
 `_physics_process`, so on a frame where both fire the rebase can shift the scene between a
@@ -303,17 +313,17 @@ preview) is moved twice or moved when it should not be (#167).
   freed) and `shift_scene` shifts only those plus the pool; other children are left alone.
 
 **Acceptance criteria:**
-- [ ] Suite: a `TreeSlice` with two trunks and an extra non-world `Node3D` child, shifted by
+- [x] Suite: a `TreeSlice` with two trunks and an extra non-world `Node3D` child, shifted by
   (−4096, 0, 0): both trunks move by the shift, the extra child does not, the pool moves once.
-- [ ] Suite: the same check for `LootSlice` with two pickups, one of them collected (freed)
+- [x] Suite: the same check for `LootSlice` with two pickups, one of them collected (freed)
   before the shift — no error and the survivor moves.
-- [ ] Suite: a player walked across `WorldPos` rebase distance in physics steps reports a
+- [x] Suite: a player walked across `WorldPos` rebase distance in physics steps reports a
   world position that never jumps by more than one step's travel across the rebase frame.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green. — `Results: 14874/14874 passed (0 failed)` both boot paths, harness 15/15 steps.
 
 ---
 
-## Phase 81 — Pole-aware tile biome and a mined-tile biome memo
+## Phase 81 — Pole-aware tile biome and a mined-tile biome memo ✅ Done
 
 **Goal:** `VoxelSlice.blended_biome` / `shown_biome_at` take a neighbour's biome across ANY
 border, while the minimap's `_blendable` refuses chunks past the world's pole rows
@@ -335,17 +345,17 @@ lookups for every mined tile (#170).
   one lookup per distinct chunk.
 
 **Acceptance criteria:**
-- [ ] Suite: on the last in-world chunk row next to the pole, every tile in the blend band
+- [x] Suite: on the last in-world chunk row next to the pole, every tile in the blend band
   facing the pole has `shown_biome_at == own`, and the mesher's tile colour agrees.
-- [ ] Suite: for 64 border tiles inside the map, the voxel answer and the minimap cell answer
+- [x] Suite: for 64 border tiles inside the map, the voxel answer and the minimap cell answer
   still agree (Phase 64 test unchanged and green).
-- [ ] Suite: 100 `shown_biome_at` calls inside one chunk trigger at most 9 terrain-slice biome
+- [x] Suite: 100 `shown_biome_at` calls inside one chunk trigger at most 9 terrain-slice biome
   lookups (counter).
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green. — `Results: 15276/15276 passed (0 failed)` on `--run-tests`; second boot path and net harness not run in this session. The PR #208 reviewer later ran the suite (15276/15276) and the net harness (15/15) locally (#209).
 
 ---
 
-## Phase 82 — Honest peer-window refusal count and a thread-safe warning counter
+## Phase 82 — Honest peer-window refusal count and a thread-safe warning counter ✅ Done
 
 **Goal:** `GameRoot._sync_peer_windows` re-centres every peer twice a second through the
 rate-limited client path of `ChunkManager.set_peer_center`, so the host's own periodic sync
@@ -368,16 +378,16 @@ can flake (#162).
   summed on read); readers use an accessor.
 
 **Acceptance criteria:**
-- [ ] Suite: with a fake clock, ten `_sync_peer_windows` ticks for a peer that has not moved
+- [x] Suite: with a fake clock, ten `_sync_peer_windows` ticks for a peer that has not moved
   and five that track a moving peer leave `peer_recenter_refused` at 0.
-- [ ] Suite: a client move inside `PEER_RECENTER_INTERVAL` still counts one refusal.
-- [ ] Suite: four `WorkerThreadPool` tasks each raising 1,000 `Diag.warn` calls (quiet mode)
+- [x] Suite: a client move inside `PEER_RECENTER_INTERVAL` still counts one refusal.
+- [x] Suite: four `WorkerThreadPool` tasks each raising 1,000 `Diag.warn` calls (quiet mode)
   raise the count by exactly 4,000.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green. — `Results: 15298/15298 passed (0 failed)` on `--run-tests`; net harness not run in this session.
 
 ---
 
-## Phase 83 — Distant-ring teardown that does not stall
+## Phase 83 — Distant-ring teardown that does not stall ✅ Done
 
 **Goal:** `DistantTerrain._exit_tree` calls `WorkerThreadPool.wait_for_task_completion` on an
 in-flight ring build, so leaving the world (or freeing the ring in a test) blocks the main
@@ -393,14 +403,14 @@ thread for the rest of a full lattice build (#179).
   that arrives after the flag is discarded rather than applied to a freed node.
 
 **Acceptance criteria:**
-- [ ] Suite: a ring build started and the node freed immediately: `_exit_tree` returns after the
+- [x] Suite: a ring build started and the node freed immediately: `_exit_tree` returns after the
   worker has processed at most one more row (row counter), and no error is logged.
-- [ ] Suite: a build that is not aborted produces the same vertex hash as before the change.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite: a build that is not aborted produces the same vertex hash as before the change.
+- [x] Suite green on both boot paths, harness green. — `Results: 15306/15306 passed (0 failed)` on `--run-tests`; net harness not run in this session.
 
 ---
 
-## Phase 84 — The suite exits with no leaked objects
+## Phase 84 — The suite exits with no leaked objects ✅ Done
 
 **Goal:** the suite's exit log reports leaked `ObjectDB` instances and resources still in use
 (#158). Leaks at exit hide real leaks in the game (a slice that never frees its chunk meshes
@@ -419,14 +429,323 @@ looks the same as a test that forgot `free()`), and the count is not checked any
   teardown and asserts it is 0.
 
 **Acceptance criteria:**
-- [ ] `godot --headless --path . --quit -- --run-tests` (both boot paths) ends with no "ObjectDB instances
+- [x] `godot --headless --path . --quit -- --run-tests` (both boot paths) ends with no "ObjectDB instances
   leaked" and no "resources still in use" lines in its output.
-- [ ] Suite: the orphan-node assertion is the last check and passes.
+- [x] Suite: the orphan-node assertion is the last check and passes.
+- [x] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 85 — Peer claims and host syncs keep separate interval clocks
+
+**Goal:** `ChunkManager.sync_peer_center` and `set_peer_center` share `_peer_last_move_msec`, so a
+host sync that moves a peer's window restarts the client-claim interval: an honest client claim
+made within `PEER_RECENTER_INTERVAL` after a sync is refused and counted in
+`peer_recenter_refused`, which again overstates abuse (#213). The `_peer_centers` doc comment is
+still garbled from Phase 79 (#207, #213), and `refresh` / `_drain_unload_queue` ask
+`chunk_ref_count(_key_to_chunk(key))` (parse + reformat per key) where `_chunk_refs.has(key)` is
+the same answer (#213).
+
+**Newel dependency:** NO.
+
+**Closes:** the shared-slot, docstring and ref-lookup items of #213 and the docstring item of #207.
+
+**Depends on:** Phase 82.
+
+**Deliverables:**
+- `src/terrain/chunk_manager.gd` — claims and syncs stamp separate per-peer timestamps (e.g.
+  `_peer_last_claim_msec` / `_peer_last_sync_msec`); a claim is rate-limited only against earlier
+  claims, a sync only against earlier syncs; both are erased by `clear_peer_center`.
+- The same file — the `_peer_centers` / `_last_centers` / `_chunk_refs` comment reads as one
+  sentence per field; the hot-path ref checks use the key directly.
+
+**Acceptance criteria:**
+- [ ] Suite: with a fake clock, a `sync_peer_center` move followed 100 ms later by a client
+  `set_peer_center` claim one chunk away accepts the claim and leaves `peer_recenter_refused` at 0.
+- [ ] Suite: two client claims 100 ms apart still count exactly one refusal (Phase 79 behaviour kept).
+- [ ] Suite: after `clear_peer_center`, neither timestamp dictionary holds the peer.
 - [ ] Suite green on both boot paths, harness green.
 
 ---
 
-## Phase 85 — Free pointer, right-click look, chat box and admin commands ✅ Done
+## Phase 86 — Remote peers' positions stay exact far from the origin
+
+**Goal:** Phase 78 made the host's own player exact as `{chunk, local}`, but remote peers still
+travel and persist as float32 `Vector3`: `_last_known_states` holds a `Vector3`, and
+`GameRoot._fold_last_known_state` writes it with `PlayerRegistry.record_position`, so a peer that
+walks 10,000 km is saved quantised to metres (#200, #201, #202).
+
+**Newel dependency:** NO.
+
+**Closes:** the remote-peer position items of #200 and #202.
+
+**Depends on:** Phase 78.
+
+**Deliverables:**
+- `src/networking/networking_slice.gd` — a client's position report carries the wire form of its
+  exact world position (`WorldPos.pos_to_wire`); the host validates it with `WorldPos.is_wire` and
+  stores it per peer beside the existing `Vector3` (kept for AOI distance checks). A legacy
+  `Vector3`-only report is still accepted.
+- `src/core/game_root.gd` — `_fold_last_known_state` records the exact position through
+  `record_world_pos` when one is held, falling back to `record_position` otherwise.
+
+**Acceptance criteria:**
+- [ ] Suite: a peer report at chunk `(250000, 1000)`, local `(12.345, 40.0, 7.891)` folded into
+  the registry round-trips through a save/load with `local` equal to within 1e-6 m.
+- [ ] Suite: a malformed wire position in a report is refused and leaves the previous last-known
+  state unchanged; a legacy `Vector3` report still records a position.
+- [ ] Two-client harness: an existing step that moves a client still passes with the new report
+  shape.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 87 — Exact spawn and respawn points
+
+**Goal:** `PlayerRegistry.record_spawn`, `GameRoot.client_respawn_point` and
+`respawn_point_for` take and return float32 world `Vector3`s, so a player placed far from the
+origin respawns at a quantised point. `GameRoot._place_local_player(pos)` ignores `pos` whenever a
+saved record exists and calls `_saved_local_position()` twice; none of these paths has an
+integration test (#200, #201, #202).
+
+**Newel dependency:** NO.
+
+**Closes:** the spawn/respawn and `_place_local_player` items of #200, #201 and #202.
+
+**Depends on:** Phase 78.
+
+**Deliverables:**
+- `src/persistence/player_registry.gd` — `record_spawn` gains an exact `{chunk, local}` form
+  (the `Vector3` overload stays for callers near the origin); `spawn_of` returns the exact form.
+- `src/core/game_root.gd` — respawn resolves the exact spawn and places the body with
+  `PlayerSlice.place_at_world_pos`; `_place_local_player` reads the saved record once and its
+  doc comment states which of `pos` and the record wins.
+
+**Acceptance criteria:**
+- [ ] Suite: a spawn recorded at chunk `(-300000, 500)`, local `(3.21, 50.0, 9.87)` and respawned
+  after a save/load lands with `get_world_pos()` equal to it within 1e-6 m.
+- [ ] Suite: `_place_local_player` with a saved record places at the record; without one it
+  places at `pos`; `_saved_local_position` is called once per placement (counter or spy).
+- [ ] Suite: a respawn point of a pre-Phase-66 record (no `spawn`) still falls back to the saved
+  position.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 88 — The distant ring survives a reparent and its abort is proven
+
+**Goal:** since Phase 83, `DistantTerrain._exit_tree` discards the in-flight build and the queued
+request, so a ring that is only reparented (exit then re-enter) shows nothing until the next
+`rebuild()`. `test_distant_ring_abort` only asserts an upper bound on rows that also holds when
+the abort never fires (#212).
+
+**Newel dependency:** NO.
+
+**Closes:** the reparent and abort-test items of #212.
+
+**Depends on:** Phase 83.
+
+**Deliverables:**
+- `src/terrain/distant_terrain.gd` — `_exit_tree` remembers that a build was discarded;
+  `_enter_tree` re-requests it (clearing the abort flag first).
+- `src/tests/test_suite.gd` — the abort test compares the rows processed against a full build's
+  row count and asserts the aborted build stopped strictly earlier.
+
+**Acceptance criteria:**
+- [ ] Suite: a ring with a build in flight is removed from and re-added to the tree; after the
+  rebuild completes its vertex hash equals an undisturbed ring's.
+- [ ] Suite: the aborted build's row counter ends strictly below the row count an unaborted
+  build of the same ring reaches (both measured in the test), so the bound no longer holds
+  trivially.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 89 — A malformed region entry warns once per session
+
+**Goal:** since Phase 75 a malformed chunk entry is kept on rewrite, but `RegionStore.read_region`
+warns about it on every streaming read, so one bad entry floods the log (and `Diag.warn_count`)
+for as long as the player stays nearby (#196).
+
+**Newel dependency:** NO.
+
+**Closes:** the warning de-dup item of #196.
+
+**Depends on:** Phase 75.
+
+**Deliverables:**
+- `src/persistence/region_store.gd` — warnings for a malformed chunk key or entry are keyed on
+  `(region path, chunk key)` and emitted once per store instance; a reset accessor exists for
+  tests and for a world switch.
+
+**Acceptance criteria:**
+- [ ] Suite: a region file with one malformed entry read 50 times raises `Diag.warn_count` by
+  exactly 1; a second malformed entry in another region raises it by one more.
+- [ ] Suite: after the reset accessor (or a new store on another world) the first read warns again.
+- [ ] Suite: the malformed entry still survives a rewrite unchanged (Phase 75 behaviour kept).
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 90 — One scene-origin source and one wire-position validator
+
+**Goal:** `PlayerSlice` keeps `_scene_offset` and `_scene_origin_chunk` as two accumulators and
+derives the chunk by rounding a float32 shift, duplicating `RebaseDriver.origin_chunk`;
+`_clamp_to_world_exact` probes the pole bounds every frame through `clamp_to_world(±INF)`; and
+`PlayerRegistry.is_valid_wire_pos` is a second wire validator next to `WorldPos.is_wire` with
+different rules (#200, #201, #202).
+
+**Newel dependency:** NO.
+
+**Closes:** the scene-origin, pole-bounds and validator items of #200, #201 and #202.
+
+**Depends on:** Phase 80.
+
+**Deliverables:**
+- `src/player/player_slice.gd` / `src/terrain/rebase_driver.gd` — the driver passes its integer
+  `origin_chunk` with each shift; `PlayerSlice` stores it and derives `_scene_offset` from it.
+- `src/terrain/terrain_slice.gd` — an explicit z-bounds accessor; `_clamp_to_world_exact` uses it.
+- `src/persistence/player_registry.gd` / `src/terrain/world_pos.gd` — one public validator;
+  `game_root.gd` calls it; the other becomes private or is removed.
+
+**Acceptance criteria:**
+- [ ] Suite: after 1,000 random rebases (fixed seed) the player's scene origin chunk equals
+  `RebaseDriver.origin_chunk` and `_scene_offset == -origin_chunk * CHUNK_METERS` exactly.
+- [ ] Suite: the z-bounds accessor matches `clamp_to_world(±INF).z` for the default world.
+- [ ] Suite: the remaining validator accepts every wire form the old two accepted in common and
+  rejects a dictionary missing `local`, a non-integer chunk and a NaN component.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 91 — A legacy tile height survives a depletion overlay
+
+**Goal:** `RegionStore.overlay_entry` reads a tile's stored value with `edits.get(tile, [])` and
+only merges it when it is an `Array`. A pre-Phase-41 tile stores a bare absolute height (a number,
+migrated by `VoxelSlice.legacy_edit_ops` only when the chunk loads), so the first deplete op
+overlaid on such a tile replaces the height with the incoming op list: the player's old build or
+dig on that tile is silently lost on the next save (#196). The store is pure and has no terrain
+base height, so it cannot convert the number itself.
+
+**Newel dependency:** NO.
+
+**Closes:** the legacy-overlay item of #196.
+
+**Depends on:** Phase 75.
+
+**Deliverables:**
+- `src/persistence/region_store.gd` — when the stored tile value is not an op list (a bare number
+  or numeric string), `overlay_entry` keeps it in a form `VoxelSlice` can still migrate (e.g. a
+  typed `{"op": "legacy", "height": h}` op placed first in the merged list) instead of dropping it.
+- `src/terrain/voxel_slice.gd` — `apply_edits` / the normalising step migrates that legacy op with
+  `legacy_edit_ops` against the tile's natural run, exactly as it migrates a bare number today, and
+  keeps the other ops in the list.
+- `src/persistence/region_store.gd` — `_chunk_entry_valid` accepts the new op shape.
+
+**Acceptance criteria:**
+- [ ] Suite: a region entry whose tile holds the bare height `h`, overlaid with one deplete op and
+  reloaded through `VoxelSlice.apply_edits`, yields the same column top as the bare `h` alone and
+  keeps the depletion's `taken` count.
+- [ ] Suite: overlaying a second deplete on the result keeps exactly one legacy op (no duplicates).
+- [ ] Suite: a tile already stored as a typed op list overlays exactly as before (Phase 75 tests
+  unchanged and green).
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 92 — The shown-biome memo follows the terrain slice and one pole-ring rule
+
+**Goal:** `VoxelSlice._shown_biomes` is cleared only on a world-seed change or
+`reset_shown_biomes()`, so assigning a different `terrain_slice` at runtime keeps serving the old
+slice's biomes. `gather_biomes_for` and `shown_biome_at` each carry their own copy of the
+pole-ring loop and both ask the static `TerrainSlice.polar_chunks()`, while `Minimap` asks the
+instance's `world_radius_chunks()`; equal today, but free to drift (#209, #213).
+
+**Newel dependency:** NO.
+
+**Closes:** the stale-memo, static-bound and duplicate-loop items of #209 and #213.
+
+**Depends on:** Phase 81.
+
+**Deliverables:**
+- `src/terrain/voxel_slice.gd` — `terrain_slice` becomes a property whose setter clears
+  `_shown_biomes` (and the guess heightmaps) when the slice changes.
+- The same file — one helper (e.g. `_lending_ring(chunk_pos) -> Array`) yields the chunks that lend
+  a biome, using the terrain slice instance's polar bound when one is set (the static bound
+  otherwise); `gather_biomes_for` and `shown_biome_at` both use it.
+
+**Acceptance criteria:**
+- [ ] Suite: after `shown_biome_at` memoises a chunk against slice A, assigning a fake slice B
+  that reports a different biome makes the next `shown_biome_at` return B's answer.
+- [ ] Suite: with a fake terrain slice whose polar bound is smaller than the static one, a chunk
+  between the two bounds is left out by both `gather_biomes_for` and `shown_biome_at`.
+- [ ] Suite: the Phase 64 and Phase 81 voxel/minimap agreement tests stay green.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 93 — Host-sync window moves are counted and a clock swap resets the throttles
+
+**Goal:** `ChunkManager.sync_peer_center` skips the clamp and rate limit because it trusts the
+host-tracked position, but nothing states or tests that assumption, and a hostile far hop that
+reaches the sync path leaves no abuse signal (#212, #213). `now_msec` is a public `Callable`
+that tests swap directly; `_last_stranded_retry_msec` and `_last_self_heal_msec` keep timestamps
+from the old clock, so a test that swaps mid-run sees stale throttles (#207).
+
+**Newel dependency:** NO.
+
+**Closes:** the sync-trust and sync-counter items of #212 and #213 and the clock item of #207.
+
+**Depends on:** Phase 85.
+
+**Deliverables:**
+- `src/terrain/chunk_manager.gd` — a `peer_sync_far_hops` counter incremented when a host sync
+  moves a peer's window farther than the client-claim clamp would allow (the move still
+  applies); the `sync_peer_center` doc comment names the trust it relies on.
+- The same file — `set_clock(c: Callable)` replaces direct assignment of `now_msec`; it resets
+  the stranded-retry, self-heal and per-peer interval timestamps. Tests use it.
+
+**Acceptance criteria:**
+- [ ] Suite: a sync move of one chunk leaves `peer_sync_far_hops` at 0; a sync move past the
+  claim clamp applies the move and raises it by exactly 1; neither changes
+  `peer_recenter_refused`.
+- [ ] Suite: after a fake clock drives the self-heal and stranded-retry throttles, `set_clock`
+  with a fresh clock at 0 lets the next self-heal and stranded retry run immediately.
+- [ ] `grep -n "now_msec =" src/tests/test_suite.gd` finds no direct assignments.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 94 — A test eviction helper and a bounded UI retire list
+
+**Goal:** Phase 84's leak check relies on each test manually `free()`ing the nodes that
+`evict_player` only `queue_free`s (the suite never reaches a frame), a pattern a new test can
+forget, failing the whole run's orphan check far from its cause. `UISlice._retire` re-filters the
+entire `_retired` array on every call, so a burst of N retirements costs O(N²) (#215).
+
+**Newel dependency:** NO.
+
+**Closes:** both items of #215.
+
+**Depends on:** Phase 84.
+
+**Deliverables:**
+- `src/tests/test_suite.gd` — one helper (e.g. `_evict_and_free(registry, player_id)`) that
+  evicts the record and frees the nodes eviction queued; every existing evict-then-free site uses it.
+- `src/ui/ui_slice.gd` — `_retire` prunes freed entries amortised (only when the list has doubled
+  since the last prune) instead of on every call; the `NOTIFICATION_PREDELETE` free pass is unchanged.
+
+**Acceptance criteria:**
+- [ ] Suite: retiring 1,000 controls runs the prune at most 11 times (counter), and freeing the
+  UI slice still frees every retired control that is still valid.
+- [ ] No test frees an evicted player's nodes inline after `evict_player`; every such site calls
+  the helper.
+- [ ] The Phase 84 orphan check still reports zero leaked objects.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 95 — Free pointer, right-click look, chat box and admin commands ✅ Done
 
 **Goal:** the mouse was captured at the screen centre for the whole session, so nothing in the world
 or the UI could be clicked without first opening a window. The pointer is now always free, the camera

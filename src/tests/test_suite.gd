@@ -102,6 +102,8 @@ func run() -> void:
 	_run_test("terrain: the ring meets the voxel ground at the window edge", _test_distant_ring_window_edge)
 	_run_test("player: swimming reads the voxel column, not the generated height", _test_swim_reads_voxel_column)
 	_run_test("terrain: the distant ring builds off the main thread", _test_distant_ring_async)
+	_run_test("terrain: freeing the ring mid-build aborts the worker at the next row", _test_distant_ring_abort)
+	_run_test("terrain: a build that is not aborted is unchanged by the abort check", _test_distant_ring_unaborted_same)
 	_run_test("terrain: the distant ring's vertices are pinned by a hash", _test_distant_ring_vertex_hash)
 	_run_test("terrain: detail noise has one formula", _test_detail_noise_single_formula)
 	_run_test("terrain: walking 5 chunks requests at most 5 ring rebuilds", _test_distant_ring_rebuild_counter)
@@ -126,6 +128,9 @@ func run() -> void:
 	_run_test("rebase: loot, avatars and the station preview follow the shift", _test_rebase_extras)
 	_run_test("player: rebased origin keeps the world position", _test_world_pos_rebase)
 	_run_test("player: exact chunk + local far from the origin", _test_player_exact_far_position)
+	_run_test("rebase: TreeSlice shifts its trunks and pool, not other children", _test_tree_shift_explicit_set)
+	_run_test("rebase: LootSlice shifts its pickups, survives a freed one", _test_loot_shift_explicit_set)
+	_run_test("rebase: a physics-step rebase never jumps the world position", _test_rebase_in_physics_step)
 	_run_test("persistence: position saved as chunk + local, old saves migrate", _test_registry_world_pos)
 	_run_test("persistence: save then load round-trip",       _test_persistence_round_trip)
 	_run_test("persistence: worldgen stamp on a new world",   _test_worldgen_stamp_new_world)
@@ -299,6 +304,9 @@ func run() -> void:
 	_run_test("voxel: grass top, soil side",                   _test_voxel_grass_top_soil_side)
 	_run_test("voxel: biome border blends with a dither",      _test_voxel_biome_border_blend)
 	_run_test("voxel: yield biome equals the drawn surface biome", _test_voxel_yield_matches_blended_biome)
+	_run_test("voxel: no biome is borrowed across the pole", _test_voxel_pole_blend)
+	_run_test("voxel: in-world border tiles unchanged by the pole rule", _test_voxel_inworld_border_unchanged)
+	_run_test("voxel: shown_biome_at memoises per chunk", _test_shown_biome_memo)
 	_run_test("minimap: blend never borrows an unrevealed biome", _test_minimap_blend_respects_fog)
 	_run_test("minimap: a second redraw looks up no biome",      _test_minimap_redraw_uses_cache)
 	_run_test("minimap: sub-2px cells draw one rect per chunk",  _test_minimap_far_zoom_one_rect)
@@ -633,8 +641,12 @@ func run() -> void:
 	_run_test("region: op lists with non-dictionary ops are dropped", _test_region_entry_rejects_bad_ops)
 	_run_test("region: a chunk entry with edits or materials of the wrong type is skipped with one warning", _test_region_malformed_entry_skipped)
 	_run_test("peer window: a flood of far claims moves the window at most once", _test_peer_window_rate_limited)
+	_run_test("peer window: the interval is measured on the injected clock", _test_peer_window_fake_clock)
+	_run_test("peer window: a 20-chunk claim is clamped inside the map and across the seam", _test_peer_window_clamp_cap)
 	_run_test("peer window: a seam crossing is a short step, not a planet-wide one", _test_peer_window_clamps_across_seam)
 	_run_test("peer window: a host-driven move recentres at once", _test_peer_window_host_driven)
+	_run_test("peer window: the host's periodic sync is never a counted refusal", _test_peer_window_host_sync)
+	_run_test("diag: warn_count survives concurrent warnings from worker threads", _test_diag_warn_concurrent)
 	_run_test("peer window: a move into a stored region makes its edits resident", _test_peer_window_move_loads_region_edits)
 	_run_test("region: 1,000 regions on disk, only the ones near a window are resident", _test_region_streams_only_near_windows)
 	_run_test("chunk: each peer has a window and chunks are reference counted", _test_chunk_peer_windows_refcount)
@@ -697,6 +709,11 @@ func run() -> void:
 		if method_name.begins_with("_test_") and not _registered_names.has(method_name):
 			push_error("TestSuite: '%s' is defined but never registered — add it to the _run_test list" % method_name)
 			_fail += 1
+
+	# Phase 84 — the LAST check. Nothing here waits a frame (`--quit` ends the boot before one
+	# lands), so every test frees what it made with `free()`, and a `queue_free` the code under
+	# test made is freed by the test too. A node left parentless shows up in the engine's count.
+	_assert_no_orphan_nodes()
 
 	Diag.quiet = false
 	var total := _pass + _fail
@@ -1129,6 +1146,7 @@ func _test_rebase_extras() -> void:
 	add_child(loot)
 	var pickup := loot._make_pickup_visual("p1", "wood", Vector3(10.0, 1.0, 5.0))
 	loot.add_child(pickup)
+	loot._world_nodes.append(pickup)
 	var station := StationSlice.new()
 	add_child(station)
 	station.show_preview("Forge", Vector3(10.0, 1.0, 5.0))
@@ -1180,6 +1198,78 @@ func _test_remote_state_plausibility() -> void:
 	assert_true(gr._peer_aoi_regions.is_empty(), "a rejected claim records no AOI region (and needs no networking slice)")
 	gr.free()
 
+## Phase 80 — `TreeSlice.shift_scene` moves its own trunks and the pool, nothing else.
+func _test_tree_shift_explicit_set() -> void:
+	var trees := TreeSlice.new()
+	trees.render_visuals = true
+	add_child(trees)
+	var a := trees._build_collision("t_a", Vector3(10.0, 0.0, 5.0), "oak")
+	var b := trees._build_collision("t_b", Vector3(20.0, 0.0, 7.0), "oak")
+	var extra := Node3D.new()
+	extra.position = Vector3(1.0, 2.0, 3.0)
+	trees.add_child(extra)
+	var pool_before: Vector3 = trees._pool.scene_position()
+	var shift := Vector3(-4096.0, 0.0, 0.0)
+	trees.shift_scene(shift)
+	assert_eq(a.position, Vector3(10.0, 0.0, 5.0) + shift, "the first trunk moves by the shift")
+	assert_eq(b.position, Vector3(20.0, 0.0, 7.0) + shift, "the second trunk moves by the shift")
+	assert_eq(extra.position, Vector3(1.0, 2.0, 3.0), "a non-world child does not move")
+	assert_eq(trees._pool.scene_position(), pool_before + shift, "the pool moves exactly once")
+	b.free()
+	assert_eq(trees._world_nodes.size(), 1, "a freed trunk leaves the world set at once")
+	trees.shift_scene(shift)
+	assert_eq(a.position, Vector3(10.0, 0.0, 5.0) + shift * 2.0, "a freed trunk is dropped and the survivor still moves")
+	trees.free()
+
+## Phase 80 — the same for pickups, one of them collected before the shift.
+func _test_loot_shift_explicit_set() -> void:
+	var l := LootSlice.new()
+	add_child(l)
+	GameBus.creature_died.emit("ForestBoar", Vector3(10.0, 1.0, 5.0), "player")
+	var ids: Array = l._pickups.keys()
+	assert_true(ids.size() >= 2, "a boar drops at least two pickups")
+	var extra := Node3D.new()
+	extra.position = Vector3(1.0, 2.0, 3.0)
+	l.add_child(extra)
+	var gone: Dictionary = l._pickups[ids[0]]
+	var kept: Node3D = l._pickups[ids[1]]["body"]
+	var kept_before := kept.position
+	(gone["body"] as Node).free()
+	var shift := Vector3(-4096.0, 0.0, 0.0)
+	l.shift_scene(shift)
+	assert_eq(kept.position, kept_before + shift, "the surviving pickup moves")
+	assert_eq(extra.position, Vector3(1.0, 2.0, 3.0), "a non-world child does not move")
+	l.free()
+
+## Phase 80 — walking across the rebase distance in physics steps: the world position moves by
+## one step's travel per step, including on the step the rebase fires.
+func _test_rebase_in_physics_step() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	var gr: Node = root_script.new()
+	var player := PlayerSlice.new()
+	player.render_visuals = true
+	add_child(player)
+	player.spawn_at(Vector3(WorldPos.REBASE_DISTANCE - 5.0, 1.0, 0.0))
+	gr._player = player
+	gr._rebase = RebaseDriver.new([player])
+	var step := 0.5
+	var prev := _continuous_x(player)
+	var worst := 0.0
+	for i in range(30):
+		gr._physics_process(0.016)   # the rebase runs first, as in the engine
+		player._body.global_position += Vector3(step, 0.0, 0.0)   # then the movement step
+		var now := _continuous_x(player)
+		worst = maxf(worst, absf(now - prev))
+		prev = now
+	assert_true(gr._rebase.rebase_count >= 1, "the walk crossed the rebase distance")
+	assert_true(worst <= step + 0.01, "the world position never jumped by more than one step (worst %f)" % worst)
+	player.free()
+	gr.free()
+
+func _continuous_x(player: PlayerSlice) -> float:
+	var wp := player.get_world_pos()
+	return float((wp["chunk"] as Vector2i).x) * WorldPos.CHUNK_METERS + (wp["local"] as Vector3).x
+
 ## Phase 78 — the player's exact `{chunk, local}` survives a far rebase, a save → reload and the
 ## snapshot's own-record position.
 func _test_player_exact_far_position() -> void:
@@ -1223,9 +1313,11 @@ func _test_player_exact_far_position() -> void:
 	ts.free()
 	# Save -> reload through the registry record.
 	var reg := PlayerRegistry.new()
+	_own(reg)
 	reg.record_world_pos("p1", got)
 	var rec: Dictionary = reg.get_record("p1").duplicate(true)
 	var reg2 := PlayerRegistry.new()
+	_own(reg2)
 	reg2.apply_player_data("p1", JSON.parse_string(JSON.stringify(rec)))
 	var back: Dictionary = reg2.get_world_pos("p1")
 	assert_eq(back["chunk"], TerrainSlice.wrap_chunk(chunk), "a reloaded player is in the same chunk (chunk 1,500,000 is past one lap, so the registry folds it)")
@@ -1457,10 +1549,10 @@ func _test_worldgen_stamp_new_world() -> void:
 	assert_eq(writer.save_world({ "local_player_id": "player_1_1_ab", "worldgenVersion": stamp }, false), OK, "the record writes")
 	var loaded := writer.load_world_record()
 	assert_eq(PersistenceSlice.worldgen_version_of(loaded), TerrainSlice.WORLDGEN_VERSION, "a new world saves worldgenVersion == WORLDGEN_VERSION")
-	var warns := Diag.warn_count
+	var warns := Diag.warn_count()
 	assert_false(PersistenceSlice.check_worldgen_version(loaded, TerrainSlice.WORLDGEN_VERSION), "a matching record is no mismatch")
 	assert_false(PersistenceSlice.check_worldgen_version({}, TerrainSlice.WORLDGEN_VERSION), "a new world is no mismatch")
-	assert_eq(Diag.warn_count, warns, "and neither warns")
+	assert_eq(Diag.warn_count(), warns, "and neither warns")
 	writer.free()
 	_wipe_dir(dir)
 
@@ -1481,9 +1573,9 @@ func _test_worldgen_stamp_mismatch() -> void:
 		assert_eq(writer.save_world(record, false), OK, "the old record writes")
 		var loaded := writer.load_world_record()
 		assert_eq(PersistenceSlice.worldgen_version_of(loaded), original, "a missing stamp reads as 0, an old one as itself")
-		var warns := Diag.warn_count
+		var warns := Diag.warn_count()
 		assert_true(PersistenceSlice.check_worldgen_version(loaded, TerrainSlice.WORLDGEN_VERSION), "the mismatch is reported")
-		assert_eq(Diag.warn_count - warns, 1, "with exactly one warning")
+		assert_eq(Diag.warn_count() - warns, 1, "with exactly one warning")
 		var stamp := PersistenceSlice.worldgen_stamp_for_save(loaded, TerrainSlice.WORLDGEN_VERSION)
 		assert_eq(stamp, original, "a re-save keeps the original stamp")
 		assert_eq(writer.save_world({ "local_player_id": "player_1_1_ab", "worldgenVersion": stamp }, true), OK, "the re-save writes")
@@ -7540,7 +7632,7 @@ func _test_minimap_blend_respects_fog() -> void:
 	var mm := Minimap.new()
 	add_child(mm)
 	mm._revealed = { "0,0": true, "-1,0": true }
-	mm.terrain_slice = BiomeStub.new()
+	mm.terrain_slice = _own(BiomeStub.new())
 	var n := Minimap.CELLS_PER_CHUNK
 	var cell_tiles := float(TerrainSlice.CHUNK_SIZE) / n
 	var west_cells := 0
@@ -7555,6 +7647,87 @@ func _test_minimap_blend_respects_fog() -> void:
 	assert_true(west_cells > 0, "the revealed west neighbour has border cells to check")
 	assert_false(mm._has_blend_neighbour(Vector2i(5, 5), "TemperateForest"), "no revealed neighbours: one rect")
 	mm.free()
+
+## Phase 81 — the last walkable chunk row, tiles facing the pole: never the off-world biome, in
+## the yield accessor and in what the mesher gets (`gather_biomes_for` -> `blended_biome`).
+func _test_voxel_pole_blend() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var ts := PoleBiomeStub.new()
+	add_child(ts)
+	v.terrain_slice = ts
+	var last := TerrainSlice.polar_chunks() - 1
+	assert_true(TerrainSlice.lends_biome(Vector2i(0, last), TerrainSlice.polar_chunks()), "last row lends")
+	assert_false(TerrainSlice.lends_biome(Vector2i(0, last + 1), TerrainSlice.polar_chunks()), "the ice row does not")
+	assert_false(TerrainSlice.lends_biome(Vector2i(0, -(last + 1)), TerrainSlice.polar_chunks()), "nor the south ice row")
+	var biomes := v.gather_biomes_for(Vector2i(0, last))
+	var checked := 0
+	# The pole is ~295k chunks out, where a float32 Vector2 resolves ~1 m: stop 0.75 m short of the
+	# border so rounding cannot move the sample into the ice row.
+	for tz in range(VoxelSlice.CHUNK_SIZE - int(VoxelSlice.BLEND_TILES), VoxelSlice.CHUNK_SIZE - 1):
+		for tx in range(int(VoxelSlice.BLEND_TILES) + 1, VoxelSlice.CHUNK_SIZE - int(VoxelSlice.BLEND_TILES)):
+			var xz := Vector2(tx * VoxelSlice.TILE_SIZE + 0.25, (last * VoxelSlice.CHUNK_SIZE + tz) * VoxelSlice.TILE_SIZE + 0.25)
+			assert_eq(v.shown_biome_at(xz), "DesertDunes", "yield keeps its own biome at the pole (%d,%d)" % [tx, tz])
+			assert_eq(VoxelSlice.blended_biome(xz, biomes, VoxelSlice.biome_of(xz, biomes)), "DesertDunes",
+				"mesher colour keeps its own biome at the pole (%d,%d)" % [tx, tz])
+			checked += 1
+	assert_true(checked > 0, "pole tiles were checked")
+	ts.free()
+	v.free()
+
+## Phase 81 — 64 border tiles well inside the map: the pole rule changes nothing, the voxel
+## answer is the plain 3×3 `blended_biome` answer (and so still the minimap's, Phase 64).
+func _test_voxel_inworld_border_unchanged() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var ts := PoleBiomeStub.new()
+	add_child(ts)
+	v.terrain_slice = ts
+	var extent := float(VoxelSlice.CHUNK_SIZE * VoxelSlice.TILE_SIZE)
+	var checked := 0
+	var borrowed := 0
+	for i in 64:
+		var xz := Vector2(extent + 0.25 + (i % 4) * VoxelSlice.TILE_SIZE, (i / 4) * 2 * VoxelSlice.TILE_SIZE + 0.25)
+		var biomes: Dictionary = {}
+		for dz in range(-1, 2):
+			for dx in range(-1, 2):
+				var n := Vector2i(1 + dx, dz)
+				biomes["%d,%d" % [n.x, n.y]] = ts.biome_for_chunk(n)
+		var expect := VoxelSlice.blended_biome(xz, biomes, ts.biome_for_chunk(Vector2i(1, 0)))
+		assert_eq(v.shown_biome_at(xz), expect, "in-world tile %d agrees with the plain blend" % i)
+		if expect != ts.biome_for_chunk(Vector2i(1, 0)):
+			borrowed += 1
+		checked += 1
+	assert_eq(checked, 64, "64 tiles checked")
+	assert_true(borrowed > 0, "some tiles do wear the neighbour")
+	ts.free()
+	v.free()
+
+## Phase 81 — 100 `shown_biome_at` calls inside one chunk read the terrain slice at most 9 times.
+func _test_shown_biome_memo() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var ts := PoleBiomeStub.new()
+	add_child(ts)
+	v.terrain_slice = ts
+	var base := v.biome_lookups
+	for i in 100:
+		v.shown_biome_at(Vector2(0.25 + (i % 10) * VoxelSlice.TILE_SIZE, 0.25 + (i / 10) * VoxelSlice.TILE_SIZE))
+	assert_true(v.biome_lookups - base <= 9, "at most 9 lookups for 100 calls (got %d)" % (v.biome_lookups - base))
+	v.free()
+	ts.free()
+
+## A terrain slice whose chunks past the pole rows carry a biome nothing in the world should wear.
+class PoleBiomeStub extends Node:
+	var world_seed := 1
+	func biome_for_chunk(c: Vector2i) -> String:
+		if absi(c.y) >= TerrainSlice.polar_chunks():
+			return "VoidRift"
+		return "DesertDunes" if c.x % 2 == 0 else "TemperateForest"
+	func get_biome_at(xz: Vector2) -> String:
+		return biome_for_chunk(Vector2i(floori(xz.x / VoxelSlice.CHUNK_SIZE / VoxelSlice.TILE_SIZE), floori(xz.y / VoxelSlice.CHUNK_SIZE / VoxelSlice.TILE_SIZE)))
+	func get_world_seed() -> int:
+		return world_seed
 
 class BiomeStub extends Node:
 	var lookups := 0
@@ -8821,6 +8994,7 @@ func _test_disconnect_evicts_player() -> void:
 	assert_false(registry.has_inventory(remote), "nor is the inventory node")
 	assert_true(remote_inv.get_parent() == null, "the registry-owned node was detached for freeing")
 	assert_false(registry.evict_player(remote), "eviction is idempotent")
+	remote_inv.free()   # evict_player queue_frees it; the suite never reaches a frame, so free it now
 
 	# The LOCAL player is never evicted: it is online by definition and its
 	# inventory is the game's own instance, not this slice's to free.
@@ -12789,11 +12963,34 @@ func _ko(msg: String) -> void:
 	_fail += 1
 	push_error("  ✗ [%s] %s" % [_current_test, msg])
 
+## Phase 84 — nothing the suite or the code it drove left parentless. Reads the engine's own
+## orphan monitor, so it covers production leaks too (a node created but never parented or freed).
+func _assert_no_orphan_nodes() -> void:
+	var orphans := int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
+	if orphans != 0:
+		Node.print_orphan_nodes()
+	assert_eq(orphans, 0, "the suite leaves no orphan nodes")
+
+## Phase 84 — nodes a test helper created and handed back: freed right after the test, so a
+## helper (`_spawn_world`) does not need every caller to remember a `free()`.
+var _owned: Array = []
+
+func _own(n: Node) -> Node:
+	_owned.append(n)
+	return n
+
+func _free_owned() -> void:
+	for n in _owned:
+		if is_instance_valid(n):
+			n.free()
+	_owned.clear()
+
 func _run_test(name: String, fn: Callable) -> void:
 	_current_test = name
 	_registered_names[str(fn.get_method())] = true
 	var fails_before := _fail
 	fn.call()
+	_free_owned()
 	var outcome := "✓" if _fail == fails_before else "✗"
 	print("  %s %s" % [outcome, name])
 
@@ -12806,6 +13003,7 @@ func _run_test(name: String, fn: Callable) -> void:
 ## `biome` found in a 24x24 sample (a creature only spawns in chunks of its own biome).
 func _spawn_world(seed_v: int, biome: String) -> Dictionary:
 	var terrain := TerrainSlice.new()
+	_own(terrain)
 	terrain.set_world_seed(seed_v)
 	var chunks: Array = []
 	for x in range(-12, 12):
@@ -13275,13 +13473,13 @@ func _test_equipment_refusals_rate_limited() -> void:
 	var revoked: Array = []
 	var rcb := func(pid: String, _worn: Dictionary) -> void: revoked.append(pid)
 	GameBus.equipment_revoked.connect(rcb)
-	var warns_before: int = Diag.warn_count
+	var warns_before: int = Diag.warn_count()
 	for i in 100:
 		registry.note_equip_seq(peer, i + 1)
 		GameBus.equip_intent.emit(peer, "Chest", "VeilsteelChestplate")
 	GameBus.equipment_revoked.disconnect(rcb)
 	assert_eq(revoked.size(), 1, "one revoke for 100 refusals in an interval")
-	assert_eq(Diag.warn_count - warns_before, 1, "and one warn")
+	assert_eq(Diag.warn_count() - warns_before, 1, "and one warn")
 	assert_eq(registry.equip_refused_suppressed, 99, "the rest are counted")
 	assert_eq(registry.equip_seq_of(peer), 100, "the host remembers the newest sequence it processed")
 	registry.free()
@@ -13321,7 +13519,10 @@ func _test_equipment_bookkeeping_evicted() -> void:
 	GameBus.equip_intent.emit(peer, "Chest", "VeilsteelChestplate")
 	assert_true(registry._equip_seq.has(peer) and registry._equip_refusals.has(peer), "the entries exist while the player is resident")
 	registry.unbind_peer(2)
+	var peer_inv = registry.get_inventory(peer)
 	assert_true(registry.evict_player(peer), "the player is evicted")
+	if peer_inv != null:
+		peer_inv.free()   # evict_player queue_frees it; the suite never reaches a frame
 	assert_false(registry._equip_seq.has(peer), "the sequence entry goes with it")
 	assert_false(registry._equip_refusals.has(peer), "so does the refusal timestamp")
 	assert_false(registry._equip_revoke_pending.has(peer), "and the pending trailing revoke")
@@ -14190,6 +14391,37 @@ func _test_swim_reads_voxel_column() -> void:
 	terr.free()
 	vox.free()
 
+## Phase 83 — leaving the tree mid-build raises the abort flag; the worker stops within one more row
+## and the freed node never applies a result.
+func _test_distant_ring_abort() -> void:
+	var d := DistantTerrainScript.new()
+	add_child(d)
+	d.world_seed = 11
+	d.rebuild(Vector2(100.0, -40.0), 3)
+	var control = d._control
+	assert_true(control != null, "the build has a control block")
+	d.free()
+	var rows_after_abort: int = control.rows
+	assert_true(control.aborted, "leaving the tree raised the abort flag")
+	# The worker is joined by now: no row was started after the flag, bar the one in progress.
+	assert_true(rows_after_abort <= 2 * (DistantTerrainScript.GRID + 1) + 1, "the row counter is bounded")
+	OS.delay_msec(20)
+	assert_eq(control.rows, rows_after_abort, "no worker row runs after the node is gone")
+
+func _test_distant_ring_unaborted_same() -> void:
+	var half := DistantTerrainScript.ring_half_extent(2)
+	var win := (2.0 + 0.5) * DistantTerrainScript.CHUNK_METERS
+	var plain: ArrayMesh = DistantTerrainScript.build_mesh(5, 4.0e7, Vector2.ZERO, half, win, Vector2.ZERO)
+	var ctl := DistantTerrainScript.BuildControl.new()
+	var checked: ArrayMesh = DistantTerrainScript.build_mesh(5, 4.0e7, Vector2.ZERO, half, win, Vector2.ZERO, ctl)
+	assert_eq(hash(checked.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]),
+		hash(plain.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]), "same vertex hash with the check in place")
+	assert_eq(ctl.rows, 2 * DistantTerrainScript.GRID + 1, "every row was visited")
+	var abort := DistantTerrainScript.BuildControl.new()
+	abort.aborted = true
+	assert_true(DistantTerrainScript.build_mesh(5, 4.0e7, Vector2.ZERO, half, win, Vector2.ZERO, abort) == null, "an aborted build returns no mesh")
+	assert_eq(abort.rows, 0, "and starts no row")
+
 ## Phase 68 — `rebuild` never evaluates the lattice on the main thread; the swapped-in mesh equals a
 ## synchronous build for the same centre.
 func _test_distant_ring_async() -> void:
@@ -14282,6 +14514,7 @@ func _test_distant_ring_rebuild_counter() -> void:
 ## (the corner cache is per thread).
 func _test_height_concurrent() -> void:
 	var t := TerrainSlice.new()
+	_own(t)
 	t.set_world_seed(31)
 	var pts := PackedVector2Array()
 	for i in 400:
@@ -14585,15 +14818,15 @@ func _test_region_malformed_entry_kept() -> void:
 	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
 	var good := { "edits": { "0,0": [{ "op": "remove", "bottom": 0.0, "top": 1.0 }] } }
 	_write_region_file(store, { "1,1": { "edits": "x" }, "2,2": good })
-	var warns := Diag.warn_count
+	var warns := Diag.warn_count()
 	var read := store.read_region(Vector2i.ZERO)
-	assert_eq(Diag.warn_count - warns, 1, "one warning for the one malformed entry on a read")
+	assert_eq(Diag.warn_count() - warns, 1, "one warning for the one malformed entry on a read")
 	assert_eq(read["chunks"].keys(), ["2,2"], "only the valid entry is handed out")
 	assert_eq(read["raw_invalid"].keys(), ["1,1"], "the malformed one is reported separately")
-	warns = Diag.warn_count
+	warns = Diag.warn_count()
 	assert_eq(store.write_chunks({ "3,3": good }), OK, "a neighbour is saved")
 	assert_eq(store.write_chunks({ "3,3": good }), OK, "and again")
-	assert_eq(Diag.warn_count - warns, 0, "saves do not re-warn")
+	assert_eq(Diag.warn_count() - warns, 0, "saves do not re-warn")
 	var parsed: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(store.path_of(Vector2i.ZERO)))
 	assert_eq(JSON.stringify(parsed["chunks"]["1,1"]), JSON.stringify({ "edits": "x" }), "the malformed entry is rewritten unchanged")
 	var keys: Array = parsed["chunks"].keys()
@@ -14726,6 +14959,7 @@ func _test_region_failed_read_retried() -> void:
 
 func _test_registry_bound_peer_ids() -> void:
 	var reg := PlayerRegistry.new()
+	_own(reg)
 	reg.is_authoritative = true
 	assert_eq(reg.get_bound_peer_ids().size(), 0, "no peers, no ids")
 	var a := reg.resolve_identity(4)
@@ -14816,10 +15050,10 @@ func _test_region_malformed_entry_skipped() -> void:
 	f.store_string(JSON.stringify({ "version": 1, "chunks": {
 		"1,1": good, "2,2": { "edits": 5 }, "3,3": { "edits": {}, "materials": "x" } } }))
 	f.close()
-	var before := Diag.warn_count
+	var before := Diag.warn_count()
 	var chunks := store.load_region(Vector2i.ZERO)
 	assert_eq(chunks.keys(), ["1,1"], "the well-formed chunk loads")
-	assert_eq(Diag.warn_count - before, 2, "one warning per malformed entry")
+	assert_eq(Diag.warn_count() - before, 2, "one warning per malformed entry")
 
 func _test_peer_window_rate_limited() -> void:
 	var rig := _make_chunk_build_rig()
@@ -14836,6 +15070,42 @@ func _test_peer_window_rate_limited() -> void:
 		"and the window never travelled farther than the cap")
 	cm._peer_last_move_msec[5] = -1000000
 	assert_true(cm.set_peer_center(5, Vector2i(3, 2)), "a near claim after the interval is accepted")
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+
+func _test_peer_window_fake_clock() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var clock := [1000]
+	cm.now_msec = func() -> int: return clock[0]
+	cm.set_peer_center(5, Vector2i(2, 2), true)
+	clock[0] += 100
+	assert_false(cm.set_peer_center(5, Vector2i(3, 2)), "a claim 100 ms after the last is refused")
+	assert_eq(cm.peer_recenter_refused, 1, "and counted")
+	clock[0] = 1000 + int(ChunkManager.PEER_RECENTER_INTERVAL * 1000.0) - 1
+	assert_false(cm.set_peer_center(5, Vector2i(3, 2)), "1 ms inside the interval is still refused")
+	clock[0] += 2
+	assert_true(cm.set_peer_center(5, Vector2i(3, 2)), "one ms past the interval is accepted")
+	assert_eq(cm.peer_center(5), Vector2i(3, 2), "and the window moved")
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+
+func _test_peer_window_clamp_cap() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var cap := ChunkManager.PEER_RECENTER_MAX_CHUNKS
+	cm.now_msec = func() -> int: return 0
+	cm.set_peer_center(5, Vector2i(10, 10), true)
+	cm.now_msec = func() -> int: return 10000
+	assert_true(cm.set_peer_center(5, Vector2i(30, 10)), "a 20-chunk claim moves the window")
+	assert_eq(cm.peer_center(5), Vector2i(10 + cap, 10), "but only by the cap")
+	assert_eq(cm.peer_recenter_refused, 1, "and is counted")
+	var c := TerrainSlice.circumference_chunks()
+	cm.now_msec = func() -> int: return 20000
+	cm.set_peer_center(6, Vector2i(c - 2, 10), true)
+	cm.now_msec = func() -> int: return 30000
+	assert_true(cm.set_peer_center(6, Vector2i(18, 10)), "a 20-chunk claim across the seam moves the window")
+	assert_eq(cm.peer_center(6), Vector2i(posmod(c - 2 + cap, c), 10), "by the cap, the short way round")
 	for k in ["cm", "voxel", "terrain", "player"]:
 		rig[k].free()
 
@@ -14862,6 +15132,47 @@ func _test_peer_window_host_driven() -> void:
 	assert_eq(cm.peer_recenter_refused, 0, "without counting as a refusal")
 	for k in ["cm", "voxel", "terrain", "player"]:
 		rig[k].free()
+
+func _test_peer_window_host_sync() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var clock := [1000]
+	cm.now_msec = func() -> int: return clock[0]
+	cm.sync_peer_center(5, Vector2i(2, 2))
+	for i in 10:
+		clock[0] += 50
+		assert_false(cm.sync_peer_center(5, Vector2i(2, 2)), "a peer that has not moved is not re-centred")
+	for i in 5:
+		clock[0] += 300
+		assert_true(cm.sync_peer_center(5, Vector2i(3 + i, 2)), "a tracked move after the interval lands")
+	assert_eq(cm.peer_center(5), Vector2i(7, 2), "and the window follows the peer")
+	assert_eq(cm.peer_recenter_refused, 0, "none of it counts as a refusal")
+	# The tracked position is client-reported: sync is still interval-limited and clamped, silently.
+	clock[0] += 50
+	assert_false(cm.sync_peer_center(5, Vector2i(8, 2)), "a sync inside the interval defers")
+	clock[0] += 300
+	assert_true(cm.sync_peer_center(5, Vector2i(7, 500)), "a far hop moves, but clamped")
+	assert_eq(cm.peer_center(5), Vector2i(7, 2 + ChunkManager.PEER_RECENTER_MAX_CHUNKS), "to the clamp distance")
+	assert_eq(cm.peer_recenter_refused, 0, "deferral and clamp by the sync are not counted")
+	# A client claim inside the interval of the last move is still refused and counted once.
+	cm.set_peer_center(6, Vector2i(2, 2), true)
+	clock[0] += 100
+	assert_false(cm.set_peer_center(6, Vector2i(3, 2)), "a client claim inside the interval is refused")
+	assert_eq(cm.peer_recenter_refused, 1, "and counted once")
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+
+func _test_diag_warn_concurrent() -> void:
+	var was_quiet := Diag.quiet
+	Diag.quiet = true
+	var before := Diag.warn_count()
+	var job := func(_idx: int) -> void:
+		for k in 1000:
+			Diag.warn("concurrent warning")
+	var gid := WorkerThreadPool.add_group_task(job, 4)
+	WorkerThreadPool.wait_for_group_task_completion(gid)
+	Diag.quiet = was_quiet
+	assert_eq(Diag.warn_count() - before, 4000, "four tasks of 1,000 warnings raise the count by exactly 4,000")
 
 func _test_peer_window_move_loads_region_edits() -> void:
 	var dir := _fresh_region_dir("test_p62_teleport")

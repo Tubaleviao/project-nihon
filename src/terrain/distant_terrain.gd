@@ -42,6 +42,15 @@ var _task_args: Dictionary = {}
 var _result: ArrayMesh = null
 var _queued: Dictionary = {}   # a newer request that arrived while a build was in flight
 
+## Phase 83 — shared between the main thread and a build's worker: the main thread raises `aborted`
+## (leaving the tree), the worker checks it before each row and returns no mesh. `rows` counts the
+## rows the worker has started, which is what the suite reads to bound the teardown.
+class BuildControl extends RefCounted:
+	var aborted := false
+	var rows := 0
+
+var _control: BuildControl = null
+
 ## Phase 77 — build counters, read by the suite: requests accepted by `rebuild`, builds whose mesh
 ## was swapped in, and builds dropped because a newer request superseded them.
 var rebuilds_requested := 0
@@ -110,13 +119,15 @@ func rebuild(center: Vector2, radius_chunks: int) -> bool:
 	return true
 
 func _start(args: Dictionary) -> void:
+	_control = BuildControl.new()
+	args["control"] = _control
 	_task_args = args
 	_result = null
 	_task = WorkerThreadPool.add_task(_build_job)
 
 func _build_job() -> void:
 	var a := _task_args
-	_result = build_mesh(a["seed"], a["w"], a["ring_center"], a["half_m"], a["window_half_m"], a["window_center"])
+	_result = build_mesh(a["seed"], a["w"], a["ring_center"], a["half_m"], a["window_half_m"], a["window_center"], a["control"])
 
 ## True while a lattice build is in flight or queued.
 func is_building() -> bool:
@@ -133,6 +144,9 @@ func poll(block: bool = false) -> bool:
 		_task = -1
 		var mesh := _result
 		_result = null
+		if mesh == null:   # the build was aborted: nothing to apply
+			_queued = {}
+			break
 		if _queued.is_empty():
 			_swap_in(mesh)
 			rebuilds_completed += 1
@@ -145,6 +159,8 @@ func poll(block: bool = false) -> bool:
 	return swapped
 
 func _swap_in(mesh: ArrayMesh) -> void:
+	if mesh == null:
+		return
 	if _mesh_inst != null:
 		_mesh_inst.queue_free()
 	_mesh_inst = MeshInstance3D.new()
@@ -160,10 +176,16 @@ func _swap_in(mesh: ArrayMesh) -> void:
 func _process(_delta: float) -> void:
 	poll()
 
+## Leaving the tree aborts the in-flight build (the worker stops at its next row) instead of
+## waiting out a whole lattice, and drops any queued request and any result.
 func _exit_tree() -> void:
 	if _task >= 0:
+		if _control != null:
+			_control.aborted = true
 		WorkerThreadPool.wait_for_task_completion(_task)
 		_task = -1
+		_result = null
+		_queued = {}
 
 ## The ring's mesh: GRID × GRID cells centred on `ring_center` spanning ±`half_m`, with the voxel
 ## window (`window_half_m` around `window_center`) cut out EXACTLY: a cell wholly inside is skipped, a
@@ -177,7 +199,7 @@ func _exit_tree() -> void:
 ## its direct evaluation. Farther out the lattice is coarse (a cell is 10 × the window's chunk
 ## width / 64 across) and the detail is sampled, not filtered: the ring is a backdrop, not ground.
 ## Only the LOCAL player's window is cut; a remote peer's window lies under the ring's sheet.
-static func build_mesh(seed_v: int, w: float, ring_center: Vector2, half_m: float, window_half_m: float, window_center: Vector2) -> ArrayMesh:
+static func build_mesh(seed_v: int, w: float, ring_center: Vector2, half_m: float, window_half_m: float, window_center: Vector2, control: BuildControl = null) -> ArrayMesh:
 	var cell := half_m * 2.0 / float(GRID)
 	var sea := WorldShape.sea_level()
 	var noise := FastNoiseLite.new()   # this build's own: FastNoiseLite is not shared across threads
@@ -185,6 +207,10 @@ static func build_mesh(seed_v: int, w: float, ring_center: Vector2, half_m: floa
 	var heights := PackedFloat32Array()
 	heights.resize((GRID + 1) * (GRID + 1))
 	for j in GRID + 1:
+		if control != null:
+			if control.aborted:
+				return null
+			control.rows += 1
 		for i in GRID + 1:
 			var x := ring_center.x - half_m + float(i) * cell
 			var z := ring_center.y - half_m + float(j) * cell
@@ -198,6 +224,10 @@ static func build_mesh(seed_v: int, w: float, ring_center: Vector2, half_m: floa
 	var wb := window_center.y - window_half_m
 	var wt := window_center.y + window_half_m
 	for j in GRID:
+		if control != null:
+			if control.aborted:
+				return null
+			control.rows += 1
 		for i in GRID:
 			var x0 := ring_center.x - half_m + float(i) * cell
 			var z0 := ring_center.y - half_m + float(j) * cell
