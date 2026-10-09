@@ -27,6 +27,7 @@ const UiSlice         := preload("res://src/ui/ui_slice.gd")
 const VoxelSlice      := preload("res://src/terrain/voxel_slice.gd")
 const RebaseDriver    := preload("res://src/terrain/rebase_driver.gd")
 const ChatCommands    := preload("res://src/core/chat_commands.gd")
+const ChatSlice       := preload("res://src/chat/chat_slice.gd")
 const StationSlice    := preload("res://src/world/station_slice.gd")
 const TreeSlice       := preload("res://src/world/tree_slice.gd")
 const MeshUtil        := preload("res://src/core/mesh_util.gd")
@@ -119,6 +120,10 @@ func run() -> void:
 	_run_test("rebase: driver shifts player, tree, creature, station and chunks together", _test_rebase_driver)
 	_run_test("terrain: detail noise stays exact far from the origin", _test_far_noise_quantised)
 	_run_test("chat: /where prints latitude and longitude", _test_where_command)
+	_run_test("chat: slash lines parse, sanitize and validate", _test_chat_parse)
+	_run_test("chat: admin commands run for admins only",     _test_chat_admin_commands)
+	_run_test("chat: lines and intents cross the wire",       _test_chat_wire)
+	_run_test("chat: the input box is on screen while closed", _test_chat_box_visible)
 	_run_test("terrain: latitude and longitude from the fabric planet", _test_terrain_planet_coordinates)
 	_run_test("rebase: loot, avatars and the station preview follow the shift", _test_rebase_extras)
 	_run_test("player: rebased origin keeps the world position", _test_world_pos_rebase)
@@ -6055,7 +6060,7 @@ func _test_client_adopts_its_own_handle() -> void:
 func _test_network_seam_follows_boot_gate() -> void:
 	assert_false(NetworkingSlice._test_seam_allowed_for([], false), "a release boot refuses the test seam")
 	assert_true(NetworkingSlice._test_seam_allowed_for(["--run-tests"], false), "--run-tests allows it")
-	assert_true(NetworkingSlice._test_seam_allowed_for([], true), "a debug build allows it")
+	assert_false(NetworkingSlice._test_seam_allowed_for([], true), "a debug build alone does not allow it")
 	assert_true(NetworkingSlice._test_seam_allowed(), "this boot (the suite) allows it")
 
 ## Phase 67 review — the `?` hotkey matches on the unicode the key produced, whatever the layout.
@@ -6087,11 +6092,11 @@ func _test_boot_suite_is_gated() -> void:
 		"a release boot without the flag runs no suite")
 	assert_false(root_script.should_run_tests(["--server"], false),
 		"and neither does a matching --server boot")
-	assert_true(root_script.should_run_tests([], true),
-		"a debug build runs the suite by default")
+	assert_false(root_script.should_run_tests([], true),
+		"a debug build does not run the suite unless asked")
 	assert_true(root_script.should_run_tests(["--run-tests"], false),
 		"and --run-tests asks for it explicitly")
-	assert_true(root_script.should_run_tests(["--client", "127.0.0.1"], true),
+	assert_true(root_script.should_run_tests(["--client", "127.0.0.1", "--run-tests"], true),
 		"the flag is independent of the network role")
 
 func _test_net_aoi_center_and_in_aoi() -> void:
@@ -15758,3 +15763,193 @@ func _test_seam_corner_removal() -> void:
 	v.apply_edits({})
 	assert_true(_seam_requested(cm).has("1,1"), "removing the corner edit rebuilds the diagonal neighbour")
 	_seam_rig_free(rig)
+
+
+# ---------------------------------------------------------------------------
+# Phase 85 — chat box and admin commands
+# ---------------------------------------------------------------------------
+
+func _test_chat_parse() -> void:
+	var parsed := ChatCommands.parse("  /TP  1 2.5  -3 ")
+	assert_eq(parsed["name"], "tp", "name is lower-cased and slash-free")
+	assert_eq(parsed["args"], ["1", "2.5", "-3"], "args are whitespace-split")
+	assert_eq(ChatCommands.parse("hello")["name"], "", "plain chat parses to no command")
+	assert_eq(ChatCommands.parse("/")["name"], "", "a bare slash names nothing")
+	assert_true(ChatCommands.is_slash(" /x"), "padding does not hide a slash")
+	assert_eq(ChatCommands.sanitize("a\nb\u0001c"), "abc", "control characters are dropped")
+	assert_eq(ChatCommands.sanitize("   ").length(), 0, "blank is nothing")
+	assert_eq(ChatCommands.sanitize("x".repeat(500)).length(), ChatCommands.MAX_MESSAGE_CHARS, "long lines are capped")
+	var ok := ChatCommands.parse_position(["1", "2.5", "-3"])
+	assert_true(ok["ok"] and ok["pos"] == Vector3(1.0, 2.5, -3.0), "three numbers make a position")
+	assert_false(ChatCommands.parse_position(["1", "2"])["ok"], "too few numbers")
+	assert_false(ChatCommands.parse_position(["1", "x", "3"])["ok"], "not a number")
+	assert_false(ChatCommands.parse_position(["1", "nan", "3"])["ok"], "nan is refused")
+	assert_false(ChatCommands.parse_position(["1", "inf", "3"])["ok"], "inf is refused")
+	assert_false(ChatCommands.parse_position(["1", "1e12", "3"])["ok"], "beyond the planet is refused")
+	assert_eq(ChatCommands.parse_quantity("5"), 5, "a quantity")
+	assert_eq(ChatCommands.parse_quantity("0"), 0, "zero is refused")
+	assert_eq(ChatCommands.parse_quantity("-2"), 0, "negative is refused")
+	assert_eq(ChatCommands.parse_quantity("99999999"), 0, "huge is refused")
+	assert_eq(ChatCommands.parse_quantity("1.5"), 0, "fractions are refused")
+	assert_eq(ChatCommands.match_item("ferriteingot", ["FerriteIngot", "Other"]), "FerriteIngot", "item match ignores case")
+	assert_eq(ChatCommands.match_item("nope", ["FerriteIngot"]), "", "unknown item")
+	assert_true(ChatCommands.is_admin_command("kill") and not ChatCommands.is_admin_command("help"), "admin set")
+	assert_true(ChatCommands.is_known("where") and ChatCommands.is_known("give") and not ChatCommands.is_known("nope"), "known set")
+	assert_true(ChatCommands.help_lines(true).size() > ChatCommands.help_lines(false).size(), "admins see more of /help")
+
+func _test_chat_admin_commands() -> void:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var inv := InventorySlice.new()
+	add_child(inv)
+	var body := PlayerSlice.new()
+	body.render_visuals = false
+	add_child(body)
+	var chat := ChatSlice.new()
+	chat.render_visuals = false
+	chat.admins_path = "user://does_not_exist_admins.json"
+	chat.player_registry = reg
+	chat.player_slice = body
+	chat.inventory_slice = inv
+	add_child(chat)
+
+	var posted: Array = []
+	var cb := func(channel: String, sender: String, text: String, target: String) -> void:
+		posted.append({ "channel": channel, "sender": sender, "text": text, "target": target })
+	GameBus.chat_posted.connect(cb)
+	var teleports: Array = []
+	var tp := func(pos: Vector3) -> void: teleports.append(pos)
+	GameBus.player_teleport.connect(tp)
+
+	assert_true(chat.is_admin("player_host_1"), "the host's own player is an admin")
+	assert_false(chat.is_admin("player_other"), "anyone else is not")
+	assert_false(chat.is_admin(""), "nobody is not")
+
+	chat.handle_intent("hello world", "")
+	assert_eq(posted.back()["channel"], "chat", "plain text is said")
+	assert_eq(posted.back()["text"], "hello world", "as typed")
+	assert_eq(posted.back()["target"], "", "to everyone")
+
+	posted.clear()
+	chat.handle_intent("/say server restarts soon", "")
+	assert_eq(posted.back()["channel"], "announce", "/say announces")
+	assert_eq(posted.back()["sender"], "Server", "from the server")
+	assert_eq(posted.back()["text"], "server restarts soon", "the whole message")
+
+	chat.handle_intent("/give ferriteingot 3", "")
+	assert_eq(inv.get_item_count("FerriteIngot"), 3, "/give creates items for the admin")
+	chat.handle_intent("/give nonsense", "")
+	assert_eq(inv.get_item_count("nonsense"), 0, "an unknown item creates nothing")
+	assert_true(str(posted.back()["text"]).contains("Unknown item"), "and says so")
+	chat.handle_intent("/give FerriteIngot 0", "")
+	assert_eq(inv.get_item_count("FerriteIngot"), 3, "a zero quantity creates nothing")
+
+	chat.handle_intent("/tp 10 20 30", "")
+	assert_eq(teleports.size(), 1, "/tp moves the admin")
+	assert_eq(teleports[0], Vector3(10.0, 20.0, 30.0), "to the typed spot")
+	chat.handle_intent("/tp 10 banana 30", "")
+	assert_eq(teleports.size(), 1, "a bad coordinate moves nobody")
+
+	chat.handle_intent("/kill", "")
+	assert_eq(body.get_hp(), 0.0, "/kill with no target kills the admin")
+
+	# A non-admin is refused every admin command, and the refusal is addressed to them alone.
+	posted.clear()
+	teleports.clear()
+	for line in ["/say hi", "/tp 1 2 3", "/give FerriteIngot 1", "/kill me", "/bring me"]:
+		chat.handle_intent(line, "player_other")
+	assert_eq(teleports.size(), 0, "a non-admin teleports nobody")
+	assert_eq(inv.get_item_count("FerriteIngot"), 3, "a non-admin creates nothing")
+	assert_eq(posted.size(), 5, "each refused line is answered")
+	for m in posted:
+		assert_eq(m["target"], "player_other", "the refusal goes to the caller only")
+		assert_eq(m["channel"], "system", "as a system line")
+	# Non-admins keep the open commands.
+	posted.clear()
+	chat.handle_intent("/help", "player_other")
+	assert_true(posted.size() >= 3, "/help answers a non-admin")
+	posted.clear()
+	chat.handle_intent("/nope", "player_other")
+	assert_true(str(posted.back()["text"]).contains("Unknown command"), "an unknown command is named")
+
+	# An admins file grants admin to the ids it lists.
+	var path := "user://test_admins_phase85.json"
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string("[\"player_other\", 7, \"\"]")
+	f.close()
+	chat.admins_path = path
+	chat._load_admins()
+	assert_true(chat.is_admin("player_other"), "a listed id is an admin")
+	assert_false(chat.is_admin("player_third"), "an unlisted one is not")
+	DirAccess.remove_absolute(path)
+
+	GameBus.chat_posted.disconnect(cb)
+	GameBus.player_teleport.disconnect(tp)
+	chat.free()
+	body.free()
+	inv.free()
+	reg.free()
+
+func _test_chat_box_visible() -> void:
+	var c := ChatSlice.new()
+	add_child(c)
+	assert_true(c._field != null and c._field.visible, "the box shows before Enter is pressed")
+	assert_false(c.is_typing(), "but it does not hold the keyboard")
+	assert_true(c._field.placeholder_text.contains("Enter"), "and it says how to start typing")
+	c.open_input("/")
+	assert_eq(c._field.text, "/", "Enter or / prefills and focuses it")
+	c._close_input()
+	c.queue_free()
+
+func _test_chat_wire() -> void:
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n._test_peers = [4, 5]
+	n._on_chat_posted("announce", "Server", "hello", "")
+	var kinds: Array = []
+	for m in n._test_outbox:
+		kinds.append([m["peer_id"], m["payload"]["type"], m["payload"]["text"]])
+	assert_eq(kinds, [[4, "chat_message", "hello"], [5, "chat_message", "hello"]], "an untargeted line reaches every peer")
+	n._test_outbox.clear()
+	n.send_teleport(4, Vector3(5.0, 6.0, 7.0))
+	assert_eq(n._test_outbox.size(), 1, "a teleport goes to one peer")
+	assert_eq(n._test_outbox[0]["payload"]["type"], "teleport", "as a teleport packet")
+
+	# Host side of the intent: the speaker is the connection's player, never the payload's claim.
+	var got: Array = []
+	var cb := func(text: String, pid: String) -> void: got.append([text, pid])
+	GameBus.chat_intent.connect(cb)
+	n._route_c2h(9, { "type": "chat_intent", "text": "hi", "player_id": "player_forged" })
+	assert_eq(got.size(), 0, "an un-handshaked peer cannot speak")
+	n.set_player_id(9, "player_real")
+	n._route_c2h(9, { "type": "chat_intent", "text": "hi", "player_id": "player_forged" })
+	assert_eq(got, [["hi", "player_real"]], "the connection's player speaks, not the claimed one")
+	n._route_c2h(9, { "type": "chat_intent", "text": 42 })
+	assert_eq(got.size(), 1, "a non-string line is dropped")
+	GameBus.chat_intent.disconnect(cb)
+
+	# Client side: the intent is forwarded and a hosted line is shown.
+	n._test_outbox.clear()
+	n._role = NetworkingSlice.Role.CLIENT
+	n._on_chat_intent("/tp 1 2 3", "")
+	assert_eq(n._test_outbox.size(), 1, "a client forwards its line to the host")
+	assert_eq(n._test_outbox[0]["payload"]["type"], "chat_intent", "as an intent")
+	assert_false(n._test_outbox[0]["payload"].has("player_id"), "carrying no identity")
+	var shown: Array = []
+	var cb2 := func(channel: String, sender: String, text: String, target: String) -> void:
+		shown.append([channel, sender, text, target])
+	GameBus.chat_posted.connect(cb2)
+	n._route_h2c({ "type": "chat_message", "channel": "announce", "sender": "Server", "text": "hey" })
+	GameBus.chat_posted.disconnect(cb2)
+	assert_eq(shown, [["announce", "Server", "hey", ""]], "a hosted line is re-emitted for the box")
+	var moved: Array = []
+	var cb3 := func(pos: Vector3) -> void: moved.append(pos)
+	GameBus.player_teleport.connect(cb3)
+	n._route_h2c({ "type": "teleport", "position": WorldPos.to_wire(Vector3(100.0, 9.0, -40.0)) })
+	GameBus.player_teleport.disconnect(cb3)
+	assert_eq(moved.size(), 1, "a teleport packet moves the body")
+	assert_true(moved[0].distance_to(Vector3(100.0, 9.0, -40.0)) < 0.01, "to the sent spot")
+	n._test_peers = null
+	n.free()

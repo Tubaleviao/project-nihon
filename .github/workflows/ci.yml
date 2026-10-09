@@ -26,7 +26,7 @@ jobs:
       - name: Run headless test suite
         run: |
           # --quit is mandatory: without it the headless main loop never exits.
-          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --quit \
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --quit -- --run-tests \
             2>&1 | tee /tmp/godot-tests.log
           if ! grep -q "All tests passed" /tmp/godot-tests.log; then
             echo "::error::test suite did not report 'All tests passed'"

@@ -33,6 +33,7 @@ const MarketSlice      := preload("res://src/world/market_slice.gd")
 const TradeSlice       := preload("res://src/trade/trade_slice.gd")
 const ProposalSlice    := preload("res://src/governance/proposal_slice.gd")
 const UiSlice          := preload("res://src/ui/ui_slice.gd")
+const ChatSlice        := preload("res://src/chat/chat_slice.gd")
 const Minimap          := preload("res://src/ui/minimap.gd")
 const LoadingScreen    := preload("res://src/ui/loading_screen.gd")
 const TestSuite        := preload("res://src/tests/test_suite.gd")
@@ -70,6 +71,7 @@ var _market:      MarketSlice
 var _trade:       TradeSlice
 var _proposal:    ProposalSlice
 var _ui:          UiSlice
+var _chat:        ChatSlice
 
 ## Network role (Phase 18/27). HOST = authoritative simulation (default, matches
 ## single-player); CLIENT = receives world state from a host; SERVER = headless
@@ -224,6 +226,7 @@ func _ready() -> void:
 	_trade       = TradeSlice.new()
 	_proposal    = ProposalSlice.new()
 	_ui          = UiSlice.new()
+	_chat        = ChatSlice.new()
 
 	# CreatureSlice needs the terrain to place spawns on the surface; wire it
 	# before the slices enter the tree so its _ready() can use it.
@@ -253,11 +256,12 @@ func _ready() -> void:
 	_creature.render_visuals = not _is_server
 	_player.render_visuals   = not _is_server
 	_tree.render_visuals     = not _is_server
+	_chat.render_visuals     = not _is_server
 
 	# The UI (Phase 14) is presentation only, so a headless dedicated server
 	# (Phase 27) keeps it out of the tree — its _ready() would otherwise build
 	# windows nothing can render or click.
-	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _inventory, _character, _crafting, _technology, _taming, _station, _tree, _market, _trade, _proposal]
+	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _inventory, _character, _crafting, _technology, _taming, _station, _tree, _market, _trade, _proposal, _chat]
 	if not _is_server:
 		slices.append(_ui)
 	if not _is_server:
@@ -310,6 +314,14 @@ func _ready() -> void:
 	# online set). Both checks fail closed when unwired.
 	_networking.tree_slice      = _tree
 	_networking.player_registry = _registry
+	# Phase 85 — chat and admin commands act on the registry's players, the local body and pack,
+	# and reach a remote player through the networking slice's host → peer doors. A headless
+	# server builds no box.
+	_chat.player_registry  = _registry
+	_chat.player_slice     = _player
+	_chat.inventory_slice  = _inventory
+	_chat.networking       = _networking
+	GameBus.player_teleport.connect(_on_player_teleport)
 	if not _is_server:
 		_ui.inventory_slice       = _inventory
 		_ui.character_slice       = _character
@@ -544,16 +556,17 @@ var _quit_after_boot: bool = false
 ## around its GameBus emissions. The suite is a development and CI tool, not a
 ## boot step, so it now runs when either:
 ##
-##   • `--run-tests` is passed on the user-args command line, or
-##   • this is a DEBUG build (`OS.is_debug_build()`: the editor and the debug
-##     export template). A release export reports false, so a SHIPPED build never
-##     runs the suite unless it is asked for by name.
+##   • `--run-tests` is passed on the user-args command line — and only then.
+##
+## A debug build (editor F5) used to run it too; the suite takes minutes, so every
+## editor launch waited on it before the world could boot. `is_debug_build` is kept in
+## the signature for callers, but no longer decides anything.
 ##
 ## Static and argument-driven on purpose: the rule is a pure predicate the suite
 ## can assert directly, rather than something that can only be observed by booting
 ## twice. See `_test_boot_suite_is_gated`.
 static func should_run_tests(args: Array, is_debug_build: bool) -> bool:
-	return RUN_TESTS_ARG in args or is_debug_build
+	return RUN_TESTS_ARG in args
 
 ## Phase 42 review pass 3 — is this boot asked to quit itself once its world boot is done?
 ## Static and argument-driven for the same reason `should_run_tests` is: the rule is a pure
@@ -704,6 +717,7 @@ func _boot_host() -> void:
 		saved_pos = _first_boot_spawn()
 	if saved_pos != null:
 		_place_local_player(saved_pos)
+		_lift_out_of_ground()
 		_chunk_manager.build_first_ring(_chunk_manager.player_chunk())
 		_chunk_manager.refresh()
 	_host_boot_wait_elapsed = 0.0
@@ -2059,7 +2073,7 @@ func _restore_local_player() -> void:
 	# before the field existed) the saved position; a fresh player's placement is recorded now.
 	var spawn: Variant = respawn_point_for(rec)
 	if spawn != null:
-		_player.respawn_point = spawn
+		_player.respawn_point = _lifted_out_of_ground(spawn)
 	else:
 		_registry.record_spawn(pid, _player.respawn_point)
 	var hp := float(rec.get("hp", -1.0))
@@ -2100,8 +2114,25 @@ func _saved_local_position() -> Variant:
 		return null
 	var arr = _registry.get_record(pid).get("position", [])
 	if arr is Array and (arr as Array).size() >= 3:
-		return Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
+		var pos := Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
+		# A brand-new record is created at the exact origin (`ensure_player`), which is inside the
+		# ground: it is "never placed", not a saved position, so the first-boot spawn still runs.
+		if pos == Vector3.ZERO:
+			return null
+		return pos
 	return null
+
+## Phase 85 — an admin teleport: land the local body at the world position `pos`, rebasing the scene
+## first so a far target lands on a small float32 (the same door a saved position uses).
+func _on_player_teleport(pos: Vector3) -> void:
+	if _player == null:
+		return
+	if _rebase != null:
+		var wp := WorldPos.from_world(pos.x, pos.y, pos.z)
+		_rebase.rebase_to(wp["chunk"])
+		_player.place_at_world_pos(wp)
+	else:
+		_player.spawn_at(pos)
 
 ## Phase 78 — put the local player at `pos`. A saved position is placed from the record's exact
 ## `{chunk, local}` (rebasing the scene first, so the body lands on a small float32), not from the
@@ -2115,6 +2146,36 @@ func _place_local_player(pos: Vector3) -> void:
 		_player.place_at_world_pos(wp)
 	else:
 		_player.spawn_at(pos)
+
+## A restored body that sits inside solid ground (a record saved while the player was stuck, or one
+## written before the terrain changed) is lifted onto the surface above it; a body in open air, in
+## a tunnel or a cave is left alone.
+func _lift_out_of_ground() -> void:
+	if _player == null:
+		return
+	var pos := _player.get_position()
+	var lifted := _lifted_out_of_ground(pos)
+	if lifted != pos:
+		Diag.warn("GameRoot: position %s is inside the ground — lifted to %.2f" % [pos, lifted.y])
+		_player.spawn_at(lifted)
+
+## `pos`, or the surface above it when it lies inside (or under) the solid ground of its column.
+func _lifted_out_of_ground(pos: Vector3) -> Vector3:
+	if _voxel == null:
+		return pos
+	var runs: Array = _voxel.get_column_runs_at(Vector2(pos.x, pos.z))
+	if runs.is_empty():
+		return pos
+	var inside := pos.y < float(runs[0]["bottom"])
+	for run in runs:
+		if pos.y > float(run["bottom"]) and pos.y < float(run["top"]):
+			inside = true
+	return Vector3(pos.x, float(runs[-1]["top"]) + 0.1, pos.z) if inside else pos
+
+## A respawn lands on the recorded spawn point; one recorded inside the ground (by the old
+## origin-spawn bug) is lifted too.
+func _lift_after_respawn() -> void:
+	_lift_out_of_ground()
 
 ## Read the world record and the LOCAL player's record off disk. A missing world
 ## record is NOT an error — a server with no save boots a fresh world.
@@ -2385,8 +2446,8 @@ func _on_player_died(position: Vector3, killer_id: String) -> void:
 	if _character.get_player_character() != "":
 		GameBus.character_death_requested.emit(_character.get_player_character())
 
-func _on_player_respawned(position: Vector3) -> void:
-	pass
+func _on_player_respawned(_position: Vector3) -> void:
+	_lift_after_respawn()
 
 func _on_save_completed(slot: int) -> void:
 	# NOTHING to reset here. The legacy slot file is a single-file sample (the
@@ -2419,6 +2480,7 @@ func _on_load_completed(slot: int, data: Dictionary) -> void:
 		var arr = player_data.get("position", [])
 		if arr is Array and (arr as Array).size() >= 3:
 			_player.spawn_at(Vector3(float(arr[0]), float(arr[1]), float(arr[2])))
+			_lift_out_of_ground()
 		var hp := float(player_data.get("hp", -1.0))
 		if hp >= 0.0:
 			_player.set_hp(hp)

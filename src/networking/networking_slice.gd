@@ -256,6 +256,10 @@ func _ready() -> void:
 	# Phase 35 — taming is per-player as well (a granted flag and a companion
 	# binding both live on the tamer's record), so it travels the same way.
 	GameBus.tame_intent.connect(_on_tame_intent)
+	# Phase 85 — chat lines travel client → host as an intent; the host's posts (chat, announcements,
+	# command replies) travel back.
+	GameBus.chat_intent.connect(_on_chat_intent)
+	GameBus.chat_posted.connect(_on_chat_posted)
 	# Phase 24 — social/economy replication.
 	GameBus.market_synced.connect(_on_market_synced)
 	GameBus.governance_synced.connect(_on_governance_synced)
@@ -692,6 +696,33 @@ func _on_tame_intent(instance_id: String, _player_id: String) -> void:
 	if _role != Role.CLIENT:
 		return
 	_broadcast({ "type": "tame_intent", "instance_id": instance_id })
+
+## Phase 85 — client → host: a chat line or slash command. Carries no identity: the host binds the
+## sender to the connection and decides whether a command is theirs to run.
+func _on_chat_intent(text: String, _player_id: String) -> void:
+	if _role != Role.CLIENT:
+		return
+	_broadcast({ "type": "chat_intent", "text": text })
+
+## Phase 85 — host → clients: a posted line. Everyone gets an untargeted line; a targeted one (a
+## command reply) goes to that player's peer alone. The host's own display hears the signal directly.
+func _on_chat_posted(channel: String, sender: String, text: String, target_id: String) -> void:
+	if _role != Role.HOST:
+		return
+	var payload := { "type": "chat_message", "channel": channel, "sender": sender, "text": text }
+	if target_id == "":
+		_broadcast(payload)
+		return
+	var peer := _equipment_owner(target_id)
+	if peer > HOST_PEER_ID:
+		_deliver(peer, payload)
+
+## Phase 85 — host → one client: move that player's body to `position` (an admin teleport).
+func send_teleport(peer_id: int, position: Vector3) -> void:
+	if _role != Role.HOST:
+		Diag.warn("NetworkingSlice: send_teleport called on non-host — dropped")
+		return
+	_deliver(peer_id, { "type": "teleport", "position": WorldPos.to_wire(position) })
 
 ## Phase 47 — client → host: one equip / unequip action on this machine's avatar (`item_key`
 ## "" unequips `slot`). Carries no identity: the host binds it to the connection and decides
@@ -1446,6 +1477,16 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				_refuse_unhandshaked(sender, "tame_intent")
 				return
 			GameBus.tame_intent.emit(str(payload.get("instance_id", "")), tamer)
+		"chat_intent":
+			# Phase 85 — a chat line or command is said BY the connection's player; the host's
+			# ChatSlice decides whether a command is theirs to run.
+			var speaker := _actor_id(sender)
+			if speaker == "":
+				_refuse_unhandshaked(sender, "chat_intent")
+				return
+			var said: Variant = payload.get("text", "")
+			if said is String:
+				GameBus.chat_intent.emit(said, speaker)
 		"equip_intent":
 			# Phase 47 — a worn-slot action is applied to the connection's player, never
 			# to a name in the payload; the registry checks it against the fabric and the bag.
@@ -1647,6 +1688,17 @@ func _route_h2c(payload: Dictionary) -> void:
 			)
 		"tree_respawned":
 			GameBus.tree_respawned.emit(str(payload.get("tree_id", "")))
+		"chat_message":
+			# Phase 85 — host text for this player's chat box; the target is us by delivery.
+			GameBus.chat_posted.emit(
+				str(payload.get("channel", "chat")),
+				str(payload.get("sender", "")),
+				str(payload.get("text", "")),
+				""
+			)
+		"teleport":
+			# Phase 85 — an admin moved us; game_root places the body (rebasing the scene if far).
+			GameBus.player_teleport.emit(WorldPos.from_wire(payload.get("position", [])))
 		"creature_state_changed":
 			GameBus.creature_state_changed.emit(
 				str(payload.get("instance_id", "")),

@@ -209,7 +209,10 @@ func _draw() -> void:
 	var cell_px := minf(size.x, size.y) / _chunks_across
 
 	for item in _view_rects(size):
-		draw_rect(item[0], item[1], item[2], item[3])
+		if item[2]:
+			draw_rect(item[0], item[1], true)
+		else:
+			draw_rect(item[0], item[1], false, item[3])
 
 	# World boundary — a thin frame so the finite world's edge is visible when
 	# the view reaches it.
