@@ -192,10 +192,10 @@ var _active: bool = false
 ## body at the origin, so creatures and trees only lived near it. Each connected peer now adds a
 ## window centred on that peer's chunk (`set_peer_center`), and the server streams the UNION of
 ## them with the local player's own window (the listen host's, or the idle body's).
-## `_peer_centers` maps peer_id -> chunk; `_last_centers` is the window set the last refresh
-## resolved (so a peer crossing a chunk is a window move); `_chunk_refs` counts, per chunk, how
-## many windows cover it (a chunk is wanted while its count is above zero; the load/unload
-## unload paths release a chunk only at count zero).
+## `_peer_centers` maps peer_id -> the chunk that peer's window is centred on.
+## `_last_centers` is the window set the last refresh resolved, so a peer crossing a chunk is a window move.
+## `_chunk_refs` counts, per chunk key, how many windows cover it; a chunk is wanted while its count is above zero.
+## The load and unload paths release a chunk only at count zero.
 var _peer_centers: Dictionary = {}
 var _last_centers: Array = []
 var _chunk_refs: Dictionary = {}   # "cx,cz" -> number of windows covering it (read by `chunk_ref_count`)
@@ -207,8 +207,11 @@ var _chunk_refs: Dictionary = {}   # "cx,cz" -> number of windows covering it (r
 ## client could make the host read regions and queue chunk builds as fast as it can send packets.
 const PEER_RECENTER_INTERVAL := 0.25
 const PEER_RECENTER_MAX_CHUNKS := 8
-## peer_id -> `now_msec` time of the last accepted client-driven move.
-var _peer_last_move_msec: Dictionary = {}
+## peer_id -> `now_msec` time of the last accepted client claim (`set_peer_center`) or host placement.
+var _peer_last_claim_msec: Dictionary = {}
+## peer_id -> `now_msec` time of the last accepted host sync (`sync_peer_center`) or host placement.
+## Kept apart from the claim clock so a sync move never makes an honest claim look too early.
+var _peer_last_sync_msec: Dictionary = {}
 ## Millisecond clock for the peer-window rate limit, self-heal and stranded-region retry; a test swaps it for a fake.
 var now_msec: Callable = Time.get_ticks_msec
 ## Client-driven moves refused (rate-limited) or clamped (too far in one step), for the log line and tests.
@@ -392,7 +395,7 @@ func refresh(unload_now: bool = true) -> void:
 	# bounded number per frame.
 	if unload_now:
 		for key in _loaded.keys():
-			if chunk_ref_count(_key_to_chunk(key)) == 0:
+			if not _chunk_refs.has(key):
 				unload_chunk(_key_to_chunk(key))
 		_unload_queue.clear()
 	else:
@@ -400,7 +403,7 @@ func refresh(unload_now: bool = true) -> void:
 		# undecorate) rather than twice per comparison, which parsed two keys per compare.
 		var stale: Array = []
 		for key in _loaded.keys():
-			if chunk_ref_count(_key_to_chunk(key)) == 0:
+			if not _chunk_refs.has(key):
 				stale.append([_nearest_dist2(centers, _key_to_chunk(key)), key])
 		stale.sort_custom(func(a, b): return a[0] > b[0])
 		_unload_queue.clear()
@@ -430,7 +433,7 @@ func _drain_unload_queue(budget: int) -> void:
 	while budget > 0 and not _unload_queue.is_empty():
 		var key: String = _unload_queue.pop_front()
 		# A chunk a window has covered again since it was queued stays loaded.
-		if _loaded.has(key) and chunk_ref_count(_key_to_chunk(key)) == 0:
+		if _loaded.has(key) and not _chunk_refs.has(key):
 			unload_chunk(_key_to_chunk(key))
 			budget -= 1
 
@@ -822,22 +825,24 @@ func _centers_around(local: Vector2i) -> Array:
 ## `PEER_RECENTER_MAX_CHUNKS` is clamped to that distance (both counted in
 ## `peer_recenter_refused`). Returns true when the window actually moved.
 func set_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool = false) -> bool:
-	return _move_peer_center(peer_id, chunk, host_driven, true)
+	return _move_peer_center(peer_id, chunk, host_driven, false)
 
-func _move_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool, count_refusals: bool) -> bool:
+func _move_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool, is_sync: bool) -> bool:
 	var now: int = now_msec.call()
 	# X is a wrapped planet coordinate: store and compare the canonical chunk.
 	chunk = TerrainSlice.wrap_chunk(chunk)
 	if host_driven or not _peer_centers.has(peer_id):
 		var moved: bool = _peer_centers.get(peer_id, null) != chunk
 		_peer_centers[peer_id] = chunk
-		_peer_last_move_msec[peer_id] = now
+		_peer_last_claim_msec[peer_id] = now
+		_peer_last_sync_msec[peer_id] = now
 		return moved
 	var current: Vector2i = _peer_centers[peer_id]
 	if current == chunk:
 		return false
-	if now - int(_peer_last_move_msec.get(peer_id, -1000000)) < int(PEER_RECENTER_INTERVAL * 1000.0):
-		if count_refusals:
+	var last_msec: Dictionary = _peer_last_sync_msec if is_sync else _peer_last_claim_msec
+	if now - int(last_msec.get(peer_id, -1000000)) < int(PEER_RECENTER_INTERVAL * 1000.0):
+		if not is_sync:
 			peer_recenter_refused += 1
 		return false
 	# X is a wrapped planet coordinate: measure the step the short way round the seam.
@@ -845,13 +850,13 @@ func _move_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool, count_r
 	var step := Vector2i(posmod(chunk.x - current.x + c / 2, c) - c / 2, chunk.y - current.y)
 	var reach := maxi(absi(step.x), absi(step.y))
 	if reach > PEER_RECENTER_MAX_CHUNKS:
-		if count_refusals:
+		if not is_sync:
 			peer_recenter_refused += 1
 		step = Vector2i(
 			roundi(float(step.x) * PEER_RECENTER_MAX_CHUNKS / float(reach)),
 			roundi(float(step.y) * PEER_RECENTER_MAX_CHUNKS / float(reach)))
 	_peer_centers[peer_id] = TerrainSlice.wrap_chunk(current + step)
-	_peer_last_move_msec[peer_id] = now
+	last_msec[peer_id] = now
 	return true
 
 ## Phase 82 — the periodic re-centre of a peer on the position the host tracks. That position is
@@ -860,7 +865,7 @@ func _move_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool, count_r
 ## here is the sync simply retrying on its next tick, so it is NOT counted in
 ## `peer_recenter_refused`. Returns true when the window moved.
 func sync_peer_center(peer_id: int, chunk: Vector2i) -> bool:
-	return _move_peer_center(peer_id, chunk, false, false)
+	return _move_peer_center(peer_id, chunk, false, true)
 
 ## The chunk a peer's window is centred on, or null when it has none.
 func peer_center(peer_id: int) -> Variant:
@@ -869,7 +874,8 @@ func peer_center(peer_id: int) -> Variant:
 ## Phase 52 — drop a peer's window (disconnect). Chunks only that window covered unload.
 func clear_peer_center(peer_id: int) -> void:
 	_peer_centers.erase(peer_id)
-	_peer_last_move_msec.erase(peer_id)
+	_peer_last_claim_msec.erase(peer_id)
+	_peer_last_sync_msec.erase(peer_id)
 
 func peer_window_count() -> int:
 	return _peer_centers.size()

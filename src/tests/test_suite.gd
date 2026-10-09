@@ -641,6 +641,7 @@ func run() -> void:
 	_run_test("peer window: a seam crossing is a short step, not a planet-wide one", _test_peer_window_clamps_across_seam)
 	_run_test("peer window: a host-driven move recentres at once", _test_peer_window_host_driven)
 	_run_test("peer window: the host's periodic sync is never a counted refusal", _test_peer_window_host_sync)
+	_run_test("peer window: syncs and claims keep separate interval clocks", _test_peer_window_separate_clocks)
 	_run_test("diag: warn_count survives concurrent warnings from worker threads", _test_diag_warn_concurrent)
 	_run_test("peer window: a move into a stored region makes its edits resident", _test_peer_window_move_loads_region_edits)
 	_run_test("region: 1,000 regions on disk, only the ones near a window are resident", _test_region_streams_only_near_windows)
@@ -15063,7 +15064,7 @@ func _test_peer_window_rate_limited() -> void:
 	var centre: Vector2i = cm._peer_centers[5]
 	assert_true(maxi(absi(centre.x - 2), absi(centre.y - 2)) <= ChunkManager.PEER_RECENTER_MAX_CHUNKS,
 		"and the window never travelled farther than the cap")
-	cm._peer_last_move_msec[5] = -1000000
+	cm._peer_last_claim_msec[5] = -1000000
 	assert_true(cm.set_peer_center(5, Vector2i(3, 2)), "a near claim after the interval is accepted")
 	for k in ["cm", "voxel", "terrain", "player"]:
 		rig[k].free()
@@ -15109,7 +15110,7 @@ func _test_peer_window_clamps_across_seam() -> void:
 	var cm: ChunkManager = rig["cm"]
 	var half := TerrainSlice.circumference_chunks() / 2
 	cm.set_peer_center(5, Vector2i(half - 1, 0), true)
-	cm._peer_last_move_msec[5] = -1000000
+	cm._peer_last_claim_msec[5] = -1000000
 	# One chunk east of the seam is one chunk away, not a planet-width: no clamp, no refusal.
 	assert_true(cm.set_peer_center(5, Vector2i(-half, 0)), "a seam crossing moves the window")
 	assert_eq(cm.peer_recenter_refused, 0, "a one-chunk seam step is not clamped")
@@ -15157,6 +15158,29 @@ func _test_peer_window_host_sync() -> void:
 	for k in ["cm", "voxel", "terrain", "player"]:
 		rig[k].free()
 
+func _test_peer_window_separate_clocks() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var clock := [1000]
+	cm.now_msec = func() -> int: return clock[0]
+	cm.sync_peer_center(5, Vector2i(2, 2))
+	clock[0] += 1000
+	assert_true(cm.sync_peer_center(5, Vector2i(3, 2)), "a sync move lands")
+	clock[0] += 100
+	assert_true(cm.set_peer_center(5, Vector2i(4, 2)), "a claim 100 ms after a sync is accepted")
+	assert_eq(cm.peer_recenter_refused, 0, "and is not counted as a refusal")
+	# Two claims 100 ms apart still count exactly one refusal.
+	clock[0] += 1000
+	assert_true(cm.set_peer_center(5, Vector2i(5, 2)), "a claim after the interval lands")
+	clock[0] += 100
+	assert_false(cm.set_peer_center(5, Vector2i(6, 2)), "a second claim 100 ms later is refused")
+	assert_eq(cm.peer_recenter_refused, 1, "and counted once")
+	cm.clear_peer_center(5)
+	assert_false(cm._peer_last_claim_msec.has(5), "clearing a peer drops its claim timestamp")
+	assert_false(cm._peer_last_sync_msec.has(5), "and its sync timestamp")
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+
 func _test_diag_warn_concurrent() -> void:
 	var was_quiet := Diag.quiet
 	Diag.quiet = true
@@ -15183,7 +15207,7 @@ func _test_peer_window_move_loads_region_edits() -> void:
 	cm.set_peer_center(7, Vector2i(28, 0), true)
 	cm.refresh(false)
 	assert_false(voxel.edited_chunk_keys().has("34,0"), "the edit is not resident before the move")
-	cm._peer_last_move_msec[7] = -1000000
+	cm._peer_last_claim_msec[7] = -1000000
 	# The order the re-scope handler uses: recentre, refresh, THEN read the edits for the snapshot.
 	assert_true(cm.set_peer_center(7, Vector2i(34, 0)), "the claim is within the cap")
 	cm.refresh(false)

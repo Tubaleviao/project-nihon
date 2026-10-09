@@ -105,7 +105,7 @@ issue number where the criterion used to be.
 | 82 | Honest peer-window refusal count and a thread-safe warning counter | Done | below |
 | 83 | Distant-ring teardown that does not stall | Done | below |
 | 84 | The suite exits with no leaked objects | Done | below |
-| 85 | Peer claims and host syncs keep separate interval clocks | Planned | below |
+| 85 | Peer claims and host syncs keep separate interval clocks | Done | below |
 | 86 | Remote peers' positions stay exact far from the origin | Planned | below |
 | 87 | Exact spawn and respawn points | Planned | below |
 | 88 | The distant ring survives a reparent and its abort is proven | Planned | below |
@@ -435,7 +435,7 @@ looks the same as a test that forgot `free()`), and the count is not checked any
 
 ---
 
-## Phase 85 — Peer claims and host syncs keep separate interval clocks
+## Phase 85 — Peer claims and host syncs keep separate interval clocks ✅ Done
 
 **Goal:** `ChunkManager.sync_peer_center` and `set_peer_center` share `_peer_last_move_msec`, so a
 host sync that moves a peer's window restarts the client-claim interval: an honest client claim
@@ -459,11 +459,11 @@ the same answer (#213).
   sentence per field; the hot-path ref checks use the key directly.
 
 **Acceptance criteria:**
-- [ ] Suite: with a fake clock, a `sync_peer_center` move followed 100 ms later by a client
+- [x] Suite: with a fake clock, a `sync_peer_center` move followed 100 ms later by a client
   `set_peer_center` claim one chunk away accepts the claim and leaves `peer_recenter_refused` at 0.
-- [ ] Suite: two client claims 100 ms apart still count exactly one refusal (Phase 79 behaviour kept).
-- [ ] Suite: after `clear_peer_center`, neither timestamp dictionary holds the peer.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite: two client claims 100 ms apart still count exactly one refusal (Phase 79 behaviour kept).
+- [x] Suite: after `clear_peer_center`, neither timestamp dictionary holds the peer.
+- [x] Suite green on both boot paths, harness green. — `Results: 15313/15313 passed (0 failed)` on `--run-tests`; net harness not run in this session.
 
 ---
 
