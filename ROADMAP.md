@@ -500,7 +500,7 @@ walks 10,000 km is saved quantised to metres (#200, #201, #202).
 
 ---
 
-## Phase 87 — Exact spawn and respawn points
+## Phase 87 — Exact spawn and respawn points ✅ Done
 
 **Goal:** `PlayerRegistry.record_spawn`, `GameRoot.client_respawn_point` and
 `respawn_point_for` take and return float32 world `Vector3`s, so a player placed far from the
@@ -522,13 +522,13 @@ integration test (#200, #201, #202).
   doc comment states which of `pos` and the record wins.
 
 **Acceptance criteria:**
-- [ ] Suite: a spawn recorded at chunk `(-300000, 500)`, local `(3.21, 50.0, 9.87)` and respawned
+- [x] Suite: a spawn recorded at chunk `(-300000, 500)`, local `(3.21, 50.0, 9.87)` and respawned
   after a save/load lands with `get_world_pos()` equal to it within 1e-6 m.
-- [ ] Suite: `_place_local_player` with a saved record places at the record; without one it
+- [x] Suite: `_place_local_player` with a saved record places at the record; without one it
   places at `pos`; `_saved_local_position` is called once per placement (counter or spy).
-- [ ] Suite: a respawn point of a pre-Phase-66 record (no `spawn`) still falls back to the saved
+- [x] Suite: a respawn point of a pre-Phase-66 record (no `spawn`) still falls back to the saved
   position.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green. — `Results: 15404/15404 passed (0 failed)` on `--run-tests`; harness 15/15 steps.
 
 ---
 

@@ -631,6 +631,7 @@ func run() -> void:
 	_run_test("spawn: new players avoid colonized regions", _test_spawn_avoids_colonized)
 	_run_test("spawn: friend code lands near the friend", _test_spawn_friend_near)
 	_run_test("spawn: respawn point survives a move + reload (host and client)", _test_spawn_point_persists)
+	_run_test("spawn: an exact far spawn respawns exactly; placement reads the record once", _test_exact_spawn_respawn)
 	_run_test("spawn: counted chunks survive a colonization reload", _test_colonization_counted_persists)
 	_run_test("spawn: the colonization map scores, persists and drops malformed data", _test_colonization_map)
 	_run_test("spawn: a fresh join is placed, a reconnect is not", _test_spawn_registry_placement)
@@ -15498,15 +15499,17 @@ func _test_spawn_point_persists() -> void:
 	fresh.apply_player_data(pid, saved)
 	var host_rec: Dictionary = fresh.get_record(pid)
 	var host_point: Variant = root_script.respawn_point_for(host_rec)
-	assert_true(host_point != null and (host_point as Vector3).distance_to(spawn) < 0.01,
+	assert_true(host_point != null and _wp_world(host_point).distance_to(spawn) < 0.01,
 		"a reloaded host respawns at its original spawn point")
 	assert_true(absf(float(host_rec["position"][0]) + 4000.0) < 0.01, "while still standing where it logged off")
 	# Client: the handshake block carries the spawn; the client has since moved.
 	var own: Dictionary = { "position": saved["position"], "hp": 100.0, "spawn": saved["spawn"] }
-	var wire: Variant = root_script.client_respawn_point(own, Vector3(-4000.0, 3.0, 2500.0))
-	assert_true((wire as Vector3).distance_to(spawn) < 0.01, "a reconnecting client respawns at its original spawn point")
-	assert_eq(root_script.client_respawn_point({ "position": saved["position"] }, Vector3(1.0, 2.0, 3.0)),
-		Vector3(1.0, 2.0, 3.0), "a host that sent no spawn leaves the standing position")
+	var standing := WorldPos.from_world(-4000.0, 3.0, 2500.0)
+	var wire: Dictionary = root_script.client_respawn_point(own, standing)
+	assert_true(_wp_world(wire).distance_to(spawn) < 0.01, "a reconnecting client respawns at its original spawn point")
+	var other := WorldPos.from_world(1.0, 2.0, 3.0)
+	assert_eq(root_script.client_respawn_point({ "position": saved["position"] }, other),
+		other, "a host that sent no spawn leaves the standing position")
 	# Legacy and malformed records fall back to the saved position.
 	var legacy: Dictionary = saved.duplicate(true)
 	legacy.erase("spawn")
@@ -15514,13 +15517,78 @@ func _test_spawn_point_persists() -> void:
 	old.apply_player_data(pid, legacy)
 	assert_eq(old.spawn_of(pid), null, "a record without the field has no spawn")
 	var fallback: Variant = root_script.respawn_point_for(old.get_record(pid))
-	assert_true((fallback as Vector3).distance_to(Vector3(-4000.0, 3.0, 2500.0)) < 0.01, "and falls back to its saved position")
+	assert_true(_wp_world(fallback).distance_to(Vector3(-4000.0, 3.0, 2500.0)) < 0.01, "and falls back to its saved position")
 	legacy["spawn"] = { "chunk": ["x", 1], "local": [0, 0] }
 	old.apply_player_data(pid, legacy)
 	assert_eq(old.spawn_of(pid), null, "a malformed spawn is dropped")
 	reg.free()
 	fresh.free()
 	old.free()
+
+func _wp_world(wp: Variant) -> Vector3:
+	var chunk: Vector2i = wp["chunk"]
+	var local: Vector3 = wp["local"]
+	return Vector3(chunk.x * WorldPos.CHUNK_METERS + local.x, local.y, chunk.y * WorldPos.CHUNK_METERS + local.z)
+
+## Phase 87 — a spawn far from the origin is recorded, saved, reloaded and respawned at exactly;
+## `_place_local_player` reads the record once and lets it win over `pos`.
+func _test_exact_spawn_respawn() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	var chunk := Vector2i(-300000, 500)
+	var local := Vector3(3.21, 50.0, 9.87)
+	var reg := PlayerRegistry.new()
+	var pid := "exact-spawn"
+	reg.record_spawn_world_pos(pid, {"chunk": chunk, "local": local})
+	reg.record_world_pos(pid, {"chunk": chunk + Vector2i(7, 0), "local": Vector3(1.0, 2.0, 3.0)})   # walked off
+	var fresh := PlayerRegistry.new()
+	fresh.apply_player_data(pid, reg.get_player_data(pid))
+	var point: Variant = root_script.respawn_point_for(fresh.get_record(pid))
+	assert_true(point != null, "the reloaded record has a respawn point")
+	assert_eq(point["chunk"], chunk, "the spawn chunk survives the save and load")
+	assert_true((point["local"] as Vector3).distance_to(local) < 1.0e-6, "and its local within 1e-6 m")
+	var player := PlayerSlice.new()
+	player.render_visuals = true
+	add_child(player)
+	player.shift_scene(WorldPos.rebase_shift(Vector2i.ZERO, chunk))
+	player.set_respawn_world_pos(point)
+	player._respawn()
+	var got := player.get_world_pos()
+	assert_eq(got["chunk"], chunk, "a respawn lands in the spawn chunk")
+	assert_true((got["local"] as Vector3).distance_to(local) < 1.0e-6, "and on the spawn local within 1e-6 m")
+	# A pre-Phase-66 record (no spawn) falls back to its saved position.
+	var legacy: Dictionary = reg.get_player_data(pid)
+	legacy.erase("spawn")
+	var old := PlayerRegistry.new()
+	old.apply_player_data(pid, legacy)
+	var back: Variant = root_script.respawn_point_for(old.get_record(pid))
+	assert_eq(back["chunk"], chunk + Vector2i(7, 0), "a record with no spawn respawns at its saved position")
+	# `_place_local_player`: the record wins and is read once; without one `pos` is used.
+	var gr: Node = root_script.new()
+	gr._player = player
+	gr._rebase = RebaseDriver.new([player])
+	gr._registry = reg
+	reg.local_player_id = pid
+	gr._saved_position_reads = 0
+	gr._place_local_player(Vector3(5.0, 5.0, 5.0))
+	assert_eq(gr._saved_position_reads, 1, "a placement reads the saved position once")
+	assert_eq(player.get_world_pos()["chunk"], chunk + Vector2i(7, 0), "a saved record wins over pos")
+	var blank := PlayerRegistry.new()
+	blank.local_player_id = "nobody"
+	var near := PlayerSlice.new()
+	near.render_visuals = true
+	add_child(near)
+	gr._player = near
+	gr._rebase = RebaseDriver.new([near])
+	gr._registry = blank
+	gr._place_local_player(Vector3(5.0, 5.0, 5.0))
+	assert_true(_wp_world(near.get_world_pos()).distance_to(Vector3(5.0, 5.0, 5.0)) < 0.01, "with no record the body goes to pos")
+	near.free()
+	player.free()
+	gr.free()
+	reg.free()
+	fresh.free()
+	old.free()
+	blank.free()
 
 ## Phase 66 — edit chunk K, save, reload, edit K again: the region's count is unchanged.
 func _test_colonization_counted_persists() -> void:

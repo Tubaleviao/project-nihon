@@ -695,6 +695,16 @@ func _die(killer_id: String = "") -> void:
 ## Phase 53 — where a respawn puts the body: the player's own spawn point (game_root sets it from
 ## the placement), not a fixed world coordinate that may now be open ocean.
 var respawn_point := Vector3(16.0, 12.0, 16.0)
+## Phase 87 — the same point as an exact `{chunk, local}`, empty until one is set. A respawn lands
+## on it with `place_at_world_pos`, so a spawn far from the origin is not quantised to a float32.
+var respawn_world_pos: Dictionary = {}
+
+## Set the respawn point from an exact `{chunk, local}`; `respawn_point` keeps the Vector3 view.
+func set_respawn_world_pos(wp: Dictionary) -> void:
+	respawn_world_pos = WorldPos.normalized(wp)
+	var chunk: Vector2i = respawn_world_pos["chunk"]
+	var local: Vector3 = respawn_world_pos["local"]
+	respawn_point = Vector3(chunk.x * WorldPos.CHUNK_METERS + local.x, local.y, chunk.y * WorldPos.CHUNK_METERS + local.z)
 
 func _respawn() -> void:
 	_hp = MAX_HP
@@ -702,7 +712,10 @@ func _respawn() -> void:
 	_respawn_timer = -1.0
 	# Teleport back to the world spawn point.
 	var spawn_pos := respawn_point
-	spawn_at(spawn_pos)
+	if respawn_world_pos.is_empty():
+		spawn_at(spawn_pos)
+	else:
+		place_at_world_pos(respawn_world_pos)
 	_update_hp_bar()
 	_broadcast_state()
 	GameBus.player_respawned.emit(spawn_pos)
