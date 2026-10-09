@@ -777,7 +777,7 @@ carries messages and slash commands (admins can teleport, create items, kill pla
   the refusal addressed to them alone; the admins file grants admin to the ids it lists.
 - [x] Suite: a client forwards a line with no identity, the host speaks as the connection's player,
   an un-handshaked peer is dropped, hosted lines and teleports are re-emitted on the client.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green. — `Results: 15455/15455 passed (0 failed)`, harness 15/15 steps.
 
 ---
 
