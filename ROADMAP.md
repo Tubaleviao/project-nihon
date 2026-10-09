@@ -107,7 +107,7 @@ issue number where the criterion used to be.
 | 84 | The suite exits with no leaked objects | Done | below |
 | 85 | Peer claims and host syncs keep separate interval clocks | Done | below |
 | 86 | Remote peers' positions stay exact far from the origin | Done | below |
-| 87 | Exact spawn and respawn points | Planned | below |
+| 87 | Exact spawn and respawn points | Done | below |
 | 88 | The distant ring survives a reparent and its abort is proven | Done | below |
 | 89 | A malformed region entry warns once per session | Done | below |
 | 90 | One scene-origin source and one wire-position validator | Done | below |
