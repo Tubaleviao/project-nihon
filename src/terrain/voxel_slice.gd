@@ -1577,7 +1577,7 @@ func _normalise_edit_table(edits: Dictionary, materials: Dictionary) -> Dictiona
 	for key in edits:
 		var value: Variant = edits[key]
 		if value is Array:
-			next[key] = _normalise_ops(value)
+			next[key] = _normalise_tile_ops(key, value, materials)
 			continue
 		# The LEGACY half: a bare number (or a numeric string) is a pre-Phase-41
 		# absolute quantised height, migrated against the tile's natural run. Any
@@ -1595,6 +1595,27 @@ func _normalise_edit_table(edits: Dictionary, materials: Dictionary) -> Dictiona
 		var stack: Array = materials.get(key, [])
 		next[key] = legacy_edit_ops(legacy_height, _base_top_for_tile(tile), stack)
 	return next
+
+## Phase 91 — a typed op list, with a leading `legacy` op (a bare pre-Phase-41 height the region
+## store carried through a depletion overlay) migrated exactly as a bare number is, then the other
+## ops after it. A `legacy` op with an unreadable height is dropped with a warning.
+func _normalise_tile_ops(key: Variant, value: Array, materials: Dictionary) -> Array:
+	var rest: Array = []
+	var migrated: Array = []
+	var seen_legacy := false
+	for op in value:
+		if op is Dictionary and str(op.get("op", "")) == "legacy":
+			if seen_legacy:
+				continue
+			seen_legacy = true
+			var h := _legacy_height_of(op.get("height", null))
+			if is_nan(h):
+				Diag.warn("VoxelSlice.apply_edits: dropping an unreadable legacy height for '%s'" % str(key))
+				continue
+			migrated = legacy_edit_ops(h, _base_top_for_tile(_key_to_tile(str(key))), materials.get(key, []))
+		else:
+			rest.append(op)
+	return migrated + _normalise_ops(rest)
 
 ## The committing half of `apply_edits`: swap in `next` as the edit log and rebuild what
 ## changed. `diff_keys` limits the change detection to those tile keys (the scoped re-scope

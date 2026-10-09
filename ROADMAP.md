@@ -111,7 +111,7 @@ issue number where the criterion used to be.
 | 88 | The distant ring survives a reparent and its abort is proven | Planned | below |
 | 89 | A malformed region entry warns once per session | Planned | below |
 | 90 | One scene-origin source and one wire-position validator | Planned | below |
-| 91 | A legacy tile height survives a depletion overlay | Planned | below |
+| 91 | A legacy tile height survives a depletion overlay | Done | below |
 | 92 | The shown-biome memo follows the terrain slice and one pole-ring rule | Planned | below |
 | 93 | Host-sync window moves are counted and a clock swap resets the throttles | Planned | below |
 | 94 | A test eviction helper and a bounded UI retire list | Planned | below |
@@ -618,7 +618,7 @@ different rules (#200, #201, #202).
 
 ---
 
-## Phase 91 — A legacy tile height survives a depletion overlay
+## Phase 91 — A legacy tile height survives a depletion overlay ✅ Done
 
 **Goal:** `RegionStore.overlay_entry` reads a tile's stored value with `edits.get(tile, [])` and
 only merges it when it is an `Array`. A pre-Phase-41 tile stores a bare absolute height (a number,
@@ -643,13 +643,13 @@ base height, so it cannot convert the number itself.
 - `src/persistence/region_store.gd` — `_chunk_entry_valid` accepts the new op shape.
 
 **Acceptance criteria:**
-- [ ] Suite: a region entry whose tile holds the bare height `h`, overlaid with one deplete op and
+- [x] Suite: a region entry whose tile holds the bare height `h`, overlaid with one deplete op and
   reloaded through `VoxelSlice.apply_edits`, yields the same column top as the bare `h` alone and
   keeps the depletion's `taken` count.
-- [ ] Suite: overlaying a second deplete on the result keeps exactly one legacy op (no duplicates).
-- [ ] Suite: a tile already stored as a typed op list overlays exactly as before (Phase 75 tests
+- [x] Suite: overlaying a second deplete on the result keeps exactly one legacy op (no duplicates).
+- [x] Suite: a tile already stored as a typed op list overlays exactly as before (Phase 75 tests
   unchanged and green).
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green. — `Results: 15416/15416 passed (0 failed)` on `--run-tests`; harness 15/15 steps.
 
 ---
 
