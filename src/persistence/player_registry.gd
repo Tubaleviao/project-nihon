@@ -533,29 +533,10 @@ static func _store_world_pos(rec: Dictionary, wp: Dictionary) -> void:
 	rec["chunk"] = [chunk.x, chunk.y]
 	rec["local"] = [local.x, local.y, local.z]
 
-## Phase 78 — true when a wire `{chunk, local}` dictionary is finite and in range (Z between the
-## poles, `local` small): safe to rebase to and place at.
-static func is_valid_wire_pos(wire: Dictionary) -> bool:
-	return _has_chunk_local(wire)
-
-## True when `chunk` is two finite ints-in-range and `local` three finite numbers: element types
-## and magnitudes are checked, not just the array sizes, so a bad save or payload falls back to
-## `position` rather than reaching int()/float() casts.
+## True when `rec` carries a valid `chunk` + `local` (see `WorldPos.is_wire`, the one validator): a
+## bad save or payload falls back to `position` rather than reaching int()/float() casts.
 static func _has_chunk_local(rec: Dictionary) -> bool:
-	var c: Variant = rec.get("chunk", null)
-	var l: Variant = rec.get("local", null)
-	if not (c is Array and l is Array and (c as Array).size() == 2 and (l as Array).size() == 3):
-		return false
-	# X may be any lap count (world_pos_of wraps it); Z must lie between the poles.
-	var limits := [float(TerrainSlice.circumference_chunks()), float(TerrainSlice.pole_chunks())]
-	for i in range(2):
-		var v: Variant = c[i]
-		if not (v is int or v is float) or not is_finite(float(v)) or absf(float(v)) > limits[i]:
-			return false
-	for v in l:
-		if not (v is int or v is float) or not is_finite(float(v)) or absf(float(v)) > 1.0e6:
-			return false
-	return true
+	return WorldPos.is_wire(rec)
 
 ## A record's position as { chunk, local }. A pre-Phase-50 record carries only the float
 ## `position`, which maps onto the chunk grid at the same coordinates (the old origin is the

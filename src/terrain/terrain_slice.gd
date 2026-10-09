@@ -263,11 +263,16 @@ func world_radius_chunks() -> int:
 ## (gravity/terrain handle vertical). Insets the boundary by 2 m so the body stays on the
 ## final chunk's collision instead of straddling the exact edge.
 func clamp_to_world(pos: Vector3) -> Vector3:
-	# Walkable rows are |chunk z| < polar_chunks, i.e. z in [-(polar-1)*32, polar*32).
+	var bounds := z_bounds()
+	return Vector3(pos.x, pos.y, clampf(pos.z, bounds.x, bounds.y))
+
+## Phase 90 — the walkable z range as (min, max) metres: what `clamp_to_world` clamps z to.
+## Walkable rows are |chunk z| < polar_chunks, i.e. z in [-(polar-1)*32, polar*32), inset by 2 m.
+func z_bounds() -> Vector2:
 	var polar := polar_chunks()
 	var north := float(polar) * CHUNK_METERS - 2.0
 	var south := -float(polar - 1) * CHUNK_METERS + 2.0
-	return Vector3(pos.x, pos.y, clampf(pos.z, minf(south, north), north))
+	return Vector2(minf(south, north), north)
 
 # ---------------------------------------------------------------------------
 # Private

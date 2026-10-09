@@ -110,7 +110,7 @@ issue number where the criterion used to be.
 | 87 | Exact spawn and respawn points | Planned | below |
 | 88 | The distant ring survives a reparent and its abort is proven | Planned | below |
 | 89 | A malformed region entry warns once per session | Planned | below |
-| 90 | One scene-origin source and one wire-position validator | Planned | below |
+| 90 | One scene-origin source and one wire-position validator | Done | below |
 | 91 | A legacy tile height survives a depletion overlay | Done | below |
 | 92 | The shown-biome memo follows the terrain slice and one pole-ring rule | Done | below |
 | 93 | Host-sync window moves are counted and a clock swap resets the throttles | Planned | below |
@@ -587,7 +587,7 @@ for as long as the player stays nearby (#196).
 
 ---
 
-## Phase 90 — One scene-origin source and one wire-position validator
+## Phase 90 — One scene-origin source and one wire-position validator ✅ Done
 
 **Goal:** `PlayerSlice` keeps `_scene_offset` and `_scene_origin_chunk` as two accumulators and
 derives the chunk by rounding a float32 shift, duplicating `RebaseDriver.origin_chunk`;
@@ -609,12 +609,12 @@ different rules (#200, #201, #202).
   `game_root.gd` calls it; the other becomes private or is removed.
 
 **Acceptance criteria:**
-- [ ] Suite: after 1,000 random rebases (fixed seed) the player's scene origin chunk equals
+- [x] Suite: after 1,000 random rebases (fixed seed) the player's scene origin chunk equals
   `RebaseDriver.origin_chunk` and `_scene_offset == -origin_chunk * CHUNK_METERS` exactly.
-- [ ] Suite: the z-bounds accessor matches `clamp_to_world(±INF).z` for the default world.
-- [ ] Suite: the remaining validator accepts every wire form the old two accepted in common and
+- [x] Suite: the z-bounds accessor matches `clamp_to_world(±INF).z` for the default world.
+- [x] Suite: the remaining validator accepts every wire form the old two accepted in common and
   rejects a dictionary missing `local`, a non-integer chunk and a NaN component.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green. — `Results: 15421/15421 passed (0 failed)` on `--run-tests`; harness 15/15 steps.
 
 ---
 
