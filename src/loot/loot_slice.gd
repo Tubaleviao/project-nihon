@@ -99,6 +99,7 @@ func _on_creature_died(entity_id: String, position: Vector3, _killer_id: String)
 			var body := _make_pickup_visual(pid, item_id, position)
 			add_child(body)
 			_world_nodes.append(body)
+			body.tree_exited.connect(_forget_world_node.bind(body))
 			_pickups[pid] = {
 				"item_id":    item_id,
 				"quantity":   qty,
@@ -158,6 +159,10 @@ func shift_scene(shift: Vector3) -> void:
 			(n as Node3D).position += shift
 			live.append(n)
 	_world_nodes = live
+
+## Drop a freed world node from the shift set.
+func _forget_world_node(node: Node) -> void:
+	_world_nodes.erase(node)
 
 func scene_offset() -> Vector3:
 	return _scene_offset

@@ -1199,6 +1199,7 @@ func _test_tree_shift_explicit_set() -> void:
 	assert_eq(extra.position, Vector3(1.0, 2.0, 3.0), "a non-world child does not move")
 	assert_eq(trees._pool.scene_position(), pool_before + shift, "the pool moves exactly once")
 	b.free()
+	assert_eq(trees._world_nodes.size(), 1, "a freed trunk leaves the world set at once")
 	trees.shift_scene(shift)
 	assert_eq(a.position, Vector3(10.0, 0.0, 5.0) + shift * 2.0, "a freed trunk is dropped and the survivor still moves")
 	trees.free()

@@ -552,6 +552,10 @@ func shift_scene(shift: Vector3) -> void:
 			live.append(n)
 	_world_nodes = live
 
+## Drop a freed world node from the shift set.
+func _forget_world_node(node: Node) -> void:
+	_world_nodes.erase(node)
+
 func scene_offset() -> Vector3:
 	return _scene_offset
 
@@ -625,6 +629,7 @@ func _build_collision(tree_id: String, pos: Vector3, species: String) -> StaticB
 	body.add_child(shape)
 	add_child(body)
 	_world_nodes.append(body)
+	body.tree_exited.connect(_forget_world_node.bind(body))
 	return body
 
 ## Free a tree's trunk collision so a felled tree stops being an aim target.
