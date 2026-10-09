@@ -6060,7 +6060,7 @@ func _test_client_adopts_its_own_handle() -> void:
 func _test_network_seam_follows_boot_gate() -> void:
 	assert_false(NetworkingSlice._test_seam_allowed_for([], false), "a release boot refuses the test seam")
 	assert_true(NetworkingSlice._test_seam_allowed_for(["--run-tests"], false), "--run-tests allows it")
-	assert_true(NetworkingSlice._test_seam_allowed_for([], true), "a debug build allows it")
+	assert_false(NetworkingSlice._test_seam_allowed_for([], true), "a debug build alone does not allow it")
 	assert_true(NetworkingSlice._test_seam_allowed(), "this boot (the suite) allows it")
 
 ## Phase 67 review — the `?` hotkey matches on the unicode the key produced, whatever the layout.
@@ -6096,7 +6096,7 @@ func _test_boot_suite_is_gated() -> void:
 		"a debug build does not run the suite unless asked")
 	assert_true(root_script.should_run_tests(["--run-tests"], false),
 		"and --run-tests asks for it explicitly")
-	assert_true(root_script.should_run_tests(["--client", "127.0.0.1"], true),
+	assert_true(root_script.should_run_tests(["--client", "127.0.0.1", "--run-tests"], true),
 		"the flag is independent of the network role")
 
 func _test_net_aoi_center_and_in_aoi() -> void:
