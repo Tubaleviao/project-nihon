@@ -101,6 +101,8 @@ func run() -> void:
 	_run_test("terrain: the ring meets the voxel ground at the window edge", _test_distant_ring_window_edge)
 	_run_test("player: swimming reads the voxel column, not the generated height", _test_swim_reads_voxel_column)
 	_run_test("terrain: the distant ring builds off the main thread", _test_distant_ring_async)
+	_run_test("terrain: freeing the ring mid-build aborts the worker at the next row", _test_distant_ring_abort)
+	_run_test("terrain: a build that is not aborted is unchanged by the abort check", _test_distant_ring_unaborted_same)
 	_run_test("terrain: the distant ring's vertices are pinned by a hash", _test_distant_ring_vertex_hash)
 	_run_test("terrain: detail noise has one formula", _test_detail_noise_single_formula)
 	_run_test("terrain: walking 5 chunks requests at most 5 ring rebuilds", _test_distant_ring_rebuild_counter)
@@ -638,6 +640,8 @@ func run() -> void:
 	_run_test("peer window: a 20-chunk claim is clamped inside the map and across the seam", _test_peer_window_clamp_cap)
 	_run_test("peer window: a seam crossing is a short step, not a planet-wide one", _test_peer_window_clamps_across_seam)
 	_run_test("peer window: a host-driven move recentres at once", _test_peer_window_host_driven)
+	_run_test("peer window: the host's periodic sync is never a counted refusal", _test_peer_window_host_sync)
+	_run_test("diag: warn_count survives concurrent warnings from worker threads", _test_diag_warn_concurrent)
 	_run_test("peer window: a move into a stored region makes its edits resident", _test_peer_window_move_loads_region_edits)
 	_run_test("region: 1,000 regions on disk, only the ones near a window are resident", _test_region_streams_only_near_windows)
 	_run_test("chunk: each peer has a window and chunks are reference counted", _test_chunk_peer_windows_refcount)
@@ -1533,10 +1537,10 @@ func _test_worldgen_stamp_new_world() -> void:
 	assert_eq(writer.save_world({ "local_player_id": "player_1_1_ab", "worldgenVersion": stamp }, false), OK, "the record writes")
 	var loaded := writer.load_world_record()
 	assert_eq(PersistenceSlice.worldgen_version_of(loaded), TerrainSlice.WORLDGEN_VERSION, "a new world saves worldgenVersion == WORLDGEN_VERSION")
-	var warns := Diag.warn_count
+	var warns := Diag.warn_count()
 	assert_false(PersistenceSlice.check_worldgen_version(loaded, TerrainSlice.WORLDGEN_VERSION), "a matching record is no mismatch")
 	assert_false(PersistenceSlice.check_worldgen_version({}, TerrainSlice.WORLDGEN_VERSION), "a new world is no mismatch")
-	assert_eq(Diag.warn_count, warns, "and neither warns")
+	assert_eq(Diag.warn_count(), warns, "and neither warns")
 	writer.free()
 	_wipe_dir(dir)
 
@@ -1557,9 +1561,9 @@ func _test_worldgen_stamp_mismatch() -> void:
 		assert_eq(writer.save_world(record, false), OK, "the old record writes")
 		var loaded := writer.load_world_record()
 		assert_eq(PersistenceSlice.worldgen_version_of(loaded), original, "a missing stamp reads as 0, an old one as itself")
-		var warns := Diag.warn_count
+		var warns := Diag.warn_count()
 		assert_true(PersistenceSlice.check_worldgen_version(loaded, TerrainSlice.WORLDGEN_VERSION), "the mismatch is reported")
-		assert_eq(Diag.warn_count - warns, 1, "with exactly one warning")
+		assert_eq(Diag.warn_count() - warns, 1, "with exactly one warning")
 		var stamp := PersistenceSlice.worldgen_stamp_for_save(loaded, TerrainSlice.WORLDGEN_VERSION)
 		assert_eq(stamp, original, "a re-save keeps the original stamp")
 		assert_eq(writer.save_world({ "local_player_id": "player_1_1_ab", "worldgenVersion": stamp }, true), OK, "the re-save writes")
@@ -13432,13 +13436,13 @@ func _test_equipment_refusals_rate_limited() -> void:
 	var revoked: Array = []
 	var rcb := func(pid: String, _worn: Dictionary) -> void: revoked.append(pid)
 	GameBus.equipment_revoked.connect(rcb)
-	var warns_before: int = Diag.warn_count
+	var warns_before: int = Diag.warn_count()
 	for i in 100:
 		registry.note_equip_seq(peer, i + 1)
 		GameBus.equip_intent.emit(peer, "Chest", "VeilsteelChestplate")
 	GameBus.equipment_revoked.disconnect(rcb)
 	assert_eq(revoked.size(), 1, "one revoke for 100 refusals in an interval")
-	assert_eq(Diag.warn_count - warns_before, 1, "and one warn")
+	assert_eq(Diag.warn_count() - warns_before, 1, "and one warn")
 	assert_eq(registry.equip_refused_suppressed, 99, "the rest are counted")
 	assert_eq(registry.equip_seq_of(peer), 100, "the host remembers the newest sequence it processed")
 	registry.free()
@@ -14347,6 +14351,37 @@ func _test_swim_reads_voxel_column() -> void:
 	terr.free()
 	vox.free()
 
+## Phase 83 — leaving the tree mid-build raises the abort flag; the worker stops within one more row
+## and the freed node never applies a result.
+func _test_distant_ring_abort() -> void:
+	var d := DistantTerrainScript.new()
+	add_child(d)
+	d.world_seed = 11
+	d.rebuild(Vector2(100.0, -40.0), 3)
+	var control = d._control
+	assert_true(control != null, "the build has a control block")
+	d.free()
+	var rows_after_abort: int = control.rows
+	assert_true(control.aborted, "leaving the tree raised the abort flag")
+	# The worker is joined by now: no row was started after the flag, bar the one in progress.
+	assert_true(rows_after_abort <= 2 * (DistantTerrainScript.GRID + 1) + 1, "the row counter is bounded")
+	OS.delay_msec(20)
+	assert_eq(control.rows, rows_after_abort, "no worker row runs after the node is gone")
+
+func _test_distant_ring_unaborted_same() -> void:
+	var half := DistantTerrainScript.ring_half_extent(2)
+	var win := (2.0 + 0.5) * DistantTerrainScript.CHUNK_METERS
+	var plain: ArrayMesh = DistantTerrainScript.build_mesh(5, 4.0e7, Vector2.ZERO, half, win, Vector2.ZERO)
+	var ctl := DistantTerrainScript.BuildControl.new()
+	var checked: ArrayMesh = DistantTerrainScript.build_mesh(5, 4.0e7, Vector2.ZERO, half, win, Vector2.ZERO, ctl)
+	assert_eq(hash(checked.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]),
+		hash(plain.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]), "same vertex hash with the check in place")
+	assert_eq(ctl.rows, 2 * DistantTerrainScript.GRID + 1, "every row was visited")
+	var abort := DistantTerrainScript.BuildControl.new()
+	abort.aborted = true
+	assert_true(DistantTerrainScript.build_mesh(5, 4.0e7, Vector2.ZERO, half, win, Vector2.ZERO, abort) == null, "an aborted build returns no mesh")
+	assert_eq(abort.rows, 0, "and starts no row")
+
 ## Phase 68 — `rebuild` never evaluates the lattice on the main thread; the swapped-in mesh equals a
 ## synchronous build for the same centre.
 func _test_distant_ring_async() -> void:
@@ -14742,15 +14777,15 @@ func _test_region_malformed_entry_kept() -> void:
 	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
 	var good := { "edits": { "0,0": [{ "op": "remove", "bottom": 0.0, "top": 1.0 }] } }
 	_write_region_file(store, { "1,1": { "edits": "x" }, "2,2": good })
-	var warns := Diag.warn_count
+	var warns := Diag.warn_count()
 	var read := store.read_region(Vector2i.ZERO)
-	assert_eq(Diag.warn_count - warns, 1, "one warning for the one malformed entry on a read")
+	assert_eq(Diag.warn_count() - warns, 1, "one warning for the one malformed entry on a read")
 	assert_eq(read["chunks"].keys(), ["2,2"], "only the valid entry is handed out")
 	assert_eq(read["raw_invalid"].keys(), ["1,1"], "the malformed one is reported separately")
-	warns = Diag.warn_count
+	warns = Diag.warn_count()
 	assert_eq(store.write_chunks({ "3,3": good }), OK, "a neighbour is saved")
 	assert_eq(store.write_chunks({ "3,3": good }), OK, "and again")
-	assert_eq(Diag.warn_count - warns, 0, "saves do not re-warn")
+	assert_eq(Diag.warn_count() - warns, 0, "saves do not re-warn")
 	var parsed: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(store.path_of(Vector2i.ZERO)))
 	assert_eq(JSON.stringify(parsed["chunks"]["1,1"]), JSON.stringify({ "edits": "x" }), "the malformed entry is rewritten unchanged")
 	var keys: Array = parsed["chunks"].keys()
@@ -14973,10 +15008,10 @@ func _test_region_malformed_entry_skipped() -> void:
 	f.store_string(JSON.stringify({ "version": 1, "chunks": {
 		"1,1": good, "2,2": { "edits": 5 }, "3,3": { "edits": {}, "materials": "x" } } }))
 	f.close()
-	var before := Diag.warn_count
+	var before := Diag.warn_count()
 	var chunks := store.load_region(Vector2i.ZERO)
 	assert_eq(chunks.keys(), ["1,1"], "the well-formed chunk loads")
-	assert_eq(Diag.warn_count - before, 2, "one warning per malformed entry")
+	assert_eq(Diag.warn_count() - before, 2, "one warning per malformed entry")
 
 func _test_peer_window_rate_limited() -> void:
 	var rig := _make_chunk_build_rig()
@@ -15055,6 +15090,40 @@ func _test_peer_window_host_driven() -> void:
 	assert_eq(cm.peer_recenter_refused, 0, "without counting as a refusal")
 	for k in ["cm", "voxel", "terrain", "player"]:
 		rig[k].free()
+
+func _test_peer_window_host_sync() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var clock := [1000]
+	cm.now_msec = func() -> int: return clock[0]
+	cm.sync_peer_center(5, Vector2i(2, 2))
+	for i in 10:
+		clock[0] += 50
+		assert_false(cm.sync_peer_center(5, Vector2i(2, 2)), "a peer that has not moved is not re-centred")
+	for i in 5:
+		clock[0] += 50
+		assert_true(cm.sync_peer_center(5, Vector2i(3 + i, 2)), "a tracked move lands inside the interval")
+	assert_eq(cm.peer_center(5), Vector2i(7, 2), "and the window follows the peer")
+	assert_eq(cm.peer_recenter_refused, 0, "none of it counts as a refusal")
+	# A client claim inside the interval of the last move is still refused and counted once.
+	cm.set_peer_center(6, Vector2i(2, 2), true)
+	clock[0] += 100
+	assert_false(cm.set_peer_center(6, Vector2i(3, 2)), "a client claim inside the interval is refused")
+	assert_eq(cm.peer_recenter_refused, 1, "and counted once")
+	for k in ["cm", "voxel", "terrain", "player"]:
+		rig[k].free()
+
+func _test_diag_warn_concurrent() -> void:
+	var was_quiet := Diag.quiet
+	Diag.quiet = true
+	var before := Diag.warn_count()
+	var job := func(_idx: int) -> void:
+		for k in 1000:
+			Diag.warn("concurrent warning")
+	var gid := WorkerThreadPool.add_group_task(job, 4)
+	WorkerThreadPool.wait_for_group_task_completion(gid)
+	Diag.quiet = was_quiet
+	assert_eq(Diag.warn_count() - before, 4000, "four tasks of 1,000 warnings raise the count by exactly 4,000")
 
 func _test_peer_window_move_loads_region_edits() -> void:
 	var dir := _fresh_region_dir("test_p62_teleport")

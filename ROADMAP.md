@@ -344,7 +344,7 @@ lookups for every mined tile (#170).
 
 ---
 
-## Phase 82 — Honest peer-window refusal count and a thread-safe warning counter
+## Phase 82 — Honest peer-window refusal count and a thread-safe warning counter ✅ Done
 
 **Goal:** `GameRoot._sync_peer_windows` re-centres every peer twice a second through the
 rate-limited client path of `ChunkManager.set_peer_center`, so the host's own periodic sync
@@ -367,16 +367,16 @@ can flake (#162).
   summed on read); readers use an accessor.
 
 **Acceptance criteria:**
-- [ ] Suite: with a fake clock, ten `_sync_peer_windows` ticks for a peer that has not moved
+- [x] Suite: with a fake clock, ten `_sync_peer_windows` ticks for a peer that has not moved
   and five that track a moving peer leave `peer_recenter_refused` at 0.
-- [ ] Suite: a client move inside `PEER_RECENTER_INTERVAL` still counts one refusal.
-- [ ] Suite: four `WorkerThreadPool` tasks each raising 1,000 `Diag.warn` calls (quiet mode)
+- [x] Suite: a client move inside `PEER_RECENTER_INTERVAL` still counts one refusal.
+- [x] Suite: four `WorkerThreadPool` tasks each raising 1,000 `Diag.warn` calls (quiet mode)
   raise the count by exactly 4,000.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green. — `Results: 15298/15298 passed (0 failed)` on `--run-tests`; net harness not run in this session.
 
 ---
 
-## Phase 83 — Distant-ring teardown that does not stall
+## Phase 83 — Distant-ring teardown that does not stall ✅ Done
 
 **Goal:** `DistantTerrain._exit_tree` calls `WorkerThreadPool.wait_for_task_completion` on an
 in-flight ring build, so leaving the world (or freeing the ring in a test) blocks the main
@@ -392,10 +392,10 @@ thread for the rest of a full lattice build (#179).
   that arrives after the flag is discarded rather than applied to a freed node.
 
 **Acceptance criteria:**
-- [ ] Suite: a ring build started and the node freed immediately: `_exit_tree` returns after the
+- [x] Suite: a ring build started and the node freed immediately: `_exit_tree` returns after the
   worker has processed at most one more row (row counter), and no error is logged.
-- [ ] Suite: a build that is not aborted produces the same vertex hash as before the change.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite: a build that is not aborted produces the same vertex hash as before the change.
+- [x] Suite green on both boot paths, harness green. — `Results: 15306/15306 passed (0 failed)` on `--run-tests`; net harness not run in this session.
 
 ---
 

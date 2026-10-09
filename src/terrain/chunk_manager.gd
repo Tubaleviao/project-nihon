@@ -849,6 +849,18 @@ func set_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool = false) -
 	_peer_last_move_msec[peer_id] = now
 	return true
 
+## Phase 82 — the HOST's periodic re-centre of a peer on the position it tracks. Not a client
+## claim: it is never rate-limited, clamped or counted in `peer_recenter_refused`, and it leaves
+## the claim interval clock alone (only a new window starts it). Returns true when the window moved.
+func sync_peer_center(peer_id: int, chunk: Vector2i) -> bool:
+	chunk = TerrainSlice.wrap_chunk(chunk)
+	if _peer_centers.get(peer_id, null) == chunk:
+		return false
+	if not _peer_centers.has(peer_id):
+		_peer_last_move_msec[peer_id] = now_msec.call()
+	_peer_centers[peer_id] = chunk
+	return true
+
 ## The chunk a peer's window is centred on, or null when it has none.
 func peer_center(peer_id: int) -> Variant:
 	return _peer_centers.get(peer_id, null)
