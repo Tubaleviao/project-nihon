@@ -649,7 +649,7 @@ base height, so it cannot convert the number itself.
 - [x] Suite: overlaying a second deplete on the result keeps exactly one legacy op (no duplicates).
 - [x] Suite: a tile already stored as a typed op list overlays exactly as before (Phase 75 tests
   unchanged and green).
-- [x] Suite green on both boot paths, harness green. — `Results: 15416/15416 passed (0 failed)` on `--run-tests`; harness 15/15 steps.
+- [x] Suite green on both boot paths, harness green. — `Results: 15423/15423 passed (0 failed)` on `--run-tests`; harness 15/15 steps.
 
 ---
 
