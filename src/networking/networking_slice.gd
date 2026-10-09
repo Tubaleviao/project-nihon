@@ -612,6 +612,15 @@ func _on_player_state_sync_requested(payload: Dictionary) -> void:
 	}
 	_broadcast_aoi(packet, pos)
 
+## Peers already warned about for a malformed `player_moved` position: one line per peer, not per packet.
+var _malformed_position_warned: Dictionary = {}
+
+func _warn_malformed_position_once(sender: int) -> void:
+	if _malformed_position_warned.has(sender):
+		return
+	_malformed_position_warned[sender] = true
+	Diag.warn("NetworkingSlice: player_moved from peer %d has a malformed position — dropped" % sender)
+
 static func _is_exact_pos(pos: Variant) -> bool:
 	return pos is Dictionary and pos.get("chunk") is Vector2i and pos.get("local") is Vector3
 
@@ -1418,7 +1427,7 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			# previous last-known state stands.
 			var raw = payload.get("position", null)
 			if not WorldPos.is_wire(raw):
-				Diag.warn("NetworkingSlice: player_moved from peer %d has a malformed position — dropped" % sender)
+				_warn_malformed_position_once(sender)
 				return
 			var pos := _vec3(raw)
 			# The packet also carries the peer's self-declared `hp` / `max_hp`,
@@ -1994,6 +2003,7 @@ func _on_peer_connected(id: int) -> void:
 ## A disconnect timestamp is set so _evict_stale_states() can expire the entry
 ## after LAST_KNOWN_STATE_TTL_MS if the peer never reconnects.
 func _on_peer_disconnected(id: int) -> void:
+	_malformed_position_warned.erase(id)
 	GameBus.peer_disconnected.emit(id)
 	# Phase 33 — the connection is gone, so its transport mapping goes with it.
 	# The player's durable record stays on disk, which is what lets a reconnect

@@ -112,8 +112,22 @@ static func wrap_world(world: Vector3) -> Vector3:
 	return Vector3(fposmod(world.x + w * 0.5, w) - w * 0.5, world.y, world.z)
 
 ## True for a decodable wire position: the `{chunk, local}` dictionary or a legacy `[x, y, z]` array.
+## Every element must be a finite number of sane size, so a hostile packet cannot reach `int()` /
+## `float()` with a non-number or feed NaN / infinity into `normalized`.
 static func is_wire(data: Variant) -> bool:
 	if data is Dictionary:
 		return data.get("chunk") is Array and data["chunk"].size() >= 2 \
-			and data.get("local") is Array and data["local"].size() >= 3
-	return data is Array and data.size() >= 3
+			and data.get("local") is Array and data["local"].size() >= 3 \
+			and _sane(data["chunk"], 2) and _sane(data["local"], 3)
+	return data is Array and data.size() >= 3 and _sane(data, 3)
+
+## The first `count` elements of `arr` are numbers, finite, and within +/- WIRE_LIMIT.
+const WIRE_LIMIT := 1.0e9
+static func _sane(arr: Array, count: int) -> bool:
+	for i in count:
+		var v: Variant = arr[i]
+		if not (v is int or v is float):
+			return false
+		if is_nan(float(v)) or absf(float(v)) > WIRE_LIMIT:
+			return false
+	return true

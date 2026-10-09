@@ -1223,6 +1223,9 @@ func _test_remote_peer_exact_position() -> void:
 	Diag.quiet = true
 	n._route_c2h(5, { "type": "player_moved", "position": { "chunk": "x", "local": [1, 2] } })
 	n._route_c2h(5, { "type": "player_moved" })
+	n._route_c2h(5, { "type": "player_moved", "position": { "chunk": [0, 0], "local": [{}, null, "x"] } })
+	n._route_c2h(5, { "type": "player_moved", "position": [NAN, 0.0, 0.0] })
+	n._route_c2h(5, { "type": "player_moved", "position": { "chunk": [0, 0], "local": [INF, 0.0, 0.0] } })
 	Diag.quiet = was_quiet
 	assert_eq(n.get_last_known_exact(5)["chunk"], chunk, "a malformed report leaves the exact state")
 	assert_true(n.get_last_known_state(5).distance_to(WorldPos.from_wire(wire)) < 1.0, "and the Vector3 state")
