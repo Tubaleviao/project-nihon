@@ -59,6 +59,9 @@ var _control: BuildControl = null
 var rebuilds_requested := 0
 var rebuilds_completed := 0
 var rebuilds_dropped := 0
+## Phase 96 — worker tasks started for an accepted request (a reparent's restart of a discarded
+## request is not a new request and is not counted).
+var builds_started := 0
 
 ## Phase 63: the scene-origin offset a client rebase has applied (see `shift_scene`).
 var _scene_offset: Vector3 = Vector3.ZERO
@@ -113,6 +116,7 @@ func rebuild(center: Vector2, radius_chunks: int) -> bool:
 		"half_m": ring_half_m, "window_half_m": window_half_m, "window_center": win_center,
 	}
 	rebuilds_requested += 1
+	_discarded = {}   # a newer request supersedes whatever `_exit_tree` set aside
 	if _task >= 0:
 		if not _queued.is_empty():
 			rebuilds_dropped += 1   # the queued request never ran
@@ -121,7 +125,9 @@ func rebuild(center: Vector2, radius_chunks: int) -> bool:
 		_start(args)
 	return true
 
-func _start(args: Dictionary) -> void:
+func _start(args: Dictionary, restart: bool = false) -> void:
+	if not restart:
+		builds_started += 1
 	_control = BuildControl.new()
 	args["control"] = _control
 	_task_args = args
@@ -199,7 +205,10 @@ func _enter_tree() -> void:
 		return
 	var args := _discarded
 	_discarded = {}
-	_start(args)
+	if _task < 0:
+		_start(args, true)
+	elif _queued.is_empty():   # a build is already running: the discarded request waits behind it
+		_queued = args
 
 ## The ring's mesh: GRID × GRID cells centred on `ring_center` spanning ±`half_m`, with the voxel
 ## window (`window_half_m` around `window_center`) cut out EXACTLY: a cell wholly inside is skipped, a

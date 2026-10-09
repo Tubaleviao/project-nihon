@@ -105,6 +105,9 @@ func run() -> void:
 	_run_test("terrain: freeing the ring mid-build aborts the worker at the next row", _test_distant_ring_abort)
 	_run_test("terrain: a build that is not aborted is unchanged by the abort check", _test_distant_ring_unaborted_same)
 	_run_test("terrain: a reparented ring rebuilds to the undisturbed mesh", _test_distant_ring_reparent)
+	_run_test("terrain: a rebuild while detached starts exactly one task per request", _test_distant_ring_detached_rebuild)
+	_run_test("terrain: a ring reparented with a queued request builds the queued centre", _test_distant_ring_reparent_queued)
+	_run_test("terrain: the ring abort path is repeatable without engine errors", _test_distant_ring_abort_loop)
 	_run_test("terrain: the distant ring's vertices are pinned by a hash", _test_distant_ring_vertex_hash)
 	_run_test("terrain: detail noise has one formula", _test_detail_noise_single_formula)
 	_run_test("terrain: walking 5 chunks requests at most 5 ring rebuilds", _test_distant_ring_rebuild_counter)
@@ -14571,6 +14574,7 @@ func _test_distant_ring_abort() -> void:
 	d.rebuild(Vector2(100.0, -40.0), 3)
 	var control = d._control
 	assert_true(control != null, "the build has a control block")
+	remove_child(d)   # joined outside any locked iteration, then freed
 	d.free()
 	var rows_after_abort: int = control.rows
 	assert_true(control.aborted, "leaving the tree raised the abort flag")
@@ -14610,6 +14614,72 @@ func _test_distant_ring_reparent() -> void:
 		"the reparented ring's vertex hash equals an undisturbed ring's")
 	calm.free()
 	moved.free()
+
+## Phase 96 — a `rebuild` while the node is out of the tree starts one build, and re-entering the tree
+## does not start a second one: the mesh swapped in is the newest centre's.
+func _test_distant_ring_detached_rebuild() -> void:
+	var c1 := Vector2(100.0, -40.0)
+	var c2 := Vector2(1500.0, 900.0)
+	var calm := DistantTerrainScript.new()
+	add_child(calm)
+	calm.world_seed = 11
+	calm.rebuild(c2, 2)
+	calm.poll(true)
+	var d := DistantTerrainScript.new()
+	add_child(d)
+	d.world_seed = 11
+	d.rebuild(c1, 2)
+	remove_child(d)
+	assert_true(d.rebuild(c2, 2), "a detached rebuild at a new centre is accepted")
+	add_child(d)
+	assert_eq(d.builds_started, d.rebuilds_requested - d.rebuilds_dropped, "one task started per accepted request")
+	assert_true(d.poll(true), "the newest centre's mesh is swapped in")
+	assert_eq(d.builds_started, d.rebuilds_requested - d.rebuilds_dropped, "re-entering started no extra task")
+	var a: ArrayMesh = (calm.get_child(0) as MeshInstance3D).mesh
+	var b: ArrayMesh = (d.get_child(0) as MeshInstance3D).mesh
+	assert_eq(hash(b.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]), hash(a.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]),
+		"the swapped-in mesh is the newest centre's")
+	calm.free()
+	d.free()
+
+## Phase 96 — one build in flight and one queued, then a reparent: the queued request is the one built.
+func _test_distant_ring_reparent_queued() -> void:
+	var c1 := Vector2(100.0, -40.0)
+	var c2 := Vector2(1500.0, 900.0)
+	var calm := DistantTerrainScript.new()
+	add_child(calm)
+	calm.world_seed = 11
+	calm.rebuild(c2, 2)
+	calm.poll(true)
+	var d := DistantTerrainScript.new()
+	add_child(d)
+	d.world_seed = 11
+	d.rebuild(c1, 2)
+	assert_true(d.rebuild(c2, 2), "a second request queues behind the first")
+	remove_child(d)
+	add_child(d)
+	assert_true(d.is_building(), "re-entering restarted the queued request")
+	assert_true(d.poll(true), "its mesh is swapped in")
+	var a: ArrayMesh = (calm.get_child(0) as MeshInstance3D).mesh
+	var b: ArrayMesh = (d.get_child(0) as MeshInstance3D).mesh
+	assert_eq(hash(b.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]), hash(a.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]),
+		"the vertex hash equals an undisturbed ring built at the queued centre")
+	calm.free()
+	d.free()
+
+## Phase 96 — the abort path, run repeatedly: detach first (`remove_child`) so the worker is joined
+## outside any locked iteration, then free.
+func _test_distant_ring_abort_loop() -> void:
+	for i in 50:
+		var d := DistantTerrainScript.new()
+		add_child(d)
+		d.world_seed = 11 + i
+		d.rebuild(Vector2(100.0 + float(i), -40.0), 2)
+		var control = d._control
+		remove_child(d)
+		assert_true(control.aborted, "iteration %d: leaving the tree raised the abort flag" % i)
+		assert_false(d.is_building(), "iteration %d: no task left in flight" % i)
+		d.free()
 
 func _test_distant_ring_unaborted_same() -> void:
 	var half := DistantTerrainScript.ring_half_extent(2)

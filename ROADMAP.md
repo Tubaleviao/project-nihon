@@ -116,7 +116,7 @@ issue number where the criterion used to be.
 | 93 | Host-sync window moves are counted and a clock swap resets the throttles | Done | below |
 | 94 | A test eviction helper and a bounded UI retire list | Done | below |
 | 95 | Free pointer, right-click look, chat box and admin commands | Done | below |
-| 96 | A detached ring rebuild does not orphan its worker | Planned | below |
+| 96 | A detached ring rebuild does not orphan its worker | Done | below |
 | 97 | Peer windows and position relays use the exact peer position | Planned | below |
 | 98 | An exact first-boot spawn and a public canonical helper | Planned | below |
 | 99 | One legacy-op constant and one legacy-height parser | Planned | below |
@@ -791,7 +791,7 @@ carries messages and slash commands (admins can teleport, create items, kill pla
 
 ---
 
-## Phase 96 — A detached ring rebuild does not orphan its worker
+## Phase 96 — A detached ring rebuild does not orphan its worker ✅ Done
 
 **Goal:** `DistantTerrain.rebuild` called while the node is out of the tree (after `_exit_tree`,
 before re-entry) starts a build through `_start`, but `_discarded` still holds the request
@@ -815,14 +815,14 @@ A reparent with a queued request pending is untested. `_test_distant_ring_abort`
   under test and not a free-while-locked race.
 
 **Acceptance criteria:**
-- [ ] Suite: rebuild → `remove_child` → `rebuild` at a new centre → `add_child` leaves exactly one
+- [x] Suite: rebuild → `remove_child` → `rebuild` at a new centre → `add_child` leaves exactly one
   task started per accepted request (a `builds_started` counter equals `rebuilds_requested` minus
   `rebuilds_dropped`), and `poll(true)` swaps in the mesh of the newest centre.
-- [ ] Suite: a ring with one build in flight and one queued is reparented; after `poll(true)` its
+- [x] Suite: a ring with one build in flight and one queued is reparented; after `poll(true)` its
   vertex hash equals an undisturbed ring built at the queued centre.
-- [ ] Suite: `_test_distant_ring_abort` runs 50 times in a loop with no engine error and the Phase 84
+- [x] Suite: `_test_distant_ring_abort` runs 50 times in a loop with no engine error and the Phase 84
   orphan check still reports zero leaked objects.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green — `Results: 15578/15578 passed (0 failed)`, harness 15/15 steps.
 
 ---
 
