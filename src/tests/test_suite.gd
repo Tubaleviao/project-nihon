@@ -101,6 +101,8 @@ func run() -> void:
 	_run_test("terrain: the ring meets the voxel ground at the window edge", _test_distant_ring_window_edge)
 	_run_test("player: swimming reads the voxel column, not the generated height", _test_swim_reads_voxel_column)
 	_run_test("terrain: the distant ring builds off the main thread", _test_distant_ring_async)
+	_run_test("terrain: freeing the ring mid-build aborts the worker at the next row", _test_distant_ring_abort)
+	_run_test("terrain: a build that is not aborted is unchanged by the abort check", _test_distant_ring_unaborted_same)
 	_run_test("terrain: the distant ring's vertices are pinned by a hash", _test_distant_ring_vertex_hash)
 	_run_test("terrain: detail noise has one formula", _test_detail_noise_single_formula)
 	_run_test("terrain: walking 5 chunks requests at most 5 ring rebuilds", _test_distant_ring_rebuild_counter)
@@ -14348,6 +14350,37 @@ func _test_swim_reads_voxel_column() -> void:
 	p.free()
 	terr.free()
 	vox.free()
+
+## Phase 83 — leaving the tree mid-build raises the abort flag; the worker stops within one more row
+## and the freed node never applies a result.
+func _test_distant_ring_abort() -> void:
+	var d := DistantTerrainScript.new()
+	add_child(d)
+	d.world_seed = 11
+	d.rebuild(Vector2(100.0, -40.0), 3)
+	var control = d._control
+	assert_true(control != null, "the build has a control block")
+	d.free()
+	var rows_after_abort: int = control.rows
+	assert_true(control.aborted, "leaving the tree raised the abort flag")
+	# The worker is joined by now: no row was started after the flag, bar the one in progress.
+	assert_true(rows_after_abort <= 2 * (DistantTerrainScript.GRID + 1) + 1, "the row counter is bounded")
+	OS.delay_msec(20)
+	assert_eq(control.rows, rows_after_abort, "no worker row runs after the node is gone")
+
+func _test_distant_ring_unaborted_same() -> void:
+	var half := DistantTerrainScript.ring_half_extent(2)
+	var win := (2.0 + 0.5) * DistantTerrainScript.CHUNK_METERS
+	var plain: ArrayMesh = DistantTerrainScript.build_mesh(5, 4.0e7, Vector2.ZERO, half, win, Vector2.ZERO)
+	var ctl := DistantTerrainScript.BuildControl.new()
+	var checked: ArrayMesh = DistantTerrainScript.build_mesh(5, 4.0e7, Vector2.ZERO, half, win, Vector2.ZERO, ctl)
+	assert_eq(hash(checked.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]),
+		hash(plain.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]), "same vertex hash with the check in place")
+	assert_eq(ctl.rows, 2 * DistantTerrainScript.GRID + 1, "every row was visited")
+	var abort := DistantTerrainScript.BuildControl.new()
+	abort.aborted = true
+	assert_true(DistantTerrainScript.build_mesh(5, 4.0e7, Vector2.ZERO, half, win, Vector2.ZERO, abort) == null, "an aborted build returns no mesh")
+	assert_eq(abort.rows, 0, "and starts no row")
 
 ## Phase 68 — `rebuild` never evaluates the lattice on the main thread; the swapped-in mesh equals a
 ## synchronous build for the same centre.

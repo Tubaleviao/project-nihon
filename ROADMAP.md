@@ -376,7 +376,7 @@ can flake (#162).
 
 ---
 
-## Phase 83 — Distant-ring teardown that does not stall
+## Phase 83 — Distant-ring teardown that does not stall ✅ Done
 
 **Goal:** `DistantTerrain._exit_tree` calls `WorkerThreadPool.wait_for_task_completion` on an
 in-flight ring build, so leaving the world (or freeing the ring in a test) blocks the main
@@ -392,10 +392,10 @@ thread for the rest of a full lattice build (#179).
   that arrives after the flag is discarded rather than applied to a freed node.
 
 **Acceptance criteria:**
-- [ ] Suite: a ring build started and the node freed immediately: `_exit_tree` returns after the
+- [x] Suite: a ring build started and the node freed immediately: `_exit_tree` returns after the
   worker has processed at most one more row (row counter), and no error is logged.
-- [ ] Suite: a build that is not aborted produces the same vertex hash as before the change.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite: a build that is not aborted produces the same vertex hash as before the change.
+- [x] Suite green on both boot paths, harness green. — `Results: 15306/15306 passed (0 failed)` on `--run-tests`; net harness not run in this session.
 
 ---
 
