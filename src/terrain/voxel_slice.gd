@@ -404,7 +404,7 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 		var water_inst := MeshInstance3D.new()
 		water_inst.name = "Water"
 		water_inst.mesh = water_mesh
-		water_inst.material_override = _water_material()
+		water_inst.material_override = _ice_material() if is_frozen_chunk(chunk_pos) else _water_material()
 		root.add_child(water_inst)
 
 	# --- Rare-vein deposits: a SECOND mesh, from arrays the build already carries. ---
@@ -491,6 +491,15 @@ static func water_mesh_for(chunk_pos: Vector2i, heightmap: Array) -> ArrayMesh:
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
+
+var _ice_mat: StandardMaterial3D = null
+## Frozen sea: an opaque pale sheet at sea level (a polar chunk's water).
+func _ice_material() -> StandardMaterial3D:
+	if _ice_mat == null:
+		_ice_mat = StandardMaterial3D.new()
+		_ice_mat.albedo_color = ICE_COLOR
+		_ice_mat.roughness = 0.35
+	return _ice_mat
 
 var _water_mat: StandardMaterial3D = null
 func _water_material() -> StandardMaterial3D:
@@ -2843,7 +2852,27 @@ static func natural_color(world_xz: Vector2, biomes: Dictionary, colours: Dictio
 		int(field.get("seed", 0)), field.get("depleted", {}), field.get("veins", {}))
 	if not colours.has(material):
 		colours[material] = _material_color(material)
-	return colours[material]
+	return icy(colours[material], world_xz.y)
+
+## Polar ice: latitude (degrees) where the ground starts to whiten, and where it is fully ice.
+const ICE_START_LAT := 72.0
+const ICE_FULL_LAT := 80.0
+const ICE_COLOR := Color(0.88, 0.94, 0.98)
+## The ice blend is stepped in eighths so a latitude band merges into a few big quads, not one per tile.
+const ICE_STEPS := 8.0
+
+## `colour` of the ground at world Z `world_z` (metres), whitened toward ice by latitude: the poles of a
+## planet like Earth are frozen. Pure of the world position, so every build agrees.
+static func icy(colour: Color, world_z: float) -> Color:
+	var lat := absf(TerrainSlice.latitude_at(world_z))
+	if lat <= ICE_START_LAT:
+		return colour
+	var t := snappedf(smoothstep(ICE_START_LAT, ICE_FULL_LAT, lat), 1.0 / ICE_STEPS)
+	return colour.lerp(ICE_COLOR, t)
+
+## True when the chunk row sits in the frozen sea zone (water there is ice, not liquid).
+static func is_frozen_chunk(chunk_pos: Vector2i) -> bool:
+	return absf(TerrainSlice.latitude_of(chunk_pos.y)) >= ICE_FULL_LAT
 
 ## Phase 64 — the biome whose surface the tile at `world_xz` WEARS, resolved from the terrain
 ## slice: the same `blended_biome` answer the mesher gets from the gathered map.
