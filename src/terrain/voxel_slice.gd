@@ -377,7 +377,6 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 
 	var root := Node3D.new()
 	root.name = "Chunk_%s" % key
-	root.position = _scene_offset
 	add_child(root)
 	_chunks[key] = root
 
@@ -390,7 +389,16 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	if built.is_empty():
 		# Only the SYNCHRONOUS path reaches this now: a worker result that carried nothing
 		# was refused above rather than quietly rebuilt here (Phase 42 review).
-		built = build_chunk_arrays(chunk_pos, heightmap, collect_build_runs(chunk_pos, heightmap))
+		built = build_chunk_arrays(chunk_pos, heightmap, collect_build_runs(chunk_pos, heightmap), true)
+	# A chunk-local build puts the node at the chunk's corner: the corner is summed with the scene
+	# offset in double precision, so far from the origin the node's position is small and exact and
+	# the vertices stay small too (float32 vertices at 2e7 m would snap to 2 m and shatter the ground).
+	root.position = _scene_offset
+	if bool(built.get("local", false)):
+		root.position = Vector3(
+			float(chunk_pos.x * CHUNK_SIZE) * TILE_SIZE + _scene_offset.x,
+			_scene_offset.y,
+			float(chunk_pos.y * CHUNK_SIZE) * TILE_SIZE + _scene_offset.z)
 	var surface := _mesh_from_arrays(built)
 	var mesh_inst := MeshInstance3D.new()
 	mesh_inst.mesh = surface
@@ -399,7 +407,7 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	root.add_child(mesh_inst)
 
 	# --- Water (Phase 51): a flat, collision-free surface where the ground is below sea level. ---
-	var water_mesh := water_mesh_for(chunk_pos, heightmap)
+	var water_mesh := water_mesh_for(chunk_pos, heightmap, bool(built.get("local", false)))
 	if water_mesh != null:
 		var water_inst := MeshInstance3D.new()
 		water_inst.name = "Water"
@@ -463,9 +471,10 @@ static func water_spans(heightmap: Array, sea_level: float) -> Array:
 				start = -1
 	return spans
 
-## The chunk's water surface at the sea level (world coordinates, like the terrain mesh), or null on dry ground.
+## The chunk's water surface at the sea level (world coordinates, or relative to the chunk's corner when
+## `local`, like the terrain mesh), or null on dry ground.
 ## Render-only: the mesh has no collision body, so the player sinks through it and swims.
-static func water_mesh_for(chunk_pos: Vector2i, heightmap: Array) -> ArrayMesh:
+static func water_mesh_for(chunk_pos: Vector2i, heightmap: Array, local: bool = false) -> ArrayMesh:
 	var sea := WorldShape.sea_level()
 	var spans := water_spans(heightmap, sea)
 	if spans.is_empty():
@@ -474,10 +483,12 @@ static func water_mesh_for(chunk_pos: Vector2i, heightmap: Array) -> ArrayMesh:
 	var normals := PackedVector3Array()
 	var indices := PackedInt32Array()
 	for sp in spans:
-		var z0 := (float(chunk_pos.y * CHUNK_SIZE) + float(sp.x)) * TILE_SIZE
+		var chunk_x := 0.0 if local else float(chunk_pos.x * CHUNK_SIZE)
+		var chunk_z := 0.0 if local else float(chunk_pos.y * CHUNK_SIZE)
+		var z0 := (chunk_z + float(sp.x)) * TILE_SIZE
 		var z1 := z0 + TILE_SIZE
-		var x0 := (float(chunk_pos.x * CHUNK_SIZE) + float(sp.y)) * TILE_SIZE
-		var x1 := (float(chunk_pos.x * CHUNK_SIZE) + float(sp.z)) * TILE_SIZE
+		var x0 := (chunk_x + float(sp.y)) * TILE_SIZE
+		var x1 := (chunk_x + float(sp.z)) * TILE_SIZE
 		var base := vertices.size()
 		vertices.append_array([Vector3(x0, sea, z0), Vector3(x1, sea, z0), Vector3(x1, sea, z1), Vector3(x0, sea, z1)])
 		for _i in 4:
@@ -924,9 +935,15 @@ static func _run_depth(run: Dictionary, surface: float) -> float:
 ## instead of one per tile (4096 of them at TILE_SIZE 0.5). UVs are dropped with the
 ## merge — the terrain's material is per-vertex colour with no texture, and a merged
 ## rectangle has no per-tile UV mapping left to give.
-static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary) -> Dictionary:
-	var origin_x := chunk_pos.x * CHUNK_SIZE * TILE_SIZE
-	var origin_z := chunk_pos.y * CHUNK_SIZE * TILE_SIZE
+##
+## `local` builds every vertex relative to the chunk's own corner (the node is then placed at the corner,
+## see `build_chunk`): float32 vertices in absolute metres snap to whole metres a few million metres out.
+## The default keeps absolute coordinates, which is what the suite's seam probes read.
+static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary, local: bool = false) -> Dictionary:
+	var corner_x := chunk_pos.x * CHUNK_SIZE * TILE_SIZE
+	var corner_z := chunk_pos.y * CHUNK_SIZE * TILE_SIZE
+	var origin_x := 0.0 if local else corner_x
+	var origin_z := 0.0 if local else corner_z
 	var runs: Dictionary = resolved.get("runs", {})
 	var deposits: Array = resolved.get("deposits", [])
 
@@ -985,7 +1002,7 @@ static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: 
 			cell_count += g["cells"].size()
 			for rect in _merge_rects(g["cells"]):
 				quad_count += _emit_rect(vertices, normals, colors, indices, collision,
-					g, rect, origin_x, origin_z)
+					g, rect, origin_x, origin_z, corner_x - origin_x, corner_z - origin_z)
 	# The rare-vein deposit boxes (see the docstring): geometry only, never collision.
 	# Off the resolved list, so this half of the build is the worker's.
 	var deposit_vertices := PackedVector3Array()
@@ -994,7 +1011,7 @@ static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: 
 	var deposit_indices  := PackedInt32Array()
 	for deposit in deposits:
 		MeshUtil.add_box_arrays(deposit_vertices, deposit_normals, deposit_colors, deposit_indices,
-			deposit["position"], deposit["size"], deposit["color"])
+			deposit["local_position"] if local else deposit["position"], deposit["size"], deposit["color"])
 	return {
 		"vertices":    vertices,
 		"normals":     normals,
@@ -1007,6 +1024,7 @@ static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: 
 		"deposit_normals":  deposit_normals,
 		"deposit_colors":   deposit_colors,
 		"deposit_indices":  deposit_indices,
+		"local":       local,
 	}
 
 ## Queue this run's exposed side walls against all four neighbours. The NEIGHBOUR
@@ -1148,10 +1166,15 @@ static func _merge_rects(cells: Dictionary) -> Array:
 ## soup. The winding matches the per-tile quads the merge replaces, so a face's normal
 ## points where it always did (the material renders both faces regardless; this is for
 ## lighting). Returns the number of quads emitted (always 1) so the caller can count.
-static func _emit_rect(vertices: PackedVector3Array, normals: PackedVector3Array, colors: PackedColorArray, indices: PackedInt32Array, collision: PackedVector3Array, g: Dictionary, rect: Dictionary, origin_x: float, origin_z: float) -> int:
+static func _emit_rect(vertices: PackedVector3Array, normals: PackedVector3Array, colors: PackedColorArray, indices: PackedInt32Array, collision: PackedVector3Array, g: Dictionary, rect: Dictionary, origin_x: float, origin_z: float, plane_dx: float = 0.0, plane_dz: float = 0.0) -> int:
 	var bottom := float(g["bottom"])
 	var top    := float(g["top"])
+	# A wall's plane is an absolute coordinate; a chunk-local build moves it by the corner (in double
+	# precision, so the result is small and exact) before it becomes a float32 vertex.
 	var plane  := float(g["plane"])
+	match str(g["dir"]):
+		"north", "south": plane -= plane_dz
+		"west", "east": plane -= plane_dx
 	var color: Color = g["color"]
 	var x0 := origin_x + int(rect["tx"]) * TILE_SIZE
 	var x1 := x0 + int(rect["w"]) * TILE_SIZE
@@ -2101,6 +2124,9 @@ static func vein_deposits_at(chunk_pos: Vector2i, heightmap: Array, cache: Dicti
 				continue
 			out.append({
 				"position": Vector3(world_xz.x, h + VEIN_DEPOSIT_HEIGHT * 0.5, world_xz.y),
+				# The same point relative to the chunk's corner: exact in float32 at any distance.
+				"local_position": Vector3(
+					(float(tx) + 0.5) * TILE_SIZE, h + VEIN_DEPOSIT_HEIGHT * 0.5, (float(tz) + 0.5) * TILE_SIZE),
 				"size":     deposit_size,
 				"color":    _material_color(str(vein["material"])),
 			})

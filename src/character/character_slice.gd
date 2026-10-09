@@ -777,6 +777,12 @@ func trigger_death(instance_id: String) -> void:
 		return
 	_instances[instance_id]["locomotion"].trigger_death()
 
+## Stand an instance back up after a death: DEATH is terminal until the locomotion is reset.
+func reset_locomotion(instance_id: String) -> void:
+	if not _instances.has(instance_id):
+		return
+	_instances[instance_id]["locomotion"].reset()
+
 ## Foot IK targets for an instance. `terrain_height` is a Callable(Vector2)→float.
 func get_foot_ik_targets(instance_id: String, terrain_height: Callable) -> Dictionary:
 	if not _instances.has(instance_id):

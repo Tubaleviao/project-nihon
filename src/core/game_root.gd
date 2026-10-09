@@ -2483,6 +2483,9 @@ func _on_player_died(position: Vector3, killer_id: String) -> void:
 		GameBus.character_death_requested.emit(_character.get_player_character())
 
 func _on_player_respawned(_position: Vector3) -> void:
+	# The death pose is terminal until reset: without this the avatar lies down for good after a respawn.
+	if _character.get_player_character() != "":
+		_character.reset_locomotion(_character.get_player_character())
 	# Phase 87 — put the body on the exact spawn after rebasing the scene onto its chunk, so a player
 	# who died far from the spawn does not land on a quantised far-from-origin float32.
 	if _player != null and _rebase != null and not _player.respawn_world_pos.is_empty():

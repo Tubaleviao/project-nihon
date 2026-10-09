@@ -97,6 +97,8 @@ func run() -> void:
 	_run_test("climate: niche field wraps, table is calibrated, fallback pool is cached", _test_climate_niche_wraps_and_is_calibrated)
 	_run_test("climate: the Voronoi fallback is land-only", _test_climate_fallback_is_land_only)
 	_run_test("water: spans cover exactly the tiles below sea level", _test_water_spans)
+	_run_test("voxel: a chunk-local build keeps far-from-origin vertices small and exact", _test_voxel_local_build_far_chunk)
+	_run_test("locomotion: reset stands a dead avatar back up", _test_locomotion_reset_after_death)
 	_run_test("player: deep water is swum, not walked",       _test_player_swims_in_deep_water)
 	_run_test("terrain: the distant ring is 10x the window with no collision", _test_distant_ring)
 	_run_test("terrain: the ring meets the voxel ground at the window edge", _test_distant_ring_window_edge)
@@ -1578,11 +1580,14 @@ func _test_world_pos_rebase() -> void:
 	v.build_chunk(Vector2i(1, 0), flat)
 	var floor_before: Vector3 = v.get_node("WorldFloor").position
 	v.shift_scene(shift)
-	for key in ["0,0", "1,0"]:
-		assert_eq(v.get_node("Chunk_%s" % key).position, shift, "chunk %s root shifted by the rebase offset" % key)
+	# A chunk node sits at its own corner (its vertices are chunk-local), so the rebase offset is the
+	# node's position minus that corner.
+	var corner := func(cx: int) -> Vector3: return Vector3(float(cx * 64) * VoxelSlice.TILE_SIZE, 0.0, 0.0)
+	for cx in [0, 1]:
+		assert_eq(v.get_node("Chunk_%d,0" % cx).position, shift + corner.call(cx), "chunk %d root shifted by the rebase offset" % cx)
 	assert_eq(v.get_node("WorldFloor").position, floor_before + shift, "the world floor shifts with the chunks")
 	v.build_chunk(Vector2i(2, 0), flat)
-	assert_eq(v.get_node("Chunk_2,0").position, shift, "a chunk built after the rebase uses the shifted frame")
+	assert_eq(v.get_node("Chunk_2,0").position, shift + corner.call(2), "a chunk built after the rebase uses the shifted frame")
 	remove_child(v)
 	v.free()
 	# The 0.125 step quantiser holds at a large chunk index: 400 steps east of 10,000 km, each
@@ -14362,6 +14367,43 @@ func _test_climate_ocean_and_niches() -> void:
 		fantasy += int(counts.get(key, 0))
 	assert_true(float(fantasy) / float(n) < 0.15, "fantasy biomes are rare climate niches (%d of %d)" % [fantasy, n])
 	assert_true(counts.size() >= 4, "several biomes appear across the sample (%s)" % [counts])
+
+## /tp to the seam (x ~ 2e7 m): absolute float32 vertices would snap to 2 m. A local build stays
+## inside the chunk's own 32 m, and is the absolute build shifted by the chunk corner.
+func _test_voxel_local_build_far_chunk() -> void:
+	var n := TerrainSlice.CHUNK_SIZE
+	var far := Vector2i(624999, 0)
+	var hm: Array = []
+	hm.resize(n * n)
+	hm.fill(3.0)
+	var v := VoxelSlice.new()
+	add_child(v)
+	var built := VoxelSlice.build_chunk_arrays(far, hm, v.collect_build_runs(far, hm), true)
+	v.free()
+	assert_true(bool(built["local"]), "the build says it is chunk-local")
+	var verts: PackedVector3Array = built["vertices"]
+	assert_true(not verts.is_empty(), "the far chunk has geometry")
+	var extent := float(n) * VoxelSlice.TILE_SIZE
+	var inside := true
+	for p in verts:
+		if p.x < -0.001 or p.x > extent + 0.001 or p.z < -0.001 or p.z > extent + 0.001:
+			inside = false
+	assert_true(inside, "every vertex lies within the chunk's own span")
+	var water := VoxelSlice.water_mesh_for(far, hm, true)
+	assert_true(water == null, "dry ground has no water")
+	var wet: Array = []
+	wet.resize(n * n)
+	wet.fill(-5.0)
+	var wm := VoxelSlice.water_mesh_for(far, wet, true)
+	assert_true(wm != null and wm.get_aabb().position.x >= -0.001 and wm.get_aabb().end.x <= extent + 0.001,
+		"a local water surface is relative to the chunk corner")
+
+func _test_locomotion_reset_after_death() -> void:
+	var loco := Locomotion.new()
+	loco.trigger_death()
+	assert_eq(loco.state_name(), "DEATH", "death is the terminal pose")
+	loco.reset()
+	assert_eq(loco.state_name(), "IDLE", "a respawn resets it to idle")
 
 func _test_water_spans() -> void:
 	var n := TerrainSlice.CHUNK_SIZE

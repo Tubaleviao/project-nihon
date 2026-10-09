@@ -700,7 +700,7 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 	var result: Array = [null]
 	var task_id := WorkerThreadPool.add_task(
 		func(): result[0] = VoxelBuilder.build_chunk_arrays(chunk_pos, heightmap,
-			VoxelBuilder.build_runs(chunk_pos, heightmap, gathered)),
+			VoxelBuilder.build_runs(chunk_pos, heightmap, gathered), true),
 		false, "chunk build %s" % key)
 	_builds[task_id] = {
 		"chunk":     chunk_pos,
