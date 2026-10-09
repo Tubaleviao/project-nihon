@@ -140,6 +140,9 @@ var _friend_code_arg: String = ""
 var _local_spawn: Variant = null
 ## Phase 53 — client: the respawn point was taken from the first snapshot's own position.
 var _client_respawn_point_set: bool = false
+## Phase 87 — how many times `_saved_local_position` has run; a test reads it to prove a placement
+## reads the record once.
+var _saved_position_reads: int = 0
 
 ## Phase 29 — the AOI grid cell each connected peer last reported, so a client
 ## moving into a new region triggers a re-scoped snapshot (host side only).
@@ -824,6 +827,7 @@ func _finish_host_boot() -> void:
 	var ground_h := spawn_pos.y - 1.0
 	_player.spawn_at(spawn_pos)
 	_player.respawn_point = spawn_pos
+	_player.respawn_world_pos = {}
 
 	# Phase 33 — the local player's own record (position / HP / technologies) is
 	# restored on top of the spawn point, so a restart puts the player back where
@@ -1688,7 +1692,7 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 			if not _client_respawn_point_set:
 				# Only the first snapshot carries the placement; later AOI re-scoped snapshots
 				# carry wherever the player has since walked, which is not a spawn point.
-				_player.respawn_point = client_respawn_point(own, _player.get_position())
+				_player.set_respawn_world_pos(client_respawn_point(own, _player.get_world_pos()))
 				_client_respawn_point_set = true
 		var hp := float(own.get("hp", -1.0))
 		if hp >= 0.0:
@@ -2078,7 +2082,7 @@ func _restore_local_player() -> void:
 	# before the field existed) the saved position; a fresh player's placement is recorded now.
 	var spawn: Variant = respawn_point_for(rec)
 	if spawn != null:
-		_player.respawn_point = _lifted_out_of_ground(spawn)
+		_player.set_respawn_world_pos(_lifted_world_pos(spawn))
 	else:
 		_registry.record_spawn(pid, _player.respawn_point)
 	var hp := float(rec.get("hp", -1.0))
@@ -2092,28 +2096,46 @@ func _restore_local_player() -> void:
 	# Phase 47 — and the worn set.
 	_apply_local_equipment(rec.get("equipment", {}))
 
-## Phase 66 — the respawn point a player RECORD implies: its original spawn, else (a record from
-## before the field existed) its saved position, else null (a player never placed).
+## Phase 66 — the respawn point a player RECORD implies, as an exact `{chunk, local}` (Phase 87): its
+## original spawn, else (a record from before the field existed) its saved position, else null (a
+## player never placed).
 static func respawn_point_for(rec: Dictionary) -> Variant:
 	var spawn: Variant = PlayerRegistry.spawn_from_record(rec)
 	if spawn != null:
 		return spawn
 	var arr: Variant = rec.get("position", [])
 	if arr is Array and (arr as Array).size() >= 3:
-		return Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
+		return PlayerRegistry.world_pos_of(rec)
 	return null
 
-## Phase 66 — the respawn point of a client from its handshake `player` block: the host's
-## recorded spawn when it sent one, else where the body stands now.
-static func client_respawn_point(own: Dictionary, standing: Vector3) -> Vector3:
-	if WorldPos.is_wire(own.get("spawn", null)):
-		return WorldPos.from_wire(own["spawn"], standing)
+## Phase 66 — the respawn point of a client from its handshake `player` block, as an exact
+## `{chunk, local}`: the host's recorded spawn when it sent a valid one, else where the body stands.
+static func client_respawn_point(own: Dictionary, standing: Dictionary) -> Dictionary:
+	var sp: Variant = own.get("spawn", null)
+	if sp is Dictionary and WorldPos.is_wire(sp) and PlayerRegistry.is_valid_wire_pos(sp):
+		return PlayerRegistry._canonical(WorldPos.pos_from_wire(sp))
+	if sp is Array and WorldPos.is_wire(sp):
+		# A legacy `[x, y, z]` spawn: no exact chunk to keep.
+		var v: Vector3 = WorldPos.from_wire(sp, Vector3.ZERO)
+		return PlayerRegistry._canonical(WorldPos.from_world(v.x, v.y, v.z))
 	return standing
+
+## `wp`, lifted onto the surface above it when it lies inside the ground (see `_lifted_out_of_ground`);
+## only `local.y` changes, so the chunk and the horizontal offset stay exact.
+func _lifted_world_pos(wp: Dictionary) -> Dictionary:
+	var chunk: Vector2i = wp["chunk"]
+	var local: Vector3 = wp["local"]
+	var world := Vector3(chunk.x * WorldPos.CHUNK_METERS + local.x, local.y, chunk.y * WorldPos.CHUNK_METERS + local.z)
+	var lifted := _lifted_out_of_ground(world)
+	if lifted == world:
+		return wp
+	return {"chunk": chunk, "local": Vector3(local.x, lifted.y, local.z)}
 
 ## The local player's recorded position, or null when there is no identity or the
 ## record carries none. Read by the host boot (to arm the first ring where the player
 ## will stand) and by `_restore_local_player`.
 func _saved_local_position() -> Variant:
+	_saved_position_reads += 1
 	var pid := _registry.local_player_id
 	if pid.is_empty():
 		return null
@@ -2142,10 +2164,13 @@ func _on_player_teleport(pos: Vector3) -> void:
 ## Phase 78 — put the local player at `pos`. A saved position is placed from the record's exact
 ## `{chunk, local}` (rebasing the scene first, so the body lands on a small float32), not from the
 ## quantised double `position`; a position with no saved record (a first-boot spawn) and a headless
-## server, which has no rebase driver, place by world position.
+## server, which has no rebase driver, place by world position. So the record WINS over `pos`
+## whenever one exists and a rebase driver is present; `pos` is used otherwise. The record is read
+## once per placement.
 func _place_local_player(pos: Vector3) -> void:
 	var pid := _registry.local_player_id
-	if _rebase != null and not pid.is_empty() and _saved_local_position() != null:
+	var saved: Variant = _saved_local_position()
+	if _rebase != null and not pid.is_empty() and saved != null:
 		var wp := _registry.get_world_pos(pid)
 		_rebase.rebase_to(wp["chunk"])
 		_player.place_at_world_pos(wp)
@@ -2180,6 +2205,12 @@ func _lifted_out_of_ground(pos: Vector3) -> Vector3:
 ## A respawn lands on the recorded spawn point; one recorded inside the ground (by the old
 ## origin-spawn bug) is lifted too.
 func _lift_after_respawn() -> void:
+	if _player != null and not _player.respawn_world_pos.is_empty():
+		var wp := _player.get_world_pos()
+		var lifted := _lifted_world_pos(wp)
+		if lifted != wp:
+			_player.place_at_world_pos(lifted)
+		return
 	_lift_out_of_ground()
 
 ## Read the world record and the LOCAL player's record off disk. A missing world
@@ -2452,6 +2483,11 @@ func _on_player_died(position: Vector3, killer_id: String) -> void:
 		GameBus.character_death_requested.emit(_character.get_player_character())
 
 func _on_player_respawned(_position: Vector3) -> void:
+	# Phase 87 — put the body on the exact spawn after rebasing the scene onto its chunk, so a player
+	# who died far from the spawn does not land on a quantised far-from-origin float32.
+	if _player != null and _rebase != null and not _player.respawn_world_pos.is_empty():
+		_rebase.rebase_to(_player.respawn_world_pos["chunk"])
+		_player.place_at_world_pos(_player.respawn_world_pos)
 	_lift_after_respawn()
 
 func _on_save_completed(slot: int) -> void:

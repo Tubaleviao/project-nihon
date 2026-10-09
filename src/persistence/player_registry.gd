@@ -504,14 +504,18 @@ static func snapshot_position(rec: Dictionary) -> Variant:
 ## a respawn after a restart or a reconnect goes back to the original spawn point rather than a
 ## fixed default. Only a placement writes it; walking about never does.
 func record_spawn(player_id: String, position: Vector3) -> void:
+	record_spawn_world_pos(player_id, WorldPos.from_world(position.x, position.y, position.z))
+
+## Phase 87 — record an exact `{chunk, local}` spawn: no float round trip, so a player placed far
+## from the origin respawns at the point it was placed at. `record_spawn` forwards here.
+func record_spawn_world_pos(player_id: String, wp: Dictionary) -> void:
 	var rec := ensure_player(player_id)
 	if rec.is_empty():
 		return
-	var wp := WorldPos.from_world(position.x, position.y, position.z)
-	rec["spawn"] = WorldPos.pos_to_wire(wp)
+	rec["spawn"] = WorldPos.pos_to_wire(_canonical(WorldPos.normalized(wp)))
 
-## The recorded spawn point as a world position, or null when the record has none (a record from
-## before Phase 66, or a malformed one) — the caller falls back to the saved position.
+## The recorded spawn point as an exact `{chunk, local}`, or null when the record has none (a record
+## from before Phase 66, or a malformed one) — the caller falls back to the saved position.
 func spawn_of(player_id: String) -> Variant:
 	return spawn_from_record(get_record(player_id))
 
@@ -519,10 +523,7 @@ static func spawn_from_record(rec: Dictionary) -> Variant:
 	var sp: Variant = rec.get("spawn", null)
 	if not (sp is Dictionary) or not _has_chunk_local(sp):
 		return null
-	var wp := world_pos_of(sp)
-	var chunk: Vector2i = wp["chunk"]
-	var local: Vector3 = wp["local"]
-	return Vector3(chunk.x * WorldPos.CHUNK_METERS + local.x, local.y, chunk.y * WorldPos.CHUNK_METERS + local.z)
+	return world_pos_of(sp)
 
 ## Phase 50 — a record keeps its position as `chunk` [cx, cz] + `local` [x, y, z] (exact at any
 ## distance from the origin); `position` stays beside them for the readers that want a Vector3.
