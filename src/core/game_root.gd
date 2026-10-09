@@ -1680,7 +1680,7 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 	if own is Dictionary:
 		var arr = own.get("position", [])
 		if WorldPos.is_wire(arr):
-			if arr is Dictionary and _rebase != null and PlayerRegistry.is_valid_wire_pos(arr):
+			if arr is Dictionary and _rebase != null:
 				# Exact placement: rebase to the target chunk, then land on its small local offset.
 				var l: Array = arr["local"]
 				var exact := WorldPos.normalized({"chunk": WorldPos.wire_chunk(arr),
@@ -2112,7 +2112,7 @@ static func respawn_point_for(rec: Dictionary) -> Variant:
 ## `{chunk, local}`: the host's recorded spawn when it sent a valid one, else where the body stands.
 static func client_respawn_point(own: Dictionary, standing: Dictionary) -> Dictionary:
 	var sp: Variant = own.get("spawn", null)
-	if sp is Dictionary and WorldPos.is_wire(sp) and PlayerRegistry.is_valid_wire_pos(sp):
+	if sp is Dictionary and WorldPos.is_wire(sp):
 		return PlayerRegistry._canonical(WorldPos.pos_from_wire(sp))
 	if sp is Array and WorldPos.is_wire(sp):
 		# A legacy `[x, y, z]` spawn: no exact chunk to keep.

@@ -127,6 +127,9 @@ func run() -> void:
 	_run_test("terrain: latitude and longitude from the fabric planet", _test_terrain_planet_coordinates)
 	_run_test("rebase: loot, avatars and the station preview follow the shift", _test_rebase_extras)
 	_run_test("player: rebased origin keeps the world position", _test_world_pos_rebase)
+	_run_test("player: the scene origin is the driver's integer chunk", _test_scene_origin_single_source)
+	_run_test("terrain: z_bounds matches clamp_to_world at infinity", _test_z_bounds_match_clamp)
+	_run_test("wire: one validator for dictionaries and records", _test_one_wire_validator)
 	_run_test("player: exact chunk + local far from the origin", _test_player_exact_far_position)
 	_run_test("rebase: TreeSlice shifts its trunks and pool, not other children", _test_tree_shift_explicit_set)
 	_run_test("rebase: LootSlice shifts its pickups, survives a freed one", _test_loot_shift_explicit_set)
@@ -1318,6 +1321,45 @@ func _continuous_x(player: PlayerSlice) -> float:
 
 ## Phase 78 — the player's exact `{chunk, local}` survives a far rebase, a save → reload and the
 ## snapshot's own-record position.
+## Phase 90 — the player's scene origin is the driver's integer `origin_chunk`, and its offset is
+## derived from it exactly.
+func _test_scene_origin_single_source() -> void:
+	var player := PlayerSlice.new()
+	player.render_visuals = true
+	add_child(player)
+	var driver := RebaseDriver.new([player])
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 90
+	for _i in 1000:
+		driver.rebase_to(Vector2i(rng.randi_range(-1500000, 1500000), rng.randi_range(-100000, 100000)))
+	assert_eq(player._scene_origin_chunk, driver.origin_chunk, "the player's origin chunk is the driver's")
+	var want := Vector3(-float(driver.origin_chunk.x) * WorldPos.CHUNK_METERS, 0.0,
+		-float(driver.origin_chunk.y) * WorldPos.CHUNK_METERS)
+	assert_eq(player.scene_offset(), want, "the offset is exactly -origin_chunk * CHUNK_METERS")
+	player.free()
+
+func _test_z_bounds_match_clamp() -> void:
+	var t := TerrainSlice.new()
+	var b := t.z_bounds()
+	assert_eq(b.y, t.clamp_to_world(Vector3(0.0, 0.0, INF)).z, "the upper z bound is the +INF clamp")
+	assert_eq(b.x, t.clamp_to_world(Vector3(0.0, 0.0, -INF)).z, "the lower z bound is the -INF clamp")
+	t.free()
+
+func _test_one_wire_validator() -> void:
+	var good_dict := {"chunk": [3, -4], "local": [1.0, 2.0, 3.0]}
+	assert_true(WorldPos.is_wire(good_dict), "a {chunk, local} dictionary is a wire position")
+	assert_true(WorldPos.is_wire({"chunk": [3.0, -4.0], "local": [1, 2, 3]}), "JSON-decoded integer-valued floats pass")
+	assert_true(WorldPos.is_wire([1.0, 2.0, 3.0]), "a legacy array is a wire position")
+	assert_true(WorldPos.is_wire(WorldPos.to_wire(Vector3(123.0, 4.0, -56.0))), "an encoded position passes")
+	assert_false(WorldPos.is_wire({"chunk": [3, -4]}), "a dictionary missing local is refused")
+	assert_false(WorldPos.is_wire({"chunk": [1.5, 2], "local": [0, 0, 0]}), "a non-integer chunk is refused")
+	assert_false(WorldPos.is_wire({"chunk": [1, 2], "local": [0.0, NAN, 0.0]}), "a NaN component is refused")
+	assert_false(WorldPos.is_wire({"chunk": [NAN, 2], "local": [0, 0, 0]}), "a NaN chunk is refused")
+	assert_false(WorldPos.is_wire({"chunk": [0, TerrainSlice.pole_chunks() + 1], "local": [0, 0, 0]}), "a chunk past the pole is refused")
+	assert_false(WorldPos.is_wire({"chunk": [0, 0], "local": [2.0e6, 0, 0]}), "a local beyond a chunk's reach is refused")
+	assert_false(WorldPos.is_wire({"chunk": [0, 0, 0], "local": [0, 0, 0]}), "a three-element chunk is refused")
+	assert_true(PlayerRegistry.world_pos_of(good_dict)["chunk"] == Vector2i(3, -4), "the registry decodes through the same rule")
+
 func _test_player_exact_far_position() -> void:
 	var chunk := Vector2i(1500000, 3)
 	var want := {"chunk": chunk, "local": Vector3(0.25, 10.0, 0.75)}

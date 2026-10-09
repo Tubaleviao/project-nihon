@@ -38,7 +38,9 @@ func rebase_to(new_origin: Vector2i) -> Vector3:
 	for t in targets:
 		if t == null:
 			continue
-		if t.has_method("shift_scene"):
+		if t.has_method("shift_scene_to_origin"):   # the player: keeps the integer origin, not a rounded shift
+			t.shift_scene_to_origin(shift, new_origin)
+		elif t.has_method("shift_scene"):
 			t.shift_scene(shift)
 		else:
 			_report_unshiftable(t)
