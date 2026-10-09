@@ -616,11 +616,20 @@ func _can_research(tech_id: String, status: String, data: Dictionary) -> bool:
 ## has no parent until that lands, so the slice keeps it: freed with the slice if the frame never
 ## comes (a `--quit` boot, the test suite) rather than left an orphan. Owner: this slice.
 var _retired: Array = []
+## Freed entries are filtered out only once the list reaches this size, then it doubles from what
+## survived, so a burst of N retirements prunes O(log N) times instead of rescanning on every call.
+const RETIRED_PRUNE_MIN := 8
+var _retired_prune_at: int = RETIRED_PRUNE_MIN
+## How many times `_retire` has pruned, for the tests.
+var retired_prunes: int = 0
 
 func _retire(c: Node) -> void:
-	_retired = _retired.filter(func(n): return is_instance_valid(n))
 	c.queue_free()
 	_retired.append(c)
+	if _retired.size() >= _retired_prune_at:
+		_retired = _retired.filter(func(n): return is_instance_valid(n))
+		retired_prunes += 1
+		_retired_prune_at = maxi(RETIRED_PRUNE_MIN, _retired.size() * 2)
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE:
