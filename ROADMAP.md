@@ -418,10 +418,10 @@ looks the same as a test that forgot `free()`), and the count is not checked any
   teardown and asserts it is 0.
 
 **Acceptance criteria:**
-- [ ] `godot --headless --path . --quit -- --run-tests` (both boot paths) ends with no "ObjectDB instances
+- [x] `godot --headless --path . --quit -- --run-tests` (both boot paths) ends with no "ObjectDB instances
   leaked" and no "resources still in use" lines in its output.
-- [ ] Suite: the orphan-node assertion is the last check and passes.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite: the orphan-node assertion is the last check and passes.
+- [x] Suite green on both boot paths, harness green.
 
 ---
 
