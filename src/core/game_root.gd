@@ -827,6 +827,7 @@ func _finish_host_boot() -> void:
 	var ground_h := spawn_pos.y - 1.0
 	_player.spawn_at(spawn_pos)
 	_player.respawn_point = spawn_pos
+	_player.respawn_world_pos = {}
 
 	# Phase 33 — the local player's own record (position / HP / technologies) is
 	# restored on top of the spawn point, so a restart puts the player back where
@@ -2083,8 +2084,7 @@ func _restore_local_player() -> void:
 	if spawn != null:
 		_player.set_respawn_world_pos(_lifted_world_pos(spawn))
 	else:
-		_registry.record_spawn_world_pos(pid, _player.respawn_world_pos if not _player.respawn_world_pos.is_empty() \
-			else WorldPos.from_world(_player.respawn_point.x, _player.respawn_point.y, _player.respawn_point.z))
+		_registry.record_spawn(pid, _player.respawn_point)
 	var hp := float(rec.get("hp", -1.0))
 	if hp >= 0.0:
 		_player.set_hp(hp)
@@ -2112,8 +2112,12 @@ static func respawn_point_for(rec: Dictionary) -> Variant:
 ## `{chunk, local}`: the host's recorded spawn when it sent a valid one, else where the body stands.
 static func client_respawn_point(own: Dictionary, standing: Dictionary) -> Dictionary:
 	var sp: Variant = own.get("spawn", null)
-	if WorldPos.is_wire(sp) and PlayerRegistry.is_valid_wire_pos(sp):
-		return WorldPos.normalized(WorldPos.pos_from_wire(sp))
+	if sp is Dictionary and WorldPos.is_wire(sp) and PlayerRegistry.is_valid_wire_pos(sp):
+		return PlayerRegistry._canonical(WorldPos.pos_from_wire(sp))
+	if sp is Array and WorldPos.is_wire(sp):
+		# A legacy `[x, y, z]` spawn: no exact chunk to keep.
+		var v: Vector3 = WorldPos.from_wire(sp, Vector3.ZERO)
+		return PlayerRegistry._canonical(WorldPos.from_world(v.x, v.y, v.z))
 	return standing
 
 ## `wp`, lifted onto the surface above it when it lies inside the ground (see `_lifted_out_of_ground`);
@@ -2201,6 +2205,12 @@ func _lifted_out_of_ground(pos: Vector3) -> Vector3:
 ## A respawn lands on the recorded spawn point; one recorded inside the ground (by the old
 ## origin-spawn bug) is lifted too.
 func _lift_after_respawn() -> void:
+	if _player != null and not _player.respawn_world_pos.is_empty():
+		var wp := _player.get_world_pos()
+		var lifted := _lifted_world_pos(wp)
+		if lifted != wp:
+			_player.place_at_world_pos(lifted)
+		return
 	_lift_out_of_ground()
 
 ## Read the world record and the LOCAL player's record off disk. A missing world
@@ -2473,6 +2483,11 @@ func _on_player_died(position: Vector3, killer_id: String) -> void:
 		GameBus.character_death_requested.emit(_character.get_player_character())
 
 func _on_player_respawned(_position: Vector3) -> void:
+	# Phase 87 — put the body on the exact spawn after rebasing the scene onto its chunk, so a player
+	# who died far from the spawn does not land on a quantised far-from-origin float32.
+	if _player != null and _rebase != null and not _player.respawn_world_pos.is_empty():
+		_rebase.rebase_to(_player.respawn_world_pos["chunk"])
+		_player.place_at_world_pos(_player.respawn_world_pos)
 	_lift_after_respawn()
 
 func _on_save_completed(slot: int) -> void:

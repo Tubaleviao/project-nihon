@@ -15510,6 +15510,8 @@ func _test_spawn_point_persists() -> void:
 	var other := WorldPos.from_world(1.0, 2.0, 3.0)
 	assert_eq(root_script.client_respawn_point({ "position": saved["position"] }, other),
 		other, "a host that sent no spawn leaves the standing position")
+	var arr_pt: Dictionary = root_script.client_respawn_point({ "spawn": [10.0, 5.0, 20.0] }, other)
+	assert_true(_wp_world(arr_pt).distance_to(Vector3(10.0, 5.0, 20.0)) < 0.01, "a legacy array spawn is accepted, not a crash")
 	# Legacy and malformed records fall back to the saved position.
 	var legacy: Dictionary = saved.duplicate(true)
 	legacy.erase("spawn")
