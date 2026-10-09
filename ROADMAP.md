@@ -99,12 +99,18 @@ issue number where the criterion used to be.
 | 76 | Niche field wraps the planet and is calibrated by a test | Done | below |
 | 77 | One detail-noise formula and the ring's strip helper | Done | below |
 | 78 | Exact player position far from the origin | Done | below |
-| 79 | Deterministic peer-window rate limit and a production ref-count reader | Planned | below |
-| 80 | Rebase in the physics step and explicit shift sets | Planned | below |
+| 79 | Deterministic peer-window rate limit and a production ref-count reader | Done | below |
+| 80 | Rebase in the physics step and explicit shift sets | Done | below |
 | 81 | Pole-aware tile biome and a mined-tile biome memo | Done | below |
-| 82 | Honest peer-window refusal count and a thread-safe warning counter | Planned | below |
-| 83 | Distant-ring teardown that does not stall | Planned | below |
-| 84 | The suite exits with no leaked objects | Planned | below |
+| 82 | Honest peer-window refusal count and a thread-safe warning counter | Done | below |
+| 83 | Distant-ring teardown that does not stall | Done | below |
+| 84 | The suite exits with no leaked objects | Done | below |
+| 85 | Peer claims and host syncs keep separate interval clocks | Planned | below |
+| 86 | Remote peers' positions stay exact far from the origin | Planned | below |
+| 87 | Exact spawn and respawn points | Planned | below |
+| 88 | The distant ring survives a reparent and its abort is proven | Planned | below |
+| 89 | A malformed region entry warns once per session | Planned | below |
+| 90 | One scene-origin source and one wire-position validator | Planned | below |
 
 ---
 
@@ -399,7 +405,7 @@ thread for the rest of a full lattice build (#179).
 
 ---
 
-## Phase 84 — The suite exits with no leaked objects
+## Phase 84 — The suite exits with no leaked objects ✅ Done
 
 **Goal:** the suite's exit log reports leaked `ObjectDB` instances and resources still in use
 (#158). Leaks at exit hide real leaks in the game (a slice that never frees its chunk meshes
@@ -424,6 +430,186 @@ looks the same as a test that forgot `free()`), and the count is not checked any
 - [x] Suite green on both boot paths, harness green.
 
 ---
+
+## Phase 85 — Peer claims and host syncs keep separate interval clocks
+
+**Goal:** `ChunkManager.sync_peer_center` and `set_peer_center` share `_peer_last_move_msec`, so a
+host sync that moves a peer's window restarts the client-claim interval: an honest client claim
+made within `PEER_RECENTER_INTERVAL` after a sync is refused and counted in
+`peer_recenter_refused`, which again overstates abuse (#213). The `_peer_centers` doc comment is
+still garbled from Phase 79 (#207, #213), and `refresh` / `_drain_unload_queue` ask
+`chunk_ref_count(_key_to_chunk(key))` (parse + reformat per key) where `_chunk_refs.has(key)` is
+the same answer (#213).
+
+**Newel dependency:** NO.
+
+**Closes:** the shared-slot, docstring and ref-lookup items of #213 and the docstring item of #207.
+
+**Depends on:** Phase 82.
+
+**Deliverables:**
+- `src/terrain/chunk_manager.gd` — claims and syncs stamp separate per-peer timestamps (e.g.
+  `_peer_last_claim_msec` / `_peer_last_sync_msec`); a claim is rate-limited only against earlier
+  claims, a sync only against earlier syncs; both are erased by `clear_peer_center`.
+- The same file — the `_peer_centers` / `_last_centers` / `_chunk_refs` comment reads as one
+  sentence per field; the hot-path ref checks use the key directly.
+
+**Acceptance criteria:**
+- [ ] Suite: with a fake clock, a `sync_peer_center` move followed 100 ms later by a client
+  `set_peer_center` claim one chunk away accepts the claim and leaves `peer_recenter_refused` at 0.
+- [ ] Suite: two client claims 100 ms apart still count exactly one refusal (Phase 79 behaviour kept).
+- [ ] Suite: after `clear_peer_center`, neither timestamp dictionary holds the peer.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 86 — Remote peers' positions stay exact far from the origin
+
+**Goal:** Phase 78 made the host's own player exact as `{chunk, local}`, but remote peers still
+travel and persist as float32 `Vector3`: `_last_known_states` holds a `Vector3`, and
+`GameRoot._fold_last_known_state` writes it with `PlayerRegistry.record_position`, so a peer that
+walks 10,000 km is saved quantised to metres (#200, #201, #202).
+
+**Newel dependency:** NO.
+
+**Closes:** the remote-peer position items of #200 and #202.
+
+**Depends on:** Phase 78.
+
+**Deliverables:**
+- `src/networking/networking_slice.gd` — a client's position report carries the wire form of its
+  exact world position (`WorldPos.pos_to_wire`); the host validates it with `WorldPos.is_wire` and
+  stores it per peer beside the existing `Vector3` (kept for AOI distance checks). A legacy
+  `Vector3`-only report is still accepted.
+- `src/core/game_root.gd` — `_fold_last_known_state` records the exact position through
+  `record_world_pos` when one is held, falling back to `record_position` otherwise.
+
+**Acceptance criteria:**
+- [ ] Suite: a peer report at chunk `(250000, 1000)`, local `(12.345, 40.0, 7.891)` folded into
+  the registry round-trips through a save/load with `local` equal to within 1e-6 m.
+- [ ] Suite: a malformed wire position in a report is refused and leaves the previous last-known
+  state unchanged; a legacy `Vector3` report still records a position.
+- [ ] Two-client harness: an existing step that moves a client still passes with the new report
+  shape.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 87 — Exact spawn and respawn points
+
+**Goal:** `PlayerRegistry.record_spawn`, `GameRoot.client_respawn_point` and
+`respawn_point_for` take and return float32 world `Vector3`s, so a player placed far from the
+origin respawns at a quantised point. `GameRoot._place_local_player(pos)` ignores `pos` whenever a
+saved record exists and calls `_saved_local_position()` twice; none of these paths has an
+integration test (#200, #201, #202).
+
+**Newel dependency:** NO.
+
+**Closes:** the spawn/respawn and `_place_local_player` items of #200, #201 and #202.
+
+**Depends on:** Phase 78.
+
+**Deliverables:**
+- `src/persistence/player_registry.gd` — `record_spawn` gains an exact `{chunk, local}` form
+  (the `Vector3` overload stays for callers near the origin); `spawn_of` returns the exact form.
+- `src/core/game_root.gd` — respawn resolves the exact spawn and places the body with
+  `PlayerSlice.place_at_world_pos`; `_place_local_player` reads the saved record once and its
+  doc comment states which of `pos` and the record wins.
+
+**Acceptance criteria:**
+- [ ] Suite: a spawn recorded at chunk `(-300000, 500)`, local `(3.21, 50.0, 9.87)` and respawned
+  after a save/load lands with `get_world_pos()` equal to it within 1e-6 m.
+- [ ] Suite: `_place_local_player` with a saved record places at the record; without one it
+  places at `pos`; `_saved_local_position` is called once per placement (counter or spy).
+- [ ] Suite: a respawn point of a pre-Phase-66 record (no `spawn`) still falls back to the saved
+  position.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 88 — The distant ring survives a reparent and its abort is proven
+
+**Goal:** since Phase 83, `DistantTerrain._exit_tree` discards the in-flight build and the queued
+request, so a ring that is only reparented (exit then re-enter) shows nothing until the next
+`rebuild()`. `test_distant_ring_abort` only asserts an upper bound on rows that also holds when
+the abort never fires (#212).
+
+**Newel dependency:** NO.
+
+**Closes:** the reparent and abort-test items of #212.
+
+**Depends on:** Phase 83.
+
+**Deliverables:**
+- `src/terrain/distant_terrain.gd` — `_exit_tree` remembers that a build was discarded;
+  `_enter_tree` re-requests it (clearing the abort flag first).
+- `src/tests/test_suite.gd` — the abort test compares the rows processed against a full build's
+  row count and asserts the aborted build stopped strictly earlier.
+
+**Acceptance criteria:**
+- [ ] Suite: a ring with a build in flight is removed from and re-added to the tree; after the
+  rebuild completes its vertex hash equals an undisturbed ring's.
+- [ ] Suite: the aborted build's row counter ends strictly below the row count an unaborted
+  build of the same ring reaches (both measured in the test), so the bound no longer holds
+  trivially.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 89 — A malformed region entry warns once per session
+
+**Goal:** since Phase 75 a malformed chunk entry is kept on rewrite, but `RegionStore.read_region`
+warns about it on every streaming read, so one bad entry floods the log (and `Diag.warn_count`)
+for as long as the player stays nearby (#196).
+
+**Newel dependency:** NO.
+
+**Closes:** the warning de-dup item of #196.
+
+**Depends on:** Phase 75.
+
+**Deliverables:**
+- `src/persistence/region_store.gd` — warnings for a malformed chunk key or entry are keyed on
+  `(region path, chunk key)` and emitted once per store instance; a reset accessor exists for
+  tests and for a world switch.
+
+**Acceptance criteria:**
+- [ ] Suite: a region file with one malformed entry read 50 times raises `Diag.warn_count` by
+  exactly 1; a second malformed entry in another region raises it by one more.
+- [ ] Suite: after the reset accessor (or a new store on another world) the first read warns again.
+- [ ] Suite: the malformed entry still survives a rewrite unchanged (Phase 75 behaviour kept).
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 90 — One scene-origin source and one wire-position validator
+
+**Goal:** `PlayerSlice` keeps `_scene_offset` and `_scene_origin_chunk` as two accumulators and
+derives the chunk by rounding a float32 shift, duplicating `RebaseDriver.origin_chunk`;
+`_clamp_to_world_exact` probes the pole bounds every frame through `clamp_to_world(±INF)`; and
+`PlayerRegistry.is_valid_wire_pos` is a second wire validator next to `WorldPos.is_wire` with
+different rules (#200, #201, #202).
+
+**Newel dependency:** NO.
+
+**Closes:** the scene-origin, pole-bounds and validator items of #200, #201 and #202.
+
+**Depends on:** Phase 80.
+
+**Deliverables:**
+- `src/player/player_slice.gd` / `src/terrain/rebase_driver.gd` — the driver passes its integer
+  `origin_chunk` with each shift; `PlayerSlice` stores it and derives `_scene_offset` from it.
+- `src/terrain/terrain_slice.gd` — an explicit z-bounds accessor; `_clamp_to_world_exact` uses it.
+- `src/persistence/player_registry.gd` / `src/terrain/world_pos.gd` — one public validator;
+  `game_root.gd` calls it; the other becomes private or is removed.
+
+**Acceptance criteria:**
+- [ ] Suite: after 1,000 random rebases (fixed seed) the player's scene origin chunk equals
+  `RebaseDriver.origin_chunk` and `_scene_offset == -origin_chunk * CHUNK_METERS` exactly.
+- [ ] Suite: the z-bounds accessor matches `clamp_to_world(±INF).z` for the default world.
+- [ ] Suite: the remaining validator accepts every wire form the old two accepted in common and
+  rejects a dictionary missing `local`, a non-integer chunk and a NaN component.
+- [ ] Suite green on both boot paths, harness green.
 
 ## Deferred (in priority order)
 
