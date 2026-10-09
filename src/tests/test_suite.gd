@@ -15101,10 +15101,17 @@ func _test_peer_window_host_sync() -> void:
 		clock[0] += 50
 		assert_false(cm.sync_peer_center(5, Vector2i(2, 2)), "a peer that has not moved is not re-centred")
 	for i in 5:
-		clock[0] += 50
-		assert_true(cm.sync_peer_center(5, Vector2i(3 + i, 2)), "a tracked move lands inside the interval")
+		clock[0] += 300
+		assert_true(cm.sync_peer_center(5, Vector2i(3 + i, 2)), "a tracked move after the interval lands")
 	assert_eq(cm.peer_center(5), Vector2i(7, 2), "and the window follows the peer")
 	assert_eq(cm.peer_recenter_refused, 0, "none of it counts as a refusal")
+	# The tracked position is client-reported: sync is still interval-limited and clamped, silently.
+	clock[0] += 50
+	assert_false(cm.sync_peer_center(5, Vector2i(8, 2)), "a sync inside the interval defers")
+	clock[0] += 300
+	assert_true(cm.sync_peer_center(5, Vector2i(7, 500)), "a far hop moves, but clamped")
+	assert_eq(cm.peer_center(5), Vector2i(7, 2 + ChunkManager.PEER_RECENTER_MAX_CHUNKS), "to the clamp distance")
+	assert_eq(cm.peer_recenter_refused, 0, "deferral and clamp by the sync are not counted")
 	# A client claim inside the interval of the last move is still refused and counted once.
 	cm.set_peer_center(6, Vector2i(2, 2), true)
 	clock[0] += 100

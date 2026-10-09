@@ -822,6 +822,9 @@ func _centers_around(local: Vector2i) -> Array:
 ## `PEER_RECENTER_MAX_CHUNKS` is clamped to that distance (both counted in
 ## `peer_recenter_refused`). Returns true when the window actually moved.
 func set_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool = false) -> bool:
+	return _move_peer_center(peer_id, chunk, host_driven, true)
+
+func _move_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool, count_refusals: bool) -> bool:
 	var now: int = now_msec.call()
 	# X is a wrapped planet coordinate: store and compare the canonical chunk.
 	chunk = TerrainSlice.wrap_chunk(chunk)
@@ -834,14 +837,16 @@ func set_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool = false) -
 	if current == chunk:
 		return false
 	if now - int(_peer_last_move_msec.get(peer_id, -1000000)) < int(PEER_RECENTER_INTERVAL * 1000.0):
-		peer_recenter_refused += 1
+		if count_refusals:
+			peer_recenter_refused += 1
 		return false
 	# X is a wrapped planet coordinate: measure the step the short way round the seam.
 	var c := TerrainSlice.circumference_chunks()
 	var step := Vector2i(posmod(chunk.x - current.x + c / 2, c) - c / 2, chunk.y - current.y)
 	var reach := maxi(absi(step.x), absi(step.y))
 	if reach > PEER_RECENTER_MAX_CHUNKS:
-		peer_recenter_refused += 1
+		if count_refusals:
+			peer_recenter_refused += 1
 		step = Vector2i(
 			roundi(float(step.x) * PEER_RECENTER_MAX_CHUNKS / float(reach)),
 			roundi(float(step.y) * PEER_RECENTER_MAX_CHUNKS / float(reach)))
@@ -849,17 +854,13 @@ func set_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool = false) -
 	_peer_last_move_msec[peer_id] = now
 	return true
 
-## Phase 82 — the HOST's periodic re-centre of a peer on the position it tracks. Not a client
-## claim: it is never rate-limited, clamped or counted in `peer_recenter_refused`, and it leaves
-## the claim interval clock alone (only a new window starts it). Returns true when the window moved.
+## Phase 82 — the periodic re-centre of a peer on the position the host tracks. That position is
+## still client-reported, so it gets the same interval limit and clamp as a claim (a hostile
+## client cannot hop the window across the planet every tick); the difference is that a deferral
+## here is the sync simply retrying on its next tick, so it is NOT counted in
+## `peer_recenter_refused`. Returns true when the window moved.
 func sync_peer_center(peer_id: int, chunk: Vector2i) -> bool:
-	chunk = TerrainSlice.wrap_chunk(chunk)
-	if _peer_centers.get(peer_id, null) == chunk:
-		return false
-	if not _peer_centers.has(peer_id):
-		_peer_last_move_msec[peer_id] = now_msec.call()
-	_peer_centers[peer_id] = chunk
-	return true
+	return _move_peer_center(peer_id, chunk, false, false)
 
 ## The chunk a peer's window is centred on, or null when it has none.
 func peer_center(peer_id: int) -> Variant:
