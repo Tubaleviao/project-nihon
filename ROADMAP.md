@@ -116,6 +116,12 @@ issue number where the criterion used to be.
 | 93 | Host-sync window moves are counted and a clock swap resets the throttles | Done | below |
 | 94 | A test eviction helper and a bounded UI retire list | Done | below |
 | 95 | Free pointer, right-click look, chat box and admin commands | Done | below |
+| 96 | A detached ring rebuild does not orphan its worker | Planned | below |
+| 97 | Peer windows and position relays use the exact peer position | Planned | below |
+| 98 | An exact first-boot spawn and a public canonical helper | Planned | below |
+| 99 | One legacy-op constant and one legacy-height parser | Planned | below |
+| 100 | The README phase table cannot drift from the roadmap | Planned | below |
+| 101 | A per-player chat rate limit | Planned | below |
 
 ---
 
@@ -778,6 +784,182 @@ carries messages and slash commands (admins can teleport, create items, kill pla
 - [x] Suite: a client forwards a line with no identity, the host speaks as the connection's player,
   an un-handshaked peer is dropped, hosted lines and teleports are re-emitted on the client.
 - [x] Suite green on both boot paths, harness green. — `Results: 15455/15455 passed (0 failed)`, harness 15/15 steps.
+
+---
+
+## Phase 96 — A detached ring rebuild does not orphan its worker
+
+**Goal:** `DistantTerrain.rebuild` called while the node is out of the tree (after `_exit_tree`,
+before re-entry) starts a build through `_start`, but `_discarded` still holds the request
+`_exit_tree` set aside; the later `_enter_tree` calls `_start` again and overwrites `_task`,
+`_task_args` and `_control` while the first worker is still running, so that task is never joined.
+A reparent with a queued request pending is untested. `_test_distant_ring_abort` also hit
+"Attempted to free a locked object" once in CI (#235, #233).
+
+**Newel dependency:** NO.
+
+**Closes:** both items of #235 and the CI-flake item of #233.
+
+**Depends on:** Phase 88.
+
+**Deliverables:**
+- `src/terrain/distant_terrain.gd` — `rebuild` clears `_discarded` when it accepts a request, and
+  `_enter_tree` only starts the discarded request when no task is in flight (`_task < 0`); while
+  one is, the discarded request becomes `_queued` only if nothing newer is queued.
+- `src/tests/test_suite.gd` — `_test_distant_ring_abort` removes the node from the tree and frees
+  it outside any locked iteration (e.g. `remove_child` then `free`), so the abort path is the one
+  under test and not a free-while-locked race.
+
+**Acceptance criteria:**
+- [ ] Suite: rebuild → `remove_child` → `rebuild` at a new centre → `add_child` leaves exactly one
+  task started per accepted request (a `builds_started` counter equals `rebuilds_requested` minus
+  `rebuilds_dropped`), and `poll(true)` swaps in the mesh of the newest centre.
+- [ ] Suite: a ring with one build in flight and one queued is reparented; after `poll(true)` its
+  vertex hash equals an undisturbed ring built at the queued centre.
+- [ ] Suite: `_test_distant_ring_abort` runs 50 times in a loop with no engine error and the Phase 84
+  orphan check still reports zero leaked objects.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 97 — Peer windows and position relays use the exact peer position
+
+**Goal:** Phase 86 keeps each peer's exact `{chunk, local}` position, but `GameRoot._peer_window_chunk`
+still derives the peer's streaming-window chunk from the float32 last-known `Vector3`, and
+`NetworkingSlice._on_remote_player_state` relays that same float to other clients. Ten thousand km
+from the origin the float is quantised to metres, so a peer standing near a chunk border can get a
+window one chunk off and other clients see its avatar jitter. `_fold_last_known_state` persists the
+exact position with no plausibility check, though the float path's consumers are guarded (#222, #223).
+
+**Newel dependency:** NO.
+
+**Closes:** items 2 and 3 of #222 and the Phase 86 item of #223.
+
+**Depends on:** Phase 86, Phase 90.
+
+**Deliverables:**
+- `src/core/game_root.gd` — `_peer_window_chunk` reads the exact chunk from
+  `_networking.get_last_known_exact(peer_id)` when present, the float path only as fallback.
+- The same file — `_fold_last_known_state` records the exact position only when it passes
+  `WorldPos.is_wire(WorldPos.pos_to_wire(exact))`; otherwise it falls back to the guarded float path.
+- `src/networking/networking_slice.gd` — the host's `remote_player_state` relay sends the peer's exact
+  wire position when it has one; the client's `_route_remote_player_state` already accepts both forms.
+
+**Acceptance criteria:**
+- [ ] Suite: a peer whose exact position is chunk (1,500,000, 3) local (31.9, 0, 0.1) gets
+  `_peer_window_chunk` equal to (1,500,000, 3), where the float path would round into the neighbour.
+- [ ] Suite: a relayed `remote_player_state` for that peer decodes on a client to the same chunk and a
+  local within 1e-3 m.
+- [ ] Suite: an exact position with a chunk past the pole row is not folded into the record; the
+  record keeps its previous position.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 98 — An exact first-boot spawn and a public canonical helper
+
+**Goal:** `GameRoot._restore_local_player`'s fresh-player branch still records the spawn with
+`record_spawn(pid, _player.respawn_point)`, a float32 `Vector3` round trip, so a first boot far from
+the origin stores a spawn up to a metre off — the gap Phase 87 closed for every other spawn path.
+`GameRoot.client_respawn_point` calls `PlayerRegistry._canonical`, private by convention (#226).
+
+**Newel dependency:** NO.
+
+**Closes:** both items of #226.
+
+**Depends on:** Phase 87.
+
+**Deliverables:**
+- `src/core/game_root.gd` — the fresh-player branch calls
+  `_registry.record_spawn_world_pos(pid, _player.get_world_pos())`.
+- `src/persistence/player_registry.gd` — a public static `canonical_world_pos(wp)` wrapper (or rename
+  `_canonical`); no file outside `player_registry.gd` calls `_canonical`.
+
+**Acceptance criteria:**
+- [ ] Suite: a fresh local player placed at chunk (1,500,000, 3) local (0.25, 10, 0.75) records a spawn
+  equal to that chunk and local within 1e-6 m.
+- [ ] `grep -rn "_canonical(" src --include=*.gd | grep -v player_registry.gd` finds nothing.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 99 — One legacy-op constant and one legacy-height parser
+
+**Goal:** Phase 91 added a `legacy` tile op, but `VoxelSlice._normalise_tile_ops` (and its test)
+hardcode the string `"legacy"` instead of `RegionStore.LEGACY_OP`; `RegionStore._is_legacy_height`
+re-implements `VoxelSlice._legacy_height_of` and the two disagree on non-finite values; the hot load
+path allocates two arrays per tile even when no op is `legacy`; and three branches have no test (#232).
+
+**Newel dependency:** NO.
+
+**Closes:** #232.
+
+**Depends on:** Phase 91.
+
+**Deliverables:**
+- `src/terrain/voxel_slice.gd` — compares against `RegionStore.LEGACY_OP`; `_normalise_tile_ops`
+  returns `_normalise_ops(value)` directly when no op is `legacy`; the op-kind list near the top of the
+  file documents `legacy` and notes that older builds ignore it on load.
+- One legacy-height parser (in `RegionStore` or a shared helper) used by both files; NaN and infinity
+  are rejected by both callers.
+- `src/tests/test_suite.gd` — tests for the materials-stack legacy migration, the
+  `apply_region_chunks` partial-chunk path with a legacy op, and the unreadable-legacy-op drop branch.
+
+**Acceptance criteria:**
+- [ ] `grep -n '"legacy"' src --include=*.gd -r` finds only the `LEGACY_OP` definition.
+- [ ] Suite: `NAN`, `INF` and `"abc"` heights are refused by the shared parser and by the region-store
+  check alike; a finite numeric height (e.g. `3.0`) is accepted by both.
+- [ ] Suite: the three new branch tests pass; a tile with no legacy op round-trips unchanged.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 100 — The README phase table cannot drift from the roadmap
+
+**Goal:** `README.md`'s phase table says Phases 80, 82, 83 and 84 are "Planned" though ROADMAP.md marks
+them Done, and Phases 85 onward are missing; nothing checks the two agree (#219).
+
+**Newel dependency:** NO.
+
+**Closes:** the README item of #219.
+
+**Deliverables:**
+- `README.md` — the phase table lists every phase in ROADMAP.md's index with the same title and status.
+- `tools/check_readme_phases.js` (new) — parses both tables and exits non-zero naming each phase whose
+  number, title or status differs, or that is in one table and not the other.
+- `.github/workflows/ci.yml` — runs the script next to `npm run check-drift`.
+
+**Acceptance criteria:**
+- [ ] `node tools/check_readme_phases.js` exits 0 on the updated README.
+- [ ] Changing one README status from Done to Planned in a scratch copy makes it exit 1 and name that
+  phase (a small self-test the script runs with `--self-test`, exercised in CI).
+- [ ] CI runs the check on every push.
+
+---
+
+## Phase 101 — A per-player chat rate limit
+
+**Goal:** Phase 95's `chat_intent` is bounded only by the generic client packet rate, and each accepted
+plain line is broadcast to every connected peer, so one client can make the host send N messages per
+packet it sends and flood every other player's chat box. Refusals for admin commands are addressed
+to the sender but cost the host a send each.
+
+**Newel dependency:** NO.
+
+**Deliverables:**
+- `src/chat/chat_slice.gd` (or the host-side chat handler) — a per-player token bucket
+  (`CHAT_BURST` lines, refilling at `CHAT_LINES_PER_SEC`) checked before a line is parsed or broadcast;
+  a refused line is dropped, counted in `chat_rate_refused`, and answered with at most one
+  "slow down" notice per player per interval. The host's own local player is subject to it too, admins
+  included. The clock is injectable, like `ChunkManager.set_clock`.
+- The bucket entry is erased when the peer disconnects.
+
+**Acceptance criteria:**
+- [ ] Suite: with a fake clock, a client sending `CHAT_BURST + 10` lines in one tick has exactly
+  `CHAT_BURST` broadcast, `chat_rate_refused` raised by 10 and one notice sent to it alone.
+- [ ] Suite: after `1 / CHAT_LINES_PER_SEC` seconds of fake time one more line is accepted.
+- [ ] Suite: a disconnect removes the player's bucket entry.
+- [ ] Suite green on both boot paths, harness green.
 
 ---
 
