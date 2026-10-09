@@ -71,6 +71,18 @@ static func pos_to_wire(pos: Dictionary) -> Dictionary:
 	var local: Vector3 = pos["local"]
 	return { "chunk": [chunk.x, chunk.y], "local": [local.x, local.y, local.z] }
 
+## Decode the `{chunk, local}` wire dictionary to a `{chunk, local}` record with no float round trip, or
+## an empty dictionary when `data` is not that form (a legacy array has no exact chunk to keep).
+static func pos_from_wire(data: Variant) -> Dictionary:
+	if data is Dictionary and is_wire(data):
+		var c: Array = data["chunk"]
+		var l: Array = data["local"]
+		return normalized({
+			"chunk": Vector2i(int(c[0]), int(c[1])),
+			"local": Vector3(float(l[0]), float(l[1]), float(l[2])),
+		})
+	return {}
+
 ## Decode either wire form (the `{chunk, local}` dictionary or a legacy `[x, y, z]` array) to a world
 ## position. Anything else decodes to `fallback`.
 static func from_wire(data: Variant, fallback: Vector3 = Vector3.ZERO) -> Vector3:

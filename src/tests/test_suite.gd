@@ -272,6 +272,7 @@ func run() -> void:
 	_run_test("region: migration recovers a monolith chunk whose region entry is malformed", _test_region_migrate_malformed_recovers)
 	_run_test("rebase: an unshiftable target is reported",      _test_rebase_driver_reports_unshiftable)
 	_run_test("game_root: implausible peer positions dropped",  _test_remote_state_plausibility)
+	_run_test("networking: a remote peer's exact position is saved exactly", _test_remote_peer_exact_position)
 	_run_test("equipment: slots cached, peer evict, owner map", _test_equipment_phase48_misc)
 	_run_test("equipment: host worn set + AOI enter/leave",      _test_equipment_host_and_aoi_transitions)
 	_run_test("net: broadcasts go through _test_peers",          _test_network_broadcast_uses_test_peers)
@@ -1193,6 +1194,46 @@ func _test_remote_state_plausibility() -> void:
 	gr._on_remote_player_state(3, Vector3(NAN, 0.0, 0.0))
 	assert_true(gr._peer_aoi_regions.is_empty(), "a rejected claim records no AOI region (and needs no networking slice)")
 	gr.free()
+
+## Phase 86 — a peer's report carries `{chunk, local}`; the host keeps it and the fold persists it exactly.
+func _test_remote_peer_exact_position() -> void:
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	var chunk := Vector2i(250000, 1000)
+	var local := Vector3(12.345, 40.0, 7.891)
+	var wire := WorldPos.pos_to_wire({ "chunk": chunk, "local": local })
+	n._route_c2h(5, { "type": "player_moved", "position": wire })
+	assert_eq(n.get_last_known_exact(5)["chunk"], chunk, "the host holds the exact chunk")
+	var reg := PlayerRegistry.new()
+	_own(reg)
+	var gr: Node = (load("res://src/core/game_root.gd") as GDScript).new()
+	gr._networking = n
+	gr._registry = reg
+	gr._fold_last_known_state(5, "p5")
+	var rec: Dictionary = JSON.parse_string(JSON.stringify(reg.get_record("p5")))
+	var reg2 := PlayerRegistry.new()
+	_own(reg2)
+	reg2.apply_player_data("p5", rec)
+	var back: Dictionary = reg2.get_world_pos("p5")
+	assert_eq(back["chunk"], chunk, "the saved record reloads in the same chunk")
+	assert_true((back["local"] as Vector3).distance_to(local) < 1e-4, "and at the same local, not float32 metres")
+	# A malformed report is refused and leaves the previous state alone.
+	var was_quiet := Diag.quiet
+	Diag.quiet = true
+	n._route_c2h(5, { "type": "player_moved", "position": { "chunk": "x", "local": [1, 2] } })
+	n._route_c2h(5, { "type": "player_moved" })
+	Diag.quiet = was_quiet
+	assert_eq(n.get_last_known_exact(5)["chunk"], chunk, "a malformed report leaves the exact state")
+	assert_true(n.get_last_known_state(5).distance_to(WorldPos.from_wire(wire)) < 1.0, "and the Vector3 state")
+	# A legacy array report still records a position, with no exact entry.
+	n._route_c2h(6, { "type": "player_moved", "position": [10.0, 2.0, -5.0] })
+	assert_eq(n.get_last_known_state(6), Vector3(10.0, 2.0, -5.0), "a legacy report records its Vector3")
+	assert_true(n.get_last_known_exact(6).is_empty(), "with no exact position")
+	gr._fold_last_known_state(6, "p6")
+	assert_eq(reg.get_world_pos("p6")["chunk"], Vector2i(0, -1), "and the fold falls back to record_position")
+	gr.free()
+	n.free()
 
 ## Phase 80 — `TreeSlice.shift_scene` moves its own trunks and the pool, nothing else.
 func _test_tree_shift_explicit_set() -> void:
