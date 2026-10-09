@@ -297,6 +297,9 @@ func run() -> void:
 	_run_test("voxel: grass top, soil side",                   _test_voxel_grass_top_soil_side)
 	_run_test("voxel: biome border blends with a dither",      _test_voxel_biome_border_blend)
 	_run_test("voxel: yield biome equals the drawn surface biome", _test_voxel_yield_matches_blended_biome)
+	_run_test("voxel: no biome is borrowed across the pole", _test_voxel_pole_blend)
+	_run_test("voxel: in-world border tiles unchanged by the pole rule", _test_voxel_inworld_border_unchanged)
+	_run_test("voxel: shown_biome_at memoises per chunk", _test_shown_biome_memo)
 	_run_test("minimap: blend never borrows an unrevealed biome", _test_minimap_blend_respects_fog)
 	_run_test("minimap: a second redraw looks up no biome",      _test_minimap_redraw_uses_cache)
 	_run_test("minimap: sub-2px cells draw one rect per chunk",  _test_minimap_far_zoom_one_rect)
@@ -7628,6 +7631,87 @@ func _test_minimap_blend_respects_fog() -> void:
 	assert_true(west_cells > 0, "the revealed west neighbour has border cells to check")
 	assert_false(mm._has_blend_neighbour(Vector2i(5, 5), "TemperateForest"), "no revealed neighbours: one rect")
 	mm.free()
+
+## Phase 81 — the last walkable chunk row, tiles facing the pole: never the off-world biome, in
+## the yield accessor and in what the mesher gets (`gather_biomes_for` -> `blended_biome`).
+func _test_voxel_pole_blend() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var ts := PoleBiomeStub.new()
+	add_child(ts)
+	v.terrain_slice = ts
+	var last := TerrainSlice.polar_chunks() - 1
+	assert_true(TerrainSlice.lends_biome(Vector2i(0, last), TerrainSlice.polar_chunks()), "last row lends")
+	assert_false(TerrainSlice.lends_biome(Vector2i(0, last + 1), TerrainSlice.polar_chunks()), "the ice row does not")
+	assert_false(TerrainSlice.lends_biome(Vector2i(0, -(last + 1)), TerrainSlice.polar_chunks()), "nor the south ice row")
+	var biomes := v.gather_biomes_for(Vector2i(0, last))
+	var checked := 0
+	# The pole is ~295k chunks out, where a float32 Vector2 resolves ~1 m: stop 0.75 m short of the
+	# border so rounding cannot move the sample into the ice row.
+	for tz in range(VoxelSlice.CHUNK_SIZE - int(VoxelSlice.BLEND_TILES), VoxelSlice.CHUNK_SIZE - 1):
+		for tx in range(int(VoxelSlice.BLEND_TILES) + 1, VoxelSlice.CHUNK_SIZE - int(VoxelSlice.BLEND_TILES)):
+			var xz := Vector2(tx * VoxelSlice.TILE_SIZE + 0.25, (last * VoxelSlice.CHUNK_SIZE + tz) * VoxelSlice.TILE_SIZE + 0.25)
+			assert_eq(v.shown_biome_at(xz), "DesertDunes", "yield keeps its own biome at the pole (%d,%d)" % [tx, tz])
+			assert_eq(VoxelSlice.blended_biome(xz, biomes, VoxelSlice.biome_of(xz, biomes)), "DesertDunes",
+				"mesher colour keeps its own biome at the pole (%d,%d)" % [tx, tz])
+			checked += 1
+	assert_true(checked > 0, "pole tiles were checked")
+	ts.free()
+	v.free()
+
+## Phase 81 — 64 border tiles well inside the map: the pole rule changes nothing, the voxel
+## answer is the plain 3×3 `blended_biome` answer (and so still the minimap's, Phase 64).
+func _test_voxel_inworld_border_unchanged() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var ts := PoleBiomeStub.new()
+	add_child(ts)
+	v.terrain_slice = ts
+	var extent := float(VoxelSlice.CHUNK_SIZE * VoxelSlice.TILE_SIZE)
+	var checked := 0
+	var borrowed := 0
+	for i in 64:
+		var xz := Vector2(extent + 0.25 + (i % 4) * VoxelSlice.TILE_SIZE, (i / 4) * 2 * VoxelSlice.TILE_SIZE + 0.25)
+		var biomes: Dictionary = {}
+		for dz in range(-1, 2):
+			for dx in range(-1, 2):
+				var n := Vector2i(1 + dx, dz)
+				biomes["%d,%d" % [n.x, n.y]] = ts.biome_for_chunk(n)
+		var expect := VoxelSlice.blended_biome(xz, biomes, ts.biome_for_chunk(Vector2i(1, 0)))
+		assert_eq(v.shown_biome_at(xz), expect, "in-world tile %d agrees with the plain blend" % i)
+		if expect != ts.biome_for_chunk(Vector2i(1, 0)):
+			borrowed += 1
+		checked += 1
+	assert_eq(checked, 64, "64 tiles checked")
+	assert_true(borrowed > 0, "some tiles do wear the neighbour")
+	ts.free()
+	v.free()
+
+## Phase 81 — 100 `shown_biome_at` calls inside one chunk read the terrain slice at most 9 times.
+func _test_shown_biome_memo() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var ts := PoleBiomeStub.new()
+	add_child(ts)
+	v.terrain_slice = ts
+	var base := v.biome_lookups
+	for i in 100:
+		v.shown_biome_at(Vector2(0.25 + (i % 10) * VoxelSlice.TILE_SIZE, 0.25 + (i / 10) * VoxelSlice.TILE_SIZE))
+	assert_true(v.biome_lookups - base <= 9, "at most 9 lookups for 100 calls (got %d)" % (v.biome_lookups - base))
+	v.free()
+	ts.free()
+
+## A terrain slice whose chunks past the pole rows carry a biome nothing in the world should wear.
+class PoleBiomeStub extends Node:
+	var world_seed := 1
+	func biome_for_chunk(c: Vector2i) -> String:
+		if absi(c.y) >= TerrainSlice.polar_chunks():
+			return "VoidRift"
+		return "DesertDunes" if c.x % 2 == 0 else "TemperateForest"
+	func get_biome_at(xz: Vector2) -> String:
+		return biome_for_chunk(Vector2i(floori(xz.x / VoxelSlice.CHUNK_SIZE / VoxelSlice.TILE_SIZE), floori(xz.y / VoxelSlice.CHUNK_SIZE / VoxelSlice.TILE_SIZE)))
+	func get_world_seed() -> int:
+		return world_seed
 
 class BiomeStub extends Node:
 	var lookups := 0

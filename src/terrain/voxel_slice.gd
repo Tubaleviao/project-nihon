@@ -182,6 +182,14 @@ var _guess_heightmaps: Dictionary = {}
 ## The world seed the cached guesses were generated under; a different seed throws them all
 ## away (`_sync_guess_seed`), since the same chunk now has a different surface.
 var _guess_seed: int = 0
+
+## `shown_biome_at`'s memo: chunk key -> that chunk's biome, so mining a run of tiles in one
+## chunk does one terrain-slice lookup per distinct chunk. Bounded by `SHOWN_BIOME_CACHE_MAX`,
+## cleared when the world seed changes (`_sync_guess_seed`) and on `reset_shown_biomes`.
+var _shown_biomes: Dictionary = {}
+const SHOWN_BIOME_CACHE_MAX := 64
+## Terrain-slice biome reads made (`_biome_at`), for tests that count lookups.
+var biome_lookups: int = 0
 ## Hard bound on the guess cache. Pruning on unload keeps it to the ring in steady state, but
 ## a guess whose requesting build was cancelled never gets an unload to sweep it; the oldest
 ## entries are evicted instead (dictionary insertion order), so the worst case is a fixed
@@ -680,12 +688,17 @@ func _sync_guess_seed() -> void:
 	if seed_now != _guess_seed:
 		_guess_seed = seed_now
 		_guess_heightmaps.clear()
+		_shown_biomes.clear()
 
 ## The biome of every chunk the ring touches, keyed by chunk — what the colour step needs.
 ## The gather is ≤ 9 terrain-slice calls, against the 4356 a per-tile lookup would make.
+## A ring chunk past the polar rows is left out (it lends nothing, `blended_biome` falls back to
+## `own`), the same rule as `Minimap._blendable`; the chunk itself is always in the map.
 func gather_biomes_for(chunk_pos: Vector2i) -> Dictionary:
 	var out: Dictionary = {}
 	for chunk in _ring_chunks(chunk_pos):
+		if chunk != chunk_pos and not TerrainSlice.lends_biome(chunk, TerrainSlice.polar_chunks()):
+			continue
 		out[_chunk_key(chunk)] = _biome_at(_chunk_world_center(chunk))
 	return out
 
@@ -2765,6 +2778,7 @@ func _chunk_center_xz(chunk_pos: Vector2i) -> Vector2:
 ## The biome a resolve falls back to when nothing asked a terrain slice — see the
 ## `DEFAULT_BIOME` constant (Phase 42 review pass 9).
 func _biome_at(xz: Vector2) -> String:
+	biome_lookups += 1
 	if terrain_slice != null and terrain_slice.has_method("get_biome_at"):
 		return terrain_slice.get_biome_at(xz)
 	return DEFAULT_BIOME
@@ -2791,14 +2805,29 @@ static func natural_color(world_xz: Vector2, biomes: Dictionary, colours: Dictio
 ## Phase 64 — the biome whose surface the tile at `world_xz` WEARS, resolved from the terrain
 ## slice: the same `blended_biome` answer the mesher gets from the gathered map.
 func shown_biome_at(world_xz: Vector2) -> String:
+	_sync_guess_seed()
 	var extent := float(CHUNK_SIZE * TILE_SIZE)
 	var c := Vector2i(floori(world_xz.x / extent), floori(world_xz.y / extent))
 	var biomes: Dictionary = {}
 	for dz in range(-1, 2):
 		for dx in range(-1, 2):
 			var n := c + Vector2i(dx, dz)
-			biomes[_chunk_key(n)] = _biome_at(_chunk_world_center(n))
+			if n != c and not TerrainSlice.lends_biome(n, TerrainSlice.polar_chunks()):
+				continue
+			biomes[_chunk_key(n)] = _chunk_biome_memo(n)
 	return blended_biome(world_xz, biomes, str(biomes[_chunk_key(c)]))
+
+func _chunk_biome_memo(chunk: Vector2i) -> String:
+	var key := _chunk_key(chunk)
+	if not _shown_biomes.has(key):
+		if _shown_biomes.size() >= SHOWN_BIOME_CACHE_MAX:
+			_shown_biomes.erase(_shown_biomes.keys()[0])
+		_shown_biomes[key] = _biome_at(_chunk_world_center(chunk))
+	return _shown_biomes[key]
+
+## Drop the `shown_biome_at` memo (a world reset).
+func reset_shown_biomes() -> void:
+	_shown_biomes.clear()
 
 ## The instance ACCESSOR form of `natural_color`: with no gathered map it asks the terrain slice
 ## for this position's biome, in exactly the shape `gather_biomes_for` builds.

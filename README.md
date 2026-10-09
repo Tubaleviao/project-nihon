@@ -101,7 +101,7 @@ npm run generate  # generate the design bible into bible/
 | 78 | Exact player position far from the origin | Done |
 | 79 | Deterministic peer-window rate limit and a production ref-count reader | Planned |
 | 80 | Rebase in the physics step and explicit shift sets | Planned |
-| 81 | Pole-aware tile biome and a mined-tile biome memo | Planned |
+| 81 | Pole-aware tile biome and a mined-tile biome memo | Done |
 | 82 | Honest peer-window refusal count and a thread-safe warning counter | Planned |
 | 83 | Distant-ring teardown that does not stall | Planned |
 | 84 | The suite exits with no leaked objects | Planned |

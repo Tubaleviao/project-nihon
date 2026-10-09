@@ -382,7 +382,7 @@ func _blendable(c: Vector2i) -> bool:
 		return false
 	if terrain_slice != null and terrain_slice.has_method("world_radius_chunks"):
 		var r: int = terrain_slice.world_radius_chunks()
-		if c.y < -(r - 1) or c.y > r - 1:
+		if not TerrainSlice.lends_biome(c, r):
 			return false
 	return true
 

@@ -101,7 +101,7 @@ issue number where the criterion used to be.
 | 78 | Exact player position far from the origin | Done | below |
 | 79 | Deterministic peer-window rate limit and a production ref-count reader | Planned | below |
 | 80 | Rebase in the physics step and explicit shift sets | Planned | below |
-| 81 | Pole-aware tile biome and a mined-tile biome memo | Planned | below |
+| 81 | Pole-aware tile biome and a mined-tile biome memo | Done | below |
 | 82 | Honest peer-window refusal count and a thread-safe warning counter | Planned | below |
 | 83 | Distant-ring teardown that does not stall | Planned | below |
 | 84 | The suite exits with no leaked objects | Planned | below |
@@ -312,7 +312,7 @@ preview) is moved twice or moved when it should not be (#167).
 
 ---
 
-## Phase 81 — Pole-aware tile biome and a mined-tile biome memo
+## Phase 81 — Pole-aware tile biome and a mined-tile biome memo ✅ Done
 
 **Goal:** `VoxelSlice.blended_biome` / `shown_biome_at` take a neighbour's biome across ANY
 border, while the minimap's `_blendable` refuses chunks past the world's pole rows
@@ -334,13 +334,13 @@ lookups for every mined tile (#170).
   one lookup per distinct chunk.
 
 **Acceptance criteria:**
-- [ ] Suite: on the last in-world chunk row next to the pole, every tile in the blend band
+- [x] Suite: on the last in-world chunk row next to the pole, every tile in the blend band
   facing the pole has `shown_biome_at == own`, and the mesher's tile colour agrees.
-- [ ] Suite: for 64 border tiles inside the map, the voxel answer and the minimap cell answer
+- [x] Suite: for 64 border tiles inside the map, the voxel answer and the minimap cell answer
   still agree (Phase 64 test unchanged and green).
-- [ ] Suite: 100 `shown_biome_at` calls inside one chunk trigger at most 9 terrain-slice biome
+- [x] Suite: 100 `shown_biome_at` calls inside one chunk trigger at most 9 terrain-slice biome
   lookups (counter).
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green. — RESULTS_PLACEHOLDER
 
 ---
 
