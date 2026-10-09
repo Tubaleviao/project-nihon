@@ -128,6 +128,9 @@ func run() -> void:
 	_run_test("terrain: latitude and longitude from the fabric planet", _test_terrain_planet_coordinates)
 	_run_test("rebase: loot, avatars and the station preview follow the shift", _test_rebase_extras)
 	_run_test("player: rebased origin keeps the world position", _test_world_pos_rebase)
+	_run_test("player: the scene origin is the driver's integer chunk", _test_scene_origin_single_source)
+	_run_test("terrain: z_bounds matches clamp_to_world at infinity", _test_z_bounds_match_clamp)
+	_run_test("wire: one validator for dictionaries and records", _test_one_wire_validator)
 	_run_test("player: exact chunk + local far from the origin", _test_player_exact_far_position)
 	_run_test("rebase: TreeSlice shifts its trunks and pool, not other children", _test_tree_shift_explicit_set)
 	_run_test("rebase: LootSlice shifts its pickups, survives a freed one", _test_loot_shift_explicit_set)
@@ -272,6 +275,7 @@ func run() -> void:
 	_run_test("region: a failed save re-marks only failed chunks", _test_region_failed_keys_and_remark)
 	_run_test("region: a depletion in an evicted chunk keeps its other edits", _test_region_depletion_merges_evicted)
 	_run_test("region: a malformed entry warns once per store", _test_region_malformed_warns_once)
+	_run_test("region: a legacy tile height survives a depletion overlay", _test_region_overlay_legacy_height)
 	_run_test("region: a malformed entry survives a neighbour's save", _test_region_malformed_entry_kept)
 	_run_test("region: a valid entry replaces a malformed one", _test_region_malformed_entry_replaced)
 	_run_test("region: a partial chunk loads its stored edits when the region streams in", _test_region_partial_chunk_loads_stored)
@@ -310,6 +314,8 @@ func run() -> void:
 	_run_test("voxel: no biome is borrowed across the pole", _test_voxel_pole_blend)
 	_run_test("voxel: in-world border tiles unchanged by the pole rule", _test_voxel_inworld_border_unchanged)
 	_run_test("voxel: shown_biome_at memoises per chunk", _test_shown_biome_memo)
+	_run_test("voxel: the shown-biome memo follows the terrain slice", _test_shown_biome_follows_slice)
+	_run_test("voxel: the pole bound follows the terrain slice", _test_pole_bound_follows_slice)
 	_run_test("minimap: blend never borrows an unrevealed biome", _test_minimap_blend_respects_fog)
 	_run_test("minimap: a second redraw looks up no biome",      _test_minimap_redraw_uses_cache)
 	_run_test("minimap: sub-2px cells draw one rect per chunk",  _test_minimap_far_zoom_one_rect)
@@ -1320,6 +1326,45 @@ func _continuous_x(player: PlayerSlice) -> float:
 
 ## Phase 78 — the player's exact `{chunk, local}` survives a far rebase, a save → reload and the
 ## snapshot's own-record position.
+## Phase 90 — the player's scene origin is the driver's integer `origin_chunk`, and its offset is
+## derived from it exactly.
+func _test_scene_origin_single_source() -> void:
+	var player := PlayerSlice.new()
+	player.render_visuals = true
+	add_child(player)
+	var driver := RebaseDriver.new([player])
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 90
+	for _i in 1000:
+		driver.rebase_to(Vector2i(rng.randi_range(-1500000, 1500000), rng.randi_range(-100000, 100000)))
+	assert_eq(player._scene_origin_chunk, driver.origin_chunk, "the player's origin chunk is the driver's")
+	var want := Vector3(-float(driver.origin_chunk.x) * WorldPos.CHUNK_METERS, 0.0,
+		-float(driver.origin_chunk.y) * WorldPos.CHUNK_METERS)
+	assert_eq(player.scene_offset(), want, "the offset is exactly -origin_chunk * CHUNK_METERS")
+	player.free()
+
+func _test_z_bounds_match_clamp() -> void:
+	var t := TerrainSlice.new()
+	var b := t.z_bounds()
+	assert_eq(b.y, t.clamp_to_world(Vector3(0.0, 0.0, INF)).z, "the upper z bound is the +INF clamp")
+	assert_eq(b.x, t.clamp_to_world(Vector3(0.0, 0.0, -INF)).z, "the lower z bound is the -INF clamp")
+	t.free()
+
+func _test_one_wire_validator() -> void:
+	var good_dict := {"chunk": [3, -4], "local": [1.0, 2.0, 3.0]}
+	assert_true(WorldPos.is_wire(good_dict), "a {chunk, local} dictionary is a wire position")
+	assert_true(WorldPos.is_wire({"chunk": [3.0, -4.0], "local": [1, 2, 3]}), "JSON-decoded integer-valued floats pass")
+	assert_true(WorldPos.is_wire([1.0, 2.0, 3.0]), "a legacy array is a wire position")
+	assert_true(WorldPos.is_wire(WorldPos.to_wire(Vector3(123.0, 4.0, -56.0))), "an encoded position passes")
+	assert_false(WorldPos.is_wire({"chunk": [3, -4]}), "a dictionary missing local is refused")
+	assert_false(WorldPos.is_wire({"chunk": [1.5, 2], "local": [0, 0, 0]}), "a non-integer chunk is refused")
+	assert_false(WorldPos.is_wire({"chunk": [1, 2], "local": [0.0, NAN, 0.0]}), "a NaN component is refused")
+	assert_false(WorldPos.is_wire({"chunk": [NAN, 2], "local": [0, 0, 0]}), "a NaN chunk is refused")
+	assert_false(WorldPos.is_wire({"chunk": [0, TerrainSlice.pole_chunks() + 1], "local": [0, 0, 0]}), "a chunk past the pole is refused")
+	assert_false(WorldPos.is_wire({"chunk": [0, 0], "local": [2.0e6, 0, 0]}), "a local beyond a chunk's reach is refused")
+	assert_false(WorldPos.is_wire({"chunk": [0, 0, 0], "local": [0, 0, 0]}), "a three-element chunk is refused")
+	assert_true(PlayerRegistry.world_pos_of(good_dict)["chunk"] == Vector2i(3, -4), "the registry decodes through the same rule")
+
 func _test_player_exact_far_position() -> void:
 	var chunk := Vector2i(1500000, 3)
 	var want := {"chunk": chunk, "local": Vector3(0.25, 10.0, 0.75)}
@@ -7762,6 +7807,60 @@ func _test_shown_biome_memo() -> void:
 	for i in 100:
 		v.shown_biome_at(Vector2(0.25 + (i % 10) * VoxelSlice.TILE_SIZE, 0.25 + (i / 10) * VoxelSlice.TILE_SIZE))
 	assert_true(v.biome_lookups - base <= 9, "at most 9 lookups for 100 calls (got %d)" % (v.biome_lookups - base))
+	v.free()
+	ts.free()
+
+## Phase 92 — a fake terrain slice for the memo and pole-bound tests: a fixed biome, an optional
+## polar bound.
+class FixedBiomeStub extends Node:
+	var biome := "DesertDunes"
+	var radius := -1
+	var world_seed := 1
+	func get_biome_at(_xz: Vector2) -> String:
+		return biome
+	func get_world_seed() -> int:
+		return world_seed
+	func world_radius_chunks() -> int:
+		return radius if radius >= 0 else TerrainSlice.polar_chunks()
+
+## Phase 92 — a swapped terrain slice drops the shown-biome memo.
+func _test_shown_biome_follows_slice() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var a := FixedBiomeStub.new()
+	var b := FixedBiomeStub.new()
+	b.biome = "TemperateForest"
+	add_child(a)
+	add_child(b)
+	v.terrain_slice = a
+	var xz := Vector2(16.0, 16.0)
+	assert_eq(v.shown_biome_at(xz), "DesertDunes", "slice A's biome is memoised")
+	v.terrain_slice = b
+	assert_eq(v.shown_biome_at(xz), "TemperateForest", "assigning slice B serves B's answer")
+	v.free()
+	a.free()
+	b.free()
+
+## Phase 92 — a terrain slice with a smaller polar bound leaves a chunk between the bounds out of
+## both the gather and the shown blend.
+func _test_pole_bound_follows_slice() -> void:
+	var v := VoxelSlice.new()
+	add_child(v)
+	var ts := FixedBiomeStub.new()
+	ts.radius = 5
+	add_child(ts)
+	v.terrain_slice = ts
+	assert_true(TerrainSlice.polar_chunks() > 6, "the static bound is wider than the fake one")
+	var own := Vector2i(0, 4)
+	var between := Vector2i(0, 5)   # inside the static bound, past the fake one
+	var gathered := v.gather_biomes_for(own)
+	assert_true(gathered.has(VoxelSlice._chunk_key(own)), "the chunk itself is always gathered")
+	assert_false(gathered.has(VoxelSlice._chunk_key(between)), "gather leaves the chunk past the slice's bound out")
+	var lent := v._lending_ring(own, [own, between, Vector2i(0, 3)])
+	assert_eq(lent, [own, Vector2i(0, 3)], "shown_biome_at's ring leaves it out too")
+	var before := v.biome_lookups
+	v.shown_biome_at(Vector2(16.0, (4.0 * 32.0) + 16.0))
+	assert_true(v.biome_lookups - before <= 6, "and the blend never asks for it (%d lookups)" % (v.biome_lookups - before))
 	v.free()
 	ts.free()
 
@@ -14975,6 +15074,46 @@ func _test_region_partial_chunk_loads_stored() -> void:
 	assert_eq(int(v.get_vein_depletion().get(str(vein["id"]), 0)), 1, "the depletion is kept")
 	assert_false(v.get_save_manifest()[a_key].has("merge"), "the chunk is whole, so the next save replaces")
 	v.free()
+
+## Phase 91 — a bare legacy tile height overlaid with a deplete survives as a typed `legacy` op and
+## migrates to the same column as the bare height alone.
+func _test_region_overlay_legacy_height() -> void:
+	var dep := { "op": "deplete", "vein": "v", "taken": 4 }
+	var stored := { "edits": { "32,32": 1.0 } }
+	var out := RegionStoreScript.overlay_entry(stored, { "merge": true, "edits": { "32,32": [dep] } })
+	var ops: Array = out["edits"]["32,32"]
+	assert_eq(ops.size(), 2, "the legacy height and the depletion")
+	assert_eq(ops[0], { "op": "legacy", "height": 1.0 }, "the legacy height is first")
+	assert_true(RegionStoreScript.is_valid_chunk_entry(out), "the overlaid entry is a valid chunk entry")
+	var bare := _make_voxel()
+	bare.apply_edits({ "32,32": 1.0 })
+	var via := _make_voxel()
+	via.apply_edits(out["edits"])
+	assert_eq(via.get_voxel_height_at(Vector2(16.0, 16.0)), bare.get_voxel_height_at(Vector2(16.0, 16.0)),
+		"the column top equals the bare height alone")
+	assert_eq(via.get_voxel_height_at(Vector2(16.0, 16.0)), 1.0, "and is the legacy height")
+	var kept := false
+	for op in via.get_edits()["32,32"]:
+		kept = kept or (op["op"] == "deplete" and int(op["taken"]) == 4)
+	assert_true(kept, "the depletion's taken count is kept")
+	# A second deplete keeps exactly one legacy op.
+	var again := RegionStoreScript.overlay_entry(out, { "merge": true, "edits": { "32,32": [{ "op": "deplete", "vein": "v", "taken": 6 }] } })
+	var legacy_ops := 0
+	for op in again["edits"]["32,32"]:
+		if op["op"] == "legacy":
+			legacy_ops += 1
+	assert_eq(legacy_ops, 1, "exactly one legacy op after a second deplete")
+	assert_eq(again["edits"]["32,32"].size(), 2, "and the larger depletion replaced the first")
+	# A numeric string migrates the same.
+	var str_out := RegionStoreScript.overlay_entry({ "edits": { "32,32": "1.0" } }, { "merge": true, "edits": { "32,32": [dep] } })
+	assert_eq(str_out["edits"]["32,32"][0], { "op": "legacy", "height": 1.0 }, "a numeric string is carried too")
+	# A typed op list overlays as before.
+	var typed := RegionStoreScript.overlay_entry({ "edits": { "32,32": [{ "op": "remove", "bottom": 0.0, "top": 1.0 }] } },
+		{ "merge": true, "edits": { "32,32": [dep] } })
+	assert_eq(typed["edits"]["32,32"].size(), 2, "a typed list gains the depletion only")
+	assert_eq(typed["edits"]["32,32"][0]["op"], "remove", "and gains no legacy op")
+	bare.free()
+	via.free()
 
 func _test_region_overlay_keeps_larger_taken() -> void:
 	var stored := { "edits": { "0,0": [{ "op": "deplete", "vein": "v", "taken": 40 }] } }

@@ -316,21 +316,28 @@ func place_at_world_pos(pos: Dictionary) -> void:
 		_body.global_position = WorldPos.to_scene(pos, _scene_origin_chunk)
 		_vel = Vector3.ZERO
 
+## Phase 90 — the scene origin, as an exact integer chunk: the single source of truth. The driver
+## passes its `origin_chunk` with every shift (`shift_scene_to_origin`); `_scene_offset` is derived.
+var _scene_origin_chunk := Vector2i.ZERO
 ## Phase 63: the scene-origin offset a client rebase has applied. The body sits at world + offset;
 ## `get_position` and `spawn_at` still speak world coordinates.
+## Always `-_scene_origin_chunk * CHUNK_METERS`.
 var _scene_offset: Vector3 = Vector3.ZERO
-## Phase 78 — the same offset as an exact integer chunk (the scene origin, in chunks): the source
-## of truth for `get_world_pos`. `_scene_offset == -_scene_origin_chunk * CHUNK_METERS`.
-var _scene_origin_chunk := Vector2i.ZERO
 
 ## The body's raw scene position (what the physics server sees).
 func get_scene_position() -> Vector3:
 	return _body.global_position if _body else Vector3.ZERO
 
 ## Shift the body by `shift` in the same frame the world shifts; its world position is unchanged.
+## For a caller that only has the shift (not the driver's origin): the origin is derived from it.
 func shift_scene(shift: Vector3) -> void:
-	_scene_offset += shift
-	_scene_origin_chunk -= Vector2i(roundi(shift.x / WorldPos.CHUNK_METERS), roundi(shift.z / WorldPos.CHUNK_METERS))
+	shift_scene_to_origin(shift, _scene_origin_chunk
+		- Vector2i(roundi(shift.x / WorldPos.CHUNK_METERS), roundi(shift.z / WorldPos.CHUNK_METERS)))
+
+## Shift the body by `shift` to the scene origin `origin` (the driver's integer `origin_chunk`).
+func shift_scene_to_origin(shift: Vector3, origin: Vector2i) -> void:
+	_scene_origin_chunk = origin
+	_scene_offset = Vector3(-float(origin.x) * WorldPos.CHUNK_METERS, 0.0, -float(origin.y) * WorldPos.CHUNK_METERS)
 	if _body:
 		_body.global_position += shift
 	if _ghost_pool != null:
@@ -654,7 +661,7 @@ func _move(delta: float) -> void:
 	# Keep the player inside the finite world. The CharacterBody3D's physics
 	# body is moved directly so the clamp is authoritative for both the visible
 	# avatar and collision, without relying on a wall at the world edge.
-	if terrain_slice != null and terrain_slice.has_method("clamp_to_world"):
+	if terrain_slice != null and terrain_slice.has_method("z_bounds"):
 		_clamp_to_world_exact()
 
 ## Phase 78 — the world clamp and the seam wrap, worked out on the exact `{chunk, local}` position
@@ -666,10 +673,8 @@ func _clamp_to_world_exact() -> void:
 	var local: Vector3 = wp["local"]
 	var world_x: float = chunk.x * WorldPos.CHUNK_METERS + local.x   # doubles
 	var world_z: float = chunk.y * WorldPos.CHUNK_METERS + local.z
-	# `clamp_to_world` only touches z, so probe its bounds with the two extremes.
-	var hi: Vector3 = terrain_slice.clamp_to_world(Vector3(0.0, 0.0, INF))
-	var lo: Vector3 = terrain_slice.clamp_to_world(Vector3(0.0, 0.0, -INF))
-	var dz := clampf(world_z, lo.z, hi.z) - world_z
+	var z_bounds: Vector2 = terrain_slice.z_bounds()
+	var dz := clampf(world_z, z_bounds.x, z_bounds.y) - world_z
 	var w := float(TerrainSlice.circumference_chunks()) * WorldPos.CHUNK_METERS
 	var dx := (fposmod(world_x + w * 0.5, w) - w * 0.5) - world_x
 	if dx != 0.0 or dz != 0.0:

@@ -133,6 +133,15 @@ static func fold_chunks(base: Dictionary, incoming: Dictionary, deletions := tru
 		out[ckey] = entry
 	return out
 
+## Phase 91 — the typed op a bare legacy tile height is carried as when a deplete is overlaid on it.
+const LEGACY_OP := "legacy"
+
+## True for a finite number or numeric string: the shapes `VoxelSlice` reads as a legacy height.
+static func _is_legacy_height(value: Variant) -> bool:
+	if value is int or value is float:
+		return is_finite(float(value))
+	return value is String and (value as String).is_valid_float() and is_finite(float(value))
+
 ## `entry` laid over `stored` (a chunk entry or null), without the `merge` flag. Pure.
 static func overlay_entry(stored: Variant, entry: Dictionary) -> Dictionary:
 	var result: Dictionary = (stored as Dictionary).duplicate(true) if stored is Dictionary else {}
@@ -148,6 +157,10 @@ static func overlay_entry(stored: Variant, entry: Dictionary) -> Dictionary:
 			var merged: Array = []
 			var old: Variant = edits.get(tile, [])
 			var stored_taken: Dictionary = {}
+			if not (old is Array) and _is_legacy_height(old):
+				# Phase 91 — a pre-Phase-41 bare height is not an op list; carry it as a typed `legacy`
+				# op, first, so `VoxelSlice` still migrates it against the tile's natural run.
+				old = [{ "op": LEGACY_OP, "height": float(old) }]
 			if old is Array:
 				for op in old:
 					if ops_in.has(op):
@@ -241,7 +254,7 @@ func reset_warnings() -> void:
 ## Phase 61 — a chunk entry's `edits`, when present, must be a Dictionary (tile key → op list)
 ## and its `materials`, when present, a Dictionary. Only the container types are checked: the
 ## tile's value is left to `VoxelSlice` to migrate (legacy entries carry bare numbers), except that
-## an op LIST must hold only ops (Dictionaries). Pure.
+## an op LIST must hold only ops (Dictionaries) — the Phase 91 `legacy` op is one. Pure.
 static func _chunk_entry_valid(entry: Dictionary) -> bool:
 	if entry.has("edits"):
 		if not (entry["edits"] is Dictionary):

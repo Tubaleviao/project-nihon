@@ -114,12 +114,31 @@ static func wrap_world(world: Vector3) -> Vector3:
 ## True for a decodable wire position: the `{chunk, local}` dictionary or a legacy `[x, y, z]` array.
 ## Every element must be a finite number of sane size, so a hostile packet cannot reach `int()` /
 ## `float()` with a non-number or feed NaN / infinity into `normalized`.
+##
+## Phase 90 — the ONE wire validator. A dictionary needs a `chunk` of exactly two integer-valued
+## numbers (JSON hands ints back as floats, so `3.0` passes, `1.5` does not) — X within one lap of
+## the world, Z between the poles — and a `local` of exactly three finite numbers under 1e6 m. Saved
+## player records share the shape, so `PlayerRegistry` asks this too.
 static func is_wire(data: Variant) -> bool:
 	if data is Dictionary:
-		return data.get("chunk") is Array and data["chunk"].size() >= 2 \
-			and data.get("local") is Array and data["local"].size() >= 3 \
-			and _sane(data["chunk"], 2) and _sane(data["local"], 3)
+		var c: Variant = data.get("chunk")
+		var l: Variant = data.get("local")
+		if not (c is Array and l is Array and (c as Array).size() == 2 and (l as Array).size() == 3):
+			return false
+		if not (_sane(c, 2) and _sane(l, 3)):
+			return false
+		var limits := [float(TerrainSlice.circumference_chunks()), float(TerrainSlice.pole_chunks())]
+		for i in 2:
+			if absf(float(c[i])) > limits[i] or floorf(float(c[i])) != float(c[i]):
+				return false
+		for v in l:
+			if absf(float(v)) > LOCAL_LIMIT:
+				return false
+		return true
 	return data is Array and data.size() >= 3 and _sane(data, 3)
+
+## A wire `local` component beyond this many metres is not a position inside a chunk.
+const LOCAL_LIMIT := 1.0e6
 
 ## The first `count` elements of `arr` are numbers, finite, and within +/- WIRE_LIMIT.
 const WIRE_LIMIT := 1.0e9
