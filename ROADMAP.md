@@ -108,8 +108,8 @@ issue number where the criterion used to be.
 | 85 | Peer claims and host syncs keep separate interval clocks | Done | below |
 | 86 | Remote peers' positions stay exact far from the origin | Done | below |
 | 87 | Exact spawn and respawn points | Planned | below |
-| 88 | The distant ring survives a reparent and its abort is proven | Planned | below |
-| 89 | A malformed region entry warns once per session | Planned | below |
+| 88 | The distant ring survives a reparent and its abort is proven | Done | below |
+| 89 | A malformed region entry warns once per session | Done | below |
 | 90 | One scene-origin source and one wire-position validator | Done | below |
 | 91 | A legacy tile height survives a depletion overlay | Done | below |
 | 92 | The shown-biome memo follows the terrain slice and one pole-ring rule | Done | below |
@@ -532,7 +532,7 @@ integration test (#200, #201, #202).
 
 ---
 
-## Phase 88 — The distant ring survives a reparent and its abort is proven
+## Phase 88 — The distant ring survives a reparent and its abort is proven ✅ Done
 
 **Goal:** since Phase 83, `DistantTerrain._exit_tree` discards the in-flight build and the queued
 request, so a ring that is only reparented (exit then re-enter) shows nothing until the next
@@ -552,16 +552,16 @@ the abort never fires (#212).
   row count and asserts the aborted build stopped strictly earlier.
 
 **Acceptance criteria:**
-- [ ] Suite: a ring with a build in flight is removed from and re-added to the tree; after the
+- [x] Suite: a ring with a build in flight is removed from and re-added to the tree; after the
   rebuild completes its vertex hash equals an undisturbed ring's.
-- [ ] Suite: the aborted build's row counter ends strictly below the row count an unaborted
+- [x] Suite: the aborted build's row counter ends strictly below the row count an unaborted
   build of the same ring reaches (both measured in the test), so the bound no longer holds
   trivially.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green. — `Results: 15412/15412 passed (0 failed)` on `--run-tests`; harness 15/15 steps.
 
 ---
 
-## Phase 89 — A malformed region entry warns once per session
+## Phase 89 — A malformed region entry warns once per session ✅ Done
 
 **Goal:** since Phase 75 a malformed chunk entry is kept on rewrite, but `RegionStore.read_region`
 warns about it on every streaming read, so one bad entry floods the log (and `Diag.warn_count`)
@@ -579,11 +579,11 @@ for as long as the player stays nearby (#196).
   tests and for a world switch.
 
 **Acceptance criteria:**
-- [ ] Suite: a region file with one malformed entry read 50 times raises `Diag.warn_count` by
+- [x] Suite: a region file with one malformed entry read 50 times raises `Diag.warn_count` by
   exactly 1; a second malformed entry in another region raises it by one more.
-- [ ] Suite: after the reset accessor (or a new store on another world) the first read warns again.
-- [ ] Suite: the malformed entry still survives a rewrite unchanged (Phase 75 behaviour kept).
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite: after the reset accessor (or a new store on another world) the first read warns again.
+- [x] Suite: the malformed entry still survives a rewrite unchanged (Phase 75 behaviour kept).
+- [x] Suite green on both boot paths, harness green. — `Results: 15418/15418 passed (0 failed)` on `--run-tests`; harness 15/15 steps.
 
 ---
 

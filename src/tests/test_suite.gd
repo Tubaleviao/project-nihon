@@ -104,6 +104,7 @@ func run() -> void:
 	_run_test("terrain: the distant ring builds off the main thread", _test_distant_ring_async)
 	_run_test("terrain: freeing the ring mid-build aborts the worker at the next row", _test_distant_ring_abort)
 	_run_test("terrain: a build that is not aborted is unchanged by the abort check", _test_distant_ring_unaborted_same)
+	_run_test("terrain: a reparented ring rebuilds to the undisturbed mesh", _test_distant_ring_reparent)
 	_run_test("terrain: the distant ring's vertices are pinned by a hash", _test_distant_ring_vertex_hash)
 	_run_test("terrain: detail noise has one formula", _test_detail_noise_single_formula)
 	_run_test("terrain: walking 5 chunks requests at most 5 ring rebuilds", _test_distant_ring_rebuild_counter)
@@ -273,6 +274,7 @@ func run() -> void:
 	_run_test("equipment: the sequence number never rewinds",   _test_equipment_seq_monotonic)
 	_run_test("region: a failed save re-marks only failed chunks", _test_region_failed_keys_and_remark)
 	_run_test("region: a depletion in an evicted chunk keeps its other edits", _test_region_depletion_merges_evicted)
+	_run_test("region: a malformed entry warns once per store", _test_region_malformed_warns_once)
 	_run_test("region: a legacy tile height survives a depletion overlay", _test_region_overlay_legacy_height)
 	_run_test("region: a malformed entry survives a neighbour's save", _test_region_malformed_entry_kept)
 	_run_test("region: a valid entry replaces a malformed one", _test_region_malformed_entry_replaced)
@@ -14550,8 +14552,40 @@ func _test_distant_ring_abort() -> void:
 	assert_true(control.aborted, "leaving the tree raised the abort flag")
 	# The worker is joined by now: no row was started after the flag, bar the one in progress.
 	assert_true(rows_after_abort <= 2 * (DistantTerrainScript.GRID + 1) + 1, "the row counter is bounded")
+	# An unaborted build of the same ring reaches the full row count; the aborted one stopped earlier.
+	var half := DistantTerrainScript.ring_half_extent(3)
+	var win := (3.0 + 0.5) * DistantTerrainScript.CHUNK_METERS
+	var full := DistantTerrainScript.BuildControl.new()
+	DistantTerrainScript.build_mesh(11, 40000.0 * 1000.0, Vector2.ZERO, half, win, Vector2.ZERO, full)
+	assert_eq(full.rows, 2 * DistantTerrainScript.GRID + 1, "an unaborted build visits every row")
+	assert_true(rows_after_abort < full.rows, "the aborted build stopped strictly before the full row count")
 	OS.delay_msec(20)
 	assert_eq(control.rows, rows_after_abort, "no worker row runs after the node is gone")
+
+## Phase 88 — a ring reparented mid-build (exit, then re-enter) still ends with the same mesh as an
+## undisturbed ring.
+func _test_distant_ring_reparent() -> void:
+	var calm := DistantTerrainScript.new()
+	add_child(calm)
+	calm.world_seed = 11
+	calm.rebuild(Vector2(100.0, -40.0), 2)
+	calm.poll(true)
+	var moved := DistantTerrainScript.new()
+	add_child(moved)
+	moved.world_seed = 11
+	moved.rebuild(Vector2(100.0, -40.0), 2)
+	assert_true(moved.is_building(), "a build is in flight")
+	remove_child(moved)
+	assert_false(moved.is_building(), "leaving the tree discarded the build")
+	add_child(moved)
+	assert_true(moved.is_building(), "re-entering the tree re-requested it")
+	assert_true(moved.poll(true), "the rebuilt mesh is swapped in")
+	var a: ArrayMesh = (calm.get_child(0) as MeshInstance3D).mesh
+	var b: ArrayMesh = (moved.get_child(0) as MeshInstance3D).mesh
+	assert_eq(hash(b.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]), hash(a.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]),
+		"the reparented ring's vertex hash equals an undisturbed ring's")
+	calm.free()
+	moved.free()
 
 func _test_distant_ring_unaborted_same() -> void:
 	var half := DistantTerrainScript.ring_half_extent(2)
@@ -14977,6 +15011,37 @@ func _test_region_malformed_entry_kept() -> void:
 	var keys: Array = parsed["chunks"].keys()
 	keys.sort()
 	assert_eq(keys, ["1,1", "2,2", "3,3"], "with both valid entries")
+
+## Phase 89 — a malformed entry warns once per store, not on every streaming read.
+func _test_region_malformed_warns_once() -> void:
+	var dir := _fresh_region_dir("test_p89_warn_once")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	var good := { "edits": { "0,0": [{ "op": "remove", "bottom": 0.0, "top": 1.0 }] } }
+	_write_region_file(store, { "1,1": { "edits": "x" }, "2,2": good })
+	var warns := Diag.warn_count()
+	for _i in 50:
+		store.read_region(Vector2i.ZERO)
+	assert_eq(Diag.warn_count() - warns, 1, "50 reads of one malformed entry warn once")
+	var f := FileAccess.open(store.path_of(Vector2i(1, 0)), FileAccess.WRITE)
+	f.store_string(JSON.stringify({ "version": 1, "chunks": { "33,1": { "edits": 5 } } }))
+	f.close()
+	warns = Diag.warn_count()
+	for _i in 50:
+		store.read_region(Vector2i(1, 0))
+		store.read_region(Vector2i.ZERO)
+	assert_eq(Diag.warn_count() - warns, 1, "a malformed entry in another region warns once more")
+	store.reset_warnings()
+	warns = Diag.warn_count()
+	store.read_region(Vector2i.ZERO)
+	store.read_region(Vector2i.ZERO)
+	assert_eq(Diag.warn_count() - warns, 1, "after the reset the first read warns again")
+	var other: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	warns = Diag.warn_count()
+	other.read_region(Vector2i.ZERO)
+	assert_eq(Diag.warn_count() - warns, 1, "a new store warns on its first read")
+	assert_eq(store.write_chunks({ "3,3": good }), OK, "a neighbour is saved")
+	var parsed: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(store.path_of(Vector2i.ZERO)))
+	assert_eq(JSON.stringify(parsed["chunks"]["1,1"]), JSON.stringify({ "edits": "x" }), "the malformed entry survives the rewrite unchanged")
 
 func _test_region_malformed_entry_replaced() -> void:
 	var dir := _fresh_region_dir("test_p75_malformed_replace")

@@ -41,6 +41,9 @@ var _task := -1
 var _task_args: Dictionary = {}
 var _result: ArrayMesh = null
 var _queued: Dictionary = {}   # a newer request that arrived while a build was in flight
+## Phase 88 — the request `_exit_tree` discarded (the newest of the in-flight and queued ones), so
+## `_enter_tree` can start it again when the ring is only reparented.
+var _discarded: Dictionary = {}
 
 ## Phase 83 — shared between the main thread and a build's worker: the main thread raises `aborted`
 ## (leaving the tree), the worker checks it before each row and returns no mesh. `rows` counts the
@@ -177,15 +180,26 @@ func _process(_delta: float) -> void:
 	poll()
 
 ## Leaving the tree aborts the in-flight build (the worker stops at its next row) instead of
-## waiting out a whole lattice, and drops any queued request and any result.
+## waiting out a whole lattice, and drops any queued request and any result. The discarded request
+## is remembered so a reparent (exit, then re-enter) rebuilds the ring.
 func _exit_tree() -> void:
 	if _task >= 0:
 		if _control != null:
 			_control.aborted = true
 		WorkerThreadPool.wait_for_task_completion(_task)
+		_discarded = _queued if not _queued.is_empty() else _task_args
 		_task = -1
 		_result = null
 		_queued = {}
+
+## Re-requests a build `_exit_tree` discarded. A fresh `BuildControl` (abort flag clear) is made by
+## `_start`.
+func _enter_tree() -> void:
+	if _discarded.is_empty():
+		return
+	var args := _discarded
+	_discarded = {}
+	_start(args)
 
 ## The ring's mesh: GRID × GRID cells centred on `ring_center` spanning ±`half_m`, with the voxel
 ## window (`window_half_m` around `window_center`) cut out EXACTLY: a cell wholly inside is skipped, a
