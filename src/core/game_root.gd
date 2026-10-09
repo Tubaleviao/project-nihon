@@ -716,6 +716,7 @@ func _boot_host() -> void:
 		saved_pos = _first_boot_spawn()
 	if saved_pos != null:
 		_place_local_player(saved_pos)
+		_lift_out_of_ground()
 		_chunk_manager.build_first_ring(_chunk_manager.player_chunk())
 		_chunk_manager.refresh()
 	_host_boot_wait_elapsed = 0.0
@@ -2107,7 +2108,12 @@ func _saved_local_position() -> Variant:
 		return null
 	var arr = _registry.get_record(pid).get("position", [])
 	if arr is Array and (arr as Array).size() >= 3:
-		return Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
+		var pos := Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
+		# A brand-new record is created at the exact origin (`ensure_player`), which is inside the
+		# ground: it is "never placed", not a saved position, so the first-boot spawn still runs.
+		if pos == Vector3.ZERO:
+			return null
+		return pos
 	return null
 
 ## Phase 85 — an admin teleport: land the local body at the world position `pos`, rebasing the scene
@@ -2134,6 +2140,23 @@ func _place_local_player(pos: Vector3) -> void:
 		_player.place_at_world_pos(wp)
 	else:
 		_player.spawn_at(pos)
+
+## A restored body that sits inside solid ground (a record saved while the player was stuck, or one
+## written before the terrain changed) is lifted onto the surface above it; a body in open air, in
+## a tunnel or a cave is left alone.
+func _lift_out_of_ground() -> void:
+	if _player == null or _voxel == null:
+		return
+	var pos := _player.get_position()
+	var runs: Array = _voxel.get_column_runs_at(Vector2(pos.x, pos.z))
+	if runs.is_empty():
+		return
+	var top := float(runs[-1]["top"])
+	for run in runs:
+		if pos.y > float(run["bottom"]) and pos.y < float(run["top"]) or pos.y < float(runs[0]["bottom"]):
+			Diag.warn("GameRoot: saved position %s is inside the ground — lifted to %.2f" % [pos, top])
+			_player.spawn_at(Vector3(pos.x, top + 0.1, pos.z))
+			return
 
 ## Read the world record and the LOCAL player's record off disk. A missing world
 ## record is NOT an error — a server with no save boots a fresh world.
@@ -2438,6 +2461,7 @@ func _on_load_completed(slot: int, data: Dictionary) -> void:
 		var arr = player_data.get("position", [])
 		if arr is Array and (arr as Array).size() >= 3:
 			_player.spawn_at(Vector3(float(arr[0]), float(arr[1]), float(arr[2])))
+			_lift_out_of_ground()
 		var hp := float(player_data.get("hp", -1.0))
 		if hp >= 0.0:
 			_player.set_hp(hp)

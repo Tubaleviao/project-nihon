@@ -121,6 +121,7 @@ func run() -> void:
 	_run_test("chat: slash lines parse, sanitize and validate", _test_chat_parse)
 	_run_test("chat: admin commands run for admins only",     _test_chat_admin_commands)
 	_run_test("chat: lines and intents cross the wire",       _test_chat_wire)
+	_run_test("chat: the input box is on screen while closed", _test_chat_box_visible)
 	_run_test("terrain: latitude and longitude from the fabric planet", _test_terrain_planet_coordinates)
 	_run_test("rebase: loot, avatars and the station preview follow the shift", _test_rebase_extras)
 	_run_test("player: rebased origin keeps the world position", _test_world_pos_rebase)
@@ -15578,6 +15579,17 @@ func _test_chat_admin_commands() -> void:
 	body.free()
 	inv.free()
 	reg.free()
+
+func _test_chat_box_visible() -> void:
+	var c := ChatSlice.new()
+	add_child(c)
+	assert_true(c._field != null and c._field.visible, "the box shows before Enter is pressed")
+	assert_false(c.is_typing(), "but it does not hold the keyboard")
+	assert_true(c._field.placeholder_text.contains("Enter"), "and it says how to start typing")
+	c.open_input("/")
+	assert_eq(c._field.text, "/", "Enter or / prefills and focuses it")
+	c._close_input()
+	c.queue_free()
 
 func _test_chat_wire() -> void:
 	var n := NetworkingSlice.new()

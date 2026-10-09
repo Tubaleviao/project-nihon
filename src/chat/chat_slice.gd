@@ -93,7 +93,6 @@ func is_typing() -> bool:
 func open_input(prefill: String = "") -> void:
 	if _field == null:
 		return
-	_field.visible = true
 	_field.text = prefill
 	_field.grab_focus()
 	_field.caret_column = prefill.length()
@@ -421,9 +420,10 @@ func _build_ui() -> void:
 	box.add_child(_log)
 
 	_field = LineEdit.new()
-	_field.placeholder_text = "Say something, or /help"
+	# Always on screen so the box can be found; Enter, `/` or a click gives it the keyboard.
+	_field.placeholder_text = "Press Enter to chat, or / for commands (/help)"
 	_field.max_length = ChatCommands.MAX_MESSAGE_CHARS
-	_field.visible = false
+	_field.focus_exited.connect(_on_field_focus_exited)
 	_field.text_submitted.connect(_on_text_submitted)
 	box.add_child(_field)
 
@@ -436,11 +436,13 @@ func _close_input() -> void:
 		return
 	_field.text = ""
 	_field.release_focus()
-	_field.visible = false
+
+func _on_field_focus_exited() -> void:
+	_field.text = ""
 
 func _refresh_log() -> void:
 	var now := Time.get_ticks_msec() / 1000.0
-	var open := _field != null and _field.visible
+	var open := _field != null and _field.has_focus()
 	var shown: Array = []
 	for i in range(_lines.size() - 1, -1, -1):
 		var line: Dictionary = _lines[i]
