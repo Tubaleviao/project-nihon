@@ -1156,8 +1156,8 @@ func _dist2(center: Vector2i, chunk: Vector2i) -> int:
 ## True when `chunk` is inside the finite world, or when no terrain slice is
 ## wired (isolated unit tests treat the world as unbounded).
 func _in_bounds(chunk: Vector2i) -> bool:
-	if terrain_slice != null and terrain_slice.has_method("is_chunk_in_bounds"):
-		return terrain_slice.is_chunk_in_bounds(chunk)
+	if terrain_slice != null and terrain_slice.has_method("is_chunk_loadable"):
+		return terrain_slice.is_chunk_loadable(chunk)
 	return true
 
 func _chunk_key(chunk_pos: Vector2i) -> String:

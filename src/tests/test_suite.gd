@@ -99,6 +99,7 @@ func run() -> void:
 	_run_test("water: spans cover exactly the tiles below sea level", _test_water_spans)
 	_run_test("voxel: a chunk-local build keeps far-from-origin vertices small and exact", _test_voxel_local_build_far_chunk)
 	_run_test("locomotion: reset stands a dead avatar back up", _test_locomotion_reset_after_death)
+	_run_test("polar: ice is streamed to the pole and whitens the ground", _test_polar_ice)
 	_run_test("player: deep water is swum, not walked",       _test_player_swims_in_deep_water)
 	_run_test("terrain: the distant ring is 10x the window with no collision", _test_distant_ring)
 	_run_test("terrain: the ring meets the voxel ground at the window edge", _test_distant_ring_window_edge)
@@ -14404,6 +14405,22 @@ func _test_locomotion_reset_after_death() -> void:
 	assert_eq(loco.state_name(), "DEATH", "death is the terminal pose")
 	loco.reset()
 	assert_eq(loco.state_name(), "IDLE", "a respawn resets it to idle")
+
+func _test_polar_ice() -> void:
+	var t := TerrainSlice.new()
+	var polar := TerrainSlice.polar_chunks()
+	assert_true(not t.is_chunk_in_bounds(Vector2i(0, polar)), "polar ice is still not walkable")
+	assert_true(t.is_chunk_loadable(Vector2i(0, polar)), "but it is streamed in: no void past the ice line")
+	assert_true(t.is_chunk_loadable(Vector2i(0, TerrainSlice.pole_chunks() - 1)), "all the way to the pole")
+	assert_true(not t.is_chunk_loadable(Vector2i(0, TerrainSlice.pole_chunks())), "and no further")
+	t.free()
+	var grass := Color(0.35, 0.6, 0.28)
+	var metres_per_deg := float(TerrainSlice.pole_chunks()) * TerrainSlice.CHUNK_METERS / 90.0
+	assert_eq(VoxelSlice.icy(grass, 45.0 * metres_per_deg), grass, "temperate ground is untouched")
+	assert_eq(VoxelSlice.icy(grass, 85.0 * metres_per_deg), VoxelSlice.ICE_COLOR, "the polar cap is ice")
+	assert_eq(VoxelSlice.icy(grass, -85.0 * metres_per_deg), VoxelSlice.ICE_COLOR, "south as well")
+	var mid := VoxelSlice.icy(grass, 76.0 * metres_per_deg)
+	assert_true(mid != grass and mid != VoxelSlice.ICE_COLOR, "the band between whitens gradually")
 
 func _test_water_spans() -> void:
 	var n := TerrainSlice.CHUNK_SIZE

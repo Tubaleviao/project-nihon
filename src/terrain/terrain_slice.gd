@@ -246,6 +246,12 @@ static func where_text(world_pos: Vector3) -> String:
 func is_chunk_in_bounds(chunk_pos: Vector2i) -> bool:
 	return absi(chunk_pos.y) < polar_chunks()
 
+## True when `chunk_pos` may be streamed in and drawn: any longitude, from pole to pole. The polar ice
+## past `polar_chunks` is not walkable (`is_chunk_in_bounds`) but it is still ground, so the planet
+## shows no edge there.
+func is_chunk_loadable(chunk_pos: Vector2i) -> bool:
+	return absi(chunk_pos.y) < pole_chunks()
+
 ## True when chunk `c` may lend its biome to a neighbour: its row is a walkable one, short of
 ## the polar ice at row `radius` (`world_radius_chunks`). One rule for the voxel surface and the minimap.
 static func lends_biome(c: Vector2i, radius: int) -> bool:
