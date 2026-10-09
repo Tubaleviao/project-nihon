@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:28c3f6694008a92a2a80c5e82688fc11030bdfcb4fe3443cdada044dc6f7b2cf",
+  "schemaHash": "sha256:42cf6b4e46ea6cbf16660654559cc0a6a48f734d396d95e398f2145b6b3b491c",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -5648,7 +5648,7 @@
           "polarLatitude": {
             "name": "polarLatitude",
             "type": "decimal",
-            "description": "Degrees of latitude at which the flat, walkable polar ice sheet begins (north and south); the world spans pole to pole at 90 (Phase 50)",
+            "description": "Degrees of latitude of the polar line (north and south): past it no new player is placed; the snow-covered caps beyond stay walkable to the pole, and the world spans pole to pole at 90 (Phase 50)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,

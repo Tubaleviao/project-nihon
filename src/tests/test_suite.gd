@@ -1383,6 +1383,15 @@ func _test_globe_fold() -> void:
 	# The folded position is a valid wire position, and a peer may stand in the slack.
 	assert_true(WorldPos.is_wire(WorldPos.pos_to_wire(np)), "the folded position goes on the wire")
 	assert_true(WorldPos.is_wire({"chunk": [0, pole + m - 1], "local": [0, 0, 0]}), "a player in the slack past a pole is a valid position")
+	# An edit near the pole resolves its tile from the exact aim, not the quantised float32.
+	var vs := VoxelSlice.new()
+	var aim := {"chunk": Vector2i(3, pole - 10), "local": Vector3(0.3, 2.0, 31.9)}
+	var coarse := Vector3(3.0 * cm + 0.3, 2.0, float(pole - 10) * cm + 31.9)
+	var r: Dictionary = vs._resolve_edit_tile("mine", coarse, Vector3.UP, aim)
+	assert_eq(r["tile"], Vector2i(3 * 64, (pole - 10) * 64 + 63), "the exact aim names the tile under the cursor")
+	var side: Dictionary = vs._resolve_edit_tile("place", coarse, Vector3(0.0, 0.0, 1.0), aim)
+	assert_eq(side["tile"], Vector2i(3 * 64, (pole - 9) * 64), "a side-face place steps into the next tile")
+	vs.free()
 	# A saved position past a pole loads folded.
 	var saved := PlayerRegistry.world_pos_of({"chunk": [4, pole + 2], "local": [1.0, 0.0, 1.0]})
 	assert_true(saved["chunk"].y < pole, "a record past the pole loads on the canonical planet")
@@ -14434,13 +14443,23 @@ func _test_polar_ice() -> void:
 	var pole := TerrainSlice.pole_chunks()
 	assert_true(t.is_chunk_in_bounds(Vector2i(0, polar)), "polar ice is walkable")
 	assert_true(t.is_chunk_loadable(Vector2i(0, pole + 4)), "and streamed in past the pole: no void there")
-	# The ice sheet: flat at the shelf from the polar line, over the pole and past it.
+	# Near a pole the ground is the pole's snow field: not flat, and the same on both sides of a fold.
 	t.set_world_seed(12345)
 	var cm := TerrainSlice.CHUNK_METERS
-	var shelf := WorldShape.sea_level() + TerrainSlice.ICE_SHELF_M
-	for zc in [polar, pole - 1, pole, pole + 5, -pole, -pole - 5, -polar - 1]:
+	var w := float(TerrainSlice.circumference_chunks()) * cm
+	var p_m := float(pole) * cm
+	var seen := {}
+	for e in [3.0, 40.0, 177.0, 512.0, 900.0, 1600.0]:
 		for xm in [0.0, 1234.5, -98765.0]:
-			assert_eq(t.get_height_at(Vector2(xm, float(zc) * cm + 7.0)), shelf, "flat ice at row %d" % zc)
+			var here := t.get_height_at(Vector2(xm, p_m - e))
+			var over := t.get_height_at(Vector2(xm + w * 0.5, p_m + e))
+			assert_true(absf(here - over) < 0.0001, "north: %.0f m from the pole matches the far side (x %.1f)" % [e, xm])
+			assert_true(absf(here - t.get_height_at(Vector2(xm + 5000.0, p_m - e))) < 0.0001, "and is the same along the row")
+			var south := t.get_height_at(Vector2(xm, -p_m + e))
+			assert_true(absf(south - t.get_height_at(Vector2(xm + w * 0.5, -p_m - e))) < 0.0001, "south too")
+			seen[snappedf(here, 0.01)] = true
+	assert_true(seen.size() > 2, "the snow field has relief, it is not flat")
+	var shelf := WorldShape.sea_level() + TerrainSlice.ICE_SHELF_M
 	# Frozen sea: from the shelf latitude the ground never lies below the ice, so no water.
 	var metres_per_deg := float(pole) * cm / 90.0
 	for xm in range(0, 200000, 5000):

@@ -90,6 +90,9 @@ var _station_label: Label = null
 ## Aimed terrain block (mine/build target), updated every frame.
 var _aimed_block_hit: bool = false
 var _aimed_block_pos: Vector3 = Vector3.ZERO
+## Phase 91 — the same aimed point as an exact `{chunk, local}` (`_aimed_block_pos` is a float32
+## world position, quantised to metres far from the origin): what the edit resolves its tile from.
+var _aimed_block_exact: Dictionary = {}
 var _aimed_block_normal: Vector3 = Vector3.UP
 
 ## Aimed tree trunk (chop target), updated every frame. Empty when no trunk is
@@ -260,7 +263,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.shift_pressed:
 			if _aimed_block_hit:
-				GameBus.block_mine_requested.emit(_aimed_block_pos, _aimed_block_normal, "")
+				GameBus.block_mine_requested.emit(_aimed_block_pos, _aimed_block_normal, "", _aimed_block_exact)
 		elif _aimed_pickup_id != "":
 			_try_pickup_aimed()
 		elif _aimed_tree_id != "":
@@ -278,7 +281,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			# Both trailing args are "" = this machine's own player and its own
 			# material selection; a client's placement travels to the host as a
 			# `block_edit_intent` carrying that selection (see `_on_place_requested`).
-			GameBus.block_place_requested.emit(_aimed_block_pos, _aimed_block_normal, "", "")
+			GameBus.block_place_requested.emit(_aimed_block_pos, _aimed_block_normal, "", "", _aimed_block_exact)
 	# R key → cycle the build material.
 	if event is InputEventKey and event.pressed and event.keycode == KEY_R:
 		GameBus.block_cycle_material_requested.emit()
@@ -854,6 +857,7 @@ func _update_aim() -> void:
 	var tspecies := ""
 	_aimed_block_hit = false
 	_aimed_block_pos = Vector3.ZERO
+	_aimed_block_exact = {}
 	_aimed_block_normal = Vector3.UP
 	if _camera != null and _alive:
 		var viewport := _camera.get_viewport()
@@ -888,6 +892,7 @@ func _update_aim() -> void:
 			if not bhit.is_empty():
 				_aimed_block_hit = true
 				_aimed_block_pos = (bhit.get("position", Vector3.ZERO) as Vector3) - _scene_offset
+				_aimed_block_exact = WorldPos.from_scene(bhit.get("position", Vector3.ZERO), _scene_origin_chunk)
 				_aimed_block_normal = bhit.get("normal", Vector3.UP)
 				block_dist = from.distance_to(_aimed_block_pos + _scene_offset)
 

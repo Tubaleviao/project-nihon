@@ -814,7 +814,8 @@ func sync_player_avatar(
 	velocity_y: float,
 	grounded: bool,
 	delta: float,
-	terrain_height: Callable
+	terrain_height: Callable,
+	scene_position: Variant = null
 ) -> void:
 	if not _instances.has(instance_id):
 		return
@@ -857,6 +858,12 @@ func sync_player_avatar(
 	var ground_y: float = maxf(feet["foot_l"].y, feet["foot_r"].y)
 	var world_pos := Vector3(position.x, ground_y, position.z)
 	root.position = world_pos + _scene_offset
+	# Far from the origin `position` (a float32 world position) is quantised to metres, which would
+	# step the avatar along in jumps: when the caller has the body's own scene position, the avatar
+	# stands on that instead (XZ exact, Y the foot height).
+	if scene_position is Vector3:
+		var sp: Vector3 = scene_position
+		root.position = Vector3(sp.x, ground_y + _scene_offset.y, sp.z)
 	root.set_meta("foot_ik_l", feet["foot_l"])
 	root.set_meta("foot_ik_r", feet["foot_r"])
 

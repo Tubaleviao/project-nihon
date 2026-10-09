@@ -25,8 +25,9 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## stable, low-frequency rare-biome niches, the land-only Voronoi fallback, and one 10000
 ## lattice modulus for all climate noise (it was 9999 for temperature and moisture); 4 = Phase 76
 ## niche field that wraps at the antimeridian and a fallback pool read from the biome data; 5 = the
-## walkable polar caps: frozen sea is an ice shelf from `ICE_SHELF_LAT`, and the ground flattens
-## into one ice sheet at the polar line so the pole can be crossed.
+## walkable polar caps: frozen sea is an ice shelf from `ICE_SHELF_LAT`, and within a few km of
+## each pole the ground eases into a snow field that depends on the distance to the pole alone,
+## so the pole can be crossed.
 const WORLDGEN_VERSION := 5
 const BIOME_SEED := 20260815 # fixed seed so biome assignment is deterministic
 const ClimateField := preload("res://src/terrain/climate_field.gd")
@@ -49,12 +50,22 @@ const CHUNK_METERS := CHUNK_SIZE * TILE_SIZE
 ## has no cliff (the noise is not periodic).
 const WRAP_BLEND_CHUNKS := 8
 ## Polar ice. From `ICE_SHELF_LAT` the sea is frozen: the ground never lies below the ice shelf
-## (`sea level + ICE_SHELF_M`), so there is no liquid water under the ice to fall into. Over the
-## last `POLAR_FLATTEN_DEG` before the polar line the ground eases into that same flat sheet, and
-## past the line it is exactly the sheet, so both sides of a pole look and feel the same.
+## (`sea level + ICE_SHELF_M`, rolling by up to `ICE_RELIEF_M`), so there is no liquid water under
+## the ice to fall into. Land keeps its own relief (the snow is the colour, `VoxelSlice.icy`).
 const ICE_SHELF_LAT := 80.0
 const ICE_SHELF_M := 0.5
-const POLAR_FLATTEN_DEG := 3.0
+const ICE_RELIEF_M := 2.0
+const ICE_RELIEF_CELL_M := 64.0
+## Around each pole the ground eases (from `POLE_FIELD_OUTER_M` to `POLE_FIELD_INNER_M` from the
+## pole) into a snow field of drifts that depends on the distance to the pole alone. A pole crossing
+## (`fold_world_pos`) lands at the same distance on the far meridian, so inside that radius both
+## sides are the same ground; it also reaches past everything a player near the pole can see.
+## (On a real globe that is what the map shows anyway: near a pole a metre of ground spans a
+## huge stretch of longitude, so any feature there is drawn as a band along the map's X.)
+const POLE_FIELD_INNER_M := 2500.0
+const POLE_FIELD_OUTER_M := 5000.0
+const POLE_DRIFT_M := 6.0
+const POLE_DRIFT_CELL_M := 48.0
 ## How far (in chunks) a player may stray past a pole or the antimeridian before their position is
 ## folded back onto the canonical planet. The slack means someone pacing back and forth over the
 ## line does not trigger a fold (and a reload of the streamed window) on every step.
@@ -182,7 +193,7 @@ static func biome_for_chunk(chunk_pos: Vector2i, seed_v: int = BIOME_SEED) -> St
 ## detail noise, so it matches the mean ground the heightmap actually lays down.
 ## The polar ice shelf counts too, so frozen sea is not picked as Ocean.
 static func biome_altitude(seed_v: int, x: float, z: float, w: float) -> float:
-	return polar_ground(WorldShape.height(seed_v, x, z, w) + HEIGHT_SCALE * 0.5, z) - WorldShape.sea_level()
+	return polar_ground(seed_v, WorldShape.height(seed_v, x, z, w) + HEIGHT_SCALE * 0.5, x, z, w) - WorldShape.sea_level()
 
 ## Convert a world XZ position to its containing chunk coordinate.
 func world_to_chunk(world_pos: Vector2) -> Vector2i:
@@ -215,7 +226,8 @@ static func circumference_chunks() -> int:
 static func pole_chunks() -> int:
 	return circumference_chunks() / 4
 
-## |chunk z| at which the polar ice sheet begins: flat ice from here to the pole (`polar_ground`).
+## |chunk z| of the polar line (the fabric's `polarLatitude`): rows past it lend no biome to their
+## neighbours (`lends_biome`) and no new player is placed beyond it.
 static func polar_chunks() -> int:
 	if _polar_cache < 0:
 		var deg := clampf(_world_field("polarLatitude", DEFAULT_POLAR_LATITUDE), 0.0, 90.0)
@@ -272,8 +284,8 @@ static func where_text(world_pos: Vector3) -> String:
 func is_chunk_in_bounds(chunk_pos: Vector2i) -> bool:
 	return absi(chunk_pos.y) < pole_chunks() + FOLD_MARGIN_CHUNKS
 
-## True when `chunk_pos` may be streamed in and drawn: every chunk. Rows past a pole are the flat
-## ice sheet (`polar_ground`), so a window that reaches over a pole shows ice, never an edge.
+## True when `chunk_pos` may be streamed in and drawn: every chunk. Rows past a pole are the pole's
+## snow field (`polar_ground`), so a window that reaches over a pole shows snow, never an edge.
 func is_chunk_loadable(_chunk_pos: Vector2i) -> bool:
 	return true
 
@@ -290,23 +302,33 @@ func world_half_extent() -> float:
 func world_radius_chunks() -> int:
 	return polar_chunks()
 
-## The polar ice for ground height `h` at world Z `z` (metres): from `ICE_SHELF_LAT` (judged per
-## chunk row, as the frozen-water test `VoxelSlice.is_frozen_chunk` is) the ground is never below the
-## ice shelf, and over the last `POLAR_FLATTEN_DEG` before the polar line it eases into the flat
-## shelf, which it equals exactly from the line to the pole and past it. Pure and static: the voxel
-## ground, the distant ring and the biome pick all apply it.
-static func polar_ground(h: float, z: float) -> float:
+## The polar ice for ground height `h` at world (x, z) (metres), `w` the circumference: from
+## `ICE_SHELF_LAT` (judged per chunk row, as the frozen-water test `VoxelSlice.is_frozen_chunk` is)
+## the ground is never below the rolling ice shelf, and near each pole it eases into the pole's snow
+## field (`pole_field`). Pure and static: the voxel ground, the distant ring and the biome pick all
+## apply it.
+static func polar_ground(seed_v: int, h: float, x: float, z: float, w: float) -> float:
 	var row_lat := absf(latitude_of(floori(z / CHUNK_METERS)))
 	if row_lat < ICE_SHELF_LAT:
 		return h
-	var shelf := WorldShape.sea_level() + ICE_SHELF_M
+	var cells := maxi(1, roundi(w / ICE_RELIEF_CELL_M))
+	var shelf := WorldShape.sea_level() + ICE_SHELF_M + ICE_RELIEF_M * WorldShape._noise(seed_v, x, z, w, cells, 61)
 	h = maxf(h, shelf)
-	var line := polar_latitude()
-	return lerpf(h, shelf, smoothstep(line - POLAR_FLATTEN_DEG, line, absf(latitude_at(z))))
+	var lat := latitude_at(z)
+	var from_pole := (90.0 - absf(lat)) * float(pole_chunks()) * CHUNK_METERS / 90.0
+	if from_pole >= POLE_FIELD_OUTER_M:
+		return h
+	var t := 1.0 - smoothstep(POLE_FIELD_INNER_M, POLE_FIELD_OUTER_M, from_pole)
+	return lerpf(h, pole_field(seed_v, from_pole, lat >= 0.0, w), t)
 
-## The polar line in degrees: `polar_chunks` rows from the equator.
-static func polar_latitude() -> float:
-	return float(polar_chunks()) * 90.0 / float(pole_chunks())
+## The snow field around a pole at `from_pole` metres from it: drifts a few metres high on the ice
+## shelf, a function of that distance (and the hemisphere) only.
+static func pole_field(seed_v: int, from_pole: float, north: bool, w: float) -> float:
+	var cells := maxi(1, roundi(w / POLE_DRIFT_CELL_M))
+	var salt := 71 if north else 72
+	var drift := WorldShape._noise(seed_v, 0.0, from_pole, w, cells, salt) * 0.7 \
+		+ WorldShape._noise(seed_v, 0.0, from_pole, w, cells / 6, salt + 2) * 0.3
+	return WorldShape.sea_level() + ICE_SHELF_M + POLE_DRIFT_M * drift
 
 ## Fold a world position `{chunk, local}` that has strayed more than `margin` chunks past a pole or
 ## the antimeridian back onto the canonical planet. Returns `{pos, folded, turned}`: `pos` the folded
@@ -315,8 +337,8 @@ static func polar_latitude() -> float:
 ## Over a pole the planet is crossed as a globe is: the position comes back down the meridian 180
 ## degrees round, at the latitude it had past the pole (`z' = 2 * pole - z`), heading the other way
 ## (the caller turns the player's heading and velocity by half a turn). Around the antimeridian X
-## moves by one lap. The ground near the poles is a flat ice sheet, so both sides of the fold look
-## the same.
+## moves by one lap. The ground near a pole depends on the distance to it alone (`pole_field`), so
+## both sides of the fold look the same.
 static func fold_world_pos(wp: Dictionary, margin: int = FOLD_MARGIN_CHUNKS) -> Dictionary:
 	var chunk: Vector2i = wp["chunk"]
 	var local: Vector3 = wp["local"]
@@ -385,7 +407,7 @@ func _raw_height_at(x: float, z: float, w: float, cache: Array) -> float:
 	var shape := _shape_at(x, z, w, cache)
 	var detail := detail_of(_noise, x, z)
 	var h := clampf(shape + detail, WorldShape.min_height(), WorldShape.max_height())
-	return polar_ground(h, z)
+	return polar_ground(_world_seed, h, x, z, w)
 
 ## Phase 63 — half the span (m) over which the detail noise is sampled directly. FastNoiseLite takes
 ## float32, whose step is 1 m at 10 million metres and would terrace the 0.5 m tiles, so the lattice

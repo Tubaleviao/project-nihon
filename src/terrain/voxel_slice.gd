@@ -844,8 +844,9 @@ static func _apply_topsoil(entry: Dictionary, world_xz: Vector2, biomes: Diction
 	if material_for_biome(biome, world_xz, 0.0, int(field.get("seed", 0)), field.get("depleted", {}),
 			field.get("veins", {})) != OreField.host_material(biome):
 		return
-	entry["top_color"] = style["top"]
-	entry["soil_color"] = style["soil"]
+	# The biome's tint is snowed over toward the poles, as the rock is (`natural_color`).
+	entry["top_color"] = icy(style["top"], world_xz.y)
+	entry["soil_color"] = icy(style["soil"], world_xz.y)
 	entry["soil_depth"] = float(style["depth"])
 
 ## Phase 49 — the biome whose surface a tile WEARS. Within `BLEND_TILES` of a chunk border, a
@@ -1365,10 +1366,13 @@ func get_heightmaps() -> Dictionary:
 ## review found: a client's mine filled the HOST's pack, and the client — whose own
 ## client mirrors only its own pack — saw nothing. The pick that wears is the
 ## actor's too.
-func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: String = "") -> Dictionary:
+## Phase 91 — `exact` is the aimed point as a `{chunk, local}` world record when the caller has it
+## (the local player does): far from the origin `world_pos` is a float32 quantised to metres, too
+## coarse to name a half-metre tile, so the tile is resolved from `exact` instead.
+func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: String = "", exact: Dictionary = {}) -> Dictionary:
 	# Resolve the span BEFORE spending tool durability, so a blocked mine never
 	# consumes the held pick (the repo's standing atomic-refusal rule).
-	var probe := _resolve_edit_tile("mine", world_pos, normal)
+	var probe := _resolve_edit_tile("mine", world_pos, normal, exact)
 	var tile: Vector2i = probe["tile"]
 	var span := _mine_span(get_runs_at_tile(tile), world_pos, normal)
 	if span.is_empty():
@@ -1405,7 +1409,10 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 	_rebuild_chunk_at_tile(tile)
 
 	if inventory != null and inventory.has_method("add_item"):
-		inventory.add_item(material, quantity)
+		# The ground is dug either way; a yield the pack cannot hold is lost, and the local
+		# player is told rather than left wondering where it went.
+		if not inventory.add_item(material, quantity) and not _is_remote_actor(player_id):
+			GameBus.inventory_full.emit()
 	_push_inventory(player_id)
 
 	var pos := Vector3(world_pos.x, float(span["top"]), world_pos.z)
@@ -1511,7 +1518,7 @@ func _vein_from_id(id: String) -> Dictionary:
 ## from granting anything: it must be a real fabric material, and the debit lands on
 ## the actor's own pack — so a peer can only ever place what it actually holds. Both
 ## are checked BEFORE the debit and the edit (the atomic-refusal rule).
-func place_block(world_pos: Vector3, normal: Vector3, material: String = "", player_id: String = "") -> bool:
+func place_block(world_pos: Vector3, normal: Vector3, material: String = "", player_id: String = "", exact: Dictionary = {}) -> bool:
 	# `_place_material` is THIS machine's selection, so only the local actor may fall back
 	# to it: a remote actor that named no material (a client with nothing selected) must
 	# not place whatever the host happens to have selected.
@@ -1523,7 +1530,7 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 
 	# The placement is validated BEFORE anything is spent, so a refused placement
 	# leaves no side effect to roll back.
-	var probe := _resolve_edit_tile("place", world_pos, normal)
+	var probe := _resolve_edit_tile("place", world_pos, normal, exact)
 	var tile: Vector2i = probe["tile"]
 	var span := _place_span(get_runs_at_tile(tile), world_pos, normal)
 	if span.is_empty():
@@ -2447,9 +2454,9 @@ func _make_terrain_material() -> StandardMaterial3D:
 func _on_chunk_ready(chunk_pos: Vector2i, heightmap: Array) -> void:
 	build_chunk(chunk_pos, heightmap)
 
-func _on_mine_requested(position: Vector3, normal: Vector3, player_id: String) -> void:
+func _on_mine_requested(position: Vector3, normal: Vector3, player_id: String, exact: Dictionary = {}) -> void:
 	if is_authoritative:
-		mine_block(position, normal, player_id)
+		mine_block(position, normal, player_id, exact)
 	else:
 		GameBus.block_edit_intent.emit("mine", position, normal, "")
 
@@ -2499,11 +2506,11 @@ func _held_pick(inventory: Node) -> String:
 		return ""
 	return str(inventory.find_tool("pick"))
 
-func _on_place_requested(position: Vector3, normal: Vector3, player_id: String, material: String) -> void:
+func _on_place_requested(position: Vector3, normal: Vector3, player_id: String, material: String, exact: Dictionary = {}) -> void:
 	if is_authoritative:
 		# `material` as received: `place_block` decides whether "" may fall back to this
 		# machine's own selection (only for the local actor, never for a remote one).
-		place_block(position, normal, material, player_id)
+		place_block(position, normal, material, player_id, exact)
 	else:
 		var chosen := material if material != "" else _place_material
 		GameBus.block_edit_intent.emit("place", position, normal, chosen)
@@ -2529,12 +2536,22 @@ func apply_block_change(action: String, position: Vector3, normal: Vector3, mate
 ## A side-face hit lands on the boundary between two columns, so we step along
 ## the normal: back for mining (into the block aimed at), forward for placing
 ## (into the adjacent empty cell). Pure — performs no mutation.
-func _resolve_edit_tile(action: String, position: Vector3, normal: Vector3) -> Dictionary:
-	var xz := Vector2(position.x, position.z)
+##
+## Phase 91 — with `exact` (a `{chunk, local}` record of the same point) the arithmetic runs on
+## doubles from the exact chunk, so the tile is right however far from the origin the edit is.
+func _resolve_edit_tile(action: String, position: Vector3, normal: Vector3, exact: Dictionary = {}) -> Dictionary:
+	var x: float = position.x
+	var z: float = position.z
+	if exact.has("chunk") and exact.has("local"):
+		var c: Vector2i = exact["chunk"]
+		var l: Vector3 = exact["local"]
+		x = float(c.x) * CHUNK_SIZE * TILE_SIZE + l.x
+		z = float(c.y) * CHUNK_SIZE * TILE_SIZE + l.z
 	if normal.y <= 0.5:
-		var step := Vector2(normal.x, normal.z) * TILE_SIZE * 0.5
-		xz = xz - step if action == "mine" else xz + step
-	return { "tile": _world_to_tile(xz), "xz": xz }
+		var along := -1.0 if action == "mine" else 1.0
+		x += along * normal.x * TILE_SIZE * 0.5
+		z += along * normal.z * TILE_SIZE * 0.5
+	return { "tile": Vector2i(floori(x / TILE_SIZE), floori(z / TILE_SIZE)), "xz": Vector2(x, z) }
 
 ## The span a mine removes, or {} when it is refused. A top-face hit takes the last
 ## step of the run whose top is the hit plane (see `runs_topping_at`) and refuses at

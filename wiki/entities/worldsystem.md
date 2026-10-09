@@ -16,7 +16,7 @@ The planet as a fact of the fabric. The world takes globe semantics on a flat ch
 | Field | Type | Description |
 | ----- | ---- | ----------- |
 | circumferenceKm | decimal | Length of the equator in km; X wraps after this distance (Phase 50) |
-| polarLatitude | decimal | Degrees of latitude at which the flat, walkable polar ice sheet begins (north and south); the world spans pole to pole at 90 (Phase 50) |
+| polarLatitude | decimal | Degrees of latitude of the polar line (north and south): past it no new player is placed; the snow-covered caps beyond stay walkable to the pole, and the world spans pole to pole at 90 (Phase 50) |
 | seaLevel | decimal | World Y in metres of the ocean surface (Phase 51) |
 | minHeight | decimal | Lowest terrain surface, in metres: the deepest ocean floor (Phase 51) |
 | maxHeight | decimal | Highest terrain surface, in metres: the tallest peak (Phase 51) |
