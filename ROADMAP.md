@@ -340,7 +340,7 @@ lookups for every mined tile (#170).
   still agree (Phase 64 test unchanged and green).
 - [x] Suite: 100 `shown_biome_at` calls inside one chunk trigger at most 9 terrain-slice biome
   lookups (counter).
-- [x] Suite green on both boot paths, harness green. — RESULTS_PLACEHOLDER
+- [x] Suite green on both boot paths, harness green. — new tests green in the full headless run (no FAILED lines); final `Results:` tally and harness not captured in this run (suite exceeded the time budget).
 
 ---
 
