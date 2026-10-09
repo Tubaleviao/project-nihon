@@ -111,6 +111,10 @@ issue number where the criterion used to be.
 | 88 | The distant ring survives a reparent and its abort is proven | Planned | below |
 | 89 | A malformed region entry warns once per session | Planned | below |
 | 90 | One scene-origin source and one wire-position validator | Planned | below |
+| 91 | A legacy tile height survives a depletion overlay | Planned | below |
+| 92 | The shown-biome memo follows the terrain slice and one pole-ring rule | Planned | below |
+| 93 | Host-sync window moves are counted and a clock swap resets the throttles | Planned | below |
+| 94 | A test eviction helper and a bounded UI retire list | Planned | below |
 
 ---
 
@@ -346,7 +350,7 @@ lookups for every mined tile (#170).
   still agree (Phase 64 test unchanged and green).
 - [x] Suite: 100 `shown_biome_at` calls inside one chunk trigger at most 9 terrain-slice biome
   lookups (counter).
-- [x] Suite green on both boot paths, harness green. — `Results: 15276/15276 passed (0 failed)` on `--run-tests`; second boot path and net harness not run in this session.
+- [x] Suite green on both boot paths, harness green. — `Results: 15276/15276 passed (0 failed)` on `--run-tests`; second boot path and net harness not run in this session. The PR #208 reviewer later ran the suite (15276/15276) and the net harness (15/15) locally (#209).
 
 ---
 
@@ -610,6 +614,135 @@ different rules (#200, #201, #202).
 - [ ] Suite: the remaining validator accepts every wire form the old two accepted in common and
   rejects a dictionary missing `local`, a non-integer chunk and a NaN component.
 - [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 91 — A legacy tile height survives a depletion overlay
+
+**Goal:** `RegionStore.overlay_entry` reads a tile's stored value with `edits.get(tile, [])` and
+only merges it when it is an `Array`. A pre-Phase-41 tile stores a bare absolute height (a number,
+migrated by `VoxelSlice.legacy_edit_ops` only when the chunk loads), so the first deplete op
+overlaid on such a tile replaces the height with the incoming op list: the player's old build or
+dig on that tile is silently lost on the next save (#196). The store is pure and has no terrain
+base height, so it cannot convert the number itself.
+
+**Newel dependency:** NO.
+
+**Closes:** the legacy-overlay item of #196.
+
+**Depends on:** Phase 75.
+
+**Deliverables:**
+- `src/persistence/region_store.gd` — when the stored tile value is not an op list (a bare number
+  or numeric string), `overlay_entry` keeps it in a form `VoxelSlice` can still migrate (e.g. a
+  typed `{"op": "legacy", "height": h}` op placed first in the merged list) instead of dropping it.
+- `src/terrain/voxel_slice.gd` — `apply_edits` / the normalising step migrates that legacy op with
+  `legacy_edit_ops` against the tile's natural run, exactly as it migrates a bare number today, and
+  keeps the other ops in the list.
+- `src/persistence/region_store.gd` — `_chunk_entry_valid` accepts the new op shape.
+
+**Acceptance criteria:**
+- [ ] Suite: a region entry whose tile holds the bare height `h`, overlaid with one deplete op and
+  reloaded through `VoxelSlice.apply_edits`, yields the same column top as the bare `h` alone and
+  keeps the depletion's `taken` count.
+- [ ] Suite: overlaying a second deplete on the result keeps exactly one legacy op (no duplicates).
+- [ ] Suite: a tile already stored as a typed op list overlays exactly as before (Phase 75 tests
+  unchanged and green).
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 92 — The shown-biome memo follows the terrain slice and one pole-ring rule
+
+**Goal:** `VoxelSlice._shown_biomes` is cleared only on a world-seed change or
+`reset_shown_biomes()`, so assigning a different `terrain_slice` at runtime keeps serving the old
+slice's biomes. `gather_biomes_for` and `shown_biome_at` each carry their own copy of the
+pole-ring loop and both ask the static `TerrainSlice.polar_chunks()`, while `Minimap` asks the
+instance's `world_radius_chunks()`; equal today, but free to drift (#209, #213).
+
+**Newel dependency:** NO.
+
+**Closes:** the stale-memo, static-bound and duplicate-loop items of #209 and #213.
+
+**Depends on:** Phase 81.
+
+**Deliverables:**
+- `src/terrain/voxel_slice.gd` — `terrain_slice` becomes a property whose setter clears
+  `_shown_biomes` (and the guess heightmaps) when the slice changes.
+- The same file — one helper (e.g. `_lending_ring(chunk_pos) -> Array`) yields the chunks that lend
+  a biome, using the terrain slice instance's polar bound when one is set (the static bound
+  otherwise); `gather_biomes_for` and `shown_biome_at` both use it.
+
+**Acceptance criteria:**
+- [ ] Suite: after `shown_biome_at` memoises a chunk against slice A, assigning a fake slice B
+  that reports a different biome makes the next `shown_biome_at` return B's answer.
+- [ ] Suite: with a fake terrain slice whose polar bound is smaller than the static one, a chunk
+  between the two bounds is left out by both `gather_biomes_for` and `shown_biome_at`.
+- [ ] Suite: the Phase 64 and Phase 81 voxel/minimap agreement tests stay green.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 93 — Host-sync window moves are counted and a clock swap resets the throttles
+
+**Goal:** `ChunkManager.sync_peer_center` skips the clamp and rate limit because it trusts the
+host-tracked position, but nothing states or tests that assumption, and a hostile far hop that
+reaches the sync path leaves no abuse signal (#212, #213). `now_msec` is a public `Callable`
+that tests swap directly; `_last_stranded_retry_msec` and `_last_self_heal_msec` keep timestamps
+from the old clock, so a test that swaps mid-run sees stale throttles (#207).
+
+**Newel dependency:** NO.
+
+**Closes:** the sync-trust and sync-counter items of #212 and #213 and the clock item of #207.
+
+**Depends on:** Phase 85.
+
+**Deliverables:**
+- `src/terrain/chunk_manager.gd` — a `peer_sync_far_hops` counter incremented when a host sync
+  moves a peer's window farther than the client-claim clamp would allow (the move still
+  applies); the `sync_peer_center` doc comment names the trust it relies on.
+- The same file — `set_clock(c: Callable)` replaces direct assignment of `now_msec`; it resets
+  the stranded-retry, self-heal and per-peer interval timestamps. Tests use it.
+
+**Acceptance criteria:**
+- [ ] Suite: a sync move of one chunk leaves `peer_sync_far_hops` at 0; a sync move past the
+  claim clamp applies the move and raises it by exactly 1; neither changes
+  `peer_recenter_refused`.
+- [ ] Suite: after a fake clock drives the self-heal and stranded-retry throttles, `set_clock`
+  with a fresh clock at 0 lets the next self-heal and stranded retry run immediately.
+- [ ] `grep -n "now_msec =" src/tests/test_suite.gd` finds no direct assignments.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 94 — A test eviction helper and a bounded UI retire list
+
+**Goal:** Phase 84's leak check relies on each test manually `free()`ing the nodes that
+`evict_player` only `queue_free`s (the suite never reaches a frame), a pattern a new test can
+forget, failing the whole run's orphan check far from its cause. `UISlice._retire` re-filters the
+entire `_retired` array on every call, so a burst of N retirements costs O(N²) (#215).
+
+**Newel dependency:** NO.
+
+**Closes:** both items of #215.
+
+**Depends on:** Phase 84.
+
+**Deliverables:**
+- `src/tests/test_suite.gd` — one helper (e.g. `_evict_and_free(registry, player_id)`) that
+  evicts the record and frees the nodes eviction queued; every existing evict-then-free site uses it.
+- `src/ui/ui_slice.gd` — `_retire` prunes freed entries amortised (only when the list has doubled
+  since the last prune) instead of on every call; the `NOTIFICATION_PREDELETE` free pass is unchanged.
+
+**Acceptance criteria:**
+- [ ] Suite: retiring 1,000 controls runs the prune at most 11 times (counter), and freeing the
+  UI slice still frees every retired control that is still valid.
+- [ ] No test frees an evicted player's nodes inline after `evict_player`; every such site calls
+  the helper.
+- [ ] The Phase 84 orphan check still reports zero leaked objects.
+- [ ] Suite green on both boot paths, harness green.
+
+---
 
 ## Deferred (in priority order)
 
