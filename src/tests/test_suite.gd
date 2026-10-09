@@ -270,6 +270,7 @@ func run() -> void:
 	_run_test("equipment: the sequence number never rewinds",   _test_equipment_seq_monotonic)
 	_run_test("region: a failed save re-marks only failed chunks", _test_region_failed_keys_and_remark)
 	_run_test("region: a depletion in an evicted chunk keeps its other edits", _test_region_depletion_merges_evicted)
+	_run_test("region: a legacy tile height survives a depletion overlay", _test_region_overlay_legacy_height)
 	_run_test("region: a malformed entry survives a neighbour's save", _test_region_malformed_entry_kept)
 	_run_test("region: a valid entry replaces a malformed one", _test_region_malformed_entry_replaced)
 	_run_test("region: a partial chunk loads its stored edits when the region streams in", _test_region_partial_chunk_loads_stored)
@@ -14966,6 +14967,46 @@ func _test_region_partial_chunk_loads_stored() -> void:
 	assert_eq(int(v.get_vein_depletion().get(str(vein["id"]), 0)), 1, "the depletion is kept")
 	assert_false(v.get_save_manifest()[a_key].has("merge"), "the chunk is whole, so the next save replaces")
 	v.free()
+
+## Phase 91 — a bare legacy tile height overlaid with a deplete survives as a typed `legacy` op and
+## migrates to the same column as the bare height alone.
+func _test_region_overlay_legacy_height() -> void:
+	var dep := { "op": "deplete", "vein": "v", "taken": 4 }
+	var stored := { "edits": { "32,32": 1.0 } }
+	var out := RegionStoreScript.overlay_entry(stored, { "merge": true, "edits": { "32,32": [dep] } })
+	var ops: Array = out["edits"]["32,32"]
+	assert_eq(ops.size(), 2, "the legacy height and the depletion")
+	assert_eq(ops[0], { "op": "legacy", "height": 1.0 }, "the legacy height is first")
+	assert_true(RegionStoreScript.is_valid_chunk_entry(out), "the overlaid entry is a valid chunk entry")
+	var bare := _make_voxel()
+	bare.apply_edits({ "32,32": 1.0 })
+	var via := _make_voxel()
+	via.apply_edits(out["edits"])
+	assert_eq(via.get_voxel_height_at(Vector2(16.0, 16.0)), bare.get_voxel_height_at(Vector2(16.0, 16.0)),
+		"the column top equals the bare height alone")
+	assert_eq(via.get_voxel_height_at(Vector2(16.0, 16.0)), 1.0, "and is the legacy height")
+	var kept := false
+	for op in via.get_edits()["32,32"]:
+		kept = kept or (op["op"] == "deplete" and int(op["taken"]) == 4)
+	assert_true(kept, "the depletion's taken count is kept")
+	# A second deplete keeps exactly one legacy op.
+	var again := RegionStoreScript.overlay_entry(out, { "merge": true, "edits": { "32,32": [{ "op": "deplete", "vein": "v", "taken": 6 }] } })
+	var legacy_ops := 0
+	for op in again["edits"]["32,32"]:
+		if op["op"] == "legacy":
+			legacy_ops += 1
+	assert_eq(legacy_ops, 1, "exactly one legacy op after a second deplete")
+	assert_eq(again["edits"]["32,32"].size(), 2, "and the larger depletion replaced the first")
+	# A numeric string migrates the same.
+	var str_out := RegionStoreScript.overlay_entry({ "edits": { "32,32": "1.0" } }, { "merge": true, "edits": { "32,32": [dep] } })
+	assert_eq(str_out["edits"]["32,32"][0], { "op": "legacy", "height": 1.0 }, "a numeric string is carried too")
+	# A typed op list overlays as before.
+	var typed := RegionStoreScript.overlay_entry({ "edits": { "32,32": [{ "op": "remove", "bottom": 0.0, "top": 1.0 }] } },
+		{ "merge": true, "edits": { "32,32": [dep] } })
+	assert_eq(typed["edits"]["32,32"].size(), 2, "a typed list gains the depletion only")
+	assert_eq(typed["edits"]["32,32"][0]["op"], "remove", "and gains no legacy op")
+	bare.free()
+	via.free()
 
 func _test_region_overlay_keeps_larger_taken() -> void:
 	var stored := { "edits": { "0,0": [{ "op": "deplete", "vein": "v", "taken": 40 }] } }
