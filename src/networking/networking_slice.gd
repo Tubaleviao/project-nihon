@@ -202,6 +202,9 @@ var _jitter_buffer: Dictionary = {}
 ## Host-side last-known player states (peer_id -> Vector3), retained across a
 ## disconnect so a rejoining client can resume from its last position.
 var _last_known_states: Dictionary = {}
+## Phase 86 — peer_id -> exact `{chunk, local}` of its last report; beside `_last_known_states`, which
+## stays the float Vector3 the AOI distance checks use. Absent after a legacy report.
+var _last_known_exact: Dictionary = {}
 
 ## Phase 33 — transport mapping only: peer_id (ENet, reassigned every connection)
 ## → player_id (server-issued, stable). Every player-scoped record and inventory
@@ -416,8 +419,14 @@ func send_snapshot(peer_id: int, data: Dictionary) -> void:
 ## Clears the eviction countdown: an active peer is never stale.
 func remember_player_state(peer_id: int, position: Vector3) -> void:
 	_last_known_states[peer_id] = position
+	_last_known_exact.erase(peer_id)
 	_peer_spatial.update(peer_id, position)
 	_last_known_timestamps.erase(peer_id)
+
+## Phase 86 — the exact `{chunk, local}` position of the peer's last report, or an empty dictionary
+## when it sent only a legacy float array (or nothing). Persist this in preference to the Vector3.
+func get_last_known_exact(peer_id: int) -> Dictionary:
+	return _last_known_exact.get(peer_id, {})
 
 ## Last-known position for a peer, or Vector3.ZERO when unknown.
 func get_last_known_state(peer_id: int) -> Vector3:
@@ -445,6 +454,7 @@ func _evict_stale_states() -> void:
 	for pid: int in _last_known_timestamps.keys():
 		if now_ms - float(_last_known_timestamps[pid]) > float(LAST_KNOWN_STATE_TTL_MS):
 			_last_known_states.erase(pid)
+			_last_known_exact.erase(pid)
 			_last_known_timestamps.erase(pid)
 			_peer_spatial.remove(pid)
 
@@ -589,14 +599,21 @@ func _on_player_state_sync_requested(payload: Dictionary) -> void:
 	if not _connected():
 		return
 	var pos: Vector3 = payload.get("position", Vector3.ZERO)
+	# Phase 86 — the exact `{chunk, local}` position rides the wire when the sender holds one, so the
+	# host does not quantise a far-away player to float32 metres.
+	var exact = payload.get("world_pos", null)
+	var wire: Dictionary = WorldPos.pos_to_wire(exact) if _is_exact_pos(exact) else WorldPos.to_wire(pos)
 	var packet := {
 		"type":     "player_moved",
 		"peer_id":  multiplayer.get_unique_id(),
-		"position": WorldPos.to_wire(pos),
+		"position": wire,
 		"hp":       payload.get("hp",     100.0),
 		"max_hp":   payload.get("max_hp", 100.0),
 	}
 	_broadcast_aoi(packet, pos)
+
+static func _is_exact_pos(pos: Variant) -> bool:
+	return pos is Dictionary and pos.get("chunk") is Vector2i and pos.get("local") is Vector3
 
 func _on_block_edit_intent(action: String, position: Vector3, normal: Vector3, material: String) -> void:
 	if _role != Role.CLIENT:
@@ -1397,7 +1414,13 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				player_registry.note_friend_code(sender, str(payload.get("friend_code", "")))
 			GameBus.player_join_intent.emit(sender, str(payload.get("claimed_id", "")))
 		"player_moved":
-			var pos := _vec3(payload.get("position", []))
+			# Phase 86 — a position that does not decode is refused, not read as the origin: the
+			# previous last-known state stands.
+			var raw = payload.get("position", null)
+			if not WorldPos.is_wire(raw):
+				Diag.warn("NetworkingSlice: player_moved from peer %d has a malformed position — dropped" % sender)
+				return
+			var pos := _vec3(raw)
 			# The packet also carries the peer's self-declared `hp` / `max_hp`,
 			# used for its own display. The host deliberately keeps NO durable
 			# copy of THAT value: it is client-declared and cannot be verified
@@ -1408,6 +1431,10 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			# declared half still has no door. Position is the other half the
 			# host retains, and only so a reconnect can resume from it.
 			GameBus.remote_player_state.emit(sender, pos)
+			# `remember_player_state` (run by the emit) cleared any older exact position; keep this one.
+			var exact := WorldPos.pos_from_wire(raw)
+			if not exact.is_empty() and _last_known_states.has(sender):
+				_last_known_exact[sender] = exact
 		"craft_intent":
 			# A remote peer's craft must resolve against ITS OWN inventory (crafting
 			# is per-player now that each player persists one). The identity comes

@@ -106,7 +106,7 @@ issue number where the criterion used to be.
 | 83 | Distant-ring teardown that does not stall | Done | below |
 | 84 | The suite exits with no leaked objects | Done | below |
 | 85 | Peer claims and host syncs keep separate interval clocks | Done | below |
-| 86 | Remote peers' positions stay exact far from the origin | Planned | below |
+| 86 | Remote peers' positions stay exact far from the origin | Done | below |
 | 87 | Exact spawn and respawn points | Planned | below |
 | 88 | The distant ring survives a reparent and its abort is proven | Planned | below |
 | 89 | A malformed region entry warns once per session | Planned | below |
@@ -467,7 +467,7 @@ the same answer (#213).
 
 ---
 
-## Phase 86 — Remote peers' positions stay exact far from the origin
+## Phase 86 — Remote peers' positions stay exact far from the origin ✅ Done
 
 **Goal:** Phase 78 made the host's own player exact as `{chunk, local}`, but remote peers still
 travel and persist as float32 `Vector3`: `_last_known_states` holds a `Vector3`, and
@@ -489,13 +489,13 @@ walks 10,000 km is saved quantised to metres (#200, #201, #202).
   `record_world_pos` when one is held, falling back to `record_position` otherwise.
 
 **Acceptance criteria:**
-- [ ] Suite: a peer report at chunk `(250000, 1000)`, local `(12.345, 40.0, 7.891)` folded into
+- [x] Suite: a peer report at chunk `(250000, 1000)`, local `(12.345, 40.0, 7.891)` folded into
   the registry round-trips through a save/load with `local` equal to within 1e-6 m.
-- [ ] Suite: a malformed wire position in a report is refused and leaves the previous last-known
+- [x] Suite: a malformed wire position in a report is refused and leaves the previous last-known
   state unchanged; a legacy `Vector3` report still records a position.
-- [ ] Two-client harness: an existing step that moves a client still passes with the new report
+- [x] Two-client harness: an existing step that moves a client still passes with the new report — 15/15 steps agreed.
   shape.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green. — `Results: 15321/15321 passed (0 failed)` on `--run-tests`; harness 15/15 steps.
 
 ---
 

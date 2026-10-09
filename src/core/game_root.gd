@@ -1153,7 +1153,12 @@ func _on_peer_disconnected(peer_id: int) -> void:
 ## player's live body and the host's own hit resolution may write a record's health.
 func _fold_last_known_state(peer_id: int, player_id: String) -> void:
 	if _networking.has_last_known_state(peer_id):
-		_registry.record_position(player_id, _networking.get_last_known_state(peer_id))
+		# Phase 86 — the exact position when the peer reported one; the float Vector3 otherwise.
+		var exact: Dictionary = _networking.get_last_known_exact(peer_id)
+		if exact.is_empty():
+			_registry.record_position(player_id, _networking.get_last_known_state(peer_id))
+		else:
+			_registry.record_world_pos(player_id, exact)
 
 ## Phase 33 — fold every ONLINE remote peer's last-known position into its record.
 ## This runs on every autosave, not only at disconnect: a peer whose process
