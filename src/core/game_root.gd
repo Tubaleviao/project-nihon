@@ -556,16 +556,17 @@ var _quit_after_boot: bool = false
 ## around its GameBus emissions. The suite is a development and CI tool, not a
 ## boot step, so it now runs when either:
 ##
-##   • `--run-tests` is passed on the user-args command line, or
-##   • this is a DEBUG build (`OS.is_debug_build()`: the editor and the debug
-##     export template). A release export reports false, so a SHIPPED build never
-##     runs the suite unless it is asked for by name.
+##   • `--run-tests` is passed on the user-args command line — and only then.
+##
+## A debug build (editor F5) used to run it too; the suite takes minutes, so every
+## editor launch waited on it before the world could boot. `is_debug_build` is kept in
+## the signature for callers, but no longer decides anything.
 ##
 ## Static and argument-driven on purpose: the rule is a pure predicate the suite
 ## can assert directly, rather than something that can only be observed by booting
 ## twice. See `_test_boot_suite_is_gated`.
 static func should_run_tests(args: Array, is_debug_build: bool) -> bool:
-	return RUN_TESTS_ARG in args or is_debug_build
+	return RUN_TESTS_ARG in args
 
 ## Phase 42 review pass 3 — is this boot asked to quit itself once its world boot is done?
 ## Static and argument-driven for the same reason `should_run_tests` is: the rule is a pure
@@ -2067,7 +2068,7 @@ func _restore_local_player() -> void:
 	# before the field existed) the saved position; a fresh player's placement is recorded now.
 	var spawn: Variant = respawn_point_for(rec)
 	if spawn != null:
-		_player.respawn_point = spawn
+		_player.respawn_point = _lifted_out_of_ground(spawn)
 	else:
 		_registry.record_spawn(pid, _player.respawn_point)
 	var hp := float(rec.get("hp", -1.0))
@@ -2145,18 +2146,31 @@ func _place_local_player(pos: Vector3) -> void:
 ## written before the terrain changed) is lifted onto the surface above it; a body in open air, in
 ## a tunnel or a cave is left alone.
 func _lift_out_of_ground() -> void:
-	if _player == null or _voxel == null:
+	if _player == null:
 		return
 	var pos := _player.get_position()
+	var lifted := _lifted_out_of_ground(pos)
+	if lifted != pos:
+		Diag.warn("GameRoot: position %s is inside the ground — lifted to %.2f" % [pos, lifted.y])
+		_player.spawn_at(lifted)
+
+## `pos`, or the surface above it when it lies inside (or under) the solid ground of its column.
+func _lifted_out_of_ground(pos: Vector3) -> Vector3:
+	if _voxel == null:
+		return pos
 	var runs: Array = _voxel.get_column_runs_at(Vector2(pos.x, pos.z))
 	if runs.is_empty():
-		return
-	var top := float(runs[-1]["top"])
+		return pos
+	var inside := pos.y < float(runs[0]["bottom"])
 	for run in runs:
-		if pos.y > float(run["bottom"]) and pos.y < float(run["top"]) or pos.y < float(runs[0]["bottom"]):
-			Diag.warn("GameRoot: saved position %s is inside the ground — lifted to %.2f" % [pos, top])
-			_player.spawn_at(Vector3(pos.x, top + 0.1, pos.z))
-			return
+		if pos.y > float(run["bottom"]) and pos.y < float(run["top"]):
+			inside = true
+	return Vector3(pos.x, float(runs[-1]["top"]) + 0.1, pos.z) if inside else pos
+
+## A respawn lands on the recorded spawn point; one recorded inside the ground (by the old
+## origin-spawn bug) is lifted too.
+func _lift_after_respawn() -> void:
+	_lift_out_of_ground()
 
 ## Read the world record and the LOCAL player's record off disk. A missing world
 ## record is NOT an error — a server with no save boots a fresh world.
@@ -2427,8 +2441,8 @@ func _on_player_died(position: Vector3, killer_id: String) -> void:
 	if _character.get_player_character() != "":
 		GameBus.character_death_requested.emit(_character.get_player_character())
 
-func _on_player_respawned(position: Vector3) -> void:
-	pass
+func _on_player_respawned(_position: Vector3) -> void:
+	_lift_after_respawn()
 
 func _on_save_completed(slot: int) -> void:
 	# NOTHING to reset here. The legacy slot file is a single-file sample (the
