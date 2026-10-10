@@ -59,10 +59,13 @@ var _revealed: Dictionary = {}
 ## Phase 111 — where the explored set persists ("" = nowhere), one file per world seed. Set by
 ## game_root to `user://saves/client`; the set is loaded once the world seed is known and written
 ## back a few seconds after it last changed.
+const SEED_SETTLE_SECONDS := 1.0
 var revealed_dir: String = ""
 var _revealed_seed: int = 0
 var _revealed_loaded: bool = false
 var _revealed_rev: int = 0   # bumps whenever the explored set gains a chunk or is reloaded
+var _seed_stable_for: float = 0.0   # seconds the world seed has read the same
+var _seen_seed: int = 0
 var _revealed_dirty_for: float = -1.0   # seconds since the set last changed; -1 = clean
 
 ## Emitted when the minimap is clicked: the HUD opens the Map window.
@@ -117,7 +120,8 @@ func _reveal_around(center: Vector2i) -> void:
 				var k := _chunk_key(c)
 				if not _revealed.has(k):
 					_revealed[k] = true
-					_revealed_dirty_for = 0.0
+					if _revealed_dirty_for < 0.0:   # the debounce runs from the first change, so steady walking still saves
+						_revealed_dirty_for = 0.0
 					_revealed_rev += 1
 	RevealedStore.cap(_revealed)
 
@@ -134,6 +138,14 @@ func _tick_revealed_store(delta: float) -> void:
 	if revealed_dir == "" or terrain_slice == null or not terrain_slice.has_method("get_world_seed"):
 		return
 	var s: int = terrain_slice.get_world_seed()
+	# The terrain boots on a throwaway random seed until the real one is applied: wait for it to settle.
+	if s != _seen_seed:
+		_seen_seed = s
+		_seed_stable_for = 0.0
+	elif _seed_stable_for < SEED_SETTLE_SECONDS:
+		_seed_stable_for += delta
+	if not _revealed_loaded and _seed_stable_for < SEED_SETTLE_SECONDS:
+		return
 	if not _revealed_loaded or s != _revealed_seed:
 		if _revealed_loaded:
 			save_revealed()

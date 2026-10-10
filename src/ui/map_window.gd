@@ -32,7 +32,7 @@ var _center: Vector2 = Vector2.ZERO   # view centre in chunks
 var _dragging := false
 var _thread: Thread = null
 var _batch_seed: int = 0
-var _batch_gen: int = 0
+var _batch_gen: int = 0   # tiles.generation when the running batch was taken
 var _last_sig: Array = []
 var _records_at_ms: int = 0
 var _reveal_tiles: Dictionary = {}
@@ -127,12 +127,26 @@ func _px_per_chunk() -> float:
 func _process(_delta: float) -> void:
 	if not is_visible_in_tree():
 		return
+	_refresh_records()
 	_service_worker()
 	# Redraw only when something on screen can have changed: the explored set, the player, the records.
 	var rev: int = minimap.revealed_revision() if minimap != null and minimap.has_method("revealed_revision") else 0
 	var sig := [rev, _player_chunk_pos(), ChunkRecords.revision(), _world_seed()]
 	if sig != _last_sig:
 		_last_sig = sig
+		queue_redraw()
+
+## Tiles sample generation records too: a record adopted since they were cached may change a biome.
+## Throttled; the revision stays pending until the throttle lets it through.
+func _refresh_records() -> void:
+	var seed_v := _world_seed()
+	if seed_v != tiles.seed_v:
+		tiles.reset(seed_v)
+		_records_rev = ChunkRecords.revision()
+	elif ChunkRecords.revision() != _records_rev and Time.get_ticks_msec() - _records_at_ms >= RECORDS_REFRESH_MS:
+		_records_rev = ChunkRecords.revision()
+		_records_at_ms = Time.get_ticks_msec()
+		tiles.invalidate()
 		queue_redraw()
 
 ## Collect a finished batch and start the next, a few tiles per frame, off the main thread.
@@ -142,12 +156,13 @@ func _service_worker() -> void:
 			return
 		var done: Array = _thread.wait_to_finish()
 		_thread = null
-		if _batch_seed == tiles.seed_v:
+		if _batch_seed == tiles.seed_v and _batch_gen == tiles.generation:
 			tiles.store(done)
 		queue_redraw()
 	if tiles.pending_count() == 0:
 		return
 	_batch_seed = tiles.seed_v
+	_batch_gen = tiles.generation
 	var batch := tiles.take(TILES_PER_FRAME)
 	_thread = Thread.new()
 	_thread.start(MapTiles.compute.bind(_batch_seed, batch))
@@ -180,15 +195,7 @@ func _draw() -> void:
 	var sz := size
 	if sz.x <= 0.0 or sz.y <= 0.0:
 		return
-	var seed_v := _world_seed()
-	# Tiles sample generation records too: a record adopted since they were cached may change a biome.
-	if seed_v != tiles.seed_v:
-		tiles.reset(seed_v)
-		_records_rev = ChunkRecords.revision()
-	elif ChunkRecords.revision() != _records_rev and Time.get_ticks_msec() - _records_at_ms >= RECORDS_REFRESH_MS:
-		_records_rev = ChunkRecords.revision()
-		_records_at_ms = Time.get_ticks_msec()
-		tiles.invalidate()
+	_refresh_records()
 	draw_rect(Rect2(Vector2.ZERO, sz), Color(0.03, 0.04, 0.08))
 	var circ := circumference()
 	var t := _t()
@@ -205,7 +212,7 @@ func _draw() -> void:
 	var z1 := 0
 	while true:   # a coarser level until the visible tiles fit the draw budget
 		tile_chunks = 1 << level
-		var span := minf(float(circ) * 0.5, pow(2.0, _zoom) * 0.75 + tile_chunks)
+		var span := minf(float(circ) * 0.5, pow(2.0, _zoom) * 0.75 * maxf(sz.x, sz.y) / maxf(_view_px(), 1.0) + tile_chunks)
 		var span_x := span
 		if t > 0.0 and absf(center_ll.y) > 0.6:   # near a pole the visible cap wraps every longitude
 			span_x = float(circ) * 0.5
@@ -238,18 +245,26 @@ func _draw() -> void:
 			if not MapMath.facing(mid, center_ll, t):
 				continue
 			var col := _biome_color(biome)
-			if not show_true_planet and not fog.has("%d,%d" % [tx, tz]):
+			if not show_true_planet and not fog.has(_fog_key(tx, tz, tile_chunks, level)):
 				col = col.darkened(1.0 - DIM)
 			var pts := PackedVector2Array()
+			var folded := false
 			for corner in [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]:
 				var ll := MapMath.lonlat(Vector2(cx0, cz0) + corner * float(tile_chunks), circ)
+				ll.y = clampf(ll.y, -PI * 0.5, PI * 0.5)   # a corner past a pole sits on it
+				if not MapMath.facing(ll, center_ll, t):
+					folded = true   # a corner over the limb would draw mirrored
+					break
 				pts.append(origin + MapMath.project(ll, center_ll, t) * scale)
+			if folded:
+				continue
 			draw_colored_polygon(pts, col)
 	_draw_markers(sz, origin, center_ll, t, scale, circ)
 
-## The tile, at `level`, holding the canonical (seam-wrapped) chunk a tile's corner chunk lies on.
-func _canonical_tile(tx: int, tz: int, tile_chunks: int, level: int) -> Vector2i:
-	return MapMath.tile_of(TerrainSlice.wrap_chunk(Vector2i(tx * tile_chunks, tz * tile_chunks)), level)
+## The fog-set key of a tile: its centre chunk, seam-wrapped, as a tile at `level`.
+func _fog_key(tx: int, tz: int, tile_chunks: int, level: int) -> String:
+	var t := MapMath.tile_of(TerrainSlice.wrap_chunk(Vector2i(tx * tile_chunks + tile_chunks / 2, tz * tile_chunks + tile_chunks / 2)), level)
+	return "%d,%d" % [t.x, t.y]
 
 func _biome_color(biome: String) -> Color:
 	if minimap != null and minimap.has_method("biome_color"):

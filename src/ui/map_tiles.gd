@@ -38,11 +38,11 @@ func best_biome(level: int, tx: int, tz: int) -> String:
 	var x := tx
 	var z := tz
 	while l <= MapMath.MAX_LEVEL:
-		var b := get_tile(l, x, z)
-		if b != "":
-			return b
-		if not _stale.is_empty() and _stale.has(key_of(l, x, z)):
-			return str(_stale[key_of(l, x, z)])
+		var k := key_of(l, x, z)
+		if _cache.has(k):
+			return str(_cache[k])
+		if not _stale.is_empty() and _stale.has(k):
+			return str(_stale[k])
 		l += 1
 		x >>= 1
 		z >>= 1
@@ -103,6 +103,7 @@ func store(results: Array) -> void:
 		_inflight.erase(k)
 		_cache.erase(k)   # re-insert as the newest
 		_cache[k] = r[1]
+		_stale.erase(k)
 	while _cache.size() > CACHE_MAX:
 		for oldest in _cache:
 			_cache.erase(oldest)
@@ -127,7 +128,7 @@ func reset(new_seed: int) -> void:
 ## tile, drawing the old answers meanwhile so the picture does not blank out.
 func invalidate() -> void:
 	generation += 1
-	_stale = _cache
+	_stale.merge(_cache, true)   # keep what an earlier, unfinished refresh still shows
 	_cache = {}
 	_pending.clear()
 	_inflight.clear()

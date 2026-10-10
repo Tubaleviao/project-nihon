@@ -5239,11 +5239,20 @@ func _test_map_revealed_roundtrip() -> void:
 	m.revealed_dir = dir
 	m.set_player_pos(Vector2(40.0, 40.0))
 	m._tick_revealed_store(0.0)
-	m._tick_revealed_store(_RevealedStore.DEBOUNCE_SECONDS)
+	assert_false(m.is_revealed_loaded(), "a seed that has only just appeared is not trusted yet")
+	m._tick_revealed_store(Minimap.SEED_SETTLE_SECONDS)
+	assert_true(m.is_revealed_loaded(), "a seed that held still is loaded")
+	m.set_player_pos(Vector2(40.0, 40.0))
+	for i in 4:   # a new chunk every 2 s must not postpone the save forever
+		m.set_player_pos(Vector2(40.0 + 400.0 * (i + 1), 40.0))
+		m._tick_revealed_store(2.0)
+	assert_true(FileAccess.file_exists(_RevealedStore.path_for(dir, 5)), "steady exploring still reaches the debounced save")
+	m.save_revealed()
 	var m2 := Minimap.new()
 	m2.terrain_slice = terrain
 	m2.revealed_dir = dir
 	m2._tick_revealed_store(0.0)
+	m2._tick_revealed_store(Minimap.SEED_SETTLE_SECONDS)
 	assert_eq(m2.get_revealed_chunks().size(), m.get_revealed_chunks().size(), "a relog restores the explored set")
 	assert_true(m2.is_revealed(Vector2i(1, 1)), "the player's chunk is explored after the relog")
 	# Saving before the seed's file was loaded must not overwrite it; the revision moves with the set.
