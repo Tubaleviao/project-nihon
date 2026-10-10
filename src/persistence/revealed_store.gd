@@ -2,7 +2,7 @@ extends RefCounted
 ## The minimap's explored set, on disk (Phase 111). One file per world seed under
 ## `user://saves/client/`: `{"seed", "rows": {"<cz>": [x0, len, x0, len, ...]}}` — runs of
 ## consecutive chunks per row, so an explored region is a few numbers per row. The set is
-## capped (oldest dropped first) and a missing, foreign or corrupt file starts empty.
+## capped (oldest dropped first; the file keeps rows, not age, so after a reload "oldest" means lowest row) and a missing, foreign or corrupt file starts empty.
 
 const Diag := preload("res://src/core/diag.gd")
 

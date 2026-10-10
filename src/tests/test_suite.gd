@@ -5236,6 +5236,15 @@ func _test_map_revealed_roundtrip() -> void:
 	m2._tick_revealed_store(0.0)
 	assert_eq(m2.get_revealed_chunks().size(), m.get_revealed_chunks().size(), "a relog restores the explored set")
 	assert_true(m2.is_revealed(Vector2i(1, 1)), "the player's chunk is explored after the relog")
+	# Saving before the seed's file was loaded must not overwrite it; the revision moves with the set.
+	var m3 := Minimap.new()
+	m3.revealed_dir = dir
+	m3.save_revealed()
+	assert_false(FileAccess.file_exists(_RevealedStore.path_for(dir, 0)), "no seed-0 file appears")
+	var rev: int = m.revealed_revision()
+	m.set_player_pos(Vector2(4000.0, 4000.0))
+	assert_true(m.revealed_revision() != rev, "revealing new chunks changes the revision")
+	m3.free()
 	m.free()
 	m2.free()
 	terrain.free()

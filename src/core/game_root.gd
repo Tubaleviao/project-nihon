@@ -659,7 +659,7 @@ func _install_quit_guard() -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
 		print("[Server] window close requested — saving before quit")
-		if _minimap != null and _minimap.revealed_dir != "":
+		if _minimap != null and _minimap.revealed_dir != "" and _minimap.is_revealed_loaded():
 			_minimap.save_revealed()
 		_save_everything(true)
 		# The write is threaded, so quitting here would race it: block until it lands.

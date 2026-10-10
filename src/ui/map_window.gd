@@ -11,6 +11,7 @@ extends Control
 ## Drawing needs a canvas and does not run headless; the maths it relies on is in MapMath/MapTiles.
 
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 const MapMath := preload("res://src/ui/map_math.gd")
 const MapTiles := preload("res://src/ui/map_tiles.gd")
 
@@ -32,7 +33,8 @@ var _thread: Thread = null
 var _batch_seed: int = 0
 var _reveal_tiles: Dictionary = {}
 var _reveal_level: int = -1
-var _reveal_count: int = -1
+var _reveal_rev: int = -1
+var _records_rev: int = -1
 
 func _init() -> void:
 	name = "MapWindow"
@@ -47,19 +49,34 @@ func get_zoom() -> float:
 	return _zoom
 
 func set_zoom(z: float) -> void:
-	_zoom = clampf(z, MapMath.ZOOM_MIN, MapMath.zoom_max(circumference()))
+	_zoom = clampf(z, MapMath.ZOOM_MIN, maxf(MapMath.zoom_max(circumference()), MapMath.ZOOM_MIN))
 	queue_redraw()
 
 func get_center() -> Vector2:
 	return _center
 
-## Centre the view on the player and zoom to a few dozen chunks across.
+## Centre the view on the player, exactly (chunk + local offset, so far from the origin too).
 func center_on_player() -> void:
-	if player_slice != null and player_slice.has_method("get_position"):
-		var p: Vector3 = player_slice.get_position()
-		_center = Vector2(p.x, p.z) / TerrainSlice.CHUNK_METERS
+	var pc := _player_chunk_pos()
+	if pc.x < INF:
+		_center = pc
 		_clamp_center()
 	queue_redraw()
+
+## The player's position in (fractional) chunks, from the exact world position; (INF, INF) when unknown.
+func _player_chunk_pos() -> Vector2:
+	if player_slice == null:
+		return Vector2(INF, INF)
+	if player_slice.has_method("get_world_pos"):
+		var wp: Dictionary = player_slice.get_world_pos()
+		if wp.has("chunk") and wp.has("local"):
+			var c: Vector2i = wp["chunk"]
+			var l: Vector3 = wp["local"]
+			return Vector2(c) + Vector2(l.x, l.z) / TerrainSlice.CHUNK_METERS
+	if player_slice.has_method("get_position"):
+		var p: Vector3 = player_slice.get_position()
+		return Vector2(p.x, p.z) / TerrainSlice.CHUNK_METERS
+	return Vector2(INF, INF)
 
 func _clamp_center() -> void:
 	var half := float(circumference()) / 2.0
@@ -84,7 +101,11 @@ func _gui_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion and _dragging:
 		var ppc := _px_per_chunk()
 		# Dragging a globe turns it: the same pan, scaled by how much of the surface a pixel covers.
-		_center -= event.relative / maxf(ppc, 0.000001)
+		var pan: Vector2 = event.relative / maxf(ppc, 0.000001)
+		if _t() > 0.0:   # on the globe a pixel of east-west drag covers more longitude toward the poles
+			var lat := MapMath.lonlat(_center, circumference()).y
+			pan.x /= lerpf(1.0, maxf(cos(lat), 0.05), _t())
+		_center -= pan
 		_clamp_center()
 		queue_redraw()
 		accept_event()
@@ -137,14 +158,14 @@ func _world_seed() -> int:
 func _revealed_tiles(level: int) -> Dictionary:
 	if minimap == null:
 		return {}
-	var chunks: Array = minimap.get_revealed_chunks()
-	if level != _reveal_level or chunks.size() != _reveal_count:
+	var rev: int = minimap.revealed_revision() if minimap.has_method("revealed_revision") else 0
+	if level != _reveal_level or rev != _reveal_rev:
 		_reveal_tiles.clear()
-		for c in chunks:
+		for c in minimap.get_revealed_chunks():
 			var t := MapMath.tile_of(c, level)
 			_reveal_tiles["%d,%d" % [t.x, t.y]] = true
 		_reveal_level = level
-		_reveal_count = chunks.size()
+		_reveal_rev = rev
 	return _reveal_tiles
 
 func _draw() -> void:
@@ -152,7 +173,9 @@ func _draw() -> void:
 	if sz.x <= 0.0 or sz.y <= 0.0:
 		return
 	var seed_v := _world_seed()
-	if seed_v != tiles.seed_v:
+	# Tiles sample generation records too: a record adopted since they were cached may change a biome.
+	if seed_v != tiles.seed_v or ChunkRecords.revision() != _records_rev:
+		_records_rev = ChunkRecords.revision()
 		tiles.reset(seed_v)
 	draw_rect(Rect2(Vector2.ZERO, sz), Color(0.03, 0.04, 0.08))
 	var circ := circumference()
@@ -162,19 +185,27 @@ func _draw() -> void:
 	var scale := MapMath.scale_px(_zoom, _view_px(), circ)
 	var origin := sz * 0.5
 	var center_ll := MapMath.lonlat(_center, circ)
-	var tile_chunks := 1 << level
-	var span := minf(float(circ) * 0.5, pow(2.0, _zoom) * 0.75 + tile_chunks)
 	var pole := float(TerrainSlice.pole_chunks())
-	var x0 := floori((_center.x - span) / tile_chunks)
-	var x1 := ceili((_center.x + span) / tile_chunks)
-	var z0 := floori(maxf(_center.y - span, -pole - 2.0) / tile_chunks)
-	var z1 := ceili(minf(_center.y + span, pole + 2.0) / tile_chunks)
-	if (x1 - x0 + 1) * (z1 - z0 + 1) > MAX_TILES_DRAWN:
-		return
+	var tile_chunks := 1 << level
+	var x0 := 0
+	var x1 := 0
+	var z0 := 0
+	var z1 := 0
+	while true:   # a coarser level until the visible tiles fit the draw budget
+		tile_chunks = 1 << level
+		var span := minf(float(circ) * 0.5, pow(2.0, _zoom) * 0.75 + tile_chunks)
+		x0 = floori((_center.x - span) / tile_chunks)
+		x1 = ceili((_center.x + span) / tile_chunks)
+		z0 = floori(maxf(_center.y - span, -pole - 2.0) / tile_chunks)
+		z1 = ceili(minf(_center.y + span, pole + 2.0) / tile_chunks)
+		if (x1 - x0 + 1) * (z1 - z0 + 1) <= MAX_TILES_DRAWN or level >= MapMath.MAX_LEVEL:
+			break
+		level += 1
 	if t >= 0.5:   # a lit disc behind the sphere
 		draw_circle(origin, scale, Color(0.05, 0.07, 0.14))
 	var fog := _revealed_tiles(level) if not show_true_planet else {}
 	# Request coarse ancestors of what is on screen first: the picture is complete at once.
+	tiles.clear_pending()   # only what is on screen now is worth computing
 	var coarse := mini(level + 3, MapMath.MAX_LEVEL)
 	for tz in range(z0, z1 + 1):
 		for tx in range(x0, x1 + 1):
@@ -208,9 +239,9 @@ func _biome_color(biome: String) -> Color:
 
 func _draw_markers(sz: Vector2, origin: Vector2, center_ll: Vector2, t: float, scale: float, circ: int) -> void:
 	var font := ThemeDB.fallback_font
-	if player_slice != null and player_slice.has_method("get_position"):
-		var p: Vector3 = player_slice.get_position()
-		var pll := MapMath.lonlat(Vector2(p.x, p.z) / TerrainSlice.CHUNK_METERS, circ)
+	var pcp := _player_chunk_pos()
+	if pcp.x < INF:
+		var pll := MapMath.lonlat(pcp, circ)
 		if MapMath.facing(pll, center_ll, t):
 			draw_circle(origin + MapMath.project(pll, center_ll, t) * scale, 4.0, Color.WHITE)
 	var home := home_marker(sz)

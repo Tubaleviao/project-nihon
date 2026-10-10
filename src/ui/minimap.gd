@@ -62,6 +62,7 @@ var _revealed: Dictionary = {}
 var revealed_dir: String = ""
 var _revealed_seed: int = 0
 var _revealed_loaded: bool = false
+var _revealed_rev: int = 0   # bumps whenever the explored set gains a chunk or is reloaded
 var _revealed_dirty_for: float = -1.0   # seconds since the set last changed; -1 = clean
 
 ## Emitted when the minimap is clicked: the HUD opens the Map window.
@@ -117,6 +118,7 @@ func _reveal_around(center: Vector2i) -> void:
 				if not _revealed.has(k):
 					_revealed[k] = true
 					_revealed_dirty_for = 0.0
+					_revealed_rev += 1
 	RevealedStore.cap(_revealed)
 
 ## True when `chunk` lies inside the finite world, or when no terrain slice is
@@ -136,6 +138,7 @@ func _tick_revealed_store(delta: float) -> void:
 		if _revealed_loaded:
 			save_revealed()
 			_revealed.clear()
+			_revealed_rev += 1
 		_revealed_seed = s
 		_revealed_loaded = true
 		load_revealed()
@@ -156,12 +159,21 @@ func load_revealed() -> void:
 		fresh.erase(k)
 		fresh[k] = true
 	_revealed = fresh
+	_revealed_rev += 1
 	RevealedStore.cap(_revealed)
 	queue_redraw()
 
+## True once the saved set for the world seed has been merged in; saving earlier would clobber the file.
+func is_revealed_loaded() -> bool:
+	return _revealed_loaded
+
+## Changes whenever the explored set does: a cheap staleness check for the Map window.
+func revealed_revision() -> int:
+	return _revealed_rev
+
 func save_revealed() -> void:
 	_revealed_dirty_for = -1.0
-	if revealed_dir != "":
+	if revealed_dir != "" and _revealed_loaded:
 		RevealedStore.save(RevealedStore.path_for(revealed_dir, _revealed_seed), get_revealed_chunks(), _revealed_seed)
 
 func is_revealed(chunk: Vector2i) -> bool:
