@@ -377,7 +377,6 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 
 	var root := Node3D.new()
 	root.name = "Chunk_%s" % key
-	root.position = _scene_offset
 	add_child(root)
 	_chunks[key] = root
 
@@ -390,7 +389,16 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	if built.is_empty():
 		# Only the SYNCHRONOUS path reaches this now: a worker result that carried nothing
 		# was refused above rather than quietly rebuilt here (Phase 42 review).
-		built = build_chunk_arrays(chunk_pos, heightmap, collect_build_runs(chunk_pos, heightmap))
+		built = build_chunk_arrays(chunk_pos, heightmap, collect_build_runs(chunk_pos, heightmap), true)
+	# A chunk-local build puts the node at the chunk's corner: the corner is summed with the scene
+	# offset in double precision, so far from the origin the node's position is small and exact and
+	# the vertices stay small too (float32 vertices at 2e7 m would snap to 2 m and shatter the ground).
+	root.position = _scene_offset
+	if bool(built.get("local", false)):
+		root.position = Vector3(
+			float(chunk_pos.x * CHUNK_SIZE) * TILE_SIZE + _scene_offset.x,
+			_scene_offset.y,
+			float(chunk_pos.y * CHUNK_SIZE) * TILE_SIZE + _scene_offset.z)
 	var surface := _mesh_from_arrays(built)
 	var mesh_inst := MeshInstance3D.new()
 	mesh_inst.mesh = surface
@@ -399,12 +407,12 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	root.add_child(mesh_inst)
 
 	# --- Water (Phase 51): a flat, collision-free surface where the ground is below sea level. ---
-	var water_mesh := water_mesh_for(chunk_pos, heightmap)
+	var water_mesh := water_mesh_for(chunk_pos, heightmap, bool(built.get("local", false)))
 	if water_mesh != null:
 		var water_inst := MeshInstance3D.new()
 		water_inst.name = "Water"
 		water_inst.mesh = water_mesh
-		water_inst.material_override = _water_material()
+		water_inst.material_override = _ice_material() if is_frozen_chunk(chunk_pos) else _water_material()
 		root.add_child(water_inst)
 
 	# --- Rare-vein deposits: a SECOND mesh, from arrays the build already carries. ---
@@ -463,9 +471,10 @@ static func water_spans(heightmap: Array, sea_level: float) -> Array:
 				start = -1
 	return spans
 
-## The chunk's water surface at the sea level (world coordinates, like the terrain mesh), or null on dry ground.
+## The chunk's water surface at the sea level (world coordinates, or relative to the chunk's corner when
+## `local`, like the terrain mesh), or null on dry ground.
 ## Render-only: the mesh has no collision body, so the player sinks through it and swims.
-static func water_mesh_for(chunk_pos: Vector2i, heightmap: Array) -> ArrayMesh:
+static func water_mesh_for(chunk_pos: Vector2i, heightmap: Array, local: bool = false) -> ArrayMesh:
 	var sea := WorldShape.sea_level()
 	var spans := water_spans(heightmap, sea)
 	if spans.is_empty():
@@ -474,10 +483,12 @@ static func water_mesh_for(chunk_pos: Vector2i, heightmap: Array) -> ArrayMesh:
 	var normals := PackedVector3Array()
 	var indices := PackedInt32Array()
 	for sp in spans:
-		var z0 := (float(chunk_pos.y * CHUNK_SIZE) + float(sp.x)) * TILE_SIZE
+		var chunk_x := 0.0 if local else float(chunk_pos.x * CHUNK_SIZE)
+		var chunk_z := 0.0 if local else float(chunk_pos.y * CHUNK_SIZE)
+		var z0 := (chunk_z + float(sp.x)) * TILE_SIZE
 		var z1 := z0 + TILE_SIZE
-		var x0 := (float(chunk_pos.x * CHUNK_SIZE) + float(sp.y)) * TILE_SIZE
-		var x1 := (float(chunk_pos.x * CHUNK_SIZE) + float(sp.z)) * TILE_SIZE
+		var x0 := (chunk_x + float(sp.y)) * TILE_SIZE
+		var x1 := (chunk_x + float(sp.z)) * TILE_SIZE
 		var base := vertices.size()
 		vertices.append_array([Vector3(x0, sea, z0), Vector3(x1, sea, z0), Vector3(x1, sea, z1), Vector3(x0, sea, z1)])
 		for _i in 4:
@@ -491,6 +502,15 @@ static func water_mesh_for(chunk_pos: Vector2i, heightmap: Array) -> ArrayMesh:
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
+
+var _ice_mat: StandardMaterial3D = null
+## Frozen sea: an opaque pale sheet at sea level (a polar chunk's water).
+func _ice_material() -> StandardMaterial3D:
+	if _ice_mat == null:
+		_ice_mat = StandardMaterial3D.new()
+		_ice_mat.albedo_color = ICE_COLOR
+		_ice_mat.roughness = 0.35
+	return _ice_mat
 
 var _water_mat: StandardMaterial3D = null
 func _water_material() -> StandardMaterial3D:
@@ -824,8 +844,9 @@ static func _apply_topsoil(entry: Dictionary, world_xz: Vector2, biomes: Diction
 	if material_for_biome(biome, world_xz, 0.0, int(field.get("seed", 0)), field.get("depleted", {}),
 			field.get("veins", {})) != OreField.host_material(biome):
 		return
-	entry["top_color"] = style["top"]
-	entry["soil_color"] = style["soil"]
+	# The biome's tint is snowed over toward the poles, as the rock is (`natural_color`).
+	entry["top_color"] = icy(style["top"], world_xz.y)
+	entry["soil_color"] = icy(style["soil"], world_xz.y)
 	entry["soil_depth"] = float(style["depth"])
 
 ## Phase 49 — the biome whose surface a tile WEARS. Within `BLEND_TILES` of a chunk border, a
@@ -924,9 +945,15 @@ static func _run_depth(run: Dictionary, surface: float) -> float:
 ## instead of one per tile (4096 of them at TILE_SIZE 0.5). UVs are dropped with the
 ## merge — the terrain's material is per-vertex colour with no texture, and a merged
 ## rectangle has no per-tile UV mapping left to give.
-static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary) -> Dictionary:
-	var origin_x := chunk_pos.x * CHUNK_SIZE * TILE_SIZE
-	var origin_z := chunk_pos.y * CHUNK_SIZE * TILE_SIZE
+##
+## `local` builds every vertex relative to the chunk's own corner (the node is then placed at the corner,
+## see `build_chunk`): float32 vertices in absolute metres snap to whole metres a few million metres out.
+## The default keeps absolute coordinates, which is what the suite's seam probes read.
+static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary, local: bool = false) -> Dictionary:
+	var corner_x := chunk_pos.x * CHUNK_SIZE * TILE_SIZE
+	var corner_z := chunk_pos.y * CHUNK_SIZE * TILE_SIZE
+	var origin_x := 0.0 if local else corner_x
+	var origin_z := 0.0 if local else corner_z
 	var runs: Dictionary = resolved.get("runs", {})
 	var deposits: Array = resolved.get("deposits", [])
 
@@ -985,7 +1012,7 @@ static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: 
 			cell_count += g["cells"].size()
 			for rect in _merge_rects(g["cells"]):
 				quad_count += _emit_rect(vertices, normals, colors, indices, collision,
-					g, rect, origin_x, origin_z)
+					g, rect, origin_x, origin_z, corner_x - origin_x, corner_z - origin_z)
 	# The rare-vein deposit boxes (see the docstring): geometry only, never collision.
 	# Off the resolved list, so this half of the build is the worker's.
 	var deposit_vertices := PackedVector3Array()
@@ -994,7 +1021,7 @@ static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: 
 	var deposit_indices  := PackedInt32Array()
 	for deposit in deposits:
 		MeshUtil.add_box_arrays(deposit_vertices, deposit_normals, deposit_colors, deposit_indices,
-			deposit["position"], deposit["size"], deposit["color"])
+			deposit["local_position"] if local else deposit["position"], deposit["size"], deposit["color"])
 	return {
 		"vertices":    vertices,
 		"normals":     normals,
@@ -1007,6 +1034,7 @@ static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: 
 		"deposit_normals":  deposit_normals,
 		"deposit_colors":   deposit_colors,
 		"deposit_indices":  deposit_indices,
+		"local":       local,
 	}
 
 ## Queue this run's exposed side walls against all four neighbours. The NEIGHBOUR
@@ -1148,10 +1176,15 @@ static func _merge_rects(cells: Dictionary) -> Array:
 ## soup. The winding matches the per-tile quads the merge replaces, so a face's normal
 ## points where it always did (the material renders both faces regardless; this is for
 ## lighting). Returns the number of quads emitted (always 1) so the caller can count.
-static func _emit_rect(vertices: PackedVector3Array, normals: PackedVector3Array, colors: PackedColorArray, indices: PackedInt32Array, collision: PackedVector3Array, g: Dictionary, rect: Dictionary, origin_x: float, origin_z: float) -> int:
+static func _emit_rect(vertices: PackedVector3Array, normals: PackedVector3Array, colors: PackedColorArray, indices: PackedInt32Array, collision: PackedVector3Array, g: Dictionary, rect: Dictionary, origin_x: float, origin_z: float, plane_dx: float = 0.0, plane_dz: float = 0.0) -> int:
 	var bottom := float(g["bottom"])
 	var top    := float(g["top"])
+	# A wall's plane is an absolute coordinate; a chunk-local build moves it by the corner (in double
+	# precision, so the result is small and exact) before it becomes a float32 vertex.
 	var plane  := float(g["plane"])
+	match str(g["dir"]):
+		"north", "south": plane -= plane_dz
+		"west", "east": plane -= plane_dx
 	var color: Color = g["color"]
 	var x0 := origin_x + int(rect["tx"]) * TILE_SIZE
 	var x1 := x0 + int(rect["w"]) * TILE_SIZE
@@ -1333,10 +1366,13 @@ func get_heightmaps() -> Dictionary:
 ## review found: a client's mine filled the HOST's pack, and the client — whose own
 ## client mirrors only its own pack — saw nothing. The pick that wears is the
 ## actor's too.
-func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: String = "") -> Dictionary:
+## Phase 91 — `exact` is the aimed point as a `{chunk, local}` world record when the caller has it
+## (the local player does): far from the origin `world_pos` is a float32 quantised to metres, too
+## coarse to name a half-metre tile, so the tile is resolved from `exact` instead.
+func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: String = "", exact: Dictionary = {}) -> Dictionary:
 	# Resolve the span BEFORE spending tool durability, so a blocked mine never
 	# consumes the held pick (the repo's standing atomic-refusal rule).
-	var probe := _resolve_edit_tile("mine", world_pos, normal)
+	var probe := _resolve_edit_tile("mine", world_pos, normal, exact)
 	var tile: Vector2i = probe["tile"]
 	var span := _mine_span(get_runs_at_tile(tile), world_pos, normal)
 	if span.is_empty():
@@ -1373,7 +1409,10 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 	_rebuild_chunk_at_tile(tile)
 
 	if inventory != null and inventory.has_method("add_item"):
-		inventory.add_item(material, quantity)
+		# The ground is dug either way; a yield the pack cannot hold is lost, and the local
+		# player is told rather than left wondering where it went.
+		if not inventory.add_item(material, quantity) and not _is_remote_actor(player_id):
+			GameBus.inventory_full.emit()
 	_push_inventory(player_id)
 
 	var pos := Vector3(world_pos.x, float(span["top"]), world_pos.z)
@@ -1479,7 +1518,7 @@ func _vein_from_id(id: String) -> Dictionary:
 ## from granting anything: it must be a real fabric material, and the debit lands on
 ## the actor's own pack — so a peer can only ever place what it actually holds. Both
 ## are checked BEFORE the debit and the edit (the atomic-refusal rule).
-func place_block(world_pos: Vector3, normal: Vector3, material: String = "", player_id: String = "") -> bool:
+func place_block(world_pos: Vector3, normal: Vector3, material: String = "", player_id: String = "", exact: Dictionary = {}) -> bool:
 	# `_place_material` is THIS machine's selection, so only the local actor may fall back
 	# to it: a remote actor that named no material (a client with nothing selected) must
 	# not place whatever the host happens to have selected.
@@ -1491,7 +1530,7 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 
 	# The placement is validated BEFORE anything is spent, so a refused placement
 	# leaves no side effect to roll back.
-	var probe := _resolve_edit_tile("place", world_pos, normal)
+	var probe := _resolve_edit_tile("place", world_pos, normal, exact)
 	var tile: Vector2i = probe["tile"]
 	var span := _place_span(get_runs_at_tile(tile), world_pos, normal)
 	if span.is_empty():
@@ -2101,6 +2140,9 @@ static func vein_deposits_at(chunk_pos: Vector2i, heightmap: Array, cache: Dicti
 				continue
 			out.append({
 				"position": Vector3(world_xz.x, h + VEIN_DEPOSIT_HEIGHT * 0.5, world_xz.y),
+				# The same point relative to the chunk's corner: exact in float32 at any distance.
+				"local_position": Vector3(
+					(float(tx) + 0.5) * TILE_SIZE, h + VEIN_DEPOSIT_HEIGHT * 0.5, (float(tz) + 0.5) * TILE_SIZE),
 				"size":     deposit_size,
 				"color":    _material_color(str(vein["material"])),
 			})
@@ -2412,9 +2454,9 @@ func _make_terrain_material() -> StandardMaterial3D:
 func _on_chunk_ready(chunk_pos: Vector2i, heightmap: Array) -> void:
 	build_chunk(chunk_pos, heightmap)
 
-func _on_mine_requested(position: Vector3, normal: Vector3, player_id: String) -> void:
+func _on_mine_requested(position: Vector3, normal: Vector3, player_id: String, exact: Dictionary = {}) -> void:
 	if is_authoritative:
-		mine_block(position, normal, player_id)
+		mine_block(position, normal, player_id, exact)
 	else:
 		GameBus.block_edit_intent.emit("mine", position, normal, "")
 
@@ -2464,11 +2506,11 @@ func _held_pick(inventory: Node) -> String:
 		return ""
 	return str(inventory.find_tool("pick"))
 
-func _on_place_requested(position: Vector3, normal: Vector3, player_id: String, material: String) -> void:
+func _on_place_requested(position: Vector3, normal: Vector3, player_id: String, material: String, exact: Dictionary = {}) -> void:
 	if is_authoritative:
 		# `material` as received: `place_block` decides whether "" may fall back to this
 		# machine's own selection (only for the local actor, never for a remote one).
-		place_block(position, normal, material, player_id)
+		place_block(position, normal, material, player_id, exact)
 	else:
 		var chosen := material if material != "" else _place_material
 		GameBus.block_edit_intent.emit("place", position, normal, chosen)
@@ -2494,12 +2536,22 @@ func apply_block_change(action: String, position: Vector3, normal: Vector3, mate
 ## A side-face hit lands on the boundary between two columns, so we step along
 ## the normal: back for mining (into the block aimed at), forward for placing
 ## (into the adjacent empty cell). Pure — performs no mutation.
-func _resolve_edit_tile(action: String, position: Vector3, normal: Vector3) -> Dictionary:
-	var xz := Vector2(position.x, position.z)
+##
+## Phase 91 — with `exact` (a `{chunk, local}` record of the same point) the arithmetic runs on
+## doubles from the exact chunk, so the tile is right however far from the origin the edit is.
+func _resolve_edit_tile(action: String, position: Vector3, normal: Vector3, exact: Dictionary = {}) -> Dictionary:
+	var x: float = position.x
+	var z: float = position.z
+	if exact.has("chunk") and exact.has("local"):
+		var c: Vector2i = exact["chunk"]
+		var l: Vector3 = exact["local"]
+		x = float(c.x) * CHUNK_SIZE * TILE_SIZE + l.x
+		z = float(c.y) * CHUNK_SIZE * TILE_SIZE + l.z
 	if normal.y <= 0.5:
-		var step := Vector2(normal.x, normal.z) * TILE_SIZE * 0.5
-		xz = xz - step if action == "mine" else xz + step
-	return { "tile": _world_to_tile(xz), "xz": xz }
+		var along := -1.0 if action == "mine" else 1.0
+		x += along * normal.x * TILE_SIZE * 0.5
+		z += along * normal.z * TILE_SIZE * 0.5
+	return { "tile": Vector2i(floori(x / TILE_SIZE), floori(z / TILE_SIZE)), "xz": Vector2(x, z) }
 
 ## The span a mine removes, or {} when it is refused. A top-face hit takes the last
 ## step of the run whose top is the hit plane (see `runs_topping_at`) and refuses at
@@ -2843,7 +2895,27 @@ static func natural_color(world_xz: Vector2, biomes: Dictionary, colours: Dictio
 		int(field.get("seed", 0)), field.get("depleted", {}), field.get("veins", {}))
 	if not colours.has(material):
 		colours[material] = _material_color(material)
-	return colours[material]
+	return icy(colours[material], world_xz.y)
+
+## Polar ice: latitude (degrees) where the ground starts to whiten, and where it is fully ice.
+const ICE_START_LAT := 72.0
+const ICE_FULL_LAT := 80.0
+const ICE_COLOR := Color(0.88, 0.94, 0.98)
+## The ice blend is stepped in eighths so a latitude band merges into a few big quads, not one per tile.
+const ICE_STEPS := 8.0
+
+## `colour` of the ground at world Z `world_z` (metres), whitened toward ice by latitude: the poles of a
+## planet like Earth are frozen. Pure of the world position, so every build agrees.
+static func icy(colour: Color, world_z: float) -> Color:
+	var lat := absf(TerrainSlice.latitude_at(world_z))
+	if lat <= ICE_START_LAT:
+		return colour
+	var t := snappedf(smoothstep(ICE_START_LAT, ICE_FULL_LAT, lat), 1.0 / ICE_STEPS)
+	return colour.lerp(ICE_COLOR, t)
+
+## True when the chunk row sits in the frozen sea zone (water there is ice, not liquid).
+static func is_frozen_chunk(chunk_pos: Vector2i) -> bool:
+	return absf(TerrainSlice.latitude_of(chunk_pos.y)) >= ICE_FULL_LAT
 
 ## Phase 64 — the biome whose surface the tile at `world_xz` WEARS, resolved from the terrain
 ## slice: the same `blended_biome` answer the mesher gets from the gathered map.

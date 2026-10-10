@@ -714,7 +714,7 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 	var result: Array = [null]
 	var task_id := WorkerThreadPool.add_task(
 		func(): result[0] = VoxelBuilder.build_chunk_arrays(chunk_pos, heightmap,
-			VoxelBuilder.build_runs(chunk_pos, heightmap, gathered)),
+			VoxelBuilder.build_runs(chunk_pos, heightmap, gathered), true),
 		false, "chunk build %s" % key)
 	_builds[task_id] = {
 		"chunk":     chunk_pos,
@@ -1095,6 +1095,23 @@ func _update_first_ring_progress() -> void:
 	for key in _first_ring:
 		_first_ring[key] = _built.has(key)
 
+## Phase 91 — release the whole streamed set and queue the window afresh on the next `refresh`.
+## A fold over a pole or round the antimeridian needs it: chunks are keyed by their canonical
+## position but built where the window first met them, so after a fold a chunk still loaded from
+## before it (or still queued) sits a whole lap away from where the window now wants it, and a
+## kept key would never be rebuilt in the right place.
+func restream() -> void:
+	for key in _loaded.keys():
+		unload_chunk(_key_to_chunk(key))
+	_load_queue.clear()
+	_pending.clear()
+	_unload_queue.clear()
+	_last_centers = []
+
+## True when `chunk_pos` is loaded and its ground has been built.
+func is_chunk_built(chunk_pos: Vector2i) -> bool:
+	return _built.has(_chunk_key(chunk_pos))
+
 func unload_chunk(chunk_pos: Vector2i) -> void:
 	var key := _chunk_key(chunk_pos)
 	if not _loaded.has(key):
@@ -1175,8 +1192,8 @@ func _dist2(center: Vector2i, chunk: Vector2i) -> int:
 ## True when `chunk` is inside the finite world, or when no terrain slice is
 ## wired (isolated unit tests treat the world as unbounded).
 func _in_bounds(chunk: Vector2i) -> bool:
-	if terrain_slice != null and terrain_slice.has_method("is_chunk_in_bounds"):
-		return terrain_slice.is_chunk_in_bounds(chunk)
+	if terrain_slice != null and terrain_slice.has_method("is_chunk_loadable"):
+		return terrain_slice.is_chunk_loadable(chunk)
 	return true
 
 func _chunk_key(chunk_pos: Vector2i) -> String:

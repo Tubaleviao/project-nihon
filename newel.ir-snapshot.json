@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:2bf66bb02fc08db6b4216c27c4e1b033e4a719dc27f87e120487bdfd9eff015a",
+  "schemaHash": "sha256:42cf6b4e46ea6cbf16660654559cc0a6a48f734d396d95e398f2145b6b3b491c",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -5626,7 +5626,7 @@
         "tags": [
           "world-system"
         ],
-        "description": "The planet as a fact of the fabric. The world takes globe semantics on a flat chunk grid: X wraps around the circumference, Z is latitude bounded by impassable polar ice, and players locate each other by latitude, longitude and altitude. Terrain is seed-deterministic, so only player edits are ever stored.",
+        "description": "The planet as a fact of the fabric. The world takes globe semantics on a flat chunk grid: X wraps around the circumference, Z is latitude, and walking over a pole comes back down the far meridian, so every direction leads round the planet. Players locate each other by latitude, longitude and altitude. Terrain is seed-deterministic, so only player edits are ever stored.",
         "goal": "Make one persistent, Earth-sized world whose size is a design fact rather than a code constant",
         "fields": {
           "id": {
@@ -5648,7 +5648,7 @@
           "polarLatitude": {
             "name": "polarLatitude",
             "type": "decimal",
-            "description": "Degrees of latitude at which impassable polar ice begins (north and south); the world spans pole to pole at 90 (Phase 50)",
+            "description": "Degrees of latitude of the polar line (north and south): past it no new player is placed; the snow-covered caps beyond stay walkable to the pole, and the world spans pole to pole at 90 (Phase 50)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,

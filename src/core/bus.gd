@@ -303,6 +303,9 @@ signal station_placed(station_id: String, type: String, position: Vector3)
 ## position  : Vector3 — the aimed world position
 ## normal    : Vector3 — the hit face normal
 ## player_id : String  — the acting player; "" means the local player
+## Phase 91 — the local player emits a fourth argument, the aimed point as an exact
+## `{chunk, local}` record (far from the origin `position` is quantised to metres); handlers
+## take it as an optional `exact: Dictionary = {}`.
 signal block_mine_requested(position: Vector3, normal: Vector3, player_id: String)
 
 ## Request to place a voxel block against the hit face (PlayerSlice on
@@ -318,6 +321,7 @@ signal block_mine_requested(position: Vector3, normal: Vector3, player_id: Strin
 ## normal    : Vector3 — the hit face normal
 ## player_id : String  — the acting player; "" means the local player
 ## material  : String  — the material to place; "" means the slice's own selection
+## Phase 91 — like `block_mine_requested`, the local player adds the exact aimed point.
 signal block_place_requested(position: Vector3, normal: Vector3, player_id: String, material: String)
 
 ## Request to advance the build material selection (PlayerSlice on R).
