@@ -53,6 +53,8 @@ var _creature:    CreatureSlice
 var _creature_ai: CreatureAI
 ## Phase 71 — the worldgen version stamped into every world record this process writes.
 var _worldgen_stamp: int = TerrainSlice.WORLDGEN_VERSION
+## Phase 106 — the fingerprint the next save writes; resolved when a record loads.
+var _worldgen_fp_stamp: int = -1
 var _networking:  NetworkingSlice
 var _persistence: PersistenceSlice
 var _registry:    PlayerRegistry
@@ -1974,6 +1976,7 @@ func _collect_save_job(incremental: bool) -> Dictionary:
 		# that picked a fresh seed would land every saved edit on a different hill.
 		"seed":            _terrain.get_world_seed(),
 		"worldgenVersion": _worldgen_stamp,
+		"worldgenFingerprint": _worldgen_fp_stamp if _worldgen_fp_stamp >= 0 else TerrainSlice.worldgen_fingerprint(),
 		"chunks":          manifest,
 		"stations":        stations,
 		"creatures":       creatures,
@@ -2284,6 +2287,10 @@ func _note_worldgen_version() -> void:
 	_worldgen_stamp = PersistenceSlice.worldgen_stamp_for_save(_loaded_world, TerrainSlice.WORLDGEN_VERSION)
 	if PersistenceSlice.check_worldgen_version(_loaded_world, TerrainSlice.WORLDGEN_VERSION):
 		GameBus.worldgen_version_mismatch.emit(_worldgen_stamp, TerrainSlice.WORLDGEN_VERSION)
+	var running_fp := TerrainSlice.worldgen_fingerprint()
+	_worldgen_fp_stamp = PersistenceSlice.fingerprint_stamp_for_save(_loaded_world, running_fp)
+	if PersistenceSlice.check_worldgen_fingerprint(_loaded_world, running_fp):
+		GameBus.worldgen_fingerprint_mismatch.emit(_worldgen_fp_stamp, running_fp)
 
 func _load_world_records() -> void:
 	# Phase 52 — the GLOBAL record only; a Phase 51 monolithic record is split into region

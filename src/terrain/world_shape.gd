@@ -60,6 +60,12 @@ static func warm() -> void:
 			_spline = sp
 	_warmed = true
 
+## Phase 106 — the warmed fabric parameters the shape reads, in a fixed order, for
+## `TerrainSlice.worldgen_fingerprint`.
+static func fingerprint_fields() -> Array:
+	warm()
+	return [_sea, _min_h, _max_h, _ocean_share, _ridge_amp, _spline]
+
 static func _num(res: Variant, field: String, fallback: float) -> float:
 	var v: Variant = res.get(field)
 	return float(v) if v != null else fallback
