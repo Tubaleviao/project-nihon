@@ -114,7 +114,7 @@ func build() -> void:
 	_menu.id_pressed.connect(_on_menu_pressed)
 	add_child(_menu)
 	load_state()
-	refresh()
+	_render()   # not refresh(): the inventory may not be wired yet, and nothing held would empty the saved boxes
 
 func _make_row(from: int, to: int) -> HBoxContainer:
 	var row := HBoxContainer.new()

@@ -336,7 +336,8 @@ func _on_place_material_changed(material: String) -> void:
 		hotbar.select_item(material)
 
 func refresh_hud() -> void:
-	if hotbar != null:
+	# Until the inventory is wired nothing is "held", and refresh() would empty every saved item box.
+	if hotbar != null and inventory_slice != null:
 		hotbar.refresh()
 	if window_dock != null:
 		var open: Array = []
