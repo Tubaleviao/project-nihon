@@ -507,6 +507,11 @@ func _on_tree_cleared(tree_id: String) -> void:
 		return
 	var tree: Dictionary = _trees.get(tree_id, {})
 	if tree.is_empty():
+		# Not loaded here (its chunk is out of window): still remember it, or it regrows on arrival.
+		var parts := tree_id.split("_")
+		if parts.size() == 4 and parts[0] == "tree" and parts[1].is_valid_int() \
+				and parts[2].is_valid_int() and parts[3].is_valid_int() and int(parts[3]) >= 0:
+			_record_cleared(Vector2i(int(parts[1]), int(parts[2])), int(parts[3]))
 		return
 	# Remember it: records reach a client with the snapshot only, so a reload of the chunk must not regrow it.
 	_record_cleared(tree["chunk"], int(tree["index"]))

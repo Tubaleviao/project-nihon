@@ -17767,6 +17767,11 @@ func _test_tree_pin_client_cleared() -> void:
 	var body: Variant = t.get_tree_record(tid)["body"]
 	GameBus.tree_cleared.emit("tree_unknown_id")
 	assert_eq(t.trees_in_chunk(chunk).size(), 8, "an unknown id is ignored")
+	# A clear for a chunk this client has not loaded is remembered, so the tree never spawns there.
+	var far := Vector2i(7, 7)
+	GameBus.tree_cleared.emit("tree_7_7_0")
+	assert_true(t.cleared_indices(far).has(0), "a clear for an unloaded chunk is remembered")
+	assert_false(t.cleared_indices(chunk).has(0), "and only for that chunk")
 	GameBus.tree_cleared.emit(tid)
 	assert_true(t.get_tree_record(tid).is_empty(), "the client drops the cleared tree")
 	assert_eq(t.trees_in_chunk(chunk).size(), 7, "and only that one")
