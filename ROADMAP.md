@@ -126,6 +126,14 @@ issue number where the criterion used to be.
 | 103 | Teleports carry the exact position and stay on the planet | Planned | below |
 | 104 | Two-client harness: chat and admin teleport over the socket | Planned | below |
 | 105 | Archive Phases 75–95 into the roadmap history | Planned | below |
+| 106 | A world stamp that covers fabric parameters, and golden generator values | Planned | below |
+| 107 | A per-chunk generation record in the region store | Planned | below |
+| 108 | Terrain reads and writes the generation record on the host | Planned | below |
+| 109 | Generation records reach clients, scoped and validated | Planned | below |
+| 110 | Trees are pinned per chunk and cleared where players build | Planned | below |
+| 111 | The minimap remembers what was explored and marks home | Planned | below |
+| 112 | A biome adjacency table in the fabric and an offline scan | Planned | below |
+| 113 | Frontier generation: a new generator version meets recorded land | Planned | below |
 
 ---
 
@@ -1082,6 +1090,270 @@ Earlier eras were archived to
 - [ ] Every `## Phase N` heading for 75–95 appears exactly once across `docs/roadmap-history/`, and
   the moved text is byte-identical (shown by `git diff --color-moved`).
 - [ ] Every relative link in the new history file resolves (the same check the other history files pass).
+
+---
+
+## Phase 106 — A world stamp that covers fabric parameters, and golden generator values
+
+**Goal:** Phases 106–113 let the generator change without moving land a player has already seen.
+Today terrain is a pure function of the seed, and `TerrainSlice.WORLDGEN_VERSION` is the only guard.
+It misses two things. `WorldShape.warm()` reads `seaLevel`, `minHeight`, `maxHeight`, `oceanShare`,
+`ridgeAmplitude` and `heightSpline` from the fabric `WorldSystem`, and `ClimateField.warm()` reads every
+biome's temperature, moisture, altitude and rarity envelope; editing any of them changes terrain with
+no code change and no version bump. And the detail noise is `FastNoiseLite`, whose output a Godot
+upgrade could shift without any change in this repo. This phase makes both visible.
+
+**Newel dependency:** NO.
+
+**Deliverables:**
+- `src/terrain/terrain_slice.gd` — `static func worldgen_fingerprint() -> int`: an FNV-1a hash (as
+  `ClimateField.niche_salt`, not `String.hash()`) over the `WorldSystem` fields above and the warmed
+  `ClimateField` envelope table, in sorted key order.
+- `src/persistence/persistence_slice.gd`, `src/core/game_root.gd` — `world.json` records
+  `worldgenFingerprint` next to `worldgenVersion`; a load whose stored fingerprint differs raises
+  `GameBus.worldgen_fingerprint_mismatch(saved, current)` once, on the same path as
+  `worldgen_version_mismatch`. An absent fingerprint (an older save) is stamped, not reported.
+- `src/tests/test_suite.gd` — golden values: `TerrainSlice.detail_of` at 8 fixed points,
+  `WorldShape.height` at 8 fixed (seed, x, z) triples, and `ClimateField.biome_for_chunk` for 16 fixed
+  chunks, with the expected numbers written into the test.
+- `CLAUDE.md` — the world-gen rule now reads: anything that changes world-gen output, in code or in
+  `WorldSystem` or biome envelopes, bumps `WORLDGEN_VERSION` and updates the golden values.
+
+**Acceptance criteria:**
+- [ ] Suite: the fingerprint is stable across two calls and across a `warm()` reset; changing
+  `ridgeAmplitude` in a scratch resource changes it.
+- [ ] Suite: a world record with a different fingerprint raises `worldgen_fingerprint_mismatch` exactly
+  once; a record without one raises nothing and is stamped on the next save.
+- [ ] Suite: the golden detail-noise values match to 1e-6; the shape and biome values match exactly.
+- [ ] `npm run validate`, `npm run check-drift` green; suite green on both boot paths.
+
+---
+
+## Phase 107 — A per-chunk generation record in the region store
+
+**Goal:** a visited chunk keeps its look when the generator later changes only if what it looked like
+is stored. The large-scale surface of a chunk is the four `WorldShape` heights at its corners (the
+detail noise is a fixed function), and its biome is one key. That is about 20 bytes per chunk. This
+phase adds the storage and nothing else; Phase 108 uses it.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 52, Phase 89, Phase 106.
+
+**Deliverables:**
+- `src/persistence/region_store.gd` — `REGION_FORMAT_VERSION` 2. A chunk entry may carry
+  `"gen": { "v": <worldgen version>, "f": <fingerprint>, "b": "<biome key>", "h": [c00, c10, c01, c11] }`
+  beside `"edits"`. Version-1 files still load. `get_gen(chunk)` / `set_gen(chunk, rec)` mirror the edit
+  API, `list_dirty` counts a chunk whose only change is a `gen`, and the write path stays atomic and
+  safe on the save worker.
+- A malformed `gen` (wrong types, a non-finite or out-of-range height, an unknown biome key, a version
+  newer than the running one) is dropped with one warning per session, the Phase 89 pattern.
+
+**Acceptance criteria:**
+- [ ] Suite: a `gen` record round-trips through `save_region` / `load_region` with heights equal to 1e-4.
+- [ ] Suite: a version-1 region file loads unchanged, and a save of it writes version 2 with its edits intact.
+- [ ] Suite: a malformed `gen` is dropped, its chunk's edits survive, and the warning fires once for two loads.
+- [ ] Suite: a region with 1,024 recorded chunks and no edits serialises to under 100 KB.
+- [ ] Suite green on both boot paths.
+
+---
+
+## Phase 108 — Terrain reads and writes the generation record on the host
+
+**Goal:** make the record authoritative. When a chunk enters a player's streamed window and has no
+record, the host generates it as today and writes its record. When it has one, the record wins over the
+generator. Under one generator version the two agree, so nothing visibly changes; the phase is what a
+later generator change stands on.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 107.
+
+**Deliverables:**
+- `src/terrain/chunk_records.gd` (new) — a mutex-guarded table `chunk key -> record`, loaded by region
+  as `ChunkManager` already loads edit regions. `ClimateField.biome_for_chunk` callers go through
+  `TerrainSlice.biome_for_chunk`, which asks the table first; `OreField` reads it from its worker, so
+  the table is read-only to workers, written only on the main thread, like the `_pool_cache` guard.
+- `src/terrain/terrain_slice.gd` — `_shape_at` uses a record's four heights instead of
+  `WorldShape.height` for that cell, and its biome result comes from the record.
+- `src/terrain/chunk_manager.gd` — a chunk loaded into a player window with no record gets one written
+  (host and dedicated server only, never a client).
+- `src/terrain/distant_terrain.gd` — the ring reads records and never writes them: unvisited far
+  chunks are not recorded, so the store grows with exploration only.
+
+**Acceptance criteria:**
+- [ ] Suite: with no records, the heightmap hash and biome of 64 chunks equal their pre-phase values
+  (the Phase 106 goldens plus a recorded hash).
+- [ ] Suite: a stub record with another biome and shifted corner heights makes `biome_for_chunk` and
+  `generate_heightmap` return the record's values for that chunk and the generator's for its neighbours.
+- [ ] Suite: a chunk streamed into a window gets exactly one record, and a second load rewrites nothing.
+- [ ] Suite: building a ring writes no record; a client-role `ChunkManager` writes none either.
+- [ ] Suite: `OreField` asked from a worker thread for a recorded chunk gets the recorded biome.
+- [ ] Suite: with the recorded chunk's `v` set to an older number, its output is unchanged.
+- [ ] Suite and `--server` / `--quit-after-boot` boots green; harness green.
+
+---
+
+## Phase 109 — Generation records reach clients, scoped and validated
+
+**Goal:** a client regenerates terrain from the seed (Phase 41). Once the host's record can differ from
+the generator, the client has to receive the record or it draws different land from the host. Records
+are small, so they ride the same scope as edits.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 49, Phase 108.
+
+**Deliverables:**
+- `src/networking/networking_slice.gd`, `src/core/game_root.gd` — a join snapshot and every window
+  re-scope carry the records of chunks inside the peer's streamed window plus its first ring, with the
+  scope named, as edits do. A cap per packet and a per-peer interval clock bound the traffic.
+- The client validates each record (types, finite floats, heights within `WorldShape.min_height()` to
+  `max_height()`, biome key in `TerrainSlice.BIOME_KEYS`, at most the packet cap) and drops a bad
+  one; it applies records before `ChunkManager.start()` and the first-ring gate waits for them.
+- `src/tests/net_harness.gd` — step `chunk_record_synced`.
+
+**Acceptance criteria:**
+- [ ] Suite: a snapshot for a peer carries records for its window only; one for a far peer carries none of them.
+- [ ] Suite: a record with a biome key outside `BIOME_KEYS`, a NaN height or a height above `max_height`
+  is dropped and the rest of the packet applies.
+- [ ] Suite: a packet over the cap applies the first `cap` records and counts the rest as refused.
+- [ ] `tools/net_harness.sh`: the host records a chunk with a different biome than the generator would
+  pick; the client reports the host's biome and heights, and both roles agree on the step.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 110 — Trees are pinned per chunk and cleared where players build
+
+**Goal:** `TreeSlice.spawn_for_chunk` places every tree from the chunk coordinate and the original
+terrain height. It reads neither voxel edits nor stations, so a base built in a forest keeps its trees
+standing in its walls, and a tree on dug-out ground floats at the old surface. A chopped tree also
+regrows, so clearing it never lasts. This phase records which trees a chunk has and lets building
+clear them for good.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 31, Phase 108, Phase 109.
+
+**Deliverables:**
+- The `gen` record gains `"t": <tree budget when generated>` and `"x": [<cleared spawn indices>]`.
+  `TreeSlice.spawn_for_chunk` takes its budget from `t` when present, so a later density change does
+  not add or drop trees in a recorded chunk, and skips indices in `x`.
+- `TreeSlice` clears a tree for good when a voxel edit lands within `CLEAR_RADIUS_TILES` of its tile or
+  a station is placed within `CLEAR_RADIUS_M` of it: the host adds its index to `x`, frees its collision
+  and visual, and emits `tree_cleared(tree_id)` for clients to do the same.
+- A tree standing on a tile that already has edits when its chunk first spawns is cleared by the same rule.
+
+**Acceptance criteria:**
+- [ ] Suite: placing a block on a tree's tile removes the tree; after unloading and reloading the chunk,
+  and after a save and load, it is still gone.
+- [ ] Suite: placing a station within `CLEAR_RADIUS_M` clears the trees inside the radius and none outside.
+- [ ] Suite: a recorded chunk keeps its tree count when the biome's `treeDensity` is changed in a scratch resource.
+- [ ] Suite: a client receiving `tree_cleared` frees the tree's collision and its MultiMesh slot; the
+  orphan-node check stays clean.
+- [ ] Suite: a chopped-and-regrowing tree is unaffected: the stump still regrows after its cooldown.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 111 — The minimap remembers what was explored and marks home
+
+**Goal:** even when land is stable, a player who wanders off needs a way back. The minimap already
+keeps a fog-of-war record of visited chunks (`_revealed`), but only in memory, so a relog starts blank.
+It also has no marker for the player's own base.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 87.
+
+**Deliverables:**
+- `src/ui/minimap.gd` — the revealed set is saved per world (keyed by the world seed) under
+  `user://saves/client/`, loaded on start, with a cap on stored chunks (oldest dropped first) and runs
+  encoded per row so a long walk stays small. Writes are debounced.
+- A home marker at the player's recorded respawn point (Phase 87): an icon on the map, and when the point
+  is off the map a direction arrow clamped to the edge with the distance. The clamp is a pure static
+  function so the suite can pin it.
+
+**Acceptance criteria:**
+- [ ] Suite: a revealed set round-trips through save and load; a file for another seed is ignored.
+- [ ] Suite: the cap drops the oldest chunks, and 10,000 contiguous chunks encode to under 20 KB.
+- [ ] Suite: the home clamp returns the point itself when inside the map, and an edge position on the
+  line toward it, with the right distance, when outside; it is exact at 1,500,000 chunks from the origin.
+- [ ] Suite: a missing or corrupt file starts an empty set and warns once.
+- [ ] Suite green on both boot paths.
+
+---
+
+## Phase 112 — A biome adjacency table in the fabric and an offline scan
+
+**Goal:** nothing today stops snow lying against lava; adjacency is whatever the smooth climate noise
+produces, and `BiomeBlend` only dithers the colour at a border. To change the generator safely the
+rules have to be explicit, and a new biome has to be checked against them. They are enforced offline,
+not per chunk: a chunk's biome stays a pure function of seed and position, so workers and clients keep
+agreeing without talking to each other. The runtime use of the rules is Phase 113.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 49, Phase 108.
+
+**Deliverables:**
+- `fabric/world/biomes/` — each biome gains `forbiddenNeighbours` (a list of biome keys, symmetric by
+  construction) and `transition` (the biome that must lie between it and a forbidden one). The
+  fabric validation rejects an unknown key, an asymmetric pair, or a missing transition.
+- `npm run generate` emits the table into `godot/` for `GameData`.
+- `src/tests/test_suite.gd` — an adjacency scan: for each of 4 fixed seeds, a 256×256 chunk grid at
+  the equator, the temperate belt, the pole edge and a coastline, counts 4-neighbour pairs that are
+  forbidden. Where the current generator violates a rule, the fix is a fabric envelope change shipped
+  with a `WORLDGEN_VERSION` bump, which is safe for chunks already recorded (Phase 108).
+
+**Acceptance criteria:**
+- [ ] `npm run validate` fails on a scratch fabric with an unknown key, an asymmetric pair or a
+  forbidden pair with no transition, and passes on the real one.
+- [ ] `npm run generate`, `npm run check-drift` green.
+- [ ] Suite: the scan finds zero forbidden pairs across all grids.
+- [ ] Suite: the scan finds a violation when a scratch envelope is made to place two forbidden biomes
+  side by side (the check can fail).
+- [ ] Suite green on both boot paths.
+
+---
+
+## Phase 113 — Frontier generation: a new generator version meets recorded land
+
+**Goal:** after Phases 106–112 a generator change is safe for recorded chunks, but a new chunk beside
+a recorded one would meet it with a cliff or a forbidden biome pair. This phase generates the frontier
+so the two meet cleanly, then records it, so the choice is made once and never revisited.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 108, Phase 109, Phase 112.
+
+**Deliverables:**
+- `src/terrain/frontier.gd` (new) — a deterministic function of the generator and the recorded
+  neighbours. A new chunk's corner heights: a corner shared with a recorded chunk reuses its recorded
+  value exactly; others ease from the recorded heights to the new generator's over `BLEND_CHUNKS`
+  (smoothstep on Chebyshev distance to the nearest recorded chunk, as `WRAP_BLEND_CHUNKS` eases the
+  seam). Biome: the generator's pick, unless it is forbidden next to a recorded 4-neighbour, in
+  which case the forbidden biome's `transition`, then the next-best envelope.
+- `src/terrain/chunk_manager.gd` — the host runs it for an unrecorded chunk in a window and writes the
+  result as the chunk's record; the neighbouring regions are loaded first. Clients receive it by Phase 109.
+- `CLAUDE.md` — document the stable-world rule: recorded chunks never change; a generator version
+  affects only unrecorded land.
+
+**Known limitation:** `DistantTerrain` draws far unrecorded chunks from the plain generator, so a ring
+tile beside recorded land may change slightly when the player arrives and the frontier is computed.
+
+**Acceptance criteria:**
+- [ ] Suite: after changing `WorldShape`'s warmed `ridgeAmplitude` and `heightSpline` (standing in for a
+  new version), every recorded chunk's biome and heights are unchanged.
+- [ ] Suite: a new chunk next to a recorded one shares its corner heights exactly; the largest height
+  step between adjacent corners across the blend band is below a stated bound.
+- [ ] Suite: a new chunk at least `BLEND_CHUNKS` from any recorded chunk equals the plain new generator.
+- [ ] Suite: the adjacency scan (Phase 112) around a recorded block, with the changed generator, finds
+  zero forbidden pairs.
+- [ ] Suite: two hosts given the same records and generator produce identical records for a chunk.
+- [ ] Harness: the client receives a frontier record and agrees with the host.
+- [ ] Suite green on both boot paths, harness green.
 
 ---
 
