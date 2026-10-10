@@ -1302,7 +1302,7 @@ func _test_peer_exact_window_and_relay() -> void:
 	# An exact position past the pole row is not folded; the record keeps its previous position.
 	gr._fold_last_known_state(5, "p5")
 	assert_eq(reg.get_world_pos("p5")["chunk"], chunk, "a sane exact position is folded")
-	n._last_known_exact[5] = { "chunk": Vector2i(10, TerrainSlice.pole_chunks() + 5), "local": Vector3.ZERO }
+	n._last_known_exact[5] = { "chunk": Vector2i(10, TerrainSlice.pole_chunks() + TerrainSlice.FOLD_MARGIN_CHUNKS + 5), "local": Vector3.ZERO }
 	gr._fold_last_known_state(5, "p5")
 	assert_eq(reg.get_world_pos("p5")["chunk"], chunk, "an off-planet exact position leaves the record alone")
 	gr._chunk_manager = null

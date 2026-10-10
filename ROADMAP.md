@@ -862,7 +862,7 @@ exact position with no plausibility check, though the float path's consumers are
   `_peer_window_chunk` equal to (1,500,000, 3), where the float path would round into the neighbour.
 - [x] Suite: a relayed `remote_player_state` for that peer decodes on a client to the same chunk and a
   local within 1e-3 m.
-- [x] Suite: an exact position with a chunk past the pole row is not folded into the record; the
+- [x] Suite: an exact position with a chunk past the pole row and its fold margin is not folded into the record; the
   record keeps its previous position.
 - [x] Suite green on both boot paths, harness green — `Results: 15584/15584 passed (0 failed)`, harness 15/15 steps.
 
