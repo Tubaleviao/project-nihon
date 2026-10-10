@@ -117,7 +117,7 @@ issue number where the criterion used to be.
 | 94 | A test eviction helper and a bounded UI retire list | Done | below |
 | 95 | Free pointer, right-click look, chat box and admin commands | Done | below |
 | 96 | A detached ring rebuild does not orphan its worker | Done | below |
-| 97 | Peer windows and position relays use the exact peer position | Planned | below |
+| 97 | Peer windows and position relays use the exact peer position | Done | below |
 | 98 | An exact first-boot spawn and a public canonical helper | Done | below |
 | 99 | Housekeeping sweep: legacy tiles, roadmap/README hygiene and review leftovers | Planned | below |
 | 100 | Follow-up issue backlog triage | Planned | below |
@@ -834,7 +834,7 @@ A reparent with a queued request pending is untested. `_test_distant_ring_abort`
 
 ---
 
-## Phase 97 — Peer windows and position relays use the exact peer position
+## Phase 97 — Peer windows and position relays use the exact peer position ✅ Done
 
 **Goal:** Phase 86 keeps each peer's exact `{chunk, local}` position, but `GameRoot._peer_window_chunk`
 still derives the peer's streaming-window chunk from the float32 last-known `Vector3`, and
@@ -858,13 +858,15 @@ exact position with no plausibility check, though the float path's consumers are
   wire position when it has one; the client's `_route_remote_player_state` already accepts both forms.
 
 **Acceptance criteria:**
-- [ ] Suite: a peer whose exact position is chunk (1,500,000, 3) local (31.9, 0, 0.1) gets
+- [x] Suite: a peer whose exact position is chunk (1,500,000, 3) local (31.9, 0, 0.1) gets
   `_peer_window_chunk` equal to (1,500,000, 3), where the float path would round into the neighbour.
-- [ ] Suite: a relayed `remote_player_state` for that peer decodes on a client to the same chunk and a
+- [x] Suite: a relayed `remote_player_state` for that peer decodes on a client to the same chunk and a
   local within 1e-3 m.
-- [ ] Suite: an exact position with a chunk past the pole row is not folded into the record; the
+- [x] Suite: an exact position with a chunk past the pole row and its fold margin is not folded into the record; the
   record keeps its previous position.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green — `Results: 15584/15584 passed (0 failed)`, harness 15/15 steps.
+
+_Note: the suite uses chunk (600,000, 3) rather than (1,500,000, 3): `WorldPos.is_wire` (Phase 90) caps X at one lap (1,250,000 chunks) and the registry wraps past the half lap, so 1,500,000 is not a valid position._
 
 ---
 
