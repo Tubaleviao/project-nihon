@@ -10,11 +10,11 @@ extends Node
 ## NetworkingSlice) and the host binds the speaker to the connection — an identity in the payload is
 ## never read. An admin is the host's own local player, or a player id listed in `user://admins.json`
 ## (a JSON array of player ids, read once at boot). Everything a command does to a remote player goes
-## through the existing host → peer doors (`send_teleport`, `send_player_damaged`, `inventory_synced`).
+## through the existing host → peer doors (`send_teleport`, the `player_damaged` signal, `inventory_synced`).
 ##
 ## Plug contract (GameBus signals consumed / emitted):
 ##   IN  : chat_intent(text, player_id), chat_posted(channel, sender, text, target_id)
-##   OUT : chat_posted(...), player_teleport(position), player_damaged(...)
+##   OUT : chat_posted(...), player_teleport({chunk, local}), player_damaged(...)
 ##
 ## Public API:
 ##   submit(text)                      — the local player says / runs `text`
@@ -24,6 +24,7 @@ extends Node
 const ChatCommands := preload("res://src/core/chat_commands.gd")
 const Diag := preload("res://src/core/diag.gd")
 const PlayerRules := preload("res://src/core/player_rules.gd")
+const WorldPos := preload("res://src/terrain/world_pos.gd")
 
 const ADMINS_PATH := "user://admins.json"
 ## Lines kept in the log, and shown at once while the box is closed.
@@ -32,6 +33,12 @@ const VISIBLE_LINES := 8
 ## Seconds a line stays on screen after it arrives, while the input is closed.
 const LINE_LIFETIME := 12.0
 const KILL_DAMAGE := PlayerRules.MAX_HP * 100.0
+## Phase 101 — a per-player token bucket on chat: `CHAT_BURST` lines at once, refilling at
+## `CHAT_LINES_PER_SEC`. A refused line is dropped and counted; the player hears about it at most
+## once per `SLOW_DOWN_NOTICE_SEC`.
+const CHAT_BURST := 5
+const CHAT_LINES_PER_SEC := 1.0
+const SLOW_DOWN_NOTICE_SEC := 5.0
 
 const CHANNEL_CHAT := "chat"
 const CHANNEL_ANNOUNCE := "announce"
@@ -46,7 +53,13 @@ var networking: Node = null
 var render_visuals: bool = true
 var admins_path: String = ADMINS_PATH
 
+## Lines refused by the token bucket since boot.
+var chat_rate_refused: int = 0
+## Seconds clock for the bucket; injectable like `ChunkManager.set_clock`.
+var now_sec: Callable = func() -> float: return Time.get_ticks_msec() / 1000.0
+
 var _admins: Dictionary = {}     # player id -> true
+var _buckets: Dictionary = {}    # player id -> { tokens: float, at: float, notice_at: float }
 var _lines: Array = []           # { channel, sender, text, born }
 var _layer: CanvasLayer = null
 var _log: RichTextLabel = null
@@ -56,6 +69,7 @@ func _ready() -> void:
 	_load_admins()
 	GameBus.chat_intent.connect(_on_chat_intent)
 	GameBus.chat_posted.connect(_on_chat_posted)
+	GameBus.player_left.connect(_on_player_left)
 	if render_visuals:
 		_build_ui()
 
@@ -109,6 +123,9 @@ func submit(text: String) -> void:
 		return
 	GameBus.chat_intent.emit(clean, "")
 
+func set_clock(c: Callable) -> void:
+	now_sec = c
+
 func lines() -> Array:
 	return _lines.duplicate()
 
@@ -127,6 +144,8 @@ func handle_intent(text: String, player_id: String) -> void:
 		return
 	var clean := ChatCommands.sanitize(text)
 	if clean == "":
+		return
+	if not _take_token(speaker):
 		return
 	if not ChatCommands.is_slash(clean):
 		_post(CHANNEL_CHAT, _handle_of(speaker), clean, "")
@@ -158,6 +177,27 @@ func handle_intent(text: String, player_id: String) -> void:
 			_cmd_kill(speaker, args)
 		_:
 			pass
+
+## Spend one token of `speaker`'s bucket. False (and the line is dropped) when it is empty; the
+## player is told to slow down at most once per `SLOW_DOWN_NOTICE_SEC`.
+func _take_token(speaker: String) -> bool:
+	var now: float = now_sec.call()
+	if not _buckets.has(speaker):
+		_buckets[speaker] = { "tokens": float(CHAT_BURST), "at": now, "notice_at": -INF }
+	var b: Dictionary = _buckets[speaker]
+	b["tokens"] = minf(float(CHAT_BURST), float(b["tokens"]) + maxf(0.0, now - float(b["at"])) * CHAT_LINES_PER_SEC)
+	b["at"] = now
+	if float(b["tokens"]) >= 1.0 - 1e-9:
+		b["tokens"] = float(b["tokens"]) - 1.0
+		return true
+	chat_rate_refused += 1
+	if now - float(b["notice_at"]) >= SLOW_DOWN_NOTICE_SEC:
+		b["notice_at"] = now
+		_reply(speaker, "You are chatting too fast — slow down.")
+	return false
+
+func _on_player_left(player_id: String) -> void:
+	_buckets.erase(player_id)
 
 # ---------------------------------------------------------------------------
 # Commands (host)
@@ -196,7 +236,8 @@ func _cmd_tp(speaker: String, args: Array) -> void:
 	if not p["ok"]:
 		_reply(speaker, "%s  (%s)" % [p["error"], ChatCommands.USAGE["tp"]])
 		return
-	_teleport(speaker, p["pos"])
+	var wp := WorldPos.from_world(p["pos"].x, p["pos"].y, p["pos"].z)
+	_teleport(speaker, wp)
 	_reply(speaker, "Teleported to %s." % _fmt(p["pos"]))
 
 func _cmd_bring(speaker: String, args: Array) -> void:
@@ -261,17 +302,20 @@ func _cmd_kill(speaker: String, args: Array) -> void:
 		player_slice.take_damage(KILL_DAMAGE, "admin")
 	else:
 		var peer := _peer_of(target)
-		if networking == null or peer <= 1:
+		if peer <= 1:
 			_reply(speaker, "%s is not reachable." % _handle_of(target))
 			return
-		networking.send_player_damaged(peer, KILL_DAMAGE, "admin")
+		# The host's resolution of a hit on a peer (simulated HP, then the display update) lives
+		# behind this signal, the same door a creature's round uses.
+		GameBus.player_damaged.emit(KILL_DAMAGE, "admin", target)
 	_reply(speaker, "Killed %s." % _handle_of(target))
 
 # ---------------------------------------------------------------------------
 # Helpers (host)
 # ---------------------------------------------------------------------------
 
-func _teleport(target: String, pos: Vector3) -> void:
+## `pos` is an exact `{chunk, local}` record.
+func _teleport(target: String, pos: Dictionary) -> void:
 	if _is_local(target):
 		GameBus.player_teleport.emit(pos)
 		return
@@ -279,16 +323,21 @@ func _teleport(target: String, pos: Vector3) -> void:
 	if networking != null and peer > 1:
 		networking.send_teleport(peer, pos)
 
-## Where a player is: the local body, or the host's last-known state for a peer.
+## Where a player is, as an exact `{chunk, local}` record: the local body, or the host's last-known
+## exact report for a peer (the float path only when the peer sent nothing exact).
 func _position_of(player_id: String) -> Dictionary:
 	if _is_local(player_id):
 		if player_slice == null:
-			return { "known": false, "pos": Vector3.ZERO }
-		return { "known": true, "pos": player_slice.get_position() }
+			return { "known": false, "pos": {} }
+		return { "known": true, "pos": player_slice.get_world_pos() }
 	var peer := _peer_of(player_id)
 	if networking != null and peer > 1 and networking.has_last_known_state(peer):
-		return { "known": true, "pos": networking.get_last_known_state(peer) }
-	return { "known": false, "pos": Vector3.ZERO }
+		var exact: Dictionary = networking.get_last_known_exact(peer)
+		if exact.is_empty():
+			var v: Vector3 = networking.get_last_known_state(peer)
+			exact = WorldPos.from_world(v.x, v.y, v.z)
+		return { "known": true, "pos": exact }
+	return { "known": false, "pos": {} }
 
 ## The online player a typed name means: "me", or a public handle. "" when nobody here has it.
 func _find_player(typed: String, speaker: String) -> String:

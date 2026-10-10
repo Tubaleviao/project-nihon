@@ -121,7 +121,7 @@ npm run generate  # generate the design bible into bible/
 | 98 | An exact first-boot spawn and a public canonical helper | Done |
 | 99 | Housekeeping sweep: legacy tiles, roadmap/README hygiene and review leftovers | Done |
 | 100 | Follow-up issue backlog triage | Done |
-| 101 | Chat and admin commands are host-authoritative, exact and proven on the wire | Planned |
+| 101 | Chat and admin commands are host-authoritative, exact and proven on the wire | Done |
 | 102 | An admin `/kill` lands on the host's simulated peer health | Merged |
 | 103 | Teleports carry the exact position and stay on the planet | Merged |
 | 104 | Two-client harness: chat and admin teleport over the socket | Merged |

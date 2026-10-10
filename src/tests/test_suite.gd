@@ -131,6 +131,11 @@ func run() -> void:
 	_run_test("chat: admin commands run for admins only",     _test_chat_admin_commands)
 	_run_test("chat: lines and intents cross the wire",       _test_chat_wire)
 	_run_test("chat: the input box is on screen while closed", _test_chat_box_visible)
+	_run_test("chat: a token bucket bounds each player's lines", _test_chat_rate_limit)
+	_run_test("chat: /kill on a peer runs through simulated HP", _test_chat_kill_peer_simulated_hp)
+	_run_test("chat: no one else calls send_player_damaged",  _test_chat_no_direct_damage_door)
+	_run_test("chat: teleports carry the exact position",     _test_chat_exact_teleports)
+	_run_test("chat: /tp wraps X and refuses a Z past the poles", _test_chat_tp_limits)
 	_run_test("terrain: latitude and longitude from the fabric planet", _test_terrain_planet_coordinates)
 	_run_test("rebase: loot, avatars and the station preview follow the shift", _test_rebase_extras)
 	_run_test("player: rebased origin keeps the world position", _test_world_pos_rebase)
@@ -1472,7 +1477,7 @@ func _test_one_wire_validator() -> void:
 ## Phase 78 — the player's exact `{chunk, local}` survives a far rebase, a save → reload and the
 ## snapshot's own-record position.
 func _test_player_exact_far_position() -> void:
-	var chunk := Vector2i(1500000, 3)
+	var chunk := Vector2i(1200000, 3)
 	var want := {"chunk": chunk, "local": Vector3(0.25, 10.0, 0.75)}
 	var player := PlayerSlice.new()
 	player.render_visuals = true
@@ -16557,13 +16562,18 @@ func _test_chat_admin_commands() -> void:
 	chat.player_slice = body
 	chat.inventory_slice = inv
 	add_child(chat)
+	# A fake clock that runs a second ahead per line keeps this test clear of the chat token bucket.
+	var ticks := [0.0]
+	chat.set_clock(func() -> float:
+		ticks[0] += 10.0
+		return ticks[0])
 
 	var posted: Array = []
 	var cb := func(channel: String, sender: String, text: String, target: String) -> void:
 		posted.append({ "channel": channel, "sender": sender, "text": text, "target": target })
 	GameBus.chat_posted.connect(cb)
 	var teleports: Array = []
-	var tp := func(pos: Vector3) -> void: teleports.append(pos)
+	var tp := func(pos: Dictionary) -> void: teleports.append(WorldPos.to_scene(pos, Vector2i.ZERO))
 	GameBus.player_teleport.connect(tp)
 
 	assert_true(chat.is_admin("player_host_1"), "the host's own player is an admin")
@@ -16646,6 +16656,194 @@ func _test_chat_box_visible() -> void:
 	c._close_input()
 	c.queue_free()
 
+## Test stand-in for the local body: reports a fixed exact world position.
+class _StubBody extends Node:
+	var wp: Dictionary = {}
+	func get_world_pos() -> Dictionary:
+		return wp
+	func get_position() -> Vector3:
+		return Vector3.ZERO
+
+func _chat_rig() -> Dictionary:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var chat := ChatSlice.new()
+	chat.render_visuals = false
+	chat.admins_path = "user://does_not_exist_admins.json"
+	chat.player_registry = reg
+	add_child(chat)
+	return { "reg": reg, "chat": chat }
+
+## Phase 101 — a burst is bounded per player, refills with the clock and is dropped on disconnect.
+func _test_chat_rate_limit() -> void:
+	var rig := _chat_rig()
+	var chat: ChatSlice = rig["chat"]
+	var now := [100.0]
+	chat.set_clock(func() -> float: return now[0])
+	var posted: Array = []
+	var cb := func(channel: String, sender: String, text: String, target: String) -> void:
+		posted.append({ "channel": channel, "text": text, "target": target })
+	GameBus.chat_posted.connect(cb)
+	for i in ChatSlice.CHAT_BURST + 10:
+		chat.handle_intent("line %d" % i, "player_other")
+	var said := posted.filter(func(m): return m["channel"] == "chat" and m["target"] == "")
+	var notices := posted.filter(func(m): return m["channel"] == "system")
+	assert_eq(said.size(), ChatSlice.CHAT_BURST, "exactly CHAT_BURST lines are broadcast")
+	assert_eq(chat.chat_rate_refused, 10, "the rest are counted as refused")
+	assert_eq(notices.size(), 1, "one slow-down notice")
+	assert_eq(notices[0]["target"], "player_other", "addressed to the speaker alone")
+	now[0] += 1.0 / ChatSlice.CHAT_LINES_PER_SEC
+	posted.clear()
+	chat.handle_intent("again", "player_other")
+	assert_eq(posted.size(), 1, "one more line after 1/CHAT_LINES_PER_SEC seconds")
+	assert_eq(posted[0]["text"], "again", "and it is the line")
+	chat.handle_intent("too soon", "player_other")
+	assert_eq(chat.chat_rate_refused, 11, "but not two")
+	# Another player has a bucket of their own, and the host's local player is limited too.
+	posted.clear()
+	chat.handle_intent("hi", "player_third")
+	assert_eq(posted.size(), 1, "one player's flood does not starve another")
+	for i in ChatSlice.CHAT_BURST + 1:
+		chat.handle_intent("host %d" % i, "")
+	assert_eq(chat.chat_rate_refused, 12, "the local player is subject to the bucket")
+	assert_true(chat._buckets.has("player_other"), "a bucket exists while the player is here")
+	GameBus.player_left.emit("player_other")
+	assert_false(chat._buckets.has("player_other"), "a disconnect removes the bucket entry")
+	GameBus.chat_posted.disconnect(cb)
+	chat.free()
+	rig["reg"].free()
+
+## Phase 101 — `/kill` on a peer goes through the host's hit path: simulated HP floor, one packet,
+## and the simulated number survives a reconnect.
+func _test_chat_kill_peer_simulated_hp() -> void:
+	var rig := _chat_rig()
+	var chat: ChatSlice = rig["chat"]
+	var reg: PlayerRegistry = rig["reg"]
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n._test_peers = [7]
+	chat.networking = n
+	var pid := str(reg.resolve_identity(7))
+	var gr: Node = (load("res://src/core/game_root.gd") as GDScript).new()
+	gr._is_client = false
+	gr._registry = reg
+	gr._networking = n
+	GameBus.player_damaged.connect(gr._on_player_damaged)
+	n._test_outbox.clear()
+	chat.handle_intent("/kill %s" % reg.public_handle(pid), "")
+	GameBus.player_damaged.disconnect(gr._on_player_damaged)
+	var hits := n._test_outbox.filter(func(o): return o["payload"]["type"] == "player_damaged")
+	assert_eq(hits.size(), 1, "exactly one player_damaged goes out")
+	assert_eq(hits[0]["peer_id"], 7, "to that peer")
+	assert_eq(reg.get_hp(pid), 0.0, "the host's simulated HP is at the floor")
+	var back := PlayerRegistry.new()
+	add_child(back)
+	back.apply_player_data(pid, reg.get_player_data(pid))
+	assert_eq(back.get_hp(pid), 0.0, "a reconnect restores the simulated value, not MAX_HP")
+	back.free()
+	gr.free()
+	n._test_peers = null
+	n.free()
+	chat.free()
+	reg.free()
+
+## Phase 101 — the damage door is game_root's: nothing else calls `send_player_damaged`.
+func _test_chat_no_direct_damage_door() -> void:
+	var offenders: Array = []
+	var stack: Array = ["res://src"]
+	while not stack.is_empty():
+		var dir: String = stack.pop_back()
+		for sub in DirAccess.get_directories_at(dir):
+			stack.append(dir + "/" + sub)
+		for f in DirAccess.get_files_at(dir):
+			if not f.ends_with(".gd") or f in ["game_root.gd", "networking_slice.gd", "test_suite.gd", "net_harness.gd"]:
+				continue
+			if FileAccess.get_file_as_string(dir + "/" + f).contains("send_player_damaged("):
+				offenders.append(f)
+	assert_eq(offenders, [], "no file but game_root / networking calls send_player_damaged")
+
+## Phase 101 — a teleport keeps the exact `{chunk, local}` end to end, far from the origin.
+func _test_chat_exact_teleports() -> void:
+	var rig := _chat_rig()
+	var chat: ChatSlice = rig["chat"]
+	var reg: PlayerRegistry = rig["reg"]
+	var stub := _StubBody.new()
+	stub.wp = { "chunk": Vector2i(1200000, 3), "local": Vector3(0.25, 10.0, 0.75) }
+	add_child(stub)
+	chat.player_slice = stub
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n._test_peers = [7]
+	chat.networking = n
+	var pid := str(reg.resolve_identity(7))
+	var handle: String = reg.public_handle(pid)
+	n._route_c2h(7, { "type": "player_moved", "position": WorldPos.pos_to_wire(
+		{ "chunk": Vector2i(-900001, 40), "local": Vector3(31.9, 2.0, 0.1) }) })
+	n._test_outbox.clear()
+	chat.handle_intent("/bring " + handle, "")
+	var sent := n._test_outbox.filter(func(o): return o["payload"]["type"] == "teleport")
+	assert_eq(sent.size(), 1, "/bring sends one teleport")
+	var got: Dictionary = WorldPos.pos_from_wire(sent[0]["payload"]["position"])
+	assert_eq(got["chunk"], Vector2i(1200000, 3), "to the admin's exact chunk")
+	assert_true((got["local"] as Vector3).distance_to(Vector3(0.25, 10.0, 0.75)) < 1e-3, "and local")
+	# The client side decodes it to the same record.
+	var seen: Array = []
+	var cb := func(pos: Dictionary) -> void: seen.append(pos)
+	GameBus.player_teleport.connect(cb)
+	n._role = NetworkingSlice.Role.CLIENT
+	n._route_h2c(sent[0]["payload"])
+	assert_eq(seen.size(), 1, "the client places the body")
+	assert_eq(seen[0]["chunk"], Vector2i(1200000, 3), "in the exact chunk")
+	# A malformed position is dropped and moves nothing.
+	var was_quiet := Diag.quiet
+	Diag.quiet = true
+	n._route_h2c({ "type": "teleport", "position": { "chunk": [0, 0], "local": [NAN, 0, 0] } })
+	n._route_h2c({ "type": "teleport", "position": "elsewhere" })
+	n._route_h2c({ "type": "teleport", "position": { "chunk": [1.5, 0], "local": [1, 2, 3] } })
+	Diag.quiet = was_quiet
+	assert_eq(seen.size(), 1, "a malformed teleport position is dropped")
+	# `/tp <peer>` by the local admin lands on the peer's exact chunk.
+	seen.clear()
+	n._role = NetworkingSlice.Role.HOST
+	chat.handle_intent("/tp " + handle, "")
+	GameBus.player_teleport.disconnect(cb)
+	assert_eq(seen.size(), 1, "/tp <player> teleports the admin")
+	assert_eq(seen[0]["chunk"], Vector2i(-900001, 40), "to the peer's exact chunk")
+	assert_true((seen[0]["local"] as Vector3).distance_to(Vector3(31.9, 2.0, 0.1)) < 1e-3, "and local")
+	n._test_peers = null
+	n.free()
+	stub.free()
+	chat.free()
+	reg.free()
+
+## Phase 101 — `/tp x y z` wraps X onto one lap and refuses a Z past the pole rows.
+func _test_chat_tp_limits() -> void:
+	var rig := _chat_rig()
+	var chat: ChatSlice = rig["chat"]
+	var seen: Array = []
+	var cb := func(pos: Dictionary) -> void: seen.append(pos)
+	GameBus.player_teleport.connect(cb)
+	var posted: Array = []
+	var pcb := func(_c: String, _s: String, text: String, _t: String) -> void: posted.append(text)
+	GameBus.chat_posted.connect(pcb)
+	var pole_m := float(TerrainSlice.pole_chunks()) * TerrainSlice.CHUNK_METERS
+	var past_z := pole_m + TerrainSlice.CHUNK_METERS
+	chat.handle_intent("/tp 0 10 %s" % str(past_z), "")
+	assert_eq(seen.size(), 0, "a Z past the pole is refused")
+	assert_true(str(posted.back()).contains(str(int(pole_m))), "and the reply names the limit")
+	var lap := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	chat.handle_intent("/tp %s 10 0" % str(2.5 * lap), "")
+	assert_eq(seen.size(), 1, "an X several laps round still teleports")
+	var at: Vector3 = WorldPos.to_scene(seen[0], Vector2i.ZERO)
+	assert_true(absf(absf(at.x) - lap * 0.5) < 1.0, "to the wrapped X (the seam)")
+	GameBus.chat_posted.disconnect(pcb)
+	GameBus.player_teleport.disconnect(cb)
+	chat.free()
+	rig["reg"].free()
+
 func _test_chat_wire() -> void:
 	var n := NetworkingSlice.new()
 	add_child(n)
@@ -16657,7 +16855,7 @@ func _test_chat_wire() -> void:
 		kinds.append([m["peer_id"], m["payload"]["type"], m["payload"]["text"]])
 	assert_eq(kinds, [[4, "chat_message", "hello"], [5, "chat_message", "hello"]], "an untargeted line reaches every peer")
 	n._test_outbox.clear()
-	n.send_teleport(4, Vector3(5.0, 6.0, 7.0))
+	n.send_teleport(4, WorldPos.from_world(5.0, 6.0, 7.0))
 	assert_eq(n._test_outbox.size(), 1, "a teleport goes to one peer")
 	assert_eq(n._test_outbox[0]["payload"]["type"], "teleport", "as a teleport packet")
 
@@ -16689,7 +16887,7 @@ func _test_chat_wire() -> void:
 	GameBus.chat_posted.disconnect(cb2)
 	assert_eq(shown, [["announce", "Server", "hey", ""]], "a hosted line is re-emitted for the box")
 	var moved: Array = []
-	var cb3 := func(pos: Vector3) -> void: moved.append(pos)
+	var cb3 := func(pos: Dictionary) -> void: moved.append(WorldPos.to_scene(pos, Vector2i.ZERO))
 	GameBus.player_teleport.connect(cb3)
 	n._route_h2c({ "type": "teleport", "position": WorldPos.to_wire(Vector3(100.0, 9.0, -40.0)) })
 	GameBus.player_teleport.disconnect(cb3)

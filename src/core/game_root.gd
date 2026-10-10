@@ -2203,15 +2203,14 @@ func _saved_local_position() -> Variant:
 
 ## Phase 85 — an admin teleport: land the local body at the world position `pos`, rebasing the scene
 ## first so a far target lands on a small float32 (the same door a saved position uses).
-func _on_player_teleport(pos: Vector3) -> void:
-	if _player == null:
+func _on_player_teleport(pos: Dictionary) -> void:
+	if _player == null or not (pos.get("chunk") is Vector2i and pos.get("local") is Vector3):
 		return
 	if _rebase != null:
-		var wp := WorldPos.from_world(pos.x, pos.y, pos.z)
-		_rebase.rebase_to(wp["chunk"])
-		_player.place_at_world_pos(wp)
+		_rebase.rebase_to(pos["chunk"])
+		_player.place_at_world_pos(pos)
 	else:
-		_player.spawn_at(pos)
+		_player.spawn_at(WorldPos.to_scene(pos, Vector2i.ZERO))
 
 ## Phase 78 — put the local player at `pos`. A saved position is placed from the record's exact
 ## `{chunk, local}` (rebasing the scene first, so the body lands on a small float32), not from the

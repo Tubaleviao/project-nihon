@@ -629,4 +629,4 @@ signal chat_posted(channel: String, sender: String, text: String, target_id: Str
 
 ## Move THIS machine's own player to a world position (an admin teleport). The host emits it for
 ## itself and sends a `teleport` packet to a remote player's client, which re-emits it here.
-signal player_teleport(position: Vector3)
+signal player_teleport(position: Dictionary)
