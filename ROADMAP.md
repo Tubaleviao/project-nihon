@@ -118,7 +118,7 @@ issue number where the criterion used to be.
 | 95 | Free pointer, right-click look, chat box and admin commands | Done | below |
 | 96 | A detached ring rebuild does not orphan its worker | Done | below |
 | 97 | Peer windows and position relays use the exact peer position | Planned | below |
-| 98 | An exact first-boot spawn and a public canonical helper | Planned | below |
+| 98 | An exact first-boot spawn and a public canonical helper | Done | below |
 | 99 | One legacy-op constant and one legacy-height parser | Planned | below |
 | 100 | The README phase table cannot drift from the roadmap | Planned | below |
 | 101 | A per-player chat rate limit | Planned | below |
@@ -860,7 +860,7 @@ exact position with no plausibility check, though the float path's consumers are
 
 ---
 
-## Phase 98 — An exact first-boot spawn and a public canonical helper
+## Phase 98 — An exact first-boot spawn and a public canonical helper ✅ Done
 
 **Goal:** `GameRoot._restore_local_player`'s fresh-player branch still records the spawn with
 `record_spawn(pid, _player.respawn_point)`, a float32 `Vector3` round trip, so a first boot far from
@@ -880,10 +880,12 @@ the origin stores a spawn up to a metre off — the gap Phase 87 closed for ever
   `_canonical`); no file outside `player_registry.gd` calls `_canonical`.
 
 **Acceptance criteria:**
-- [ ] Suite: a fresh local player placed at chunk (1,500,000, 3) local (0.25, 10, 0.75) records a spawn
+- [x] Suite: a fresh local player placed at chunk (1,500,000, 3) local (0.25, 10, 0.75) records a spawn
   equal to that chunk and local within 1e-6 m.
-- [ ] `grep -rn "_canonical(" src --include=*.gd | grep -v player_registry.gd` finds nothing.
-- [ ] Suite green on both boot paths, harness green.
+- [x] `grep -rn "_canonical(" src --include=*.gd | grep -v player_registry.gd` finds nothing.
+- [x] Suite green on both boot paths, harness green — `Results: 15581/15581 passed (0 failed)`, harness 15/15 steps.
+
+_Note: the suite uses chunk (600,000, 3): X past half a lap (625,000) is wrapped by the canonicaliser, so 1,500,000 is not a valid spawn._
 
 ---
 
