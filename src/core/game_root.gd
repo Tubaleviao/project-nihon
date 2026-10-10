@@ -12,6 +12,7 @@ const Diag := preload("res://src/core/diag.gd")
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const VoxelSlice       := preload("res://src/terrain/voxel_slice.gd")
 const ChunkManager     := preload("res://src/terrain/chunk_manager.gd")
+const ChunkRecordSync  := preload("res://src/terrain/chunk_record_sync.gd")
 const RegionStreamer   := preload("res://src/persistence/region_streamer.gd")
 const DistantTerrain   := preload("res://src/terrain/distant_terrain.gd")
 const BattleSlice      := preload("res://src/battle/battle_slice.gd")
@@ -151,6 +152,11 @@ var _local_player_returning := false
 ## Phase 29 — the AOI grid cell each connected peer last reported, so a client
 ## moving into a new region triggers a re-scoped snapshot (host side only).
 var _peer_aoi_regions: Dictionary = {}
+
+## Phase 109 — a re-scope snapshot carries generation records at most this often per peer (the join
+## snapshot always does). `_peer_records_msec` is the last time each peer was sent them.
+const RECORDS_RESCOPE_INTERVAL_MSEC := 250
+var _peer_records_msec: Dictionary = {}
 
 ## Phase 33 — seconds accumulated since the last authoritative autosave.
 var _autosave_elapsed: float = 0.0
@@ -1152,6 +1158,7 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	# A stale AOI cell for a peer_id ENet may hand to the next connection would
 	# suppress that peer's very first re-scoped snapshot.
 	_peer_aoi_regions.erase(peer_id)
+	_peer_records_msec.erase(peer_id)
 	_trade.clear_party_inventory(player_id)
 	_market.clear_party_inventory(player_id)
 	_registry.evict_player(player_id)
@@ -1294,6 +1301,10 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 		return
 	var region: Vector2i = _networking.aoi_region(position)
 	if _peer_aoi_regions.get(peer_id, null) == region:
+		return
+	# Phase 109 — a re-scope carries generation records, and a snapshot without them is never resent
+	# for that crossing, so inside the interval the whole re-scope waits for the next state packet.
+	if Time.get_ticks_msec() - int(_peer_records_msec.get(peer_id, -RECORDS_RESCOPE_INTERVAL_MSEC)) < RECORDS_RESCOPE_INTERVAL_MSEC:
 		return
 	_peer_aoi_regions[peer_id] = region
 	# Phase 62 — re-centre the peer's window and make the regions around the new position
@@ -1634,6 +1645,7 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true,
 	# the constant there were two places to update, and the failure mode was a blob a
 	# client would adopt but nobody would redact.
 	snapshot.merge(_networking.redact_social_state(_social_state()))
+	_add_generation_records(snapshot, peer_id, aoi_center)
 	if not full_edits:
 		snapshot["edits_aoi"] = [aoi_center.x, aoi_center.z, NetworkingSlice.EDITS_SCOPE_RADIUS]
 	# The peer's own record exists only once the host resolved its identity, and it
@@ -1660,6 +1672,23 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true,
 		if own.has("spawn"):
 			snapshot["player"]["spawn"] = own["spawn"]
 	return snapshot
+
+## Phase 109 — the generation records of the chunks in the peer's streamed window plus its first ring.
+## The scope is named (`gen_scope`) so the client knows which part of its table the packet speaks for.
+## Re-scopes are rate-limited by `_on_remote_player_state`, which defers the whole crossing rather than
+## sending it without records.
+func _add_generation_records(snapshot: Dictionary, peer_id: int, aoi_center: Vector3) -> void:
+	if _chunk_manager == null:
+		return
+	var now := Time.get_ticks_msec()
+	var center: Vector2i = _chunk_manager.world_to_chunk(Vector2(aoi_center.x, aoi_center.z))
+	var radius: int = _chunk_manager.stream_radius() + ChunkManager.FIRST_RING_RADIUS
+	var found := ChunkRecordSync.records_in_window(center, radius)
+	_peer_records_msec[peer_id] = now
+	if (found["records"] as Dictionary).is_empty():
+		return
+	snapshot["gen_records"] = found["records"]
+	snapshot["gen_scope"] = [center.x, center.y, radius]
 
 ## Phase 38 — the replicated social/economy state, keyed by the names the wire uses
 ## (`NetworkingSlice.IDENTIFIED_STATE_KEYS`).
@@ -1697,6 +1726,13 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 		_terrain.set_world_seed(int(data["seed"]))
 	if data.has("clock"):
 		_clock.from_data(data["clock"])
+	# Phase 109 — the host's generation records, BEFORE `_chunk_manager.start()` below builds from them;
+	# a malformed one is dropped, anything past the packet cap is refused.
+	if data.has("gen_records"):
+		var gen_result := ChunkRecordSync.apply(data["gen_records"])
+		if int(gen_result["dropped"]) > 0 or int(gen_result["refused"]) > 0:
+			Diag.warn("GameRoot: generation records: %d applied, %d dropped, %d refused" % [
+				int(gen_result["applied"]), int(gen_result["dropped"]), int(gen_result["refused"])])
 	if data.has("edits") and data["edits"] is Dictionary:
 		var scope: Variant = data.get("edits_aoi", null)
 		if scope is Array and scope.size() >= 3:

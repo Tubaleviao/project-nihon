@@ -401,7 +401,7 @@ later generator change stands on.
 
 ---
 
-## Phase 109 — Generation records reach clients, scoped and validated
+## Phase 109 — Generation records reach clients, scoped and validated ✅ Done
 
 **Goal:** a client regenerates terrain from the seed (Phase 41). Once the host's record can differ from
 the generator, the client has to receive the record or it draws different land from the host. Records
@@ -421,13 +421,13 @@ are small, so they ride the same scope as edits.
 - `src/tests/net_harness.gd` — step `chunk_record_synced`.
 
 **Acceptance criteria:**
-- [ ] Suite: a snapshot for a peer carries records for its window only; one for a far peer carries none of them.
-- [ ] Suite: a record with a biome key outside `BIOME_KEYS`, a NaN height or a height above `max_height`
+- [x] Suite: a snapshot for a peer carries records for its window only; one for a far peer carries none of them.
+- [x] Suite: a record with a biome key outside `BIOME_KEYS`, a NaN height or a height above `max_height`
   is dropped and the rest of the packet applies.
-- [ ] Suite: a packet over the cap applies the first `cap` records and counts the rest as refused.
-- [ ] `tools/net_harness.sh`: the host records a chunk with a different biome than the generator would
+- [x] Suite: a packet over the cap applies the first `cap` records and counts the rest as refused.
+- [x] `tools/net_harness.sh`: the host records a chunk with a different biome than the generator would
   pick; the client reports the host's biome and heights, and both roles agree on the step.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green.
 
 ---
 

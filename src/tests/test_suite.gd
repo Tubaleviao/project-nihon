@@ -160,6 +160,9 @@ func run() -> void:
 	_run_test("records: ring and client write none",              _test_records_ring_and_client)
 	_run_test("records: ore field reads the recorded biome on a worker", _test_records_ore_worker)
 	_run_test("records: an older record version changes nothing", _test_records_old_version)
+	_run_test("record sync: a snapshot carries the window's records only", _test_record_sync_scope)
+	_run_test("record sync: bad records are dropped, the rest apply", _test_record_sync_validation)
+	_run_test("record sync: a packet over the cap refuses the rest", _test_record_sync_cap)
 	_run_test("game_root: worldgen stamp wiring on load",     _test_worldgen_stamp_game_root_wiring)
 	_run_test("persistence: missing slot emits load_failed",  _test_persistence_missing_slot)
 	_run_test("loot: known creature produces drops",          _test_loot_known_creature)
@@ -11295,8 +11298,9 @@ func _test_net_harness_step_table() -> void:
 		names[str(s.get("name", ""))] = true
 	assert_eq(names.size(), steps.size(), "step names are unique — the driver keys on them")
 	assert_eq(str(steps[0].get("name", "")), "handshake", "the scenario starts with the handshake")
-	assert_eq(str(steps[steps.size() - 1].get("name", "")), "spawn_near_friend",
-		"and ends with the friend-code spawn (Phase 53), the far peer rejoining as a new player")
+	assert_eq(str(steps[steps.size() - 1].get("name", "")), "chunk_record_synced",
+		"and ends with the generation record reaching the client (Phase 109), after the friend-code spawn (Phase 53)")
+	assert_eq(str(steps[steps.size() - 2].get("name", "")), "spawn_near_friend", "which is the step before it")
 
 ## Phase 39 — the wire is a text channel between two processes, so the line format and its
 ## parser are load-bearing: if they disagreed, the driver would silently compare nothing
@@ -17285,3 +17289,75 @@ func _test_records_old_version() -> void:
 	assert_eq(TerrainSlice.biome_for_chunk(c, 8), cur_biome, "and the biome")
 	ChunkRecordsScript.clear()
 	t.free()
+
+const ChunkRecordSyncScript := preload("res://src/terrain/chunk_record_sync.gd")
+
+func _sync_record(c: Vector2i, biome := "Desert") -> Dictionary:
+	var rec := RegionStoreScript.normalize_gen(TerrainSlice.generation_record(c, 77))
+	rec["b"] = biome
+	return rec
+
+func _test_record_sync_scope() -> void:
+	ChunkRecordsScript.clear()
+	var near := Vector2i(100, 50)
+	var far := Vector2i(100 + 40, 50)
+	ChunkRecordsScript.set_record(near, _sync_record(near))
+	ChunkRecordsScript.set_record(Vector2i(104, 52), _sync_record(Vector2i(104, 52)))
+	ChunkRecordsScript.set_record(far, _sync_record(far))
+	var got := ChunkRecordSyncScript.records_in_window(Vector2i(101, 50), 5)
+	var recs: Dictionary = got["records"]
+	assert_eq(recs.size(), 2, "a peer's window carries the two records inside it")
+	assert_true(recs.has("100,50") and recs.has("104,52"), "the in-window chunks are named")
+	assert_false(recs.has("140,50"), "a record outside the window stays home")
+	var away := ChunkRecordSyncScript.records_in_window(Vector2i(-300, -90), 5)
+	assert_true((away["records"] as Dictionary).is_empty(), "a far peer's snapshot carries none of them")
+	# The wire form is JSON: heights come back as floats, ids as whole floats.
+	var wire: Variant = JSON.parse_string(JSON.stringify(recs))
+	ChunkRecordsScript.clear()
+	var res := ChunkRecordSyncScript.apply(wire)
+	assert_eq(res["applied"], 2, "a JSON round trip applies both records")
+	assert_eq(ChunkRecordsScript.get_record(near).get("b", ""), "Desert", "the client holds the host's biome")
+	ChunkRecordsScript.clear()
+
+func _test_record_sync_validation() -> void:
+	ChunkRecordsScript.clear()
+	var good_a := Vector2i(1, 1)
+	var good_b := Vector2i(2, 2)
+	var payload := {
+		"1,1": _sync_record(good_a),
+		"3,3": _sync_record(Vector2i(3, 3), "NotABiome"),
+		"4,4": _sync_record(Vector2i(4, 4)),
+		"5,5": _sync_record(Vector2i(5, 5)),
+		"bad": _sync_record(Vector2i(6, 6)),
+		"2,2": _sync_record(good_b),
+	}
+	payload["4,4"]["h"] = [NAN, 1.0, 1.0, 1.0]
+	payload["5,5"]["h"] = [1.0, 1.0, 1.0, WorldShapeScript.max_height() + 50.0]
+	var res := ChunkRecordSyncScript.apply(payload)
+	assert_eq(res["applied"], 2, "the two good records apply")
+	assert_eq(res["dropped"], 4, "unknown biome, NaN, over max_height and a bad key are dropped")
+	assert_eq(res["refused"], 0, "nothing refused under the cap")
+	assert_true(ChunkRecordsScript.has_record(good_a) and ChunkRecordsScript.has_record(good_b), "good ones landed")
+	assert_false(ChunkRecordsScript.has_record(Vector2i(3, 3)), "the bad biome did not")
+	assert_false(ChunkRecordsScript.has_record(Vector2i(4, 4)), "nor the NaN height")
+	assert_false(ChunkRecordsScript.has_record(Vector2i(5, 5)), "nor the tall one")
+	assert_eq(ChunkRecordSyncScript.apply("nonsense")["applied"], 0, "a non-dictionary payload applies nothing")
+	ChunkRecordsScript.clear()
+
+func _test_record_sync_cap() -> void:
+	ChunkRecordsScript.clear()
+	var payload := {}
+	for i in 10:
+		payload["%d,0" % i] = _sync_record(Vector2i(i, 0))
+	var res := ChunkRecordSyncScript.apply(payload, 4)
+	assert_eq(res["applied"], 4, "the first cap records apply")
+	assert_eq(res["refused"], 6, "the rest are counted as refused")
+	assert_true(ChunkRecordsScript.has_record(Vector2i(3, 0)) and not ChunkRecordsScript.has_record(Vector2i(4, 0)), "in order")
+	# The host side stops at the cap too.
+	ChunkRecordsScript.clear()
+	for i in 10:
+		ChunkRecordsScript.set_record(Vector2i(i, 0), _sync_record(Vector2i(i, 0)))
+	var got := ChunkRecordSyncScript.records_in_window(Vector2i(5, 0), 6, 4)
+	assert_eq((got["records"] as Dictionary).size(), 4, "a window with more records than the cap sends the cap")
+	assert_true(bool(got["truncated"]), "and says it truncated")
+	ChunkRecordsScript.clear()
