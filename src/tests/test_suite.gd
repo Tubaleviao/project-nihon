@@ -17773,6 +17773,10 @@ func _test_tree_pin_client_cleared() -> void:
 	assert_true(t.index_is_consistent(), "the index is consistent")
 	if body != null:
 		assert_true((body as Node).is_queued_for_deletion(), "its collision body is freed")
+	# The client remembers it: unloading and reloading the chunk does not bring the tree back.
+	t.despawn_for_chunk(chunk)
+	t.spawn_for_chunk(chunk)
+	assert_eq(t.trees_in_chunk(chunk).size(), 7, "a cleared tree stays gone after a client chunk reload")
 	# A client never clears on its own from a local edit.
 	GameBus.block_changed.emit("place", t.get_all_trees()[0]["position"], Vector3.UP, "Stone")
 	assert_eq(t.trees_in_chunk(chunk).size(), 7, "a client waits for the host")

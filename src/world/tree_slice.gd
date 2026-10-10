@@ -508,6 +508,8 @@ func _on_tree_cleared(tree_id: String) -> void:
 	var tree: Dictionary = _trees.get(tree_id, {})
 	if tree.is_empty():
 		return
+	# Remember it: records reach a client with the snapshot only, so a reload of the chunk must not regrow it.
+	_record_cleared(tree["chunk"], int(tree["index"]))
 	_remove_clear(tree_id, tree["chunk"])
 
 # ---------------------------------------------------------------------------
