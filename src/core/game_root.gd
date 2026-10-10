@@ -1302,6 +1302,10 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	var region: Vector2i = _networking.aoi_region(position)
 	if _peer_aoi_regions.get(peer_id, null) == region:
 		return
+	# Phase 109 — a re-scope carries generation records, and a snapshot without them is never resent
+	# for that crossing, so inside the interval the whole re-scope waits for the next state packet.
+	if Time.get_ticks_msec() - int(_peer_records_msec.get(peer_id, -RECORDS_RESCOPE_INTERVAL_MSEC)) < RECORDS_RESCOPE_INTERVAL_MSEC:
+		return
 	_peer_aoi_regions[peer_id] = region
 	# Phase 62 — re-centre the peer's window and make the regions around the new position
 	# resident BEFORE the snapshot is built, as the join path does: a teleport into a region
@@ -1641,7 +1645,7 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true,
 	# the constant there were two places to update, and the failure mode was a blob a
 	# client would adopt but nobody would redact.
 	snapshot.merge(_networking.redact_social_state(_social_state()))
-	_add_generation_records(snapshot, peer_id, aoi_center, include_own_record)
+	_add_generation_records(snapshot, peer_id, aoi_center)
 	if not full_edits:
 		snapshot["edits_aoi"] = [aoi_center.x, aoi_center.z, NetworkingSlice.EDITS_SCOPE_RADIUS]
 	# The peer's own record exists only once the host resolved its identity, and it
@@ -1671,13 +1675,12 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true,
 
 ## Phase 109 — the generation records of the chunks in the peer's streamed window plus its first ring.
 ## The scope is named (`gen_scope`) so the client knows which part of its table the packet speaks for.
-## A re-scope inside `RECORDS_RESCOPE_INTERVAL_MSEC` of the last one carries none; the join always does.
-func _add_generation_records(snapshot: Dictionary, peer_id: int, aoi_center: Vector3, join: bool) -> void:
+## Re-scopes are rate-limited by `_on_remote_player_state`, which defers the whole crossing rather than
+## sending it without records.
+func _add_generation_records(snapshot: Dictionary, peer_id: int, aoi_center: Vector3) -> void:
 	if _chunk_manager == null:
 		return
 	var now := Time.get_ticks_msec()
-	if not join and now - int(_peer_records_msec.get(peer_id, -RECORDS_RESCOPE_INTERVAL_MSEC)) < RECORDS_RESCOPE_INTERVAL_MSEC:
-		return
 	var center: Vector2i = _chunk_manager.world_to_chunk(Vector2(aoi_center.x, aoi_center.z))
 	var radius: int = _chunk_manager.stream_radius() + ChunkManager.FIRST_RING_RADIUS
 	var found := ChunkRecordSync.records_in_window(center, radius)
