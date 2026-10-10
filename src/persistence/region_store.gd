@@ -5,7 +5,12 @@ extends RefCounted
 ## merged and rewrote the whole thing, which is O(total edits). A region file holds the
 ## edits of one square of chunks:
 ##
-##   `<dir>/r.<rx>.<rz>.json`  →  `{ "version": 1, "chunks": { "cx,cz": { "edits": {...} } } }`
+##   `<dir>/r.<rx>.<rz>.json`  →  `{ "version": 2, "chunks": { "cx,cz": { "edits": {...}, "gen": {...} } } }`
+##
+## Phase 107 — a chunk entry may also carry a `gen` record: what the chunk LOOKED like when it was
+## first visited (`v` worldgen version, `f` fingerprint, `b` biome key, `h` the four `WorldShape`
+## corner heights), so a later generator change cannot move land players have seen. Version-1
+## files hold no `gen` and load unchanged; a save writes version 2.
 ##
 ## so a save touches exactly the regions that contain a dirty chunk, and a boot loads
 ## only the regions near a player. `world.json` keeps the global state (seed, stations,
@@ -21,7 +26,11 @@ const Diag := preload("res://src/core/diag.gd")
 
 ## Chunks per region side. A region is REGION_SIZE × REGION_SIZE chunks.
 const REGION_SIZE := 32
-const REGION_FORMAT_VERSION := 1
+const REGION_FORMAT_VERSION := 2
+const TerrainSliceScript := preload("res://src/terrain/terrain_slice.gd")
+const WorldShape := preload("res://src/terrain/world_shape.gd")
+## Heights of a `gen` record are stored at this resolution (about 7 bytes each as JSON).
+const GEN_HEIGHT_STEP := 0.0001
 const FILE_PREFIX := "r."
 const FILE_EXT := ".json"
 
@@ -124,11 +133,29 @@ static func fold_chunks(base: Dictionary, incoming: Dictionary, deletions := tru
 	var out := base.duplicate()   # shallow: an entry is replaced or erased wholesale, never edited in place
 	for ckey in incoming:
 		var entry: Variant = incoming[ckey]
+		var stored_gen: Variant = (out[ckey] as Dictionary).get("gen", null) if out.get(ckey, null) is Dictionary else null
 		if deletions and is_empty_edit_set(entry):
-			out.erase(ckey)
+			# The edits compacted away; a recorded `gen` is not an edit and stays.
+			if stored_gen is Dictionary and not (entry as Dictionary).has("gen"):
+				out[ckey] = { "gen": stored_gen }
+			else:
+				out.erase(ckey)
 			continue
 		if entry is Dictionary and bool((entry as Dictionary).get("merge", false)):
 			out[ckey] = overlay_entry(out.get(ckey, null), entry)
+			continue
+		if entry is Dictionary and (entry as Dictionary).has("gen") and not (entry as Dictionary).has("edits") \
+				and out.get(ckey, null) is Dictionary:
+			# A gen-only entry sets the record and leaves the stored edits alone.
+			var with_gen: Dictionary = (out[ckey] as Dictionary).duplicate()
+			with_gen["gen"] = entry["gen"]
+			out[ckey] = with_gen
+			continue
+		if entry is Dictionary and stored_gen is Dictionary and not (entry as Dictionary).has("gen"):
+			# An edit save replaces the edits, never the generation record beside them.
+			var kept: Dictionary = (entry as Dictionary).duplicate()
+			kept["gen"] = stored_gen
+			out[ckey] = kept
 			continue
 		out[ckey] = entry
 	return out
@@ -192,6 +219,8 @@ static func overlay_entry(stored: Variant, entry: Dictionary) -> Dictionary:
 					merged.append(op)
 			edits[tile] = merged
 	result["edits"] = edits
+	if entry.get("gen", null) is Dictionary:
+		result["gen"] = entry["gen"]
 	var materials: Variant = entry.get("materials", null)
 	if materials is Dictionary:
 		var mats: Dictionary = result.get("materials", {}) if result.get("materials", {}) is Dictionary else {}
@@ -241,6 +270,21 @@ func read_region(region: Vector2i, warn := true) -> Dictionary:
 		for ckey in raw:
 			if raw[ckey] is Dictionary and _chunk_entry_valid(raw[ckey]):
 				chunks[ckey] = raw[ckey]
+				if raw[ckey].has("gen"):
+					var gen := normalize_gen(raw[ckey]["gen"])
+					if gen.is_empty():
+						# Phase 107 — a malformed record is dropped; the chunk's edits stay.
+						var stripped: Dictionary = (raw[ckey] as Dictionary).duplicate()
+						stripped.erase("gen")
+						if warn and _first_warning("%s|%s|gen" % [path, str(ckey)]):
+							Diag.warn("RegionStore: %s: dropping malformed gen record of chunk '%s'" % [path, str(ckey)])
+						if stripped.is_empty():
+							chunks.erase(ckey)
+						else:
+							chunks[ckey] = stripped
+					else:
+						chunks[ckey] = (raw[ckey] as Dictionary).duplicate()
+						chunks[ckey]["gen"] = gen
 			else:
 				# Phase 75 — not handed to a caller as an edit, but kept so a rewrite can put it back.
 				raw_invalid[ckey] = raw[ckey]
@@ -280,6 +324,43 @@ static func _chunk_entry_valid(entry: Dictionary) -> bool:
 	if entry.has("materials") and not (entry["materials"] is Dictionary):
 		return false
 	return true
+
+## Phase 107 — a `gen` record cleaned for storage, or `{}` when it is malformed: `v` an integer in
+## 1..WORLDGEN_VERSION (a newer one was written by a newer game and is not trusted), `f` a
+## non-negative integer, `b` one of `BIOME_KEYS`, `h` four finite heights inside the world's height
+## range (rounded to `GEN_HEIGHT_STEP`). Pure.
+static func normalize_gen(rec: Variant) -> Dictionary:
+	if not (rec is Dictionary):
+		return {}
+	var d: Dictionary = rec
+	var v: Variant = d.get("v", null)
+	var f: Variant = d.get("f", null)
+	var b: Variant = d.get("b", null)
+	var h: Variant = d.get("h", null)
+	if not _is_whole_number(v) or not _is_whole_number(f):
+		return {}
+	if int(v) < 1 or int(v) > TerrainSliceScript.WORLDGEN_VERSION or int(f) < 0:
+		return {}
+	if not (b is String) or not TerrainSliceScript.BIOME_KEYS.has(b):
+		return {}
+	if not (h is Array) or (h as Array).size() != 4:
+		return {}
+	var lo := WorldShape.min_height()
+	var hi := WorldShape.max_height()
+	var heights: Array = []
+	for x in h:
+		if not (typeof(x) == TYPE_FLOAT or typeof(x) == TYPE_INT):
+			return {}
+		var fx := float(x)
+		if not is_finite(fx) or fx < lo or fx > hi:
+			return {}
+		heights.append(snappedf(fx, GEN_HEIGHT_STEP))
+	return { "v": int(v), "f": int(f), "b": b, "h": heights }
+
+static func _is_whole_number(x: Variant) -> bool:
+	if typeof(x) == TYPE_INT:
+		return true
+	return typeof(x) == TYPE_FLOAT and is_finite(x) and floorf(x) == x and absf(x) < 9.0e15
 
 ## True when `entry` is a Dictionary whose `edits` and `materials`, where present, are Dictionaries. Pure.
 static func is_valid_chunk_entry(entry: Variant) -> bool:
@@ -339,6 +420,21 @@ func write_chunks(chunks: Dictionary, deletions := true) -> Error:
 			if first_error == OK:
 				first_error = err
 	return first_error
+
+## Phase 107 — the stored generation record of `chunk`, or `{}` when it has none.
+func get_gen(chunk: Vector2i) -> Dictionary:
+	var entry: Variant = load_region(region_of_chunk(chunk)).get("%d,%d" % [chunk.x, chunk.y], null)
+	if entry is Dictionary and (entry as Dictionary).get("gen", null) is Dictionary:
+		return entry["gen"]
+	return {}
+
+## Record `rec` as `chunk`'s generation record, keeping its edits. A malformed record is refused
+## (ERR_INVALID_DATA) and nothing is written.
+func set_gen(chunk: Vector2i, rec: Dictionary) -> Error:
+	var gen := normalize_gen(rec)
+	if gen.is_empty():
+		return ERR_INVALID_DATA
+	return write_chunks({ "%d,%d" % [chunk.x, chunk.y]: { "gen": gen } })
 
 ## The regions that must be rewritten for a set of dirty "cx,cz" chunk keys.
 func list_dirty(dirty_chunk_keys: Array) -> Array:

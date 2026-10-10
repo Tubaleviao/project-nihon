@@ -297,6 +297,10 @@ func run() -> void:
 	_run_test("voxel: an unreadable legacy op is dropped and a plain tile round-trips", _test_legacy_op_unreadable_dropped)
 	_run_test("region: a malformed entry survives a neighbour's save", _test_region_malformed_entry_kept)
 	_run_test("region: a valid entry replaces a malformed one", _test_region_malformed_entry_replaced)
+	_run_test("region: a gen record round-trips", _test_region_gen_round_trip)
+	_run_test("region: a version-1 file loads and saves as version 2", _test_region_v1_upgrade)
+	_run_test("region: a malformed gen is dropped, edits survive, one warning", _test_region_gen_malformed)
+	_run_test("region: 1,024 recorded chunks stay small", _test_region_gen_size)
 	_run_test("region: a partial chunk loads its stored edits when the region streams in", _test_region_partial_chunk_loads_stored)
 	_run_test("region: an overlay keeps the larger stored depletion count", _test_region_overlay_keeps_larger_taken)
 	_run_test("region: migration recovers a monolith chunk whose region entry is malformed", _test_region_migrate_malformed_recovers)
@@ -15320,6 +15324,88 @@ func _test_region_malformed_entry_replaced() -> void:
 	var read := store.read_region(Vector2i.ZERO)
 	assert_true(read["raw_invalid"].is_empty(), "no malformed entry remains")
 	assert_true(read["chunks"]["1,1"] == good, "the valid entry replaced it")
+
+func _gen_rec(biome := "Tundra", h0 := 12.34567) -> Dictionary:
+	return { "v": TerrainSlice.WORLDGEN_VERSION, "f": TerrainSlice.worldgen_fingerprint(), "b": biome,
+		"h": [h0, h0 + 1.5, h0 - 2.25, h0 + 0.00012] }
+
+func _test_region_gen_round_trip() -> void:
+	var dir := _fresh_region_dir("test_p107_roundtrip")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	var rec := _gen_rec()
+	var edit := { "edits": { "0,0": [{ "op": "remove", "bottom": 0.0, "top": 1.0 }] } }
+	assert_eq(store.write_chunks({ "2,3": edit }), OK, "an edit is saved")
+	assert_eq(store.set_gen(Vector2i(2, 3), rec), OK, "a gen is recorded beside it")
+	assert_eq(store.set_gen(Vector2i(-1, 0), rec), OK, "a gen-only chunk is recorded in another region")
+	var got := store.get_gen(Vector2i(2, 3))
+	assert_eq(int(got["v"]), int(rec["v"]), "version kept")
+	assert_eq(int(got["f"]), int(rec["f"]), "fingerprint kept")
+	assert_eq(got["b"], "Tundra", "biome kept")
+	for i in 4:
+		assert_true(absf(float(got["h"][i]) - float(rec["h"][i])) <= 1e-4, "height %d equal to 1e-4" % i)
+	assert_true(store.load_region(Vector2i.ZERO)["2,3"]["edits"] == edit["edits"], "the edits survive set_gen")
+	assert_eq(store.write_chunks({ "2,3": { "edits": {} } }), OK, "edits compact away")
+	assert_eq(store.get_gen(Vector2i(2, 3)).get("b", ""), "Tundra", "the gen outlives the deletion marker")
+	assert_true(store.write_chunks({ "2,3": { "edits": { "1,1": [] } } }) == OK and store.get_gen(Vector2i(2, 3)).has("h"), "an edit save keeps the gen")
+	assert_eq(store.list_dirty(["2,3", "40,0"]).size(), 2, "list_dirty counts a gen-only change")
+	assert_eq(store.set_gen(Vector2i(5, 5), { "v": 1 }), ERR_INVALID_DATA, "a malformed record is refused")
+	assert_true(store.get_gen(Vector2i(5, 5)).is_empty(), "nothing written for it")
+
+func _test_region_v1_upgrade() -> void:
+	var dir := _fresh_region_dir("test_p107_v1")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	var edit := { "edits": { "0,0": [{ "op": "remove", "bottom": 0.0, "top": 1.0 }] } }
+	_write_region_file(store, { "1,1": edit })   # writes "version": 1
+	assert_true(store.load_region(Vector2i.ZERO)["1,1"] == edit, "a version-1 file loads unchanged")
+	assert_true(store.get_gen(Vector2i(1, 1)).is_empty(), "and carries no gen")
+	assert_eq(store.set_gen(Vector2i(1, 1), _gen_rec()), OK, "a save of it")
+	var parsed: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(store.path_of(Vector2i.ZERO)))
+	assert_eq(int(parsed["version"]), 2, "writes version 2")
+	assert_eq(JSON.stringify(parsed["chunks"]["1,1"]["edits"]), JSON.stringify(edit["edits"]), "with its edits intact")
+
+func _test_region_gen_malformed() -> void:
+	var dir := _fresh_region_dir("test_p107_malformed")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	var edit := { "edits": { "0,0": [{ "op": "remove", "bottom": 0.0, "top": 1.0 }] } }
+	var good := _gen_rec()
+	var bads: Array = [
+		"x", { "v": "5", "f": 1, "b": "Tundra", "h": [1, 1, 1, 1] },
+		{ "v": TerrainSlice.WORLDGEN_VERSION + 1, "f": 1, "b": "Tundra", "h": [1.0, 1.0, 1.0, 1.0] },
+		{ "v": 1, "f": 1, "b": "Nowhere", "h": [1.0, 1.0, 1.0, 1.0] },
+		{ "v": 1, "f": 1, "b": "Tundra", "h": [1.0, 1.0, 1.0] },
+		{ "v": 1, "f": 1, "b": "Tundra", "h": [1.0, 1.0, 1.0, "a"] },
+		{ "v": 1, "f": 1, "b": "Tundra", "h": [1.0, 1.0, 1.0, WorldShape.max_height() + 1.0] },
+		{ "v": 1, "f": 1, "b": "Tundra", "h": [1.0, 1.0, 1.0, WorldShape.min_height() - 1.0] },
+	]
+	var chunks := {}
+	for i in bads.size():
+		chunks["%d,0" % i] = { "edits": edit["edits"], "gen": bads[i] }
+	chunks["20,0"] = { "edits": edit["edits"], "gen": good }
+	_write_region_file(store, chunks)
+	var loaded := store.load_region(Vector2i.ZERO)
+	for i in bads.size():
+		assert_true(loaded["%d,0" % i] == edit, "bad gen %d dropped, edits survive" % i)
+	assert_true(loaded["20,0"].has("gen"), "a good record is kept")
+	var nan_h := { "v": 1, "f": 1, "b": "Tundra", "h": [NAN, 1.0, 1.0, 1.0] }
+	assert_true(RegionStoreScript.normalize_gen(nan_h).is_empty(), "a NaN height is refused")
+	# One warning for two loads: the second read finds the key already warned.
+	var warned_before := store._warned.size()
+	store.load_region(Vector2i.ZERO)
+	assert_eq(store._warned.size(), warned_before, "a second load raises no new warning")
+	assert_eq(warned_before, bads.size(), "the first load warned once per bad record")
+
+func _test_region_gen_size() -> void:
+	var dir := _fresh_region_dir("test_p107_size")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	var chunks := {}
+	for x in 32:
+		for z in 32:
+			var rec := _gen_rec(TerrainSlice.BIOME_KEYS[(x + z) % TerrainSlice.BIOME_KEYS.size()], 3.0 + x * 0.123456 + z * 0.0173)
+			chunks["%d,%d" % [x, z]] = { "gen": RegionStoreScript.normalize_gen(rec) }
+	assert_eq(store.write_chunks(chunks), OK, "1,024 recorded chunks are saved")
+	var bytes := FileAccess.get_file_as_bytes(store.path_of(Vector2i.ZERO)).size()
+	assert_true(bytes < 100 * 1024, "the region file is under 100 KB (%d bytes)" % bytes)
+	assert_eq(store.load_region(Vector2i.ZERO).size(), 1024, "all of them load back")
 
 func _test_region_partial_chunk_loads_stored() -> void:
 	var found := _find_surface_vein(0)
