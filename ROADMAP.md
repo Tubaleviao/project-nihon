@@ -120,7 +120,7 @@ issue number where the criterion used to be.
 | 97 | Peer windows and position relays use the exact peer position | Done | [history](docs/roadmap-history/phases-75-98.md) |
 | 98 | An exact first-boot spawn and a public canonical helper | Done | [history](docs/roadmap-history/phases-75-98.md) |
 | 99 | Housekeeping sweep: legacy tiles, roadmap/README hygiene and review leftovers | Done | below |
-| 100 | Follow-up issue backlog triage | Planned | below |
+| 100 | Follow-up issue backlog triage | Done | below |
 | 101 | Chat and admin commands are host-authoritative, exact and proven on the wire | Planned | below |
 | 102 | An admin `/kill` lands on the host's simulated peer health | Merged | [Phase 101](#phase-101--chat-and-admin-commands-are-host-authoritative-exact-and-proven-on-the-wire) |
 | 103 | Teleports carry the exact position and stay on the planet | Merged | [Phase 101](#phase-101--chat-and-admin-commands-are-host-authoritative-exact-and-proven-on-the-wire) |
@@ -194,7 +194,7 @@ Merges the former Phases 99 (legacy-op constant and parser), 100 (README phase t
 
 ---
 
-## Phase 100 — Follow-up issue backlog triage
+## Phase 100 — Follow-up issue backlog triage ✅ Done
 
 **Goal:** Review passes have opened one "Follow-ups from PR #… review" issue per PR, plus several
 "Phase 50 remainder" issues (#120–#127, #136) from before Phase 50 was finished. Most are older than
@@ -224,11 +224,13 @@ human-verification issues (#133, #134), which stay open.
   (source issue → item → outcome) in its body.
 
 **Acceptance criteria:**
-- [ ] `gh issue list --state open --author @me --search "Follow-ups from PR in:title"` and the same
+- [x] `gh issue list --state open --author @me --search "Follow-ups from PR in:title"` and the same
   for "Phase 50" list only issues created by this phase or listed under a Planned phase's **Closes:**.
-- [ ] Each new area issue carries the `autopilot-followup` label, an `Area:` line and at least one
+- [x] Each new area issue carries the `autopilot-followup` label, an `Area:` line and at least one
   unchecked item; no area has two.
-- [ ] Every closed source issue has a closing comment that accounts for each of its items.
+- [x] Every closed source issue has a closing comment that accounts for each of its items.
+
+**Outcome:** 53 source issues triaged and closed; open items folded into #253 (networking), #254 (terrain and far-origin precision), #255 (distant terrain), #256 (persistence), #257 (UI), #258 (tests and tooling). The human-verification issues #133 and #134 stay open.
 
 ---
 
