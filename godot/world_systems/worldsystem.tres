@@ -20,5 +20,5 @@ dayLengthMinutes = 24.0
 yearLengthDays = 32.0
 axialTilt = 23.5
 friendSpawnRadius = 200.0
-description = "The planet as a fact of the fabric. The world takes globe semantics on a flat chunk grid: X wraps around the circumference, Z is latitude bounded by impassable polar ice, and players locate each other by latitude, longitude and altitude. Terrain is seed-deterministic, so only player edits are ever stored."
+description = "The planet as a fact of the fabric. The world takes globe semantics on a flat chunk grid: X wraps around the circumference, Z is latitude, and walking over a pole comes back down the far meridian, so every direction leads round the planet. Players locate each other by latitude, longitude and altitude. Terrain is seed-deterministic, so only player edits are ever stored."
 tags = ["world-system"]

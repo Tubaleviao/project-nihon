@@ -90,6 +90,9 @@ var _station_label: Label = null
 ## Aimed terrain block (mine/build target), updated every frame.
 var _aimed_block_hit: bool = false
 var _aimed_block_pos: Vector3 = Vector3.ZERO
+## Phase 91 — the same aimed point as an exact `{chunk, local}` (`_aimed_block_pos` is a float32
+## world position, quantised to metres far from the origin): what the edit resolves its tile from.
+var _aimed_block_exact: Dictionary = {}
 var _aimed_block_normal: Vector3 = Vector3.UP
 
 ## Aimed tree trunk (chop target), updated every frame. Empty when no trunk is
@@ -139,6 +142,10 @@ var terrain_slice: Node = null
 ## the freeze is what holds a client's body still over ground that is still being built,
 ## so it cannot be only an input gate.
 var _world_input_frozen: bool = false
+
+## Phase 91 — set by the game root after a fold re-streams the window: the body holds still (input
+## stays live) until the ground under it has been rebuilt, so it does not fall through the gap.
+var ground_hold: bool = false
 
 func _ready() -> void:
 	if render_visuals:
@@ -207,7 +214,7 @@ func _physics_process(delta: float) -> void:
 	# yet, and on a client (which placed the body from the snapshot while its ring built) it
 	# fell through ground that did not exist. Frozen means the body holds its position until
 	# the ground under it is there.
-	if render_visuals and not _world_input_frozen:
+	if render_visuals and not _world_input_frozen and not ground_hold:
 		_move(delta)
 	_sync_tick += 1
 	if _sync_tick >= SYNC_INTERVAL:
@@ -256,7 +263,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.shift_pressed:
 			if _aimed_block_hit:
-				GameBus.block_mine_requested.emit(_aimed_block_pos, _aimed_block_normal, "")
+				GameBus.block_mine_requested.emit(_aimed_block_pos, _aimed_block_normal, "", _aimed_block_exact)
 		elif _aimed_pickup_id != "":
 			_try_pickup_aimed()
 		elif _aimed_tree_id != "":
@@ -274,7 +281,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			# Both trailing args are "" = this machine's own player and its own
 			# material selection; a client's placement travels to the host as a
 			# `block_edit_intent` carrying that selection (see `_on_place_requested`).
-			GameBus.block_place_requested.emit(_aimed_block_pos, _aimed_block_normal, "", "")
+			GameBus.block_place_requested.emit(_aimed_block_pos, _aimed_block_normal, "", "", _aimed_block_exact)
 	# R key → cycle the build material.
 	if event is InputEventKey and event.pressed and event.keycode == KEY_R:
 		GameBus.block_cycle_material_requested.emit()
@@ -658,27 +665,21 @@ func _move(delta: float) -> void:
 	# Sync velocity after slide so gravity accumulation is correct.
 	_vel = _body.velocity
 
-	# Keep the player inside the finite world. The CharacterBody3D's physics
-	# body is moved directly so the clamp is authoritative for both the visible
-	# avatar and collision, without relying on a wall at the world edge.
-	if terrain_slice != null and terrain_slice.has_method("z_bounds"):
-		_clamp_to_world_exact()
-
-## Phase 78 — the world clamp and the seam wrap, worked out on the exact `{chunk, local}` position
-## and applied to the body as a small scene-space delta. Going through `body - _scene_offset` would
-## quantise the position to metres far from the origin and eat the player's steps.
-func _clamp_to_world_exact() -> void:
-	var wp := get_world_pos()
-	var chunk: Vector2i = wp["chunk"]
-	var local: Vector3 = wp["local"]
-	var world_x: float = chunk.x * WorldPos.CHUNK_METERS + local.x   # doubles
-	var world_z: float = chunk.y * WorldPos.CHUNK_METERS + local.z
-	var z_bounds: Vector2 = terrain_slice.z_bounds()
-	var dz := clampf(world_z, z_bounds.x, z_bounds.y) - world_z
-	var w := float(TerrainSlice.circumference_chunks()) * WorldPos.CHUNK_METERS
-	var dx := (fposmod(world_x + w * 0.5, w) - w * 0.5) - world_x
-	if dx != 0.0 or dz != 0.0:
-		_body.global_position += Vector3(dx, 0.0, dz)
+## Phase 91 — a fold over a pole or round the antimeridian (`TerrainSlice.fold_world_pos`), applied by
+## the game root once it has rebased the scene to `pos`'s chunk: land on `pos` keeping the motion, and
+## after a pole crossing turn the view and the motion half a turn, so the walk carries on down the
+## far meridian as it would over the top of a globe.
+func fold_to(pos: Dictionary, turned: bool) -> void:
+	if _body == null:
+		return
+	var vel := _vel
+	place_at_world_pos(pos)
+	if turned:
+		vel = Vector3(-vel.x, vel.y, -vel.z)
+		if _pivot != null:
+			_pivot.rotate_y(PI)
+	_vel = vel
+	_body.velocity = vel
 
 func _broadcast_state() -> void:
 	if not render_visuals:
@@ -856,6 +857,7 @@ func _update_aim() -> void:
 	var tspecies := ""
 	_aimed_block_hit = false
 	_aimed_block_pos = Vector3.ZERO
+	_aimed_block_exact = {}
 	_aimed_block_normal = Vector3.UP
 	if _camera != null and _alive:
 		var viewport := _camera.get_viewport()
@@ -890,6 +892,7 @@ func _update_aim() -> void:
 			if not bhit.is_empty():
 				_aimed_block_hit = true
 				_aimed_block_pos = (bhit.get("position", Vector3.ZERO) as Vector3) - _scene_offset
+				_aimed_block_exact = WorldPos.from_scene(bhit.get("position", Vector3.ZERO), _scene_origin_chunk)
 				_aimed_block_normal = bhit.get("normal", Vector3.UP)
 				block_dist = from.distance_to(_aimed_block_pos + _scene_offset)
 

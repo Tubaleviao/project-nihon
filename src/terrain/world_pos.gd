@@ -117,7 +117,7 @@ static func wrap_world(world: Vector3) -> Vector3:
 ##
 ## Phase 90 — the ONE wire validator. A dictionary needs a `chunk` of exactly two integer-valued
 ## numbers (JSON hands ints back as floats, so `3.0` passes, `1.5` does not) — X within one lap of
-## the world, Z between the poles — and a `local` of exactly three finite numbers under 1e6 m. Saved
+## the world, Z between the poles plus the fold slack a player may walk past one — and a `local` of exactly three finite numbers under 1e6 m. Saved
 ## player records share the shape, so `PlayerRegistry` asks this too.
 static func is_wire(data: Variant) -> bool:
 	if data is Dictionary:
@@ -127,7 +127,8 @@ static func is_wire(data: Variant) -> bool:
 			return false
 		if not (_sane(c, 2) and _sane(l, 3)):
 			return false
-		var limits := [float(TerrainSlice.circumference_chunks()), float(TerrainSlice.pole_chunks())]
+		var limits := [float(TerrainSlice.circumference_chunks()),
+			float(TerrainSlice.pole_chunks() + TerrainSlice.FOLD_MARGIN_CHUNKS)]
 		for i in 2:
 			if absf(float(c[i])) > limits[i] or floorf(float(c[i])) != float(c[i]):
 				return false

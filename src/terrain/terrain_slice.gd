@@ -24,8 +24,11 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## Phase 51 continent shape (the layout this constant first shipped with); 3 = Phase 72
 ## stable, low-frequency rare-biome niches, the land-only Voronoi fallback, and one 10000
 ## lattice modulus for all climate noise (it was 9999 for temperature and moisture); 4 = Phase 76
-## niche field that wraps at the antimeridian and a fallback pool read from the biome data.
-const WORLDGEN_VERSION := 4
+## niche field that wraps at the antimeridian and a fallback pool read from the biome data; 5 = the
+## walkable polar caps: frozen sea is an ice shelf from `ICE_SHELF_LAT`, and within a few km of
+## each pole the ground eases into a snow field that depends on the distance to the pole alone,
+## so the pole can be crossed.
+const WORLDGEN_VERSION := 5
 const BIOME_SEED := 20260815 # fixed seed so biome assignment is deterministic
 const ClimateField := preload("res://src/terrain/climate_field.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
@@ -36,7 +39,8 @@ const WorldShape := preload("res://src/terrain/world_shape.gd")
 # the planet already made habitable, so no terrain is forced flat around a fixed point.
 
 ## The planet (Phase 50). Globe semantics on a flat chunk grid: X wraps around the
-## circumference, Z is latitude and ends in impassable polar ice. The sizes are fabric facts
+## circumference, Z is latitude. Walking over a pole comes back down the far meridian
+## (`fold_world_pos`), so every direction leads round the planet. The sizes are fabric facts
 ## (`WorldSystem`: circumferenceKm, polarLatitude); these are the fallbacks for a rig without
 ## the generated resources.
 const DEFAULT_CIRCUMFERENCE_KM := 40000.0
@@ -45,6 +49,27 @@ const CHUNK_METERS := CHUNK_SIZE * TILE_SIZE
 ## Width of the east-edge band over which heights blend into the west edge's, so the wrap seam
 ## has no cliff (the noise is not periodic).
 const WRAP_BLEND_CHUNKS := 8
+## Polar ice. From `ICE_SHELF_LAT` the sea is frozen: the ground never lies below the ice shelf
+## (`sea level + ICE_SHELF_M`, rolling by up to `ICE_RELIEF_M`), so there is no liquid water under
+## the ice to fall into. Land keeps its own relief (the snow is the colour, `VoxelSlice.icy`).
+const ICE_SHELF_LAT := 80.0
+const ICE_SHELF_M := 0.5
+const ICE_RELIEF_M := 2.0
+const ICE_RELIEF_CELL_M := 64.0
+## Around each pole the ground eases (from `POLE_FIELD_OUTER_M` to `POLE_FIELD_INNER_M` from the
+## pole) into a snow field of drifts that depends on the distance to the pole alone. A pole crossing
+## (`fold_world_pos`) lands at the same distance on the far meridian, so inside that radius both
+## sides are the same ground; it also reaches past everything a player near the pole can see.
+## (On a real globe that is what the map shows anyway: near a pole a metre of ground spans a
+## huge stretch of longitude, so any feature there is drawn as a band along the map's X.)
+const POLE_FIELD_INNER_M := 2500.0
+const POLE_FIELD_OUTER_M := 5000.0
+const POLE_DRIFT_M := 6.0
+const POLE_DRIFT_CELL_M := 48.0
+## How far (in chunks) a player may stray past a pole or the antimeridian before their position is
+## folded back onto the canonical planet. The slack means someone pacing back and forth over the
+## line does not trigger a fold (and a reload of the streamed window) on every step.
+const FOLD_MARGIN_CHUNKS := 16
 
 ## Canonical biome keys, in the same order as the fabric biome enum
 ## (mirrors creature_slice.BIOME_KEYS). Phase 17: biome assignment is per-chunk,
@@ -166,8 +191,9 @@ static func biome_for_chunk(chunk_pos: Vector2i, seed_v: int = BIOME_SEED) -> St
 
 ## The altitude the biome pick reads: the large-scale shape plus the mean of the 0..HEIGHT_SCALE
 ## detail noise, so it matches the mean ground the heightmap actually lays down.
+## The polar ice shelf counts too, so frozen sea is not picked as Ocean.
 static func biome_altitude(seed_v: int, x: float, z: float, w: float) -> float:
-	return WorldShape.altitude(seed_v, x, z, w) + HEIGHT_SCALE * 0.5
+	return polar_ground(seed_v, WorldShape.height(seed_v, x, z, w) + HEIGHT_SCALE * 0.5, x, z, w) - WorldShape.sea_level()
 
 ## Convert a world XZ position to its containing chunk coordinate.
 func world_to_chunk(world_pos: Vector2) -> Vector2i:
@@ -200,7 +226,8 @@ static func circumference_chunks() -> int:
 static func pole_chunks() -> int:
 	return circumference_chunks() / 4
 
-## |chunk z| at which the polar ice begins (the chunks beyond it are not walkable).
+## |chunk z| of the polar line (the fabric's `polarLatitude`): rows past it lend no biome to their
+## neighbours (`lends_biome`) and no new player is placed beyond it.
 static func polar_chunks() -> int:
 	if _polar_cache < 0:
 		var deg := clampf(_world_field("polarLatitude", DEFAULT_POLAR_LATITUDE), 0.0, 90.0)
@@ -212,9 +239,10 @@ static func wrap_chunk(chunk_pos: Vector2i) -> Vector2i:
 	var c := circumference_chunks()
 	return Vector2i(posmod(chunk_pos.x + c / 2, c) - c / 2, chunk_pos.y)
 
-## Latitude in degrees (north positive) of the middle of chunk row `chunk_z`.
+## Latitude in degrees (north positive) of the middle of chunk row `chunk_z`. A row past a pole (a
+## player within `FOLD_MARGIN_CHUNKS` of it) reads the latitude it really has on the far meridian.
 static func latitude_of(chunk_z: int) -> float:
-	return (float(chunk_z) + 0.5) * 90.0 / float(pole_chunks())
+	return _fold_latitude((float(chunk_z) + 0.5) * 90.0 / float(pole_chunks()))
 
 ## Longitude in degrees, in [-180, 180), of the west edge of chunk column `chunk_x`.
 static func longitude_of(chunk_x: int) -> float:
@@ -223,7 +251,15 @@ static func longitude_of(chunk_x: int) -> float:
 
 ## Latitude in degrees at a world Z (metres).
 static func latitude_at(world_z: float) -> float:
-	return world_z / CHUNK_METERS * 90.0 / float(pole_chunks())
+	return _fold_latitude(world_z / CHUNK_METERS * 90.0 / float(pole_chunks()))
+
+## A map latitude past a pole (over 90 degrees) mirrored back: 91 N is 89 N on the far meridian.
+static func _fold_latitude(lat: float) -> float:
+	if lat > 90.0:
+		return 180.0 - lat
+	if lat < -90.0:
+		return -180.0 - lat
+	return lat
 
 ## Longitude in degrees at a world X (metres), wrapped into [-180, 180).
 static func longitude_at(world_x: float) -> float:
@@ -242,9 +278,16 @@ static func where_text(world_pos: Vector3) -> String:
 		absf(lon), "E" if lon >= 0.0 else "W",
 		roundi(world_pos.y)]
 
-## True when `chunk_pos` is walkable ground: any longitude, short of the polar ice.
+## True when `chunk_pos` is ground a player can stand on: any longitude, any latitude up to the
+## fold slack past each pole. The polar ice is walkable; walking over a pole folds the player onto the
+## far meridian (`fold_world_pos`) before they can stray further.
 func is_chunk_in_bounds(chunk_pos: Vector2i) -> bool:
-	return absi(chunk_pos.y) < polar_chunks()
+	return absi(chunk_pos.y) < pole_chunks() + FOLD_MARGIN_CHUNKS
+
+## True when `chunk_pos` may be streamed in and drawn: every chunk. Rows past a pole are the pole's
+## snow field (`polar_ground`), so a window that reaches over a pole shows snow, never an edge.
+func is_chunk_loadable(_chunk_pos: Vector2i) -> bool:
+	return true
 
 ## True when chunk `c` may lend its biome to a neighbour: its row is a walkable one, short of
 ## the polar ice at row `radius` (`world_radius_chunks`). One rule for the voxel surface and the minimap.
@@ -259,20 +302,64 @@ func world_half_extent() -> float:
 func world_radius_chunks() -> int:
 	return polar_chunks()
 
-## Keep the player short of the polar ice. X is free: it wraps. Y is left untouched
-## (gravity/terrain handle vertical). Insets the boundary by 2 m so the body stays on the
-## final chunk's collision instead of straddling the exact edge.
-func clamp_to_world(pos: Vector3) -> Vector3:
-	var bounds := z_bounds()
-	return Vector3(pos.x, pos.y, clampf(pos.z, bounds.x, bounds.y))
+## The polar ice for ground height `h` at world (x, z) (metres), `w` the circumference: from
+## `ICE_SHELF_LAT` (judged per chunk row, as the frozen-water test `VoxelSlice.is_frozen_chunk` is)
+## the ground is never below the rolling ice shelf, and near each pole it eases into the pole's snow
+## field (`pole_field`). Pure and static: the voxel ground, the distant ring and the biome pick all
+## apply it.
+static func polar_ground(seed_v: int, h: float, x: float, z: float, w: float) -> float:
+	var row_lat := absf(latitude_of(floori(z / CHUNK_METERS)))
+	if row_lat < ICE_SHELF_LAT:
+		return h
+	var cells := maxi(1, roundi(w / ICE_RELIEF_CELL_M))
+	var shelf := WorldShape.sea_level() + ICE_SHELF_M + ICE_RELIEF_M * WorldShape._noise(seed_v, x, z, w, cells, 61)
+	h = maxf(h, shelf)
+	var lat := latitude_at(z)
+	var from_pole := (90.0 - absf(lat)) * float(pole_chunks()) * CHUNK_METERS / 90.0
+	if from_pole >= POLE_FIELD_OUTER_M:
+		return h
+	var t := 1.0 - smoothstep(POLE_FIELD_INNER_M, POLE_FIELD_OUTER_M, from_pole)
+	return lerpf(h, pole_field(seed_v, from_pole, lat >= 0.0, w), t)
 
-## Phase 90 — the walkable z range as (min, max) metres: what `clamp_to_world` clamps z to.
-## Walkable rows are |chunk z| < polar_chunks, i.e. z in [-(polar-1)*32, polar*32), inset by 2 m.
-func z_bounds() -> Vector2:
-	var polar := polar_chunks()
-	var north := float(polar) * CHUNK_METERS - 2.0
-	var south := -float(polar - 1) * CHUNK_METERS + 2.0
-	return Vector2(minf(south, north), north)
+## The snow field around a pole at `from_pole` metres from it: drifts a few metres high on the ice
+## shelf, a function of that distance (and the hemisphere) only.
+static func pole_field(seed_v: int, from_pole: float, north: bool, w: float) -> float:
+	var cells := maxi(1, roundi(w / POLE_DRIFT_CELL_M))
+	var salt := 71 if north else 72
+	var drift := WorldShape._noise(seed_v, 0.0, from_pole, w, cells, salt) * 0.7 \
+		+ WorldShape._noise(seed_v, 0.0, from_pole, w, cells / 6, salt + 2) * 0.3
+	return WorldShape.sea_level() + ICE_SHELF_M + POLE_DRIFT_M * drift
+
+## Fold a world position `{chunk, local}` that has strayed more than `margin` chunks past a pole or
+## the antimeridian back onto the canonical planet. Returns `{pos, folded, turned}`: `pos` the folded
+## position (or `wp` itself), `folded` whether it moved, `turned` whether it went over a pole.
+##
+## Over a pole the planet is crossed as a globe is: the position comes back down the meridian 180
+## degrees round, at the latitude it had past the pole (`z' = 2 * pole - z`), heading the other way
+## (the caller turns the player's heading and velocity by half a turn). Around the antimeridian X
+## moves by one lap. The ground near a pole depends on the distance to it alone (`pole_field`), so
+## both sides of the fold look the same.
+static func fold_world_pos(wp: Dictionary, margin: int = FOLD_MARGIN_CHUNKS) -> Dictionary:
+	var chunk: Vector2i = wp["chunk"]
+	var local: Vector3 = wp["local"]
+	var c := circumference_chunks()
+	var pole := pole_chunks()
+	var turned := false
+	if chunk.y >= pole + margin or chunk.y < -pole - margin:
+		# Mirror Z about the pole edge (+pole or -pole rows): row r, local l -> row 2p - r - 1, 32 - l.
+		var p := pole if chunk.y > 0 else -pole
+		chunk = Vector2i(chunk.x + c / 2, 2 * p - chunk.y - 1)
+		local = Vector3(local.x, local.y, CHUNK_METERS - local.z)
+		turned = true
+	var folded := turned or chunk.x >= c / 2 + margin or chunk.x < -c / 2 - margin
+	if not folded:
+		return {"pos": wp, "folded": false, "turned": false}
+	chunk = wrap_chunk(chunk)
+	var pos := {"chunk": chunk, "local": local}
+	# `CHUNK_METERS - 0` is a whole chunk: renormalise it into the next row.
+	if local.z >= CHUNK_METERS:
+		pos = {"chunk": chunk + Vector2i(0, 1), "local": Vector3(local.x, local.y, local.z - CHUNK_METERS)}
+	return {"pos": pos, "folded": true, "turned": turned}
 
 # ---------------------------------------------------------------------------
 # Private
@@ -320,7 +407,7 @@ func _raw_height_at(x: float, z: float, w: float, cache: Array) -> float:
 	var shape := _shape_at(x, z, w, cache)
 	var detail := detail_of(_noise, x, z)
 	var h := clampf(shape + detail, WorldShape.min_height(), WorldShape.max_height())
-	return h
+	return polar_ground(_world_seed, h, x, z, w)
 
 ## Phase 63 — half the span (m) over which the detail noise is sampled directly. FastNoiseLite takes
 ## float32, whose step is 1 m at 10 million metres and would terrace the 0.5 m tiles, so the lattice

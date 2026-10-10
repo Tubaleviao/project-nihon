@@ -559,9 +559,11 @@ static func world_pos_of(rec: Dictionary) -> Dictionary:
 			break
 	return _canonical(WorldPos.from_world(float(p[0]), float(p[1]), float(p[2])))
 
-## Canonical X (a full lap is the same chunk) and Z held between the poles, after `local` has
-## been folded into the chunk, so no per-element check can be bypassed through `local`.
+## Canonical X (a full lap is the same chunk) and Z between the poles (a position saved past a pole
+## is folded over it), after `local` has been folded into the chunk, so no per-element check can be
+## bypassed through `local`. The clamp still bounds a hostile Z far past a pole.
 static func _canonical(wp: Dictionary) -> Dictionary:
+	wp = TerrainSlice.fold_world_pos(wp, 0)["pos"]
 	var chunk: Vector2i = TerrainSlice.wrap_chunk(wp["chunk"])
 	var pole := TerrainSlice.pole_chunks()
 	wp["chunk"] = Vector2i(chunk.x, clampi(chunk.y, -pole, pole))
