@@ -59,6 +59,10 @@ extends Node
 const PlayerSlice := preload("res://src/player/player_slice.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
+const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
+const RegionStore := preload("res://src/persistence/region_store.gd")
+const WorldShape := preload("res://src/terrain/world_shape.gd")
 
 ## The id the client presents on its FIRST join, well-formed but owned by nobody: the
 ## shape `PlayerRegistry.looks_like_player_id` accepts, minted by no registry. The
@@ -160,6 +164,7 @@ static func steps() -> Array:
 		{ "name": "disconnect_evicts", "compare": true },
 		{ "name": "far_peers_simulated", "compare": true },
 		{ "name": "spawn_near_friend", "compare": true },
+		{ "name": "chunk_record_synced", "compare": true },
 	]
 
 ## The step names, comma-joined — the payload of the `plan` line the runner prints
@@ -345,6 +350,7 @@ func run(root: Node, role: String) -> void:
 	await _step_disconnect_evicts()
 	await _step_far_peers_simulated()
 	await _step_spawn_near_friend()
+	await _step_chunk_record_synced()
 	_finish()
 
 ## End this process, with the run's own verdict carried in the exit code.
@@ -1121,6 +1127,48 @@ func _step_spawn_near_friend() -> void:
 	var good: bool = arrived and d <= radius
 	_report("spawn_near_friend", verdict(good, true),
 		"near-friend" if good else "not_near-arrived%d-%dm" % [int(arrived), int(d)])
+
+## Final step (Phase 109) — a generation record reaches the client.
+##
+## The host rewrites the record of the chunk the rendezvous stands in with another biome and shifted
+## corner heights (what a later generator version would leave behind), then re-scopes the peer. The
+## client holds no record there until the snapshot lands; both sides then report the biome and the
+## rounded heights, and the driver's comparison of the two lines is the assertion.
+func _step_chunk_record_synced() -> void:
+	var chunk: Vector2i = _root._chunk_manager.world_to_chunk(Vector2(RENDEZVOUS.x, RENDEZVOUS.z))
+	if _role == "host":
+		var seed_value := int(_root._terrain.get_world_seed())
+		var generated := TerrainSlice.generated_biome_for_chunk(chunk, seed_value)
+		var other := "Desert" if generated != "Desert" else "Tundra"
+		var rec: Dictionary = TerrainSlice.generation_record(chunk, seed_value)
+		var shifted: Array = []
+		for h in rec["h"]:
+			shifted.append(minf(float(h) + 3.0, WorldShape.max_height() - 1.0))
+		rec["h"] = shifted
+		rec["b"] = other
+		rec = RegionStore.normalize_gen(rec)
+		if rec.is_empty() or not ChunkRecords.set_record(chunk, rec):
+			_report("chunk_record_synced", "fail", "host_record_not_set")
+			return
+		var peer := _rediscover_peer()
+		if peer == 0:
+			_report("chunk_record_synced", "fail", "no_peer")
+			return
+		_root._peer_records_msec.erase(peer)
+		_root._networking.send_snapshot(peer, _root._build_snapshot(peer, false, RENDEZVOUS, false))
+		_report("chunk_record_synced", verdict(true, true), _record_detail(rec))
+		return
+	var ok: bool = await _await_until(func(): return ChunkRecords.has_record(chunk), STEP_TIMEOUT_SECS)
+	if not ok:
+		_report("chunk_record_synced", "fail", "no_record_received")
+		return
+	_report("chunk_record_synced", "ok", _record_detail(ChunkRecords.get_record(chunk)))
+
+func _record_detail(rec: Dictionary) -> String:
+	var hs: Array = []
+	for h in rec["h"]:
+		hs.append("%.2f" % float(h))
+	return "%s:%s" % [str(rec["b"]), "/".join(hs)]
 
 # ---------------------------------------------------------------------------
 # Plumbing
