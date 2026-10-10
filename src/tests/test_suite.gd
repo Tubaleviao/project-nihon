@@ -382,6 +382,10 @@ func run() -> void:
 	_run_test("ui: inventory rows project N slots",            _test_ui_inventory_rows)
 	_run_test("ui: item icon key + action intent mapping",     _test_ui_icon_key_and_intent)
 	_run_test("ui: controls legend lives behind ?, not HUD",   _test_ui_controls_panel)
+	_run_test("hud: hotbar fill / wrap / kinds",               _test_hud_hotbar_pure)
+	_run_test("hud: hotbar selection drives place material",   _test_hud_hotbar_selection)
+	_run_test("hud: skill bar order + number keys",            _test_hud_skill_bar)
+	_run_test("hud: window dock letters match the key map",    _test_hud_window_dock)
 	_run_test("ui: crafting rows gate on technology",          _test_ui_crafting_rows_tech_gate)
 	_run_test("ui: technology rows report status + prereqs",   _test_ui_technology_rows_status)
 	_run_test("ai: idle→alert when player within alertRadius", _test_ai_idle_to_alert)
@@ -4778,6 +4782,115 @@ func _test_ui_controls_panel() -> void:
 		names.append(str(c.name))
 	assert_false(names.has("ShortcutsMenu"), "HUD paints no always-on legend")
 	p.free()
+
+const _HotbarScript := preload("res://src/ui/hotbar.gd")
+const _SkillBarScript := preload("res://src/ui/skill_bar.gd")
+const _WindowDockScript := preload("res://src/ui/window_dock.gd")
+
+func _first_gear_item() -> String:
+	var keys: Array = GameData.ITEMS.keys()
+	keys.sort()
+	for k in keys:
+		if EquipmentRules.slot_of(str(k), GameData.ITEMS) != "":
+			return str(k)
+	return ""
+
+func _test_hud_hotbar_pure() -> void:
+	assert_eq(_HotbarScript.wrap_index(0, -1, 9), 8, "wheel up from the first box wraps to the last")
+	assert_eq(_HotbarScript.wrap_index(8, 1, 9), 0, "wheel down from the last box wraps to the first")
+	var mats: Array = GameData.MATERIALS.keys()
+	mats.sort()
+	var block := str(mats[0])
+	var gear := _first_gear_item()
+	assert_eq(_HotbarScript.kind_of(block, GameData.MATERIALS, ""), "block", "a material is a block")
+	assert_eq(_HotbarScript.kind_of(gear, {}, "mainHand"), "gear", "an equippable is gear")
+	assert_eq(_HotbarScript.kind_of("", GameData.MATERIALS, ""), "", "empty is neither")
+	var usable := func(id: String) -> bool: return id == block or id == gear
+	var cur := []
+	for i in 9:
+		cur.append("")
+	var filled := _HotbarScript.fill(cur, {block: 3, gear: 1, "Junk": 5}, usable)
+	assert_eq(filled.count(block) + filled.count(gear), 2, "usable held items take boxes")
+	assert_false(filled.has("Junk"), "non-usable items stay off the bar")
+	assert_eq(_HotbarScript.fill(filled, {block: 3, gear: 1}, usable), filled, "fill is stable: nothing reshuffles")
+	var after := _HotbarScript.fill(filled, {gear: 1}, usable)
+	assert_false(after.has(block), "an item no longer held leaves its box")
+	assert_eq(after.find(gear), filled.find(gear), "the other boxes keep their place")
+	var full := []
+	for i in 9:
+		full.append("x%d" % i)
+	var refilled := _HotbarScript.fill(full, {block: 1}, usable)
+	assert_eq(refilled.count(""), 8, "boxes of unheld items clear")
+	assert_eq(refilled[0], block, "and a held usable item takes the freed box")
+
+func _test_hud_hotbar_selection() -> void:
+	var ui := _new_test_ui()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	var vox := VoxelSlice.new()
+	add_child(vox)
+	ui.inventory_slice = inv
+	ui.voxel_slice = vox
+	var mats: Array = GameData.MATERIALS.keys()
+	mats.sort()
+	var block := str(mats[0])
+	inv.add_item(block, 4)
+	ui.refresh_hud()
+	assert_eq(ui.hotbar.slots[0], block, "a picked-up block lands in the first box")
+	assert_eq(vox.get_place_material(), block, "and, being selected, becomes the place material")
+	ui.hotbar.step(1)
+	assert_eq(ui.hotbar.selected, 1, "wheel down moves the selection right")
+	assert_eq(vox.get_place_material(), "", "an empty box clears the place material")
+	ui.hotbar.step(-1)
+	assert_eq(vox.get_place_material(), block, "wheel back re-selects the block")
+	ui.hotbar.step(-1)
+	assert_eq(ui.hotbar.selected, 8, "wheel up from the first box wraps")
+	ui.hotbar.select_slot(0)
+	GameBus.block_place_material_changed.emit(block)
+	assert_eq(ui.hotbar.selected, 0, "R cycling to a material on the bar selects its box")
+	vox.free()
+	inv.free()
+	ui.free()
+
+func _test_hud_skill_bar() -> void:
+	var tiers := {"Archery": "novice", "Alchemy": "expert", "Carpentry": "expert", "Smithing": "master", "Diplomacy": "novice", "Herbalism": "apprentice"}
+	var order := _SkillBarScript.ordered(tiers, 5)
+	assert_eq(order, ["Smithing", "Alchemy", "Carpentry", "Herbalism", "Archery"], "best tier first, ties by name, capped at 5")
+	assert_eq(_SkillBarScript.slot_for_keycode(KEY_1), 0, "1 fires the first box")
+	assert_eq(_SkillBarScript.slot_for_keycode(KEY_5), 4, "5 fires the fifth box")
+	assert_eq(_SkillBarScript.slot_for_keycode(KEY_6), -1, "6 fires nothing")
+	assert_eq(_SkillBarScript.slot_for_keycode(KEY_A), -1, "a letter fires nothing")
+	var bar := _SkillBarScript.new()
+	bar.tier_provider = func() -> Dictionary: return tiers
+	bar.build()
+	var got: Array = []
+	var cb := func(slot: int, skill: String) -> void: got.append([slot, skill])
+	GameBus.skill_slot_triggered.connect(cb)
+	assert_eq(bar.trigger(1), "Alchemy", "the second box fires the second skill")
+	GameBus.skill_slot_triggered.disconnect(cb)
+	assert_eq(got, [[1, "Alchemy"]], "the press is reported on the bus")
+	bar.tier_provider = func() -> Dictionary: return {}
+	bar.refresh()
+	assert_eq(bar.trigger(0), "", "an empty box fires nothing")
+	bar.free()
+
+func _test_hud_window_dock() -> void:
+	var seen := {}
+	for e in _WindowDockScript.entries():
+		assert_false(seen.has(e["letter"]), "shortcut letters are unique: %s" % e["letter"])
+		seen[e["letter"]] = true
+		assert_true(UiSlice.WINDOW_KEYS.has(e["key"]), "dock window exists: %s" % e["key"])
+	assert_false(seen.has("M"), "M stays free for the map window")
+	assert_false(seen.has("S"), "S stays free for skills")
+	var ui := _new_test_ui()
+	var toggled: Array = []
+	ui.window_dock.window_toggled.connect(func(k: String) -> void: toggled.append(k))
+	ui.window_dock.window_toggled.emit("inventory")
+	assert_true(ui.is_window_open("inventory"), "clicking the I box opens the inventory")
+	assert_eq(toggled, ["inventory"], "the dock reported the click")
+	ui.window_dock.set_expanded(false)
+	assert_false(ui.window_dock.is_expanded(), "the dock collapses")
+	ui.free()
 
 func _test_ui_inventory_lines() -> void:
 	var ui := _new_test_ui()

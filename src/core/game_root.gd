@@ -335,6 +335,7 @@ func _ready() -> void:
 		_ui.market_slice          = _market
 		_ui.proposal_slice        = _proposal
 		_ui.trade_slice           = _trade
+		_ui.voxel_slice           = _voxel
 	_trade.inventory_slice    = _inventory
 	_market.inventory_slice   = _inventory
 	# Host-only, like the demo sequence in _boot_host(): the seeded counterparty

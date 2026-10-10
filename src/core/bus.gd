@@ -336,6 +336,11 @@ signal block_placed(material: String, position: Vector3)
 ## Emitted by VoxelSlice when the build material selection changes.
 signal block_place_material_changed(material: String)
 
+## Emitted by the skill bar when a number key (or a click) fires a skill box. `slot` is the
+## zero-based box, `skill` the fabric skill key in it. The slice that implements the skill's
+## behaviors subscribes; the bar itself only reports the press.
+signal skill_slot_triggered(slot: int, skill: String)
+
 # ---------------------------------------------------------------------------
 # Technology / research
 # ---------------------------------------------------------------------------

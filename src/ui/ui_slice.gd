@@ -1,7 +1,7 @@
 extends Node
 ## UI slice — window system exposing inventory, technology, crafting, trade,
 ## market, and proposals. Each window is a PanelContainer on a shared CanvasLayer,
-## toggled with I / T / C / Y (trade) / M (market) / G (proposals) / ? (controls)
+## toggled with I / T / C / Y (trade) / P (market) / G (proposals) / ? (controls)
 ## and closed with ESC or the window's ✕ button. Every window drags by its title
 ## bar and reopens where it was left (Phase 46). Opening a window
 ## never touches the mouse: the pointer is always free (Phase 85) and only
@@ -48,6 +48,9 @@ const WINDOW_KEYS := [
 
 const MouseIconScript := preload("res://src/ui/mouse_icon.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
+const HotbarScript := preload("res://src/ui/hotbar.gd")
+const SkillBarScript := preload("res://src/ui/skill_bar.gd")
+const WindowDockScript := preload("res://src/ui/window_dock.gd")
 
 ## Pixels of a window that must stay reachable on every edge when dragged.
 const DRAG_VISIBLE_MARGIN := 48.0
@@ -68,6 +71,13 @@ var technology_slice: Node = null
 var market_slice: Node = null
 var proposal_slice: Node = null
 var trade_slice: Node = null
+## The voxel slice owns the place-material selection the hotbar drives.
+var voxel_slice: Node = null
+
+## HUD: item boxes along the bottom, skill boxes top-right, window shortcuts under the health bar.
+var hotbar: HBoxContainer = null
+var skill_bar: HBoxContainer = null
+var window_dock: VBoxContainer = null
 
 var _ui: CanvasLayer = null
 ## Set while the loading screen holds world input (`GameBus.world_input_frozen`). The
@@ -134,6 +144,7 @@ func _ready() -> void:
 	GameBus.proposal_submitted.connect(_on_proposal_submitted)
 	GameBus.proposal_ratified.connect(_on_proposal_ratified)
 	GameBus.world_input_frozen.connect(_on_world_input_frozen)
+	GameBus.block_place_material_changed.connect(_on_place_material_changed)
 	refresh_all()
 
 func _on_world_input_frozen(frozen: bool) -> void:
@@ -151,6 +162,12 @@ func _input(event: InputEvent) -> void:
 		if event.unicode == 63:
 			toggle_window(WINDOW_CONTROLS)
 			return
+		# Number keys fire the skill boxes (1 = first box).
+		if skill_bar != null and not event.ctrl_pressed and not event.alt_pressed and not event.meta_pressed:
+			var skill_slot := SkillBarScript.slot_for_keycode(event.keycode)
+			if skill_slot != -1:
+				skill_bar.trigger(skill_slot)
+				return
 		match event.keycode:
 			KEY_I:
 				toggle_window(WINDOW_INVENTORY)
@@ -160,7 +177,7 @@ func _input(event: InputEvent) -> void:
 				toggle_window(WINDOW_CRAFTING)
 			KEY_Y:
 				toggle_window(WINDOW_TRADE)
-			KEY_M:
+			KEY_P:
 				toggle_window(WINDOW_MARKET)
 			KEY_G:
 				toggle_window(WINDOW_PROPOSALS)
@@ -168,6 +185,108 @@ func _input(event: InputEvent) -> void:
 				toggle_window(WINDOW_CHARACTER)
 			KEY_ESCAPE:
 				_close_all_windows()
+
+## Mouse wheel steps the hotbar selection (Ctrl + wheel zooms the camera instead, see
+## PlayerSlice). Only input no control consumed reaches here, so a wheel turned over a
+## window or the minimap never moves the selection.
+func _unhandled_input(event: InputEvent) -> void:
+	if _world_input_frozen or hotbar == null:
+		return
+	if not (event is InputEventMouseButton) or not event.pressed or event.ctrl_pressed:
+		return
+	if event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+		hotbar.step(1)
+	elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
+		hotbar.step(-1)
+
+# ---------------------------------------------------------------------------
+# HUD: hotbar / skill bar / window dock
+# ---------------------------------------------------------------------------
+
+func _build_hud() -> void:
+	var hint := Label.new()
+	hint.name = "HotbarHint"
+	hint.anchor_left = 0.5
+	hint.anchor_right = 0.5
+	hint.anchor_top = 1.0
+	hint.anchor_bottom = 1.0
+	hint.offset_left = -300.0
+	hint.offset_right = 300.0
+	hint.offset_top = -92.0
+	hint.offset_bottom = -72.0
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_font_size_override("font_size", 15)
+	hint.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	hint.add_theme_constant_override("outline_size", 5)
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ui.add_child(hint)
+
+	hotbar = HotbarScript.new()
+	hotbar.anchor_left = 0.5
+	hotbar.anchor_right = 0.5
+	hotbar.anchor_top = 1.0
+	hotbar.anchor_bottom = 1.0
+	hotbar.offset_left = -270.0
+	hotbar.offset_right = 270.0
+	hotbar.offset_top = -68.0
+	hotbar.offset_bottom = -12.0
+	hotbar.icon_loader = func(item_id: String) -> Texture2D: return _load_item_icon(item_icon_key(item_id))
+	hotbar.held_provider = func() -> Dictionary:
+		return inventory_slice.get_contents() if inventory_slice != null else {}
+	hotbar.set_hint_label(hint)
+	hotbar.build()
+	hotbar.slot_selected.connect(_on_hotbar_selected)
+	_ui.add_child(hotbar)
+
+	skill_bar = SkillBarScript.new()
+	skill_bar.anchor_left = 1.0
+	skill_bar.anchor_right = 1.0
+	skill_bar.offset_left = -272.0
+	skill_bar.offset_right = -12.0
+	skill_bar.offset_top = 192.0
+	skill_bar.offset_bottom = 240.0
+	skill_bar.tier_provider = func() -> Dictionary:
+		return crafting_slice.get_skills() if crafting_slice != null else {}
+	skill_bar.build()
+	_ui.add_child(skill_bar)
+
+	# Under the health bar (top-left, see PlayerSlice._build_hud).
+	window_dock = WindowDockScript.new()
+	window_dock.offset_left = 12.0
+	window_dock.offset_top = 48.0
+	window_dock.build()
+	window_dock.window_toggled.connect(toggle_window)
+	_ui.add_child(window_dock)
+
+## Apply what a hotbar selection means: a block becomes the place material, gear is worn, and
+## anything else (or an empty box) clears the place material so a stray click places nothing.
+func _on_hotbar_selected(index: int, item_id: String) -> void:
+	if voxel_slice == null:
+		return
+	var kind: String = hotbar.kind_at(index)
+	var material := item_id if kind == HotbarScript.KIND_BLOCK else ""
+	if voxel_slice.get_place_material() != material:
+		voxel_slice.set_place_material(material)
+		GameBus.block_place_material_changed.emit(material)
+	if kind == HotbarScript.KIND_GEAR:
+		dispatch_item_action(item_id, "equip")
+
+## R (cycle material) and any other path that changes the place material: follow it on the bar.
+func _on_place_material_changed(material: String) -> void:
+	if hotbar != null and material != "" and hotbar.selected_item() != material:
+		hotbar.select_item(material)
+
+func refresh_hud() -> void:
+	if hotbar != null:
+		hotbar.refresh()
+	if skill_bar != null:
+		skill_bar.refresh()
+	if window_dock != null:
+		var open: Array = []
+		for key in _panels:
+			if _panels[key].visible:
+				open.append(key)
+		window_dock.mark_open(open)
 
 # ---------------------------------------------------------------------------
 # Window state
@@ -199,6 +318,7 @@ func close_window(panel: String) -> void:
 		return
 	p.visible = false
 	_drag_key = ""
+	refresh_hud()
 
 func toggle_window(panel: String) -> void:
 	if is_window_open(panel):
@@ -210,6 +330,7 @@ func _close_all_windows() -> void:
 	for panel in _panels:
 		_panels[panel].visible = false
 	_drag_key = ""
+	refresh_hud()
 
 func refresh_all() -> void:
 	refresh_inventory()
@@ -219,6 +340,7 @@ func refresh_all() -> void:
 	refresh_proposals()
 	refresh_trade()
 	refresh_character()
+	refresh_hud()
 
 # ---------------------------------------------------------------------------
 # Pure projections (testable without a scene tree)
@@ -430,15 +552,17 @@ static func controls_rows() -> Array:
 		{"keys": "WASD", "desc": "Move", "mouse": 0},
 		{"keys": "Space", "desc": "Jump", "mouse": 0},
 		{"keys": "Hold", "desc": "Look around (the cursor hides while held)", "mouse": MOUSE_BUTTON_RIGHT},
-		{"keys": "Scroll", "desc": "Zoom", "mouse": 0},
+		{"keys": "Scroll", "desc": "Choose the item box (bottom row)", "mouse": 0},
+		{"keys": "Ctrl + Scroll", "desc": "Zoom the camera", "mouse": 0},
+		{"keys": "1 – 5", "desc": "Use the skill boxes (top right)", "mouse": 0},
 		{"keys": "", "desc": "Click: Attack / Pick up / Chop", "mouse": MOUSE_BUTTON_LEFT},
 		{"keys": "Shift +", "desc": "Mine", "mouse": MOUSE_BUTTON_LEFT},
 		{"keys": "", "desc": "Place", "mouse": MOUSE_BUTTON_MIDDLE},
-		{"keys": "R", "desc": "Cycle material", "mouse": 0},
+		{"keys": "R", "desc": "Next placeable block", "mouse": 0},
 		{"keys": "B · V", "desc": "Station cycle / place", "mouse": 0},
 		{"keys": "G", "desc": "Tame nearest creature (G is shared with Proposals)", "mouse": 0},
 		{"keys": "E", "desc": "Toggle equipment", "mouse": 0},
-		{"keys": "I · T · C · Y · M · G · K", "desc": "Inventory · Tech · Crafting · Trade · Market · Proposals · Character", "mouse": 0},
+		{"keys": "I · T · C · Y · P · G · K", "desc": "Inventory · Tech · Crafting · Trade · Market · Proposals · Character (or click the boxes under your health)", "mouse": 0},
 		{"keys": "?", "desc": "This panel", "mouse": 0},
 		{"keys": "Enter · /", "desc": "Chat and commands (/help)", "mouse": 0},
 		{"keys": "ESC", "desc": "Close windows", "mouse": 0},
@@ -961,14 +1085,17 @@ func _belongs_to_local_player(result: Dictionary) -> bool:
 
 func _on_item_picked_up(_item_id: String, _quantity: int) -> void:
 	refresh_inventory()
+	refresh_hud()
 
 func _on_inventory_changed() -> void:
 	refresh_inventory()
+	refresh_hud()
 	refresh_crafting()
 	_refresh_market_item_selector()
 
 func _on_block_mined(_material: String, _quantity: int, _position: Vector3) -> void:
 	refresh_inventory()
+	refresh_hud()
 
 func _on_block_placed(_material: String, _position: Vector3) -> void:
 	refresh_inventory()
@@ -1066,12 +1193,14 @@ func _build_ui() -> void:
 	_ui.name = "Windows"
 	_ui.layer = 30
 	add_child(_ui)
+	# Built first so every window draws above the HUD.
+	_build_hud()
 
 	_panels[WINDOW_INVENTORY] = _build_window(WINDOW_INVENTORY, "Inventory", _build_inventory_content(), Vector2(24, 24))
 	_panels[WINDOW_TECHNOLOGY] = _build_window(WINDOW_TECHNOLOGY, "Technology", _build_technology_content(), Vector2(470, 24))
 	_panels[WINDOW_CRAFTING] = _build_window(WINDOW_CRAFTING, "Crafting", _build_crafting_content(), Vector2(24, 360))
 	_panels[WINDOW_TRADE] = _build_window(WINDOW_TRADE, "Trade", _build_trade_content(), Vector2(470, 360))
-	_panels[WINDOW_MARKET] = _build_window(WINDOW_MARKET, "Market", _build_market_content(), Vector2(24, 700))
+	_panels[WINDOW_MARKET] = _build_window(WINDOW_MARKET, "Market (P)", _build_market_content(), Vector2(24, 700))
 	_panels[WINDOW_PROPOSALS] = _build_window(WINDOW_PROPOSALS, "Proposals", _build_proposals_content(), Vector2(470, 700))
 	_panels[WINDOW_CONTROLS] = _build_window(WINDOW_CONTROLS, "Controls (?)", _build_controls_content(), Vector2(916, 24))
 

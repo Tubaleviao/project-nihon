@@ -454,9 +454,9 @@ func _build_ui() -> void:
 	box.anchor_top = 1.0
 	box.anchor_bottom = 1.0
 	box.offset_left = 12.0
-	box.offset_top = -270.0
+	box.offset_top = -338.0
 	box.offset_right = 520.0
-	box.offset_bottom = -52.0
+	box.offset_bottom = -120.0
 	box.alignment = BoxContainer.ALIGNMENT_END
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_layer.add_child(box)
