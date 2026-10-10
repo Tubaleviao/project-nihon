@@ -1587,6 +1587,16 @@ func get_column_runs_at(world_xz: Vector2) -> Array:
 func get_runs_at_tile(tile: Vector2i) -> Array:
 	return apply_run_ops(_base_runs_for_tile(tile), _edits.get(_tile_key(tile), []))
 
+## Phase 110 — true when any tile within Chebyshev `radius` tiles of `tile` carries an edit.
+func has_edit_near(tile: Vector2i, radius: int) -> bool:
+	if _edits.is_empty():
+		return false
+	for dz in range(-radius, radius + 1):
+		for dx in range(-radius, radius + 1):
+			if _edits.has(_tile_key(Vector2i(tile.x + dx, tile.y + dz))):
+				return true
+	return false
+
 ## Dump voxel edits for persistence: { "gx,gz": [typed run edit, ...] }.
 func get_edits() -> Dictionary:
 	return _edits.duplicate(true)

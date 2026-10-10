@@ -163,6 +163,13 @@ func run() -> void:
 	_run_test("record sync: a snapshot carries the window's records only", _test_record_sync_scope)
 	_run_test("record sync: bad records are dropped, the rest apply", _test_record_sync_validation)
 	_run_test("record sync: a packet over the cap refuses the rest", _test_record_sync_cap)
+	_run_test("tree pin: building on a tree's tile clears it for good", _test_tree_pin_edit_clears)
+	_run_test("tree pin: a station clears the trees inside its radius only", _test_tree_pin_station_radius)
+	_run_test("tree pin: a recorded chunk keeps its tree budget", _test_tree_pin_budget_kept)
+	_run_test("tree pin: a client frees a cleared tree", _test_tree_pin_client_cleared)
+	_run_test("tree pin: a chopped stump still regrows", _test_tree_pin_stump_regrows)
+	_run_test("tree pin: x and t are validated and round-trip", _test_tree_pin_record_validation)
+	_run_test("tree pin: a tree on edited ground is cleared at first spawn", _test_tree_pin_edited_ground)
 	_run_test("game_root: worldgen stamp wiring on load",     _test_worldgen_stamp_game_root_wiring)
 	_run_test("persistence: missing slot emits load_failed",  _test_persistence_missing_slot)
 	_run_test("loot: known creature produces drops",          _test_loot_known_creature)
@@ -17663,4 +17670,168 @@ func _test_record_sync_cap() -> void:
 	var got := ChunkRecordSyncScript.records_in_window(Vector2i(5, 0), 6, 4)
 	assert_eq((got["records"] as Dictionary).size(), 4, "a window with more records than the cap sends the cap")
 	assert_true(bool(got["truncated"]), "and says it truncated")
+	ChunkRecordsScript.clear()
+
+
+# --- Phase 110 — trees pinned per chunk, cleared where players build -----------------------------
+
+func _tree_pin_rig(chunk: Vector2i) -> Node:
+	ChunkRecordsScript.clear()
+	ChunkRecordsScript.set_record(chunk, _sync_record(chunk, "TemperateForest"))
+	var t := _make_tree_slice()
+	t.record_writer = func(c: Vector2i, rec: Dictionary) -> void:
+		ChunkRecordsScript.set_record(c, RegionStoreScript.normalize_gen(rec))
+	return t
+
+func _test_tree_pin_edit_clears() -> void:
+	var chunk := Vector2i(0, 0)
+	var t := _tree_pin_rig(chunk)
+	t.spawn_for_chunk(chunk)
+	assert_eq(t.trees_in_chunk(chunk).size(), 8, "the chunk starts with its 8 trees")
+	var victim: Dictionary = t.get_all_trees()[0]
+	var cleared: Array = []
+	var on_cleared := func(id: String) -> void: cleared.append(id)
+	GameBus.tree_cleared.connect(on_cleared)
+	var pos: Vector3 = victim["position"]
+	GameBus.block_changed.emit("place", pos, Vector3.UP, "Stone")
+	assert_true(cleared.has(str(victim["tree_id"])), "tree_cleared names the tree on the edited tile")
+	assert_true(t.get_tree_record(str(victim["tree_id"])).is_empty(), "the tree is gone")
+	assert_true(t.index_is_consistent(), "the tree index stays consistent")
+	var left: int = t.trees_in_chunk(chunk).size()
+	t.despawn_for_chunk(chunk)
+	t.spawn_for_chunk(chunk)
+	assert_eq(t.trees_in_chunk(chunk).size(), left, "after unload and reload it stays gone")
+	assert_true(t.get_tree_record(str(victim["tree_id"])).is_empty(), "the same tree does not return")
+	# Save and load: the record goes through the region store and back.
+	var dir := _fresh_region_dir("test_p110_clear")
+	var store := RegionStoreScript.new(dir + "regions/")
+	var rec := ChunkRecordsScript.get_record(chunk)
+	assert_true((rec["x"] as Array).has(int(victim["index"])), "the record lists the cleared index")
+	assert_eq(store.write_chunks({ "0,0": { "gen": rec } }), OK, "the record is saved")
+	ChunkRecordsScript.clear()
+	ChunkRecordsScript.adopt_region(store.read_region(Vector2i.ZERO)["chunks"])
+	t.despawn_for_chunk(chunk)
+	t.spawn_for_chunk(chunk)
+	assert_eq(t.trees_in_chunk(chunk).size(), left, "after save and load it is still gone")
+	GameBus.tree_cleared.disconnect(on_cleared)
+	t.free()
+	ChunkRecordsScript.clear()
+
+func _test_tree_pin_station_radius() -> void:
+	var chunk := Vector2i(0, 0)
+	var t := _tree_pin_rig(chunk)
+	t.spawn_for_chunk(chunk)
+	var centre: Vector3 = t.get_all_trees()[0]["position"]
+	var inside := 0
+	var outside := 0
+	var inside_ids: Array = []
+	for tree in t.get_all_trees():
+		var p: Vector3 = tree["position"]
+		if Vector2(p.x - centre.x, p.z - centre.z).length() <= TreeSlice.CLEAR_RADIUS_M:
+			inside += 1
+			inside_ids.append(str(tree["tree_id"]))
+		else:
+			outside += 1
+	GameBus.station_placed.emit("station_t110", "Workbench", centre)
+	assert_eq(t.trees_in_chunk(chunk).size(), outside, "only the trees outside the radius remain")
+	assert_true(inside >= 1, "at least the centre tree was inside")
+	for tid in inside_ids:
+		assert_true(t.get_tree_record(str(tid)).is_empty(), "%s inside the radius is cleared" % tid)
+	t.free()
+	ChunkRecordsScript.clear()
+
+func _test_tree_pin_budget_kept() -> void:
+	var chunk := Vector2i(0, 0)
+	var t := _tree_pin_rig(chunk)
+	t.spawn_for_chunk(chunk)
+	assert_eq(int(ChunkRecordsScript.get_record(chunk).get("t", -1)), 8, "the record stamps the budget it spawned")
+	var biome: Variant = GameData.BIOMES.get("TemperateForest", null)
+	var original: Variant = biome.get("treeDensity")
+	biome.set("treeDensity", 2)
+	t.despawn_for_chunk(chunk)
+	t.spawn_for_chunk(chunk)
+	assert_eq(t.trees_in_chunk(chunk).size(), 8, "a changed treeDensity does not touch a recorded chunk")
+	var fresh := Vector2i(5, 5)
+	t.spawn_for_chunk(fresh)
+	assert_eq(t.trees_in_chunk(fresh).size(), 2, "a chunk with no record follows the new density")
+	biome.set("treeDensity", original)
+	t.free()
+	ChunkRecordsScript.clear()
+
+func _test_tree_pin_client_cleared() -> void:
+	var chunk := Vector2i(0, 0)
+	var t := _tree_pin_rig(chunk)
+	t.is_authoritative = false
+	t.spawn_for_chunk(chunk)
+	var tid: String = str(t.get_all_trees()[0]["tree_id"])
+	var body: Variant = t.get_tree_record(tid)["body"]
+	GameBus.tree_cleared.emit("tree_unknown_id")
+	assert_eq(t.trees_in_chunk(chunk).size(), 8, "an unknown id is ignored")
+	GameBus.tree_cleared.emit(tid)
+	assert_true(t.get_tree_record(tid).is_empty(), "the client drops the cleared tree")
+	assert_eq(t.trees_in_chunk(chunk).size(), 7, "and only that one")
+	assert_true(t.index_is_consistent(), "the index is consistent")
+	if body != null:
+		assert_true((body as Node).is_queued_for_deletion(), "its collision body is freed")
+	# A client never clears on its own from a local edit.
+	GameBus.block_changed.emit("place", t.get_all_trees()[0]["position"], Vector3.UP, "Stone")
+	assert_eq(t.trees_in_chunk(chunk).size(), 7, "a client waits for the host")
+	# A record arriving after the trees spawned reconciles them.
+	var rec := ChunkRecordsScript.get_record(chunk).duplicate(true)
+	rec["x"] = [0, 1]
+	ChunkRecordsScript.set_record(chunk, RegionStoreScript.normalize_gen(rec))
+	t.resync_recorded_chunks()
+	assert_false(t.trees_in_chunk(chunk).has("tree_0_0_0") or t.trees_in_chunk(chunk).has("tree_0_0_1"),
+		"a late record removes its cleared trees")
+	t.free()
+	ChunkRecordsScript.clear()
+
+func _test_tree_pin_stump_regrows() -> void:
+	var chunk := Vector2i(0, 0)
+	var t := _tree_pin_rig(chunk)
+	t.spawn_for_chunk(chunk)
+	var tid: String = str(t.get_all_trees()[0]["tree_id"])
+	t._set_chopped(tid)
+	assert_eq(str(t.get_tree_record(tid)["state"]), "stump", "chopped")
+	assert_false(ChunkRecordsScript.get_record(chunk).has("x"), "a chop records no cleared tree")
+	t._trees[tid]["respawn_at"] = 1.0
+	t._tick_respawn()
+	assert_eq(str(t.get_tree_record(tid)["state"]), "standing", "the stump regrows after its cooldown")
+	t.free()
+	ChunkRecordsScript.clear()
+
+func _test_tree_pin_record_validation() -> void:
+	var base := _sync_record(Vector2i(3, 3))
+	var ok := base.duplicate(true)
+	ok["t"] = 5
+	ok["x"] = [3, 1, 3]
+	var n := RegionStoreScript.normalize_gen(ok)
+	assert_eq(int(n["t"]), 5, "a valid budget is kept")
+	assert_eq(n["x"], [1, 3], "cleared indices are deduplicated and sorted")
+	for bad in [{ "t": -1 }, { "t": 9999 }, { "t": "8" }, { "x": [-1] }, { "x": [64] }, { "x": "1" }, { "x": [1.5] }]:
+		var r := base.duplicate(true)
+		r.merge(bad)
+		assert_true(RegionStoreScript.normalize_gen(r).is_empty(), "rejected: %s" % str(bad))
+	assert_false(RegionStoreScript.normalize_gen(base).has("t"), "a record with neither stays as before")
+
+func _test_tree_pin_edited_ground() -> void:
+	var chunk := Vector2i(0, 0)
+	var t := _tree_pin_rig(chunk)
+	t.spawn_for_chunk(chunk)
+	var target: Vector2i = t.get_all_trees()[0]["tile"]
+	t.despawn_for_chunk(chunk)
+	t.free()
+	ChunkRecordsScript.clear()
+	ChunkRecordsScript.set_record(chunk, _sync_record(chunk, "TemperateForest"))
+	var vox := VoxelSlice.new()
+	vox.place_block(Vector3(float(target.x) + 0.5, 0.0, float(target.y) + 0.5), Vector3.UP, "Stone")
+	var t2 := _tree_pin_rig(chunk)
+	t2.voxel_slice = vox
+	if not vox.has_edit_near(target, 1):
+		vox._edits[vox._tile_key(target)] = [{ "op": "legacy" }]
+	t2.spawn_for_chunk(chunk)
+	assert_true(t2.trees_in_chunk(chunk).size() < 8, "the tree on the edited tile never spawns")
+	assert_true(ChunkRecordsScript.get_record(chunk).has("x"), "and is recorded as cleared")
+	t2.free()
+	vox.free()
 	ChunkRecordsScript.clear()

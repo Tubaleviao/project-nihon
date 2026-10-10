@@ -31,6 +31,8 @@ const TerrainSliceScript := preload("res://src/terrain/terrain_slice.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 ## Heights of a `gen` record are stored at this resolution (about 7 bytes each as JSON).
 const GEN_HEIGHT_STEP := 0.0001
+## Phase 110 — bound on a record's tree budget `t` and on the spawn indices in `x` (indices are < this).
+const GEN_TREE_MAX := 64
 const FILE_PREFIX := "r."
 const FILE_EXT := ".json"
 
@@ -329,7 +331,8 @@ static func _chunk_entry_valid(entry: Dictionary) -> bool:
 ## Phase 107 — a `gen` record cleaned for storage, or `{}` when it is malformed: `v` an integer in
 ## 1..WORLDGEN_VERSION (a newer one was written by a newer game and is not trusted), `f` a
 ## non-negative integer, `b` one of `BIOME_KEYS`, `h` four finite heights inside the world's height
-## range (rounded to `GEN_HEIGHT_STEP`). Pure.
+## range (rounded to `GEN_HEIGHT_STEP`); optional `t` (tree budget, 0..GEN_TREE_MAX) and `x` (distinct
+## cleared tree spawn indices, each below GEN_TREE_MAX; stored sorted) are kept when valid. Pure.
 static func normalize_gen(rec: Variant) -> Dictionary:
 	if not (rec is Dictionary):
 		return {}
@@ -356,7 +359,26 @@ static func normalize_gen(rec: Variant) -> Dictionary:
 		if not is_finite(fx) or fx < lo or fx > hi:
 			return {}
 		heights.append(snappedf(fx, GEN_HEIGHT_STEP))
-	return { "v": int(v), "f": int(f), "b": b, "h": heights }
+	var out := { "v": int(v), "f": int(f), "b": b, "h": heights }
+	# Phase 110 — the tree budget the chunk was generated with and the spawn indices cleared for good.
+	if d.has("t"):
+		var t: Variant = d["t"]
+		if not _is_whole_number(t) or int(t) < 0 or int(t) > GEN_TREE_MAX:
+			return {}
+		out["t"] = int(t)
+	if d.has("x"):
+		var xs: Variant = d["x"]
+		if not (xs is Array) or (xs as Array).size() > GEN_TREE_MAX:
+			return {}
+		var seen := {}
+		for i in xs:
+			if not _is_whole_number(i) or int(i) < 0 or int(i) >= GEN_TREE_MAX:
+				return {}
+			seen[int(i)] = true
+		var cleared: Array = seen.keys()
+		cleared.sort()
+		out["x"] = cleared
+	return out
 
 static func _is_whole_number(x: Variant) -> bool:
 	if typeof(x) == TYPE_INT:

@@ -41,6 +41,7 @@ extends Node
 ##                                          (the host re-emits the bound actor)
 ##         tree_chopped(tree_id, wood, state, at)    — host authoritative chop
 ##         tree_respawned(tree_id)                   — host authoritative regrowth
+##         tree_cleared(tree_id)                     — host authoritative, building cleared a tree
 ##         craft_intent(recipe_id, player_id)        — client wants to craft
 ##         repair_intent(item_id, player_id)         — client wants to repair
 ##         research_intent(tech_id, player_id)       — client wants to research
@@ -253,6 +254,7 @@ func _ready() -> void:
 	GameBus.tree_chop_requested.connect(_on_tree_chop_requested)
 	GameBus.tree_chopped.connect(_on_tree_chopped)
 	GameBus.tree_respawned.connect(_on_tree_respawned)
+	GameBus.tree_cleared.connect(_on_tree_cleared)
 	# Phase 33 — crafting is per-player, so a client's craft travels as an intent.
 	GameBus.craft_intent.connect(_on_craft_intent)
 	# Phase 34 — repair and research are per-player too, so they travel the same
@@ -681,6 +683,12 @@ func _on_tree_respawned(tree_id: String) -> void:
 	if _role != Role.HOST:
 		return
 	_broadcast({ "type": "tree_respawned", "tree_id": tree_id })
+
+## Phase 110 — building cleared a tree for good; clients free it (an unknown id is ignored).
+func _on_tree_cleared(tree_id: String) -> void:
+	if _role != Role.HOST:
+		return
+	_broadcast({ "type": "tree_cleared", "tree_id": tree_id })
 
 ## Phase 33 — a client-side craft request travels to the host as an intent; the host
 ## resolves it against the REQUESTING peer's inventory (see the craft_intent arm of
@@ -1734,6 +1742,8 @@ func _route_h2c(payload: Dictionary) -> void:
 			)
 		"tree_respawned":
 			GameBus.tree_respawned.emit(str(payload.get("tree_id", "")))
+		"tree_cleared":
+			GameBus.tree_cleared.emit(str(payload.get("tree_id", "")))
 		"chat_message":
 			# Phase 85 — host text for this player's chat box; the target is us by delivery.
 			GameBus.chat_posted.emit(

@@ -405,6 +405,11 @@ signal tree_chopped(tree_id: String, wood: String, state: String, respawn_at: fl
 ## tree_id : String — TreeSlice tree id
 signal tree_respawned(tree_id: String)
 
+## Phase 110 — emitted by TreeSlice (host) when building cleared a tree for good: the tree is
+## removed (collision and MultiMesh slot) and never regrows. A client frees it on receipt.
+## tree_id : String — TreeSlice tree id
+signal tree_cleared(tree_id: String)
+
 # ---------------------------------------------------------------------------
 # Player
 # ---------------------------------------------------------------------------

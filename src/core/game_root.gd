@@ -13,6 +13,7 @@ const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const VoxelSlice       := preload("res://src/terrain/voxel_slice.gd")
 const ChunkManager     := preload("res://src/terrain/chunk_manager.gd")
 const ChunkRecordSync  := preload("res://src/terrain/chunk_record_sync.gd")
+const ChunkRecords   := preload("res://src/terrain/chunk_records.gd")
 const RegionStreamer   := preload("res://src/persistence/region_streamer.gd")
 const DistantTerrain   := preload("res://src/terrain/distant_terrain.gd")
 const BattleSlice      := preload("res://src/battle/battle_slice.gd")
@@ -321,6 +322,8 @@ func _ready() -> void:
 	_voxel.player_registry    = _registry
 	_tree.inventory_slice     = _inventory
 	_tree.player_registry     = _registry
+	_tree.voxel_slice         = _voxel
+	_tree.record_writer       = Callable(_chunk_manager, "update_record")
 	# Phase 36 — the wire is policed with evidence the bus cannot carry: a tree chop
 	# intent names only a tree id (its position for the reach check comes from the tree
 	# slice) and a trade invite names a counterparty (resolved against the registry's
@@ -1733,7 +1736,10 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 	# Phase 109 — the host's generation records, BEFORE `_chunk_manager.start()` below builds from them;
 	# a malformed one is dropped, anything past the packet cap is refused.
 	if data.has("gen_records"):
+		var rev_before := ChunkRecords.revision()
 		var gen_result := ChunkRecordSync.apply(data["gen_records"])
+		if ChunkRecords.revision() != rev_before:
+			_tree.resync_recorded_chunks()   # Phase 110 — a record may carry a budget or cleared trees
 		if int(gen_result["dropped"]) > 0 or int(gen_result["refused"]) > 0:
 			Diag.warn("GameRoot: generation records: %d applied, %d dropped, %d refused" % [
 				int(gen_result["applied"]), int(gen_result["dropped"]), int(gen_result["refused"])])
