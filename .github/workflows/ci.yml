@@ -152,6 +152,14 @@ jobs:
       - name: Check generated files for fabric drift
         run: npm run check-drift
 
+      - name: Check the README phase table against ROADMAP.md
+        run: |
+          node tools/check_readme_phases.js
+          # The self-test flips a README status in memory and must exit 1, naming the phase.
+          set +e
+          node tools/check_readme_phases.js --self-test
+          test $? -eq 1
+
   net-harness:
     name: Two-client network harness (loopback ENet)
     runs-on: ubuntu-latest
