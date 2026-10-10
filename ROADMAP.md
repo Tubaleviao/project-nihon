@@ -127,7 +127,7 @@ issue number where the criterion used to be.
 | 104 | Two-client harness: chat and admin teleport over the socket | Merged | [Phase 101](#phase-101--chat-and-admin-commands-are-host-authoritative-exact-and-proven-on-the-wire) |
 | 105 | Archive Phases 75–95 into the roadmap history | Merged | [Phase 99](#phase-99--housekeeping-sweep-legacy-tiles-roadmapreadme-hygiene-and-review-leftovers) |
 | 106 | A world stamp that covers fabric parameters, and golden generator values | Done | below |
-| 107 | A per-chunk generation record in the region store | Planned | below |
+| 107 | A per-chunk generation record in the region store | Done | below |
 | 108 | Terrain reads and writes the generation record on the host | Planned | below |
 | 109 | Generation records reach clients, scoped and validated | Planned | below |
 | 110 | Trees are pinned per chunk and cleared where players build | Planned | below |
@@ -336,7 +336,7 @@ upgrade could shift without any change in this repo. This phase makes both visib
 
 ---
 
-## Phase 107 — A per-chunk generation record in the region store
+## Phase 107 — A per-chunk generation record in the region store ✅ Done
 
 **Goal:** a visited chunk keeps its look when the generator later changes only if what it looked like
 is stored. The large-scale surface of a chunk is the four `WorldShape` heights at its corners (the
@@ -357,11 +357,11 @@ phase adds the storage and nothing else; Phase 108 uses it.
   newer than the running one) is dropped with one warning per session, the Phase 89 pattern.
 
 **Acceptance criteria:**
-- [ ] Suite: a `gen` record round-trips through `save_region` / `load_region` with heights equal to 1e-4.
-- [ ] Suite: a version-1 region file loads unchanged, and a save of it writes version 2 with its edits intact.
-- [ ] Suite: a malformed `gen` is dropped, its chunk's edits survive, and the warning fires once for two loads.
-- [ ] Suite: a region with 1,024 recorded chunks and no edits serialises to under 100 KB.
-- [ ] Suite green on both boot paths.
+- [x] Suite: a `gen` record round-trips through `save_region` / `load_region` with heights equal to 1e-4.
+- [x] Suite: a version-1 region file loads unchanged, and a save of it writes version 2 with its edits intact.
+- [x] Suite: a malformed `gen` is dropped, its chunk's edits survive, and the warning fires once for two loads.
+- [x] Suite: a region with 1,024 recorded chunks and no edits serialises to under 100 KB.
+- [x] Suite green on both boot paths.
 
 ---
 
