@@ -744,11 +744,11 @@ func _on_chat_posted(channel: String, sender: String, text: String, target_id: S
 		_deliver(peer, payload)
 
 ## Phase 85 — host → one client: move that player's body to `position` (an admin teleport).
-func send_teleport(peer_id: int, position: Vector3) -> void:
+func send_teleport(peer_id: int, position: Dictionary) -> void:
 	if _role != Role.HOST:
 		Diag.warn("NetworkingSlice: send_teleport called on non-host — dropped")
 		return
-	_deliver(peer_id, { "type": "teleport", "position": WorldPos.to_wire(position) })
+	_deliver(peer_id, { "type": "teleport", "position": WorldPos.pos_to_wire(position) })
 
 ## Phase 47 — client → host: one equip / unequip action on this machine's avatar (`item_key`
 ## "" unequips `slot`). Carries no identity: the host binds it to the connection and decides
@@ -1744,7 +1744,11 @@ func _route_h2c(payload: Dictionary) -> void:
 			)
 		"teleport":
 			# Phase 85 — an admin moved us; game_root places the body (rebasing the scene if far).
-			GameBus.player_teleport.emit(WorldPos.from_wire(payload.get("position", [])))
+			var spot: Dictionary = WorldPos.pos_from_wire(payload.get("position", null))
+			if spot.is_empty():
+				Diag.warn("NetworkingSlice: malformed teleport position dropped")
+			else:
+				GameBus.player_teleport.emit(spot)
 		"creature_state_changed":
 			GameBus.creature_state_changed.emit(
 				str(payload.get("instance_id", "")),

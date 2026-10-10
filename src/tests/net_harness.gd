@@ -58,6 +58,7 @@ extends Node
 
 const PlayerSlice := preload("res://src/player/player_slice.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
+const WorldPos := preload("res://src/terrain/world_pos.gd")
 
 ## The id the client presents on its FIRST join, well-formed but owned by nobody: the
 ## shape `PlayerRegistry.looks_like_player_id` accepts, minted by no registry. The
@@ -149,6 +150,9 @@ static func steps() -> Array:
 		{ "name": "rate_bucket",       "compare": true },
 		{ "name": "clock_synced",      "compare": true },
 		{ "name": "inventory_owner",   "compare": true },
+		{ "name": "chat_relayed",      "compare": true },
+		{ "name": "admin_teleport",    "compare": true },
+		{ "name": "non_admin_refused", "compare": true },
 		{ "name": "equipment_recorded", "compare": true },
 		{ "name": "equipment_delivered", "compare": true },
 		{ "name": "peer_damage_floor", "compare": true },
@@ -276,6 +280,9 @@ func run(root: Node, role: String) -> void:
 	GameBus.tree_chop_requested.connect(_on_chop_requested)
 	# Deaths are observed the same way, and for the same reason (see `_deaths`).
 	GameBus.player_died.connect(_on_player_died)
+	# Chat lines and teleports are observed over the whole run, like deaths (see `_chat_seen`).
+	GameBus.chat_posted.connect(_on_chat_posted)
+	GameBus.player_teleport.connect(_on_player_teleport)
 	print(format_line("ready", "ok", role))
 	print(format_line("plan", "ok", plan_detail()))
 	if not _self_audit():
@@ -328,6 +335,9 @@ func run(root: Node, role: String) -> void:
 	await _step_rate_bucket()
 	await _step_clock_synced()
 	await _step_inventory_owner()
+	await _step_chat_relayed()
+	await _step_admin_teleport()
+	await _step_non_admin_refused()
 	await _step_equipment_recorded()
 	await _step_equipment_delivered()
 	await _step_peer_damage_floor()
@@ -607,6 +617,88 @@ func _step_inventory_owner() -> void:
 		return
 	var ok: bool = await _await_until(func(): return _root._inventory.get_contents().has(PROBE_ITEM), STEP_TIMEOUT_SECS)
 	_report("inventory_owner", verdict(ok, true), "owner-only" if ok else "sync_never_arrived")
+
+## Every chat line this side saw, whole run: `{ channel, sender, text, target }`.
+var _chat_seen: Array = []
+## Every teleport this side was handed, whole run: `{ chunk, local }`.
+var _teleports_seen: Array = []
+
+func _on_chat_posted(channel: String, sender: String, text: String, target: String) -> void:
+	_chat_seen.append({ "channel": channel, "sender": sender, "text": text, "target": target })
+
+func _on_player_teleport(pos: Dictionary) -> void:
+	_teleports_seen.append(pos)
+
+func _chat_line(channel: String, needle: String, target: String) -> Dictionary:
+	for m in _chat_seen:
+		if m["channel"] == channel and m["target"] == target and str(m["text"]).contains(needle):
+			return m
+	return {}
+
+const CHAT_PROBE := "hello from the harness"
+
+## Step 7c — Phase 101: the client's plain line reaches both roles with the same sanitised text, said
+## by the client's handle. The packet carries only text, so no name it claimed can be the sender.
+func _step_chat_relayed() -> void:
+	if _role == "client":
+		_root._chat.submit(CHAT_PROBE + "\u0001!")
+	var ok: bool = await _await_until(func(): return not _chat_line("chat", CHAT_PROBE, "").is_empty(), STEP_TIMEOUT_SECS)
+	var line := _chat_line("chat", CHAT_PROBE, "")
+	var sender := str(line.get("sender", ""))
+	var named := sender != "" and sender != SPOOFED_ID and not sender.begins_with("player_")
+	if _role == "host":
+		named = named and sender == _root._registry.public_handle(_bound_id())
+	var same := str(line.get("text", "")) == CHAT_PROBE + "!"
+	_report("chat_relayed", verdict(ok and named and same, true),
+		"relayed-by-handle" if (ok and named and same) else "not_relayed-ok%d-named%d-same%d" % [int(ok), int(named), int(same)])
+
+## Step 7d — Phase 101: the host runs `/bring <client handle>`; the client's body lands within 1 m of
+## the host's, and the host then sees the client's next position report from there.
+func _step_admin_teleport() -> void:
+	if _role == "host":
+		var target := _bound_id()
+		var peer := _peer_id()
+		var handle: String = _root._registry.public_handle(target)
+		var here: Dictionary = _root._player.get_world_pos()
+		_root._chat.handle_intent("/bring " + handle, "")
+		var ok: bool = await _await_until(func():
+			var seen: Dictionary = _root._networking.get_last_known_exact(peer)
+			return not seen.is_empty() and seen["chunk"] == here["chunk"] \
+				and (seen["local"] as Vector3).distance_to(here["local"]) < 1.0, STEP_TIMEOUT_SECS)
+		_report("admin_teleport", verdict(ok, true), "landed-within-1m" if ok else "no_landing")
+		return
+	var got: bool = await _await_until(func(): return not _teleports_seen.is_empty(), STEP_TIMEOUT_SECS)
+	var near := false
+	if got:
+		var want: Dictionary = _teleports_seen.back()
+		var at: Dictionary = _root._player.get_world_pos()
+		near = at["chunk"] == want["chunk"] and (at["local"] as Vector3).distance_to(want["local"]) < 1.0
+	_report_actual = true
+	_report_position()
+	await _await_settle(2.5)
+	_report_actual = false
+	_report_position()
+	_report("admin_teleport", verdict(got and near, true), "landed-within-1m" if (got and near) else "no_landing")
+
+## Step 7e — Phase 101: a non-admin's `/give` is refused to that client alone and creates nothing.
+func _step_non_admin_refused() -> void:
+	if _role == "host":
+		var target := _bound_id()
+		var inv: Node = _root._registry.get_inventory(target)
+		var before: int = inv.get_item_count(PROBE_ITEM) if inv != null else 0
+		var ok: bool = await _await_until(func(): return not _chat_line("system", "for admins", target).is_empty(), STEP_TIMEOUT_SECS)
+		await _await_settle(1.0)
+		var after: int = inv.get_item_count(PROBE_ITEM) if inv != null else 0
+		_report("non_admin_refused", verdict(ok and before == after, true),
+			"refused-nothing-created" if (ok and before == after) else "not_refused-ok%d-before%d-after%d" % [int(ok), before, after])
+		return
+	var before: int = int(_root._inventory.get_contents().get(PROBE_ITEM, 0))
+	_root._chat.submit("/give %s 5" % PROBE_ITEM)
+	var ok: bool = await _await_until(func(): return not _chat_line("system", "for admins", "").is_empty(), STEP_TIMEOUT_SECS)
+	await _await_settle(1.0)
+	var after: int = int(_root._inventory.get_contents().get(PROBE_ITEM, 0))
+	_report("non_admin_refused", verdict(ok and before == after, true),
+		"refused-nothing-created" if (ok and before == after) else "not_refused-ok%d-before%d-after%d" % [int(ok), before, after])
 
 ## The client re-sends its equipment claim this many times, this far apart, while the host
 ## grants the item and records the set: 6 x 0.5 s covers a host that is a few seconds slower
@@ -1170,9 +1262,20 @@ func _report(step: String, verdict_text: String, detail: String) -> void:
 ## signal `PlayerSlice._broadcast_state()` uses), so the host's reach guard measures
 ## against a real movement packet rather than a harness-only path.
 func _report_position() -> void:
+	if _report_actual:
+		var wp: Dictionary = _root._player.get_world_pos()
+		GameBus.player_state_sync_requested.emit({
+			"position": WorldPos.to_scene(wp, Vector2i.ZERO), "world_pos": wp,
+			"hp": PlayerSlice.MAX_HP, "max_hp": PlayerSlice.MAX_HP,
+		})
+		return
 	GameBus.player_state_sync_requested.emit({
 		"position": RENDEZVOUS, "hp": PlayerSlice.MAX_HP, "max_hp": PlayerSlice.MAX_HP,
 	})
+
+## True while the client reports where its body REALLY is rather than RENDEZVOUS (the admin
+## teleport step, which has to show the host the body at its new spot).
+var _report_actual: bool = false
 
 ## The host saves into its own directory, emptied before the boot: a world record left by
 ## any earlier run (or by the dev server) would be adopted by `_boot_server` and replace

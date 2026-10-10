@@ -121,7 +121,7 @@ issue number where the criterion used to be.
 | 98 | An exact first-boot spawn and a public canonical helper | Done | [history](docs/roadmap-history/phases-75-98.md) |
 | 99 | Housekeeping sweep: legacy tiles, roadmap/README hygiene and review leftovers | Done | below |
 | 100 | Follow-up issue backlog triage | Done | below |
-| 101 | Chat and admin commands are host-authoritative, exact and proven on the wire | Planned | below |
+| 101 | Chat and admin commands are host-authoritative, exact and proven on the wire | Done | below |
 | 102 | An admin `/kill` lands on the host's simulated peer health | Merged | [Phase 101](#phase-101--chat-and-admin-commands-are-host-authoritative-exact-and-proven-on-the-wire) |
 | 103 | Teleports carry the exact position and stay on the planet | Merged | [Phase 101](#phase-101--chat-and-admin-commands-are-host-authoritative-exact-and-proven-on-the-wire) |
 | 104 | Two-client harness: chat and admin teleport over the socket | Merged | [Phase 101](#phase-101--chat-and-admin-commands-are-host-authoritative-exact-and-proven-on-the-wire) |
@@ -234,7 +234,7 @@ human-verification issues (#133, #134), which stay open.
 
 ---
 
-## Phase 101 — Chat and admin commands are host-authoritative, exact and proven on the wire
+## Phase 101 — Chat and admin commands are host-authoritative, exact and proven on the wire ✅ Done
 
 **Goal:** Phase 95 shipped chat and admin commands, but they skip guarantees the rest of the game has.
 `chat_intent` is bounded only by the generic packet rate, and each accepted line is broadcast to every
@@ -278,25 +278,25 @@ on-planet teleports) and 104 (two-client harness steps).
   client's `/give` gets a refusal addressed to it alone; its inventory is unchanged on both sides).
 
 **Acceptance criteria:**
-- [ ] Suite: with a fake clock, a client sending `CHAT_BURST + 10` lines in one tick has exactly
+- [x] Suite: with a fake clock, a client sending `CHAT_BURST + 10` lines in one tick has exactly
   `CHAT_BURST` broadcast, `chat_rate_refused` raised by 10 and one notice sent to it alone; after
   `1 / CHAT_LINES_PER_SEC` seconds of fake time one more line is accepted; a disconnect removes the
   player's bucket entry.
-- [ ] Suite: an admin's `/kill` on a connected peer leaves `PlayerRegistry.get_hp(peer_id)` at 0 (the
+- [x] Suite: an admin's `/kill` on a connected peer leaves `PlayerRegistry.get_hp(peer_id)` at 0 (the
   `simulated_hp_after_hit` floor) and sends exactly one `player_damaged` to that peer; after that peer
   disconnects and reconnects, its restored HP is the simulated value, not `MAX_HP`.
-- [ ] `grep -rn "send_player_damaged(" src --include=*.gd | grep -v -e game_root.gd -e networking_slice.gd -e test_suite.gd -e net_harness.gd`
+- [x] `grep -rn "send_player_damaged(" src --include=*.gd | grep -v -e game_root.gd -e networking_slice.gd -e test_suite.gd -e net_harness.gd`
   finds nothing.
-- [ ] Suite: `/bring` of a peer to a local player at chunk (1,500,000, 3) local (0.25, 10, 0.75) sends a
+- [x] Suite: `/bring` of a peer to a local player at chunk (1,500,000, 3) local (0.25, 10, 0.75) sends a
   teleport that decodes on the client to that chunk and a local within 1e-3 m; `/tp <peer>` by the
   local admin lands the body at the peer's exact chunk, local within 1e-3 m.
-- [ ] Suite: `/tp 0 10 z` with `z` one chunk past `TerrainSlice.pole_chunks()` is refused and no
+- [x] Suite: `/tp 0 10 z` with `z` one chunk past `TerrainSlice.pole_chunks()` is refused and no
   teleport is emitted; `/tp x 10 0` with `x` = 2.5 laps lands at the wrapped X; a `teleport` packet with
   a malformed position is dropped on the client and the body does not move.
-- [ ] `tools/net_harness.sh` reports 18/18 steps passed (the 15 existing plus the three above), both
+- [x] `tools/net_harness.sh` reports 18/18 steps passed (the 15 existing plus the three above), both
   roles agree on every `compare: true` step, and each new step fails when its host-side handler is
   stubbed out in a scratch copy (noted in the PR body). CI's harness job runs the new steps.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green.
 
 ---
 

@@ -4,6 +4,7 @@ extends RefCounted
 ## suite pins them without a tree); `ChatSlice` owns the effects and decides who may run them.
 
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const WorldPos := preload("res://src/terrain/world_pos.gd")
 
 const WHERE := "/where"
 
@@ -90,8 +91,8 @@ static func help_lines(admin: bool) -> Array:
 			lines.append(USAGE[name])
 	return lines
 
-## Three coordinates from `args[start..start+2]`: `{ ok, pos, error }`. Rejects non-numbers, NaN, inf and
-## anything beyond `MAX_TP_COORD`.
+## Three coordinates from `args[start..start+2]`: `{ ok, pos, error }`. Rejects non-numbers, NaN, inf,
+## anything beyond `MAX_TP_COORD` and a Z past the poles; X is wrapped onto one lap of the planet.
 static func parse_position(args: Array, start: int = 0) -> Dictionary:
 	if args.size() < start + 3:
 		return { "ok": false, "pos": Vector3.ZERO, "error": "need three numbers: x y z" }
@@ -104,7 +105,11 @@ static func parse_position(args: Array, start: int = 0) -> Dictionary:
 		if is_nan(f) or is_inf(f) or absf(f) > MAX_TP_COORD:
 			return { "ok": false, "pos": Vector3.ZERO, "error": "'%s' is out of range" % s }
 		v.append(f)
-	return { "ok": true, "pos": Vector3(v[0], v[1], v[2]), "error": "" }
+	var pole_m := float(TerrainSlice.pole_chunks()) * TerrainSlice.CHUNK_METERS
+	if absf(v[2]) > pole_m:
+		return { "ok": false, "pos": Vector3.ZERO,
+			"error": "Z must be within %d m of the equator (the poles)" % int(pole_m) }
+	return { "ok": true, "pos": WorldPos.wrap_world(Vector3(v[0], v[1], v[2])), "error": "" }
 
 ## A `/give` quantity from `s`: a positive whole number up to `MAX_GIVE_QUANTITY`, else 0.
 static func parse_quantity(s: String) -> int:
