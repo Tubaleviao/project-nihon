@@ -646,6 +646,7 @@ func run() -> void:
 	_run_test("spawn: friend code lands near the friend", _test_spawn_friend_near)
 	_run_test("spawn: respawn point survives a move + reload (host and client)", _test_spawn_point_persists)
 	_run_test("spawn: an exact far spawn respawns exactly; placement reads the record once", _test_exact_spawn_respawn)
+	_run_test("persistence: a fresh player's first-boot spawn is recorded exactly", _test_first_boot_spawn_exact)
 	_run_test("spawn: counted chunks survive a colonization reload", _test_colonization_counted_persists)
 	_run_test("spawn: the colonization map scores, persists and drops malformed data", _test_colonization_map)
 	_run_test("spawn: a fresh join is placed, a reconnect is not", _test_spawn_registry_placement)
@@ -15998,6 +15999,30 @@ func _wp_world(wp: Variant) -> Vector3:
 	var chunk: Vector2i = wp["chunk"]
 	var local: Vector3 = wp["local"]
 	return Vector3(chunk.x * WorldPos.CHUNK_METERS + local.x, local.y, chunk.y * WorldPos.CHUNK_METERS + local.z)
+
+## Phase 98 — the fresh-player branch records the body's exact position, not a float32 round trip.
+func _test_first_boot_spawn_exact() -> void:
+	var chunk := Vector2i(600000, 3)
+	var local := Vector3(0.25, 10.0, 0.75)
+	var player := PlayerSlice.new()
+	player.render_visuals = true
+	add_child(player)
+	player.shift_scene(WorldPos.rebase_shift(Vector2i.ZERO, chunk))
+	player.place_at_world_pos({ "chunk": chunk, "local": local })
+	var reg := PlayerRegistry.new()
+	_own(reg)
+	var pid := "first-boot"
+	reg.ensure_player(pid)
+	var gr: Node = (load("res://src/core/game_root.gd") as GDScript).new()
+	gr._player = player
+	gr._registry = reg
+	gr._record_first_spawn(pid)
+	var spawn: Variant = reg.spawn_of(pid)
+	assert_true(spawn != null, "the spawn was recorded")
+	assert_eq(spawn["chunk"], chunk, "in the exact chunk")
+	assert_true((spawn["local"] as Vector3).distance_to(local) < 1.0e-6, "and the exact local within 1e-6 m")
+	gr.free()
+	player.free()
 
 ## Phase 87 — a spawn far from the origin is recorded, saved, reloaded and respawned at exactly;
 ## `_place_local_player` reads the record once and lets it win over `pos`.

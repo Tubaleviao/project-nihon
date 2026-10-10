@@ -2123,7 +2123,7 @@ func _restore_local_player() -> void:
 	if spawn != null:
 		_player.set_respawn_world_pos(_lifted_world_pos(spawn))
 	else:
-		_registry.record_spawn(pid, _player.respawn_point)
+		_record_first_spawn(pid)
 	var hp := float(rec.get("hp", -1.0))
 	if hp >= 0.0:
 		_player.set_hp(hp)
@@ -2134,6 +2134,11 @@ func _restore_local_player() -> void:
 	_taming.apply_record(rec, pid)
 	# Phase 47 — and the worn set.
 	_apply_local_equipment(rec.get("equipment", {}))
+
+## Phase 98 — a fresh player's placement becomes its spawn, from the body's exact `{chunk, local}`
+## (the float32 `respawn_point` is metres off far from the origin).
+func _record_first_spawn(pid: String) -> void:
+	_registry.record_spawn_world_pos(pid, _player.get_world_pos())
 
 ## Phase 66 — the respawn point a player RECORD implies, as an exact `{chunk, local}` (Phase 87): its
 ## original spawn, else (a record from before the field existed) its saved position, else null (a
@@ -2152,11 +2157,11 @@ static func respawn_point_for(rec: Dictionary) -> Variant:
 static func client_respawn_point(own: Dictionary, standing: Dictionary) -> Dictionary:
 	var sp: Variant = own.get("spawn", null)
 	if sp is Dictionary and WorldPos.is_wire(sp):
-		return PlayerRegistry._canonical(WorldPos.pos_from_wire(sp))
+		return PlayerRegistry.canonical_world_pos(WorldPos.pos_from_wire(sp))
 	if sp is Array and WorldPos.is_wire(sp):
 		# A legacy `[x, y, z]` spawn: no exact chunk to keep.
 		var v: Vector3 = WorldPos.from_wire(sp, Vector3.ZERO)
-		return PlayerRegistry._canonical(WorldPos.from_world(v.x, v.y, v.z))
+		return PlayerRegistry.canonical_world_pos(WorldPos.from_world(v.x, v.y, v.z))
 	return standing
 
 ## `wp`, lifted onto the surface above it when it lies inside the ground (see `_lifted_out_of_ground`);

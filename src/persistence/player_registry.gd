@@ -485,7 +485,7 @@ func record_world_pos(player_id: String, wp: Dictionary) -> void:
 	var rec := ensure_player(player_id)
 	if rec.is_empty():
 		return
-	wp = _canonical(WorldPos.normalized(wp))
+	wp = canonical_world_pos(WorldPos.normalized(wp))
 	_store_world_pos(rec, wp)
 	var chunk: Vector2i = wp["chunk"]
 	var local: Vector3 = wp["local"]
@@ -512,7 +512,7 @@ func record_spawn_world_pos(player_id: String, wp: Dictionary) -> void:
 	var rec := ensure_player(player_id)
 	if rec.is_empty():
 		return
-	rec["spawn"] = WorldPos.pos_to_wire(_canonical(WorldPos.normalized(wp)))
+	rec["spawn"] = WorldPos.pos_to_wire(canonical_world_pos(WorldPos.normalized(wp)))
 
 ## The recorded spawn point as an exact `{chunk, local}`, or null when the record has none (a record
 ## from before Phase 66, or a malformed one) — the caller falls back to the saved position.
@@ -549,7 +549,7 @@ static func world_pos_of(rec: Dictionary) -> Dictionary:
 			"chunk": Vector2i(int(c[0]), int(c[1])),
 			"local": Vector3(float(l[0]), float(l[1]), float(l[2])),
 		})
-		return _canonical(wp)
+		return canonical_world_pos(wp)
 	var p: Variant = rec.get("position", [0.0, 0.0, 0.0])
 	if not (p is Array) or (p as Array).size() < 3:
 		p = [0.0, 0.0, 0.0]
@@ -557,12 +557,12 @@ static func world_pos_of(rec: Dictionary) -> Dictionary:
 		if not (v is int or v is float) or not is_finite(float(v)) or absf(float(v)) > 1.0e9:
 			p = [0.0, 0.0, 0.0]
 			break
-	return _canonical(WorldPos.from_world(float(p[0]), float(p[1]), float(p[2])))
+	return canonical_world_pos(WorldPos.from_world(float(p[0]), float(p[1]), float(p[2])))
 
 ## Canonical X (a full lap is the same chunk) and Z between the poles (a position saved past a pole
 ## is folded over it), after `local` has been folded into the chunk, so no per-element check can be
 ## bypassed through `local`. The clamp still bounds a hostile Z far past a pole.
-static func _canonical(wp: Dictionary) -> Dictionary:
+static func canonical_world_pos(wp: Dictionary) -> Dictionary:
 	wp = TerrainSlice.fold_world_pos(wp, 0)["pos"]
 	var chunk: Vector2i = TerrainSlice.wrap_chunk(wp["chunk"])
 	var pole := TerrainSlice.pole_chunks()
