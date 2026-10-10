@@ -9,6 +9,7 @@ extends Node3D
 
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const TerrainSliceScript := preload("res://src/terrain/terrain_slice.gd")
+const VoxelSliceScript := preload("res://src/terrain/voxel_slice.gd")
 const CHUNK_METERS := 32.0   # TerrainSlice.CHUNK_SIZE * TILE_SIZE
 const RING_FACTOR := 10      ## the ring reaches this many times the voxel window's extent
 const GRID := 64             ## cells per side of the ring's lattice
@@ -79,8 +80,12 @@ func scene_offset() -> Vector3:
 static func ring_half_extent(radius_chunks: int) -> float:
 	return float(RING_FACTOR) * (float(radius_chunks) + 0.5) * CHUNK_METERS
 
-## Colour of the distant ground at altitude `alt` above sea level.
-static func color_for(alt: float) -> Color:
+## Colour of the distant ground at altitude `alt` above sea level, whitened toward the polar ice at
+## world Z `z` as the voxel ground is (`VoxelSlice.icy`).
+static func color_for(alt: float, z: float = 0.0) -> Color:
+	return VoxelSliceScript.icy(_altitude_color(alt), z)
+
+static func _altitude_color(alt: float) -> Color:
 	if alt < 0.0:
 		return SEA_FLOOR_COLOR
 	if alt > 300.0:
@@ -291,7 +296,7 @@ static func build_mesh(seed_v: int, w: float, ring_center: Vector2, half_m: floa
 ## shape plus the detail noise, clamped to the fabric's height range.
 static func ground_at(noise: FastNoiseLite, seed_v: int, x: float, z: float, w: float) -> float:
 	var h := WorldShape.height(seed_v, x, z, w) + TerrainSliceScript.detail_of(noise, x, z)
-	return clampf(h, WorldShape.min_height(), WorldShape.max_height())
+	return TerrainSliceScript.polar_ground(seed_v, clampf(h, WorldShape.min_height(), WorldShape.max_height()), x, z, w)
 
 ## The y a ring vertex at ground height `h` is drawn at.
 static func ring_y(h: float, sea: float) -> float:
@@ -347,8 +352,8 @@ static func _add_quad(vertices: PackedVector3Array, colors: PackedColorArray, no
 	vertices.append(Vector3(x1, ring_y(h10, sea), z0))
 	vertices.append(Vector3(x1, ring_y(h11, sea), z1))
 	vertices.append(Vector3(x0, ring_y(h01, sea), z1))
-	for h in [h00, h10, h11, h01]:
-		colors.append(color_for(h - sea))
+	for v in [[h00, z0], [h10, z0], [h11, z1], [h01, z1]]:
+		colors.append(color_for(v[0] - sea, v[1]))
 	var n := (vertices[base + 2] - vertices[base]).cross(vertices[base + 1] - vertices[base]).normalized()
 	if n.y < 0.0:
 		n = -n
@@ -385,10 +390,10 @@ static func _add_skirt(vertices: PackedVector3Array, colors: PackedColorArray, n
 				vertices.append(top)
 				vertices.append(top - Vector3(0.0, SKIRT_DEPTH, 0.0))
 				vertices.append(prev_top - Vector3(0.0, SKIRT_DEPTH, 0.0))
-				colors.append(color_for(prev_h - sea))
-				colors.append(color_for(h - sea))
-				colors.append(color_for(h - sea))
-				colors.append(color_for(prev_h - sea))
+				colors.append(color_for(prev_h - sea, prev_top.z))
+				colors.append(color_for(h - sea, p.y))
+				colors.append(color_for(h - sea, p.y))
+				colors.append(color_for(prev_h - sea, prev_top.z))
 				for _k in 4:
 					normals.append(out_n)
 				indices.append_array([base, base + 1, base + 2, base, base + 2, base + 3])

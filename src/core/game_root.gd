@@ -143,6 +143,8 @@ var _client_respawn_point_set: bool = false
 ## Phase 87 — how many times `_saved_local_position` has run; a test reads it to prove a placement
 ## reads the record once.
 var _saved_position_reads: int = 0
+## True when the local player's record carried a saved position at boot (a returning player).
+var _local_player_returning := false
 
 ## Phase 29 — the AOI grid cell each connected peer last reported, so a client
 ## moving into a new region triggers a re-scoped snapshot (host side only).
@@ -873,11 +875,15 @@ func _finish_host_boot() -> void:
 
 	# Mining & building — mine a surface block (biome material → inventory) and
 	# place one back, proving the voxel edit API and material flow end to end.
-	var mine_spot := Vector3(spawn_xz.x + 6.0, ground_h, spawn_xz.y + 2.0)
-	_voxel.mine_block(mine_spot)
-	_inventory.add_item("Ashite", 4)
+	# Only for a new player: these go into the saved pack and the world's edit log, so running
+	# them on every boot added 4 Ashite and a Soil per launch until the pack hit its weight limit
+	# and every pickup and mining yield was refused.
 	_voxel.set_place_material("Ashite")
-	_voxel.place_block(Vector3(spawn_xz.x + 10.0, ground_h, spawn_xz.y + 2.0), Vector3.UP)
+	if not _local_player_returning:
+		var mine_spot := Vector3(spawn_xz.x + 6.0, ground_h, spawn_xz.y + 2.0)
+		_voxel.mine_block(mine_spot)
+		_inventory.add_item("Ashite", 4)
+		_voxel.place_block(Vector3(spawn_xz.x + 10.0, ground_h, spawn_xz.y + 2.0), Vector3.UP)
 
 	if DEBUG:
 		# Technology + crafting demo (DEBUG only): exercises the research and
@@ -1337,6 +1343,37 @@ func _physics_process(_delta: float) -> void:
 	if _rebase != null and _player != null and _player.has_method("get_scene_position"):
 		var scene_pos: Vector3 = _player.get_scene_position()
 		_rebase.tick(scene_pos, _player.get_world_pos()["chunk"])
+		_fold_local_player()
+
+## Phase 91 — the planet is a globe: a player who walks over a pole or round the antimeridian is
+## folded back onto the canonical planet (`TerrainSlice.fold_world_pos`), landing where the globe
+## puts them. The streamed chunks were built for the pre-fold frame, so the window is re-streamed and
+## the body held until the ground under it is back.
+const FOLD_HOLD_MAX_MSEC := 5000   ## give the hold up after this long, so a failed build cannot pin the player
+var _fold_hold_since_msec := -1
+
+func _fold_local_player() -> void:
+	if not _player.has_method("fold_to"):
+		return
+	if _player.ground_hold:
+		_release_fold_hold()
+		return
+	var fold := TerrainSlice.fold_world_pos(_player.get_world_pos())
+	if not fold["folded"]:
+		return
+	var pos: Dictionary = fold["pos"]
+	if _chunk_manager != null:
+		_chunk_manager.restream()
+	_rebase.rebase_to(pos["chunk"])
+	_player.fold_to(pos, fold["turned"])
+	if _chunk_manager != null:
+		_player.ground_hold = true
+		_fold_hold_since_msec = Time.get_ticks_msec()
+
+func _release_fold_hold() -> void:
+	var waited := Time.get_ticks_msec() - _fold_hold_since_msec
+	if _chunk_manager.is_chunk_built(_player.get_world_pos()["chunk"]) or waited > FOLD_HOLD_MAX_MSEC:
+		_player.ground_hold = false
 
 func _process(delta: float) -> void:
 	# Phase 42 — complete a host boot whose first ring has finished building. It has
@@ -1504,7 +1541,8 @@ func _sync_player_avatar(delta: float) -> void:
 		vel.y,
 		_player.is_grounded(),
 		delta,
-		foot_sampler
+		foot_sampler,
+		_player.get_scene_position()
 	)
 
 func _on_connection_failed() -> void:
@@ -2076,6 +2114,7 @@ func _restore_local_player() -> void:
 		return
 	var rec := _registry.get_record(pid)
 	var saved_pos: Variant = _saved_local_position()
+	_local_player_returning = saved_pos != null
 	if saved_pos != null:
 		_place_local_player(saved_pos)
 	# Phase 66 — a respawn goes to the ORIGINAL spawn point: the recorded one, else (a record from
@@ -2334,8 +2373,19 @@ func _on_item_picked_up(item_id: String, quantity: int) -> void:
 func _on_player_state_changed(payload: Dictionary) -> void:
 	pass   # logged by PlayerSlice; suppress repetitive output here
 
+## A refused pickup or mining yield used to be silent, which read as "picking up is broken".
+const PACK_FULL_NOTICE_MSEC := 3000   ## at most one notice this often, so a held click does not spam
+var _pack_full_notice_msec := -PACK_FULL_NOTICE_MSEC
+
 func _on_inventory_full() -> void:
-	pass
+	if _is_server or _registry == null or _registry.local_player_id.is_empty():
+		return
+	var now := Time.get_ticks_msec()
+	if now - _pack_full_notice_msec < PACK_FULL_NOTICE_MSEC:
+		return
+	_pack_full_notice_msec = now
+	GameBus.chat_posted.emit("system", "", "Your pack is full (weight or slots): drop or use something to pick up more.",
+		_registry.local_player_id)
 
 func _on_character_spawned(instance_id: String, skeleton_id: String, position: Vector3) -> void:
 	pass
@@ -2488,6 +2538,9 @@ func _on_player_died(position: Vector3, killer_id: String) -> void:
 		GameBus.character_death_requested.emit(_character.get_player_character())
 
 func _on_player_respawned(_position: Vector3) -> void:
+	# The death pose is terminal until reset: without this the avatar lies down for good after a respawn.
+	if _character.get_player_character() != "":
+		_character.reset_locomotion(_character.get_player_character())
 	# Phase 87 — put the body on the exact spawn after rebasing the scene onto its chunk, so a player
 	# who died far from the spawn does not land on a quantised far-from-origin float32.
 	if _player != null and _rebase != null and not _player.respawn_world_pos.is_empty():

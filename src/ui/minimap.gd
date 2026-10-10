@@ -93,8 +93,8 @@ func set_facing(facing: Vector2) -> void:
 	_facing = facing
 	queue_redraw()
 
-## Reveal the chunk neighbourhood around `center` (fog-of-war). No-op beyond the
-## finite world edge.
+## Reveal the chunk neighbourhood around `center` (fog-of-war). No-op for a chunk no
+## player can reach (`is_chunk_in_bounds`).
 func _reveal_around(center: Vector2i) -> void:
 	for dz in range(-REVEAL_RADIUS, REVEAL_RADIUS + 1):
 		for dx in range(-REVEAL_RADIUS, REVEAL_RADIUS + 1):
@@ -214,10 +214,6 @@ func _draw() -> void:
 		else:
 			draw_rect(item[0], item[1], false, item[3])
 
-	# World boundary — a thin frame so the finite world's edge is visible when
-	# the view reaches it.
-	_draw_world_bounds(size, cell_px)
-
 	if clock_text != "":
 		draw_string(ThemeDB.fallback_font, Vector2(4.0, size.y - 17.0), clock_text,
 			HORIZONTAL_ALIGNMENT_LEFT, size.x - 8.0, 11, Color(1, 0.95, 0.7, 0.95))
@@ -240,22 +236,6 @@ func _draw() -> void:
 	var left := back + perp * half_w
 	var right := back - perp * half_w
 	draw_colored_polygon(PackedVector2Array([tip, left, right]), Color(1.0, 1.0, 1.0))
-
-## Draw the polar ice lines where they fall inside the visible window. The world wraps in X,
-## so only the north and south limits are edges.
-func _draw_world_bounds(size: Vector2, cell_px: float) -> void:
-	if terrain_slice == null or not terrain_slice.has_method("world_radius_chunks"):
-		return
-	var r: int = terrain_slice.world_radius_chunks()
-	var edge_col := Color(0.0, 0.0, 0.0, 0.8)
-
-	var top_z := size.y * 0.5 + (-(r - 1) - _player_chunk.y) * cell_px
-	var bottom_z := size.y * 0.5 + (r - _player_chunk.y) * cell_px
-
-	if top_z > 0.0 and top_z < size.y:
-		draw_line(Vector2(0.0, top_z), Vector2(size.x, top_z), edge_col, 2.0)
-	if bottom_z > 0.0 and bottom_z < size.y:
-		draw_line(Vector2(0.0, bottom_z), Vector2(size.x, bottom_z), edge_col, 2.0)
 
 # ---------------------------------------------------------------------------
 # Private helpers
