@@ -282,6 +282,10 @@ func run() -> void:
 	_run_test("region: a depletion in an evicted chunk keeps its other edits", _test_region_depletion_merges_evicted)
 	_run_test("region: a malformed entry warns once per store", _test_region_malformed_warns_once)
 	_run_test("region: a legacy tile height survives a depletion overlay", _test_region_overlay_legacy_height)
+	_run_test("region: one legacy-height parser refuses non-finite and unreadable values", _test_legacy_height_parser)
+	_run_test("voxel: a legacy op migrates against the materials stack", _test_legacy_op_materials_stack)
+	_run_test("voxel: a partial chunk with a stored legacy height loads whole", _test_partial_chunk_legacy_op)
+	_run_test("voxel: an unreadable legacy op is dropped and a plain tile round-trips", _test_legacy_op_unreadable_dropped)
 	_run_test("region: a malformed entry survives a neighbour's save", _test_region_malformed_entry_kept)
 	_run_test("region: a valid entry replaces a malformed one", _test_region_malformed_entry_replaced)
 	_run_test("region: a partial chunk loads its stored edits when the region streams in", _test_region_partial_chunk_loads_stored)
@@ -1382,8 +1386,6 @@ func _continuous_x(player: PlayerSlice) -> float:
 	var wp := player.get_world_pos()
 	return float((wp["chunk"] as Vector2i).x) * WorldPos.CHUNK_METERS + (wp["local"] as Vector3).x
 
-## Phase 78 — the player's exact `{chunk, local}` survives a far rebase, a save → reload and the
-## snapshot's own-record position.
 ## Phase 90 — the player's scene origin is the driver's integer `origin_chunk`, and its offset is
 ## derived from it exactly.
 func _test_scene_origin_single_source() -> void:
@@ -1467,6 +1469,8 @@ func _test_one_wire_validator() -> void:
 	assert_false(WorldPos.is_wire({"chunk": [0, 0, 0], "local": [0, 0, 0]}), "a three-element chunk is refused")
 	assert_true(PlayerRegistry.world_pos_of(good_dict)["chunk"] == Vector2i(3, -4), "the registry decodes through the same rule")
 
+## Phase 78 — the player's exact `{chunk, local}` survives a far rebase, a save → reload and the
+## snapshot's own-record position.
 func _test_player_exact_far_position() -> void:
 	var chunk := Vector2i(1500000, 3)
 	var want := {"chunk": chunk, "local": Vector3(0.25, 10.0, 0.75)}
@@ -15330,6 +15334,68 @@ func _test_region_partial_chunk_loads_stored() -> void:
 	assert_false(v.get_save_manifest()[a_key].has("merge"), "the chunk is whole, so the next save replaces")
 	v.free()
 
+## Phase 99 — the shared legacy-height parser: finite numbers and numeric strings only.
+func _test_legacy_height_parser() -> void:
+	for bad in [NAN, INF, -INF, "abc", "", "inf", null, [1.0], { "h": 1.0 }]:
+		assert_true(is_nan(RegionStoreScript.legacy_height_of(bad)), "the shared parser refuses %s" % str(bad))
+		assert_false(RegionStoreScript._is_legacy_height(bad), "the region check refuses %s" % str(bad))
+		assert_true(is_nan(VoxelSlice._legacy_height_of(bad)), "the voxel parser refuses %s" % str(bad))
+	for good in [3.0, 3, "3.0"]:
+		assert_eq(RegionStoreScript.legacy_height_of(good), 3.0, "the shared parser reads %s" % str(good))
+		assert_true(RegionStoreScript._is_legacy_height(good), "the region check accepts %s" % str(good))
+		assert_eq(VoxelSlice._legacy_height_of(good), 3.0, "the voxel parser reads %s" % str(good))
+
+## Phase 99 — a `legacy` op migrates against the tile's materials stack exactly as a bare height does.
+func _test_legacy_op_materials_stack() -> void:
+	var mats := { "32,32": ["stone", "dirt"] }
+	var bare := _make_voxel()
+	bare.apply_edits({ "32,32": 4.0 }, mats)
+	var typed := _make_voxel()
+	typed.apply_edits({ "32,32": [{ "op": RegionStoreScript.LEGACY_OP, "height": 4.0 }] }, mats)
+	assert_true(bare.get_edits()["32,32"].size() >= 3, "the stack is migrated into several ops")
+	assert_eq(typed.get_edits()["32,32"], bare.get_edits()["32,32"], "the legacy op equals the bare height")
+	bare.free()
+	typed.free()
+
+## Phase 99 — `apply_region_chunks` lays a resident depletion over a stored bare height.
+func _test_partial_chunk_legacy_op() -> void:
+	var found := _find_surface_vein(0)
+	if found.is_empty():
+		assert_true(false, "a vein breaks the surface of a flat chunk somewhere")
+		return
+	var vein: Dictionary = found["vein"]
+	var anchor: Vector2i = vein["anchor"]
+	var a_key := VoxelSlice._chunk_key(VoxelSlice._tile_to_chunk(anchor))
+	var tile_key := VoxelSlice._tile_key(anchor)
+	var v := VoxelSlice.new()
+	add_child(v)
+	v._record_depletion(vein, 1)   # the chunk holds only the depletion: partial
+	v.apply_region_chunks({ a_key: { "edits": { tile_key: 1.0 } } })
+	var ops: Array = v.get_edits().get(tile_key, [])
+	var depleted := false
+	var migrated := false
+	for op in ops:
+		depleted = depleted or op["op"] == "deplete"
+		migrated = migrated or op["op"] == "add" or op["op"] == "remove"
+		assert_true(op["op"] != RegionStoreScript.LEGACY_OP, "no raw legacy op is left in the log")
+	assert_true(depleted, "the depletion is kept")
+	assert_true(migrated, "the stored bare height was migrated to a typed run edit")
+	v.free()
+
+## Phase 99 — an unreadable legacy op is dropped with one warning; a tile with no legacy op is unchanged.
+func _test_legacy_op_unreadable_dropped() -> void:
+	var v := _make_voxel()
+	var remove := { "op": "remove", "bottom": 0.0, "top": 1.0 }
+	var warns := Diag.warn_count()
+	v.apply_edits({ "32,32": [{ "op": RegionStoreScript.LEGACY_OP, "height": "abc" }, remove] })
+	assert_eq(Diag.warn_count() - warns, 1, "one warning for the unreadable legacy height")
+	assert_eq(v.get_edits()["32,32"].size(), 1, "only the typed op survives")
+	assert_eq(v.get_edits()["32,32"][0]["op"], "remove", "and it is the remove")
+	var plain := [remove, { "op": "add", "bottom": 0.0, "top": 0.5, "material": "stone" }]
+	v.apply_edits({ "40,40": plain })
+	assert_eq(v.get_edits()["40,40"], plain, "a tile with no legacy op round-trips unchanged")
+	v.free()
+
 ## Phase 91 — a bare legacy tile height overlaid with a deplete survives as a typed `legacy` op and
 ## migrates to the same column as the bare height alone.
 func _test_region_overlay_legacy_height() -> void:
@@ -15338,7 +15404,7 @@ func _test_region_overlay_legacy_height() -> void:
 	var out := RegionStoreScript.overlay_entry(stored, { "merge": true, "edits": { "32,32": [dep] } })
 	var ops: Array = out["edits"]["32,32"]
 	assert_eq(ops.size(), 2, "the legacy height and the depletion")
-	assert_eq(ops[0], { "op": "legacy", "height": 1.0 }, "the legacy height is first")
+	assert_eq(ops[0], { "op": RegionStoreScript.LEGACY_OP, "height": 1.0 }, "the legacy height is first")
 	assert_true(RegionStoreScript.is_valid_chunk_entry(out), "the overlaid entry is a valid chunk entry")
 	var bare := _make_voxel()
 	bare.apply_edits({ "32,32": 1.0 })
@@ -15355,13 +15421,13 @@ func _test_region_overlay_legacy_height() -> void:
 	var again := RegionStoreScript.overlay_entry(out, { "merge": true, "edits": { "32,32": [{ "op": "deplete", "vein": "v", "taken": 6 }] } })
 	var legacy_ops := 0
 	for op in again["edits"]["32,32"]:
-		if op["op"] == "legacy":
+		if op["op"] == RegionStoreScript.LEGACY_OP:
 			legacy_ops += 1
 	assert_eq(legacy_ops, 1, "exactly one legacy op after a second deplete")
 	assert_eq(again["edits"]["32,32"].size(), 2, "and the larger depletion replaced the first")
 	# A numeric string migrates the same.
 	var str_out := RegionStoreScript.overlay_entry({ "edits": { "32,32": "1.0" } }, { "merge": true, "edits": { "32,32": [dep] } })
-	assert_eq(str_out["edits"]["32,32"][0], { "op": "legacy", "height": 1.0 }, "a numeric string is carried too")
+	assert_eq(str_out["edits"]["32,32"][0], { "op": RegionStoreScript.LEGACY_OP, "height": 1.0 }, "a numeric string is carried too")
 	# A typed op list overlays as before.
 	var typed := RegionStoreScript.overlay_entry({ "edits": { "32,32": [{ "op": "remove", "bottom": 0.0, "top": 1.0 }] } },
 		{ "merge": true, "edits": { "32,32": [dep] } })

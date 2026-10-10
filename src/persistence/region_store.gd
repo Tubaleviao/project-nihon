@@ -136,11 +136,23 @@ static func fold_chunks(base: Dictionary, incoming: Dictionary, deletions := tru
 ## Phase 91 — the typed op a bare legacy tile height is carried as when a deplete is overlaid on it.
 const LEGACY_OP := "legacy"
 
-## True for a finite number or numeric string: the shapes `VoxelSlice` reads as a legacy height.
+## The one parser for a legacy tile height: a finite number or a numeric string. NAN means "not a
+## legacy height at all" (a non-numeric string, a non-finite number, any other type).
+## `VoxelSlice` migrates with it and `overlay_entry` decides whether to carry a bare value with it.
+static func legacy_height_of(value: Variant) -> float:
+	var h := NAN
+	match typeof(value):
+		TYPE_INT, TYPE_FLOAT:
+			h = float(value)
+		TYPE_STRING, TYPE_STRING_NAME:
+			var text := str(value)
+			if text.is_valid_float():
+				h = text.to_float()
+	return h if is_finite(h) else NAN
+
+## True for the shapes `legacy_height_of` reads as a height.
 static func _is_legacy_height(value: Variant) -> bool:
-	if value is int or value is float:
-		return is_finite(float(value))
-	return value is String and (value as String).is_valid_float() and is_finite(float(value))
+	return not is_nan(legacy_height_of(value))
 
 ## `entry` laid over `stored` (a chunk entry or null), without the `merge` flag. Pure.
 static func overlay_entry(stored: Variant, entry: Dictionary) -> Dictionary:
@@ -160,7 +172,7 @@ static func overlay_entry(stored: Variant, entry: Dictionary) -> Dictionary:
 			if not (old is Array) and _is_legacy_height(old):
 				# Phase 91 — a pre-Phase-41 bare height is not an op list; carry it as a typed `legacy`
 				# op, first, so `VoxelSlice` still migrates it against the tile's natural run.
-				old = [{ "op": LEGACY_OP, "height": float(old) }]
+				old = [{ "op": LEGACY_OP, "height": legacy_height_of(old) }]
 			if old is Array:
 				for op in old:
 					if ops_in.has(op):

@@ -66,6 +66,8 @@ extends Node
 ##
 ##   { "op": "remove", "bottom": float, "top": float }
 ##   { "op": "add", "bottom": float, "top": float, "material": String }
+##   { "op": <LEGACY_OP>, "height": float } (Phase 91, `RegionStore.LEGACY_OP`: a bare pre-Phase-41
+##       height carried through a depletion overlay; migrated on load. Older builds ignore it on load.)
 ##   (any other kind is IGNORED on load and on replay — see `_normalise_ops`)
 ##
 ## Mining a roof therefore does not touch the floor: each edit names the span it
@@ -1661,11 +1663,18 @@ func _normalise_edit_table(edits: Dictionary, materials: Dictionary) -> Dictiona
 ## store carried through a depletion overlay) migrated exactly as a bare number is, then the other
 ## ops after it. A `legacy` op with an unreadable height is dropped with a warning.
 func _normalise_tile_ops(key: Variant, value: Array, materials: Dictionary) -> Array:
+	var has_legacy := false
+	for op in value:
+		if op is Dictionary and str(op.get("op", "")) == RegionStore.LEGACY_OP:
+			has_legacy = true
+			break
+	if not has_legacy:
+		return _normalise_ops(value)   # the hot path: no legacy op, no extra arrays
 	var rest: Array = []
 	var migrated: Array = []
 	var seen_legacy := false
 	for op in value:
-		if op is Dictionary and str(op.get("op", "")) == "legacy":
+		if op is Dictionary and str(op.get("op", "")) == RegionStore.LEGACY_OP:
 			if seen_legacy:
 				continue
 			seen_legacy = true
@@ -2741,13 +2750,7 @@ static func _runs_equal(a: Array, b: Array) -> bool:
 ## an unsupported type raises. Both are worse than an inert dropped entry, which
 ## leaves the tile its natural ground.
 static func _legacy_height_of(value: Variant) -> float:
-	match typeof(value):
-		TYPE_INT, TYPE_FLOAT:
-			return float(value)
-		TYPE_STRING, TYPE_STRING_NAME:
-			var text := str(value)
-			return text.to_float() if text.is_valid_float() else NAN
-	return NAN
+	return RegionStore.legacy_height_of(value)
 
 ## Coerce a loaded edit list into plain { bottom, top, material } / op dicts with
 ## numeric fields — JSON hands back Variants, and the run algebra compares floats.

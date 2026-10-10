@@ -99,12 +99,41 @@ npm run generate  # generate the design bible into bible/
 | 76 | Niche field wraps the planet and is calibrated by a test | Done |
 | 77 | One detail-noise formula and the ring's strip helper | Done |
 | 78 | Exact player position far from the origin | Done |
-| 79 | Deterministic peer-window rate limit and a production ref-count reader | Planned |
-| 80 | Rebase in the physics step and explicit shift sets | Planned |
+| 79 | Deterministic peer-window rate limit and a production ref-count reader | Done |
+| 80 | Rebase in the physics step and explicit shift sets | Done |
 | 81 | Pole-aware tile biome and a mined-tile biome memo | Done |
-| 82 | Honest peer-window refusal count and a thread-safe warning counter | Planned |
-| 83 | Distant-ring teardown that does not stall | Planned |
-| 84 | The suite exits with no leaked objects | Planned |
+| 82 | Honest peer-window refusal count and a thread-safe warning counter | Done |
+| 83 | Distant-ring teardown that does not stall | Done |
+| 84 | The suite exits with no leaked objects | Done |
+| 85 | Peer claims and host syncs keep separate interval clocks | Done |
+| 86 | Remote peers' positions stay exact far from the origin | Done |
+| 87 | Exact spawn and respawn points | Done |
+| 88 | The distant ring survives a reparent and its abort is proven | Done |
+| 89 | A malformed region entry warns once per session | Done |
+| 90 | One scene-origin source and one wire-position validator | Done |
+| 91 | A legacy tile height survives a depletion overlay | Done |
+| 92 | The shown-biome memo follows the terrain slice and one pole-ring rule | Done |
+| 93 | Host-sync window moves are counted and a clock swap resets the throttles | Done |
+| 94 | A test eviction helper and a bounded UI retire list | Done |
+| 95 | Free pointer, right-click look, chat box and admin commands | Done |
+| 96 | A detached ring rebuild does not orphan its worker | Done |
+| 97 | Peer windows and position relays use the exact peer position | Done |
+| 98 | An exact first-boot spawn and a public canonical helper | Done |
+| 99 | Housekeeping sweep: legacy tiles, roadmap/README hygiene and review leftovers | Done |
+| 100 | Follow-up issue backlog triage | Planned |
+| 101 | Chat and admin commands are host-authoritative, exact and proven on the wire | Planned |
+| 102 | An admin `/kill` lands on the host's simulated peer health | Merged |
+| 103 | Teleports carry the exact position and stay on the planet | Merged |
+| 104 | Two-client harness: chat and admin teleport over the socket | Merged |
+| 105 | Archive Phases 75–95 into the roadmap history | Merged |
+| 106 | A world stamp that covers fabric parameters, and golden generator values | Planned |
+| 107 | A per-chunk generation record in the region store | Planned |
+| 108 | Terrain reads and writes the generation record on the host | Planned |
+| 109 | Generation records reach clients, scoped and validated | Planned |
+| 110 | Trees are pinned per chunk and cleared where players build | Planned |
+| 111 | The minimap remembers what was explored and marks home | Planned |
+| 112 | A biome adjacency table in the fabric and an offline scan | Planned |
+| 113 | Frontier generation: a new generator version meets recorded land | Planned |
 
 See [ROADMAP.md](ROADMAP.md) for open phases and deferred work. Completed phases are archived in [docs/roadmap-history/](docs/roadmap-history/README.md) with their full spec and acceptance criteria.
 
@@ -128,6 +157,8 @@ fabric/ (design)  →  npm run generate  →  godot/  (Godot resources)
 Each roadmap phase ships as one or more **slices** — self-contained GDScript nodes that communicate primarily through `GameBus` typed signals. A slice owns its data and exposes pure-function projections for the test suite and the UI layer.
 
 Slices do **not** hold each other by default. The bus carries every *event* and *intent*; `game_root` wires a small, curated set of cross-slice references only where a signal cannot carry the context — a slice needs to **query** another slice's data (e.g. `creature_slice`, `inventory_slice`, `terrain_slice` to resolve an entity or read counts), and the UI slice holds references to the data slices to render their projections and drive player actions. The invariant is that these references are for **read-only queries and projections**: every state *mutation* still flows through the bus (an intent signal in, an authoritative `*_synced` / `*_resolved` signal out), never through a direct method call that mutates another slice's state.
+
+**Wire positions.** Every position that crosses the network (`player_moved`, stations, snapshot players, placement) is a `{chunk, local}` dictionary checked by `WorldPos.is_wire`: exactly two integer-valued chunk coordinates (X within one lap of the world, Z between the poles plus fold slack) and three finite local metres. A malformed position is dropped, never clamped.
 
 ### Adding a new system
 

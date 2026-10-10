@@ -234,6 +234,9 @@ var _rate_buckets: Dictionary = {}
 ## flood); the same one-per-second throttle the seq-gap warning uses applies.
 var _rate_warn_ms: Dictionary = {}
 
+## Peers already warned about for a malformed `player_moved` position: one line per peer, not per packet.
+var _malformed_position_warned: Dictionary = {}
+
 func _ready() -> void:
 	GameBus.packet_send_requested.connect(_on_packet_send_requested)
 	GameBus.player_state_sync_requested.connect(_on_player_state_sync_requested)
@@ -615,9 +618,6 @@ func _on_player_state_sync_requested(payload: Dictionary) -> void:
 		"max_hp":   payload.get("max_hp", 100.0),
 	}
 	_broadcast_aoi(packet, pos)
-
-## Peers already warned about for a malformed `player_moved` position: one line per peer, not per packet.
-var _malformed_position_warned: Dictionary = {}
 
 func _warn_malformed_position_once(sender: int) -> void:
 	if _malformed_position_warned.has(sender):
