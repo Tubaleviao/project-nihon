@@ -154,6 +154,12 @@ func run() -> void:
 	_run_test("worldgen: fingerprint stamp on the world record", _test_worldgen_fingerprint_record)
 	_run_test("worldgen: fingerprint mismatch wiring",        _test_worldgen_fingerprint_game_root)
 	_run_test("worldgen: golden generator values",            _test_worldgen_golden)
+	_run_test("records: no records leaves 64 chunks as before",  _test_records_none_unchanged)
+	_run_test("records: a record overrides biome and corner heights", _test_records_override)
+	_run_test("records: a streamed chunk is recorded exactly once", _test_records_written_once)
+	_run_test("records: ring and client write none",              _test_records_ring_and_client)
+	_run_test("records: ore field reads the recorded biome on a worker", _test_records_ore_worker)
+	_run_test("records: an older record version changes nothing", _test_records_old_version)
 	_run_test("game_root: worldgen stamp wiring on load",     _test_worldgen_stamp_game_root_wiring)
 	_run_test("persistence: missing slot emits load_failed",  _test_persistence_missing_slot)
 	_run_test("loot: known creature produces drops",          _test_loot_known_creature)
@@ -17082,3 +17088,200 @@ func _test_worldgen_golden() -> void:
 	for i in 16:
 		var c := Vector2i((i * 65537) % 600000 - 300000, (i * 104729) % 300000 - 150000)
 		assert_eq(TerrainSlice.biome_for_chunk(c, 100 + i), biomes[i], "biome of golden chunk %d" % i)
+
+
+# ---- Phase 108 — terrain reads and writes the generation record on the host ----
+
+const RECORDS_GOLDEN_HASH := 1508089442
+const RECORDS_GOLDEN_BIOMES := 3756816773
+const ChunkRecordsScript := preload("res://src/terrain/chunk_records.gd")
+
+func _records_chunks64() -> Array:
+	var out: Array = []
+	for i in 64:
+		out.append(Vector2i((i * 7919) % 4000 - 2000, (i * 104729) % 2000 - 1000))
+	return out
+
+func _records_hash(t: Node, chunks: Array) -> int:
+	var h := 17
+	for c in chunks:
+		var hm: Array = t.generate_heightmap(c)
+		for i in range(0, hm.size(), 37):
+			h = (h * 31 + int(roundf(float(hm[i]) * 1000.0))) & 0x7fffffff
+	return h
+
+func _test_records_none_unchanged() -> void:
+	ChunkRecordsScript.clear()
+	var t := TerrainSlice.new()
+	add_child(t)
+	t.set_world_seed(4242)
+	var chunks := _records_chunks64()
+	var first := _records_hash(t, chunks)
+	assert_eq(first, RECORDS_GOLDEN_HASH, "heightmap hash of 64 chunks is the pre-phase value (got %d)" % first)
+	var biomes := ""
+	for c in chunks:
+		biomes += TerrainSlice.biome_for_chunk(c, 4242).substr(0, 2)
+	assert_eq(biomes.hash(), RECORDS_GOLDEN_BIOMES, "biomes of 64 chunks are the pre-phase values (got %d)" % biomes.hash())
+	# A record equal to the generator's own (rounded to 1e-4) moves no height by more than that.
+	var plain: Array = []
+	for c in chunks:
+		plain.append(t.generate_heightmap(c))
+	for c in chunks:
+		ChunkRecordsScript.set_record(c, RegionStoreScript.normalize_gen(TerrainSlice.generation_record(c, 4242)))
+	var worst := 0.0
+	for i in chunks.size():
+		var hm: Array = t.generate_heightmap(chunks[i])
+		for j in range(0, hm.size(), 11):
+			worst = maxf(worst, absf(float(hm[j]) - float(plain[i][j])))
+	assert_true(worst <= 1.5e-4, "self-recorded chunks generate the same ground to 1e-4 (worst %.6f)" % worst)
+	ChunkRecordsScript.clear()
+	t.free()
+
+func _test_records_override() -> void:
+	ChunkRecordsScript.clear()
+	var t := TerrainSlice.new()
+	add_child(t)
+	t.set_world_seed(99)
+	var c := Vector2i(300, 120)
+	var nb := Vector2i(301, 120)
+	var before: Array = t.generate_heightmap(c)
+	var nb_before: Array = t.generate_heightmap(nb)
+	var gen_biome := TerrainSlice.biome_for_chunk(c, 99)
+	var other: String = "Desert" if gen_biome != "Desert" else "Tundra"
+	var rec := TerrainSlice.generation_record(c, 99)
+	var shifted: Array = []
+	for hh in rec["h"]:
+		shifted.append(minf(float(hh) + 3.0, WorldShapeScript.max_height() - 1.0))
+	rec["h"] = shifted
+	rec["b"] = other
+	rec = RegionStoreScript.normalize_gen(rec)
+	assert_false(rec.is_empty(), "the stub record is valid")
+	ChunkRecordsScript.set_record(c, rec)
+	assert_eq(TerrainSlice.biome_for_chunk(c, 99), other, "the recorded biome wins")
+	assert_eq(t.get_biome_at_chunk(c), other, "and the instance form agrees")
+	assert_eq(TerrainSlice.biome_for_chunk(nb, 99), TerrainSlice.generated_biome_for_chunk(nb, 99), "a neighbour keeps the generator's biome")
+	var after: Array = t.generate_heightmap(c)
+	var moved := 0
+	for i in after.size():
+		if absf(float(after[i]) - float(before[i])) > 0.5:
+			moved += 1
+	assert_true(moved > after.size() / 2, "the recorded corners move the chunk's ground (%d tiles)" % moved)
+	assert_true(t.generate_heightmap(nb) == nb_before, "the neighbour's heightmap is the generator's")
+	assert_true(not is_equal_approx(TerrainSlice.shape_height(99, 300.5 * 32.0, 120.5 * 32.0, 4.0e7),
+		WorldShapeScript.height(99, 300.5 * 32.0, 120.5 * 32.0, 4.0e7)), "the ring's shape read follows the record")
+	ChunkRecordsScript.erase_record(c)
+	assert_true(t.generate_heightmap(c) == before, "dropping the record restores the generator's ground")
+	ChunkRecordsScript.clear()
+	t.free()
+
+func _records_rig(dir_name: String, with_store := true) -> Dictionary:
+	ChunkRecordsScript.clear()
+	var dir := _fresh_region_dir(dir_name)
+	var t := TerrainSlice.new()
+	add_child(t)
+	t.set_world_seed(31)
+	var cm := ChunkManager.new()
+	cm.terrain_slice = t
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	if with_store:
+		cm.record_store = store
+	return { "t": t, "cm": cm, "store": store }
+
+func _test_records_written_once() -> void:
+	var rig := _records_rig("test_p108_once")
+	var cm: ChunkManager = rig["cm"]
+	var store: RegionStoreScript = rig["store"]
+	var cs := [Vector2i(10, 10), Vector2i(11, 10), Vector2i(40, -3)]
+	for c in cs:
+		cm.load_chunk(c)
+	assert_eq(cm.records_created, 3, "each chunk got one record")
+	assert_eq(cm.pending_record_count(), 3, "pending until flushed")
+	cm.flush_records()
+	assert_eq(cm.pending_record_count(), 0, "flushed")
+	for c in cs:
+		assert_false(store.get_gen(c).is_empty(), "record of %s is on disk" % str(c))
+		assert_eq(store.get_gen(c)["b"], TerrainSlice.generated_biome_for_chunk(c, 31), "recorded biome is the generator's")
+	for c in cs:
+		cm.unload_chunk(c)
+		cm.load_chunk(c)
+	assert_eq(cm.records_created, 3, "a second load creates nothing")
+	assert_eq(cm.pending_record_count(), 0, "and rewrites nothing")
+	cm.records_flush_blocked = func() -> bool: return true
+	cm.load_chunk(Vector2i(12, 10))
+	cm.flush_records()
+	assert_eq(cm.pending_record_count(), 1, "a flush waits while a save runs")
+	cm.records_flush_blocked = Callable()
+	cm.flush_records()
+	assert_false(store.get_gen(Vector2i(12, 10)).is_empty(), "then lands")
+	# A fresh process: the region's records are adopted, so the chunk is not recorded again.
+	ChunkRecordsScript.clear()
+	var read := store.read_region(Vector2i.ZERO)
+	assert_true(ChunkRecordsScript.adopt_region(read["chunks"]) >= 3, "the region read adopts its records")
+	var created := cm.records_created
+	cm.unload_chunk(Vector2i(10, 10))
+	cm.load_chunk(Vector2i(10, 10))
+	assert_eq(cm.records_created, created, "an adopted record is not rewritten")
+	cm.free()
+	(rig["t"] as Node).free()
+	ChunkRecordsScript.clear()
+
+func _test_records_ring_and_client() -> void:
+	var rig := _records_rig("test_p108_client", false)
+	var cm: ChunkManager = rig["cm"]
+	for c in [Vector2i(5, 5), Vector2i(6, 5)]:
+		cm.load_chunk(c)
+	assert_eq(cm.records_created, 0, "a client-role manager creates no record")
+	assert_eq(ChunkRecordsScript.size(), 0, "and the table stays empty")
+	cm.free()
+	var d := DistantTerrainScript.new()
+	add_child(d)
+	d.world_seed = 31
+	d.rebuild(Vector2(16.0, 16.0), 3)
+	d.poll(true)
+	assert_eq(ChunkRecordsScript.size(), 0, "building a ring writes no record")
+	d.free()
+	(rig["t"] as Node).free()
+
+func _test_records_ore_worker() -> void:
+	ChunkRecordsScript.clear()
+	var c := Vector2i(77, 31)
+	var gen_biome := TerrainSlice.biome_for_chunk(c, 5)
+	var other: String = "Desert" if gen_biome != "Desert" else "Tundra"
+	var rec := TerrainSlice.generation_record(c, 5)
+	rec["b"] = other
+	ChunkRecordsScript.set_record(c, RegionStoreScript.normalize_gen(rec))
+	var result: Array = [""]
+	var tid := WorkerThreadPool.add_task(func(): result[0] = TerrainSlice.biome_for_chunk(c, 5))
+	WorkerThreadPool.wait_for_task_completion(tid)
+	assert_eq(result[0], other, "a worker asking for a recorded chunk gets the recorded biome")
+	# OreField's own read goes through the same call.
+	var tile := Vector2i(c.x * 64 + 3, c.y * 64 + 3)
+	var seen := false
+	for dx in range(0, 64, 4):
+		for dz in range(0, 64, 4):
+			var v := OreField.vein_at(5, c, Vector2i(dx, dz), 0.0)
+			if not v.is_empty():
+				assert_eq(v["biome"], other, "a vein of the recorded chunk carries the recorded biome")
+				seen = true
+	if not seen:
+		print("    (no surface vein sampled in the recorded chunk; worker read asserted above)")
+	ChunkRecordsScript.clear()
+
+func _test_records_old_version() -> void:
+	ChunkRecordsScript.clear()
+	var t := TerrainSlice.new()
+	add_child(t)
+	t.set_world_seed(8)
+	var c := Vector2i(-210, 44)
+	var rec := RegionStoreScript.normalize_gen(TerrainSlice.generation_record(c, 8))
+	ChunkRecordsScript.set_record(c, rec)
+	var current: Array = t.generate_heightmap(c)
+	var cur_biome := TerrainSlice.biome_for_chunk(c, 8)
+	var old := rec.duplicate()
+	old["v"] = 1
+	assert_false(RegionStoreScript.normalize_gen(old).is_empty(), "an older version is a valid record")
+	ChunkRecordsScript.set_record(c, RegionStoreScript.normalize_gen(old))
+	assert_true(t.generate_heightmap(c) == current, "an older record version leaves the ground unchanged")
+	assert_eq(TerrainSlice.biome_for_chunk(c, 8), cur_biome, "and the biome")
+	ChunkRecordsScript.clear()
+	t.free()

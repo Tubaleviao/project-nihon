@@ -128,7 +128,7 @@ npm run generate  # generate the design bible into bible/
 | 105 | Archive Phases 75–95 into the roadmap history | Merged |
 | 106 | A world stamp that covers fabric parameters, and golden generator values | Done |
 | 107 | A per-chunk generation record in the region store | Done |
-| 108 | Terrain reads and writes the generation record on the host | Planned |
+| 108 | Terrain reads and writes the generation record on the host | Done |
 | 109 | Generation records reach clients, scoped and validated | Planned |
 | 110 | Trees are pinned per chunk and cleared where players build | Planned |
 | 111 | The minimap remembers what was explored and marks home | Planned |

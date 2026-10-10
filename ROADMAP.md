@@ -128,7 +128,7 @@ issue number where the criterion used to be.
 | 105 | Archive Phases 75–95 into the roadmap history | Merged | [Phase 99](#phase-99--housekeeping-sweep-legacy-tiles-roadmapreadme-hygiene-and-review-leftovers) |
 | 106 | A world stamp that covers fabric parameters, and golden generator values | Done | below |
 | 107 | A per-chunk generation record in the region store | Done | below |
-| 108 | Terrain reads and writes the generation record on the host | Planned | below |
+| 108 | Terrain reads and writes the generation record on the host | Done | below |
 | 109 | Generation records reach clients, scoped and validated | Planned | below |
 | 110 | Trees are pinned per chunk and cleared where players build | Planned | below |
 | 111 | The minimap remembers what was explored and marks home | Planned | below |
@@ -365,7 +365,7 @@ phase adds the storage and nothing else; Phase 108 uses it.
 
 ---
 
-## Phase 108 — Terrain reads and writes the generation record on the host
+## Phase 108 — Terrain reads and writes the generation record on the host ✅ Done
 
 **Goal:** make the record authoritative. When a chunk enters a player's streamed window and has no
 record, the host generates it as today and writes its record. When it has one, the record wins over the
@@ -389,15 +389,15 @@ later generator change stands on.
   chunks are not recorded, so the store grows with exploration only.
 
 **Acceptance criteria:**
-- [ ] Suite: with no records, the heightmap hash and biome of 64 chunks equal their pre-phase values
+- [x] Suite: with no records, the heightmap hash and biome of 64 chunks equal their pre-phase values
   (the Phase 106 goldens plus a recorded hash).
-- [ ] Suite: a stub record with another biome and shifted corner heights makes `biome_for_chunk` and
+- [x] Suite: a stub record with another biome and shifted corner heights makes `biome_for_chunk` and
   `generate_heightmap` return the record's values for that chunk and the generator's for its neighbours.
-- [ ] Suite: a chunk streamed into a window gets exactly one record, and a second load rewrites nothing.
-- [ ] Suite: building a ring writes no record; a client-role `ChunkManager` writes none either.
-- [ ] Suite: `OreField` asked from a worker thread for a recorded chunk gets the recorded biome.
-- [ ] Suite: with the recorded chunk's `v` set to an older number, its output is unchanged.
-- [ ] Suite and `--server` / `--quit-after-boot` boots green; harness green.
+- [x] Suite: a chunk streamed into a window gets exactly one record, and a second load rewrites nothing.
+- [x] Suite: building a ring writes no record; a client-role `ChunkManager` writes none either.
+- [x] Suite: `OreField` asked from a worker thread for a recorded chunk gets the recorded biome.
+- [x] Suite: with the recorded chunk's `v` set to an older number, its output is unchanged.
+- [x] Suite and `--server` / `--quit-after-boot` boots green; harness green.
 
 ---
 

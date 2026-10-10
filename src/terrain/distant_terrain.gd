@@ -295,7 +295,7 @@ static func build_mesh(seed_v: int, w: float, ring_center: Vector2, half_m: floa
 ## The ground height the voxel ground has at (x, z) to within the shape's interpolation: the
 ## shape plus the detail noise, clamped to the fabric's height range.
 static func ground_at(noise: FastNoiseLite, seed_v: int, x: float, z: float, w: float) -> float:
-	var h := WorldShape.height(seed_v, x, z, w) + TerrainSliceScript.detail_of(noise, x, z)
+	var h := TerrainSliceScript.shape_height(seed_v, x, z, w) + TerrainSliceScript.detail_of(noise, x, z)
 	return TerrainSliceScript.polar_ground(seed_v, clampf(h, WorldShape.min_height(), WorldShape.max_height()), x, z, w)
 
 ## The y a ring vertex at ground height `h` is drawn at.

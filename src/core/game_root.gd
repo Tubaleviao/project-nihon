@@ -989,6 +989,9 @@ func _boot_server() -> void:
 	# Phase 52 — voxel edits stream in by region around every window (the local player's
 	# and each connected peer's) instead of loading from the world record up front.
 	_chunk_manager.region_streamer = RegionStreamer.new(_persistence.region_store, _voxel)
+	# Phase 108 — the host records each chunk it first streams in; never while a save is writing regions.
+	_chunk_manager.record_store = _persistence.region_store
+	_chunk_manager.records_flush_blocked = func() -> bool: return _save_thread != null
 	_chunk_manager.start()
 	# Phase 42 — arm the boot gate BEFORE the first refresh, and not after it. Both boot
 	# paths inherit it here, which is what stops a gate wired into one of them from being a
