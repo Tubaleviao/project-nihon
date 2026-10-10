@@ -136,8 +136,9 @@ static func fold_chunks(base: Dictionary, incoming: Dictionary, deletions := tru
 		var stored_gen: Variant = (out[ckey] as Dictionary).get("gen", null) if out.get(ckey, null) is Dictionary else null
 		if deletions and is_empty_edit_set(entry):
 			# The edits compacted away; a recorded `gen` is not an edit and stays.
-			if stored_gen is Dictionary and not (entry as Dictionary).has("gen"):
-				out[ckey] = { "gen": stored_gen }
+			var kept_gen: Variant = (entry as Dictionary).get("gen", stored_gen)
+			if kept_gen is Dictionary:
+				out[ckey] = { "gen": kept_gen }
 			else:
 				out.erase(ckey)
 			continue
