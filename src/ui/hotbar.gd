@@ -4,9 +4,8 @@ extends VBoxContainer
 ##
 ## The bottom row has 9 boxes on the keys 1–9. Items the player carries that are usable at
 ## once (a placeable block, a piece of gear) drop into the first free box on their own, a click selects
-## a box, and a line above the row says what the selected box does. An arrow at the end of the row
-## expands a second row. Its boxes are the player's own: drag anything in, then right-click a box to
-## choose the key that fires it.
+## a box. An arrow at the end of the row inserts a second row below it. Its boxes are the player's
+## own: drag anything in, then right-click a box to choose the key that fires it.
 ##
 ## Anything can be dragged onto a box: an item from the inventory, a skill from the Character window,
 ## or another box (they swap). A box dragged off the bar into the world is emptied. Dragging an item
@@ -27,10 +26,13 @@ const SkillTiers := preload("res://src/core/skill_tiers.gd")
 signal slot_selected(index: int, item_id: String)
 ## A drag began from a box; the UI slice uses it to empty the box if it is dropped in the world.
 signal drag_began(payload: Dictionary)
+## A short message for the player (choosing a shortcut key); the UI slice shows it.
+signal notice(text: String)
 
 const COLUMNS := 9
 const SLOT_COUNT := 18            # row 1 = 0..8 (keys 1-9), row 2 = 9..17 (player-chosen keys)
 const SLOT_PX := 56.0
+const MORE_PX := 28.0
 const KIND_BLOCK := "block"
 const KIND_GEAR := "gear"
 const KIND_SKILL := "skill"
@@ -44,7 +46,7 @@ const FLASH_SECONDS := 0.18
 const RESERVED_KEYS: Array = [
 	KEY_W, KEY_A, KEY_S, KEY_D, KEY_F, KEY_R, KEY_B, KEY_N, KEY_V, KEY_E, KEY_G,
 	KEY_I, KEY_C, KEY_H, KEY_T, KEY_Y, KEY_P, KEY_M, KEY_Q,
-	KEY_ESCAPE, KEY_ENTER, KEY_KP_ENTER, KEY_SPACE, KEY_TAB, KEY_SLASH, KEY_BACKSPACE,
+	KEY_K, KEY_ESCAPE, KEY_ENTER, KEY_KP_ENTER, KEY_SPACE, KEY_TAB, KEY_SLASH, KEY_BACKSPACE,
 	KEY_SHIFT, KEY_CTRL, KEY_ALT, KEY_META, KEY_QUESTION,
 	KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9,
 ]
@@ -73,7 +75,7 @@ var tier_provider: Callable = Callable()
 var _declined: Dictionary = {}
 var _buttons: Array = []
 var _keys: Array = []
-var _hint: Label = null
+var _row1: HBoxContainer = null
 var _row2: HBoxContainer = null
 var _more: Button = null
 var _menu: PopupMenu = null
@@ -84,29 +86,27 @@ var _binding: int = -1
 func _init() -> void:
 	name = "Hotbar"
 	add_theme_constant_override("separation", 4)
-	alignment = BoxContainer.ALIGNMENT_END
+	alignment = BoxContainer.ALIGNMENT_BEGIN
 	for i in SLOT_COUNT:
 		slots.append("")
 		binds.append(0)
 
 func build() -> void:
-	_hint = Label.new()
-	_hint.name = "HotbarHint"
-	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_hint.add_theme_font_size_override("font_size", 15)
-	_hint.add_theme_color_override("font_outline_color", Color(0, 0, 0))
-	_hint.add_theme_constant_override("outline_size", 5)
-	add_child(_hint)
-	_row2 = _make_row(COLUMNS, SLOT_COUNT)
-	add_child(_row2)
-	var row1 := _make_row(0, COLUMNS)
-	add_child(row1)
+	# Row 1 (keys 1-9) is created first so `_buttons[i]` is box i; it is always visible and the
+	# optional second row sits below it. The arrow's column is mirrored by a spacer so the rows align.
+	_row1 = _make_row(0, COLUMNS)
+	add_child(_row1)
 	_more = Button.new()
-	_more.custom_minimum_size = Vector2(28.0, SLOT_PX)
+	_more.custom_minimum_size = Vector2(MORE_PX, SLOT_PX)
 	_more.focus_mode = Control.FOCUS_NONE
 	_more.pressed.connect(func(): set_expanded(not expanded))
-	row1.add_child(_more)
+	_row1.add_child(_more)
+	_row2 = _make_row(COLUMNS, SLOT_COUNT)
+	var spacer := Control.new()
+	spacer.custom_minimum_size = Vector2(MORE_PX, SLOT_PX)
+	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_row2.add_child(spacer)
+	add_child(_row2)
 	_menu = PopupMenu.new()
 	_menu.add_item("Set shortcut key…", 0)
 	_menu.add_item("Clear shortcut", 1)
@@ -249,9 +249,7 @@ static func hint_for(entry: String, kind: String, tier: String = "") -> String:
 			return "%s  ·  worn" % entry
 		KIND_SKILL:
 			return "%s%s  ·  press its key to use" % [skill_key(entry), (" (%s)" % tier) if tier != "" else ""]
-	if entry != "":
-		return entry
-	return "Pick things up and they appear here  ·  scroll to zoom  ·  drag items from your inventory"
+	return entry
 
 ## Parse the saved state. Anything malformed falls back to an empty bar rather than injecting junk.
 static func parse_state(text: String) -> Dictionary:
@@ -395,6 +393,7 @@ func begin_binding(index: int) -> void:
 	_binding = index
 	set_expanded(true)
 	_render()
+	notice.emit("Press the key for this box  ·  Esc cancels  ·  Backspace clears")
 
 func _finish_binding(keycode: int) -> void:
 	var index := _binding
@@ -409,7 +408,7 @@ func _finish_binding(keycode: int) -> void:
 				binds[i] = 0
 		binds[index] = keycode
 	else:
-		_hint.text = "%s is already used by the game — pick another key" % OS.get_keycode_string(keycode)
+		notice.emit("%s is already used by the game — pick another key" % OS.get_keycode_string(keycode))
 		_binding = index
 		return
 	save_state()
@@ -511,7 +510,7 @@ func _render(held: Dictionary = {}) -> void:
 	if _row2 != null:
 		_row2.visible = expanded
 	if _more != null:
-		_more.text = "▾" if expanded else "▴"
+		_more.text = "▴" if expanded else "▾"
 		_more.tooltip_text = "Fewer boxes" if expanded else "More boxes — drag items and skills in, then right-click a box to pick its key"
 	for i in _buttons.size():
 		var b: Button = _buttons[i]
@@ -542,13 +541,6 @@ func _render(held: Dictionary = {}) -> void:
 		else:
 			b.text = ("%s\n%s" % [entry.substr(0, 1).to_upper(), count]).strip_edges()
 		b.tooltip_text = hint_for(entry, kind)
-	if _hint != null:
-		if _binding >= 0:
-			_hint.text = "Press the key for this box  ·  Esc cancels  ·  Backspace clears"
-		else:
-			var sel := selected_item()
-			var kind_now := kind_at(selected)
-			_hint.text = hint_for(sel, kind_now, str(tiers.get(skill_key(sel), "")) if kind_now == KIND_SKILL else "")
 
 func _box(picked: bool, hover: bool) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()

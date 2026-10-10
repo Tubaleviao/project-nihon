@@ -4789,6 +4789,7 @@ func _test_ui_controls_panel() -> void:
 const _HotbarScript := preload("res://src/ui/hotbar.gd")
 const _WindowDockScript := preload("res://src/ui/window_dock.gd")
 const _TEST_HOTBAR_FILE := "user://test_ui_layout_hotbar.json"
+const _TEST_DOCK_FILE := "user://test_ui_layout_dock.json"
 
 func _first_gear_item() -> String:
 	var keys: Array = GameData.ITEMS.keys()
@@ -4874,6 +4875,7 @@ func _test_hud_hotbar_pure() -> void:
 
 func _new_hud_ui() -> UiSlice:
 	DirAccess.remove_absolute(_TEST_HOTBAR_FILE)
+	DirAccess.remove_absolute(_TEST_DOCK_FILE)
 	return _new_test_ui()
 
 func _test_hud_hotbar_selection() -> void:
@@ -4908,6 +4910,13 @@ func _test_hud_hotbar_selection() -> void:
 func _test_hud_hotbar_skills_and_binding() -> void:
 	var ui := _new_hud_ui()
 	var hb = ui.hotbar
+	# Button i is box i (the numbered row is first), so a swapped item renders in its own box.
+	hb.assign(3, "skill:Mining")
+	assert_eq((hb._buttons[3] as Button).text, "Mini", "box 3 draws its own contents")
+	assert_eq((hb._buttons[12] as Button).text, "", "box 12 stays empty")
+	assert_true(hb._buttons[0].get_parent() == hb._row1 and hb._buttons[9].get_parent() == hb._row2, "numbered row first, extra row second")
+	assert_true(hb.get_child(0) == hb._row1, "the numbered row sits above the extra row")
+	hb.assign(3, "")
 	hb.assign(2, "skill:Alchemy")
 	var got: Array = []
 	var cb := func(slot: int, skill: String) -> void: got.append([slot, skill])
@@ -5034,7 +5043,7 @@ func _test_hud_skills_rows_and_window_keys() -> void:
 	var rows := UiSlice.skills_rows({"Archery": "novice", "Smithing": "master", "Alchemy": "expert"})
 	assert_eq(rows.map(func(r): return r["id"]), ["Smithing", "Alchemy", "Archery"], "skills list best tier first")
 	var ui := _new_hud_ui()
-	for pair in [[KEY_C, "character"], [KEY_H, "crafting"], [KEY_P, "market"], [KEY_I, "inventory"]]:
+	for pair in [[KEY_C, "character"], [KEY_K, "skills"], [KEY_H, "crafting"], [KEY_P, "market"], [KEY_I, "inventory"]]:
 		var e := InputEventKey.new()
 		e.pressed = true
 		e.keycode = pair[0]
@@ -5050,7 +5059,7 @@ func _test_hud_window_dock() -> void:
 		assert_true(UiSlice.WINDOW_KEYS.has(e["key"]), "dock window exists: %s" % e["key"])
 		assert_false(_HotbarScript.bind_allowed(OS.find_keycode_from_string(str(e["letter"]))) , "dock letter %s is reserved from box shortcuts" % e["letter"])
 	assert_false(seen.has("M"), "M stays free for the map window")
-	assert_false(seen.has("S"), "S stays free for skills")
+	assert_true(seen.has("K"), "K is Skills")
 	assert_true(seen.has("C") and seen.has("H"), "C is Character, H is Crafting")
 	var ui := _new_hud_ui()
 	var toggled: Array = []
@@ -5061,6 +5070,15 @@ func _test_hud_window_dock() -> void:
 	ui.window_dock.set_expanded(false)
 	assert_false(ui.window_dock.is_expanded(), "the dock collapses")
 	ui.free()
+	# A collapsed dock stays collapsed on the next start.
+	var again := _new_test_ui()
+	assert_false(again.window_dock.is_expanded(), "the dock reopens the way it was left")
+	again.window_dock.set_expanded(true)
+	again.free()
+	var third := _new_test_ui()
+	assert_true(third.window_dock.is_expanded(), "an expanded dock persists too")
+	third.free()
+	DirAccess.remove_absolute(_TEST_DOCK_FILE)
 
 func _test_ui_inventory_lines() -> void:
 	var ui := _new_test_ui()

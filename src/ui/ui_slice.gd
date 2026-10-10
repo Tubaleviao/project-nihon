@@ -40,10 +40,11 @@ const WINDOW_MARKET     := "market"
 const WINDOW_PROPOSALS  := "proposals"
 const WINDOW_CONTROLS   := "controls"
 const WINDOW_CHARACTER  := "character"
+const WINDOW_SKILLS     := "skills"
 
 const WINDOW_KEYS := [
 	WINDOW_INVENTORY, WINDOW_TECHNOLOGY, WINDOW_CRAFTING,
-	WINDOW_TRADE, WINDOW_MARKET, WINDOW_PROPOSALS, WINDOW_CONTROLS, WINDOW_CHARACTER,
+	WINDOW_TRADE, WINDOW_MARKET, WINDOW_PROPOSALS, WINDOW_CONTROLS, WINDOW_CHARACTER, WINDOW_SKILLS,
 ]
 
 const MouseIconScript := preload("res://src/ui/mouse_icon.gd")
@@ -190,6 +191,8 @@ func _input(event: InputEvent) -> void:
 				toggle_window(WINDOW_PROPOSALS)
 			KEY_C:
 				toggle_window(WINDOW_CHARACTER)
+			KEY_K:
+				toggle_window(WINDOW_SKILLS)
 			KEY_ESCAPE:
 				_close_all_windows()
 
@@ -218,12 +221,14 @@ func _build_hud() -> void:
 	hotbar.build()
 	hotbar.slot_selected.connect(_on_hotbar_selected)
 	hotbar.drag_began.connect(_on_drag_began)
+	hotbar.notice.connect(_notify)
 	_ui.add_child(hotbar)
 
 	# Under the health bar (top-left, see PlayerSlice._build_hud).
 	window_dock = WindowDockScript.new()
 	window_dock.offset_left = 12.0
 	window_dock.offset_top = 48.0
+	window_dock.save_path = layout_path.get_basename() + "_dock.json"
 	window_dock.build()
 	window_dock.window_toggled.connect(toggle_window)
 	_ui.add_child(window_dock)
@@ -615,7 +620,7 @@ static func controls_rows() -> Array:
 		{"keys": "B · V", "desc": "Station cycle / place", "mouse": 0},
 		{"keys": "G", "desc": "Tame nearest creature (G is shared with Proposals)", "mouse": 0},
 		{"keys": "E", "desc": "Toggle equipment", "mouse": 0},
-		{"keys": "I · C · H · T · Y · P · G", "desc": "Inventory · Character · Crafting · Tech · Trade · Market · Proposals (or click the boxes under your health)", "mouse": 0},
+		{"keys": "I · C · K · H · T · Y · P · G", "desc": "Inventory · Character · Skills · Crafting · Tech · Trade · Market · Proposals (or click the boxes under your health)", "mouse": 0},
 		{"keys": "?", "desc": "This panel", "mouse": 0},
 		{"keys": "Enter · /", "desc": "Chat and commands (/help)", "mouse": 0},
 		{"keys": "ESC", "desc": "Close windows", "mouse": 0},
@@ -1289,6 +1294,7 @@ func _build_ui() -> void:
 	_panels[WINDOW_CONTROLS] = _build_window(WINDOW_CONTROLS, "Controls (?)", _build_controls_content(), Vector2(916, 24))
 
 	_panels[WINDOW_CHARACTER] = _build_window(WINDOW_CHARACTER, "Character (C)", _build_character_content(), Vector2(916, 360))
+	_panels[WINDOW_SKILLS] = _build_window(WINDOW_SKILLS, "Skills (K)", _build_skills_content(), Vector2(916, 700))
 
 	_slot_menu = PopupMenu.new()
 	_slot_menu.id_pressed.connect(_on_slot_menu_pressed)
@@ -1475,10 +1481,15 @@ func _build_character_content() -> Control:
 	_character_grid = GridContainer.new()
 	_character_grid.columns = INVENTORY_COLUMNS
 	vbox.add_child(_character_grid)
-	var skills_title := Label.new()
-	skills_title.text = "Skills — drag one onto the bottom bar"
-	skills_title.add_theme_font_size_override("font_size", 15)
-	vbox.add_child(skills_title)
+	return vbox
+
+func _build_skills_content() -> Control:
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	var title := Label.new()
+	title.text = "Drag a skill onto the bottom bar"
+	title.add_theme_font_size_override("font_size", 15)
+	vbox.add_child(title)
 	_skills_grid = GridContainer.new()
 	_skills_grid.columns = INVENTORY_COLUMNS
 	vbox.add_child(_skills_grid)
