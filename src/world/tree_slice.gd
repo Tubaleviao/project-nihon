@@ -68,6 +68,13 @@ const DENSITY_NOISE := 0.5
 const SpawnRoll := preload("res://src/world/spawn_roll.gd")
 const WorldClock := preload("res://src/world/world_clock.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
+const RegionStore := preload("res://src/persistence/region_store.gd")
+
+## Phase 110 — building clears trees for good. A voxel edit clears every tree within this many
+## tiles (Chebyshev) of the edited tile; a placed station clears every tree within this many metres.
+const CLEAR_RADIUS_TILES := 1
+const CLEAR_RADIUS_M := 3.0
 
 ## Trunk / canopy proportions of the shared placeholder tree mesh (world units).
 const TRUNK_RADIUS  := 0.30
@@ -107,6 +114,14 @@ var _pool: Node = null
 ## built: the same records drive a bare authoritative simulation.
 var render_visuals: bool = true
 
+## Phase 110 — read-only edit queries (`has_edit_near`) for a tree standing on already-edited ground.
+var voxel_slice: Node = null
+## Phase 110 — `(chunk: Vector2i, record: Dictionary) -> void`, set by game_root to
+## `ChunkManager.update_record`: how the host persists a record's tree budget `t` and cleared list `x`.
+var record_writer: Callable = Callable()
+## Cleared spawn indices of chunks with no record to hold them (isolated rigs): chunk -> { index: true }.
+var _cleared_local: Dictionary = {}
+
 ## Set by game_root before the slices enter the tree.
 var terrain_slice: Node = null
 
@@ -130,6 +145,9 @@ func _ready() -> void:
 	GameBus.tree_chop_requested.connect(_on_chop_requested)
 	GameBus.tree_chopped.connect(_on_tree_chopped)
 	GameBus.tree_respawned.connect(_on_tree_respawned)
+	GameBus.tree_cleared.connect(_on_tree_cleared)
+	GameBus.block_changed.connect(_on_block_changed)
+	GameBus.station_placed.connect(_on_station_placed)
 	if render_visuals:
 		_build_pool()
 
@@ -150,13 +168,49 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 	var entry := tree_entry_for_biome(biome)
 	if entry.is_empty():
 		return
-	var budget: int = tree_count_for(chunk_pos, biome)
+	var budget: int = _budget_for(chunk_pos, biome)
+	var cleared := cleared_indices(chunk_pos)
 	# Reconcile by id, not by count: a shrunken budget (a density change between visits)
 	# drops the surplus trees, and a gap in the 0..budget-1 ids is refilled.
-	_trim_chunk_to(chunk_pos, budget)
+	_trim_chunk_to(chunk_pos, budget, cleared)
 	for i in budget:
-		if not _trees.has(_tree_id(chunk_pos, i)):
-			_spawn(str(entry["species"]), str(entry["wood"]), chunk_pos, i)
+		if cleared.has(i) or _trees.has(_tree_id(chunk_pos, i)):
+			continue
+		var tid := _spawn(str(entry["species"]), str(entry["wood"]), chunk_pos, i)
+		# A tree standing on ground players already edited never grew back there.
+		if is_authoritative and _on_edited_ground(_trees[tid]):
+			_clear_tree(tid)
+
+## Phase 110 — the tree budget of a chunk: the one its record holds (`t`) so a later density change
+## adds or drops nothing in recorded land, else the current generator's. The host stamps a record that
+## has none yet with the budget it is about to spawn.
+func _budget_for(chunk_pos: Vector2i, biome: String) -> int:
+	var canon := TerrainSlice.wrap_chunk(chunk_pos)
+	var rec := ChunkRecords.get_record(canon)
+	if rec.has("t"):
+		return int(rec["t"])
+	var budget: int = tree_count_for(chunk_pos, biome)
+	if is_authoritative and not rec.is_empty() and record_writer.is_valid():
+		var next := rec.duplicate(true)
+		next["t"] = clampi(budget, 0, RegionStore.GEN_TREE_MAX)
+		record_writer.call(canon, next)
+		return int(next["t"])
+	return budget
+
+## Spawn indices cleared for good in `chunk_pos`: { index: true }.
+func cleared_indices(chunk_pos: Vector2i) -> Dictionary:
+	var out: Dictionary = {}
+	for i in ChunkRecords.get_record(TerrainSlice.wrap_chunk(chunk_pos)).get("x", []):
+		out[int(i)] = true
+	for i in _cleared_local.get(chunk_pos, {}):
+		out[int(i)] = true
+	return out
+
+## Re-run `spawn_for_chunk` over every chunk holding trees (a client whose records arrived after
+## its trees spawned): applies the recorded budget and the cleared list.
+func resync_recorded_chunks() -> void:
+	for chunk in _by_chunk.keys():
+		spawn_for_chunk(chunk)
 
 ## Remove every tree belonging to `chunk_pos`, freeing its visual instance and
 ## trunk collision. Trees carry no combat state, so unlike creatures none are
@@ -169,12 +223,13 @@ func despawn_for_chunk(chunk_pos: Vector2i) -> void:
 	for tid in ids:
 		_remove_tree(str(tid), true)
 
-## Drop this chunk's trees whose spawn index is >= `budget`.
-func _trim_chunk_to(chunk_pos: Vector2i, budget: int) -> void:
+## Drop this chunk's trees whose spawn index is >= `budget` or cleared.
+func _trim_chunk_to(chunk_pos: Vector2i, budget: int, cleared: Dictionary = {}) -> void:
 	var ids: Array = (_by_chunk.get(chunk_pos, []) as Array).duplicate()
 	var keep: Dictionary = {}
 	for i in budget:
-		keep[_tree_id(chunk_pos, i)] = true
+		if not cleared.has(i):
+			keep[_tree_id(chunk_pos, i)] = true
 	for tid in ids:
 		if keep.has(tid):
 			continue
@@ -367,6 +422,102 @@ func apply_chop_state(tree_id: String, respawn_at: float) -> void:
 	_set_chopped(tree_id)
 
 # ---------------------------------------------------------------------------
+# Phase 110 — building clears trees for good
+# ---------------------------------------------------------------------------
+
+## Clear every standing-or-stump tree within `CLEAR_RADIUS_TILES` tiles of `tile`. Host only.
+## Returns how many were cleared.
+func clear_trees_near_tile(tile: Vector2i) -> int:
+	if not is_authoritative:
+		return 0
+	var hit: Array = []
+	for tid in _trees:
+		var t: Vector2i = _trees[tid]["tile"]
+		if maxi(absi(t.x - tile.x), absi(t.y - tile.y)) <= CLEAR_RADIUS_TILES:
+			hit.append(tid)
+	for tid in hit:
+		_clear_tree(str(tid))
+	return hit.size()
+
+## Clear every tree within `CLEAR_RADIUS_M` metres (horizontal) of `pos`. Host only.
+func clear_trees_near_point(pos: Vector3) -> int:
+	if not is_authoritative:
+		return 0
+	var hit: Array = []
+	var p := Vector2(pos.x, pos.z)
+	for tid in _trees:
+		var tp: Vector3 = _trees[tid]["position"]
+		if Vector2(tp.x, tp.z).distance_to(p) <= CLEAR_RADIUS_M:
+			hit.append(tid)
+	for tid in hit:
+		_clear_tree(str(tid))
+	return hit.size()
+
+func _on_edited_ground(tree: Dictionary) -> bool:
+	return voxel_slice != null and voxel_slice.has_method("has_edit_near") \
+		and voxel_slice.has_edit_near(tree["tile"], CLEAR_RADIUS_TILES)
+
+## Remove one tree for good: record its spawn index in `x`, free its visual and collision, and tell
+## clients. A stump's regrowth deadline is dropped with it.
+func _clear_tree(tree_id: String) -> void:
+	var tree: Dictionary = _trees.get(tree_id, {})
+	if tree.is_empty():
+		return
+	var chunk: Vector2i = tree["chunk"]
+	var index: int = int(tree["index"])
+	_record_cleared(chunk, index)
+	_remove_clear(tree_id, chunk)
+	GameBus.tree_cleared.emit(tree_id)
+
+func _remove_clear(tree_id: String, chunk: Vector2i) -> void:
+	if _by_chunk.has(chunk):
+		(_by_chunk[chunk] as Array).erase(tree_id)
+		if (_by_chunk[chunk] as Array).is_empty():
+			_by_chunk.erase(chunk)
+	_stump_memory.erase(tree_id)
+	_remove_tree(tree_id, false)
+
+func _record_cleared(chunk: Vector2i, index: int) -> void:
+	var canon := TerrainSlice.wrap_chunk(chunk)
+	var rec := ChunkRecords.get_record(canon)
+	if not rec.is_empty() and record_writer.is_valid() and index < RegionStore.GEN_TREE_MAX:
+		var next := rec.duplicate(true)
+		var xs: Array = next.get("x", [])
+		if not xs.has(index):
+			xs.append(index)
+			next["x"] = xs
+			record_writer.call(canon, next)
+		return
+	if not _cleared_local.has(chunk):
+		_cleared_local[chunk] = {}
+	_cleared_local[chunk][index] = true
+
+func _on_block_changed(_action: String, position: Vector3, _normal: Vector3, _material: String) -> void:
+	if not is_authoritative:
+		return
+	var ts := _tile_size()
+	clear_trees_near_tile(Vector2i(floori(position.x / ts), floori(position.z / ts)))
+
+func _on_station_placed(_station_id: String, _type: String, position: Vector3) -> void:
+	clear_trees_near_point(position)
+
+## Client side: the host cleared this tree; drop it (an unknown id is ignored).
+func _on_tree_cleared(tree_id: String) -> void:
+	if is_authoritative:
+		return
+	var tree: Dictionary = _trees.get(tree_id, {})
+	if tree.is_empty():
+		# Not loaded here (its chunk is out of window): still remember it, or it regrows on arrival.
+		var parts := tree_id.split("_")
+		if parts.size() == 4 and parts[0] == "tree" and parts[1].is_valid_int() \
+				and parts[2].is_valid_int() and parts[3].is_valid_int() and int(parts[3]) >= 0:
+			_record_cleared(Vector2i(int(parts[1]), int(parts[2])), int(parts[3]))
+		return
+	# Remember it: records reach a client with the snapshot only, so a reload of the chunk must not regrow it.
+	_record_cleared(tree["chunk"], int(tree["index"]))
+	_remove_clear(tree_id, tree["chunk"])
+
+# ---------------------------------------------------------------------------
 # Private — chopping / regrowth
 # ---------------------------------------------------------------------------
 
@@ -486,6 +637,8 @@ func _spawn(species: String, wood: String, chunk_pos: Vector2i, spawn_index: int
 		"wood":       wood,
 		"position":   pos,
 		"chunk":      chunk_pos,
+		"index":      spawn_index,
+		"tile":       Vector2i(floori(xz.x / _tile_size()), floori(xz.y / _tile_size())),
 		"state":      "standing",
 		"respawn_at": -1.0,
 		"mi":         mi,

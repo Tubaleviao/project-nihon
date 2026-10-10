@@ -630,6 +630,16 @@ func flush_records() -> void:
 			if not failed.has(k):
 				_pending_records.erase(k)
 
+## Phase 110 — replace a chunk's record (a tree budget or a cleared tree was added). Always updates
+## the shared table; queues the disk write only where this process owns a record store.
+func update_record(chunk_pos: Vector2i, rec: Dictionary) -> void:
+	var canon := TerrainSlice.wrap_chunk(chunk_pos)
+	var clean := RegionStore.normalize_gen(rec)
+	if clean.is_empty():
+		return
+	if ChunkRecords.set_record(canon, clean) and record_store != null:
+		_pending_records[ChunkRecords.key_of(canon)] = { "gen": clean }
+
 func pending_record_count() -> int:
 	return _pending_records.size()
 

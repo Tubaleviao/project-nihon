@@ -129,8 +129,8 @@ issue number where the criterion used to be.
 | 106 | A world stamp that covers fabric parameters, and golden generator values | Done | below |
 | 107 | A per-chunk generation record in the region store | Done | below |
 | 108 | Terrain reads and writes the generation record on the host | Done | below |
-| 109 | Generation records reach clients, scoped and validated | Planned | below |
-| 110 | Trees are pinned per chunk and cleared where players build | Planned | below |
+| 109 | Generation records reach clients, scoped and validated | Done | below |
+| 110 | Trees are pinned per chunk and cleared where players build | Done | below |
 | 111 | A full-map window: zoom from the minimap out to a whole planet | Planned | below |
 | 112 | A biome adjacency table in the fabric and an offline scan | Planned | below |
 | 113 | Frontier generation: a new generator version meets recorded land | Planned | below |
@@ -431,7 +431,7 @@ are small, so they ride the same scope as edits.
 
 ---
 
-## Phase 110 — Trees are pinned per chunk and cleared where players build
+## Phase 110 — Trees are pinned per chunk and cleared where players build ✅ Done
 
 **Goal:** `TreeSlice.spawn_for_chunk` places every tree from the chunk coordinate and the original
 terrain height. It reads neither voxel edits nor stations, so a base built in a forest keeps its trees
@@ -453,14 +453,14 @@ clear them for good.
 - A tree standing on a tile that already has edits when its chunk first spawns is cleared by the same rule.
 
 **Acceptance criteria:**
-- [ ] Suite: placing a block on a tree's tile removes the tree; after unloading and reloading the chunk,
+- [x] Suite: placing a block on a tree's tile removes the tree; after unloading and reloading the chunk,
   and after a save and load, it is still gone.
-- [ ] Suite: placing a station within `CLEAR_RADIUS_M` clears the trees inside the radius and none outside.
-- [ ] Suite: a recorded chunk keeps its tree count when the biome's `treeDensity` is changed in a scratch resource.
-- [ ] Suite: a client receiving `tree_cleared` frees the tree's collision and its MultiMesh slot; the
+- [x] Suite: placing a station within `CLEAR_RADIUS_M` clears the trees inside the radius and none outside.
+- [x] Suite: a recorded chunk keeps its tree count when the biome's `treeDensity` is changed in a scratch resource.
+- [x] Suite: a client receiving `tree_cleared` frees the tree's collision and its MultiMesh slot; the
   orphan-node check stays clean.
-- [ ] Suite: a chopped-and-regrowing tree is unaffected: the stump still regrows after its cooldown.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite: a chopped-and-regrowing tree is unaffected: the stump still regrows after its cooldown.
+- [x] Suite green on both boot paths, harness green.
 
 ---
 
