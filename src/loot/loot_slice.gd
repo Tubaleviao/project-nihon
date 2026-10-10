@@ -93,21 +93,29 @@ func _on_creature_died(entity_id: String, position: Vector3, _killer_id: String)
 			var qty: int = randi_range(int(entry.get("minQty", 1)), int(entry.get("maxQty", 1)))
 			if qty <= 0:
 				continue
-			var pid := "pickup_%d" % _next_id
-			_next_id += 1
-			# Build a visible body so the item actually appears on the ground.
-			var body := _make_pickup_visual(pid, item_id, position)
-			add_child(body)
-			_world_nodes.append(body)
-			body.tree_exited.connect(_forget_world_node.bind(body))
-			_pickups[pid] = {
-				"item_id":    item_id,
-				"quantity":   qty,
-				"position":   position,
-				"spawned_at": Time.get_ticks_msec(),
-				"body":       body,
-			}
-			GameBus.loot_dropped.emit(pid, item_id, position, qty)
+			spawn_pickup(item_id, qty, position)
+
+## Put `quantity` of `item_id` on the ground at `position` and return its pickup id.
+## `durabilities` (one per unit, worst first) is what the pickup hands back to whoever collects it,
+## so a worn tool keeps its wear; empty means fresh.
+func spawn_pickup(item_id: String, quantity: int, position: Vector3, durabilities: Array = []) -> String:
+	var pid := "pickup_%d" % _next_id
+	_next_id += 1
+	# Build a visible body so the item actually appears on the ground.
+	var body := _make_pickup_visual(pid, item_id, position)
+	add_child(body)
+	_world_nodes.append(body)
+	body.tree_exited.connect(_forget_world_node.bind(body))
+	_pickups[pid] = {
+		"item_id":      item_id,
+		"quantity":     quantity,
+		"position":     position,
+		"spawned_at":   Time.get_ticks_msec(),
+		"body":         body,
+		"durabilities": durabilities,
+	}
+	GameBus.loot_dropped.emit(pid, item_id, position, quantity)
+	return pid
 
 ## Resolve a creature's structured drop table from the fabric (`drops` json field
 ## on GameData.CREATURES). Returns the Array of { item, chance, minQty, maxQty }

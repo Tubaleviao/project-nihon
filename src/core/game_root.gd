@@ -336,6 +336,8 @@ func _ready() -> void:
 		_ui.proposal_slice        = _proposal
 		_ui.trade_slice           = _trade
 		_ui.voxel_slice           = _voxel
+		_ui.player_slice          = _player
+		_ui.drops_enabled         = not _is_client
 	_trade.inventory_slice    = _inventory
 	_market.inventory_slice   = _inventory
 	# Host-only, like the demo sequence in _boot_host(): the seeded counterparty
@@ -379,6 +381,7 @@ func _ready() -> void:
 	# rule, because a craft mutates a player's persisted inventory.
 	_registry.is_authoritative  = not _is_client
 	_crafting.is_authoritative  = not _is_client
+	_inventory.is_authoritative = not _is_client
 	# Phase 34 — same rule for the technology tree: a client owns no records, so it
 	# forwards a research intent instead of resolving one against its synced copy.
 	_technology.is_authoritative = not _is_client

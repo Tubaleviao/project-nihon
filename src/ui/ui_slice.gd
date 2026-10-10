@@ -1,7 +1,7 @@
 extends Node
 ## UI slice — window system exposing inventory, technology, crafting, trade,
 ## market, and proposals. Each window is a PanelContainer on a shared CanvasLayer,
-## toggled with I / T / C / Y (trade) / P (market) / G (proposals) / ? (controls)
+## toggled with I / T / H (crafting) / C (character) / Y (trade) / P (market) / G (proposals) / ? (controls)
 ## and closed with ESC or the window's ✕ button. Every window drags by its title
 ## bar and reopens where it was left (Phase 46). Opening a window
 ## never touches the mouse: the pointer is always free (Phase 85) and only
@@ -49,7 +49,6 @@ const WINDOW_KEYS := [
 const MouseIconScript := preload("res://src/ui/mouse_icon.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const HotbarScript := preload("res://src/ui/hotbar.gd")
-const SkillBarScript := preload("res://src/ui/skill_bar.gd")
 const WindowDockScript := preload("res://src/ui/window_dock.gd")
 
 ## Pixels of a window that must stay reachable on every edge when dragged.
@@ -74,10 +73,19 @@ var trade_slice: Node = null
 ## The voxel slice owns the place-material selection the hotbar drives.
 var voxel_slice: Node = null
 
-## HUD: item boxes along the bottom, skill boxes top-right, window shortcuts under the health bar.
-var hotbar: HBoxContainer = null
-var skill_bar: HBoxContainer = null
+## HUD: item/skill boxes along the bottom, window shortcuts under the health bar.
+var hotbar: VBoxContainer = null
 var window_dock: VBoxContainer = null
+## The player body, for where a dropped item lands (`drop_point()`); set by game_root.
+var player_slice: Node = null
+## False when this machine is a client: its pack is the host's, so a drop to the ground is refused.
+var drops_enabled: bool = true
+## The payload of the drag in flight (set by the drag sources), read when the drag ends.
+var _drag_payload: Dictionary = {}
+var _skills_grid: GridContainer = null
+var _skills_signature: int = 0
+## Brief line shown when a drag-drop is refused.
+var _hud_notice: Label = null
 
 var _ui: CanvasLayer = null
 ## Set while the loading screen holds world input (`GameBus.world_input_frozen`). The
@@ -158,22 +166,21 @@ func _input(event: InputEvent) -> void:
 		var focus := get_viewport().gui_get_focus_owner() if is_inside_tree() else null
 		if (focus is LineEdit or focus is TextEdit) and event.keycode != KEY_ESCAPE:
 			return
+		# The hotbar first: 1-9 and the player's own box shortcuts, or a key being chosen for a box.
+		if hotbar != null and hotbar.handle_key(event):
+			if is_inside_tree():
+				get_viewport().set_input_as_handled()
+			return
 		# `?` is matched on the character it produces: it is not Shift+/ on every layout.
 		if event.unicode == 63:
 			toggle_window(WINDOW_CONTROLS)
 			return
-		# Number keys fire the skill boxes (1 = first box).
-		if skill_bar != null and not event.ctrl_pressed and not event.alt_pressed and not event.meta_pressed:
-			var skill_slot := SkillBarScript.slot_for_keycode(event.keycode)
-			if skill_slot != -1:
-				skill_bar.trigger(skill_slot)
-				return
 		match event.keycode:
 			KEY_I:
 				toggle_window(WINDOW_INVENTORY)
 			KEY_T:
 				toggle_window(WINDOW_TECHNOLOGY)
-			KEY_C:
+			KEY_H:
 				toggle_window(WINDOW_CRAFTING)
 			KEY_Y:
 				toggle_window(WINDOW_TRADE)
@@ -181,74 +188,37 @@ func _input(event: InputEvent) -> void:
 				toggle_window(WINDOW_MARKET)
 			KEY_G:
 				toggle_window(WINDOW_PROPOSALS)
-			KEY_K:
+			KEY_C:
 				toggle_window(WINDOW_CHARACTER)
 			KEY_ESCAPE:
 				_close_all_windows()
-
-## Mouse wheel steps the hotbar selection (Ctrl + wheel zooms the camera instead, see
-## PlayerSlice). Only input no control consumed reaches here, so a wheel turned over a
-## window or the minimap never moves the selection.
-func _unhandled_input(event: InputEvent) -> void:
-	if _world_input_frozen or hotbar == null:
-		return
-	if not (event is InputEventMouseButton) or not event.pressed or event.ctrl_pressed:
-		return
-	if event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-		hotbar.step(1)
-	elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
-		hotbar.step(-1)
 
 # ---------------------------------------------------------------------------
 # HUD: hotbar / skill bar / window dock
 # ---------------------------------------------------------------------------
 
 func _build_hud() -> void:
-	var hint := Label.new()
-	hint.name = "HotbarHint"
-	hint.anchor_left = 0.5
-	hint.anchor_right = 0.5
-	hint.anchor_top = 1.0
-	hint.anchor_bottom = 1.0
-	hint.offset_left = -300.0
-	hint.offset_right = 300.0
-	hint.offset_top = -92.0
-	hint.offset_bottom = -72.0
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.add_theme_font_size_override("font_size", 15)
-	hint.add_theme_color_override("font_outline_color", Color(0, 0, 0))
-	hint.add_theme_constant_override("outline_size", 5)
-	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_ui.add_child(hint)
-
 	hotbar = HotbarScript.new()
 	hotbar.anchor_left = 0.5
 	hotbar.anchor_right = 0.5
 	hotbar.anchor_top = 1.0
 	hotbar.anchor_bottom = 1.0
-	hotbar.offset_left = -270.0
-	hotbar.offset_right = 270.0
-	hotbar.offset_top = -68.0
+	hotbar.offset_left = -300.0
+	hotbar.offset_right = 300.0
+	hotbar.offset_top = -13.0
 	hotbar.offset_bottom = -12.0
+	hotbar.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	hotbar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	hotbar.save_path = layout_path.get_basename() + "_hotbar.json"
 	hotbar.icon_loader = func(item_id: String) -> Texture2D: return _load_item_icon(item_icon_key(item_id))
 	hotbar.held_provider = func() -> Dictionary:
 		return inventory_slice.get_contents() if inventory_slice != null else {}
-	hotbar.set_hint_label(hint)
+	hotbar.tier_provider = func() -> Dictionary:
+		return crafting_slice.get_skills() if crafting_slice != null else {}
 	hotbar.build()
 	hotbar.slot_selected.connect(_on_hotbar_selected)
+	hotbar.drag_began.connect(_on_drag_began)
 	_ui.add_child(hotbar)
-
-	skill_bar = SkillBarScript.new()
-	skill_bar.anchor_left = 1.0
-	skill_bar.anchor_right = 1.0
-	skill_bar.offset_left = -272.0
-	skill_bar.offset_right = -12.0
-	skill_bar.offset_top = 192.0
-	skill_bar.offset_bottom = 240.0
-	skill_bar.tier_provider = func() -> Dictionary:
-		return crafting_slice.get_skills() if crafting_slice != null else {}
-	skill_bar.build()
-	_ui.add_child(skill_bar)
 
 	# Under the health bar (top-left, see PlayerSlice._build_hud).
 	window_dock = WindowDockScript.new()
@@ -257,6 +227,90 @@ func _build_hud() -> void:
 	window_dock.build()
 	window_dock.window_toggled.connect(toggle_window)
 	_ui.add_child(window_dock)
+
+	_hud_notice = Label.new()
+	_hud_notice.anchor_left = 0.5
+	_hud_notice.anchor_right = 0.5
+	_hud_notice.anchor_top = 1.0
+	_hud_notice.anchor_bottom = 1.0
+	_hud_notice.offset_left = -300.0
+	_hud_notice.offset_right = 300.0
+	_hud_notice.offset_top = -180.0
+	_hud_notice.offset_bottom = -156.0
+	_hud_notice.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hud_notice.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hud_notice.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	_hud_notice.add_theme_constant_override("outline_size", 5)
+	_ui.add_child(_hud_notice)
+
+# ---------------------------------------------------------------------------
+# Drag and drop
+# ---------------------------------------------------------------------------
+
+func _on_drag_began(payload: Dictionary) -> void:
+	_drag_payload = payload
+
+## The drag source for an inventory slot: carries the item id; hold Shift on release to drop the whole stack.
+func _inventory_drag(_at: Vector2, item_id: String, qty: int, source: Control) -> Variant:
+	var label := Label.new()
+	label.text = "%s ×%d" % [item_id, qty] if qty > 1 else item_id
+	source.set_drag_preview(label)
+	_drag_payload = {"kind": "item", "id": item_id, "quantity": qty}
+	return _drag_payload
+
+func _skill_drag(_at: Vector2, skill: String, source: Control) -> Variant:
+	var label := Label.new()
+	label.text = skill
+	source.set_drag_preview(label)
+	_drag_payload = {"kind": "skill", "id": skill}
+	return _drag_payload
+
+func _on_drag_end() -> void:
+	if _drag_payload.is_empty():
+		return
+	var payload := _drag_payload
+	_drag_payload = {}
+	var vp := get_viewport() if is_inside_tree() else null
+	if vp == null or vp.gui_is_drag_successful():
+		return
+	# Released over a control that refused it (a window, the hotbar edge): nothing happens.
+	# Released over the bare world: the drop target is the ground.
+	if vp.gui_get_hovered_control() == null:
+		finish_world_drop(payload, Input.is_key_pressed(KEY_SHIFT))
+
+## A drag that ended in the world. An inventory item lands on the ground (one unit, or the whole
+## stack with `whole_stack`); a hotbar box is simply emptied. Returns what happened, for tests.
+func finish_world_drop(payload: Dictionary, whole_stack: bool) -> String:
+	match str(payload.get("kind", "")):
+		"hotbar":
+			hotbar.clear_slot(int(payload.get("from", -1)))
+			return "cleared"
+		"item":
+			return request_drop(str(payload.get("id", "")), int(payload.get("quantity", 1)) if whole_stack else 1)
+	return ""
+
+## Ask for `quantity` of `item_id` to be dropped in front of the player. Returns "dropped",
+## or the reason it was refused.
+func request_drop(item_id: String, quantity: int) -> String:
+	if not drops_enabled:
+		_notify("Items can't be dropped while joined to another player's world yet")
+		return "client"
+	if inventory_slice == null or quantity <= 0 or int(inventory_slice.get_item_count(item_id)) <= 0:
+		return "none"
+	var where := Vector3.ZERO
+	if player_slice != null and player_slice.has_method("drop_point"):
+		where = player_slice.drop_point()
+	GameBus.item_drop_requested.emit(item_id, mini(quantity, int(inventory_slice.get_item_count(item_id))), where)
+	return "dropped"
+
+func _notify(text: String) -> void:
+	if _hud_notice == null:
+		return
+	_hud_notice.text = text
+	if is_inside_tree():
+		var t := create_tween()
+		t.tween_interval(3.0)
+		t.tween_callback(func(): _hud_notice.text = "")
 
 ## Apply what a hotbar selection means: a block becomes the place material, gear is worn, and
 ## anything else (or an empty box) clears the place material so a stray click places nothing.
@@ -279,8 +333,6 @@ func _on_place_material_changed(material: String) -> void:
 func refresh_hud() -> void:
 	if hotbar != null:
 		hotbar.refresh()
-	if skill_bar != null:
-		skill_bar.refresh()
 	if window_dock != null:
 		var open: Array = []
 		for key in _panels:
@@ -552,9 +604,10 @@ static func controls_rows() -> Array:
 		{"keys": "WASD", "desc": "Move", "mouse": 0},
 		{"keys": "Space", "desc": "Jump", "mouse": 0},
 		{"keys": "Hold", "desc": "Look around (the cursor hides while held)", "mouse": MOUSE_BUTTON_RIGHT},
-		{"keys": "Scroll", "desc": "Choose the item box (bottom row)", "mouse": 0},
-		{"keys": "Ctrl + Scroll", "desc": "Zoom the camera", "mouse": 0},
-		{"keys": "1 – 5", "desc": "Use the skill boxes (top right)", "mouse": 0},
+		{"keys": "Scroll", "desc": "Zoom", "mouse": 0},
+		{"keys": "1 – 9", "desc": "Use the box on the bottom row (a block, gear or a skill)", "mouse": 0},
+		{"keys": "▴", "desc": "Expand the bottom bar: drag items and skills in, right-click a box to choose its key", "mouse": 0},
+		{"keys": "Drag", "desc": "Inventory item onto a box, or onto the ground to drop it (Shift: whole stack)", "mouse": 0},
 		{"keys": "", "desc": "Click: Attack / Pick up / Chop", "mouse": MOUSE_BUTTON_LEFT},
 		{"keys": "Shift +", "desc": "Mine", "mouse": MOUSE_BUTTON_LEFT},
 		{"keys": "", "desc": "Place", "mouse": MOUSE_BUTTON_MIDDLE},
@@ -562,7 +615,7 @@ static func controls_rows() -> Array:
 		{"keys": "B · V", "desc": "Station cycle / place", "mouse": 0},
 		{"keys": "G", "desc": "Tame nearest creature (G is shared with Proposals)", "mouse": 0},
 		{"keys": "E", "desc": "Toggle equipment", "mouse": 0},
-		{"keys": "I · T · C · Y · P · G · K", "desc": "Inventory · Tech · Crafting · Trade · Market · Proposals · Character (or click the boxes under your health)", "mouse": 0},
+		{"keys": "I · C · H · T · Y · P · G", "desc": "Inventory · Character · Crafting · Tech · Trade · Market · Proposals (or click the boxes under your health)", "mouse": 0},
 		{"keys": "?", "desc": "This panel", "mouse": 0},
 		{"keys": "Enter · /", "desc": "Chat and commands (/help)", "mouse": 0},
 		{"keys": "ESC", "desc": "Close windows", "mouse": 0},
@@ -756,7 +809,9 @@ func _retire(c: Node) -> void:
 		_retired_prune_at = maxi(RETIRED_PRUNE_MIN, _retired.size() * 2)
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_PREDELETE:
+	if what == NOTIFICATION_DRAG_END:
+		_on_drag_end()
+	elif what == NOTIFICATION_PREDELETE:
 		for n in _retired:
 			if is_instance_valid(n):
 				n.free()
@@ -793,6 +848,7 @@ func _make_slot(row: Dictionary) -> Control:
 	if str(row["durability"]).contains(" "):
 		slot.modulate = Color(1.0, 0.9, 0.8)
 	slot.gui_input.connect(_on_slot_gui_input.bind(str(row["id"]), row["actions"]))
+	slot.set_drag_forwarding(_inventory_drag.bind(str(row["id"]), int(row["quantity"]), slot), Callable(), Callable())
 	return slot
 
 func _load_item_icon(key: String) -> Texture2D:
@@ -852,9 +908,37 @@ func _on_worldgen_version_mismatch(recorded: int, running: int) -> void:
 	if _worldgen_notice_label != null:
 		_worldgen_notice_label.text = "World saved with generator v%d, running v%d: terrain may not match saved edits." % [recorded, running]
 
+## One row per skill the player has, best tier first: { id, tier, tooltip }. Pure given the table.
+static func skills_rows(tiers: Dictionary) -> Array:
+	var rows: Array = []
+	for skill in HotbarScript.ordered_skills(tiers):
+		rows.append({"id": skill, "tier": str(tiers[skill]), "tooltip": "%s (%s)\nDrag onto the bottom bar to use it with a key" % [skill, tiers[skill]]})
+	return rows
+
+func _refresh_skills() -> void:
+	if _skills_grid == null:
+		return
+	var rows := skills_rows(crafting_slice.get_skills() if crafting_slice != null else {})
+	if rows.hash() == _skills_signature and _skills_grid.get_child_count() > 0:
+		return
+	_skills_signature = rows.hash()
+	for c in _skills_grid.get_children():
+		_skills_grid.remove_child(c)
+		_retire(c)
+	for row in rows:
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(SLOT_SIZE.x, 48.0)
+		b.clip_text = true
+		b.text = "%s\n%s" % [str(row["id"]).substr(0, 8), str(row["tier"])]
+		b.add_theme_font_size_override("font_size", 12)
+		b.tooltip_text = str(row["tooltip"])
+		b.set_drag_forwarding(_skill_drag.bind(str(row["id"]), b), Callable(), Callable())
+		_skills_grid.add_child(b)
+
 func refresh_character() -> void:
 	if _character_grid == null:
 		return
+	_refresh_skills()
 	_character_stats.text = character_stats_text()
 	# An appearance change that left the worn set alone (a palette tweak, a LOD swap)
 	# produces the same rows; rebuilding the whole grid for it is wasted work.
@@ -1198,13 +1282,13 @@ func _build_ui() -> void:
 
 	_panels[WINDOW_INVENTORY] = _build_window(WINDOW_INVENTORY, "Inventory", _build_inventory_content(), Vector2(24, 24))
 	_panels[WINDOW_TECHNOLOGY] = _build_window(WINDOW_TECHNOLOGY, "Technology", _build_technology_content(), Vector2(470, 24))
-	_panels[WINDOW_CRAFTING] = _build_window(WINDOW_CRAFTING, "Crafting", _build_crafting_content(), Vector2(24, 360))
+	_panels[WINDOW_CRAFTING] = _build_window(WINDOW_CRAFTING, "Crafting (H)", _build_crafting_content(), Vector2(24, 360))
 	_panels[WINDOW_TRADE] = _build_window(WINDOW_TRADE, "Trade", _build_trade_content(), Vector2(470, 360))
 	_panels[WINDOW_MARKET] = _build_window(WINDOW_MARKET, "Market (P)", _build_market_content(), Vector2(24, 700))
 	_panels[WINDOW_PROPOSALS] = _build_window(WINDOW_PROPOSALS, "Proposals", _build_proposals_content(), Vector2(470, 700))
 	_panels[WINDOW_CONTROLS] = _build_window(WINDOW_CONTROLS, "Controls (?)", _build_controls_content(), Vector2(916, 24))
 
-	_panels[WINDOW_CHARACTER] = _build_window(WINDOW_CHARACTER, "Character (K)", _build_character_content(), Vector2(916, 360))
+	_panels[WINDOW_CHARACTER] = _build_window(WINDOW_CHARACTER, "Character (C)", _build_character_content(), Vector2(916, 360))
 
 	_slot_menu = PopupMenu.new()
 	_slot_menu.id_pressed.connect(_on_slot_menu_pressed)
@@ -1391,6 +1475,13 @@ func _build_character_content() -> Control:
 	_character_grid = GridContainer.new()
 	_character_grid.columns = INVENTORY_COLUMNS
 	vbox.add_child(_character_grid)
+	var skills_title := Label.new()
+	skills_title.text = "Skills — drag one onto the bottom bar"
+	skills_title.add_theme_font_size_override("font_size", 15)
+	vbox.add_child(skills_title)
+	_skills_grid = GridContainer.new()
+	_skills_grid.columns = INVENTORY_COLUMNS
+	vbox.add_child(_skills_grid)
 	return vbox
 
 func _build_crafting_content() -> Control:

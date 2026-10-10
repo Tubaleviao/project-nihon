@@ -249,8 +249,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
 		_begin_look()
 		return
-	# Ctrl + scroll wheel → zoom the orbit camera in/out (plain scroll steps the hotbar).
-	if event is InputEventMouseButton and event.pressed and event.ctrl_pressed:
+	# Scroll wheel → zoom the orbit camera in/out.
+	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_zoom(-ZOOM_STEP)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
@@ -300,6 +300,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	# E key → toggle all equipment on/off (inspect the naked body under the gear).
 	if event is InputEventKey and event.pressed and event.keycode == KEY_E:
 		GameBus.character_equipment_toggle_requested.emit()
+
+## Where a dropped item lands: a little in front of the body (away from the camera), at the feet.
+func drop_point() -> Vector3:
+	var forward := Vector3.FORWARD
+	if _pivot != null:
+		forward = -_pivot.global_transform.basis.z
+		forward.y = 0.0
+		forward = forward.normalized() if forward.length() > 0.001 else Vector3.FORWARD
+	return get_position() + forward * 1.5 + Vector3(0.0, -0.4, 0.0)
 
 ## APPROXIMATE far from the origin: a float32 world position is quantised to metres 10,000 km out.
 ## Fine for callers near the origin (UI, range checks); anything that persists or sends the
@@ -793,19 +802,19 @@ func _build_hud() -> void:
 	_hud.add_child(aim_label)
 	_aim_label = aim_label
 
-	# Station selection (B cycles, V places) shows above the hotbar, which the UI slice builds
-	# and which carries everything else the old instruction row said.
+	# Station selection (B cycles, V places) shows in the bottom-right corner; the hotbar the UI
+	# slice builds carries everything else the old instruction row said.
 	_station_label = Label.new()
 	_station_label.name = "StationLabel"
-	_station_label.anchor_left = 0.5
-	_station_label.anchor_right = 0.5
+	_station_label.anchor_left = 1.0
+	_station_label.anchor_right = 1.0
 	_station_label.anchor_top = 1.0
 	_station_label.anchor_bottom = 1.0
-	_station_label.offset_left = -300.0
-	_station_label.offset_right = 300.0
-	_station_label.offset_top = -116.0
-	_station_label.offset_bottom = -96.0
-	_station_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_station_label.offset_left = -360.0
+	_station_label.offset_right = -12.0
+	_station_label.offset_top = -36.0
+	_station_label.offset_bottom = -12.0
+	_station_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_station_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_station_label.add_theme_font_size_override("font_size", 14)
 	_station_label.add_theme_color_override("font_color", Color(0.6, 0.85, 1.0))

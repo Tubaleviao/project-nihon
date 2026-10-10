@@ -134,11 +134,15 @@ var owner_id: String = ""
 ## defender id `combat_round_requested` has always used for the local body).
 const LOCAL_OWNER_LITERALS: PackedStringArray = ["", "player"]
 
+## False on a client, whose pack is the host's: it never removes goods on its own authority.
+var is_authoritative: bool = true
+
 func _ready() -> void:
 	_load_capacity()
 	_build_weight_cache()
 	_build_durability_cache()
 	GameBus.pickup_requested.connect(_on_pickup_requested)
+	GameBus.item_drop_requested.connect(_on_item_drop_requested)
 	GameBus.inventory_synced.connect(_on_inventory_synced)
 
 ## Phase 37 — is an inventory sync addressed to `owner` FOR this inventory?
@@ -221,9 +225,7 @@ func drop_item(item_id: String, quantity: int) -> bool:
 ## values (worst first) so a caller can carry the exact condition. Returns
 ## { success: bool, removed: Array }.
 ##
-## NOTE: currently unused — `drop_item` (the bool wrapper) is the only caller and
-## nothing wires the returned durability to a ground pickup yet. Kept so a future
-## drop-to-ground flow can hand the item's exact wear to the spawned pickup.
+## `_on_item_drop_requested` uses it to hand the exact wear to the ground pickup.
 func drop_item_returning(item_id: String, quantity: int) -> Dictionary:
 	var have: int = get_item_count(item_id)
 	if have < quantity or quantity <= 0:
@@ -476,15 +478,30 @@ static func transfer(src: Node, dst: Node, give: Dictionary, receive: Variant = 
 # Private
 # ---------------------------------------------------------------------------
 
+## The local player drops goods on the ground. Only a machine that owns the inventory may do it: a
+## client's pack is the host's, so a local removal would be overwritten by the next sync and the
+## goods would exist twice. The pickup carries the units' exact durability (see `_on_pickup_requested`).
+func _on_item_drop_requested(item_id: String, quantity: int, position: Vector3) -> void:
+	if not is_authoritative or loot_slice == null or quantity <= 0:
+		return
+	var take := mini(quantity, get_item_count(item_id))
+	if take <= 0:
+		return
+	var res := drop_item_returning(item_id, take)
+	if not bool(res.get("success", false)):
+		return
+	loot_slice.spawn_pickup(item_id, take, position, res.get("removed", []))
+	_is_full = false
+
 func _on_pickup_requested(pickup_id: String) -> void:
 	if loot_slice == null:
 		return
 	var p: Dictionary = loot_slice.get_pickup(pickup_id)
 	if p.is_empty():
 		return
-	_try_pickup(pickup_id, p["item_id"], p["quantity"])
+	_try_pickup(pickup_id, p["item_id"], p["quantity"], p.get("durabilities", []))
 
-func _try_pickup(pickup_id: String, item_id: String, quantity: int) -> void:
+func _try_pickup(pickup_id: String, item_id: String, quantity: int, durabilities: Array = []) -> void:
 	if _is_full:
 		Diag.warn("InventorySlice: cannot pick up '%s' — inventory full" % item_id)
 		return
@@ -515,7 +532,7 @@ func _try_pickup(pickup_id: String, item_id: String, quantity: int) -> void:
 
 	# Add to inventory. add_item re-checks capacity and handles durability init +
 	# weight bookkeeping + inventory_changed.
-	if not add_item(item_id, quantity):
+	if not add_item(item_id, quantity, durabilities):
 		Diag.warn("InventorySlice: add_item failed for '%s' during pickup" % item_id)
 		return
 

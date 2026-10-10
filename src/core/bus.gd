@@ -215,6 +215,11 @@ signal loot_expired(pickup_id: String)
 ## aims at a pickup and clicks). Carries the LootSlice pickup id.
 signal pickup_requested(pickup_id: String)
 
+## The local player drags `quantity` of `item_id` out of the inventory onto the ground at `position`.
+## InventorySlice (authoritative machines only) removes it and LootSlice spawns a pickup that keeps
+## the items' exact wear, so dropping and picking up can never repair a tool.
+signal item_drop_requested(item_id: String, quantity: int, position: Vector3)
+
 # ---------------------------------------------------------------------------
 # Inventory
 # ---------------------------------------------------------------------------

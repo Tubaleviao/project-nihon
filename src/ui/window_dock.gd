@@ -13,8 +13,8 @@ signal window_toggled(window_key: String)
 ## The letters must match the key map in `UiSlice._input`.
 const ENTRIES: Array = [
 	{"key": "inventory",  "letter": "I", "name": "Inventory"},
-	{"key": "character",  "letter": "K", "name": "Character"},
-	{"key": "crafting",   "letter": "C", "name": "Crafting"},
+	{"key": "character",  "letter": "C", "name": "Character"},
+	{"key": "crafting",   "letter": "H", "name": "Crafting"},
 	{"key": "technology", "letter": "T", "name": "Technology"},
 	{"key": "trade",      "letter": "Y", "name": "Trade"},
 	{"key": "market",     "letter": "P", "name": "Market"},

@@ -384,7 +384,10 @@ func run() -> void:
 	_run_test("ui: controls legend lives behind ?, not HUD",   _test_ui_controls_panel)
 	_run_test("hud: hotbar fill / wrap / kinds",               _test_hud_hotbar_pure)
 	_run_test("hud: hotbar selection drives place material",   _test_hud_hotbar_selection)
-	_run_test("hud: skill bar order + number keys",            _test_hud_skill_bar)
+	_run_test("hud: skills and shortcut keys on the bar",      _test_hud_hotbar_skills_and_binding)
+	_run_test("hud: drag and drop to boxes and the ground",    _test_hud_drag_and_drop)
+	_run_test("hud: a dropped tool keeps its wear",            _test_hud_drop_keeps_durability)
+	_run_test("hud: skills list + window keys",                _test_hud_skills_rows_and_window_keys)
 	_run_test("hud: window dock letters match the key map",    _test_hud_window_dock)
 	_run_test("ui: crafting rows gate on technology",          _test_ui_crafting_rows_tech_gate)
 	_run_test("ui: technology rows report status + prereqs",   _test_ui_technology_rows_status)
@@ -4784,8 +4787,8 @@ func _test_ui_controls_panel() -> void:
 	p.free()
 
 const _HotbarScript := preload("res://src/ui/hotbar.gd")
-const _SkillBarScript := preload("res://src/ui/skill_bar.gd")
 const _WindowDockScript := preload("res://src/ui/window_dock.gd")
+const _TEST_HOTBAR_FILE := "user://test_ui_layout_hotbar.json"
 
 func _first_gear_item() -> String:
 	var keys: Array = GameData.ITEMS.keys()
@@ -4795,20 +4798,26 @@ func _first_gear_item() -> String:
 			return str(k)
 	return ""
 
-func _test_hud_hotbar_pure() -> void:
-	assert_eq(_HotbarScript.wrap_index(0, -1, 9), 8, "wheel up from the first box wraps to the last")
-	assert_eq(_HotbarScript.wrap_index(8, 1, 9), 0, "wheel down from the last box wraps to the first")
+func _first_block() -> String:
 	var mats: Array = GameData.MATERIALS.keys()
 	mats.sort()
-	var block := str(mats[0])
+	return str(mats[0])
+
+func _blank_slots() -> Array:
+	var cur := []
+	for i in _HotbarScript.SLOT_COUNT:
+		cur.append("")
+	return cur
+
+func _test_hud_hotbar_pure() -> void:
+	var block := _first_block()
 	var gear := _first_gear_item()
 	assert_eq(_HotbarScript.kind_of(block, GameData.MATERIALS, ""), "block", "a material is a block")
 	assert_eq(_HotbarScript.kind_of(gear, {}, "mainHand"), "gear", "an equippable is gear")
+	assert_eq(_HotbarScript.kind_of("skill:Archery", GameData.MATERIALS, ""), "skill", "a skill entry is a skill")
 	assert_eq(_HotbarScript.kind_of("", GameData.MATERIALS, ""), "", "empty is neither")
 	var usable := func(id: String) -> bool: return id == block or id == gear
-	var cur := []
-	for i in 9:
-		cur.append("")
+	var cur := _blank_slots()
 	var filled := _HotbarScript.fill(cur, {block: 3, gear: 1, "Junk": 5}, usable)
 	assert_eq(filled.count(block) + filled.count(gear), 2, "usable held items take boxes")
 	assert_false(filled.has("Junk"), "non-usable items stay off the bar")
@@ -4816,63 +4825,222 @@ func _test_hud_hotbar_pure() -> void:
 	var after := _HotbarScript.fill(filled, {gear: 1}, usable)
 	assert_false(after.has(block), "an item no longer held leaves its box")
 	assert_eq(after.find(gear), filled.find(gear), "the other boxes keep their place")
-	var full := []
+	assert_eq(_HotbarScript.fill(cur, {block: 3}, usable, {block: true}), cur, "an item taken off by hand is not re-added")
+	var with_skill := cur.duplicate()
+	with_skill[12] = "skill:Archery"
+	assert_eq(_HotbarScript.fill(with_skill, {}, usable)[12], "skill:Archery", "a skill box survives an empty pack")
+	var full := cur.duplicate()
 	for i in 9:
-		full.append("x%d" % i)
+		full[i] = "x%d" % i
 	var refilled := _HotbarScript.fill(full, {block: 1}, usable)
-	assert_eq(refilled.count(""), 8, "boxes of unheld items clear")
-	assert_eq(refilled[0], block, "and a held usable item takes the freed box")
+	assert_eq(refilled[0], block, "a held usable item takes a freed bottom box")
+	var row2 := cur.duplicate()
+	for i in range(0, 9):
+		row2[i] = "skill:S%d" % i
+	assert_eq(_HotbarScript.fill(row2, {block: 1}, usable).slice(9).count(block), 0, "auto-fill never uses the player's second row")
+	# place / swap
+	var placed := _HotbarScript.place(cur, 3, "Ferrite")
+	assert_eq(placed[3], "Ferrite", "place puts the entry in the box")
+	assert_eq(_HotbarScript.place(placed, 10, "Ferrite")[3], "", "placing an entry elsewhere moves it")
+	var swapped := _HotbarScript.swap(placed, 3, 4)
+	assert_eq([swapped[3], swapped[4]], ["", "Ferrite"], "swap exchanges two boxes")
+	# keys
+	assert_eq(_HotbarScript.digit_slot(KEY_1), 0, "1 fires the first box")
+	assert_eq(_HotbarScript.digit_slot(KEY_9), 8, "9 fires the ninth box")
+	assert_eq(_HotbarScript.digit_slot(KEY_0), -1, "0 is not a bottom-row key")
+	for k in [KEY_W, KEY_I, KEY_C, KEY_H, KEY_M, KEY_P, KEY_1, KEY_ESCAPE, KEY_SPACE]:
+		assert_false(_HotbarScript.bind_allowed(k), "game key %d cannot be a shortcut" % k)
+	for k in [KEY_Z, KEY_X, KEY_J, KEY_F5, KEY_0]:
+		assert_true(_HotbarScript.bind_allowed(k), "key %d may be a shortcut" % k)
+	var binds := []
+	for i in 18:
+		binds.append(0)
+	binds[11] = KEY_Z
+	assert_eq(_HotbarScript.slot_for_key(binds, KEY_Z), 11, "a bound key finds its box")
+	assert_eq(_HotbarScript.slot_for_key(binds, KEY_X), -1, "an unbound key finds none")
+	# persistence
+	var json := _HotbarScript.state_to_json(placed, binds, true)
+	var back := _HotbarScript.parse_state(json)
+	assert_eq(back["slots"], placed, "slots round-trip")
+	assert_eq(back["binds"], binds, "binds round-trip")
+	assert_true(back["expanded"], "expansion round-trips")
+	var bad := _HotbarScript.parse_state('{"slots": [1, {}, "ok"], "binds": [0,0,0,0,0,0,0,0,0,87,"x",99999], "expanded": "yes"}')
+	assert_eq(bad["slots"][2], "ok", "a good entry survives")
+	assert_eq(bad["slots"][0], "", "a non-string entry is dropped")
+	assert_eq(bad["binds"][9], 0, "a reserved key (W) is dropped from the file")
+	assert_eq(bad["binds"][11], 0, "an absurd key is dropped")
+	assert_false(bad["expanded"], "a non-bool expansion is false")
+	assert_eq(_HotbarScript.parse_state("not json")["slots"], _blank_slots(), "a corrupt file starts empty")
+
+func _new_hud_ui() -> UiSlice:
+	DirAccess.remove_absolute(_TEST_HOTBAR_FILE)
+	return _new_test_ui()
 
 func _test_hud_hotbar_selection() -> void:
-	var ui := _new_test_ui()
+	var ui := _new_hud_ui()
 	var inv := InventorySlice.new()
 	add_child(inv)
 	var vox := VoxelSlice.new()
 	add_child(vox)
 	ui.inventory_slice = inv
 	ui.voxel_slice = vox
-	var mats: Array = GameData.MATERIALS.keys()
-	mats.sort()
-	var block := str(mats[0])
+	var block := _first_block()
 	inv.add_item(block, 4)
 	ui.refresh_hud()
 	assert_eq(ui.hotbar.slots[0], block, "a picked-up block lands in the first box")
 	assert_eq(vox.get_place_material(), block, "and, being selected, becomes the place material")
-	ui.hotbar.step(1)
-	assert_eq(ui.hotbar.selected, 1, "wheel down moves the selection right")
+	ui.hotbar.select_slot(1)
 	assert_eq(vox.get_place_material(), "", "an empty box clears the place material")
-	ui.hotbar.step(-1)
-	assert_eq(vox.get_place_material(), block, "wheel back re-selects the block")
-	ui.hotbar.step(-1)
-	assert_eq(ui.hotbar.selected, 8, "wheel up from the first box wraps")
 	ui.hotbar.select_slot(0)
+	assert_eq(vox.get_place_material(), block, "selecting the block box re-selects it")
+	ui.hotbar.select_slot(5)
+	var key := InputEventKey.new()
+	key.pressed = true
+	key.keycode = KEY_1
+	assert_true(ui.hotbar.handle_key(key), "the 1 key is used by the bar")
+	assert_eq(ui.hotbar.selected, 0, "1 selects the first box")
 	GameBus.block_place_material_changed.emit(block)
-	assert_eq(ui.hotbar.selected, 0, "R cycling to a material on the bar selects its box")
+	assert_eq(ui.hotbar.selected, 0, "R cycling to a material on the bar keeps/selects its box")
 	vox.free()
 	inv.free()
 	ui.free()
 
-func _test_hud_skill_bar() -> void:
-	var tiers := {"Archery": "novice", "Alchemy": "expert", "Carpentry": "expert", "Smithing": "master", "Diplomacy": "novice", "Herbalism": "apprentice"}
-	var order := _SkillBarScript.ordered(tiers, 5)
-	assert_eq(order, ["Smithing", "Alchemy", "Carpentry", "Herbalism", "Archery"], "best tier first, ties by name, capped at 5")
-	assert_eq(_SkillBarScript.slot_for_keycode(KEY_1), 0, "1 fires the first box")
-	assert_eq(_SkillBarScript.slot_for_keycode(KEY_5), 4, "5 fires the fifth box")
-	assert_eq(_SkillBarScript.slot_for_keycode(KEY_6), -1, "6 fires nothing")
-	assert_eq(_SkillBarScript.slot_for_keycode(KEY_A), -1, "a letter fires nothing")
-	var bar := _SkillBarScript.new()
-	bar.tier_provider = func() -> Dictionary: return tiers
-	bar.build()
+func _test_hud_hotbar_skills_and_binding() -> void:
+	var ui := _new_hud_ui()
+	var hb = ui.hotbar
+	hb.assign(2, "skill:Alchemy")
 	var got: Array = []
 	var cb := func(slot: int, skill: String) -> void: got.append([slot, skill])
 	GameBus.skill_slot_triggered.connect(cb)
-	assert_eq(bar.trigger(1), "Alchemy", "the second box fires the second skill")
+	var k3 := InputEventKey.new()
+	k3.pressed = true
+	k3.keycode = KEY_3
+	assert_true(hb.handle_key(k3), "3 fires the third box")
 	GameBus.skill_slot_triggered.disconnect(cb)
-	assert_eq(got, [[1, "Alchemy"]], "the press is reported on the bus")
-	bar.tier_provider = func() -> Dictionary: return {}
-	bar.refresh()
-	assert_eq(bar.trigger(0), "", "an empty box fires nothing")
-	bar.free()
+	assert_eq(got, [[2, "Alchemy"]], "a skill box reports the press on the bus")
+	# Bottom row boxes cannot be rebound; a second-row box can.
+	hb.begin_binding(1)
+	assert_false(hb.is_binding(), "the bottom row is fixed to 1-9")
+	hb.assign(10, "skill:Archery")
+	hb.begin_binding(10)
+	assert_true(hb.is_binding() and hb.expanded, "binding a second-row box expands the bar")
+	var bad := InputEventKey.new()
+	bad.pressed = true
+	bad.keycode = KEY_W
+	assert_true(hb.handle_key(bad), "a key press is swallowed while choosing a shortcut")
+	assert_true(hb.is_binding(), "a game key is refused and the choice stays open")
+	var z := InputEventKey.new()
+	z.pressed = true
+	z.keycode = KEY_Z
+	hb.handle_key(z)
+	assert_false(hb.is_binding(), "an allowed key finishes the choice")
+	assert_eq(hb.binds[10], KEY_Z, "the box now has that shortcut")
+	got.clear()
+	GameBus.skill_slot_triggered.connect(cb)
+	assert_true(hb.handle_key(z), "the chosen key fires the box")
+	GameBus.skill_slot_triggered.disconnect(cb)
+	assert_eq(got, [[10, "Archery"]], "second-row shortcut fires its skill")
+	# A second box taking the same key steals it.
+	hb.assign(11, "skill:Smithing")
+	hb.begin_binding(11)
+	hb.handle_key(z)
+	assert_eq([hb.binds[10], hb.binds[11]], [0, KEY_Z], "a key belongs to one box")
+	# Persistence
+	assert_true(FileAccess.file_exists(ui.hotbar.save_path), "the bar saved itself")
+	var again := _HotbarScript.parse_state(FileAccess.get_file_as_string(ui.hotbar.save_path))
+	assert_eq(again["slots"][2], "skill:Alchemy", "contents persisted")
+	assert_eq(again["binds"][11], KEY_Z, "shortcuts persisted")
+	ui.free()
+	DirAccess.remove_absolute(_TEST_HOTBAR_FILE)
+
+func _test_hud_drag_and_drop() -> void:
+	var ui := _new_hud_ui()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	var loot := LootSlice.new()
+	add_child(loot)
+	inv.loot_slice = loot
+	ui.inventory_slice = inv
+	var hb = ui.hotbar
+	# Drop onto a box.
+	assert_true(hb._can_drop(Vector2.ZERO, {"kind": "item", "id": "Ferrite"}), "an inventory item can be dropped on a box")
+	assert_false(hb._can_drop(Vector2.ZERO, {"kind": "junk", "id": "x"}), "unknown payloads are refused")
+	assert_false(hb._can_drop(Vector2.ZERO, "text"), "non-dictionary payloads are refused")
+	hb._drop(Vector2.ZERO, {"kind": "item", "id": "Ferrite"}, 12)
+	assert_eq(hb.slots[12], "Ferrite", "the item is in the box")
+	hb._drop(Vector2.ZERO, {"kind": "skill", "id": "Archery"}, 13)
+	assert_eq(hb.slots[13], "skill:Archery", "a skill is in the box")
+	hb._drop(Vector2.ZERO, {"kind": "hotbar", "from": 12, "id": "skill:Archery"}, 13)
+	assert_eq([hb.slots[12], hb.slots[13]], ["skill:Archery", "Ferrite"], "dragging a box onto another swaps them")
+	# Out into the world: a box is emptied, an item lands on the ground.
+	assert_eq(ui.finish_world_drop({"kind": "hotbar", "from": 13, "id": "Ferrite"}, false), "cleared", "a box dragged to the world is emptied")
+	assert_eq(hb.slots[13], "", "and is empty")
+	inv.add_item("Ferrite", 5)
+	var seen: Array = []
+	var cb := func(id: String, qty: int, _pos: Vector3) -> void: seen.append([id, qty])
+	GameBus.item_drop_requested.connect(cb)
+	assert_eq(ui.finish_world_drop({"kind": "item", "id": "Ferrite", "quantity": 5}, false), "dropped", "an item dragged to the world is dropped")
+	assert_eq(inv.get_item_count("Ferrite"), 4, "a plain drag drops one unit")
+	assert_eq(ui.finish_world_drop({"kind": "item", "id": "Ferrite", "quantity": 4}, true), "dropped", "shift drops the stack")
+	assert_eq(inv.get_item_count("Ferrite"), 0, "and the whole stack leaves the pack")
+	assert_eq(ui.request_drop("Ferrite", 1), "none", "an item not held is refused")
+	ui.drops_enabled = false
+	assert_eq(ui.request_drop("Ferrite", 1), "client", "a client cannot drop")
+	GameBus.item_drop_requested.disconnect(cb)
+	assert_eq(seen, [["Ferrite", 1], ["Ferrite", 4]], "the bus carried one unit, then the stack")
+	assert_eq(loot.get_pickups_near(Vector3.ZERO, 100.0).size(), 2, "both landed on the ground")
+	# The slice's own limits.
+	inv.add_item("Ferrite", 3)
+	GameBus.item_drop_requested.emit("Ferrite", 99, Vector3(1, 0, 1))
+	assert_eq(inv.get_item_count("Ferrite"), 0, "a drop is capped at what is held")
+	GameBus.item_drop_requested.emit("Ferrite", 1, Vector3.ZERO)
+	assert_eq(inv.get_item_count("Ferrite"), 0, "dropping what is not held does nothing")
+	inv.is_authoritative = false
+	inv.add_item("Ferrite", 2)
+	GameBus.item_drop_requested.emit("Ferrite", 1, Vector3.ZERO)
+	assert_eq(inv.get_item_count("Ferrite"), 2, "a client inventory never removes goods on its own")
+	loot.free()
+	inv.free()
+	ui.free()
+	DirAccess.remove_absolute(_TEST_HOTBAR_FILE)
+
+func _test_hud_drop_keeps_durability() -> void:
+	var inv := InventorySlice.new()
+	add_child(inv)
+	var loot := LootSlice.new()
+	add_child(loot)
+	inv.loot_slice = loot
+	var tool := ""
+	for k in GameData.ITEMS.keys():
+		if inv.is_durable(str(k)):
+			tool = str(k)
+			break
+	if tool == "":
+		loot.free()
+		inv.free()
+		return
+	inv.add_item(tool, 1, [7.0])
+	GameBus.item_drop_requested.emit(tool, 1, Vector3(5, 0, 5))
+	assert_eq(inv.get_item_count(tool), 0, "the tool left the pack")
+	var near := loot.get_pickups_near(Vector3(5, 0, 5), 1.0)
+	assert_eq(near.size(), 1, "it lies on the ground")
+	GameBus.pickup_requested.emit(str(near[0]["id"]))
+	assert_eq(inv.get_item_count(tool), 1, "picked up again")
+	assert_eq(inv.get_durability(tool), 7.0, "with its wear intact: dropping cannot repair a tool")
+	loot.free()
+	inv.free()
+
+func _test_hud_skills_rows_and_window_keys() -> void:
+	var rows := UiSlice.skills_rows({"Archery": "novice", "Smithing": "master", "Alchemy": "expert"})
+	assert_eq(rows.map(func(r): return r["id"]), ["Smithing", "Alchemy", "Archery"], "skills list best tier first")
+	var ui := _new_hud_ui()
+	for pair in [[KEY_C, "character"], [KEY_H, "crafting"], [KEY_P, "market"], [KEY_I, "inventory"]]:
+		var e := InputEventKey.new()
+		e.pressed = true
+		e.keycode = pair[0]
+		ui._input(e)
+		assert_true(ui.is_window_open(pair[1]), "key %d opens %s" % [pair[0], pair[1]])
+	ui.free()
 
 func _test_hud_window_dock() -> void:
 	var seen := {}
@@ -4880,9 +5048,11 @@ func _test_hud_window_dock() -> void:
 		assert_false(seen.has(e["letter"]), "shortcut letters are unique: %s" % e["letter"])
 		seen[e["letter"]] = true
 		assert_true(UiSlice.WINDOW_KEYS.has(e["key"]), "dock window exists: %s" % e["key"])
+		assert_false(_HotbarScript.bind_allowed(OS.find_keycode_from_string(str(e["letter"]))) , "dock letter %s is reserved from box shortcuts" % e["letter"])
 	assert_false(seen.has("M"), "M stays free for the map window")
 	assert_false(seen.has("S"), "S stays free for skills")
-	var ui := _new_test_ui()
+	assert_true(seen.has("C") and seen.has("H"), "C is Character, H is Crafting")
+	var ui := _new_hud_ui()
 	var toggled: Array = []
 	ui.window_dock.window_toggled.connect(func(k: String) -> void: toggled.append(k))
 	ui.window_dock.window_toggled.emit("inventory")
