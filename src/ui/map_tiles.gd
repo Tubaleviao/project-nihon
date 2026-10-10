@@ -15,6 +15,9 @@ var version: int = TerrainSlice.WORLDGEN_VERSION
 var _cache: Dictionary = {}                 # key -> biome (insertion order = age)
 var _pending: Dictionary = {}               # level -> { key: Vector3i(level, tx, tz) }
 var _inflight: Dictionary = {}              # key -> true, taken but not yet stored
+var _stale: Dictionary = {}                 # tiles from before the last `invalidate`, shown until redone
+## Bumps whenever cached results stop being valid; a batch computed under an older one is dropped.
+var generation: int = 0
 
 func key_of(level: int, tx: int, tz: int) -> String:
 	return MapMath.tile_key(seed_v, version, level, tx, tz)
@@ -38,6 +41,8 @@ func best_biome(level: int, tx: int, tz: int) -> String:
 		var b := get_tile(l, x, z)
 		if b != "":
 			return b
+		if not _stale.is_empty() and _stale.has(key_of(l, x, z)):
+			return str(_stale[key_of(l, x, z)])
 		l += 1
 		x >>= 1
 		z >>= 1
@@ -112,6 +117,17 @@ func pump(n: int) -> int:
 ## Adopt another world: nothing cached for the old one is reused.
 func reset(new_seed: int) -> void:
 	seed_v = new_seed
+	generation += 1
 	_cache.clear()
+	_stale.clear()
+	_pending.clear()
+	_inflight.clear()
+
+## Same world, but what was sampled may have changed (a generation record arrived): recompute every
+## tile, drawing the old answers meanwhile so the picture does not blank out.
+func invalidate() -> void:
+	generation += 1
+	_stale = _cache
+	_cache = {}
 	_pending.clear()
 	_inflight.clear()

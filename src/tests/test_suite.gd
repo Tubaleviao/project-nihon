@@ -5195,6 +5195,16 @@ func _test_map_tile_cache() -> void:
 	u.reset(7)
 	u.store([[Vector3i(3, 1, 1), "Ocean"]])
 	assert_eq(u.best_biome(0, 8, 8), "Ocean", "a fine tile shows its coarse ancestor until it is computed")
+	# Invalidate: old answers keep showing, but a batch taken before it must be dropped by generation.
+	var g := u.generation
+	u.invalidate()
+	assert_true(u.generation != g, "invalidate bumps the generation")
+	assert_eq(u.size(), 0, "invalidate empties the live cache")
+	assert_eq(u.best_biome(3, 1, 1), "Ocean", "the stale answer shows until recomputed")
+	u.store([[Vector3i(3, 1, 1), "Desert"]])
+	assert_eq(u.best_biome(3, 1, 1), "Desert", "a fresh answer wins over the stale one")
+	u.reset(7)
+	assert_eq(u.best_biome(3, 1, 1), "", "reset drops stale answers too")
 
 func _test_map_revealed_roundtrip() -> void:
 	var path := "user://test_revealed.json"

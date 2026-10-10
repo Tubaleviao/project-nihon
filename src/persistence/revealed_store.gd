@@ -84,7 +84,11 @@ static func save(path: String, chunks: Array, seed_v: int) -> bool:
 		return false
 	f.store_string(encode(chunks, seed_v))
 	f.close()
-	return DirAccess.rename_absolute(tmp, path) == OK
+	if DirAccess.rename_absolute(tmp, path) != OK:
+		DirAccess.remove_absolute(tmp)
+		Diag.warn("[RevealedStore] cannot replace %s" % path)
+		return false
+	return true
 
 ## The saved chunks for this seed; empty (with one warning) when the file is missing or unusable.
 static func load_file(path: String, seed_v: int) -> Array:

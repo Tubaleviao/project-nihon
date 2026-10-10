@@ -19,6 +19,7 @@ const TILES_PER_FRAME := 48
 const WHEEL_STEP := 0.25
 const DIM := 0.35
 const MAX_TILES_DRAWN := 6000
+const RECORDS_REFRESH_MS := 1000   # at most one tile recompute per second while chunks keep arriving
 
 var minimap: Node = null
 var terrain_slice: Node = null
@@ -31,6 +32,9 @@ var _center: Vector2 = Vector2.ZERO   # view centre in chunks
 var _dragging := false
 var _thread: Thread = null
 var _batch_seed: int = 0
+var _batch_gen: int = 0
+var _last_sig: Array = []
+var _records_at_ms: int = 0
 var _reveal_tiles: Dictionary = {}
 var _reveal_level: int = -1
 var _reveal_rev: int = -1
@@ -124,7 +128,11 @@ func _process(_delta: float) -> void:
 	if not is_visible_in_tree():
 		return
 	_service_worker()
-	if minimap != null and minimap.has_method("get_revealed_chunks"):
+	# Redraw only when something on screen can have changed: the explored set, the player, the records.
+	var rev: int = minimap.revealed_revision() if minimap != null and minimap.has_method("revealed_revision") else 0
+	var sig := [rev, _player_chunk_pos(), ChunkRecords.revision(), _world_seed()]
+	if sig != _last_sig:
+		_last_sig = sig
 		queue_redraw()
 
 ## Collect a finished batch and start the next, a few tiles per frame, off the main thread.
@@ -174,9 +182,13 @@ func _draw() -> void:
 		return
 	var seed_v := _world_seed()
 	# Tiles sample generation records too: a record adopted since they were cached may change a biome.
-	if seed_v != tiles.seed_v or ChunkRecords.revision() != _records_rev:
-		_records_rev = ChunkRecords.revision()
+	if seed_v != tiles.seed_v:
 		tiles.reset(seed_v)
+		_records_rev = ChunkRecords.revision()
+	elif ChunkRecords.revision() != _records_rev and Time.get_ticks_msec() - _records_at_ms >= RECORDS_REFRESH_MS:
+		_records_rev = ChunkRecords.revision()
+		_records_at_ms = Time.get_ticks_msec()
+		tiles.invalidate()
 	draw_rect(Rect2(Vector2.ZERO, sz), Color(0.03, 0.04, 0.08))
 	var circ := circumference()
 	var t := _t()
@@ -194,8 +206,11 @@ func _draw() -> void:
 	while true:   # a coarser level until the visible tiles fit the draw budget
 		tile_chunks = 1 << level
 		var span := minf(float(circ) * 0.5, pow(2.0, _zoom) * 0.75 + tile_chunks)
-		x0 = floori((_center.x - span) / tile_chunks)
-		x1 = ceili((_center.x + span) / tile_chunks)
+		var span_x := span
+		if t > 0.0 and absf(center_ll.y) > 0.6:   # near a pole the visible cap wraps every longitude
+			span_x = float(circ) * 0.5
+		x0 = floori((_center.x - span_x) / tile_chunks)
+		x1 = ceili((_center.x + span_x) / tile_chunks)
 		z0 = floori(maxf(_center.y - span, -pole - 2.0) / tile_chunks)
 		z1 = ceili(minf(_center.y + span, pole + 2.0) / tile_chunks)
 		if (x1 - x0 + 1) * (z1 - z0 + 1) <= MAX_TILES_DRAWN or level >= MapMath.MAX_LEVEL:
@@ -231,6 +246,10 @@ func _draw() -> void:
 				pts.append(origin + MapMath.project(ll, center_ll, t) * scale)
 			draw_colored_polygon(pts, col)
 	_draw_markers(sz, origin, center_ll, t, scale, circ)
+
+## The tile, at `level`, holding the canonical (seam-wrapped) chunk a tile's corner chunk lies on.
+func _canonical_tile(tx: int, tz: int, tile_chunks: int, level: int) -> Vector2i:
+	return MapMath.tile_of(TerrainSlice.wrap_chunk(Vector2i(tx * tile_chunks, tz * tile_chunks)), level)
 
 func _biome_color(biome: String) -> Color:
 	if minimap != null and minimap.has_method("biome_color"):

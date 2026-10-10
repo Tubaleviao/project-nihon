@@ -174,7 +174,8 @@ func revealed_revision() -> int:
 func save_revealed() -> void:
 	_revealed_dirty_for = -1.0
 	if revealed_dir != "" and _revealed_loaded:
-		RevealedStore.save(RevealedStore.path_for(revealed_dir, _revealed_seed), get_revealed_chunks(), _revealed_seed)
+		if not RevealedStore.save(RevealedStore.path_for(revealed_dir, _revealed_seed), get_revealed_chunks(), _revealed_seed):
+			_revealed_dirty_for = 0.0   # try again after the next debounce
 
 func is_revealed(chunk: Vector2i) -> bool:
 	return _revealed.has(_chunk_key(chunk))
