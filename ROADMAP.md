@@ -126,7 +126,7 @@ issue number where the criterion used to be.
 | 103 | Teleports carry the exact position and stay on the planet | Merged | [Phase 101](#phase-101--chat-and-admin-commands-are-host-authoritative-exact-and-proven-on-the-wire) |
 | 104 | Two-client harness: chat and admin teleport over the socket | Merged | [Phase 101](#phase-101--chat-and-admin-commands-are-host-authoritative-exact-and-proven-on-the-wire) |
 | 105 | Archive Phases 75–95 into the roadmap history | Merged | [Phase 99](#phase-99--housekeeping-sweep-legacy-tiles-roadmapreadme-hygiene-and-review-leftovers) |
-| 106 | A world stamp that covers fabric parameters, and golden generator values | Planned | below |
+| 106 | A world stamp that covers fabric parameters, and golden generator values | Done | below |
 | 107 | A per-chunk generation record in the region store | Planned | below |
 | 108 | Terrain reads and writes the generation record on the host | Planned | below |
 | 109 | Generation records reach clients, scoped and validated | Planned | below |
@@ -300,7 +300,7 @@ on-planet teleports) and 104 (two-client harness steps).
 
 ---
 
-## Phase 106 — A world stamp that covers fabric parameters, and golden generator values
+## Phase 106 — A world stamp that covers fabric parameters, and golden generator values ✅ Done
 
 **Goal:** Phases 106–113 let the generator change without moving land a player has already seen.
 Today terrain is a pure function of the seed, and `TerrainSlice.WORLDGEN_VERSION` is the only guard.
@@ -327,12 +327,12 @@ upgrade could shift without any change in this repo. This phase makes both visib
   `WorldSystem` or biome envelopes, bumps `WORLDGEN_VERSION` and updates the golden values.
 
 **Acceptance criteria:**
-- [ ] Suite: the fingerprint is stable across two calls and across a `warm()` reset; changing
+- [x] Suite: the fingerprint is stable across two calls and across a `warm()` reset; changing
   `ridgeAmplitude` in a scratch resource changes it.
-- [ ] Suite: a world record with a different fingerprint raises `worldgen_fingerprint_mismatch` exactly
+- [x] Suite: a world record with a different fingerprint raises `worldgen_fingerprint_mismatch` exactly
   once; a record without one raises nothing and is stamped on the next save.
-- [ ] Suite: the golden detail-noise values match to 1e-6; the shape and biome values match exactly.
-- [ ] `npm run validate`, `npm run check-drift` green; suite green on both boot paths.
+- [x] Suite: the golden detail-noise values match to 1e-6; the shape and biome values match exactly.
+- [x] `npm run validate`, `npm run check-drift` green; suite green on both boot paths.
 
 ---
 

@@ -150,6 +150,10 @@ func run() -> void:
 	_run_test("persistence: save then load round-trip",       _test_persistence_round_trip)
 	_run_test("persistence: worldgen stamp on a new world",   _test_worldgen_stamp_new_world)
 	_run_test("persistence: worldgen mismatch warns once and keeps the stamp", _test_worldgen_stamp_mismatch)
+	_run_test("worldgen: fingerprint stable and sensitive",   _test_worldgen_fingerprint)
+	_run_test("worldgen: fingerprint stamp on the world record", _test_worldgen_fingerprint_record)
+	_run_test("worldgen: fingerprint mismatch wiring",        _test_worldgen_fingerprint_game_root)
+	_run_test("worldgen: golden generator values",            _test_worldgen_golden)
 	_run_test("game_root: worldgen stamp wiring on load",     _test_worldgen_stamp_game_root_wiring)
 	_run_test("persistence: missing slot emits load_failed",  _test_persistence_missing_slot)
 	_run_test("loot: known creature produces drops",          _test_loot_known_creature)
@@ -16895,3 +16899,100 @@ func _test_chat_wire() -> void:
 	assert_true(moved[0].distance_to(Vector3(100.0, 9.0, -40.0)) < 0.01, "to the sent spot")
 	n._test_peers = null
 	n.free()
+
+## Phase 106 — the fingerprint is stable across calls and a `warm()` reset, and moves when a fabric
+## shape parameter or a biome envelope does.
+func _test_worldgen_fingerprint() -> void:
+	var fp := TerrainSlice.worldgen_fingerprint()
+	assert_eq(TerrainSlice.worldgen_fingerprint(), fp, "stable across two calls")
+	var saved_shape_warmed: bool = WorldShape._warmed
+	var saved_env: Dictionary = ClimateField._envelopes.duplicate(true)
+	var saved_clim_warmed: bool = ClimateField._warmed
+	WorldShape._warmed = false
+	ClimateField._warmed = false
+	ClimateField._envelopes.clear()
+	assert_eq(TerrainSlice.worldgen_fingerprint(), fp, "stable across a warm() reset")
+	var saved_amp: float = WorldShape._ridge_amp
+	WorldShape._ridge_amp = saved_amp + 1.0
+	assert_true(TerrainSlice.worldgen_fingerprint() != fp, "changing ridgeAmplitude changes it")
+	WorldShape._ridge_amp = saved_amp
+	var saved_spline: Array = WorldShape._spline
+	var edited: Array = saved_spline.duplicate(true)
+	edited[1][1] = float(edited[1][1]) + 1.0
+	WorldShape._spline = edited
+	assert_true(TerrainSlice.worldgen_fingerprint() != fp, "changing the height spline changes it")
+	WorldShape._spline = saved_spline
+	assert_eq(TerrainSlice.worldgen_fingerprint(), fp, "restoring the shape restores it")
+	var first_key: String = str(ClimateField._envelopes.keys()[0])
+	ClimateField._envelopes[first_key][0] = float(ClimateField._envelopes[first_key][0]) + 0.01
+	assert_true(TerrainSlice.worldgen_fingerprint() != fp, "changing a biome envelope changes it")
+	WorldShape._warmed = saved_shape_warmed
+	ClimateField._envelopes = saved_env
+	ClimateField._warmed = saved_clim_warmed
+
+## Phase 106 — a stamped record that differs warns once; an unstamped one warns not, and is stamped.
+func _test_worldgen_fingerprint_record() -> void:
+	var running := TerrainSlice.worldgen_fingerprint()
+	var warns := Diag.warn_count()
+	assert_false(PersistenceSlice.check_worldgen_fingerprint({ "worldgenFingerprint": running }, running), "a matching record is no mismatch")
+	assert_false(PersistenceSlice.check_worldgen_fingerprint({ "seed": 1 }, running), "an unstamped record is no mismatch")
+	assert_false(PersistenceSlice.check_worldgen_fingerprint({}, running), "a new world is no mismatch")
+	assert_eq(Diag.warn_count(), warns, "and none warns")
+	assert_true(PersistenceSlice.check_worldgen_fingerprint({ "worldgenFingerprint": running + 1 }, running), "a different fingerprint mismatches")
+	assert_eq(Diag.warn_count() - warns, 1, "with exactly one warning")
+	assert_eq(PersistenceSlice.fingerprint_stamp_for_save({}, running), running, "a new world takes the running fingerprint")
+	assert_eq(PersistenceSlice.fingerprint_stamp_for_save({ "seed": 1 }, running), running, "an unstamped record is stamped on the next save")
+	assert_eq(PersistenceSlice.fingerprint_stamp_for_save({ "worldgenFingerprint": 5 }, running), 5, "a stamped record keeps its original")
+	var dir := "user://saves/test_worldgen_fp/"
+	_wipe_dir(dir)
+	var writer := PersistenceSlice.new()
+	add_child(writer)
+	writer.server_save_dir = dir
+	assert_eq(writer.save_world({ "local_player_id": "player_1_1_ab", "worldgenFingerprint": running }, false), OK, "the record writes")
+	assert_eq(PersistenceSlice.worldgen_fingerprint_of(writer.load_world_record()), running, "the fingerprint round-trips")
+	writer.free()
+	_wipe_dir(dir)
+
+## Phase 106 — game_root raises `worldgen_fingerprint_mismatch` exactly once for a differing record,
+## and never for an unstamped one (which the next save stamps).
+func _test_worldgen_fingerprint_game_root() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	var gr: Node = root_script.new()
+	var running := TerrainSlice.worldgen_fingerprint()
+	var seen: Array = []
+	var cb := func(saved: int, current: int) -> void: seen.append([saved, current])
+	GameBus.worldgen_fingerprint_mismatch.connect(cb)
+	gr._loaded_world = {}
+	gr._note_worldgen_version()
+	assert_true(seen.is_empty(), "a new world raises none")
+	assert_eq(gr._worldgen_fp_stamp, running, "and takes the running fingerprint")
+	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION }
+	gr._note_worldgen_version()
+	assert_true(seen.is_empty(), "an unstamped record raises none")
+	assert_eq(gr._worldgen_fp_stamp, running, "and is stamped for the next save")
+	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION, "worldgenFingerprint": running + 1 }
+	gr._note_worldgen_version()
+	assert_eq(seen, [[running + 1, running]], "a differing record raises exactly once")
+	assert_eq(gr._worldgen_fp_stamp, running + 1, "and keeps its original stamp")
+	GameBus.worldgen_fingerprint_mismatch.disconnect(cb)
+	gr.free()
+
+## Phase 106 — golden generator values. A Godot upgrade or an unversioned edit that moves any of
+## them must bump `TerrainSlice.WORLDGEN_VERSION` and update these numbers in the same change.
+func _test_worldgen_golden() -> void:
+	var n := FastNoiseLite.new()
+	TerrainSlice.configure_noise(n, 12345)
+	var detail: Array = [3.524644747, 2.464545919, 2.602311652, 2.597774304, 2.300039381, 2.238469739, 2.919664383, 2.066151761]
+	for i in 8:
+		var got := TerrainSlice.detail_of(n, 37.0 * i + 5.5, -91.0 * i + 3.25)
+		assert_true(absf(got - float(detail[i])) < 1e-6, "detail noise point %d matches the golden value (got %.9f)" % [i, got])
+	var w: float = float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var shape: Array = [2.0, -57.776415828, 105.545489436, -53.650412350, -34.981083839, -53.885990050, -55.059654802, -52.487651444]
+	for i in 8:
+		var got := WorldShape.height(777 + i, 1234.5 * i * 1000.0, -5000.0 * i + 300.0, w)
+		assert_true(absf(got - float(shape[i])) < 1e-4, "shape height %d matches the golden value (got %.9f)" % [i, got])
+	var biomes: Array = ["TemperateGrassland", "Ocean", "TemperateForest", "Ocean", "Ocean", "Ocean", "Ocean", "Desert",
+		"Alpine", "Ocean", "Ocean", "Ocean", "Ocean", "Ocean", "TemperateForest", "Ocean"]
+	for i in 16:
+		var c := Vector2i((i * 65537) % 600000 - 300000, (i * 104729) % 300000 - 150000)
+		assert_eq(TerrainSlice.biome_for_chunk(c, 100 + i), biomes[i], "biome of golden chunk %d" % i)

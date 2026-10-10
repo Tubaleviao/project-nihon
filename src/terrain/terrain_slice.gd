@@ -29,6 +29,29 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## each pole the ground eases into a snow field that depends on the distance to the pole alone,
 ## so the pole can be crossed.
 const WORLDGEN_VERSION := 5
+
+## Phase 106 — a hash of every fabric parameter world-gen reads that `WORLDGEN_VERSION` cannot see:
+## the `WorldSystem` shape fields (`sea`, `min/max height`, `oceanShare`, `ridgeAmplitude`,
+## `heightSpline`) and the warmed biome envelope table in sorted key order. FNV-1a over UTF-8
+## (as `ClimateField.niche_salt`), not `String.hash()`, so it is stable across Godot versions.
+## Editing a biome envelope or a shape field changes it with no code change.
+static func worldgen_fingerprint() -> int:
+	var fields := WorldShape.fingerprint_fields()
+	var parts: PackedStringArray = []
+	for f in fields:
+		if f is Array:
+			var pts: PackedStringArray = []
+			for pt in f:
+				pts.append("%.6f:%.6f" % [float(pt[0]), float(pt[1])])
+			parts.append("|".join(pts))
+		else:
+			parts.append("%.6f" % float(f))
+	parts.append(ClimateField.envelope_signature())
+	var h := 2166136261
+	for b in "#".join(parts).to_utf8_buffer():
+		h = ((h ^ b) * 16777619) & 0xffffffff
+	return h
+
 const BIOME_SEED := 20260815 # fixed seed so biome assignment is deterministic
 const ClimateField := preload("res://src/terrain/climate_field.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
