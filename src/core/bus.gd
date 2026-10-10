@@ -217,6 +217,11 @@ signal loot_expired(pickup_id: String)
 ## aims at a pickup and clicks). Carries the LootSlice pickup id.
 signal pickup_requested(pickup_id: String)
 
+## The local player drags `quantity` of `item_id` out of the inventory onto the ground at `position`.
+## InventorySlice (authoritative machines only) removes it and LootSlice spawns a pickup that keeps
+## the items' exact wear, so dropping and picking up can never repair a tool.
+signal item_drop_requested(item_id: String, quantity: int, position: Vector3)
+
 # ---------------------------------------------------------------------------
 # Inventory
 # ---------------------------------------------------------------------------
@@ -337,6 +342,11 @@ signal block_placed(material: String, position: Vector3)
 
 ## Emitted by VoxelSlice when the build material selection changes.
 signal block_place_material_changed(material: String)
+
+## Emitted by the skill bar when a number key (or a click) fires a skill box. `slot` is the
+## zero-based box, `skill` the fabric skill key in it. The slice that implements the skill's
+## behaviors subscribes; the bar itself only reports the press.
+signal skill_slot_triggered(slot: int, skill: String)
 
 # ---------------------------------------------------------------------------
 # Technology / research

@@ -131,7 +131,7 @@ npm run generate  # generate the design bible into bible/
 | 108 | Terrain reads and writes the generation record on the host | Done |
 | 109 | Generation records reach clients, scoped and validated | Planned |
 | 110 | Trees are pinned per chunk and cleared where players build | Planned |
-| 111 | The minimap remembers what was explored and marks home | Planned |
+| 111 | A full-map window: zoom from the minimap out to a whole planet | Planned |
 | 112 | A biome adjacency table in the fabric and an offline scan | Planned |
 | 113 | Frontier generation: a new generator version meets recorded land | Planned |
 

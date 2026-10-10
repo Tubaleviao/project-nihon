@@ -66,8 +66,6 @@ const VoxelSliceScript := preload("res://src/terrain/voxel_slice.gd")
 
 const MAX_HP := PlayerRules.MAX_HP
 
-const MouseIconScript := preload("res://src/ui/mouse_icon.gd")
-
 var _body:   CharacterBody3D
 var _camera: Camera3D
 var _pivot:  Node3D           # horizontal yaw pivot under _body
@@ -84,7 +82,6 @@ var _hud: CanvasLayer = null
 var _aim_label: Label = null
 var _aimed_pickup_id: String = ""
 var _aimed_item_id: String = ""
-var _build_material_label: Label = null
 var _station_label: Label = null
 
 ## Aimed terrain block (mine/build target), updated every frame.
@@ -303,6 +300,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	# E key → toggle all equipment on/off (inspect the naked body under the gear).
 	if event is InputEventKey and event.pressed and event.keycode == KEY_E:
 		GameBus.character_equipment_toggle_requested.emit()
+
+## Where a dropped item lands: a little in front of the body (away from the camera), at the feet.
+func drop_point() -> Vector3:
+	var forward := Vector3.FORWARD
+	if _pivot != null:
+		forward = -_pivot.global_transform.basis.z
+		forward.y = 0.0
+		forward = forward.normalized() if forward.length() > 0.001 else Vector3.FORWARD
+	return get_position() + forward * 1.5 + Vector3(0.0, -0.4, 0.0)
 
 ## APPROXIMATE far from the origin: a float32 world position is quantised to metres 10,000 km out.
 ## Fine for callers near the origin (UI, range checks); anything that persists or sends the
@@ -766,17 +772,19 @@ func _build_hud() -> void:
 	_hud.name = "HUD"
 	_hud.layer = 10
 
-	# HP bar — bottom-left corner, updates on every damage/heal event.
+	# HP bar — top-left corner, updates on every damage/heal event. The window dock sits under it.
 	var hp_label := Label.new()
 	hp_label.name = "HpLabel"
 	hp_label.anchor_left = 0.0
 	hp_label.anchor_right = 0.0
-	hp_label.anchor_top = 1.0
-	hp_label.anchor_bottom = 1.0
+	hp_label.anchor_top = 0.0
+	hp_label.anchor_bottom = 0.0
 	hp_label.offset_left = 12.0
-	hp_label.offset_right = 220.0
-	hp_label.offset_top = -44.0
-	hp_label.offset_bottom = -16.0
+	hp_label.offset_right = 260.0
+	hp_label.offset_top = 12.0
+	hp_label.offset_bottom = 40.0
+	hp_label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	hp_label.add_theme_constant_override("outline_size", 5)
 	hp_label.add_theme_font_size_override("font_size", 18)
 	hp_label.add_theme_color_override("font_color", Color(0.85, 0.20, 0.20))
 	_hud.add_child(hp_label)
@@ -794,47 +802,25 @@ func _build_hud() -> void:
 	_hud.add_child(aim_label)
 	_aim_label = aim_label
 
-	# Build hint — current place material + mouse-button cues (icons, not text).
-	var hint := HBoxContainer.new()
-	hint.name = "BuildHint"
-	hint.anchor_left = 0.5
-	hint.anchor_right = 0.5
-	hint.anchor_top = 1.0
-	hint.anchor_bottom = 1.0
-	hint.offset_left = -340.0
-	hint.offset_right = 340.0
-	hint.offset_top = -46.0
-	hint.offset_bottom = -16.0
-	hint.alignment = BoxContainer.ALIGNMENT_CENTER
-	hint.add_theme_constant_override("separation", 10)
-	_hud.add_child(hint)
-
-	_build_material_label = Label.new()
-	_build_material_label.add_theme_font_size_override("font_size", 16)
-	hint.add_child(_build_material_label)
-
-	hint.add_child(_make_sep_label())
-	hint.add_child(_make_mouse_icon(MOUSE_BUTTON_RIGHT))
-	hint.add_child(_make_hint_label("Look"))
-	hint.add_child(_make_sep_label())
-	hint.add_child(_make_hint_label("Shift+"))
-	hint.add_child(_make_mouse_icon(MOUSE_BUTTON_LEFT))
-	hint.add_child(_make_hint_label("Mine"))
-	hint.add_child(_make_sep_label())
-	hint.add_child(_make_mouse_icon(MOUSE_BUTTON_MIDDLE))
-	hint.add_child(_make_hint_label("Place"))
-	hint.add_child(_make_sep_label())
-	var cycle_key := Label.new()
-	cycle_key.text = "R"
-	cycle_key.add_theme_font_size_override("font_size", 16)
-	cycle_key.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
-	hint.add_child(cycle_key)
-	hint.add_child(_make_hint_label("Cycle"))
-
+	# Station selection (B cycles, V places) shows in the bottom-right corner; the hotbar the UI
+	# slice builds carries everything else the old instruction row said.
 	_station_label = Label.new()
-	_station_label.add_theme_font_size_override("font_size", 16)
+	_station_label.name = "StationLabel"
+	_station_label.anchor_left = 1.0
+	_station_label.anchor_right = 1.0
+	_station_label.anchor_top = 1.0
+	_station_label.anchor_bottom = 1.0
+	_station_label.offset_left = -360.0
+	_station_label.offset_right = -12.0
+	_station_label.offset_top = -36.0
+	_station_label.offset_bottom = -12.0
+	_station_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_station_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_station_label.add_theme_font_size_override("font_size", 14)
 	_station_label.add_theme_color_override("font_color", Color(0.6, 0.85, 1.0))
-	hint.add_child(_station_label)
+	_station_label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	_station_label.add_theme_constant_override("outline_size", 5)
+	_hud.add_child(_station_label)
 
 	_refresh_build_hint()
 
@@ -934,20 +920,13 @@ func _update_aim_hud() -> void:
 		_aim_label.visible = false
 
 func _refresh_build_hint() -> void:
-	if _build_material_label != null:
-		var mat := ""
-		if voxel_slice != null and voxel_slice.has_method("get_place_material"):
-			mat = str(voxel_slice.get_place_material())
-		if mat == "":
-			mat = "none"
-		_build_material_label.text = "Build: %s" % mat
 	if _station_label != null:
 		var stype := ""
 		if station_slice != null and station_slice.has_method("get_place_station_type"):
 			stype = str(station_slice.get_place_station_type())
 		if stype == "":
 			stype = "none"
-		_station_label.text = "  ·  Station: %s" % stype
+		_station_label.text = "" if stype == "none" else "Station: %s  (B change · V place)" % stype
 
 
 func _cycle_station_type() -> void:
@@ -1015,27 +994,6 @@ func _try_tame() -> void:
 		return
 	GameBus.tame_requested.emit(iid)
 
-
-func _make_mouse_icon(button: int) -> Control:
-	var icon: Control = MouseIconScript.new()
-	icon.button = button
-	icon.custom_minimum_size = Vector2(20, 30)
-	return icon
-
-
-func _make_sep_label() -> Label:
-	var sep := Label.new()
-	sep.text = "·"
-	sep.add_theme_font_size_override("font_size", 16)
-	sep.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
-	return sep
-
-
-func _make_hint_label(text: String) -> Label:
-	var lbl := Label.new()
-	lbl.text = text
-	lbl.add_theme_font_size_override("font_size", 16)
-	return lbl
 
 func _on_place_material_changed(_material: String) -> void:
 	_refresh_build_hint()

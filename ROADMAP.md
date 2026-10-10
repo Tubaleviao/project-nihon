@@ -131,7 +131,7 @@ issue number where the criterion used to be.
 | 108 | Terrain reads and writes the generation record on the host | Done | below |
 | 109 | Generation records reach clients, scoped and validated | Planned | below |
 | 110 | Trees are pinned per chunk and cleared where players build | Planned | below |
-| 111 | The minimap remembers what was explored and marks home | Planned | below |
+| 111 | A full-map window: zoom from the minimap out to a whole planet | Planned | below |
 | 112 | A biome adjacency table in the fabric and an offline scan | Planned | below |
 | 113 | Frontier generation: a new generator version meets recorded land | Planned | below |
 
@@ -464,30 +464,52 @@ clear them for good.
 
 ---
 
-## Phase 111 — The minimap remembers what was explored and marks home
+## Phase 111 — A full-map window: zoom from the minimap out to a whole planet
 
-**Goal:** even when land is stable, a player who wanders off needs a way back. The minimap already
-keeps a fog-of-war record of visited chunks (`_revealed`), but only in memory, so a relog starts blank.
-It also has no marker for the player's own base.
+**Goal:** the minimap shows a few chunks around the player. A player who wanders off needs the whole
+picture: a Map window (key `M`, and an `M` box in the HUD's window dock) that opens on the explored
+land and zooms out smoothly until the entire planet is a round globe, the way Google Earth does. At every
+zoom the picture is the real world, drawn bit by bit from the same deterministic fields the terrain is
+generated from, never a stored or approximated copy. The minimap's fog-of-war record (`_revealed`) is
+kept per world and survives a relog, and the window marks the player's home.
 
 **Newel dependency:** NO.
 
-**Depends on:** Phase 87.
+**Depends on:** Phase 87, Phase 51 (planet shape), and the HUD window dock (`src/ui/window_dock.gd`, which
+reserves `M` for this window).
 
 **Deliverables:**
-- `src/ui/minimap.gd` — the revealed set is saved per world (keyed by the world seed) under
-  `user://saves/client/`, loaded on start, with a cap on stored chunks (oldest dropped first) and runs
-  encoded per row so a long walk stays small. Writes are debounced.
-- A home marker at the player's recorded respawn point (Phase 87): an icon on the map, and when the point
-  is off the map a direction arrow clamped to the edge with the distance. The clamp is a pure static
-  function so the suite can pin it.
+- `src/ui/map_window.gd` — a Map window registered with the UI slice (`WINDOW_MAP`, key `M`, a dock box).
+  Dragging pans; the wheel zooms; zoom is continuous from street level (one chunk is many pixels) out to a
+  whole-planet view.
+- Zoom ladder: close in it is the flat chunk map; further out the projection blends into an orthographic
+  globe, and at the far end the planet is a round sphere that can be dragged to rotate. The blend is a pure
+  function of zoom, so there is no jump between the two.
+- The picture is the correct world, bit by bit: tiles are sampled from the world-gen fields
+  (`WorldShape` height/ocean, climate, biome) in a coarse-to-fine pyramid. A coarse level draws at once, and
+  finer levels fill in over the following frames on a worker thread, a few tiles per frame, with a bounded
+  tile cache (oldest dropped first). A tile at a given zoom and place is a pure function of
+  (seed, `WORLDGEN_VERSION`, tile), so the cache key carries all three.
+- Fog of war stays honest: unexplored land is drawn dimmed, explored land in full colour; a toggle shows the
+  true planet. The explored set persists per world seed under `user://saves/client/`, with a cap on stored
+  chunks (oldest dropped first), runs encoded per row, and debounced writes.
+- A home marker at the player's recorded respawn point (Phase 87): an icon on the map, and when the point is
+  off-screen a direction arrow clamped to the edge with the distance. The clamp is a pure static function.
+- The minimap keeps its own scroll and `+`/`-` zoom; clicking it opens this window.
 
 **Acceptance criteria:**
-- [ ] Suite: a revealed set round-trips through save and load; a file for another seed is ignored.
+- [ ] Suite: the projection blend is a pure function of zoom: flat at the near end, a unit sphere at the far
+  end, monotone between, with matching positions at the seam (no jump).
+- [ ] Suite: a map tile for a given (seed, version, tile) is identical across runs and equals the terrain's
+  own sample at the tile centre; changing the seed or `WORLDGEN_VERSION` changes the cache key.
+- [ ] Suite: the tile cache never exceeds its cap and drops the oldest first; a request for a coarser level
+  is answered before a finer one.
+- [ ] Suite: a revealed set round-trips through save and load; a file for another seed is ignored; a missing
+  or corrupt file starts an empty set and warns once.
 - [ ] Suite: the cap drops the oldest chunks, and 10,000 contiguous chunks encode to under 20 KB.
-- [ ] Suite: the home clamp returns the point itself when inside the map, and an edge position on the
-  line toward it, with the right distance, when outside; it is exact at 1,500,000 chunks from the origin.
-- [ ] Suite: a missing or corrupt file starts an empty set and warns once.
+- [ ] Suite: the home clamp returns the point itself when inside the map, and an edge position on the line
+  toward it, with the right distance, when outside; it is exact at 1,500,000 chunks from the origin.
+- [ ] Suite: `M` and the dock's `M` box toggle the Map window; no other window uses `M`.
 - [ ] Suite green on both boot paths.
 
 ---
