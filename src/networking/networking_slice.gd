@@ -992,6 +992,10 @@ func _on_creature_state_changed(instance_id: String, creature_id: String, state:
 	}
 	_broadcast_aoi(packet, position)
 
+## Phase 97 — the exact position of the `player_moved` report being routed right now (empty otherwise);
+## `_on_remote_player_state` relays it. Set and cleared around the emit in `_route_c2h`.
+var _inbound_exact: Dictionary = {}
+
 func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	if _role != Role.HOST:
 		return
@@ -1002,10 +1006,14 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	if first_report:
 		announce_equipment_to_aoi(peer_id)
 	_refresh_equipment_pairs(peer_id)
+	# Phase 97 — relay the peer's exact `{chunk, local}` when its report carried one, so a far-from-origin
+	# avatar does not jitter by float32 metres on the other clients.
+	var wire: Dictionary = WorldPos.pos_to_wire(_inbound_exact) if not _inbound_exact.is_empty() \
+			else WorldPos.to_wire(position)
 	var packet := {
 		"type":     "remote_player_state",
 		"peer_id":  peer_id,
-		"position": WorldPos.to_wire(position),
+		"position": wire,
 	}
 	_broadcast_aoi(packet, position)
 
@@ -1470,9 +1478,11 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			# (record_simulated_hp, via game_root._on_player_damaged); the
 			# declared half still has no door. Position is the other half the
 			# host retains, and only so a reconnect can resume from it.
-			GameBus.remote_player_state.emit(sender, pos)
-			# `remember_player_state` (run by the emit) cleared any older exact position; keep this one.
 			var exact := WorldPos.pos_from_wire(raw)
+			_inbound_exact = exact
+			GameBus.remote_player_state.emit(sender, pos)
+			_inbound_exact = {}
+			# `remember_player_state` (run by the emit) cleared any older exact position; keep this one.
 			if not exact.is_empty() and _last_known_states.has(sender):
 				_last_known_exact[sender] = exact
 		"craft_intent":

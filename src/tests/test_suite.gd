@@ -287,6 +287,7 @@ func run() -> void:
 	_run_test("rebase: an unshiftable target is reported",      _test_rebase_driver_reports_unshiftable)
 	_run_test("game_root: implausible peer positions dropped",  _test_remote_state_plausibility)
 	_run_test("networking: a remote peer's exact position is saved exactly", _test_remote_peer_exact_position)
+	_run_test("networking: peer windows and relays use the exact peer position", _test_peer_exact_window_and_relay)
 	_run_test("equipment: slots cached, peer evict, owner map", _test_equipment_phase48_misc)
 	_run_test("equipment: host worn set + AOI enter/leave",      _test_equipment_host_and_aoi_transitions)
 	_run_test("net: broadcasts go through _test_peers",          _test_network_broadcast_uses_test_peers)
@@ -1255,6 +1256,53 @@ func _test_remote_peer_exact_position() -> void:
 	assert_true(n.get_last_known_exact(6).is_empty(), "with no exact position")
 	gr._fold_last_known_state(6, "p6")
 	assert_eq(reg.get_world_pos("p6")["chunk"], Vector2i(0, -1), "and the fold falls back to record_position")
+	gr.free()
+	n.free()
+
+## Phase 97 — near a chunk border far from the origin the float path rounds into the neighbour; the
+## window, the relay and the fold all read the exact position instead.
+func _test_peer_exact_window_and_relay() -> void:
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n._test_peers = [7]
+	var chunk := Vector2i(600000, 3)
+	var local := Vector3(31.9, 0.0, 0.1)
+	var wire := WorldPos.pos_to_wire({ "chunk": chunk, "local": local })
+	n.remember_player_state(7, Vector3(0.0, 0.0, 0.0))
+	n._route_c2h(5, { "type": "player_moved", "position": wire })
+	var reg := PlayerRegistry.new()
+	_own(reg)
+	var cm := ChunkManager.new()
+	var gr: Node = (load("res://src/core/game_root.gd") as GDScript).new()
+	gr._networking = n
+	gr._registry = reg
+	gr._chunk_manager = cm
+	assert_eq(gr._peer_window_chunk(5), chunk, "the window is centred on the exact chunk")
+	# The relay to the other clients carries the exact position.
+	var relayed: Array = []
+	for out in n._test_outbox:
+		if str(out["payload"].get("type", "")) == "remote_player_state" and int(out["payload"].get("peer_id", 0)) == 5:
+			relayed.append(out)
+	n._test_outbox = []
+	n.remember_player_state(7, WorldPos.from_wire(wire))
+	n._route_c2h(5, { "type": "player_moved", "position": wire })
+	for out in n._test_outbox:
+		if str(out["payload"].get("type", "")) == "remote_player_state" and int(out["payload"].get("peer_id", 0)) == 5:
+			relayed.append(out)
+	assert_false(relayed.is_empty(), "the position was relayed to the peer in range")
+	if not relayed.is_empty():
+		var got: Dictionary = WorldPos.pos_from_wire(relayed.back()["payload"]["position"])
+		assert_eq(got["chunk"], chunk, "the relay decodes to the same chunk")
+		assert_true((got["local"] as Vector3).distance_to(local) < 1e-3, "and the same local")
+	# An exact position past the pole row is not folded; the record keeps its previous position.
+	gr._fold_last_known_state(5, "p5")
+	assert_eq(reg.get_world_pos("p5")["chunk"], chunk, "a sane exact position is folded")
+	n._last_known_exact[5] = { "chunk": Vector2i(10, TerrainSlice.pole_chunks() + 5), "local": Vector3.ZERO }
+	gr._fold_last_known_state(5, "p5")
+	assert_eq(reg.get_world_pos("p5")["chunk"], chunk, "an off-planet exact position leaves the record alone")
+	gr._chunk_manager = null
+	cm.free()
 	gr.free()
 	n.free()
 

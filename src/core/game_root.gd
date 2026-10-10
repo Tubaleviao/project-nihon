@@ -1173,6 +1173,10 @@ func _fold_last_known_state(peer_id: int, player_id: String) -> void:
 	if _networking.has_last_known_state(peer_id):
 		# Phase 86 — the exact position when the peer reported one; the float Vector3 otherwise.
 		var exact: Dictionary = _networking.get_last_known_exact(peer_id)
+		# Phase 97 — an exact position that is not a plausible wire position (a chunk past the pole row)
+		# is not persisted; the record keeps its previous position.
+		if not exact.is_empty() and not WorldPos.is_wire(WorldPos.pos_to_wire(exact)):
+			return
 		if exact.is_empty():
 			_registry.record_position(player_id, _networking.get_last_known_state(peer_id))
 		else:
@@ -1310,6 +1314,10 @@ var _peer_window_elapsed := 0.0
 ## its record holds (a joining peer has not sent a state packet yet).
 func _peer_window_chunk(peer_id: int) -> Vector2i:
 	if _networking.has_last_known_state(peer_id):
+		# Phase 97 — the exact chunk when the peer reported one; the float32 Vector3 only as fallback.
+		var exact: Dictionary = _networking.get_last_known_exact(peer_id)
+		if not exact.is_empty() and WorldPos.is_wire(WorldPos.pos_to_wire(exact)):
+			return exact["chunk"]
 		var p: Vector3 = _networking.get_last_known_state(peer_id)
 		return _chunk_manager.world_to_chunk(Vector2(p.x, p.z))
 	var player_id := _registry.get_player_id(peer_id)
