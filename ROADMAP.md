@@ -119,13 +119,13 @@ issue number where the criterion used to be.
 | 96 | A detached ring rebuild does not orphan its worker | Done | below |
 | 97 | Peer windows and position relays use the exact peer position | Planned | below |
 | 98 | An exact first-boot spawn and a public canonical helper | Planned | below |
-| 99 | One legacy-op constant and one legacy-height parser | Planned | below |
-| 100 | The README phase table cannot drift from the roadmap | Planned | below |
-| 101 | A per-player chat rate limit | Planned | below |
-| 102 | An admin `/kill` lands on the host's simulated peer health | Planned | below |
-| 103 | Teleports carry the exact position and stay on the planet | Planned | below |
-| 104 | Two-client harness: chat and admin teleport over the socket | Planned | below |
-| 105 | Archive Phases 75–95 into the roadmap history | Planned | below |
+| 99 | Housekeeping sweep: legacy tiles, roadmap/README hygiene and review leftovers | Planned | below |
+| 100 | Follow-up issue backlog triage | Planned | below |
+| 101 | Chat and admin commands are host-authoritative, exact and proven on the wire | Planned | below |
+| 102 | An admin `/kill` lands on the host's simulated peer health | Merged | [Phase 101](#phase-101--chat-and-admin-commands-are-host-authoritative-exact-and-proven-on-the-wire) |
+| 103 | Teleports carry the exact position and stay on the planet | Merged | [Phase 101](#phase-101--chat-and-admin-commands-are-host-authoritative-exact-and-proven-on-the-wire) |
+| 104 | Two-client harness: chat and admin teleport over the socket | Merged | [Phase 101](#phase-101--chat-and-admin-commands-are-host-authoritative-exact-and-proven-on-the-wire) |
+| 105 | Archive Phases 75–95 into the roadmap history | Merged | [Phase 99](#phase-99--housekeeping-sweep-legacy-tiles-roadmapreadme-hygiene-and-review-leftovers) |
 | 106 | A world stamp that covers fabric parameters, and golden generator values | Planned | below |
 | 107 | A per-chunk generation record in the region store | Planned | below |
 | 108 | Terrain reads and writes the generation record on the host | Planned | below |
@@ -895,18 +895,25 @@ the origin stores a spawn up to a metre off — the gap Phase 87 closed for ever
 
 ---
 
-## Phase 99 — One legacy-op constant and one legacy-height parser
+## Phase 99 — Housekeeping sweep: legacy tiles, roadmap/README hygiene and review leftovers
 
 **Goal:** Phase 91 added a `legacy` tile op, but `VoxelSlice._normalise_tile_ops` (and its test)
 hardcode the string `"legacy"` instead of `RegionStore.LEGACY_OP`; `RegionStore._is_legacy_height`
 re-implements `VoxelSlice._legacy_height_of` and the two disagree on non-finite values; the hot load
 path allocates two arrays per tile even when no op is `legacy`; and three branches have no test (#232).
+`README.md`'s phase table has drifted from ROADMAP.md and nothing checks the two agree (#219).
+ROADMAP.md still carries the full bodies of the Done phases from 75 on, though earlier eras were
+archived to `docs/roadmap-history/`. Several review follow-up issues list small roadmap, docs, test
+and region-store leftovers in the same areas. This phase clears all of it in one PR.
+
+Merges the former Phases 99 (legacy-op constant and parser), 100 (README phase table check) and 105
+(archive Phases 75–95).
 
 **Newel dependency:** NO.
 
-**Closes:** #232.
+**Closes:** #196, #209, #217, #219, #224, #232, #233, #234.
 
-**Depends on:** Phase 91.
+**Depends on:** Phase 89, Phase 91.
 
 **Deliverables:**
 - `src/terrain/voxel_slice.gd` — compares against `RegionStore.LEGACY_OP`; `_normalise_tile_ops`
@@ -916,180 +923,136 @@ path allocates two arrays per tile even when no op is `legacy`; and three branch
   are rejected by both callers.
 - `src/tests/test_suite.gd` — tests for the materials-stack legacy migration, the
   `apply_region_chunks` partial-chunk path with a legacy op, and the unreadable-legacy-op drop branch.
+- `README.md` — the phase table lists every phase in ROADMAP.md's index with the same title and status
+  (a `Merged` row included).
+- `tools/check_readme_phases.js` (new) — parses both tables and exits non-zero naming each phase whose
+  number, title or status differs, or that is in one table and not the other; `--self-test` mode.
+  `.github/workflows/ci.yml` runs it (and its self-test) next to `npm run check-drift`.
+- `docs/roadmap-history/phases-75-NN.md` (new, NN = the highest Done phase below 99 when this phase
+  lands) — those phase bodies moved unchanged, in order, with the same header line as the other history
+  files; `docs/roadmap-history/README.md` lists it; their index rows in ROADMAP.md link to it, and only
+  Planned phases keep a body below the index.
+- Every item of each issue under **Closes:** is resolved, or, where a later phase already resolved it
+  (e.g. #219's ring reparent by Phase 88, #209's shown-biome memo by Phase 92), confirmed in the code.
+  The PR body has one `Closes #n` line per issue and a table: issue item → fixed here / resolved by
+  Phase N (with the file or test that proves it).
 
 **Acceptance criteria:**
 - [ ] `grep -n '"legacy"' src --include=*.gd -r` finds only the `LEGACY_OP` definition.
 - [ ] Suite: `NAN`, `INF` and `"abc"` heights are refused by the shared parser and by the region-store
   check alike; a finite numeric height (e.g. `3.0`) is accepted by both.
-- [ ] Suite: the three new branch tests pass; a tile with no legacy op round-trips unchanged.
+- [ ] Suite: the three new legacy branch tests pass; a tile with no legacy op round-trips unchanged.
+- [ ] `node tools/check_readme_phases.js` exits 0; `--self-test` (a README status flipped from Done to
+  Planned in memory) exits 1 naming that phase; CI runs both on every push.
+- [ ] `grep -c "^## Phase" ROADMAP.md` equals the number of index rows whose spec is `below`; every
+  moved `## Phase N` heading appears exactly once across `docs/roadmap-history/`, byte-identical
+  (`git diff --color-moved`), and every relative link in the new history file resolves.
+- [ ] Every issue under **Closes:** is closed by the merge, each item accounted for in the PR table.
 - [ ] Suite green on both boot paths, harness green.
 
 ---
 
-## Phase 100 — The README phase table cannot drift from the roadmap
+## Phase 100 — Follow-up issue backlog triage
 
-**Goal:** `README.md`'s phase table says Phases 80, 82, 83 and 84 are "Planned" though ROADMAP.md marks
-them Done, and Phases 85 onward are missing; nothing checks the two agree (#219).
+**Goal:** Review passes have opened one "Follow-ups from PR #… review" issue per PR, plus several
+"Phase 50 remainder" issues (#120–#127, #136) from before Phase 50 was finished. Most are older than
+the phases that fixed their items, so the open issue list no longer says what is actually left. This
+phase checks every remaining item against the code, closes what is done, and folds what is left into a
+few per-area issues that a later roadmap batch can take as whole sweep phases.
 
 **Newel dependency:** NO.
 
-**Closes:** the README item of #219.
+**Closes:** every open issue authored by the repo owner whose title starts with "Follow-ups from PR"
+or "Phase 50", except those listed under **Closes:** of a Planned phase (97, 98, 99) and the
+human-verification issues (#133, #134), which stay open.
+
+**Depends on:** Phase 99.
 
 **Deliverables:**
-- `README.md` — the phase table lists every phase in ROADMAP.md's index with the same title and status.
-- `tools/check_readme_phases.js` (new) — parses both tables and exits non-zero naming each phase whose
-  number, title or status differs, or that is in one table and not the other.
-- `.github/workflows/ci.yml` — runs the script next to `npm run check-drift`.
+- For each issue in scope, every item is checked against the current code: resolved items are named
+  with the phase, commit or test that resolved them; items no longer applicable (code removed,
+  superseded design) say why.
+- Items still open are grouped by area (networking, terrain/streaming, distant terrain, persistence and
+  region store, UI, tests and tooling). Each area gets ONE new issue labelled `autopilot-followup`,
+  starting with an `Area:` line, then a `- [ ]` checklist where every item names its file and function
+  and links its source issue.
+- Each source issue is closed with a comment listing its items and, for each, "resolved by …" or
+  "moved to #n".
+- No code changes; the PR updates only ROADMAP.md (ticks this phase) and carries the triage table
+  (source issue → item → outcome) in its body.
 
 **Acceptance criteria:**
-- [ ] `node tools/check_readme_phases.js` exits 0 on the updated README.
-- [ ] Changing one README status from Done to Planned in a scratch copy makes it exit 1 and name that
-  phase (a small self-test the script runs with `--self-test`, exercised in CI).
-- [ ] CI runs the check on every push.
+- [ ] `gh issue list --state open --author @me --search "Follow-ups from PR in:title"` and the same
+  for "Phase 50" list only issues created by this phase or listed under a Planned phase's **Closes:**.
+- [ ] Each new area issue carries the `autopilot-followup` label, an `Area:` line and at least one
+  unchecked item; no area has two.
+- [ ] Every closed source issue has a closing comment that accounts for each of its items.
 
 ---
 
-## Phase 101 — A per-player chat rate limit
+## Phase 101 — Chat and admin commands are host-authoritative, exact and proven on the wire
 
-**Goal:** Phase 95's `chat_intent` is bounded only by the generic client packet rate, and each accepted
-plain line is broadcast to every connected peer, so one client can make the host send N messages per
-packet it sends and flood every other player's chat box. Refusals for admin commands are addressed
-to the sender but cost the host a send each.
+**Goal:** Phase 95 shipped chat and admin commands, but they skip guarantees the rest of the game has.
+`chat_intent` is bounded only by the generic packet rate, and each accepted line is broadcast to every
+peer, so one client can flood every chat box. `/kill <peer>` calls `networking.send_player_damaged`
+directly, so the host's simulated HP (Phase 38) keeps the peer at full health and a reconnect restores
+it. Teleports go through float32 (`ChatSlice._position_of`, a `Vector3` `player_teleport`,
+`WorldPos.to_wire`), so ten thousand km out `/bring` and `/tp <player>` land up to a metre off, and
+`/tp x y z` accepts a Z past the pole row or an X several laps round. None of it is exercised over a
+real ENet connection.
 
-**Newel dependency:** NO.
-
-**Deliverables:**
-- `src/chat/chat_slice.gd` (or the host-side chat handler) — a per-player token bucket
-  (`CHAT_BURST` lines, refilling at `CHAT_LINES_PER_SEC`) checked before a line is parsed or broadcast;
-  a refused line is dropped, counted in `chat_rate_refused`, and answered with at most one
-  "slow down" notice per player per interval. The host's own local player is subject to it too, admins
-  included. The clock is injectable, like `ChunkManager.set_clock`.
-- The bucket entry is erased when the peer disconnects.
-
-**Acceptance criteria:**
-- [ ] Suite: with a fake clock, a client sending `CHAT_BURST + 10` lines in one tick has exactly
-  `CHAT_BURST` broadcast, `chat_rate_refused` raised by 10 and one notice sent to it alone.
-- [ ] Suite: after `1 / CHAT_LINES_PER_SEC` seconds of fake time one more line is accepted.
-- [ ] Suite: a disconnect removes the player's bucket entry.
-- [ ] Suite green on both boot paths, harness green.
-
----
-
-## Phase 102 — An admin `/kill` lands on the host's simulated peer health
-
-**Goal:** Phase 38 made the host simulate each peer's HP: `GameRoot._on_player_damaged` applies a hit
-to `PlayerRegistry.record_simulated_hp` first and only then sends `player_damaged` as a display
-update. Phase 95's `/kill <peer>` bypasses that and calls `networking.send_player_damaged` directly,
-so the host's record keeps the peer at full health. A modified client that ignores the packet does not
-die, and any client that does die is restored to full HP from the host record on its next reconnect.
+Merges the former Phases 101 (chat rate limit), 102 (admin `/kill` on simulated HP), 103 (exact,
+on-planet teleports) and 104 (two-client harness steps).
 
 **Newel dependency:** NO.
 
-**Depends on:** Phase 38, Phase 95.
+**Depends on:** Phase 38, Phase 39, Phase 86, Phase 90, Phase 95.
 
 **Deliverables:**
-- `src/chat/chat_slice.gd` — `_cmd_kill` on a remote target routes through the same host path as a
-  creature hit (emit `GameBus.player_damaged(KILL_DAMAGE, "admin", target)` or call one shared
-  host helper), never `send_player_damaged` on its own. The local-body branch is unchanged.
-- No file outside `game_root.gd` calls `send_player_damaged` (the one door that records the simulated
-  HP first).
-
-**Acceptance criteria:**
-- [ ] Suite: an admin's `/kill` on a connected peer leaves `PlayerRegistry.get_hp(peer_id)` at 0 (the
-  `simulated_hp_after_hit` floor) and sends exactly one `player_damaged` to that peer.
-- [ ] Suite: after that peer disconnects and reconnects, its restored HP is the simulated value, not
-  `MAX_HP`.
-- [ ] `grep -rn "send_player_damaged(" src --include=*.gd | grep -v -e game_root.gd -e networking_slice.gd -e test_suite.gd -e net_harness.gd`
-  finds nothing.
-- [ ] Suite green on both boot paths, harness green.
-
----
-
-## Phase 103 — Teleports carry the exact position and stay on the planet
-
-**Goal:** Phases 78–87 keep every player position as an exact `{chunk, local}`, but Phase 95's
-teleports still go through float32: `ChatSlice._position_of` reads `get_position()` and
-`get_last_known_state()` (both `Vector3`), `GameBus.player_teleport` carries a `Vector3`, and
-`send_teleport` encodes it with `WorldPos.to_wire`. Ten thousand km from the origin `/bring` and
-`/tp <player>` land up to a metre off. `/tp x y z` accepts any value up to 1e9 m, so a Z past the pole
-row or an X several laps round puts the body outside the world the terrain covers.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 86, Phase 90, Phase 95.
-
-**Deliverables:**
-- `src/chat/chat_slice.gd` — `_position_of` returns the exact position (`PlayerSlice.get_world_pos()`
-  for the local body, `NetworkingSlice.get_last_known_exact(peer)` for a peer, the float path only as
-  fallback); `_teleport` passes it on unchanged.
-- `src/core/bus.gd`, `src/core/game_root.gd` — `player_teleport` carries a `{chunk, local}`
-  dictionary; `_on_player_teleport` rebases onto its chunk and calls `place_at_world_pos` with it.
+- `src/chat/chat_slice.gd` (or the host-side chat handler) — a per-player token bucket (`CHAT_BURST`
+  lines, refilling at `CHAT_LINES_PER_SEC`) checked before a line is parsed or broadcast; a refused line
+  is dropped, counted in `chat_rate_refused`, and answered with at most one "slow down" notice per player
+  per interval. The host's own local player is subject to it too, admins included. The clock is
+  injectable, like `ChunkManager.set_clock`; the bucket entry is erased when the peer disconnects.
+- The same file — `_cmd_kill` on a remote target routes through the same host path as a creature hit
+  (emit `GameBus.player_damaged(KILL_DAMAGE, "admin", target)` or call one shared host helper), never
+  `send_player_damaged` on its own; the local-body branch is unchanged. No file outside `game_root.gd`
+  calls `send_player_damaged`.
+- The same file — `_position_of` returns the exact position (`PlayerSlice.get_world_pos()` for the local
+  body, `NetworkingSlice.get_last_known_exact(peer)` for a peer, the float path only as fallback);
+  `_teleport` passes it on unchanged.
+- `src/core/bus.gd`, `src/core/game_root.gd` — `player_teleport` carries a `{chunk, local}` dictionary;
+  `_on_player_teleport` rebases onto its chunk and calls `place_at_world_pos` with it.
 - `src/networking/networking_slice.gd` — `send_teleport` sends `WorldPos.pos_to_wire(exact)`; the client
   decodes it with `WorldPos.pos_from_wire` and drops a packet that fails `WorldPos.is_wire`.
 - `src/core/chat_commands.gd` — `/tp x y z` wraps X onto one lap and refuses a Z beyond the pole rows
   with a usage reply naming the limit.
+- `src/tests/net_harness.gd` — steps `chat_relayed` (the client's plain line reaches both roles with the
+  same sanitised text; the host-side sender is the client's handle, not any name the packet claimed),
+  `admin_teleport` (the host runs `/bring <client handle>`; the client's body lands within 1 m of the
+  host's and the host sees the client's next `player_moved` from there) and `non_admin_refused` (the
+  client's `/give` gets a refusal addressed to it alone; its inventory is unchanged on both sides).
 
 **Acceptance criteria:**
+- [ ] Suite: with a fake clock, a client sending `CHAT_BURST + 10` lines in one tick has exactly
+  `CHAT_BURST` broadcast, `chat_rate_refused` raised by 10 and one notice sent to it alone; after
+  `1 / CHAT_LINES_PER_SEC` seconds of fake time one more line is accepted; a disconnect removes the
+  player's bucket entry.
+- [ ] Suite: an admin's `/kill` on a connected peer leaves `PlayerRegistry.get_hp(peer_id)` at 0 (the
+  `simulated_hp_after_hit` floor) and sends exactly one `player_damaged` to that peer; after that peer
+  disconnects and reconnects, its restored HP is the simulated value, not `MAX_HP`.
+- [ ] `grep -rn "send_player_damaged(" src --include=*.gd | grep -v -e game_root.gd -e networking_slice.gd -e test_suite.gd -e net_harness.gd`
+  finds nothing.
 - [ ] Suite: `/bring` of a peer to a local player at chunk (1,500,000, 3) local (0.25, 10, 0.75) sends a
-  teleport that decodes on the client to that chunk and a local within 1e-3 m.
-- [ ] Suite: `/tp <peer>` by the local admin lands the body at the peer's exact chunk, local within 1e-3 m.
+  teleport that decodes on the client to that chunk and a local within 1e-3 m; `/tp <peer>` by the
+  local admin lands the body at the peer's exact chunk, local within 1e-3 m.
 - [ ] Suite: `/tp 0 10 z` with `z` one chunk past `TerrainSlice.pole_chunks()` is refused and no
-  teleport is emitted; `/tp x 10 0` with `x` = 2.5 laps lands at the wrapped X.
-- [ ] Suite: a `teleport` packet with a malformed position is dropped on the client and the body does
-  not move.
+  teleport is emitted; `/tp x 10 0` with `x` = 2.5 laps lands at the wrapped X; a `teleport` packet with
+  a malformed position is dropped on the client and the body does not move.
+- [ ] `tools/net_harness.sh` reports 18/18 steps passed (the 15 existing plus the three above), both
+  roles agree on every `compare: true` step, and each new step fails when its host-side handler is
+  stubbed out in a scratch copy (noted in the PR body). CI's harness job runs the new steps.
 - [ ] Suite green on both boot paths, harness green.
-
----
-
-## Phase 104 — Two-client harness: chat and admin teleport over the socket
-
-**Goal:** Phase 95's chat and admin commands are proven only in-process. Nothing exercises
-`chat_intent` → host → `chat_posted` broadcast, or a host-issued `teleport`, over a real ENet
-connection, so a wire-shape regression (identity stripped, packet type renamed, teleport encoding
-changed by Phase 103) would pass the suite.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 39, Phase 95.
-
-**Deliverables:**
-- `src/tests/net_harness.gd` — step `chat_relayed`: the client sends a plain line; both roles report the
-  same sanitised text, and the host-side sender is the client's handle, not any name the packet claimed.
-- Step `admin_teleport`: the host (an admin by being the local player) runs `/bring <client handle>`;
-  the client reports a body position within 1 m of the host's, and the host reports the client's next
-  `player_moved` from there.
-- Step `non_admin_refused`: the client sends `/give` and receives a refusal addressed to it alone; its
-  inventory is unchanged on both sides.
-
-**Acceptance criteria:**
-- [ ] `tools/net_harness.sh` reports 18/18 steps passed (the 15 existing plus the three above), and
-  both roles agree on every `compare: true` step.
-- [ ] Each new step fails (verdict `FAIL`) when its host-side handler is stubbed out in a scratch
-  copy; noted in the PR body.
-- [ ] CI's harness job runs the new steps.
-
----
-
-## Phase 105 — Archive Phases 75–95 into the roadmap history
-
-**Goal:** ROADMAP.md carries the full bodies of twenty-one Done phases (75–95, over 650 lines).
-Earlier eras were archived to
-`docs/roadmap-history/`; this one has not been, so the live roadmap is mostly history.
-
-**Newel dependency:** NO.
-
-**Deliverables:**
-- `docs/roadmap-history/phases-75-95.md` (new) — the Phase 75–95 bodies moved unchanged, in order,
-  with the same header line as the other history files.
-- `docs/roadmap-history/README.md` — lists the new file.
-- `ROADMAP.md` — the index rows for 75–95 link `[history](docs/roadmap-history/phases-75-95.md)`;
-  only Planned phases keep a body below the index.
-
-**Acceptance criteria:**
-- [ ] `grep -c "^## Phase" ROADMAP.md` equals the number of index rows whose spec is `below`.
-- [ ] Every `## Phase N` heading for 75–95 appears exactly once across `docs/roadmap-history/`, and
-  the moved text is byte-identical (shown by `git diff --color-moved`).
-- [ ] Every relative link in the new history file resolves (the same check the other history files pass).
 
 ---
 
