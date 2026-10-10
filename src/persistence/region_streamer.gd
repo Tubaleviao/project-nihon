@@ -11,6 +11,7 @@ extends RefCounted
 ## the edits of one 32×32-chunk square, and a window crosses into a new region rarely.
 const RegionStore := preload("res://src/persistence/region_store.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 
 var _store: RegionStore
 var _voxel: Object
@@ -73,6 +74,7 @@ func sync(wanted: Dictionary) -> Dictionary:
 			continue
 		_backoff.erase(rkey)
 		_voxel.apply_region_chunks(read["chunks"])
+		ChunkRecords.adopt_region(read["chunks"])   # Phase 108: the region's generation records
 		_resident[rkey] = true
 		loaded += 1
 	for rkey in _resident.keys():

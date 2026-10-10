@@ -86,6 +86,8 @@ extends Node
 ##   first_ring_progress() -> float         — 0..1, drives the loading bar
 const Diag := preload("res://src/core/diag.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
+const RegionStore := preload("res://src/persistence/region_store.gd")
 
 ## Chunk size is owned by TerrainSlice; world_to_chunk() delegates to it.
 const DEFAULT_VIEW_DISTANCE := 3       # Chebyshev radius, in chunks
@@ -236,6 +238,17 @@ var peer_sync_far_hops: int = 0
 ## the regions around every player are resident before their chunks are built.
 var region_streamer = null
 
+## Phase 108 — the region store new generation records are written to; set on the host and the
+## dedicated server only, so a client (and an isolated rig) never records a chunk.
+var record_store: RegionStore = null
+## Returns true while a save may be writing region files; flushing records waits (set by game_root).
+var records_flush_blocked: Callable = Callable()
+## Records created and not yet on disk: "cx,cz" -> { "gen": record }. Flushed in one write per
+## region by `flush_records`, so a window of 49 new chunks rewrites a region file once, not 49 times.
+var _pending_records: Dictionary = {}
+## Records created by this manager, for the log line and the tests.
+var records_created: int = 0
+
 ## Chunks queued for loading, ordered nearest-first to the player. Drained a
 ## bounded number per frame by _drain_load_queue().
 var _load_queue: Array = []    # of Vector2i
@@ -315,6 +328,7 @@ func _process(_delta: float) -> void:
 	# nothing awaited it — the chunk was left without a mesh and the task's result sat in
 	# the pool until shutdown (the same exit-134 leak `_exit_tree` now closes there).
 	_apply_finished_builds()
+	flush_records()
 	if not _active:
 		return
 	_drain_load_queue()
@@ -580,9 +594,44 @@ func load_chunk(chunk_pos: Vector2i) -> void:
 	if _loaded.has(key):
 		return
 	_loaded[key] = true
+	_record_generation(chunk_pos)
 	GameBus.chunk_loaded.emit(chunk_pos)
 	rebuild_seam_neighbours(chunk_pos)
 	_dispatch_build(chunk_pos)
+
+## Phase 108 — a chunk entering a window with no generation record gets the one the current
+## generator would write, BEFORE its heightmap is generated (so the record and the ground agree by
+## construction). Host and dedicated server only; the distant ring never calls this.
+func _record_generation(chunk_pos: Vector2i) -> void:
+	if record_store == null or terrain_slice == null or not terrain_slice.has_method("get_world_seed"):
+		return
+	var canon := TerrainSlice.wrap_chunk(chunk_pos)
+	if ChunkRecords.has_record(canon):
+		return
+	var rec := RegionStore.normalize_gen(TerrainSlice.generation_record(canon, int(terrain_slice.get_world_seed())))
+	if rec.is_empty():
+		return   # a generator value outside the height range: leave the chunk to the generator
+	if ChunkRecords.set_record(canon, rec):
+		_pending_records[ChunkRecords.key_of(canon)] = { "gen": rec }
+		records_created += 1
+
+## Write the pending records, one region rewrite per region. Waits while a save is running; a failed
+## write keeps them pending for the next frame (they are in the table either way).
+func flush_records() -> void:
+	if _pending_records.is_empty() or record_store == null:
+		return
+	if records_flush_blocked.is_valid() and bool(records_flush_blocked.call()):
+		return
+	if record_store.write_chunks(_pending_records) == OK:
+		_pending_records.clear()
+	else:
+		var failed: Array = record_store.last_failed_chunk_keys
+		for k in _pending_records.keys():
+			if not failed.has(k):
+				_pending_records.erase(k)
+
+func pending_record_count() -> int:
+	return _pending_records.size()
 
 ## Phase 49/69 — a built neighbour of a chunk that just entered the streamed set saw it as a
 ## GUESS (its generated heightmap, because the chunk was not yet known). When the arriving chunk
