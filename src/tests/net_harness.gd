@@ -1158,7 +1158,12 @@ func _step_chunk_record_synced() -> void:
 		_root._networking.send_snapshot(peer, _root._build_snapshot(peer, false, RENDEZVOUS, false))
 		_report("chunk_record_synced", verdict(true, true), _record_detail(rec))
 		return
-	var ok: bool = await _await_until(func(): return ChunkRecords.has_record(chunk), STEP_TIMEOUT_SECS)
+	# The client may already hold the record its own terrain generated for this chunk, so presence is
+	# not proof of delivery: wait for one that differs from the generated biome (the host picks another).
+	var generated_b := TerrainSlice.generated_biome_for_chunk(chunk, int(_root._terrain.get_world_seed()))
+	var ok: bool = await _await_until(func():
+		return ChunkRecords.has_record(chunk) and str(ChunkRecords.get_record(chunk)["b"]) != generated_b,
+		STEP_TIMEOUT_SECS)
 	if not ok:
 		_report("chunk_record_synced", "fail", "no_record_received")
 		return
