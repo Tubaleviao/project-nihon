@@ -41,16 +41,18 @@ const WINDOW_PROPOSALS  := "proposals"
 const WINDOW_CONTROLS   := "controls"
 const WINDOW_CHARACTER  := "character"
 const WINDOW_SKILLS     := "skills"
+const WINDOW_MAP        := "map"
 
 const WINDOW_KEYS := [
 	WINDOW_INVENTORY, WINDOW_TECHNOLOGY, WINDOW_CRAFTING,
-	WINDOW_TRADE, WINDOW_MARKET, WINDOW_PROPOSALS, WINDOW_CONTROLS, WINDOW_CHARACTER, WINDOW_SKILLS,
+	WINDOW_TRADE, WINDOW_MARKET, WINDOW_PROPOSALS, WINDOW_CONTROLS, WINDOW_CHARACTER, WINDOW_SKILLS, WINDOW_MAP,
 ]
 
 const MouseIconScript := preload("res://src/ui/mouse_icon.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const HotbarScript := preload("res://src/ui/hotbar.gd")
 const WindowDockScript := preload("res://src/ui/window_dock.gd")
+const MapWindowScript := preload("res://src/ui/map_window.gd")
 
 ## Pixels of a window that must stay reachable on every edge when dragged.
 const DRAG_VISIBLE_MARGIN := 48.0
@@ -114,6 +116,8 @@ var _drag_moved: bool = false
 var _icon_cache: Dictionary = {}
 var _drag_grab: Vector2 = Vector2.ZERO
 var layout_path: String = LAYOUT_PATH
+## Phase 111 — the Map window's canvas; game_root wires its terrain, player and minimap.
+var map_window: Control = null
 var _layout: Dictionary = {}                 # window key -> Vector2
 var _crafting_box: VBoxContainer = null
 var _repair_feedback: Label = null
@@ -193,6 +197,8 @@ func _input(event: InputEvent) -> void:
 				toggle_window(WINDOW_CHARACTER)
 			KEY_K:
 				toggle_window(WINDOW_SKILLS)
+			KEY_M:
+				toggle_window(WINDOW_MAP)
 			KEY_ESCAPE:
 				_close_all_windows()
 
@@ -1296,6 +1302,7 @@ func _build_ui() -> void:
 
 	_panels[WINDOW_CHARACTER] = _build_window(WINDOW_CHARACTER, "Character (C)", _build_character_content(), Vector2(916, 360))
 	_panels[WINDOW_SKILLS] = _build_window(WINDOW_SKILLS, "Skills (K)", _build_skills_content(), Vector2(916, 700))
+	_panels[WINDOW_MAP] = _build_window(WINDOW_MAP, "Map (M)", _build_map_content(), Vector2(200, 80))
 
 	_slot_menu = PopupMenu.new()
 	_slot_menu.id_pressed.connect(_on_slot_menu_pressed)
@@ -1307,6 +1314,31 @@ func _build_ui() -> void:
 	# A viewport resize (window drag, fullscreen toggle) re-fits too.
 	if is_inside_tree() and not get_viewport().size_changed.is_connected(_apply_layout):
 		get_viewport().size_changed.connect(_apply_layout)
+
+func _build_map_content() -> Control:
+	var box := VBoxContainer.new()
+	map_window = MapWindowScript.new()
+	map_window.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(map_window)
+	var row := HBoxContainer.new()
+	box.add_child(row)
+	var truth := CheckButton.new()
+	truth.text = "True planet"
+	truth.tooltip_text = "Show unexplored land in full colour"
+	truth.focus_mode = Control.FOCUS_NONE
+	truth.toggled.connect(func(on: bool) -> void:
+		map_window.show_true_planet = on
+		map_window.queue_redraw())
+	row.add_child(truth)
+	var here := Button.new()
+	here.text = "Centre on me"
+	here.focus_mode = Control.FOCUS_NONE
+	here.pressed.connect(func() -> void: map_window.center_on_player())
+	row.add_child(here)
+	var hint := Label.new()
+	hint.text = "drag: pan / turn   wheel: zoom"
+	row.add_child(hint)
+	return box
 
 func _build_window(key: String, title: String, content: Control, position: Vector2) -> PanelContainer:
 	var panel := PanelContainer.new()

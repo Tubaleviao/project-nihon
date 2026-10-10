@@ -348,6 +348,9 @@ func _ready() -> void:
 		_ui.trade_slice           = _trade
 		_ui.voxel_slice           = _voxel
 		_ui.player_slice          = _player
+		_ui.map_window.minimap       = _minimap
+		_ui.map_window.terrain_slice = _terrain
+		_ui.map_window.player_slice  = _player
 		_ui.drops_enabled         = not _is_client
 	_trade.inventory_slice    = _inventory
 	_market.inventory_slice   = _inventory
@@ -438,6 +441,9 @@ func _ready() -> void:
 		_minimap.player_slice = _player
 		_minimap.terrain_slice = _terrain
 		minimap_layer.add_child(_minimap)
+		# Phase 111 — the explored set persists per world, and a click on the minimap opens the Map window.
+		_minimap.revealed_dir = "user://saves/client"
+		_minimap.open_requested.connect(func() -> void: _ui.open_window(UiSlice.WINDOW_MAP))
 
 		# Phase 42 — the first-ring loading screen, at its own layer ABOVE the minimap.
 		# Host-only like the minimap (a dedicated server has no body to place and no
@@ -653,6 +659,8 @@ func _install_quit_guard() -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
 		print("[Server] window close requested — saving before quit")
+		if _minimap != null and _minimap.revealed_dir != "":
+			_minimap.save_revealed()
 		_save_everything(true)
 		# The write is threaded, so quitting here would race it: block until it lands.
 		_flush_save()

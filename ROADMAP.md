@@ -131,7 +131,7 @@ issue number where the criterion used to be.
 | 108 | Terrain reads and writes the generation record on the host | Done | below |
 | 109 | Generation records reach clients, scoped and validated | Done | below |
 | 110 | Trees are pinned per chunk and cleared where players build | Done | below |
-| 111 | A full-map window: zoom from the minimap out to a whole planet | Planned | below |
+| 111 | A full-map window: zoom from the minimap out to a whole planet | Done | below |
 | 112 | A biome adjacency table in the fabric and an offline scan | Planned | below |
 | 113 | Frontier generation: a new generator version meets recorded land | Planned | below |
 
@@ -464,7 +464,7 @@ clear them for good.
 
 ---
 
-## Phase 111 — A full-map window: zoom from the minimap out to a whole planet
+## Phase 111 — A full-map window: zoom from the minimap out to a whole planet ✅ Done
 
 **Goal:** the minimap shows a few chunks around the player. A player who wanders off needs the whole
 picture: a Map window (key `M`, and an `M` box in the HUD's window dock) that opens on the explored
@@ -498,19 +498,19 @@ reserves `M` for this window).
 - The minimap keeps its own scroll and `+`/`-` zoom; clicking it opens this window.
 
 **Acceptance criteria:**
-- [ ] Suite: the projection blend is a pure function of zoom: flat at the near end, a unit sphere at the far
+- [x] Suite: the projection blend is a pure function of zoom: flat at the near end, a unit sphere at the far
   end, monotone between, with matching positions at the seam (no jump).
-- [ ] Suite: a map tile for a given (seed, version, tile) is identical across runs and equals the terrain's
+- [x] Suite: a map tile for a given (seed, version, tile) is identical across runs and equals the terrain's
   own sample at the tile centre; changing the seed or `WORLDGEN_VERSION` changes the cache key.
-- [ ] Suite: the tile cache never exceeds its cap and drops the oldest first; a request for a coarser level
+- [x] Suite: the tile cache never exceeds its cap and drops the oldest first; a request for a coarser level
   is answered before a finer one.
-- [ ] Suite: a revealed set round-trips through save and load; a file for another seed is ignored; a missing
+- [x] Suite: a revealed set round-trips through save and load; a file for another seed is ignored; a missing
   or corrupt file starts an empty set and warns once.
-- [ ] Suite: the cap drops the oldest chunks, and 10,000 contiguous chunks encode to under 20 KB.
-- [ ] Suite: the home clamp returns the point itself when inside the map, and an edge position on the line
+- [x] Suite: the cap drops the oldest chunks, and 10,000 contiguous chunks encode to under 20 KB.
+- [x] Suite: the home clamp returns the point itself when inside the map, and an edge position on the line
   toward it, with the right distance, when outside; it is exact at 1,500,000 chunks from the origin.
-- [ ] Suite: `M` and the dock's `M` box toggle the Map window; no other window uses `M`.
-- [ ] Suite green on both boot paths.
+- [x] Suite: `M` and the dock's `M` box toggle the Map window; no other window uses `M`.
+- [x] Suite green on both boot paths.
 
 ---
 
