@@ -150,6 +150,19 @@ func run() -> void:
 	_run_test("persistence: save then load round-trip",       _test_persistence_round_trip)
 	_run_test("persistence: worldgen stamp on a new world",   _test_worldgen_stamp_new_world)
 	_run_test("persistence: worldgen mismatch warns once and keeps the stamp", _test_worldgen_stamp_mismatch)
+	_run_test("worldgen: fingerprint stable and sensitive",   _test_worldgen_fingerprint)
+	_run_test("worldgen: fingerprint stamp on the world record", _test_worldgen_fingerprint_record)
+	_run_test("worldgen: fingerprint mismatch wiring",        _test_worldgen_fingerprint_game_root)
+	_run_test("worldgen: golden generator values",            _test_worldgen_golden)
+	_run_test("records: no records leaves 64 chunks as before",  _test_records_none_unchanged)
+	_run_test("records: a record overrides biome and corner heights", _test_records_override)
+	_run_test("records: a streamed chunk is recorded exactly once", _test_records_written_once)
+	_run_test("records: ring and client write none",              _test_records_ring_and_client)
+	_run_test("records: ore field reads the recorded biome on a worker", _test_records_ore_worker)
+	_run_test("records: an older record version changes nothing", _test_records_old_version)
+	_run_test("record sync: a snapshot carries the window's records only", _test_record_sync_scope)
+	_run_test("record sync: bad records are dropped, the rest apply", _test_record_sync_validation)
+	_run_test("record sync: a packet over the cap refuses the rest", _test_record_sync_cap)
 	_run_test("game_root: worldgen stamp wiring on load",     _test_worldgen_stamp_game_root_wiring)
 	_run_test("persistence: missing slot emits load_failed",  _test_persistence_missing_slot)
 	_run_test("loot: known creature produces drops",          _test_loot_known_creature)
@@ -293,6 +306,10 @@ func run() -> void:
 	_run_test("voxel: an unreadable legacy op is dropped and a plain tile round-trips", _test_legacy_op_unreadable_dropped)
 	_run_test("region: a malformed entry survives a neighbour's save", _test_region_malformed_entry_kept)
 	_run_test("region: a valid entry replaces a malformed one", _test_region_malformed_entry_replaced)
+	_run_test("region: a gen record round-trips", _test_region_gen_round_trip)
+	_run_test("region: a version-1 file loads and saves as version 2", _test_region_v1_upgrade)
+	_run_test("region: a malformed gen is dropped, edits survive, one warning", _test_region_gen_malformed)
+	_run_test("region: 1,024 recorded chunks stay small", _test_region_gen_size)
 	_run_test("region: a partial chunk loads its stored edits when the region streams in", _test_region_partial_chunk_loads_stored)
 	_run_test("region: an overlay keeps the larger stored depletion count", _test_region_overlay_keeps_larger_taken)
 	_run_test("region: migration recovers a monolith chunk whose region entry is malformed", _test_region_migrate_malformed_recovers)
@@ -11582,8 +11599,9 @@ func _test_net_harness_step_table() -> void:
 		names[str(s.get("name", ""))] = true
 	assert_eq(names.size(), steps.size(), "step names are unique — the driver keys on them")
 	assert_eq(str(steps[0].get("name", "")), "handshake", "the scenario starts with the handshake")
-	assert_eq(str(steps[steps.size() - 1].get("name", "")), "spawn_near_friend",
-		"and ends with the friend-code spawn (Phase 53), the far peer rejoining as a new player")
+	assert_eq(str(steps[steps.size() - 1].get("name", "")), "chunk_record_synced",
+		"and ends with the generation record reaching the client (Phase 109), after the friend-code spawn (Phase 53)")
+	assert_eq(str(steps[steps.size() - 2].get("name", "")), "spawn_near_friend", "which is the step before it")
 
 ## Phase 39 — the wire is a text channel between two processes, so the line format and its
 ## parser are load-bearing: if they disagreed, the driver would silently compare nothing
@@ -15618,6 +15636,88 @@ func _test_region_malformed_entry_replaced() -> void:
 	assert_true(read["raw_invalid"].is_empty(), "no malformed entry remains")
 	assert_true(read["chunks"]["1,1"] == good, "the valid entry replaced it")
 
+func _gen_rec(biome := "Tundra", h0 := 12.34567) -> Dictionary:
+	return { "v": TerrainSlice.WORLDGEN_VERSION, "f": TerrainSlice.worldgen_fingerprint(), "b": biome,
+		"h": [h0, h0 + 1.5, h0 - 2.25, h0 + 0.00012] }
+
+func _test_region_gen_round_trip() -> void:
+	var dir := _fresh_region_dir("test_p107_roundtrip")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	var rec := _gen_rec()
+	var edit := { "edits": { "0,0": [{ "op": "remove", "bottom": 0.0, "top": 1.0 }] } }
+	assert_eq(store.write_chunks({ "2,3": edit }), OK, "an edit is saved")
+	assert_eq(store.set_gen(Vector2i(2, 3), rec), OK, "a gen is recorded beside it")
+	assert_eq(store.set_gen(Vector2i(-1, 0), rec), OK, "a gen-only chunk is recorded in another region")
+	var got := store.get_gen(Vector2i(2, 3))
+	assert_eq(int(got["v"]), int(rec["v"]), "version kept")
+	assert_eq(int(got["f"]), int(rec["f"]), "fingerprint kept")
+	assert_eq(got["b"], "Tundra", "biome kept")
+	for i in 4:
+		assert_true(absf(float(got["h"][i]) - float(rec["h"][i])) <= 1e-4, "height %d equal to 1e-4" % i)
+	assert_true(store.load_region(Vector2i.ZERO)["2,3"]["edits"] == edit["edits"], "the edits survive set_gen")
+	assert_eq(store.write_chunks({ "2,3": { "edits": {} } }), OK, "edits compact away")
+	assert_eq(store.get_gen(Vector2i(2, 3)).get("b", ""), "Tundra", "the gen outlives the deletion marker")
+	assert_true(store.write_chunks({ "2,3": { "edits": { "1,1": [] } } }) == OK and store.get_gen(Vector2i(2, 3)).has("h"), "an edit save keeps the gen")
+	assert_eq(store.list_dirty(["2,3", "40,0"]).size(), 2, "list_dirty counts a gen-only change")
+	assert_eq(store.set_gen(Vector2i(5, 5), { "v": 1 }), ERR_INVALID_DATA, "a malformed record is refused")
+	assert_true(store.get_gen(Vector2i(5, 5)).is_empty(), "nothing written for it")
+
+func _test_region_v1_upgrade() -> void:
+	var dir := _fresh_region_dir("test_p107_v1")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	var edit := { "edits": { "0,0": [{ "op": "remove", "bottom": 0.0, "top": 1.0 }] } }
+	_write_region_file(store, { "1,1": edit })   # writes "version": 1
+	assert_true(store.load_region(Vector2i.ZERO)["1,1"] == edit, "a version-1 file loads unchanged")
+	assert_true(store.get_gen(Vector2i(1, 1)).is_empty(), "and carries no gen")
+	assert_eq(store.set_gen(Vector2i(1, 1), _gen_rec()), OK, "a save of it")
+	var parsed: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(store.path_of(Vector2i.ZERO)))
+	assert_eq(int(parsed["version"]), 2, "writes version 2")
+	assert_eq(JSON.stringify(parsed["chunks"]["1,1"]["edits"]), JSON.stringify(edit["edits"]), "with its edits intact")
+
+func _test_region_gen_malformed() -> void:
+	var dir := _fresh_region_dir("test_p107_malformed")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	var edit := { "edits": { "0,0": [{ "op": "remove", "bottom": 0.0, "top": 1.0 }] } }
+	var good := _gen_rec()
+	var bads: Array = [
+		"x", { "v": "5", "f": 1, "b": "Tundra", "h": [1, 1, 1, 1] },
+		{ "v": TerrainSlice.WORLDGEN_VERSION + 1, "f": 1, "b": "Tundra", "h": [1.0, 1.0, 1.0, 1.0] },
+		{ "v": 1, "f": 1, "b": "Nowhere", "h": [1.0, 1.0, 1.0, 1.0] },
+		{ "v": 1, "f": 1, "b": "Tundra", "h": [1.0, 1.0, 1.0] },
+		{ "v": 1, "f": 1, "b": "Tundra", "h": [1.0, 1.0, 1.0, "a"] },
+		{ "v": 1, "f": 1, "b": "Tundra", "h": [1.0, 1.0, 1.0, WorldShape.max_height() + 1.0] },
+		{ "v": 1, "f": 1, "b": "Tundra", "h": [1.0, 1.0, 1.0, WorldShape.min_height() - 1.0] },
+	]
+	var chunks := {}
+	for i in bads.size():
+		chunks["%d,0" % i] = { "edits": edit["edits"], "gen": bads[i] }
+	chunks["20,0"] = { "edits": edit["edits"], "gen": good }
+	_write_region_file(store, chunks)
+	var loaded := store.load_region(Vector2i.ZERO)
+	for i in bads.size():
+		assert_true(loaded["%d,0" % i] == edit, "bad gen %d dropped, edits survive" % i)
+	assert_true(loaded["20,0"].has("gen"), "a good record is kept")
+	var nan_h := { "v": 1, "f": 1, "b": "Tundra", "h": [NAN, 1.0, 1.0, 1.0] }
+	assert_true(RegionStoreScript.normalize_gen(nan_h).is_empty(), "a NaN height is refused")
+	# One warning for two loads: the second read finds the key already warned.
+	var warned_before := store._warned.size()
+	store.load_region(Vector2i.ZERO)
+	assert_eq(store._warned.size(), warned_before, "a second load raises no new warning")
+	assert_eq(warned_before, bads.size(), "the first load warned once per bad record")
+
+func _test_region_gen_size() -> void:
+	var dir := _fresh_region_dir("test_p107_size")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	var chunks := {}
+	for x in 32:
+		for z in 32:
+			var rec := _gen_rec(TerrainSlice.BIOME_KEYS[(x + z) % TerrainSlice.BIOME_KEYS.size()], 3.0 + x * 0.123456 + z * 0.0173)
+			chunks["%d,%d" % [x, z]] = { "gen": RegionStoreScript.normalize_gen(rec) }
+	assert_eq(store.write_chunks(chunks), OK, "1,024 recorded chunks are saved")
+	var bytes := FileAccess.get_file_as_bytes(store.path_of(Vector2i.ZERO)).size()
+	assert_true(bytes < 100 * 1024, "the region file is under 100 KB (%d bytes)" % bytes)
+	assert_eq(store.load_region(Vector2i.ZERO).size(), 1024, "all of them load back")
+
 func _test_region_partial_chunk_loads_stored() -> void:
 	var found := _find_surface_vein(0)
 	if found.is_empty():
@@ -17196,3 +17296,369 @@ func _test_chat_wire() -> void:
 	assert_true(moved[0].distance_to(Vector3(100.0, 9.0, -40.0)) < 0.01, "to the sent spot")
 	n._test_peers = null
 	n.free()
+
+## Phase 106 — the fingerprint is stable across calls and a `warm()` reset, and moves when a fabric
+## shape parameter or a biome envelope does.
+func _test_worldgen_fingerprint() -> void:
+	var fp := TerrainSlice.worldgen_fingerprint()
+	assert_eq(TerrainSlice.worldgen_fingerprint(), fp, "stable across two calls")
+	var saved_shape_warmed: bool = WorldShape._warmed
+	var saved_env: Dictionary = ClimateField._envelopes.duplicate(true)
+	var saved_clim_warmed: bool = ClimateField._warmed
+	WorldShape._warmed = false
+	ClimateField._warmed = false
+	ClimateField._envelopes.clear()
+	assert_eq(TerrainSlice.worldgen_fingerprint(), fp, "stable across a warm() reset")
+	var saved_amp: float = WorldShape._ridge_amp
+	WorldShape._ridge_amp = saved_amp + 1.0
+	assert_true(TerrainSlice.worldgen_fingerprint() != fp, "changing ridgeAmplitude changes it")
+	WorldShape._ridge_amp = saved_amp
+	var saved_spline: Array = WorldShape._spline
+	var edited: Array = saved_spline.duplicate(true)
+	edited[1][1] = float(edited[1][1]) + 1.0
+	WorldShape._spline = edited
+	assert_true(TerrainSlice.worldgen_fingerprint() != fp, "changing the height spline changes it")
+	WorldShape._spline = saved_spline
+	assert_eq(TerrainSlice.worldgen_fingerprint(), fp, "restoring the shape restores it")
+	var first_key: String = str(ClimateField._envelopes.keys()[0])
+	ClimateField._envelopes[first_key][0] = float(ClimateField._envelopes[first_key][0]) + 0.01
+	assert_true(TerrainSlice.worldgen_fingerprint() != fp, "changing a biome envelope changes it")
+	WorldShape._warmed = saved_shape_warmed
+	ClimateField._envelopes = saved_env
+	ClimateField._warmed = saved_clim_warmed
+
+## Phase 106 — a stamped record that differs warns once; an unstamped one warns not, and is stamped.
+func _test_worldgen_fingerprint_record() -> void:
+	var running := TerrainSlice.worldgen_fingerprint()
+	var warns := Diag.warn_count()
+	assert_false(PersistenceSlice.check_worldgen_fingerprint({ "worldgenFingerprint": running }, running), "a matching record is no mismatch")
+	assert_false(PersistenceSlice.check_worldgen_fingerprint({ "seed": 1 }, running), "an unstamped record is no mismatch")
+	assert_false(PersistenceSlice.check_worldgen_fingerprint({}, running), "a new world is no mismatch")
+	assert_eq(Diag.warn_count(), warns, "and none warns")
+	assert_true(PersistenceSlice.check_worldgen_fingerprint({ "worldgenFingerprint": running + 1 }, running), "a different fingerprint mismatches")
+	assert_eq(Diag.warn_count() - warns, 1, "with exactly one warning")
+	assert_eq(PersistenceSlice.fingerprint_stamp_for_save({}, running), running, "a new world takes the running fingerprint")
+	assert_eq(PersistenceSlice.fingerprint_stamp_for_save({ "seed": 1 }, running), running, "an unstamped record is stamped on the next save")
+	assert_eq(PersistenceSlice.fingerprint_stamp_for_save({ "worldgenFingerprint": 5 }, running), 5, "a stamped record keeps its original")
+	var dir := "user://saves/test_worldgen_fp/"
+	_wipe_dir(dir)
+	var writer := PersistenceSlice.new()
+	add_child(writer)
+	writer.server_save_dir = dir
+	assert_eq(writer.save_world({ "local_player_id": "player_1_1_ab", "worldgenFingerprint": running }, false), OK, "the record writes")
+	assert_eq(PersistenceSlice.worldgen_fingerprint_of(writer.load_world_record()), running, "the fingerprint round-trips")
+	writer.free()
+	_wipe_dir(dir)
+
+## Phase 106 — game_root raises `worldgen_fingerprint_mismatch` exactly once for a differing record,
+## and never for an unstamped one (which the next save stamps).
+func _test_worldgen_fingerprint_game_root() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	var gr: Node = root_script.new()
+	var running := TerrainSlice.worldgen_fingerprint()
+	var seen: Array = []
+	var cb := func(saved: int, current: int) -> void: seen.append([saved, current])
+	GameBus.worldgen_fingerprint_mismatch.connect(cb)
+	gr._loaded_world = {}
+	gr._note_worldgen_version()
+	assert_true(seen.is_empty(), "a new world raises none")
+	assert_eq(gr._worldgen_fp_stamp, running, "and takes the running fingerprint")
+	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION }
+	gr._note_worldgen_version()
+	assert_true(seen.is_empty(), "an unstamped record raises none")
+	assert_eq(gr._worldgen_fp_stamp, running, "and is stamped for the next save")
+	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION, "worldgenFingerprint": running + 1 }
+	gr._note_worldgen_version()
+	assert_eq(seen, [[running + 1, running]], "a differing record raises exactly once")
+	assert_eq(gr._worldgen_fp_stamp, running + 1, "and keeps its original stamp")
+	GameBus.worldgen_fingerprint_mismatch.disconnect(cb)
+	gr.free()
+
+## Phase 106 — golden generator values. A Godot upgrade or an unversioned edit that moves any of
+## them must bump `TerrainSlice.WORLDGEN_VERSION` and update these numbers in the same change.
+func _test_worldgen_golden() -> void:
+	var n := FastNoiseLite.new()
+	TerrainSlice.configure_noise(n, 12345)
+	var detail: Array = [3.524644747, 2.464545919, 2.602311652, 2.597774304, 2.300039381, 2.238469739, 2.919664383, 2.066151761]
+	for i in 8:
+		var got := TerrainSlice.detail_of(n, 37.0 * i + 5.5, -91.0 * i + 3.25)
+		assert_true(absf(got - float(detail[i])) < 1e-6, "detail noise point %d matches the golden value (got %.9f)" % [i, got])
+	var w: float = float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var shape: Array = [2.0, -57.776415828, 105.545489436, -53.650412350, -34.981083839, -53.885990050, -55.059654802, -52.487651444]
+	for i in 8:
+		var got := WorldShape.height(777 + i, 1234.5 * i * 1000.0, -5000.0 * i + 300.0, w)
+		assert_true(absf(got - float(shape[i])) < 1e-4, "shape height %d matches the golden value (got %.9f)" % [i, got])
+	var biomes: Array = ["TemperateGrassland", "Ocean", "TemperateForest", "Ocean", "Ocean", "Ocean", "Ocean", "Desert",
+		"Alpine", "Ocean", "Ocean", "Ocean", "Ocean", "Ocean", "TemperateForest", "Ocean"]
+	for i in 16:
+		var c := Vector2i((i * 65537) % 600000 - 300000, (i * 104729) % 300000 - 150000)
+		assert_eq(TerrainSlice.biome_for_chunk(c, 100 + i), biomes[i], "biome of golden chunk %d" % i)
+
+
+# ---- Phase 108 — terrain reads and writes the generation record on the host ----
+
+const RECORDS_GOLDEN_HASH := 1508089442
+const RECORDS_GOLDEN_BIOMES := 3756816773
+const ChunkRecordsScript := preload("res://src/terrain/chunk_records.gd")
+
+func _records_chunks64() -> Array:
+	var out: Array = []
+	for i in 64:
+		out.append(Vector2i((i * 7919) % 4000 - 2000, (i * 104729) % 2000 - 1000))
+	return out
+
+func _records_hash(t: Node, chunks: Array) -> int:
+	var h := 17
+	for c in chunks:
+		var hm: Array = t.generate_heightmap(c)
+		for i in range(0, hm.size(), 37):
+			h = (h * 31 + int(roundf(float(hm[i]) * 1000.0))) & 0x7fffffff
+	return h
+
+func _test_records_none_unchanged() -> void:
+	ChunkRecordsScript.clear()
+	var t := TerrainSlice.new()
+	add_child(t)
+	t.set_world_seed(4242)
+	var chunks := _records_chunks64()
+	var first := _records_hash(t, chunks)
+	assert_eq(first, RECORDS_GOLDEN_HASH, "heightmap hash of 64 chunks is the pre-phase value (got %d)" % first)
+	var biomes := ""
+	for c in chunks:
+		biomes += TerrainSlice.biome_for_chunk(c, 4242).substr(0, 2)
+	assert_eq(biomes.hash(), RECORDS_GOLDEN_BIOMES, "biomes of 64 chunks are the pre-phase values (got %d)" % biomes.hash())
+	# A record equal to the generator's own (rounded to 1e-4) moves no height by more than that.
+	var plain: Array = []
+	for c in chunks:
+		plain.append(t.generate_heightmap(c))
+	for c in chunks:
+		ChunkRecordsScript.set_record(c, RegionStoreScript.normalize_gen(TerrainSlice.generation_record(c, 4242)))
+	var worst := 0.0
+	for i in chunks.size():
+		var hm: Array = t.generate_heightmap(chunks[i])
+		for j in range(0, hm.size(), 11):
+			worst = maxf(worst, absf(float(hm[j]) - float(plain[i][j])))
+	assert_true(worst <= 1.5e-4, "self-recorded chunks generate the same ground to 1e-4 (worst %.6f)" % worst)
+	ChunkRecordsScript.clear()
+	t.free()
+
+func _test_records_override() -> void:
+	ChunkRecordsScript.clear()
+	var t := TerrainSlice.new()
+	add_child(t)
+	t.set_world_seed(99)
+	var c := Vector2i(300, 120)
+	var nb := Vector2i(301, 120)
+	var before: Array = t.generate_heightmap(c)
+	var nb_before: Array = t.generate_heightmap(nb)
+	var gen_biome := TerrainSlice.biome_for_chunk(c, 99)
+	var other: String = "Desert" if gen_biome != "Desert" else "Tundra"
+	var rec := TerrainSlice.generation_record(c, 99)
+	var shifted: Array = []
+	for hh in rec["h"]:
+		shifted.append(minf(float(hh) + 3.0, WorldShapeScript.max_height() - 1.0))
+	rec["h"] = shifted
+	rec["b"] = other
+	rec = RegionStoreScript.normalize_gen(rec)
+	assert_false(rec.is_empty(), "the stub record is valid")
+	ChunkRecordsScript.set_record(c, rec)
+	assert_eq(TerrainSlice.biome_for_chunk(c, 99), other, "the recorded biome wins")
+	assert_eq(t.get_biome_at_chunk(c), other, "and the instance form agrees")
+	assert_eq(TerrainSlice.biome_for_chunk(nb, 99), TerrainSlice.generated_biome_for_chunk(nb, 99), "a neighbour keeps the generator's biome")
+	var after: Array = t.generate_heightmap(c)
+	var moved := 0
+	for i in after.size():
+		if absf(float(after[i]) - float(before[i])) > 0.5:
+			moved += 1
+	assert_true(moved > after.size() / 2, "the recorded corners move the chunk's ground (%d tiles)" % moved)
+	assert_true(t.generate_heightmap(nb) == nb_before, "the neighbour's heightmap is the generator's")
+	assert_true(not is_equal_approx(TerrainSlice.shape_height(99, 300.5 * 32.0, 120.5 * 32.0, 4.0e7),
+		WorldShapeScript.height(99, 300.5 * 32.0, 120.5 * 32.0, 4.0e7)), "the ring's shape read follows the record")
+	ChunkRecordsScript.erase_record(c)
+	assert_true(t.generate_heightmap(c) == before, "dropping the record restores the generator's ground")
+	ChunkRecordsScript.clear()
+	t.free()
+
+func _records_rig(dir_name: String, with_store := true) -> Dictionary:
+	ChunkRecordsScript.clear()
+	var dir := _fresh_region_dir(dir_name)
+	var t := TerrainSlice.new()
+	add_child(t)
+	t.set_world_seed(31)
+	var cm := ChunkManager.new()
+	cm.terrain_slice = t
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	if with_store:
+		cm.record_store = store
+	return { "t": t, "cm": cm, "store": store }
+
+func _test_records_written_once() -> void:
+	var rig := _records_rig("test_p108_once")
+	var cm: ChunkManager = rig["cm"]
+	var store: RegionStoreScript = rig["store"]
+	var cs := [Vector2i(10, 10), Vector2i(11, 10), Vector2i(40, -3)]
+	for c in cs:
+		cm.load_chunk(c)
+	assert_eq(cm.records_created, 3, "each chunk got one record")
+	assert_eq(cm.pending_record_count(), 3, "pending until flushed")
+	cm.flush_records()
+	assert_eq(cm.pending_record_count(), 0, "flushed")
+	for c in cs:
+		assert_false(store.get_gen(c).is_empty(), "record of %s is on disk" % str(c))
+		assert_eq(store.get_gen(c)["b"], TerrainSlice.generated_biome_for_chunk(c, 31), "recorded biome is the generator's")
+	for c in cs:
+		cm.unload_chunk(c)
+		cm.load_chunk(c)
+	assert_eq(cm.records_created, 3, "a second load creates nothing")
+	assert_eq(cm.pending_record_count(), 0, "and rewrites nothing")
+	cm.records_flush_blocked = func() -> bool: return true
+	cm.load_chunk(Vector2i(12, 10))
+	cm.flush_records()
+	assert_eq(cm.pending_record_count(), 1, "a flush waits while a save runs")
+	cm.records_flush_blocked = Callable()
+	cm.flush_records()
+	assert_false(store.get_gen(Vector2i(12, 10)).is_empty(), "then lands")
+	# A fresh process: the region's records are adopted, so the chunk is not recorded again.
+	ChunkRecordsScript.clear()
+	var read := store.read_region(Vector2i.ZERO)
+	assert_true(ChunkRecordsScript.adopt_region(read["chunks"]) >= 3, "the region read adopts its records")
+	var created := cm.records_created
+	cm.unload_chunk(Vector2i(10, 10))
+	cm.load_chunk(Vector2i(10, 10))
+	assert_eq(cm.records_created, created, "an adopted record is not rewritten")
+	cm.free()
+	(rig["t"] as Node).free()
+	ChunkRecordsScript.clear()
+
+func _test_records_ring_and_client() -> void:
+	var rig := _records_rig("test_p108_client", false)
+	var cm: ChunkManager = rig["cm"]
+	for c in [Vector2i(5, 5), Vector2i(6, 5)]:
+		cm.load_chunk(c)
+	assert_eq(cm.records_created, 0, "a client-role manager creates no record")
+	assert_eq(ChunkRecordsScript.size(), 0, "and the table stays empty")
+	cm.free()
+	var d := DistantTerrainScript.new()
+	add_child(d)
+	d.world_seed = 31
+	d.rebuild(Vector2(16.0, 16.0), 3)
+	d.poll(true)
+	assert_eq(ChunkRecordsScript.size(), 0, "building a ring writes no record")
+	d.free()
+	(rig["t"] as Node).free()
+
+func _test_records_ore_worker() -> void:
+	ChunkRecordsScript.clear()
+	var c := Vector2i(77, 31)
+	var gen_biome := TerrainSlice.biome_for_chunk(c, 5)
+	var other: String = "Desert" if gen_biome != "Desert" else "Tundra"
+	var rec := TerrainSlice.generation_record(c, 5)
+	rec["b"] = other
+	ChunkRecordsScript.set_record(c, RegionStoreScript.normalize_gen(rec))
+	var result: Array = [""]
+	var tid := WorkerThreadPool.add_task(func(): result[0] = TerrainSlice.biome_for_chunk(c, 5))
+	WorkerThreadPool.wait_for_task_completion(tid)
+	assert_eq(result[0], other, "a worker asking for a recorded chunk gets the recorded biome")
+	# OreField's own read goes through the same call.
+	var tile := Vector2i(c.x * 64 + 3, c.y * 64 + 3)
+	var seen := false
+	for dx in range(0, 64, 4):
+		for dz in range(0, 64, 4):
+			var v := OreField.vein_at(5, c, Vector2i(dx, dz), 0.0)
+			if not v.is_empty():
+				assert_eq(v["biome"], other, "a vein of the recorded chunk carries the recorded biome")
+				seen = true
+	if not seen:
+		print("    (no surface vein sampled in the recorded chunk; worker read asserted above)")
+	ChunkRecordsScript.clear()
+
+func _test_records_old_version() -> void:
+	ChunkRecordsScript.clear()
+	var t := TerrainSlice.new()
+	add_child(t)
+	t.set_world_seed(8)
+	var c := Vector2i(-210, 44)
+	var rec := RegionStoreScript.normalize_gen(TerrainSlice.generation_record(c, 8))
+	ChunkRecordsScript.set_record(c, rec)
+	var current: Array = t.generate_heightmap(c)
+	var cur_biome := TerrainSlice.biome_for_chunk(c, 8)
+	var old := rec.duplicate()
+	old["v"] = 1
+	assert_false(RegionStoreScript.normalize_gen(old).is_empty(), "an older version is a valid record")
+	ChunkRecordsScript.set_record(c, RegionStoreScript.normalize_gen(old))
+	assert_true(t.generate_heightmap(c) == current, "an older record version leaves the ground unchanged")
+	assert_eq(TerrainSlice.biome_for_chunk(c, 8), cur_biome, "and the biome")
+	ChunkRecordsScript.clear()
+	t.free()
+
+const ChunkRecordSyncScript := preload("res://src/terrain/chunk_record_sync.gd")
+
+func _sync_record(c: Vector2i, biome := "Desert") -> Dictionary:
+	var rec := RegionStoreScript.normalize_gen(TerrainSlice.generation_record(c, 77))
+	rec["b"] = biome
+	return rec
+
+func _test_record_sync_scope() -> void:
+	ChunkRecordsScript.clear()
+	var near := Vector2i(100, 50)
+	var far := Vector2i(100 + 40, 50)
+	ChunkRecordsScript.set_record(near, _sync_record(near))
+	ChunkRecordsScript.set_record(Vector2i(104, 52), _sync_record(Vector2i(104, 52)))
+	ChunkRecordsScript.set_record(far, _sync_record(far))
+	var got := ChunkRecordSyncScript.records_in_window(Vector2i(101, 50), 5)
+	var recs: Dictionary = got["records"]
+	assert_eq(recs.size(), 2, "a peer's window carries the two records inside it")
+	assert_true(recs.has("100,50") and recs.has("104,52"), "the in-window chunks are named")
+	assert_false(recs.has("140,50"), "a record outside the window stays home")
+	var away := ChunkRecordSyncScript.records_in_window(Vector2i(-300, -90), 5)
+	assert_true((away["records"] as Dictionary).is_empty(), "a far peer's snapshot carries none of them")
+	# The wire form is JSON: heights come back as floats, ids as whole floats.
+	var wire: Variant = JSON.parse_string(JSON.stringify(recs))
+	ChunkRecordsScript.clear()
+	var res := ChunkRecordSyncScript.apply(wire)
+	assert_eq(res["applied"], 2, "a JSON round trip applies both records")
+	assert_eq(ChunkRecordsScript.get_record(near).get("b", ""), "Desert", "the client holds the host's biome")
+	ChunkRecordsScript.clear()
+
+func _test_record_sync_validation() -> void:
+	ChunkRecordsScript.clear()
+	var good_a := Vector2i(1, 1)
+	var good_b := Vector2i(2, 2)
+	var payload := {
+		"1,1": _sync_record(good_a),
+		"3,3": _sync_record(Vector2i(3, 3), "NotABiome"),
+		"4,4": _sync_record(Vector2i(4, 4)),
+		"5,5": _sync_record(Vector2i(5, 5)),
+		"bad": _sync_record(Vector2i(6, 6)),
+		"2,2": _sync_record(good_b),
+	}
+	payload["4,4"]["h"] = [NAN, 1.0, 1.0, 1.0]
+	payload["5,5"]["h"] = [1.0, 1.0, 1.0, WorldShapeScript.max_height() + 50.0]
+	var res := ChunkRecordSyncScript.apply(payload)
+	assert_eq(res["applied"], 2, "the two good records apply")
+	assert_eq(res["dropped"], 4, "unknown biome, NaN, over max_height and a bad key are dropped")
+	assert_eq(res["refused"], 0, "nothing refused under the cap")
+	assert_true(ChunkRecordsScript.has_record(good_a) and ChunkRecordsScript.has_record(good_b), "good ones landed")
+	assert_false(ChunkRecordsScript.has_record(Vector2i(3, 3)), "the bad biome did not")
+	assert_false(ChunkRecordsScript.has_record(Vector2i(4, 4)), "nor the NaN height")
+	assert_false(ChunkRecordsScript.has_record(Vector2i(5, 5)), "nor the tall one")
+	assert_eq(ChunkRecordSyncScript.apply("nonsense")["applied"], 0, "a non-dictionary payload applies nothing")
+	ChunkRecordsScript.clear()
+
+func _test_record_sync_cap() -> void:
+	ChunkRecordsScript.clear()
+	var payload := {}
+	for i in 10:
+		payload["%d,0" % i] = _sync_record(Vector2i(i, 0))
+	var res := ChunkRecordSyncScript.apply(payload, 4)
+	assert_eq(res["applied"], 4, "the first cap records apply")
+	assert_eq(res["refused"], 6, "the rest are counted as refused")
+	assert_true(ChunkRecordsScript.has_record(Vector2i(3, 0)) and not ChunkRecordsScript.has_record(Vector2i(4, 0)), "in order")
+	# The host side stops at the cap too.
+	ChunkRecordsScript.clear()
+	for i in 10:
+		ChunkRecordsScript.set_record(Vector2i(i, 0), _sync_record(Vector2i(i, 0)))
+	var got := ChunkRecordSyncScript.records_in_window(Vector2i(5, 0), 6, 4)
+	assert_eq((got["records"] as Dictionary).size(), 4, "a window with more records than the cap sends the cap")
+	assert_true(bool(got["truncated"]), "and says it truncated")
+	ChunkRecordsScript.clear()

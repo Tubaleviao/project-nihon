@@ -126,9 +126,9 @@ issue number where the criterion used to be.
 | 103 | Teleports carry the exact position and stay on the planet | Merged | [Phase 101](#phase-101--chat-and-admin-commands-are-host-authoritative-exact-and-proven-on-the-wire) |
 | 104 | Two-client harness: chat and admin teleport over the socket | Merged | [Phase 101](#phase-101--chat-and-admin-commands-are-host-authoritative-exact-and-proven-on-the-wire) |
 | 105 | Archive Phases 75–95 into the roadmap history | Merged | [Phase 99](#phase-99--housekeeping-sweep-legacy-tiles-roadmapreadme-hygiene-and-review-leftovers) |
-| 106 | A world stamp that covers fabric parameters, and golden generator values | Planned | below |
-| 107 | A per-chunk generation record in the region store | Planned | below |
-| 108 | Terrain reads and writes the generation record on the host | Planned | below |
+| 106 | A world stamp that covers fabric parameters, and golden generator values | Done | below |
+| 107 | A per-chunk generation record in the region store | Done | below |
+| 108 | Terrain reads and writes the generation record on the host | Done | below |
 | 109 | Generation records reach clients, scoped and validated | Planned | below |
 | 110 | Trees are pinned per chunk and cleared where players build | Planned | below |
 | 111 | A full-map window: zoom from the minimap out to a whole planet | Planned | below |
@@ -300,7 +300,7 @@ on-planet teleports) and 104 (two-client harness steps).
 
 ---
 
-## Phase 106 — A world stamp that covers fabric parameters, and golden generator values
+## Phase 106 — A world stamp that covers fabric parameters, and golden generator values ✅ Done
 
 **Goal:** Phases 106–113 let the generator change without moving land a player has already seen.
 Today terrain is a pure function of the seed, and `TerrainSlice.WORLDGEN_VERSION` is the only guard.
@@ -327,16 +327,16 @@ upgrade could shift without any change in this repo. This phase makes both visib
   `WorldSystem` or biome envelopes, bumps `WORLDGEN_VERSION` and updates the golden values.
 
 **Acceptance criteria:**
-- [ ] Suite: the fingerprint is stable across two calls and across a `warm()` reset; changing
+- [x] Suite: the fingerprint is stable across two calls and across a `warm()` reset; changing
   `ridgeAmplitude` in a scratch resource changes it.
-- [ ] Suite: a world record with a different fingerprint raises `worldgen_fingerprint_mismatch` exactly
+- [x] Suite: a world record with a different fingerprint raises `worldgen_fingerprint_mismatch` exactly
   once; a record without one raises nothing and is stamped on the next save.
-- [ ] Suite: the golden detail-noise values match to 1e-6; the shape and biome values match exactly.
-- [ ] `npm run validate`, `npm run check-drift` green; suite green on both boot paths.
+- [x] Suite: the golden detail-noise values match to 1e-6; the shape and biome values match exactly.
+- [x] `npm run validate`, `npm run check-drift` green; suite green on both boot paths.
 
 ---
 
-## Phase 107 — A per-chunk generation record in the region store
+## Phase 107 — A per-chunk generation record in the region store ✅ Done
 
 **Goal:** a visited chunk keeps its look when the generator later changes only if what it looked like
 is stored. The large-scale surface of a chunk is the four `WorldShape` heights at its corners (the
@@ -357,15 +357,15 @@ phase adds the storage and nothing else; Phase 108 uses it.
   newer than the running one) is dropped with one warning per session, the Phase 89 pattern.
 
 **Acceptance criteria:**
-- [ ] Suite: a `gen` record round-trips through `save_region` / `load_region` with heights equal to 1e-4.
-- [ ] Suite: a version-1 region file loads unchanged, and a save of it writes version 2 with its edits intact.
-- [ ] Suite: a malformed `gen` is dropped, its chunk's edits survive, and the warning fires once for two loads.
-- [ ] Suite: a region with 1,024 recorded chunks and no edits serialises to under 100 KB.
-- [ ] Suite green on both boot paths.
+- [x] Suite: a `gen` record round-trips through `save_region` / `load_region` with heights equal to 1e-4.
+- [x] Suite: a version-1 region file loads unchanged, and a save of it writes version 2 with its edits intact.
+- [x] Suite: a malformed `gen` is dropped, its chunk's edits survive, and the warning fires once for two loads.
+- [x] Suite: a region with 1,024 recorded chunks and no edits serialises to under 100 KB.
+- [x] Suite green on both boot paths.
 
 ---
 
-## Phase 108 — Terrain reads and writes the generation record on the host
+## Phase 108 — Terrain reads and writes the generation record on the host ✅ Done
 
 **Goal:** make the record authoritative. When a chunk enters a player's streamed window and has no
 record, the host generates it as today and writes its record. When it has one, the record wins over the
@@ -389,19 +389,19 @@ later generator change stands on.
   chunks are not recorded, so the store grows with exploration only.
 
 **Acceptance criteria:**
-- [ ] Suite: with no records, the heightmap hash and biome of 64 chunks equal their pre-phase values
+- [x] Suite: with no records, the heightmap hash and biome of 64 chunks equal their pre-phase values
   (the Phase 106 goldens plus a recorded hash).
-- [ ] Suite: a stub record with another biome and shifted corner heights makes `biome_for_chunk` and
+- [x] Suite: a stub record with another biome and shifted corner heights makes `biome_for_chunk` and
   `generate_heightmap` return the record's values for that chunk and the generator's for its neighbours.
-- [ ] Suite: a chunk streamed into a window gets exactly one record, and a second load rewrites nothing.
-- [ ] Suite: building a ring writes no record; a client-role `ChunkManager` writes none either.
-- [ ] Suite: `OreField` asked from a worker thread for a recorded chunk gets the recorded biome.
-- [ ] Suite: with the recorded chunk's `v` set to an older number, its output is unchanged.
-- [ ] Suite and `--server` / `--quit-after-boot` boots green; harness green.
+- [x] Suite: a chunk streamed into a window gets exactly one record, and a second load rewrites nothing.
+- [x] Suite: building a ring writes no record; a client-role `ChunkManager` writes none either.
+- [x] Suite: `OreField` asked from a worker thread for a recorded chunk gets the recorded biome.
+- [x] Suite: with the recorded chunk's `v` set to an older number, its output is unchanged.
+- [x] Suite and `--server` / `--quit-after-boot` boots green; harness green.
 
 ---
 
-## Phase 109 — Generation records reach clients, scoped and validated
+## Phase 109 — Generation records reach clients, scoped and validated ✅ Done
 
 **Goal:** a client regenerates terrain from the seed (Phase 41). Once the host's record can differ from
 the generator, the client has to receive the record or it draws different land from the host. Records
@@ -421,13 +421,13 @@ are small, so they ride the same scope as edits.
 - `src/tests/net_harness.gd` — step `chunk_record_synced`.
 
 **Acceptance criteria:**
-- [ ] Suite: a snapshot for a peer carries records for its window only; one for a far peer carries none of them.
-- [ ] Suite: a record with a biome key outside `BIOME_KEYS`, a NaN height or a height above `max_height`
+- [x] Suite: a snapshot for a peer carries records for its window only; one for a far peer carries none of them.
+- [x] Suite: a record with a biome key outside `BIOME_KEYS`, a NaN height or a height above `max_height`
   is dropped and the rest of the packet applies.
-- [ ] Suite: a packet over the cap applies the first `cap` records and counts the rest as refused.
-- [ ] `tools/net_harness.sh`: the host records a chunk with a different biome than the generator would
+- [x] Suite: a packet over the cap applies the first `cap` records and counts the rest as refused.
+- [x] `tools/net_harness.sh`: the host records a chunk with a different biome than the generator would
   pick; the client reports the host's biome and heights, and both roles agree on the step.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green.
 
 ---
 

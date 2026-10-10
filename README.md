@@ -126,9 +126,9 @@ npm run generate  # generate the design bible into bible/
 | 103 | Teleports carry the exact position and stay on the planet | Merged |
 | 104 | Two-client harness: chat and admin teleport over the socket | Merged |
 | 105 | Archive Phases 75–95 into the roadmap history | Merged |
-| 106 | A world stamp that covers fabric parameters, and golden generator values | Planned |
-| 107 | A per-chunk generation record in the region store | Planned |
-| 108 | Terrain reads and writes the generation record on the host | Planned |
+| 106 | A world stamp that covers fabric parameters, and golden generator values | Done |
+| 107 | A per-chunk generation record in the region store | Done |
+| 108 | Terrain reads and writes the generation record on the host | Done |
 | 109 | Generation records reach clients, scoped and validated | Planned |
 | 110 | Trees are pinned per chunk and cleared where players build | Planned |
 | 111 | A full-map window: zoom from the minimap out to a whole planet | Planned |

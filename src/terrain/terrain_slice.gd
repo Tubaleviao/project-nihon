@@ -29,9 +29,33 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## each pole the ground eases into a snow field that depends on the distance to the pole alone,
 ## so the pole can be crossed.
 const WORLDGEN_VERSION := 5
+
+## Phase 106 — a hash of every fabric parameter world-gen reads that `WORLDGEN_VERSION` cannot see:
+## the `WorldSystem` shape fields (`sea`, `min/max height`, `oceanShare`, `ridgeAmplitude`,
+## `heightSpline`) and the warmed biome envelope table in sorted key order. FNV-1a over UTF-8
+## (as `ClimateField.niche_salt`), not `String.hash()`, so it is stable across Godot versions.
+## Editing a biome envelope or a shape field changes it with no code change.
+static func worldgen_fingerprint() -> int:
+	var fields := WorldShape.fingerprint_fields()
+	var parts: PackedStringArray = []
+	for f in fields:
+		if f is Array:
+			var pts: PackedStringArray = []
+			for pt in f:
+				pts.append("%.6f:%.6f" % [float(pt[0]), float(pt[1])])
+			parts.append("|".join(pts))
+		else:
+			parts.append("%.6f" % float(f))
+	parts.append(ClimateField.envelope_signature())
+	var h := 2166136261
+	for b in "#".join(parts).to_utf8_buffer():
+		h = ((h ^ b) * 16777619) & 0xffffffff
+	return h
+
 const BIOME_SEED := 20260815 # fixed seed so biome assignment is deterministic
 const ClimateField := preload("res://src/terrain/climate_field.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
+const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 
 ## The starting area is flattened into a plain field so the player can walk
 ## freely from spawn without jumping. Spawn centre + radius + flat height below.
@@ -182,7 +206,18 @@ func get_biome_at_chunk(chunk_pos: Vector2i) -> String:
 ##
 ## Phase 51 — the climate reads the chunk's latitude and its large-scale altitude (`WorldShape`),
 ## so poles and peaks are cold and a chunk below sea level is Ocean.
+##
+## Phase 108 — a chunk with a generation record answers with the recorded biome: the record, not the
+## generator, is what the world looked like when the chunk was first visited.
 static func biome_for_chunk(chunk_pos: Vector2i, seed_v: int = BIOME_SEED) -> String:
+	if not ChunkRecords.is_empty():
+		var rec := ChunkRecords.get_record(wrap_chunk(chunk_pos))
+		if not rec.is_empty():
+			return str(rec["b"])
+	return generated_biome_for_chunk(chunk_pos, seed_v)
+
+## The biome the CURRENT generator picks for a chunk, ignoring any record. What a new record stores.
+static func generated_biome_for_chunk(chunk_pos: Vector2i, seed_v: int = BIOME_SEED) -> String:
 	var w := float(circumference_chunks()) * CHUNK_METERS
 	var cx := (float(chunk_pos.x) + 0.5) * CHUNK_METERS
 	var cz := (float(chunk_pos.y) + 0.5) * CHUNK_METERS
@@ -194,6 +229,39 @@ static func biome_for_chunk(chunk_pos: Vector2i, seed_v: int = BIOME_SEED) -> St
 ## The polar ice shelf counts too, so frozen sea is not picked as Ocean.
 static func biome_altitude(seed_v: int, x: float, z: float, w: float) -> float:
 	return polar_ground(seed_v, WorldShape.height(seed_v, x, z, w) + HEIGHT_SCALE * 0.5, x, z, w) - WorldShape.sea_level()
+
+## Phase 108 — the generation record the CURRENT generator would write for `chunk` (canonical):
+## `{ v, f, b, h }` with `h` the `WorldShape` heights at the cell's corners in the order
+## (x0,z0) (x1,z0) (x0,z1) (x1,z1), rounded as `RegionStore.normalize_gen` stores them. Pure.
+static func generation_record(chunk: Vector2i, seed_v: int) -> Dictionary:
+	var w := float(circumference_chunks()) * CHUNK_METERS
+	var x0 := float(chunk.x) * CHUNK_METERS
+	var z0 := float(chunk.y) * CHUNK_METERS
+	var step := 0.0001   # RegionStore.GEN_HEIGHT_STEP
+	var lo := WorldShape.min_height()
+	var hi := WorldShape.max_height()
+	var hs: Array = []
+	for c in [Vector2(0, 0), Vector2(1, 0), Vector2(0, 1), Vector2(1, 1)]:
+		var h := WorldShape.height(seed_v, x0 + c.x * CHUNK_METERS, z0 + c.y * CHUNK_METERS, w)
+		hs.append(snappedf(clampf(h, lo, hi), step))
+	return { "v": WORLDGEN_VERSION, "f": worldgen_fingerprint(), "b": generated_biome_for_chunk(chunk, seed_v), "h": hs }
+
+## Phase 108 — `WorldShape.height` for a read that is not a chunk heightmap (the distant ring): inside a
+## recorded chunk's cell the recorded corners are interpolated, as `_shape_at` does; elsewhere the
+## generator answers. Pure; reads the record table only.
+static func shape_height(seed_v: int, x: float, z: float, w: float) -> float:
+	if not ChunkRecords.is_empty():
+		var gx := x / CHUNK_METERS
+		var gz := z / CHUNK_METERS
+		var ix := floori(gx)
+		var iz := floori(gz)
+		var rec := ChunkRecords.get_record(wrap_chunk(Vector2i(ix, iz)))
+		if not rec.is_empty():
+			var rh: Array = rec["h"]
+			var fx := gx - float(ix)
+			var fz := gz - float(iz)
+			return lerpf(lerpf(float(rh[0]), float(rh[1]), fx), lerpf(float(rh[2]), float(rh[3]), fx), fz)
+	return WorldShape.height(seed_v, x, z, w)
 
 ## Convert a world XZ position to its containing chunk coordinate.
 func world_to_chunk(world_pos: Vector2) -> Vector2i:
@@ -434,22 +502,32 @@ func _shape_at(x: float, z: float, w: float, cache: Array) -> float:
 	var gz := z / CHUNK_METERS
 	var ix := floori(gx)
 	var iz := floori(gz)
-	if cache[0] != ix or cache[1] != iz or cache[2] != _world_seed or cache[3] != w:   # a heightmap walks one cell for 4096 tiles: reuse its corners
+	if cache[0] != ix or cache[1] != iz or cache[2] != _world_seed or cache[3] != w or cache[8] != ChunkRecords.revision():   # a heightmap walks one cell for 4096 tiles: reuse its corners
 		var x0 := float(ix) * CHUNK_METERS
 		var z0 := float(iz) * CHUNK_METERS
 		cache[0] = ix
 		cache[1] = iz
 		cache[2] = _world_seed
 		cache[3] = w
-		cache[4] = WorldShape.height(_world_seed, x0, z0, w)
-		cache[5] = WorldShape.height(_world_seed, x0 + CHUNK_METERS, z0, w)
-		cache[6] = WorldShape.height(_world_seed, x0, z0 + CHUNK_METERS, w)
-		cache[7] = WorldShape.height(_world_seed, x0 + CHUNK_METERS, z0 + CHUNK_METERS, w)
+		cache[8] = ChunkRecords.revision()
+		var rec := ChunkRecords.get_record(wrap_chunk(Vector2i(ix, iz))) if not ChunkRecords.is_empty() else {}
+		if not rec.is_empty():
+			# Phase 108 — a recorded cell keeps the corner heights it was first seen with.
+			var rh: Array = rec["h"]
+			cache[4] = float(rh[0])
+			cache[5] = float(rh[1])
+			cache[6] = float(rh[2])
+			cache[7] = float(rh[3])
+		else:
+			cache[4] = WorldShape.height(_world_seed, x0, z0, w)
+			cache[5] = WorldShape.height(_world_seed, x0 + CHUNK_METERS, z0, w)
+			cache[6] = WorldShape.height(_world_seed, x0, z0 + CHUNK_METERS, w)
+			cache[7] = WorldShape.height(_world_seed, x0 + CHUNK_METERS, z0 + CHUNK_METERS, w)
 	var fx := gx - float(ix)
 	var fz := gz - float(iz)
 	return lerpf(lerpf(cache[4], cache[5], fx), lerpf(cache[6], cache[7], fx), fz)
 
-## This thread's corner cache: [ix, iz, seed, w, c00, c10, c01, c11]. The map is guarded; each
+## This thread's corner cache: [ix, iz, seed, w, c00, c10, c01, c11, records revision]. The map is guarded; each
 ## entry is only ever touched by the thread that owns it.
 var _corner_caches: Dictionary = {}
 var _corner_mutex := Mutex.new()
@@ -459,7 +537,7 @@ func _corner_cache() -> Array:
 	_corner_mutex.lock()
 	var cache: Array = _corner_caches.get(tid, [])
 	if cache.is_empty():
-		cache = [2147483647, 2147483647, 0, 0.0, 0.0, 0.0, 0.0, 0.0]
+		cache = [2147483647, 2147483647, 0, 0.0, 0.0, 0.0, 0.0, 0.0, -1]
 		_corner_caches[tid] = cache
 	_corner_mutex.unlock()
 	return cache

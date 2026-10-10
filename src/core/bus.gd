@@ -140,6 +140,8 @@ signal spawn_notice(message: String)
 ## Phase 71 — host: the loaded world record was written by a different world generator than
 ## the one running, so its saved edits sit over a layout they were not made against.
 signal worldgen_version_mismatch(recorded: int, running: int)
+## Phase 106 — the world record's fabric-parameter fingerprint is not the running one.
+signal worldgen_fingerprint_mismatch(saved: int, current: int)
 
 ## Host → client: the server-issued player_id for this connection. The client
 ## caches it so a reconnect can claim the same record.

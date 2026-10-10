@@ -95,6 +95,20 @@ static func warm() -> void:
 	_pool_cache.clear()   # the land pool reads the envelopes
 	_pool_mutex.unlock()
 
+## Phase 106 — the warmed envelope table as one string, in sorted key order, for
+## `TerrainSlice.worldgen_fingerprint`. Floats are written to 6 decimals.
+static func envelope_signature() -> String:
+	warm()
+	var keys := _envelopes.keys()
+	keys.sort()
+	var parts: PackedStringArray = []
+	for k in keys:
+		var row: PackedStringArray = []
+		for v in (_envelopes[k] as Array):
+			row.append("%.6f" % float(v))
+		parts.append("%s=%s" % [k, ",".join(row)])
+	return ";".join(parts)
+
 ## [temp_min, temp_max, moist_min, moist_max, alt_min, alt_max, rarity] of a biome resource, or []
 ## without a climate envelope. A biome with no altitude envelope fits any height; no rarity is 1.
 ## (Phase 51 added the last three.)
