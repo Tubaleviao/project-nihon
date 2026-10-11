@@ -134,7 +134,7 @@ npm run generate  # generate the design bible into bible/
 | 111 | A full-map window: zoom from the minimap out to a whole planet | Done |
 | 112 | A biome adjacency table in the fabric and an offline scan | Done |
 | 113 | Frontier generation: a new generator version meets recorded land | Done |
-| 114 | Generation record and frontier cleanup sweep | Planned |
+| 114 | Generation record and frontier cleanup sweep | Done |
 | 115 | Chat, admin and test-tooling cleanup sweep | Planned |
 | 116 | Tree clears follow chunks onto clients | Planned |
 | 117 | Map waypoints, HUD toasts and an explored set that scales | Planned |
