@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:b3010dfa61d10d02f0ef948a4bc8b02247427dbc0475e00706acbad71fc0fb0e",
+  "schemaHash": "sha256:df5bb59b77b13ddccc0939997cfbb74ae288f02f29e272a054cd4edb3264f69d",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -6024,6 +6024,24 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 23.5
+          },
+          "clearRadiusTiles": {
+            "name": "clearRadiusTiles",
+            "type": "integer",
+            "description": "Tiles (Chebyshev) around a built-on tile within which trees are cleared for good (Phase 116)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "clearRadiusMetres": {
+            "name": "clearRadiusMetres",
+            "type": "decimal",
+            "description": "Metres (horizontal) around a placed station within which trees are cleared for good (Phase 116)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
           },
           "friendSpawnRadius": {
             "name": "friendSpawnRadius",

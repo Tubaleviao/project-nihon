@@ -350,7 +350,7 @@ static func is_newer_gen(rec: Variant) -> bool:
 ## 1..WORLDGEN_VERSION (a newer one was written by a newer game and is not trusted), `f` a
 ## non-negative integer, `b` one of `BIOME_KEYS`, `h` four finite heights inside the world's height
 ## range (rounded to `GEN_HEIGHT_STEP`); optional `t` (tree budget, 0..GEN_TREE_MAX) and `x` (distinct
-## cleared tree spawn indices, each below GEN_TREE_MAX; stored sorted) are kept when valid. Pure.
+## cleared tree spawn indices, each below GEN_TREE_MAX; stored sorted) are kept when valid and dropped alone (the ground record stays) when malformed. Pure.
 static func normalize_gen(rec: Variant) -> Dictionary:
 	if not (rec is Dictionary):
 		return {}
@@ -381,21 +381,22 @@ static func normalize_gen(rec: Variant) -> Dictionary:
 	# Phase 110 — the tree budget the chunk was generated with and the spawn indices cleared for good.
 	if d.has("t"):
 		var t: Variant = d["t"]
-		if not _is_whole_number(t) or int(t) < 0 or int(t) > GEN_TREE_MAX:
-			return {}
-		out["t"] = int(t)
+		if _is_whole_number(t) and int(t) >= 0 and int(t) <= GEN_TREE_MAX:
+			out["t"] = int(t)   # a malformed optional field is dropped alone (Phase 116)
 	if d.has("x"):
 		var xs: Variant = d["x"]
-		if not (xs is Array) or (xs as Array).size() > GEN_TREE_MAX:
-			return {}
-		var seen := {}
-		for i in xs:
-			if not _is_whole_number(i) or int(i) < 0 or int(i) >= GEN_TREE_MAX:
-				return {}
-			seen[int(i)] = true
-		var cleared: Array = seen.keys()
-		cleared.sort()
-		out["x"] = cleared
+		if xs is Array and (xs as Array).size() <= GEN_TREE_MAX:
+			var seen := {}
+			var ok := true
+			for i in xs:
+				if not _is_whole_number(i) or int(i) < 0 or int(i) >= GEN_TREE_MAX:
+					ok = false
+					break
+				seen[int(i)] = true
+			if ok:
+				var cleared: Array = seen.keys()
+				cleared.sort()
+				out["x"] = cleared
 	return out
 
 static func _is_whole_number(x: Variant) -> bool:

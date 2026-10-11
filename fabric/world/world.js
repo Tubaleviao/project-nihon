@@ -27,6 +27,8 @@ module.exports = {
       dayLengthMinutes: { type: 'decimal', description: 'Real minutes one in-game day lasts: the world clock advances 1/dayLengthMinutes of a day per real minute (Phase 54)', defaultValue: 24 },
       yearLengthDays:   { type: 'decimal', description: 'In-game days in one year; the seasons cycle once per year (Phase 54)', defaultValue: 32 },
       axialTilt:        { type: 'decimal', description: 'Degrees the planet\'s axis leans from its orbit: the sun\'s declination swings ±axialTilt over a year, which sets day length and season strength by latitude (Phase 54)', defaultValue: 23.5 },
+      clearRadiusTiles:   { type: 'integer', description: 'Tiles (Chebyshev) around a built-on tile within which trees are cleared for good (Phase 116)', defaultValue: 1 },
+      clearRadiusMetres:  { type: 'decimal', description: 'Metres (horizontal) around a placed station within which trees are cleared for good (Phase 116)', defaultValue: 3 },
       friendSpawnRadius:        { type: 'decimal', description: 'Metres around a friend within which a friend-code spawn lands (Phase 53)', defaultValue: 200 },
     },
   }),

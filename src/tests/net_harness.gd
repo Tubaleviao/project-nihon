@@ -151,6 +151,7 @@ static func steps() -> Array:
 		{ "name": "snapshot_complete", "compare": true },
 		{ "name": "chop_in_reach",     "compare": true },
 		{ "name": "chop_out_of_reach", "compare": false },
+		{ "name": "tree_cleared",      "compare": true },
 		{ "name": "packet_cap",        "compare": true },
 		{ "name": "rate_bucket",       "compare": true },
 		{ "name": "clock_synced",      "compare": true },
@@ -338,6 +339,7 @@ func run(root: Node, role: String) -> void:
 	await _step_snapshot_complete()
 	await _step_chop_in_reach()
 	await _step_chop_out_of_reach()
+	await _step_tree_cleared()
 	await _step_packet_cap()
 	await _step_rate_bucket()
 	await _step_clock_synced()
@@ -1178,6 +1180,37 @@ func _step_chunk_record_synced() -> void:
 		_report("chunk_record_synced", "fail", "no_record_received")
 		return
 	_report("chunk_record_synced", "ok", _record_detail(ChunkRecords.get_record(chunk)))
+
+## Phase 116 — a cleared tree leaves the client's table. Both sides derive the same target (the last
+## in-reach tree by id, so it is not one an earlier step chopped); the host clears it as a building
+## would, the client waits for it to vanish and both report the id.
+func _step_tree_cleared() -> void:
+	# The last in-reach tree by id, and only when it is not one of the chop targets later steps use.
+	var found: bool = await _await_until(func(): return _spare_tree().length() > 0, STEP_TIMEOUT_SECS)
+	var t := _spare_tree()
+	if not found or t == "":
+		_report("tree_cleared", "fail", "no_spare_tree")
+		return
+	if _role == "host":
+		if _root._tree.get_tree_record(t).is_empty():
+			_report("tree_cleared", "fail", "host_has_no_tree")
+			return
+		# Give the client time to reach this step with its trees loaded: a clear for a chunk it has not
+		# streamed yet is left to the scoped records, not the live event.
+		await _await_settle(6.0)
+		_root._tree._clear_tree(t)
+		await _await_settle(2.0)
+		_report("tree_cleared", verdict(_root._tree.get_tree_record(t).is_empty(), true), t)
+		return
+	var gone: bool = await _await_until(func(): return _root._tree.get_tree_record(t).is_empty(), STEP_TIMEOUT_SECS)
+	_report("tree_cleared", verdict(gone, true), t if gone else "still_standing")
+
+## The in-reach tree with the greatest id, or "" when there are no more than `TARGETS_NEEDED` in reach.
+func _spare_tree() -> String:
+	var all := in_reach_targets(_shared_trees(), RENDEZVOUS, TARGET_REACH, 1000)
+	if all.size() <= TARGETS_NEEDED:
+		return ""
+	return str(all[all.size() - 1])
 
 ## Phase 113 — a frontier record reaches the client.
 ##

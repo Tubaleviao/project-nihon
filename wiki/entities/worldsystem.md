@@ -29,5 +29,7 @@ The planet as a fact of the fabric. The world takes globe semantics on a flat ch
 | dayLengthMinutes | decimal | Real minutes one in-game day lasts: the world clock advances 1/dayLengthMinutes of a day per real minute (Phase 54) |
 | yearLengthDays | decimal | In-game days in one year; the seasons cycle once per year (Phase 54) |
 | axialTilt | decimal | Degrees the planet's axis leans from its orbit: the sun's declination swings ±axialTilt over a year, which sets day length and season strength by latitude (Phase 54) |
+| clearRadiusTiles | integer | Tiles (Chebyshev) around a built-on tile within which trees are cleared for good (Phase 116) |
+| clearRadiusMetres | decimal | Metres (horizontal) around a placed station within which trees are cleared for good (Phase 116) |
 | friendSpawnRadius | decimal | Metres around a friend within which a friend-code spawn lands (Phase 53) |
 

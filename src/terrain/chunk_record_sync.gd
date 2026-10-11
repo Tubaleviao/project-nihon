@@ -2,7 +2,8 @@ extends RefCounted
 ## Phase 109 — generation records on the wire.
 ##
 ## A client regenerates terrain from the seed, so once the host's record can differ from the
-## generator the client has to be told. Records are about 20 bytes each and ride the snapshot, scoped
+## generator the client has to be told. Records are about 20 bytes each (up to ~250 with a tree budget `t`
+## and a full cleared list `x` of 64 indices) and ride the snapshot, scoped
 ## the way edits are: the chunks of the peer's streamed window plus its first ring, with the scope
 ## named (`"gen_scope": [cx, cz, radius]`) so a client keeps the records it holds outside it.
 ##

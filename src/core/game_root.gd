@@ -323,6 +323,7 @@ func _ready() -> void:
 	_tree.inventory_slice     = _inventory
 	_tree.player_registry     = _registry
 	_tree.voxel_slice         = _voxel
+	_tree.station_slice       = _station
 	_tree.record_writer       = Callable(_chunk_manager, "update_record")
 	# Phase 36 — the wire is policed with evidence the bus cannot carry: a tree chop
 	# intent names only a tree id (its position for the reach check comes from the tree

@@ -18,4 +18,6 @@ extends Resource
 @export var dayLengthMinutes: float
 @export var yearLengthDays: float
 @export var axialTilt: float
+@export var clearRadiusTiles: int
+@export var clearRadiusMetres: float
 @export var friendSpawnRadius: float
