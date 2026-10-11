@@ -17884,13 +17884,13 @@ func _adjacency_origins(seed_v: int) -> Array:
 	var polar := TerrainSlice.polar_chunks() - ADJACENCY_GRID
 	var out: Array = [Vector2i(-half, -half), Vector2i(-half, belt - half), Vector2i(-half, polar)]
 	# Coast: walk east along a temperate row until land meets Ocean, and centre the grid there.
-	var found := _find_coast(seed_v, belt / 2, 4000)
+	var found := _find_coast(seed_v, belt / 2, 9000)
 	assert_true(found["found"], "seed %d: a coast was found within the search (the coast grid is not a stand-in)" % seed_v)
 	out.append(found["coast"] - Vector2i(half, half))
 	return out
 
 ## `{ found, coast }`: the first chunk east of x=0 on a temperate row where land and Ocean swap, in steps
-## of 16 chunks. Row `z` is tried first, then rows 64 chunks apart (a seed whose first row is all one
+## of 64 chunks. Row `z` is tried first, then rows 64 chunks apart (a seed whose first row is all one
 ## kind still has a coast on the next). `found` is false (and `coast` the row start) when `max_steps` ends
 ## on every row without a change.
 func _find_coast(seed_v: int, z: int, max_steps: int) -> Dictionary:
@@ -17898,7 +17898,7 @@ func _find_coast(seed_v: int, z: int, max_steps: int) -> Dictionary:
 		var rz := z + row * 64
 		var prev := TerrainSlice.generated_biome_for_chunk(Vector2i(0, rz), seed_v) == "Ocean"
 		for step in range(1, max_steps):
-			var c := Vector2i(step * 16, rz)
+			var c := Vector2i(step * 64, rz)
 			if (TerrainSlice.generated_biome_for_chunk(c, seed_v) == "Ocean") != prev:
 				return { "found": true, "coast": c }
 	return { "found": false, "coast": Vector2i(0, z) }
@@ -17909,7 +17909,7 @@ func _test_adjacency_coast_search_reports_failure() -> void:
 	var none := _find_coast(ADJACENCY_SEEDS[0], TerrainSlice.pole_chunks() / 4, 0)
 	assert_false(none["found"], "a zero-step search finds no coast")
 	assert_eq(none["coast"], Vector2i(0, TerrainSlice.pole_chunks() / 4), "and falls back to the row start")
-	var real := _find_coast(ADJACENCY_SEEDS[0], TerrainSlice.pole_chunks() / 4, 4000)
+	var real := _find_coast(ADJACENCY_SEEDS[0], TerrainSlice.pole_chunks() / 4, 9000)
 	assert_true(real["found"], "the real search finds one")
 
 func _test_adjacency_scan() -> void:

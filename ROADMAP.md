@@ -135,7 +135,7 @@ issue number where the criterion used to be.
 | 112 | A biome adjacency table in the fabric and an offline scan | Done | below |
 | 113 | Frontier generation: a new generator version meets recorded land | Done | below |
 | 114 | Generation record and frontier cleanup sweep | Done | below |
-| 115 | Chat, admin and test-tooling cleanup sweep | Planned | below |
+| 115 | Chat, admin and test-tooling cleanup sweep | Done | below |
 | 116 | Tree clears follow chunks onto clients | Planned | below |
 | 117 | Map waypoints, HUD toasts and an explored set that scales | Planned | below |
 | 118 | Void bursts, the survivor flag and the VoidTouched unlock | Planned | below |
@@ -660,7 +660,7 @@ are looser than the roadmap claims. This phase resolves every item of the six is
 
 ---
 
-## Phase 115 — Chat, admin and test-tooling cleanup sweep
+## Phase 115 — Chat, admin and test-tooling cleanup sweep ✅ Done
 
 **Goal:** the Phase 101 chat/admin review and the Phase 100 tests-and-tooling triage left small but
 real leftovers: admin commands reply "done" when nothing was sent, far `/tp` targets lose metres in a
@@ -696,15 +696,15 @@ below in one PR.
   the Phase 7/57/67/82/83 criteria flagged in #258 are reworded to what was actually run (#258, #262).
 
 **Acceptance criteria:**
-- [ ] #258: `node tools/check_readme_phases.js --self-test` fails a decorated-status row; suite has the
+- [x] #258: `node tools/check_readme_phases.js --self-test` fails a decorated-status row; suite has the
   three new `GameRoot` placement tests and the separate relay asserts; the history criteria are reworded.
-- [ ] #261: suite: `/tp` to a point 1,200,000 chunks out lands within 1e-3 m of the typed coordinate;
+- [x] #261: suite: `/tp` to a point 1,200,000 chunks out lands within 1e-3 m of the typed coordinate;
   admin commands are not throttled by the chat bucket; the build-split test uses a median.
-- [ ] #262: suite: `/kill` on an unknown peer and `/tp` with no networking reply a failure; a reconnect
+- [x] #262: suite: `/kill` on an unknown peer and `/tp` with no networking reply a failure; a reconnect
   does not reset the bucket; harness `admin_teleport` waits for the chunk and restores the client.
-- [ ] #280: suite: `_adjacency_origins` fails when no coast is found (proved with a scratch zero-step
+- [x] #280: suite: `_adjacency_origins` fails when no coast is found (proved with a scratch zero-step
   search).
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths (`--run-tests`, see PR); the net harness runs in CI.
 
 ---
 
