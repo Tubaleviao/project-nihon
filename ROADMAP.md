@@ -134,6 +134,11 @@ issue number where the criterion used to be.
 | 111 | A full-map window: zoom from the minimap out to a whole planet | Done | below |
 | 112 | A biome adjacency table in the fabric and an offline scan | Done | below |
 | 113 | Frontier generation: a new generator version meets recorded land | Done | below |
+| 114 | Generation record and frontier cleanup sweep | Planned | below |
+| 115 | Chat, admin and test-tooling cleanup sweep | Planned | below |
+| 116 | Tree clears follow chunks onto clients | Planned | below |
+| 117 | Map waypoints, HUD toasts and an explored set that scales | Planned | below |
+| 118 | Void bursts, the survivor flag and the VoidTouched unlock | Planned | below |
 
 ---
 
@@ -586,6 +591,264 @@ tile beside recorded land may change slightly when the player arrives and the fr
 
 ---
 
+## Phase 114 — Generation record and frontier cleanup sweep
+
+**Goal:** Phases 106–113 made recorded chunks stable across generator changes, and their reviews left
+a backlog of low-severity leftovers in the same code: the record table outlives a world in one
+process, pending records are lost on shutdown, a failed region read can still mint a permanent record,
+the frontier blend drops part of its offset in one step and depends on load order, and several tests
+are looser than the roadmap claims. This phase resolves every item of the six issues below in one PR.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 113.
+
+**Closes:** #264, #268, #270, #271, #282, #283.
+
+**Deliverables:**
+- `src/terrain/chunk_records.gd`, `src/terrain/chunk_manager.gd` — `ChunkRecords.clear()` is called on
+  world load and in `ChunkManager._exit_tree`; pending records are flushed before quit; `flush_records`
+  backs off per region after a failed read or write instead of retrying every frame; tree-only record
+  updates no longer bump the revision that flushes terrain corner caches (#268, #270).
+- `src/terrain/chunk_manager.gd` `_record_generation` — defers (does not record) a chunk while any
+  region within `BLEND_CHUNKS` failed to load or is backing off in `RegionStreamer.sync`; a region that
+  later reads and swaps a record under a built chunk queues that chunk's rebuild; the overlong doc
+  comment is rewrapped and the region-margin cost is noted (#268, #270, #282, #283).
+- `src/persistence/region_store.gd` `normalize_gen` — a record with a newer `v` is kept verbatim on
+  rewrite rather than stripped (#270).
+- `src/terrain/frontier.gd` — `corner_height` uses a distance-weighted, order-independent offset whose
+  smoothstep reaches 0 at the last ring; `HEIGHT_STEP` and the generated-height maths are shared with
+  `RegionStore.GEN_HEIGHT_STEP` / `TerrainSlice.generation_record`; `gather` does one bulk read with an
+  early-out when no neighbour is recorded; the remaining fill-order dependence of `record_for` and
+  `pick_biome` is documented in `CLAUDE.md`'s stable-world rule (#282, #283).
+- `src/persistence/region_streamer.gd` `regions_for_chunks` — the `BLEND_CHUNKS` margin loads a
+  neighbouring region only for chunks that have no record yet (#283).
+- `src/terrain/chunk_record_sync.gd`, `src/core/game_root.gd` — the client prunes its table to
+  `gen_scope` on each re-scope and rebuilds already-built chunks whose record arrived late; the cap
+  counts valid entries only and host truncation is logged; `_peer_records_msec` is stamped only when
+  records are sent; `worldgen_fingerprint()` is cached and its literal step replaced (#270, #271).
+- `src/core/game_root.gd` `_note_worldgen_version` — `worldgen_fingerprint_mismatch` reaches the UI
+  through the same notice path as the version mismatch, once per world, and the stamp is updated after
+  the notice so it does not repeat on every load (#264).
+- `src/tests/test_suite.gd`, `src/tests/net_harness.gd` — `_test_worldgen_golden` compares shape
+  values exactly (or the Phase 106 wording is amended to the tolerance actually used);
+  `_test_worldgen_fingerprint` restores the statics it mutates even when an assert fails;
+  `FRONTIER_MAX_STEP` is derived from the plain generator's own max step; the frontier pick is tested
+  in two fill orders; the harness frontier step no longer mutates recorded host chunks (#264, #282).
+
+**Acceptance criteria:**
+- [ ] #264: suite asserts exact golden shape values (or ROADMAP Phase 106 states the tolerance); a test
+  proves the fingerprint mismatch reaches the UI notice once and not on the next load; the fingerprint
+  test restores `_warmed`/`_envelopes` on a forced failure.
+- [ ] #268: suite proves `ChunkRecords` is empty after a world reload, pending records are on disk
+  after `_exit_tree`, a failing region is retried at most once per backoff interval, and a late region
+  adoption rebuilds the chunk.
+- [ ] #270: suite proves a re-scope prunes the client table, a newer-`v` record survives a rewrite, no
+  record is written while a neighbouring region failed, and tree-only updates leave the revision alone.
+- [ ] #271: suite proves the client consumes `gen_scope`, the cap ignores malformed entries, and a join
+  snapshot without records does not delay the first re-scope.
+- [ ] #282: suite: the frontier field is identical under two neighbour orders; the max-step bound is
+  derived from the plain generator and fails on a scratch broken blend; zero forbidden pairs in both
+  fill orders; harness frontier step passes without editing recorded chunks.
+- [ ] #283: suite: the blend weight is monotone and reaches 0 exactly at `BLEND_CHUNKS`; the streamer
+  loads no extra region for an already-recorded window.
+- [ ] Suite green on both boot paths, harness green, `npm run check-drift` green.
+
+---
+
+## Phase 115 — Chat, admin and test-tooling cleanup sweep
+
+**Goal:** the Phase 101 chat/admin review and the Phase 100 tests-and-tooling triage left small but
+real leftovers: admin commands reply "done" when nothing was sent, far `/tp` targets lose metres in a
+float32 detour, admin commands share the chat token bucket, a wall-clock test flakes on CI runners, and
+several tests assert less than the roadmap claims. This phase resolves every item of the four issues
+below in one PR.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 101.
+
+**Closes:** #258, #261, #262, #280.
+
+**Deliverables:**
+- `src/core/chat_commands.gd`, `src/chat/chat_slice.gd` — `parse_position` parses doubles and builds
+  `{chunk, local}` directly, never through a `Vector3`; `/kill`, `/tp`, `/bring` reply success only when
+  the host actually applied or sent the effect and report a reason otherwise; the token bucket charges
+  plain chat only and is keyed by player id so a reconnect does not refill it (#261, #262).
+- `src/tests/net_harness.gd` `admin_teleport` — waits until the destination chunk is loaded before
+  checking the landing, and teleports the client back so later steps start from the usual place (#262).
+- `src/tests/test_suite.gd` — 'chunk: the build split is measured' compares the median of several runs
+  against a relative bound instead of one wall-clock sample; `_adjacency_origins` asserts that a coast
+  was found; `_test_peer_exact_window_and_relay` asserts each relay separately;
+  `_test_equipment_host_and_aoi_transitions` names its evict receivers and loses the garbled comment;
+  the position tests use the tolerances ROADMAP states (or the criteria are reworded to match); new
+  integration tests cover `_place_local_player`, `_build_snapshot` and `_on_world_snapshot_received`
+  exact placement (#258, #261, #280).
+- `src/creatures/creature_slice.gd` — `_spawn_fields` returns a typed result, and the missing-field
+  warning test drives the real `spawn_for_chunk` (#258).
+- `tools/check_readme_phases.js` — an unparseable row inside the phase table fails the check, with a
+  self-test case for a decorated status (#258).
+- `ROADMAP.md`, `docs/roadmap-history/` — Phase 101's chunk criterion names the chunk the test uses;
+  the Phase 7/57/67/82/83 criteria flagged in #258 are reworded to what was actually run (#258, #262).
+
+**Acceptance criteria:**
+- [ ] #258: `node tools/check_readme_phases.js --self-test` fails a decorated-status row; suite has the
+  three new `GameRoot` placement tests and the separate relay asserts; the history criteria are reworded.
+- [ ] #261: suite: `/tp` to a point 1,200,000 chunks out lands within 1e-3 m of the typed coordinate;
+  admin commands are not throttled by the chat bucket; the build-split test uses a median.
+- [ ] #262: suite: `/kill` on an unknown peer and `/tp` with no networking reply a failure; a reconnect
+  does not reset the bucket; harness `admin_teleport` waits for the chunk and restores the client.
+- [ ] #280: suite: `_adjacency_origins` fails when no coast is found (proved with a scratch zero-step
+  search).
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 116 — Tree clears follow chunks onto clients
+
+**Goal:** Phase 110 pins trees per chunk and clears them where players build, but a client learns about
+clears only from its join snapshot and live `tree_cleared` events. A chunk that streams in later shows
+ghost trees whose chop the host rejects; clears compare raw instead of seam-wrapped coordinates; a deep
+mine clears surface trees; the client keeps wire-supplied ids forever. This phase sends each chunk's
+tree record with the chunk, wraps every coordinate, bounds client memory and proves the wire path.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 109, Phase 110.
+
+**Closes:** #273, #274, #275.
+
+**Deliverables:**
+- `fabric/world/` — the clear radii (`clearRadiusTiles`, `clearRadiusMetres`) are authored in the tree
+  data and read through `GameData`; `TreeSlice.CLEAR_RADIUS_*` constants go away (#274).
+- `src/world/tree_slice.gd` — tree records (`t`, `x`) are applied per chunk on stream-in from the
+  scoped record sync (Phase 109), so a late chunk spawns without its cleared trees; `clear_trees_near_*`
+  share one loop that looks only at the edited chunk and its neighbours via `_by_chunk`, in
+  `canonical_tile`-wrapped coordinates; `_on_block_changed` ignores edits deeper than the tree root and
+  shifts by the face normal; a station clears trees in a not-yet-loaded neighbour by recording the clear
+  in that chunk's record; `_on_edited_ground` checks stations as well as voxel edits with one
+  per-chunk lookup; `_remove_clear` and `_trim_chunk_to` share their removal (#273, #274, #275).
+- `src/world/tree_slice.gd` `_record_cleared` / `_budget_for` — clears for chunks without a record pin
+  `t` once a record exists; indices up to the chunk budget persist (densities above `GEN_TREE_MAX` are
+  refused by fabric validation instead of clamped); `_cleared_local` is range-checked, capped and evicted
+  with the chunk; `resync_recorded_chunks` walks the loaded chunk set (#273, #274, #275).
+- `src/persistence/region_store.gd` `normalize_gen` — an invalid optional `t` or `x` drops only that
+  field (#275).
+- `src/terrain/chunk_manager.gd` `update_record` — bumps the `ChunkRecords` revision only when `b` or
+  `h` change; `chunk_record_sync.gd`'s size comment is updated for `t`/`x` (#273, #274, #275).
+- `src/networking/networking_slice.gd` — a client validates a `tree_cleared` id against its loaded
+  chunks; `src/tests/net_harness.gd` gains a `tree_cleared` step (#274, #273).
+
+**Acceptance criteria:**
+- [ ] Suite: a chunk streamed in after a clear spawns without the cleared tree on a client that was not
+  in the clear's snapshot window.
+- [ ] Suite: a clear at the world seam (chunk X = −1 vs the wrapped lap) removes the same trees as one
+  away from the seam; a mine 8 m below a tree does not clear it.
+- [ ] Suite: a station on a chunk edge clears a tree in the unloaded neighbour, which stays cleared when
+  that chunk loads.
+- [ ] Suite: `_cleared_local` refuses out-of-range ids and never exceeds its cap; it is empty after the
+  chunk is evicted; the MultiMesh slot of a cleared tree is released.
+- [ ] Suite: `normalize_gen` keeps `b`/`h` when only `t` is malformed; a tree-only update leaves the
+  `ChunkRecords` revision unchanged.
+- [ ] `npm run validate` rejects a tree density above `GEN_TREE_MAX`; `npm run check-drift` green.
+- [ ] Harness: the new `tree_cleared` step passes (host clears, client removes the same tree).
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 117 — Map waypoints, HUD toasts and an explored set that scales
+
+**Goal:** the Phase 111 map window works, but its explored set is stored as string keys parsed on the
+main thread (up to 50k per save and per redraw), the tile cache's stale list grows without bound, the
+saved order loses age after a reload, and the home marker uses flat deltas on the globe. Notices such as
+the world-version warning are a label in the Character panel. Players also have no way to mark a place
+other than home. This phase adds player waypoints, a HUD toast channel for notices, and an explored set
+that stays cheap at its cap.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 111.
+
+**Closes:** #257, #277, #278.
+
+**Deliverables:**
+- `src/ui/minimap.gd`, `src/ui/map_window.gd` — the explored set is held as `Vector2i` keys (or
+  per-row runs); loaded chunks are wrapped and checked with `_in_world`; a late seed change waits for
+  settle and does not save the throwaway seed's file; the map redraws only when the player's pixel or
+  chunk changes and re-requests only newly visible tiles without dropping the queue; `_zoom` is clamped
+  to `zoom_max`; the home marker uses great-circle direction and distance when the globe blend is high
+  (#277, #278).
+- `src/ui/map_tiles.gd` — `_stale` is capped and pruned oldest-first (#278).
+- `src/persistence/revealed_store.gd` — encodes rows in age order as an array so the oldest-first cap
+  survives a reload; the write runs on a worker with the main thread handing over an immutable
+  snapshot (#277, #278).
+- Waypoints — right-click on the map adds a named waypoint (up to a fixed cap), shown on the map and the
+  minimap edge like home; stored per world in the revealed store's file with an exact `{chunk, local}`.
+- `src/ui/ui_slice.gd` — a HUD toast queue (bounded, de-duplicated) replaces the Character-panel
+  world-version label; pre-stamp saves no longer read as version 0 (#257).
+- `src/core/chat_commands.gd` — the `/where` literal is one constant shared by `is_command` and `run`,
+  and the chat box is its production caller (#257).
+- `src/tests/test_suite.gd` — the NaN-token layout test asserts per-entry handling, and a test drives
+  the `?` hotkey through `unicode == 63` (#257).
+
+**Acceptance criteria:**
+- [ ] #257: suite: a world-version mismatch produces exactly one toast; a pre-stamp save produces none;
+  the `?` hotkey path and per-entry NaN handling are tested; `/where` has one literal.
+- [ ] #277: suite: 50,000 revealed chunks save and reload with no string keys built on the main thread
+  (the store API takes `Vector2i`); the home marker's distance at 1,500,000 chunks matches the
+  great-circle value within 0.1%.
+- [ ] #278: suite: the cap drops the oldest chunks after a save/reload round-trip; `_stale` never exceeds
+  its cap; a loaded out-of-world chunk is dropped; `_zoom` starts within `[zoom_min, zoom_max]` on a
+  small world; an unchanged player pixel triggers no redraw.
+- [ ] Suite: a waypoint round-trips through save and load exactly, the cap refuses the extra one, and a
+  file for another seed carries no waypoints.
+- [ ] Suite green on both boot paths.
+
+---
+
+## Phase 118 — Void bursts, the survivor flag and the VoidTouched unlock
+
+**Goal:** the fabric says voidite refining can fail with a void burst, that surviving one grants the
+`voidBurstSurvivor` flag, and that the flag gates the Void Smithing skill, enchanting voidite and the
+`VoidTouched` profession. None of it runs: there is no refining recipe, no burst, no flag and no
+profession unlock (deferred from Phase 13). This phase wires the chain end to end on the host.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 13, Phase 34, Phase 38.
+
+**Deliverables:**
+- `fabric/gameplay/recipes/` — a `RecipeRefinedVoiditeShard` (1 Voidite → 1 refined shard, forge
+  station) with structured `burst: { chance, damage }` data, and the refined-shard item where the
+  fabric references it; `fabric/gameplay/professions/` gains structured unlock data for `VoidTouched`
+  (two skill tiers plus a flag). `npm run generate` emits both for `GameData`.
+- `src/crafting/crafting_slice.gd` — a recipe with `burst` rolls on the host from a deterministic
+  `(world seed, player id, craft counter)` hash; a burst consumes the input, yields no output, deals
+  `damage` to the crafter through the host-simulated HP (Phase 38) and, if the crafter survives,
+  sets `voidBurstSurvivor` in the player's record flags. Clients never roll.
+- `src/crafting/crafting_slice.gd` `_check_skill_guards` — skill guards that the fabric marks
+  "not tutored, voidBurstSurvivor only" refuse with `requires_flag:voidBurstSurvivor`.
+- Professions — a small `ProfessionSlice` (or a projection in `PlayerRegistry`) unlocks `VoidTouched`
+  when Void Magic and Void Smithing are Expert and the flag is set, persisted on the record and synced
+  to the owner only; recipes that name the profession check it.
+- `src/core/bus.gd`, `src/networking/networking_slice.gd` — `void_burst_resolved` and
+  `profession_unlocked` signals, owner-scoped on the wire.
+- `ROADMAP.md` — the deferred `VoidTouched` bullet is marked delivered.
+
+**Acceptance criteria:**
+- [ ] `npm run validate`, `npm run generate`, `npm run check-drift` green; `GameData` has the refining
+  recipe with its burst data and the `VoidTouched` unlock data.
+- [ ] Suite: for a fixed seed and player the burst sequence is identical across runs, and its rate over
+  10,000 crafts is within 1 percentage point of the authored chance.
+- [ ] Suite: a burst consumes the input, damages the crafter by the authored amount, and sets the flag
+  only when the crafter survives; the flag survives a save/load.
+- [ ] Suite: a flag-gated skill guard refuses without the flag and passes with it; `VoidTouched`
+  unlocks only when both tiers and the flag hold, and a recipe naming it is refused before.
+- [ ] Suite: a client's craft intent never rolls locally; the host's result reaches only the crafter.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
 ## Deferred (in priority order)
 
 - **Server sharding (final, not before maturity)** — split the authoritative
@@ -622,7 +885,7 @@ tile beside recorded land may change slightly when the player arrives and the fr
   in the fabric but not enforced at runtime (deferred from Phase 13).
 - **`VoidTouched` special-case unlock** — the void-burst survivor unlock trigger
   is defined in the fabric but not wired to any runtime event (deferred from
-  Phase 13).
+  Phase 13). **(scheduled: Phase 118.)**
 - **Station placement UI** — **(closed: placement is grid-snapped to 1 m cells and
   refuses overlap via `StationSlice.try_place_station`; N toggles a translucent
   green/red preview ghost and V places at the aimed top face or the player's feet.
