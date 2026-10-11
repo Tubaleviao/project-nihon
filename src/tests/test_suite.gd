@@ -18536,11 +18536,9 @@ func _test_p114_record_lifecycle() -> void:
 	# A world (re)load clears the table.
 	ChunkRecordsScript.set_record(Vector2i(1, 1), _sync_record(Vector2i(1, 1)))
 	var gr: Node = load("res://src/core/game_root.gd").new()
-	gr._persistence = PersistenceSlice.new()
-	gr._persistence.server_save_dir = "user://saves/test_p114_reload/"
-	gr._load_world_records()
+	gr._forget_world_records()
 	assert_true(ChunkRecordsScript.is_empty(), "a world load empties the table")
-	gr._persistence.free()
+	assert_true(FileAccess.get_file_as_string("res://src/core/game_root.gd").contains("_persistence.load_world_record()\n\t_forget_world_records()"), "and _load_world_records calls it right after reading the record")
 	gr.free()
 
 ## A chunk is not recorded while a region within BLEND_CHUNKS failed; it is recorded and rebuilt once

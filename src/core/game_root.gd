@@ -2362,11 +2362,15 @@ func _note_worldgen_version() -> void:
 		# next load of this world finds no mismatch (the records, not the stamp, keep old land stable).
 		_worldgen_fp_stamp = running_fp
 
+## Phase 114 — generation records never outlive the world they describe.
+func _forget_world_records() -> void:
+	ChunkRecords.clear()
+
 func _load_world_records() -> void:
 	# Phase 52 — the GLOBAL record only; a Phase 51 monolithic record is split into region
 	# files by this read, and the edits themselves stream in by region.
 	_loaded_world = _persistence.load_world_record()
-	ChunkRecords.clear()   # Phase 114: records never outlive the world they describe
+	_forget_world_records()
 	_note_worldgen_version()
 	_bind_local_identity()
 	# Lazy reader for every other player's record (see the docstring above).
