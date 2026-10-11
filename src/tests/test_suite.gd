@@ -413,6 +413,13 @@ func run() -> void:
 	_run_test("hud: a dropped tool keeps its wear",            _test_hud_drop_keeps_durability)
 	_run_test("hud: skills list + window keys",                _test_hud_skills_rows_and_window_keys)
 	_run_test("hud: window dock letters match the key map",    _test_hud_window_dock)
+	_run_test("map: projection blend is a pure function of zoom", _test_map_projection_blend)
+	_run_test("map: tiles are pure and keyed by seed and version", _test_map_tile_purity)
+	_run_test("map: tile cache is bounded, coarse answered first", _test_map_tile_cache)
+	_run_test("map: revealed set round-trips through save and load", _test_map_revealed_roundtrip)
+	_run_test("map: revealed cap and compact encoding",         _test_map_revealed_cap_and_size)
+	_run_test("map: home clamp is exact and on the line",       _test_map_home_clamp)
+	_run_test("map: M and the dock box toggle the Map window",  _test_map_window_key)
 	_run_test("ui: crafting rows gate on technology",          _test_ui_crafting_rows_tech_gate)
 	_run_test("ui: technology rows report status + prereqs",   _test_ui_technology_rows_status)
 	_run_test("ai: idle→alert when player within alertRadius", _test_ai_idle_to_alert)
@@ -5082,7 +5089,7 @@ func _test_hud_window_dock() -> void:
 		seen[e["letter"]] = true
 		assert_true(UiSlice.WINDOW_KEYS.has(e["key"]), "dock window exists: %s" % e["key"])
 		assert_false(_HotbarScript.bind_allowed(OS.find_keycode_from_string(str(e["letter"]))) , "dock letter %s is reserved from box shortcuts" % e["letter"])
-	assert_false(seen.has("M"), "M stays free for the map window")
+	assert_true(seen.has("M"), "M is the map window")
 	assert_true(seen.has("K"), "K is Skills")
 	assert_true(seen.has("C") and seen.has("H"), "C is Character, H is Crafting")
 	var ui := _new_hud_ui()
@@ -5103,6 +5110,214 @@ func _test_hud_window_dock() -> void:
 	assert_true(third.window_dock.is_expanded(), "an expanded dock persists too")
 	third.free()
 	DirAccess.remove_absolute(_TEST_DOCK_FILE)
+
+const _MapMath := preload("res://src/ui/map_math.gd")
+const _MapTiles := preload("res://src/ui/map_tiles.gd")
+const _RevealedStore := preload("res://src/persistence/revealed_store.gd")
+
+func _test_map_projection_blend() -> void:
+	var circ := TerrainSlice.circumference_chunks()
+	var zmax := _MapMath.zoom_max(circ)
+	assert_eq(_MapMath.blend(_MapMath.ZOOM_MIN, zmax), 0.0, "flat at the near end")
+	assert_eq(_MapMath.blend(zmax, zmax), 1.0, "a sphere at the far end")
+	var prev := -1.0
+	var worst_jump := 0.0
+	var z := _MapMath.ZOOM_MIN
+	var prev_pos := Vector2.ZERO
+	var ll := Vector2(0.3, 0.2)
+	var center := Vector2(0.1, -0.1)
+	while z <= zmax:
+		var t := _MapMath.blend(z, zmax)
+		assert_true(t >= prev, "blend is monotone at zoom %.2f" % z)
+		prev = t
+		var pos := _MapMath.project(ll, center, t)
+		if z > _MapMath.ZOOM_MIN:
+			worst_jump = maxf(worst_jump, pos.distance_to(prev_pos))
+		prev_pos = pos
+		z += 0.01
+	assert_true(worst_jump < 0.01, "no jump in position along the zoom (%f)" % worst_jump)
+	# Flat end: the equirectangular picture, exactly.
+	assert_true(_MapMath.project(ll, center, 0.0).is_equal_approx(Vector2(0.2, -0.3)), "t=0 is the flat map")
+	# Far end: every point sits on the unit disc.
+	for p in [Vector2(0, 0), Vector2(1.2, 0.7), Vector2(-2.9, -1.4), Vector2(3.0, 1.5)]:
+		assert_true(_MapMath.project(p, center, 1.0).length() <= 1.0 + 0.000001, "globe points are inside the unit disc")
+	assert_false(_MapMath.facing(Vector2(PI, 0.0), Vector2.ZERO, 1.0), "the far side is hidden on the globe")
+	assert_true(_MapMath.facing(Vector2(PI, 0.0), Vector2.ZERO, 0.0), "nothing is hidden on the flat map")
+
+func _test_map_tile_purity() -> void:
+	var a := _MapTiles.new()
+	a.reset(1234)
+	var b := _MapTiles.new()
+	b.reset(1234)
+	for lt in [[0, 5, -3], [3, 11, 4], [9, -2, 1]]:
+		a.request(lt[0], lt[1], lt[2])
+		b.request(lt[0], lt[1], lt[2])
+	a.pump(10)
+	b.pump(10)
+	var terrain := TerrainSlice.new()
+	terrain.set_world_seed(1234)
+	for lt in [[0, 5, -3], [3, 11, 4], [9, -2, 1]]:
+		assert_eq(a.get_tile(lt[0], lt[1], lt[2]), b.get_tile(lt[0], lt[1], lt[2]), "a tile is identical across runs")
+		var c := _MapMath.tile_center_chunk(lt[0], lt[1], lt[2])
+		assert_eq(a.get_tile(lt[0], lt[1], lt[2]), terrain.get_biome_at_chunk(c), "the tile equals the terrain's sample at its centre")
+	terrain.free()
+	var k := a.key_of(3, 1, 1)
+	a.reset(99)
+	assert_true(a.key_of(3, 1, 1) != k, "the seed is in the key")
+	a.version += 1
+	assert_true(a.key_of(3, 1, 1) != k and a.key_of(3, 1, 1) != _MapMath.tile_key(99, TerrainSlice.WORLDGEN_VERSION, 3, 1, 1), "the version is in the key")
+
+func _test_map_tile_cache() -> void:
+	var t := _MapTiles.new()
+	t.reset(7)
+	t.request(0, 1, 1)
+	t.request(5, 0, 0)
+	t.request(2, 3, 3)
+	var got := t.take(3)
+	assert_eq(got.map(func(v: Vector3i) -> int: return v.x), [5, 2, 0], "coarser levels are answered first")
+	t.store(_MapTiles.compute(7, got))
+	# Duplicates are not re-queued once cached or in flight.
+	t.request(5, 0, 0)
+	assert_eq(t.pending_count(), 0, "a cached tile is not requested again")
+	# Bounded: past the cap the oldest go first.
+	t.reset(7)
+	var first := t.key_of(0, 0, 0)
+	var results: Array = []
+	for i in _MapTiles.CACHE_MAX + 5:
+		results.append([Vector3i(0, i, 0), "Ocean"])
+	t.store(results)
+	assert_eq(t.size(), _MapTiles.CACHE_MAX, "the cache never exceeds its cap")
+	assert_false(t.has_tile(0, 0, 0), "the oldest tile was dropped")
+	assert_true(t.has_tile(0, _MapTiles.CACHE_MAX + 4, 0), "the newest tile stays")
+	assert_true(first != "", "keys are non-empty")
+	# Missing tiles fall back to a coarser ancestor.
+	var u := _MapTiles.new()
+	u.reset(7)
+	u.store([[Vector3i(3, 1, 1), "Ocean"]])
+	assert_eq(u.best_biome(0, 8, 8), "Ocean", "a fine tile shows its coarse ancestor until it is computed")
+	# Invalidate: old answers keep showing, but a batch taken before it must be dropped by generation.
+	var g := u.generation
+	u.invalidate()
+	assert_true(u.generation != g, "invalidate bumps the generation")
+	assert_eq(u.size(), 0, "invalidate empties the live cache")
+	assert_eq(u.best_biome(3, 1, 1), "Ocean", "the stale answer shows until recomputed")
+	u.store([[Vector3i(3, 1, 1), "Desert"]])
+	assert_eq(u.best_biome(3, 1, 1), "Desert", "a fresh answer wins over the stale one")
+	u.reset(7)
+	assert_eq(u.best_biome(3, 1, 1), "", "reset drops stale answers too")
+
+func _test_map_revealed_roundtrip() -> void:
+	var path := "user://test_revealed.json"
+	DirAccess.remove_absolute(path)
+	var chunks: Array = [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(-5, 3), Vector2i(7, 3)]
+	assert_true(_RevealedStore.save(path, chunks, 42), "saves")
+	var back := _RevealedStore.load_file(path, 42)
+	chunks.sort()
+	back.sort()
+	assert_eq(back, chunks, "the revealed set round-trips")
+	var w := Diag.warn_count()
+	assert_eq(_RevealedStore.load_file(path, 43), [], "a file for another seed is ignored")
+	assert_eq(Diag.warn_count(), w + 1, "and warns once")
+	DirAccess.remove_absolute(path)
+	w = Diag.warn_count()
+	assert_eq(_RevealedStore.load_file(path, 42), [], "a missing file starts empty")
+	assert_eq(Diag.warn_count(), w + 1, "and warns once")
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string("{not json")
+	f.close()
+	w = Diag.warn_count()
+	assert_eq(_RevealedStore.load_file(path, 42), [], "a corrupt file starts empty")
+	assert_eq(Diag.warn_count(), w + 1, "and warns once")
+	DirAccess.remove_absolute(path)
+	# The minimap persists through its own debounced path.
+	var dir := "user://test_revealed_dir"
+	DirAccess.remove_absolute(_RevealedStore.path_for(dir, 5))
+	var terrain := TerrainSlice.new()
+	terrain.set_world_seed(5)
+	var m := Minimap.new()
+	m.terrain_slice = terrain
+	m.revealed_dir = dir
+	m.set_player_pos(Vector2(40.0, 40.0))
+	m._tick_revealed_store(0.0)
+	assert_false(m.is_revealed_loaded(), "a seed that has only just appeared is not trusted yet")
+	m._tick_revealed_store(Minimap.SEED_SETTLE_SECONDS)
+	assert_true(m.is_revealed_loaded(), "a seed that held still is loaded")
+	m.set_player_pos(Vector2(40.0, 40.0))
+	for i in 4:   # a new chunk every 2 s must not postpone the save forever
+		m.set_player_pos(Vector2(40.0 + 400.0 * (i + 1), 40.0))
+		m._tick_revealed_store(2.0)
+	assert_true(FileAccess.file_exists(_RevealedStore.path_for(dir, 5)), "steady exploring still reaches the debounced save")
+	m.save_revealed()
+	var m2 := Minimap.new()
+	m2.terrain_slice = terrain
+	m2.revealed_dir = dir
+	m2._tick_revealed_store(0.0)
+	m2._tick_revealed_store(Minimap.SEED_SETTLE_SECONDS)
+	assert_eq(m2.get_revealed_chunks().size(), m.get_revealed_chunks().size(), "a relog restores the explored set")
+	assert_true(m2.is_revealed(Vector2i(1, 1)), "the player's chunk is explored after the relog")
+	# Saving before the seed's file was loaded must not overwrite it; the revision moves with the set.
+	var m3 := Minimap.new()
+	m3.revealed_dir = dir
+	m3.save_revealed()
+	assert_false(FileAccess.file_exists(_RevealedStore.path_for(dir, 0)), "no seed-0 file appears")
+	var rev: int = m.revealed_revision()
+	m.set_player_pos(Vector2(4000.0, 4000.0))
+	assert_true(m.revealed_revision() != rev, "revealing new chunks changes the revision")
+	m3.free()
+	m.free()
+	m2.free()
+	terrain.free()
+	DirAccess.remove_absolute(_RevealedStore.path_for(dir, 5))
+
+func _test_map_revealed_cap_and_size() -> void:
+	var d: Dictionary = {}
+	for i in 10:
+		d["%d,0" % i] = true
+	_RevealedStore.cap(d, 4)
+	assert_eq(d.keys(), ["6,0", "7,0", "8,0", "9,0"], "the cap drops the oldest chunks")
+	var chunks: Array = []
+	for z in 100:
+		for x in 100:
+			chunks.append(Vector2i(x - 50, z - 50))
+	var text := _RevealedStore.encode(chunks, 1)
+	assert_true(text.length() < 20000, "10,000 contiguous chunks encode small (%d bytes)" % text.length())
+	assert_eq(_RevealedStore.decode(text, 1).size(), 10000, "and decode back whole")
+
+func _test_map_home_clamp() -> void:
+	var inside := _MapMath.clamp_home(Vector2(30, -20), Vector2(100, 80), 500.0)
+	assert_true(inside["inside"], "inside the map")
+	assert_eq(inside["pos"], Vector2(30, -20), "the point itself")
+	var out := _MapMath.clamp_home(Vector2(300, 150), Vector2(100, 80), 1234.0)
+	assert_false(out["inside"], "outside the map")
+	var pos: Vector2 = out["pos"]
+	assert_true(absf(pos.x) <= 100.0 + 0.0001 and absf(pos.y) <= 80.0 + 0.0001, "clamped to the rect")
+	assert_true(absf(pos.x) >= 100.0 - 0.0001 or absf(pos.y) >= 80.0 - 0.0001, "on the edge")
+	assert_true(absf(pos.normalized().angle() - Vector2(300, 150).angle()) < 0.000001, "on the line toward it")
+	assert_eq(out["distance"], 1234.0, "with the distance")
+	# Exact far from the origin: 1,500,000 chunks away, a 10 m offset stays 10 m.
+	var far := 1500000
+	var d := _MapMath.delta_m(Vector2i(far, far), Vector2(1.5, 2.5), Vector2i(far + 3, far - 2), Vector2(11.5, 2.5))
+	assert_eq(d, Vector2(3.0 * TerrainSlice.CHUNK_METERS + 10.0, -2.0 * TerrainSlice.CHUNK_METERS), "exact at 1,500,000 chunks")
+	var c := _MapMath.clamp_home(d, Vector2(40, 40), d.length())
+	assert_eq(c["distance"], d.length(), "the distance is carried exactly")
+
+func _test_map_window_key() -> void:
+	var ui := _new_hud_ui()
+	var e := InputEventKey.new()
+	e.pressed = true
+	e.keycode = KEY_M
+	ui._input(e)
+	assert_true(ui.is_window_open("map"), "M opens the Map window")
+	ui._input(e)
+	assert_false(ui.is_window_open("map"), "M closes it again")
+	ui.window_dock.window_toggled.emit("map")
+	assert_true(ui.is_window_open("map"), "the dock's M box opens it")
+	var users := 0
+	for entry in _WindowDockScript.entries():
+		if entry["letter"] == "M":
+			users += 1
+	assert_eq(users, 1, "no other window uses M")
+	ui.free()
 
 func _test_ui_inventory_lines() -> void:
 	var ui := _new_test_ui()

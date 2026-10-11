@@ -19,6 +19,7 @@ const ENTRIES: Array = [
 	{"key": "technology", "letter": "T", "name": "Technology"},
 	{"key": "trade",      "letter": "Y", "name": "Trade"},
 	{"key": "market",     "letter": "P", "name": "Market"},
+	{"key": "map",        "letter": "M", "name": "Map"},
 	{"key": "proposals",  "letter": "G", "name": "Proposals"},
 	{"key": "controls",   "letter": "?", "name": "Controls"},
 ]

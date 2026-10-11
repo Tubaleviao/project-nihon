@@ -17,6 +17,7 @@ extends Control
 
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const BiomeBlend := preload("res://src/terrain/biome_blend.gd")
+const RevealedStore := preload("res://src/persistence/revealed_store.gd")
 const CHUNK_SIZE := TerrainSlice.CHUNK_METERS   # world units per chunk
 
 ## Reveal this many chunks around the player's current chunk (Chebyshev radius).
@@ -55,12 +56,28 @@ var terrain_slice: Node = null
 ## revealed, a chunk stays on the map even after it streams out of view.
 var _revealed: Dictionary = {}
 
+## Phase 111 — where the explored set persists ("" = nowhere), one file per world seed. Set by
+## game_root to `user://saves/client`; the set is loaded once the world seed is known and written
+## back a few seconds after it last changed.
+const SEED_SETTLE_SECONDS := 1.0
+var revealed_dir: String = ""
+var _revealed_seed: int = 0
+var _revealed_loaded: bool = false
+var _revealed_rev: int = 0   # bumps whenever the explored set gains a chunk or is reloaded
+var _seed_stable_for: float = 0.0   # seconds the world seed has read the same
+var _seen_seed: int = 0
+var _revealed_dirty_for: float = -1.0   # seconds since the set last changed; -1 = clean
+
+## Emitted when the minimap is clicked: the HUD opens the Map window.
+signal open_requested
+
 var _player_pos: Vector2 = Vector2.ZERO
 var _player_chunk: Vector2i = Vector2i(-9999, -9999)
 var _facing: Vector2 = Vector2(0.0, -1.0)   # world XZ facing, for the arrow
 var _chunks_across: float = ZOOM_DEFAULT
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_tick_revealed_store(delta)
 	if player_slice == null or not player_slice.has_method("get_position"):
 		return
 	var p: Vector3 = player_slice.get_position()
@@ -100,7 +117,13 @@ func _reveal_around(center: Vector2i) -> void:
 		for dx in range(-REVEAL_RADIUS, REVEAL_RADIUS + 1):
 			var c := center + Vector2i(dx, dz)
 			if _in_world(c):
-				_revealed[_chunk_key(c)] = true
+				var k := _chunk_key(c)
+				if not _revealed.has(k):
+					_revealed[k] = true
+					if _revealed_dirty_for < 0.0:   # the debounce runs from the first change, so steady walking still saves
+						_revealed_dirty_for = 0.0
+					_revealed_rev += 1
+	RevealedStore.cap(_revealed)
 
 ## True when `chunk` lies inside the finite world, or when no terrain slice is
 ## wired (isolated unit tests treat the world as unbounded).
@@ -108,6 +131,63 @@ func _in_world(chunk: Vector2i) -> bool:
 	if terrain_slice != null and terrain_slice.has_method("is_chunk_in_bounds"):
 		return terrain_slice.is_chunk_in_bounds(chunk)
 	return true
+
+## Load the saved set for the world seed once it is known (merged under what was revealed since boot),
+## and write it back DEBOUNCE_SECONDS after the last change. No-op without `revealed_dir`.
+func _tick_revealed_store(delta: float) -> void:
+	if revealed_dir == "" or terrain_slice == null or not terrain_slice.has_method("get_world_seed"):
+		return
+	var s: int = terrain_slice.get_world_seed()
+	# The terrain boots on a throwaway random seed until the real one is applied: wait for it to settle.
+	if s != _seen_seed:
+		_seen_seed = s
+		_seed_stable_for = 0.0
+	elif _seed_stable_for < SEED_SETTLE_SECONDS:
+		_seed_stable_for += delta
+	if not _revealed_loaded and _seed_stable_for < SEED_SETTLE_SECONDS:
+		return
+	if not _revealed_loaded or s != _revealed_seed:
+		if _revealed_loaded:
+			save_revealed()
+			_revealed.clear()
+			_revealed_rev += 1
+		_revealed_seed = s
+		_revealed_loaded = true
+		load_revealed()
+	if _revealed_dirty_for >= 0.0:
+		_revealed_dirty_for += delta
+		if _revealed_dirty_for >= RevealedStore.DEBOUNCE_SECONDS:
+			save_revealed()
+
+func _exit_tree() -> void:
+	if _revealed_dirty_for >= 0.0:
+		save_revealed()
+
+func load_revealed() -> void:
+	var fresh: Dictionary = {}
+	for c in RevealedStore.load_file(RevealedStore.path_for(revealed_dir, _revealed_seed), _revealed_seed):
+		fresh[_chunk_key(c)] = true
+	for k in _revealed:   # chunks seen since boot are the newest
+		fresh.erase(k)
+		fresh[k] = true
+	_revealed = fresh
+	_revealed_rev += 1
+	RevealedStore.cap(_revealed)
+	queue_redraw()
+
+## True once the saved set for the world seed has been merged in; saving earlier would clobber the file.
+func is_revealed_loaded() -> bool:
+	return _revealed_loaded
+
+## Changes whenever the explored set does: a cheap staleness check for the Map window.
+func revealed_revision() -> int:
+	return _revealed_rev
+
+func save_revealed() -> void:
+	_revealed_dirty_for = -1.0
+	if revealed_dir != "" and _revealed_loaded:
+		if not RevealedStore.save(RevealedStore.path_for(revealed_dir, _revealed_seed), get_revealed_chunks(), _revealed_seed):
+			_revealed_dirty_for = 0.0   # try again after the next debounce
 
 func is_revealed(chunk: Vector2i) -> bool:
 	return _revealed.has(_chunk_key(chunk))
@@ -179,6 +259,9 @@ func zoom_out() -> void:
 ## keys (work even while the mouse is captured for gameplay).
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			open_requested.emit()
+			accept_event()
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			zoom_in()
 			accept_event()
