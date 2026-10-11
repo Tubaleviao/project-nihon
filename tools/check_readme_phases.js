@@ -13,8 +13,9 @@ const root = path.resolve(__dirname, '..');
 function parsePhaseRows(text) {
   const rows = new Map();
   for (const line of text.split('\n')) {
-    const m = /^\|\s*(\d+)\s*\|\s*(.*?)\s*\|\s*([A-Za-z]+)\s*\|/.exec(line);
+    const m = /^\|\s*(\d+)\s*\|\s*([^|]*?)\s*\|\s*([A-Za-z]+)\s*\|/.exec(line);
     if (m) rows.set(Number(m[1]), { title: m[2], status: m[3] });
+    else if (/^\|\s*\d+\s*\|/.test(line)) rows.set(Number(/\d+/.exec(line)[0]), { title: '', status: '', unparseable: line.trim() });
   }
   return rows;
 }
@@ -26,7 +27,9 @@ function diffTables(roadmap, readme) {
   for (const n of nums) {
     const a = roadmap.get(n);
     const b = readme.get(n);
-    if (!a) problems.push(`Phase ${n}: in README.md but not in the ROADMAP.md index`);
+    const bad = [a, b].find((r) => r && r.unparseable);
+    if (bad) problems.push(`Phase ${n}: row is not \`| N | title | Status |\` with a plain status word: ${bad.unparseable}`);
+    else if (!a) problems.push(`Phase ${n}: in README.md but not in the ROADMAP.md index`);
     else if (!b) problems.push(`Phase ${n}: in the ROADMAP.md index but not in README.md`);
     else {
       if (a.title !== b.title) problems.push(`Phase ${n}: title differs (ROADMAP "${a.title}", README "${b.title}")`);
@@ -67,6 +70,13 @@ function main() {
       console.error(`self-test failed: a README Phase ${doneNum} flipped to Planned was not reported`);
       return 2;
     }
+    const decorated = parsePhaseRows('| 7 | Title | Done ✅ | x |\n');
+    const decoratedProblems = diffTables(decorated, new Map([[7, { title: 'Title', status: 'Done' }]]));
+    if (!decoratedProblems.some((p) => p.startsWith('Phase 7:') && p.includes('plain status'))) {
+      console.error('self-test failed: a decorated-status row was not reported');
+      return 2;
+    }
+    problems.push(...decoratedProblems);
     console.error(`self-test: the check reports the drift, as it should:\n  ${problems.join('\n  ')}`);
     return 1;
   }

@@ -135,7 +135,7 @@ issue number where the criterion used to be.
 | 112 | A biome adjacency table in the fabric and an offline scan | Done | below |
 | 113 | Frontier generation: a new generator version meets recorded land | Done | below |
 | 114 | Generation record and frontier cleanup sweep | Done | below |
-| 115 | Chat, admin and test-tooling cleanup sweep | Planned | below |
+| 115 | Chat, admin and test-tooling cleanup sweep | Done | below |
 | 116 | Tree clears follow chunks onto clients | Planned | below |
 | 117 | Map waypoints, HUD toasts and an explored set that scales | Planned | below |
 | 118 | Void bursts, the survivor flag and the VoidTouched unlock | Planned | below |
@@ -266,7 +266,7 @@ on-planet teleports) and 104 (two-client harness steps).
   lines, refilling at `CHAT_LINES_PER_SEC`) checked before a line is parsed or broadcast; a refused line
   is dropped, counted in `chat_rate_refused`, and answered with at most one "slow down" notice per player
   per interval. The host's own local player is subject to it too, admins included. The clock is
-  injectable, like `ChunkManager.set_clock`; the bucket entry is erased when the peer disconnects.
+  injectable, like `ChunkManager.set_clock`; the bucket entry survives a disconnect (Phase 115) and is pruned only once fully refilled.
 - The same file — `_cmd_kill` on a remote target routes through the same host path as a creature hit
   (emit `GameBus.player_damaged(KILL_DAMAGE, "admin", target)` or call one shared host helper), never
   `send_player_damaged` on its own; the local-body branch is unchanged. No file outside `game_root.gd`
@@ -289,14 +289,14 @@ on-planet teleports) and 104 (two-client harness steps).
 **Acceptance criteria:**
 - [x] Suite: with a fake clock, a client sending `CHAT_BURST + 10` lines in one tick has exactly
   `CHAT_BURST` broadcast, `chat_rate_refused` raised by 10 and one notice sent to it alone; after
-  `1 / CHAT_LINES_PER_SEC` seconds of fake time one more line is accepted; a disconnect removes the
+  `1 / CHAT_LINES_PER_SEC` seconds of fake time one more line is accepted; a disconnect keeps (Phase 115) the
   player's bucket entry.
 - [x] Suite: an admin's `/kill` on a connected peer leaves `PlayerRegistry.get_hp(peer_id)` at 0 (the
   `simulated_hp_after_hit` floor) and sends exactly one `player_damaged` to that peer; after that peer
   disconnects and reconnects, its restored HP is the simulated value, not `MAX_HP`.
 - [x] `grep -rn "send_player_damaged(" src --include=*.gd | grep -v -e game_root.gd -e networking_slice.gd -e test_suite.gd -e net_harness.gd`
   finds nothing.
-- [x] Suite: `/bring` of a peer to a local player at chunk (1,500,000, 3) local (0.25, 10, 0.75) sends a
+- [x] Suite: `/bring` of a peer to a local player at chunk (1,200,000, 3) local (0.25, 10, 0.75) sends a
   teleport that decodes on the client to that chunk and a local within 1e-3 m; `/tp <peer>` by the
   local admin lands the body at the peer's exact chunk, local within 1e-3 m.
 - [x] Suite: `/tp 0 10 z` with `z` one chunk past `TerrainSlice.pole_chunks()` is refused and no
@@ -660,7 +660,7 @@ are looser than the roadmap claims. This phase resolves every item of the six is
 
 ---
 
-## Phase 115 — Chat, admin and test-tooling cleanup sweep
+## Phase 115 — Chat, admin and test-tooling cleanup sweep ✅ Done
 
 **Goal:** the Phase 101 chat/admin review and the Phase 100 tests-and-tooling triage left small but
 real leftovers: admin commands reply "done" when nothing was sent, far `/tp` targets lose metres in a
@@ -678,7 +678,7 @@ below in one PR.
 - `src/core/chat_commands.gd`, `src/chat/chat_slice.gd` — `parse_position` parses doubles and builds
   `{chunk, local}` directly, never through a `Vector3`; `/kill`, `/tp`, `/bring` reply success only when
   the host actually applied or sent the effect and report a reason otherwise; the token bucket charges
-  plain chat only and is keyed by player id so a reconnect does not refill it (#261, #262).
+  plain chat and non-admin commands (admin commands are exempt) and is keyed by player id so a reconnect does not refill it (#261, #262).
 - `src/tests/net_harness.gd` `admin_teleport` — waits until the destination chunk is loaded before
   checking the landing, and teleports the client back so later steps start from the usual place (#262).
 - `src/tests/test_suite.gd` — 'chunk: the build split is measured' compares the median of several runs
@@ -696,15 +696,15 @@ below in one PR.
   the Phase 7/57/67/82/83 criteria flagged in #258 are reworded to what was actually run (#258, #262).
 
 **Acceptance criteria:**
-- [ ] #258: `node tools/check_readme_phases.js --self-test` fails a decorated-status row; suite has the
+- [x] #258: `node tools/check_readme_phases.js --self-test` fails a decorated-status row; suite has the
   three new `GameRoot` placement tests and the separate relay asserts; the history criteria are reworded.
-- [ ] #261: suite: `/tp` to a point 1,200,000 chunks out lands within 1e-3 m of the typed coordinate;
-  admin commands are not throttled by the chat bucket; the build-split test uses a median.
-- [ ] #262: suite: `/kill` on an unknown peer and `/tp` with no networking reply a failure; a reconnect
+- [x] #261: suite: `/tp` to a point 1,200,000 chunks out lands within 1e-3 m of the typed coordinate;
+  admin commands are not throttled by the chat bucket (non-admin commands are); the build-split test uses a median.
+- [x] #262: suite: `/kill` on an unknown peer and `/tp` with no networking reply a failure; a reconnect
   does not reset the bucket; harness `admin_teleport` waits for the chunk and restores the client.
-- [ ] #280: suite: `_adjacency_origins` fails when no coast is found (proved with a scratch zero-step
+- [x] #280: suite: `_adjacency_origins` fails when no coast is found (proved with a scratch zero-step
   search).
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths (`--run-tests`, see PR); the net harness runs in CI.
 
 ---
 

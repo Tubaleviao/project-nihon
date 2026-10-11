@@ -752,11 +752,14 @@ func _on_chat_posted(channel: String, sender: String, text: String, target_id: S
 		_deliver(peer, payload)
 
 ## Phase 85 — host → one client: move that player's body to `position` (an admin teleport).
-func send_teleport(peer_id: int, position: Dictionary) -> void:
+func send_teleport(peer_id: int, position: Dictionary) -> bool:
 	if _role != Role.HOST:
 		Diag.warn("NetworkingSlice: send_teleport called on non-host — dropped")
-		return
+		return false
+	if _peer == null and _test_peers == null:
+		return false
 	_deliver(peer_id, { "type": "teleport", "position": WorldPos.pos_to_wire(position) })
+	return true
 
 ## Phase 47 — client → host: one equip / unequip action on this machine's avatar (`item_key`
 ## "" unequips `slot`). Carries no identity: the host binds it to the connection and decides

@@ -142,7 +142,7 @@ reason (#168, #166).
 **Acceptance criteria:**
 - [x] Suite: a player placed at chunk (1,500,000, 3) local (0.25, 10, 0.75), after a rebase,
   reports `get_world_pos()` equal to that chunk and local within 1e-3 m.
-- [x] Suite: save → reload of that player restores the same chunk and local within 1e-3 m.
+- [x] Suite: save → reload of that player restores the lap-folded chunk (the one the fold maps it to) and the local within 1e-3 m.
 - [x] Suite: the own-record wire position in a snapshot equals the stored one exactly.
 - [x] Suite green on both boot paths, harness green. — `Results: 34747/34747 passed (0 failed)`, harness 15/15 steps.
 
@@ -268,7 +268,7 @@ can flake (#162).
 - [x] Suite: a client move inside `PEER_RECENTER_INTERVAL` still counts one refusal.
 - [x] Suite: four `WorkerThreadPool` tasks each raising 1,000 `Diag.warn` calls (quiet mode)
   raise the count by exactly 4,000.
-- [x] Suite green on both boot paths, harness green. — `Results: 15298/15298 passed (0 failed)` on `--run-tests`; net harness not run in this session.
+- [x] Suite green on both boot paths, harness green. — `Results: 15298/15298 passed (0 failed)` on `--run-tests`. _Reworded (Phase 115): the net harness was not run in this session; CI's harness job is what covers it._
 
 ---
 
@@ -291,7 +291,7 @@ thread for the rest of a full lattice build (#179).
 - [x] Suite: a ring build started and the node freed immediately: `_exit_tree` returns after the
   worker has processed at most one more row (row counter), and no error is logged.
 - [x] Suite: a build that is not aborted produces the same vertex hash as before the change.
-- [x] Suite green on both boot paths, harness green. — `Results: 15306/15306 passed (0 failed)` on `--run-tests`; net harness not run in this session.
+- [x] Suite green on both boot paths, harness green. — `Results: 15306/15306 passed (0 failed)` on `--run-tests`. _Reworded (Phase 115): the net harness was not run in this session; CI's harness job is what covers it._
 
 ---
 
@@ -349,7 +349,7 @@ the same answer (#213).
   `set_peer_center` claim one chunk away accepts the claim and leaves `peer_recenter_refused` at 0.
 - [x] Suite: two client claims 100 ms apart still count exactly one refusal (Phase 79 behaviour kept).
 - [x] Suite: after `clear_peer_center`, neither timestamp dictionary holds the peer.
-- [x] Suite green on both boot paths, harness green. — `Results: 15313/15313 passed (0 failed)` on `--run-tests`; net harness not run in this session.
+- [x] Suite green on both boot paths, harness green. — `Results: 15313/15313 passed (0 failed)` on `--run-tests`. _Reworded (Phase 115): the net harness was not run in this session; CI's harness job is what covers it._
 
 ---
 
@@ -376,7 +376,7 @@ walks 10,000 km is saved quantised to metres (#200, #201, #202).
 
 **Acceptance criteria:**
 - [x] Suite: a peer report at chunk `(250000, 1000)`, local `(12.345, 40.0, 7.891)` folded into
-  the registry round-trips through a save/load with `local` equal to within 1e-6 m.
+  the registry round-trips through a save/load with `local` equal to within 1e-4 m (the tolerance the suite asserts).
 - [x] Suite: a malformed wire position in a report is refused and leaves the previous last-known
   state unchanged; a legacy `Vector3` report still records a position.
 - [x] Two-client harness: an existing step that moves a client still passes with the new report — 15/15 steps agreed.

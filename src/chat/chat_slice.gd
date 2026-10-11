@@ -33,12 +33,14 @@ const VISIBLE_LINES := 8
 ## Seconds a line stays on screen after it arrives, while the input is closed.
 const LINE_LIFETIME := 12.0
 const KILL_DAMAGE := PlayerRules.MAX_HP * 100.0
-## Phase 101 — a per-player token bucket on chat: `CHAT_BURST` lines at once, refilling at
+## Phase 101 — a per-player token bucket on plain chat (Phase 115: an admin's commands do not spend it): `CHAT_BURST` lines at once, refilling at
 ## `CHAT_LINES_PER_SEC`. A refused line is dropped and counted; the player hears about it at most
 ## once per `SLOW_DOWN_NOTICE_SEC`.
 const CHAT_BURST := 5
 const CHAT_LINES_PER_SEC := 1.0
 const SLOW_DOWN_NOTICE_SEC := 5.0
+## Buckets kept before fully refilled ones are pruned (see `_prune_buckets`).
+const MAX_BUCKETS := 256
 
 const CHANNEL_CHAT := "chat"
 const CHANNEL_ANNOUNCE := "announce"
@@ -145,9 +147,11 @@ func handle_intent(text: String, player_id: String) -> void:
 	var clean := ChatCommands.sanitize(text)
 	if clean == "":
 		return
-	if not _take_token(speaker):
+	# Plain chat and every non-admin command spend a token; an admin's commands are not throttled.
+	var is_cmd := ChatCommands.is_slash(clean)
+	if not (is_cmd and is_admin(speaker)) and not _take_token(speaker):
 		return
-	if not ChatCommands.is_slash(clean):
+	if not is_cmd:
 		_post(CHANNEL_CHAT, _handle_of(speaker), clean, "")
 		return
 	var parsed := ChatCommands.parse(clean)
@@ -178,11 +182,12 @@ func handle_intent(text: String, player_id: String) -> void:
 		_:
 			pass
 
-## Spend one token of `speaker`'s bucket. False (and the line is dropped) when it is empty; the
+## Spend one token of `speaker`'s bucket (plain chat and non-admin commands). False (and the line is dropped) when it is empty; the
 ## player is told to slow down at most once per `SLOW_DOWN_NOTICE_SEC`.
 func _take_token(speaker: String) -> bool:
 	var now: float = now_sec.call()
 	if not _buckets.has(speaker):
+		_prune_buckets()
 		_buckets[speaker] = { "tokens": float(CHAT_BURST), "at": now, "notice_at": -INF }
 	var b: Dictionary = _buckets[speaker]
 	b["tokens"] = minf(float(CHAT_BURST), float(b["tokens"]) + maxf(0.0, now - float(b["at"])) * CHAT_LINES_PER_SEC)
@@ -196,8 +201,20 @@ func _take_token(speaker: String) -> bool:
 		_reply(speaker, "You are chatting too fast — slow down.")
 	return false
 
-func _on_player_left(player_id: String) -> void:
-	_buckets.erase(player_id)
+## Phase 115 — a bucket outlives its player: dropping it on disconnect let a reconnect refill it. Only
+## buckets that have refilled completely (idle `CHAT_BURST / CHAT_LINES_PER_SEC` seconds) are pruned,
+## and only once `MAX_BUCKETS` are held, so the map stays bounded without forgiving a recent flood.
+func _on_player_left(_player_id: String) -> void:
+	_prune_buckets()
+
+func _prune_buckets() -> void:
+	if _buckets.size() <= MAX_BUCKETS:
+		return
+	var now: float = now_sec.call()
+	var full_after := float(CHAT_BURST) / CHAT_LINES_PER_SEC
+	for pid in _buckets.keys():
+		if now - float(_buckets[pid]["at"]) >= full_after:
+			_buckets.erase(pid)
 
 # ---------------------------------------------------------------------------
 # Commands (host)
@@ -229,16 +246,19 @@ func _cmd_tp(speaker: String, args: Array) -> void:
 		if not where["known"]:
 			_reply(speaker, "Position of %s is unknown." % _handle_of(target))
 			return
-		_teleport(speaker, where["pos"])
+		if not _teleport(speaker, where["pos"]):
+			_reply(speaker, "Could not teleport: no way to move %s here." % _handle_of(speaker))
+			return
 		_reply(speaker, "Teleported to %s." % _handle_of(target))
 		return
 	var p := ChatCommands.parse_position(args)
 	if not p["ok"]:
 		_reply(speaker, "%s  (%s)" % [p["error"], ChatCommands.USAGE["tp"]])
 		return
-	var wp := WorldPos.from_world(p["pos"].x, p["pos"].y, p["pos"].z)
-	_teleport(speaker, wp)
-	_reply(speaker, "Teleported to %s." % _fmt(p["pos"]))
+	if not _teleport(speaker, p["pos"]):
+		_reply(speaker, "Could not teleport: no way to move %s here." % _handle_of(speaker))
+		return
+	_reply(speaker, "Teleported to %s." % _fmt(p["world"]))
 
 func _cmd_bring(speaker: String, args: Array) -> void:
 	if args.size() != 1:
@@ -252,7 +272,9 @@ func _cmd_bring(speaker: String, args: Array) -> void:
 	if not here["known"]:
 		_reply(speaker, "Your position is unknown.")
 		return
-	_teleport(target, here["pos"])
+	if not _teleport(target, here["pos"]):
+		_reply(speaker, "%s is not reachable." % _handle_of(target))
+		return
 	_reply(speaker, "Brought %s to you." % _handle_of(target))
 
 func _cmd_give(speaker: String, args: Array) -> void:
@@ -314,14 +336,16 @@ func _cmd_kill(speaker: String, args: Array) -> void:
 # Helpers (host)
 # ---------------------------------------------------------------------------
 
-## `pos` is an exact `{chunk, local}` record.
-func _teleport(target: String, pos: Dictionary) -> void:
+## `pos` is an exact `{chunk, local}` record. True only when the move was applied (local body) or sent
+## (a reachable peer); false when there is nobody to move.
+func _teleport(target: String, pos: Dictionary) -> bool:
 	if _is_local(target):
 		GameBus.player_teleport.emit(pos)
-		return
+		return true
 	var peer := _peer_of(target)
-	if networking != null and peer > 1:
-		networking.send_teleport(peer, pos)
+	if networking == null or peer <= 1:
+		return false
+	return networking.send_teleport(peer, pos)
 
 ## Where a player is, as an exact `{chunk, local}` record: the local body, or the host's last-known
 ## exact report for a peer (the float path only when the peer sent nothing exact).
@@ -395,8 +419,8 @@ func _resolve_speaker(player_id: String) -> String:
 		return player_id
 	return player_registry.local_player_id if player_registry != null else ""
 
-func _fmt(pos: Vector3) -> String:
-	return "%.1f, %.1f, %.1f" % [pos.x, pos.y, pos.z]
+func _fmt(world: Array) -> String:
+	return "%.1f, %.1f, %.1f" % [world[0], world[1], world[2]]
 
 func _post(channel: String, sender: String, text: String, target: String) -> void:
 	GameBus.chat_posted.emit(channel, sender, text, target)

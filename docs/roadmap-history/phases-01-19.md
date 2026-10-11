@@ -196,7 +196,7 @@ multiplayer state — ready to guide engine implementation and art production.
 - Animation state machine covers at minimum: idle, walk, run, fall, land, attack,
   death — with transition conditions and blend parameters specified
 - The asset pipeline checklist is complete (sign-offs recorded in `characters.md` §41.1; the
-  art/engineering agreement itself is a human judgement and is not an automated criterion)
+  art/engineering agreement itself is a human judgement, not an automated criterion, and was never checked by a run)
 
 ---
 
