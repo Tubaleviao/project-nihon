@@ -167,6 +167,7 @@ static func steps() -> Array:
 		{ "name": "spawn_near_friend", "compare": true },
 		{ "name": "chunk_record_synced", "compare": true },
 		{ "name": "frontier_record_synced", "compare": true },
+		{ "name": "tree_cleared",      "compare": true },
 	]
 
 ## The step names, comma-joined — the payload of the `plan` line the runner prints
@@ -354,6 +355,7 @@ func run(root: Node, role: String) -> void:
 	await _step_spawn_near_friend()
 	await _step_chunk_record_synced()
 	await _step_frontier_record_synced()
+	await _step_tree_cleared()
 	_finish()
 
 ## End this process, with the run's own verdict carried in the exit code.
@@ -1178,6 +1180,26 @@ func _step_chunk_record_synced() -> void:
 		_report("chunk_record_synced", "fail", "no_record_received")
 		return
 	_report("chunk_record_synced", "ok", _record_detail(ChunkRecords.get_record(chunk)))
+
+## Phase 116 — a cleared tree leaves the client's table. Both sides derive the same target (the last
+## in-reach tree by id, so it is not one an earlier step chopped); the host clears it as a building
+## would, the client waits for it to vanish and both report the id.
+func _step_tree_cleared() -> void:
+	var targets := _targets()
+	if targets.is_empty():
+		_report("tree_cleared", "fail", "no_in_reach_target")
+		return
+	var t := str(targets[targets.size() - 1])
+	if _role == "host":
+		if _root._tree.get_tree_record(t).is_empty():
+			_report("tree_cleared", "fail", "host_has_no_tree")
+			return
+		_root._tree._clear_tree(t)
+		await _await_settle(1.0)
+		_report("tree_cleared", verdict(_root._tree.get_tree_record(t).is_empty(), true), t)
+		return
+	var gone: bool = await _await_until(func(): return _root._tree.get_tree_record(t).is_empty(), STEP_TIMEOUT_SECS)
+	_report("tree_cleared", verdict(gone, true), t if gone else "still_standing")
 
 ## Phase 113 — a frontier record reaches the client.
 ##

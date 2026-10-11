@@ -136,7 +136,7 @@ issue number where the criterion used to be.
 | 113 | Frontier generation: a new generator version meets recorded land | Done | below |
 | 114 | Generation record and frontier cleanup sweep | Done | below |
 | 115 | Chat, admin and test-tooling cleanup sweep | Done | below |
-| 116 | Tree clears follow chunks onto clients | Planned | below |
+| 116 | Tree clears follow chunks onto clients | Done | below |
 | 117 | Map waypoints, HUD toasts and an explored set that scales | Planned | below |
 | 118 | Void bursts, the survivor flag and the VoidTouched unlock | Planned | below |
 | 119 | An injected network transport and a compact per-tick wire form | Planned | below |
@@ -708,7 +708,7 @@ below in one PR.
 
 ---
 
-## Phase 116 — Tree clears follow chunks onto clients
+## Phase 116 — Tree clears follow chunks onto clients ✅ Done
 
 **Goal:** Phase 110 pins trees per chunk and clears them where players build, but a client learns about
 clears only from its join snapshot and live `tree_cleared` events. A chunk that streams in later shows
@@ -744,19 +744,19 @@ tree record with the chunk, wraps every coordinate, bounds client memory and pro
   chunks; `src/tests/net_harness.gd` gains a `tree_cleared` step (#274, #273).
 
 **Acceptance criteria:**
-- [ ] Suite: a chunk streamed in after a clear spawns without the cleared tree on a client that was not
+- [x] Suite: a chunk streamed in after a clear spawns without the cleared tree on a client that was not
   in the clear's snapshot window.
-- [ ] Suite: a clear at the world seam (chunk X = −1 vs the wrapped lap) removes the same trees as one
+- [x] Suite: a clear at the world seam (chunk X = −1 vs the wrapped lap) removes the same trees as one
   away from the seam; a mine 8 m below a tree does not clear it.
-- [ ] Suite: a station on a chunk edge clears a tree in the unloaded neighbour, which stays cleared when
+- [x] Suite: a station on a chunk edge clears a tree in the unloaded neighbour, which stays cleared when
   that chunk loads.
-- [ ] Suite: `_cleared_local` refuses out-of-range ids and never exceeds its cap; it is empty after the
+- [x] Suite: `_cleared_local` refuses out-of-range ids and never exceeds its cap; it is empty after the
   chunk is evicted; the MultiMesh slot of a cleared tree is released.
-- [ ] Suite: `normalize_gen` keeps `b`/`h` when only `t` is malformed; a tree-only update leaves the
+- [x] Suite: `normalize_gen` keeps `b`/`h` when only `t` is malformed; a tree-only update leaves the
   `ChunkRecords` revision unchanged.
-- [ ] `npm run validate` rejects a tree density above `GEN_TREE_MAX`; `npm run check-drift` green.
-- [ ] Harness: the new `tree_cleared` step passes (host clears, client removes the same tree).
-- [ ] Suite green on both boot paths, harness green.
+- [x] `npm run validate` rejects a tree density above `GEN_TREE_MAX`; `npm run check-drift` green.
+- [x] Harness: the new `tree_cleared` step passes (host clears, client removes the same tree).
+- [x] Suite green on both boot paths, harness green.
 
 ---
 
