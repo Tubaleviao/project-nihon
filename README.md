@@ -139,6 +139,10 @@ npm run generate  # generate the design bible into bible/
 | 116 | Tree clears follow chunks onto clients | Planned |
 | 117 | Map waypoints, HUD toasts and an explored set that scales | Planned |
 | 118 | Void bursts, the survivor flag and the VoidTouched unlock | Planned |
+| 119 | An injected network transport and a compact per-tick wire form | Planned |
+| 120 | The distant ring draws recorded land | Planned |
+| 121 | Crash-consistent saves | Planned |
+| 122 | Far terrain without mirroring and one scene-offset helper | Planned |
 
 See [ROADMAP.md](ROADMAP.md) for open phases and deferred work. Completed phases are archived in [docs/roadmap-history/](docs/roadmap-history/README.md) with their full spec and acceptance criteria.
 
