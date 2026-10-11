@@ -124,13 +124,14 @@ module.exports = {
       recipe: recipeData({
         domain: 'arcane',
         station: 'void-shielded workshop',
-        inputs: [{ item: 'Voidite', quantity: 1 }, { item: 'LumenfiteOrb', quantity: 1 }],
+        inputs: [{ item: 'RefinedVoiditeShard', quantity: 1 }, { item: 'LumenfiteOrb', quantity: 1 }],
         outputs: [{ item: 'VoidRuneTablet', quantity: 1 }],
         skillGuards: [{ skill: 'VoidSmithing', tier: 'expert' }],
+        profession: 'VoidTouched',
       }),
     },
     relations: {
-      inputVoidite:  { name: 'inputVoidite',  kind: 'hasOne', target: 'Voidite' },
+      inputVoidite:  { name: 'inputVoidite',  kind: 'hasOne', target: 'RefinedVoiditeShard' },
       inputOrb:      { name: 'inputOrb',      kind: 'hasOne', target: 'LumenfiteOrb' },
       output:        { name: 'output',        kind: 'hasOne', target: 'VoidRuneTablet' },
     },

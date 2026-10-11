@@ -6,6 +6,7 @@
 script = ExtResource("1")
 id = ""
 status = 0
+unlock = {"skills":[{"skill":"VoidMagic","tier":"expert"},{"skill":"VoidSmithing","tier":"expert"}],"requiresFlag":"voidBurstSurvivor"}
 state_machine_field = "status"
 initial_state = "locked"
 description = "A rare hybrid who has survived void exposure and mastered both its magic and its smithing. Produces the most powerful items in the game and wields the only magic that bypasses veilsteel. Cannot be chosen — it is unlocked only through in-world experimentation."

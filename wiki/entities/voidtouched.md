@@ -16,6 +16,7 @@ A rare hybrid who has survived void exposure and mastered both its magic and its
 | Field | Type | Description |
 | ----- | ---- | ----------- |
 | status | `locked`, `active`, `mastered` |  |
+| unlock | json | Structured unlock data: the skill tiers that must all be held and the player flag that must be set. |
 
 ## Related
 

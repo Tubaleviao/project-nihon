@@ -90,7 +90,7 @@ module.exports = {
       researchCost: { type: 'integer', description: 'Research points required to complete' },
       tier:   { type: 'integer', description: 'Technology tree tier' },
       tech: techData({
-        unlocks: ['RecipeVeilsteelIngot', 'RecipeVeilsteelLongsword', 'RecipeVeilsteelChestplate', 'RecipeAshiteBlock'],
+        unlocks: ['RecipeVeilsteelIngot', 'RecipeVeilsteelLongsword', 'RecipeVeilsteelChestplate', 'RecipeAshiteBlock', 'RecipeRefinedVoiditeShard'],
         requires: ['TechBasicSmithing'],
         researchDuration: 45,
         researchMaterials: [{ item: 'Ashite', quantity: 20 }],
@@ -102,6 +102,7 @@ module.exports = {
       unlocksRecipeVeilsteelLongsword:  { name: 'unlocksRecipeVeilsteelLongsword',  kind: 'hasOne', target: 'RecipeVeilsteelLongsword' },
       unlocksRecipeVeilsteelChestplate: { name: 'unlocksRecipeVeilsteelChestplate', kind: 'hasOne', target: 'RecipeVeilsteelChestplate' },
       unlocksRecipeAshiteBlock:         { name: 'unlocksRecipeAshiteBlock',         kind: 'hasOne', target: 'RecipeAshiteBlock' },
+      unlocksRecipeRefinedVoiditeShard: { name: 'unlocksRecipeRefinedVoiditeShard', kind: 'hasOne', target: 'RecipeRefinedVoiditeShard' },
     },
     stateMachine: technologyStateMachine(),
     behaviors: {

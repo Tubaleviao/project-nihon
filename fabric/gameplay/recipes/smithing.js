@@ -212,4 +212,42 @@ module.exports = {
     },
   }),
 
+
+  // ─── RecipeRefinedVoiditeShard ────────────────────────────────────────────
+  RecipeRefinedVoiditeShard: defineEntity({
+    tags: ['recipe'],
+    description:
+      'Stabilise one raw voidite crystal into a refined voidite shard at a forge. The refining can fail with a void burst.',
+    goal: 'Entry point of the void progression chain; surviving a burst grants the voidBurstSurvivor flag',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'smithing',
+        station: 'forge',
+        inputs: [{ item: 'Voidite', quantity: 1 }],
+        outputs: [{ item: 'RefinedVoiditeShard', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'journeyman' }],
+        burst: { chance: 0.15, damage: 40, grantsFlag: 'voidBurstSurvivor' },
+      }),
+    },
+    relations: {
+      inputVoidite: { name: 'inputVoidite', kind: 'hasOne', target: 'Voidite' },
+      output:       { name: 'output',       kind: 'hasOne', target: 'RefinedVoiditeShard' },
+    },
+    behaviors: {
+      craft: {
+        description: 'Stabilise raw voidite through void-tuned smelting in a forge',
+        rules: [
+          'Requires Smithing: Journeyman',
+          'Requires a player-built forge',
+          'One raw voidite crystal yields one refined shard',
+          'Each attempt may end in a void burst: the input is consumed, no shard is produced and the crafter takes burst damage; a crafter who survives gains the voidBurstSurvivor flag',
+        ],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
 }

@@ -29,3 +29,4 @@ enum Tier {
 @export var xpCurve: int
 @export var maxLevel: int
 @export var category: int
+@export var flagGate: Dictionary

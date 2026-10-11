@@ -16,6 +16,7 @@ Esoteric art of working with void-touched materials, primarily Voidite, inside a
 | `xpCurve` | enum (`linear`, `quadratic`, `exponential`) | yes | XP required per tier |
 | `maxLevel` | integer | yes | Maximum XP level within a tier before tier advance is required |
 | `category` | enum (`combat`, `crafting`, `magic`, `exploration`, `social`) | yes | Skill domain: crafting |
+| `flagGate` | json | yes | Structured flag gate: the player flag that must be held before this skill can be used or advanced (the skill is not tutored). |
 
 ### State machine
 

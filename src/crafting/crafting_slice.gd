@@ -58,6 +58,9 @@ extends Node
 ## spent the host's materials on the host's tool.
 const Diag := preload("res://src/core/diag.gd")
 
+const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
+const PlayerRules := preload("res://src/core/player_rules.gd")
+
 ## Shared skill-tier ordering (novice → master) — see src/core/skill_tiers.gd.
 const SkillTiers := preload("res://src/core/skill_tiers.gd")
 
@@ -82,6 +85,19 @@ var technology_slice: Node = null
 ## Set by game_root so recipes are gated behind a nearby crafting station. When
 ## null (isolated unit tests) the gate is not applied.
 var station_slice: Node = null
+
+## Phase 118 — collaborators of the void-burst chain, set by game_root. `flag_store`
+## (TamingSlice) owns the player flags (`has_flag` / `grant_flag`); `profession_slice`
+## answers a recipe's `profession` gate; `player_slice` is the local body's live HP and
+## `terrain_slice` the world seed. All null in isolated tests: a flag or profession gate
+## then fails CLOSED, the burst roll falls back to seed 0 and the local HP to the record.
+var flag_store: Node = null
+var profession_slice: Node = null
+var player_slice: Node = null
+var terrain_slice: Node = null
+
+## Fallback per-player burst-craft counter when no registry is wired (isolated tests).
+var _local_craft_counters: Dictionary = {}
 
 ## Radius (m) within which a recipe's required station must be placed.
 const STATION_RADIUS: float = 8.0
@@ -134,6 +150,10 @@ func craft(recipe_id: String, player_id: String = "") -> Dictionary:
 	if station_reason != "":
 		return _fail(recipe_id, station_reason, pid)
 
+	var profession_reason := _check_profession_gate(recipe, pid)
+	if profession_reason != "":
+		return _fail(recipe_id, profession_reason, pid)
+
 	var inputs: Array = recipe.get("inputs", [])
 	var outputs: Array = recipe.get("outputs", [])
 
@@ -154,9 +174,19 @@ func craft(recipe_id: String, player_id: String = "") -> Dictionary:
 	if not inventory.can_add_items(_to_counts(outputs)):
 		return _fail(recipe_id, "inventory_full", pid)
 
+	# Phase 118 — a recipe with `burst` data rolls on the host BEFORE anything is taken, so
+	# the draw depends only on (world seed, player, counter), never on the outcome.
+	var burst_spec: Dictionary = recipe.get("burst", {}) if recipe.get("burst", {}) is Dictionary else {}
+	var burst_hit := false
+	if not burst_spec.is_empty() and is_authoritative:
+		burst_hit = _roll_burst(pid, float(burst_spec.get("chance", 0.0)))
+
 	# Consume inputs, then produce outputs.
 	if not inventory.consume_items(_to_counts(inputs)):
 		return _fail(recipe_id, "missing_inputs", pid)
+
+	if burst_hit:
+		return _resolve_burst(recipe_id, burst_spec, pid)
 
 	var produced: Array = []
 	for entry in outputs:
@@ -184,6 +214,9 @@ func can_craft(recipe_id: String, player_id: String = "") -> Dictionary:
 	var station_reason := _check_station_gate(recipe)
 	if station_reason != "":
 		return _result(recipe_id, false, [], station_reason, pid)
+	var profession_reason := _check_profession_gate(recipe, pid)
+	if profession_reason != "":
+		return _result(recipe_id, false, [], profession_reason, pid)
 	var inventory := inventory_for(pid)
 	if inventory == null:
 		return _result(recipe_id, false, [], "no_inventory", pid)
@@ -218,6 +251,9 @@ func set_skill_for(player_id: String, skill: String, tier: String) -> bool:
 		_skill_tiers[skill] = tier
 	if pid != "" and player_registry != null and player_registry.has_method("record_skill"):
 		player_registry.record_skill(pid, skill, tier)
+	# Phase 118 — a raised tier may complete a profession's unlock conditions.
+	if profession_slice != null and pid != "":
+		profession_slice.evaluate(pid)
 	return true
 
 ## The tier a player holds in a skill. Because `player_id` defaults to "" (THIS
@@ -447,7 +483,92 @@ func _check_skill_guards(spec: Dictionary, player_id: String = "") -> String:
 		var required_tier: String = str(guard.get("tier", "novice"))
 		if SkillTiers.rank(get_skill_for(player_id, skill)) < SkillTiers.rank(required_tier):
 			return "skill_requirement:%s:%s" % [skill, required_tier]
+		# Phase 118 — a skill that is not tutored (fabric `flagGate`) also needs its flag.
+		var flag := _skill_flag_gate(skill)
+		if flag != "" and (flag_store == null or not flag_store.has_flag(player_id, flag)):
+			return "requires_flag:%s" % flag
 	return ""
+
+## The player flag a skill is gated behind (its fabric `flagGate.requiresFlag`), or "".
+func _skill_flag_gate(skill: String) -> String:
+	var res: Resource = GameData.SKILLS.get(skill, null)
+	if res == null:
+		return ""
+	var gate = res.get("flagGate")
+	return str((gate as Dictionary).get("requiresFlag", "")) if gate is Dictionary else ""
+
+## Return "" when the recipe names no profession or the player has unlocked it, else a
+## `requires_profession:<name>` reason. Fails closed when the profession slice is not wired.
+func _check_profession_gate(recipe: Dictionary, player_id: String) -> String:
+	var profession := str(recipe.get("profession", ""))
+	if profession == "":
+		return ""
+	if profession_slice != null and profession_slice.is_unlocked(player_id, profession):
+		return ""
+	return "requires_profession:%s" % profession
+
+## The deterministic burst draw in [0, 1): a mix of (world seed, player id, counter), so
+## a fixed seed and player replay the same sequence and a client has nothing to roll.
+static func burst_roll(world_seed: int, player_id: String, counter: int) -> float:
+	var h: int = hash([world_seed, player_id, counter]) & 0xFFFFFFFF
+	# Finalizer (xorshift-multiply) so neighbouring counters do not give neighbouring draws.
+	h = ((h >> 16) ^ h) * 0x45D9F3B & 0xFFFFFFFF
+	h = ((h >> 16) ^ h) * 0x45D9F3B & 0xFFFFFFFF
+	h = (h >> 16) ^ h
+	return float(h & 0xFFFFFF) / 16777216.0
+
+## Take the next draw for `player_id` and report whether it is a burst. The counter
+## advances on every burst-capable craft that reaches the roll and is durable.
+func _roll_burst(player_id: String, chance: float) -> bool:
+	var counter := 0
+	if player_registry != null and player_id != "" and player_registry.has_method("get_craft_counter"):
+		counter = int(player_registry.get_craft_counter(player_id))
+		player_registry.record_craft_counter(player_id, counter + 1)
+	else:
+		counter = int(_local_craft_counters.get(player_id, 0))
+		_local_craft_counters[player_id] = counter + 1
+	var world_seed := 0
+	if terrain_slice != null and terrain_slice.has_method("get_world_seed"):
+		world_seed = int(terrain_slice.get_world_seed())
+	return burst_roll(world_seed, player_id, counter) < chance
+
+## The crafter's HP as the host holds it: the live body for the local player, else the
+## record's host-simulated number; an unmodelled body reads as full health.
+func _hp_of(player_id: String) -> float:
+	var hp := -1.0
+	if player_id == "" or player_id == local_player_id():
+		if player_slice != null and player_slice.has_method("get_hp"):
+			hp = float(player_slice.get_hp())
+	if hp < 0.0 and player_registry != null and player_id != "":
+		hp = float(player_registry.get_hp(player_id))
+	return hp
+
+## A burst: the input is already consumed and nothing is produced. The crafter takes the
+## authored damage through the host-simulated HP (the bus round game_root applies to a
+## peer's record, PlayerSlice to the local body); one who survives gains the flag.
+func _resolve_burst(recipe_id: String, spec: Dictionary, player_id: String) -> Dictionary:
+	var damage := float(spec.get("damage", 0.0))
+	var after := PlayerRegistry.simulated_hp_after_hit(_hp_of(player_id), damage, PlayerRules.MAX_HP)
+	var survived := after > PlayerRegistry.HP_EPSILON
+	var is_local := player_id == "" or player_id == local_player_id()
+	GameBus.player_damaged.emit(damage, "void_burst", "player" if is_local else player_id)
+	var flag := ""
+	if survived:
+		flag = str(spec.get("grantsFlag", ""))
+		if flag != "" and flag_store != null and player_id != "":
+			flag_store.grant_flag(player_id, flag)
+			if profession_slice != null:
+				profession_slice.evaluate(player_id)
+		elif flag_store == null:
+			flag = ""
+	GameBus.void_burst_resolved.emit({
+		"recipe_id": recipe_id, "player_id": player_id, "damage": damage,
+		"survived": survived, "flag": flag,
+	})
+	var result := _result(recipe_id, false, [], "void_burst", player_id)
+	result["burst"] = { "damage": damage, "survived": survived, "flag": flag }
+	GameBus.craft_resolved.emit(result)
+	return result
 
 ## Return "" when the recipe's owning technology is unlocked (or no technology
 ## slice is wired — isolated unit tests), or a `technology_locked:<tech>` reason

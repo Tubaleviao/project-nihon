@@ -1,0 +1,16 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/items/refinedvoiditeshard.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+condition = 0
+weight = 0.1
+rarity = 2
+stackable = true
+durability = 80
+state_machine_field = "condition"
+initial_state = "pristine"
+description = "Raw voidite stabilised in a forge into a crystalline shard. The input of void rune etching and the repair material for voidite blades."
+tags = ["item"]

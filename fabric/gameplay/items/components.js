@@ -192,4 +192,33 @@ module.exports = {
     },
   }),
 
+
+  // ─── RefinedVoiditeShard ──────────────────────────────────────────────────
+  RefinedVoiditeShard: defineEntity({
+    tags: ['item'],
+    description:
+      'Raw voidite stabilised in a forge into a crystalline shard. ' +
+      'The input of void rune etching and the repair material for voidite blades.',
+    goal: 'Discrete refined form of voidite; the product of the risky refining recipe',
+    fields: {
+      id:        { type: 'uuid', primaryKey: true },
+      condition: { type: 'enum', values: DURABILITY_STATES },
+      weight:    { type: 'decimal', description: 'kg per shard', defaultValue: 0.1 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'rare' },
+      stackable: { type: 'boolean', description: 'True; stacks up to 20 per slot', defaultValue: true },
+      durability: { type: 'integer', description: 'Crystal integrity', defaultValue: 80 },
+    },
+    relations: {
+      voidite: { name: 'voidite', kind: 'hasOne', target: 'Voidite' },
+    },
+    stateMachine: consumableStateMachine(),
+    behaviors: {
+      degrade: {
+        description: 'Shard integrity degrades outside void-lined storage',
+        rules: ['Stored in a standard forge area: degrades one tier per in-game day'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
 }

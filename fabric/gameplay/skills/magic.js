@@ -56,6 +56,11 @@ module.exports = {
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
       category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: magic' },
+      flagGate: {
+        type: 'json',
+        description: 'Structured flag gate: the player flag that must be held before this skill can be used or advanced (the skill is not tutored).',
+        defaultValue: { requiresFlag: 'voidBurstSurvivor' },
+      },
     },
     stateMachine: skillStateMachine(),
     behaviors: {

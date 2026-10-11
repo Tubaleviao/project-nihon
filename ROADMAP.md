@@ -138,7 +138,7 @@ issue number where the criterion used to be.
 | 115 | Chat, admin and test-tooling cleanup sweep | Done | below |
 | 116 | Tree clears follow chunks onto clients | Done | below |
 | 117 | Map waypoints, HUD toasts and an explored set that scales | Done | below |
-| 118 | Void bursts, the survivor flag and the VoidTouched unlock | Planned | below |
+| 118 | Void bursts, the survivor flag and the VoidTouched unlock | Done | below |
 | 119 | An injected network transport and a compact per-tick wire form | Planned | below |
 | 120 | The distant ring draws recorded land | Planned | below |
 | 121 | Crash-consistent saves | Planned | below |
@@ -813,7 +813,7 @@ that stays cheap at its cap.
 
 ---
 
-## Phase 118 — Void bursts, the survivor flag and the VoidTouched unlock
+## Phase 118 — Void bursts, the survivor flag and the VoidTouched unlock ✅ Done
 
 **Goal:** the fabric says voidite refining can fail with a void burst, that surviving one grants the
 `voidBurstSurvivor` flag, and that the flag gates the Void Smithing skill, enchanting voidite and the
@@ -843,16 +843,16 @@ profession unlock (deferred from Phase 13). This phase wires the chain end to en
 - `ROADMAP.md` — the deferred `VoidTouched` bullet is marked delivered.
 
 **Acceptance criteria:**
-- [ ] `npm run validate`, `npm run generate`, `npm run check-drift` green; `GameData` has the refining
+- [x] `npm run validate`, `npm run generate`, `npm run check-drift` green; `GameData` has the refining
   recipe with its burst data and the `VoidTouched` unlock data.
-- [ ] Suite: for a fixed seed and player the burst sequence is identical across runs, and its rate over
+- [x] Suite: for a fixed seed and player the burst sequence is identical across runs, and its rate over
   10,000 crafts is within 1 percentage point of the authored chance.
-- [ ] Suite: a burst consumes the input, damages the crafter by the authored amount, and sets the flag
+- [x] Suite: a burst consumes the input, damages the crafter by the authored amount, and sets the flag
   only when the crafter survives; the flag survives a save/load.
-- [ ] Suite: a flag-gated skill guard refuses without the flag and passes with it; `VoidTouched`
+- [x] Suite: a flag-gated skill guard refuses without the flag and passes with it; `VoidTouched`
   unlocks only when both tiers and the flag hold, and a recipe naming it is refused before.
-- [ ] Suite: a client's craft intent never rolls locally; the host's result reaches only the crafter.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite: a client's craft intent never rolls locally; the host's result reaches only the crafter.
+- [x] Suite green on both boot paths, harness green.
 
 ---
 
@@ -1102,7 +1102,8 @@ of the terrain issue below.
   in the fabric but not enforced at runtime (deferred from Phase 13).
 - **`VoidTouched` special-case unlock** — the void-burst survivor unlock trigger
   is defined in the fabric but not wired to any runtime event (deferred from
-  Phase 13). **(scheduled: Phase 118.)**
+  Phase 13). **(closed: Phase 118 — a refining craft can burst, survivors get
+  `voidBurstSurvivor`, and `ProfessionSlice` unlocks `VoidTouched`.)**
 - **Station placement UI** — **(closed: placement is grid-snapped to 1 m cells and
   refuses overlap via `StationSlice.try_place_station`; N toggles a translucent
   green/red preview ghost and V places at the aimed top face or the player's feet.
