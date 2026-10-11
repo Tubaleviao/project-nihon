@@ -6,7 +6,8 @@ extends RefCounted
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 
-const WHERE := "/where"
+const WHERE_NAME := "where"
+const WHERE := "/" + WHERE_NAME
 
 ## Longest chat line accepted, in characters. The wire cap (`MAX_CLIENT_PACKET_BYTES`) is far above it.
 const MAX_MESSAGE_CHARS := 240
@@ -23,7 +24,7 @@ const ADMIN_COMMANDS := ["say", "tp", "bring", "give", "kill"]
 const USAGE := {
 	"help":    "/help — list commands",
 	"players": "/players — who is online",
-	"where":   "/where — your position",
+	WHERE_NAME: WHERE + " — your position",
 	"say":     "/say <message> — global announcement",
 	"tp":      "/tp <x> <y> <z> | /tp <player> — teleport yourself",
 	"bring":   "/bring <player> — teleport a player to you",
@@ -78,14 +79,14 @@ static func is_admin_command(name: String) -> bool:
 	return name in ADMIN_COMMANDS
 
 static func is_known(name: String) -> bool:
-	return name in PLAYER_COMMANDS or name in ADMIN_COMMANDS or ("/" + name) == WHERE
+	return name in PLAYER_COMMANDS or name in ADMIN_COMMANDS or name == WHERE_NAME
 
 ## The `/help` text for a caller; admins also see the admin set.
 static func help_lines(admin: bool) -> Array:
 	var lines: Array = []
 	for name in PLAYER_COMMANDS:
 		lines.append(USAGE[name])
-	lines.append(USAGE["where"])
+	lines.append(USAGE[WHERE_NAME])
 	if admin:
 		for name in ADMIN_COMMANDS:
 			lines.append(USAGE[name])

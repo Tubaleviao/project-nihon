@@ -18,6 +18,8 @@ extends Control
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const BiomeBlend := preload("res://src/terrain/biome_blend.gd")
 const RevealedStore := preload("res://src/persistence/revealed_store.gd")
+const WorldPos := preload("res://src/terrain/world_pos.gd")
+const MapMath := preload("res://src/ui/map_math.gd")
 const CHUNK_SIZE := TerrainSlice.CHUNK_METERS   # world units per chunk
 
 ## Reveal this many chunks around the player's current chunk (Chebyshev radius).
@@ -52,7 +54,7 @@ var player_slice: Node = null
 var clock_text: String = ""
 var terrain_slice: Node = null
 
-## Explored chunks, keyed "cx,cz" -> true. Persistent for the session: once
+## Explored chunks, keyed by `Vector2i` -> true, oldest first. Persistent for the session: once
 ## revealed, a chunk stays on the map even after it streams out of view.
 var _revealed: Dictionary = {}
 
@@ -67,6 +69,10 @@ var _revealed_rev: int = 0   # bumps whenever the explored set gains a chunk or 
 var _seed_stable_for: float = 0.0   # seconds the world seed has read the same
 var _seen_seed: int = 0
 var _revealed_dirty_for: float = -1.0   # seconds since the set last changed; -1 = clean
+## Phase 117 — the write runs on a worker given a snapshot; one at a time.
+var _save_thread: Thread = null
+## Phase 117 — player waypoints: [{ name, pos: {chunk, local} }], saved with the explored set.
+var _waypoints: Array = []
 
 ## Emitted when the minimap is clicked: the HUD opens the Map window.
 signal open_requested
@@ -117,9 +123,8 @@ func _reveal_around(center: Vector2i) -> void:
 		for dx in range(-REVEAL_RADIUS, REVEAL_RADIUS + 1):
 			var c := center + Vector2i(dx, dz)
 			if _in_world(c):
-				var k := _chunk_key(c)
-				if not _revealed.has(k):
-					_revealed[k] = true
+				if not _revealed.has(c):
+					_revealed[c] = true
 					if _revealed_dirty_for < 0.0:   # the debounce runs from the first change, so steady walking still saves
 						_revealed_dirty_for = 0.0
 					_revealed_rev += 1
@@ -144,12 +149,17 @@ func _tick_revealed_store(delta: float) -> void:
 		_seed_stable_for = 0.0
 	elif _seed_stable_for < SEED_SETTLE_SECONDS:
 		_seed_stable_for += delta
-	if not _revealed_loaded and _seed_stable_for < SEED_SETTLE_SECONDS:
+	_collect_save()
+	# A seed that has just changed is not trusted until it holds still, before the first load and after.
+	if (not _revealed_loaded or s != _revealed_seed) and _seed_stable_for < SEED_SETTLE_SECONDS:
 		return
 	if not _revealed_loaded or s != _revealed_seed:
 		if _revealed_loaded:
-			save_revealed()
+			# The set belongs to the seed that just went away (usually the throwaway boot seed): it
+			# is dropped, never written under a file name it may not deserve.
 			_revealed.clear()
+			_waypoints.clear()
+			_revealed_dirty_for = -1.0
 			_revealed_rev += 1
 		_revealed_seed = s
 		_revealed_loaded = true
@@ -161,16 +171,27 @@ func _tick_revealed_store(delta: float) -> void:
 
 func _exit_tree() -> void:
 	if _revealed_dirty_for >= 0.0:
-		save_revealed()
+		save_revealed(true)
+	else:
+		finish_save()
 
 func load_revealed() -> void:
+	var got := RevealedStore.load_all(RevealedStore.path_for(revealed_dir, _revealed_seed), _revealed_seed)
 	var fresh: Dictionary = {}
-	for c in RevealedStore.load_file(RevealedStore.path_for(revealed_dir, _revealed_seed), _revealed_seed):
-		fresh[_chunk_key(c)] = true
+	for c in got["chunks"]:
+		var w := TerrainSlice.wrap_chunk(c)   # a file from another circumference wraps onto this one
+		if _in_world(w):
+			fresh[w] = true
 	for k in _revealed:   # chunks seen since boot are the newest
 		fresh.erase(k)
 		fresh[k] = true
 	_revealed = fresh
+	if _waypoints.is_empty():   # waypoints placed before the load are kept, the file's ones fill the rest
+		_waypoints = got["waypoints"]
+	else:
+		for w in got["waypoints"]:
+			if _waypoints.size() < RevealedStore.MAX_WAYPOINTS:
+				_waypoints.append(w)
 	_revealed_rev += 1
 	RevealedStore.cap(_revealed)
 	queue_redraw()
@@ -183,21 +204,98 @@ func is_revealed_loaded() -> bool:
 func revealed_revision() -> int:
 	return _revealed_rev
 
-func save_revealed() -> void:
+## Write the set and the waypoints. The main thread hands a snapshot to a worker; `blocking` writes
+## here and now instead (shutdown, tests). A write still running when the next is due retries after
+## the next debounce.
+func save_revealed(blocking: bool = false) -> void:
 	_revealed_dirty_for = -1.0
-	if revealed_dir != "" and _revealed_loaded:
-		if not RevealedStore.save(RevealedStore.path_for(revealed_dir, _revealed_seed), get_revealed_chunks(), _revealed_seed):
-			_revealed_dirty_for = 0.0   # try again after the next debounce
+	if revealed_dir == "" or not _revealed_loaded:
+		return
+	_collect_save()
+	var path := RevealedStore.path_for(revealed_dir, _revealed_seed)
+	var chunks := RevealedStore.snapshot(_revealed)
+	var wps := _waypoints.duplicate(true)
+	if blocking:
+		finish_save()
+		if not RevealedStore.save(path, chunks, _revealed_seed, wps):
+			_revealed_dirty_for = 0.0
+		return
+	if _save_thread != null:
+		_revealed_dirty_for = 0.0
+		return
+	_save_thread = Thread.new()
+	_save_thread.start(RevealedStore.save.bind(path, chunks, _revealed_seed, wps))
+
+## Join a finished write (a failed one marks the set dirty again).
+func _collect_save() -> void:
+	if _save_thread != null and not _save_thread.is_alive():
+		if not _save_thread.wait_to_finish():
+			_revealed_dirty_for = 0.0
+		_save_thread = null
+
+## Wait for a running write to land.
+func finish_save() -> void:
+	if _save_thread != null:
+		if not _save_thread.wait_to_finish():
+			_revealed_dirty_for = 0.0
+		_save_thread = null
 
 func is_revealed(chunk: Vector2i) -> bool:
-	return _revealed.has(_chunk_key(chunk))
+	return _revealed.has(chunk)
 
 ## All revealed chunk coords, for introspection/tests.
 func get_revealed_chunks() -> Array:
-	var out: Array = []
-	for key in _revealed:
-		out.append(_key_to_chunk(key))
-	return out
+	return _revealed.keys()
+
+# ---------------------------------------------------------------------------
+# Waypoints (Phase 117)
+# ---------------------------------------------------------------------------
+
+## The player's waypoints, oldest first: [{ name, pos: {chunk, local} }].
+func get_waypoints() -> Array:
+	return _waypoints
+
+## Add a named waypoint at the exact `{chunk, local}` position `pos`. Refused (false) when the cap
+## is reached or the position is not a valid world position. An empty name becomes "Waypoint N".
+func add_waypoint(name_text: String, pos: Dictionary) -> bool:
+	if _waypoints.size() >= RevealedStore.MAX_WAYPOINTS:
+		return false
+	var clean := WorldPos.pos_from_wire(WorldPos.pos_to_wire(pos)) if pos.has("chunk") and pos.has("local") else {}
+	if clean.is_empty():
+		return false
+	var label := RevealedStore.clean_name(name_text)
+	if label == "":
+		label = "Waypoint %d" % (_waypoints.size() + 1)
+	_waypoints.append({ "name": label, "pos": clean })
+	if _revealed_dirty_for < 0.0:
+		_revealed_dirty_for = 0.0
+	_revealed_rev += 1
+	queue_redraw()
+	return true
+
+func remove_waypoint(index: int) -> void:
+	if index < 0 or index >= _waypoints.size():
+		return
+	_waypoints.remove_at(index)
+	if _revealed_dirty_for < 0.0:
+		_revealed_dirty_for = 0.0
+	_revealed_rev += 1
+	queue_redraw()
+
+## Where waypoint `index` sits on a minimap of `size`: `MapMath.clamp_home` of its offset from the
+## player in chunks, so a far one sits on the edge with an arrow angle, like home.
+func waypoint_marker(index: int, size: Vector2) -> Dictionary:
+	if index < 0 or index >= _waypoints.size() or _player_chunk == Vector2i(-9999, -9999):
+		return {}
+	var pos: Dictionary = _waypoints[index]["pos"]
+	var wc: Vector2i = pos["chunk"]
+	var wl: Vector3 = pos["local"]
+	var cell_px := minf(size.x, size.y) / _chunks_across
+	var player_local := _player_pos - Vector2(_player_chunk) * CHUNK_SIZE
+	var d := MapMath.delta_m(_player_chunk, player_local, wc, Vector2(wl.x, wl.z))
+	var circ_m := float(TerrainSlice.circumference_chunks()) * CHUNK_SIZE
+	d.x = fposmod(d.x + circ_m * 0.5, circ_m) - circ_m * 0.5   # the short way round the planet
+	return MapMath.clamp_home(d / CHUNK_SIZE * cell_px, size * 0.5, d.length(), 6.0)
 
 ## Chunk coordinate containing a world XZ position.
 func world_to_chunk(world_pos: Vector2) -> Vector2i:
@@ -307,6 +405,14 @@ func _draw() -> void:
 		draw_string(font, Vector2(4.0, size.y - 4.0), TerrainSlice.where_text(player_slice.get_position()),
 			HORIZONTAL_ALIGNMENT_LEFT, size.x - 8.0, 11, Color(1, 1, 1, 0.9))
 
+	# Waypoints sit where they are, or on the edge toward them like home.
+	for i in _waypoints.size():
+		var m := waypoint_marker(i, size)
+		if m.is_empty():
+			continue
+		var wp: Vector2 = Vector2(size.x * 0.5, size.y * 0.5) + m["pos"]
+		draw_colored_polygon(PackedVector2Array([wp + Vector2(0, -4), wp + Vector2(4, 0), wp + Vector2(0, 4), wp + Vector2(-4, 0)]), Color(0.4, 0.9, 1.0))
+
 	# Player arrow — points in the player's facing direction.
 	var dir := _facing_screen_dir(_facing)
 	var angle := atan2(dir.y, dir.x)
@@ -337,7 +443,7 @@ const MIN_CELL_PX := 2.0
 
 const NEIGHBOUR_OFFSETS: Array[Vector2i] = [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]
 
-var _biome_cache: Dictionary = {}   # chunk key -> biome
+var _biome_cache: Dictionary = {}   # chunk -> biome
 var _biome_cache_seed: int = 0
 
 ## Everything the visible window draws, as [rect, colour, filled, width] items in draw order.
@@ -359,7 +465,7 @@ func _view_rects(size: Vector2) -> Array:
 	for cz in range(min_cz, max_cz):
 		for cx in range(min_cx, max_cx):
 			var c := Vector2i(cx, cz)
-			if not _revealed.has(_chunk_key(c)):
+			if not _revealed.has(c):
 				continue
 			var rx := size.x * 0.5 + (cx - _player_chunk.x) * cell_px - cell_px * 0.5
 			var ry := size.y * 0.5 + (cz - _player_chunk.y) * cell_px - cell_px * 0.5
@@ -379,22 +485,20 @@ func _check_seed() -> void:
 		_biome_cache.clear()
 
 func _prune_biome_cache(min_cx: int, max_cx: int, min_cz: int, max_cz: int) -> void:
-	for k in _biome_cache.keys():
-		var c := _key_to_chunk(k)
+	for c in _biome_cache.keys():
 		if c.x < min_cx - 1 or c.x > max_cx or c.y < min_cz - 1 or c.y > max_cz:
-			_biome_cache.erase(k)
+			_biome_cache.erase(c)
 	if _biome_cache.size() > BIOME_CACHE_MAX:
 		_biome_cache.clear()
 
 ## The biome of the chunk, memoised across redraws.
 ## Not cached when no terrain is wired: that fallback must not outlive the wiring.
 func _biome_memo(c: Vector2i) -> String:
-	var k := _chunk_key(c)
-	if _biome_cache.has(k):
-		return _biome_cache[k]
+	if _biome_cache.has(c):
+		return _biome_cache[c]
 	var b := _biome(c)
 	if terrain_slice != null and terrain_slice.has_method("get_biome_at_chunk"):
-		_biome_cache[k] = b
+		_biome_cache[c] = b
 	return b
 
 ## The fill rects of one chunk, appended to `out` as [rect, colour, true, 0.0]. The interior is
@@ -444,7 +548,7 @@ func _cell_biome(c: Vector2i, i: int, j: int, own: String) -> String:
 
 ## True when chunk `c` may lend its colour to a neighbour: revealed, and inside the world.
 func _blendable(c: Vector2i) -> bool:
-	if not _revealed.has(_chunk_key(c)):
+	if not _revealed.has(c):
 		return false
 	if terrain_slice != null and terrain_slice.has_method("world_radius_chunks"):
 		var r: int = terrain_slice.world_radius_chunks()
@@ -473,10 +577,3 @@ func _facing_screen_dir(facing: Vector2) -> Vector2:
 	if facing.length_squared() < 0.0001:
 		return Vector2(0.0, -1.0)
 	return Vector2(facing.x, facing.y).normalized()
-
-func _chunk_key(c: Vector2i) -> String:
-	return "%d,%d" % [c.x, c.y]
-
-func _key_to_chunk(key: String) -> Vector2i:
-	var parts: PackedStringArray = str(key).split(",")
-	return Vector2i(int(parts[0]), int(parts[1]))

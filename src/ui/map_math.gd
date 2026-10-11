@@ -98,3 +98,23 @@ static func clamp_home(offset: Vector2, half: Vector2, distance_m: float, margin
 ## "1.2 km" / "340 m" for the arrow's label.
 static func distance_text(m: float) -> String:
 	return "%.1f km" % (m / 1000.0) if m >= 1000.0 else "%d m" % roundi(m)
+
+## Great-circle step from `from_ll` to `to_ll` (lon/lat radians, latitude north positive as `lonlat` gives
+## it): (central angle in radians, initial bearing in radians clockwise from "up" on the map). The
+## haversine form, stable for short and for near-antipodal steps alike.
+static func great_circle(from_ll: Vector2, to_ll: Vector2) -> Vector2:
+	var dl := wrap_lon(to_ll.x - from_ll.x)
+	var s1 := sin((to_ll.y - from_ll.y) * 0.5)
+	var s2 := sin(dl * 0.5)
+	var h := clampf(s1 * s1 + cos(from_ll.y) * cos(to_ll.y) * s2 * s2, 0.0, 1.0)
+	var angle := 2.0 * asin(sqrt(h))
+	var bearing := atan2(sin(dl) * cos(to_ll.y),
+		cos(from_ll.y) * sin(to_ll.y) - sin(from_ll.y) * cos(to_ll.y) * cos(dl))
+	return Vector2(angle, bearing)
+
+## The metre offset (screen x right, y down) of a great-circle step: length is the arc length on a
+## planet of `circumference_m`, direction is the bearing.
+static func great_circle_offset_m(from_ll: Vector2, to_ll: Vector2, circumference_m: float) -> Vector2:
+	var gc := great_circle(from_ll, to_ll)
+	var dist := gc.x * circumference_m / TAU
+	return Vector2(sin(gc.y), -cos(gc.y)) * dist

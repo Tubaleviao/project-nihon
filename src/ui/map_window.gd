@@ -14,6 +14,7 @@ const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 const MapMath := preload("res://src/ui/map_math.gd")
 const MapTiles := preload("res://src/ui/map_tiles.gd")
+const WorldPos := preload("res://src/terrain/world_pos.gd")
 
 const TILES_PER_FRAME := 48
 const WHEEL_STEP := 0.25
@@ -27,7 +28,10 @@ var player_slice: Node = null
 var show_true_planet: bool = false
 
 var tiles := MapTiles.new()
-var _zoom: float = 6.5
+const ZOOM_START := 6.5
+## The home marker and waypoints use great-circle direction and distance once the globe blend passes this.
+const GREAT_CIRCLE_BLEND := 0.5
+var _zoom: float = ZOOM_START
 var _center: Vector2 = Vector2.ZERO   # view centre in chunks
 var _dragging := false
 var _thread: Thread = null
@@ -35,7 +39,8 @@ var _batch_seed: int = 0
 var _batch_gen: int = 0   # tiles.generation when the running batch was taken
 var _last_sig: Array = []
 var _records_at_ms: int = 0
-var _reveal_tiles: Dictionary = {}
+var _reveal_tiles: Dictionary = {}   # Vector2i tile -> true
+var _view_key: Array = []   # what the last tile request covered
 var _reveal_level: int = -1
 var _reveal_rev: int = -1
 var _records_rev: int = -1
@@ -45,6 +50,7 @@ func _init() -> void:
 	custom_minimum_size = Vector2(520, 460)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	clip_contents = true
+	set_zoom(ZOOM_START)   # a small world's farthest zoom can be nearer than the default
 
 func circumference() -> int:
 	return TerrainSlice.circumference_chunks()
@@ -102,6 +108,11 @@ func _gui_input(event: InputEvent) -> void:
 		elif event.button_index == MOUSE_BUTTON_LEFT:
 			_dragging = event.pressed
 			accept_event()
+		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+			var pos := world_pos_at(event.position - size * 0.5)
+			if not pos.is_empty() and minimap != null and minimap.has_method("add_waypoint"):
+				minimap.add_waypoint("", pos)
+			accept_event()
 	elif event is InputEventMouseMotion and _dragging:
 		var ppc := _px_per_chunk()
 		# Dragging a globe turns it: the same pan, scaled by how much of the surface a pixel covers.
@@ -131,10 +142,25 @@ func _process(_delta: float) -> void:
 	_service_worker()
 	# Redraw only when something on screen can have changed: the explored set, the player, the records.
 	var rev: int = minimap.revealed_revision() if minimap != null and minimap.has_method("revealed_revision") else 0
-	var sig := [rev, _player_chunk_pos(), ChunkRecords.revision(), _world_seed()]
+	var sig := redraw_signature()
 	if sig != _last_sig:
 		_last_sig = sig
 		queue_redraw()
+
+## What the picture depends on that changes by itself: the explored set, the player's PIXEL (not the
+## player's exact position, which moves every frame), the records and the world. Unequal => redraw.
+func redraw_signature() -> Array:
+	var rev: int = minimap.revealed_revision() if minimap != null and minimap.has_method("revealed_revision") else 0
+	return [rev, _player_pixel(), ChunkRecords.revision(), _world_seed()]
+
+## The player's marker in whole pixels from the window centre; (-1 << 30) when it is not on screen or unknown.
+func _player_pixel() -> Vector2i:
+	var pcp := _player_chunk_pos()
+	if pcp.x >= INF:
+		return Vector2i(-(1 << 30), 0)
+	var circ := circumference()
+	var off := MapMath.project(MapMath.lonlat(pcp, circ), MapMath.lonlat(_center, circ), _t()) * MapMath.scale_px(_zoom, _view_px(), circ)
+	return Vector2i(roundi(off.x), roundi(off.y))
 
 ## Tiles sample generation records too: a record adopted since they were cached may change a biome.
 ## Throttled; the revision stays pending until the throttle lets it through.
@@ -186,7 +212,7 @@ func _revealed_tiles(level: int) -> Dictionary:
 		_reveal_tiles.clear()
 		for c in minimap.get_revealed_chunks():
 			var t := MapMath.tile_of(c, level)
-			_reveal_tiles["%d,%d" % [t.x, t.y]] = true
+			_reveal_tiles[t] = true
 		_reveal_level = level
 		_reveal_rev = rev
 	return _reveal_tiles
@@ -227,13 +253,11 @@ func _draw() -> void:
 		draw_circle(origin, scale, Color(0.05, 0.07, 0.14))
 	var fog := _revealed_tiles(level) if not show_true_planet else {}
 	# Request coarse ancestors of what is on screen first: the picture is complete at once.
-	tiles.clear_pending()   # only what is on screen now is worth computing
-	var coarse := mini(level + 3, MapMath.MAX_LEVEL)
-	for tz in range(z0, z1 + 1):
-		for tx in range(x0, x1 + 1):
-			if coarse > level:
-				tiles.request(coarse, tx >> (coarse - level), tz >> (coarse - level))
-			tiles.request(level, tx, tz)
+	# The queue is kept: a pan asks only for the tiles that just came into view.
+	var view_key := [level, x0, x1, z0, z1, tiles.generation, tiles.seed_v]
+	if view_key != _view_key:
+		_view_key = view_key
+		request_view(level, x0, x1, z0, z1)
 	for tz in range(z0, z1 + 1):
 		for tx in range(x0, x1 + 1):
 			var biome := tiles.best_biome(level, tx, tz)
@@ -261,10 +285,24 @@ func _draw() -> void:
 			draw_colored_polygon(pts, col)
 	_draw_markers(sz, origin, center_ll, t, scale, circ)
 
+## Queue the tiles of a visible rectangle at `level` and their coarse ancestors; tiles already
+## cached or queued are skipped, and queued tiles that are no longer in view are dropped.
+func request_view(level: int, x0: int, x1: int, z0: int, z1: int) -> void:
+	var coarse := mini(level + 3, MapMath.MAX_LEVEL)
+	var shift := coarse - level
+	tiles.retain_pending({
+		level: Rect2i(x0, z0, x1 - x0 + 1, z1 - z0 + 1),
+		coarse: Rect2i(x0 >> shift, z0 >> shift, (x1 >> shift) - (x0 >> shift) + 1, (z1 >> shift) - (z0 >> shift) + 1),
+	})
+	for tz in range(z0, z1 + 1):
+		for tx in range(x0, x1 + 1):
+			if coarse > level:
+				tiles.request(coarse, tx >> shift, tz >> shift)
+			tiles.request(level, tx, tz)
+
 ## The fog-set key of a tile: its centre chunk, seam-wrapped, as a tile at `level`.
-func _fog_key(tx: int, tz: int, tile_chunks: int, level: int) -> String:
-	var t := MapMath.tile_of(TerrainSlice.wrap_chunk(Vector2i(tx * tile_chunks + tile_chunks / 2, tz * tile_chunks + tile_chunks / 2)), level)
-	return "%d,%d" % [t.x, t.y]
+func _fog_key(tx: int, tz: int, tile_chunks: int, level: int) -> Vector2i:
+	return MapMath.tile_of(TerrainSlice.wrap_chunk(Vector2i(tx * tile_chunks + tile_chunks / 2, tz * tile_chunks + tile_chunks / 2)), level)
 
 func _biome_color(biome: String) -> Color:
 	if minimap != null and minimap.has_method("biome_color"):
@@ -272,35 +310,47 @@ func _biome_color(biome: String) -> Color:
 	return Color(0.4, 0.4, 0.4)
 
 func _draw_markers(sz: Vector2, origin: Vector2, center_ll: Vector2, t: float, scale: float, circ: int) -> void:
-	var font := ThemeDB.fallback_font
 	var pcp := _player_chunk_pos()
 	if pcp.x < INF:
 		var pll := MapMath.lonlat(pcp, circ)
 		if MapMath.facing(pll, center_ll, t):
 			draw_circle(origin + MapMath.project(pll, center_ll, t) * scale, 4.0, Color.WHITE)
 	var home := home_marker(sz)
-	if home.is_empty():
-		return
-	var pos: Vector2 = origin + home["pos"]
-	if home["inside"]:
-		draw_circle(pos, 6.0, Color(1.0, 0.8, 0.2))
-		draw_string(font, pos + Vector2(8, 4), "Home", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1.0, 0.9, 0.5))
+	if not home.is_empty():
+		_draw_marker(origin, home, "Home", Color(1.0, 0.8, 0.2), Color(1.0, 0.9, 0.5))
+	if minimap != null and minimap.has_method("get_waypoints"):
+		for w in minimap.get_waypoints():
+			var m := marker_for(w["pos"], sz)
+			if not m.is_empty():
+				_draw_marker(origin, m, str(w["name"]), Color(0.4, 0.9, 1.0), Color(0.7, 0.95, 1.0))
+
+func _draw_marker(origin: Vector2, m: Dictionary, label: String, fill: Color, text_col: Color) -> void:
+	var font := ThemeDB.fallback_font
+	var pos: Vector2 = origin + m["pos"]
+	if m["inside"]:
+		draw_circle(pos, 6.0, fill)
+		draw_string(font, pos + Vector2(8, 4), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, text_col)
 	else:
-		var a: float = home["angle"]
+		var a: float = m["angle"]
 		var dir := Vector2(cos(a), sin(a))
 		var perp := Vector2(-dir.y, dir.x)
-		draw_colored_polygon(PackedVector2Array([pos + dir * 10.0, pos - dir * 6.0 + perp * 7.0, pos - dir * 6.0 - perp * 7.0]), Color(1.0, 0.8, 0.2))
-		draw_string(font, pos - dir * 14.0 - Vector2(24, -4), MapMath.distance_text(home["distance"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1.0, 0.9, 0.5))
+		draw_colored_polygon(PackedVector2Array([pos + dir * 10.0, pos - dir * 6.0 + perp * 7.0, pos - dir * 6.0 - perp * 7.0]), fill)
+		draw_string(font, pos - dir * 14.0 - Vector2(24, -4), "%s %s" % [label, MapMath.distance_text(m["distance"])], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, text_col)
 
 ## The home marker for a window of `sz`: { inside, pos (px from the centre), distance, angle }, or {}
 ## when no respawn point is recorded.
 func home_marker(sz: Vector2) -> Dictionary:
 	if player_slice == null or not ("respawn_world_pos" in player_slice) or player_slice.respawn_world_pos.is_empty():
 		return {}
+	return marker_for(player_slice.respawn_world_pos, sz)
+
+## A `{chunk, local}` place as a marker for a window of `sz`: { inside, pos, distance, angle }. Flat
+## (close in) the distance is the straight way round the planet; once the globe blend is high it is the
+## great-circle arc and the direction its initial bearing.
+func marker_for(world: Dictionary, sz: Vector2) -> Dictionary:
 	var circ := circumference()
-	var hw: Dictionary = player_slice.respawn_world_pos
-	var hc: Vector2i = hw["chunk"]
-	var hl: Vector3 = hw["local"]
+	var hc: Vector2i = world["chunk"]
+	var hl: Vector3 = world["local"]
 	var view_chunk := Vector2i(floori(_center.x), floori(_center.y))
 	var view_local := (_center - Vector2(view_chunk)) * TerrainSlice.CHUNK_METERS
 	var d := MapMath.delta_m(view_chunk, view_local, hc, Vector2(hl.x, hl.z))
@@ -312,6 +362,51 @@ func home_marker(sz: Vector2) -> Dictionary:
 	var hll := MapMath.lonlat(hcenter, circ)
 	var t := _t()
 	var off := MapMath.project(hll, center_ll, t) * MapMath.scale_px(_zoom, _view_px(), circ)
+	if t >= GREAT_CIRCLE_BLEND:
+		d = MapMath.great_circle_offset_m(center_ll, hll, circ_m)
 	if not MapMath.facing(hll, center_ll, t):
 		off = d.normalized() * maxf(sz.x, sz.y)   # behind the globe: an arrow at the rim toward it
 	return MapMath.clamp_home(off, sz * 0.5, d.length(), 14.0)
+
+## The `{chunk, local}` place under a point `offset` px from the window centre, or {} when there is
+## none (off the planet, behind the globe, or the globe blend makes the flat inverse unreliable).
+func world_pos_at(offset: Vector2) -> Dictionary:
+	var circ := circumference()
+	if _t() > 0.0:
+		return _world_pos_at_globe(offset)
+	var scale := MapMath.scale_px(_zoom, _view_px(), circ)
+	if scale <= 0.0:
+		return {}
+	var center_ll := MapMath.lonlat(_center, circ)
+	var rad := offset / scale
+	var ll := Vector2(center_ll.x + rad.x, center_ll.y - rad.y)
+	return _pos_from_ll(ll, circ)
+
+## Globe inverse by fixed-point iteration on `MapMath.project`; {} when it does not converge to the pixel.
+func _world_pos_at_globe(offset: Vector2) -> Dictionary:
+	var circ := circumference()
+	var scale := MapMath.scale_px(_zoom, _view_px(), circ)
+	var center_ll := MapMath.lonlat(_center, circ)
+	var t := _t()
+	var want := offset / scale
+	var ll := Vector2(center_ll.x + want.x, center_ll.y - want.y)
+	for i in 24:
+		ll.y = clampf(ll.y, -PI * 0.5, PI * 0.5)
+		var got := MapMath.project(ll, center_ll, t)
+		var err := want - got
+		if err.length() * scale < 0.5:
+			if not MapMath.facing(ll, center_ll, t):
+				return {}
+			return _pos_from_ll(ll, circ)
+		ll += Vector2(err.x / maxf(cos(ll.y), 0.2), -err.y)
+	return {}
+
+## The exact `{chunk, local}` of a lon/lat (radians); {} past a pole.
+func _pos_from_ll(ll: Vector2, circ: int) -> Dictionary:
+	if absf(ll.y) > PI * 0.5:
+		return {}
+	var cx := ll.x / TAU * float(circ)
+	var cz := -ll.y / (PI * 0.5) * (float(circ) * 0.25)
+	var chunk := Vector2i(floori(cx), floori(cz))
+	var local := Vector3((cx - chunk.x) * TerrainSlice.CHUNK_METERS, 0.0, (cz - chunk.y) * TerrainSlice.CHUNK_METERS)
+	return WorldPos.normalized({ "chunk": TerrainSlice.wrap_chunk(chunk), "local": local })
