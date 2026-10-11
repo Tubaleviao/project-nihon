@@ -132,7 +132,7 @@ issue number where the criterion used to be.
 | 109 | Generation records reach clients, scoped and validated | Done | below |
 | 110 | Trees are pinned per chunk and cleared where players build | Done | below |
 | 111 | A full-map window: zoom from the minimap out to a whole planet | Done | below |
-| 112 | A biome adjacency table in the fabric and an offline scan | Planned | below |
+| 112 | A biome adjacency table in the fabric and an offline scan | Done | below |
 | 113 | Frontier generation: a new generator version meets recorded land | Planned | below |
 
 ---
@@ -514,7 +514,7 @@ reserves `M` for this window).
 
 ---
 
-## Phase 112 — A biome adjacency table in the fabric and an offline scan
+## Phase 112 — A biome adjacency table in the fabric and an offline scan ✅ Done
 
 **Goal:** nothing today stops snow lying against lava; adjacency is whatever the smooth climate noise
 produces, and `BiomeBlend` only dithers the colour at a border. To change the generator safely the
@@ -537,13 +537,13 @@ agreeing without talking to each other. The runtime use of the rules is Phase 11
   with a `WORLDGEN_VERSION` bump, which is safe for chunks already recorded (Phase 108).
 
 **Acceptance criteria:**
-- [ ] `npm run validate` fails on a scratch fabric with an unknown key, an asymmetric pair or a
+- [x] `npm run validate` fails on a scratch fabric with an unknown key, an asymmetric pair or a
   forbidden pair with no transition, and passes on the real one.
-- [ ] `npm run generate`, `npm run check-drift` green.
-- [ ] Suite: the scan finds zero forbidden pairs across all grids.
-- [ ] Suite: the scan finds a violation when a scratch envelope is made to place two forbidden biomes
+- [x] `npm run generate`, `npm run check-drift` green.
+- [x] Suite: the scan finds zero forbidden pairs across all grids.
+- [x] Suite: the scan finds a violation when a scratch envelope is made to place two forbidden biomes
   side by side (the check can fail).
-- [ ] Suite green on both boot paths.
+- [x] Suite green on both boot paths.
 
 ---
 

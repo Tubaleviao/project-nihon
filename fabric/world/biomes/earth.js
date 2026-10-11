@@ -1,10 +1,11 @@
 const { defineEntity } = require('@newel/core')
+const { adjacencyFields } = require('./adjacency')
 
 // Phase 51 — the Earth-like biomes. Each is a climate envelope (temperature, moisture, altitude)
 // plus the same ground facts the fantasy biomes carry. Altitude is metres above sea level; the
 // land default is [1.5, 250], so Ocean sits below the sea surface, Beach on the first metre and a
 // half of shore, and Alpine above the tree line.
-function earthBiome({ description, goal, treeDensity, surfaceMaterial, surfaceTint, soilTint, topsoilDepth,
+function earthBiome({ key, description, goal, treeDensity, surfaceMaterial, surfaceTint, soilTint, topsoilDepth,
   temperature, moisture, altitude, avgTemperature, avgRainfall, soilFertility, surfaceVeinChance, rules, season = {} }) {
   const S = { swing: 10, summer: '#ffffff', winter: '#c9d3dc', growth: { summer: 1.25, winter: 0.5 }, spawn: { summer: 1.15, winter: 0.7 }, ...season }
   return defineEntity({
@@ -32,6 +33,7 @@ function earthBiome({ description, goal, treeDensity, surfaceMaterial, surfaceTi
       altitude:       { type: 'json', description: 'Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51)', defaultValue: altitude },
       rarity:         { type: 'decimal', description: 'Share of the world where this biome may appear: 1 = anywhere its envelope fits (Phase 51)', defaultValue: 1 },
       surfaceVeinChance: { type: 'decimal', description: 'Share of this biome\'s top-cell veins that break the surface and keep their deposit marker (Phase 49)', defaultValue: surfaceVeinChance },
+      ...adjacencyFields(key),
     },
     behaviors: {
       evaluateSpawn: {
@@ -48,7 +50,7 @@ const LAND = { min: 1.5, max: 250 }
 
 module.exports = {
 
-  Ocean: earthBiome({
+  Ocean: earthBiome({ key: 'Ocean',
     description: 'Open water over the continental shelf and the deep basins. The sea floor is sand and silt; ' +
       'the surface sits at the world\'s sea level and a player wades or swims it.',
     goal: 'Give the planet its oceans: the barrier between continents',
@@ -58,7 +60,7 @@ module.exports = {
     rules: ['No land creature, tree or ore-surface table spawns in an Ocean chunk', 'The sea floor is sand and silt, with ore only deep in the bedrock'],
   }),
 
-  Beach: earthBiome({
+  Beach: earthBiome({ key: 'Beach',
     description: 'The first metre and a half of shore above the waterline: pale sand and no trees.',
     goal: 'Make coasts readable where land meets sea',
     treeDensity: 0, surfaceMaterial: 'Sand', surfaceTint: '#e3d49b', soilTint: '#b3a36d', topsoilDepth: 3,
@@ -67,7 +69,7 @@ module.exports = {
     rules: ['No trees grow on a beach', 'Creature spawns come from the inland biome, not the shore'],
   }),
 
-  Desert: earthBiome({
+  Desert: earthBiome({ key: 'Desert',
     description: 'Hot, dry sand and rock: the dry half of the tropics.',
     goal: 'A sparse, hostile low-latitude biome that rewards travel with exposed ore',
     treeDensity: 0, surfaceMaterial: 'Sand', surfaceTint: '#d8b768', soilTint: '#a8844a', topsoilDepth: 2,
@@ -76,7 +78,7 @@ module.exports = {
     rules: ['No trees grow in a desert', 'Ferrite veins outcrop at weight 0.5 on bare rock'],
   }),
 
-  Tundra: earthBiome({
+  Tundra: earthBiome({ key: 'Tundra',
     description: 'Frozen, treeless plains at the high latitudes, down to the polar ice.',
     goal: 'The cold pole of the climate: cold ground with little to harvest',
     treeDensity: 0, surfaceMaterial: 'Snow', surfaceTint: '#dfe8ea', soilTint: '#7d7a6e', topsoilDepth: 1.5,
@@ -85,7 +87,7 @@ module.exports = {
     rules: ['No trees grow on the tundra', 'Ferrite veins outcrop at weight 0.3'],
   }),
 
-  Alpine: earthBiome({
+  Alpine: earthBiome({ key: 'Alpine',
     description: 'Snow-capped peaks above the tree line, at any latitude.',
     goal: 'Make mountains a biome of their own: cold, bare and high',
     treeDensity: 0, surfaceMaterial: 'Snow', surfaceTint: '#f2f6f7', soilTint: '#8c8c93', topsoilDepth: 1,
@@ -94,7 +96,7 @@ module.exports = {
     rules: ['No trees grow above the tree line', 'Ferrite and Aethermite veins outcrop at weight 0.5 on bare peaks'],
   }),
 
-  Taiga: earthBiome({
+  Taiga: earthBiome({ key: 'Taiga',
     description: 'Cold, wet conifer forest between the tundra and the temperate belt.',
     goal: 'A northern timber biome: thinner stands than the temperate forest',
     treeDensity: 5, surfaceMaterial: 'Grass', surfaceTint: '#3f6b4a', soilTint: '#5a4632', topsoilDepth: 2.5,
@@ -103,7 +105,7 @@ module.exports = {
     rules: ['Thornwood trees grow at about two thirds of the temperate forest\'s density', 'Ferrite veins outcrop at weight 0.3'],
   }),
 
-  Savanna: earthBiome({
+  Savanna: earthBiome({ key: 'Savanna',
     description: 'Warm grassland with scattered trees in the seasonal tropics.',
     goal: 'The warm counterpart of the temperate grassland',
     treeDensity: 1, surfaceMaterial: 'Grass', surfaceTint: '#b3a64a', soilTint: '#7a5a36', topsoilDepth: 3,

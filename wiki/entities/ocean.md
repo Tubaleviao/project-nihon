@@ -34,6 +34,8 @@ Open water over the continental shelf and the deep basins. The sea floor is sand
 | altitude | json | Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51) |
 | rarity | decimal | Share of the world where this biome may appear: 1 = anywhere its envelope fits (Phase 51) |
 | surfaceVeinChance | decimal | Share of this biome's top-cell veins that break the surface and keep their deposit marker (Phase 49) |
+| forbiddenNeighbours | json | Biome keys that must not lie across a chunk edge from this biome; symmetric, validated at fabric load (Phase 112) |
+| transition | string | The biome that lies between this one and a forbidden neighbour; empty when nothing is forbidden (Phase 112) |
 
 ## Actions
 

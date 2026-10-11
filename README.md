@@ -132,7 +132,7 @@ npm run generate  # generate the design bible into bible/
 | 109 | Generation records reach clients, scoped and validated | Done |
 | 110 | Trees are pinned per chunk and cleared where players build | Done |
 | 111 | A full-map window: zoom from the minimap out to a whole planet | Done |
-| 112 | A biome adjacency table in the fabric and an offline scan | Planned |
+| 112 | A biome adjacency table in the fabric and an offline scan | Done |
 | 113 | Frontier generation: a new generator version meets recorded land | Planned |
 
 See [ROADMAP.md](ROADMAP.md) for open phases and deferred work. Completed phases are archived in [docs/roadmap-history/](docs/roadmap-history/README.md) with their full spec and acceptance criteria.

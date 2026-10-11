@@ -24,5 +24,7 @@ moisture = {"min":0,"max":1}
 altitude = {"min":0,"max":1.5}
 rarity = 1.0
 surfaceVeinChance = 0.1
+forbiddenNeighbours = []
+transition = ""
 description = "The first metre and a half of shore above the waterline: pale sand and no trees."
 tags = ["biome"]

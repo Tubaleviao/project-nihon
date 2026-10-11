@@ -24,5 +24,7 @@ moisture = {"min":0.25,"max":0.55}
 altitude = {"min":1.5,"max":250}
 rarity = 1.0
 surfaceVeinChance = 0.2
+forbiddenNeighbours = []
+transition = ""
 description = "Warm grassland with scattered trees in the seasonal tropics."
 tags = ["biome"]
