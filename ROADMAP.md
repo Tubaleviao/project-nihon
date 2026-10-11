@@ -139,6 +139,10 @@ issue number where the criterion used to be.
 | 116 | Tree clears follow chunks onto clients | Planned | below |
 | 117 | Map waypoints, HUD toasts and an explored set that scales | Planned | below |
 | 118 | Void bursts, the survivor flag and the VoidTouched unlock | Planned | below |
+| 119 | An injected network transport and a compact per-tick wire form | Planned | below |
+| 120 | The distant ring draws recorded land | Planned | below |
+| 121 | Crash-consistent saves | Planned | below |
+| 122 | Far terrain without mirroring and one scene-offset helper | Planned | below |
 
 ---
 
@@ -846,6 +850,216 @@ profession unlock (deferred from Phase 13). This phase wires the chain end to en
   unlocks only when both tiers and the flag hold, and a recipe naming it is refused before.
 - [ ] Suite: a client's craft intent never rolls locally; the host's result reaches only the crafter.
 - [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 119 — An injected network transport and a compact per-tick wire form
+
+**Goal:** the networking slice still carries its test seam (`_test_peers`, `_test_outbox`) in
+production code, and every per-tick packet (`player_moved`, creature state) sends the verbose
+`{chunk, local}` dictionary. Malformed peer packets warn without a throttle, are bounds-checked after
+they have already been used, and a refused or clamped peer move only re-scopes on the next packet.
+This phase puts the wire behind a small transport interface (ENet in the game, an in-memory transport
+in the suite), adds a compact exact position encoding for per-tick packets, and resolves every item of
+the networking triage issue below.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 97, Phase 101.
+
+**Closes:** #253.
+
+**Deliverables:**
+- `src/networking/transport.gd` (new), `src/networking/enet_transport.gd` (new),
+  `src/tests/memory_transport.gd` (new) — a `Transport` interface (`peers()`, `send(peer, msg)`,
+  `poll()`) that `NetworkingSlice` talks to; `_test_peers`, `_test_outbox`, `_test_seam_allowed` and
+  the `_connected` / `_deliver` test branches leave `networking_slice.gd`; the suite injects the memory
+  transport, and the injection point refuses outside a `GameRoot.should_run_tests` boot.
+- `src/terrain/world_pos.gd`, `src/networking/networking_slice.gd` — a compact per-tick position form
+  (packed chunk ints plus three floats, or a `PackedByteArray`) that round-trips the exact
+  `{chunk, local}`; `player_moved` and creature state use it; the decoder validates before any use.
+- `src/core/game_root.gd` `_on_remote_player_state` / `_route_c2h` — the non-finite and magnitude
+  guards run before `aoi_region`; malformed-packet warnings go through a per-peer throttle; a refused
+  or clamped `set_peer_center` re-sends the re-scope snapshot at once; `_fold_last_known_state` passes
+  the exact dictionary into `remember_player_state`, drops the dead `_peer_window_chunk` guard, caps
+  `_release_fold_hold` correctly and restreams once per fold; `canonical_world_pos` keeps heading and
+  velocity and refuses a forged Z (#253, carrying #250 and #252).
+- `src/terrain/chunk_manager.gd` `set_peer_center` — the first claim of an uncentred peer is clamped to
+  the spawn window, and the rate limit and clamp compare seam-wrapped chunk differences.
+- `src/persistence/player_registry.gd` — a refusal suppressed by the equip rate limit still sends one
+  coalesced revoke; `note_equip_seq` accepts only increasing sequence numbers.
+- `src/core/bus.gd` — `block_mine_requested` / `block_place_requested` arity matches their emitters;
+  `block_edit_intent` carries the exact position, not a quantised float.
+
+**Acceptance criteria:**
+- [ ] `grep -n "_test_peers\|_test_outbox" src/networking/networking_slice.gd` is empty; the suite's
+  networking tests run on the memory transport; setting a transport in a non-test boot is refused
+  (suite test).
+- [ ] Suite: the compact form round-trips `{chunk, local}` exactly at chunk X = 1,500,000 and at the
+  seam; it is at least 30% smaller than the dictionary form in `var_to_bytes`; a truncated or
+  non-finite packet is rejected before `aoi_region` is called.
+- [ ] Suite: 100 malformed packets from one peer produce at most one warning per throttle interval; a
+  clamped peer move re-sends the re-scope snapshot in the same call.
+- [ ] Suite: an uncentred peer's first claim 1,000 chunks from spawn is clamped; a move across the X
+  seam is rate-limited by the wrapped distance.
+- [ ] Suite: a rate-limited equip refusal still yields a revoke; a lower `seq` is ignored; mine/place
+  signals are emitted with their declared arity.
+- [ ] Harness: all existing steps pass on the ENet transport with the compact per-tick form.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 120 — The distant ring draws recorded land
+
+**Goal:** since Phase 113 a recorded chunk keeps its biome and corner heights across generator
+versions, but `DistantTerrain` still samples the plain generator everywhere, so after a
+`WORLDGEN_VERSION` bump the ring disagrees with the recorded land it surrounds and a seam shows where
+near chunks meet it. The ring's request state is also spread across four fields, a worker started while
+detached is never joined if the node is freed, and a worker lazily writes `TerrainSlice` static
+caches. This phase feeds a snapshot of the ring's recorded corners to the worker, makes the ring's
+lifecycle one record with a pre-delete join, and resolves every item of the distant-ring issue below.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 113.
+
+**Closes:** #255.
+
+**Deliverables:**
+- `src/terrain/distant_terrain.gd` `build_mesh` / `ground_at` — takes an immutable snapshot of the
+  `ChunkRecords` corner heights and biomes inside the ring (taken on the main thread in `rebuild`) and
+  uses a recorded chunk's corners and biome colour instead of the generator; unrecorded chunks keep
+  the plain generator, as `CLAUDE.md` states.
+- `src/terrain/distant_terrain.gd` — a revision of `ChunkRecords` newer than the built mesh's
+  triggers one rebuild (debounced like a centre move); a main-thread `warm()` fills the
+  `TerrainSlice.polar_ground` caches before any worker runs.
+- `src/terrain/distant_terrain.gd` — `_built_*`, `_discarded`, `_queued` and `_task_args` fold into one
+  request record; a `NOTIFICATION_PREDELETE` handler joins a worker started while detached;
+  `_enter_tree` calls `_start(args, true)` directly; `builds_started` counts restarts from `poll` so
+  its invariant holds; `main_thread_builds` moves to a test-visible counter object instead of a
+  production static.
+- `src/core/game_root.gd` `_process` — the ring rebuild key is cached in fields, not a formatted string
+  per frame.
+- `src/tests/test_suite.gd` — `_test_distant_ring_abort` frees an in-tree ring again (and a separate
+  case covers detached); the detached-rebuild test asserts `_discarded` empty and `is_building()` false
+  after `poll(true)`.
+
+**Acceptance criteria:**
+- [ ] Suite: with a recorded chunk whose corners differ from the generator by 10 m, the ring's height
+  at that chunk's corners equals the recorded corners exactly; an unrecorded neighbour equals the plain
+  generator.
+- [ ] Suite: adding a record inside the ring after a build schedules exactly one rebuild.
+- [ ] Suite: freeing a detached ring with a running worker joins it (no leaked thread or orphan node);
+  freeing an in-tree ring mid-build does not stall past the abort bound.
+- [ ] Suite: `builds_started == rebuilds_requested - rebuilds_dropped + restarts` across a queued
+  restart; no static counter remains in `distant_terrain.gd`.
+- [ ] Suite: `polar_ground` caches are warm before the first worker build (a test counter proves no
+  worker-side fill).
+- [ ] Suite green on both boot paths.
+
+---
+
+## Phase 121 — Crash-consistent saves
+
+**Goal:** a save writes region files first and `world.json` second, but `world.json` is still written
+after a region failure, a failed region re-marks every dirty chunk, region entries are only shallowly
+validated, the streamer rescans everything every two seconds while a region is stranded and a
+stationary server never retries one, and no test covers the world stamp going through a save job.
+This phase makes a save one transaction (temp files, rename, a small commit marker), so a crash at
+any step leaves either the old or the new world, and resolves every item of the persistence issue
+below.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 114.
+
+**Closes:** #256.
+
+**Deliverables:**
+- `src/persistence/persistence_slice.gd` `_write_world_payload` — each file is written to a `.tmp`
+  sibling and renamed; `world.json` is renamed only after every region rename succeeded, otherwise the
+  previous `world.json` stays and the failed regions stay dirty; a load ignores and deletes stray
+  `.tmp` files. `region_store` is built once and setters update it in place.
+- `src/persistence/region_store.gd` — `write_chunks` re-marks only the chunks of the region that
+  failed; `_chunk_entry_valid` checks each op's fields (kind, finite position, integer ids) and drops
+  only the bad op with one warning.
+- `src/persistence/region_streamer.gd` — `regions_for_chunks` expands only region-edge chunks (beyond
+  the Phase 114 frontier margin); `sync` scans `edited_chunk_keys()` once; a stranded region is retried
+  on a backoff timer independent of player movement, so a stationary server recovers it.
+- `src/core/game_root.gd` — tests cover `_worldgen_stamp` carried into `_collect_save_job` and the bus
+  signal emitted on load.
+
+**Acceptance criteria:**
+- [ ] Suite: a fault-injected failure at each of the write steps (region tmp, region rename, world tmp,
+  world rename) leaves a world that loads to either the full old or the full new state, never a mix.
+- [ ] Suite: a stray `.tmp` file is removed on load and does not shadow the real file.
+- [ ] Suite: one failing region of three leaves only its chunks dirty.
+- [ ] Suite: an entry with one malformed op loads its other ops and warns once.
+- [ ] Suite: `regions_for_chunks` for a window wholly inside one region returns that region only; a
+  stranded region is retried after the backoff with no player movement; `edited_chunk_keys()` is called
+  once per `sync`.
+- [ ] Suite: the world stamp round-trips through `_collect_save_job` and load emits the stamp signal.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 122 — Far terrain without mirroring and one scene-offset helper
+
+**Goal:** `TerrainSlice.noise_coord` folds detail noise beyond 65,536 m with a triangle wave, so the
+far world mirrors itself. Since Phase 113 a generator change only affects unrecorded land, so the fold
+can now be replaced: a hashed per-cell offset keeps the noise input small without mirroring. The
+remaining terrain and far-origin leftovers are folded in: eight slices copy the same `_scene_offset`
+boilerplate, several `GameRoot` paths still read float32 positions, the corner cache locks a mutex on
+every sample, and a set of duplicated constants and predicates remain. This phase resolves every item
+of the terrain issue below.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 113.
+
+**Closes:** #254.
+
+**Deliverables:**
+- `src/terrain/terrain_slice.gd` `noise_coord` / `detail_of` — the fold becomes a per-cell hashed
+  offset (cell size `NOISE_SPAN`, offsets from the world seed) blended across cell borders so detail
+  noise is continuous and never mirrors; `WORLDGEN_VERSION` is bumped with a history line and the
+  `_test_worldgen_golden` values are updated; recorded land is unchanged by the stable-world rule.
+- `src/terrain/terrain_slice.gd` — `_corner_cache` is passed in per worker (no mutex per sample);
+  `is_chunk_loadable` merges into `is_chunk_in_bounds`.
+- `src/terrain/voxel_slice.gd` — one helper for the shaping-op check and corner offsets shared by
+  `_commit_edits` and `seam_borders`; `blended_biome` / `shown_biome_at` blend corners and diagonals;
+  `evict_clean_chunks` keeps the evicted chunk's deplete ops in `_vein_taken` and re-indexes only the
+  released chunk; `water_mesh_for` scans only columns with water; `BEDROCK_DEPTH` follows the column's
+  sea floor so deep ocean keeps the authored vein depth.
+- `src/terrain/chunk_manager.gd` `rebuild_seam_neighbours` — the unused `skip` goes, and
+  `rebuild_requests` moves to a test counter.
+- `src/terrain/climate_field.gd`, `src/terrain/ore_field.gd`, `src/terrain/world_shape.gd` — header
+  comments match the code; latitude cosine computed once; `OreField.warm()` latches only after
+  `ClimateField.warm()` succeeds and `biome_for_chunk` before warm asserts instead of falling back;
+  `SPAWN_CENTER` / `SPAWN_HEIGHT` come from one place; `oceanShare` drives the sea-level threshold or
+  is removed from the fabric read.
+- `src/core/scene_offset.gd` (new) — one `SceneOffset` helper used by the eight slices with
+  `shift_scene`; `RebaseDriver` asserts on a target without it; `PlayerSlice.shift_scene` refuses a
+  non-chunk-multiple shift and `place_at_world_pos` asserts a prior rebase.
+- `src/core/game_root.gd` — `set_host_position`, `_build_snapshot` `within_aoi`, `_note_presence` and
+  `_fold_last_known_state` use exact positions; `_clamp_to_world_exact` wraps in chunk space, not by
+  adding a lap to a float; `_on_world_snapshot_received` refuses an invalid position (falls back to
+  spawn) and canonicalises past the pole; `PlayerRegistry.record_world_pos` clamps `local` with chunk
+  Z; `WorldPos.is_wire` accepts the first south fold row.
+
+**Acceptance criteria:**
+- [ ] Suite: detail noise at x and at 2·`NOISE_SPAN` − x differ (no mirror) for 1,000 sampled points
+  beyond 65,536 m, and the field is continuous across a cell border (max step below the authored
+  bound); golden values updated with the version bump; a recorded chunk's heights are unchanged.
+- [ ] Suite: `grep -c "_scene_offset" src` finds it only in `scene_offset.gd`; `RebaseDriver` refuses a
+  target without `shift_scene`; a non-multiple shift is refused.
+- [ ] Suite: corner and diagonal biome blends are symmetric; an eviction keeps deplete ops in
+  `_vein_taken`; a deep-ocean column has the authored vein depth above bedrock.
+- [ ] Suite: snapshot AOI and presence use exact positions at chunk X = 1,500,000; a seam clamp leaves
+  the float body within 1 m of the canonical position on the same frame; a snapshot with a bad
+  position spawns at the spawn point; the first south fold row passes `is_wire`.
+- [ ] Suite: `OreField.warm()` retries until `ClimateField` is warm; `record_world_pos` clamps `local`.
+- [ ] Suite green on both boot paths, harness green, `npm run check-drift` green.
 
 ---
 
