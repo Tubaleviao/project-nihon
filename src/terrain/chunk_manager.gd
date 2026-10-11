@@ -87,6 +87,7 @@ extends Node
 const Diag := preload("res://src/core/diag.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
+const Frontier := preload("res://src/terrain/frontier.gd")
 const RegionStore := preload("res://src/persistence/region_store.gd")
 
 ## Chunk size is owned by TerrainSlice; world_to_chunk() delegates to it.
@@ -404,7 +405,7 @@ func refresh(unload_now: bool = true) -> void:
 	# Phase 52 — the edits of every region the windows touch are resident BEFORE a chunk is
 	# queued, so no build reads a log that is missing its region.
 	if region_streamer != null:
-		region_streamer.sync(region_streamer.regions_for_chunks(desired))
+		region_streamer.sync(region_streamer.regions_for_chunks(desired, Frontier.BLEND_CHUNKS))
 
 	# Queue loads nearest-first. Dispatching is what is bounded per frame; the build
 	# itself runs on a worker.
@@ -600,7 +601,7 @@ func load_chunk(chunk_pos: Vector2i) -> void:
 	_dispatch_build(chunk_pos)
 
 ## Phase 108 — a chunk entering a window with no generation record gets the one the current
-## generator would write, BEFORE its heightmap is generated (so the record and the ground agree by
+## generator would write (Phase 113: eased into any recorded land around it, `Frontier`), BEFORE its heightmap is generated (so the record and the ground agree by
 ## construction). Host and dedicated server only; the distant ring never calls this.
 func _record_generation(chunk_pos: Vector2i) -> void:
 	if record_store == null or terrain_slice == null or not terrain_slice.has_method("get_world_seed"):
@@ -608,7 +609,7 @@ func _record_generation(chunk_pos: Vector2i) -> void:
 	var canon := TerrainSlice.wrap_chunk(chunk_pos)
 	if ChunkRecords.has_record(canon):
 		return
-	var rec := RegionStore.normalize_gen(TerrainSlice.generation_record(canon, int(terrain_slice.get_world_seed())))
+	var rec := RegionStore.normalize_gen(Frontier.record_for(canon, int(terrain_slice.get_world_seed())))
 	if rec.is_empty():
 		return   # a generator value outside the height range: leave the chunk to the generator
 	if ChunkRecords.set_record(canon, rec):

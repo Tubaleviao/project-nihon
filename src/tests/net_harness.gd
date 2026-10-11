@@ -61,6 +61,7 @@ const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
+const Frontier := preload("res://src/terrain/frontier.gd")
 const RegionStore := preload("res://src/persistence/region_store.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 
@@ -165,6 +166,7 @@ static func steps() -> Array:
 		{ "name": "far_peers_simulated", "compare": true },
 		{ "name": "spawn_near_friend", "compare": true },
 		{ "name": "chunk_record_synced", "compare": true },
+		{ "name": "frontier_record_synced", "compare": true },
 	]
 
 ## The step names, comma-joined — the payload of the `plan` line the runner prints
@@ -351,6 +353,7 @@ func run(root: Node, role: String) -> void:
 	await _step_far_peers_simulated()
 	await _step_spawn_near_friend()
 	await _step_chunk_record_synced()
+	await _step_frontier_record_synced()
 	_finish()
 
 ## End this process, with the run's own verdict carried in the exit code.
@@ -1168,6 +1171,65 @@ func _step_chunk_record_synced() -> void:
 		_report("chunk_record_synced", "fail", "no_record_received")
 		return
 	_report("chunk_record_synced", "ok", _record_detail(ChunkRecords.get_record(chunk)))
+
+## Phase 113 — a frontier record reaches the client.
+##
+## The previous step left a recorded chunk with shifted corner heights. The host now computes the record
+## of the chunk east of it with `Frontier`, which must reuse the shifted corners it shares with that
+## neighbour (the plain generator knows nothing of the shift), records it and re-scopes the peer. The
+## client waits for a record whose shared corners carry the shift, and both report biome and heights.
+func _step_frontier_record_synced() -> void:
+	var base: Vector2i = _root._chunk_manager.world_to_chunk(Vector2(RENDEZVOUS.x, RENDEZVOUS.z))
+	var chunk := base + Vector2i(1, 0)
+	var shared: Array = []
+	if ChunkRecords.has_record(base):
+		var bh: Array = ChunkRecords.get_record(base)["h"]
+		shared = [bh[1], bh[3]]
+	if _role == "host":
+		if shared.is_empty():
+			_report("frontier_record_synced", "fail", "no_neighbour_record")
+			return
+		var seed_value := int(_root._terrain.get_world_seed())
+		# Recorded neighbours must agree on the corners they share with `chunk`, so shift every recorded
+		# chunk around it by the same 3 m the previous step gave `base` (a stand-in for older land).
+		for dz in range(-1, 3):
+			for dx in range(-1, 3):
+				var around := base + Vector2i(dx, dz)
+				if around == chunk or around == base or not ChunkRecords.has_record(around):
+					continue
+				var shifted_rec: Dictionary = ChunkRecords.get_record(around).duplicate(true)
+				var shifted: Array = []
+				for h in shifted_rec["h"]:
+					shifted.append(minf(float(h) + 3.0, WorldShape.max_height() - 1.0))
+				shifted_rec["h"] = shifted
+				ChunkRecords.set_record(around, RegionStore.normalize_gen(shifted_rec))
+		var rec := RegionStore.normalize_gen(Frontier.record_for(chunk, seed_value))
+		if rec.is_empty() or absf(float(rec["h"][0]) - float(shared[0])) > 0.001 or absf(float(rec["h"][2]) - float(shared[1])) > 0.001:
+			_report("frontier_record_synced", "fail", "host_frontier_not_shared")
+			return
+		ChunkRecords.set_record(chunk, rec)
+		var peer := _rediscover_peer()
+		if peer == 0:
+			_report("frontier_record_synced", "fail", "no_peer")
+			return
+		_root._peer_records_msec.erase(peer)
+		_root._networking.send_snapshot(peer, _root._build_snapshot(peer, false, RENDEZVOUS, false))
+		_report("frontier_record_synced", verdict(true, true), _record_detail(rec))
+		return
+	if shared.is_empty():
+		_report("frontier_record_synced", "fail", "no_neighbour_record")
+		return
+	# The client's own join snapshot may already hold the plain record here: wait for the frontier one.
+	var ok: bool = await _await_until(func():
+		if not ChunkRecords.has_record(chunk):
+			return false
+		var h: Array = ChunkRecords.get_record(chunk)["h"]
+		return absf(float(h[0]) - float(shared[0])) <= 0.001 and absf(float(h[2]) - float(shared[1])) <= 0.001,
+		STEP_TIMEOUT_SECS)
+	if not ok:
+		_report("frontier_record_synced", "fail", "no_frontier_record_received")
+		return
+	_report("frontier_record_synced", "ok", _record_detail(ChunkRecords.get_record(chunk)))
 
 func _record_detail(rec: Dictionary) -> String:
 	var hs: Array = []

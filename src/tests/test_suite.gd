@@ -157,6 +157,11 @@ func run() -> void:
 	_run_test("biomes: adjacency table",                      _test_adjacency_table)
 	_run_test("biomes: adjacency scan of the generator",      _test_adjacency_scan)
 	_run_test("biomes: adjacency scan can fail",              _test_adjacency_scan_detects)
+	_run_test("frontier: recorded chunks unchanged",          _test_frontier_recorded_unchanged)
+	_run_test("frontier: seam shares corners, bounded step",  _test_frontier_seam)
+	_run_test("frontier: far chunks are the plain generator", _test_frontier_far_is_plain)
+	_run_test("frontier: adjacency around a recorded block",  _test_frontier_adjacency)
+	_run_test("frontier: two hosts agree",                    _test_frontier_deterministic)
 	_run_test("records: no records leaves 64 chunks as before",  _test_records_none_unchanged)
 	_run_test("records: a record overrides biome and corner heights", _test_records_override)
 	_run_test("records: a streamed chunk is recorded exactly once", _test_records_written_once)
@@ -11824,9 +11829,10 @@ func _test_net_harness_step_table() -> void:
 		names[str(s.get("name", ""))] = true
 	assert_eq(names.size(), steps.size(), "step names are unique — the driver keys on them")
 	assert_eq(str(steps[0].get("name", "")), "handshake", "the scenario starts with the handshake")
-	assert_eq(str(steps[steps.size() - 1].get("name", "")), "chunk_record_synced",
-		"and ends with the generation record reaching the client (Phase 109), after the friend-code spawn (Phase 53)")
-	assert_eq(str(steps[steps.size() - 2].get("name", "")), "spawn_near_friend", "which is the step before it")
+	assert_eq(str(steps[steps.size() - 1].get("name", "")), "frontier_record_synced",
+		"and ends with a frontier record reaching the client (Phase 113), after the generation record (Phase 109)")
+	assert_eq(str(steps[steps.size() - 2].get("name", "")), "chunk_record_synced", "which is the step before it")
+	assert_eq(str(steps[steps.size() - 3].get("name", "")), "spawn_near_friend", "after the friend-code spawn (Phase 53)")
 
 ## Phase 39 — the wire is a text channel between two processes, so the line format and its
 ## parser are load-bearing: if they disagreed, the driver would silently compare nothing
@@ -16469,7 +16475,8 @@ func _test_peer_window_move_loads_region_edits() -> void:
 	cm.region_streamer = RegionStreamerScript.new(store, voxel)
 	cm.view_distance = 1
 	cm.prefetch_distance = 0
-	cm.set_peer_center(7, Vector2i(28, 0), true)
+	# Chunk 24 (not 28): with the Phase 113 frontier margin a window reads records 4 chunks past its edge.
+	cm.set_peer_center(7, Vector2i(24, 0), true)
 	cm.refresh(false)
 	assert_false(voxel.edited_chunk_keys().has("34,0"), "the edit is not resident before the move")
 	cm._peer_last_claim_msec[7] = -1000000
@@ -17689,6 +17696,201 @@ func _test_adjacency_scan_detects() -> void:
 	assert_eq(str(hits[0]["pair"]), "Desert|Tundra", "the pair is named, sorted")
 	# The same layout with the rule removed is clean.
 	assert_eq(BiomeAdjacency.scan(gen, {}, Vector2i.ZERO, ADJACENCY_GRID).size(), 0, "no rule, no violation")
+
+# ---- Phase 113 — frontier generation: a new generator version meets recorded land ----
+
+const Frontier := preload("res://src/terrain/frontier.gd")
+const FRONTIER_SEED := 20261011
+const FRONTIER_BLOCK := Vector2i(300, 400)   # origin of the recorded block, far from the spawn plain
+const FRONTIER_BLOCK_SIZE := 6
+const FRONTIER_WINDOW := 24                  # chunks per side of the window around the block
+## Largest height step, in metres, between two adjacent corners across the blend band, for the stand-in
+## generator change below (ridges at a quarter amplitude, the whole spline 30 m higher). A chunk is
+## 32 m wide, so this is a slope under 3:1 where the plain generator's own steps reach ~120 m.
+const FRONTIER_MAX_STEP := 140.0
+
+## Stand in for a new generator version: change the warmed ridge amplitude and height spline. Returns
+## the old values for `_frontier_restore_generator`.
+func _frontier_change_generator() -> Array:
+	WorldShape.warm()
+	var saved: Array = [WorldShape._ridge_amp, WorldShape._spline]
+	WorldShape._ridge_amp = WorldShape._ridge_amp * 0.25
+	var sp: Array = []
+	for pt in WorldShape._spline:
+		sp.append([pt[0], minf(float(pt[1]) + 30.0, WorldShape.max_height())])
+	WorldShape._spline = sp
+	return saved
+
+func _frontier_restore_generator(saved: Array) -> void:
+	WorldShape._ridge_amp = saved[0]
+	WorldShape._spline = saved[1]
+
+## Record the current generator's record for every chunk of a block (the "recorded land").
+func _frontier_record_block() -> void:
+	ChunkRecordsScript.clear()
+	for dz in FRONTIER_BLOCK_SIZE:
+		for dx in FRONTIER_BLOCK_SIZE:
+			var c := FRONTIER_BLOCK + Vector2i(dx, dz)
+			ChunkRecordsScript.set_record(c, RegionStoreScript.normalize_gen(TerrainSlice.generation_record(c, FRONTIER_SEED)))
+
+func _frontier_window_origin() -> Vector2i:
+	return FRONTIER_BLOCK - Vector2i.ONE * ((FRONTIER_WINDOW - FRONTIER_BLOCK_SIZE) / 2)
+
+## Give every unrecorded chunk of the window its frontier record, in raster order (as a player walking
+## would), so each border is resolved against whatever is recorded when its later chunk arrives.
+func _frontier_fill_window() -> void:
+	var o := _frontier_window_origin()
+	for dz in FRONTIER_WINDOW:
+		for dx in FRONTIER_WINDOW:
+			var c := o + Vector2i(dx, dz)
+			if not ChunkRecordsScript.has_record(c):
+				ChunkRecordsScript.set_record(c, RegionStoreScript.normalize_gen(Frontier.record_for(c, FRONTIER_SEED)))
+
+func _test_frontier_recorded_unchanged() -> void:
+	var t := TerrainSlice.new()
+	add_child(t)
+	t.set_world_seed(FRONTIER_SEED)
+	_frontier_record_block()
+	var chunks: Array = []
+	for dz in FRONTIER_BLOCK_SIZE:
+		for dx in FRONTIER_BLOCK_SIZE:
+			chunks.append(FRONTIER_BLOCK + Vector2i(dx, dz))
+	var biomes_before: Array = []
+	for c in chunks:
+		biomes_before.append(TerrainSlice.biome_for_chunk(c, FRONTIER_SEED))
+	var hash_before := _records_hash(t, chunks)
+	var plain_before := TerrainSlice.generation_record(chunks[0], FRONTIER_SEED)
+	var saved := _frontier_change_generator()
+	var changed := 0
+	for c in chunks:
+		if TerrainSlice.generation_record(c, FRONTIER_SEED)["h"] != ChunkRecordsScript.get_record(c)["h"]:
+			changed += 1
+	assert_eq(changed, chunks.size(), "the stand-in generator really moves every corner of the block")
+	assert_true(TerrainSlice.generation_record(chunks[0], FRONTIER_SEED)["f"] != plain_before["f"], "and changes the fingerprint")
+	for i in chunks.size():
+		assert_eq(TerrainSlice.biome_for_chunk(chunks[i], FRONTIER_SEED), biomes_before[i], "recorded biome of chunk %s is unchanged" % chunks[i])
+	assert_eq(_records_hash(t, chunks), hash_before, "recorded heightmaps are unchanged by the new generator")
+	# Filling the frontier around the block must not rewrite a recorded chunk either.
+	var before: Dictionary = {}
+	for c in chunks:
+		before[c] = ChunkRecordsScript.get_record(c).duplicate(true)
+	_frontier_fill_window()
+	for c in chunks:
+		assert_eq(ChunkRecordsScript.get_record(c), before[c], "frontier fill leaves recorded chunk %s alone" % c)
+	_frontier_restore_generator(saved)
+	ChunkRecordsScript.clear()
+	t.free()
+
+func _test_frontier_seam() -> void:
+	_frontier_record_block()
+	var saved := _frontier_change_generator()
+	# Shared corners: a new chunk east of / south of the block reuses the recorded corners exactly.
+	var east := FRONTIER_BLOCK + Vector2i(FRONTIER_BLOCK_SIZE, 2)
+	var rec_e := RegionStoreScript.normalize_gen(Frontier.record_for(east, FRONTIER_SEED))
+	var edge: Array = ChunkRecordsScript.get_record(east + Vector2i(-1, 0))["h"]
+	assert_eq(rec_e["h"][0], edge[1], "east neighbour shares the recorded north-east corner exactly")
+	assert_eq(rec_e["h"][2], edge[3], "and the south-east corner")
+	var south := FRONTIER_BLOCK + Vector2i(3, FRONTIER_BLOCK_SIZE)
+	var rec_s := RegionStoreScript.normalize_gen(Frontier.record_for(south, FRONTIER_SEED))
+	var above: Array = ChunkRecordsScript.get_record(south + Vector2i(0, -1))["h"]
+	assert_eq(rec_s["h"][0], above[2], "south neighbour shares the recorded south-west corner exactly")
+	assert_eq(rec_s["h"][1], above[3], "and the south-east corner")
+	# The largest step between adjacent corners across the whole band.
+	_frontier_fill_window()
+	var o := _frontier_window_origin()
+	var corners: Dictionary = {}   # corner lattice point -> height, taken from the chunk whose NW corner it is
+	for dz in FRONTIER_WINDOW:
+		for dx in FRONTIER_WINDOW:
+			var c := o + Vector2i(dx, dz)
+			var h: Array = ChunkRecordsScript.get_record(c)["h"]
+			corners[c] = h[0]
+			if dx == FRONTIER_WINDOW - 1:
+				corners[c + Vector2i(1, 0)] = h[1]
+			if dz == FRONTIER_WINDOW - 1:
+				corners[c + Vector2i(0, 1)] = h[2]
+	var worst := 0.0
+	var disagree := 0
+	for dz in FRONTIER_WINDOW:
+		for dx in FRONTIER_WINDOW:
+			var c := o + Vector2i(dx, dz)
+			var h: Array = ChunkRecordsScript.get_record(c)["h"]
+			if absf(float(h[1]) - float(corners[c + Vector2i(1, 0)])) > 0.001 or absf(float(h[2]) - float(corners[c + Vector2i(0, 1)])) > 0.001:
+				disagree += 1
+			worst = maxf(worst, maxf(absf(float(h[0]) - float(h[1])), absf(float(h[0]) - float(h[2]))))
+	assert_eq(disagree, 0, "adjacent chunks agree on every shared corner")
+	assert_true(worst < FRONTIER_MAX_STEP, "largest corner step %.1f m is under %.0f m" % [worst, FRONTIER_MAX_STEP])
+	_frontier_restore_generator(saved)
+	ChunkRecordsScript.clear()
+
+func _test_frontier_far_is_plain() -> void:
+	_frontier_record_block()
+	var saved := _frontier_change_generator()
+	var far: Array = [
+		FRONTIER_BLOCK + Vector2i(FRONTIER_BLOCK_SIZE - 1 + Frontier.BLEND_CHUNKS, 2),
+		FRONTIER_BLOCK + Vector2i(-Frontier.BLEND_CHUNKS, 2),
+		FRONTIER_BLOCK + Vector2i(2, FRONTIER_BLOCK_SIZE - 1 + Frontier.BLEND_CHUNKS),
+		FRONTIER_BLOCK + Vector2i(2, -Frontier.BLEND_CHUNKS),
+		FRONTIER_BLOCK + Vector2i(40, 40),
+	]
+	for c in far:
+		assert_eq(Frontier.record_for(c, FRONTIER_SEED), TerrainSlice.generation_record(c, FRONTIER_SEED), "chunk %s, %d+ chunks from recorded land, is the plain new generator" % [c, Frontier.BLEND_CHUNKS])
+	var near := FRONTIER_BLOCK + Vector2i(FRONTIER_BLOCK_SIZE - 1 + Frontier.BLEND_CHUNKS - 1, 2)
+	assert_true(Frontier.record_for(near, FRONTIER_SEED)["h"] != TerrainSlice.generation_record(near, FRONTIER_SEED)["h"], "one chunk closer the blend is still felt")
+	ChunkRecordsScript.clear()
+	assert_eq(Frontier.record_for(near, FRONTIER_SEED), TerrainSlice.generation_record(near, FRONTIER_SEED), "with no records at all it is the plain generator")
+	_frontier_restore_generator(saved)
+
+func _test_frontier_adjacency() -> void:
+	var rules := BiomeAdjacency.table()
+	var trans := BiomeAdjacency.transitions()
+	var keys := TerrainSlice.BIOME_KEYS
+	assert_eq(Frontier.resolve_biome(rules, trans, "Desert", ["Tundra"], keys), trans["Desert"], "a forbidden pick becomes its transition")
+	assert_eq(trans["Desert"], "Savanna", "which for Desert beside Tundra is Savanna")
+	assert_eq(Frontier.resolve_biome(rules, trans, "Desert", ["Savanna", "Alpine"], keys), "Desert", "an allowed pick stands")
+	assert_eq(Frontier.resolve_biome(rules, trans, "Desert", [], keys), "Desert", "no recorded neighbour, no change")
+	# The transition is itself forbidden beside another recorded neighbour: fall back to a neighbour's biome.
+	var scratch := { "A": ["B"], "B": ["A"], "T": ["C"], "C": ["T"], "N": [] }
+	var scratch_trans := { "A": "T", "B": "N", "T": "N", "C": "N", "N": "" }
+	assert_eq(Frontier.resolve_biome(scratch, scratch_trans, "A", ["B", "C"], ["A", "B", "C", "N", "T"]), "B", "a transition forbidden beside another neighbour falls back to a neighbour's biome")
+	# Around a recorded block, with the changed generator, the filled window has no forbidden pair.
+	for seed_v in [FRONTIER_SEED, 7]:
+		ChunkRecordsScript.clear()
+		for dz in FRONTIER_BLOCK_SIZE:
+			for dx in FRONTIER_BLOCK_SIZE:
+				var c := FRONTIER_BLOCK + Vector2i(dx, dz)
+				ChunkRecordsScript.set_record(c, RegionStoreScript.normalize_gen(TerrainSlice.generation_record(c, seed_v)))
+		var saved := _frontier_change_generator()
+		var o := _frontier_window_origin()
+		for dz in FRONTIER_WINDOW:
+			for dx in FRONTIER_WINDOW:
+				var c := o + Vector2i(dx, dz)
+				if not ChunkRecordsScript.has_record(c):
+					ChunkRecordsScript.set_record(c, RegionStoreScript.normalize_gen(Frontier.record_for(c, seed_v)))
+		_frontier_restore_generator(saved)
+		var at := func(c: Vector2i) -> String: return str(ChunkRecordsScript.get_record(c)["b"])
+		var hits := BiomeAdjacency.scan(at, rules, o, FRONTIER_WINDOW, 100)
+		assert_eq(hits.size(), 0, "seed %d: no forbidden pair around the recorded block (first: %s)" % [seed_v, str(hits.slice(0, 2))])
+	ChunkRecordsScript.clear()
+
+func _test_frontier_deterministic() -> void:
+	_frontier_record_block()
+	var saved := _frontier_change_generator()
+	var target := FRONTIER_BLOCK + Vector2i(FRONTIER_BLOCK_SIZE, 1)
+	var first := Frontier.record_for(target, FRONTIER_SEED)
+	# A second host: the same records inserted in the opposite order.
+	var recs: Array = []
+	for dz in FRONTIER_BLOCK_SIZE:
+		for dx in FRONTIER_BLOCK_SIZE:
+			var c := FRONTIER_BLOCK + Vector2i(dx, dz)
+			recs.append([c, ChunkRecordsScript.get_record(c)])
+	ChunkRecordsScript.clear()
+	recs.reverse()
+	for r in recs:
+		ChunkRecordsScript.set_record(r[0], r[1])
+	assert_eq(Frontier.record_for(target, FRONTIER_SEED), first, "same records, same generator: same record")
+	assert_eq(Frontier.record_for(target, FRONTIER_SEED), first, "and the same again")
+	ChunkRecordsScript.clear()
+	_frontier_restore_generator(saved)
 
 # ---- Phase 108 — terrain reads and writes the generation record on the host ----
 
