@@ -445,6 +445,13 @@ func run() -> void:
 	_run_test("map: revealed set round-trips through save and load", _test_map_revealed_roundtrip)
 	_run_test("map: revealed cap and compact encoding",         _test_map_revealed_cap_and_size)
 	_run_test("map: home clamp is exact and on the line",       _test_map_home_clamp)
+	_run_test("map: 50k revealed chunks save and reload, oldest last", _test_map_revealed_scale)
+	_run_test("map: waypoints round-trip, cap and seed scope",  _test_map_waypoints)
+	_run_test("map: minimap drops out-of-world chunks and late seeds", _test_map_minimap_load_and_seed)
+	_run_test("map: stale tiles are capped and the queue survives a pan", _test_map_tiles_stale_and_queue)
+	_run_test("map: window zoom, redraw signature and great-circle home", _test_map_window_phase117)
+	_run_test("ui: HUD toasts are bounded and de-duplicated",   _test_ui_toasts)
+	_run_test("ui: a world-version mismatch is one toast, a pre-stamp save none", _test_ui_worldgen_toast)
 	_run_test("map: M and the dock box toggle the Map window",  _test_map_window_key)
 	_run_test("ui: crafting rows gate on technology",          _test_ui_crafting_rows_tech_gate)
 	_run_test("ui: technology rows report status + prereqs",   _test_ui_technology_rows_status)
@@ -1832,13 +1839,12 @@ func _test_worldgen_stamp_mismatch() -> void:
 	var writer := PersistenceSlice.new()
 	add_child(writer)
 	writer.server_save_dir = dir
-	for original in [0, TerrainSlice.WORLDGEN_VERSION - 1]:
+	for original in [TerrainSlice.WORLDGEN_VERSION - 1]:
 		var record := { "local_player_id": "player_1_1_ab", "chunks": voxel.get_chunk_manifest() }
-		if original > 0:
-			record["worldgenVersion"] = original
+		record["worldgenVersion"] = original
 		assert_eq(writer.save_world(record, false), OK, "the old record writes")
 		var loaded := writer.load_world_record()
-		assert_eq(PersistenceSlice.worldgen_version_of(loaded), original, "a missing stamp reads as 0, an old one as itself")
+		assert_eq(PersistenceSlice.worldgen_version_of(loaded), original, "an old stamp reads as itself")
 		var warns := Diag.warn_count()
 		assert_true(PersistenceSlice.check_worldgen_version(loaded, TerrainSlice.WORLDGEN_VERSION), "the mismatch is reported")
 		assert_eq(Diag.warn_count() - warns, 1, "with exactly one warning")
@@ -1847,6 +1853,12 @@ func _test_worldgen_stamp_mismatch() -> void:
 		assert_eq(writer.save_world({ "local_player_id": "player_1_1_ab", "worldgenVersion": stamp }, true), OK, "the re-save writes")
 		assert_eq(PersistenceSlice.worldgen_version_of(writer.load_world_record()), original, "and the stamp on disk is unchanged")
 		assert_true((writer.load_world()["chunks"] as Dictionary).has("0,0"), "every edit is intact")
+	# Phase 117: a pre-stamp record has no version: it is neither version 0 nor a mismatch.
+	assert_eq(PersistenceSlice.worldgen_version_of({ "seed": 1 }), -1, "a pre-stamp record has no version")
+	var quiet := Diag.warn_count()
+	assert_false(PersistenceSlice.check_worldgen_version({ "seed": 1 }, TerrainSlice.WORLDGEN_VERSION), "a pre-stamp record is no mismatch")
+	assert_eq(Diag.warn_count(), quiet, "and does not warn")
+	assert_eq(PersistenceSlice.worldgen_stamp_for_save({ "seed": 1 }, TerrainSlice.WORLDGEN_VERSION), TerrainSlice.WORLDGEN_VERSION, "its next save takes the running stamp")
 	voxel.free()
 	writer.free()
 	_wipe_dir(dir)
@@ -1869,8 +1881,12 @@ func _test_worldgen_stamp_game_root_wiring() -> void:
 	assert_true(seen.is_empty(), "a matching record raises none")
 	gr._loaded_world = { "seed": 7 }
 	gr._note_worldgen_version()
-	assert_eq(seen, [[0, TerrainSlice.WORLDGEN_VERSION]], "an unstamped record reads as v0 and raises once")
-	assert_eq(gr._worldgen_stamp, 0, "and the next save keeps that original stamp")
+	assert_true(seen.is_empty(), "an unstamped record raises none")
+	assert_eq(gr._worldgen_stamp, TerrainSlice.WORLDGEN_VERSION, "and the next save stamps the running version")
+	gr._loaded_world = { "seed": 7, "worldgenVersion": TerrainSlice.WORLDGEN_VERSION - 1 }
+	gr._note_worldgen_version()
+	assert_eq(seen, [[TerrainSlice.WORLDGEN_VERSION - 1, TerrainSlice.WORLDGEN_VERSION]], "an older stamp raises once")
+	assert_eq(gr._worldgen_stamp, TerrainSlice.WORLDGEN_VERSION - 1, "and the next save keeps that original stamp")
 	GameBus.worldgen_version_mismatch.disconnect(cb)
 	gr.free()
 
@@ -4792,6 +4808,12 @@ func _test_ui_layout_roundtrip() -> void:
 	assert_false(nan_text.has("inventory"), "NaN entry dropped")
 	# The JSON parser rejects a bare NaN token outright, so the whole file falls back to defaults.
 	assert_false(nan_text.has("market"), "NaN token makes the file parse to defaults")
+	# Per entry, with a real NaN (a hand-built value, as JSON cannot spell one): dropped, its neighbour kept.
+	assert_eq(UiSlice.layout_entry([NAN, 2.0]), null, "a NaN x is dropped")
+	assert_eq(UiSlice.layout_entry([2.0, NAN]), null, "a NaN y is dropped")
+	assert_eq(UiSlice.layout_entry([INF, 2.0]), null, "an infinite entry is dropped")
+	assert_eq(UiSlice.layout_entry([5, 6]), Vector2(5, 6), "a finite entry is kept")
+	assert_eq(UiSlice.layout_entry("x"), null, "a non-array entry is dropped")
 
 func _test_ui_inventory_rows() -> void:
 	var ui := _new_test_ui()
@@ -5147,6 +5169,7 @@ func _test_hud_window_dock() -> void:
 
 const _MapMath := preload("res://src/ui/map_math.gd")
 const _MapTiles := preload("res://src/ui/map_tiles.gd")
+const _MapWindow := preload("res://src/ui/map_window.gd")
 const _RevealedStore := preload("res://src/persistence/revealed_store.gd")
 
 func _test_map_projection_blend() -> void:
@@ -5280,8 +5303,9 @@ func _test_map_revealed_roundtrip() -> void:
 	for i in 4:   # a new chunk every 2 s must not postpone the save forever
 		m.set_player_pos(Vector2(40.0 + 400.0 * (i + 1), 40.0))
 		m._tick_revealed_store(2.0)
+	m.finish_save()
 	assert_true(FileAccess.file_exists(_RevealedStore.path_for(dir, 5)), "steady exploring still reaches the debounced save")
-	m.save_revealed()
+	m.save_revealed(true)
 	var m2 := Minimap.new()
 	m2.terrain_slice = terrain
 	m2.revealed_dir = dir
@@ -5292,7 +5316,7 @@ func _test_map_revealed_roundtrip() -> void:
 	# Saving before the seed's file was loaded must not overwrite it; the revision moves with the set.
 	var m3 := Minimap.new()
 	m3.revealed_dir = dir
-	m3.save_revealed()
+	m3.save_revealed(true)
 	assert_false(FileAccess.file_exists(_RevealedStore.path_for(dir, 0)), "no seed-0 file appears")
 	var rev: int = m.revealed_revision()
 	m.set_player_pos(Vector2(4000.0, 4000.0))
@@ -5306,9 +5330,9 @@ func _test_map_revealed_roundtrip() -> void:
 func _test_map_revealed_cap_and_size() -> void:
 	var d: Dictionary = {}
 	for i in 10:
-		d["%d,0" % i] = true
+		d[Vector2i(i, 0)] = true
 	_RevealedStore.cap(d, 4)
-	assert_eq(d.keys(), ["6,0", "7,0", "8,0", "9,0"], "the cap drops the oldest chunks")
+	assert_eq(d.keys(), [Vector2i(6, 0), Vector2i(7, 0), Vector2i(8, 0), Vector2i(9, 0)], "the cap drops the oldest chunks")
 	var chunks: Array = []
 	for z in 100:
 		for x in 100:
@@ -5334,6 +5358,224 @@ func _test_map_home_clamp() -> void:
 	assert_eq(d, Vector2(3.0 * TerrainSlice.CHUNK_METERS + 10.0, -2.0 * TerrainSlice.CHUNK_METERS), "exact at 1,500,000 chunks")
 	var c := _MapMath.clamp_home(d, Vector2(40, 40), d.length())
 	assert_eq(c["distance"], d.length(), "the distance is carried exactly")
+
+## Phase 117 — 50,000 chunks save (from a snapshot, on a worker) and reload in age order through the
+## Vector2i API, and the oldest-first cap survives the round trip.
+func _test_map_revealed_scale() -> void:
+	var path := "user://test_revealed_scale.json"
+	DirAccess.remove_absolute(path)
+	var live: Dictionary = {}
+	for i in 50000:
+		live[Vector2i(1500000 + (i * 7) % 4000, (i * 13) % 900 - 450)] = true
+	var n: int = live.size()
+	assert_true(n > 20000, "the fixture has many distinct chunks (%d)" % n)
+	var snap := _RevealedStore.snapshot(live)
+	live.clear()   # the live set moving on does not touch the snapshot
+	var th := Thread.new()
+	th.start(_RevealedStore.save.bind(path, snap, 9, []))
+	assert_true(th.wait_to_finish(), "the worker writes the snapshot")
+	var back := _RevealedStore.load_file(path, 9)
+	assert_eq(back.size(), n, "every chunk reloads")
+	assert_eq(back, snap, "in the order it was revealed (oldest first)")
+	assert_true(back[0] is Vector2i, "as Vector2i, no string keys")
+	# Reload into a dictionary and cap it: the oldest chunks go, the newest stay.
+	var d: Dictionary = {}
+	for c in back:
+		d[c] = true
+	_RevealedStore.cap(d, 1000)
+	assert_eq(d.size(), 1000, "the cap holds")
+	assert_eq(d.keys(), back.slice(n - 1000), "and kept the newest 1000 across the reload")
+	# The Phase 111 row-sorted form still loads.
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string('{"seed": 9, "rows": {"3": [0, 2, 10, 1]}}')
+	f.close()
+	assert_eq(_RevealedStore.load_file(path, 9), [Vector2i(0, 3), Vector2i(1, 3), Vector2i(10, 3)], "an older file still loads")
+	DirAccess.remove_absolute(path)
+
+func _wp_pos(cx: int, cz: int) -> Dictionary:
+	return { "chunk": Vector2i(cx, cz), "local": Vector3(12.5, 3.0, 40.25) }
+
+## Phase 117 — waypoints keep their exact {chunk, local}, the cap refuses the extra one, and another
+## seed's file carries none.
+func _test_map_waypoints() -> void:
+	var dir := "user://test_waypoints_dir"
+	var path := _RevealedStore.path_for(dir, 21)
+	DirAccess.remove_absolute(path)
+	var terrain := TerrainSlice.new()
+	terrain.set_world_seed(21)
+	var m := Minimap.new()
+	m.terrain_slice = terrain
+	m.revealed_dir = dir
+	m._tick_revealed_store(0.0)
+	m._tick_revealed_store(Minimap.SEED_SETTLE_SECONDS)
+	assert_true(m.add_waypoint("Camp", _wp_pos(TerrainSlice.circumference_chunks() / 2 - 1, -7)), "a waypoint is added")
+	assert_false(m.add_waypoint("Bad", {}), "a position without chunk and local is refused")
+	assert_true(m.add_waypoint("  ", _wp_pos(3, 4)), "an empty name is allowed")
+	assert_eq(m.get_waypoints()[1]["name"], "Waypoint 2", "and defaults to a numbered one")
+	while m.get_waypoints().size() < _RevealedStore.MAX_WAYPOINTS:
+		assert_true(m.add_waypoint("w", _wp_pos(1, 1)), "up to the cap")
+	assert_false(m.add_waypoint("extra", _wp_pos(1, 1)), "the cap refuses the extra one")
+	m.save_revealed(true)
+	var m2 := Minimap.new()
+	m2.terrain_slice = terrain
+	m2.revealed_dir = dir
+	m2._tick_revealed_store(0.0)
+	m2._tick_revealed_store(Minimap.SEED_SETTLE_SECONDS)
+	assert_eq(m2.get_waypoints().size(), _RevealedStore.MAX_WAYPOINTS, "every waypoint reloads")
+	assert_eq(m2.get_waypoints()[0]["name"], "Camp", "with its name")
+	assert_eq(m2.get_waypoints()[0]["pos"], WorldPos.normalized(_wp_pos(TerrainSlice.circumference_chunks() / 2 - 1, -7)), "and its exact chunk and local")
+	assert_eq(_RevealedStore.load_all(path, 22)["waypoints"], [], "a file for another seed carries no waypoints")
+	m2.set_player_pos(Vector2(40.0, 40.0))
+	var marker := m2.waypoint_marker(0, Vector2(100, 100))
+	assert_false(marker.is_empty(), "a waypoint has a minimap marker")
+	m.free()
+	m2.free()
+	terrain.free()
+	DirAccess.remove_absolute(path)
+
+## Phase 117 — a loaded chunk outside the world is dropped; a late seed change waits for the settle
+## and writes nothing under the seed that went away.
+func _test_map_minimap_load_and_seed() -> void:
+	var dir := "user://test_revealed_seed_dir"
+	var path_a := _RevealedStore.path_for(dir, 31)
+	var path_b := _RevealedStore.path_for(dir, 32)
+	DirAccess.remove_absolute(path_a)
+	DirAccess.remove_absolute(path_b)
+	var pole := TerrainSlice.pole_chunks() + TerrainSlice.FOLD_MARGIN_CHUNKS
+	assert_true(_RevealedStore.save(path_a, [Vector2i(0, 0), Vector2i(5, pole + 50), Vector2i(TerrainSlice.circumference_chunks() + 2, 1)], 31), "a file with an off-world chunk")
+	var terrain := TerrainSlice.new()
+	terrain.set_world_seed(31)
+	var m := Minimap.new()
+	m.terrain_slice = terrain
+	m.revealed_dir = dir
+	m._tick_revealed_store(0.0)
+	m._tick_revealed_store(Minimap.SEED_SETTLE_SECONDS)
+	assert_true(m.is_revealed(Vector2i(0, 0)), "an in-world chunk loads")
+	assert_false(m.is_revealed(Vector2i(5, pole + 50)), "a chunk past the poles is dropped")
+	assert_true(m.is_revealed(Vector2i(2, 1)), "a chunk past the seam is wrapped onto the planet")
+	# A late seed change: not acted on before it holds still, never written under the old seed.
+	m.set_player_pos(Vector2(900.0, 900.0))
+	terrain.set_world_seed(32)
+	m._tick_revealed_store(0.1)
+	assert_eq(m.is_revealed_loaded(), true, "still loaded for the old seed")
+	assert_false(m.is_revealed(Vector2i(2, 2)) and not m.is_revealed(Vector2i(0, 0)), "the set is untouched while the new seed settles")
+	m._tick_revealed_store(Minimap.SEED_SETTLE_SECONDS)
+	assert_false(m.is_revealed(Vector2i(0, 0)), "after the settle the old world's set is gone")
+	assert_false(FileAccess.file_exists(path_b), "and no file was written for the new seed from the old set")
+	m.finish_save()
+	m.free()
+	terrain.free()
+	DirAccess.remove_absolute(path_a)
+	DirAccess.remove_absolute(path_b)
+
+## Phase 117 — the stale list is capped (oldest dropped), and a pan keeps the queued tiles.
+func _test_map_tiles_stale_and_queue() -> void:
+	var t := _MapTiles.new()
+	t.reset(3)
+	for i in _MapTiles.STALE_MAX + 500:
+		t._cache["k%d" % i] = "TemperateForest"
+	t.invalidate()
+	assert_eq(t.stale_count(), _MapTiles.STALE_MAX, "the stale list is at its cap")
+	assert_false(t._stale.has("k0"), "and the oldest tiles went first")
+	assert_true(t._stale.has("k%d" % (_MapTiles.STALE_MAX + 499)), "the newest stayed")
+	invalidate_twice_check(t)
+	var u := _MapTiles.new()
+	u.reset(3)
+	for x in 6:
+		u.request(2, x, 0)
+	u.retain_pending({ 2: Rect2i(2, 0, 4, 1) })
+	assert_eq(u.pending_count(), 4, "a pan drops only the tiles that left the view")
+	u.request(2, 6, 0)
+	assert_eq(u.pending_count(), 5, "and adds the one that came into view")
+	u.retain_pending({ 1: Rect2i(0, 0, 9, 9) })
+	assert_eq(u.pending_count(), 0, "a level out of view is dropped whole")
+
+func invalidate_twice_check(t: RefCounted) -> void:
+	for i in 3:
+		t.invalidate()
+	assert_true(t.stale_count() <= _MapTiles.STALE_MAX, "repeated refreshes never exceed the cap")
+
+## Phase 117 — the Map window: zoom clamped on a small world, no redraw for an unchanged player
+## pixel, and the home marker at 1,500,000 chunks matching the great-circle distance.
+func _test_map_window_phase117() -> void:
+	var saved_circ: int = TerrainSlice._circumference_cache
+	TerrainSlice._circumference_cache = 64
+	var small := _MapWindow.new()
+	var zmax := _MapMath.zoom_max(64)
+	assert_true(small.get_zoom() >= _MapMath.ZOOM_MIN and small.get_zoom() <= maxf(zmax, _MapMath.ZOOM_MIN), "_zoom starts in range on a small world")
+	small.free()
+	TerrainSlice._circumference_cache = saved_circ
+	var w := _MapWindow.new()
+	w.size = Vector2(500, 400)
+	var stub := GDScript.new()
+	stub.source_code = "extends Node\nvar respawn_world_pos := {}\nvar pos := Vector3.ZERO\nfunc get_position() -> Vector3:\n\treturn pos\n"
+	stub.reload()
+	var player: Node = Node.new()
+	player.set_script(stub)
+	w.player_slice = player
+	player.pos = Vector3(100.0, 2.0, 100.0)
+	w._center = Vector2(1.5, 1.5)
+	var sig := w.redraw_signature()
+	player.pos = Vector3(100.05, 2.0, 100.0)
+	assert_eq(w.redraw_signature(), sig, "a sub-pixel move triggers no redraw")
+	player.pos = Vector3(100.0 + 4000.0, 2.0, 100.0)
+	assert_true(w.redraw_signature() != sig, "a move of many pixels does")
+	# Home at 1,500,000 chunks: the great-circle distance, within 0.1%.
+	var circ := TerrainSlice.circumference_chunks()
+	w.set_zoom(_MapMath.zoom_max(circ))
+	w._center = Vector2.ZERO
+	var home := { "chunk": Vector2i(circ / 4 + 100, 80000), "local": Vector3(10.0, 0.0, 10.0) }
+	player.respawn_world_pos = home
+	var m := w.home_marker(Vector2(500, 400))
+	var lon := (float(home["chunk"].x) + 10.0 / TerrainSlice.CHUNK_METERS) / float(circ) * TAU
+	var lat := -(float(home["chunk"].y) + 10.0 / TerrainSlice.CHUNK_METERS) / (float(circ) * 0.25) * (PI * 0.5)
+	var cos_c := sin(lat) * 0.0 + cos(lat) * cos(0.0) * cos(lon)   # from the equator at lon 0
+	var angle := acos(clampf(cos_c, -1.0, 1.0))
+	var expected := angle * float(circ) * TerrainSlice.CHUNK_METERS / TAU
+	assert_true(absf(m["distance"] - expected) / expected < 0.001, "home distance %f matches the great circle %f" % [m["distance"], expected])
+	# A right-click maps a pixel back to the exact place under it (flat zoom).
+	w.set_zoom(_MapMath.ZOOM_MIN)
+	w._center = Vector2(1000.0, -20.0)
+	var at := w.world_pos_at(Vector2.ZERO)
+	assert_false(at.is_empty(), "the pixel under the centre is a place")
+	assert_true(absf(float(at["chunk"].x) - 1000.0) <= 1.0 and absf(float(at["chunk"].y) + 20.0) <= 1.0, "and it is the centre's chunk")
+	player.free()
+	w.free()
+
+## Phase 117 — the HUD toast queue.
+func _test_ui_toasts() -> void:
+	var ui := _new_test_ui()
+	assert_true(ui.push_toast("one"), "a toast is shown")
+	assert_eq(ui.toast_shown(), "one", "at once")
+	assert_false(ui.push_toast("one"), "the same text on screen is not added again")
+	assert_true(ui.push_toast("two"), "another queues")
+	assert_false(ui.push_toast("two"), "and is not queued twice")
+	for i in UiSlice.TOAST_MAX + 5:
+		ui.push_toast("n%d" % i)
+	assert_eq(ui.toast_queue().size(), UiSlice.TOAST_MAX, "the queue is bounded")
+	assert_false(ui.toast_queue().has("two"), "the oldest queued toast was dropped")
+	ui.advance_toasts(UiSlice.TOAST_SECONDS + 0.1)
+	assert_true(ui.toast_shown() != "one", "the next one is shown")
+	ui.free()
+
+## Phase 117 — game_root raises the version mismatch once; the UI turns it into exactly one toast. A
+## pre-stamp record raises nothing.
+func _test_ui_worldgen_toast() -> void:
+	var ui := _new_test_ui()
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	var gr: Node = root_script.new()
+	gr._loaded_world = { "seed": 7 }
+	gr._note_worldgen_version()
+	assert_eq(ui.toast_shown(), "", "a pre-stamp save produces no toast")
+	gr._loaded_world = { "seed": 7, "worldgenVersion": TerrainSlice.WORLDGEN_VERSION - 1,
+		"worldgenFingerprint": TerrainSlice.worldgen_fingerprint() }
+	gr._note_worldgen_version()
+	assert_true(ui.toast_shown().contains("generator v%d" % (TerrainSlice.WORLDGEN_VERSION - 1)), "a mismatch shows the toast")
+	assert_eq(ui.toast_queue().size(), 0, "exactly one")
+	ui.push_toast("World saved with generator v%d, running v%d: terrain may not match saved edits." % [TerrainSlice.WORLDGEN_VERSION - 1, TerrainSlice.WORLDGEN_VERSION])
+	assert_eq(ui.toast_queue().size(), 0, "the same notice is never queued twice")
+	gr.free()
+	ui.free()
 
 func _test_map_window_key() -> void:
 	var ui := _new_hud_ui()
@@ -8415,7 +8657,7 @@ func _test_chat_command_constant() -> void:
 func _test_minimap_blend_respects_fog() -> void:
 	var mm := Minimap.new()
 	add_child(mm)
-	mm._revealed = { "0,0": true, "-1,0": true }
+	mm._revealed = { Vector2i(0, 0): true, Vector2i(-1, 0): true }
 	mm.terrain_slice = _own(BiomeStub.new())
 	var n := Minimap.CELLS_PER_CHUNK
 	var cell_tiles := float(TerrainSlice.CHUNK_SIZE) / n
@@ -8600,7 +8842,7 @@ func _test_minimap_far_zoom_one_rect() -> void:
 	add_child(mm)
 	mm.terrain_slice = BiomeStub.new()
 	mm.set_player_pos(Vector2(16.0, 16.0))
-	mm._revealed = { "0,0": true, "-1,0": true, "1,0": true, "0,1": true }   # mixed biomes: blend would split
+	mm._revealed = { Vector2i(0, 0): true, Vector2i(-1, 0): true, Vector2i(1, 0): true, Vector2i(0, 1): true }   # mixed biomes: blend would split
 	mm.set_zoom(Minimap.ZOOM_MAX)
 	var size := Vector2(120, 120)   # 120 / 65 = 1.8 px per chunk
 	var rects: Array = mm._view_rects(size)
@@ -8623,7 +8865,7 @@ func _test_minimap_cache_bounded_and_seeded() -> void:
 	mm._view_rects(Vector2(180, 180))
 	assert_true(stub.lookups > before, "a new world seed re-asks every biome")
 	for i in Minimap.BIOME_CACHE_MAX + 10:
-		mm._biome_cache["%d,999" % i] = "TemperateForest"
+		mm._biome_cache[Vector2i(i, 999)] = "TemperateForest"
 	mm._view_rects(Vector2(180, 180))
 	assert_true(mm._biome_cache.size() <= Minimap.BIOME_CACHE_MAX, "the cache is pruned past its bound")
 	stub.free()
@@ -8638,7 +8880,7 @@ func _test_minimap_cache_bounded_and_seeded() -> void:
 	big.set_player_pos(Vector2(16.0, 16.0))
 	for cz in range(-35, 36):
 		for cx in range(-35, 36):
-			big._revealed["%d,%d" % [cx, cz]] = true
+			big._revealed[Vector2i(cx, cz)] = true
 	big._view_rects(Vector2(400, 400))
 	var filled := bstub.lookups
 	big._view_rects(Vector2(400, 400))
@@ -17775,7 +18017,6 @@ func _test_worldgen_fingerprint_restores() -> void:
 ## Phase 114 — the fingerprint mismatch reaches the UI notice, once; the next load finds none.
 func _test_worldgen_fingerprint_notice() -> void:
 	var ui := UiSlice.new()
-	ui._worldgen_notice_label = Label.new()
 	GameBus.worldgen_fingerprint_mismatch.connect(ui._on_worldgen_fingerprint_mismatch)
 	var root_script: GDScript = load("res://src/core/game_root.gd")
 	var gr: Node = root_script.new()
@@ -17783,7 +18024,7 @@ func _test_worldgen_fingerprint_notice() -> void:
 	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION, "worldgenFingerprint": running + 1 }
 	gr._note_worldgen_version()
 	GameBus.worldgen_fingerprint_mismatch.disconnect(ui._on_worldgen_fingerprint_mismatch)
-	assert_true(ui._worldgen_notice_label.text.contains("parameters changed"), "the notice reaches the UI label")
+	assert_true(ui.toast_shown().contains("parameters changed"), "the notice reaches the HUD toast")
 	assert_eq(gr._worldgen_fp_stamp, running, "the stamp moves to the running fingerprint after the notice")
 	var seen: Array = []
 	var cb := func(saved: int, current: int) -> void: seen.append([saved, current])
@@ -17792,7 +18033,6 @@ func _test_worldgen_fingerprint_notice() -> void:
 	gr._note_worldgen_version()
 	GameBus.worldgen_fingerprint_mismatch.disconnect(cb)
 	assert_true(seen.is_empty(), "the next load of that world raises nothing")
-	ui._worldgen_notice_label.free()
 	ui.free()
 	gr.free()
 

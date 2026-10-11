@@ -105,7 +105,13 @@ var _character_stats: Label = null
 var own_handle: String = ""
 var _friend_code_label: Label = null
 var _spawn_notice_label: Label = null
-var _worldgen_notice_label: Label = null
+## Phase 117 — the HUD toast channel: a bounded, de-duplicated queue shown one at a time.
+const TOAST_MAX := 8
+const TOAST_SECONDS := 6.0
+var _toast_label: Label = null
+var _toast_queue: Array[String] = []
+var _toast_shown: String = ""
+var _toast_left: float = 0.0
 var _character_grid: GridContainer = null
 var _slot_menu: PopupMenu = null
 var _slot_menu_item: String = ""
@@ -254,6 +260,22 @@ func _build_hud() -> void:
 	_hud_notice.add_theme_color_override("font_outline_color", Color(0, 0, 0))
 	_hud_notice.add_theme_constant_override("outline_size", 5)
 	_ui.add_child(_hud_notice)
+
+	_toast_label = Label.new()
+	_toast_label.anchor_left = 0.5
+	_toast_label.anchor_right = 0.5
+	_toast_label.offset_left = -300.0
+	_toast_label.offset_right = 300.0
+	_toast_label.offset_top = 60.0
+	_toast_label.offset_bottom = 120.0
+	_toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_toast_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_toast_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.5))
+	_toast_label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	_toast_label.add_theme_constant_override("outline_size", 5)
+	_toast_label.text = _toast_shown
+	_ui.add_child(_toast_label)
 
 # ---------------------------------------------------------------------------
 # Drag and drop
@@ -454,13 +476,19 @@ static func parse_layout(text: String) -> Dictionary:
 	if not (parsed is Dictionary):
 		return out
 	for key in WINDOW_KEYS:
-		var v = parsed.get(key, null)
-		if v is Array and v.size() == 2 and (v[0] is float or v[0] is int) and (v[1] is float or v[1] is int):
-			var pos := Vector2(float(v[0]), float(v[1]))
-			# NaN/inf or an absurd magnitude from a hand-edited file would poison clamp; skip the entry.
-			if is_finite(pos.x) and is_finite(pos.y) and absf(pos.x) <= LAYOUT_MAX_COORD and absf(pos.y) <= LAYOUT_MAX_COORD:
-				out[key] = pos
+		var pos = layout_entry(parsed.get(key, null))
+		if pos != null:
+			out[key] = pos
 	return out
+
+## One saved window position: a Vector2 for a two-number array of sane finite values, else null.
+## NaN/inf or an absurd magnitude from a hand-edited file would poison clamp, so it is skipped.
+static func layout_entry(v: Variant) -> Variant:
+	if v is Array and v.size() == 2 and (v[0] is float or v[0] is int) and (v[1] is float or v[1] is int):
+		var pos := Vector2(float(v[0]), float(v[1]))
+		if is_finite(pos.x) and is_finite(pos.y) and absf(pos.x) <= LAYOUT_MAX_COORD and absf(pos.y) <= LAYOUT_MAX_COORD:
+			return pos
+	return null
 
 static func layout_to_json(layout: Dictionary) -> String:
 	var d: Dictionary = {}
@@ -918,20 +946,54 @@ func _on_spawn_notice(message: String) -> void:
 
 ## Phase 71 — the host's world record came from another generator version.
 func _on_worldgen_version_mismatch(recorded: int, running: int) -> void:
-	if _worldgen_notice_label != null:
-		_add_worldgen_notice("World saved with generator v%d, running v%d: terrain may not match saved edits." % [recorded, running])
+	push_toast("World saved with generator v%d, running v%d: terrain may not match saved edits." % [recorded, running])
 
 ## Phase 114 — the fabric's world or biome parameters changed since the world was saved. Recorded land
 ## keeps its shape; only land nobody has visited yet follows the new parameters.
 func _on_worldgen_fingerprint_mismatch(_saved: int, _current: int) -> void:
-	if _worldgen_notice_label != null:
-		_add_worldgen_notice("World parameters changed since this world was saved: unvisited land follows the new ones, visited land is unchanged.")
+	push_toast("World parameters changed since this world was saved: unvisited land follows the new ones, visited land is unchanged.")
 
-## Both worldgen notices can apply to one world: the second adds a line and never replaces the first.
-func _add_worldgen_notice(msg: String) -> void:
-	var t := _worldgen_notice_label.text
-	if t.find(msg) < 0:
-		_worldgen_notice_label.text = msg if t.is_empty() else t + "\n" + msg
+## Queue a HUD toast. A text already queued or on screen is not added twice; past TOAST_MAX the
+## oldest queued toast is dropped. Returns whether it was queued.
+func push_toast(text: String) -> bool:
+	if text == "" or text == _toast_shown or _toast_queue.has(text):
+		return false
+	_toast_queue.append(text)
+	while _toast_queue.size() > TOAST_MAX:
+		_toast_queue.pop_front()
+	_show_next_toast()
+	return true
+
+## The queued toasts (not counting the one on screen), oldest first.
+func toast_queue() -> Array[String]:
+	return _toast_queue
+
+## The toast on screen, "" when none.
+func toast_shown() -> String:
+	return _toast_shown
+
+## Age the toast on screen by `delta` seconds and bring up the next queued one when it expires.
+func advance_toasts(delta: float) -> void:
+	if _toast_shown != "":
+		_toast_left -= delta
+		if _toast_left > 0.0:
+			return
+		_toast_shown = ""
+		if _toast_label != null:
+			_toast_label.text = ""
+	_show_next_toast()
+
+func _show_next_toast() -> void:
+	if _toast_shown != "" or _toast_queue.is_empty():
+		return
+	_toast_shown = _toast_queue.pop_front()
+	_toast_left = TOAST_SECONDS
+	if _toast_label != null:
+		_toast_label.text = _toast_shown
+
+func _process(delta: float) -> void:
+	if _toast_shown != "":
+		advance_toasts(delta)
 
 ## One row per skill the player has, best tier first: { id, tier, tooltip }. Pure given the table.
 static func skills_rows(tiers: Dictionary) -> Array:
@@ -1521,9 +1583,6 @@ func _build_character_content() -> Control:
 	_spawn_notice_label = Label.new()
 	_spawn_notice_label.add_theme_font_size_override("font_size", 13)
 	vbox.add_child(_spawn_notice_label)
-	_worldgen_notice_label = Label.new()
-	_worldgen_notice_label.add_theme_font_size_override("font_size", 13)
-	vbox.add_child(_worldgen_notice_label)
 	_character_grid = GridContainer.new()
 	_character_grid.columns = INVENTORY_COLUMNS
 	vbox.add_child(_character_grid)

@@ -137,7 +137,7 @@ npm run generate  # generate the design bible into bible/
 | 114 | Generation record and frontier cleanup sweep | Done |
 | 115 | Chat, admin and test-tooling cleanup sweep | Done |
 | 116 | Tree clears follow chunks onto clients | Done |
-| 117 | Map waypoints, HUD toasts and an explored set that scales | Planned |
+| 117 | Map waypoints, HUD toasts and an explored set that scales | Done |
 | 118 | Void bursts, the survivor flag and the VoidTouched unlock | Planned |
 | 119 | An injected network transport and a compact per-tick wire form | Planned |
 | 120 | The distant ring draws recorded land | Planned |

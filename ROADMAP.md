@@ -137,7 +137,7 @@ issue number where the criterion used to be.
 | 114 | Generation record and frontier cleanup sweep | Done | below |
 | 115 | Chat, admin and test-tooling cleanup sweep | Done | below |
 | 116 | Tree clears follow chunks onto clients | Done | below |
-| 117 | Map waypoints, HUD toasts and an explored set that scales | Planned | below |
+| 117 | Map waypoints, HUD toasts and an explored set that scales | Done | below |
 | 118 | Void bursts, the survivor flag and the VoidTouched unlock | Planned | below |
 | 119 | An injected network transport and a compact per-tick wire form | Planned | below |
 | 120 | The distant ring draws recorded land | Planned | below |
@@ -763,7 +763,7 @@ tree record with the chunk, wraps every coordinate, bounds client memory and pro
 
 ---
 
-## Phase 117 — Map waypoints, HUD toasts and an explored set that scales
+## Phase 117 — Map waypoints, HUD toasts and an explored set that scales ✅ Done
 
 **Goal:** the Phase 111 map window works, but its explored set is stored as string keys parsed on the
 main thread (up to 50k per save and per redraw), the tile cache's stale list grows without bound, the
@@ -799,17 +799,17 @@ that stays cheap at its cap.
   the `?` hotkey through `unicode == 63` (#257).
 
 **Acceptance criteria:**
-- [ ] #257: suite: a world-version mismatch produces exactly one toast; a pre-stamp save produces none;
+- [x] #257: suite: a world-version mismatch produces exactly one toast; a pre-stamp save produces none;
   the `?` hotkey path and per-entry NaN handling are tested; `/where` has one literal.
-- [ ] #277: suite: 50,000 revealed chunks save and reload with no string keys built on the main thread
+- [x] #277: suite: 50,000 revealed chunks save and reload with no string keys built on the main thread
   (the store API takes `Vector2i`); the home marker's distance at 1,500,000 chunks matches the
   great-circle value within 0.1%.
-- [ ] #278: suite: the cap drops the oldest chunks after a save/reload round-trip; `_stale` never exceeds
+- [x] #278: suite: the cap drops the oldest chunks after a save/reload round-trip; `_stale` never exceeds
   its cap; a loaded out-of-world chunk is dropped; `_zoom` starts within `[zoom_min, zoom_max]` on a
   small world; an unchanged player pixel triggers no redraw.
-- [ ] Suite: a waypoint round-trips through save and load exactly, the cap refuses the extra one, and a
+- [x] Suite: a waypoint round-trips through save and load exactly, the cap refuses the extra one, and a
   file for another seed carries no waypoints.
-- [ ] Suite green on both boot paths.
+- [x] Suite green on both boot paths.
 
 ---
 

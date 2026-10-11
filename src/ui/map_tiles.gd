@@ -9,13 +9,15 @@ const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const MapMath := preload("res://src/ui/map_math.gd")
 
 const CACHE_MAX := 20000
+## The stale list never outgrows this: past it the oldest entries go (a refresh that never finishes cannot grow it).
+const STALE_MAX := 20000
 
 var seed_v: int = 0
 var version: int = TerrainSlice.WORLDGEN_VERSION
 var _cache: Dictionary = {}                 # key -> biome (insertion order = age)
 var _pending: Dictionary = {}               # level -> { key: Vector3i(level, tx, tz) }
 var _inflight: Dictionary = {}              # key -> true, taken but not yet stored
-var _stale: Dictionary = {}                 # tiles from before the last `invalidate`, shown until redone
+var _stale: Dictionary = {}                 # tiles from before the last `invalidate`, shown until redone (bounded by STALE_MAX, oldest first)
 ## Bumps whenever cached results stop being valid; a batch computed under an older one is dropped.
 var generation: int = 0
 
@@ -65,6 +67,22 @@ func pending_count() -> int:
 
 func clear_pending() -> void:
 	_pending.clear()
+
+## Drop queued tiles outside `view` (level -> Rect2i of tile coordinates, edges included in size);
+## queued tiles inside it, and the rest of the queue, stay.
+func retain_pending(view: Dictionary) -> void:
+	for l in _pending.keys():
+		if not view.has(l):
+			_pending.erase(l)
+			continue
+		var r: Rect2i = view[l]
+		var q: Dictionary = _pending[l]
+		for k in q.keys():
+			var t: Vector3i = q[k]
+			if t.y < r.position.x or t.y >= r.end.x or t.z < r.position.y or t.z >= r.end.y:
+				q.erase(k)
+		if q.is_empty():
+			_pending.erase(l)
 
 ## Up to `n` queued tiles, the coarsest level first.
 func take(n: int) -> Array:
@@ -129,6 +147,17 @@ func reset(new_seed: int) -> void:
 func invalidate() -> void:
 	generation += 1
 	_stale.merge(_cache, true)   # keep what an earlier, unfinished refresh still shows
+	_cap_stale()
 	_cache = {}
 	_pending.clear()
 	_inflight.clear()
+
+## Drop the oldest stale tiles until at most STALE_MAX remain.
+func _cap_stale() -> void:
+	var extra: int = _stale.size() - STALE_MAX
+	if extra > 0:
+		for k in _stale.keys().slice(0, extra):
+			_stale.erase(k)
+
+func stale_count() -> int:
+	return _stale.size()
