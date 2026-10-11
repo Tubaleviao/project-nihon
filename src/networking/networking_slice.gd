@@ -756,6 +756,8 @@ func send_teleport(peer_id: int, position: Dictionary) -> bool:
 	if _role != Role.HOST:
 		Diag.warn("NetworkingSlice: send_teleport called on non-host — dropped")
 		return false
+	if _peer == null and _test_peers == null:
+		return false
 	_deliver(peer_id, { "type": "teleport", "position": WorldPos.pos_to_wire(position) })
 	return true
 

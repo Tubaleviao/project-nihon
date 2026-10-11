@@ -13046,6 +13046,12 @@ func _test_quit_after_boot_predicate() -> void:
 	assert_false(root_script.should_quit_after_boot(["--server", "--run-tests"]),
 		"and another arg is not it")
 
+## Median of an Array of ints (the upper middle for an even count).
+func _median_int(values: Array) -> int:
+	var sorted := values.duplicate()
+	sorted.sort()
+	return int(sorted[sorted.size() / 2])
+
 ## Phase 42 review — the phase's headline claim ("the build is on a worker, the main
 ## thread does not build") is a QUANTITATIVE one, so it leaves a number behind rather than
 ## prose. This times the two halves of one chunk build on this machine, as
@@ -13067,12 +13073,6 @@ func _test_quit_after_boot_predicate() -> void:
 ## because the streaming loop dispatches one chunk per frame. The ratio is still asserted
 ## alongside it — the worker half must also dominate, i.e. the expensive work is off the main
 ## thread — and both numbers are printed for a reviewer to check.
-## Median of an Array of ints (the upper middle for an even count).
-func _median_int(values: Array) -> int:
-	var sorted := values.duplicate()
-	sorted.sort()
-	return int(sorted[sorted.size() / 2])
-
 func _test_chunk_build_split_probe() -> void:
 	var terrain := TerrainSlice.new()
 	add_child(terrain)
@@ -17457,12 +17457,16 @@ func _test_chat_rate_limit() -> void:
 	var refused_before := chat.chat_rate_refused
 	chat.handle_intent("after reconnect", "player_other")
 	assert_eq(chat.chat_rate_refused, refused_before + 1, "so a reconnect does not refill the bucket")
-	# Commands are not throttled by the chat bucket.
+	# An admin's commands are not throttled by the chat bucket (the host's local player is an admin).
 	posted.clear()
 	for i in ChatSlice.CHAT_BURST * 3:
-		chat.handle_intent("/help", "player_other")
-	assert_eq(chat.chat_rate_refused, refused_before + 1, "commands never spend a token")
+		chat.handle_intent("/help", "")
+	assert_eq(chat.chat_rate_refused, refused_before + 1, "an admin's commands never spend a token")
 	assert_false(posted.is_empty(), "and are answered")
+	# A non-admin's commands (known, unknown, admin-only) spend the bucket like chat does.
+	for cmd in ["/help", "/nope", "/say hi"]:
+		chat.handle_intent(cmd, "player_other")
+	assert_eq(chat.chat_rate_refused, refused_before + 4, "a non-admin's commands are throttled")
 	# The map stays bounded: fully refilled buckets are pruned once many are held.
 	for i in ChatSlice.MAX_BUCKETS + 5:
 		chat.handle_intent("x", "bulk_%d" % i)

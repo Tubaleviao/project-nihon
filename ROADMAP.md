@@ -266,7 +266,7 @@ on-planet teleports) and 104 (two-client harness steps).
   lines, refilling at `CHAT_LINES_PER_SEC`) checked before a line is parsed or broadcast; a refused line
   is dropped, counted in `chat_rate_refused`, and answered with at most one "slow down" notice per player
   per interval. The host's own local player is subject to it too, admins included. The clock is
-  injectable, like `ChunkManager.set_clock`; the bucket entry is erased when the peer disconnects.
+  injectable, like `ChunkManager.set_clock`; the bucket entry survives a disconnect (Phase 115) and is pruned only once fully refilled.
 - The same file — `_cmd_kill` on a remote target routes through the same host path as a creature hit
   (emit `GameBus.player_damaged(KILL_DAMAGE, "admin", target)` or call one shared host helper), never
   `send_player_damaged` on its own; the local-body branch is unchanged. No file outside `game_root.gd`
@@ -289,7 +289,7 @@ on-planet teleports) and 104 (two-client harness steps).
 **Acceptance criteria:**
 - [x] Suite: with a fake clock, a client sending `CHAT_BURST + 10` lines in one tick has exactly
   `CHAT_BURST` broadcast, `chat_rate_refused` raised by 10 and one notice sent to it alone; after
-  `1 / CHAT_LINES_PER_SEC` seconds of fake time one more line is accepted; a disconnect removes the
+  `1 / CHAT_LINES_PER_SEC` seconds of fake time one more line is accepted; a disconnect keeps (Phase 115) the
   player's bucket entry.
 - [x] Suite: an admin's `/kill` on a connected peer leaves `PlayerRegistry.get_hp(peer_id)` at 0 (the
   `simulated_hp_after_hit` floor) and sends exactly one `player_damaged` to that peer; after that peer
@@ -678,7 +678,7 @@ below in one PR.
 - `src/core/chat_commands.gd`, `src/chat/chat_slice.gd` — `parse_position` parses doubles and builds
   `{chunk, local}` directly, never through a `Vector3`; `/kill`, `/tp`, `/bring` reply success only when
   the host actually applied or sent the effect and report a reason otherwise; the token bucket charges
-  plain chat only and is keyed by player id so a reconnect does not refill it (#261, #262).
+  plain chat and non-admin commands (admin commands are exempt) and is keyed by player id so a reconnect does not refill it (#261, #262).
 - `src/tests/net_harness.gd` `admin_teleport` — waits until the destination chunk is loaded before
   checking the landing, and teleports the client back so later steps start from the usual place (#262).
 - `src/tests/test_suite.gd` — 'chunk: the build split is measured' compares the median of several runs
@@ -699,7 +699,7 @@ below in one PR.
 - [x] #258: `node tools/check_readme_phases.js --self-test` fails a decorated-status row; suite has the
   three new `GameRoot` placement tests and the separate relay asserts; the history criteria are reworded.
 - [x] #261: suite: `/tp` to a point 1,200,000 chunks out lands within 1e-3 m of the typed coordinate;
-  admin commands are not throttled by the chat bucket; the build-split test uses a median.
+  admin commands are not throttled by the chat bucket (non-admin commands are); the build-split test uses a median.
 - [x] #262: suite: `/kill` on an unknown peer and `/tp` with no networking reply a failure; a reconnect
   does not reset the bucket; harness `admin_teleport` waits for the chunk and restores the client.
 - [x] #280: suite: `_adjacency_origins` fails when no coast is found (proved with a scratch zero-step

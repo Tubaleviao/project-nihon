@@ -33,7 +33,7 @@ const VISIBLE_LINES := 8
 ## Seconds a line stays on screen after it arrives, while the input is closed.
 const LINE_LIFETIME := 12.0
 const KILL_DAMAGE := PlayerRules.MAX_HP * 100.0
-## Phase 101 — a per-player token bucket on plain chat (Phase 115: commands do not spend it): `CHAT_BURST` lines at once, refilling at
+## Phase 101 — a per-player token bucket on plain chat (Phase 115: an admin's commands do not spend it): `CHAT_BURST` lines at once, refilling at
 ## `CHAT_LINES_PER_SEC`. A refused line is dropped and counted; the player hears about it at most
 ## once per `SLOW_DOWN_NOTICE_SEC`.
 const CHAT_BURST := 5
@@ -147,9 +147,11 @@ func handle_intent(text: String, player_id: String) -> void:
 	var clean := ChatCommands.sanitize(text)
 	if clean == "":
 		return
-	if not ChatCommands.is_slash(clean):
-		if not _take_token(speaker):
-			return
+	# Plain chat and every non-admin command spend a token; an admin's commands are not throttled.
+	var is_cmd := ChatCommands.is_slash(clean)
+	if not (is_cmd and is_admin(speaker)) and not _take_token(speaker):
+		return
+	if not is_cmd:
 		_post(CHANNEL_CHAT, _handle_of(speaker), clean, "")
 		return
 	var parsed := ChatCommands.parse(clean)
@@ -180,11 +182,12 @@ func handle_intent(text: String, player_id: String) -> void:
 		_:
 			pass
 
-## Spend one token of `speaker`'s bucket (plain chat only: slash commands are not throttled). False (and the line is dropped) when it is empty; the
+## Spend one token of `speaker`'s bucket (plain chat and non-admin commands). False (and the line is dropped) when it is empty; the
 ## player is told to slow down at most once per `SLOW_DOWN_NOTICE_SEC`.
 func _take_token(speaker: String) -> bool:
 	var now: float = now_sec.call()
 	if not _buckets.has(speaker):
+		_prune_buckets()
 		_buckets[speaker] = { "tokens": float(CHAT_BURST), "at": now, "notice_at": -INF }
 	var b: Dictionary = _buckets[speaker]
 	b["tokens"] = minf(float(CHAT_BURST), float(b["tokens"]) + maxf(0.0, now - float(b["at"])) * CHAT_LINES_PER_SEC)
