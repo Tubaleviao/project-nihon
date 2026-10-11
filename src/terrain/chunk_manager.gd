@@ -382,6 +382,7 @@ func refresh(unload_now: bool = true) -> void:
 		# groundless chunk needs re-arming in. See `_self_heal_failed`.
 		_self_heal_failed(centers, false)
 		_retry_stranded_regions()
+		_retry_deferred_records()
 		return
 
 	_last_centers = centers
@@ -651,6 +652,24 @@ func _record_deferred() -> void:
 		_record_generation(canon)
 		if records_created != before and _built.has(_chunk_key(canon)):
 			request_rebuild(canon)
+
+## A stationary host never crosses a window, so nothing else re-reads the regions a deferred chunk is
+## waiting for: once per `STRANDED_RETRY_MSEC`, sync the regions the current windows want (a region
+## still backing off is skipped by the streamer itself) and retry the deferred chunks.
+var _last_deferred_retry_msec: int = -STRANDED_RETRY_MSEC
+func _retry_deferred_records() -> void:
+	if _deferred_records.is_empty() or region_streamer == null:
+		return
+	var now: int = now_msec.call()
+	if now - _last_deferred_retry_msec < STRANDED_RETRY_MSEC:
+		return
+	_last_deferred_retry_msec = now
+	var desired: Array = []
+	for k in _chunk_refs:
+		desired.append(_key_to_chunk(str(k)))
+	var synced: Dictionary = region_streamer.sync(region_streamer.regions_for_chunks(desired, Frontier.BLEND_CHUNKS))
+	_rebuild_adopted(synced.get("adopted", []))
+	_record_deferred()
 
 ## A region read after its chunks were built swapped the records under them: rebuild those chunks.
 func _rebuild_adopted(keys: Array) -> void:
@@ -1057,11 +1076,18 @@ func _exit_tree() -> void:
 	# Phase 114 — records created this session reach the disk before the process goes (a blocked or
 	# backing-off flush is bypassed once: there is no next frame), and the table does not outlive
 	# the world it described.
+	# A running save thread owns the region files: `GameRoot._exit_tree` reaps it and then calls
+	# `flush_records_final`, so this one stands down.
+	if not (records_flush_blocked.is_valid() and bool(records_flush_blocked.call())):
+		flush_records_final()
+	if record_store != null and _pending_records.is_empty():
+		ChunkRecords.clear()
+
+## Write every pending record now, ignoring backoff and the save block (shutdown has no next frame).
+func flush_records_final() -> void:
 	if record_store != null and not _pending_records.is_empty():
 		record_store.write_chunks(_pending_records)
 		_pending_records.clear()
-	if record_store != null:
-		ChunkRecords.clear()
 
 ## Attach every worker build that has finished, on the main thread. A result whose
 ## chunk was streamed back out while it built is dropped, and so is one whose revision

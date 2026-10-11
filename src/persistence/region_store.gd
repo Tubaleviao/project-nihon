@@ -149,7 +149,10 @@ static func fold_chunks(base: Dictionary, incoming: Dictionary, deletions := tru
 			continue
 		if entry is Dictionary and (entry as Dictionary).has("gen") and not (entry as Dictionary).has("edits") \
 				and out.get(ckey, null) is Dictionary:
-			# A gen-only entry sets the record and leaves the stored edits alone.
+			# A gen-only entry sets the record and leaves the stored edits alone. A record a newer
+			# generator wrote is not ours to replace (this build never read it, so it cannot know it).
+			if is_newer_gen(stored_gen):
+				continue
 			var with_gen: Dictionary = (out[ckey] as Dictionary).duplicate()
 			with_gen["gen"] = entry["gen"]
 			out[ckey] = with_gen

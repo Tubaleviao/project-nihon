@@ -2160,6 +2160,10 @@ func _finish_save(result: int) -> void:
 ## before it is freed, so this is both the correctness and the lifecycle hook.
 func _exit_tree() -> void:
 	_flush_save()
+	# The chunk manager's own exit stood down while the save thread ran; its records go out now.
+	if _chunk_manager != null and is_instance_valid(_chunk_manager):
+		_chunk_manager.flush_records_final()
+		ChunkRecords.clear()
 
 ## Bind the local (authoritative) player's identity and inventory. The id comes
 ## from the world record when a previous process minted one, so identity is as

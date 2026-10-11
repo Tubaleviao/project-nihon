@@ -18563,9 +18563,11 @@ func _test_p114_deferred_and_adopted() -> void:
 	assert_false(ChunkRecordsScript.has_record(c), "and nothing is in the table")
 	store.save_region(Vector2i.ZERO, {})
 	clock[0] += RegionStreamerScript114.BACKOFF_START_MSEC * 2
-	streamer.sync(want)
 	var rebuilds := cm.rebuild_request_count(c)
-	cm._record_deferred()
+	# A stationary host (no window move) retries on its own: refresh() re-syncs and records the chunk.
+	cm._chunk_refs = { cm._chunk_key(c): 1 }
+	cm.now_msec = func() -> int: return clock[0]
+	cm._retry_deferred_records()
 	assert_eq(cm.records_created, 1, "recorded once every region is resident")
 	assert_eq(cm.deferred_record_count(), 0, "and forgotten")
 	assert_eq(cm.rebuild_request_count(c), rebuilds + 1, "the built chunk is rebuilt on its record")
@@ -18607,6 +18609,11 @@ func _test_p114_newer_version_kept() -> void:
 	streamer.sync({ "0,0": true })
 	assert_false(ChunkRecordsScript.has_record(Vector2i(2, 2)), "the streamer does not adopt it")
 	assert_true(ChunkRecordsScript.has_record(Vector2i(3, 3)), "but adopts the readable one")
+	# A gen-only write over the newer record (a build that cannot see it records the chunk anew) loses.
+	var mine := RegionStoreScript.normalize_gen(TerrainSlice.generation_record(Vector2i(2, 2), 31))
+	assert_eq(store.write_chunks({ "2,2": { "gen": mine } }), OK, "a rewrite of the chunk is accepted")
+	assert_eq(int((store.read_region(Vector2i.ZERO)["chunks"]["2,2"]["gen"] as Dictionary)["v"]), int(future["v"]),
+		"but a newer generator's record is not replaced")
 	voxel.free()
 	ChunkRecordsScript.clear()
 
