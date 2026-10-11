@@ -163,6 +163,12 @@ static func fold_chunks(base: Dictionary, incoming: Dictionary, deletions := tru
 			kept["gen"] = stored_gen
 			out[ckey] = kept
 			continue
+		if entry is Dictionary and (entry as Dictionary).has("gen") and is_newer_gen(stored_gen):
+			# An entry with edits AND an older generator's record: keep the edits, not the older record.
+			var kept_newer: Dictionary = (entry as Dictionary).duplicate()
+			kept_newer["gen"] = stored_gen
+			out[ckey] = kept_newer
+			continue
 		out[ckey] = entry
 	return out
 

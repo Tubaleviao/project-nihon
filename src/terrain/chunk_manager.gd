@@ -222,6 +222,7 @@ var now_msec: Callable = Time.get_ticks_msec
 func set_clock(c: Callable) -> void:
 	now_msec = c
 	_last_stranded_retry_msec = -STRANDED_RETRY_MSEC
+	_last_deferred_retry_msec = -STRANDED_RETRY_MSEC
 	_last_self_heal_msec = -1
 	for peer_id in _peer_last_claim_msec:
 		_peer_last_claim_msec[peer_id] = -1000000
@@ -650,7 +651,7 @@ func _record_deferred() -> void:
 			continue
 		var before := records_created
 		_record_generation(canon)
-		if records_created != before and _built.has(_chunk_key(canon)):
+		if records_created != before and _loaded.has(_chunk_key(canon)):
 			request_rebuild(canon)
 
 ## A stationary host never crosses a window, so nothing else re-reads the regions a deferred chunk is
@@ -678,7 +679,7 @@ func _rebuild_adopted(keys: Array) -> void:
 		if parts.size() != 2:
 			continue
 		var c := Vector2i(int(parts[0]), int(parts[1]))
-		if _built.has(_chunk_key(c)):
+		if _loaded.has(_chunk_key(c)):
 			request_rebuild(c)
 
 ## Failed record writes back off per region: "rx,rz" -> { "until": msec, "delay": msec }.

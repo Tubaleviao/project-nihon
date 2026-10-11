@@ -53,7 +53,7 @@ static func parse_key(key: Variant) -> Variant:
 ## `cap` valid ones are applied and further valid ones counted as refused, while a malformed entry is
 ## dropped without using up the cap (at most `SCAN_FACTOR * cap` entries are looked at, so a flood of
 ## garbage stays bounded). Returns `{ "applied", "dropped", "refused", "changed" }`, `changed` the
-## canonical chunks whose table entry is new or different.
+## canonical chunks whose ground (not just trees) is new or different.
 const SCAN_FACTOR := 4
 
 static func apply(records: Variant, cap: int = PACKET_CAP) -> Dictionary:
@@ -78,7 +78,11 @@ static func apply(records: Variant, cap: int = PACKET_CAP) -> Dictionary:
 			refused += 1
 			continue
 		var canon := TerrainSlice.wrap_chunk(chunk)
-		if ChunkRecords.set_record(canon, rec):
+		# Only a change of ground (`b`, `h`, `v`) bumps `revision`; a tree-only difference must not
+		# make the client rebuild the chunk mesh.
+		var ground_before := ChunkRecords.revision()
+		ChunkRecords.set_record(canon, rec)
+		if ChunkRecords.revision() != ground_before:
 			changed.append(canon)
 		applied += 1
 	return { "applied": applied, "dropped": dropped, "refused": refused, "changed": changed }

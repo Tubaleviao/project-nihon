@@ -18614,6 +18614,9 @@ func _test_p114_newer_version_kept() -> void:
 	assert_eq(store.write_chunks({ "2,2": { "gen": mine } }), OK, "a rewrite of the chunk is accepted")
 	assert_eq(int((store.read_region(Vector2i.ZERO)["chunks"]["2,2"]["gen"] as Dictionary)["v"]), int(future["v"]),
 		"but a newer generator's record is not replaced")
+	var folded := RegionStoreScript.fold_chunks({ "2,2": { "gen": future } }, { "2,2": { "edits": { "1,1": [] }, "gen": mine } }, false)
+	assert_eq(int((folded["2,2"]["gen"] as Dictionary)["v"]), int(future["v"]), "an entry with edits and an older record keeps the newer record")
+	assert_true((folded["2,2"] as Dictionary).has("edits"), "and its edits")
 	voxel.free()
 	ChunkRecordsScript.clear()
 
@@ -18634,6 +18637,12 @@ func _test_p114_tree_only_revision() -> void:
 	moved["h"] = [5.0, 5.0, 5.0, 5.0]
 	ChunkRecordsScript.set_record(c, moved)
 	assert_eq(ChunkRecordsScript.revision(), ground + 1, "a height change moves the ground revision")
+	ChunkRecordsScript.clear()
+	ChunkRecordsScript.set_record(c, rec)
+	var tree_only := ChunkRecordSyncScript.apply({ ChunkRecordsScript.key_of(c): with_trees })
+	assert_eq((tree_only["changed"] as Array).size(), 0, "a tree-only record from the host is not a ground change")
+	var ground_change := ChunkRecordSyncScript.apply({ ChunkRecordsScript.key_of(c): moved })
+	assert_eq((ground_change["changed"] as Array).size(), 1, "a ground change is reported")
 	ChunkRecordsScript.clear()
 
 ## The client prunes its table to the host's scope, the short way round the seam.
