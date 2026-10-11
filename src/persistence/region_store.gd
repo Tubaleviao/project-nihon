@@ -30,7 +30,7 @@ const REGION_FORMAT_VERSION := 2
 const TerrainSliceScript := preload("res://src/terrain/terrain_slice.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 ## Heights of a `gen` record are stored at this resolution (about 7 bytes each as JSON).
-const GEN_HEIGHT_STEP := 0.0001
+const GEN_HEIGHT_STEP := TerrainSliceScript.GEN_HEIGHT_STEP
 ## Phase 110 — bound on a record's tree budget `t` and on the spawn indices in `x` (indices are < this).
 const GEN_TREE_MAX := 64
 const FILE_PREFIX := "r."
@@ -149,7 +149,10 @@ static func fold_chunks(base: Dictionary, incoming: Dictionary, deletions := tru
 			continue
 		if entry is Dictionary and (entry as Dictionary).has("gen") and not (entry as Dictionary).has("edits") \
 				and out.get(ckey, null) is Dictionary:
-			# A gen-only entry sets the record and leaves the stored edits alone.
+			# A gen-only entry sets the record and leaves the stored edits alone. A record a newer
+			# generator wrote is not ours to replace (this build never read it, so it cannot know it).
+			if is_newer_gen(stored_gen):
+				continue
 			var with_gen: Dictionary = (out[ckey] as Dictionary).duplicate()
 			with_gen["gen"] = entry["gen"]
 			out[ckey] = with_gen
@@ -159,6 +162,12 @@ static func fold_chunks(base: Dictionary, incoming: Dictionary, deletions := tru
 			var kept: Dictionary = (entry as Dictionary).duplicate()
 			kept["gen"] = stored_gen
 			out[ckey] = kept
+			continue
+		if entry is Dictionary and (entry as Dictionary).has("gen") and is_newer_gen(stored_gen):
+			# An entry with edits AND an older generator's record: keep the edits, not the older record.
+			var kept_newer: Dictionary = (entry as Dictionary).duplicate()
+			kept_newer["gen"] = stored_gen
+			out[ckey] = kept_newer
 			continue
 		out[ckey] = entry
 	return out
@@ -275,7 +284,11 @@ func read_region(region: Vector2i, warn := true) -> Dictionary:
 				chunks[ckey] = raw[ckey]
 				if raw[ckey].has("gen"):
 					var gen := normalize_gen(raw[ckey]["gen"])
-					if gen.is_empty():
+					if gen.is_empty() and is_newer_gen(raw[ckey]["gen"]):
+						# Phase 114 — a record written by a newer generator is not ours to read, nor to
+						# destroy: it rides through a rewrite verbatim, and `ChunkRecords` ignores it.
+						chunks[ckey] = (raw[ckey] as Dictionary).duplicate()
+					elif gen.is_empty():
 						# Phase 107 — a malformed record is dropped; the chunk's edits stay.
 						var stripped: Dictionary = (raw[ckey] as Dictionary).duplicate()
 						stripped.erase("gen")
@@ -327,6 +340,11 @@ static func _chunk_entry_valid(entry: Dictionary) -> bool:
 	if entry.has("materials") and not (entry["materials"] is Dictionary):
 		return false
 	return true
+
+## True for a record whose `v` is a whole number above this build's `WORLDGEN_VERSION`. Pure.
+static func is_newer_gen(rec: Variant) -> bool:
+	return rec is Dictionary and _is_whole_number((rec as Dictionary).get("v", null)) \
+			and int((rec as Dictionary)["v"]) > TerrainSliceScript.WORLDGEN_VERSION
 
 ## Phase 107 — a `gen` record cleaned for storage, or `{}` when it is malformed: `v` an integer in
 ## 1..WORLDGEN_VERSION (a newer one was written by a newer game and is not trusted), `f` a

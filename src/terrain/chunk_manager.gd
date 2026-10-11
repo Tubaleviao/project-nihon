@@ -222,6 +222,7 @@ var now_msec: Callable = Time.get_ticks_msec
 func set_clock(c: Callable) -> void:
 	now_msec = c
 	_last_stranded_retry_msec = -STRANDED_RETRY_MSEC
+	_last_deferred_retry_msec = -STRANDED_RETRY_MSEC
 	_last_self_heal_msec = -1
 	for peer_id in _peer_last_claim_msec:
 		_peer_last_claim_msec[peer_id] = -1000000
@@ -382,6 +383,7 @@ func refresh(unload_now: bool = true) -> void:
 		# groundless chunk needs re-arming in. See `_self_heal_failed`.
 		_self_heal_failed(centers, false)
 		_retry_stranded_regions()
+		_retry_deferred_records()
 		return
 
 	_last_centers = centers
@@ -405,7 +407,9 @@ func refresh(unload_now: bool = true) -> void:
 	# Phase 52 — the edits of every region the windows touch are resident BEFORE a chunk is
 	# queued, so no build reads a log that is missing its region.
 	if region_streamer != null:
-		region_streamer.sync(region_streamer.regions_for_chunks(desired, Frontier.BLEND_CHUNKS))
+		var synced: Dictionary = region_streamer.sync(region_streamer.regions_for_chunks(desired, Frontier.BLEND_CHUNKS))
+		_rebuild_adopted(synced.get("adopted", []))
+		_record_deferred()
 
 	# Queue loads nearest-first. Dispatching is what is bounded per frame; the build
 	# itself runs on a worker.
@@ -601,14 +605,25 @@ func load_chunk(chunk_pos: Vector2i) -> void:
 	_dispatch_build(chunk_pos)
 
 ## Phase 108 — a chunk entering a window with no generation record gets the one the current
-## generator would write (Phase 113: eased into any recorded land around it, `Frontier`), BEFORE its heightmap is generated (so the record and the ground agree by
-## construction). Host and dedicated server only; the distant ring never calls this.
+## generator would write, BEFORE its heightmap is generated (so the record and the ground agree by
+## construction). Phase 113: the record is eased into any recorded land around it (`Frontier`), which
+## reads the records of every chunk within `Frontier.BLEND_CHUNKS`; that is why `refresh` keeps the
+## regions that far out resident (a few extra region reads per window crossing, never more than the
+## 3x3 regions around an unrecorded chunk). Phase 114: while any of those regions failed to read or is
+## backing off, the chunk is NOT recorded (it would be fixed for good from incomplete records); it is
+## remembered in `_deferred_records` and retried by `_record_deferred`, and a record made after the
+## chunk was built rebuilds it. Host and dedicated server only; the distant ring never calls this.
 func _record_generation(chunk_pos: Vector2i) -> void:
 	if record_store == null or terrain_slice == null or not terrain_slice.has_method("get_world_seed"):
 		return
 	var canon := TerrainSlice.wrap_chunk(chunk_pos)
 	if ChunkRecords.has_record(canon):
+		_deferred_records.erase(ChunkRecords.key_of(canon))
 		return
+	if region_streamer != null and not region_streamer.regions_ready(canon, Frontier.BLEND_CHUNKS):
+		_deferred_records[ChunkRecords.key_of(canon)] = canon
+		return
+	_deferred_records.erase(ChunkRecords.key_of(canon))
 	var rec := RegionStore.normalize_gen(Frontier.record_for(canon, int(terrain_slice.get_world_seed())))
 	if rec.is_empty():
 		return   # a generator value outside the height range: leave the chunk to the generator
@@ -616,20 +631,92 @@ func _record_generation(chunk_pos: Vector2i) -> void:
 		_pending_records[ChunkRecords.key_of(canon)] = { "gen": rec }
 		records_created += 1
 
-## Write the pending records, one region rewrite per region. Waits while a save is running; a failed
-## write keeps them pending for the next frame (they are in the table either way).
+## Chunks that entered a window while a neighbouring region was unreadable: "cx,cz" -> canonical chunk.
+var _deferred_records: Dictionary = {}
+
+func deferred_record_count() -> int:
+	return _deferred_records.size()
+
+## Retry the deferred chunks whose regions are all resident now; one that is already built is rebuilt
+## on its new record. A chunk that left the streamed set is forgotten.
+func _record_deferred() -> void:
+	if _deferred_records.is_empty():
+		return
+	for k in _deferred_records.keys():
+		var canon: Vector2i = _deferred_records[k]
+		if not _loaded.has(_chunk_key(canon)):
+			_deferred_records.erase(k)
+			continue
+		if region_streamer != null and not region_streamer.regions_ready(canon, Frontier.BLEND_CHUNKS):
+			continue
+		var before := records_created
+		_record_generation(canon)
+		if records_created != before and _loaded.has(_chunk_key(canon)):
+			request_rebuild(canon)
+
+## A stationary host never crosses a window, so nothing else re-reads the regions a deferred chunk is
+## waiting for: once per `STRANDED_RETRY_MSEC`, sync the regions the current windows want (a region
+## still backing off is skipped by the streamer itself) and retry the deferred chunks.
+var _last_deferred_retry_msec: int = -STRANDED_RETRY_MSEC
+func _retry_deferred_records() -> void:
+	if _deferred_records.is_empty() or region_streamer == null:
+		return
+	var now: int = now_msec.call()
+	if now - _last_deferred_retry_msec < STRANDED_RETRY_MSEC:
+		return
+	_last_deferred_retry_msec = now
+	var desired: Array = []
+	for k in _chunk_refs:
+		desired.append(_key_to_chunk(str(k)))
+	var synced: Dictionary = region_streamer.sync(region_streamer.regions_for_chunks(desired, Frontier.BLEND_CHUNKS))
+	_rebuild_adopted(synced.get("adopted", []))
+	_record_deferred()
+
+## A region read after its chunks were built swapped the records under them: rebuild those chunks.
+func _rebuild_adopted(keys: Array) -> void:
+	for k in keys:
+		var parts: PackedStringArray = str(k).split(",")
+		if parts.size() != 2:
+			continue
+		var c := Vector2i(int(parts[0]), int(parts[1]))
+		if _loaded.has(_chunk_key(c)):
+			request_rebuild(c)
+
+## Failed record writes back off per region: "rx,rz" -> { "until": msec, "delay": msec }.
+var _flush_backoff: Dictionary = {}
+const FLUSH_BACKOFF_START_MSEC := 1000
+const FLUSH_BACKOFF_MAX_MSEC := 60000
+## The clock the flush backoff reads; a test swaps it for a deterministic one.
+var _now: Callable = Time.get_ticks_msec
+
+## Write the pending records, one region rewrite per region. Waits while a save is running. A region
+## whose write fails keeps its records pending and is skipped until its backoff elapses (1 s, doubling
+## to 1 min), so an unreadable region file costs one read per interval and not one per frame; a
+## success forgets it. The records are in the table either way.
 func flush_records() -> void:
 	if _pending_records.is_empty() or record_store == null:
 		return
 	if records_flush_blocked.is_valid() and bool(records_flush_blocked.call()):
 		return
-	if record_store.write_chunks(_pending_records) == OK:
-		_pending_records.clear()
-	else:
-		var failed: Array = record_store.last_failed_chunk_keys
-		for k in _pending_records.keys():
-			if not failed.has(k):
-				_pending_records.erase(k)
+	var now: int = _now.call()
+	var batch: Dictionary = {}
+	for k in _pending_records:
+		var rk := RegionStore.region_key(RegionStore.region_of_chunk_key(str(k)))
+		if _flush_backoff.has(rk) and now < int(_flush_backoff[rk]["until"]):
+			continue
+		batch[k] = _pending_records[k]
+	if batch.is_empty():
+		return
+	var ok := record_store.write_chunks(batch) == OK
+	var failed: Array = [] if ok else record_store.last_failed_chunk_keys
+	for k in batch:
+		if failed.has(k):
+			var rk := RegionStore.region_key(RegionStore.region_of_chunk_key(str(k)))
+			var delay := mini(int(_flush_backoff.get(rk, { "delay": FLUSH_BACKOFF_START_MSEC / 2 })["delay"]) * 2, FLUSH_BACKOFF_MAX_MSEC)
+			_flush_backoff[rk] = { "until": now + delay, "delay": delay }
+		else:
+			_flush_backoff.erase(RegionStore.region_key(RegionStore.region_of_chunk_key(str(k))))
+			_pending_records.erase(k)
 
 ## Phase 110 — replace a chunk's record (a tree budget or a cleared tree was added). Always updates
 ## the shared table; queues the disk write only where this process owns a record store.
@@ -987,6 +1074,21 @@ func _exit_tree() -> void:
 	for task_id in _builds.keys():
 		WorkerThreadPool.wait_for_task_completion(task_id)
 	_builds.clear()
+	# Phase 114 — records created this session reach the disk before the process goes (a blocked or
+	# backing-off flush is bypassed once: there is no next frame), and the table does not outlive
+	# the world it described.
+	# A running save thread owns the region files: `GameRoot._exit_tree` reaps it and then calls
+	# `flush_records_final`, so this one stands down.
+	if not (records_flush_blocked.is_valid() and bool(records_flush_blocked.call())):
+		flush_records_final()
+	if record_store != null and _pending_records.is_empty():
+		ChunkRecords.clear()
+
+## Write every pending record now, ignoring backoff and the save block (shutdown has no next frame).
+func flush_records_final() -> void:
+	if record_store != null and not _pending_records.is_empty():
+		record_store.write_chunks(_pending_records)
+		_pending_records.clear()
 
 ## Attach every worker build that has finished, on the main thread. A result whose
 ## chunk was streamed back out while it built is dropped, and so is one whose revision

@@ -1175,34 +1175,27 @@ func _step_chunk_record_synced() -> void:
 ## Phase 113 — a frontier record reaches the client.
 ##
 ## The previous step left a recorded chunk with shifted corner heights. The host now computes the record
-## of the chunk east of it with `Frontier`, which must reuse the shifted corners it shares with that
-## neighbour (the plain generator knows nothing of the shift), records it and re-scopes the peer. The
-## client waits for a record whose shared corners carry the shift, and both report biome and heights.
+## of the chunk east of it with `Frontier`, which must reuse the recorded corners it shares with its
+## recorded neighbours (the plain generator knows nothing of the shift), records it and re-scopes the
+## peer. Phase 114: no recorded chunk is edited here; each side reads the expected shared corners off
+## the records it already holds (`_frontier_expected`, the neighbours only, in `Frontier`'s own order).
+## The client waits for a record carrying them, and both report biome and heights.
+func _frontier_expected(chunk: Vector2i) -> Array:
+	var recs := Frontier.gather(chunk)
+	recs.erase(chunk)
+	var nw := Frontier._recorded_corner(chunk, recs)
+	var sw := Frontier._recorded_corner(chunk + Vector2i(0, 1), recs)
+	return [nw, sw]
+
 func _step_frontier_record_synced() -> void:
 	var base: Vector2i = _root._chunk_manager.world_to_chunk(Vector2(RENDEZVOUS.x, RENDEZVOUS.z))
 	var chunk := base + Vector2i(1, 0)
-	var shared: Array = []
-	if ChunkRecords.has_record(base):
-		var bh: Array = ChunkRecords.get_record(base)["h"]
-		shared = [bh[1], bh[3]]
+	var shared := _frontier_expected(chunk)
 	if _role == "host":
-		if shared.is_empty():
+		if is_nan(shared[0]) or is_nan(shared[1]):
 			_report("frontier_record_synced", "fail", "no_neighbour_record")
 			return
 		var seed_value := int(_root._terrain.get_world_seed())
-		# Recorded neighbours must agree on the corners they share with `chunk`, so shift every recorded
-		# chunk around it by the same 3 m the previous step gave `base` (a stand-in for older land).
-		for dz in range(-1, 3):
-			for dx in range(-1, 3):
-				var around := base + Vector2i(dx, dz)
-				if around == chunk or around == base or not ChunkRecords.has_record(around):
-					continue
-				var shifted_rec: Dictionary = ChunkRecords.get_record(around).duplicate(true)
-				var shifted: Array = []
-				for h in shifted_rec["h"]:
-					shifted.append(minf(float(h) + 3.0, WorldShape.max_height() - 1.0))
-				shifted_rec["h"] = shifted
-				ChunkRecords.set_record(around, RegionStore.normalize_gen(shifted_rec))
 		var rec := RegionStore.normalize_gen(Frontier.record_for(chunk, seed_value))
 		if rec.is_empty() or absf(float(rec["h"][0]) - float(shared[0])) > 0.001 or absf(float(rec["h"][2]) - float(shared[1])) > 0.001:
 			_report("frontier_record_synced", "fail", "host_frontier_not_shared")
@@ -1216,7 +1209,7 @@ func _step_frontier_record_synced() -> void:
 		_root._networking.send_snapshot(peer, _root._build_snapshot(peer, false, RENDEZVOUS, false))
 		_report("frontier_record_synced", verdict(true, true), _record_detail(rec))
 		return
-	if shared.is_empty():
+	if is_nan(shared[0]) or is_nan(shared[1]):
 		_report("frontier_record_synced", "fail", "no_neighbour_record")
 		return
 	# The client's own join snapshot may already hold the plain record here: wait for the frontier one.

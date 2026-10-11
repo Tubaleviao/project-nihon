@@ -36,6 +36,18 @@ const WORLDGEN_VERSION := 5
 ## (as `ClimateField.niche_salt`), not `String.hash()`, so it is stable across Godot versions.
 ## Editing a biome envelope or a shape field changes it with no code change.
 static func worldgen_fingerprint() -> int:
+	if _fingerprint_cache < 0:
+		_fingerprint_cache = compute_worldgen_fingerprint()
+	return _fingerprint_cache
+
+static var _fingerprint_cache := -1
+
+## Forget the cached fingerprint; whatever edits the shape or envelopes in place (a test standing in
+## for a generator change) calls this before reading `worldgen_fingerprint()` again.
+static func reset_fingerprint_cache() -> void:
+	_fingerprint_cache = -1
+
+static func compute_worldgen_fingerprint() -> int:
 	var fields := WorldShape.fingerprint_fields()
 	var parts: PackedStringArray = []
 	for f in fields:
@@ -230,20 +242,23 @@ static func generated_biome_for_chunk(chunk_pos: Vector2i, seed_v: int = BIOME_S
 static func biome_altitude(seed_v: int, x: float, z: float, w: float) -> float:
 	return polar_ground(seed_v, WorldShape.height(seed_v, x, z, w) + HEIGHT_SCALE * 0.5, x, z, w) - WorldShape.sea_level()
 
+## The rounding step of a stored height (`RegionStore.GEN_HEIGHT_STEP` is this).
+const GEN_HEIGHT_STEP := 0.0001
+
+## The generator's height at lattice corner `p` (the north-west corner of chunk `p`), clamped to the
+## `WorldShape` range, unrounded. Shared by `generation_record` and `Frontier`.
+static func generated_corner_height(p: Vector2i, seed_v: int) -> float:
+	var w := float(circumference_chunks()) * CHUNK_METERS
+	var h := WorldShape.height(seed_v, float(p.x) * CHUNK_METERS, float(p.y) * CHUNK_METERS, w)
+	return clampf(h, WorldShape.min_height(), WorldShape.max_height())
+
 ## Phase 108 — the generation record the CURRENT generator would write for `chunk` (canonical):
 ## `{ v, f, b, h }` with `h` the `WorldShape` heights at the cell's corners in the order
 ## (x0,z0) (x1,z0) (x0,z1) (x1,z1), rounded as `RegionStore.normalize_gen` stores them. Pure.
 static func generation_record(chunk: Vector2i, seed_v: int) -> Dictionary:
-	var w := float(circumference_chunks()) * CHUNK_METERS
-	var x0 := float(chunk.x) * CHUNK_METERS
-	var z0 := float(chunk.y) * CHUNK_METERS
-	var step := 0.0001   # RegionStore.GEN_HEIGHT_STEP
-	var lo := WorldShape.min_height()
-	var hi := WorldShape.max_height()
 	var hs: Array = []
-	for c in [Vector2(0, 0), Vector2(1, 0), Vector2(0, 1), Vector2(1, 1)]:
-		var h := WorldShape.height(seed_v, x0 + c.x * CHUNK_METERS, z0 + c.y * CHUNK_METERS, w)
-		hs.append(snappedf(clampf(h, lo, hi), step))
+	for c in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]:
+		hs.append(snappedf(generated_corner_height(chunk + c, seed_v), GEN_HEIGHT_STEP))
 	return { "v": WORLDGEN_VERSION, "f": worldgen_fingerprint(), "b": generated_biome_for_chunk(chunk, seed_v), "h": hs }
 
 ## Phase 108 — `WorldShape.height` for a read that is not a chunk heightmap (the distant ring): inside a

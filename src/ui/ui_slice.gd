@@ -143,6 +143,7 @@ func _ready() -> void:
 	GameBus.craft_resolved.connect(_on_craft_resolved)
 	GameBus.spawn_notice.connect(_on_spawn_notice)
 	GameBus.worldgen_version_mismatch.connect(_on_worldgen_version_mismatch)
+	GameBus.worldgen_fingerprint_mismatch.connect(_on_worldgen_fingerprint_mismatch)
 	GameBus.repair_resolved.connect(_on_repair_resolved)
 	GameBus.research_resolved.connect(_on_research_resolved)
 	GameBus.technology_unlocked.connect(_on_technology_unlocked)
@@ -918,7 +919,19 @@ func _on_spawn_notice(message: String) -> void:
 ## Phase 71 — the host's world record came from another generator version.
 func _on_worldgen_version_mismatch(recorded: int, running: int) -> void:
 	if _worldgen_notice_label != null:
-		_worldgen_notice_label.text = "World saved with generator v%d, running v%d: terrain may not match saved edits." % [recorded, running]
+		_add_worldgen_notice("World saved with generator v%d, running v%d: terrain may not match saved edits." % [recorded, running])
+
+## Phase 114 — the fabric's world or biome parameters changed since the world was saved. Recorded land
+## keeps its shape; only land nobody has visited yet follows the new parameters.
+func _on_worldgen_fingerprint_mismatch(_saved: int, _current: int) -> void:
+	if _worldgen_notice_label != null:
+		_add_worldgen_notice("World parameters changed since this world was saved: unvisited land follows the new ones, visited land is unchanged.")
+
+## Both worldgen notices can apply to one world: the second adds a line and never replaces the first.
+func _add_worldgen_notice(msg: String) -> void:
+	var t := _worldgen_notice_label.text
+	if t.find(msg) < 0:
+		_worldgen_notice_label.text = msg if t.is_empty() else t + "\n" + msg
 
 ## One row per skill the player has, best tier first: { id, tier, tooltip }. Pure given the table.
 static func skills_rows(tiers: Dictionary) -> Array:

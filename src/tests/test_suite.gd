@@ -154,6 +154,8 @@ func run() -> void:
 	_run_test("worldgen: fingerprint stamp on the world record", _test_worldgen_fingerprint_record)
 	_run_test("worldgen: fingerprint mismatch wiring",        _test_worldgen_fingerprint_game_root)
 	_run_test("worldgen: golden generator values",            _test_worldgen_golden)
+	_run_test("worldgen: fingerprint test restores statics",  _test_worldgen_fingerprint_restores)
+	_run_test("worldgen: fingerprint notice reaches the UI",  _test_worldgen_fingerprint_notice)
 	_run_test("biomes: adjacency table",                      _test_adjacency_table)
 	_run_test("biomes: adjacency scan of the generator",      _test_adjacency_scan)
 	_run_test("biomes: adjacency scan can fail",              _test_adjacency_scan_detects)
@@ -162,6 +164,14 @@ func run() -> void:
 	_run_test("frontier: far chunks are the plain generator", _test_frontier_far_is_plain)
 	_run_test("frontier: adjacency around a recorded block",  _test_frontier_adjacency)
 	_run_test("frontier: two hosts agree",                    _test_frontier_deterministic)
+	_run_test("frontier: order-independent field, weight",    _test_frontier_order_and_weight)
+	_run_test("records: lifecycle, flush backoff, exit",      _test_p114_record_lifecycle)
+	_run_test("records: deferred while a region is down",     _test_p114_deferred_and_adopted)
+	_run_test("records: newer version survives a rewrite",    _test_p114_newer_version_kept)
+	_run_test("records: tree-only update keeps the revision", _test_p114_tree_only_revision)
+	_run_test("records: client prunes to gen_scope",          _test_p114_prune_scope)
+	_run_test("records: cap counts valid; join stamp",        _test_p114_cap_and_join_stamp)
+	_run_test("records: streamer margin only when unrecorded", _test_p114_streamer_margin)
 	_run_test("records: no records leaves 64 chunks as before",  _test_records_none_unchanged)
 	_run_test("records: a record overrides biome and corner heights", _test_records_override)
 	_run_test("records: a streamed chunk is recorded exactly once", _test_records_written_once)
@@ -15914,7 +15924,6 @@ func _test_region_gen_malformed() -> void:
 	var good := _gen_rec()
 	var bads: Array = [
 		"x", { "v": "5", "f": 1, "b": "Tundra", "h": [1, 1, 1, 1] },
-		{ "v": TerrainSlice.WORLDGEN_VERSION + 1, "f": 1, "b": "Tundra", "h": [1.0, 1.0, 1.0, 1.0] },
 		{ "v": 1, "f": 1, "b": "Nowhere", "h": [1.0, 1.0, 1.0, 1.0] },
 		{ "v": 1, "f": 1, "b": "Tundra", "h": [1.0, 1.0, 1.0] },
 		{ "v": 1, "f": 1, "b": "Tundra", "h": [1.0, 1.0, 1.0, "a"] },
@@ -17536,30 +17545,82 @@ func _test_chat_wire() -> void:
 func _test_worldgen_fingerprint() -> void:
 	var fp := TerrainSlice.worldgen_fingerprint()
 	assert_eq(TerrainSlice.worldgen_fingerprint(), fp, "stable across two calls")
+	# Each mutation is undone on the very next line, before its assert is read, so a failing assert
+	# (which records and goes on) can never leave a static changed for the tests after this one.
 	var saved_shape_warmed: bool = WorldShape._warmed
 	var saved_env: Dictionary = ClimateField._envelopes.duplicate(true)
 	var saved_clim_warmed: bool = ClimateField._warmed
 	WorldShape._warmed = false
 	ClimateField._warmed = false
 	ClimateField._envelopes.clear()
-	assert_eq(TerrainSlice.worldgen_fingerprint(), fp, "stable across a warm() reset")
+	TerrainSlice.reset_fingerprint_cache()
+	var after_reset := TerrainSlice.worldgen_fingerprint()
+	assert_eq(after_reset, fp, "stable across a warm() reset")
 	var saved_amp: float = WorldShape._ridge_amp
 	WorldShape._ridge_amp = saved_amp + 1.0
-	assert_true(TerrainSlice.worldgen_fingerprint() != fp, "changing ridgeAmplitude changes it")
+	var ridge_fp := TerrainSlice.compute_worldgen_fingerprint()
 	WorldShape._ridge_amp = saved_amp
+	assert_true(ridge_fp != fp, "changing ridgeAmplitude changes it")
 	var saved_spline: Array = WorldShape._spline
 	var edited: Array = saved_spline.duplicate(true)
 	edited[1][1] = float(edited[1][1]) + 1.0
 	WorldShape._spline = edited
-	assert_true(TerrainSlice.worldgen_fingerprint() != fp, "changing the height spline changes it")
+	var spline_fp := TerrainSlice.compute_worldgen_fingerprint()
 	WorldShape._spline = saved_spline
-	assert_eq(TerrainSlice.worldgen_fingerprint(), fp, "restoring the shape restores it")
+	assert_true(spline_fp != fp, "changing the height spline changes it")
+	assert_eq(TerrainSlice.compute_worldgen_fingerprint(), fp, "restoring the shape restores it")
 	var first_key: String = str(ClimateField._envelopes.keys()[0])
 	ClimateField._envelopes[first_key][0] = float(ClimateField._envelopes[first_key][0]) + 0.01
-	assert_true(TerrainSlice.worldgen_fingerprint() != fp, "changing a biome envelope changes it")
+	var env_fp := TerrainSlice.compute_worldgen_fingerprint()
 	WorldShape._warmed = saved_shape_warmed
 	ClimateField._envelopes = saved_env
 	ClimateField._warmed = saved_clim_warmed
+	TerrainSlice.reset_fingerprint_cache()
+	assert_true(env_fp != fp, "changing a biome envelope changes it")
+	assert_eq(TerrainSlice.worldgen_fingerprint(), fp, "and the cache is back to the running value")
+
+## Phase 114 — `_test_worldgen_fingerprint` leaves `_warmed`, `_envelopes`, the ridge amplitude and the
+## spline as it found them.
+func _test_worldgen_fingerprint_restores() -> void:
+	WorldShape.warm()
+	ClimateField.warm()
+	var shape_warmed: bool = WorldShape._warmed
+	var amp: float = WorldShape._ridge_amp
+	var spline: Array = WorldShape._spline.duplicate(true)
+	var clim_warmed: bool = ClimateField._warmed
+	var env: Dictionary = ClimateField._envelopes.duplicate(true)
+	var failures_before := _fail
+	_test_worldgen_fingerprint()
+	assert_eq(_fail, failures_before, "the fingerprint test itself passes")
+	assert_eq(WorldShape._warmed, shape_warmed, "WorldShape._warmed restored")
+	assert_eq(WorldShape._ridge_amp, amp, "ridge amplitude restored")
+	assert_eq(WorldShape._spline, spline, "spline restored")
+	assert_eq(ClimateField._warmed, clim_warmed, "ClimateField._warmed restored")
+	assert_eq(ClimateField._envelopes, env, "envelopes restored")
+
+## Phase 114 — the fingerprint mismatch reaches the UI notice, once; the next load finds none.
+func _test_worldgen_fingerprint_notice() -> void:
+	var ui := UiSlice.new()
+	ui._worldgen_notice_label = Label.new()
+	GameBus.worldgen_fingerprint_mismatch.connect(ui._on_worldgen_fingerprint_mismatch)
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	var gr: Node = root_script.new()
+	var running := TerrainSlice.worldgen_fingerprint()
+	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION, "worldgenFingerprint": running + 1 }
+	gr._note_worldgen_version()
+	GameBus.worldgen_fingerprint_mismatch.disconnect(ui._on_worldgen_fingerprint_mismatch)
+	assert_true(ui._worldgen_notice_label.text.contains("parameters changed"), "the notice reaches the UI label")
+	assert_eq(gr._worldgen_fp_stamp, running, "the stamp moves to the running fingerprint after the notice")
+	var seen: Array = []
+	var cb := func(saved: int, current: int) -> void: seen.append([saved, current])
+	GameBus.worldgen_fingerprint_mismatch.connect(cb)
+	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION, "worldgenFingerprint": gr._worldgen_fp_stamp }
+	gr._note_worldgen_version()
+	GameBus.worldgen_fingerprint_mismatch.disconnect(cb)
+	assert_true(seen.is_empty(), "the next load of that world raises nothing")
+	ui._worldgen_notice_label.free()
+	ui.free()
+	gr.free()
 
 ## Phase 106 — a stamped record that differs warns once; an unstamped one warns not, and is stamped.
 func _test_worldgen_fingerprint_record() -> void:
@@ -17604,7 +17665,7 @@ func _test_worldgen_fingerprint_game_root() -> void:
 	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION, "worldgenFingerprint": running + 1 }
 	gr._note_worldgen_version()
 	assert_eq(seen, [[running + 1, running]], "a differing record raises exactly once")
-	assert_eq(gr._worldgen_fp_stamp, running + 1, "and keeps its original stamp")
+	assert_eq(gr._worldgen_fp_stamp, running, "and the stamp moves on so the notice does not repeat")
 	GameBus.worldgen_fingerprint_mismatch.disconnect(cb)
 	gr.free()
 
@@ -17621,7 +17682,7 @@ func _test_worldgen_golden() -> void:
 	var shape: Array = [2.0, -57.776415828, 105.545489436, -53.650412350, -34.981083839, -53.885990050, -55.059654802, -52.487651444]
 	for i in 8:
 		var got := WorldShape.height(777 + i, 1234.5 * i * 1000.0, -5000.0 * i + 300.0, w)
-		assert_true(absf(got - float(shape[i])) < 1e-4, "shape height %d matches the golden value (got %.9f)" % [i, got])
+		assert_true(absf(got - float(shape[i])) < 1e-8, "shape height %d matches the golden value (got %.9f)" % [i, got])
 	var biomes: Array = ["TemperateGrassland", "Ocean", "TemperateForest", "Ocean", "Ocean", "Ocean", "Ocean", "Desert",
 		"Alpine", "Ocean", "Ocean", "Ocean", "Ocean", "Ocean", "TemperateForest", "Ocean"]
 	for i in 16:
@@ -17704,10 +17765,10 @@ const FRONTIER_SEED := 20261011
 const FRONTIER_BLOCK := Vector2i(300, 400)   # origin of the recorded block, far from the spawn plain
 const FRONTIER_BLOCK_SIZE := 6
 const FRONTIER_WINDOW := 24                  # chunks per side of the window around the block
-## Largest height step, in metres, between two adjacent corners across the blend band, for the stand-in
-## generator change below (ridges at a quarter amplitude, the whole spline 30 m higher). A chunk is
-## 32 m wide, so this is a slope under 3:1 where the plain generator's own steps reach ~120 m.
-const FRONTIER_MAX_STEP := 140.0
+## The largest height step between two adjacent corners across the blend band must stay within the
+## plain generator's own largest step over the same window (stand-in change below: ridges at a quarter
+## amplitude, the whole spline 30 m higher), plus a margin for the recorded-versus-generated offset.
+## Phase 114: no longer a constant; `_frontier_plain_max_step` derives the bound from the generator.
 
 ## Stand in for a new generator version: change the warmed ridge amplitude and height spline. Returns
 ## the old values for `_frontier_restore_generator`.
@@ -17719,11 +17780,13 @@ func _frontier_change_generator() -> Array:
 	for pt in WorldShape._spline:
 		sp.append([pt[0], minf(float(pt[1]) + 30.0, WorldShape.max_height())])
 	WorldShape._spline = sp
+	TerrainSlice.reset_fingerprint_cache()
 	return saved
 
 func _frontier_restore_generator(saved: Array) -> void:
 	WorldShape._ridge_amp = saved[0]
 	WorldShape._spline = saved[1]
+	TerrainSlice.reset_fingerprint_cache()
 
 ## Record the current generator's record for every chunk of a block (the "recorded land").
 func _frontier_record_block() -> void:
@@ -17818,9 +17881,49 @@ func _test_frontier_seam() -> void:
 				disagree += 1
 			worst = maxf(worst, maxf(absf(float(h[0]) - float(h[1])), absf(float(h[0]) - float(h[2]))))
 	assert_eq(disagree, 0, "adjacent chunks agree on every shared corner")
-	assert_true(worst < FRONTIER_MAX_STEP, "largest corner step %.1f m is under %.0f m" % [worst, FRONTIER_MAX_STEP])
+	# Bound: the plain generator's own largest step, plus what easing the largest recorded-versus-generated
+	# offset can add: a smoothstep falls at most 1.5 / span of its height per lattice step, with 1.5x slack for
+	# the diagonal spread of the averaged offsets.
+	var plain_worst := _frontier_plain_max_step(o)
+	var max_offset := 0.0
+	for dz in FRONTIER_BLOCK_SIZE + 1:
+		for dx in FRONTIER_BLOCK_SIZE + 1:
+			var q := FRONTIER_BLOCK + Vector2i(dx, dz)
+			max_offset = maxf(max_offset, absf(float(corners[q]) - TerrainSlice.generated_corner_height(q, FRONTIER_SEED)))
+	var bound := plain_worst + max_offset * 1.5 * 1.5 / float(Frontier.BLEND_SPAN)
+	assert_true(worst <= bound, "largest corner step %.1f m is within %.1f m (plain %.2f m, offset up to %.1f m)" % [worst, bound, plain_worst, max_offset])
+	# A scratch broken blend (recorded corners kept, everything else the plain generator, no easing)
+	# must trip that same bound, or the bound proves nothing.
+	var broken := _frontier_unblended_max_step(o, corners)
+	assert_true(broken > bound, "an unblended edge (%.1f m) exceeds the bound (%.1f m)" % [broken, bound])
 	_frontier_restore_generator(saved)
 	ChunkRecordsScript.clear()
+
+## The plain (new) generator's largest step between adjacent corners of the window at `o`.
+func _frontier_plain_max_step(o: Vector2i) -> float:
+	var worst := 0.0
+	for dz in FRONTIER_WINDOW:
+		for dx in FRONTIER_WINDOW:
+			var p := o + Vector2i(dx, dz)
+			var h := TerrainSlice.generated_corner_height(p, FRONTIER_SEED)
+			worst = maxf(worst, absf(h - TerrainSlice.generated_corner_height(p + Vector2i(1, 0), FRONTIER_SEED)))
+			worst = maxf(worst, absf(h - TerrainSlice.generated_corner_height(p + Vector2i(0, 1), FRONTIER_SEED)))
+	return worst
+
+## Scratch broken blend: a corner the recorded block touches keeps its recorded height, every other
+## corner is the plain generator's. `blended` is the real field (lattice point -> height).
+func _frontier_unblended_max_step(o: Vector2i, blended: Dictionary) -> float:
+	var field: Dictionary = {}
+	for p in blended:
+		var inside: bool = p.x >= FRONTIER_BLOCK.x and p.x <= FRONTIER_BLOCK.x + FRONTIER_BLOCK_SIZE \
+				and p.y >= FRONTIER_BLOCK.y and p.y <= FRONTIER_BLOCK.y + FRONTIER_BLOCK_SIZE
+		field[p] = float(blended[p]) if inside else TerrainSlice.generated_corner_height(p, FRONTIER_SEED)
+	var worst := 0.0
+	for p in field:
+		for d in [Vector2i(1, 0), Vector2i(0, 1)]:
+			if field.has(p + d):
+				worst = maxf(worst, absf(float(field[p]) - float(field[p + d])))
+	return worst
 
 func _test_frontier_far_is_plain() -> void:
 	_frontier_record_block()
@@ -17861,15 +17964,28 @@ func _test_frontier_adjacency() -> void:
 				ChunkRecordsScript.set_record(c, RegionStoreScript.normalize_gen(TerrainSlice.generation_record(c, seed_v)))
 		var saved := _frontier_change_generator()
 		var o := _frontier_window_origin()
+		# Phase 114: filled in raster order, then again from the far corner back (the order a window
+		# that scrolled the other way would load it).
+		var snapshot: Dictionary = {}
 		for dz in FRONTIER_WINDOW:
 			for dx in FRONTIER_WINDOW:
 				var c := o + Vector2i(dx, dz)
+				if ChunkRecordsScript.has_record(c):
+					snapshot[c] = ChunkRecordsScript.get_record(c)
+		for reverse in [false, true]:
+			for c in snapshot:
+				ChunkRecordsScript.set_record(c, snapshot[c])
+			for i in FRONTIER_WINDOW * FRONTIER_WINDOW:
+				var j: int = FRONTIER_WINDOW * FRONTIER_WINDOW - 1 - i if reverse else i
+				var c := o + Vector2i(j % FRONTIER_WINDOW, j / FRONTIER_WINDOW)
 				if not ChunkRecordsScript.has_record(c):
 					ChunkRecordsScript.set_record(c, RegionStoreScript.normalize_gen(Frontier.record_for(c, seed_v)))
+			var at := func(c: Vector2i) -> String: return str(ChunkRecordsScript.get_record(c)["b"])
+			var hits := BiomeAdjacency.scan(at, rules, o, FRONTIER_WINDOW, 100)
+			assert_eq(hits.size(), 0, "seed %d, %s fill: no forbidden pair around the recorded block (first: %s)" % [seed_v, "reverse" if reverse else "raster", str(hits.slice(0, 2))])
+			if not reverse:
+				ChunkRecordsScript.clear()
 		_frontier_restore_generator(saved)
-		var at := func(c: Vector2i) -> String: return str(ChunkRecordsScript.get_record(c)["b"])
-		var hits := BiomeAdjacency.scan(at, rules, o, FRONTIER_WINDOW, 100)
-		assert_eq(hits.size(), 0, "seed %d: no forbidden pair around the recorded block (first: %s)" % [seed_v, str(hits.slice(0, 2))])
 	ChunkRecordsScript.clear()
 
 func _test_frontier_deterministic() -> void:
@@ -18331,4 +18447,255 @@ func _test_tree_pin_edited_ground() -> void:
 	assert_true(ChunkRecordsScript.get_record(chunk).has("x"), "and is recorded as cleared")
 	t2.free()
 	vox.free()
+	ChunkRecordsScript.clear()
+
+
+# ---- Phase 114 — generation record and frontier cleanup sweep ----
+
+const RegionStreamerScript114 := preload("res://src/persistence/region_streamer.gd")
+
+func _p114_corrupt_region(store: RegionStoreScript, region: Vector2i) -> void:
+	DirAccess.make_dir_recursive_absolute(store.path_of(region).get_base_dir())
+	var f := FileAccess.open(store.path_of(region), FileAccess.WRITE)
+	f.store_string("{ not json")
+	f.close()
+
+## The blend weight is monotone, 1 at a recorded corner and exactly 0 at `BLEND_CHUNKS`; the field does
+## not depend on the order the recorded chunks were gathered in.
+func _test_frontier_order_and_weight() -> void:
+	assert_eq(Frontier.blend_weight(0.0), 1.0, "full weight at a recorded corner")
+	assert_eq(Frontier.blend_weight(float(Frontier.BLEND_CHUNKS - 1)), 0.0, "exactly 0 at the last ring (a chunk BLEND_CHUNKS out has no recorded corner nearer)")
+	var prev := 2.0
+	for i in range(0, Frontier.BLEND_CHUNKS * 4 + 1):
+		var w := Frontier.blend_weight(float(i) / 4.0)
+		assert_true(w <= prev and w >= 0.0, "weight never rises with distance (step %d: %.4f)" % [i, w])
+		prev = w
+	assert_true(Frontier.blend_weight(float(Frontier.BLEND_CHUNKS - 2)) > 0.0, "and is still felt one ring in")
+	_frontier_record_block()
+	var saved := _frontier_change_generator()
+	var target := FRONTIER_BLOCK + Vector2i(FRONTIER_BLOCK_SIZE + 1, 1)
+	var recs := Frontier.gather(target)
+	var keys: Array = recs.keys()
+	keys.reverse()
+	var reordered: Dictionary = {}
+	for k in keys:
+		reordered[k] = recs[k]
+	assert_eq(Frontier.compute(target, FRONTIER_SEED, reordered), Frontier.compute(target, FRONTIER_SEED, recs), "the same records in another order give the same record")
+	for p in [target, target + Vector2i(1, 1)]:
+		assert_eq(Frontier.corner_height(p, FRONTIER_SEED, reordered), Frontier.corner_height(p, FRONTIER_SEED, recs), "corner %s is order-independent" % p)
+	# Averaged over every recorded corner in range, the offset reaches 0 at the last ring: a corner
+	# BLEND_CHUNKS from the block is exactly the plain generator.
+	var far_corner := FRONTIER_BLOCK + Vector2i(FRONTIER_BLOCK_SIZE + Frontier.BLEND_CHUNKS - 1, 2)
+	assert_eq(Frontier.corner_height(far_corner, FRONTIER_SEED, Frontier.gather(far_corner)),
+		snappedf(TerrainSlice.generated_corner_height(far_corner, FRONTIER_SEED), TerrainSlice.GEN_HEIGHT_STEP),
+		"a corner at the last ring is the plain generator")
+	assert_true(Frontier.gather(FRONTIER_BLOCK + Vector2i(500, 500)).is_empty(), "gather answers {} far from any record")
+	_frontier_restore_generator(saved)
+	ChunkRecordsScript.clear()
+
+## ChunkRecords is empty after a world reload and after the manager leaves the tree; pending records
+## reach the disk first; a failing region is written at most once per backoff interval.
+func _test_p114_record_lifecycle() -> void:
+	var rig := _records_rig("test_p114_life")
+	var cm: ChunkManager = rig["cm"]
+	var store: RegionStoreScript = rig["store"]
+	cm.load_chunk(Vector2i(10, 10))
+	assert_eq(cm.pending_record_count(), 1, "a record is pending")
+	add_child(cm)
+	remove_child(cm)
+	cm.free()
+	assert_true(ChunkRecordsScript.is_empty(), "the table is empty after the manager leaves")
+	assert_false(store.get_gen(Vector2i(10, 10)).is_empty(), "and the pending record reached the disk")
+	# Backoff: region (0,0) is unreadable, so every flush of a chunk in it fails.
+	var rig2 := _records_rig("test_p114_backoff")
+	var cm2: ChunkManager = rig2["cm"]
+	var store2: RegionStoreScript = rig2["store"]
+	_p114_corrupt_region(store2, Vector2i.ZERO)
+	var clock := [0]
+	cm2._now = func() -> int: return clock[0]
+	cm2.load_chunk(Vector2i(2, 2))
+	cm2.flush_records()
+	assert_false(store2.last_failed_chunk_keys.is_empty(), "the first flush tries and fails")
+	assert_eq(cm2.pending_record_count(), 1, "the record stays pending")
+	store2.last_failed_chunk_keys = []
+	for i in 5:
+		cm2.flush_records()
+	assert_true(store2.last_failed_chunk_keys.is_empty(), "five more flushes inside the interval touch nothing")
+	clock[0] += ChunkManager.FLUSH_BACKOFF_START_MSEC * 2
+	cm2.flush_records()
+	assert_false(store2.last_failed_chunk_keys.is_empty(), "one retry once the interval elapsed")
+	store2.save_region(Vector2i.ZERO, {})
+	store2.last_failed_chunk_keys = []
+	clock[0] += ChunkManager.FLUSH_BACKOFF_MAX_MSEC * 2
+	cm2.flush_records()
+	assert_eq(cm2.pending_record_count(), 0, "a repaired region takes the record")
+	cm2.free()
+	(rig["t"] as Node).free()
+	(rig2["t"] as Node).free()
+	ChunkRecordsScript.clear()
+	# A world (re)load clears the table.
+	ChunkRecordsScript.set_record(Vector2i(1, 1), _sync_record(Vector2i(1, 1)))
+	var gr: Node = load("res://src/core/game_root.gd").new()
+	gr._forget_world_records()
+	assert_true(ChunkRecordsScript.is_empty(), "a world load empties the table")
+	assert_true(FileAccess.get_file_as_string("res://src/core/game_root.gd").contains("_persistence.load_world_record()\n\t_forget_world_records()"), "and _load_world_records calls it right after reading the record")
+	gr.free()
+
+## A chunk is not recorded while a region within BLEND_CHUNKS failed; it is recorded and rebuilt once
+## the region reads; a region read after the chunk was built rebuilds it on the adopted record.
+func _test_p114_deferred_and_adopted() -> void:
+	var rig := _records_rig("test_p114_defer")
+	var cm: ChunkManager = rig["cm"]
+	var store: RegionStoreScript = rig["store"]
+	var voxel := _make_voxel()
+	var streamer := RegionStreamerScript114.new(store, voxel)
+	var clock := [0]
+	streamer._now = func() -> int: return clock[0]
+	cm.region_streamer = streamer
+	_p114_corrupt_region(store, Vector2i.ZERO)
+	var c := Vector2i(2, 2)
+	var want := RegionStreamerScript114.regions_for_chunks([c], Frontier.BLEND_CHUNKS)
+	var first := streamer.sync(want)
+	assert_eq(int(first["failed"]), 1, "region (0,0) failed")
+	cm.load_chunk(c)
+	assert_eq(cm.records_created, 0, "no record while a neighbouring region is down")
+	assert_eq(cm.deferred_record_count(), 1, "the chunk is remembered")
+	assert_false(ChunkRecordsScript.has_record(c), "and nothing is in the table")
+	store.save_region(Vector2i.ZERO, {})
+	clock[0] += RegionStreamerScript114.BACKOFF_START_MSEC * 2
+	var rebuilds := cm.rebuild_request_count(c)
+	# A stationary host (no window move) retries on its own: refresh() re-syncs and records the chunk.
+	cm._chunk_refs = { cm._chunk_key(c): 1 }
+	cm.now_msec = func() -> int: return clock[0]
+	cm._retry_deferred_records()
+	assert_eq(cm.records_created, 1, "recorded once every region is resident")
+	assert_eq(cm.deferred_record_count(), 0, "and forgotten")
+	assert_eq(cm.rebuild_request_count(c), rebuilds + 1, "the built chunk is rebuilt on its record")
+	# Late adoption: a record appears in a region read after the chunk was built.
+	var d := Vector2i(40, 40)
+	ChunkRecordsScript.clear()
+	var other := RegionStoreScript.new(_fresh_region_dir("test_p114_late") + "regions/")
+	var late_streamer := RegionStreamerScript114.new(other, voxel)
+	var rec := RegionStoreScript.normalize_gen(TerrainSlice.generation_record(d, 31))
+	other.write_chunks({ "40,40": { "gen": rec } })
+	cm.record_store = null   # a client-like manager: it only loads
+	cm.load_chunk(d)
+	var before := cm.rebuild_request_count(d)
+	var synced := late_streamer.sync(RegionStreamerScript114.regions_for_chunks([d], 1))
+	cm._rebuild_adopted(synced["adopted"])
+	assert_true(ChunkRecordsScript.has_record(d), "the record was adopted")
+	assert_eq(cm.rebuild_request_count(d), before + 1, "and the built chunk rebuilt once")
+	voxel.free()
+	cm.free()
+	(rig["t"] as Node).free()
+	ChunkRecordsScript.clear()
+
+## A record written by a newer generator rides through a rewrite and is never adopted.
+func _test_p114_newer_version_kept() -> void:
+	var dir := _fresh_region_dir("test_p114_newer")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	var future := { "v": TerrainSlice.WORLDGEN_VERSION + 5, "f": 3, "b": "Desert", "h": [1.0, 2.0, 3.0, 4.0] }
+	assert_true(RegionStoreScript.is_newer_gen(future), "a newer v is recognised")
+	assert_true(RegionStoreScript.normalize_gen(future).is_empty(), "but not trusted")
+	assert_eq(store.save_region(Vector2i.ZERO, { "2,2": { "gen": future } }), OK, "the file is written")
+	var good := RegionStoreScript.normalize_gen(TerrainSlice.generation_record(Vector2i(3, 3), 31))
+	assert_eq(store.write_chunks({ "3,3": { "gen": good } }), OK, "another chunk's record is written")
+	var read := store.read_region(Vector2i.ZERO)
+	assert_eq((read["chunks"]["2,2"]["gen"] as Dictionary)["v"], future["v"], "the newer record survived the rewrite verbatim")
+	assert_false(store.get_gen(Vector2i(3, 3)).is_empty(), "and the new one is there")
+	ChunkRecordsScript.clear()
+	var voxel := _make_voxel()
+	var streamer := RegionStreamerScript114.new(store, voxel)
+	streamer.sync({ "0,0": true })
+	assert_false(ChunkRecordsScript.has_record(Vector2i(2, 2)), "the streamer does not adopt it")
+	assert_true(ChunkRecordsScript.has_record(Vector2i(3, 3)), "but adopts the readable one")
+	# A gen-only write over the newer record (a build that cannot see it records the chunk anew) loses.
+	var mine := RegionStoreScript.normalize_gen(TerrainSlice.generation_record(Vector2i(2, 2), 31))
+	assert_eq(store.write_chunks({ "2,2": { "gen": mine } }), OK, "a rewrite of the chunk is accepted")
+	assert_eq(int((store.read_region(Vector2i.ZERO)["chunks"]["2,2"]["gen"] as Dictionary)["v"]), int(future["v"]),
+		"but a newer generator's record is not replaced")
+	var folded := RegionStoreScript.fold_chunks({ "2,2": { "gen": future } }, { "2,2": { "edits": { "1,1": [] }, "gen": mine } }, false)
+	assert_eq(int((folded["2,2"]["gen"] as Dictionary)["v"]), int(future["v"]), "an entry with edits and an older record keeps the newer record")
+	assert_true((folded["2,2"] as Dictionary).has("edits"), "and its edits")
+	voxel.free()
+	ChunkRecordsScript.clear()
+
+## A tree-only update changes the content revision and leaves the ground revision alone.
+func _test_p114_tree_only_revision() -> void:
+	ChunkRecordsScript.clear()
+	var c := Vector2i(7, 7)
+	var rec := RegionStoreScript.normalize_gen(_sync_record(c))
+	ChunkRecordsScript.set_record(c, rec)
+	var ground := ChunkRecordsScript.revision()
+	var content := ChunkRecordsScript.content_revision()
+	var with_trees: Dictionary = rec.duplicate(true)
+	with_trees["t"] = 4
+	assert_true(ChunkRecordsScript.set_record(c, with_trees), "the tree budget is a change")
+	assert_eq(ChunkRecordsScript.revision(), ground, "but the ground revision stays")
+	assert_eq(ChunkRecordsScript.content_revision(), content + 1, "while the content revision moves")
+	var moved: Dictionary = with_trees.duplicate(true)
+	moved["h"] = [5.0, 5.0, 5.0, 5.0]
+	ChunkRecordsScript.set_record(c, moved)
+	assert_eq(ChunkRecordsScript.revision(), ground + 1, "a height change moves the ground revision")
+	ChunkRecordsScript.clear()
+	ChunkRecordsScript.set_record(c, rec)
+	var tree_only := ChunkRecordSyncScript.apply({ ChunkRecordsScript.key_of(c): with_trees })
+	assert_eq((tree_only["changed"] as Array).size(), 0, "a tree-only record from the host is not a ground change")
+	var ground_change := ChunkRecordSyncScript.apply({ ChunkRecordsScript.key_of(c): moved })
+	assert_eq((ground_change["changed"] as Array).size(), 1, "a ground change is reported")
+	ChunkRecordsScript.clear()
+
+## The client prunes its table to the host's scope, the short way round the seam.
+func _test_p114_prune_scope() -> void:
+	ChunkRecordsScript.clear()
+	var circ := TerrainSlice.circumference_chunks()
+	for c in [Vector2i(0, 0), Vector2i(3, 2), Vector2i(50, 0), Vector2i(circ - 1, 0), Vector2i(0, -40)]:
+		ChunkRecordsScript.set_record(c, _sync_record(c))
+	assert_eq(ChunkRecordSyncScript.prune_to_scope("junk"), 0, "a malformed scope prunes nothing")
+	assert_eq(ChunkRecordSyncScript.prune_to_scope([0, 0]), 0, "a short scope prunes nothing")
+	assert_eq(ChunkRecordSyncScript.prune_to_scope([0.0, 0.0, 5.0]), 2, "the two far records go")
+	assert_eq(ChunkRecordsScript.size(), 3, "three remain")
+	assert_true(ChunkRecordsScript.has_record(Vector2i(circ - 1, 0)), "the one across the seam stays")
+	assert_eq(ChunkRecordSyncScript.prune_to_scope([1000, 1000, 5]), 3, "a re-scope elsewhere empties it")
+	assert_true(ChunkRecordsScript.is_empty(), "the table is empty")
+
+## Malformed entries do not use up the cap; a join snapshot without records does not stamp the peer.
+func _test_p114_cap_and_join_stamp() -> void:
+	ChunkRecordsScript.clear()
+	var payload := {}
+	for i in 5:
+		payload["bad%d" % i] = "junk"
+	for i in 3:
+		payload["%d,0" % i] = _sync_record(Vector2i(i, 0))
+	var res := ChunkRecordSyncScript.apply(payload, 3)
+	assert_eq(res["applied"], 3, "all three valid records apply under a cap of 3")
+	assert_eq(res["dropped"], 5, "the five malformed are dropped")
+	assert_eq(res["refused"], 0, "nothing valid refused")
+	assert_eq((res["changed"] as Array).size(), 3, "and reported as changed")
+	ChunkRecordsScript.clear()
+	var gr: Node = load("res://src/core/game_root.gd").new()
+	var cm := ChunkManager.new()
+	gr._chunk_manager = cm
+	var snap := {}
+	gr._add_generation_records(snap, 9, Vector3.ZERO)
+	assert_false(gr._peer_records_msec.has(9), "a snapshot without records stamps no re-scope delay")
+	assert_true(snap.has("gen_scope") and not snap.has("gen_records"), "but names its scope")
+	ChunkRecordsScript.set_record(Vector2i(0, 0), _sync_record(Vector2i(0, 0)))
+	var snap2 := {}
+	gr._add_generation_records(snap2, 9, Vector3.ZERO)
+	assert_true(gr._peer_records_msec.has(9) and snap2.has("gen_records"), "records sent: stamped")
+	cm.free()
+	gr.free()
+	ChunkRecordsScript.clear()
+
+## An already-recorded chunk asks for no region beyond its own one-chunk margin.
+func _test_p114_streamer_margin() -> void:
+	ChunkRecordsScript.clear()
+	var c := Vector2i(29, 5)   # 3 chunks from the next region: the blend margin crosses, the 1-chunk one does not
+	var open := RegionStreamerScript114.regions_for_chunks([c], Frontier.BLEND_CHUNKS)
+	assert_true(open.has("1,0"), "an unrecorded chunk reads the next region for its blend")
+	ChunkRecordsScript.set_record(c, _sync_record(c))
+	var closed := RegionStreamerScript114.regions_for_chunks([c], Frontier.BLEND_CHUNKS)
+	assert_eq(closed.keys(), ["0,0"], "a recorded chunk loads no extra region")
+	assert_eq(RegionStreamerScript114.regions_for_chunks([c], Frontier.BLEND_CHUNKS, Frontier.BLEND_CHUNKS).size(), open.size(), "unless the caller asks for the full margin")
 	ChunkRecordsScript.clear()
