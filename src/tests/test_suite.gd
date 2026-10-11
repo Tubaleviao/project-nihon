@@ -132,6 +132,8 @@ func run() -> void:
 	_run_test("chat: lines and intents cross the wire",       _test_chat_wire)
 	_run_test("chat: the input box is on screen while closed", _test_chat_box_visible)
 	_run_test("chat: a token bucket bounds each player's lines", _test_chat_rate_limit)
+	_run_test("chat: a failed admin effect is reported, not claimed", _test_chat_failed_effects_report)
+	_run_test("chat: /tp a million chunks out is exact", _test_chat_tp_far_exact)
 	_run_test("chat: /kill on a peer runs through simulated HP", _test_chat_kill_peer_simulated_hp)
 	_run_test("chat: no one else calls send_player_damaged",  _test_chat_no_direct_damage_door)
 	_run_test("chat: teleports carry the exact position",     _test_chat_exact_teleports)
@@ -159,6 +161,7 @@ func run() -> void:
 	_run_test("biomes: adjacency table",                      _test_adjacency_table)
 	_run_test("biomes: adjacency scan of the generator",      _test_adjacency_scan)
 	_run_test("biomes: adjacency scan can fail",              _test_adjacency_scan_detects)
+	_run_test("biomes: a coast search that finds none reports it", _test_adjacency_coast_search_reports_failure)
 	_run_test("frontier: recorded chunks unchanged",          _test_frontier_recorded_unchanged)
 	_run_test("frontier: seam shares corners, bounded step",  _test_frontier_seam)
 	_run_test("frontier: far chunks are the plain generator", _test_frontier_far_is_plain)
@@ -712,6 +715,7 @@ func run() -> void:
 	_run_test("spawn: friend code lands near the friend", _test_spawn_friend_near)
 	_run_test("spawn: respawn point survives a move + reload (host and client)", _test_spawn_point_persists)
 	_run_test("spawn: an exact far spawn respawns exactly; placement reads the record once", _test_exact_spawn_respawn)
+	_run_test("placement: exact far positions survive place, snapshot and client placement", _test_exact_placement_paths)
 	_run_test("persistence: a fresh player's first-boot spawn is recorded exactly", _test_first_boot_spawn_exact)
 	_run_test("spawn: counted chunks survive a colonization reload", _test_colonization_counted_persists)
 	_run_test("spawn: the colonization map scores, persists and drops malformed data", _test_colonization_map)
@@ -1348,22 +1352,16 @@ func _test_peer_exact_window_and_relay() -> void:
 	gr._registry = reg
 	gr._chunk_manager = cm
 	assert_eq(gr._peer_window_chunk(5), chunk, "the window is centred on the exact chunk")
-	# The relay to the other clients carries the exact position.
-	var relayed: Array = []
-	for out in n._test_outbox:
-		if str(out["payload"].get("type", "")) == "remote_player_state" and int(out["payload"].get("peer_id", 0)) == 5:
-			relayed.append(out)
+	# The relay to the other clients carries the exact position. Each relay is asserted on its own: the
+	# first (peer 7 remembered at the origin, out of range, so nothing goes out) and the second (peer 7
+	# remembered beside the mover, so the exact position does), so one cannot stand in for the other.
+	var first := _relays_of_peer(n, 5)
+	assert_true(first.is_empty(), "first relay: nothing goes to a peer remembered 600,000 chunks away")
 	n._test_outbox = []
 	n.remember_player_state(7, WorldPos.from_wire(wire))
 	n._route_c2h(5, { "type": "player_moved", "position": wire })
-	for out in n._test_outbox:
-		if str(out["payload"].get("type", "")) == "remote_player_state" and int(out["payload"].get("peer_id", 0)) == 5:
-			relayed.append(out)
-	assert_false(relayed.is_empty(), "the position was relayed to the peer in range")
-	if not relayed.is_empty():
-		var got: Dictionary = WorldPos.pos_from_wire(relayed.back()["payload"]["position"])
-		assert_eq(got["chunk"], chunk, "the relay decodes to the same chunk")
-		assert_true((got["local"] as Vector3).distance_to(local) < 1e-3, "and the same local")
+	var second := _relays_of_peer(n, 5)
+	_assert_relay_exact(second, chunk, local, "second relay")
 	# An exact position past the pole row is not folded; the record keeps its previous position.
 	gr._fold_last_known_state(5, "p5")
 	assert_eq(reg.get_world_pos("p5")["chunk"], chunk, "a sane exact position is folded")
@@ -1374,6 +1372,19 @@ func _test_peer_exact_window_and_relay() -> void:
 	cm.free()
 	gr.free()
 	n.free()
+
+## The `remote_player_state` packets the host's outbox holds about `peer_id`.
+func _relays_of_peer(n: NetworkingSlice, peer_id: int) -> Array:
+	return n._test_outbox.filter(func(o): return str(o["payload"].get("type", "")) == "remote_player_state" \
+			and int(o["payload"].get("peer_id", 0)) == peer_id)
+
+func _assert_relay_exact(relayed: Array, chunk: Vector2i, local: Vector3, label: String) -> void:
+	assert_false(relayed.is_empty(), "%s: the position was relayed to the peer in range" % label)
+	if relayed.is_empty():
+		return
+	var got: Dictionary = WorldPos.pos_from_wire(relayed.back()["payload"]["position"])
+	assert_eq(got["chunk"], chunk, "%s decodes to the same chunk" % label)
+	assert_true((got["local"] as Vector3).distance_to(local) < 1e-3, "%s decodes to the same local" % label)
 
 ## Phase 80 — `TreeSlice.shift_scene` moves its own trunks and the pool, nothing else.
 func _test_tree_shift_explicit_set() -> void:
@@ -13056,6 +13067,12 @@ func _test_quit_after_boot_predicate() -> void:
 ## because the streaming loop dispatches one chunk per frame. The ratio is still asserted
 ## alongside it — the worker half must also dominate, i.e. the expensive work is off the main
 ## thread — and both numbers are printed for a reviewer to check.
+## Median of an Array of ints (the upper middle for an even count).
+func _median_int(values: Array) -> int:
+	var sorted := values.duplicate()
+	sorted.sort()
+	return int(sorted[sorted.size() / 2])
+
 func _test_chunk_build_split_probe() -> void:
 	var terrain := TerrainSlice.new()
 	add_child(terrain)
@@ -13075,8 +13092,9 @@ func _test_chunk_build_split_probe() -> void:
 	var worker_resolve_us := 0
 	var main_pass: Array = []      # per-pass main-thread half: generate + gather + apply
 	var resolve_pass: Array = []   # per-pass main-thread gather alone
+	var pure_pass: Array = []      # per-pass worker half: resolve + build
 	var built: Dictionary = {}
-	for i in range(3):
+	for i in range(5):
 		# --- the MAIN-THREAD half of one dispatch, in `_dispatch_build`'s own order ---
 		var t0 := Time.get_ticks_usec()
 		var hm: Array = terrain.generate_heightmap(Vector2i(0, 0))
@@ -13085,12 +13103,14 @@ func _test_chunk_build_split_probe() -> void:
 		resolve_us += r_us
 		resolve_pass.append(r_us)
 		# --- the WORKER half: the resolve, then the pure build ---
-		t0 = Time.get_ticks_usec()
+		var t0b := Time.get_ticks_usec()
+		t0 = t0b
 		var resolved: Dictionary = VoxelSlice.build_runs(Vector2i(0, 0), hm, gathered)
 		worker_resolve_us += Time.get_ticks_usec() - t0
 		t0 = Time.get_ticks_usec()
 		built = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), hm, resolved)
 		pure_us += Time.get_ticks_usec() - t0
+		pure_pass.append(Time.get_ticks_usec() - t0b)
 		# The apply half: exactly what `build_chunk` does with the worker's result on the
 		# main thread (minus the node attachment, a few object allocations either way).
 		t0 = Time.get_ticks_usec()
@@ -13107,10 +13127,13 @@ func _test_chunk_build_split_probe() -> void:
 		apply_us += a_us
 		main_pass.append(r_us + a_us)
 	var main_us := resolve_us + apply_us
-	var steady_main: int = int(main_pass[main_pass.size() - 1])
-	var steady_resolve: int = int(resolve_pass[resolve_pass.size() - 1])
+	# Phase 115 (#261) — medians, not one wall-clock sample: a scheduler hiccup in a single pass says
+	# nothing about the cost the assertions guard.
+	var steady_main: int = _median_int(main_pass)
+	var steady_resolve: int = _median_int(resolve_pass)
+	var steady_worker: int = _median_int(pure_pass)
 	var deposit_verts: int = (built["deposit_vertices"] as PackedVector3Array).size()
-	print("PROBE Phase 42 build split (3 passes): main-thread half %d us (generate+gather %d + apply %d), worker half %d us (resolve %d + build %d) (%d faces -> %d quads, %d deposit verts)" % [
+	print("PROBE Phase 42 build split (5 passes): main-thread half %d us (generate+gather %d + apply %d), worker half %d us (resolve %d + build %d) (%d faces -> %d quads, %d deposit verts)" % [
 		main_us, resolve_us, apply_us, pure_us, worker_resolve_us, pure_us - worker_resolve_us,
 		int(built["cell_count"]), int(built["quad_count"]), deposit_verts])
 	print("PROBE Phase 42 build split per pass: main %s us (steady state %d, of which generate+gather %d), worker %s us" % [
@@ -13122,8 +13145,8 @@ func _test_chunk_build_split_probe() -> void:
 	# THE ratio criterion (row 8): the expensive half is the half that runs off the main thread.
 	# Measured ~1.8x on the machine that pass ran on, so a strict `>` is the honest assertion — a
 	# ratio test tight enough to be interesting would be a flake.
-	assert_true(pure_us > main_us,
-		"the worker half dominates the main thread's own work (%d us vs %d us)" % [pure_us, main_us])
+	assert_true(steady_worker > steady_main,
+		"the worker half dominates the main thread's own work (median %d us vs %d us)" % [steady_worker, steady_main])
 	# THE absolute ceiling (rows 3 and 4): one dispatch per frame means the main thread pays this
 	# every frame, so it must fit in a frame. The three-pass SUM is not the number a frame gets —
 	# the steady state is — and this is the assertion the old ratio let a 43 ms frame pass.
@@ -14020,25 +14043,46 @@ func _test_spawn_pack_bounds_and_retry() -> void:
 ## the once-latch the warning sits behind) and still spawns, without a roll.
 func _test_spawn_missing_fields_warns_once() -> void:
 	var src := GDScript.new()
-	src.source_code = "extends Resource\nvar biome: int = 0\nvar spawnCount: int = 1\n"
+	src.source_code = "extends Resource\nvar biome: int = 0\nvar spawnCount: int = 2\n"
 	assert_eq(src.reload(), OK, "the field-less stand-in compiles")
 	var fake: Resource = src.new()
 	var c := CreatureSlice.new()
 	c.render_visuals = false
+	# A scratch table with only the field-less creature, a stub terrain that puts every chunk in its
+	# biome, and a population cap of 1 under a pack of 2: the pack is refused whole and deferred, so the
+	# real `spawn_for_chunk` reads the fields without needing a spawnable body.
+	c.creature_table = { "NoFields": fake }
+	var terrain := _BiomeStub.new()
+	terrain.biome = "TemperateForest"
+	c.terrain_slice = terrain
+	c._population_cap = 1
 	add_child(c)
 	var was_quiet: bool = Diag.quiet
 	Diag.quiet = true
-	assert_false(c._warned_spawn_fields.has("NoFields"), "nothing warned before the first read")
-	var fields: Array = c._spawn_fields("NoFields", fake)
-	assert_true(fields[0] == null and fields[1] == null, "missing fields read as null (spawn without a roll)")
-	assert_true(c._warned_spawn_fields.has("NoFields"), "the missing fields are reported")
-	c._spawn_fields("NoFields", fake)
-	assert_eq(c._warned_spawn_fields.size(), 1, "once per species, however often it is read")
+	assert_false(c._warned_spawn_fields.has("NoFields"), "nothing warned before the first spawn")
+	var fields: CreatureSlice.SpawnFields = c._spawn_fields("NoFields", fake)
+	assert_true(fields.chance == null and fields.density == null, "missing fields read as null (spawn without a roll)")
+	c._warned_spawn_fields.clear()
+	c.spawn_for_chunk(Vector2i(3, 4))
+	assert_true(c._warned_spawn_fields.has("NoFields"), "spawn_for_chunk reports the missing fields")
+	assert_true(c._deferred_packs.has([Vector2i(3, 4), "NoFields"]), "and the species still tries to spawn, without a roll")
+	assert_eq(c._deferred_packs[[Vector2i(3, 4), "NoFields"]], 2, "a full pack, no noise applied")
+	c.spawn_for_chunk(Vector2i(5, 6))
+	assert_eq(c._warned_spawn_fields.size(), 1, "once per species, however many chunks spawn")
+	c.creature_table = GameData.CREATURES
+	c._warned_spawn_fields.clear()
 	for key in GameData.CREATURES:
 		c._spawn_fields(str(key), GameData.CREATURES[key])
-	assert_eq(c._warned_spawn_fields.size(), 1, "the fabric's own creatures all carry both fields")
+	assert_eq(c._warned_spawn_fields.size(), 0, "the fabric's own creatures all carry both fields")
 	Diag.quiet = was_quiet
+	c.terrain_slice = null
+	terrain.free()
 	c.free()
+
+class _BiomeStub extends Node:
+	var biome: String = ""
+	func get_biome_at_chunk(_c: Vector2i) -> String:
+		return biome
 
 ## Species do not thicken and thin in lockstep: the density noise is salted per species.
 func _test_spawn_density_per_species() -> void:
@@ -14434,7 +14478,7 @@ func _test_equipment_host_and_aoi_transitions() -> void:
 		assert_eq(n._test_outbox[0]["payload"]["type"], "peer_equipment", "as a peer_equipment packet")
 		assert_eq(n._test_outbox[0]["payload"]["peer_id"], NetworkingSlice.HOST_PEER_ID, "tagged with the host's id")
 
-	# Enter: peer 3 wears something at range, then walks into peer 2's... host's AOI.
+	# Enter: peer 3 wears something while far away, then walks into the host's AOI (peer 2 is already there).
 	reg.record_equipment(pid3, { "Chest": "VeilsteelChestplate" })
 	reg.record_equipment(pid2, { "Chest": "VeilsteelChestplate" })
 	n._test_outbox.clear()
@@ -14456,15 +14500,13 @@ func _test_equipment_host_and_aoi_transitions() -> void:
 	n._test_outbox.clear()
 	n.remember_player_state(3, Vector3(2000, 0, 0))
 	n._refresh_equipment_pairs(3)
-	var evicts := 0
-	var evict_viewers := []
+	var evict_receivers := []   # the peers an evict was delivered to
 	for m in n._test_outbox:
 		if m["payload"]["type"] == "peer_equipment_evict":
-			evicts += 1
-			evict_viewers.append(m["peer_id"])
-	evict_viewers.sort()
-	assert_eq(evicts, 2, "leaving AOI evicts the stored set on each viewer")
-	assert_eq(evict_viewers, [2, 3], "the evicts go to peer 2 (told peer 3 left) and peer 3 (told peer 2 left)")
+			evict_receivers.append(m["peer_id"])
+	evict_receivers.sort()
+	assert_eq(evict_receivers.size(), 2, "leaving AOI evicts the stored set on each viewer")
+	assert_eq(evict_receivers, [2, 3], "the evicts go to peer 2 (told peer 3 left) and peer 3 (told peer 2 left)")
 	assert_false(n._equipment_sent.has("2:3"), "the sent record for the pair is dropped")
 	n._test_outbox.clear()
 	n.remember_player_state(3, Vector3(2100, 0, 0))
@@ -16847,6 +16889,54 @@ func _test_exact_spawn_respawn() -> void:
 	old.free()
 	blank.free()
 
+## Phase 115 (#258) — an exact far position survives all three placement doors: the host's own
+## `_place_local_player`, the host's `_snapshot_own_record` (what `_build_snapshot` ships, through JSON) and
+## the client's `_place_from_snapshot` (what `_on_world_snapshot_received` calls), within 1e-3 m.
+func _test_exact_placement_paths() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	var chunk := Vector2i(600000, 40)
+	var local := Vector3(12.345, 20.0, 6.789)
+	var pid := "exact-place"
+	var reg := PlayerRegistry.new()
+	reg.local_player_id = pid
+	reg.record_world_pos(pid, { "chunk": chunk, "local": local })
+	# Door 1: `_place_local_player` reads the record and lands on it.
+	var host_body := PlayerSlice.new()
+	host_body.render_visuals = true
+	add_child(host_body)
+	var gr: Node = root_script.new()
+	gr._player = host_body
+	gr._rebase = RebaseDriver.new([host_body])
+	gr._registry = reg
+	gr._place_local_player(Vector3(5.0, 5.0, 5.0))
+	var placed := host_body.get_world_pos()
+	assert_eq(placed["chunk"], chunk, "_place_local_player lands in the recorded chunk")
+	assert_true((placed["local"] as Vector3).distance_to(local) < 1e-3, "and on the recorded local within 1e-3 m")
+	# Door 2: the snapshot's own record carries the exact position through a JSON round trip.
+	var shipped: Dictionary = JSON.parse_string(JSON.stringify(gr._snapshot_own_record(pid)))
+	assert_true(WorldPos.is_wire(shipped["player"]["position"]), "the snapshot's player position is a valid wire record")
+	assert_eq(WorldPos.wire_chunk(shipped["player"]["position"]), chunk, "naming the exact chunk")
+	# Door 3: a client places itself from that packet with a rebase, not a float detour.
+	var client_body := PlayerSlice.new()
+	client_body.render_visuals = true
+	add_child(client_body)
+	var client: Node = root_script.new()
+	client._player = client_body
+	client._rebase = RebaseDriver.new([client_body])
+	client._place_from_snapshot(shipped["player"])
+	var landed := client_body.get_world_pos()
+	assert_eq(landed["chunk"], chunk, "_place_from_snapshot rebases to the exact chunk")
+	assert_true((landed["local"] as Vector3).distance_to(local) < 1e-3, "and lands on the local within 1e-3 m")
+	assert_true(client._client_respawn_point_set, "the first snapshot sets the respawn point")
+	client._place_from_snapshot("not a record")
+	client._place_from_snapshot({ "position": "elsewhere" })
+	assert_eq(client_body.get_world_pos()["chunk"], chunk, "a malformed player record moves nobody")
+	client_body.free()
+	host_body.free()
+	client.free()
+	gr.free()
+	reg.free()
+
 ## Phase 66 — edit chunk K, save, reload, edit K again: the region's count is unchanged.
 func _test_colonization_counted_persists() -> void:
 	var m := ColonizationMapScript.new()
@@ -17173,7 +17263,13 @@ func _test_chat_parse() -> void:
 	assert_eq(ChatCommands.sanitize("   ").length(), 0, "blank is nothing")
 	assert_eq(ChatCommands.sanitize("x".repeat(500)).length(), ChatCommands.MAX_MESSAGE_CHARS, "long lines are capped")
 	var ok := ChatCommands.parse_position(["1", "2.5", "-3"])
-	assert_true(ok["ok"] and ok["pos"] == Vector3(1.0, 2.5, -3.0), "three numbers make a position")
+	assert_true(ok["ok"] and ok["pos"]["chunk"] == Vector2i(0, -1), "three numbers make a position in the right chunk")
+	assert_true((ok["pos"]["local"] as Vector3).distance_to(Vector3(1.0, 2.5, TerrainSlice.CHUNK_METERS - 3.0)) < 1e-4, "with the exact local")
+	var far_x := 600000.0 * TerrainSlice.CHUNK_METERS + 0.123
+	var far := ChatCommands.parse_position([str(far_x), "5", "0"])
+	assert_true(far["ok"], "a point a million chunks out parses")
+	assert_eq(far["pos"]["chunk"], Vector2i(600000, 0), "into its exact chunk")
+	assert_true(absf(float(far["pos"]["local"].x) - 0.123) < 1e-3, "keeping the sub-metre digits a float32 detour would lose")
 	assert_false(ChatCommands.parse_position(["1", "2"])["ok"], "too few numbers")
 	assert_false(ChatCommands.parse_position(["1", "x", "3"])["ok"], "not a number")
 	assert_false(ChatCommands.parse_position(["1", "nan", "3"])["ok"], "nan is refused")
@@ -17352,8 +17448,24 @@ func _test_chat_rate_limit() -> void:
 		chat.handle_intent("host %d" % i, "")
 	assert_eq(chat.chat_rate_refused, 12, "the local player is subject to the bucket")
 	assert_true(chat._buckets.has("player_other"), "a bucket exists while the player is here")
+	# Phase 115 — a reconnect does not refill the bucket.
 	GameBus.player_left.emit("player_other")
-	assert_false(chat._buckets.has("player_other"), "a disconnect removes the bucket entry")
+	assert_true(chat._buckets.has("player_other"), "a disconnect keeps the bucket entry")
+	var refused_before := chat.chat_rate_refused
+	chat.handle_intent("after reconnect", "player_other")
+	assert_eq(chat.chat_rate_refused, refused_before + 1, "so a reconnect does not refill the bucket")
+	# Commands are not throttled by the chat bucket.
+	posted.clear()
+	for i in ChatSlice.CHAT_BURST * 3:
+		chat.handle_intent("/help", "player_other")
+	assert_eq(chat.chat_rate_refused, refused_before + 1, "commands never spend a token")
+	assert_false(posted.is_empty(), "and are answered")
+	# The map stays bounded: fully refilled buckets are pruned once many are held.
+	for i in ChatSlice.MAX_BUCKETS + 5:
+		chat.handle_intent("x", "bulk_%d" % i)
+	now[0] += 1000.0
+	GameBus.player_left.emit("bulk_0")
+	assert_true(chat._buckets.size() <= 1, "idle full buckets are pruned past the cap")
 	GameBus.chat_posted.disconnect(cb)
 	chat.free()
 	rig["reg"].free()
@@ -17484,6 +17596,56 @@ func _test_chat_tp_limits() -> void:
 	var at: Vector3 = WorldPos.to_scene(seen[0], Vector2i.ZERO)
 	assert_true(absf(absf(at.x) - lap * 0.5) < 1.0, "to the wrapped X (the seam)")
 	GameBus.chat_posted.disconnect(pcb)
+	GameBus.player_teleport.disconnect(cb)
+	chat.free()
+	rig["reg"].free()
+
+## Phase 115 — an admin command that cannot be carried out says so instead of replying "done".
+func _test_chat_failed_effects_report() -> void:
+	var rig := _chat_rig()
+	var chat: ChatSlice = rig["chat"]
+	var reg: PlayerRegistry = rig["reg"]
+	var posted: Array = []
+	var pcb := func(_c: String, _s: String, text: String, _t: String) -> void: posted.append(text)
+	GameBus.chat_posted.connect(pcb)
+	var seen: Array = []
+	var cb := func(pos: Dictionary) -> void: seen.append(pos)
+	GameBus.player_teleport.connect(cb)
+	chat.handle_intent("/kill nobody_here", "")
+	assert_true(str(posted.back()).contains("No player"), "/kill on an unknown peer reports a failure")
+	assert_false(str(posted.back()).contains("Killed"), "and does not claim a kill")
+	# A remote admin with no networking attached: nothing can be sent.
+	chat._admins["player_remote"] = true
+	posted.clear()
+	chat.handle_intent("/tp 1 2 3", "player_remote")
+	assert_true(str(posted.back()).contains("Could not teleport"), "/tp with no networking replies a failure")
+	assert_false(str(posted.back()).contains("Teleported to"), "not success")
+	assert_eq(seen.size(), 0, "and moves nobody")
+	GameBus.player_teleport.disconnect(cb)
+	GameBus.chat_posted.disconnect(pcb)
+	chat.free()
+	reg.free()
+
+## Phase 115 — `/tp` a million chunks out lands within 1e-3 m of the typed coordinate.
+func _test_chat_tp_far_exact() -> void:
+	var rig := _chat_rig()
+	var chat: ChatSlice = rig["chat"]
+	var seen: Array = []
+	var cb := func(pos: Dictionary) -> void: seen.append(pos)
+	GameBus.player_teleport.connect(cb)
+	# 600,000 chunks is the far side of the half-lap; 1,200,000 wraps onto the seam side of the planet
+	# (X is folded onto one lap, exactly, in doubles) and must keep its sub-metre digits there too.
+	var lap_chunks := TerrainSlice.circumference_chunks()
+	for typed_chunk in [600000, 1200000]:
+		seen.clear()
+		var x := float(typed_chunk) * TerrainSlice.CHUNK_METERS + 7.3125
+		chat.handle_intent("/tp %s 12.5 %s" % [str(x), str(3.0 * TerrainSlice.CHUNK_METERS + 0.0625)], "")
+		assert_eq(seen.size(), 1, "the far /tp teleports (%d chunks)" % typed_chunk)
+		var want_chunk: int = posmod(typed_chunk + lap_chunks / 2, lap_chunks) - lap_chunks / 2
+		assert_eq(seen[0]["chunk"], Vector2i(want_chunk, 3), "to the typed chunk, wrapped onto one lap")
+		var l: Vector3 = seen[0]["local"]
+		assert_true(absf(l.x - 7.3125) < 1e-3 and absf(l.z - 0.0625) < 1e-3 and absf(l.y - 12.5) < 1e-3,
+				"within 1e-3 m of the typed point (%d chunks)" % typed_chunk)
 	GameBus.player_teleport.disconnect(cb)
 	chat.free()
 	rig["reg"].free()
@@ -17722,17 +17884,33 @@ func _adjacency_origins(seed_v: int) -> Array:
 	var polar := TerrainSlice.polar_chunks() - ADJACENCY_GRID
 	var out: Array = [Vector2i(-half, -half), Vector2i(-half, belt - half), Vector2i(-half, polar)]
 	# Coast: walk east along a temperate row until land meets Ocean, and centre the grid there.
-	var z := belt / 2
-	var prev := TerrainSlice.generated_biome_for_chunk(Vector2i(0, z), seed_v) == "Ocean"
-	var coast := Vector2i(0, z)
-	for step in range(1, 4000):
-		var c := Vector2i(step * 16, z)
-		var ocean := TerrainSlice.generated_biome_for_chunk(c, seed_v) == "Ocean"
-		if ocean != prev:
-			coast = c
-			break
-	out.append(coast - Vector2i(half, half))
+	var found := _find_coast(seed_v, belt / 2, 4000)
+	assert_true(found["found"], "seed %d: a coast was found within the search (the coast grid is not a stand-in)" % seed_v)
+	out.append(found["coast"] - Vector2i(half, half))
 	return out
+
+## `{ found, coast }`: the first chunk east of x=0 on a temperate row where land and Ocean swap, in steps
+## of 16 chunks. Row `z` is tried first, then rows 64 chunks apart (a seed whose first row is all one
+## kind still has a coast on the next). `found` is false (and `coast` the row start) when `max_steps` ends
+## on every row without a change.
+func _find_coast(seed_v: int, z: int, max_steps: int) -> Dictionary:
+	for row in 8:
+		var rz := z + row * 64
+		var prev := TerrainSlice.generated_biome_for_chunk(Vector2i(0, rz), seed_v) == "Ocean"
+		for step in range(1, max_steps):
+			var c := Vector2i(step * 16, rz)
+			if (TerrainSlice.generated_biome_for_chunk(c, seed_v) == "Ocean") != prev:
+				return { "found": true, "coast": c }
+	return { "found": false, "coast": Vector2i(0, z) }
+
+## Phase 115 (#280) — a search that finds no coast says so: a scratch zero-step search reports not found,
+## so `_adjacency_origins` would fail its assert instead of scanning the row start as a coast.
+func _test_adjacency_coast_search_reports_failure() -> void:
+	var none := _find_coast(ADJACENCY_SEEDS[0], TerrainSlice.pole_chunks() / 4, 0)
+	assert_false(none["found"], "a zero-step search finds no coast")
+	assert_eq(none["coast"], Vector2i(0, TerrainSlice.pole_chunks() / 4), "and falls back to the row start")
+	var real := _find_coast(ADJACENCY_SEEDS[0], TerrainSlice.pole_chunks() / 4, 4000)
+	assert_true(real["found"], "the real search finds one")
 
 func _test_adjacency_scan() -> void:
 	var rules := BiomeAdjacency.table()

@@ -1667,25 +1667,32 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true,
 	# is shipped only on the handshake snapshot — an AOI re-scope omits the keys
 	# entirely, so the client keeps the state it already holds.
 	if PersistenceSlice.snapshot_carries_own_record(include_own_record, player_id):
-		var own := _registry.get_player_data(player_id)
-		snapshot["inventory"] = own.get("inventory", {})
-		snapshot["inventory_durability"] = own.get("inventory_durability", {})
-		snapshot["technology"] = own.get("technology", {})
-		# Phase 35 — taming flags (`wolfBondHolder`) and the companion bindings are
-		# part of the peer's own record, so they ride the same own-record payload.
-		snapshot["flags"] = own.get("flags", {})
-		snapshot["companions"] = own.get("companions", [])
-		# Phase 47 — the worn set rides the own-record payload too.
-		snapshot["equipment"] = own.get("equipment", {})
-		# The stored exact {chunk, local} goes out as stored, no float round trip (Phase 78); a legacy
-		# float-array record is re-encoded, and a record with no position stays empty so the client
-		# leaves its spawn alone.
-		var own_pos = PlayerRegistry.snapshot_position(own)
-		snapshot["player"] = { "position": own_pos, "hp": own.get("hp", -1.0) }
-		# Phase 66 — the original spawn point, so a reconnecting client respawns there and not
-		# where it happened to be standing when it rejoined.
-		if own.has("spawn"):
-			snapshot["player"]["spawn"] = own["spawn"]
+		snapshot.merge(_snapshot_own_record(player_id))
+	return snapshot
+
+## The peer's own record as the handshake snapshot carries it (`inventory`, `technology`, `flags`,
+## `companions`, `equipment`, `player` and, when one is recorded, the original `spawn`).
+func _snapshot_own_record(player_id: String) -> Dictionary:
+	var own := _registry.get_player_data(player_id)
+	var snapshot := {}
+	snapshot["inventory"] = own.get("inventory", {})
+	snapshot["inventory_durability"] = own.get("inventory_durability", {})
+	snapshot["technology"] = own.get("technology", {})
+	# Phase 35 — taming flags (`wolfBondHolder`) and the companion bindings are
+	# part of the peer's own record, so they ride the same own-record payload.
+	snapshot["flags"] = own.get("flags", {})
+	snapshot["companions"] = own.get("companions", [])
+	# Phase 47 — the worn set rides the own-record payload too.
+	snapshot["equipment"] = own.get("equipment", {})
+	# The stored exact {chunk, local} goes out as stored, no float round trip (Phase 78); a legacy
+	# float-array record is re-encoded, and a record with no position stays empty so the client
+	# leaves its spawn alone.
+	var own_pos = PlayerRegistry.snapshot_position(own)
+	snapshot["player"] = { "position": own_pos, "hp": own.get("hp", -1.0) }
+	# Phase 66 — the original spawn point, so a reconnecting client respawns there and not
+	# where it happened to be standing when it rejoined.
+	if own.has("spawn"):
+		snapshot["player"]["spawn"] = own["spawn"]
 	return snapshot
 
 ## Phase 109 — the generation records of the chunks in the peer's streamed window plus its first ring.
@@ -1731,6 +1738,30 @@ func _scoped_creatures(aoi_center: Vector3) -> Array:
 		if NetworkingSlice.within_aoi(aoi_center, pos):
 			out.append(c)
 	return out
+
+## Client: put the body where the snapshot's `player` record says (exactly, via a rebase, when the
+## position is a `{chunk, local}` record) and restore its HP. Anything but a dictionary is ignored.
+func _place_from_snapshot(own: Variant) -> void:
+	if own is Dictionary:
+		var arr = own.get("position", [])
+		if WorldPos.is_wire(arr):
+			if arr is Dictionary and _rebase != null:
+				# Exact placement: rebase to the target chunk, then land on its small local offset.
+				var l: Array = arr["local"]
+				var exact := WorldPos.normalized({"chunk": WorldPos.wire_chunk(arr),
+					"local": Vector3(float(l[0]), float(l[1]), float(l[2]))})
+				_rebase.rebase_to(exact["chunk"])
+				_player.place_at_world_pos(exact)
+			else:
+				_player.spawn_at(WorldPos.from_wire(arr))
+			if not _client_respawn_point_set:
+				# Only the first snapshot carries the placement; later AOI re-scoped snapshots
+				# carry wherever the player has since walked, which is not a spawn point.
+				_player.set_respawn_world_pos(client_respawn_point(own, _player.get_world_pos()))
+				_client_respawn_point_set = true
+		var hp := float(own.get("hp", -1.0))
+		if hp >= 0.0:
+			_player.set_hp(hp)
 
 ## Client-side: apply the host's world snapshot and begin rendering.
 func _on_world_snapshot_received(data: Dictionary) -> void:
@@ -1791,27 +1822,7 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 			_character.set_player_character(client_char)
 			_character.attach_default_rig(client_char)
 		_apply_local_equipment(data["equipment"])
-	var own: Variant = data.get("player", {})
-	if own is Dictionary:
-		var arr = own.get("position", [])
-		if WorldPos.is_wire(arr):
-			if arr is Dictionary and _rebase != null:
-				# Exact placement: rebase to the target chunk, then land on its small local offset.
-				var l: Array = arr["local"]
-				var exact := WorldPos.normalized({"chunk": WorldPos.wire_chunk(arr),
-					"local": Vector3(float(l[0]), float(l[1]), float(l[2]))})
-				_rebase.rebase_to(exact["chunk"])
-				_player.place_at_world_pos(exact)
-			else:
-				_player.spawn_at(WorldPos.from_wire(arr))
-			if not _client_respawn_point_set:
-				# Only the first snapshot carries the placement; later AOI re-scoped snapshots
-				# carry wherever the player has since walked, which is not a spawn point.
-				_player.set_respawn_world_pos(client_respawn_point(own, _player.get_world_pos()))
-				_client_respawn_point_set = true
-		var hp := float(own.get("hp", -1.0))
-		if hp >= 0.0:
-			_player.set_hp(hp)
+	_place_from_snapshot(data.get("player", {}))
 	if data.has("creatures") and data["creatures"] is Array:
 		_creature.apply_snapshot_creatures(data["creatures"])
 	if data.has("inventory") and data["inventory"] is Dictionary:

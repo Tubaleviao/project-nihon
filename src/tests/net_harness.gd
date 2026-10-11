@@ -676,18 +676,25 @@ func _step_admin_teleport() -> void:
 				and (seen["local"] as Vector3).distance_to(here["local"]) < 1.0, STEP_TIMEOUT_SECS)
 		_report("admin_teleport", verdict(ok, true), "landed-within-1m" if ok else "no_landing")
 		return
+	var home: Dictionary = _root._player.get_world_pos()
 	var got: bool = await _await_until(func(): return not _teleports_seen.is_empty(), STEP_TIMEOUT_SECS)
 	var near := false
 	if got:
 		var want: Dictionary = _teleports_seen.back()
 		var at: Dictionary = _root._player.get_world_pos()
 		near = at["chunk"] == want["chunk"] and (at["local"] as Vector3).distance_to(want["local"]) < 1.0
+		# Phase 115 — the landing is only meaningful once the destination chunk is loaded under the body.
+		var loaded: bool = await _await_until(func(): return _root._chunk_manager.is_chunk_built(want["chunk"]), STEP_TIMEOUT_SECS)
+		near = near and loaded
 	_report_actual = true
 	_report_position()
 	await _await_settle(2.5)
 	_report_actual = false
 	_report_position()
 	_report("admin_teleport", verdict(got and near, true), "landed-within-1m" if (got and near) else "no_landing")
+	# Phase 115 — send the client back to where it was, so the steps after this one start from the usual place.
+	GameBus.player_teleport.emit(home)
+	await _await_settle(1.0)
 
 ## Step 7e — Phase 101: a non-admin's `/give` is refused to that client alone and creates nothing.
 func _step_non_admin_refused() -> void:

@@ -296,7 +296,7 @@ on-planet teleports) and 104 (two-client harness steps).
   disconnects and reconnects, its restored HP is the simulated value, not `MAX_HP`.
 - [x] `grep -rn "send_player_damaged(" src --include=*.gd | grep -v -e game_root.gd -e networking_slice.gd -e test_suite.gd -e net_harness.gd`
   finds nothing.
-- [x] Suite: `/bring` of a peer to a local player at chunk (1,500,000, 3) local (0.25, 10, 0.75) sends a
+- [x] Suite: `/bring` of a peer to a local player at chunk (1,200,000, 3) local (0.25, 10, 0.75) sends a
   teleport that decodes on the client to that chunk and a local within 1e-3 m; `/tp <peer>` by the
   local admin lands the body at the peer's exact chunk, local within 1e-3 m.
 - [x] Suite: `/tp 0 10 z` with `z` one chunk past `TerrainSlice.pole_chunks()` is refused and no

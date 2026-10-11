@@ -91,25 +91,37 @@ static func help_lines(admin: bool) -> Array:
 			lines.append(USAGE[name])
 	return lines
 
-## Three coordinates from `args[start..start+2]`: `{ ok, pos, error }`. Rejects non-numbers, NaN, inf,
-## anything beyond `MAX_TP_COORD` and a Z past the poles; X is wrapped onto one lap of the planet.
+## Three coordinates from `args[start..start+2]`: `{ ok, pos, world, error }`. Rejects non-numbers, NaN,
+## inf, anything beyond `MAX_TP_COORD` and a Z past the poles; X is wrapped onto one lap of the planet.
+## `pos` is the exact `{chunk, local}` record, built from the doubles typed — never through a `Vector3`,
+## whose float32 X loses metres a million chunks out. `world` is the wrapped `[x, y, z]` for display.
 static func parse_position(args: Array, start: int = 0) -> Dictionary:
+	var fail := func(msg: String) -> Dictionary:
+		return { "ok": false, "pos": {}, "world": [], "error": msg }
 	if args.size() < start + 3:
-		return { "ok": false, "pos": Vector3.ZERO, "error": "need three numbers: x y z" }
+		return fail.call("need three numbers: x y z")
 	var v: Array = []
 	for i in 3:
 		var s := str(args[start + i])
 		if not s.is_valid_float():
-			return { "ok": false, "pos": Vector3.ZERO, "error": "'%s' is not a number" % s }
+			return fail.call("'%s' is not a number" % s)
 		var f := s.to_float()
 		if is_nan(f) or is_inf(f) or absf(f) > MAX_TP_COORD:
-			return { "ok": false, "pos": Vector3.ZERO, "error": "'%s' is out of range" % s }
+			return fail.call("'%s' is out of range" % s)
 		v.append(f)
 	var pole_m := float(TerrainSlice.pole_chunks()) * TerrainSlice.CHUNK_METERS
 	if absf(v[2]) > pole_m:
-		return { "ok": false, "pos": Vector3.ZERO,
-			"error": "Z must be within %d m of the equator (the poles)" % int(pole_m) }
-	return { "ok": true, "pos": WorldPos.wrap_world(Vector3(v[0], v[1], v[2])), "error": "" }
+		return fail.call("Z must be within %d m of the equator (the poles)" % int(pole_m))
+	var lap := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var x: float = fposmod(float(v[0]) + lap * 0.5, lap) - lap * 0.5
+	var z: float = v[2]
+	var cx := floori(x / TerrainSlice.CHUNK_METERS)
+	var cz := floori(z / TerrainSlice.CHUNK_METERS)
+	var pos := WorldPos.normalized({
+		"chunk": Vector2i(cx, cz),
+		"local": Vector3(x - cx * TerrainSlice.CHUNK_METERS, v[1], z - cz * TerrainSlice.CHUNK_METERS),
+	})
+	return { "ok": true, "pos": pos, "world": [x, v[1], z], "error": "" }
 
 ## A `/give` quantity from `s`: a positive whole number up to `MAX_GIVE_QUANTITY`, else 0.
 static func parse_quantity(s: String) -> int:

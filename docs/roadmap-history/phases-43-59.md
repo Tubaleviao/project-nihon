@@ -1305,9 +1305,9 @@ RiftWarden are a fabric design question and stay out of scope).
   (`_test_spawn_roll_mix_pinned`).
 - [x] Every spawned member position lies inside its chunk (asserted over several
   chunks, full packs: `_test_spawn_pack_bounds_and_retry`).
-- [x] Live counts agree with a full scan after spawn/kill/respawn sequences. _The
-  running counter was replaced by a single pass (see note), so there is no second
-  source of truth to compare; cap tests assert `live_population()` throughout._
+- [x] _Reworded (Phase 115):_ the running counter was removed for a single pass over the instance
+  table, so there is no second source of truth to compare; cap tests assert `live_population()`
+  throughout. The original "agrees with a full scan" criterion was not run as written.
 - [x] Missing-field warning asserted (`_test_spawn_missing_fields_warns_once`);
   suite green on both boot paths.
 
