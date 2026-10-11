@@ -725,8 +725,9 @@ tree record with the chunk, wraps every coordinate, bounds client memory and pro
 **Deliverables:**
 - `fabric/world/` — the clear radii (`clearRadiusTiles`, `clearRadiusMetres`) are authored in the tree
   data and read through `GameData`; `TreeSlice.CLEAR_RADIUS_*` constants go away (#274).
-- `src/world/tree_slice.gd` — tree records (`t`, `x`) are applied per chunk on stream-in from the
-  scoped record sync (Phase 109), so a late chunk spawns without its cleared trees; `clear_trees_near_*`
+- `src/world/tree_slice.gd` — tree records (`t`, `x`) reach a client with the scoped record snapshots
+  (Phase 109; each re-scope re-runs `resync_recorded_chunks`), so a late chunk spawns without its cleared
+  trees; `clear_trees_near_*`
   share one loop that looks only at the edited chunk and its neighbours via `_by_chunk`, in
   `canonical_tile`-wrapped coordinates; `_on_block_changed` ignores edits deeper than the tree root and
   shifts by the face normal; a station clears trees in a not-yet-loaded neighbour by recording the clear
@@ -738,10 +739,12 @@ tree record with the chunk, wraps every coordinate, bounds client memory and pro
   with the chunk; `resync_recorded_chunks` walks the loaded chunk set (#273, #274, #275).
 - `src/persistence/region_store.gd` `normalize_gen` — an invalid optional `t` or `x` drops only that
   field (#275).
-- `src/terrain/chunk_manager.gd` `update_record` — bumps the `ChunkRecords` revision only when `b` or
-  `h` change; `chunk_record_sync.gd`'s size comment is updated for `t`/`x` (#273, #274, #275).
-- `src/networking/networking_slice.gd` — a client validates a `tree_cleared` id against its loaded
-  chunks; `src/tests/net_harness.gd` gains a `tree_cleared` step (#274, #273).
+- `src/terrain/chunk_manager.gd` `update_record` — already bumped the `ChunkRecords` revision only when
+  `b` or `h` change (covered by a new test); `chunk_record_sync.gd`'s size comment is updated for `t`/`x`
+  (#273, #274, #275).
+- `src/world/tree_slice.gd` `_on_tree_cleared` — a client keeps a `tree_cleared` id only for a chunk near
+  its loaded ones (`_near_loaded_chunk`); `src/tests/net_harness.gd` gains a `tree_cleared` step
+  (#274, #273).
 
 **Acceptance criteria:**
 - [x] Suite: a chunk streamed in after a clear spawns without the cleared tree on a client that was not

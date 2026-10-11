@@ -1597,15 +1597,20 @@ func has_edit_near(tile: Vector2i, radius: int) -> bool:
 				return true
 	return false
 
-## Phase 116 — true when the chunk or its one-chunk ring holds any edit: one index lookup per chunk
-## instead of `has_edit_near`'s nine string keys per tree. A false answer rules every tile of the
-## chunk out; a true one means "ask per tile".
-func has_edits_near_chunk(chunk_pos: Vector2i) -> bool:
+## Phase 116 — true when the chunk or the `radius` tiles around it hold any edit: one index lookup per
+## chunk instead of `has_edit_near`'s string keys per tree. A false answer rules every tile of the chunk
+## out for a `has_edit_near` of the same radius; a true one means "ask per tile".
+func has_edits_near_chunk(chunk_pos: Vector2i, radius: int = 1) -> bool:
 	if _edits_by_chunk.is_empty():
 		return false
-	for chunk in _ring_chunks(chunk_pos):
-		if not (_edits_by_chunk.get(_chunk_key(chunk), {}) as Dictionary).is_empty():
-			return true
+	var first := chunk_pos * CHUNK_SIZE + Vector2i(-radius, -radius)
+	var last := chunk_pos * CHUNK_SIZE + Vector2i(CHUNK_SIZE - 1 + radius, CHUNK_SIZE - 1 + radius)
+	var c0 := _tile_to_chunk(first)
+	var c1 := _tile_to_chunk(last)
+	for cz in range(c0.y, c1.y + 1):
+		for cx in range(c0.x, c1.x + 1):
+			if not (_edits_by_chunk.get(_chunk_key(Vector2i(cx, cz)), {}) as Dictionary).is_empty():
+				return true
 	return false
 
 ## Dump voxel edits for persistence: { "gx,gz": [typed run edit, ...] }.

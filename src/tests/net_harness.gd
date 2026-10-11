@@ -1197,7 +1197,7 @@ func _step_tree_cleared() -> void:
 			return
 		# Give the client time to reach this step with its trees loaded: a clear for a chunk it has not
 		# streamed yet is left to the scoped records, not the live event.
-		await _await_settle(3.0)
+		await _await_settle(6.0)
 		_root._tree._clear_tree(t)
 		await _await_settle(2.0)
 		_report("tree_cleared", verdict(_root._tree.get_tree_record(t).is_empty(), true), t)

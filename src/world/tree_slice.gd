@@ -195,13 +195,14 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 	# drops the surplus trees, and a gap in the 0..budget-1 ids is refilled.
 	_trim_chunk_to(chunk_pos, budget, cleared)
 	# One lookup per chunk rules the edited-ground check out for every tree in it (Phase 116).
-	var check_ground := is_authoritative and _chunk_may_be_built_on(chunk_pos)
+	var stations := _stations_near_chunk(chunk_pos) if is_authoritative else []
+	var check_ground := is_authoritative and (not stations.is_empty() or _chunk_has_edits(chunk_pos))
 	for i in budget:
 		if cleared.has(i) or _trees.has(_tree_id(chunk_pos, i)):
 			continue
 		var tid := _spawn(str(entry["species"]), str(entry["wood"]), chunk_pos, i)
 		# A tree standing on ground players already edited never grew back there.
-		if check_ground and _on_edited_ground(_trees[tid]):
+		if check_ground and _on_edited_ground(_trees[tid], stations):
 			_clear_tree(tid)
 
 ## Phase 110 — the tree budget of a chunk: the one its record holds (`t`) so a later density change
@@ -248,13 +249,27 @@ func _adopt_local_clears(chunk_pos: Vector2i) -> void:
 	record_writer.call(canon, next)
 	_cleared_local.erase(canon)
 
-## True when edits or stations may sit within clear range of a tree in `chunk_pos`.
-func _chunk_may_be_built_on(chunk_pos: Vector2i) -> bool:
-	if station_slice != null and station_slice.has_method("get_all_stations") \
-			and not (station_slice.get_all_stations() as Array).is_empty():
-		return true
+## Placed stations whose clear circle can reach a tree of `chunk_pos` (seam-wrapped), as station dicts.
+func _stations_near_chunk(chunk_pos: Vector2i) -> Array:
+	var out: Array = []
+	if station_slice == null or not station_slice.has_method("get_all_stations"):
+		return out
+	var span := float(_chunk_size()) * _tile_size()
+	var half := span * 0.5
+	var cx := (float(chunk_pos.x) + 0.5) * span
+	var cz := (float(chunk_pos.y) + 0.5) * span
+	var radius := clear_radius_m()
+	var wm := _world_metres()
+	for st in station_slice.get_all_stations():
+		var sp: Vector3 = st["position"]
+		if absf(_wrapped_delta_f(cx, sp.x, wm)) <= half + radius and absf(cz - sp.z) <= half + radius:
+			out.append(st)
+	return out
+
+## True when voxel edits may sit within clear range of a tree in `chunk_pos`.
+func _chunk_has_edits(chunk_pos: Vector2i) -> bool:
 	return voxel_slice != null and voxel_slice.has_method("has_edits_near_chunk") \
-		and voxel_slice.has_edits_near_chunk(chunk_pos)
+		and voxel_slice.has_edits_near_chunk(chunk_pos, clear_radius_tiles())
 
 ## Re-run `spawn_for_chunk` over every chunk holding trees (a client whose records arrived after
 ## its trees spawned): applies the recorded budget and the cleared list.
@@ -547,8 +562,13 @@ func _clear_where(centre: Vector2i, reach: int, matches: Callable) -> int:
 ## Record (and announce) the trees of an unloaded `chunk` that lie within `radius` of `p`. Needs the
 ## chunk's biome and budget, so it does nothing where the chunk grows no trees.
 func _clear_unloaded_chunk(chunk: Vector2i, p: Vector2, radius: float, wm: float) -> int:
-	if _by_chunk.has(chunk) or _spawned_chunks.has(chunk):
-		return 0
+	var circ := TerrainSlice.circumference_chunks()
+	var canon_chunk := TerrainSlice.wrap_chunk(chunk)
+	for lap in [0, -circ, circ]:   # a loaded chunk may be keyed by any lap of the seam
+		var key := Vector2i(canon_chunk.x + lap, canon_chunk.y)
+		if _by_chunk.has(key) or _spawned_chunks.has(key):
+			return 0
+	chunk = canon_chunk
 	var span := float(_chunk_size()) * _tile_size()
 	var half := span * 0.5
 	var gap := Vector2(maxf(absf(_wrapped_delta_f((float(chunk.x) + 0.5) * span, p.x, wm)) - half, 0.0),
@@ -573,12 +593,15 @@ func _clear_unloaded_chunk(chunk: Vector2i, p: Vector2, radius: float, wm: float
 		n += 1
 	return n
 
-func _on_edited_ground(tree: Dictionary) -> bool:
-	if station_slice != null and station_slice.has_method("get_all_stations"):
+## `stations` is the candidate list (`_stations_near_chunk`); omitted, every placed station is checked.
+func _on_edited_ground(tree: Dictionary, stations: Variant = null) -> bool:
+	if stations == null and station_slice != null and station_slice.has_method("get_all_stations"):
+		stations = station_slice.get_all_stations()
+	if stations != null:
 		var tp: Vector3 = tree["position"]
 		var radius := clear_radius_m()
 		var wm := _world_metres()
-		for st in station_slice.get_all_stations():
+		for st in stations:
 			var sp: Vector3 = st["position"]
 			if Vector2(_wrapped_delta_f(tp.x, sp.x, wm), tp.z - sp.z).length() <= radius:
 				return true
