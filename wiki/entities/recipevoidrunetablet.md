@@ -23,7 +23,7 @@ Etch stabilisation runes into a refined voidite slab at a void-shielded workshop
 
 | Name | Kind | Target |
 | ---- | ---- | ------ |
-| inputVoidite | hasOne | [Voidite](voidite.md) |
+| inputVoidite | hasOne | [RefinedVoiditeShard](refinedvoiditeshard.md) |
 | inputOrb | hasOne | [LumenfiteOrb](lumenfiteorb.md) |
 | output | hasOne | [VoidRuneTablet](voidrunetablet.md) |
 

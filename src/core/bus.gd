@@ -264,6 +264,17 @@ signal craft_intent(recipe_id: String, player_id: String)
 ## result : Dictionary — { recipe_id, success, outputs: [{ item, quantity }], reason }
 signal craft_resolved(result: Dictionary)
 
+## Phase 118 — a refining craft ended in a void burst. Emitted by CraftingSlice on the
+## host, after the input is consumed and the damage is dealt. The networking slice
+## sends it to the crafter's peer ALONE, and re-emits it there.
+## result : Dictionary — { recipe_id, player_id, damage, survived, flag }
+##          `flag` is the granted flag ("" when the crafter did not survive)
+signal void_burst_resolved(result: Dictionary)
+
+## Phase 118 — a profession unlocked for a player (ProfessionSlice). Owner-scoped on
+## the wire like `void_burst_resolved`; a client receives its own and nobody else's.
+signal profession_unlocked(player_id: String, profession: String)
+
 ## Request to repair a held durable item (emitted by the player/UI or any system).
 ## item_id : String — key from GameData.ITEMS (e.g. "FerritePick")
 signal repair_requested(item_id: String)

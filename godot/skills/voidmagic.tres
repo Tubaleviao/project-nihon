@@ -9,6 +9,7 @@ tier = 0
 xpCurve = 0
 maxLevel = 0
 category = 0
+flagGate = {"requiresFlag":"voidBurstSurvivor"}
 state_machine_field = "tier"
 initial_state = "novice"
 description = "Channelling of void energy — entropic, corrupting, and capable of bypassing conventional magical resistance. Accessible only to players who have survived void exposure. The only magic school that can bypass veilsteel anti-magic absorption."

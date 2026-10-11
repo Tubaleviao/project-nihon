@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:df5bb59b77b13ddccc0939997cfbb74ae288f02f29e272a054cd4edb3264f69d",
+  "schemaHash": "sha256:d6ae157f3aa02e992b81fbbb553ea4683961f8f7e89c2cf9e22c1f06719300c7",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -7634,6 +7634,17 @@
               "social"
             ],
             "pii": false
+          },
+          "flagGate": {
+            "name": "flagGate",
+            "type": "json",
+            "description": "Structured flag gate: the player flag that must be held before this skill can be used or advanced (the skill is not tutored).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "requiresFlag": "voidBurstSurvivor"
+            }
           }
         },
         "relations": {},
@@ -8017,6 +8028,17 @@
               "social"
             ],
             "pii": false
+          },
+          "flagGate": {
+            "name": "flagGate",
+            "type": "json",
+            "description": "Structured flag gate: the player flag that must be held before this skill can be used or advanced (the skill is not tutored).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "requiresFlag": "voidBurstSurvivor"
+            }
           }
         },
         "relations": {},
@@ -10876,6 +10898,27 @@
               "mastered"
             ],
             "pii": false
+          },
+          "unlock": {
+            "name": "unlock",
+            "type": "json",
+            "description": "Structured unlock data: the skill tiers that must all be held and the player flag that must be set.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "skills": [
+                {
+                  "skill": "VoidMagic",
+                  "tier": "expert"
+                },
+                {
+                  "skill": "VoidSmithing",
+                  "tier": "expert"
+                }
+              ],
+              "requiresFlag": "voidBurstSurvivor"
+            }
           }
         },
         "relations": {
@@ -15148,6 +15191,156 @@
         "pii": [],
         "gdpr": {}
       },
+      "RefinedVoiditeShard": {
+        "name": "RefinedVoiditeShard",
+        "tags": [
+          "item"
+        ],
+        "description": "Raw voidite stabilised in a forge into a crystalline shard. The input of void rune etching and the repair material for voidite blades.",
+        "goal": "Discrete refined form of voidite; the product of the risky refining recipe",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per shard",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.1
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "rare"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; stacks up to 20 per slot",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Crystal integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 80
+          }
+        },
+        "relations": {
+          "voidite": {
+            "name": "voidite",
+            "kind": "hasOne",
+            "target": "Voidite"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "Shard integrity degrades outside void-lined storage",
+            "rules": [
+              "Stored in a standard forge area: degrades one tier per in-game day"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Full potency or freshness; ready for use",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Reduced potency; still usable",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; use with caution",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Spoiled or fully depleted; cannot be used or repaired",
+              "terminal": true
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Stored in a standard forge area: degrades one tier per in-game day"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Stored in a standard forge area: degrades one tier per in-game day"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Stored in a standard forge area: degrades one tier per in-game day"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
       "AshiteBlock": {
         "name": "AshiteBlock",
         "tags": [
@@ -17247,7 +17440,7 @@
               "station": "void-shielded workshop",
               "inputs": [
                 {
-                  "item": "Voidite",
+                  "item": "RefinedVoiditeShard",
                   "quantity": 1
                 },
                 {
@@ -17266,7 +17459,8 @@
                   "skill": "VoidSmithing",
                   "tier": "expert"
                 }
-              ]
+              ],
+              "profession": "VoidTouched"
             }
           }
         },
@@ -17274,7 +17468,7 @@
           "inputVoidite": {
             "name": "inputVoidite",
             "kind": "hasOne",
-            "target": "Voidite"
+            "target": "RefinedVoiditeShard"
           },
           "inputOrb": {
             "name": "inputOrb",
@@ -17296,6 +17490,111 @@
               "Requires the VoidTouched profession",
               "Workshop must be void-shielded",
               "One refined voidite shard and one lumenfite orb yield one void rune tablet; the orb is consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "RecipeRefinedVoiditeShard": {
+        "name": "RecipeRefinedVoiditeShard",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Stabilise one raw voidite crystal into a refined voidite shard at a forge. The refining can fail with a void burst.",
+        "goal": "Entry point of the void progression chain; surviving a burst grants the voidBurstSurvivor flag",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "smithing",
+              "station": "forge",
+              "inputs": [
+                {
+                  "item": "Voidite",
+                  "quantity": 1
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "RefinedVoiditeShard",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "journeyman"
+                }
+              ],
+              "burst": {
+                "chance": 0.15,
+                "damage": 40,
+                "grantsFlag": "voidBurstSurvivor"
+              }
+            }
+          }
+        },
+        "relations": {
+          "inputVoidite": {
+            "name": "inputVoidite",
+            "kind": "hasOne",
+            "target": "Voidite"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "RefinedVoiditeShard"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Stabilise raw voidite through void-tuned smelting in a forge",
+            "rules": [
+              "Requires Smithing: Journeyman",
+              "Requires a player-built forge",
+              "One raw voidite crystal yields one refined shard",
+              "Each attempt may end in a void burst: the input is consumed, no shard is produced and the crafter takes burst damage; a crafter who survives gains the voidBurstSurvivor flag"
             ],
             "auth": {
               "roles": [
@@ -17936,7 +18235,8 @@
                 "RecipeVeilsteelIngot",
                 "RecipeVeilsteelLongsword",
                 "RecipeVeilsteelChestplate",
-                "RecipeAshiteBlock"
+                "RecipeAshiteBlock",
+                "RecipeRefinedVoiditeShard"
               ],
               "requires": [
                 "TechBasicSmithing"
@@ -17976,6 +18276,11 @@
             "name": "unlocksRecipeAshiteBlock",
             "kind": "hasOne",
             "target": "RecipeAshiteBlock"
+          },
+          "unlocksRecipeRefinedVoiditeShard": {
+            "name": "unlocksRecipeRefinedVoiditeShard",
+            "kind": "hasOne",
+            "target": "RecipeRefinedVoiditeShard"
           }
         },
         "behaviors": {

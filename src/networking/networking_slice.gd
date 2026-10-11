@@ -246,6 +246,8 @@ func _ready() -> void:
 	GameBus.creature_state_changed.connect(_on_creature_state_changed)
 	GameBus.remote_player_state.connect(_on_remote_player_state)
 	GameBus.inventory_synced.connect(_on_inventory_synced)
+	GameBus.void_burst_resolved.connect(_on_void_burst_resolved)
+	GameBus.profession_unlocked.connect(_on_profession_unlocked)
 	GameBus.equip_intent.connect(_on_equip_intent)
 	GameBus.equipment_changed.connect(_on_equipment_changed)
 	GameBus.equipment_revoked.connect(_on_equipment_revoked)
@@ -1078,6 +1080,33 @@ func send_player_damaged(peer_id: int, damage: float, attacker_id: String) -> vo
 		"attacker_id": attacker_id,
 	})
 
+## Phase 118 — host → the crafter's peer ALONE: a void burst resolved against them. The
+## packet carries no player id (the receiving machine knows who it is), and a burst that
+## struck the host's own player has no peer to send to. An unresolvable owner fails
+## closed, like `_on_inventory_synced`.
+func _on_void_burst_resolved(result: Dictionary) -> void:
+	if _role != Role.HOST:
+		return
+	var peer := _peer_for_inventory_owner(str(result.get("player_id", "")))
+	if peer == 0:
+		return
+	_deliver(peer, {
+		"type":      "void_burst_resolved",
+		"recipe_id": str(result.get("recipe_id", "")),
+		"damage":    float(result.get("damage", 0.0)),
+		"survived":  bool(result.get("survived", false)),
+		"flag":      str(result.get("flag", "")),
+	})
+
+## Phase 118 — host → the owner's peer alone: a profession unlocked for them.
+func _on_profession_unlocked(player_id: String, profession: String) -> void:
+	if _role != Role.HOST:
+		return
+	var peer := _peer_for_inventory_owner(player_id)
+	if peer == 0:
+		return
+	_deliver(peer, { "type": "profession_unlocked", "profession": profession })
+
 # ---------------------------------------------------------------------------
 # Phase 24 — social/economy replication (host → clients authoritative state,
 # client → host intents)
@@ -1802,6 +1831,17 @@ func _route_h2c(payload: Dictionary) -> void:
 				str(payload.get("attacker_id", "")),
 				"player"
 			)
+		"void_burst_resolved":
+			# Phase 118 — addressed to us alone; the player id is the local bucket.
+			GameBus.void_burst_resolved.emit({
+				"recipe_id": str(payload.get("recipe_id", "")),
+				"player_id": "",
+				"damage":    float(payload.get("damage", 0.0)),
+				"survived":  bool(payload.get("survived", false)),
+				"flag":      str(payload.get("flag", "")),
+			})
+		"profession_unlocked":
+			GameBus.profession_unlocked.emit("", str(payload.get("profession", "")))
 		"market_synced":
 			# Phase 36 — the payload names players by public handle; our OWN handle is
 			# shown back to the slices as "player" so the local view is unchanged.

@@ -300,6 +300,11 @@ func run() -> void:
 	_run_test("repair: specs resolve against fabric",              _test_repair_specs_resolve)
 	_run_test("repair: resolves against the repairer's inventory",  _test_repair_uses_repairer_inventory)
 	_run_test("repair: client forwards intent, mutates nothing",    _test_repair_client_forwards_intent)
+	_run_test("void burst: fabric data reaches GameData",      _test_void_fabric_data)
+	_run_test("void burst: roll is deterministic and calibrated", _test_void_burst_roll_deterministic_and_calibrated)
+	_run_test("void burst: consumes, damages, flags on survival", _test_void_burst_consumes_damages_and_flags)
+	_run_test("void burst: flag gate and VoidTouched unlock",  _test_void_flag_gate_and_profession_unlock)
+	_run_test("void burst: client never rolls, result owner-scoped", _test_void_client_never_rolls_and_result_is_owner_scoped)
 	_run_test("technology: recipe resolves to owning tech",    _test_technology_recipe_resolves_to_tech)
 	_run_test("technology: research requires prerequisite",    _test_technology_research_requires_prereq)
 	_run_test("technology: research consumes materials",       _test_technology_research_consumes_materials)
@@ -2826,6 +2831,268 @@ func _test_crafting_recipe_data_loaded() -> void:
 	assert_eq(recipe["outputs"][0]["item"], "FerritePick", "output item is FerritePick")
 	assert_eq(recipe["inputs"][0]["item"], "FerriteIngot", "first input is FerriteIngot")
 	c.free()
+
+# ---------------------------------------------------------------------------
+# Phase 118 — void bursts, the survivor flag and the VoidTouched unlock
+# ---------------------------------------------------------------------------
+
+const VOID_RECIPE := "RecipeRefinedVoiditeShard"
+
+## A host rig: a registry with a local player, a taming slice as the flag store, a profession
+## slice and a crafting slice wired the way game_root wires them (no player body, no terrain).
+func _make_void_rig() -> Dictionary:
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	registry.set_local_player(registry.mint_player_id())
+	var crafting := CraftingSlice.new()
+	add_child(crafting)
+	crafting.player_registry = registry
+	var taming := TamingSlice.new()
+	add_child(taming)
+	taming.player_registry = registry
+	var professions: Node = (load("res://src/crafting/profession_slice.gd") as GDScript).new()
+	add_child(professions)
+	professions.crafting_slice = crafting
+	professions.flag_store = taming
+	professions.player_registry = registry
+	crafting.flag_store = taming
+	crafting.profession_slice = professions
+	return { "registry": registry, "crafting": crafting, "taming": taming, "professions": professions }
+
+func _free_void_rig(rig: Dictionary) -> void:
+	for k in ["professions", "taming", "crafting", "registry"]:
+		rig[k].free()
+
+## The first craft counter at or after `from` whose draw is (or is not) a burst.
+func _void_counter(pid: String, want_burst: bool, from: int = 0) -> int:
+	var chance := float(GameData.RECIPES[VOID_RECIPE].recipe.get("burst", {}).get("chance", 0.0))
+	var i := from
+	while (CraftingSlice.burst_roll(0, pid, i) < chance) != want_burst:
+		i += 1
+	return i
+
+func _void_craft(rig: Dictionary, pid: String, counter: int) -> Dictionary:
+	var reg: Node = rig["registry"]
+	reg.record_craft_counter(pid, counter)
+	reg.get_inventory(pid).add_item("Voidite", 1)
+	return rig["crafting"].craft(VOID_RECIPE, pid)
+
+func _test_void_fabric_data() -> void:
+	var recipe: Dictionary = GameData.RECIPES[VOID_RECIPE].recipe
+	assert_false(recipe.is_empty(), "GameData has the refining recipe")
+	assert_eq(str(recipe["station"]), "forge", "at a forge")
+	assert_eq(str(recipe["inputs"][0]["item"]), "Voidite", "from one raw voidite")
+	assert_eq(str(recipe["outputs"][0]["item"]), "RefinedVoiditeShard", "to one refined shard")
+	assert_true(GameData.ITEMS.has("RefinedVoiditeShard"), "the refined-shard item exists")
+	var burst: Dictionary = recipe["burst"]
+	assert_true(float(burst["chance"]) > 0.0 and float(burst["chance"]) < 1.0, "an authored burst chance")
+	assert_true(float(burst["damage"]) > 0.0, "and an authored damage")
+	assert_eq(str(burst["grantsFlag"]), "voidBurstSurvivor", "granting the survivor flag")
+	var spec: Dictionary = (load("res://src/crafting/profession_slice.gd") as GDScript).unlock_spec("VoidTouched")
+	assert_eq((spec["skills"] as Array).size(), 2, "VoidTouched needs two skill tiers")
+	assert_eq(str(spec["requiresFlag"]), "voidBurstSurvivor", "and the flag")
+	assert_eq(str(GameData.RECIPES["RecipeVoidRuneTablet"].recipe["profession"]), "VoidTouched", "the tablet recipe names the profession")
+	assert_eq(str(GameData.SKILLS["VoidSmithing"].flagGate["requiresFlag"]), "voidBurstSurvivor", "Void Smithing is flag-gated")
+	assert_eq(str(GameData.SKILLS["VoidMagic"].flagGate["requiresFlag"]), "voidBurstSurvivor", "and so is Void Magic")
+
+func _test_void_burst_roll_deterministic_and_calibrated() -> void:
+	var chance := float(GameData.RECIPES[VOID_RECIPE].recipe["burst"]["chance"])
+	var bursts := 0
+	for i in 10000:
+		var roll := CraftingSlice.burst_roll(1234, "player_a", i)
+		if i < 3:
+			assert_true(roll >= 0.0 and roll < 1.0, "a draw stays in [0, 1)")
+		if roll < chance:
+			bursts += 1
+		if i < 50:
+			assert_eq(roll, CraftingSlice.burst_roll(1234, "player_a", i), "the same inputs draw the same roll")
+	assert_true(absf(float(bursts) / 10000.0 - chance) <= 0.01, "the rate over 10,000 crafts is within 1 point of the authored chance (%d)" % bursts)
+	var differs := 0
+	for i in 100:
+		if CraftingSlice.burst_roll(1, "player_a", i) != CraftingSlice.burst_roll(2, "player_a", i):
+			differs += 1
+		if CraftingSlice.burst_roll(1, "player_a", i) != CraftingSlice.burst_roll(1, "player_b", i):
+			differs += 1
+	assert_true(differs > 150, "the seed and the player both change the sequence")
+
+func _test_void_burst_consumes_damages_and_flags() -> void:
+	var rig := _make_void_rig()
+	var crafting: Node = rig["crafting"]
+	var registry: Node = rig["registry"]
+	var taming: Node = rig["taming"]
+	var pid := "player_peer_void"
+	registry.ensure_player(pid)
+	crafting.set_skill_for(pid, "Smithing", "journeyman")
+	var hits: Array = []
+	var on_hit := func(dmg: float, attacker: String, target: String) -> void:
+		hits.append([dmg, attacker, target])
+	var bursts: Array = []
+	var on_burst := func(r: Dictionary) -> void:
+		bursts.append(r)
+	GameBus.player_damaged.connect(on_hit)
+	GameBus.void_burst_resolved.connect(on_burst)
+
+	# A safe draw: the input becomes the shard and nothing bursts.
+	var safe := _void_craft(rig, pid, _void_counter(pid, false))
+	assert_true(bool(safe["success"]), "a safe draw refines")
+	assert_eq(registry.get_inventory(pid).get_item_count("RefinedVoiditeShard"), 1, "into one shard")
+	assert_eq(registry.get_inventory(pid).get_item_count("Voidite"), 0, "consuming the voidite")
+	assert_true(hits.is_empty() and bursts.is_empty(), "with no damage and no burst")
+
+	# A burst the crafter survives: input gone, no output, authored damage, flag set.
+	var damage := float(crafting.get_recipe(VOID_RECIPE)["burst"]["damage"])
+	var hit := _void_craft(rig, pid, _void_counter(pid, true))
+	assert_false(bool(hit["success"]), "a burst is not a success")
+	assert_eq(str(hit["reason"]), "void_burst", "with the burst reason")
+	assert_eq(registry.get_inventory(pid).get_item_count("Voidite"), 0, "the input is consumed")
+	assert_eq(registry.get_inventory(pid).get_item_count("RefinedVoiditeShard"), 1, "and no shard is produced")
+	assert_eq(hits.size(), 1, "one damage round")
+	assert_eq(float(hits[0][0]), damage, "of the authored amount")
+	assert_eq(str(hits[0][2]), pid, "addressed to the crafter")
+	assert_true(bool(hit["burst"]["survived"]), "the crafter survives")
+	assert_true(taming.has_flag(pid, "voidBurstSurvivor"), "and gains the flag")
+	assert_eq(bursts.size(), 1, "void_burst_resolved fires once")
+
+	# A crafter the burst takes DOWN gains nothing.
+	var weak := "player_peer_weak"
+	registry.ensure_player(weak)
+	crafting.set_skill_for(weak, "Smithing", "journeyman")
+	registry.record_simulated_hp(weak, damage - 1.0)
+	var dead := _void_craft(rig, weak, _void_counter(weak, true))
+	assert_false(bool(dead["burst"]["survived"]), "a body at damage-1 HP does not survive")
+	assert_false(taming.has_flag(weak, "voidBurstSurvivor"), "and gets no flag")
+	assert_eq(registry.get_inventory(weak).get_item_count("Voidite"), 0, "though the input is still consumed")
+
+	# The flag and the counter survive a save/load.
+	var saved: Dictionary = JSON.parse_string(JSON.stringify(registry.get_player_data(pid)))
+	var reg2 := PlayerRegistry.new()
+	add_child(reg2)
+	reg2.apply_player_data(pid, saved)
+	var tam2 := TamingSlice.new()
+	add_child(tam2)
+	tam2.apply_record(reg2.get_record(pid), pid)
+	assert_true(tam2.has_flag(pid, "voidBurstSurvivor"), "the flag survives a save/load")
+	assert_true(reg2.get_craft_counter(pid) > 0, "and so does the craft counter")
+	GameBus.player_damaged.disconnect(on_hit)
+	GameBus.void_burst_resolved.disconnect(on_burst)
+	tam2.free()
+	reg2.free()
+	_free_void_rig(rig)
+
+func _test_void_flag_gate_and_profession_unlock() -> void:
+	var rig := _make_void_rig()
+	var crafting: Node = rig["crafting"]
+	var taming: Node = rig["taming"]
+	var professions: Node = rig["professions"]
+	var registry: Node = rig["registry"]
+	var pid := "player_peer_gate"
+	registry.ensure_player(pid)
+	var tablet := "RecipeVoidRuneTablet"
+
+	# Tier held but no flag: the not-tutored guard refuses.
+	crafting.set_skill_for(pid, "VoidSmithing", "expert")
+	assert_eq(str(crafting.can_craft(tablet, pid)["reason"]), "requires_flag:voidBurstSurvivor", "no flag: refused")
+	taming.grant_flag(pid, "voidBurstSurvivor")
+	var after_flag := str(crafting.can_craft(tablet, pid)["reason"])
+	assert_true(after_flag != "requires_flag:voidBurstSurvivor", "with the flag the guard passes")
+	# ...and the next gate is the profession, which is still locked.
+	assert_eq(after_flag, "requires_profession:VoidTouched", "a recipe naming VoidTouched is refused before the unlock")
+	assert_false(professions.is_unlocked(pid, "VoidTouched"), "not unlocked yet")
+
+	var unlocked: Array = []
+	var on_unlock := func(p: String, name: String) -> void:
+		unlocked.append([p, name])
+	GameBus.profession_unlocked.connect(on_unlock)
+	crafting.set_skill_for(pid, "VoidMagic", "journeyman")
+	assert_false(professions.is_unlocked(pid, "VoidTouched"), "one tier short of expert: locked")
+	crafting.set_skill_for(pid, "VoidMagic", "expert")
+	assert_true(professions.is_unlocked(pid, "VoidTouched"), "both tiers and the flag: unlocked")
+	assert_eq(unlocked.size(), 1, "profession_unlocked fires once")
+	crafting.set_skill_for(pid, "VoidMagic", "master")
+	assert_eq(unlocked.size(), 1, "and not again")
+	assert_true(bool(registry.get_record(pid)["professions"].get("VoidTouched", false)), "the unlock is on the record")
+	assert_eq(str(crafting.can_craft(tablet, pid)["reason"]), "missing_inputs", "the recipe now reaches its inputs")
+
+	# Without the flag the tiers alone never unlock.
+	var other := "player_peer_noflag"
+	registry.ensure_player(other)
+	crafting.set_skill_for(other, "VoidSmithing", "expert")
+	crafting.set_skill_for(other, "VoidMagic", "expert")
+	assert_false(professions.is_unlocked(other, "VoidTouched"), "tiers without the flag: locked")
+
+	# The record restores the set; a client mirror is bounded to known professions.
+	var mirror: Node = (load("res://src/crafting/profession_slice.gd") as GDScript).new()
+	add_child(mirror)
+	mirror.apply_record({ "professions": { "VoidTouched": true, "Nonsense": true } }, "p")
+	assert_true(mirror.is_unlocked("p", "VoidTouched"), "a mirror takes a known profession")
+	assert_false(mirror.is_unlocked("p", "Nonsense"), "and drops an unknown one")
+	mirror.is_authoritative = false
+	assert_true(mirror.evaluate("p").is_empty(), "a client never evaluates an unlock")
+	GameBus.profession_unlocked.disconnect(on_unlock)
+	mirror.free()
+	_free_void_rig(rig)
+
+func _test_void_client_never_rolls_and_result_is_owner_scoped() -> void:
+	var rig := _make_void_rig()
+	var crafting: Node = rig["crafting"]
+	var registry: Node = rig["registry"]
+	var local_pid := str(registry.local_player_id)
+	crafting.set_skill_for(local_pid, "Smithing", "journeyman")
+	registry.get_inventory(local_pid).add_item("Voidite", 1)
+	crafting.is_authoritative = false
+	var intents: Array = []
+	var on_intent := func(recipe_id: String, p: String) -> void:
+		intents.append([recipe_id, p])
+	var resolved: Array = []
+	var on_resolved := func(r: Dictionary) -> void:
+		resolved.append(r)
+	GameBus.craft_intent.connect(on_intent)
+	GameBus.craft_resolved.connect(on_resolved)
+	GameBus.craft_requested.emit(VOID_RECIPE)
+	GameBus.craft_intent.disconnect(on_intent)
+	GameBus.craft_resolved.disconnect(on_resolved)
+	assert_eq(intents.size(), 1, "a client forwards the intent")
+	assert_true(resolved.is_empty(), "and resolves nothing")
+	assert_eq(registry.get_craft_counter(local_pid), 0, "no draw was taken")
+	assert_eq(registry.get_inventory(local_pid).get_item_count("Voidite"), 1, "the input is untouched")
+
+	# The host's result goes to the crafter's peer alone, with no player id on the wire.
+	var peer_pid := str(registry.resolve_identity(5))
+	var other_pid := str(registry.resolve_identity(6))
+	var host := NetworkingSlice.new()
+	add_child(host)
+	host.player_registry = registry
+	host.emulate_network = true
+	host._role = NetworkingSlice.Role.HOST
+	var result := { "recipe_id": VOID_RECIPE, "player_id": peer_pid, "damage": 40.0, "survived": true, "flag": "voidBurstSurvivor" }
+	host._on_void_burst_resolved(result)
+	assert_eq(host._pending.size(), 1, "one packet")
+	assert_eq(int(host._pending[0]["peer_id"]), 5, "for the crafter's peer")
+	var packet: Dictionary = JSON.parse_string(str(host._pending[0]["json"]))
+	assert_eq(str(packet["type"]), "void_burst_resolved", "of the burst type")
+	assert_false(JSON.stringify(packet).contains(peer_pid) or JSON.stringify(packet).contains(other_pid), "carrying no player id")
+	host._pending.clear()
+	host._on_profession_unlocked(peer_pid, "VoidTouched")
+	assert_eq(int(host._pending[0]["peer_id"]), 5, "the unlock goes to its owner alone")
+	host._pending.clear()
+	result["player_id"] = str(registry.local_player_id)
+	host._on_void_burst_resolved(result)
+	assert_eq(host._pending.size(), 0, "a burst on the host's own player is sent to nobody")
+
+	var client := NetworkingSlice.new()
+	add_child(client)
+	client._role = NetworkingSlice.Role.CLIENT
+	var seen: Array = []
+	var on_burst := func(r: Dictionary) -> void:
+		seen.append(r)
+	GameBus.void_burst_resolved.connect(on_burst)
+	client._route_h2c(packet)
+	GameBus.void_burst_resolved.disconnect(on_burst)
+	assert_eq(seen.size(), 1, "the client re-emits the burst")
+	assert_true(bool(seen[0]["survived"]) and float(seen[0]["damage"]) == 40.0, "with its outcome")
+	client.free()
+	host.free()
+	_free_void_rig(rig)
 
 func _test_crafting_skill_guard_blocks() -> void:
 	var c := CraftingSlice.new()

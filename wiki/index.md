@@ -69,6 +69,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [FerriteShortSword](entities/ferriteshortsword.md) — Standard single-edged blade forged from a refined ferrite ingot
 - [FieldRations](entities/fieldrations.md) — Dried grain-and-herb ration pack prepared from temperate grassland crops
 - [LumenfiteOrb](entities/lumenfiteorb.md) — A polished lumenfite sphere charged with stored magical energy by an Arcanist
+- [RefinedVoiditeShard](entities/refinedvoiditeshard.md) — Raw voidite stabilised in a forge into a crystalline shard
 - [ThornwoodPlank](entities/thornwoodplank.md) — Rough-cut plank milled from thornwood logs
 - [VeilsteelChestplate](entities/veilsteelchestplate.md) — Full torso armour forged from veilsteel plates over a ferrite under-layer
 - [VeilsteelIngot](entities/veilsteelingot.md) — Refined veilsteel bar alloyed in a master forge from ferrite ingots and an aethermite shard
@@ -128,6 +129,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [RecipeFerriteShortSword](entities/recipeferriteshortsword.md) — Forge a ferrite short sword from one refined ferrite ingot
 - [RecipeHealthPotion](entities/recipehealthpotion.md) — Brew a health-restoring potion from aethermite dust and harvested herbs at an alchemy bench
 - [RecipeLumenfiteOrb](entities/recipelumenfiteorb.md) — Polish a lumenfite stone into a charged spell-focus orb at an arcane forge
+- [RecipeRefinedVoiditeShard](entities/reciperefinedvoiditeshard.md) — Stabilise one raw voidite crystal into a refined voidite shard at a forge
 - [RecipeStaminaPotion](entities/recipestaminapotion.md) — Brew a stamina-restoring potion from aethermite dust and root reagents
 - [RecipeThornwoodPlank](entities/recipethornwoodplank.md) — Mill two thornwood logs into three thornwood planks at a carpentry bench
 - [RecipeVeilsteelChestplate](entities/recipeveilsteelchestplate.md) — Forge a veilsteel chestplate from four veilsteel ingots and two ferrite ingots

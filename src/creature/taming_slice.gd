@@ -249,6 +249,19 @@ func has_flag(player_id: String, flag: String) -> bool:
 		return false
 	return _flags_for(resolve_player(player_id)).has(flag)
 
+## Phase 118 — grant a player flag from outside the taming path (a void burst survived).
+## Idempotent; persists onto the record. Returns true when the flag was newly set.
+func grant_flag(player_id: String, flag: String) -> bool:
+	var pid := resolve_player(player_id)
+	if flag == "" or pid == "":
+		return false
+	var flags := _flags_for(pid)
+	if flags.has(flag):
+		return false
+	flags[flag] = true
+	sync_record(pid)
+	return true
+
 func get_flags(player_id: String = "") -> Dictionary:
 	return _flags_for(resolve_player(player_id)).duplicate()
 

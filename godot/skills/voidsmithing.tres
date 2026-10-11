@@ -9,6 +9,7 @@ tier = 0
 xpCurve = 0
 maxLevel = 0
 category = 0
+flagGate = {"requiresFlag":"voidBurstSurvivor"}
 state_machine_field = "tier"
 initial_state = "novice"
 description = "Esoteric art of working with void-touched materials, primarily Voidite, inside a specially shielded forge room. Cannot be taught — must be discovered through experimentation. A player who survives a void burst during Voidite refining may unlock this skill."

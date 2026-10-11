@@ -10,3 +10,4 @@ enum Status {
 
 @export var id: String
 @export var status: int
+@export var unlock: Dictionary

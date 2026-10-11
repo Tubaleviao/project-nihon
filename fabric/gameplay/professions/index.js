@@ -271,6 +271,14 @@ const professions = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       status: { type: 'enum', values: PROFESSION_STATUSES },
+      unlock: {
+        type: 'json',
+        description: 'Structured unlock data: the skill tiers that must all be held and the player flag that must be set.',
+        defaultValue: {
+          skills: [{ skill: 'VoidMagic', tier: 'expert' }, { skill: 'VoidSmithing', tier: 'expert' }],
+          requiresFlag: 'voidBurstSurvivor',
+        },
+      },
     },
     relations: {
       voidMagic:    { name: 'voidMagic',    kind: 'hasOne', target: 'VoidMagic' },

@@ -459,6 +459,8 @@ func ensure_player(player_id: String) -> Dictionary:
 			"technology": {},
 			"flags":      {},
 			"companions": [],
+			"professions": {},
+			"craft_counter": 0,
 			"skills":     {},
 			"cooldowns":  {},
 			# Phase 47 — the worn set, { slot: item_key }.
@@ -809,6 +811,26 @@ func record_flags(player_id: String, flags: Dictionary) -> void:
 		return
 	rec["flags"] = flags
 
+## Phase 118 — the professions this player has unlocked ({ name: true }). Progression,
+## so durable like the flags.
+func record_professions(player_id: String, professions: Dictionary) -> void:
+	var rec := ensure_player(player_id)
+	if rec.is_empty():
+		return
+	rec["professions"] = professions
+
+## Phase 118 — how many burst-capable crafts this player has attempted. It is the
+## third input of the deterministic burst roll (world seed, player id, counter), so it
+## is durable: a restart must not replay the sequence a player already drew from.
+func get_craft_counter(player_id: String) -> int:
+	return int(get_record(player_id).get("craft_counter", 0))
+
+func record_craft_counter(player_id: String, counter: int) -> void:
+	var rec := ensure_player(player_id)
+	if rec.is_empty():
+		return
+	rec["craft_counter"] = counter
+
 ## The instance ids this player has tamed (Phase 35). Instance ids are derived
 ## from the chunk, creature and spawn index, so they are stable across restarts
 ## and a restored binding resolves to the same creature.
@@ -977,6 +999,8 @@ func get_player_data(player_id: String) -> Dictionary:
 		"technology": rec.get("technology", {}),
 		"flags":      rec.get("flags", {}),
 		"companions": rec.get("companions", []),
+		"professions": rec.get("professions", {}),
+		"craft_counter": int(rec.get("craft_counter", 0)),
 		"skills":     rec.get("skills", {}),
 		"cooldowns":  live_cooldowns(rec.get("cooldowns", {})),
 		"equipment":  get_equipment(player_id),
@@ -1038,6 +1062,10 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	# carries neither key and restores to the empty defaults.
 	rec["flags"]      = data.get("flags", {})
 	rec["companions"] = data.get("companions", [])
+	# Phase 118: unlocked professions and the void-burst craft counter. A payload from
+	# before this phase carries neither key and restores to the empty defaults.
+	rec["professions"] = data.get("professions", {}) if data.get("professions", {}) is Dictionary else {}
+	rec["craft_counter"] = maxi(0, int(data.get("craft_counter", 0)))
 	# Phase 36: skill tiers are per-player progression too, so they ride the same
 	# record. A payload from before this phase carries no `skills` key and restores
 	# to the empty table — every skill then reads as its seed tier (novice).
