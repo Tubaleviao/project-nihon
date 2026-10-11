@@ -133,7 +133,7 @@ issue number where the criterion used to be.
 | 110 | Trees are pinned per chunk and cleared where players build | Done | below |
 | 111 | A full-map window: zoom from the minimap out to a whole planet | Done | below |
 | 112 | A biome adjacency table in the fabric and an offline scan | Done | below |
-| 113 | Frontier generation: a new generator version meets recorded land | Planned | below |
+| 113 | Frontier generation: a new generator version meets recorded land | Done | below |
 
 ---
 
@@ -547,7 +547,7 @@ agreeing without talking to each other. The runtime use of the rules is Phase 11
 
 ---
 
-## Phase 113 — Frontier generation: a new generator version meets recorded land
+## Phase 113 — Frontier generation: a new generator version meets recorded land ✅ Done
 
 **Goal:** after Phases 106–112 a generator change is safe for recorded chunks, but a new chunk beside
 a recorded one would meet it with a cliff or a forbidden biome pair. This phase generates the frontier
@@ -573,16 +573,16 @@ so the two meet cleanly, then records it, so the choice is made once and never r
 tile beside recorded land may change slightly when the player arrives and the frontier is computed.
 
 **Acceptance criteria:**
-- [ ] Suite: after changing `WorldShape`'s warmed `ridgeAmplitude` and `heightSpline` (standing in for a
+- [x] Suite: after changing `WorldShape`'s warmed `ridgeAmplitude` and `heightSpline` (standing in for a
   new version), every recorded chunk's biome and heights are unchanged.
-- [ ] Suite: a new chunk next to a recorded one shares its corner heights exactly; the largest height
+- [x] Suite: a new chunk next to a recorded one shares its corner heights exactly; the largest height
   step between adjacent corners across the blend band is below a stated bound.
-- [ ] Suite: a new chunk at least `BLEND_CHUNKS` from any recorded chunk equals the plain new generator.
-- [ ] Suite: the adjacency scan (Phase 112) around a recorded block, with the changed generator, finds
+- [x] Suite: a new chunk at least `BLEND_CHUNKS` from any recorded chunk equals the plain new generator.
+- [x] Suite: the adjacency scan (Phase 112) around a recorded block, with the changed generator, finds
   zero forbidden pairs.
-- [ ] Suite: two hosts given the same records and generator produce identical records for a chunk.
-- [ ] Harness: the client receives a frontier record and agrees with the host.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite: two hosts given the same records and generator produce identical records for a chunk.
+- [x] Harness: the client receives a frontier record and agrees with the host.
+- [x] Suite green on both boot paths, harness green.
 
 ---
 

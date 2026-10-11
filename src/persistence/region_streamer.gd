@@ -36,7 +36,7 @@ func _init(store: RegionStore, voxel: Object) -> void:
 
 ## The "rx,rz" keys of every region touched by `chunks` (Vector2i) or any chunk adjacent to
 ## one. Pure.
-static func regions_for_chunks(chunks: Array) -> Dictionary:
+static func regions_for_chunks(chunks: Array, margin: int = 1) -> Dictionary:
 	var out: Dictionary = {}
 	for c in chunks:
 		var chunk: Vector2i = c
@@ -45,8 +45,11 @@ static func regions_for_chunks(chunks: Array) -> Dictionary:
 		# neighbour's real edits, which live in the next region.
 		# Neighbours are wrapped in X like every chunk key, so a seam chunk's margin is the
 		# region on the far side of the seam.
-		for dx in range(-1, 2):
-			for dz in range(-1, 2):
+		# Phase 113: the host passes `Frontier.BLEND_CHUNKS`, the records a frontier chunk reads.
+		# Regions are `REGION_SIZE` wide, far wider than the margin, so the extremes and the centre
+		# of the square touch every region it does.
+		for dx in [-margin, 0, margin]:
+			for dz in [-margin, 0, margin]:
 				var n := TerrainSlice.wrap_chunk(chunk + Vector2i(dx, dz))
 				out[RegionStore.region_key(RegionStore.region_of_chunk(n))] = true
 	return out
