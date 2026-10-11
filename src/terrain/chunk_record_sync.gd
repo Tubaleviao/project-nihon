@@ -49,18 +49,24 @@ static func parse_key(key: Variant) -> Variant:
 		return null
 	return Vector2i(int(parts[0]), int(parts[1]))
 
-## Validate and adopt a wire payload (`"cx,cz" -> rec`). The first `cap` entries are considered; the
-## rest are counted as refused. Returns `{ "applied", "dropped", "refused" }`.
+## Validate and adopt a wire payload (`"cx,cz" -> rec`). The cap counts VALID entries only: the first
+## `cap` valid ones are applied and further valid ones counted as refused, while a malformed entry is
+## dropped without using up the cap (at most `SCAN_FACTOR * cap` entries are looked at, so a flood of
+## garbage stays bounded). Returns `{ "applied", "dropped", "refused", "changed" }`, `changed` the
+## canonical chunks whose table entry is new or different.
+const SCAN_FACTOR := 4
+
 static func apply(records: Variant, cap: int = PACKET_CAP) -> Dictionary:
 	var applied := 0
 	var dropped := 0
 	var refused := 0
+	var changed: Array = []
 	if not (records is Dictionary):
-		return { "applied": 0, "dropped": 0, "refused": 0 }
-	var seen := 0
+		return { "applied": 0, "dropped": 0, "refused": 0, "changed": changed }
+	var scanned := 0
 	for key in records:
-		seen += 1
-		if seen > cap:
+		scanned += 1
+		if scanned > cap * SCAN_FACTOR:
 			refused += 1
 			continue
 		var chunk: Variant = parse_key(key)
@@ -68,6 +74,25 @@ static func apply(records: Variant, cap: int = PACKET_CAP) -> Dictionary:
 		if chunk == null or rec.is_empty():
 			dropped += 1
 			continue
-		ChunkRecords.set_record(TerrainSlice.wrap_chunk(chunk), rec)
+		if applied >= cap:
+			refused += 1
+			continue
+		var canon := TerrainSlice.wrap_chunk(chunk)
+		if ChunkRecords.set_record(canon, rec):
+			changed.append(canon)
 		applied += 1
-	return { "applied": applied, "dropped": dropped, "refused": refused }
+	return { "applied": applied, "dropped": dropped, "refused": refused, "changed": changed }
+
+## Prune the client's table to a host scope `[cx, cz, radius]` (`gen_scope`): a record the host no longer
+## speaks for is dropped, so the table stays the size of one window across any number of re-scopes.
+## A malformed scope prunes nothing. Returns how many records went.
+static func prune_to_scope(scope: Variant) -> int:
+	if not (scope is Array) or (scope as Array).size() < 3:
+		return 0
+	for v in scope:
+		if not (typeof(v) == TYPE_INT or typeof(v) == TYPE_FLOAT) or not is_finite(float(v)):
+			return 0
+	var radius := int(scope[2])
+	if radius < 0:
+		return 0
+	return ChunkRecords.erase_outside(Vector2i(int(scope[0]), int(scope[1])), radius, TerrainSlice.circumference_chunks())

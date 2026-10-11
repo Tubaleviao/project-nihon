@@ -1699,11 +1699,13 @@ func _add_generation_records(snapshot: Dictionary, peer_id: int, aoi_center: Vec
 	var center: Vector2i = _chunk_manager.world_to_chunk(Vector2(aoi_center.x, aoi_center.z))
 	var radius: int = _chunk_manager.stream_radius() + ChunkManager.FIRST_RING_RADIUS
 	var found := ChunkRecordSync.records_in_window(center, radius)
-	_peer_records_msec[peer_id] = now
+	if bool(found["truncated"]):
+		Diag.warn("GameRoot: generation records for peer %d truncated at the %d-record packet cap" % [peer_id, ChunkRecordSync.PACKET_CAP])
+	snapshot["gen_scope"] = [center.x, center.y, radius]   # always named: a client prunes to it
 	if (found["records"] as Dictionary).is_empty():
-		return
+		return   # nothing sent, so nothing to rate-limit a re-scope for (a join snapshot included)
+	_peer_records_msec[peer_id] = now
 	snapshot["gen_records"] = found["records"]
-	snapshot["gen_scope"] = [center.x, center.y, radius]
 
 ## Phase 38 — the replicated social/economy state, keyed by the names the wire uses
 ## (`NetworkingSlice.IDENTIFIED_STATE_KEYS`).
@@ -1743,11 +1745,19 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 		_clock.from_data(data["clock"])
 	# Phase 109 — the host's generation records, BEFORE `_chunk_manager.start()` below builds from them;
 	# a malformed one is dropped, anything past the packet cap is refused.
-	if data.has("gen_records"):
-		var rev_before := ChunkRecords.revision()
-		var gen_result := ChunkRecordSync.apply(data["gen_records"])
-		if ChunkRecords.revision() != rev_before:
+	if data.has("gen_records") or data.has("gen_scope"):
+		var rev_before := ChunkRecords.content_revision()
+		# Phase 114 — the table is pruned to the host's scope first, so it never outgrows one window.
+		if data.has("gen_scope"):
+			ChunkRecordSync.prune_to_scope(data["gen_scope"])
+		var gen_result := ChunkRecordSync.apply(data.get("gen_records", {}))
+		if ChunkRecords.content_revision() != rev_before:
 			_tree.resync_recorded_chunks()   # Phase 110 — a record may carry a budget or cleared trees
+		# A record that arrives after its chunk was built (a re-scope) changes the ground: rebuild it.
+		if _chunk_manager != null:
+			for c in gen_result["changed"]:
+				if _chunk_manager.is_chunk_built(c):
+					_chunk_manager.request_rebuild(c)
 		if int(gen_result["dropped"]) > 0 or int(gen_result["refused"]) > 0:
 			Diag.warn("GameRoot: generation records: %d applied, %d dropped, %d refused" % [
 				int(gen_result["applied"]), int(gen_result["dropped"]), int(gen_result["refused"])])
@@ -2348,11 +2358,15 @@ func _note_worldgen_version() -> void:
 	_worldgen_fp_stamp = PersistenceSlice.fingerprint_stamp_for_save(_loaded_world, running_fp)
 	if PersistenceSlice.check_worldgen_fingerprint(_loaded_world, running_fp):
 		GameBus.worldgen_fingerprint_mismatch.emit(_worldgen_fp_stamp, running_fp)
+		# Phase 114: the notice is raised once. The next save stamps the running fingerprint, so the
+		# next load of this world finds no mismatch (the records, not the stamp, keep old land stable).
+		_worldgen_fp_stamp = running_fp
 
 func _load_world_records() -> void:
 	# Phase 52 — the GLOBAL record only; a Phase 51 monolithic record is split into region
 	# files by this read, and the edits themselves stream in by region.
 	_loaded_world = _persistence.load_world_record()
+	ChunkRecords.clear()   # Phase 114: records never outlive the world they describe
 	_note_worldgen_version()
 	_bind_local_identity()
 	# Lazy reader for every other player's record (see the docstring above).

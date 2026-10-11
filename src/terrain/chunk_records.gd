@@ -10,6 +10,7 @@ extends RefCounted
 static var _table: Dictionary = {}
 static var _mutex := Mutex.new()
 static var _revision := 0
+static var _content_revision := 0
 
 static func key_of(chunk: Vector2i) -> String:
 	return "%d,%d" % [chunk.x, chunk.y]
@@ -27,8 +28,32 @@ static func size() -> int:
 	_mutex.unlock()
 	return n
 
+## Bumps when a record's ground (`b`, `h`) changes: what a per-thread corner cache and the map read.
 static func revision() -> int:
 	return _revision
+
+## Bumps on every change, including a tree-only one (`t`, `x`): what the tree resync reads.
+static func content_revision() -> int:
+	return _content_revision
+
+## True when `a` and `b` agree on the ground (`v`, `b`, `h`); the tree fields may differ.
+static func _same_ground(a: Dictionary, b: Dictionary) -> bool:
+	return a.get("b", null) == b.get("b", null) and a.get("h", null) == b.get("h", null) and a.get("v", null) == b.get("v", null)
+
+## The recorded chunks within Chebyshev `radius` of `chunk` (unwrapped chunk -> record) in one locked
+## pass; `{}` without touching the lock more than once when nothing is recorded.
+static func records_around(chunk: Vector2i, radius: int, wrap: Callable) -> Dictionary:
+	var out: Dictionary = {}
+	_mutex.lock()
+	if not _table.is_empty():
+		for dz in range(-radius, radius + 1):
+			for dx in range(-radius, radius + 1):
+				var c := chunk + Vector2i(dx, dz)
+				var rec: Dictionary = _table.get(key_of(wrap.call(c)), {})
+				if not rec.is_empty():
+					out[c] = rec
+	_mutex.unlock()
+	return out
 
 ## The record of `chunk`, or `{}`. The returned Dictionary is shared: treat it as read-only.
 static func get_record(chunk: Vector2i) -> Dictionary:
@@ -47,10 +72,13 @@ static func set_record(chunk: Vector2i, rec: Dictionary) -> bool:
 		return false
 	var k := key_of(chunk)
 	_mutex.lock()
-	var changed: bool = _table.get(k, {}) != rec
+	var old: Dictionary = _table.get(k, {})
+	var changed: bool = old != rec
 	if changed:
 		_table[k] = rec
-		_revision += 1
+		_content_revision += 1
+		if not _same_ground(old, rec):
+			_revision += 1
 	_mutex.unlock()
 	return changed
 
@@ -58,25 +86,51 @@ static func erase_record(chunk: Vector2i) -> void:
 	_mutex.lock()
 	if _table.erase(key_of(chunk)):
 		_revision += 1
+		_content_revision += 1
 	_mutex.unlock()
 
 static func clear() -> void:
 	_mutex.lock()
 	if not _table.is_empty():
 		_revision += 1
+		_content_revision += 1
 	_table.clear()
 	_mutex.unlock()
 
-## Adopt every `gen` of a region's chunk entries ("cx,cz" -> entry). Returns how many were adopted.
-static func adopt_region(chunks: Dictionary) -> int:
+## Drop every record farther than Chebyshev `radius` from `center`, measured the short way round a
+## world of `circumference` chunks. Returns how many went.
+static func erase_outside(center: Vector2i, radius: int, circumference: int) -> int:
+	var gone := 0
+	_mutex.lock()
+	for k in _table.keys():
+		var parts: PackedStringArray = str(k).split(",")
+		var dx := absi(int(parts[0]) - center.x)
+		if circumference > 0:
+			dx = mini(dx % circumference, circumference - dx % circumference)
+		if maxi(dx, absi(int(parts[1]) - center.y)) > radius:
+			_table.erase(k)
+			gone += 1
+	if gone > 0:
+		_revision += 1
+		_content_revision += 1
+	_mutex.unlock()
+	return gone
+
+## Adopt every `gen` of a region's chunk entries ("cx,cz" -> entry). Returns how many were adopted;
+## `changed`, when given, collects the "cx,cz" keys whose table entry was replaced or added.
+static func adopt_region(chunks: Dictionary, changed: Array = []) -> int:
 	var n := 0
 	_mutex.lock()
 	for ckey in chunks:
 		var entry: Variant = chunks[ckey]
 		if entry is Dictionary and (entry as Dictionary).get("gen", null) is Dictionary:
 			if _table.get(str(ckey), {}) != entry["gen"]:
+				var old: Dictionary = _table.get(str(ckey), {})
 				_table[str(ckey)] = entry["gen"]
-				_revision += 1
+				_content_revision += 1
+				if not _same_ground(old, entry["gen"]):
+					_revision += 1
+				changed.append(str(ckey))
 			n += 1
 	_mutex.unlock()
 	return n

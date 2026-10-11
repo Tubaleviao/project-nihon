@@ -9,9 +9,10 @@ extends RefCounted
 ## choice is made once and never revisited.
 ##
 ## Heights: a corner shared with a recorded chunk reuses the recorded value exactly. Any other corner
-## within `BLEND_CHUNKS - 1` lattice steps of a recorded corner takes the new generator's height plus
-## the recorded-versus-generated difference found at the nearest recorded corner, eased out by a
-## smoothstep of that distance (as `WRAP_BLEND_CHUNKS` eases the east-west seam). A chunk at least
+## within `BLEND_SPAN` lattice steps of a recorded corner takes the new generator's height plus the
+## recorded-versus-generated differences of the recorded corners around it (inverse-square-distance
+## average, so the load order of the records does not matter), eased out by a smoothstep of the distance
+## to the nearest one (as `WRAP_BLEND_CHUNKS` eases the east-west seam). A chunk at least
 ## `BLEND_CHUNKS` from every recorded chunk gets exactly the plain generator's record.
 ##
 ## Biome: the generator's pick, unless it is forbidden beside a recorded 4-neighbour
@@ -25,21 +26,14 @@ const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 
 ## Chebyshev distance, in chunks, from the nearest recorded chunk at which the plain generator resumes.
 const BLEND_CHUNKS := 4
-const HEIGHT_STEP := 0.0001   # RegionStore.GEN_HEIGHT_STEP
 
-## The recorded chunks within `BLEND_CHUNKS` of `chunk`: unwrapped chunk -> record. Reads the shared
-## table (main thread or worker; the table is mutex-guarded).
+## The recorded chunks within `BLEND_CHUNKS` of `chunk`: unwrapped chunk -> record. One locked pass over
+## the shared table (main thread or worker; the table is mutex-guarded); `{}` at once on a world with
+## no records.
 static func gather(chunk: Vector2i) -> Dictionary:
-	var out: Dictionary = {}
 	if ChunkRecords.is_empty():
-		return out
-	for dz in range(-BLEND_CHUNKS, BLEND_CHUNKS + 1):
-		for dx in range(-BLEND_CHUNKS, BLEND_CHUNKS + 1):
-			var c := chunk + Vector2i(dx, dz)
-			var rec := ChunkRecords.get_record(TerrainSlice.wrap_chunk(c))
-			if not rec.is_empty():
-				out[c] = rec
-	return out
+		return {}
+	return ChunkRecords.records_around(chunk, BLEND_CHUNKS, TerrainSlice.wrap_chunk)
 
 ## The record `chunk` (canonical) is given, reading the shared record table.
 static func record_for(chunk: Vector2i, seed_v: int) -> Dictionary:
@@ -50,9 +44,10 @@ static func compute(chunk: Vector2i, seed_v: int, recs: Dictionary) -> Dictionar
 	if recs.is_empty():
 		return TerrainSlice.generation_record(chunk, seed_v)
 	var hs: Array = []
+	var gen_cache: Dictionary = {}
 	for j in 2:
 		for i in 2:
-			hs.append(corner_height(Vector2i(chunk.x + i, chunk.y + j), seed_v, recs))
+			hs.append(corner_height(Vector2i(chunk.x + i, chunk.y + j), seed_v, recs, gen_cache))
 	return {
 		"v": TerrainSlice.WORLDGEN_VERSION,
 		"f": TerrainSlice.worldgen_fingerprint(),
@@ -60,10 +55,10 @@ static func compute(chunk: Vector2i, seed_v: int, recs: Dictionary) -> Dictionar
 		"h": hs,
 	}
 
-static func _generated_height(p: Vector2i, seed_v: int) -> float:
-	var w := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
-	var h := WorldShape.height(seed_v, float(p.x) * TerrainSlice.CHUNK_METERS, float(p.y) * TerrainSlice.CHUNK_METERS, w)
-	return clampf(h, WorldShape.min_height(), WorldShape.max_height())
+static func _generated_height(p: Vector2i, seed_v: int, cache: Dictionary) -> float:
+	if not cache.has(p):
+		cache[p] = TerrainSlice.generated_corner_height(p, seed_v)
+	return float(cache[p])
 
 ## The recorded height at lattice corner `p`, or NAN when no recorded chunk touches it. The four cells
 ## touching a corner are read in a fixed order, so a corner two records disagree on still has one answer.
@@ -75,25 +70,47 @@ static func _recorded_corner(p: Vector2i, recs: Dictionary) -> float:
 				return float((recs[cell]["h"] as Array)[(1 - a) + 2 * (1 - b)])
 	return NAN
 
-## The height of lattice corner `p` (corner (x, z) is the north-west corner of chunk (x, z)).
-static func corner_height(p: Vector2i, seed_v: int, recs: Dictionary) -> float:
-	var gen := _generated_height(p, seed_v)
-	var span := BLEND_CHUNKS - 1
-	for k in span:
-		for dz in range(-k, k + 1):
-			for dx in range(-k, k + 1):
-				if maxi(absi(dx), absi(dz)) != k:
-					continue
-				var q := p + Vector2i(dx, dz)
-				var rv := _recorded_corner(q, recs)
-				if is_nan(rv):
-					continue
-				if k == 0:
-					return snappedf(clampf(rv, WorldShape.min_height(), WorldShape.max_height()), HEIGHT_STEP)
-				var weight := 1.0 - smoothstep(0.0, float(span), float(k))
-				var h := gen + weight * (rv - _generated_height(q, seed_v))
-				return snappedf(clampf(h, WorldShape.min_height(), WorldShape.max_height()), HEIGHT_STEP)
-	return snappedf(gen, HEIGHT_STEP)
+## The lattice distance at which the offset has gone: a chunk `BLEND_CHUNKS` from a recorded chunk has
+## its nearest corner `BLEND_CHUNKS - 1` from a recorded one, so that chunk is exactly the plain generator.
+const BLEND_SPAN := BLEND_CHUNKS - 1
+
+## How much of the recorded-versus-generated offset survives at lattice distance `d` from the nearest
+## recorded corner: 1 at the corner, falling by a smoothstep to exactly 0 at `BLEND_SPAN` (the last ring).
+static func blend_weight(d: float) -> float:
+	return 1.0 - smoothstep(0.0, float(BLEND_SPAN), d)
+
+## The height of lattice corner `p` (corner (x, z) is the north-west corner of chunk (x, z)). A recorded
+## corner keeps its value. Otherwise the new generator's height takes the recorded-versus-generated
+## offset of every recorded corner within `BLEND_SPAN`, averaged with inverse-square-distance weights
+## (so the result does not depend on which corner was visited first) and scaled by `blend_weight` of the
+## distance to the nearest one.
+static func corner_height(p: Vector2i, seed_v: int, recs: Dictionary, gen_cache: Dictionary = {}) -> float:
+	var lo := WorldShape.min_height()
+	var hi := WorldShape.max_height()
+	var gen := _generated_height(p, seed_v, gen_cache)
+	var own := _recorded_corner(p, recs)
+	if not is_nan(own):
+		return snappedf(clampf(own, lo, hi), TerrainSlice.GEN_HEIGHT_STEP)
+	var sum := 0.0
+	var wsum := 0.0
+	var nearest := INF
+	for dz in range(-(BLEND_SPAN - 1), BLEND_SPAN):
+		for dx in range(-(BLEND_SPAN - 1), BLEND_SPAN):
+			var q := p + Vector2i(dx, dz)
+			var rv := _recorded_corner(q, recs)
+			if is_nan(rv):
+				continue
+			var d2 := float(dx * dx + dz * dz)
+			if d2 >= float(BLEND_SPAN * BLEND_SPAN):
+				continue
+			nearest = minf(nearest, sqrt(d2))
+			var wt := 1.0 / d2
+			sum += wt * (rv - _generated_height(q, seed_v, gen_cache))
+			wsum += wt
+	if wsum <= 0.0:
+		return snappedf(gen, TerrainSlice.GEN_HEIGHT_STEP)
+	var h := gen + blend_weight(nearest) * (sum / wsum)
+	return snappedf(clampf(h, lo, hi), TerrainSlice.GEN_HEIGHT_STEP)
 
 const _NEIGHBOURS: Array = [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]
 

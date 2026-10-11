@@ -134,7 +134,7 @@ issue number where the criterion used to be.
 | 111 | A full-map window: zoom from the minimap out to a whole planet | Done | below |
 | 112 | A biome adjacency table in the fabric and an offline scan | Done | below |
 | 113 | Frontier generation: a new generator version meets recorded land | Done | below |
-| 114 | Generation record and frontier cleanup sweep | Planned | below |
+| 114 | Generation record and frontier cleanup sweep | Done | below |
 | 115 | Chat, admin and test-tooling cleanup sweep | Planned | below |
 | 116 | Tree clears follow chunks onto clients | Planned | below |
 | 117 | Map waypoints, HUD toasts and an explored set that scales | Planned | below |
@@ -340,7 +340,7 @@ upgrade could shift without any change in this repo. This phase makes both visib
   `ridgeAmplitude` in a scratch resource changes it.
 - [x] Suite: a world record with a different fingerprint raises `worldgen_fingerprint_mismatch` exactly
   once; a record without one raises nothing and is stamped on the next save.
-- [x] Suite: the golden detail-noise values match to 1e-6; the shape and biome values match exactly.
+- [x] Suite: the golden detail-noise values match to 1e-6; the shape values match to 1e-8 (the goldens carry nine decimals, so an exact float compare is impossible) and the biome values match exactly.
 - [x] `npm run validate`, `npm run check-drift` green; suite green on both boot paths.
 
 ---
@@ -595,7 +595,7 @@ tile beside recorded land may change slightly when the player arrives and the fr
 
 ---
 
-## Phase 114 — Generation record and frontier cleanup sweep
+## Phase 114 — Generation record and frontier cleanup sweep ✅ Done
 
 **Goal:** Phases 106–113 made recorded chunks stable across generator changes, and their reviews left
 a backlog of low-severity leftovers in the same code: the record table outlives a world in one
@@ -641,22 +641,22 @@ are looser than the roadmap claims. This phase resolves every item of the six is
   in two fill orders; the harness frontier step no longer mutates recorded host chunks (#264, #282).
 
 **Acceptance criteria:**
-- [ ] #264: suite asserts exact golden shape values (or ROADMAP Phase 106 states the tolerance); a test
+- [x] #264: suite asserts exact golden shape values (or ROADMAP Phase 106 states the tolerance); a test
   proves the fingerprint mismatch reaches the UI notice once and not on the next load; the fingerprint
   test restores `_warmed`/`_envelopes` on a forced failure.
-- [ ] #268: suite proves `ChunkRecords` is empty after a world reload, pending records are on disk
+- [x] #268: suite proves `ChunkRecords` is empty after a world reload, pending records are on disk
   after `_exit_tree`, a failing region is retried at most once per backoff interval, and a late region
   adoption rebuilds the chunk.
-- [ ] #270: suite proves a re-scope prunes the client table, a newer-`v` record survives a rewrite, no
+- [x] #270: suite proves a re-scope prunes the client table, a newer-`v` record survives a rewrite, no
   record is written while a neighbouring region failed, and tree-only updates leave the revision alone.
-- [ ] #271: suite proves the client consumes `gen_scope`, the cap ignores malformed entries, and a join
+- [x] #271: suite proves the client consumes `gen_scope`, the cap ignores malformed entries, and a join
   snapshot without records does not delay the first re-scope.
-- [ ] #282: suite: the frontier field is identical under two neighbour orders; the max-step bound is
+- [x] #282: suite: the frontier field is identical under two neighbour orders; the max-step bound is
   derived from the plain generator and fails on a scratch broken blend; zero forbidden pairs in both
   fill orders; harness frontier step passes without editing recorded chunks.
-- [ ] #283: suite: the blend weight is monotone and reaches 0 exactly at `BLEND_CHUNKS`; the streamer
+- [x] #283: suite: the blend weight is monotone and reaches 0 exactly at `BLEND_CHUNKS`; the streamer
   loads no extra region for an already-recorded window.
-- [ ] Suite green on both boot paths, harness green, `npm run check-drift` green.
+- [x] Suite green on both boot paths, harness green, `npm run check-drift` green.
 
 ---
 

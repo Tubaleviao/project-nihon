@@ -36,11 +36,14 @@ func _init(store: RegionStore, voxel: Object) -> void:
 
 ## The "rx,rz" keys of every region touched by `chunks` (Vector2i) or any chunk adjacent to
 ## one. Pure.
-static func regions_for_chunks(chunks: Array, margin: int = 1) -> Dictionary:
+## Phase 114 — a chunk that already has a generation record needs only `recorded_margin` (a frontier
+## blend reads records around an UNRECORDED chunk), so a fully recorded window loads no extra region.
+static func regions_for_chunks(chunks: Array, margin: int = 1, recorded_margin: int = 1) -> Dictionary:
 	var out: Dictionary = {}
 	for c in chunks:
 		var chunk: Vector2i = c
 		out[RegionStore.region_key(RegionStore.region_of_chunk(chunk))] = true
+		var reach := recorded_margin if margin != recorded_margin and ChunkRecords.has_record(TerrainSlice.wrap_chunk(chunk)) else margin
 		# The margin matters only on a region's edge: a chunk there is rebuilt against its
 		# neighbour's real edits, which live in the next region.
 		# Neighbours are wrapped in X like every chunk key, so a seam chunk's margin is the
@@ -48,18 +51,20 @@ static func regions_for_chunks(chunks: Array, margin: int = 1) -> Dictionary:
 		# Phase 113: the host passes `Frontier.BLEND_CHUNKS`, the records a frontier chunk reads.
 		# Regions are `REGION_SIZE` wide, far wider than the margin, so the extremes and the centre
 		# of the square touch every region it does.
-		for dx in [-margin, 0, margin]:
-			for dz in [-margin, 0, margin]:
+		for dx in [-reach, 0, reach]:
+			for dz in [-reach, 0, reach]:
 				var n := TerrainSlice.wrap_chunk(chunk + Vector2i(dx, dz))
 				out[RegionStore.region_key(RegionStore.region_of_chunk(n))] = true
 	return out
 
 ## Make exactly `wanted` ("rx,rz" keys) resident: read the missing ones, release the rest.
-## Returns { "loaded": n, "released": n } for the log line and the tests.
+## Returns { "loaded": n, "released": n, "failed": n, "adopted": [chunk keys whose generation record
+## this sync added or replaced] } for the log line, the tests and the rebuild of built chunks.
 func sync(wanted: Dictionary) -> Dictionary:
 	var loaded := 0
 	var released := 0
 	var failed := 0
+	var adopted: Array = []
 	for rkey in wanted:
 		if _resident.has(rkey):
 			continue
@@ -77,7 +82,13 @@ func sync(wanted: Dictionary) -> Dictionary:
 			continue
 		_backoff.erase(rkey)
 		_voxel.apply_region_chunks(read["chunks"])
-		ChunkRecords.adopt_region(read["chunks"])   # Phase 108: the region's generation records
+		# Phase 108: the region's generation records (a newer generator's stay on disk, unread).
+		var readable: Dictionary = {}
+		for ckey in read["chunks"]:
+			var gen: Variant = (read["chunks"][ckey] as Dictionary).get("gen", null)
+			if not RegionStore.is_newer_gen(gen):
+				readable[ckey] = read["chunks"][ckey]
+		ChunkRecords.adopt_region(readable, adopted)
 		_resident[rkey] = true
 		loaded += 1
 	for rkey in _resident.keys():
@@ -115,7 +126,7 @@ func sync(wanted: Dictionary) -> Dictionary:
 					break
 			if not left:
 				_stranded.erase(rkey)
-	return { "loaded": loaded, "released": released, "failed": failed }
+	return { "loaded": loaded, "released": released, "failed": failed, "adopted": adopted }
 
 ## Retry the stranded regions without a window move: a save may have cleaned their dirty
 ## chunks since. Cheap when nothing is stranded. Returns how many chunks were released.
@@ -123,6 +134,13 @@ func release_stranded() -> int:
 	if _stranded.is_empty():
 		return 0
 	return int(sync(_resident.duplicate())["released"])
+
+## Phase 114 — true when every region `chunk` reads with `margin` is resident (none failed or backing off).
+func regions_ready(chunk: Vector2i, margin: int) -> bool:
+	for rkey in regions_for_chunks([chunk], margin, margin):
+		if not _resident.has(rkey):
+			return false
+	return true
 
 ## True while a failed region read is being backed off.
 func is_backing_off(region: Vector2i) -> bool:
