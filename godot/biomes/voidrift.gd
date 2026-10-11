@@ -23,3 +23,5 @@ extends Resource
 @export var altitude: Dictionary
 @export var rarity: float
 @export var surfaceVeinChance: float
+@export var forbiddenNeighbours: Array
+@export var transition: String

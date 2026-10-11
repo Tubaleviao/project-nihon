@@ -24,5 +24,7 @@ moisture = {"min":0,"max":1}
 altitude = {"min":-10000,"max":0}
 rarity = 1.0
 surfaceVeinChance = 0.05
+forbiddenNeighbours = []
+transition = ""
 description = "Open water over the continental shelf and the deep basins. The sea floor is sand and silt; the surface sits at the world's sea level and a player wades or swims it."
 tags = ["biome"]

@@ -1,4 +1,5 @@
 const { defineEntity } = require('@newel/core')
+const { adjacencyFields } = require('./adjacency')
 
 module.exports = {
 
@@ -30,6 +31,7 @@ module.exports = {
       altitude:       { type: 'json', description: 'Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51)', defaultValue: { min: 1.5, max: 250 } },
       rarity:         { type: 'decimal', description: 'Share of the world where this biome may appear: 1 = anywhere its envelope fits; below 1 it is a rare climate niche, eligible only where a low-frequency niche field falls under this value (Phase 51)', defaultValue: 1 },
       surfaceVeinChance: { type: 'decimal', description: 'Share of this biome\'s top-cell veins that break the surface and keep their deposit marker (Phase 49); the rest are pushed out of view. Authored from the biome prose — ferrite outcrops are TemperateForest\'s named feature, so its ground stays the visible one', defaultValue: 0.2 },
+      ...adjacencyFields('TemperateForest'),
     },
     relations: {
       spawnForestBoar:   { name: 'spawnForestBoar',   kind: 'hasMany', target: 'ForestBoar' },
@@ -76,6 +78,7 @@ module.exports = {
       altitude:       { type: 'json', description: 'Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51)', defaultValue: { min: 1.5, max: 250 } },
       rarity:         { type: 'decimal', description: 'Share of the world where this biome may appear: 1 = anywhere its envelope fits; below 1 it is a rare climate niche, eligible only where a low-frequency niche field falls under this value (Phase 51)', defaultValue: 1 },
       surfaceVeinChance: { type: 'decimal', description: 'Share of this biome\'s top-cell veins that break the surface and keep their deposit marker (Phase 49); the rest are pushed out of view. Authored from the biome prose — grassland holds shallow SUBSURFACE deposits, so its outcrops are rarer than the forest\'s', defaultValue: 0.15 },
+      ...adjacencyFields('TemperateGrassland'),
     },
     relations: {
       spawnSteppeBison: { name: 'spawnSteppeBison', kind: 'hasMany', target: 'SteppeBison' },

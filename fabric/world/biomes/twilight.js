@@ -1,4 +1,5 @@
 const { defineEntity } = require('@newel/core')
+const { adjacencyFields } = require('./adjacency')
 
 module.exports = {
 
@@ -31,6 +32,7 @@ module.exports = {
       altitude:       { type: 'json', description: 'Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51)', defaultValue: { min: 1.5, max: 250 } },
       rarity:         { type: 'decimal', description: 'Share of the world where this biome may appear: 1 = anywhere its envelope fits; below 1 it is a rare climate niche, eligible only where a low-frequency niche field falls under this value (Phase 51)', defaultValue: 0.08 },
       surfaceVeinChance: { type: 'decimal', description: 'Share of this biome\'s top-cell veins that break the surface and keep their deposit marker (Phase 49); the rest are pushed out of view. Authored from the biome prose — its metals sit in shallow CAVE systems and cliff faces, so few veins crop out through the ground', defaultValue: 0.1 },
+      ...adjacencyFields('TwilightGrove'),
       dayNightSpeed:  { type: 'decimal', description: 'Multiplier on how deep this biome\'s night runs relative to the global WorldClock (1 = it follows the clock exactly, 0 = perpetual dusk); varies per tile; drives weather pattern selection and duskfiber luminosity (Phase 54)', defaultValue: 1 },
     },
     relations: {

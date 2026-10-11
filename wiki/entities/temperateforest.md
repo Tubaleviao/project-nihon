@@ -34,6 +34,8 @@ Broad mixed-leaf forests covering most mid-latitude landmass. Moderate rainfall,
 | altitude | json | Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51) |
 | rarity | decimal | Share of the world where this biome may appear: 1 = anywhere its envelope fits; below 1 it is a rare climate niche, eligible only where a low-frequency niche field falls under this value (Phase 51) |
 | surfaceVeinChance | decimal | Share of this biome's top-cell veins that break the surface and keep their deposit marker (Phase 49); the rest are pushed out of view. Authored from the biome prose — ferrite outcrops are TemperateForest's named feature, so its ground stays the visible one |
+| forbiddenNeighbours | json | Biome keys that must not lie across a chunk edge from this biome; symmetric, validated at fabric load (Phase 112) |
+| transition | string | The biome that lies between this one and a forbidden neighbour; empty when nothing is forbidden (Phase 112) |
 
 ## Related
 

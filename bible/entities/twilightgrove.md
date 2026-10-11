@@ -31,6 +31,8 @@ Eerie glades where day-night cycles run at an accelerated, unpredictable rate, b
 | `altitude` | json | yes | Altitude envelope in metres above sea level: the climate field selects this biome where the ground height lies in [min, max] (Phase 51) |
 | `rarity` | decimal | yes | Share of the world where this biome may appear: 1 = anywhere its envelope fits; below 1 it is a rare climate niche, eligible only where a low-frequency niche field falls under this value (Phase 51) |
 | `surfaceVeinChance` | decimal | yes | Share of this biome's top-cell veins that break the surface and keep their deposit marker (Phase 49); the rest are pushed out of view. Authored from the biome prose — its metals sit in shallow CAVE systems and cliff faces, so few veins crop out through the ground |
+| `forbiddenNeighbours` | json | yes | Biome keys that must not lie across a chunk edge from this biome; symmetric, validated at fabric load (Phase 112) |
+| `transition` | string | yes | The biome that lies between this one and a forbidden neighbour; empty when nothing is forbidden (Phase 112) |
 | `dayNightSpeed` | decimal | yes | Multiplier on how deep this biome's night runs relative to the global WorldClock (1 = it follows the clock exactly, 0 = perpetual dusk); varies per tile; drives weather pattern selection and duskfiber luminosity (Phase 54) |
 
 ## Relations

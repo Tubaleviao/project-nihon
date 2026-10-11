@@ -154,6 +154,9 @@ func run() -> void:
 	_run_test("worldgen: fingerprint stamp on the world record", _test_worldgen_fingerprint_record)
 	_run_test("worldgen: fingerprint mismatch wiring",        _test_worldgen_fingerprint_game_root)
 	_run_test("worldgen: golden generator values",            _test_worldgen_golden)
+	_run_test("biomes: adjacency table",                      _test_adjacency_table)
+	_run_test("biomes: adjacency scan of the generator",      _test_adjacency_scan)
+	_run_test("biomes: adjacency scan can fail",              _test_adjacency_scan_detects)
 	_run_test("records: no records leaves 64 chunks as before",  _test_records_none_unchanged)
 	_run_test("records: a record overrides biome and corner heights", _test_records_override)
 	_run_test("records: a streamed chunk is recorded exactly once", _test_records_written_once)
@@ -17618,6 +17621,74 @@ func _test_worldgen_golden() -> void:
 		var c := Vector2i((i * 65537) % 600000 - 300000, (i * 104729) % 300000 - 150000)
 		assert_eq(TerrainSlice.biome_for_chunk(c, 100 + i), biomes[i], "biome of golden chunk %d" % i)
 
+
+# ---- Phase 112 — a biome adjacency table in the fabric and an offline scan ----
+
+const BiomeAdjacency := preload("res://src/terrain/biome_adjacency.gd")
+const ADJACENCY_SEEDS: Array = [20260815, 7, 424242, 1999999]
+const ADJACENCY_GRID := 256
+
+func _test_adjacency_table() -> void:
+	var rules := BiomeAdjacency.table()
+	var trans := BiomeAdjacency.transitions()
+	assert_eq(rules.size(), GameData.BIOMES.size(), "every biome carries the adjacency field")
+	var forbidden_pairs := 0
+	for a in rules:
+		for b in (rules[a] as Array):
+			assert_true(GameData.BIOMES.has(b), "%s forbids a known biome (%s)" % [a, b])
+			assert_true((rules.get(b, []) as Array).has(a), "%s/%s is symmetric" % [a, b])
+			forbidden_pairs += 1
+		if not (rules[a] as Array).is_empty():
+			assert_true(GameData.BIOMES.has(trans[a]), "%s has a known transition (%s)" % [a, trans[a]])
+			assert_false((rules[a] as Array).has(trans[a]), "%s transition is not a forbidden neighbour" % a)
+			for f in (rules[a] as Array):
+				assert_false(BiomeAdjacency.is_forbidden(rules, trans[a], f), "%s transition %s may touch %s" % [a, trans[a], f])
+	assert_true(forbidden_pairs > 0, "the table forbids at least one pair")
+	assert_true(BiomeAdjacency.is_forbidden(rules, "Tundra", "Desert") and BiomeAdjacency.is_forbidden(rules, "Desert", "Tundra"), "Tundra and Desert are forbidden both ways")
+	assert_false(BiomeAdjacency.is_forbidden(rules, "Tundra", "Tundra"), "a biome beside itself is fine")
+
+## Grid origins for a seed: the equator, the temperate belt, the polar edge and a coastline.
+func _adjacency_origins(seed_v: int) -> Array:
+	var half := ADJACENCY_GRID / 2
+	var belt := TerrainSlice.pole_chunks() / 2
+	var polar := TerrainSlice.polar_chunks() - ADJACENCY_GRID
+	var out: Array = [Vector2i(-half, -half), Vector2i(-half, belt - half), Vector2i(-half, polar)]
+	# Coast: walk east along a temperate row until land meets Ocean, and centre the grid there.
+	var z := belt / 2
+	var prev := TerrainSlice.generated_biome_for_chunk(Vector2i(0, z), seed_v) == "Ocean"
+	var coast := Vector2i(0, z)
+	for step in range(1, 4000):
+		var c := Vector2i(step * 16, z)
+		var ocean := TerrainSlice.generated_biome_for_chunk(c, seed_v) == "Ocean"
+		if ocean != prev:
+			coast = c
+			break
+	out.append(coast - Vector2i(half, half))
+	return out
+
+func _test_adjacency_scan() -> void:
+	var rules := BiomeAdjacency.table()
+	for seed_v in ADJACENCY_SEEDS:
+		var gen := func(c: Vector2i) -> String: return TerrainSlice.generated_biome_for_chunk(c, seed_v)
+		for origin in _adjacency_origins(seed_v):
+			var hits := BiomeAdjacency.scan(gen, rules, origin, ADJACENCY_GRID, 1000)
+			assert_eq(hits.size(), 0, "seed %d grid at %s has no forbidden pair (first: %s)" % [seed_v, origin, str(hits.slice(0, 2))])
+
+func _test_adjacency_scan_detects() -> void:
+	var rules := BiomeAdjacency.table()
+	# A scratch generator: two envelopes that abut at temperature 0.5 and sit on the climate pick.
+	var envs := {
+		"Tundra": [0.0, 0.5, 0.0, 1.0, -100000.0, 100000.0, 1.0],
+		"Desert": [0.5, 1.0, 0.0, 1.0, -100000.0, 100000.0, 1.0],
+	}
+	var gen := func(c: Vector2i) -> String:
+		return ClimateField._pick(float(c.x) / 255.0, 0.5, 50.0, ["Tundra", "Desert"], envs, 0.0, false)
+	var hits := BiomeAdjacency.scan(gen, rules, Vector2i.ZERO, ADJACENCY_GRID, 1000)
+	assert_true(hits.size() > 0, "two forbidden biomes side by side are found")
+	assert_eq(hits.size(), ADJACENCY_GRID, "one border column of edges is found, once each")
+	assert_eq(str(hits[0]["pair"]), "Desert|Tundra", "the pair is named, sorted")
+	# The same layout with the rule removed is clean.
+	assert_eq(BiomeAdjacency.scan(gen, {}, Vector2i.ZERO, ADJACENCY_GRID).size(), 0, "no rule, no violation")
 
 # ---- Phase 108 — terrain reads and writes the generation record on the host ----
 

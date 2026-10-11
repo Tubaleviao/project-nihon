@@ -24,5 +24,7 @@ moisture = {"min":0,"max":1}
 altitude = {"min":250,"max":100000}
 rarity = 1.0
 surfaceVeinChance = 0.4
+forbiddenNeighbours = []
+transition = ""
 description = "Snow-capped peaks above the tree line, at any latitude."
 tags = ["biome"]

@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:42cf6b4e46ea6cbf16660654559cc0a6a48f734d396d95e398f2145b6b3b491c",
+  "schemaHash": "sha256:b3010dfa61d10d02f0ef948a4bc8b02247427dbc0475e00706acbad71fc0fb0e",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -3005,6 +3005,24 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0.2
+          },
+          "forbiddenNeighbours": {
+            "name": "forbiddenNeighbours",
+            "type": "json",
+            "description": "Biome keys that must not lie across a chunk edge from this biome; symmetric, validated at fabric load (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": []
+          },
+          "transition": {
+            "name": "transition",
+            "type": "string",
+            "description": "The biome that lies between this one and a forbidden neighbour; empty when nothing is forbidden (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": ""
           }
         },
         "relations": {
@@ -3236,6 +3254,24 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0.15
+          },
+          "forbiddenNeighbours": {
+            "name": "forbiddenNeighbours",
+            "type": "json",
+            "description": "Biome keys that must not lie across a chunk edge from this biome; symmetric, validated at fabric load (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": []
+          },
+          "transition": {
+            "name": "transition",
+            "type": "string",
+            "description": "The biome that lies between this one and a forbidden neighbour; empty when nothing is forbidden (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": ""
           }
         },
         "relations": {
@@ -3467,6 +3503,26 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0.25
+          },
+          "forbiddenNeighbours": {
+            "name": "forbiddenNeighbours",
+            "type": "json",
+            "description": "Biome keys that must not lie across a chunk edge from this biome; symmetric, validated at fabric load (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "Tundra"
+            ]
+          },
+          "transition": {
+            "name": "transition",
+            "type": "string",
+            "description": "The biome that lies between this one and a forbidden neighbour; empty when nothing is forbidden (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Alpine"
           }
         },
         "relations": {
@@ -3713,6 +3769,24 @@
             "pii": false,
             "defaultValue": 0.1
           },
+          "forbiddenNeighbours": {
+            "name": "forbiddenNeighbours",
+            "type": "json",
+            "description": "Biome keys that must not lie across a chunk edge from this biome; symmetric, validated at fabric load (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": []
+          },
+          "transition": {
+            "name": "transition",
+            "type": "string",
+            "description": "The biome that lies between this one and a forbidden neighbour; empty when nothing is forbidden (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": ""
+          },
           "dayNightSpeed": {
             "name": "dayNightSpeed",
             "type": "decimal",
@@ -3954,6 +4028,24 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0.05
+          },
+          "forbiddenNeighbours": {
+            "name": "forbiddenNeighbours",
+            "type": "json",
+            "description": "Biome keys that must not lie across a chunk edge from this biome; symmetric, validated at fabric load (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": []
+          },
+          "transition": {
+            "name": "transition",
+            "type": "string",
+            "description": "The biome that lies between this one and a forbidden neighbour; empty when nothing is forbidden (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": ""
           }
         },
         "relations": {
@@ -4203,6 +4295,24 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0.05
+          },
+          "forbiddenNeighbours": {
+            "name": "forbiddenNeighbours",
+            "type": "json",
+            "description": "Biome keys that must not lie across a chunk edge from this biome; symmetric, validated at fabric load (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": []
+          },
+          "transition": {
+            "name": "transition",
+            "type": "string",
+            "description": "The biome that lies between this one and a forbidden neighbour; empty when nothing is forbidden (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": ""
           }
         },
         "relations": {},
@@ -4424,6 +4534,24 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0.1
+          },
+          "forbiddenNeighbours": {
+            "name": "forbiddenNeighbours",
+            "type": "json",
+            "description": "Biome keys that must not lie across a chunk edge from this biome; symmetric, validated at fabric load (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": []
+          },
+          "transition": {
+            "name": "transition",
+            "type": "string",
+            "description": "The biome that lies between this one and a forbidden neighbour; empty when nothing is forbidden (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": ""
           }
         },
         "relations": {},
@@ -4645,6 +4773,26 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0.3
+          },
+          "forbiddenNeighbours": {
+            "name": "forbiddenNeighbours",
+            "type": "json",
+            "description": "Biome keys that must not lie across a chunk edge from this biome; symmetric, validated at fabric load (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "Tundra"
+            ]
+          },
+          "transition": {
+            "name": "transition",
+            "type": "string",
+            "description": "The biome that lies between this one and a forbidden neighbour; empty when nothing is forbidden (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Savanna"
           }
         },
         "relations": {},
@@ -4866,6 +5014,27 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0.2
+          },
+          "forbiddenNeighbours": {
+            "name": "forbiddenNeighbours",
+            "type": "json",
+            "description": "Biome keys that must not lie across a chunk edge from this biome; symmetric, validated at fabric load (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "Desert",
+              "VolcanicBadlands"
+            ]
+          },
+          "transition": {
+            "name": "transition",
+            "type": "string",
+            "description": "The biome that lies between this one and a forbidden neighbour; empty when nothing is forbidden (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Taiga"
           }
         },
         "relations": {},
@@ -5087,6 +5256,24 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0.4
+          },
+          "forbiddenNeighbours": {
+            "name": "forbiddenNeighbours",
+            "type": "json",
+            "description": "Biome keys that must not lie across a chunk edge from this biome; symmetric, validated at fabric load (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": []
+          },
+          "transition": {
+            "name": "transition",
+            "type": "string",
+            "description": "The biome that lies between this one and a forbidden neighbour; empty when nothing is forbidden (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": ""
           }
         },
         "relations": {},
@@ -5308,6 +5495,24 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0.15
+          },
+          "forbiddenNeighbours": {
+            "name": "forbiddenNeighbours",
+            "type": "json",
+            "description": "Biome keys that must not lie across a chunk edge from this biome; symmetric, validated at fabric load (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": []
+          },
+          "transition": {
+            "name": "transition",
+            "type": "string",
+            "description": "The biome that lies between this one and a forbidden neighbour; empty when nothing is forbidden (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": ""
           }
         },
         "relations": {},
@@ -5529,6 +5734,24 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0.2
+          },
+          "forbiddenNeighbours": {
+            "name": "forbiddenNeighbours",
+            "type": "json",
+            "description": "Biome keys that must not lie across a chunk edge from this biome; symmetric, validated at fabric load (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": []
+          },
+          "transition": {
+            "name": "transition",
+            "type": "string",
+            "description": "The biome that lies between this one and a forbidden neighbour; empty when nothing is forbidden (Phase 112)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": ""
           }
         },
         "relations": {},
