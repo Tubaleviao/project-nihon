@@ -1416,14 +1416,22 @@ func _physics_process(_delta: float) -> void:
 
 ## Phase 91 — the planet is a globe: a player who walks over a pole or round the antimeridian is
 ## folded back onto the canonical planet (`TerrainSlice.fold_world_pos`), landing where the globe
-## puts them. The streamed chunks were built for the pre-fold frame, so the window is re-streamed and
-## the body held until the ground under it is back.
+## puts them. The streamed chunks were built for the pre-fold frame, so the window is re-streamed.
+## Phase 120 — the fold is not seen: the old ground (voxel chunks and the distant ring) is carried
+## across by the fold's scene transform (`TerrainSlice.fold_scene_transform`) and stands in until the
+## folded window is rebuilt, so the body neither waits nor falls and the view does not change. The sun
+## turns with a pole crossing as the view does. The body is held only when no stand-in is under it.
 const FOLD_HOLD_MAX_MSEC := 5000   ## give the hold up after this long, so a failed build cannot pin the player
+const FOLD_STANDIN_MAX_MSEC := 10000   ## stand-ins left this long after a fold are freed (a build that never landed)
 var _fold_hold_since_msec := -1
+var _fold_standins_since_msec := -1
+## Flipped by every pole crossing of the local player: the sun's azimuth turns half a turn with it.
+var _sun_turned := false
 
 func _fold_local_player() -> void:
 	if not _player.has_method("fold_to"):
 		return
+	_expire_fold_standins()
 	if _player.ground_hold:
 		_release_fold_hold()
 		return
@@ -1431,13 +1439,36 @@ func _fold_local_player() -> void:
 	if not fold["folded"]:
 		return
 	var pos: Dictionary = fold["pos"]
+	var turned: bool = fold["turned"]
+	var before: Vector3 = _player.get_scene_position()
+	var standins: Array = _voxel.detach_standins() if _voxel != null else []
+	var ring: Node3D = _distant.detach_ring() if _distant != null and _distant.has_method("detach_ring") else null
 	if _chunk_manager != null:
 		_chunk_manager.restream()
 	_rebase.rebase_to(pos["chunk"])
-	_player.fold_to(pos, fold["turned"])
+	_player.fold_to(pos, turned)
+	if turned:
+		_sun_turned = not _sun_turned
+	var xform := TerrainSlice.fold_scene_transform(before, _player.get_scene_position(), turned)
+	if ring != null:
+		ring.transform = xform * ring.transform
+	if _voxel != null:
+		_voxel.adopt_standins(standins, xform)
+		_fold_standins_since_msec = Time.get_ticks_msec()
 	if _chunk_manager != null:
-		_player.ground_hold = true
-		_fold_hold_since_msec = Time.get_ticks_msec()
+		# Queue the folded window now, and drop the stand-ins it does not cover: nothing rebuilds them.
+		_chunk_manager.refresh(false)
+		if _voxel != null:
+			_voxel.prune_standins(func(c: Vector2i) -> bool: return _chunk_manager.chunk_ref_count(c) > 0)
+		if _voxel == null or not _voxel.has_standin(pos["chunk"]):
+			_player.ground_hold = true
+			_fold_hold_since_msec = Time.get_ticks_msec()
+
+func _expire_fold_standins() -> void:
+	if _voxel == null or _voxel.standin_count() == 0:
+		return
+	if Time.get_ticks_msec() - _fold_standins_since_msec > FOLD_STANDIN_MAX_MSEC:
+		_voxel.release_standins()
 
 ## Phase 119 — count of holds that timed out with the chunk still unbuilt (the window is re-queued first).
 var fold_hold_retries := 0
@@ -1534,7 +1565,7 @@ func _apply_sun(lat: float, night_speed: float = 1.0) -> void:
 	var elev: float = _clock.sun_elevation_at(lat)
 	var daylight: float = WorldClock.biome_daylight(WorldClock.daylight_level(elev), night_speed)
 	var hour: float = WorldClock.hour_angle_deg(WorldClock.day_phase(_clock.time_days))
-	sun.rotation_degrees = Vector3(-clampf(elev, 2.0, 90.0), 90.0 + hour, 0.0)
+	sun.rotation_degrees = Vector3(-clampf(elev, 2.0, 90.0), 90.0 + hour + (180.0 if _sun_turned else 0.0), 0.0)
 	sun.light_energy = 1.4 * daylight
 	sun.visible = elev > -6.0
 	var low: float = clampf(1.0 - elev / 40.0, 0.0, 1.0)

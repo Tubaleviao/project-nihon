@@ -315,6 +315,65 @@ func shift_scene(shift: Vector3) -> void:
 func scene_offset() -> Vector3:
 	return _scene_offset
 
+## Phase 120 — fold stand-ins. A fold over a pole or round the antimeridian re-streams the window in
+## the folded frame (`ChunkManager.restream`). Until a chunk is rebuilt there, the root that stood in
+## its place before the fold stands in for it, carried by the fold's scene transform
+## (`TerrainSlice.fold_scene_transform`) with its mesh and collision, so the ground never vanishes
+## and the body never waits for it. Round the antimeridian a stand-in is the very chunk that
+## replaces it; over a pole the ground in reach is the pole's snow field, the same on both sides.
+## Keyed by the folded-frame chunk each one covers; `build_chunk` frees the one it replaces.
+var _standins: Dictionary = {}   # "cx,cz" -> Node3D
+
+## Take every streamed chunk root (and any stand-in still waiting) out of the slice, so a re-stream
+## does not free them. They stay in the tree and keep drawing; hand them to `adopt_standins`.
+func detach_standins() -> Array:
+	var roots: Array = _chunks.values() + _standins.values()
+	_chunks.clear()
+	_standins.clear()
+	return roots
+
+## Carry `roots` (from `detach_standins`) by the fold's scene transform `xform` and keep each as the
+## stand-in of the chunk it now covers. A second stand-in on the same chunk is freed.
+func adopt_standins(roots: Array, xform: Transform3D) -> void:
+	for r in roots:
+		if not is_instance_valid(r):
+			continue
+		var root := r as Node3D
+		root.transform = xform * root.transform
+		var centre: Vector3 = root.transform * (root.get_meta("centre", Vector3.ZERO) as Vector3)
+		var chunk := Vector2i(floori((float(centre.x) - float(_scene_offset.x)) / TerrainSlice.CHUNK_METERS),
+			floori((float(centre.z) - float(_scene_offset.z)) / TerrainSlice.CHUNK_METERS))
+		var key := _chunk_key(chunk)
+		if _standins.has(key) and is_instance_valid(_standins[key]):
+			(_standins[key] as Node3D).queue_free()
+		root.set_meta("standin_chunk", chunk)
+		_standins[key] = root
+
+## True while a stand-in covers `chunk_pos`.
+func has_standin(chunk_pos: Vector2i) -> bool:
+	return _standins.has(_chunk_key(chunk_pos))
+
+func standin_count() -> int:
+	return _standins.size()
+
+## Free the stand-ins whose chunk `keep` (chunk -> bool) no longer wants: nothing will rebuild them.
+func prune_standins(keep: Callable) -> void:
+	for key in _standins.keys():
+		var root: Node3D = _standins[key]
+		if not is_instance_valid(root) or not bool(keep.call(root.get_meta("standin_chunk"))):
+			_free_standin(key)
+
+## Free every stand-in left (a build that never landed must not leave old ground behind for good).
+func release_standins() -> void:
+	for key in _standins.keys():
+		_free_standin(key)
+
+func _free_standin(key: String) -> void:
+	var root: Variant = _standins.get(key)
+	_standins.erase(key)
+	if is_instance_valid(root):
+		(root as Node3D).queue_free()
+
 func _ready() -> void:
 	# Phase 43 — fill the ore field's material band table HERE, on the main thread, before any
 	# worker can exist. It replaces the Phase 42 per-biome roll table and inherits its contract:
@@ -381,6 +440,8 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	root.name = "Chunk_%s" % key
 	add_child(root)
 	_chunks[key] = root
+	if _standins.has(key):
+		_free_standin(key)   # the folded-frame chunk is here: its stand-in goes (Phase 120)
 
 	# --- Visual mesh + collision from ONE triangle soup ---
 	# The rare-vein deposits below are added AFTER this, deliberately: they are
@@ -401,6 +462,14 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 			float(chunk_pos.x * CHUNK_SIZE) * TILE_SIZE + _scene_offset.x,
 			_scene_offset.y,
 			float(chunk_pos.y * CHUNK_SIZE) * TILE_SIZE + _scene_offset.z)
+	# The chunk's middle in the root's own space: what a fold reads to know which chunk a carried
+	# root stands in for (`adopt_standins`).
+	var half := float(CHUNK_SIZE) * TILE_SIZE * 0.5
+	if bool(built.get("local", false)):
+		root.set_meta("centre", Vector3(half, 0.0, half))
+	else:
+		root.set_meta("centre", Vector3(float(chunk_pos.x * CHUNK_SIZE) * TILE_SIZE + half, 0.0,
+			float(chunk_pos.y * CHUNK_SIZE) * TILE_SIZE + half))
 	var surface := _mesh_from_arrays(built)
 	var mesh_inst := MeshInstance3D.new()
 	mesh_inst.mesh = surface
@@ -1286,6 +1355,8 @@ func unload_chunk(chunk_pos: Vector2i) -> void:
 	if _chunks.has(key):
 		_chunks[key].queue_free()
 		_chunks.erase(key)
+	if _standins.has(key):
+		_free_standin(key)
 	_prune_heightmaps(chunk_pos)
 
 ## Drop the base heightmaps of chunks that are no longer worth remembering: one

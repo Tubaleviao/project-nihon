@@ -76,6 +76,20 @@ func shift_scene(shift: Vector3) -> void:
 func scene_offset() -> Vector3:
 	return _scene_offset
 
+## Phase 120 — the ring a fold carries across (see `VoxelSlice.detach_standins`): taken out of the
+## slice so the fold's rebase does not move it, it keeps drawing until the next ring is swapped in.
+var _standin: MeshInstance3D = null
+
+## Hand over the current ring mesh (null when none) for the caller to carry; `_swap_in` frees it.
+func detach_ring() -> Node3D:
+	if _mesh_inst == null:
+		return _standin
+	if _standin != null:
+		_standin.queue_free()
+	_standin = _mesh_inst
+	_mesh_inst = null
+	return _standin
+
 ## Ring half-extent in metres for a voxel window of `radius_chunks` (Chebyshev radius).
 static func ring_half_extent(radius_chunks: int) -> float:
 	return float(RING_FACTOR) * (float(radius_chunks) + 0.5) * CHUNK_METERS
@@ -177,6 +191,9 @@ func _swap_in(mesh: ArrayMesh) -> void:
 		return
 	if _mesh_inst != null:
 		_mesh_inst.queue_free()
+	if _standin != null:
+		_standin.queue_free()
+		_standin = null
 	_mesh_inst = MeshInstance3D.new()
 	_mesh_inst.name = "DistantRing"
 	_mesh_inst.mesh = mesh

@@ -144,6 +144,7 @@ func run() -> void:
 	_run_test("player: rebased origin keeps the world position", _test_world_pos_rebase)
 	_run_test("player: the scene origin is the driver's integer chunk", _test_scene_origin_single_source)
 	_run_test("terrain: walking over a pole or round the planet folds the position", _test_globe_fold)
+	_run_test("terrain: a fold carries the ground across, unseen", _test_fold_is_seamless)
 	_run_test("wire: one validator for dictionaries and records", _test_one_wire_validator)
 	_run_test("player: exact chunk + local far from the origin", _test_player_exact_far_position)
 	_run_test("rebase: TreeSlice shifts its trunks and pool, not other children", _test_tree_shift_explicit_set)
@@ -1502,6 +1503,80 @@ func _test_scene_origin_single_source() -> void:
 		-float(driver.origin_chunk.y) * WorldPos.CHUNK_METERS)
 	assert_eq(player.scene_offset(), want, "the offset is exactly -origin_chunk * CHUNK_METERS")
 	player.free()
+
+## Phase 120 — a fold is not seen: the scene carried by `fold_scene_transform` shows, at every point
+## around the player, the ground the folded frame has there; the voxel chunks stand in until rebuilt.
+func _test_fold_is_seamless() -> void:
+	var c := TerrainSlice.circumference_chunks()
+	var pole := TerrainSlice.pole_chunks()
+	var m := TerrainSlice.FOLD_MARGIN_CHUNKS
+	var cm := TerrainSlice.CHUNK_METERS
+	var t := TerrainSlice.new()
+	t.set_world_seed(12345)
+	for case in [[Vector2i(10, pole + m), Vector3(5.25, 7.0, 4.0), "the +Z pole"], [Vector2i(-3, -pole - m - 1), Vector3(30.5, 7.0, 1.0), "the -Z pole"], [Vector2i(c / 2 + m, 7), Vector3(2.0, 7.0, 2.0), "the antimeridian"]]:
+		var wp := {"chunk": case[0], "local": case[1]}
+		var fold := TerrainSlice.fold_world_pos(wp)
+		assert_true(fold["folded"], "%s folds" % case[2])
+		var np: Dictionary = fold["pos"]
+		# The scene origin sits on the player's chunk before the fold and on the folded chunk after it.
+		var old_origin: Vector2i = wp["chunk"]
+		var new_origin: Vector2i = np["chunk"]
+		var before := WorldPos.to_scene(wp, old_origin)
+		var after := WorldPos.to_scene(np, new_origin)
+		var xf := TerrainSlice.fold_scene_transform(before, after, fold["turned"])
+		var moved := xf * before - after
+		assert_true(absf(moved.z) < 0.001 and absf(moved.x) <= cm * 0.5 + 0.001 and absf(moved.y) < 0.001,
+			"%s: the ground under the player moves at most half a chunk along its row" % case[2])
+		var worst := 0.0
+		# Whole-metre steps: `get_height_at` takes a float32 Vector2, exact to the metre (2 m at the seam) here.
+		for dz in range(-600, 601, 50):
+			for dx in range(-600, 601, 50):
+				var s := before + Vector3(float(dx), 0.0, float(dz))
+				var old_world := Vector2(float(s.x) + float(old_origin.x) * cm, float(s.z) + float(old_origin.y) * cm)
+				var carried := xf * s
+				var new_world := Vector2(float(carried.x) + float(new_origin.x) * cm, float(carried.z) + float(new_origin.y) * cm)
+				worst = maxf(worst, absf(t.get_height_at(old_world) - t.get_height_at(new_world)))
+		assert_true(worst < 0.001, "%s: the carried ground is the folded frame's ground within 600 m (worst %.4f m)" % [case[2], worst])
+	t.free()
+	# Voxel stand-ins: carried roots cover the chunk they land on until that chunk is built.
+	var v := VoxelSlice.new()
+	add_child(v)
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(1.0)
+	v.build_chunk(Vector2i(0, 0), flat)
+	v.build_chunk(Vector2i(1, 0), flat)
+	var roots := v.detach_standins()
+	assert_eq(roots.size(), 2, "every streamed root is handed over")
+	v.adopt_standins(roots, TerrainSlice.fold_scene_transform(Vector3(10.0, 0.0, 10.0), Vector3(10.0 + 2.0 * cm, 0.0, 10.0), false))
+	assert_true(v.has_standin(Vector2i(2, 0)) and v.has_standin(Vector2i(3, 0)), "each stands in for the chunk it now covers")
+	assert_eq(v.standin_count(), 2, "two stand-ins")
+	v.build_chunk(Vector2i(2, 0), flat)
+	assert_false(v.has_standin(Vector2i(2, 0)), "the built chunk replaces its stand-in")
+	assert_true((roots[0] as Node3D).is_queued_for_deletion(), "which is freed")
+	v.prune_standins(func(ch: Vector2i) -> bool: return ch == Vector2i(9, 9))
+	assert_eq(v.standin_count(), 0, "a stand-in the folded window does not cover is dropped")
+	# A pole fold turns the carried root about the player.
+	v.build_chunk(Vector2i(0, 0), flat)
+	var turned_roots := v.detach_standins()
+	assert_eq(turned_roots.size(), 2, "the built chunks, including the rebuilt one")
+	v.adopt_standins(turned_roots, TerrainSlice.fold_scene_transform(Vector3(10.0, 0.0, 10.0), Vector3(10.0, 0.0, -10.0), true))
+	assert_true(v.has_standin(Vector2i(0, -1)), "turned half a turn, chunk (0,0) lands on (0,-1)")
+	v.release_standins()
+	assert_eq(v.standin_count(), 0, "release frees the rest")
+	v.free()
+	# The distant ring hands its mesh over and frees it when the next ring is swapped in.
+	var d := DistantTerrainScript.new()
+	add_child(d)
+	var ring_mesh := MeshInstance3D.new()
+	d.add_child(ring_mesh)
+	d._mesh_inst = ring_mesh
+	assert_eq(d.detach_ring(), ring_mesh, "the ring is handed over")
+	d.shift_scene(Vector3(1000.0, 0.0, 0.0))
+	assert_eq(ring_mesh.position, Vector3.ZERO, "and a rebase no longer moves it")
+	d._swap_in(ArrayMesh.new())
+	assert_true(ring_mesh.is_queued_for_deletion(), "the next ring frees it")
+	d.free()
 
 ## Phase 91 — the planet is a globe: every direction leads round it.
 func _test_globe_fold() -> void:
