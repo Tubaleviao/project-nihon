@@ -396,6 +396,7 @@ func run() -> void:
 	_run_test("voxel: the pole bound follows the terrain slice", _test_pole_bound_follows_slice)
 	_run_test("minimap: blend never borrows an unrevealed biome", _test_minimap_blend_respects_fog)
 	_run_test("minimap: a second redraw looks up no biome",      _test_minimap_redraw_uses_cache)
+	_run_test("minimap: a skipped-chunk step leaves no gap",     _test_minimap_walk_leaves_no_gap)
 	_run_test("minimap: sub-2px cells draw one rect per chunk",  _test_minimap_far_zoom_one_rect)
 	_run_test("minimap: biome cache is bounded and seed-keyed",  _test_minimap_cache_bounded_and_seeded)
 	_run_test("ui: saved layout past the edge lands inside",     _test_ui_layout_first_apply_fits)
@@ -9463,6 +9464,18 @@ class BiomeStub extends Node:
 
 ## Phase 74 — a persistent biome cache: the second redraw of an unchanged view asks the terrain
 ## nothing.
+func _test_minimap_walk_leaves_no_gap() -> void:
+	var mm := Minimap.new()
+	add_child(mm)
+	var cm := TerrainSlice.CHUNK_METERS
+	mm.set_player_pos(Vector2(0.5 * cm, 0.5 * cm))
+	mm.set_player_pos(Vector2(0.5 * cm, 10.5 * cm))   # ten chunks in one step
+	for z in range(0, 11):
+		assert_true(mm.is_revealed(Vector2i(0, z)), "chunk row %d on the path is revealed" % z)
+	mm.set_player_pos(Vector2(0.5 * cm, 5000.5 * cm))   # a teleport reveals nothing between
+	assert_false(mm.is_revealed(Vector2i(0, 2500)), "a teleport leaves its middle unexplored")
+	mm.free()
+
 func _test_minimap_redraw_uses_cache() -> void:
 	var mm := Minimap.new()
 	add_child(mm)

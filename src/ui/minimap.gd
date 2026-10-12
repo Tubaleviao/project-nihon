@@ -94,6 +94,7 @@ func _process(delta: float) -> void:
 	var pc := world_to_chunk(_player_pos)
 	var chunk_changed := pc != _player_chunk
 	if chunk_changed:
+		_reveal_between(_player_chunk, pc)
 		_player_chunk = pc
 		_reveal_around(pc)
 	# Redraw when the player enters a new chunk (fog-of-war reveal) or turns
@@ -106,6 +107,7 @@ func set_player_pos(pos: Vector2) -> void:
 	_player_pos = pos
 	var pc := world_to_chunk(pos)
 	if pc != _player_chunk:
+		_reveal_between(_player_chunk, pc)
 		_player_chunk = pc
 		_reveal_around(pc)
 	queue_redraw()
@@ -115,6 +117,24 @@ func set_player_pos(pos: Vector2) -> void:
 func set_facing(facing: Vector2) -> void:
 	_facing = facing
 	queue_redraw()
+
+## Chunks a single step may span and still count as walking. A faster step (a fast frame-skip, a
+## sprint on a slow frame) would otherwise leave unrevealed gaps in the trail; a longer jump is a
+## teleport and reveals nothing between.
+const MAX_WALK_GAP := 256
+
+## Reveal the chunks on the straight line from `from` (exclusive) to `to` (exclusive), so a step
+## that skips chunks leaves no gap. No-op for a first position, a teleport, or a jump over the seam.
+func _reveal_between(from: Vector2i, to: Vector2i) -> void:
+	if from == Vector2i(-9999, -9999):
+		return
+	var d := to - from
+	var steps := maxi(absi(d.x), absi(d.y))
+	if steps <= 1 or steps > MAX_WALK_GAP:
+		return
+	for i in range(1, steps):
+		var t := float(i) / float(steps)
+		_reveal_around(Vector2i(from.x + roundi(d.x * t), from.y + roundi(d.y * t)))
 
 ## Reveal the chunk neighbourhood around `center` (fog-of-war). No-op for a chunk no
 ## player can reach (`is_chunk_in_bounds`).
@@ -403,12 +423,13 @@ func _draw() -> void:
 		else:
 			draw_rect(item[0], item[1], false, item[3])
 
+	# The clock and coordinates sit below the map, not over it.
 	if clock_text != "":
-		_draw_outlined(Vector2(4.0, size.y - 17.0), clock_text, Color(1, 0.95, 0.7, 0.95))
+		_draw_outlined(Vector2(4.0, size.y + 14.0), clock_text, Color(1, 0.95, 0.7, 0.95))
 
 	# X, Y and altitude.
 	if player_slice != null and player_slice.has_method("get_position"):
-		_draw_outlined(Vector2(4.0, size.y - 4.0), TerrainSlice.where_text(player_slice.get_position()), Color(1, 1, 1, 0.95))
+		_draw_outlined(Vector2(4.0, size.y + 27.0), TerrainSlice.where_text(player_slice.get_position()), Color(1, 1, 1, 0.95))
 
 	# Waypoints sit where they are, or on the edge toward them like home.
 	for i in _waypoints.size():

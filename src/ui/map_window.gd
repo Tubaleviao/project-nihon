@@ -82,6 +82,10 @@ func _init() -> void:
 	add_child(_hover)
 	set_zoom(ZOOM_START)
 
+## "Zoom 2.0x": the magnification relative to the window's opening view (each zoom step halves the span).
+func zoom_text() -> String:
+	return "Zoom %sx" % String.num(pow(2.0, ZOOM_START - _zoom), 2 if _zoom > ZOOM_START - 4.0 else 0)
+
 func get_zoom() -> float:
 	return _zoom
 
@@ -489,6 +493,10 @@ func _draw() -> void:
 	else:
 		_draw_net(sz)
 	_draw_markers(sz)
+	var zfont := ThemeDB.fallback_font
+	var ztext := zoom_text()
+	draw_string_outline(zfont, Vector2(8.0, 20.0), ztext, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 14, 4, Color(0, 0, 0, 0.85))
+	draw_string(zfont, Vector2(8.0, 20.0), ztext, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 14, Color(1, 1, 1, 0.95))
 
 ## The flat net: each visible cell is filled with fog, explored tiles are drawn over it as squares.
 ## All in plain floats: at street zoom a pixel is below a Vector2's step.
