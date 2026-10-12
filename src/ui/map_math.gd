@@ -70,7 +70,7 @@ static func face_of_normal(n: Vector3) -> int:
 static func dir_of_chunk(chunk: Vector2) -> Vector3:
 	var c := float(TerrainSlice.circumference_chunks())
 	var lon := chunk.x / c * TAU
-	var lat := clampf(-chunk.y / (c * 0.25) * (PI * 0.5), -PI * 0.5, PI * 0.5)
+	var lat := -chunk.y / (c * 0.25) * (PI * 0.5)   # past a pole is the same sphere point as on the far meridian: no clamp
 	return Vector3(cos(lat) * sin(lon), sin(lat), cos(lat) * cos(lon))
 
 ## Fractional chunk-space point of a direction, x wrapped into [-C/2, C/2).
@@ -95,7 +95,7 @@ static func dir_of_face(f: int, u: float, v: float) -> Vector3:
 static func face_uv_xz(x: float, z: float) -> Array:
 	var c := float(TerrainSlice.circumference_chunks())
 	var lon := x / c * TAU
-	var lat := clampf(-z / (c * 0.25) * (PI * 0.5), -PI * 0.5, PI * 0.5)
+	var lat := -z / (c * 0.25) * (PI * 0.5)   # not clamped: over a pole the sphere continues down the far meridian
 	return _face_uv_xyz(cos(lat) * sin(lon), sin(lat), cos(lat) * cos(lon))
 
 ## Chunk-space point [x, z] of local (u, v) of a face, x wrapped into [-C/2, C/2).

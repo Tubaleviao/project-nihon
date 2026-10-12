@@ -396,6 +396,7 @@ func run() -> void:
 	_run_test("voxel: the pole bound follows the terrain slice", _test_pole_bound_follows_slice)
 	_run_test("minimap: blend never borrows an unrevealed biome", _test_minimap_blend_respects_fog)
 	_run_test("minimap: a second redraw looks up no biome",      _test_minimap_redraw_uses_cache)
+	_run_test("map: past a pole is the far meridian",            _test_map_past_pole_matches_far_meridian)
 	_run_test("minimap: a skipped-chunk step leaves no gap",     _test_minimap_walk_leaves_no_gap)
 	_run_test("minimap: sub-2px cells draw one rect per chunk",  _test_minimap_far_zoom_one_rect)
 	_run_test("minimap: biome cache is bounded and seed-keyed",  _test_minimap_cache_bounded_and_seeded)
@@ -9464,6 +9465,16 @@ class BiomeStub extends Node:
 
 ## Phase 74 — a persistent biome cache: the second redraw of an unchanged view asks the terrain
 ## nothing.
+func _test_map_past_pole_matches_far_meridian() -> void:
+	var c := float(TerrainSlice.circumference_chunks())
+	var pole := float(TerrainSlice.pole_chunks())
+	var past: Vector3 = _MapMath.dir_of_chunk(Vector2(10.0, pole + 5.0))
+	var folded: Vector3 = _MapMath.dir_of_chunk(Vector2(10.0 + c * 0.5, pole - 5.0))
+	assert_true(past.distance_to(folded) < 0.0001, "a point past the pole is the mirrored point on the far meridian")
+	var a := _MapMath.face_uv_xz(10.0, pole + 5.0)
+	var b := _MapMath.face_uv_xz(10.0 + c * 0.5, pole - 5.0)
+	assert_eq(a[0], b[0], "and lands on the same face")
+
 func _test_minimap_walk_leaves_no_gap() -> void:
 	var mm := Minimap.new()
 	add_child(mm)
