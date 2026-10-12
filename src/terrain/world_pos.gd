@@ -201,10 +201,12 @@ static func pos_to_packet_text(pos: Dictionary) -> String:
 	return Marshalls.raw_to_base64(pos_to_compact(pos))
 
 ## The exact position a per-tick packet carries: the compact `pk` when present, else the `{chunk, local}`
-## `position` of an older peer. Empty when neither decodes (a legacy float array has no exact chunk).
+## `position` of an older peer. Empty when neither decodes (a legacy float array has no exact chunk) or the
+## compact position is not a place on the planet.
 static func pos_from_packet(payload: Dictionary) -> Dictionary:
 	if payload.has("pk"):
-		return pos_from_compact(payload["pk"])
+		var exact := pos_from_compact(payload["pk"])
+		return exact if not exact.is_empty() and is_plausible_pos(exact) else {}
 	return pos_from_wire(payload.get("position", null))
 
 ## True when a per-tick packet carries a position of either form that decodes.

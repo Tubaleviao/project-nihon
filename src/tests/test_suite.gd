@@ -6648,7 +6648,7 @@ func _test_net_emulator_delivery() -> void:
 	assert_eq(n._pending.size(), 10, "all packets queued when no loss and no jitter")
 	var seqs: Array = []
 	for e in n._pending:
-		var parsed = JSON.parse_string(e["json"])
+		var parsed = JSON.parse_string(JSON.stringify(e["payload"]))
 		seqs.append(int(parsed["seq"]))
 	seqs.sort()
 	assert_eq(seqs, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], "queued packets carry monotonic seq 0..9")
@@ -6760,7 +6760,7 @@ func _test_net_two_peer_loss_reorder() -> void:
 	# reorder step staged them.
 	var queued: Array = []
 	for entry in sender._pending:
-		var parsed = JSON.parse_string(str(entry["json"]))
+		var parsed = JSON.parse_string(JSON.stringify(entry["payload"]))
 		if parsed is Dictionary:
 			queued.append(parsed)
 
@@ -7433,6 +7433,7 @@ func _test_rescope_resent_when_clamped() -> void:
 	assert_false(sent.is_empty(), "the re-scope snapshot went out in the same call, though the window was refused")
 	assert_false(gr._peer_aoi_regions.has(5), "and the crossing is forgotten so the window's catch-up retries it")
 	n.free()
+	cm.free()
 	gr.free()
 
 ## Phase 119 — the first claim of an uncentred peer is clamped; the X seam is crossed the short way.
@@ -10580,12 +10581,12 @@ func _test_retry_represents_join_intent() -> void:
 	n._role = NetworkingSlice.Role.CLIENT
 	n.request_handshake()
 	assert_eq(n._pending.size(), 1, "the client presents a join intent")
-	var first: Dictionary = JSON.parse_string(str(n._pending[0]["json"]))
+	var first: Dictionary = JSON.parse_string(JSON.stringify(n._pending[0]["payload"]))
 	assert_eq(str(first.get("type", "")), "join_intent", "and it is a join intent")
 	var first_seq := int(first.get("seq", -1))
 	n.request_handshake()
 	assert_eq(n._pending.size(), 2, "the retry is a real second packet, not a suppressed duplicate")
-	var second: Dictionary = JSON.parse_string(str(n._pending[1]["json"]))
+	var second: Dictionary = JSON.parse_string(JSON.stringify(n._pending[1]["payload"]))
 	assert_true(int(second.get("seq", -1)) > first_seq, "with a fresh seq")
 	n.free()
 
@@ -10948,7 +10949,7 @@ func _test_net_own_state_push_is_peer_scoped() -> void:
 		"technology": { "TechBasicSmithing": "unlocked" },
 	})
 	assert_eq(host._pending.size(), 1, "the host queues exactly one packet")
-	var packet: Dictionary = JSON.parse_string(str(host._pending[0]["json"]))
+	var packet: Dictionary = JSON.parse_string(JSON.stringify(host._pending[0]["payload"]))
 	assert_eq(str(packet.get("type", "")), "own_state_synced", "of the own_state_synced type")
 	assert_eq(int(host._pending[0]["peer_id"]), 5, "addressed to the peer it was given for")
 
@@ -11826,7 +11827,7 @@ func _test_net_inventory_sync_is_peer_scoped() -> void:
 	host._on_inventory_synced(peer_pid, { "Ferrite": 1 }, {})
 	assert_eq(host._pending.size(), 1, "one packet, for the owner's peer")
 	assert_eq(int(host._pending[0]["peer_id"]), 5, "addressed to that peer alone")
-	var packet: Dictionary = JSON.parse_string(str(host._pending[0]["json"]))
+	var packet: Dictionary = JSON.parse_string(JSON.stringify(host._pending[0]["payload"]))
 	assert_eq(str(packet.get("type", "")), "inventory_synced", "of the inventory_synced type")
 	assert_eq(int(packet.get("contents", {}).get("Ferrite", 0)), 1, "carrying the contents")
 	assert_false(JSON.stringify(packet).contains(peer_pid), "and no player id — a bearer token stays off the wire")
@@ -11939,7 +11940,7 @@ func _test_net_peer_damage_is_peer_scoped() -> void:
 	host.send_player_damaged(5, 12.0, "creature_0_0_ForestBoar_0")
 	assert_eq(host._pending.size(), 1, "the host queues exactly one packet")
 	assert_eq(int(host._pending[0]["peer_id"]), 5, "addressed to the peer that was hit")
-	var packet: Dictionary = JSON.parse_string(str(host._pending[0]["json"]))
+	var packet: Dictionary = JSON.parse_string(JSON.stringify(host._pending[0]["payload"]))
 	assert_eq(str(packet.get("type", "")), "player_damaged", "of the player_damaged type")
 
 	# The client half: the local body absorbs it, under the id the bus has always used.
@@ -17252,7 +17253,7 @@ func _test_region_streams_only_near_windows() -> void:
 	assert_eq(voxel.edited_chunk_keys().size(), 0, "with a window at the origin no far region's edits are resident")
 	assert_true(cm.region_streamer.resident_regions().size() <= 4, "only the regions at the origin (a corner plus its margin) are resident")
 	# A peer window 10 regions away pulls in exactly its own region, and releases it again.
-	cm.set_peer_center(7, Vector2i(10 * 32 + 3, 10 * 32 + 3))
+	cm.set_peer_center(7, Vector2i(10 * 32 + 3, 10 * 32 + 3), true)
 	cm.refresh()
 	assert_eq(voxel.edited_chunk_keys().size(), 1, "the peer's region edits are resident")
 	cm.clear_peer_center(7)
