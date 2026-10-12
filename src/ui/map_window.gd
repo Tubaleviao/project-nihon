@@ -1,12 +1,14 @@
 extends Control
-## Map window (Phase 111) — the whole world, from street level out to a round planet.
+## Map window — the whole world as a cube papercraft, from street level out to the whole planet.
 ##
-## The picture is the real world sampled bit by bit from the same fields the terrain is generated
-## from (`MapTiles`): a coarse level draws at once and finer levels fill in over the following frames
-## on a worker thread. Close in it is the flat chunk map; further out the projection blends into an
-## orthographic globe (`MapMath.blend`, a pure function of zoom) that can be dragged round.
-## Unexplored land is dimmed unless the true-planet toggle is on; the player's home is marked, with an
-## edge arrow and distance when it is off-screen.
+## The planet is six equal square faces (`MapMath`, an equiangular cube, so tiles stay square at the
+## poles too). Flat, the faces unfold into a net around the face in view: the band through it wraps
+## round the planet, the faces above and below hang off it. With the Planet toggle on, the same faces
+## fold into an orthographic globe that is dragged round. The picture is sampled bit by bit from the
+## same fields the terrain is generated from (`MapTiles`), coarse first, on a worker thread.
+##
+## Unexplored land is one flat fog colour and is never sampled. Hovering shows the latitude and
+## longitude under the cursor; right-click adds a waypoint, or deletes the one under the cursor.
 ##
 ## Drawing needs a canvas and does not run headless; the maths it relies on is in MapMath/MapTiles.
 
@@ -18,122 +20,245 @@ const WorldPos := preload("res://src/terrain/world_pos.gd")
 
 const TILES_PER_FRAME := 48
 const WHEEL_STEP := 0.25
-const DIM := 0.35
 const MAX_TILES_DRAWN := 6000
 const RECORDS_REFRESH_MS := 1000   # at most one tile recompute per second while chunks keep arriving
+## Cells either side of the home face the flat band may draw.
+const NET_REACH := 8
+## A coarse ancestor this many levels up is requested with each tile, so the picture fills in at once.
+const COARSE_STEP := 3
+## A waypoint within this many pixels of the cursor is the one a right-click deletes.
+const PICK_PX := 10.0
+## Samples across the view used to find which part of each face the globe shows.
+const GLOBE_GRID := 20
+const ZOOM_START := 6.5
+
+const BG := Color(0.03, 0.04, 0.08)
+const FOG := Color(0.22, 0.23, 0.27)
+const SEAM := Color(0.0, 0.0, 0.0, 0.35)
 
 var minimap: Node = null
 var terrain_slice: Node = null
 var player_slice: Node = null
-var show_true_planet: bool = false
+## False: the flat net. True: the faces folded into a globe.
+var planet: bool = false
 
 var tiles := MapTiles.new()
-const ZOOM_START := 6.5
-## The home marker and waypoints use great-circle direction and distance once the globe blend passes this.
-const GREAT_CIRCLE_BLEND := 0.5
 var _zoom: float = ZOOM_START
-var _center: Vector2 = Vector2.ZERO   # view centre in chunks
+var _home: Array = MapMath.placement_of(0)   # the placement the view centre is on
+var _lx: float = 0.0   # the view centre, screen-local on `_home` (plain floats: double precision)
+var _ly: float = 0.0
 var _dragging := false
 var _thread: Thread = null
 var _batch_seed: int = 0
 var _batch_gen: int = 0   # tiles.generation when the running batch was taken
 var _last_sig: Array = []
 var _records_at_ms: int = 0
-var _reveal_tiles: Dictionary = {}   # Vector2i tile -> true
 var _view_key: Array = []   # what the last tile request covered
-var _reveal_level: int = -1
-var _reveal_rev: int = -1
 var _records_rev: int = -1
+var _reveal_rev: int = -1
+var _reveal_l0: Dictionary = {}     # chunk -> Vector3i(face, i, j) of its finest tile
+var _reveal_sets: Dictionary = {}   # level -> { Vector3i(face, i, j): true }
+var _hover: Label = null
+var _hover_at: Vector2 = Vector2(-1, -1)
 
 func _init() -> void:
 	name = "MapWindow"
 	custom_minimum_size = Vector2(520, 460)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	clip_contents = true
-	set_zoom(ZOOM_START)   # a small world's farthest zoom can be nearer than the default
-
-func circumference() -> int:
-	return TerrainSlice.circumference_chunks()
+	_hover = Label.new()
+	_hover.name = "Hover"
+	_hover.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hover.visible = false
+	_hover.add_theme_font_size_override("font_size", 12)
+	_hover.add_theme_color_override("font_outline_color", Color.BLACK)
+	_hover.add_theme_constant_override("outline_size", 4)
+	add_child(_hover)
+	set_zoom(ZOOM_START)
 
 func get_zoom() -> float:
 	return _zoom
 
 func set_zoom(z: float) -> void:
-	_zoom = clampf(z, MapMath.ZOOM_MIN, maxf(MapMath.zoom_max(circumference()), MapMath.ZOOM_MIN))
+	var lo := MapMath.zoom_min(planet, _view_px())
+	_zoom = clampf(z, lo, maxf(MapMath.zoom_max(planet), lo))
 	queue_redraw()
 
+## Fold the faces into a globe (true) or lay them out flat (false).
+func set_planet(on: bool) -> void:
+	planet = on
+	set_zoom(_zoom)
+	_hide_hover()
+
+## The view centre in (fractional) chunks.
 func get_center() -> Vector2:
-	return _center
+	var p := _center_xz()
+	return Vector2(p[0], p[1])
+
+func _center_xz() -> Array:
+	var uv := MapMath.face_uv_of_local(_home, _lx, _ly)
+	return MapMath.xz_of_face(MapMath.face_of(_home), uv[0], uv[1])
+
+func center_dir() -> Vector3:
+	return MapMath.local_dir(_home, _lx, _ly)
+
+## Centre the view on a chunk-space point, its face turned map-up.
+func set_center(chunk: Vector2) -> void:
+	set_center_xz(chunk.x, chunk.y)
+
+func set_center_xz(x: float, z: float) -> void:
+	var fuv := MapMath.face_uv_xz(x, z)
+	var r := MapMath.upright(MapMath.placement_of(fuv[0]), fuv[1], fuv[2])
+	_home = r[0]
+	_lx = r[1]
+	_ly = r[2]
+	queue_redraw()
 
 ## Centre the view on the player, exactly (chunk + local offset, so far from the origin too).
 func center_on_player() -> void:
-	var pc := _player_chunk_pos()
-	if pc.x < INF:
-		_center = pc
-		_clamp_center()
+	var p := _player_xz()
+	if not p.is_empty():
+		set_center_xz(p[0], p[1])
 	queue_redraw()
 
-## The player's position in (fractional) chunks, from the exact world position; (INF, INF) when unknown.
-func _player_chunk_pos() -> Vector2:
+## The player's position in (fractional) chunks [x, z], from the exact world position; [] when unknown.
+func _player_xz() -> Array:
 	if player_slice == null:
-		return Vector2(INF, INF)
+		return []
 	if player_slice.has_method("get_world_pos"):
 		var wp: Dictionary = player_slice.get_world_pos()
 		if wp.has("chunk") and wp.has("local"):
-			var c: Vector2i = wp["chunk"]
-			var l: Vector3 = wp["local"]
-			return Vector2(c) + Vector2(l.x, l.z) / TerrainSlice.CHUNK_METERS
+			return _xz_of_pos(wp)
 	if player_slice.has_method("get_position"):
 		var p: Vector3 = player_slice.get_position()
-		return Vector2(p.x, p.z) / TerrainSlice.CHUNK_METERS
-	return Vector2(INF, INF)
+		return [p.x / TerrainSlice.CHUNK_METERS, p.z / TerrainSlice.CHUNK_METERS]
+	return []
 
-func _clamp_center() -> void:
-	var half := float(circumference()) / 2.0
-	_center.x = fposmod(_center.x + half, float(circumference())) - half
-	_center.y = clampf(_center.y, -float(TerrainSlice.pole_chunks()), float(TerrainSlice.pole_chunks()))
+## A `{chunk, local}` place in (fractional) chunks [x, z], in double precision.
+static func _xz_of_pos(pos: Dictionary) -> Array:
+	var c: Vector2i = pos["chunk"]
+	var l: Vector3 = pos["local"]
+	return [float(c.x) + l.x / TerrainSlice.CHUNK_METERS, float(c.y) + l.z / TerrainSlice.CHUNK_METERS]
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_VISIBILITY_CHANGED and is_visible_in_tree():
 		center_on_player()
+	elif what == NOTIFICATION_MOUSE_EXIT:
+		_hide_hover()
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 			set_zoom(_zoom - WHEEL_STEP)
+			_update_hover(event.position)
 			accept_event()
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
 			set_zoom(_zoom + WHEEL_STEP)
+			_update_hover(event.position)
 			accept_event()
 		elif event.button_index == MOUSE_BUTTON_LEFT:
 			_dragging = event.pressed
+			if not _dragging:   # a drag over a pole may leave the band upside down: turn it back
+				var r := MapMath.upright(_home, _lx, _ly)
+				_home = r[0]
+				_lx = r[1]
+				_ly = r[2]
+				queue_redraw()
 			accept_event()
 		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-			var pos := world_pos_at(event.position - size * 0.5)
-			if not pos.is_empty() and minimap != null and minimap.has_method("add_waypoint"):
-				minimap.add_waypoint("", pos)
+			right_click(event.position - size * 0.5)
+			_update_hover(event.position)
 			accept_event()
-	elif event is InputEventMouseMotion and _dragging:
-		var ppc := _px_per_chunk()
-		# Dragging a globe turns it: the same pan, scaled by how much of the surface a pixel covers.
-		var pan: Vector2 = event.relative / maxf(ppc, 0.000001)
-		if _t() > 0.0:   # on the globe a pixel of east-west drag covers more longitude toward the poles
-			var lat := MapMath.lonlat(_center, circumference()).y
-			pan.x /= lerpf(1.0, maxf(cos(lat), 0.05), _t())
-		_center -= pan
-		_clamp_center()
-		queue_redraw()
-		accept_event()
+	elif event is InputEventMouseMotion:
+		if _dragging:
+			pan(event.relative)
+			accept_event()
+		_update_hover(event.position)
+
+## Move the view by a screen drag of `rel` pixels: the flat net slides, the globe turns.
+func pan(rel: Vector2) -> void:
+	var k := maxf(_k(), 0.000001)
+	var r := MapMath.wrap_local(_home, _lx - rel.x / k, _ly + rel.y / k)
+	_home = r[0]
+	_lx = r[1]
+	_ly = r[2]
+	queue_redraw()
+
+## Right-click `offset` px from the window centre: delete the waypoint under it, else add one there.
+func right_click(offset: Vector2) -> void:
+	if minimap == null:
+		return
+	var hit := waypoint_at(offset)
+	if hit >= 0:
+		if minimap.has_method("remove_waypoint"):
+			minimap.remove_waypoint(hit)
+		return
+	var pos := world_pos_at(offset)
+	if not pos.is_empty() and minimap.has_method("add_waypoint"):
+		minimap.add_waypoint("", pos)
+
+## Index of the waypoint whose marker is within PICK_PX of `offset` (nearest first), or -1.
+func waypoint_at(offset: Vector2) -> int:
+	if minimap == null or not minimap.has_method("get_waypoints"):
+		return -1
+	var best := -1
+	var best_d := PICK_PX
+	var wps: Array = minimap.get_waypoints()
+	for i in wps.size():
+		var m := marker_for(wps[i]["pos"], size)
+		if m.is_empty() or not m["inside"]:
+			continue
+		var d: float = (m["pos"] as Vector2).distance_to(offset)
+		if d <= best_d:
+			best_d = d
+			best = i
+	return best
+
+## The hover label's text for a point `offset` px from the centre: latitude and longitude as `/where`
+## prints them, plus the waypoint under the cursor. "" off the planet.
+func hover_text(offset: Vector2) -> String:
+	var at := place_at(offset)
+	if at.is_empty():
+		return ""
+	var p := MapMath.xz_of_face(at[0], at[1], at[2])
+	var text := TerrainSlice.latlon_text(p[0] * TerrainSlice.CHUNK_METERS, p[1] * TerrainSlice.CHUNK_METERS)
+	var hit := waypoint_at(offset)
+	if hit >= 0:
+		text = "%s (right-click to delete)\n%s" % [str(minimap.get_waypoints()[hit]["name"]), text]
+	return text
+
+func _update_hover(pos: Vector2) -> void:
+	_hover_at = pos
+	var text := hover_text(pos - size * 0.5)
+	if text == "":
+		_hide_hover()
+		return
+	_hover.text = text
+	_hover.reset_size()
+	var at := pos + Vector2(14, 12)
+	at.x = minf(at.x, size.x - _hover.size.x - 4.0)
+	at.y = minf(at.y, size.y - _hover.size.y - 4.0)
+	_hover.position = at
+	_hover.visible = true
+
+func _hide_hover() -> void:
+	_hover_at = Vector2(-1, -1)
+	if _hover != null:
+		_hover.visible = false
 
 func _view_px() -> float:
 	return minf(size.x, size.y)
 
-func _t() -> float:
-	return MapMath.blend(_zoom, MapMath.zoom_max(circumference()))
+## Pixels per face half-side.
+func _k() -> float:
+	return MapMath.px_per_unit(_zoom, _view_px())
 
-## Pixels per chunk of the flat picture at this zoom.
-func _px_per_chunk() -> float:
-	return _view_px() / pow(2.0, _zoom)
+## The globe's radius in pixels: a half-side is PI/4 of arc.
+func _radius_px() -> float:
+	return _k() * 4.0 / PI
+
+func _frame() -> Array:
+	return MapMath.globe_frame(_home, _lx, _ly)
 
 func _process(_delta: float) -> void:
 	if not is_visible_in_tree():
@@ -141,11 +266,12 @@ func _process(_delta: float) -> void:
 	_refresh_records()
 	_service_worker()
 	# Redraw only when something on screen can have changed: the explored set, the player, the records.
-	var rev: int = minimap.revealed_revision() if minimap != null and minimap.has_method("revealed_revision") else 0
 	var sig := redraw_signature()
 	if sig != _last_sig:
 		_last_sig = sig
 		queue_redraw()
+		if _hover.visible:   # a waypoint added or removed under the cursor
+			_update_hover(_hover_at)
 
 ## What the picture depends on that changes by itself: the explored set, the player's PIXEL (not the
 ## player's exact position, which moves every frame), the records and the world. Unequal => redraw.
@@ -155,11 +281,13 @@ func redraw_signature() -> Array:
 
 ## The player's marker in whole pixels from the window centre; (-1 << 30) when it is not on screen or unknown.
 func _player_pixel() -> Vector2i:
-	var pcp := _player_chunk_pos()
-	if pcp.x >= INF:
+	var pxz := _player_xz()
+	if pxz.is_empty():
 		return Vector2i(-(1 << 30), 0)
-	var circ := circumference()
-	var off := MapMath.project(MapMath.lonlat(pcp, circ), MapMath.lonlat(_center, circ), _t()) * MapMath.scale_px(_zoom, _view_px(), circ)
+	var s := screen_of_xz(pxz[0], pxz[1])
+	if not s["visible"]:
+		return Vector2i(-(1 << 30), 0)
+	var off: Vector2 = s["pos"]
 	return Vector2i(roundi(off.x), roundi(off.y))
 
 ## Tiles sample generation records too: a record adopted since they were cached may change a biome.
@@ -203,118 +331,358 @@ func _world_seed() -> int:
 		return terrain_slice.get_world_seed()
 	return 0
 
-## Revealed tiles at `level`, rebuilt when the level or the explored set changes.
-func _revealed_tiles(level: int) -> Dictionary:
-	if minimap == null:
+# ---------------------------------------------------------------------------
+# Fog: which tiles are explored
+# ---------------------------------------------------------------------------
+
+## Explored tiles at `level`: every tile holding an explored chunk's centre. Rebuilt per level when the
+## explored set changes; each chunk's finest tile is worked out once.
+func _revealed_set(level: int) -> Dictionary:
+	if minimap == null or not minimap.has_method("get_revealed_chunks"):
 		return {}
 	var rev: int = minimap.revealed_revision() if minimap.has_method("revealed_revision") else 0
-	if level != _reveal_level or rev != _reveal_rev:
-		_reveal_tiles.clear()
-		for c in minimap.get_revealed_chunks():
-			var t := MapMath.tile_of(c, level)
-			_reveal_tiles[t] = true
-		_reveal_level = level
+	if rev != _reveal_rev:
 		_reveal_rev = rev
-	return _reveal_tiles
+		_reveal_sets.clear()
+		var chunks: Array = minimap.get_revealed_chunks()
+		if _reveal_l0.size() > chunks.size() + 1000:   # chunks the explored set's cap dropped
+			_reveal_l0.clear()
+		for c in chunks:
+			if not _reveal_l0.has(c):
+				var fuv := MapMath.face_uv_xz(c.x + 0.5, c.y + 0.5)
+				var t := MapMath.tile_index(fuv[1], fuv[2], 0)
+				_reveal_l0[c] = Vector3i(fuv[0], t.x, t.y)
+	if not _reveal_sets.has(level):
+		var s: Dictionary = {}
+		for c in _reveal_l0:
+			var t: Vector3i = _reveal_l0[c]
+			s[Vector3i(t.x, t.y >> level, t.z >> level)] = true
+		_reveal_sets[level] = s
+	return _reveal_sets[level]
+
+## True when a tile shows its biome. A tile smaller than a couple of chunks is also explored when the
+## chunk under its centre is (a big chunk can cover tiles no chunk centre falls in).
+func tile_revealed(fog: Dictionary, f: int, level: int, i: int, j: int) -> bool:
+	if fog.has(Vector3i(f, i, j)):
+		return true
+	if minimap == null or not minimap.has_method("is_revealed"):
+		return false
+	if MapMath.chunks_per_cell() * float(1 << level) >= 2.0:
+		return false
+	return minimap.is_revealed(MapMath.tile_center_chunk(f, level, i, j))
+
+# ---------------------------------------------------------------------------
+# Screen <-> sphere
+# ---------------------------------------------------------------------------
+
+## Net units (face half-sides, y up) to pixels from the window centre.
+func _net_to_screen(nx: float, ny: float) -> Vector2:
+	var k := _k()
+	return Vector2((nx - _lx) * k, (_ly - ny) * k)
+
+## The net cells that may be drawn: the band (at least the four faces round it) and the faces above and below.
+func _cells() -> Array:
+	var hx := size.x * 0.5 / maxf(_k(), 0.000001)
+	var i0 := clampi(floori((_lx - hx + 1.0) * 0.5), -NET_REACH, -2)
+	var i1 := clampi(floori((_lx + hx + 1.0) * 0.5), 2, NET_REACH)
+	return MapMath.net_cells(_home, i0, i1)
+
+## Where a chunk-space point lands: { pos: px from the centre, visible }. On the net, the nearest copy
+## of its face; on the globe, `visible` is false on the far side.
+func screen_of_xz(x: float, z: float) -> Dictionary:
+	if planet:
+		var q := MapMath.globe_project(_frame(), MapMath.dir_of_chunk(Vector2(x, z)))
+		return { "pos": Vector2(q.x, q.y) * _radius_px(), "visible": q.z > 0.0 }
+	var fuv := MapMath.face_uv_xz(x, z)
+	var f: int = fuv[0]
+	var best := Vector2(INF, INF)
+	for cell in _cells():
+		if MapMath.face_of(cell[1]) != f:
+			continue
+		var loc := MapMath.local_of_face_uv(cell[1], f, fuv[1], fuv[2])
+		var off := _net_to_screen(2.0 * cell[0].x + loc[0], 2.0 * cell[0].y + loc[1])
+		if off.length_squared() < best.length_squared():
+			best = off
+	return { "pos": best, "visible": best.x < INF }
+
+## The face and local (u, v) under a point `offset` px from the centre: [face, u, v], or [] where
+## there is no planet.
+func place_at(offset: Vector2) -> Array:
+	if planet:
+		var d := MapMath.globe_unproject(_frame(), offset / maxf(_radius_px(), 0.000001))
+		if d == Vector3.ZERO:
+			return []
+		var fuv := MapMath.face_uv(d)
+		return [int(fuv.x), fuv.y, fuv.z]
+	var k := maxf(_k(), 0.000001)
+	var nx := _lx + offset.x / k
+	var ny := _ly - offset.y / k
+	var cell := Vector2i(roundi(nx * 0.5), roundi(ny * 0.5))
+	if cell.y != 0 and (cell.x != 0 or absi(cell.y) > 1):
+		return []
+	if absi(cell.x) > NET_REACH:
+		return []
+	var pl := _home
+	for i in absi(cell.x):
+		pl = MapMath.step(pl, signi(cell.x), 0)
+	if cell.y != 0:
+		pl = MapMath.step(pl, 0, cell.y)
+	var uv := MapMath.face_uv_of_local(pl, clampf(nx - 2.0 * cell.x, -1.0, 1.0), clampf(ny - 2.0 * cell.y, -1.0, 1.0))
+	return [MapMath.face_of(pl), uv[0], uv[1]]
+
+## The `{chunk, local}` place under a point `offset` px from the window centre, or {} off the planet.
+func world_pos_at(offset: Vector2) -> Dictionary:
+	var at := place_at(offset)
+	if at.is_empty():
+		return {}
+	var p := MapMath.xz_of_face(at[0], at[1], at[2])
+	var chunk := Vector2i(floori(p[0]), floori(p[1]))
+	var local := Vector3((p[0] - chunk.x) * TerrainSlice.CHUNK_METERS, 0.0, (p[1] - chunk.y) * TerrainSlice.CHUNK_METERS)
+	return WorldPos.normalized({ "chunk": TerrainSlice.wrap_chunk(chunk), "local": local })
+
+# ---------------------------------------------------------------------------
+# Drawing
+# ---------------------------------------------------------------------------
 
 func _draw() -> void:
 	var sz := size
 	if sz.x <= 0.0 or sz.y <= 0.0:
 		return
 	_refresh_records()
-	draw_rect(Rect2(Vector2.ZERO, sz), Color(0.03, 0.04, 0.08))
-	var circ := circumference()
-	var t := _t()
-	var ppc := _px_per_chunk()
-	var level := MapMath.level_for(ppc)
-	var scale := MapMath.scale_px(_zoom, _view_px(), circ)
+	var lo := MapMath.zoom_min(planet, _view_px())
+	_zoom = clampf(_zoom, lo, maxf(MapMath.zoom_max(planet), lo))   # the window may have been resized
+	draw_rect(Rect2(Vector2.ZERO, sz), BG)
+	if planet:
+		_draw_globe(sz)
+	else:
+		_draw_net(sz)
+	_draw_markers(sz)
+
+## The flat net: each visible cell is filled with fog, explored tiles are drawn over it as squares.
+## All in plain floats: at street zoom a pixel is below a Vector2's step.
+func _draw_net(sz: Vector2) -> void:
 	var origin := sz * 0.5
-	var center_ll := MapMath.lonlat(_center, circ)
-	var pole := float(TerrainSlice.pole_chunks())
-	var tile_chunks := 1 << level
-	var x0 := 0
-	var x1 := 0
-	var z0 := 0
-	var z1 := 0
+	var k := _k()
+	var hx := sz.x * 0.5 / k
+	var hy := sz.y * 0.5 / k
+	var shown: Array = []   # [cell, placement, [x0, x1, y0, y1] screen-local, clipped to the face]
+	for cell in _cells():
+		var cx: float = 2.0 * cell[0].x
+		var cy: float = 2.0 * cell[0].y
+		var b := [maxf(-1.0, _lx - hx - cx), minf(1.0, _lx + hx - cx), maxf(-1.0, _ly - hy - cy), minf(1.0, _ly + hy - cy)]
+		if b[0] < b[1] and b[2] < b[3]:
+			shown.append([cell[0], cell[1], b])
+	var level := MapMath.level_for(k)
+	var ranges: Array = []
 	while true:   # a coarser level until the visible tiles fit the draw budget
-		tile_chunks = 1 << level
-		var span := minf(float(circ) * 0.5, pow(2.0, _zoom) * 0.75 * maxf(sz.x, sz.y) / maxf(_view_px(), 1.0) + tile_chunks)
-		var span_x := span
-		if t > 0.0 and absf(center_ll.y) > 0.6:   # near a pole the visible cap wraps every longitude
-			span_x = float(circ) * 0.5
-		x0 = floori((_center.x - span_x) / tile_chunks)
-		x1 = ceili((_center.x + span_x) / tile_chunks)
-		z0 = floori(maxf(_center.y - span, -pole - 2.0) / tile_chunks)
-		z1 = ceili(minf(_center.y + span, pole + 2.0) / tile_chunks)
-		if (x1 - x0 + 1) * (z1 - z0 + 1) <= MAX_TILES_DRAWN or level >= MapMath.MAX_LEVEL:
+		ranges = []
+		var count := 0
+		for s in shown:
+			var r := _tile_range(s[1], s[2], level)
+			ranges.append(r)
+			count += r.get_area()
+		if count <= MAX_TILES_DRAWN or level >= MapMath.max_level():
 			break
 		level += 1
-	if t >= 0.5:   # a lit disc behind the sphere
-		draw_circle(origin, scale, Color(0.05, 0.07, 0.14))
-	var fog := _revealed_tiles(level) if not show_true_planet else {}
-	# Request coarse ancestors of what is on screen first: the picture is complete at once.
-	# The queue is kept: a pan asks only for the tiles that just came into view.
-	var view_key := [level, x0, x1, z0, z1, tiles.generation, tiles.seed_v]
-	if view_key != _view_key:
-		_view_key = view_key
-		request_view(level, x0, x1, z0, z1)
-	for tz in range(z0, z1 + 1):
-		for tx in range(x0, x1 + 1):
-			var biome := tiles.best_biome(level, tx, tz)
-			if biome == "":
-				continue
-			var cx0 := float(tx * tile_chunks)
-			var cz0 := float(tz * tile_chunks)
-			var mid := MapMath.lonlat(Vector2(cx0 + tile_chunks * 0.5, cz0 + tile_chunks * 0.5), circ)
-			if not MapMath.facing(mid, center_ll, t):
-				continue
-			var col := _biome_color(biome)
-			if not show_true_planet and not fog.has(_fog_key(tx, tz, tile_chunks, level)):
-				col = col.darkened(1.0 - DIM)
+	var fog := _revealed_set(level)
+	var faces: Array = []
+	for s in shown:
+		faces.append(MapMath.face_of(s[1]))
+	_request(faces, ranges, level, fog)
+	for n in shown.size():
+		var cell: Vector2i = shown[n][0]
+		var pl: Array = shown[n][1]
+		var f: int = faces[n]
+		var cx := 2.0 * cell.x
+		var cy := 2.0 * cell.y
+		var b: Array = shown[n][2]
+		draw_rect(_screen_rect(origin, cx + b[0], cy + b[2], cx + b[1], cy + b[3]), FOG)
+		var r: Rect2i = ranges[n]
+		for j in range(r.position.y, r.end.y):
+			for i in range(r.position.x, r.end.x):
+				if not tile_revealed(fog, f, level, i, j):
+					continue
+				var biome := tiles.best_biome(f, level, i, j)
+				if biome == "":
+					continue
+				var tr := MapMath.tile_rect(level, i, j)
+				var a0 := MapMath.local_of_face_uv(pl, f, tr.position.x, tr.position.y)
+				var a1 := MapMath.local_of_face_uv(pl, f, tr.end.x, tr.end.y)
+				draw_rect(_screen_rect(origin, cx + a0[0], cy + a0[1], cx + a1[0], cy + a1[1]), _biome_color(biome))
+		draw_rect(_screen_rect(origin, cx - 1.0, cy - 1.0, cx + 1.0, cy + 1.0), SEAM, false, 1.0)
+
+## The screen rect between two net points, clipped a little past the window so a face far bigger
+## than the screen stays in range.
+func _screen_rect(origin: Vector2, ax: float, ay: float, bx: float, by: float) -> Rect2:
+	var pa := origin + _net_to_screen(ax, ay)
+	var pb := origin + _net_to_screen(bx, by)
+	var lo := pa.min(pb).max(Vector2(-4, -4))
+	var hi := pa.max(pb).min(size + Vector2(4, 4))
+	return Rect2(lo, (hi - lo).max(Vector2.ZERO))
+
+## The tiles of a face at `level` under screen-local bounds [x0, x1, y0, y1] of a placement.
+func _tile_range(pl: Array, b: Array, level: int) -> Rect2i:
+	var a := MapMath.face_uv_of_local(pl, b[0], b[2])
+	var c := MapMath.face_uv_of_local(pl, b[1], b[3])
+	var lo := MapMath.tile_index(minf(a[0], c[0]), minf(a[1], c[1]), level)
+	var hi := MapMath.tile_index(maxf(a[0], c[0]), maxf(a[1], c[1]), level)
+	return Rect2i(lo, hi - lo + Vector2i.ONE)
+
+## The globe: a fog disc, explored tiles drawn over it as projected quads, the face seams on top.
+func _draw_globe(sz: Vector2) -> void:
+	var origin := sz * 0.5
+	var radius := _radius_px()
+	var frame := _frame()
+	if radius < sz.length():
+		draw_circle(origin, radius, FOG)
+	else:
+		draw_rect(Rect2(Vector2.ZERO, sz), FOG)
+	var boxes := _globe_boxes(sz, frame, radius)
+	var level := mini(MapMath.level_for(_k()), maxi(MapMath.max_level() - MapMath.GLOBE_MIN_SPLIT, 0))
+	var faces: Array = []
+	var ranges: Array = []
+	while true:
+		faces = []
+		ranges = []
+		var count := 0
+		for f in boxes:
+			var box: Rect2 = boxes[f]
+			var lo := MapMath.tile_index(box.position.x, box.position.y, level)
+			var hi := MapMath.tile_index(box.end.x, box.end.y, level)
+			var r := Rect2i(lo, hi - lo + Vector2i.ONE)
+			faces.append(f)
+			ranges.append(r)
+			count += r.get_area()
+		if count <= MAX_TILES_DRAWN or level >= MapMath.max_level():
+			break
+		level += 1
+	var fog := _revealed_set(level)
+	_request(faces, ranges, level, fog)
+	var uvs := PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO])
+	for n in faces.size():
+		var f: int = faces[n]
+		var r: Rect2i = ranges[n]
+		for j in range(r.position.y, r.end.y):
+			for i in range(r.position.x, r.end.x):
+				if not tile_revealed(fog, f, level, i, j):
+					continue
+				var biome := tiles.best_biome(f, level, i, j)
+				if biome == "":
+					continue
+				var quad := _globe_quad(frame, origin, radius, f, MapMath.tile_rect(level, i, j))
+				if quad.is_empty():
+					continue
+				var col := _biome_color(biome)
+				draw_primitive(quad, PackedColorArray([col, col, col, col]), uvs)
+	_draw_globe_seams(frame, origin, radius)
+
+## A tile's four corners on screen, a corner behind the globe pushed to the rim; empty when the
+## whole tile is behind.
+func _globe_quad(frame: Array, origin: Vector2, radius: float, f: int, tr: Rect2) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	var front := false
+	for corner in [tr.position, Vector2(tr.end.x, tr.position.y), tr.end, Vector2(tr.position.x, tr.end.y)]:
+		var q := MapMath.globe_project(frame, MapMath.dir_of_face(f, corner.x, corner.y))
+		var p := Vector2(q.x, q.y)
+		if q.z > 0.0:
+			front = true
+		elif p.length_squared() > 0.0:
+			p = p.normalized()
+		pts.append(origin + p * radius)
+	return pts if front else PackedVector2Array()
+
+## Which part of each face the globe shows: { face: Rect2 of (u, v) }, from a grid over the view and
+## points round the rim, padded by a grid step so nothing between samples is missed.
+func _globe_boxes(sz: Vector2, frame: Array, radius: float) -> Dictionary:
+	var samples: Array = []
+	for gy in GLOBE_GRID + 1:
+		for gx in GLOBE_GRID + 1:
+			samples.append((Vector2(gx, gy) / float(GLOBE_GRID) - Vector2(0.5, 0.5)) * sz)
+	if radius < sz.length():
+		for a in 64:
+			samples.append(Vector2.from_angle(a * TAU / 64.0) * radius * 0.999)
+	var boxes: Dictionary = {}
+	for s in samples:
+		var d := MapMath.globe_unproject(frame, s / radius)
+		if d == Vector3.ZERO:
+			continue
+		var fuv := MapMath.face_uv(d)
+		var f := int(fuv.x)
+		var p := Vector2(fuv.y, fuv.z)
+		boxes[f] = (boxes[f] as Rect2).expand(p) if boxes.has(f) else Rect2(p, Vector2.ZERO)
+	# A grid step in local units at the middle of the view, more toward the rim; the pad is generous.
+	var pad := minf(2.0 * maxf(sz.x, sz.y) / float(GLOBE_GRID) / maxf(_k(), 0.000001), 2.0)
+	var full := Rect2(-1, -1, 2, 2)
+	for f in boxes.keys():
+		boxes[f] = (boxes[f] as Rect2).grow(pad).intersection(full)
+	return boxes
+
+## The cube's edges on the globe, so the papercraft reads when folded too.
+func _draw_globe_seams(frame: Array, origin: Vector2, radius: float) -> void:
+	const SEGMENTS := 16
+	for f in 6:
+		for e in 4:
 			var pts := PackedVector2Array()
-			var folded := false
-			for corner in [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]:
-				var ll := MapMath.lonlat(Vector2(cx0, cz0) + corner * float(tile_chunks), circ)
-				ll.y = clampf(ll.y, -PI * 0.5, PI * 0.5)   # a corner past a pole sits on it
-				if not MapMath.facing(ll, center_ll, t):
-					folded = true   # a corner over the limb would draw mirrored
-					break
-				pts.append(origin + MapMath.project(ll, center_ll, t) * scale)
-			if folded:
-				continue
-			draw_colored_polygon(pts, col)
-	_draw_markers(sz, origin, center_ll, t, scale, circ)
+			for s in SEGMENTS + 1:
+				var t := -1.0 + 2.0 * s / float(SEGMENTS)
+				var uv: Vector2 = [Vector2(t, -1), Vector2(1, t), Vector2(t, 1), Vector2(-1, t)][e]
+				var q := MapMath.globe_project(frame, MapMath.dir_of_face(f, uv.x, uv.y))
+				if q.z <= 0.0:
+					if pts.size() >= 2:
+						draw_polyline(pts, SEAM, 1.0)
+					pts = PackedVector2Array()
+					continue
+				pts.append(origin + Vector2(q.x, q.y) * radius)
+			if pts.size() >= 2:
+				draw_polyline(pts, SEAM, 1.0)
 
-## Queue the tiles of a visible rectangle at `level` and their coarse ancestors; tiles already
-## cached or queued are skipped, and queued tiles that are no longer in view are dropped.
-func request_view(level: int, x0: int, x1: int, z0: int, z1: int) -> void:
-	var coarse := mini(level + 3, MapMath.MAX_LEVEL)
+## Queue the explored tiles in view and their coarse ancestors; tiles already cached or queued are
+## skipped, queued tiles no longer in view are dropped. Fogged tiles are never sampled.
+func _request(faces: Array, ranges: Array, level: int, fog: Dictionary) -> void:
+	var view_key := [level, faces, ranges, tiles.generation, tiles.seed_v, _reveal_rev]
+	if view_key == _view_key:
+		return
+	_view_key = view_key
+	var coarse := mini(level + COARSE_STEP, MapMath.max_level())
 	var shift := coarse - level
-	tiles.retain_pending({
-		level: Rect2i(x0, z0, x1 - x0 + 1, z1 - z0 + 1),
-		coarse: Rect2i(x0 >> shift, z0 >> shift, (x1 >> shift) - (x0 >> shift) + 1, (z1 >> shift) - (z0 >> shift) + 1),
-	})
-	for tz in range(z0, z1 + 1):
-		for tx in range(x0, x1 + 1):
-			if coarse > level:
-				tiles.request(coarse, tx >> shift, tz >> shift)
-			tiles.request(level, tx, tz)
-
-## The fog-set key of a tile: its centre chunk, seam-wrapped, as a tile at `level`.
-func _fog_key(tx: int, tz: int, tile_chunks: int, level: int) -> Vector2i:
-	return MapMath.tile_of(TerrainSlice.wrap_chunk(Vector2i(tx * tile_chunks + tile_chunks / 2, tz * tile_chunks + tile_chunks / 2)), level)
+	var keep: Dictionary = {}
+	for n in faces.size():
+		var f: int = faces[n]
+		var r: Rect2i = ranges[n]
+		var fl := Vector2i(f, level)
+		keep[fl] = (keep[fl] as Rect2i).merge(r) if keep.has(fl) else r
+		var cr := Rect2i(r.position.x >> shift, r.position.y >> shift,
+			((r.end.x - 1) >> shift) - (r.position.x >> shift) + 1, ((r.end.y - 1) >> shift) - (r.position.y >> shift) + 1)
+		var fc := Vector2i(f, coarse)
+		keep[fc] = (keep[fc] as Rect2i).merge(cr) if keep.has(fc) else cr
+	tiles.retain_pending(keep)
+	for n in faces.size():
+		var f: int = faces[n]
+		var r: Rect2i = ranges[n]
+		for j in range(r.position.y, r.end.y):
+			for i in range(r.position.x, r.end.x):
+				if not tile_revealed(fog, f, level, i, j):
+					continue
+				if coarse > level:
+					tiles.request(f, coarse, i >> shift, j >> shift)
+				tiles.request(f, level, i, j)
 
 func _biome_color(biome: String) -> Color:
 	if minimap != null and minimap.has_method("biome_color"):
 		return minimap.biome_color(biome)
 	return Color(0.4, 0.4, 0.4)
 
-func _draw_markers(sz: Vector2, origin: Vector2, center_ll: Vector2, t: float, scale: float, circ: int) -> void:
-	var pcp := _player_chunk_pos()
-	if pcp.x < INF:
-		var pll := MapMath.lonlat(pcp, circ)
-		if MapMath.facing(pll, center_ll, t):
-			draw_circle(origin + MapMath.project(pll, center_ll, t) * scale, 4.0, Color.WHITE)
+# ---------------------------------------------------------------------------
+# Markers
+# ---------------------------------------------------------------------------
+
+func _draw_markers(sz: Vector2) -> void:
+	var origin := sz * 0.5
+	var pxz := _player_xz()
+	if not pxz.is_empty():
+		var s := screen_of_xz(pxz[0], pxz[1])
+		if s["visible"]:
+			draw_circle(origin + s["pos"], 4.0, Color.WHITE)
 	var home := home_marker(sz)
 	if not home.is_empty():
 		_draw_marker(origin, home, "Home", Color(1.0, 0.8, 0.2), Color(1.0, 0.9, 0.5))
@@ -344,69 +712,16 @@ func home_marker(sz: Vector2) -> Dictionary:
 		return {}
 	return marker_for(player_slice.respawn_world_pos, sz)
 
-## A `{chunk, local}` place as a marker for a window of `sz`: { inside, pos, distance, angle }. Flat
-## (close in) the distance is the straight way round the planet; once the globe blend is high it is the
-## great-circle arc and the direction its initial bearing.
+## A `{chunk, local}` place as a marker for a window of `sz`: { inside, pos, distance, angle }. The
+## distance is the great-circle arc from the view centre; a place off screen (or behind the globe)
+## is an arrow at the edge toward it.
 func marker_for(world: Dictionary, sz: Vector2) -> Dictionary:
-	var circ := circumference()
-	var hc: Vector2i = world["chunk"]
-	var hl: Vector3 = world["local"]
-	var view_chunk := Vector2i(floori(_center.x), floori(_center.y))
-	var view_local := (_center - Vector2(view_chunk)) * TerrainSlice.CHUNK_METERS
-	var d := MapMath.delta_m(view_chunk, view_local, hc, Vector2(hl.x, hl.z))
-	# The short way round the planet.
-	var circ_m := float(circ) * TerrainSlice.CHUNK_METERS
-	d.x = fposmod(d.x + circ_m * 0.5, circ_m) - circ_m * 0.5
-	var hcenter := Vector2(hc) + Vector2(hl.x, hl.z) / TerrainSlice.CHUNK_METERS
-	var center_ll := MapMath.lonlat(_center, circ)
-	var hll := MapMath.lonlat(hcenter, circ)
-	var t := _t()
-	var off := MapMath.project(hll, center_ll, t) * MapMath.scale_px(_zoom, _view_px(), circ)
-	if t >= GREAT_CIRCLE_BLEND:
-		d = MapMath.great_circle_offset_m(center_ll, hll, circ_m)
-	if not MapMath.facing(hll, center_ll, t):
-		off = d.normalized() * maxf(sz.x, sz.y)   # behind the globe: an arrow at the rim toward it
-	return MapMath.clamp_home(off, sz * 0.5, d.length(), 14.0)
-
-## The `{chunk, local}` place under a point `offset` px from the window centre, or {} when there is
-## none (off the planet, behind the globe, or the globe blend makes the flat inverse unreliable).
-func world_pos_at(offset: Vector2) -> Dictionary:
-	var circ := circumference()
-	if _t() > 0.0:
-		return _world_pos_at_globe(offset)
-	var scale := MapMath.scale_px(_zoom, _view_px(), circ)
-	if scale <= 0.0:
-		return {}
-	var center_ll := MapMath.lonlat(_center, circ)
-	var rad := offset / scale
-	var ll := Vector2(center_ll.x + rad.x, center_ll.y - rad.y)
-	return _pos_from_ll(ll, circ)
-
-## Globe inverse by fixed-point iteration on `MapMath.project`; {} when it does not converge to the pixel.
-func _world_pos_at_globe(offset: Vector2) -> Dictionary:
-	var circ := circumference()
-	var scale := MapMath.scale_px(_zoom, _view_px(), circ)
-	var center_ll := MapMath.lonlat(_center, circ)
-	var t := _t()
-	var want := offset / scale
-	var ll := Vector2(center_ll.x + want.x, center_ll.y - want.y)
-	for i in 24:
-		ll.y = clampf(ll.y, -PI * 0.5, PI * 0.5)
-		var got := MapMath.project(ll, center_ll, t)
-		var err := want - got
-		if err.length() * scale < 0.5:
-			if not MapMath.facing(ll, center_ll, t):
-				return {}
-			return _pos_from_ll(ll, circ)
-		ll += Vector2(err.x / maxf(cos(ll.y), 0.2), -err.y)
-	return {}
-
-## The exact `{chunk, local}` of a lon/lat (radians); {} past a pole.
-func _pos_from_ll(ll: Vector2, circ: int) -> Dictionary:
-	if absf(ll.y) > PI * 0.5:
-		return {}
-	var cx := ll.x / TAU * float(circ)
-	var cz := -ll.y / (PI * 0.5) * (float(circ) * 0.25)
-	var chunk := Vector2i(floori(cx), floori(cz))
-	var local := Vector3((cx - chunk.x) * TerrainSlice.CHUNK_METERS, 0.0, (cz - chunk.y) * TerrainSlice.CHUNK_METERS)
-	return WorldPos.normalized({ "chunk": TerrainSlice.wrap_chunk(chunk), "local": local })
+	var p := _xz_of_pos(world)
+	var d := MapMath.dir_of_chunk(Vector2(p[0], p[1]))
+	var circ_m := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var dist := MapMath.arc_m(center_dir(), d, circ_m)
+	var s := screen_of_xz(p[0], p[1])
+	var off: Vector2 = s["pos"]
+	if not s["visible"]:   # behind the globe: an arrow at the rim toward it
+		off = off.normalized() * maxf(sz.x, sz.y) if off.length_squared() > 0.0 else Vector2(0.0, -maxf(sz.x, sz.y))
+	return MapMath.clamp_home(off, sz * 0.5, dist, 14.0)

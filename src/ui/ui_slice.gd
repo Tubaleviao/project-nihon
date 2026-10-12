@@ -1397,21 +1397,21 @@ func _build_map_content() -> Control:
 	box.add_child(map_window)
 	var row := HBoxContainer.new()
 	box.add_child(row)
-	var truth := CheckButton.new()
-	truth.text = "True planet"
-	truth.tooltip_text = "Show unexplored land in full colour"
-	truth.focus_mode = Control.FOCUS_NONE
-	truth.toggled.connect(func(on: bool) -> void:
-		map_window.show_true_planet = on
-		map_window.queue_redraw())
-	row.add_child(truth)
+	var fold := CheckButton.new()
+	fold.text = "Planet"
+	fold.tooltip_text = "Fold the flat map into the planet"
+	fold.focus_mode = Control.FOCUS_NONE
+	fold.toggled.connect(func(on: bool) -> void: map_window.set_planet(on))
+	row.add_child(fold)
 	var here := Button.new()
 	here.text = "Centre on me"
 	here.focus_mode = Control.FOCUS_NONE
 	here.pressed.connect(func() -> void: map_window.center_on_player())
 	row.add_child(here)
 	var hint := Label.new()
-	hint.text = "drag: pan / turn   wheel: zoom"
+	hint.text = "drag: pan  wheel: zoom  right-click: waypoint"
+	hint.tooltip_text = "Right-click adds a waypoint, or deletes the one under the cursor"
+	hint.mouse_filter = Control.MOUSE_FILTER_PASS
 	row.add_child(hint)
 	return box
 

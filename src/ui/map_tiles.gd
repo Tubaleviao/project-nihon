@@ -1,9 +1,9 @@
 extends RefCounted
-## Tile pyramid for the Map window (Phase 111). A tile at (level, tx, tz) is 2^level chunks on a
-## side and holds the biome of its centre chunk — a pure function of (seed, WORLDGEN_VERSION, tile),
-## so the cache key carries all three. Requests are answered coarse level first; the cache is bounded
-## and drops its oldest tile first. The window takes batches with `take` and computes them on a
-## worker thread; the suite drives the same path synchronously with `pump`.
+## Tile pyramid for the Map window. A tile at (face, level, i, j) is 2^level finest tiles on a side
+## of one cube face (`MapMath`) and holds the biome of its centre chunk — a pure function of (seed,
+## WORLDGEN_VERSION, tile), so the cache key carries all of them. Requests are answered coarse level
+## first; the cache is bounded and drops its oldest tile first. The window takes batches with `take`
+## and computes them on a worker thread; the suite drives the same path synchronously with `pump`.
 
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const MapMath := preload("res://src/ui/map_math.gd")
@@ -15,32 +15,33 @@ const STALE_MAX := 20000
 var seed_v: int = 0
 var version: int = TerrainSlice.WORLDGEN_VERSION
 var _cache: Dictionary = {}                 # key -> biome (insertion order = age)
-var _pending: Dictionary = {}               # level -> { key: Vector3i(level, tx, tz) }
+var _pending: Dictionary = {}               # level -> { key: Vector4i(face, level, i, j) }
 var _inflight: Dictionary = {}              # key -> true, taken but not yet stored
 var _stale: Dictionary = {}                 # tiles from before the last `invalidate`, shown until redone (bounded by STALE_MAX, oldest first)
 ## Bumps whenever cached results stop being valid; a batch computed under an older one is dropped.
 var generation: int = 0
 
-func key_of(level: int, tx: int, tz: int) -> String:
-	return MapMath.tile_key(seed_v, version, level, tx, tz)
+func key_of(f: int, level: int, i: int, j: int) -> String:
+	return MapMath.tile_key(seed_v, version, f, level, i, j)
 
 func size() -> int:
 	return _cache.size()
 
-func has_tile(level: int, tx: int, tz: int) -> bool:
-	return _cache.has(key_of(level, tx, tz))
+func has_tile(f: int, level: int, i: int, j: int) -> bool:
+	return _cache.has(key_of(f, level, i, j))
 
 ## The cached biome of a tile, "" when it is not computed yet.
-func get_tile(level: int, tx: int, tz: int) -> String:
-	return str(_cache.get(key_of(level, tx, tz), ""))
+func get_tile(f: int, level: int, i: int, j: int) -> String:
+	return str(_cache.get(key_of(f, level, i, j), ""))
 
 ## The finest computed tile covering this one: the tile itself, else its nearest coarser ancestor.
-func best_biome(level: int, tx: int, tz: int) -> String:
+func best_biome(f: int, level: int, i: int, j: int) -> String:
 	var l := level
-	var x := tx
-	var z := tz
-	while l <= MapMath.MAX_LEVEL:
-		var k := key_of(l, x, z)
+	var x := i
+	var z := j
+	var top := MapMath.max_level()
+	while l <= top:
+		var k := key_of(f, l, x, z)
 		if _cache.has(k):
 			return str(_cache[k])
 		if not _stale.is_empty() and _stale.has(k):
@@ -51,13 +52,13 @@ func best_biome(level: int, tx: int, tz: int) -> String:
 	return ""
 
 ## Queue a tile unless it is cached, queued or being computed.
-func request(level: int, tx: int, tz: int) -> void:
-	var k := key_of(level, tx, tz)
+func request(f: int, level: int, i: int, j: int) -> void:
+	var k := key_of(f, level, i, j)
 	if _cache.has(k) or _inflight.has(k):
 		return
 	if not _pending.has(level):
 		_pending[level] = {}
-	_pending[level][k] = Vector3i(level, tx, tz)
+	_pending[level][k] = Vector4i(f, level, i, j)
 
 func pending_count() -> int:
 	var n := 0
@@ -68,18 +69,15 @@ func pending_count() -> int:
 func clear_pending() -> void:
 	_pending.clear()
 
-## Drop queued tiles outside `view` (level -> Rect2i of tile coordinates, edges included in size);
-## queued tiles inside it, and the rest of the queue, stay.
+## Drop queued tiles outside `view` (Vector2i(face, level) -> Rect2i of tile coordinates); queued
+## tiles inside it stay.
 func retain_pending(view: Dictionary) -> void:
 	for l in _pending.keys():
-		if not view.has(l):
-			_pending.erase(l)
-			continue
-		var r: Rect2i = view[l]
 		var q: Dictionary = _pending[l]
 		for k in q.keys():
-			var t: Vector3i = q[k]
-			if t.y < r.position.x or t.y >= r.end.x or t.z < r.position.y or t.z >= r.end.y:
+			var t: Vector4i = q[k]
+			var fl := Vector2i(t.x, t.y)
+			if not view.has(fl) or not (view[fl] as Rect2i).has_point(Vector2i(t.z, t.w)):
 				q.erase(k)
 		if q.is_empty():
 			_pending.erase(l)
@@ -103,21 +101,21 @@ func take(n: int) -> Array:
 	return out
 
 ## The biome of a tile. Pure and static: safe on a worker thread.
-static func sample(seed_in: int, level: int, tx: int, tz: int) -> String:
-	return TerrainSlice.biome_for_chunk(MapMath.tile_center_chunk(level, tx, tz), seed_in)
+static func sample(seed_in: int, f: int, level: int, i: int, j: int) -> String:
+	return TerrainSlice.biome_for_chunk(MapMath.tile_center_chunk(f, level, i, j), seed_in)
 
-## Compute a taken batch -> [[Vector3i, biome]]. Static, for a worker.
+## Compute a taken batch -> [[Vector4i, biome]]. Static, for a worker.
 static func compute(seed_in: int, batch: Array) -> Array:
 	var out: Array = []
 	for t in batch:
-		out.append([t, sample(seed_in, t.x, t.y, t.z)])
+		out.append([t, sample(seed_in, t.x, t.y, t.z, t.w)])
 	return out
 
 ## Store a computed batch (main thread), oldest tiles dropped past CACHE_MAX.
 func store(results: Array) -> void:
 	for r in results:
-		var t: Vector3i = r[0]
-		var k := key_of(t.x, t.y, t.z)
+		var t: Vector4i = r[0]
+		var k := key_of(t.x, t.y, t.z, t.w)
 		_inflight.erase(k)
 		_cache.erase(k)   # re-insert as the newest
 		_cache[k] = r[1]

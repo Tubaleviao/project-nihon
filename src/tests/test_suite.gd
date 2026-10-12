@@ -451,7 +451,7 @@ func run() -> void:
 	_run_test("hud: a dropped tool keeps its wear",            _test_hud_drop_keeps_durability)
 	_run_test("hud: skills list + window keys",                _test_hud_skills_rows_and_window_keys)
 	_run_test("hud: window dock letters match the key map",    _test_hud_window_dock)
-	_run_test("map: projection blend is a pure function of zoom", _test_map_projection_blend)
+	_run_test("map: cube faces are equal, seams meet, the globe inverts", _test_map_cube_net)
 	_run_test("map: tiles are pure and keyed by seed and version", _test_map_tile_purity)
 	_run_test("map: tile cache is bounded, coarse answered first", _test_map_tile_cache)
 	_run_test("map: revealed set round-trips through save and load", _test_map_revealed_roundtrip)
@@ -461,7 +461,7 @@ func run() -> void:
 	_run_test("map: waypoints round-trip, cap and seed scope",  _test_map_waypoints)
 	_run_test("map: minimap drops out-of-world chunks and late seeds", _test_map_minimap_load_and_seed)
 	_run_test("map: stale tiles are capped and the queue survives a pan", _test_map_tiles_stale_and_queue)
-	_run_test("map: window zoom, redraw signature and great-circle home", _test_map_window_phase117)
+	_run_test("map: window zoom, fog, hover, waypoint delete and great-circle home", _test_map_window_phase117)
 	_run_test("ui: HUD toasts are bounded and de-duplicated",   _test_ui_toasts)
 	_run_test("ui: a world-version mismatch is one toast, a pre-stamp save none", _test_ui_worldgen_toast)
 	_run_test("map: M and the dock box toggle the Map window",  _test_map_window_key)
@@ -5447,96 +5447,143 @@ const _MapTiles := preload("res://src/ui/map_tiles.gd")
 const _MapWindow := preload("res://src/ui/map_window.gd")
 const _RevealedStore := preload("res://src/persistence/revealed_store.gd")
 
-func _test_map_projection_blend() -> void:
+func _test_map_cube_net() -> void:
+	# Sphere <-> face round trip on every face, edges and corners included.
+	for f in 6:
+		for uv in [Vector2(0, 0), Vector2(0.5, -0.3), Vector2(-0.99, 0.99), Vector2(0.999, 0.2)]:
+			var back := _MapMath.face_uv(_MapMath.dir_of_face(f, uv.x, uv.y))
+			assert_eq(int(back.x), f, "face %d round-trips" % f)
+			assert_true(Vector2(back.y, back.z).distance_to(uv) < 0.000001, "and so does its (u, v)")
+	# Chunks <-> sphere: within 2 m (Vector3 is single precision) anywhere, next to a pole too, and the
+	# poles land on the pole faces.
 	var circ := TerrainSlice.circumference_chunks()
-	var zmax := _MapMath.zoom_max(circ)
-	assert_eq(_MapMath.blend(_MapMath.ZOOM_MIN, zmax), 0.0, "flat at the near end")
-	assert_eq(_MapMath.blend(zmax, zmax), 1.0, "a sphere at the far end")
-	var prev := -1.0
-	var worst_jump := 0.0
-	var z := _MapMath.ZOOM_MIN
-	var prev_pos := Vector2.ZERO
-	var ll := Vector2(0.3, 0.2)
-	var center := Vector2(0.1, -0.1)
-	while z <= zmax:
-		var t := _MapMath.blend(z, zmax)
-		assert_true(t >= prev, "blend is monotone at zoom %.2f" % z)
-		prev = t
-		var pos := _MapMath.project(ll, center, t)
-		if z > _MapMath.ZOOM_MIN:
-			worst_jump = maxf(worst_jump, pos.distance_to(prev_pos))
-		prev_pos = pos
-		z += 0.01
-	assert_true(worst_jump < 0.01, "no jump in position along the zoom (%f)" % worst_jump)
-	# Flat end: the equirectangular picture, exactly.
-	assert_true(_MapMath.project(ll, center, 0.0).is_equal_approx(Vector2(0.2, -0.3)), "t=0 is the flat map")
-	# Far end: every point sits on the unit disc.
-	for p in [Vector2(0, 0), Vector2(1.2, 0.7), Vector2(-2.9, -1.4), Vector2(3.0, 1.5)]:
-		assert_true(_MapMath.project(p, center, 1.0).length() <= 1.0 + 0.000001, "globe points are inside the unit disc")
-	assert_false(_MapMath.facing(Vector2(PI, 0.0), Vector2.ZERO, 1.0), "the far side is hidden on the globe")
-	assert_true(_MapMath.facing(Vector2(PI, 0.0), Vector2.ZERO, 0.0), "nothing is hidden on the flat map")
+	for p in [Vector2(0.5, 0.5), Vector2(1234.25, -5678.5), Vector2(circ / 2 - 3, circ / 8), Vector2(-circ / 3, -circ / 5), Vector2(-3000.5, -circ / 4 + 40)]:
+		assert_true(_MapMath.chunk_of_dir(_MapMath.dir_of_chunk(p)).distance_to(p) < 0.05, "chunk %s round-trips (%s)" % [p, _MapMath.chunk_of_dir(_MapMath.dir_of_chunk(p))])
+	assert_eq(int(_MapMath.face_uv(_MapMath.dir_of_chunk(Vector2(77, -circ / 4))).x), 4, "the map-up pole is face 4")
+	assert_eq(int(_MapMath.face_uv(_MapMath.dir_of_chunk(Vector2(77, circ / 4))).x), 5, "the map-down pole is face 5")
+	# Seams: stepping over any edge of any placement lands on the same point of the sphere.
+	var worst := 0.0
+	for f in 6:
+		var pl := _MapMath.placement_of(f)
+		for turn in 4:
+			for t in [-0.9, -0.2, 0.0, 0.6]:
+				worst = maxf(worst, _MapMath.local_dir(pl, 1.0, t).distance_to(_MapMath.local_dir(_MapMath.step(pl, 1, 0), -1.0, t)))
+				worst = maxf(worst, _MapMath.local_dir(pl, -1.0, t).distance_to(_MapMath.local_dir(_MapMath.step(pl, -1, 0), 1.0, t)))
+				worst = maxf(worst, _MapMath.local_dir(pl, t, 1.0).distance_to(_MapMath.local_dir(_MapMath.step(pl, 0, 1), t, -1.0)))
+				worst = maxf(worst, _MapMath.local_dir(pl, t, -1.0).distance_to(_MapMath.local_dir(_MapMath.step(pl, 0, -1), t, 1.0)))
+			assert_eq(_MapMath.step(_MapMath.step(pl, 1, 0), -1, 0), pl, "right then left is where it started")
+			var lap := pl
+			for i in 4:
+				lap = _MapMath.step(lap, 1, 0)
+			assert_eq(lap, pl, "four faces over is the same face the same way up")
+			pl = [pl[0], pl[2], -(pl[1] as Vector3)]
+	assert_true(worst < 0.000001, "every seam meets exactly (%f)" % worst)
+	# The net's cross has all six faces, whichever face it is built round.
+	for f in 6:
+		var seen: Dictionary = {}
+		for cell in _MapMath.net_cells(_MapMath.placement_of(f), -2, 2):
+			seen[_MapMath.face_of(cell[1])] = true
+		assert_eq(seen.size(), 6, "the net round face %d shows every face" % f)
+	# Equal faces, square tiles: a tile's two sides differ by under 35% anywhere, the pole face included.
+	var level := maxi(_MapMath.max_level() - 4, 0)
+	var n := _MapMath.tiles_per_side(level)
+	for f in [0, 4]:
+		for ij in [Vector2i(0, 0), Vector2i(n / 2, n / 2), Vector2i(n - 1, n / 3), Vector2i(n / 4, n - 1)]:
+			var r := _MapMath.tile_rect(level, ij.x, ij.y)
+			var a := _MapMath.dir_of_face(f, r.position.x, r.position.y)
+			var w := a.angle_to(_MapMath.dir_of_face(f, r.end.x, r.position.y))
+			var h := a.angle_to(_MapMath.dir_of_face(f, r.position.x, r.end.y))
+			assert_true(maxf(w, h) / minf(w, h) < 1.35, "face %d tile %s is close to square (%f x %f)" % [f, ij, w, h])
+	assert_true(_MapMath.chunks_per_cell() <= 1.0, "a finest tile is no wider than a chunk")
+	# A pan that crosses faces keeps the point under it; upright turns a band face map-up.
+	var pl0 := _MapMath.placement_of(0)
+	var moved := _MapMath.wrap_local(pl0, 2.5, 0.3)
+	assert_true(_MapMath.local_dir(moved[0], moved[1], moved[2]).distance_to(_MapMath.local_dir(_MapMath.step(pl0, 1, 0), 0.5, 0.3)) < 0.000001, "a pan over an edge keeps the point")
+	var over := _MapMath.wrap_local(pl0, 0.2, 3.5)   # over the up pole onto the back face, upside down
+	var up := _MapMath.upright(over[0], over[1], over[2])
+	assert_eq(up[0][2], Vector3(0, 1, 0), "upright turns the band face map-up")
+	assert_true(_MapMath.local_dir(up[0], up[1], up[2]).distance_to(_MapMath.local_dir(over[0], over[1], over[2])) < 0.000001, "without moving the point")
+	# Double precision: a chunk-space point survives the face round trip to a millimetre, far out and by a pole.
+	for p in [Vector2(1234567.25, -5678.5), Vector2(-3000.5, -circ / 4 + 3)]:
+		var fuv := _MapMath.face_uv_xz(p.x, p.y)
+		var back := _MapMath.xz_of_face(fuv[0], fuv[1], fuv[2])
+		var wrapped := fposmod(p.x + circ * 0.5, float(circ)) - circ * 0.5
+		assert_true(absf(back[0] - wrapped) < 0.00003 and absf(back[1] - p.y) < 0.00003, "%s round-trips in double precision (%s)" % [p, back])
+	# Globe: the inverse of the projection, the far side flagged.
+	var frame := _MapMath.globe_frame(pl0, 0.3, -0.2)
+	for d in [Vector3(0.1, 0.2, 1.0).normalized(), Vector3(0.7, -0.5, 0.4).normalized()]:
+		var q := _MapMath.globe_project(frame, d)
+		assert_true(q.z > 0.0 and Vector2(q.x, q.y).length() <= 1.0 + 0.000001, "a near point is on the disc")
+		assert_true(_MapMath.globe_unproject(frame, Vector2(q.x, q.y)).distance_to(d) < 0.000001, "and inverts")
+	assert_true(_MapMath.globe_project(frame, -frame[0]).z < 0.0, "the far side is behind")
+	assert_eq(_MapMath.globe_unproject(frame, Vector2(1.1, 0.0)), Vector3.ZERO, "off the disc is no place")
+	assert_true(_MapMath.zoom_max(true) < _MapMath.zoom_max(false), "the planet fits nearer than the whole net")
 
 func _test_map_tile_purity() -> void:
 	var a := _MapTiles.new()
 	a.reset(1234)
 	var b := _MapTiles.new()
 	b.reset(1234)
-	for lt in [[0, 5, -3], [3, 11, 4], [9, -2, 1]]:
-		a.request(lt[0], lt[1], lt[2])
-		b.request(lt[0], lt[1], lt[2])
+	var top := _MapMath.max_level()
+	var cases := [[0, 0, 5, 3], [4, 3, 11, 4], [5, top - 2, 2, 1], [2, top, 0, 0]]
+	for t in cases:
+		a.request(t[0], t[1], t[2], t[3])
+		b.request(t[0], t[1], t[2], t[3])
 	a.pump(10)
 	b.pump(10)
 	var terrain := TerrainSlice.new()
 	terrain.set_world_seed(1234)
-	for lt in [[0, 5, -3], [3, 11, 4], [9, -2, 1]]:
-		assert_eq(a.get_tile(lt[0], lt[1], lt[2]), b.get_tile(lt[0], lt[1], lt[2]), "a tile is identical across runs")
-		var c := _MapMath.tile_center_chunk(lt[0], lt[1], lt[2])
-		assert_eq(a.get_tile(lt[0], lt[1], lt[2]), terrain.get_biome_at_chunk(c), "the tile equals the terrain's sample at its centre")
+	for t in cases:
+		assert_eq(a.get_tile(t[0], t[1], t[2], t[3]), b.get_tile(t[0], t[1], t[2], t[3]), "a tile is identical across runs")
+		var c := _MapMath.tile_center_chunk(t[0], t[1], t[2], t[3])
+		assert_eq(a.get_tile(t[0], t[1], t[2], t[3]), terrain.get_biome_at_chunk(c), "the tile equals the terrain's sample at its centre")
 	terrain.free()
-	var k := a.key_of(3, 1, 1)
+	var k := a.key_of(0, 3, 1, 1)
+	assert_true(a.key_of(1, 3, 1, 1) != k, "the face is in the key")
 	a.reset(99)
-	assert_true(a.key_of(3, 1, 1) != k, "the seed is in the key")
+	assert_true(a.key_of(0, 3, 1, 1) != k, "the seed is in the key")
 	a.version += 1
-	assert_true(a.key_of(3, 1, 1) != k and a.key_of(3, 1, 1) != _MapMath.tile_key(99, TerrainSlice.WORLDGEN_VERSION, 3, 1, 1), "the version is in the key")
+	assert_true(a.key_of(0, 3, 1, 1) != k and a.key_of(0, 3, 1, 1) != _MapMath.tile_key(99, TerrainSlice.WORLDGEN_VERSION, 0, 3, 1, 1), "the version is in the key")
 
 func _test_map_tile_cache() -> void:
 	var t := _MapTiles.new()
 	t.reset(7)
-	t.request(0, 1, 1)
-	t.request(5, 0, 0)
-	t.request(2, 3, 3)
+	t.request(0, 0, 1, 1)
+	t.request(3, 5, 0, 0)
+	t.request(1, 2, 3, 3)
 	var got := t.take(3)
-	assert_eq(got.map(func(v: Vector3i) -> int: return v.x), [5, 2, 0], "coarser levels are answered first")
+	assert_eq(got.map(func(v: Vector4i) -> int: return v.y), [5, 2, 0], "coarser levels are answered first")
 	t.store(_MapTiles.compute(7, got))
 	# Duplicates are not re-queued once cached or in flight.
-	t.request(5, 0, 0)
+	t.request(3, 5, 0, 0)
 	assert_eq(t.pending_count(), 0, "a cached tile is not requested again")
 	# Bounded: past the cap the oldest go first.
 	t.reset(7)
-	var first := t.key_of(0, 0, 0)
+	var first := t.key_of(0, 0, 0, 0)
 	var results: Array = []
 	for i in _MapTiles.CACHE_MAX + 5:
-		results.append([Vector3i(0, i, 0), "Ocean"])
+		results.append([Vector4i(0, 0, i, 0), "Ocean"])
 	t.store(results)
 	assert_eq(t.size(), _MapTiles.CACHE_MAX, "the cache never exceeds its cap")
-	assert_false(t.has_tile(0, 0, 0), "the oldest tile was dropped")
-	assert_true(t.has_tile(0, _MapTiles.CACHE_MAX + 4, 0), "the newest tile stays")
+	assert_false(t.has_tile(0, 0, 0, 0), "the oldest tile was dropped")
+	assert_true(t.has_tile(0, 0, _MapTiles.CACHE_MAX + 4, 0), "the newest tile stays")
 	assert_true(first != "", "keys are non-empty")
-	# Missing tiles fall back to a coarser ancestor.
+	# Missing tiles fall back to a coarser ancestor on the same face.
 	var u := _MapTiles.new()
 	u.reset(7)
-	u.store([[Vector3i(3, 1, 1), "Ocean"]])
-	assert_eq(u.best_biome(0, 8, 8), "Ocean", "a fine tile shows its coarse ancestor until it is computed")
+	u.store([[Vector4i(2, 3, 1, 1), "Ocean"]])
+	assert_eq(u.best_biome(2, 0, 8, 8), "Ocean", "a fine tile shows its coarse ancestor until it is computed")
+	assert_eq(u.best_biome(1, 0, 8, 8), "", "another face's tile is not its ancestor")
 	# Invalidate: old answers keep showing, but a batch taken before it must be dropped by generation.
 	var g := u.generation
 	u.invalidate()
 	assert_true(u.generation != g, "invalidate bumps the generation")
 	assert_eq(u.size(), 0, "invalidate empties the live cache")
-	assert_eq(u.best_biome(3, 1, 1), "Ocean", "the stale answer shows until recomputed")
-	u.store([[Vector3i(3, 1, 1), "Desert"]])
-	assert_eq(u.best_biome(3, 1, 1), "Desert", "a fresh answer wins over the stale one")
+	assert_eq(u.best_biome(2, 3, 1, 1), "Ocean", "the stale answer shows until recomputed")
+	u.store([[Vector4i(2, 3, 1, 1), "Desert"]])
+	assert_eq(u.best_biome(2, 3, 1, 1), "Desert", "a fresh answer wins over the stale one")
 	u.reset(7)
-	assert_eq(u.best_biome(3, 1, 1), "", "reset drops stale answers too")
+	assert_eq(u.best_biome(2, 3, 1, 1), "", "reset drops stale answers too")
 
 func _test_map_revealed_roundtrip() -> void:
 	var path := "user://test_revealed.json"
@@ -5757,12 +5804,13 @@ func _test_map_tiles_stale_and_queue() -> void:
 	var u := _MapTiles.new()
 	u.reset(3)
 	for x in 6:
-		u.request(2, x, 0)
-	u.retain_pending({ 2: Rect2i(2, 0, 4, 1) })
-	assert_eq(u.pending_count(), 4, "a pan drops only the tiles that left the view")
-	u.request(2, 6, 0)
+		u.request(0, 2, x, 0)
+	u.request(1, 2, 3, 0)
+	u.retain_pending({ Vector2i(0, 2): Rect2i(2, 0, 4, 1) })
+	assert_eq(u.pending_count(), 4, "a pan drops only the tiles that left the view, and faces out of view")
+	u.request(0, 2, 6, 0)
 	assert_eq(u.pending_count(), 5, "and adds the one that came into view")
-	u.retain_pending({ 1: Rect2i(0, 0, 9, 9) })
+	u.retain_pending({ Vector2i(0, 1): Rect2i(0, 0, 9, 9) })
 	assert_eq(u.pending_count(), 0, "a level out of view is dropped whole")
 
 func invalidate_twice_check(t: RefCounted) -> void:
@@ -5770,14 +5818,15 @@ func invalidate_twice_check(t: RefCounted) -> void:
 		t.invalidate()
 	assert_true(t.stale_count() <= _MapTiles.STALE_MAX, "repeated refreshes never exceed the cap")
 
-## Phase 117 — the Map window: zoom clamped on a small world, no redraw for an unchanged player
-## pixel, and the home marker at 1,500,000 chunks matching the great-circle distance.
+## The Map window: zoom clamped on a small world, no redraw for an unchanged player pixel, the home
+## marker's great-circle distance, fog that is never sampled, hover coordinates and waypoint delete.
 func _test_map_window_phase117() -> void:
 	var saved_circ: int = TerrainSlice._circumference_cache
 	TerrainSlice._circumference_cache = 64
 	var small := _MapWindow.new()
-	var zmax := _MapMath.zoom_max(64)
-	assert_true(small.get_zoom() >= _MapMath.ZOOM_MIN and small.get_zoom() <= maxf(zmax, _MapMath.ZOOM_MIN), "_zoom starts in range on a small world")
+	for on in [false, true]:
+		small.set_planet(on)
+		assert_true(small.get_zoom() >= _MapMath.ZOOM_MIN and small.get_zoom() <= _MapMath.zoom_max(on), "_zoom starts in range on a small world")
 	small.free()
 	TerrainSlice._circumference_cache = saved_circ
 	var w := _MapWindow.new()
@@ -5789,31 +5838,98 @@ func _test_map_window_phase117() -> void:
 	player.set_script(stub)
 	w.player_slice = player
 	player.pos = Vector3(100.0, 2.0, 100.0)
-	w._center = Vector2(1.5, 1.5)
+	w.set_center(Vector2(1.5, 1.5))
 	var sig := w.redraw_signature()
 	player.pos = Vector3(100.05, 2.0, 100.0)
 	assert_eq(w.redraw_signature(), sig, "a sub-pixel move triggers no redraw")
 	player.pos = Vector3(100.0 + 4000.0, 2.0, 100.0)
 	assert_true(w.redraw_signature() != sig, "a move of many pixels does")
-	# Home at 1,500,000 chunks: the great-circle distance, within 0.1%.
+	# Home far away: the great-circle distance within 0.1%, flat or folded.
 	var circ := TerrainSlice.circumference_chunks()
-	w.set_zoom(_MapMath.zoom_max(circ))
-	w._center = Vector2.ZERO
 	var home := { "chunk": Vector2i(circ / 4 + 100, 80000), "local": Vector3(10.0, 0.0, 10.0) }
 	player.respawn_world_pos = home
-	var m := w.home_marker(Vector2(500, 400))
 	var lon := (float(home["chunk"].x) + 10.0 / TerrainSlice.CHUNK_METERS) / float(circ) * TAU
 	var lat := -(float(home["chunk"].y) + 10.0 / TerrainSlice.CHUNK_METERS) / (float(circ) * 0.25) * (PI * 0.5)
-	var cos_c := sin(lat) * 0.0 + cos(lat) * cos(0.0) * cos(lon)   # from the equator at lon 0
-	var angle := acos(clampf(cos_c, -1.0, 1.0))
-	var expected := angle * float(circ) * TerrainSlice.CHUNK_METERS / TAU
-	assert_true(absf(m["distance"] - expected) / expected < 0.001, "home distance %f matches the great circle %f" % [m["distance"], expected])
-	# A right-click maps a pixel back to the exact place under it (flat zoom).
+	var expected := acos(clampf(cos(lat) * cos(lon), -1.0, 1.0)) * float(circ) * TerrainSlice.CHUNK_METERS / TAU
+	for on in [false, true]:
+		w.set_planet(on)
+		w.set_zoom(_MapMath.zoom_max(on))
+		w.set_center(Vector2.ZERO)
+		var m := w.home_marker(Vector2(500, 400))
+		assert_true(absf(m["distance"] - expected) / expected < 0.001, "home distance %f matches the great circle %f" % [m["distance"], expected])
+	# A pixel maps back to the exact place under it, flat and folded, a pole face included.
+	for on in [false, true]:
+		w.set_planet(on)
+		w.set_zoom(_MapMath.ZOOM_MIN)
+		assert_eq(w.get_zoom(), _MapMath.zoom_min(on, w._view_px()), "the closest zoom: street level flat, a bit out on the globe")
+		for c in [Vector2(1000.0, -20.0), Vector2(-3000.5, -circ / 4 + 40), Vector2(50.0, circ / 5)]:
+			w.set_center(c)
+			var at := w.world_pos_at(Vector2.ZERO)
+			assert_false(at.is_empty(), "the pixel under the centre is a place")
+			assert_true(absf(float(at["chunk"].x) - floorf(c.x)) <= 1.0 and absf(float(at["chunk"].y) - floorf(c.y)) <= 1.0, "and it is the centre's chunk (%s at %s)" % [at["chunk"], c])
+			var off := Vector2(37.0, -21.0)
+			var pl := w.place_at(off)
+			var xz := _MapMath.xz_of_face(pl[0], pl[1], pl[2])
+			var s := w.screen_of_xz(xz[0], xz[1])
+			assert_true(s["visible"] and (s["pos"] as Vector2).distance_to(off) < 0.05, "a pixel and its place agree both ways (%s)" % s["pos"])
+	w.set_planet(true)
+	w.set_zoom(_MapMath.zoom_max(true))
+	assert_true(w.world_pos_at(Vector2(249.0, 0.0)).is_empty(), "past the globe's rim is no place")
+	w.set_planet(false)
+	w.set_zoom(_MapMath.zoom_max(false))
+	w.set_center(Vector2.ZERO)
+	assert_true(w.world_pos_at(Vector2(240.0, 190.0)).is_empty(), "the net's empty corner is no place")
+	# Hover: the same latitude and longitude /where prints.
 	w.set_zoom(_MapMath.ZOOM_MIN)
-	w._center = Vector2(1000.0, -20.0)
-	var at := w.world_pos_at(Vector2.ZERO)
-	assert_false(at.is_empty(), "the pixel under the centre is a place")
-	assert_true(absf(float(at["chunk"].x) - 1000.0) <= 1.0 and absf(float(at["chunk"].y) + 20.0) <= 1.0, "and it is the centre's chunk")
+	w.set_center(Vector2(200.25, -300.75))
+	var p := w.get_center()
+	assert_eq(w.hover_text(Vector2.ZERO), TerrainSlice.latlon_text(p.x * TerrainSlice.CHUNK_METERS, p.y * TerrainSlice.CHUNK_METERS), "hover shows /where's coordinates")
+	assert_true(w.hover_text(Vector2.ZERO).ends_with("E") and w.hover_text(Vector2.ZERO).contains("\u00b0"), "as degrees")
+	# Fog: only explored tiles are revealed and requested; the rest are never sampled.
+	var terrain := TerrainSlice.new()
+	terrain.set_world_seed(5)
+	var mm := Minimap.new()
+	mm.terrain_slice = terrain
+	w.minimap = mm
+	w.terrain_slice = terrain
+	w._refresh_records()
+	mm.set_player_pos(Vector2(200.25, -300.75) * TerrainSlice.CHUNK_METERS)
+	var level := 0
+	var fog := w._revealed_set(level)
+	var fuv := _MapMath.face_uv(_MapMath.dir_of_chunk(Vector2(200.5, -300.5)))
+	var here := _MapMath.tile_index(fuv.y, fuv.z, level)
+	assert_true(w.tile_revealed(fog, int(fuv.x), level, here.x, here.y), "the explored chunk's tile is revealed")
+	var far := _MapMath.face_uv(_MapMath.dir_of_chunk(Vector2(circ / 2 - 500, 9000)))
+	var far_t := _MapMath.tile_index(far.y, far.z, level)
+	assert_false(w.tile_revealed(fog, int(far.x), level, far_t.x, far_t.y), "a far tile is fog")
+	var f := int(fuv.x)
+	var r := Rect2i(here - Vector2i(40, 40), Vector2i(81, 81))
+	w._request([f], [r], level, fog)
+	var revealed := 0
+	for j in range(r.position.y, r.end.y):
+		for i in range(r.position.x, r.end.x):
+			if w.tile_revealed(fog, f, level, i, j):
+				revealed += 1
+	assert_true(revealed > 0 and revealed < r.get_area(), "some of the view is explored (%d of %d)" % [revealed, r.get_area()])
+	var taken := w.tiles.take(100000)
+	var fine := 0
+	for t in taken:
+		if t.y == level:
+			fine += 1
+			assert_true(w.tile_revealed(fog, t.x, t.y, t.z, t.w), "only explored tiles are sampled")
+	assert_eq(fine, revealed, "every explored tile in view is requested")
+	# Waypoints: right-click adds one; right-click on it deletes it.
+	w.set_center(Vector2(200.25, -300.75))
+	var before: int = mm.get_waypoints().size()
+	w.right_click(Vector2(60.0, 30.0))
+	assert_eq(mm.get_waypoints().size(), before + 1, "right-click on empty ground adds a waypoint")
+	assert_eq(w.waypoint_at(Vector2(62.0, 31.0)), before, "the cursor near it picks it")
+	assert_true(w.hover_text(Vector2(60.0, 30.0)).contains("right-click to delete"), "hover says how to delete it")
+	w.right_click(Vector2(61.0, 29.0))
+	assert_eq(mm.get_waypoints().size(), before, "right-click on a waypoint deletes it")
+	assert_eq(w.waypoint_at(Vector2(60.0, 30.0)), -1, "and it is gone")
+	mm.free()
+	terrain.free()
 	player.free()
 	w.free()
 
