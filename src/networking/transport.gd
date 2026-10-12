@@ -22,5 +22,8 @@ func poll() -> void:
 
 ## True when the slice should stamp a per-type `seq` on packets before sending (a real wire reorders
 ## and drops; an in-memory one does not).
+func is_memory() -> bool:
+	return false
+
 func stamps_seq() -> bool:
 	return true

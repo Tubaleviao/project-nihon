@@ -1430,19 +1430,18 @@ func _fold_local_player() -> void:
 		_player.ground_hold = true
 		_fold_hold_since_msec = Time.get_ticks_msec()
 
-## Phase 119 — the hold lifts only onto built ground. Past `FOLD_HOLD_MAX_MSEC` a stalled build is retried
-## (the window re-queued) and the wait starts over, rather than dropping the player onto ground that is
-## not there.
+## Phase 119 — count of holds that timed out with the chunk still unbuilt (the window is re-queued first).
 var fold_hold_retries := 0
 
 func _release_fold_hold() -> void:
+	var waited := Time.get_ticks_msec() - _fold_hold_since_msec
 	if _chunk_manager.is_chunk_built(_player.get_world_pos()["chunk"]):
 		_player.ground_hold = false
-		return
-	if Time.get_ticks_msec() - _fold_hold_since_msec > FOLD_HOLD_MAX_MSEC:
+	elif waited > FOLD_HOLD_MAX_MSEC:
+		# A stalled build is retried once, then the hold is given up so it cannot pin the player.
 		fold_hold_retries += 1
 		_chunk_manager.refresh(false)
-		_fold_hold_since_msec = Time.get_ticks_msec()
+		_player.ground_hold = false
 
 func _process(delta: float) -> void:
 	# Phase 42 — complete a host boot whose first ring has finished building. It has

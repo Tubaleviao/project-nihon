@@ -194,6 +194,8 @@ static func pos_from_compact(data: Variant) -> Dictionary:
 	var local := Vector3(bytes.decode_float(8), bytes.decode_float(12), bytes.decode_float(16))
 	if not (is_finite(local.x) and is_finite(local.y) and is_finite(local.z)):
 		return {}
+	if absf(local.x) > LOCAL_LIMIT or absf(local.y) > LOCAL_LIMIT or absf(local.z) > LOCAL_LIMIT:
+		return {}
 	return normalized({ "chunk": Vector2i(bytes.decode_s32(0), bytes.decode_s32(4)), "local": local })
 
 ## The packet text for an exact position (what goes under `pk`).

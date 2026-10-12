@@ -528,6 +528,8 @@ func _broadcast_aoi(payload: Dictionary, position: Vector3) -> void:
 ## Phase 119 — the wire. `null` until the first send/connect, then an `EnetTransport` over the engine
 ## peer. The suite injects a `MemoryTransport` (`set_transport`); a release boot refuses it.
 var _transport: Transport = null
+## The engine transport, built lazily by `_ensure_transport` when none is injected.
+var _enet: Transport = null
 
 ## Inject a transport. Allowed only in a `GameRoot.should_run_tests` boot (the suite): a game can never
 ## silently swap its sockets for an in-memory one. Returns false (and changes nothing) when refused.
@@ -540,7 +542,7 @@ func set_transport(transport: Transport) -> bool:
 
 ## The suite's memory transport when one is injected (its `outbox` holds every send), else null.
 func memory_transport() -> Object:
-	return _transport if _transport != null and not _transport.stamps_seq() else null
+	return _transport if _transport != null and _transport.is_memory() else null
 
 ## The rule is `GameRoot.should_run_tests`, loaded on demand because `GameRoot` already depends on this slice.
 static func transport_injection_allowed() -> bool:
@@ -551,9 +553,14 @@ static func transport_injection_allowed_for(args: Array, is_debug_build: bool) -
 	return root_script.should_run_tests(args, is_debug_build)
 
 func _ensure_transport() -> Transport:
-	if _transport == null:
-		_transport = EnetTransport.new(multiplayer, _send_raw)
-	return _transport
+	if _transport != null:
+		return _transport
+	# The engine transport follows the node's CURRENT `multiplayer` (null outside the tree, swappable), so
+	# it is rebuilt when that changes rather than caching a stale or null API.
+	var api := multiplayer
+	if _enet == null or not _enet.uses(api):
+		_enet = EnetTransport.new(api, _send_raw)
+	return _enet
 
 ## Peers the host would fan out to.
 func _connected_peers() -> Array:
@@ -634,7 +641,7 @@ func _warn_malformed_position(sender: int, now_ms: float = -1.0) -> bool:
 	if now_ms - last < MALFORMED_WARN_INTERVAL_MS:
 		return false
 	_malformed_position_warn_ms[sender] = now_ms
-	Diag.warn("NetworkingSlice: player_moved from peer %d has a malformed position — dropped" % sender)
+	Diag.warn("NetworkingSlice: position packet from peer %d has a malformed position — dropped" % sender)
 	return true
 
 static func _is_exact_pos(pos: Variant) -> bool:

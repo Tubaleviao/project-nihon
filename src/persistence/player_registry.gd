@@ -566,6 +566,8 @@ static func world_pos_of(rec: Dictionary) -> Dictionary:
 ## bypassed through `local`. The clamp still bounds a hostile Z far past a pole.
 static func canonical_world_pos(wp: Dictionary) -> Dictionary:
 	var out := wp.duplicate()
+	if not (out.get("chunk") is Vector2i and out.get("local") is Vector3):
+		return wp
 	# Phase 119 — a Z far past a pole (a forged or corrupt save) is pulled onto the pole row on ITS side
 	# before the fold: folding it first would mirror it to the other pole, then clamp it there.
 	var pole := TerrainSlice.pole_chunks()

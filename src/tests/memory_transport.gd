@@ -17,5 +17,8 @@ func is_up() -> bool:
 func send(peer: int, msg: Dictionary) -> void:
 	outbox.append({ "peer_id": peer, "payload": msg })
 
+func is_memory() -> bool:
+	return true
+
 func stamps_seq() -> bool:
 	return false

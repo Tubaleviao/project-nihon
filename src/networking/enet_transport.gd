@@ -10,10 +10,17 @@ func _init(multiplayer_api: MultiplayerAPI, send_raw: Callable) -> void:
 	_multiplayer = multiplayer_api
 	_send_raw = send_raw
 
+func uses(api: MultiplayerAPI) -> bool:
+	return _multiplayer == api
+
 func peers() -> Array:
+	if _multiplayer == null:
+		return []
 	return Array(_multiplayer.get_peers())
 
 func is_up() -> bool:
+	if _multiplayer == null:
+		return false
 	var mp_peer := _multiplayer.multiplayer_peer
 	return mp_peer != null and mp_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED
 
