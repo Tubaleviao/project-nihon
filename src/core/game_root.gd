@@ -1226,7 +1226,7 @@ func _fold_last_known_state(peer_id: int, player_id: String) -> void:
 		var exact: Dictionary = _networking.get_last_known_exact(peer_id)
 		# Phase 97 — an exact position that is not a plausible wire position (a chunk past the pole row)
 		# is not persisted; the record keeps its previous position.
-		if not exact.is_empty() and not WorldPos.is_wire(WorldPos.pos_to_wire(exact)):
+		if not exact.is_empty() and not WorldPos.is_plausible_pos(exact):
 			return
 		if exact.is_empty():
 			_registry.record_position(player_id, _networking.get_last_known_state(peer_id))
@@ -1350,10 +1350,12 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 		var target: Vector2i = _chunk_manager.world_to_chunk(Vector2(position.x, position.z))
 		if _chunk_manager.set_peer_center(peer_id, target):
 			_chunk_manager.refresh(false)
-		# The window centre is stored wrapped past the seam; compare like with like.
+		# The window centre is stored wrapped past the seam; compare like with like. Phase 119 — a move
+		# that was refused or clamped still gets its re-scope snapshot NOW, built from the window as it
+		# stands (the interval check above bounds how often), and the crossing is forgotten so the next
+		# state packet retries it once the window has caught up.
 		if _chunk_manager.peer_center(peer_id) != TerrainSlice.wrap_chunk(target):
 			_peer_aoi_regions.erase(peer_id)
-			return
 	# Phase 33 — world/entity data only: the peer's own record is NOT re-sent, or
 	# the client would re-apply a stale position/HP/inventory on every region
 	# crossing (the record is written at load and at disconnect, not per frame).
@@ -1370,8 +1372,9 @@ var _peer_window_elapsed := 0.0
 func _peer_window_chunk(peer_id: int) -> Vector2i:
 	if _networking.has_last_known_state(peer_id):
 		# Phase 97 — the exact chunk when the peer reported one; the float32 Vector3 only as fallback.
+		# (The slice only stores an exact position that decoded and validated, so it is trusted here.)
 		var exact: Dictionary = _networking.get_last_known_exact(peer_id)
-		if not exact.is_empty() and WorldPos.is_wire(WorldPos.pos_to_wire(exact)):
+		if not exact.is_empty():
 			return exact["chunk"]
 		var p: Vector3 = _networking.get_last_known_state(peer_id)
 		return _chunk_manager.world_to_chunk(Vector2(p.x, p.z))
@@ -1427,10 +1430,19 @@ func _fold_local_player() -> void:
 		_player.ground_hold = true
 		_fold_hold_since_msec = Time.get_ticks_msec()
 
+## Phase 119 — the hold lifts only onto built ground. Past `FOLD_HOLD_MAX_MSEC` a stalled build is retried
+## (the window re-queued) and the wait starts over, rather than dropping the player onto ground that is
+## not there.
+var fold_hold_retries := 0
+
 func _release_fold_hold() -> void:
-	var waited := Time.get_ticks_msec() - _fold_hold_since_msec
-	if _chunk_manager.is_chunk_built(_player.get_world_pos()["chunk"]) or waited > FOLD_HOLD_MAX_MSEC:
+	if _chunk_manager.is_chunk_built(_player.get_world_pos()["chunk"]):
 		_player.ground_hold = false
+		return
+	if Time.get_ticks_msec() - _fold_hold_since_msec > FOLD_HOLD_MAX_MSEC:
+		fold_hold_retries += 1
+		_chunk_manager.refresh(false)
+		_fold_hold_since_msec = Time.get_ticks_msec()
 
 func _process(delta: float) -> void:
 	# Phase 42 — complete a host boot whose first ring has finished building. It has

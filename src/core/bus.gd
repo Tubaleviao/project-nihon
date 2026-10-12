@@ -72,7 +72,7 @@ signal world_clock_received(host_days: float)
 ## Client → host: a player wants to mine/place a block. The host re-runs the
 ## edit authoritatively and broadcasts the result via block_changed.
 ## action : String — "mine" or "place"
-signal block_edit_intent(action: String, position: Vector3, normal: Vector3, material: String)
+signal block_edit_intent(action: String, position: Vector3, normal: Vector3, material: String, exact: Dictionary)
 
 ## Host → clients: authoritative result of a block edit, applied via
 ## VoxelSlice.apply_block_change().
@@ -323,8 +323,9 @@ signal station_placed(station_id: String, type: String, position: Vector3)
 ## player_id : String  — the acting player; "" means the local player
 ## Phase 91 — the local player emits a fourth argument, the aimed point as an exact
 ## `{chunk, local}` record (far from the origin `position` is quantised to metres); handlers
-## take it as an optional `exact: Dictionary = {}`.
-signal block_mine_requested(position: Vector3, normal: Vector3, player_id: String)
+## take it as `exact: Dictionary` (empty for a remote actor's request, whose point is the position).
+## Phase 119 — the declared arity is the emitters' arity.
+signal block_mine_requested(position: Vector3, normal: Vector3, player_id: String, exact: Dictionary)
 
 ## Request to place a voxel block against the hit face (PlayerSlice on
 ## middle-click). normal is the face normal used to pick the target column.
@@ -340,7 +341,7 @@ signal block_mine_requested(position: Vector3, normal: Vector3, player_id: Strin
 ## player_id : String  — the acting player; "" means the local player
 ## material  : String  — the material to place; "" means the slice's own selection
 ## Phase 91 — like `block_mine_requested`, the local player adds the exact aimed point.
-signal block_place_requested(position: Vector3, normal: Vector3, player_id: String, material: String)
+signal block_place_requested(position: Vector3, normal: Vector3, player_id: String, material: String, exact: Dictionary)
 
 ## Request to advance the build material selection (PlayerSlice on R).
 signal block_cycle_material_requested()

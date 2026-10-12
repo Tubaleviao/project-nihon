@@ -7,6 +7,7 @@ extends Node
 ##
 ## Run from game_root by instantiating this node and calling run().
 const Diag := preload("res://src/core/diag.gd")
+const MemoryTransport := preload("res://src/tests/memory_transport.gd")
 
 # Preload slices so tests are isolated from the main scene tree.
 const BattleSlice     := preload("res://src/battle/battle_slice.gd")
@@ -355,9 +356,15 @@ func run() -> void:
 	_run_test("game_root: implausible peer positions dropped",  _test_remote_state_plausibility)
 	_run_test("networking: a remote peer's exact position is saved exactly", _test_remote_peer_exact_position)
 	_run_test("networking: peer windows and relays use the exact peer position", _test_peer_exact_window_and_relay)
+	_run_test("networking: compact per-tick position is exact, small and validated", _test_wire_compact_position)
+	_run_test("networking: malformed position warnings are throttled", _test_malformed_position_warning_throttle)
+	_run_test("networking: a refused or clamped peer move re-sends the re-scope at once", _test_rescope_resent_when_clamped)
+	_run_test("networking: first claim clamps and the seam wraps the rate limit", _test_peer_first_claim_and_seam)
+	_run_test("networking: equip seq is monotonic and edit signals carry their arity", _test_equip_seq_and_edit_arity)
+	_run_test("networking: canonical_world_pos refuses a forged Z and keeps motion", _test_canonical_world_pos_forged_z)
 	_run_test("equipment: slots cached, peer evict, owner map", _test_equipment_phase48_misc)
 	_run_test("equipment: host worn set + AOI enter/leave",      _test_equipment_host_and_aoi_transitions)
-	_run_test("net: broadcasts go through _test_peers",          _test_network_broadcast_uses_test_peers)
+	_run_test("net: broadcasts go through the memory transport",          _test_network_broadcast_uses_memory_transport)
 	_run_test("net: test seam follows the boot gate",            _test_network_seam_follows_boot_gate)
 	_run_test("ui: ? hotkey matches on unicode",                 _test_ui_question_mark_hotkey)
 	_run_test("ui: failed layout rename cleans tmp",             _test_ui_layout_failed_rename_cleans_tmp)
@@ -1355,7 +1362,7 @@ func _test_peer_exact_window_and_relay() -> void:
 	var n := NetworkingSlice.new()
 	add_child(n)
 	n._role = NetworkingSlice.Role.HOST
-	n._test_peers = [7]
+	n.set_transport(MemoryTransport.new([7]))
 	var chunk := Vector2i(600000, 3)
 	var local := Vector3(31.9, 0.0, 0.1)
 	var wire := WorldPos.pos_to_wire({ "chunk": chunk, "local": local })
@@ -1374,7 +1381,7 @@ func _test_peer_exact_window_and_relay() -> void:
 	# remembered beside the mover, so the exact position does), so one cannot stand in for the other.
 	var first := _relays_of_peer(n, 5)
 	assert_true(first.is_empty(), "first relay: nothing goes to a peer remembered 600,000 chunks away")
-	n._test_outbox = []
+	n.memory_transport().outbox = []
 	n.remember_player_state(7, WorldPos.from_wire(wire))
 	n._route_c2h(5, { "type": "player_moved", "position": wire })
 	var second := _relays_of_peer(n, 5)
@@ -1392,14 +1399,14 @@ func _test_peer_exact_window_and_relay() -> void:
 
 ## The `remote_player_state` packets the host's outbox holds about `peer_id`.
 func _relays_of_peer(n: NetworkingSlice, peer_id: int) -> Array:
-	return n._test_outbox.filter(func(o): return str(o["payload"].get("type", "")) == "remote_player_state" \
+	return n.memory_transport().outbox.filter(func(o): return str(o["payload"].get("type", "")) == "remote_player_state" \
 			and int(o["payload"].get("peer_id", 0)) == peer_id)
 
 func _assert_relay_exact(relayed: Array, chunk: Vector2i, local: Vector3, label: String) -> void:
 	assert_false(relayed.is_empty(), "%s: the position was relayed to the peer in range" % label)
 	if relayed.is_empty():
 		return
-	var got: Dictionary = WorldPos.pos_from_wire(relayed.back()["payload"]["position"])
+	var got: Dictionary = WorldPos.pos_from_packet(relayed.back()["payload"])
 	assert_eq(got["chunk"], chunk, "%s decodes to the same chunk" % label)
 	assert_true((got["local"] as Vector3).distance_to(local) < 1e-3, "%s decodes to the same local" % label)
 
@@ -3068,7 +3075,7 @@ func _test_void_client_never_rolls_and_result_is_owner_scoped() -> void:
 	host._on_void_burst_resolved(result)
 	assert_eq(host._pending.size(), 1, "one packet")
 	assert_eq(int(host._pending[0]["peer_id"]), 5, "for the crafter's peer")
-	var packet: Dictionary = JSON.parse_string(str(host._pending[0]["json"]))
+	var packet: Dictionary = JSON.parse_string(JSON.stringify(host._pending[0]["payload"]))
 	assert_eq(str(packet["type"]), "void_burst_resolved", "of the burst type")
 	assert_false(JSON.stringify(packet).contains(peer_pid) or JSON.stringify(packet).contains(other_pid), "carrying no player id")
 	host._pending.clear()
@@ -4993,24 +5000,24 @@ func _test_ui_layout_failed_rename_cleans_tmp() -> void:
 	ui.free()
 	DirAccess.remove_absolute(TEST_UI_LAYOUT)
 
-## Phase 67 — `_broadcast` and `_broadcast_aoi` both fan out through `_test_peers` only.
-func _test_network_broadcast_uses_test_peers() -> void:
+## Phase 67 — `_broadcast` and `_broadcast_aoi` both fan out through the memory transport only.
+func _test_network_broadcast_uses_memory_transport() -> void:
 	var n := NetworkingSlice.new()
 	add_child(n)
 	n._role = NetworkingSlice.Role.HOST
-	n._test_peers = [4, 5]
+	n.set_transport(MemoryTransport.new([4, 5]))
 	n._broadcast({ "type": "probe" })
 	var got := []
-	for m in n._test_outbox:
+	for m in n.memory_transport().outbox:
 		got.append(m["peer_id"])
 	got.sort()
 	assert_eq(got, [4, 5], "_broadcast reaches exactly the test peers")
-	n._test_outbox.clear()
+	n.memory_transport().outbox.clear()
 	n.remember_player_state(4, Vector3.ZERO)
 	n.remember_player_state(5, Vector3.ZERO)
 	n._broadcast_aoi({ "type": "probe" }, Vector3.ZERO)
 	got = []
-	for m in n._test_outbox:
+	for m in n.memory_transport().outbox:
 		got.append(m["peer_id"])
 	got.sort()
 	assert_eq(got, [4, 5], "_broadcast_aoi reaches exactly the test peers in range")
@@ -6455,7 +6462,7 @@ func _test_net_voxel_client_forwards_intent() -> void:
 	flat.fill(2.0)
 	v.build_chunk(Vector2i(0, 0), flat)
 	var intent := {}
-	GameBus.block_edit_intent.connect(func(action, pos, normal, material):
+	GameBus.block_edit_intent.connect(func(action, pos, normal, material, _exact):
 		intent["action"] = action
 		intent["material"] = material
 	)
@@ -6940,7 +6947,7 @@ func _test_net_block_intent_requires_handshake_and_reach() -> void:
 	add_child(n)
 	n._role = NetworkingSlice.Role.HOST
 	var mined: Array = []
-	var on_mine := func(pos: Vector3, normal: Vector3, _player_id: String) -> void:
+	var on_mine := func(pos: Vector3, normal: Vector3, _player_id: String, _exact: Dictionary) -> void:
 		mined.append([pos, normal])
 	GameBus.block_mine_requested.connect(on_mine)
 
@@ -7348,13 +7355,184 @@ func _test_client_adopts_its_own_handle() -> void:
 	assert_true(snapshot["heightmaps"].has("0,0"), "world data is left alone")
 	n.free()
 
+## Phase 119 — the compact per-tick form round-trips the exact `{chunk, local}`, is much smaller than the
+## dictionary form, and a damaged packet is refused before anything reads a number from it.
+func _test_wire_compact_position() -> void:
+	var half := TerrainSlice.circumference_chunks() / 2
+	for chunk in [Vector2i(1500000, 7), Vector2i(half - 1, -3), Vector2i(-half, 0), Vector2i(0, 0)]:
+		var pos := { "chunk": chunk, "local": Vector3(31.875, 12.5, 0.125) }
+		var back := WorldPos.pos_from_compact(WorldPos.pos_to_packet_text(pos))
+		assert_eq(back.get("chunk"), chunk, "chunk %s round-trips" % chunk)
+		assert_eq(back.get("local"), pos["local"], "and so does local")
+	var pos2 := { "chunk": Vector2i(1500000, 7), "local": Vector3(31.875, 12.5, 0.125) }
+	var compact := var_to_bytes(WorldPos.pos_to_compact(pos2)).size()
+	var verbose := var_to_bytes(WorldPos.pos_to_wire(pos2)).size()
+	assert_true(float(compact) <= 0.7 * float(verbose), "compact %d bytes vs dictionary %d is at least 30%% smaller" % [compact, verbose])
+	var good := WorldPos.pos_to_compact(pos2)
+	assert_true(WorldPos.pos_from_compact(good.slice(0, 12)).is_empty(), "a truncated packet is rejected")
+	var nan_bytes := good.duplicate()
+	nan_bytes.encode_float(12, NAN)
+	assert_true(WorldPos.pos_from_compact(nan_bytes).is_empty(), "a non-finite float is rejected")
+	var far := good.duplicate()
+	far.encode_s32(0, 2000000000)
+	assert_true(WorldPos.pos_from_packet({ "pk": Marshalls.raw_to_base64(far) }).is_empty(), "a chunk past the planet is rejected")
+	assert_true(WorldPos.pos_from_compact("not base64 !!").is_empty(), "garbage text is rejected")
+	# A damaged player_moved is dropped before the state signal (and so any aoi_region) is reached.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.set_transport(MemoryTransport.new([5]))
+	var seen: Array = []
+	var cb := func(peer: int, _p: Vector3) -> void: seen.append(peer)
+	GameBus.remote_player_state.connect(cb)
+	n._route_c2h(5, { "type": "player_moved", "pk": Marshalls.raw_to_base64(good.slice(0, 12)) })
+	n._route_c2h(5, { "type": "player_moved", "pk": Marshalls.raw_to_base64(nan_bytes) })
+	assert_true(seen.is_empty(), "no consumer saw a damaged position")
+	assert_false(n.has_last_known_state(5), "and nothing was remembered")
+	var plausible := { "chunk": Vector2i(600000, 7), "local": Vector3(31.875, 12.5, 0.125) }
+	n._route_c2h(5, { "type": "player_moved", "pk": WorldPos.pos_to_packet_text(plausible) })
+	assert_eq(seen, [5], "a good compact packet goes through")
+	assert_eq(n.get_last_known_exact(5).get("chunk"), plausible["chunk"], "with its exact chunk kept")
+	GameBus.remote_player_state.disconnect(cb)
+	n.free()
+
+## Phase 119 — a hostile peer sends a malformed position per token; the log gets one line per interval.
+func _test_malformed_position_warning_throttle() -> void:
+	var n := NetworkingSlice.new()
+	add_child(n)
+	var warned := 0
+	for i in 100:
+		if n._warn_malformed_position(5, float(i)):
+			warned += 1
+	assert_eq(warned, 1, "100 malformed packets in one interval warn once")
+	assert_true(n._warn_malformed_position(5, NetworkingSlice.MALFORMED_WARN_INTERVAL_MS + 200.0), "and again once the interval ends")
+	assert_true(n._warn_malformed_position(6, 1.0), "another peer has its own throttle")
+	n.free()
+
+## Phase 119 — a clamped move still re-sends the re-scope snapshot in the same call.
+func _test_rescope_resent_when_clamped() -> void:
+	var src := GDScript.new()
+	src.source_code = "extends \"res://src/core/game_root.gd\"\nfunc _build_snapshot(_p, _o = true, _c = null, _f = null) -> Dictionary:\n\treturn { \"stub\": true }\n"
+	src.reload()
+	var gr: Node = src.new()
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.set_transport(MemoryTransport.new([5]))
+	var reg := PlayerRegistry.new()
+	_own(reg)
+	reg.resolve_identity(5)
+	var cm := ChunkManager.new()
+	cm.set_peer_center(5, Vector2i(0, 0), true)
+	gr._networking = n
+	gr._registry = reg
+	gr._chunk_manager = cm
+	gr._is_client = false
+	gr._on_remote_player_state(5, Vector3(64.0 * 40.0, 0.0, 0.0))
+	var sent: Array = n.memory_transport().outbox.filter(func(o): return o["payload"].get("type") == "snapshot_chunk")
+	assert_false(sent.is_empty(), "the re-scope snapshot went out in the same call, though the window was refused")
+	assert_false(gr._peer_aoi_regions.has(5), "and the crossing is forgotten so the window's catch-up retries it")
+	n.free()
+	gr.free()
+
+## Phase 119 — the first claim of an uncentred peer is clamped; the X seam is crossed the short way.
+func _test_peer_first_claim_and_seam() -> void:
+	var cm := ChunkManager.new()
+	var t := [0]
+	cm.now_msec = func(): return t[0]
+	cm.set_peer_center(9, Vector2i(1000, 0))
+	var c9: Vector2i = cm.peer_center(9)
+	assert_true(maxi(absi(c9.x), absi(c9.y)) <= ChunkManager.PEER_RECENTER_MAX_CHUNKS, "a first claim 1,000 chunks from spawn is clamped")
+	assert_eq(cm.peer_recenter_refused, 1, "and counted")
+	var half := TerrainSlice.circumference_chunks() / 2
+	cm.set_peer_center(4, Vector2i(half - 2, 0), true)
+	t[0] = 10000
+	cm.set_peer_center(4, Vector2i(-half + 3, 0))
+	assert_eq(cm.peer_center(4), TerrainSlice.wrap_chunk(Vector2i(-half + 3, 0)), "a 5-chunk move across the seam is not clamped")
+	t[0] = 20000
+	cm.set_peer_center(4, Vector2i(-half + 3 + 40, 0))
+	var moved: Vector2i = cm.peer_center(4)
+	assert_eq(moved, TerrainSlice.wrap_chunk(Vector2i(-half + 3 + ChunkManager.PEER_RECENTER_MAX_CHUNKS, 0)), "a far move is clamped by the wrapped distance")
+	cm.free()
+
+## Phase 119 — a lower equip seq is ignored; block edit signals are emitted with their declared arity and
+## the exact aimed point.
+func _test_equip_seq_and_edit_arity() -> void:
+	var reg := PlayerRegistry.new()
+	_own(reg)
+	var pid := str(reg.resolve_identity(5))
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.set_transport(MemoryTransport.new([5]))
+	n.player_registry = reg
+	n.set_player_id(5, pid)
+	var intents: Array = []
+	var icb := func(_p: String, slot: String, _i: String) -> void: intents.append(slot)
+	GameBus.equip_intent.connect(icb)
+	n._route_c2h(5, { "type": "equip_intent", "slot": "Chest", "item": "", "seq": 5 })
+	n._route_c2h(5, { "type": "equip_intent", "slot": "Head", "item": "", "seq": 3 })
+	n._route_c2h(5, { "type": "equip_intent", "slot": "Legs", "item": "", "seq": 6 })
+	GameBus.equip_intent.disconnect(icb)
+	assert_eq(intents, ["Chest", "Legs"], "the action numbered below one already applied is ignored")
+	var mined: Array = []
+	var placed: Array = []
+	var mcb := func(_pos: Vector3, _n: Vector3, _pl: String, exact: Dictionary) -> void: mined.append(exact)
+	var pcb := func(_pos: Vector3, _n: Vector3, _pl: String, _m: String, exact: Dictionary) -> void: placed.append(exact)
+	GameBus.block_mine_requested.connect(mcb)
+	GameBus.block_place_requested.connect(pcb)
+	n.remember_player_state(5, Vector3.ZERO)
+	var aimed := { "chunk": Vector2i(0, 0), "local": Vector3(10.5, 3.0, 4.25) }
+	n._route_c2h(5, { "type": "block_edit_intent", "action": "mine", "pk": WorldPos.pos_to_packet_text(aimed), "normal": [0, 1, 0] })
+	n._route_c2h(5, { "type": "block_edit_intent", "action": "place", "pk": WorldPos.pos_to_packet_text(aimed), "normal": [0, 1, 0], "material": "Stone" })
+	GameBus.block_mine_requested.disconnect(mcb)
+	GameBus.block_place_requested.disconnect(pcb)
+	assert_eq(mined.size(), 1, "the mine signal is emitted")
+	assert_eq(placed.size(), 1, "and the place signal")
+	if mined.size() == 1:
+		assert_eq(mined[0].get("local"), aimed["local"], "carrying the exact aimed point")
+	# The client side sends the exact point, not a quantised float position.
+	var c := NetworkingSlice.new()
+	add_child(c)
+	c._role = NetworkingSlice.Role.CLIENT
+	c.set_transport(MemoryTransport.new([1]))
+	c._on_block_edit_intent("mine", Vector3(10.5, 3.0, 4.25), Vector3.UP, "", { "chunk": Vector2i(600000, 2), "local": Vector3(1.5, 3.0, 4.25) })
+	var out: Array = c.memory_transport().outbox
+	assert_eq(out.size(), 1, "one intent goes to the host")
+	if out.size() == 1:
+		assert_eq(WorldPos.pos_from_packet(out[0]["payload"]).get("chunk"), Vector2i(600000, 2), "carrying the exact chunk")
+	c.free()
+	n.free()
+
+## Phase 119 — a forged Z far past a pole stays on its own side; heading and velocity are kept (and turned
+## by a pole crossing).
+func _test_canonical_world_pos_forged_z() -> void:
+	var pole := TerrainSlice.pole_chunks()
+	var forged := PlayerRegistry.canonical_world_pos({ "chunk": Vector2i(3, pole + 5000000), "local": Vector3(1.0, 2.0, 3.0) })
+	assert_true(forged["chunk"].y > 0, "a forged +Z does not mirror to the south pole")
+	assert_true(forged["chunk"].y <= pole, "and is bounded by the pole row")
+	var kept := PlayerRegistry.canonical_world_pos({ "chunk": Vector2i(3, 4), "local": Vector3(1.0, 2.0, 3.0),
+		"heading": 1.0, "velocity": Vector3(1, 0, 2) })
+	assert_eq(kept.get("heading"), 1.0, "heading survives an ordinary canonicalisation")
+	assert_eq(kept.get("velocity"), Vector3(1, 0, 2), "and so does velocity")
+	var over := PlayerRegistry.canonical_world_pos({ "chunk": Vector2i(3, pole), "local": Vector3(1.0, 2.0, 3.0),
+		"heading": 1.0, "velocity": Vector3(1, 0, 2) })
+	assert_eq(over.get("velocity"), Vector3(-1, 0, -2), "a pole crossing turns the velocity")
+
 ## Phase 67 review — the network test seam follows the boot gate exactly (no private copy of
 ## the `--run-tests` rule), so a release boot refuses the seam and the suite's boots allow it.
 func _test_network_seam_follows_boot_gate() -> void:
-	assert_false(NetworkingSlice._test_seam_allowed_for([], false), "a release boot refuses the test seam")
-	assert_true(NetworkingSlice._test_seam_allowed_for(["--run-tests"], false), "--run-tests allows it")
-	assert_false(NetworkingSlice._test_seam_allowed_for([], true), "a debug build alone does not allow it")
-	assert_true(NetworkingSlice._test_seam_allowed(), "this boot (the suite) allows it")
+	assert_false(NetworkingSlice.transport_injection_allowed_for([], false), "a release boot refuses the test seam")
+	assert_true(NetworkingSlice.transport_injection_allowed_for(["--run-tests"], false), "--run-tests allows it")
+	assert_false(NetworkingSlice.transport_injection_allowed_for([], true), "a debug build alone does not allow it")
+	assert_true(NetworkingSlice.transport_injection_allowed(), "this boot (the suite) allows it")
+	# Phase 119 — the injection point itself: allowed here, reports false when refused.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	assert_true(n.set_transport(MemoryTransport.new([1])), "the suite boot may inject a transport")
+	assert_eq(n._connected_peers(), [1], "the slice fans out over the injected transport")
+	assert_true(n.set_transport(null), "and may take it out again")
+	n.free()
 
 ## Phase 67 review — the `?` hotkey matches on the unicode the key produced, whatever the layout.
 func _test_ui_question_mark_hotkey() -> void:
@@ -14967,8 +15145,8 @@ func _test_equipment_phase48_misc() -> void:
 
 ## Phase 48 criteria — the replication target list includes the listen host as an owner,
 ## and a peer entering/leaving AOI after the last gear change is sent / evicted. Uses the
-## networking slice's no-socket test seam: with `_test_peers` set, every fan-out path
-## (`_connected_peers()`) answers it and `_deliver` appends to `_test_outbox`.
+## networking slice's no-socket test seam: with a `MemoryTransport` set, every fan-out path
+## (`_connected_peers()`) answers it and `_deliver` appends to its outbox.
 func _test_equipment_host_and_aoi_transitions() -> void:
 	var reg := PlayerRegistry.new()
 	add_child(reg)
@@ -14977,7 +15155,7 @@ func _test_equipment_host_and_aoi_transitions() -> void:
 	add_child(n)
 	n._role = NetworkingSlice.Role.HOST
 	n.player_registry = reg
-	n._test_peers = [2, 3]
+	n.set_transport(MemoryTransport.new([2, 3]))
 	var pid2 := str(reg.resolve_identity(2))
 	var pid3 := str(reg.resolve_identity(3))
 	n.remember_player_state(2, Vector3(0, 0, 0))
@@ -14987,24 +15165,24 @@ func _test_equipment_host_and_aoi_transitions() -> void:
 	# Host as owner: peer 2 (in AOI) is a target, peer 3 (far) is not, the host never is.
 	assert_eq(n.equipment_targets(NetworkingSlice.HOST_PEER_ID), [2], "the host's set goes to peers in its AOI only")
 	assert_eq(n.equipment_targets(2), [], "a lone nearby peer has no other peer to tell (host excluded)")
-	n._test_outbox.clear()
+	n.memory_transport().outbox.clear()
 	n._on_equipment_changed("player_host_1", { "Chest": "VeilsteelChestplate" })
-	assert_eq(n._test_outbox.size(), 1, "one delivery for the host's gear change")
-	if n._test_outbox.size() == 1:
-		assert_eq(n._test_outbox[0]["peer_id"], 2, "to the peer in AOI")
-		assert_eq(n._test_outbox[0]["payload"]["type"], "peer_equipment", "as a peer_equipment packet")
-		assert_eq(n._test_outbox[0]["payload"]["peer_id"], NetworkingSlice.HOST_PEER_ID, "tagged with the host's id")
+	assert_eq(n.memory_transport().outbox.size(), 1, "one delivery for the host's gear change")
+	if n.memory_transport().outbox.size() == 1:
+		assert_eq(n.memory_transport().outbox[0]["peer_id"], 2, "to the peer in AOI")
+		assert_eq(n.memory_transport().outbox[0]["payload"]["type"], "peer_equipment", "as a peer_equipment packet")
+		assert_eq(n.memory_transport().outbox[0]["payload"]["peer_id"], NetworkingSlice.HOST_PEER_ID, "tagged with the host's id")
 
 	# Enter: peer 3 wears something while far away, then walks into the host's AOI (peer 2 is already there).
 	reg.record_equipment(pid3, { "Chest": "VeilsteelChestplate" })
 	reg.record_equipment(pid2, { "Chest": "VeilsteelChestplate" })
-	n._test_outbox.clear()
+	n.memory_transport().outbox.clear()
 	n._equipment_sent.clear()
 	n.remember_player_state(3, Vector3(10, 0, 0))
 	n._refresh_equipment_pairs(3)
 	var sent_to_2 := false
 	var sent_to_3 := false
-	for m in n._test_outbox:
+	for m in n.memory_transport().outbox:
 		var pl: Dictionary = m["payload"]
 		if pl["type"] == "peer_equipment" and pl["peer_id"] == 3 and m["peer_id"] == 2:
 			sent_to_2 = true
@@ -15014,21 +15192,21 @@ func _test_equipment_host_and_aoi_transitions() -> void:
 	assert_true(sent_to_3, "and receives the viewer's set")
 
 	# Leave: peer 3 walks away; both viewers are told to evict, once.
-	n._test_outbox.clear()
+	n.memory_transport().outbox.clear()
 	n.remember_player_state(3, Vector3(2000, 0, 0))
 	n._refresh_equipment_pairs(3)
 	var evict_receivers := []   # the peers an evict was delivered to
-	for m in n._test_outbox:
+	for m in n.memory_transport().outbox:
 		if m["payload"]["type"] == "peer_equipment_evict":
 			evict_receivers.append(m["peer_id"])
 	evict_receivers.sort()
 	assert_eq(evict_receivers.size(), 2, "leaving AOI evicts the stored set on each viewer")
 	assert_eq(evict_receivers, [2, 3], "the evicts go to peer 2 (told peer 3 left) and peer 3 (told peer 2 left)")
 	assert_false(n._equipment_sent.has("2:3"), "the sent record for the pair is dropped")
-	n._test_outbox.clear()
+	n.memory_transport().outbox.clear()
 	n.remember_player_state(3, Vector3(2100, 0, 0))
 	n._refresh_equipment_pairs(3)
-	assert_eq(n._test_outbox.size(), 0, "no repeat eviction while it stays away")
+	assert_eq(n.memory_transport().outbox.size(), 0, "no repeat eviction while it stays away")
 	n.free()
 	reg.free()
 
@@ -18000,7 +18178,7 @@ func _test_chat_kill_peer_simulated_hp() -> void:
 	var n := NetworkingSlice.new()
 	add_child(n)
 	n._role = NetworkingSlice.Role.HOST
-	n._test_peers = [7]
+	n.set_transport(MemoryTransport.new([7]))
 	chat.networking = n
 	var pid := str(reg.resolve_identity(7))
 	var gr: Node = (load("res://src/core/game_root.gd") as GDScript).new()
@@ -18008,10 +18186,10 @@ func _test_chat_kill_peer_simulated_hp() -> void:
 	gr._registry = reg
 	gr._networking = n
 	GameBus.player_damaged.connect(gr._on_player_damaged)
-	n._test_outbox.clear()
+	n.memory_transport().outbox.clear()
 	chat.handle_intent("/kill %s" % reg.public_handle(pid), "")
 	GameBus.player_damaged.disconnect(gr._on_player_damaged)
-	var hits := n._test_outbox.filter(func(o): return o["payload"]["type"] == "player_damaged")
+	var hits: Array = n.memory_transport().outbox.filter(func(o): return o["payload"]["type"] == "player_damaged")
 	assert_eq(hits.size(), 1, "exactly one player_damaged goes out")
 	assert_eq(hits[0]["peer_id"], 7, "to that peer")
 	assert_eq(reg.get_hp(pid), 0.0, "the host's simulated HP is at the floor")
@@ -18021,7 +18199,7 @@ func _test_chat_kill_peer_simulated_hp() -> void:
 	assert_eq(back.get_hp(pid), 0.0, "a reconnect restores the simulated value, not MAX_HP")
 	back.free()
 	gr.free()
-	n._test_peers = null
+	n.set_transport(null)
 	n.free()
 	chat.free()
 	reg.free()
@@ -18053,15 +18231,15 @@ func _test_chat_exact_teleports() -> void:
 	var n := NetworkingSlice.new()
 	add_child(n)
 	n._role = NetworkingSlice.Role.HOST
-	n._test_peers = [7]
+	n.set_transport(MemoryTransport.new([7]))
 	chat.networking = n
 	var pid := str(reg.resolve_identity(7))
 	var handle: String = reg.public_handle(pid)
 	n._route_c2h(7, { "type": "player_moved", "position": WorldPos.pos_to_wire(
 		{ "chunk": Vector2i(-900001, 40), "local": Vector3(31.9, 2.0, 0.1) }) })
-	n._test_outbox.clear()
+	n.memory_transport().outbox.clear()
 	chat.handle_intent("/bring " + handle, "")
-	var sent := n._test_outbox.filter(func(o): return o["payload"]["type"] == "teleport")
+	var sent: Array = n.memory_transport().outbox.filter(func(o): return o["payload"]["type"] == "teleport")
 	assert_eq(sent.size(), 1, "/bring sends one teleport")
 	var got: Dictionary = WorldPos.pos_from_wire(sent[0]["payload"]["position"])
 	assert_eq(got["chunk"], Vector2i(1200000, 3), "to the admin's exact chunk")
@@ -18090,7 +18268,7 @@ func _test_chat_exact_teleports() -> void:
 	assert_eq(seen.size(), 1, "/tp <player> teleports the admin")
 	assert_eq(seen[0]["chunk"], Vector2i(-900001, 40), "to the peer's exact chunk")
 	assert_true((seen[0]["local"] as Vector3).distance_to(Vector3(31.9, 2.0, 0.1)) < 1e-3, "and local")
-	n._test_peers = null
+	n.set_transport(null)
 	n.free()
 	stub.free()
 	chat.free()
@@ -18175,16 +18353,16 @@ func _test_chat_wire() -> void:
 	var n := NetworkingSlice.new()
 	add_child(n)
 	n._role = NetworkingSlice.Role.HOST
-	n._test_peers = [4, 5]
+	n.set_transport(MemoryTransport.new([4, 5]))
 	n._on_chat_posted("announce", "Server", "hello", "")
 	var kinds: Array = []
-	for m in n._test_outbox:
+	for m in n.memory_transport().outbox:
 		kinds.append([m["peer_id"], m["payload"]["type"], m["payload"]["text"]])
 	assert_eq(kinds, [[4, "chat_message", "hello"], [5, "chat_message", "hello"]], "an untargeted line reaches every peer")
-	n._test_outbox.clear()
+	n.memory_transport().outbox.clear()
 	n.send_teleport(4, WorldPos.from_world(5.0, 6.0, 7.0))
-	assert_eq(n._test_outbox.size(), 1, "a teleport goes to one peer")
-	assert_eq(n._test_outbox[0]["payload"]["type"], "teleport", "as a teleport packet")
+	assert_eq(n.memory_transport().outbox.size(), 1, "a teleport goes to one peer")
+	assert_eq(n.memory_transport().outbox[0]["payload"]["type"], "teleport", "as a teleport packet")
 
 	# Host side of the intent: the speaker is the connection's player, never the payload's claim.
 	var got: Array = []
@@ -18200,12 +18378,12 @@ func _test_chat_wire() -> void:
 	GameBus.chat_intent.disconnect(cb)
 
 	# Client side: the intent is forwarded and a hosted line is shown.
-	n._test_outbox.clear()
+	n.memory_transport().outbox.clear()
 	n._role = NetworkingSlice.Role.CLIENT
 	n._on_chat_intent("/tp 1 2 3", "")
-	assert_eq(n._test_outbox.size(), 1, "a client forwards its line to the host")
-	assert_eq(n._test_outbox[0]["payload"]["type"], "chat_intent", "as an intent")
-	assert_false(n._test_outbox[0]["payload"].has("player_id"), "carrying no identity")
+	assert_eq(n.memory_transport().outbox.size(), 1, "a client forwards its line to the host")
+	assert_eq(n.memory_transport().outbox[0]["payload"]["type"], "chat_intent", "as an intent")
+	assert_false(n.memory_transport().outbox[0]["payload"].has("player_id"), "carrying no identity")
 	var shown: Array = []
 	var cb2 := func(channel: String, sender: String, text: String, target: String) -> void:
 		shown.append([channel, sender, text, target])
@@ -18220,7 +18398,7 @@ func _test_chat_wire() -> void:
 	GameBus.player_teleport.disconnect(cb3)
 	assert_eq(moved.size(), 1, "a teleport packet moves the body")
 	assert_true(moved[0].distance_to(Vector3(100.0, 9.0, -40.0)) < 0.01, "to the sent spot")
-	n._test_peers = null
+	n.set_transport(null)
 	n.free()
 
 ## Phase 106 — the fingerprint is stable across calls and a `warm()` reset, and moves when a fabric

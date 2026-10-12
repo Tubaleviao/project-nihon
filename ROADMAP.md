@@ -139,7 +139,7 @@ issue number where the criterion used to be.
 | 116 | Tree clears follow chunks onto clients | Done | below |
 | 117 | Map waypoints, HUD toasts and an explored set that scales | Done | below |
 | 118 | Void bursts, the survivor flag and the VoidTouched unlock | Done | below |
-| 119 | An injected network transport and a compact per-tick wire form | Planned | below |
+| 119 | An injected network transport and a compact per-tick wire form | Done | below |
 | 120 | The distant ring draws recorded land | Planned | below |
 | 121 | Crash-consistent saves | Planned | below |
 | 122 | Far terrain without mirroring and one scene-offset helper | Planned | below |
@@ -856,7 +856,7 @@ profession unlock (deferred from Phase 13). This phase wires the chain end to en
 
 ---
 
-## Phase 119 — An injected network transport and a compact per-tick wire form
+## Phase 119 — An injected network transport and a compact per-tick wire form ✅ Done
 
 **Goal:** the networking slice still carries its test seam (`_test_peers`, `_test_outbox`) in
 production code, and every per-tick packet (`player_moved`, creature state) sends the verbose
@@ -895,20 +895,20 @@ the networking triage issue below.
   `block_edit_intent` carries the exact position, not a quantised float.
 
 **Acceptance criteria:**
-- [ ] `grep -n "_test_peers\|_test_outbox" src/networking/networking_slice.gd` is empty; the suite's
+- [x] `grep -n "_test_peers\|_test_outbox" src/networking/networking_slice.gd` is empty; the suite's
   networking tests run on the memory transport; setting a transport in a non-test boot is refused
   (suite test).
-- [ ] Suite: the compact form round-trips `{chunk, local}` exactly at chunk X = 1,500,000 and at the
+- [x] Suite: the compact form round-trips `{chunk, local}` exactly at chunk X = 1,500,000 and at the
   seam; it is at least 30% smaller than the dictionary form in `var_to_bytes`; a truncated or
   non-finite packet is rejected before `aoi_region` is called.
-- [ ] Suite: 100 malformed packets from one peer produce at most one warning per throttle interval; a
+- [x] Suite: 100 malformed packets from one peer produce at most one warning per throttle interval; a
   clamped peer move re-sends the re-scope snapshot in the same call.
-- [ ] Suite: an uncentred peer's first claim 1,000 chunks from spawn is clamped; a move across the X
+- [x] Suite: an uncentred peer's first claim 1,000 chunks from spawn is clamped; a move across the X
   seam is rate-limited by the wrapped distance.
-- [ ] Suite: a rate-limited equip refusal still yields a revoke; a lower `seq` is ignored; mine/place
+- [x] Suite: a rate-limited equip refusal still yields a revoke; a lower `seq` is ignored; mine/place
   signals are emitted with their declared arity.
-- [ ] Harness: all existing steps pass on the ENet transport with the compact per-tick form.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Harness: all existing steps pass on the ENet transport with the compact per-tick form.
+- [x] Suite green on both boot paths, harness green.
 
 ---
 
