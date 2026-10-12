@@ -1816,7 +1816,7 @@ func _route_h2c(payload: Dictionary) -> void:
 				str(payload.get("instance_id", "")),
 				str(payload.get("creature_id", "")),
 				str(payload.get("state", "")),
-				_vec3(payload.get("position", []))
+				WorldPos.packet_world(payload, _vec3(payload.get("position", [])))
 			)
 		"remote_player_state":
 			_route_remote_player_state(payload)

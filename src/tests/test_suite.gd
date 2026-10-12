@@ -613,6 +613,7 @@ func run() -> void:
 	_run_test("net: remote player ghost interpolates",           _test_net_player_ghost_interpolation)
 	_run_test("net: own peer id does not ghost",                 _test_net_player_ghost_self_filter)
 	_run_test("net: creature dirty-track broadcast",             _test_net_creature_dirty_broadcast)
+	_run_test("net: creature state position survives the compact wire", _test_net_creature_state_compact_position)
 	_run_test("net: inventory replace_contents",                 _test_net_inventory_replace_contents)
 	_run_test("net: packets carry per-type monotonic seq",        _test_net_sequence_monotonic)
 	_run_test("net: duplicate dropped; reordered-unseen accepted", _test_net_sequence_dedup)
@@ -6584,6 +6585,28 @@ func _test_net_creature_dirty_broadcast() -> void:
 	assert_eq(emissions.size(), 1, "only the moved creature is re-broadcast")
 	assert_eq(emissions[0], first_id, "the dirty instance is the one broadcast")
 	c.free()
+
+func _test_net_creature_state_compact_position() -> void:
+	# Phase 119 — the sender ships `pk`; the client route must decode it, not read the absent `position`.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	var got := []
+	var cb := func(_iid, _cid, _state, pos): got.append(pos)
+	GameBus.creature_state_changed.connect(cb)
+	var sent := Vector3(123.0, 45.0, -67.0)
+	n._route_h2c({
+		"type": "creature_state_changed", "instance_id": "c1", "creature_id": "x", "state": "idle",
+		"pk": WorldPos.pos_to_packet_text(WorldPos.from_world(sent.x, sent.y, sent.z)),
+	})
+	n._route_h2c({
+		"type": "creature_state_changed", "instance_id": "c2", "creature_id": "x", "state": "idle",
+		"position": [1.0, 2.0, 3.0],
+	})
+	GameBus.creature_state_changed.disconnect(cb)
+	assert_eq(got.size(), 2, "both creature packets are routed")
+	assert_true(got[0].distance_to(sent) < 0.01, "the compact creature position decodes to where it was sent")
+	assert_eq(got[1], Vector3(1.0, 2.0, 3.0), "a legacy float-array creature position still decodes")
+	n.free()
 
 func _test_net_inventory_replace_contents() -> void:
 	var inv := InventorySlice.new()
