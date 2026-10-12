@@ -270,12 +270,12 @@ static func net_cells(home: Array, i0: int, i1: int) -> Array:
 # Globe (orthographic)
 # ---------------------------------------------------------------------------
 
-## The globe camera for a view centred at local (x, y) of placement `pl`: [centre, right, up], an
-## orthonormal frame. Up follows the placement's up axis, so the net and the globe agree.
-static func globe_frame(pl: Array, x: float, y: float) -> Array:
-	var c := local_dir(pl, x, y)
-	var up := local_dir(pl, x, y + 0.001) - c
-	up = (up - c * c.dot(up)).normalized()
+## The globe camera looking down at longitude `lon`, map latitude `lat` (radians, map-up positive):
+## [centre, right, up], an orthonormal frame with up toward the map-up pole. Tied to the poles, not to
+## the cube's faces, so turning the globe never flips it round at a cube corner.
+static func globe_frame(lon: float, lat: float) -> Array:
+	var c := Vector3(cos(lat) * sin(lon), sin(lat), cos(lat) * cos(lon))
+	var up := Vector3(-sin(lat) * sin(lon), cos(lat), -sin(lat) * cos(lon))
 	return [c, up.cross(c), up]
 
 ## Screen offset in sphere radii (y down) of a direction; z > 0 when it faces the viewer.

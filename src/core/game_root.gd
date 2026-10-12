@@ -39,6 +39,7 @@ const UiSlice          := preload("res://src/ui/ui_slice.gd")
 const ChatSlice        := preload("res://src/chat/chat_slice.gd")
 const Minimap          := preload("res://src/ui/minimap.gd")
 const LoadingScreen    := preload("res://src/ui/loading_screen.gd")
+const WaypointHorizon  := preload("res://src/ui/waypoint_horizon.gd")
 const TestSuite        := preload("res://src/tests/test_suite.gd")
 const NetHarness       := preload("res://src/tests/net_harness.gd")
 const SpawnFinder      := preload("res://src/world/spawn_finder.gd")
@@ -459,6 +460,14 @@ func _ready() -> void:
 		# Phase 111 — the explored set persists per world, and a click on the minimap opens the Map window.
 		_minimap.revealed_dir = "user://saves/client"
 		_minimap.open_requested.connect(func() -> void: _ui.open_window(UiSlice.WINDOW_MAP))
+		# Waypoints on the horizon of the game view, under the minimap and the windows.
+		var horizon_layer := CanvasLayer.new()
+		horizon_layer.name = "WaypointHorizonLayer"
+		horizon_layer.layer = 10
+		add_child(horizon_layer)
+		var horizon := WaypointHorizon.new()
+		horizon.minimap = _minimap
+		horizon_layer.add_child(horizon)
 
 		# Phase 42 — the first-ring loading screen, at its own layer ABOVE the minimap.
 		# Host-only like the minimap (a dedicated server has no body to place and no

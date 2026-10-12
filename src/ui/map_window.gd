@@ -31,6 +31,8 @@ const PICK_PX := 10.0
 ## Samples across the view used to find which part of each face the globe shows.
 const GLOBE_GRID := 20
 const ZOOM_START := 6.5
+## The globe tilts up to just short of a pole (straight over it, "up" has no direction).
+const GLOBE_LAT_MAX := PI * 0.5 - 0.0001
 
 const BG := Color(0.03, 0.04, 0.08)
 const FOG := Color(0.22, 0.23, 0.27)
@@ -47,6 +49,10 @@ var _zoom: float = ZOOM_START
 var _home: Array = MapMath.placement_of(0)   # the placement the view centre is on
 var _lx: float = 0.0   # the view centre, screen-local on `_home` (plain floats: double precision)
 var _ly: float = 0.0
+## The globe's camera: longitude and map latitude (radians) of the view centre. Kept in step with the
+## net's centre; the globe turns by these so it stays pole-up wherever it is dragged.
+var _glon: float = 0.0
+var _glat: float = 0.0
 var _dragging := false
 var _thread: Thread = null
 var _batch_seed: int = 0
@@ -70,7 +76,7 @@ func _init() -> void:
 	_hover.name = "Hover"
 	_hover.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hover.visible = false
-	_hover.add_theme_font_size_override("font_size", 12)
+	_hover.add_theme_font_size_override("font_size", 14)
 	_hover.add_theme_color_override("font_outline_color", Color.BLACK)
 	_hover.add_theme_constant_override("outline_size", 4)
 	add_child(_hover)
@@ -87,6 +93,11 @@ func set_zoom(z: float) -> void:
 ## Fold the faces into a globe (true) or lay them out flat (false).
 func set_planet(on: bool) -> void:
 	planet = on
+	if not on:   # the net picks up where the globe was, its face turned map-up
+		var r := MapMath.upright(_home, _lx, _ly)
+		_home = r[0]
+		_lx = r[1]
+		_ly = r[2]
 	set_zoom(_zoom)
 	_hide_hover()
 
@@ -100,19 +111,25 @@ func _center_xz() -> Array:
 	return MapMath.xz_of_face(MapMath.face_of(_home), uv[0], uv[1])
 
 func center_dir() -> Vector3:
-	return MapMath.local_dir(_home, _lx, _ly)
+	return _frame()[0] if planet else MapMath.local_dir(_home, _lx, _ly)
 
 ## Centre the view on a chunk-space point, its face turned map-up.
 func set_center(chunk: Vector2) -> void:
 	set_center_xz(chunk.x, chunk.y)
 
 func set_center_xz(x: float, z: float) -> void:
+	_set_net_center(x, z)
+	var c := float(TerrainSlice.circumference_chunks())
+	_glon = x / c * TAU
+	_glat = clampf(-z / (c * 0.25) * (PI * 0.5), -GLOBE_LAT_MAX, GLOBE_LAT_MAX)
+	queue_redraw()
+
+func _set_net_center(x: float, z: float) -> void:
 	var fuv := MapMath.face_uv_xz(x, z)
 	var r := MapMath.upright(MapMath.placement_of(fuv[0]), fuv[1], fuv[2])
 	_home = r[0]
 	_lx = r[1]
 	_ly = r[2]
-	queue_redraw()
 
 ## Centre the view on the player, exactly (chunk + local offset, so far from the origin too).
 func center_on_player() -> void:
@@ -175,13 +192,26 @@ func _gui_input(event: InputEvent) -> void:
 			accept_event()
 		_update_hover(event.position)
 
-## Move the view by a screen drag of `rel` pixels: the flat net slides, the globe turns.
+## Move the view by a screen drag of `rel` pixels: the flat net slides, the globe turns about its
+## poles (east-west) and tilts (north-south).
 func pan(rel: Vector2) -> void:
+	if planet:
+		var radius := maxf(_radius_px(), 0.000001)
+		_glat = clampf(_glat + rel.y / radius, -GLOBE_LAT_MAX, GLOBE_LAT_MAX)
+		_glon = wrapf(_glon - rel.x / (radius * maxf(cos(_glat), 0.2)), -PI, PI)
+		var c := float(TerrainSlice.circumference_chunks())
+		_set_net_center(_glon / TAU * c, -_glat / (PI * 0.5) * (c * 0.25))
+		queue_redraw()
+		return
 	var k := maxf(_k(), 0.000001)
 	var r := MapMath.wrap_local(_home, _lx - rel.x / k, _ly + rel.y / k)
 	_home = r[0]
 	_lx = r[1]
 	_ly = r[2]
+	var xz := _center_xz()
+	var c := float(TerrainSlice.circumference_chunks())
+	_glon = xz[0] / c * TAU
+	_glat = clampf(-xz[1] / (c * 0.25) * (PI * 0.5), -GLOBE_LAT_MAX, GLOBE_LAT_MAX)
 	queue_redraw()
 
 ## Right-click `offset` px from the window centre: delete the waypoint under it, else add one there.
@@ -214,19 +244,24 @@ func waypoint_at(offset: Vector2) -> int:
 			best = i
 	return best
 
-## The hover label's text for a point `offset` px from the centre: latitude and longitude as `/where`
-## prints them, plus the waypoint under the cursor. "" off the planet.
+## The corner label's text for a point `offset` px from the centre: its world X and Z in metres, the
+## numbers `/tp <x> <y> <z>` takes, plus the waypoint under the cursor. "" off the planet.
 func hover_text(offset: Vector2) -> String:
 	var at := place_at(offset)
 	if at.is_empty():
 		return ""
 	var p := MapMath.xz_of_face(at[0], at[1], at[2])
-	var text := TerrainSlice.latlon_text(p[0] * TerrainSlice.CHUNK_METERS, p[1] * TerrainSlice.CHUNK_METERS)
+	var text := coords_text(p[0] * TerrainSlice.CHUNK_METERS, p[1] * TerrainSlice.CHUNK_METERS)
 	var hit := waypoint_at(offset)
 	if hit >= 0:
 		text = "%s (right-click to delete)\n%s" % [str(minimap.get_waypoints()[hit]["name"]), text]
 	return text
 
+## "X 1234  Z -567": whole metres, as `/tp` reads them.
+static func coords_text(x_m: float, z_m: float) -> String:
+	return "X %d  Z %d" % [roundi(x_m), roundi(z_m)]
+
+## The label sits in the bottom-left corner; it shows what is under the cursor.
 func _update_hover(pos: Vector2) -> void:
 	_hover_at = pos
 	var text := hover_text(pos - size * 0.5)
@@ -235,10 +270,7 @@ func _update_hover(pos: Vector2) -> void:
 		return
 	_hover.text = text
 	_hover.reset_size()
-	var at := pos + Vector2(14, 12)
-	at.x = minf(at.x, size.x - _hover.size.x - 4.0)
-	at.y = minf(at.y, size.y - _hover.size.y - 4.0)
-	_hover.position = at
+	_hover.position = Vector2(8.0, size.y - _hover.size.y - 6.0)
 	_hover.visible = true
 
 func _hide_hover() -> void:
@@ -258,7 +290,7 @@ func _radius_px() -> float:
 	return _k() * 4.0 / PI
 
 func _frame() -> Array:
-	return MapMath.globe_frame(_home, _lx, _ly)
+	return MapMath.globe_frame(_glon, _glat)
 
 func _process(_delta: float) -> void:
 	if not is_visible_in_tree():

@@ -465,6 +465,7 @@ func run() -> void:
 	_run_test("ui: HUD toasts are bounded and de-duplicated",   _test_ui_toasts)
 	_run_test("ui: a world-version mismatch is one toast, a pre-stamp save none", _test_ui_worldgen_toast)
 	_run_test("map: M and the dock box toggle the Map window",  _test_map_window_key)
+	_run_test("map: waypoints sit on the game view's horizon",  _test_map_waypoint_horizon)
 	_run_test("ui: crafting rows gate on technology",          _test_ui_crafting_rows_tech_gate)
 	_run_test("ui: technology rows report status + prereqs",   _test_ui_technology_rows_status)
 	_run_test("ai: idle→alert when player within alertRadius", _test_ai_idle_to_alert)
@@ -5510,7 +5511,7 @@ func _test_map_cube_net() -> void:
 		var wrapped := fposmod(p.x + circ * 0.5, float(circ)) - circ * 0.5
 		assert_true(absf(back[0] - wrapped) < 0.00003 and absf(back[1] - p.y) < 0.00003, "%s round-trips in double precision (%s)" % [p, back])
 	# Globe: the inverse of the projection, the far side flagged.
-	var frame := _MapMath.globe_frame(pl0, 0.3, -0.2)
+	var frame := _MapMath.globe_frame(0.3, -0.2)
 	for d in [Vector3(0.1, 0.2, 1.0).normalized(), Vector3(0.7, -0.5, 0.4).normalized()]:
 		var q := _MapMath.globe_project(frame, d)
 		assert_true(q.z > 0.0 and Vector2(q.x, q.y).length() <= 1.0 + 0.000001, "a near point is on the disc")
@@ -5883,8 +5884,34 @@ func _test_map_window_phase117() -> void:
 	w.set_zoom(_MapMath.ZOOM_MIN)
 	w.set_center(Vector2(200.25, -300.75))
 	var p := w.get_center()
-	assert_eq(w.hover_text(Vector2.ZERO), TerrainSlice.latlon_text(p.x * TerrainSlice.CHUNK_METERS, p.y * TerrainSlice.CHUNK_METERS), "hover shows /where's coordinates")
-	assert_true(w.hover_text(Vector2.ZERO).ends_with("E") and w.hover_text(Vector2.ZERO).contains("\u00b0"), "as degrees")
+	assert_eq(w.hover_text(Vector2.ZERO), "X %d  Z %d" % [roundi(p.x * TerrainSlice.CHUNK_METERS), roundi(p.y * TerrainSlice.CHUNK_METERS)], "hover shows world metres")
+	# The numbers are the ones /tp takes: they land on the chunk under the cursor.
+	var hover_at := w.world_pos_at(Vector2(80.0, -45.0))
+	var nums := w.hover_text(Vector2(80.0, -45.0)).split(" ", false)
+	var tp := ChatCommands.parse_position([nums[1], "0", nums[3]])
+	assert_true(tp["ok"], "/tp accepts the hover numbers")
+	assert_true(absi(tp["pos"]["chunk"].x - hover_at["chunk"].x) <= 1 and absi(tp["pos"]["chunk"].y - hover_at["chunk"].y) <= 1, "and lands where the cursor was")
+	w.set_center(Vector2(-5000.0, 700.0))
+	assert_true(w.hover_text(Vector2.ZERO).begins_with("X -160000"), "west is a negative X (%s)" % w.hover_text(Vector2.ZERO))
+	w.set_center(Vector2(200.25, -300.75))
+	# The globe turns pole-up: dragging over a cube corner never flips the picture round.
+	w.set_planet(true)
+	w.set_zoom(_MapMath.zoom_max(true) - 1.0)
+	var corner_lon := PI * 0.25
+	var corner_lat := atan(1.0 / sqrt(2.0))
+	var rad := w._radius_px()
+	var start_lat := corner_lat - 100.0 * 1.5 / rad   # 100 steps short of the corner, on the line through it
+	var start_lon := corner_lon - 100.0 * 1.5 / (rad * cos(corner_lat))
+	w.set_center(Vector2(start_lon / TAU * circ, -start_lat / (PI * 0.5) * circ * 0.25))
+	var prev_up: Vector3 = w._frame()[2]
+	var worst_turn := 0.0
+	for i in 200:
+		w.pan(Vector2(-1.5, 1.5))
+		var up: Vector3 = w._frame()[2]
+		worst_turn = maxf(worst_turn, prev_up.angle_to(up))
+		prev_up = up
+	assert_true(worst_turn < 0.05, "the globe's up turns smoothly across a cube corner (%f rad)" % worst_turn)
+	w.set_planet(false)
 	# Fog: only explored tiles are revealed and requested; the rest are never sampled.
 	var terrain := TerrainSlice.new()
 	terrain.set_world_seed(5)
@@ -5967,6 +5994,37 @@ func _test_ui_worldgen_toast() -> void:
 	assert_eq(ui.toast_queue().size(), 0, "the same notice is never queued twice")
 	gr.free()
 	ui.free()
+
+## Waypoints on the horizon: one ahead projects onto the screen at the horizon toward it, one behind
+## waits on the edge it is nearer to, and the minimap gives the offset the short way round.
+func _test_map_waypoint_horizon() -> void:
+	var Horizon: GDScript = load("res://src/ui/waypoint_horizon.gd")
+	var cam := Camera3D.new()
+	add_child(cam)
+	cam.global_position = Vector3(0.0, 10.0, 0.0)   # looking down -Z, level
+	var view := cam.get_viewport().get_visible_rect().size
+	var ahead: Dictionary = Horizon.place(cam, Vector2(0.0, -400.0), view)
+	assert_false(ahead["behind"], "a waypoint ahead is in front")
+	var p: Vector2 = ahead["pos"]
+	assert_true(absf(p.x - view.x * 0.5) < 1.0, "straight ahead is mid-screen (%s of %s)" % [p, view])
+	assert_true(p.y > Horizon.EDGE_PX and p.y < view.y * 0.5 + 1.0, "at the horizon, not the ground underfoot")
+	var right: Dictionary = Horizon.place(cam, Vector2(300.0, -400.0), view)
+	assert_true((right["pos"] as Vector2).x > p.x, "one ahead-right is right of centre")
+	var back_left: Dictionary = Horizon.place(cam, Vector2(-50.0, 400.0), view)
+	assert_true(back_left["behind"] and (back_left["pos"] as Vector2).x == Horizon.EDGE_PX, "one behind-left waits on the left edge")
+	var back_right: Dictionary = Horizon.place(cam, Vector2(50.0, 400.0), view)
+	assert_true(back_right["behind"] and (back_right["pos"] as Vector2).x == view.x - Horizon.EDGE_PX, "one behind-right on the right edge")
+	assert_true(Horizon.place(cam, Vector2.ZERO, view).is_empty(), "one underfoot has no direction")
+	cam.free()
+	# The minimap's offset: metres, the short way round the seam.
+	var m := Minimap.new()
+	var half := TerrainSlice.circumference_chunks() / 2
+	m.set_player_pos(Vector2((half - 2) * TerrainSlice.CHUNK_METERS, 40.0))   # two chunks west of the seam
+	m.add_waypoint("Seam", { "chunk": Vector2i(-half + 1, 1), "local": Vector3(0, 0, 8.0) })   # one chunk past it
+	var d := m.waypoint_offset_m(0)
+	assert_true(absf(d.x - 3.0 * TerrainSlice.CHUNK_METERS) < 0.001 and absf(d.y) < 0.001, "a waypoint over the seam is the short way, east (%s)" % d)
+	assert_eq(m.waypoint_offset_m(5), Vector2(INF, INF), "no such waypoint")
+	m.free()
 
 func _test_map_window_key() -> void:
 	var ui := _new_hud_ui()
