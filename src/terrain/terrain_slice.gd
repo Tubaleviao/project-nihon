@@ -348,21 +348,13 @@ static func _fold_latitude(lat: float) -> float:
 static func longitude_at(world_x: float) -> float:
 	return fposmod(world_x / CHUNK_METERS / float(circumference_chunks()) * 360.0 + 180.0, 360.0) - 180.0
 
-## What `/where` prints and the HUD shows: latitude, longitude and altitude of a world position.
+## What `/where` prints and the HUD shows: map X/Y and altitude of a world position.
 static func where_text(world_pos: Vector3) -> String:
-	return "%s  alt %d m" % [latlon_text(world_pos.x, world_pos.z), roundi(world_pos.y)]
+	return "%s  alt %d m" % [xy_text(world_pos.x, world_pos.z), roundi(world_pos.y)]
 
-## Latitude and longitude of a world X/Z as `/where` prints them (the Map window's hover reads this too).
-static func latlon_text(world_x: float, world_z: float) -> String:
-	# Round first, then pick the hemisphere: 179.9996 prints as 180.000 (wrap it to -180.000 W),
-	# and -0.0004 prints as 0.000 (not "0.000\u00b0W").
-	var lat := snappedf(latitude_at(world_z), 0.001)
-	var lon := snappedf(longitude_at(world_x), 0.001)
-	if lon >= 180.0:
-		lon -= 360.0
-	return "%.3f\u00b0%s %.3f\u00b0%s" % [
-		absf(lat), "N" if lat >= 0.0 else "S",
-		absf(lon), "E" if lon >= 0.0 else "W"]
+## "X 1234  Y -567": a world X/Z in whole metres, the map's two axes (the Map window's hover reads this too).
+static func xy_text(world_x: float, world_z: float) -> String:
+	return "X %d  Y %d" % [roundi(world_x), roundi(world_z)]
 
 ## True when `chunk_pos` is ground a player can stand on: any longitude, any latitude up to the
 ## fold slack past each pole. The polar ice is walkable; walking over a pole folds the player onto the

@@ -127,7 +127,7 @@ func run() -> void:
 	_run_test("wire: positions travel as chunk + local; old float arrays still read", _test_wire_chunk_local)
 	_run_test("rebase: driver shifts player, tree, creature, station and chunks together", _test_rebase_driver)
 	_run_test("terrain: detail noise stays exact far from the origin", _test_far_noise_quantised)
-	_run_test("chat: /where prints latitude and longitude", _test_where_command)
+	_run_test("chat: /where prints X and Y", _test_where_command)
 	_run_test("chat: slash lines parse, sanitize and validate", _test_chat_parse)
 	_run_test("chat: admin commands run for admins only",     _test_chat_admin_commands)
 	_run_test("chat: lines and intents cross the wire",       _test_chat_wire)
@@ -1722,10 +1722,10 @@ func _test_terrain_planet_coordinates() -> void:
 	assert_true(t.is_chunk_in_bounds(Vector2i(999999, 0)), "any longitude is walkable")
 	assert_true(t.is_chunk_in_bounds(Vector2i(0, TerrainSlice.polar_chunks())), "polar ice is walkable")
 	assert_true(t.is_chunk_in_bounds(Vector2i(0, -TerrainSlice.pole_chunks())), "up to the south pole")
-	assert_eq(TerrainSlice.where_text(Vector3(0.0, 4.2, 0.0)), "0.000\u00b0N 0.000\u00b0E  alt 4 m", "where: the origin")
-	assert_eq(TerrainSlice.where_text(Vector3(-0.5, 0.0, 0.0)), "0.000\u00b0N 0.000\u00b0E  alt 0 m", "where: just west of the meridian rounds to 0.000, no \"0.000 W\"")
+	assert_eq(TerrainSlice.where_text(Vector3(0.0, 4.2, 0.0)), "X 0  Y 0  alt 4 m", "where: the origin")
+	assert_eq(TerrainSlice.where_text(Vector3(-0.4, 0.0, 0.0)), "X 0  Y 0  alt 0 m", "where: under half a metre west rounds to X 0")
 	assert_true(PlayerRegistry.world_pos_of({"chunk": [0, TerrainSlice.pole_chunks()], "local": [0.0, 0.0, 1.0e6]})["chunk"].y <= TerrainSlice.pole_chunks(), "world_pos_of: a huge local cannot push the chunk past the pole")
-	assert_true(TerrainSlice.where_text(Vector3(-3200.0, 0.0, 3200.0)).contains("W"), "where: west of the origin")
+	assert_eq(TerrainSlice.where_text(Vector3(-3200.0, 0.0, 3200.0)), "X -3200  Y 3200  alt 0 m", "where: west and south of the origin are negative/positive")
 	# Position quantiser at a far chunk: a tile offset is exact in double precision, so a
 	# 0.125 step is the same 0.125 at chunk 600,000 as at the origin.
 	var far := Vector2i(600000, 0)
@@ -5884,7 +5884,7 @@ func _test_map_window_phase117() -> void:
 	w.set_zoom(_MapMath.ZOOM_MIN)
 	w.set_center(Vector2(200.25, -300.75))
 	var p := w.get_center()
-	assert_eq(w.hover_text(Vector2.ZERO), "X %d  Z %d" % [roundi(p.x * TerrainSlice.CHUNK_METERS), roundi(p.y * TerrainSlice.CHUNK_METERS)], "hover shows world metres")
+	assert_eq(w.hover_text(Vector2.ZERO), "X %d  Y %d" % [roundi(p.x * TerrainSlice.CHUNK_METERS), roundi(p.y * TerrainSlice.CHUNK_METERS)], "hover shows world metres")
 	# The numbers are the ones /tp takes: they land on the chunk under the cursor.
 	var hover_at := w.world_pos_at(Vector2(80.0, -45.0))
 	var nums := w.hover_text(Vector2(80.0, -45.0)).split(" ", false)

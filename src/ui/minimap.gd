@@ -406,7 +406,7 @@ func _draw() -> void:
 	if clock_text != "":
 		_draw_outlined(Vector2(4.0, size.y - 17.0), clock_text, Color(1, 0.95, 0.7, 0.95))
 
-	# Latitude, longitude and altitude (Phase 50).
+	# X, Y and altitude.
 	if player_slice != null and player_slice.has_method("get_position"):
 		_draw_outlined(Vector2(4.0, size.y - 4.0), TerrainSlice.where_text(player_slice.get_position()), Color(1, 1, 1, 0.95))
 

@@ -7,8 +7,8 @@ extends Control
 ## fold into an orthographic globe that is dragged round. The picture is sampled bit by bit from the
 ## same fields the terrain is generated from (`MapTiles`), coarse first, on a worker thread.
 ##
-## Unexplored land is one flat fog colour and is never sampled. Hovering shows the latitude and
-## longitude under the cursor; right-click adds a waypoint, or deletes the one under the cursor.
+## Unexplored land is one flat fog colour and is never sampled. Hovering shows the X/Y
+## under the cursor; right-click adds a waypoint, or deletes the one under the cursor.
 ##
 ## Drawing needs a canvas and does not run headless; the maths it relies on is in MapMath/MapTiles.
 
@@ -244,8 +244,8 @@ func waypoint_at(offset: Vector2) -> int:
 			best = i
 	return best
 
-## The corner label's text for a point `offset` px from the centre: its world X and Z in metres, the
-## numbers `/tp <x> <y> <z>` takes, plus the waypoint under the cursor. "" off the planet.
+## The corner label's text for a point `offset` px from the centre: its map X and Y in metres
+## (world X and Z), plus the waypoint under the cursor. "" off the planet.
 func hover_text(offset: Vector2) -> String:
 	var at := place_at(offset)
 	if at.is_empty():
@@ -257,9 +257,9 @@ func hover_text(offset: Vector2) -> String:
 		text = "%s (right-click to delete)\n%s" % [str(minimap.get_waypoints()[hit]["name"]), text]
 	return text
 
-## "X 1234  Z -567": whole metres, as `/tp` reads them.
+## "X 1234  Y -567": whole metres (Y is the world Z axis).
 static func coords_text(x_m: float, z_m: float) -> String:
-	return "X %d  Z %d" % [roundi(x_m), roundi(z_m)]
+	return TerrainSlice.xy_text(x_m, z_m)
 
 ## The label sits in the bottom-left corner; it shows what is under the cursor.
 func _update_hover(pos: Vector2) -> void:
