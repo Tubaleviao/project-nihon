@@ -565,11 +565,30 @@ static func world_pos_of(rec: Dictionary) -> Dictionary:
 ## is folded over it), after `local` has been folded into the chunk, so no per-element check can be
 ## bypassed through `local`. The clamp still bounds a hostile Z far past a pole.
 static func canonical_world_pos(wp: Dictionary) -> Dictionary:
-	wp = TerrainSlice.fold_world_pos(wp, 0)["pos"]
-	var chunk: Vector2i = TerrainSlice.wrap_chunk(wp["chunk"])
+	var out := wp.duplicate()
+	if not (out.get("chunk") is Vector2i and out.get("local") is Vector3):
+		return wp
+	# Phase 119 — a Z far past a pole (a forged or corrupt save) is pulled onto the pole row on ITS side
+	# before the fold: folding it first would mirror it to the other pole, then clamp it there.
 	var pole := TerrainSlice.pole_chunks()
-	wp["chunk"] = Vector2i(chunk.x, clampi(chunk.y, -pole, pole))
-	return wp
+	var raw: Vector2i = out["chunk"]
+	if absi(raw.y) > pole + TerrainSlice.FOLD_MARGIN_CHUNKS:
+		out["chunk"] = Vector2i(raw.x, pole - 1 if raw.y > 0 else -pole)
+		out["local"] = Vector3(out["local"].x, out["local"].y, 0.0)
+	var fold := TerrainSlice.fold_world_pos(out, 0)
+	var folded: Dictionary = fold["pos"]
+	var chunk: Vector2i = TerrainSlice.wrap_chunk(folded["chunk"])
+	out["chunk"] = Vector2i(chunk.x, clampi(chunk.y, -pole, pole))
+	out["local"] = folded["local"]
+	# A pole crossing turns the walker half a turn (see PlayerSlice.fold_to): the heading and velocity a
+	# record carries turn with it, instead of being dropped by the fold.
+	if fold["turned"]:
+		if out.get("velocity") is Vector3:
+			var v: Vector3 = out["velocity"]
+			out["velocity"] = Vector3(-v.x, v.y, -v.z)
+		if out.get("heading") is float:
+			out["heading"] = fposmod(float(out["heading"]) + PI, TAU)
+	return out
 
 func get_world_pos(player_id: String) -> Dictionary:
 	return world_pos_of(get_record(player_id))

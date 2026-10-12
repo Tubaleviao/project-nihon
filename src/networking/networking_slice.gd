@@ -81,6 +81,8 @@ enum Role { OFFLINE, HOST, CLIENT }
 ## Spatial hash over connected peers' AOI centers so interest filtering is an
 ## O(radius²)-cells query, not an O(peers) scan (Phase 29).
 const SpatialHash := preload("res://src/core/spatial_hash.gd")
+const Transport := preload("res://src/networking/transport.gd")
+const EnetTransport := preload("res://src/networking/enet_transport.gd")
 
 ## Phase 36 — the registry's id-SHAPE predicate, preloaded for the redactor: it is a
 ## pure static check on a string, and the redactor must recognise a bearer token even
@@ -193,7 +195,7 @@ var _seq_gap_warn_ms: Dictionary = {}  # "peer:type" -> last warn time_ms
 const SEQ_GAP_WARN_INTERVAL_MS := 1000.0
 var _rng := RandomNumberGenerator.new()
 
-## Emulator delivery queue: { at_ms, peer_id, json }, drained by _process.
+## Emulator delivery queue: { at_ms, peer_id, payload }, drained by _process.
 var _pending: Array = []
 
 ## Jitter buffer (client): peer_id -> Array of { at_ms, position }.
@@ -235,8 +237,10 @@ var _rate_buckets: Dictionary = {}
 ## flood); the same one-per-second throttle the seq-gap warning uses applies.
 var _rate_warn_ms: Dictionary = {}
 
-## Peers already warned about for a malformed `player_moved` position: one line per peer, not per packet.
-var _malformed_position_warned: Dictionary = {}
+## peer_id -> time_ms of its last malformed `player_moved` warning. A hostile peer can send one such packet per
+## token-bucket token, so the warning is throttled per peer (one per interval), not per packet.
+var _malformed_position_warn_ms: Dictionary = {}
+const MALFORMED_WARN_INTERVAL_MS := 5000.0
 
 func _ready() -> void:
 	GameBus.packet_send_requested.connect(_on_packet_send_requested)
@@ -428,9 +432,12 @@ func send_snapshot(peer_id: int, data: Dictionary) -> void:
 ## Record a client's last-known authoritative position. Retained across a
 ## disconnect so a rejoining client resumes from where it left off.
 ## Clears the eviction countdown: an active peer is never stale.
-func remember_player_state(peer_id: int, position: Vector3) -> void:
+func remember_player_state(peer_id: int, position: Vector3, exact: Dictionary = {}) -> void:
 	_last_known_states[peer_id] = position
-	_last_known_exact.erase(peer_id)
+	if exact.is_empty():
+		_last_known_exact.erase(peer_id)
+	else:
+		_last_known_exact[peer_id] = exact
 	_peer_spatial.update(peer_id, position)
 	_last_known_timestamps.erase(peer_id)
 
@@ -518,45 +525,49 @@ func _broadcast_aoi(payload: Dictionary, position: Vector3) -> void:
 # Private
 # ---------------------------------------------------------------------------
 
-## Test seam: when non-null, the suite has no sockets, so `_connected_peers()` answers this
-## list and `_deliver` appends to `_test_outbox` instead of sending. Never set in the game.
-## Setting either outside a suite boot asserts and is ignored, so a game can never silently
-## swap its sockets for the outbox.
-var _test_peers: Variant = null:
-	set(value):
-		if not _test_seam_allowed():
-			assert(false, "[NetworkingSlice] _test_peers set outside a --run-tests boot")
-			return
-		_test_peers = value
-var _test_outbox: Array = []:
-	set(value):
-		if not _test_seam_allowed():
-			assert(false, "[NetworkingSlice] _test_outbox set outside a --run-tests boot")
-			return
-		_test_outbox = value
+## Phase 119 — the wire. `null` until the first send/connect, then an `EnetTransport` over the engine
+## peer. The suite injects a `MemoryTransport` (`set_transport`); a release boot refuses it.
+var _transport: Transport = null
+## The engine transport, built lazily by `_ensure_transport` when none is injected.
+var _enet: Transport = null
 
-## The suite boots with `--run-tests` (or in a debug build): the rule is `GameRoot.should_run_tests`,
-## loaded on demand because `GameRoot` already depends on this slice.
-static func _test_seam_allowed() -> bool:
-	return _test_seam_allowed_for(OS.get_cmdline_user_args(), OS.is_debug_build())
+## Inject a transport. Allowed only in a `GameRoot.should_run_tests` boot (the suite): a game can never
+## silently swap its sockets for an in-memory one. Returns false (and changes nothing) when refused.
+func set_transport(transport: Transport) -> bool:
+	if not transport_injection_allowed():
+		Diag.warn("NetworkingSlice: set_transport refused outside a --run-tests boot")
+		return false
+	_transport = transport
+	return true
 
-static func _test_seam_allowed_for(args: Array, is_debug_build: bool) -> bool:
+## The suite's memory transport when one is injected (its `outbox` holds every send), else null.
+func memory_transport() -> Object:
+	return _transport if _transport != null and _transport.is_memory() else null
+
+## The rule is `GameRoot.should_run_tests`, loaded on demand because `GameRoot` already depends on this slice.
+static func transport_injection_allowed() -> bool:
+	return transport_injection_allowed_for(OS.get_cmdline_user_args(), OS.is_debug_build())
+
+static func transport_injection_allowed_for(args: Array, is_debug_build: bool) -> bool:
 	var root_script: GDScript = load("res://src/core/game_root.gd")
 	return root_script.should_run_tests(args, is_debug_build)
 
+func _ensure_transport() -> Transport:
+	if _transport != null:
+		return _transport
+	# The engine transport follows the node's CURRENT `multiplayer` (null outside the tree, swappable), so
+	# it is rebuilt when that changes rather than caching a stale or null API.
+	var api := multiplayer
+	if _enet == null or not _enet.uses(api):
+		_enet = EnetTransport.new(api, _send_raw)
+	return _enet
+
 ## Peers the host would fan out to.
 func _connected_peers() -> Array:
-	if _test_peers != null:
-		return Array(_test_peers)
-	return Array(multiplayer.get_peers())
+	return _ensure_transport().peers()
 
 func _connected() -> bool:
-	if _test_peers != null:
-		return true
-	var mp_peer := multiplayer.multiplayer_peer
-	if mp_peer == null:
-		return false
-	return mp_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED
+	return _ensure_transport().is_up()
 
 ## Broadcast a packet dict to every peer (host) or to the host (client),
 ## routing through the Phase 19 emulator.
@@ -573,22 +584,22 @@ func _broadcast(payload: Dictionary) -> void:
 ## either send immediately (emulation disabled — zero overhead) or queue for
 ## emulated delivery (loss / jitter / reorder).
 func _deliver(peer_id: int, payload: Dictionary) -> void:
-	if _test_peers != null:
-		_test_outbox.append({ "peer_id": peer_id, "payload": payload })
+	var transport := _ensure_transport()
+	if not transport.stamps_seq():
+		transport.send(peer_id, payload)
 		return
 	var ptype: String = str(payload.get("type", "_"))
 	if not _send_seq.has(ptype):
 		_send_seq[ptype] = 0
 	payload["seq"] = _send_seq[ptype]
 	_send_seq[ptype] += 1
-	var json := JSON.stringify(payload)
 	if not emulate_network:
-		_send_raw(peer_id, json)
+		transport.send(peer_id, payload)
 		return
 	if _should_drop():
 		return
 	var at_ms: float = float(Time.get_ticks_msec()) + _jitter_delay_ms()
-	_pending.append({ "at_ms": at_ms, "peer_id": peer_id, "json": json })
+	_pending.append({ "at_ms": at_ms, "peer_id": peer_id, "payload": payload })
 	if emulator_reorder:
 		_maybe_reorder()
 
@@ -613,26 +624,30 @@ func _on_player_state_sync_requested(payload: Dictionary) -> void:
 	# Phase 86 — the exact `{chunk, local}` position rides the wire when the sender holds one, so the
 	# host does not quantise a far-away player to float32 metres.
 	var exact = payload.get("world_pos", null)
-	var wire: Dictionary = WorldPos.pos_to_wire(exact) if _is_exact_pos(exact) else WorldPos.to_wire(pos)
+	var wire: Dictionary = exact if _is_exact_pos(exact) else WorldPos.from_world(pos.x, pos.y, pos.z)
 	var packet := {
 		"type":     "player_moved",
 		"peer_id":  multiplayer.get_unique_id(),
-		"position": wire,
+		"pk":       WorldPos.pos_to_packet_text(wire),
 		"hp":       payload.get("hp",     100.0),
 		"max_hp":   payload.get("max_hp", 100.0),
 	}
 	_broadcast_aoi(packet, pos)
 
-func _warn_malformed_position_once(sender: int) -> void:
-	if _malformed_position_warned.has(sender):
-		return
-	_malformed_position_warned[sender] = true
-	Diag.warn("NetworkingSlice: player_moved from peer %d has a malformed position — dropped" % sender)
+func _warn_malformed_position(sender: int, now_ms: float = -1.0) -> bool:
+	if now_ms < 0.0:
+		now_ms = float(Time.get_ticks_msec())
+	var last: float = float(_malformed_position_warn_ms.get(sender, -MALFORMED_WARN_INTERVAL_MS))
+	if now_ms - last < MALFORMED_WARN_INTERVAL_MS:
+		return false
+	_malformed_position_warn_ms[sender] = now_ms
+	Diag.warn("NetworkingSlice: position packet from peer %d has a malformed position — dropped" % sender)
+	return true
 
 static func _is_exact_pos(pos: Variant) -> bool:
 	return pos is Dictionary and pos.get("chunk") is Vector2i and pos.get("local") is Vector3
 
-func _on_block_edit_intent(action: String, position: Vector3, normal: Vector3, material: String) -> void:
+func _on_block_edit_intent(action: String, position: Vector3, normal: Vector3, material: String, exact: Dictionary) -> void:
 	if _role != Role.CLIENT:
 		# Host applies edits directly through the voxel slice; only clients
 		# forward intents to the host.
@@ -640,10 +655,15 @@ func _on_block_edit_intent(action: String, position: Vector3, normal: Vector3, m
 	var packet := {
 		"type":     "block_edit_intent",
 		"action":   action,
-		"position": WorldPos.to_wire(position),
 		"normal":   [normal.x, normal.y, normal.z],
 		"material": material,
 	}
+	# Phase 119 — the exact aimed point rides the wire when the sender holds one, not a float32 position
+	# quantised to metres far from the origin.
+	if _is_exact_pos(exact) and WorldPos.is_plausible_pos(exact):
+		packet["pk"] = WorldPos.pos_to_packet_text(exact)
+	else:
+		packet["position"] = WorldPos.to_wire(position)
 	_broadcast(packet)
 
 func _on_block_changed(action: String, position: Vector3, normal: Vector3, material: String) -> void:
@@ -758,7 +778,7 @@ func send_teleport(peer_id: int, position: Dictionary) -> bool:
 	if _role != Role.HOST:
 		Diag.warn("NetworkingSlice: send_teleport called on non-host — dropped")
 		return false
-	if _peer == null and _test_peers == null:
+	if _peer == null and _transport == null:
 		return false
 	_deliver(peer_id, { "type": "teleport", "position": WorldPos.pos_to_wire(position) })
 	return true
@@ -1001,7 +1021,7 @@ func _on_creature_state_changed(instance_id: String, creature_id: String, state:
 		"instance_id": instance_id,
 		"creature_id": creature_id,
 		"state":       state,
-		"position":    WorldPos.to_wire(position),
+		"pk":          WorldPos.pos_to_packet_text(WorldPos.from_world(position.x, position.y, position.z)),
 	}
 	_broadcast_aoi(packet, position)
 
@@ -1015,18 +1035,18 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	# Phase 19 — persist the client's last-known authoritative position so a
 	# rejoining client can resume from it.
 	var first_report := not has_last_known_state(peer_id)
-	remember_player_state(peer_id, position)
+	remember_player_state(peer_id, position, _inbound_exact)
 	if first_report:
 		announce_equipment_to_aoi(peer_id)
 	_refresh_equipment_pairs(peer_id)
 	# Phase 97 — relay the peer's exact `{chunk, local}` when its report carried one, so a far-from-origin
 	# avatar does not jitter by float32 metres on the other clients.
-	var wire: Dictionary = WorldPos.pos_to_wire(_inbound_exact) if not _inbound_exact.is_empty() \
-			else WorldPos.to_wire(position)
+	var relayed: Dictionary = _inbound_exact if not _inbound_exact.is_empty() \
+			else WorldPos.from_world(position.x, position.y, position.z)
 	var packet := {
 		"type":     "remote_player_state",
 		"peer_id":  peer_id,
-		"position": wire,
+		"pk":       WorldPos.pos_to_packet_text(relayed),
 	}
 	_broadcast_aoi(packet, position)
 
@@ -1504,11 +1524,14 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 		"player_moved":
 			# Phase 86 — a position that does not decode is refused, not read as the origin: the
 			# previous last-known state stands.
-			var raw = payload.get("position", null)
-			if not WorldPos.is_wire(raw):
-				_warn_malformed_position_once(sender)
+			# Phase 119 — the packet is decoded and validated here, once, before any consumer
+			# (`aoi_region` included) sees a number from it: a truncated, non-finite or implausible
+			# position is refused, with one throttled warning per peer.
+			if not WorldPos.packet_has_pos(payload):
+				_warn_malformed_position(sender)
 				return
-			var pos := _vec3(raw)
+			var exact := WorldPos.pos_from_packet(payload)
+			var pos := WorldPos.packet_world(payload)
 			# The packet also carries the peer's self-declared `hp` / `max_hp`,
 			# used for its own display. The host deliberately keeps NO durable
 			# copy of THAT value: it is client-declared and cannot be verified
@@ -1518,13 +1541,9 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			# (record_simulated_hp, via game_root._on_player_damaged); the
 			# declared half still has no door. Position is the other half the
 			# host retains, and only so a reconnect can resume from it.
-			var exact := WorldPos.pos_from_wire(raw)
 			_inbound_exact = exact
 			GameBus.remote_player_state.emit(sender, pos)
 			_inbound_exact = {}
-			# `remember_player_state` (run by the emit) cleared any older exact position; keep this one.
-			if not exact.is_empty() and _last_known_states.has(sender):
-				_last_known_exact[sender] = exact
 		"craft_intent":
 			# A remote peer's craft must resolve against ITS OWN inventory (crafting
 			# is per-player now that each player persists one). The identity comes
@@ -1584,7 +1603,11 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			var item: Variant = payload.get("item", "")
 			if slot is String and item is String:
 				var seq: Variant = payload.get("seq", 0)
-				player_registry.note_equip_seq(wearer, int(seq) if (seq is int or seq is float) else 0)
+				var seq_n: int = int(seq) if (seq is int or seq is float) else 0
+				# Phase 119 — an action numbered below one already applied is stale or replayed: ignored.
+				if seq_n < player_registry.equip_seq_of(wearer):
+					return
+				player_registry.note_equip_seq(wearer, seq_n)
 				GameBus.equip_intent.emit(wearer, slot, item)
 		"block_edit_intent":
 			# Phase 36 — a world edit needs a bound identity AND a target within the
@@ -1603,16 +1626,20 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				_refuse_unhandshaked(sender, "block_edit_intent")
 				return
 			var action := str(payload.get("action", ""))
-			var ipos := _vec3(payload.get("position", []))
+			if payload.has("pk") and not WorldPos.packet_has_pos(payload):
+				_warn_malformed_position(sender)
+				return
+			var ipos := WorldPos.packet_world(payload, _vec3(payload.get("position", [])))
+			var iexact := WorldPos.pos_from_packet(payload) if payload.has("pk") else {}
 			var inorm := _vec3(payload.get("normal", [0, 1, 0]))
 			if not _within_reach(sender, ipos, MAX_EDIT_REACH):
 				Diag.warn("NetworkingSlice: block_edit_intent from peer %d is out of reach — dropped" % sender)
 				return
 			if action == "mine":
-				GameBus.block_mine_requested.emit(ipos, inorm, _actor_id(sender))
+				GameBus.block_mine_requested.emit(ipos, inorm, _actor_id(sender), iexact)
 			elif action == "place":
 				GameBus.block_place_requested.emit(
-					ipos, inorm, _actor_id(sender), str(payload.get("material", "")))
+					ipos, inorm, _actor_id(sender), str(payload.get("material", "")), iexact)
 			else:
 				Diag.error("NetworkingSlice: unknown block_edit_intent action '%s'" % action)
 		"tree_chop_intent":
@@ -1756,7 +1783,7 @@ func _route_h2c(payload: Dictionary) -> void:
 	match str(payload.get("type", "")):
 		"player_moved":
 			# The host's own movement arrives as player_moved (peer_id == host id).
-			var pos := _vec3(payload.get("position", []))
+			var pos := WorldPos.packet_world(payload, _vec3(payload.get("position", [])))
 			GameBus.remote_player_state.emit(int(payload.get("peer_id", 1)), pos)
 		"block_changed":
 			GameBus.block_changed.emit(
@@ -1796,7 +1823,7 @@ func _route_h2c(payload: Dictionary) -> void:
 				str(payload.get("instance_id", "")),
 				str(payload.get("creature_id", "")),
 				str(payload.get("state", "")),
-				_vec3(payload.get("position", []))
+				WorldPos.packet_world(payload, _vec3(payload.get("position", [])))
 			)
 		"remote_player_state":
 			_route_remote_player_state(payload)
@@ -1883,7 +1910,7 @@ func _route_h2c(payload: Dictionary) -> void:
 ## Phase 18 path, unchanged).
 func _route_remote_player_state(payload: Dictionary) -> void:
 	var pid := int(payload.get("peer_id", 0))
-	var pos := _vec3(payload.get("position", []))
+	var pos := WorldPos.packet_world(payload, _vec3(payload.get("position", [])))
 	if emulate_network and _role == Role.CLIENT:
 		_buffer_remote_state(pid, pos)
 	else:
@@ -1965,7 +1992,7 @@ func _drain_emulator() -> void:
 	while i < _pending.size():
 		var entry: Dictionary = _pending[i]
 		if float(entry["at_ms"]) <= now:
-			_send_raw(int(entry["peer_id"]), str(entry["json"]))
+			_ensure_transport().send(int(entry["peer_id"]), entry["payload"])
 			_pending.remove_at(i)
 		else:
 			i += 1
@@ -2122,7 +2149,7 @@ func _on_peer_connected(id: int) -> void:
 ## A disconnect timestamp is set so _evict_stale_states() can expire the entry
 ## after LAST_KNOWN_STATE_TTL_MS if the peer never reconnects.
 func _on_peer_disconnected(id: int) -> void:
-	_malformed_position_warned.erase(id)
+	_malformed_position_warn_ms.erase(id)
 	GameBus.peer_disconnected.emit(id)
 	# Phase 33 — the connection is gone, so its transport mapping goes with it.
 	# The player's durable record stays on disk, which is what lets a reconnect

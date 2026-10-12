@@ -151,3 +151,75 @@ static func _sane(arr: Array, count: int) -> bool:
 		if is_nan(float(v)) or absf(float(v)) > WIRE_LIMIT:
 			return false
 	return true
+
+## --- Phase 119: the compact per-tick form ------------------------------------------------
+## `player_moved`, `remote_player_state` and creature state go out many times a second, so they carry the
+## exact `{chunk, local}` as 20 bytes: two int32 chunk indices and three float32 local metres, base64 under
+## the packet key `pk` (JSON has no byte type). Nothing is quantised: a chunk index is an int and `local`
+## is already float32-sized. The decoder is the validator: a wrong length, a non-finite float or an
+## implausible chunk decodes to an empty dictionary, so a caller never reads half a position.
+
+const COMPACT_BYTES := 20
+
+## True for an exact `{chunk, local}` record that passes the wire validator (the ONE plausibility rule).
+static func is_plausible_pos(pos: Dictionary) -> bool:
+	return pos.get("chunk") is Vector2i and pos.get("local") is Vector3 and is_wire(pos_to_wire(pos))
+
+## Encode an exact `{chunk, local}` record as the 20-byte compact form.
+static func pos_to_compact(pos: Dictionary) -> PackedByteArray:
+	var chunk: Vector2i = pos["chunk"]
+	var local: Vector3 = pos["local"]
+	var bytes := PackedByteArray()
+	bytes.resize(COMPACT_BYTES)
+	bytes.encode_s32(0, chunk.x)
+	bytes.encode_s32(4, chunk.y)
+	bytes.encode_float(8, local.x)
+	bytes.encode_float(12, local.y)
+	bytes.encode_float(16, local.z)
+	return bytes
+
+## Decode the compact form (bytes, or the base64 text a packet carries) to a normalised `{chunk, local}`,
+## or an empty dictionary when it is truncated or non-finite. The codec is exact for any int32 chunk;
+## whether that chunk is a place on THIS planet is `is_plausible_pos`, which `pos_from_packet` applies.
+static func pos_from_compact(data: Variant) -> Dictionary:
+	var bytes: PackedByteArray
+	if data is String:
+		bytes = Marshalls.base64_to_raw(data)
+	elif data is PackedByteArray:
+		bytes = data
+	else:
+		return {}
+	if bytes.size() != COMPACT_BYTES:
+		return {}
+	var local := Vector3(bytes.decode_float(8), bytes.decode_float(12), bytes.decode_float(16))
+	if not (is_finite(local.x) and is_finite(local.y) and is_finite(local.z)):
+		return {}
+	if absf(local.x) > LOCAL_LIMIT or absf(local.y) > LOCAL_LIMIT or absf(local.z) > LOCAL_LIMIT:
+		return {}
+	return normalized({ "chunk": Vector2i(bytes.decode_s32(0), bytes.decode_s32(4)), "local": local })
+
+## The packet text for an exact position (what goes under `pk`).
+static func pos_to_packet_text(pos: Dictionary) -> String:
+	return Marshalls.raw_to_base64(pos_to_compact(pos))
+
+## The exact position a per-tick packet carries: the compact `pk` when present, else the `{chunk, local}`
+## `position` of an older peer. Empty when neither decodes (a legacy float array has no exact chunk) or the
+## compact position is not a place on the planet.
+static func pos_from_packet(payload: Dictionary) -> Dictionary:
+	if payload.has("pk"):
+		var exact := pos_from_compact(payload["pk"])
+		return exact if not exact.is_empty() and is_plausible_pos(exact) else {}
+	return pos_from_wire(payload.get("position", null))
+
+## True when a per-tick packet carries a position of either form that decodes.
+static func packet_has_pos(payload: Dictionary) -> bool:
+	if payload.has("pk"):
+		return not pos_from_packet(payload).is_empty()
+	return is_wire(payload.get("position", null))
+
+## The world position (metres) of a per-tick packet; `fallback` when it carries none that decodes.
+static func packet_world(payload: Dictionary, fallback: Vector3 = Vector3.ZERO) -> Vector3:
+	if payload.has("pk"):
+		var exact := pos_from_packet(payload)
+		return fallback if exact.is_empty() else to_scene(exact, Vector2i.ZERO)
+	return from_wire(payload.get("position", null), fallback)

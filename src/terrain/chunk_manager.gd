@@ -210,6 +210,10 @@ var _chunk_refs: Dictionary = {}   # "cx,cz" -> number of windows covering it (r
 ## client could make the host read regions and queue chunk builds as fast as it can send packets.
 const PEER_RECENTER_INTERVAL := 0.25
 const PEER_RECENTER_MAX_CHUNKS := 8
+## Phase 119 — the chunk an uncentred peer's FIRST client claim is measured from. A peer the host placed
+## (join, spawn) is centred by `host_driven`, so a client claim reaching an uncentred peer is a stranger's
+## and may land no farther than `PEER_RECENTER_MAX_CHUNKS` from here (seam-wrapped), like any later move.
+var first_claim_origin: Vector2i = Vector2i.ZERO
 ## peer_id -> `now_msec` time of the last accepted client claim (`set_peer_center`) or host placement.
 var _peer_last_claim_msec: Dictionary = {}
 ## peer_id -> `now_msec` time of the last accepted host sync (`sync_peer_center`) or host placement.
@@ -992,6 +996,11 @@ func _move_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool, is_sync
 	var now: int = now_msec.call()
 	# X is a wrapped planet coordinate: store and compare the canonical chunk.
 	chunk = TerrainSlice.wrap_chunk(chunk)
+	if not host_driven and not is_sync and not _peer_centers.has(peer_id):
+		var clamped := _clamp_toward(first_claim_origin, chunk)
+		if clamped != chunk:
+			peer_recenter_refused += 1
+		chunk = clamped
 	if host_driven or not _peer_centers.has(peer_id):
 		var moved: bool = _peer_centers.get(peer_id, null) != chunk
 		_peer_centers[peer_id] = chunk
@@ -1006,21 +1015,36 @@ func _move_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool, is_sync
 		if not is_sync:
 			peer_recenter_refused += 1
 		return false
-	# X is a wrapped planet coordinate: measure the step the short way round the seam.
-	var c := TerrainSlice.circumference_chunks()
-	var step := Vector2i(posmod(chunk.x - current.x + c / 2, c) - c / 2, chunk.y - current.y)
+	var step := _wrapped_step(current, chunk)
 	var reach := maxi(absi(step.x), absi(step.y))
 	if reach > PEER_RECENTER_MAX_CHUNKS:
 		if is_sync:
 			peer_sync_far_hops += 1
 		else:
 			peer_recenter_refused += 1
-		step = Vector2i(
-			roundi(float(step.x) * PEER_RECENTER_MAX_CHUNKS / float(reach)),
-			roundi(float(step.y) * PEER_RECENTER_MAX_CHUNKS / float(reach)))
+		step = _scaled_step(step, reach)
 	_peer_centers[peer_id] = TerrainSlice.wrap_chunk(current + step)
 	last_msec[peer_id] = now
 	return true
+
+## The step from `from` to `to`, X measured the short way round the seam.
+static func _wrapped_step(from: Vector2i, to: Vector2i) -> Vector2i:
+	var c := TerrainSlice.circumference_chunks()
+	return Vector2i(posmod(to.x - from.x + c / 2, c) - c / 2, to.y - from.y)
+
+static func _scaled_step(step: Vector2i, reach: int) -> Vector2i:
+	return Vector2i(
+		roundi(float(step.x) * PEER_RECENTER_MAX_CHUNKS / float(reach)),
+		roundi(float(step.y) * PEER_RECENTER_MAX_CHUNKS / float(reach)))
+
+## `target`, pulled to within `PEER_RECENTER_MAX_CHUNKS` of `origin` (the wrapped step, so a claim across
+## the X seam counts its short distance).
+static func _clamp_toward(origin: Vector2i, target: Vector2i) -> Vector2i:
+	var step := _wrapped_step(origin, target)
+	var reach := maxi(absi(step.x), absi(step.y))
+	if reach <= PEER_RECENTER_MAX_CHUNKS:
+		return target
+	return TerrainSlice.wrap_chunk(origin + _scaled_step(step, reach))
 
 ## Phase 82 — the periodic re-centre of a peer on the position the host tracks. That position is
 ## still client-reported, so it gets the same interval limit and clamp as a claim (a hostile
