@@ -30,6 +30,13 @@ const BACKOFF_MAX_MSEC := 60000
 ## The clock the backoff reads; a test swaps it for a deterministic one.
 var _now: Callable = Time.get_ticks_msec
 
+## Phase 121 — a stranded region is retried on its own backoff, whether or not a window moved, so a
+## stationary server recovers it once a save has cleaned its chunks without rescanning every frame.
+const STRANDED_RETRY_START_MSEC := 2000
+const STRANDED_RETRY_MAX_MSEC := 16000
+var _stranded_until: int = 0
+var _stranded_delay: int = STRANDED_RETRY_START_MSEC
+
 func _init(store: RegionStore, voxel: Object) -> void:
 	_store = store
 	_voxel = voxel
@@ -44,6 +51,8 @@ static func regions_for_chunks(chunks: Array, margin: int = 1, recorded_margin: 
 		var chunk: Vector2i = c
 		out[RegionStore.region_key(RegionStore.region_of_chunk(chunk))] = true
 		var reach := recorded_margin if margin != recorded_margin and ChunkRecords.has_record(TerrainSlice.wrap_chunk(chunk)) else margin
+		if not _near_region_edge(chunk, reach):
+			continue   # an interior chunk reads nothing beyond its own region
 		# The margin matters only on a region's edge: a chunk there is rebuilt against its
 		# neighbour's real edits, which live in the next region.
 		# Neighbours are wrapped in X like every chunk key, so a seam chunk's margin is the
@@ -56,6 +65,16 @@ static func regions_for_chunks(chunks: Array, margin: int = 1, recorded_margin: 
 				var n := TerrainSlice.wrap_chunk(chunk + Vector2i(dx, dz))
 				out[RegionStore.region_key(RegionStore.region_of_chunk(n))] = true
 	return out
+
+## Phase 121 — true when `chunk` is within `reach` chunks of its region's edge or of the X seam (where
+## wrapping puts the neighbour in another region), the only chunks whose margin can cross a region. Pure.
+static func _near_region_edge(chunk: Vector2i, reach: int) -> bool:
+	var lx := posmod(chunk.x, RegionStore.REGION_SIZE)
+	var lz := posmod(chunk.y, RegionStore.REGION_SIZE)
+	if lx < reach or lx >= RegionStore.REGION_SIZE - reach or lz < reach or lz >= RegionStore.REGION_SIZE - reach:
+		return true
+	var half := TerrainSlice.circumference_chunks() / 2
+	return chunk.x < -half + reach or chunk.x >= half - reach
 
 ## Make exactly `wanted` ("rx,rz" keys) resident: read the missing ones, release the rest.
 ## Returns { "loaded": n, "released": n, "failed": n, "adopted": [chunk keys whose generation record
@@ -107,24 +126,18 @@ func sync(wanted: Dictionary) -> Dictionary:
 				if not by_region.has(rk):
 					by_region[rk] = []
 				by_region[rk].append(ckey)
-		var evicted_from: Array = []
+		var evicted_from: Dictionary = {}   # rkey -> chunks released from it
 		for rkey in _stranded.keys():
 			if wanted.has(rkey):
 				_stranded.erase(rkey)   # wanted again: re-read above, and memory won
 				continue
-			released += _voxel.evict_clean_chunks(by_region.get(rkey, []))
-			evicted_from.append(rkey)
+			var listed: Array = by_region.get(rkey, [])
+			var n: int = _voxel.evict_clean_chunks(listed)
+			released += n
+			evicted_from[rkey] = n >= listed.size()   # true: nothing of the region is left in memory
 		# Dirty chunks stay (and their region stays stranded) until a save cleans them.
-		var edited := {}
-		for ckey in _voxel.edited_chunk_keys():
-			edited[ckey] = true
 		for rkey in evicted_from:
-			var left := false
-			for ckey in by_region.get(rkey, []):
-				if edited.has(ckey):
-					left = true
-					break
-			if not left:
+			if evicted_from[rkey]:
 				_stranded.erase(rkey)
 	return { "loaded": loaded, "released": released, "failed": failed, "adopted": adopted }
 
@@ -133,7 +146,15 @@ func sync(wanted: Dictionary) -> Dictionary:
 func release_stranded() -> int:
 	if _stranded.is_empty():
 		return 0
-	return int(sync(_resident.duplicate())["released"])
+	var now: int = _now.call()
+	if now < _stranded_until:
+		return 0
+	var released := int(sync(_resident.duplicate())["released"])
+	# A retry that freed nothing waits twice as long (up to the cap); progress resets the wait.
+	_stranded_delay = STRANDED_RETRY_START_MSEC if released > 0 or _stranded.is_empty() \
+			else mini(_stranded_delay * 2, STRANDED_RETRY_MAX_MSEC)
+	_stranded_until = now + _stranded_delay
+	return released
 
 ## Phase 114 — true when every region `chunk` reads with `margin` is resident (none failed or backing off).
 func regions_ready(chunk: Vector2i, margin: int) -> bool:

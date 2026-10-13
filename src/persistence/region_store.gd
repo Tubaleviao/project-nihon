@@ -23,6 +23,7 @@ extends RefCounted
 ## Pure helpers (`region_of_chunk`, `region_of_chunk_key`, `group_manifest`,
 ## `fold_chunks`, `file_name`) are static and are what the tests pin.
 const Diag := preload("res://src/core/diag.gd")
+const SaveTxn := preload("res://src/persistence/save_txn.gd")
 
 ## Chunks per region side. A region is REGION_SIZE × REGION_SIZE chunks.
 const REGION_SIZE := 32
@@ -41,6 +42,9 @@ var atomic_writes: bool = true
 ## The "cx,cz" keys of the chunks in regions the LAST `write_chunks` could not write (read or
 ## save failed). A save that failed in one region should put back only those chunks as dirty.
 var last_failed_chunk_keys: Array = []
+## Phase 121 — test hook: `fault.call(step)` returning true fails that write step ("region_tmp",
+## "region_rename", "journal", "backup"). Invalid (unset) in production.
+var fault: Callable = Callable()
 ## Phase 89 — malformed-entry warnings already raised by this store, keyed "path|chunk key". Reads
 ## run on worker threads, so the set is guarded.
 var _warned: Dictionary = {}
@@ -48,8 +52,20 @@ var _warned_mutex := Mutex.new()
 
 func _init(region_dir: String = "", atomic: bool = true) -> void:
 	if not region_dir.is_empty():
-		dir = region_dir if region_dir.ends_with("/") else region_dir + "/"
+		set_dir(region_dir)
 	atomic_writes = atomic
+
+## Point the store at another directory in place (Phase 121: holders of the store keep their reference).
+func set_dir(region_dir: String) -> void:
+	dir = region_dir if region_dir.ends_with("/") else region_dir + "/"
+
+## Where a transaction over this directory records itself.
+func journal_path() -> String:
+	return dir + "save.journal"
+
+## Undo an interrupted save and delete stray `.tmp` / `.bak` files in the region directory.
+func recover() -> int:
+	return SaveTxn.recover(journal_path(), [dir])
 
 # ---------------------------------------------------------------------------
 # Pure helpers
@@ -282,6 +298,11 @@ func read_region(region: Vector2i, warn := true) -> Dictionary:
 		for ckey in raw:
 			if raw[ckey] is Dictionary and _chunk_entry_valid(raw[ckey]):
 				chunks[ckey] = raw[ckey]
+				var cleaned := _drop_bad_ops(raw[ckey])
+				if cleaned.size() != raw[ckey].size() or cleaned.get("edits", null) != raw[ckey].get("edits", null):
+					chunks[ckey] = cleaned
+					if warn and _first_warning("%s|%s|ops" % [path, str(ckey)]):
+						Diag.warn("RegionStore: %s: dropping malformed op(s) of chunk '%s'" % [path, str(ckey)])
 				if raw[ckey].has("gen"):
 					var gen := normalize_gen(raw[ckey]["gen"])
 					if gen.is_empty() and is_newer_gen(raw[ckey]["gen"]):
@@ -340,6 +361,54 @@ static func _chunk_entry_valid(entry: Dictionary) -> bool:
 	if entry.has("materials") and not (entry["materials"] is Dictionary):
 		return false
 	return true
+
+## Phase 121 — the kinds of op a tile's list may hold (see `VoxelSlice`), and the check of one op's
+## fields: a known kind, finite `bottom`/`top` (add: also a String `material`), a `deplete` with a
+## String `vein` and a whole `taken` >= 0, a `legacy` with a finite `height`. Pure.
+static func op_valid(op: Variant) -> bool:
+	if not (op is Dictionary):
+		return false
+	var d: Dictionary = op
+	match d.get("op", null):
+		"add", "remove":
+			if not (_is_finite_number(d.get("bottom", null)) and _is_finite_number(d.get("top", null))):
+				return false
+			return d["op"] == "remove" or d.get("material", "") is String
+		"deplete":
+			return d.get("vein", null) is String and _is_whole_number(d.get("taken", null)) and int(d["taken"]) >= 0
+		LEGACY_OP:
+			return _is_finite_number(d.get("height", null))
+	return false
+
+static func _is_finite_number(x: Variant) -> bool:
+	return (typeof(x) == TYPE_FLOAT or typeof(x) == TYPE_INT) and is_finite(float(x))
+
+## `entry` without its malformed ops (a tile left with none is dropped); the same Dictionary when every
+## op is fine. A bare legacy tile value (not a list) is not an op list and is left to `VoxelSlice`.
+static func _drop_bad_ops(entry: Dictionary) -> Dictionary:
+	var edits: Variant = entry.get("edits", null)
+	if not (edits is Dictionary):
+		return entry
+	var cleaned_edits := {}
+	var changed := false
+	for tile in edits:
+		var ops: Variant = edits[tile]
+		if not (ops is Array):
+			cleaned_edits[tile] = ops
+			continue
+		var good: Array = []
+		for op in ops:
+			if op_valid(op):
+				good.append(op)
+		if good.size() != (ops as Array).size():
+			changed = true
+		if not good.is_empty() or (ops as Array).is_empty():
+			cleaned_edits[tile] = good
+	if not changed:
+		return entry
+	var out := entry.duplicate()
+	out["edits"] = cleaned_edits
+	return out
 
 ## True for a record whose `v` is a whole number above this build's `WORLDGEN_VERSION`. Pure.
 static func is_newer_gen(rec: Variant) -> bool:
@@ -411,34 +480,63 @@ static func is_valid_chunk_entry(entry: Variant) -> bool:
 ## Write one region's chunk entries (replacing the file). An EMPTY chunk set removes the
 ## file instead, so a region whose last edit was put back leaves nothing on disk.
 func save_region(region: Vector2i, chunks: Dictionary) -> Error:
+	var staged := stage_region(region, chunks)
+	if staged["err"] != OK:
+		return staged["err"]
+	if not atomic_writes:
+		return OK   # written in place by `stage_region`
+	var ops: Array = staged["ops"]
+	return SaveTxn.commit(ops, journal_path(), fault) as Error
+
+## Phase 121 — write one region's new content to `<path>.tmp` (no change to the live file) and return
+## { "err": Error, "ops": [commit op] }. An empty set stages the file's removal. With `atomic_writes`
+## off the file is written in place and `ops` is empty.
+func stage_region(region: Vector2i, chunks: Dictionary) -> Dictionary:
 	var path := path_of(region)
 	if chunks.is_empty():
-		if FileAccess.file_exists(path):
-			return DirAccess.remove_absolute(path)
-		return OK
+		if not FileAccess.file_exists(path):
+			return { "err": OK, "ops": [] }
+		if not atomic_writes:
+			return { "err": DirAccess.remove_absolute(path), "ops": [] }
+		return { "err": OK, "ops": [{ "path": path, "tmp": "", "kind": "region" }] }
 	DirAccess.make_dir_recursive_absolute(dir)
-	var target := path + ".tmp" if atomic_writes else path
+	var target := path + SaveTxn.TMP_EXT if atomic_writes else path
+	if atomic_writes and fault.is_valid() and bool(fault.call("region_tmp")):
+		return { "err": ERR_CANT_CREATE, "ops": [] }
 	var file := FileAccess.open(target, FileAccess.WRITE)
 	if file == null:
 		var err := FileAccess.get_open_error()
 		Diag.error("RegionStore: cannot open %s for write — %s" % [target, error_string(err)])
-		return err
+		return { "err": err, "ops": [] }
 	file.store_string(JSON.stringify({ "version": REGION_FORMAT_VERSION, "chunks": chunks }))
 	file.close()
-	if atomic_writes:
-		var rename_err := DirAccess.rename_absolute(target, path)
-		if rename_err != OK:
-			Diag.error("RegionStore: rename %s → %s failed — %s" % [target, path, error_string(rename_err)])
-			return rename_err
-	return OK
+	if not atomic_writes:
+		return { "err": OK, "ops": [] }
+	return { "err": OK, "ops": [{ "path": path, "tmp": target, "kind": "region" }] }
 
-## Fold `chunks` (a manifest, possibly incremental) into the regions they belong to. Each
-## affected region is read, folded and rewritten; no other region file is touched. Returns
-## the first Error, or OK — a region that fails does not stop the others from being written
-## (Phase 61). This is the whole write path of a world save.
+## Fold `chunks` (a manifest, possibly incremental) into the regions they belong to and make the result
+## live in one transaction (see `SaveTxn`). Returns the first Error, or OK. This is the whole write
+## path of a standalone store; the world save uses `stage_chunks` and commits with `world.json`.
 func write_chunks(chunks: Dictionary, deletions := true) -> Error:
+	var staged := stage_chunks(chunks, deletions)
+	var err: Error = staged["err"]
+	var ops: Array = staged["ops"]
+	if atomic_writes and not ops.is_empty():
+		var commit_err := SaveTxn.commit(ops, journal_path(), fault) as Error
+		if commit_err != OK:
+			# Rolled back: nothing of this write is live, so every chunk of it stays dirty.
+			last_failed_chunk_keys = chunks.keys()
+			return commit_err if err == OK else err
+	return err
+
+## Fold `chunks` into the regions they belong to and stage each region's new file (`.tmp`), without
+## making anything live. A region that cannot be read or staged is skipped (and its chunk keys land in
+## `last_failed_chunk_keys`); the others are staged anyway (Phase 61). Returns { "err": first Error,
+## "ops": [commit op] }. With `atomic_writes` off the regions are written in place.
+func stage_chunks(chunks: Dictionary, deletions := true) -> Dictionary:
 	var grouped := group_manifest(chunks)
 	var first_error: Error = OK
+	var ops: Array = []
 	last_failed_chunk_keys = []
 	for rkey in grouped:
 		var region := region_from_key(str(rkey))
@@ -456,12 +554,14 @@ func write_chunks(chunks: Dictionary, deletions := true) -> Error:
 		for ckey in kept:
 			if not grouped[rkey].has(ckey):
 				folded[ckey] = kept[ckey]
-		var err := save_region(region, folded)
-		if err != OK:
+		var staged := stage_region(region, folded)
+		if staged["err"] != OK:
 			last_failed_chunk_keys.append_array(grouped[rkey].keys())
 			if first_error == OK:
-				first_error = err
-	return first_error
+				first_error = staged["err"]
+			continue
+		ops.append_array(staged["ops"])
+	return { "err": first_error, "ops": ops }
 
 ## Phase 107 — the stored generation record of `chunk`, or `{}` when it has none.
 func get_gen(chunk: Vector2i) -> Dictionary:
