@@ -653,6 +653,7 @@ func run() -> void:
 	_run_test("asset: manifest lists keys that exist on disk",   _test_asset_manifest_keys_exist)
 	_run_test("asset: load_mesh / load_animation_library from .glb.raw", _test_asset_load_mesh_and_animation)
 	_run_test("asset: placeholder rig is a visible body (#112)", _test_asset_placeholder_rig_is_a_body)
+	_run_test("asset: player rig placeholder has the art's contract", _test_asset_player_rig_placeholder_contract)
 	_run_test("asset: missing model key warns and falls back",   _test_asset_missing_model_falls_back)
 	_run_test("asset: creature model key derived from entity name", _test_asset_creature_key)
 	_run_test("rig tree: every Locomotion.State maps to a node", _test_rig_tree_state_mapping_total)
@@ -7692,8 +7693,9 @@ func _test_asset_load_mesh_and_animation() -> void:
 
 ## Issue #112 — the public placeholder rig IS the avatar a fresh clone renders:
 ## `game_root._finish_host_boot` calls `CharacterSlice.attach_default_rig`, which
-## prefers the private `models/player_rig.glb.raw` and falls back to this public key,
-## and `attach_rig` HIDES the procedural box body on success. The placeholder used to
+## tries `models/player_rig.glb.raw` first and this key second (now that the public
+## manifest lists a player rig placeholder, this one renders only when a manifest leaves
+## `player_rig` out), and `attach_rig` HIDES the procedural box body on success. The placeholder used to
 ## be a SINGLE 1x1 TRIANGLE in the XY plane — flat and single-sided, so a public clone
 ## showed nothing from behind and a gray sliver from the front: the player's own
 ## character was invisible. A rig that stands in for the player must be a BODY —
@@ -7739,6 +7741,73 @@ func _test_asset_placeholder_rig_is_a_body() -> void:
 		var tree := RigTree.build_tree(player)
 		assert_true(tree.tree_root != null, "the locomotion tree builds off the placeholder's clips")
 		tree.free()
+	root.free()
+
+## Asset roadmap A2: `models/player_rig.glb.raw` is the key the private player rig
+## overrides, so its public placeholder carries the art's contract (assets/README.md,
+## "The placeholder rule"): a skeleton whose bones are the fabric HumanoidSkeleton's,
+## names and parents exactly, rest axes in the art's convention (a bone's +Y points at
+## its only child), a skin bound at those rests, every clip the locomotion tree plays,
+## a human-height body standing on the root's ground plane. Code that reads bones then
+## works on a public clone exactly as on the art.
+func _test_asset_player_rig_placeholder_contract() -> void:
+	const GameDataReader := preload("res://src/core/game_data_reader.gd")
+	const Locomotion := preload("res://src/character/locomotion.gd")
+	var root := AssetOverlay.load_rig_scene("models/player_rig.glb.raw")
+	assert_true(root != null, "the player rig placeholder parses into a scene")
+	if root == null:
+		return
+	var skeletons := root.find_children("*", "Skeleton3D", true, false)
+	var skeleton: Skeleton3D = skeletons[0] if skeletons.size() == 1 else null
+	assert_true(skeleton != null, "the player rig carries a Skeleton3D")
+	if skeleton != null:
+		var bones: Array = GameDataReader.json_field(GameData.SKELETONS["HumanoidSkeleton"], "bones", [])
+		assert_eq(skeleton.get_bone_count(), bones.size(), "one bone per fabric HumanoidSkeleton bone")
+		for b in bones:
+			var idx := skeleton.find_bone(str(b["name"]))
+			assert_true(idx >= 0, "bone %s is in the rig" % b["name"])
+			if idx >= 0:
+				var parent := skeleton.get_bone_parent(idx)
+				assert_eq(skeleton.get_bone_name(parent) if parent >= 0 else "", str(b["parent"]),
+					"bone %s has its fabric parent" % b["name"])
+		for idx in skeleton.get_bone_count():
+			var kids := skeleton.get_bone_children(idx)
+			if kids.size() == 1:
+				var along := skeleton.get_bone_rest(kids[0]).origin
+				assert_true(along.length() > 0.01 and along.normalized().y > 0.99,
+					"bone %s points its +Y at its child, as the art's bones do (%s)" % [skeleton.get_bone_name(idx), along])
+	var parts: Array = []
+	_collect_mesh_instances(root, parts)
+	assert_true(parts.size() > 0, "the player rig has a mesh")
+	var box := AABB()
+	for i in parts.size():
+		var mi: MeshInstance3D = parts[i]
+		var xf := Transform3D.IDENTITY
+		var n: Node = mi
+		while n != root and n is Node3D:
+			xf = (n as Node3D).transform * xf
+			n = n.get_parent()
+		var local := xf * mi.get_aabb()
+		box = local if i == 0 else box.merge(local)
+		# Each bind pose must undo its bone's global rest, or the body renders offset.
+		if skeleton != null and mi.skin != null:
+			assert_eq(mi.skin.get_bind_count(), skeleton.get_bone_count(), "one skin bind per bone")
+			for bi in mi.skin.get_bind_count():
+				var bone := mi.skin.get_bind_bone(bi)
+				if bone < 0:
+					bone = skeleton.find_bone(mi.skin.get_bind_name(bi))
+				var err := mi.skin.get_bind_pose(bi) * skeleton.get_bone_global_rest(bone)
+				assert_true(err.basis.is_equal_approx(Basis.IDENTITY) and err.origin.length() < 0.001,
+					"bind %d (bone %s) inverts the bone's rest" % [bi, skeleton.get_bone_name(bone)])
+	assert_true(box.size.y >= 1.5 and box.size.y <= 1.9, "the body is 1.5-1.9 m tall (%.2f m)" % box.size.y)
+	assert_true(absf(box.position.y) <= 0.02, "the feet sit on the ground plane (min y %.3f)" % box.position.y)
+	assert_true(box.size.x > 0.1 and box.size.z > 0.1, "the body has thickness on both horizontal axes")
+	var player := root.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	assert_true(player != null, "the player rig carries an AnimationPlayer")
+	if player != null:
+		for state in Locomotion.State.values():
+			var clip: String = Locomotion.State.keys()[state].to_lower()
+			assert_true(player.has_animation(clip), "the player rig ships the '%s' clip" % clip)
 	root.free()
 
 ## Recursively collect every MeshInstance3D under `node` into `out`.
@@ -7825,7 +7894,15 @@ func _test_attach_rig() -> void:
 	assert_true(shown, "a rig-less rebuild leaves the procedural body visible")
 	var dflt := ch.create_character_from_recipe({"skeleton": "HumanoidSkeleton"}, Vector3.ZERO)
 	assert_true(ch.attach_default_rig(dflt), "the default rig resolves through the manifest")
-	assert_eq(ch._instances[dflt]["rig_key"], "models/placeholder_rig.glb.raw", "to the public placeholder when no player rig is listed")
+	assert_eq(ch._instances[dflt]["rig_key"], "models/player_rig.glb.raw", "to the player rig, which the public manifest lists too")
+	# A manifest without a player rig falls back to the public placeholder body.
+	AssetOverlay._manifest = { "meshes": { "models/placeholder_rig.glb.raw": "models/placeholder_rig.glb.raw" },
+		"animations": { "models/placeholder_rig.glb.raw": "models/placeholder_rig.glb.raw" } }
+	AssetOverlay._manifest_loaded = true
+	var fallback := ch.create_character_from_recipe({"skeleton": "HumanoidSkeleton"}, Vector3.ZERO)
+	assert_true(ch.attach_default_rig(fallback), "the default rig falls back when no player rig is listed")
+	assert_eq(ch._instances[fallback]["rig_key"], "models/placeholder_rig.glb.raw", "to the public placeholder body")
+	AssetOverlay.reload_manifest()
 	ch.free()
 
 func _test_asset_placeholder_resolves() -> void:

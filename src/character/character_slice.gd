@@ -745,8 +745,9 @@ func attach_rig(instance_id: String, rig_key: String) -> bool:
 	_apply_lod(instance_id)
 	return true
 
-## Rig keys tried in order for an avatar: a production pack's player rig, then the public
-## placeholder. The first one the manifest lists wins.
+## Rig keys tried in order for an avatar: the player rig (the production pack's art, or
+## its public placeholder), then the older unskinned placeholder body for a manifest that
+## lists no player rig. The first one the manifest lists wins.
 const DEFAULT_RIG_KEYS := ["models/player_rig.glb.raw", "models/placeholder_rig.glb.raw"]
 
 ## Attach the first default rig the manifest lists. False (the procedural body stays)

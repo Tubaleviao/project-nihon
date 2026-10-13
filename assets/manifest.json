@@ -3,9 +3,11 @@
     "textures/placeholder_character.png.raw": "textures/placeholder_character.png.raw"
   },
   "meshes": {
-    "models/placeholder_rig.glb.raw": "models/placeholder_rig.glb.raw"
+    "models/placeholder_rig.glb.raw": "models/placeholder_rig.glb.raw",
+    "models/player_rig.glb.raw": "models/player_rig.glb.raw"
   },
   "animations": {
-    "models/placeholder_rig.glb.raw": "models/placeholder_rig.glb.raw"
+    "models/placeholder_rig.glb.raw": "models/placeholder_rig.glb.raw",
+    "models/player_rig.glb.raw": "models/player_rig.glb.raw"
   }
 }
