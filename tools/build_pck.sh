@@ -46,11 +46,15 @@ trap cleanup EXIT
 
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
+# Only game files are packed: no dotfiles (.git, .github, .gdignore, ...), docs,
+# or the assets repo's sources (src/), palette swatches (palette/) and checker
+# (tools/) — see its STYLE.md.
 rsync -a \
-	--exclude='.git' \
-	--exclude='.gitattributes' \
-	--exclude='.gdignore' \
-	--exclude='README.md' \
+	--exclude='.*' \
+	--exclude='*.md' \
+	--exclude='/src/' \
+	--exclude='/palette/' \
+	--exclude='/tools/' \
 	"$ROOT/assets-prod/" "$STAGE/"
 
 if [ -z "$(ls -A "$STAGE" 2>/dev/null)" ]; then
