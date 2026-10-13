@@ -265,18 +265,40 @@ static func generation_record(chunk: Vector2i, seed_v: int) -> Dictionary:
 ## recorded chunk's cell the recorded corners are interpolated, as `_shape_at` does; elsewhere the
 ## generator answers. Pure; reads the record table only.
 static func shape_height(seed_v: int, x: float, z: float, w: float) -> float:
+	var snap: Dictionary = {}
 	if not ChunkRecords.is_empty():
+		var ix := floori(x / CHUNK_METERS)
+		var iz := floori(z / CHUNK_METERS)
+		var c := wrap_chunk(Vector2i(ix, iz))
+		var rec := ChunkRecords.get_record(c)
+		if not rec.is_empty():
+			snap[c] = rec
+	return shape_height_in(snap, seed_v, x, z, w)
+
+## Phase 120 — `shape_height` against an immutable snapshot (`ChunkRecords.snapshot_near`) instead of the
+## live table, so a worker's whole build sees one set of records. An empty snapshot is the plain generator.
+static func shape_height_in(snap: Dictionary, seed_v: int, x: float, z: float, w: float) -> float:
+	if not snap.is_empty():
 		var gx := x / CHUNK_METERS
 		var gz := z / CHUNK_METERS
 		var ix := floori(gx)
 		var iz := floori(gz)
-		var rec := ChunkRecords.get_record(wrap_chunk(Vector2i(ix, iz)))
+		var rec: Dictionary = snap.get(wrap_chunk(Vector2i(ix, iz)), {})
 		if not rec.is_empty():
 			var rh: Array = rec["h"]
 			var fx := gx - float(ix)
 			var fz := gz - float(iz)
 			return lerpf(lerpf(float(rh[0]), float(rh[1]), fx), lerpf(float(rh[2]), float(rh[3]), fx), fz)
 	return WorldShape.height(seed_v, x, z, w)
+
+## Phase 120 — fill the static caches `polar_ground` reads (circumference, polar rows) on the calling
+## (main) thread, so no worker is the first to resolve them.
+static func warm_polar_caches() -> void:
+	circumference_chunks()
+	polar_chunks()
+
+## Test-visible: how many times a cache above was first filled off the main thread.
+static var worker_cache_fills := 0
 
 ## Convert a world XZ position to its containing chunk coordinate.
 func world_to_chunk(world_pos: Vector2) -> Vector2i:
@@ -301,6 +323,8 @@ static func _world_field(field: String, fallback: float) -> float:
 ## Chunks around the equator; X wraps after this many (1,250,000 at 40,000 km).
 static func circumference_chunks() -> int:
 	if _circumference_cache < 0:   # the fabric value is fixed for the process; resolve it once
+		if OS.get_thread_caller_id() != OS.get_main_thread_id():
+			worker_cache_fills += 1
 		# A multiple of 4: an even half (the seam sits on a chunk edge) and a whole pole_chunks quarter.
 		_circumference_cache = maxi(4, roundi(_world_field("circumferenceKm", DEFAULT_CIRCUMFERENCE_KM) * 1000.0 / CHUNK_METERS / 4.0) * 4)
 	return _circumference_cache
@@ -313,6 +337,8 @@ static func pole_chunks() -> int:
 ## neighbours (`lends_biome`) and no new player is placed beyond it.
 static func polar_chunks() -> int:
 	if _polar_cache < 0:
+		if OS.get_thread_caller_id() != OS.get_main_thread_id():
+			worker_cache_fills += 1
 		var deg := clampf(_world_field("polarLatitude", DEFAULT_POLAR_LATITUDE), 0.0, 90.0)
 		_polar_cache = maxi(1, roundi(pole_chunks() * deg / 90.0))   # at least one walkable row
 	return _polar_cache
