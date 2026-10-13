@@ -508,8 +508,14 @@ func stage_region(region: Vector2i, chunks: Dictionary) -> Dictionary:
 		var err := FileAccess.get_open_error()
 		Diag.error("RegionStore: cannot open %s for write — %s" % [target, error_string(err)])
 		return { "err": err, "ops": [] }
-	file.store_string(JSON.stringify({ "version": REGION_FORMAT_VERSION, "chunks": chunks }))
+	var wrote := file.store_string(JSON.stringify({ "version": REGION_FORMAT_VERSION, "chunks": chunks }))
 	file.close()
+	if not wrote:
+		# A short write (disk full) must not reach the live file: drop the temp and fail the region.
+		Diag.error("RegionStore: cannot write %s" % target)
+		if atomic_writes:
+			DirAccess.remove_absolute(target)
+		return { "err": ERR_FILE_CANT_WRITE, "ops": [] }
 	if not atomic_writes:
 		return { "err": OK, "ops": [] }
 	return { "err": OK, "ops": [{ "path": path, "tmp": target, "kind": "region" }] }

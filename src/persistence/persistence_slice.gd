@@ -368,8 +368,12 @@ func _stage_json(path: String, data: Dictionary, step: String) -> Error:
 		var err := FileAccess.get_open_error()
 		Diag.error("PersistenceSlice: cannot open %s for write — %s" % [path, error_string(err)])
 		return err
-	file.store_string(JSON.stringify(data, "\t"))
+	var wrote := file.store_string(JSON.stringify(data, "\t"))
 	file.close()
+	if not wrote:
+		Diag.error("PersistenceSlice: cannot write %s" % path)
+		DirAccess.remove_absolute(path)
+		return ERR_FILE_CANT_WRITE
 	return OK
 
 ## The GLOBAL world record on disk (seed, stations, creatures, local player id), or an
