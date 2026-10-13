@@ -130,13 +130,6 @@ func rebuild(center: Vector2, radius_chunks: int) -> bool:
 		(floorf(center.y / CHUNK_METERS) + 0.5) * CHUNK_METERS)
 	var rev := ChunkRecords.revision()
 	var built := _req.built
-	if built != null and built.origin == origin and built.window == win_center and built.radius == radius_chunks \
-			and built.world_seed == world_seed and built.circ == circumference_m and (_mesh_inst != null or _task >= 0):
-		# Same target: only a newer set of recorded chunks can still ask for a rebuild, debounced.
-		if built.records_rev == rev or Time.get_ticks_msec() - _last_start_ms < record_debounce_ms:
-			return false
-	WorldShape.warm()   # the fabric snapshot is taken here, never first on a worker
-	TerrainSliceScript.warm_polar_caches()   # and the polar caches `polar_ground` reads
 	var r := Request.new()
 	r.origin = origin
 	r.window = win_center
@@ -144,10 +137,21 @@ func rebuild(center: Vector2, radius_chunks: int) -> bool:
 	r.radius = radius_chunks
 	r.circ = circumference_m
 	r.records_rev = rev
+	var same := built != null and built.same_target(r) and (_mesh_inst != null or _task >= 0)
+	# Same target: only a newer set of recorded chunks can still ask for a rebuild, debounced.
+	if same and (built.records_rev == rev or Time.get_ticks_msec() - _last_start_ms < record_debounce_ms):
+		return false
+	WorldShape.warm()   # the fabric snapshot is taken here, never first on a worker
+	TerrainSliceScript.warm_polar_caches()   # and the polar caches `polar_ground` reads
 	var snap: Dictionary = {}
 	if not ChunkRecords.is_empty():
+		# The ring is centred on the lattice cell origin, up to a whole cell from the window centre.
 		var wc := Vector2i(floori(win_center.x / CHUNK_METERS), floori(win_center.y / CHUNK_METERS))
-		snap = ChunkRecords.snapshot_near(wc, int(ceil(ring_half_m / CHUNK_METERS)) + 1, TerrainSliceScript.circumference_chunks())
+		var reach := int(ceil((ring_half_m + cell) / CHUNK_METERS)) + 1
+		snap = ChunkRecords.snapshot_near(wc, reach, TerrainSliceScript.circumference_chunks())
+	if same and snap.hash() == (built.args["snap"] as Dictionary).hash():
+		built.records_rev = rev   # the change lies outside the ring: nothing to redraw
+		return false
 	r.args = {
 		"seed": world_seed, "w": circumference_m,
 		"ring_center": Vector2(float(origin.x) * cell, float(origin.y) * cell),

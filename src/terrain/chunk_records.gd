@@ -57,20 +57,32 @@ static func records_around(chunk: Vector2i, radius: int, wrap: Callable) -> Dict
 
 ## Phase 120 — an immutable snapshot of the records within Chebyshev `radius` of `center`, measured the
 ## short way round a world of `circumference` chunks: canonical chunk -> `{ b, h }` (copies, so a later
-## table change never reaches a reader). One locked pass over the table, never over the window's area.
+## table change never reaches a reader). One locked pass, over whichever is smaller: the window's area
+## or the table, so the cost never grows with a long-lived world.
 static func snapshot_near(center: Vector2i, radius: int, circumference: int) -> Dictionary:
 	var out: Dictionary = {}
 	_mutex.lock()
-	for k in _table:
-		var parts: PackedStringArray = str(k).split(",")
-		var cx := int(parts[0])
-		var cz := int(parts[1])
-		var dx := absi(cx - center.x)
-		if circumference > 0:
-			dx = mini(dx % circumference, circumference - dx % circumference)
-		if maxi(dx, absi(cz - center.y)) <= radius:
-			var rec: Dictionary = _table[k]
-			out[Vector2i(cx, cz)] = { "b": str(rec["b"]), "h": (rec["h"] as Array).duplicate() }
+	var side := 2 * radius + 1
+	if side * side <= _table.size():
+		for dz in range(-radius, radius + 1):
+			for dx in range(-radius, radius + 1):
+				var c := center + Vector2i(dx, dz)
+				if circumference > 0:
+					c.x = posmod(c.x, circumference)
+				var rec: Dictionary = _table.get(key_of(c), {})
+				if not rec.is_empty():
+					out[c] = { "b": str(rec["b"]), "h": (rec["h"] as Array).duplicate() }
+	else:
+		for k in _table:
+			var parts: PackedStringArray = str(k).split(",")
+			var cx := int(parts[0])
+			var cz := int(parts[1])
+			var dx := absi(cx - center.x)
+			if circumference > 0:
+				dx = mini(dx % circumference, circumference - dx % circumference)
+			if maxi(dx, absi(cz - center.y)) <= radius:
+				var rec: Dictionary = _table[k]
+				out[Vector2i(cx, cz)] = { "b": str(rec["b"]), "h": (rec["h"] as Array).duplicate() }
 	_mutex.unlock()
 	return out
 

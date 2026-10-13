@@ -265,18 +265,15 @@ static func generation_record(chunk: Vector2i, seed_v: int) -> Dictionary:
 ## recorded chunk's cell the recorded corners are interpolated, as `_shape_at` does; elsewhere the
 ## generator answers. Pure; reads the record table only.
 static func shape_height(seed_v: int, x: float, z: float, w: float) -> float:
+	var snap: Dictionary = {}
 	if not ChunkRecords.is_empty():
-		var gx := x / CHUNK_METERS
-		var gz := z / CHUNK_METERS
-		var ix := floori(gx)
-		var iz := floori(gz)
-		var rec := ChunkRecords.get_record(wrap_chunk(Vector2i(ix, iz)))
+		var ix := floori(x / CHUNK_METERS)
+		var iz := floori(z / CHUNK_METERS)
+		var c := wrap_chunk(Vector2i(ix, iz))
+		var rec := ChunkRecords.get_record(c)
 		if not rec.is_empty():
-			var rh: Array = rec["h"]
-			var fx := gx - float(ix)
-			var fz := gz - float(iz)
-			return lerpf(lerpf(float(rh[0]), float(rh[1]), fx), lerpf(float(rh[2]), float(rh[3]), fx), fz)
-	return WorldShape.height(seed_v, x, z, w)
+			snap[c] = rec
+	return shape_height_in(snap, seed_v, x, z, w)
 
 ## Phase 120 — `shape_height` against an immutable snapshot (`ChunkRecords.snapshot_near`) instead of the
 ## live table, so a worker's whole build sees one set of records. An empty snapshot is the plain generator.
