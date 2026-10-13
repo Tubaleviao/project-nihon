@@ -1375,11 +1375,9 @@ func _dist2(center: Vector2i, chunk: Vector2i) -> int:
 	var dz := chunk.y - center.y
 	return dx * dx + dz * dz
 
-## True when `chunk` is inside the finite world, or when no terrain slice is
-## wired (isolated unit tests treat the world as unbounded).
-func _in_bounds(chunk: Vector2i) -> bool:
-	if terrain_slice != null and terrain_slice.has_method("is_chunk_loadable"):
-		return terrain_slice.is_chunk_loadable(chunk)
+## True when `chunk` may be streamed in: every chunk (Phase 122 — rows past a pole are the polar snow
+## field, so the streamed window never meets an edge; `TerrainSlice.is_chunk_in_bounds` is the walkable bound).
+func _in_bounds(_chunk: Vector2i) -> bool:
 	return true
 
 func _chunk_key(chunk_pos: Vector2i) -> String:

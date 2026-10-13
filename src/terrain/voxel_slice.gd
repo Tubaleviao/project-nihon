@@ -120,7 +120,9 @@ const BLEND_TILES := 4.0     # width of the dithered biome border band, in tiles
 ## the lowest possible surface (`WorldShape` clamps heights at `minHeight`) and the build cap a
 ## little above the tallest peak. (A per-column bedrock that rides the surface is not needed: a
 ## column is one run from here up, so a deeper floor costs nothing.)
-const BEDROCK_DEPTH := -72.0   # cannot mine below this — the world's floor
+## Phase 122 — 32 m below the lowest possible surface (was 8), so even the deepest ocean column keeps
+## the full authored vein depth (`depthBand` max 16) above the floor.
+const BEDROCK_DEPTH := -96.0   # cannot mine below this — the world's floor
 const MAX_HEIGHT    := 640.0   # build cap — cannot place above this
 
 ## A tile's op list is COMPACTED once it grows past this many ops (see
@@ -864,24 +866,37 @@ static func blended_biome(world_xz: Vector2, biomes: Dictionary, own: String) ->
 	var cz := floori(world_xz.y / extent)
 	var lx := world_xz.x - cx * extent
 	var lz := world_xz.y - cz * extent
-	# Distance (in tiles) to the nearest border on each axis, and the chunk step across it.
+	# Phase 122 — corners and diagonals. Distance (in tiles) to the nearest border on each axis, and the
+	# chunk step across it. The x-neighbour, the z-neighbour and (near a corner) the diagonal chunk each
+	# get their own roll, and the two axes roll with the coordinates swapped, so the rule is symmetric
+	# under swapping X and Z; where both axes would win, the nearer border wins and a tie takes the diagonal.
 	var dx := minf(lx, extent - lx) / TILE_SIZE
 	var dz := minf(lz, extent - lz) / TILE_SIZE
-	var across := Vector2i(cx, cz)
-	var d := dx
-	if dx <= dz:
-		across.x += -1 if lx < extent - lx else 1
-	else:
-		d = dz
-		across.y += -1 if lz < extent - lz else 1
-	if d >= BLEND_TILES:
+	if minf(dx, dz) >= BLEND_TILES:
 		return own
-	var other := str(biomes.get(_chunk_key(across), own))
-	if other == own:
-		return own
+	var sx := -1 if lx < extent - lx else 1
+	var sz := -1 if lz < extent - lz else 1
 	var gx := floori(world_xz.x / TILE_SIZE)
 	var gz := floori(world_xz.y / TILE_SIZE)
-	return other if BiomeBlend.wears_neighbour(gx, gz, d, BLEND_TILES) else own
+	var bx := str(biomes.get(_chunk_key(Vector2i(cx + sx, cz)), own))
+	var bz := str(biomes.get(_chunk_key(Vector2i(cx, cz + sz)), own))
+	var bd := str(biomes.get(_chunk_key(Vector2i(cx + sx, cz + sz)), own))
+	var dd := maxf(dx, dz)
+	if dd < BLEND_TILES and bd != own and 0.5 * (BiomeBlend.roll(gx, gz) + BiomeBlend.roll(gz, gx)) < 0.5 * BiomeBlend.chance(dd, BLEND_TILES):
+		return bd
+	var wx := bx != own and BiomeBlend.wears_neighbour(gx, gz, dx, BLEND_TILES)
+	var wz := bz != own and BiomeBlend.wears_neighbour(gz, gx, dz, BLEND_TILES)
+	if wx and wz:
+		if dx < dz:
+			return bx
+		if dz < dx:
+			return bz
+		return bd if bd != own else bx
+	if wx:
+		return bx
+	if wz:
+		return bz
+	return own
 
 ## Phase 43 — the ore field's per-call input: the seed, the depletion record and a fresh
 ## vein memo. Static and plain, so the worker half builds it from its payload.

@@ -359,6 +359,7 @@ func run() -> void:
 	_run_test("region: migration recovers a monolith chunk whose region entry is malformed", _test_region_migrate_malformed_recovers)
 	_run_test("rebase: an unshiftable target is reported",      _test_rebase_driver_reports_unshiftable)
 	_run_test("far origin: exact AOI, south fold row, ore warm retry", _test_phase122_exact_positions)
+	_run_test("voxel: corner blends are symmetric, deep ocean keeps vein depth", _test_phase122_blend_and_bedrock)
 	_run_test("rebase: one SceneOffset helper, whole-chunk shifts only", _test_scene_shift_helper)
 	_run_test("game_root: implausible peer positions dropped",  _test_remote_state_plausibility)
 	_run_test("networking: a remote peer's exact position is saved exactly", _test_remote_peer_exact_position)
@@ -1340,6 +1341,30 @@ func _test_phase122_exact_positions() -> void:
 	assert_true(ClimateField.is_warm() and OreField._warmed, "OreField.warm() warms ClimateField and latches")
 	OreField._warmed = was_ore
 	ClimateField._warmed = was_climate
+
+func _test_phase122_blend_and_bedrock() -> void:
+	var extent := float(VoxelSlice.CHUNK_SIZE * VoxelSlice.TILE_SIZE)
+	var ts := float(VoxelSlice.TILE_SIZE)
+	# Transposed layout: swapping X and Z in both the biome map and the position swaps the answer.
+	var a := { "0,0": "Desert", "1,0": "Tundra", "0,1": "VoidRift", "1,1": "Alpine" }
+	var b := { "0,0": "Desert", "0,1": "Tundra", "1,0": "VoidRift", "1,1": "Alpine" }
+	var worn := 0
+	for i in range(VoxelSlice.CHUNK_SIZE):
+		for j in range(VoxelSlice.CHUNK_SIZE):
+			var xz := Vector2(extent - (float(i) + 0.5) * ts, extent - (float(j) + 0.5) * ts)   # the 0,0 chunk's far corner
+			var got := VoxelSlice.blended_biome(xz, a, "Desert")
+			var swapped := VoxelSlice.blended_biome(Vector2(xz.y, xz.x), b, "Desert")
+			assert_eq(got, swapped, "blend at (%d,%d) is symmetric under X/Z swap" % [i, j])
+			if got != "Desert":
+				worn += 1
+	assert_true(worn > 0, "the corner band is dithered with the neighbours' biomes")
+	# A deep-ocean column (the fabric's lowest surface) has the authored vein depth above bedrock.
+	var deepest := 0.0
+	for key in GameData.MATERIALS:
+		var band: Variant = GameData.MATERIALS[key].get("depthBand")
+		if band is Dictionary:
+			deepest = maxf(deepest, float((band as Dictionary).get("max", 0.0)))
+	assert_true(WorldShape.min_height() - deepest > VoxelSlice.BEDROCK_DEPTH, "the deepest vein band (%.0f m) fits above bedrock under the deepest ocean floor" % deepest)
 
 func _count_files_with(dir: String, needle: String) -> int:
 	var n := 0
@@ -15936,7 +15961,7 @@ func _test_polar_ice() -> void:
 	var polar := TerrainSlice.polar_chunks()
 	var pole := TerrainSlice.pole_chunks()
 	assert_true(t.is_chunk_in_bounds(Vector2i(0, polar)), "polar ice is walkable")
-	assert_true(t.is_chunk_loadable(Vector2i(0, pole + 4)), "and streamed in past the pole: no void there")
+	assert_false(t.is_chunk_in_bounds(Vector2i(0, pole + TerrainSlice.FOLD_MARGIN_CHUNKS)), "the walkable bound ends at the fold slack; streaming is not bounded")
 	# Near a pole the ground is the pole's snow field: not flat, and the same on both sides of a fold.
 	t.set_world_seed(12345)
 	var cm := TerrainSlice.CHUNK_METERS

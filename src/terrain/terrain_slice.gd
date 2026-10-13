@@ -408,14 +408,10 @@ static func where_text(world_pos: Vector3) -> String:
 
 ## True when `chunk_pos` is ground a player can stand on: any longitude, any latitude up to the
 ## fold slack past each pole. The polar ice is walkable; walking over a pole folds the player onto the
-## far meridian (`fold_world_pos`) before they can stray further.
+## far meridian (`fold_world_pos`) before they can stray further. Streaming is NOT limited to this:
+## rows past a pole are the pole's snow field (`polar_ground`), so a window over a pole shows snow.
 func is_chunk_in_bounds(chunk_pos: Vector2i) -> bool:
 	return absi(chunk_pos.y) < pole_chunks() + FOLD_MARGIN_CHUNKS
-
-## True when `chunk_pos` may be streamed in and drawn: every chunk. Rows past a pole are the pole's
-## snow field (`polar_ground`), so a window that reaches over a pole shows snow, never an edge.
-func is_chunk_loadable(_chunk_pos: Vector2i) -> bool:
-	return true
 
 ## True when chunk `c` may lend its biome to a neighbour: its row is a walkable one, short of
 ## the polar ice at row `radius` (`world_radius_chunks`). One rule for the voxel surface and the minimap.
