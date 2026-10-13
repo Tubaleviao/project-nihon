@@ -1148,8 +1148,18 @@ func _locate_friend_on_disk(handle: String) -> Variant:
 			return Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
 	return null
 
-func _note_presence(pos: Vector3) -> void:
-	_colonization.note_presence(Vector2i(floori(pos.x / TerrainSlice.CHUNK_METERS), floori(pos.z / TerrainSlice.CHUNK_METERS)), Time.get_unix_time_from_system())
+## Phase 122 — presence is noted at the exact chunk of `wp` (`{chunk, local}`), not a float32 position.
+func _note_presence(wp: Dictionary) -> void:
+	_colonization.note_presence(wp["chunk"], Time.get_unix_time_from_system())
+
+## Phase 122 — a peer's last known position as an exact `{chunk, local}`: the exact record when the
+## peer reported one, else the float position promoted.
+func _peer_exact_pos(peer_id: int) -> Dictionary:
+	var exact: Dictionary = _networking.get_last_known_exact(peer_id)
+	if not exact.is_empty() and WorldPos.is_plausible_pos(exact):
+		return exact
+	var p := _networking.get_last_known_state(peer_id)
+	return WorldPos.from_world(p.x, p.y, p.z)
 
 func _on_block_changed_colonization(_action: String, position: Vector3, _normal: Vector3, _material: String) -> void:
 	_colonization.note_edited_chunk(Vector2i(floori(position.x / TerrainSlice.CHUNK_METERS), floori(position.z / TerrainSlice.CHUNK_METERS)))
@@ -1248,7 +1258,7 @@ func _snapshot_remote_players() -> void:
 			continue
 		_fold_last_known_state(int(peer_id), player_id)
 		if _networking.has_last_known_state(int(peer_id)):
-			_note_presence(_networking.get_last_known_state(int(peer_id)))
+			_note_presence(_peer_exact_pos(int(peer_id)))
 
 ## Phase 36 — every player CreatureAI can place on this machine, as
 ## { target_id: Vector3 }: the local body under the id "player" (the defender id
@@ -1645,19 +1655,26 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true,
 	# crossing position (the networking slice may not have recorded it yet), else the peer's
 	# last known one.
 	var aoi_center: Vector3 = _networking.get_aoi_center(peer_id)
+	var aoi_exact: Dictionary
 	if aoi_center_override is Vector3:
 		aoi_center = aoi_center_override
+		aoi_exact = WorldPos.from_world(aoi_center.x, aoi_center.y, aoi_center.z)
+	elif _networking.has_last_known_state(peer_id):
+		aoi_exact = _peer_exact_pos(peer_id)
+	else:
+		aoi_exact = WorldPos.from_world(aoi_center.x, aoi_center.y, aoi_center.z)
 	var players := {}
-	var host_pos := _player.get_position()
-	if NetworkingSlice.within_aoi(aoi_center, host_pos):
+	# Phase 122 — scoped on exact positions, so a far-from-origin peer sees who is really near.
+	if NetworkingSlice.within_aoi_exact(aoi_exact, _player.get_world_pos()):
 		players[str(multiplayer.get_unique_id())] = WorldPos.pos_to_wire(_player.get_world_pos())
 	# Phase 19 — include last-known remote player states so a rejoining client
 	# resumes from its last authoritative position after a disconnect.
 	var last_known := _networking.get_last_known_states()
 	for pid in last_known:
 		var last_pos: Vector3 = last_known[pid]
-		if NetworkingSlice.within_aoi(aoi_center, last_pos):
-			players[str(pid)] = WorldPos.to_wire(last_pos)
+		var last_exact := _peer_exact_pos(int(pid))
+		if NetworkingSlice.within_aoi_exact(aoi_exact, last_exact):
+			players[str(pid)] = WorldPos.pos_to_wire(last_exact) if _networking.get_last_known_exact(int(pid)) == last_exact else WorldPos.to_wire(last_pos)
 	var player_id := _registry.get_player_id(peer_id)
 	# A join/reconnect snapshot (own record included) carries the full edit manifest: the
 	# peer's real position may be unknown (AOI centre defaults to spawn). Re-scopes send
@@ -1780,6 +1797,7 @@ func _place_from_snapshot(own: Variant) -> void:
 				var l: Array = arr["local"]
 				var exact := WorldPos.normalized({"chunk": WorldPos.wire_chunk(arr),
 					"local": Vector3(float(l[0]), float(l[1]), float(l[2]))})
+				exact = PlayerRegistry.canonical_world_pos(exact)   # Phase 122 — a row past the pole folds first
 				_rebase.rebase_to(exact["chunk"])
 				_player.place_at_world_pos(exact)
 			else:
@@ -1789,6 +1807,13 @@ func _place_from_snapshot(own: Variant) -> void:
 				# carry wherever the player has since walked, which is not a spawn point.
 				_player.set_respawn_world_pos(client_respawn_point(own, _player.get_world_pos()))
 				_client_respawn_point_set = true
+		elif (arr is Array and not (arr as Array).is_empty()) or arr is Dictionary:
+			# Phase 122 — a position that is not a valid wire position (forged, corrupt or from a newer
+			# build) spawns the body at the spawn point instead of leaving it wherever it booted.
+			Diag.warn("GameRoot: snapshot position refused; spawning at the spawn point")
+			if _rebase != null:
+				_rebase.rebase_to(Vector2i.ZERO)
+			_player.place_at_world_pos(WorldPos.from_world(16.0, _terrain.get_height_at(Vector2(16.0, 16.0)) + 1.0, 16.0))
 		var hp := float(own.get("hp", -1.0))
 		if hp >= 0.0:
 			_player.set_hp(hp)
@@ -1965,7 +1990,7 @@ func _snapshot_local_player() -> void:
 	if pid.is_empty():
 		return
 	_registry.record_world_pos(pid, _player.get_world_pos())
-	_note_presence(_player.get_position())
+	_note_presence(_player.get_world_pos())
 	_registry.record_hp(pid, _player.get_hp())
 	_registry.record_technology(pid, _technology.get_statuses(pid))
 	# Phase 35 — the live taming flags and companion bindings ride the same record.

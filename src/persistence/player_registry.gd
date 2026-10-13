@@ -491,6 +491,7 @@ func record_world_pos(player_id: String, wp: Dictionary) -> void:
 	_store_world_pos(rec, wp)
 	var chunk: Vector2i = wp["chunk"]
 	var local: Vector3 = wp["local"]
+	local = Vector3(clampf(local.x, 0.0, WorldPos.CHUNK_METERS), local.y, clampf(local.z, 0.0, WorldPos.CHUNK_METERS))
 	rec["position"] = [chunk.x * WorldPos.CHUNK_METERS + local.x, local.y, chunk.y * WorldPos.CHUNK_METERS + local.z]
 
 ## Phase 78 — the position a snapshot's own record carries: the stored exact `{chunk, local}` as
@@ -580,6 +581,9 @@ static func canonical_world_pos(wp: Dictionary) -> Dictionary:
 	var chunk: Vector2i = TerrainSlice.wrap_chunk(folded["chunk"])
 	out["chunk"] = Vector2i(chunk.x, clampi(chunk.y, -pole, pole))
 	out["local"] = folded["local"]
+	if chunk.y != out["chunk"].y:   # clamped onto a pole row: the local Z goes to that row's edge with it
+		var l: Vector3 = out["local"]
+		out["local"] = Vector3(l.x, l.y, 0.0)
 	# A pole crossing turns the walker half a turn (see PlayerSlice.fold_to): the heading and velocity a
 	# record carries turn with it, instead of being dropped by the fold.
 	if fold["turned"]:

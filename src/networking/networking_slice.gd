@@ -495,6 +495,11 @@ func in_aoi(peer_id: int, position: Vector3) -> bool:
 static func within_aoi(center: Vector3, position: Vector3) -> bool:
 	return center.distance_to(position) <= AOI_RADIUS
 
+## Phase 122 — `within_aoi` on exact `{chunk, local}` positions, so a pair of players 1.5 million
+## chunks from the origin is judged by their real distance, not a float32-rounded one. Pure.
+static func within_aoi_exact(center: Dictionary, position: Dictionary) -> bool:
+	return WorldPos.offset_between(center, position).length() <= AOI_RADIUS
+
 ## The AOI grid cell for a world position (cell = AOI_RADIUS). A peer crossing a
 ## cell boundary re-scopes its snapshot (see game_root). Pure.
 func aoi_region(position: Vector3) -> Vector2i:

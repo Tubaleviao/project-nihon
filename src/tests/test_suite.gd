@@ -358,6 +358,7 @@ func run() -> void:
 	_run_test("region: an overlay keeps the larger stored depletion count", _test_region_overlay_keeps_larger_taken)
 	_run_test("region: migration recovers a monolith chunk whose region entry is malformed", _test_region_migrate_malformed_recovers)
 	_run_test("rebase: an unshiftable target is reported",      _test_rebase_driver_reports_unshiftable)
+	_run_test("far origin: exact AOI, south fold row, ore warm retry", _test_phase122_exact_positions)
 	_run_test("rebase: one SceneOffset helper, whole-chunk shifts only", _test_scene_shift_helper)
 	_run_test("game_root: implausible peer positions dropped",  _test_remote_state_plausibility)
 	_run_test("networking: a remote peer's exact position is saved exactly", _test_remote_peer_exact_position)
@@ -1318,6 +1319,27 @@ func _test_scene_shift_helper() -> void:
 	player.shift_scene(Vector3(-cm, 0.0, 0.0))
 	assert_eq(player.scene_offset(), Vector3(-cm, 0.0, 0.0), "a whole-chunk shift moves it")
 	player.free()
+
+func _test_phase122_exact_positions() -> void:
+	var far := { "chunk": Vector2i(1500000, 7), "local": Vector3(30.0, 2.0, 5.0) }
+	var near := { "chunk": Vector2i(1500001, 7), "local": Vector3(2.0, 2.0, 5.0) }   # 4 m east
+	var gone := { "chunk": Vector2i(1500000 + 20, 7), "local": Vector3(2.0, 2.0, 5.0) }
+	assert_eq(WorldPos.offset_between(far, near), Vector3(4.0, 0.0, 0.0), "the offset between exact positions is exact at chunk X 1,500,000")
+	assert_true(NetworkingSlice.within_aoi_exact(far, near), "a neighbour 4 m away is in the AOI at chunk X 1,500,000")
+	assert_false(NetworkingSlice.within_aoi_exact(far, gone), "a position 600 m away is not")
+	var row: int = -TerrainSlice.pole_chunks() - TerrainSlice.FOLD_MARGIN_CHUNKS - 1
+	assert_true(WorldPos.is_wire({ "chunk": [0, row], "local": [1.0, 2.0, 3.0] }), "the first south fold row is a wire position")
+	assert_false(WorldPos.is_wire({ "chunk": [0, row - 1], "local": [1.0, 2.0, 3.0] }), "one row further is not")
+	assert_true(WorldPos.is_wire({ "chunk": [0, TerrainSlice.pole_chunks() + TerrainSlice.FOLD_MARGIN_CHUNKS], "local": [1.0, 2.0, 3.0] }), "the north limit is unchanged")
+	# OreField.warm() latches only once ClimateField is warm.
+	var was_ore: bool = OreField._warmed
+	var was_climate: bool = ClimateField._warmed
+	OreField._warmed = false
+	ClimateField._warmed = false
+	OreField.warm()
+	assert_true(ClimateField.is_warm() and OreField._warmed, "OreField.warm() warms ClimateField and latches")
+	OreField._warmed = was_ore
+	ClimateField._warmed = was_climate
 
 func _count_files_with(dir: String, needle: String) -> int:
 	var n := 0
