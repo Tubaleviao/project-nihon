@@ -141,7 +141,7 @@ issue number where the criterion used to be.
 | 118 | Void bursts, the survivor flag and the VoidTouched unlock | Done | below |
 | 119 | An injected network transport and a compact per-tick wire form | Done | below |
 | 120 | The distant ring draws recorded land | Done | below |
-| 121 | Crash-consistent saves | Planned | below |
+| 121 | Crash-consistent saves | Done | below |
 | 122 | Far terrain without mirroring and one scene-offset helper | Planned | below |
 
 ---
@@ -962,7 +962,7 @@ lifecycle one record with a pre-delete join, and resolves every item of the dist
 
 ---
 
-## Phase 121 — Crash-consistent saves
+## Phase 121 — Crash-consistent saves ✅ Done
 
 **Goal:** a save writes region files first and `world.json` second, but `world.json` is still written
 after a region failure, a failed region re-marks every dirty chunk, region entries are only shallowly
@@ -993,16 +993,16 @@ below.
   signal emitted on load.
 
 **Acceptance criteria:**
-- [ ] Suite: a fault-injected failure at each of the write steps (region tmp, region rename, world tmp,
+- [x] Suite: a fault-injected failure at each of the write steps (region tmp, region rename, world tmp,
   world rename) leaves a world that loads to either the full old or the full new state, never a mix.
-- [ ] Suite: a stray `.tmp` file is removed on load and does not shadow the real file.
-- [ ] Suite: one failing region of three leaves only its chunks dirty.
-- [ ] Suite: an entry with one malformed op loads its other ops and warns once.
-- [ ] Suite: `regions_for_chunks` for a window wholly inside one region returns that region only; a
+- [x] Suite: a stray `.tmp` file is removed on load and does not shadow the real file.
+- [x] Suite: one failing region of three leaves only its chunks dirty.
+- [x] Suite: an entry with one malformed op loads its other ops and warns once.
+- [x] Suite: `regions_for_chunks` for a window wholly inside one region returns that region only; a
   stranded region is retried after the backoff with no player movement; `edited_chunk_keys()` is called
   once per `sync`.
-- [ ] Suite: the world stamp round-trips through `_collect_save_job` and load emits the stamp signal.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite: the world stamp round-trips through `_collect_save_job` and load emits the stamp signal.
+- [x] Suite green on both boot paths, harness green.
 
 ---
 

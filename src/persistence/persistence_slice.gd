@@ -145,8 +145,8 @@ var atomic_writes: bool = true:
 		atomic_writes = value
 		_sync_region_store()
 ## Phase 52 — the voxel edits live in region files beside the world record
-## (`<server_save_dir>regions/r.<rx>.<rz>.json`); `world.json` carries no chunks. Rebuilt by
-## the `server_save_dir` / `atomic_writes` setters so it always follows them.
+## (`<server_save_dir>regions/r.<rx>.<rz>.json`); `world.json` carries no chunks. Updated in place by
+## the `server_save_dir` / `atomic_writes` setters (never replaced), so every holder follows them.
 var region_store: RegionStore = RegionStore.new(DEFAULT_SERVER_SAVE_DIR + REGIONS_SUBDIR)
 
 func _ready() -> void:
