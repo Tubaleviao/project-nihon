@@ -17,13 +17,15 @@ detail sheet (``textures/characters/player.png.raw``, laid out on the rig's UVs)
 is all white, opaque RGBA: what ``detail_tex`` does unbound, so binding it on
 the rig changes nothing in a public clone.
 
-    python3 tools/gen_placeholder.py               # every placeholder below
-    python3 tools/gen_placeholder.py <out>         # the checkerboard, to <out>
-    python3 tools/gen_placeholder.py --mask <out>  # a black mask, to <out>
+    python3 tools/gen_placeholder.py                # every placeholder below
+    python3 tools/gen_placeholder.py <out>          # <out>'s own sheet, to <out>
+    python3 tools/gen_placeholder.py --mask <out>   # a black mask, to <out>
+    python3 tools/gen_placeholder.py --white <out>  # a white sheet, to <out>
 
-An ``<out>`` that is one of the mask files writes a mask, and the rig detail
-file writes white, not the checkerboard. The default outputs resolve against the repo root, so the script
-works from any directory.
+A bare ``<out>`` writes the sheet its default path gets (black for the mask
+files, white for the rig detail file) and the checkerboard for any other path.
+The default outputs resolve against the repo root, so the script works from
+any directory.
 """
 import struct
 import sys
@@ -88,24 +90,26 @@ def _write(out: Path, color_at) -> None:
     print(f"wrote {out}")
 
 
-def _color_for(out: Path):
-    if out.resolve() in MASK_OUTS:
-        return black
-    return white if out.resolve() == RIG_DETAIL_OUT else checker
+# Every default output and the sheet it gets: the no-argument run writes all of
+# them, and a bare ``<out>`` naming one of them writes its sheet.
+OUTPUTS = {
+    CHECKER_OUT: checker,
+    **{out: black for out in MASK_OUTS},
+    RIG_DETAIL_OUT: white,
+}
+FLAGS = {"--mask": black, "--white": white}
 
 
 def main() -> None:
     args = sys.argv[1:]
-    if args[:1] == ["--mask"] and len(args) == 2:
-        _write(Path(args[1]), black)
+    if len(args) == 2 and args[0] in FLAGS:
+        _write(Path(args[1]), FLAGS[args[0]])
     elif len(args) == 1 and not args[0].startswith("-"):
         out = Path(args[0])
-        _write(out, _color_for(out))
+        _write(out, OUTPUTS.get(out.resolve(), checker))
     elif not args:
-        _write(CHECKER_OUT, checker)
-        for out in MASK_OUTS:
-            _write(out, black)
-        _write(RIG_DETAIL_OUT, white)
+        for out, color_at in OUTPUTS.items():
+            _write(out, color_at)
     else:
         sys.exit(__doc__)
 

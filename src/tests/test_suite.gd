@@ -7744,13 +7744,6 @@ func _test_asset_placeholder_rig_is_a_body() -> void:
 		tree.free()
 	root.free()
 
-## Asset roadmap A2: `models/player_rig.glb.raw` is the key the private player rig
-## overrides, so its public placeholder carries the art's contract (assets/README.md,
-## "The placeholder rule"): a skeleton whose bones are the fabric HumanoidSkeleton's,
-## names and parents exactly, rest axes in the art's convention (a bone's +Y points at
-## its only child), a skin bound at those rests, every clip the locomotion tree plays,
-## a human-height body standing on the root's ground plane. Code that reads bones then
-## works on a public clone exactly as on the art.
 ## The public body sheets stand in for the player rig's authored ones: same image
 ## size (64x64, the art's). The masks are all-black opaque so a public clone renders
 ## base colour with no channel, and the detail sheet all-white opaque so it multiplies
@@ -7775,8 +7768,18 @@ func _test_asset_body_sheet_placeholders() -> void:
 			for x in img.get_width():
 				if img.get_pixel(x, y) != expected[key]:
 					uniform = false
+					break
+			if not uniform:
+				break
 		assert_true(uniform, "%s is opaque %s, as unbound" % [key, expected[key]])
 
+## Asset roadmap A2: `models/player_rig.glb.raw` is the key the private player rig
+## overrides, so its public placeholder carries the art's contract (assets/README.md,
+## "The placeholder rule"): a skeleton whose bones are the fabric HumanoidSkeleton's,
+## names and parents exactly, rest axes in the art's convention (a bone's +Y points at
+## its only child), a skin bound at those rests, every clip the locomotion tree plays,
+## a human-height body standing on the root's ground plane. Code that reads bones then
+## works on a public clone exactly as on the art.
 func _test_asset_player_rig_placeholder_contract() -> void:
 	const GameDataReader := preload("res://src/core/game_data_reader.gd")
 	const Locomotion := preload("res://src/character/locomotion.gd")
