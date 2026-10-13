@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Regenerate the committed placeholder rig (`assets/models/placeholder_rig.glb.raw`).
+"""Regenerate the committed placeholder rigs: `assets/models/placeholder_rig.glb.raw` and
+`assets/models/player_rig.glb.raw` (the second is described above `build_player_rig`).
 
 A blocky humanoid — a torso, a head, two arms and two legs, each a unit cube on its
 own node — plus the seven clips the locomotion tree asks for (`idle`, `walk`, `run`,
@@ -23,6 +24,7 @@ the suite's AABB check reads without walking parent transforms.
 """
 import json
 import math
+import re
 import struct
 from pathlib import Path
 
@@ -207,6 +209,11 @@ def build() -> bytes:
         "accessors": accessors,
         "animations": animations,
     }
+    return _glb(doc, blob)
+
+
+def _glb(doc: dict, blob: Blob) -> bytes:
+    """`doc` and `blob` packed as one binary glTF."""
     js = _pad(json.dumps(doc, separators=(",", ":")).encode(), b" ")
     bn = _pad(bytes(blob.data), b"\x00")
     total = 12 + 8 + len(js) + 8 + len(bn)
@@ -219,7 +226,220 @@ def _pad(b: bytes, fill: bytes) -> bytes:
     return b + fill * ((4 - len(b) % 4) % 4)
 
 
+# ---------------------------------------------------------------------------
+# The player rig placeholder: `assets/models/player_rig.glb.raw`
+# ---------------------------------------------------------------------------
+# The public stand-in for the private player rig (asset roadmap Phase A2). It carries
+# the same contract as the art: a real glTF skin whose joints are the fabric
+# HumanoidSkeleton bones (names and parents, read from the generated .tres so the two
+# cannot drift), one skinned mesh of boxes each bound rigidly to one joint, and the
+# seven clips as joint rotations. Code that reads bones works on it as on the art.
+#
+# Joint positions are where a body bends (glTF axes: +Y up, facing -Z, the figure's
+# left at -X). They are not the fabric `restPose` offsets, which put `Leg_*` at the
+# ankle; the private rig uses the same positions.
+
+SKELETON_TRES = Path(__file__).resolve().parent.parent / "godot" / "skeletons" / "humanoidskeleton.tres"
+PLAYER_OUT = OUT.parent / "player_rig.glb.raw"
+
+JOINTS = {
+    "Root": (0.0, 0.0, 0.0),
+    "Hips": (0.0, 0.95, 0.0),
+    "Spine": (0.0, 1.08, 0.0),
+    "Chest": (0.0, 1.25, 0.0),
+    "Neck": (0.0, 1.50, 0.0),
+    "Head": (0.0, 1.58, 0.0),
+    "Shoulder_L": (-0.04, 1.44, 0.0),
+    "Arm_L": (-0.20, 1.44, 0.0),
+    "Forearm_L": (-0.23, 1.16, 0.0),
+    "Hand_L": (-0.25, 0.90, 0.0),
+    "Shoulder_R": (0.04, 1.44, 0.0),
+    "Arm_R": (0.20, 1.44, 0.0),
+    "Forearm_R": (0.23, 1.16, 0.0),
+    "Hand_R": (0.25, 0.90, 0.0),
+    "Leg_L": (-0.10, 0.92, 0.0),
+    "Foot_L": (-0.10, 0.09, 0.0),
+    "Leg_R": (0.10, 0.92, 0.0),
+    "Foot_R": (0.10, 0.09, 0.0),
+}
+
+# (joint, centre, size): one box per body part, in the figure's rest space.
+PARTS = [
+    ("Hips", (0.0, 0.92, 0.0), (0.32, 0.16, 0.20)),
+    ("Spine", (0.0, 1.15, 0.0), (0.30, 0.20, 0.20)),
+    ("Chest", (0.0, 1.37, 0.0), (0.40, 0.26, 0.24)),
+    ("Neck", (0.0, 1.53, 0.0), (0.10, 0.08, 0.10)),
+    ("Head", (0.0, 1.68, 0.0), (0.22, 0.22, 0.24)),
+]
+for _side, _sx in (("L", -1.0), ("R", 1.0)):
+    PARTS += [
+        ("Arm_" + _side, (_sx * 0.215, 1.30, 0.0), (0.10, 0.30, 0.11)),
+        ("Forearm_" + _side, (_sx * 0.24, 1.03, 0.0), (0.08, 0.26, 0.09)),
+        ("Hand_" + _side, (_sx * 0.255, 0.845, 0.0), (0.06, 0.11, 0.09)),
+        ("Leg_" + _side, (_sx * 0.10, 0.50, 0.0), (0.14, 0.84, 0.15)),
+        ("Foot_" + _side, (_sx * 0.10, 0.04, -0.05), (0.11, 0.08, 0.23)),
+    ]
+
+# Clips as {joint: [(x, y, z) degrees per key]}, rotations about the joint's parent axes
+# (every rest rotation is identity). A hanging limb swings forward (-Z) with +X; an
+# upright bone leans back with +X; an arm lifts sideways with -Z (left) / +Z (right).
+# walk and run share a stride phase: left leg forward at t=0, right leg forward at half.
+
+
+def _stride(leg: float, arm: float) -> dict:
+    phase = [1.0, 0.0, -1.0, 0.0, 1.0]
+    return {
+        "Leg_L": [(leg * p, 0, 0) for p in phase], "Leg_R": [(-leg * p, 0, 0) for p in phase],
+        "Arm_L": [(-arm * p, 0, 0) for p in phase], "Arm_R": [(arm * p, 0, 0) for p in phase],
+    }
+
+
+PLAYER_CLIPS = [
+    ("idle", [0.0, 1.0, 2.0], {
+        "Chest": [(0, 0, 0), (-2, 0, 0), (0, 0, 0)], "Head": [(0, 0, 0), (2, 0, 0), (0, 0, 0)],
+        "Arm_L": [(0, 0, -3), (0, 0, -5), (0, 0, -3)], "Arm_R": [(0, 0, 3), (0, 0, 5), (0, 0, 3)]}),
+    ("walk", [0.0, 0.25, 0.5, 0.75, 1.0], dict(_stride(25, 20),
+        Forearm_L=[(15, 0, 0)] * 5, Forearm_R=[(15, 0, 0)] * 5)),
+    ("run", [0.0, 0.15, 0.3, 0.45, 0.6], dict(_stride(45, 50),
+        Spine=[(-8, 0, 0)] * 5, Forearm_L=[(70, 0, 0)] * 5, Forearm_R=[(70, 0, 0)] * 5)),
+    ("fall", [0.0, 0.4, 0.8], {
+        "Arm_L": [(0, 0, -70), (0, 0, -90), (0, 0, -70)], "Arm_R": [(0, 0, 70), (0, 0, 90), (0, 0, 70)],
+        "Leg_L": [(20, 0, 0), (8, 0, 0), (20, 0, 0)], "Leg_R": [(-10, 0, 0), (-4, 0, 0), (-10, 0, 0)]}),
+    ("land", [0.0, 0.12, 0.25], {
+        "Spine": [(-20, 0, 0), (-10, 0, 0), (0, 0, 0)],
+        "Arm_L": [(25, 0, 0), (12, 0, 0), (0, 0, 0)], "Arm_R": [(25, 0, 0), (12, 0, 0), (0, 0, 0)]}),
+    ("attack", [0.0, 0.15, 0.3, 0.5], {
+        "Chest": [(0, 0, 0), (0, 15, 0), (-8, -15, 0), (0, 0, 0)],
+        "Arm_R": [(0, 0, 0), (160, 0, 0), (40, 0, 0), (0, 0, 0)],
+        "Arm_L": [(0, 0, 0), (-15, 0, 0), (15, 0, 0), (0, 0, 0)]}),
+    ("death", [0.0, 0.4, 1.2], {
+        "Root": [(0, 0, 0), (30, 0, 0), (85, 0, 0)],
+        "Arm_L": [(0, 0, 0), (0, 0, -30), (0, 0, -60)], "Arm_R": [(0, 0, 0), (0, 0, 30), (0, 0, 60)]}),
+]
+
+
+def fabric_bones() -> list:
+    """[(name, parent)] of the fabric HumanoidSkeleton, in order (parents first)."""
+    match = re.search(r"^bones = (\[.*\])$", SKELETON_TRES.read_text(encoding="utf-8"), re.M)
+    if not match:
+        raise SystemExit(f"{SKELETON_TRES}: no `bones = [...]` line")
+    return [(b["name"], b["parent"]) for b in json.loads(match.group(1))]
+
+
+def _quat_mul(a: list, b: list) -> list:
+    ax, ay, az, aw = a
+    bx, by, bz, bw = b
+    return [aw * bx + ax * bw + ay * bz - az * by,
+            aw * by - ax * bz + ay * bw + az * bx,
+            aw * bz + ax * by - ay * bx + az * bw,
+            aw * bw - ax * bx - ay * by - az * bz]
+
+
+def _quat_euler(degrees: tuple) -> list:
+    """X, then Y, then Z (each about the parent's axes), as a glTF quaternion."""
+    q = [0.0, 0.0, 0.0, 1.0]
+    for axis, d in enumerate(degrees):
+        half = math.radians(d) / 2.0
+        r = [0.0, 0.0, 0.0, math.cos(half)]
+        r[axis] = math.sin(half)
+        q = _quat_mul(r, q)
+    return q
+
+
+def build_player_rig() -> bytes:
+    bones = fabric_bones()
+    names = [n for n, _ in bones]
+    if sorted(names) != sorted(JOINTS):
+        raise SystemExit(f"JOINTS {sorted(JOINTS)} do not match the fabric bones {sorted(names)}")
+    index = {n: i for i, n in enumerate(names)}
+
+    # Nodes: 0 the scene root, 1 the skinned mesh, then one per joint in fabric order.
+    # A joint's translation is relative to its parent joint (Root's to the scene root).
+    nodes = [{"name": "PlayerRig", "children": [1, 2 + index["Root"]]}, {"name": "Body", "mesh": 0, "skin": 0}]
+    for name, parent in bones:
+        x, y, z = JOINTS[name]
+        px, py, pz = JOINTS[parent] if parent else (0.0, 0.0, 0.0)
+        node = {"name": name, "translation": [x - px, y - py, z - pz]}
+        children = [2 + i for i, (_, p) in enumerate(bones) if p == name]
+        if children:
+            node["children"] = children
+        nodes.append(node)
+
+    positions, normals, joints, weights, indices = [], [], [], [], []
+    for joint, centre, size in PARTS:
+        for normal, corners in CUBE_FACES:
+            base = len(positions) // 3
+            for corner in corners:
+                positions.extend(c + s * k for c, s, k in zip(centre, size, corner))
+                normals.extend(normal)
+                joints.extend([index[joint], 0, 0, 0])
+                weights.extend([1.0, 0.0, 0.0, 0.0])
+            indices.extend([base, base + 1, base + 2, base, base + 2, base + 3])
+    xs, ys, zs = positions[0::3], positions[1::3], positions[2::3]
+
+    blob = Blob()
+    accessors: list = []
+
+    def add(payload: bytes, target: int, stride: int, **accessor) -> int:
+        accessor["bufferView"] = blob.add(payload, target, stride)
+        accessors.append(accessor)
+        return len(accessors) - 1
+
+    count = len(positions) // 3
+    attributes = {
+        "POSITION": add(struct.pack("<%df" % len(positions), *positions), 34962, 12, componentType=5126,
+                        count=count, type="VEC3", min=[min(xs), min(ys), min(zs)], max=[max(xs), max(ys), max(zs)]),
+        "NORMAL": add(struct.pack("<%df" % len(normals), *normals), 34962, 12, componentType=5126,
+                      count=count, type="VEC3"),
+        # 5121 = UNSIGNED_BYTE: 18 joints fit, and Godot reads byte joints.
+        "JOINTS_0": add(struct.pack("<%dB" % len(joints), *joints), 34962, 4, componentType=5121,
+                        count=count, type="VEC4"),
+        "WEIGHTS_0": add(struct.pack("<%df" % len(weights), *weights), 34962, 16, componentType=5126,
+                         count=count, type="VEC4"),
+    }
+    index_accessor = add(struct.pack("<%dH" % len(indices), *indices), 34963, 0, componentType=5123,
+                         count=len(indices), type="SCALAR")
+    # Every rest rotation is identity, so a joint's inverse bind matrix is the translation
+    # back from its rest position (column-major, translation in the last column).
+    ibm = []
+    for name in names:
+        x, y, z = JOINTS[name]
+        ibm.extend([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -x, -y, -z, 1])
+    ibm_accessor = add(struct.pack("<%df" % len(ibm), *ibm), 0, 0, componentType=5126,
+                       count=len(names), type="MAT4")
+
+    animations = []
+    for clip, times, channels_by_joint in PLAYER_CLIPS:
+        input_accessor = add(struct.pack("<%df" % len(times), *times), 0, 0, componentType=5126,
+                             count=len(times), type="SCALAR", min=[min(times)], max=[max(times)])
+        samplers, channels = [], []
+        for joint, keys in channels_by_joint.items():
+            assert len(keys) == len(times), "clip %s: %d keys for %d times on %s" % (clip, len(keys), len(times), joint)
+            quats = [c for key in keys for c in _quat_euler(key)]
+            output = add(struct.pack("<%df" % len(quats), *quats), 0, 0, componentType=5126,
+                         count=len(times), type="VEC4")
+            samplers.append({"input": input_accessor, "output": output, "interpolation": "LINEAR"})
+            channels.append({"sampler": len(samplers) - 1, "target": {"node": 2 + index[joint], "path": "rotation"}})
+        animations.append({"name": clip, "samplers": samplers, "channels": channels})
+
+    doc = {
+        "asset": {"version": "2.0", "generator": "gen_placeholder_glb.py"},
+        "scene": 0,
+        "scenes": [{"nodes": [0]}],
+        "nodes": nodes,
+        "meshes": [{"name": "Body", "primitives": [{"attributes": attributes, "indices": index_accessor, "mode": 4}]}],
+        "skins": [{"name": "HumanoidSkeleton", "joints": [2 + i for i in range(len(names))],
+                   "skeleton": 2 + index["Root"], "inverseBindMatrices": ibm_accessor}],
+        "buffers": [{"byteLength": len(blob.data)}],
+        "bufferViews": blob.views,
+        "accessors": accessors,
+        "animations": animations,
+    }
+    return _glb(doc, blob)
+
+
 if __name__ == "__main__":
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_bytes(build())
-    print(f"wrote {OUT} ({OUT.stat().st_size} bytes)")
+    for path, data in ((OUT, build()), (PLAYER_OUT, build_player_rig())):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        print(f"wrote {path} ({path.stat().st_size} bytes)")

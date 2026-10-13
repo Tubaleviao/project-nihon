@@ -22,10 +22,9 @@ public clone**. This directory holds the public side of that split.
   `gen_placeholder_glb.py`), so they can be rebuilt.
 
 Some keys the code reads have no placeholder at the same key yet. They work
-only through a code fallback: `models/player_rig.glb.raw` (falls back to
-`models/placeholder_rig.glb.raw`), `icons/items/<ItemId>.png.raw` (falls back
-to a text glyph) and `models/creatures/<Entity>.glb.raw` (falls back to a
-procedural box). The asset roadmap in `project-nihon-assets/ROADMAP.md` adds
+only through a code fallback: `icons/items/<ItemId>.png.raw` (falls back to a
+text glyph) and `models/creatures/<Entity>.glb.raw` (falls back to a procedural
+box). The asset roadmap in `project-nihon-assets/ROADMAP.md` adds
 each placeholder before the art for that key.
 
 ## The model
@@ -80,10 +79,12 @@ each placeholder before the art for that key.
 `load()`). A missing key warns and falls back to the procedural body. Real rigs
 come from the private `assets-prod` submodule (`git submodule update --init
 assets-prod`, requires access); without it the local avatar renders the committed
-placeholder rig — a blocky humanoid body (torso, head, arms, legs) carrying every
-clip the locomotion tree looks up (issue #112: it used to be a single flat
-triangle, which left the player's own character invisible). Regenerate the
-placeholder rig with `python3 tools/gen_placeholder_glb.py`.
+`models/player_rig.glb.raw` placeholder: a blocky humanoid skinned to the fabric
+`HumanoidSkeleton` bones (same names and parents as the private rig), carrying every
+clip the locomotion tree looks up. `models/placeholder_rig.glb.raw` is the older
+unskinned body (issue #112: it used to be a single flat triangle, which left the
+player's own character invisible), still the fallback when no player rig is listed.
+Regenerate both with `python3 tools/gen_placeholder_glb.py`.
 
 ## Regenerating a placeholder
 
