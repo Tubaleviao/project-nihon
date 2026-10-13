@@ -80,10 +80,11 @@ each placeholder before the art for that key.
 come from the private `assets-prod` submodule (`git submodule update --init
 assets-prod`, requires access); without it the local avatar renders the committed
 `models/player_rig.glb.raw` placeholder: a blocky humanoid skinned to the fabric
-`HumanoidSkeleton` bones (same names and parents as the private rig), carrying every
-clip the locomotion tree looks up. `models/placeholder_rig.glb.raw` is the older
-unskinned body (issue #112: it used to be a single flat triangle, which left the
-player's own character invisible), still the fallback when no player rig is listed.
+`HumanoidSkeleton` bones (same names, parents, rest positions and rest orientations as
+the private rig), carrying every clip the locomotion tree looks up.
+`models/placeholder_rig.glb.raw` is the older unskinned body (issue #112: it used to be
+a single flat triangle, which left the player's own character invisible). It renders
+only for a manifest that lists no player rig, which the public one now always does.
 Regenerate both with `python3 tools/gen_placeholder_glb.py`.
 
 ## Regenerating a placeholder
