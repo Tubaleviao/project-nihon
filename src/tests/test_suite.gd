@@ -19988,6 +19988,22 @@ func _test_p121_crash_recovery_and_stray_tmp() -> void:
 	assert_false(FileAccess.file_exists(wpath + ".bak") or FileAccess.file_exists(reborn.journal_path()), "journal and backup are gone")
 	reborn.free()
 
+	# A region-store commit (own journal in regions/) killed mid-way is rolled back, its .bak not swept.
+	var rs := _slice121("test_p121_regionjournal")
+	assert_eq(rs.save_world(_world121(1, 2.0), false), OK, "old world")
+	var rp := rs.region_store.path_of(Vector2i(0, 0))
+	DirAccess.rename_absolute(rp, rp + ".bak")
+	var nf := FileAccess.open(rp + ".tmp", FileAccess.WRITE)
+	nf.store_string("{}")
+	nf.close()
+	var rj := FileAccess.open(rs.region_store.journal_path(), FileAccess.WRITE)
+	rj.store_string(JSON.stringify({ "targets": [{ "path": rp, "had": true }] }))
+	rj.close()
+	rs._recovered_dir = ""
+	assert_eq(_state121(rs)[1][0], 2.0, "the region store's interrupted commit is rolled back, not swept")
+	assert_false(FileAccess.file_exists(rs.region_store.journal_path()), "region journal is gone")
+	rs.free()
+
 	var stray := _slice121("test_p121_stray")
 	assert_eq(stray.save_world(_world121(5, 2.0), false), OK, "world")
 	for p in [stray.world_path() + ".tmp", stray.region_store.path_of(Vector2i(0, 0)) + ".tmp"]:

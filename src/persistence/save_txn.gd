@@ -33,8 +33,14 @@ static func commit(ops: Array, journal_path: String, fault: Callable = Callable(
 		Diag.error("SaveTxn: cannot open %s for write — %s" % [journal_path, error_string(jerr)])
 		discard(ops)
 		return jerr
-	jfile.store_string(JSON.stringify({ "targets": targets }))
+	var journal_ok := jfile.store_string(JSON.stringify({ "targets": targets }))
+	jfile.flush()
 	jfile.close()
+	if not journal_ok:
+		Diag.error("SaveTxn: cannot write %s" % journal_path)
+		DirAccess.remove_absolute(journal_path)
+		discard(ops)
+		return ERR_FILE_CANT_WRITE
 	var done: Array = []
 	for op in ops:
 		var path := str(op["path"])
@@ -85,8 +91,9 @@ static func _rollback(done: Array) -> bool:
 	return ok
 
 ## Run on load: finish or undo a save that was interrupted, then delete stray `.tmp` / `.bak` files
-## in `dirs`. Returns how many files were removed or restored.
-static func recover(journal_path: String, dirs: Array) -> int:
+## in `dirs`. `other_journals` are journals of other transactions over the same dirs: while any of them
+## still exists its `.bak` files are kept. Returns how many files were removed or restored.
+static func recover(journal_path: String, dirs: Array, other_journals: Array = []) -> int:
 	var touched := 0
 	if FileAccess.file_exists(journal_path):
 		var f := FileAccess.open(journal_path, FileAccess.READ)
@@ -110,12 +117,15 @@ static func recover(journal_path: String, dirs: Array) -> int:
 				DirAccess.remove_absolute(journal_path)
 		else:
 			DirAccess.remove_absolute(journal_path)   # torn before any rename: nothing to undo
+	var keep_bak := FileAccess.file_exists(journal_path)
+	for other in other_journals:
+		keep_bak = keep_bak or FileAccess.file_exists(str(other))
 	for dir in dirs:
 		var d := DirAccess.open(str(dir))
 		if d == null:
 			continue
 		for name in d.get_files():
-			if name.ends_with(TMP_EXT) or (name.ends_with(BAK_EXT) and not FileAccess.file_exists(journal_path)):
+			if name.ends_with(TMP_EXT) or (name.ends_with(BAK_EXT) and not keep_bak):
 				if DirAccess.remove_absolute(str(dir).path_join(name)) == OK:
 					touched += 1
 	return touched

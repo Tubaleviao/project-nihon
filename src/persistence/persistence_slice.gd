@@ -202,7 +202,9 @@ func recover_interrupted_save() -> int:
 	if _recovered_dir == server_save_dir:
 		return 0
 	_recovered_dir = server_save_dir
-	return SaveTxn.recover(journal_path(), [server_save_dir, region_store.dir])
+	# The region store commits through its own journal (chunk-record writes); undo that one first.
+	var touched := SaveTxn.recover(region_store.journal_path(), [], [journal_path()])
+	return touched + SaveTxn.recover(journal_path(), [server_save_dir, region_store.dir], [region_store.journal_path()])
 
 func journal_path() -> String:
 	return server_save_dir + "save.journal"
