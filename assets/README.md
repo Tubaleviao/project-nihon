@@ -97,8 +97,11 @@ python3 tools/gen_placeholder.py assets/textures/placeholder_character.png.raw
 `textures/characters/player_color_mask.png.raw` and `player_channel.png.raw` are
 all-black RGBA (base colour only, no channel), the same as the character shader with
 no mask bound. The production pack replaces them with the player rig's masks.
-Nothing binds these keys to the character material yet, so for now they only
-reserve the keys the private masks override.
+`textures/characters/player.png.raw` is the rig's detail sheet: all-white RGBA, the
+same as `detail_tex` unbound. Unlike `placeholder_character.png.raw`, which the
+procedural capsules sample across their whole UV range, the production sheet is laid
+out on the player rig's UVs. Nothing binds these three keys to the character material
+yet (issue #314), so for now they only reserve the keys the private sheets override.
 
 ## Building the production pack
 

@@ -2,7 +2,8 @@
   "textures": {
     "textures/placeholder_character.png.raw": "textures/placeholder_character.png.raw",
     "textures/characters/player_color_mask.png.raw": "textures/characters/player_color_mask.png.raw",
-    "textures/characters/player_channel.png.raw": "textures/characters/player_channel.png.raw"
+    "textures/characters/player_channel.png.raw": "textures/characters/player_channel.png.raw",
+    "textures/characters/player.png.raw": "textures/characters/player.png.raw"
   },
   "meshes": {
     "models/placeholder_rig.glb.raw": "models/placeholder_rig.glb.raw",

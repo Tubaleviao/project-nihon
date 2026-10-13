@@ -654,7 +654,7 @@ func run() -> void:
 	_run_test("asset: load_mesh / load_animation_library from .glb.raw", _test_asset_load_mesh_and_animation)
 	_run_test("asset: placeholder rig is a visible body (#112)", _test_asset_placeholder_rig_is_a_body)
 	_run_test("asset: player rig placeholder has the art's contract", _test_asset_player_rig_placeholder_contract)
-	_run_test("asset: body mask placeholders are 64x64 opaque black", _test_asset_body_mask_placeholders)
+	_run_test("asset: body sheet placeholders are 64x64, masks black, detail white", _test_asset_body_sheet_placeholders)
 	_run_test("asset: missing model key warns and falls back",   _test_asset_missing_model_falls_back)
 	_run_test("asset: creature model key derived from entity name", _test_asset_creature_key)
 	_run_test("rig tree: every Locomotion.State maps to a node", _test_rig_tree_state_mapping_total)
@@ -7751,13 +7751,18 @@ func _test_asset_placeholder_rig_is_a_body() -> void:
 ## its only child), a skin bound at those rests, every clip the locomotion tree plays,
 ## a human-height body standing on the root's ground plane. Code that reads bones then
 ## works on a public clone exactly as on the art.
-## The public body masks stand in for the player rig's authored masks: same image
-## size (64x64, the art's), and all-black opaque so a public clone renders base
-## colour with no channel, exactly as the shader does with no mask bound. Reads
-## the committed placeholder itself, not whatever a mounted pack overlays.
-func _test_asset_body_mask_placeholders() -> void:
-	for key in ["textures/characters/player_color_mask.png.raw",
-			"textures/characters/player_channel.png.raw"]:
+## The public body sheets stand in for the player rig's authored ones: same image
+## size (64x64, the art's). The masks are all-black opaque so a public clone renders
+## base colour with no channel, and the detail sheet all-white opaque so it multiplies
+## by one, exactly as the shader does with nothing bound. Reads the committed
+## placeholder itself, not whatever a mounted pack overlays.
+func _test_asset_body_sheet_placeholders() -> void:
+	var expected := {
+		"textures/characters/player_color_mask.png.raw": Color(0, 0, 0, 1),
+		"textures/characters/player_channel.png.raw": Color(0, 0, 0, 1),
+		"textures/characters/player.png.raw": Color(1, 1, 1, 1),
+	}
+	for key: String in expected:
 		assert_true(AssetOverlay.has_key("textures", key), "manifest lists %s" % key)
 		var img := Image.new()
 		var err := img.load_png_from_buffer(FileAccess.get_file_as_bytes("res://assets/" + key))
@@ -7765,12 +7770,12 @@ func _test_asset_body_mask_placeholders() -> void:
 		if err != OK:
 			continue
 		assert_eq(img.get_size(), Vector2i(64, 64), "%s is 64x64 like the art" % key)
-		var all_black := true
+		var uniform := true
 		for y in img.get_height():
 			for x in img.get_width():
-				if img.get_pixel(x, y) != Color(0, 0, 0, 1):
-					all_black = false
-		assert_true(all_black, "%s is opaque black: base colour, no channel" % key)
+				if img.get_pixel(x, y) != expected[key]:
+					uniform = false
+		assert_true(uniform, "%s is opaque %s, as unbound" % [key, expected[key]])
 
 func _test_asset_player_rig_placeholder_contract() -> void:
 	const GameDataReader := preload("res://src/core/game_data_reader.gd")
