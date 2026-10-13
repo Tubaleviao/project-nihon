@@ -140,7 +140,7 @@ npm run generate  # generate the design bible into bible/
 | 117 | Map waypoints, HUD toasts and an explored set that scales | Done |
 | 118 | Void bursts, the survivor flag and the VoidTouched unlock | Done |
 | 119 | An injected network transport and a compact per-tick wire form | Done |
-| 120 | The distant ring draws recorded land | Planned |
+| 120 | The distant ring draws recorded land | Done |
 | 121 | Crash-consistent saves | Planned |
 | 122 | Far terrain without mirroring and one scene-offset helper | Planned |
 
