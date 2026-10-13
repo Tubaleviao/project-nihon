@@ -152,7 +152,8 @@ func _tick_despawn() -> void:
 # ---------------------------------------------------------------------------
 
 ## Phase 63: the scene-origin offset a client rebase has applied (see `shift_scene`).
-var _scene_offset: Vector3 = Vector3.ZERO
+const SceneOffset := preload("res://src/core/scene_offset.gd")
+var _origin: SceneOffset = SceneOffset.new()
 
 ## Phase 80 — the pickup nodes this slice spawned in world space. `shift_scene` moves exactly
 ## these, so a helper node parented under the slice is never shifted by accident.
@@ -160,7 +161,7 @@ var _world_nodes: Array = []
 
 ## Shift every pickup node by `shift`; its world position is unchanged. Freed nodes drop out.
 func shift_scene(shift: Vector3) -> void:
-	_scene_offset += shift
+	_origin.value += shift
 	var live: Array = []
 	for n in _world_nodes:
 		if is_instance_valid(n):
@@ -173,13 +174,13 @@ func _forget_world_node(node: Node) -> void:
 	_world_nodes.erase(node)
 
 func scene_offset() -> Vector3:
-	return _scene_offset
+	return _origin.value
 
 ## Build a small coloured box so a dropped item is visible in the world.
 func _make_pickup_visual(pid: String, item_id: String, pos: Vector3) -> Node3D:
 	var node := Node3D.new()
 	node.name = "Pickup_%s" % item_id
-	node.position = pos + _scene_offset
+	node.position = pos + _origin.value
 
 	var mesh := MeshInstance3D.new()
 	var box := BoxMesh.new()

@@ -891,16 +891,17 @@ func _hold_death_record(iid: String, entry: Dictionary) -> void:
 ## The box mesh is shared; the per-creature tint lives in the per-instance
 ## colour, and the 0.5 half-height offset is baked into each instance transform.
 ## Phase 63: the scene-origin offset a client rebase has applied (see `shift_scene`).
-var _scene_offset: Vector3 = Vector3.ZERO
+const SceneOffset := preload("res://src/core/scene_offset.gd")
+var _origin: SceneOffset = SceneOffset.new()
 
 ## Shift the creature pool (every creature's mesh) by `shift`. Instance records keep world positions.
 func shift_scene(shift: Vector3) -> void:
-	_scene_offset += shift
+	_origin.value += shift
 	if _pool != null:
 		_pool.shift_scene(shift)
 
 func scene_offset() -> Vector3:
-	return _scene_offset
+	return _origin.value
 
 func _build_pool() -> void:
 	var box := BoxMesh.new()

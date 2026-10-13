@@ -27,8 +27,9 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## niche field that wraps at the antimeridian and a fallback pool read from the biome data; 5 = the
 ## walkable polar caps: frozen sea is an ice shelf from `ICE_SHELF_LAT`, and within a few km of
 ## each pole the ground eases into a snow field that depends on the distance to the pole alone,
-## so the pole can be crossed.
-const WORLDGEN_VERSION := 5
+## so the pole can be crossed; 6 = Phase 122 far detail noise: the triangle-wave fold that mirrored
+## the world beyond `NOISE_SPAN` is replaced by a hashed per-cell offset blended across cell borders.
+const WORLDGEN_VERSION := 6
 
 ## Phase 106 — a hash of every fabric parameter world-gen reads that `WORLDGEN_VERSION` cannot see:
 ## the `WorldSystem` shape fields (`sea`, `min/max height`, `oceanShare`, `ridgeAmplitude`,
@@ -154,7 +155,25 @@ static func configure_noise(n: FastNoiseLite, seed_v: int) -> void:
 
 ## The detail term (0..HEIGHT_SCALE) of `n` (see `configure_noise`) at a world XZ.
 static func detail_of(n: FastNoiseLite, x: float, z: float) -> float:
-	return (n.get_noise_2d(noise_coord(x), noise_coord(z)) + 1.0) * 0.5 * HEIGHT_SCALE
+	var ax := _axis_cells(x)
+	var az := _axis_cells(z)
+	var seed_v := n.seed
+	var total := 0.0
+	for i in range(2):
+		var wx: float = ax[1] if i == 1 else 1.0 - ax[1]
+		if wx <= 0.0:
+			continue
+		for j in range(2):
+			var wz: float = az[1] if j == 1 else 1.0 - az[1]
+			if wz <= 0.0:
+				continue
+			var cx: int = ax[2] if i == 1 else ax[0]
+			var cz: int = az[2] if j == 1 else az[0]
+			var lx: float = x - float(cx) * 2.0 * NOISE_SPAN
+			var lz: float = z - float(cz) * 2.0 * NOISE_SPAN
+			var off := cell_offset(seed_v, cx, cz)
+			total += wx * wz * n.get_noise_2d(lx + off.x, lz + off.y)
+	return (total + 1.0) * 0.5 * HEIGHT_SCALE
 
 ## Adopt `seed` as the world's identity. Called by game_root with the seed read
 ## off the world record (authoritative boot) or out of the host's join snapshot
@@ -518,17 +537,44 @@ func _raw_height_at(x: float, z: float, w: float, cache: Array) -> float:
 	var h := clampf(shape + detail, WorldShape.min_height(), WorldShape.max_height())
 	return polar_ground(_world_seed, h, x, z, w)
 
-## Phase 63 — half the span (m) over which the detail noise is sampled directly. FastNoiseLite takes
-## float32, whose step is 1 m at 10 million metres and would terrace the 0.5 m tiles, so the lattice
-## index is folded into this range first (a triangle wave: continuous at the folds, and the identity
-## for |coordinate| <= NOISE_SPAN, so ground near the origin is unchanged). 65,536 m keeps float32
-## exact to 1/128 m, finer than the 0.125 m step.
+## Phase 63 — half the span (m) of one detail-noise cell. FastNoiseLite takes float32, whose step is
+## 1 m at 10 million metres and would terrace the 0.5 m tiles, so the noise is sampled at the
+## coordinate local to a cell of 2·NOISE_SPAN (|local| <= NOISE_SPAN, exact to 1/128 m). Phase 122:
+## cell (0, 0) is the identity, so ground near the origin is unchanged; every other cell adds a
+## hashed offset (`cell_offset`) so the far world does not repeat or mirror, and the two cells either
+## side of a border are blended over `NOISE_BLEND` m so the field is continuous.
 const NOISE_SPAN := 65536.0
 
-## The detail-noise coordinate for a world coordinate (double precision in, small and exact out).
-static func noise_coord(v: float) -> float:
-	var t := fposmod(v + NOISE_SPAN, 4.0 * NOISE_SPAN)
-	return t - NOISE_SPAN if t < 2.0 * NOISE_SPAN else 3.0 * NOISE_SPAN - t
+## Width (m) of the blend band inside a cell, next to each of its borders.
+const NOISE_BLEND := 64.0
+
+## Largest offset magnitude (m) a cell adds to its local noise coordinate.
+const NOISE_OFFSET_RANGE := 4096.0
+
+## Per-axis cell data for a world coordinate: [cell, weight of the neighbouring cell, neighbour cell].
+## The weight is 0 away from a border and rises to 0.5 at it, so both sides of a border agree.
+static func _axis_cells(v: float) -> Array:
+	var c := floori((v + NOISE_SPAN) / (2.0 * NOISE_SPAN))
+	var local := v - float(c) * 2.0 * NOISE_SPAN
+	if local > NOISE_SPAN - NOISE_BLEND:
+		return [c, 0.5 * (local - (NOISE_SPAN - NOISE_BLEND)) / NOISE_BLEND, c + 1]
+	if local < -NOISE_SPAN + NOISE_BLEND:
+		return [c, 0.5 * (1.0 - (local + NOISE_SPAN) / NOISE_BLEND), c - 1]
+	return [c, 0.0, c]
+
+## The hashed noise offset (m, a multiple of 1/8) of detail cell (cx, cz) for `seed_v`; zero for the
+## origin cell. Pure.
+static func cell_offset(seed_v: int, cx: int, cz: int) -> Vector2:
+	if cx == 0 and cz == 0:
+		return Vector2.ZERO
+	var h := (seed_v * 73856093) ^ (cx * 19349663) ^ (cz * 83492791)
+	h = ((h ^ (h >> 15)) * 0x2c1b3c6d) & 0x7fffffff
+	h = ((h ^ (h >> 12)) * 0x297a2d39) & 0x7fffffff
+	h = h ^ (h >> 15)
+	var span := int(NOISE_OFFSET_RANGE * 8.0)
+	var ox := float((h & 0xffff) % span) / 8.0 - NOISE_OFFSET_RANGE * 0.5
+	var oz := float(((h >> 15) & 0xffff) % span) / 8.0 - NOISE_OFFSET_RANGE * 0.5
+	return Vector2(ox, oz)
 
 ## The detail noise term (0..HEIGHT_SCALE) at a world XZ; what `_raw_height_at` adds to the shape.
 func detail_at(x: float, z: float) -> float:

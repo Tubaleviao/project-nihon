@@ -301,19 +301,20 @@ var _world_floor: StaticBody3D = null
 ## Phase 50: the scene-origin offset applied to every chunk root. Chunk geometry is built in
 ## absolute chunk-index metres; a client rebase moves the roots (not the vertices) so the physics
 ## and render scene never see a large coordinate. Zero until the first rebase.
-var _scene_offset: Vector3 = Vector3.ZERO
+const SceneOffset := preload("res://src/core/scene_offset.gd")
+var _origin: SceneOffset = SceneOffset.new()
 
 ## Shift every streamed chunk node, and the world floor, by `shift` in one call. Chunks built
 ## later pick the accumulated offset up, so a rebase never leaves a mix of frames.
 func shift_scene(shift: Vector3) -> void:
-	_scene_offset += shift
+	_origin.value += shift
 	for key in _chunks:
 		_chunks[key].position += shift
 	if _world_floor != null:
 		_world_floor.position += shift
 
 func scene_offset() -> Vector3:
-	return _scene_offset
+	return _origin.value
 
 func _ready() -> void:
 	# Phase 43 — fill the ore field's material band table HERE, on the main thread, before any
@@ -395,12 +396,12 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	# A chunk-local build puts the node at the chunk's corner: the corner is summed with the scene
 	# offset in double precision, so far from the origin the node's position is small and exact and
 	# the vertices stay small too (float32 vertices at 2e7 m would snap to 2 m and shatter the ground).
-	root.position = _scene_offset
+	root.position = _origin.value
 	if bool(built.get("local", false)):
 		root.position = Vector3(
-			float(chunk_pos.x * CHUNK_SIZE) * TILE_SIZE + _scene_offset.x,
-			_scene_offset.y,
-			float(chunk_pos.y * CHUNK_SIZE) * TILE_SIZE + _scene_offset.z)
+			float(chunk_pos.x * CHUNK_SIZE) * TILE_SIZE + _origin.value.x,
+			_origin.value.y,
+			float(chunk_pos.y * CHUNK_SIZE) * TILE_SIZE + _origin.value.z)
 	var surface := _mesh_from_arrays(built)
 	var mesh_inst := MeshInstance3D.new()
 	mesh_inst.mesh = surface

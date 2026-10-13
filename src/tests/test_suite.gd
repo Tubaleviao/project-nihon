@@ -358,6 +358,7 @@ func run() -> void:
 	_run_test("region: an overlay keeps the larger stored depletion count", _test_region_overlay_keeps_larger_taken)
 	_run_test("region: migration recovers a monolith chunk whose region entry is malformed", _test_region_migrate_malformed_recovers)
 	_run_test("rebase: an unshiftable target is reported",      _test_rebase_driver_reports_unshiftable)
+	_run_test("rebase: one SceneOffset helper, whole-chunk shifts only", _test_scene_shift_helper)
 	_run_test("game_root: implausible peer positions dropped",  _test_remote_state_plausibility)
 	_run_test("networking: a remote peer's exact position is saved exactly", _test_remote_peer_exact_position)
 	_run_test("networking: peer windows and relays use the exact peer position", _test_peer_exact_window_and_relay)
@@ -1295,6 +1296,38 @@ func _test_rebase_extras() -> void:
 	station.free()
 	loot.free()
 
+## Phase 122 — the scene-offset state lives in scene_offset.gd alone, and the player refuses a
+## shift that is not a whole number of chunks.
+func _test_scene_shift_helper() -> void:
+	var holders := 0
+	for dir in ["res://src"]:
+		holders += _count_files_with(dir, "_scene_" + "offset")
+	assert_eq(holders, 0, "no source file declares its own scene offset field")
+	var so := preload("res://src/core/scene_offset.gd").new()
+	so.add(Vector3(64.0, 0.0, -32.0))
+	assert_eq(so.to_scene(Vector3(1.0, 2.0, 3.0)), Vector3(65.0, 2.0, -29.0), "to_scene adds the offset")
+	assert_eq(so.to_world(so.to_scene(Vector3(1.0, 2.0, 3.0))), Vector3(1.0, 2.0, 3.0), "to_world undoes it")
+	var cm := WorldPos.CHUNK_METERS
+	assert_true(PlayerSlice.is_chunk_multiple_shift(Vector3(2.0 * cm, 0.0, -cm)), "a whole-chunk shift is accepted")
+	assert_false(PlayerSlice.is_chunk_multiple_shift(Vector3(cm * 0.5, 0.0, 0.0)), "half a chunk is refused")
+	assert_false(PlayerSlice.is_chunk_multiple_shift(Vector3(cm, 3.0, 0.0)), "a vertical shift is refused")
+	var player := PlayerSlice.new()
+	add_child(player)
+	player.shift_scene(Vector3(cm * 0.25, 0.0, 0.0))
+	assert_eq(player.scene_offset(), Vector3.ZERO, "a refused shift leaves the offset alone")
+	player.shift_scene(Vector3(-cm, 0.0, 0.0))
+	assert_eq(player.scene_offset(), Vector3(-cm, 0.0, 0.0), "a whole-chunk shift moves it")
+	player.free()
+
+func _count_files_with(dir: String, needle: String) -> int:
+	var n := 0
+	for f in DirAccess.get_files_at(dir):
+		if f.ends_with(".gd") and FileAccess.get_file_as_string(dir.path_join(f)).contains(needle):
+			n += 1
+	for d in DirAccess.get_directories_at(dir):
+		n += _count_files_with(dir.path_join(d), needle)
+	return n
+
 ## Review of #165 — a target with no `shift_scene` is reported, not silently left behind.
 func _test_rebase_driver_reports_unshiftable() -> void:
 	var good := LootSlice.new()
@@ -1690,26 +1723,45 @@ func _test_far_noise_quantised() -> void:
 	var t := TerrainSlice.new()
 	add_child(t)
 	t.set_world_seed(1234)
-	# Inside the span the coordinate is untouched: ground near the origin does not change.
-	assert_eq(TerrainSlice.noise_coord(123.5), 123.5, "the fold is the identity near the origin")
-	assert_eq(TerrainSlice.noise_coord(-8000.25), -8000.25, "and for negative coordinates")
+	var span := TerrainSlice.NOISE_SPAN
+	# Inside the origin cell, away from its borders, the coordinate is untouched.
+	assert_eq(TerrainSlice.cell_offset(1234, 0, 0), Vector2.ZERO, "the origin cell has no offset")
+	assert_true(TerrainSlice.cell_offset(1234, 1, 0) != Vector2.ZERO, "a far cell has an offset")
+	assert_eq(TerrainSlice.cell_offset(1234, 3, -2), TerrainSlice.cell_offset(1234, 3, -2), "the offset is pure")
+	for off in [TerrainSlice.cell_offset(1234, 1, 0), TerrainSlice.cell_offset(-99, -4, 7)]:
+		assert_true(absf(off.x) <= TerrainSlice.NOISE_OFFSET_RANGE and absf(off.y) <= TerrainSlice.NOISE_OFFSET_RANGE, "the offset is bounded")
+		assert_eq(off.x, snappedf(off.x, 0.125), "and exact to the 0.125 step")
+	var ref := FastNoiseLite.new()
+	TerrainSlice.configure_noise(ref, 1234)
+	assert_eq(t.detail_at(123.5, -8000.25), (ref.get_noise_2d(123.5, -8000.25) + 1.0) * 0.5 * TerrainSlice.HEIGHT_SCALE, "ground near the origin is the plain noise")
+	# No mirror: x and 2·NOISE_SPAN − x differ for 1,000 points beyond the span.
+	var differ := 0
+	for i in range(1000):
+		var x := span + 1000.0 + float(i) * 37.25
+		var z := 77.5 + float(i) * 11.0
+		if absf(t.detail_at(x, z) - t.detail_at(2.0 * span - x, z)) > 1e-6:
+			differ += 1
+	assert_eq(differ, 1000, "detail noise does not mirror beyond the span")
+	# Far tiles still step smoothly (no terracing from float32).
 	var far_x := 312500.0 * TerrainSlice.CHUNK_METERS
 	var prev := -1.0
 	var distinct := 0
 	for i in range(64):
-		var x := far_x + float(i) * TerrainSlice.TILE_SIZE
-		var coord := TerrainSlice.noise_coord(x)
-		assert_true(absf(coord) <= TerrainSlice.NOISE_SPAN, "the folded coordinate stays small")
-		assert_eq(coord, snappedf(coord, 0.125), "the folded coordinate is exact to the 0.125 step")
-		var d := t.detail_at(x, 77.5)
+		var d := t.detail_at(far_x + float(i) * TerrainSlice.TILE_SIZE, 77.5)
 		if absf(d - prev) > 0.0:
 			distinct += 1
 		assert_true(prev < 0.0 or absf(d - prev) < 1.0, "adjacent tiles differ by terrain slope, not a rounding jump")
 		prev = d
 	assert_eq(distinct, 64, "no terracing: every tile steps to a new value")
-	# Continuous across the fold: a half-step either side of the fold agrees to within one tile of slope.
-	var fold := TerrainSlice.NOISE_SPAN
-	assert_true(absf(t.detail_at(fold - 0.25, 5.0) - t.detail_at(fold + 0.25, 5.0)) < 1.0, "the fold has no cliff")
+	# Continuous across cell borders on both axes: the largest step stays at slope scale.
+	var worst := 0.0
+	for border in [span, 3.0 * span, -span]:
+		for k in range(-80, 80):
+			var x0: float = border + float(k) * 0.125
+			worst = maxf(worst, absf(t.detail_at(x0, 5.0) - t.detail_at(x0 + 0.125, 5.0)))
+			worst = maxf(worst, absf(t.detail_at(5.0, x0) - t.detail_at(5.0, x0 + 0.125)))
+			worst = maxf(worst, absf(t.detail_at(x0, x0) - t.detail_at(x0 + 0.125, x0 + 0.125)))
+	assert_true(worst < 0.5, "the field is continuous across a cell border (max step %.4f)" % worst)
 	t.free()
 
 func _test_where_command() -> void:
