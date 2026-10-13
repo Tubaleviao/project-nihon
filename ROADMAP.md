@@ -142,7 +142,7 @@ issue number where the criterion used to be.
 | 119 | An injected network transport and a compact per-tick wire form | Done | below |
 | 120 | The distant ring draws recorded land | Done | below |
 | 121 | Crash-consistent saves | Done | below |
-| 122 | Far terrain without mirroring and one scene-offset helper | Planned | below |
+| 122 | Far terrain without mirroring and one scene-offset helper | Done | below |
 
 ---
 
@@ -1006,7 +1006,7 @@ below.
 
 ---
 
-## Phase 122 — Far terrain without mirroring and one scene-offset helper
+## Phase 122 — Far terrain without mirroring and one scene-offset helper ✅ Done
 
 **Goal:** `TerrainSlice.noise_coord` folds detail noise beyond 65,536 m with a triangle wave, so the
 far world mirrors itself. Since Phase 113 a generator change only affects unrecorded land, so the fold
@@ -1051,18 +1051,26 @@ of the terrain issue below.
   Z; `WorldPos.is_wire` accepts the first south fold row.
 
 **Acceptance criteria:**
-- [ ] Suite: detail noise at x and at 2·`NOISE_SPAN` − x differ (no mirror) for 1,000 sampled points
+- [x] Suite: detail noise at x and at 2·`NOISE_SPAN` − x differ (no mirror) for 1,000 sampled points
   beyond 65,536 m, and the field is continuous across a cell border (max step below the authored
   bound); golden values updated with the version bump; a recorded chunk's heights are unchanged.
-- [ ] Suite: `grep -c "_scene_offset" src` finds it only in `scene_offset.gd`; `RebaseDriver` refuses a
+- [x] Suite: `grep -c "_scene_offset" src` finds it only in `scene_offset.gd`; `RebaseDriver` refuses a
   target without `shift_scene`; a non-multiple shift is refused.
-- [ ] Suite: corner and diagonal biome blends are symmetric; an eviction keeps deplete ops in
+- [x] Suite: corner and diagonal biome blends are symmetric; an eviction keeps deplete ops in
   `_vein_taken`; a deep-ocean column has the authored vein depth above bedrock.
-- [ ] Suite: snapshot AOI and presence use exact positions at chunk X = 1,500,000; a seam clamp leaves
+- [x] Suite: snapshot AOI and presence use exact positions at chunk X = 1,500,000; a seam clamp leaves
   the float body within 1 m of the canonical position on the same frame; a snapshot with a bad
   position spawns at the spawn point; the first south fold row passes `is_wire`.
-- [ ] Suite: `OreField.warm()` retries until `ClimateField` is warm; `record_world_pos` clamps `local`.
-- [ ] Suite green on both boot paths, harness green, `npm run check-drift` green.
+- [x] Suite: `OreField.warm()` retries until `ClimateField` is warm; `record_world_pos` clamps `local`.
+- [x] Suite green on both boot paths, harness green, `npm run check-drift` green.
+
+**Implementation notes (deviations from the deliverable list):** `noise_coord` is gone (cells of
+2·`NOISE_SPAN`, `TerrainSlice.cell_offset`, 64 m blend). `_corner_cache` already took one lock per chunk;
+the per-sample path (`get_height_at`) still locks. `is_chunk_loadable` was removed and the chunk manager
+streams every row. `BEDROCK_DEPTH` is a constant -96 m (32 m under the lowest surface) rather than per
+column. `water_mesh_for` already scans row spans; `evict_clean_chunks` already carries deplete ops in
+`_vein_carry`/`_vein_taken`. `set_host_position`, `_fold_last_known_state` and `oceanShare` are unchanged
+(`_clamp_to_world_exact` does not exist in this tree).
 
 ---
 
