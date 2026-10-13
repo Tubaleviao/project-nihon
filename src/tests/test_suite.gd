@@ -16265,6 +16265,14 @@ func _test_distant_ring_recorded_corners() -> void:
 	ChunkRecordsScript.set_record(c, RegionStoreScript.normalize_gen(TerrainSlice.generation_record(c, seed_v)))   # the snapshot is a copy
 	assert_eq(TerrainSlice.shape_height_in(snap, seed_v, x, z, w), float(rec["h"][0]), "a later table change never reaches the snapshot")
 	ChunkRecordsScript.clear()
+	# A recorded chunk west of the origin (canonical negative x) is found by both snapshot branches.
+	var cn := Vector2i(-40, 12)
+	ChunkRecordsScript.set_record(cn, RegionStoreScript.normalize_gen(TerrainSlice.generation_record(cn, seed_v)))
+	var circ := TerrainSlice.circumference_chunks()
+	assert_true(ChunkRecordsScript.snapshot_near(cn, 0, circ).has(cn), "a negative-x record is in the window-scan snapshot")
+	assert_true(ChunkRecordsScript.snapshot_near(cn, 4, circ).has(cn), "and in the table-scan snapshot")
+	assert_true(ChunkRecordsScript.snapshot_near(Vector2i(-38, 12), 0, circ).has(cn) == false, "outside the radius it is left out")
+	ChunkRecordsScript.clear()
 
 ## Phase 120 — adding a record inside the ring after a build schedules exactly one rebuild.
 func _test_distant_ring_record_rebuild() -> void:
@@ -16332,10 +16340,21 @@ func _test_distant_ring_counter_invariant() -> void:
 	add_child(e)
 	e.poll(true)
 	assert_eq(e.builds_started, e.rebuilds_requested - e.rebuilds_dropped + e.restarts, "and across a reparent")
+	var g := DistantTerrainScript.new()
+	add_child(g)
+	g.world_seed = 11
+	g.rebuild(Vector2(100.0, -40.0), 2)
+	g.rebuild(Vector2(1500.0, 900.0), 2)   # queued behind the running build
+	remove_child(g)   # the running one is aborted, the queued one is set aside
+	add_child(g)
+	g.poll(true)
+	g.poll(true)
+	assert_eq(g.builds_started, g.rebuilds_requested - g.rebuilds_dropped + g.restarts, "and across a reparent with a queued request")
 	d.free()
 	e.free()
+	g.free()
 	var f := FileAccess.open("res://src/terrain/distant_terrain.gd", FileAccess.READ)
-	assert_false(f.get_as_text().contains("static var"), "distant_terrain.gd has no static variable")
+	assert_false(f.get_as_text().contains("static var "), "distant_terrain.gd has no static variable")
 
 ## Phase 120 — the polar caches are filled on the main thread by `rebuild`, never first on a worker.
 func _test_distant_ring_warm_caches() -> void:

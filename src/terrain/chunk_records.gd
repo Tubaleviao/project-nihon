@@ -68,7 +68,7 @@ static func snapshot_near(center: Vector2i, radius: int, circumference: int) -> 
 			for dx in range(-radius, radius + 1):
 				var c := center + Vector2i(dx, dz)
 				if circumference > 0:
-					c.x = posmod(c.x, circumference)
+					c.x = posmod(c.x + circumference / 2, circumference) - circumference / 2   # canonical, as wrap_chunk
 				var rec: Dictionary = _table.get(key_of(c), {})
 				if not rec.is_empty():
 					out[c] = { "b": str(rec["b"]), "h": (rec["h"] as Array).duplicate() }

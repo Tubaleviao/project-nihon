@@ -40,9 +40,8 @@ class Request extends RefCounted:
 	var records_rev := -1
 	var args: Dictionary = {}
 
-	func same_target(o: Request) -> bool:
-		return o != null and origin == o.origin and window == o.window and radius == o.radius \
-			and world_seed == o.world_seed and circ == o.circ
+	func same_target(o: Vector2i, win: Vector2, rad: int, sd: int, c: float) -> bool:
+		return origin == o and window == win and radius == rad and world_seed == sd and circ == c
 
 ## Phase 120 — the whole request lifecycle in one record (it replaces `_built_*`, `_task_args`,
 ## `_queued` and `_discarded`): `built` is the newest accepted request (what the mesh is, or will be,
@@ -130,6 +129,11 @@ func rebuild(center: Vector2, radius_chunks: int) -> bool:
 		(floorf(center.y / CHUNK_METERS) + 0.5) * CHUNK_METERS)
 	var rev := ChunkRecords.revision()
 	var built := _req.built
+	var same := built != null and built.same_target(origin, win_center, radius_chunks, world_seed, circumference_m) \
+		and (_mesh_inst != null or _task >= 0)
+	# Same target: only a newer set of recorded chunks can still ask for a rebuild, debounced.
+	if same and (built.records_rev == rev or Time.get_ticks_msec() - _last_start_ms < record_debounce_ms):
+		return false
 	var r := Request.new()
 	r.origin = origin
 	r.window = win_center
@@ -137,10 +141,6 @@ func rebuild(center: Vector2, radius_chunks: int) -> bool:
 	r.radius = radius_chunks
 	r.circ = circumference_m
 	r.records_rev = rev
-	var same := built != null and built.same_target(r) and (_mesh_inst != null or _task >= 0)
-	# Same target: only a newer set of recorded chunks can still ask for a rebuild, debounced.
-	if same and (built.records_rev == rev or Time.get_ticks_msec() - _last_start_ms < record_debounce_ms):
-		return false
 	WorldShape.warm()   # the fabric snapshot is taken here, never first on a worker
 	TerrainSliceScript.warm_polar_caches()   # and the polar caches `polar_ground` reads
 	var snap: Dictionary = {}
@@ -149,7 +149,7 @@ func rebuild(center: Vector2, radius_chunks: int) -> bool:
 		var wc := Vector2i(floori(win_center.x / CHUNK_METERS), floori(win_center.y / CHUNK_METERS))
 		var reach := int(ceil((ring_half_m + cell) / CHUNK_METERS)) + 1
 		snap = ChunkRecords.snapshot_near(wc, reach, TerrainSliceScript.circumference_chunks())
-	if same and snap.hash() == (built.args["snap"] as Dictionary).hash():
+	if same and snap.recursive_equal(built.args["snap"] as Dictionary, 8):
 		built.records_rev = rev   # the change lies outside the ring: nothing to redraw
 		return false
 	r.args = {
@@ -198,6 +198,8 @@ func poll(block: bool = false) -> bool:
 		var mesh := _result
 		_result = null
 		if mesh == null:   # the build was aborted: nothing to apply
+			if _req.queued != null:
+				rebuilds_dropped += 1   # the queued request never ran
 			_req.queued = null
 			break
 		if _req.queued == null:
@@ -250,6 +252,8 @@ func _join_worker(remember: bool) -> void:
 	WorkerThreadPool.wait_for_task_completion(_task)
 	if remember:
 		_req.discarded = _req.queued if _req.queued != null else _req.running
+	if _req.queued != null:
+		rebuilds_dropped += 1   # the aborted running request is superseded (or the queued one never runs)
 	_task = -1
 	_result = null
 	_req.queued = null
