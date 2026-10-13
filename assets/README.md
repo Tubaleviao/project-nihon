@@ -90,8 +90,15 @@ Regenerate both with `python3 tools/gen_placeholder_glb.py`.
 ## Regenerating a placeholder
 
 ```bash
+python3 tools/gen_placeholder.py   # every placeholder texture
 python3 tools/gen_placeholder.py assets/textures/placeholder_character.png.raw
 ```
+
+`textures/characters/player_color_mask.png.raw` and `player_channel.png.raw` are
+all-black RGBA (base colour only, no channel), the same as the character shader with
+no mask bound. The production pack replaces them with the player rig's masks.
+Nothing binds these keys to the character material yet, so for now they only
+reserve the keys the private masks override.
 
 ## Building the production pack
 
