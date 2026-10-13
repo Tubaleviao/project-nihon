@@ -140,7 +140,7 @@ issue number where the criterion used to be.
 | 117 | Map waypoints, HUD toasts and an explored set that scales | Done | below |
 | 118 | Void bursts, the survivor flag and the VoidTouched unlock | Done | below |
 | 119 | An injected network transport and a compact per-tick wire form | Done | below |
-| 120 | The distant ring draws recorded land | Planned | below |
+| 120 | The distant ring draws recorded land | Done | below |
 | 121 | Crash-consistent saves | Planned | below |
 | 122 | Far terrain without mirroring and one scene-offset helper | Planned | below |
 
@@ -912,7 +912,7 @@ the networking triage issue below.
 
 ---
 
-## Phase 120 — The distant ring draws recorded land
+## Phase 120 — The distant ring draws recorded land ✅ Done
 
 **Goal:** since Phase 113 a recorded chunk keeps its biome and corner heights across generator
 versions, but `DistantTerrain` still samples the plain generator everywhere, so after a
@@ -948,17 +948,17 @@ lifecycle one record with a pre-delete join, and resolves every item of the dist
   after `poll(true)`.
 
 **Acceptance criteria:**
-- [ ] Suite: with a recorded chunk whose corners differ from the generator by 10 m, the ring's height
+- [x] Suite: with a recorded chunk whose corners differ from the generator by 10 m, the ring's height
   at that chunk's corners equals the recorded corners exactly; an unrecorded neighbour equals the plain
   generator.
-- [ ] Suite: adding a record inside the ring after a build schedules exactly one rebuild.
-- [ ] Suite: freeing a detached ring with a running worker joins it (no leaked thread or orphan node);
+- [x] Suite: adding a record inside the ring after a build schedules exactly one rebuild.
+- [x] Suite: freeing a detached ring with a running worker joins it (no leaked thread or orphan node);
   freeing an in-tree ring mid-build does not stall past the abort bound.
-- [ ] Suite: `builds_started == rebuilds_requested - rebuilds_dropped + restarts` across a queued
+- [x] Suite: `builds_started == rebuilds_requested - rebuilds_dropped + restarts` across a queued
   restart; no static counter remains in `distant_terrain.gd`.
-- [ ] Suite: `polar_ground` caches are warm before the first worker build (a test counter proves no
+- [x] Suite: `polar_ground` caches are warm before the first worker build (a test counter proves no
   worker-side fill).
-- [ ] Suite green on both boot paths.
+- [x] Suite green on both boot paths.
 
 ---
 

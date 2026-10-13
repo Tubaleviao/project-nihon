@@ -10,6 +10,7 @@ extends Node3D
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const TerrainSliceScript := preload("res://src/terrain/terrain_slice.gd")
 const VoxelSliceScript := preload("res://src/terrain/voxel_slice.gd")
+const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 const CHUNK_METERS := 32.0   # TerrainSlice.CHUNK_SIZE * TILE_SIZE
 const RING_FACTOR := 10      ## the ring reaches this many times the voxel window's extent
 const GRID := 64             ## cells per side of the ring's lattice
@@ -26,25 +27,40 @@ var circumference_m: float = 40000.0 * 1000.0
 ## Half-extent of the voxel window in metres, and the ring's own.
 var window_half_m: float = 0.0
 var ring_half_m: float = 0.0
-var _cell_origin := Vector2i(-999999, -999999)
-## What the current (or in-flight) build is for, as plain fields so the per-frame `rebuild` check
-## allocates nothing.
-var _built_seed := 0
-var _built_window := Vector2(INF, INF)
-var _built_radius := -1
-var _built_circ := -1.0
 var _mesh_inst: MeshInstance3D = null
+
+## Phase 120 — one build request: what the ring is built for (compared by `rebuild` to decide whether
+## anything changed) and the arguments the worker is handed, including the snapshot of recorded land.
+class Request extends RefCounted:
+	var world_seed := 0
+	var radius := -1
+	var circ := -1.0
+	var origin := Vector2i(-999999, -999999)
+	var window := Vector2(INF, INF)
+	var records_rev := -1
+	var args: Dictionary = {}
+
+	func same_target(o: Request) -> bool:
+		return o != null and origin == o.origin and window == o.window and radius == o.radius \
+			and world_seed == o.world_seed and circ == o.circ
+
+## Phase 120 — the whole request lifecycle in one record (it replaces `_built_*`, `_task_args`,
+## `_queued` and `_discarded`): `built` is the newest accepted request (what the mesh is, or will be,
+## for), `running` the one the worker holds, `queued` a newer one that arrived meanwhile, and
+## `discarded` the one `_exit_tree` set aside so `_enter_tree` can start it again on a reparent.
+class RequestState extends RefCounted:
+	var built: Request = null
+	var running: Request = null
+	var queued: Request = null
+	var discarded: Request = null
+
+var _req := RequestState.new()
 
 ## Phase 68 — the lattice build runs on a `WorkerThreadPool` task; the main thread only swaps the
 ## finished mesh in. `_task` is the task id in flight (-1 when idle); `_result` is what the task
 ## produced (written by the worker, read after `wait_for_task_completion`).
 var _task := -1
-var _task_args: Dictionary = {}
 var _result: ArrayMesh = null
-var _queued: Dictionary = {}   # a newer request that arrived while a build was in flight
-## Phase 88 — the request `_exit_tree` discarded (the newest of the in-flight and queued ones), so
-## `_enter_tree` can start it again when the ring is only reparented.
-var _discarded: Dictionary = {}
 
 ## Phase 83 — shared between the main thread and a build's worker: the main thread raises `aborted`
 ## (leaving the tree), the worker checks it before each row and returns no mesh. `rows` counts the
@@ -60,9 +76,15 @@ var _control: BuildControl = null
 var rebuilds_requested := 0
 var rebuilds_completed := 0
 var rebuilds_dropped := 0
-## Phase 96 — worker tasks started for an accepted request (a reparent's restart of a discarded
-## request is not a new request and is not counted).
+## Phase 96/120 — worker tasks started. Invariant: `builds_started == rebuilds_requested -
+## rebuilds_dropped + restarts`, where `restarts` counts the starts that were not a fresh request (a
+## queued request begun by `poll`, a discarded one begun by `_enter_tree`).
 var builds_started := 0
+var restarts := 0
+
+## Phase 120 — a records change alone (not a centre move) rebuilds the ring at most this often.
+var record_debounce_ms := 500
+var _last_start_ms := -1000000
 
 ## Phase 63: the scene-origin offset a client rebase has applied (see `shift_scene`).
 var _scene_offset: Vector3 = Vector3.ZERO
@@ -106,42 +128,55 @@ func rebuild(center: Vector2, radius_chunks: int) -> bool:
 	# ring rebuilds when the player's chunk changes as well as when the lattice cell does.
 	var win_center := Vector2((floorf(center.x / CHUNK_METERS) + 0.5) * CHUNK_METERS,
 		(floorf(center.y / CHUNK_METERS) + 0.5) * CHUNK_METERS)
-	if origin == _cell_origin and win_center == _built_window and _built_radius == radius_chunks and _built_seed == world_seed \
-			and _built_circ == circumference_m and (_mesh_inst != null or _task >= 0):
-		return false
-	_cell_origin = origin
-	_built_window = win_center
-	_built_seed = world_seed
-	_built_radius = radius_chunks
-	_built_circ = circumference_m
+	var rev := ChunkRecords.revision()
+	var built := _req.built
+	if built != null and built.origin == origin and built.window == win_center and built.radius == radius_chunks \
+			and built.world_seed == world_seed and built.circ == circumference_m and (_mesh_inst != null or _task >= 0):
+		# Same target: only a newer set of recorded chunks can still ask for a rebuild, debounced.
+		if built.records_rev == rev or Time.get_ticks_msec() - _last_start_ms < record_debounce_ms:
+			return false
 	WorldShape.warm()   # the fabric snapshot is taken here, never first on a worker
-	var args := {
+	TerrainSliceScript.warm_polar_caches()   # and the polar caches `polar_ground` reads
+	var r := Request.new()
+	r.origin = origin
+	r.window = win_center
+	r.world_seed = world_seed
+	r.radius = radius_chunks
+	r.circ = circumference_m
+	r.records_rev = rev
+	var snap: Dictionary = {}
+	if not ChunkRecords.is_empty():
+		var wc := Vector2i(floori(win_center.x / CHUNK_METERS), floori(win_center.y / CHUNK_METERS))
+		snap = ChunkRecords.snapshot_near(wc, int(ceil(ring_half_m / CHUNK_METERS)) + 1, TerrainSliceScript.circumference_chunks())
+	r.args = {
 		"seed": world_seed, "w": circumference_m,
 		"ring_center": Vector2(float(origin.x) * cell, float(origin.y) * cell),
 		"half_m": ring_half_m, "window_half_m": window_half_m, "window_center": win_center,
+		"snap": snap,
 	}
+	_req.built = r
 	rebuilds_requested += 1
-	_discarded = {}   # a newer request supersedes whatever `_exit_tree` set aside
+	_req.discarded = null   # a newer request supersedes whatever `_exit_tree` set aside
 	if _task >= 0:
-		if not _queued.is_empty():
+		if _req.queued != null:
 			rebuilds_dropped += 1   # the queued request never ran
-		_queued = args
+		_req.queued = r
 	else:
-		_start(args)
+		_start(r)
 	return true
 
-func _start(args: Dictionary, restart: bool = false) -> void:
-	if not restart:
-		builds_started += 1
+func _start(r: Request) -> void:
+	builds_started += 1
+	_last_start_ms = Time.get_ticks_msec()
 	_control = BuildControl.new()
-	args["control"] = _control
-	_task_args = args
+	r.args["control"] = _control
+	_req.running = r
 	_result = null
 	_task = WorkerThreadPool.add_task(_build_job)
 
 func _build_job() -> void:
-	var a := _task_args
-	_result = build_mesh(a["seed"], a["w"], a["ring_center"], a["half_m"], a["window_half_m"], a["window_center"], a["control"])
+	var a := _req.running.args
+	_result = build_mesh(a["seed"], a["w"], a["ring_center"], a["half_m"], a["window_half_m"], a["window_center"], a["control"], a["snap"])
 
 ## True while a lattice build is in flight or queued.
 func is_building() -> bool:
@@ -159,16 +194,17 @@ func poll(block: bool = false) -> bool:
 		var mesh := _result
 		_result = null
 		if mesh == null:   # the build was aborted: nothing to apply
-			_queued = {}
+			_req.queued = null
 			break
-		if _queued.is_empty():
+		if _req.queued == null:
 			_swap_in(mesh)
 			rebuilds_completed += 1
 			swapped = true
 		else:   # superseded while building: drop this one, build the newest request
 			rebuilds_dropped += 1
-			var next := _queued
-			_queued = {}
+			var next := _req.queued
+			_req.queued = null
+			restarts += 1
 			_start(next)
 	return swapped
 
@@ -194,26 +230,38 @@ func _process(_delta: float) -> void:
 ## waiting out a whole lattice, and drops any queued request and any result. The discarded request
 ## is remembered so a reparent (exit, then re-enter) rebuilds the ring.
 func _exit_tree() -> void:
-	if _task >= 0:
-		if _control != null:
-			_control.aborted = true
-		WorkerThreadPool.wait_for_task_completion(_task)
-		_discarded = _queued if not _queued.is_empty() else _task_args
-		_task = -1
-		_result = null
-		_queued = {}
+	_join_worker(true)
+
+## Phase 120 — a worker started while detached is still joined if the node is freed: `_exit_tree`
+## never ran for it.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		_join_worker(false)
+
+func _join_worker(remember: bool) -> void:
+	if _task < 0:
+		return
+	if _control != null:
+		_control.aborted = true
+	WorkerThreadPool.wait_for_task_completion(_task)
+	if remember:
+		_req.discarded = _req.queued if _req.queued != null else _req.running
+	_task = -1
+	_result = null
+	_req.queued = null
 
 ## Re-requests a build `_exit_tree` discarded. A fresh `BuildControl` (abort flag clear) is made by
 ## `_start`.
 func _enter_tree() -> void:
-	if _discarded.is_empty():
+	var r := _req.discarded
+	if r == null:
 		return
-	var args := _discarded
-	_discarded = {}
+	_req.discarded = null
 	if _task < 0:
-		_start(args, true)
-	elif _queued.is_empty():   # a build is already running: the discarded request waits behind it
-		_queued = args
+		restarts += 1
+		_start(r)
+	elif _req.queued == null:   # a build is already running: the discarded request waits behind it
+		_req.queued = r
 
 ## The ring's mesh: GRID × GRID cells centred on `ring_center` spanning ±`half_m`, with the voxel
 ## window (`window_half_m` around `window_center`) cut out EXACTLY: a cell wholly inside is skipped, a
@@ -227,7 +275,7 @@ func _enter_tree() -> void:
 ## its direct evaluation. Farther out the lattice is coarse (a cell is 10 × the window's chunk
 ## width / 64 across) and the detail is sampled, not filtered: the ring is a backdrop, not ground.
 ## Only the LOCAL player's window is cut; a remote peer's window lies under the ring's sheet.
-static func build_mesh(seed_v: int, w: float, ring_center: Vector2, half_m: float, window_half_m: float, window_center: Vector2, control: BuildControl = null) -> ArrayMesh:
+static func build_mesh(seed_v: int, w: float, ring_center: Vector2, half_m: float, window_half_m: float, window_center: Vector2, control: BuildControl = null, snap: Dictionary = {}) -> ArrayMesh:
 	var cell := half_m * 2.0 / float(GRID)
 	var sea := WorldShape.sea_level()
 	var noise := FastNoiseLite.new()   # this build's own: FastNoiseLite is not shared across threads
@@ -242,7 +290,7 @@ static func build_mesh(seed_v: int, w: float, ring_center: Vector2, half_m: floa
 		for i in GRID + 1:
 			var x := ring_center.x - half_m + float(i) * cell
 			var z := ring_center.y - half_m + float(j) * cell
-			heights[j * (GRID + 1) + i] = ground_at(noise, seed_v, x, z, w)
+			heights[j * (GRID + 1) + i] = ground_at(noise, seed_v, x, z, w, snap)
 	var vertices := PackedVector3Array()
 	var colors := PackedColorArray()
 	var normals := PackedVector3Array()
@@ -271,16 +319,16 @@ static func build_mesh(seed_v: int, w: float, ring_center: Vector2, half_m: floa
 			# The window edge crosses this cell: the part outside it is up to four strips, each cut finely
 			# along the window edge (see `_add_strip`) so the ring follows the voxel ground there.
 			if x0 < wl:
-				_add_strip(vertices, colors, normals, indices, noise, seed_v, w, sea, x0, z0, wl, z1, true, true)
+				_add_strip(vertices, colors, normals, indices, noise, seed_v, w, snap, sea, x0, z0, wl, z1, true, true)
 			if x1 > wr:
-				_add_strip(vertices, colors, normals, indices, noise, seed_v, w, sea, wr, z0, x1, z1, true, false)
+				_add_strip(vertices, colors, normals, indices, noise, seed_v, w, snap, sea, wr, z0, x1, z1, true, false)
 			var mx0 := maxf(x0, wl)
 			var mx1 := minf(x1, wr)
 			if z0 < wb:
-				_add_strip(vertices, colors, normals, indices, noise, seed_v, w, sea, mx0, z0, mx1, wb, false, true)
+				_add_strip(vertices, colors, normals, indices, noise, seed_v, w, snap, sea, mx0, z0, mx1, wb, false, true)
 			if z1 > wt:
-				_add_strip(vertices, colors, normals, indices, noise, seed_v, w, sea, mx0, wt, mx1, z1, false, false)
-	_add_skirt(vertices, colors, normals, indices, noise, seed_v, w, sea, window_center, window_half_m)
+				_add_strip(vertices, colors, normals, indices, noise, seed_v, w, snap, sea, mx0, wt, mx1, z1, false, false)
+	_add_skirt(vertices, colors, normals, indices, noise, seed_v, w, snap, sea, window_center, window_half_m)
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = vertices
@@ -294,8 +342,8 @@ static func build_mesh(seed_v: int, w: float, ring_center: Vector2, half_m: floa
 
 ## The ground height the voxel ground has at (x, z) to within the shape's interpolation: the
 ## shape plus the detail noise, clamped to the fabric's height range.
-static func ground_at(noise: FastNoiseLite, seed_v: int, x: float, z: float, w: float) -> float:
-	var h := TerrainSliceScript.shape_height(seed_v, x, z, w) + TerrainSliceScript.detail_of(noise, x, z)
+static func ground_at(noise: FastNoiseLite, seed_v: int, x: float, z: float, w: float, snap: Dictionary = {}) -> float:
+	var h := TerrainSliceScript.shape_height_in(snap, seed_v, x, z, w) + TerrainSliceScript.detail_of(noise, x, z)
 	return TerrainSliceScript.polar_ground(seed_v, clampf(h, WorldShape.min_height(), WorldShape.max_height()), x, z, w)
 
 ## The y a ring vertex at ground height `h` is drawn at.
@@ -307,21 +355,21 @@ static func ring_y(h: float, sea: float) -> float:
 ## every `EDGE_STEP` along that edge: window-side vertices are sampled exactly, far-side ones
 ## interpolate the exact far corners.
 static func _add_strip(vertices: PackedVector3Array, colors: PackedColorArray, normals: PackedVector3Array,
-		indices: PackedInt32Array, noise: FastNoiseLite, seed_v: int, w: float, sea: float,
+		indices: PackedInt32Array, noise: FastNoiseLite, seed_v: int, w: float, snap: Dictionary, sea: float,
 		x0: float, z0: float, x1: float, z1: float, along_z: bool, near_high: bool) -> void:
 	var lo := z0 if along_z else x0
 	var hi := z1 if along_z else x1
 	var n := maxi(int(ceil((hi - lo) / EDGE_STEP)), 1)
 	var near := (x1 if near_high else x0) if along_z else (z1 if near_high else z0)
 	var far := (x0 if near_high else x1) if along_z else (z0 if near_high else z1)
-	var far_lo := _ground_along(noise, seed_v, w, lo, far, along_z)
-	var far_hi := _ground_along(noise, seed_v, w, hi, far, along_z)
+	var far_lo := _ground_along(noise, seed_v, w, snap, lo, far, along_z)
+	var far_hi := _ground_along(noise, seed_v, w, snap, hi, far, along_z)
 	var prev_t := lo
-	var prev_near := _ground_along(noise, seed_v, w, lo, near, along_z)
+	var prev_near := _ground_along(noise, seed_v, w, snap, lo, near, along_z)
 	var prev_far := far_lo
 	for k in range(1, n + 1):
 		var t := lerpf(lo, hi, float(k) / float(n))
-		var h_near := _ground_along(noise, seed_v, w, t, near, along_z)
+		var h_near := _ground_along(noise, seed_v, w, snap, t, near, along_z)
 		var h_far := lerpf(far_lo, far_hi, float(k) / float(n))
 		var a := minf(near, far)
 		var b := maxf(near, far)
@@ -339,10 +387,10 @@ static func _add_strip(vertices: PackedVector3Array, colors: PackedColorArray, n
 
 ## `ground_at` for a point given as (`along`, `across`): along the strip's cut direction and across
 ## it. `along_z` strips run along Z (x = across, z = along); the others along X.
-static func _ground_along(noise: FastNoiseLite, seed_v: int, w: float, along: float, across: float, along_z: bool) -> float:
+static func _ground_along(noise: FastNoiseLite, seed_v: int, w: float, snap: Dictionary, along: float, across: float, along_z: bool) -> float:
 	if along_z:
-		return ground_at(noise, seed_v, across, along, w)
-	return ground_at(noise, seed_v, along, across, w)
+		return ground_at(noise, seed_v, across, along, w, snap)
+	return ground_at(noise, seed_v, along, across, w, snap)
 
 static func _add_quad(vertices: PackedVector3Array, colors: PackedColorArray, normals: PackedVector3Array,
 		indices: PackedInt32Array, sea: float, x0: float, z0: float, x1: float, z1: float,
@@ -365,7 +413,7 @@ static func _add_quad(vertices: PackedVector3Array, colors: PackedColorArray, no
 ## height down `SKIRT_DEPTH`, so the ring never shows a sliver of sky between itself and the voxel
 ## chunks' outer wall.
 static func _add_skirt(vertices: PackedVector3Array, colors: PackedColorArray, normals: PackedVector3Array,
-		indices: PackedInt32Array, noise: FastNoiseLite, seed_v: int, w: float, sea: float,
+		indices: PackedInt32Array, noise: FastNoiseLite, seed_v: int, w: float, snap: Dictionary, sea: float,
 		window_center: Vector2, window_half_m: float) -> void:
 	var steps := maxi(int(ceil(window_half_m)), 1)   # ~2 m per step along each 2 * window_half_m side
 	var corners := [
@@ -382,7 +430,7 @@ static func _add_skirt(vertices: PackedVector3Array, colors: PackedColorArray, n
 		var prev_h := 0.0
 		for k in steps + 1:
 			var p := a.lerp(b, float(k) / float(steps))
-			var h := ground_at(noise, seed_v, p.x, p.y, w)
+			var h := ground_at(noise, seed_v, p.x, p.y, w, snap)
 			var top := Vector3(p.x, ring_y(h, sea), p.y)
 			if k > 0:
 				var base := vertices.size()

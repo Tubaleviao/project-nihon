@@ -113,6 +113,11 @@ func run() -> void:
 	_run_test("terrain: a ring reparented with a queued request builds the queued centre", _test_distant_ring_reparent_queued)
 	_run_test("terrain: the ring abort path is repeatable without engine errors", _test_distant_ring_abort_loop)
 	_run_test("terrain: the distant ring's vertices are pinned by a hash", _test_distant_ring_vertex_hash)
+	_run_test("terrain: the ring draws recorded corners exactly", _test_distant_ring_recorded_corners)
+	_run_test("terrain: a new record schedules exactly one ring rebuild", _test_distant_ring_record_rebuild)
+	_run_test("terrain: freeing a detached or in-tree ring joins its worker", _test_distant_ring_free_joins)
+	_run_test("terrain: ring build counters balance across a queued restart", _test_distant_ring_counter_invariant)
+	_run_test("terrain: polar caches are warm before the ring's worker runs", _test_distant_ring_warm_caches)
 	_run_test("terrain: detail noise has one formula", _test_detail_noise_single_formula)
 	_run_test("terrain: walking 5 chunks requests at most 5 ring rebuilds", _test_distant_ring_rebuild_counter)
 	_run_test("terrain: concurrent height sampling matches single-threaded", _test_height_concurrent)
@@ -16067,8 +16072,7 @@ func _test_distant_ring_abort() -> void:
 	d.rebuild(Vector2(100.0, -40.0), 3)
 	var control = d._control
 	assert_true(control != null, "the build has a control block")
-	remove_child(d)   # joined outside any locked iteration, then freed
-	d.free()
+	d.free()   # an in-tree ring: `_exit_tree` raises the flag and joins the worker
 	var rows_after_abort: int = control.rows
 	assert_true(control.aborted, "leaving the tree raised the abort flag")
 	# The worker is joined by now: no row was started after the flag, bar the one in progress.
@@ -16227,6 +16231,125 @@ func _test_distant_ring_vertex_hash() -> void:
 	var verts: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 	assert_eq(verts.size(), 19908, "the ring for seed 7 has the recorded vertex count")
 	assert_eq(hash(verts), 391342816, "the ring for seed 7 has the recorded vertex hash")
+
+## Phase 120 — a recorded chunk whose corners differ from the generator by 10 m is drawn at its recorded
+## corners; its unrecorded neighbour stays on the plain generator.
+func _test_distant_ring_recorded_corners() -> void:
+	ChunkRecordsScript.clear()
+	var seed_v := 5
+	var c := Vector2i(40, 12)
+	var rec := TerrainSlice.generation_record(c, seed_v)
+	var hs: Array = rec["h"]
+	for i in 4:
+		hs[i] = clampf(float(hs[i]) + 10.0, WorldShape.min_height() + 1.0, WorldShape.max_height() - 1.0)
+	rec["h"] = hs
+	rec = RegionStoreScript.normalize_gen(rec)
+	assert_false(rec.is_empty(), "the shifted record is valid")
+	ChunkRecordsScript.set_record(c, rec)
+	var w := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var snap := ChunkRecordsScript.snapshot_near(c, 4, TerrainSlice.circumference_chunks())
+	assert_eq(snap.size(), 1, "the snapshot holds the one record")
+	var x := float(c.x) * 32.0
+	var z := float(c.y) * 32.0
+	assert_eq(TerrainSlice.shape_height_in(snap, seed_v, x, z, w), float(rec["h"][0]), "the ring's shape at the recorded corner is the recorded corner exactly")
+	var noise := FastNoiseLite.new()
+	TerrainSlice.configure_noise(noise, seed_v)
+	var ring_h := DistantTerrainScript.ground_at(noise, seed_v, x, z, w, snap)
+	var expect := TerrainSlice.polar_ground(seed_v, clampf(float(rec["h"][0]) + TerrainSlice.detail_of(noise, x, z), WorldShape.min_height(), WorldShape.max_height()), x, z, w)
+	assert_eq(ring_h, expect, "the ring's ground there is the recorded corner plus detail")
+	var gen_h := DistantTerrainScript.ground_at(noise, seed_v, x, z, w)
+	assert_true(absf(ring_h - gen_h) > 5.0, "and differs from the plain generator")
+	var nx := float(c.x + 1) * 32.0 + 3.0
+	assert_eq(TerrainSlice.shape_height_in(snap, seed_v, nx, z, w), WorldShape.height(seed_v, nx, z, w), "an unrecorded neighbour equals the plain generator")
+	assert_eq(DistantTerrainScript.ground_at(noise, seed_v, nx, z, w, snap), DistantTerrainScript.ground_at(noise, seed_v, nx, z, w), "its ring ground is the plain generator's too")
+	ChunkRecordsScript.set_record(c, RegionStoreScript.normalize_gen(TerrainSlice.generation_record(c, seed_v)))   # the snapshot is a copy
+	assert_eq(TerrainSlice.shape_height_in(snap, seed_v, x, z, w), float(rec["h"][0]), "a later table change never reaches the snapshot")
+	ChunkRecordsScript.clear()
+
+## Phase 120 — adding a record inside the ring after a build schedules exactly one rebuild.
+func _test_distant_ring_record_rebuild() -> void:
+	ChunkRecordsScript.clear()
+	var d := DistantTerrainScript.new()
+	add_child(d)
+	d.world_seed = 5
+	d.record_debounce_ms = 0
+	d.rebuild(Vector2(16.0, 16.0), 2)
+	d.poll(true)
+	assert_false(d.rebuild(Vector2(16.0, 16.0), 2), "no change, no rebuild")
+	var base := d.rebuilds_requested
+	ChunkRecordsScript.set_record(Vector2i(3, 1), RegionStoreScript.normalize_gen(TerrainSlice.generation_record(Vector2i(3, 1), 5)))
+	assert_true(d.rebuild(Vector2(16.0, 16.0), 2), "a new record asks for a rebuild")
+	assert_false(d.rebuild(Vector2(16.0, 16.0), 2), "and only one")
+	d.poll(true)
+	assert_false(d.rebuild(Vector2(16.0, 16.0), 2), "still only one after it lands")
+	assert_eq(d.rebuilds_requested - base, 1, "exactly one rebuild was scheduled")
+	var debounced := DistantTerrainScript.new()
+	add_child(debounced)
+	debounced.world_seed = 5
+	debounced.rebuild(Vector2(16.0, 16.0), 2)
+	debounced.poll(true)
+	ChunkRecordsScript.set_record(Vector2i(4, 1), RegionStoreScript.normalize_gen(TerrainSlice.generation_record(Vector2i(4, 1), 5)))
+	assert_false(debounced.rebuild(Vector2(16.0, 16.0), 2), "a records-only change right after a build is debounced")
+	d.free()
+	debounced.free()
+	ChunkRecordsScript.clear()
+
+## Phase 120 — a worker started while detached is joined when the ring is freed; so is an in-tree one,
+## within the abort bound.
+func _test_distant_ring_free_joins() -> void:
+	var d := DistantTerrainScript.new()   # never in the tree
+	d.world_seed = 11
+	d.rebuild(Vector2(100.0, -40.0), 3)
+	assert_true(d.is_building(), "a detached ring started a worker")
+	var control = d._control
+	d.free()
+	assert_true(control.aborted, "freeing it raised the abort flag (and joined the worker)")
+	var t := DistantTerrainScript.new()
+	add_child(t)
+	t.world_seed = 12
+	t.rebuild(Vector2(100.0, -40.0), 3)
+	var start := Time.get_ticks_msec()
+	t.free()
+	assert_true(Time.get_ticks_msec() - start < 3000, "freeing an in-tree ring mid-build does not stall")
+
+## Phase 120 — `builds_started == rebuilds_requested - rebuilds_dropped + restarts` across a queued restart,
+## and the script keeps no static counter.
+func _test_distant_ring_counter_invariant() -> void:
+	var d := DistantTerrainScript.new()
+	add_child(d)
+	d.world_seed = 11
+	d.rebuild(Vector2(100.0, -40.0), 2)
+	d.rebuild(Vector2(1500.0, 900.0), 2)
+	d.rebuild(Vector2(2500.0, 900.0), 2)   # replaces the queued one
+	d.poll(true)
+	assert_eq(d.builds_started, d.rebuilds_requested - d.rebuilds_dropped + d.restarts, "the counters balance")
+	assert_eq(d.restarts, 1, "the queued request's start was a restart")
+	var e := DistantTerrainScript.new()
+	add_child(e)
+	e.world_seed = 11
+	e.rebuild(Vector2(100.0, -40.0), 2)
+	remove_child(e)
+	add_child(e)
+	e.poll(true)
+	assert_eq(e.builds_started, e.rebuilds_requested - e.rebuilds_dropped + e.restarts, "and across a reparent")
+	d.free()
+	e.free()
+	var f := FileAccess.open("res://src/terrain/distant_terrain.gd", FileAccess.READ)
+	assert_false(f.get_as_text().contains("static var"), "distant_terrain.gd has no static variable")
+
+## Phase 120 — the polar caches are filled on the main thread by `rebuild`, never first on a worker.
+func _test_distant_ring_warm_caches() -> void:
+	TerrainSlice._circumference_cache = -1
+	TerrainSlice._polar_cache = -1
+	TerrainSlice.worker_cache_fills = 0
+	var d := DistantTerrainScript.new()
+	add_child(d)
+	d.world_seed = 5
+	d.rebuild(Vector2(16.0, 16.0), 2)
+	assert_true(TerrainSlice._circumference_cache > 0 and TerrainSlice._polar_cache > 0, "rebuild filled both caches before the worker ran")
+	d.poll(true)
+	assert_eq(TerrainSlice.worker_cache_fills, 0, "no worker-side fill happened")
+	d.free()
 
 ## Phase 77 — `detail_at`, `detail_of` and the detail term inside `_raw_height_at` are one formula.
 func _test_detail_noise_single_formula() -> void:
