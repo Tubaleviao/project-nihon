@@ -10,6 +10,7 @@ const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const Diag := preload("res://src/core/diag.gd")
 
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
+const WorldShape       := preload("res://src/terrain/world_shape.gd")
 const VoxelSlice       := preload("res://src/terrain/voxel_slice.gd")
 const ChunkManager     := preload("res://src/terrain/chunk_manager.gd")
 const ChunkRecordSync  := preload("res://src/terrain/chunk_record_sync.gd")
@@ -863,7 +864,7 @@ func _finish_host_boot() -> void:
 	# Phase 53 — a first boot lands on habitable land away from colonized regions (see
 	# `_first_boot_spawn`); a saved player is put back by `_restore_local_player` below.
 	var first_spawn: Variant = _first_boot_spawn()
-	var spawn_pos: Vector3 = first_spawn if first_spawn != null else Vector3(16.0, _terrain.get_height_at(Vector2(16.0, 16.0)) + 1.0, 16.0)
+	var spawn_pos: Vector3 = first_spawn if first_spawn != null else TerrainSlice.spawn_point(_terrain.get_height_at(WorldShape.SPAWN_CENTER) + 1.0)
 	var spawn_xz := Vector2(spawn_pos.x, spawn_pos.z)
 	var ground_h := spawn_pos.y - 1.0
 	_player.spawn_at(spawn_pos)
@@ -1813,7 +1814,7 @@ func _place_from_snapshot(own: Variant) -> void:
 			Diag.warn("GameRoot: snapshot position refused; spawning at the spawn point")
 			if _rebase != null:
 				_rebase.rebase_to(Vector2i.ZERO)
-			_player.place_at_world_pos(WorldPos.from_world(16.0, _terrain.get_height_at(Vector2(16.0, 16.0)) + 1.0, 16.0))
+			_player.place_at_world_pos(WorldPos.from_world(WorldShape.SPAWN_CENTER.x, _terrain.get_height_at(WorldShape.SPAWN_CENTER) + 1.0, WorldShape.SPAWN_CENTER.y))
 		var hp := float(own.get("hp", -1.0))
 		if hp >= 0.0:
 			_player.set_hp(hp)

@@ -533,6 +533,11 @@ func _raw_height_at(x: float, z: float, w: float, cache: Array) -> float:
 	var h := clampf(shape + detail, WorldShape.min_height(), WorldShape.max_height())
 	return polar_ground(_world_seed, h, x, z, w)
 
+## Phase 122 — the spawn point at height `y`: the one place the spawn X/Z lives (`WorldShape.SPAWN_CENTER`,
+## the centre of the spawn plain), for the player, the AOI default and the snapshot fallback.
+static func spawn_point(y: float) -> Vector3:
+	return Vector3(WorldShape.SPAWN_CENTER.x, y, WorldShape.SPAWN_CENTER.y)
+
 ## Phase 63 — half the span (m) of one detail-noise cell. FastNoiseLite takes float32, whose step is
 ## 1 m at 10 million metres and would terrace the 0.5 m tiles, so the noise is sampled at the
 ## coordinate local to a cell of 2·NOISE_SPAN (|local| <= NOISE_SPAN, exact to 1/128 m). Phase 122:

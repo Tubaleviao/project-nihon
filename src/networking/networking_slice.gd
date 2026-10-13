@@ -114,7 +114,8 @@ const EDITS_SCOPE_RADIUS := AOI_RADIUS * 4.0
 ## AOI center used for a peer that has not reported a position yet (freshly
 ## connected). Matches the world spawn point so the initial snapshot is scoped
 ## around where players first appear.
-const DEFAULT_AOI_CENTER := Vector3(16.0, 0.0, 16.0)
+const WorldShape := preload("res://src/terrain/world_shape.gd")
+const DEFAULT_AOI_CENTER := Vector3(WorldShape.SPAWN_CENTER.x, 0.0, WorldShape.SPAWN_CENTER.y)
 
 ## Phase 36 — reach limit (world units) for a wire-supplied world edit. Mirrors
 ## PlayerSlice.BUILD_RANGE / CHOP_RANGE (60 m: the aim-ray reach the local client

@@ -629,9 +629,7 @@ func seam_borders(chunk_pos: Vector2i) -> Array:
 	var bucket: Dictionary = _edits_by_chunk.get(_chunk_key(chunk_pos), {})
 	var last := CHUNK_SIZE - 1
 	for tile_key in bucket:
-		if not _ops_shape(_edits.get(tile_key, [])):
-			continue
-		for off in _border_offsets(_key_to_tile(str(tile_key))):
+		for off in _shaped_border_offsets(_key_to_tile(str(tile_key)), _edits.get(tile_key, [])):
 			found[off] = true
 	return found.keys()
 
@@ -1802,11 +1800,8 @@ func _commit_edits(next: Dictionary, diff_keys: Variant = null) -> void:
 	if chunk_manager != null and chunk_manager.has_method("request_rebuild"):
 		var diagonals: Dictionary = {}
 		for key in keys:
-			var shaped := _ops_shape(previous.get(key, [])) or _ops_shape(next.get(key, []))
-			if not shaped:
-				continue
 			var tile := _key_to_tile(str(key))
-			var offs := _border_offsets(tile)
+			var offs := _shaped_border_offsets(tile, previous.get(key, []), next.get(key, []))
 			if offs.size() < 3 or _ops_equal(previous.get(key, null), next.get(key, null)):
 				continue   # not a corner tile, or nothing moved
 			var dchunk: Vector2i = _tile_to_chunk(tile) + offs[2]
@@ -1815,6 +1810,13 @@ func _commit_edits(next: Dictionary, diff_keys: Variant = null) -> void:
 				diagonals[dkey] = dchunk
 		for dkey in diagonals:
 			chunk_manager.request_rebuild(diagonals[dkey])
+
+## Phase 122 — the one place the seam gate is decided: the neighbour offsets `tile` sits against, or
+## none when neither op list (the old and the new one; `seam_borders` passes one) can change a height.
+static func _shaped_border_offsets(tile: Vector2i, ops: Variant, other_ops: Variant = null) -> Array:
+	if not (_ops_shape(ops) or _ops_shape(other_ops)):
+		return []
+	return _border_offsets(tile)
 
 ## True when `ops` holds an op that can change a height (anything but a deplete).
 static func _ops_shape(ops: Variant) -> bool:

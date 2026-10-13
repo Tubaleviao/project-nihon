@@ -19846,6 +19846,7 @@ func _test_p114_deferred_and_adopted() -> void:
 	assert_false(ChunkRecordsScript.has_record(c), "and nothing is in the table")
 	store.save_region(Vector2i.ZERO, {})
 	clock[0] += RegionStreamerScript114.BACKOFF_START_MSEC * 2
+	cm.track_rebuilds()
 	var rebuilds := cm.rebuild_request_count(c)
 	# A stationary host (no window move) retries on its own: refresh() re-syncs and records the chunk.
 	cm._chunk_refs = { cm._chunk_key(c): 1 }
@@ -19863,6 +19864,7 @@ func _test_p114_deferred_and_adopted() -> void:
 	other.write_chunks({ "40,40": { "gen": rec } })
 	cm.record_store = null   # a client-like manager: it only loads
 	cm.load_chunk(d)
+	cm.track_rebuilds()
 	var before := cm.rebuild_request_count(d)
 	var synced := late_streamer.sync(RegionStreamerScript114.regions_for_chunks([d], 1))
 	cm._rebuild_adopted(synced["adopted"])

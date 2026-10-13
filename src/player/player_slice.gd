@@ -561,7 +561,7 @@ func _build_body() -> void:
 	_body.floor_snap_length = STEP_UP_HEIGHT
 
 	# Spawn above the terrain origin so the player lands on the voxel surface.
-	_body.global_position = Vector3(16.0, 12.0, 16.0)
+	_body.global_position = TerrainSlice.spawn_point(12.0)
 
 	var col := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
@@ -719,7 +719,7 @@ func _die(killer_id: String = "") -> void:
 
 ## Phase 53 — where a respawn puts the body: the player's own spawn point (game_root sets it from
 ## the placement), not a fixed world coordinate that may now be open ocean.
-var respawn_point := Vector3(16.0, 12.0, 16.0)
+var respawn_point := TerrainSlice.spawn_point(12.0)
 ## Phase 87 — the same point as an exact `{chunk, local}`, empty until one is set. A respawn lands
 ## on it with `place_at_world_pos`, so a spawn far from the origin is not quantised to a float32.
 var respawn_world_pos: Dictionary = {}
