@@ -83,6 +83,10 @@ static var _envelopes: Dictionary = {}
 static var _warmed := false
 
 ## Fill the envelope table from `GameData.BIOMES` (idempotent). Main thread only.
+## True once `warm()` has filled the envelope table.
+static func is_warm() -> bool:
+	return _warmed
+
 static func warm() -> void:
 	if _warmed:
 		return

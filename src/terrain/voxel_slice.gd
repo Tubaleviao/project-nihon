@@ -120,7 +120,9 @@ const BLEND_TILES := 4.0     # width of the dithered biome border band, in tiles
 ## the lowest possible surface (`WorldShape` clamps heights at `minHeight`) and the build cap a
 ## little above the tallest peak. (A per-column bedrock that rides the surface is not needed: a
 ## column is one run from here up, so a deeper floor costs nothing.)
-const BEDROCK_DEPTH := -72.0   # cannot mine below this — the world's floor
+## Phase 122 — 32 m below the lowest possible surface (was 8), so even the deepest ocean column keeps
+## the full authored vein depth (`depthBand` max 16) above the floor.
+const BEDROCK_DEPTH := -96.0   # cannot mine below this — the world's floor
 const MAX_HEIGHT    := 640.0   # build cap — cannot place above this
 
 ## A tile's op list is COMPACTED once it grows past this many ops (see
@@ -301,19 +303,20 @@ var _world_floor: StaticBody3D = null
 ## Phase 50: the scene-origin offset applied to every chunk root. Chunk geometry is built in
 ## absolute chunk-index metres; a client rebase moves the roots (not the vertices) so the physics
 ## and render scene never see a large coordinate. Zero until the first rebase.
-var _scene_offset: Vector3 = Vector3.ZERO
+const SceneOffset := preload("res://src/core/scene_offset.gd")
+var _origin: SceneOffset = SceneOffset.new()
 
 ## Shift every streamed chunk node, and the world floor, by `shift` in one call. Chunks built
 ## later pick the accumulated offset up, so a rebase never leaves a mix of frames.
 func shift_scene(shift: Vector3) -> void:
-	_scene_offset += shift
+	_origin.value += shift
 	for key in _chunks:
 		_chunks[key].position += shift
 	if _world_floor != null:
 		_world_floor.position += shift
 
 func scene_offset() -> Vector3:
-	return _scene_offset
+	return _origin.value
 
 func _ready() -> void:
 	# Phase 43 — fill the ore field's material band table HERE, on the main thread, before any
@@ -395,12 +398,12 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	# A chunk-local build puts the node at the chunk's corner: the corner is summed with the scene
 	# offset in double precision, so far from the origin the node's position is small and exact and
 	# the vertices stay small too (float32 vertices at 2e7 m would snap to 2 m and shatter the ground).
-	root.position = _scene_offset
+	root.position = _origin.value
 	if bool(built.get("local", false)):
 		root.position = Vector3(
-			float(chunk_pos.x * CHUNK_SIZE) * TILE_SIZE + _scene_offset.x,
-			_scene_offset.y,
-			float(chunk_pos.y * CHUNK_SIZE) * TILE_SIZE + _scene_offset.z)
+			float(chunk_pos.x * CHUNK_SIZE) * TILE_SIZE + _origin.value.x,
+			_origin.value.y,
+			float(chunk_pos.y * CHUNK_SIZE) * TILE_SIZE + _origin.value.z)
 	var surface := _mesh_from_arrays(built)
 	var mesh_inst := MeshInstance3D.new()
 	mesh_inst.mesh = surface
@@ -626,9 +629,7 @@ func seam_borders(chunk_pos: Vector2i) -> Array:
 	var bucket: Dictionary = _edits_by_chunk.get(_chunk_key(chunk_pos), {})
 	var last := CHUNK_SIZE - 1
 	for tile_key in bucket:
-		if not _ops_shape(_edits.get(tile_key, [])):
-			continue
-		for off in _border_offsets(_key_to_tile(str(tile_key))):
+		for off in _shaped_border_offsets(_key_to_tile(str(tile_key)), _edits.get(tile_key, [])):
 			found[off] = true
 	return found.keys()
 
@@ -863,24 +864,37 @@ static func blended_biome(world_xz: Vector2, biomes: Dictionary, own: String) ->
 	var cz := floori(world_xz.y / extent)
 	var lx := world_xz.x - cx * extent
 	var lz := world_xz.y - cz * extent
-	# Distance (in tiles) to the nearest border on each axis, and the chunk step across it.
+	# Phase 122 — corners and diagonals. Distance (in tiles) to the nearest border on each axis, and the
+	# chunk step across it. The x-neighbour, the z-neighbour and (near a corner) the diagonal chunk each
+	# get their own roll, and the two axes roll with the coordinates swapped, so the rule is symmetric
+	# under swapping X and Z; where both axes would win, the nearer border wins and a tie takes the diagonal.
 	var dx := minf(lx, extent - lx) / TILE_SIZE
 	var dz := minf(lz, extent - lz) / TILE_SIZE
-	var across := Vector2i(cx, cz)
-	var d := dx
-	if dx <= dz:
-		across.x += -1 if lx < extent - lx else 1
-	else:
-		d = dz
-		across.y += -1 if lz < extent - lz else 1
-	if d >= BLEND_TILES:
+	if minf(dx, dz) >= BLEND_TILES:
 		return own
-	var other := str(biomes.get(_chunk_key(across), own))
-	if other == own:
-		return own
+	var sx := -1 if lx < extent - lx else 1
+	var sz := -1 if lz < extent - lz else 1
 	var gx := floori(world_xz.x / TILE_SIZE)
 	var gz := floori(world_xz.y / TILE_SIZE)
-	return other if BiomeBlend.wears_neighbour(gx, gz, d, BLEND_TILES) else own
+	var bx := str(biomes.get(_chunk_key(Vector2i(cx + sx, cz)), own))
+	var bz := str(biomes.get(_chunk_key(Vector2i(cx, cz + sz)), own))
+	var bd := str(biomes.get(_chunk_key(Vector2i(cx + sx, cz + sz)), own))
+	var dd := maxf(dx, dz)
+	if dd < BLEND_TILES and bd != own and 0.5 * (BiomeBlend.roll(gx, gz) + BiomeBlend.roll(gz, gx)) < 0.5 * BiomeBlend.chance(dd, BLEND_TILES):
+		return bd
+	var wx := bx != own and BiomeBlend.wears_neighbour(gx, gz, dx, BLEND_TILES)
+	var wz := bz != own and BiomeBlend.wears_neighbour(gz, gx, dz, BLEND_TILES)
+	if wx and wz:
+		if dx < dz:
+			return bx
+		if dz < dx:
+			return bz
+		return bd if bd != own else bx
+	if wx:
+		return bx
+	if wz:
+		return bz
+	return own
 
 ## Phase 43 — the ore field's per-call input: the seed, the depletion record and a fresh
 ## vein memo. Static and plain, so the worker half builds it from its payload.
@@ -1786,11 +1800,8 @@ func _commit_edits(next: Dictionary, diff_keys: Variant = null) -> void:
 	if chunk_manager != null and chunk_manager.has_method("request_rebuild"):
 		var diagonals: Dictionary = {}
 		for key in keys:
-			var shaped := _ops_shape(previous.get(key, [])) or _ops_shape(next.get(key, []))
-			if not shaped:
-				continue
 			var tile := _key_to_tile(str(key))
-			var offs := _border_offsets(tile)
+			var offs := _shaped_border_offsets(tile, previous.get(key, []), next.get(key, []))
 			if offs.size() < 3 or _ops_equal(previous.get(key, null), next.get(key, null)):
 				continue   # not a corner tile, or nothing moved
 			var dchunk: Vector2i = _tile_to_chunk(tile) + offs[2]
@@ -1799,6 +1810,13 @@ func _commit_edits(next: Dictionary, diff_keys: Variant = null) -> void:
 				diagonals[dkey] = dchunk
 		for dkey in diagonals:
 			chunk_manager.request_rebuild(diagonals[dkey])
+
+## Phase 122 — the one place the seam gate is decided: the neighbour offsets `tile` sits against, or
+## none when neither op list (the old and the new one; `seam_borders` passes one) can change a height.
+static func _shaped_border_offsets(tile: Vector2i, ops: Variant, other_ops: Variant = null) -> Array:
+	if not (_ops_shape(ops) or _ops_shape(other_ops)):
+		return []
+	return _border_offsets(tile)
 
 ## True when `ops` holds an op that can change a height (anything but a deplete).
 static func _ops_shape(ops: Variant) -> bool:

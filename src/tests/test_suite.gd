@@ -358,6 +358,10 @@ func run() -> void:
 	_run_test("region: an overlay keeps the larger stored depletion count", _test_region_overlay_keeps_larger_taken)
 	_run_test("region: migration recovers a monolith chunk whose region entry is malformed", _test_region_migrate_malformed_recovers)
 	_run_test("rebase: an unshiftable target is reported",      _test_rebase_driver_reports_unshiftable)
+	_run_test("far origin: exact AOI, south fold row, ore warm retry", _test_phase122_exact_positions)
+	_run_test("far origin: bad snapshot position spawns, registry clamps local", _test_phase122_snapshot_fallback_and_clamp)
+	_run_test("voxel: corner blends are symmetric, deep ocean keeps vein depth", _test_phase122_blend_and_bedrock)
+	_run_test("rebase: one SceneOffset helper, whole-chunk shifts only", _test_scene_shift_helper)
 	_run_test("game_root: implausible peer positions dropped",  _test_remote_state_plausibility)
 	_run_test("networking: a remote peer's exact position is saved exactly", _test_remote_peer_exact_position)
 	_run_test("networking: peer windows and relays use the exact peer position", _test_peer_exact_window_and_relay)
@@ -1297,6 +1301,118 @@ func _test_rebase_extras() -> void:
 	station.free()
 	loot.free()
 
+## Phase 122 — the scene-offset state lives in scene_offset.gd alone, and the player refuses a
+## shift that is not a whole number of chunks.
+func _test_scene_shift_helper() -> void:
+	var holders := 0
+	for dir in ["res://src"]:
+		holders += _count_files_with(dir, "_scene_" + "offset")
+	assert_eq(holders, 0, "no source file declares its own scene offset field")
+	var so := preload("res://src/core/scene_offset.gd").new()
+	so.add(Vector3(64.0, 0.0, -32.0))
+	assert_eq(so.to_scene(Vector3(1.0, 2.0, 3.0)), Vector3(65.0, 2.0, -29.0), "to_scene adds the offset")
+	assert_eq(so.to_world(so.to_scene(Vector3(1.0, 2.0, 3.0))), Vector3(1.0, 2.0, 3.0), "to_world undoes it")
+	var cm := WorldPos.CHUNK_METERS
+	assert_true(PlayerSlice.is_chunk_multiple_shift(Vector3(2.0 * cm, 0.0, -cm)), "a whole-chunk shift is accepted")
+	assert_false(PlayerSlice.is_chunk_multiple_shift(Vector3(cm * 0.5, 0.0, 0.0)), "half a chunk is refused")
+	assert_false(PlayerSlice.is_chunk_multiple_shift(Vector3(cm, 3.0, 0.0)), "a vertical shift is refused")
+	var player := PlayerSlice.new()
+	add_child(player)
+	player.shift_scene(Vector3(cm * 0.25, 0.0, 0.0))
+	assert_eq(player.scene_offset(), Vector3.ZERO, "a refused shift leaves the offset alone")
+	player.shift_scene(Vector3(-cm, 0.0, 0.0))
+	assert_eq(player.scene_offset(), Vector3(-cm, 0.0, 0.0), "a whole-chunk shift moves it")
+	player.free()
+
+func _test_phase122_exact_positions() -> void:
+	var far := { "chunk": Vector2i(1500000, 7), "local": Vector3(30.0, 2.0, 5.0) }
+	var near := { "chunk": Vector2i(1500001, 7), "local": Vector3(2.0, 2.0, 5.0) }   # 4 m east
+	var gone := { "chunk": Vector2i(1500000 + 20, 7), "local": Vector3(2.0, 2.0, 5.0) }
+	assert_eq(WorldPos.offset_between(far, near), Vector3(4.0, 0.0, 0.0), "the offset between exact positions is exact at chunk X 1,500,000")
+	assert_true(NetworkingSlice.within_aoi_exact(far, near), "a neighbour 4 m away is in the AOI at chunk X 1,500,000")
+	assert_false(NetworkingSlice.within_aoi_exact(far, gone), "a position 600 m away is not")
+	var row: int = -TerrainSlice.pole_chunks() - TerrainSlice.FOLD_MARGIN_CHUNKS - 1
+	assert_true(WorldPos.is_wire({ "chunk": [0, row], "local": [1.0, 2.0, 3.0] }), "the first south fold row is a wire position")
+	assert_false(WorldPos.is_wire({ "chunk": [0, row - 1], "local": [1.0, 2.0, 3.0] }), "one row further is not")
+	assert_true(WorldPos.is_wire({ "chunk": [0, TerrainSlice.pole_chunks() + TerrainSlice.FOLD_MARGIN_CHUNKS], "local": [1.0, 2.0, 3.0] }), "the north limit is unchanged")
+	# OreField.warm() latches only once ClimateField is warm.
+	var was_ore: bool = OreField._warmed
+	var was_climate: bool = ClimateField._warmed
+	OreField._warmed = false
+	ClimateField._warmed = false
+	OreField.warm()
+	assert_true(ClimateField.is_warm() and OreField._warmed, "OreField.warm() warms ClimateField and latches")
+	OreField._warmed = was_ore
+	ClimateField._warmed = was_climate
+
+func _test_phase122_snapshot_fallback_and_clamp() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	var body := PlayerSlice.new()
+	body.render_visuals = true
+	add_child(body)
+	var gr: Node = root_script.new()
+	gr._player = body
+	gr._terrain = terrain
+	gr._rebase = RebaseDriver.new([body])
+	gr._rebase.rebase_to(Vector2i(600000, 40))
+	body.place_at_world_pos({ "chunk": Vector2i(600000, 40), "local": Vector3(1.0, 20.0, 1.0) })
+	# A wire-shaped but invalid position (a chunk far past the pole) spawns the body at the spawn point.
+	gr._place_from_snapshot({ "position": { "chunk": [0, 99999999], "local": [1.0, 2.0, 3.0] } })
+	var landed := body.get_world_pos()
+	assert_eq(landed["chunk"], Vector2i.ZERO, "a bad snapshot position rebases to the spawn chunk")
+	var spawn: Vector3 = landed["local"]
+	assert_true(Vector2(spawn.x, spawn.z).distance_to(WorldShape.SPAWN_CENTER) < 1.0, "and lands on the spawn point")
+	gr.free()
+	body.free()
+	terrain.free()
+	# record_world_pos derives `position` from the normalised chunk: an overflowing local carries over.
+	var reg := PlayerRegistry.new()
+	reg.record_world_pos("clamp", { "chunk": Vector2i(5, 6), "local": Vector3(WorldPos.CHUNK_METERS + 7.0, 3.0, -4.0) })
+	var rec := reg.get_record("clamp")
+	var pos: Array = rec["position"]
+	var cm: float = WorldPos.CHUNK_METERS
+	assert_eq(float(pos[0]), 6.0 * cm + 7.0, "an overflowing local X carries into the next chunk")
+	assert_eq(float(pos[2]), 6.0 * cm - 4.0, "a negative local Z carries into the previous chunk")
+	reg.free()
+	# A non-multiple shift is refused even at a huge shift (no relative tolerance).
+	assert_false(PlayerSlice.is_chunk_multiple_shift(Vector3(-48000000.0 + 100.0, 0.0, 0.0)), "a 100 m off-grid shift is refused at 48,000 km")
+	assert_true(PlayerSlice.is_chunk_multiple_shift(Vector3(-48000000.0, 0.0, 32.0)), "whole-chunk shifts pass")
+
+func _test_phase122_blend_and_bedrock() -> void:
+	var extent := float(VoxelSlice.CHUNK_SIZE * VoxelSlice.TILE_SIZE)
+	var ts := float(VoxelSlice.TILE_SIZE)
+	# Transposed layout: swapping X and Z in both the biome map and the position swaps the answer.
+	var a := { "0,0": "Desert", "1,0": "Tundra", "0,1": "VoidRift", "1,1": "Alpine" }
+	var b := { "0,0": "Desert", "0,1": "Tundra", "1,0": "VoidRift", "1,1": "Alpine" }
+	var worn := 0
+	for i in range(VoxelSlice.CHUNK_SIZE):
+		for j in range(VoxelSlice.CHUNK_SIZE):
+			var xz := Vector2(extent - (float(i) + 0.5) * ts, extent - (float(j) + 0.5) * ts)   # the 0,0 chunk's far corner
+			var got := VoxelSlice.blended_biome(xz, a, "Desert")
+			var swapped := VoxelSlice.blended_biome(Vector2(xz.y, xz.x), b, "Desert")
+			assert_eq(got, swapped, "blend at (%d,%d) is symmetric under X/Z swap" % [i, j])
+			if got != "Desert":
+				worn += 1
+	assert_true(worn > 0, "the corner band is dithered with the neighbours' biomes")
+	# A deep-ocean column (the fabric's lowest surface) has the authored vein depth above bedrock.
+	var deepest := 0.0
+	for key in GameData.MATERIALS:
+		var band: Variant = GameData.MATERIALS[key].get("depthBand")
+		if band is Dictionary:
+			deepest = maxf(deepest, float((band as Dictionary).get("max", 0.0)))
+	assert_true(WorldShape.min_height() - deepest > VoxelSlice.BEDROCK_DEPTH, "the deepest vein band (%.0f m) fits above bedrock under the deepest ocean floor" % deepest)
+
+func _count_files_with(dir: String, needle: String) -> int:
+	var n := 0
+	for f in DirAccess.get_files_at(dir):
+		if f.ends_with(".gd") and FileAccess.get_file_as_string(dir.path_join(f)).contains(needle):
+			n += 1
+	for d in DirAccess.get_directories_at(dir):
+		n += _count_files_with(dir.path_join(d), needle)
+	return n
+
 ## Review of #165 — a target with no `shift_scene` is reported, not silently left behind.
 func _test_rebase_driver_reports_unshiftable() -> void:
 	var good := LootSlice.new()
@@ -1692,26 +1808,45 @@ func _test_far_noise_quantised() -> void:
 	var t := TerrainSlice.new()
 	add_child(t)
 	t.set_world_seed(1234)
-	# Inside the span the coordinate is untouched: ground near the origin does not change.
-	assert_eq(TerrainSlice.noise_coord(123.5), 123.5, "the fold is the identity near the origin")
-	assert_eq(TerrainSlice.noise_coord(-8000.25), -8000.25, "and for negative coordinates")
+	var span := TerrainSlice.NOISE_SPAN
+	# Inside the origin cell, away from its borders, the coordinate is untouched.
+	assert_eq(TerrainSlice.cell_offset(1234, 0, 0), Vector2.ZERO, "the origin cell has no offset")
+	assert_true(TerrainSlice.cell_offset(1234, 1, 0) != Vector2.ZERO, "a far cell has an offset")
+	assert_eq(TerrainSlice.cell_offset(1234, 3, -2), TerrainSlice.cell_offset(1234, 3, -2), "the offset is pure")
+	for off in [TerrainSlice.cell_offset(1234, 1, 0), TerrainSlice.cell_offset(-99, -4, 7)]:
+		assert_true(absf(off.x) <= TerrainSlice.NOISE_OFFSET_RANGE and absf(off.y) <= TerrainSlice.NOISE_OFFSET_RANGE, "the offset is bounded")
+		assert_eq(off.x, snappedf(off.x, 0.125), "and exact to the 0.125 step")
+	var ref := FastNoiseLite.new()
+	TerrainSlice.configure_noise(ref, 1234)
+	assert_eq(t.detail_at(123.5, -8000.25), (ref.get_noise_2d(123.5, -8000.25) + 1.0) * 0.5 * TerrainSlice.HEIGHT_SCALE, "ground near the origin is the plain noise")
+	# No mirror: x and 2·NOISE_SPAN − x differ for 1,000 points beyond the span.
+	var differ := 0
+	for i in range(1000):
+		var x := span + 1000.0 + float(i) * 37.25
+		var z := 77.5 + float(i) * 11.0
+		if absf(t.detail_at(x, z) - t.detail_at(2.0 * span - x, z)) > 1e-6:
+			differ += 1
+	assert_eq(differ, 1000, "detail noise does not mirror beyond the span")
+	# Far tiles still step smoothly (no terracing from float32).
 	var far_x := 312500.0 * TerrainSlice.CHUNK_METERS
 	var prev := -1.0
 	var distinct := 0
 	for i in range(64):
-		var x := far_x + float(i) * TerrainSlice.TILE_SIZE
-		var coord := TerrainSlice.noise_coord(x)
-		assert_true(absf(coord) <= TerrainSlice.NOISE_SPAN, "the folded coordinate stays small")
-		assert_eq(coord, snappedf(coord, 0.125), "the folded coordinate is exact to the 0.125 step")
-		var d := t.detail_at(x, 77.5)
+		var d := t.detail_at(far_x + float(i) * TerrainSlice.TILE_SIZE, 77.5)
 		if absf(d - prev) > 0.0:
 			distinct += 1
 		assert_true(prev < 0.0 or absf(d - prev) < 1.0, "adjacent tiles differ by terrain slope, not a rounding jump")
 		prev = d
 	assert_eq(distinct, 64, "no terracing: every tile steps to a new value")
-	# Continuous across the fold: a half-step either side of the fold agrees to within one tile of slope.
-	var fold := TerrainSlice.NOISE_SPAN
-	assert_true(absf(t.detail_at(fold - 0.25, 5.0) - t.detail_at(fold + 0.25, 5.0)) < 1.0, "the fold has no cliff")
+	# Continuous across cell borders on both axes: the largest step stays at slope scale.
+	var worst := 0.0
+	for border in [span, 3.0 * span, -span]:
+		for k in range(-80, 80):
+			var x0: float = border + float(k) * 0.125
+			worst = maxf(worst, absf(t.detail_at(x0, 5.0) - t.detail_at(x0 + 0.125, 5.0)))
+			worst = maxf(worst, absf(t.detail_at(5.0, x0) - t.detail_at(5.0, x0 + 0.125)))
+			worst = maxf(worst, absf(t.detail_at(x0, x0) - t.detail_at(x0 + 0.125, x0 + 0.125)))
+	assert_true(worst < 0.5, "the field is continuous across a cell border (max step %.4f)" % worst)
 	t.free()
 
 func _test_where_command() -> void:
@@ -15969,7 +16104,7 @@ func _test_polar_ice() -> void:
 	var polar := TerrainSlice.polar_chunks()
 	var pole := TerrainSlice.pole_chunks()
 	assert_true(t.is_chunk_in_bounds(Vector2i(0, polar)), "polar ice is walkable")
-	assert_true(t.is_chunk_loadable(Vector2i(0, pole + 4)), "and streamed in past the pole: no void there")
+	assert_false(t.is_chunk_in_bounds(Vector2i(0, pole + TerrainSlice.FOLD_MARGIN_CHUNKS)), "the walkable bound ends at the fold slack; streaming is not bounded")
 	# Near a pole the ground is the pole's snow field: not flat, and the same on both sides of a fold.
 	t.set_world_seed(12345)
 	var cm := TerrainSlice.CHUNK_METERS
@@ -19854,6 +19989,7 @@ func _test_p114_deferred_and_adopted() -> void:
 	assert_false(ChunkRecordsScript.has_record(c), "and nothing is in the table")
 	store.save_region(Vector2i.ZERO, {})
 	clock[0] += RegionStreamerScript114.BACKOFF_START_MSEC * 2
+	cm.track_rebuilds()
 	var rebuilds := cm.rebuild_request_count(c)
 	# A stationary host (no window move) retries on its own: refresh() re-syncs and records the chunk.
 	cm._chunk_refs = { cm._chunk_key(c): 1 }
@@ -19871,6 +20007,7 @@ func _test_p114_deferred_and_adopted() -> void:
 	other.write_chunks({ "40,40": { "gen": rec } })
 	cm.record_store = null   # a client-like manager: it only loads
 	cm.load_chunk(d)
+	cm.track_rebuilds()
 	var before := cm.rebuild_request_count(d)
 	var synced := late_streamer.sync(RegionStreamerScript114.regions_for_chunks([d], 1))
 	cm._rebuild_adopted(synced["adopted"])

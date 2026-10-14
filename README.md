@@ -142,7 +142,7 @@ npm run generate  # generate the design bible into bible/
 | 119 | An injected network transport and a compact per-tick wire form | Done |
 | 120 | The distant ring draws recorded land | Done |
 | 121 | Crash-consistent saves | Done |
-| 122 | Far terrain without mirroring and one scene-offset helper | Planned |
+| 122 | Far terrain without mirroring and one scene-offset helper | Done |
 
 See [ROADMAP.md](ROADMAP.md) for open phases and deferred work. Completed phases are archived in [docs/roadmap-history/](docs/roadmap-history/README.md) with their full spec and acceptance criteria.
 

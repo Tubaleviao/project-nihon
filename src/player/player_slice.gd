@@ -314,7 +314,7 @@ func drop_point() -> Vector3:
 ## Fine for callers near the origin (UI, range checks); anything that persists or sends the
 ## position uses `get_world_pos`.
 func get_position() -> Vector3:
-	return _body.global_position - _scene_offset if _body else Vector3.ZERO
+	return _body.global_position - _origin.value if _body else Vector3.ZERO
 
 ## Phase 78 — the exact world position as `{chunk, local}`: the integer scene-origin chunk plus the
 ## body's small scene position, so nothing is quantised however far from the origin the player is.
@@ -325,17 +325,20 @@ func get_world_pos() -> Dictionary:
 ## (the rebase driver owns that): a caller placing a player far from the current origin rebases to
 ## `pos["chunk"]` first, or the scene position it lands on is a large float32.
 func place_at_world_pos(pos: Dictionary) -> void:
+	assert(_origin.value == Vector3(-float(_scene_origin_chunk.x) * WorldPos.CHUNK_METERS, 0.0, -float(_scene_origin_chunk.y) * WorldPos.CHUNK_METERS),
+		"place_at_world_pos: the scene offset no longer matches the scene origin chunk")
 	if _body:
 		_body.global_position = WorldPos.to_scene(pos, _scene_origin_chunk)
 		_vel = Vector3.ZERO
 
 ## Phase 90 — the scene origin, as an exact integer chunk: the single source of truth. The driver
-## passes its `origin_chunk` with every shift (`shift_scene_to_origin`); `_scene_offset` is derived.
+## passes its `origin_chunk` with every shift (`shift_scene_to_origin`); `_origin.value` is derived.
 var _scene_origin_chunk := Vector2i.ZERO
 ## Phase 63: the scene-origin offset a client rebase has applied. The body sits at world + offset;
 ## `get_position` and `spawn_at` still speak world coordinates.
 ## Always `-_scene_origin_chunk * CHUNK_METERS`.
-var _scene_offset: Vector3 = Vector3.ZERO
+const SceneOffset := preload("res://src/core/scene_offset.gd")
+var _origin: SceneOffset = SceneOffset.new()
 
 ## The body's raw scene position (what the physics server sees).
 func get_scene_position() -> Vector3:
@@ -344,20 +347,30 @@ func get_scene_position() -> Vector3:
 ## Shift the body by `shift` in the same frame the world shifts; its world position is unchanged.
 ## For a caller that only has the shift (not the driver's origin): the origin is derived from it.
 func shift_scene(shift: Vector3) -> void:
+	if not is_chunk_multiple_shift(shift):
+		Diag.error("PlayerSlice.shift_scene: %s is not a whole number of chunks; refused" % str(shift))
+		return
 	shift_scene_to_origin(shift, _scene_origin_chunk
 		- Vector2i(roundi(shift.x / WorldPos.CHUNK_METERS), roundi(shift.z / WorldPos.CHUNK_METERS)))
+
+## True when `shift` moves the scene by whole chunks on X and Z and not at all on Y (the only kind
+## of rebase there is); anything else would put `_origin` off the integer chunk origin.
+static func is_chunk_multiple_shift(shift: Vector3) -> bool:
+	var cm: float = WorldPos.CHUNK_METERS
+	return shift.y == 0.0 and absf(shift.x - roundf(shift.x / cm) * cm) < 0.01 \
+		and absf(shift.z - roundf(shift.z / cm) * cm) < 0.01
 
 ## Shift the body by `shift` to the scene origin `origin` (the driver's integer `origin_chunk`).
 func shift_scene_to_origin(shift: Vector3, origin: Vector2i) -> void:
 	_scene_origin_chunk = origin
-	_scene_offset = Vector3(-float(origin.x) * WorldPos.CHUNK_METERS, 0.0, -float(origin.y) * WorldPos.CHUNK_METERS)
+	_origin.value = Vector3(-float(origin.x) * WorldPos.CHUNK_METERS, 0.0, -float(origin.y) * WorldPos.CHUNK_METERS)
 	if _body:
 		_body.global_position += shift
 	if _ghost_pool != null:
 		_ghost_pool.shift_scene(shift)
 
 func scene_offset() -> Vector3:
-	return _scene_offset
+	return _origin.value
 
 func get_velocity() -> Vector3:
 	return _vel
@@ -379,7 +392,7 @@ func get_facing() -> Vector2:
 
 func spawn_at(pos: Vector3) -> void:
 	if _body:
-		_body.global_position = pos + _scene_offset
+		_body.global_position = pos + _origin.value
 		_vel = Vector3.ZERO
 
 ## Adjust the orbit camera's distance from the player (scroll-wheel zoom),
@@ -512,8 +525,8 @@ func _build_ghost_pool() -> void:
 	_ghost_pool.setup(cap, true)
 	add_child(_ghost_pool)
 	# A pool built after a rebase starts in the shifted frame too.
-	if _scene_offset != Vector3.ZERO:
-		_ghost_pool.shift_scene(_scene_offset)
+	if _origin.value != Vector3.ZERO:
+		_ghost_pool.shift_scene(_origin.value)
 
 ## World position → ghost instance transform (capsule half-height 0.9 offset).
 func _ghost_transform(pos: Vector3) -> Transform3D:
@@ -548,7 +561,7 @@ func _build_body() -> void:
 	_body.floor_snap_length = STEP_UP_HEIGHT
 
 	# Spawn above the terrain origin so the player lands on the voxel surface.
-	_body.global_position = Vector3(16.0, 12.0, 16.0)
+	_body.global_position = TerrainSlice.spawn_point(12.0)
 
 	var col := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
@@ -706,7 +719,7 @@ func _die(killer_id: String = "") -> void:
 
 ## Phase 53 — where a respawn puts the body: the player's own spawn point (game_root sets it from
 ## the placement), not a fixed world coordinate that may now be open ocean.
-var respawn_point := Vector3(16.0, 12.0, 16.0)
+var respawn_point := TerrainSlice.spawn_point(12.0)
 ## Phase 87 — the same point as an exact `{chunk, local}`, empty until one is set. A respawn lands
 ## on it with `place_at_world_pos`, so a spawn far from the origin is not quantised to a float32.
 var respawn_world_pos: Dictionary = {}
@@ -877,10 +890,10 @@ func _update_aim() -> void:
 			var bhit := space.intersect_ray(bquery)
 			if not bhit.is_empty():
 				_aimed_block_hit = true
-				_aimed_block_pos = (bhit.get("position", Vector3.ZERO) as Vector3) - _scene_offset
+				_aimed_block_pos = (bhit.get("position", Vector3.ZERO) as Vector3) - _origin.value
 				_aimed_block_exact = WorldPos.from_scene(bhit.get("position", Vector3.ZERO), _scene_origin_chunk)
 				_aimed_block_normal = bhit.get("normal", Vector3.UP)
-				block_dist = from.distance_to(_aimed_block_pos + _scene_offset)
+				block_dist = from.distance_to(_aimed_block_pos + _origin.value)
 
 			# Tree ray (layer 4) — chop target. Trees are not on the terrain
 			# layer, so this is its own ray; a trunk is only accepted when it is

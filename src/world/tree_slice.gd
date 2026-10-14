@@ -886,7 +886,8 @@ func _deterministic_chunk_position(chunk_pos: Vector2i, species: String, spawn_i
 ## every species, tinted per instance by the species' wood colour. The canopy
 ## keeps its own vertex tint so the per-instance colour only drives the trunk.
 ## Phase 63: the scene-origin offset a client rebase has applied (see `shift_scene`).
-var _scene_offset: Vector3 = Vector3.ZERO
+const SceneOffset := preload("res://src/core/scene_offset.gd")
+var _origin: SceneOffset = SceneOffset.new()
 
 ## Phase 80 — the trunk bodies this slice spawned in world space. `shift_scene` moves exactly
 ## these plus the pool, so a helper node parented under the slice is never shifted by accident.
@@ -894,7 +895,7 @@ var _world_nodes: Array = []
 
 ## Shift the pool (every standing tree's mesh) and every trunk body by `shift`. Freed bodies drop out.
 func shift_scene(shift: Vector3) -> void:
-	_scene_offset += shift
+	_origin.value += shift
 	if _pool != null:
 		_pool.shift_scene(shift)
 	var live: Array = []
@@ -909,7 +910,7 @@ func _forget_world_node(node: Node) -> void:
 	_world_nodes.erase(node)
 
 func scene_offset() -> Vector3:
-	return _scene_offset
+	return _origin.value
 
 func _build_pool() -> void:
 	_pool = MultimeshPool.new()
@@ -970,7 +971,7 @@ func _build_collision(tree_id: String, pos: Vector3, species: String) -> StaticB
 	body.collision_mask = 0
 	body.set_meta("tree_id", tree_id)
 	body.set_meta("species", species)
-	body.position = pos + _scene_offset
+	body.position = pos + _origin.value
 	var shape := CollisionShape3D.new()
 	var cylinder := CylinderShape3D.new()
 	cylinder.radius = TRUNK_RADIUS

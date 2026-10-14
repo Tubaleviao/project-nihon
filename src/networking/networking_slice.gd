@@ -114,7 +114,8 @@ const EDITS_SCOPE_RADIUS := AOI_RADIUS * 4.0
 ## AOI center used for a peer that has not reported a position yet (freshly
 ## connected). Matches the world spawn point so the initial snapshot is scoped
 ## around where players first appear.
-const DEFAULT_AOI_CENTER := Vector3(16.0, 0.0, 16.0)
+const WorldShape := preload("res://src/terrain/world_shape.gd")
+const DEFAULT_AOI_CENTER := Vector3(WorldShape.SPAWN_CENTER.x, 0.0, WorldShape.SPAWN_CENTER.y)
 
 ## Phase 36 — reach limit (world units) for a wire-supplied world edit. Mirrors
 ## PlayerSlice.BUILD_RANGE / CHOP_RANGE (60 m: the aim-ray reach the local client
@@ -494,6 +495,11 @@ func in_aoi(peer_id: int, position: Vector3) -> bool:
 ## last position this slice recorded. Pure.
 static func within_aoi(center: Vector3, position: Vector3) -> bool:
 	return center.distance_to(position) <= AOI_RADIUS
+
+## Phase 122 — `within_aoi` on exact `{chunk, local}` positions, so a pair of players 1.5 million
+## chunks from the origin is judged by their real distance, not a float32-rounded one. Pure.
+static func within_aoi_exact(center: Dictionary, position: Dictionary) -> bool:
+	return WorldPos.offset_between(center, position).length() <= AOI_RADIUS
 
 ## The AOI grid cell for a world position (cell = AOI_RADIUS). A peer crossing a
 ## cell boundary re-scopes its snapshot (see game_root). Pure.

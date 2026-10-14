@@ -86,16 +86,17 @@ var record_debounce_ms := 500
 var _last_start_ms := -1000000
 
 ## Phase 63: the scene-origin offset a client rebase has applied (see `shift_scene`).
-var _scene_offset: Vector3 = Vector3.ZERO
+const SceneOffset := preload("res://src/core/scene_offset.gd")
+var _origin: SceneOffset = SceneOffset.new()
 
 ## Shift every ring node by `shift`; its world position is unchanged.
 func shift_scene(shift: Vector3) -> void:
-	_scene_offset += shift
+	_origin.value += shift
 	if _mesh_inst != null:
 		_mesh_inst.position += shift
 
 func scene_offset() -> Vector3:
-	return _scene_offset
+	return _origin.value
 
 ## Ring half-extent in metres for a voxel window of `radius_chunks` (Chebyshev radius).
 static func ring_half_extent(radius_chunks: int) -> float:
@@ -226,7 +227,7 @@ func _swap_in(mesh: ArrayMesh) -> void:
 	mat.vertex_color_use_as_albedo = true
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_mesh_inst.material_override = mat
-	_mesh_inst.position = _scene_offset
+	_mesh_inst.position = _origin.value
 	add_child(_mesh_inst)
 
 func _process(_delta: float) -> void:
