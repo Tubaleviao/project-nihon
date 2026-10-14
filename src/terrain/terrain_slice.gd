@@ -105,7 +105,9 @@ const POLE_DRIFT_M := 6.0
 const POLE_DRIFT_CELL_M := 48.0
 ## How far (in chunks) a player may stray past a pole or the antimeridian before their position is
 ## folded back onto the canonical planet. The slack means someone pacing back and forth over the
-## line does not trigger a fold (and a reload of the streamed window) on every step.
+## line does not trigger a fold (and a re-stream of the window) on every step. The fold itself is
+## not seen (Phase 120, `fold_scene_transform`): the ground is carried across it until the folded
+## window has been rebuilt. That needs the snow field to cover the slack plus the distant ring.
 const FOLD_MARGIN_CHUNKS := 16
 
 ## Canonical biome keys, in the same order as the fabric biome enum
@@ -393,18 +395,13 @@ static func _fold_latitude(lat: float) -> float:
 static func longitude_at(world_x: float) -> float:
 	return fposmod(world_x / CHUNK_METERS / float(circumference_chunks()) * 360.0 + 180.0, 360.0) - 180.0
 
-## What `/where` prints and the HUD shows: latitude, longitude and altitude of a world position.
+## What `/where` prints and the HUD shows: map X/Y and altitude of a world position.
 static func where_text(world_pos: Vector3) -> String:
-	# Round first, then pick the hemisphere: 179.9996 prints as 180.000 (wrap it to -180.000 W),
-	# and -0.0004 prints as 0.000 (not "0.000\u00b0W").
-	var lat := snappedf(latitude_at(world_pos.z), 0.001)
-	var lon := snappedf(longitude_at(world_pos.x), 0.001)
-	if lon >= 180.0:
-		lon -= 360.0
-	return "%.3f\u00b0%s %.3f\u00b0%s  alt %d m" % [
-		absf(lat), "N" if lat >= 0.0 else "S",
-		absf(lon), "E" if lon >= 0.0 else "W",
-		roundi(world_pos.y)]
+	return "%s  alt %d m" % [xy_text(world_pos.x, world_pos.z), roundi(world_pos.y)]
+
+## "X 1234  Y -567": a world X/Z in whole metres, the map's two axes (the Map window's hover reads this too).
+static func xy_text(world_x: float, world_z: float) -> String:
+	return "X %d  Y %d" % [roundi(world_x), roundi(world_z)]
 
 ## True when `chunk_pos` is ground a player can stand on: any longitude, any latitude up to the
 ## fold slack past each pole. The polar ice is walkable; walking over a pole folds the player onto the
@@ -484,6 +481,20 @@ static func fold_world_pos(wp: Dictionary, margin: int = FOLD_MARGIN_CHUNKS) -> 
 	if local.z >= CHUNK_METERS:
 		pos = {"chunk": chunk + Vector2i(0, 1), "local": Vector3(local.x, local.y, local.z - CHUNK_METERS)}
 	return {"pos": pos, "folded": true, "turned": turned}
+
+## Phase 120 — the scene transform of a fold: it carries what the player saw before it to where the
+## player stands after it, so the view does not change. `before` and `after` are the body's scene
+## positions either side of the fold. A pole fold turns the player half a turn (`PlayerSlice.fold_to`),
+## so the scene turns with them about the body; the result is snapped onto the chunk grid (scene chunk
+## corners are whole multiples of CHUNK_METERS), which moves the ground at most half a chunk along
+## its row. Over a pole that ground is the pole's snow field, the same all along the row and the same
+## on both sides of the pole, so the carried scene matches the one rebuilt in the folded frame.
+static func fold_scene_transform(before: Vector3, after: Vector3, turned: bool) -> Transform3D:
+	var turn := Basis(Vector3(-1.0, 0.0, 0.0), Vector3(0.0, 1.0, 0.0), Vector3(0.0, 0.0, -1.0)) if turned else Basis.IDENTITY
+	var origin := after - turn * before
+	origin.x = snappedf(origin.x, CHUNK_METERS)
+	origin.z = snappedf(origin.z, CHUNK_METERS)
+	return Transform3D(turn, origin)
 
 # ---------------------------------------------------------------------------
 # Private

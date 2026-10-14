@@ -94,6 +94,7 @@ func _process(delta: float) -> void:
 	var pc := world_to_chunk(_player_pos)
 	var chunk_changed := pc != _player_chunk
 	if chunk_changed:
+		_reveal_between(_player_chunk, pc)
 		_player_chunk = pc
 		_reveal_around(pc)
 	# Redraw when the player enters a new chunk (fog-of-war reveal) or turns
@@ -106,6 +107,7 @@ func set_player_pos(pos: Vector2) -> void:
 	_player_pos = pos
 	var pc := world_to_chunk(pos)
 	if pc != _player_chunk:
+		_reveal_between(_player_chunk, pc)
 		_player_chunk = pc
 		_reveal_around(pc)
 	queue_redraw()
@@ -115,6 +117,24 @@ func set_player_pos(pos: Vector2) -> void:
 func set_facing(facing: Vector2) -> void:
 	_facing = facing
 	queue_redraw()
+
+## Chunks a single step may span and still count as walking. A faster step (a fast frame-skip, a
+## sprint on a slow frame) would otherwise leave unrevealed gaps in the trail; a longer jump is a
+## teleport and reveals nothing between.
+const MAX_WALK_GAP := 256
+
+## Reveal the chunks on the straight line from `from` (exclusive) to `to` (exclusive), so a step
+## that skips chunks leaves no gap. No-op for a first position, a teleport, or a jump over the seam.
+func _reveal_between(from: Vector2i, to: Vector2i) -> void:
+	if from == Vector2i(-9999, -9999):
+		return
+	var d := to - from
+	var steps := maxi(absi(d.x), absi(d.y))
+	if steps <= 1 or steps > MAX_WALK_GAP:
+		return
+	for i in range(1, steps):
+		var t := float(i) / float(steps)
+		_reveal_around(Vector2i(from.x + roundi(d.x * t), from.y + roundi(d.y * t)))
 
 ## Reveal the chunk neighbourhood around `center` (fog-of-war). No-op for a chunk no
 ## player can reach (`is_chunk_in_bounds`).
@@ -285,17 +305,25 @@ func remove_waypoint(index: int) -> void:
 ## Where waypoint `index` sits on a minimap of `size`: `MapMath.clamp_home` of its offset from the
 ## player in chunks, so a far one sits on the edge with an arrow angle, like home.
 func waypoint_marker(index: int, size: Vector2) -> Dictionary:
-	if index < 0 or index >= _waypoints.size() or _player_chunk == Vector2i(-9999, -9999):
+	var d := waypoint_offset_m(index)
+	if d.x >= INF:
 		return {}
+	var cell_px := minf(size.x, size.y) / _chunks_across
+	return MapMath.clamp_home(d / CHUNK_SIZE * cell_px, size * 0.5, d.length(), 6.0)
+
+## Metres from the player to waypoint `index` (x east, y world +z), the short way round the planet;
+## (INF, INF) when there is no such waypoint or the player is not placed yet.
+func waypoint_offset_m(index: int) -> Vector2:
+	if index < 0 or index >= _waypoints.size() or _player_chunk == Vector2i(-9999, -9999):
+		return Vector2(INF, INF)
 	var pos: Dictionary = _waypoints[index]["pos"]
 	var wc: Vector2i = pos["chunk"]
 	var wl: Vector3 = pos["local"]
-	var cell_px := minf(size.x, size.y) / _chunks_across
 	var player_local := _player_pos - Vector2(_player_chunk) * CHUNK_SIZE
 	var d := MapMath.delta_m(_player_chunk, player_local, wc, Vector2(wl.x, wl.z))
 	var circ_m := float(TerrainSlice.circumference_chunks()) * CHUNK_SIZE
 	d.x = fposmod(d.x + circ_m * 0.5, circ_m) - circ_m * 0.5   # the short way round the planet
-	return MapMath.clamp_home(d / CHUNK_SIZE * cell_px, size * 0.5, d.length(), 6.0)
+	return d
 
 ## Chunk coordinate containing a world XZ position.
 func world_to_chunk(world_pos: Vector2) -> Vector2i:
@@ -395,15 +423,13 @@ func _draw() -> void:
 		else:
 			draw_rect(item[0], item[1], false, item[3])
 
+	# The clock and coordinates sit below the map, not over it.
 	if clock_text != "":
-		draw_string(ThemeDB.fallback_font, Vector2(4.0, size.y - 17.0), clock_text,
-			HORIZONTAL_ALIGNMENT_LEFT, size.x - 8.0, 11, Color(1, 0.95, 0.7, 0.95))
+		_draw_outlined(Vector2(4.0, size.y + 14.0), clock_text, Color(1, 0.95, 0.7, 0.95))
 
-	# Latitude, longitude and altitude (Phase 50).
+	# X, Y and altitude.
 	if player_slice != null and player_slice.has_method("get_position"):
-		var font := ThemeDB.fallback_font
-		draw_string(font, Vector2(4.0, size.y - 4.0), TerrainSlice.where_text(player_slice.get_position()),
-			HORIZONTAL_ALIGNMENT_LEFT, size.x - 8.0, 11, Color(1, 1, 1, 0.9))
+		_draw_outlined(Vector2(4.0, size.y + 27.0), TerrainSlice.where_text(player_slice.get_position()), Color(1, 1, 1, 0.95))
 
 	# Waypoints sit where they are, or on the edge toward them like home.
 	for i in _waypoints.size():
@@ -428,6 +454,12 @@ func _draw() -> void:
 
 # ---------------------------------------------------------------------------
 # Private helpers
+
+## Small HUD text with a dark outline, readable over snow and ice too.
+func _draw_outlined(pos: Vector2, text: String, col: Color) -> void:
+	var font := ThemeDB.fallback_font
+	draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, size.x - 8.0, 11, 4, Color(0, 0, 0, 0.85))
+	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, size.x - 8.0, 11, col)
 # ---------------------------------------------------------------------------
 
 ## Sub-cells per chunk edge in the minimap's per-tile surface colour.
