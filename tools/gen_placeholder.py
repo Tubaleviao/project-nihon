@@ -22,6 +22,12 @@ the rig changes nothing in a public clone.
     python3 tools/gen_placeholder.py --mask <out>   # a black mask, to <out>
     python3 tools/gen_placeholder.py --white <out>  # a white sheet, to <out>
 
+Item icons (``icons/items/<ItemId>.png.raw``, 32x32 RGBA) are a flat tile per item in a
+colour derived from its id, with a magenta border so a placeholder is never mistaken for
+art. ``ITEM_IDS`` lists the ids the production pack ships. The GraywolfPack creature
+textures (``textures/creatures/GraywolfPack*.png.raw``) are the checkerboard (base) and
+two black masks (``_channel``, ``_color_mask``), like the player's.
+
 A bare ``<out>`` writes the sheet its default path gets (black for the mask
 files, white for the rig detail file) and the checkerboard for any other path.
 The default outputs resolve against the repo root, so the script works from
@@ -39,11 +45,24 @@ COL_B = (8, 8, 8)       # near-black
 MASK = (0, 0, 0, 255)   # opaque black: no mask region, no channel
 WHITE = (255, 255, 255, 255)  # opaque white: detail multiplies by 1
 
+ICON_SIZE = 32
+ICON_BORDER = 2
+ITEM_IDS = (
+    "AethermiteBow AethermiteDust AethermiteShard AlchemyPotion AshiteBlock CarpenterAxe "
+    "DuskfiberCloak EnchantedAethermiteShard FerriteHelmet FerriteIngot FerritePick FerriteShield "
+    "FerriteShortSword FieldRations LumenfiteOrb RefinedVoiditeShard ThornwoodPlank VeilsteelChestplate "
+    "VeilsteelIngot VeilsteelLongsword VeilsteelPick VoiditeEdge VoidRuneTablet"
+).split()
+
 ROOT = Path(__file__).resolve().parent.parent
 CHECKER_OUT = ROOT / "assets/textures/placeholder_character.png.raw"
 MASK_OUTS = (ROOT / "assets/textures/characters/player_color_mask.png.raw",
              ROOT / "assets/textures/characters/player_channel.png.raw")
 RIG_DETAIL_OUT = ROOT / "assets/textures/characters/player.png.raw"
+WOLF_OUT = ROOT / "assets/textures/creatures/GraywolfPack.png.raw"
+WOLF_MASK_OUTS = (ROOT / "assets/textures/creatures/GraywolfPack_channel.png.raw",
+                  ROOT / "assets/textures/creatures/GraywolfPack_color_mask.png.raw")
+ICON_DIR = ROOT / "assets/icons/items"
 
 
 def _chunk(ctype: bytes, data: bytes) -> bytes:
@@ -90,12 +109,33 @@ def _write(out: Path, color_at) -> None:
     print(f"wrote {out}")
 
 
+def _icon_color(item_id: str) -> tuple:
+    """A stable mid-tone colour per item id (crc32 of the id; no hash() salting)."""
+    h = zlib.crc32(item_id.encode())
+    return (64 + h % 128, 64 + (h >> 8) % 128, 64 + (h >> 16) % 128, 255)
+
+
+def _write_icon(out: Path, item_id: str) -> None:
+    fill = _icon_color(item_id)
+    edge = ICON_SIZE - ICON_BORDER
+
+    def color_at(x: int, y: int):
+        on_edge = min(x, y) < ICON_BORDER or max(x, y) >= edge
+        return (*COL_A, 255) if on_edge else fill
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(_png(ICON_SIZE, ICON_SIZE, color_at))
+    print(f"wrote {out}")
+
+
 # Every default output and the sheet it gets: the no-argument run writes all of
 # them, and a bare ``<out>`` naming one of them writes its sheet.
 OUTPUTS = {
     CHECKER_OUT: checker,
     **{out: black for out in MASK_OUTS},
     RIG_DETAIL_OUT: white,
+    WOLF_OUT: checker,
+    **{out: black for out in WOLF_MASK_OUTS},
 }
 FLAGS = {"--mask": black, "--white": white}
 
@@ -110,6 +150,8 @@ def main() -> None:
     elif not args:
         for out, color_at in OUTPUTS.items():
             _write(out, color_at)
+        for item_id in ITEM_IDS:
+            _write_icon(ICON_DIR / f"{item_id}.png.raw", item_id)
     else:
         sys.exit(__doc__)
 
