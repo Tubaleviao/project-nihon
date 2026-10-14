@@ -357,12 +357,12 @@ PLAYER_CLIPS = [
 ]
 
 
-def fabric_bones() -> list:
-    """[(name, parent)] of the fabric HumanoidSkeleton, in order (parents first)."""
-    text = SKELETON_TRES.read_text(encoding="utf-8")
+def fabric_bones(tres: Path = SKELETON_TRES) -> list:
+    """[(name, parent)] of a fabric skeleton (default HumanoidSkeleton), in order (parents first)."""
+    text = tres.read_text(encoding="utf-8")
     match = re.search(r"^bones = ", text, re.M)
     if not match:
-        raise SystemExit(f"{SKELETON_TRES}: no `bones = [...]` property")
+        raise SystemExit(f"{tres}: no `bones = [...]` property")
     # raw_decode reads the one JSON array that starts there, however it is wrapped.
     bones, _ = json.JSONDecoder().raw_decode(text, match.end())
     return [(b["name"], b["parent"]) for b in bones]
@@ -383,8 +383,10 @@ def _norm(q: tuple) -> list:
     return [c / length for c in q]
 
 
-def build_player_rig() -> bytes:
-    bones = fabric_bones()
+def build_skinned_rig(tres: Path, skin_name: str, joint_pos: dict, rest_rot: dict, parts: list, clips: list) -> bytes:
+    """A skinned box rig for one fabric skeleton: joints, rests, boxes and clips as the player rig's tables."""
+    JOINTS, REST, PARTS, PLAYER_CLIPS = joint_pos, rest_rot, parts, clips
+    bones = fabric_bones(tres)
     names = [n for n, _ in bones]
     if sorted(names) != sorted(JOINTS):
         raise SystemExit(f"JOINTS {sorted(JOINTS)} do not match the fabric bones {sorted(names)}")
@@ -481,7 +483,7 @@ def build_player_rig() -> bytes:
         "scenes": [{"nodes": [0]}],
         "nodes": nodes,
         "meshes": [{"name": "Body", "primitives": [{"attributes": attributes, "indices": index_accessor, "mode": 4}]}],
-        "skins": [{"name": "HumanoidSkeleton", "joints": [2 + i for i in range(len(names))],
+        "skins": [{"name": skin_name, "joints": [2 + i for i in range(len(names))],
                    "skeleton": 2 + index["Root"], "inverseBindMatrices": ibm_accessor}],
         "buffers": [{"byteLength": len(blob.data)}],
         "bufferViews": blob.views,
@@ -491,8 +493,73 @@ def build_player_rig() -> bytes:
     return _glb(doc, blob)
 
 
+def build_player_rig() -> bytes:
+    return build_skinned_rig(SKELETON_TRES, "HumanoidSkeleton", JOINTS, REST, PARTS, PLAYER_CLIPS)
+
+
+# ---------------------------------------------------------------------------
+# The GraywolfPack placeholder: `assets/models/creatures/GraywolfPack.glb.raw`
+# ---------------------------------------------------------------------------
+# Skinned to the fabric QuadrupedSkeleton (same bone names and parents, read from the
+# generated .tres). Like the private wolf it faces -Z (head at -z, tail at +z); the fabric
+# restPose offsets put the head at +z, so game code must pick one before attaching creature
+# models. Joints rest with identity rotations. Clips: the seven the locomotion tree asks for.
+
+QUAD_TRES = SKELETON_TRES.parent / "quadrupedskeleton.tres"
+WOLF_OUT = OUT.parent / "creatures" / "GraywolfPack.glb.raw"
+
+WOLF_JOINTS = {
+    "Root": (0.0, 0.0, 0.0),
+    "Hips": (0.0, 0.62, 0.30),
+    "Spine": (0.0, 0.66, 0.05),
+    "Chest": (0.0, 0.68, -0.20),
+    "Neck": (0.0, 0.72, -0.40),
+    "Head": (0.0, 0.78, -0.55),
+    "Leg_FL": (-0.12, 0.55, -0.22),
+    "Leg_FR": (0.12, 0.55, -0.22),
+    "Leg_BL": (-0.12, 0.55, 0.30),
+    "Leg_BR": (0.12, 0.55, 0.30),
+    "Tail": (0.0, 0.64, 0.45),
+}
+
+WOLF_PARTS = [
+    ("Hips", (0.0, 0.62, 0.30), (0.24, 0.26, 0.30)),
+    ("Spine", (0.0, 0.66, 0.05), (0.22, 0.26, 0.22)),
+    ("Chest", (0.0, 0.66, -0.20), (0.26, 0.30, 0.30)),
+    ("Neck", (0.0, 0.74, -0.42), (0.14, 0.18, 0.18)),
+    ("Head", (0.0, 0.78, -0.62), (0.16, 0.16, 0.22)),
+    ("Tail", (0.0, 0.58, 0.58), (0.07, 0.07, 0.30)),
+]
+for _name, _x, _z in (("FL", -0.12, -0.22), ("FR", 0.12, -0.22), ("BL", -0.12, 0.30), ("BR", 0.12, 0.30)):
+    WOLF_PARTS.append(("Leg_" + _name, (_x, 0.27, _z), (0.09, 0.54, 0.10)))
+
+
+def _gait(swing: float) -> dict:
+    """Diagonal pairs swing together: FL+BR against FR+BL."""
+    phase = [1.0, 0.0, -1.0, 0.0, 1.0]
+    return {"Leg_FL": [(swing * p, 0, 0) for p in phase], "Leg_BR": [(swing * p, 0, 0) for p in phase],
+            "Leg_FR": [(-swing * p, 0, 0) for p in phase], "Leg_BL": [(-swing * p, 0, 0) for p in phase]}
+
+
+WOLF_CLIPS = [
+    ("idle", [0.0, 1.0, 2.0], {"Head": [(0, 0, 0), (4, 0, 0), (0, 0, 0)], "Tail": [(0, 0, 0), (0, 10, 0), (0, 0, 0)]}),
+    ("walk", [0.0, 0.25, 0.5, 0.75, 1.0], _gait(20)),
+    ("run", [0.0, 0.15, 0.3, 0.45, 0.6], dict(_gait(40), Spine=[(-6, 0, 0)] * 5)),
+    ("fall", [0.0, 0.4, 0.8], {"Leg_FL": [(-30, 0, 0)] * 3, "Leg_FR": [(-30, 0, 0)] * 3,
+                                "Leg_BL": [(30, 0, 0)] * 3, "Leg_BR": [(30, 0, 0)] * 3}),
+    ("land", [0.0, 0.12, 0.25], {"Spine": [(10, 0, 0), (5, 0, 0), (0, 0, 0)]}),
+    ("attack", [0.0, 0.15, 0.3, 0.5], {"Head": [(0, 0, 0), (-25, 0, 0), (20, 0, 0), (0, 0, 0)],
+                                        "Neck": [(0, 0, 0), (-15, 0, 0), (10, 0, 0), (0, 0, 0)]}),
+    ("death", [0.0, 0.4, 1.2], {"Root": [(0, 0, 0), (0, 0, 30), (0, 0, 85)]}),
+]
+
+
+def build_wolf_rig() -> bytes:
+    return build_skinned_rig(QUAD_TRES, "QuadrupedSkeleton", WOLF_JOINTS, {}, WOLF_PARTS, WOLF_CLIPS)
+
+
 if __name__ == "__main__":
-    for path, data in ((OUT, build()), (PLAYER_OUT, build_player_rig())):
+    for path, data in ((OUT, build()), (PLAYER_OUT, build_player_rig()), (WOLF_OUT, build_wolf_rig())):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
         print(f"wrote {path} ({path.stat().st_size} bytes)")

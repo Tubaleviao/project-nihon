@@ -663,6 +663,8 @@ func run() -> void:
 	_run_test("asset: placeholder rig is a visible body (#112)", _test_asset_placeholder_rig_is_a_body)
 	_run_test("asset: player rig placeholder has the art's contract", _test_asset_player_rig_placeholder_contract)
 	_run_test("asset: body sheet placeholders are 64x64, masks black, detail white", _test_asset_body_sheet_placeholders)
+	_run_test("asset: item icon placeholders are 32x32 RGBA",   _test_asset_item_icon_placeholders)
+	_run_test("asset: GraywolfPack placeholders have the quadruped contract", _test_asset_graywolfpack_placeholders)
 	_run_test("asset: missing model key warns and falls back",   _test_asset_missing_model_falls_back)
 	_run_test("asset: creature model key derived from entity name", _test_asset_creature_key)
 	_run_test("rig tree: every Locomotion.State maps to a node", _test_rig_tree_state_mapping_total)
@@ -8135,6 +8137,66 @@ func _test_asset_placeholder_rig_is_a_body() -> void:
 ## base colour with no channel, and the detail sheet all-white opaque so it multiplies
 ## by one, exactly as the shader does with nothing bound. Reads the committed
 ## placeholder itself, not whatever a mounted pack overlays.
+## Issue #319: every item the production pack ships an icon for has a 32x32 RGBA
+## placeholder at the same `icons/items/<ItemId>.png.raw` key.
+func _test_asset_item_icon_placeholders() -> void:
+	var ids := ["AethermiteBow", "AethermiteDust", "AethermiteShard", "AlchemyPotion", "AshiteBlock",
+		"CarpenterAxe", "DuskfiberCloak", "EnchantedAethermiteShard", "FerriteHelmet", "FerriteIngot",
+		"FerritePick", "FerriteShield", "FerriteShortSword", "FieldRations", "LumenfiteOrb",
+		"RefinedVoiditeShard", "ThornwoodPlank", "VeilsteelChestplate", "VeilsteelIngot",
+		"VeilsteelLongsword", "VeilsteelPick", "VoiditeEdge", "VoidRuneTablet"]
+	for id in ids:
+		var key := UiSlice.item_icon_key(id)
+		var path := "res://assets/" + key
+		assert_true(FileAccess.file_exists(path), "icon placeholder %s exists" % key)
+		var img := Image.new()
+		var err := img.load_png_from_buffer(FileAccess.get_file_as_bytes(path))
+		assert_eq(err, OK, "%s decodes as PNG" % key)
+		if err == OK:
+			assert_eq(img.get_size(), Vector2i(32, 32), "%s is 32x32" % key)
+			assert_eq(img.get_format(), Image.FORMAT_RGBA8, "%s is RGBA" % key)
+
+## Issue #318: `models/creatures/GraywolfPack.glb.raw` and its three textures stand in
+## for the private wolf: a skin on the fabric QuadrupedSkeleton bones, a visible body, and
+## the clips the locomotion tree looks up.
+func _test_asset_graywolfpack_placeholders() -> void:
+	const GameDataReader := preload("res://src/core/game_data_reader.gd")
+	var key := AssetOverlay.creature_model_key("GraywolfPack")
+	assert_true(AssetOverlay.has_key("meshes", key), "manifest lists the wolf mesh")
+	assert_true(AssetOverlay.has_key("animations", key), "manifest lists the wolf animations")
+	for tex in ["GraywolfPack", "GraywolfPack_channel", "GraywolfPack_color_mask"]:
+		var tkey := "textures/creatures/%s.png.raw" % tex
+		assert_true(AssetOverlay.has_key("textures", tkey), "manifest lists %s" % tkey)
+		var img := Image.new()
+		assert_eq(img.load_png_from_buffer(FileAccess.get_file_as_bytes("res://assets/" + tkey)), OK,
+			"%s decodes as PNG" % tkey)
+	var root := AssetOverlay.load_rig_scene(key)
+	assert_true(root != null, "the wolf placeholder parses into a scene")
+	if root == null:
+		return
+	var skeletons := root.find_children("*", "Skeleton3D", true, false)
+	assert_eq(skeletons.size(), 1, "one Skeleton3D")
+	if skeletons.size() == 1:
+		var skeleton: Skeleton3D = skeletons[0]
+		var bones: Array = GameDataReader.json_field(GameData.SKELETONS["QuadrupedSkeleton"], "bones", [])
+		assert_eq(skeleton.get_bone_count(), bones.size(), "one bone per fabric QuadrupedSkeleton bone")
+		for b in bones:
+			var idx := skeleton.find_bone(str(b["name"]))
+			assert_true(idx >= 0, "bone %s is in the rig" % b["name"])
+			if idx >= 0:
+				var parent := skeleton.get_bone_parent(idx)
+				assert_eq(skeleton.get_bone_name(parent) if parent >= 0 else "", str(b["parent"]),
+					"bone %s has its fabric parent" % b["name"])
+	var parts: Array = []
+	_collect_mesh_instances(root, parts)
+	assert_true(parts.size() > 0, "the wolf has a mesh")
+	root.free()
+	var lib := AssetOverlay.load_animation_library(key)
+	assert_true(lib != null, "the wolf has an animation library")
+	if lib != null:
+		for clip in ["idle", "walk", "run", "fall", "land", "attack", "death"]:
+			assert_true(lib.has_animation(clip), "wolf clip %s" % clip)
+
 func _test_asset_body_sheet_placeholders() -> void:
 	var expected := {
 		"textures/characters/player_color_mask.png.raw": Color(0, 0, 0, 1),

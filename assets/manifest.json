@@ -3,14 +3,19 @@
     "textures/placeholder_character.png.raw": "textures/placeholder_character.png.raw",
     "textures/characters/player_color_mask.png.raw": "textures/characters/player_color_mask.png.raw",
     "textures/characters/player_channel.png.raw": "textures/characters/player_channel.png.raw",
-    "textures/characters/player.png.raw": "textures/characters/player.png.raw"
+    "textures/characters/player.png.raw": "textures/characters/player.png.raw",
+    "textures/creatures/GraywolfPack.png.raw": "textures/creatures/GraywolfPack.png.raw",
+    "textures/creatures/GraywolfPack_channel.png.raw": "textures/creatures/GraywolfPack_channel.png.raw",
+    "textures/creatures/GraywolfPack_color_mask.png.raw": "textures/creatures/GraywolfPack_color_mask.png.raw"
   },
   "meshes": {
     "models/placeholder_rig.glb.raw": "models/placeholder_rig.glb.raw",
-    "models/player_rig.glb.raw": "models/player_rig.glb.raw"
+    "models/player_rig.glb.raw": "models/player_rig.glb.raw",
+    "models/creatures/GraywolfPack.glb.raw": "models/creatures/GraywolfPack.glb.raw"
   },
   "animations": {
     "models/placeholder_rig.glb.raw": "models/placeholder_rig.glb.raw",
-    "models/player_rig.glb.raw": "models/player_rig.glb.raw"
+    "models/player_rig.glb.raw": "models/player_rig.glb.raw",
+    "models/creatures/GraywolfPack.glb.raw": "models/creatures/GraywolfPack.glb.raw"
   }
 }
