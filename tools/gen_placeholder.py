@@ -12,15 +12,20 @@ The body detail texture is an intentionally ugly magenta/black checkerboard so a
 shipped placeholder can never be mistaken for real art. The body masks
 (``color_mask`` R/G/B = Primary/Secondary/Accent, ``channel`` R/G/B =
 Metal/Emission/Wear) are all black, opaque RGBA: base colour only, no channel,
-which is what the character shader does with no mask bound.
+which is what the character shader does with no mask bound. The player rig's own
+detail sheet (``textures/characters/player.png.raw``, laid out on the rig's UVs)
+is all white, opaque RGBA: what ``detail_tex`` does unbound, so binding it on
+the rig changes nothing in a public clone.
 
-    python3 tools/gen_placeholder.py               # every placeholder below
-    python3 tools/gen_placeholder.py <out>         # the checkerboard, to <out>
-    python3 tools/gen_placeholder.py --mask <out>  # a black mask, to <out>
+    python3 tools/gen_placeholder.py                # every placeholder below
+    python3 tools/gen_placeholder.py <out>          # <out>'s own sheet, to <out>
+    python3 tools/gen_placeholder.py --mask <out>   # a black mask, to <out>
+    python3 tools/gen_placeholder.py --white <out>  # a white sheet, to <out>
 
-An ``<out>`` that is one of the mask files writes a mask, not the
-checkerboard. The default outputs resolve against the repo root, so the script
-works from any directory.
+A bare ``<out>`` writes the sheet its default path gets (black for the mask
+files, white for the rig detail file) and the checkerboard for any other path.
+The default outputs resolve against the repo root, so the script works from
+any directory.
 """
 import struct
 import sys
@@ -32,11 +37,13 @@ CELL = 8
 COL_A = (255, 0, 255)   # magenta
 COL_B = (8, 8, 8)       # near-black
 MASK = (0, 0, 0, 255)   # opaque black: no mask region, no channel
+WHITE = (255, 255, 255, 255)  # opaque white: detail multiplies by 1
 
 ROOT = Path(__file__).resolve().parent.parent
 CHECKER_OUT = ROOT / "assets/textures/placeholder_character.png.raw"
 MASK_OUTS = (ROOT / "assets/textures/characters/player_color_mask.png.raw",
              ROOT / "assets/textures/characters/player_channel.png.raw")
+RIG_DETAIL_OUT = ROOT / "assets/textures/characters/player.png.raw"
 
 
 def _chunk(ctype: bytes, data: bytes) -> bytes:
@@ -73,27 +80,36 @@ def black(x: int, y: int):
     return MASK
 
 
+def white(x: int, y: int):
+    return WHITE
+
+
 def _write(out: Path, color_at) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(_png(SIZE, SIZE, color_at))
     print(f"wrote {out}")
 
 
-def _is_mask(out: Path) -> bool:
-    return out.resolve() in MASK_OUTS
+# Every default output and the sheet it gets: the no-argument run writes all of
+# them, and a bare ``<out>`` naming one of them writes its sheet.
+OUTPUTS = {
+    CHECKER_OUT: checker,
+    **{out: black for out in MASK_OUTS},
+    RIG_DETAIL_OUT: white,
+}
+FLAGS = {"--mask": black, "--white": white}
 
 
 def main() -> None:
     args = sys.argv[1:]
-    if args[:1] == ["--mask"] and len(args) == 2:
-        _write(Path(args[1]), black)
+    if len(args) == 2 and args[0] in FLAGS:
+        _write(Path(args[1]), FLAGS[args[0]])
     elif len(args) == 1 and not args[0].startswith("-"):
         out = Path(args[0])
-        _write(out, black if _is_mask(out) else checker)
+        _write(out, OUTPUTS.get(out.resolve(), checker))
     elif not args:
-        _write(CHECKER_OUT, checker)
-        for out in MASK_OUTS:
-            _write(out, black)
+        for out, color_at in OUTPUTS.items():
+            _write(out, color_at)
     else:
         sys.exit(__doc__)
 
