@@ -326,7 +326,7 @@ func get_world_pos() -> Dictionary:
 ## `pos["chunk"]` first, or the scene position it lands on is a large float32.
 func place_at_world_pos(pos: Dictionary) -> void:
 	assert(_origin.value == Vector3(-float(_scene_origin_chunk.x) * WorldPos.CHUNK_METERS, 0.0, -float(_scene_origin_chunk.y) * WorldPos.CHUNK_METERS),
-		"place_at_world_pos needs the scene origin rebased first")
+		"place_at_world_pos: the scene offset no longer matches the scene origin chunk")
 	if _body:
 		_body.global_position = WorldPos.to_scene(pos, _scene_origin_chunk)
 		_vel = Vector3.ZERO
@@ -357,8 +357,8 @@ func shift_scene(shift: Vector3) -> void:
 ## of rebase there is); anything else would put `_origin` off the integer chunk origin.
 static func is_chunk_multiple_shift(shift: Vector3) -> bool:
 	var cm: float = WorldPos.CHUNK_METERS
-	return shift.y == 0.0 and is_equal_approx(shift.x, roundf(shift.x / cm) * cm) \
-		and is_equal_approx(shift.z, roundf(shift.z / cm) * cm)
+	return shift.y == 0.0 and absf(shift.x - roundf(shift.x / cm) * cm) < 0.01 \
+		and absf(shift.z - roundf(shift.z / cm) * cm) < 0.01
 
 ## Shift the body by `shift` to the scene origin `origin` (the driver's integer `origin_chunk`).
 func shift_scene_to_origin(shift: Vector3, origin: Vector2i) -> void:

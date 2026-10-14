@@ -656,7 +656,7 @@ are looser than the roadmap claims. This phase resolves every item of the six is
   fill orders; harness frontier step passes without editing recorded chunks.
 - [x] #283: suite: the blend weight is monotone and reaches 0 exactly at `BLEND_CHUNKS`; the streamer
   loads no extra region for an already-recorded window.
-- [x] Suite green on both boot paths, harness green, `npm run check-drift` green.
+- [x] Suite green on both boot paths, `npm run check-drift` green; harness result equals `origin/main` (CI is the gate: `tree_cleared` `no_spare_tree` fails identically on main in the local environment).
 
 ---
 
@@ -1062,7 +1062,7 @@ of the terrain issue below.
   the float body within 1 m of the canonical position on the same frame; a snapshot with a bad
   position spawns at the spawn point; the first south fold row passes `is_wire`.
 - [x] Suite: `OreField.warm()` retries until `ClimateField` is warm; `record_world_pos` clamps `local`.
-- [x] Suite green on both boot paths, harness green, `npm run check-drift` green.
+- [x] Suite green on both boot paths, `npm run check-drift` green; harness result equals `origin/main` (CI is the gate: `tree_cleared` `no_spare_tree` fails identically on main in the local environment).
 
 **Implementation notes (deviations from the deliverable list):** `noise_coord` is gone (cells of
 2·`NOISE_SPAN`, `TerrainSlice.cell_offset`, 64 m blend). `_corner_cache` already took one lock per chunk;

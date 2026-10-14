@@ -359,6 +359,7 @@ func run() -> void:
 	_run_test("region: migration recovers a monolith chunk whose region entry is malformed", _test_region_migrate_malformed_recovers)
 	_run_test("rebase: an unshiftable target is reported",      _test_rebase_driver_reports_unshiftable)
 	_run_test("far origin: exact AOI, south fold row, ore warm retry", _test_phase122_exact_positions)
+	_run_test("far origin: bad snapshot position spawns, registry clamps local", _test_phase122_snapshot_fallback_and_clamp)
 	_run_test("voxel: corner blends are symmetric, deep ocean keeps vein depth", _test_phase122_blend_and_bedrock)
 	_run_test("rebase: one SceneOffset helper, whole-chunk shifts only", _test_scene_shift_helper)
 	_run_test("game_root: implausible peer positions dropped",  _test_remote_state_plausibility)
@@ -1341,6 +1342,41 @@ func _test_phase122_exact_positions() -> void:
 	assert_true(ClimateField.is_warm() and OreField._warmed, "OreField.warm() warms ClimateField and latches")
 	OreField._warmed = was_ore
 	ClimateField._warmed = was_climate
+
+func _test_phase122_snapshot_fallback_and_clamp() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	var body := PlayerSlice.new()
+	body.render_visuals = true
+	add_child(body)
+	var gr: Node = root_script.new()
+	gr._player = body
+	gr._terrain = terrain
+	gr._rebase = RebaseDriver.new([body])
+	gr._rebase.rebase_to(Vector2i(600000, 40))
+	body.place_at_world_pos({ "chunk": Vector2i(600000, 40), "local": Vector3(1.0, 20.0, 1.0) })
+	# A wire-shaped but invalid position (a chunk far past the pole) spawns the body at the spawn point.
+	gr._place_from_snapshot({ "position": { "chunk": [0, 99999999], "local": [1.0, 2.0, 3.0] } })
+	var landed := body.get_world_pos()
+	assert_eq(landed["chunk"], Vector2i.ZERO, "a bad snapshot position rebases to the spawn chunk")
+	var spawn: Vector3 = landed["local"]
+	assert_true(Vector2(spawn.x, spawn.z).distance_to(WorldShape.SPAWN_CENTER) < 1.0, "and lands on the spawn point")
+	gr.free()
+	body.free()
+	terrain.free()
+	# record_world_pos derives `position` from the normalised chunk: an overflowing local carries over.
+	var reg := PlayerRegistry.new()
+	reg.record_world_pos("clamp", { "chunk": Vector2i(5, 6), "local": Vector3(WorldPos.CHUNK_METERS + 7.0, 3.0, -4.0) })
+	var rec := reg.get_record("clamp")
+	var pos: Array = rec["position"]
+	var cm: float = WorldPos.CHUNK_METERS
+	assert_eq(float(pos[0]), 6.0 * cm + 7.0, "an overflowing local X carries into the next chunk")
+	assert_eq(float(pos[2]), 6.0 * cm - 4.0, "a negative local Z carries into the previous chunk")
+	reg.free()
+	# A non-multiple shift is refused even at a huge shift (no relative tolerance).
+	assert_false(PlayerSlice.is_chunk_multiple_shift(Vector3(-48000000.0 + 100.0, 0.0, 0.0)), "a 100 m off-grid shift is refused at 48,000 km")
+	assert_true(PlayerSlice.is_chunk_multiple_shift(Vector3(-48000000.0, 0.0, 32.0)), "whole-chunk shifts pass")
 
 func _test_phase122_blend_and_bedrock() -> void:
 	var extent := float(VoxelSlice.CHUNK_SIZE * VoxelSlice.TILE_SIZE)
