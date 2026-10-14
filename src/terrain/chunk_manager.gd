@@ -770,11 +770,16 @@ func rebuild_seam_neighbours(chunk_pos: Vector2i) -> void:
 	if complete:
 		_seam_revision[key] = rev
 
-## Phase 69 — how many rebuilds each loaded chunk has been asked for (chunk key → count). Read
-## only through the test hooks below.
+## Phase 69 — how many rebuilds each loaded chunk has been asked for (chunk key → count). Phase 122 —
+## a TEST counter: nothing is recorded (so nothing grows in play) until a test calls `track_rebuilds`
+## or `reset_rebuild_requests`.
 var _rebuild_requests: Dictionary = {}
+var _track_rebuilds := false
 
 ## Test hooks over the rebuild counter (the game never reads it).
+func track_rebuilds() -> void:
+	_track_rebuilds = true
+
 func rebuild_request_count(chunk_pos: Vector2i) -> int:
 	return int(_rebuild_requests.get(_chunk_key(chunk_pos), 0))
 
@@ -782,6 +787,7 @@ func rebuilt_chunk_keys() -> Array:
 	return _rebuild_requests.keys()
 
 func reset_rebuild_requests() -> void:
+	_track_rebuilds = true
 	_rebuild_requests.clear()
 
 ## Phase 69 — the edit revision each chunk's seams were last rebuilt for.
@@ -903,7 +909,8 @@ func request_rebuild(chunk_pos: Vector2i) -> void:
 	var key := _chunk_key(chunk_pos)
 	if not _loaded.has(key):
 		return
-	_rebuild_requests[key] = int(_rebuild_requests.get(key, 0)) + 1
+	if _track_rebuilds:
+		_rebuild_requests[key] = int(_rebuild_requests.get(key, 0)) + 1
 	# A fresh request starts a fresh retry budget: it is a new edit, not a retry of one,
 	# and it clears the groundless mark a previous give-up left behind.
 	_build_attempts.erase(key)
@@ -1375,11 +1382,9 @@ func _dist2(center: Vector2i, chunk: Vector2i) -> int:
 	var dz := chunk.y - center.y
 	return dx * dx + dz * dz
 
-## True when `chunk` is inside the finite world, or when no terrain slice is
-## wired (isolated unit tests treat the world as unbounded).
-func _in_bounds(chunk: Vector2i) -> bool:
-	if terrain_slice != null and terrain_slice.has_method("is_chunk_loadable"):
-		return terrain_slice.is_chunk_loadable(chunk)
+## True when `chunk` may be streamed in: every chunk (Phase 122 — rows past a pole are the polar snow
+## field, so the streamed window never meets an edge; `TerrainSlice.is_chunk_in_bounds` is the walkable bound).
+func _in_bounds(_chunk: Vector2i) -> bool:
 	return true
 
 func _chunk_key(chunk_pos: Vector2i) -> String:

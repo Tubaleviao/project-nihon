@@ -191,8 +191,8 @@ static func warm() -> void:
 			entry["max"] = float((band as Dictionary).get("max", 0.0))
 		entry["ley"] = bool(res.get("leyGated")) if res.get("leyGated") != null else false
 		_bands[str(key)] = entry
-	# Latch only once the tables are filled, so an early call before GameData loads retries.
-	_warmed = not _bands.is_empty()
+	# Latch only once the tables are filled and ClimateField is warm, so an early call retries.
+	_warmed = not _bands.is_empty() and ClimateField.is_warm()
 
 ## A material's fabric band and ley gate. An unknown material has an EMPTY band.
 static func band_of(material: String) -> Dictionary:

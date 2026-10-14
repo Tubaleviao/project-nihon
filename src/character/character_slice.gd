@@ -116,16 +116,17 @@ var _lod_mode: int = LOD_MANUAL
 var _viewer_position: Vector3 = Vector3.ZERO
 
 ## Phase 63: the scene-origin offset a client rebase has applied (see `shift_scene`).
-var _scene_offset: Vector3 = Vector3.ZERO
+const SceneOffset := preload("res://src/core/scene_offset.gd")
+var _origin: SceneOffset = SceneOffset.new()
 
 ## Shift every avatar node by `shift`; its world position is unchanged.
 func shift_scene(shift: Vector3) -> void:
-	_scene_offset += shift
+	_origin.value += shift
 	for inst in _instances.values():
 		((inst as Dictionary)["root"] as Node3D).position += shift
 
 func scene_offset() -> Vector3:
-	return _scene_offset
+	return _origin.value
 var _palette: Array = []
 
 ## Body-part texture, lazily resolved through AssetOverlay so a mounted
@@ -166,7 +167,7 @@ func create_character_from_recipe(recipe: Dictionary, pos: Vector3) -> String:
 
 	var built: Dictionary = _make_visual(iid, normalized)
 	var root: Node3D = built["root"]
-	root.position = pos + _scene_offset
+	root.position = pos + _origin.value
 	add_child(root)
 
 	_instances[iid] = {
@@ -195,7 +196,7 @@ func set_character_position(instance_id: String, pos: Vector3) -> bool:
 		return false
 	var inst: Dictionary = _instances[instance_id]
 	inst["position"] = pos
-	(inst["root"] as Node3D).position = pos + _scene_offset
+	(inst["root"] as Node3D).position = pos + _origin.value
 	return true
 
 ## Where an instance's body is, or null for an unknown instance.
@@ -230,7 +231,7 @@ func apply_appearance(instance_id: String, recipe: Dictionary) -> bool:
 
 	var built: Dictionary = _make_visual(instance_id, normalized)
 	var root: Node3D = built["root"]
-	root.position = (inst["position"] as Vector3) + _scene_offset
+	root.position = (inst["position"] as Vector3) + _origin.value
 	add_child(root)
 
 	inst["appearance"] = normalized
@@ -745,8 +746,9 @@ func attach_rig(instance_id: String, rig_key: String) -> bool:
 	_apply_lod(instance_id)
 	return true
 
-## Rig keys tried in order for an avatar: a production pack's player rig, then the public
-## placeholder. The first one the manifest lists wins.
+## Rig keys tried in order for an avatar: the player rig (the production pack's art, or
+## its public placeholder), then the older unskinned placeholder body for a manifest that
+## lists no player rig. The first one the manifest lists wins.
 const DEFAULT_RIG_KEYS := ["models/player_rig.glb.raw", "models/placeholder_rig.glb.raw"]
 
 ## Attach the first default rig the manifest lists. False (the procedural body stays)
@@ -857,13 +859,13 @@ func sync_player_avatar(
 	)
 	var ground_y: float = maxf(feet["foot_l"].y, feet["foot_r"].y)
 	var world_pos := Vector3(position.x, ground_y, position.z)
-	root.position = world_pos + _scene_offset
+	root.position = world_pos + _origin.value
 	# Far from the origin `position` (a float32 world position) is quantised to metres, which would
 	# step the avatar along in jumps: when the caller has the body's own scene position, the avatar
 	# stands on that instead (XZ exact, Y the foot height).
 	if scene_position is Vector3:
 		var sp: Vector3 = scene_position
-		root.position = Vector3(sp.x, ground_y + _scene_offset.y, sp.z)
+		root.position = Vector3(sp.x, ground_y + _origin.value.y, sp.z)
 	root.set_meta("foot_ik_l", feet["foot_l"])
 	root.set_meta("foot_ik_r", feet["foot_r"])
 
@@ -1169,7 +1171,7 @@ func _resolved_lod(instance_id: String) -> int:
 	var inst: Dictionary = _instances[instance_id]
 	var root: Node3D = inst["root"]
 	return lod_level_for_distance(
-		_viewer_position.distance_to(root.global_position - _scene_offset),
+		_viewer_position.distance_to(root.global_position - _origin.value),
 		int(inst.get("lod", MIN_LOD))
 	)
 

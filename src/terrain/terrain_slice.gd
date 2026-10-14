@@ -27,8 +27,9 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## niche field that wraps at the antimeridian and a fallback pool read from the biome data; 5 = the
 ## walkable polar caps: frozen sea is an ice shelf from `ICE_SHELF_LAT`, and within a few km of
 ## each pole the ground eases into a snow field that depends on the distance to the pole alone,
-## so the pole can be crossed.
-const WORLDGEN_VERSION := 5
+## so the pole can be crossed; 6 = Phase 122 far detail noise: the triangle-wave fold that mirrored
+## the world beyond `NOISE_SPAN` is replaced by a hashed per-cell offset blended across cell borders.
+const WORLDGEN_VERSION := 6
 
 ## Phase 106 — a hash of every fabric parameter world-gen reads that `WORLDGEN_VERSION` cannot see:
 ## the `WorldSystem` shape fields (`sea`, `min/max height`, `oceanShare`, `ridgeAmplitude`,
@@ -156,7 +157,25 @@ static func configure_noise(n: FastNoiseLite, seed_v: int) -> void:
 
 ## The detail term (0..HEIGHT_SCALE) of `n` (see `configure_noise`) at a world XZ.
 static func detail_of(n: FastNoiseLite, x: float, z: float) -> float:
-	return (n.get_noise_2d(noise_coord(x), noise_coord(z)) + 1.0) * 0.5 * HEIGHT_SCALE
+	var ax := _axis_cells(x)
+	var az := _axis_cells(z)
+	var seed_v := n.seed
+	var total := 0.0
+	for i in range(2):
+		var wx: float = ax[1] if i == 1 else 1.0 - ax[1]
+		if wx <= 0.0:
+			continue
+		for j in range(2):
+			var wz: float = az[1] if j == 1 else 1.0 - az[1]
+			if wz <= 0.0:
+				continue
+			var cx: int = ax[2] if i == 1 else ax[0]
+			var cz: int = az[2] if j == 1 else az[0]
+			var lx: float = x - float(cx) * 2.0 * NOISE_SPAN
+			var lz: float = z - float(cz) * 2.0 * NOISE_SPAN
+			var off := cell_offset(seed_v, cx, cz)
+			total += wx * wz * n.get_noise_2d(lx + off.x, lz + off.y)
+	return (total + 1.0) * 0.5 * HEIGHT_SCALE
 
 ## Adopt `seed` as the world's identity. Called by game_root with the seed read
 ## off the world record (authoritative boot) or out of the host's join snapshot
@@ -267,18 +286,40 @@ static func generation_record(chunk: Vector2i, seed_v: int) -> Dictionary:
 ## recorded chunk's cell the recorded corners are interpolated, as `_shape_at` does; elsewhere the
 ## generator answers. Pure; reads the record table only.
 static func shape_height(seed_v: int, x: float, z: float, w: float) -> float:
+	var snap: Dictionary = {}
 	if not ChunkRecords.is_empty():
+		var ix := floori(x / CHUNK_METERS)
+		var iz := floori(z / CHUNK_METERS)
+		var c := wrap_chunk(Vector2i(ix, iz))
+		var rec := ChunkRecords.get_record(c)
+		if not rec.is_empty():
+			snap[c] = rec
+	return shape_height_in(snap, seed_v, x, z, w)
+
+## Phase 120 — `shape_height` against an immutable snapshot (`ChunkRecords.snapshot_near`) instead of the
+## live table, so a worker's whole build sees one set of records. An empty snapshot is the plain generator.
+static func shape_height_in(snap: Dictionary, seed_v: int, x: float, z: float, w: float) -> float:
+	if not snap.is_empty():
 		var gx := x / CHUNK_METERS
 		var gz := z / CHUNK_METERS
 		var ix := floori(gx)
 		var iz := floori(gz)
-		var rec := ChunkRecords.get_record(wrap_chunk(Vector2i(ix, iz)))
+		var rec: Dictionary = snap.get(wrap_chunk(Vector2i(ix, iz)), {})
 		if not rec.is_empty():
 			var rh: Array = rec["h"]
 			var fx := gx - float(ix)
 			var fz := gz - float(iz)
 			return lerpf(lerpf(float(rh[0]), float(rh[1]), fx), lerpf(float(rh[2]), float(rh[3]), fx), fz)
 	return WorldShape.height(seed_v, x, z, w)
+
+## Phase 120 — fill the static caches `polar_ground` reads (circumference, polar rows) on the calling
+## (main) thread, so no worker is the first to resolve them.
+static func warm_polar_caches() -> void:
+	circumference_chunks()
+	polar_chunks()
+
+## Test-visible: how many times a cache above was first filled off the main thread.
+static var worker_cache_fills := 0
 
 ## Convert a world XZ position to its containing chunk coordinate.
 func world_to_chunk(world_pos: Vector2) -> Vector2i:
@@ -303,6 +344,8 @@ static func _world_field(field: String, fallback: float) -> float:
 ## Chunks around the equator; X wraps after this many (1,250,000 at 40,000 km).
 static func circumference_chunks() -> int:
 	if _circumference_cache < 0:   # the fabric value is fixed for the process; resolve it once
+		if OS.get_thread_caller_id() != OS.get_main_thread_id():
+			worker_cache_fills += 1
 		# A multiple of 4: an even half (the seam sits on a chunk edge) and a whole pole_chunks quarter.
 		_circumference_cache = maxi(4, roundi(_world_field("circumferenceKm", DEFAULT_CIRCUMFERENCE_KM) * 1000.0 / CHUNK_METERS / 4.0) * 4)
 	return _circumference_cache
@@ -315,6 +358,8 @@ static func pole_chunks() -> int:
 ## neighbours (`lends_biome`) and no new player is placed beyond it.
 static func polar_chunks() -> int:
 	if _polar_cache < 0:
+		if OS.get_thread_caller_id() != OS.get_main_thread_id():
+			worker_cache_fills += 1
 		var deg := clampf(_world_field("polarLatitude", DEFAULT_POLAR_LATITUDE), 0.0, 90.0)
 		_polar_cache = maxi(1, roundi(pole_chunks() * deg / 90.0))   # at least one walkable row
 	return _polar_cache
@@ -360,14 +405,10 @@ static func xy_text(world_x: float, world_z: float) -> String:
 
 ## True when `chunk_pos` is ground a player can stand on: any longitude, any latitude up to the
 ## fold slack past each pole. The polar ice is walkable; walking over a pole folds the player onto the
-## far meridian (`fold_world_pos`) before they can stray further.
+## far meridian (`fold_world_pos`) before they can stray further. Streaming is NOT limited to this:
+## rows past a pole are the pole's snow field (`polar_ground`), so a window over a pole shows snow.
 func is_chunk_in_bounds(chunk_pos: Vector2i) -> bool:
 	return absi(chunk_pos.y) < pole_chunks() + FOLD_MARGIN_CHUNKS
-
-## True when `chunk_pos` may be streamed in and drawn: every chunk. Rows past a pole are the pole's
-## snow field (`polar_ground`), so a window that reaches over a pole shows snow, never an edge.
-func is_chunk_loadable(_chunk_pos: Vector2i) -> bool:
-	return true
 
 ## True when chunk `c` may lend its biome to a neighbour: its row is a walkable one, short of
 ## the polar ice at row `radius` (`world_radius_chunks`). One rule for the voxel surface and the minimap.
@@ -503,17 +544,49 @@ func _raw_height_at(x: float, z: float, w: float, cache: Array) -> float:
 	var h := clampf(shape + detail, WorldShape.min_height(), WorldShape.max_height())
 	return polar_ground(_world_seed, h, x, z, w)
 
-## Phase 63 — half the span (m) over which the detail noise is sampled directly. FastNoiseLite takes
-## float32, whose step is 1 m at 10 million metres and would terrace the 0.5 m tiles, so the lattice
-## index is folded into this range first (a triangle wave: continuous at the folds, and the identity
-## for |coordinate| <= NOISE_SPAN, so ground near the origin is unchanged). 65,536 m keeps float32
-## exact to 1/128 m, finer than the 0.125 m step.
+## Phase 122 — the spawn point at height `y`: the one place the spawn X/Z lives (`WorldShape.SPAWN_CENTER`,
+## the centre of the spawn plain), for the player, the AOI default and the snapshot fallback.
+static func spawn_point(y: float) -> Vector3:
+	return Vector3(WorldShape.SPAWN_CENTER.x, y, WorldShape.SPAWN_CENTER.y)
+
+## Phase 63 — half the span (m) of one detail-noise cell. FastNoiseLite takes float32, whose step is
+## 1 m at 10 million metres and would terrace the 0.5 m tiles, so the noise is sampled at the
+## coordinate local to a cell of 2·NOISE_SPAN (|local| <= NOISE_SPAN, exact to 1/128 m). Phase 122:
+## cell (0, 0) is the identity, so ground near the origin is unchanged; every other cell adds a
+## hashed offset (`cell_offset`) so the far world does not repeat or mirror, and the two cells either
+## side of a border are blended over `NOISE_BLEND` m so the field is continuous.
 const NOISE_SPAN := 65536.0
 
-## The detail-noise coordinate for a world coordinate (double precision in, small and exact out).
-static func noise_coord(v: float) -> float:
-	var t := fposmod(v + NOISE_SPAN, 4.0 * NOISE_SPAN)
-	return t - NOISE_SPAN if t < 2.0 * NOISE_SPAN else 3.0 * NOISE_SPAN - t
+## Width (m) of the blend band inside a cell, next to each of its borders.
+const NOISE_BLEND := 64.0
+
+## Largest offset magnitude (m) a cell adds to its local noise coordinate.
+const NOISE_OFFSET_RANGE := 4096.0
+
+## Per-axis cell data for a world coordinate: [cell, weight of the neighbouring cell, neighbour cell].
+## The weight is 0 away from a border and rises to 0.5 at it, so both sides of a border agree.
+static func _axis_cells(v: float) -> Array:
+	var c := floori((v + NOISE_SPAN) / (2.0 * NOISE_SPAN))
+	var local := v - float(c) * 2.0 * NOISE_SPAN
+	if local > NOISE_SPAN - NOISE_BLEND:
+		return [c, 0.5 * (local - (NOISE_SPAN - NOISE_BLEND)) / NOISE_BLEND, c + 1]
+	if local < -NOISE_SPAN + NOISE_BLEND:
+		return [c, 0.5 * (1.0 - (local + NOISE_SPAN) / NOISE_BLEND), c - 1]
+	return [c, 0.0, c]
+
+## The hashed noise offset (m, a multiple of 1/8) of detail cell (cx, cz) for `seed_v`; zero for the
+## origin cell. Pure.
+static func cell_offset(seed_v: int, cx: int, cz: int) -> Vector2:
+	if cx == 0 and cz == 0:
+		return Vector2.ZERO
+	var h := (seed_v * 73856093) ^ (cx * 19349663) ^ (cz * 83492791)
+	h = ((h ^ (h >> 15)) * 0x2c1b3c6d) & 0x7fffffff
+	h = ((h ^ (h >> 12)) * 0x297a2d39) & 0x7fffffff
+	h = h ^ (h >> 15)
+	var span := int(NOISE_OFFSET_RANGE * 8.0)
+	var ox := float((h & 0xffff) % span) / 8.0 - NOISE_OFFSET_RANGE * 0.5
+	var oz := float(((h >> 15) & 0xffff) % span) / 8.0 - NOISE_OFFSET_RANGE * 0.5
+	return Vector2(ox, oz)
 
 ## The detail noise term (0..HEIGHT_SCALE) at a world XZ; what `_raw_height_at` adds to the shape.
 func detail_at(x: float, z: float) -> float:

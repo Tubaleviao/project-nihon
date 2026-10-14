@@ -56,6 +56,7 @@ extends Node
 ##   merge_creature_states(base, inc)  -> Array (static, pure)
 const Diag := preload("res://src/core/diag.gd")
 const RegionStore := preload("res://src/persistence/region_store.gd")
+const SaveTxn := preload("res://src/persistence/save_txn.gd")
 
 const SAVE_DIR  := "user://saves/"
 const SAVE_EXT  := ".json"
@@ -133,7 +134,7 @@ static func check_worldgen_fingerprint(record: Dictionary, running: int) -> bool
 var server_save_dir: String = DEFAULT_SERVER_SAVE_DIR:
 	set(value):
 		server_save_dir = value
-		_rebuild_region_store()
+		_sync_region_store()
 var world_file: String = DEFAULT_WORLD_FILE
 var player_prefix: String = DEFAULT_PLAYER_PREFIX
 var autosave_interval: float = DEFAULT_AUTOSAVE_SECS
@@ -142,10 +143,10 @@ var shutdown_request_path: String = DEFAULT_SHUTDOWN_PATH
 var atomic_writes: bool = true:
 	set(value):
 		atomic_writes = value
-		_rebuild_region_store()
+		_sync_region_store()
 ## Phase 52 — the voxel edits live in region files beside the world record
-## (`<server_save_dir>regions/r.<rx>.<rz>.json`); `world.json` carries no chunks. Rebuilt by
-## the `server_save_dir` / `atomic_writes` setters so it always follows them.
+## (`<server_save_dir>regions/r.<rx>.<rz>.json`); `world.json` carries no chunks. Updated in place by
+## the `server_save_dir` / `atomic_writes` setters (never replaced), so every holder follows them.
 var region_store: RegionStore = RegionStore.new(DEFAULT_SERVER_SAVE_DIR + REGIONS_SUBDIR)
 
 func _ready() -> void:
@@ -159,7 +160,6 @@ func _ready() -> void:
 ## back to the constants above so a slice built before GameData loads (or a
 ## headless test) still works.
 func _load_config() -> void:
-	_rebuild_region_store()
 	var res: Resource = GameData.WORLD_SYSTEMS.get("PersistenceSystem", null)
 	if res == null:
 		return
@@ -185,10 +185,35 @@ func _load_config() -> void:
 	# "never notice a shutdown request", which is the same class of bug as the
 	# autosave one above, so it falls back to the default cadence.
 	shutdown_poll_interval = resolved_shutdown_poll_interval(shutdown_poll_interval)
-	_rebuild_region_store()
+	_sync_region_store()
 
-func _rebuild_region_store() -> void:
-	region_store = RegionStore.new(server_save_dir + REGIONS_SUBDIR, atomic_writes)
+## Point the (single) region store at the current directory and write mode. Updated in place, never
+## replaced, so the `RegionStreamer` and every other holder keep a store that follows the setters.
+func _sync_region_store() -> void:
+	region_store.set_dir(server_save_dir + REGIONS_SUBDIR)
+	region_store.atomic_writes = atomic_writes
+	_recovered_dir = ""
+
+## Phase 121 — undo an interrupted save and delete stray `.tmp` / `.bak` files, once per save directory
+## (the first read of a world). The journal and the world record live in `server_save_dir`.
+var _recovered_dir: String = ""
+
+func recover_interrupted_save() -> int:
+	if _recovered_dir == server_save_dir:
+		return 0
+	_recovered_dir = server_save_dir
+	# The region store commits through its own journal (chunk-record writes); undo that one first.
+	var touched := SaveTxn.recover(region_store.journal_path(), [], [journal_path()])
+	return touched + SaveTxn.recover(journal_path(), [server_save_dir, region_store.dir], [region_store.journal_path()])
+
+func journal_path() -> String:
+	return server_save_dir + "save.journal"
+
+## Phase 121 — test hook, see `SaveTxn`; also handed to the region store. Unset in production.
+var fault: Callable = Callable():
+	set(value):
+		fault = value
+		region_store.fault = value
 
 # ---------------------------------------------------------------------------
 # Legacy slot path
@@ -275,20 +300,55 @@ func failed_chunk_keys() -> Array:
 ## record and merge an incremental payload into it, then write. Split out of
 ## save_world() so write_job() can run it on a worker.
 func _write_world_payload(data: Dictionary, incremental: bool) -> Error:
-	# Phase 52 — the chunk manifests go to the region files, folded region by region (only
-	# the regions a carried chunk belongs to are read and rewritten); the world record keeps
-	# the global state and no chunks. Regions are written FIRST: a kill between the two
-	# leaves new edits plus the older global state, never a record that points at edits
-	# that were not written.
+	# Phase 121 — a save is one transaction. Every region file and `world.json` is staged as a
+	# `.tmp` sibling; the regions are made live first and `world.json` last, and only when every
+	# region staged and renamed. A failed region leaves the PREVIOUS `world.json` (its chunks stay
+	# dirty and are retried), and a failed rename rolls the whole save back, so a crash or an error
+	# at any step leaves the old world or the new one (`SaveTxn`).
 	var payload := data.duplicate()
 	var chunks: Variant = payload.get("chunks", null)
 	payload.erase("chunks")
-	# Phase 61 — one unwritable region does not stop the rest of the save: `write_chunks`
-	# saves every region it can and reports the first error, and the global record is still
-	# written; the first error is returned once everything that could be saved has been.
+	var has_chunks: bool = chunks is Dictionary and not (chunks as Dictionary).is_empty()
+	if not atomic_writes:
+		return _write_world_payload_in_place(payload, chunks if has_chunks else {}, incremental)
+	recover_interrupted_save()
+	# Phase 61 — one unwritable region does not stop the rest of the regions from being staged;
+	# the first error is returned once everything that could be saved has been.
+	var staged := { "err": OK, "ops": [] }
+	if has_chunks:
+		staged = region_store.stage_chunks(chunks)
+	var region_err: Error = staged["err"]
+	var ops: Array = staged["ops"]
+	if region_err != OK:
+		# World record untouched: commit the regions that staged, report the failure.
+		if not ops.is_empty():
+			var partial := SaveTxn.commit(ops, journal_path(), fault)
+			if partial != OK:
+				region_store.last_failed_chunk_keys = []
+		return region_err
+	if incremental:
+		var existing := load_world_record()
+		if not existing.is_empty():
+			payload = _merge_world(existing, payload)
+	var world_tmp := world_path() + SaveTxn.TMP_EXT
+	var stage_err := _stage_json(world_tmp, payload, "world_tmp")
+	if stage_err != OK:
+		SaveTxn.discard(ops)
+		region_store.last_failed_chunk_keys = []
+		return stage_err
+	ops.append({ "path": world_path(), "tmp": world_tmp, "kind": "world" })
+	var commit_err := SaveTxn.commit(ops, journal_path(), fault) as Error
+	if commit_err != OK:
+		region_store.last_failed_chunk_keys = []   # rolled back: every chunk of this save stays dirty
+	return commit_err
+
+## The `atomic_writes = false` path: regions first, the world record second, each written in place.
+func _write_world_payload_in_place(payload: Dictionary, chunks: Variant, incremental: bool) -> Error:
 	var first_error: Error = OK
 	if chunks is Dictionary and not (chunks as Dictionary).is_empty():
 		first_error = region_store.write_chunks(chunks)
+	if first_error != OK:
+		return first_error
 	if incremental:
 		var existing := load_world_record()
 		if not existing.is_empty():
@@ -296,7 +356,25 @@ func _write_world_payload(data: Dictionary, incremental: bool) -> Error:
 	var world_err := _write_json(world_path(), payload)
 	if world_err != OK:
 		region_store.last_failed_chunk_keys = []
-	return first_error if first_error != OK else world_err
+	return world_err
+
+## Write `data` to `path` (a staging `.tmp`) without renaming. `step` names the fault-injection point.
+func _stage_json(path: String, data: Dictionary, step: String) -> Error:
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	if fault.is_valid() and bool(fault.call(step)):
+		return ERR_CANT_CREATE
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		var err := FileAccess.get_open_error()
+		Diag.error("PersistenceSlice: cannot open %s for write — %s" % [path, error_string(err)])
+		return err
+	var wrote := file.store_string(JSON.stringify(data, "\t"))
+	file.close()
+	if not wrote:
+		Diag.error("PersistenceSlice: cannot write %s" % path)
+		DirAccess.remove_absolute(path)
+		return ERR_FILE_CANT_WRITE
+	return OK
 
 ## The GLOBAL world record on disk (seed, stations, creatures, local player id), or an
 ## empty dict when there is none / it is unreadable. A missing record is NOT an error —
@@ -304,6 +382,7 @@ func _write_world_payload(data: Dictionary, incremental: bool) -> Error:
 ## split into region files here, on first read (`_migrate_monolith`), so the record a
 ## caller sees is always the Phase 52 shape. Voxel edits come from `load_region_chunks`.
 func load_world_record() -> Dictionary:
+	recover_interrupted_save()
 	var path := world_path()
 	if not FileAccess.file_exists(path):
 		return {}

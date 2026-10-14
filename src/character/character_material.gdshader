@@ -19,9 +19,10 @@ shader_type spatial;
 //   color_mask_tex  R = Primary, G = Secondary, B = Accent
 //   channel_tex     R = Metal, G = Emission, B = Wear   (§21/§22/§23)
 //
-// The placeholder build authors no mask textures yet, so both default to black
-// (colour falls back to `base_index`, channels fall back to the per-instance
-// scalars below). A real mask texture's channel is max()'d with the scalar so
+// Unbound, both default to black (colour falls back to `base_index`, channels
+// fall back to the per-instance scalars below). The public body masks at
+// `textures/characters/player_{color_mask,channel}.png.raw` are all-black
+// placeholders with the same result; the production pack overrides them. A real mask texture's channel is max()'d with the scalar so
 // either drives the result — scalars now, authored masks later, one shader.
 
 // Shared 256-entry palette (§19): nearest-filtered, no mipmaps, no tiling.

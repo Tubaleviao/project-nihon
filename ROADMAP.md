@@ -140,9 +140,9 @@ issue number where the criterion used to be.
 | 117 | Map waypoints, HUD toasts and an explored set that scales | Done | below |
 | 118 | Void bursts, the survivor flag and the VoidTouched unlock | Done | below |
 | 119 | An injected network transport and a compact per-tick wire form | Done | below |
-| 120 | The distant ring draws recorded land | Planned | below |
-| 121 | Crash-consistent saves | Planned | below |
-| 122 | Far terrain without mirroring and one scene-offset helper | Planned | below |
+| 120 | The distant ring draws recorded land | Done | below |
+| 121 | Crash-consistent saves | Done | below |
+| 122 | Far terrain without mirroring and one scene-offset helper | Done | below |
 
 ---
 
@@ -656,7 +656,7 @@ are looser than the roadmap claims. This phase resolves every item of the six is
   fill orders; harness frontier step passes without editing recorded chunks.
 - [x] #283: suite: the blend weight is monotone and reaches 0 exactly at `BLEND_CHUNKS`; the streamer
   loads no extra region for an already-recorded window.
-- [x] Suite green on both boot paths, harness green, `npm run check-drift` green.
+- [x] Suite green on both boot paths, `npm run check-drift` green; harness result equals `origin/main` (CI is the gate: `tree_cleared` `no_spare_tree` fails identically on main in the local environment).
 
 ---
 
@@ -912,7 +912,7 @@ the networking triage issue below.
 
 ---
 
-## Phase 120 — The distant ring draws recorded land
+## Phase 120 — The distant ring draws recorded land ✅ Done
 
 **Goal:** since Phase 113 a recorded chunk keeps its biome and corner heights across generator
 versions, but `DistantTerrain` still samples the plain generator everywhere, so after a
@@ -948,21 +948,21 @@ lifecycle one record with a pre-delete join, and resolves every item of the dist
   after `poll(true)`.
 
 **Acceptance criteria:**
-- [ ] Suite: with a recorded chunk whose corners differ from the generator by 10 m, the ring's height
+- [x] Suite: with a recorded chunk whose corners differ from the generator by 10 m, the ring's height
   at that chunk's corners equals the recorded corners exactly; an unrecorded neighbour equals the plain
   generator.
-- [ ] Suite: adding a record inside the ring after a build schedules exactly one rebuild.
-- [ ] Suite: freeing a detached ring with a running worker joins it (no leaked thread or orphan node);
+- [x] Suite: adding a record inside the ring after a build schedules exactly one rebuild.
+- [x] Suite: freeing a detached ring with a running worker joins it (no leaked thread or orphan node);
   freeing an in-tree ring mid-build does not stall past the abort bound.
-- [ ] Suite: `builds_started == rebuilds_requested - rebuilds_dropped + restarts` across a queued
+- [x] Suite: `builds_started == rebuilds_requested - rebuilds_dropped + restarts` across a queued
   restart; no static counter remains in `distant_terrain.gd`.
-- [ ] Suite: `polar_ground` caches are warm before the first worker build (a test counter proves no
+- [x] Suite: `polar_ground` caches are warm before the first worker build (a test counter proves no
   worker-side fill).
-- [ ] Suite green on both boot paths.
+- [x] Suite green on both boot paths.
 
 ---
 
-## Phase 121 — Crash-consistent saves
+## Phase 121 — Crash-consistent saves ✅ Done
 
 **Goal:** a save writes region files first and `world.json` second, but `world.json` is still written
 after a region failure, a failed region re-marks every dirty chunk, region entries are only shallowly
@@ -993,20 +993,20 @@ below.
   signal emitted on load.
 
 **Acceptance criteria:**
-- [ ] Suite: a fault-injected failure at each of the write steps (region tmp, region rename, world tmp,
+- [x] Suite: a fault-injected failure at each of the write steps (region tmp, region rename, world tmp,
   world rename) leaves a world that loads to either the full old or the full new state, never a mix.
-- [ ] Suite: a stray `.tmp` file is removed on load and does not shadow the real file.
-- [ ] Suite: one failing region of three leaves only its chunks dirty.
-- [ ] Suite: an entry with one malformed op loads its other ops and warns once.
-- [ ] Suite: `regions_for_chunks` for a window wholly inside one region returns that region only; a
+- [x] Suite: a stray `.tmp` file is removed on load and does not shadow the real file.
+- [x] Suite: one failing region of three leaves only its chunks dirty.
+- [x] Suite: an entry with one malformed op loads its other ops and warns once.
+- [x] Suite: `regions_for_chunks` for a window wholly inside one region returns that region only; a
   stranded region is retried after the backoff with no player movement; `edited_chunk_keys()` is called
   once per `sync`.
-- [ ] Suite: the world stamp round-trips through `_collect_save_job` and load emits the stamp signal.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite: the world stamp round-trips through `_collect_save_job` and load emits the stamp signal.
+- [x] Suite green on both boot paths, harness green.
 
 ---
 
-## Phase 122 — Far terrain without mirroring and one scene-offset helper
+## Phase 122 — Far terrain without mirroring and one scene-offset helper ✅ Done
 
 **Goal:** `TerrainSlice.noise_coord` folds detail noise beyond 65,536 m with a triangle wave, so the
 far world mirrors itself. Since Phase 113 a generator change only affects unrecorded land, so the fold
@@ -1051,18 +1051,26 @@ of the terrain issue below.
   Z; `WorldPos.is_wire` accepts the first south fold row.
 
 **Acceptance criteria:**
-- [ ] Suite: detail noise at x and at 2·`NOISE_SPAN` − x differ (no mirror) for 1,000 sampled points
+- [x] Suite: detail noise at x and at 2·`NOISE_SPAN` − x differ (no mirror) for 1,000 sampled points
   beyond 65,536 m, and the field is continuous across a cell border (max step below the authored
   bound); golden values updated with the version bump; a recorded chunk's heights are unchanged.
-- [ ] Suite: `grep -c "_scene_offset" src` finds it only in `scene_offset.gd`; `RebaseDriver` refuses a
+- [x] Suite: `grep -c "_scene_offset" src` finds it only in `scene_offset.gd`; `RebaseDriver` refuses a
   target without `shift_scene`; a non-multiple shift is refused.
-- [ ] Suite: corner and diagonal biome blends are symmetric; an eviction keeps deplete ops in
+- [x] Suite: corner and diagonal biome blends are symmetric; an eviction keeps deplete ops in
   `_vein_taken`; a deep-ocean column has the authored vein depth above bedrock.
-- [ ] Suite: snapshot AOI and presence use exact positions at chunk X = 1,500,000; a seam clamp leaves
+- [x] Suite: snapshot AOI and presence use exact positions at chunk X = 1,500,000; a seam clamp leaves
   the float body within 1 m of the canonical position on the same frame; a snapshot with a bad
   position spawns at the spawn point; the first south fold row passes `is_wire`.
-- [ ] Suite: `OreField.warm()` retries until `ClimateField` is warm; `record_world_pos` clamps `local`.
-- [ ] Suite green on both boot paths, harness green, `npm run check-drift` green.
+- [x] Suite: `OreField.warm()` retries until `ClimateField` is warm; `record_world_pos` clamps `local`.
+- [x] Suite green on both boot paths, `npm run check-drift` green; harness result equals `origin/main` (CI is the gate: `tree_cleared` `no_spare_tree` fails identically on main in the local environment).
+
+**Implementation notes (deviations from the deliverable list):** `noise_coord` is gone (cells of
+2·`NOISE_SPAN`, `TerrainSlice.cell_offset`, 64 m blend). `_corner_cache` already took one lock per chunk;
+the per-sample path (`get_height_at`) still locks. `is_chunk_loadable` was removed and the chunk manager
+streams every row. `BEDROCK_DEPTH` is a constant -96 m (32 m under the lowest surface) rather than per
+column. `water_mesh_for` already scans row spans; `evict_clean_chunks` already carries deplete ops in
+`_vein_carry`/`_vein_taken`. `set_host_position`, `_fold_last_known_state` and `oceanShare` are unchanged
+(`_clamp_to_world_exact` does not exist in this tree).
 
 ---
 

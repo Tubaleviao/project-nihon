@@ -45,6 +45,16 @@ static func from_scene(scene_pos: Vector3, origin_chunk: Vector2i) -> Dictionary
 	return normalized({"chunk": origin_chunk, "local": scene_pos})
 
 ## True once a scene position is far enough from the scene origin that the client should rebase.
+## Phase 122 — the exact offset from `a` to `b` (both `{chunk, local}`): the chunk difference is an
+## integer, so only the small remainder is float and the answer is exact however far from the origin.
+static func offset_between(a: Dictionary, b: Dictionary) -> Vector3:
+	var ca: Vector2i = a["chunk"]
+	var cb: Vector2i = b["chunk"]
+	var la: Vector3 = a["local"]
+	var lb: Vector3 = b["local"]
+	return Vector3(float(cb.x - ca.x) * CHUNK_METERS + (lb.x - la.x), lb.y - la.y,
+		float(cb.y - ca.y) * CHUNK_METERS + (lb.z - la.z))
+
 static func needs_rebase(scene_pos: Vector3) -> bool:
 	return Vector2(scene_pos.x, scene_pos.z).length() > REBASE_DISTANCE
 
@@ -130,7 +140,10 @@ static func is_wire(data: Variant) -> bool:
 		var limits := [float(TerrainSlice.circumference_chunks()),
 			float(TerrainSlice.pole_chunks() + TerrainSlice.FOLD_MARGIN_CHUNKS)]
 		for i in 2:
-			if absf(float(c[i])) > limits[i] or floorf(float(c[i])) != float(c[i]):
+			# Z: `fold_world_pos` folds row >= pole+margin north and row < -pole-margin south, so the
+			# first south fold row (one past -limit) is a position a player really reaches.
+			var low: float = -limits[i] - (1.0 if i == 1 else 0.0)
+			if float(c[i]) > limits[i] or float(c[i]) < low or floorf(float(c[i])) != float(c[i]):
 				return false
 		for v in l:
 			if absf(float(v)) > LOCAL_LIMIT:

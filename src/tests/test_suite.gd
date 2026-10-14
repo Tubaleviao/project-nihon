@@ -113,6 +113,11 @@ func run() -> void:
 	_run_test("terrain: a ring reparented with a queued request builds the queued centre", _test_distant_ring_reparent_queued)
 	_run_test("terrain: the ring abort path is repeatable without engine errors", _test_distant_ring_abort_loop)
 	_run_test("terrain: the distant ring's vertices are pinned by a hash", _test_distant_ring_vertex_hash)
+	_run_test("terrain: the ring draws recorded corners exactly", _test_distant_ring_recorded_corners)
+	_run_test("terrain: a new record schedules exactly one ring rebuild", _test_distant_ring_record_rebuild)
+	_run_test("terrain: freeing a detached or in-tree ring joins its worker", _test_distant_ring_free_joins)
+	_run_test("terrain: ring build counters balance across a queued restart", _test_distant_ring_counter_invariant)
+	_run_test("terrain: polar caches are warm before the ring's worker runs", _test_distant_ring_warm_caches)
 	_run_test("terrain: detail noise has one formula", _test_detail_noise_single_formula)
 	_run_test("terrain: walking 5 chunks requests at most 5 ring rebuilds", _test_distant_ring_rebuild_counter)
 	_run_test("terrain: concurrent height sampling matches single-threaded", _test_height_concurrent)
@@ -354,6 +359,10 @@ func run() -> void:
 	_run_test("region: an overlay keeps the larger stored depletion count", _test_region_overlay_keeps_larger_taken)
 	_run_test("region: migration recovers a monolith chunk whose region entry is malformed", _test_region_migrate_malformed_recovers)
 	_run_test("rebase: an unshiftable target is reported",      _test_rebase_driver_reports_unshiftable)
+	_run_test("far origin: exact AOI, south fold row, ore warm retry", _test_phase122_exact_positions)
+	_run_test("far origin: bad snapshot position spawns, registry clamps local", _test_phase122_snapshot_fallback_and_clamp)
+	_run_test("voxel: corner blends are symmetric, deep ocean keeps vein depth", _test_phase122_blend_and_bedrock)
+	_run_test("rebase: one SceneOffset helper, whole-chunk shifts only", _test_scene_shift_helper)
 	_run_test("game_root: implausible peer positions dropped",  _test_remote_state_plausibility)
 	_run_test("networking: a remote peer's exact position is saved exactly", _test_remote_peer_exact_position)
 	_run_test("networking: peer windows and relays use the exact peer position", _test_peer_exact_window_and_relay)
@@ -652,6 +661,8 @@ func run() -> void:
 	_run_test("asset: manifest lists keys that exist on disk",   _test_asset_manifest_keys_exist)
 	_run_test("asset: load_mesh / load_animation_library from .glb.raw", _test_asset_load_mesh_and_animation)
 	_run_test("asset: placeholder rig is a visible body (#112)", _test_asset_placeholder_rig_is_a_body)
+	_run_test("asset: player rig placeholder has the art's contract", _test_asset_player_rig_placeholder_contract)
+	_run_test("asset: body sheet placeholders are 64x64, masks black, detail white", _test_asset_body_sheet_placeholders)
 	_run_test("asset: missing model key warns and falls back",   _test_asset_missing_model_falls_back)
 	_run_test("asset: creature model key derived from entity name", _test_asset_creature_key)
 	_run_test("rig tree: every Locomotion.State maps to a node", _test_rig_tree_state_mapping_total)
@@ -820,6 +831,13 @@ func run() -> void:
 	_run_test("net: harness verdict treats refusal as a pass",    _test_net_harness_verdict)
 	_run_test("net: harness targets are deterministic",           _test_net_harness_target_selection)
 	_run_test("net: harness awaits are not bare",                 _test_net_harness_bare_await_audit)
+	_run_test("p121: a fault at each write step leaves one world", _test_p121_fault_at_each_step)
+	_run_test("p121: a region that cannot stage changes nothing",  _test_p121_region_stage_fault)
+	_run_test("p121: crash recovery and stray tmp files",          _test_p121_crash_recovery_and_stray_tmp)
+	_run_test("p121: one failing region of three",                 _test_p121_one_failing_region_of_three)
+	_run_test("p121: a malformed op is dropped alone",             _test_p121_malformed_op_dropped_alone)
+	_run_test("p121: streamer scans once and retries stranded",    _test_p121_streamer_scan_and_retry)
+	_run_test("p121: world stamp through save job and load",       _test_p121_world_stamp_round_trip)
 
 	# Self-check: the _run_test list above is manual, so a test function can be
 	# written but forgotten from the list. Fail loudly instead of silently
@@ -1214,7 +1232,7 @@ func _test_chunk_key_canonical_at_seam() -> void:
 	var west_tile := Vector2i(-c / 2 * TerrainSlice.CHUNK_SIZE + 3, 70)
 	assert_eq(VoxelSlice._tile_key(east_tile), VoxelSlice._tile_key(west_tile),
 		"a tile east of the seam is the same edit key as the tile west of it")
-	voxel._set_edit_ops(VoxelSlice._tile_key(east_tile), [{ "op": "raise", "n": 1 }])
+	voxel._set_edit_ops(VoxelSlice._tile_key(east_tile), [{ "op": "remove", "bottom": 1.0, "top": 1.0 }])
 	assert_true(voxel.edited_chunk_keys().has(voxel._chunk_key(Vector2i(-c / 2, 1))),
 		"an edit made at chunk (C/2, z) is found when reading chunk (-C/2, z)")
 	var cm := ChunkManager.new()
@@ -1286,6 +1304,118 @@ func _test_rebase_extras() -> void:
 	pickup2.free()
 	station.free()
 	loot.free()
+
+## Phase 122 — the scene-offset state lives in scene_offset.gd alone, and the player refuses a
+## shift that is not a whole number of chunks.
+func _test_scene_shift_helper() -> void:
+	var holders := 0
+	for dir in ["res://src"]:
+		holders += _count_files_with(dir, "_scene_" + "offset")
+	assert_eq(holders, 0, "no source file declares its own scene offset field")
+	var so := preload("res://src/core/scene_offset.gd").new()
+	so.add(Vector3(64.0, 0.0, -32.0))
+	assert_eq(so.to_scene(Vector3(1.0, 2.0, 3.0)), Vector3(65.0, 2.0, -29.0), "to_scene adds the offset")
+	assert_eq(so.to_world(so.to_scene(Vector3(1.0, 2.0, 3.0))), Vector3(1.0, 2.0, 3.0), "to_world undoes it")
+	var cm := WorldPos.CHUNK_METERS
+	assert_true(PlayerSlice.is_chunk_multiple_shift(Vector3(2.0 * cm, 0.0, -cm)), "a whole-chunk shift is accepted")
+	assert_false(PlayerSlice.is_chunk_multiple_shift(Vector3(cm * 0.5, 0.0, 0.0)), "half a chunk is refused")
+	assert_false(PlayerSlice.is_chunk_multiple_shift(Vector3(cm, 3.0, 0.0)), "a vertical shift is refused")
+	var player := PlayerSlice.new()
+	add_child(player)
+	player.shift_scene(Vector3(cm * 0.25, 0.0, 0.0))
+	assert_eq(player.scene_offset(), Vector3.ZERO, "a refused shift leaves the offset alone")
+	player.shift_scene(Vector3(-cm, 0.0, 0.0))
+	assert_eq(player.scene_offset(), Vector3(-cm, 0.0, 0.0), "a whole-chunk shift moves it")
+	player.free()
+
+func _test_phase122_exact_positions() -> void:
+	var far := { "chunk": Vector2i(1500000, 7), "local": Vector3(30.0, 2.0, 5.0) }
+	var near := { "chunk": Vector2i(1500001, 7), "local": Vector3(2.0, 2.0, 5.0) }   # 4 m east
+	var gone := { "chunk": Vector2i(1500000 + 20, 7), "local": Vector3(2.0, 2.0, 5.0) }
+	assert_eq(WorldPos.offset_between(far, near), Vector3(4.0, 0.0, 0.0), "the offset between exact positions is exact at chunk X 1,500,000")
+	assert_true(NetworkingSlice.within_aoi_exact(far, near), "a neighbour 4 m away is in the AOI at chunk X 1,500,000")
+	assert_false(NetworkingSlice.within_aoi_exact(far, gone), "a position 600 m away is not")
+	var row: int = -TerrainSlice.pole_chunks() - TerrainSlice.FOLD_MARGIN_CHUNKS - 1
+	assert_true(WorldPos.is_wire({ "chunk": [0, row], "local": [1.0, 2.0, 3.0] }), "the first south fold row is a wire position")
+	assert_false(WorldPos.is_wire({ "chunk": [0, row - 1], "local": [1.0, 2.0, 3.0] }), "one row further is not")
+	assert_true(WorldPos.is_wire({ "chunk": [0, TerrainSlice.pole_chunks() + TerrainSlice.FOLD_MARGIN_CHUNKS], "local": [1.0, 2.0, 3.0] }), "the north limit is unchanged")
+	# OreField.warm() latches only once ClimateField is warm.
+	var was_ore: bool = OreField._warmed
+	var was_climate: bool = ClimateField._warmed
+	OreField._warmed = false
+	ClimateField._warmed = false
+	OreField.warm()
+	assert_true(ClimateField.is_warm() and OreField._warmed, "OreField.warm() warms ClimateField and latches")
+	OreField._warmed = was_ore
+	ClimateField._warmed = was_climate
+
+func _test_phase122_snapshot_fallback_and_clamp() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	var body := PlayerSlice.new()
+	body.render_visuals = true
+	add_child(body)
+	var gr: Node = root_script.new()
+	gr._player = body
+	gr._terrain = terrain
+	gr._rebase = RebaseDriver.new([body])
+	gr._rebase.rebase_to(Vector2i(600000, 40))
+	body.place_at_world_pos({ "chunk": Vector2i(600000, 40), "local": Vector3(1.0, 20.0, 1.0) })
+	# A wire-shaped but invalid position (a chunk far past the pole) spawns the body at the spawn point.
+	gr._place_from_snapshot({ "position": { "chunk": [0, 99999999], "local": [1.0, 2.0, 3.0] } })
+	var landed := body.get_world_pos()
+	assert_eq(landed["chunk"], Vector2i.ZERO, "a bad snapshot position rebases to the spawn chunk")
+	var spawn: Vector3 = landed["local"]
+	assert_true(Vector2(spawn.x, spawn.z).distance_to(WorldShape.SPAWN_CENTER) < 1.0, "and lands on the spawn point")
+	gr.free()
+	body.free()
+	terrain.free()
+	# record_world_pos derives `position` from the normalised chunk: an overflowing local carries over.
+	var reg := PlayerRegistry.new()
+	reg.record_world_pos("clamp", { "chunk": Vector2i(5, 6), "local": Vector3(WorldPos.CHUNK_METERS + 7.0, 3.0, -4.0) })
+	var rec := reg.get_record("clamp")
+	var pos: Array = rec["position"]
+	var cm: float = WorldPos.CHUNK_METERS
+	assert_eq(float(pos[0]), 6.0 * cm + 7.0, "an overflowing local X carries into the next chunk")
+	assert_eq(float(pos[2]), 6.0 * cm - 4.0, "a negative local Z carries into the previous chunk")
+	reg.free()
+	# A non-multiple shift is refused even at a huge shift (no relative tolerance).
+	assert_false(PlayerSlice.is_chunk_multiple_shift(Vector3(-48000000.0 + 100.0, 0.0, 0.0)), "a 100 m off-grid shift is refused at 48,000 km")
+	assert_true(PlayerSlice.is_chunk_multiple_shift(Vector3(-48000000.0, 0.0, 32.0)), "whole-chunk shifts pass")
+
+func _test_phase122_blend_and_bedrock() -> void:
+	var extent := float(VoxelSlice.CHUNK_SIZE * VoxelSlice.TILE_SIZE)
+	var ts := float(VoxelSlice.TILE_SIZE)
+	# Transposed layout: swapping X and Z in both the biome map and the position swaps the answer.
+	var a := { "0,0": "Desert", "1,0": "Tundra", "0,1": "VoidRift", "1,1": "Alpine" }
+	var b := { "0,0": "Desert", "0,1": "Tundra", "1,0": "VoidRift", "1,1": "Alpine" }
+	var worn := 0
+	for i in range(VoxelSlice.CHUNK_SIZE):
+		for j in range(VoxelSlice.CHUNK_SIZE):
+			var xz := Vector2(extent - (float(i) + 0.5) * ts, extent - (float(j) + 0.5) * ts)   # the 0,0 chunk's far corner
+			var got := VoxelSlice.blended_biome(xz, a, "Desert")
+			var swapped := VoxelSlice.blended_biome(Vector2(xz.y, xz.x), b, "Desert")
+			assert_eq(got, swapped, "blend at (%d,%d) is symmetric under X/Z swap" % [i, j])
+			if got != "Desert":
+				worn += 1
+	assert_true(worn > 0, "the corner band is dithered with the neighbours' biomes")
+	# A deep-ocean column (the fabric's lowest surface) has the authored vein depth above bedrock.
+	var deepest := 0.0
+	for key in GameData.MATERIALS:
+		var band: Variant = GameData.MATERIALS[key].get("depthBand")
+		if band is Dictionary:
+			deepest = maxf(deepest, float((band as Dictionary).get("max", 0.0)))
+	assert_true(WorldShape.min_height() - deepest > VoxelSlice.BEDROCK_DEPTH, "the deepest vein band (%.0f m) fits above bedrock under the deepest ocean floor" % deepest)
+
+func _count_files_with(dir: String, needle: String) -> int:
+	var n := 0
+	for f in DirAccess.get_files_at(dir):
+		if f.ends_with(".gd") and FileAccess.get_file_as_string(dir.path_join(f)).contains(needle):
+			n += 1
+	for d in DirAccess.get_directories_at(dir):
+		n += _count_files_with(dir.path_join(d), needle)
+	return n
 
 ## Review of #165 — a target with no `shift_scene` is reported, not silently left behind.
 func _test_rebase_driver_reports_unshiftable() -> void:
@@ -1756,26 +1886,45 @@ func _test_far_noise_quantised() -> void:
 	var t := TerrainSlice.new()
 	add_child(t)
 	t.set_world_seed(1234)
-	# Inside the span the coordinate is untouched: ground near the origin does not change.
-	assert_eq(TerrainSlice.noise_coord(123.5), 123.5, "the fold is the identity near the origin")
-	assert_eq(TerrainSlice.noise_coord(-8000.25), -8000.25, "and for negative coordinates")
+	var span := TerrainSlice.NOISE_SPAN
+	# Inside the origin cell, away from its borders, the coordinate is untouched.
+	assert_eq(TerrainSlice.cell_offset(1234, 0, 0), Vector2.ZERO, "the origin cell has no offset")
+	assert_true(TerrainSlice.cell_offset(1234, 1, 0) != Vector2.ZERO, "a far cell has an offset")
+	assert_eq(TerrainSlice.cell_offset(1234, 3, -2), TerrainSlice.cell_offset(1234, 3, -2), "the offset is pure")
+	for off in [TerrainSlice.cell_offset(1234, 1, 0), TerrainSlice.cell_offset(-99, -4, 7)]:
+		assert_true(absf(off.x) <= TerrainSlice.NOISE_OFFSET_RANGE and absf(off.y) <= TerrainSlice.NOISE_OFFSET_RANGE, "the offset is bounded")
+		assert_eq(off.x, snappedf(off.x, 0.125), "and exact to the 0.125 step")
+	var ref := FastNoiseLite.new()
+	TerrainSlice.configure_noise(ref, 1234)
+	assert_eq(t.detail_at(123.5, -8000.25), (ref.get_noise_2d(123.5, -8000.25) + 1.0) * 0.5 * TerrainSlice.HEIGHT_SCALE, "ground near the origin is the plain noise")
+	# No mirror: x and 2·NOISE_SPAN − x differ for 1,000 points beyond the span.
+	var differ := 0
+	for i in range(1000):
+		var x := span + 1000.0 + float(i) * 37.25
+		var z := 77.5 + float(i) * 11.0
+		if absf(t.detail_at(x, z) - t.detail_at(2.0 * span - x, z)) > 1e-6:
+			differ += 1
+	assert_eq(differ, 1000, "detail noise does not mirror beyond the span")
+	# Far tiles still step smoothly (no terracing from float32).
 	var far_x := 312500.0 * TerrainSlice.CHUNK_METERS
 	var prev := -1.0
 	var distinct := 0
 	for i in range(64):
-		var x := far_x + float(i) * TerrainSlice.TILE_SIZE
-		var coord := TerrainSlice.noise_coord(x)
-		assert_true(absf(coord) <= TerrainSlice.NOISE_SPAN, "the folded coordinate stays small")
-		assert_eq(coord, snappedf(coord, 0.125), "the folded coordinate is exact to the 0.125 step")
-		var d := t.detail_at(x, 77.5)
+		var d := t.detail_at(far_x + float(i) * TerrainSlice.TILE_SIZE, 77.5)
 		if absf(d - prev) > 0.0:
 			distinct += 1
 		assert_true(prev < 0.0 or absf(d - prev) < 1.0, "adjacent tiles differ by terrain slope, not a rounding jump")
 		prev = d
 	assert_eq(distinct, 64, "no terracing: every tile steps to a new value")
-	# Continuous across the fold: a half-step either side of the fold agrees to within one tile of slope.
-	var fold := TerrainSlice.NOISE_SPAN
-	assert_true(absf(t.detail_at(fold - 0.25, 5.0) - t.detail_at(fold + 0.25, 5.0)) < 1.0, "the fold has no cliff")
+	# Continuous across cell borders on both axes: the largest step stays at slope scale.
+	var worst := 0.0
+	for border in [span, 3.0 * span, -span]:
+		for k in range(-80, 80):
+			var x0: float = border + float(k) * 0.125
+			worst = maxf(worst, absf(t.detail_at(x0, 5.0) - t.detail_at(x0 + 0.125, 5.0)))
+			worst = maxf(worst, absf(t.detail_at(5.0, x0) - t.detail_at(5.0, x0 + 0.125)))
+			worst = maxf(worst, absf(t.detail_at(x0, x0) - t.detail_at(x0 + 0.125, x0 + 0.125)))
+	assert_true(worst < 0.5, "the field is continuous across a cell border (max step %.4f)" % worst)
 	t.free()
 
 func _test_where_command() -> void:
@@ -7931,8 +8080,9 @@ func _test_asset_load_mesh_and_animation() -> void:
 
 ## Issue #112 — the public placeholder rig IS the avatar a fresh clone renders:
 ## `game_root._finish_host_boot` calls `CharacterSlice.attach_default_rig`, which
-## prefers the private `models/player_rig.glb.raw` and falls back to this public key,
-## and `attach_rig` HIDES the procedural box body on success. The placeholder used to
+## tries `models/player_rig.glb.raw` first and this key second (now that the public
+## manifest lists a player rig placeholder, this one renders only when a manifest leaves
+## `player_rig` out), and `attach_rig` HIDES the procedural box body on success. The placeholder used to
 ## be a SINGLE 1x1 TRIANGLE in the XY plane — flat and single-sided, so a public clone
 ## showed nothing from behind and a gray sliver from the front: the player's own
 ## character was invisible. A rig that stands in for the player must be a BODY —
@@ -7978,6 +8128,102 @@ func _test_asset_placeholder_rig_is_a_body() -> void:
 		var tree := RigTree.build_tree(player)
 		assert_true(tree.tree_root != null, "the locomotion tree builds off the placeholder's clips")
 		tree.free()
+	root.free()
+
+## The public body sheets stand in for the player rig's authored ones: same image
+## size (64x64, the art's). The masks are all-black opaque so a public clone renders
+## base colour with no channel, and the detail sheet all-white opaque so it multiplies
+## by one, exactly as the shader does with nothing bound. Reads the committed
+## placeholder itself, not whatever a mounted pack overlays.
+func _test_asset_body_sheet_placeholders() -> void:
+	var expected := {
+		"textures/characters/player_color_mask.png.raw": Color(0, 0, 0, 1),
+		"textures/characters/player_channel.png.raw": Color(0, 0, 0, 1),
+		"textures/characters/player.png.raw": Color(1, 1, 1, 1),
+	}
+	for key: String in expected:
+		assert_true(AssetOverlay.has_key("textures", key), "manifest lists %s" % key)
+		var img := Image.new()
+		var err := img.load_png_from_buffer(FileAccess.get_file_as_bytes("res://assets/" + key))
+		assert_eq(err, OK, "%s decodes as PNG" % key)
+		if err != OK:
+			continue
+		assert_eq(img.get_size(), Vector2i(64, 64), "%s is 64x64 like the art" % key)
+		var uniform := true
+		for y in img.get_height():
+			for x in img.get_width():
+				if img.get_pixel(x, y) != expected[key]:
+					uniform = false
+					break
+			if not uniform:
+				break
+		assert_true(uniform, "%s is opaque %s, as unbound" % [key, expected[key]])
+
+## Asset roadmap A2: `models/player_rig.glb.raw` is the key the private player rig
+## overrides, so its public placeholder carries the art's contract (assets/README.md,
+## "The placeholder rule"): a skeleton whose bones are the fabric HumanoidSkeleton's,
+## names and parents exactly, rest axes in the art's convention (a bone's +Y points at
+## its only child), a skin bound at those rests, every clip the locomotion tree plays,
+## a human-height body standing on the root's ground plane. Code that reads bones then
+## works on a public clone exactly as on the art.
+func _test_asset_player_rig_placeholder_contract() -> void:
+	const GameDataReader := preload("res://src/core/game_data_reader.gd")
+	const Locomotion := preload("res://src/character/locomotion.gd")
+	var root := AssetOverlay.load_rig_scene("models/player_rig.glb.raw")
+	assert_true(root != null, "the player rig placeholder parses into a scene")
+	if root == null:
+		return
+	var skeletons := root.find_children("*", "Skeleton3D", true, false)
+	var skeleton: Skeleton3D = skeletons[0] if skeletons.size() == 1 else null
+	assert_true(skeleton != null, "the player rig carries a Skeleton3D")
+	if skeleton != null:
+		var bones: Array = GameDataReader.json_field(GameData.SKELETONS["HumanoidSkeleton"], "bones", [])
+		assert_eq(skeleton.get_bone_count(), bones.size(), "one bone per fabric HumanoidSkeleton bone")
+		for b in bones:
+			var idx := skeleton.find_bone(str(b["name"]))
+			assert_true(idx >= 0, "bone %s is in the rig" % b["name"])
+			if idx >= 0:
+				var parent := skeleton.get_bone_parent(idx)
+				assert_eq(skeleton.get_bone_name(parent) if parent >= 0 else "", str(b["parent"]),
+					"bone %s has its fabric parent" % b["name"])
+		for idx in skeleton.get_bone_count():
+			var kids := skeleton.get_bone_children(idx)
+			if kids.size() == 1:
+				var along := skeleton.get_bone_rest(kids[0]).origin
+				assert_true(along.length() > 0.01 and along.normalized().y > 0.99,
+					"bone %s points its +Y at its child, as the art's bones do (%s)" % [skeleton.get_bone_name(idx), along])
+	var parts: Array = []
+	_collect_mesh_instances(root, parts)
+	assert_true(parts.size() > 0, "the player rig has a mesh")
+	var box := AABB()
+	for i in parts.size():
+		var mi: MeshInstance3D = parts[i]
+		var xf := Transform3D.IDENTITY
+		var n: Node = mi
+		while n != root and n is Node3D:
+			xf = (n as Node3D).transform * xf
+			n = n.get_parent()
+		var local := xf * mi.get_aabb()
+		box = local if i == 0 else box.merge(local)
+		# Each bind pose must undo its bone's global rest, or the body renders offset.
+		if skeleton != null and mi.skin != null:
+			assert_eq(mi.skin.get_bind_count(), skeleton.get_bone_count(), "one skin bind per bone")
+			for bi in mi.skin.get_bind_count():
+				var bone := mi.skin.get_bind_bone(bi)
+				if bone < 0:
+					bone = skeleton.find_bone(mi.skin.get_bind_name(bi))
+				var err := mi.skin.get_bind_pose(bi) * skeleton.get_bone_global_rest(bone)
+				assert_true(err.basis.is_equal_approx(Basis.IDENTITY) and err.origin.length() < 0.001,
+					"bind %d (bone %s) inverts the bone's rest" % [bi, skeleton.get_bone_name(bone)])
+	assert_true(box.size.y >= 1.5 and box.size.y <= 1.9, "the body is 1.5-1.9 m tall (%.2f m)" % box.size.y)
+	assert_true(absf(box.position.y) <= 0.02, "the feet sit on the ground plane (min y %.3f)" % box.position.y)
+	assert_true(box.size.x > 0.1 and box.size.z > 0.1, "the body has thickness on both horizontal axes")
+	var player := root.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	assert_true(player != null, "the player rig carries an AnimationPlayer")
+	if player != null:
+		for state in Locomotion.State.values():
+			var clip: String = Locomotion.State.keys()[state].to_lower()
+			assert_true(player.has_animation(clip), "the player rig ships the '%s' clip" % clip)
 	root.free()
 
 ## Recursively collect every MeshInstance3D under `node` into `out`.
@@ -8064,7 +8310,15 @@ func _test_attach_rig() -> void:
 	assert_true(shown, "a rig-less rebuild leaves the procedural body visible")
 	var dflt := ch.create_character_from_recipe({"skeleton": "HumanoidSkeleton"}, Vector3.ZERO)
 	assert_true(ch.attach_default_rig(dflt), "the default rig resolves through the manifest")
-	assert_eq(ch._instances[dflt]["rig_key"], "models/placeholder_rig.glb.raw", "to the public placeholder when no player rig is listed")
+	assert_eq(ch._instances[dflt]["rig_key"], "models/player_rig.glb.raw", "to the player rig, which the public manifest lists too")
+	# A manifest without a player rig falls back to the public placeholder body.
+	AssetOverlay._manifest = { "meshes": { "models/placeholder_rig.glb.raw": "models/placeholder_rig.glb.raw" },
+		"animations": { "models/placeholder_rig.glb.raw": "models/placeholder_rig.glb.raw" } }
+	AssetOverlay._manifest_loaded = true
+	var fallback := ch.create_character_from_recipe({"skeleton": "HumanoidSkeleton"}, Vector3.ZERO)
+	assert_true(ch.attach_default_rig(fallback), "the default rig falls back when no player rig is listed")
+	assert_eq(ch._instances[fallback]["rig_key"], "models/placeholder_rig.glb.raw", "to the public placeholder body")
+	AssetOverlay.reload_manifest()
 	ch.free()
 
 func _test_asset_placeholder_resolves() -> void:
@@ -10435,7 +10689,7 @@ func _test_write_job_writes_records() -> void:
 	store.server_save_dir = dir
 	var pid := "player_1_1_abc"
 	var job := {
-		"world":       { "local_player_id": pid, "chunks": { "0,0": { "edits": { "1,1": [{ "op": "raise", "n": 1 }] } } } },
+		"world":       { "local_player_id": pid, "chunks": { "0,0": { "edits": { "1,1": [{ "op": "remove", "bottom": 1.0, "top": 1.0 }] } } } },
 		"incremental": false,
 		"players":     { pid: { "player_id": pid, "hp": 12.0 } },
 	}
@@ -16123,7 +16377,7 @@ func _test_polar_ice() -> void:
 	var polar := TerrainSlice.polar_chunks()
 	var pole := TerrainSlice.pole_chunks()
 	assert_true(t.is_chunk_in_bounds(Vector2i(0, polar)), "polar ice is walkable")
-	assert_true(t.is_chunk_loadable(Vector2i(0, pole + 4)), "and streamed in past the pole: no void there")
+	assert_false(t.is_chunk_in_bounds(Vector2i(0, pole + TerrainSlice.FOLD_MARGIN_CHUNKS)), "the walkable bound ends at the fold slack; streaming is not bounded")
 	# Near a pole the ground is the pole's snow field: not flat, and the same on both sides of a fold.
 	t.set_world_seed(12345)
 	var cm := TerrainSlice.CHUNK_METERS
@@ -16340,8 +16594,7 @@ func _test_distant_ring_abort() -> void:
 	d.rebuild(Vector2(100.0, -40.0), 3)
 	var control = d._control
 	assert_true(control != null, "the build has a control block")
-	remove_child(d)   # joined outside any locked iteration, then freed
-	d.free()
+	d.free()   # an in-tree ring: `_exit_tree` raises the flag and joins the worker
 	var rows_after_abort: int = control.rows
 	assert_true(control.aborted, "leaving the tree raised the abort flag")
 	# The worker is joined by now: no row was started after the flag, bar the one in progress.
@@ -16501,6 +16754,144 @@ func _test_distant_ring_vertex_hash() -> void:
 	assert_eq(verts.size(), 19908, "the ring for seed 7 has the recorded vertex count")
 	assert_eq(hash(verts), 391342816, "the ring for seed 7 has the recorded vertex hash")
 
+## Phase 120 — a recorded chunk whose corners differ from the generator by 10 m is drawn at its recorded
+## corners; its unrecorded neighbour stays on the plain generator.
+func _test_distant_ring_recorded_corners() -> void:
+	ChunkRecordsScript.clear()
+	var seed_v := 5
+	var c := Vector2i(40, 12)
+	var rec := TerrainSlice.generation_record(c, seed_v)
+	var hs: Array = rec["h"]
+	for i in 4:
+		hs[i] = clampf(float(hs[i]) + 10.0, WorldShape.min_height() + 1.0, WorldShape.max_height() - 1.0)
+	rec["h"] = hs
+	rec = RegionStoreScript.normalize_gen(rec)
+	assert_false(rec.is_empty(), "the shifted record is valid")
+	ChunkRecordsScript.set_record(c, rec)
+	var w := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var snap := ChunkRecordsScript.snapshot_near(c, 4, TerrainSlice.circumference_chunks())
+	assert_eq(snap.size(), 1, "the snapshot holds the one record")
+	var x := float(c.x) * 32.0
+	var z := float(c.y) * 32.0
+	assert_eq(TerrainSlice.shape_height_in(snap, seed_v, x, z, w), float(rec["h"][0]), "the ring's shape at the recorded corner is the recorded corner exactly")
+	var noise := FastNoiseLite.new()
+	TerrainSlice.configure_noise(noise, seed_v)
+	var ring_h := DistantTerrainScript.ground_at(noise, seed_v, x, z, w, snap)
+	var expect := TerrainSlice.polar_ground(seed_v, clampf(float(rec["h"][0]) + TerrainSlice.detail_of(noise, x, z), WorldShape.min_height(), WorldShape.max_height()), x, z, w)
+	assert_eq(ring_h, expect, "the ring's ground there is the recorded corner plus detail")
+	var gen_h := DistantTerrainScript.ground_at(noise, seed_v, x, z, w)
+	assert_true(absf(ring_h - gen_h) > 5.0, "and differs from the plain generator")
+	var nx := float(c.x + 1) * 32.0 + 3.0
+	assert_eq(TerrainSlice.shape_height_in(snap, seed_v, nx, z, w), WorldShape.height(seed_v, nx, z, w), "an unrecorded neighbour equals the plain generator")
+	assert_eq(DistantTerrainScript.ground_at(noise, seed_v, nx, z, w, snap), DistantTerrainScript.ground_at(noise, seed_v, nx, z, w), "its ring ground is the plain generator's too")
+	ChunkRecordsScript.set_record(c, RegionStoreScript.normalize_gen(TerrainSlice.generation_record(c, seed_v)))   # the snapshot is a copy
+	assert_eq(TerrainSlice.shape_height_in(snap, seed_v, x, z, w), float(rec["h"][0]), "a later table change never reaches the snapshot")
+	ChunkRecordsScript.clear()
+	# A recorded chunk west of the origin (canonical negative x) is found by both snapshot branches.
+	var cn := Vector2i(-40, 12)
+	ChunkRecordsScript.set_record(cn, RegionStoreScript.normalize_gen(TerrainSlice.generation_record(cn, seed_v)))
+	var circ := TerrainSlice.circumference_chunks()
+	assert_true(ChunkRecordsScript.snapshot_near(cn, 0, circ).has(cn), "a negative-x record is in the window-scan snapshot")
+	assert_true(ChunkRecordsScript.snapshot_near(cn, 4, circ).has(cn), "and in the table-scan snapshot")
+	assert_true(ChunkRecordsScript.snapshot_near(Vector2i(-38, 12), 0, circ).has(cn) == false, "outside the radius it is left out")
+	ChunkRecordsScript.clear()
+
+## Phase 120 — adding a record inside the ring after a build schedules exactly one rebuild.
+func _test_distant_ring_record_rebuild() -> void:
+	ChunkRecordsScript.clear()
+	var d := DistantTerrainScript.new()
+	add_child(d)
+	d.world_seed = 5
+	d.record_debounce_ms = 0
+	d.rebuild(Vector2(16.0, 16.0), 2)
+	d.poll(true)
+	assert_false(d.rebuild(Vector2(16.0, 16.0), 2), "no change, no rebuild")
+	var base := d.rebuilds_requested
+	ChunkRecordsScript.set_record(Vector2i(3, 1), RegionStoreScript.normalize_gen(TerrainSlice.generation_record(Vector2i(3, 1), 5)))
+	assert_true(d.rebuild(Vector2(16.0, 16.0), 2), "a new record asks for a rebuild")
+	assert_false(d.rebuild(Vector2(16.0, 16.0), 2), "and only one")
+	d.poll(true)
+	assert_false(d.rebuild(Vector2(16.0, 16.0), 2), "still only one after it lands")
+	assert_eq(d.rebuilds_requested - base, 1, "exactly one rebuild was scheduled")
+	var debounced := DistantTerrainScript.new()
+	add_child(debounced)
+	debounced.world_seed = 5
+	debounced.rebuild(Vector2(16.0, 16.0), 2)
+	debounced.poll(true)
+	ChunkRecordsScript.set_record(Vector2i(4, 1), RegionStoreScript.normalize_gen(TerrainSlice.generation_record(Vector2i(4, 1), 5)))
+	assert_false(debounced.rebuild(Vector2(16.0, 16.0), 2), "a records-only change right after a build is debounced")
+	d.free()
+	debounced.free()
+	ChunkRecordsScript.clear()
+
+## Phase 120 — a worker started while detached is joined when the ring is freed; so is an in-tree one,
+## within the abort bound.
+func _test_distant_ring_free_joins() -> void:
+	var d := DistantTerrainScript.new()   # never in the tree
+	d.world_seed = 11
+	d.rebuild(Vector2(100.0, -40.0), 3)
+	assert_true(d.is_building(), "a detached ring started a worker")
+	var control = d._control
+	d.free()
+	assert_true(control.aborted, "freeing it raised the abort flag (and joined the worker)")
+	var t := DistantTerrainScript.new()
+	add_child(t)
+	t.world_seed = 12
+	t.rebuild(Vector2(100.0, -40.0), 3)
+	var start := Time.get_ticks_msec()
+	t.free()
+	assert_true(Time.get_ticks_msec() - start < 3000, "freeing an in-tree ring mid-build does not stall")
+
+## Phase 120 — `builds_started == rebuilds_requested - rebuilds_dropped + restarts` across a queued restart,
+## and the script keeps no static counter.
+func _test_distant_ring_counter_invariant() -> void:
+	var d := DistantTerrainScript.new()
+	add_child(d)
+	d.world_seed = 11
+	d.rebuild(Vector2(100.0, -40.0), 2)
+	d.rebuild(Vector2(1500.0, 900.0), 2)
+	d.rebuild(Vector2(2500.0, 900.0), 2)   # replaces the queued one
+	d.poll(true)
+	assert_eq(d.builds_started, d.rebuilds_requested - d.rebuilds_dropped + d.restarts, "the counters balance")
+	assert_eq(d.restarts, 1, "the queued request's start was a restart")
+	var e := DistantTerrainScript.new()
+	add_child(e)
+	e.world_seed = 11
+	e.rebuild(Vector2(100.0, -40.0), 2)
+	remove_child(e)
+	add_child(e)
+	e.poll(true)
+	assert_eq(e.builds_started, e.rebuilds_requested - e.rebuilds_dropped + e.restarts, "and across a reparent")
+	var g := DistantTerrainScript.new()
+	add_child(g)
+	g.world_seed = 11
+	g.rebuild(Vector2(100.0, -40.0), 2)
+	g.rebuild(Vector2(1500.0, 900.0), 2)   # queued behind the running build
+	remove_child(g)   # the running one is aborted, the queued one is set aside
+	add_child(g)
+	g.poll(true)
+	g.poll(true)
+	assert_eq(g.builds_started, g.rebuilds_requested - g.rebuilds_dropped + g.restarts, "and across a reparent with a queued request")
+	d.free()
+	e.free()
+	g.free()
+	var f := FileAccess.open("res://src/terrain/distant_terrain.gd", FileAccess.READ)
+	assert_false(f.get_as_text().contains("static var "), "distant_terrain.gd has no static variable")
+
+## Phase 120 — the polar caches are filled on the main thread by `rebuild`, never first on a worker.
+func _test_distant_ring_warm_caches() -> void:
+	TerrainSlice._circumference_cache = -1
+	TerrainSlice._polar_cache = -1
+	TerrainSlice.worker_cache_fills = 0
+	var d := DistantTerrainScript.new()
+	add_child(d)
+	d.world_seed = 5
+	d.rebuild(Vector2(16.0, 16.0), 2)
+	assert_true(TerrainSlice._circumference_cache > 0 and TerrainSlice._polar_cache > 0, "rebuild filled both caches before the worker ran")
+	d.poll(true)
+	assert_eq(TerrainSlice.worker_cache_fills, 0, "no worker-side fill happened")
+	d.free()
+
 ## Phase 77 — `detail_at`, `detail_of` and the detail term inside `_raw_height_at` are one formula.
 func _test_detail_noise_single_formula() -> void:
 	var t := TerrainSlice.new()
@@ -16644,8 +17035,8 @@ func _test_region_save_writes_one_file() -> void:
 	var writer := PersistenceSlice.new()
 	add_child(writer)
 	writer.server_save_dir = dir
-	writer._rebuild_region_store()
-	var edit := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	writer._sync_region_store()
+	var edit := { "edits": { "0,0": [{ "op": "remove", "bottom": 1.0, "top": 1.0 }] } }
 	var manifest := { "0,0": edit, "40,0": edit, "-1,0": edit }
 	assert_eq(writer.save_world({ "local_player_id": "p" , "chunks": manifest }, false), OK, "the first save writes")
 	assert_eq(_region_files(dir + "regions/"), ["r.-1.0.json", "r.0.0.json", "r.1.0.json"], "three regions, three files")
@@ -16664,8 +17055,8 @@ func _test_region_full_save_erases_and_migration_keeps_newer() -> void:
 	var writer := PersistenceSlice.new()
 	add_child(writer)
 	writer.server_save_dir = dir
-	writer._rebuild_region_store()
-	var old_edit := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	writer._sync_region_store()
+	var old_edit := { "edits": { "0,0": [{ "op": "remove", "bottom": 1.0, "top": 1.0 }] } }
 	assert_eq(writer.save_world({ "local_player_id": "p", "chunks": { "0,0": old_edit, "1,0": old_edit } }, false), OK, "seed save")
 	# A FULL save whose dirty chunk 0,0 compacted away carries the deletion marker.
 	assert_eq(writer.save_world({ "local_player_id": "p", "chunks": { "0,0": { "edits": {} }, "1,0": old_edit } }, false), OK, "full save with a marker")
@@ -16673,7 +17064,7 @@ func _test_region_full_save_erases_and_migration_keeps_newer() -> void:
 	assert_false(chunks.has("0,0"), "a full save erases a chunk whose edits compacted away")
 	assert_true(chunks.has("1,0"), "and keeps the others")
 	# A migration never overwrites a chunk a region already holds (stale monolith vs newer saves).
-	var stale := { "1,0": { "edits": { "9,9": [{ "op": "raise", "n": 5 }] } }, "2,0": old_edit }
+	var stale := { "1,0": { "edits": { "9,9": [{ "op": "remove", "bottom": 1.0, "top": 5.0 }] } }, "2,0": old_edit }
 	assert_eq(writer.region_store.migrate_manifest(stale), OK, "migration runs")
 	chunks = writer.load_region_chunks([Vector2i(0, 0)])
 	assert_false((chunks["1,0"]["edits"] as Dictionary).has("9,9"), "the newer region entry wins over the stale monolith")
@@ -16693,7 +17084,7 @@ func _test_region_migrates_monolith() -> void:
 	var store := PersistenceSlice.new()
 	add_child(store)
 	store.server_save_dir = dir
-	store._rebuild_region_store()
+	store._sync_region_store()
 	var record := store.load_world_record()
 	assert_false(record.has("chunks"), "the migrated record carries no chunks")
 	assert_eq(int(record.get("seed", -1)), 7, "and keeps its global state")
@@ -16715,7 +17106,7 @@ func _test_region_unreadable_not_overwritten() -> void:
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	f.store_string("{ not json")
 	f.close()
-	var entry := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	var entry := { "edits": { "0,0": [{ "op": "remove", "bottom": 1.0, "top": 1.0 }] } }
 	assert_true(store.write_chunks({ "1,1": entry }) != OK, "a save into an unreadable region reports an error")
 	assert_true(store.migrate_manifest({ "1,1": entry }) != OK, "a migration into an unreadable region reports an error")
 	assert_eq(FileAccess.get_file_as_string(path), "{ not json", "the unreadable file is left untouched")
@@ -16736,7 +17127,7 @@ func _test_region_partial_save() -> void:
 	var f := FileAccess.open(bad_path, FileAccess.WRITE)
 	f.store_string("{ not json")
 	f.close()
-	var entry := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	var entry := { "edits": { "0,0": [{ "op": "remove", "bottom": 1.0, "top": 1.0 }] } }
 	var err := store.write_chunks({ "1,1": entry, "40,40": entry })   # region 0,0 (bad) and region 1,1
 	assert_true(err != OK, "the unreadable region is reported")
 	assert_eq(FileAccess.get_file_as_string(bad_path), "{ not json", "and left untouched")
@@ -16760,7 +17151,7 @@ func _test_region_failed_keys_and_remark() -> void:
 	var f := FileAccess.open(store.path_of(Vector2i(0, 0)), FileAccess.WRITE)
 	f.store_string("{ not json")
 	f.close()
-	var entry := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	var entry := { "edits": { "0,0": [{ "op": "remove", "bottom": 1.0, "top": 1.0 }] } }
 	assert_true(store.write_chunks({ "1,1": entry, "2,2": entry, "40,40": entry }) != OK, "one region fails")
 	var failed: Array = store.last_failed_chunk_keys.duplicate()
 	failed.sort()
@@ -17164,7 +17555,7 @@ func _test_region_failed_write_saves_the_rest() -> void:
 	var store := PersistenceSlice.new()
 	add_child(store)
 	store.server_save_dir = dir
-	var entry := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	var entry := { "edits": { "0,0": [{ "op": "remove", "bottom": 1.0, "top": 1.0 }] } }
 	# Region (0,0) is unreadable; region (1,0) is fine.
 	DirAccess.make_dir_recursive_absolute(dir + "regions/")
 	var bad := store.region_store.path_of(Vector2i.ZERO)
@@ -17180,7 +17571,7 @@ func _test_region_failed_write_saves_the_rest() -> void:
 	assert_true(int(store.write_job(job)) != OK, "the save reports the unreadable region")
 	assert_true(store.region_store.has_region(Vector2i(1, 0)), "the readable region was still written")
 	assert_eq(FileAccess.get_file_as_string(bad), "{ not json", "the unreadable file is untouched")
-	assert_true(store.has_world(), "world.json was still written")
+	assert_false(store.has_world(), "world.json is held back while a region failed (Phase 121)")
 	assert_eq(float(store.load_player(pid).get("hp", -1.0)), 7.0, "and so was the player record")
 	store.free()
 
@@ -17202,7 +17593,7 @@ func _test_region_failed_read_retried() -> void:
 	assert_eq(int(first["failed"]), 1, "the unreadable region is reported as failed")
 	assert_eq(int(first["loaded"]), 0, "and not as loaded")
 	assert_false(streamer.is_resident(Vector2i(0, 0)), "it is not resident")
-	var edit := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	var edit := { "edits": { "0,0": [{ "op": "remove", "bottom": 1.0, "top": 1.0 }] } }
 	assert_eq(store.save_region(Vector2i(0, 0), { "1,1": edit }), OK, "the file is repaired")
 	clock[0] += RegionStreamerScript.BACKOFF_START_MSEC   # the first backoff has elapsed
 	var second := streamer.sync({ "0,0": true })
@@ -17257,7 +17648,7 @@ func _test_region_failed_read_backs_off() -> void:
 	assert_true(streamer.is_backing_off(Vector2i.ZERO), "the delay is capped, not unbounded")
 	clock[0] += 1
 	assert_false(streamer.is_backing_off(Vector2i.ZERO), "and the cap is the longest wait")
-	assert_eq(store.save_region(Vector2i.ZERO, { "0,0": { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } } }), OK, "the file is repaired")
+	assert_eq(store.save_region(Vector2i.ZERO, { "0,0": { "edits": { "0,0": [{ "op": "remove", "bottom": 1.0, "top": 1.0 }] } } }), OK, "the file is repaired")
 	assert_eq(int(streamer.sync(wanted)["loaded"]), 1, "the first read after the backoff loads it")
 	assert_false(streamer.is_backing_off(Vector2i.ZERO), "and clears the backoff")
 	voxel.free()
@@ -17278,7 +17669,7 @@ func _test_region_failed_read_not_resident() -> void:
 	var r := streamer.sync(wanted)
 	assert_eq(int(r["loaded"]), 0, "nothing loaded from an unreadable region")
 	assert_false(streamer.is_resident(Vector2i.ZERO), "the region is not marked resident")
-	var entry := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	var entry := { "edits": { "0,0": [{ "op": "remove", "bottom": 1.0, "top": 1.0 }] } }
 	assert_eq(store.save_region(Vector2i.ZERO, { "0,0": entry }), OK, "the file is repaired")
 	clock[0] += RegionStreamerScript.BACKOFF_START_MSEC
 	r = streamer.sync(wanted)
@@ -17289,7 +17680,7 @@ func _test_region_failed_read_not_resident() -> void:
 
 ## A tile's op list must hold ops (Dictionaries) — or, for a legacy entry, a bare number.
 func _test_region_entry_rejects_bad_ops() -> void:
-	assert_true(RegionStoreScript.is_valid_chunk_entry({ "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }), "an op list of ops is valid")
+	assert_true(RegionStoreScript.is_valid_chunk_entry({ "edits": { "0,0": [{ "op": "remove", "bottom": 1.0, "top": 1.0 }] } }), "an op list of ops is valid")
 	assert_true(RegionStoreScript.is_valid_chunk_entry({ "edits": { "0,0": 1.5 } }), "a legacy bare height is left to the voxel slice")
 	assert_false(RegionStoreScript.is_valid_chunk_entry({ "edits": { "0,0": [5, "x"] } }), "an op list of non-ops is not")
 	assert_false(RegionStoreScript.is_valid_chunk_entry({ "edits": { "0,0": [{ "op": "raise" }, null] } }), "one bad op spoils the list")
@@ -17298,7 +17689,7 @@ func _test_region_malformed_entry_skipped() -> void:
 	var dir := _fresh_region_dir("test_p61_entry")
 	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
 	DirAccess.make_dir_recursive_absolute(dir + "regions/")
-	var good := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	var good := { "edits": { "0,0": [{ "op": "remove", "bottom": 1.0, "top": 1.0 }] } }
 	var f := FileAccess.open(store.path_of(Vector2i.ZERO), FileAccess.WRITE)
 	f.store_string(JSON.stringify({ "version": 1, "chunks": {
 		"1,1": good, "2,2": { "edits": 5 }, "3,3": { "edits": {}, "materials": "x" } } }))
@@ -17510,7 +17901,7 @@ func _test_diag_warn_concurrent() -> void:
 func _test_peer_window_move_loads_region_edits() -> void:
 	var dir := _fresh_region_dir("test_p62_teleport")
 	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
-	var edit := { "edits": { "%d,0" % (34 * 64): [{ "op": "raise", "n": 1 }] } }
+	var edit := { "edits": { "%d,0" % (34 * 64): [{ "op": "remove", "bottom": 1.0, "top": 1.0 }] } }
 	assert_eq(store.save_region(Vector2i(1, 0), { "34,0": edit }), OK, "region (1,0) holds an edit")
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
@@ -17536,9 +17927,9 @@ func _test_region_streams_only_near_windows() -> void:
 	# 1,000 edited regions on disk, none of them the origin's. A chunk is 64 tiles a side.
 	for i in range(1000):
 		var region := Vector2i(10 + i % 40, 10 + i / 40)
-		var edit := { "edits": { "%d,%d" % [region.x * 32 * 64, region.y * 32 * 64]: [{ "op": "raise", "n": 1 }] } }
+		var edit := { "edits": { "%d,%d" % [region.x * 32 * 64, region.y * 32 * 64]: [{ "op": "remove", "bottom": 1.0, "top": 1.0 }] } }
 		assert_eq(store.save_region(region, { "%d,%d" % [region.x * 32, region.y * 32]: edit }), OK, "region %d written" % i)
-	var edit := { "edits": { "0,0": [{ "op": "raise", "n": 1 }] } }
+	var edit := { "edits": { "0,0": [{ "op": "remove", "bottom": 1.0, "top": 1.0 }] } }
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
 	var voxel: VoxelSlice = rig["voxel"]
@@ -17563,7 +17954,7 @@ func _test_region_streams_only_near_windows() -> void:
 	assert_true(voxel.edited_chunk_keys().has("0,0"), "a dirty chunk keeps its edits after its region leaves every window")
 	# A collected-but-unwritten chunk (in flight) is not evicted either, and a stale region
 	# re-read cannot overwrite it; once the write settles it is released without a window move.
-	var far_edit := { "edits": { "%d,%d" % [320 * 64, 320 * 64]: [{ "op": "raise", "n": 1 }] } }
+	var far_edit := { "edits": { "%d,%d" % [320 * 64, 320 * 64]: [{ "op": "remove", "bottom": 1.0, "top": 1.0 }] } }
 	cm.set_peer_center(7, Vector2i(323, 323), true)
 	cm.refresh()
 	voxel.apply_region_chunks({ "320,320": far_edit })   # an edit made inside the peer's window
@@ -19871,6 +20262,7 @@ func _test_p114_deferred_and_adopted() -> void:
 	assert_false(ChunkRecordsScript.has_record(c), "and nothing is in the table")
 	store.save_region(Vector2i.ZERO, {})
 	clock[0] += RegionStreamerScript114.BACKOFF_START_MSEC * 2
+	cm.track_rebuilds()
 	var rebuilds := cm.rebuild_request_count(c)
 	# A stationary host (no window move) retries on its own: refresh() re-syncs and records the chunk.
 	cm._chunk_refs = { cm._chunk_key(c): 1 }
@@ -19888,6 +20280,7 @@ func _test_p114_deferred_and_adopted() -> void:
 	other.write_chunks({ "40,40": { "gen": rec } })
 	cm.record_store = null   # a client-like manager: it only loads
 	cm.load_chunk(d)
+	cm.track_rebuilds()
 	var before := cm.rebuild_request_count(d)
 	var synced := late_streamer.sync(RegionStreamerScript114.regions_for_chunks([d], 1))
 	cm._rebuild_adopted(synced["adopted"])
@@ -20007,3 +20400,242 @@ func _test_p114_streamer_margin() -> void:
 	assert_eq(closed.keys(), ["0,0"], "a recorded chunk loads no extra region")
 	assert_eq(RegionStreamerScript114.regions_for_chunks([c], Frontier.BLEND_CHUNKS, Frontier.BLEND_CHUNKS).size(), open.size(), "unless the caller asks for the full margin")
 	ChunkRecordsScript.clear()
+
+# ---------------------------------------------------------------------------
+# Phase 121 — crash-consistent saves
+# ---------------------------------------------------------------------------
+
+const RegionStreamer121 := preload("res://src/persistence/region_streamer.gd")
+const SaveTxn121 := preload("res://src/persistence/save_txn.gd")
+
+class _Voxel121 extends RefCounted:
+	var scans := 0
+	var keys: Array = []
+	var dirty := {}
+	func apply_region_chunks(_c: Dictionary) -> void:
+		pass
+	func edited_chunk_keys() -> Array:
+		scans += 1
+		return keys.duplicate()
+	func evict_clean_chunks(listed: Array) -> int:
+		var n := 0
+		for k in listed:
+			if not dirty.has(k) and keys.has(k):
+				keys.erase(k)
+				n += 1
+		return n
+
+func _op121(top: float) -> Dictionary:
+	return { "edits": { "0,0": [{ "op": "remove", "bottom": 1.0, "top": top }] } }
+
+func _world121(seed_value: int, top: float) -> Dictionary:
+	return { "local_player_id": "p", "seed": seed_value, "chunks": { "0,0": _op121(top), "40,0": _op121(top) } }
+
+func _slice121(name: String) -> PersistenceSlice:
+	var dir := _fresh_region_dir(name)
+	var slice := PersistenceSlice.new()
+	add_child(slice)
+	slice.server_save_dir = dir
+	return slice
+
+func _state121(slice: PersistenceSlice) -> Array:
+	var w := slice.load_world()
+	var tops: Array = []
+	for k in ["0,0", "40,0"]:
+		var e: Variant = (w.get("chunks", {}) as Dictionary).get(k, null)
+		tops.append(float(e["edits"]["0,0"][0]["top"]) if e is Dictionary else -1.0)
+	return [int(w.get("seed", -1)), tops]
+
+## A fault at each write step leaves the full old world (or, with no fault, the full new one).
+func _test_p121_fault_at_each_step() -> void:
+	var steps := [["backup", 1], ["backup", 3], ["region_rename", 1],
+		["region_rename", 2], ["world_tmp", 1], ["world_rename", 1], ["journal", 1]]
+	for s in steps:
+		var slice := _slice121("test_p121_fault")
+		assert_eq(slice.save_world(_world121(1, 2.0), false), OK, "old world saved (%s)" % str(s))
+		var old_state := _state121(slice)
+		assert_eq(old_state, [1, [2.0, 2.0]], "old world reads back")
+		var hits := [0]
+		var step: String = s[0]
+		var nth: int = s[1]
+		slice.fault = func(name: String) -> bool:
+			if name != step:
+				return false
+			hits[0] += 1
+			return hits[0] == nth
+		var err := slice.save_world(_world121(2, 3.0), false)
+		assert_true(err != OK, "the faulted save reports an error (%s)" % str(s))
+		slice.fault = Callable()
+		assert_eq(_state121(slice), old_state, "a fault at %s #%d leaves the old world, never a mix" % [step, nth])
+		assert_false(FileAccess.file_exists(slice.journal_path()), "no journal is left behind (%s)" % str(s))
+		assert_eq(slice.save_world(_world121(2, 3.0), false), OK, "the retry succeeds (%s)" % str(s))
+		assert_eq(_state121(slice), [2, [3.0, 3.0]], "and the new world is whole (%s)" % str(s))
+		slice.free()
+
+## A region that cannot be staged leaves its file and `world.json` as they were; the other regions land.
+func _test_p121_region_stage_fault() -> void:
+	var slice := _slice121("test_p121_stage")
+	assert_eq(slice.save_world(_world121(1, 2.0), false), OK, "old world")
+	slice.fault = func(name: String) -> bool: return name == "region_tmp"
+	assert_true(slice.save_world(_world121(2, 3.0), false) != OK, "the save reports the failure")
+	slice.fault = Callable()
+	assert_eq(_state121(slice), [1, [2.0, 2.0]], "world.json and the regions are unchanged")
+	assert_eq(slice.failed_chunk_keys().size(), 2, "both chunks stay dirty")
+	slice.free()
+
+## A crash mid-commit (journal + .bak files on disk) is rolled back on load; a stray .tmp is deleted.
+func _test_p121_crash_recovery_and_stray_tmp() -> void:
+	var slice := _slice121("test_p121_crash")
+	assert_eq(slice.save_world(_world121(1, 2.0), false), OK, "old world")
+	var wpath := slice.world_path()
+	var rpath := slice.region_store.path_of(Vector2i(0, 0))
+	# Simulate a commit killed after world.json went live but before the region did.
+	DirAccess.copy_absolute(wpath, wpath + ".bak")
+	var f := FileAccess.open(wpath, FileAccess.WRITE)
+	f.store_string(JSON.stringify({ "seed": 99, "local_player_id": "p" }))
+	f.close()
+	var j := FileAccess.open(slice.journal_path(), FileAccess.WRITE)
+	j.store_string(JSON.stringify({ "targets": [{ "path": wpath, "had": true }, { "path": rpath, "had": true }] }))
+	j.close()
+	slice.free()
+	var reborn := PersistenceSlice.new()
+	add_child(reborn)
+	reborn.server_save_dir = "user://saves/test_p121_crash/"
+	assert_eq(int(reborn.load_world_record().get("seed", -1)), 1, "the interrupted save is rolled back to the old world")
+	assert_false(FileAccess.file_exists(wpath + ".bak") or FileAccess.file_exists(reborn.journal_path()), "journal and backup are gone")
+	reborn.free()
+
+	# A region-store commit (own journal in regions/) killed mid-way is rolled back, its .bak not swept.
+	var rs := _slice121("test_p121_regionjournal")
+	assert_eq(rs.save_world(_world121(1, 2.0), false), OK, "old world")
+	var rp := rs.region_store.path_of(Vector2i(0, 0))
+	DirAccess.rename_absolute(rp, rp + ".bak")
+	var nf := FileAccess.open(rp + ".tmp", FileAccess.WRITE)
+	nf.store_string("{}")
+	nf.close()
+	var rj := FileAccess.open(rs.region_store.journal_path(), FileAccess.WRITE)
+	rj.store_string(JSON.stringify({ "targets": [{ "path": rp, "had": true }] }))
+	rj.close()
+	rs._recovered_dir = ""
+	assert_eq(_state121(rs)[1][0], 2.0, "the region store's interrupted commit is rolled back, not swept")
+	assert_false(FileAccess.file_exists(rs.region_store.journal_path()), "region journal is gone")
+	rs.free()
+
+	var stray := _slice121("test_p121_stray")
+	assert_eq(stray.save_world(_world121(5, 2.0), false), OK, "world")
+	for p in [stray.world_path() + ".tmp", stray.region_store.path_of(Vector2i(0, 0)) + ".tmp"]:
+		var t := FileAccess.open(p, FileAccess.WRITE)
+		t.store_string("{ torn")
+		t.close()
+	stray._recovered_dir = ""
+	assert_eq(int(stray.load_world_record().get("seed", -1)), 5, "the real world.json is read, not the stray")
+	assert_false(FileAccess.file_exists(stray.world_path() + ".tmp"), "the stray world tmp is deleted")
+	assert_false(FileAccess.file_exists(stray.region_store.path_of(Vector2i(0, 0)) + ".tmp"), "the stray region tmp is deleted")
+	assert_eq(_state121(stray)[1], [2.0, 2.0], "and the real region still loads")
+	stray.free()
+
+## Of three regions one is unreadable: only its chunks stay failed, and world.json is not rewritten.
+func _test_p121_one_failing_region_of_three() -> void:
+	var slice := _slice121("test_p121_partial")
+	var store := slice.region_store
+	var e := _op121(2.0)
+	assert_eq(slice.save_world({ "seed": 1, "local_player_id": "p", "chunks": { "1,1": e, "40,0": e, "-5,0": e } }, false), OK, "seed save")
+	var bad := FileAccess.open(store.path_of(Vector2i(1, 0)), FileAccess.WRITE)
+	bad.store_string("{ not json")
+	bad.close()
+	var err := slice.save_world({ "seed": 2, "local_player_id": "p", "chunks": { "1,1": _op121(3.0), "40,0": _op121(3.0), "-5,0": _op121(3.0) } }, false)
+	assert_true(err != OK, "the save reports the failure")
+	assert_eq(slice.failed_chunk_keys(), ["40,0"], "only the unreadable region's chunk is left dirty")
+	assert_eq(int(slice.load_world_record().get("seed", -1)), 1, "world.json keeps the previous record")
+	assert_eq(float(store.load_region(Vector2i(0, 0))["1,1"]["edits"]["0,0"][0]["top"]), 3.0, "the healthy regions were written")
+	slice.free()
+
+## One malformed op is dropped alone, the tile's other ops load, and the store warns once.
+func _test_p121_malformed_op_dropped_alone() -> void:
+	var dir := _fresh_region_dir("test_p121_ops")
+	var store := RegionStoreScript.new(dir + "regions/")
+	DirAccess.make_dir_recursive_absolute(dir + "regions/")
+	var good := { "op": "remove", "bottom": 1.0, "top": 2.0 }
+	var ops: Array = [good, { "op": "remove", "bottom": "x", "top": 2.0 }, { "op": "nuke" }, { "op": "deplete", "vein": "v1", "taken": 1.5 },
+		{ "op": "add", "bottom": 1.0, "top": 2.0, "material": "stone" }, { "op": "deplete", "vein": "v1", "taken": 2 }]
+	var f := FileAccess.open(store.path_of(Vector2i(0, 0)), FileAccess.WRITE)
+	f.store_string(JSON.stringify({ "version": 2, "chunks": { "0,0": { "edits": { "3,3": ops } } } }))
+	f.close()
+	var warns := Diag.warn_count()
+	var got: Array = store.load_region(Vector2i(0, 0))["0,0"]["edits"]["3,3"]
+	assert_eq(got.size(), 3, "the three valid ops load")
+	assert_eq(got[0], good, "in order")
+	store.load_region(Vector2i(0, 0))
+	assert_eq(Diag.warn_count() - warns, 1, "one warning for the entry, however often it is read")
+
+## Interior chunks read only their own region; a stranded region is retried on a backoff with no window
+## move; one sync scans the edited chunks once.
+func _test_p121_streamer_scan_and_retry() -> void:
+	assert_eq(RegionStreamer121.regions_for_chunks([Vector2i(10, 10), Vector2i(20, 12)], 3, 3).keys(), ["0,0"],
+		"a window wholly inside one region returns that region only")
+	assert_true(RegionStreamer121.regions_for_chunks([Vector2i(30, 10)], 3, 3).has("1,0"), "an edge chunk still reaches across")
+	var dir := _fresh_region_dir("test_p121_streamer")
+	var store := RegionStoreScript.new(dir + "regions/")
+	var voxel := _Voxel121.new()
+	var streamer := RegionStreamer121.new(store, voxel)
+	var clock := [0]
+	streamer._now = func() -> int: return clock[0]
+	streamer.sync({ "0,0": true })
+	voxel.keys = ["1,1", "2,2"]
+	voxel.dirty = { "2,2": true }
+	voxel.scans = 0
+	streamer.sync({})
+	assert_eq(voxel.scans, 1, "edited_chunk_keys() is scanned once per sync")
+	assert_true(streamer.has_stranded(), "a dirty chunk keeps its region stranded")
+	voxel.dirty = {}
+	assert_eq(streamer.release_stranded(), 1, "the first retry runs at once and releases the cleaned chunk")
+	assert_false(streamer.has_stranded(), "and the region is no longer stranded")
+	voxel.keys = ["1,1"]
+	voxel.dirty = { "1,1": true }
+	streamer.sync({ "0,0": true })
+	streamer.sync({})
+	voxel.dirty = {}
+	voxel.scans = 0
+	assert_eq(streamer.release_stranded(), 0, "inside the backoff nothing is rescanned")
+	assert_eq(voxel.scans, 0, "no scan either")
+	clock[0] += RegionStreamer121.STRANDED_RETRY_START_MSEC
+	assert_eq(streamer.release_stranded(), 1, "after the backoff, with no player movement, the region is released")
+
+## The world stamp survives a save job and a reload: `_collect_save_job` carries `_worldgen_stamp` and the
+## fingerprint stamp into the record, the persistence slice writes them, and loading that record raises
+## the bus signal for an older generator.
+func _test_p121_world_stamp_round_trip() -> void:
+	var gr: Node = load("res://src/core/game_root.gd").new()
+	var voxel := _make_voxel()
+	var slice := _slice121("test_p121_stamp")
+	gr._voxel = voxel
+	gr._terrain = TerrainSlice.new()
+	gr._creature = CreatureSlice.new()
+	gr._station = StationSlice.new()
+	gr._registry = PlayerRegistry.new()
+	gr._persistence = slice
+	var older := TerrainSlice.WORLDGEN_VERSION - 1
+	gr._loaded_world = { "seed": 7, "worldgenVersion": older, "worldgenFingerprint": 12345 }
+	var seen: Array = []
+	var cb := func(recorded: int, running: int) -> void: seen.append([recorded, running])
+	GameBus.worldgen_version_mismatch.connect(cb)
+	gr._note_worldgen_version()
+	seen.clear()
+	var job: Dictionary = gr._collect_save_job(false)
+	assert_eq(int(job["world"]["worldgenVersion"]), older, "the save job carries the loaded stamp")
+	assert_eq(int(job["world"]["worldgenFingerprint"]), TerrainSlice.worldgen_fingerprint(), "and the fingerprint stamp (the running one once the mismatch was noted)")
+	assert_eq(slice.write_job(job), OK, "the job is written")
+	var record := slice.load_world_record()
+	assert_eq(PersistenceSlice.worldgen_version_of(record), older, "the stamp round-trips through the record")
+	gr._loaded_world = record
+	gr._note_worldgen_version()
+	assert_eq(seen, [[older, TerrainSlice.WORLDGEN_VERSION]], "and loading it raises the mismatch signal once")
+	GameBus.worldgen_version_mismatch.disconnect(cb)
+	for n in [gr._terrain, gr._creature, gr._station]:
+		n.free()
+	gr._registry.free()
+	gr._registry = null
+	gr._persistence = null
+	slice.free()
+	voxel.free()
+	gr.free()
