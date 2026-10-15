@@ -762,7 +762,7 @@ func _step_waystone_travel() -> void:
 				and (now_at["local"] as Vector3).distance_to(want["local"]) < 2.0, STEP_TIMEOUT_SECS)
 		_report("waystone_travel", verdict(ok, true), "travelled-to-second-stone" if ok else "no_travel")
 		return
-	var start: Dictionary = _root._player.get_world_pos()
+	var home: Dictionary = _root._player.get_world_pos()
 	var before := _teleports_seen.size()
 	var tries := 0
 	var got: bool = false
@@ -770,19 +770,21 @@ func _step_waystone_travel() -> void:
 		GameBus.waystone_travel_intent.emit("station_0", "station_1", "")
 		tries += 1
 		got = await _await_until(func(): return _teleports_seen.size() > before, 1.0)
+	# The host checks the 80 m gap from its own record of the client; here the body must stand on the
+	# exact landing the host sent.
 	var near := false
 	if got:
 		var want: Dictionary = _teleports_seen.back()
-		var delta_m: Vector3 = WorldPos.offset_between(start, want)
-		var travelled: float = Vector2(delta_m.x, delta_m.z).length()
-		near = absf(travelled - WAYSTONE_GAP_M) < 1.5
+		await _await_until(func(): return _root._chunk_manager.is_chunk_built(want["chunk"]), STEP_TIMEOUT_SECS)
+		var at: Dictionary = _root._player.get_world_pos()
+		near = at["chunk"] == want["chunk"] and (at["local"] as Vector3).distance_to(want["local"]) < 1.0
 	_report_actual = true
 	_report_position()
 	await _await_settle(2.5)
 	_report_actual = false
 	_report_position()
-	_report("waystone_travel", verdict(got and near, true), "travelled-to-second-stone" if (got and near) else "no_travel")
-	GameBus.player_teleport.emit(start)
+	_report("waystone_travel", verdict(got and near, true), "travelled-to-second-stone" if (got and near) else "no_travel-got%d-near%d" % [int(got), int(near)])
+	GameBus.player_teleport.emit(home)
 	await _await_settle(1.0)
 
 ## Step 7e — Phase 101: a non-admin's `/give` is refused to that client alone and creates nothing.

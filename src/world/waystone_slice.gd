@@ -1,4 +1,3 @@
-class_name WaystoneSlice
 extends Node
 ## Waystone slice — a first fast-travel network (Phase 125). A waystone is a placed station of the
 ## fabric's `WaystoneTravel.stationType`. A player attunes to a stone by standing within the attune
