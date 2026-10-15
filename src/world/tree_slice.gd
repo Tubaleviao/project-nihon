@@ -614,8 +614,12 @@ func _clear_unloaded_chunk(chunk: Vector2i, p: Vector2, radius: float, wm: float
 		return 0   # the circle never reaches this chunk
 	# Phase 126 — the chunk is recorded the way `Frontier` will record it (its biome and budget), BEFORE the
 	# indices are chosen, so they name the trees the chunk will really grow beside recorded land.
-	if not ChunkRecords.has_record(chunk):
-		_pin_frontier_record(chunk)
+	if not ChunkRecords.has_record(chunk) and not _pin_frontier_record(chunk) and is_authoritative \
+			and frontier_ready.is_valid():
+		# Its neighbouring regions are unread, so the plain generator's biome and budget may not be what
+		# `Frontier` records. Choosing indices now could name other trees later; a reload of the chunk
+		# re-checks the stations and edits around it (`_stations_near_chunk`, `has_edit_near`) instead.
+		return 0
 	var biome := _chunk_biome(chunk)
 	var entry := tree_entry_for_biome(biome)
 	if entry.is_empty():
@@ -714,16 +718,20 @@ func _record_cleared(chunk: Vector2i, index: int) -> void:
 ## Phase 126 — an unrecorded chunk a clear lands in gets the record `Frontier` gives it (so its biome,
 ## and with it the tree budget the cleared indices refer to, are what the chunk will be loaded with),
 ## stamped with the budget. Host only; does nothing while the regions around the chunk are unread.
-func _pin_frontier_record(canon: Vector2i) -> void:
+## Returns true when the chunk has a record afterwards.
+func _pin_frontier_record(canon: Vector2i) -> bool:
+	if ChunkRecords.has_record(canon):
+		return true
 	if not record_writer.is_valid() or terrain_slice == null or not terrain_slice.has_method("get_world_seed"):
-		return
+		return false
 	if frontier_ready.is_valid() and not bool(frontier_ready.call(canon)):
-		return
+		return false
 	var rec := RegionStore.normalize_gen(Frontier.record_for(canon, int(terrain_slice.get_world_seed())))
 	if rec.is_empty():
-		return
+		return false
 	rec["t"] = clampi(tree_count_for(canon, str(rec["b"])), 0, RegionStore.GEN_TREE_MAX)
 	record_writer.call(canon, rec)
+	return ChunkRecords.has_record(canon)
 
 ## A client's cap: the least recently touched chunk's clears go first, with one warning.
 func _evict_cleared_local(keep: Vector2i) -> void:
@@ -798,10 +806,15 @@ func _near_loaded_chunk(chunk: Vector2i) -> bool:
 	if _bucket_size != b:
 		_rebuild_spawn_buckets(b)
 	var circ := TerrainSlice.circumference_chunks()
+	# Every cell any chunk within range can sit in: X is probed per chunk column (the seam may split the
+	# range at a cell edge), Z by cell.
+	var xs: Dictionary = {}
+	for dx in range(-clear_id_range, clear_id_range + 1):
+		xs[_bucket_key(Vector2i(chunk.x + dx, chunk.y), b).x] = true
 	var seen: Dictionary = {}
-	for oz in range(-1, 2):
-		for ox in range(-1, 2):
-			var key := _bucket_key(Vector2i(chunk.x + ox * b, chunk.y + oz * b), b)
+	for kx in xs:
+		for oz in range(-1, 2):
+			var key := Vector2i(kx, _bucket_key(Vector2i(chunk.x, chunk.y + oz * b), b).y)
 			if seen.has(key) or not _spawn_buckets.has(key):
 				continue
 			seen[key] = true

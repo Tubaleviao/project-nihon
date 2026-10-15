@@ -21554,6 +21554,13 @@ func _test_p126_client_scope_and_ghost() -> void:
 	for k in 200:
 		t.despawn_for_chunk(Vector2i(k, 0))
 	assert_true(t._spawn_buckets.is_empty(), "the bucket index empties with the spawned chunks")
+	# Across the world seam, whatever the cell size: the last chunk on one side sees the first on the other.
+	var circ := TerrainSlice.circumference_chunks()
+	for r in [3, 5, 8, 13]:
+		t.clear_id_range = r
+		t.spawn_for_chunk(Vector2i(-circ / 2, 0))
+		assert_true(t._near_loaded_chunk(Vector2i(circ / 2 - 1, 0)), "range %d: a chunk across the seam is near" % r)
+		t.despawn_for_chunk(Vector2i(-circ / 2, 0))
 	t.free()
 	ChunkRecordsScript.clear()
 
