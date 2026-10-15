@@ -152,6 +152,7 @@ npm run generate  # generate the design bible into bible/
 | 129 | Combat status effects: burn, paralysis, knockback, knockdown and stagger | Planned |
 | 130 | Creatures walk on the ground and around obstacles | Planned |
 | 131 | Loose ground settles: sand and soil fall when undermined | Planned |
+| 132 | Internationalization: translated UI and keyed host messages | Planned |
 
 See [ROADMAP.md](ROADMAP.md) for open phases and deferred work. Completed phases are archived in [docs/roadmap-history/](docs/roadmap-history/README.md) with their full spec and acceptance criteria.
 
