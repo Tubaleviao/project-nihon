@@ -12,7 +12,7 @@ Fast travel between waystones: a player attunes to a stone by standing at it, th
 | Name | Type | Required | Description |
 | ---- | ---- | -------- | ----------- |
 | `id` | uuid | yes |  |
-| `rules` | json | yes | Travel rule: { stationType, attuneRadius (m), cooldownSeconds, costItem, costPerThousandKm } (validated at fabric load) |
+| `rules` | json | yes | Travel rule: { stationType, attuneRadius (m), cooldownSeconds, costItem, costPerThousandKm, placementItem } (validated at fabric load) |
 
 ## Behaviors
 

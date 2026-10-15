@@ -334,6 +334,7 @@ func _ready() -> void:
 	_professions.flag_store     = _taming
 	_professions.player_registry = _registry
 	_player.station_slice = _station
+	_player.inventory_slice = _inventory
 	_technology.inventory_slice = _inventory
 	# Phase 34 — research consumes the RESEARCHER's own materials and moves that
 	# player's tree only, so the slice needs the registry that owns one inventory
@@ -369,6 +370,7 @@ func _ready() -> void:
 	# online set). Both checks fail closed when unwired.
 	_networking.tree_slice      = _tree
 	_networking.player_registry = _registry
+	_networking.peer_held = _peer_is_held
 	# Phase 85 — chat and admin commands act on the registry's players, the local body and pack,
 	# and reach a remote player through the networking slice's host → peer doors. A headless
 	# server builds no box.
@@ -388,6 +390,7 @@ func _ready() -> void:
 	_waystones.teleporter    = Callable(_chat, "teleport_player")
 	_waystones.position_of   = Callable(self, "_waystone_player_pos")
 	GameBus.waystone_travel_resolved.connect(_on_waystone_travel_resolved)
+	GameBus.station_placed.connect(_on_station_placed_exact)
 	GameBus.waystones_synced.connect(_on_waystones_synced)
 	if not _is_server:
 		_ui.inventory_slice       = _inventory
@@ -2258,6 +2261,8 @@ func _collect_save_job(incremental: bool) -> Dictionary:
 		"worldgenFingerprint": _worldgen_fp_stamp if _worldgen_fp_stamp >= 0 else TerrainSlice.worldgen_fingerprint(),
 		"chunks":          manifest,
 		"stations":        stations,
+		"station_next_id": _station.next_id(),
+		"waystone_exact":  _waystones.exact_data(),
 		"creatures":       creatures,
 		"colonization":    _colonization.to_data(),
 		"clock":           _clock.to_data(),
@@ -2617,6 +2622,8 @@ func _load_world_records() -> void:
 				int(_loaded_world.get("version", PersistenceSlice.LEGACY_WORLD_FORMAT_VERSION)),
 				_terrain.get_world_seed()])
 		_station.apply_station_data(_loaded_world.get("stations", []))
+		_station.restore_next_id(int(_loaded_world.get("station_next_id", 0)))
+		_waystones.apply_exact_data(_loaded_world.get("waystone_exact", {}))
 		print("[Server] world loaded from %s" % _persistence.world_path())
 	# A failed region migration hands the record back WITH its chunks: apply them and mark
 	# them dirty so the next save writes them to regions instead of dropping them. Phase 61 —
@@ -2771,11 +2778,12 @@ func _on_waystone_travel_resolved(player_id: String, ok: bool, reason: String) -
 		_networking.send_own_state(peer, { "waystone_result": { "ok": ok, "reason": reason } })
 
 ## Phase 124 — the host resolved a gather: pay the fabric's `gather` research points.
-func _on_resource_gathered(player_id: String, _material: String, _quantity: int) -> void:
+func _on_resource_gathered(player_id: String, _material: String, quantity: int) -> void:
 	if _is_client:
 		return
 	var pid := player_id if player_id != "" else _registry.local_player_id
-	_technology.grant_points(pid, "gather", _technology.points_for("gather"))
+	# Scaled by the quantity, then held by the balance ceiling and the per-window cap.
+	_technology.grant_points(pid, "gather", _technology.points_for("gather") * clampi(quantity, 0, 64))
 
 ## Phase 118 — an unlock the host resolved for a REMOTE peer changed its record's
 ## professions; push the owner's copy (the local player is live here already).
@@ -2984,6 +2992,24 @@ func _on_status_player_died(_position: Vector3, _killer_id: String) -> void:
 		for t in _status.take_dirty():
 			_push_status_effects(str(t), _status_now())
 
+## Phase 130 — record a waystone's exact `{chunk, local}` at placement: the placer's exact position plus
+## the small offset to the stone, so a stone placed far from the origin is not a float32 `Vector3`.
+func _on_station_placed_exact(station_id: String, type: String, position: Vector3) -> void:
+	if _is_client or _waystones == null or _player == null or type != _waystones.station_type():
+		return
+	var here: Dictionary = _player.get_world_pos()
+	_waystones.note_exact(station_id, WorldPos.normalized({
+		"chunk": here["chunk"],
+		"local": (here["local"] as Vector3) + (position - _player.get_position()),
+	}))
+
+## Phase 130 — true while the host's own status state holds `peer` (paralysis, knockdown).
+func _peer_is_held(peer: int) -> bool:
+	if _status == null or _is_client:
+		return false
+	var pid := _networking.get_player_id(peer)
+	return pid != "" and _status.is_immobilized(pid, _status_now())
+
 ## Phase 129 — host: push `target_id` away from `attacker_id`, clamped to walkable ground.
 func _on_knockback_requested(target_id: String, attacker_id: String, tiles: int) -> void:
 	if _is_client:
@@ -3003,8 +3029,8 @@ func _on_knockback_requested(target_id: String, attacker_id: String, tiles: int)
 		pos = _player.get_position()
 	else:
 		peer = _registry.get_peer_id(target_id)
-		if peer == 0:
-			return
+		if peer == 0 or not _networking.has_last_known_state(peer):
+			return   # a peer that never reported has no position to push from (it reads as the origin)
 		pos = _networking.get_last_known_state(peer)
 	var walkable := func(spot: Vector3) -> bool:
 		return _voxel.get_voxel_height_at(Vector2(spot.x, spot.z)) <= spot.y + KNOCKBACK_STEP_UP

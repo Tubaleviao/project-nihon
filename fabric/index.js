@@ -62,6 +62,7 @@ module.exports = defineFabric({
       OnePersistentWorld:        decisions.OnePersistentWorld,
       OfflinePlayerNpcs:         decisions.OfflinePlayerNpcs,
       NoTeleportation:           decisions.NoTeleportation,
+      WaystonesAmendNoTeleportation: decisions.WaystonesAmendNoTeleportation,
       MagicBalancedWithMartial:  decisions.MagicBalancedWithMartial,
       DestructibleBuildings:     decisions.DestructibleBuildings,
       KnowledgeByExperimentation: decisions.KnowledgeByExperimentation,

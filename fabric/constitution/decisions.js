@@ -141,6 +141,41 @@ module.exports = {
     },
   }),
 
+  WaystonesAmendNoTeleportation: defineEntity({
+    tags: ['decision'],
+    description: 'Amends NoTeleportation: waystones are the one sanctioned fast travel. A player must build and stock a waystone network, travel only between stones they are attuned to, and pay an item cost scaled by distance, so travel remains infrastructure and a cost, never free or arbitrary teleportation.',
+    goal: 'Keep a planet that takes about 90 days to walk around navigable without making geography meaningless',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      status: { type: 'enum', values: ['proposed', 'accepted', 'superseded'] },
+    },
+    stateMachine: {
+      field: 'status',
+      initial: 'proposed',
+      states: {
+        proposed:   'Decision is under community discussion',
+        accepted:   'Decision is ratified and in effect',
+        superseded: { description: 'Decision has been replaced by a newer decision', terminal: true },
+      },
+      transitions: [
+        { from: 'proposed',              to: 'accepted',   trigger: 'accept' },
+        { from: ['proposed', 'accepted'], to: 'superseded', trigger: 'supersede' },
+      ],
+    },
+    behaviors: {
+      accept: {
+        description: 'Ratify this amendment after community review',
+        rules: ['Community vote must reach quorum', 'Stones consume the Waystone item to place and an item cost to travel (WaystoneTravel)'],
+        auth: { roles: ['maintainer'] },
+      },
+      supersede: {
+        description: 'Mark this decision as replaced by a newer one',
+        rules: ['A replacement decision must be accepted first'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
   MagicBalancedWithMartial: defineEntity({
     tags: ['decision'],
     description: 'Magic and martial combat are balanced — no archetype dominates; each has unique trade-offs and counters.',

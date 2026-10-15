@@ -312,10 +312,17 @@ func click_waystone(offset: Vector2) -> bool:
 
 ## The waystone the local player stands within attune radius of, else "".
 func _stone_under_player() -> String:
-	var pxz := _player_xz()
-	if pxz.is_empty() or waystone_slice == null:
+	if waystone_slice == null or player_slice == null:
 		return ""
-	var pos := WorldPos.from_world(pxz[0] * TerrainSlice.CHUNK_METERS, 0.0, pxz[1] * TerrainSlice.CHUNK_METERS)
+	# The exact position, never chunk-unit floats scaled to metres (coarse far from the origin).
+	var pos: Dictionary = {}
+	if player_slice.has_method("get_world_pos"):
+		pos = player_slice.get_world_pos()
+	if not (pos.has("chunk") and pos.has("local")):
+		var pxz := _player_xz()
+		if pxz.is_empty():
+			return ""
+		pos = WorldPos.from_world(pxz[0] * TerrainSlice.CHUNK_METERS, 0.0, pxz[1] * TerrainSlice.CHUNK_METERS)
 	var best := ""
 	var best_d: float = float(waystone_slice.rules()["attuneRadius"]) + 1.0e6
 	for id in waystone_slice.attuned(_local_id()):

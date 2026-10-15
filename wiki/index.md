@@ -51,6 +51,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [OfflinePlayerNpcs](entities/offlineplayernpcs.md) — Offline players may be represented in the world as configurable service NPCs, keeping shops and services running in their absence
 - [OnePersistentWorld](entities/onepersistentworld.md) — A single persistent official world server
 - [PlayerIdentityModel](entities/playeridentitymodel.md) — A player identity is a server-issued local UUID (player_id), not an account
+- [WaystonesAmendNoTeleportation](entities/waystonesamendnoteleportation.md) — Amends NoTeleportation: waystones are the one sanctioned fast travel
 
 ## Item
 

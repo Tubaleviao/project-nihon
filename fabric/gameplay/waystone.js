@@ -6,12 +6,15 @@ const { defineEntity } = require('@newel/core')
 // `attuneRadius`: metres within which a player may attune to, or depart from, a stone.
 // `cooldownSeconds`: wall-clock seconds between two travels by one player.
 // `costItem` / `costPerThousandKm`: item paid per 1,000 km travelled (rounded up, at least 1).
+// `placementItem`: the item one placement of a stone consumes (placement-cost policy for stations: a
+// station type consumes an item only when the fabric names one here; forges and benches stay free).
 const TRAVEL = {
   stationType: 'waystone',
   attuneRadius: 4,
   cooldownSeconds: 30,
   costItem: 'AethermiteShard',
   costPerThousandKm: 1,
+  placementItem: 'Waystone',
 }
 
 const MAX_RADIUS = 64
@@ -21,13 +24,15 @@ const MAX_COST = 1000
 /** Problems with a travel rule table, as strings. `itemKeys` (optional) lists valid item keys. */
 function travelProblems(rules, itemKeys) {
   const problems = []
-  const known = ['stationType', 'attuneRadius', 'cooldownSeconds', 'costItem', 'costPerThousandKm']
+  const known = ['stationType', 'attuneRadius', 'cooldownSeconds', 'costItem', 'costPerThousandKm', 'placementItem']
   if (typeof rules.stationType !== 'string' || rules.stationType === '') problems.push('WaystoneTravel.stationType must be a non-empty string')
   if (typeof rules.attuneRadius !== 'number' || !(rules.attuneRadius > 0) || rules.attuneRadius > MAX_RADIUS) problems.push(`WaystoneTravel.attuneRadius must be in (0, ${MAX_RADIUS}], got ${rules.attuneRadius}`)
   if (!Number.isInteger(rules.cooldownSeconds) || rules.cooldownSeconds < 0 || rules.cooldownSeconds > MAX_COOLDOWN) problems.push(`WaystoneTravel.cooldownSeconds must be an integer in 0..${MAX_COOLDOWN}, got ${rules.cooldownSeconds}`)
   if (!Number.isInteger(rules.costPerThousandKm) || rules.costPerThousandKm < 0 || rules.costPerThousandKm > MAX_COST) problems.push(`WaystoneTravel.costPerThousandKm must be an integer in 0..${MAX_COST}, got ${rules.costPerThousandKm}`)
   if (typeof rules.costItem !== 'string' || rules.costItem === '') problems.push('WaystoneTravel.costItem must be a non-empty string')
   else if (itemKeys && !itemKeys.includes(rules.costItem)) problems.push(`WaystoneTravel.costItem "${rules.costItem}" is not a defined item`)
+  if (typeof rules.placementItem !== 'string') problems.push('WaystoneTravel.placementItem must be a string ("" for a free placement)')
+  else if (rules.placementItem !== '' && itemKeys && !itemKeys.includes(rules.placementItem)) problems.push(`WaystoneTravel.placementItem "${rules.placementItem}" is not a defined item`)
   for (const key of Object.keys(rules)) if (!known.includes(key)) problems.push(`WaystoneTravel has unknown field "${key}"`)
   return problems
 }
@@ -47,7 +52,7 @@ const WaystoneTravel = defineEntity({
     id: { type: 'uuid', primaryKey: true },
     rules: {
       type: 'json',
-      description: 'Travel rule: { stationType, attuneRadius (m), cooldownSeconds, costItem, costPerThousandKm } (validated at fabric load)',
+      description: 'Travel rule: { stationType, attuneRadius (m), cooldownSeconds, costItem, costPerThousandKm, placementItem } (validated at fabric load)',
       defaultValue: TRAVEL,
     },
   },

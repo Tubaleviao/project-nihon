@@ -161,11 +161,37 @@ func placement_blocker(type: String, position: Vector3) -> String:
 
 ## Validated placement: snaps to the grid, refuses on overlap. Returns the new
 ## station id, or "" when refused (see placement_blocker).
-func try_place_station(type: String, position: Vector3) -> String:
+func try_place_station(type: String, position: Vector3, inventory: Node = null) -> String:
 	var pos := snap_to_grid(position)
 	if placement_blocker(type, pos) != "":
 		return ""
+	# Phase 130 — a type whose fabric rule names a placement item consumes one from the placer; with no
+	# inventory to pay from (or none in it) the placement is refused.
+	var item := placement_item(type)
+	if item != "":
+		if inventory == null or not inventory.has_method("consume_items") or not inventory.consume_items({ item: 1 }):
+			return ""
 	return place_station(type, pos)
+
+## The item one placement of a `type` station consumes, or "" for a free placement (the fabric's
+## `WaystoneTravel.placementItem` for the waystone type; forges and benches stay free).
+func placement_item(type: String) -> String:
+	var res: Resource = GameData.WORLD_SYSTEMS.get("WaystoneTravel", null)
+	if res == null or not (res.get("rules") is Dictionary):
+		return ""
+	var rules: Dictionary = res.get("rules")
+	if str(rules.get("stationType", "")) != type:
+		return ""
+	return str(rules.get("placementItem", ""))
+
+## The next station id number; saved with the world so a removed trailing id is never reused.
+func next_id() -> int:
+	return _next_id
+
+## Raise the allocator to a saved `n` (never lowers it, never accepts a negative or absurd value).
+func restore_next_id(n: int) -> void:
+	if n > 0 and n < 1 << 40:
+		_next_id = maxi(_next_id, n)
 
 ## Show (or move) the translucent placement ghost at the snapped `position`;
 ## green when placeable, red when blocked. No-op without a rendering context.
