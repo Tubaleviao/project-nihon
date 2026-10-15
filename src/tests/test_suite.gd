@@ -19518,20 +19518,24 @@ func _adjacency_origins(seed_v: int) -> Array:
 	var polar := TerrainSlice.polar_chunks() - ADJACENCY_GRID
 	var out: Array = [Vector2i(-half, -half), Vector2i(-half, belt - half), Vector2i(-half, polar)]
 	# Coast: walk east along a temperate row until land meets Ocean, and centre the grid there.
-	var found := _find_coast(seed_v, belt / 2, 40000)
+	var found := _find_coast(seed_v, belt / 2, 9000, Callable(), COAST_SCAN_STRIDE)
 	assert_true(found["found"], "seed %d: a coast was found within the search (the coast grid is not a stand-in)" % seed_v)
 	out.append(found["coast"] - Vector2i(half, half))
 	return out
 
 ## Most biome calls one `_find_coast` may make across all its rows (a seed with no coast cannot spin).
 const COAST_MAX_CALLS := 200000
+## The adjacency scan only needs *a* coast, which on a planet-sized row lies far out, so it samples every
+## 64 chunks; `_find_coast` itself steps one chunk at a time by default and cannot step over a thin strip.
+const COAST_SCAN_STRIDE := 64
 
 ## `{ found, coast }`: the first chunk east of x=0 on a temperate row where land and Ocean swap, one chunk
 ## at a time (a larger stride could step over a one-chunk ocean strip). Row `z` is tried first, then rows
-## 64 chunks apart (a seed whose first row is all one kind still has a coast on the next). `found` is
+## 64 chunks apart (a seed whose first row is all one kind still has a coast on the next). `stride` is
+## the chunks between samples. `found` is
 ## false (and `coast` the row start) when `max_steps` or `COAST_MAX_CALLS` ends the search without a
 ## change. `biome_of` (a `Callable(chunk) -> String`) replaces the generator in a test.
-func _find_coast(seed_v: int, z: int, max_steps: int, biome_of: Callable = Callable()) -> Dictionary:
+func _find_coast(seed_v: int, z: int, max_steps: int, biome_of: Callable = Callable(), stride: int = 1) -> Dictionary:
 	var calls := 0
 	for row in 8:
 		var rz := z + row * 64
@@ -19540,7 +19544,7 @@ func _find_coast(seed_v: int, z: int, max_steps: int, biome_of: Callable = Calla
 		for step in range(1, max_steps):
 			if calls >= COAST_MAX_CALLS:
 				return { "found": false, "coast": Vector2i(0, z) }
-			var c := Vector2i(step, rz)
+			var c := Vector2i(step * stride, rz)
 			var cur := _coast_ocean(seed_v, c, biome_of)
 			calls += 1
 			if cur != prev:
@@ -19567,7 +19571,7 @@ func _test_adjacency_coast_search_reports_failure() -> void:
 	var none := _find_coast(ADJACENCY_SEEDS[0], TerrainSlice.pole_chunks() / 4, 0)
 	assert_false(none["found"], "a zero-step search finds no coast")
 	assert_eq(none["coast"], Vector2i(0, TerrainSlice.pole_chunks() / 4), "and falls back to the row start")
-	var real := _find_coast(ADJACENCY_SEEDS[0], TerrainSlice.pole_chunks() / 4, 9000)
+	var real := _find_coast(ADJACENCY_SEEDS[0], TerrainSlice.pole_chunks() / 4, 9000, Callable(), COAST_SCAN_STRIDE)
 	assert_true(real["found"], "the real search finds one")
 
 func _test_adjacency_scan() -> void:

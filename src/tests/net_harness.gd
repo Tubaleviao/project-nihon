@@ -737,14 +737,14 @@ func _step_admin_teleport() -> void:
 ## socket. The client lands at the second stone and the host sees its next report from there.
 const WAYSTONE_GAP_M := 80.0
 func _step_waystone_travel() -> void:
+	# The client was just sent home by the step before: let its reports settle so the stone sits where it stands.
+	await _await_settle(3.0)
 	if _role == "host":
 		var target := _bound_id()
 		var peer := _peer_id()
-		var seen: Dictionary = {}
-		var ready: bool = await _await_until(func():
-			seen = _root._networking.get_last_known_exact(peer)
-			return not seen.is_empty(), STEP_TIMEOUT_SECS)
-		if not ready:
+		var ready: bool = await _await_until(func(): return not _root._networking.get_last_known_exact(peer).is_empty(), STEP_TIMEOUT_SECS)
+		var seen: Dictionary = _root._networking.get_last_known_exact(peer)
+		if not ready or seen.is_empty():
 			_report("waystone_travel", "fail", "no_client_position")
 			return
 		var base: Vector3 = WorldPos.to_scene(seen, seen["chunk"])
@@ -773,7 +773,8 @@ func _step_waystone_travel() -> void:
 	var near := false
 	if got:
 		var want: Dictionary = _teleports_seen.back()
-		var travelled: float = WorldPos.offset_between(start, want).length()
+		var delta_m: Vector3 = WorldPos.offset_between(start, want)
+		var travelled: float = Vector2(delta_m.x, delta_m.z).length()
 		near = absf(travelled - WAYSTONE_GAP_M) < 1.5
 	_report_actual = true
 	_report_position()

@@ -359,6 +359,7 @@ func _ready() -> void:
 	_waystones.station_slice = _station
 	_waystones.registry      = _registry
 	_waystones.teleporter    = Callable(_chat, "teleport_player")
+	_waystones.position_of   = Callable(self, "_waystone_player_pos")
 	GameBus.waystone_travel_resolved.connect(_on_waystone_travel_resolved)
 	GameBus.waystones_synced.connect(_on_waystones_synced)
 	if not _is_server:
@@ -2653,6 +2654,18 @@ func _on_research_points_synced(player_id: String, _points: int) -> void:
 	if peer == 0:
 		return
 	_networking.send_own_state(peer, { "technology": _technology.get_statuses(player_id) })
+
+## Phase 125 — where the host believes a player stands, as an exact `{chunk, local}`: the live body for the
+## local player, the peer's last reported position for a remote one, the saved record as a last resort.
+func _waystone_player_pos(player_id: String) -> Dictionary:
+	if player_id == _registry.local_player_id and _player != null:
+		return _player.get_world_pos()
+	var peer := _registry.get_peer_id(player_id)
+	if peer != 0:
+		var seen: Dictionary = _networking.get_last_known_exact(peer)
+		if not seen.is_empty():
+			return seen
+	return _registry.get_world_pos(player_id)
 
 ## Phase 125 — a player's attunements changed on the host: save them on the record and push them to
 ## the owner's peer alone. The local player is live here already.

@@ -24,6 +24,7 @@ extends Node
 
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const Diag := preload("res://src/core/diag.gd")
 
 ## Every refusal code `travel` can return.
 const REASONS := ["unknown_player", "rate_limited", "same_stone", "missing_stone", "not_attuned_from",
@@ -106,13 +107,15 @@ func _player_pos(player_id: String) -> Dictionary:
 		return {}
 	return registry.get_world_pos(player_id)
 
-## Metres between two exact positions, going the short way round the planet.
+## Ground metres between two exact positions (height is ignored: a body settling onto the ground is
+## still at the stone), going the short way round the planet.
 static func distance_m(a: Dictionary, b: Dictionary) -> float:
 	var lap: int = TerrainSlice.circumference_chunks()
 	var dc: Vector2i = b["chunk"] - a["chunk"]
 	dc.x = posmod(dc.x + lap / 2, lap) - lap / 2
 	var d := Vector3(float(dc.x) * WorldPos.CHUNK_METERS, 0.0, float(dc.y) * WorldPos.CHUNK_METERS) \
 		+ (b["local"] as Vector3) - (a["local"] as Vector3)
+	d.y = 0.0
 	return d.length()
 
 func travel_cost(from_id: String, to_id: String) -> int:
@@ -218,6 +221,8 @@ func _on_travel_intent(from_id: String, to_id: String, player_id: String) -> voi
 		return
 	var pid: String = player_id if player_id != "" else str(registry.local_player_id)
 	var reason := travel(from_id, to_id, pid)
+	if reason != "":
+		Diag.warn("WaystoneSlice: travel %s -> %s for %s refused: %s" % [from_id, to_id, pid, reason])
 	GameBus.waystone_travel_resolved.emit(pid, reason == "", reason)
 
 ## Client: remember the host's attunement list for the map.
