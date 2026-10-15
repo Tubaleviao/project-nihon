@@ -150,9 +150,17 @@ npm run generate  # generate the design bible into bible/
 | 127 | Terrain streaming, generation records and persistence cleanup sweep | Done |
 | 128 | Weather: the fabric's `WeatherSystem` runs on the host | Done |
 | 129 | Combat status effects: burn, paralysis, knockback, knockdown and stagger | Done |
-| 130 | Creatures walk on the ground and around obstacles | Planned |
-| 131 | Loose ground settles: sand and soil fall when undermined | Planned |
-| 132 | Internationalization: translated UI and keyed host messages | Planned |
+| 130 | Host authority sweep: status effects, waystones and research points | Planned |
+| 131 | Internationalization: translated UI and keyed host messages | Planned |
+| 132 | One wiring module per system: `game_root` keeps the boot paths | Planned |
+| 133 | The test suite splits by system and runs by filter | Planned |
+| 134 | A bot plays: playtest report and downloadable builds | Planned |
+| 135 | A WAN profile: latency, loss and bandwidth in the two-client harness | Planned |
+| 136 | Creatures walk on the ground and around obstacles | Planned |
+| 137 | Loose ground settles: sand and soil fall when undermined | Planned |
+| 138 | Trees, generation records and persistence cleanup sweep | Planned |
+| 139 | Settlements in the fabric: founding, membership and shared storage | Planned |
+| 140 | Settlements at runtime: a hearth, a claim and a shared stockpile | Planned |
 
 See [ROADMAP.md](ROADMAP.md) for open phases and deferred work. Completed phases are archived in [docs/roadmap-history/](docs/roadmap-history/README.md) with their full spec and acceptance criteria.
 
