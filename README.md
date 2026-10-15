@@ -143,6 +143,11 @@ npm run generate  # generate the design bible into bible/
 | 120 | The distant ring draws recorded land | Done |
 | 121 | Crash-consistent saves | Done |
 | 122 | Far terrain without mirroring and one scene-offset helper | Done |
+| 123 | The player rig wears the character material and body masks | Planned |
+| 124 | Research points: the fabric's `researchCost` is enforced | Planned |
+| 125 | Waystones: a first fast-travel network | Planned |
+| 126 | Tree clears the host keeps, and one seam-wrap module | Planned |
+| 127 | Terrain streaming, generation records and persistence cleanup sweep | Planned |
 
 See [ROADMAP.md](ROADMAP.md) for open phases and deferred work. Completed phases are archived in [docs/roadmap-history/](docs/roadmap-history/README.md) with their full spec and acceptance criteria.
 
