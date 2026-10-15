@@ -75,6 +75,7 @@ extends Node
 ##   request_handshake() -> void                   — re-present the join intent
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
+const I18n := preload("res://src/core/i18n.gd")
 
 enum Role { OFFLINE, HOST, CLIENT }
 
@@ -276,6 +277,7 @@ func _ready() -> void:
 	# command replies) travel back.
 	GameBus.chat_intent.connect(_on_chat_intent)
 	GameBus.chat_posted.connect(_on_chat_posted)
+	GameBus.system_message.connect(_on_system_message)
 	# Phase 24 — social/economy replication.
 	GameBus.market_synced.connect(_on_market_synced)
 	GameBus.governance_synced.connect(_on_governance_synced)
@@ -790,6 +792,19 @@ func _on_chat_posted(channel: String, sender: String, text: String, target_id: S
 	if _role != Role.HOST:
 		return
 	var payload := { "type": "chat_message", "channel": channel, "sender": sender, "text": text }
+	if target_id == "":
+		_broadcast(payload)
+		return
+	var peer := _equipment_owner(target_id)
+	if peer > HOST_PEER_ID:
+		_deliver(peer, payload)
+
+## Phase 131 — host → clients: a system line as key + args. The text is rendered by each client in its
+## own locale; targeting is as for `_on_chat_posted`.
+func _on_system_message(key: String, args: Array, target_id: String) -> void:
+	if _role != Role.HOST:
+		return
+	var payload := { "type": "system_message", "key": key, "args": args }
 	if target_id == "":
 		_broadcast(payload)
 		return
@@ -1859,6 +1874,11 @@ func _route_h2c(payload: Dictionary) -> void:
 				str(payload.get("text", "")),
 				""
 			)
+		"system_message":
+			# Phase 131 — a keyed host line; an unknown key, too many args or an oversize arg becomes the
+			# generic fallback line, never the raw input.
+			var clean := I18n.sanitize_msg(payload.get("key", null), payload.get("args", null))
+			GameBus.system_message.emit(str(clean["key"]), clean["args"], "")
 		"teleport":
 			# Phase 85 — an admin moved us; game_root places the body (rebasing the scene if far).
 			var spot: Dictionary = WorldPos.pos_from_wire(payload.get("position", null))
@@ -1954,7 +1974,9 @@ func _route_h2c(payload: Dictionary) -> void:
 			claimed_handle = str(payload.get("handle", ""))
 			GameBus.player_identity_assigned.emit(claimed_player_id)
 		"spawn_notice":
-			GameBus.spawn_notice.emit(str(payload.get("message", "")).left(200))
+			# Phase 131 — a catalog key (+ args), rendered here in this client's locale.
+			var note := I18n.sanitize_msg(payload.get("key", null), payload.get("args", null))
+			GameBus.spawn_notice.emit(I18n.render(note))
 		"snapshot_chunk":
 			_accumulate_snapshot_chunk(payload)
 		_:
@@ -2173,14 +2195,14 @@ func request_handshake() -> void:
 	_deliver(1, { "type": "join_intent", "claimed_id": claimed_player_id, "friend_code": friend_code })
 
 ## Phase 53 — host side: tell the peer where it was placed when there is something to say (an
-## unknown friend code fell back to the normal search). The message is host text, short, and
-## carries no id.
+## unknown friend code fell back to the normal search). The message is a catalog key, short, and
+## carries no id; the client renders it in its own locale.
 func _on_spawn_placed(player_id: String, _position: Vector3, _source: String, message: String) -> void:
 	if _role != Role.HOST or message.is_empty():
 		return
 	var peer := _equipment_owner(player_id)
 	if peer > 1:
-		_deliver(peer, { "type": "spawn_notice", "message": message })
+		_deliver(peer, { "type": "spawn_notice", "key": message })
 
 ## Phase 33 — host side: an identity was bound to a connection. Record the
 ## transport mapping and ship the assigned id back to that peer.

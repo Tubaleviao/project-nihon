@@ -15,6 +15,7 @@ extends Control
 ## projections (world_to_chunk / get_player_cell / reveal tracking) are pure and
 ## are what the automated test suite asserts against.
 
+const I18n := preload("res://src/core/i18n.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const BiomeBlend := preload("res://src/terrain/biome_blend.gd")
 const RevealedStore := preload("res://src/persistence/revealed_store.gd")
@@ -287,7 +288,7 @@ func add_waypoint(name_text: String, pos: Dictionary) -> bool:
 		return false
 	var label := RevealedStore.clean_name(name_text)
 	if label == "":
-		label = "Waypoint %d" % (_waypoints.size() + 1)
+		label = I18n.t("map.waypoint", [_waypoints.size() + 1])
 	_waypoints.append({ "name": label, "pos": clean })
 	if _revealed_dirty_for < 0.0:
 		_revealed_dirty_for = 0.0

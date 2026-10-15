@@ -1,0 +1,4 @@
+# Phase 131 — literal assignments to .text / .tooltip_text / .title / .placeholder_text in src/ that
+# are deliberately not translated. One entry per line: `path | trimmed source line | reason`.
+# Only a literal with at least two consecutive letters counts as text; glyphs, numbers and format-only
+# strings ("%s: %s") need no entry. The list is empty today.

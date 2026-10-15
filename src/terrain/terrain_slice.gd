@@ -70,6 +70,7 @@ static func compute_worldgen_fingerprint() -> int:
 
 const BIOME_SEED := 20260815 # fixed seed so biome assignment is deterministic
 const ClimateField := preload("res://src/terrain/climate_field.gd")
+const I18n := preload("res://src/core/i18n.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
@@ -406,11 +407,11 @@ static func longitude_at(world_x: float) -> float:
 
 ## What `/where` prints and the HUD shows: map X/Y and altitude of a world position.
 static func where_text(world_pos: Vector3) -> String:
-	return "%s  alt %d m" % [xy_text(world_pos.x, world_pos.z), roundi(world_pos.y)]
+	return I18n.t("map.where", [xy_text(world_pos.x, world_pos.z), roundi(world_pos.y)])
 
 ## "X 1234  Y -567": a world X/Z in whole metres, the map's two axes (the Map window's hover reads this too).
 static func xy_text(world_x: float, world_z: float) -> String:
-	return "X %d  Y %d" % [roundi(world_x), roundi(world_z)]
+	return I18n.t("map.xy", [roundi(world_x), roundi(world_z)])
 
 ## True when `chunk_pos` is ground a player can stand on: any longitude, any latitude up to the
 ## fold slack past each pole. The polar ice is walkable; walking over a pole folds the player onto the

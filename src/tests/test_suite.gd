@@ -43,6 +43,8 @@ const PlayerSlice     := preload("res://src/player/player_slice.gd")
 const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
 const ClimateField := preload("res://src/terrain/climate_field.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
+const I18nScript := preload("res://src/core/i18n.gd")
+const LocaleSettingsScript := preload("res://src/core/locale_settings.gd")
 const DistantTerrainScript := preload("res://src/terrain/distant_terrain.gd")
 const Locomotion      := preload("res://src/character/locomotion.gd")
 const SkeletonRig     := preload("res://src/character/skeleton_rig.gd")
@@ -71,6 +73,9 @@ func run() -> void:
 	print("║       Project Nihon — Test Suite     ║")
 	print("╚══════════════════════════════════════╝\n")
 	Diag.quiet = true
+	# Phase 131 — the suite reads English text and must not see the developer's saved language.
+	LocaleSettingsScript.settings_path = "user://test_settings_suite.json"
+	TranslationServer.set_locale("en")
 
 	_run_test("battle: hit reduces defender hp",              _test_battle_hit_reduces_hp)
 	_run_test("battle: miss leaves hp unchanged",             _test_battle_miss_leaves_hp_unchanged)
@@ -895,6 +900,10 @@ func run() -> void:
 	_run_test("p121: a malformed op is dropped alone",             _test_p121_malformed_op_dropped_alone)
 	_run_test("p121: streamer scans once and retries stranded",    _test_p121_streamer_scan_and_retry)
 	_run_test("p121: world stamp through save job and load",       _test_p121_world_stamp_round_trip)
+	_run_test("p131: catalogs share one key set, no empty cells",  _test_p131_catalog_keys)
+	_run_test("p131: no untranslated literal in UI assignments",   _test_p131_literal_audit)
+	_run_test("p131: locale switch, persistence, OS fallback",     _test_p131_locale_switch)
+	_run_test("p131: host system messages travel as key + args",   _test_p131_system_message)
 
 	# Self-check: the _run_test list above is manual, so a test function can be
 	# written but forgotten from the list. Fail loudly instead of silently
@@ -18975,6 +18984,7 @@ func _test_chat_admin_commands() -> void:
 	var cb := func(channel: String, sender: String, text: String, target: String) -> void:
 		posted.append({ "channel": channel, "sender": sender, "text": text, "target": target })
 	GameBus.chat_posted.connect(cb)
+	var sysb_18982 := _p131_system_bridge(cb)
 	var teleports: Array = []
 	var tp := func(pos: Dictionary) -> void: teleports.append(WorldPos.to_scene(pos, Vector2i.ZERO))
 	GameBus.player_teleport.connect(tp)
@@ -19042,6 +19052,7 @@ func _test_chat_admin_commands() -> void:
 	DirAccess.remove_absolute(path)
 
 	GameBus.chat_posted.disconnect(cb)
+	GameBus.system_message.disconnect(sysb_18982)
 	GameBus.player_teleport.disconnect(tp)
 	chat.free()
 	body.free()
@@ -19088,6 +19099,7 @@ func _test_chat_rate_limit() -> void:
 	var cb := func(channel: String, sender: String, text: String, target: String) -> void:
 		posted.append({ "channel": channel, "text": text, "target": target })
 	GameBus.chat_posted.connect(cb)
+	var sysb_19095 := _p131_system_bridge(cb)
 	for i in ChatSlice.CHAT_BURST + 10:
 		chat.handle_intent("line %d" % i, "player_other")
 	var said := posted.filter(func(m): return m["channel"] == "chat" and m["target"] == "")
@@ -19136,6 +19148,7 @@ func _test_chat_rate_limit() -> void:
 	chat._prune_buckets(0)
 	assert_true(chat._buckets.size() <= 1, "idle full buckets are pruned past the cap")
 	GameBus.chat_posted.disconnect(cb)
+	GameBus.system_message.disconnect(sysb_19095)
 	chat.free()
 	rig["reg"].free()
 
@@ -19254,17 +19267,19 @@ func _test_chat_tp_limits() -> void:
 	var posted: Array = []
 	var pcb := func(_c: String, _s: String, text: String, _t: String) -> void: posted.append(text)
 	GameBus.chat_posted.connect(pcb)
+	var sysb_19261 := _p131_system_bridge(pcb)
 	var pole_m := float(TerrainSlice.pole_chunks()) * TerrainSlice.CHUNK_METERS
 	var past_z := pole_m + TerrainSlice.CHUNK_METERS
 	chat.handle_intent("/tp 0 10 %s" % str(past_z), "")
 	assert_eq(seen.size(), 0, "a Z past the pole is refused")
-	assert_true(str(posted.back()).contains(str(int(pole_m))), "and the reply names the limit")
+	assert_true(posted.any(func(t): return str(t).contains(str(int(pole_m)))), "and the reply names the limit")
 	var lap := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
 	chat.handle_intent("/tp %s 10 0" % str(2.5 * lap), "")
 	assert_eq(seen.size(), 1, "an X several laps round still teleports")
 	var at: Vector3 = WorldPos.to_scene(seen[0], Vector2i.ZERO)
 	assert_true(absf(absf(at.x) - lap * 0.5) < 1.0, "to the wrapped X (the seam)")
 	GameBus.chat_posted.disconnect(pcb)
+	GameBus.system_message.disconnect(sysb_19261)
 	GameBus.player_teleport.disconnect(cb)
 	chat.free()
 	rig["reg"].free()
@@ -19277,6 +19292,7 @@ func _test_chat_failed_effects_report() -> void:
 	var posted: Array = []
 	var pcb := func(_c: String, _s: String, text: String, _t: String) -> void: posted.append(text)
 	GameBus.chat_posted.connect(pcb)
+	var sysb_19284 := _p131_system_bridge(pcb)
 	var seen: Array = []
 	var cb := func(pos: Dictionary) -> void: seen.append(pos)
 	GameBus.player_teleport.connect(cb)
@@ -19292,6 +19308,7 @@ func _test_chat_failed_effects_report() -> void:
 	assert_eq(seen.size(), 0, "and moves nobody")
 	GameBus.player_teleport.disconnect(cb)
 	GameBus.chat_posted.disconnect(pcb)
+	GameBus.system_message.disconnect(sysb_19284)
 	chat.free()
 	reg.free()
 
@@ -19358,8 +19375,10 @@ func _test_chat_wire() -> void:
 	var cb2 := func(channel: String, sender: String, text: String, target: String) -> void:
 		shown.append([channel, sender, text, target])
 	GameBus.chat_posted.connect(cb2)
+	var sysb_19365 := _p131_system_bridge(cb2)
 	n._route_h2c({ "type": "chat_message", "channel": "announce", "sender": "Server", "text": "hey" })
 	GameBus.chat_posted.disconnect(cb2)
+	GameBus.system_message.disconnect(sysb_19365)
 	assert_eq(shown, [["announce", "Server", "hey", ""]], "a hosted line is re-emitted for the box")
 	var moved: Array = []
 	var cb3 := func(pos: Dictionary) -> void: moved.append(WorldPos.to_scene(pos, Vector2i.ZERO))
@@ -22022,6 +22041,7 @@ func _test_weather_admin_override() -> void:
 	var cb := func(channel: String, _sender: String, text: String, target: String) -> void:
 		posted.append({ "channel": channel, "text": text, "target": target })
 	GameBus.chat_posted.connect(cb)
+	var sysb_22029 := _p131_system_bridge(cb)
 	var synced: Array = []
 	var sync_cb := func(o: Array) -> void: synced.append(o)
 	GameBus.weather_overrides_synced.connect(sync_cb)
@@ -22053,6 +22073,7 @@ func _test_weather_admin_override() -> void:
 	assert_true(posted.any(func(m): return "for admins" in str(m["text"])), "and told why")
 	GameBus.weather_overrides_synced.disconnect(sync_cb)
 	GameBus.chat_posted.disconnect(cb)
+	GameBus.system_message.disconnect(sysb_22029)
 	chat.free()
 	w.free()
 	body.free()
@@ -22436,3 +22457,213 @@ const STATUS_ROLL_GOLDEN := [10642915, 9902018, 8481431]
 
 const WEATHER_GOLDEN_MIX := 2173728955345170658
 const WEATHER_GOLDEN_STATES := ["fog", "clear", "storm", "rain", "clear"]
+
+# ---------------------------------------------------------------------------
+# Phase 131 — internationalization
+# ---------------------------------------------------------------------------
+
+const P131_PLACEHOLDER := "{"
+
+func _p131_placeholders(text: String) -> Array:
+	var out: Array = []
+	for i in 8:
+		if text.contains("{%d}" % i):
+			out.append(i)
+	return out
+
+func _test_p131_catalog_keys() -> void:
+	var parsed := I18nScript.parse_csv(I18nScript.CATALOG_PATH)
+	var locales: Array = parsed["locales"]
+	assert_true(locales.has("en") and locales.has("pt_BR"), "the catalog has en and pt_BR columns")
+	assert_true(int(parsed["rows"]) > 100, "the catalog is not empty")
+	assert_eq(parsed["dupes"], [], "no key appears twice")
+	assert_eq(parsed["empty"], [], "no empty cell in any locale")
+	var en: Dictionary = parsed["catalog"]["en"]
+	for loc in locales:
+		var cat: Dictionary = parsed["catalog"][loc]
+		assert_eq(cat.keys().size(), en.keys().size(), "%s has the same number of keys as en" % loc)
+		for key in en:
+			assert_true(cat.has(key), "%s has key %s" % [loc, key])
+			if cat.has(key):
+				assert_eq(_p131_placeholders(cat[key]), _p131_placeholders(en[key]), "%s: %s keeps the same placeholders" % [loc, key])
+	# Every catalog key a script names with a literal exists.
+	for path in _p131_scripts():
+		var src := FileAccess.get_file_as_string(path)
+		var rx := RegEx.create_from_string("I18n\\.t\\(\"([a-z0-9_]+(?:\\.[a-z0-9_]+)+)\"")
+		for m in rx.search_all(src):
+			assert_true(en.has(m.get_string(1)), "%s names a known key: %s" % [path, m.get_string(1)])
+
+func _p131_scripts() -> Array:
+	var out: Array = []
+	var stack: Array = ["res://src"]
+	while not stack.is_empty():
+		var dir: String = stack.pop_back()
+		for sub in DirAccess.get_directories_at(dir):
+			if sub != "tests":
+				stack.append(dir + "/" + sub)
+		for f in DirAccess.get_files_at(dir):
+			if f.ends_with(".gd"):
+				out.append(dir + "/" + f)
+	out.sort()
+	return out
+
+func _test_p131_literal_audit() -> void:
+	var allow: Dictionary = {}
+	for line in FileAccess.get_file_as_string("res://locale/audit_allow.txt").split("\n"):
+		if line.strip_edges() == "" or line.begins_with("#"):
+			continue
+		var parts := line.split(" | ")
+		assert_true(parts.size() == 3 and parts[2].strip_edges() != "", "allow-list entry has a reason: %s" % line)
+		if parts.size() == 3:
+			allow[parts[0].strip_edges() + "|" + parts[1].strip_edges()] = true
+	var rx := RegEx.create_from_string("\\.(text|tooltip_text|title|placeholder_text)\\s*=[^=]")
+	var lit := RegEx.create_from_string("\"(?:[^\"\\\\]|\\\\.)*\"")
+	var words := RegEx.create_from_string("[A-Za-z]{2,}")
+	var keyed := RegEx.create_from_string("(\\[|get\\(|has\\()\"[^\"]*\"")
+	var bad: Array = []
+	for path in _p131_scripts():
+		for raw in FileAccess.get_file_as_string(path).split("\n"):
+			var line: String = raw.strip_edges()
+			if line.begins_with("#") or rx.search(line) == null:
+				continue
+			var rhs := line.substr(line.find("=") + 1)
+			if rhs.contains("I18n.t(") or rhs.contains("tr("):
+				continue
+			# Dictionary keys (`row["quantity"]`, `get("reason", ...)`) are not text; only real literals count.
+			var has_words := false
+			for m in lit.search_all(keyed.sub(rhs, "", true)):
+				if words.search(m.get_string()) != null:
+					has_words = true
+			if not has_words:
+				continue
+			if allow.has(path.trim_prefix("res://") + "|" + line):
+				continue
+			bad.append(path.get_file() + ": " + line)
+	assert_eq(bad, [], "every literal assigned to a UI text property goes through I18n.t or is allow-listed")
+
+func _p131_with_settings(fn: Callable) -> void:
+	var old_path: String = LocaleSettingsScript.settings_path
+	var old_locale := TranslationServer.get_locale()
+	LocaleSettingsScript.settings_path = "user://test_settings_p131.json"
+	if FileAccess.file_exists(LocaleSettingsScript.settings_path):
+		DirAccess.remove_absolute(LocaleSettingsScript.settings_path)
+	fn.call()
+	if FileAccess.file_exists(LocaleSettingsScript.settings_path):
+		DirAccess.remove_absolute(LocaleSettingsScript.settings_path)
+	LocaleSettingsScript.settings_path = old_path
+	TranslationServer.set_locale(old_locale)
+
+func _test_p131_locale_switch() -> void:
+	_p131_with_settings(func() -> void:
+		TranslationServer.set_locale("en")
+		var en_code := UiSlice.friend_code_text("")
+		var en_status := PlayerSlice.status_line([{"effect": "paralysis", "remaining": 2.0}])
+		assert_eq(en_code, "Friend code: (not assigned yet)", "English text before the switch")
+		assert_eq(en_status, "paralysis 2s", "status line in English")
+		var seen: Array = []
+		var cb := func(loc: String) -> void: seen.append(loc)
+		GameBus.locale_changed.connect(cb)
+		assert_true(LocaleSettingsScript.set_locale("pt_BR", GameBus), "pt_BR is supported")
+		GameBus.locale_changed.disconnect(cb)
+		assert_eq(seen, ["pt_BR"], "switching emits locale_changed once")
+		assert_eq(UiSlice.friend_code_text(""), "Código de amigo: (ainda não atribuído)", "the friend-code projection is in Portuguese")
+		assert_eq(PlayerSlice.status_line([{"effect": "paralysis", "remaining": 2.0}]), "paralisia 2s", "the HUD status line is in Portuguese")
+		assert_eq(TerrainSlice.where_text(Vector3(1.0, 2.0, 3.0)), "X 1  Y 3  alt 2 m", "where_text keeps its shape")
+		assert_eq(UiSlice.language_button_text(), "Idioma: Português (Brasil)", "the selector names the active language")
+		assert_eq(LocaleSettingsScript.next_locale(), "en", "and steps to the next one in the catalog")
+		var live := _new_test_ui()
+		TranslationServer.set_locale("en")
+		GameBus.locale_changed.emit("en")
+		assert_eq(live._language_button.text, "Language: English", "the selector button reads English")
+		assert_eq(live._panels[UiSlice.WINDOW_INVENTORY].find_children("*", "Label", true, false)[0].text, "Inventory", "the window title reads English")
+		LocaleSettingsScript.set_locale("pt_BR", GameBus)
+		assert_eq(live._language_button.text, "Idioma: Português (Brasil)", "an open window re-renders the selector")
+		assert_eq(live._panels[UiSlice.WINDOW_INVENTORY].find_children("*", "Label", true, false)[0].text, "Inventário", "and its title, without a restart")
+		live._on_language_pressed()
+		assert_eq(TranslationServer.get_locale(), "en", "pressing the selector steps to the next language")
+		live.free()
+		LocaleSettingsScript.set_locale("pt_BR")
+		assert_eq(I18nScript.number(1.5, 1), "1,5", "pt_BR numbers use a decimal comma")
+		# The choice survives a settings round trip: a fresh resolve reads the saved file.
+		TranslationServer.set_locale("en")
+		assert_eq(LocaleSettingsScript.resolve("en_US"), "pt_BR", "the saved preference wins over the OS locale")
+		assert_eq(LocaleSettingsScript.apply_startup("en_US"), "pt_BR", "and is applied at boot")
+		assert_false(LocaleSettingsScript.set_locale("xx_XX", GameBus), "an unsupported locale is refused")
+		# No saved choice: the OS locale, else English.
+		DirAccess.remove_absolute(LocaleSettingsScript.settings_path)
+		assert_eq(LocaleSettingsScript.resolve("pt_PT"), "pt_BR", "a regional OS locale maps to its language")
+		assert_eq(LocaleSettingsScript.resolve("ja_JP"), "en", "an unsupported OS locale falls back to en")
+		assert_eq(LocaleSettingsScript.resolve("en-GB"), "en", "a dashed OS locale is understood")
+	)
+
+func _test_p131_system_message() -> void:
+	_p131_with_settings(func() -> void:
+		# Validation: an unknown key, too many args or an oversize arg become the fallback line.
+		assert_eq(I18nScript.sanitize_msg("chat.killed", ["Ana"]), {"key": "chat.killed", "args": ["Ana"]}, "a known key passes")
+		assert_eq(I18nScript.sanitize_msg("no.such.key", []), I18nScript.msg(I18nScript.UNKNOWN_KEY), "an unknown key is refused")
+		assert_eq(I18nScript.sanitize_msg("chat.killed", ["a", "b", "c", "d", "e"])["key"], I18nScript.UNKNOWN_KEY, "too many args are refused")
+		assert_eq(I18nScript.sanitize_msg("chat.killed", ["x".repeat(I18nScript.MAX_ARG_LEN + 1)])["key"], I18nScript.UNKNOWN_KEY, "an oversize arg is refused")
+		assert_eq(I18nScript.sanitize_msg("chat.killed", [[1]])["key"], I18nScript.UNKNOWN_KEY, "a nested arg is refused")
+		assert_eq(I18nScript.sanitize_msg(42, []) ["key"], I18nScript.UNKNOWN_KEY, "a non-string key is refused")
+		assert_eq(I18nScript.sanitize_msg("chat.killed", [3.0])["args"], [3], "a whole float from JSON is restored to an int")
+		assert_eq(I18nScript.fill("{0} then {1}", ["{1}", "x"]), "{1} then x", "an argument is never re-scanned for placeholders")
+		LocaleSettingsScript.set_locale("en")
+		assert_eq(I18nScript.number(12345.5, 1), "12,345.5", "en groups thousands with a comma")
+		LocaleSettingsScript.set_locale("pt_BR")
+		assert_eq(I18nScript.number(-1234567.0), "-1.234.567", "pt_BR groups thousands with a point")
+		assert_eq(I18nScript.number(999.0), "999", "no grouping below a thousand")
+		# Saving the language keeps the other keys of the settings file.
+		var sf := FileAccess.open(LocaleSettingsScript.settings_path, FileAccess.WRITE)
+		sf.store_string('{"other": 7}')
+		sf.close()
+		LocaleSettingsScript.set_locale("en")
+		var kept: Variant = JSON.parse_string(FileAccess.get_file_as_string(LocaleSettingsScript.settings_path))
+		assert_eq(str(kept["locale"]) + str(int(kept["other"])), "en7", "set_locale merges into the settings file")
+		assert_eq(I18nScript.render(I18nScript.sanitize_msg("<b>raw</b>", [])), I18nScript.t(I18nScript.UNKNOWN_KEY), "raw input is never shown")
+		# Host serialization: key + args, never rendered text.
+		var n := NetworkingSlice.new()
+		add_child(n)
+		n._role = NetworkingSlice.Role.HOST
+		n.set_transport(MemoryTransport.new([4]))
+		n._on_system_message("chat.killed", ["Ana"], "")
+		var payload: Dictionary = n.memory_transport().outbox[0]["payload"]
+		assert_eq(payload, {"type": "system_message", "key": "chat.killed", "args": ["Ana"]}, "the wire carries key + args")
+		assert_false(payload.has("text"), "and no rendered text")
+		# Client: validates, then each locale renders it.
+		n._role = NetworkingSlice.Role.CLIENT
+		var got: Array = []
+		var cb := func(key: String, args: Array, target: String) -> void: got.append([key, args, target])
+		GameBus.system_message.connect(cb)
+		n._route_h2c({ "type": "system_message", "key": "chat.killed", "args": ["Ana"] })
+		n._route_h2c({ "type": "system_message", "key": "evil", "args": [] })
+		n._route_h2c({ "type": "system_message", "key": "chat.killed", "args": ["a", "b", "c", "d", "e"] })
+		GameBus.system_message.disconnect(cb)
+		assert_eq(got, [["chat.killed", ["Ana"], ""], [I18nScript.UNKNOWN_KEY, [], ""], [I18nScript.UNKNOWN_KEY, [], ""]], "good lines pass; bad ones become the fallback")
+		n.free()
+		TranslationServer.set_locale("en")
+		var line := I18nScript.render(I18nScript.msg("chat.player_joined", ["Ana"]))
+		TranslationServer.set_locale("pt_BR")
+		var line_pt := I18nScript.render(I18nScript.msg("chat.player_joined", ["Ana"]))
+		assert_eq(line, "Ana joined the world.", "English render")
+		assert_eq(line_pt, "Ana entrou no mundo.", "Portuguese render of the same message")
+		# The chat box keeps the key, so a switch re-renders the line already on screen.
+		var chat := ChatSlice.new()
+		chat.render_visuals = false
+		chat.admins_path = "user://does_not_exist_admins.json"
+		add_child(chat)
+		GameBus.system_message.emit("chat.killed", ["Ana"], "")
+		TranslationServer.set_locale("en")
+		assert_eq(ChatSlice._format_line(chat.lines().back()), "[color=#9fc7ff]Killed Ana.[/color]", "system line rendered in English")
+		TranslationServer.set_locale("pt_BR")
+		assert_eq(ChatSlice._format_line(chat.lines().back()), "[color=#9fc7ff]Ana foi morto.[/color]", "and in Portuguese after the switch")
+		chat.free()
+	)
+
+## Phase 131 — host replies are keyed system messages now; older chat tests read them as the
+## English lines they used to be by rendering each one into the same callback.
+func _p131_system_bridge(cb: Callable) -> Callable:
+	var bridge := func(key: String, args: Array, target: String) -> void:
+		TranslationServer.set_locale("en")
+		cb.call("system", "", I18nScript.t(key, args), target)
+	GameBus.system_message.connect(bridge)
+	return bridge

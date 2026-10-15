@@ -8,6 +8,7 @@ const WorldPos := preload("res://src/terrain/world_pos.gd")
 const RebaseDriver := preload("res://src/terrain/rebase_driver.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const Diag := preload("res://src/core/diag.gd")
+const LocaleSettings := preload("res://src/core/locale_settings.gd")
 
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const WorldShape       := preload("res://src/terrain/world_shape.gd")
@@ -207,6 +208,8 @@ func _ready() -> void:
 	# Phase 36 — the role flags are read FIRST, because they decide whether the
 	# automated suite runs on this boot (see should_run_tests).
 	_parse_network_args()
+	# Phase 131 — saved language, else the OS locale, else English.
+	LocaleSettings.apply_startup()
 	# Phase 42 review pass 3 — and whether this boot quits itself once its world is up
 	# (`--quit-after-boot`; see QUIT_AFTER_BOOT_ARG).
 	_quit_after_boot = should_quit_after_boot(OS.get_cmdline_user_args())
@@ -1129,6 +1132,7 @@ func _on_player_joined(peer_id: int, player_id: String, reconnected: bool) -> vo
 	_professions.apply_record(_registry.get_record(player_id), player_id)
 	_restore_status_effects(player_id, player_id)
 	print("[Server] %s player '%s' as %s" % ["reconnected" if reconnected else "joined", player_id, "peer_%d" % peer_id])
+	_chat.announce_joined(player_id)
 	# Phase 52 — the peer's window opens NOW, so the regions around its saved position are
 	# resident (and its snapshot carries their edits) before the snapshot is built.
 	_chunk_manager.set_peer_center(peer_id, _peer_window_chunk(peer_id), true)
@@ -1154,7 +1158,7 @@ func _first_boot_spawn() -> Variant:
 			_local_spawn = placed["position"]
 			_colonization.note_home(Vector2i(floori(_local_spawn.x / TerrainSlice.CHUNK_METERS), floori(_local_spawn.z / TerrainSlice.CHUNK_METERS)))
 			if not str(placed.get("message", "")).is_empty():
-				print("[Spawn] %s" % placed["message"])
+				print("[Spawn] %s" % placed["message"])  # a catalog key, shown to remote peers in their locale
 	return _local_spawn
 
 ## Phase 53 — where a NEW player lands: beside the friend whose handle they gave, else on habitable
@@ -1173,9 +1177,9 @@ func _place_new_player(player_id: String, friend_code: String) -> Dictionary:
 			if near != null:
 				_colonization.note_home(Vector2i(floori(near.x / TerrainSlice.CHUNK_METERS), floori(near.z / TerrainSlice.CHUNK_METERS)))
 				return { "position": near, "source": "friend", "message": "" }
-			message = "No safe ground near that friend — placed on open land instead."
+			message = "spawn.no_safe_ground"
 		else:
-			message = "Unknown friend code — placed on open land instead."
+			message = "spawn.unknown_friend"
 		source = "friend_unknown"
 	var found: Variant = SpawnFinder.find_new(world_seed, player_id, _colonization, height_fn, Time.get_unix_time_from_system())
 	if found == null:
@@ -2700,8 +2704,7 @@ func _on_inventory_full() -> void:
 	if now - _pack_full_notice_msec < PACK_FULL_NOTICE_MSEC:
 		return
 	_pack_full_notice_msec = now
-	GameBus.chat_posted.emit("system", "", "Your pack is full (weight or slots): drop or use something to pick up more.",
-		_registry.local_player_id)
+	GameBus.system_message.emit("chat.pack_full", [], _registry.local_player_id)
 
 func _on_character_spawned(instance_id: String, skeleton_id: String, position: Vector3) -> void:
 	pass

@@ -698,6 +698,14 @@ signal chat_intent(text: String, player_id: String)
 ## clients (broadcast, or to the target's peer alone), where it is re-emitted with `target_id` "".
 signal chat_posted(channel: String, sender: String, text: String, target_id: String)
 
+## Phase 131 — a host system line as key + args (never rendered text), so each client renders it in its
+## own locale. `target_id` as for `chat_posted`. Networking carries it; a client validates the key and
+## args (`I18n.sanitize_msg`) and re-emits it with `target_id` "".
+signal system_message(key: String, args: Array, target_id: String)
+
+## Phase 131 — the player switched language (or it was set at boot); open UI re-renders its text.
+signal locale_changed(locale: String)
+
 ## Move THIS machine's own player to a world position (an admin teleport). The host emits it for
 ## itself and sends a `teleport` packet to a remote player's client, which re-emits it here.
 signal player_teleport(position: Dictionary)

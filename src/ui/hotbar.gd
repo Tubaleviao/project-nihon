@@ -21,6 +21,7 @@ extends VBoxContainer
 ## `digit_slot`, `slot_for_key`, `parse_state`, `state_to_json`, `hint_for`.
 
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
+const I18n := preload("res://src/core/i18n.gd")
 const SkillTiers := preload("res://src/core/skill_tiers.gd")
 
 signal slot_selected(index: int, item_id: String)
@@ -108,9 +109,9 @@ func build() -> void:
 	_row2.add_child(spacer)
 	add_child(_row2)
 	_menu = PopupMenu.new()
-	_menu.add_item("Set shortcut key…", 0)
-	_menu.add_item("Clear shortcut", 1)
-	_menu.add_item("Empty this box", 2)
+	_menu.add_item(I18n.t("hotbar.menu_set"), 0)
+	_menu.add_item(I18n.t("hotbar.menu_clear"), 1)
+	_menu.add_item(I18n.t("hotbar.menu_empty"), 2)
 	_menu.id_pressed.connect(_on_menu_pressed)
 	add_child(_menu)
 	load_state()
@@ -244,11 +245,11 @@ static func slot_for_key(bound: Array, keycode: int) -> int:
 static func hint_for(entry: String, kind: String, tier: String = "") -> String:
 	match kind:
 		KIND_BLOCK:
-			return "%s  ·  middle-click to place" % entry
+			return I18n.t("hotbar.hint_block", [entry])
 		KIND_GEAR:
-			return "%s  ·  worn" % entry
+			return I18n.t("hotbar.hint_gear", [entry])
 		KIND_SKILL:
-			return "%s%s  ·  press its key to use" % [skill_key(entry), (" (%s)" % tier) if tier != "" else ""]
+			return I18n.t("hotbar.hint_skill", [skill_key(entry), (" (%s)" % tier) if tier != "" else ""])
 	return entry
 
 ## Parse the saved state. Anything malformed falls back to an empty bar rather than injecting junk.
@@ -393,7 +394,7 @@ func begin_binding(index: int) -> void:
 	_binding = index
 	set_expanded(true)
 	_render()
-	notice.emit("Press the key for this box  ·  Esc cancels  ·  Backspace clears")
+	notice.emit(I18n.t("hotbar.press_key"))
 
 func _finish_binding(keycode: int) -> void:
 	var index := _binding
@@ -408,7 +409,7 @@ func _finish_binding(keycode: int) -> void:
 				binds[i] = 0
 		binds[index] = keycode
 	else:
-		notice.emit("%s is already used by the game — pick another key" % OS.get_keycode_string(keycode))
+		notice.emit(I18n.t("hotbar.key_taken", [OS.get_keycode_string(keycode)]))
 		_binding = index
 		return
 	save_state()
@@ -503,6 +504,14 @@ func _key_text(index: int) -> String:
 	var k := int(binds[index])
 	return OS.get_keycode_string(k) if k != 0 else ""
 
+## The language changed: re-render the tooltips.
+func relocalize() -> void:
+	if _menu != null:
+		_menu.set_item_text(0, I18n.t("hotbar.menu_set"))
+		_menu.set_item_text(1, I18n.t("hotbar.menu_clear"))
+		_menu.set_item_text(2, I18n.t("hotbar.menu_empty"))
+	_render()
+
 func _render(held: Dictionary = {}) -> void:
 	if held.is_empty() and held_provider.is_valid():
 		held = held_provider.call()
@@ -511,7 +520,7 @@ func _render(held: Dictionary = {}) -> void:
 		_row2.visible = expanded
 	if _more != null:
 		_more.text = "▴" if expanded else "▾"
-		_more.tooltip_text = "Fewer boxes" if expanded else "More boxes — drag items and skills in, then right-click a box to pick its key"
+		_more.tooltip_text = I18n.t("hotbar.fewer") if expanded else I18n.t("hotbar.more")
 	for i in _buttons.size():
 		var b: Button = _buttons[i]
 		var entry := str(slots[i])
@@ -523,7 +532,7 @@ func _render(held: Dictionary = {}) -> void:
 		(_keys[i] as Label).text = _key_text(i)
 		if entry == "":
 			b.text = ""
-			b.tooltip_text = "Empty box — pick things up, or drag an item or skill here"
+			b.tooltip_text = I18n.t("hotbar.empty")
 			continue
 		var kind := kind_at(i)
 		if kind == KIND_SKILL:

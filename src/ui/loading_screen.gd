@@ -32,6 +32,7 @@ extends CanvasLayer
 ## builds it.
 
 ## Deliberately above the minimap (layer 20) and the UI windows (layer 10).
+const I18n := preload("res://src/core/i18n.gd")
 const LAYER := 30
 const PANEL_SIZE := Vector2(440.0, 104.0)
 
@@ -77,7 +78,7 @@ func _build() -> void:
 
 	_caption = Label.new()
 	_caption.name = "LoadingCaption"
-	_caption.text = "Building the world…"
+	_caption.text = I18n.t("load.building")
 	_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_caption)
 
@@ -107,7 +108,7 @@ func set_progress(fraction: float) -> void:
 	if _bar != null:
 		_bar.value = f * 100.0
 	if _caption != null:
-		_caption.text = "Building the world…  %d%%" % int(round(f * 100.0))
+		_caption.text = I18n.t("load.building_pct", [int(round(f * 100.0))])
 
 ## Hide, unfreeze, and hand the mouse back to whatever held it before `begin()`.
 func finish() -> void:

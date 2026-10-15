@@ -1,0 +1,199 @@
+keys,en,pt_BR
+chat.admin_gave,An admin gave you {0} × {1}.,Um administrador lhe deu {0} × {1}.
+chat.admin_only,/{0} is for admins.,/{0} é só para administradores.
+chat.brought,Brought {0} to you.,{0} foi trazido até você.
+chat.cannot_carry,{0} cannot carry {1} × {2}.,{0} não consegue carregar {1} × {2}.
+chat.err.need_three,need three numbers: x y z,são necessários três números: x y z
+chat.err.not_number,'{0}' is not a number,'{0}' não é um número
+chat.err.out_of_range,'{0}' is out of range,'{0}' está fora do intervalo
+chat.err.y_limit,Y must be within {0} m,Y deve estar a até {0} m
+chat.err.z_limit,Z must be within {0} m of the equator (the poles),Z deve estar a até {0} m do equador (os polos)
+chat.gave,Gave {0} × {1} to {2}.,{0} × {1} entregue a {2}.
+chat.killed,Killed {0}.,{0} foi morto.
+chat.no_body,No body to kill here.,Não há corpo para matar aqui.
+chat.no_inventory,{0} has no inventory here.,{0} não tem inventário aqui.
+chat.no_player,No player '{0}' online.,Nenhum jogador '{0}' online.
+chat.pack_full,Your pack is full (weight or slots): drop or use something to pick up more.,Sua mochila está cheia (peso ou espaços): largue ou use algo para pegar mais.
+chat.placeholder,"Press Enter to chat, or / for commands (/help)",Pressione Enter para conversar ou / para comandos (/help)
+chat.player_joined,{0} joined the world.,{0} entrou no mundo.
+chat.players,{0} online: {1},{0} online: {1}
+chat.pos_unknown,Position of {0} is unknown.,A posição de {0} é desconhecida.
+chat.qty_range,Quantity must be 1–{0}.,A quantidade deve ser de 1 a {0}.
+chat.sender.server,Server,Servidor
+chat.slow_down,You are chatting too fast — slow down.,Você está falando rápido demais — devagar.
+chat.teleported_to,Teleported to {0}.,Teletransportado para {0}.
+chat.teleported_xyz,Teleported to {0}.,Teletransportado para {0}.
+chat.unknown_command,Unknown command '/{0}'. Try /help.,Comando desconhecido '/{0}'. Tente /help.
+chat.unknown_item,Unknown item '{0}'.,Item desconhecido '{0}'.
+chat.unreachable,Could not teleport: {0} is not reachable.,Não foi possível teletransportar: {0} está inalcançável.
+chat.usage.bring,/bring <player> — teleport a player to you,/bring <jogador> — traz um jogador até você
+chat.usage.give,/give <item> [quantity] [player] — create items,/give <item> [quantidade] [jogador] — cria itens
+chat.usage.help,/help — list commands,/help — lista os comandos
+chat.usage.kill,/kill [player] — kill a player,/kill [jogador] — mata um jogador
+chat.usage.players,/players — who is online,/players — quem está online
+chat.usage.say,/say <message> — global announcement,/say <mensagem> — anúncio global
+chat.usage.tp,/tp <x> <y> <z> | /tp <player> — teleport yourself,/tp <x> <y> <z> | /tp <jogador> — teletransporta você
+chat.usage.weather,/weather <state> <hours> — override the weather of your cell,/weather <estado> <horas> — força o clima da sua célula
+chat.usage.where,/where — your position,/where — sua posição
+chat.weather_bad_cell,No weather cell here.,Não há célula de clima aqui.
+chat.weather_bad_hours,Hours must be a whole number of at least 1.,As horas devem ser um número inteiro de pelo menos 1.
+chat.weather_fail,Could not set the weather ({0}).,Não foi possível definir o clima ({0}).
+chat.weather_off,Weather is not running here.,O clima não está ativo aqui.
+chat.weather_set,Weather here is {0} for {1} in-game hour(s).,O clima aqui é {0} por {1} hora(s) de jogo.
+chat.weather_too_long,At most {0} in-game hours.,No máximo {0} horas de jogo.
+chat.weather_unknown,Unknown weather '{0}'. States: {1}.,Clima desconhecido '{0}'. Estados: {1}.
+chat.weather_where_unknown,Could not tell where {0} is.,Não foi possível saber onde {0} está.
+chat.your_pos_unknown,Your position is unknown.,Sua posição é desconhecida.
+controls.key.drag,Drag,Arrastar
+controls.key.hold,Hold,Segurar
+controls.key.scroll,Scroll,Rolar
+controls.row0,Move,Mover
+controls.row1,Jump,Pular
+controls.row10,Next placeable block,Próximo bloco colocável
+controls.row11,Station cycle / place,Alternar / colocar estação
+controls.row12,Tame nearest creature (G is shared with Proposals),Domar a criatura mais próxima (G é compartilhada com Propostas)
+controls.row13,Toggle equipment,Alternar equipamento
+controls.row14,Inventory · Character · Skills · Crafting · Tech · Trade · Market · Proposals (or click the boxes under your health),Inventário · Personagem · Habilidades · Criação · Tecnologia · Troca · Mercado · Propostas (ou clique nas caixas sob sua vida)
+controls.row15,This panel,Este painel
+controls.row16,Chat and commands (/help),Conversa e comandos (/help)
+controls.row17,Close windows,Fechar janelas
+controls.row2,Look around (the cursor hides while held),Olhar ao redor (o cursor some enquanto segura)
+controls.row3,Zoom,Zoom
+controls.row4,"Use the box on the bottom row (a block, gear or a skill)","Usar a caixa da barra inferior (um bloco, equipamento ou habilidade)"
+controls.row5,"Expand the bottom bar: drag items and skills in, right-click a box to choose its key","Expandir a barra inferior: arraste itens e habilidades, clique com o botão direito numa caixa para escolher a tecla"
+controls.row6,"Inventory item onto a box, or onto the ground to drop it (Shift: whole stack)","Item do inventário para uma caixa, ou para o chão para largá-lo (Shift: pilha inteira)"
+controls.row7,Click: Attack / Pick up / Chop,Clique: Atacar / Pegar / Cortar
+controls.row8,Mine,Minerar
+controls.row9,Place,Colocar
+dock.character,Character,Personagem
+dock.controls,Controls,Controles
+dock.crafting,Crafting,Criação
+dock.inventory,Inventory,Inventário
+dock.map,Map,Mapa
+dock.market,Market,Mercado
+dock.proposals,Proposals,Propostas
+dock.skills,Skills,Habilidades
+dock.technology,Technology,Tecnologia
+dock.tip,Show or hide the window shortcuts,Mostra ou oculta os atalhos das janelas
+dock.trade,Trade,Troca
+dock.windows,Windows,Janelas
+hotbar.empty,"Empty box — pick things up, or drag an item or skill here",Caixa vazia — pegue coisas ou arraste um item ou habilidade para cá
+hotbar.fewer,Fewer boxes,Menos caixas
+hotbar.hint_block,{0}  ·  middle-click to place,{0}  ·  clique do meio para colocar
+hotbar.hint_gear,{0}  ·  worn,{0}  ·  vestido
+hotbar.hint_skill,{0}{1}  ·  press its key to use,{0}{1}  ·  pressione sua tecla para usar
+hotbar.key_taken,{0} is already used by the game — pick another key,{0} já é usada pelo jogo — escolha outra tecla
+hotbar.menu_clear,Clear shortcut,Limpar atalho
+hotbar.menu_empty,Empty this box,Esvaziar esta caixa
+hotbar.menu_set,Set shortcut key…,Definir tecla de atalho…
+hotbar.press_key,Press the key for this box  ·  Esc cancels  ·  Backspace clears,Pressione a tecla desta caixa  ·  Esc cancela  ·  Backspace limpa
+hotbar.more,"More boxes — drag items and skills in, then right-click a box to pick its key",Mais caixas — arraste itens e habilidades e clique com o botão direito numa caixa para escolher a tecla
+hud.chop,Chop: {0} (axe),Cortar: {0} (machado)
+hud.hp,HP {0} {1}/{2},PV {0} {1}/{2}
+hud.pickup,Pick up: {0},Pegar: {0}
+hud.station,Station: {0}  (B change · V place),Estação: {0}  (B alterar · V colocar)
+hud.status,{0} {1}s,{0} {1}s
+load.building,Building the world…,Construindo o mundo…
+load.building_pct,Building the world…  {0}%,Construindo o mundo…  {0}%
+locale.en,English,English
+locale.pt_BR,Português (Brasil),Português (Brasil)
+map.centre,Centre on me,Centralizar em mim
+map.delete_hint,"{0} (right-click to delete)
+{1}","{0} (botão direito para apagar)
+{1}"
+map.edge,Nothing to mark there: that point is past the edge of the planet.,Nada para marcar ali: esse ponto está além da borda do planeta.
+map.hint,drag: pan  wheel: zoom  right-click: waypoint  shift+right-click: rename  click a waystone: travel,arrastar: mover  roda: zoom  botão direito: marcador  shift+botão direito: renomear  clicar numa pedra-guia: viajar
+map.hint_tip,"Right-click adds a waypoint, or deletes the one under the cursor",O botão direito adiciona um marcador ou apaga o que está sob o cursor
+map.planet,Planet,Planeta
+map.planet_tip,Fold the flat map into the planet,Dobra o mapa plano no planeta
+map.stand_at_waystone,Stand at a waystone to travel from it.,Fique numa pedra-guia para viajar a partir dela.
+map.waypoint,Waypoint {0},Marcador {0}
+map.where,{0}  alt {1} m,{0}  alt {1} m
+map.xy,X {0}  Y {1},X {0}  Y {1}
+map.zoom,Zoom {0}x,Zoom {0}x
+market.browse,Available listings:,Anúncios disponíveis:
+market.list,List,Anunciar
+market.list_failed,Couldn't list {0} — check you hold the quantity.,Não foi possível anunciar {0} — confira se você tem a quantidade.
+market.list_prompt,List an item for sale (item · qty · price):,Anunciar um item à venda (item · qtd · preço):
+market.listed,Listed {0} ×{1} @ {2}.,{0} ×{1} anunciado por {2}.
+msg.unknown,(unreadable message),(mensagem ilegível)
+proposal.body_ph,Proposal body (optional),Texto da proposta (opcional)
+proposal.list,Proposals:,Propostas:
+proposal.submit,Submit,Enviar
+proposal.submitted,Proposal submitted. Other players can now vote.,Proposta enviada. Outros jogadores já podem votar.
+proposal.title_ph,Proposal title,Título da proposta
+proposal.vote_rejected,Vote rejected: {0},Voto rejeitado: {0}
+proposal.voted,Vote cast.,Voto registrado.
+settings.language,Language: {0},Idioma: {0}
+spawn.no_safe_ground,No safe ground near that friend — placed on open land instead.,Sem terreno seguro perto desse amigo — colocado em campo aberto.
+spawn.unknown_friend,Unknown friend code — placed on open land instead.,Código de amigo desconhecido — colocado em campo aberto.
+status.heat_burn,heat burn,queimadura de calor
+status.paralysis,paralysis,paralisia
+status.stagger,stagger,cambaleio
+trade.accept,Accept trade,Aceitar troca
+trade.blurb,Player-to-player trade with the merchant. Your Trade tier lowers the broker fee on received goods.,Troca de jogador com o mercador. Seu nível de Troca reduz a taxa de corretagem sobre os bens recebidos.
+trade.completed,Trade completed — the merchant's goods were added to your inventory (less the Trade broker fee).,Troca concluída — os bens do mercador foram adicionados ao seu inventário (menos a taxa de corretagem).
+trade.ended,Trade session ended.,Sessão de troca encerrada.
+trade.none,"No active trade. Click ""Start trade"" to open a session with the merchant.","Nenhuma troca ativa. Clique em ""Iniciar troca"" para abrir uma sessão com o mercador."
+trade.open,"Trade {0} open — click ""Accept trade"" to complete the exchange.","Troca {0} aberta — clique em ""Aceitar troca"" para concluir a troca."
+trade.rejected,Trade rejected.,Troca rejeitada.
+trade.start,Start trade,Iniciar troca
+trade.unavailable,Trade is unavailable (no trade slice wired).,Troca indisponível (nenhum módulo de troca ligado).
+ui.against,Against,Contra
+ui.buy,Buy,Comprar
+ui.copy,Copy,Copiar
+ui.craft,Craft,Criar
+ui.defense,Defense {0},Defesa {0}
+ui.drop_blocked,Items can't be dropped while joined to another player's world yet,Itens não podem ser largados enquanto você está no mundo de outro jogador
+ui.empty,(empty),(vazio)
+ui.equip_slot,Equip ({0}),Equipar ({0})
+ui.for,For,A favor
+ui.friend_code,Friend code: {0},Código de amigo: {0}
+ui.friend_code_none,(not assigned yet),(ainda não atribuído)
+ui.listing,{0}  {1} ×{2}  @ {3}  ({4}),{0}  {1} ×{2}  @ {3}  ({4})
+ui.needs,needs: {0},precisa de: {0}
+ui.needs_points,needs {0} research points,precisa de {0} pontos de pesquisa
+ui.proposal_line,{0} [{1}] {2}  (for:{3} / against:{4}) — {5},{0} [{1}] {2}  (a favor:{3} / contra:{4}) — {5}
+ui.repair,Repair,Reparar
+ui.repaired,Repaired {0}.,{0} reparado.
+ui.repairs_header,— Repairs —,— Reparos —
+ui.research,Research,Pesquisar
+ui.research_points,Research points: {0},Pontos de pesquisa: {0}
+ui.researching,Researching {0}…,Pesquisando {0}…
+ui.skill_tip,"{0} ({1})
+Drag onto the bottom bar to use it with a key","{0} ({1})
+Arraste para a barra inferior para usá-la com uma tecla"
+ui.skills_title,Drag a skill onto the bottom bar,Arraste uma habilidade para a barra inferior
+ui.slot_empty,{0}: empty,{0}: vazio
+ui.tech_line,{0} [{1}]  requires: {2}  cost: {3} + {4} pts  {5}s,{0} [{1}]  requer: {2}  custo: {3} + {4} pts  {5}s
+ui.tip_durability,"
+Durability: {0}","
+Durabilidade: {0}"
+ui.tip_quantity,"{0}
+Quantity: {1}","{0}
+Quantidade: {1}"
+ui.unequip,Unequip,Desequipar
+ui.usage,Weight: {0} / {1} kg   Slots: {2} / {3},Peso: {0} / {1} kg   Espaços: {2} / {3}
+ui.worldgen_fingerprint,"World parameters changed since this world was saved: unvisited land follows the new ones, visited land is unchanged.","Os parâmetros do mundo mudaram desde que ele foi salvo: terras não visitadas seguem os novos, as visitadas permanecem iguais."
+ui.worldgen_version,"World saved with generator v{0}, running v{1}: terrain may not match saved edits.","Mundo salvo com o gerador v{0}, executando v{1}: o terreno pode não corresponder às edições salvas."
+waystone.cooldown,The waystone is still recovering from your last journey.,A pedra-guia ainda se recupera da sua última jornada.
+waystone.default,The waystone does not answer.,A pedra-guia não responde.
+waystone.missing_stone,That waystone no longer stands.,Essa pedra-guia não existe mais.
+waystone.no_cost,You do not carry enough to pay for the journey.,Você não carrega o bastante para pagar a jornada.
+waystone.not_attuned_from,You are not attuned to this waystone yet.,Você ainda não está sintonizado com esta pedra-guia.
+waystone.not_attuned_to,You are not attuned to that waystone.,Você não está sintonizado com aquela pedra-guia.
+waystone.rate_limited,Slow down: the waystone is still settling.,Calma: a pedra-guia ainda está se acomodando.
+waystone.same_stone,You are already at that waystone.,Você já está nessa pedra-guia.
+waystone.too_far,Stand closer to the waystone.,Chegue mais perto da pedra-guia.
+waystone.unknown_player,The waystone does not know you.,A pedra-guia não conhece você.
+waystone.unreachable,The journey failed; nothing was spent.,A jornada falhou; nada foi gasto.
+win.character,Character (C),Personagem (C)
+win.controls,Controls (?),Controles (?)
+win.crafting,Crafting (H),Criação (H)
+win.inventory,Inventory,Inventário
+win.map,Map (M),Mapa (M)
+win.market,Market (P),Mercado (P)
+win.proposals,Proposals,Propostas
+win.skills,Skills (K),Habilidades (K)
+win.technology,Technology,Tecnologia
+win.trade,Trade,Troca

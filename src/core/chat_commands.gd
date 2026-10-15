@@ -5,6 +5,7 @@ extends RefCounted
 
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
+const I18n := preload("res://src/core/i18n.gd")
 
 const WHERE_NAME := "where"
 const WHERE := "/" + WHERE_NAME
@@ -20,17 +21,17 @@ const MAX_GIVE_QUANTITY := 10000
 const PLAYER_COMMANDS := ["help", "players"]
 const ADMIN_COMMANDS := ["say", "tp", "bring", "give", "kill", "weather"]
 
-## One line of usage per command, for `/help`.
+## Catalog key of the one line of usage per command, for `/help` (see `locale/ui.csv`).
 const USAGE := {
-	"help":    "/help — list commands",
-	"players": "/players — who is online",
-	WHERE_NAME: WHERE + " — your position",
-	"say":     "/say <message> — global announcement",
-	"tp":      "/tp <x> <y> <z> | /tp <player> — teleport yourself",
-	"bring":   "/bring <player> — teleport a player to you",
-	"give":    "/give <item> [quantity] [player] — create items",
-	"kill":    "/kill [player] — kill a player",
-	"weather": "/weather <state> <hours> — override the weather of your cell",
+	"help":    "chat.usage.help",
+	"players": "chat.usage.players",
+	WHERE_NAME: "chat.usage.where",
+	"say":     "chat.usage.say",
+	"tp":      "chat.usage.tp",
+	"bring":   "chat.usage.bring",
+	"give":    "chat.usage.give",
+	"kill":    "chat.usage.kill",
+	"weather": "chat.usage.weather",
 }
 
 ## True when `text` is a command this module answers.
@@ -82,7 +83,7 @@ static func is_admin_command(name: String) -> bool:
 static func is_known(name: String) -> bool:
 	return name in PLAYER_COMMANDS or name in ADMIN_COMMANDS or name == WHERE_NAME
 
-## The `/help` text for a caller; admins also see the admin set.
+## The `/help` usage keys for a caller; admins also see the admin set.
 static func help_lines(admin: bool) -> Array:
 	var lines: Array = []
 	for name in PLAYER_COMMANDS:
@@ -98,29 +99,29 @@ static func help_lines(admin: bool) -> Array:
 ## `pos` is the exact `{chunk, local}` record, built from the doubles typed — never through a `Vector3`,
 ## whose float32 X loses metres a million chunks out. `world` is the wrapped `[x, y, z]` for display.
 static func parse_position(args: Array, start: int = 0) -> Dictionary:
-	var fail := func(msg: String) -> Dictionary:
-		return { "ok": false, "pos": {}, "world": [], "error": msg }
+	var fail := func(key: String, args: Array = []) -> Dictionary:
+		return { "ok": false, "pos": {}, "world": [], "error": I18n.msg(key, args) }
 	if args.size() < start + 3:
-		return fail.call("need three numbers: x y z")
+		return fail.call("chat.err.need_three")
 	var v: Array = []
 	for i in 3:
 		var s := str(args[start + i])
 		if not s.is_valid_float():
-			return fail.call("'%s' is not a number" % s)
+			return fail.call("chat.err.not_number", [s])
 		var f := s.to_float()
 		if is_nan(f) or is_inf(f) or absf(f) > MAX_TP_COORD:
-			return fail.call("'%s' is out of range" % s)
+			return fail.call("chat.err.out_of_range", [s])
 		v.append(f)
 	if absf(v[1]) > WorldPos.LOCAL_LIMIT:
-		return fail.call("Y must be within %d m" % int(WorldPos.LOCAL_LIMIT))
+		return fail.call("chat.err.y_limit", [int(WorldPos.LOCAL_LIMIT)])
 	var pole_m := float(TerrainSlice.pole_chunks()) * TerrainSlice.CHUNK_METERS
 	if absf(v[2]) > pole_m:
-		return fail.call("Z must be within %d m of the equator (the poles)" % int(pole_m))
+		return fail.call("chat.err.z_limit", [int(pole_m)])
 	var lap := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
 	var x: float = fposmod(float(v[0]) + lap * 0.5, lap) - lap * 0.5
 	var z: float = v[2]
 	var pos := WorldPos.from_world(x, v[1], z)
-	return { "ok": true, "pos": pos, "world": [x, v[1], z], "error": "" }
+	return { "ok": true, "pos": pos, "world": [x, v[1], z], "error": {} }
 
 ## A `/give` quantity from `s`: a positive whole number up to `MAX_GIVE_QUANTITY`, else 0.
 static func parse_quantity(s: String) -> int:

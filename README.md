@@ -151,7 +151,7 @@ npm run generate  # generate the design bible into bible/
 | 128 | Weather: the fabric's `WeatherSystem` runs on the host | Done |
 | 129 | Combat status effects: burn, paralysis, knockback, knockdown and stagger | Done |
 | 130 | Host authority sweep: status effects, waystones and research points | In review |
-| 131 | Internationalization: translated UI and keyed host messages | Planned |
+| 131 | Internationalization: translated UI and keyed host messages | In review |
 | 132 | One wiring module per system: `game_root` keeps the boot paths | Planned |
 | 133 | The test suite splits by system and runs by filter | Planned |
 | 134 | A bot plays: playtest report and downloadable builds | Planned |

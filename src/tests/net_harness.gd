@@ -56,6 +56,7 @@ extends Node
 ## (see `unawaited_waits`): that mistake compiles, runs, and turns this scenario's waits
 ## into no-ops, and the synchronous suite cannot see it because it cannot host a pump.
 
+const I18n := preload("res://src/core/i18n.gd")
 const PlayerSlice := preload("res://src/player/player_slice.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
@@ -161,6 +162,7 @@ static func steps() -> Array:
 		{ "name": "inventory_owner",   "compare": true },
 		{ "name": "research_points_owner", "compare": true },
 		{ "name": "chat_relayed",      "compare": true },
+		{ "name": "join_line_localized", "compare": true },
 		{ "name": "admin_teleport",    "compare": true },
 		{ "name": "waystone_travel",   "compare": true },
 		{ "name": "non_admin_refused", "compare": true },
@@ -308,6 +310,10 @@ func run(root: Node, role: String) -> void:
 	GameBus.player_died.connect(_on_player_died)
 	# Chat lines and teleports are observed over the whole run, like deaths (see `_chat_seen`).
 	GameBus.chat_posted.connect(_on_chat_posted)
+	GameBus.system_message.connect(_on_system_message)
+	# Phase 131 — the two processes read different languages, so a keyed host line is checked by key
+	# and by what it renders to in THIS process's locale.
+	TranslationServer.set_locale("pt_BR" if role == "client" else "en")
 	GameBus.player_teleport.connect(_on_player_teleport)
 	print(format_line("ready", "ok", role))
 	print(format_line("plan", "ok", plan_detail()))
@@ -368,6 +374,7 @@ func run(root: Node, role: String) -> void:
 	await _step_inventory_owner()
 	await _step_research_points_owner()
 	await _step_chat_relayed()
+	await _step_join_line_localized()
 	await _step_admin_teleport()
 	await _step_waystone_travel()
 	await _step_non_admin_refused()
@@ -683,12 +690,17 @@ var _teleports_seen: Array = []
 func _on_chat_posted(channel: String, sender: String, text: String, target: String) -> void:
 	_chat_seen.append({ "channel": channel, "sender": sender, "text": text, "target": target })
 
+## Phase 131 — a keyed host line, kept with the text it renders to in this process's locale.
+func _on_system_message(key: String, args: Array, target: String) -> void:
+	_chat_seen.append({ "channel": "system", "sender": "", "text": I18n.t(key, args), "key": key, "target": target })
+
 func _on_player_teleport(pos: Dictionary) -> void:
 	_teleports_seen.append(pos)
 
 func _chat_line(channel: String, needle: String, target: String) -> Dictionary:
 	for m in _chat_seen:
-		if m["channel"] == channel and m["target"] == target and str(m["text"]).contains(needle):
+		var hit: bool = str(m.get("key", "")) == needle.trim_prefix("key:") if needle.begins_with("key:") else str(m["text"]).contains(needle)
+		if m["channel"] == channel and m["target"] == target and hit:
 			return m
 	return {}
 
@@ -708,6 +720,15 @@ func _step_chat_relayed() -> void:
 	var same := str(line.get("text", "")) == CHAT_PROBE + "!"
 	_report("chat_relayed", verdict(ok and named and same, true),
 		"relayed-by-handle" if (ok and named and same) else "not_relayed-ok%d-named%d-same%d" % [int(ok), int(named), int(same)])
+
+## Step 7c2 — Phase 131: the host announces the joined player as a keyed line; the host (`en`) and the
+## client (`pt_BR`) each render it in their own language from the same key + args.
+func _step_join_line_localized() -> void:
+	var want := "entrou no mundo." if _role == "client" else "joined the world."
+	if _role == "host":
+		_root._chat.announce_joined(_bound_id())
+	var ok: bool = await _await_until(func(): return str(_chat_line("system", "key:chat.player_joined", "").get("text", "")).ends_with(want), STEP_TIMEOUT_SECS)
+	_report("join_line_localized", verdict(ok, true), "rendered-in-own-locale" if ok else "not_localized")
 
 ## Step 7d — Phase 101: the host runs `/bring <client handle>`; the client's body lands within 1 m of
 ## the host's, and the host then sees the client's next position report from there.
@@ -813,7 +834,7 @@ func _step_non_admin_refused() -> void:
 		var target := _bound_id()
 		var inv: Node = _root._registry.get_inventory(target)
 		var before: int = inv.get_item_count(PROBE_ITEM) if inv != null else 0
-		var ok: bool = await _await_until(func(): return not _chat_line("system", "for admins", target).is_empty(), STEP_TIMEOUT_SECS)
+		var ok: bool = await _await_until(func(): return not _chat_line("system", "key:chat.admin_only", target).is_empty(), STEP_TIMEOUT_SECS)
 		await _await_settle(1.0)
 		var after: int = inv.get_item_count(PROBE_ITEM) if inv != null else 0
 		_report("non_admin_refused", verdict(ok and before == after, true),
@@ -821,7 +842,7 @@ func _step_non_admin_refused() -> void:
 		return
 	var before: int = int(_root._inventory.get_contents().get(PROBE_ITEM, 0))
 	_root._chat.submit("/give %s 5" % PROBE_ITEM)
-	var ok: bool = await _await_until(func(): return not _chat_line("system", "for admins", "").is_empty(), STEP_TIMEOUT_SECS)
+	var ok: bool = await _await_until(func(): return not _chat_line("system", "key:chat.admin_only", "").is_empty(), STEP_TIMEOUT_SECS)
 	await _await_settle(1.0)
 	var after: int = int(_root._inventory.get_contents().get(PROBE_ITEM, 0))
 	_report("non_admin_refused", verdict(ok and before == after, true),
