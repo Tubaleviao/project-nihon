@@ -1700,6 +1700,10 @@ func has_edit_near_at(tile: Vector2i, radius: int, min_y: float) -> bool:
 	for dz in range(-radius, radius + 1):
 		for dx in range(-radius, radius + 1):
 			for e in _edits.get(_tile_key(Vector2i(tile.x + dx, tile.y + dz)), []):
+				# A deplete op is vein bookkeeping on the anchor tile, not a terrain edit: the dig that
+				# took the ore carries its own span, which is what the depth rule judges.
+				if (e as Dictionary).get("op", "") == "deplete":
+					continue
 				if float((e as Dictionary).get("top", INF)) >= min_y:
 					return true
 	return false

@@ -21576,7 +21576,8 @@ func _test_p126_deep_edit_agrees() -> void:
 	t.free()
 	var vox := VoxelSlice.new()
 	var deep := root_y - 8.0
-	vox._edits[vox._tile_key(tile)] = [{ "op": "remove", "bottom": deep - 0.125, "top": deep }]
+	vox._edits[vox._tile_key(tile)] = [{ "op": "remove", "bottom": deep - 0.125, "top": deep },
+		{ "op": "deplete", "vein": 1, "taken": 1 }]
 	vox._edits_by_chunk[vox._chunk_key(vox._tile_to_chunk(tile))] = { vox._tile_key(tile): true }
 	var t2 := _tree_pin_rig(chunk)
 	t2.voxel_slice = vox
