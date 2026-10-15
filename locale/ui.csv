@@ -90,6 +90,8 @@ hud.station,Station: {0}  (B change · V place),Estação: {0}  (B alterar · V 
 hud.status,{0} {1}s,{0} {1}s
 load.building,Building the world…,Construindo o mundo…
 load.building_pct,Building the world…  {0}%,Construindo o mundo…  {0}%
+locale.en,English,English
+locale.pt_BR,Português (Brasil),Português (Brasil)
 map.centre,Centre on me,Centralizar em mim
 map.delete_hint,"{0} (right-click to delete)
 {1}","{0} (botão direito para apagar)
@@ -117,6 +119,7 @@ proposal.submitted,Proposal submitted. Other players can now vote.,Proposta envi
 proposal.title_ph,Proposal title,Título da proposta
 proposal.vote_rejected,Vote rejected: {0},Voto rejeitado: {0}
 proposal.voted,Vote cast.,Voto registrado.
+settings.language,Language: {0},Idioma: {0}
 spawn.no_safe_ground,No safe ground near that friend — placed on open land instead.,Sem terreno seguro perto desse amigo — colocado em campo aberto.
 spawn.unknown_friend,Unknown friend code — placed on open land instead.,Código de amigo desconhecido — colocado em campo aberto.
 status.heat_burn,heat burn,queimadura de calor

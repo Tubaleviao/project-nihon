@@ -32,6 +32,7 @@ extends Node
 ## state to evict.
 const Diag := preload("res://src/core/diag.gd")
 const I18n := preload("res://src/core/i18n.gd")
+const LocaleSettings := preload("res://src/core/locale_settings.gd")
 
 const WINDOW_INVENTORY  := "inventory"
 const WINDOW_TECHNOLOGY := "technology"
@@ -113,6 +114,7 @@ var _toast_label: Label = null
 ## Phase 131 — controls whose text is a catalog key: [{node, prop, key}] (see `_set_tr`).
 var _bound: Array = []
 var _controls_box: VBoxContainer = null
+var _language_button: Button = null
 var _toast_queue: Array[String] = []
 var _toast_shown: String = ""
 var _toast_left: float = 0.0
@@ -1587,9 +1589,23 @@ func _apply_layout() -> void:
 		if panel != null:
 			panel.position = fit_window_position(_layout[key], panel.custom_minimum_size.max(panel.size), _viewport_size())
 
+## The selector's label: the active language by its own name.
+static func language_button_text() -> String:
+	var loc := LocaleSettings.current()
+	var key := "locale." + loc
+	return I18n.t("settings.language", [I18n.t(key) if I18n.has_key(key) else loc])
+
+func _on_language_pressed() -> void:
+	LocaleSettings.set_locale(LocaleSettings.next_locale(), GameBus)
+
 func _build_controls_content() -> Control:
 	_controls_box = VBoxContainer.new()
 	_controls_box.add_theme_constant_override("separation", 5)
+	# Phase 131 — the language selector: one button that steps through the catalog's locales.
+	_language_button = Button.new()
+	_language_button.focus_mode = Control.FOCUS_NONE
+	_language_button.pressed.connect(_on_language_pressed)
+	_controls_box.add_child(_language_button)
 	_refill_controls()
 	return _controls_box
 
@@ -1597,8 +1613,11 @@ func _build_controls_content() -> Control:
 func _refill_controls() -> void:
 	if _controls_box == null:
 		return
+	if _language_button != null:
+		_language_button.text = language_button_text()
 	for child in _controls_box.get_children():
-		child.free()
+		if child != _language_button:
+			child.free()
 	var box := _controls_box
 	for row in controls_rows():
 		var line := HBoxContainer.new()

@@ -8,6 +8,7 @@ const WorldPos := preload("res://src/terrain/world_pos.gd")
 const RebaseDriver := preload("res://src/terrain/rebase_driver.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const Diag := preload("res://src/core/diag.gd")
+const LocaleSettings := preload("res://src/core/locale_settings.gd")
 
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const WorldShape       := preload("res://src/terrain/world_shape.gd")
@@ -207,6 +208,8 @@ func _ready() -> void:
 	# Phase 36 — the role flags are read FIRST, because they decide whether the
 	# automated suite runs on this boot (see should_run_tests).
 	_parse_network_args()
+	# Phase 131 — saved language, else the OS locale, else English.
+	LocaleSettings.apply_startup()
 	# Phase 42 review pass 3 — and whether this boot quits itself once its world is up
 	# (`--quit-after-boot`; see QUIT_AFTER_BOOT_ARG).
 	_quit_after_boot = should_quit_after_boot(OS.get_cmdline_user_args())
