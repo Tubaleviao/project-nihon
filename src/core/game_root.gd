@@ -2262,7 +2262,7 @@ func _collect_save_job(incremental: bool) -> Dictionary:
 		"chunks":          manifest,
 		"stations":        stations,
 		"station_next_id": _station.next_id(),
-		"waystone_exact":  _waystones.exact_data(),
+		"waystone_exact":  _waystones.exact_data() if _waystones != null else {},
 		"creatures":       creatures,
 		"colonization":    _colonization.to_data(),
 		"clock":           _clock.to_data(),
@@ -2623,7 +2623,8 @@ func _load_world_records() -> void:
 				_terrain.get_world_seed()])
 		_station.apply_station_data(_loaded_world.get("stations", []))
 		_station.restore_next_id(int(_loaded_world.get("station_next_id", 0)))
-		_waystones.apply_exact_data(_loaded_world.get("waystone_exact", {}))
+		if _waystones != null:
+			_waystones.apply_exact_data(_loaded_world.get("waystone_exact", {}))
 		print("[Server] world loaded from %s" % _persistence.world_path())
 	# A failed region migration hands the record back WITH its chunks: apply them and mark
 	# them dirty so the next save writes them to regions instead of dropping them. Phase 61 —
