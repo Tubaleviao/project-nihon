@@ -20989,6 +20989,9 @@ func _test_research_points_craft_grant_and_roundtrip() -> void:
 	t2.apply_statuses({ "TechBasicSmithing": "unlocked" }, a)
 	assert_eq(t2.get_points(a), 0, "a legacy record loads as 0 points")
 	assert_eq(t2.get_status("TechBasicSmithing", a), "unlocked", "keeping its statuses")
+	# An unknown recipe id in a snapshot is dropped, not stored.
+	t2.apply_statuses({ TechnologySlice.CRAFTED_KEY: ["RecipeFerriteIngot", "NotARecipe"] }, a)
+	assert_eq(t2.get_statuses(a).get(TechnologySlice.CRAFTED_KEY, []), ["RecipeFerriteIngot"], "unknown first-craft ids are dropped")
 
 	GameBus.research_points_synced.disconnect(on_sync)
 	t2.free()

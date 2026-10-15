@@ -331,7 +331,9 @@ func apply_statuses(statuses: Dictionary, player_id: String = "") -> void:
 	var crafted_v: Variant = statuses.get(CRAFTED_KEY, [])
 	if crafted_v is Array:
 		for recipe_id in crafted_v:
-			crafted[str(recipe_id)] = true
+			# Bounded to the recipes the fabric knows: a stray entry is dropped, not stored.
+			if GameData.RECIPES.has(str(recipe_id)):
+				crafted[str(recipe_id)] = true
 	_first_crafts[pid] = crafted
 	_research_end_at[pid] = {}
 	# Re-schedule auto-completion for any tech restored mid-research so it does not

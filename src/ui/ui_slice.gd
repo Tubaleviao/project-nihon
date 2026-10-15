@@ -1252,6 +1252,8 @@ func _on_research_resolved(result: Dictionary) -> void:
 	refresh_technology()
 
 func _on_research_points_synced(player_id: String, _points: int) -> void:
+	if _technology_box == null or not _technology_box.is_visible_in_tree():
+		return
 	if player_id == "" or technology_slice == null or player_id == technology_slice.local_player_id():
 		refresh_technology()
 
