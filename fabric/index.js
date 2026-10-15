@@ -27,6 +27,9 @@ const appearances  = require('./gameplay/characters/appearances')
 // Phase 125 — the travel cost must name a real item; throwing fails `npm run validate`.
 waystone.validateTravel(waystone.TRAVEL, Object.keys(items))
 
+// Phase 128 — the weather table must be well formed and every biome must reach a state.
+weather.validateWeather(weather.RULES, weather.biomeClimates(biomes))
+
 module.exports = defineFabric({
   meta: {
     name:        'project-nihon',

@@ -123,6 +123,8 @@ var render_visuals: bool = true
 ## Set by game_root after all slices are instantiated.
 var creature_slice: Node = null
 var voxel_slice: Node = null
+## Phase 128 — outdoor walking speed follows the weather under the body (null: no weather).
+var weather_slice: Node = null
 var station_slice: Node = null
 
 ## Station placement preview ghost toggled by N.
@@ -603,6 +605,37 @@ static func is_swimming(ground_y: float, sea_level: float) -> bool:
 static func swim_vertical_velocity(feet_y: float, sea_level: float) -> float:
 	return clampf((sea_level - SWIM_FLOAT - feet_y) * SWIM_RISE_RATE, -SWIM_MAX_VERTICAL, SWIM_MAX_VERTICAL)
 
+## Phase 128 — metres above the head a roof span still shelters from the weather.
+const ROOF_REACH := 4.0
+## Head height above the feet, for the roof test.
+const HEAD_HEIGHT := 1.8
+
+## Horizontal speed (m/s): swimming is slowed by the water alone, walking by the weather's factor.
+static func walking_speed(swimming: bool, weather_factor: float) -> float:
+	return SPEED * (SWIM_SPEED_FACTOR if swimming else clampf(weather_factor, 0.0, 1.0))
+
+## True when a solid run of a column (see VoxelSlice.get_column_runs_at) starts above the head and within
+## `ROOF_REACH` of it: a placed roof span, not open sky.
+static func roof_overhead(runs: Array, feet_y: float) -> bool:
+	var head := feet_y + HEAD_HEIGHT
+	for run in runs:
+		var bottom := float(run["bottom"])
+		if bottom >= head and bottom <= head + ROOF_REACH:
+			return true
+	return false
+
+## The weather's walking factor at the body: 1 under a roof, in a rig with no weather, or when clear.
+func _weather_factor_now() -> float:
+	if weather_slice == null:
+		return 1.0
+	var factor := float(weather_slice.move_factor(weather_slice.weather_at(get_world_pos()["chunk"], weather_slice.current_hour())))
+	if factor >= 1.0:
+		return 1.0
+	var p := get_position()
+	if voxel_slice != null and voxel_slice.has_method("get_column_runs_at") and roof_overhead(voxel_slice.get_column_runs_at(Vector2(p.x, p.z)), p.y):
+		return 1.0
+	return factor
+
 ## Whether the local body is swimming now (needs a terrain slice to read the ground).
 func _swimming_now() -> bool:
 	if terrain_slice == null or not terrain_slice.has_method("get_height_at"):
@@ -656,7 +689,7 @@ func _move(delta: float) -> void:
 		var basis := _pivot.global_transform.basis
 		dir = (basis.x * dir.x + basis.z * dir.z).normalized()
 
-	var speed := SPEED * (SWIM_SPEED_FACTOR if swimming else 1.0)
+	var speed := walking_speed(swimming, _weather_factor_now())
 	_vel.x = dir.x * speed
 	_vel.z = dir.z * speed
 

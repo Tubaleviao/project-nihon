@@ -155,6 +155,9 @@ jobs:
       - name: Check the biome adjacency validation rejects bad tables
         run: node tools/check_biome_adjacency.js
 
+      - name: Check the weather table validation rejects bad tables
+        run: node tools/check_weather.js
+
       - name: Check the README phase table against ROADMAP.md
         run: |
           node tools/check_readme_phases.js

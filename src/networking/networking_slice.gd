@@ -1010,6 +1010,11 @@ func broadcast_world_clock(days: float) -> void:
 	if _role == Role.HOST:
 		_broadcast({ "type": "world_clock", "days": days })
 
+## Phase 128 — host: send every peer the weather override table (`WeatherSlice.to_data()` form).
+func broadcast_weather_overrides(overrides: Array) -> void:
+	if _role == Role.HOST:
+		_broadcast({ "type": "weather_overrides", "overrides": overrides })
+
 ## Drop every sent-record involving a peer that disconnected.
 func _forget_equipment_pairs(peer_id: int) -> void:
 	_equipment_eval_positions.erase(peer_id)
@@ -1853,6 +1858,10 @@ func _route_h2c(payload: Dictionary) -> void:
 			)
 		"remote_player_state":
 			_route_remote_player_state(payload)
+		"weather_overrides":
+			# Phase 128 — only a client adopts the host's table; the list is validated by the slice.
+			if _role == Role.CLIENT and payload.get("overrides", null) is Array:
+				GameBus.weather_overrides_synced.emit(payload["overrides"])
 		"world_clock":
 			# Phase 54 — the host's clock sample; game_root's WorldClock slews to it.
 			GameBus.world_clock_received.emit(float(payload.get("days", 0.0)))

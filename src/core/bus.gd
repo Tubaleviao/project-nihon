@@ -199,6 +199,13 @@ signal waystone_travel_resolved(player_id: String, ok: bool, reason: String)
 ## host pushes it to the owner's peer alone; a client emits it locally when it lands.
 signal waystones_synced(player_id: String, station_ids: Array)
 
+## Phase 128 — the host's override table changed (`WeatherSlice.to_data()` form). game_root broadcasts
+## it to every client; a client never emits it.
+signal weather_overrides_synced(overrides: Array)
+
+## Phase 128 — the weather under the local player changed to `state`. Local only, never networked.
+signal weather_changed(state: String)
+
 ## Phase 124 — the host resolved a gather (a mined resource) for `player_id` ("" is the
 ## local player). The host grants the fabric's `gather` research points on it.
 signal resource_gathered(player_id: String, material: String, quantity: int)

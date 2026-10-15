@@ -50,6 +50,8 @@ const CHANNEL_SYSTEM := "system"
 var player_registry: Node = null
 var player_slice: Node = null
 var inventory_slice: Node = null
+## Phase 128 — the host's weather, for the admin `/weather` override.
+var weather_slice: Node = null
 var networking: Node = null
 ## False on a headless server: no box is built, the slice only runs commands.
 var render_visuals: bool = true
@@ -181,6 +183,8 @@ func handle_intent(text: String, player_id: String) -> void:
 			_cmd_give(speaker, args)
 		"kill":
 			_cmd_kill(speaker, args)
+		"weather":
+			_cmd_weather(speaker, args)
 		_:
 			pass
 
@@ -321,6 +325,40 @@ func _cmd_give(speaker: String, args: Array) -> void:
 	_reply(speaker, "Gave %d × %s to %s." % [qty, item, _handle_of(target)])
 	if target != speaker:
 		_reply(target, "An admin gave you %d × %s." % [qty, item])
+
+## Phase 128 — `/weather <state> <hours>`: override the weather of the admin's own cell. The slice
+## bounds the duration by the fabric's `overrideMaxHours`.
+func _cmd_weather(speaker: String, args: Array) -> void:
+	if weather_slice == null:
+		_reply(speaker, "Weather is not running here.")
+		return
+	if args.size() != 2 or not str(args[1]).is_valid_int():
+		_reply(speaker, ChatCommands.USAGE["weather"])
+		return
+	var state := str(args[0]).to_lower()
+	var hours := str(args[1]).to_int()
+	var where := _position_of(speaker)
+	if not bool(where["known"]):
+		_reply(speaker, "Could not tell where %s is." % _handle_of(speaker))
+		return
+	var pos: Dictionary = where["pos"]
+	var chunk: Vector2i = pos["chunk"]
+	var cell: Vector2i = weather_slice.cell_of(chunk)
+	var why: String = weather_slice.set_override(cell, state, hours)
+	match why:
+		"":
+			print("[Weather] %s set %s for %d h on cell %s" % [_handle_of(speaker), state, hours, cell])
+			_reply(speaker, "Weather here is %s for %d in-game hour(s)." % [state, hours])
+		"unknown_state":
+			_reply(speaker, "Unknown weather '%s'. States: %s." % [state, ", ".join(weather_slice.state_ids())])
+		"too_long":
+			_reply(speaker, "At most %d in-game hours." % weather_slice.override_max_hours())
+		"bad_cell":
+			_reply(speaker, "No weather cell here.")
+		"bad_hours":
+			_reply(speaker, "Hours must be a whole number of at least 1.")
+		_:
+			_reply(speaker, "Could not set the weather (%s)." % why)
 
 func _cmd_kill(speaker: String, args: Array) -> void:
 	var target := speaker

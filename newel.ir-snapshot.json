@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:3d13b2cb063d14be5982d2f38c09bb56eb5cb075f3f31a6e511d921e3e3d4552",
+  "schemaHash": "sha256:2880863e0c54899fc234471a9b75778b32a7b410004049710f10d9412ec67497",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -5787,6 +5787,137 @@
             "nullable": false,
             "primaryKey": true,
             "pii": false
+          },
+          "rules": {
+            "name": "rules",
+            "type": "json",
+            "description": "Weather table (Phase 128): { cellSizeChunks, hoursPerRoll, overrideMaxHours, states: { <id>: WeatherState }, climate } (validated at fabric load)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "cellSizeChunks": 64,
+              "hoursPerRoll": 6,
+              "overrideMaxHours": 48,
+              "states": {
+                "clear": {
+                  "moveSpeedFactor": 1,
+                  "visibilityFactor": 1,
+                  "minTemperature": -100,
+                  "maxTemperature": 100,
+                  "minRainfall": 0,
+                  "weight": 6,
+                  "biomes": [],
+                  "exceptBiomes": []
+                },
+                "rain": {
+                  "moveSpeedFactor": 0.95,
+                  "visibilityFactor": 0.8,
+                  "minTemperature": 0,
+                  "maxTemperature": 100,
+                  "minRainfall": 200,
+                  "weight": 3,
+                  "biomes": [],
+                  "exceptBiomes": [
+                    "VoidRift"
+                  ]
+                },
+                "storm": {
+                  "moveSpeedFactor": 0.7,
+                  "visibilityFactor": 0.6,
+                  "minTemperature": 5,
+                  "maxTemperature": 100,
+                  "minRainfall": 400,
+                  "weight": 1,
+                  "biomes": [],
+                  "exceptBiomes": [
+                    "VoidRift"
+                  ]
+                },
+                "blizzard": {
+                  "moveSpeedFactor": 0.6,
+                  "visibilityFactor": 0.4,
+                  "minTemperature": -100,
+                  "maxTemperature": 0,
+                  "minRainfall": 100,
+                  "weight": 2,
+                  "biomes": [],
+                  "exceptBiomes": [
+                    "VoidRift"
+                  ]
+                },
+                "fog": {
+                  "moveSpeedFactor": 1,
+                  "visibilityFactor": 0.5,
+                  "minTemperature": -10,
+                  "maxTemperature": 25,
+                  "minRainfall": 300,
+                  "weight": 1.5,
+                  "biomes": [],
+                  "exceptBiomes": [
+                    "VoidRift"
+                  ]
+                },
+                "ash_fall": {
+                  "moveSpeedFactor": 0.9,
+                  "visibilityFactor": 0.5,
+                  "minTemperature": -100,
+                  "maxTemperature": 100,
+                  "minRainfall": 0,
+                  "weight": 3,
+                  "biomes": [
+                    "VolcanicBadlands"
+                  ],
+                  "exceptBiomes": []
+                },
+                "electrical_storm": {
+                  "moveSpeedFactor": 0.8,
+                  "visibilityFactor": 0.7,
+                  "minTemperature": -100,
+                  "maxTemperature": 100,
+                  "minRainfall": 0,
+                  "weight": 3,
+                  "biomes": [
+                    "TwilightGrove"
+                  ],
+                  "exceptBiomes": []
+                },
+                "void_storm": {
+                  "moveSpeedFactor": 0.9,
+                  "visibilityFactor": 0.6,
+                  "minTemperature": -100,
+                  "maxTemperature": 100,
+                  "minRainfall": 0,
+                  "weight": 4,
+                  "biomes": [
+                    "VoidRift"
+                  ],
+                  "exceptBiomes": []
+                }
+              },
+              "climate": {
+                "TemperateForest": {
+                  "temperature": 10,
+                  "rainfall": 900
+                },
+                "TemperateGrassland": {
+                  "temperature": 12,
+                  "rainfall": 600
+                },
+                "TwilightGrove": {
+                  "temperature": 10,
+                  "rainfall": 700
+                },
+                "VolcanicBadlands": {
+                  "temperature": 30,
+                  "rainfall": 100
+                },
+                "VoidRift": {
+                  "temperature": 10,
+                  "rainfall": 0
+                }
+              }
+            }
           }
         },
         "relations": {},
