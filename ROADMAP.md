@@ -148,6 +148,10 @@ issue number where the criterion used to be.
 | 125 | Waystones: a first fast-travel network | Planned | below |
 | 126 | Tree clears the host keeps, and one seam-wrap module | Planned | below |
 | 127 | Terrain streaming, generation records and persistence cleanup sweep | Planned | below |
+| 128 | Weather: the fabric's `WeatherSystem` runs on the host | Planned | below |
+| 129 | Combat status effects: burn, paralysis, knockback, knockdown and stagger | Planned | below |
+| 130 | Creatures walk on the ground and around obstacles | Planned | below |
+| 131 | Loose ground settles: sand and soil fall when undermined | Planned | below |
 
 ---
 
@@ -1374,6 +1378,203 @@ item of each issue below.
 
 ---
 
+## Phase 128 — Weather: the fabric's `WeatherSystem` runs on the host
+
+**Goal:** `fabric/world/weather.js` describes weather as an emergent world system (rain, storm,
+blizzard, fog, ash-fall, void-storm) driven by each biome's `avgTemperature` / `avgRainfall` and the
+season, but no runtime code reads it: the sky never changes. This phase makes weather a deterministic
+function of the world seed, the region, the biome and the world clock's in-game hour, so every host and
+client computes the same state without a per-tile sync; the host owns overrides, and the first
+gameplay effects (outdoor movement speed, visibility) are applied on both boot paths.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 51, Phase 54.
+
+**Deliverables:**
+- `fabric/world/weather.js` — a `WeatherState` table (id, `moveSpeedFactor`, `visibilityFactor`,
+  `minTemperature` / `maxTemperature`, `minRainfall`, weight) and `WeatherSystem` fields
+  (`cellSizeChunks`, `hoursPerRoll`, `overrideMaxHours`), with validators (factors in 0–1, weights
+  ≥ 0, every biome reaches at least one state); `npm run generate` emits them into `godot/`, `bible/`,
+  `wiki/`.
+- `src/world/weather_slice.gd` (new) — `weather_at(chunk, hour) -> String`, a pure function of seed,
+  weather cell (`cellSizeChunks`, wrapped on X like the rest of the planet), cell biome, season and the
+  hour bucket, using an integer mix pinned by golden values; `VoidRift` cells roll only `void_storm` /
+  `clear`; `current_for(position)` reads the world clock; an override table (cell → state, end hour)
+  owned by the host, saved with `world.json` and synced to clients on join and on change.
+- `src/core/bus.gd` / `src/core/game_root.gd` — `weather_override_requested` (host-only) and
+  `weather_overrides_synced`; `weather_changed(state)` emitted locally when the player's cell state
+  changes; the slice wired on both boot paths.
+- `src/player/player_slice.gd` — outdoor walking speed is multiplied by the state's
+  `moveSpeedFactor` (not while swimming; not under a roof span within 4 m above the head).
+- `src/chat/chat_slice.gd` / `src/core/chat_commands.gd` — an admin `/weather <state> <hours>` sets an
+  override on the admin's cell, bounded by `overrideMaxHours`, logged; a non-admin is refused.
+- `src/ui/` — a HUD weather label beside the clock, and the environment's fog density scaled by
+  `visibilityFactor` (client only; the headless server creates no environment).
+
+**Acceptance criteria:**
+- [ ] `npm run validate` and `npm run check-drift` green; a `moveSpeedFactor` of 1.5 or a biome that
+  reaches no state fails validation.
+- [ ] Suite: `weather_at` matches golden values for five (chunk, hour) pairs, is equal at chunk X and
+  X + one planet lap, and is constant within one `hoursPerRoll` bucket.
+- [ ] Suite: over 10,000 sampled cells, a desert cell never rolls `blizzard`, a `VoidRift` cell rolls
+  only `void_storm` or `clear`, and each state's share is within 5 percentage points of its weight
+  among the states its biome allows.
+- [ ] Suite: in a `storm` cell, outdoor walking speed is `SPEED × moveSpeedFactor`, swimming speed is
+  unchanged, and a player under a placed roof span walks at full speed.
+- [ ] Suite: `/weather storm 2` from an admin overrides the cell for two in-game hours and reverts
+  after; a value above `overrideMaxHours` and a non-admin sender are refused; the override survives a
+  save/load.
+- [ ] Harness: a `weather_override` step proves an admin override reaches the second client.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 129 — Combat status effects: burn, paralysis, knockback, knockdown and stagger
+
+**Goal:** `CombatSystem.applyStatusEffects` and several creatures' attacks in the fabric name status
+effects (LavaSlug heat-burn, VeilStalker paralysis, ForestBoar knockback, knockdown, stagger), but they
+exist only as rule text: `BattleSlice.resolve_round` deals plain damage. This phase turns the rules into
+a structured fabric table, applies effects on the host when a hit lands, ticks them on the host,
+persists the ones a player can log out with, and shows them on the HUD. Rain from Phase 128 extinguishes
+heat-burn, as the fabric rule says.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 38, Phase 128.
+
+**Deliverables:**
+- `fabric/gameplay/combat.js` — a `StatusEffect` table (id, `durationSeconds`, `damagePerSecond`,
+  `immobilize`, `damageTakenFactor`, `displaceTiles`, `stacks`, `extinguishedBy` weather states) and an
+  `onHitEffects` field (`[{ effect, chance }]`) on the creatures whose attack rules name one; validators
+  (chance in 0–1, an `onHitEffects` entry names a defined effect, non-stacking effects have
+  `stacks: false`); regenerated.
+- `src/battle/status_effects.gd` (new) — `apply(target_id, effect_id, now)` (refresh, not stack, when
+  `stacks` is false), `tick(now) -> Array` of damage events, `damage_factor(target_id)`,
+  `is_immobilized(target_id)`, `clear(target_id)`; the chance roll uses a seeded integer mix of
+  (round seq, attacker, target), pinned by golden values.
+- `src/battle/battle_slice.gd` — a landed hit rolls the attacker's `onHitEffects`; `resolve_round`
+  multiplies damage by `damage_factor`; knockback moves the target by `displaceTiles` along the attack
+  direction on the host, clamped to walkable ground; death and respawn clear every effect.
+- `src/core/bus.gd` / `src/core/game_root.gd` — `status_effects_synced(target_id, effects)` sent to the
+  target's own peer only; DoT ticks go through the host's simulated peer HP (Phase 38), never
+  client-owned; a burning target in a weather state listed in `extinguishedBy` loses the burn.
+- `src/player/player_slice.gd` / `src/creature/creature_ai.gd` — an immobilized player or creature
+  does not move; stagger cancels the current action.
+- `src/persistence/player_registry.gd` — active effects with their remaining seconds saved on the
+  player record; a legacy record loads with none.
+- `src/ui/` — HUD status icons with remaining time (text labels when no icon key exists; placeholders
+  added under `assets/` for any icon key the art repo will use).
+
+**Acceptance criteria:**
+- [ ] `npm run validate` and `npm run check-drift` green; an `onHitEffects` entry naming an undefined
+  effect fails validation.
+- [ ] Suite: heat-burn deals `damagePerSecond × durationSeconds` total over its duration and then ends;
+  reapplying a non-stacking effect refreshes the timer without doubling damage.
+- [ ] Suite: a knocked-down target takes `damageTakenFactor` × damage; a paralyzed player's movement
+  input moves nothing for the duration; knockback never lands inside solid voxels.
+- [ ] Suite: the on-hit roll matches its golden values; over 10,000 seeded rolls VeilStalker's paralysis
+  rate is within 1 percentage point of 20%.
+- [ ] Suite: a burning player whose cell turns to `rain` loses the burn on the next tick; death clears
+  all effects; effects round-trip through a registry save/load and a legacy record loads with none.
+- [ ] Harness: a `status_effect` step proves the effect reaches only the target's client and that the
+  DoT lowers the host's simulated HP for that peer.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 130 — Creatures walk on the ground and around obstacles
+
+**Goal:** `CreatureAI._move_instance` steps a creature in a straight 3D line toward its target; the
+ground height is read only at spawn, so a chasing creature floats over valleys, sinks into hills and
+walks through placed walls and stations. The deferred list asks for path-finding (deferred from
+Phase 15). A baked `NavigationAgent3D` mesh does not fit a streamed voxel world with a headless server,
+so this phase gives creatures a host-side, bounded grid path over the voxel columns: each step follows
+the walkable surface, a step taller than the creature can climb or deep water is routed around, and the
+cost per tick is capped.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 15, Phase 40, Phase 78.
+
+**Deliverables:**
+- `fabric/world/creatures/shared.js` — per-creature `maxStepMetres`, `canSwim`, `pathRadiusTiles` (with
+  defaults and validators); regenerated.
+- `src/creature/creature_path.gd` (new) — `find_path(from_tile, to_tile, rules, surface) -> Array` A*
+  over tiles within `pathRadiusTiles`, a step allowed when the height difference ≤ `maxStepMetres` and
+  the tile is not water unless `canSwim`; works on exact `WorldPos` tiles across the X wrap; returns a
+  partial path toward the closest reached tile when the goal is unreachable; a node-expansion cap.
+- `src/creature/creature_ai.gd` — chase, flee, patrol and companion follow move along the path; every
+  step sets Y from the voxel surface (`VoxelSlice` column top, not the generator height, so mined pits
+  and placed blocks count); a path is recomputed when the target moves more than two tiles or the next
+  tile's column changed (`block_changed`); a per-tick budget of path searches shared by all creatures,
+  overflow waits for the next tick in a round-robin queue.
+- `src/creature/creature_slice.gd` — a creature in an unloaded chunk freezes instead of moving on
+  generator heights; `set_instance_position` keeps the visual transform on the surface.
+- `src/tests/net_harness.gd` — the existing creature-sync step asserts the client's creature Y equals
+  the host's surface height.
+
+**Acceptance criteria:**
+- [ ] `npm run validate` and `npm run check-drift` green; a negative `maxStepMetres` fails validation.
+- [ ] Suite: a creature chasing a player across a valley stays within 0.1 m of the surface at every
+  step; a 3 m placed wall between them is walked around, not through.
+- [ ] Suite: a non-swimming creature never enters a water tile; a goal on an island returns a partial
+  path ending at the nearest shore tile.
+- [ ] Suite: a search in a fully walled pocket stops at the expansion cap; with 200 creatures chasing
+  at once, path searches per tick never exceed the budget and every creature has moved within
+  `ceil(200 / budget)` ticks.
+- [ ] Suite: a chase across the X wrap at chunk X = 1,500,000 takes the short way round.
+- [ ] Harness green with the creature-height assertion; suite green on both boot paths.
+
+---
+
+## Phase 131 — Loose ground settles: sand and soil fall when undermined
+
+**Goal:** the deferred list keeps a cellular automaton for loose materials (from the GDVoxelPlayground
+evaluation). Today a player can mine out the ground under a beach and leave the sand hanging, or build
+a floating sand pillar. This phase marks granular materials in the fabric and runs a host-side settling
+pass on dirty columns only: a granular span with air below falls to the first support, the result goes
+through the existing authoritative voxel edit path (persisted in the region store, synced to clients),
+and the pass is bounded per tick so a large collapse spreads over several ticks.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 12, Phase 52, Phase 121.
+
+**Deliverables:**
+- `fabric/world/materials/` — a `granular` boolean on materials (`Sand`, `Soil`, `Snow` true; rock,
+  ores and metals false), with a validator that every biome `surfaceMaterial` declares it; regenerated.
+- `src/terrain/settle.gd` (new) — a pure `settle_column(spans, granular) -> spans` that drops each
+  unsupported granular span onto the next solid span below, keeping material and total volume; a
+  `SettleQueue` of dirty columns (from `block_changed` on the host: the edited column and its four
+  neighbours), processed in a deterministic order with a per-tick column budget.
+- `src/terrain/voxel_slice.gd` — on the host, a settled column is written through the same edit path as
+  a mine or place (region store, `block_changed`, client sync), marked as a settle edit so it grants no
+  item and costs no material; clients never settle on their own.
+- `src/terrain/voxel_slice.gd` / `chunk_manager.gd` — neighbour seam rebuilds follow settled columns;
+  a settle in an unloaded neighbour chunk is queued until the chunk loads, not dropped.
+- `src/world/tree_slice.gd` — a tree whose ground falls more than `CLEAR_DEPTH_M` is cleared through
+  the Phase 116 path.
+- Generated (unedited) terrain is not settled: only edited columns enter the queue, so world-gen output
+  and `WORLDGEN_VERSION` are unchanged.
+
+**Acceptance criteria:**
+- [ ] `npm run validate` and `npm run check-drift` green; a biome whose `surfaceMaterial` lacks
+  `granular` fails validation.
+- [ ] Suite: `settle_column` keeps per-material volume; a sand span over air lands on the first solid
+  span; a rock span over air does not move; settling an already-settled column is a no-op.
+- [ ] Suite: mining the stone under a 5-block sand stack on the host leaves no granular span over air
+  after the queue drains; the result survives a region save/load and the worldgen golden values are
+  unchanged.
+- [ ] Suite: a 1,000-column collapse never processes more than the per-tick budget and finishes within
+  `ceil(1000 / budget)` ticks; a settle in an unloaded neighbour applies when that chunk loads.
+- [ ] Suite: a client's local edit enqueues nothing; a settle edit grants no item.
+- [ ] Harness: a `sand_settles` step mines under sand on the host and proves the client's column
+  matches the host's after sync.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
 ## Deferred (in priority order)
 
 - **Server sharding (final, not before maturity)** — split the authoritative
@@ -1388,7 +1589,7 @@ item of each issue below.
 
 - **Rivers, lakes and fluid flow** — water above sea level and flowing water
   (the cellular-automaton idea from the GDVoxelPlayground evaluation) follow
-  Phase 51's static sea level.
+  Phase 51's static sea level. **(falling sand and soil planned: Phase 131; water remains.)**
 - **Fast travel** — a planet takes about 90 days to walk around. Some form of
   travel network (roads, boats, waystones) is needed once players spread out
   (after Phase 53). **(planned: Phase 125 adds waystones; roads and boats remain.)**
@@ -1420,6 +1621,7 @@ item of each issue below.
   kinematic stepping; replacing it with nav-mesh baked from voxel terrain and
   `NavigationAgent3D` per-instance requires the chunk-streaming world from
   Phase 17 to produce stable nav-mesh regions (deferred from Phase 15).
+  **(planned: Phase 130 replaces it with a host-side grid path over voxel columns.)**
 - **WAN / cross-region multiplayer testing** — all Phase 18–19 multiplayer
   validation is loopback or LAN (deferred from Phase 19).
 - **Automatic LOD mesh decimation** — simplified meshes are hand-authored;
