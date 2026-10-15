@@ -1,4 +1,6 @@
 extends RefCounted
+
+const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 ## Phase 108 — the generation records of the chunks this process knows (see `RegionStore.normalize_gen`).
 ##
 ## A static table `"cx,cz" -> { v, f, b, h }` guarded by a mutex: the main thread writes it (a region
@@ -68,7 +70,7 @@ static func snapshot_near(center: Vector2i, radius: int, circumference: int) -> 
 			for dx in range(-radius, radius + 1):
 				var c := center + Vector2i(dx, dz)
 				if circumference > 0:
-					c.x = posmod(c.x + circumference / 2, circumference) - circumference / 2   # canonical, as wrap_chunk
+					c.x = SeamWrap.wrap_i(c.x, circumference)   # canonical, as wrap_chunk
 				var rec: Dictionary = _table.get(key_of(c), {})
 				if not rec.is_empty():
 					out[c] = { "b": str(rec["b"]), "h": (rec["h"] as Array).duplicate() }

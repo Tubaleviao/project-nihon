@@ -342,6 +342,7 @@ func _ready() -> void:
 	_tree.voxel_slice         = _voxel
 	_tree.station_slice       = _station
 	_tree.record_writer       = Callable(_chunk_manager, "update_record")
+	_tree.frontier_ready      = Callable(_chunk_manager, "can_record_now")
 	# Phase 36 — the wire is policed with evidence the bus cannot carry: a tree chop
 	# intent names only a tree id (its position for the reach check comes from the tree
 	# slice) and a trade invite names a counterparty (resolved against the registry's
@@ -1891,6 +1892,7 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 		# Phase 114 — the table is pruned to the host's scope first, so it never outgrows one window.
 		if data.has("gen_scope"):
 			ChunkRecordSync.prune_to_scope(data["gen_scope"])
+			_tree.set_clear_scope(data["gen_scope"])   # Phase 126 — the clear range is the scope's radius
 		var gen_result := ChunkRecordSync.apply(data.get("gen_records", {}))
 		if ChunkRecords.content_revision() != rev_before:
 			_tree.resync_recorded_chunks()   # Phase 110 — a record may carry a budget or cleared trees

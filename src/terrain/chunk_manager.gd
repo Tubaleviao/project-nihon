@@ -86,6 +86,7 @@ extends Node
 ##   first_ring_progress() -> float         — 0..1, drives the loading bar
 const Diag := preload("res://src/core/diag.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 const Frontier := preload("res://src/terrain/frontier.gd")
 const RegionStore := preload("res://src/persistence/region_store.gd")
@@ -635,6 +636,11 @@ func _record_generation(chunk_pos: Vector2i) -> void:
 		_pending_records[ChunkRecords.key_of(canon)] = { "gen": rec }
 		records_created += 1
 
+## Phase 126 — whether a record for `canon` can be made right now: the regions `Frontier` reads around it
+## are resident (a world with no region streamer, as in an isolated rig, always can).
+func can_record_now(canon: Vector2i) -> bool:
+	return region_streamer == null or region_streamer.regions_ready(canon, Frontier.BLEND_CHUNKS)
+
 ## Chunks that entered a window while a neighbouring region was unreadable: "cx,cz" -> canonical chunk.
 var _deferred_records: Dictionary = {}
 
@@ -1037,7 +1043,7 @@ func _move_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool, is_sync
 ## The step from `from` to `to`, X measured the short way round the seam.
 static func _wrapped_step(from: Vector2i, to: Vector2i) -> Vector2i:
 	var c := TerrainSlice.circumference_chunks()
-	return Vector2i(posmod(to.x - from.x + c / 2, c) - c / 2, to.y - from.y)
+	return Vector2i(SeamWrap.delta(to.x, from.x, c), to.y - from.y)
 
 static func _scaled_step(step: Vector2i, reach: int) -> Vector2i:
 	return Vector2i(

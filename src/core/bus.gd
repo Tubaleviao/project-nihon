@@ -78,6 +78,12 @@ signal block_edit_intent(action: String, position: Vector3, normal: Vector3, mat
 ## VoxelSlice.apply_block_change().
 signal block_changed(action: String, position: Vector3, normal: Vector3, material: String)
 
+## Host only (Phase 126): the tile `VoxelSlice._resolve_edit_tile` resolved for an edit that just applied
+## (from the exact `{chunk, local}` record when the caller had one) and the edit's height, emitted just
+## before `block_changed`. Consumers that clear things round an edit (TreeSlice) use this tile instead of
+## re-deriving it from the float position and normal.
+signal block_edit_resolved(tile: Vector2i, edit_y: float)
+
 ## Host → clients: authoritative creature state delta (position + state enum).
 signal creature_state_changed(instance_id: String, creature_id: String, state: String, position: Vector3)
 

@@ -339,6 +339,7 @@ func run(root: Node, role: String) -> void:
 			return
 	await _step_handshake()
 	await _step_snapshot_complete()
+	await _capture_spare_target()
 	await _step_chop_in_reach()
 	await _step_chop_out_of_reach()
 	await _step_tree_cleared()
@@ -1274,25 +1275,47 @@ func _step_chunk_record_synced() -> void:
 ## in-reach tree by id, so it is not one an earlier step chopped); the host clears it as a building
 ## would, the client waits for it to vanish and both report the id.
 func _step_tree_cleared() -> void:
-	# The last in-reach tree by id, and only when it is not one of the chop targets later steps use.
-	var found: bool = await _await_until(func(): return _spare_tree().length() > 0, STEP_TIMEOUT_SECS)
-	var t := _spare_tree()
-	if not found or t == "":
+	# The target was captured before any chop step ran (`_capture_spare_target`), so a side that reaches this
+	# step late names the same tree as the other one.
+	var t := _spare_target
+	if t == "":
 		_report("tree_cleared", "fail", "no_spare_tree")
 		return
 	if _role == "host":
 		if _root._tree.get_tree_record(t).is_empty():
 			_report("tree_cleared", "fail", "host_has_no_tree")
 			return
-		# Give the client time to reach this step with its trees loaded: a clear for a chunk it has not
-		# streamed yet is left to the scoped records, not the live event.
-		await _await_settle(6.0)
+		# Phase 126 — wait for the client's ack (its trees are loaded and the lag has passed) instead of a
+		# fixed window: a clear for a chunk it has not streamed yet is left to the scoped records.
+		var acked: bool = await _await_until(func(): return not _chat_line("chat", TREE_ACK_PROBE + t, "").is_empty(), STEP_TIMEOUT_SECS + CLIENT_LAG_SECS)
+		if not acked:
+			_report("tree_cleared", "fail", "client_never_acked")
+			return
 		_root._tree._clear_tree(t)
 		await _await_settle(2.0)
 		_report("tree_cleared", verdict(_root._tree.get_tree_record(t).is_empty(), true), t)
 		return
+	# An injected lag: this client reaches the clear seconds after the host is ready for it.
+	await _await_settle(CLIENT_LAG_SECS)
+	var loaded: bool = await _await_until(func(): return not _root._tree.get_tree_record(t).is_empty(), STEP_TIMEOUT_SECS)
+	if not loaded:
+		_report("tree_cleared", "fail", "client_never_loaded_target")
+		return
+	_root._chat.submit(TREE_ACK_PROBE + t)
 	var gone: bool = await _await_until(func(): return _root._tree.get_tree_record(t).is_empty(), STEP_TIMEOUT_SECS)
 	_report("tree_cleared", verdict(gone, true), t if gone else "still_standing")
+
+## Phase 126 — seconds the client lags before it acks the `tree_cleared` target; the host waits on the ack.
+const CLIENT_LAG_SECS := 5.0
+const TREE_ACK_PROBE := "tree-ready:"
+
+## The `tree_cleared` target, named once from the trees loaded at the start and kept (see `_spare_tree`).
+var _spare_target := ""
+
+func _capture_spare_target() -> void:
+	var found: bool = await _await_until(func(): return _spare_tree().length() > 0, STEP_TIMEOUT_SECS)
+	if found:
+		_spare_target = _spare_tree()
 
 ## The in-reach tree with the greatest id, or "" when there are no more than `TARGETS_NEEDED` in reach.
 func _spare_tree() -> String:
