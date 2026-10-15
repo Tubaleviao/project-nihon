@@ -383,30 +383,30 @@ def _norm(q: tuple) -> list:
     return [c / length for c in q]
 
 
-def build_skinned_rig(tres: Path, skin_name: str, joint_pos: dict, rest_rot: dict, parts: list, clips: list) -> bytes:
+def build_skinned_rig(tres: Path, skin_name: str, joint_pos: dict, rest_rot: dict, parts: list, clips: list,
+                      root_name: str = "PlayerRig") -> bytes:
     """A skinned box rig for one fabric skeleton: joints, rests, boxes and clips as the player rig's tables."""
-    JOINTS, REST, PARTS, PLAYER_CLIPS = joint_pos, rest_rot, parts, clips
     bones = fabric_bones(tres)
     names = [n for n, _ in bones]
-    if sorted(names) != sorted(JOINTS):
-        raise SystemExit(f"JOINTS {sorted(JOINTS)} do not match the fabric bones {sorted(names)}")
+    if sorted(names) != sorted(joint_pos):
+        raise SystemExit(f"JOINTS {sorted(joint_pos)} do not match the fabric bones {sorted(names)}")
     index = {n: i for i, n in enumerate(names)}
 
     # Nodes: 0 the scene root, 1 the skinned mesh, then one per joint in fabric order.
     # A joint's translation and rotation are relative to its parent joint (Root's to the
     # scene root), so the translation is the offset expressed in the parent's rest axes.
     # `world` is each joint's rest rotation in figure space (fabric order is parents first).
-    nodes = [{"name": "PlayerRig", "children": [1, 2 + index["Root"]]}, {"name": "Body", "mesh": 0, "skin": 0}]
-    rest = {n: _norm(REST.get(n, (0.0, 0.0, 0.0, 1.0))) for n in names}
+    nodes = [{"name": root_name, "children": [1, 2 + index["Root"]]}, {"name": "Body", "mesh": 0, "skin": 0}]
+    rest = {n: _norm(rest_rot.get(n, (0.0, 0.0, 0.0, 1.0))) for n in names}
     world: dict = {}
     for name, parent in bones:
-        x, y, z = JOINTS[name]
-        px, py, pz = JOINTS[parent] if parent else (0.0, 0.0, 0.0)
+        x, y, z = joint_pos[name]
+        px, py, pz = joint_pos[parent] if parent else (0.0, 0.0, 0.0)
         pw = world[parent] if parent else [0.0, 0.0, 0.0, 1.0]
         world[name] = _quat_mul(pw, rest[name])
         local = _quat_rotate(_quat_conj(pw), (x - px, y - py, z - pz))
         node = {"name": name, "translation": [round(c, 6) for c in local]}
-        if name in REST:
+        if name in rest_rot:
             node["rotation"] = rest[name]
         children = [2 + i for i, (_, p) in enumerate(bones) if p == name]
         if children:
@@ -414,7 +414,7 @@ def build_skinned_rig(tres: Path, skin_name: str, joint_pos: dict, rest_rot: dic
         nodes.append(node)
 
     positions, normals, joints, weights, indices = [], [], [], [], []
-    for joint, centre, size in PARTS:
+    for joint, centre, size in parts:
         for normal, corners in CUBE_FACES:
             base = len(positions) // 3
             for corner in corners:
@@ -454,13 +454,13 @@ def build_skinned_rig(tres: Path, skin_name: str, joint_pos: dict, rest_rot: dic
     for name in names:
         inv = _quat_conj(world[name])
         cols = [_quat_rotate(inv, axis) for axis in ((1, 0, 0), (0, 1, 0), (0, 0, 1))]
-        t = _quat_rotate(inv, JOINTS[name])
+        t = _quat_rotate(inv, joint_pos[name])
         ibm.extend([*cols[0], 0.0, *cols[1], 0.0, *cols[2], 0.0, -t[0], -t[1], -t[2], 1.0])
     ibm_accessor = add(struct.pack("<%df" % len(ibm), *ibm), 0, 0, componentType=5126,
                        count=len(names), type="MAT4")
 
     animations = []
-    for clip, times, channels_by_joint in PLAYER_CLIPS:
+    for clip, times, channels_by_joint in clips:
         input_accessor = add(struct.pack("<%df" % len(times), *times), 0, 0, componentType=5126,
                              count=len(times), type="SCALAR", min=[min(times)], max=[max(times)])
         samplers, channels = [], []
@@ -555,7 +555,7 @@ WOLF_CLIPS = [
 
 
 def build_wolf_rig() -> bytes:
-    return build_skinned_rig(QUAD_TRES, "QuadrupedSkeleton", WOLF_JOINTS, {}, WOLF_PARTS, WOLF_CLIPS)
+    return build_skinned_rig(QUAD_TRES, "QuadrupedSkeleton", WOLF_JOINTS, {}, WOLF_PARTS, WOLF_CLIPS, "WolfRig")
 
 
 # ---------------------------------------------------------------------------
@@ -641,7 +641,7 @@ SERPENT_CLIPS = [
     ("idle", [0.0, 1.0, 2.0], {"Head": [(0, 0, 0), (0, 10, 0), (0, 0, 0)]}),
     ("walk", [0.0, 0.25, 0.5, 0.75, 1.0], _slither(15)),
     ("run", [0.0, 0.15, 0.3, 0.45, 0.6], _slither(25)),
-    ("fall", [0.0, 0.4, 0.8], {"Spine_2": [(20, 0, 0)] * 3}),
+    ("fall", [0.0, 0.4, 0.8], {"Spine_2": [(10, 0, 0), (25, 0, 0), (35, 0, 0)]}),
     ("land", [0.0, 0.12, 0.25], {"Spine_2": [(10, 0, 0), (5, 0, 0), (0, 0, 0)]}),
     ("attack", [0.0, 0.15, 0.3, 0.5], {"Neck": [(0, 0, 0), (-30, 0, 0), (25, 0, 0), (0, 0, 0)],
                                         "Head": [(0, 0, 0), (-20, 0, 0), (15, 0, 0), (0, 0, 0)]}),
@@ -652,8 +652,8 @@ SERPENT_CLIPS = [
 def creature_rigs() -> dict:
     """{GLB path: bytes} for the roster beyond GraywolfPack."""
     quad = build_wolf_rig()
-    bird = build_skinned_rig(BIRD_TRES, "BirdSkeleton", BIRD_JOINTS, {}, BIRD_PARTS, BIRD_CLIPS)
-    serpent = build_skinned_rig(SERPENT_TRES, "SerpentSkeleton", SERPENT_JOINTS, {}, SERPENT_PARTS, SERPENT_CLIPS)
+    bird = build_skinned_rig(BIRD_TRES, "BirdSkeleton", BIRD_JOINTS, {}, BIRD_PARTS, BIRD_CLIPS, "BirdRig")
+    serpent = build_skinned_rig(SERPENT_TRES, "SerpentSkeleton", SERPENT_JOINTS, {}, SERPENT_PARTS, SERPENT_CLIPS, "SerpentRig")
     rigs = {}
     for names, data in ((QUADRUPED_CREATURES, quad), (BIRD_CREATURES, bird), (SERPENT_CREATURES, serpent)):
         for name in names:

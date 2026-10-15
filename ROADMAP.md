@@ -143,7 +143,7 @@ issue number where the criterion used to be.
 | 120 | The distant ring draws recorded land | Done | below |
 | 121 | Crash-consistent saves | Done | below |
 | 122 | Far terrain without mirroring and one scene-offset helper | Done | below |
-| 123 | The player rig wears the character material and body masks | Planned | below |
+| 123 | The player rig wears the character material and body masks | Done | below |
 | 124 | Research points: the fabric's `researchCost` is enforced | Planned | below |
 | 125 | Waystones: a first fast-travel network | Planned | below |
 | 126 | Tree clears the host keeps, and one seam-wrap module | Planned | below |
@@ -1083,7 +1083,7 @@ column. `water_mesh_for` already scans row spans; `evict_clean_chunks` already c
 
 ---
 
-## Phase 123 — The player rig wears the character material and body masks
+## Phase 123 — The player rig wears the character material and body masks ✅ Done
 
 **Goal:** the private art repo ships a body detail sheet, a colour mask and a channel mask for the
 player rig, and public placeholders exist for all three, but none of them reaches the rig: `attach_rig`
@@ -1123,17 +1123,17 @@ runners.
   other is removed.
 
 **Acceptance criteria:**
-- [ ] Suite: with the placeholders, every mesh of an attached rig carries the character shader as
+- [x] Suite: with the placeholders, every mesh of an attached rig carries the character shader as
   `material_override`, and `detail_tex`, `color_mask_tex` and `channel_tex` are all bound to the keys
   above.
-- [ ] Suite: two characters with different appearances share one rig material and differ only in
+- [x] Suite: two characters with different appearances share one rig material and differ only in
   instance parameters; the capsules still use `shared_material`; with the black placeholder masks the
   shader's colour inputs reduce to `base_index`.
-- [ ] Suite: the wolf placeholder rig's root is not named "PlayerRig"; the serpent `fall` clip has at
+- [x] Suite: the wolf placeholder rig's root is not named "PlayerRig"; the serpent `fall` clip has at
   least two distinct keys; `python3 tools/gen_placeholder_glb.py` regenerates byte-identical files.
-- [ ] Suite: the build-split test passes with an artificial 5× slowdown of the clock it reads (no fixed
+- [x] Suite: the build-split test passes with an artificial 5× slowdown of the clock it reads (no fixed
   wall-clock budget).
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green.
 
 ---
 
