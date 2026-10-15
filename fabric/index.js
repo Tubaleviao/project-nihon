@@ -14,6 +14,7 @@ const professions  = require('./gameplay/professions')
 const items        = require('./gameplay/items')
 const recipes      = require('./gameplay/recipes')
 const technology   = require('./gameplay/technology')
+const waystone     = require('./gameplay/waystone')
 const combat       = require('./gameplay/combat')
 const economy      = require('./gameplay/economy')
 const player       = require('./gameplay/player')
@@ -22,6 +23,9 @@ const persistence  = require('./gameplay/persistence')
 const skeletons    = require('./gameplay/characters/skeletons')
 const palettes     = require('./gameplay/characters/palettes')
 const appearances  = require('./gameplay/characters/appearances')
+
+// Phase 125 — the travel cost must name a real item; throwing fails `npm run validate`.
+waystone.validateTravel(waystone.TRAVEL, Object.keys(items))
 
 module.exports = defineFabric({
   meta: {
@@ -144,6 +148,7 @@ module.exports = defineFabric({
       FerriteIngot:             items.FerriteIngot,
       VeilsteelIngot:           items.VeilsteelIngot,
       ThornwoodPlank:           items.ThornwoodPlank,
+      Waystone:                 items.Waystone,
       AethermiteDust:           items.AethermiteDust,
       AethermiteShard:          items.AethermiteShard,
       RefinedVoiditeShard:      items.RefinedVoiditeShard,
@@ -169,6 +174,7 @@ module.exports = defineFabric({
       RecipeVoidRuneTablet:            recipes.RecipeVoidRuneTablet,
       RecipeRefinedVoiditeShard:       recipes.RecipeRefinedVoiditeShard,
       RecipeThornwoodPlank:            recipes.RecipeThornwoodPlank,
+      RecipeWaystone:                  recipes.RecipeWaystone,
       RecipeCarpenterAxe:              recipes.RecipeCarpenterAxe,
       RecipeDuskfiberCloak:            recipes.RecipeDuskfiberCloak,
       RecipeAshiteBlock:               recipes.RecipeAshiteBlock,
@@ -183,6 +189,7 @@ module.exports = defineFabric({
       TechAlchemy:        technology.TechAlchemy,
       TechVoidMastery:    technology.TechVoidMastery,
       ResearchPointRule:  technology.ResearchPointRule,
+      WaystoneTravel:     waystone.WaystoneTravel,
     },
     // World — Creatures
     {

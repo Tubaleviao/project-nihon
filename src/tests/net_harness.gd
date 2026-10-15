@@ -159,6 +159,7 @@ static func steps() -> Array:
 		{ "name": "research_points_owner", "compare": true },
 		{ "name": "chat_relayed",      "compare": true },
 		{ "name": "admin_teleport",    "compare": true },
+		{ "name": "waystone_travel",   "compare": true },
 		{ "name": "non_admin_refused", "compare": true },
 		{ "name": "equipment_recorded", "compare": true },
 		{ "name": "equipment_delivered", "compare": true },
@@ -348,6 +349,7 @@ func run(root: Node, role: String) -> void:
 	await _step_research_points_owner()
 	await _step_chat_relayed()
 	await _step_admin_teleport()
+	await _step_waystone_travel()
 	await _step_non_admin_refused()
 	await _step_equipment_recorded()
 	await _step_equipment_delivered()
@@ -702,23 +704,86 @@ func _step_admin_teleport() -> void:
 				and (seen["local"] as Vector3).distance_to(here["local"]) < 1.0, STEP_TIMEOUT_SECS)
 		_report("admin_teleport", verdict(ok, true), "landed-within-1m" if ok else "no_landing")
 		return
+	# Phase 125 — home is recorded once the body stands on loaded ground, not at the instant the step starts.
+	var home_loaded: bool = await _await_until(func(): return _root._chunk_manager.is_chunk_built(_root._player.get_world_pos()["chunk"]), STEP_TIMEOUT_SECS)
 	var home: Dictionary = _root._player.get_world_pos()
 	var got: bool = await _await_until(func(): return not _teleports_seen.is_empty(), STEP_TIMEOUT_SECS)
 	var near := false
 	if got:
 		var want: Dictionary = _teleports_seen.back()
-		var at: Dictionary = _root._player.get_world_pos()
-		near = at["chunk"] == want["chunk"] and (at["local"] as Vector3).distance_to(want["local"]) < 1.0
-		# Phase 115 — the landing is only meaningful once the destination chunk is loaded under the body.
+		# The landing is only meaningful once the destination chunk is loaded under the body, so `near`
+		# is judged after that wait and never latched from the pre-load position.
 		var loaded: bool = await _await_until(func(): return _root._chunk_manager.is_chunk_built(want["chunk"]), STEP_TIMEOUT_SECS)
-		near = near and loaded
+		var at: Dictionary = _root._player.get_world_pos()
+		near = loaded and at["chunk"] == want["chunk"] and (at["local"] as Vector3).distance_to(want["local"]) < 1.0
 	_report_actual = true
 	_report_position()
 	await _await_settle(2.5)
 	_report_actual = false
 	_report_position()
-	_report("admin_teleport", verdict(got and near, true), "landed-within-1m" if (got and near) else "no_landing")
-	# Phase 115 — send the client back to where it was, so the steps after this one start from the usual place.
+	# Send the client back to where it was, so the steps after this one start from the usual place, and
+	# check it got there.
+	GameBus.player_teleport.emit(home)
+	var back: bool = await _await_until(func():
+		var now_at: Dictionary = _root._player.get_world_pos()
+		return now_at["chunk"] == home["chunk"] and (now_at["local"] as Vector3).distance_to(home["local"]) < 1.0, STEP_TIMEOUT_SECS)
+	var all_ok: bool = home_loaded and got and near and back
+	_report("admin_teleport", verdict(all_ok, true),
+		"landed-within-1m" if all_ok else "no_landing-home%d-got%d-near%d-back%d" % [int(home_loaded), int(got), int(near), int(back)])
+	await _await_settle(1.0)
+
+## Step 7d2 — Phase 125: the host puts two waystones 80 m apart, the first under the client, attunes the
+## client to both and stocks the fare; the client asks to travel from the first to the second over the
+## socket. The client lands at the second stone and the host sees its next report from there.
+const WAYSTONE_GAP_M := 80.0
+func _step_waystone_travel() -> void:
+	# The client was just sent home by the step before: let its reports settle so the stone sits where it stands.
+	await _await_settle(3.0)
+	if _role == "host":
+		var target := _bound_id()
+		var peer := _peer_id()
+		var ready: bool = await _await_until(func(): return not _root._networking.get_last_known_exact(peer).is_empty(), STEP_TIMEOUT_SECS)
+		var seen: Dictionary = _root._networking.get_last_known_exact(peer)
+		if not ready or seen.is_empty():
+			_report("waystone_travel", "fail", "no_client_position")
+			return
+		var base: Vector3 = WorldPos.to_scene(seen, seen["chunk"])
+		var a: String = _root._station.place_station("waystone", base)
+		var b: String = _root._station.place_station("waystone", base + Vector3(WAYSTONE_GAP_M, 0.0, 0.0))
+		_root._waystones.note_exact(a, seen)
+		var dest := { "chunk": seen["chunk"], "local": (seen["local"] as Vector3) + Vector3(WAYSTONE_GAP_M, 0.0, 0.0) }
+		_root._waystones.note_exact(b, WorldPos.normalized(dest))
+		_root._registry.record_waystones(target, [a, b])
+		_root._registry.get_inventory(target).add_item(_root._waystones.rules()["costItem"], 5)
+		var want: Dictionary = WorldPos.normalized(dest)
+		var ok: bool = await _await_until(func():
+			var now_at: Dictionary = _root._networking.get_last_known_exact(peer)
+			return not now_at.is_empty() and now_at["chunk"] == want["chunk"] \
+				and (now_at["local"] as Vector3).distance_to(want["local"]) < 2.0, STEP_TIMEOUT_SECS)
+		_report("waystone_travel", verdict(ok, true), "travelled-to-second-stone" if ok else "no_travel")
+		return
+	var home: Dictionary = _root._player.get_world_pos()
+	var before := _teleports_seen.size()
+	var tries := 0
+	var got: bool = false
+	while tries < int(STEP_TIMEOUT_SECS) and not got:
+		GameBus.waystone_travel_intent.emit("station_0", "station_1", "")
+		tries += 1
+		got = await _await_until(func(): return _teleports_seen.size() > before, 1.0)
+	# The host checks the 80 m gap from its own record of the client; here the body must stand on the
+	# exact landing the host sent.
+	var near := false
+	if got:
+		var want: Dictionary = _teleports_seen.back()
+		await _await_until(func(): return _root._chunk_manager.is_chunk_built(want["chunk"]), STEP_TIMEOUT_SECS)
+		var at: Dictionary = _root._player.get_world_pos()
+		near = at["chunk"] == want["chunk"] and (at["local"] as Vector3).distance_to(want["local"]) < 1.0
+	_report_actual = true
+	_report_position()
+	await _await_settle(2.5)
+	_report_actual = false
+	_report_position()
+	_report("waystone_travel", verdict(got and near, true), "travelled-to-second-stone" if (got and near) else "no_travel-got%d-near%d" % [int(got), int(near)])
 	GameBus.player_teleport.emit(home)
 	await _await_settle(1.0)
 

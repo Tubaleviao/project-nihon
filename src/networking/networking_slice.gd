@@ -268,6 +268,7 @@ func _ready() -> void:
 	# way, and the host re-syncs the peer's own record slice when it resolves one.
 	GameBus.repair_intent.connect(_on_repair_intent)
 	GameBus.research_intent.connect(_on_research_intent)
+	GameBus.waystone_travel_intent.connect(_on_waystone_travel_intent)
 	# Phase 35 — taming is per-player as well (a granted flag and a companion
 	# binding both live on the tamer's record), so it travels the same way.
 	GameBus.tame_intent.connect(_on_tame_intent)
@@ -589,11 +590,12 @@ func _broadcast(payload: Dictionary) -> void:
 ## Central outbound path (Phase 19). Attach a per-type monotonic seq, then
 ## either send immediately (emulation disabled — zero overhead) or queue for
 ## emulated delivery (loss / jitter / reorder).
-func _deliver(peer_id: int, payload: Dictionary) -> void:
+## True when the packet was sent or queued; false when the emulator dropped it.
+func _deliver(peer_id: int, payload: Dictionary) -> bool:
 	var transport := _ensure_transport()
 	if not transport.stamps_seq():
 		transport.send(peer_id, payload)
-		return
+		return true
 	var ptype: String = str(payload.get("type", "_"))
 	if not _send_seq.has(ptype):
 		_send_seq[ptype] = 0
@@ -601,13 +603,14 @@ func _deliver(peer_id: int, payload: Dictionary) -> void:
 	_send_seq[ptype] += 1
 	if not emulate_network:
 		transport.send(peer_id, payload)
-		return
+		return true
 	if _should_drop():
-		return
+		return false
 	var at_ms: float = float(Time.get_ticks_msec()) + _jitter_delay_ms()
 	_pending.append({ "at_ms": at_ms, "peer_id": peer_id, "payload": payload })
 	if emulator_reorder:
 		_maybe_reorder()
+	return true
 
 ## Perform the actual RPC send. Host → client uses _rpc_h2c (authority), client
 ## → host uses _rpc_c2h. No-op when no peer is attached (isolated tests).
@@ -746,6 +749,12 @@ func _on_research_intent(tech_id: String, _player_id: String) -> void:
 		return
 	_broadcast({ "type": "research_intent", "tech_id": tech_id })
 
+## Phase 125 — a client forwards a waystone travel intent; the host binds the identity.
+func _on_waystone_travel_intent(from_id: String, to_id: String, _player_id: String) -> void:
+	if _role != Role.CLIENT:
+		return
+	_broadcast({ "type": "waystone_travel_intent", "from": from_id, "to": to_id })
+
 ## Phase 35 — taming: the granted flag and the companion binding live on a player
 ## record the host owns, so a client forwards the target instance and the host
 ## tames for the identity it bound. The player_id half is ignored here for the same
@@ -786,8 +795,9 @@ func send_teleport(peer_id: int, position: Dictionary) -> bool:
 		return false
 	if _peer == null and _transport == null:
 		return false
-	_deliver(peer_id, { "type": "teleport", "position": WorldPos.pos_to_wire(position) })
-	return true
+	if not _connected_peers().has(peer_id):
+		return false
+	return _deliver(peer_id, { "type": "teleport", "position": WorldPos.pos_to_wire(position) })
 
 ## Phase 47 — client → host: one equip / unequip action on this machine's avatar (`item_key`
 ## "" unequips `slot`). Carries no identity: the host binds it to the connection and decides
@@ -1577,6 +1587,13 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				_refuse_unhandshaked(sender, "research_intent")
 				return
 			GameBus.research_intent.emit(str(payload.get("tech_id", "")), researcher)
+		"waystone_travel_intent":
+			# Phase 125 — who travels is the connection's player, never a name in the payload.
+			var traveller := _actor_id(sender)
+			if traveller == "":
+				_refuse_unhandshaked(sender, "waystone_travel_intent")
+				return
+			GameBus.waystone_travel_intent.emit(str(payload.get("from", "")).left(64), str(payload.get("to", "")).left(64), traveller)
 		"tame_intent":
 			# Phase 35 — and the same for taming: the flag and the companion bind
 			# to the connection's own player, never to a name in the payload.

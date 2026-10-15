@@ -36,6 +36,41 @@ module.exports = {
     },
   }),
 
+  // ─── RecipeWaystone ───────────────────────────────────────────────────────
+  RecipeWaystone: defineEntity({
+    tags: ['recipe'],
+    description: 'Cut a waystone from four thornwood planks and two ferrite ingots at a carpentry bench.',
+    goal: 'Make the fast-travel network something a player builds (Phase 125)',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'carpentry',
+        station: 'carpentry bench',
+        inputs: [{ item: 'ThornwoodPlank', quantity: 4 }, { item: 'FerriteIngot', quantity: 2 }],
+        outputs: [{ item: 'Waystone', quantity: 1 }],
+        skillGuards: [{ skill: 'Carpentry', tier: 'apprentice' }],
+      }),
+    },
+    relations: {
+      inputPlank:  { name: 'inputPlank',  kind: 'hasOne', target: 'ThornwoodPlank' },
+      inputIngot:  { name: 'inputIngot',  kind: 'hasOne', target: 'FerriteIngot' },
+      output:      { name: 'output',      kind: 'hasOne', target: 'Waystone' },
+    },
+    behaviors: {
+      craft: {
+        description: 'Cut and fit a marker stone at a carpentry bench',
+        rules: [
+          'Requires Carpentry: Apprentice',
+          'Requires a carpentry bench structure',
+          'Four planks and two ferrite ingots yield one waystone',
+        ],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
   // ─── RecipeCarpenterAxe ───────────────────────────────────────────────────
   RecipeCarpenterAxe: defineEntity({
     tags: ['recipe'],

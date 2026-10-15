@@ -1,0 +1,10 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/world_systems/waystonetravel.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+rules = {"stationType":"waystone","attuneRadius":4,"cooldownSeconds":30,"costItem":"AethermiteShard","costPerThousandKm":1}
+description = "Fast travel between waystones: a player attunes to a stone by standing at it, then travels between two attuned stones for a cost in items per 1,000 km, once per cooldown."
+tags = ["world-system"]

@@ -175,8 +175,10 @@ func _tick_revealed_store(delta: float) -> void:
 		return
 	if not _revealed_loaded or s != _revealed_seed:
 		if _revealed_loaded:
-			# The set belongs to the seed that just went away (usually the throwaway boot seed): it
-			# is dropped, never written under a file name it may not deserve.
+			# The set belongs to the seed that just went away: what changed since its last write is
+			# saved under THAT seed's file before it is dropped, so the old world's map is not lost.
+			if _revealed_dirty_for >= 0.0:
+				save_revealed(true)
 			_revealed.clear()
 			_waypoints.clear()
 			_revealed_dirty_for = -1.0
@@ -287,6 +289,20 @@ func add_waypoint(name_text: String, pos: Dictionary) -> bool:
 	if label == "":
 		label = "Waypoint %d" % (_waypoints.size() + 1)
 	_waypoints.append({ "name": label, "pos": clean })
+	if _revealed_dirty_for < 0.0:
+		_revealed_dirty_for = 0.0
+	_revealed_rev += 1
+	queue_redraw()
+	return true
+
+## Rename waypoint `index`. An empty or unusable name keeps the old one; true when the name changed.
+func rename_waypoint(index: int, name_text: String) -> bool:
+	if index < 0 or index >= _waypoints.size():
+		return false
+	var label := RevealedStore.clean_name(name_text)
+	if label == "" or label == str(_waypoints[index]["name"]):
+		return false
+	_waypoints[index]["name"] = label
 	if _revealed_dirty_for < 0.0:
 		_revealed_dirty_for = 0.0
 	_revealed_rev += 1

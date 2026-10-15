@@ -11,7 +11,7 @@ const WHERE := "/" + WHERE_NAME
 
 ## Longest chat line accepted, in characters. The wire cap (`MAX_CLIENT_PACKET_BYTES`) is far above it.
 const MAX_MESSAGE_CHARS := 240
-## Largest coordinate a `/tp` may name: the planet wraps (`WorldPos.wrap_world`), so beyond it is a typo.
+## Largest coordinate a `/tp` may name: the planet wraps (X is folded onto one lap in `parse_position`), so beyond it is a typo.
 const MAX_TP_COORD := 1.0e9
 ## Largest quantity one `/give` may grant.
 const MAX_GIVE_QUANTITY := 10000
@@ -93,7 +93,7 @@ static func help_lines(admin: bool) -> Array:
 	return lines
 
 ## Three coordinates from `args[start..start+2]`: `{ ok, pos, world, error }`. Rejects non-numbers, NaN,
-## inf, anything beyond `MAX_TP_COORD` and a Z past the poles; X is wrapped onto one lap of the planet.
+## inf, anything beyond `MAX_TP_COORD`, a Y past the wire's local limit (`WorldPos.LOCAL_LIMIT`) and a Z past the poles; X is wrapped onto one lap of the planet.
 ## `pos` is the exact `{chunk, local}` record, built from the doubles typed — never through a `Vector3`,
 ## whose float32 X loses metres a million chunks out. `world` is the wrapped `[x, y, z]` for display.
 static func parse_position(args: Array, start: int = 0) -> Dictionary:
@@ -110,18 +110,15 @@ static func parse_position(args: Array, start: int = 0) -> Dictionary:
 		if is_nan(f) or is_inf(f) or absf(f) > MAX_TP_COORD:
 			return fail.call("'%s' is out of range" % s)
 		v.append(f)
+	if absf(v[1]) > WorldPos.LOCAL_LIMIT:
+		return fail.call("Y must be within %d m" % int(WorldPos.LOCAL_LIMIT))
 	var pole_m := float(TerrainSlice.pole_chunks()) * TerrainSlice.CHUNK_METERS
 	if absf(v[2]) > pole_m:
 		return fail.call("Z must be within %d m of the equator (the poles)" % int(pole_m))
 	var lap := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
 	var x: float = fposmod(float(v[0]) + lap * 0.5, lap) - lap * 0.5
 	var z: float = v[2]
-	var cx := floori(x / TerrainSlice.CHUNK_METERS)
-	var cz := floori(z / TerrainSlice.CHUNK_METERS)
-	var pos := WorldPos.normalized({
-		"chunk": Vector2i(cx, cz),
-		"local": Vector3(x - cx * TerrainSlice.CHUNK_METERS, v[1], z - cz * TerrainSlice.CHUNK_METERS),
-	})
+	var pos := WorldPos.from_world(x, v[1], z)
 	return { "ok": true, "pos": pos, "world": [x, v[1], z], "error": "" }
 
 ## A `/give` quantity from `s`: a positive whole number up to `MAX_GIVE_QUANTITY`, else 0.

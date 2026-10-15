@@ -140,7 +140,7 @@ module.exports = {
       researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 0 },
       tier:   { type: 'integer', description: 'Technology tree tier (1 = root)' },
       tech: techData({
-        unlocks: ['RecipeThornwoodPlank', 'RecipeCarpenterAxe'],
+        unlocks: ['RecipeThornwoodPlank', 'RecipeCarpenterAxe', 'RecipeWaystone'],
         requires: [],
         researchDuration: 10,
         researchMaterials: [{ item: 'Thornwood', quantity: 4 }],
@@ -149,6 +149,7 @@ module.exports = {
     relations: {
       unlocksRecipeThornwoodPlank: { name: 'unlocksRecipeThornwoodPlank', kind: 'hasOne', target: 'RecipeThornwoodPlank' },
       unlocksRecipeCarpenterAxe:   { name: 'unlocksRecipeCarpenterAxe',   kind: 'hasOne', target: 'RecipeCarpenterAxe' },
+      unlocksRecipeWaystone:       { name: 'unlocksRecipeWaystone',       kind: 'hasOne', target: 'RecipeWaystone' },
     },
     stateMachine: technologyStateMachine(),
     behaviors: {

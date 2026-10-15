@@ -70,7 +70,8 @@ const ITEMS: Dictionary = {
 		"VeilsteelLongsword": preload("res://godot/items/veilsteellongsword.tres"),
 		"VeilsteelPick": preload("res://godot/items/veilsteelpick.tres"),
 		"VoidRuneTablet": preload("res://godot/items/voidrunetablet.tres"),
-		"VoiditeEdge": preload("res://godot/items/voiditeedge.tres")
+		"VoiditeEdge": preload("res://godot/items/voiditeedge.tres"),
+		"Waystone": preload("res://godot/items/waystone.tres")
 }
 
 const LOOTS: Dictionary = {
@@ -130,7 +131,8 @@ const RECIPES: Dictionary = {
 		"RecipeVeilsteelIngot": preload("res://godot/recipes/recipeveilsteelingot.tres"),
 		"RecipeVeilsteelLongsword": preload("res://godot/recipes/recipeveilsteellongsword.tres"),
 		"RecipeVoidResistPotion": preload("res://godot/recipes/recipevoidresistpotion.tres"),
-		"RecipeVoidRuneTablet": preload("res://godot/recipes/recipevoidrunetablet.tres")
+		"RecipeVoidRuneTablet": preload("res://godot/recipes/recipevoidrunetablet.tres"),
+		"RecipeWaystone": preload("res://godot/recipes/recipewaystone.tres")
 }
 
 const SKELETONS: Dictionary = {
@@ -196,6 +198,7 @@ const WORLD_SYSTEMS: Dictionary = {
 		"PersistenceSystem": preload("res://godot/world_systems/persistencesystem.tres"),
 		"ResearchPointRule": preload("res://godot/world_systems/researchpointrule.tres"),
 		"TradeSystem": preload("res://godot/world_systems/tradesystem.tres"),
+		"WaystoneTravel": preload("res://godot/world_systems/waystonetravel.tres"),
 		"WeatherSystem": preload("res://godot/world_systems/weathersystem.tres"),
 		"WorldSystem": preload("res://godot/world_systems/worldsystem.tres")
 }

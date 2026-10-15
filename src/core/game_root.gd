@@ -38,6 +38,7 @@ const TradeSlice       := preload("res://src/trade/trade_slice.gd")
 const ProposalSlice    := preload("res://src/governance/proposal_slice.gd")
 const UiSlice          := preload("res://src/ui/ui_slice.gd")
 const ChatSlice        := preload("res://src/chat/chat_slice.gd")
+const WaystoneSlice    := preload("res://src/world/waystone_slice.gd")
 const Minimap          := preload("res://src/ui/minimap.gd")
 const LoadingScreen    := preload("res://src/ui/loading_screen.gd")
 const WaypointHorizon  := preload("res://src/ui/waypoint_horizon.gd")
@@ -80,6 +81,7 @@ var _trade:       TradeSlice
 var _proposal:    ProposalSlice
 var _ui:          UiSlice
 var _chat:        ChatSlice
+var _waystones:   WaystoneSlice
 
 ## Network role (Phase 18/27). HOST = authoritative simulation (default, matches
 ## single-player); CLIENT = receives world state from a host; SERVER = headless
@@ -246,6 +248,7 @@ func _ready() -> void:
 	_proposal    = ProposalSlice.new()
 	_ui          = UiSlice.new()
 	_chat        = ChatSlice.new()
+	_waystones   = WaystoneSlice.new()
 
 	# CreatureSlice needs the terrain to place spawns on the surface; wire it
 	# before the slices enter the tree so its _ready() can use it.
@@ -280,7 +283,7 @@ func _ready() -> void:
 	# The UI (Phase 14) is presentation only, so a headless dedicated server
 	# (Phase 27) keeps it out of the tree — its _ready() would otherwise build
 	# windows nothing can render or click.
-	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat]
+	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _waystones]
 	if not _is_server:
 		slices.append(_ui)
 	if not _is_server:
@@ -353,6 +356,13 @@ func _ready() -> void:
 	_chat.inventory_slice  = _inventory
 	_chat.networking       = _networking
 	GameBus.player_teleport.connect(_on_player_teleport)
+	# Phase 125 — waystone travel reuses the exact admin teleport door.
+	_waystones.station_slice = _station
+	_waystones.registry      = _registry
+	_waystones.teleporter    = Callable(_chat, "teleport_player")
+	_waystones.position_of   = Callable(self, "_waystone_player_pos")
+	GameBus.waystone_travel_resolved.connect(_on_waystone_travel_resolved)
+	GameBus.waystones_synced.connect(_on_waystones_synced)
 	if not _is_server:
 		_ui.inventory_slice       = _inventory
 		_ui.character_slice       = _character
@@ -366,6 +376,7 @@ func _ready() -> void:
 		_ui.map_window.minimap       = _minimap
 		_ui.map_window.terrain_slice = _terrain
 		_ui.map_window.player_slice  = _player
+		_ui.map_window.waystone_slice = _waystones
 		_ui.drops_enabled         = not _is_client
 	_trade.inventory_slice    = _inventory
 	_market.inventory_slice   = _inventory
@@ -1772,6 +1783,7 @@ func _snapshot_own_record(player_id: String) -> Dictionary:
 	snapshot["flags"] = own.get("flags", {})
 	snapshot["companions"] = own.get("companions", [])
 	snapshot["professions"] = own.get("professions", {})
+	snapshot["waystones"] = own.get("waystones", [])
 	# Phase 47 — the worn set rides the own-record payload too.
 	snapshot["equipment"] = own.get("equipment", {})
 	# The stored exact {chunk, local} goes out as stored, no float round trip (Phase 78); a legacy
@@ -1913,6 +1925,12 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 		}, _registry.local_player_id)
 	if data.has("professions"):
 		_professions.apply_record({ "professions": data["professions"] }, _registry.local_player_id)
+	if data.has("waystones") and data["waystones"] is Array:
+		_waystones.apply_view(data["waystones"])
+		GameBus.waystones_synced.emit(_registry.local_player_id, data["waystones"])
+	if data.get("waystone_result", null) is Dictionary:
+		var res: Dictionary = data["waystone_result"]
+		GameBus.waystone_travel_resolved.emit(_registry.local_player_id, bool(res.get("ok", false)), str(res.get("reason", "")).left(32))
 	if data.has("equipment") and data["equipment"] is Dictionary:
 		# A client builds no avatar at boot, so the first snapshot creates it; without
 		# one there is nothing to wear the set, to show in the Character window, or to
@@ -2638,6 +2656,36 @@ func _on_research_points_synced(player_id: String, _points: int) -> void:
 		return
 	_networking.send_own_state(peer, { "technology": _technology.get_statuses(player_id) })
 
+## Phase 125 — where the host believes a player stands, as an exact `{chunk, local}`: the live body for the
+## local player, the peer's last reported position for a remote one. A peer that has not reported yet is
+## nowhere: the saved record is where it logged out, not where it stands.
+func _waystone_player_pos(player_id: String) -> Dictionary:
+	if player_id == _registry.local_player_id and _player != null:
+		return _player.get_world_pos()
+	var peer := _registry.get_peer_id(player_id)
+	if peer != 0:
+		return _networking.get_last_known_exact(peer)
+	return {}
+
+## Phase 125 — a player's attunements changed on the host: save them on the record and push them to
+## the owner's peer alone. The local player is live here already.
+func _on_waystones_synced(player_id: String, station_ids: Array) -> void:
+	if _is_client:
+		return
+	if player_id == _registry.local_player_id or player_id == "":
+		return
+	var peer := _registry.get_peer_id(player_id)
+	if peer != 0:
+		_networking.send_own_state(peer, { "waystones": station_ids })
+
+## Phase 125 — the host resolved a travel intent: tell the owner's peer, which shows a refusal.
+func _on_waystone_travel_resolved(player_id: String, ok: bool, reason: String) -> void:
+	if _is_client or player_id == "" or player_id == _registry.local_player_id:
+		return
+	var peer := _registry.get_peer_id(player_id)
+	if peer != 0:
+		_networking.send_own_state(peer, { "waystone_result": { "ok": ok, "reason": reason } })
+
 ## Phase 124 — the host resolved a gather: pay the fabric's `gather` research points.
 func _on_resource_gathered(player_id: String, _material: String, _quantity: int) -> void:
 	if _is_client:
@@ -2721,6 +2769,12 @@ func _on_own_state_synced(data: Dictionary) -> void:
 		}, _registry.local_player_id)
 	if data.has("professions"):
 		_professions.apply_record({ "professions": data["professions"] }, _registry.local_player_id)
+	if data.has("waystones") and data["waystones"] is Array:
+		_waystones.apply_view(data["waystones"])
+		GameBus.waystones_synced.emit(_registry.local_player_id, data["waystones"])
+	if data.get("waystone_result", null) is Dictionary:
+		var res: Dictionary = data["waystone_result"]
+		GameBus.waystone_travel_resolved.emit(_registry.local_player_id, bool(res.get("ok", false)), str(res.get("reason", "")).left(32))
 
 func _on_trade_completed(trade: Dictionary) -> void:
 	pass

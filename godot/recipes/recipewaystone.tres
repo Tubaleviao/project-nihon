@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/recipes/recipewaystone.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+domain = 0
+outputCount = 0
+recipe = {"domain":"carpentry","station":"carpentry bench","inputs":[{"item":"ThornwoodPlank","quantity":4},{"item":"FerriteIngot","quantity":2}],"outputs":[{"item":"Waystone","quantity":1}],"skillGuards":[{"skill":"Carpentry","tier":"apprentice"}]}
+description = "Cut a waystone from four thornwood planks and two ferrite ingots at a carpentry bench."
+tags = ["recipe"]

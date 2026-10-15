@@ -1,0 +1,16 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/items/waystone.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+condition = 0
+weight = 12.0
+rarity = 1
+stackable = false
+durability = 400
+state_machine_field = "condition"
+initial_state = "pristine"
+description = "A carved marker stone that anchors a fast-travel network. Placed as a waystone station; a player attunes to it by standing at it."
+tags = ["item"]

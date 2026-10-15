@@ -180,6 +180,19 @@ signal own_state_synced(data: Dictionary)
 ## window refreshes. game_root pushes it to the owning peer only.
 signal research_points_synced(player_id: String, points: int)
 
+## Phase 125 — a waystone travel intent: `player_id` asks to travel from waystone station `from_id` to
+## `to_id`. A client emits it with an empty player_id ("me"); networking forwards it and the host
+## re-emits it with the identity bound to that connection. "" on the host means the local player.
+signal waystone_travel_intent(from_id: String, to_id: String, player_id: String)
+
+## Phase 125 — the host resolved a travel intent for `player_id`. `reason` is "" on success, else a
+## short refusal code (see WaystoneSlice.REASONS). Delivered to the owner alone.
+signal waystone_travel_resolved(player_id: String, ok: bool, reason: String)
+
+## Phase 125 — the waystones `player_id` is attuned to changed (a sorted array of station ids). The
+## host pushes it to the owner's peer alone; a client emits it locally when it lands.
+signal waystones_synced(player_id: String, station_ids: Array)
+
 ## Phase 124 — the host resolved a gather (a mined resource) for `player_id` ("" is the
 ## local player). The host grants the fabric's `gather` research points on it.
 signal resource_gathered(player_id: String, material: String, quantity: int)
