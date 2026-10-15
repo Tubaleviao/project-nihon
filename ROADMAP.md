@@ -143,6 +143,11 @@ issue number where the criterion used to be.
 | 120 | The distant ring draws recorded land | Done | below |
 | 121 | Crash-consistent saves | Done | below |
 | 122 | Far terrain without mirroring and one scene-offset helper | Done | below |
+| 123 | The player rig wears the character material and body masks | Planned | below |
+| 124 | Research points: the fabric's `researchCost` is enforced | Planned | below |
+| 125 | Waystones: a first fast-travel network | Planned | below |
+| 126 | Tree clears the host keeps, and one seam-wrap module | Planned | below |
+| 127 | Terrain streaming, generation records and persistence cleanup sweep | Planned | below |
 
 ---
 
@@ -1074,6 +1079,301 @@ column. `water_mesh_for` already scans row spans; `evict_clean_chunks` already c
 
 ---
 
+## Phase 123 — The player rig wears the character material and body masks
+
+**Goal:** the private art repo ships a body detail sheet, a colour mask and a channel mask for the
+player rig, and public placeholders exist for all three, but none of them reaches the rig: `attach_rig`
+instances the glTF scene with no material (Godot's default material renders), and only `detail_tex`
+is ever bound, on the procedural capsules. This phase binds the character shader and all three
+textures on the rig through a rig material kept separate from the capsules' shared one, takes the
+appearance's palette indices per instance, and resolves every item of the placeholder-tooling issues
+below (the same generator and suite area), including the wall-clock chunk test that flakes on slow
+runners.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 59.
+
+**Closes:** #314, #321, #324.
+
+**Deliverables:**
+- `src/character/character_material.gd` — a `rig_material(colors)` beside `shared_material`: one
+  material per kind (capsules, rig), not one per character; per-instance `base_index` (skin colour)
+  and `primary_index` / `secondary_index` / `accent_index` (outfit or defaults) set as instance
+  shader parameters.
+- `src/character/character_slice.gd` `attach_rig` — sets `material_override` on every
+  `MeshInstance3D` of the rig scene: the character shader with `detail_tex` from
+  `textures/characters/player.png.raw` (not `PLACEHOLDER_REL`), `color_mask_tex` and `channel_tex`
+  from `textures/characters/player_color_mask.png.raw` / `player_channel.png.raw`, all loaded by key
+  through `AssetOverlay.load_texture`; an appearance change re-applies the indices.
+- `tools/gen_placeholder_glb.py` — `build_skinned_rig` stops rebinding the module globals
+  (`JOINTS, REST, PARTS, PLAYER_CLIPS`) as locals and uses its parameter names; the scene root is named
+  after the rig (not "PlayerRig" for the wolf); `SERPENT_CLIPS` `fall` gets a small curl instead of three
+  identical keys; placeholders regenerated.
+- `assets/README.md` — the creatures paragraph rewrapped; the rig texture keys documented.
+- `src/tests/test_suite.gd` — `_test_asset_item_icon_placeholders` and
+  `_test_asset_graywolfpack_placeholders` move above the `_test_asset_body_sheet_placeholders` doc
+  comment; "chunk: the build split is measured" compares a work count or a ratio against the steady
+  resolve instead of a fixed 16,667 µs wall-clock budget.
+- The stray `.uid` files PR #320 added are checked: each one sits beside a tracked script (kept), any
+  other is removed.
+
+**Acceptance criteria:**
+- [ ] Suite: with the placeholders, every mesh of an attached rig carries the character shader as
+  `material_override`, and `detail_tex`, `color_mask_tex` and `channel_tex` are all bound to the keys
+  above.
+- [ ] Suite: two characters with different appearances share one rig material and differ only in
+  instance parameters; the capsules still use `shared_material`; with the black placeholder masks the
+  shader's colour inputs reduce to `base_index`.
+- [ ] Suite: the wolf placeholder rig's root is not named "PlayerRig"; the serpent `fall` clip has at
+  least two distinct keys; `python3 tools/gen_placeholder_glb.py` regenerates byte-identical files.
+- [ ] Suite: the build-split test passes with an artificial 5× slowdown of the clock it reads (no fixed
+  wall-clock budget).
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 124 — Research points: the fabric's `researchCost` is enforced
+
+**Goal:** every technology in the fabric carries a `researchCost` (research points), but the runtime
+ignores it: research costs only materials and time (deferred from Phase 13). This phase gives each
+player a host-owned research-point balance earned from play, makes `begin_research` spend
+`researchCost`, persists the balance on the player record and shows it in the technology window. The
+crafting path that earns points is the void-burst code from Phase 118, so its leftovers are resolved
+here too.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 34, Phase 118.
+
+**Closes:** #299, #300.
+
+**Deliverables:**
+- `fabric/gameplay/technology/` — a `ResearchPointRule` table: points per source (`craft`, `gather`,
+  `firstCraftOfRecipe`), with validators (non-negative integers); `npm run generate` emits it into
+  `godot/`; a validator checks every technology's `researchCost` is reachable (≥ 0, below a bound).
+- `src/technology/technology_slice.gd` — per-player `research_points` (host-owned); `begin_research`
+  refuses with `insufficient_points` before consuming materials and spends `researchCost` on success;
+  `grant_points(player_id, source, amount)` is host-only; saved and loaded with the per-player status
+  snapshot (a legacy save without points loads as 0).
+- `src/core/bus.gd` / `src/core/game_root.gd` — `research_points_synced(player_id, points)` sent only to
+  the owner's peer; crafting and gathering resolutions on the host grant points by the fabric rule.
+- `src/crafting/crafting_slice.gd` — the durable craft counter advances only after `consume_items`
+  succeeds (a failed consume burns no draw, ordering documented); `_resolve_burst` is one guarded block
+  that reports `flag` only after a successful grant (none for `player_id == ""`); `burst_roll` uses a
+  custom integer mix instead of `hash(Array)`, pinned by golden values.
+- `src/ui/` technology window — shows the balance and each technology's point cost; a research button
+  is disabled with the reason when points are short.
+
+**Acceptance criteria:**
+- [ ] `npm run validate` and `npm run check-drift` green with the rule table; a negative rule value
+  fails validation.
+- [ ] Suite: research with too few points is refused with `insufficient_points` and consumes no
+  materials; with enough points it spends exactly `researchCost`.
+- [ ] Suite: a craft on the host grants the fabric's points to the crafter only; a client's own grant
+  call changes nothing; points round-trip through a registry save/load and a legacy record loads as 0.
+- [ ] Suite: a failed consume leaves the burst counter unchanged; the persisted counter survives a
+  registry save/load and the next roll continues the sequence; `burst_roll` matches its golden values;
+  `_resolve_burst` with `player_id == ""` reports no flag.
+- [ ] Harness: a step proves `research_points_synced` reaches only the owning client after a craft.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 125 — Waystones: a first fast-travel network
+
+**Goal:** a planet takes about 90 days to walk around and the deferred list asks for a travel network.
+The exact, host-authoritative teleport path from Phase 101 already moves a player anywhere on the
+planet. This phase adds waystones: a craftable station a player attunes to by standing at it, and a
+host-validated travel intent between two stones the player is attuned to, drawn and picked on the
+full-map window. The map and teleport/chat leftovers are folded in, since the same window and the same
+teleport path are touched.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 101, Phase 111, Phase 117.
+
+**Closes:** #290, #291, #297.
+
+**Deliverables:**
+- `fabric/` — a `Waystone` station item and recipe (existing profession and materials), a
+  `WaystoneTravel` rule (attune radius, cooldown seconds, cost item and count per 1,000 km) with
+  validators; regenerated into `godot/`, `bible/`, `wiki/`.
+- `src/world/station_slice.gd` / new `src/world/waystone_slice.gd` — attunement recorded per player on
+  the host and persisted on the player record; `waystone_travel_intent(from_id, to_id)` validated on
+  the host (player within the attune radius of `from_id`, attuned to both, stones still exist,
+  cooldown, cost paid from the player's inventory), resolved through the existing exact teleport; the
+  owner receives `waystone_travel_resolved` with a reason on refusal; per-peer rate limit.
+- `src/ui/map_window.gd` / `src/ui/minimap.gd` — attuned waystones drawn as markers; clicking one while
+  at a waystone sends the intent; waypoints can be renamed; a right-click near the limb where
+  `_world_pos_at_globe` does not converge shows a toast; a world-seed change saves the old seed's
+  explored set and waypoints before clearing them.
+- `src/core/chat_commands.gd` `parse_position` — Y range-checked against the `WorldPos.is_wire` local
+  limit; the lap wrap / chunk split reuses `WorldPos`; the header comment no longer mentions
+  `wrap_world`.
+- `src/networking/networking_slice.gd` `send_teleport` — false when the peer is not connected or the
+  emulator drops the packet.
+- `src/chat/chat_slice.gd` — only non-broadcast admin commands bypass the bucket (`/say` does not);
+  `_prune_buckets` bounds every bucket, not only idle ones; `_cmd_tp` / `_cmd_bring` report one failure
+  string each for missing networking and unknown peer.
+- `src/creature/creature_slice.gd` — the test-only `creature_table` seam and per-call `SpawnFields`
+  allocation become a static helper.
+- `src/tests/test_suite.gd` — `_find_coast` uses a stride that cannot skip a thin ocean strip, bounds its
+  biome calls and updates `prev`; the chunk gather ceiling cannot exceed one frame on slow runners.
+- `tools/check_readme_phases.js` — a multi-word status or a `|` in a title is parsed, not flagged.
+- `src/tests/net_harness.gd` `_step_admin_teleport` — home recorded after load, the restore landing
+  verified, `near` latched only after the chunk is loaded; a new `waystone_travel` step.
+- `ROADMAP.md` — the Phase 101 text matches the bucket rule; the deferred "Fast travel" bullet points
+  here.
+
+**Acceptance criteria:**
+- [ ] `npm run validate` and `npm run check-drift` green with the waystone entities.
+- [ ] Suite: travel succeeds only when attuned to both stones, within the attune radius, off cooldown
+  and with the cost in the inventory; each refusal reason is reported; a destroyed stone refuses; the
+  landing is the exact destination at chunk X = 1,500,000.
+- [ ] Suite: attunements round-trip through a registry save/load; a client-forged intent for another
+  player is refused.
+- [ ] Suite: a waypoint rename persists; a limb right-click that does not converge emits a toast; a
+  seed change writes the old seed's file before clearing.
+- [ ] Suite: `parse_position` refuses a Y beyond the wire limit; `send_teleport` returns false for an
+  unconnected peer and for an emulated drop; `/say` from an admin is bucket-limited; after a burst of
+  distinct speakers `_prune_buckets` leaves at most the cap.
+- [ ] Suite: `_find_coast` finds a one-chunk ocean strip; `check_readme_phases.js --self-test` covers a
+  multi-word status row.
+- [ ] Harness: `waystone_travel` moves the client between two stones over the socket; `admin_teleport`
+  verifies the restore landing.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 126 — Tree clears the host keeps, and one seam-wrap module
+
+**Goal:** since Phase 116 a tree cleared by building follows chunks onto clients, but the host's
+`_cleared_local` is capped at 2,048 and evicts the oldest chunk's clears (those trees regrow, and the
+host never saves them), a client drops unrecorded clears on despawn (ghost trees), and an unloaded
+chunk's clear uses the plain-generator biome even when the frontier later records a transition biome,
+so the pinned indices point at other trees. This phase makes the host's clears durable (adopted into
+the chunk's generation record or saved), derives the client range from the snapshot scope, carries the
+resolved edit tile instead of re-deriving it, and moves the duplicated seam-wrap helpers into one
+module, resolving every item of the three tree issues below.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 113, Phase 116.
+
+**Closes:** #293, #294, #295.
+
+**Deliverables:**
+- `src/world/tree_slice.gd` — the host never evicts: a clear in an unrecorded chunk is recorded through
+  the frontier path (so the biome and budget match the chunk's eventual record) or held in a saved
+  pending set; the cap applies to clients only and evicts by recency with one warning;
+  `CLEAR_ID_RANGE_CHUNKS` is derived from the snapshot `gen_scope` radius, and a client keeps an
+  unrecorded clear until the host's record re-delivers it on return.
+- `src/world/tree_slice.gd` `_on_edited_ground` / `_on_block_changed` — one `CLEAR_DEPTH_M` rule shared
+  with `clear_trees_near_tile`; the edited tile comes from `VoxelSlice._resolve_edit_tile` (carried on
+  `block_changed`), not from the float position and normal.
+- `src/world/tree_slice.gd` — `get_all_stations()` fetched once per `spawn_for_chunk` and prefiltered to
+  stations near the chunk; the lap-key lookup in `_clear_where` / `_clear_unloaded_chunk` resolved once
+  per edit; `_near_loaded_chunk` indexes spawned chunks instead of scanning.
+- `src/terrain/seam_wrap.gd` (new) — `_wrapped_delta` / `_wrapped_delta_f` / `_world_tiles` /
+  `_world_metres` and their copies in `VoxelScript.canonical_tile` / `TerrainSlice.wrap_chunk` share one
+  implementation.
+- `src/persistence/region_store.gd` `normalize_gen` — a malformed `t` / `x` entry is dropped alone and
+  logged once, the rest kept.
+- `fabric/world/biomes/index.js` — the `treeDensity` validator bounds the noisy budget:
+  `floor(GEN_TREE_MAX / (1 + DENSITY_NOISE))`, not the mean at 64.
+- `src/tests/net_harness.gd` `_step_tree_cleared` — the target id is passed through a captured snapshot,
+  and the host waits on the client's ack rather than a fixed 6 s.
+
+**Acceptance criteria:**
+- [ ] Suite: 3,000 cleared chunks on the host keep every clear, and a save/load restores them; a
+  client's cap evicts the least recently touched chunk and warns once.
+- [ ] Suite: a clear in an unloaded, unrecorded chunk next to recorded land whose frontier record picks
+  a transition biome removes the same tree once the chunk loads.
+- [ ] Suite: a client that leaves and returns to a chunk with an unrecorded clear shows no ghost tree;
+  the clear range equals the `gen_scope` radius.
+- [ ] Suite: a deep edit and `clear_trees_near_tile` agree on the same tree; an edit at chunk X =
+  1,500,000 clears the tile `_resolve_edit_tile` picked.
+- [ ] Suite: `grep` finds the wrap helpers only in `seam_wrap.gd`; a `gen` with one malformed `t` keeps
+  its other entries; a fabric `treeDensity` above the new bound fails `npm run validate`.
+- [ ] Harness: `tree_cleared` passes with an injected 5 s client lag.
+- [ ] Suite green on both boot paths, `npm run check-drift` green, harness green.
+
+---
+
+## Phase 127 — Terrain streaming, generation records and persistence cleanup sweep
+
+**Goal:** the review leftovers of the generation records (Phase 113/114), the distant ring
+(Phase 120), crash-consistent saves (Phase 121), far terrain (Phase 122) and the injected transport
+(Phase 119) all touch the same code: `chunk_manager`, `chunk_records`, `region_store`,
+`region_streamer`, `save_txn` and `game_root`'s record and peer-window paths. This sweep resolves every
+item of each issue below.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 119, Phase 121, Phase 122.
+
+**Closes:** #287, #288, #302, #306, #307, #309, #317.
+
+**Deliverables:**
+- `src/terrain/chunk_manager.gd` — `flush_records_final` checks `write_chunks`, keeps failed keys
+  pending and logs; one clock (`now_msec` / `set_clock`, no `_now`), so the flush backoff follows the
+  injected clock; `_exit_tree` no longer clears the global `ChunkRecords` (GameRoot owns that); the
+  deferred-record path does not spawn a plain-generator chunk that a later record rebuilds under the
+  player's edits; `refresh` / `_retry_deferred_records` share one helper; `_in_bounds` removed;
+  `first_claim_origin` set from the peer's spawn or saved chunk, or the first-claim clamp dropped.
+- `src/terrain/chunk_records.gd` — `adopt_region` reports only ground changes (`_same_ground`), so
+  tree-only differences do not rebuild meshes; `snapshot_near` keeps parsed coordinates or a per-chunk
+  index instead of splitting every key under the mutex.
+- `src/terrain/distant_terrain.gd` / `src/terrain/terrain_slice.gd` — `rebuild` checks a per-region
+  revision instead of a deep compare; a records change inside the debounce window is picked up at
+  expiry; `shape_height` looks a record up directly instead of building a snapshot per call;
+  `NOISE_OFFSET_RANGE` doc matches `cell_offset`.
+- `src/terrain/frontier.gd` `corner_height` — the blend cutoff leaves no step on diagonals.
+- `src/terrain/climate_field.gd`, `src/terrain/world_pos.gd`, `src/terrain/chunk_record_sync.gd` — doc
+  comments sit on the functions they document; `WORLDGEN_VERSION` history notes the 24 m of extra
+  ground below the old bedrock floor.
+- `src/terrain/world_pos.gd` `pos_from_compact` — length checked before base64 decode.
+- `src/persistence/region_store.gd` — `fold_chunks`' empty-edit branch keeps the `is_newer_gen` guard;
+  `recover()` removed or made journal-aware; `read_region` reports changes through a flag from
+  `_drop_bad_ops`.
+- `src/persistence/region_streamer.gd` — `regions_for_chunks` snapshots record keys once; the stranded
+  backoff is per region and resets on success.
+- `src/persistence/save_txn.gd` / `persistence_slice.gd` — a read during `commit` falls back to the
+  `.bak`; the journal removal result is checked before `.bak` cleanup; a stale `.bak` is told apart from
+  the current one; a permanently failing region escalates after a bound instead of blocking
+  `world.json` forever; the recovery flag is locked so a main-thread load cannot delete a worker's
+  staged files; the in-place mode runs recovery on write.
+- `src/core/game_root.gd` — `_add_generation_records` rate-limits by window, not only when records were
+  sent; the fingerprint stamp is not overwritten after the mismatch notice; a client rebuilds loaded
+  chunks whose records `gen_scope` pruned; a refused or clamped peer move returns before building a
+  snapshot; `_release_fold_hold` extends the hold once before giving up.
+- `src/networking/networking_slice.gd` / `transport.gd` — a per-tick packet is decoded once; the
+  emulator queue stores a serialised copy at enqueue; one transport flag replaces `poll()` /
+  `is_memory()` / `stamps_seq()`.
+
+**Acceptance criteria:**
+- [ ] #287: an older incoming gen never overwrites a newer stored gen in `fold_chunks`; a failed final
+  flush keeps its keys pending; the fingerprint stamp survives a mismatch load; a tree-only adopt
+  rebuilds no mesh.
+- [ ] #288: a jittery client sending window moves with no records is rate-limited; a pruned record's
+  loaded chunk is rebuilt from the generator; a diagonal frontier corner has no step above the authored
+  bound; freeing one manager leaves another's records intact.
+- [ ] #302: a refused peer move builds no snapshot; a 40-character compact position is refused before
+  decoding; a per-tick packet is decoded once (counter); the emulator delivers the payload as it was at
+  enqueue.
+- [ ] #306: `snapshot_near` on a 100,000-record table does no key splitting (counter).
+- [ ] #307: a records change inside the debounce window reaches the ring at expiry; `shape_height` with
+  records allocates no snapshot (counter).
+- [ ] #309: a read during commit sees the old file, never "missing"; a stale `.bak` is not restored over
+  a newer commit; a region failing past the bound escalates and `world.json` is written; a worker's
+  staged files survive a concurrent load; a second stranded region starts at the base backoff.
+- [ ] #317: `_in_bounds` is gone; the doc comments sit on their functions (checked by the suite's
+  doc-comment audit or a grep test); `NOISE_OFFSET_RANGE` matches `cell_offset`'s range.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
 ## Deferred (in priority order)
 
 - **Server sharding (final, not before maturity)** — split the authoritative
@@ -1091,7 +1391,7 @@ column. `water_mesh_for` already scans row spans; `evict_clean_chunks` already c
   Phase 51's static sea level.
 - **Fast travel** — a planet takes about 90 days to walk around. Some form of
   travel network (roads, boats, waystones) is needed once players spread out
-  (after Phase 53).
+  (after Phase 53). **(planned: Phase 125 adds waystones; roads and boats remain.)**
 - **Voxel techniques from GDVoxelPlayground (evaluated, not adopted wholesale)** —
   <https://github.com/JorisAR/GDVoxelPlayground> (MIT) ray-marches a FIXED 128³
   voxel grid on the GPU via `RenderingDevice` compute. It does not fit Nihon,
@@ -1107,7 +1407,7 @@ column. `water_mesh_for` already scans row spans; `evict_clean_chunks` already c
 - **Public wiki deployment** — VitePress (or equivalent) static-site deployment
   and CI-triggered wiki regeneration from the fabric (deferred from Phase 9).
 - **Research cost points** — the abstract `researchCost` points field is modelled
-  in the fabric but not enforced at runtime (deferred from Phase 13).
+  in the fabric but not enforced at runtime (deferred from Phase 13). **(planned: Phase 124.)**
 - **`VoidTouched` special-case unlock** — the void-burst survivor unlock trigger
   is defined in the fabric but not wired to any runtime event (deferred from
   Phase 13). **(closed: Phase 118 — a refining craft can burst, survivors get
