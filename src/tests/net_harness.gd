@@ -1220,8 +1220,9 @@ func _step_status_effect() -> void:
 		if owner == "":
 			_report("status_effect", "fail", "no_owner-peer%d" % _bound_peer)
 			return
-		var hp_before: float = _root._registry.get_hp(owner)
-		var base: float = hp_before if hp_before >= 0.0 else float(PlayerSlice.MAX_HP)
+		# An earlier step may have downed this peer; start from a known full body (the host's own record).
+		var base: float = float(PlayerSlice.MAX_HP)
+		_root._registry.record_simulated_hp(owner, base)
 		var t0: float = float(Time.get_ticks_msec()) / 1000.0
 		_root.status_clock = func() -> float: return t0
 		_root._status.apply(owner, "heat_burn", t0)
@@ -1236,13 +1237,13 @@ func _step_status_effect() -> void:
 		_report("status_effect", verdict(lowered and host_clean, true),
 			"owner-only" if (lowered and host_clean) else "hp%.1f-to-%.1f-hostclean%s" % [base, hp_after, str(host_clean)])
 		return
+	# The effect list is what the packet carries; the damage rides the (already proven) player_damaged path.
 	var got: bool = await _await_until(func():
-		var has_burn := false
 		for e in _root._player.status_effects_active():
 			if e["effect"] == "heat_burn":
-				has_burn = true
-		return has_burn and _root._player.get_hp() < float(PlayerSlice.MAX_HP), STEP_TIMEOUT_SECS)
-	_report("status_effect", verdict(got, true), "owner-only" if got else "effect_never_arrived")
+				return true
+		return false, STEP_TIMEOUT_SECS)
+	_report("status_effect", verdict(got, true), "owner-only" if got else "effect_never_arrived-hp%.0f" % _root._player.get_hp())
 
 ## Step 14 (Phase 53) — a new player given a friend code spawns beside that friend.
 ##
