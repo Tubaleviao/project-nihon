@@ -1908,8 +1908,10 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 		# A record that arrives after its chunk was built (a re-scope) changes the ground: rebuild it.
 		# A pruned record means its loaded chunk now draws from the generator: rebuild that too.
 		if _chunk_manager != null:
+			var rebuilt := {}
 			for c in gen_result["changed"] + pruned:
-				if _chunk_manager.is_chunk_built(c):
+				if not rebuilt.has(c) and _chunk_manager.is_chunk_built(c):
+					rebuilt[c] = true
 					_chunk_manager.request_rebuild(c)
 		if int(gen_result["dropped"]) > 0 or int(gen_result["refused"]) > 0:
 			Diag.warn("GameRoot: generation records: %d applied, %d dropped, %d refused" % [

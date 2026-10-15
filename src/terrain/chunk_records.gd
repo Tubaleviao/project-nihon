@@ -1,6 +1,7 @@
 extends RefCounted
 
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
+const RegionStore := preload("res://src/persistence/region_store.gd")
 ## Phase 108 — the generation records of the chunks this process knows (see `RegionStore.normalize_gen`).
 ##
 ## A static table `"cx,cz" -> { v, f, b, h }` guarded by a mutex: the main thread writes it (a region
@@ -26,7 +27,7 @@ static var key_splits := 0
 static func key_of(chunk: Vector2i) -> String:
 	return "%d,%d" % [chunk.x, chunk.y]
 
-const REGION_CHUNKS := 32
+const REGION_CHUNKS := RegionStore.REGION_SIZE
 
 static func _bump_region(chunk: Vector2i) -> void:
 	var r := Vector2i(floori(float(chunk.x) / REGION_CHUNKS), floori(float(chunk.y) / REGION_CHUNKS))

@@ -30,8 +30,9 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## so the pole can be crossed; 6 = Phase 122 far detail noise: the triangle-wave fold that mirrored
 ## the world beyond `NOISE_SPAN` is replaced by a hashed per-cell offset blended across cell borders.
 ## Version 6 worlds also carry 24 m of extra ground below the old bedrock floor, so a chunk written
-## before that change has a lower floor than one written after it.
-const WORLDGEN_VERSION := 6
+## before that change has a lower floor than one written after it. 7 = Phase 127 frontier corners are
+## weighted by the blend itself, so unrecorded land beside a record eases into the generator differently.
+const WORLDGEN_VERSION := 7
 
 ## Phase 106 — a hash of every fabric parameter world-gen reads that `WORLDGEN_VERSION` cannot see:
 ## the `WorldSystem` shape fields (`sea`, `min/max height`, `oceanShare`, `ridgeAmplitude`,

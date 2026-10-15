@@ -23,10 +23,11 @@ static func commit(ops: Array, journal_path: String, fault: Callable = Callable(
 		return OK
 	var targets: Array = []
 	for op in ops:
-		# No journal exists, so any `.bak` here is a leftover of a finished commit (its cleanup failed):
-		# stale. Clear it, or a rollback of this commit could restore it over newer content.
+		# Without a journal any `.bak` here is a leftover of a finished commit (its cleanup failed):
+		# stale. Clear it, or a rollback of this commit could restore it over newer content. A surviving
+		# journal means an interrupted commit whose `.bak` files are the only old copy: leave them.
 		var stale := str(op["path"]) + BAK_EXT
-		if FileAccess.file_exists(stale):
+		if FileAccess.file_exists(stale) and not FileAccess.file_exists(journal_path):
 			DirAccess.remove_absolute(stale)
 		targets.append({ "path": str(op["path"]), "had": FileAccess.file_exists(str(op["path"])) })
 	if _fails(fault, "journal"):
