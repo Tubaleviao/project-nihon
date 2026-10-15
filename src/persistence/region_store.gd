@@ -42,6 +42,15 @@ var atomic_writes: bool = true
 ## The "cx,cz" keys of the chunks in regions the LAST `write_chunks` could not write (read or
 ## save failed). A save that failed in one region should put back only those chunks as dirty.
 var last_failed_chunk_keys: Array = []
+## "rx,rz" -> how many saves in a row failed to stage that region; cleared by a success. A region that
+## stays past `MAX_REGION_FAILURES` stops holding back the world record (see `PersistenceSlice`).
+var region_failures: Dictionary = {}
+## The "rx,rz" keys of the regions the LAST `stage_chunks` failed to stage.
+var last_failed_region_keys: Array = []
+const MAX_REGION_FAILURES := 5
+## The journal of the world save that commits this store's regions with `world.json` (set by the
+## persistence slice); a read while either journal exists may fall back to a `.bak`.
+var outer_journal: String = ""
 ## Phase 121 — test hook: `fault.call(step)` returning true fails that write step ("region_tmp",
 ## "region_rename", "journal", "backup"). Invalid (unset) in production.
 var fault: Callable = Callable()
@@ -62,10 +71,6 @@ func set_dir(region_dir: String) -> void:
 ## Where a transaction over this directory records itself.
 func journal_path() -> String:
 	return dir + "save.journal"
-
-## Undo an interrupted save and delete stray `.tmp` / `.bak` files in the region directory.
-func recover() -> int:
-	return SaveTxn.recover(journal_path(), [dir])
 
 # ---------------------------------------------------------------------------
 # Pure helpers
@@ -155,6 +160,8 @@ static func fold_chunks(base: Dictionary, incoming: Dictionary, deletions := tru
 		if deletions and is_empty_edit_set(entry):
 			# The edits compacted away; a recorded `gen` is not an edit and stays.
 			var kept_gen: Variant = (entry as Dictionary).get("gen", stored_gen)
+			if is_newer_gen(stored_gen) and not is_newer_gen(kept_gen):
+				kept_gen = stored_gen   # an older generator's record never replaces a newer one
 			if kept_gen is Dictionary:
 				out[ckey] = { "gen": kept_gen }
 			else:
@@ -278,7 +285,13 @@ func load_region(region: Vector2i) -> Dictionary:
 func read_region(region: Vector2i, warn := true) -> Dictionary:
 	var path := path_of(region)
 	if not FileAccess.file_exists(path):
-		return { "ok": true, "chunks": {}, "raw_invalid": {} }
+		# A commit moves the old file to `.bak` just before the new one lands: a read in that gap (from
+		# another thread) sees the old file, never "missing". Only while the journal exists; after a
+		# finished commit a `.bak` is stale.
+		if FileAccess.file_exists(path + SaveTxn.BAK_EXT) and (SaveTxn.in_flight(journal_path()) or (outer_journal != "" and SaveTxn.in_flight(outer_journal))):
+			path += SaveTxn.BAK_EXT
+		else:
+			return { "ok": true, "chunks": {}, "raw_invalid": {} }
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
 		Diag.error("RegionStore: cannot open %s for read — %s" % [path, error_string(FileAccess.get_open_error())])
@@ -298,9 +311,9 @@ func read_region(region: Vector2i, warn := true) -> Dictionary:
 		for ckey in raw:
 			if raw[ckey] is Dictionary and _chunk_entry_valid(raw[ckey]):
 				chunks[ckey] = raw[ckey]
-				var cleaned := _drop_bad_ops(raw[ckey])
-				if cleaned.size() != raw[ckey].size() or cleaned.get("edits", null) != raw[ckey].get("edits", null):
-					chunks[ckey] = cleaned
+				var dropped := _drop_bad_ops(raw[ckey])
+				if bool(dropped["changed"]):
+					chunks[ckey] = dropped["entry"]
 					if warn and _first_warning("%s|%s|ops" % [path, str(ckey)]):
 						Diag.warn("RegionStore: %s: dropping malformed op(s) of chunk '%s'" % [path, str(ckey)])
 				if raw[ckey].has("gen"):
@@ -383,12 +396,13 @@ static func op_valid(op: Variant) -> bool:
 static func _is_finite_number(x: Variant) -> bool:
 	return (typeof(x) == TYPE_FLOAT or typeof(x) == TYPE_INT) and is_finite(float(x))
 
-## `entry` without its malformed ops (a tile left with none is dropped); the same Dictionary when every
-## op is fine. A bare legacy tile value (not a list) is not an op list and is left to `VoxelSlice`.
+## `{ "entry": entry without its malformed ops (a tile left with none is dropped), "changed": whether any
+## op went }`; `entry` is the same Dictionary when every op is fine. A bare legacy tile value (not a list)
+## is not an op list and is left to `VoxelSlice`.
 static func _drop_bad_ops(entry: Dictionary) -> Dictionary:
 	var edits: Variant = entry.get("edits", null)
 	if not (edits is Dictionary):
-		return entry
+		return { "entry": entry, "changed": false }
 	var cleaned_edits := {}
 	var changed := false
 	for tile in edits:
@@ -405,10 +419,10 @@ static func _drop_bad_ops(entry: Dictionary) -> Dictionary:
 		if not good.is_empty() or (ops as Array).is_empty():
 			cleaned_edits[tile] = good
 	if not changed:
-		return entry
+		return { "entry": entry, "changed": false }
 	var out := entry.duplicate()
 	out["edits"] = cleaned_edits
-	return out
+	return { "entry": out, "changed": true }
 
 ## True for a record whose `v` is a whole number above this build's `WORLDGEN_VERSION`. Pure.
 static func is_newer_gen(rec: Variant) -> bool:
@@ -561,6 +575,7 @@ func stage_chunks(chunks: Dictionary, deletions := true) -> Dictionary:
 	var first_error: Error = OK
 	var ops: Array = []
 	last_failed_chunk_keys = []
+	last_failed_region_keys = []
 	for rkey in grouped:
 		var region := region_from_key(str(rkey))
 		var read := read_region(region, false)
@@ -569,6 +584,8 @@ func stage_chunks(chunks: Dictionary, deletions := true) -> Dictionary:
 			if first_error == OK:
 				first_error = ERR_FILE_CORRUPT
 			last_failed_chunk_keys.append_array(grouped[rkey].keys())
+			region_failures[rkey] = int(region_failures.get(rkey, 0)) + 1
+			last_failed_region_keys.append(rkey)
 			continue
 		var folded := fold_chunks(read["chunks"], grouped[rkey], deletions)
 		# Phase 75 — a malformed entry survives the rewrite unchanged unless this save carries a
@@ -580,11 +597,21 @@ func stage_chunks(chunks: Dictionary, deletions := true) -> Dictionary:
 		var staged := stage_region(region, folded)
 		if staged["err"] != OK:
 			last_failed_chunk_keys.append_array(grouped[rkey].keys())
+			region_failures[rkey] = int(region_failures.get(rkey, 0)) + 1
+			last_failed_region_keys.append(rkey)
 			if first_error == OK:
 				first_error = staged["err"]
 			continue
+		region_failures.erase(rkey)
 		ops.append_array(staged["ops"])
 	return { "err": first_error, "ops": ops }
+
+## True when a region that failed in the last `stage_chunks` has failed `MAX_REGION_FAILURES` saves in a row.
+func has_exhausted_region() -> bool:
+	for rkey in last_failed_region_keys:
+		if int(region_failures.get(rkey, 0)) >= MAX_REGION_FAILURES:
+			return true
+	return false
 
 ## Phase 107 — the stored generation record of `chunk`, or `{}` when it has none.
 func get_gen(chunk: Vector2i) -> Dictionary:

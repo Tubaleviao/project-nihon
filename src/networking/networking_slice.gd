@@ -549,7 +549,7 @@ func set_transport(transport: Transport) -> bool:
 
 ## The suite's memory transport when one is injected (its `outbox` holds every send), else null.
 func memory_transport() -> Object:
-	return _transport if _transport != null and _transport.is_memory() else null
+	return _transport if _transport != null and "outbox" in _transport else null
 
 ## The rule is `GameRoot.should_run_tests`, loaded on demand because `GameRoot` already depends on this slice.
 static func transport_injection_allowed() -> bool:
@@ -593,7 +593,7 @@ func _broadcast(payload: Dictionary) -> void:
 ## True when the packet was sent or queued; false when the emulator dropped it.
 func _deliver(peer_id: int, payload: Dictionary) -> bool:
 	var transport := _ensure_transport()
-	if not transport.stamps_seq():
+	if not transport.stamps_seq:
 		transport.send(peer_id, payload)
 		return true
 	var ptype: String = str(payload.get("type", "_"))
@@ -607,7 +607,8 @@ func _deliver(peer_id: int, payload: Dictionary) -> bool:
 	if _should_drop():
 		return false
 	var at_ms: float = float(Time.get_ticks_msec()) + _jitter_delay_ms()
-	_pending.append({ "at_ms": at_ms, "peer_id": peer_id, "payload": payload })
+	# A serialised copy: the caller may reuse or mutate `payload` before the delayed delivery.
+	_pending.append({ "at_ms": at_ms, "peer_id": peer_id, "payload": JSON.stringify(payload) })
 	if emulator_reorder:
 		_maybe_reorder()
 	return true
@@ -1543,11 +1544,13 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			# Phase 119 — the packet is decoded and validated here, once, before any consumer
 			# (`aoi_region` included) sees a number from it: a truncated, non-finite or implausible
 			# position is refused, with one throttled warning per peer.
-			if not WorldPos.packet_has_pos(payload):
+			# The compact position is decoded ONCE (`WorldPos.compact_decodes` counts them).
+			var exact := WorldPos.pos_from_packet(payload)
+			if exact.is_empty() and (payload.has("pk") or not WorldPos.is_wire(payload.get("position", null))):
 				_warn_malformed_position(sender)
 				return
-			var exact := WorldPos.pos_from_packet(payload)
-			var pos := WorldPos.packet_world(payload)
+			var pos := WorldPos.to_scene(exact, Vector2i.ZERO) if not exact.is_empty() \
+					else WorldPos.from_wire(payload.get("position", null), Vector3.ZERO)
 			# The packet also carries the peer's self-declared `hp` / `max_hp`,
 			# used for its own display. The host deliberately keeps NO durable
 			# copy of THAT value: it is client-declared and cannot be verified
@@ -2015,7 +2018,9 @@ func _drain_emulator() -> void:
 	while i < _pending.size():
 		var entry: Dictionary = _pending[i]
 		if float(entry["at_ms"]) <= now:
-			_ensure_transport().send(int(entry["peer_id"]), entry["payload"])
+			var msg: Variant = JSON.parse_string(str(entry["payload"]))
+			if msg is Dictionary:
+				_ensure_transport().send(int(entry["peer_id"]), msg)
 			_pending.remove_at(i)
 		else:
 			i += 1

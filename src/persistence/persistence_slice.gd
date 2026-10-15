@@ -192,19 +192,29 @@ func _load_config() -> void:
 func _sync_region_store() -> void:
 	region_store.set_dir(server_save_dir + REGIONS_SUBDIR)
 	region_store.atomic_writes = atomic_writes
+	region_store.outer_journal = journal_path()
+	_recover_mutex.lock()
 	_recovered_dir = ""
+	_recover_mutex.unlock()
 
 ## Phase 121 — undo an interrupted save and delete stray `.tmp` / `.bak` files, once per save directory
 ## (the first read of a world). The journal and the world record live in `server_save_dir`.
 var _recovered_dir: String = ""
+## Held for the whole recovery, flag included: a save worker and a main-thread load both call it, and
+## the second must wait for the first to finish, not race it and delete the staged files of a save.
+var _recover_mutex := Mutex.new()
 
 func recover_interrupted_save() -> int:
+	_recover_mutex.lock()
 	if _recovered_dir == server_save_dir:
+		_recover_mutex.unlock()
 		return 0
 	_recovered_dir = server_save_dir
 	# The region store commits through its own journal (chunk-record writes); undo that one first.
 	var touched := SaveTxn.recover(region_store.journal_path(), [], [journal_path()])
-	return touched + SaveTxn.recover(journal_path(), [server_save_dir, region_store.dir], [region_store.journal_path()])
+	touched += SaveTxn.recover(journal_path(), [server_save_dir, region_store.dir], [region_store.journal_path()])
+	_recover_mutex.unlock()
+	return touched
 
 func journal_path() -> String:
 	return server_save_dir + "save.journal"
@@ -319,7 +329,12 @@ func _write_world_payload(data: Dictionary, incremental: bool) -> Error:
 		staged = region_store.stage_chunks(chunks)
 	var region_err: Error = staged["err"]
 	var ops: Array = staged["ops"]
-	if region_err != OK:
+	var escalated: bool = region_err != OK and region_store.has_exhausted_region()
+	if escalated:
+		# A region that keeps failing must not freeze the world record forever: write it with the regions
+		# that did stage; the failed chunks stay dirty and the error is still reported.
+		Diag.error("PersistenceSlice: a region failed %d saves in a row — saving the world record without it" % RegionStore.MAX_REGION_FAILURES)
+	elif region_err != OK:
 		# World record untouched: commit the regions that staged, report the failure.
 		if not ops.is_empty():
 			var partial := SaveTxn.commit(ops, journal_path(), fault)
@@ -340,10 +355,12 @@ func _write_world_payload(data: Dictionary, incremental: bool) -> Error:
 	var commit_err := SaveTxn.commit(ops, journal_path(), fault) as Error
 	if commit_err != OK:
 		region_store.last_failed_chunk_keys = []   # rolled back: every chunk of this save stays dirty
-	return commit_err
+		return commit_err
+	return region_err if escalated else OK
 
 ## The `atomic_writes = false` path: regions first, the world record second, each written in place.
 func _write_world_payload_in_place(payload: Dictionary, chunks: Variant, incremental: bool) -> Error:
+	recover_interrupted_save()
 	var first_error: Error = OK
 	if chunks is Dictionary and not (chunks as Dictionary).is_empty():
 		first_error = region_store.write_chunks(chunks)

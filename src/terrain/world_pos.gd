@@ -191,12 +191,21 @@ static func pos_to_compact(pos: Dictionary) -> PackedByteArray:
 	bytes.encode_float(16, local.z)
 	return bytes
 
+## How many compact positions were handed to the decoder (a test counter: a packet decodes once).
+static var compact_decodes := 0
+
+## Length of the base64 text of a compact position.
+const COMPACT_TEXT_LEN := 4 * ((COMPACT_BYTES + 2) / 3)
+
 ## Decode the compact form (bytes, or the base64 text a packet carries) to a normalised `{chunk, local}`,
 ## or an empty dictionary when it is truncated or non-finite. The codec is exact for any int32 chunk;
 ## whether that chunk is a place on THIS planet is `is_plausible_pos`, which `pos_from_packet` applies.
 static func pos_from_compact(data: Variant) -> Dictionary:
+	compact_decodes += 1
 	var bytes: PackedByteArray
 	if data is String:
+		if (data as String).length() != COMPACT_TEXT_LEN:   # refused before any decode
+			return {}
 		bytes = Marshalls.base64_to_raw(data)
 	elif data is PackedByteArray:
 		bytes = data

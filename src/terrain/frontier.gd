@@ -104,7 +104,9 @@ static func corner_height(p: Vector2i, seed_v: int, recs: Dictionary, gen_cache:
 			if d2 >= float(BLEND_SPAN * BLEND_SPAN):
 				continue
 			nearest = minf(nearest, sqrt(d2))
-			var wt := 1.0 / d2
+			# Weighted by the blend itself, so a corner entering the cutoff circle at BLEND_SPAN joins with
+			# weight 0 and the average has no step on a diagonal.
+			var wt := blend_weight(sqrt(d2)) / d2
 			sum += wt * (rv - _generated_height(q, seed_v, gen_cache))
 			wsum += wt
 	if wsum <= 0.0:

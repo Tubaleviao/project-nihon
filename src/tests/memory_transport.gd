@@ -6,6 +6,7 @@ var connected: Array
 var outbox: Array = []
 
 func _init(peer_ids: Array = []) -> void:
+	stamps_seq = false
 	connected = peer_ids
 
 func peers() -> Array:
@@ -16,9 +17,3 @@ func is_up() -> bool:
 
 func send(peer: int, msg: Dictionary) -> void:
 	outbox.append({ "peer_id": peer, "payload": msg })
-
-func is_memory() -> bool:
-	return true
-
-func stamps_seq() -> bool:
-	return false
