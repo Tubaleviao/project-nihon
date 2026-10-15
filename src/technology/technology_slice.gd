@@ -184,8 +184,8 @@ func begin_research(tech_id: String, player_id: String = "") -> Dictionary:
 	if not inventory.consume_items(_to_counts(materials)):
 		return _emit(_result(tech_id, false, "missing_materials", cur, pid))
 
-	_set_points(pid, get_points(pid) - cost)
 	_status_for(pid)[tech_id] = STATE_RESEARCHING
+	_set_points(pid, get_points(pid) - cost)
 	var duration: float = float(tech.get("researchDuration", 0.0))
 	if duration > 0.0:
 		# Wall-clock seconds, not `Time.get_ticks_msec()`: the deadline is compared
@@ -291,11 +291,15 @@ func note_craft(recipe_id: String, player_id: String = "") -> int:
 	if not is_authoritative:
 		return 0
 	var pid := resolve_player(player_id)
-	var granted := grant_points(pid, "craft", points_for("craft"))
+	# The marker is written before any grant: each grant syncs and records a snapshot.
+	var first := false
 	if not _first_crafts.has(pid):
 		_first_crafts[pid] = {}
 	if not _first_crafts[pid].has(recipe_id):
 		_first_crafts[pid][recipe_id] = true
+		first = true
+	var granted := grant_points(pid, "craft", points_for("craft"))
+	if first:
 		granted += grant_points(pid, "firstCraftOfRecipe", points_for("firstCraftOfRecipe"))
 	return granted
 
@@ -323,7 +327,6 @@ func apply_statuses(statuses: Dictionary, player_id: String = "") -> void:
 	# Phase 124 — a snapshot without the reserved keys (a legacy save) restores 0 / none.
 	var points_v: Variant = statuses.get(POINTS_KEY, 0)
 	_points[pid] = maxi(0, int(points_v)) if (points_v is int or points_v is float) else 0
-	GameBus.research_points_synced.emit(pid, int(_points[pid]))
 	var crafted: Dictionary = {}
 	var crafted_v: Variant = statuses.get(CRAFTED_KEY, [])
 	if crafted_v is Array:
@@ -339,6 +342,8 @@ func apply_statuses(statuses: Dictionary, player_id: String = "") -> void:
 			var duration: float = float(_get_tech_data(tech_id).get("researchDuration", 0.0))
 			if duration > 0.0:
 				_deadlines_for(pid)[tech_id] = Time.get_unix_time_from_system() + duration
+	# Emitted last: the host's listener records a snapshot of the now-complete state.
+	GameBus.research_points_synced.emit(pid, int(_points[pid]))
 
 # ---------------------------------------------------------------------------
 # Private
