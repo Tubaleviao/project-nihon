@@ -25,6 +25,11 @@ static var _palette_tex_key: int = 0
 ## The single shared ShaderMaterial every part uses (§20).
 static var _shared_material: ShaderMaterial = null
 
+## The single ShaderMaterial every attached glTF rig uses: same shader and palette as the
+## capsules' material, but a separate resource so the rig's body sheets (detail, colour mask,
+## channel mask) are never bound onto the procedural parts. One per kind, not one per character.
+static var _rig_material: ShaderMaterial = null
+
 # ---------------------------------------------------------------------------
 # Palette texture
 # ---------------------------------------------------------------------------
@@ -69,6 +74,23 @@ static func shared_material(colors: Array) -> ShaderMaterial:
 		mat.set_shader_parameter("palette_tex", palette_texture(colors))
 		_shared_material = mat
 	return _shared_material
+
+## The single rig ShaderMaterial (built once). Its textures are bound by the caller
+## (CharacterSlice.attach_rig) through `bind_rig_textures`; per-character colour is written
+## per mesh with apply_instance, so two characters share this resource.
+static func rig_material(colors: Array) -> ShaderMaterial:
+	if _rig_material == null:
+		var mat := ShaderMaterial.new()
+		mat.shader = SHADER
+		mat.set_shader_parameter("palette_tex", palette_texture(colors))
+		_rig_material = mat
+	return _rig_material
+
+## Bind the three body sheets on the rig material (idempotent: same textures, same material).
+static func bind_rig_textures(mat: ShaderMaterial, detail: Texture2D, color_mask: Texture2D, channel: Texture2D) -> void:
+	mat.set_shader_parameter("detail_tex", detail)
+	mat.set_shader_parameter("color_mask_tex", color_mask)
+	mat.set_shader_parameter("channel_tex", channel)
 
 ## Write every per-instance shader parameter onto a part mesh (no new material).
 ## `base_index` is the base palette colour; `opts` carries the optional channel

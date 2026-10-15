@@ -133,6 +133,9 @@ var _palette: Array = []
 ## production pack overrides the committed placeholder without this slice
 ## ever referencing a private path (§ asset separation).
 var _body_texture: ImageTexture = null
+var _rig_detail: ImageTexture = null
+var _rig_color_mask: ImageTexture = null
+var _rig_channel: ImageTexture = null
 
 ## Instance id of the player's own character avatar (set by game_root) — the
 ## target for combat- and death-driven animation triggers.
@@ -732,6 +735,7 @@ func attach_rig(instance_id: String, rig_key: String) -> bool:
 		if child is Node3D and child != impostor:
 			(child as Node3D).visible = false
 	root.add_child(rig_root)
+	_dress_rig(rig_root, inst["appearance"])
 	var tree := RigTree.build_tree(player)
 	rig_root.add_child(tree)
 	tree.anim_player = tree.get_path_to(player)
@@ -745,6 +749,31 @@ func attach_rig(instance_id: String, rig_key: String) -> bool:
 	inst.erase("_hidden")
 	_apply_lod(instance_id)
 	return true
+
+## Body sheet keys the rig material binds (assets/README.md "Rig textures"); the production
+## pack overrides them by key, the public placeholders keep the rig readable.
+const RIG_DETAIL_KEY := "textures/characters/player.png.raw"
+const RIG_COLOR_MASK_KEY := "textures/characters/player_color_mask.png.raw"
+const RIG_CHANNEL_KEY := "textures/characters/player_channel.png.raw"
+
+## Give every mesh of a freshly attached rig the character shader and its palette indices.
+## The rig material is shared by all rigs; only the instance parameters differ per character.
+func _dress_rig(rig_root: Node, appearance: Dictionary) -> void:
+	var mat := CharacterMaterial.rig_material(_palette_colors())
+	if _rig_detail == null:
+		_rig_detail = AssetOverlay.load_texture(RIG_DETAIL_KEY)
+		_rig_color_mask = AssetOverlay.load_texture(RIG_COLOR_MASK_KEY)
+		_rig_channel = AssetOverlay.load_texture(RIG_CHANNEL_KEY)
+	CharacterMaterial.bind_rig_textures(mat, _rig_detail, _rig_color_mask, _rig_channel)
+	var skin: int = int(appearance.get("skinColor", 12))
+	for node in rig_root.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		mesh.material_override = mat
+		CharacterMaterial.apply_instance(mesh, skin, {
+			"primary_index": int(appearance.get("hairColor", 0)),
+			"secondary_index": int(appearance.get("eyeColor", 0)),
+			"accent_index": int(appearance.get("beardColor", 0)),
+		})
 
 ## Rig keys tried in order for an avatar: the player rig (the production pack's art, or
 ## its public placeholder), then the older unskinned placeholder body for a manifest that
