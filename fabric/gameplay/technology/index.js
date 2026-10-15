@@ -32,7 +32,11 @@ function techData(tech) {
   }
 }
 
+const { RULES, MAX_RESEARCH_COST, ResearchPointRule, validateRules, validateCosts } = require('./research_points')
+
 module.exports = {
+
+  ResearchPointRule,
 
   // ─── TechBasicSmithing ────────────────────────────────────────────────────
   TechBasicSmithing: defineEntity({
@@ -44,7 +48,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       status: { type: 'enum', values: TECH_STATES },
-      researchCost: { type: 'integer', description: 'Research points required to complete' },
+      researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 0 },
       tier:   { type: 'integer', description: 'Technology tree tier (1 = root)' },
       tech: techData({
         unlocks: ['RecipeFerriteIngot', 'RecipeFerriteShortSword', 'RecipeFerritePick'],
@@ -87,7 +91,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       status: { type: 'enum', values: TECH_STATES },
-      researchCost: { type: 'integer', description: 'Research points required to complete' },
+      researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 5 },
       tier:   { type: 'integer', description: 'Technology tree tier' },
       tech: techData({
         unlocks: ['RecipeVeilsteelIngot', 'RecipeVeilsteelLongsword', 'RecipeVeilsteelChestplate', 'RecipeAshiteBlock', 'RecipeRefinedVoiditeShard'],
@@ -133,7 +137,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       status: { type: 'enum', values: TECH_STATES },
-      researchCost: { type: 'integer', description: 'Research points required to complete' },
+      researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 0 },
       tier:   { type: 'integer', description: 'Technology tree tier (1 = root)' },
       tech: techData({
         unlocks: ['RecipeThornwoodPlank', 'RecipeCarpenterAxe'],
@@ -171,7 +175,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       status: { type: 'enum', values: TECH_STATES },
-      researchCost: { type: 'integer', description: 'Research points required to complete' },
+      researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 3 },
       tier:   { type: 'integer', description: 'Technology tree tier' },
       tech: techData({
         unlocks: ['RecipeDuskfiberCloak'],
@@ -212,7 +216,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       status: { type: 'enum', values: TECH_STATES },
-      researchCost: { type: 'integer', description: 'Research points required to complete' },
+      researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 8 },
       tier:   { type: 'integer', description: 'Technology tree tier' },
       tech: techData({
         unlocks: ['RecipeEnchantedAethermiteShard', 'RecipeAethermiteBow', 'RecipeLumenfiteOrb'],
@@ -257,7 +261,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       status: { type: 'enum', values: TECH_STATES },
-      researchCost: { type: 'integer', description: 'Research points required to complete' },
+      researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 2 },
       tier:   { type: 'integer', description: 'Technology tree tier (1 = root)' },
       tech: techData({
         unlocks: ['RecipeHealthPotion', 'RecipeStaminaPotion'],
@@ -298,7 +302,7 @@ module.exports = {
     fields: {
       id:     { type: 'uuid', primaryKey: true },
       status: { type: 'enum', values: TECH_STATES },
-      researchCost: { type: 'integer', description: 'Research points required to complete' },
+      researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 12 },
       tier:   { type: 'integer', description: 'Technology tree tier (highest)' },
       tech: techData({
         unlocks: ['RecipeVoidResistPotion', 'RecipeVoidRuneTablet'],
@@ -337,3 +341,13 @@ module.exports = {
   }),
 
 }
+
+// Phase 124 — every technology's `researchCost` must be reachable; throwing here makes
+// `npm run validate` (which loads the fabric) fail.
+validateRules(RULES)
+validateCosts(
+  Object.fromEntries(Object.entries(module.exports)
+    .filter(([k]) => k.startsWith('Tech'))
+    .map(([k, e]) => [k, e.fields.researchCost.defaultValue])),
+  MAX_RESEARCH_COST,
+)

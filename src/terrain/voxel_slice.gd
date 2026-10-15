@@ -1504,6 +1504,7 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 
 	var pos := Vector3(world_pos.x, float(span["top"]), world_pos.z)
 	GameBus.block_mined.emit(material, quantity, pos)
+	GameBus.resource_gathered.emit(player_id, material, quantity)
 	GameBus.block_changed.emit("mine", world_pos, normal, material)
 	return { "success": true, "material": material, "quantity": quantity, "position": pos, "player_id": player_id }
 

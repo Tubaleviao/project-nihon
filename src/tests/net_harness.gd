@@ -156,6 +156,7 @@ static func steps() -> Array:
 		{ "name": "rate_bucket",       "compare": true },
 		{ "name": "clock_synced",      "compare": true },
 		{ "name": "inventory_owner",   "compare": true },
+		{ "name": "research_points_owner", "compare": true },
 		{ "name": "chat_relayed",      "compare": true },
 		{ "name": "admin_teleport",    "compare": true },
 		{ "name": "non_admin_refused", "compare": true },
@@ -344,6 +345,7 @@ func run(root: Node, role: String) -> void:
 	await _step_rate_bucket()
 	await _step_clock_synced()
 	await _step_inventory_owner()
+	await _step_research_points_owner()
 	await _step_chat_relayed()
 	await _step_admin_teleport()
 	await _step_non_admin_refused()
@@ -628,6 +630,28 @@ func _step_inventory_owner() -> void:
 		return
 	var ok: bool = await _await_until(func(): return _root._inventory.get_contents().has(PROBE_ITEM), STEP_TIMEOUT_SECS)
 	_report("inventory_owner", verdict(ok, true), "owner-only" if ok else "sync_never_arrived")
+
+## Phase 124 — research points reach the owning client alone. The host pays the bound
+## peer's player a craft through the same hook a resolved craft uses (`note_craft`: the
+## fabric's craft points plus the first-craft bonus); the balance must arrive at that
+## peer's client through `research_points_synced`, and the host's own balance must not move.
+func _step_research_points_owner() -> void:
+	var want: int = int(_root._technology.points_for("craft")) + int(_root._technology.points_for("firstCraftOfRecipe"))
+	if _role == "host":
+		var owner := _bound_id()
+		if owner == "":
+			_report("research_points_owner", "fail", "no_owner-peer%d" % _bound_peer)
+			return
+		var before: int = int(_root._technology.get_points())
+		var granted: int = int(_root._technology.note_craft("RecipeFerriteIngot", owner))
+		var ok: bool = await _await_until(func(): return true, 1.0)
+		var after: int = int(_root._technology.get_points())
+		_report("research_points_owner", verdict(ok and granted == want and after == before, true),
+			"owner-only" if (granted == want and after == before) else "host_balance_moved-%d-to-%d-granted%d" % [before, after, granted])
+		return
+	var got: bool = await _await_until(func(): return int(_root._technology.get_points()) == want, STEP_TIMEOUT_SECS)
+	_report("research_points_owner", verdict(got, true),
+		"owner-only" if got else "sync_never_arrived-%d" % int(_root._technology.get_points()))
 
 ## Every chat line this side saw, whole run: `{ channel, sender, text, target }`.
 var _chat_seen: Array = []

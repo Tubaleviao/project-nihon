@@ -496,6 +496,8 @@ func _ready() -> void:
 	GameBus.repair_resolved.connect(_on_repair_resolved)
 	GameBus.profession_unlocked.connect(_on_profession_unlocked)
 	GameBus.research_resolved.connect(_on_research_resolved)
+	GameBus.research_points_synced.connect(_on_research_points_synced)
+	GameBus.resource_gathered.connect(_on_resource_gathered)
 	GameBus.tame_resolved.connect(_on_tame_resolved)
 	GameBus.technology_unlocked.connect(_on_technology_unlocked)
 	GameBus.own_state_synced.connect(_on_own_state_synced)
@@ -2620,6 +2622,28 @@ func _on_research_resolved(result: Dictionary) -> void:
 	if pid != "":
 		_registry.record_technology(pid, _technology.get_statuses(pid))
 	_sync_peer_own_state(result)
+
+## Phase 124 — a research-point balance changed on the host. Fold it into the player's
+## record (so a save carries it) and push it to the OWNER's peer alone: points are private
+## to the player, so unlike a world delta this is never broadcast. The local player is live
+## here already, and a client never reaches this (it only mirrors the balance).
+func _on_research_points_synced(player_id: String, _points: int) -> void:
+	if _is_client or player_id == "":
+		return
+	_registry.record_technology(player_id, _technology.get_statuses(player_id))
+	if player_id == _registry.local_player_id:
+		return
+	var peer := _registry.get_peer_id(player_id)
+	if peer == 0:
+		return
+	_networking.send_own_state(peer, { "technology": _technology.get_statuses(player_id) })
+
+## Phase 124 — the host resolved a gather: pay the fabric's `gather` research points.
+func _on_resource_gathered(player_id: String, _material: String, _quantity: int) -> void:
+	if _is_client:
+		return
+	var pid := player_id if player_id != "" else _registry.local_player_id
+	_technology.grant_points(pid, "gather", _technology.points_for("gather"))
 
 ## Phase 118 — an unlock the host resolved for a REMOTE peer changed its record's
 ## professions; push the owner's copy (the local player is live here already).

@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = ""
 status = 0
-researchCost = 0
+researchCost = 8
 tier = 0
 tech = {"unlocks":["RecipeEnchantedAethermiteShard","RecipeAethermiteBow","RecipeLumenfiteOrb"],"requires":["TechBasicSmithing","TechAlchemy"],"researchDuration":60,"researchMaterials":[{"item":"Aethermite","quantity":8}]}
 state_machine_field = "status"

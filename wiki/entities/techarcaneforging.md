@@ -16,7 +16,7 @@ Magical metallurgy principles. Unlocks the arcane forge structure and all arcane
 | Field | Type | Description |
 | ----- | ---- | ----------- |
 | status | `locked`, `researching`, `unlocked` |  |
-| researchCost | integer | Research points required to complete |
+| researchCost | integer | Research points spent to begin research (Phase 124); earned by the ResearchPointRule table |
 | tier | integer | Technology tree tier |
 | tech | json | Structured technology data: recipe unlocks, prerequisite technologies, research duration (seconds), and material cost consumed to begin research. |
 

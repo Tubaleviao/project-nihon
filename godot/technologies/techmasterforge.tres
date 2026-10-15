@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = ""
 status = 0
-researchCost = 0
+researchCost = 5
 tier = 0
 tech = {"unlocks":["RecipeVeilsteelIngot","RecipeVeilsteelLongsword","RecipeVeilsteelChestplate","RecipeAshiteBlock","RecipeRefinedVoiditeShard"],"requires":["TechBasicSmithing"],"researchDuration":45,"researchMaterials":[{"item":"Ashite","quantity":20}]}
 state_machine_field = "status"
