@@ -102,6 +102,10 @@ func _compute_placeable_station_types() -> Array:
 			var station: String = str(repair.get("station", ""))
 			if station != "":
 				types[station] = true
+	# Phase 125 — the waystone is placeable although no recipe or repair names it as a station.
+	var way: Resource = GameData.WORLD_SYSTEMS.get("WaystoneTravel", null)
+	if way != null and way.get("rules") is Dictionary and str(way.get("rules").get("stationType", "")) != "":
+		types[str(way.get("rules")["stationType"])] = true
 	var out: Array = types.keys()
 	out.sort()
 	return out

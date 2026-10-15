@@ -13,8 +13,8 @@ const root = path.resolve(__dirname, '..');
 function parsePhaseRows(text) {
   const rows = new Map();
   for (const line of text.split('\n')) {
-    const m = /^\|\s*(\d+)\s*\|\s*([^|]*?)\s*\|\s*([A-Za-z]+)\s*\|/.exec(line);
-    if (m) rows.set(Number(m[1]), { title: m[2], status: m[3] });
+    const m = /^\|\s*(\d+)\s*\|\s*((?:[^|\\]|\\.)*?)\s*\|\s*([A-Za-z]+(?: [A-Za-z]+)*)\s*\|/.exec(line);
+    if (m) rows.set(Number(m[1]), { title: m[2].replace(/\\\|/g, '|'), status: m[3] });
     else if (/^\|\s*\d+\s*\|/.test(line)) rows.set(Number(/\d+/.exec(line)[0]), { title: '', status: '', unparseable: line.trim() });
   }
   return rows;
@@ -77,6 +77,12 @@ function main() {
       return 2;
     }
     problems.push(...decoratedProblems);
+    // A multi-word status and an escaped pipe in a title are rows, not noise.
+    const multi = parsePhaseRows('| 8 | A \\| B | In progress | x |\n').get(8);
+    if (!multi || multi.status !== 'In progress' || multi.title !== 'A | B' || multi.unparseable) {
+      console.error('self-test failed: a multi-word status row or a title with an escaped pipe was not parsed');
+      return 2;
+    }
     console.error(`self-test: the check reports the drift, as it should:\n  ${problems.join('\n  ')}`);
     return 1;
   }

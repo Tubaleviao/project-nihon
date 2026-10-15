@@ -458,6 +458,7 @@ func ensure_player(player_id: String) -> Dictionary:
 			"appearance": {},
 			"technology": {},
 			"flags":      {},
+			"waystones":  [],
 			"companions": [],
 			"professions": {},
 			"craft_counter": 0,
@@ -834,6 +835,29 @@ func record_flags(player_id: String, flags: Dictionary) -> void:
 		return
 	rec["flags"] = flags
 
+## Phase 125 — the waystone station ids this player is attuned to, sorted and unique.
+func get_waystones(player_id: String) -> Array:
+	var raw: Variant = get_record(player_id).get("waystones", [])
+	return (raw as Array).duplicate() if raw is Array else []
+
+func record_waystones(player_id: String, station_ids: Array) -> void:
+	var rec := ensure_player(player_id)
+	if rec.is_empty():
+		return
+	rec["waystones"] = sanitize_waystones(station_ids)
+
+## A saved or synced attunement list as sorted unique non-empty strings, at most `MAX_WAYSTONES`.
+const MAX_WAYSTONES := 256
+static func sanitize_waystones(raw: Variant) -> Array:
+	var seen := {}
+	if raw is Array:
+		for v in raw:
+			if v is String and v != "" and v.length() <= 64:
+				seen[v] = true
+	var out: Array = seen.keys()
+	out.sort()
+	return out.slice(0, MAX_WAYSTONES)
+
 ## Phase 118 — the professions this player has unlocked ({ name: true }). Progression,
 ## so durable like the flags.
 func record_professions(player_id: String, professions: Dictionary) -> void:
@@ -1021,6 +1045,7 @@ func get_player_data(player_id: String) -> Dictionary:
 		"appearance": rec.get("appearance", {}),
 		"technology": rec.get("technology", {}),
 		"flags":      rec.get("flags", {}),
+		"waystones":  get_waystones(player_id),
 		"companions": rec.get("companions", []),
 		"professions": rec.get("professions", {}),
 		"craft_counter": int(rec.get("craft_counter", 0)),
@@ -1084,6 +1109,7 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	# they ride the same record. A saved payload from before this phase simply
 	# carries neither key and restores to the empty defaults.
 	rec["flags"]      = data.get("flags", {})
+	rec["waystones"]  = sanitize_waystones(data.get("waystones", []))
 	rec["companions"] = data.get("companions", [])
 	# Phase 118: unlocked professions and the void-burst craft counter. A payload from
 	# before this phase carries neither key and restores to the empty defaults.

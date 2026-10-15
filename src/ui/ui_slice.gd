@@ -1413,6 +1413,8 @@ func _build_map_content() -> Control:
 	map_window = MapWindowScript.new()
 	map_window.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(map_window)
+	map_window.notice.connect(push_toast)
+	GameBus.waystone_travel_resolved.connect(_on_waystone_resolved)
 	var row := HBoxContainer.new()
 	box.add_child(row)
 	var fold := CheckButton.new()
@@ -1427,11 +1429,30 @@ func _build_map_content() -> Control:
 	here.pressed.connect(func() -> void: map_window.center_on_player())
 	row.add_child(here)
 	var hint := Label.new()
-	hint.text = "drag: pan  wheel: zoom  right-click: waypoint"
+	hint.text = "drag: pan  wheel: zoom  right-click: waypoint  shift+right-click: rename  click a waystone: travel"
 	hint.tooltip_text = "Right-click adds a waypoint, or deletes the one under the cursor"
 	hint.mouse_filter = Control.MOUSE_FILTER_PASS
 	row.add_child(hint)
 	return box
+
+## Phase 125 — a refused travel is said on the toast channel; a success needs no words (the world moves).
+func _on_waystone_resolved(_player_id: String, ok: bool, reason: String) -> void:
+	if ok:
+		return
+	push_toast(WAYSTONE_REFUSALS.get(reason, "The waystone does not answer."))
+
+const WAYSTONE_REFUSALS := {
+	"unknown_player": "The waystone does not know you.",
+	"rate_limited": "Slow down: the waystone is still settling.",
+	"same_stone": "You are already at that waystone.",
+	"missing_stone": "That waystone no longer stands.",
+	"not_attuned_from": "You are not attuned to this waystone yet.",
+	"not_attuned_to": "You are not attuned to that waystone.",
+	"too_far": "Stand closer to the waystone.",
+	"cooldown": "The waystone is still recovering from your last journey.",
+	"no_cost": "You do not carry enough to pay for the journey.",
+	"unreachable": "The journey failed; nothing was spent.",
+}
 
 func _build_window(key: String, title: String, content: Control, position: Vector2) -> PanelContainer:
 	var panel := PanelContainer.new()

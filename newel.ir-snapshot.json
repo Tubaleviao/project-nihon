@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:62d2d3352a8842074bd11b473baeb9260552be2f3986d1bda8908c2379cb6b9f",
+  "schemaHash": "sha256:3d13b2cb063d14be5982d2f38c09bb56eb5cb075f3f31a6e511d921e3e3d4552",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -14891,6 +14891,195 @@
         "pii": [],
         "gdpr": {}
       },
+      "Waystone": {
+        "name": "Waystone",
+        "tags": [
+          "item"
+        ],
+        "description": "A carved marker stone that anchors a fast-travel network. Placed as a waystone station; a player attunes to it by standing at it.",
+        "goal": "The craftable node of the waystone travel network (Phase 125)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per stone",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 12
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "False; one stone per slot",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Structural integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 400
+          }
+        },
+        "relations": {
+          "plank": {
+            "name": "plank",
+            "kind": "hasOne",
+            "target": "ThornwoodPlank"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A stone does not weather while carried",
+            "rules": [
+              "Normal inventory storage never degrades a waystone"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-cut a worn stone at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a waystone"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a waystone"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a waystone"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
       "AethermiteDust": {
         "name": "AethermiteDust",
         "tags": [
@@ -17705,6 +17894,114 @@
         "pii": [],
         "gdpr": {}
       },
+      "RecipeWaystone": {
+        "name": "RecipeWaystone",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Cut a waystone from four thornwood planks and two ferrite ingots at a carpentry bench.",
+        "goal": "Make the fast-travel network something a player builds (Phase 125)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "carpentry",
+              "station": "carpentry bench",
+              "inputs": [
+                {
+                  "item": "ThornwoodPlank",
+                  "quantity": 4
+                },
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 2
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "Waystone",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "apprentice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputPlank": {
+            "name": "inputPlank",
+            "kind": "hasOne",
+            "target": "ThornwoodPlank"
+          },
+          "inputIngot": {
+            "name": "inputIngot",
+            "kind": "hasOne",
+            "target": "FerriteIngot"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "Waystone"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Cut and fit a marker stone at a carpentry bench",
+            "rules": [
+              "Requires Carpentry: Apprentice",
+              "Requires a carpentry bench structure",
+              "Four planks and two ferrite ingots yield one waystone"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
       "RecipeCarpenterAxe": {
         "name": "RecipeCarpenterAxe",
         "tags": [
@@ -18413,7 +18710,8 @@
             "defaultValue": {
               "unlocks": [
                 "RecipeThornwoodPlank",
-                "RecipeCarpenterAxe"
+                "RecipeCarpenterAxe",
+                "RecipeWaystone"
               ],
               "requires": [],
               "researchDuration": 10,
@@ -18436,6 +18734,11 @@
             "name": "unlocksRecipeCarpenterAxe",
             "kind": "hasOne",
             "target": "RecipeCarpenterAxe"
+          },
+          "unlocksRecipeWaystone": {
+            "name": "unlocksRecipeWaystone",
+            "kind": "hasOne",
+            "target": "RecipeWaystone"
           }
         },
         "behaviors": {
@@ -19196,6 +19499,69 @@
             "description": "Host-side grant of research points to the player who crafted or gathered",
             "rules": [
               "Granted only by the host; a client's own grant call changes nothing"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "WaystoneTravel": {
+        "name": "WaystoneTravel",
+        "tags": [
+          "world-system"
+        ],
+        "description": "Fast travel between waystones: a player attunes to a stone by standing at it, then travels between two attuned stones for a cost in items per 1,000 km, once per cooldown.",
+        "goal": "Make a planet that takes about 90 days to walk around navigable without removing the journey",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "rules": {
+            "name": "rules",
+            "type": "json",
+            "description": "Travel rule: { stationType, attuneRadius (m), cooldownSeconds, costItem, costPerThousandKm } (validated at fabric load)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "stationType": "waystone",
+              "attuneRadius": 4,
+              "cooldownSeconds": 30,
+              "costItem": "AethermiteShard",
+              "costPerThousandKm": 1
+            }
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "attune": {
+            "name": "attune",
+            "description": "Record that the player knows this waystone, by standing within the attune radius",
+            "rules": [
+              "Host-validated; attunement is stored on the player record"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "travel": {
+            "name": "travel",
+            "description": "Teleport between two attuned waystones, paying the item cost",
+            "rules": [
+              "The player is within the attune radius of the departure stone and attuned to both",
+              "Both stones still exist and the cooldown has elapsed",
+              "The cost is paid from the inventory; a refusal tells the owner why"
             ],
             "auth": {
               "roles": [

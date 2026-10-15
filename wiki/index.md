@@ -77,6 +77,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [VeilsteelPick](entities/veilsteelpick.md) — Heavy-duty pick smelted from veilsteel
 - [VoiditeEdge](entities/voiditeedge.md) — Jagged single-edged blade carved from a stabilised voidite shard
 - [VoidRuneTablet](entities/voidrunetablet.md) — Flat voidite slab etched with stabilisation runes by a Void Smithing expert
+- [Waystone](entities/waystone.md) — A carved marker stone that anchors a fast-travel network
 
 ## Loot
 
@@ -137,6 +138,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [RecipeVeilsteelLongsword](entities/recipeveilsteellongsword.md) — Forge a veilsteel longsword from two veilsteel ingots and one ashite block at a master forge
 - [RecipeVoidResistPotion](entities/recipevoidresistpotion.md) — Brew a void-resist potion from refined voidite shard dust and aethermite dust
 - [RecipeVoidRuneTablet](entities/recipevoidrunetablet.md) — Etch stabilisation runes into a refined voidite slab at a void-shielded workshop
+- [RecipeWaystone](entities/recipewaystone.md) — Cut a waystone from four thornwood planks and two ferrite ingots at a carpentry bench
 
 ## Skeleton
 
@@ -202,6 +204,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [PersistenceSystem](entities/persistencesystem.md) — Defines the authoritative save lifecycle: which directory the world and per-player records live in, how often the server autosaves, how a headless server is asked to shut down cleanly, and how a record is written so a kill mid-write cannot truncate it
 - [ResearchPointRule](entities/researchpointrule.md) — Points of research a player earns per source: a craft, a gathered resource, and a one-time bonus for the first craft of each recipe
 - [TradeSystem](entities/tradesystem.md) — Defines the rules governing player-to-player trade
+- [WaystoneTravel](entities/waystonetravel.md) — Fast travel between waystones: a player attunes to a stone by standing at it, then travels between two attuned stones for a cost in items per 1,000 km, once per cooldown
 - [WeatherSystem](entities/weathersystem.md) — Simulates weather across biomes as an emergent world system
 - [WorldSystem](entities/worldsystem.md) — The planet as a fact of the fabric
 

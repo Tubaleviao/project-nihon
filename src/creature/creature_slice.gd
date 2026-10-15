@@ -351,24 +351,22 @@ func season_spawn_multiplier(chunk_pos: Vector2i, chunk_biome: String) -> float:
 	var w: float = world_clock.warmth_at(TerrainSlice.latitude_of(chunk_pos.y))
 	return WorldClock.spawn_multiplier(GameData.BIOMES.get(chunk_biome, null), w)
 
-## The spawn-roll fields of a creature resource; null for a field the resource lacks.
-class SpawnFields:
-	var chance: Variant = null
-	var density: Variant = null
-
 ## The creature table `spawn_for_chunk` walks; a test swaps in a scratch table (`GameData.CREATURES` is const).
 var creature_table: Dictionary = GameData.CREATURES
 
-## `spawnChance` / `spawnDensity` of a creature resource (null for a missing field); a resource
-## lacking either warns once per species.
-func _spawn_fields(creature_id: String, res: Resource) -> SpawnFields:
-	var f := SpawnFields.new()
-	f.chance = res.get("spawnChance")
-	f.density = res.get("spawnDensity")
-	if (f.chance == null or f.density == null) and not _warned_spawn_fields.has(creature_id):
+## `spawnChance` / `spawnDensity` of a creature resource (null for a missing field). Static and
+## allocation-free: `spawn_for_chunk` asks for each once per species per chunk.
+static func spawn_chance_of(res: Resource) -> Variant:
+	return res.get("spawnChance")
+
+static func spawn_density_of(res: Resource) -> Variant:
+	return res.get("spawnDensity")
+
+## A resource lacking either field warns once per species and spawns without a roll.
+func _warn_missing_spawn_fields(creature_id: String, chance: Variant, density: Variant) -> void:
+	if (chance == null or density == null) and not _warned_spawn_fields.has(creature_id):
 		_warned_spawn_fields[creature_id] = true
 		Diag.warn("CreatureSlice: '%s' has no spawnChance/spawnDensity; spawning without a roll" % creature_id)
-	return f
 
 func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 	if not is_authoritative:
@@ -397,9 +395,9 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 		if chunk_biome != "":
 			# A resource lacking the Phase 44 fields keeps spawning (always, no noise)
 			# rather than silently vanishing from the world; it warns once.
-			var fields := _spawn_fields(creature_id, res)
-			var chance: Variant = fields.chance
-			var amp: Variant = fields.density
+			var chance: Variant = spawn_chance_of(res)
+			var amp: Variant = spawn_density_of(res)
+			_warn_missing_spawn_fields(creature_id, chance, amp)
 			pack = SpawnRoll.pack_size(_world_seed(), chunk_pos, creature_id, pack,
 					1.0 if chance == null else float(chance) * season_mult, 0.0 if amp == null else float(amp))
 		pack = mini(pack, MAX_PACK_MEMBERS)

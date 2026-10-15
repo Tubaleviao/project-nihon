@@ -147,9 +147,11 @@ func handle_intent(text: String, player_id: String) -> void:
 	var clean := ChatCommands.sanitize(text)
 	if clean == "":
 		return
-	# Plain chat and every non-admin command spend a token; an admin's commands are not throttled.
+	# Plain chat and every non-admin command spend a token; an admin's commands are not throttled, except
+	# `/say`, which broadcasts to everyone and so is plain chat in all but name.
 	var is_cmd := ChatCommands.is_slash(clean)
-	if not (is_cmd and is_admin(speaker)) and not _take_token(speaker):
+	var bypass: bool = is_cmd and is_admin(speaker) and str(ChatCommands.parse(clean)["name"]) != "say"
+	if not bypass and not _take_token(speaker):
 		return
 	if not is_cmd:
 		_post(CHANNEL_CHAT, _handle_of(speaker), clean, "")
@@ -187,7 +189,7 @@ func handle_intent(text: String, player_id: String) -> void:
 func _take_token(speaker: String) -> bool:
 	var now: float = now_sec.call()
 	if not _buckets.has(speaker):
-		_prune_buckets()
+		_prune_buckets(MAX_BUCKETS - 1)
 		_buckets[speaker] = { "tokens": float(CHAT_BURST), "at": now, "notice_at": -INF }
 	var b: Dictionary = _buckets[speaker]
 	b["tokens"] = minf(float(CHAT_BURST), float(b["tokens"]) + maxf(0.0, now - float(b["at"])) * CHAT_LINES_PER_SEC)
@@ -207,14 +209,24 @@ func _take_token(speaker: String) -> bool:
 func _on_player_left(_player_id: String) -> void:
 	_prune_buckets()
 
-func _prune_buckets() -> void:
-	if _buckets.size() <= MAX_BUCKETS:
+func _prune_buckets(limit: int = MAX_BUCKETS) -> void:
+	if _buckets.size() <= limit:
 		return
 	var now: float = now_sec.call()
 	var full_after := float(CHAT_BURST) / CHAT_LINES_PER_SEC
 	for pid in _buckets.keys():
 		if now - float(_buckets[pid]["at"]) >= full_after:
 			_buckets.erase(pid)
+	# Still over: a burst of distinct speakers inside the refill window. Drop the least recently used,
+	# so the map never exceeds `limit` (an evicted speaker restarts with a full bucket).
+	while _buckets.size() > limit:
+		var oldest := ""
+		var oldest_at := INF
+		for pid in _buckets:
+			if float(_buckets[pid]["at"]) < oldest_at:
+				oldest_at = float(_buckets[pid]["at"])
+				oldest = str(pid)
+		_buckets.erase(oldest)
 
 # ---------------------------------------------------------------------------
 # Commands (host)
@@ -247,7 +259,7 @@ func _cmd_tp(speaker: String, args: Array) -> void:
 			_reply(speaker, "Position of %s is unknown." % _handle_of(target))
 			return
 		if not _teleport(speaker, where["pos"]):
-			_reply(speaker, "Could not teleport: no way to move %s here." % _handle_of(speaker))
+			_reply(speaker, _unreachable(speaker))
 			return
 		_reply(speaker, "Teleported to %s." % _handle_of(target))
 		return
@@ -256,7 +268,7 @@ func _cmd_tp(speaker: String, args: Array) -> void:
 		_reply(speaker, "%s  (%s)" % [p["error"], ChatCommands.USAGE["tp"]])
 		return
 	if not _teleport(speaker, p["pos"]):
-		_reply(speaker, "Could not teleport: no way to move %s here." % _handle_of(speaker))
+		_reply(speaker, _unreachable(speaker))
 		return
 	_reply(speaker, "Teleported to %s." % _fmt(p["world"]))
 
@@ -273,7 +285,7 @@ func _cmd_bring(speaker: String, args: Array) -> void:
 		_reply(speaker, "Your position is unknown.")
 		return
 	if not _teleport(target, here["pos"]):
-		_reply(speaker, "%s is not reachable." % _handle_of(target))
+		_reply(speaker, _unreachable(target))
 		return
 	_reply(speaker, "Brought %s to you." % _handle_of(target))
 
@@ -325,7 +337,7 @@ func _cmd_kill(speaker: String, args: Array) -> void:
 	else:
 		var peer := _peer_of(target)
 		if peer <= 1:
-			_reply(speaker, "%s is not reachable." % _handle_of(target))
+			_reply(speaker, _unreachable(target))
 			return
 		# The host's resolution of a hit on a peer (simulated HP, then the display update) lives
 		# behind this signal, the same door a creature's round uses.
@@ -335,6 +347,15 @@ func _cmd_kill(speaker: String, args: Array) -> void:
 # ---------------------------------------------------------------------------
 # Helpers (host)
 # ---------------------------------------------------------------------------
+
+## Phase 125 — move `target` to the exact `pos` (the door waystone travel shares with `/tp`).
+func teleport_player(target: String, pos: Dictionary) -> bool:
+	return _teleport(target, pos)
+
+## The one failure line for a teleport that had nobody to move (no networking, an unknown or
+## unreachable peer, or a dropped packet).
+func _unreachable(player_id: String) -> String:
+	return "Could not teleport: %s is not reachable." % _handle_of(player_id)
 
 ## `pos` is an exact `{chunk, local}` record. True only when the move was applied (local body) or sent
 ## (a reachable peer); false when there is nobody to move.

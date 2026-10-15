@@ -136,6 +136,14 @@ func run() -> void:
 	_run_test("chat: slash lines parse, sanitize and validate", _test_chat_parse)
 	_run_test("chat: admin commands run for admins only",     _test_chat_admin_commands)
 	_run_test("chat: lines and intents cross the wire",       _test_chat_wire)
+	_run_test("waystone: the fabric rule, item and station",   _test_waystone_fabric_rule)
+	_run_test("waystone: attune and travel, every refusal",    _test_waystone_attune_and_travel)
+	_run_test("waystone: the landing is exact far from origin", _test_waystone_exact_landing_far_out)
+	_run_test("waystone: a failed teleport refunds the cost",   _test_waystone_failed_teleport_refunds)
+	_run_test("waystone: attunements persist; forged ids refuse", _test_waystone_persistence_and_forged_intent)
+	_run_test("waystone: teleport door and chat leftovers",     _test_waystone_wire_and_chat_leftovers)
+	_run_test("waystone: map rename and limb notice",           _test_waystone_map_leftovers)
+	_run_test("waystone: a seed change saves the old seed",     _test_minimap_seed_change_saves_old_seed)
 	_run_test("chat: the input box is on screen while closed", _test_chat_box_visible)
 	_run_test("chat: a token bucket bounds each player's lines", _test_chat_rate_limit)
 	_run_test("chat: a failed admin effect is reported, not claimed", _test_chat_failed_effects_report)
@@ -169,6 +177,7 @@ func run() -> void:
 	_run_test("biomes: adjacency scan of the generator",      _test_adjacency_scan)
 	_run_test("biomes: adjacency scan can fail",              _test_adjacency_scan_detects)
 	_run_test("biomes: a coast search that finds none reports it", _test_adjacency_coast_search_reports_failure)
+	_run_test("biomes: the coast search finds a one-chunk strip", _test_find_coast_finds_thin_strip)
 	_run_test("frontier: recorded chunks unchanged",          _test_frontier_recorded_unchanged)
 	_run_test("frontier: seam shares corners, bounded step",  _test_frontier_seam)
 	_run_test("frontier: far chunks are the plain generator", _test_frontier_far_is_plain)
@@ -15545,8 +15554,7 @@ func _test_spawn_missing_fields_warns_once() -> void:
 	var was_quiet: bool = Diag.quiet
 	Diag.quiet = true
 	assert_false(c._warned_spawn_fields.has("NoFields"), "nothing warned before the first spawn")
-	var fields: CreatureSlice.SpawnFields = c._spawn_fields("NoFields", fake)
-	assert_true(fields.chance == null and fields.density == null, "missing fields read as null (spawn without a roll)")
+	assert_true(CreatureSlice.spawn_chance_of(fake) == null and CreatureSlice.spawn_density_of(fake) == null, "missing fields read as null (spawn without a roll)")
 	c._warned_spawn_fields.clear()
 	c.spawn_for_chunk(Vector2i(3, 4))
 	assert_true(c._warned_spawn_fields.has("NoFields"), "spawn_for_chunk reports the missing fields")
@@ -15557,7 +15565,7 @@ func _test_spawn_missing_fields_warns_once() -> void:
 	c.creature_table = GameData.CREATURES
 	c._warned_spawn_fields.clear()
 	for key in GameData.CREATURES:
-		c._spawn_fields(str(key), GameData.CREATURES[key])
+		c._warn_missing_spawn_fields(str(key), CreatureSlice.spawn_chance_of(GameData.CREATURES[key]), CreatureSlice.spawn_density_of(GameData.CREATURES[key]))
 	assert_eq(c._warned_spawn_fields.size(), 0, "the fabric's own creatures all carry both fields")
 	Diag.quiet = was_quiet
 	c.terrain_slice = null
@@ -19091,6 +19099,8 @@ func _test_chat_rate_limit() -> void:
 		chat.handle_intent("x", "bulk_%d" % i)
 	now[0] += 1000.0
 	GameBus.player_left.emit("bulk_0")
+	assert_true(chat._buckets.size() <= ChatSlice.MAX_BUCKETS, "a burst of distinct speakers leaves at most the cap")
+	chat._prune_buckets(0)
 	assert_true(chat._buckets.size() <= 1, "idle full buckets are pruned past the cap")
 	GameBus.chat_posted.disconnect(cb)
 	chat.free()
@@ -19508,24 +19518,48 @@ func _adjacency_origins(seed_v: int) -> Array:
 	var polar := TerrainSlice.polar_chunks() - ADJACENCY_GRID
 	var out: Array = [Vector2i(-half, -half), Vector2i(-half, belt - half), Vector2i(-half, polar)]
 	# Coast: walk east along a temperate row until land meets Ocean, and centre the grid there.
-	var found := _find_coast(seed_v, belt / 2, 9000)
+	var found := _find_coast(seed_v, belt / 2, 40000)
 	assert_true(found["found"], "seed %d: a coast was found within the search (the coast grid is not a stand-in)" % seed_v)
 	out.append(found["coast"] - Vector2i(half, half))
 	return out
 
-## `{ found, coast }`: the first chunk east of x=0 on a temperate row where land and Ocean swap, in steps
-## of 64 chunks. Row `z` is tried first, then rows 64 chunks apart (a seed whose first row is all one
-## kind still has a coast on the next). `found` is false (and `coast` the row start) when `max_steps` ends
-## on every row without a change.
-func _find_coast(seed_v: int, z: int, max_steps: int) -> Dictionary:
+## Most biome calls one `_find_coast` may make across all its rows (a seed with no coast cannot spin).
+const COAST_MAX_CALLS := 200000
+
+## `{ found, coast }`: the first chunk east of x=0 on a temperate row where land and Ocean swap, one chunk
+## at a time (a larger stride could step over a one-chunk ocean strip). Row `z` is tried first, then rows
+## 64 chunks apart (a seed whose first row is all one kind still has a coast on the next). `found` is
+## false (and `coast` the row start) when `max_steps` or `COAST_MAX_CALLS` ends the search without a
+## change. `biome_of` (a `Callable(chunk) -> String`) replaces the generator in a test.
+func _find_coast(seed_v: int, z: int, max_steps: int, biome_of: Callable = Callable()) -> Dictionary:
+	var calls := 0
 	for row in 8:
 		var rz := z + row * 64
-		var prev := TerrainSlice.generated_biome_for_chunk(Vector2i(0, rz), seed_v) == "Ocean"
+		var prev := _coast_ocean(seed_v, Vector2i(0, rz), biome_of)
+		calls += 1
 		for step in range(1, max_steps):
-			var c := Vector2i(step * 64, rz)
-			if (TerrainSlice.generated_biome_for_chunk(c, seed_v) == "Ocean") != prev:
+			if calls >= COAST_MAX_CALLS:
+				return { "found": false, "coast": Vector2i(0, z) }
+			var c := Vector2i(step, rz)
+			var cur := _coast_ocean(seed_v, c, biome_of)
+			calls += 1
+			if cur != prev:
 				return { "found": true, "coast": c }
+			prev = cur
 	return { "found": false, "coast": Vector2i(0, z) }
+
+func _coast_ocean(seed_v: int, c: Vector2i, biome_of: Callable) -> bool:
+	var biome: String = str(biome_of.call(c)) if biome_of.is_valid() else TerrainSlice.generated_biome_for_chunk(c, seed_v)
+	return biome == "Ocean"
+
+## Phase 125 — a one-chunk ocean strip is found: the search steps by one chunk and keeps `prev` current.
+func _test_find_coast_finds_thin_strip() -> void:
+	var strip := func(c: Vector2i) -> String: return "Ocean" if c.x == 301 else "Grass"
+	var found := _find_coast(1, 0, 1000, strip)
+	assert_true(found["found"], "a strip one chunk wide is found")
+	assert_eq(found["coast"], Vector2i(301, 0), "at its first chunk")
+	var all_land := func(_c: Vector2i) -> String: return "Grass"
+	assert_false(_find_coast(1, 0, 100000, all_land)["found"], "a planet of land has no coast")
 
 ## Phase 115 (#280) — a search that finds no coast says so: a scratch zero-step search reports not found,
 ## so `_adjacency_origins` would fail its assert instead of scanning the row start as a coast.
@@ -21081,3 +21115,254 @@ func _test_void_burst_no_player_reports_no_flag() -> void:
 	assert_true(bool(result["burst"]["survived"]), "a full-health local body survives")
 	assert_eq(str(result["burst"]["flag"]), "", "but with no player id no flag is reported")
 	_free_void_rig(rig)
+
+# ---------------------------------------------------------------------------
+# Phase 125 — waystones
+# ---------------------------------------------------------------------------
+
+func _waystone_rig() -> Dictionary:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	reg.ensure_player("p1")
+	reg.ensure_player("p2")
+	var stations := StationSlice.new()
+	add_child(stations)
+	var way := WaystoneSlice.new()
+	way.station_slice = stations
+	way.registry = reg
+	add_child(way)
+	var now := [100.0]
+	way.now_sec = func() -> float: return now[0]
+	var where := { "p1": WorldPos.from_world(0.5, 1.0, 0.5), "p2": WorldPos.from_world(0.5, 1.0, 0.5) }
+	way.position_of = func(pid: String) -> Dictionary: return where[pid]
+	var moved: Array = []
+	way.teleporter = func(pid: String, pos: Dictionary) -> bool:
+		moved.append([pid, pos])
+		return true
+	return { "reg": reg, "stations": stations, "way": way, "now": now, "where": where, "moved": moved }
+
+func _free_waystone_rig(rig: Dictionary) -> void:
+	rig["way"].free()
+	rig["stations"].free()
+	rig["reg"].free()
+
+func _test_waystone_fabric_rule() -> void:
+	var rules := (GameData.WORLD_SYSTEMS["WaystoneTravel"] as Resource).get("rules") as Dictionary
+	assert_eq(str(rules["stationType"]), "waystone", "the fabric names the station type")
+	assert_true(GameData.ITEMS.has("Waystone") and GameData.RECIPES.has("RecipeWaystone"), "the item and its recipe exist")
+	assert_true(GameData.ITEMS.has(str(rules["costItem"])), "the cost item is a real item")
+	var stations := StationSlice.new()
+	add_child(stations)
+	assert_true(stations.placeable_station_types().has("waystone"), "a waystone can be placed as a station")
+	stations.free()
+
+func _test_waystone_attune_and_travel() -> void:
+	var rig := _waystone_rig()
+	var way: WaystoneSlice = rig["way"]
+	var st: StationSlice = rig["stations"]
+	var reg: PlayerRegistry = rig["reg"]
+	var now: Array = rig["now"]
+	var where: Dictionary = rig["where"]
+	var moved: Array = rig["moved"]
+	var a := st.place_station("waystone", Vector3(0.5, 1.0, 0.5))
+	var b := st.place_station("waystone", Vector3(5000.5, 1.0, 0.5))
+	assert_eq(way.waystone_ids().size(), 2, "both stones are listed")
+	st.place_station("forge", Vector3(9.5, 1.0, 9.5))
+	assert_false(way.is_waystone("station_2"), "a forge is not a waystone")
+	var inv: Node = reg.get_inventory("p1")
+	assert_eq(way.travel(a, b, "p1"), "not_attuned_from", "no travel before attuning")
+	now[0] += 1.0
+	assert_eq(way.try_attune("p1", a), "", "standing at stone A attunes")
+	assert_eq(way.try_attune("p1", b), "too_far", "stone B is out of reach from A")
+	where["p1"] = WorldPos.from_world(5000.5, 1.0, 0.5)
+	assert_eq(way.try_attune("p1", b), "", "standing at stone B attunes")
+	assert_eq(way.attuned("p1"), [a, b], "both stones are listed for the player")
+	assert_eq(way.attuned("p2"), [], "another player is not attuned")
+	where["p1"] = WorldPos.from_world(0.5, 1.0, 0.5)
+	now[0] += 1.0
+	assert_eq(way.travel(a, b, "p1"), "no_cost", "the cost must be in the inventory")
+	assert_true(inv.add_item("AethermiteShard", 3), "stock the cost")
+	now[0] += 1.0
+	where["p1"] = WorldPos.from_world(50.0, 1.0, 0.5)
+	assert_eq(way.travel(a, b, "p1"), "too_far", "the departure stone must be within the attune radius")
+	now[0] += 1.0
+	where["p1"] = WorldPos.from_world(0.5, 1.0, 0.5)
+	assert_eq(way.travel(a, "station_99", "p1"), "missing_stone", "an unknown stone refuses")
+	now[0] += 1.0
+	assert_eq(way.travel(a, a, "p1"), "same_stone", "travel to the same stone refuses")
+	now[0] += 1.0
+	assert_eq(way.travel(a, b, "p1"), "", "attuned, in range, paid: the player is moved")
+	assert_eq(moved.size(), 1, "one teleport")
+	assert_eq(moved[0][0], "p1", "of the traveller")
+	assert_eq(moved[0][1], way.exact_pos(b), "to the stone's exact position")
+	assert_eq(inv.get_item_count("AethermiteShard"), 3 - way.travel_cost(a, b), "and the cost was paid")
+	now[0] += 1.0
+	assert_eq(way.travel(a, b, "p1"), "cooldown", "a second journey waits out the cooldown")
+	assert_eq(way.travel(a, b, "p1"), "rate_limited", "an intent right after another is rate limited")
+	now[0] += float(way.rules()["cooldownSeconds"])
+	st.remove_station(b)
+	assert_eq(way.travel(a, b, "p1"), "missing_stone", "a destroyed stone refuses")
+	assert_eq(way.attuned("p1"), [a], "and drops out of the attuned list")
+	assert_eq(way.travel(a, b, "ghost"), "unknown_player", "an unknown player refuses")
+	# Rate limit: two intents inside the interval.
+	now[0] += 1.0
+	way.travel(a, a, "p1")
+	assert_eq(way.travel(a, a, "p1"), "rate_limited", "intents are rate limited per player")
+	_free_waystone_rig(rig)
+
+func _test_waystone_exact_landing_far_out() -> void:
+	var rig := _waystone_rig()
+	var way: WaystoneSlice = rig["way"]
+	var st: StationSlice = rig["stations"]
+	var reg: PlayerRegistry = rig["reg"]
+	var now: Array = rig["now"]
+	var where: Dictionary = rig["where"]
+	var moved: Array = rig["moved"]
+	var far := { "chunk": Vector2i(1500000, 3), "local": Vector3(7.3125, 12.5, 0.0625) }
+	var a := st.place_station("waystone", Vector3(0.5, 1.0, 0.5))
+	var b := st.place_station("waystone", Vector3(40.5, 1.0, 0.5))
+	way.note_exact(b, far)
+	reg.record_waystones("p1", [a, b])
+	reg.get_inventory("p1").add_item("AethermiteShard", 50)
+	assert_eq(way.travel(a, b, "p1"), "", "travel to a stone at chunk X = 1,500,000")
+	assert_eq(moved[0][1], far, "lands on the exact destination, not a float32 approximation")
+	assert_true(way.travel_cost(a, b) >= 1, "a journey costs at least one item")
+	_free_waystone_rig(rig)
+
+func _test_waystone_failed_teleport_refunds() -> void:
+	var rig := _waystone_rig()
+	var way: WaystoneSlice = rig["way"]
+	var st: StationSlice = rig["stations"]
+	var reg: PlayerRegistry = rig["reg"]
+	var a := st.place_station("waystone", Vector3(0.5, 1.0, 0.5))
+	var b := st.place_station("waystone", Vector3(40.5, 1.0, 0.5))
+	reg.record_waystones("p1", [a, b])
+	reg.get_inventory("p1").add_item("AethermiteShard", 4)
+	way.teleporter = func(_pid: String, _pos: Dictionary) -> bool: return false
+	assert_eq(way.travel(a, b, "p1"), "unreachable", "a teleport that cannot be delivered refuses")
+	assert_eq(reg.get_inventory("p1").get_item_count("AethermiteShard"), 4, "and nothing was spent")
+	_free_waystone_rig(rig)
+
+func _test_waystone_persistence_and_forged_intent() -> void:
+	var rig := _waystone_rig()
+	var reg: PlayerRegistry = rig["reg"]
+	reg.record_waystones("p1", ["station_3", "station_1", "station_1", "", 7])
+	assert_eq(reg.get_waystones("p1"), ["station_1", "station_3"], "attunements are sorted, unique and string-only")
+	var data := reg.get_player_data("p1")
+	var reg2 := PlayerRegistry.new()
+	add_child(reg2)
+	reg2.apply_player_data("p1", data)
+	assert_eq(reg2.get_waystones("p1"), ["station_1", "station_3"], "attunements round-trip through a save and load")
+	reg2.apply_player_data("p2", { "waystones": "nonsense" })
+	assert_eq(reg2.get_waystones("p2"), [], "a malformed saved list restores empty")
+	reg2.free()
+	# A client-forged intent names someone else: the host binds the connection's player.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.set_transport(MemoryTransport.new([9]))
+	var seen: Array = []
+	var cb := func(from_id: String, to_id: String, pid: String) -> void: seen.append([from_id, to_id, pid])
+	GameBus.waystone_travel_intent.connect(cb)
+	n._route_c2h(9, { "type": "waystone_travel_intent", "from": "station_0", "to": "station_1", "player_id": "p2" })
+	GameBus.waystone_travel_intent.disconnect(cb)
+	assert_eq(seen.size(), 0, "an intent from an un-handshaked peer is dropped")
+	n.free()
+	# On the slice: an id with no record is refused outright.
+	var way: WaystoneSlice = rig["way"]
+	assert_eq(way.travel("station_0", "station_1", "player_forged"), "unknown_player", "a forged identity has no record")
+	_free_waystone_rig(rig)
+
+func _test_waystone_wire_and_chat_leftovers() -> void:
+	var bad_y := ChatCommands.parse_position(["1", str(WorldPos.LOCAL_LIMIT * 2.0), "3"])
+	assert_false(bad_y["ok"], "parse_position refuses a Y beyond the wire limit")
+	assert_true(ChatCommands.parse_position(["1", "5", "3"])["ok"], "and accepts an ordinary one")
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.set_transport(_StampingTransport.new([4]))
+	assert_false(n.send_teleport(77, WorldPos.from_world(1.0, 2.0, 3.0)), "send_teleport is false for an unconnected peer")
+	assert_true(n.send_teleport(4, WorldPos.from_world(1.0, 2.0, 3.0)), "and true for a connected one")
+	n.emulate_network = true
+	n.emulator_loss_rate = NetworkingSlice.MAX_LOSS_RATE
+	var sent := 0
+	var dropped := 0
+	for i in 400:
+		if n.send_teleport(4, WorldPos.from_world(1.0, 2.0, 3.0)):
+			sent += 1
+		else:
+			dropped += 1
+	assert_true(dropped > 0 and sent > 0, "an emulated drop reports false (%d dropped, %d sent)" % [dropped, sent])
+	n.free()
+	# /say from an admin spends the bucket; other admin commands do not.
+	var rig := _chat_rig()
+	var chat: ChatSlice = rig["chat"]
+	var now := [100.0]
+	chat.set_clock(func() -> float: return now[0])
+	for i in ChatSlice.CHAT_BURST + 3:
+		chat.handle_intent("/say hello %d" % i, "")
+	assert_eq(chat.chat_rate_refused, 3, "an admin's /say is bucket-limited")
+	# A burst of distinct speakers is bounded by the cap even inside the refill window.
+	for i in ChatSlice.MAX_BUCKETS * 2:
+		chat.handle_intent("x", "burst_%d" % i)
+	assert_true(chat._buckets.size() <= ChatSlice.MAX_BUCKETS, "buckets never exceed the cap (%d)" % chat._buckets.size())
+	chat._prune_buckets()
+	assert_true(chat._buckets.size() <= ChatSlice.MAX_BUCKETS, "and _prune_buckets leaves at most the cap")
+	chat.free()
+	rig["reg"].free()
+
+func _test_waystone_map_leftovers() -> void:
+	var MapWindowScript := preload("res://src/ui/map_window.gd")
+	var win: Control = MapWindowScript.new()
+	win.size = Vector2(400, 400)
+	var mini := Minimap.new()
+	win.minimap = mini
+	add_child(win)
+	add_child(mini)
+	mini.add_waypoint("Camp", WorldPos.from_world(10.0, 0.0, 10.0))
+	assert_true(mini.rename_waypoint(0, "Base camp"), "a waypoint can be renamed")
+	assert_eq(str(mini.get_waypoints()[0]["name"]), "Base camp", "and the new name is kept")
+	assert_false(mini.rename_waypoint(0, "   "), "an empty name changes nothing")
+	assert_false(mini.rename_waypoint(5, "x"), "nor does an unknown index")
+	# A right-click past the globe's limb names no place: it says so instead of doing nothing.
+	win.set_planet(true)
+	var heard: Array = []
+	win.notice.connect(func(t: String) -> void: heard.append(t))
+	win.right_click(Vector2(win._radius_px() * 1.5, 0.0))
+	assert_eq(heard.size(), 1, "a right-click off the planet emits a notice")
+	win.free()
+	mini.free()
+
+## Phase 125 — a world-seed change writes the old seed's explored set and waypoints before clearing them.
+func _test_minimap_seed_change_saves_old_seed() -> void:
+	var dir := "user://test_seed_change_dir"
+	var old_path: String = _RevealedStore.path_for(dir, 11)
+	DirAccess.remove_absolute(old_path)
+	var terrain := TerrainSlice.new()
+	terrain.set_world_seed(11)
+	var m := Minimap.new()
+	m.terrain_slice = terrain
+	m.revealed_dir = dir
+	m.set_player_pos(Vector2(40.0, 40.0))
+	m._tick_revealed_store(0.0)
+	m._tick_revealed_store(Minimap.SEED_SETTLE_SECONDS)
+	assert_true(m.is_revealed_loaded(), "the first seed is loaded")
+	assert_true(m.add_waypoint("Keep", WorldPos.from_world(10.0, 0.0, 10.0)), "a waypoint is placed under seed 11")
+	assert_false(FileAccess.file_exists(old_path), "not yet written (the debounce has not run)")
+	terrain.set_world_seed(12)
+	m._tick_revealed_store(0.0)
+	m._tick_revealed_store(Minimap.SEED_SETTLE_SECONDS)
+	assert_true(FileAccess.file_exists(old_path), "the old seed's file was written before the set was cleared")
+	var got: Dictionary = _RevealedStore.load_all(old_path, 11)
+	assert_eq(got["waypoints"].size(), 1, "with its waypoint")
+	assert_eq(m.get_waypoints().size(), 0, "and the new seed starts with none")
+	m.free()
+	terrain.free()
+	DirAccess.remove_absolute(old_path)
+	DirAccess.remove_absolute(_RevealedStore.path_for(dir, 12))
+
+## A memory transport that stamps a per-type seq, so the emulator (loss, jitter) runs on it.
+class _StampingTransport extends MemoryTransport:
+	func stamps_seq() -> bool:
+		return true

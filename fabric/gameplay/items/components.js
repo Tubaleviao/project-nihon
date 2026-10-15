@@ -35,6 +35,39 @@ module.exports = {
     },
   }),
 
+  // ─── Waystone ─────────────────────────────────────────────────────────────
+  Waystone: defineEntity({
+    tags: ['item'],
+    description:
+      'A carved marker stone that anchors a fast-travel network. Placed as a waystone station; a player ' +
+      'attunes to it by standing at it.',
+    goal: 'The craftable node of the waystone travel network (Phase 125)',
+    fields: {
+      id:        { type: 'uuid', primaryKey: true },
+      condition: { type: 'enum', values: DURABILITY_STATES },
+      weight:    { type: 'decimal', description: 'kg per stone', defaultValue: 12.0 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
+      stackable: { type: 'boolean', description: 'False; one stone per slot', defaultValue: false },
+      durability: { type: 'integer', description: 'Structural integrity', defaultValue: 400 },
+    },
+    relations: {
+      plank: { name: 'plank', kind: 'hasOne', target: 'ThornwoodPlank' },
+    },
+    stateMachine: itemStateMachine(),
+    behaviors: {
+      degrade: {
+        description: 'A stone does not weather while carried',
+        rules: ['Normal inventory storage never degrades a waystone'],
+        auth: { roles: ['maintainer'] },
+      },
+      repair: {
+        description: 'Re-cut a worn stone at a carpentry bench',
+        rules: ['Requires a carpentry bench; no additional materials consumed'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
   // ─── ThornwoodPlank ───────────────────────────────────────────────────────
   ThornwoodPlank: defineEntity({
     tags: ['item'],

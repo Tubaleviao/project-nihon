@@ -145,7 +145,7 @@ issue number where the criterion used to be.
 | 122 | Far terrain without mirroring and one scene-offset helper | Done | below |
 | 123 | The player rig wears the character material and body masks | Done | below |
 | 124 | Research points: the fabric's `researchCost` is enforced | Done | below |
-| 125 | Waystones: a first fast-travel network | Planned | below |
+| 125 | Waystones: a first fast-travel network | Done | below |
 | 126 | Tree clears the host keeps, and one seam-wrap module | Planned | below |
 | 127 | Terrain streaming, generation records and persistence cleanup sweep | Planned | below |
 | 128 | Weather: the fabric's `WeatherSystem` runs on the host | Planned | below |
@@ -274,8 +274,8 @@ on-planet teleports) and 104 (two-client harness steps).
 - `src/chat/chat_slice.gd` (or the host-side chat handler) — a per-player token bucket (`CHAT_BURST`
   lines, refilling at `CHAT_LINES_PER_SEC`) checked before a line is parsed or broadcast; a refused line
   is dropped, counted in `chat_rate_refused`, and answered with at most one "slow down" notice per player
-  per interval. The host's own local player is subject to it too, admins included. The clock is
-  injectable, like `ChunkManager.set_clock`; the bucket entry survives a disconnect (Phase 115) and is pruned only once fully refilled.
+  per interval. The host's own local player is subject to it too; an admin's commands bypass it except `/say`, which broadcasts (Phase 125). The clock is
+  injectable, like `ChunkManager.set_clock`; the bucket entry survives a disconnect (Phase 115) and idle ones are pruned, with the least recently used evicted past `MAX_BUCKETS` (Phase 125).
 - The same file — `_cmd_kill` on a remote target routes through the same host path as a creature hit
   (emit `GameBus.player_damaged(KILL_DAMAGE, "admin", target)` or call one shared host helper), never
   `send_player_damaged` on its own; the local-body branch is unchanged. No file outside `game_root.gd`
@@ -1184,7 +1184,7 @@ here too.
 
 ---
 
-## Phase 125 — Waystones: a first fast-travel network
+## Phase 125 — Waystones: a first fast-travel network ✅ Done
 
 **Goal:** a planet takes about 90 days to walk around and the deferred list asks for a travel network.
 The exact, host-authoritative teleport path from Phase 101 already moves a player anywhere on the
@@ -1231,22 +1231,22 @@ teleport path are touched.
   here.
 
 **Acceptance criteria:**
-- [ ] `npm run validate` and `npm run check-drift` green with the waystone entities.
-- [ ] Suite: travel succeeds only when attuned to both stones, within the attune radius, off cooldown
+- [x] `npm run validate` and `npm run check-drift` green with the waystone entities.
+- [x] Suite: travel succeeds only when attuned to both stones, within the attune radius, off cooldown
   and with the cost in the inventory; each refusal reason is reported; a destroyed stone refuses; the
   landing is the exact destination at chunk X = 1,500,000.
-- [ ] Suite: attunements round-trip through a registry save/load; a client-forged intent for another
+- [x] Suite: attunements round-trip through a registry save/load; a client-forged intent for another
   player is refused.
-- [ ] Suite: a waypoint rename persists; a limb right-click that does not converge emits a toast; a
+- [x] Suite: a waypoint rename persists; a limb right-click that does not converge emits a toast; a
   seed change writes the old seed's file before clearing.
-- [ ] Suite: `parse_position` refuses a Y beyond the wire limit; `send_teleport` returns false for an
+- [x] Suite: `parse_position` refuses a Y beyond the wire limit; `send_teleport` returns false for an
   unconnected peer and for an emulated drop; `/say` from an admin is bucket-limited; after a burst of
   distinct speakers `_prune_buckets` leaves at most the cap.
-- [ ] Suite: `_find_coast` finds a one-chunk ocean strip; `check_readme_phases.js --self-test` covers a
+- [x] Suite: `_find_coast` finds a one-chunk ocean strip; `check_readme_phases.js --self-test` covers a
   multi-word status row.
-- [ ] Harness: `waystone_travel` moves the client between two stones over the socket; `admin_teleport`
+- [x] Harness: `waystone_travel` moves the client between two stones over the socket; `admin_teleport`
   verifies the restore landing.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green.
 
 ---
 
@@ -1592,7 +1592,7 @@ and the pass is bounded per tick so a large collapse spreads over several ticks.
   Phase 51's static sea level. **(falling sand and soil planned: Phase 131; water remains.)**
 - **Fast travel** — a planet takes about 90 days to walk around. Some form of
   travel network (roads, boats, waystones) is needed once players spread out
-  (after Phase 53). **(planned: Phase 125 adds waystones; roads and boats remain.)**
+  (after Phase 53). **(Phase 125 added waystones; roads and boats remain.)**
 - **Voxel techniques from GDVoxelPlayground (evaluated, not adopted wholesale)** —
   <https://github.com/JorisAR/GDVoxelPlayground> (MIT) ray-marches a FIXED 128³
   voxel grid on the GPU via `RenderingDevice` compute. It does not fit Nihon,

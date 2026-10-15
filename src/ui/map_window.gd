@@ -28,6 +28,8 @@ const NET_REACH := 8
 const COARSE_STEP := 3
 ## A waypoint within this many pixels of the cursor is the one a right-click deletes.
 const PICK_PX := 10.0
+## A left press that moves less than this many pixels is a click, not a drag.
+const CLICK_PX := 4.0
 ## Samples across the view used to find which part of each face the globe shows.
 const GLOBE_GRID := 20
 const ZOOM_START := 6.5
@@ -41,6 +43,11 @@ const SEAM := Color(0.0, 0.0, 0.0, 0.35)
 var minimap: Node = null
 var terrain_slice: Node = null
 var player_slice: Node = null
+## Phase 125 — the waystone network; attuned stones are drawn and a click on one travels there.
+var waystone_slice: Node = null
+
+## A short message for the HUD toast channel (UiSlice shows it).
+signal notice(text: String)
 ## False: the flat net. True: the faces folded into a globe.
 var planet: bool = false
 
@@ -54,6 +61,9 @@ var _ly: float = 0.0
 var _glon: float = 0.0
 var _glat: float = 0.0
 var _dragging := false
+var _drag_px: float = 0.0   # how far the pointer moved during the current left press
+var _rename_edit: LineEdit = null
+var _rename_index: int = -1
 var _thread: Thread = null
 var _batch_seed: int = 0
 var _batch_gen: int = 0   # tiles.generation when the running batch was taken
@@ -179,6 +189,10 @@ func _gui_input(event: InputEvent) -> void:
 			accept_event()
 		elif event.button_index == MOUSE_BUTTON_LEFT:
 			_dragging = event.pressed
+			if event.pressed:
+				_drag_px = 0.0
+			elif _drag_px < CLICK_PX:
+				click_waystone(event.position - size * 0.5)
 			if not _dragging:   # a drag over a pole may leave the band upside down: turn it back
 				var r := MapMath.upright(_home, _lx, _ly)
 				_home = r[0]
@@ -187,11 +201,15 @@ func _gui_input(event: InputEvent) -> void:
 				queue_redraw()
 			accept_event()
 		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-			right_click(event.position - size * 0.5)
+			if event.shift_pressed:
+				begin_rename(event.position - size * 0.5)
+			else:
+				right_click(event.position - size * 0.5)
 			_update_hover(event.position)
 			accept_event()
 	elif event is InputEventMouseMotion:
 		if _dragging:
+			_drag_px += event.relative.length()
 			pan(event.relative)
 			accept_event()
 		_update_hover(event.position)
@@ -228,8 +246,84 @@ func right_click(offset: Vector2) -> void:
 			minimap.remove_waypoint(hit)
 		return
 	var pos := world_pos_at(offset)
-	if not pos.is_empty() and minimap.has_method("add_waypoint"):
+	if pos.is_empty():
+		# The globe's limb: a point that unprojects to no place (the ray misses the planet).
+		notice.emit("Nothing to mark there: that point is past the edge of the planet.")
+		return
+	if minimap.has_method("add_waypoint"):
 		minimap.add_waypoint("", pos)
+
+## Shift + right-click on a waypoint: open a small text box to rename it.
+func begin_rename(offset: Vector2) -> void:
+	var hit := waypoint_at(offset)
+	if hit < 0 or minimap == null:
+		return
+	_rename_index = hit
+	if _rename_edit == null:
+		_rename_edit = LineEdit.new()
+		_rename_edit.name = "RenameEdit"
+		_rename_edit.max_length = 32
+		_rename_edit.custom_minimum_size = Vector2(180, 0)
+		_rename_edit.text_submitted.connect(_on_rename_submitted)
+		add_child(_rename_edit)
+	_rename_edit.text = str(minimap.get_waypoints()[hit]["name"])
+	_rename_edit.position = size * 0.5 + offset + Vector2(8, 8)
+	_rename_edit.visible = true
+	_rename_edit.grab_focus()
+
+func _on_rename_submitted(text: String) -> void:
+	if minimap != null and minimap.has_method("rename_waypoint"):
+		minimap.rename_waypoint(_rename_index, text)
+	_rename_index = -1
+	if _rename_edit != null:
+		_rename_edit.visible = false
+
+## The attuned waystone whose marker is within PICK_PX of `offset`: its station id, else "".
+func waystone_at(offset: Vector2) -> String:
+	if waystone_slice == null:
+		return ""
+	var best := ""
+	var best_d := PICK_PX
+	for id in waystone_slice.attuned(_local_id()):
+		var m := marker_for(waystone_slice.exact_pos(str(id)), size)
+		if m.is_empty() or not m["inside"]:
+			continue
+		var d: float = (m["pos"] as Vector2).distance_to(offset)
+		if d <= best_d:
+			best_d = d
+			best = str(id)
+	return best
+
+func _local_id() -> String:
+	return str(waystone_slice.registry.local_player_id) if waystone_slice != null and waystone_slice.registry != null else ""
+
+## A click on an attuned waystone marker while the player stands at a waystone: ask the host to travel
+## there. Returns true when an intent was sent.
+func click_waystone(offset: Vector2) -> bool:
+	var to_id := waystone_at(offset)
+	if to_id == "":
+		return false
+	var here := _stone_under_player()
+	if here == "":
+		notice.emit("Stand at a waystone to travel from it.")
+		return false
+	GameBus.waystone_travel_intent.emit(here, to_id, "")
+	return true
+
+## The waystone the local player stands within attune radius of, else "".
+func _stone_under_player() -> String:
+	var pxz := _player_xz()
+	if pxz.is_empty() or waystone_slice == null:
+		return ""
+	var pos := WorldPos.from_world(pxz[0] * TerrainSlice.CHUNK_METERS, 0.0, pxz[1] * TerrainSlice.CHUNK_METERS)
+	var best := ""
+	var best_d: float = float(waystone_slice.rules()["attuneRadius"]) + 1.0e6
+	for id in waystone_slice.attuned(_local_id()):
+		var d: float = waystone_slice.distance_m(pos, waystone_slice.exact_pos(str(id)))
+		if d <= float(waystone_slice.rules()["attuneRadius"]) and d < best_d:
+			best_d = d
+			best = str(id)
+	return best
 
 ## Index of the waypoint whose marker is within PICK_PX of `offset` (nearest first), or -1.
 func waypoint_at(offset: Vector2) -> int:
@@ -726,6 +820,11 @@ func _draw_markers(sz: Vector2) -> void:
 	var home := home_marker(sz)
 	if not home.is_empty():
 		_draw_marker(origin, home, "Home", Color(1.0, 0.8, 0.2), Color(1.0, 0.9, 0.5))
+	if waystone_slice != null:
+		for id in waystone_slice.attuned(_local_id()):
+			var wm := marker_for(waystone_slice.exact_pos(str(id)), sz)
+			if not wm.is_empty():
+				_draw_marker(origin, wm, "Waystone", Color(0.8, 0.5, 1.0), Color(0.9, 0.75, 1.0))
 	if minimap != null and minimap.has_method("get_waypoints"):
 		for w in minimap.get_waypoints():
 			var m := marker_for(w["pos"], sz)
