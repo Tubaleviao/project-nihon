@@ -37,6 +37,9 @@ static func _bump_region(chunk: Vector2i) -> void:
 static func window_revision(center: Vector2i, radius: int, circumference: int) -> int:
 	var total := 0
 	_mutex.lock()
+	if _region_revs.is_empty():
+		_mutex.unlock()
+		return 0
 	var x := center.x - radius
 	var xs: Array = []
 	while x <= center.x + radius:

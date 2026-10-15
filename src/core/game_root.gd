@@ -1822,7 +1822,7 @@ func _add_generation_records(snapshot: Dictionary, peer_id: int, aoi_center: Vec
 	snapshot["gen_scope"] = [center.x, center.y, radius]   # always named: a client prunes to it
 	_peer_records_msec[peer_id] = now   # the window was served, records or not: the re-scope interval counts from here
 	if (found["records"] as Dictionary).is_empty():
-		return   # nothing sent, so nothing to rate-limit a re-scope for (a join snapshot included)
+		return   # no records to attach
 	snapshot["gen_records"] = found["records"]
 
 ## Phase 38 — the replicated social/economy state, keyed by the names the wire uses

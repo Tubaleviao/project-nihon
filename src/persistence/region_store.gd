@@ -45,6 +45,8 @@ var last_failed_chunk_keys: Array = []
 ## "rx,rz" -> how many saves in a row failed to stage that region; cleared by a success. A region that
 ## stays past `MAX_REGION_FAILURES` stops holding back the world record (see `PersistenceSlice`).
 var region_failures: Dictionary = {}
+## The "rx,rz" keys of the regions the LAST `stage_chunks` failed to stage.
+var last_failed_region_keys: Array = []
 const MAX_REGION_FAILURES := 5
 ## The journal of the world save that commits this store's regions with `world.json` (set by the
 ## persistence slice); a read while either journal exists may fall back to a `.bak`.
@@ -573,6 +575,7 @@ func stage_chunks(chunks: Dictionary, deletions := true) -> Dictionary:
 	var first_error: Error = OK
 	var ops: Array = []
 	last_failed_chunk_keys = []
+	last_failed_region_keys = []
 	for rkey in grouped:
 		var region := region_from_key(str(rkey))
 		var read := read_region(region, false)
@@ -582,6 +585,7 @@ func stage_chunks(chunks: Dictionary, deletions := true) -> Dictionary:
 				first_error = ERR_FILE_CORRUPT
 			last_failed_chunk_keys.append_array(grouped[rkey].keys())
 			region_failures[rkey] = int(region_failures.get(rkey, 0)) + 1
+			last_failed_region_keys.append(rkey)
 			continue
 		var folded := fold_chunks(read["chunks"], grouped[rkey], deletions)
 		# Phase 75 — a malformed entry survives the rewrite unchanged unless this save carries a
@@ -594,6 +598,7 @@ func stage_chunks(chunks: Dictionary, deletions := true) -> Dictionary:
 		if staged["err"] != OK:
 			last_failed_chunk_keys.append_array(grouped[rkey].keys())
 			region_failures[rkey] = int(region_failures.get(rkey, 0)) + 1
+			last_failed_region_keys.append(rkey)
 			if first_error == OK:
 				first_error = staged["err"]
 			continue
@@ -601,10 +606,10 @@ func stage_chunks(chunks: Dictionary, deletions := true) -> Dictionary:
 		ops.append_array(staged["ops"])
 	return { "err": first_error, "ops": ops }
 
-## True when some region has failed `MAX_REGION_FAILURES` saves in a row.
+## True when a region that failed in the last `stage_chunks` has failed `MAX_REGION_FAILURES` saves in a row.
 func has_exhausted_region() -> bool:
-	for rkey in region_failures:
-		if int(region_failures[rkey]) >= MAX_REGION_FAILURES:
+	for rkey in last_failed_region_keys:
+		if int(region_failures.get(rkey, 0)) >= MAX_REGION_FAILURES:
 			return true
 	return false
 

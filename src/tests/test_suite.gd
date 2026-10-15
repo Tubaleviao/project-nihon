@@ -21840,6 +21840,10 @@ func _test_p127_streamer_and_txn() -> void:
 	assert_false(slice.has_world(), "the record is held back while the region is within the bound")
 	assert_true(slice.save_world({ "seed": 3, "chunks": chunks }) != OK, "past the bound the error is still reported")
 	assert_true(slice.has_world(), "but world.json is written")
+	# a region that stopped failing no longer escalates a different region's first failure
+	assert_true(slice.region_store.has_exhausted_region(), "the failing region is exhausted")
+	slice.region_store.last_failed_region_keys = ["99,99"]
+	assert_false(slice.region_store.has_exhausted_region(), "only regions that failed in the last save count")
 	slice.free()
 
 func _test_p127_audit() -> void:

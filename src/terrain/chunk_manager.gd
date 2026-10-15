@@ -1050,15 +1050,6 @@ static func _scaled_step(step: Vector2i, reach: int) -> Vector2i:
 		roundi(float(step.x) * PEER_RECENTER_MAX_CHUNKS / float(reach)),
 		roundi(float(step.y) * PEER_RECENTER_MAX_CHUNKS / float(reach)))
 
-## `target`, pulled to within `PEER_RECENTER_MAX_CHUNKS` of `origin` (the wrapped step, so a claim across
-## the X seam counts its short distance).
-static func _clamp_toward(origin: Vector2i, target: Vector2i) -> Vector2i:
-	var step := _wrapped_step(origin, target)
-	var reach := maxi(absi(step.x), absi(step.y))
-	if reach <= PEER_RECENTER_MAX_CHUNKS:
-		return target
-	return TerrainSlice.wrap_chunk(origin + _scaled_step(step, reach))
-
 ## Phase 82 — the periodic re-centre of a peer on the position the host tracks. That position is
 ## still client-reported, so it gets the same interval limit and clamp as a claim (a hostile
 ## client cannot hop the window across the planet every tick); the difference is that a deferral

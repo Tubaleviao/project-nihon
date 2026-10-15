@@ -149,6 +149,9 @@ func sync(wanted: Dictionary) -> Dictionary:
 ## Retry the stranded regions without a window move: a save may have cleaned their dirty
 ## chunks since. Cheap when nothing is stranded. Returns how many chunks were released.
 func release_stranded() -> int:
+	for rkey in _stranded_wait.keys():
+		if not _stranded.has(rkey):
+			_stranded_wait.erase(rkey)
 	if _stranded.is_empty():
 		return 0
 	var now: int = _now.call()
