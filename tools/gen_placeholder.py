@@ -27,7 +27,8 @@ colour derived from its id, with a magenta border so a placeholder is never mist
 art. ``ITEM_IDS`` lists the ids the production pack ships. The GraywolfPack creature
 textures (``textures/creatures/GraywolfPack*.png.raw``) are the checkerboard (base) and
 two black masks (``_channel``, ``_color_mask``), like the player's. The nine roster creatures
-(``CREATURE_SIZES``) get the same three sheets at 128x128 or 64x64.
+(``CREATURE_SIZES``) get the same three sheets at 128x128 or 64x64; so do the five item meshes
+(``ITEM_TEXTURE_SIZES``, ``textures/items/``).
 
 A bare ``<out>`` writes the sheet its default path gets (black for the mask
 files, white for the rig detail file) and the checkerboard for any other path.
@@ -70,6 +71,11 @@ CREATURE_SIZES = {
 }
 CREATURE_DIR = ROOT / "assets/textures/creatures"
 ICON_DIR = ROOT / "assets/icons/items"
+# Item meshes' textures: name -> size (the sword's sheet is 32x32, the rest 64x64).
+ITEM_TEXTURE_SIZES = {
+    "CarpenterAxe": 64, "FerritePick": 64, "FerriteShortSword": 32, "FerriteShield": 64, "FerriteHelmet": 64,
+}
+ITEM_TEXTURE_DIR = ROOT / "assets/textures/items"
 
 
 def _chunk(ctype: bytes, data: bytes) -> bytes:
@@ -148,6 +154,11 @@ OUTPUTS = {
 CREATURE_OUTPUTS = [
     (CREATURE_DIR / f"{name}{suffix}.png.raw", sheet, size)
     for name, size in CREATURE_SIZES.items()
+    for suffix, sheet in (("", checker), ("_color_mask", black), ("_channel", black))
+]
+CREATURE_OUTPUTS += [
+    (ITEM_TEXTURE_DIR / f"{name}{suffix}.png.raw", sheet, size)
+    for name, size in ITEM_TEXTURE_SIZES.items()
     for suffix, sheet in (("", checker), ("_color_mask", black), ("_channel", black))
 ]
 FLAGS = {"--mask": black, "--white": white}

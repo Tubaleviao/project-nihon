@@ -666,6 +666,7 @@ func run() -> void:
 	_run_test("asset: item icon placeholders are 32x32 RGBA",   _test_asset_item_icon_placeholders)
 	_run_test("asset: GraywolfPack placeholders have the quadruped contract", _test_asset_graywolfpack_placeholders)
 	_run_test("asset: roster creature placeholders have their skeleton contract", _test_asset_creature_roster_placeholders)
+	_run_test("asset: item mesh placeholders load with their sheets", _test_asset_item_mesh_placeholders)
 	_run_test("asset: missing model key warns and falls back",   _test_asset_missing_model_falls_back)
 	_run_test("asset: creature model key derived from entity name", _test_asset_creature_key)
 	_run_test("rig tree: every Locomotion.State maps to a node", _test_rig_tree_state_mapping_total)
@@ -8249,6 +8250,31 @@ func _test_asset_creature_roster_placeholders() -> void:
 		if lib != null:
 			for clip in ["idle", "walk", "run", "fall", "land", "attack", "death"]:
 				assert_true(lib.has_animation(clip), "%s clip %s" % [entity, clip])
+
+## Issue #325: the five item meshes each have a static placeholder (one textured box under the
+## triangle budget) and three sheets at the art's size.
+func _test_asset_item_mesh_placeholders() -> void:
+	var items := {"CarpenterAxe": 64, "FerritePick": 64, "FerriteShortSword": 32, "FerriteShield": 64,
+		"FerriteHelmet": 64}
+	for item: String in items:
+		var size: int = items[item]
+		var mkey := "models/items/%s.glb.raw" % item
+		assert_true(AssetOverlay.has_key("meshes", mkey), "%s mesh listed" % item)
+		var root := AssetOverlay.load_rig_scene(mkey)
+		assert_true(root != null, "%s parses into a scene" % item)
+		if root != null:
+			var parts: Array = []
+			_collect_mesh_instances(root, parts)
+			assert_true(parts.size() > 0, "%s has a mesh" % item)
+			root.free()
+		for suffix in ["", "_channel", "_color_mask"]:
+			var tkey := "textures/items/%s%s.png.raw" % [item, suffix]
+			assert_true(AssetOverlay.has_key("textures", tkey), "manifest lists %s" % tkey)
+			var img := Image.new()
+			var err := img.load_png_from_buffer(FileAccess.get_file_as_bytes("res://assets/" + tkey))
+			assert_eq(err, OK, "%s decodes as PNG" % tkey)
+			if err == OK:
+				assert_eq(img.get_size(), Vector2i(size, size), "%s is %dx%d" % [tkey, size, size])
 
 func _test_asset_body_sheet_placeholders() -> void:
 	var expected := {
