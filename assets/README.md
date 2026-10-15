@@ -24,12 +24,18 @@ public clone**. This directory holds the public side of that split.
 Item icons (`icons/items/<ItemId>.png.raw`, 32x32 RGBA) and ten creatures (GraywolfPack,
 ForestBoar, SteppeBison, GlimmerFox, VeilStalker, RiftWarden, RidgeHawk, CinderGargoyle,
 VoidSerpent, LavaSlug: `models/creatures/<Entity>.glb.raw` plus three textures each) have
-public placeholders, and so do the five item meshes (CarpenterAxe, FerritePick, FerriteShortSword,
-FerriteShield, FerriteHelmet: `models/items/<ItemId>.glb.raw`, a textured box, plus three
-`textures/items/` sheets). Other `models/creatures/<Entity>.glb.raw` keys still work only through a code fallback
-(a procedural box), and so do item icons not listed in `tools/gen_placeholder.py`
-(`ITEM_IDS`; a text glyph). The asset roadmap in `project-nihon-assets/ROADMAP.md` adds
-each placeholder before the art for that key.
+public placeholders, and so do the five item meshes (CarpenterAxe, FerritePick,
+FerriteShortSword, FerriteShield, FerriteHelmet: `models/items/<ItemId>.glb.raw`, a textured box,
+plus three `textures/items/` sheets). Other `models/creatures/<Entity>.glb.raw` keys still work
+only through a code fallback (a procedural box), and so do item icons not listed in
+`tools/gen_placeholder.py` (`ITEM_IDS`; a text glyph). The asset roadmap in
+`project-nihon-assets/ROADMAP.md` adds each placeholder before the art for that key.
+
+Rig textures: an attached player rig is drawn with the character shader, whose three sheets are
+bound by key through `AssetOverlay.load_texture`: `textures/characters/player.png.raw` (detail),
+`textures/characters/player_color_mask.png.raw` (R/G/B = primary/secondary/accent) and
+`textures/characters/player_channel.png.raw` (R/G/B = metal/emission/wear). The public masks are
+black, so colour reduces to the character's skin index.
 
 ## The model
 
