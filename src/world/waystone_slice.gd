@@ -165,8 +165,14 @@ func sweep_attunements() -> void:
 	if stones.is_empty():
 		return
 	for pid in registry.get_online_player_ids():
+		var player_id := str(pid)
+		var pos := _player_pos(player_id)
+		if pos.is_empty():
+			continue
+		var have: Array = registry.get_waystones(player_id)
 		for sid in stones:
-			try_attune(str(pid), str(sid))
+			if not have.has(str(sid)):
+				try_attune(player_id, str(sid))
 
 ## Host: move `player_id` from the stone they stand at to another they are attuned to. Returns "" when
 ## the player was moved, else one of `REASONS`; the cost is paid only when the move happened.
@@ -220,7 +226,7 @@ func _on_travel_intent(from_id: String, to_id: String, player_id: String) -> voi
 		return
 	var pid: String = player_id if player_id != "" else str(registry.local_player_id)
 	var reason := travel(from_id, to_id, pid)
-	if reason != "":
+	if reason != "" and reason != "rate_limited":
 		Diag.warn("WaystoneSlice: travel %s -> %s for %s refused: %s" % [from_id, to_id, pid, reason])
 	GameBus.waystone_travel_resolved.emit(pid, reason == "", reason)
 

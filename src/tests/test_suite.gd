@@ -142,6 +142,7 @@ func run() -> void:
 	_run_test("waystone: the landing is exact far from origin", _test_waystone_exact_landing_far_out)
 	_run_test("waystone: a failed teleport refunds the cost",   _test_waystone_failed_teleport_refunds)
 	_run_test("waystone: attunements persist; forged ids refuse", _test_waystone_persistence_and_forged_intent)
+	_run_test("waystone: a refusal reaches the client",         _test_waystone_result_reaches_client)
 	_run_test("waystone: teleport door and chat leftovers",     _test_waystone_wire_and_chat_leftovers)
 	_run_test("waystone: map rename and limb notice",           _test_waystone_map_leftovers)
 	_run_test("waystone: a seed change saves the old seed",     _test_minimap_seed_change_saves_old_seed)
@@ -21278,6 +21279,23 @@ func _test_waystone_persistence_and_forged_intent() -> void:
 	var way: WaystoneSlice = rig["way"]
 	assert_eq(way.travel("station_0", "station_1", "player_forged"), "unknown_player", "a forged identity has no record")
 	_free_waystone_rig(rig)
+
+func _test_waystone_result_reaches_client() -> void:
+	var gr: Node = (load("res://src/core/game_root.gd") as GDScript).new()
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	gr._registry = reg
+	gr._is_client = true
+	reg.set_local_player(reg.mint_player_id())
+	var seen: Array = []
+	var cb := func(pid: String, ok: bool, reason: String) -> void: seen.append([pid, ok, reason])
+	GameBus.waystone_travel_resolved.connect(cb)
+	gr._on_own_state_synced({ "waystone_result": { "ok": false, "reason": "cooldown" } })
+	GameBus.waystone_travel_resolved.disconnect(cb)
+	assert_eq(seen.size(), 1, "a refusal sent on the own-state channel reaches the client's bus")
+	assert_eq(seen[0], [reg.local_player_id, false, "cooldown"], "addressed to the local player with the host's reason")
+	gr.free()
+	reg.free()
 
 func _test_waystone_wire_and_chat_leftovers() -> void:
 	var bad_y := ChatCommands.parse_position(["1", str(WorldPos.LOCAL_LIMIT * 2.0), "3"])

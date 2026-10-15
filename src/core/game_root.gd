@@ -2657,16 +2657,15 @@ func _on_research_points_synced(player_id: String, _points: int) -> void:
 	_networking.send_own_state(peer, { "technology": _technology.get_statuses(player_id) })
 
 ## Phase 125 — where the host believes a player stands, as an exact `{chunk, local}`: the live body for the
-## local player, the peer's last reported position for a remote one, the saved record as a last resort.
+## local player, the peer's last reported position for a remote one. A peer that has not reported yet is
+## nowhere: the saved record is where it logged out, not where it stands.
 func _waystone_player_pos(player_id: String) -> Dictionary:
 	if player_id == _registry.local_player_id and _player != null:
 		return _player.get_world_pos()
 	var peer := _registry.get_peer_id(player_id)
 	if peer != 0:
-		var seen: Dictionary = _networking.get_last_known_exact(peer)
-		if not seen.is_empty():
-			return seen
-	return _registry.get_world_pos(player_id)
+		return _networking.get_last_known_exact(peer)
+	return {}
 
 ## Phase 125 — a player's attunements changed on the host: save them on the record and push them to
 ## the owner's peer alone. The local player is live here already.
@@ -2773,6 +2772,9 @@ func _on_own_state_synced(data: Dictionary) -> void:
 	if data.has("waystones") and data["waystones"] is Array:
 		_waystones.apply_view(data["waystones"])
 		GameBus.waystones_synced.emit(_registry.local_player_id, data["waystones"])
+	if data.get("waystone_result", null) is Dictionary:
+		var res: Dictionary = data["waystone_result"]
+		GameBus.waystone_travel_resolved.emit(_registry.local_player_id, bool(res.get("ok", false)), str(res.get("reason", "")).left(32))
 
 func _on_trade_completed(trade: Dictionary) -> void:
 	pass

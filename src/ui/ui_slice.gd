@@ -1436,8 +1436,11 @@ func _build_map_content() -> Control:
 	return box
 
 ## Phase 125 — a refused travel is said on the toast channel; a success needs no words (the world moves).
-func _on_waystone_resolved(_player_id: String, ok: bool, reason: String) -> void:
+func _on_waystone_resolved(player_id: String, ok: bool, reason: String) -> void:
 	if ok:
+		return
+	# A listen host resolves remote peers' intents too; only the owner is told why.
+	if player_id != "" and technology_slice != null and player_id != str(technology_slice.local_player_id()):
 		return
 	push_toast(WAYSTONE_REFUSALS.get(reason, "The waystone does not answer."))
 
