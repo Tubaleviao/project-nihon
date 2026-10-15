@@ -283,7 +283,17 @@ static func _xz_distance(a: Vector3, b: Vector3) -> float:
 ## the GameRoot: the harness runs from `GameRoot._ready()` with every slice built and
 ## wired, and boots the ONE boot half its role needs (see the call site) so the
 ## production boot path is what is under test rather than a harness-only arrangement.
+## Phase 129 — latched when this process is sent a heat-burn (the effect lasts 8 s; a slow client may come
+## to the step after it ran out).
+var _burn_seen: bool = false
+
+func _on_status_seen(_target: String, effects: Array) -> void:
+	for e in effects:
+		if e is Dictionary and e.get("effect", "") == "heat_burn":
+			_burn_seen = true
+
 func run(root: Node, role: String) -> void:
+	GameBus.status_effects_synced.connect(_on_status_seen)
 	_root = root
 	_role = role
 	# The chop guard's decision IS the bus signal, so observing it is how this side sees
@@ -1238,11 +1248,7 @@ func _step_status_effect() -> void:
 			"owner-only" if (lowered and host_clean) else "hp%.1f-to-%.1f-hostclean%s" % [base, hp_after, str(host_clean)])
 		return
 	# The effect list is what the packet carries; the damage rides the (already proven) player_damaged path.
-	var got: bool = await _await_until(func():
-		for e in _root._player.status_effects_active():
-			if e["effect"] == "heat_burn":
-				return true
-		return false, STEP_TIMEOUT_SECS)
+	var got: bool = await _await_until(func(): return _burn_seen, STEP_TIMEOUT_SECS)
 	_report("status_effect", verdict(got, true), "owner-only" if got else "effect_never_arrived-hp%.0f" % _root._player.get_hp())
 
 ## Step 14 (Phase 53) — a new player given a friend code spawns beside that friend.
