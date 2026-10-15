@@ -152,6 +152,7 @@ func _ready() -> void:
 	GameBus.worldgen_fingerprint_mismatch.connect(_on_worldgen_fingerprint_mismatch)
 	GameBus.repair_resolved.connect(_on_repair_resolved)
 	GameBus.research_resolved.connect(_on_research_resolved)
+	GameBus.research_points_synced.connect(_on_research_points_synced)
 	GameBus.technology_unlocked.connect(_on_technology_unlocked)
 	GameBus.item_picked_up.connect(_on_item_picked_up)
 	GameBus.inventory_changed.connect(_on_inventory_changed)
@@ -752,10 +753,14 @@ func technology_rows() -> Array:
 		var tid := str(tech_id)
 		var status: String = technology_slice.get_status(tid)
 		var data: Dictionary = technology_slice.get_tech_data(tid)
+		var points_cost: int = technology_slice.research_cost(tid)
+		var short: bool = status == "locked" and technology_slice.get_points() < points_cost
 		rows.append({
 			"id": tid,
 			"status": status,
-			"can_research": _can_research(tid, status, data),
+			"can_research": _can_research(tid, status, data) and not short,
+			"points_cost": points_cost,
+			"reason": "needs %d research points" % points_cost if short else "",
 			"requires": data.get("requires", []),
 			"duration": int(data.get("researchDuration", 0)),
 			"cost": _fmt_entries(data.get("researchMaterials", [])),
@@ -1102,11 +1107,18 @@ func refresh_crafting() -> void:
 			hbox.add_child(lbl)
 			_crafting_box.add_child(hbox)
 
+## The local player's research-point balance (Phase 124); 0 with no technology slice.
+func research_points() -> int:
+	return 0 if technology_slice == null else int(technology_slice.get_points())
+
 func refresh_technology() -> void:
 	if _technology_box == null:
 		return
 	for child in _technology_box.get_children():
 		child.queue_free()
+	var balance := Label.new()
+	balance.text = "Research points: %d" % research_points()
+	_technology_box.add_child(balance)
 	for row in technology_rows():
 		var r: Dictionary = row
 		var hbox := HBoxContainer.new()
@@ -1118,9 +1130,9 @@ func refresh_technology() -> void:
 		hbox.add_child(btn)
 		var req_arr: Array = r.get("requires", [])
 		var reqs: String = ", ".join(req_arr) if req_arr.size() > 0 else "—"
-		var line := "%s [%s]  requires: %s  cost: %s  %ds" % [r["id"], r["status"], reqs, r["cost"], r["duration"]]
+		var line := "%s [%s]  requires: %s  cost: %s + %d pts  %ds" % [r["id"], r["status"], reqs, r["cost"], r["points_cost"], r["duration"]]
 		var lbl := Label.new()
-		lbl.text = line
+		lbl.text = line + ("  (%s)" % r["reason"] if str(r["reason"]) != "" else "")
 		hbox.add_child(lbl)
 		_technology_box.add_child(hbox)
 
@@ -1238,6 +1250,12 @@ func _on_research_resolved(result: Dictionary) -> void:
 		else:
 			_technology_feedback.text = "%s: %s" % [result.get("tech_id", "?"), result.get("reason", "?")]
 	refresh_technology()
+
+func _on_research_points_synced(player_id: String, _points: int) -> void:
+	if _technology_box == null or not _technology_box.is_visible_in_tree():
+		return
+	if player_id == "" or technology_slice == null or player_id == technology_slice.local_player_id():
+		refresh_technology()
 
 func _on_technology_unlocked(_tech_id: String, _player_id: String) -> void:
 	refresh_technology()

@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:d6ae157f3aa02e992b81fbbb553ea4683961f8f7e89c2cf9e22c1f06719300c7",
+  "schemaHash": "sha256:62d2d3352a8842074bd11b473baeb9260552be2f3986d1bda8908c2379cb6b9f",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -18054,10 +18054,11 @@
           "researchCost": {
             "name": "researchCost",
             "type": "integer",
-            "description": "Research points required to complete",
+            "description": "Research points spent to begin research (Phase 124); earned by the ResearchPointRule table",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0
           },
           "tier": {
             "name": "tier",
@@ -18210,10 +18211,11 @@
           "researchCost": {
             "name": "researchCost",
             "type": "integer",
-            "description": "Research points required to complete",
+            "description": "Research points spent to begin research (Phase 124); earned by the ResearchPointRule table",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 5
           },
           "tier": {
             "name": "tier",
@@ -18387,10 +18389,11 @@
           "researchCost": {
             "name": "researchCost",
             "type": "integer",
-            "description": "Research points required to complete",
+            "description": "Research points spent to begin research (Phase 124); earned by the ResearchPointRule table",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 0
           },
           "tier": {
             "name": "tier",
@@ -18535,10 +18538,11 @@
           "researchCost": {
             "name": "researchCost",
             "type": "integer",
-            "description": "Research points required to complete",
+            "description": "Research points spent to begin research (Phase 124); earned by the ResearchPointRule table",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 3
           },
           "tier": {
             "name": "tier",
@@ -18686,10 +18690,11 @@
           "researchCost": {
             "name": "researchCost",
             "type": "integer",
-            "description": "Research points required to complete",
+            "description": "Research points spent to begin research (Phase 124); earned by the ResearchPointRule table",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 8
           },
           "tier": {
             "name": "tier",
@@ -18857,10 +18862,11 @@
           "researchCost": {
             "name": "researchCost",
             "type": "integer",
-            "description": "Research points required to complete",
+            "description": "Research points spent to begin research (Phase 124); earned by the ResearchPointRule table",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 2
           },
           "tier": {
             "name": "tier",
@@ -19005,10 +19011,11 @@
           "researchCost": {
             "name": "researchCost",
             "type": "integer",
-            "description": "Research points required to complete",
+            "description": "Research points spent to begin research (Phase 124); earned by the ResearchPointRule table",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 12
           },
           "tier": {
             "name": "tier",
@@ -19140,6 +19147,62 @@
               "effects": []
             }
           ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "ResearchPointRule": {
+        "name": "ResearchPointRule",
+        "tags": [
+          "world-system"
+        ],
+        "description": "Points of research a player earns per source: a craft, a gathered resource, and a one-time bonus for the first craft of each recipe. Spent by beginResearch at the technology's researchCost.",
+        "goal": "Make KnowledgeIsProgression cost something earned by play, not only materials and time",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "rules": {
+            "name": "rules",
+            "type": "json",
+            "description": "Points per source: { craft, gather, firstCraftOfRecipe }, non-negative integers (validated at fabric load)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "craft": 1,
+              "gather": 1,
+              "firstCraftOfRecipe": 3
+            }
+          },
+          "maxResearchCost": {
+            "name": "maxResearchCost",
+            "type": "integer",
+            "description": "Upper bound a technology researchCost may take (validated at fabric load)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1000
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "grantPoints": {
+            "name": "grantPoints",
+            "description": "Host-side grant of research points to the player who crafted or gathered",
+            "rules": [
+              "Granted only by the host; a client's own grant call changes nothing"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
         },
         "pii": [],
         "gdpr": {}

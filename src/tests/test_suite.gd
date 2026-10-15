@@ -322,6 +322,13 @@ func run() -> void:
 	_run_test("technology: tree and materials are per-player",  _test_research_is_per_player)
 	_run_test("technology: client forwards research intent",    _test_technology_client_forwards_intent)
 	_run_test("technology: client does not resolve research",  _test_technology_client_resolves_nothing)
+	_run_test("research points: too few refuse, enough spend exactly", _test_research_points_gate_and_spend)
+	_run_test("research points: host craft pays the crafter only, saves", _test_research_points_craft_grant_and_roundtrip)
+	_run_test("research points: gather pays, UI rows show cost",  _test_research_points_gather_and_ui)
+	_run_test("research points: fabric rule table and costs",     _test_research_points_fabric_data)
+	_run_test("void burst: failed consume keeps the counter",   _test_void_failed_consume_keeps_counter)
+	_run_test("void burst: golden rolls and counter round-trip", _test_void_burst_roll_golden_and_counter_roundtrip)
+	_run_test("void burst: no player id reports no flag",       _test_void_burst_no_player_reports_no_flag)
 	_run_test("taming: fabric spec drives the interaction",    _test_taming_fabric_spec)
 	_run_test("taming: a creature with no tame field is refused", _test_taming_not_tameable)
 	_run_test("taming: wolf needs the alpha down",             _test_taming_wolf_requires_alpha_down)
@@ -20871,3 +20878,206 @@ func _test_p121_world_stamp_round_trip() -> void:
 	slice.free()
 	voxel.free()
 	gr.free()
+
+
+# ---------------------------------------------------------------------------
+# Phase 124 — research points, and the void-burst leftovers (#299, #300)
+# ---------------------------------------------------------------------------
+
+func _test_research_points_fabric_data() -> void:
+	var rule: Resource = GameData.WORLD_SYSTEMS.get("ResearchPointRule", null)
+	assert_true(rule != null, "GameData has the ResearchPointRule table")
+	var rules: Dictionary = rule.get("rules")
+	for source in ["craft", "gather", "firstCraftOfRecipe"]:
+		assert_true(rules.has(source) and int(rules[source]) >= 0, "rule %s is a non-negative integer" % source)
+	var bound := int(rule.get("maxResearchCost"))
+	for tech_id in GameData.TECHNOLOGIES:
+		var cost := int(GameData.TECHNOLOGIES[tech_id].get("researchCost"))
+		assert_true(cost >= 0 and cost <= bound, "%s researchCost is reachable" % tech_id)
+	assert_eq(int(GameData.TECHNOLOGIES["TechBasicSmithing"].get("researchCost")), 0, "the root smithing tech is free")
+	assert_true(int(GameData.TECHNOLOGIES["TechMasterForge"].get("researchCost")) > 0, "a later tech costs points")
+
+func _test_research_points_gate_and_spend() -> void:
+	var t := TechnologySlice.new()
+	add_child(t)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	t.inventory_slice = inv
+	inv.add_item("Ferrite", 4)
+	assert_true(bool(t.begin_research("TechBasicSmithing")["success"]), "the free root tech needs no points")
+	t.complete_research("TechBasicSmithing")
+	var cost := t.research_cost("TechMasterForge")
+	assert_true(cost > 1, "master forge costs several points")
+	inv.add_item("Ashite", 20)
+
+	var short := t.begin_research("TechMasterForge")
+	assert_false(bool(short["success"]), "no points: refused")
+	assert_eq(str(short["reason"]), "insufficient_points", "with the points reason")
+	assert_eq(inv.get_item_count("Ashite"), 20, "and no material is consumed")
+	assert_eq(t.get_status("TechMasterForge"), "locked", "and the status is unchanged")
+
+	t.grant_points("", "craft", cost - 1)
+	assert_eq(str(t.begin_research("TechMasterForge")["reason"]), "insufficient_points", "one point short: still refused")
+	assert_eq(t.get_points(), cost - 1, "and nothing is spent by a refusal")
+
+	t.grant_points("", "craft", 3)
+	var ok := t.begin_research("TechMasterForge")
+	assert_true(bool(ok["success"]), "with enough points research begins")
+	assert_eq(t.get_points(), 2, "and exactly researchCost was spent")
+	assert_eq(inv.get_item_count("Ashite"), 0, "materials are consumed too")
+	t.free()
+	inv.free()
+
+func _test_research_points_craft_grant_and_roundtrip() -> void:
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var t := TechnologySlice.new()
+	add_child(t)
+	t.player_registry = registry
+	var crafting := CraftingSlice.new()
+	add_child(crafting)
+	crafting.player_registry = registry
+	crafting.technology_slice = t
+	var a := "player_peer_pts_a"
+	var b := "player_peer_pts_b"
+	registry.ensure_player(a)
+	registry.ensure_player(b)
+	t.apply_statuses({ "TechBasicSmithing": "unlocked" }, a)
+	var synced: Array = []
+	var on_sync := func(pid: String, pts: int) -> void:
+		synced.append([pid, pts])
+	GameBus.research_points_synced.connect(on_sync)
+
+	registry.get_inventory(a).add_item("Ferrite", 6)
+	var r := crafting.craft("RecipeFerriteIngot", a)
+	assert_true(bool(r["success"]), "the craft succeeds")
+	var first := t.points_for("craft") + t.points_for("firstCraftOfRecipe")
+	assert_eq(t.get_points(a), first, "the crafter earns craft + first-craft points")
+	assert_eq(t.get_points(b), 0, "another player earns nothing")
+	assert_eq(synced.back(), [a, first], "research_points_synced names the crafter and the balance")
+	crafting.craft("RecipeFerriteIngot", a)
+	assert_eq(t.get_points(a), first + t.points_for("craft"), "a repeat craft earns no first-craft bonus")
+
+	# A refused craft earns nothing.
+	var before := t.get_points(a)
+	assert_false(bool(crafting.craft("RecipeFerriteIngot", b)["success"]), "b has no ferrite")
+	assert_eq(t.get_points(a), before, "a failed craft pays nobody")
+
+	# A client's own grant changes nothing.
+	var c := TechnologySlice.new()
+	add_child(c)
+	c.is_authoritative = false
+	assert_eq(c.grant_points("", "craft", 5), 0, "a client grant grants nothing")
+	assert_eq(c.note_craft("RecipeFerriteIngot"), 0, "and so does a client craft note")
+	assert_eq(c.get_points(), 0, "balance stays 0")
+	assert_eq(t.grant_points(a, "bogus", 5), 0, "an unknown source grants nothing")
+	assert_eq(t.grant_points(a, "craft", -3), 0, "and a non-positive amount")
+
+	# Round trip through a JSON-encoded registry record.
+	registry.record_technology(a, t.get_statuses(a))
+	var saved: Dictionary = JSON.parse_string(JSON.stringify(registry.get_player_data(a)))
+	var reg2 := PlayerRegistry.new()
+	add_child(reg2)
+	reg2.apply_player_data(a, saved)
+	var t2 := TechnologySlice.new()
+	add_child(t2)
+	t2.apply_statuses(reg2.get_record(a)["technology"], a)
+	assert_eq(t2.get_points(a), before, "points survive a registry save/load")
+	t2.note_craft("RecipeFerriteIngot", a)
+	assert_eq(t2.get_points(a), before + t2.points_for("craft"), "and the paid first-craft bonus is remembered")
+	# A legacy snapshot with no points loads as 0.
+	t2.apply_statuses({ "TechBasicSmithing": "unlocked" }, a)
+	assert_eq(t2.get_points(a), 0, "a legacy record loads as 0 points")
+	assert_eq(t2.get_status("TechBasicSmithing", a), "unlocked", "keeping its statuses")
+	# An unknown recipe id in a snapshot is dropped, not stored.
+	t2.apply_statuses({ TechnologySlice.CRAFTED_KEY: ["RecipeFerriteIngot", "NotARecipe"] }, a)
+	assert_eq(t2.get_statuses(a).get(TechnologySlice.CRAFTED_KEY, []), ["RecipeFerriteIngot"], "unknown first-craft ids are dropped")
+
+	GameBus.research_points_synced.disconnect(on_sync)
+	t2.free()
+	reg2.free()
+	c.free()
+	crafting.free()
+	t.free()
+	registry.free()
+
+func _test_research_points_gather_and_ui() -> void:
+	var t := TechnologySlice.new()
+	add_child(t)
+	assert_eq(t.grant_points("", "gather", t.points_for("gather")), t.points_for("gather"), "a gather pays the fabric rule")
+	var ui := _new_test_ui()
+	ui.technology_slice = t
+	assert_eq(ui.research_points(), t.points_for("gather"), "the UI reports the balance")
+	var rows: Array = ui.technology_rows()
+	var forge: Dictionary = {}
+	for row in rows:
+		if row["id"] == "TechAlchemy":
+			forge = row
+	assert_eq(int(forge["points_cost"]), t.research_cost("TechAlchemy"), "a row carries the point cost")
+	assert_false(bool(forge["can_research"]), "short of points the button is disabled")
+	assert_true(str(forge["reason"]).contains("research points"), "with the reason")
+	t.grant_points("", "craft", 10)
+	for row in ui.technology_rows():
+		if row["id"] == "TechAlchemy":
+			assert_true(bool(row["can_research"]), "with the points it is enabled")
+			assert_eq(str(row["reason"]), "", "and carries no reason")
+	ui.free()
+	t.free()
+
+## A fake pack whose availability check passes but whose consume fails (a race).
+class RefusingInventory extends InventorySlice:
+	func consume_items(_counts: Dictionary) -> bool:
+		return false
+
+func _test_void_failed_consume_keeps_counter() -> void:
+	var inv := RefusingInventory.new()
+	add_child(inv)
+	inv.add_item("Voidite", 1)
+	var crafting := CraftingSlice.new()
+	add_child(crafting)
+	crafting.inventory_slice = inv
+	crafting.set_skill("Smithing", "journeyman")
+	var r := crafting.craft(VOID_RECIPE, "")
+	assert_false(bool(r["success"]), "the craft fails")
+	assert_eq(str(r["reason"]), "missing_inputs", "on the consume")
+	assert_eq(crafting._burst_counter(""), 0, "and the burst counter did not advance")
+	crafting.free()
+	inv.free()
+
+func _test_void_burst_roll_golden_and_counter_roundtrip() -> void:
+	# Pinned: a change to the mix changes every player's burst sequence.
+	assert_eq(int(CraftingSlice.burst_roll(0, "player_a", 0) * 16777216.0), 14654706, "golden roll 1")
+	assert_eq(int(CraftingSlice.burst_roll(0, "player_a", 1) * 16777216.0), 10874, "golden roll 2")
+	assert_eq(int(CraftingSlice.burst_roll(1234, "player_a", 7) * 16777216.0), 10492433, "golden roll 3")
+	assert_eq(int(CraftingSlice.burst_roll(-5, "player_b", 100) * 16777216.0), 5965196, "golden roll 4 (negative seed)")
+
+	var rig := _make_void_rig()
+	var registry: Node = rig["registry"]
+	var crafting: Node = rig["crafting"]
+	var pid := "player_peer_ctr"
+	registry.ensure_player(pid)
+	crafting.set_skill_for(pid, "Smithing", "journeyman")
+	var start := _void_counter(pid, false)
+	_void_craft(rig, pid, start)
+	assert_eq(registry.get_craft_counter(pid), start + 1, "a craft advances the counter by one")
+	var saved: Dictionary = JSON.parse_string(JSON.stringify(registry.get_player_data(pid)))
+	var reg2 := PlayerRegistry.new()
+	add_child(reg2)
+	reg2.apply_player_data(pid, saved)
+	assert_eq(reg2.get_craft_counter(pid), start + 1, "the counter survives a registry save/load")
+	var crafting2 := CraftingSlice.new()
+	add_child(crafting2)
+	crafting2.player_registry = reg2
+	assert_eq(crafting2._burst_counter(pid), start + 1, "and the next roll continues the sequence")
+	crafting2.free()
+	reg2.free()
+	_free_void_rig(rig)
+
+func _test_void_burst_no_player_reports_no_flag() -> void:
+	var rig := _make_void_rig()
+	var crafting: Node = rig["crafting"]
+	var spec: Dictionary = GameData.RECIPES[VOID_RECIPE].recipe["burst"]
+	var result: Dictionary = crafting._resolve_burst(VOID_RECIPE, spec, "")
+	assert_true(bool(result["burst"]["survived"]), "a full-health local body survives")
+	assert_eq(str(result["burst"]["flag"]), "", "but with no player id no flag is reported")
+	_free_void_rig(rig)

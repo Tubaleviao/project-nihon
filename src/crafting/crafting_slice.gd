@@ -176,14 +176,19 @@ func craft(recipe_id: String, player_id: String = "") -> Dictionary:
 
 	# Phase 118 — a recipe with `burst` data rolls on the host BEFORE anything is taken, so
 	# the draw depends only on (world seed, player, counter), never on the outcome.
+	# Phase 124 — the durable counter advances only AFTER the input is consumed: the draw
+	# is peeked here, and a failed consume returns without burning a draw from the sequence.
 	var burst_spec: Dictionary = recipe.get("burst", {}) if recipe.get("burst", {}) is Dictionary else {}
 	var burst_hit := false
-	if not burst_spec.is_empty() and is_authoritative:
-		burst_hit = _roll_burst(pid, float(burst_spec.get("chance", 0.0)))
+	var burst_capable := not burst_spec.is_empty() and is_authoritative
+	if burst_capable:
+		burst_hit = _peek_burst(pid, float(burst_spec.get("chance", 0.0)))
 
 	# Consume inputs, then produce outputs.
 	if not inventory.consume_items(_to_counts(inputs)):
 		return _fail(recipe_id, "missing_inputs", pid)
+	if burst_capable:
+		_advance_burst_counter(pid)
 
 	if burst_hit:
 		return _resolve_burst(recipe_id, burst_spec, pid)
@@ -194,6 +199,11 @@ func craft(recipe_id: String, player_id: String = "") -> Dictionary:
 		var qty: int = int(entry.get("quantity", 1))
 		inventory.add_item(item_id, qty)
 		produced.append({ "item": item_id, "quantity": qty })
+
+	# Phase 124 — the host pays the crafter's research points (craft + first-craft bonus)
+	# before the result is emitted, so the sync the result triggers carries the new balance.
+	if is_authoritative and technology_slice != null and technology_slice.has_method("note_craft"):
+		technology_slice.note_craft(recipe_id, pid)
 
 	return _ok(recipe_id, produced, pid)
 
@@ -509,28 +519,44 @@ func _check_profession_gate(recipe: Dictionary, player_id: String) -> String:
 
 ## The deterministic burst draw in [0, 1): a mix of (world seed, player id, counter), so
 ## a fixed seed and player replay the same sequence and a client has nothing to roll.
+##
+## Phase 124 — a custom integer mix, not `hash(Array)` (which Godot does not document as
+## stable across engine versions): FNV-1a over the player id's UTF-8 bytes, the seed's two
+## 32-bit halves and the counter, then a xorshift-multiply finalizer. Pinned by golden
+## values in the suite; changing it changes every player's burst sequence.
 static func burst_roll(world_seed: int, player_id: String, counter: int) -> float:
-	var h: int = hash([world_seed, player_id, counter]) & 0xFFFFFFFF
+	var h: int = 0x811C9DC5
+	for b in player_id.to_utf8_buffer():
+		h = ((h ^ b) * 0x01000193) & 0xFFFFFFFF
+	for v in [world_seed & 0xFFFFFFFF, (world_seed >> 32) & 0xFFFFFFFF, counter & 0xFFFFFFFF]:
+		h = ((h ^ int(v)) * 0x01000193) & 0xFFFFFFFF
 	# Finalizer (xorshift-multiply) so neighbouring counters do not give neighbouring draws.
 	h = ((h >> 16) ^ h) * 0x45D9F3B & 0xFFFFFFFF
 	h = ((h >> 16) ^ h) * 0x45D9F3B & 0xFFFFFFFF
 	h = (h >> 16) ^ h
 	return float(h & 0xFFFFFF) / 16777216.0
 
-## Take the next draw for `player_id` and report whether it is a burst. The counter
-## advances on every burst-capable craft that reaches the roll and is durable.
-func _roll_burst(player_id: String, chance: float) -> bool:
-	var counter := 0
+## The craft counter the next draw for `player_id` uses (durable on the record).
+func _burst_counter(player_id: String) -> int:
 	if player_registry != null and player_id != "" and player_registry.has_method("get_craft_counter"):
-		counter = int(player_registry.get_craft_counter(player_id))
-		player_registry.record_craft_counter(player_id, counter + 1)
-	else:
-		counter = int(_local_craft_counters.get(player_id, 0))
-		_local_craft_counters[player_id] = counter + 1
+		return int(player_registry.get_craft_counter(player_id))
+	return int(_local_craft_counters.get(player_id, 0))
+
+## Whether the next draw for `player_id` is a burst. Does NOT advance the counter.
+func _peek_burst(player_id: String, chance: float) -> bool:
 	var world_seed := 0
 	if terrain_slice != null and terrain_slice.has_method("get_world_seed"):
 		world_seed = int(terrain_slice.get_world_seed())
-	return burst_roll(world_seed, player_id, counter) < chance
+	return burst_roll(world_seed, player_id, _burst_counter(player_id)) < chance
+
+## Spend the draw `_peek_burst` looked at. Called once the craft's input is consumed, so
+## the counter advances on every burst-capable craft that took its input and only then.
+func _advance_burst_counter(player_id: String) -> void:
+	var counter := _burst_counter(player_id)
+	if player_registry != null and player_id != "" and player_registry.has_method("record_craft_counter"):
+		player_registry.record_craft_counter(player_id, counter + 1)
+	else:
+		_local_craft_counters[player_id] = counter + 1
 
 ## The crafter's HP as the host holds it: the live body for the local player, else the
 ## record's host-simulated number; an unmodelled body reads as full health.
@@ -552,15 +578,15 @@ func _resolve_burst(recipe_id: String, spec: Dictionary, player_id: String) -> D
 	var survived := after > PlayerRegistry.HP_EPSILON
 	var is_local := player_id == "" or player_id == local_player_id()
 	GameBus.player_damaged.emit(damage, "void_burst", "player" if is_local else player_id)
+	# Phase 124 — one guarded block: `flag` is reported only after a grant went through, so
+	# a burst with no player id or no flag store reports none.
 	var flag := ""
-	if survived:
-		flag = str(spec.get("grantsFlag", ""))
-		if flag != "" and flag_store != null and player_id != "":
-			flag_store.grant_flag(player_id, flag)
-			if profession_slice != null:
-				profession_slice.evaluate(player_id)
-		elif flag_store == null:
-			flag = ""
+	var wanted := str(spec.get("grantsFlag", ""))
+	if survived and wanted != "" and player_id != "" and flag_store != null:
+		flag_store.grant_flag(player_id, wanted)
+		flag = wanted
+		if profession_slice != null:
+			profession_slice.evaluate(player_id)
 	GameBus.void_burst_resolved.emit({
 		"recipe_id": recipe_id, "player_id": player_id, "damage": damage,
 		"survived": survived, "flag": flag,

@@ -1,0 +1,11 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/world_systems/researchpointrule.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+rules = {"craft":1,"gather":1,"firstCraftOfRecipe":3}
+maxResearchCost = 1000
+description = "Points of research a player earns per source: a craft, a gathered resource, and a one-time bonus for the first craft of each recipe. Spent by beginResearch at the technology's researchCost."
+tags = ["world-system"]

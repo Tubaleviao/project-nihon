@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = ""
 status = 0
-researchCost = 0
+researchCost = 3
 tier = 0
 tech = {"unlocks":["RecipeDuskfiberCloak"],"requires":["TechBasicCarpentry"],"researchDuration":30,"researchMaterials":[{"item":"Duskfiber","quantity":8}]}
 state_machine_field = "status"

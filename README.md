@@ -144,7 +144,7 @@ npm run generate  # generate the design bible into bible/
 | 121 | Crash-consistent saves | Done |
 | 122 | Far terrain without mirroring and one scene-offset helper | Done |
 | 123 | The player rig wears the character material and body masks | Done |
-| 124 | Research points: the fabric's `researchCost` is enforced | Planned |
+| 124 | Research points: the fabric's `researchCost` is enforced | Done |
 | 125 | Waystones: a first fast-travel network | Planned |
 | 126 | Tree clears the host keeps, and one seam-wrap module | Planned |
 | 127 | Terrain streaming, generation records and persistence cleanup sweep | Planned |

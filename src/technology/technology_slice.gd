@@ -22,6 +22,7 @@ extends Node
 ##         research_intent(tech_id, player_id)    — Phase 34: who is researching
 ##   OUT : research_resolved(result)    { tech_id, success, reason, status, player_id }
 ##         technology_unlocked(tech_id, player_id)
+##         research_points_synced(player_id, points)  — Phase 124: the balance changed
 ##         research_intent(tech_id, "")           — client forwards to the host
 ##
 ## Public API (every call takes an optional `player_id`; "" means THIS machine's
@@ -35,10 +36,29 @@ extends Node
 ##   get_statuses(player_id := "")                -> Dictionary
 ##   apply_statuses(statuses, player_id := "")    -> void   (persistence restore)
 ##   inventory_for(player_id)                     -> Node
+##   get_points(player_id := "")                  -> int    (Phase 124 research-point balance)
+##   points_for(source)                           -> int    (the fabric rule: craft, gather, firstCraftOfRecipe)
+##   grant_points(player_id, source, amount)      -> int    (host-only; the points actually granted)
+##   note_craft(recipe_id, player_id := "")       -> int    (host-only; craft + first-craft points)
+##
+## Phase 124 — research points. `begin_research` spends the technology's fabric
+## `researchCost` from the researcher's balance, which is host-owned and earned from
+## play by the `ResearchPointRule` table. The balance (and the recipes whose first-craft
+## bonus was paid) rides the per-player status snapshot under reserved keys that no
+## technology can collide with, so every save and sync path carries it; a snapshot
+## without them (a legacy save) loads as 0 points and no recipes crafted.
 
 const STATE_LOCKED := "locked"
 const STATE_RESEARCHING := "researching"
 const STATE_UNLOCKED := "unlocked"
+
+## Reserved snapshot keys (Phase 124); technology keys are `Tech*`, so these never collide.
+const POINTS_KEY := "_research_points"
+const CRAFTED_KEY := "_first_crafts"
+
+## Fallback rule table when GameData has no ResearchPointRule (a slice built before
+## GameData loads); mirrors the fabric default.
+const DEFAULT_RULES := { "craft": 1, "gather": 1, "firstCraftOfRecipe": 3 }
 
 ## Set by game_root so research can consume material costs from inventory. The
 ## fallback inventory when no per-player registry is wired (isolated unit tests)
@@ -60,6 +80,12 @@ var _status: Dictionary = {}
 ## player_id -> { tech key -> wall-clock deadline (Unix seconds) } for
 ## auto-completion in _process.
 var _research_end_at: Dictionary = {}
+
+## player_id -> research-point balance (host-owned; a client only mirrors it).
+var _points: Dictionary = {}
+
+## player_id -> { recipe key -> true } for recipes whose first-craft bonus was paid.
+var _first_crafts: Dictionary = {}
 
 ## Reverse index: recipe key -> owning technology key. Built once in _ready().
 var _recipe_tech: Dictionary = {}
@@ -138,6 +164,11 @@ func begin_research(tech_id: String, player_id: String = "") -> Dictionary:
 		if not is_unlocked(str(req), pid):
 			return _emit(_result(tech_id, false, "prerequisite_locked:%s" % str(req), cur, pid))
 
+	# Phase 124 — the point cost is checked before anything is consumed.
+	var cost := research_cost(tech_id)
+	if get_points(pid) < cost:
+		return _emit(_result(tech_id, false, "insufficient_points", cur, pid))
+
 	var materials: Array = tech.get("researchMaterials", [])
 	var inventory := inventory_for(pid)
 	if inventory == null or not inventory.has_method("consume_items"):
@@ -154,6 +185,7 @@ func begin_research(tech_id: String, player_id: String = "") -> Dictionary:
 		return _emit(_result(tech_id, false, "missing_materials", cur, pid))
 
 	_status_for(pid)[tech_id] = STATE_RESEARCHING
+	_set_points(pid, get_points(pid) - cost)
 	var duration: float = float(tech.get("researchDuration", 0.0))
 	if duration > 0.0:
 		# Wall-clock seconds, not `Time.get_ticks_msec()`: the deadline is compared
@@ -201,8 +233,82 @@ func get_recipe_tech(recipe_id: String) -> String:
 func get_status(tech_id: String, player_id: String = "") -> String:
 	return str(_status_for(resolve_player(player_id)).get(tech_id, STATE_LOCKED))
 
+## One player's status snapshot: every technology's status, plus (Phase 124) the
+## research-point balance and the recipes whose first-craft bonus was paid, under
+## reserved keys, only when non-empty.
 func get_statuses(player_id: String = "") -> Dictionary:
-	return _status_for(resolve_player(player_id)).duplicate()
+	var pid := resolve_player(player_id)
+	var snap := _status_for(pid).duplicate()
+	if get_points(pid) > 0:
+		snap[POINTS_KEY] = get_points(pid)
+	if not _first_crafts.get(pid, {}).is_empty():
+		var crafted: Array = _first_crafts[pid].keys()
+		crafted.sort()
+		snap[CRAFTED_KEY] = crafted
+	return snap
+
+# ---------------------------------------------------------------------------
+# Research points (Phase 124)
+# ---------------------------------------------------------------------------
+
+## The point rule table from the fabric (`ResearchPointRule.rules`).
+func _rules() -> Dictionary:
+	var res: Resource = GameData.WORLD_SYSTEMS.get("ResearchPointRule", null)
+	if res != null:
+		var v = res.get("rules")
+		if v is Dictionary:
+			return v
+	return DEFAULT_RULES
+
+## Points a source grants by the fabric rule; 0 for an unknown source.
+func points_for(source: String) -> int:
+	return maxi(0, int(_rules().get(source, 0)))
+
+## A technology's `researchCost` from the fabric (0 for an unknown technology).
+func research_cost(tech_id: String) -> int:
+	var res: Resource = GameData.TECHNOLOGIES.get(tech_id, null)
+	if res == null:
+		return 0
+	return maxi(0, int(res.get("researchCost")))
+
+func get_points(player_id: String = "") -> int:
+	return int(_points.get(resolve_player(player_id), 0))
+
+## Host-only: add `amount` points from `source` to `player_id`. A client owns no
+## balance (it mirrors the host's), so its own call changes nothing. Returns the
+## points actually granted.
+func grant_points(player_id: String, source: String, amount: int) -> int:
+	if not is_authoritative or amount <= 0 or not _rules().has(source):
+		return 0
+	var pid := resolve_player(player_id)
+	_set_points(pid, get_points(pid) + amount)
+	return amount
+
+## Host-only: a successful craft of `recipe_id` by `player_id` earns the `craft` rule,
+## plus the `firstCraftOfRecipe` bonus the first time that player crafts that recipe.
+## Returns the points granted.
+func note_craft(recipe_id: String, player_id: String = "") -> int:
+	if not is_authoritative:
+		return 0
+	var pid := resolve_player(player_id)
+	# The marker is written before any grant: each grant syncs and records a snapshot.
+	var first := false
+	if not _first_crafts.has(pid):
+		_first_crafts[pid] = {}
+	if not _first_crafts[pid].has(recipe_id):
+		_first_crafts[pid][recipe_id] = true
+		first = true
+	var granted := grant_points(pid, "craft", points_for("craft"))
+	if first:
+		granted += grant_points(pid, "firstCraftOfRecipe", points_for("firstCraftOfRecipe"))
+	return granted
+
+func _set_points(player_id: String, points: int) -> void:
+	var clamped := maxi(0, points)
+	if clamped == get_points(player_id) and _points.has(player_id):
+		return
+	_points[player_id] = clamped
+	GameBus.research_points_synced.emit(player_id, clamped)
 
 ## Return the structured `tech` json field for a technology (or {} if malformed).
 ## Public so the UI slice can render cost / duration / prerequisite edges.
@@ -218,6 +324,17 @@ func apply_statuses(statuses: Dictionary, player_id: String = "") -> void:
 	for tech_id in statuses:
 		if GameData.TECHNOLOGIES.has(tech_id):
 			bucket[tech_id] = str(statuses[tech_id])
+	# Phase 124 — a snapshot without the reserved keys (a legacy save) restores 0 / none.
+	var points_v: Variant = statuses.get(POINTS_KEY, 0)
+	_points[pid] = maxi(0, int(points_v)) if (points_v is int or points_v is float) else 0
+	var crafted: Dictionary = {}
+	var crafted_v: Variant = statuses.get(CRAFTED_KEY, [])
+	if crafted_v is Array:
+		for recipe_id in crafted_v:
+			# Bounded to the recipes the fabric knows: a stray entry is dropped, not stored.
+			if GameData.RECIPES.has(str(recipe_id)):
+				crafted[str(recipe_id)] = true
+	_first_crafts[pid] = crafted
 	_research_end_at[pid] = {}
 	# Re-schedule auto-completion for any tech restored mid-research so it does not
 	# stay stuck in "researching" forever after a reload (elapsed time is not
@@ -227,6 +344,8 @@ func apply_statuses(statuses: Dictionary, player_id: String = "") -> void:
 			var duration: float = float(_get_tech_data(tech_id).get("researchDuration", 0.0))
 			if duration > 0.0:
 				_deadlines_for(pid)[tech_id] = Time.get_unix_time_from_system() + duration
+	# Emitted last: the host's listener records a snapshot of the now-complete state.
+	GameBus.research_points_synced.emit(pid, int(_points[pid]))
 
 # ---------------------------------------------------------------------------
 # Private

@@ -144,7 +144,7 @@ issue number where the criterion used to be.
 | 121 | Crash-consistent saves | Done | below |
 | 122 | Far terrain without mirroring and one scene-offset helper | Done | below |
 | 123 | The player rig wears the character material and body masks | Done | below |
-| 124 | Research points: the fabric's `researchCost` is enforced | Planned | below |
+| 124 | Research points: the fabric's `researchCost` is enforced | Done | below |
 | 125 | Waystones: a first fast-travel network | Planned | below |
 | 126 | Tree clears the host keeps, and one seam-wrap module | Planned | below |
 | 127 | Terrain streaming, generation records and persistence cleanup sweep | Planned | below |
@@ -1137,7 +1137,7 @@ runners.
 
 ---
 
-## Phase 124 — Research points: the fabric's `researchCost` is enforced
+## Phase 124 — Research points: the fabric's `researchCost` is enforced ✅ Done
 
 **Goal:** every technology in the fabric carries a `researchCost` (research points), but the runtime
 ignores it: research costs only materials and time (deferred from Phase 13). This phase gives each
@@ -1170,17 +1170,17 @@ here too.
   is disabled with the reason when points are short.
 
 **Acceptance criteria:**
-- [ ] `npm run validate` and `npm run check-drift` green with the rule table; a negative rule value
+- [x] `npm run validate` and `npm run check-drift` green with the rule table; a negative rule value
   fails validation.
-- [ ] Suite: research with too few points is refused with `insufficient_points` and consumes no
+- [x] Suite: research with too few points is refused with `insufficient_points` and consumes no
   materials; with enough points it spends exactly `researchCost`.
-- [ ] Suite: a craft on the host grants the fabric's points to the crafter only; a client's own grant
+- [x] Suite: a craft on the host grants the fabric's points to the crafter only; a client's own grant
   call changes nothing; points round-trip through a registry save/load and a legacy record loads as 0.
-- [ ] Suite: a failed consume leaves the burst counter unchanged; the persisted counter survives a
+- [x] Suite: a failed consume leaves the burst counter unchanged; the persisted counter survives a
   registry save/load and the next roll continues the sequence; `burst_roll` matches its golden values;
   `_resolve_burst` with `player_id == ""` reports no flag.
-- [ ] Harness: a step proves `research_points_synced` reaches only the owning client after a craft.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Harness: a step proves `research_points_synced` reaches only the owning client after a craft.
+- [x] Suite green on both boot paths, harness green.
 
 ---
 
@@ -1608,7 +1608,7 @@ and the pass is bounded per tick so a large collapse spreads over several ticks.
 - **Public wiki deployment** — VitePress (or equivalent) static-site deployment
   and CI-triggered wiki regeneration from the fabric (deferred from Phase 9).
 - **Research cost points** — the abstract `researchCost` points field is modelled
-  in the fabric but not enforced at runtime (deferred from Phase 13). **(planned: Phase 124.)**
+  in the fabric but not enforced at runtime (deferred from Phase 13). **(closed: Phase 124 — `begin_research` spends `researchCost` from a host-owned balance earned by the `ResearchPointRule` table.)**
 - **`VoidTouched` special-case unlock** — the void-burst survivor unlock trigger
   is defined in the fabric but not wired to any runtime event (deferred from
   Phase 13). **(closed: Phase 118 — a refining craft can burst, survivors get

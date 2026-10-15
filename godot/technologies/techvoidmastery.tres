@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = ""
 status = 0
-researchCost = 0
+researchCost = 12
 tier = 0
 tech = {"unlocks":["RecipeVoidResistPotion","RecipeVoidRuneTablet"],"requires":["TechArcaneForging","TechAlchemy"],"researchDuration":120,"researchMaterials":[{"item":"Voidite","quantity":5}]}
 state_machine_field = "status"

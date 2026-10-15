@@ -1483,7 +1483,8 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 	var material := str(span["material"])
 	var quantity := 1
 	var vein: Dictionary = {}
-	if material == "":
+	var natural := material == ""
+	if natural:
 		var yielded := _natural_yield(tile, span)
 		material = str(yielded["material"])
 		quantity = int(yielded["quantity"])
@@ -1495,15 +1496,21 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 		_mark_dirty(vein["anchor"])
 	_rebuild_chunk_at_tile(tile)
 
+	var banked := false
 	if inventory != null and inventory.has_method("add_item"):
 		# The ground is dug either way; a yield the pack cannot hold is lost, and the local
 		# player is told rather than left wondering where it went.
-		if not inventory.add_item(material, quantity) and not _is_remote_actor(player_id):
+		banked = inventory.add_item(material, quantity)
+		if not banked and not _is_remote_actor(player_id):
 			GameBus.inventory_full.emit()
 	_push_inventory(player_id)
 
 	var pos := Vector3(world_pos.x, float(span["top"]), world_pos.z)
 	GameBus.block_mined.emit(material, quantity, pos)
+	# Phase 124 — only a natural yield that reached the pack counts as gathering; a
+	# placed block mined back would otherwise be a research-point farm.
+	if natural and banked:
+		GameBus.resource_gathered.emit(player_id, material, quantity)
 	GameBus.block_changed.emit("mine", world_pos, normal, material)
 	return { "success": true, "material": material, "quantity": quantity, "position": pos, "player_id": player_id }
 

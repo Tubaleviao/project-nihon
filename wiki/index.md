@@ -200,6 +200,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [GovernanceSystem](entities/governancesystem.md) — Defines the rules of in-game community governance
 - [MarketSystem](entities/marketsystem.md) — Defines the rules of the persistent player-run market
 - [PersistenceSystem](entities/persistencesystem.md) — Defines the authoritative save lifecycle: which directory the world and per-player records live in, how often the server autosaves, how a headless server is asked to shut down cleanly, and how a record is written so a kill mid-write cannot truncate it
+- [ResearchPointRule](entities/researchpointrule.md) — Points of research a player earns per source: a craft, a gathered resource, and a one-time bonus for the first craft of each recipe
 - [TradeSystem](entities/tradesystem.md) — Defines the rules governing player-to-player trade
 - [WeatherSystem](entities/weathersystem.md) — Simulates weather across biomes as an emergent world system
 - [WorldSystem](entities/worldsystem.md) — The planet as a fact of the fabric

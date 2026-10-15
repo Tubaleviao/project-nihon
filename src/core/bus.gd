@@ -174,6 +174,16 @@ signal player_saved(player_id: String)
 ## snapshot: { inventory, inventory_durability, technology }.
 signal own_state_synced(data: Dictionary)
 
+## Phase 124 — a player's research-point balance changed (earned from a craft or a
+## gather, or spent by begin_research). Emitted by TechnologySlice on the host; a
+## client emits it locally when the host's own-state snapshot lands, so the technology
+## window refreshes. game_root pushes it to the owning peer only.
+signal research_points_synced(player_id: String, points: int)
+
+## Phase 124 — the host resolved a gather (a mined resource) for `player_id` ("" is the
+## local player). The host grants the fabric's `gather` research points on it.
+signal resource_gathered(player_id: String, material: String, quantity: int)
+
 # ---------------------------------------------------------------------------
 # Battle — death signals
 # ---------------------------------------------------------------------------

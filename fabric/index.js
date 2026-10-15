@@ -182,6 +182,7 @@ module.exports = defineFabric({
       TechArcaneForging:  technology.TechArcaneForging,
       TechAlchemy:        technology.TechAlchemy,
       TechVoidMastery:    technology.TechVoidMastery,
+      ResearchPointRule:  technology.ResearchPointRule,
     },
     // World — Creatures
     {

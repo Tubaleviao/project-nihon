@@ -13,7 +13,7 @@ Fiber processing and loom construction techniques. Unlocks duskfiber weaving and
 | ---- | ---- | -------- | ----------- |
 | `id` | uuid | yes |  |
 | `status` | enum (`locked`, `researching`, `unlocked`) | yes |  |
-| `researchCost` | integer | yes | Research points required to complete |
+| `researchCost` | integer | yes | Research points spent to begin research (Phase 124); earned by the ResearchPointRule table |
 | `tier` | integer | yes | Technology tree tier |
 | `tech` | json | yes | Structured technology data: recipe unlocks, prerequisite technologies, research duration (seconds), and material cost consumed to begin research. |
 
