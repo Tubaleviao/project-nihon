@@ -1,6 +1,87 @@
 const { defineEntity } = require('@newel/core')
 
+// Phase 129 — the status-effect table. The runtime (src/battle/status_effects.gd) reads it from
+// GameData.WORLD_SYSTEMS["CombatSystem"].statusEffects; a creature's `onHitEffects` ([{ effect, chance }])
+// names the rows a landed hit rolls.
+//
+// StatusEffect fields:
+//   durationSeconds: how long the effect lasts (0 = instant, e.g. knockback's displacement).
+//   damagePerSecond: damage dealt each second while the effect lasts.
+//   immobilize: the body cannot move or act while the effect lasts.
+//   damageTakenFactor: multiplier on every hit the body takes while the effect lasts (1 = none).
+//   displaceTiles: whole tiles the body is pushed along the attack direction when it is applied.
+//   stacks: false = reapplying refreshes the timer; true = reapplying adds a second instance.
+//   extinguishedBy: weather states under which the effect ends.
+const STATUS_EFFECTS = {
+  heat_burn:  { durationSeconds: 8, damagePerSecond: 5, immobilize: false, damageTakenFactor: 1,   displaceTiles: 0, stacks: false, extinguishedBy: ['rain', 'storm'] },
+  paralysis:  { durationSeconds: 3, damagePerSecond: 0, immobilize: true,  damageTakenFactor: 1,   displaceTiles: 0, stacks: false, extinguishedBy: [] },
+  knockback:  { durationSeconds: 0, damagePerSecond: 0, immobilize: false, damageTakenFactor: 1,   displaceTiles: 1, stacks: false, extinguishedBy: [] },
+  knockdown:  { durationSeconds: 2, damagePerSecond: 0, immobilize: false, damageTakenFactor: 1.5, displaceTiles: 0, stacks: false, extinguishedBy: [] },
+  stagger:    { durationSeconds: 1, damagePerSecond: 0, immobilize: true,  damageTakenFactor: 1,   displaceTiles: 0, stacks: false, extinguishedBy: [] },
+}
+
+const EFFECT_FIELDS = ['durationSeconds', 'damagePerSecond', 'immobilize', 'damageTakenFactor', 'displaceTiles', 'stacks', 'extinguishedBy']
+const MAX_DISPLACE_TILES = 8
+const MAX_DURATION_SECONDS = 600
+
+/** Problems with a status-effect table, as strings. `weatherStates` (optional) is the list of weather state ids. */
+function statusEffectProblems(table, weatherStates) {
+  const problems = []
+  const isNum = (v) => typeof v === 'number' && Number.isFinite(v)
+  const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
+  if (!isObj(table)) return ['CombatSystem.statusEffects must be an object']
+  for (const [id, e] of Object.entries(table)) {
+    if (!/^[a-z][a-z_]*$/.test(id)) problems.push(`status effect "${id}" must be lower snake_case`)
+    if (!isObj(e)) { problems.push(`status effect "${id}" must be an object`); continue }
+    for (const key of Object.keys(e)) if (!EFFECT_FIELDS.includes(key)) problems.push(`status effect "${id}" has unknown field "${key}"`)
+    if (!isNum(e.durationSeconds) || e.durationSeconds < 0 || e.durationSeconds > MAX_DURATION_SECONDS) problems.push(`status effect "${id}".durationSeconds must be in 0..${MAX_DURATION_SECONDS}, got ${e.durationSeconds}`)
+    if (!isNum(e.damagePerSecond) || e.damagePerSecond < 0) problems.push(`status effect "${id}".damagePerSecond must be >= 0, got ${e.damagePerSecond}`)
+    if (isNum(e.damagePerSecond) && e.damagePerSecond > 0 && !(e.durationSeconds > 0)) problems.push(`status effect "${id}" deals damage per second but has no duration`)
+    if (!isNum(e.damageTakenFactor) || e.damageTakenFactor < 0) problems.push(`status effect "${id}".damageTakenFactor must be >= 0, got ${e.damageTakenFactor}`)
+    if (!Number.isInteger(e.displaceTiles) || e.displaceTiles < 0 || e.displaceTiles > MAX_DISPLACE_TILES) problems.push(`status effect "${id}".displaceTiles must be an integer in 0..${MAX_DISPLACE_TILES}, got ${e.displaceTiles}`)
+    if (typeof e.immobilize !== 'boolean') problems.push(`status effect "${id}".immobilize must be a boolean`)
+    if (typeof e.stacks !== 'boolean') problems.push(`status effect "${id}".stacks must be a boolean`)
+    if (e.immobilize === true && e.stacks !== false) problems.push(`status effect "${id}" immobilizes, so it must have stacks: false`)
+    if (!Array.isArray(e.extinguishedBy)) problems.push(`status effect "${id}".extinguishedBy must be an array`)
+    else if (weatherStates) for (const w of e.extinguishedBy) if (!weatherStates.includes(w)) problems.push(`status effect "${id}".extinguishedBy names unknown weather state "${w}"`)
+  }
+  return problems
+}
+
+/**
+ * Problems with the `onHitEffects` of every creature. `creatures` maps a creature key to its list
+ * ([{ effect, chance }]); `table` is the status-effect table.
+ */
+function onHitProblems(creatures, table) {
+  const problems = []
+  for (const [key, list] of Object.entries(creatures)) {
+    if (!Array.isArray(list)) { problems.push(`${key}.onHitEffects must be an array`); continue }
+    for (const entry of list) {
+      if (entry === null || typeof entry !== 'object') { problems.push(`${key}.onHitEffects has a non-object entry`); continue }
+      if (!Object.prototype.hasOwnProperty.call(table, entry.effect)) problems.push(`${key}.onHitEffects names undefined effect "${entry.effect}"`)
+      if (typeof entry.chance !== 'number' || !(entry.chance >= 0 && entry.chance <= 1)) problems.push(`${key}.onHitEffects "${entry.effect}" chance must be in 0..1, got ${entry.chance}`)
+    }
+  }
+  return problems
+}
+
+/** The `onHitEffects` defaults off the creature entities (those that declare the field). */
+function creatureOnHit(creatureEntities) {
+  const out = {}
+  for (const [key, e] of Object.entries(creatureEntities)) {
+    const f = (e.fields || {}).onHitEffects
+    if (f) out[key] = f.defaultValue === undefined ? [] : f.defaultValue
+  }
+  return out
+}
+
+function validateCombat(table, creatures, weatherStates) {
+  const problems = statusEffectProblems(table, weatherStates).concat(onHitProblems(creatures, table))
+  if (problems.length) throw new Error('Combat status-effect table is invalid:\n  ' + problems.join('\n  '))
+}
+
 module.exports = {
+
 
   CombatSystem: defineEntity({
     tags: ['world-system'],
@@ -12,6 +93,11 @@ module.exports = {
     goal: 'Enforce the MagicBalancedWithMartial and DestructibleBuildings constitution decisions through combat system rules',
     fields: {
       id: { type: 'uuid', primaryKey: true },
+      statusEffects: {
+        type: 'json',
+        description: 'Status-effect table (Phase 129): { <id>: { durationSeconds, damagePerSecond, immobilize, damageTakenFactor, displaceTiles, stacks, extinguishedBy } } (validated at fabric load)',
+        defaultValue: STATUS_EFFECTS,
+      },
     },
     behaviors: {
       calculateHit: {
@@ -89,3 +175,5 @@ module.exports = {
   }),
 
 }
+
+Object.assign(module.exports, { STATUS_EFFECTS, statusEffectProblems, onHitProblems, creatureOnHit, validateCombat })

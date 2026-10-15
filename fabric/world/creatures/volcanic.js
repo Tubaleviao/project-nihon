@@ -25,6 +25,7 @@ module.exports = {
       spawnChance:    { type: 'decimal', description: 'Probability (0–1) that a chunk of this creature\'s biome rolls a pack at all', defaultValue: 0.6 },
       spawnDensity:   { type: 'decimal', description: 'Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world', defaultValue: 0.5 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'VolcanicBadlands' },
+      onHitEffects:   { type: 'json', description: 'Status effects a landed hit rolls: [{ effect, chance }] (Phase 129); each effect names a CombatSystem.statusEffects row', defaultValue: [{ effect: 'heat_burn', chance: 1.0 }] },
       drops: dropsData([
         { item: 'slug_shell_shard',       chance: 1.0,  minQty: 2, maxQty: 4 },
         { item: 'superheated_slime_vial', chance: 1.0,  minQty: 1, maxQty: 2 },
@@ -108,6 +109,7 @@ module.exports = {
       spawnChance:    { type: 'decimal', description: 'Probability (0–1) that a chunk of this creature\'s biome rolls a pack at all', defaultValue: 0.6 },
       spawnDensity:   { type: 'decimal', description: 'Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world', defaultValue: 0.5 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'VolcanicBadlands' },
+      onHitEffects:   { type: 'json', description: 'Status effects a landed hit rolls: [{ effect, chance }] (Phase 129); each effect names a CombatSystem.statusEffects row', defaultValue: [{ effect: 'knockdown', chance: 1.0 }] },
       drops: dropsData([
         { item: 'gargoyle_wing_fragment',  chance: 1.0, minQty: 1, maxQty: 2 },
         { item: 'petrified_binding_stone', chance: 1.0, minQty: 1, maxQty: 1 },

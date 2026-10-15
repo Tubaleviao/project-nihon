@@ -158,6 +158,9 @@ jobs:
       - name: Check the weather table validation rejects bad tables
         run: node tools/check_weather.js
 
+      - name: Check the status-effect table validation rejects bad tables
+        run: node tools/check_combat.js
+
       - name: Check the README phase table against ROADMAP.md
         run: |
           node tools/check_readme_phases.js

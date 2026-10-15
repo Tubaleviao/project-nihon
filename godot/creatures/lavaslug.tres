@@ -18,6 +18,7 @@ spawnCount = 2
 spawnChance = 0.6
 spawnDensity = 0.5
 biome = 2
+onHitEffects = [{"effect":"heat_burn","chance":1}]
 drops = [{"item":"slug_shell_shard","chance":1,"minQty":2,"maxQty":4},{"item":"superheated_slime_vial","chance":1,"minQty":1,"maxQty":2},{"item":"lava_core_organ","chance":0.15,"minQty":1,"maxQty":1}]
 state_machine_field = "state"
 initial_state = "idle"
