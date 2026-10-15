@@ -750,6 +750,14 @@ func _on_research_intent(tech_id: String, _player_id: String) -> void:
 		return
 	_broadcast({ "type": "research_intent", "tech_id": tech_id })
 
+## Phase 129 — host → the target's peer ALONE: its active status effects (`[{ effect, remaining }]`).
+## Private to that peer; the packet names no player (the receiver knows who it is).
+func send_status_effects(peer_id: int, effects: Array) -> void:
+	if _role != Role.HOST:
+		Diag.warn("NetworkingSlice: send_status_effects called on non-host — dropped")
+		return
+	_deliver(peer_id, { "type": "status_effects", "effects": effects })
+
 ## Phase 125 — a client forwards a waystone travel intent; the host binds the identity.
 func _on_waystone_travel_intent(from_id: String, to_id: String, _player_id: String) -> void:
 	if _role != Role.CLIENT:
@@ -1893,6 +1901,10 @@ func _route_h2c(payload: Dictionary) -> void:
 				str(payload.get("attacker_id", "")),
 				"player"
 			)
+		"status_effects":
+			# Phase 129 — addressed to us alone; the slice validates each entry.
+			if _role == Role.CLIENT and payload.get("effects", null) is Array:
+				GameBus.status_effects_synced.emit("player", payload["effects"])
 		"void_burst_resolved":
 			# Phase 118 — addressed to us alone; the player id is the local bucket.
 			GameBus.void_burst_resolved.emit({

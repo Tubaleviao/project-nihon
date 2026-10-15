@@ -40,6 +40,7 @@ const UiSlice          := preload("res://src/ui/ui_slice.gd")
 const ChatSlice        := preload("res://src/chat/chat_slice.gd")
 const WaystoneSlice    := preload("res://src/world/waystone_slice.gd")
 const WeatherSlice     := preload("res://src/world/weather_slice.gd")
+const StatusEffects    := preload("res://src/battle/status_effects.gd")
 const Minimap          := preload("res://src/ui/minimap.gd")
 const LoadingScreen    := preload("res://src/ui/loading_screen.gd")
 const WaypointHorizon  := preload("res://src/ui/waypoint_horizon.gd")
@@ -84,6 +85,11 @@ var _ui:          UiSlice
 var _chat:        ChatSlice
 var _waystones:   WaystoneSlice
 var _weather:     WeatherSlice
+## Phase 129 — the host's status effects, ticked from the clock tick; null on a client.
+var _status:      StatusEffects
+## Test hook: fixed seconds in place of the engine clock.
+var status_clock: Callable = Callable()
+var _status_tick_elapsed: float = 0.0
 
 ## Network role (Phase 18/27). HOST = authoritative simulation (default, matches
 ## single-player); CLIENT = receives world state from a host; SERVER = headless
@@ -252,6 +258,12 @@ func _ready() -> void:
 	_chat        = ChatSlice.new()
 	_waystones   = WaystoneSlice.new()
 	_weather     = WeatherSlice.new()
+	# Phase 129 — status effects live on the host; the battle slice rolls them and the AI honours them.
+	_status = StatusEffects.new()
+	_battle.status_effects = _status
+	_battle.now_fn = Callable(self, "_status_now")
+	_creature_ai.status_effects = _status
+	_creature_ai.now_fn = Callable(self, "_status_now")
 	# Phase 128 — weather is a pure function of the seed, the biome and the clock.
 	_weather.clock    = _clock
 	_weather.seed_of  = Callable(_terrain, "get_world_seed")
@@ -367,6 +379,8 @@ func _ready() -> void:
 	_chat.weather_slice    = _weather
 	_player.weather_slice  = _weather
 	GameBus.weather_overrides_synced.connect(_on_weather_overrides_synced)
+	GameBus.knockback_requested.connect(_on_knockback_requested)
+	GameBus.player_died.connect(_on_status_player_died)
 	GameBus.player_teleport.connect(_on_player_teleport)
 	# Phase 125 — waystone travel reuses the exact admin teleport door.
 	_waystones.station_slice = _station
@@ -1110,6 +1124,7 @@ func _on_player_joined(peer_id: int, player_id: String, reconnected: bool) -> vo
 	# wolf (re-bound to the creature instance when that instance is resident).
 	_taming.apply_record(_registry.get_record(player_id), player_id)
 	_professions.apply_record(_registry.get_record(player_id), player_id)
+	_restore_status_effects(player_id, player_id)
 	print("[Server] %s player '%s' as %s" % ["reconnected" if reconnected else "joined", player_id, "peer_%d" % peer_id])
 	# Phase 52 — the peer's window opens NOW, so the regions around its saved position are
 	# resident (and its snapshot carries their edits) before the snapshot is built.
@@ -1230,6 +1245,10 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	if player_id.is_empty():
 		return
 	_fold_last_known_state(peer_id, player_id)
+	_refresh_status_records()
+	if _status != null:
+		_status.clear(player_id)
+		_status.take_dirty()
 	_persistence.save_player(player_id, _registry.get_player_data(player_id))
 	_registry.unbind_peer(peer_id)
 	# A stale AOI cell for a peer_id ENet may hand to the next connection would
@@ -1578,6 +1597,10 @@ func _tick_world_clock(delta: float) -> void:
 	_clock.advance(delta)
 	if not _is_client:
 		_weather.tick()
+		_status_tick_elapsed += delta
+		if _status_tick_elapsed >= STATUS_TICK_SECONDS:
+			_status_tick_elapsed = 0.0
+			tick_status_effects()
 	if not _is_client and _networking != null and _networking.is_host():
 		_clock_tick_elapsed += delta
 		if _clock_tick_elapsed >= clock_tick_seconds:
@@ -2248,6 +2271,7 @@ func _collect_save_job(incremental: bool) -> Dictionary:
 	# player's record is already durable and cannot have changed since it was
 	# written, so rewriting every long-gone player on every autosave was pure churn —
 	# the write cost grew with the number of players who had EVER joined.
+	_refresh_status_records()
 	for pid in _registry.get_online_player_ids():
 		var player_id := str(pid)
 		players[player_id] = _registry.get_player_data(player_id)
@@ -2887,6 +2911,111 @@ func _on_player_damaged(damage: float, attacker_id: String, target_id: String) -
 		_registry.get_hp(target_id), damage, PlayerSlice.MAX_HP)
 	_registry.record_simulated_hp(target_id, simulated)
 	_networking.send_player_damaged(peer, damage, attacker_id)
+	# Phase 129 — a downed body loses every effect.
+	if _status != null and PlayerRegistry.is_downed(simulated):
+		_status.clear(target_id)
+		for t in _status.take_dirty():
+			_push_status_effects(str(t), _status_now())
+
+## Seconds between status-effect ticks: damage over time arrives in 0.25 s slices, not one packet a frame.
+const STATUS_TICK_SECONDS := 0.25
+## Status effects keep a hit's shove this tall (m) when walking onto higher ground.
+const KNOCKBACK_STEP_UP := 0.6
+
+func _status_now() -> float:
+	return float(status_clock.call()) if status_clock.is_valid() else float(Time.get_ticks_msec()) / 1000.0
+
+## The chunk a status target stands in: the local body, else the peer's recorded position.
+func _status_chunk(target_id: String) -> Vector2i:
+	if target_id == "player":
+		return _player.get_world_pos()["chunk"]
+	return PlayerRegistry.world_pos_of(_registry.get_record(target_id))["chunk"]
+
+## Phase 129 — host: advance every effect. Damage over time goes through the same host path a creature
+## hit takes (`player_damaged` → simulated peer HP), never a client's word; a burn under a weather
+## state the table lists in `extinguishedBy` ends.
+func tick_status_effects() -> void:
+	if _status == null or _is_client:
+		return
+	var now := _status_now()
+	var weather_of := func(target_id: String) -> String:
+		return _weather.weather_at(_status_chunk(target_id), _weather.current_hour())
+	for ev in _status.tick(now, weather_of):
+		var target: String = ev["target_id"]
+		if BattleSlice.is_player_target(target):
+			GameBus.player_damaged.emit(float(ev["damage"]), "status:" + str(ev["effect"]), target)
+	for target in _status.take_dirty():
+		_push_status_effects(str(target), now)
+
+## Send `target`'s effect list to that player ALONE and keep it on the record.
+func _push_status_effects(target: String, now: float) -> void:
+	var effects := _status.active(target, now)
+	if target == "player":
+		GameBus.status_effects_synced.emit("player", effects)
+		_registry.record_status_effects(_registry.local_player_id, effects)
+		return
+	var peer := _registry.get_peer_id(target)
+	_registry.record_status_effects(target, effects)
+	if peer != 0 and _networking != null:
+		_networking.send_status_effects(peer, effects)
+
+## Write every live target's remaining time onto its record before a save reads it.
+func _refresh_status_records() -> void:
+	if _status == null or _is_client:
+		return
+	var now := _status_now()
+	for target in _status.targets():
+		var pid: String = _registry.local_player_id if target == "player" else str(target)
+		if not pid.is_empty():
+			_registry.record_status_effects(pid, _status.active(target, now))
+
+## Restore a player's saved effects (a join or boot) and tell its body.
+func _restore_status_effects(target: String, player_id: String) -> void:
+	if _status == null or _is_client:
+		return
+	var now := _status_now()
+	_status.from_data(target, _registry.get_status_effects(player_id), now)
+	for t in _status.take_dirty():
+		_push_status_effects(str(t), now)
+
+func _on_status_player_died(_position: Vector3, _killer_id: String) -> void:
+	if _status != null and not _is_client:
+		_status.clear("player")
+		for t in _status.take_dirty():
+			_push_status_effects(str(t), _status_now())
+
+## Phase 129 — host: push `target_id` away from `attacker_id`, clamped to walkable ground.
+func _on_knockback_requested(target_id: String, attacker_id: String, tiles: int) -> void:
+	if _is_client:
+		return
+	var src := Vector3.ZERO
+	var found := false
+	for inst in _creature.get_all_instances():
+		if inst["instance_id"] == attacker_id:
+			src = inst["position"]
+			found = true
+			break
+	if not found:
+		return
+	var peer := 0
+	var pos: Vector3
+	if target_id == "player":
+		pos = _player.get_position()
+	else:
+		peer = _registry.get_peer_id(target_id)
+		if peer == 0:
+			return
+		pos = _networking.get_last_known_state(peer)
+	var walkable := func(spot: Vector3) -> bool:
+		return _voxel.get_voxel_height_at(Vector2(spot.x, spot.z)) <= spot.y + KNOCKBACK_STEP_UP
+	var spot := StatusEffects.knockback_target(pos, src, tiles, TerrainSlice.TILE_SIZE, walkable)
+	if spot == pos:
+		return
+	spot.y = maxf(spot.y, _voxel.get_voxel_height_at(Vector2(spot.x, spot.z)))
+	if peer == 0:
+		_player.spawn_at(spot)
+	else:
+		_networking.send_teleport(peer, WorldPos.from_world(spot.x, spot.y, spot.z))
 
 func _on_player_died(position: Vector3, killer_id: String) -> void:
 	if _character.get_player_character() != "":
@@ -2938,6 +3067,11 @@ func _on_load_completed(slot: int, data: Dictionary) -> void:
 		var hp := float(player_data.get("hp", -1.0))
 		if hp >= 0.0:
 			_player.set_hp(hp)
+		# Phase 129 — the saved effects; a legacy snapshot has none.
+		if _status != null:
+			_status.from_data("player", player_data.get("status_effects", []), _status_now())
+			for t in _status.take_dirty():
+				_push_status_effects(str(t), _status_now())
 	if data.has("market"):
 		_market.apply_market_data(data["market"])
 	if data.has("governance"):

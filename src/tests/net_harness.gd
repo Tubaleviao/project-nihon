@@ -156,6 +156,7 @@ static func steps() -> Array:
 		{ "name": "rate_bucket",       "compare": true },
 		{ "name": "clock_synced",      "compare": true },
 		{ "name": "weather_override",  "compare": true },
+		{ "name": "status_effect",     "compare": true },
 		{ "name": "inventory_owner",   "compare": true },
 		{ "name": "research_points_owner", "compare": true },
 		{ "name": "chat_relayed",      "compare": true },
@@ -348,6 +349,7 @@ func run(root: Node, role: String) -> void:
 	await _step_rate_bucket()
 	await _step_clock_synced()
 	await _step_weather_override()
+	await _step_status_effect()
 	await _step_inventory_owner()
 	await _step_research_points_owner()
 	await _step_chat_relayed()
@@ -1208,6 +1210,39 @@ func _step_weather_override() -> void:
 		return weather.override_count() >= 1 \
 			and weather.weather_at(chunk, weather.current_hour()) != weather.rolled_state(weather.cell_of(chunk), weather.current_hour()), STEP_TIMEOUT_SECS)
 	_report("weather_override", verdict(got, true), "overridden" if got else "no_override")
+
+## Phase 129 — a burn put on the bound peer reaches that peer's client alone, and its damage over time lowers
+## the host's SIMULATED hit points for that peer. The host's own body must carry no effect. The host drives
+## a fixed clock (so the two ticks are exactly 2 s apart: 10 damage) and restores the engine clock after.
+func _step_status_effect() -> void:
+	if _role == "host":
+		var owner := _bound_id()
+		if owner == "":
+			_report("status_effect", "fail", "no_owner-peer%d" % _bound_peer)
+			return
+		var hp_before: float = _root._registry.get_hp(owner)
+		var base: float = hp_before if hp_before >= 0.0 else float(PlayerSlice.MAX_HP)
+		var t0: float = float(Time.get_ticks_msec()) / 1000.0
+		_root.status_clock = func() -> float: return t0
+		_root._status.apply(owner, "heat_burn", t0)
+		_root.tick_status_effects()
+		_root.status_clock = func() -> float: return t0 + 2.0
+		_root.tick_status_effects()
+		_root.status_clock = Callable()
+		var ok: bool = await _await_until(func(): return true, 1.0)
+		var hp_after: float = _root._registry.get_hp(owner)
+		var lowered: bool = absf(hp_after - (base - 10.0)) < 0.01
+		var host_clean: bool = _root._player.status_effects_active().is_empty()
+		_report("status_effect", verdict(lowered and host_clean, true),
+			"owner-only" if (lowered and host_clean) else "hp%.1f-to-%.1f-hostclean%s" % [base, hp_after, str(host_clean)])
+		return
+	var got: bool = await _await_until(func():
+		var has_burn := false
+		for e in _root._player.status_effects_active():
+			if e["effect"] == "heat_burn":
+				has_burn = true
+		return has_burn and _root._player.get_hp() < float(PlayerSlice.MAX_HP), STEP_TIMEOUT_SECS)
+	_report("status_effect", verdict(got, true), "owner-only" if got else "effect_never_arrived")
 
 ## Step 14 (Phase 53) — a new player given a friend code spawns beside that friend.
 ##

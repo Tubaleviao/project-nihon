@@ -13,6 +13,7 @@ extends Node
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const StatusEffects := preload("res://src/battle/status_effects.gd")
 
 const SPEED        := 4.5     # m/s horizontal
 const JUMP_FORCE   := 5.0     # m/s vertical
@@ -100,6 +101,15 @@ var _aimed_tree_species: String = ""
 ## HP bar label — updated on every damage/heal event.
 var _hp_label: Label = null
 
+## Phase 129 — the status effects on this body, as the host last sent them (the host's own player is
+## fed the same way). It holds the local bucket "player" only; the host owns the damage.
+var _status_view := StatusEffects.new()
+var _status_label: Label = null
+var _status_refresh: float = 0.0
+## Test hook: a fixed clock in seconds in place of the engine's.
+var status_clock: Callable = Callable()
+const STATUS_REFRESH_SECONDS := 0.2
+
 ## Respawn countdown in seconds; -1 when not respawning.
 const RESPAWN_DELAY := PlayerRules.RESPAWN_DELAY
 var _respawn_timer: float = -1.0
@@ -146,7 +156,43 @@ var _world_input_frozen: bool = false
 ## stays live) until the ground under it has been rebuilt, so it does not fall through the gap.
 var ground_hold: bool = false
 
+func _status_now() -> float:
+	return float(status_clock.call()) if status_clock.is_valid() else float(Time.get_ticks_msec()) / 1000.0
+
+## Phase 129 — adopt the host's effect list for this body (a client validates each entry).
+func apply_status_effects(effects: Array) -> void:
+	_status_view.from_data("player", effects, _status_now())
+	_status_view.take_dirty()
+	_update_status_label()
+
+func _on_status_effects_synced(target_id: String, effects: Array) -> void:
+	if _is_local_target(target_id):
+		apply_status_effects(effects)
+
+## Phase 129 — the walking speed once a status effect is considered: zero while the body is held.
+static func held_speed(speed: float, immobilized: bool) -> float:
+	return 0.0 if immobilized else speed
+
+## True while paralysis or stagger holds the body: it neither moves nor attacks.
+func is_immobilized() -> bool:
+	return _status_view.is_immobilized("player", _status_now())
+
+func status_effects_active() -> Array:
+	return _status_view.active("player", _status_now())
+
+## "heat burn 5s, paralysis 2s" — the HUD line; an empty string when nothing is active.
+static func status_line(effects: Array) -> String:
+	var parts: PackedStringArray = []
+	for e in effects:
+		parts.append("%s %ds" % [str(e.get("effect", "")).replace("_", " "), ceili(float(e.get("remaining", 0.0)))])
+	return ", ".join(parts)
+
+func _update_status_label() -> void:
+	if _status_label != null:
+		_status_label.text = status_line(status_effects_active())
+
 func _ready() -> void:
+	GameBus.status_effects_synced.connect(_on_status_effects_synced)
 	if render_visuals:
 		_build_body()
 		_build_hud()
@@ -221,6 +267,10 @@ func _physics_process(delta: float) -> void:
 		_broadcast_state()
 
 func _process(delta: float) -> void:
+	_status_refresh += delta
+	if _status_refresh >= STATUS_REFRESH_SECONDS:
+		_status_refresh = 0.0
+		_update_status_label()
 	if render_visuals:
 		_update_aim()
 		_update_station_preview()
@@ -690,6 +740,7 @@ func _move(delta: float) -> void:
 		dir = (basis.x * dir.x + basis.z * dir.z).normalized()
 
 	var speed := walking_speed(swimming, _weather_factor_now())
+	speed = held_speed(speed, is_immobilized())
 	_vel.x = dir.x * speed
 	_vel.z = dir.z * speed
 
@@ -766,6 +817,7 @@ func set_respawn_world_pos(wp: Dictionary) -> void:
 
 func _respawn() -> void:
 	_hp = MAX_HP
+	apply_status_effects([])
 	_alive = true
 	_respawn_timer = -1.0
 	# Teleport back to the world spawn point.
@@ -798,7 +850,7 @@ func _is_local_target(target_id: String) -> bool:
 	return target_id == "" or target_id == "player"
 
 func _try_attack() -> void:
-	if not _alive:
+	if not _alive or is_immobilized():
 		return
 	if creature_slice == null:
 		Diag.warn("PlayerSlice: creature_slice not wired — cannot resolve attack target")
@@ -835,6 +887,23 @@ func _build_hud() -> void:
 	hp_label.add_theme_color_override("font_color", Color(0.85, 0.20, 0.20))
 	_hud.add_child(hp_label)
 	_hp_label = hp_label
+
+	# Phase 129 — active status effects with their remaining time, top-right.
+	_status_label = Label.new()
+	_status_label.name = "StatusLabel"
+	_status_label.anchor_left = 1.0
+	_status_label.anchor_right = 1.0
+	_status_label.offset_left = -360.0
+	_status_label.offset_right = -12.0
+	_status_label.offset_top = 12.0
+	_status_label.offset_bottom = 40.0
+	_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_status_label.add_theme_font_size_override("font_size", 16)
+	_status_label.add_theme_color_override("font_color", Color(1.0, 0.65, 0.25))
+	_status_label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	_status_label.add_theme_constant_override("outline_size", 5)
+	_hud.add_child(_status_label)
 	_update_hp_bar()
 
 	# Aimed item name: a tooltip that follows the pointer (see `_update_aim_hud`).

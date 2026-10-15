@@ -71,6 +71,17 @@ var creature_slice: Node = null
 var player_slice:   Node = null
 var battle_slice:   Node = null
 
+## Phase 129 — the host's `StatusEffects` and a `() -> float` clock in seconds: an immobilized creature
+## neither moves nor attacks, and its attack wind-up restarts when it recovers (a stagger cancels the
+## action). Null / invalid: no effects.
+var status_effects: RefCounted = null
+var now_fn: Callable = Callable()
+
+## Whether the creature `iid` is held by a status effect right now.
+func is_held(iid: String) -> bool:
+	return status_effects != null and now_fn.is_valid() \
+		and status_effects.is_immobilized(iid, float(now_fn.call()))
+
 ## Set by game_root (Phase 35): resolves where a companion's owner is, so a tamed
 ## creature follows instead of patrolling. Left null in isolated tests — a
 ## companion then simply holds position.
@@ -200,6 +211,9 @@ func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: f
 	var ai: Dictionary     = _ai[iid]
 	var pos: Vector3       = inst["position"]
 	var ai_state: String   = ai["state"]
+	if is_held(iid):
+		ai["attack_timer"] = 0.0
+		return
 	var dist: float        = pos.distance_to(player_pos)
 	# Read combat HP from battle_slice so the flee threshold reflects actual damage
 	# taken; inst["hp"] is only written at spawn/death and stays at max during combat.

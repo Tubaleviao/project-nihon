@@ -149,7 +149,7 @@ npm run generate  # generate the design bible into bible/
 | 126 | Tree clears the host keeps, and one seam-wrap module | Done |
 | 127 | Terrain streaming, generation records and persistence cleanup sweep | Done |
 | 128 | Weather: the fabric's `WeatherSystem` runs on the host | Done |
-| 129 | Combat status effects: burn, paralysis, knockback, knockdown and stagger | Planned |
+| 129 | Combat status effects: burn, paralysis, knockback, knockdown and stagger | Done |
 | 130 | Creatures walk on the ground and around obstacles | Planned |
 | 131 | Loose ground settles: sand and soil fall when undermined | Planned |
 | 132 | Internationalization: translated UI and keyed host messages | Planned |

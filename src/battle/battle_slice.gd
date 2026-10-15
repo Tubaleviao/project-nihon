@@ -18,6 +18,13 @@ var _hp_state: Dictionary = {}
 ## Set by game_root so instance IDs can be resolved to fabric creature keys.
 var creature_slice: Node = null
 
+## Phase 129 — the host's status effects (a `StatusEffects`), and `() -> float` for the current time in
+## seconds. Both are null/invalid outside a host, so a round there is plain damage.
+var status_effects: RefCounted = null
+var now_fn: Callable = Callable()
+## Counts resolved rounds; the seed of the on-hit roll, so a replayed round rolls the same.
+var _round_seq: int = 0
+
 func _ready() -> void:
 	GameBus.combat_round_requested.connect(_on_combat_round_requested)
 	GameBus.creature_respawned.connect(_on_creature_respawned)
@@ -52,6 +59,8 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 	var outcome: String
 	var damage := 0.0
 
+	_round_seq += 1
+	var now := _now()
 	if hit_roll < 0.8:
 		damage = base_dmg * randf_range(0.85, 1.15)
 		var is_crit := randf() < 0.1
@@ -71,6 +80,10 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 	# the host can deliver it to that peer (GameRoot._on_player_damaged).
 	if is_player_target(defender_id):
 		if outcome != "miss":
+			# Phase 129 — a knocked-down body takes more; the hit may leave an effect on it.
+			if status_effects != null:
+				damage *= status_effects.damage_factor(defender_id, now)
+				_roll_on_hit(attacker_res, attacker_id, defender_id, now)
 			GameBus.player_damaged.emit(damage, attacker_id, defender_id)
 		var result_player := {
 			"attacker": attacker_id,
@@ -88,6 +101,8 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 	if not _hp_state.has(defender_id):
 		_hp_state[defender_id] = max_hp
 
+	if status_effects != null and outcome != "miss":
+		damage *= status_effects.damage_factor(defender_id, now)
 	_hp_state[defender_id] = maxf(_hp_state[defender_id] - damage, 0.0)
 	var hp_remaining: float = _hp_state[defender_id]
 
@@ -112,6 +127,21 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 	GameBus.combat_round_resolved.emit(result)
 	return result
 
+func _now() -> float:
+	return float(now_fn.call()) if now_fn.is_valid() else 0.0
+
+## Phase 129 — roll the attacker's `onHitEffects` against a landed hit on a player and apply the ones
+## that land. A displacing effect (knockback) asks the host to move the body; the HUD set is pushed.
+func _roll_on_hit(attacker_res: Resource, attacker_id: String, target_id: String, now: float) -> void:
+	if attacker_res == null:
+		return
+	var landed: Array = status_effects.rolled_effects(attacker_res.get("onHitEffects"), _round_seq, attacker_id, target_id)
+	for effect in landed:
+		status_effects.apply(target_id, effect, now)
+		var tiles := int(status_effects.row(effect).get("displaceTiles", 0))
+		if tiles > 0:
+			GameBus.knockback_requested.emit(target_id, attacker_id, tiles)
+
 ## Return the current tracked combat HP for an entity (-1.0 if not yet in combat).
 func get_hp(entity_id: String) -> float:
 	return _hp_state.get(entity_id, -1.0)
@@ -131,6 +161,8 @@ func _on_combat_round_requested(attacker_id: String, defender_id: String) -> voi
 ## a stale 0 HP (which would cause an instant re-kill on the next round).
 func _on_creature_respawned(instance_id: String, _creature_id: String) -> void:
 	reset_hp(instance_id)
+	if status_effects != null:
+		status_effects.clear(instance_id)
 
 ## Resolve a creature instance_id to its fabric key, then load from GameData.
 func _lookup(entity_id: String) -> Resource:
