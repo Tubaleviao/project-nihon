@@ -355,8 +355,10 @@ func _cmd_weather(speaker: String, args: Array) -> void:
 			_reply(speaker, "At most %d in-game hours." % weather_slice.override_max_hours())
 		"bad_cell":
 			_reply(speaker, "No weather cell here.")
-		_:
+		"bad_hours":
 			_reply(speaker, "Hours must be a whole number of at least 1.")
+		_:
+			_reply(speaker, "Could not set the weather (%s)." % why)
 
 func _cmd_kill(speaker: String, args: Array) -> void:
 	var target := speaker

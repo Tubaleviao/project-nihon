@@ -1611,7 +1611,9 @@ func _apply_weather_look(state: String) -> void:
 	var env := env_node.environment
 	env.fog_enabled = vis < 1.0
 	env.fog_density = (1.0 - vis) * WEATHER_FOG_DENSITY
-	env.fog_light_color = Color(0.62, 0.66, 0.72)
+	# Follow the sky: ambient energy runs 0.08 (night) to 0.5 (day) in `_apply_sun`.
+	var daylight := clampf((env.ambient_light_energy - 0.08) / 0.42, 0.0, 1.0)
+	env.fog_light_color = Color(0.02, 0.03, 0.08).lerp(Color(0.62, 0.66, 0.72), daylight)
 
 ## Phase 128 — the host's override table changed: a host sends it to every client, a client adopts it.
 func _on_weather_overrides_synced(overrides: Array) -> void:

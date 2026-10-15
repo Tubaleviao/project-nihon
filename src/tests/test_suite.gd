@@ -22074,6 +22074,10 @@ func _test_weather_persistence_and_wire() -> void:
 		big.append([i, 0, "fog", 10 + i % 30])
 	back.apply_view(big)
 	assert_eq(back.override_count(), WeatherSlice.MAX_OVERRIDES, "a forged table is bounded")
+	var full_cell := Vector2i(0, 1)
+	assert_eq(back.set_override(full_cell, "storm", 1), "", "a full table still takes a short override")
+	assert_eq(back.weather_at(back.cell_center(full_cell), back.current_hour()), "storm", "and the new override is not the one evicted")
+	assert_eq(back.override_count(), WeatherSlice.MAX_OVERRIDES, "at the cap")
 	# update_local reports a change once.
 	var changes: Array = []
 	var cb := func(state: String) -> void: changes.append(state)

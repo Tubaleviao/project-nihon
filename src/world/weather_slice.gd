@@ -185,7 +185,7 @@ func rolled_state(cell: Vector2i, hour: int) -> String:
 ## The weather in `chunk` at in-game `hour` (whole hours since day 0): an unexpired override wins.
 func weather_at(chunk: Vector2i, hour: int) -> String:
 	var cell := cell_of(chunk)
-	var key := [cell, hour, _revision]
+	var key := [cell, hour, _revision, _seed()]
 	if key == _memo_key:
 		return _memo_state
 	var o: Variant = _overrides.get(_key(cell), null)
@@ -233,13 +233,13 @@ func set_override(cell: Vector2i, state: String, hours: int) -> String:
 		return "bad_cell"
 	_revision += 1
 	_overrides[_key(cell)] = { "cell": cell, "state": state, "end_hour": _end_hour_for(hours) }
-	_prune(current_hour())
-	print("[Weather] override cell %s -> %s for %d h (until hour %d)" % [cell, state, hours, _end_hour_for(hours)])
+	_prune(current_hour(), _key(cell))
 	GameBus.weather_overrides_synced.emit(to_data())
 	return ""
 
-## Drop expired overrides, then the soonest-ending ones past `MAX_OVERRIDES`. True when any went.
-func _prune(hour: int) -> bool:
+## Drop expired overrides, then the soonest-ending ones past `MAX_OVERRIDES`, never `keep` (the entry
+## just set). True when any went.
+func _prune(hour: int, keep: String = "") -> bool:
 	var dropped := false
 	for k in _overrides.keys():
 		if hour >= int(_overrides[k]["end_hour"]):
@@ -248,6 +248,8 @@ func _prune(hour: int) -> bool:
 	while _overrides.size() > MAX_OVERRIDES:
 		var oldest := ""
 		for k in _overrides:
+			if k == keep:
+				continue
 			if oldest == "" or int(_overrides[k]["end_hour"]) < int(_overrides[oldest]["end_hour"]):
 				oldest = k
 		_overrides.erase(oldest)
