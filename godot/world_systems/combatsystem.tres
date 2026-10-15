@@ -5,5 +5,6 @@
 [resource]
 script = ExtResource("1")
 id = ""
+statusEffects = {"heat_burn":{"durationSeconds":8,"damagePerSecond":5,"immobilize":false,"damageTakenFactor":1,"displaceTiles":0,"stacks":false,"extinguishedBy":["rain","storm"]},"paralysis":{"durationSeconds":3,"damagePerSecond":0,"immobilize":true,"damageTakenFactor":1,"displaceTiles":0,"stacks":false,"extinguishedBy":[]},"knockback":{"durationSeconds":0,"damagePerSecond":0,"immobilize":false,"damageTakenFactor":1,"displaceTiles":1,"stacks":false,"extinguishedBy":[]},"knockdown":{"durationSeconds":2,"damagePerSecond":0,"immobilize":false,"damageTakenFactor":1.5,"displaceTiles":0,"stacks":false,"extinguishedBy":[]},"stagger":{"durationSeconds":1,"damagePerSecond":0,"immobilize":true,"damageTakenFactor":1,"displaceTiles":0,"stacks":false,"extinguishedBy":[]}}
 description = "Defines the rules governing all combat interactions — player vs creature, player vs player, and structure damage. Combat is simulation-driven: outcomes emerge from stats, skills, equipment, and biome conditions rather than authored scripts. Magic and martial paths are balanced by design — neither dominates at every range and context."
 tags = ["world-system"]

@@ -152,6 +152,13 @@ func run() -> void:
 	_run_test("weather: outdoor walking speed follows the state",      _test_weather_walking_speed)
 	_run_test("weather: /weather overrides, reverts and refuses",      _test_weather_admin_override)
 	_run_test("weather: overrides persist, sync and reject forgeries", _test_weather_persistence_and_wire)
+	_run_test("status: the fabric table and creature on-hit entries",  _test_status_fabric_table)
+	_run_test("status: burn totals, refresh, expiry and knockdown",    _test_status_burn_refresh_factor)
+	_run_test("status: on-hit roll golden values and rate",            _test_status_roll_golden_rate)
+	_run_test("status: knockback is clamped to walkable ground",       _test_status_knockback_clamped)
+	_run_test("status: a landed hit applies effects and scales damage", _test_status_battle_hit)
+	_run_test("status: immobilized players and creatures stay put",    _test_status_immobilized)
+	_run_test("status: rain, death and persistence end or keep effects", _test_status_rain_death_persistence)
 	_run_test("waystone: a seed change saves the old seed",     _test_minimap_seed_change_saves_old_seed)
 	_run_test("chat: the input box is on screen while closed", _test_chat_box_visible)
 	_run_test("chat: a token bucket bounds each player's lines", _test_chat_rate_limit)
@@ -22089,6 +22096,200 @@ func _test_weather_persistence_and_wire() -> void:
 	GameBus.weather_changed.disconnect(cb)
 	back.free()
 	w.free()
+
+# ---------------------------------------------------------------------------
+# Phase 129 — combat status effects
+# ---------------------------------------------------------------------------
+
+const StatusEffects := preload("res://src/battle/status_effects.gd")
+
+func _test_status_fabric_table() -> void:
+	var s := StatusEffects.new()
+	for id in ["heat_burn", "paralysis", "knockback", "knockdown", "stagger"]:
+		assert_false(s.row(id).is_empty(), "the fabric defines %s" % id)
+	assert_eq(float(s.row("heat_burn")["damagePerSecond"]), 5.0, "heat-burn deals 5 per second")
+	assert_eq(float(s.row("heat_burn")["durationSeconds"]), 8.0, "for 8 seconds")
+	assert_eq(float(s.row("paralysis")["durationSeconds"]), 3.0, "paralysis lasts 3 seconds")
+	assert_eq(float(s.row("knockdown")["damageTakenFactor"]), 1.5, "knockdown takes 1.5x")
+	assert_eq(int(s.row("knockback")["displaceTiles"]), 1, "knockback is one tile")
+	assert_true((s.row("heat_burn")["extinguishedBy"] as Array).has("rain"), "rain extinguishes the burn")
+	assert_eq((GameData.CREATURES["VeilStalker"].get("onHitEffects") as Array)[0]["effect"], "paralysis", "VeilStalker paralyses")
+	assert_eq(float((GameData.CREATURES["VeilStalker"].get("onHitEffects") as Array)[0]["chance"]), 0.2, "20% a hit")
+	assert_eq((GameData.CREATURES["LavaSlug"].get("onHitEffects") as Array)[0]["effect"], "heat_burn", "LavaSlug burns")
+	assert_eq((GameData.CREATURES["ForestBoar"].get("onHitEffects") as Array)[0]["effect"], "knockback", "ForestBoar gores")
+	assert_false(s.apply("p1", "nonsense", 0.0), "an undefined effect is refused")
+
+func _test_status_burn_refresh_factor() -> void:
+	var s := StatusEffects.new()
+	assert_true(s.apply("p1", "heat_burn", 100.0), "the burn applies")
+	var total := 0.0
+	var t := 100.0
+	while t < 120.0:
+		t += 0.25
+		for ev in s.tick(t):
+			total += float(ev["damage"])
+	assert_true(absf(total - 40.0) < 0.001, "heat-burn deals 5 x 8 = 40 over its duration (got %f)" % total)
+	assert_false(s.has_any("p1"), "and then ends")
+	# Refresh, not stack: reapplying at 4 s restarts the 8 s without doubling the rate.
+	s.apply("p2", "heat_burn", 0.0)
+	var dealt := 0.0
+	for ev in s.tick(4.0):
+		dealt += float(ev["damage"])
+	s.apply("p2", "heat_burn", 4.0)
+	assert_eq(s.active("p2", 4.0).size(), 1, "one instance after a reapply")
+	for ev in s.tick(5.0):
+		dealt += float(ev["damage"])
+	assert_true(absf(dealt - 25.0) < 0.001, "5 dps throughout: 4 s + 1 s = 25, never doubled (got %f)" % dealt)
+	assert_true(absf(float(s.active("p2", 5.0)[0]["remaining"]) - 7.0) < 0.001, "the timer restarted at the reapply")
+	# Knockdown multiplies damage while it lasts.
+	s.apply("p3", "knockdown", 0.0)
+	assert_eq(s.damage_factor("p3", 1.0), 1.5, "a knocked-down target takes 1.5x")
+	assert_eq(s.damage_factor("p3", 2.5), 1.0, "and not once it stood")
+	assert_eq(s.damage_factor("nobody", 0.0), 1.0, "no effects: 1x")
+	# A stacking row (test table) adds instances up to the cap.
+	var st := StatusEffects.new()
+	st.table_override = { "poison": { "durationSeconds": 4.0, "damagePerSecond": 1.0, "stacks": true } }
+	for i in StatusEffects.MAX_PER_TARGET + 3:
+		st.apply("p", "poison", 0.0)
+	assert_eq(st.active("p", 0.0).size(), StatusEffects.MAX_PER_TARGET, "a stacking row is bounded per target")
+
+func _test_status_roll_golden_rate() -> void:
+	var golden := [
+		StatusEffects.roll_value(1, "ForestBoar", "player", 0),
+		StatusEffects.roll_value(2, "VeilStalker", "player_1", 0),
+		StatusEffects.roll_value(1000, "LavaSlug", "player_2", 1),
+	]
+	for i in golden.size():
+		assert_true(golden[i] >= 0.0 and golden[i] < 1.0, "roll #%d is in [0, 1)" % i)
+		assert_eq(int(golden[i] * 16777216.0), STATUS_ROLL_GOLDEN[i], "golden roll #%d" % i)
+	assert_eq(StatusEffects.roll_value(7, "a", "b", 0), StatusEffects.roll_value(7, "a", "b", 0), "the roll is a pure function")
+	assert_true(StatusEffects.roll_value(7, "a", "b", 0) != StatusEffects.roll_value(8, "a", "b", 0), "and depends on the round")
+	var s := StatusEffects.new()
+	var on_hit: Array = GameData.CREATURES["VeilStalker"].get("onHitEffects")
+	var hits := 0
+	for seq in 10000:
+		if s.rolled_effects(on_hit, seq, "VeilStalker_0", "player").has("paralysis"):
+			hits += 1
+	assert_true(absf(float(hits) / 10000.0 - 0.2) < 0.01, "paralysis lands within 1 point of 20%% (got %d / 10000)" % hits)
+	assert_eq(s.rolled_effects(GameData.CREATURES["LavaSlug"].get("onHitEffects"), 5, "x", "y"), ["heat_burn"], "chance 1.0 always lands")
+	assert_eq(s.rolled_effects("junk", 1, "x", "y"), [], "a malformed list rolls nothing")
+
+func _test_status_knockback_clamped() -> void:
+	var free_all := func(_p: Vector3) -> bool: return true
+	var from := Vector3(10, 0, 0)
+	var src := Vector3(8, 0, 0)
+	var moved := StatusEffects.knockback_target(from, src, 2, 0.5, free_all)
+	assert_true(moved.is_equal_approx(Vector3(11, 0, 0)), "pushed 2 tiles of 0.5 m away from the attacker")
+	var wall := func(p: Vector3) -> bool: return p.x < 10.6
+	var short := StatusEffects.knockback_target(from, src, 2, 0.5, wall)
+	assert_true(short.is_equal_approx(Vector3(10.5, 0, 0)), "stops a tile short of a solid voxel")
+	var boxed := func(_p: Vector3) -> bool: return false
+	assert_eq(StatusEffects.knockback_target(from, src, 2, 0.5, boxed), from, "no free spot: the body stays")
+	assert_eq(StatusEffects.knockback_target(from, from, 2, 0.5, free_all), from, "no direction: the body stays")
+
+func _test_status_battle_hit() -> void:
+	var b := BattleSlice.new()
+	add_child(b)
+	var s := StatusEffects.new()
+	var clock := [0.0]
+	b.status_effects = s
+	b.now_fn = func() -> float: return clock[0]
+	var knocks: Array = []
+	var cb := func(target: String, attacker: String, tiles: int) -> void: knocks.append([target, attacker, tiles])
+	GameBus.knockback_requested.connect(cb)
+	# A LavaSlug hit burns; find a landed hit.
+	var burned := false
+	for i in 50:
+		var r := b.resolve_round("LavaSlug", "player_1_1_aabbccdd11223344aabbccdd11223344")
+		if r["outcome"] != "miss":
+			burned = true
+			break
+	assert_true(burned and s.active("player_1_1_aabbccdd11223344aabbccdd11223344", 0.0).size() == 1, "a landed LavaSlug hit leaves heat-burn on the target")
+	for i in 80:
+		var r := b.resolve_round("ForestBoar", "player_1_2_aabbccdd11223344aabbccdd11223344")
+		if r["outcome"] != "miss":
+			break
+	assert_true(knocks.size() >= 1 and knocks[0][0] == "player_1_2_aabbccdd11223344aabbccdd11223344" and knocks[0][2] == 1, "a landed ForestBoar hit asks for a one-tile knockback")
+	assert_false(s.has_any("player_1_2_aabbccdd11223344aabbccdd11223344"), "knockback is instant: nothing is stored")
+	GameBus.knockback_requested.disconnect(cb)
+	# Knockdown scales the same seeded hit by 1.5.
+	seed(99)
+	var plain := b.resolve_round("GraywolfPack", "player_1_3_aabbccdd11223344aabbccdd11223344")
+	s.apply("player_1_4_aabbccdd11223344aabbccdd11223344", "knockdown", 0.0)
+	seed(99)
+	var down := b.resolve_round("GraywolfPack", "player_1_4_aabbccdd11223344aabbccdd11223344")
+	if plain["outcome"] != "miss":
+		assert_true(absf(float(down["damage"]) - float(plain["damage"]) * 1.5) < 0.2, "a knocked-down target takes 1.5x the same hit")
+	else:
+		assert_eq(down["damage"], 0.0, "a miss deals nothing either way")
+	# A creature's death or respawn clears its effects.
+	s.apply("cr_1", "knockdown", 0.0)
+	b._on_creature_respawned("cr_1", "ForestBoar")
+	assert_false(s.has_any("cr_1"), "a respawn clears every effect")
+	b.free()
+
+func _test_status_immobilized() -> void:
+	var t := [0.0]
+	var p := PlayerSlice.new()
+	p.status_clock = func() -> float: return t[0]
+	p.apply_status_effects([{ "effect": "paralysis", "remaining": 3.0 }])
+	assert_true(p.is_immobilized(), "paralysis immobilizes")
+	assert_eq(PlayerSlice.held_speed(PlayerSlice.SPEED, p.is_immobilized()), 0.0, "movement input moves nothing")
+	t[0] = 2.9
+	assert_true(p.is_immobilized(), "for the whole duration")
+	t[0] = 3.1
+	assert_false(p.is_immobilized(), "and not after")
+	assert_eq(PlayerSlice.held_speed(PlayerSlice.SPEED, p.is_immobilized()), PlayerSlice.SPEED, "speed returns")
+	p.apply_status_effects([{ "effect": "bogus", "remaining": 3.0 }, "junk", { "effect": "stagger", "remaining": -1.0 }])
+	assert_false(p.is_immobilized(), "unknown or spent entries are dropped")
+	assert_eq(PlayerSlice.status_line([{ "effect": "heat_burn", "remaining": 4.2 }]), "heat burn 5s", "the HUD line names the effect and time")
+	p.free()
+	var ai := CreatureAI.new()
+	var s := StatusEffects.new()
+	ai.status_effects = s
+	ai.now_fn = func() -> float: return t[0]
+	t[0] = 0.0
+	s.apply("boar_1", "stagger", 0.0)
+	assert_true(ai.is_held("boar_1"), "a staggered creature is held")
+	t[0] = 1.5
+	assert_false(ai.is_held("boar_1"), "and released after a second")
+	ai.free()
+
+func _test_status_rain_death_persistence() -> void:
+	var s := StatusEffects.new()
+	s.apply("p1", "heat_burn", 0.0)
+	var dry := func(_t: String) -> String: return "clear"
+	var wet := func(_t: String) -> String: return "rain"
+	assert_eq(s.tick(1.0, dry).size(), 1, "a dry tick burns")
+	assert_eq(s.tick(2.0, wet).size(), 0, "a rain tick deals nothing")
+	assert_false(s.has_any("p1"), "and the burn is gone on that tick")
+	s.apply("p1", "heat_burn", 3.0)
+	s.apply("p1", "knockdown", 3.0)
+	s.clear("p1")
+	assert_eq(s.active("p1", 3.5).size(), 0, "death clears all effects")
+	# Registry round trip through JSON; a legacy record loads with none.
+	s.apply("p2", "heat_burn", 10.0)
+	s.apply("p2", "paralysis", 10.0)
+	var reg := PlayerRegistry.new()
+	reg.record_status_effects("p2", s.to_data("p2", 12.0))
+	var json: Variant = JSON.parse_string(JSON.stringify(reg.get_player_data("p2")))
+	var reg2 := PlayerRegistry.new()
+	reg2.apply_player_data("p2", json)
+	var s2 := StatusEffects.new()
+	s2.from_data("p2", reg2.get_status_effects("p2"), 50.0)
+	var left := s2.active("p2", 50.0)
+	assert_eq(left.size(), 2, "both effects survive a save/load")
+	assert_true(absf(float(left[0]["remaining"]) - 6.0) < 0.001, "with their remaining seconds (6 of the burn's 8)")
+	var legacy := PlayerRegistry.new()
+	legacy.apply_player_data("old", { "player_id": "old", "hp": 50.0 })
+	assert_eq(legacy.get_status_effects("old"), [], "a legacy record loads with none")
+	s2.from_data("old", [{ "effect": "heat_burn", "remaining": 9999.0 }, { "effect": "paralysis", "remaining": "x" }], 0.0)
+	assert_true(float(s2.active("old", 0.0)[0]["remaining"]) <= 8.0, "a forged remaining time is clamped to the duration")
+	reg.free()
+	reg2.free()
+	legacy.free()
+
+const STATUS_ROLL_GOLDEN := [10642915, 9902018, 8481431]
 
 const WEATHER_GOLDEN_MIX := 2173728955345170658
 const WEATHER_GOLDEN_STATES := ["fog", "clear", "storm", "rain", "clear"]

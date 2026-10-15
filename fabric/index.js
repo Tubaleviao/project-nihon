@@ -30,6 +30,9 @@ waystone.validateTravel(waystone.TRAVEL, Object.keys(items))
 // Phase 128 — the weather table must be well formed and every biome must reach a state.
 weather.validateWeather(weather.RULES, weather.biomeClimates(biomes))
 
+// Phase 129 — the status-effect table must be well formed and every creature's `onHitEffects` must name a defined effect.
+combat.validateCombat(combat.STATUS_EFFECTS, combat.creatureOnHit(creatures), Object.keys(weather.RULES.states))
+
 module.exports = defineFabric({
   meta: {
     name:        'project-nihon',

@@ -149,7 +149,7 @@ issue number where the criterion used to be.
 | 126 | Tree clears the host keeps, and one seam-wrap module | Done | below |
 | 127 | Terrain streaming, generation records and persistence cleanup sweep | Done | below |
 | 128 | Weather: the fabric's `WeatherSystem` runs on the host | Done | below |
-| 129 | Combat status effects: burn, paralysis, knockback, knockdown and stagger | Planned | below |
+| 129 | Combat status effects: burn, paralysis, knockback, knockdown and stagger | Done | below |
 | 130 | Creatures walk on the ground and around obstacles | Planned | below |
 | 131 | Loose ground settles: sand and soil fall when undermined | Planned | below |
 | 132 | Internationalization: translated UI and keyed host messages | Planned | below |
@@ -1431,7 +1431,7 @@ gameplay effects (outdoor movement speed, visibility) are applied on both boot p
 
 ---
 
-## Phase 129 — Combat status effects: burn, paralysis, knockback, knockdown and stagger
+## Phase 129 — Combat status effects: burn, paralysis, knockback, knockdown and stagger ✅ Done
 
 **Goal:** `CombatSystem.applyStatusEffects` and several creatures' attacks in the fabric name status
 effects (LavaSlug heat-burn, VeilStalker paralysis, ForestBoar knockback, knockdown, stagger), but they
@@ -1444,7 +1444,7 @@ heat-burn, as the fabric rule says.
 
 **Depends on:** Phase 38, Phase 128.
 
-**Deliverables:**
+**Deliverables:** (the table is `CombatSystem.statusEffects`, validated by `statusEffectProblems`/`onHitProblems` in `fabric/gameplay/combat.js`; `tools/check_combat.js` proves bad tables fail in CI; knockdown is also what CinderGargoyle's claw rolls; stagger has no creature source yet, only the table row; the HUD shows text labels in the top-right corner)
 - `fabric/gameplay/combat.js` — a `StatusEffect` table (id, `durationSeconds`, `damagePerSecond`,
   `immobilize`, `damageTakenFactor`, `displaceTiles`, `stacks`, `extinguishedBy` weather states) and an
   `onHitEffects` field (`[{ effect, chance }]`) on the creatures whose attack rules name one; validators
@@ -1468,19 +1468,19 @@ heat-burn, as the fabric rule says.
   added under `assets/` for any icon key the art repo will use).
 
 **Acceptance criteria:**
-- [ ] `npm run validate` and `npm run check-drift` green; an `onHitEffects` entry naming an undefined
+- [x] `npm run validate` and `npm run check-drift` green; an `onHitEffects` entry naming an undefined
   effect fails validation.
-- [ ] Suite: heat-burn deals `damagePerSecond × durationSeconds` total over its duration and then ends;
+- [x] Suite: heat-burn deals `damagePerSecond × durationSeconds` total over its duration and then ends;
   reapplying a non-stacking effect refreshes the timer without doubling damage.
-- [ ] Suite: a knocked-down target takes `damageTakenFactor` × damage; a paralyzed player's movement
+- [x] Suite: a knocked-down target takes `damageTakenFactor` × damage; a paralyzed player's movement
   input moves nothing for the duration; knockback never lands inside solid voxels.
-- [ ] Suite: the on-hit roll matches its golden values; over 10,000 seeded rolls VeilStalker's paralysis
+- [x] Suite: the on-hit roll matches its golden values; over 10,000 seeded rolls VeilStalker's paralysis
   rate is within 1 percentage point of 20%.
-- [ ] Suite: a burning player whose cell turns to `rain` loses the burn on the next tick; death clears
+- [x] Suite: a burning player whose cell turns to `rain` loses the burn on the next tick; death clears
   all effects; effects round-trip through a registry save/load and a legacy record loads with none.
-- [ ] Harness: a `status_effect` step proves the effect reaches only the target's client and that the
+- [x] Harness: a `status_effect` step proves the effect reaches only the target's client and that the
   DoT lowers the host's simulated HP for that peer.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green.
 
 ---
 

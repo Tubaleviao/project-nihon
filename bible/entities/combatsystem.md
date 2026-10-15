@@ -12,6 +12,7 @@ Defines the rules governing all combat interactions — player vs creature, play
 | Name | Type | Required | Description |
 | ---- | ---- | -------- | ----------- |
 | `id` | uuid | yes |  |
+| `statusEffects` | json | yes | Status-effect table (Phase 129): { <id>: { durationSeconds, damagePerSecond, immobilize, damageTakenFactor, displaceTiles, stacks, extinguishedBy } } (validated at fabric load) |
 
 ## Behaviors
 

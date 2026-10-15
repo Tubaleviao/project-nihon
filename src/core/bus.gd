@@ -206,6 +206,12 @@ signal weather_overrides_synced(overrides: Array)
 ## Phase 128 — the weather under the local player changed to `state`. Local only, never networked.
 signal weather_changed(state: String)
 
+## Phase 129 — the status effects on `target_id` changed. `effects` is `[{ effect, remaining }]`.
+## Host → the target's own peer only; on a client it arrives with the local bucket id "player".
+signal status_effects_synced(target_id: String, effects: Array)
+## Phase 129 — a landed hit pushes `target_id` away from the attacker by `tiles` tiles. Host only.
+signal knockback_requested(target_id: String, attacker_id: String, tiles: int)
+
 ## Phase 124 — the host resolved a gather (a mined resource) for `player_id` ("" is the
 ## local player). The host grants the fabric's `gather` research points on it.
 signal resource_gathered(player_id: String, material: String, quantity: int)

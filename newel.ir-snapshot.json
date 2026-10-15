@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:2880863e0c54899fc234471a9b75778b32a7b410004049710f10d9412ec67497",
+  "schemaHash": "sha256:7f36fe0bd7980e7edc2ea59929bf2fd24f2fa71440bfe3038fc672ab0d57a79c",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -19868,6 +19868,20 @@
             "pii": false,
             "defaultValue": "TemperateForest"
           },
+          "onHitEffects": {
+            "name": "onHitEffects",
+            "type": "json",
+            "description": "Status effects a landed hit rolls: [{ effect, chance }] (Phase 129); each effect names a CombatSystem.statusEffects row",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "effect": "knockback",
+                "chance": 1
+              }
+            ]
+          },
           "drops": {
             "name": "drops",
             "type": "json",
@@ -21716,6 +21730,20 @@
             "pii": false,
             "defaultValue": "VolcanicBadlands"
           },
+          "onHitEffects": {
+            "name": "onHitEffects",
+            "type": "json",
+            "description": "Status effects a landed hit rolls: [{ effect, chance }] (Phase 129); each effect names a CombatSystem.statusEffects row",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "effect": "heat_burn",
+                "chance": 1
+              }
+            ]
+          },
           "drops": {
             "name": "drops",
             "type": "json",
@@ -22156,6 +22184,20 @@
             ],
             "pii": false,
             "defaultValue": "VolcanicBadlands"
+          },
+          "onHitEffects": {
+            "name": "onHitEffects",
+            "type": "json",
+            "description": "Status effects a landed hit rolls: [{ effect, chance }] (Phase 129); each effect names a CombatSystem.statusEffects row",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "effect": "knockdown",
+                "chance": 1
+              }
+            ]
           },
           "drops": {
             "name": "drops",
@@ -23083,6 +23125,20 @@
             ],
             "pii": false,
             "defaultValue": "TwilightGrove"
+          },
+          "onHitEffects": {
+            "name": "onHitEffects",
+            "type": "json",
+            "description": "Status effects a landed hit rolls: [{ effect, chance }] (Phase 129); each effect names a CombatSystem.statusEffects row",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "effect": "paralysis",
+                "chance": 0.2
+              }
+            ]
           },
           "drops": {
             "name": "drops",
@@ -24188,6 +24244,64 @@
             "nullable": false,
             "primaryKey": true,
             "pii": false
+          },
+          "statusEffects": {
+            "name": "statusEffects",
+            "type": "json",
+            "description": "Status-effect table (Phase 129): { <id>: { durationSeconds, damagePerSecond, immobilize, damageTakenFactor, displaceTiles, stacks, extinguishedBy } } (validated at fabric load)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "heat_burn": {
+                "durationSeconds": 8,
+                "damagePerSecond": 5,
+                "immobilize": false,
+                "damageTakenFactor": 1,
+                "displaceTiles": 0,
+                "stacks": false,
+                "extinguishedBy": [
+                  "rain",
+                  "storm"
+                ]
+              },
+              "paralysis": {
+                "durationSeconds": 3,
+                "damagePerSecond": 0,
+                "immobilize": true,
+                "damageTakenFactor": 1,
+                "displaceTiles": 0,
+                "stacks": false,
+                "extinguishedBy": []
+              },
+              "knockback": {
+                "durationSeconds": 0,
+                "damagePerSecond": 0,
+                "immobilize": false,
+                "damageTakenFactor": 1,
+                "displaceTiles": 1,
+                "stacks": false,
+                "extinguishedBy": []
+              },
+              "knockdown": {
+                "durationSeconds": 2,
+                "damagePerSecond": 0,
+                "immobilize": false,
+                "damageTakenFactor": 1.5,
+                "displaceTiles": 0,
+                "stacks": false,
+                "extinguishedBy": []
+              },
+              "stagger": {
+                "durationSeconds": 1,
+                "damagePerSecond": 0,
+                "immobilize": true,
+                "damageTakenFactor": 1,
+                "displaceTiles": 0,
+                "stacks": false,
+                "extinguishedBy": []
+              }
+            }
           }
         },
         "relations": {},

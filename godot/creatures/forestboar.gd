@@ -55,4 +55,5 @@ enum State {
 @export var spawnChance: float
 @export var spawnDensity: float
 @export var biome: int
+@export var onHitEffects: Array
 @export var drops: Array

@@ -469,8 +469,22 @@ func ensure_player(player_id: String) -> Dictionary:
 			# Phase 39 — 0.0 = "no respawn pending", the same shape the -1.0 hp
 			# sentinel has: an absent deadline and a downed body are different facts.
 			"respawn_deadline": 0.0,
+			# Phase 129 — active status effects, [{ effect, remaining }]; none by default.
+			"status_effects": [],
 			}
 	return _players[player_id]
+
+## Phase 129 — the effects (`[{ effect, remaining }]`) the host saved for `player_id`; a legacy record has none.
+func get_status_effects(player_id: String) -> Array:
+	var v: Variant = get_record(player_id).get("status_effects", [])
+	return (v as Array).duplicate(true) if v is Array else []
+
+## Phase 129 — host only: store the remaining effects on the player's record.
+func record_status_effects(player_id: String, effects: Array) -> void:
+	var rec := ensure_player(player_id)
+	if rec.is_empty():
+		return
+	rec["status_effects"] = effects.duplicate(true)
 
 func get_record(player_id: String) -> Dictionary:
 	return _players.get(player_id, {})
@@ -1042,6 +1056,7 @@ func get_player_data(player_id: String) -> Dictionary:
 		"local":     [wp["local"].x, wp["local"].y, wp["local"].z],
 		"hp":        _resolved_hp(rec),
 		"respawn_deadline": float(rec.get("respawn_deadline", 0.0)),
+		"status_effects": get_status_effects(player_id),
 		"appearance": rec.get("appearance", {}),
 		"technology": rec.get("technology", {}),
 		"flags":      rec.get("flags", {}),
@@ -1103,6 +1118,9 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	# two things depending on which door the record came through. **Review pass.**
 	var deadline := float(data.get("respawn_deadline", 0.0))
 	rec["respawn_deadline"] = deadline if is_downed(restored_hp) else 0.0
+	# Phase 129 — a legacy payload has no list and restores to none; entries are validated on load.
+	var saved_effects: Variant = data.get("status_effects", [])
+	rec["status_effects"] = (saved_effects as Array).duplicate(true) if saved_effects is Array else []
 	rec["appearance"] = data.get("appearance", {})
 	rec["technology"] = data.get("technology", {})
 	# Phase 35: taming flags and companion bindings are per-player progression, so
