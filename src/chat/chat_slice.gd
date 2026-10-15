@@ -22,6 +22,7 @@ extends Node
 ##   is_admin(player_id) -> bool
 ##   open_input() / is_typing() / lines() -> Array
 const ChatCommands := preload("res://src/core/chat_commands.gd")
+const I18n := preload("res://src/core/i18n.gd")
 const Diag := preload("res://src/core/diag.gd")
 const PlayerRules := preload("res://src/core/player_rules.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
@@ -45,6 +46,8 @@ const MAX_BUCKETS := 256
 const CHANNEL_CHAT := "chat"
 const CHANNEL_ANNOUNCE := "announce"
 const CHANNEL_SYSTEM := "system"
+## The sender of a `/say` announcement; the client shows it translated.
+const SERVER_SENDER := "Server"
 
 ## Set by game_root.
 var player_registry: Node = null
@@ -73,6 +76,8 @@ func _ready() -> void:
 	_load_admins()
 	GameBus.chat_intent.connect(_on_chat_intent)
 	GameBus.chat_posted.connect(_on_chat_posted)
+	GameBus.system_message.connect(_on_system_message)
+	GameBus.locale_changed.connect(_on_locale_changed)
 	GameBus.player_left.connect(_on_player_left)
 	if render_visuals:
 		_build_ui()
@@ -162,15 +167,15 @@ func handle_intent(text: String, player_id: String) -> void:
 	var cmd: String = parsed["name"]
 	var args: Array = parsed["args"]
 	if not ChatCommands.is_known(cmd):
-		_reply(speaker, "Unknown command '/%s'. Try /help." % cmd)
+		_reply(speaker, "chat.unknown_command", [cmd])
 		return
 	if ChatCommands.is_admin_command(cmd) and not is_admin(speaker):
-		_reply(speaker, "/%s is for admins." % cmd)
+		_reply(speaker, "chat.admin_only", [cmd])
 		return
 	match cmd:
 		"help":
-			for line in ChatCommands.help_lines(is_admin(speaker)):
-				_reply(speaker, str(line))
+			for key in ChatCommands.help_lines(is_admin(speaker)):
+				_reply(speaker, str(key))
 		"players":
 			_cmd_players(speaker)
 		"say":
@@ -204,7 +209,7 @@ func _take_token(speaker: String) -> bool:
 	chat_rate_refused += 1
 	if now - float(b["notice_at"]) >= SLOW_DOWN_NOTICE_SEC:
 		b["notice_at"] = now
-		_reply(speaker, "You are chatting too fast — slow down.")
+		_reply(speaker, "chat.slow_down")
 	return false
 
 ## Phase 115 — a bucket outlives its player: dropping it on disconnect let a reconnect refill it. Only
@@ -241,7 +246,7 @@ func _cmd_players(speaker: String) -> void:
 	var names: Array = []
 	for pid in ids:
 		names.append(_handle_of(str(pid)))
-	_reply(speaker, "%d online: %s" % [ids.size(), ", ".join(names)])
+	_reply(speaker, "chat.players", [ids.size(), ", ".join(names)])
 
 func _cmd_say(speaker: String, args: Array) -> void:
 	if args.is_empty():
@@ -250,31 +255,33 @@ func _cmd_say(speaker: String, args: Array) -> void:
 	var words: PackedStringArray = PackedStringArray()
 	for a in args:
 		words.append(str(a))
-	_post(CHANNEL_ANNOUNCE, "Server", " ".join(words), "")
+	_post(CHANNEL_ANNOUNCE, SERVER_SENDER, " ".join(words), "")
 
 func _cmd_tp(speaker: String, args: Array) -> void:
 	if args.size() == 1:
 		var target := _find_player(str(args[0]), speaker)
 		if target == "":
-			_reply(speaker, "No player '%s' online." % args[0])
+			_reply(speaker, "chat.no_player", [args[0]])
 			return
 		var where := _position_of(target)
 		if not where["known"]:
-			_reply(speaker, "Position of %s is unknown." % _handle_of(target))
+			_reply(speaker, "chat.pos_unknown", [_handle_of(target)])
 			return
 		if not _teleport(speaker, where["pos"]):
-			_reply(speaker, _unreachable(speaker))
+			_unreachable(speaker)
 			return
-		_reply(speaker, "Teleported to %s." % _handle_of(target))
+		_reply(speaker, "chat.teleported_to", [_handle_of(target)])
 		return
 	var p := ChatCommands.parse_position(args)
 	if not p["ok"]:
-		_reply(speaker, "%s  (%s)" % [p["error"], ChatCommands.USAGE["tp"]])
+		var err: Dictionary = p["error"]
+		_reply(speaker, str(err["key"]), err["args"])
+		_reply(speaker, ChatCommands.USAGE["tp"])
 		return
 	if not _teleport(speaker, p["pos"]):
-		_reply(speaker, _unreachable(speaker))
+		_unreachable(speaker)
 		return
-	_reply(speaker, "Teleported to %s." % _fmt(p["world"]))
+	_reply(speaker, "chat.teleported_xyz", [_fmt(p["world"])])
 
 func _cmd_bring(speaker: String, args: Array) -> void:
 	if args.size() != 1:
@@ -282,16 +289,16 @@ func _cmd_bring(speaker: String, args: Array) -> void:
 		return
 	var target := _find_player(str(args[0]), speaker)
 	if target == "":
-		_reply(speaker, "No player '%s' online." % args[0])
+		_reply(speaker, "chat.no_player", [args[0]])
 		return
 	var here := _position_of(speaker)
 	if not here["known"]:
-		_reply(speaker, "Your position is unknown.")
+		_reply(speaker, "chat.your_pos_unknown")
 		return
 	if not _teleport(target, here["pos"]):
-		_reply(speaker, _unreachable(target))
+		_unreachable(target, speaker)
 		return
-	_reply(speaker, "Brought %s to you." % _handle_of(target))
+	_reply(speaker, "chat.brought", [_handle_of(target)])
 
 func _cmd_give(speaker: String, args: Array) -> void:
 	if args.is_empty() or args.size() > 3:
@@ -299,38 +306,38 @@ func _cmd_give(speaker: String, args: Array) -> void:
 		return
 	var item := ChatCommands.match_item(str(args[0]), _known_item_ids())
 	if item == "":
-		_reply(speaker, "Unknown item '%s'." % args[0])
+		_reply(speaker, "chat.unknown_item", [args[0]])
 		return
 	var qty := 1
 	if args.size() >= 2:
 		qty = ChatCommands.parse_quantity(str(args[1]))
 		if qty == 0:
-			_reply(speaker, "Quantity must be 1–%d." % ChatCommands.MAX_GIVE_QUANTITY)
+			_reply(speaker, "chat.qty_range", [ChatCommands.MAX_GIVE_QUANTITY])
 			return
 	var target := speaker
 	if args.size() == 3:
 		target = _find_player(str(args[2]), speaker)
 		if target == "":
-			_reply(speaker, "No player '%s' online." % args[2])
+			_reply(speaker, "chat.no_player", [args[2]])
 			return
 	var inv := _inventory_of(target)
 	if inv == null:
-		_reply(speaker, "%s has no inventory here." % _handle_of(target))
+		_reply(speaker, "chat.no_inventory", [_handle_of(target)])
 		return
 	if not inv.add_item(item, qty):
-		_reply(speaker, "%s cannot carry %d × %s." % [_handle_of(target), qty, item])
+		_reply(speaker, "chat.cannot_carry", [_handle_of(target), qty, item])
 		return
 	if not _is_local(target):
 		GameBus.inventory_synced.emit(target, inv.get_contents(), inv.get_durability_data())
-	_reply(speaker, "Gave %d × %s to %s." % [qty, item, _handle_of(target)])
+	_reply(speaker, "chat.gave", [qty, item, _handle_of(target)])
 	if target != speaker:
-		_reply(target, "An admin gave you %d × %s." % [qty, item])
+		_reply(target, "chat.admin_gave", [qty, item])
 
 ## Phase 128 — `/weather <state> <hours>`: override the weather of the admin's own cell. The slice
 ## bounds the duration by the fabric's `overrideMaxHours`.
 func _cmd_weather(speaker: String, args: Array) -> void:
 	if weather_slice == null:
-		_reply(speaker, "Weather is not running here.")
+		_reply(speaker, "chat.weather_off")
 		return
 	if args.size() != 2 or not str(args[1]).is_valid_int():
 		_reply(speaker, ChatCommands.USAGE["weather"])
@@ -339,7 +346,7 @@ func _cmd_weather(speaker: String, args: Array) -> void:
 	var hours := str(args[1]).to_int()
 	var where := _position_of(speaker)
 	if not bool(where["known"]):
-		_reply(speaker, "Could not tell where %s is." % _handle_of(speaker))
+		_reply(speaker, "chat.weather_where_unknown", [_handle_of(speaker)])
 		return
 	var pos: Dictionary = where["pos"]
 	var chunk: Vector2i = pos["chunk"]
@@ -348,39 +355,39 @@ func _cmd_weather(speaker: String, args: Array) -> void:
 	match why:
 		"":
 			print("[Weather] %s set %s for %d h on cell %s" % [_handle_of(speaker), state, hours, cell])
-			_reply(speaker, "Weather here is %s for %d in-game hour(s)." % [state, hours])
+			_reply(speaker, "chat.weather_set", [state, hours])
 		"unknown_state":
-			_reply(speaker, "Unknown weather '%s'. States: %s." % [state, ", ".join(weather_slice.state_ids())])
+			_reply(speaker, "chat.weather_unknown", [state, ", ".join(weather_slice.state_ids())])
 		"too_long":
-			_reply(speaker, "At most %d in-game hours." % weather_slice.override_max_hours())
+			_reply(speaker, "chat.weather_too_long", [weather_slice.override_max_hours()])
 		"bad_cell":
-			_reply(speaker, "No weather cell here.")
+			_reply(speaker, "chat.weather_bad_cell")
 		"bad_hours":
-			_reply(speaker, "Hours must be a whole number of at least 1.")
+			_reply(speaker, "chat.weather_bad_hours")
 		_:
-			_reply(speaker, "Could not set the weather (%s)." % why)
+			_reply(speaker, "chat.weather_fail", [why])
 
 func _cmd_kill(speaker: String, args: Array) -> void:
 	var target := speaker
 	if not args.is_empty():
 		target = _find_player(str(args[0]), speaker)
 		if target == "":
-			_reply(speaker, "No player '%s' online." % args[0])
+			_reply(speaker, "chat.no_player", [args[0]])
 			return
 	if _is_local(target):
 		if player_slice == null:
-			_reply(speaker, "No body to kill here.")
+			_reply(speaker, "chat.no_body")
 			return
 		player_slice.take_damage(KILL_DAMAGE, "admin")
 	else:
 		var peer := _peer_of(target)
 		if peer <= 1:
-			_reply(speaker, _unreachable(target))
+			_unreachable(target, speaker)
 			return
 		# The host's resolution of a hit on a peer (simulated HP, then the display update) lives
 		# behind this signal, the same door a creature's round uses.
 		GameBus.player_damaged.emit(KILL_DAMAGE, "admin", target)
-	_reply(speaker, "Killed %s." % _handle_of(target))
+	_reply(speaker, "chat.killed", [_handle_of(target)])
 
 # ---------------------------------------------------------------------------
 # Helpers (host)
@@ -391,9 +398,9 @@ func teleport_player(target: String, pos: Dictionary) -> bool:
 	return _teleport(target, pos)
 
 ## The one failure line for a teleport that had nobody to move (no networking, an unknown or
-## unreachable peer, or a dropped packet).
-func _unreachable(player_id: String) -> String:
-	return "Could not teleport: %s is not reachable." % _handle_of(player_id)
+## unreachable peer, or a dropped packet), sent to `to` (default: the unreachable player itself).
+func _unreachable(player_id: String, to: String = "") -> void:
+	_reply(to if to != "" else player_id, "chat.unreachable", [_handle_of(player_id)])
 
 ## `pos` is an exact `{chunk, local}` record. True only when the move was applied (local body) or sent
 ## (a reachable peer); false when there is nobody to move.
@@ -484,8 +491,20 @@ func _fmt(world: Array) -> String:
 func _post(channel: String, sender: String, text: String, target: String) -> void:
 	GameBus.chat_posted.emit(channel, sender, text, target)
 
-func _reply(player_id: String, text: String) -> void:
-	_post(CHANNEL_SYSTEM, "", text, player_id)
+## Phase 131 — a system line to one player as key + args; their client renders it in its own locale.
+## String args are capped here so the client never has to refuse a handle for its length.
+func _reply(player_id: String, key: String, args: Array = []) -> void:
+	_say_system(key, args, player_id)
+
+func _say_system(key: String, args: Array, target: String) -> void:
+	var clean: Array = []
+	for a in args:
+		clean.append(str(a).left(I18n.MAX_ARG_LEN) if a is String else a)
+	GameBus.system_message.emit(key, clean, target)
+
+## Host: tell everyone `player_id` is here.
+func announce_joined(player_id: String) -> void:
+	_say_system("chat.player_joined", [_handle_of(player_id)], "")
 
 func _load_admins() -> void:
 	_admins.clear()
@@ -513,14 +532,29 @@ func _on_chat_posted(channel: String, sender: String, text: String, target_id: S
 		return
 	_add_line(channel, sender, text)
 
+func _on_system_message(key: String, args: Array, target_id: String) -> void:
+	if target_id != "" and not _is_local(target_id):
+		return
+	_add_msg(I18n.sanitize_msg(key, args))
+
+func _on_locale_changed(_locale: String) -> void:
+	if _field != null:
+		_field.placeholder_text = I18n.t("chat.placeholder")
+	if _log != null:
+		_refresh_log()
+
 # ---------------------------------------------------------------------------
 # Box
 # ---------------------------------------------------------------------------
 
-func _add_line(channel: String, sender: String, text: String) -> void:
-	if text == "":
+## A system line kept as key + args, so a language switch re-renders what is already in the box.
+func _add_msg(m: Dictionary) -> void:
+	_add_line(CHANNEL_SYSTEM, "", "", m)
+
+func _add_line(channel: String, sender: String, text: String, msg: Dictionary = {}) -> void:
+	if text == "" and msg.is_empty():
 		return
-	_lines.append({ "channel": channel, "sender": sender, "text": text,
+	_lines.append({ "channel": channel, "sender": sender, "text": text, "msg": msg,
 			"born": Time.get_ticks_msec() / 1000.0 })
 	while _lines.size() > MAX_LINES:
 		_lines.pop_front()
@@ -553,7 +587,7 @@ func _build_ui() -> void:
 
 	_field = LineEdit.new()
 	# Always on screen so the box can be found; Enter, `/` or a click gives it the keyboard.
-	_field.placeholder_text = "Press Enter to chat, or / for commands (/help)"
+	_field.placeholder_text = I18n.t("chat.placeholder")
 	_field.max_length = ChatCommands.MAX_MESSAGE_CHARS
 	_field.focus_exited.connect(_on_field_focus_exited)
 	_field.text_submitted.connect(_on_text_submitted)
@@ -589,8 +623,9 @@ func _refresh_log() -> void:
 	_log.text = text.strip_edges(false, true)
 
 static func _format_line(line: Dictionary) -> String:
-	var body := str(line["text"]).replace("[", "[lb]")
-	var sender := str(line["sender"]).replace("[", "[lb]")
+	var msg: Dictionary = line.get("msg", {})
+	var body := (I18n.render(msg) if not msg.is_empty() else str(line["text"])).replace("[", "[lb]")
+	var sender := (I18n.t("chat.sender.server") if str(line["sender"]) == SERVER_SENDER else str(line["sender"])).replace("[", "[lb]")
 	match str(line["channel"]):
 		CHANNEL_ANNOUNCE:
 			return "[color=#ffcc55][b]%s: %s[/b][/color]" % [sender, body]

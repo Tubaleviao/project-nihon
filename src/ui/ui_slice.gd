@@ -31,6 +31,7 @@ extends Node
 ## are dropped on load, so nothing accumulates and there is no per-connection
 ## state to evict.
 const Diag := preload("res://src/core/diag.gd")
+const I18n := preload("res://src/core/i18n.gd")
 
 const WINDOW_INVENTORY  := "inventory"
 const WINDOW_TECHNOLOGY := "technology"
@@ -109,6 +110,9 @@ var _spawn_notice_label: Label = null
 const TOAST_MAX := 8
 const TOAST_SECONDS := 6.0
 var _toast_label: Label = null
+## Phase 131 — controls whose text is a catalog key: [{node, prop, key}] (see `_set_tr`).
+var _bound: Array = []
+var _controls_box: VBoxContainer = null
 var _toast_queue: Array[String] = []
 var _toast_shown: String = ""
 var _toast_left: float = 0.0
@@ -146,6 +150,7 @@ var _character_rows_signature: int = 0
 
 func _ready() -> void:
 	_build_ui()
+	GameBus.locale_changed.connect(_on_locale_changed)
 	GameBus.craft_resolved.connect(_on_craft_resolved)
 	GameBus.spawn_notice.connect(_on_spawn_notice)
 	GameBus.worldgen_version_mismatch.connect(_on_worldgen_version_mismatch)
@@ -328,7 +333,7 @@ func finish_world_drop(payload: Dictionary, whole_stack: bool) -> String:
 ## or the reason it was refused.
 func request_drop(item_id: String, quantity: int) -> String:
 	if not drops_enabled:
-		_notify("Items can't be dropped while joined to another player's world yet")
+		_notify(I18n.t("ui.drop_blocked"))
 		return "client"
 	if inventory_slice == null or quantity <= 0 or int(inventory_slice.get_item_count(item_id)) <= 0:
 		return "none"
@@ -419,6 +424,27 @@ func _close_all_windows() -> void:
 		_panels[panel].visible = false
 	_drag_key = ""
 	refresh_hud()
+
+## Phase 131 — set a control's text from a catalog key and remember it, so a language switch can
+## re-apply it. `prop` is the property name ("text", "tooltip_text", "placeholder_text").
+func _set_tr(ctrl: Control, prop: String, key: String) -> void:
+	ctrl.set(prop, I18n.t(key))
+	_bound.append({"node": ctrl, "prop": prop, "key": key})
+
+## The language changed: re-apply every bound control, rebuild the data-driven lists and the controls
+## panel, and refresh the HUD, so no window needs a restart.
+func _on_locale_changed(_locale: String) -> void:
+	for b in _bound:
+		if is_instance_valid(b["node"]):
+			(b["node"] as Control).set(b["prop"], I18n.t(b["key"]))
+	_refill_controls()
+	if hotbar != null:
+		hotbar.relocalize()
+	if window_dock != null:
+		window_dock.relocalize()
+	if _friend_code_label != null:
+		_friend_code_label.text = friend_code_text(own_handle)
+	refresh_all()
 
 func refresh_all() -> void:
 	refresh_inventory()
@@ -520,11 +546,11 @@ func item_actions(item_id: String, repairable = null) -> Array:
 			repairable[str(r["id"])] = true
 	var actions: Array = []
 	if repairable.has(item_id):
-		actions.append({"action": "repair", "label": "Repair"})
+		actions.append({"action": "repair", "label": I18n.t("ui.repair")})
 	var slot := EquipmentRules.slot_of(item_id, GameData.ITEMS)
 	# An item already on the avatar offers Unequip in the Character window, not Equip.
 	if slot != "" and character_slice != null and str(_local_worn().get(slot, "")) != item_id:
-		actions.append({"action": "equip", "label": "Equip (%s)" % slot})
+		actions.append({"action": "equip", "label": I18n.t("ui.equip_slot", [slot])})
 	return actions
 
 ## The bus intent an action maps to: { signal, args }, or {} for an unknown action.
@@ -580,15 +606,15 @@ func character_rows() -> Array:
 			"slot": slot,
 			"item": item,
 			"icon_key": item_icon_key(item) if item != "" else "",
-			"tooltip": ("%s: %s" % [slot, item_description(item)]) if item != "" else "%s: empty" % slot,
-			"actions": [{"action": "unequip", "label": "Unequip"}] if item != "" else [],
+			"tooltip": ("%s: %s" % [slot, item_description(item)]) if item != "" else I18n.t("ui.slot_empty", [slot]),
+			"actions": [{"action": "unequip", "label": I18n.t("ui.unequip")}] if item != "" else [],
 		})
 	return rows
 
 ## The Character window's totals line, summed from fabric values only.
 func character_stats_text() -> String:
 	var totals := EquipmentRules.totals(_local_worn(), GameData.ITEMS)
-	return "Defense %d" % int(totals.get("defense", 0))
+	return I18n.t("ui.defense", [int(totals.get("defense", 0))])
 
 func _local_worn() -> Dictionary:
 	if character_slice == null:
@@ -623,9 +649,9 @@ func inventory_rows() -> Array:
 		var iid := str(item_id)
 		var qty := int(contents[item_id])
 		var dur := durability_bar(iid).strip_edges()
-		var tip := "%s\nQuantity: %d" % [iid, qty]
+		var tip := I18n.t("ui.tip_quantity", [iid, qty])
 		if dur != "":
-			tip += "\nDurability: %s" % dur.trim_prefix("[").trim_suffix("]")
+			tip += I18n.t("ui.tip_durability", [dur.trim_prefix("[").trim_suffix("]")])
 		var desc := item_description(iid)
 		if desc != "":
 			tip += "\n" + desc
@@ -643,35 +669,35 @@ func inventory_rows() -> Array:
 ## { keys, desc, mouse } where `mouse` is a MouseButton for a drawn cue, or 0.
 static func controls_rows() -> Array:
 	return [
-		{"keys": "WASD", "desc": "Move", "mouse": 0},
-		{"keys": "Space", "desc": "Jump", "mouse": 0},
-		{"keys": "Hold", "desc": "Look around (the cursor hides while held)", "mouse": MOUSE_BUTTON_RIGHT},
-		{"keys": "Scroll", "desc": "Zoom", "mouse": 0},
-		{"keys": "1 – 9", "desc": "Use the box on the bottom row (a block, gear or a skill)", "mouse": 0},
-		{"keys": "▴", "desc": "Expand the bottom bar: drag items and skills in, right-click a box to choose its key", "mouse": 0},
-		{"keys": "Drag", "desc": "Inventory item onto a box, or onto the ground to drop it (Shift: whole stack)", "mouse": 0},
-		{"keys": "", "desc": "Click: Attack / Pick up / Chop", "mouse": MOUSE_BUTTON_LEFT},
-		{"keys": "Shift +", "desc": "Mine", "mouse": MOUSE_BUTTON_LEFT},
-		{"keys": "", "desc": "Place", "mouse": MOUSE_BUTTON_MIDDLE},
-		{"keys": "R", "desc": "Next placeable block", "mouse": 0},
-		{"keys": "B · V", "desc": "Station cycle / place", "mouse": 0},
-		{"keys": "G", "desc": "Tame nearest creature (G is shared with Proposals)", "mouse": 0},
-		{"keys": "E", "desc": "Toggle equipment", "mouse": 0},
-		{"keys": "I · C · K · H · T · Y · P · G", "desc": "Inventory · Character · Skills · Crafting · Tech · Trade · Market · Proposals (or click the boxes under your health)", "mouse": 0},
-		{"keys": "?", "desc": "This panel", "mouse": 0},
-		{"keys": "Enter · /", "desc": "Chat and commands (/help)", "mouse": 0},
-		{"keys": "ESC", "desc": "Close windows", "mouse": 0},
+		{"keys": "WASD", "desc": I18n.t("controls.row0"), "mouse": 0},
+		{"keys": "Space", "desc": I18n.t("controls.row1"), "mouse": 0},
+		{"keys": I18n.t("controls.key.hold"), "desc": I18n.t("controls.row2"), "mouse": MOUSE_BUTTON_RIGHT},
+		{"keys": I18n.t("controls.key.scroll"), "desc": I18n.t("controls.row3"), "mouse": 0},
+		{"keys": "1 – 9", "desc": I18n.t("controls.row4"), "mouse": 0},
+		{"keys": "▴", "desc": I18n.t("controls.row5"), "mouse": 0},
+		{"keys": I18n.t("controls.key.drag"), "desc": I18n.t("controls.row6"), "mouse": 0},
+		{"keys": "", "desc": I18n.t("controls.row7"), "mouse": MOUSE_BUTTON_LEFT},
+		{"keys": "Shift +", "desc": I18n.t("controls.row8"), "mouse": MOUSE_BUTTON_LEFT},
+		{"keys": "", "desc": I18n.t("controls.row9"), "mouse": MOUSE_BUTTON_MIDDLE},
+		{"keys": "R", "desc": I18n.t("controls.row10"), "mouse": 0},
+		{"keys": "B · V", "desc": I18n.t("controls.row11"), "mouse": 0},
+		{"keys": "G", "desc": I18n.t("controls.row12"), "mouse": 0},
+		{"keys": "E", "desc": I18n.t("controls.row13"), "mouse": 0},
+		{"keys": "I · C · K · H · T · Y · P · G", "desc": I18n.t("controls.row14"), "mouse": 0},
+		{"keys": "?", "desc": I18n.t("controls.row15"), "mouse": 0},
+		{"keys": "Enter · /", "desc": I18n.t("controls.row16"), "mouse": 0},
+		{"keys": "ESC", "desc": I18n.t("controls.row17"), "mouse": 0},
 	]
 
 func inventory_usage_text() -> String:
 	if inventory_slice == null:
 		return ""
-	return "Weight: %.1f / %.1f kg   Slots: %d / %d" % [
-		inventory_slice.get_current_weight(),
-		inventory_slice.get_max_weight(),
+	return I18n.t("ui.usage", [
+		I18n.number(inventory_slice.get_current_weight(), 1),
+		I18n.number(inventory_slice.get_max_weight(), 1),
 		inventory_slice.get_total_slots_used(),
 		inventory_slice.get_max_slots(),
-	]
+	])
 
 ## Durability readout for a held durable item ("  [80/80]"), or "" when the
 ## item has no durability model or is not held.
@@ -760,7 +786,7 @@ func technology_rows() -> Array:
 			"status": status,
 			"can_research": _can_research(tid, status, data) and not short,
 			"points_cost": points_cost,
-			"reason": "needs %d research points" % points_cost if short else "",
+			"reason": I18n.t("ui.needs_points", [points_cost]) if short else "",
 			"requires": data.get("requires", []),
 			"duration": int(data.get("researchDuration", 0)),
 			"cost": _fmt_entries(data.get("researchMaterials", [])),
@@ -934,7 +960,7 @@ func _on_character_appearance_changed(iid: String, _appearance: Dictionary) -> v
 
 ## The friend-code line of the Character window. Pure.
 static func friend_code_text(handle: String) -> String:
-	return "Friend code: %s" % (handle if handle != "" else "(not assigned yet)")
+	return I18n.t("ui.friend_code", [handle if handle != "" else I18n.t("ui.friend_code_none")])
 
 func set_own_handle(handle: String) -> void:
 	own_handle = handle
@@ -951,12 +977,12 @@ func _on_spawn_notice(message: String) -> void:
 
 ## Phase 71 — the host's world record came from another generator version.
 func _on_worldgen_version_mismatch(recorded: int, running: int) -> void:
-	push_toast("World saved with generator v%d, running v%d: terrain may not match saved edits." % [recorded, running])
+	push_toast(I18n.t("ui.worldgen_version", [recorded, running]))
 
 ## Phase 114 — the fabric's world or biome parameters changed since the world was saved. Recorded land
 ## keeps its shape; only land nobody has visited yet follows the new parameters.
 func _on_worldgen_fingerprint_mismatch(_saved: int, _current: int) -> void:
-	push_toast("World parameters changed since this world was saved: unvisited land follows the new ones, visited land is unchanged.")
+	push_toast(I18n.t("ui.worldgen_fingerprint"))
 
 ## Queue a HUD toast. A text already queued or on screen is not added twice; past TOAST_MAX the
 ## oldest queued toast is dropped. Returns whether it was queued.
@@ -1004,7 +1030,7 @@ func _process(delta: float) -> void:
 static func skills_rows(tiers: Dictionary) -> Array:
 	var rows: Array = []
 	for skill in HotbarScript.ordered_skills(tiers):
-		rows.append({"id": skill, "tier": str(tiers[skill]), "tooltip": "%s (%s)\nDrag onto the bottom bar to use it with a key" % [skill, tiers[skill]]})
+		rows.append({"id": skill, "tier": str(tiers[skill]), "tooltip": I18n.t("ui.skill_tip", [skill, tiers[skill]])})
 	return rows
 
 func _refresh_skills() -> void:
@@ -1067,7 +1093,7 @@ func refresh_crafting() -> void:
 		var hbox := HBoxContainer.new()
 		hbox.add_theme_constant_override("separation", 8)
 		var btn := Button.new()
-		btn.text = "Craft"
+		btn.text = I18n.t("ui.craft")
 		btn.disabled = not bool(r["can_craft"])
 		btn.pressed.connect(_on_craft_pressed.bind(str(r["id"])))
 		hbox.add_child(btn)
@@ -1084,7 +1110,7 @@ func refresh_crafting() -> void:
 	var repair_rows_list: Array = repair_rows()
 	if not repair_rows_list.is_empty():
 		var sep := Label.new()
-		sep.text = "— Repairs —"
+		sep.text = I18n.t("ui.repairs_header")
 		sep.add_theme_font_size_override("font_size", 14)
 		sep.modulate = Color(0.75, 0.75, 0.75)
 		_crafting_box.add_child(sep)
@@ -1093,14 +1119,14 @@ func refresh_crafting() -> void:
 			var hbox := HBoxContainer.new()
 			hbox.add_theme_constant_override("separation", 8)
 			var btn := Button.new()
-			btn.text = "Repair"
+			btn.text = I18n.t("ui.repair")
 			btn.disabled = not bool(r["can_repair"])
 			btn.pressed.connect(_on_repair_pressed.bind(str(r["id"])))
 			hbox.add_child(btn)
 			var line := str(r["id"])
 			if str(r.get("station", "")) != "":
 				line += "  @ %s" % r["station"]
-			line += "  needs: %s" % r["materials"]
+			line += "  " + I18n.t("ui.needs", [r["materials"]])
 			var lbl := Label.new()
 			lbl.text = line + ("" if bool(r["can_repair"]) else "  (%s)" % r["reason"])
 			lbl.modulate = Color(1, 1, 1) if bool(r["can_repair"]) else Color(0.6, 0.6, 0.6)
@@ -1117,20 +1143,20 @@ func refresh_technology() -> void:
 	for child in _technology_box.get_children():
 		child.queue_free()
 	var balance := Label.new()
-	balance.text = "Research points: %d" % research_points()
+	balance.text = I18n.t("ui.research_points", [research_points()])
 	_technology_box.add_child(balance)
 	for row in technology_rows():
 		var r: Dictionary = row
 		var hbox := HBoxContainer.new()
 		hbox.add_theme_constant_override("separation", 8)
 		var btn := Button.new()
-		btn.text = "Research"
+		btn.text = I18n.t("ui.research")
 		btn.disabled = not bool(r["can_research"])
 		btn.pressed.connect(_on_research_pressed.bind(str(r["id"])))
 		hbox.add_child(btn)
 		var req_arr: Array = r.get("requires", [])
 		var reqs: String = ", ".join(req_arr) if req_arr.size() > 0 else "—"
-		var line := "%s [%s]  requires: %s  cost: %s + %d pts  %ds" % [r["id"], r["status"], reqs, r["cost"], r["points_cost"], r["duration"]]
+		var line := I18n.t("ui.tech_line", [r["id"], r["status"], reqs, r["cost"], r["points_cost"], r["duration"]])
 		var lbl := Label.new()
 		lbl.text = line + ("  (%s)" % r["reason"] if str(r["reason"]) != "" else "")
 		hbox.add_child(lbl)
@@ -1145,11 +1171,11 @@ func refresh_market() -> void:
 			var hbox := HBoxContainer.new()
 			hbox.add_theme_constant_override("separation", 8)
 			var btn := Button.new()
-			btn.text = "Buy"
+			btn.text = I18n.t("ui.buy")
 			btn.pressed.connect(_on_market_buy_pressed.bind(str(r["id"])))
 			hbox.add_child(btn)
 			var lbl := Label.new()
-			lbl.text = "%s  %s ×%d  @ %.2f  (%s)" % [r["id"], r["item_id"], r["quantity"], r["price"], r["seller"]]
+			lbl.text = I18n.t("ui.listing", [r["id"], r["item_id"], r["quantity"], I18n.number(r["price"], 2), r["seller"]])
 			hbox.add_child(lbl)
 			_market_box.add_child(hbox)
 	_refresh_market_item_selector()
@@ -1174,15 +1200,15 @@ func refresh_proposals() -> void:
 		var hbox := HBoxContainer.new()
 		hbox.add_theme_constant_override("separation", 8)
 		var lbl := Label.new()
-		lbl.text = "%s [%s] %s  (for:%d / against:%d) — %s" % [r["id"], r["state"], r["title"], r["for"], r["against"], r["author"]]
+		lbl.text = I18n.t("ui.proposal_line", [r["id"], r["state"], r["title"], r["for"], r["against"], r["author"]])
 		hbox.add_child(lbl)
 		if str(r["state"]) == "proposed":
 			var for_btn := Button.new()
-			for_btn.text = "For"
+			for_btn.text = I18n.t("ui.for")
 			for_btn.pressed.connect(_on_proposal_vote_pressed.bind(str(r["id"]), "for"))
 			hbox.add_child(for_btn)
 			var against_btn := Button.new()
-			against_btn.text = "Against"
+			against_btn.text = I18n.t("ui.against")
 			against_btn.pressed.connect(_on_proposal_vote_pressed.bind(str(r["id"]), "against"))
 			hbox.add_child(against_btn)
 		_proposal_box.add_child(hbox)
@@ -1196,18 +1222,18 @@ func refresh_trade() -> void:
 ## open. Pure projection so it is testable without a scene tree.
 func _trade_status_text() -> String:
 	if trade_slice == null:
-		return "Trade is unavailable (no trade slice wired)."
+		return I18n.t("trade.unavailable")
 	if _active_trade_id == "":
-		return "No active trade. Click \"Start trade\" to open a session with the merchant."
+		return I18n.t("trade.none")
 	var t: Dictionary = trade_slice.get_trade(_active_trade_id)
 	if t.is_empty():
-		return "Trade session ended."
+		return I18n.t("trade.ended")
 	var state: String = str(t.get("state", "pending"))
 	if state == "completed":
-		return "Trade completed — the merchant's goods were added to your inventory (less the Trade broker fee)."
+		return I18n.t("trade.completed")
 	if state == "rejected":
-		return "Trade rejected."
-	return "Trade %s open — click \"Accept trade\" to complete the exchange." % _active_trade_id
+		return I18n.t("trade.rejected")
+	return I18n.t("trade.open", [_active_trade_id])
 
 # ---------------------------------------------------------------------------
 # Bus handlers
@@ -1237,7 +1263,7 @@ func _on_craft_resolved(result: Dictionary) -> void:
 func _on_repair_resolved(result: Dictionary) -> void:
 	if _repair_feedback != null and _belongs_to_local_player(result):
 		if result.get("success", false):
-			_repair_feedback.text = "Repaired %s." % result.get("item_id", "?")
+			_repair_feedback.text = I18n.t("ui.repaired", [result.get("item_id", "?")])
 		else:
 			_repair_feedback.text = "%s: %s" % [result.get("item_id", "?"), result.get("reason", "?")]
 	refresh_crafting()
@@ -1246,7 +1272,7 @@ func _on_repair_resolved(result: Dictionary) -> void:
 func _on_research_resolved(result: Dictionary) -> void:
 	if _technology_feedback != null and _belongs_to_local_player(result):
 		if result.get("success", false):
-			_technology_feedback.text = "Researching %s…" % result.get("tech_id", "?")
+			_technology_feedback.text = I18n.t("ui.researching", [result.get("tech_id", "?")])
 		else:
 			_technology_feedback.text = "%s: %s" % [result.get("tech_id", "?"), result.get("reason", "?")]
 	refresh_technology()
@@ -1343,9 +1369,9 @@ func _on_market_list_pressed() -> void:
 	var id: String = market_slice.list_item("player", item_id, qty, price)
 	if _market_feedback != null:
 		if id != "":
-			_market_feedback.text = "Listed %s ×%d @ %.2f." % [item_id, qty, price]
+			_market_feedback.text = I18n.t("market.listed", [item_id, qty, I18n.number(price, 2)])
 		else:
-			_market_feedback.text = "Couldn't list %s — check you hold the quantity." % item_id
+			_market_feedback.text = I18n.t("market.list_failed", [item_id])
 	refresh_market()
 
 func _on_proposal_submit_pressed() -> void:
@@ -1359,7 +1385,7 @@ func _on_proposal_submit_pressed() -> void:
 	_proposal_title.text = ""
 	_proposal_body.text = ""
 	if _proposal_feedback != null:
-		_proposal_feedback.text = "Proposal submitted. Other players can now vote."
+		_proposal_feedback.text = I18n.t("proposal.submitted")
 	refresh_proposals()
 
 func _on_proposal_vote_pressed(proposal_id: String, verdict: String) -> void:
@@ -1368,9 +1394,9 @@ func _on_proposal_vote_pressed(proposal_id: String, verdict: String) -> void:
 	var result: Dictionary = proposal_slice.vote(proposal_id, "player", verdict)
 	if _proposal_feedback != null:
 		if result.get("success", true):
-			_proposal_feedback.text = "Vote cast."
+			_proposal_feedback.text = I18n.t("proposal.voted")
 		else:
-			_proposal_feedback.text = "Vote rejected: %s" % result.get("reason", "?")
+			_proposal_feedback.text = I18n.t("proposal.vote_rejected", [result.get("reason", "?")])
 	refresh_proposals()
 
 # ---------------------------------------------------------------------------
@@ -1385,17 +1411,17 @@ func _build_ui() -> void:
 	# Built first so every window draws above the HUD.
 	_build_hud()
 
-	_panels[WINDOW_INVENTORY] = _build_window(WINDOW_INVENTORY, "Inventory", _build_inventory_content(), Vector2(24, 24))
-	_panels[WINDOW_TECHNOLOGY] = _build_window(WINDOW_TECHNOLOGY, "Technology", _build_technology_content(), Vector2(470, 24))
-	_panels[WINDOW_CRAFTING] = _build_window(WINDOW_CRAFTING, "Crafting (H)", _build_crafting_content(), Vector2(24, 360))
-	_panels[WINDOW_TRADE] = _build_window(WINDOW_TRADE, "Trade", _build_trade_content(), Vector2(470, 360))
-	_panels[WINDOW_MARKET] = _build_window(WINDOW_MARKET, "Market (P)", _build_market_content(), Vector2(24, 700))
-	_panels[WINDOW_PROPOSALS] = _build_window(WINDOW_PROPOSALS, "Proposals", _build_proposals_content(), Vector2(470, 700))
-	_panels[WINDOW_CONTROLS] = _build_window(WINDOW_CONTROLS, "Controls (?)", _build_controls_content(), Vector2(916, 24))
+	_panels[WINDOW_INVENTORY] = _build_window(WINDOW_INVENTORY, "win.inventory", _build_inventory_content(), Vector2(24, 24))
+	_panels[WINDOW_TECHNOLOGY] = _build_window(WINDOW_TECHNOLOGY, "win.technology", _build_technology_content(), Vector2(470, 24))
+	_panels[WINDOW_CRAFTING] = _build_window(WINDOW_CRAFTING, "win.crafting", _build_crafting_content(), Vector2(24, 360))
+	_panels[WINDOW_TRADE] = _build_window(WINDOW_TRADE, "win.trade", _build_trade_content(), Vector2(470, 360))
+	_panels[WINDOW_MARKET] = _build_window(WINDOW_MARKET, "win.market", _build_market_content(), Vector2(24, 700))
+	_panels[WINDOW_PROPOSALS] = _build_window(WINDOW_PROPOSALS, "win.proposals", _build_proposals_content(), Vector2(470, 700))
+	_panels[WINDOW_CONTROLS] = _build_window(WINDOW_CONTROLS, "win.controls", _build_controls_content(), Vector2(916, 24))
 
-	_panels[WINDOW_CHARACTER] = _build_window(WINDOW_CHARACTER, "Character (C)", _build_character_content(), Vector2(916, 360))
-	_panels[WINDOW_SKILLS] = _build_window(WINDOW_SKILLS, "Skills (K)", _build_skills_content(), Vector2(916, 700))
-	_panels[WINDOW_MAP] = _build_window(WINDOW_MAP, "Map (M)", _build_map_content(), Vector2(200, 80))
+	_panels[WINDOW_CHARACTER] = _build_window(WINDOW_CHARACTER, "win.character", _build_character_content(), Vector2(916, 360))
+	_panels[WINDOW_SKILLS] = _build_window(WINDOW_SKILLS, "win.skills", _build_skills_content(), Vector2(916, 700))
+	_panels[WINDOW_MAP] = _build_window(WINDOW_MAP, "win.map", _build_map_content(), Vector2(200, 80))
 
 	_slot_menu = PopupMenu.new()
 	_slot_menu.id_pressed.connect(_on_slot_menu_pressed)
@@ -1418,19 +1444,19 @@ func _build_map_content() -> Control:
 	var row := HBoxContainer.new()
 	box.add_child(row)
 	var fold := CheckButton.new()
-	fold.text = "Planet"
-	fold.tooltip_text = "Fold the flat map into the planet"
+	_set_tr(fold, "text", "map.planet")
+	_set_tr(fold, "tooltip_text", "map.planet_tip")
 	fold.focus_mode = Control.FOCUS_NONE
 	fold.toggled.connect(func(on: bool) -> void: map_window.set_planet(on))
 	row.add_child(fold)
 	var here := Button.new()
-	here.text = "Centre on me"
+	_set_tr(here, "text", "map.centre")
 	here.focus_mode = Control.FOCUS_NONE
 	here.pressed.connect(func() -> void: map_window.center_on_player())
 	row.add_child(here)
 	var hint := Label.new()
-	hint.text = "drag: pan  wheel: zoom  right-click: waypoint  shift+right-click: rename  click a waystone: travel"
-	hint.tooltip_text = "Right-click adds a waypoint, or deletes the one under the cursor"
+	_set_tr(hint, "text", "map.hint")
+	_set_tr(hint, "tooltip_text", "map.hint_tip")
 	hint.mouse_filter = Control.MOUSE_FILTER_PASS
 	row.add_child(hint)
 	return box
@@ -1442,21 +1468,23 @@ func _on_waystone_resolved(player_id: String, ok: bool, reason: String) -> void:
 	# A listen host resolves remote peers' intents too; only the owner is told why.
 	if player_id != "" and technology_slice != null and player_id != str(technology_slice.local_player_id()):
 		return
-	push_toast(WAYSTONE_REFUSALS.get(reason, "The waystone does not answer."))
+	push_toast(I18n.t(WAYSTONE_REFUSALS.get(reason, "waystone.default")))
 
+## Reason code → catalog key.
 const WAYSTONE_REFUSALS := {
-	"unknown_player": "The waystone does not know you.",
-	"rate_limited": "Slow down: the waystone is still settling.",
-	"same_stone": "You are already at that waystone.",
-	"missing_stone": "That waystone no longer stands.",
-	"not_attuned_from": "You are not attuned to this waystone yet.",
-	"not_attuned_to": "You are not attuned to that waystone.",
-	"too_far": "Stand closer to the waystone.",
-	"cooldown": "The waystone is still recovering from your last journey.",
-	"no_cost": "You do not carry enough to pay for the journey.",
-	"unreachable": "The journey failed; nothing was spent.",
+	"unknown_player": "waystone.unknown_player",
+	"rate_limited": "waystone.rate_limited",
+	"same_stone": "waystone.same_stone",
+	"missing_stone": "waystone.missing_stone",
+	"not_attuned_from": "waystone.not_attuned_from",
+	"not_attuned_to": "waystone.not_attuned_to",
+	"too_far": "waystone.too_far",
+	"cooldown": "waystone.cooldown",
+	"no_cost": "waystone.no_cost",
+	"unreachable": "waystone.unreachable",
 }
 
+## `title` is a catalog key.
 func _build_window(key: String, title: String, content: Control, position: Vector2) -> PanelContainer:
 	var panel := PanelContainer.new()
 	panel.position = position
@@ -1482,7 +1510,7 @@ func _build_window(key: String, title: String, content: Control, position: Vecto
 	vbox.add_child(bar)
 
 	var title_label := Label.new()
-	title_label.text = title
+	_set_tr(title_label, "text", title)
 	title_label.add_theme_font_size_override("font_size", 22)
 	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(title_label)
@@ -1560,8 +1588,18 @@ func _apply_layout() -> void:
 			panel.position = fit_window_position(_layout[key], panel.custom_minimum_size.max(panel.size), _viewport_size())
 
 func _build_controls_content() -> Control:
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 5)
+	_controls_box = VBoxContainer.new()
+	_controls_box.add_theme_constant_override("separation", 5)
+	_refill_controls()
+	return _controls_box
+
+## (Re)build the control rows in the active language.
+func _refill_controls() -> void:
+	if _controls_box == null:
+		return
+	for child in _controls_box.get_children():
+		child.free()
+	var box := _controls_box
 	for row in controls_rows():
 		var line := HBoxContainer.new()
 		line.add_theme_constant_override("separation", 10)
@@ -1585,7 +1623,6 @@ func _build_controls_content() -> Control:
 		desc.add_theme_font_size_override("font_size", 15)
 		line.add_child(desc)
 		box.add_child(line)
-	return box
 
 func _build_inventory_content() -> Control:
 	var vbox := VBoxContainer.new()
@@ -1594,7 +1631,7 @@ func _build_inventory_content() -> Control:
 	_inventory_usage.add_theme_font_size_override("font_size", 15)
 	vbox.add_child(_inventory_usage)
 	_inventory_empty = Label.new()
-	_inventory_empty.text = "(empty)"
+	_set_tr(_inventory_empty, "text", "ui.empty")
 	vbox.add_child(_inventory_empty)
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(0, 220)
@@ -1618,7 +1655,7 @@ func _build_character_content() -> Control:
 	_friend_code_label.text = friend_code_text(own_handle)
 	code_row.add_child(_friend_code_label)
 	var copy_btn := Button.new()
-	copy_btn.text = "Copy"
+	_set_tr(copy_btn, "text", "ui.copy")
 	copy_btn.pressed.connect(_on_copy_friend_code_pressed)
 	code_row.add_child(copy_btn)
 	vbox.add_child(code_row)
@@ -1634,7 +1671,7 @@ func _build_skills_content() -> Control:
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 6)
 	var title := Label.new()
-	title.text = "Drag a skill onto the bottom bar"
+	_set_tr(title, "text", "ui.skills_title")
 	title.add_theme_font_size_override("font_size", 15)
 	vbox.add_child(title)
 	_skills_grid = GridContainer.new()
@@ -1676,15 +1713,15 @@ func _build_trade_content() -> Control:
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 6)
 	var lbl := Label.new()
-	lbl.text = "Player-to-player trade with the merchant. Your Trade tier lowers the broker fee on received goods."
+	_set_tr(lbl, "text", "trade.blurb")
 	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vbox.add_child(lbl)
 	var start_btn := Button.new()
-	start_btn.text = "Start trade"
+	_set_tr(start_btn, "text", "trade.start")
 	start_btn.pressed.connect(_on_trade_start_pressed)
 	vbox.add_child(start_btn)
 	var accept_btn := Button.new()
-	accept_btn.text = "Accept trade"
+	_set_tr(accept_btn, "text", "trade.accept")
 	accept_btn.pressed.connect(_on_trade_accept_pressed)
 	vbox.add_child(accept_btn)
 	_trade_status = Label.new()
@@ -1697,7 +1734,7 @@ func _build_market_content() -> Control:
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 6)
 	var list_lbl := Label.new()
-	list_lbl.text = "List an item for sale (item · qty · price):"
+	_set_tr(list_lbl, "text", "market.list_prompt")
 	vbox.add_child(list_lbl)
 	var list_row := HBoxContainer.new()
 	list_row.add_theme_constant_override("separation", 6)
@@ -1713,7 +1750,7 @@ func _build_market_content() -> Control:
 	_market_price.custom_minimum_size = Vector2(50, 0)
 	list_row.add_child(_market_price)
 	var list_btn := Button.new()
-	list_btn.text = "List"
+	_set_tr(list_btn, "text", "market.list")
 	list_btn.pressed.connect(_on_market_list_pressed)
 	list_row.add_child(list_btn)
 	vbox.add_child(list_row)
@@ -1721,7 +1758,7 @@ func _build_market_content() -> Control:
 	_market_feedback.add_theme_font_size_override("font_size", 13)
 	vbox.add_child(_market_feedback)
 	var browse_lbl := Label.new()
-	browse_lbl.text = "Available listings:"
+	_set_tr(browse_lbl, "text", "market.browse")
 	vbox.add_child(browse_lbl)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -1738,22 +1775,22 @@ func _build_proposals_content() -> Control:
 	var title_row := HBoxContainer.new()
 	title_row.add_theme_constant_override("separation", 6)
 	_proposal_title = LineEdit.new()
-	_proposal_title.placeholder_text = "Proposal title"
+	_set_tr(_proposal_title, "placeholder_text", "proposal.title_ph")
 	_proposal_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title_row.add_child(_proposal_title)
 	var submit_btn := Button.new()
-	submit_btn.text = "Submit"
+	_set_tr(submit_btn, "text", "proposal.submit")
 	submit_btn.pressed.connect(_on_proposal_submit_pressed)
 	title_row.add_child(submit_btn)
 	vbox.add_child(title_row)
 	_proposal_body = LineEdit.new()
-	_proposal_body.placeholder_text = "Proposal body (optional)"
+	_set_tr(_proposal_body, "placeholder_text", "proposal.body_ph")
 	vbox.add_child(_proposal_body)
 	_proposal_feedback = Label.new()
 	_proposal_feedback.add_theme_font_size_override("font_size", 13)
 	vbox.add_child(_proposal_feedback)
 	var list_lbl := Label.new()
-	list_lbl.text = "Proposals:"
+	_set_tr(list_lbl, "text", "proposal.list")
 	vbox.add_child(list_lbl)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL

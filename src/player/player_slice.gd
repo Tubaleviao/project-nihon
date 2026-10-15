@@ -12,6 +12,7 @@ extends Node
 ##   take_damage(dmg) -> void
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
+const I18n := preload("res://src/core/i18n.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const StatusEffects := preload("res://src/battle/status_effects.gd")
 
@@ -186,8 +187,16 @@ func status_effects_active() -> Array:
 static func status_line(effects: Array) -> String:
 	var parts: PackedStringArray = []
 	for e in effects:
-		parts.append("%s %ds" % [str(e.get("effect", "")).replace("_", " "), ceili(float(e.get("remaining", 0.0)))])
+		var id := str(e.get("effect", ""))
+		var name := I18n.t("status." + id) if I18n.has_key("status." + id) else id.replace("_", " ")
+		parts.append(I18n.t("hud.status", [name, ceili(float(e.get("remaining", 0.0)))]))
 	return ", ".join(parts)
+
+## Phase 131 — re-render the HUD text in the new language.
+func _on_locale_changed(_locale: String) -> void:
+	_update_hp_bar()
+	_update_status_label()
+	_refresh_build_hint()
 
 func _update_status_label() -> void:
 	if _status_label != null:
@@ -195,6 +204,7 @@ func _update_status_label() -> void:
 
 func _ready() -> void:
 	GameBus.status_effects_synced.connect(_on_status_effects_synced)
+	GameBus.locale_changed.connect(_on_locale_changed)
 	if render_visuals:
 		_build_body()
 		_build_hud()
@@ -951,7 +961,7 @@ func _update_hp_bar() -> void:
 	var filled := int((_hp / MAX_HP) * 10.0)
 	for i in range(10):
 		bar += "█" if i < filled else "░"
-	_hp_label.text = "HP %s %.0f/%.0f" % [bar, _hp, MAX_HP]
+	_hp_label.text = I18n.t("hud.hp", [bar, I18n.number(_hp), I18n.number(MAX_HP)])
 
 func _update_aim() -> void:
 	var pid := ""
@@ -1027,10 +1037,10 @@ func _update_aim_hud() -> void:
 		return
 	_aim_label.position = _aim_label.get_viewport().get_mouse_position() + Vector2(18.0, 22.0)
 	if _aimed_item_id != "":
-		_aim_label.text = "Pick up: %s" % _aimed_item_id
+		_aim_label.text = I18n.t("hud.pickup", [_aimed_item_id])
 		_aim_label.visible = true
 	elif _aimed_tree_id != "":
-		_aim_label.text = "Chop: %s (axe)" % _aimed_tree_species
+		_aim_label.text = I18n.t("hud.chop", [_aimed_tree_species])
 		_aim_label.visible = true
 	else:
 		_aim_label.text = ""
@@ -1043,7 +1053,7 @@ func _refresh_build_hint() -> void:
 			stype = str(station_slice.get_place_station_type())
 		if stype == "":
 			stype = "none"
-		_station_label.text = "" if stype == "none" else "Station: %s  (B change · V place)" % stype
+		_station_label.text = "" if stype == "none" else I18n.t("hud.station", [stype])
 
 
 func _cycle_station_type() -> void:

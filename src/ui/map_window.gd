@@ -12,6 +12,7 @@ extends Control
 ##
 ## Drawing needs a canvas and does not run headless; the maths it relies on is in MapMath/MapTiles.
 
+const I18n := preload("res://src/core/i18n.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 const MapMath := preload("res://src/ui/map_math.gd")
@@ -94,7 +95,7 @@ func _init() -> void:
 
 ## "Zoom 2.0x": the magnification relative to the window's opening view (each zoom step halves the span).
 func zoom_text() -> String:
-	return "Zoom %sx" % String.num(pow(2.0, ZOOM_START - _zoom), 2 if _zoom > ZOOM_START - 4.0 else 0)
+	return I18n.t("map.zoom", [I18n.number(pow(2.0, ZOOM_START - _zoom), 2 if _zoom > ZOOM_START - 4.0 else 0)])
 
 func get_zoom() -> float:
 	return _zoom
@@ -248,7 +249,7 @@ func right_click(offset: Vector2) -> void:
 	var pos := world_pos_at(offset)
 	if pos.is_empty():
 		# The globe's limb: a point that unprojects to no place (the ray misses the planet).
-		notice.emit("Nothing to mark there: that point is past the edge of the planet.")
+		notice.emit(I18n.t("map.edge"))
 		return
 	if minimap.has_method("add_waypoint"):
 		minimap.add_waypoint("", pos)
@@ -305,7 +306,7 @@ func click_waystone(offset: Vector2) -> bool:
 		return false
 	var here := _stone_under_player()
 	if here == "":
-		notice.emit("Stand at a waystone to travel from it.")
+		notice.emit(I18n.t("map.stand_at_waystone"))
 		return false
 	GameBus.waystone_travel_intent.emit(here, to_id, "")
 	return true
@@ -359,7 +360,7 @@ func hover_text(offset: Vector2) -> String:
 	var text := coords_text(p[0] * TerrainSlice.CHUNK_METERS, p[1] * TerrainSlice.CHUNK_METERS)
 	var hit := waypoint_at(offset)
 	if hit >= 0:
-		text = "%s (right-click to delete)\n%s" % [str(minimap.get_waypoints()[hit]["name"]), text]
+		text = I18n.t("map.delete_hint", [str(minimap.get_waypoints()[hit]["name"]), text])
 	return text
 
 ## "X 1234  Y -567": whole metres (Y is the world Z axis).

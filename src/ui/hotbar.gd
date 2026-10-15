@@ -21,6 +21,7 @@ extends VBoxContainer
 ## `digit_slot`, `slot_for_key`, `parse_state`, `state_to_json`, `hint_for`.
 
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
+const I18n := preload("res://src/core/i18n.gd")
 const SkillTiers := preload("res://src/core/skill_tiers.gd")
 
 signal slot_selected(index: int, item_id: String)
@@ -244,11 +245,11 @@ static func slot_for_key(bound: Array, keycode: int) -> int:
 static func hint_for(entry: String, kind: String, tier: String = "") -> String:
 	match kind:
 		KIND_BLOCK:
-			return "%s  ·  middle-click to place" % entry
+			return I18n.t("hotbar.hint_block", [entry])
 		KIND_GEAR:
-			return "%s  ·  worn" % entry
+			return I18n.t("hotbar.hint_gear", [entry])
 		KIND_SKILL:
-			return "%s%s  ·  press its key to use" % [skill_key(entry), (" (%s)" % tier) if tier != "" else ""]
+			return I18n.t("hotbar.hint_skill", [skill_key(entry), (" (%s)" % tier) if tier != "" else ""])
 	return entry
 
 ## Parse the saved state. Anything malformed falls back to an empty bar rather than injecting junk.
@@ -503,6 +504,10 @@ func _key_text(index: int) -> String:
 	var k := int(binds[index])
 	return OS.get_keycode_string(k) if k != 0 else ""
 
+## The language changed: re-render the tooltips.
+func relocalize() -> void:
+	_render()
+
 func _render(held: Dictionary = {}) -> void:
 	if held.is_empty() and held_provider.is_valid():
 		held = held_provider.call()
@@ -511,7 +516,7 @@ func _render(held: Dictionary = {}) -> void:
 		_row2.visible = expanded
 	if _more != null:
 		_more.text = "▴" if expanded else "▾"
-		_more.tooltip_text = "Fewer boxes" if expanded else "More boxes — drag items and skills in, then right-click a box to pick its key"
+		_more.tooltip_text = I18n.t("hotbar.fewer") if expanded else I18n.t("hotbar.more")
 	for i in _buttons.size():
 		var b: Button = _buttons[i]
 		var entry := str(slots[i])
@@ -523,7 +528,7 @@ func _render(held: Dictionary = {}) -> void:
 		(_keys[i] as Label).text = _key_text(i)
 		if entry == "":
 			b.text = ""
-			b.tooltip_text = "Empty box — pick things up, or drag an item or skill here"
+			b.tooltip_text = I18n.t("hotbar.empty")
 			continue
 		var kind := kind_at(i)
 		if kind == KIND_SKILL:

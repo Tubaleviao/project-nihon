@@ -11,17 +11,18 @@ signal window_toggled(window_key: String)
 
 ## Dock order. Each entry: { key (window key), letter (shortcut), name }.
 ## The letters must match the key map in `UiSlice._input`.
+const I18n := preload("res://src/core/i18n.gd")
 const ENTRIES: Array = [
-	{"key": "inventory",  "letter": "I", "name": "Inventory"},
-	{"key": "character",  "letter": "C", "name": "Character"},
-	{"key": "skills",     "letter": "K", "name": "Skills"},
-	{"key": "crafting",   "letter": "H", "name": "Crafting"},
-	{"key": "technology", "letter": "T", "name": "Technology"},
-	{"key": "trade",      "letter": "Y", "name": "Trade"},
-	{"key": "market",     "letter": "P", "name": "Market"},
-	{"key": "map",        "letter": "M", "name": "Map"},
-	{"key": "proposals",  "letter": "G", "name": "Proposals"},
-	{"key": "controls",   "letter": "?", "name": "Controls"},
+	{"key": "inventory",  "letter": "I", "name": "dock.inventory"},
+	{"key": "character",  "letter": "C", "name": "dock.character"},
+	{"key": "skills",     "letter": "K", "name": "dock.skills"},
+	{"key": "crafting",   "letter": "H", "name": "dock.crafting"},
+	{"key": "technology", "letter": "T", "name": "dock.technology"},
+	{"key": "trade",      "letter": "Y", "name": "dock.trade"},
+	{"key": "market",     "letter": "P", "name": "dock.market"},
+	{"key": "map",        "letter": "M", "name": "dock.map"},
+	{"key": "proposals",  "letter": "G", "name": "dock.proposals"},
+	{"key": "controls",   "letter": "?", "name": "dock.controls"},
 ]
 
 const BOX_PX := 32.0
@@ -38,11 +39,11 @@ func _init() -> void:
 
 func build() -> void:
 	_toggle = Button.new()
-	_toggle.text = "▾ Windows"
+	_toggle.text = "▾ " + I18n.t("dock.windows")
 	_toggle.focus_mode = Control.FOCUS_NONE
 	_toggle.flat = true
 	_toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_toggle.tooltip_text = "Show or hide the window shortcuts"
+	_toggle.tooltip_text = I18n.t("dock.tip")
 	_toggle.pressed.connect(func(): set_expanded(not is_expanded()))
 	add_child(_toggle)
 	_grid = GridContainer.new()
@@ -55,11 +56,20 @@ func build() -> void:
 		b.text = str(e["letter"])
 		b.custom_minimum_size = Vector2(BOX_PX, BOX_PX)
 		b.focus_mode = Control.FOCUS_NONE
-		b.tooltip_text = "%s  (%s)" % [e["name"], e["letter"]]
+		b.tooltip_text = "%s  (%s)" % [I18n.t(e["name"]), e["letter"]]
 		b.pressed.connect(func(): window_toggled.emit(str(e["key"])))
 		_grid.add_child(b)
 		_boxes[str(e["key"])] = b
 	_apply_expanded(load_expanded(save_path))
+
+## The language changed: re-render the toggle and every box tooltip.
+func relocalize() -> void:
+	if _grid == null:
+		return
+	_apply_expanded(is_expanded())
+	_toggle.tooltip_text = I18n.t("dock.tip")
+	for e in entries():
+		(_boxes[str(e["key"])] as Button).tooltip_text = "%s  (%s)" % [I18n.t(e["name"]), e["letter"]]
 
 static func entries() -> Array:
 	return ENTRIES
@@ -78,7 +88,7 @@ func set_expanded(open: bool) -> void:
 
 func _apply_expanded(open: bool) -> void:
 	_grid.visible = open
-	_toggle.text = ("▾ Windows" if open else "▸ Windows")
+	_toggle.text = ("▾ " if open else "▸ ") + I18n.t("dock.windows")
 
 ## The saved open/closed state; open when there is no (valid) save.
 static func load_expanded(path: String) -> bool:

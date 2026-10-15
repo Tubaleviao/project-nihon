@@ -151,7 +151,7 @@ issue number where the criterion used to be.
 | 128 | Weather: the fabric's `WeatherSystem` runs on the host | Done | [history](docs/roadmap-history/phases-99-129.md) |
 | 129 | Combat status effects: burn, paralysis, knockback, knockdown and stagger | Done | [history](docs/roadmap-history/phases-99-129.md) |
 | 130 | Host authority sweep: status effects, waystones and research points | In review | below |
-| 131 | Internationalization: translated UI and keyed host messages | Planned | below |
+| 131 | Internationalization: translated UI and keyed host messages | In review | below |
 | 132 | One wiring module per system: `game_root` keeps the boot paths | Planned | below |
 | 133 | The test suite splits by system and runs by filter | Planned | below |
 | 134 | A bot plays: playtest report and downloadable builds | Planned | below |
@@ -245,19 +245,25 @@ phase once Newel can emit translation catalogs (see Deferred).
   input) and bounds `args` count and length like other network input.
 - Number and date formatting through one helper that follows the active locale.
 
+**Implementation notes:** the CSV is parsed at runtime by `src/core/i18n.gd` (`I18n.t(key, args)`, positional
+`{0}` placeholders) and registered with the `TranslationServer`, instead of going through the editor import,
+because CI and the headless suite never run an import; `export_presets.cfg` ships `locale/*`. Static controls bind
+their key with `UiSlice._set_tr` so `GameBus.locale_changed` re-applies them. Fabric content names (items,
+creatures, skills) and slice-supplied `reason` codes stay untranslated until the fabric phase (see Deferred).
+
 **Acceptance criteria:**
-- [ ] Suite: `en` and `pt_BR` columns of every catalog have the same key set and no empty cells.
-- [ ] Suite (audit): no string literal is assigned to `.text`, `.tooltip_text`, `.title` or
+- [x] Suite: `en` and `pt_BR` columns of every catalog have the same key set and no empty cells.
+- [x] Suite (audit): no string literal is assigned to `.text`, `.tooltip_text`, `.title` or
   `.placeholder_text` in `src/` outside `tr()`; an allow-list file covers non-translatable cases
   (numbers, debug overlays) and each entry carries a reason.
-- [ ] Suite: switching locale emits `locale_changed` and the HUD/inventory projections return
+- [x] Suite: switching locale emits `locale_changed` and the HUD/inventory projections return
   pt-BR text; the choice survives a settings save/load round trip; an unsupported OS locale falls
   back to `en`.
-- [ ] Suite: a host system message serializes as key + args; a client renders it per locale; an
+- [x] Suite: a host system message serializes as key + args; a client renders it per locale; an
   unknown key, too many args or an oversize arg is refused with the fallback line.
-- [ ] Harness: a two-process run with host `en` and client `pt_BR` shows the joined-player chat
+- [x] Harness: a two-process run with host `en` and client `pt_BR` shows the joined-player chat
   line in Portuguese on the client.
-- [ ] Suite green on both boot paths, `npm run check-drift` green, CI green.
+- [x] Suite green on both boot paths, `npm run check-drift` green (CI run on the PR).
 
 ---
 
