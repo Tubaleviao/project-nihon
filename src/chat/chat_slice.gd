@@ -625,7 +625,8 @@ func _refresh_log() -> void:
 static func _format_line(line: Dictionary) -> String:
 	var msg: Dictionary = line.get("msg", {})
 	var body := (I18n.render(msg) if not msg.is_empty() else str(line["text"])).replace("[", "[lb]")
-	var sender := (I18n.t("chat.sender.server") if str(line["sender"]) == SERVER_SENDER else str(line["sender"])).replace("[", "[lb]")
+	var is_server: bool = str(line["channel"]) == CHANNEL_ANNOUNCE and str(line["sender"]) == SERVER_SENDER
+	var sender := (I18n.t("chat.sender.server") if is_server else str(line["sender"])).replace("[", "[lb]")
 	match str(line["channel"]):
 		CHANNEL_ANNOUNCE:
 			return "[color=#ffcc55][b]%s: %s[/b][/color]" % [sender, body]

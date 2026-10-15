@@ -109,9 +109,9 @@ func build() -> void:
 	_row2.add_child(spacer)
 	add_child(_row2)
 	_menu = PopupMenu.new()
-	_menu.add_item("Set shortcut key…", 0)
-	_menu.add_item("Clear shortcut", 1)
-	_menu.add_item("Empty this box", 2)
+	_menu.add_item(I18n.t("hotbar.menu_set"), 0)
+	_menu.add_item(I18n.t("hotbar.menu_clear"), 1)
+	_menu.add_item(I18n.t("hotbar.menu_empty"), 2)
 	_menu.id_pressed.connect(_on_menu_pressed)
 	add_child(_menu)
 	load_state()
@@ -394,7 +394,7 @@ func begin_binding(index: int) -> void:
 	_binding = index
 	set_expanded(true)
 	_render()
-	notice.emit("Press the key for this box  ·  Esc cancels  ·  Backspace clears")
+	notice.emit(I18n.t("hotbar.press_key"))
 
 func _finish_binding(keycode: int) -> void:
 	var index := _binding
@@ -409,7 +409,7 @@ func _finish_binding(keycode: int) -> void:
 				binds[i] = 0
 		binds[index] = keycode
 	else:
-		notice.emit("%s is already used by the game — pick another key" % OS.get_keycode_string(keycode))
+		notice.emit(I18n.t("hotbar.key_taken", [OS.get_keycode_string(keycode)]))
 		_binding = index
 		return
 	save_state()
@@ -506,6 +506,10 @@ func _key_text(index: int) -> String:
 
 ## The language changed: re-render the tooltips.
 func relocalize() -> void:
+	if _menu != null:
+		_menu.set_item_text(0, I18n.t("hotbar.menu_set"))
+		_menu.set_item_text(1, I18n.t("hotbar.menu_clear"))
+		_menu.set_item_text(2, I18n.t("hotbar.menu_empty"))
 	_render()
 
 func _render(held: Dictionary = {}) -> void:

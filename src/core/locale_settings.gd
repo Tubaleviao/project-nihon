@@ -51,9 +51,15 @@ static func set_locale(loc: String, bus: Object = null) -> bool:
 	if m == "":
 		return false
 	TranslationServer.set_locale(m)
+	var data: Dictionary = {}
+	if FileAccess.file_exists(settings_path):
+		var old: Variant = JSON.parse_string(FileAccess.get_file_as_string(settings_path))
+		if old is Dictionary:
+			data = old
+	data["locale"] = m
 	var f := FileAccess.open(settings_path, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({ "locale": m }))
+		f.store_string(JSON.stringify(data))
 	else:
 		Diag.warn("LocaleSettings: could not write %s" % settings_path)
 	if bus != null:

@@ -80,9 +80,20 @@ static func t(key: String, args: Array = []) -> String:
 	return fill(TranslationServer.translate(key), args)
 
 static func fill(text: String, args: Array) -> String:
-	for i in args.size():
-		text = text.replace("{%d}" % i, str(args[i]))
-	return text
+	# One pass, so text injected by an argument (a handle, a waypoint name) is never re-scanned.
+	var out := ""
+	var i := 0
+	while i < text.length():
+		var c := text[i]
+		if c == "{" and i + 2 < text.length() and text[i + 2] == "}" and text[i + 1].is_valid_int():
+			var idx := text[i + 1].to_int()
+			if idx < args.size():
+				out += str(args[idx])
+				i += 3
+				continue
+		out += c
+		i += 1
+	return out
 
 ## A host message as it travels: key + args, no rendered text.
 static func msg(key: String, args: Array = []) -> Dictionary:
@@ -103,6 +114,9 @@ static func sanitize_msg(key: Variant, args: Variant) -> Dictionary:
 			return msg(UNKNOWN_KEY)
 		if str(a).length() > MAX_ARG_LEN:
 			return msg(UNKNOWN_KEY)
+		# The wire is JSON: whole numbers come back as floats ("3.0"), so restore the int.
+		if a is float and is_finite(a) and a == floorf(a) and absf(a) < 1e15:
+			a = int(a)
 		clean.append(a)
 	return msg(key, clean)
 
@@ -110,12 +124,24 @@ static func sanitize_msg(key: Variant, args: Variant) -> Dictionary:
 static func render(m: Dictionary) -> String:
 	return t(str(m.get("key", UNKNOWN_KEY)), m.get("args", []))
 
-## Numbers and dates follow the active locale: decimal comma in pt_BR, point in en.
+## Numbers and dates follow the active locale: pt_BR groups with "." and uses a decimal comma,
+## en groups with "," and uses a decimal point.
 static func number(value: float, decimals: int = 0) -> String:
-	var s := String.num(value, decimals)
-	if TranslationServer.get_locale().begins_with("pt"):
-		s = s.replace(".", ",")
-	return s
+	var s := String.num(absf(value), decimals)
+	var dot := s.find(".")
+	var whole := s if dot < 0 else s.substr(0, dot)
+	var frac := "" if dot < 0 else s.substr(dot + 1)
+	var pt := TranslationServer.get_locale().begins_with("pt")
+	var group := "." if pt else ","
+	var grouped := ""
+	for i in whole.length():
+		if i > 0 and (whole.length() - i) % 3 == 0:
+			grouped += group
+		grouped += whole[i]
+	if frac != "":
+		grouped += ("," if pt else ".") + frac
+	var negative := value < 0.0 and grouped.replace(",", "").replace(".", "").lstrip("0") != ""
+	return ("-" if negative else "") + grouped
 
 static func date(unix: int) -> String:
 	var d := Time.get_datetime_dict_from_unix_time(unix)

@@ -82,6 +82,11 @@ hotbar.fewer,Fewer boxes,Menos caixas
 hotbar.hint_block,{0}  ·  middle-click to place,{0}  ·  clique do meio para colocar
 hotbar.hint_gear,{0}  ·  worn,{0}  ·  vestido
 hotbar.hint_skill,{0}{1}  ·  press its key to use,{0}{1}  ·  pressione sua tecla para usar
+hotbar.key_taken,{0} is already used by the game — pick another key,{0} já é usada pelo jogo — escolha outra tecla
+hotbar.menu_clear,Clear shortcut,Limpar atalho
+hotbar.menu_empty,Empty this box,Esvaziar esta caixa
+hotbar.menu_set,Set shortcut key…,Definir tecla de atalho…
+hotbar.press_key,Press the key for this box  ·  Esc cancels  ·  Backspace clears,Pressione a tecla desta caixa  ·  Esc cancela  ·  Backspace limpa
 hotbar.more,"More boxes — drag items and skills in, then right-click a box to pick its key",Mais caixas — arraste itens e habilidades e clique com o botão direito numa caixa para escolher a tecla
 hud.chop,Chop: {0} (axe),Cortar: {0} (machado)
 hud.hp,HP {0} {1}/{2},PV {0} {1}/{2}
