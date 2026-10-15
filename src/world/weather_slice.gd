@@ -6,7 +6,7 @@ extends Node
 ## and on every change.
 ##
 ## Plug contract (GameBus):
-##   IN  : weather_override_requested(cell, state, hours)   (host only)
+##   IN  : (none — the host's `/weather` command calls `set_override` directly)
 ##   OUT : weather_overrides_synced(overrides), weather_changed(state)
 ##
 ## Public API:
@@ -50,9 +50,10 @@ var biome_of: Callable = Callable()
 var _overrides: Dictionary = {}
 var _rules_cache: Dictionary = {}
 var _last_local: String = ""
-
-func _ready() -> void:
-	GameBus.weather_override_requested.connect(_on_override_requested)
+## Bumped whenever the override table changes; keys the one-entry `weather_at` cache.
+var _revision: int = 0
+var _memo_key: Array = []
+var _memo_state: String = ""
 
 ## The fabric table merged over the defaults; cached after the first read.
 func rules() -> Dictionary:
@@ -184,10 +185,14 @@ func rolled_state(cell: Vector2i, hour: int) -> String:
 ## The weather in `chunk` at in-game `hour` (whole hours since day 0): an unexpired override wins.
 func weather_at(chunk: Vector2i, hour: int) -> String:
 	var cell := cell_of(chunk)
+	var key := [cell, hour, _revision]
+	if key == _memo_key:
+		return _memo_state
 	var o: Variant = _overrides.get(_key(cell), null)
-	if o is Dictionary and hour < int(o["end_hour"]):
-		return str(o["state"])
-	return rolled_state(cell, hour)
+	var state := str(o["state"]) if o is Dictionary and hour < int(o["end_hour"]) else rolled_state(cell, hour)
+	_memo_key = key
+	_memo_state = state
+	return state
 
 ## The in-game hour the clock reads now.
 func current_hour() -> int:
@@ -205,6 +210,17 @@ static func _key(cell: Vector2i) -> String:
 # Overrides (host)
 # ---------------------------------------------------------------------------
 
+## True for a cell some chunk can be in: X within one lap, Y within the planet's height.
+func _valid_cell(cell: Vector2i) -> bool:
+	var circ := TerrainSlice.circumference_chunks()
+	return cell.x >= 0 and cell.x <= cell_of(Vector2i(circ - 1, 0)).x \
+		and absi(cell.y) <= circ / cell_size() + 1
+
+## The hour an override of `hours` whole hours from the clock's exact time ends: rounded up, so it never
+## lasts less than asked.
+func _end_hour_for(hours: int) -> int:
+	return ceili(clock.time_days * 24.0) + hours if clock != null else hours
+
 ## Override `cell` to `state` for `hours` in-game hours from now. "" when set, else a `REASONS` code.
 func set_override(cell: Vector2i, state: String, hours: int) -> String:
 	if not (rules()["states"] as Dictionary).has(state):
@@ -213,16 +229,14 @@ func set_override(cell: Vector2i, state: String, hours: int) -> String:
 		return "bad_hours"
 	if hours > override_max_hours():
 		return "too_long"
-	if cell.x < 0 or cell.x > TerrainSlice.circumference_chunks() / cell_size():
+	if not _valid_cell(cell):
 		return "bad_cell"
-	_overrides[_key(cell)] = { "cell": cell, "state": state, "end_hour": current_hour() + hours }
+	_revision += 1
+	_overrides[_key(cell)] = { "cell": cell, "state": state, "end_hour": _end_hour_for(hours) }
 	_prune(current_hour())
-	print("[Weather] override cell %s -> %s for %d h (until hour %d)" % [cell, state, hours, current_hour() + hours])
+	print("[Weather] override cell %s -> %s for %d h (until hour %d)" % [cell, state, hours, _end_hour_for(hours)])
 	GameBus.weather_overrides_synced.emit(to_data())
 	return ""
-
-func _on_override_requested(cell: Vector2i, state: String, hours: int) -> void:
-	set_override(cell, state, hours)
 
 ## Drop expired overrides, then the soonest-ending ones past `MAX_OVERRIDES`. True when any went.
 func _prune(hour: int) -> bool:
@@ -238,6 +252,8 @@ func _prune(hour: int) -> bool:
 				oldest = k
 		_overrides.erase(oldest)
 		dropped = true
+	if dropped:
+		_revision += 1
 	return dropped
 
 ## Host: expire finished overrides and tell clients when any went.
@@ -261,9 +277,11 @@ func to_data() -> Array:
 ## count is bounded. Reached from the network, so every field is checked.
 func from_data(data: Variant) -> void:
 	_overrides.clear()
+	_revision += 1
 	if not (data is Array):
 		return
 	var states: Dictionary = rules()["states"]
+	var now := current_hour()
 	for e in (data as Array):
 		if _overrides.size() >= MAX_OVERRIDES:
 			break
@@ -275,7 +293,10 @@ func from_data(data: Variant) -> void:
 		if not states.has(a[2]):
 			continue
 		var cell := Vector2i(int(a[0]), int(a[1]))
-		_overrides[_key(cell)] = { "cell": cell, "state": str(a[2]), "end_hour": int(a[3]) }
+		var end_hour := int(a[3])
+		if not _valid_cell(cell) or end_hour <= now or end_hour > now + override_max_hours() + 1:
+			continue
+		_overrides[_key(cell)] = { "cell": cell, "state": str(a[2]), "end_hour": end_hour }
 
 ## CLIENT: adopt the host's list.
 func apply_view(data: Variant) -> void:

@@ -628,10 +628,13 @@ static func roof_overhead(runs: Array, feet_y: float) -> bool:
 func _weather_factor_now() -> float:
 	if weather_slice == null:
 		return 1.0
+	var factor := float(weather_slice.move_factor(weather_slice.weather_at(get_world_pos()["chunk"], weather_slice.current_hour())))
+	if factor >= 1.0:
+		return 1.0
 	var p := get_position()
 	if voxel_slice != null and voxel_slice.has_method("get_column_runs_at") and roof_overhead(voxel_slice.get_column_runs_at(Vector2(p.x, p.z)), p.y):
 		return 1.0
-	return float(weather_slice.move_factor(weather_slice.weather_at(get_world_pos()["chunk"], weather_slice.current_hour())))
+	return factor
 
 ## Whether the local body is swimming now (needs a terrain slice to read the ground).
 func _swimming_now() -> bool:

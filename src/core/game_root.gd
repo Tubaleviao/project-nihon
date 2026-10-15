@@ -255,7 +255,8 @@ func _ready() -> void:
 	# Phase 128 — weather is a pure function of the seed, the biome and the clock.
 	_weather.clock    = _clock
 	_weather.seed_of  = Callable(_terrain, "get_world_seed")
-	_weather.biome_of = Callable(_terrain, "get_biome_at_chunk")
+	# The generator's biome, not the record-aware one: records are host-local, weather must match on every peer.
+	_weather.biome_of = func(chunk: Vector2i) -> String: return TerrainSlice.generated_biome_for_chunk(chunk, _terrain.get_world_seed())
 
 	# CreatureSlice needs the terrain to place spawns on the surface; wire it
 	# before the slices enter the tree so its _ready() can use it.

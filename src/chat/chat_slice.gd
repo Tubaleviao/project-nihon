@@ -348,11 +348,13 @@ func _cmd_weather(speaker: String, args: Array) -> void:
 	match why:
 		"":
 			print("[Weather] %s set %s for %d h on cell %s" % [_handle_of(speaker), state, hours, cell])
-			_reply(speaker, "Weather here is %s for %d in-game hours." % [state, hours])
+			_reply(speaker, "Weather here is %s for %d in-game hour(s)." % [state, hours])
 		"unknown_state":
 			_reply(speaker, "Unknown weather '%s'. States: %s." % [state, ", ".join(weather_slice.state_ids())])
 		"too_long":
 			_reply(speaker, "At most %d in-game hours." % weather_slice.override_max_hours())
+		"bad_cell":
+			_reply(speaker, "No weather cell here.")
 		_:
 			_reply(speaker, "Hours must be a whole number of at least 1.")
 

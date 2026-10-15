@@ -59,11 +59,14 @@ function weatherProblems(rules, biomes) {
   if (!Number.isInteger(rules.cellSizeChunks) || rules.cellSizeChunks < 1 || rules.cellSizeChunks > MAX_CELL_CHUNKS) problems.push(`WeatherSystem.cellSizeChunks must be an integer in 1..${MAX_CELL_CHUNKS}, got ${rules.cellSizeChunks}`)
   if (!Number.isInteger(rules.hoursPerRoll) || rules.hoursPerRoll < 1 || rules.hoursPerRoll > MAX_HOURS) problems.push(`WeatherSystem.hoursPerRoll must be an integer in 1..${MAX_HOURS}, got ${rules.hoursPerRoll}`)
   if (!Number.isInteger(rules.overrideMaxHours) || rules.overrideMaxHours < 1 || rules.overrideMaxHours > MAX_HOURS) problems.push(`WeatherSystem.overrideMaxHours must be an integer in 1..${MAX_HOURS}, got ${rules.overrideMaxHours}`)
-  const states = rules.states || {}
+  const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
+  if (rules.states !== undefined && !isObj(rules.states)) problems.push('WeatherSystem.states must be an object')
+  const states = isObj(rules.states) ? rules.states : {}
   const ids = Object.keys(states)
   if (!ids.includes('clear')) problems.push('WeatherSystem.states must define "clear"')
   for (const id of ids) {
     const st = states[id]
+    if (!isObj(st)) { problems.push(`weather state "${id}" must be an object`); continue }
     if (!/^[a-z][a-z_]*$/.test(id)) problems.push(`weather state "${id}" must be lower snake_case`)
     for (const key of Object.keys(st)) if (!STATE_FIELDS.includes(key)) problems.push(`weather state "${id}" has unknown field "${key}"`)
     for (const f of ['moveSpeedFactor', 'visibilityFactor']) {
@@ -83,7 +86,8 @@ function weatherProblems(rules, biomes) {
     for (const b of Object.keys(rules.climate || {})) if (!(b in biomes)) problems.push(`WeatherSystem.climate names unknown biome "${b}"`)
     if (!problems.length) {
       for (const [key, biome] of Object.entries(biomes)) {
-        const c = (rules.climate || {})[key] || { temperature: biome.avgTemperature, rainfall: biome.avgRainfall }
+        const over = (rules.climate || {})[key] || {}
+        const c = { temperature: over.temperature ?? biome.avgTemperature, rainfall: over.rainfall ?? biome.avgRainfall }
         const swing = biome.seasonSwing || 0
         const reachable = [c.temperature - swing, c.temperature, c.temperature + swing].some((t) =>
           ids.some((id) => states[id].weight > 0 && stateAllows(states[id], key, t, c.rainfall)))

@@ -35,4 +35,10 @@ expect('an unknown biome name fails', weather.weatherProblems(unknown, biomes), 
 const noClear = fresh(); delete noClear.states.clear
 expect('a table with no "clear" fails', weather.weatherProblems(noClear, biomes), /must define "clear"/)
 
+const nul = fresh(); nul.states.rain = null
+expect('a null state entry is reported, not thrown', weather.weatherProblems(nul, biomes), /"rain" must be an object/)
+
+const badStates = fresh(); badStates.states = 5
+expect('a non-object states table is reported', weather.weatherProblems(badStates, biomes), /states must be an object/)
+
 process.exit(failed ? 1 : 0)

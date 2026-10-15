@@ -22040,11 +22040,6 @@ func _test_weather_admin_override() -> void:
 	chat.handle_intent("/weather storm 2", "player_other")
 	assert_eq(w.override_count(), 0, "a non-admin sender is refused")
 	assert_true(posted.any(func(m): return "for admins" in str(m["text"])), "and told why")
-	# The bus door is host-validated too.
-	GameBus.weather_override_requested.emit(Vector2i(1, 1), "storm", 9999)
-	assert_eq(w.override_count(), 0, "the request signal bounds the duration as well")
-	GameBus.weather_override_requested.emit(Vector2i(1, 1), "storm", 3)
-	assert_eq(w.override_count(), 1, "and applies a valid one")
 	GameBus.weather_overrides_synced.disconnect(sync_cb)
 	GameBus.chat_posted.disconnect(cb)
 	chat.free()
@@ -22059,6 +22054,9 @@ func _test_weather_persistence_and_wire() -> void:
 	assert_eq(w.set_override(Vector2i(2, 3), "storm", 0), "bad_hours", "zero hours")
 	assert_eq(w.set_override(Vector2i(2, 3), "storm", 99999), "too_long", "too long")
 	assert_eq(w.set_override(Vector2i(-1, 3), "storm", 1), "bad_cell", "an X cell off the planet")
+	var past_x := w.cell_of(Vector2i(TerrainSlice.circumference_chunks() - 1, 0)).x + 1
+	assert_eq(w.set_override(Vector2i(past_x, 3), "storm", 1), "bad_cell", "the first X cell past one lap")
+	assert_eq(w.set_override(Vector2i(0, 1 << 30), "storm", 1), "bad_cell", "a Y cell far off the planet")
 	var saved := w.to_data()
 	var json: Variant = JSON.parse_string(JSON.stringify(saved))
 	var back := _weather_rig()
@@ -22067,11 +22065,13 @@ func _test_weather_persistence_and_wire() -> void:
 	assert_eq(back.weather_at(back.cell_center(Vector2i(2, 3)), 0), "blizzard", "and still applies")
 	back.apply_view([[1, 1, "storm", 10], [1], "junk", [1, 1, "volcano", 10], [1, 1, 5, 10], [0.0, 2.0, "fog", 3]])
 	assert_eq(back.override_count(), 2, "a client keeps the well-formed entries only")
+	back.apply_view([[1, 1, "storm", 10], [1, 2, "storm", 0], [1, 3, "storm", 100000], [-1, 1, "storm", 10], [1, 1 << 30, "storm", 10]])
+	assert_eq(back.override_count(), 1, "an expired, over-long or off-planet entry is dropped on load")
 	back.apply_view("nonsense")
 	assert_eq(back.override_count(), 0, "a non-list clears the table")
 	var big: Array = []
 	for i in WeatherSlice.MAX_OVERRIDES + 50:
-		big.append([i, 0, "fog", 10])
+		big.append([i, 0, "fog", 10 + i % 30])
 	back.apply_view(big)
 	assert_eq(back.override_count(), WeatherSlice.MAX_OVERRIDES, "a forged table is bounded")
 	# update_local reports a change once.
