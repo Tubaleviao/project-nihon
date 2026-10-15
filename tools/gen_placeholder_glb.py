@@ -558,8 +558,112 @@ def build_wolf_rig() -> bytes:
     return build_skinned_rig(QUAD_TRES, "QuadrupedSkeleton", WOLF_JOINTS, {}, WOLF_PARTS, WOLF_CLIPS)
 
 
+# ---------------------------------------------------------------------------
+# The rest of the creature roster (phase A7 of project-nihon-assets)
+# ---------------------------------------------------------------------------
+# The fabric names no skeleton family on a creature entity; these families are assumed:
+# Quadruped (the wolf rig, reused) for ForestBoar, SteppeBison, GlimmerFox, VeilStalker and
+# RiftWarden, Bird for RidgeHawk and CinderGargoyle, Serpent for VoidSerpent and LavaSlug.
+# Every rig carries the seven locomotion clips: idle, walk, run, fall, land, attack, death.
+
+CREATURES_DIR = OUT.parent / "creatures"
+QUADRUPED_CREATURES = ["ForestBoar", "SteppeBison", "GlimmerFox", "VeilStalker", "RiftWarden"]
+BIRD_CREATURES = ["RidgeHawk", "CinderGargoyle"]
+SERPENT_CREATURES = ["VoidSerpent", "LavaSlug"]
+
+BIRD_TRES = SKELETON_TRES.parent / "birdskeleton.tres"
+SERPENT_TRES = SKELETON_TRES.parent / "serpentskeleton.tres"
+
+# Bird faces -Z like the wolf; wings spread along X.
+BIRD_JOINTS = {
+    "Root": (0.0, 0.0, 0.0),
+    "Spine": (0.0, 0.50, 0.0),
+    "Neck": (0.0, 0.62, -0.18),
+    "Head": (0.0, 0.70, -0.30),
+    "Wing_L": (-0.12, 0.58, -0.02),
+    "Wing_R": (0.12, 0.58, -0.02),
+    "Leg_L": (-0.07, 0.38, 0.04),
+    "Leg_R": (0.07, 0.38, 0.04),
+}
+
+BIRD_PARTS = [
+    ("Spine", (0.0, 0.50, 0.04), (0.20, 0.20, 0.38)),
+    ("Neck", (0.0, 0.64, -0.20), (0.08, 0.14, 0.08)),
+    ("Head", (0.0, 0.72, -0.32), (0.12, 0.12, 0.14)),
+    ("Wing_L", (-0.34, 0.58, 0.0), (0.44, 0.04, 0.26)),
+    ("Wing_R", (0.34, 0.58, 0.0), (0.44, 0.04, 0.26)),
+    ("Leg_L", (-0.07, 0.19, 0.04), (0.05, 0.38, 0.05)),
+    ("Leg_R", (0.07, 0.19, 0.04), (0.05, 0.38, 0.05)),
+]
+
+_FLAP = [0.0, 0.25, 0.5, 0.75, 1.0]
+BIRD_CLIPS = [
+    ("idle", [0.0, 1.0, 2.0], {"Head": [(0, 0, 0), (0, 8, 0), (0, 0, 0)]}),
+    ("walk", [0.0, 0.25, 0.5, 0.75, 1.0], {"Leg_L": [(20 * p, 0, 0) for p in (1, 0, -1, 0, 1)],
+                                           "Leg_R": [(-20 * p, 0, 0) for p in (1, 0, -1, 0, 1)]}),
+    ("run", [0.0, 0.15, 0.3, 0.45, 0.6], {"Leg_L": [(35 * p, 0, 0) for p in (1, 0, -1, 0, 1)],
+                                          "Leg_R": [(-35 * p, 0, 0) for p in (1, 0, -1, 0, 1)]}),
+    ("fall", _FLAP, {"Wing_L": [(0, 0, a) for a in (-40, 40, -40, 40, -40)],
+                     "Wing_R": [(0, 0, -a) for a in (-40, 40, -40, 40, -40)]}),
+    ("land", [0.0, 0.12, 0.25], {"Spine": [(10, 0, 0), (5, 0, 0), (0, 0, 0)]}),
+    ("attack", [0.0, 0.15, 0.3, 0.5], {"Head": [(0, 0, 0), (-30, 0, 0), (20, 0, 0), (0, 0, 0)],
+                                        "Neck": [(0, 0, 0), (-15, 0, 0), (10, 0, 0), (0, 0, 0)]}),
+    ("death", [0.0, 0.4, 1.2], {"Root": [(0, 0, 0), (0, 0, 30), (0, 0, 85)]}),
+]
+
+# Serpent lies along Z, head at -z, each spine segment a box.
+SERPENT_JOINTS = {
+    "Root": (0.0, 0.0, 0.0),
+    "Spine_1": (0.0, 0.15, 0.50),
+    "Spine_2": (0.0, 0.15, 0.10),
+    "Spine_3": (0.0, 0.15, -0.30),
+    "Neck": (0.0, 0.20, -0.65),
+    "Head": (0.0, 0.25, -0.85),
+}
+
+SERPENT_PARTS = [
+    ("Spine_1", (0.0, 0.15, 0.30), (0.26, 0.26, 0.42)),
+    ("Spine_2", (0.0, 0.15, -0.10), (0.24, 0.24, 0.42)),
+    ("Spine_3", (0.0, 0.15, -0.48), (0.20, 0.20, 0.36)),
+    ("Neck", (0.0, 0.22, -0.75), (0.14, 0.16, 0.20)),
+    ("Head", (0.0, 0.26, -0.95), (0.16, 0.14, 0.22)),
+]
+
+
+def _slither(amp: float) -> dict:
+    """Spine segments sway left and right in a travelling wave."""
+    return {"Spine_1": [(0, a, 0) for a in (amp, 0, -amp, 0, amp)],
+            "Spine_2": [(0, a, 0) for a in (0, -amp, 0, amp, 0)],
+            "Spine_3": [(0, a, 0) for a in (-amp, 0, amp, 0, -amp)]}
+
+
+SERPENT_CLIPS = [
+    ("idle", [0.0, 1.0, 2.0], {"Head": [(0, 0, 0), (0, 10, 0), (0, 0, 0)]}),
+    ("walk", [0.0, 0.25, 0.5, 0.75, 1.0], _slither(15)),
+    ("run", [0.0, 0.15, 0.3, 0.45, 0.6], _slither(25)),
+    ("fall", [0.0, 0.4, 0.8], {"Spine_2": [(20, 0, 0)] * 3}),
+    ("land", [0.0, 0.12, 0.25], {"Spine_2": [(10, 0, 0), (5, 0, 0), (0, 0, 0)]}),
+    ("attack", [0.0, 0.15, 0.3, 0.5], {"Neck": [(0, 0, 0), (-30, 0, 0), (25, 0, 0), (0, 0, 0)],
+                                        "Head": [(0, 0, 0), (-20, 0, 0), (15, 0, 0), (0, 0, 0)]}),
+    ("death", [0.0, 0.4, 1.2], {"Root": [(0, 0, 0), (0, 0, 30), (0, 0, 85)]}),
+]
+
+
+def creature_rigs() -> dict:
+    """{GLB path: bytes} for the roster beyond GraywolfPack."""
+    quad = build_wolf_rig()
+    bird = build_skinned_rig(BIRD_TRES, "BirdSkeleton", BIRD_JOINTS, {}, BIRD_PARTS, BIRD_CLIPS)
+    serpent = build_skinned_rig(SERPENT_TRES, "SerpentSkeleton", SERPENT_JOINTS, {}, SERPENT_PARTS, SERPENT_CLIPS)
+    rigs = {}
+    for names, data in ((QUADRUPED_CREATURES, quad), (BIRD_CREATURES, bird), (SERPENT_CREATURES, serpent)):
+        for name in names:
+            rigs[CREATURES_DIR / f"{name}.glb.raw"] = data
+    return rigs
+
+
 if __name__ == "__main__":
-    for path, data in ((OUT, build()), (PLAYER_OUT, build_player_rig()), (WOLF_OUT, build_wolf_rig())):
+    outputs = {OUT: build(), PLAYER_OUT: build_player_rig(), WOLF_OUT: build_wolf_rig(), **creature_rigs()}
+    for path, data in outputs.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
         print(f"wrote {path} ({path.stat().st_size} bytes)")
