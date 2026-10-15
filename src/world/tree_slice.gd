@@ -612,6 +612,10 @@ func _clear_unloaded_chunk(chunk: Vector2i, p: Vector2, radius: float, wm: float
 		maxf(absf((float(chunk.y) + 0.5) * span - p.y) - half, 0.0))
 	if gap.length() > radius:
 		return 0   # the circle never reaches this chunk
+	# Phase 126 — the chunk is recorded the way `Frontier` will record it (its biome and budget), BEFORE the
+	# indices are chosen, so they name the trees the chunk will really grow beside recorded land.
+	if not ChunkRecords.has_record(chunk):
+		_pin_frontier_record(chunk)
 	var biome := _chunk_biome(chunk)
 	var entry := tree_entry_for_biome(biome)
 	if entry.is_empty():

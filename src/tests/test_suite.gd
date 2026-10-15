@@ -21473,22 +21473,25 @@ func _test_p126_client_cap_lru() -> void:
 	ChunkRecordsScript.clear()
 
 ## Find a chunk whose frontier biome (beside a recorded neighbour) differs from the plain generator's and
-## still grows trees; { "chunk", "plain", "framed" } or {} when none turned up.
+## still grows trees; { "chunk", "plain", "framed" } or {} when none turned up. Only the arid / cold
+## biomes have a forbidden neighbour, so the search looks for those and records the opposite beside them.
 func _p126_find_transition(t: Node) -> Dictionary:
 	var seed_v := int(t.terrain_slice.get_world_seed())
-	for z in range(-12, 12):
-		for x in range(-12, 12):
-			var n := Vector2i(x, z)
-			var plain: String = TerrainSlice.biome_for_chunk(n, seed_v)
-			for key in TerrainSlice.BIOME_KEYS:
-				if key == plain or not (key is String):
+	var opposite := { "Desert": "Tundra", "VolcanicBadlands": "Tundra", "Tundra": "Desert" }
+	for r in range(0, 120):
+		for z in range(-r, r + 1):
+			for x in range(-r, r + 1):
+				if maxi(absi(x), absi(z)) != r:
+					continue
+				var n := Vector2i(x * 3, z * 3)
+				var plain: String = TerrainSlice.generated_biome_for_chunk(n, seed_v)
+				if not opposite.has(plain):
 					continue
 				ChunkRecordsScript.clear()
-				var rec := _sync_record(n + Vector2i(-1, 0), key)
-				ChunkRecordsScript.set_record(n + Vector2i(-1, 0), rec)
+				ChunkRecordsScript.set_record(n + Vector2i(-1, 0), _sync_record(n + Vector2i(-1, 0), str(opposite[plain])))
 				var framed: String = Frontier.pick_biome(n, seed_v, Frontier.gather(n))
-				if framed != plain and t.tree_count_for(n, framed) > 2 and not t.tree_entry_for_biome(framed).is_empty():
-					return { "chunk": n, "plain": plain, "framed": framed, "neighbour": n + Vector2i(-1, 0), "key": key }
+				if framed != plain and t.tree_count_for(n, framed) > 0 and not t.tree_entry_for_biome(framed).is_empty():
+					return { "chunk": n, "plain": plain, "framed": framed }
 	ChunkRecordsScript.clear()
 	return {}
 
