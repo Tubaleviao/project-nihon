@@ -665,6 +665,7 @@ func run() -> void:
 	_run_test("asset: body sheet placeholders are 64x64, masks black, detail white", _test_asset_body_sheet_placeholders)
 	_run_test("asset: item icon placeholders are 32x32 RGBA",   _test_asset_item_icon_placeholders)
 	_run_test("asset: GraywolfPack placeholders have the quadruped contract", _test_asset_graywolfpack_placeholders)
+	_run_test("asset: roster creature placeholders have their skeleton contract", _test_asset_creature_roster_placeholders)
 	_run_test("asset: missing model key warns and falls back",   _test_asset_missing_model_falls_back)
 	_run_test("asset: creature model key derived from entity name", _test_asset_creature_key)
 	_run_test("rig tree: every Locomotion.State maps to a node", _test_rig_tree_state_mapping_total)
@@ -8196,6 +8197,58 @@ func _test_asset_graywolfpack_placeholders() -> void:
 	if lib != null:
 		for clip in ["idle", "walk", "run", "fall", "land", "attack", "death"]:
 			assert_true(lib.has_animation(clip), "wolf clip %s" % clip)
+
+## Issue #322: the nine roster creatures each have a skinned placeholder on their skeleton
+## family's fabric bones, seven clips and three textures at the art's size.
+func _test_asset_creature_roster_placeholders() -> void:
+	const GameDataReader := preload("res://src/core/game_data_reader.gd")
+	var roster := {
+		"ForestBoar": ["QuadrupedSkeleton", 128], "SteppeBison": ["QuadrupedSkeleton", 128],
+		"GlimmerFox": ["QuadrupedSkeleton", 64], "VeilStalker": ["QuadrupedSkeleton", 64],
+		"RiftWarden": ["QuadrupedSkeleton", 128], "RidgeHawk": ["BirdSkeleton", 64],
+		"CinderGargoyle": ["BirdSkeleton", 128], "VoidSerpent": ["SerpentSkeleton", 128],
+		"LavaSlug": ["SerpentSkeleton", 128],
+	}
+	for entity: String in roster:
+		var family: String = roster[entity][0]
+		var size: int = roster[entity][1]
+		var key := AssetOverlay.creature_model_key(entity)
+		assert_true(AssetOverlay.has_key("meshes", key), "%s mesh listed" % entity)
+		assert_true(AssetOverlay.has_key("animations", key), "%s animations listed" % entity)
+		for suffix in ["", "_channel", "_color_mask"]:
+			var tkey := "textures/creatures/%s%s.png.raw" % [entity, suffix]
+			assert_true(AssetOverlay.has_key("textures", tkey), "manifest lists %s" % tkey)
+			var img := Image.new()
+			var err := img.load_png_from_buffer(FileAccess.get_file_as_bytes("res://assets/" + tkey))
+			assert_eq(err, OK, "%s decodes as PNG" % tkey)
+			if err == OK:
+				assert_eq(img.get_size(), Vector2i(size, size), "%s is %dx%d" % [tkey, size, size])
+		var root := AssetOverlay.load_rig_scene(key)
+		assert_true(root != null, "%s parses into a scene" % entity)
+		if root == null:
+			continue
+		var skeletons := root.find_children("*", "Skeleton3D", true, false)
+		assert_eq(skeletons.size(), 1, "%s has one Skeleton3D" % entity)
+		if skeletons.size() == 1:
+			var skeleton: Skeleton3D = skeletons[0]
+			var bones: Array = GameDataReader.json_field(GameData.SKELETONS[family], "bones", [])
+			assert_eq(skeleton.get_bone_count(), bones.size(), "%s: one bone per %s bone" % [entity, family])
+			for b in bones:
+				var idx := skeleton.find_bone(str(b["name"]))
+				assert_true(idx >= 0, "%s: bone %s present" % [entity, b["name"]])
+				if idx >= 0:
+					var parent := skeleton.get_bone_parent(idx)
+					assert_eq(skeleton.get_bone_name(parent) if parent >= 0 else "", str(b["parent"]),
+						"%s: bone %s has its fabric parent" % [entity, b["name"]])
+		var parts: Array = []
+		_collect_mesh_instances(root, parts)
+		assert_true(parts.size() > 0, "%s has a mesh" % entity)
+		root.free()
+		var lib := AssetOverlay.load_animation_library(key)
+		assert_true(lib != null, "%s has an animation library" % entity)
+		if lib != null:
+			for clip in ["idle", "walk", "run", "fall", "land", "attack", "death"]:
+				assert_true(lib.has_animation(clip), "%s clip %s" % [entity, clip])
 
 func _test_asset_body_sheet_placeholders() -> void:
 	var expected := {

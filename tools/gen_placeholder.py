@@ -26,7 +26,8 @@ Item icons (``icons/items/<ItemId>.png.raw``, 32x32 RGBA) are a flat tile per it
 colour derived from its id, with a magenta border so a placeholder is never mistaken for
 art. ``ITEM_IDS`` lists the ids the production pack ships. The GraywolfPack creature
 textures (``textures/creatures/GraywolfPack*.png.raw``) are the checkerboard (base) and
-two black masks (``_channel``, ``_color_mask``), like the player's.
+two black masks (``_channel``, ``_color_mask``), like the player's. The nine roster creatures
+(``CREATURE_SIZES``) get the same three sheets at 128x128 or 64x64.
 
 A bare ``<out>`` writes the sheet its default path gets (black for the mask
 files, white for the rig detail file) and the checkerboard for any other path.
@@ -62,6 +63,12 @@ RIG_DETAIL_OUT = ROOT / "assets/textures/characters/player.png.raw"
 WOLF_OUT = ROOT / "assets/textures/creatures/GraywolfPack.png.raw"
 WOLF_MASK_OUTS = (ROOT / "assets/textures/creatures/GraywolfPack_channel.png.raw",
                   ROOT / "assets/textures/creatures/GraywolfPack_color_mask.png.raw")
+# Creature roster: name -> texture size (the base sheet, ``_color_mask`` and ``_channel`` share it).
+CREATURE_SIZES = {
+    "ForestBoar": 128, "SteppeBison": 128, "CinderGargoyle": 128, "VoidSerpent": 128, "LavaSlug": 128,
+    "RiftWarden": 128, "GlimmerFox": 64, "RidgeHawk": 64, "VeilStalker": 64,
+}
+CREATURE_DIR = ROOT / "assets/textures/creatures"
 ICON_DIR = ROOT / "assets/icons/items"
 
 
@@ -103,9 +110,9 @@ def white(x: int, y: int):
     return WHITE
 
 
-def _write(out: Path, color_at) -> None:
+def _write(out: Path, color_at, size: int = SIZE) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(_png(SIZE, SIZE, color_at))
+    out.write_bytes(_png(size, size, color_at))
     print(f"wrote {out}")
 
 
@@ -137,6 +144,12 @@ OUTPUTS = {
     WOLF_OUT: checker,
     **{out: black for out in WOLF_MASK_OUTS},
 }
+# Roster creatures: (path, sheet, size) for the base sheet and the two black masks.
+CREATURE_OUTPUTS = [
+    (CREATURE_DIR / f"{name}{suffix}.png.raw", sheet, size)
+    for name, size in CREATURE_SIZES.items()
+    for suffix, sheet in (("", checker), ("_color_mask", black), ("_channel", black))
+]
 FLAGS = {"--mask": black, "--white": white}
 
 
@@ -146,10 +159,14 @@ def main() -> None:
         _write(Path(args[1]), FLAGS[args[0]])
     elif len(args) == 1 and not args[0].startswith("-"):
         out = Path(args[0])
-        _write(out, OUTPUTS.get(out.resolve(), checker))
+        sizes = {path.resolve(): (sheet, size) for path, sheet, size in CREATURE_OUTPUTS}
+        sheet, size = sizes.get(out.resolve(), (OUTPUTS.get(out.resolve(), checker), SIZE))
+        _write(out, sheet, size)
     elif not args:
         for out, color_at in OUTPUTS.items():
             _write(out, color_at)
+        for path, sheet, size in CREATURE_OUTPUTS:
+            _write(path, sheet, size)
         for item_id in ITEM_IDS:
             _write_icon(ICON_DIR / f"{item_id}.png.raw", item_id)
     else:
