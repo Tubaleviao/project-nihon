@@ -33,7 +33,22 @@
     "textures/creatures/VoidSerpent_color_mask.png.raw": "textures/creatures/VoidSerpent_color_mask.png.raw",
     "textures/creatures/LavaSlug.png.raw": "textures/creatures/LavaSlug.png.raw",
     "textures/creatures/LavaSlug_channel.png.raw": "textures/creatures/LavaSlug_channel.png.raw",
-    "textures/creatures/LavaSlug_color_mask.png.raw": "textures/creatures/LavaSlug_color_mask.png.raw"
+    "textures/creatures/LavaSlug_color_mask.png.raw": "textures/creatures/LavaSlug_color_mask.png.raw",
+    "textures/items/CarpenterAxe.png.raw": "textures/items/CarpenterAxe.png.raw",
+    "textures/items/CarpenterAxe_color_mask.png.raw": "textures/items/CarpenterAxe_color_mask.png.raw",
+    "textures/items/CarpenterAxe_channel.png.raw": "textures/items/CarpenterAxe_channel.png.raw",
+    "textures/items/FerritePick.png.raw": "textures/items/FerritePick.png.raw",
+    "textures/items/FerritePick_color_mask.png.raw": "textures/items/FerritePick_color_mask.png.raw",
+    "textures/items/FerritePick_channel.png.raw": "textures/items/FerritePick_channel.png.raw",
+    "textures/items/FerriteShortSword.png.raw": "textures/items/FerriteShortSword.png.raw",
+    "textures/items/FerriteShortSword_color_mask.png.raw": "textures/items/FerriteShortSword_color_mask.png.raw",
+    "textures/items/FerriteShortSword_channel.png.raw": "textures/items/FerriteShortSword_channel.png.raw",
+    "textures/items/FerriteShield.png.raw": "textures/items/FerriteShield.png.raw",
+    "textures/items/FerriteShield_color_mask.png.raw": "textures/items/FerriteShield_color_mask.png.raw",
+    "textures/items/FerriteShield_channel.png.raw": "textures/items/FerriteShield_channel.png.raw",
+    "textures/items/FerriteHelmet.png.raw": "textures/items/FerriteHelmet.png.raw",
+    "textures/items/FerriteHelmet_color_mask.png.raw": "textures/items/FerriteHelmet_color_mask.png.raw",
+    "textures/items/FerriteHelmet_channel.png.raw": "textures/items/FerriteHelmet_channel.png.raw"
   },
   "meshes": {
     "models/placeholder_rig.glb.raw": "models/placeholder_rig.glb.raw",
@@ -47,7 +62,12 @@
     "models/creatures/RidgeHawk.glb.raw": "models/creatures/RidgeHawk.glb.raw",
     "models/creatures/CinderGargoyle.glb.raw": "models/creatures/CinderGargoyle.glb.raw",
     "models/creatures/VoidSerpent.glb.raw": "models/creatures/VoidSerpent.glb.raw",
-    "models/creatures/LavaSlug.glb.raw": "models/creatures/LavaSlug.glb.raw"
+    "models/creatures/LavaSlug.glb.raw": "models/creatures/LavaSlug.glb.raw",
+    "models/items/CarpenterAxe.glb.raw": "models/items/CarpenterAxe.glb.raw",
+    "models/items/FerritePick.glb.raw": "models/items/FerritePick.glb.raw",
+    "models/items/FerriteShortSword.glb.raw": "models/items/FerriteShortSword.glb.raw",
+    "models/items/FerriteShield.glb.raw": "models/items/FerriteShield.glb.raw",
+    "models/items/FerriteHelmet.glb.raw": "models/items/FerriteHelmet.glb.raw"
   },
   "animations": {
     "models/placeholder_rig.glb.raw": "models/placeholder_rig.glb.raw",

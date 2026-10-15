@@ -661,8 +661,67 @@ def creature_rigs() -> dict:
     return rigs
 
 
+# ---------------------------------------------------------------------------
+# Item meshes: `assets/models/items/<ItemId>.glb.raw`
+# ---------------------------------------------------------------------------
+# Static (no skin, no clips): one closed, single-sided-outward box per item, sized to its kind
+# (a long thin blade, a flat shield...), resting on the origin's ground plane. It carries
+# POSITION, NORMAL and TEXCOORD_0 (every face spans the whole sheet), so the item's three
+# textures (`textures/items/<ItemId>*.png.raw`) map onto it like onto the art.
+ITEMS_DIR = OUT.parent / "items"
+ITEM_BOXES = {  # id -> (x, y, z) extents in metres
+    "CarpenterAxe": (0.30, 0.70, 0.08),
+    "FerritePick": (0.40, 0.70, 0.08),
+    "FerriteShortSword": (0.08, 0.60, 0.04),
+    "FerriteShield": (0.50, 0.60, 0.08),
+    "FerriteHelmet": (0.30, 0.30, 0.30),
+}
+
+
+def build_item_mesh(size: tuple) -> bytes:
+    half = [size[0] / 2, size[1] / 2, size[2] / 2]
+    positions, normals, uvs, indices = [], [], [], []
+    uv_corners = [(0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0)]
+    for normal, corners in CUBE_FACES:
+        base = len(positions) // 3
+        for corner, uv in zip(corners, uv_corners):
+            positions.extend([corner[0] * 2 * half[0], corner[1] * 2 * half[1] + half[1], corner[2] * 2 * half[2]])
+            normals.extend(normal)
+            uvs.extend(uv)
+        indices.extend([base, base + 1, base + 2, base, base + 2, base + 3])
+    blob = Blob()
+    views = [
+        blob.add(struct.pack("<%df" % len(positions), *positions), 34962, 12),
+        blob.add(struct.pack("<%df" % len(normals), *normals), 34962, 12),
+        blob.add(struct.pack("<%df" % len(uvs), *uvs), 34962, 8),
+        blob.add(struct.pack("<%dH" % len(indices), *indices), 34963),
+    ]
+    doc = {
+        "asset": {"version": "2.0", "generator": "gen_placeholder_glb.py"},
+        "scene": 0,
+        "scenes": [{"nodes": [0]}],
+        "nodes": [{"name": "Item", "mesh": 0}],
+        "meshes": [{"name": "Item", "primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2},
+                                                     "indices": 3, "mode": 4}]}],
+        "buffers": [{"byteLength": len(blob.data)}],
+        "bufferViews": blob.views,
+        "accessors": [
+            {"bufferView": views[0], "componentType": 5126, "count": len(positions) // 3, "type": "VEC3",
+             "min": [-half[0], 0.0, -half[2]], "max": [half[0], size[1], half[2]]},
+            {"bufferView": views[1], "componentType": 5126, "count": len(normals) // 3, "type": "VEC3"},
+            {"bufferView": views[2], "componentType": 5126, "count": len(uvs) // 2, "type": "VEC2"},
+            {"bufferView": views[3], "componentType": 5123, "count": len(indices), "type": "SCALAR"},
+        ],
+    }
+    return _glb(doc, blob)
+
+
+def item_meshes() -> dict:
+    return {ITEMS_DIR / f"{name}.glb.raw": build_item_mesh(size) for name, size in ITEM_BOXES.items()}
+
+
 if __name__ == "__main__":
-    outputs = {OUT: build(), PLAYER_OUT: build_player_rig(), WOLF_OUT: build_wolf_rig(), **creature_rigs()}
+    outputs = {OUT: build(), PLAYER_OUT: build_player_rig(), WOLF_OUT: build_wolf_rig(), **creature_rigs(), **item_meshes()}
     for path, data in outputs.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
