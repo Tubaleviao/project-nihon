@@ -150,7 +150,7 @@ issue number where the criterion used to be.
 | 127 | Terrain streaming, generation records and persistence cleanup sweep | Done | [history](docs/roadmap-history/phases-99-129.md) |
 | 128 | Weather: the fabric's `WeatherSystem` runs on the host | Done | [history](docs/roadmap-history/phases-99-129.md) |
 | 129 | Combat status effects: burn, paralysis, knockback, knockdown and stagger | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 130 | Host authority sweep: status effects, waystones and research points | Done | below |
+| 130 | Host authority sweep: status effects, waystones and research points | In review | below |
 | 131 | Internationalization: translated UI and keyed host messages | Planned | below |
 | 132 | One wiring module per system: `game_root` keeps the boot paths | Planned | below |
 | 133 | The test suite splits by system and runs by filter | Planned | below |
@@ -164,7 +164,7 @@ issue number where the criterion used to be.
 
 ---
 
-## Phase 130 — Host authority sweep: status effects, waystones and research points ✅ Done
+## Phase 130 — Host authority sweep: status effects, waystones and research points
 
 **Goal:** three review follow-up issues hold trust-boundary gaps that were filed as Low. Phase 129
 enforces paralysis only on the paralyzed peer's own client (`PlayerSlice.held_speed`): the host
@@ -198,7 +198,7 @@ host must decide all of these itself. This phase fixes every item of the three i
   it, in a table in the PR body.
 
 **Acceptance criteria:**
-- [x] Harness: a `paralysis_holds` step paralyzes the client's player on the host, the client sends
+- [ ] Harness: a `paralysis_holds` step paralyzes the client's player on the host, the client sends
   moves anyway (bypassing `held_speed`), and the host's recorded position for that peer does not move.
 - [x] Suite: knockback on a peer with no reported state leaves its position unchanged; two stacked
   effects with different end times round-trip through save/load with their own end times.
@@ -208,7 +208,7 @@ host must decide all of these itself. This phase fixes every item of the three i
   no more than the window cap; one craft sends one technology sync.
 - [x] `npm run validate` and `npm run check-drift` green; every issue under **Closes:** is closed by
   the merge, each item accounted for in the PR table.
-- [x] Suite green on both boot paths, harness green.
+- [ ] Suite green on both boot paths, harness green. (Filtered suite of the touched systems is green; the full suite and harness were not completed within the run budget.)
 
 ---
 
