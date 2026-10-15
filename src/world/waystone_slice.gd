@@ -23,6 +23,7 @@ extends Node
 
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const Diag := preload("res://src/core/diag.gd")
 
 ## Every refusal code `travel` can return.
@@ -111,7 +112,7 @@ func _player_pos(player_id: String) -> Dictionary:
 static func distance_m(a: Dictionary, b: Dictionary) -> float:
 	var lap: int = TerrainSlice.circumference_chunks()
 	var dc: Vector2i = b["chunk"] - a["chunk"]
-	dc.x = posmod(dc.x + lap / 2, lap) - lap / 2
+	dc.x = SeamWrap.wrap_i(dc.x, lap)
 	var d := Vector3(float(dc.x) * WorldPos.CHUNK_METERS, 0.0, float(dc.y) * WorldPos.CHUNK_METERS) \
 		+ (b["local"] as Vector3) - (a["local"] as Vector3)
 	d.y = 0.0

@@ -69,6 +69,7 @@ const BIOME_SEED := 20260815 # fixed seed so biome assignment is deterministic
 const ClimateField := preload("res://src/terrain/climate_field.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
+const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 
 ## The starting area is flattened into a plain field so the player can walk
 ## freely from spawn without jumping. Spawn centre + radius + flat height below.
@@ -367,7 +368,7 @@ static func polar_chunks() -> int:
 ## Canonical chunk: X wrapped into [-C/2, C/2) where C is the circumference; Z unchanged.
 static func wrap_chunk(chunk_pos: Vector2i) -> Vector2i:
 	var c := circumference_chunks()
-	return Vector2i(posmod(chunk_pos.x + c / 2, c) - c / 2, chunk_pos.y)
+	return Vector2i(SeamWrap.wrap_i(chunk_pos.x, c), chunk_pos.y)
 
 ## Latitude in degrees (north positive) of the middle of chunk row `chunk_z`. A row past a pole (a
 ## player within `FOLD_MARGIN_CHUNKS` of it) reads the latitude it really has on the far meridian.

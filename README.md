@@ -146,7 +146,7 @@ npm run generate  # generate the design bible into bible/
 | 123 | The player rig wears the character material and body masks | Done |
 | 124 | Research points: the fabric's `researchCost` is enforced | Done |
 | 125 | Waystones: a first fast-travel network | Done |
-| 126 | Tree clears the host keeps, and one seam-wrap module | Planned |
+| 126 | Tree clears the host keeps, and one seam-wrap module | Done |
 | 127 | Terrain streaming, generation records and persistence cleanup sweep | Planned |
 | 128 | Weather: the fabric's `WeatherSystem` runs on the host | Planned |
 | 129 | Combat status effects: burn, paralysis, knockback, knockdown and stagger | Planned |

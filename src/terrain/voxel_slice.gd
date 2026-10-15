@@ -103,6 +103,7 @@ const OreField := preload("res://src/terrain/ore_field.gd")
 const BiomeBlend := preload("res://src/terrain/biome_blend.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
+const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const RegionStore := preload("res://src/persistence/region_store.gd")
 
 ## CHUNK_SIZE is defined once on TerrainSlice and accessed via terrain_slice.CHUNK_SIZE.
@@ -1511,6 +1512,7 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 	# placed block mined back would otherwise be a research-point farm.
 	if natural and banked:
 		GameBus.resource_gathered.emit(player_id, material, quantity)
+	GameBus.block_edit_resolved.emit(tile, world_pos.y)
 	GameBus.block_changed.emit("mine", world_pos, normal, material)
 	return { "success": true, "material": material, "quantity": quantity, "position": pos, "player_id": player_id }
 
@@ -1642,6 +1644,7 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 
 	var pos := Vector3(probe["xz"].x, float(span["top"]), probe["xz"].y)
 	GameBus.block_placed.emit(chosen, pos)
+	GameBus.block_edit_resolved.emit(tile, world_pos.y)
 	GameBus.block_changed.emit("place", world_pos, normal, chosen)
 	return true
 
@@ -1687,6 +1690,22 @@ func has_edit_near(tile: Vector2i, radius: int) -> bool:
 		for dx in range(-radius, radius + 1):
 			if _edits.has(_tile_key(Vector2i(tile.x + dx, tile.y + dz))):
 				return true
+	return false
+
+## Phase 126 — `has_edit_near` for edits that reach `min_y` or higher: an edit whose span tops out below
+## it (a deep mine under a tree) does not count. The rule `TreeSlice.CLEAR_DEPTH_M` applies live.
+func has_edit_near_at(tile: Vector2i, radius: int, min_y: float) -> bool:
+	if _edits.is_empty():
+		return false
+	for dz in range(-radius, radius + 1):
+		for dx in range(-radius, radius + 1):
+			for e in _edits.get(_tile_key(Vector2i(tile.x + dx, tile.y + dz)), []):
+				# A deplete op is vein bookkeeping on the anchor tile, not a terrain edit: the dig that
+				# took the ore carries its own span, which is what the depth rule judges.
+				if (e as Dictionary).get("op", "") == "deplete":
+					continue
+				if float((e as Dictionary).get("top", INF)) >= min_y:
+					return true
 	return false
 
 ## Phase 116 — true when the chunk or the `radius` tiles around it hold any edit: one index lookup per
@@ -2974,7 +2993,7 @@ static func _tile_key(tile: Vector2i) -> String:
 ## Tile X wrapped into [-C*CHUNK_SIZE/2, C*CHUNK_SIZE/2) where C is the circumference in chunks.
 static func canonical_tile(tile: Vector2i) -> Vector2i:
 	var w := TerrainSlice.circumference_chunks() * CHUNK_SIZE
-	return Vector2i(posmod(tile.x + w / 2, w) - w / 2, tile.y)
+	return Vector2i(SeamWrap.wrap_i(tile.x, w), tile.y)
 
 ## Phase 42 review pass 9 — STATIC: the worker half of a build keys chunks too (`_neighbour_runs`).
 static func _chunk_key(chunk_pos: Vector2i) -> String:

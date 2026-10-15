@@ -452,21 +452,38 @@ static func normalize_gen(rec: Variant) -> Dictionary:
 		var t: Variant = d["t"]
 		if _is_whole_number(t) and int(t) >= 0 and int(t) <= GEN_TREE_MAX:
 			out["t"] = int(t)   # a malformed optional field is dropped alone (Phase 116)
+		else:
+			_note_malformed_gen("t")
 	if d.has("x"):
 		var xs: Variant = d["x"]
-		if xs is Array and (xs as Array).size() <= GEN_TREE_MAX:
+		if xs is Array:
+			# Phase 126 — only a bad entry goes (logged once); the good indices keep their trees cleared.
 			var seen := {}
-			var ok := true
-			for i in xs:
-				if not _is_whole_number(i) or int(i) < 0 or int(i) >= GEN_TREE_MAX:
-					ok = false
-					break
-				seen[int(i)] = true
-			if ok:
+			for i in (xs as Array).slice(0, GEN_TREE_MAX):
+				if _is_whole_number(i) and int(i) >= 0 and int(i) < GEN_TREE_MAX:
+					seen[int(i)] = true
+				else:
+					_note_malformed_gen("x")
+			if (xs as Array).size() > GEN_TREE_MAX:
+				_note_malformed_gen("x")
+			if not seen.is_empty():
 				var cleared: Array = seen.keys()
 				cleared.sort()
 				out["x"] = cleared
+		else:
+			_note_malformed_gen("x")
 	return out
+
+## Phase 126 — malformed optional `t` / `x` entries seen so far (a counter the suite reads), and whether
+## the one warning has been logged.
+static var malformed_gen_entries: int = 0
+static var _malformed_gen_logged := false
+
+static func _note_malformed_gen(field: String) -> void:
+	malformed_gen_entries += 1
+	if not _malformed_gen_logged:
+		_malformed_gen_logged = true
+		push_warning("RegionStore.normalize_gen: dropped a malformed '%s' entry (further ones are counted, not logged)" % field)
 
 static func _is_whole_number(x: Variant) -> bool:
 	if typeof(x) == TYPE_INT:

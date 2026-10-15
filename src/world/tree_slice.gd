@@ -72,6 +72,8 @@ const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 const RegionStore := preload("res://src/persistence/region_store.gd")
 
 const VoxelScript := preload("res://src/terrain/voxel_slice.gd")
+const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
+const Frontier := preload("res://src/terrain/frontier.gd")
 
 ## Phase 116 — the clear radii are authored on `WorldSystem` (`clearRadiusTiles`, `clearRadiusMetres`);
 ## these are the fallbacks for a build with no fabric resource.
@@ -81,11 +83,15 @@ const FALLBACK_CLEAR_RADIUS_M := 3.0
 ## Phase 116 — an edit more than this far below a tree's root (a deep mine) does not clear it.
 const CLEAR_DEPTH_M := 4.0
 
-## Phase 116 — most spawn indices `_cleared_local` holds in total; the oldest chunk's entry goes first.
+## Phase 116 — most spawn indices a CLIENT's `_cleared_local` holds in total; past it the least recently
+## touched chunk's entry goes, with one warning (Phase 126). The host never evicts: a clear it cannot pin in
+## a record yet waits in `_cleared_local` until the chunk has one.
 const CLEARED_LOCAL_CAP := 2048
 
 ## Phase 116 — a client keeps a `tree_cleared` only for a chunk within this many chunks of one it has
-## loaded; anything farther arrives with the scoped records when the player gets there.
+## loaded; anything farther arrives with the scoped records when the player gets there. Phase 126: this is
+## only the fallback before a snapshot names a scope; `set_clear_scope` derives the range from the host's
+## `gen_scope` radius.
 const CLEAR_ID_RANGE_CHUNKS := 8
 
 ## Trunk / canopy proportions of the shared placeholder tree mesh (world units).
@@ -132,11 +138,26 @@ var voxel_slice: Node = null
 ## `ChunkManager.update_record`: how the host persists a record's tree budget `t` and cleared list `x`.
 var record_writer: Callable = Callable()
 ## Cleared spawn indices of chunks with no record to hold them (isolated rigs): chunk -> { index: true }.
+## Phase 126 — ordered by recency on a client (a touched chunk moves to the end), so the cap evicts the
+## least recently used.
 var _cleared_local: Dictionary = {}
+
+## Phase 126 — chunks within this many of a spawned chunk keep a far `tree_cleared`; the host's `gen_scope` radius.
+var clear_id_range: int = CLEAR_ID_RANGE_CHUNKS
+## Phase 126 — client clears evicted by the cap (the warning is logged once), and whether it has been.
+var cleared_evictions: int = 0
+var _eviction_warned := false
+
+## Phase 126 — `(chunk: Vector2i) -> bool`, set by game_root: whether the host can pin a record for an
+## unrecorded chunk right now (the regions around it are read). Unset, it always can.
+var frontier_ready: Callable = Callable()
 
 ## Phase 116 — every chunk `spawn_for_chunk` has run for (and `despawn_for_chunk` has not undone), trees
 ## or not, so a late record resyncs chunks that grew none locally.
 var _spawned_chunks: Dictionary = {}
+## Phase 126 — `_spawned_chunks` bucketed for `_near_loaded_chunk`: cell -> { chunk: true }, cells `_bucket_size` wide.
+var _spawn_buckets: Dictionary = {}
+var _bucket_size := 0
 
 ## Phase 116 — placed stations (read-only), so a tree on ground a station already covers never spawns.
 var station_slice: Node = null
@@ -165,7 +186,7 @@ func _ready() -> void:
 	GameBus.tree_chopped.connect(_on_tree_chopped)
 	GameBus.tree_respawned.connect(_on_tree_respawned)
 	GameBus.tree_cleared.connect(_on_tree_cleared)
-	GameBus.block_changed.connect(_on_block_changed)
+	GameBus.block_edit_resolved.connect(_on_block_edit_resolved)
 	GameBus.station_placed.connect(_on_station_placed)
 	if render_visuals:
 		_build_pool()
@@ -183,7 +204,9 @@ func _process(_delta: float) -> void:
 ## and ids are deterministic, so a reload restores the same trees; surviving trees
 ## are counted first so a chunk reload never exceeds the budget.
 func spawn_for_chunk(chunk_pos: Vector2i) -> void:
-	_spawned_chunks[chunk_pos] = true
+	if not _spawned_chunks.has(chunk_pos):
+		_spawned_chunks[chunk_pos] = true
+		_bucket_add(chunk_pos)
 	var biome := _chunk_biome(chunk_pos)
 	var entry := tree_entry_for_biome(biome)
 	if entry.is_empty():
@@ -232,10 +255,11 @@ func cleared_indices(chunk_pos: Vector2i) -> Dictionary:
 	return out
 
 ## Phase 116 — clears held only locally (the chunk had no record when they happened) move into the
-## record once one exists, so they persist and ride the sync. Host only; a client keeps them local.
+## record once one exists, so they persist and ride the sync. Phase 126: on a client too, so the local
+## entry is released the moment the host's record for the chunk is in (and carries the clear).
 func _adopt_local_clears(chunk_pos: Vector2i) -> void:
 	var canon := TerrainSlice.wrap_chunk(chunk_pos)
-	if not is_authoritative or not _cleared_local.has(canon) or not record_writer.is_valid():
+	if not _cleared_local.has(canon) or not record_writer.is_valid():
 		return
 	var rec := ChunkRecords.get_record(canon)
 	if rec.is_empty():
@@ -259,10 +283,10 @@ func _stations_near_chunk(chunk_pos: Vector2i) -> Array:
 	var cx := (float(chunk_pos.x) + 0.5) * span
 	var cz := (float(chunk_pos.y) + 0.5) * span
 	var radius := clear_radius_m()
-	var wm := _world_metres()
+	var wm := _lap_metres()
 	for st in station_slice.get_all_stations():
 		var sp: Vector3 = st["position"]
-		if absf(_wrapped_delta_f(cx, sp.x, wm)) <= half + radius and absf(cz - sp.z) <= half + radius:
+		if absf(SeamWrap.delta_f(cx, sp.x, wm)) <= half + radius and absf(cz - sp.z) <= half + radius:
 			out.append(st)
 	return out
 
@@ -286,9 +310,9 @@ func despawn_for_chunk(chunk_pos: Vector2i) -> void:
 	var ids: Array = _by_chunk.get(chunk_pos, []) as Array
 	_by_chunk.erase(chunk_pos)
 	_spawned_chunks.erase(chunk_pos)
-	# A client's unrecorded clears go with the chunk; the host's records bring them back on the way in.
-	if not is_authoritative:
-		_cleared_local.erase(TerrainSlice.wrap_chunk(chunk_pos))
+	_bucket_remove(chunk_pos)
+	# Phase 126 — a client keeps an unrecorded clear after the chunk unloads (no ghost tree on return); it
+	# goes once the host's record for the chunk arrives or the scope moves away (`set_clear_scope`).
 	for tid in ids:
 		_remove_tree(str(tid), true)
 
@@ -504,6 +528,11 @@ static func clear_radius_m() -> float:
 		return maxf(float(ws.get("clearRadiusMetres")), 0.0)
 	return FALLBACK_CLEAR_RADIUS_M
 
+## Phase 126 — true when an edit at `edit_y` is deep enough below a tree rooted at `root_y` to leave it
+## alone. The one `CLEAR_DEPTH_M` rule, shared by `clear_trees_near_tile` and `_on_edited_ground`.
+static func _too_deep(edit_y: float, root_y: float) -> bool:
+	return edit_y < root_y - CLEAR_DEPTH_M
+
 ## Clear every standing-or-stump tree within `clear_radius_tiles()` tiles of `tile` (seam-wrapped).
 ## An edit at `edit_y` more than `CLEAR_DEPTH_M` below a tree's root leaves it alone. Host only.
 ## Returns how many were cleared.
@@ -511,13 +540,15 @@ func clear_trees_near_tile(tile: Vector2i, edit_y: float = INF) -> int:
 	if not is_authoritative:
 		return 0
 	var radius := clear_radius_tiles()
-	var wt := _world_tiles()
+	var wt := _lap_tiles()
 	var canon := VoxelScript.canonical_tile(tile)
-	return _clear_where(_chunk_of_tile(tile), 1 + radius / maxi(_chunk_size(), 1), func(tree: Dictionary) -> bool:
-		if edit_y < float(tree["position"].y) - CLEAR_DEPTH_M:
+	var centre := _chunk_of_tile(tile)
+	var reach := 1 + radius / maxi(_chunk_size(), 1)
+	return _clear_where(_lap_keys(centre, reach), func(tree: Dictionary) -> bool:
+		if _too_deep(edit_y, float(tree["position"].y)):
 			return false
 		var t: Vector2i = tree["tile"]
-		return maxi(absi(_wrapped_delta(t.x, canon.x, wt)), absi(t.y - canon.y)) <= radius)
+		return maxi(absi(SeamWrap.delta(t.x, canon.x, wt)), absi(t.y - canon.y)) <= radius)
 
 ## Clear every tree within `clear_radius_m()` metres (horizontal, seam-wrapped) of `pos`. Host only.
 ## Trees of a neighbouring chunk that is not loaded yet are recorded as cleared in that chunk's record.
@@ -525,36 +556,48 @@ func clear_trees_near_point(pos: Vector3) -> int:
 	if not is_authoritative:
 		return 0
 	var radius := clear_radius_m()
-	var wm := _world_metres()
+	var wm := _lap_metres()
 	var p := Vector2(pos.x, pos.z)
 	var centre := _chunk_of_tile(Vector2i(floori(pos.x / _tile_size()), floori(pos.z / _tile_size())))
 	var reach: int = maxi(1, int(ceil(radius / (float(_chunk_size()) * _tile_size()))))
-	var count := _clear_where(centre, reach, func(tree: Dictionary) -> bool:
+	var keys := _lap_keys(centre, reach)   # resolved once for the loaded and the unloaded pass
+	var count := _clear_where(keys, func(tree: Dictionary) -> bool:
 		var tp: Vector3 = tree["position"]
-		return Vector2(_wrapped_delta_f(tp.x, p.x, wm), tp.z - p.y).length() <= radius)
+		return Vector2(SeamWrap.delta_f(tp.x, p.x, wm), tp.z - p.y).length() <= radius)
 	# A neighbour that is not loaded has no trees to look at: clear by the spawn positions it would get.
-	for dz in range(-reach, reach + 1):
-		for dx in range(-reach, reach + 1):
-			count += _clear_unloaded_chunk(Vector2i(centre.x + dx, centre.y + dz), p, radius, wm)
+	for canon in keys:
+		if (keys[canon] as Array).is_empty():
+			count += _clear_unloaded_chunk(canon, p, radius, wm)
 	return count
 
-## The trees of the chunks within `reach` of `centre` (looked up in `_by_chunk` by canonical chunk, so a
-## raw and a wrapped key both answer) that `matches`, cleared. One loop for tile and point clears.
-func _clear_where(centre: Vector2i, reach: int, matches: Callable) -> int:
-	var hit: Array = []
-	var seen: Dictionary = {}
+## Phase 126 — for each chunk within `reach` of `centre`: canonical chunk -> the keys (raw chunk or either
+## lap of the seam) this slice has it filed or spawned under. Empty = not loaded. One resolution per edit.
+func _lap_keys(centre: Vector2i, reach: int) -> Dictionary:
+	var out: Dictionary = {}
 	var circ := TerrainSlice.circumference_chunks()
 	for dz in range(-reach, reach + 1):
 		for dx in range(-reach, reach + 1):
 			var canon := TerrainSlice.wrap_chunk(Vector2i(centre.x + dx, centre.y + dz))
+			if out.has(canon):
+				continue
+			var found: Array = []
 			for lap in [0, -circ, circ]:
 				var key := Vector2i(canon.x + lap, canon.y)
-				if seen.has(key) or not _by_chunk.has(key):
-					continue
-				seen[key] = true
-				for tid in _by_chunk[key]:
-					if matches.call(_trees[tid]):
-						hit.append(tid)
+				if _by_chunk.has(key) or _spawned_chunks.has(key):
+					found.append(key)
+			out[canon] = found
+	return out
+
+## The trees of the chunks in `keys` (`_lap_keys`) that `matches`, cleared. One loop for tile and point clears.
+func _clear_where(keys: Dictionary, matches: Callable) -> int:
+	var hit: Array = []
+	for canon in keys:
+		for key in keys[canon]:
+			if not _by_chunk.has(key):
+				continue
+			for tid in _by_chunk[key]:
+				if matches.call(_trees[tid]):
+					hit.append(tid)
 	for tid in hit:
 		_clear_tree(str(tid))
 	return hit.size()
@@ -562,19 +605,21 @@ func _clear_where(centre: Vector2i, reach: int, matches: Callable) -> int:
 ## Record (and announce) the trees of an unloaded `chunk` that lie within `radius` of `p`. Needs the
 ## chunk's biome and budget, so it does nothing where the chunk grows no trees.
 func _clear_unloaded_chunk(chunk: Vector2i, p: Vector2, radius: float, wm: float) -> int:
-	var circ := TerrainSlice.circumference_chunks()
-	var canon_chunk := TerrainSlice.wrap_chunk(chunk)
-	for lap in [0, -circ, circ]:   # a loaded chunk may be keyed by any lap of the seam
-		var key := Vector2i(canon_chunk.x + lap, canon_chunk.y)
-		if _by_chunk.has(key) or _spawned_chunks.has(key):
-			return 0
-	chunk = canon_chunk
+	chunk = TerrainSlice.wrap_chunk(chunk)   # the caller (`_lap_keys`) has ruled out a loaded chunk
 	var span := float(_chunk_size()) * _tile_size()
 	var half := span * 0.5
-	var gap := Vector2(maxf(absf(_wrapped_delta_f((float(chunk.x) + 0.5) * span, p.x, wm)) - half, 0.0),
+	var gap := Vector2(maxf(absf(SeamWrap.delta_f((float(chunk.x) + 0.5) * span, p.x, wm)) - half, 0.0),
 		maxf(absf((float(chunk.y) + 0.5) * span - p.y) - half, 0.0))
 	if gap.length() > radius:
 		return 0   # the circle never reaches this chunk
+	# Phase 126 — the chunk is recorded the way `Frontier` will record it (its biome and budget), BEFORE the
+	# indices are chosen, so they name the trees the chunk will really grow beside recorded land.
+	if not ChunkRecords.has_record(chunk) and not _pin_frontier_record(chunk) and is_authoritative \
+			and frontier_ready.is_valid():
+		# Its neighbouring regions are unread, so the plain generator's biome and budget may not be what
+		# `Frontier` records. Choosing indices now could name other trees later; a reload of the chunk
+		# re-checks the stations and edits around it (`_stations_near_chunk`, `has_edit_near`) instead.
+		return 0
 	var biome := _chunk_biome(chunk)
 	var entry := tree_entry_for_biome(biome)
 	if entry.is_empty():
@@ -586,7 +631,7 @@ func _clear_unloaded_chunk(chunk: Vector2i, p: Vector2, radius: float, wm: float
 		if cleared.has(i):
 			continue
 		var xz := _deterministic_chunk_position(chunk, str(entry["species"]), i)
-		if Vector2(_wrapped_delta_f(xz.x, p.x, wm), xz.y - p.y).length() > radius:
+		if Vector2(SeamWrap.delta_f(xz.x, p.x, wm), xz.y - p.y).length() > radius:
 			continue
 		_record_cleared(chunk, i)
 		GameBus.tree_cleared.emit(_tree_id(chunk, i))
@@ -594,37 +639,37 @@ func _clear_unloaded_chunk(chunk: Vector2i, p: Vector2, radius: float, wm: float
 	return n
 
 ## `stations` is the candidate list (`_stations_near_chunk`); omitted, every placed station is checked.
+## Phase 126 — ground edited more than `CLEAR_DEPTH_M` below the tree's root (a deep mine) does not count,
+## the same rule `clear_trees_near_tile` applies, so a reload keeps the tree the live edit kept.
 func _on_edited_ground(tree: Dictionary, stations: Variant = null) -> bool:
 	if stations == null and station_slice != null and station_slice.has_method("get_all_stations"):
 		stations = station_slice.get_all_stations()
 	if stations != null:
 		var tp: Vector3 = tree["position"]
 		var radius := clear_radius_m()
-		var wm := _world_metres()
+		var wm := _lap_metres()
 		for st in stations:
 			var sp: Vector3 = st["position"]
-			if Vector2(_wrapped_delta_f(tp.x, sp.x, wm), tp.z - sp.z).length() <= radius:
+			if Vector2(SeamWrap.delta_f(tp.x, sp.x, wm), tp.z - sp.z).length() <= radius:
 				return true
-	return voxel_slice != null and voxel_slice.has_method("has_edit_near") \
-		and voxel_slice.has_edit_near(tree["tile"], clear_radius_tiles())
+	if voxel_slice == null or not voxel_slice.has_method("has_edit_near"):
+		return false
+	var root_y := float((tree["position"] as Vector3).y)
+	if voxel_slice.has_method("has_edit_near_at"):
+		return voxel_slice.has_edit_near_at(tree["tile"], clear_radius_tiles(), root_y - CLEAR_DEPTH_M)
+	return voxel_slice.has_edit_near(tree["tile"], clear_radius_tiles())
 
 ## Chunk containing `tile` (tile units, floor division).
 func _chunk_of_tile(tile: Vector2i) -> Vector2i:
 	var cs := maxi(_chunk_size(), 1)
 	return Vector2i(floori(float(tile.x) / cs), floori(float(tile.y) / cs))
 
-## Tiles / metres in one lap of the world, and the shortest signed X distance round it.
-func _world_tiles() -> int:
-	return TerrainSlice.circumference_chunks() * maxi(_chunk_size(), 1)
+## Tiles / metres in one lap of the world (the seam arithmetic itself lives in `SeamWrap`).
+func _lap_tiles() -> int:
+	return SeamWrap.world_tiles(TerrainSlice.circumference_chunks(), _chunk_size())
 
-func _world_metres() -> float:
-	return float(_world_tiles()) * _tile_size()
-
-static func _wrapped_delta(a: int, b: int, lap: int) -> int:
-	return posmod(a - b + lap / 2, lap) - lap / 2
-
-static func _wrapped_delta_f(a: float, b: float, lap: float) -> float:
-	return fposmod(a - b + lap * 0.5, lap) - lap * 0.5
+func _lap_metres() -> float:
+	return SeamWrap.world_metres(TerrainSlice.circumference_chunks(), _chunk_size(), _tile_size())
 
 ## Remove one tree for good: record its spawn index in `x`, free its visual and collision, and tell
 ## clients. A stump's regrowth deadline is dropped with it.
@@ -650,6 +695,8 @@ func _record_cleared(chunk: Vector2i, index: int) -> void:
 	if index < 0 or index >= RegionStore.GEN_TREE_MAX:
 		return
 	var canon := TerrainSlice.wrap_chunk(chunk)
+	if is_authoritative and not ChunkRecords.has_record(canon):
+		_pin_frontier_record(canon)
 	var rec := ChunkRecords.get_record(canon)
 	if not rec.is_empty() and record_writer.is_valid():
 		var next := rec.duplicate(true)
@@ -659,31 +706,75 @@ func _record_cleared(chunk: Vector2i, index: int) -> void:
 			next["x"] = xs
 			record_writer.call(canon, next)
 		return
-	# No record to pin it in (yet): hold it locally, keyed by the canonical chunk and bounded.
-	if not _cleared_local.has(canon):
-		_cleared_local[canon] = {}
-	_cleared_local[canon][index] = true
+	# No record to pin it in (yet): hold it locally, keyed by the canonical chunk. The host keeps all of
+	# them until the chunk has a record; a client's are capped by recency.
+	var held: Dictionary = _cleared_local.get(canon, {})
+	_cleared_local.erase(canon)   # re-inserted last: the most recently touched chunk
+	held[index] = true
+	_cleared_local[canon] = held
+	if not is_authoritative:
+		_evict_cleared_local(canon)
+
+## Phase 126 — an unrecorded chunk a clear lands in gets the record `Frontier` gives it (so its biome,
+## and with it the tree budget the cleared indices refer to, are what the chunk will be loaded with),
+## stamped with the budget. Host only; does nothing while the regions around the chunk are unread.
+## Returns true when the chunk has a record afterwards.
+func _pin_frontier_record(canon: Vector2i) -> bool:
+	if ChunkRecords.has_record(canon):
+		return true
+	if not record_writer.is_valid() or terrain_slice == null or not terrain_slice.has_method("get_world_seed"):
+		return false
+	if frontier_ready.is_valid() and not bool(frontier_ready.call(canon)):
+		return false
+	var rec := RegionStore.normalize_gen(Frontier.record_for(canon, int(terrain_slice.get_world_seed())))
+	if rec.is_empty():
+		return false
+	rec["t"] = clampi(tree_count_for(canon, str(rec["b"])), 0, RegionStore.GEN_TREE_MAX)
+	record_writer.call(canon, rec)
+	return ChunkRecords.has_record(canon)
+
+## A client's cap: the least recently touched chunk's clears go first, with one warning.
+func _evict_cleared_local(keep: Vector2i) -> void:
 	var total := 0
 	for c in _cleared_local:
 		total += (_cleared_local[c] as Dictionary).size()
 	while total > CLEARED_LOCAL_CAP and _cleared_local.size() > 1:
 		var oldest: Vector2i = _cleared_local.keys()[0]
-		if oldest == canon:
+		if oldest == keep:
 			oldest = _cleared_local.keys()[1]
 		total -= (_cleared_local[oldest] as Dictionary).size()
 		_cleared_local.erase(oldest)
+		cleared_evictions += 1
+		if not _eviction_warned:
+			_eviction_warned = true
+			Diag.warn("TreeSlice: client clear cap (%d) reached; the least recently used chunk's unrecorded clears were dropped" % CLEARED_LOCAL_CAP)
 
-## The block an edit touched is the one beyond the hit face when placing and behind it when mining, so
-## the tile comes from the position nudged half a tile along the normal (horizontally; the depth test
-## uses the edit's own height).
-func _on_block_changed(action: String, position: Vector3, normal: Vector3, _material: String) -> void:
+## Phase 126 — the host's `gen_scope` `[cx, cz, radius]`: the clear range is its radius, and unrecorded
+## client clears of chunks outside it are released (the host re-delivers anything it recorded on return).
+func set_clear_scope(scope: Variant) -> void:
+	if not (scope is Array) or (scope as Array).size() < 3:
+		return
+	for v in scope:
+		if not (typeof(v) == TYPE_INT or typeof(v) == TYPE_FLOAT) or not is_finite(float(v)):
+			return
+	var radius := int(scope[2])
+	if radius < 0:
+		return
+	clear_id_range = radius
+	if is_authoritative:
+		return
+	var circ := TerrainSlice.circumference_chunks()
+	for c in _cleared_local.keys():
+		var d := Vector2i(SeamWrap.delta(c.x, int(scope[0]), circ), c.y - int(scope[1]))
+		if maxi(absi(d.x), absi(d.y)) > radius:
+			_cleared_local.erase(c)
+
+## Phase 126 — the tile `VoxelSlice._resolve_edit_tile` resolved (from the exact record when the caller had
+## one) arrives with the edit, so a far-from-origin edit clears the tree on the tile it really touched.
+func _on_block_edit_resolved(tile: Vector2i, edit_y: float) -> void:
 	if not is_authoritative:
 		return
-	var ts := _tile_size()
-	var sign_ := 1.0 if action == "place" else -1.0
-	var px := position.x + normal.x * ts * 0.5 * sign_
-	var pz := position.z + normal.z * ts * 0.5 * sign_
-	clear_trees_near_tile(Vector2i(floori(px / ts), floori(pz / ts)), position.y)
+	clear_trees_near_tile(tile, edit_y)
 
 func _on_station_placed(_station_id: String, _type: String, position: Vector3) -> void:
 	clear_trees_near_point(position)
@@ -708,13 +799,58 @@ func _on_tree_cleared(tree_id: String) -> void:
 	_remove_clear(tree_id, tree["chunk"])
 
 ## True when `chunk` is within `CLEAR_ID_RANGE_CHUNKS` (seam-wrapped) of a chunk this slice has spawned.
+## Phase 126 — answered from a bucket index of the spawned chunks (cells `clear_id_range` wide), so a far
+## `tree_cleared` looks at nine cells, not every spawned chunk.
 func _near_loaded_chunk(chunk: Vector2i) -> bool:
+	var b := maxi(clear_id_range, 1)
+	if _bucket_size != b:
+		_rebuild_spawn_buckets(b)
 	var circ := TerrainSlice.circumference_chunks()
-	for c in _spawned_chunks:
-		var dx := absi(_wrapped_delta(chunk.x, (c as Vector2i).x, circ))
-		if maxi(dx, absi(chunk.y - (c as Vector2i).y)) <= CLEAR_ID_RANGE_CHUNKS:
-			return true
+	# Every cell any chunk within range can sit in: X is probed per chunk column (the seam may split the
+	# range at a cell edge), Z by cell.
+	var xs: Dictionary = {}
+	for dx in range(-clear_id_range, clear_id_range + 1):
+		xs[_bucket_key(Vector2i(chunk.x + dx, chunk.y), b).x] = true
+	var seen: Dictionary = {}
+	for kx in xs:
+		for oz in range(-1, 2):
+			var key := Vector2i(kx, _bucket_key(Vector2i(chunk.x, chunk.y + oz * b), b).y)
+			if seen.has(key) or not _spawn_buckets.has(key):
+				continue
+			seen[key] = true
+			for c in _spawn_buckets[key]:
+				var dx := absi(SeamWrap.delta(chunk.x, (c as Vector2i).x, circ))
+				if maxi(dx, absi(chunk.y - (c as Vector2i).y)) <= clear_id_range:
+					return true
 	return false
+
+## Bucket cell of a chunk: its canonical X and Z divided by the cell size.
+static func _bucket_key(chunk: Vector2i, b: int) -> Vector2i:
+	var canon := TerrainSlice.wrap_chunk(chunk)
+	return Vector2i(floori(float(canon.x) / b), floori(float(canon.y) / b))
+
+func _rebuild_spawn_buckets(b: int) -> void:
+	_bucket_size = b
+	_spawn_buckets.clear()
+	for c in _spawned_chunks:
+		_bucket_add(c)
+
+func _bucket_add(chunk: Vector2i) -> void:
+	if _bucket_size <= 0:
+		return
+	var key := _bucket_key(chunk, _bucket_size)
+	if not _spawn_buckets.has(key):
+		_spawn_buckets[key] = {}
+	_spawn_buckets[key][chunk] = true
+
+func _bucket_remove(chunk: Vector2i) -> void:
+	if _bucket_size <= 0:
+		return
+	var key := _bucket_key(chunk, _bucket_size)
+	if _spawn_buckets.has(key):
+		_spawn_buckets[key].erase(chunk)
+		if (_spawn_buckets[key] as Dictionary).is_empty():
+			_spawn_buckets.erase(key)
 
 # ---------------------------------------------------------------------------
 # Private — chopping / regrowth

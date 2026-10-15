@@ -213,6 +213,15 @@ func run() -> void:
 	_run_test("tree clears: the world seam and edit depth", _test_p116_seam_and_depth)
 	_run_test("tree clears: a station clears an unloaded neighbour", _test_p116_station_unloaded)
 	_run_test("tree clears: _cleared_local is range-checked, capped and evicted", _test_p116_cleared_local)
+	_run_test("tree clears: the host keeps every clear and a save/load restores them", _test_p126_host_keeps_clears)
+	_run_test("tree clears: a client's cap evicts the least recently used chunk", _test_p126_client_cap_lru)
+	_run_test("tree clears: an unloaded chunk beside recorded land pins the frontier record", _test_p126_frontier_clear)
+	_run_test("tree clears: a client keeps an unrecorded clear, range follows the scope", _test_p126_client_scope_and_ghost)
+	_run_test("tree clears: a deep edit and clear_trees_near_tile agree", _test_p126_deep_edit_agrees)
+	_run_test("tree clears: a far edit clears the resolved tile", _test_p126_far_edit_tile)
+	_run_test("seam wrap: one module, no copies", _test_p126_seam_wrap_module)
+	_run_test("region store: normalize_gen drops only the bad t/x entries", _test_p126_normalize_gen_drops_bad_entries)
+	_run_test("fabric: treeDensity stays inside the noisy bound", _test_p126_fabric_density_bound)
 	_run_test("tree clears: a tree-only record keeps the ground revision", _test_p116_record_revision)
 	_run_test("game_root: worldgen stamp wiring on load",     _test_worldgen_stamp_game_root_wiring)
 	_run_test("persistence: missing slot emits load_failed",  _test_persistence_missing_slot)
@@ -19855,6 +19864,7 @@ func _test_frontier_deterministic() -> void:
 const RECORDS_GOLDEN_HASH := 1508089442
 const RECORDS_GOLDEN_BIOMES := 3756816773
 const ChunkRecordsScript := preload("res://src/terrain/chunk_records.gd")
+const SeamWrapScript := preload("res://src/terrain/seam_wrap.gd")
 
 func _records_chunks64() -> Array:
 	var out: Array = []
@@ -20121,6 +20131,11 @@ func _test_record_sync_cap() -> void:
 
 # --- Phase 110 — trees pinned per chunk, cleared where players build -----------------------------
 
+## Phase 126 — the tile a top-face edit at `pos` resolves to, as `VoxelSlice._resolve_edit_tile` names it.
+func _edit_tile_of(pos: Vector3, tree_slice: Node) -> Vector2i:
+	var ts: float = tree_slice._tile_size()
+	return Vector2i(floori(pos.x / ts), floori(pos.z / ts))
+
 func _tree_pin_rig(chunk: Vector2i) -> Node:
 	ChunkRecordsScript.clear()
 	ChunkRecordsScript.set_record(chunk, _sync_record(chunk, "TemperateForest"))
@@ -20139,7 +20154,7 @@ func _test_tree_pin_edit_clears() -> void:
 	var on_cleared := func(id: String) -> void: cleared.append(id)
 	GameBus.tree_cleared.connect(on_cleared)
 	var pos: Vector3 = victim["position"]
-	GameBus.block_changed.emit("place", pos, Vector3.UP, "Stone")
+	GameBus.block_edit_resolved.emit(_edit_tile_of(pos, t), pos.y)
 	assert_true(cleared.has(str(victim["tree_id"])), "tree_cleared names the tree on the edited tile")
 	assert_true(t.get_tree_record(str(victim["tree_id"])).is_empty(), "the tree is gone")
 	assert_true(t.index_is_consistent(), "the tree index stays consistent")
@@ -20229,7 +20244,8 @@ func _test_tree_pin_client_cleared() -> void:
 	t.spawn_for_chunk(chunk)
 	assert_eq(t.trees_in_chunk(chunk).size(), 7, "a cleared tree stays gone after a client chunk reload")
 	# A client never clears on its own from a local edit.
-	GameBus.block_changed.emit("place", t.get_all_trees()[0]["position"], Vector3.UP, "Stone")
+	var cpos: Vector3 = t.get_all_trees()[0]["position"]
+	GameBus.block_edit_resolved.emit(_edit_tile_of(cpos, t), cpos.y)
 	assert_eq(t.trees_in_chunk(chunk).size(), 7, "a client waits for the host")
 	# A record arriving after the trees spawned reconciles them.
 	var rec := ChunkRecordsScript.get_record(chunk).duplicate(true)
@@ -20338,17 +20354,17 @@ func _test_p116_seam_and_depth() -> void:
 	var trees: Array = t.get_all_trees()
 	var victim: Dictionary = trees[0]
 	var vpos: Vector3 = victim["position"]
-	var lap := float(circ * TerrainSlice.CHUNK_SIZE) * TerrainSlice.TILE_SIZE
+	var lap := float(circ * TerrainSlice.CHUNK_SIZE) * float(t._tile_size())
 	# A mine 8 m below the tree's root leaves it standing.
-	GameBus.block_changed.emit("mine", Vector3(vpos.x, vpos.y - 8.0, vpos.z), Vector3.UP, "Stone")
+	GameBus.block_edit_resolved.emit(_edit_tile_of(vpos, t), vpos.y - 8.0)
 	assert_eq(t.trees_in_chunk(chunk).size(), trees.size(), "a deep mine clears nothing")
 	# The same edit one lap round the world clears exactly what it clears here.
-	GameBus.block_changed.emit("place", Vector3(vpos.x + lap, vpos.y, vpos.z), Vector3.UP, "Stone")
+	GameBus.block_edit_resolved.emit(_edit_tile_of(Vector3(vpos.x + lap, vpos.y, vpos.z), t), vpos.y)
 	assert_true(t.get_tree_record(str(victim["tree_id"])).is_empty(), "an edit across the seam clears the same tree")
 	var after_seam: int = t.trees_in_chunk(chunk).size()
 	var other: Dictionary = t.get_all_trees()[0]
 	var opos: Vector3 = other["position"]
-	GameBus.block_changed.emit("place", opos, Vector3.UP, "Stone")
+	GameBus.block_edit_resolved.emit(_edit_tile_of(opos, t), opos.y)
 	assert_true(t.get_tree_record(str(other["tree_id"])).is_empty(), "and one away from the seam clears too")
 	assert_true(t.trees_in_chunk(chunk).size() < after_seam, "one more tree went")
 	assert_true(t.index_is_consistent(), "the index is consistent")
@@ -20404,7 +20420,7 @@ func _test_p116_cleared_local() -> void:
 	assert_true(total > 0, "and still remember the recent ones")
 	t._cleared_local[Vector2i(3, 3)] = { 1: true }
 	t.despawn_for_chunk(Vector2i(3, 3))
-	assert_false(t._cleared_local.has(Vector2i(3, 3)), "a client's local clears go with the evicted chunk")
+	assert_true(t._cleared_local.has(Vector2i(3, 3)), "a client keeps its unrecorded clears across a despawn (Phase 126)")
 	t.free()
 	ChunkRecordsScript.clear()
 
@@ -21389,3 +21405,242 @@ func _test_minimap_seed_change_saves_old_seed() -> void:
 class _StampingTransport extends MemoryTransport:
 	func stamps_seq() -> bool:
 		return true
+
+
+# ---- Phase 126 — tree clears the host keeps, and one seam-wrap module ----
+
+## A tree slice on a real terrain slice (seed 31), the way a host has it, writing records straight to the table.
+func _p126_host_rig() -> Dictionary:
+	ChunkRecordsScript.clear()
+	var terrain := TerrainSlice.new()
+	add_child(terrain)
+	terrain.set_world_seed(31)
+	var t := _make_tree_slice()
+	t.terrain_slice = terrain
+	t.record_writer = func(c: Vector2i, rec: Dictionary) -> void:
+		ChunkRecordsScript.set_record(c, RegionStoreScript.normalize_gen(rec))
+	return { "t": t, "terrain": terrain }
+
+func _p126_free(rig: Dictionary) -> void:
+	rig["t"].free()
+	rig["terrain"].free()
+	ChunkRecordsScript.clear()
+
+func _test_p126_host_keeps_clears() -> void:
+	var rig := _p126_host_rig()
+	var t: Node = rig["t"]
+	for i in 3000:
+		t._record_cleared(Vector2i(i % 60, i / 60), 1 + i % 7)
+	var kept := 0
+	for i in 3000:
+		var c := Vector2i(i % 60, i / 60)
+		var rec := ChunkRecordsScript.get_record(c)
+		var held: Dictionary = t._cleared_local.get(c, {})
+		if (rec.get("x", []) as Array).has(1 + i % 7) or held.has(1 + i % 7):
+			kept += 1
+		# What a save writes and a load reads back is the record itself.
+		if not rec.is_empty():
+			assert_eq(RegionStoreScript.normalize_gen(rec), rec, "a stored record survives a save/load round trip")
+	assert_eq(kept, 3000, "the host keeps every one of 3,000 chunks' clears (none evicted)")
+	assert_eq(t.cleared_evictions, 0, "and evicts nothing")
+	# With no way to pin a record (an isolated host) the clears wait, uncapped.
+	t.record_writer = Callable()
+	t._cleared_local.clear()
+	for i in 3000:
+		t._record_cleared(Vector2i(i % 60, 100 + i / 60), 3)
+	assert_eq(t._cleared_local.size(), 3000, "unpinnable host clears are all held, past the client cap")
+	_p126_free(rig)
+
+func _test_p126_client_cap_lru() -> void:
+	ChunkRecordsScript.clear()
+	var t := _make_tree_slice()
+	t.is_authoritative = false
+	for cx in 40:
+		for i in 60:
+			t._record_cleared(Vector2i(cx, 0), i)
+		if cx == 20:
+			t._record_cleared(Vector2i(0, 0), 61)   # touched again: now the most recent chunk's neighbour
+	t._record_cleared(Vector2i(0, 0), 62)
+	var total := 0
+	for c in t._cleared_local:
+		total += (t._cleared_local[c] as Dictionary).size()
+	assert_true(total <= TreeSlice.CLEARED_LOCAL_CAP, "a client holds at most the cap")
+	assert_true(t._cleared_local.has(Vector2i(0, 0)), "the recently touched chunk survives the cap")
+	assert_false(t._cleared_local.has(Vector2i(1, 0)), "the least recently touched chunk goes first")
+	assert_true(t.cleared_evictions > 0, "evictions are counted")
+	assert_true(t._eviction_warned, "and warned about (once)")
+	t.free()
+	ChunkRecordsScript.clear()
+
+## Find a chunk whose frontier biome (beside a recorded neighbour) differs from the plain generator's and
+## still grows trees; { "chunk", "plain", "framed" } or {} when none turned up. Only the arid / cold
+## biomes have a forbidden neighbour, so the search looks for those and records the opposite beside them.
+func _p126_find_transition(t: Node) -> Dictionary:
+	var seed_v := int(t.terrain_slice.get_world_seed())
+	var opposite := { "Desert": "Tundra", "VolcanicBadlands": "Tundra", "Tundra": "Desert" }
+	for r in range(0, 120):
+		for z in range(-r, r + 1):
+			for x in range(-r, r + 1):
+				if maxi(absi(x), absi(z)) != r:
+					continue
+				var n := Vector2i(x * 3, z * 3)
+				var plain: String = TerrainSlice.generated_biome_for_chunk(n, seed_v)
+				if not opposite.has(plain):
+					continue
+				ChunkRecordsScript.clear()
+				ChunkRecordsScript.set_record(n + Vector2i(-1, 0), _sync_record(n + Vector2i(-1, 0), str(opposite[plain])))
+				var framed: String = Frontier.pick_biome(n, seed_v, Frontier.gather(n))
+				if framed != plain and t.tree_count_for(n, framed) > 0 and not t.tree_entry_for_biome(framed).is_empty():
+					return { "chunk": n, "plain": plain, "framed": framed }
+	ChunkRecordsScript.clear()
+	return {}
+
+func _test_p126_frontier_clear() -> void:
+	var rig := _p126_host_rig()
+	var t: Node = rig["t"]
+	var found := _p126_find_transition(t)
+	assert_false(found.is_empty(), "a chunk beside recorded land with a transition biome exists in the search window")
+	if not found.is_empty():
+		var n: Vector2i = found["chunk"]
+		var entry: Dictionary = t.tree_entry_for_biome(str(found["framed"]))
+		var xz: Vector2 = t._deterministic_chunk_position(n, str(entry["species"]), 0)
+		var cleared: Array = []
+		var on_cleared := func(id: String) -> void: cleared.append(id)
+		GameBus.tree_cleared.connect(on_cleared)
+		GameBus.station_placed.emit("station_p126", "Workbench", Vector3(xz.x, 0.0, xz.y))
+		GameBus.tree_cleared.disconnect(on_cleared)
+		var rec := ChunkRecordsScript.get_record(n)
+		assert_eq(str(rec.get("b", "")), str(found["framed"]), "the clear pinned the frontier record, not the plain biome")
+		assert_true((rec.get("x", []) as Array).has(0), "with the cleared index in it")
+		assert_true(cleared.has("tree_%d_%d_0" % [n.x, n.y]), "the clear names the tree of the frontier biome")
+		t.spawn_for_chunk(n)
+		assert_true(t.get_tree_record("tree_%d_%d_0" % [n.x, n.y]).is_empty(), "the same tree is gone once the chunk loads")
+	_p126_free(rig)
+
+func _test_p126_client_scope_and_ghost() -> void:
+	ChunkRecordsScript.clear()
+	var t := _make_tree_slice()
+	t.is_authoritative = false
+	var home := Vector2i(0, 0)
+	t.spawn_for_chunk(home)
+	var tid: String = str(t.get_all_trees()[0]["tree_id"])
+	GameBus.tree_cleared.emit(tid)
+	t.despawn_for_chunk(home)
+	assert_true(t._cleared_local.has(home), "a client keeps an unrecorded clear after the chunk unloads")
+	t.spawn_for_chunk(home)
+	assert_true(t.get_tree_record(tid).is_empty(), "no ghost tree on return")
+	# The host's record arrives carrying the clear: the local entry is released.
+	var rec := _sync_record(home, "TemperateForest")
+	rec["x"] = [int(tid.split("_")[3])]
+	t.record_writer = func(c: Vector2i, r: Dictionary) -> void: ChunkRecordsScript.set_record(c, RegionStoreScript.normalize_gen(r))
+	ChunkRecordsScript.set_record(home, RegionStoreScript.normalize_gen(rec))
+	t.spawn_for_chunk(home)
+	assert_false(t._cleared_local.has(home), "the record's arrival releases the local entry")
+	assert_true(t.get_tree_record(tid).is_empty(), "and the tree stays gone")
+	# The range is the scope's radius.
+	t.set_clear_scope([0, 0, 5])
+	assert_eq(t.clear_id_range, 5, "the clear range equals the gen_scope radius")
+	GameBus.tree_cleared.emit("tree_5_0_3")
+	GameBus.tree_cleared.emit("tree_6_0_3")
+	assert_true(t._cleared_local.has(Vector2i(5, 0)), "a clear at the scope's edge is kept")
+	assert_false(t._cleared_local.has(Vector2i(6, 0)), "one past it is left to the records")
+	t._cleared_local[Vector2i(4, 4)] = { 1: true }
+	t.set_clear_scope([20, 0, 5])
+	assert_false(t._cleared_local.has(Vector2i(4, 4)), "a scope move releases clears outside it")
+	t.set_clear_scope("junk")
+	assert_eq(t.clear_id_range, 5, "a malformed scope changes nothing")
+	for k in 200:
+		t.spawn_for_chunk(Vector2i(k, 0))
+	for k in 200:
+		t.despawn_for_chunk(Vector2i(k, 0))
+	assert_true(t._spawn_buckets.is_empty(), "the bucket index empties with the spawned chunks")
+	# Across the world seam, whatever the cell size: the last chunk on one side sees the first on the other.
+	var circ := TerrainSlice.circumference_chunks()
+	for r in [3, 5, 8, 13]:
+		t.clear_id_range = r
+		t.spawn_for_chunk(Vector2i(-circ / 2, 0))
+		assert_true(t._near_loaded_chunk(Vector2i(circ / 2 - 1, 0)), "range %d: a chunk across the seam is near" % r)
+		t.despawn_for_chunk(Vector2i(-circ / 2, 0))
+	t.free()
+	ChunkRecordsScript.clear()
+
+func _test_p126_deep_edit_agrees() -> void:
+	var chunk := Vector2i(0, 0)
+	var t := _tree_pin_rig(chunk)
+	t.spawn_for_chunk(chunk)
+	var victim: Dictionary = t.get_all_trees()[0]
+	var tile: Vector2i = victim["tile"]
+	var root_y := float((victim["position"] as Vector3).y)
+	assert_eq(t.clear_trees_near_tile(tile, root_y - 8.0), 0, "a deep edit clears nothing live")
+	t.despawn_for_chunk(chunk)
+	t.free()
+	var vox := VoxelSlice.new()
+	var deep := root_y - 8.0
+	vox._edits[vox._tile_key(tile)] = [{ "op": "remove", "bottom": deep - 0.125, "top": deep },
+		{ "op": "deplete", "vein": 1, "taken": 1 }]
+	vox._edits_by_chunk[vox._chunk_key(vox._tile_to_chunk(tile))] = { vox._tile_key(tile): true }
+	var t2 := _tree_pin_rig(chunk)
+	t2.voxel_slice = vox
+	t2.spawn_for_chunk(chunk)
+	assert_false(t2.get_tree_record(str(victim["tree_id"])).is_empty(), "on reload the same tree is kept by the deep edit")
+	t2.despawn_for_chunk(chunk)
+	vox._edits[vox._tile_key(tile)] = [{ "op": "add", "bottom": root_y, "top": root_y + 0.125, "material": "Stone" }]
+	t2.spawn_for_chunk(chunk)
+	assert_true(t2.get_tree_record(str(victim["tree_id"])).is_empty(), "a shallow edit on the tile clears it on reload")
+	t2.free()
+	vox.free()
+	ChunkRecordsScript.clear()
+
+func _test_p126_far_edit_tile() -> void:
+	var chunk := Vector2i(1500000, 0)
+	var t := _tree_pin_rig(chunk)
+	t.spawn_for_chunk(chunk)
+	var trees: Array = t.get_all_trees()
+	assert_true(trees.size() > 1, "the far chunk grows trees")
+	var victim: Dictionary = trees[0]
+	var tile: Vector2i = victim["tile"]
+	GameBus.block_edit_resolved.emit(tile, float((victim["position"] as Vector3).y))
+	assert_true(t.get_tree_record(str(victim["tree_id"])).is_empty(), "an edit at chunk X = 1,500,000 clears the resolved tile's tree")
+	t.free()
+	ChunkRecordsScript.clear()
+
+func _test_p126_seam_wrap_module() -> void:
+	assert_eq(SeamWrapScript.wrap_i(5, 10), -5, "the half lap wraps to the negative side")
+	assert_eq(SeamWrapScript.delta(-4, 4, 10), 2, "the short way round a lap of 10")
+	assert_true(is_equal_approx(SeamWrapScript.delta_f(-4.0, 4.0, 10.0), 2.0), "and for floats")
+	assert_eq(SeamWrapScript.world_tiles(8, 32), 256, "tiles in a lap")
+	assert_true(is_equal_approx(SeamWrapScript.world_metres(8, 32, 0.5), 128.0), "metres in a lap")
+	# The helpers live in seam_wrap.gd and nowhere else.
+	var offenders: Array = []
+	for dir in ["res://src/world", "res://src/terrain", "res://src/persistence", "res://src/core", "res://src/networking"]:
+		for f in DirAccess.get_files_at(dir):
+			if not f.ends_with(".gd") or f == "seam_wrap.gd":
+				continue
+			var src := FileAccess.get_file_as_string(dir + "/" + f)
+			for name in ["_wrapped_delta", "_world_tiles(", "_world_metres("]:
+				if src.contains("func " + name) or src.contains("static func " + name):
+					offenders.append(dir + "/" + f + ":" + name)
+	assert_eq(offenders, [], "no module keeps its own copy of the seam helpers")
+
+func _test_p126_normalize_gen_drops_bad_entries() -> void:
+	var base := _sync_record(Vector2i(2, 2), "TemperateForest")
+	base["t"] = 5
+	base["x"] = [3, "junk", 70, 4, -1, 3]
+	var before := RegionStoreScript.malformed_gen_entries
+	var out := RegionStoreScript.normalize_gen(base)
+	assert_eq(out["x"], [3, 4], "a gen with malformed x entries keeps its other entries")
+	assert_eq(int(out["t"]), 5, "and its t")
+	assert_eq(RegionStoreScript.malformed_gen_entries - before, 3, "each bad entry is counted")
+	var bad_t := base.duplicate(true)
+	bad_t["t"] = "many"
+	var out2 := RegionStoreScript.normalize_gen(bad_t)
+	assert_false(out2.has("t"), "a malformed t is dropped alone")
+	assert_eq(out2["x"], [3, 4], "and the cleared list stays")
+
+func _test_p126_fabric_density_bound() -> void:
+	var bound := int(floor(float(RegionStoreScript.GEN_TREE_MAX) / (1.0 + TreeSlice.DENSITY_NOISE)))
+	assert_eq(bound, 42, "the density bound is GEN_TREE_MAX / (1 + DENSITY_NOISE)")
+	for key in GameData.BIOMES:
+		var b: Variant = GameData.BIOMES[key]
+		if b != null and b.get("treeDensity") != null:
+			assert_true(int(b.get("treeDensity")) <= bound, "biome %s density is within the noisy bound" % key)

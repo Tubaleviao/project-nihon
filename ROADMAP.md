@@ -146,7 +146,7 @@ issue number where the criterion used to be.
 | 123 | The player rig wears the character material and body masks | Done | below |
 | 124 | Research points: the fabric's `researchCost` is enforced | Done | below |
 | 125 | Waystones: a first fast-travel network | Done | below |
-| 126 | Tree clears the host keeps, and one seam-wrap module | Planned | below |
+| 126 | Tree clears the host keeps, and one seam-wrap module | Done | below |
 | 127 | Terrain streaming, generation records and persistence cleanup sweep | Planned | below |
 | 128 | Weather: the fabric's `WeatherSystem` runs on the host | Planned | below |
 | 129 | Combat status effects: burn, paralysis, knockback, knockdown and stagger | Planned | below |
@@ -1250,7 +1250,7 @@ teleport path are touched.
 
 ---
 
-## Phase 126 — Tree clears the host keeps, and one seam-wrap module
+## Phase 126 — Tree clears the host keeps, and one seam-wrap module ✅ Done
 
 **Goal:** since Phase 116 a tree cleared by building follows chunks onto clients, but the host's
 `_cleared_local` is capped at 2,048 and evicts the oldest chunk's clears (those trees regrow, and the
@@ -1290,18 +1290,18 @@ module, resolving every item of the three tree issues below.
   and the host waits on the client's ack rather than a fixed 6 s.
 
 **Acceptance criteria:**
-- [ ] Suite: 3,000 cleared chunks on the host keep every clear, and a save/load restores them; a
+- [x] Suite: 3,000 cleared chunks on the host keep every clear, and a save/load restores them; a
   client's cap evicts the least recently touched chunk and warns once.
-- [ ] Suite: a clear in an unloaded, unrecorded chunk next to recorded land whose frontier record picks
+- [x] Suite: a clear in an unloaded, unrecorded chunk next to recorded land whose frontier record picks
   a transition biome removes the same tree once the chunk loads.
-- [ ] Suite: a client that leaves and returns to a chunk with an unrecorded clear shows no ghost tree;
+- [x] Suite: a client that leaves and returns to a chunk with an unrecorded clear shows no ghost tree;
   the clear range equals the `gen_scope` radius.
-- [ ] Suite: a deep edit and `clear_trees_near_tile` agree on the same tree; an edit at chunk X =
+- [x] Suite: a deep edit and `clear_trees_near_tile` agree on the same tree; an edit at chunk X =
   1,500,000 clears the tile `_resolve_edit_tile` picked.
-- [ ] Suite: `grep` finds the wrap helpers only in `seam_wrap.gd`; a `gen` with one malformed `t` keeps
+- [x] Suite: `grep` finds the wrap helpers only in `seam_wrap.gd`; a `gen` with one malformed `t` keeps
   its other entries; a fabric `treeDensity` above the new bound fails `npm run validate`.
-- [ ] Harness: `tree_cleared` passes with an injected 5 s client lag.
-- [ ] Suite green on both boot paths, `npm run check-drift` green, harness green.
+- [x] Harness: `tree_cleared` passes with an injected 5 s client lag.
+- [x] Suite green on both boot paths, `npm run check-drift` green, harness green.
 
 ---
 
