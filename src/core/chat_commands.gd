@@ -18,7 +18,7 @@ const MAX_GIVE_QUANTITY := 10000
 
 ## Commands any player may run / only admins may run. The one place the names are listed.
 const PLAYER_COMMANDS := ["help", "players"]
-const ADMIN_COMMANDS := ["say", "tp", "bring", "give", "kill"]
+const ADMIN_COMMANDS := ["say", "tp", "bring", "give", "kill", "weather"]
 
 ## One line of usage per command, for `/help`.
 const USAGE := {
@@ -30,6 +30,7 @@ const USAGE := {
 	"bring":   "/bring <player> — teleport a player to you",
 	"give":    "/give <item> [quantity] [player] — create items",
 	"kill":    "/kill [player] — kill a player",
+	"weather": "/weather <state> <hours> — override the weather of your cell",
 }
 
 ## True when `text` is a command this module answers.

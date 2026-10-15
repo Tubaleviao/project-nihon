@@ -155,6 +155,7 @@ static func steps() -> Array:
 		{ "name": "packet_cap",        "compare": true },
 		{ "name": "rate_bucket",       "compare": true },
 		{ "name": "clock_synced",      "compare": true },
+		{ "name": "weather_override",  "compare": true },
 		{ "name": "inventory_owner",   "compare": true },
 		{ "name": "research_points_owner", "compare": true },
 		{ "name": "chat_relayed",      "compare": true },
@@ -346,6 +347,7 @@ func run(root: Node, role: String) -> void:
 	await _step_packet_cap()
 	await _step_rate_bucket()
 	await _step_clock_synced()
+	await _step_weather_override()
 	await _step_inventory_owner()
 	await _step_research_points_owner()
 	await _step_chat_relayed()
@@ -1184,6 +1186,28 @@ func _step_clock_synced() -> void:
 		err_s = absf(clock.time_days - aged) * clock.day_seconds()
 	var good: bool = got and err_s <= 1.0
 	_report("clock_synced", verdict(good, true), "synced" if good else "got%d-err%.2fs" % [int(got), err_s])
+
+## Step 7c2 — Phase 128: the host overrides the weather of a fixed chunk's cell to a state that cell is not
+## rolling, and the client's own weather table reports the override (not the rolled state) once it lands.
+const WEATHER_CHUNK := Vector2i(5, 5)
+func _step_weather_override() -> void:
+	var weather: Node = _root._weather
+	var chunk: Vector2i = WEATHER_CHUNK
+	if _role == "host":
+		var rolled: String = weather.rolled_state(weather.cell_of(chunk), weather.current_hour())
+		var pick := ""
+		for id in weather.state_ids():
+			if id != rolled:
+				pick = id
+				break
+		var why: String = weather.set_override(weather.cell_of(chunk), pick, 10)
+		var held: bool = why == "" and weather.weather_at(chunk, weather.current_hour()) == pick
+		_report("weather_override", verdict(held, true), "overridden" if held else "refused-%s" % why)
+		return
+	var got: bool = await _await_until(func():
+		return weather.override_count() >= 1 \
+			and weather.weather_at(chunk, weather.current_hour()) != weather.rolled_state(weather.cell_of(chunk), weather.current_hour()), STEP_TIMEOUT_SECS)
+	_report("weather_override", verdict(got, true), "overridden" if got else "no_override")
 
 ## Step 14 (Phase 53) — a new player given a friend code spawns beside that friend.
 ##

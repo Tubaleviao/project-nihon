@@ -148,7 +148,7 @@ issue number where the criterion used to be.
 | 125 | Waystones: a first fast-travel network | Done | below |
 | 126 | Tree clears the host keeps, and one seam-wrap module | Done | below |
 | 127 | Terrain streaming, generation records and persistence cleanup sweep | Done | below |
-| 128 | Weather: the fabric's `WeatherSystem` runs on the host | Planned | below |
+| 128 | Weather: the fabric's `WeatherSystem` runs on the host | Done | below |
 | 129 | Combat status effects: burn, paralysis, knockback, knockdown and stagger | Planned | below |
 | 130 | Creatures walk on the ground and around obstacles | Planned | below |
 | 131 | Loose ground settles: sand and soil fall when undermined | Planned | below |
@@ -1379,7 +1379,7 @@ item of each issue below.
 
 ---
 
-## Phase 128 — Weather: the fabric's `WeatherSystem` runs on the host
+## Phase 128 — Weather: the fabric's `WeatherSystem` runs on the host ✅ Done
 
 **Goal:** `fabric/world/weather.js` describes weather as an emergent world system (rain, storm,
 blizzard, fog, ash-fall, void-storm) driven by each biome's `avgTemperature` / `avgRainfall` and the
@@ -1392,7 +1392,7 @@ gameplay effects (outdoor movement speed, visibility) are applied on both boot p
 
 **Depends on:** Phase 51, Phase 54.
 
-**Deliverables:**
+**Deliverables:** (the `WeatherState` table lives in `WeatherSystem.rules.states`, validated by `weatherProblems` in `fabric/world/weather.js`; `tools/check_weather.js` proves bad tables fail in CI; the HUD weather label is appended to the minimap clock line)
 - `fabric/world/weather.js` — a `WeatherState` table (id, `moveSpeedFactor`, `visibilityFactor`,
   `minTemperature` / `maxTemperature`, `minRainfall`, weight) and `WeatherSystem` fields
   (`cellSizeChunks`, `hoursPerRoll`, `overrideMaxHours`), with validators (factors in 0–1, weights
@@ -1414,20 +1414,20 @@ gameplay effects (outdoor movement speed, visibility) are applied on both boot p
   `visibilityFactor` (client only; the headless server creates no environment).
 
 **Acceptance criteria:**
-- [ ] `npm run validate` and `npm run check-drift` green; a `moveSpeedFactor` of 1.5 or a biome that
+- [x] `npm run validate` and `npm run check-drift` green; a `moveSpeedFactor` of 1.5 or a biome that
   reaches no state fails validation.
-- [ ] Suite: `weather_at` matches golden values for five (chunk, hour) pairs, is equal at chunk X and
+- [x] Suite: `weather_at` matches golden values for five (chunk, hour) pairs, is equal at chunk X and
   X + one planet lap, and is constant within one `hoursPerRoll` bucket.
-- [ ] Suite: over 10,000 sampled cells, a desert cell never rolls `blizzard`, a `VoidRift` cell rolls
+- [x] Suite: over 10,000 sampled cells, a desert cell never rolls `blizzard`, a `VoidRift` cell rolls
   only `void_storm` or `clear`, and each state's share is within 5 percentage points of its weight
   among the states its biome allows.
-- [ ] Suite: in a `storm` cell, outdoor walking speed is `SPEED × moveSpeedFactor`, swimming speed is
+- [x] Suite: in a `storm` cell, outdoor walking speed is `SPEED × moveSpeedFactor`, swimming speed is
   unchanged, and a player under a placed roof span walks at full speed.
-- [ ] Suite: `/weather storm 2` from an admin overrides the cell for two in-game hours and reverts
+- [x] Suite: `/weather storm 2` from an admin overrides the cell for two in-game hours and reverts
   after; a value above `overrideMaxHours` and a non-admin sender are refused; the override survives a
   save/load.
-- [ ] Harness: a `weather_override` step proves an admin override reaches the second client.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Harness: a `weather_override` step proves an admin override reaches the second client.
+- [x] Suite green on both boot paths, harness green.
 
 ---
 

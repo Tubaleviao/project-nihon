@@ -14,6 +14,7 @@ const BattleSlice     := preload("res://src/battle/battle_slice.gd")
 const CreatureSlice   := preload("res://src/creature/creature_slice.gd")
 const CreatureAI      := preload("res://src/creature/creature_ai.gd")
 const WaystoneSlice   := preload("res://src/world/waystone_slice.gd")
+const WeatherSlice    := preload("res://src/world/weather_slice.gd")
 const TamingSlice     := preload("res://src/creature/taming_slice.gd")
 const TerrainSlice    := preload("res://src/terrain/terrain_slice.gd")
 const SpawnRoll       := preload("res://src/world/spawn_roll.gd")
@@ -145,6 +146,12 @@ func run() -> void:
 	_run_test("waystone: a refusal reaches the client",         _test_waystone_result_reaches_client)
 	_run_test("waystone: teleport door and chat leftovers",     _test_waystone_wire_and_chat_leftovers)
 	_run_test("waystone: map rename and limb notice",           _test_waystone_map_leftovers)
+	_run_test("weather: the fabric table and every biome reach a state", _test_weather_fabric_table)
+	_run_test("weather: golden values, planet lap and hour buckets",   _test_weather_golden_lap_bucket)
+	_run_test("weather: biome limits and weighted shares",             _test_weather_distribution)
+	_run_test("weather: outdoor walking speed follows the state",      _test_weather_walking_speed)
+	_run_test("weather: /weather overrides, reverts and refuses",      _test_weather_admin_override)
+	_run_test("weather: overrides persist, sync and reject forgeries", _test_weather_persistence_and_wire)
 	_run_test("waystone: a seed change saves the old seed",     _test_minimap_seed_change_saves_old_seed)
 	_run_test("chat: the input box is on screen while closed", _test_chat_box_visible)
 	_run_test("chat: a token bucket bounds each player's lines", _test_chat_rate_limit)
@@ -21858,3 +21865,226 @@ func _test_p127_audit() -> void:
 	for i in 200:
 		var o := TerrainSlice.cell_offset(11, i + 1, -i - 3)
 		assert_true(absf(o.x) <= TerrainSlice.NOISE_OFFSET_RANGE * 0.5 and absf(o.y) <= TerrainSlice.NOISE_OFFSET_RANGE * 0.5, "cell_offset stays within the documented range")
+
+
+# ---------------------------------------------------------------------------
+# Phase 128 — weather
+# ---------------------------------------------------------------------------
+
+func _weather_rig(biome: String = "TemperateForest") -> WeatherSlice:
+	var w := WeatherSlice.new()
+	w.clock = WorldClock.new()
+	w.seed_of = func() -> int: return 424242
+	w.biome_of = func(_chunk: Vector2i) -> String: return biome
+	add_child(w)
+	return w
+
+func _test_weather_fabric_table() -> void:
+	var w := _weather_rig()
+	var rules := w.rules()
+	assert_true(rules["states"].has("clear") and rules["states"].has("storm") and rules["states"].has("void_storm"), "the table names the states")
+	for id in w.state_ids():
+		assert_true(w.move_factor(id) >= 0.0 and w.move_factor(id) <= 1.0, "%s moveSpeedFactor is in 0..1" % id)
+		assert_true(w.visibility_factor(id) >= 0.0 and w.visibility_factor(id) <= 1.0, "%s visibilityFactor is in 0..1" % id)
+	assert_eq(w.move_factor("storm"), 0.7, "a storm slows walking by 30 percent (the fabric rule)")
+	for biome in GameData.BIOMES:
+		var c := w.climate_of(biome)
+		var reached := false
+		for t in [c["temperature"] - c["swing"], c["temperature"], c["temperature"] + c["swing"]]:
+			if not w.allowed_states(biome, t).is_empty():
+				reached = true
+		assert_true(reached, "%s reaches at least one weather state" % biome)
+	assert_eq(w.move_factor("no_such_state"), 1.0, "an unknown state does not slow anyone")
+	w.free()
+
+func _test_weather_golden_lap_bucket() -> void:
+	var w := _weather_rig()
+	# The integer mix is pinned: a changed constant would re-roll every world's weather.
+	assert_eq(WeatherSlice.mix(424242, 3, -2, 17), WEATHER_GOLDEN_MIX, "the integer mix matches its golden value")
+	var cases: Array = [[Vector2i(0, 0), 0], [Vector2i(130, -70), 6], [Vector2i(-500, 900), 100], [Vector2i(12345, 77), 4000], [Vector2i(999, 3), 123456]]
+	for i in cases.size():
+		assert_eq(w.weather_at(cases[i][0], cases[i][1]), WEATHER_GOLDEN_STATES[i], "golden weather #%d" % i)
+	var lap := TerrainSlice.circumference_chunks()
+	for c in cases:
+		assert_eq(w.weather_at(Vector2i(c[0].x + lap, c[0].y), c[1]), w.weather_at(c[0], c[1]), "one planet lap along is the same weather")
+		assert_eq(w.weather_at(Vector2i(c[0].x - lap, c[0].y), c[1]), w.weather_at(c[0], c[1]), "and one lap back")
+	var per := w.hours_per_roll()
+	for bucket in [0, 3, 41]:
+		var first := w.weather_at(Vector2i(10, 10), bucket * per)
+		for h in per:
+			assert_eq(w.weather_at(Vector2i(10, 10), bucket * per + h), first, "constant within one hoursPerRoll bucket")
+	var seen := {}
+	for b in 200:
+		seen[w.weather_at(Vector2i(10, 10), b * per)] = true
+	assert_true(seen.size() > 1, "and it changes between buckets")
+	w.free()
+
+func _test_weather_distribution() -> void:
+	const N := 10000
+	var w := _weather_rig("Desert")
+	var seen := {}
+	var expect := {}
+	for i in N:
+		var chunk := Vector2i((i % 100) * 64 + 1, (i / 100 - 50) * 64)
+		var hour := i * 5
+		var state := w.weather_at(chunk, hour)
+		seen[state] = int(seen.get(state, 0)) + 1
+		var biome := "Desert"
+		var cell_chunk := w.cell_center(w.cell_of(chunk))
+		var allowed := w.allowed_states(biome, w.temperature_at(biome, TerrainSlice.latitude_of(cell_chunk.y), hour))
+		var total := 0.0
+		for id in allowed:
+			total += float(w._state(id)["weight"])
+		for id in allowed:
+			expect[id] = float(expect.get(id, 0.0)) + float(w._state(id)["weight"]) / total
+	assert_false(seen.has("blizzard"), "a desert cell never rolls a blizzard")
+	for id in expect:
+		assert_true(absf(float(seen.get(id, 0)) / N - float(expect[id]) / N) <= 0.05, "desert %s share is within 5 points of its weight" % id)
+	w.free()
+	var v := _weather_rig("VoidRift")
+	seen.clear()
+	expect.clear()
+	for i in N:
+		var chunk := Vector2i((i % 100) * 64 + 1, (i / 100 - 50) * 64)
+		var hour := i * 5
+		var state := v.weather_at(chunk, hour)
+		seen[state] = int(seen.get(state, 0)) + 1
+		var allowed := v.allowed_states("VoidRift", 10.0)
+		var total := 0.0
+		for id in allowed:
+			total += float(v._state(id)["weight"])
+		for id in allowed:
+			expect[id] = float(expect.get(id, 0.0)) + float(v._state(id)["weight"]) / total
+	for id in seen:
+		assert_true(id == "void_storm" or id == "clear", "a VoidRift cell rolls only void_storm or clear (%s)" % id)
+	for id in expect:
+		assert_true(absf(float(seen.get(id, 0)) - float(expect[id])) / N <= 0.05, "VoidRift %s share is within 5 points of its weight" % id)
+	v.free()
+	# A cold cell can blizzard and a hot one cannot: the season moves the allowed set.
+	var t := _weather_rig("Tundra")
+	assert_true("blizzard" in t.allowed_states("Tundra", -20.0), "a freezing tundra allows blizzards")
+	assert_false("rain" in t.allowed_states("Tundra", -20.0), "and no rain")
+	t.free()
+
+func _test_weather_walking_speed() -> void:
+	var w := _weather_rig()
+	var storm: float = w.move_factor("storm")
+	assert_eq(PlayerSlice.walking_speed(false, storm), PlayerSlice.SPEED * storm, "outdoors in a storm: SPEED x moveSpeedFactor")
+	assert_eq(PlayerSlice.walking_speed(true, storm), PlayerSlice.SPEED * PlayerSlice.SWIM_SPEED_FACTOR, "swimming speed is unchanged by the weather")
+	assert_eq(PlayerSlice.walking_speed(false, 1.0), PlayerSlice.SPEED, "clear weather walks at full speed")
+	var roof := [{ "bottom": 0.0, "top": 10.0, "material": "Soil" }, { "bottom": 12.0, "top": 13.0, "material": "Thornwood" }]
+	assert_true(PlayerSlice.roof_overhead(roof, 10.0), "a span 2 m above the head shelters")
+	assert_false(PlayerSlice.roof_overhead([roof[0]], 10.0), "open sky does not")
+	assert_false(PlayerSlice.roof_overhead([{ "bottom": 30.0, "top": 31.0 }], 10.0), "a span far overhead does not")
+	# The body reads it end to end: a storm override on its cell, then a roof span.
+	var body := PlayerSlice.new()
+	body.render_visuals = false
+	body.weather_slice = w
+	add_child(body)
+	w.set_override(w.cell_of(Vector2i.ZERO), "storm", 2)
+	assert_eq(body._weather_factor_now(), storm, "the body is slowed by the storm on its cell")
+	body.weather_slice = null
+	assert_eq(body._weather_factor_now(), 1.0, "a rig with no weather is not slowed")
+	body.free()
+	w.free()
+
+func _test_weather_admin_override() -> void:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var body := PlayerSlice.new()
+	body.render_visuals = false
+	add_child(body)
+	var w := _weather_rig()
+	var chat := ChatSlice.new()
+	chat.render_visuals = false
+	chat.admins_path = "user://does_not_exist_admins.json"
+	chat.player_registry = reg
+	chat.player_slice = body
+	chat.weather_slice = w
+	add_child(chat)
+	var ticks := [0.0]
+	chat.set_clock(func() -> float:
+		ticks[0] += 10.0
+		return ticks[0])
+	var posted: Array = []
+	var cb := func(channel: String, _sender: String, text: String, target: String) -> void:
+		posted.append({ "channel": channel, "text": text, "target": target })
+	GameBus.chat_posted.connect(cb)
+	var synced: Array = []
+	var sync_cb := func(o: Array) -> void: synced.append(o)
+	GameBus.weather_overrides_synced.connect(sync_cb)
+	var here := body.get_world_pos()["chunk"] as Vector2i
+	var rolled := w.weather_at(here, w.current_hour())
+	var want := "storm" if rolled != "storm" else "fog"
+	chat.handle_intent("/weather %s 2" % want, "")
+	assert_eq(w.weather_at(here, w.current_hour()), want, "the admin's cell takes the state")
+	assert_eq(synced.size(), 1, "and the change is announced for the wire")
+	assert_eq(w.weather_at(here, w.current_hour() + 1), want, "still there an hour later")
+	assert_eq(w.weather_at(here, w.current_hour() + 2), w.rolled_state(w.cell_of(here), w.current_hour() + 2), "and reverts to the rolled weather after two hours")
+	w.clock.time_days += 2.0 / 24.0 + 0.001
+	w.tick()
+	assert_eq(w.override_count(), 0, "an expired override is dropped on the host's tick")
+	assert_eq(synced.size(), 2, "and clients are told")
+	posted.clear()
+	chat.handle_intent("/weather storm %d" % (w.override_max_hours() + 1), "")
+	assert_eq(w.override_count(), 0, "a duration above overrideMaxHours is refused")
+	assert_true(posted.any(func(m): return "At most" in str(m["text"])), "with a reason")
+	chat.handle_intent("/weather hurricane 2", "")
+	assert_eq(w.override_count(), 0, "an unknown state is refused")
+	chat.handle_intent("/weather storm 0", "")
+	chat.handle_intent("/weather storm", "")
+	chat.handle_intent("/weather storm two", "")
+	assert_eq(w.override_count(), 0, "bad hours and missing arguments are refused")
+	posted.clear()
+	chat.handle_intent("/weather storm 2", "player_other")
+	assert_eq(w.override_count(), 0, "a non-admin sender is refused")
+	assert_true(posted.any(func(m): return "for admins" in str(m["text"])), "and told why")
+	# The bus door is host-validated too.
+	GameBus.weather_override_requested.emit(Vector2i(1, 1), "storm", 9999)
+	assert_eq(w.override_count(), 0, "the request signal bounds the duration as well")
+	GameBus.weather_override_requested.emit(Vector2i(1, 1), "storm", 3)
+	assert_eq(w.override_count(), 1, "and applies a valid one")
+	GameBus.weather_overrides_synced.disconnect(sync_cb)
+	GameBus.chat_posted.disconnect(cb)
+	chat.free()
+	w.free()
+	body.free()
+	reg.free()
+
+func _test_weather_persistence_and_wire() -> void:
+	var w := _weather_rig()
+	assert_eq(w.set_override(Vector2i(2, 3), "blizzard", 5), "", "an override is set")
+	assert_eq(w.set_override(Vector2i(2, 3), "nope", 5), "unknown_state", "unknown state")
+	assert_eq(w.set_override(Vector2i(2, 3), "storm", 0), "bad_hours", "zero hours")
+	assert_eq(w.set_override(Vector2i(2, 3), "storm", 99999), "too_long", "too long")
+	assert_eq(w.set_override(Vector2i(-1, 3), "storm", 1), "bad_cell", "an X cell off the planet")
+	var saved := w.to_data()
+	var json: Variant = JSON.parse_string(JSON.stringify(saved))
+	var back := _weather_rig()
+	back.from_data(json)
+	assert_eq(back.to_data(), saved, "the table survives a save/load through JSON")
+	assert_eq(back.weather_at(back.cell_center(Vector2i(2, 3)), 0), "blizzard", "and still applies")
+	back.apply_view([[1, 1, "storm", 10], [1], "junk", [1, 1, "volcano", 10], [1, 1, 5, 10], [0.0, 2.0, "fog", 3]])
+	assert_eq(back.override_count(), 2, "a client keeps the well-formed entries only")
+	back.apply_view("nonsense")
+	assert_eq(back.override_count(), 0, "a non-list clears the table")
+	var big: Array = []
+	for i in WeatherSlice.MAX_OVERRIDES + 50:
+		big.append([i, 0, "fog", 10])
+	back.apply_view(big)
+	assert_eq(back.override_count(), WeatherSlice.MAX_OVERRIDES, "a forged table is bounded")
+	# update_local reports a change once.
+	var changes: Array = []
+	var cb := func(state: String) -> void: changes.append(state)
+	GameBus.weather_changed.connect(cb)
+	back.apply_view([])
+	back.update_local(Vector2i(5, 5))
+	back.update_local(Vector2i(5, 5))
+	assert_eq(changes.size(), 1, "weather_changed fires when the state changes, not every call")
+	GameBus.weather_changed.disconnect(cb)
+	back.free()
+	w.free()
+
+const WEATHER_GOLDEN_MIX := 2173728955345170658
+const WEATHER_GOLDEN_STATES := ["fog", "clear", "storm", "rain", "clear"]

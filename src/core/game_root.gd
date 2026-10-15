@@ -39,6 +39,7 @@ const ProposalSlice    := preload("res://src/governance/proposal_slice.gd")
 const UiSlice          := preload("res://src/ui/ui_slice.gd")
 const ChatSlice        := preload("res://src/chat/chat_slice.gd")
 const WaystoneSlice    := preload("res://src/world/waystone_slice.gd")
+const WeatherSlice     := preload("res://src/world/weather_slice.gd")
 const Minimap          := preload("res://src/ui/minimap.gd")
 const LoadingScreen    := preload("res://src/ui/loading_screen.gd")
 const WaypointHorizon  := preload("res://src/ui/waypoint_horizon.gd")
@@ -82,6 +83,7 @@ var _proposal:    ProposalSlice
 var _ui:          UiSlice
 var _chat:        ChatSlice
 var _waystones:   WaystoneSlice
+var _weather:     WeatherSlice
 
 ## Network role (Phase 18/27). HOST = authoritative simulation (default, matches
 ## single-player); CLIENT = receives world state from a host; SERVER = headless
@@ -249,6 +251,11 @@ func _ready() -> void:
 	_ui          = UiSlice.new()
 	_chat        = ChatSlice.new()
 	_waystones   = WaystoneSlice.new()
+	_weather     = WeatherSlice.new()
+	# Phase 128 — weather is a pure function of the seed, the biome and the clock.
+	_weather.clock    = _clock
+	_weather.seed_of  = Callable(_terrain, "get_world_seed")
+	_weather.biome_of = Callable(_terrain, "get_biome_at_chunk")
 
 	# CreatureSlice needs the terrain to place spawns on the surface; wire it
 	# before the slices enter the tree so its _ready() can use it.
@@ -283,7 +290,7 @@ func _ready() -> void:
 	# The UI (Phase 14) is presentation only, so a headless dedicated server
 	# (Phase 27) keeps it out of the tree — its _ready() would otherwise build
 	# windows nothing can render or click.
-	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _waystones]
+	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _waystones, _weather]
 	if not _is_server:
 		slices.append(_ui)
 	if not _is_server:
@@ -356,6 +363,9 @@ func _ready() -> void:
 	_chat.player_slice     = _player
 	_chat.inventory_slice  = _inventory
 	_chat.networking       = _networking
+	_chat.weather_slice    = _weather
+	_player.weather_slice  = _weather
+	GameBus.weather_overrides_synced.connect(_on_weather_overrides_synced)
 	GameBus.player_teleport.connect(_on_player_teleport)
 	# Phase 125 — waystone travel reuses the exact admin teleport door.
 	_waystones.station_slice = _station
@@ -1557,11 +1567,16 @@ func _process(delta: float) -> void:
 		return
 	_tick_client_handshake(delta)
 
+## Fog density at visibility factor 0 (Godot units: 0.02 is dense within ~100 m).
+const WEATHER_FOG_DENSITY := 0.03
+
 ## Phase 54 — advance the clock, tick it to clients (host), and drive the sun, the season tint
 ## and the HUD line (anything with a renderer). A server runs no renderer, so it only advances,
 ## saves and ticks.
 func _tick_world_clock(delta: float) -> void:
 	_clock.advance(delta)
+	if not _is_client:
+		_weather.tick()
 	if not _is_client and _networking != null and _networking.is_host():
 		_clock_tick_elapsed += delta
 		if _clock_tick_elapsed >= clock_tick_seconds:
@@ -1574,12 +1589,35 @@ func _tick_world_clock(delta: float) -> void:
 	var lat: float = TerrainSlice.latitude_at(ppos.z)
 	_apply_sun(lat, _night_speed_at(ppos))
 	_apply_season_look(lat)
+	var chunk: Vector2i = _player.get_world_pos()["chunk"]
+	var weather_state := _weather.update_local(chunk)
+	_apply_weather_look(weather_state)
 	var text := _clock.text_for(lat)
+	if weather_state != "clear":
+		text += " · " + weather_state.replace("_", " ").capitalize()
 	if text != _last_clock_text:
 		_last_clock_text = text
 		if _minimap != null:
 			_minimap.clock_text = text
 			_minimap.queue_redraw()
+
+## Phase 128 — thicken the fog as the state's `visibilityFactor` falls (a client with a renderer only).
+func _apply_weather_look(state: String) -> void:
+	var env_node := get_node_or_null("Environment") as WorldEnvironment
+	if env_node == null or env_node.environment == null:
+		return
+	var vis: float = _weather.visibility_factor(state)
+	var env := env_node.environment
+	env.fog_enabled = vis < 1.0
+	env.fog_density = (1.0 - vis) * WEATHER_FOG_DENSITY
+	env.fog_light_color = Color(0.62, 0.66, 0.72)
+
+## Phase 128 — the host's override table changed: a host sends it to every client, a client adopts it.
+func _on_weather_overrides_synced(overrides: Array) -> void:
+	if _is_client:
+		_weather.apply_view(overrides)
+	elif _networking != null and _networking.is_host():
+		_networking.broadcast_weather_overrides(overrides)
 
 func _on_world_clock_received(host_days: float) -> void:
 	if not _is_client:
@@ -1752,6 +1790,8 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true,
 		"seed":      _terrain.get_world_seed(),
 		# Phase 54 — the host's clock, so the client starts in step and only slews afterwards.
 		"clock":     _clock.to_data(),
+		# Phase 128 — the host's weather overrides; the weather itself is computed from the seed.
+		"weather":   _weather.to_data(),
 		# Phase 49 — only the edits of chunks inside the peer's AOI, with the scope named so
 		# the client keeps what it holds outside it.
 		"edits":     (_voxel.get_chunk_manifest() if full_edits
@@ -1893,6 +1933,8 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 		_terrain.set_world_seed(int(data["seed"]))
 	if data.has("clock"):
 		_clock.from_data(data["clock"])
+	if data.has("weather"):
+		_weather.apply_view(data["weather"])
 	# Phase 109 — the host's generation records, BEFORE `_chunk_manager.start()` below builds from them;
 	# a malformed one is dropped, anything past the packet cap is refused.
 	if data.has("gen_records") or data.has("gen_scope"):
@@ -2193,6 +2235,7 @@ func _collect_save_job(incremental: bool) -> Dictionary:
 		"creatures":       creatures,
 		"colonization":    _colonization.to_data(),
 		"clock":           _clock.to_data(),
+		"weather":         _weather.to_data() if _weather != null else [],
 	}
 	# NOTE: no `dirty_chunks` key. It used to ride the record, but nothing ever read
 	# it back — dirty tracking lives in memory (VoxelSlice) and is reset by the save
@@ -2527,6 +2570,7 @@ func _load_world_records() -> void:
 	_registry.set_friend_locator(_locate_friend_on_disk)
 	_colonization.from_data(_loaded_world.get("colonization", {}))
 	_clock.from_data(_loaded_world.get("clock", {}))
+	_weather.from_data(_loaded_world.get("weather", []))
 	_colonization.seed_from_regions(_persistence.region_store.list_regions())
 	if not GameBus.block_changed.is_connected(_on_block_changed_colonization):
 		GameBus.block_changed.connect(_on_block_changed_colonization)

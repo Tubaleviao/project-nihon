@@ -12,6 +12,7 @@ Simulates weather across biomes as an emergent world system. Weather is not auth
 | Name | Type | Required | Description |
 | ---- | ---- | -------- | ----------- |
 | `id` | uuid | yes |  |
+| `rules` | json | yes | Weather table (Phase 128): { cellSizeChunks, hoursPerRoll, overrideMaxHours, states: { <id>: WeatherState }, climate } (validated at fabric load) |
 
 ## Behaviors
 
