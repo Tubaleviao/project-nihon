@@ -18,8 +18,10 @@ static func _mix(seed_v: int, a: int, b: int, salt: int) -> int:
 	h = h ^ (h >> 32)
 	return h & 0x7fffffff
 
-## Every lattice draw reduces the hash to `[0, 1)` the same way, so no site mixes two scales.
+## The modulus every lattice draw reduces its hash by.
 const LATTICE_MOD := 10000
+
+## A lattice draw in `[0, 1)`: every site reduces the hash the same way, so none mixes two scales.
 static func _lattice(seed_v: int, a: int, b: int, salt: int) -> float:
 	return float(_mix(seed_v, a, b, salt) % LATTICE_MOD) / float(LATTICE_MOD)
 

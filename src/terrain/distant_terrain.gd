@@ -38,6 +38,7 @@ class Request extends RefCounted:
 	var origin := Vector2i(-999999, -999999)
 	var window := Vector2(INF, INF)
 	var records_rev := -1
+	var window_rev := 0   # ChunkRecords.window_revision when this request was made
 	var args: Dictionary = {}
 
 	func same_target(o: Vector2i, win: Vector2, rad: int, sd: int, c: float) -> bool:
@@ -159,14 +160,17 @@ func rebuild(center: Vector2, radius_chunks: int) -> bool:
 	WorldShape.warm()   # the fabric snapshot is taken here, never first on a worker
 	TerrainSliceScript.warm_polar_caches()   # and the polar caches `polar_ground` reads
 	var snap: Dictionary = {}
-	if not ChunkRecords.is_empty():
-		# The ring is centred on the lattice cell origin, up to a whole cell from the window centre.
-		var wc := Vector2i(floori(win_center.x / CHUNK_METERS), floori(win_center.y / CHUNK_METERS))
-		var reach := int(ceil((ring_half_m + cell) / CHUNK_METERS)) + 1
-		snap = ChunkRecords.snapshot_near(wc, reach, TerrainSliceScript.circumference_chunks())
-	if same and snap.recursive_equal(built.args["snap"] as Dictionary, 8):
-		built.records_rev = rev   # the change lies outside the ring: nothing to redraw
+	# The ring is centred on the lattice cell origin, up to a whole cell from the window centre.
+	var wc := Vector2i(floori(win_center.x / CHUNK_METERS), floori(win_center.y / CHUNK_METERS))
+	var reach := int(ceil((ring_half_m + cell) / CHUNK_METERS)) + 1
+	var circ_chunks := TerrainSliceScript.circumference_chunks()
+	var window_rev := ChunkRecords.window_revision(wc, reach, circ_chunks)
+	if same and window_rev == built.window_rev:
+		built.records_rev = rev   # the change lies outside the ring (per-region revision): nothing to redraw
 		return false
+	if not ChunkRecords.is_empty():
+		snap = ChunkRecords.snapshot_near(wc, reach, circ_chunks)
+	r.window_rev = window_rev
 	r.args = {
 		"seed": world_seed, "w": circumference_m,
 		"ring_center": Vector2(float(origin.x) * cell, float(origin.y) * cell),

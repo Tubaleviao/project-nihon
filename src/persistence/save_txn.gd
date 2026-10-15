@@ -23,6 +23,11 @@ static func commit(ops: Array, journal_path: String, fault: Callable = Callable(
 		return OK
 	var targets: Array = []
 	for op in ops:
+		# No journal exists, so any `.bak` here is a leftover of a finished commit (its cleanup failed):
+		# stale. Clear it, or a rollback of this commit could restore it over newer content.
+		var stale := str(op["path"]) + BAK_EXT
+		if FileAccess.file_exists(stale):
+			DirAccess.remove_absolute(stale)
 		targets.append({ "path": str(op["path"]), "had": FileAccess.file_exists(str(op["path"])) })
 	if _fails(fault, "journal"):
 		discard(ops)
@@ -60,11 +65,23 @@ static func commit(ops: Array, journal_path: String, fault: Callable = Callable(
 				DirAccess.remove_absolute(journal_path)
 			return err
 		done.append(path)
-	DirAccess.remove_absolute(journal_path)   # the commit point: past it a crash keeps the new state
+	# The commit point: past it a crash keeps the new state. If the journal cannot be removed the commit
+	# did not happen: the `.bak` files stay and everything is put back.
+	if DirAccess.remove_absolute(journal_path) != OK and FileAccess.file_exists(journal_path):
+		Diag.error("SaveTxn: cannot remove %s — rolling back %d file(s)" % [journal_path, done.size()])
+		var clean_back := _rollback(done)
+		discard(ops)
+		if clean_back:
+			DirAccess.remove_absolute(journal_path)
+		return ERR_FILE_CANT_WRITE
 	for path in done:
 		if FileAccess.file_exists(str(path) + BAK_EXT):
 			DirAccess.remove_absolute(str(path) + BAK_EXT)
 	return OK
+
+## True while a commit's journal exists, so a target missing beside its `.bak` is mid-commit, not gone.
+static func in_flight(journal_path: String) -> bool:
+	return FileAccess.file_exists(journal_path)
 
 ## Delete the staged `.tmp` files of `ops` (a save that is not going to commit).
 static func discard(ops: Array) -> void:

@@ -34,8 +34,9 @@ var _now: Callable = Time.get_ticks_msec
 ## stationary server recovers it once a save has cleaned its chunks without rescanning every frame.
 const STRANDED_RETRY_START_MSEC := 2000
 const STRANDED_RETRY_MAX_MSEC := 16000
-var _stranded_until: int = 0
-var _stranded_delay: int = STRANDED_RETRY_START_MSEC
+## "rx,rz" -> { "until", "delay" } for each stranded region: a second region stranded later starts at
+## `STRANDED_RETRY_START_MSEC`, not at the delay an earlier one has grown to; a cleaned region is forgotten.
+var _stranded_wait: Dictionary = {}
 
 func _init(store: RegionStore, voxel: Object) -> void:
 	_store = store
@@ -47,10 +48,12 @@ func _init(store: RegionStore, voxel: Object) -> void:
 ## blend reads records around an UNRECORDED chunk), so a fully recorded window loads no extra region.
 static func regions_for_chunks(chunks: Array, margin: int = 1, recorded_margin: int = 1) -> Dictionary:
 	var out: Dictionary = {}
+	# One locked pass over the record table for the whole list (not a lock per chunk).
+	var recorded: Dictionary = ChunkRecords.recorded_keys(chunks, TerrainSlice.wrap_chunk) if margin != recorded_margin else {}
 	for c in chunks:
 		var chunk: Vector2i = c
 		out[RegionStore.region_key(RegionStore.region_of_chunk(chunk))] = true
-		var reach := recorded_margin if margin != recorded_margin and ChunkRecords.has_record(TerrainSlice.wrap_chunk(chunk)) else margin
+		var reach := recorded_margin if recorded.has(chunk) else margin
 		if not _near_region_edge(chunk, reach):
 			continue   # an interior chunk reads nothing beyond its own region
 		# The margin matters only on a region's edge: a chunk there is rebuilt against its
@@ -114,6 +117,8 @@ func sync(wanted: Dictionary) -> Dictionary:
 		if not wanted.has(rkey):
 			_stranded[rkey] = true
 			_resident.erase(rkey)
+			# This sync is the region's first release attempt; its own retry clock starts at the base wait.
+			_stranded_wait[rkey] = { "until": int(_now.call()) + STRANDED_RETRY_START_MSEC, "delay": STRANDED_RETRY_START_MSEC }
 	# Release every unwanted region's CLEAN chunks. The chunk list is read off the voxel
 	# log (not remembered from the file): an edit made after the region was read, in a
 	# region that had no file yet, is just as resident.
@@ -147,13 +152,21 @@ func release_stranded() -> int:
 	if _stranded.is_empty():
 		return 0
 	var now: int = _now.call()
-	if now < _stranded_until:
+	var due: Array = []
+	for rkey in _stranded:
+		if not _stranded_wait.has(rkey) or now >= int(_stranded_wait[rkey]["until"]):
+			due.append(rkey)
+	if due.is_empty():
 		return 0
 	var released := int(sync(_resident.duplicate())["released"])
-	# A retry that freed nothing waits twice as long (up to the cap); progress resets the wait.
-	_stranded_delay = STRANDED_RETRY_START_MSEC if released > 0 or _stranded.is_empty() \
-			else mini(_stranded_delay * 2, STRANDED_RETRY_MAX_MSEC)
-	_stranded_until = now + _stranded_delay
+	# A region still stranded after its retry waits twice as long (up to the cap); a cleaned one is forgotten.
+	for rkey in _stranded_wait.keys():
+		if not _stranded.has(rkey):
+			_stranded_wait.erase(rkey)
+	for rkey in due:
+		if _stranded.has(rkey):
+			var delay := mini(int(_stranded_wait[rkey]["delay"]) * 2, STRANDED_RETRY_MAX_MSEC) if _stranded_wait.has(rkey) else STRANDED_RETRY_START_MSEC
+			_stranded_wait[rkey] = { "until": now + delay, "delay": delay }
 	return released
 
 ## Phase 114 — true when every region `chunk` reads with `margin` is resident (none failed or backing off).

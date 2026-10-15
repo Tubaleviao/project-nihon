@@ -13,9 +13,60 @@ static var _table: Dictionary = {}
 static var _mutex := Mutex.new()
 static var _revision := 0
 static var _content_revision := 0
+## "cx,cz" -> Vector2i, parsed once when a key enters the table, so a window scan never splits keys.
+static var _coords: Dictionary = {}
+## Canonical region (`Vector2i`, 32x32 chunks) -> revision bumped by a ground change inside it, so the
+## distant ring can ask whether its window changed without comparing snapshots.
+static var _region_revs: Dictionary = {}
+## How many snapshots `snapshot_near` has built (a test counter: `shape_height` must add none).
+static var snapshots_built := 0
+## How many keys were split into coordinates (a test counter: a window scan must not add to it).
+static var key_splits := 0
 
 static func key_of(chunk: Vector2i) -> String:
 	return "%d,%d" % [chunk.x, chunk.y]
+
+const REGION_CHUNKS := 32
+
+static func _bump_region(chunk: Vector2i) -> void:
+	var r := Vector2i(floori(float(chunk.x) / REGION_CHUNKS), floori(float(chunk.y) / REGION_CHUNKS))
+	_region_revs[r] = int(_region_revs.get(r, 0)) + 1
+
+## The sum of the ground revisions of the regions the Chebyshev window (`center`, `radius`) touches, the
+## short way round a world of `circumference` chunks. Equal sums mean no ground changed in the window.
+static func window_revision(center: Vector2i, radius: int, circumference: int) -> int:
+	var total := 0
+	_mutex.lock()
+	var x := center.x - radius
+	var xs: Array = []
+	while x <= center.x + radius:
+		xs.append(x)
+		x += REGION_CHUNKS
+	xs.append(center.x + radius)
+	var zs: Array = []
+	var z := center.y - radius
+	while z <= center.y + radius:
+		zs.append(z)
+		z += REGION_CHUNKS
+	zs.append(center.y + radius)
+	var seen: Dictionary = {}
+	for sx in xs:
+		var cx: int = SeamWrap.wrap_i(sx, circumference) if circumference > 0 else sx
+		for sz in zs:
+			var r := Vector2i(floori(float(cx) / REGION_CHUNKS), floori(float(sz) / REGION_CHUNKS))
+			if not seen.has(r):
+				seen[r] = true
+				total += int(_region_revs.get(r, 0))
+	_mutex.unlock()
+	return total
+
+## Store `rec` under `k` and remember the key's coordinates (parsed here, once). Caller holds the lock.
+static func _put(k: String, rec: Dictionary) -> void:
+	if not _coords.has(k):
+		var parts: PackedStringArray = k.split(",")
+		key_splits += 1
+		_coords[k] = Vector2i(int(parts[0]), int(parts[1]))
+	_table[k] = rec
 
 ## True when no chunk is recorded (the common case on a fresh world and on a client).
 static func is_empty() -> bool:
@@ -64,6 +115,7 @@ static func records_around(chunk: Vector2i, radius: int, wrap: Callable) -> Dict
 static func snapshot_near(center: Vector2i, radius: int, circumference: int) -> Dictionary:
 	var out: Dictionary = {}
 	_mutex.lock()
+	snapshots_built += 1
 	var side := 2 * radius + 1
 	if side * side <= _table.size():
 		for dz in range(-radius, radius + 1):
@@ -76,15 +128,24 @@ static func snapshot_near(center: Vector2i, radius: int, circumference: int) -> 
 					out[c] = { "b": str(rec["b"]), "h": (rec["h"] as Array).duplicate() }
 	else:
 		for k in _table:
-			var parts: PackedStringArray = str(k).split(",")
-			var cx := int(parts[0])
-			var cz := int(parts[1])
-			var dx := absi(cx - center.x)
+			var at: Vector2i = _coords[k]
+			var dx := absi(at.x - center.x)
 			if circumference > 0:
 				dx = mini(dx % circumference, circumference - dx % circumference)
-			if maxi(dx, absi(cz - center.y)) <= radius:
+			if maxi(dx, absi(at.y - center.y)) <= radius:
 				var rec: Dictionary = _table[k]
-				out[Vector2i(cx, cz)] = { "b": str(rec["b"]), "h": (rec["h"] as Array).duplicate() }
+				out[at] = { "b": str(rec["b"]), "h": (rec["h"] as Array).duplicate() }
+	_mutex.unlock()
+	return out
+
+## The members of `chunks` (unwrapped Vector2i) that have a record, as a set, in one locked pass.
+static func recorded_keys(chunks: Array, wrap: Callable) -> Dictionary:
+	var out: Dictionary = {}
+	_mutex.lock()
+	if not _table.is_empty():
+		for c in chunks:
+			if _table.has(key_of(wrap.call(c))):
+				out[c] = true
 	_mutex.unlock()
 	return out
 
@@ -108,16 +169,20 @@ static func set_record(chunk: Vector2i, rec: Dictionary) -> bool:
 	var old: Dictionary = _table.get(k, {})
 	var changed: bool = old != rec
 	if changed:
-		_table[k] = rec
+		_put(k, rec)
 		_content_revision += 1
 		if not _same_ground(old, rec):
 			_revision += 1
+			_bump_region(chunk)
 	_mutex.unlock()
 	return changed
 
 static func erase_record(chunk: Vector2i) -> void:
 	_mutex.lock()
-	if _table.erase(key_of(chunk)):
+	var k := key_of(chunk)
+	if _table.erase(k):
+		_bump_region(chunk)
+		_coords.erase(k)
 		_revision += 1
 		_content_revision += 1
 	_mutex.unlock()
@@ -127,21 +192,27 @@ static func clear() -> void:
 	if not _table.is_empty():
 		_revision += 1
 		_content_revision += 1
+		for rr in _region_revs:
+			_region_revs[rr] = int(_region_revs[rr]) + 1
 	_table.clear()
+	_coords.clear()
 	_mutex.unlock()
 
 ## Drop every record farther than Chebyshev `radius` from `center`, measured the short way round a
-## world of `circumference` chunks. Returns how many went.
-static func erase_outside(center: Vector2i, radius: int, circumference: int) -> int:
+## world of `circumference` chunks. Returns how many went; `gone_chunks`, when given, collects their chunks.
+static func erase_outside(center: Vector2i, radius: int, circumference: int, gone_chunks: Array = []) -> int:
 	var gone := 0
 	_mutex.lock()
 	for k in _table.keys():
-		var parts: PackedStringArray = str(k).split(",")
-		var dx := absi(int(parts[0]) - center.x)
+		var at: Vector2i = _coords[k]
+		var dx := absi(at.x - center.x)
 		if circumference > 0:
 			dx = mini(dx % circumference, circumference - dx % circumference)
-		if maxi(dx, absi(int(parts[1]) - center.y)) > radius:
+		if maxi(dx, absi(at.y - center.y)) > radius:
 			_table.erase(k)
+			_coords.erase(k)
+			_bump_region(at)
+			gone_chunks.append(at)
 			gone += 1
 	if gone > 0:
 		_revision += 1
@@ -150,7 +221,8 @@ static func erase_outside(center: Vector2i, radius: int, circumference: int) -> 
 	return gone
 
 ## Adopt every `gen` of a region's chunk entries ("cx,cz" -> entry). Returns how many were adopted;
-## `changed`, when given, collects the "cx,cz" keys whose table entry was replaced or added.
+## `changed`, when given, collects the "cx,cz" keys whose GROUND (`v`, `b`, `h`) was replaced or added,
+## so a tree-only difference rebuilds no mesh (the table still takes the new entry).
 static func adopt_region(chunks: Dictionary, changed: Array = []) -> int:
 	var n := 0
 	_mutex.lock()
@@ -159,11 +231,12 @@ static func adopt_region(chunks: Dictionary, changed: Array = []) -> int:
 		if entry is Dictionary and (entry as Dictionary).get("gen", null) is Dictionary:
 			if _table.get(str(ckey), {}) != entry["gen"]:
 				var old: Dictionary = _table.get(str(ckey), {})
-				_table[str(ckey)] = entry["gen"]
+				_put(str(ckey), entry["gen"])
 				_content_revision += 1
 				if not _same_ground(old, entry["gen"]):
 					_revision += 1
-				changed.append(str(ckey))
+					_bump_region(_coords[str(ckey)])
+					changed.append(str(ckey))
 			n += 1
 	_mutex.unlock()
 	return n

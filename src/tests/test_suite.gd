@@ -222,6 +222,11 @@ func run() -> void:
 	_run_test("seam wrap: one module, no copies", _test_p126_seam_wrap_module)
 	_run_test("region store: normalize_gen drops only the bad t/x entries", _test_p126_normalize_gen_drops_bad_entries)
 	_run_test("fabric: treeDensity stays inside the noisy bound", _test_p126_fabric_density_bound)
+	_run_test("p127: records, snapshots, folds and revisions", _test_p127_records)
+	_run_test("p127: frontier diagonal has no step", _test_p127_frontier_diagonal)
+	_run_test("p127: final flush, compact length, one decode, emulator copy", _test_p127_flush_final_and_compact)
+	_run_test("p127: streamer backoff, commit and escalation", _test_p127_streamer_and_txn)
+	_run_test("p127: audit of removed names and ranges", _test_p127_audit)
 	_run_test("tree clears: a tree-only record keeps the ground revision", _test_p116_record_revision)
 	_run_test("game_root: worldgen stamp wiring on load",     _test_worldgen_stamp_game_root_wiring)
 	_run_test("persistence: missing slot emits load_failed",  _test_persistence_missing_slot)
@@ -395,8 +400,8 @@ func run() -> void:
 	_run_test("networking: peer windows and relays use the exact peer position", _test_peer_exact_window_and_relay)
 	_run_test("networking: compact per-tick position is exact, small and validated", _test_wire_compact_position)
 	_run_test("networking: malformed position warnings are throttled", _test_malformed_position_warning_throttle)
-	_run_test("networking: a refused or clamped peer move re-sends the re-scope at once", _test_rescope_resent_when_clamped)
-	_run_test("networking: first claim clamps and the seam wraps the rate limit", _test_peer_first_claim_and_seam)
+	_run_test("networking: a refused or clamped peer move sends no re-scope", _test_rescope_resent_when_clamped)
+	_run_test("networking: first claim is taken and the seam wraps the rate limit", _test_peer_first_claim_and_seam)
 	_run_test("networking: equip seq is monotonic and edit signals carry their arity", _test_equip_seq_and_edit_arity)
 	_run_test("networking: canonical_world_pos refuses a forged Z and keeps motion", _test_canonical_world_pos_forged_z)
 	_run_test("equipment: slots cached, peer evict, owner map", _test_equipment_phase48_misc)
@@ -3337,7 +3342,7 @@ func _test_void_client_never_rolls_and_result_is_owner_scoped() -> void:
 	host._on_void_burst_resolved(result)
 	assert_eq(host._pending.size(), 1, "one packet")
 	assert_eq(int(host._pending[0]["peer_id"]), 5, "for the crafter's peer")
-	var packet: Dictionary = JSON.parse_string(JSON.stringify(host._pending[0]["payload"]))
+	var packet: Dictionary = JSON.parse_string(host._pending[0]["payload"])
 	assert_eq(str(packet["type"]), "void_burst_resolved", "of the burst type")
 	assert_false(JSON.stringify(packet).contains(peer_pid) or JSON.stringify(packet).contains(other_pid), "carrying no player id")
 	host._pending.clear()
@@ -7105,7 +7110,7 @@ func _test_net_emulator_delivery() -> void:
 	assert_eq(n._pending.size(), 10, "all packets queued when no loss and no jitter")
 	var seqs: Array = []
 	for e in n._pending:
-		var parsed = JSON.parse_string(JSON.stringify(e["payload"]))
+		var parsed = JSON.parse_string(e["payload"])
 		seqs.append(int(parsed["seq"]))
 	seqs.sort()
 	assert_eq(seqs, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], "queued packets carry monotonic seq 0..9")
@@ -7217,7 +7222,7 @@ func _test_net_two_peer_loss_reorder() -> void:
 	# reorder step staged them.
 	var queued: Array = []
 	for entry in sender._pending:
-		var parsed = JSON.parse_string(JSON.stringify(entry["payload"]))
+		var parsed = JSON.parse_string(entry["payload"])
 		if parsed is Dictionary:
 			queued.append(parsed)
 
@@ -7887,7 +7892,7 @@ func _test_rescope_resent_when_clamped() -> void:
 	gr._is_client = false
 	gr._on_remote_player_state(5, Vector3(64.0 * 40.0, 0.0, 0.0))
 	var sent: Array = n.memory_transport().outbox.filter(func(o): return o["payload"].get("type") == "snapshot_chunk")
-	assert_false(sent.is_empty(), "the re-scope snapshot went out in the same call, though the window was refused")
+	assert_true(sent.is_empty(), "a refused or clamped move builds and sends no snapshot")
 	assert_false(gr._peer_aoi_regions.has(5), "and the crossing is forgotten so the window's catch-up retries it")
 	n.free()
 	cm.free()
@@ -7899,9 +7904,7 @@ func _test_peer_first_claim_and_seam() -> void:
 	var t := [0]
 	cm.now_msec = func(): return t[0]
 	cm.set_peer_center(9, Vector2i(1000, 0))
-	var c9: Vector2i = cm.peer_center(9)
-	assert_true(maxi(absi(c9.x), absi(c9.y)) <= ChunkManager.PEER_RECENTER_MAX_CHUNKS, "a first claim 1,000 chunks from spawn is clamped")
-	assert_eq(cm.peer_recenter_refused, 1, "and counted")
+	assert_eq(cm.peer_center(9), Vector2i(1000, 0), "a first claim has no spawn to measure from: it is taken as sent (later moves are clamped)")
 	var half := TerrainSlice.circumference_chunks() / 2
 	cm.set_peer_center(4, Vector2i(half - 2, 0), true)
 	t[0] = 10000
@@ -11382,12 +11385,12 @@ func _test_retry_represents_join_intent() -> void:
 	n._role = NetworkingSlice.Role.CLIENT
 	n.request_handshake()
 	assert_eq(n._pending.size(), 1, "the client presents a join intent")
-	var first: Dictionary = JSON.parse_string(JSON.stringify(n._pending[0]["payload"]))
+	var first: Dictionary = JSON.parse_string(n._pending[0]["payload"])
 	assert_eq(str(first.get("type", "")), "join_intent", "and it is a join intent")
 	var first_seq := int(first.get("seq", -1))
 	n.request_handshake()
 	assert_eq(n._pending.size(), 2, "the retry is a real second packet, not a suppressed duplicate")
-	var second: Dictionary = JSON.parse_string(JSON.stringify(n._pending[1]["payload"]))
+	var second: Dictionary = JSON.parse_string(n._pending[1]["payload"])
 	assert_true(int(second.get("seq", -1)) > first_seq, "with a fresh seq")
 	n.free()
 
@@ -11750,7 +11753,7 @@ func _test_net_own_state_push_is_peer_scoped() -> void:
 		"technology": { "TechBasicSmithing": "unlocked" },
 	})
 	assert_eq(host._pending.size(), 1, "the host queues exactly one packet")
-	var packet: Dictionary = JSON.parse_string(JSON.stringify(host._pending[0]["payload"]))
+	var packet: Dictionary = JSON.parse_string(host._pending[0]["payload"])
 	assert_eq(str(packet.get("type", "")), "own_state_synced", "of the own_state_synced type")
 	assert_eq(int(host._pending[0]["peer_id"]), 5, "addressed to the peer it was given for")
 
@@ -12628,7 +12631,7 @@ func _test_net_inventory_sync_is_peer_scoped() -> void:
 	host._on_inventory_synced(peer_pid, { "Ferrite": 1 }, {})
 	assert_eq(host._pending.size(), 1, "one packet, for the owner's peer")
 	assert_eq(int(host._pending[0]["peer_id"]), 5, "addressed to that peer alone")
-	var packet: Dictionary = JSON.parse_string(JSON.stringify(host._pending[0]["payload"]))
+	var packet: Dictionary = JSON.parse_string(host._pending[0]["payload"])
 	assert_eq(str(packet.get("type", "")), "inventory_synced", "of the inventory_synced type")
 	assert_eq(int(packet.get("contents", {}).get("Ferrite", 0)), 1, "carrying the contents")
 	assert_false(JSON.stringify(packet).contains(peer_pid), "and no player id — a bearer token stays off the wire")
@@ -12741,7 +12744,7 @@ func _test_net_peer_damage_is_peer_scoped() -> void:
 	host.send_player_damaged(5, 12.0, "creature_0_0_ForestBoar_0")
 	assert_eq(host._pending.size(), 1, "the host queues exactly one packet")
 	assert_eq(int(host._pending[0]["peer_id"]), 5, "addressed to the peer that was hit")
-	var packet: Dictionary = JSON.parse_string(JSON.stringify(host._pending[0]["payload"]))
+	var packet: Dictionary = JSON.parse_string(host._pending[0]["payload"])
 	assert_eq(str(packet.get("type", "")), "player_damaged", "of the player_damaged type")
 
 	# The client half: the local body absorbs it, under the id the bus has always used.
@@ -18223,6 +18226,7 @@ func _test_region_streams_only_near_windows() -> void:
 	assert_true(voxel.edited_chunk_keys().has("320,320"), "an in-flight chunk keeps its edits once its region is unwanted")
 	voxel.end_inflight_chunks(["320,320"])
 	cm._last_stranded_retry_msec = -10000
+	cm.region_streamer._stranded_wait.clear()   # the streamer's own per-region retry clock has elapsed
 	cm.refresh()
 	assert_false(voxel.edited_chunk_keys().has("320,320"), "a settled clean chunk is released without a window move")
 	for k in ["cm", "voxel", "terrain", "player"]:
@@ -19418,14 +19422,14 @@ func _test_worldgen_fingerprint_notice() -> void:
 	gr._note_worldgen_version()
 	GameBus.worldgen_fingerprint_mismatch.disconnect(ui._on_worldgen_fingerprint_mismatch)
 	assert_true(ui.toast_shown().contains("parameters changed"), "the notice reaches the HUD toast")
-	assert_eq(gr._worldgen_fp_stamp, running, "the stamp moves to the running fingerprint after the notice")
+	assert_eq(gr._worldgen_fp_stamp, running + 1, "the stamp survives the mismatch load")
 	var seen: Array = []
 	var cb := func(saved: int, current: int) -> void: seen.append([saved, current])
 	GameBus.worldgen_fingerprint_mismatch.connect(cb)
 	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION, "worldgenFingerprint": gr._worldgen_fp_stamp }
 	gr._note_worldgen_version()
 	GameBus.worldgen_fingerprint_mismatch.disconnect(cb)
-	assert_true(seen.is_empty(), "the next load of that world raises nothing")
+	assert_eq(seen, [[running + 1, running]], "the next load of that world still reports the same mismatch")
 	ui.free()
 	gr.free()
 
@@ -19472,7 +19476,7 @@ func _test_worldgen_fingerprint_game_root() -> void:
 	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION, "worldgenFingerprint": running + 1 }
 	gr._note_worldgen_version()
 	assert_eq(seen, [[running + 1, running]], "a differing record raises exactly once")
-	assert_eq(gr._worldgen_fp_stamp, running, "and the stamp moves on so the notice does not repeat")
+	assert_eq(gr._worldgen_fp_stamp, running + 1, "and the stamp survives the notice (a save does not overwrite it)")
 	GameBus.worldgen_fingerprint_mismatch.disconnect(cb)
 	gr.free()
 
@@ -20498,7 +20502,7 @@ func _test_p114_record_lifecycle() -> void:
 	add_child(cm)
 	remove_child(cm)
 	cm.free()
-	assert_true(ChunkRecordsScript.is_empty(), "the table is empty after the manager leaves")
+	assert_false(ChunkRecordsScript.is_empty(), "freeing a manager leaves the shared table to GameRoot")
 	assert_false(store.get_gen(Vector2i(10, 10)).is_empty(), "and the pending record reached the disk")
 	# Backoff: region (0,0) is unreadable, so every flush of a chunk in it fails.
 	var rig2 := _records_rig("test_p114_backoff")
@@ -20506,7 +20510,7 @@ func _test_p114_record_lifecycle() -> void:
 	var store2: RegionStoreScript = rig2["store"]
 	_p114_corrupt_region(store2, Vector2i.ZERO)
 	var clock := [0]
-	cm2._now = func() -> int: return clock[0]
+	cm2.set_clock(func() -> int: return clock[0])
 	cm2.load_chunk(Vector2i(2, 2))
 	cm2.flush_records()
 	assert_false(store2.last_failed_chunk_keys.is_empty(), "the first flush tries and fails")
@@ -20674,7 +20678,7 @@ func _test_p114_cap_and_join_stamp() -> void:
 	gr._chunk_manager = cm
 	var snap := {}
 	gr._add_generation_records(snap, 9, Vector3.ZERO)
-	assert_false(gr._peer_records_msec.has(9), "a snapshot without records stamps no re-scope delay")
+	assert_true(gr._peer_records_msec.has(9), "a snapshot without records still stamps the re-scope delay (window-rate-limited)")
 	assert_true(snap.has("gen_scope") and not snap.has("gen_records"), "but names its scope")
 	ChunkRecordsScript.set_record(Vector2i(0, 0), _sync_record(Vector2i(0, 0)))
 	var snap2 := {}
@@ -20883,7 +20887,9 @@ func _test_p121_streamer_scan_and_retry() -> void:
 	assert_eq(voxel.scans, 1, "edited_chunk_keys() is scanned once per sync")
 	assert_true(streamer.has_stranded(), "a dirty chunk keeps its region stranded")
 	voxel.dirty = {}
-	assert_eq(streamer.release_stranded(), 1, "the first retry runs at once and releases the cleaned chunk")
+	assert_eq(streamer.release_stranded(), 0, "a freshly stranded region waits the base backoff")
+	clock[0] += RegionStreamer121.STRANDED_RETRY_START_MSEC
+	assert_eq(streamer.release_stranded(), 1, "then the retry releases the cleaned chunk")
 	assert_false(streamer.has_stranded(), "and the region is no longer stranded")
 	voxel.keys = ["1,1"]
 	voxel.dirty = { "1,1": true }
@@ -20918,7 +20924,7 @@ func _test_p121_world_stamp_round_trip() -> void:
 	seen.clear()
 	var job: Dictionary = gr._collect_save_job(false)
 	assert_eq(int(job["world"]["worldgenVersion"]), older, "the save job carries the loaded stamp")
-	assert_eq(int(job["world"]["worldgenFingerprint"]), TerrainSlice.worldgen_fingerprint(), "and the fingerprint stamp (the running one once the mismatch was noted)")
+	assert_eq(int(job["world"]["worldgenFingerprint"]), 12345, "and the fingerprint stamp (the recorded one: the mismatch load does not overwrite it)")
 	assert_eq(slice.write_job(job), OK, "the job is written")
 	var record := slice.load_world_record()
 	assert_eq(PersistenceSlice.worldgen_version_of(record), older, "the stamp round-trips through the record")
@@ -21403,8 +21409,9 @@ func _test_minimap_seed_change_saves_old_seed() -> void:
 
 ## A memory transport that stamps a per-type seq, so the emulator (loss, jitter) runs on it.
 class _StampingTransport extends MemoryTransport:
-	func stamps_seq() -> bool:
-		return true
+	func _init(peer_ids: Array = []) -> void:
+		super(peer_ids)
+		stamps_seq = true
 
 
 # ---- Phase 126 — tree clears the host keeps, and one seam-wrap module ----
@@ -21644,3 +21651,206 @@ func _test_p126_fabric_density_bound() -> void:
 		var b: Variant = GameData.BIOMES[key]
 		if b != null and b.get("treeDensity") != null:
 			assert_true(int(b.get("treeDensity")) <= bound, "biome %s density is within the noisy bound" % key)
+
+
+# ---- Phase 127 — terrain streaming, generation records and persistence cleanup sweep ----
+
+func _p127_rec(biome := "Desert", h0 := 1.0) -> Dictionary:
+	return { "v": TerrainSlice.WORLDGEN_VERSION, "f": 1, "b": biome, "h": [h0, h0, h0, h0] }
+
+func _test_p127_records() -> void:
+	var R := RegionStoreScript
+	# #287: an older incoming gen never overwrites a newer stored gen, even on the empty-edit branch.
+	var newer := { "v": TerrainSlice.WORLDGEN_VERSION + 1, "x": 1 }
+	var base := { "0,0": { "edits": { "1,1": [] }, "gen": newer } }
+	var folded := R.fold_chunks(base, { "0,0": { "edits": {}, "gen": _p127_rec() } })
+	assert_eq(folded["0,0"]["gen"], newer, "an older incoming gen does not replace a newer stored one")
+	# a tree-only adopt reports nothing to rebuild
+	ChunkRecordsScript.clear()
+	var a := _p127_rec()
+	var changed: Array = []
+	ChunkRecordsScript.adopt_region({ "3,3": { "gen": a } }, changed)
+	assert_eq(changed, ["3,3"], "a new ground is reported")
+	var with_trees := a.duplicate()
+	with_trees["t"] = 4
+	changed = []
+	ChunkRecordsScript.adopt_region({ "3,3": { "gen": with_trees } }, changed)
+	assert_true(changed.is_empty(), "a tree-only difference rebuilds no mesh")
+	assert_eq(ChunkRecordsScript.get_record(Vector2i(3, 3)).get("t", 0), 4, "though the table takes it")
+	# #306: snapshot_near on a big table splits no keys
+	ChunkRecordsScript.clear()
+	for i in 100000:
+		ChunkRecordsScript.set_record(Vector2i(i % 1000, i / 1000), _p127_rec())
+	var splits := ChunkRecordsScript.key_splits
+	var snap := ChunkRecordsScript.snapshot_near(Vector2i(500, 50), 3, 0)
+	assert_eq(snap.size(), 49, "the window's records are found")
+	assert_eq(ChunkRecordsScript.key_splits, splits, "without splitting a single key")
+	# #307: shape_height with records builds no snapshot
+	var built := ChunkRecordsScript.snapshots_built
+	TerrainSlice.shape_height(7, 500.0 * 32.0 + 3.0, 50.0 * 32.0 + 3.0, 0.0)
+	assert_eq(ChunkRecordsScript.snapshots_built, built, "shape_height looks a record up directly")
+	# the region revision: a change outside the window leaves its sum alone, one inside moves it
+	var wrev := ChunkRecordsScript.window_revision(Vector2i(500, 50), 3, 0)
+	ChunkRecordsScript.set_record(Vector2i(5000, 5000), _p127_rec("Forest"))
+	assert_eq(ChunkRecordsScript.window_revision(Vector2i(500, 50), 3, 0), wrev, "a far change leaves the window revision")
+	ChunkRecordsScript.set_record(Vector2i(501, 51), _p127_rec("Forest", 9.0))
+	assert_true(ChunkRecordsScript.window_revision(Vector2i(500, 50), 3, 0) != wrev, "a change inside moves it")
+	ChunkRecordsScript.clear()
+	# #288: pruned chunks are reported
+	for i in 5:
+		ChunkRecordsScript.set_record(Vector2i(i * 40, 0), _p127_rec())
+	var pruned: Array = []
+	ChunkRecordSyncScript.prune_to_scope([0, 0, 50], pruned)
+	assert_eq(pruned.size(), 3, "the pruned chunks are collected for a rebuild")
+	ChunkRecordsScript.clear()
+	# #288: freeing a manager leaves another's records
+	var rig := _records_rig("test_p127_free")
+	var cm: ChunkManager = rig["cm"]
+	ChunkRecordsScript.set_record(Vector2i(1, 1), _p127_rec())
+	add_child(cm)
+	remove_child(cm)
+	cm.free()
+	assert_true(ChunkRecordsScript.has_record(Vector2i(1, 1)), "freeing one manager leaves the table intact")
+	(rig["t"] as Node).free()
+	ChunkRecordsScript.clear()
+
+func _test_p127_frontier_diagonal() -> void:
+	ChunkRecordsScript.clear()
+	var recs := { Vector2i(0, 0): { "b": "Desert", "h": [40.0, 40.0, 40.0, 40.0] } }
+	var cache := {}
+	var prev := NAN
+	var worst := 0.0
+	for k in range(1, 8):
+		var p := Vector2i(k + 1, k + 1)
+		var off: float = Frontier.corner_height(p, 5, recs, cache) - TerrainSlice.generated_corner_height(p, 5)
+		if not is_nan(prev):
+			worst = maxf(worst, absf(off - prev))
+		prev = off
+	assert_true(worst <= 40.0 * 0.6, "the offset fades without a step along the diagonal (worst %.2f)" % worst)
+	var far: float = Frontier.corner_height(Vector2i(9, 9), 5, recs, cache)
+	assert_eq(far, snappedf(clampf(TerrainSlice.generated_corner_height(Vector2i(9, 9), 5), WorldShape.min_height(), WorldShape.max_height()), TerrainSlice.GEN_HEIGHT_STEP), "past the span the plain generator answers")
+
+func _test_p127_flush_final_and_compact() -> void:
+	var rig := _records_rig("test_p127_flush")
+	var cm: ChunkManager = rig["cm"]
+	var store: RegionStoreScript = rig["store"]
+	_p114_corrupt_region(store, Vector2i.ZERO)
+	cm.load_chunk(Vector2i(2, 2))
+	assert_eq(cm.pending_record_count(), 1, "a record is pending")
+	cm.flush_records_final()
+	assert_eq(cm.pending_record_count(), 1, "a failed final flush keeps its keys pending")
+	cm.free()
+	(rig["t"] as Node).free()
+	ChunkRecordsScript.clear()
+	# #302: a 40-character compact position is refused before decoding
+	var before := WorldPos.compact_decodes
+	var good := WorldPos.pos_to_packet_text(WorldPos.from_world(1.0, 2.0, 3.0))
+	assert_true(WorldPos.pos_from_compact(good).size() > 0, "an exact-length position decodes")
+	assert_eq(WorldPos.compact_decodes, before + 1, "counted")
+	assert_true(WorldPos.pos_from_compact("A".repeat(40)).is_empty(), "a 40-character text is refused")
+	# a per-tick packet is decoded once
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.set_transport(MemoryTransport.new([5]))
+	var seen: Array = []
+	var cb := func(peer: int, pos: Vector3) -> void: seen.append(pos)
+	GameBus.remote_player_state.connect(cb)
+	var d0 := WorldPos.compact_decodes
+	n._route_c2h(5, { "type": "player_moved", "peer_id": 5, "pk": good })
+	GameBus.remote_player_state.disconnect(cb)
+	assert_eq(WorldPos.compact_decodes - d0, 1, "a per-tick packet is decoded once")
+	n.free()
+	# the emulator delivers the payload as it was at enqueue
+	var e := NetworkingSlice.new()
+	add_child(e)
+	e.set_transport(_StampingTransport.new([4]))
+	e.emulate_network = true
+	e.emulator_loss_rate = 0.0
+	e.emulator_jitter_ms = 0.0
+	var payload := { "type": "x", "v": [1] }
+	e._deliver(4, payload)
+	payload["v"].append(2)
+	e._drain_emulator()
+	var out: Array = e.memory_transport().outbox
+	assert_eq(out.size(), 1, "delivered")
+	assert_eq((out[0]["payload"]["v"] as Array).size(), 1, "as it was when queued")
+	e.free()
+
+func _test_p127_streamer_and_txn() -> void:
+	# per-region stranded backoff: a second region starts at the base wait
+	var dir := _fresh_region_dir("test_p127_stream")
+	var store := RegionStoreScript.new(dir + "regions/")
+	var voxel := _Voxel121.new()
+	var streamer := RegionStreamer121.new(store, voxel)
+	var clock := [0]
+	streamer._now = func() -> int: return clock[0]
+	streamer.sync({ "0,0": true })
+	voxel.keys = ["1,1"]
+	voxel.dirty = { "1,1": true }
+	streamer.sync({})
+	for i in 3:
+		clock[0] += RegionStreamer121.STRANDED_RETRY_MAX_MSEC
+		streamer.release_stranded()
+	assert_eq(int(streamer._stranded_wait["0,0"]["delay"]), RegionStreamer121.STRANDED_RETRY_MAX_MSEC, "the first region has backed off to the cap")
+	streamer.sync({ "1,0": true })
+	voxel.keys = ["1,1", "40,1"]
+	voxel.dirty = { "1,1": true, "40,1": true }
+	streamer.sync({})
+	assert_eq(int(streamer._stranded_wait["1,0"]["delay"]), RegionStreamer121.STRANDED_RETRY_START_MSEC, "a second stranded region starts at the base backoff")
+	# SaveTxn: a stale .bak is not restored over a newer commit; a read during commit sees the old file
+	var d := "user://saves/test_p127_txn/"
+	_wipe_dir(d)
+	DirAccess.make_dir_recursive_absolute(d)
+	var path := d + "a.json"
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string("new")
+	f.close()
+	var stale := FileAccess.open(path + ".bak", FileAccess.WRITE)
+	stale.store_string("stale")
+	stale.close()
+	var tmp := FileAccess.open(path + ".tmp", FileAccess.WRITE)
+	tmp.store_string("newer")
+	tmp.close()
+	var fail_world := func(step: String) -> bool: return step == "world_rename"
+	var ops := [{ "path": path, "tmp": path + ".tmp", "kind": "region" }, { "path": d + "w.json", "tmp": "", "kind": "world" }]
+	assert_eq(SaveTxn121.commit(ops, d + "j", Callable()), OK, "the commit lands")
+	assert_eq(FileAccess.get_file_as_string(path), "newer", "the new content is live")
+	assert_false(FileAccess.file_exists(path + ".bak"), "and no .bak is left")
+	# a region read in the commit gap
+	var rs := RegionStoreScript.new(d + "regions/")
+	DirAccess.make_dir_recursive_absolute(d + "regions/")
+	rs.save_region(Vector2i.ZERO, { "0,0": { "gen": _p127_rec() } })
+	var rpath := rs.path_of(Vector2i.ZERO)
+	DirAccess.rename_absolute(rpath, rpath + ".bak")
+	assert_true(rs.read_region(Vector2i.ZERO)["chunks"].is_empty(), "with no journal a lone .bak is stale: nothing is read")
+	var j := FileAccess.open(rs.journal_path(), FileAccess.WRITE)
+	j.store_string("{}")
+	j.close()
+	assert_true(rs.read_region(Vector2i.ZERO)["chunks"].has("0,0"), "mid-commit (journal present) the old file is read, never 'missing'")
+	DirAccess.remove_absolute(rs.journal_path())
+	DirAccess.remove_absolute(rpath + ".bak")
+	# a region failing past the bound escalates: world.json is written
+	var slice := _slice121("test_p127_escalate")
+	var chunks := { "1,1": { "gen": _p127_rec() } }
+	var bad := RegionStoreScript.new(slice.server_save_dir + "regions/")
+	_p114_corrupt_region(slice.region_store, Vector2i.ZERO)
+	for i in RegionStoreScript.MAX_REGION_FAILURES - 1:
+		assert_true(slice.save_world({ "seed": 3, "chunks": chunks }) != OK, "a failing region fails the save")
+	assert_false(slice.has_world(), "the record is held back while the region is within the bound")
+	assert_true(slice.save_world({ "seed": 3, "chunks": chunks }) != OK, "past the bound the error is still reported")
+	assert_true(slice.has_world(), "but world.json is written")
+	slice.free()
+
+func _test_p127_audit() -> void:
+	var sync_src := FileAccess.get_file_as_string("res://src/terrain/chunk_record_sync.gd")
+	assert_true(sync_src.contains("different.\nstatic func apply("), "apply's doc comment sits on apply, not on SCAN_FACTOR")
+	assert_true(FileAccess.get_file_as_string("res://src/terrain/climate_field.gd").contains("A lattice draw in `[0, 1)`"), "_lattice carries its own doc comment")
+	var src := FileAccess.get_file_as_string("res://src/terrain/chunk_manager.gd")
+	assert_false(src.contains("_in_bounds"), "_in_bounds is gone")
+	assert_false(src.contains("var _now"), "ChunkManager has one clock")
+	assert_false(FileAccess.get_file_as_string("res://src/persistence/region_store.gd").contains("func recover("), "RegionStore.recover is gone")
+	assert_eq(TerrainSlice.NOISE_OFFSET_RANGE * 0.5, 2048.0, "the offsets span half the range either way")
+	for i in 200:
+		var o := TerrainSlice.cell_offset(11, i + 1, -i - 3)
+		assert_true(absf(o.x) <= TerrainSlice.NOISE_OFFSET_RANGE * 0.5 and absf(o.y) <= TerrainSlice.NOISE_OFFSET_RANGE * 0.5, "cell_offset stays within the documented range")

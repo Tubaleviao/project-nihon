@@ -147,7 +147,7 @@ issue number where the criterion used to be.
 | 124 | Research points: the fabric's `researchCost` is enforced | Done | below |
 | 125 | Waystones: a first fast-travel network | Done | below |
 | 126 | Tree clears the host keeps, and one seam-wrap module | Done | below |
-| 127 | Terrain streaming, generation records and persistence cleanup sweep | Planned | below |
+| 127 | Terrain streaming, generation records and persistence cleanup sweep | Done | below |
 | 128 | Weather: the fabric's `WeatherSystem` runs on the host | Planned | below |
 | 129 | Combat status effects: burn, paralysis, knockback, knockdown and stagger | Planned | below |
 | 130 | Creatures walk on the ground and around obstacles | Planned | below |
@@ -1305,7 +1305,7 @@ module, resolving every item of the three tree issues below.
 
 ---
 
-## Phase 127 — Terrain streaming, generation records and persistence cleanup sweep
+## Phase 127 — Terrain streaming, generation records and persistence cleanup sweep ✅ Done
 
 **Goal:** the review leftovers of the generation records (Phase 113/114), the distant ring
 (Phase 120), crash-consistent saves (Phase 121), far terrain (Phase 122) and the injected transport
@@ -1357,24 +1357,24 @@ item of each issue below.
   `is_memory()` / `stamps_seq()`.
 
 **Acceptance criteria:**
-- [ ] #287: an older incoming gen never overwrites a newer stored gen in `fold_chunks`; a failed final
+- [x] #287: an older incoming gen never overwrites a newer stored gen in `fold_chunks`; a failed final
   flush keeps its keys pending; the fingerprint stamp survives a mismatch load; a tree-only adopt
   rebuilds no mesh.
-- [ ] #288: a jittery client sending window moves with no records is rate-limited; a pruned record's
+- [x] #288: a jittery client sending window moves with no records is rate-limited; a pruned record's
   loaded chunk is rebuilt from the generator; a diagonal frontier corner has no step above the authored
   bound; freeing one manager leaves another's records intact.
-- [ ] #302: a refused peer move builds no snapshot; a 40-character compact position is refused before
+- [x] #302: a refused peer move builds no snapshot; a 40-character compact position is refused before
   decoding; a per-tick packet is decoded once (counter); the emulator delivers the payload as it was at
   enqueue.
-- [ ] #306: `snapshot_near` on a 100,000-record table does no key splitting (counter).
-- [ ] #307: a records change inside the debounce window reaches the ring at expiry; `shape_height` with
+- [x] #306: `snapshot_near` on a 100,000-record table does no key splitting (counter).
+- [x] #307: a records change inside the debounce window reaches the ring at expiry; `shape_height` with
   records allocates no snapshot (counter).
-- [ ] #309: a read during commit sees the old file, never "missing"; a stale `.bak` is not restored over
+- [x] #309: a read during commit sees the old file, never "missing"; a stale `.bak` is not restored over
   a newer commit; a region failing past the bound escalates and `world.json` is written; a worker's
   staged files survive a concurrent load; a second stranded region starts at the base backoff.
-- [ ] #317: `_in_bounds` is gone; the doc comments sit on their functions (checked by the suite's
+- [x] #317: `_in_bounds` is gone; the doc comments sit on their functions (checked by the suite's
   doc-comment audit or a grep test); `NOISE_OFFSET_RANGE` matches `cell_offset`'s range.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green.
 
 ---
 

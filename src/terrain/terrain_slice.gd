@@ -29,6 +29,8 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## each pole the ground eases into a snow field that depends on the distance to the pole alone,
 ## so the pole can be crossed; 6 = Phase 122 far detail noise: the triangle-wave fold that mirrored
 ## the world beyond `NOISE_SPAN` is replaced by a hashed per-cell offset blended across cell borders.
+## Version 6 worlds also carry 24 m of extra ground below the old bedrock floor, so a chunk written
+## before that change has a lower floor than one written after it.
 const WORLDGEN_VERSION := 6
 
 ## Phase 106 — a hash of every fabric parameter world-gen reads that `WORLDGEN_VERSION` cannot see:
@@ -287,15 +289,20 @@ static func generation_record(chunk: Vector2i, seed_v: int) -> Dictionary:
 ## recorded chunk's cell the recorded corners are interpolated, as `_shape_at` does; elsewhere the
 ## generator answers. Pure; reads the record table only.
 static func shape_height(seed_v: int, x: float, z: float, w: float) -> float:
-	var snap: Dictionary = {}
 	if not ChunkRecords.is_empty():
-		var ix := floori(x / CHUNK_METERS)
-		var iz := floori(z / CHUNK_METERS)
-		var c := wrap_chunk(Vector2i(ix, iz))
-		var rec := ChunkRecords.get_record(c)
+		var rec := ChunkRecords.get_record(wrap_chunk(Vector2i(floori(x / CHUNK_METERS), floori(z / CHUNK_METERS))))
 		if not rec.is_empty():
-			snap[c] = rec
-	return shape_height_in(snap, seed_v, x, z, w)
+			return _record_height(rec, x, z)
+	return WorldShape.height(seed_v, x, z, w)
+
+## The recorded corners of `rec` interpolated at world XZ.
+static func _record_height(rec: Dictionary, x: float, z: float) -> float:
+	var gx := x / CHUNK_METERS
+	var gz := z / CHUNK_METERS
+	var rh: Array = rec["h"]
+	var fx := gx - floorf(gx)
+	var fz := gz - floorf(gz)
+	return lerpf(lerpf(float(rh[0]), float(rh[1]), fx), lerpf(float(rh[2]), float(rh[3]), fx), fz)
 
 ## Phase 120 — `shape_height` against an immutable snapshot (`ChunkRecords.snapshot_near`) instead of the
 ## live table, so a worker's whole build sees one set of records. An empty snapshot is the plain generator.
@@ -561,7 +568,8 @@ const NOISE_SPAN := 65536.0
 ## Width (m) of the blend band inside a cell, next to each of its borders.
 const NOISE_BLEND := 64.0
 
-## Largest offset magnitude (m) a cell adds to its local noise coordinate.
+## Width (m) of the range a cell's noise offset is drawn from: each axis lies in
+## [-NOISE_OFFSET_RANGE / 2, NOISE_OFFSET_RANGE / 2), as `cell_offset` computes it.
 const NOISE_OFFSET_RANGE := 4096.0
 
 ## Per-axis cell data for a world coordinate: [cell, weight of the neighbouring cell, neighbour cell].

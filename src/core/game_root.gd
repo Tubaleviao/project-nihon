@@ -1384,12 +1384,12 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 		var target: Vector2i = _chunk_manager.world_to_chunk(Vector2(position.x, position.z))
 		if _chunk_manager.set_peer_center(peer_id, target):
 			_chunk_manager.refresh(false)
-		# The window centre is stored wrapped past the seam; compare like with like. Phase 119 — a move
-		# that was refused or clamped still gets its re-scope snapshot NOW, built from the window as it
-		# stands (the interval check above bounds how often), and the crossing is forgotten so the next
-		# state packet retries it once the window has caught up.
+		# The window centre is stored wrapped past the seam; compare like with like. A move that was
+		# refused or clamped builds no snapshot (it would miss the destination's edits): the crossing is
+		# forgotten and the next state packet retries it once the window has caught up.
 		if _chunk_manager.peer_center(peer_id) != TerrainSlice.wrap_chunk(target):
 			_peer_aoi_regions.erase(peer_id)
+			return
 	# Phase 33 — world/entity data only: the peer's own record is NOT re-sent, or
 	# the client would re-apply a stale position/HP/inventory on every region
 	# crossing (the record is written at load and at disconnect, not per frame).
@@ -1487,6 +1487,7 @@ func _fold_local_player() -> void:
 			_voxel.prune_standins(func(c: Vector2i) -> bool: return _chunk_manager.chunk_ref_count(c) > 0)
 		if _voxel == null or not _voxel.has_standin(pos["chunk"]):
 			_player.ground_hold = true
+			_fold_hold_extended = false
 			_fold_hold_since_msec = Time.get_ticks_msec()
 
 func _expire_fold_standins() -> void:
@@ -1497,15 +1498,22 @@ func _expire_fold_standins() -> void:
 
 ## Phase 119 — count of holds that timed out with the chunk still unbuilt (the window is re-queued first).
 var fold_hold_retries := 0
+var _fold_hold_extended := false
 
 func _release_fold_hold() -> void:
 	var waited := Time.get_ticks_msec() - _fold_hold_since_msec
 	if _chunk_manager.is_chunk_built(_player.get_world_pos()["chunk"]):
+		_fold_hold_extended = false
 		_player.ground_hold = false
 	elif waited > FOLD_HOLD_MAX_MSEC:
-		# A stalled build is retried once, then the hold is given up so it cannot pin the player.
+		# A stalled build is retried once and the hold extended once; then it is given up so it cannot pin the player.
 		fold_hold_retries += 1
 		_chunk_manager.refresh(false)
+		if not _fold_hold_extended:
+			_fold_hold_extended = true
+			_fold_hold_since_msec = Time.get_ticks_msec()
+			return
+		_fold_hold_extended = false
 		_player.ground_hold = false
 
 func _process(delta: float) -> void:
@@ -1812,9 +1820,9 @@ func _add_generation_records(snapshot: Dictionary, peer_id: int, aoi_center: Vec
 	if bool(found["truncated"]):
 		Diag.warn("GameRoot: generation records for peer %d truncated at the %d-record packet cap" % [peer_id, ChunkRecordSync.PACKET_CAP])
 	snapshot["gen_scope"] = [center.x, center.y, radius]   # always named: a client prunes to it
+	_peer_records_msec[peer_id] = now   # the window was served, records or not: the re-scope interval counts from here
 	if (found["records"] as Dictionary).is_empty():
 		return   # nothing sent, so nothing to rate-limit a re-scope for (a join snapshot included)
-	_peer_records_msec[peer_id] = now
 	snapshot["gen_records"] = found["records"]
 
 ## Phase 38 — the replicated social/economy state, keyed by the names the wire uses
@@ -1890,15 +1898,17 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 	if data.has("gen_records") or data.has("gen_scope"):
 		var rev_before := ChunkRecords.content_revision()
 		# Phase 114 — the table is pruned to the host's scope first, so it never outgrows one window.
+		var pruned: Array = []
 		if data.has("gen_scope"):
-			ChunkRecordSync.prune_to_scope(data["gen_scope"])
+			ChunkRecordSync.prune_to_scope(data["gen_scope"], pruned)
 			_tree.set_clear_scope(data["gen_scope"])   # Phase 126 — the clear range is the scope's radius
 		var gen_result := ChunkRecordSync.apply(data.get("gen_records", {}))
 		if ChunkRecords.content_revision() != rev_before:
 			_tree.resync_recorded_chunks()   # Phase 110 — a record may carry a budget or cleared trees
 		# A record that arrives after its chunk was built (a re-scope) changes the ground: rebuild it.
+		# A pruned record means its loaded chunk now draws from the generator: rebuild that too.
 		if _chunk_manager != null:
-			for c in gen_result["changed"]:
+			for c in gen_result["changed"] + pruned:
 				if _chunk_manager.is_chunk_built(c):
 					_chunk_manager.request_rebuild(c)
 		if int(gen_result["dropped"]) > 0 or int(gen_result["refused"]) > 0:
@@ -2495,9 +2505,8 @@ func _note_worldgen_version() -> void:
 	_worldgen_fp_stamp = PersistenceSlice.fingerprint_stamp_for_save(_loaded_world, running_fp)
 	if PersistenceSlice.check_worldgen_fingerprint(_loaded_world, running_fp):
 		GameBus.worldgen_fingerprint_mismatch.emit(_worldgen_fp_stamp, running_fp)
-		# Phase 114: the notice is raised once. The next save stamps the running fingerprint, so the
-		# next load of this world finds no mismatch (the records, not the stamp, keep old land stable).
-		_worldgen_fp_stamp = running_fp
+		# The stamp keeps the world's original fingerprint, so the mismatch is reported on every load
+		# until the world is regenerated (the records, not the stamp, keep old land stable).
 
 ## Phase 114 — generation records never outlive the world they describe.
 func _forget_world_records() -> void:

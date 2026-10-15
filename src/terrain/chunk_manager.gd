@@ -211,10 +211,6 @@ var _chunk_refs: Dictionary = {}   # "cx,cz" -> number of windows covering it (r
 ## client could make the host read regions and queue chunk builds as fast as it can send packets.
 const PEER_RECENTER_INTERVAL := 0.25
 const PEER_RECENTER_MAX_CHUNKS := 8
-## Phase 119 — the chunk an uncentred peer's FIRST client claim is measured from. A peer the host placed
-## (join, spawn) is centred by `host_driven`, so a client claim reaching an uncentred peer is a stranger's
-## and may land no farther than `PEER_RECENTER_MAX_CHUNKS` from here (seam-wrapped), like any later move.
-var first_claim_origin: Vector2i = Vector2i.ZERO
 ## peer_id -> `now_msec` time of the last accepted client claim (`set_peer_center`) or host placement.
 var _peer_last_claim_msec: Dictionary = {}
 ## peer_id -> `now_msec` time of the last accepted host sync (`sync_peer_center`) or host placement.
@@ -226,6 +222,7 @@ var now_msec: Callable = Time.get_ticks_msec
 ## self-heal and per-peer interval), so a stale stamp never throttles against the new clock.
 func set_clock(c: Callable) -> void:
 	now_msec = c
+	_flush_backoff.clear()
 	_last_stranded_retry_msec = -STRANDED_RETRY_MSEC
 	_last_deferred_retry_msec = -STRANDED_RETRY_MSEC
 	_last_self_heal_msec = -1
@@ -401,8 +398,6 @@ func refresh(unload_now: bool = true) -> void:
 	var refs: Dictionary = {}
 	for win_center in centers:
 		for c in _desired_chunks(win_center, radius):
-			if not _in_bounds(c):
-				continue
 			var ckey := _chunk_key(c)
 			if not refs.has(ckey):
 				desired.append(c)
@@ -412,16 +407,14 @@ func refresh(unload_now: bool = true) -> void:
 	# Phase 52 — the edits of every region the windows touch are resident BEFORE a chunk is
 	# queued, so no build reads a log that is missing its region.
 	if region_streamer != null:
-		var synced: Dictionary = region_streamer.sync(region_streamer.regions_for_chunks(desired, Frontier.BLEND_CHUNKS))
-		_rebuild_adopted(synced.get("adopted", []))
-		_record_deferred()
+		_sync_wanted_regions(desired)
 
 	# Queue loads nearest-first. Dispatching is what is bounded per frame; the build
 	# itself runs on a worker.
 	var to_load: Array = []
 	for c in desired:
 		var key := _chunk_key(c)
-		if _in_bounds(c) and not _loaded.has(key) and not _pending.has(key):
+		if not _loaded.has(key) and not _pending.has(key):
 			to_load.append(c)
 	to_load.sort_custom(func(a, b): return _nearest_dist2(centers, a) < _nearest_dist2(centers, b))
 	for c in to_load:
@@ -663,6 +656,8 @@ func _record_deferred() -> void:
 		_record_generation(canon)
 		if records_created != before and _loaded.has(_chunk_key(canon)):
 			request_rebuild(canon)
+		if not _deferred_records.has(k) and _built.has(_chunk_key(canon)):
+			_spawn_contents_once(_chunk_key(canon), canon)
 
 ## A stationary host never crosses a window, so nothing else re-reads the regions a deferred chunk is
 ## waiting for: once per `STRANDED_RETRY_MSEC`, sync the regions the current windows want (a region
@@ -678,6 +673,11 @@ func _retry_deferred_records() -> void:
 	var desired: Array = []
 	for k in _chunk_refs:
 		desired.append(_key_to_chunk(str(k)))
+	_sync_wanted_regions(desired)
+
+## Make the regions `desired` chunks read resident, rebuild chunks whose records a read replaced, and
+## retry the deferred records. Shared by `refresh` and `_retry_deferred_records`.
+func _sync_wanted_regions(desired: Array) -> void:
 	var synced: Dictionary = region_streamer.sync(region_streamer.regions_for_chunks(desired, Frontier.BLEND_CHUNKS))
 	_rebuild_adopted(synced.get("adopted", []))
 	_record_deferred()
@@ -696,8 +696,6 @@ func _rebuild_adopted(keys: Array) -> void:
 var _flush_backoff: Dictionary = {}
 const FLUSH_BACKOFF_START_MSEC := 1000
 const FLUSH_BACKOFF_MAX_MSEC := 60000
-## The clock the flush backoff reads; a test swaps it for a deterministic one.
-var _now: Callable = Time.get_ticks_msec
 
 ## Write the pending records, one region rewrite per region. Waits while a save is running. A region
 ## whose write fails keeps its records pending and is skipped until its backoff elapses (1 s, doubling
@@ -708,7 +706,7 @@ func flush_records() -> void:
 		return
 	if records_flush_blocked.is_valid() and bool(records_flush_blocked.call()):
 		return
-	var now: int = _now.call()
+	var now: int = now_msec.call()
 	var batch: Dictionary = {}
 	for k in _pending_records:
 		var rk := RegionStore.region_key(RegionStore.region_of_chunk_key(str(k)))
@@ -802,6 +800,15 @@ var _seam_revision: Dictionary = {}
 ## Phase 42 review — spawn a chunk's per-chunk creature and tree budgets. Called once the
 ## chunk's GROUND EXISTS (see `_apply_build_entry`) rather than when it enters the
 ## streamed set, so no body stands on a chunk that has not been built yet.
+## Spawn a chunk's contents once per residency, and not while its generation record is still deferred:
+## the record may rebuild the ground, and a population placed on the plain generator's ground would
+## stand under the player's edits of the rebuilt one. `_record_deferred` spawns it once the record lands.
+func _spawn_contents_once(key: String, chunk_pos: Vector2i) -> void:
+	if _contents_spawned.has(key) or _deferred_records.has(key):
+		return
+	_contents_spawned[key] = true
+	_spawn_chunk_contents(chunk_pos)
+
 func _spawn_chunk_contents(chunk_pos: Vector2i) -> void:
 	if creature_slice != null and creature_slice.has_method("spawn_for_chunk"):
 		creature_slice.spawn_for_chunk(chunk_pos)
@@ -831,9 +838,7 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 		# build, but an edit still reaches here through `request_rebuild`, and spawning the
 		# chunk's budgets on every such call re-derived a population that was already standing
 		# there. The rig used to spawn unconditionally because it never had a second call.
-		if not _contents_spawned.has(key):
-			_contents_spawned[key] = true
-			_spawn_chunk_contents(chunk_pos)
+		_spawn_contents_once(key, chunk_pos)
 		_update_first_ring_progress()
 		return
 	# Phase 42 review pass 9 — the in-flight cap is enforced HERE, not only at the call
@@ -1009,11 +1014,6 @@ func _move_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool, is_sync
 	var now: int = now_msec.call()
 	# X is a wrapped planet coordinate: store and compare the canonical chunk.
 	chunk = TerrainSlice.wrap_chunk(chunk)
-	if not host_driven and not is_sync and not _peer_centers.has(peer_id):
-		var clamped := _clamp_toward(first_claim_origin, chunk)
-		if clamped != chunk:
-			peer_recenter_refused += 1
-		chunk = clamped
 	if host_driven or not _peer_centers.has(peer_id):
 		var moved: bool = _peer_centers.get(peer_id, null) != chunk
 		_peer_centers[peer_id] = chunk
@@ -1092,8 +1092,6 @@ func chunk_ref_count(chunk: Vector2i) -> int:
 ## of the accessor form which re-derived both — a `PlayerSlice.get_position()` call — for
 ## every queued chunk in the drain.
 func _within_stream_at(center: Vector2i, radius: int, chunk: Vector2i) -> bool:
-	if not _in_bounds(chunk):
-		return false
 	return absi(chunk.x - center.x) <= radius and absi(chunk.y - center.y) <= radius
 
 ## Never leave a worker build running past the tree: at shutdown a task could still
@@ -1112,20 +1110,29 @@ func _exit_tree() -> void:
 		WorkerThreadPool.wait_for_task_completion(task_id)
 	_builds.clear()
 	# Phase 114 — records created this session reach the disk before the process goes (a blocked or
-	# backing-off flush is bypassed once: there is no next frame), and the table does not outlive
-	# the world it described.
+	# backing-off flush is bypassed once: there is no next frame). The shared `ChunkRecords` table is
+	# not cleared here: `GameRoot` owns it, and a second manager must not wipe the first one's records.
 	# A running save thread owns the region files: `GameRoot._exit_tree` reaps it and then calls
 	# `flush_records_final`, so this one stands down.
 	if not (records_flush_blocked.is_valid() and bool(records_flush_blocked.call())):
 		flush_records_final()
-	if record_store != null and _pending_records.is_empty():
-		ChunkRecords.clear()
 
 ## Write every pending record now, ignoring backoff and the save block (shutdown has no next frame).
+## A failed write keeps its chunks pending (and is logged) rather than dropping their records.
 func flush_records_final() -> void:
-	if record_store != null and not _pending_records.is_empty():
-		record_store.write_chunks(_pending_records)
+	if record_store == null or _pending_records.is_empty():
+		return
+	var err: Error = record_store.write_chunks(_pending_records)
+	if err == OK:
 		_pending_records.clear()
+		return
+	var failed: Array = record_store.last_failed_chunk_keys
+	Diag.error("ChunkManager: final record flush failed — %s; %d record(s) stay pending" % [error_string(err), failed.size() if not failed.is_empty() else _pending_records.size()])
+	if failed.is_empty():
+		return   # nothing says which region failed: keep everything
+	for k in _pending_records.keys():
+		if not failed.has(k):
+			_pending_records.erase(k)
 
 ## Attach every worker build that has finished, on the main thread. A result whose
 ## chunk was streamed back out while it built is dropped, and so is one whose revision
@@ -1224,9 +1231,7 @@ func _apply_build_entry(task_id: int) -> bool:
 	# per build. An EDIT rebuilds a loaded chunk, and re-deriving the population for it
 	# re-scanned every live instance and every live tree in the world to arrive at the
 	# same count (see `_contents_spawned`).
-	if not _contents_spawned.has(key):
-		_contents_spawned[key] = true
-		_spawn_chunk_contents(chunk)
+	_spawn_contents_once(key, chunk)
 	_update_first_ring_progress()
 	return true
 
@@ -1246,8 +1251,6 @@ func build_first_ring(center: Vector2i) -> void:
 	_first_ring = {}
 	var wanted: Array = []
 	for c in _desired_chunks(center, FIRST_RING_RADIUS):
-		if not _in_bounds(c):
-			continue
 		var key := _chunk_key(c)
 		_first_ring[key] = _built.has(key)
 		if not _loaded.has(key) and not _pending.has(key):
@@ -1387,11 +1390,6 @@ func _dist2(center: Vector2i, chunk: Vector2i) -> int:
 	var dx := chunk.x - center.x
 	var dz := chunk.y - center.y
 	return dx * dx + dz * dz
-
-## True when `chunk` may be streamed in: every chunk (Phase 122 — rows past a pole are the polar snow
-## field, so the streamed window never meets an edge; `TerrainSlice.is_chunk_in_bounds` is the walkable bound).
-func _in_bounds(_chunk: Vector2i) -> bool:
-	return true
 
 func _chunk_key(chunk_pos: Vector2i) -> String:
 	# Phase 63: canonical key across the east-west seam.
