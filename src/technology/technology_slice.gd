@@ -58,7 +58,9 @@ const CRAFTED_KEY := "_first_crafts"
 
 ## Fallback rule table when GameData has no ResearchPointRule (a slice built before
 ## GameData loads); mirrors the fabric default.
-const DEFAULT_RULES := { "craft": 1, "gather": 1, "firstCraftOfRecipe": 3 }
+const DEFAULT_RULES := { "craft": 1, "gather": 1, "firstCraftOfRecipe": 3, "maxPoints": 5000, "windowSeconds": 600, "windowCap": 60 }
+## The rule keys that are point sources (the rest of the table are caps).
+const SOURCES := ["craft", "gather", "firstCraftOfRecipe"]
 
 ## Set by game_root so research can consume material costs from inventory. The
 ## fallback inventory when no per-player registry is wired (isolated unit tests)
@@ -83,6 +85,12 @@ var _research_end_at: Dictionary = {}
 
 ## player_id -> research-point balance (host-owned; a client only mirrors it).
 var _points: Dictionary = {}
+
+## Test seam and clock: seconds, for the per-window earn cap.
+var now_sec: Callable = func() -> float: return Time.get_ticks_msec() / 1000.0
+
+## player_id -> { "start": seconds, "earned": int } for the earn window now open.
+var _window: Dictionary = {}
 
 ## player_id -> { recipe key -> true } for recipes whose first-craft bonus was paid.
 var _first_crafts: Dictionary = {}
@@ -274,33 +282,75 @@ func research_cost(tech_id: String) -> int:
 func get_points(player_id: String = "") -> int:
 	return int(_points.get(resolve_player(player_id), 0))
 
-## Host-only: add `amount` points from `source` to `player_id`. A client owns no
-## balance (it mirrors the host's), so its own call changes nothing. Returns the
-## points actually granted.
+## The balance ceiling from the fabric (`maxPoints`).
+func max_points() -> int:
+	return maxi(1, int(_rules().get("maxPoints", DEFAULT_RULES["maxPoints"])))
+
+## Points `player_id` may still earn in the window now open (`windowCap` per `windowSeconds`).
+func window_room(player_id: String) -> int:
+	var rules := _rules()
+	var cap := maxi(0, int(rules.get("windowCap", DEFAULT_RULES["windowCap"])))
+	var length := maxf(1.0, float(rules.get("windowSeconds", DEFAULT_RULES["windowSeconds"])))
+	var now: float = now_sec.call()
+	var w: Dictionary = _window.get(player_id, {})
+	if w.is_empty() or now - float(w["start"]) >= length or now < float(w["start"]):
+		return cap
+	return maxi(0, cap - int(w["earned"]))
+
+func _note_earned(player_id: String, amount: int) -> void:
+	var now: float = now_sec.call()
+	var length := maxf(1.0, float(_rules().get("windowSeconds", DEFAULT_RULES["windowSeconds"])))
+	var w: Dictionary = _window.get(player_id, {})
+	if w.is_empty() or now - float(w["start"]) >= length or now < float(w["start"]):
+		w = { "start": now, "earned": 0 }
+	w["earned"] = int(w["earned"]) + amount
+	_window[player_id] = w
+	if _window.size() > 1024:
+		for k in _window.keys():
+			if now - float(_window[k]["start"]) >= length:
+				_window.erase(k)
+
+## Host-only: add `amount` points from `source` to `player_id`, held to the balance ceiling and the
+## per-window earn cap. A client owns no balance (it mirrors the host's), so its own call changes
+## nothing. Returns the points actually granted.
 func grant_points(player_id: String, source: String, amount: int) -> int:
-	if not is_authoritative or amount <= 0 or not _rules().has(source):
+	if not is_authoritative or amount <= 0 or not SOURCES.has(source) or not _rules().has(source):
 		return 0
 	var pid := resolve_player(player_id)
-	_set_points(pid, get_points(pid) + amount)
-	return amount
+	var granted := _earn(pid, amount)
+	if granted > 0:
+		_set_points(pid, get_points(pid) + granted)
+	return granted
+
+## Clamp `amount` to the window room and the ceiling, record it against the window, return what counts.
+func _earn(pid: String, amount: int) -> int:
+	var granted := mini(amount, mini(window_room(pid), max_points() - get_points(pid)))
+	if granted <= 0:
+		return 0
+	_note_earned(pid, granted)
+	return granted
 
 ## Host-only: a successful craft of `recipe_id` by `player_id` earns the `craft` rule,
 ## plus the `firstCraftOfRecipe` bonus the first time that player crafts that recipe.
-## Returns the points granted.
+## Returns the points granted. One craft is ONE balance change and so one technology sync.
 func note_craft(recipe_id: String, player_id: String = "") -> int:
 	if not is_authoritative:
 		return 0
 	var pid := resolve_player(player_id)
-	# The marker is written before any grant: each grant syncs and records a snapshot.
-	var first := false
-	if not _first_crafts.has(pid):
-		_first_crafts[pid] = {}
-	if not _first_crafts[pid].has(recipe_id):
-		_first_crafts[pid][recipe_id] = true
-		first = true
-	var granted := grant_points(pid, "craft", points_for("craft"))
+	var amount := points_for("craft")
+	var first: bool = not (_first_crafts.get(pid, {}) as Dictionary).has(recipe_id)
 	if first:
-		granted += grant_points(pid, "firstCraftOfRecipe", points_for("firstCraftOfRecipe"))
+		amount += points_for("firstCraftOfRecipe")
+	if amount <= 0:
+		return 0   # a rule table that pays nothing leaves no marker and no sync
+	# The marker is written before the grant: the grant syncs and records a snapshot.
+	if first:
+		if not _first_crafts.has(pid):
+			_first_crafts[pid] = {}
+		_first_crafts[pid][recipe_id] = true
+	var granted := _earn(pid, amount)
+	if granted > 0:
+		_set_points(pid, get_points(pid) + granted)
 	return granted
 
 func _set_points(player_id: String, points: int) -> void:
@@ -326,7 +376,7 @@ func apply_statuses(statuses: Dictionary, player_id: String = "") -> void:
 			bucket[tech_id] = str(statuses[tech_id])
 	# Phase 124 — a snapshot without the reserved keys (a legacy save) restores 0 / none.
 	var points_v: Variant = statuses.get(POINTS_KEY, 0)
-	_points[pid] = maxi(0, int(points_v)) if (points_v is int or points_v is float) else 0
+	_points[pid] = clampi(int(points_v), 0, max_points()) if (points_v is int or points_v is float) else 0
 	var crafted: Dictionary = {}
 	var crafted_v: Variant = statuses.get(CRAFTED_KEY, [])
 	if crafted_v is Array:

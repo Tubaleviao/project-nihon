@@ -157,6 +157,7 @@ static func steps() -> Array:
 		{ "name": "clock_synced",      "compare": true },
 		{ "name": "weather_override",  "compare": true },
 		{ "name": "status_effect",     "compare": true },
+		{ "name": "paralysis_holds",   "compare": true },
 		{ "name": "inventory_owner",   "compare": true },
 		{ "name": "research_points_owner", "compare": true },
 		{ "name": "chat_relayed",      "compare": true },
@@ -286,11 +287,14 @@ static func _xz_distance(a: Vector3, b: Vector3) -> float:
 ## Phase 129 — latched when this process is sent a heat-burn (the effect lasts 8 s; a slow client may come
 ## to the step after it ran out).
 var _burn_seen: bool = false
+var _paralysis_seen: bool = false
 
 func _on_status_seen(_target: String, effects: Array) -> void:
 	for e in effects:
 		if e is Dictionary and e.get("effect", "") == "heat_burn":
 			_burn_seen = true
+		if e is Dictionary and e.get("effect", "") == "paralysis":
+			_paralysis_seen = true
 
 func run(root: Node, role: String) -> void:
 	GameBus.status_effects_synced.connect(_on_status_seen)
@@ -360,6 +364,7 @@ func run(root: Node, role: String) -> void:
 	await _step_clock_synced()
 	await _step_weather_override()
 	await _step_status_effect()
+	await _step_paralysis_holds()
 	await _step_inventory_owner()
 	await _step_research_points_owner()
 	await _step_chat_relayed()
@@ -1250,6 +1255,38 @@ func _step_status_effect() -> void:
 	# The effect list is what the packet carries; the damage rides the (already proven) player_damaged path.
 	var got: bool = await _await_until(func(): return _burn_seen, STEP_TIMEOUT_SECS)
 	_report("status_effect", verdict(got, true), "owner-only" if got else "effect_never_arrived-hp%.0f" % _root._player.get_hp())
+
+## Phase 130 — the host decides immobilization itself. It paralyzes the bound peer; that peer's client
+## (which would normally be held by `PlayerSlice.held_speed`) keeps REPORTING a position 50 m away anyway,
+## and the host's recorded position for the peer does not move.
+const PARALYSIS_WALK := Vector3(50.0, 0.0, 0.0)
+func _step_paralysis_holds() -> void:
+	var net: Node = _root._networking
+	if _role == "host":
+		var owner := _bound_id()
+		if owner == "" or not net.has_last_known_state(_bound_peer):
+			_report("paralysis_holds", "fail", "no_owner_or_state-peer%d" % _bound_peer)
+			return
+		var base: Vector3 = net.get_last_known_state(_bound_peer)
+		_root._status.apply(owner, "paralysis", _root._status_now())
+		_root.tick_status_effects()
+		await _await_until(func(): return false, 1.5)
+		var held: bool = net.get_last_known_state(_bound_peer).distance_to(base) < 0.5
+		_root._status.clear(owner)
+		_root.tick_status_effects()
+		_report("paralysis_holds", verdict(held, true), "held" if held else "moved-%.1fm" % net.get_last_known_state(_bound_peer).distance_to(base))
+		return
+	var seen: bool = await _await_until(func(): return _paralysis_seen, STEP_TIMEOUT_SECS)
+	if not seen:
+		_report("paralysis_holds", "fail", "paralysis_never_arrived")
+		return
+	var start: Vector3 = _root._player.get_position()
+	for i in 6:
+		var far := start + PARALYSIS_WALK * float(i + 1)
+		GameBus.player_state_sync_requested.emit({ "position": far, "world_pos": WorldPos.from_world(far.x, far.y, far.z),
+			"hp": float(PlayerSlice.MAX_HP), "max_hp": float(PlayerSlice.MAX_HP) })
+		await _await_until(func(): return false, 0.1)
+	_report("paralysis_holds", verdict(true, true), "held")
 
 ## Step 14 (Phase 53) — a new player given a friend code spawns beside that friend.
 ##

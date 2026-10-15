@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:7f36fe0bd7980e7edc2ea59929bf2fd24f2fa71440bfe3038fc672ab0d57a79c",
+  "schemaHash": "sha256:08ee3556390ebd4ec184b9c7f16e55c7983922a6e1d8d19c2dcc29b8a4441e09",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -656,6 +656,110 @@
               "trigger": "accept",
               "guards": [
                 "Community vote must reach quorum"
+              ],
+              "effects": []
+            },
+            {
+              "from": [
+                "proposed",
+                "accepted"
+              ],
+              "to": "superseded",
+              "trigger": "supersede",
+              "guards": [
+                "A replacement decision must be accepted first"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "WaystonesAmendNoTeleportation": {
+        "name": "WaystonesAmendNoTeleportation",
+        "tags": [
+          "decision"
+        ],
+        "description": "Amends NoTeleportation: waystones are the one sanctioned fast travel. A player must build and stock a waystone network, travel only between stones they are attuned to, and pay an item cost scaled by distance, so travel remains infrastructure and a cost, never free or arbitrary teleportation.",
+        "goal": "Keep a planet that takes about 90 days to walk around navigable without making geography meaningless",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "status": {
+            "name": "status",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "proposed",
+              "accepted",
+              "superseded"
+            ],
+            "pii": false
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "accept": {
+            "name": "accept",
+            "description": "Ratify this amendment after community review",
+            "rules": [
+              "Community vote must reach quorum",
+              "Stones consume the Waystone item to place and an item cost to travel (WaystoneTravel)"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "supersede": {
+            "name": "supersede",
+            "description": "Mark this decision as replaced by a newer one",
+            "rules": [
+              "A replacement decision must be accepted first"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "status",
+          "initial": "proposed",
+          "states": {
+            "proposed": {
+              "name": "proposed",
+              "description": "Decision is under community discussion",
+              "terminal": false
+            },
+            "accepted": {
+              "name": "accepted",
+              "description": "Decision is ratified and in effect",
+              "terminal": false
+            },
+            "superseded": {
+              "name": "superseded",
+              "description": "Decision has been replaced by a newer decision",
+              "terminal": true
+            }
+          },
+          "transitions": [
+            {
+              "from": "proposed",
+              "to": "accepted",
+              "trigger": "accept",
+              "guards": [
+                "Community vote must reach quorum",
+                "Stones consume the Waystone item to place and an item cost to travel (WaystoneTravel)"
               ],
               "effects": []
             },
@@ -19603,14 +19707,17 @@
           "rules": {
             "name": "rules",
             "type": "json",
-            "description": "Points per source: { craft, gather, firstCraftOfRecipe }, non-negative integers (validated at fabric load)",
+            "description": "Points per source { craft, gather, firstCraftOfRecipe } and caps { maxPoints, windowSeconds, windowCap }, non-negative integers (validated at fabric load)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "craft": 1,
               "gather": 1,
-              "firstCraftOfRecipe": 3
+              "firstCraftOfRecipe": 3,
+              "maxPoints": 5000,
+              "windowSeconds": 600,
+              "windowCap": 60
             }
           },
           "maxResearchCost": {
@@ -19659,7 +19766,7 @@
           "rules": {
             "name": "rules",
             "type": "json",
-            "description": "Travel rule: { stationType, attuneRadius (m), cooldownSeconds, costItem, costPerThousandKm } (validated at fabric load)",
+            "description": "Travel rule: { stationType, attuneRadius (m), cooldownSeconds, costItem, costPerThousandKm, placementItem } (validated at fabric load)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -19668,7 +19775,8 @@
               "attuneRadius": 4,
               "cooldownSeconds": 30,
               "costItem": "AethermiteShard",
-              "costPerThousandKm": 1
+              "costPerThousandKm": 1,
+              "placementItem": "Waystone"
             }
           }
         },

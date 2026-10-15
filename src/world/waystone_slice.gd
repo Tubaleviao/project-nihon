@@ -52,6 +52,7 @@ var position_of: Callable = Callable()
 var _exact: Dictionary = {}
 var _cooldown_until: Dictionary = {}   # player id -> seconds
 var _last_intent: Dictionary = {}      # player id -> seconds
+var _last_reply: Dictionary = {}       # player id -> seconds of the last refusal reply sent
 var _sweep_clock: float = 0.0
 ## Client view: the stones this machine's player is attuned to, as the host last said.
 var _view: Array = []
@@ -90,6 +91,24 @@ func waystone_ids() -> Array:
 ## Record the exact position of a stone placed far from the origin, where a `Vector3` is coarse.
 func note_exact(station_id: String, pos: Dictionary) -> void:
 	_exact[station_id] = pos
+
+## Saved form of the recorded exact positions (stones still standing only): id -> wire `{chunk, local}`.
+func exact_data() -> Dictionary:
+	var out := {}
+	for id in _exact.keys():
+		if is_waystone(str(id)):
+			out[str(id)] = WorldPos.pos_to_wire(_exact[id])
+	return out
+
+## Restore recorded exact positions from a saved world record; malformed entries are skipped.
+func apply_exact_data(data: Variant) -> void:
+	_exact.clear()
+	if not (data is Dictionary):
+		return
+	for id in (data as Dictionary).keys():
+		var pos := WorldPos.pos_from_wire(data[id])
+		if not pos.is_empty():
+			_exact[str(id)] = pos
 
 func exact_pos(station_id: String) -> Dictionary:
 	if not is_waystone(station_id):
@@ -146,6 +165,8 @@ func try_attune(player_id: String, station_id: String) -> String:
 	var have: Array = registry.get_waystones(player_id)
 	if have.has(station_id):
 		return ""
+	if have.size() >= registry.MAX_WAYSTONES:
+		return "full"
 	have.append(station_id)
 	registry.record_waystones(player_id, have)
 	GameBus.waystones_synced.emit(player_id, registry.get_waystones(player_id))
@@ -171,6 +192,8 @@ func sweep_attunements() -> void:
 		if pos.is_empty():
 			continue
 		var have: Array = registry.get_waystones(player_id)
+		if have.size() >= registry.MAX_WAYSTONES:
+			continue
 		for sid in stones:
 			if not have.has(str(sid)):
 				try_attune(player_id, str(sid))
@@ -227,9 +250,22 @@ func _on_travel_intent(from_id: String, to_id: String, player_id: String) -> voi
 		return
 	var pid: String = player_id if player_id != "" else str(registry.local_player_id)
 	var reason := travel(from_id, to_id, pid)
-	if reason != "" and reason != "rate_limited":
+	if reason == "":
+		GameBus.waystone_travel_resolved.emit(pid, true, reason)
+		return
+	# Phase 130 — a refusal is answered at most once per INTENT_INTERVAL per player, so a client that
+	# floods bad intents cannot make the host flood replies (or the log) back.
+	var now: float = now_sec.call()
+	if now - float(_last_reply.get(pid, -INF)) < INTENT_INTERVAL:
+		return
+	_last_reply[pid] = now
+	if _last_reply.size() > 1024:
+		for k in _last_reply.keys():
+			if now - float(_last_reply[k]) > 60.0:
+				_last_reply.erase(k)
+	if reason != "rate_limited":
 		Diag.warn("WaystoneSlice: travel %s -> %s for %s refused: %s" % [from_id, to_id, pid, reason])
-	GameBus.waystone_travel_resolved.emit(pid, reason == "", reason)
+	GameBus.waystone_travel_resolved.emit(pid, false, reason)
 
 ## Client: remember the host's attunement list for the map.
 func apply_view(station_ids: Array) -> void:

@@ -1059,6 +1059,11 @@ func _on_creature_state_changed(instance_id: String, creature_id: String, state:
 ## `_on_remote_player_state` relays it. Set and cleared around the emit in `_route_c2h`.
 var _inbound_exact: Dictionary = {}
 
+## Phase 130 — host: `(peer_id) -> bool`, true while that peer's player is immobilized by a status effect
+## (paralysis, knockdown). A `player_moved` report from a held peer is dropped, so its last-known
+## position stands whatever its own client sends. Unset: nothing is held.
+var peer_held: Callable = Callable()
+
 func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	if _role != Role.HOST:
 		return
@@ -1573,6 +1578,10 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			# (record_simulated_hp, via game_root._on_player_damaged); the
 			# declared half still has no door. Position is the other half the
 			# host retains, and only so a reconnect can resume from it.
+			# Phase 130 — the host decides immobilization itself: a held peer's report is dropped
+			# (its first report is kept, so it still has a position to be held at).
+			if has_last_known_state(sender) and peer_held.is_valid() and bool(peer_held.call(sender)):
+				return
 			_inbound_exact = exact
 			GameBus.remote_player_state.emit(sender, pos)
 			_inbound_exact = {}

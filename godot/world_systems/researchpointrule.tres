@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1")
 id = ""
-rules = {"craft":1,"gather":1,"firstCraftOfRecipe":3}
+rules = {"craft":1,"gather":1,"firstCraftOfRecipe":3,"maxPoints":5000,"windowSeconds":600,"windowCap":60}
 maxResearchCost = 1000
 description = "Points of research a player earns per source: a craft, a gathered resource, and a one-time bonus for the first craft of each recipe. Spent by beginResearch at the technology's researchCost."
 tags = ["world-system"]

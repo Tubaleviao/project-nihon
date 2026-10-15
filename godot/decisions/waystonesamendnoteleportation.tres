@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/decisions/waystonesamendnoteleportation.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+status = 0
+state_machine_field = "status"
+initial_state = "proposed"
+description = "Amends NoTeleportation: waystones are the one sanctioned fast travel. A player must build and stock a waystone network, travel only between stones they are attuned to, and pay an item cost scaled by distance, so travel remains infrastructure and a cost, never free or arbitrary teleportation."
+tags = ["decision"]

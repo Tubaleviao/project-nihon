@@ -44,7 +44,8 @@ const DECISIONS: Dictionary = {
 		"NoTeleportation": preload("res://godot/decisions/noteleportation.tres"),
 		"OfflinePlayerNpcs": preload("res://godot/decisions/offlineplayernpcs.tres"),
 		"OnePersistentWorld": preload("res://godot/decisions/onepersistentworld.tres"),
-		"PlayerIdentityModel": preload("res://godot/decisions/playeridentitymodel.tres")
+		"PlayerIdentityModel": preload("res://godot/decisions/playeridentitymodel.tres"),
+		"WaystonesAmendNoTeleportation": preload("res://godot/decisions/waystonesamendnoteleportation.tres")
 }
 
 const ITEMS: Dictionary = {

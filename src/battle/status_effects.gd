@@ -185,9 +185,13 @@ func from_data(target_id: String, list: Variant, now: float) -> void:
 			continue
 		rem = minf(rem, float(r["durationSeconds"]))
 		if apply(target_id, effect, now):
-			for entry in _active[target_id]:
-				if entry["effect"] == effect:
-					entry["end"] = now + rem
+			# apply() refreshed the one non-stacking row or appended a stacking one: the entry it touched
+			# is the last one for this effect, and it takes this item's own end time.
+			var held: Array = _active[target_id]
+			for i in range(held.size() - 1, -1, -1):
+				if held[i]["effect"] == effect:
+					held[i]["end"] = now + rem
+					break
 	_dirty[target_id] = true
 
 # ---------------------------------------------------------------------------

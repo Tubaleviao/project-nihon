@@ -136,6 +136,8 @@ var voxel_slice: Node = null
 ## Phase 128 — outdoor walking speed follows the weather under the body (null: no weather).
 var weather_slice: Node = null
 var station_slice: Node = null
+## The local player's inventory; a station whose fabric rule names a placement item pays from it.
+var inventory_slice: Node = null
 
 ## Station placement preview ghost toggled by N.
 var _station_preview_on: bool = false
@@ -1061,7 +1063,7 @@ func _place_station() -> void:
 		return
 	# Grid-snapped and overlap-checked by the slice; a refused spot places nothing.
 	var target := _station_target()
-	var placed: String = station_slice.try_place_station(stype, target)
+	var placed: String = station_slice.try_place_station(stype, target, inventory_slice)
 	_refresh_build_hint()
 	# A refused spot says why, on the same label the selection lives on.
 	if placed == "" and _station_label != null and station_slice.has_method("placement_blocker"):

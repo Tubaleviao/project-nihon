@@ -159,6 +159,10 @@ func run() -> void:
 	_run_test("status: a landed hit applies effects and scales damage", _test_status_battle_hit)
 	_run_test("status: immobilized players and creatures stay put",    _test_status_immobilized)
 	_run_test("status: rain, death and persistence end or keep effects", _test_status_rain_death_persistence)
+	_run_test("status: stacked ends round-trip, held peers do not move", _test_phase130_status_authority)
+	_run_test("waystone: placement consumes the item, ids are never reused", _test_phase130_waystone_placement)
+	_run_test("waystone: refusals are throttled, a full list is refused early", _test_phase130_waystone_throttle_full)
+	_run_test("research points: ceiling, window cap and one sync per craft", _test_phase130_research_caps)
 	_run_test("waystone: a seed change saves the old seed",     _test_minimap_seed_change_saves_old_seed)
 	_run_test("chat: the input box is on screen while closed", _test_chat_box_visible)
 	_run_test("chat: a token bucket bounds each player's lines", _test_chat_rate_limit)
@@ -22173,6 +22177,145 @@ func _test_status_roll_golden_rate() -> void:
 	assert_true(absf(float(hits) / 10000.0 - 0.2) < 0.01, "paralysis lands within 1 point of 20%% (got %d / 10000)" % hits)
 	assert_eq(s.rolled_effects(GameData.CREATURES["LavaSlug"].get("onHitEffects"), 5, "x", "y"), ["heat_burn"], "chance 1.0 always lands")
 	assert_eq(s.rolled_effects("junk", 1, "x", "y"), [], "a malformed list rolls nothing")
+
+# ---------------------------------------------------------------------------
+# Phase 130 — host authority sweep
+# ---------------------------------------------------------------------------
+
+func _test_phase130_status_authority() -> void:
+	# Two stacked instances keep their own end times through to_data / from_data.
+	var s := StatusEffects.new()
+	s.table_override = { "bleed": { "durationSeconds": 10.0, "damagePerSecond": 1.0, "stacks": true } }
+	s.apply("t1", "bleed", 0.0)
+	s.apply("t1", "bleed", 6.0)
+	var saved := s.to_data("t1", 7.0)
+	assert_eq(saved.size(), 2, "two stacked instances are live")
+	var s2 := StatusEffects.new()
+	s2.table_override = s.table_override
+	s2.from_data("t1", saved, 100.0)
+	var rems: Array = []
+	for e in s2.active("t1", 100.0):
+		rems.append(snappedf(float(e["remaining"]), 0.01))
+	rems.sort()
+	assert_eq(rems, [3.0, 9.0], "each instance restores its own remaining time")
+
+	# A paralyzed peer's reports are dropped by the host; a free peer's are not.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.set_transport(MemoryTransport.new([5]))
+	var held := [false]
+	n.peer_held = func(_peer: int) -> bool: return held[0]
+	n._route_c2h(5, { "type": "player_moved", "position": [1.0, 2.0, 3.0] })
+	assert_eq(n.get_last_known_state(5), Vector3(1.0, 2.0, 3.0), "the first report records")
+	held[0] = true
+	n._route_c2h(5, { "type": "player_moved", "position": [50.0, 2.0, 3.0] })
+	assert_eq(n.get_last_known_state(5), Vector3(1.0, 2.0, 3.0), "a held peer's move changes nothing")
+	held[0] = false
+	n._route_c2h(5, { "type": "player_moved", "position": [50.0, 2.0, 3.0] })
+	assert_eq(n.get_last_known_state(5), Vector3(50.0, 2.0, 3.0), "released, the peer moves again")
+	# A peer with no reported state reads as the origin: knockback must see it as stateless.
+	assert_false(n.has_last_known_state(9), "an unreported peer has no state")
+	n.free()
+
+func _test_phase130_waystone_placement() -> void:
+	var rig := _waystone_rig()
+	var st: StationSlice = rig["stations"]
+	var inv: Node = rig["reg"].get_inventory("p1")
+	assert_eq(st.placement_item("waystone"), "Waystone", "the fabric names the waystone's placement item")
+	assert_eq(st.placement_item("forge"), "", "a forge stays free")
+	assert_eq(st.try_place_station("waystone", Vector3(0.5, 1.0, 0.5), inv), "", "no item: refused")
+	assert_eq(st.try_place_station("waystone", Vector3(0.5, 1.0, 0.5)), "", "no inventory: refused")
+	assert_true(inv.add_item("Waystone", 1), "stock a stone")
+	var id := st.try_place_station("waystone", Vector3(0.5, 1.0, 0.5), inv)
+	assert_true(id != "", "with the item the stone is placed")
+	assert_eq(inv.get_item_count("Waystone"), 0, "and the item is consumed")
+	assert_true(st.try_place_station("forge", Vector3(9.5, 1.0, 9.5)) != "", "a forge places without an inventory")
+	# A removed trailing id is not reused after save/load.
+	var last := st.place_station("waystone", Vector3(20.5, 1.0, 0.5))
+	var data := st.get_station_data()
+	var next := st.next_id()
+	st.remove_station(last)
+	data = st.get_station_data()
+	var fresh := StationSlice.new()
+	add_child(fresh)
+	fresh.apply_station_data(data)
+	fresh.restore_next_id(next)
+	var again := fresh.place_station("waystone", Vector3(30.5, 1.0, 0.5))
+	assert_true(again != last, "the removed trailing id %s is not handed out again" % last)
+	fresh.free()
+	_free_waystone_rig(rig)
+
+func _test_phase130_waystone_throttle_full() -> void:
+	var rig := _waystone_rig()
+	var way: WaystoneSlice = rig["way"]
+	var st: StationSlice = rig["stations"]
+	var reg: PlayerRegistry = rig["reg"]
+	var now: Array = rig["now"]
+	reg.is_authoritative = true
+	var a := st.place_station("waystone", Vector3(0.5, 1.0, 0.5))
+	var replies: Array = []
+	var on_res := func(_pid: String, ok: bool, reason: String) -> void: replies.append([ok, reason])
+	GameBus.waystone_travel_resolved.connect(on_res)
+	var was_quiet := Diag.quiet
+	Diag.quiet = true
+	for i in 20:
+		way._on_travel_intent(a, "station_99", "p1")
+		now[0] += 0.01
+	Diag.quiet = was_quiet
+	GameBus.waystone_travel_resolved.disconnect(on_res)
+	assert_true(replies.size() <= 1, "20 refused intents in 0.2 s earn at most one reply, got %d" % replies.size())
+	# A full list refuses early instead of truncating.
+	var ids: Array = []
+	for i in PlayerRegistry.MAX_WAYSTONES:
+		ids.append("fake_%d" % i)
+	reg.record_waystones("p1", ids)
+	assert_eq(reg.get_waystones("p1").size(), PlayerRegistry.MAX_WAYSTONES, "the list is full")
+	assert_eq(way.try_attune("p1", a), "full", "attuning with a full list is refused")
+	_free_waystone_rig(rig)
+
+func _test_phase130_research_caps() -> void:
+	var registry := PlayerRegistry.new()
+	add_child(registry)
+	var t := TechnologySlice.new()
+	add_child(t)
+	t.player_registry = registry
+	var clock := [1000.0]
+	t.now_sec = func() -> float: return clock[0]
+	registry.ensure_player("pa")
+	var rules: Dictionary = (GameData.WORLD_SYSTEMS["ResearchPointRule"] as Resource).get("rules")
+	var cap := int(rules["windowCap"])
+	for i in 100:
+		t.grant_points("pa", "gather", 1)
+	assert_eq(t.get_points("pa"), cap, "100 one-unit gathers in one window earn exactly the window cap")
+	clock[0] += float(rules["windowSeconds"]) + 1.0
+	t.grant_points("pa", "gather", 5)
+	assert_eq(t.get_points("pa"), cap + 5, "a new window pays again")
+	# The balance never passes the ceiling, however it is restored or earned.
+	var top := int(rules["maxPoints"])
+	t.apply_statuses({ "_research_points": top * 10 }, "pa")
+	assert_eq(t.get_points("pa"), top, "a restored balance is clamped to the ceiling")
+	clock[0] += 100000.0
+	assert_eq(t.grant_points("pa", "craft", 5), 0, "at the ceiling nothing more is earned")
+	assert_eq(t.get_points("pa"), top, "the balance holds")
+	# One craft is one balance change and so one technology sync.
+	var crafting := CraftingSlice.new()
+	add_child(crafting)
+	crafting.player_registry = registry
+	crafting.technology_slice = t
+	registry.ensure_player("pb")
+	t.apply_statuses({ "TechBasicSmithing": "unlocked" }, "pb")
+	registry.get_inventory("pb").add_item("Ferrite", 6)
+	var syncs: Array = []
+	var on_sync := func(pid: String, _pts: int) -> void: syncs.append(pid)
+	GameBus.research_points_synced.connect(on_sync)
+	assert_true(bool(crafting.craft("RecipeFerriteIngot", "pb")["success"]), "the craft succeeds")
+	GameBus.research_points_synced.disconnect(on_sync)
+	assert_eq(syncs.size(), 1, "a first craft (craft + bonus) sends one sync")
+	crafting.free()
+	t.free()
+	registry.free()
+
 
 func _test_status_knockback_clamped() -> void:
 	var free_all := func(_p: Vector3) -> bool: return true

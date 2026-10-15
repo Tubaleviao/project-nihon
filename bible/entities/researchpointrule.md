@@ -12,7 +12,7 @@ Points of research a player earns per source: a craft, a gathered resource, and 
 | Name | Type | Required | Description |
 | ---- | ---- | -------- | ----------- |
 | `id` | uuid | yes |  |
-| `rules` | json | yes | Points per source: { craft, gather, firstCraftOfRecipe }, non-negative integers (validated at fabric load) |
+| `rules` | json | yes | Points per source { craft, gather, firstCraftOfRecipe } and caps { maxPoints, windowSeconds, windowCap }, non-negative integers (validated at fabric load) |
 | `maxResearchCost` | integer | yes | Upper bound a technology researchCost may take (validated at fabric load) |
 
 ## Behaviors
