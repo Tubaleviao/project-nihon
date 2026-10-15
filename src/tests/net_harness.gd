@@ -287,11 +287,14 @@ static func _xz_distance(a: Vector3, b: Vector3) -> float:
 ## Phase 129 — latched when this process is sent a heat-burn (the effect lasts 8 s; a slow client may come
 ## to the step after it ran out).
 var _burn_seen: bool = false
+var _paralysis_seen: bool = false
 
 func _on_status_seen(_target: String, effects: Array) -> void:
 	for e in effects:
 		if e is Dictionary and e.get("effect", "") == "heat_burn":
 			_burn_seen = true
+		if e is Dictionary and e.get("effect", "") == "paralysis":
+			_paralysis_seen = true
 
 func run(root: Node, role: String) -> void:
 	GameBus.status_effects_synced.connect(_on_status_seen)
@@ -1273,7 +1276,7 @@ func _step_paralysis_holds() -> void:
 		_root.tick_status_effects()
 		_report("paralysis_holds", verdict(held, true), "held" if held else "moved-%.1fm" % net.get_last_known_state(_bound_peer).distance_to(base))
 		return
-	var seen: bool = await _await_until(func(): return _root._player.is_immobilized(), STEP_TIMEOUT_SECS)
+	var seen: bool = await _await_until(func(): return _paralysis_seen, STEP_TIMEOUT_SECS)
 	if not seen:
 		_report("paralysis_holds", "fail", "paralysis_never_arrived")
 		return
