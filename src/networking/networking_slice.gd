@@ -182,6 +182,32 @@ var _next_snapshot_id: int = 0
 @export var emulator_jitter_ms: float = 0.0
 ## Reorder adjacent queued packets to model out-of-order delivery.
 @export var emulator_reorder: bool = false
+## Phase 135 — base one-way delay added to every emulated packet, in ms (jitter rides on top).
+@export var emulator_latency_ms: float = 0.0
+## Phase 135 — link rate in kbit/s (1 kbit = 125 bytes); 0 = unlimited. Packets queue behind each
+## other and the excess is delayed, never dropped.
+@export var emulator_bandwidth_kbps: float = 0.0
+
+## Phase 135 — model a RELIABLE transport (ENet): a "lost" packet is retransmitted after a timeout, so
+## it arrives late rather than never. Off keeps the Phase 19 behaviour (the packet is dropped).
+@export var emulator_retransmit: bool = false
+## Phase 135 — how many lost packets were retransmitted instead of dropped (reported by the harness).
+var emulator_retransmits: int = 0
+
+## Phase 135 — named link profiles, the one table `--net-profile` and the harness read.
+## `loopback` is the no-emulation default. Latency/jitter are ms added by each process to its outbound packets, loss a percentage.
+const NET_PROFILES := {
+	"loopback": { "latency_ms": 0.0, "jitter_ms": 0.0, "loss_rate": 0.0, "bandwidth_kbps": 0.0 },
+	"lan": { "latency_ms": 2.0, "jitter_ms": 1.0, "loss_rate": 0.0, "bandwidth_kbps": 0.0 },
+	"wan_br": { "latency_ms": 60.0, "jitter_ms": 15.0, "loss_rate": 1.0, "bandwidth_kbps": 0.0 },
+	"wan_bad": { "latency_ms": 200.0, "jitter_ms": 60.0, "loss_rate": 5.0, "bandwidth_kbps": 256.0 },
+}
+const NET_PROFILE_ARG := "--net-profile"
+## Phase 135 — the profile this slice runs under ("" = none, emulator off).
+var net_profile: String = ""
+## Emulated links: peer_id -> the ms at which that peer's wire is next free (bandwidth
+## serialisation). One link per peer, so a departed peer's backlog cannot delay a new one.
+var _link_free_at_ms: Dictionary = {}
 
 ## Sequence numbering: every outbound packet carries a per-type monotonic seq;
 ## the receiver uses it to drop duplicates and detect gaps.
@@ -245,6 +271,7 @@ var _malformed_position_warn_ms: Dictionary = {}
 const MALFORMED_WARN_INTERVAL_MS := 5000.0
 
 func _ready() -> void:
+	_apply_profile_arg(OS.get_cmdline_user_args())
 	GameBus.packet_send_requested.connect(_on_packet_send_requested)
 	GameBus.player_state_sync_requested.connect(_on_player_state_sync_requested)
 	GameBus.block_edit_intent.connect(_on_block_edit_intent)
@@ -297,6 +324,62 @@ func _ready() -> void:
 	GameBus.player_joined.connect(_on_player_joined)
 	GameBus.spawn_placed.connect(_on_spawn_placed)
 
+## Phase 135 — the profile named on the command line: "" when `--net-profile` is absent, the
+## name otherwise (valid or not; `has_profile` tells which). A flag with no value is "?" (refused).
+static func profile_from_args(args: Array) -> String:
+	var i := args.find(NET_PROFILE_ARG)
+	if i < 0:
+		return ""
+	if i + 1 >= args.size() or str(args[i + 1]).begins_with("--"):
+		return "?"
+	return str(args[i + 1])
+
+## Phase 135 — apply `--net-profile` from the command line at boot. An unknown name (or a flag with
+## no value) is refused: the process exits 2, because a run that fell back to loopback would report a
+## pass for a link it never emulated. Returns false on refusal.
+func _apply_profile_arg(args: Array) -> bool:
+	var name := profile_from_args(args)
+	if name == "":
+		return true
+	if apply_profile(name):
+		print("[Networking] link profile: %s" % name)
+		return true
+	Diag.error("[Networking] unknown --net-profile '%s' (known: %s)" % [name, ", ".join(NET_PROFILES.keys())])
+	get_tree().quit(2)
+	return false
+
+static func has_profile(name: String) -> bool:
+	return NET_PROFILES.has(name)
+
+## Phase 135 — apply a named profile. False (nothing changed) for an unknown name. `loopback` turns
+## the emulator off; any other profile turns it on. The one-way latency is the profile's, so the
+## round trip is twice it (`profile_rtt_ms`).
+func apply_profile(name: String) -> bool:
+	if not NET_PROFILES.has(name):
+		return false
+	var p: Dictionary = NET_PROFILES[name]
+	net_profile = name
+	emulator_latency_ms = float(p["latency_ms"])
+	emulator_jitter_ms = float(p["jitter_ms"])
+	emulator_loss_rate = float(p["loss_rate"])
+	emulator_bandwidth_kbps = float(p["bandwidth_kbps"])
+	emulate_network = name != "loopback"
+	# The real wire under it is reliable ENet, so a loss the profile models costs a retransmit delay.
+	emulator_retransmit = true
+	return true
+
+## Phase 135 — how much longer than loopback this slice's waits should be: one plus the profile's round
+## trip over 250 ms (1.0 with no profile). The harness and the client handshake both scale by it.
+func link_time_scale() -> float:
+	return 1.0 + profile_rtt_ms(net_profile) / 250.0
+
+## Phase 135 — the profile's round-trip time in ms (worst case with jitter), 0 for an unknown name.
+static func profile_rtt_ms(name: String) -> float:
+	if not NET_PROFILES.has(name):
+		return 0.0
+	var p: Dictionary = NET_PROFILES[name]
+	return 2.0 * (float(p["latency_ms"]) + float(p["jitter_ms"]))
+
 ## Phase 19 — drain the emulator queue and (on clients) the jitter buffer.
 ## Eviction of stale last-known-states runs unconditionally (no ENet overhead).
 func _process(_delta: float) -> void:
@@ -345,6 +428,7 @@ func disconnect_all() -> void:
 	multiplayer.multiplayer_peer = null
 	_role = Role.OFFLINE
 	_pending.clear()
+	_link_free_at_ms.clear()
 	_jitter_buffer.clear()
 	_player_ids.clear()
 	# Phase 37 — a torn-down connection cannot complete the snapshot it was
@@ -606,11 +690,18 @@ func _deliver(peer_id: int, payload: Dictionary) -> bool:
 	if not emulate_network:
 		transport.send(peer_id, payload)
 		return true
+	var retransmit_delay_ms := 0.0
 	if _should_drop():
-		return false
-	var at_ms: float = float(Time.get_ticks_msec()) + _jitter_delay_ms()
+		if not emulator_retransmit:
+			return false
+		# One retransmission timeout: a round trip plus the jitter allowance, then it is sent again.
+		retransmit_delay_ms = 2.0 * (maxf(0.0, emulator_latency_ms) + emulator_jitter_ms) + 50.0
+		emulator_retransmits += 1
 	# A serialised copy: the caller may reuse or mutate `payload` before the delayed delivery.
-	_pending.append({ "at_ms": at_ms, "peer_id": peer_id, "payload": JSON.stringify(payload) })
+	var json := JSON.stringify(payload)
+	var at_ms: float = _schedule_at_ms(float(Time.get_ticks_msec()), json.to_utf8_buffer().size(), peer_id) \
+			+ retransmit_delay_ms
+	_pending.append({ "at_ms": at_ms, "peer_id": peer_id, "payload": json })
 	if emulator_reorder:
 		_maybe_reorder()
 	return true
@@ -2052,6 +2143,18 @@ func _jitter_delay_ms() -> float:
 		return 0.0
 	return _rng.randf_range(-emulator_jitter_ms, emulator_jitter_ms)
 
+## Phase 135 — when a packet of `size_bytes` sent at `now_ms` is delivered: it waits for the wire
+## (bandwidth), takes `size_bytes * 8 / kbps` ms to serialise, then travels `latency + jitter`. With a
+## cap the link is a single FIFO, so delivery over any one-second window never exceeds the rate.
+func _schedule_at_ms(now_ms: float, size_bytes: int, peer_id: int = 0) -> float:
+	var leaves_at := now_ms
+	if emulator_bandwidth_kbps > 0.0:
+		var free_at: float = maxf(float(_link_free_at_ms.get(peer_id, 0.0)), now_ms) \
+				+ float(size_bytes) * 8.0 / emulator_bandwidth_kbps
+		_link_free_at_ms[peer_id] = free_at
+		leaves_at = free_at
+	return leaves_at + maxf(0.0, emulator_latency_ms) + _jitter_delay_ms()
+
 ## Reorder: swap two adjacent pending packets with a small probability to
 ## model out-of-order delivery.
 func _maybe_reorder() -> void:
@@ -2063,16 +2166,30 @@ func _maybe_reorder() -> void:
 		_pending[i] = _pending[i + 1]
 		_pending[i + 1] = tmp
 
+## Phase 135 — can a packet for `peer_id` still be sent? Always yes for a transport with no seq
+## (in-memory tests); otherwise the link must be up and, on the host, the peer still connected.
+func _peer_reachable(peer_id: int) -> bool:
+	var transport := _ensure_transport()
+	if not transport.stamps_seq:
+		return true
+	if not transport.is_up():
+		return false
+	return _role != Role.HOST or peer_id in transport.peers()
+
 ## Drain the emulator queue, delivering due packets via the real RPC.
-func _drain_emulator() -> void:
-	var now := float(Time.get_ticks_msec())
+func _drain_emulator(now_ms: float = -1.0) -> void:
+	var now := now_ms if now_ms >= 0.0 else float(Time.get_ticks_msec())
 	var i := 0
 	while i < _pending.size():
 		var entry: Dictionary = _pending[i]
 		if float(entry["at_ms"]) <= now:
 			var msg: Variant = JSON.parse_string(str(entry["payload"]))
-			if msg is Dictionary:
+			# Phase 135 — a packet whose connection is gone (or never completed) is lost with it, as on
+			# a real wire; sending it would raise an RPC error per packet on every frame.
+			if msg is Dictionary and _peer_reachable(int(entry["peer_id"])):
 				_ensure_transport().send(int(entry["peer_id"]), msg)
+			elif _role == Role.HOST:
+				_link_free_at_ms.erase(int(entry["peer_id"]))
 			_pending.remove_at(i)
 		else:
 			i += 1

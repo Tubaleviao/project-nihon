@@ -121,7 +121,13 @@ func _process(delta: float) -> void:
 		_sync_accum += delta
 		if _sync_accum >= CREATURE_SYNC_INTERVAL:
 			_sync_accum = 0.0
-			_broadcast_creature_states()
+			if broadcast_deltas:
+				_broadcast_creature_states()
+
+## Phase 135 — false mutes the host's creature position deltas. The two-client harness turns it off under
+## a bandwidth-capped profile: wandering creatures alone exceed 256 kbit/s per client, so the link would
+## fall ever further behind and no step could converge.
+var broadcast_deltas := true
 
 ## Return the instance_id of the nearest live creature within radius, or "".
 ## Routed through the spatial hash (Phase 28) so the scan is bounded by the
