@@ -1772,9 +1772,17 @@ func _fresh_save_dir() -> void:
 		return
 	_root._persistence.server_save_dir = HARNESS_SAVE_DIR
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(HARNESS_SAVE_DIR))
-	var dir := DirAccess.open(HARNESS_SAVE_DIR)
+	_clear_dir(HARNESS_SAVE_DIR)
+
+## Remove every file under `path`, subdirectories included: the region store writes into
+## `regions/`, and a region left by an earlier run (a felled tree, a chunk record) leaks into this one.
+func _clear_dir(path: String) -> void:
+	var dir := DirAccess.open(path)
 	if dir == null:
 		return
+	for sub in dir.get_directories():
+		_clear_dir(path.path_join(sub))
+		dir.remove(sub)
 	for file in dir.get_files():
 		dir.remove(file)
 

@@ -415,7 +415,8 @@ func _test_polar_ice() -> void:
 	var pole := TerrainSlice.pole_chunks()
 	assert_true(t.is_chunk_in_bounds(Vector2i(0, polar)), "polar ice is walkable")
 	assert_false(t.is_chunk_in_bounds(Vector2i(0, pole + TerrainSlice.FOLD_MARGIN_CHUNKS)), "the walkable bound ends at the fold slack; streaming is not bounded")
-	# Near a pole the ground is the pole's snow field: not flat, and the same on both sides of a fold.
+	# Near a pole the ground is the pole's snow field: flat (any relief would run along X as ridges,
+	# drawn as lines to the horizon), so the same on both sides of a fold.
 	t.set_world_seed(12345)
 	var cm := TerrainSlice.CHUNK_METERS
 	var w := float(TerrainSlice.circumference_chunks()) * cm
@@ -430,7 +431,10 @@ func _test_polar_ice() -> void:
 			var south := t.get_height_at(Vector2(xm, -p_m + e))
 			assert_true(absf(south - t.get_height_at(Vector2(xm + w * 0.5, -p_m - e))) < 0.0001, "south too")
 			seen[snappedf(here, 0.01)] = true
-	assert_true(seen.size() > 2, "the snow field has relief, it is not flat")
+	assert_eq(seen.keys(), [snappedf(TerrainSlice.pole_field(), 0.01)], "the snow field is one flat sheet")
+	for row in [pole - 1, -pole]:
+		var b := TerrainSlice.generated_biome_for_chunk(Vector2i(0, row), 12345)
+		assert_true(b != "Beach" and b != "Ocean", "the snow field sits above the beach band (row %d: %s)" % [row, b])
 	var shelf := WorldShape.sea_level() + TerrainSlice.ICE_SHELF_M
 	# Frozen sea: from the shelf latitude the ground never lies below the ice, so no water.
 	var metres_per_deg := float(pole) * cm / 90.0
