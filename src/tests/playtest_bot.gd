@@ -37,6 +37,7 @@ const BOOT_TIMEOUT_SECS := 120.0
 const WATCHDOG_SLACK_SECS := 60.0 ## whole-run budget = boot + every step's timeout + this
 const STREAM_CHUNKS := 20
 const WALK_SECS := 3.0
+const GATHER_SEARCH_CHUNKS := 30  ## how far east the gather step hops looking for a standing tree
 const FIGHT_RANGE_M := 1.5
 
 var _root: Node
@@ -294,13 +295,28 @@ func _step_mine() -> Array:
 	var ok: bool = await _until(func(): return _mined.size() > before, STEP_TIMEOUT_SECS)
 	return [ok, "mined %s" % str(_mined.back()) if ok else "no block_mined"]
 
-## Gather: fell the first tree of the loaded window through the player's own intent, with an axe in the pack.
-func _step_gather() -> Array:
+func _standing_trees() -> Array:
 	var standing: Array = []
 	for tid in _root._tree._trees:
 		if str(_root._tree._trees[tid]["state"]) == "standing":
 			standing.append(str(tid))
 	standing.sort()
+	return standing
+
+## Gather: fell the first tree of the loaded window through the player's own intent, with an axe in the pack.
+func _step_gather() -> Array:
+	var standing: Array = _standing_trees()
+	# The stream step left the body wherever the 20th hop landed, which may be treeless (desert,
+	# rift): hop on, one chunk at a time, until a forest chunk is loaded.
+	var here: Dictionary = _root._player.get_world_pos()
+	var hop := 0
+	while standing.is_empty() and hop < GATHER_SEARCH_CHUNKS:
+		hop += 1
+		var spot := WorldPos.normalized({ "chunk": (here["chunk"] as Vector2i) + Vector2i(hop, 0), "local": here["local"] })
+		GameBus.player_teleport.emit(spot)
+		await _until(func(): return _root._chunk_manager.is_chunk_built(spot["chunk"]), STEP_TIMEOUT_SECS)
+		await _until(func(): return false, 0.2)
+		standing = _standing_trees()
 	if standing.is_empty():
 		return [false, "no standing tree in the loaded window"]
 	if not _root._inventory.add_item("CarpenterAxe", 1):
