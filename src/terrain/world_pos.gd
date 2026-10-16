@@ -195,6 +195,7 @@ static func pos_to_compact(pos: Dictionary) -> PackedByteArray:
 static var compact_decodes := 0
 
 ## Length of the base64 text of a compact position.
+@warning_ignore("integer_division")
 const COMPACT_TEXT_LEN := 4 * ((COMPACT_BYTES + 2) / 3)
 
 ## Decode the compact form (bytes, or the base64 text a packet carries) to a normalised `{chunk, local}`,

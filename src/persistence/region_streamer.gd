@@ -76,6 +76,7 @@ static func _near_region_edge(chunk: Vector2i, reach: int) -> bool:
 	var lz := posmod(chunk.y, RegionStore.REGION_SIZE)
 	if lx < reach or lx >= RegionStore.REGION_SIZE - reach or lz < reach or lz >= RegionStore.REGION_SIZE - reach:
 		return true
+	@warning_ignore("integer_division")
 	var half := TerrainSlice.circumference_chunks() / 2
 	return chunk.x < -half + reach or chunk.x >= half - reach
 
@@ -98,6 +99,7 @@ func sync(wanted: Dictionary) -> Dictionary:
 		if not bool(read["ok"]):
 			# Not resident: a later sync (the next window move) retries the read once the backoff
 			# has elapsed, instead of treating the region as loaded.
+			@warning_ignore("integer_division")
 			var delay := mini(int(_backoff.get(rkey, { "delay": BACKOFF_START_MSEC / 2 })["delay"]) * 2, BACKOFF_MAX_MSEC)
 			_backoff[rkey] = { "until": now + delay, "delay": delay }
 			failed += 1

@@ -659,6 +659,7 @@ func _pack_member_offset(spawn_index: int) -> Vector2:
 	var n: int = PACK_MEMBER_OFFSETS.size()
 	if spawn_index < n:
 		return PACK_MEMBER_OFFSETS[spawn_index]
+	@warning_ignore("integer_division")
 	var ring: int = 2 + (spawn_index - n) / (n - 1)
 	var idx: int = 1 + (spawn_index - n) % (n - 1)
 	return PACK_MEMBER_OFFSETS[idx] * float(mini(ring, 3))

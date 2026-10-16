@@ -103,10 +103,10 @@ func apply_record(record: Dictionary, player_id: String = "") -> void:
 	var stored = record.get("professions", {})
 	if not (stored is Dictionary):
 		return
-	var set := _unlocked_for(pid)
+	var unlocked := _unlocked_for(pid)
 	for key in stored:
 		if bool(stored[key]) and GameData.PROFESSIONS.has(str(key)):
-			set[str(key)] = true
+			unlocked[str(key)] = true
 
 func forget_player_id(player_id: String) -> void:
 	if player_id.is_empty() or player_id == local_player_id():

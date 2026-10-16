@@ -251,8 +251,9 @@ def _pad(b: bytes, fill: bytes) -> bytes:
 # seven clips as joint rotations. Code that reads bones works on it as on the art.
 #
 # Joint positions are where a body bends (glTF axes: +Y up, facing -Z, the figure's
-# left at -X). They are not the fabric `restPose` offsets, which put `Leg_*` at the
-# ankle; the private rig uses the same positions.
+# left at -X): `Leg_*` at the hip, `Shin_*` at the knee, `Forearm_*` at the elbow. They
+# are not the fabric `restPose` offsets, which put `Leg_*` at the knee and `Shin_*` at
+# the ankle; the private rig must use the same positions (and carry the `Shin_*` knees).
 #
 # Rest orientations match the private rig too (Blender's convention: a bone's +Y points
 # at its child, so `Leg_*` rests turned 180 degrees about X and `Arm_*` hang down). With
@@ -279,13 +280,16 @@ JOINTS = {
     "Forearm_R": (0.23, 1.16, 0.0),
     "Hand_R": (0.25, 0.90, 0.0),
     "Leg_L": (-0.10, 0.92, 0.0),
+    "Shin_L": (-0.10, 0.50, 0.0),
     "Foot_L": (-0.10, 0.09, 0.0),
     "Leg_R": (0.10, 0.92, 0.0),
+    "Shin_R": (0.10, 0.50, 0.0),
     "Foot_R": (0.10, 0.09, 0.0),
 }
 
 # Local rest rotation (glTF x, y, z, w) per joint, relative to its parent; identity
-# when absent. Copied from the private rig's joints, rounded.
+# when absent. Copied from the private rig's joints, rounded. `Shin_*` (the knee) rests
+# in line with its thigh, so it needs none.
 REST = {
     "Shoulder_L": (-0.5, 0.5, 0.5, 0.5),
     "Arm_L": (-0.4972, 0.4972, -0.4467, 0.5533),
@@ -314,7 +318,8 @@ for _side, _sx in (("L", -1.0), ("R", 1.0)):
         ("Arm_" + _side, (_sx * 0.215, 1.30, 0.0), (0.10, 0.30, 0.11)),
         ("Forearm_" + _side, (_sx * 0.24, 1.03, 0.0), (0.08, 0.26, 0.09)),
         ("Hand_" + _side, (_sx * 0.255, 0.845, 0.0), (0.06, 0.11, 0.09)),
-        ("Leg_" + _side, (_sx * 0.10, 0.50, 0.0), (0.14, 0.84, 0.15)),
+        ("Leg_" + _side, (_sx * 0.10, 0.71, 0.0), (0.14, 0.44, 0.15)),
+        ("Shin_" + _side, (_sx * 0.10, 0.29, 0.0), (0.12, 0.42, 0.13)),
         ("Foot_" + _side, (_sx * 0.10, 0.04, -0.05), (0.11, 0.08, 0.23)),
     ]
 
@@ -323,13 +328,21 @@ for _side, _sx in (("L", -1.0), ("R", 1.0)):
 # joint rotations, so they read the same whatever the rests are). A hanging limb swings forward (-Z) with +X; an
 # upright bone leans back with +X; an arm lifts sideways with -Z (left) / +Z (right).
 # walk and run share a stride phase: left leg forward at t=0, right leg forward at half.
+# Knees (`Shin_*`) bend with -X (the foot swings back) and fold most while the leg swings
+# through under the body; elbows (`Forearm_*`) bend with +X and fold most as the arm
+# swings forward.
 
 
-def _stride(leg: float, arm: float) -> dict:
+def _stride(leg: float, arm: float, knee: list, elbow: list) -> dict:
+    """One stride over five keys. `knee` and `elbow` are the left limb's bend per key; the
+    right limb plays them half a stride later."""
     phase = [1.0, 0.0, -1.0, 0.0, 1.0]
+    half = lambda keys: keys[2:4] + keys[0:3]
     return {
         "Leg_L": [(leg * p, 0, 0) for p in phase], "Leg_R": [(-leg * p, 0, 0) for p in phase],
         "Arm_L": [(-arm * p, 0, 0) for p in phase], "Arm_R": [(arm * p, 0, 0) for p in phase],
+        "Shin_L": [(-k, 0, 0) for k in knee], "Shin_R": [(-k, 0, 0) for k in half(knee)],
+        "Forearm_L": [(e, 0, 0) for e in elbow], "Forearm_R": [(e, 0, 0) for e in half(elbow)],
     }
 
 
@@ -337,16 +350,19 @@ PLAYER_CLIPS = [
     ("idle", [0.0, 1.0, 2.0], {
         "Chest": [(0, 0, 0), (-2, 0, 0), (0, 0, 0)], "Head": [(0, 0, 0), (2, 0, 0), (0, 0, 0)],
         "Arm_L": [(0, 0, -3), (0, 0, -5), (0, 0, -3)], "Arm_R": [(0, 0, 3), (0, 0, 5), (0, 0, 3)]}),
-    ("walk", [0.0, 0.25, 0.5, 0.75, 1.0], dict(_stride(25, 20),
-        Forearm_L=[(15, 0, 0)] * 5, Forearm_R=[(15, 0, 0)] * 5)),
-    ("run", [0.0, 0.15, 0.3, 0.45, 0.6], dict(_stride(45, 50),
-        Spine=[(-8, 0, 0)] * 5, Forearm_L=[(70, 0, 0)] * 5, Forearm_R=[(70, 0, 0)] * 5)),
+    ("walk", [0.0, 0.25, 0.5, 0.75, 1.0], _stride(25, 20, [5, 12, 20, 55, 5], [10, 20, 35, 20, 10])),
+    ("run", [0.0, 0.15, 0.3, 0.45, 0.6], dict(_stride(45, 50, [15, 35, 30, 100, 15], [60, 75, 90, 75, 60]),
+        Spine=[(-8, 0, 0)] * 5)),
     ("fall", [0.0, 0.4, 0.8], {
         "Arm_L": [(0, 0, -70), (0, 0, -90), (0, 0, -70)], "Arm_R": [(0, 0, 70), (0, 0, 90), (0, 0, 70)],
-        "Leg_L": [(20, 0, 0), (8, 0, 0), (20, 0, 0)], "Leg_R": [(-10, 0, 0), (-4, 0, 0), (-10, 0, 0)]}),
+        "Forearm_L": [(20, 0, 0), (30, 0, 0), (20, 0, 0)], "Forearm_R": [(20, 0, 0), (30, 0, 0), (20, 0, 0)],
+        "Leg_L": [(20, 0, 0), (8, 0, 0), (20, 0, 0)], "Leg_R": [(-10, 0, 0), (-4, 0, 0), (-10, 0, 0)],
+        "Shin_L": [(-30, 0, 0), (-15, 0, 0), (-30, 0, 0)], "Shin_R": [(-15, 0, 0), (-8, 0, 0), (-15, 0, 0)]}),
     ("land", [0.0, 0.12, 0.25], {
         "Spine": [(-20, 0, 0), (-10, 0, 0), (0, 0, 0)],
-        "Arm_L": [(25, 0, 0), (12, 0, 0), (0, 0, 0)], "Arm_R": [(25, 0, 0), (12, 0, 0), (0, 0, 0)]}),
+        "Arm_L": [(25, 0, 0), (12, 0, 0), (0, 0, 0)], "Arm_R": [(25, 0, 0), (12, 0, 0), (0, 0, 0)],
+        "Leg_L": [(12, 0, 0), (6, 0, 0), (0, 0, 0)], "Leg_R": [(12, 0, 0), (6, 0, 0), (0, 0, 0)],
+        "Shin_L": [(-24, 0, 0), (-12, 0, 0), (0, 0, 0)], "Shin_R": [(-24, 0, 0), (-12, 0, 0), (0, 0, 0)]}),
     ("attack", [0.0, 0.15, 0.3, 0.5], {
         "Chest": [(0, 0, 0), (0, 15, 0), (-8, -15, 0), (0, 0, 0)],
         "Arm_R": [(0, 0, 0), (160, 0, 0), (40, 0, 0), (0, 0, 0)],

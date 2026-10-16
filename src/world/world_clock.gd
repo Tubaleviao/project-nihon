@@ -218,6 +218,7 @@ static func hud_text(t_days: float, year_days: float, lat_deg: float) -> String:
 	var minutes_total: int = int(floorf(phase * 1440.0))
 	var yf := year_fraction(t_days, year_days)
 	var s := season_of(lat_deg, yf)
+	@warning_ignore("integer_division")
 	return "Day %d · %02d:%02d · %s" % [day_of_year(t_days, year_days),
 			minutes_total / 60, minutes_total % 60, s.capitalize()]
 

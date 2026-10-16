@@ -111,8 +111,8 @@ Root
     │       │   └── Head
     │       ├── Shoulder_L → Arm_L → Forearm_L → Hand_L
     │       └── Shoulder_R → Arm_R → Forearm_R → Hand_R
-    ├── Leg_L → Foot_L
-    └── Leg_R → Foot_R
+    ├── Leg_L → Shin_L → Foot_L
+    └── Leg_R → Shin_R → Foot_R
 ```
 
 ---

@@ -154,8 +154,8 @@ static func tile_center_chunk(f: int, level: int, i: int, j: int) -> Vector2i:
 	return TerrainSlice.wrap_chunk(Vector2i(floori(p[0]), floori(p[1])))
 
 ## Tile level for `px_per_unit` pixels per face half-side: tiles of at least TILE_PX pixels.
-static func level_for(px_per_unit: float) -> int:
-	var finest_px := 2.0 * px_per_unit / float(face_cells())
+static func level_for(px_unit: float) -> int:
+	var finest_px := 2.0 * px_unit / float(face_cells())
 	if finest_px >= TILE_PX:
 		return 0
 	return clampi(ceili(log(TILE_PX / maxf(finest_px, 0.000001)) / log(2.0)), 0, max_level())

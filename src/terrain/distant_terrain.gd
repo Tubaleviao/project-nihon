@@ -305,7 +305,7 @@ func _enter_tree() -> void:
 ## its direct evaluation. Farther out the lattice is coarse (a cell is 10 × the window's chunk
 ## width / 64 across) and the detail is sampled, not filtered: the ring is a backdrop, not ground.
 ## Only the LOCAL player's window is cut; a remote peer's window lies under the ring's sheet.
-static func build_mesh(seed_v: int, w: float, ring_center: Vector2, half_m: float, window_half_m: float, window_center: Vector2, control: BuildControl = null, snap: Dictionary = {}) -> ArrayMesh:
+static func build_mesh(seed_v: int, w: float, ring_center: Vector2, half_m: float, win_half_m: float, window_center: Vector2, control: BuildControl = null, snap: Dictionary = {}) -> ArrayMesh:
 	var cell := half_m * 2.0 / float(GRID)
 	var sea := WorldShape.sea_level()
 	var noise := FastNoiseLite.new()   # this build's own: FastNoiseLite is not shared across threads
@@ -325,10 +325,10 @@ static func build_mesh(seed_v: int, w: float, ring_center: Vector2, half_m: floa
 	var colors := PackedColorArray()
 	var normals := PackedVector3Array()
 	var indices := PackedInt32Array()
-	var wl := window_center.x - window_half_m
-	var wr := window_center.x + window_half_m
-	var wb := window_center.y - window_half_m
-	var wt := window_center.y + window_half_m
+	var wl := window_center.x - win_half_m
+	var wr := window_center.x + win_half_m
+	var wb := window_center.y - win_half_m
+	var wt := window_center.y + win_half_m
 	for j in GRID:
 		if control != null:
 			if control.aborted:
@@ -358,7 +358,7 @@ static func build_mesh(seed_v: int, w: float, ring_center: Vector2, half_m: floa
 				_add_strip(vertices, colors, normals, indices, noise, seed_v, w, snap, sea, mx0, z0, mx1, wb, false, true)
 			if z1 > wt:
 				_add_strip(vertices, colors, normals, indices, noise, seed_v, w, snap, sea, mx0, wt, mx1, z1, false, false)
-	_add_skirt(vertices, colors, normals, indices, noise, seed_v, w, snap, sea, window_center, window_half_m)
+	_add_skirt(vertices, colors, normals, indices, noise, seed_v, w, snap, sea, window_center, win_half_m)
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = vertices
@@ -444,13 +444,13 @@ static func _add_quad(vertices: PackedVector3Array, colors: PackedColorArray, no
 ## chunks' outer wall.
 static func _add_skirt(vertices: PackedVector3Array, colors: PackedColorArray, normals: PackedVector3Array,
 		indices: PackedInt32Array, noise: FastNoiseLite, seed_v: int, w: float, snap: Dictionary, sea: float,
-		window_center: Vector2, window_half_m: float) -> void:
-	var steps := maxi(int(ceil(window_half_m)), 1)   # ~2 m per step along each 2 * window_half_m side
+		window_center: Vector2, win_half_m: float) -> void:
+	var steps := maxi(int(ceil(win_half_m)), 1)   # ~2 m per step along each 2 * window_half_m side
 	var corners := [
-		Vector2(window_center.x - window_half_m, window_center.y - window_half_m),
-		Vector2(window_center.x + window_half_m, window_center.y - window_half_m),
-		Vector2(window_center.x + window_half_m, window_center.y + window_half_m),
-		Vector2(window_center.x - window_half_m, window_center.y + window_half_m),
+		Vector2(window_center.x - win_half_m, window_center.y - win_half_m),
+		Vector2(window_center.x + win_half_m, window_center.y - win_half_m),
+		Vector2(window_center.x + win_half_m, window_center.y + win_half_m),
+		Vector2(window_center.x - win_half_m, window_center.y + win_half_m),
 	]
 	for side in 4:
 		var a: Vector2 = corners[side]

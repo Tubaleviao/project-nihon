@@ -93,6 +93,7 @@ static func find_near(world_seed: int, player_id: String, center: Vector2, radiu
 		if not UNSAFE_BIOMES.has(b) and b != "Beach":
 			safe.append(b)
 	var rng := _rng(player_id, 2)
+	@warning_ignore("integer_division")
 	for _i in MAX_ATTEMPTS / 4:
 		var d := sqrt(rng.randf()) * radius
 		var a := rng.randf() * TAU

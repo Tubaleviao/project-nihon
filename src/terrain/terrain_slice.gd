@@ -186,12 +186,12 @@ static func detail_of(n: FastNoiseLite, x: float, z: float) -> float:
 ## off the world record (authoritative boot) or out of the host's join snapshot
 ## (client) BEFORE any chunk is requested, so every height in the session comes
 ## from the same noise field.
-func set_world_seed(seed: int) -> void:
-	_world_seed = seed
+func set_world_seed(seed_v: int) -> void:
+	_world_seed = seed_v
 	_corner_mutex.lock()
 	_corner_caches.clear()
 	_corner_mutex.unlock()
-	_noise.seed = seed
+	_noise.seed = seed_v
 
 ## The seed this world is generating from (see set_world_seed).
 func get_world_seed() -> int:
@@ -362,6 +362,7 @@ static func circumference_chunks() -> int:
 
 ## Chunks from the equator to a pole (a quarter of the circumference).
 static func pole_chunks() -> int:
+	@warning_ignore("integer_division")
 	return circumference_chunks() / 4
 
 ## |chunk z| of the polar line (the fabric's `polarLatitude`): rows past it lend no biome to their
@@ -387,6 +388,7 @@ static func latitude_of(chunk_z: int) -> float:
 ## Longitude in degrees, in [-180, 180), of the west edge of chunk column `chunk_x`.
 static func longitude_of(chunk_x: int) -> float:
 	var c := circumference_chunks()
+	@warning_ignore("integer_division")
 	return float(posmod(chunk_x + c / 2, c) - c / 2) * 360.0 / float(c)
 
 ## Latitude in degrees at a world Z (metres).
@@ -457,6 +459,7 @@ static func polar_ground(seed_v: int, h: float, x: float, z: float, w: float) ->
 static func pole_field(seed_v: int, from_pole: float, north: bool, w: float) -> float:
 	var cells := maxi(1, roundi(w / POLE_DRIFT_CELL_M))
 	var salt := 71 if north else 72
+	@warning_ignore("integer_division")
 	var drift := WorldShape._noise(seed_v, 0.0, from_pole, w, cells, salt) * 0.7 \
 		+ WorldShape._noise(seed_v, 0.0, from_pole, w, cells / 6, salt + 2) * 0.3
 	return WorldShape.sea_level() + ICE_SHELF_M + POLE_DRIFT_M * drift
@@ -479,9 +482,11 @@ static func fold_world_pos(wp: Dictionary, margin: int = FOLD_MARGIN_CHUNKS) -> 
 	if chunk.y >= pole + margin or chunk.y < -pole - margin:
 		# Mirror Z about the pole edge (+pole or -pole rows): row r, local l -> row 2p - r - 1, 32 - l.
 		var p := pole if chunk.y > 0 else -pole
+		@warning_ignore("integer_division")
 		chunk = Vector2i(chunk.x + c / 2, 2 * p - chunk.y - 1)
 		local = Vector3(local.x, local.y, CHUNK_METERS - local.z)
 		turned = true
+	@warning_ignore("integer_division")
 	var folded := turned or chunk.x >= c / 2 + margin or chunk.x < -c / 2 - margin
 	if not folded:
 		return {"pos": wp, "folded": false, "turned": false}

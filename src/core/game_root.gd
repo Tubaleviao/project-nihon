@@ -662,7 +662,7 @@ var _quit_after_boot: bool = false
 ## Static and argument-driven on purpose: the rule is a pure predicate the suite
 ## can assert directly, rather than something that can only be observed by booting
 ## twice. See `_test_boot_suite_is_gated`.
-static func should_run_tests(args: Array, is_debug_build: bool) -> bool:
+static func should_run_tests(args: Array, _is_debug_build: bool) -> bool:
 	return RUN_TESTS_ARG in args
 
 ## Phase 42 review pass 3 — is this boot asked to quit itself once its world boot is done?
@@ -2667,30 +2667,30 @@ func _apply_loaded_creature_state() -> void:
 # Bus listeners
 # ---------------------------------------------------------------------------
 
-func _on_chunk_ready(chunk_pos: Vector2i, heightmap: Array) -> void:
+func _on_chunk_ready(_chunk_pos: Vector2i, _heightmap: Array) -> void:
 	pass
 
-func _on_combat_resolved(result: Dictionary) -> void:
+func _on_combat_resolved(_result: Dictionary) -> void:
 	pass
 
 ## Drive the player avatar's attack animation whenever the player attacks.
-func _on_combat_round_requested(attacker_id: String, defender_id: String) -> void:
+func _on_combat_round_requested(attacker_id: String, _defender_id: String) -> void:
 	if attacker_id == "player" and _character.get_player_character() != "":
 		GameBus.character_attack_requested.emit(_character.get_player_character())
 
-func _on_creature_died(entity_id: String, position: Vector3, killer_id: String) -> void:
+func _on_creature_died(_entity_id: String, _position: Vector3, _killer_id: String) -> void:
 	pass
 
-func _on_creature_spawned(instance_id: String, creature_id: String, position: Vector3) -> void:
+func _on_creature_spawned(_instance_id: String, _creature_id: String, _position: Vector3) -> void:
 	pass
 
-func _on_loot_dropped(pickup_id: String, item_id: String, position: Vector3, quantity: int) -> void:
+func _on_loot_dropped(_pickup_id: String, _item_id: String, _position: Vector3, _quantity: int) -> void:
 	pass
 
-func _on_item_picked_up(item_id: String, quantity: int) -> void:
+func _on_item_picked_up(_item_id: String, _quantity: int) -> void:
 	pass
 
-func _on_player_state_changed(payload: Dictionary) -> void:
+func _on_player_state_changed(_payload: Dictionary) -> void:
 	pass   # logged by PlayerSlice; suppress repetitive output here
 
 ## A refused pickup or mining yield used to be silent, which read as "picking up is broken".
@@ -2706,7 +2706,7 @@ func _on_inventory_full() -> void:
 	_pack_full_notice_msec = now
 	GameBus.system_message.emit("chat.pack_full", [], _registry.local_player_id)
 
-func _on_character_spawned(instance_id: String, skeleton_id: String, position: Vector3) -> void:
+func _on_character_spawned(_instance_id: String, _skeleton_id: String, _position: Vector3) -> void:
 	pass
 
 ## Phase 34 — a craft the host resolved for a REMOTE peer changed that peer's own
@@ -2872,13 +2872,13 @@ func _on_own_state_synced(data: Dictionary) -> void:
 		var res: Dictionary = data["waystone_result"]
 		GameBus.waystone_travel_resolved.emit(_registry.local_player_id, bool(res.get("ok", false)), str(res.get("reason", "")).left(32))
 
-func _on_trade_completed(trade: Dictionary) -> void:
+func _on_trade_completed(_completed: Dictionary) -> void:
 	pass
 
-func _on_block_mined(material: String, quantity: int, position: Vector3) -> void:
+func _on_block_mined(_material: String, _quantity: int, _position: Vector3) -> void:
 	pass
 
-func _on_block_placed(material: String, position: Vector3) -> void:
+func _on_block_placed(_material: String, _position: Vector3) -> void:
 	pass
 
 ## Phase 37/38 — a combat round landed on a player. The damage is applied by the machine
@@ -3036,8 +3036,8 @@ func _on_knockback_requested(target_id: String, attacker_id: String, tiles: int)
 		if peer == 0 or not _networking.has_last_known_state(peer):
 			return   # a peer that never reported has no position to push from (it reads as the origin)
 		pos = _networking.get_last_known_state(peer)
-	var walkable := func(spot: Vector3) -> bool:
-		return _voxel.get_voxel_height_at(Vector2(spot.x, spot.z)) <= spot.y + KNOCKBACK_STEP_UP
+	var walkable := func(probe: Vector3) -> bool:
+		return _voxel.get_voxel_height_at(Vector2(probe.x, probe.z)) <= probe.y + KNOCKBACK_STEP_UP
 	var spot := StatusEffects.knockback_target(pos, src, tiles, TerrainSlice.TILE_SIZE, walkable)
 	if spot == pos:
 		return
@@ -3047,7 +3047,7 @@ func _on_knockback_requested(target_id: String, attacker_id: String, tiles: int)
 	else:
 		_networking.send_teleport(peer, WorldPos.from_world(spot.x, spot.y, spot.z))
 
-func _on_player_died(position: Vector3, killer_id: String) -> void:
+func _on_player_died(_position: Vector3, _killer_id: String) -> void:
 	if _character.get_player_character() != "":
 		GameBus.character_death_requested.emit(_character.get_player_character())
 
@@ -3062,7 +3062,7 @@ func _on_player_respawned(_position: Vector3) -> void:
 		_player.place_at_world_pos(_player.respawn_world_pos)
 	_lift_after_respawn()
 
-func _on_save_completed(slot: int) -> void:
+func _on_save_completed(_slot: int) -> void:
 	# NOTHING to reset here. The legacy slot file is a single-file sample (the
 	# boot/client record), not the authoritative world record, so writing it does
 	# NOT make the chunk manifests durable — only an authoritative world save does,
@@ -3072,7 +3072,7 @@ func _on_save_completed(slot: int) -> void:
 	# slot write from the next world save.
 	pass
 
-func _on_load_completed(slot: int, data: Dictionary) -> void:
+func _on_load_completed(_slot: int, data: Dictionary) -> void:
 	if data.has("inventory") and data["inventory"] is Dictionary:
 		# A MISSING `inventory_durability` key is the intentional old-save signal:
 		# saves written before per-instance durability carried no per-instance
@@ -3112,9 +3112,9 @@ func _on_load_completed(slot: int, data: Dictionary) -> void:
 			# Backward compat: older saves stored only the decisions log.
 			_proposal.apply_decisions_log(gov)
 	if data.has("trade"):
-		var tr: Variant = data["trade"]
-		if tr is Dictionary:
-			_trade.apply_trade_data(tr)
+		var saved_trade: Variant = data["trade"]
+		if saved_trade is Dictionary:
+			_trade.apply_trade_data(saved_trade)
 
 # ---------------------------------------------------------------------------
 # GameData smoke test

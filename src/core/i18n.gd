@@ -42,13 +42,13 @@ static func parse_csv(path: String) -> Dictionary:
 	if f == null:
 		return out
 	var header := f.get_csv_line()
-	var locales: Array = []
+	var found: Array = []
 	for i in range(1, header.size()):
 		var loc := header[i].strip_edges()
 		if loc != "":
-			locales.append(loc)
+			found.append(loc)
 			out["catalog"][loc] = {}
-	out["locales"] = locales
+	out["locales"] = found
 	var seen: Dictionary = {}
 	while not f.eof_reached():
 		var row := f.get_csv_line()
@@ -59,11 +59,11 @@ static func parse_csv(path: String) -> Dictionary:
 		if seen.has(key):
 			out["dupes"].append(key)
 		seen[key] = true
-		for i in locales.size():
+		for i in found.size():
 			var cell: String = row[i + 1] if i + 1 < row.size() else ""
 			if cell.strip_edges() == "":
-				out["empty"].append([key, locales[i]])
-			out["catalog"][locales[i]][key] = cell
+				out["empty"].append([key, found[i]])
+			out["catalog"][found[i]][key] = cell
 	return out
 
 static func locales() -> Array:

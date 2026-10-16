@@ -41,7 +41,7 @@ func _ready() -> void:
 		_despawn_ms = float(res.get("despawnSeconds")) * 1000.0
 	GameBus.creature_died.connect(_on_creature_died)
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	_tick_despawn()
 
 ## Return all active pickups within radius of pos.

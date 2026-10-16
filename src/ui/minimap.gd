@@ -321,12 +321,12 @@ func remove_waypoint(index: int) -> void:
 
 ## Where waypoint `index` sits on a minimap of `size`: `MapMath.clamp_home` of its offset from the
 ## player in chunks, so a far one sits on the edge with an arrow angle, like home.
-func waypoint_marker(index: int, size: Vector2) -> Dictionary:
+func waypoint_marker(index: int, view_size: Vector2) -> Dictionary:
 	var d := waypoint_offset_m(index)
 	if d.x >= INF:
 		return {}
-	var cell_px := minf(size.x, size.y) / _chunks_across
-	return MapMath.clamp_home(d / CHUNK_SIZE * cell_px, size * 0.5, d.length(), 6.0)
+	var cell_px := minf(view_size.x, view_size.y) / _chunks_across
+	return MapMath.clamp_home(d / CHUNK_SIZE * cell_px, view_size * 0.5, d.length(), 6.0)
 
 ## Metres from the player to waypoint `index` (x east, y world +z), the short way round the planet;
 ## (INF, INF) when there is no such waypoint or the player is not placed yet.
@@ -426,15 +426,15 @@ func _unhandled_input(event: InputEvent) -> void:
 # ---------------------------------------------------------------------------
 
 func _draw() -> void:
-	var size := get_rect().size
-	if size.x <= 0.0 or size.y <= 0.0:
+	var view_size := get_rect().size
+	if view_size.x <= 0.0 or view_size.y <= 0.0:
 		return
 	if _player_chunk == Vector2i(-9999, -9999):
 		return
 
-	var cell_px := minf(size.x, size.y) / _chunks_across
+	var cell_px := minf(view_size.x, view_size.y) / _chunks_across
 
-	for item in _view_rects(size):
+	for item in _view_rects(view_size):
 		if item[2]:
 			draw_rect(item[0], item[1], true)
 		else:
@@ -442,24 +442,24 @@ func _draw() -> void:
 
 	# The clock and coordinates sit below the map, not over it.
 	if clock_text != "":
-		_draw_outlined(Vector2(4.0, size.y + 14.0), clock_text, Color(1, 0.95, 0.7, 0.95))
+		_draw_outlined(Vector2(4.0, view_size.y + 14.0), clock_text, Color(1, 0.95, 0.7, 0.95))
 
 	# X, Y and altitude.
 	if player_slice != null and player_slice.has_method("get_position"):
-		_draw_outlined(Vector2(4.0, size.y + 27.0), TerrainSlice.where_text(player_slice.get_position()), Color(1, 1, 1, 0.95))
+		_draw_outlined(Vector2(4.0, view_size.y + 27.0), TerrainSlice.where_text(player_slice.get_position()), Color(1, 1, 1, 0.95))
 
 	# Waypoints sit where they are, or on the edge toward them like home.
 	for i in _waypoints.size():
-		var m := waypoint_marker(i, size)
+		var m := waypoint_marker(i, view_size)
 		if m.is_empty():
 			continue
-		var wp: Vector2 = Vector2(size.x * 0.5, size.y * 0.5) + m["pos"]
+		var wp: Vector2 = Vector2(view_size.x * 0.5, view_size.y * 0.5) + m["pos"]
 		draw_colored_polygon(PackedVector2Array([wp + Vector2(0, -4), wp + Vector2(4, 0), wp + Vector2(0, 4), wp + Vector2(-4, 0)]), Color(0.4, 0.9, 1.0))
 
 	# Player arrow — points in the player's facing direction.
 	var dir := _facing_screen_dir(_facing)
 	var angle := atan2(dir.y, dir.x)
-	var center := Vector2(size.x * 0.5, size.y * 0.5)
+	var center := Vector2(view_size.x * 0.5, view_size.y * 0.5)
 	var arrow_len := cell_px * 0.55
 	var half_w := arrow_len * 0.45
 	var tip := center + Vector2(cos(angle), sin(angle)) * arrow_len
@@ -497,13 +497,13 @@ var _biome_cache_seed: int = 0
 
 ## Everything the visible window draws, as [rect, colour, filled, width] items in draw order.
 ## Pure, so the suite can count them (`draw_*` only works inside `_draw`).
-func _view_rects(size: Vector2) -> Array:
+func _view_rects(view_size: Vector2) -> Array:
 	var out: Array = []
 	if _player_chunk == Vector2i(-9999, -9999):
 		return out
 	_check_biome_table()
 	_check_seed()
-	var cell_px := minf(size.x, size.y) / _chunks_across
+	var cell_px := minf(view_size.x, view_size.y) / _chunks_across
 	var half := _chunks_across / 2.0
 	var min_cx := floori(_player_chunk.x - half)
 	var max_cx := ceili(_player_chunk.x + half)
@@ -516,8 +516,8 @@ func _view_rects(size: Vector2) -> Array:
 			var c := Vector2i(cx, cz)
 			if not _revealed.has(c):
 				continue
-			var rx := size.x * 0.5 + (cx - _player_chunk.x) * cell_px - cell_px * 0.5
-			var ry := size.y * 0.5 + (cz - _player_chunk.y) * cell_px - cell_px * 0.5
+			var rx := view_size.x * 0.5 + (cx - _player_chunk.x) * cell_px - cell_px * 0.5
+			var ry := view_size.y * 0.5 + (cz - _player_chunk.y) * cell_px - cell_px * 0.5
 			var rect := Rect2(rx, ry, cell_px, cell_px)
 			_chunk_cell_rects(c, rect, out)
 			if cell_px / CELLS_PER_CHUNK >= MIN_CELL_PX:
