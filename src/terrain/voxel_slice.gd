@@ -104,6 +104,7 @@ const BiomeBlend := preload("res://src/terrain/biome_blend.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
+const Settle := preload("res://src/terrain/settle.gd")
 const RegionStore := preload("res://src/persistence/region_store.gd")
 
 ## CHUNK_SIZE is defined once on TerrainSlice and accessed via terrain_slice.CHUNK_SIZE.
@@ -205,6 +206,13 @@ const GUESS_CACHE_MAX := 48
 ## column's runs are the tile's
 ## natural run with this list replayed over it, so an edit is a description of
 ## what the player DID, not a replacement of what the ground IS.
+## Phase 137 — host only: columns whose loose ground may have lost its support, settled a few per tick.
+var _settle := Settle.SettleQueue.new()
+## Columns `settle_tick` processes per call; a bigger collapse spreads over several ticks.
+const SETTLE_BUDGET := 32
+## Settle edits applied so far (host); a test reads it, nothing else does.
+var settle_edits: int = 0
+
 var _edits: Dictionary = {}
 
 ## Phase 42 review pass 10 — `_edits` INDEXED BY CHUNK, so a build's gather reads only the
@@ -406,6 +414,10 @@ func _ready() -> void:
 	GameBus.block_cycle_material_requested.connect(_on_cycle_requested)
 	GameBus.block_changed.connect(_on_block_changed)
 
+func _process(_delta: float) -> void:
+	if is_authoritative and not _settle.is_empty():
+		settle_tick()
+
 ## Build (or rebuild) the mesh and collision for one chunk.
 ##
 ## Phase 42 — `arrays` is the optional result of a `build_chunk_arrays()` call made
@@ -430,6 +442,7 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 
 	# Remember the base heightmap so edits can be reapplied on rebuild.
 	_heightmaps[key] = heightmap
+	_settle.release_chunk(key)   # Phase 137: columns parked until this chunk loaded settle now
 	if _guess_heightmaps.has(key):
 		if _guess_heightmaps[key] != heightmap:
 			Diag.warn("VoxelSlice: chunk %s was built from a heightmap that differs from the guess its neighbours were built against; seams may show" % key)
@@ -1492,6 +1505,7 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 		vein = yielded["vein"]
 	_append_edit(tile, { "op": "remove", "bottom": span["bottom"], "top": span["top"] })
 	_mark_dirty(tile)
+	_settle_note(tile)
 	if not vein.is_empty():
 		_record_depletion(vein, quantity)
 		_mark_dirty(vein["anchor"])
@@ -1639,6 +1653,7 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 
 	_append_edit(tile, { "op": "add", "bottom": span["bottom"], "top": span["top"], "material": chosen })
 	_mark_dirty(tile)
+	_settle_note(tile)
 	_rebuild_chunk_at_tile(tile)
 	_push_inventory(player_id)
 
@@ -2935,6 +2950,8 @@ func _normalise_ops(ops: Array) -> Array:
 ## Dirty-chunk tracking is host-only and done by the callers
 ## (mine_block/place_block), never here.
 func _apply_edit(action: String, position: Vector3, normal: Vector3, material: String) -> Dictionary:
+	if action == "settle":
+		return _apply_settle(position, normal, material)
 	var r := _resolve_edit_tile(action, position, normal)
 	var tile: Vector2i = r["tile"]
 	var xz: Vector2 = r["xz"]
@@ -2973,6 +2990,79 @@ func _apply_edit(action: String, position: Vector3, normal: Vector3, material: S
 			"material": material,
 		}
 	return { "applied": false }
+
+# --- Phase 137: loose ground settles ---
+
+## Host only: a mine or place at `tile` may leave loose ground over air in it or a neighbour. A client
+## never settles on its own — it applies the host's `settle` changes — so it queues nothing.
+func _settle_note(tile: Vector2i) -> void:
+	if is_authoritative:
+		_settle.push_edit(tile)
+
+## True when the fabric marks `material` granular (`granular` on the generated material resource).
+static func is_granular(material: String) -> bool:
+	var res: Variant = GameData.MATERIALS.get(material)
+	return res != null and bool(res.get("granular"))
+
+## Columns waiting to settle, parked ones included (a test reads it).
+func settle_pending() -> int:
+	return _settle.size() + _settle.pending_size()
+
+## Settle up to `budget` queued columns; returns how many were processed. A column whose chunk is not
+## loaded is parked until it loads (`build_chunk`), not dropped. Host only.
+func settle_tick(budget: int = SETTLE_BUDGET) -> int:
+	if not is_authoritative:
+		return 0
+	var done := 0
+	for tile in _settle.take(budget):
+		var ckey := _chunk_key(_tile_to_chunk(tile))
+		if not _heightmaps.has(ckey):
+			_settle.defer(ckey, tile)
+			continue
+		done += 1
+		_settle_tile(tile)
+	return done
+
+## Drop the loose runs of one column onto their support through the ordinary edit path. A settle edit
+## grants no item and costs no material, and it queues nothing (a vertical fall touches no neighbour).
+## Each fall goes to clients as a `settle` change: position = the old span's bottom (tile centre in XZ),
+## normal = (old top, new bottom, 0).
+func _settle_tile(tile: Vector2i) -> bool:
+	var falls := Settle.moves(get_runs_at_tile(tile), is_granular, BEDROCK_DEPTH)
+	if falls.is_empty():
+		return false
+	var xz := Vector2((tile.x + 0.5) * TILE_SIZE, (tile.y + 0.5) * TILE_SIZE)
+	for f in falls:
+		var from_bottom: float = f["from_bottom"]
+		var from_top: float = f["from_top"]
+		var to_bottom: float = f["to_bottom"]
+		_append_edit(tile, { "op": "remove", "bottom": from_bottom, "top": from_top })
+		_append_edit(tile, { "op": "add", "bottom": to_bottom, "top": to_bottom + (from_top - from_bottom), "material": f["material"] })
+	settle_edits += falls.size()
+	_mark_dirty(tile)
+	_rebuild_chunk_at_tile(tile)
+	for f in falls:
+		var from_bottom: float = f["from_bottom"]
+		var from_top: float = f["from_top"]
+		if from_bottom - float(f["to_bottom"]) > Settle.TREE_CLEAR_DROP_M:
+			GameBus.block_edit_resolved.emit(tile, from_top)   # a tree on the fallen ground goes (Phase 116 path)
+		GameBus.block_changed.emit("settle", Vector3(xz.x, from_bottom, xz.y), Vector3(from_top, float(f["to_bottom"]), 0.0), str(f["material"]))
+	return true
+
+## Client side of a host `settle` change (see `_settle_tile`). The span must be well formed and inside
+## the world; anything else is ignored.
+func _apply_settle(position: Vector3, normal: Vector3, material: String) -> Dictionary:
+	var from_bottom := position.y
+	var from_top := normal.x
+	var to_bottom := normal.y
+	var height := from_top - from_bottom
+	if height <= 0.0 or to_bottom >= from_bottom or to_bottom < BEDROCK_DEPTH or from_top > MAX_HEIGHT or material == "":
+		return { "applied": false }
+	var tile := _world_to_tile(Vector2(position.x, position.z))
+	_append_edit(tile, { "op": "remove", "bottom": from_bottom, "top": from_top })
+	_append_edit(tile, { "op": "add", "bottom": to_bottom, "top": to_bottom + height, "material": material })
+	_rebuild_chunk_at_tile(tile)
+	return { "applied": true, "tile": tile, "new_h": _column_top_at_tile(tile), "pos": position, "material": material }
 
 # --- Coordinate helpers ---
 

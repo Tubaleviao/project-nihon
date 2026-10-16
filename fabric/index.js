@@ -36,6 +36,9 @@ combat.validateCombat(combat.STATUS_EFFECTS, combat.creatureOnHit(creatures), Ob
 // Phase 136 — every creature's ground-movement fields must be in range; throwing fails `npm run validate`.
 require('./world/creatures/shared').validatePathFields(creatures)
 
+// Phase 137 — every biome's `surfaceMaterial` must declare whether it is `granular` (settles when undermined).
+require('./world/materials/granular').validateGranular(require('./world/biomes'), materials)
+
 module.exports = defineFabric({
   meta: {
     name:        'project-nihon',

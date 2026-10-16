@@ -8,3 +8,4 @@ extends Resource
 @export var hardness: float
 @export var depthBand: Dictionary
 @export var leyGated: bool
+@export var granular: bool

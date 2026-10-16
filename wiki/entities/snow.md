@@ -19,4 +19,5 @@ Packed snow that caps alpine peaks and the polar ground. Digging it yields Soil.
 | hardness | decimal | Mohs equivalent 1–10 |
 | depthBand | json | Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. A surface cover, never a buried vein. |
 | leyGated | boolean | True when a vein of this material forms only near a ley line |
+| granular | boolean | True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put |
 

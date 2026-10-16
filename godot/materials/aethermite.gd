@@ -23,3 +23,4 @@ enum State {
 @export var magicAffinity: float
 @export var depthBand: Dictionary
 @export var leyGated: bool
+@export var granular: bool

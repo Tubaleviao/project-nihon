@@ -16,4 +16,5 @@ Loose earth under a biome's cover, down to its `topsoilDepth`. It is what mining
 | `hardness` | decimal | yes | Mohs equivalent 1–10 |
 | `depthBand` | json | yes | Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. A topsoil layer, never a buried vein. |
 | `leyGated` | boolean | yes | True when a vein of this material forms only near a ley line |
+| `granular` | boolean | yes | True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put |
 

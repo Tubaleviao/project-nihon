@@ -157,7 +157,7 @@ issue number where the criterion used to be.
 | 134 | A bot plays: playtest report and downloadable builds | In review | below |
 | 135 | A WAN profile: latency, loss and bandwidth in the two-client harness | In review | below |
 | 136 | Creatures walk on the ground and around obstacles | In review | below |
-| 137 | Loose ground settles: sand and soil fall when undermined | Planned | below |
+| 137 | Loose ground settles: sand and soil fall when undermined | In review | below |
 | 138 | Trees, generation records and persistence cleanup sweep | Planned | below |
 | 139 | Settlements in the fabric: founding, membership and shared storage | Planned | below |
 | 140 | Settlements at runtime: a hearth, a claim and a shared stockpile | Planned | below |
@@ -479,19 +479,19 @@ and the pass is bounded per tick so a large collapse spreads over several ticks.
   and `WORLDGEN_VERSION` are unchanged.
 
 **Acceptance criteria:**
-- [ ] `npm run validate` and `npm run check-drift` green; a biome whose `surfaceMaterial` lacks
+- [x] `npm run validate` and `npm run check-drift` green; a biome whose `surfaceMaterial` lacks
   `granular` fails validation.
-- [ ] Suite: `settle_column` keeps per-material volume; a sand span over air lands on the first solid
+- [x] Suite: `settle_column` keeps per-material volume; a sand span over air lands on the first solid
   span; a rock span over air does not move; settling an already-settled column is a no-op.
-- [ ] Suite: mining the stone under a 5-block sand stack on the host leaves no granular span over air
+- [x] Suite: mining the stone under a 5-block sand stack on the host leaves no granular span over air
   after the queue drains; the result survives a region save/load and the worldgen golden values are
   unchanged.
-- [ ] Suite: a 1,000-column collapse never processes more than the per-tick budget and finishes within
+- [x] Suite: a 1,000-column collapse never processes more than the per-tick budget and finishes within
   `ceil(1000 / budget)` ticks; a settle in an unloaded neighbour applies when that chunk loads.
-- [ ] Suite: a client's local edit enqueues nothing; a settle edit grants no item.
-- [ ] Harness: a `sand_settles` step mines under sand on the host and proves the client's column
+- [x] Suite: a client's local edit enqueues nothing; a settle edit grants no item.
+- [x] Harness: a `sand_settles` step mines under sand on the host and proves the client's column
   matches the host's after sync.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green.
 
 ---
 

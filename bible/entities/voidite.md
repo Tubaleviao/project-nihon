@@ -19,6 +19,7 @@ Jet-black crystalline ore found only in void-touched biomes and deep rifts. Extr
 | `magicAffinity` | decimal | yes | Capacity to hold enchantment 0–1 |
 | `depthBand` | json | yes | Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. Found in void-touched biomes and deep rifts: below the topsoil, at any depth beneath it. |
 | `leyGated` | boolean | yes | True when a vein of this material forms only near a ley line |
+| `granular` | boolean | yes | True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put |
 
 ### State machine
 

@@ -8,10 +8,11 @@
 //               max <= min is EMPTY: the material is never a ground vein (woods grow as
 //               trees, alloys are smelted).
 //   leyGated  — true when a vein of this material only forms near a ley line.
+//   granular  — true when a span of this material settles onto the first support below it (Phase 137).
 //
 // Authored from the prose each material already carries; the `why` string is that prose's
 // claim, restated next to the number it justifies.
-function depositFields({ min, max, leyGated = false, why }) {
+function depositFields({ min, max, leyGated = false, granular = false, why }) {
   return {
     depthBand: {
       type: 'json',
@@ -22,6 +23,11 @@ function depositFields({ min, max, leyGated = false, why }) {
       type: 'boolean',
       description: 'True when a vein of this material forms only near a ley line',
       defaultValue: leyGated,
+    },
+    granular: {
+      type: 'boolean',
+      description: 'True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put',
+      defaultValue: granular,
     },
   }
 }
