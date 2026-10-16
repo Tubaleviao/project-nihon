@@ -5,6 +5,7 @@ extends RefCounted
 ## world cannot store or send a raw Vector3. The chunk index is an exact int; `local` is the offset
 ## from that chunk's origin corner (X/Z in [0, CHUNK_METERS), Y as is), small enough for float32.
 ## Pure and static: the server, the client and the save code share it.
+const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const CHUNK_METERS := TerrainSlice.CHUNK_METERS
@@ -119,7 +120,7 @@ static func wire_chunk(data: Variant) -> Vector2i:
 ## Move a world position that crossed the east-west seam back inside [-w/2, w/2).
 static func wrap_world(world: Vector3) -> Vector3:
 	var w := float(TerrainSlice.circumference_chunks()) * CHUNK_METERS
-	return Vector3(fposmod(world.x + w * 0.5, w) - w * 0.5, world.y, world.z)
+	return Vector3(SeamWrap.wrap_f(world.x, w), world.y, world.z)
 
 ## True for a decodable wire position: the `{chunk, local}` dictionary or a legacy `[x, y, z]` array.
 ## Every element must be a finite number of sane size, so a hostile packet cannot reach `int()` /

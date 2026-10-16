@@ -337,7 +337,7 @@ func _write_world_payload(data: Dictionary, incremental: bool) -> Error:
 	elif region_err != OK:
 		# World record untouched: commit the regions that staged, report the failure.
 		if not ops.is_empty():
-			var partial := SaveTxn.commit(ops, journal_path(), fault)
+			var partial := SaveTxn.commit(ops, journal_path(), fault, [region_store.journal_path()])
 			if partial != OK:
 				region_store.last_failed_chunk_keys = []
 		return region_err
@@ -352,7 +352,7 @@ func _write_world_payload(data: Dictionary, incremental: bool) -> Error:
 		region_store.last_failed_chunk_keys = []
 		return stage_err
 	ops.append({ "path": world_path(), "tmp": world_tmp, "kind": "world" })
-	var commit_err := SaveTxn.commit(ops, journal_path(), fault) as Error
+	var commit_err := SaveTxn.commit(ops, journal_path(), fault, [region_store.journal_path()]) as Error
 	if commit_err != OK:
 		region_store.last_failed_chunk_keys = []   # rolled back: every chunk of this save stays dirty
 		return commit_err

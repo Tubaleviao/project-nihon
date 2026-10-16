@@ -288,7 +288,12 @@ func read_region(region: Vector2i, warn := true) -> Dictionary:
 		# A commit moves the old file to `.bak` just before the new one lands: a read in that gap (from
 		# another thread) sees the old file, never "missing". Only while the journal exists; after a
 		# finished commit a `.bak` is stale.
-		if FileAccess.file_exists(path + SaveTxn.BAK_EXT) and (SaveTxn.in_flight(journal_path()) or (outer_journal != "" and SaveTxn.in_flight(outer_journal))):
+		# Phase 138 — the journal is checked FIRST and `path` again after it: a commit that finishes between
+		# the two checks has already put the new file back, which is then the one to read.
+		var mid_commit: bool = SaveTxn.in_flight(journal_path()) or (outer_journal != "" and SaveTxn.in_flight(outer_journal))
+		if FileAccess.file_exists(path):
+			pass   # the commit landed while we looked: read the live file
+		elif mid_commit and FileAccess.file_exists(path + SaveTxn.BAK_EXT):
 			path += SaveTxn.BAK_EXT
 		else:
 			return { "ok": true, "chunks": {}, "raw_invalid": {} }
@@ -517,7 +522,7 @@ func save_region(region: Vector2i, chunks: Dictionary) -> Error:
 	if not atomic_writes:
 		return OK   # written in place by `stage_region`
 	var ops: Array = staged["ops"]
-	return SaveTxn.commit(ops, journal_path(), fault) as Error
+	return SaveTxn.commit(ops, journal_path(), fault, [outer_journal]) as Error
 
 ## Phase 121 — write one region's new content to `<path>.tmp` (no change to the live file) and return
 ## { "err": Error, "ops": [commit op] }. An empty set stages the file's removal. With `atomic_writes`
@@ -559,7 +564,7 @@ func write_chunks(chunks: Dictionary, deletions := true) -> Error:
 	var err: Error = staged["err"]
 	var ops: Array = staged["ops"]
 	if atomic_writes and not ops.is_empty():
-		var commit_err := SaveTxn.commit(ops, journal_path(), fault) as Error
+		var commit_err := SaveTxn.commit(ops, journal_path(), fault, [outer_journal]) as Error
 		if commit_err != OK:
 			# Rolled back: nothing of this write is live, so every chunk of it stays dirty.
 			last_failed_chunk_keys = chunks.keys()
@@ -576,6 +581,11 @@ func stage_chunks(chunks: Dictionary, deletions := true) -> Dictionary:
 	var ops: Array = []
 	last_failed_chunk_keys = []
 	last_failed_region_keys = []
+	# Phase 138 — "in a row": a save that does not carry the region (its chunks are no longer dirty) ends
+	# its failure streak, so only consecutive failing saves count toward MAX_REGION_FAILURES.
+	for rkey in region_failures.keys():
+		if not grouped.has(rkey):
+			region_failures.erase(rkey)
 	for rkey in grouped:
 		var region := region_from_key(str(rkey))
 		var read := read_region(region, false)

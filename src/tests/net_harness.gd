@@ -1520,10 +1520,22 @@ const TREE_ACK_PROBE := "tree-ready:"
 ## The `tree_cleared` target, named once from the trees loaded at the start and kept (see `_spare_tree`).
 var _spare_target := ""
 
+## Phase 138 — the host names the target once and announces it in chat; the client adopts that id instead
+## of picking its own, so a client that has loaded a different set of trees cannot choose another tree.
+const TREE_TARGET_PROBE := "tree-target:"
+
 func _capture_spare_target() -> void:
-	var found: bool = await _await_until(func(): return _spare_tree().length() > 0, _step_timeout())
-	if found:
-		_spare_target = _spare_tree()
+	if _role == "host":
+		var found: bool = await _await_until(func(): return _spare_tree().length() > 0, _step_timeout())
+		if found:
+			_spare_target = _spare_tree()
+		_root._chat.submit(TREE_TARGET_PROBE + (_spare_target if found else "none"))
+		return
+	var heard: bool = await _await_until(func(): return not _chat_line("chat", TREE_TARGET_PROBE, "").is_empty(), _step_timeout() + CLIENT_LAG_SECS)
+	if heard:
+		var text := str(_chat_line("chat", TREE_TARGET_PROBE, "")["text"])
+		var named := text.substr(text.find(TREE_TARGET_PROBE) + TREE_TARGET_PROBE.length()).strip_edges()
+		_spare_target = "" if named == "none" else named
 
 ## The in-reach tree with the greatest id, or "" when there are no more than `TARGETS_NEEDED` in reach.
 func _spare_tree() -> String:

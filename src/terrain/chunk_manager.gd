@@ -617,11 +617,16 @@ func _record_generation(chunk_pos: Vector2i) -> void:
 	var canon := TerrainSlice.wrap_chunk(chunk_pos)
 	if ChunkRecords.has_record(canon):
 		_deferred_records.erase(ChunkRecords.key_of(canon))
+		_deferred_since.erase(ChunkRecords.key_of(canon))
 		return
 	if region_streamer != null and not region_streamer.regions_ready(canon, Frontier.BLEND_CHUNKS):
-		_deferred_records[ChunkRecords.key_of(canon)] = canon
+		var dkey := ChunkRecords.key_of(canon)
+		if not _deferred_records.has(dkey):
+			_deferred_since[dkey] = now_msec.call()
+		_deferred_records[dkey] = canon
 		return
 	_deferred_records.erase(ChunkRecords.key_of(canon))
+	_deferred_since.erase(ChunkRecords.key_of(canon))
 	var rec := RegionStore.normalize_gen(Frontier.record_for(canon, int(terrain_slice.get_world_seed())))
 	if rec.is_empty():
 		return   # a generator value outside the height range: leave the chunk to the generator
@@ -637,6 +642,12 @@ func can_record_now(canon: Vector2i) -> bool:
 ## Chunks that entered a window while a neighbouring region was unreadable: "cx,cz" -> canonical chunk.
 var _deferred_records: Dictionary = {}
 
+## Phase 138 — when each deferred chunk was first deferred (`now_msec`), so a chunk stuck behind an
+## unreadable region is logged once (its contents spawn only after the record lands) instead of silently.
+const DEFERRED_WARN_MSEC := 30000
+var _deferred_since: Dictionary = {}
+var deferred_warnings: int = 0
+
 func deferred_record_count() -> int:
 	return _deferred_records.size()
 
@@ -649,8 +660,14 @@ func _record_deferred() -> void:
 		var canon: Vector2i = _deferred_records[k]
 		if not _loaded.has(_chunk_key(canon)):
 			_deferred_records.erase(k)
+			_deferred_since.erase(k)
 			continue
 		if region_streamer != null and not region_streamer.regions_ready(canon, Frontier.BLEND_CHUNKS):
+			var since: int = int(_deferred_since.get(k, -1))
+			if since >= 0 and int(now_msec.call()) - since >= DEFERRED_WARN_MSEC:
+				_deferred_since[k] = -1   # one warning per deferral
+				deferred_warnings += 1
+				Diag.warn("ChunkManager: chunk %s has had no generation record for %d s (a neighbouring region will not read); its contents stay unspawned" % [str(canon), DEFERRED_WARN_MSEC / 1000])
 			continue
 		var before := records_created
 		_record_generation(canon)
@@ -1007,7 +1024,9 @@ func _centers_around(local: Vector2i) -> Array:
 ## window goes exactly there, immediately. Otherwise `chunk` is a client claim: a move inside
 ## `PEER_RECENTER_INTERVAL` of the last one is refused, and one farther than
 ## `PEER_RECENTER_MAX_CHUNKS` is clamped to that distance (both counted in
-## `peer_recenter_refused`). Returns true when the window actually moved.
+## `peer_recenter_refused`). Phase 138 — caller contract: a peer's FIRST center is taken as given, not
+## clamped (there is nothing to measure a step from), so only the host's placement of a joining peer may
+## reach it; a raw client claim must arrive after that placement. Returns true when the window moved.
 func set_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool = false) -> bool:
 	return _move_peer_center(peer_id, chunk, host_driven, false)
 

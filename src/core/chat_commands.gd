@@ -2,6 +2,7 @@ extends RefCounted
 ## Phase 63 — slash commands typed in chat. Pure and static: the UI asks, the answer is a string.
 ## Phase 85 — the admin command set. Parsing, spelling and argument validation live here (pure, so the
 ## suite pins them without a tree); `ChatSlice` owns the effects and decides who may run them.
+const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
@@ -118,7 +119,7 @@ static func parse_position(args: Array, start: int = 0) -> Dictionary:
 	if absf(v[2]) > pole_m:
 		return fail.call("chat.err.z_limit", [int(pole_m)])
 	var lap := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
-	var x: float = fposmod(float(v[0]) + lap * 0.5, lap) - lap * 0.5
+	var x: float = SeamWrap.wrap_f(float(v[0]), lap)
 	var z: float = v[2]
 	var pos := WorldPos.from_world(x, v[1], z)
 	return { "ok": true, "pos": pos, "world": [x, v[1], z], "error": {} }

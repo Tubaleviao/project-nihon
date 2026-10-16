@@ -1620,7 +1620,11 @@ func _test_worldgen_fingerprint_game_root() -> void:
 	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION, "worldgenFingerprint": running + 1 }
 	gr._persistence_wiring._note_worldgen_version()
 	assert_eq(seen, [[running + 1, running]], "a differing record raises exactly once")
-	assert_eq(gr._worldgen_fp_stamp, running + 1, "and the stamp survives the notice (a save does not overwrite it)")
+	assert_eq(gr._worldgen_fp_stamp, running, "and the stamp is refreshed, so the next save silences it")
+	seen.clear()
+	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION, "worldgenFingerprint": gr._worldgen_fp_stamp }
+	gr._persistence_wiring._note_worldgen_version()
+	assert_true(seen.is_empty(), "Phase 138: the world as saved after the notice raises none on the next load")
 	GameBus.worldgen_fingerprint_mismatch.disconnect(cb)
 	gr.free()
 
@@ -1677,14 +1681,14 @@ func _test_worldgen_fingerprint_notice() -> void:
 	gr._persistence_wiring._note_worldgen_version()
 	GameBus.worldgen_fingerprint_mismatch.disconnect(ui._on_worldgen_fingerprint_mismatch)
 	assert_true(ui.toast_shown().contains("parameters changed"), "the notice reaches the HUD toast")
-	assert_eq(gr._worldgen_fp_stamp, running + 1, "the stamp survives the mismatch load")
+	assert_eq(gr._worldgen_fp_stamp, running, "the stamp is refreshed after the one notice")
 	var seen: Array = []
 	var cb := func(saved: int, current: int) -> void: seen.append([saved, current])
 	GameBus.worldgen_fingerprint_mismatch.connect(cb)
 	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION, "worldgenFingerprint": gr._worldgen_fp_stamp }
 	gr._persistence_wiring._note_worldgen_version()
 	GameBus.worldgen_fingerprint_mismatch.disconnect(cb)
-	assert_eq(seen, [[running + 1, running]], "the next load of that world still reports the same mismatch")
+	assert_true(seen.is_empty(), "the next load of that world, saved after the notice, reports nothing")
 	ui.free()
 	gr.free()
 
@@ -1980,6 +1984,20 @@ func _test_p126_seam_wrap_module() -> void:
 				if src.contains("func " + probe) or src.contains("static func " + probe):
 					offenders.append(dir + "/" + f + ":" + probe)
 	assert_eq(offenders, [], "no module keeps its own copy of the seam helpers")
+	# Phase 138 — and no inline wrap of an X coordinate round the seam: `posmod(v + lap/2, lap) - lap/2` in
+	# any spelling is `SeamWrap.wrap_i` / `wrap_f`.
+	var inline := RegEx.new()
+	inline.compile("posmod\\([^\\n]*\\+ *[A-Za-z_.()]*(circ|lap|half_w|\\bw\\b|\\bc\\b)[A-Za-z_.()]* *(\\* *0\\.5|/ *2)")
+	var copies: Array = []
+	for dir in ["res://src/world", "res://src/terrain", "res://src/persistence", "res://src/core", "res://src/networking", "res://src/ui", "res://src/creature", "res://src/character"]:
+		for f in DirAccess.get_files_at(dir):
+			if not f.ends_with(".gd") or f == "seam_wrap.gd":
+				continue
+			var lines := FileAccess.get_file_as_string(dir + "/" + f).split("\n")
+			for n in lines.size():
+				if inline.search(lines[n]) != null:
+					copies.append("%s/%s:%d" % [dir, f, n + 1])
+	assert_eq(copies, [], "no inline seam-wrap modulo outside seam_wrap.gd")
 
 ## Review of #165 — a target with no `shift_scene` is reported, not silently left behind.
 func _test_rebase_driver_reports_unshiftable() -> void:

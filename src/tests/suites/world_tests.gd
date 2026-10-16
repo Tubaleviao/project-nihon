@@ -342,6 +342,15 @@ func _test_minimap_seed_change_saves_old_seed() -> void:
 func _test_p126_fabric_density_bound() -> void:
 	var bound := int(floor(float(RegionStoreScript.GEN_TREE_MAX) / (1.0 + TreeSlice.DENSITY_NOISE)))
 	assert_eq(bound, 42, "the density bound is GEN_TREE_MAX / (1 + DENSITY_NOISE)")
+	# Phase 138 — the fabric validator keeps its own copies of the two constants; they must match.
+	var js := FileAccess.get_file_as_string("res://fabric/world/biomes/index.js")
+	var re := RegEx.new()
+	re.compile("const GEN_TREE_MAX = (\\d+)")
+	var m := re.search(js)
+	assert_true(m != null and int(m.get_string(1)) == RegionStoreScript.GEN_TREE_MAX, "fabric GEN_TREE_MAX matches RegionStore.GEN_TREE_MAX")
+	re.compile("const DENSITY_NOISE = ([0-9.]+)")
+	m = re.search(js)
+	assert_true(m != null and is_equal_approx(float(m.get_string(1)), TreeSlice.DENSITY_NOISE), "fabric DENSITY_NOISE matches TreeSlice.DENSITY_NOISE")
 	for key in GameData.BIOMES:
 		var b: Variant = GameData.BIOMES[key]
 		if b != null and b.get("treeDensity") != null:

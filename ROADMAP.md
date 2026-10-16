@@ -158,7 +158,7 @@ issue number where the criterion used to be.
 | 135 | A WAN profile: latency, loss and bandwidth in the two-client harness | In review | below |
 | 136 | Creatures walk on the ground and around obstacles | In review | below |
 | 137 | Loose ground settles: sand and soil fall when undermined | In review | below |
-| 138 | Trees, generation records and persistence cleanup sweep | Planned | below |
+| 138 | Trees, generation records and persistence cleanup sweep | In review | below |
 | 139 | Settlements in the fabric: founding, membership and shared storage | Planned | below |
 | 140 | Settlements at runtime: a hearth, a claim and a shared stockpile | Planned | below |
 
@@ -518,13 +518,13 @@ not "in a row". This phase resolves every item of the four issues in one PR.
   or test that proves it) / resolved by Phase N.
 
 **Acceptance criteria:**
-- [ ] Suite: a host clear in a chunk whose record cannot be pinned survives a host save/restart; a
+- [x] Suite: a host clear in a chunk whose record cannot be pinned survives a host save/restart; a
   client returning to an unrecorded cleared chunk sees no ghost tree.
-- [ ] Suite (audit): no seam-wrap modulo on chunk X outside `seam_wrap.gd`.
-- [ ] Suite: the worldgen fingerprint notice fires once per old world, not on every load.
-- [ ] `npm run validate`: a biome whose tree density can exceed `GEN_TREE_MAX` fails.
-- [ ] Every issue under **Closes:** is closed by the merge, each item accounted for in the PR table.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite (audit): no seam-wrap modulo on chunk X outside `seam_wrap.gd`.
+- [x] Suite: the worldgen fingerprint notice fires once per old world, not on every load.
+- [x] `npm run validate`: a biome whose tree density can exceed `GEN_TREE_MAX` fails.
+- [x] Every issue under **Closes:** is closed by the merge, each item accounted for in the PR table.
+- [x] Suite green on both boot paths, harness green.
 
 ---
 

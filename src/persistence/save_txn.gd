@@ -18,16 +18,22 @@ const BAK_EXT := ".bak"
 
 ## Make the staged `ops` live. Each op is { "path": String, "tmp": String ("" removes the target),
 ## "kind": "region" | "world" }. Returns OK, or the first error with every moved file put back.
-static func commit(ops: Array, journal_path: String, fault: Callable = Callable()) -> int:
+## Phase 138 — `other_journals` are the journals of other transactions over the same files (the region
+## store's own, or the outer save's): while any exists, a `.bak` here may be their only old copy.
+static func commit(ops: Array, journal_path: String, fault: Callable = Callable(), other_journals: Array = []) -> int:
 	if ops.is_empty():
 		return OK
 	var targets: Array = []
+	var foreign_journal := false
+	for other in other_journals:
+		if str(other) != "" and FileAccess.file_exists(str(other)):
+			foreign_journal = true
 	for op in ops:
 		# Without a journal any `.bak` here is a leftover of a finished commit (its cleanup failed):
 		# stale. Clear it, or a rollback of this commit could restore it over newer content. A surviving
 		# journal means an interrupted commit whose `.bak` files are the only old copy: leave them.
 		var stale := str(op["path"]) + BAK_EXT
-		if FileAccess.file_exists(stale) and not FileAccess.file_exists(journal_path):
+		if FileAccess.file_exists(stale) and not FileAccess.file_exists(journal_path) and not foreign_journal:
 			DirAccess.remove_absolute(stale)
 		targets.append({ "path": str(op["path"]), "had": FileAccess.file_exists(str(op["path"])) })
 	if _fails(fault, "journal"):

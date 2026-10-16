@@ -10,6 +10,7 @@ extends RefCounted
 ## A placement is how one face lies on the screen: [n, sr, su], the face's normal and the cube axes
 ## that point screen-right and screen-up across it. Stepping off an edge into the neighbour face is
 ## pure axis bookkeeping (`step`), so the net and the globe never need a face table beyond FACES.
+const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 
@@ -125,7 +126,7 @@ static func _xz_of_xyz(x: float, y: float, z: float) -> Array:
 	var c := float(TerrainSlice.circumference_chunks())
 	var lon := atan2(x, z)
 	var lat := atan2(y, sqrt(x * x + z * z))
-	return [fposmod(lon / TAU * c + c * 0.5, c) - c * 0.5, -lat / (PI * 0.5) * (c * 0.25)]
+	return [SeamWrap.wrap_f(lon / TAU * c, c), -lat / (PI * 0.5) * (c * 0.25)]
 
 static func _dot(a: Vector3, x: float, y: float, z: float) -> float:
 	return a.x * x + a.y * y + a.z * z

@@ -1526,7 +1526,8 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 	# placed block mined back would otherwise be a research-point farm.
 	if natural and banked:
 		GameBus.resource_gathered.emit(player_id, material, quantity)
-	GameBus.block_edit_resolved.emit(tile, world_pos.y)
+	# Phase 138 — the span top, the same height `has_edit_near_at` judges on a reload, so live and reload agree.
+	GameBus.block_edit_resolved.emit(tile, float(span["top"]))
 	GameBus.block_changed.emit("mine", world_pos, normal, material)
 	return { "success": true, "material": material, "quantity": quantity, "position": pos, "player_id": player_id }
 
@@ -1659,7 +1660,7 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 
 	var pos := Vector3(probe["xz"].x, float(span["top"]), probe["xz"].y)
 	GameBus.block_placed.emit(chosen, pos)
-	GameBus.block_edit_resolved.emit(tile, world_pos.y)
+	GameBus.block_edit_resolved.emit(tile, float(span["top"]))
 	GameBus.block_changed.emit("place", world_pos, normal, chosen)
 	return true
 

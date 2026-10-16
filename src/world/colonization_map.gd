@@ -8,6 +8,7 @@ extends RefCounted
 ## somebody's base. The map persists on the world record (`to_data` / `from_data`), beside the
 ## Phase 52 region files, and is seeded from them (`seed_from_regions`) so an older world whose
 ## record has no map still counts every region that holds an edit.
+const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const RegionStore := preload("res://src/persistence/region_store.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 
@@ -104,7 +105,7 @@ func is_near_colonized(x: float, z: float, min_distance_m: float, threshold: flo
 			# Distance from the point to the region rectangle, X taken the short way round.
 			var cx := (float(rx) + 0.5) * REGION_METERS
 			var cz := (float(rz) + 0.5) * REGION_METERS
-			var ddx := absf(fposmod(x - cx + circ * 0.5, circ) - circ * 0.5)
+			var ddx := absf(SeamWrap.wrap_f(x - cx, circ))
 			var ddz := absf(z - cz)
 			var gap_x := maxf(ddx - REGION_METERS * 0.5, 0.0)
 			var gap_z := maxf(ddz - REGION_METERS * 0.5, 0.0)

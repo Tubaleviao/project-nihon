@@ -126,6 +126,8 @@ func _collect_save_job(incremental: bool) -> Dictionary:
 		"colonization":    root._colonization.to_data(),
 		"clock":           root._clock.to_data(),
 		"weather":         root._weather.to_data() if root._weather != null else [],
+		# Phase 138 — tree clears the host could not pin in a record yet (see TreeSlice._pending_spots).
+		"treeSpots":       root._tree.pending_spots_to_data(),
 	}
 	# NOTE: no `dirty_chunks` key. It used to ride the record, but nothing ever read
 	# it back — dirty tracking lives in memory (VoxelSlice) and is reset by the save
@@ -395,8 +397,9 @@ func _note_worldgen_version() -> void:
 	root._worldgen_fp_stamp = PersistenceSlice.fingerprint_stamp_for_save(root._loaded_world, running_fp)
 	if PersistenceSlice.check_worldgen_fingerprint(root._loaded_world, running_fp):
 		GameBus.worldgen_fingerprint_mismatch.emit(root._worldgen_fp_stamp, running_fp)
-		# The stamp keeps the world's original fingerprint, so the mismatch is reported on every load
-		# until the world is regenerated (the records, not the stamp, keep old land stable).
+		# Phase 138 — the notice is given once: the next save stamps the running fingerprint, so a later
+		# load of the same world is silent (the records, not the stamp, keep old land stable).
+		root._worldgen_fp_stamp = running_fp
 
 ## Phase 114 — generation records never outlive the world they describe.
 func _forget_world_records() -> void:
@@ -416,6 +419,7 @@ func _load_world_records() -> void:
 	root._colonization.from_data(root._loaded_world.get("colonization", {}))
 	root._clock.from_data(root._loaded_world.get("clock", {}))
 	root._weather.from_data(root._loaded_world.get("weather", []))
+	root._tree.pending_spots_from_data(root._loaded_world.get("treeSpots", {}))
 	root._colonization.seed_from_regions(root._persistence.region_store.list_regions())
 	root._peer_wiring.wire_colonization()
 	if root._loaded_world.is_empty():

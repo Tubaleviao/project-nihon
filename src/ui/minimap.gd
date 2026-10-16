@@ -14,6 +14,7 @@ extends Control
 ## The visual is drawn in _draw() (which does not run headless); the data
 ## projections (world_to_chunk / get_player_cell / reveal tracking) are pure and
 ## are what the automated test suite asserts against.
+const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 
 const I18n := preload("res://src/core/i18n.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
@@ -339,7 +340,7 @@ func waypoint_offset_m(index: int) -> Vector2:
 	var player_local := _player_pos - Vector2(_player_chunk) * CHUNK_SIZE
 	var d := MapMath.delta_m(_player_chunk, player_local, wc, Vector2(wl.x, wl.z))
 	var circ_m := float(TerrainSlice.circumference_chunks()) * CHUNK_SIZE
-	d.x = fposmod(d.x + circ_m * 0.5, circ_m) - circ_m * 0.5   # the short way round the planet
+	d.x = SeamWrap.wrap_f(d.x, circ_m)   # the short way round the planet
 	return d
 
 ## Chunk coordinate containing a world XZ position.

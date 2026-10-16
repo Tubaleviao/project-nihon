@@ -697,11 +697,13 @@ func _deliver(peer_id: int, payload: Dictionary) -> bool:
 		# One retransmission timeout: a round trip plus the jitter allowance, then it is sent again.
 		retransmit_delay_ms = 2.0 * (maxf(0.0, emulator_latency_ms) + emulator_jitter_ms) + 50.0
 		emulator_retransmits += 1
-	# A serialised copy: the caller may reuse or mutate `payload` before the delayed delivery.
+	# A deep copy: the caller may reuse or mutate `payload` before the delayed delivery. Phase 138 — the
+	# JSON text is made once, for the wire size the bandwidth model needs; the queue holds the copy, so the
+	# drain no longer parses it again.
 	var json := JSON.stringify(payload)
 	var at_ms: float = _schedule_at_ms(float(Time.get_ticks_msec()), json.to_utf8_buffer().size(), peer_id) \
 			+ retransmit_delay_ms
-	_pending.append({ "at_ms": at_ms, "peer_id": peer_id, "payload": json })
+	_pending.append({ "at_ms": at_ms, "peer_id": peer_id, "payload": payload.duplicate(true) })
 	if emulator_reorder:
 		_maybe_reorder()
 	return true
@@ -2183,7 +2185,7 @@ func _drain_emulator(now_ms: float = -1.0) -> void:
 	while i < _pending.size():
 		var entry: Dictionary = _pending[i]
 		if float(entry["at_ms"]) <= now:
-			var msg: Variant = JSON.parse_string(str(entry["payload"]))
+			var msg: Variant = entry["payload"]
 			# Phase 135 — a packet whose connection is gone (or never completed) is lost with it, as on
 			# a real wire; sending it would raise an RPC error per packet on every frame.
 			if msg is Dictionary and _peer_reachable(int(entry["peer_id"])):
