@@ -162,8 +162,6 @@ var _client_boot_wait_elapsed: float = 0.0
 ## Phase 39 — which side of the two-client network harness this boot drives ("" for a
 ## normal boot). Set by `_boot_wiring._parse_network_args`; see `_run_net_harness`.
 var _net_harness_role: String = ""
-## Phase 135 — the `--net-profile` value ("" for none); see `_boot_wiring._apply_net_profile`.
-var _net_profile_arg: String = ""
 
 ## Phase 53 — how settled each region is; new-player spawns keep away from the settled ones.
 var _colonization := ColonizationMap.new()
@@ -271,9 +269,6 @@ func _ready() -> void:
 	_creature    = CreatureSlice.new()
 	_creature_ai = CreatureAI.new()
 	_networking  = NetworkingSlice.new()
-	if not _boot_wiring._apply_net_profile():
-		get_tree().quit(2)
-		return
 	_persistence = PersistenceSlice.new()
 	_registry    = PlayerRegistry.new()
 	_player      = PlayerSlice.new()

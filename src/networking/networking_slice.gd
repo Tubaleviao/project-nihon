@@ -205,8 +205,9 @@ const NET_PROFILES := {
 const NET_PROFILE_ARG := "--net-profile"
 ## Phase 135 — the profile this slice runs under ("" = none, emulator off).
 var net_profile: String = ""
-## Emulated link: the ms at which the wire is next free (bandwidth serialisation).
-var _link_free_at_ms: float = 0.0
+## Emulated links: peer_id -> the ms at which that peer's wire is next free (bandwidth
+## serialisation). One link per peer, so a departed peer's backlog cannot delay a new one.
+var _link_free_at_ms: Dictionary = {}
 
 ## Sequence numbering: every outbound packet carries a per-type monotonic seq;
 ## the receiver uses it to drop duplicates and detect gaps.
@@ -270,6 +271,7 @@ var _malformed_position_warn_ms: Dictionary = {}
 const MALFORMED_WARN_INTERVAL_MS := 5000.0
 
 func _ready() -> void:
+	_apply_profile_arg(OS.get_cmdline_user_args())
 	GameBus.packet_send_requested.connect(_on_packet_send_requested)
 	GameBus.player_state_sync_requested.connect(_on_player_state_sync_requested)
 	GameBus.block_edit_intent.connect(_on_block_edit_intent)
@@ -331,6 +333,20 @@ static func profile_from_args(args: Array) -> String:
 	if i + 1 >= args.size() or str(args[i + 1]).begins_with("--"):
 		return "?"
 	return str(args[i + 1])
+
+## Phase 135 — apply `--net-profile` from the command line at boot. An unknown name (or a flag with
+## no value) is refused: the process exits 2, because a run that fell back to loopback would report a
+## pass for a link it never emulated. Returns false on refusal.
+func _apply_profile_arg(args: Array) -> bool:
+	var name := profile_from_args(args)
+	if name == "":
+		return true
+	if apply_profile(name):
+		print("[Networking] link profile: %s" % name)
+		return true
+	Diag.error("[Networking] unknown --net-profile '%s' (known: %s)" % [name, ", ".join(NET_PROFILES.keys())])
+	get_tree().quit(2)
+	return false
 
 static func has_profile(name: String) -> bool:
 	return NET_PROFILES.has(name)
@@ -412,6 +428,7 @@ func disconnect_all() -> void:
 	multiplayer.multiplayer_peer = null
 	_role = Role.OFFLINE
 	_pending.clear()
+	_link_free_at_ms.clear()
 	_jitter_buffer.clear()
 	_player_ids.clear()
 	# Phase 37 — a torn-down connection cannot complete the snapshot it was
@@ -682,7 +699,7 @@ func _deliver(peer_id: int, payload: Dictionary) -> bool:
 		emulator_retransmits += 1
 	# A serialised copy: the caller may reuse or mutate `payload` before the delayed delivery.
 	var json := JSON.stringify(payload)
-	var at_ms: float = _schedule_at_ms(float(Time.get_ticks_msec()), json.to_utf8_buffer().size()) \
+	var at_ms: float = _schedule_at_ms(float(Time.get_ticks_msec()), json.to_utf8_buffer().size(), peer_id) \
 			+ retransmit_delay_ms
 	_pending.append({ "at_ms": at_ms, "peer_id": peer_id, "payload": json })
 	if emulator_reorder:
@@ -2129,11 +2146,13 @@ func _jitter_delay_ms() -> float:
 ## Phase 135 — when a packet of `size_bytes` sent at `now_ms` is delivered: it waits for the wire
 ## (bandwidth), takes `size_bytes * 8 / kbps` ms to serialise, then travels `latency + jitter`. With a
 ## cap the link is a single FIFO, so delivery over any one-second window never exceeds the rate.
-func _schedule_at_ms(now_ms: float, size_bytes: int) -> float:
+func _schedule_at_ms(now_ms: float, size_bytes: int, peer_id: int = 0) -> float:
 	var leaves_at := now_ms
 	if emulator_bandwidth_kbps > 0.0:
-		_link_free_at_ms = maxf(_link_free_at_ms, now_ms) + float(size_bytes) * 8.0 / emulator_bandwidth_kbps
-		leaves_at = _link_free_at_ms
+		var free_at: float = maxf(float(_link_free_at_ms.get(peer_id, 0.0)), now_ms) \
+				+ float(size_bytes) * 8.0 / emulator_bandwidth_kbps
+		_link_free_at_ms[peer_id] = free_at
+		leaves_at = free_at
 	return leaves_at + maxf(0.0, emulator_latency_ms) + _jitter_delay_ms()
 
 ## Reorder: swap two adjacent pending packets with a small probability to
@@ -2169,6 +2188,8 @@ func _drain_emulator(now_ms: float = -1.0) -> void:
 			# a real wire; sending it would raise an RPC error per packet on every frame.
 			if msg is Dictionary and _peer_reachable(int(entry["peer_id"])):
 				_ensure_transport().send(int(entry["peer_id"]), msg)
+			elif _role == Role.HOST:
+				_link_free_at_ms.erase(int(entry["peer_id"]))
 			_pending.remove_at(i)
 		else:
 			i += 1

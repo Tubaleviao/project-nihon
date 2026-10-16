@@ -2126,6 +2126,14 @@ func _test_net_emulator_latency() -> void:
 	add_child(n)
 	n.emulate_network = true
 	n.emulator_latency_ms = 200.0
+	n.emulator_retransmit = true
+	n.emulator_loss_rate = 30.0
+	n._rng.seed = 5
+	for _i in range(100):
+		assert_true(n._deliver(1, { "type": "x" }), "a lost packet is retransmitted, not dropped")
+	assert_eq(n._pending.size(), 100, "every packet is queued, none lost")
+	assert_true(n.emulator_retransmits > 0, "some were retransmitted late")
+	n.emulator_loss_rate = 0.0
 	var sent := 1000.0
 	assert_eq(n._schedule_at_ms(sent, 100), sent + 200.0, "delivery time is send + latency")
 	for _i in range(50):
@@ -2172,6 +2180,11 @@ func _test_net_profiles() -> void:
 			"flag followed by another flag is refused")
 	var n := NetworkingSlice.new()
 	add_child(n)
+	assert_true(n._apply_profile_arg(["--run-tests"]), "no flag is not a refusal")
+	assert_false(n.emulate_network, "no flag leaves the emulator off")
+	assert_true(n._apply_profile_arg(["--net-profile", "wan_br"]), "a known profile applies from args")
+	assert_eq(n.net_profile, "wan_br", "args select wan_br")
+	n.apply_profile("loopback")
 	assert_false(n.apply_profile("nope"), "unknown profile refused")
 	assert_false(n.emulate_network, "a refused profile changes nothing")
 	assert_true(n.apply_profile("wan_bad"), "wan_bad applies")
