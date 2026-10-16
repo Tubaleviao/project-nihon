@@ -127,7 +127,7 @@ func _collect_save_job(incremental: bool) -> Dictionary:
 		"clock":           root._clock.to_data(),
 		"weather":         root._weather.to_data() if root._weather != null else [],
 		# Phase 138 — tree clears the host could not pin in a record yet (see TreeSlice._pending_spots).
-		"treeSpots":       root._tree.pending_spots_to_data(),
+		"treeSpots":       root._tree.pending_spots_to_data() if root._tree != null else {},
 	}
 	# NOTE: no `dirty_chunks` key. It used to ride the record, but nothing ever read
 	# it back — dirty tracking lives in memory (VoxelSlice) and is reset by the save
@@ -419,7 +419,8 @@ func _load_world_records() -> void:
 	root._colonization.from_data(root._loaded_world.get("colonization", {}))
 	root._clock.from_data(root._loaded_world.get("clock", {}))
 	root._weather.from_data(root._loaded_world.get("weather", []))
-	root._tree.pending_spots_from_data(root._loaded_world.get("treeSpots", {}))
+	if root._tree != null:
+		root._tree.pending_spots_from_data(root._loaded_world.get("treeSpots", {}))
 	root._colonization.seed_from_regions(root._persistence.region_store.list_regions())
 	root._peer_wiring.wire_colonization()
 	if root._loaded_world.is_empty():
