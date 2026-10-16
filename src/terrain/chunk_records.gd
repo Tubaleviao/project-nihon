@@ -99,14 +99,14 @@ static func _same_ground(a: Dictionary, b: Dictionary) -> bool:
 
 ## The recorded chunks within Chebyshev `radius` of `chunk` (unwrapped chunk -> record) in one locked
 ## pass; `{}` without touching the lock more than once when nothing is recorded.
-static func records_around(chunk: Vector2i, radius: int, wrap: Callable) -> Dictionary:
+static func records_around(chunk: Vector2i, radius: int, wrap_fn: Callable) -> Dictionary:
 	var out: Dictionary = {}
 	_mutex.lock()
 	if not _table.is_empty():
 		for dz in range(-radius, radius + 1):
 			for dx in range(-radius, radius + 1):
 				var c := chunk + Vector2i(dx, dz)
-				var rec: Dictionary = _table.get(key_of(wrap.call(c)), {})
+				var rec: Dictionary = _table.get(key_of(wrap_fn.call(c)), {})
 				if not rec.is_empty():
 					out[c] = rec
 	_mutex.unlock()
@@ -143,12 +143,12 @@ static func snapshot_near(center: Vector2i, radius: int, circumference: int) -> 
 	return out
 
 ## The members of `chunks` (unwrapped Vector2i) that have a record, as a set, in one locked pass.
-static func recorded_keys(chunks: Array, wrap: Callable) -> Dictionary:
+static func recorded_keys(chunks: Array, wrap_fn: Callable) -> Dictionary:
 	var out: Dictionary = {}
 	_mutex.lock()
 	if not _table.is_empty():
 		for c in chunks:
-			if _table.has(key_of(wrap.call(c))):
+			if _table.has(key_of(wrap_fn.call(c))):
 				out[c] = true
 	_mutex.unlock()
 	return out

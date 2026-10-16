@@ -202,11 +202,11 @@ static func band_of(material: String) -> Dictionary:
 
 ## True when the fabric admits `material` at this depth and position: inside its half-open
 ## depth band [min, max), and near a ley line if it is ley-gated.
-static func allows(material: String, depth: float, world_xz: Vector2, seed: int) -> bool:
+static func allows(material: String, depth: float, world_xz: Vector2, seed_v: int) -> bool:
 	var band := band_of(material)
 	if depth < float(band["min"]) or depth >= float(band["max"]):
 		return false
-	if bool(band["ley"]) and not near_ley_line(seed, world_xz):
+	if bool(band["ley"]) and not near_ley_line(seed_v, world_xz):
 		return false
 	return true
 
@@ -233,72 +233,72 @@ static func cell_of(global_tile: Vector2i, depth: float) -> Vector3i:
 ## The vein a cell holds, or `{}`. Deterministic in (seed, cell); `cache` memoises the
 ## descriptor per cell for the caller's lifetime (a chunk build asks a few cells thousands
 ## of times). The returned dictionary is shared through the cache — read it, never write it.
-static func vein_in_cell(seed: int, cell: Vector3i, cache: Dictionary = {}) -> Dictionary:
+static func vein_in_cell(seed_v: int, cell: Vector3i, cache: Dictionary = {}) -> Dictionary:
 	if cache.has(cell):
 		return cache[cell]
-	var vein := _build_vein(seed, cell)
+	var vein := _build_vein(seed_v, cell)
 	cache[cell] = vein
 	return vein
 
-static func _build_vein(seed: int, cell: Vector3i) -> Dictionary:
+static func _build_vein(seed_v: int, cell: Vector3i) -> Dictionary:
 	if cell.y < 0:
 		return {}
-	if _unit(_hash(seed, cell, _SALT_PRESENT)) >= VEIN_CHANCE:
+	if _unit(_hash(seed_v, cell, _SALT_PRESENT)) >= VEIN_CHANCE:
 		return {}
 	var margin := RADIUS_MAX_TILES * (1.0 + SHAPE_NOISE)
 	var vmargin := HALF_HEIGHT_MAX * (1.0 + SHAPE_NOISE)
 	var origin_x := float(cell.x * CELL_TILES - CELL_OFFSET_TILES)
 	var origin_z := float(cell.z * CELL_TILES - CELL_OFFSET_TILES)
 	var span := float(CELL_TILES) - margin * 2.0
-	var cx := origin_x + margin + _unit(_hash(seed, cell, _SALT_X)) * span
-	var cz := origin_z + margin + _unit(_hash(seed, cell, _SALT_Z)) * span
+	var cx := origin_x + margin + _unit(_hash(seed_v, cell, _SALT_X)) * span
+	var cz := origin_z + margin + _unit(_hash(seed_v, cell, _SALT_Z)) * span
 	# The TOP depth cell has no cell above it (a negative depth is air, not ground), so its
 	# veins may sit right up to the surface and break through it — that is what puts a
 	# shallow vein, and its marker, where a player can see it from above.
 	var top_margin := 0.0 if cell.y == 0 else vmargin
-	var cd := float(cell.y) * CELL_DEPTH + top_margin + _unit(_hash(seed, cell, _SALT_DEPTH)) * (CELL_DEPTH - vmargin - top_margin)
+	var cd := float(cell.y) * CELL_DEPTH + top_margin + _unit(_hash(seed_v, cell, _SALT_DEPTH)) * (CELL_DEPTH - vmargin - top_margin)
 	var anchor := Vector2i(floori(cx), floori(cz))
 	var center_xz := Vector2(cx * TILE_SIZE, cz * TILE_SIZE)
 	# The surface-vein hash is cheap; the biome lookup is not. Cull on the hash against the best
 	# any biome could keep first, and only then ask the biome for the exact chance.
 	var reaches_surface := cell.y == 0 and cd - HALF_HEIGHT_MAX * (1.0 + SHAPE_NOISE) < 0.0
-	var surface_roll := _unit(_hash(seed, cell, _SALT_SURFACE))
+	var surface_roll := _unit(_hash(seed_v, cell, _SALT_SURFACE))
 	if reaches_surface and surface_roll >= max_surface_vein_chance():
 		return {}
 	var biome := TerrainSlice.biome_for_chunk(Vector2i(
-		floori(float(anchor.x) / float(CHUNK_SIZE)), floori(float(anchor.y) / float(CHUNK_SIZE))), seed)
+		floori(float(anchor.x) / float(CHUNK_SIZE)), floori(float(anchor.y) / float(CHUNK_SIZE))), seed_v)
 	if reaches_surface and surface_roll >= surface_vein_chance(biome):
 		return {}
-	var material := _pick_material(seed, biome, cd, center_xz, _unit(_hash(seed, cell, _SALT_MATERIAL)))
+	var material := _pick_material(seed_v, biome, cd, center_xz, _unit(_hash(seed_v, cell, _SALT_MATERIAL)))
 	if material == "":
 		return {}
 	return {
 		"id":          "%d,%d,%d" % [cell.x, cell.y, cell.z],
 		"material":    material,
-		"quantity":    QUANTITY_MIN + _hash(seed, cell, _SALT_QUANTITY) % (QUANTITY_MAX - QUANTITY_MIN + 1),
-		"reserve":     RESERVE_MIN + _hash(seed, cell, _SALT_RESERVE) % (RESERVE_MAX - RESERVE_MIN + 1),
+		"quantity":    QUANTITY_MIN + _hash(seed_v, cell, _SALT_QUANTITY) % (QUANTITY_MAX - QUANTITY_MIN + 1),
+		"reserve":     RESERVE_MIN + _hash(seed_v, cell, _SALT_RESERVE) % (RESERVE_MAX - RESERVE_MIN + 1),
 		"center":      Vector3(cx, cd, cz),
-		"radius":      lerpf(RADIUS_MIN_TILES, RADIUS_MAX_TILES, _unit(_hash(seed, cell, _SALT_RADIUS))),
-		"half_height": lerpf(HALF_HEIGHT_MIN, HALF_HEIGHT_MAX, _unit(_hash(seed, cell, _SALT_HEIGHT))),
+		"radius":      lerpf(RADIUS_MIN_TILES, RADIUS_MAX_TILES, _unit(_hash(seed_v, cell, _SALT_RADIUS))),
+		"half_height": lerpf(HALF_HEIGHT_MIN, HALF_HEIGHT_MAX, _unit(_hash(seed_v, cell, _SALT_HEIGHT))),
 		"anchor":      anchor,
 		"biome":       biome,
 	}
 
 ## The vein's material: a weighted draw over the biome's non-host bias materials the
 ## fabric admits at the centre, else the host when the fabric admits IT, else none.
-static func _pick_material(seed: int, biome: String, depth: float, center_xz: Vector2, roll: float) -> String:
+static func _pick_material(seed_v: int, biome: String, depth: float, center_xz: Vector2, roll: float) -> String:
 	var bias: Dictionary = BIOME_BIAS.get(biome, { FALLBACK_HOST: 1 })
 	var host := host_material(biome)
 	var candidates: Array = []
 	var total := 0
 	for material in bias:
 		var key := str(material)
-		if key == host or not allows(key, depth, center_xz, seed):
+		if key == host or not allows(key, depth, center_xz, seed_v):
 			continue
 		total += int(bias[material])
 		candidates.append([total, key])
 	if candidates.is_empty():
-		return host if allows(host, depth, center_xz, seed) else ""
+		return host if allows(host, depth, center_xz, seed_v) else ""
 	var pick := roll * float(total)
 	for entry in candidates:
 		if pick < float(entry[0]):
@@ -307,9 +307,9 @@ static func _pick_material(seed: int, biome: String, depth: float, center_xz: Ve
 
 ## The vein at a chunk-local `tile` and `depth` (world units below the tile's natural
 ## surface), or `{}`. See the class docstring for the shape and the per-tile clip.
-static func vein_at(seed: int, chunk_pos: Vector2i, tile: Vector2i, depth: float, cache: Dictionary = {}) -> Dictionary:
+static func vein_at(seed_v: int, chunk_pos: Vector2i, tile: Vector2i, depth: float, cache: Dictionary = {}) -> Dictionary:
 	var g := chunk_pos * CHUNK_SIZE + tile
-	var vein := vein_in_cell(seed, cell_of(g, depth), cache)
+	var vein := vein_in_cell(seed_v, cell_of(g, depth), cache)
 	if vein.is_empty():
 		return {}
 	var center: Vector3 = vein["center"]
@@ -325,11 +325,11 @@ static func vein_at(seed: int, chunk_pos: Vector2i, tile: Vector2i, depth: float
 	if d >= 1.0 + SHAPE_NOISE:
 		return {}
 	if d > 1.0 - SHAPE_NOISE:
-		var n := _value_noise_3d(_salted(seed, _SALT_SHAPE),
+		var n := _value_noise_3d(_salted(seed_v, _SALT_SHAPE),
 			px / SHAPE_WAVELENGTH_TILES, depth / SHAPE_WAVELENGTH_DEPTH, pz / SHAPE_WAVELENGTH_TILES)
 		if d + n * SHAPE_NOISE >= 1.0:
 			return {}
-	if not allows(str(vein["material"]), depth, Vector2(px * TILE_SIZE, pz * TILE_SIZE), seed):
+	if not allows(str(vein["material"]), depth, Vector2(px * TILE_SIZE, pz * TILE_SIZE), seed_v):
 		return {}
 	return vein
 
@@ -345,12 +345,12 @@ static func is_live(vein: Dictionary, depleted: Dictionary) -> bool:
 
 ## The ley-line field at a world position: 1.0 exactly on a line, falling toward 0 away
 ## from it (ridged value noise — see LEY_WAVELENGTH).
-static func ley_line_value(seed: int, world_xz: Vector2) -> float:
-	var n := _value_noise_2d(_salted(seed, _SALT_LEY), world_xz.x / LEY_WAVELENGTH, world_xz.y / LEY_WAVELENGTH)
+static func ley_line_value(seed_v: int, world_xz: Vector2) -> float:
+	var n := _value_noise_2d(_salted(seed_v, _SALT_LEY), world_xz.x / LEY_WAVELENGTH, world_xz.y / LEY_WAVELENGTH)
 	return 1.0 - absf(n)
 
-static func near_ley_line(seed: int, world_xz: Vector2) -> bool:
-	return ley_line_value(seed, world_xz) >= LEY_THRESHOLD
+static func near_ley_line(seed_v: int, world_xz: Vector2) -> bool:
+	return ley_line_value(seed_v, world_xz) >= LEY_THRESHOLD
 
 # ---------------------------------------------------------------------------
 # Hashing and noise — integer-only, no objects, so it is worker-safe and identical on
@@ -359,11 +359,11 @@ static func near_ley_line(seed: int, world_xz: Vector2) -> bool:
 
 ## A non-negative 31-bit hash of (seed, cell, salt). GDScript ints are 64-bit and wrap on
 ## overflow, which the mix relies on; the final mask keeps the result non-negative.
-static func _hash(seed: int, cell: Vector3i, salt: int) -> int:
-	return _mix(seed, cell.x, cell.y, cell.z, salt)
+static func _hash(seed_v: int, cell: Vector3i, salt: int) -> int:
+	return _mix(seed_v, cell.x, cell.y, cell.z, salt)
 
-static func _mix(seed: int, a: int, b: int, c: int, salt: int) -> int:
-	var h: int = seed * 0x9E3779B1 + a * 0x85EBCA77 + b * 0xC2B2AE3D + c * 0x27D4EB2F + salt * 0x165667B1
+static func _mix(seed_v: int, a: int, b: int, c: int, salt: int) -> int:
+	var h: int = seed_v * 0x9E3779B1 + a * 0x85EBCA77 + b * 0xC2B2AE3D + c * 0x27D4EB2F + salt * 0x165667B1
 	h = (h ^ (h >> 15)) * 0x2C1B3C6D
 	h = (h ^ (h >> 12)) * 0x297A2D39
 	h = h ^ (h >> 15)
@@ -372,35 +372,35 @@ static func _mix(seed: int, a: int, b: int, c: int, salt: int) -> int:
 static func _unit(h: int) -> float:
 	return float(h) / 2147483648.0
 
-static func _salted(seed: int, salt: int) -> int:
-	return _mix(seed, salt, 0, 0, 0)
+static func _salted(seed_v: int, salt: int) -> int:
+	return _mix(seed_v, salt, 0, 0, 0)
 
 ## The lattice value at an integer corner, in [-1, 1).
-static func _corner(seed: int, x: int, y: int, z: int) -> float:
-	return _unit(_mix(seed, x, y, z, 0)) * 2.0 - 1.0
+static func _corner(seed_v: int, x: int, y: int, z: int) -> float:
+	return _unit(_mix(seed_v, x, y, z, 0)) * 2.0 - 1.0
 
 static func _smooth(t: float) -> float:
 	return t * t * (3.0 - 2.0 * t)
 
 ## Smoothly interpolated lattice value noise in [-1, 1].
-static func _value_noise_2d(seed: int, x: float, z: float) -> float:
+static func _value_noise_2d(seed_v: int, x: float, z: float) -> float:
 	var x0 := floori(x)
 	var z0 := floori(z)
 	var tx := _smooth(x - float(x0))
 	var tz := _smooth(z - float(z0))
-	var a := lerpf(_corner(seed, x0, 0, z0), _corner(seed, x0 + 1, 0, z0), tx)
-	var b := lerpf(_corner(seed, x0, 0, z0 + 1), _corner(seed, x0 + 1, 0, z0 + 1), tx)
+	var a := lerpf(_corner(seed_v, x0, 0, z0), _corner(seed_v, x0 + 1, 0, z0), tx)
+	var b := lerpf(_corner(seed_v, x0, 0, z0 + 1), _corner(seed_v, x0 + 1, 0, z0 + 1), tx)
 	return lerpf(a, b, tz)
 
-static func _value_noise_3d(seed: int, x: float, y: float, z: float) -> float:
+static func _value_noise_3d(seed_v: int, x: float, y: float, z: float) -> float:
 	var x0 := floori(x)
 	var y0 := floori(y)
 	var z0 := floori(z)
 	var tx := _smooth(x - float(x0))
 	var ty := _smooth(y - float(y0))
 	var tz := _smooth(z - float(z0))
-	var lo_a := lerpf(_corner(seed, x0, y0, z0), _corner(seed, x0 + 1, y0, z0), tx)
-	var lo_b := lerpf(_corner(seed, x0, y0, z0 + 1), _corner(seed, x0 + 1, y0, z0 + 1), tx)
-	var hi_a := lerpf(_corner(seed, x0, y0 + 1, z0), _corner(seed, x0 + 1, y0 + 1, z0), tx)
-	var hi_b := lerpf(_corner(seed, x0, y0 + 1, z0 + 1), _corner(seed, x0 + 1, y0 + 1, z0 + 1), tx)
+	var lo_a := lerpf(_corner(seed_v, x0, y0, z0), _corner(seed_v, x0 + 1, y0, z0), tx)
+	var lo_b := lerpf(_corner(seed_v, x0, y0, z0 + 1), _corner(seed_v, x0 + 1, y0, z0 + 1), tx)
+	var hi_a := lerpf(_corner(seed_v, x0, y0 + 1, z0), _corner(seed_v, x0 + 1, y0 + 1, z0), tx)
+	var hi_b := lerpf(_corner(seed_v, x0, y0 + 1, z0 + 1), _corner(seed_v, x0 + 1, y0 + 1, z0 + 1), tx)
 	return lerpf(lerpf(lo_a, lo_b, tz), lerpf(hi_a, hi_b, tz), ty)

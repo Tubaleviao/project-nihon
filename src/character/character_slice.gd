@@ -75,6 +75,13 @@ const LOD_AUTO := 1
 ## (radians) at full run. Idle (blend weight 0) resolves to the rest pose.
 const ANIM_FREQ := 7.0
 const RUN_SWING_AMPLITUDE := 0.7
+## Knee and elbow bend, as multiples of the swing amplitude: a base bend held through the
+## whole stride plus a peak reached while the limb swings forward (the knee lifting the foot
+## clear, the elbow folding as the arm comes through).
+const KNEE_BEND_BASE := 0.2
+const KNEE_BEND_PEAK := 1.2
+const ELBOW_BEND_BASE := 0.3
+const ELBOW_BEND_PEAK := 0.6
 
 ## Palette is a fixed 256 entries (§19): one byte per color index.
 const PALETTE_SIZE := 256
@@ -915,9 +922,9 @@ func sync_player_avatar(
 ## Swing the limb pivots for the procedural walk/run cycle. `phase` is the
 ## accumulated walk phase (0..TAU); `amplitude` is the peak swing angle in
 ## radians (0 = rest pose). Legs and arms swing in opposition around each limb's
-## local X axis. Knees/elbows are absent (single-capsule limbs), so the swing is
-## a rigid rotation from the hip/shoulder — a deliberate simplification pending
-## real multi-segment limbs and authored clips (characters.md §37).
+## local X axis, and each limb bends at its middle joint: a knee folds back
+## (negative X) while its leg swings forward, an elbow folds forward (positive X)
+## while its arm swings forward (characters.md §37).
 func _animate_limbs(inst: Dictionary, phase: float, amplitude: float) -> void:
 	var pivots: Dictionary = inst.get("limb_pivots", {})
 	if pivots.is_empty():
@@ -938,6 +945,22 @@ func _animate_limbs(inst: Dictionary, phase: float, amplitude: float) -> void:
 		arm_l.rotation.x = -swing
 	if arm_r != null:
 		arm_r.rotation.x = swing
+	# A leg swings forward while its swing angle rises: d(sin)/dphase = cos for the
+	# left leg, -cos for the right; the arms move opposite their legs.
+	var fwd_l := maxf(0.0, cos(phase))
+	var fwd_r := maxf(0.0, -cos(phase))
+	var knee_l: Node3D = pivots.get("knee_l", null)
+	var knee_r: Node3D = pivots.get("knee_r", null)
+	var elbow_l: Node3D = pivots.get("elbow_l", null)
+	var elbow_r: Node3D = pivots.get("elbow_r", null)
+	if knee_l != null:
+		knee_l.rotation.x = -amplitude * (KNEE_BEND_BASE + KNEE_BEND_PEAK * fwd_l)
+	if knee_r != null:
+		knee_r.rotation.x = -amplitude * (KNEE_BEND_BASE + KNEE_BEND_PEAK * fwd_r)
+	if elbow_l != null:
+		elbow_l.rotation.x = amplitude * (ELBOW_BEND_BASE + ELBOW_BEND_PEAK * maxf(0.0, -sin(phase)))
+	if elbow_r != null:
+		elbow_r.rotation.x = amplitude * (ELBOW_BEND_BASE + ELBOW_BEND_PEAK * maxf(0.0, sin(phase)))
 
 ## Bone names of the instance's skeleton (ordered, parents first).
 func get_skeleton_bone_names(instance_id: String) -> Array:
@@ -1055,9 +1078,9 @@ func _palette_regions() -> Array:
 
 ## Region bounds { "start": int, "end": int } for a named region (e.g. "metals",
 ## "emission"). Empty {0,0} when the name is unknown.
-func _region_bounds(name: String) -> Dictionary:
+func _region_bounds(region_name: String) -> Dictionary:
 	for r in _palette_regions():
-		if r is Dictionary and str(r.get("name", "")) == name:
+		if r is Dictionary and str(r.get("name", "")) == region_name:
 			return { "start": int(r.get("start", 0)), "end": int(r.get("end", 0)) }
 	return { "start": 0, "end": 0 }
 
@@ -1276,7 +1299,6 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 		var neck_len: float = landmarks["neck_len"]
 		var head_size: float = landmarks["head_size"]
 		var head_y: float = landmarks["head_y"]
-		var chest_y: float = landmarks["chest_y"]
 		var foot_side: float = landmarks["foot_side"]
 
 		# Chest — a rounded vertical capsule (not the old flat box) so the torso
@@ -1287,23 +1309,25 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 		rig.attach_to_bone(torso_bone, chest, chest_pos - rig.get_bone_global_rest(torso_bone))
 		parts["body_chest"] = { "node": chest, "max_lod": MAX_LOD }
 
-		# Legs — one capsule per leg hanging from a hip pivot so the procedural
-		# walk cycle can swing each leg independently around its local X axis.
-		# Both pivots live under a "body_legs" container so hide/LOD toggle both
-		# at once (§16 BodyLegs); each foot rides its leg pivot so it swings too.
+		# Legs — a thigh hanging from a hip pivot and a shin hanging from a knee
+		# pivot, so the procedural walk cycle can swing each leg around its local
+		# X axis and bend it at the knee. Both hip pivots live under a "body_legs"
+		# container so hide/LOD toggle both at once (§16 BodyLegs); each foot rides
+		# its knee pivot so it follows the shin.
 		var leg_radius: float = 0.09 * mass * shoulder
 		var legs_container := Node3D.new()
 		legs_container.name = "Legs"
 		rig.add_child(legs_container)
 		for side in [["leg_l", -1.0], ["leg_r", 1.0]]:
 			var pivot_key: String = side[0]
-			var sign: float = side[1]
-			var leg := _make_limb(Vector3(foot_side * sign, hip_y, 0.0), hip_y, leg_radius, skin_idx)
+			var side_sign: float = side[1]
+			var leg := _make_limb(Vector3(foot_side * side_sign, hip_y, 0.0), hip_y, leg_radius, skin_idx)
 			legs_container.add_child(leg["pivot"])
 			limb_pivots[pivot_key] = leg["pivot"]
+			limb_pivots[pivot_key.replace("leg", "knee")] = leg["joint"]
 			var foot := _make_box(Vector3(0.14 * shoulder, 0.08, 0.26), skin_idx)
-			foot.position = Vector3(0.0, -hip_y + 0.04, -0.10)
-			leg["pivot"].add_child(foot)
+			foot.position = Vector3(0.0, -leg["lower_length"] + 0.04, -0.10)
+			leg["joint"].add_child(foot)
 		parts["body_legs"] = { "node": legs_container, "max_lod": MAX_LOD }
 
 		# Arms — one capsule per arm hanging from a shoulder pivot (at the top of
@@ -1315,10 +1339,11 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 		var shoulder_y: float = hip_y + torso_h - 0.06
 		for side in [["arm_l", -1.0], ["arm_r", 1.0]]:
 			var pivot_key: String = side[0]
-			var sign: float = side[1]
-			var arm := _make_limb(Vector3(arm_side * sign, shoulder_y, 0.0), arm_len, arm_radius, skin_idx)
+			var side_sign: float = side[1]
+			var arm := _make_limb(Vector3(arm_side * side_sign, shoulder_y, 0.0), arm_len, arm_radius, skin_idx)
 			rig.add_child(arm["pivot"])
 			limb_pivots[pivot_key] = arm["pivot"]
+			limb_pivots[pivot_key.replace("arm", "elbow")] = arm["joint"]
 			parts[pivot_key] = { "node": arm["pivot"], "max_lod": MAX_LOD }
 
 		# Neck — a short capsule bridging the torso and head, so the head reads
@@ -1502,9 +1527,9 @@ func _attach_equipment(rig, slot: String, entry: Dictionary, props: Dictionary) 
 ## (humanoid/quadruped → Chest, bird → Spine, serpent → Spine_1, else Root).
 ## Returns "" when none exist, so the rig keeps the body a root child.
 func _torso_bone(rig) -> String:
-	for name in ["Chest", "Spine", "Spine_1", "Root"]:
-		if rig.get_bone_index(name) != -1:
-			return name
+	for bone_name in ["Chest", "Spine", "Spine_1", "Root"]:
+		if rig.get_bone_index(bone_name) != -1:
+			return bone_name
 	return ""
 
 ## Shared BoxMesh cache (characters.md §43 — the Phase 22 mesh-sharing
@@ -1590,17 +1615,27 @@ func _finish_part(mesh: MeshInstance3D, palette_index: int, opts: Dictionary) ->
 	CharacterMaterial.apply_instance(mesh, palette_index, opts)
 	return mesh
 
-## Build a limb as a pivot-at-joint + a hanging capsule: the pivot sits at the
-## joint position and the capsule hangs down from it (centred at -length/2), so
-## rotating the pivot around its local X axis swings the limb for the procedural
-## walk cycle. Returns { pivot, mesh }.
+## Build a two-segment limb: a pivot at the root joint (hip/shoulder) with the
+## upper capsule hanging from it, and a middle joint (knee/elbow) halfway down
+## with the lower capsule hanging from that. Rotating the pivot around its local
+## X axis swings the whole limb; rotating the middle joint bends it. Returns
+## { pivot, mesh (upper), joint, lower (mesh), lower_length }.
 func _make_limb(joint_pos: Vector3, length: float, radius: float, palette_index: int) -> Dictionary:
+	var upper_len := length * 0.5
+	var lower_len := length - upper_len
 	var pivot := Node3D.new()
 	pivot.position = joint_pos
-	var capsule := _make_capsule(radius, length, palette_index)
-	capsule.position = Vector3(0.0, -length * 0.5, 0.0)
-	pivot.add_child(capsule)
-	return { "pivot": pivot, "mesh": capsule }
+	var upper := _make_capsule(radius, upper_len, palette_index)
+	upper.position = Vector3(0.0, -upper_len * 0.5, 0.0)
+	pivot.add_child(upper)
+	var joint := Node3D.new()
+	joint.position = Vector3(0.0, -upper_len, 0.0)
+	pivot.add_child(joint)
+	# Slightly slimmer below the joint, as a shin/forearm is.
+	var lower := _make_capsule(radius * 0.9, lower_len, palette_index)
+	lower.position = Vector3(0.0, -lower_len * 0.5, 0.0)
+	joint.add_child(lower)
+	return { "pivot": pivot, "mesh": upper, "joint": joint, "lower": lower, "lower_length": lower_len }
 
 func _palette_colors() -> Array:
 	if _palette.is_empty():

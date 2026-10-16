@@ -99,8 +99,8 @@ static func help_lines(admin: bool) -> Array:
 ## `pos` is the exact `{chunk, local}` record, built from the doubles typed — never through a `Vector3`,
 ## whose float32 X loses metres a million chunks out. `world` is the wrapped `[x, y, z]` for display.
 static func parse_position(args: Array, start: int = 0) -> Dictionary:
-	var fail := func(key: String, args: Array = []) -> Dictionary:
-		return { "ok": false, "pos": {}, "world": [], "error": I18n.msg(key, args) }
+	var fail := func(key: String, msg_args: Array = []) -> Dictionary:
+		return { "ok": false, "pos": {}, "world": [], "error": I18n.msg(key, msg_args) }
 	if args.size() < start + 3:
 		return fail.call("chat.err.need_three")
 	var v: Array = []

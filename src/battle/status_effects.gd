@@ -51,9 +51,9 @@ func table() -> Dictionary:
 		if t is Dictionary:
 			for id in (t as Dictionary).keys():
 				if (t as Dictionary)[id] is Dictionary:
-					var row := DEFAULT_ROW.duplicate(true)
-					row.merge((t as Dictionary)[id], true)
-					out[str(id)] = row
+					var entry := DEFAULT_ROW.duplicate(true)
+					entry.merge((t as Dictionary)[id], true)
+					out[str(id)] = entry
 	_table_cache = out
 	return out
 

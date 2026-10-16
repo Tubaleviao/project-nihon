@@ -178,11 +178,11 @@ func tame_data(creature_id: String) -> Dictionary:
 	var res: Resource = GameData.CREATURES.get(creature_id, null)
 	if res == null:
 		return {}
-	var tame = res.get("tame")
-	if tame is Dictionary:
-		return tame
-	if tame is String and tame != "":
-		var parsed = JSON.parse_string(tame)
+	var tame_field = res.get("tame")
+	if tame_field is Dictionary:
+		return tame_field
+	if tame_field is String and tame_field != "":
+		var parsed = JSON.parse_string(tame_field)
 		if parsed is Dictionary:
 			return parsed
 	return {}

@@ -7,7 +7,7 @@ title: "HumanoidSkeleton"
 
 `skeleton`
 
-Bipedal humanoid bone structure with two arms, two legs, and a head. The shared rig for humans and humanoid races; carries the full set of equipment sockets (head, face, chest, back, cape, weapon, shield, hips, mount).
+Bipedal humanoid bone structure with two arms, two legs, and a head. Each limb bends in the middle: Forearm is the elbow, Shin the knee. The shared rig for humans and humanoid races; carries the full set of equipment sockets (head, face, chest, back, cape, weapon, shield, hips, mount).
 
 > Provide a rig that supports the complete humanoid equipment and attachment set
 

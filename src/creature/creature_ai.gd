@@ -181,10 +181,10 @@ func _tick_companion(iid: String, inst: Dictionary, delta: float) -> void:
 		return
 	if creature_slice == null or not creature_slice.has_method("get_tamed_by"):
 		return
-	var owner := str(creature_slice.get_tamed_by(iid))
-	if owner == "":
+	var owner_id := str(creature_slice.get_tamed_by(iid))
+	if owner_id == "":
 		return
-	var target = taming_slice.companion_target(owner)
+	var target = taming_slice.companion_target(owner_id)
 	if not (target is Vector3):
 		return
 	var tgt: Vector3 = target

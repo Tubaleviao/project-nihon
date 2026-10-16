@@ -6,6 +6,7 @@ extends RefCounted
 
 ## `v` wrapped into [-lap/2, lap/2) (integer units: chunks or tiles).
 static func wrap_i(v: int, lap: int) -> int:
+	@warning_ignore("integer_division")
 	return posmod(v + lap / 2, lap) - lap / 2
 
 ## `v` wrapped into [-lap/2, lap/2) (float units: metres).

@@ -32,9 +32,11 @@ const REST_POSE: Dictionary = {
 	"Arm_R":      Vector3(0.05, -0.18, 0.0),
 	"Forearm_R":  Vector3(0.0, -0.28, 0.0),
 	"Hand_R":     Vector3(0.0, -0.26, 0.0),
-	"Leg_L":      Vector3(-0.10, -0.85, 0.0),
+	"Leg_L":      Vector3(-0.10, -0.45, 0.0),
+	"Shin_L":     Vector3(0.0, -0.40, 0.0),
 	"Foot_L":     Vector3(0.0, -0.10, 0.0),
-	"Leg_R":      Vector3(0.10, -0.85, 0.0),
+	"Leg_R":      Vector3(0.10, -0.45, 0.0),
+	"Shin_R":     Vector3(0.0, -0.40, 0.0),
 	"Foot_R":     Vector3(0.0, -0.10, 0.0),
 }
 
@@ -153,7 +155,7 @@ static func _bone_group_scale(bone_name: String, props: Dictionary) -> Vector3:
 	var arm_len: float = props.get("armLength", 1.0)
 	var head_scale: float = props.get("headScale", 1.0)
 	match bone_name:
-		"Leg_L", "Leg_R", "Foot_L", "Foot_R", "Leg_FL", "Leg_FR", "Leg_BL", "Leg_BR":
+		"Leg_L", "Leg_R", "Shin_L", "Shin_R", "Foot_L", "Foot_R", "Leg_FL", "Leg_FR", "Leg_BL", "Leg_BR":
 			return Vector3(height, leg_len * height, height)
 		"Shoulder_L", "Shoulder_R":
 			return Vector3(shoulder, height, height)

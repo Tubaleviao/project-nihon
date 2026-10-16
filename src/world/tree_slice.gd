@@ -543,6 +543,7 @@ func clear_trees_near_tile(tile: Vector2i, edit_y: float = INF) -> int:
 	var wt := _lap_tiles()
 	var canon := VoxelScript.canonical_tile(tile)
 	var centre := _chunk_of_tile(tile)
+	@warning_ignore("integer_division")
 	var reach := 1 + radius / maxi(_chunk_size(), 1)
 	return _clear_where(_lap_keys(centre, reach), func(tree: Dictionary) -> bool:
 		if _too_deep(edit_y, float(tree["position"].y)):

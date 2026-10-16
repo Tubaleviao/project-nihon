@@ -16,6 +16,7 @@ module.exports = {
     tags: ['skeleton'],
     description:
       'Bipedal humanoid bone structure with two arms, two legs, and a head. ' +
+      'Each limb bends in the middle: Forearm is the elbow, Shin the knee. ' +
       'The shared rig for humans and humanoid races; carries the full set of ' +
       'equipment sockets (head, face, chest, back, cape, weapon, shield, hips, mount).',
     goal: 'Provide a rig that supports the complete humanoid equipment and attachment set',
@@ -40,9 +41,11 @@ module.exports = {
           { name: 'Forearm_R', parent: 'Arm_R' },
           { name: 'Hand_R', parent: 'Forearm_R' },
           { name: 'Leg_L', parent: 'Hips' },
-          { name: 'Foot_L', parent: 'Leg_L' },
+          { name: 'Shin_L', parent: 'Leg_L' },
+          { name: 'Foot_L', parent: 'Shin_L' },
           { name: 'Leg_R', parent: 'Hips' },
-          { name: 'Foot_R', parent: 'Leg_R' },
+          { name: 'Shin_R', parent: 'Leg_R' },
+          { name: 'Foot_R', parent: 'Shin_R' },
         ],
       },
       sockets: {
@@ -82,9 +85,11 @@ module.exports = {
           Arm_R:      [0.05, -0.18, 0.0],
           Forearm_R:  [0.0, -0.28, 0.0],
           Hand_R:     [0.0, -0.26, 0.0],
-          Leg_L:      [-0.10, -0.85, 0.0],
+          Leg_L:      [-0.10, -0.45, 0.0],
+          Shin_L:     [0.0, -0.40, 0.0],
           Foot_L:     [0.0, -0.10, 0.0],
-          Leg_R:      [0.10, -0.85, 0.0],
+          Leg_R:      [0.10, -0.45, 0.0],
+          Shin_R:     [0.0, -0.40, 0.0],
           Foot_R:     [0.0, -0.10, 0.0],
         },
       },

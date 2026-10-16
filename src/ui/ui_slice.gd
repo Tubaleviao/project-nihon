@@ -851,7 +851,7 @@ func listable_items() -> Array:
 ## A tech is researchable from the window only when still locked and every
 ## prerequisite is unlocked. Material availability is validated at research time
 ## (begin_research), not here.
-func _can_research(tech_id: String, status: String, data: Dictionary) -> bool:
+func _can_research(_tech_id: String, status: String, data: Dictionary) -> bool:
 	if status != "locked":
 		return false
 	for req in data.get("requires", []):
