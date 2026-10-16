@@ -28,7 +28,11 @@ GODOT=$GODOT tools/net_harness.sh                           # two-process loopba
 tools/build_pck.sh                                          # build assets.pck from private assets-prod/ submodule
 ```
 
-There is no single-test CLI filter: `--run-tests` runs everything (about 7,000 assertions, fast, synchronous, no frames). To iterate on one test, temporarily comment out other `_run_test` lines in `src/tests/test_suite.gd`.
+`--run-tests` runs everything (about 26,000 assertions, synchronous, no frames). To iterate, add `--test-filter=<substring>` after `--`: only tests whose registered name contains the substring (case-insensitive) run, the registration/orphan audits still run, and a filter that matches nothing fails the run. CI runs the full suite with no filter.
+
+```bash
+$GODOT --headless --path . --quit -- --run-tests --test-filter=worldgen
+```
 
 ## Architecture
 
@@ -46,7 +50,7 @@ There is no single-test CLI filter: `--run-tests` runs everything (about 7,000 a
 
 ## Tests
 
-All unit tests are in `src/tests/test_suite.gd` (~22k lines; Phase 133 splits it per system). Rules enforced by the suite itself:
+Unit tests live in `src/tests/suites/<system>_tests.gd` (one file per system, none over 3,000 lines), each extending `src/tests/test_support.gd` (shared fixtures, helpers, assertions) and listing its tests in `register()`. `src/tests/test_suite.gd` is the runner: its `SUITES` list names every suite file (a new `*_tests.gd` must be added there). Rules enforced by the suite itself:
 - Each `_test_*` func must be registered with `_run_test("name", fn)`; unregistered ones fail the suite.
 - No frames elapse, so tests must `free()` what they create (queue_free results too). The final `_assert_no_orphan_nodes()` fails on leaked nodes.
 - Network behavior that needs ticking goes in `src/tests/net_harness.gd` (step list is read from the plan line by `tools/net_harness.sh`, so adding a step extends the check). Avoid bare `await` there; an audit test enforces it.

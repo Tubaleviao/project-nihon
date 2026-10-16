@@ -63,16 +63,30 @@ static func palette_texture(colors: Array) -> ImageTexture:
 # Shared material + per-instance parameters (§20)
 # ---------------------------------------------------------------------------
 
+## A ShaderMaterial on the character shader with `colors` bound as its palette.
+static func _make_material(colors: Array) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = SHADER
+	mat.set_shader_parameter("palette_tex", palette_texture(colors))
+	return mat
+
+## Point `mat` at the palette texture for `colors`. `palette_texture` is cached by colour
+## content, so an unchanged palette is the same texture and writes nothing; a changed one
+## (a later palette) is picked up by the already-built material instead of being ignored.
+static func _refresh_palette(mat: ShaderMaterial, colors: Array) -> void:
+	var tex := palette_texture(colors)
+	if mat.get_shader_parameter("palette_tex") != tex:
+		mat.set_shader_parameter("palette_tex", tex)
+
 ## The single shared ShaderMaterial (built once). The palette texture is bound
 ## here; per-part colour/channel values are written per-instance on each mesh
 ## via apply_instance() — a palette swap is a uniform write, never a new
 ## material or texture.
 static func shared_material(colors: Array) -> ShaderMaterial:
 	if _shared_material == null:
-		var mat := ShaderMaterial.new()
-		mat.shader = SHADER
-		mat.set_shader_parameter("palette_tex", palette_texture(colors))
-		_shared_material = mat
+		_shared_material = _make_material(colors)
+	else:
+		_refresh_palette(_shared_material, colors)
 	return _shared_material
 
 ## The single rig ShaderMaterial (built once). Its textures are bound by the caller
@@ -80,17 +94,17 @@ static func shared_material(colors: Array) -> ShaderMaterial:
 ## per mesh with apply_instance, so two characters share this resource.
 static func rig_material(colors: Array) -> ShaderMaterial:
 	if _rig_material == null:
-		var mat := ShaderMaterial.new()
-		mat.shader = SHADER
-		mat.set_shader_parameter("palette_tex", palette_texture(colors))
-		_rig_material = mat
+		_rig_material = _make_material(colors)
+	else:
+		_refresh_palette(_rig_material, colors)
 	return _rig_material
 
-## Bind the three body sheets on the rig material (idempotent: same textures, same material).
+## Bind the three body sheets on the rig material. Idempotent and write-free when the
+## textures are already bound, so a rig attach does not rebind the same three.
 static func bind_rig_textures(mat: ShaderMaterial, detail: Texture2D, color_mask: Texture2D, channel: Texture2D) -> void:
-	mat.set_shader_parameter("detail_tex", detail)
-	mat.set_shader_parameter("color_mask_tex", color_mask)
-	mat.set_shader_parameter("channel_tex", channel)
+	for pair in [["detail_tex", detail], ["color_mask_tex", color_mask], ["channel_tex", channel]]:
+		if mat.get_shader_parameter(pair[0]) != pair[1]:
+			mat.set_shader_parameter(pair[0], pair[1])
 
 ## Write every per-instance shader parameter onto a part mesh (no new material).
 ## `base_index` is the base palette colour; `opts` carries the optional channel
