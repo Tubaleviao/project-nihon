@@ -172,6 +172,7 @@ static func steps() -> Array:
 		{ "name": "join_line_localized", "compare": true },
 		{ "name": "admin_teleport",    "compare": true },
 		{ "name": "waystone_travel",   "compare": true },
+		{ "name": "settlement",        "compare": true },
 		{ "name": "non_admin_refused", "compare": true },
 		{ "name": "equipment_recorded", "compare": true },
 		{ "name": "equipment_delivered", "compare": true },
@@ -182,7 +183,6 @@ static func steps() -> Array:
 		{ "name": "spawn_near_friend", "compare": true },
 		{ "name": "chunk_record_synced", "compare": true },
 		{ "name": "frontier_record_synced", "compare": true },
-		{ "name": "settlement",        "compare": true },
 	]
 
 ## The step names, comma-joined — the payload of the `plan` line the runner prints
@@ -391,6 +391,7 @@ func run(root: Node, role: String) -> void:
 	await _step_join_line_localized()
 	await _step_admin_teleport()
 	await _step_waystone_travel()
+	await _step_settlement()
 	await _step_non_admin_refused()
 	await _step_equipment_recorded()
 	await _step_equipment_delivered()
@@ -401,7 +402,6 @@ func run(root: Node, role: String) -> void:
 	await _step_spawn_near_friend()
 	await _step_chunk_record_synced()
 	await _step_frontier_record_synced()
-	await _step_settlement()
 	_finish()
 
 ## End this process, with the run's own verdict carried in the exit code.
@@ -1527,6 +1527,8 @@ func _on_settlement_edit(_action: String, _pos: Vector3, _normal: Vector3, _mate
 func _step_settlement() -> void:
 	var settlements: Node = _root._settlements
 	GameBus.block_changed.connect(_on_settlement_edit)
+	# The client was just sent home by the step before: let the host's record of where it stands settle.
+	await _await_settle(3.0)
 	if _role == "host":
 		var peer := _peer_id()
 		var bound := _live_bound_id()
