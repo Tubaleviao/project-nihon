@@ -1582,6 +1582,7 @@ func _step_settlement() -> void:
 		GameBus.settlement_intent.emit("deposit", { "item": SETTLEMENT_ITEM, "qty": SETTLEMENT_QTY }, "")
 	var deposited: bool = await _await_until(func(): return int(((settlements.view().get("mine", {}) as Dictionary).get("stock", {}) as Dictionary).get(SETTLEMENT_ITEM, 0)) == SETTLEMENT_QTY, _step_timeout())
 	var edited: bool = await _await_until(func(): return _settlement_edits > refused_edits, _step_timeout())
+	await _await_settle(1.5 * _time_scale)   # the host's closing settle: stay level so the next step's resends overlap its grant
 	var ok: bool = seen_claim and refused_edits == 0 and joined and deposited and edited
 	_report("settlement", verdict(ok, true), "outsider-refused-member-deposited" if ok else "claim%d-invited%d-refusedEdits%d-joined%d-deposited%d-edited%d" % [int(seen_claim), int(invited), refused_edits, int(joined), int(deposited), int(edited)])
 
