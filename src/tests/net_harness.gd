@@ -1521,12 +1521,18 @@ const SETTLEMENT_ITEM := "AethermiteDust"
 const SETTLEMENT_QTY := 10
 var _settlement_edits: int = 0
 
+var _settlement_reasons: Array = []
+
+func _on_settlement_resolved(_pid: String, action: String, _ok: bool, reason: String) -> void:
+	_settlement_reasons.append("%s:%s" % [action, reason])
+
 func _on_settlement_edit(_action: String, _pos: Vector3, _normal: Vector3, _material: String) -> void:
 	_settlement_edits += 1
 
 func _step_settlement() -> void:
 	var settlements: Node = _root._settlements
 	GameBus.block_changed.connect(_on_settlement_edit)
+	GameBus.settlement_resolved.connect(_on_settlement_resolved)
 	# The client was just sent home by the step before: let the host's record of where it stands settle.
 	await _await_settle(3.0)
 	if _role == "host":
@@ -1562,7 +1568,7 @@ func _step_settlement() -> void:
 		var edited: bool = bool(voxel.mine_block(pos, Vector3.UP, bound).get("success", false))
 		await _await_settle(1.5 * _time_scale)
 		var ok: bool = refused and joined and deposited and edited
-		_report("settlement", verdict(ok, true), "outsider-refused-member-deposited" if ok else "invite_%s-refused%d-joined%d-deposited%d-edited%d" % [invite_why, int(refused), int(joined), int(deposited), int(edited)])
+		_report("settlement", verdict(ok, true), "outsider-refused-member-deposited" if ok else "invite_%s-%s-refused%d-joined%d-deposited%d-edited%d" % [invite_why, "_".join(_settlement_reasons), int(refused), int(joined), int(deposited), int(edited)])
 		return
 	var seen_claim: bool = await _await_until(func(): return (settlements.view().get("claims", []) as Array).size() > 0, _step_timeout())
 	var invited: bool = await _await_until(func(): return (settlements.view().get("invites", []) as Array).size() > 0, _step_timeout())
@@ -1571,6 +1577,7 @@ func _step_settlement() -> void:
 		GameBus.settlement_intent.emit("join", { "id": str(settlements.view()["invites"][0]["id"]) }, "")
 	var joined: bool = await _await_until(func(): return not (settlements.view().get("mine", {}) as Dictionary).is_empty(), _step_timeout())
 	var has_item: bool = await _await_until(func(): return _root._inventory.get_item_count(SETTLEMENT_ITEM) >= SETTLEMENT_QTY, _step_timeout())
+	await _await_settle(0.6)   # past the per-player intent interval after the join
 	if has_item:
 		GameBus.settlement_intent.emit("deposit", { "item": SETTLEMENT_ITEM, "qty": SETTLEMENT_QTY }, "")
 	var deposited: bool = await _await_until(func(): return int(((settlements.view().get("mine", {}) as Dictionary).get("stock", {}) as Dictionary).get(SETTLEMENT_ITEM, 0)) == SETTLEMENT_QTY, _step_timeout())
