@@ -161,6 +161,8 @@ npm run generate  # generate the design bible into bible/
 | 138 | Trees, generation records and persistence cleanup sweep | Planned |
 | 139 | Settlements in the fabric: founding, membership and shared storage | Planned |
 | 140 | Settlements at runtime: a hearth, a claim and a shared stockpile | Planned |
+| 141 | Terrain streaming off the main thread: worker noise, seam strips, polar shortcuts, fold catch-up | In review |
+| 142 | Terrain build throughput: a time-budgeted pump and a native chunk builder | Planned |
 
 See [ROADMAP.md](ROADMAP.md) for open phases and deferred work. Completed phases are archived in [docs/roadmap-history/](docs/roadmap-history/README.md) with their full spec and acceptance criteria.
 

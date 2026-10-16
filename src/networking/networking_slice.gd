@@ -208,6 +208,10 @@ var net_profile: String = ""
 ## Emulated links: peer_id -> the ms at which that peer's wire is next free (bandwidth
 ## serialisation). One link per peer, so a departed peer's backlog cannot delay a new one.
 var _link_free_at_ms: Dictionary = {}
+## Reliable model: peer_id -> the ms the last packet queued for that peer is delivered. ENet's reliable
+## channel delivers in order, so a later packet never overtakes one waiting on a retransmit (or on a
+## longer jitter draw): it is held until that one has arrived (head-of-line blocking).
+var _ordered_at_ms: Dictionary = {}
 
 ## Sequence numbering: every outbound packet carries a per-type monotonic seq;
 ## the receiver uses it to drop duplicates and detect gaps.
@@ -429,6 +433,7 @@ func disconnect_all() -> void:
 	_role = Role.OFFLINE
 	_pending.clear()
 	_link_free_at_ms.clear()
+	_ordered_at_ms.clear()
 	_jitter_buffer.clear()
 	_player_ids.clear()
 	# Phase 37 — a torn-down connection cannot complete the snapshot it was
@@ -701,6 +706,9 @@ func _deliver(peer_id: int, payload: Dictionary) -> bool:
 	var json := JSON.stringify(payload)
 	var at_ms: float = _schedule_at_ms(float(Time.get_ticks_msec()), json.to_utf8_buffer().size(), peer_id) \
 			+ retransmit_delay_ms
+	if emulator_retransmit:
+		at_ms = maxf(at_ms, float(_ordered_at_ms.get(peer_id, 0.0)))
+		_ordered_at_ms[peer_id] = at_ms
 	_pending.append({ "at_ms": at_ms, "peer_id": peer_id, "payload": json })
 	if emulator_reorder:
 		_maybe_reorder()
@@ -2190,6 +2198,7 @@ func _drain_emulator(now_ms: float = -1.0) -> void:
 				_ensure_transport().send(int(entry["peer_id"]), msg)
 			elif _role == Role.HOST:
 				_link_free_at_ms.erase(int(entry["peer_id"]))
+				_ordered_at_ms.erase(int(entry["peer_id"]))
 			_pending.remove_at(i)
 		else:
 			i += 1
