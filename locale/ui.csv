@@ -249,3 +249,6 @@ settlement.refused.over_limit,Over your daily withdraw limit.,Acima do seu limit
 settlement.refused.no_inventory,No pack to use.,Sem mochila para usar.
 settlement.refused.too_far,Too far away.,Longe demais.
 settlement.refused.unknown_action,Unknown action.,Ação desconhecida.
+settlement.refused.durable,Worn tools cannot be stored.,Ferramentas gastas não podem ser guardadas.
+settlement.join,Join,Entrar
+settlement.invited,Invited to: {0},Convite para: {0}

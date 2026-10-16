@@ -12,6 +12,7 @@ var _status: Label = null
 var _members: Label = null
 var _stock: Label = null
 var _feedback: Label = null
+var _invites: VBoxContainer = null
 var _name_edit: LineEdit = null
 var _target_edit: LineEdit = null
 var _role_pick: OptionButton = null
@@ -25,6 +26,8 @@ func _init() -> void:
 	_status = Label.new()
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(_status)
+	_invites = VBoxContainer.new()
+	add_child(_invites)
 	_name_edit = _line("settlement.name_ph")
 	_button("settlement.found", func() -> void: _send("found", { "name": _name_edit.text }))
 	_target_edit = _line("settlement.player_ph")
@@ -103,6 +106,7 @@ func refresh() -> void:
 		_role_pick.set_item_text(i, I18n.t("settlement.role." + str(_role_pick.get_item_metadata(i))))
 	var view: Dictionary = settlement_slice.view() if settlement_slice != null else {}
 	var mine: Dictionary = view.get("mine", {})
+	_render_invites(view.get("invites", []) if mine.is_empty() else [])
 	if mine.is_empty():
 		_status.text = I18n.t("settlement.none")
 		_members.text = ""
@@ -122,3 +126,17 @@ func refresh() -> void:
 	for item: String in (mine.get("stock", {}) as Dictionary):
 		items.append("%s ×%d" % [item, int(mine["stock"][item])])
 	_stock.text = I18n.t("settlement.stock", [int(mine.get("used", 0)), int(mine.get("capacity", 0)), ", ".join(items)])
+
+## One "Join" button per pending invite (empty once the player belongs to a settlement).
+func _render_invites(invites: Array) -> void:
+	for c: Node in _invites.get_children():
+		_invites.remove_child(c)
+		c.queue_free()
+	for inv: Variant in invites:
+		if not inv is Dictionary:
+			continue
+		var b := Button.new()
+		b.text = "%s — %s" % [I18n.t("settlement.invited", [str((inv as Dictionary).get("name", ""))]), I18n.t("settlement.join")]
+		var sid := str((inv as Dictionary).get("id", ""))
+		b.pressed.connect(func() -> void: _send("join", { "id": sid }))
+		_invites.add_child(b)

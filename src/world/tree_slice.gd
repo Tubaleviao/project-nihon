@@ -477,6 +477,10 @@ func trees_in_chunk(chunk_pos: Vector2i) -> Array:
 ## Every check and mutation below went through this slice's own `inventory_slice`
 ## before, which is why a client's chop filled the HOST's pack while the client —
 ## mirroring only its own pack — saw nothing.
+## Phase 140 — `(player_id, xz: Vector2) -> String`: a non-empty reason refuses a chop inside a claim
+## the actor may not build in (the host's settlement claim rule). Unset: no claims.
+var claim_guard: Callable = Callable()
+
 func chop_tree(tree_id: String, player_id: String = "") -> Dictionary:
 	if not is_authoritative:
 		GameBus.tree_chop_requested.emit(tree_id, player_id)
@@ -486,6 +490,9 @@ func chop_tree(tree_id: String, player_id: String = "") -> Dictionary:
 	var tree: Dictionary = _trees[tree_id]
 	if tree["state"] != "standing":
 		return _fail("not_standing")
+	var tpos: Vector3 = tree["position"]
+	if claim_guard.is_valid() and str(claim_guard.call(player_id, Vector2(tpos.x, tpos.z))) != "":
+		return _fail("claimed")
 	var inventory := inventory_for(player_id)
 	var axe := _held_axe(inventory)
 	if axe == "":

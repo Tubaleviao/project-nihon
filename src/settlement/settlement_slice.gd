@@ -39,7 +39,7 @@ const ROLES := ["founder", "elder", "member", "guest"]
 ## Every refusal code an action can return.
 const REASONS := ["unknown_player", "rate_limited", "bad_args", "no_hearth", "already_member", "too_close",
 	"too_many", "not_member", "no_permission", "unknown_settlement", "not_invited", "full", "bad_role",
-	"founder_locked", "not_in_claim", "no_stock", "over_limit", "no_inventory", "too_far", "unknown_action"]
+	"founder_locked", "not_in_claim", "no_stock", "over_limit", "no_inventory", "too_far", "unknown_action", "durable"]
 
 const DEFAULT_RULES := {
 	"hearthStation": "hearth", "hearthItem": "Hearth", "guildMaxSettlements": 1,
@@ -337,6 +337,8 @@ func deposit(player_id: String, item: String, qty: int) -> String:
 	var inv := _inventory(pid)
 	if inv == null or not inv.has_method("consume_items"):
 		return "no_inventory"
+	if inv.has_method("is_durable") and inv.is_durable(item):
+		return "durable"   # the stockpile counts units, so wear would be lost: a worn tool comes back new
 	if inv.get_item_count(item) < qty:
 		return "no_stock"
 	var s: Dictionary = _settlements[id]
@@ -460,6 +462,7 @@ func _reclaim(s: Dictionary) -> void:
 		return
 	s["status"] = "founded"
 	s["abandoned_at"] = 0.0
+	GameBus.settlements_changed.emit()
 
 ## Note that `player_id` is active at their settlement (standing in the claim).
 func note_activity(player_id: String) -> void:

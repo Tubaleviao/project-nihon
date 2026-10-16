@@ -10,6 +10,7 @@ const TICK_SEC := 0.5
 
 var _elapsed: float = 0.0
 var _dirty: bool = true
+var _online: Array = []
 var _ui_bound: bool = false
 
 ## Build the slice and hand it the host-side guards (mine, place, station placement, research).
@@ -21,6 +22,7 @@ func make_slice(ctx: GameRoot) -> Node:
 	slice.is_host = not root._is_client
 	root._voxel.claim_guard = Callable(slice, "edit_blocker")
 	root._station.claim_guard = Callable(slice, "edit_blocker")
+	root._tree.claim_guard = Callable(slice, "edit_blocker")
 	root._station.settlement_slice = slice
 	root._technology.settlement_slice = slice
 	return slice
@@ -71,7 +73,12 @@ func tick(delta: float) -> void:
 	if _elapsed < TICK_SEC:
 		return
 	_elapsed = 0.0
-	for pid: String in root._registry.get_online_player_ids():
+	var online: Array = root._registry.get_online_player_ids()
+	online.sort()
+	if online != _online:   # a player who just connected has no view yet
+		_online = online
+		_dirty = true
+	for pid: String in online:
 		root._settlements.note_activity(pid)
 	root._settlements.tick(float(root._settlements.now_sec.call()))
 	if _dirty:
