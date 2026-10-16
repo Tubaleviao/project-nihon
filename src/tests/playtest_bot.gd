@@ -30,7 +30,8 @@ const ARG := "--playtest-bot"
 const OUT_DIR := "res://playtest"
 const HITCH_MS := 50.0        ## a frame over this is a hitch (counted, not a failure)
 const HARD_FRAME_MS := 2000.0 ## a frame over this fails the run
-const STEP_TIMEOUT_SECS := 30.0
+const STEP_TIMEOUT_SECS := 60.0 ## wall clock for a WHOLE step, not for one wait inside it
+const WARMUP_FRAMES := 3     ## the first frames of a step (shader compile, first upload) are not recorded
 const BOOT_TIMEOUT_SECS := 120.0
 const STREAM_CHUNKS := 20
 const WALK_SECS := 3.0
@@ -39,6 +40,8 @@ const FIGHT_RANGE_M := 1.5
 var _root: Node
 var _frames: Array = []       ## frame times (ms) of the step in flight
 var _recording: bool = false
+var _skip_frames: int = 0
+var _step_deadline_ms: int = 0
 var _chunk_builds: int = 0
 var _mined: Array = []
 var _chopped: Array = []
@@ -105,6 +108,10 @@ static func build_report(steps: Array) -> Dictionary:
 			failures.append("step %s never ran" % name)
 	return { "ok": failures.is_empty(), "failures": failures, "steps": steps }
 
+## One line, no column break: `|` and newlines in free text would split a table row.
+static func _md_cell(text: String) -> String:
+	return text.replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+
 static func report_markdown(report: Dictionary) -> String:
 	var lines: Array = []
 	lines.append("# Playtest report")
@@ -115,13 +122,13 @@ static func report_markdown(report: Dictionary) -> String:
 	lines.append("|---|---|---|---|---|---|---|---|---|---|")
 	for s in report["steps"]:
 		lines.append("| %s | %s | %d | %.1f | %.1f | %.1f | %.1f | %d | %d | %s |" % [
-			s["step"], "ok" if bool(s["ok"]) else "FAIL", int(s["frames"]), float(s["p50_ms"]), float(s["p95_ms"]),
-			float(s["p99_ms"]), float(s["max_ms"]), int(s["hitches"]), int(s["chunk_builds"]), s["detail"]])
+			_md_cell(str(s["step"])), "ok" if bool(s["ok"]) else "FAIL", int(s["frames"]), float(s["p50_ms"]), float(s["p95_ms"]),
+			float(s["p99_ms"]), float(s["max_ms"]), int(s["hitches"]), int(s["chunk_builds"]), _md_cell(str(s["detail"]))])
 	if not (report["failures"] as Array).is_empty():
 		lines.append("")
 		lines.append("## Hard failures")
 		for f in report["failures"]:
-			lines.append("- %s" % f)
+			lines.append("- %s" % _md_cell(str(f)))
 	lines.append("")
 	return "\n".join(lines)
 
@@ -137,13 +144,17 @@ func _ready() -> void:
 	GameBus.chunk_loaded.connect(func(_c: Vector2i): _chunk_builds += 1)
 
 func _process(delta: float) -> void:
-	if _recording:
-		_frames.append(delta * 1000.0)
+	if not _recording:
+		return
+	if _skip_frames > 0:
+		_skip_frames -= 1
+		return
+	_frames.append(delta * 1000.0)
 
 func run(root: Node) -> void:
 	_root = root
 	print("[Playtest] waiting for the world boot")
-	var booted: bool = await _until(func(): return _root._player != null and _root._chunk_manager.is_first_ring_ready() \
+	var booted: bool = await _until(func(): return _root._player != null and not _root._chunk_manager._first_ring.is_empty() and _root._chunk_manager.is_first_ring_ready() \
 		and not _root._pending_host_boot, BOOT_TIMEOUT_SECS)
 	print("[Playtest] boot wait over: %s" % str(booted))
 	var steps: Array = []
@@ -151,6 +162,7 @@ func run(root: Node) -> void:
 		steps.append(step_record("boot", false, "world boot did not finish in %ds" % int(BOOT_TIMEOUT_SECS), [], 0))
 	else:
 		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT_DIR))
+		_root._persistence.autosave_interval = 1.0e9   # the bot's edits must never reach the player's save
 		_root._inventory.replace_contents({})   # a saved pack from an earlier run must not decide the result
 		for name in step_names():
 			steps.append(await _run_step(name))
@@ -165,6 +177,8 @@ func _run_step(step: String) -> Dictionary:
 	print("[Playtest] step %s" % step)
 	_frames = []
 	_chunk_builds = 0
+	_skip_frames = WARMUP_FRAMES
+	_step_deadline_ms = Time.get_ticks_msec() + int(STEP_TIMEOUT_SECS * 1000.0)
 	_recording = true
 	var result: Array = await call("_step_" + step)
 	_recording = false
@@ -176,6 +190,8 @@ func _run_step(step: String) -> Dictionary:
 ## Poll `pred` once a frame until it holds or `secs` of wall clock pass.
 func _until(pred: Callable, secs: float) -> bool:
 	var deadline := Time.get_ticks_msec() + int(secs * 1000.0)
+	if _recording:
+		deadline = mini(deadline, _step_deadline_ms)
 	while Time.get_ticks_msec() < deadline:
 		if pred.call():
 			return true
@@ -307,9 +323,14 @@ func _step_place() -> Array:
 ## Fight: a creature set down within reach loses HP to the player's melee round.
 func _step_fight() -> Array:
 	var cid := ""
-	for k in GameData.CREATURES.keys():
-		cid = str(k)
-		break
+	var best := -1.0
+	var keys: Array = GameData.CREATURES.keys()
+	keys.sort()
+	for k in keys:   # the sturdiest creature: it survives the rounds, so its tracked HP stays readable
+		var hp := float((GameData.CREATURES[k] as Resource).get("baseHp"))
+		if hp > best:
+			best = hp
+			cid = str(k)
 	if cid == "":
 		return [false, "no creature in GameData"]
 	var p := _player_pos()

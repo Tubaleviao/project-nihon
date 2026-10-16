@@ -12,6 +12,7 @@ func register() -> void:
 	_run_test("playtest: report percentiles and hitch counts", _test_playtest_report_percentiles_and_hitches)
 	_run_test("playtest: step failure, hard frame and missing step fail the run", _test_playtest_report_verdicts)
 	_run_test("playtest: --playtest-bot is parsed", _test_playtest_bot_arg)
+	_run_test("playtest: markdown escapes free-text detail", _test_playtest_markdown_escapes_detail)
 
 func _test_runner_filter_parse_and_match() -> void:
 	assert_eq(Runner.filter_from_args(PackedStringArray(["--run-tests"])), "", "no filter arg means no filter")
@@ -110,3 +111,8 @@ func _test_playtest_report_verdicts() -> void:
 func _test_playtest_bot_arg() -> void:
 	assert_true(Bot.requested(["--playtest-bot"]), "the flag asks for the bot")
 	assert_false(Bot.requested(["--server"]), "other args do not")
+
+func _test_playtest_markdown_escapes_detail() -> void:
+	var rec := [Bot.step_record("craft", false, "research: a | b\nsecond line", [16.0], 0)]
+	var md: String = Bot.report_markdown(Bot.build_report(rec))
+	assert_true(md.contains("a \\| b second line"), "pipes are escaped and newlines flattened")

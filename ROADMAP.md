@@ -363,13 +363,13 @@ report, not a gate, except for hard failures.
 - #133 and #134 updated with a link to the artifact and the remaining human-only checks.
 
 **Acceptance criteria:**
-- [x] CI: the playtest job passes, every bot step reaches its expected state, and the artifact holds
+- [ ] CI: the playtest job passes, every bot step reaches its expected state, and the artifact holds
   `report.json`, `report.md` and one screenshot per step.
 - [x] Suite: the report builder computes percentiles and hitch counts correctly from a fixed list of
   frame times; a step timeout marks the step and the run failed.
-- [x] CI: the job fails on a hard failure (crash, step timeout, any frame over 2 s) and not on
+- [ ] CI: the job fails on a hard failure (crash, step timeout, any frame over 2 s) and not on
   slower-than-target percentiles.
-- [x] CI on `main`: the Linux and Windows exports succeed and are uploaded.
+- [ ] CI on `main`: the Linux and Windows exports succeed and are uploaded.
 
 ---
 

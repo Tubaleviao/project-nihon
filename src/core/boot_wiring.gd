@@ -90,8 +90,9 @@ func _check_game_data() -> void:
 				Diag.error("%s → %s FAILED" % [reg_name, key])
 
 ## Phase 134 — `--playtest-bot`: a scripted bot plays the rendered listen host, then quits the process.
+## Debug builds only: it empties the pack and edits the world, so a release build ignores the flag.
 func _start_playtest_bot() -> void:
-	if not PlaytestBot.requested(OS.get_cmdline_user_args()) or root._is_client or root._is_server:
+	if not OS.is_debug_build() or not PlaytestBot.requested(OS.get_cmdline_user_args()) or root._is_client or root._is_server:
 		return
 	var bot := PlaytestBot.new()
 	bot.name = "PlaytestBot"

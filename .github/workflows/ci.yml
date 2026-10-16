@@ -263,6 +263,7 @@ jobs:
 
   build:
     name: Linux and Windows exports
+    needs: [godot-tests, playtest]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
