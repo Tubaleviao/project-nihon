@@ -290,12 +290,12 @@ references it needs. Behaviour does not change.
   of `game_root.gd`.
 
 **Acceptance criteria:**
-- [ ] `wc -l src/core/game_root.gd` is under 1,200.
-- [ ] Suite (audit): `game_root.gd` contains no `GameBus.<signal>.connect` outside the wiring-module
+- [x] `wc -l src/core/game_root.gd` is under 1,200.
+- [x] Suite (audit): `game_root.gd` contains no `GameBus.<signal>.connect` outside the wiring-module
   list, and every `*_wiring.gd` is constructed exactly once on each boot path.
-- [ ] Suite: building and freeing a full root on each boot role leaves no connected handler behind
+- [x] Suite: building and freeing a full root on each boot role leaves no connected handler behind
   (`unwire` disconnects everything `wire` connected) and no orphan nodes.
-- [ ] Suite green on both boot paths with the same assertion count as before the move (no test
+- [x] Suite green on both boot paths with the same assertion count as before the move (no test
   removed), harness green, `--server` and `--quit-after-boot` boots log their ready lines.
 
 ---
