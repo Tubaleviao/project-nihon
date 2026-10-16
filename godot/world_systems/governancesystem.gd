@@ -12,4 +12,6 @@ enum Status {
 @export var id: String
 @export var ratification: Dictionary
 @export var guildMinTier: String
+@export var guildSettlementLimit: int
+@export var settlementRuleChanges: Array
 @export var status: int

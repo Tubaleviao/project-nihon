@@ -32,9 +32,24 @@ function techData(tech) {
   }
 }
 
+/** Phase 139 — throws if a tech's `researchSite` / `materialSource` names something the settlement rules lack. */
+function validateSettlementRefs(settlementRules, itemKeys) {
+  const problems = []
+  for (const [key, entity] of Object.entries(module.exports)) {
+    const tech = entity && entity.fields && entity.fields.tech && entity.fields.tech.defaultValue
+    if (!tech) continue
+    if (tech.researchSite && tech.researchSite.station !== settlementRules.hearthItem) problems.push(`${key}.researchSite.station "${tech.researchSite.station}" must be the settlement hearth item "${settlementRules.hearthItem}"`)
+    if (tech.materialSource && tech.materialSource.container !== 'Stockpile') problems.push(`${key}.materialSource.container "${tech.materialSource.container}" must be "Stockpile"`)
+  }
+  if (!itemKeys.includes(settlementRules.hearthItem)) problems.push(`hearth item "${settlementRules.hearthItem}" is not a defined item`)
+  if (problems.length) throw new Error('Technology settlement references are invalid:\n  ' + problems.join('\n  '))
+}
+
 const { RULES, MAX_RESEARCH_COST, ResearchPointRule, validateRules, validateCosts } = require('./research_points')
 
 module.exports = {
+
+  validateSettlementRefs,
 
   ResearchPointRule,
 
@@ -55,9 +70,11 @@ module.exports = {
         requires: [],
         researchDuration: 10,
         researchMaterials: [{ item: 'Ferrite', quantity: 4 }],
+        researchSite: { station: 'Hearth', scope: 'settlement' },
       }),
     },
     relations: {
+      settlementHearth:              { name: 'settlementHearth',              kind: 'hasOne', target: 'Hearth' },
       unlocksRecipeFerriteIngot:     { name: 'unlocksRecipeFerriteIngot',     kind: 'hasOne', target: 'RecipeFerriteIngot' },
       unlocksRecipeFerriteShortSword: { name: 'unlocksRecipeFerriteShortSword', kind: 'hasOne', target: 'RecipeFerriteShortSword' },
       unlocksRecipeFerritePick:      { name: 'unlocksRecipeFerritePick',      kind: 'hasOne', target: 'RecipeFerritePick' },
@@ -68,7 +85,7 @@ module.exports = {
         description: 'Commit resources to researching basic smithing',
         rules: [
           'No prerequisites required',
-          'Research requires a campfire or forge in the player\'s settlement',
+          'Research is done at a Hearth inside the player\'s Settlement claim (tech.researchSite)',
         ],
         auth: { roles: ['maintainer'] },
       },
@@ -98,9 +115,11 @@ module.exports = {
         requires: ['TechBasicSmithing'],
         researchDuration: 45,
         researchMaterials: [{ item: 'Ashite', quantity: 20 }],
+        materialSource: { container: 'Stockpile', scope: 'settlement' },
       }),
     },
     relations: {
+      settlementStockpile:              { name: 'settlementStockpile',              kind: 'hasOne', target: 'Stockpile' },
       requiresTechBasicSmithing:        { name: 'requiresTechBasicSmithing',        kind: 'hasOne', target: 'TechBasicSmithing' },
       unlocksRecipeVeilsteelIngot:      { name: 'unlocksRecipeVeilsteelIngot',      kind: 'hasOne', target: 'RecipeVeilsteelIngot' },
       unlocksRecipeVeilsteelLongsword:  { name: 'unlocksRecipeVeilsteelLongsword',  kind: 'hasOne', target: 'RecipeVeilsteelLongsword' },
@@ -115,7 +134,7 @@ module.exports = {
         rules: [
           'Requires TechBasicSmithing: unlocked',
           'Requires Smithing: Journeyman',
-          'Requires at least twenty raw ashite ore in settlement storage',
+          'Requires at least twenty raw ashite ore in the settlement Stockpile (tech.materialSource)',
         ],
         auth: { roles: ['maintainer'] },
       },

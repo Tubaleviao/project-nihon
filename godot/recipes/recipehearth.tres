@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/recipes/recipehearth.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+domain = 0
+outputCount = 0
+recipe = {"domain":"carpentry","station":"carpentry bench","inputs":[{"item":"ThornwoodPlank","quantity":6},{"item":"FerriteIngot","quantity":4}],"outputs":[{"item":"Hearth","quantity":1}],"skillGuards":[{"skill":"Carpentry","tier":"apprentice"}]}
+description = "Lay a hearth from six thornwood planks and four ferrite ingots at a carpentry bench."
+tags = ["recipe"]

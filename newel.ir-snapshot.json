@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:77cb989f09baf889ac9ac4207c7c656b5899b32c7882f065feb5884ec356b9e8",
+  "schemaHash": "sha256:a5b76d111e1a017c5624013964b2b598ee461e0c3e14a2ae06ce28f8b560e36c",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -760,6 +760,116 @@
               "guards": [
                 "Community vote must reach quorum",
                 "Stones consume the Waystone item to place and an item cost to travel (WaystoneTravel)"
+              ],
+              "effects": []
+            },
+            {
+              "from": [
+                "proposed",
+                "accepted"
+              ],
+              "to": "superseded",
+              "trigger": "supersede",
+              "guards": [
+                "A replacement decision must be accepted first"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "SettlementClaimAndDecay": {
+        "name": "SettlementClaimAndDecay",
+        "tags": [
+          "decision"
+        ],
+        "description": "Settlements claim land around a Hearth, with a radius that only grows with tier. A claim never covers another settlement's land (hearths are at least minSeparation apart), and an abandoned settlement's claim decays until the land is free. Claim and role rules change only through GovernanceSystem proposals.",
+        "goal": "Let players hold land together without letting an inactive claim lock the world forever (TheWorldIsPersistent, CivilizationIsPlayerMade)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "status": {
+            "name": "status",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "proposed",
+              "accepted",
+              "superseded"
+            ],
+            "pii": false
+          }
+        },
+        "relations": {
+          "settlement": {
+            "name": "settlement",
+            "kind": "hasOne",
+            "target": "Settlement"
+          }
+        },
+        "behaviors": {
+          "accept": {
+            "name": "accept",
+            "description": "Ratify the claim and decay rules after community review",
+            "rules": [
+              "Community vote must reach quorum",
+              "Claim radius, decay and separation values live in Settlement rules"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "supersede": {
+            "name": "supersede",
+            "description": "Mark this decision as replaced by a newer one",
+            "rules": [
+              "A replacement decision must be accepted first"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "status",
+          "initial": "proposed",
+          "states": {
+            "proposed": {
+              "name": "proposed",
+              "description": "Decision is under community discussion",
+              "terminal": false
+            },
+            "accepted": {
+              "name": "accepted",
+              "description": "Decision is ratified and in effect",
+              "terminal": false
+            },
+            "superseded": {
+              "name": "superseded",
+              "description": "Decision has been replaced by a newer decision",
+              "terminal": true
+            }
+          },
+          "transitions": [
+            {
+              "from": "proposed",
+              "to": "accepted",
+              "trigger": "accept",
+              "guards": [
+                "Community vote must reach quorum",
+                "Claim radius, decay and separation values live in Settlement rules"
               ],
               "effects": []
             },
@@ -9920,7 +10030,8 @@
             "name": "operateMarketStall",
             "description": "Set up a persistent player-run market stall at a settlement location",
             "rules": [
-              "Requires Trade: Apprentice"
+              "Requires Trade: Apprentice",
+              "The stall stands inside a Settlement claim and sells from its Stockpile or the player's own inventory"
             ],
             "auth": {
               "roles": [
@@ -18728,11 +18839,20 @@
                   "item": "Ferrite",
                   "quantity": 4
                 }
-              ]
+              ],
+              "researchSite": {
+                "station": "Hearth",
+                "scope": "settlement"
+              }
             }
           }
         },
         "relations": {
+          "settlementHearth": {
+            "name": "settlementHearth",
+            "kind": "hasOne",
+            "target": "Hearth"
+          },
           "unlocksRecipeFerriteIngot": {
             "name": "unlocksRecipeFerriteIngot",
             "kind": "hasOne",
@@ -18755,7 +18875,7 @@
             "description": "Commit resources to researching basic smithing",
             "rules": [
               "No prerequisites required",
-              "Research requires a campfire or forge in the player's settlement"
+              "Research is done at a Hearth inside the player's Settlement claim (tech.researchSite)"
             ],
             "auth": {
               "roles": [
@@ -18803,7 +18923,7 @@
               "trigger": "beginResearch",
               "guards": [
                 "No prerequisites required",
-                "Research requires a campfire or forge in the player's settlement"
+                "Research is done at a Hearth inside the player's Settlement claim (tech.researchSite)"
               ],
               "effects": []
             },
@@ -18889,11 +19009,20 @@
                   "item": "Ashite",
                   "quantity": 20
                 }
-              ]
+              ],
+              "materialSource": {
+                "container": "Stockpile",
+                "scope": "settlement"
+              }
             }
           }
         },
         "relations": {
+          "settlementStockpile": {
+            "name": "settlementStockpile",
+            "kind": "hasOne",
+            "target": "Stockpile"
+          },
           "requiresTechBasicSmithing": {
             "name": "requiresTechBasicSmithing",
             "kind": "hasOne",
@@ -18932,7 +19061,7 @@
             "rules": [
               "Requires TechBasicSmithing: unlocked",
               "Requires Smithing: Journeyman",
-              "Requires at least twenty raw ashite ore in settlement storage"
+              "Requires at least twenty raw ashite ore in the settlement Stockpile (tech.materialSource)"
             ],
             "auth": {
               "roles": [
@@ -18981,7 +19110,7 @@
               "guards": [
                 "Requires TechBasicSmithing: unlocked",
                 "Requires Smithing: Journeyman",
-                "Requires at least twenty raw ashite ore in settlement storage"
+                "Requires at least twenty raw ashite ore in the settlement Stockpile (tech.materialSource)"
               ],
               "effects": []
             },
@@ -19909,6 +20038,719 @@
               "The player is within the attune radius of the departure stone and attuned to both",
               "Both stones still exist and the cooldown has elapsed",
               "The cost is paid from the inventory; a refusal tells the owner why"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "Settlement": {
+        "name": "Settlement",
+        "tags": [
+          "world-system"
+        ],
+        "description": "A player-founded place: a Hearth, a claimed circle of land, members with roles and a shared Stockpile. It grows from founded to growing to town as members and days accumulate, and is abandoned when no member is active; an abandoned claim decays until the land is free again. A claim never covers another settlement's land. Rule changes are made through GovernanceSystem proposals.",
+        "goal": "Give players a shared place to build a civilization together (CivilizationIsPlayerMade)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "name": {
+            "name": "name",
+            "type": "string",
+            "description": "Display name chosen by the founder",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "founder": {
+            "name": "founder",
+            "type": "string",
+            "description": "Player id of the founder; always a member with the founder role",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "members": {
+            "name": "members",
+            "type": "json",
+            "description": "Player id -> role (founder, elder, member, guest)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {}
+          },
+          "guild": {
+            "name": "guild",
+            "type": "string",
+            "description": "Guild that holds this settlement, empty if none; a guild holds at most guildMaxSettlements",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": ""
+          },
+          "createdAt": {
+            "name": "createdAt",
+            "type": "datetime",
+            "description": "Wall-clock time the hearth was placed",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "lastActiveAt": {
+            "name": "lastActiveAt",
+            "type": "datetime",
+            "description": "Wall-clock time any member was last active inside the claim",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "rules": {
+            "name": "rules",
+            "type": "json",
+            "description": "Settlement rule table: { hearthStation, hearthItem, guildMaxSettlements, tiers, roles, stockpile, abandonAfterDays, decayRadiusPerDay, minSeparation } (validated at fabric load)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "hearthStation": "hearth",
+              "hearthItem": "Hearth",
+              "guildMaxSettlements": 1,
+              "tiers": {
+                "founded": {
+                  "claimRadius": 24,
+                  "minMembers": 1,
+                  "minDays": 0
+                },
+                "growing": {
+                  "claimRadius": 48,
+                  "minMembers": 3,
+                  "minDays": 3
+                },
+                "town": {
+                  "claimRadius": 96,
+                  "minMembers": 8,
+                  "minDays": 14
+                }
+              },
+              "roles": {
+                "founder": {
+                  "build": true,
+                  "take": true,
+                  "invite": true,
+                  "withdrawLimit": 0
+                },
+                "elder": {
+                  "build": true,
+                  "take": true,
+                  "invite": true,
+                  "withdrawLimit": 200
+                },
+                "member": {
+                  "build": true,
+                  "take": true,
+                  "invite": false,
+                  "withdrawLimit": 50
+                },
+                "guest": {
+                  "build": false,
+                  "take": false,
+                  "invite": false,
+                  "withdrawLimit": 0
+                }
+              },
+              "stockpile": {
+                "founded": {
+                  "capacityStacks": 20
+                },
+                "growing": {
+                  "capacityStacks": 60
+                },
+                "town": {
+                  "capacityStacks": 160
+                }
+              },
+              "abandonAfterDays": 30,
+              "decayRadiusPerDay": 2,
+              "minSeparation": 200
+            }
+          },
+          "status": {
+            "name": "status",
+            "type": "enum",
+            "description": "Lifecycle tier of the settlement",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "founded",
+              "growing",
+              "town",
+              "abandoned"
+            ],
+            "pii": false
+          }
+        },
+        "relations": {
+          "hearth": {
+            "name": "hearth",
+            "kind": "hasOne",
+            "target": "Hearth"
+          },
+          "stockpile": {
+            "name": "stockpile",
+            "kind": "hasOne",
+            "target": "Stockpile"
+          },
+          "governance": {
+            "name": "governance",
+            "kind": "hasOne",
+            "target": "GovernanceSystem"
+          },
+          "recipe": {
+            "name": "recipe",
+            "kind": "hasOne",
+            "target": "RecipeHearth"
+          }
+        },
+        "behaviors": {
+          "found": {
+            "name": "found",
+            "description": "Place a Hearth on free land to found a settlement",
+            "rules": [
+              "Consumes one Hearth item (RecipeHearth)",
+              "The claim must not overlap another settlement's claim: hearths are at least minSeparation apart",
+              "The placer becomes the founder and the first member"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "grow": {
+            "name": "grow",
+            "description": "Raise the tier when member count and age meet the next tier thresholds",
+            "rules": [
+              "Both minMembers and minDays of the next tier must be met",
+              "The claim radius and Stockpile capacity rise to the new tier's values and never shrink"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "abandon": {
+            "name": "abandon",
+            "description": "Mark a settlement with no member activity for abandonAfterDays as abandoned",
+            "rules": [
+              "The claim shrinks by decayRadiusPerDay each day until its land is free",
+              "The Stockpile contents are kept for members who return"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "reclaim": {
+            "name": "reclaim",
+            "description": "A member returns to an abandoned settlement whose claim has not fully decayed",
+            "rules": [
+              "The settlement returns to founded and the claim regrows with the tiers"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "changeRules": {
+            "name": "changeRules",
+            "description": "Change a settlement rule through a governance proposal",
+            "rules": [
+              "A rule change is a GovernanceSystem proposal; it applies only once ratified",
+              "Claim radius, roles and withdraw limits are changed this way, never by the founder alone"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "build": {
+            "name": "build",
+            "description": "Build or break inside the claim",
+            "rules": [
+              "Only roles with build permission may build inside the claim",
+              "Outsiders may not build or take inside a claim"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "status",
+          "initial": "founded",
+          "states": {
+            "founded": {
+              "name": "founded",
+              "description": "The hearth is placed and the claim is at its smallest radius",
+              "terminal": false
+            },
+            "growing": {
+              "name": "growing",
+              "description": "Enough members and days: the claim and stockpile have grown",
+              "terminal": false
+            },
+            "town": {
+              "name": "town",
+              "description": "The top tier: the largest claim and stockpile",
+              "terminal": false
+            },
+            "abandoned": {
+              "name": "abandoned",
+              "description": "No member active for abandonAfterDays: the claim decays until the land is free",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "founded",
+              "to": "growing",
+              "trigger": "grow",
+              "guards": [
+                "Both minMembers and minDays of the next tier must be met",
+                "The claim radius and Stockpile capacity rise to the new tier's values and never shrink"
+              ],
+              "effects": []
+            },
+            {
+              "from": "growing",
+              "to": "town",
+              "trigger": "grow",
+              "guards": [
+                "Both minMembers and minDays of the next tier must be met",
+                "The claim radius and Stockpile capacity rise to the new tier's values and never shrink"
+              ],
+              "effects": []
+            },
+            {
+              "from": [
+                "founded",
+                "growing",
+                "town"
+              ],
+              "to": "abandoned",
+              "trigger": "abandon",
+              "guards": [
+                "The claim shrinks by decayRadiusPerDay each day until its land is free",
+                "The Stockpile contents are kept for members who return"
+              ],
+              "effects": []
+            },
+            {
+              "from": "abandoned",
+              "to": "founded",
+              "trigger": "reclaim",
+              "guards": [
+                "The settlement returns to founded and the claim regrows with the tiers"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "Hearth": {
+        "name": "Hearth",
+        "tags": [
+          "item",
+          "station"
+        ],
+        "description": "A stone-ringed fire pit that founds a settlement when placed on free land. It is the settlement's research and crafting anchor: technology research that needs a \"player's settlement\" is done at a Hearth.",
+        "goal": "The item and station that turns a camp into a claimed, shared settlement (Phase 139)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per hearth",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 20
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "False; one hearth per slot",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Structural integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 500
+          }
+        },
+        "relations": {
+          "plank": {
+            "name": "plank",
+            "kind": "hasOne",
+            "target": "ThornwoodPlank"
+          },
+          "ingot": {
+            "name": "ingot",
+            "kind": "hasOne",
+            "target": "FerriteIngot"
+          },
+          "settlement": {
+            "name": "settlement",
+            "kind": "hasOne",
+            "target": "Settlement"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A hearth does not weather while carried",
+            "rules": [
+              "Normal inventory storage never degrades a hearth"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-lay a worn hearth at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a hearth"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a hearth"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a hearth"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "RecipeHearth": {
+        "name": "RecipeHearth",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Lay a hearth from six thornwood planks and four ferrite ingots at a carpentry bench.",
+        "goal": "Make founding a settlement something a player prepares for (Phase 139)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "carpentry",
+              "station": "carpentry bench",
+              "inputs": [
+                {
+                  "item": "ThornwoodPlank",
+                  "quantity": 6
+                },
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 4
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "Hearth",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "apprentice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputPlank": {
+            "name": "inputPlank",
+            "kind": "hasOne",
+            "target": "ThornwoodPlank"
+          },
+          "inputIngot": {
+            "name": "inputIngot",
+            "kind": "hasOne",
+            "target": "FerriteIngot"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "Hearth"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Lay and fit a hearth at a carpentry bench",
+            "rules": [
+              "Requires Carpentry: Apprentice",
+              "Requires a carpentry bench structure",
+              "Six planks and four ferrite ingots yield one hearth"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "Stockpile": {
+        "name": "Stockpile",
+        "tags": [
+          "container"
+        ],
+        "description": "The container a settlement's members fill and draw from together. Its capacity in stacks grows with the settlement tier, and each role has a daily withdraw limit. Technology research that needs \"settlement storage\" draws its materials from here.",
+        "goal": "Give a settlement a shared store so cooperation is worth more than trading (Phase 139)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "capacityStacks": {
+            "name": "capacityStacks",
+            "type": "integer",
+            "description": "Stacks the stockpile holds at the current tier (Settlement rules.stockpile)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 20
+          },
+          "usedStacks": {
+            "name": "usedStacks",
+            "type": "integer",
+            "description": "Stacks currently held",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          }
+        },
+        "relations": {
+          "settlement": {
+            "name": "settlement",
+            "kind": "hasOne",
+            "target": "Settlement"
+          },
+          "governance": {
+            "name": "governance",
+            "kind": "hasOne",
+            "target": "GovernanceSystem"
+          }
+        },
+        "behaviors": {
+          "deposit": {
+            "name": "deposit",
+            "description": "A member with build or take permission adds items to the stockpile",
+            "rules": [
+              "Only members of the owning settlement may deposit",
+              "A deposit beyond capacityStacks is refused whole, with no partial transfer",
+              "Item totals are preserved: what is deposited is what is held"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "withdraw": {
+            "name": "withdraw",
+            "description": "A member takes items from the stockpile",
+            "rules": [
+              "The role must have take permission inside the claim",
+              "A withdraw beyond the role's daily withdrawLimit is refused",
+              "Guests never withdraw; the founder is not limited"
             ],
             "auth": {
               "roles": [
@@ -25179,6 +26021,29 @@
             "pii": false,
             "defaultValue": "apprentice"
           },
+          "guildSettlementLimit": {
+            "name": "guildSettlementLimit",
+            "type": "integer",
+            "description": "Settlements one guild may hold (Phase 139); mirrors Settlement rules.guildMaxSettlements",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "settlementRuleChanges": {
+            "name": "settlementRuleChanges",
+            "type": "json",
+            "description": "Settlement rules a proposal may change once ratified (Phase 139); the founder cannot change them alone",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "tiers.claimRadius",
+              "roles",
+              "stockpile",
+              "abandonAfterDays"
+            ]
+          },
           "status": {
             "name": "status",
             "type": "enum",
@@ -25194,7 +26059,13 @@
             "pii": false
           }
         },
-        "relations": {},
+        "relations": {
+          "settlement": {
+            "name": "settlement",
+            "kind": "hasOne",
+            "target": "Settlement"
+          }
+        },
         "behaviors": {
           "ratify": {
             "name": "ratify",
@@ -25204,6 +26075,20 @@
               "Ratification requires at least quorum distinct voters",
               "Votes after the voting window closes are rejected",
               "A ratified proposal is recorded in the runtime decisions log"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "formGuildSettlement": {
+            "name": "formGuildSettlement",
+            "description": "A guild takes a Settlement as its seat",
+            "rules": [
+              "A guild may hold at most guildSettlementLimit settlements",
+              "The settlement founder must consent; the guild's members then share its Stockpile by settlement role",
+              "Changes to a held settlement's rules (settlementRuleChanges) are proposals ratified by the settlement's members"
             ],
             "auth": {
               "roles": [

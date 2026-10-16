@@ -15,6 +15,7 @@ const items        = require('./gameplay/items')
 const recipes      = require('./gameplay/recipes')
 const technology   = require('./gameplay/technology')
 const waystone     = require('./gameplay/waystone')
+const settlement   = require('./gameplay/settlement')
 const combat       = require('./gameplay/combat')
 const economy      = require('./gameplay/economy')
 const player       = require('./gameplay/player')
@@ -29,6 +30,12 @@ waystone.validateTravel(waystone.TRAVEL, Object.keys(items))
 
 // Phase 128 — the weather table must be well formed and every biome must reach a state.
 weather.validateWeather(weather.RULES, weather.biomeClimates(biomes))
+
+// Phase 139 — the settlement rule table must be well formed (tiers never shrink, thresholds in order, claims cannot overlap).
+settlement.validateSettlement(settlement.RULES, [...Object.keys(items), 'Hearth'])
+
+// Phase 139 — technology rules that name a settlement station or storage must reference real entities.
+technology.validateSettlementRefs(settlement.RULES, [...Object.keys(items), 'Hearth'])
 
 // Phase 129 — the status-effect table must be well formed and every creature's `onHitEffects` must name a defined effect.
 combat.validateCombat(combat.STATUS_EFFECTS, combat.creatureOnHit(creatures), Object.keys(weather.RULES.states))
@@ -69,6 +76,7 @@ module.exports = defineFabric({
       OfflinePlayerNpcs:         decisions.OfflinePlayerNpcs,
       NoTeleportation:           decisions.NoTeleportation,
       WaystonesAmendNoTeleportation: decisions.WaystonesAmendNoTeleportation,
+      SettlementClaimAndDecay:   decisions.SettlementClaimAndDecay,
       MagicBalancedWithMartial:  decisions.MagicBalancedWithMartial,
       DestructibleBuildings:     decisions.DestructibleBuildings,
       KnowledgeByExperimentation: decisions.KnowledgeByExperimentation,
@@ -203,6 +211,13 @@ module.exports = defineFabric({
       TechVoidMastery:    technology.TechVoidMastery,
       ResearchPointRule:  technology.ResearchPointRule,
       WaystoneTravel:     waystone.WaystoneTravel,
+    },
+    // Gameplay — Settlements (Phase 139)
+    {
+      Settlement:   settlement.Settlement,
+      Hearth:       settlement.Hearth,
+      RecipeHearth: settlement.RecipeHearth,
+      Stockpile:    settlement.Stockpile,
     },
     // World — Creatures
     {

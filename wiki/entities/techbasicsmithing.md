@@ -24,6 +24,7 @@ Foundational metalworking knowledge. Unlocks the forge structure, ferrite smelti
 
 | Name | Kind | Target |
 | ---- | ---- | ------ |
+| settlementHearth | hasOne | [Hearth](hearth.md) |
 | unlocksRecipeFerriteIngot | hasOne | [RecipeFerriteIngot](recipeferriteingot.md) |
 | unlocksRecipeFerriteShortSword | hasOne | [RecipeFerriteShortSword](recipeferriteshortsword.md) |
 | unlocksRecipeFerritePick | hasOne | [RecipeFerritePick](recipeferritepick.md) |
@@ -33,7 +34,7 @@ Foundational metalworking knowledge. Unlocks the forge structure, ferrite smelti
 ```mermaid
 stateDiagram-v2
   [*] --> locked
-  locked --> researching : beginResearch [No prerequisites required; Research requires a campfire or forge in the player's settlement]
+  locked --> researching : beginResearch [No prerequisites required; Research is done at a Hearth inside the player's Settlement claim (tech.researchSite)]
   researching --> unlocked : completeResearch [Research cost fully paid; all related recipes become craftable]
   unlocked --> [*]
 ```
@@ -52,7 +53,7 @@ Commit resources to researching basic smithing
 
 **Conditions:**
 - No prerequisites required
-- Research requires a campfire or forge in the player's settlement
+- Research is done at a Hearth inside the player's Settlement claim (tech.researchSite)
 
 ### completeResearch
 

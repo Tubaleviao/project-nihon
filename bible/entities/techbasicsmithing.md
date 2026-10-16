@@ -21,6 +21,7 @@ Foundational metalworking knowledge. Unlocks the forge structure, ferrite smelti
 
 | Name | Kind | Target | Foreign Key |
 | ---- | ---- | ------ | ----------- |
+| `settlementHearth` | hasOne | [Hearth](hearth.md) |  |
 | `unlocksRecipeFerriteIngot` | hasOne | [RecipeFerriteIngot](recipeferriteingot.md) |  |
 | `unlocksRecipeFerriteShortSword` | hasOne | [RecipeFerriteShortSword](recipeferriteshortsword.md) |  |
 | `unlocksRecipeFerritePick` | hasOne | [RecipeFerritePick](recipeferritepick.md) |  |
@@ -32,7 +33,7 @@ Foundational metalworking knowledge. Unlocks the forge structure, ferrite smelti
 ```mermaid
 stateDiagram-v2
   [*] --> locked
-  locked --> researching : beginResearch\n[No prerequisites required; Research requires a campfire or forge in the player's settlement]
+  locked --> researching : beginResearch\n[No prerequisites required; Research is done at a Hearth inside the player's Settlement claim (tech.researchSite)]
   researching --> unlocked : completeResearch\n[Research cost fully paid; all related recipes become craftable]
   unlocked --> [*]
 ```
@@ -45,7 +46,7 @@ stateDiagram-v2
 
 | From | To | Trigger | Guards | Effects |
 | ---- | --- | ------- | ------ | ------- |
-| `locked` | `researching` | `beginResearch` | No prerequisites required; Research requires a campfire or forge in the player's settlement |  |
+| `locked` | `researching` | `beginResearch` | No prerequisites required; Research is done at a Hearth inside the player's Settlement claim (tech.researchSite) |  |
 | `researching` | `unlocked` | `completeResearch` | Research cost fully paid; all related recipes become craftable |  |
 
 ## Behaviors
@@ -56,7 +57,7 @@ Commit resources to researching basic smithing
 
 **Rules:**
 - No prerequisites required
-- Research requires a campfire or forge in the player's settlement
+- Research is done at a Hearth inside the player's Settlement claim (tech.researchSite)
 
 **Auth:** `maintainer`
 

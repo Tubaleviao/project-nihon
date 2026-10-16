@@ -1,0 +1,11 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/containers/stockpile.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+capacityStacks = 20
+usedStacks = 0
+description = "The container a settlement's members fill and draw from together. Its capacity in stacks grows with the settlement tier, and each role has a daily withdraw limit. Technology research that needs \"settlement storage\" draws its materials from here."
+tags = ["container"]

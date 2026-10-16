@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/decisions/settlementclaimanddecay.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+status = 0
+state_machine_field = "status"
+initial_state = "proposed"
+description = "Settlements claim land around a Hearth, with a radius that only grows with tier. A claim never covers another settlement's land (hearths are at least minSeparation apart), and an abandoned settlement's claim decays until the land is free. Claim and role rules change only through GovernanceSystem proposals."
+tags = ["decision"]
