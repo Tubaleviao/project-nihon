@@ -22,7 +22,7 @@ expect('a stockpile without capacity fails', r, /capacityStacks must be a positi
 r = fresh(); r.tiers.town.minDays = 1;
 expect('a threshold out of order fails', r, /thresholds out of order/);
 r = fresh(); r.tiers.town.minMembers = 2;
-expect('a member threshold out of order fails', r, /minMembers .* thresholds out of order/);
+expect('a member threshold out of order fails', r, /minMembers.*thresholds out of order/);
 r = fresh(); r.minSeparation = 100;
 expect('overlapping claims fail', r, /claims never overlap/);
 r = fresh(); r.hearthItem = 'Nope';
