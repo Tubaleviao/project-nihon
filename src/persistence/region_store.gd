@@ -571,6 +571,10 @@ func write_chunks(chunks: Dictionary, deletions := true) -> Error:
 			return commit_err if err == OK else err
 	return err
 
+## Phase 138 — a world save that carries no chunk at all ends every failure streak.
+func end_all_failure_streaks() -> void:
+	region_failures.clear()
+
 ## Fold `chunks` into the regions they belong to and stage each region's new file (`.tmp`), without
 ## making anything live. A region that cannot be read or staged is skipped (and its chunk keys land in
 ## `last_failed_chunk_keys`); the others are staged anyway (Phase 61). Returns { "err": first Error,

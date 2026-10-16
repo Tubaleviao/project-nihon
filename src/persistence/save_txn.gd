@@ -28,18 +28,20 @@ static func commit(ops: Array, journal_path: String, fault: Callable = Callable(
 	for other in other_journals:
 		if str(other) != "" and FileAccess.file_exists(str(other)):
 			foreign_journal = true
+	if foreign_journal and not FileAccess.file_exists(journal_path):
+		# Another transaction's journal is live: a `.bak` here may be its only old copy and the rename below
+		# would overwrite it. Refuse before touching anything; the save stays dirty and retries once it settled.
+		for op in ops:
+			if FileAccess.file_exists(str(op["path"]) + BAK_EXT):
+				Diag.warn("SaveTxn: %s is held by another transaction's journal — commit deferred" % (str(op["path"]) + BAK_EXT))
+				discard(ops)
+				return ERR_BUSY
 	for op in ops:
 		# Without a journal any `.bak` here is a leftover of a finished commit (its cleanup failed):
 		# stale. Clear it, or a rollback of this commit could restore it over newer content. A surviving
 		# journal means an interrupted commit whose `.bak` files are the only old copy: leave them.
 		var stale := str(op["path"]) + BAK_EXT
 		if FileAccess.file_exists(stale) and not FileAccess.file_exists(journal_path):
-			if foreign_journal:
-				# Another transaction's journal is live: this `.bak` may be its only old copy and the rename
-				# below would overwrite it. Refuse; the save stays dirty and retries once that one settled.
-				Diag.warn("SaveTxn: %s is held by another transaction's journal — commit deferred" % stale)
-				discard(ops)
-				return ERR_BUSY
 			DirAccess.remove_absolute(stale)
 		targets.append({ "path": str(op["path"]), "had": FileAccess.file_exists(str(op["path"])) })
 	if _fails(fault, "journal"):

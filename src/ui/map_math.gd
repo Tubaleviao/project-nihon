@@ -10,6 +10,7 @@ extends RefCounted
 ## A placement is how one face lies on the screen: [n, sr, su], the face's normal and the cube axes
 ## that point screen-right and screen-up across it. Stepping off an edge into the neighbour face is
 ## pure axis bookkeeping (`step`), so the net and the globe never need a face table beyond FACES.
+
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 

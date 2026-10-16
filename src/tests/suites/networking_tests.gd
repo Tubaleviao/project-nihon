@@ -409,8 +409,10 @@ func _test_peer_first_claim_and_seam() -> void:
 	var cm := ChunkManager.new()
 	var t := [0]
 	cm.now_msec = func(): return t[0]
-	cm.set_peer_center(9, Vector2i(1000, 0))
-	assert_eq(cm.peer_center(9), Vector2i(1000, 0), "a first claim has no spawn to measure from: it is taken as sent (later moves are clamped)")
+	assert_false(cm.set_peer_center(9, Vector2i(1000, 0)), "a client claim for a peer with no center is refused")
+	assert_eq(cm.peer_recenter_refused, 1, "and counted")
+	assert_true(cm.set_peer_center(9, Vector2i(1000, 0), true), "the host's placement sets the first center")
+	assert_eq(cm.peer_center(9), Vector2i(1000, 0), "taken as given (later moves are clamped)")
 	@warning_ignore("integer_division")
 	var half := TerrainSlice.circumference_chunks() / 2
 	cm.set_peer_center(4, Vector2i(half - 2, 0), true)
@@ -1578,7 +1580,7 @@ func _test_player_headless_no_ghost_or_broadcast() -> void:
 func _test_peer_window_rate_limited() -> void:
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
-	assert_true(cm.set_peer_center(5, Vector2i(2, 2)), "the first placement lands")
+	assert_true(cm.set_peer_center(5, Vector2i(2, 2), true), "the first placement lands")
 	var moves := 0
 	for i in range(100):
 		if cm.set_peer_center(5, Vector2i(100000 + i * 156, 100000)):
@@ -1646,7 +1648,7 @@ func _test_peer_window_clamps_across_seam() -> void:
 func _test_peer_window_host_driven() -> void:
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
-	cm.set_peer_center(5, Vector2i(2, 2))
+	cm.set_peer_center(5, Vector2i(2, 2), true)
 	var far := Vector2i(50000, -40000)
 	assert_true(cm.set_peer_center(5, far, true), "a host-driven move is accepted inside the interval")
 	assert_eq(cm._peer_centers[5], far, "and lands exactly on the target")

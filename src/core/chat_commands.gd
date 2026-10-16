@@ -2,6 +2,7 @@ extends RefCounted
 ## Phase 63 — slash commands typed in chat. Pure and static: the UI asks, the answer is a string.
 ## Phase 85 — the admin command set. Parsing, spelling and argument validation live here (pure, so the
 ## suite pins them without a tree); `ChatSlice` owns the effects and decides who may run them.
+
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const I18n := preload("res://src/core/i18n.gd")

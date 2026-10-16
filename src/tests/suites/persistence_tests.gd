@@ -40,6 +40,7 @@ func register() -> void:
 	_run_test("tree clears: a client keeps an unrecorded clear, range follows the scope", _test_p126_client_scope_and_ghost)
 	_run_test("tree clears: an unpinnable host clear survives a save/restart", _test_p138_unpinned_clear_restart)
 	_run_test("tree clears: no frontier record is pinned for a circle that hits no tree", _test_p138_no_pin_without_hit)
+	_run_test("region store: a save with no chunks ends failure streaks", _test_p138_idle_save_ends_streaks)
 	_run_test("save txn: a live foreign journal keeps the .bak and defers the commit", _test_p138_txn_foreign_journal)
 	_run_test("tree clears: scope clamp, running total, a client never writes the host's record", _test_p138_scope_total_client)
 	_run_test("tree clears: a deep edit and clear_trees_near_tile agree", _test_p126_deep_edit_agrees)
@@ -2590,10 +2591,13 @@ func _test_p121_world_stamp_round_trip() -> void:
 # ---------------------------------------------------------------------------
 # Phase 124 — research points, and the void-burst leftovers (#299, #300)
 # ---------------------------------------------------------------------------
+# --- Phase 138 — cleanup sweep ---------------------------------------------------------------
 
 func _test_p138_txn_foreign_journal() -> void:
 	var dir := "user://p138_txn"
 	DirAccess.make_dir_recursive_absolute(dir)
+	for stale in DirAccess.get_files_at(dir):
+		DirAccess.remove_absolute(dir + "/" + stale)
 	var target := dir + "/r.json"
 	var tmp := target + ".tmp"
 	var journal := dir + "/own.journal"
@@ -2617,3 +2621,9 @@ func _test_p138_txn_foreign_journal() -> void:
 	for n in DirAccess.get_files_at(dir):
 		DirAccess.remove_absolute(dir + "/" + n)
 	DirAccess.remove_absolute(dir)
+
+func _test_p138_idle_save_ends_streaks() -> void:
+	var store = RegionStoreScript.new()
+	store.region_failures["0,0"] = 2
+	store.end_all_failure_streaks()
+	assert_true(store.region_failures.is_empty(), "an idle save clears the streaks")

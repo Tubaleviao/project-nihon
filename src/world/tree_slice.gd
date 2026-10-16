@@ -229,6 +229,7 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 	var biome := _chunk_biome(chunk_pos)
 	var entry := tree_entry_for_biome(biome)
 	if entry.is_empty():
+		_apply_pending_spots(chunk_pos)   # nothing grows here: release the held circles
 		return
 	var budget: int = _budget_for(chunk_pos, biome)
 	_adopt_local_clears(chunk_pos)
@@ -307,7 +308,7 @@ func _adopt_local_clears(chunk_pos: Vector2i) -> void:
 	next["x"] = xs
 	record_writer.call(canon, next)
 	_drop_local(canon)
-	_forget_spots(canon)
+	# Held spots stay: `spawn_for_chunk` applies the large circles next and then lets them go.
 
 ## Drop one chunk's `_cleared_local` entry, keeping the running total in step.
 func _drop_local(canon: Vector2i) -> void:
@@ -867,8 +868,7 @@ func _pin_matches_standing(chunk: Vector2i, canon: Vector2i) -> bool:
 	if not _spawned_chunks.has(chunk):
 		return true
 	var cand := _frontier_candidate(canon)
-	return not cand.is_empty() and str(cand["b"]) == _chunk_biome(chunk) \
-		and int(cand["t"]) == _budget_of(canon, _chunk_biome(chunk))
+	return not cand.is_empty() and str(cand["b"]) == _chunk_biome(chunk)
 
 ## Phase 126 — an unrecorded chunk a clear lands in gets the record `Frontier` gives it (so its biome,
 ## and with it the tree budget the cleared indices refer to, are what the chunk will be loaded with),

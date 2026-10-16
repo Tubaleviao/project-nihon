@@ -1026,7 +1026,7 @@ func _centers_around(local: Vector2i) -> Array:
 ## `PEER_RECENTER_MAX_CHUNKS` is clamped to that distance (both counted in
 ## `peer_recenter_refused`). Phase 138 — caller contract: a peer's FIRST center is taken as given, not
 ## clamped (there is nothing to measure a step from), so only the host's placement of a joining peer may
-## reach it; a raw client claim must arrive after that placement. Returns true when the window moved.
+## set it: a client claim for a peer with no center is refused. Returns true when the window moved.
 func set_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool = false) -> bool:
 	return _move_peer_center(peer_id, chunk, host_driven, false)
 
@@ -1034,6 +1034,11 @@ func _move_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool, is_sync
 	var now: int = now_msec.call()
 	# X is a wrapped planet coordinate: store and compare the canonical chunk.
 	chunk = TerrainSlice.wrap_chunk(chunk)
+	if not host_driven and not is_sync and not _peer_centers.has(peer_id):
+		# A raw client claim has nothing to measure a step from: only the host's placement (or its own tracked
+		# position, the sync) may set a first center.
+		peer_recenter_refused += 1
+		return false
 	if host_driven or not _peer_centers.has(peer_id):
 		var moved: bool = _peer_centers.get(peer_id, null) != chunk
 		_peer_centers[peer_id] = chunk

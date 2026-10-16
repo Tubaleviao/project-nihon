@@ -14,6 +14,7 @@ extends Control
 ## The visual is drawn in _draw() (which does not run headless); the data
 ## projections (world_to_chunk / get_player_cell / reveal tracking) are pure and
 ## are what the automated test suite asserts against.
+
 const I18n := preload("res://src/core/i18n.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const BiomeBlend := preload("res://src/terrain/biome_blend.gd")
