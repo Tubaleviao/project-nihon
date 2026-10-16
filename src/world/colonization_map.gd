@@ -8,9 +8,9 @@ extends RefCounted
 ## somebody's base. The map persists on the world record (`to_data` / `from_data`), beside the
 ## Phase 52 region files, and is seeded from them (`seed_from_regions`) so an older world whose
 ## record has no map still counts every region that holds an edit.
-const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const RegionStore := preload("res://src/persistence/region_store.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 
 const HOME_WEIGHT := 10.0
 ## A player seen in a region counts toward its score for a week.

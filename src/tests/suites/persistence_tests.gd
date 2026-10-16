@@ -40,6 +40,7 @@ func register() -> void:
 	_run_test("tree clears: a client keeps an unrecorded clear, range follows the scope", _test_p126_client_scope_and_ghost)
 	_run_test("tree clears: an unpinnable host clear survives a save/restart", _test_p138_unpinned_clear_restart)
 	_run_test("tree clears: no frontier record is pinned for a circle that hits no tree", _test_p138_no_pin_without_hit)
+	_run_test("save txn: a live foreign journal keeps the .bak and defers the commit", _test_p138_txn_foreign_journal)
 	_run_test("tree clears: scope clamp, running total, a client never writes the host's record", _test_p138_scope_total_client)
 	_run_test("tree clears: a deep edit and clear_trees_near_tile agree", _test_p126_deep_edit_agrees)
 	_run_test("tree clears: a far edit clears the resolved tile", _test_p126_far_edit_tile)
@@ -2589,3 +2590,30 @@ func _test_p121_world_stamp_round_trip() -> void:
 # ---------------------------------------------------------------------------
 # Phase 124 — research points, and the void-burst leftovers (#299, #300)
 # ---------------------------------------------------------------------------
+
+func _test_p138_txn_foreign_journal() -> void:
+	var dir := "user://p138_txn"
+	DirAccess.make_dir_recursive_absolute(dir)
+	var target := dir + "/r.json"
+	var tmp := target + ".tmp"
+	var journal := dir + "/own.journal"
+	var other := dir + "/other.journal"
+	for pair in [[target, "live"], [target + SaveTxn121.BAK_EXT, "only-old-copy"], [tmp, "new"], [other, "{}"]]:
+		var f := FileAccess.open(str(pair[0]), FileAccess.WRITE)
+		f.store_string(str(pair[1]))
+		f.close()
+	var ops := [{ "path": target, "tmp": tmp, "kind": "region" }]
+	assert_eq(SaveTxn121.commit(ops, journal, Callable(), [other]), ERR_BUSY, "commit defers while another journal is live")
+	assert_eq(FileAccess.get_file_as_string(target + SaveTxn121.BAK_EXT), "only-old-copy", ".bak kept")
+	assert_eq(FileAccess.get_file_as_string(target), "live", "target untouched")
+	assert_false(FileAccess.file_exists(tmp), "staged tmp discarded")
+	# Without the foreign journal the stale .bak is cleared and the commit lands.
+	DirAccess.remove_absolute(other)
+	var f2 := FileAccess.open(tmp, FileAccess.WRITE)
+	f2.store_string("new")
+	f2.close()
+	assert_eq(SaveTxn121.commit(ops, journal, Callable(), [other]), OK, "commit lands once the other journal is gone")
+	assert_eq(FileAccess.get_file_as_string(target), "new", "new content live")
+	for n in DirAccess.get_files_at(dir):
+		DirAccess.remove_absolute(dir + "/" + n)
+	DirAccess.remove_absolute(dir)

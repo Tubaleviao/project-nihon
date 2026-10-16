@@ -33,7 +33,13 @@ static func commit(ops: Array, journal_path: String, fault: Callable = Callable(
 		# stale. Clear it, or a rollback of this commit could restore it over newer content. A surviving
 		# journal means an interrupted commit whose `.bak` files are the only old copy: leave them.
 		var stale := str(op["path"]) + BAK_EXT
-		if FileAccess.file_exists(stale) and not FileAccess.file_exists(journal_path) and not foreign_journal:
+		if FileAccess.file_exists(stale) and not FileAccess.file_exists(journal_path):
+			if foreign_journal:
+				# Another transaction's journal is live: this `.bak` may be its only old copy and the rename
+				# below would overwrite it. Refuse; the save stays dirty and retries once that one settled.
+				Diag.warn("SaveTxn: %s is held by another transaction's journal — commit deferred" % stale)
+				discard(ops)
+				return ERR_BUSY
 			DirAccess.remove_absolute(stale)
 		targets.append({ "path": str(op["path"]), "had": FileAccess.file_exists(str(op["path"])) })
 	if _fails(fault, "journal"):

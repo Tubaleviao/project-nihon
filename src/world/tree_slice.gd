@@ -258,7 +258,7 @@ func _budget_for(chunk_pos: Vector2i, biome: String) -> int:
 		return int(rec["t"])
 	# Capped at the record's range, so every spawn index below the budget is one a record can persist.
 	# Phase 138 — hashed on the canonical chunk, the one `_pin_frontier_record` stamps, so both agree.
-	var budget: int = clampi(tree_count_for(canon, biome), 0, RegionStore.GEN_TREE_MAX)
+	var budget: int = _budget_of(canon, biome)
 	if is_authoritative and not rec.is_empty() and record_writer.is_valid():
 		var next := rec.duplicate(true)
 		next["t"] = budget
@@ -672,7 +672,7 @@ func _clear_unloaded_chunk(chunk: Vector2i, p: Vector2, radius: float, wm: float
 	var entry := tree_entry_for_biome(biome)
 	if entry.is_empty():
 		return 0
-	var budget: int = int(rec["t"]) if rec.has("t") else clampi(tree_count_for(chunk, biome), 0, RegionStore.GEN_TREE_MAX)
+	var budget: int = int(rec["t"]) if rec.has("t") else _budget_of(chunk, biome)
 	var cleared := cleared_indices(chunk)
 	var picked: Array = []
 	for i in budget:
@@ -689,7 +689,15 @@ func _clear_unloaded_chunk(chunk: Vector2i, p: Vector2, radius: float, wm: float
 	for i in picked:
 		_record_cleared(chunk, i)
 		GameBus.tree_cleared.emit(_tree_id(chunk, i))
+	# Still no record (no writer, no terrain slice): the indices live only in `_cleared_local`, so keep the circle too.
+	if is_authoritative and not ChunkRecords.has_record(chunk):
+		_hold_spot(chunk, p, radius)
 	return picked.size()
+
+## The generator's tree budget of a chunk in `biome`, hashed on the canonical chunk and capped at the
+## record's range: the one number the pinned record, the chosen clear indices and the standing check share.
+func _budget_of(chunk: Vector2i, biome: String) -> int:
+	return clampi(tree_count_for(TerrainSlice.wrap_chunk(chunk), biome), 0, RegionStore.GEN_TREE_MAX)
 
 ## The record `Frontier` would give an unrecorded chunk, with its budget `t`, computed without pinning it.
 ## {} when there is nothing to compute from (no terrain slice): the caller falls back to the generator.
@@ -699,7 +707,7 @@ func _frontier_candidate(canon: Vector2i) -> Dictionary:
 	var rec := RegionStore.normalize_gen(Frontier.record_for(canon, int(terrain_slice.get_world_seed())))
 	if rec.is_empty():
 		return {}
-	rec["t"] = clampi(tree_count_for(canon, str(rec["b"])), 0, RegionStore.GEN_TREE_MAX)
+	rec["t"] = _budget_of(canon, str(rec["b"]))
 	return rec
 
 ## Phase 138 — remember a clear circle for a chunk that cannot be recorded yet (host only).
@@ -712,6 +720,7 @@ func _hold_spot(canon: Vector2i, p: Vector2, radius: float) -> void:
 		if is_equal_approx(float(sp[0]), p.x) and is_equal_approx(float(sp[1]), p.y) and is_equal_approx(float(sp[2]), radius):
 			return
 	spots.append([p.x, p.y, radius])
+	_pending_spots.erase(canon)   # re-inserted last: the most recently touched chunk goes last
 	_pending_spots[canon] = spots
 	_pending_spot_count += 1
 	while _pending_spot_count > PENDING_SPOTS_CAP and _pending_spots.size() > 1:
@@ -859,7 +868,7 @@ func _pin_matches_standing(chunk: Vector2i, canon: Vector2i) -> bool:
 		return true
 	var cand := _frontier_candidate(canon)
 	return not cand.is_empty() and str(cand["b"]) == _chunk_biome(chunk) \
-		and int(cand["t"]) == clampi(tree_count_for(canon, _chunk_biome(chunk)), 0, RegionStore.GEN_TREE_MAX)
+		and int(cand["t"]) == _budget_of(canon, _chunk_biome(chunk))
 
 ## Phase 126 — an unrecorded chunk a clear lands in gets the record `Frontier` gives it (so its biome,
 ## and with it the tree budget the cleared indices refer to, are what the chunk will be loaded with),
@@ -872,10 +881,9 @@ func _pin_frontier_record(canon: Vector2i) -> bool:
 		return false
 	if frontier_ready.is_valid() and not bool(frontier_ready.call(canon)):
 		return false
-	var rec := RegionStore.normalize_gen(Frontier.record_for(canon, int(terrain_slice.get_world_seed())))
+	var rec := _frontier_candidate(canon)
 	if rec.is_empty():
 		return false
-	rec["t"] = clampi(tree_count_for(canon, str(rec["b"])), 0, RegionStore.GEN_TREE_MAX)
 	record_writer.call(canon, rec)
 	return ChunkRecords.has_record(canon)
 

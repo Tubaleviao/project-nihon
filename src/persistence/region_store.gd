@@ -575,17 +575,19 @@ func write_chunks(chunks: Dictionary, deletions := true) -> Error:
 ## making anything live. A region that cannot be read or staged is skipped (and its chunk keys land in
 ## `last_failed_chunk_keys`); the others are staged anyway (Phase 61). Returns { "err": first Error,
 ## "ops": [commit op] }. With `atomic_writes` off the regions are written in place.
-func stage_chunks(chunks: Dictionary, deletions := true) -> Dictionary:
+func stage_chunks(chunks: Dictionary, deletions := true, ends_streaks := false) -> Dictionary:
 	var grouped := group_manifest(chunks)
 	var first_error: Error = OK
 	var ops: Array = []
 	last_failed_chunk_keys = []
 	last_failed_region_keys = []
 	# Phase 138 — "in a row": a save that does not carry the region (its chunks are no longer dirty) ends
-	# its failure streak, so only consecutive failing saves count toward MAX_REGION_FAILURES.
-	for rkey in region_failures.keys():
-		if not grouped.has(rkey):
-			region_failures.erase(rkey)
+	# its failure streak, so only consecutive failing saves count toward MAX_REGION_FAILURES. Only the world
+	# save passes `ends_streaks`: the generation-record flushes share this store with unrelated batches.
+	if ends_streaks:
+		for rkey in region_failures.keys():
+			if not grouped.has(rkey):
+				region_failures.erase(rkey)
 	for rkey in grouped:
 		var region := region_from_key(str(rkey))
 		var read := read_region(region, false)

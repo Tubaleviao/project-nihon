@@ -5,9 +5,8 @@ extends RefCounted
 ## world cannot store or send a raw Vector3. The chunk index is an exact int; `local` is the offset
 ## from that chunk's origin corner (X/Z in [0, CHUNK_METERS), Y as is), small enough for float32.
 ## Pure and static: the server, the client and the save code share it.
-const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
-
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const CHUNK_METERS := TerrainSlice.CHUNK_METERS
 const REBASE_DISTANCE := 2000.0   ## the client rebases once the player drifts this far from the scene origin
 

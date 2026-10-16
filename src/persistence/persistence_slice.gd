@@ -326,7 +326,7 @@ func _write_world_payload(data: Dictionary, incremental: bool) -> Error:
 	# the first error is returned once everything that could be saved has been.
 	var staged := { "err": OK, "ops": [] }
 	if has_chunks:
-		staged = region_store.stage_chunks(chunks)
+		staged = region_store.stage_chunks(chunks, true, true)
 	var region_err: Error = staged["err"]
 	var ops: Array = staged["ops"]
 	var escalated: bool = region_err != OK and region_store.has_exhausted_region()

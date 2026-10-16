@@ -667,7 +667,7 @@ func _record_deferred() -> void:
 			if since >= 0 and int(now_msec.call()) - since >= DEFERRED_WARN_MSEC:
 				_deferred_since[k] = -1   # one warning per deferral
 				deferred_warnings += 1
-				Diag.warn("ChunkManager: chunk %s has had no generation record for %d s (a neighbouring region will not read); its contents stay unspawned" % [str(canon), DEFERRED_WARN_MSEC / 1000])
+				Diag.warn("ChunkManager: chunk %s has had no generation record for %d s (a neighbouring region will not read); its contents stay unspawned" % [str(canon), int(DEFERRED_WARN_MSEC / 1000.0)])
 			continue
 		var before := records_created
 		_record_generation(canon)

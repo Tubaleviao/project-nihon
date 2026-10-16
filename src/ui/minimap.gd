@@ -14,14 +14,13 @@ extends Control
 ## The visual is drawn in _draw() (which does not run headless); the data
 ## projections (world_to_chunk / get_player_cell / reveal tracking) are pure and
 ## are what the automated test suite asserts against.
-const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
-
 const I18n := preload("res://src/core/i18n.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const BiomeBlend := preload("res://src/terrain/biome_blend.gd")
 const RevealedStore := preload("res://src/persistence/revealed_store.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const MapMath := preload("res://src/ui/map_math.gd")
+const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const CHUNK_SIZE := TerrainSlice.CHUNK_METERS   # world units per chunk
 
 ## Reveal this many chunks around the player's current chunk (Chebyshev radius).
