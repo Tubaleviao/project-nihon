@@ -324,6 +324,8 @@ func run(root: Node, role: String) -> void:
 	var profile: String = _root._networking.net_profile
 	_time_scale = _root._networking.link_time_scale()
 	print(format_line("profile", "ok", profile if profile != "" else "loopback"))
+	if _root._networking.emulator_bandwidth_kbps > 0.0:
+		_root._creature.broadcast_deltas = false
 	print(format_line("plan", "ok", plan_detail()))
 	if not _self_audit():
 		return
