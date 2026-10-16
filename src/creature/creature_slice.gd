@@ -46,6 +46,7 @@ const SpatialHash    := preload("res://src/core/spatial_hash.gd")
 const SpawnRoll      := preload("res://src/world/spawn_roll.gd")
 const WorldClock     := preload("res://src/world/world_clock.gd")
 const TerrainSlice   := preload("res://src/terrain/terrain_slice.gd")
+const SeamWrap       := preload("res://src/terrain/seam_wrap.gd")
 
 ## Global cap on live instances (0 = unbounded). Host-only; see `set_population_cap`.
 var _population_cap: int = 0
@@ -238,10 +239,54 @@ func get_instance_position(instance_id: String) -> Vector3:
 		return Vector3.ZERO
 	return _instances[instance_id]["position"]
 
-## Move an instance to a new world position, keeping body and record in sync.
+## Phase 136 — the voxel columns creatures stand on, and `(chunk: Vector2i) -> bool`, true once a chunk's
+## ground is built. Both unwired (isolated tests): there is no surface and creatures keep moving in 3D.
+var voxel_slice: Node = null
+var chunk_built: Callable = Callable()
+
+## Walk on `voxel`'s columns; `built` is `(chunk: Vector2i) -> bool`, true once a chunk's ground exists.
+func use_surface(voxel: Node, built: Callable) -> void:
+	voxel_slice = voxel
+	chunk_built = built
+
+## Whether creatures have a voxel surface to walk on.
+func has_surface() -> bool:
+	return voxel_slice != null
+
+## The walkable height (column top) of `tile`, or NAN when there is no surface or the chunk is not loaded.
+func surface_at_tile(tile: Vector2i) -> float:
+	if voxel_slice == null:
+		return NAN
+	if chunk_built.is_valid():
+		var cs := _chunk_size()
+		var chunk := Vector2i(floori(float(tile.x) / float(cs)), floori(float(tile.y) / float(cs)))
+		if not bool(chunk_built.call(chunk)):
+			return NAN
+	var ts := _tile_size()
+	return float(voxel_slice.get_voxel_height_at(Vector2((float(tile.x) + 0.5) * ts, (float(tile.y) + 0.5) * ts)))
+
+## Tiles in one lap of the world (the seam), 0 when unwired.
+func lap_tiles() -> int:
+	return SeamWrap.world_tiles(TerrainSlice.circumference_chunks(), _chunk_size())
+
+## Tile side in metres.
+func tile_size() -> float:
+	return _tile_size()
+
+## The tile holding a world position.
+func tile_of(pos: Vector3) -> Vector2i:
+	var ts := _tile_size()
+	return Vector2i(floori(pos.x / ts), floori(pos.z / ts))
+
+## Move an instance to a new world position, keeping body and record in sync. With a surface the position
+## is set on it (a mined pit or a placed block counts), so a mover cannot leave a creature floating.
 func set_instance_position(instance_id: String, pos: Vector3) -> void:
 	if not _instances.has(instance_id):
 		return
+	if voxel_slice != null:
+		var h := surface_at_tile(tile_of(pos))
+		if not is_nan(h):
+			pos.y = h
 	_instances[instance_id]["position"] = pos
 	_spatial.update(instance_id, pos)
 	if _pool != null and _instances[instance_id].has("mi"):

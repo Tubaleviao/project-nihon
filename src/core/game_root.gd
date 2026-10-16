@@ -300,9 +300,9 @@ func _ready() -> void:
 	# The generator's biome, not the record-aware one: records are host-local, weather must match on every peer.
 	_weather.biome_of = func(chunk: Vector2i) -> String: return TerrainSlice.generated_biome_for_chunk(chunk, _terrain.get_world_seed())
 
-	# CreatureSlice needs the terrain to place spawns on the surface; wire it
-	# before the slices enter the tree so its _ready() can use it.
+	# CreatureSlice stands spawns and walkers on the terrain and voxel surface; wire it before it enters the tree.
 	_creature.terrain_slice = _terrain
+	_creature.use_surface(_voxel, Callable(_chunk_manager, "is_chunk_built"))
 	_creature.world_clock = _clock
 	# TreeSlice likewise stands its trees on the terrain surface.
 	_tree.terrain_slice = _terrain

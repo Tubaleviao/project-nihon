@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:35e4831b20644f66fe53c76c850e3878f82b472b33c35d086ce45e6187cb6123",
+  "schemaHash": "sha256:75b2a3e8134b862568316902a32ded8cf81ed7214e4cea58672035eacd7d60cb",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -19899,6 +19899,33 @@
             "pii": false,
             "defaultValue": 8
           },
+          "maxStepMetres": {
+            "name": "maxStepMetres",
+            "type": "decimal",
+            "description": "Tallest ledge in metres the creature climbs in one tile step; a taller step is routed around",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.75
+          },
+          "canSwim": {
+            "name": "canSwim",
+            "type": "boolean",
+            "description": "Whether the creature paths through water tiles (ground below sea level)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "pathRadiusTiles": {
+            "name": "pathRadiusTiles",
+            "type": "integer",
+            "description": "Search radius in tiles of one path query",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 24
+          },
           "attackRadius": {
             "name": "attackRadius",
             "type": "decimal",
@@ -20357,6 +20384,33 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 12
+          },
+          "maxStepMetres": {
+            "name": "maxStepMetres",
+            "type": "decimal",
+            "description": "Tallest ledge in metres the creature climbs in one tile step; a taller step is routed around",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.75
+          },
+          "canSwim": {
+            "name": "canSwim",
+            "type": "boolean",
+            "description": "Whether the creature paths through water tiles (ground below sea level)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "pathRadiusTiles": {
+            "name": "pathRadiusTiles",
+            "type": "integer",
+            "description": "Search radius in tiles of one path query",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 24
           },
           "attackRadius": {
             "name": "attackRadius",
@@ -20862,6 +20916,33 @@
             "pii": false,
             "defaultValue": 6
           },
+          "maxStepMetres": {
+            "name": "maxStepMetres",
+            "type": "decimal",
+            "description": "Tallest ledge in metres the creature climbs in one tile step; a taller step is routed around",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.75
+          },
+          "canSwim": {
+            "name": "canSwim",
+            "type": "boolean",
+            "description": "Whether the creature paths through water tiles (ground below sea level)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "pathRadiusTiles": {
+            "name": "pathRadiusTiles",
+            "type": "integer",
+            "description": "Search radius in tiles of one path query",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 24
+          },
           "attackRadius": {
             "name": "attackRadius",
             "type": "decimal",
@@ -21329,6 +21410,33 @@
             "pii": false,
             "defaultValue": 8
           },
+          "maxStepMetres": {
+            "name": "maxStepMetres",
+            "type": "decimal",
+            "description": "Tallest ledge in metres the creature climbs in one tile step; a taller step is routed around",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.75
+          },
+          "canSwim": {
+            "name": "canSwim",
+            "type": "boolean",
+            "description": "Whether the creature paths through water tiles (ground below sea level)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "pathRadiusTiles": {
+            "name": "pathRadiusTiles",
+            "type": "integer",
+            "description": "Search radius in tiles of one path query",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 24
+          },
           "attackRadius": {
             "name": "attackRadius",
             "type": "decimal",
@@ -21760,6 +21868,33 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 6
+          },
+          "maxStepMetres": {
+            "name": "maxStepMetres",
+            "type": "decimal",
+            "description": "Tallest ledge in metres the creature climbs in one tile step; a taller step is routed around",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.75
+          },
+          "canSwim": {
+            "name": "canSwim",
+            "type": "boolean",
+            "description": "Whether the creature paths through water tiles (ground below sea level)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "pathRadiusTiles": {
+            "name": "pathRadiusTiles",
+            "type": "integer",
+            "description": "Search radius in tiles of one path query",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 24
           },
           "attackRadius": {
             "name": "attackRadius",
@@ -22215,6 +22350,33 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 15
+          },
+          "maxStepMetres": {
+            "name": "maxStepMetres",
+            "type": "decimal",
+            "description": "Tallest ledge in metres the creature climbs in one tile step; a taller step is routed around",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.75
+          },
+          "canSwim": {
+            "name": "canSwim",
+            "type": "boolean",
+            "description": "Whether the creature paths through water tiles (ground below sea level)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "pathRadiusTiles": {
+            "name": "pathRadiusTiles",
+            "type": "integer",
+            "description": "Search radius in tiles of one path query",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 24
           },
           "attackRadius": {
             "name": "attackRadius",
@@ -22672,6 +22834,33 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 8
+          },
+          "maxStepMetres": {
+            "name": "maxStepMetres",
+            "type": "decimal",
+            "description": "Tallest ledge in metres the creature climbs in one tile step; a taller step is routed around",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.75
+          },
+          "canSwim": {
+            "name": "canSwim",
+            "type": "boolean",
+            "description": "Whether the creature paths through water tiles (ground below sea level)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "pathRadiusTiles": {
+            "name": "pathRadiusTiles",
+            "type": "integer",
+            "description": "Search radius in tiles of one path query",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 24
           },
           "attackRadius": {
             "name": "attackRadius",
@@ -23157,6 +23346,33 @@
             "pii": false,
             "defaultValue": 15
           },
+          "maxStepMetres": {
+            "name": "maxStepMetres",
+            "type": "decimal",
+            "description": "Tallest ledge in metres the creature climbs in one tile step; a taller step is routed around",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.75
+          },
+          "canSwim": {
+            "name": "canSwim",
+            "type": "boolean",
+            "description": "Whether the creature paths through water tiles (ground below sea level)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "pathRadiusTiles": {
+            "name": "pathRadiusTiles",
+            "type": "integer",
+            "description": "Search radius in tiles of one path query",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 24
+          },
           "attackRadius": {
             "name": "attackRadius",
             "type": "decimal",
@@ -23614,6 +23830,33 @@
             "pii": false,
             "defaultValue": 5
           },
+          "maxStepMetres": {
+            "name": "maxStepMetres",
+            "type": "decimal",
+            "description": "Tallest ledge in metres the creature climbs in one tile step; a taller step is routed around",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.75
+          },
+          "canSwim": {
+            "name": "canSwim",
+            "type": "boolean",
+            "description": "Whether the creature paths through water tiles (ground below sea level)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "pathRadiusTiles": {
+            "name": "pathRadiusTiles",
+            "type": "integer",
+            "description": "Search radius in tiles of one path query",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 24
+          },
           "attackRadius": {
             "name": "attackRadius",
             "type": "decimal",
@@ -24070,6 +24313,33 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 20
+          },
+          "maxStepMetres": {
+            "name": "maxStepMetres",
+            "type": "decimal",
+            "description": "Tallest ledge in metres the creature climbs in one tile step; a taller step is routed around",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.75
+          },
+          "canSwim": {
+            "name": "canSwim",
+            "type": "boolean",
+            "description": "Whether the creature paths through water tiles (ground below sea level)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "pathRadiusTiles": {
+            "name": "pathRadiusTiles",
+            "type": "integer",
+            "description": "Search radius in tiles of one path query",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 24
           },
           "attackRadius": {
             "name": "attackRadius",

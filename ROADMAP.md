@@ -156,7 +156,7 @@ issue number where the criterion used to be.
 | 133 | The test suite splits by system and runs by filter | In review | below |
 | 134 | A bot plays: playtest report and downloadable builds | In review | below |
 | 135 | A WAN profile: latency, loss and bandwidth in the two-client harness | In review | below |
-| 136 | Creatures walk on the ground and around obstacles | Planned | below |
+| 136 | Creatures walk on the ground and around obstacles | In review | below |
 | 137 | Loose ground settles: sand and soil fall when undermined | Planned | below |
 | 138 | Trees, generation records and persistence cleanup sweep | Planned | below |
 | 139 | Settlements in the fabric: founding, membership and shared storage | Planned | below |
@@ -435,16 +435,16 @@ cost per tick is capped.
   the host's surface height.
 
 **Acceptance criteria:**
-- [ ] `npm run validate` and `npm run check-drift` green; a negative `maxStepMetres` fails validation.
-- [ ] Suite: a creature chasing a player across a valley stays within 0.1 m of the surface at every
+- [x] `npm run validate` and `npm run check-drift` green; a negative `maxStepMetres` fails validation.
+- [x] Suite: a creature chasing a player across a valley stays within 0.1 m of the surface at every
   step; a 3 m placed wall between them is walked around, not through.
-- [ ] Suite: a non-swimming creature never enters a water tile; a goal on an island returns a partial
+- [x] Suite: a non-swimming creature never enters a water tile; a goal on an island returns a partial
   path ending at the nearest shore tile.
-- [ ] Suite: a search in a fully walled pocket stops at the expansion cap; with 200 creatures chasing
+- [x] Suite: a search in a fully walled pocket stops at the expansion cap; with 200 creatures chasing
   at once, path searches per tick never exceed the budget and every creature has moved within
   `ceil(200 / budget)` ticks.
-- [ ] Suite: a chase across the X wrap at chunk X = 1,500,000 takes the short way round.
-- [ ] Harness green with the creature-height assertion; suite green on both boot paths.
+- [x] Suite: a chase across the X wrap at chunk X = 1,500,000 takes the short way round.
+- [x] Harness green with the creature-height assertion; suite green on both boot paths.
 
 ---
 

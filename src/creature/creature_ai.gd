@@ -57,6 +57,30 @@ const GROUP_NONE := 0
 const GROUP_PACK := 1
 const GROUP_HERD := 2
 
+## Phase 136 — ground movement. Creatures follow a bounded A* path over the voxel columns
+## (`CreaturePath`) and stand on the column top; with no voxel surface wired (isolated tests) they keep
+## the straight 3D step.
+const CreaturePath := preload("res://src/creature/creature_path.gd")
+const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
+const WorldShape := preload("res://src/terrain/world_shape.gd")
+## Path searches the whole population may start in one tick; the rest wait their turn in a FIFO queue.
+const PATH_BUDGET_PER_TICK := 8
+## A path is recomputed once its goal tile has moved more than this many tiles (Chebyshev).
+const PATH_REPATH_TILES := 2
+## How far ahead of itself (metres) a fleeing creature aims.
+const FLEE_LEAD := 4.0
+## Fabric defaults when a creature resource lacks the Phase 136 fields.
+const DEFAULT_MAX_STEP := 0.75
+const DEFAULT_PATH_RADIUS := 24
+
+## Searches started this tick, the busiest tick seen and the lifetime total (test counters).
+var path_searches_this_tick := 0
+var path_searches_peak := 0
+var path_searches_total := 0
+## Instances waiting for a search, oldest first.
+var _path_queue: Array = []
+var path_budget := PATH_BUDGET_PER_TICK
+
 ## Per-instance AI state: { "state", "attack_timer", "patrol_target", "spawn_pos" }
 var _ai: Dictionary = {}
 
@@ -104,10 +128,12 @@ func _ready() -> void:
 	GameBus.creature_died.connect(_on_creature_died)
 	GameBus.creature_respawned.connect(_on_creature_respawned)
 	GameBus.creature_spawned.connect(_on_creature_spawned)
+	GameBus.block_changed.connect(_on_block_changed)
 
 func _process(delta: float) -> void:
 	if not is_authoritative:
 		return
+	begin_tick()
 	if creature_slice == null:
 		return
 	var targets := _player_targets()
@@ -307,10 +333,17 @@ func _chase(iid: String, inst: Dictionary, player_pos: Vector3, delta: float) ->
 
 func _flee(iid: String, inst: Dictionary, player_pos: Vector3, delta: float) -> void:
 	var away: Vector3 = (inst["position"] - player_pos).normalized()
-	var target: Vector3 = inst["position"] + away
+	var target: Vector3 = inst["position"] + away * FLEE_LEAD
 	_move_instance(iid, inst, target, SPEED_FLEE, delta)
 
 func _move_instance(iid: String, inst: Dictionary, target: Vector3, speed: float, delta: float) -> void:
+	if creature_slice.has_method("has_surface") and creature_slice.has_surface():
+		_walk_path(iid, inst, target, speed, delta)
+		return
+	_step_toward(inst, iid, target, speed, delta)
+
+## The straight step toward `target` (3D when there is no surface to snap to).
+func _step_toward(inst: Dictionary, iid: String, target: Vector3, speed: float, delta: float) -> void:
 	var pos: Vector3 = inst["position"]
 	var dir: Vector3 = (target - pos)
 	if dir.length_squared() < 0.001:
@@ -318,6 +351,145 @@ func _move_instance(iid: String, inst: Dictionary, target: Vector3, speed: float
 	dir = dir.normalized()
 	var new_pos: Vector3 = pos + dir * speed * delta
 	creature_slice.set_instance_position(iid, new_pos)
+
+# ---------------------------------------------------------------------------
+# Path following (Phase 136)
+# ---------------------------------------------------------------------------
+
+## Start a tick: the search budget refills and queued searches run oldest first.
+func begin_tick() -> void:
+	path_searches_this_tick = 0
+	_service_path_queue()
+
+func _lap_tiles() -> int:
+	return creature_slice.lap_tiles() if creature_slice.has_method("lap_tiles") else 0
+
+func _path_rules(iid: String) -> Dictionary:
+	var res: Resource = GameData.CREATURES.get(creature_slice.get_instance_creature_id(iid), null)
+	var rules := {
+		"max_step": DEFAULT_MAX_STEP, "can_swim": false, "radius": DEFAULT_PATH_RADIUS,
+		"sea_level": WorldShape.sea_level(), "lap_tiles": _lap_tiles(),
+	}
+	if res != null:
+		var step: Variant = res.get("maxStepMetres")
+		var swim: Variant = res.get("canSwim")
+		var radius: Variant = res.get("pathRadiusTiles")
+		if step != null:
+			rules["max_step"] = float(step)
+		if swim != null:
+			rules["can_swim"] = bool(swim)
+		if radius != null:
+			rules["radius"] = int(radius)
+	return rules
+
+## Follow the creature's path to `target`, asking for a new one when it has none for this goal. A creature
+## whose own chunk is not loaded stays where it is.
+func _walk_path(iid: String, inst: Dictionary, target: Vector3, speed: float, delta: float) -> void:
+	var pos: Vector3 = inst["position"]
+	var here: Vector2i = creature_slice.tile_of(pos)
+	if is_nan(creature_slice.surface_at_tile(here)):
+		return
+	var goal: Vector2i = creature_slice.tile_of(target)
+	var ai: Dictionary = _ai[iid]
+	var lap := _lap_tiles()
+	if here == goal:
+		_step_toward(inst, iid, target, speed, delta)
+		return
+	var has_path: bool = ai.has("path_goal") and not ai.get("path_stale", false)
+	if has_path:
+		var pg: Vector2i = ai["path_goal"]
+		var dx := SeamWrap.delta(goal.x, pg.x, lap) if lap > 0 else goal.x - pg.x
+		if maxi(absi(dx), absi(goal.y - pg.y)) > PATH_REPATH_TILES:
+			_request_path(iid, goal)
+	else:
+		if ai.get("path_stale", false):
+			_clear_path(ai)
+		_request_path(iid, goal)
+	var path: Array = ai.get("path", [])
+	var idx: int = ai.get("path_idx", 0)
+	if idx >= path.size():
+		# At the end of the path: walk the last stretch only when the goal was reached.
+		if bool(ai.get("path_reached", false)):
+			_step_toward(inst, iid, target, speed, delta)
+		return
+	var wp: Vector2i = path[idx]
+	var dtx: int = SeamWrap.delta(wp.x, here.x, lap) if lap > 0 else wp.x - here.x
+	var next_tile := Vector2i(here.x + dtx, wp.y)
+	if next_tile != here:
+		var rules := _path_rules(iid)
+		var h_here: float = creature_slice.surface_at_tile(here)
+		var h_next: float = creature_slice.surface_at_tile(_canon(next_tile, lap))
+		if is_nan(h_next) or absf(h_next - h_here) > float(rules["max_step"]):
+			# The column changed under the path (a block placed or mined): plan again.
+			_clear_path(ai)
+			_request_path(iid, goal)
+			return
+	var ts: float = creature_slice.tile_size()
+	var center := Vector3((float(here.x + dtx) + 0.5) * ts, pos.y, (float(wp.y) + 0.5) * ts)
+	var flat := Vector3(center.x - pos.x, 0.0, center.z - pos.z)
+	var step := speed * delta
+	if flat.length() <= step:
+		creature_slice.set_instance_position(iid, Vector3(center.x, pos.y, center.z))
+		ai["path_idx"] = idx + 1
+	else:
+		creature_slice.set_instance_position(iid, pos + flat.normalized() * step)
+
+static func _canon(tile: Vector2i, lap: int) -> Vector2i:
+	return Vector2i(SeamWrap.wrap_i(tile.x, lap), tile.y) if lap > 0 else tile
+
+func _clear_path(ai: Dictionary) -> void:
+	ai.erase("path")
+	ai.erase("path_goal")
+	ai["path_stale"] = false
+	ai["path_idx"] = 0
+	ai["path_reached"] = false
+
+## Queue a search to `goal` for `iid` (once) and run what the budget allows.
+func _request_path(iid: String, goal: Vector2i) -> void:
+	var ai: Dictionary = _ai[iid]
+	ai["path_want"] = goal
+	if not ai.get("path_wait", false):
+		ai["path_wait"] = true
+		_path_queue.append(iid)
+	_service_path_queue()
+
+func _service_path_queue() -> void:
+	while path_searches_this_tick < path_budget and not _path_queue.is_empty():
+		var iid: String = _path_queue.pop_front()
+		if not _ai.has(iid):
+			continue
+		var ai: Dictionary = _ai[iid]
+		ai["path_wait"] = false
+		if not ai.has("path_want") or creature_slice == null or not creature_slice.has_surface():
+			continue
+		var pos: Vector3 = creature_slice.get_instance_position(iid)
+		var from: Vector2i = creature_slice.tile_of(pos)
+		var goal: Vector2i = ai["path_want"]
+		var res := CreaturePath.search(from, goal, _path_rules(iid), Callable(creature_slice, "surface_at_tile"))
+		path_searches_this_tick += 1
+		path_searches_total += 1
+		path_searches_peak = maxi(path_searches_peak, path_searches_this_tick)
+		ai["path"] = res["path"]
+		ai["path_idx"] = 0
+		ai["path_goal"] = goal
+		ai["path_reached"] = bool(res["reached"])
+		ai["path_stale"] = false
+
+## A block changed: any creature whose remaining path crosses that column (or touches it) plans again.
+func _on_block_changed(_action: String, position: Vector3, _normal: Vector3, _material: String) -> void:
+	if creature_slice == null or not creature_slice.has_method("tile_of"):
+		return
+	var tile: Vector2i = creature_slice.tile_of(position)
+	var lap := _lap_tiles()
+	for iid in _ai:
+		var ai: Dictionary = _ai[iid]
+		var path: Array = ai.get("path", [])
+		for i in range(ai.get("path_idx", 0), path.size()):
+			var p: Vector2i = path[i]
+			var dx: int = SeamWrap.delta(p.x, tile.x, lap) if lap > 0 else p.x - tile.x
+			if absi(dx) <= 1 and absi(p.y - tile.y) <= 1:
+				ai["path_stale"] = true
+				break
 
 # ---------------------------------------------------------------------------
 # State transition

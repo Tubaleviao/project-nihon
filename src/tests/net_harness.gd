@@ -1185,6 +1185,9 @@ func _step_far_peers_simulated() -> void:
 						return true
 			return false
 		var ok: bool = await _await_until(simulated, 60.0)
+		# Phase 136 — a creature stands on the host's voxel surface, not on a generator height.
+		var off_surface := _creatures_off_surface(chunk)
+		ok = ok and off_surface == 0
 		_report("far_peers_simulated", verdict(ok, true), "far-window-simulated" if ok else "far_window_empty-chunk%s-refs%d-built%d-loaded%d-peers%d-biome%s-online%s-lk%d" % [
 			str(chunk), _root._chunk_manager.chunk_ref_count(chunk), int(_root._chunk_manager._built.has("%d,%d" % [chunk.x, chunk.y])),
 			int(_root._chunk_manager._loaded.has("%d,%d" % [chunk.x, chunk.y])), _root._chunk_manager.peer_window_count(),
@@ -1200,6 +1203,21 @@ func _step_far_peers_simulated() -> void:
 		})
 		await _await_settle(1.0)
 	_report("far_peers_simulated", "ok", "far-window-simulated")
+
+## Phase 136 — how many creatures around `chunk` stand more than a centimetre off the host's voxel surface
+## after the slice places them (the position setter keeps the body on the column top).
+func _creatures_off_surface(chunk: Vector2i) -> int:
+	var off := 0
+	for dx in range(-1, 2):
+		for dz in range(-1, 2):
+			for iid in (_root._creature._by_chunk.get(chunk + Vector2i(dx, dz), []) as Array):
+				var pos: Vector3 = _root._creature.get_instance_position(iid)
+				_root._creature.set_instance_position(iid, pos)
+				var placed: Vector3 = _root._creature.get_instance_position(iid)
+				var surface: float = _root._voxel.get_voxel_height_at(Vector2(placed.x, placed.z))
+				if absf(placed.y - surface) > 0.01:
+					off += 1
+	return off
 
 ## A player id bound to some connection that is not `old_id` ("" when none): the identity the
 ## rejoining client was minted.
