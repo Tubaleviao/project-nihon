@@ -31,6 +31,7 @@ An ancient construct of crystallised voidite that guards the innermost rift boun
 | spawnChance | decimal | Probability (0–1) that a chunk of this creature's biome rolls a pack at all; kept low so the warden stays rare |
 | spawnDensity | decimal | Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world |
 | biome | `TemperateForest`, `TemperateGrassland`, `VolcanicBadlands`, `TwilightGrove`, `VoidRift`, `Ocean`, `Beach`, `Desert`, `Tundra`, `Alpine`, `Taiga`, `Savanna` | Biome this creature belongs to |
+| skeleton | string | Skeleton family the creature model is rigged on (a SkeletonDefinition entity) |
 | drops | json | Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system. |
 
 ## States

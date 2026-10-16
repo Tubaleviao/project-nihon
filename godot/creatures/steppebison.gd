@@ -64,6 +64,7 @@ enum State {
 @export var spawnChance: float
 @export var spawnDensity: float
 @export var biome: int
+@export var skeleton: String
 @export var groupBehavior: int
 @export var packRadius: float
 @export var drops: Array

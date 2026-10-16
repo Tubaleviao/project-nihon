@@ -136,4 +136,23 @@ function validatePathFields(creatures) {
   }
 }
 
-module.exports = { pathFields, validatePathFields, PATH_RADIUS_MAX, defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS, dropsData, tameData }
+// Skeleton family (Phase 143), consumed by CreatureVisuals (src/creature/creature_visuals.gd): the
+// SkeletonDefinition entity whose bones the creature's model is rigged on. Its value names an entity in
+// fabric/gameplay/characters/skeletons.js; `validateSkeletons` rejects any other name.
+const CREATURE_SKELETONS = ['QuadrupedSkeleton', 'BirdSkeleton', 'SerpentSkeleton', 'HumanoidSkeleton']
+function skeletonField(skeleton) {
+  return { type: 'string', description: 'Skeleton family the creature model is rigged on (a SkeletonDefinition entity)', defaultValue: skeleton }
+}
+
+// Throws (failing `npm run validate`) when a creature names no skeleton or one that is not a defined family.
+function validateSkeletons(creatures, skeletons) {
+  for (const [name, entity] of Object.entries(creatures)) {
+    const f = (entity && entity.fields) || {}
+    const value = f.skeleton && f.skeleton.defaultValue
+    if (!CREATURE_SKELETONS.includes(value) || !(value in skeletons)) {
+      throw new Error(`${name}: skeleton must name one of ${CREATURE_SKELETONS.join(', ')} (got ${value})`)
+    }
+  }
+}
+
+module.exports = { skeletonField, validateSkeletons, CREATURE_SKELETONS, pathFields, validatePathFields, PATH_RADIUS_MAX, defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS, dropsData, tameData }

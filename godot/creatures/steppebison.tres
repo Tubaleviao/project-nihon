@@ -21,6 +21,7 @@ spawnCount = 2
 spawnChance = 0.6
 spawnDensity = 0.5
 biome = 1
+skeleton = "QuadrupedSkeleton"
 groupBehavior = 2
 packRadius = 20.0
 drops = [{"item":"bison_meat","chance":1,"minQty":3,"maxQty":6},{"item":"bison_hide","chance":1,"minQty":2,"maxQty":2},{"item":"bison_bone","chance":1,"minQty":1,"maxQty":2},{"item":"bison_horn","chance":0.25,"minQty":1,"maxQty":1}]

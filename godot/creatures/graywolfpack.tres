@@ -21,6 +21,7 @@ spawnCount = 2
 spawnChance = 0.6
 spawnDensity = 0.5
 biome = 0
+skeleton = "QuadrupedSkeleton"
 groupBehavior = 1
 packRadius = 20.0
 drops = [{"item":"wolf_pelt","chance":1,"minQty":1,"maxQty":1},{"item":"wolf_fang","chance":0.4,"minQty":0,"maxQty":1},{"item":"alpha_wolf_fang","chance":1,"minQty":1,"maxQty":1}]

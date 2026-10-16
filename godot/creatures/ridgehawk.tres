@@ -21,6 +21,7 @@ spawnCount = 2
 spawnChance = 0.6
 spawnDensity = 0.5
 biome = 1
+skeleton = "BirdSkeleton"
 drops = [{"item":"hawk_feather","chance":1,"minQty":1,"maxQty":3},{"item":"hawk_talon","chance":0.35,"minQty":1,"maxQty":1}]
 state_machine_field = "state"
 initial_state = "idle"

@@ -21,6 +21,7 @@ spawnCount = 1
 spawnChance = 0.6
 spawnDensity = 0.5
 biome = 4
+skeleton = "SerpentSkeleton"
 drops = [{"item":"void_scale","chance":1,"minQty":2,"maxQty":4},{"item":"void_serpent_fang","chance":1,"minQty":1,"maxQty":1},{"item":"phase_locked_core","chance":0.25,"minQty":1,"maxQty":1}]
 state_machine_field = "state"
 initial_state = "idle"

@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, creatureStateValues, dropsData, pathFields, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
+const { defineEntity, skeletonField, creatureStateMachine, creatureStateValues, dropsData, pathFields, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
 
 module.exports = {
 
@@ -27,6 +27,7 @@ module.exports = {
       spawnChance:    { type: 'decimal', description: 'Probability (0–1) that a chunk of this creature\'s biome rolls a pack at all', defaultValue: 0.6 },
       spawnDensity:   { type: 'decimal', description: 'Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world', defaultValue: 0.5 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'VoidRift' },
+      skeleton:       skeletonField('SerpentSkeleton'),
       drops: dropsData([
         { item: 'void_scale',        chance: 1.0,  minQty: 2, maxQty: 4 },
         { item: 'void_serpent_fang', chance: 1.0,  minQty: 1, maxQty: 1 },
@@ -116,6 +117,7 @@ module.exports = {
       spawnChance:    { type: 'decimal', description: 'Probability (0–1) that a chunk of this creature\'s biome rolls a pack at all; kept low so the warden stays rare', defaultValue: 0.05 },
       spawnDensity:   { type: 'decimal', description: 'Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world', defaultValue: 0.5 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'VoidRift' },
+      skeleton:       skeletonField('QuadrupedSkeleton'),
       drops: dropsData([
         { item: 'rift_shard',        chance: 1.0,  minQty: 4, maxQty: 8 },
         { item: 'void_core_crystal', chance: 1.0,  minQty: 1, maxQty: 1 },

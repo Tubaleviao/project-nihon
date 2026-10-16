@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:a5b76d111e1a017c5624013964b2b598ee461e0c3e14a2ae06ce28f8b560e36c",
+  "schemaHash": "sha256:9937fbbfbed55a7d7c971dc4839c7272ef24a9f63a5b2c2cf1988818398f4b4f",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -20953,6 +20953,15 @@
             "pii": false,
             "defaultValue": "TemperateForest"
           },
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton family the creature model is rigged on (a SkeletonDefinition entity)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "QuadrupedSkeleton"
+          },
           "onHitEffects": {
             "name": "onHitEffects",
             "type": "json",
@@ -21438,6 +21447,15 @@
             ],
             "pii": false,
             "defaultValue": "TemperateForest"
+          },
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton family the creature model is rigged on (a SkeletonDefinition entity)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "QuadrupedSkeleton"
           },
           "groupBehavior": {
             "name": "groupBehavior",
@@ -21970,6 +21988,15 @@
             "pii": false,
             "defaultValue": "TemperateGrassland"
           },
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton family the creature model is rigged on (a SkeletonDefinition entity)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "QuadrupedSkeleton"
+          },
           "groupBehavior": {
             "name": "groupBehavior",
             "type": "enum",
@@ -22464,6 +22491,15 @@
             "pii": false,
             "defaultValue": "TemperateGrassland"
           },
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton family the creature model is rigged on (a SkeletonDefinition entity)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "BirdSkeleton"
+          },
           "drops": {
             "name": "drops",
             "type": "json",
@@ -22922,6 +22958,15 @@
             ],
             "pii": false,
             "defaultValue": "VolcanicBadlands"
+          },
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton family the creature model is rigged on (a SkeletonDefinition entity)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "SerpentSkeleton"
           },
           "onHitEffects": {
             "name": "onHitEffects",
@@ -23404,6 +23449,15 @@
             ],
             "pii": false,
             "defaultValue": "VolcanicBadlands"
+          },
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton family the creature model is rigged on (a SkeletonDefinition entity)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "BirdSkeleton"
           },
           "onHitEffects": {
             "name": "onHitEffects",
@@ -23888,6 +23942,15 @@
             ],
             "pii": false,
             "defaultValue": "TwilightGrove"
+          },
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton family the creature model is rigged on (a SkeletonDefinition entity)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "QuadrupedSkeleton"
           },
           "drops": {
             "name": "drops",
@@ -24400,6 +24463,15 @@
             "pii": false,
             "defaultValue": "TwilightGrove"
           },
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton family the creature model is rigged on (a SkeletonDefinition entity)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "QuadrupedSkeleton"
+          },
           "onHitEffects": {
             "name": "onHitEffects",
             "type": "json",
@@ -24884,6 +24956,15 @@
             "pii": false,
             "defaultValue": "VoidRift"
           },
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton family the creature model is rigged on (a SkeletonDefinition entity)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "SerpentSkeleton"
+          },
           "drops": {
             "name": "drops",
             "type": "json",
@@ -25367,6 +25448,15 @@
             ],
             "pii": false,
             "defaultValue": "VoidRift"
+          },
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton family the creature model is rigged on (a SkeletonDefinition entity)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "QuadrupedSkeleton"
           },
           "drops": {
             "name": "drops",

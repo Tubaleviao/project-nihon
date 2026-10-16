@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, dropsData, tameData, pathFields, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS } = require('./shared')
+const { defineEntity, skeletonField, creatureStateMachine, dropsData, tameData, pathFields, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS } = require('./shared')
 
 module.exports = {
 
@@ -26,6 +26,7 @@ module.exports = {
       spawnChance:    { type: 'decimal', description: 'Probability (0–1) that a chunk of this creature\'s biome rolls a pack at all', defaultValue: 0.6 },
       spawnDensity:   { type: 'decimal', description: 'Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world', defaultValue: 0.5 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TemperateForest' },
+      skeleton:       skeletonField('QuadrupedSkeleton'),
       onHitEffects:   { type: 'json', description: 'Status effects a landed hit rolls: [{ effect, chance }] (Phase 129); each effect names a CombatSystem.statusEffects row', defaultValue: [{ effect: 'knockback', chance: 1.0 }] },
       drops: dropsData([
         { item: 'raw_boar_meat', chance: 1.0, minQty: 1, maxQty: 3 },
@@ -106,6 +107,7 @@ module.exports = {
       spawnChance:    { type: 'decimal', description: 'Probability (0–1) that a chunk of this creature\'s biome rolls a pack at all', defaultValue: 0.6 },
       spawnDensity:   { type: 'decimal', description: 'Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world', defaultValue: 0.5 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TemperateForest' },
+      skeleton:       skeletonField('QuadrupedSkeleton'),
       groupBehavior:  { type: 'enum', values: GROUP_BEHAVIORS, description: 'How group members coordinate: none (solitary), pack (share alert/aggressive), herd (share flee)', defaultValue: 'pack' },
       packRadius:     { type: 'decimal', description: 'Distance in metres within which group members coordinate with each other', defaultValue: 20.0 },
       drops: dropsData([
@@ -207,6 +209,7 @@ module.exports = {
       spawnChance:    { type: 'decimal', description: 'Probability (0–1) that a chunk of this creature\'s biome rolls a pack at all', defaultValue: 0.6 },
       spawnDensity:   { type: 'decimal', description: 'Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world', defaultValue: 0.5 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TemperateGrassland' },
+      skeleton:       skeletonField('QuadrupedSkeleton'),
       groupBehavior:  { type: 'enum', values: GROUP_BEHAVIORS, description: 'How group members coordinate: none (solitary), pack (share alert/aggressive), herd (share flee)', defaultValue: 'herd' },
       packRadius:     { type: 'decimal', description: 'Distance in metres within which group members coordinate with each other', defaultValue: 20.0 },
       drops: dropsData([
@@ -292,6 +295,7 @@ module.exports = {
       spawnChance:    { type: 'decimal', description: 'Probability (0–1) that a chunk of this creature\'s biome rolls a pack at all', defaultValue: 0.6 },
       spawnDensity:   { type: 'decimal', description: 'Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world', defaultValue: 0.5 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TemperateGrassland' },
+      skeleton:       skeletonField('BirdSkeleton'),
       drops: dropsData([
         { item: 'hawk_feather', chance: 1.0,  minQty: 1, maxQty: 3 },
         { item: 'hawk_talon',   chance: 0.35, minQty: 1, maxQty: 1 },

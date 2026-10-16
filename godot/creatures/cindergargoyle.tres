@@ -21,6 +21,7 @@ spawnCount = 1
 spawnChance = 0.6
 spawnDensity = 0.5
 biome = 2
+skeleton = "BirdSkeleton"
 onHitEffects = [{"effect":"knockdown","chance":1}]
 drops = [{"item":"gargoyle_wing_fragment","chance":1,"minQty":1,"maxQty":2},{"item":"petrified_binding_stone","chance":1,"minQty":1,"maxQty":1},{"item":"gargoyle_crest","chance":0.1,"minQty":1,"maxQty":1}]
 state_machine_field = "state"

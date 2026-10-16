@@ -21,6 +21,7 @@ spawnCount = 1
 spawnChance = 0.6
 spawnDensity = 0.5
 biome = 3
+skeleton = "QuadrupedSkeleton"
 onHitEffects = [{"effect":"paralysis","chance":0.2}]
 drops = [{"item":"veilstalker_venom_sac","chance":1,"minQty":1,"maxQty":1},{"item":"shadow_phase_membrane","chance":1,"minQty":1,"maxQty":1},{"item":"crystallised_phase_shard","chance":0.2,"minQty":1,"maxQty":1}]
 state_machine_field = "state"
