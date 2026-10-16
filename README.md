@@ -152,7 +152,7 @@ npm run generate  # generate the design bible into bible/
 | 129 | Combat status effects: burn, paralysis, knockback, knockdown and stagger | Done |
 | 130 | Host authority sweep: status effects, waystones and research points | In review |
 | 131 | Internationalization: translated UI and keyed host messages | In review |
-| 132 | One wiring module per system: `game_root` keeps the boot paths | Planned |
+| 132 | One wiring module per system: `game_root` keeps the boot paths | In review |
 | 133 | The test suite splits by system and runs by filter | Planned |
 | 134 | A bot plays: playtest report and downloadable builds | Planned |
 | 135 | A WAN profile: latency, loss and bandwidth in the two-client harness | Planned |
@@ -192,7 +192,7 @@ Slices do **not** hold each other by default. The bus carries every *event* and 
 1. **Model it in the fabric** — add entities, fields, state machines, and behaviors in `fabric/`. Run `npm run validate` before touching any GDScript.
 2. **Generate** — run `npm run generate` to emit updated `.tres` resources into `godot/` and regenerate `bible/` and `wiki/`.
 3. **Check drift** — run `npm run check-drift` to confirm the IR snapshot is up-to-date before importing in Godot.
-4. **Implement the slice** — add `src/<system>/<system>_slice.gd`; wire it in `src/core/game_root.gd`; add bus signals in `src/core/bus.gd`.
+4. **Implement the slice** — add `src/<system>/<system>_slice.gd`; build it in `src/core/game_root.gd` and put its bus handlers in `src/<system>/<system>_wiring.gd` (add the module to `_wirings`); add bus signals in `src/core/bus.gd`.
 5. **Write tests** — extend `src/tests/test_suite.gd` with at least one test per acceptance criterion before marking the phase done.
    A phase that changes world-generation output (heights, biome placement, climate, continents) also bumps `TerrainSlice.WORLDGEN_VERSION` and adds a line to its history comment, so older saves are flagged on load.
 6. **Open a PR** — phases ship as pull requests; titles follow `feat(<system>): <short description>`. PRs for design changes to the fabric are separate from implementation PRs.

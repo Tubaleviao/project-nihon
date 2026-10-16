@@ -195,6 +195,8 @@ func run() -> void:
 	_run_test("worldgen: fingerprint stable and sensitive",   _test_worldgen_fingerprint)
 	_run_test("worldgen: fingerprint stamp on the world record", _test_worldgen_fingerprint_record)
 	_run_test("worldgen: fingerprint mismatch wiring",        _test_worldgen_fingerprint_game_root)
+	_run_test("wiring: game_root owns no bus connects",       _test_wiring_audit)
+	_run_test("wiring: unwire leaves no handler behind",      _test_wiring_unwire)
 	_run_test("worldgen: golden generator values",            _test_worldgen_golden)
 	_run_test("worldgen: fingerprint test restores statics",  _test_worldgen_fingerprint_restores)
 	_run_test("worldgen: fingerprint notice reaches the UI",  _test_worldgen_fingerprint_notice)
@@ -1429,7 +1431,7 @@ func _test_phase122_snapshot_fallback_and_clamp() -> void:
 	gr._rebase.rebase_to(Vector2i(600000, 40))
 	body.place_at_world_pos({ "chunk": Vector2i(600000, 40), "local": Vector3(1.0, 20.0, 1.0) })
 	# A wire-shaped but invalid position (a chunk far past the pole) spawns the body at the spawn point.
-	gr._place_from_snapshot({ "position": { "chunk": [0, 99999999], "local": [1.0, 2.0, 3.0] } })
+	gr._snapshot_wiring._place_from_snapshot({ "position": { "chunk": [0, 99999999], "local": [1.0, 2.0, 3.0] } })
 	var landed := body.get_world_pos()
 	assert_eq(landed["chunk"], Vector2i.ZERO, "a bad snapshot position rebases to the spawn chunk")
 	var spawn: Vector3 = landed["local"]
@@ -1510,7 +1512,7 @@ func _test_remote_state_plausibility() -> void:
 	assert_false(root_script._is_plausible_position(Vector3(1.0e9, 0.0, 0.0)), "a coordinate past the planet is dropped")
 	var gr: Node = root_script.new()
 	gr._is_client = false
-	gr._on_remote_player_state(3, Vector3(NAN, 0.0, 0.0))
+	gr._peer_wiring._on_remote_player_state(3, Vector3(NAN, 0.0, 0.0))
 	assert_true(gr._peer_aoi_regions.is_empty(), "a rejected claim records no AOI region (and needs no networking slice)")
 	gr.free()
 
@@ -1529,7 +1531,7 @@ func _test_remote_peer_exact_position() -> void:
 	var gr: Node = (load("res://src/core/game_root.gd") as GDScript).new()
 	gr._networking = n
 	gr._registry = reg
-	gr._fold_last_known_state(5, "p5")
+	gr._peer_wiring._fold_last_known_state(5, "p5")
 	var rec: Dictionary = JSON.parse_string(JSON.stringify(reg.get_record("p5")))
 	var reg2 := PlayerRegistry.new()
 	_own(reg2)
@@ -1552,7 +1554,7 @@ func _test_remote_peer_exact_position() -> void:
 	n._route_c2h(6, { "type": "player_moved", "position": [10.0, 2.0, -5.0] })
 	assert_eq(n.get_last_known_state(6), Vector3(10.0, 2.0, -5.0), "a legacy report records its Vector3")
 	assert_true(n.get_last_known_exact(6).is_empty(), "with no exact position")
-	gr._fold_last_known_state(6, "p6")
+	gr._peer_wiring._fold_last_known_state(6, "p6")
 	assert_eq(reg.get_world_pos("p6")["chunk"], Vector2i(0, -1), "and the fold falls back to record_position")
 	gr.free()
 	n.free()
@@ -1576,7 +1578,7 @@ func _test_peer_exact_window_and_relay() -> void:
 	gr._networking = n
 	gr._registry = reg
 	gr._chunk_manager = cm
-	assert_eq(gr._peer_window_chunk(5), chunk, "the window is centred on the exact chunk")
+	assert_eq(gr._peer_wiring._peer_window_chunk(5), chunk, "the window is centred on the exact chunk")
 	# The relay to the other clients carries the exact position. Each relay is asserted on its own: the
 	# first (peer 7 remembered at the origin, out of range, so nothing goes out) and the second (peer 7
 	# remembered beside the mover, so the exact position does), so one cannot stand in for the other.
@@ -1588,10 +1590,10 @@ func _test_peer_exact_window_and_relay() -> void:
 	var second := _relays_of_peer(n, 5)
 	_assert_relay_exact(second, chunk, local, "second relay")
 	# An exact position past the pole row is not folded; the record keeps its previous position.
-	gr._fold_last_known_state(5, "p5")
+	gr._peer_wiring._fold_last_known_state(5, "p5")
 	assert_eq(reg.get_world_pos("p5")["chunk"], chunk, "a sane exact position is folded")
 	n._last_known_exact[5] = { "chunk": Vector2i(10, TerrainSlice.pole_chunks() + TerrainSlice.FOLD_MARGIN_CHUNKS + 5), "local": Vector3.ZERO }
-	gr._fold_last_known_state(5, "p5")
+	gr._peer_wiring._fold_last_known_state(5, "p5")
 	assert_eq(reg.get_world_pos("p5")["chunk"], chunk, "an off-planet exact position leaves the record alone")
 	gr._chunk_manager = null
 	cm.free()
@@ -2179,18 +2181,18 @@ func _test_worldgen_stamp_game_root_wiring() -> void:
 	var cb := func(recorded: int, running: int) -> void: seen.append([recorded, running])
 	GameBus.worldgen_version_mismatch.connect(cb)
 	gr._loaded_world = {}
-	gr._note_worldgen_version()
+	gr._persistence_wiring._note_worldgen_version()
 	assert_true(seen.is_empty(), "a new world raises no mismatch")
 	assert_eq(gr._worldgen_stamp, TerrainSlice.WORLDGEN_VERSION, "and takes the running stamp")
 	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION }
-	gr._note_worldgen_version()
+	gr._persistence_wiring._note_worldgen_version()
 	assert_true(seen.is_empty(), "a matching record raises none")
 	gr._loaded_world = { "seed": 7 }
-	gr._note_worldgen_version()
+	gr._persistence_wiring._note_worldgen_version()
 	assert_true(seen.is_empty(), "an unstamped record raises none")
 	assert_eq(gr._worldgen_stamp, TerrainSlice.WORLDGEN_VERSION, "and the next save stamps the running version")
 	gr._loaded_world = { "seed": 7, "worldgenVersion": TerrainSlice.WORLDGEN_VERSION - 1 }
-	gr._note_worldgen_version()
+	gr._persistence_wiring._note_worldgen_version()
 	assert_eq(seen, [[TerrainSlice.WORLDGEN_VERSION - 1, TerrainSlice.WORLDGEN_VERSION]], "an older stamp raises once")
 	assert_eq(gr._worldgen_stamp, TerrainSlice.WORLDGEN_VERSION - 1, "and the next save keeps that original stamp")
 	GameBus.worldgen_version_mismatch.disconnect(cb)
@@ -6275,11 +6277,11 @@ func _test_ui_worldgen_toast() -> void:
 	var root_script: GDScript = load("res://src/core/game_root.gd")
 	var gr: Node = root_script.new()
 	gr._loaded_world = { "seed": 7 }
-	gr._note_worldgen_version()
+	gr._persistence_wiring._note_worldgen_version()
 	assert_eq(ui.toast_shown(), "", "a pre-stamp save produces no toast")
 	gr._loaded_world = { "seed": 7, "worldgenVersion": TerrainSlice.WORLDGEN_VERSION - 1,
 		"worldgenFingerprint": TerrainSlice.worldgen_fingerprint() }
-	gr._note_worldgen_version()
+	gr._persistence_wiring._note_worldgen_version()
 	assert_true(ui.toast_shown().contains("generator v%d" % (TerrainSlice.WORLDGEN_VERSION - 1)), "a mismatch shows the toast")
 	assert_eq(ui.toast_queue().size(), 0, "exactly one")
 	ui.push_toast("World saved with generator v%d, running v%d: terrain may not match saved edits." % [TerrainSlice.WORLDGEN_VERSION - 1, TerrainSlice.WORLDGEN_VERSION])
@@ -7917,7 +7919,7 @@ func _test_rescope_resent_when_clamped() -> void:
 	gr._registry = reg
 	gr._chunk_manager = cm
 	gr._is_client = false
-	gr._on_remote_player_state(5, Vector3(64.0 * 40.0, 0.0, 0.0))
+	gr._peer_wiring._on_remote_player_state(5, Vector3(64.0 * 40.0, 0.0, 0.0))
 	var sent: Array = n.memory_transport().outbox.filter(func(o): return o["payload"].get("type") == "snapshot_chunk")
 	assert_true(sent.is_empty(), "a refused or clamped move builds and sends no snapshot")
 	assert_false(gr._peer_aoi_regions.has(5), "and the crossing is forgotten so the window's catch-up retries it")
@@ -15766,7 +15768,7 @@ func _test_apply_local_equipment_paths() -> void:
 		var sent: Array = []
 		var on_action := func(_p: String, slot: String, item: String) -> void: sent.append([slot, item])
 		GameBus.equip_intent.connect(on_action)
-		gr._apply_local_equipment({})
+		gr._character_wiring._apply_local_equipment({})
 		GameBus.equip_intent.disconnect(on_action)
 		var tag := "client" if as_client else "host"
 		assert_true(sent.is_empty(), "%s: a restore sends no equip action" % tag)
@@ -15777,7 +15779,7 @@ func _test_apply_local_equipment_paths() -> void:
 			assert_eq(ch.get_equipment_set(iid).get("Chest", ""), "VeilsteelChestplate", "host: an empty record keeps the recipe's gear")
 			assert_eq(reg.get_equipment(reg.local_player_id).get("Chest", ""), "VeilsteelChestplate", "host: and records it")
 		# A recorded set is applied exactly.
-		gr._apply_local_equipment({ "Head": "FerriteHelmet" })
+		gr._character_wiring._apply_local_equipment({ "Head": "FerriteHelmet" })
 		assert_eq(ch.get_equipment_set(iid).get("Head", ""), "FerriteHelmet", "%s: a recorded set is worn" % tag)
 		gr.free()
 		ch.free()
@@ -15866,11 +15868,11 @@ func _test_equipment_stale_revoke_ignored() -> void:
 	assert_eq(net.equip_seq_sent(), 2, "each action advances the sequence")
 	ch.apply_equipment(iid, "Chest", "VeilsteelChestplate")
 	# Replies arrive in order: the revoke for #1 (host had no Chest yet), then the record for #2.
-	gr._on_own_state_synced({ "equipment": {}, "equipment_seq": 1 })
+	gr._peer_wiring._on_own_state_synced({ "equipment": {}, "equipment_seq": 1 })
 	assert_eq(ch.get_equipment_set(iid).get("Chest", ""), "VeilsteelChestplate", "the older revoke is ignored")
-	gr._on_own_state_synced({ "equipment": { "Chest": "VeilsteelChestplate" }, "equipment_seq": 2 })
+	gr._peer_wiring._on_own_state_synced({ "equipment": { "Chest": "VeilsteelChestplate" }, "equipment_seq": 2 })
 	assert_eq(ch.get_equipment_set(iid).get("Chest", ""), "VeilsteelChestplate", "the newer reply keeps the item")
-	gr._on_own_state_synced({ "equipment": {}, "equipment_seq": 2 })
+	gr._peer_wiring._on_own_state_synced({ "equipment": {}, "equipment_seq": 2 })
 	assert_true(ch.get_equipment_set(iid).is_empty(), "a revoke answering the newest action is applied")
 	gr.free()
 	net.free()
@@ -18493,7 +18495,7 @@ func _test_first_boot_spawn_exact() -> void:
 	var gr: Node = (load("res://src/core/game_root.gd") as GDScript).new()
 	gr._player = player
 	gr._registry = reg
-	gr._record_first_spawn(pid)
+	gr._persistence_wiring._record_first_spawn(pid)
 	var spawn: Variant = reg.spawn_of(pid)
 	assert_true(spawn != null, "the spawn was recorded")
 	assert_eq(spawn["chunk"], chunk, "in the exact chunk")
@@ -18540,7 +18542,7 @@ func _test_exact_spawn_respawn() -> void:
 	gr._registry = reg
 	reg.local_player_id = pid
 	gr._saved_position_reads = 0
-	gr._place_local_player(Vector3(5.0, 5.0, 5.0))
+	gr._persistence_wiring._place_local_player(Vector3(5.0, 5.0, 5.0))
 	assert_eq(gr._saved_position_reads, 1, "a placement reads the saved position once")
 	assert_eq(player.get_world_pos()["chunk"], chunk + Vector2i(7, 0), "a saved record wins over pos")
 	var blank := PlayerRegistry.new()
@@ -18551,7 +18553,7 @@ func _test_exact_spawn_respawn() -> void:
 	gr._player = near
 	gr._rebase = RebaseDriver.new([near])
 	gr._registry = blank
-	gr._place_local_player(Vector3(5.0, 5.0, 5.0))
+	gr._persistence_wiring._place_local_player(Vector3(5.0, 5.0, 5.0))
 	assert_true(_wp_world(near.get_world_pos()).distance_to(Vector3(5.0, 5.0, 5.0)) < 0.01, "with no record the body goes to pos")
 	near.free()
 	player.free()
@@ -18580,12 +18582,12 @@ func _test_exact_placement_paths() -> void:
 	gr._player = host_body
 	gr._rebase = RebaseDriver.new([host_body])
 	gr._registry = reg
-	gr._place_local_player(Vector3(5.0, 5.0, 5.0))
+	gr._persistence_wiring._place_local_player(Vector3(5.0, 5.0, 5.0))
 	var placed := host_body.get_world_pos()
 	assert_eq(placed["chunk"], chunk, "_place_local_player lands in the recorded chunk")
 	assert_true((placed["local"] as Vector3).distance_to(local) < 1e-3, "and on the recorded local within 1e-3 m")
 	# Door 2: the snapshot's own record carries the exact position through a JSON round trip.
-	var shipped: Dictionary = JSON.parse_string(JSON.stringify(gr._snapshot_own_record(pid)))
+	var shipped: Dictionary = JSON.parse_string(JSON.stringify(gr._snapshot_wiring._snapshot_own_record(pid)))
 	assert_true(WorldPos.is_wire(shipped["player"]["position"]), "the snapshot's player position is a valid wire record")
 	assert_eq(WorldPos.wire_chunk(shipped["player"]["position"]), chunk, "naming the exact chunk")
 	# Door 3: a client places itself from that packet with a rebase, not a float detour.
@@ -18595,13 +18597,13 @@ func _test_exact_placement_paths() -> void:
 	var client: Node = root_script.new()
 	client._player = client_body
 	client._rebase = RebaseDriver.new([client_body])
-	client._place_from_snapshot(shipped["player"])
+	client._snapshot_wiring._place_from_snapshot(shipped["player"])
 	var landed := client_body.get_world_pos()
 	assert_eq(landed["chunk"], chunk, "_place_from_snapshot rebases to the exact chunk")
 	assert_true((landed["local"] as Vector3).distance_to(local) < 1e-3, "and lands on the local within 1e-3 m")
 	assert_true(client._client_respawn_point_set, "the first snapshot sets the respawn point")
-	client._place_from_snapshot("not a record")
-	client._place_from_snapshot({ "position": "elsewhere" })
+	client._snapshot_wiring._place_from_snapshot("not a record")
+	client._snapshot_wiring._place_from_snapshot({ "position": "elsewhere" })
 	assert_eq(client_body.get_world_pos()["chunk"], chunk, "a malformed player record moves nobody")
 	client_body.free()
 	host_body.free()
@@ -18715,11 +18717,11 @@ func _test_clock_sun_biome_daylight() -> void:
 		root._clock.time_days = float(phase)
 		var elev: float = root._clock.sun_elevation_at(lat)
 		var d: float = WorldClock.daylight_level(elev)
-		root._apply_sun(lat, 0.0)
+		root._weather_wiring._apply_sun(lat, 0.0)
 		assert_true(absf(sun.light_energy - 1.4 * WorldClock.biome_daylight(d, 0.0)) < 1e-6,
 			"night speed 0: sun energy is biome_daylight(d, 0) at day phase %s" % phase)
 		assert_true(absf(sun.light_energy - 0.7) < 1e-6, "night speed 0 stays at dusk energy")
-		root._apply_sun(lat, 1.0)
+		root._weather_wiring._apply_sun(lat, 1.0)
 		assert_true(absf(sun.light_energy - 1.4 * d) < 1e-6,
 			"night speed 1 follows the clock at day phase %s" % phase)
 	root.free()
@@ -19168,10 +19170,10 @@ func _test_chat_kill_peer_simulated_hp() -> void:
 	gr._is_client = false
 	gr._registry = reg
 	gr._networking = n
-	GameBus.player_damaged.connect(gr._on_player_damaged)
+	GameBus.player_damaged.connect(gr._combat_wiring._on_player_damaged)
 	n.memory_transport().outbox.clear()
 	chat.handle_intent("/kill %s" % reg.public_handle(pid), "")
-	GameBus.player_damaged.disconnect(gr._on_player_damaged)
+	GameBus.player_damaged.disconnect(gr._combat_wiring._on_player_damaged)
 	var hits: Array = n.memory_transport().outbox.filter(func(o): return o["payload"]["type"] == "player_damaged")
 	assert_eq(hits.size(), 1, "exactly one player_damaged goes out")
 	assert_eq(hits[0]["peer_id"], 7, "to that peer")
@@ -19196,11 +19198,11 @@ func _test_chat_no_direct_damage_door() -> void:
 		for sub in DirAccess.get_directories_at(dir):
 			stack.append(dir + "/" + sub)
 		for f in DirAccess.get_files_at(dir):
-			if not f.ends_with(".gd") or f in ["game_root.gd", "networking_slice.gd", "test_suite.gd", "net_harness.gd"]:
+			if not f.ends_with(".gd") or f in ["game_root.gd", "combat_wiring.gd", "networking_slice.gd", "test_suite.gd", "net_harness.gd"]:
 				continue
 			if FileAccess.get_file_as_string(dir + "/" + f).contains("send_player_damaged("):
 				offenders.append(f)
-	assert_eq(offenders, [], "no file but game_root / networking calls send_player_damaged")
+	assert_eq(offenders, [], "no file but game_root / its combat wiring / networking calls send_player_damaged")
 
 ## Phase 101 — a teleport keeps the exact `{chunk, local}` end to end, far from the origin.
 func _test_chat_exact_teleports() -> void:
@@ -19456,7 +19458,7 @@ func _test_worldgen_fingerprint_notice() -> void:
 	var gr: Node = root_script.new()
 	var running := TerrainSlice.worldgen_fingerprint()
 	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION, "worldgenFingerprint": running + 1 }
-	gr._note_worldgen_version()
+	gr._persistence_wiring._note_worldgen_version()
 	GameBus.worldgen_fingerprint_mismatch.disconnect(ui._on_worldgen_fingerprint_mismatch)
 	assert_true(ui.toast_shown().contains("parameters changed"), "the notice reaches the HUD toast")
 	assert_eq(gr._worldgen_fp_stamp, running + 1, "the stamp survives the mismatch load")
@@ -19464,7 +19466,7 @@ func _test_worldgen_fingerprint_notice() -> void:
 	var cb := func(saved: int, current: int) -> void: seen.append([saved, current])
 	GameBus.worldgen_fingerprint_mismatch.connect(cb)
 	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION, "worldgenFingerprint": gr._worldgen_fp_stamp }
-	gr._note_worldgen_version()
+	gr._persistence_wiring._note_worldgen_version()
 	GameBus.worldgen_fingerprint_mismatch.disconnect(cb)
 	assert_eq(seen, [[running + 1, running]], "the next load of that world still reports the same mismatch")
 	ui.free()
@@ -19503,15 +19505,15 @@ func _test_worldgen_fingerprint_game_root() -> void:
 	var cb := func(saved: int, current: int) -> void: seen.append([saved, current])
 	GameBus.worldgen_fingerprint_mismatch.connect(cb)
 	gr._loaded_world = {}
-	gr._note_worldgen_version()
+	gr._persistence_wiring._note_worldgen_version()
 	assert_true(seen.is_empty(), "a new world raises none")
 	assert_eq(gr._worldgen_fp_stamp, running, "and takes the running fingerprint")
 	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION }
-	gr._note_worldgen_version()
+	gr._persistence_wiring._note_worldgen_version()
 	assert_true(seen.is_empty(), "an unstamped record raises none")
 	assert_eq(gr._worldgen_fp_stamp, running, "and is stamped for the next save")
 	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION, "worldgenFingerprint": running + 1 }
-	gr._note_worldgen_version()
+	gr._persistence_wiring._note_worldgen_version()
 	assert_eq(seen, [[running + 1, running]], "a differing record raises exactly once")
 	assert_eq(gr._worldgen_fp_stamp, running + 1, "and the stamp survives the notice (a save does not overwrite it)")
 	GameBus.worldgen_fingerprint_mismatch.disconnect(cb)
@@ -20571,9 +20573,9 @@ func _test_p114_record_lifecycle() -> void:
 	# A world (re)load clears the table.
 	ChunkRecordsScript.set_record(Vector2i(1, 1), _sync_record(Vector2i(1, 1)))
 	var gr: Node = load("res://src/core/game_root.gd").new()
-	gr._forget_world_records()
+	gr._persistence_wiring._forget_world_records()
 	assert_true(ChunkRecordsScript.is_empty(), "a world load empties the table")
-	assert_true(FileAccess.get_file_as_string("res://src/core/game_root.gd").contains("_persistence.load_world_record()\n\t_forget_world_records()"), "and _load_world_records calls it right after reading the record")
+	assert_true(FileAccess.get_file_as_string("res://src/persistence/persistence_wiring.gd").contains("_persistence.load_world_record()\n\t_forget_world_records()"), "and _load_world_records calls it right after reading the record")
 	gr.free()
 
 ## A chunk is not recorded while a region within BLEND_CHUNKS failed; it is recorded and rebuilt once
@@ -20714,12 +20716,12 @@ func _test_p114_cap_and_join_stamp() -> void:
 	var cm := ChunkManager.new()
 	gr._chunk_manager = cm
 	var snap := {}
-	gr._add_generation_records(snap, 9, Vector3.ZERO)
+	gr._snapshot_wiring._add_generation_records(snap, 9, Vector3.ZERO)
 	assert_true(gr._peer_records_msec.has(9), "a snapshot without records still stamps the re-scope delay (window-rate-limited)")
 	assert_true(snap.has("gen_scope") and not snap.has("gen_records"), "but names its scope")
 	ChunkRecordsScript.set_record(Vector2i(0, 0), _sync_record(Vector2i(0, 0)))
 	var snap2 := {}
-	gr._add_generation_records(snap2, 9, Vector3.ZERO)
+	gr._snapshot_wiring._add_generation_records(snap2, 9, Vector3.ZERO)
 	assert_true(gr._peer_records_msec.has(9) and snap2.has("gen_records"), "records sent: stamped")
 	cm.free()
 	gr.free()
@@ -20957,16 +20959,16 @@ func _test_p121_world_stamp_round_trip() -> void:
 	var seen: Array = []
 	var cb := func(recorded: int, running: int) -> void: seen.append([recorded, running])
 	GameBus.worldgen_version_mismatch.connect(cb)
-	gr._note_worldgen_version()
+	gr._persistence_wiring._note_worldgen_version()
 	seen.clear()
-	var job: Dictionary = gr._collect_save_job(false)
+	var job: Dictionary = gr._persistence_wiring._collect_save_job(false)
 	assert_eq(int(job["world"]["worldgenVersion"]), older, "the save job carries the loaded stamp")
 	assert_eq(int(job["world"]["worldgenFingerprint"]), 12345, "and the fingerprint stamp (the recorded one: the mismatch load does not overwrite it)")
 	assert_eq(slice.write_job(job), OK, "the job is written")
 	var record := slice.load_world_record()
 	assert_eq(PersistenceSlice.worldgen_version_of(record), older, "the stamp round-trips through the record")
 	gr._loaded_world = record
-	gr._note_worldgen_version()
+	gr._persistence_wiring._note_worldgen_version()
 	assert_eq(seen, [[older, TerrainSlice.WORLDGEN_VERSION]], "and loading it raises the mismatch signal once")
 	GameBus.worldgen_version_mismatch.disconnect(cb)
 	for n in [gr._terrain, gr._creature, gr._station]:
@@ -21349,7 +21351,7 @@ func _test_waystone_result_reaches_client() -> void:
 	var seen: Array = []
 	var cb := func(pid: String, ok: bool, reason: String) -> void: seen.append([pid, ok, reason])
 	GameBus.waystone_travel_resolved.connect(cb)
-	gr._on_own_state_synced({ "waystone_result": { "ok": false, "reason": "cooldown" } })
+	gr._peer_wiring._on_own_state_synced({ "waystone_result": { "ok": false, "reason": "cooldown" } })
 	GameBus.waystone_travel_resolved.disconnect(cb)
 	assert_eq(seen.size(), 1, "a refusal sent on the own-state channel reaches the client's bus")
 	assert_eq(seen[0], [reg.local_player_id, false, "cooldown"], "addressed to the local player with the host's reason")
@@ -22667,3 +22669,56 @@ func _p131_system_bridge(cb: Callable) -> Callable:
 		cb.call("system", "", I18nScript.t(key, args), target)
 	GameBus.system_message.connect(bridge)
 	return bridge
+
+
+## Phase 132 (audit) — `game_root.gd` keeps no `GameBus.<signal>.connect`, stays under 1,200 lines,
+## and builds each `*_wiring.gd` module exactly once (listed once in `_wirings`).
+func _test_wiring_audit() -> void:
+	var src := FileAccess.get_file_as_string("res://src/core/game_root.gd")
+	var rx := RegEx.new()
+	rx.compile("GameBus\\.\\w+\\.connect")
+	assert_true(rx.search(src) == null, "game_root.gd has no GameBus connect outside a wiring module")
+	assert_true(src.count("\n") < 1200, "game_root.gd is under 1,200 lines")
+	var modules := 0
+	for dir_name in ["battle", "character", "core", "crafting", "networking", "persistence", "world"]:
+		var dir := "res://src/%s" % dir_name
+		for f in DirAccess.get_files_at(dir):
+			if not f.ends_with("_wiring.gd"):
+				continue
+			modules += 1
+			assert_true(src.contains("preload(\"%s/%s\")" % [dir, f]), "%s is preloaded by game_root" % f)
+			var cls := f.trim_suffix(".gd").capitalize().replace(" ", "")
+			assert_eq(src.count("%s.new()" % cls), 1, "%s is constructed exactly once" % cls)
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	var gr: Node = root_script.new()
+	assert_eq(gr._wirings.size(), modules, "every wiring module is in the wire list")
+	gr.free()
+
+## Phase 132 — `unwire` disconnects exactly what `wire` connected, on each boot role, and a freed
+## root leaves no handler on the bus.
+func _test_wiring_unwire() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	for role in ["host", "client", "server"]:
+		var before := _bus_connection_total()
+		var gr: Node = root_script.new()
+		gr._is_server = role == "server"
+		gr._is_client = role == "client"
+		gr._character = CharacterSlice.new()   # the one handler bound to a slice method, not a wiring method
+		var connected := 0
+		for w in gr._wirings:
+			w.wire(gr)
+			connected += w.connection_count()
+		assert_true(connected > 40, "%s: the modules connect their handlers" % role)
+		assert_eq(_bus_connection_total(), before + connected, "%s: every connection is on the bus" % role)
+		for w in gr._wirings:
+			w.unwire()
+			assert_eq(w.connection_count(), 0, "%s: a module holds nothing after unwire" % role)
+		assert_eq(_bus_connection_total(), before, "%s: unwire leaves no handler behind" % role)
+		gr._character.free()
+		gr.free()
+
+func _bus_connection_total() -> int:
+	var n := 0
+	for s in GameBus.get_signal_list():
+		n += GameBus.get_signal_connection_list(s["name"]).size()
+	return n

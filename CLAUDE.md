@@ -34,7 +34,7 @@ There is no single-test CLI filter: `--run-tests` runs everything (about 7,000 a
 
 **Fabric-first.** Gameplay systems are modeled in `fabric/` (JS: constitution, gameplay, world) before any GDScript. `npm run generate` emits `.tres`/`.gd` resources into `godot/` (read via the `GameData` autoload), `bible/` and `wiki/`. Never hand-edit `godot/`, `bible/`, `wiki/`, `newel.ir-snapshot.json` or `newel.manifest.json`; change `fabric/` and regenerate.
 
-**Slices + GameBus.** Each system is a node `src/<system>/<system>_slice.gd` that owns its data and exposes pure-function projections for tests/UI. Slices talk through typed signals on the `GameBus` autoload (`src/core/bus.gd`). `src/core/game_root.gd` (~3.1k lines; Phase 132 moves per-system glue into `<system>_wiring.gd` modules) wires slices together and owns boot paths. Direct slice references are allowed for read-only queries/projections only; every state mutation goes bus intent in, authoritative `*_synced` / `*_resolved` signal out.
+**Slices + GameBus.** Each system is a node `src/<system>/<system>_slice.gd` that owns its data and exposes pure-function projections for tests/UI. Slices talk through typed signals on the `GameBus` autoload (`src/core/bus.gd`). `src/core/game_root.gd` (~1.2k lines) builds the slices, picks the boot role and owns the boot paths and tick; each system's bus handlers and glue live in `src/<system>/<system>_wiring.gd` (`wire(ctx)` / `unwire()`, base `src/core/wiring.gd`). Direct slice references are allowed for read-only queries/projections only; every state mutation goes bus intent in, authoritative `*_synced` / `*_resolved` signal out.
 
 **Authority model.** Host/dedicated server is authoritative; clients apply synced state. Boot role is chosen from user args in `game_root.gd` (`--server`, `--client <addr>`, `--net-harness host|client`, `--run-tests`, `--quit-after-boot`, `--friend`). Network input is a trust boundary (many "review pass" phases harden it): validate and rate-limit on the host, scope syncs per owner/peer, bound memory.
 
@@ -54,7 +54,7 @@ All unit tests are in `src/tests/test_suite.gd` (~22k lines; Phase 133 splits it
 ## Workflow conventions
 
 - Work is organized in numbered phases: `ROADMAP.md` (open) and `docs/roadmap-history/` (done). Acceptance criteria must be decidable by automated gates (validate, check-drift, suite, harness, CI); human-only checks become GitHub issues instead.
-- Each new system: fabric, generate, check-drift, slice in `src/`, bus signals in `bus.gd`, wire in `game_root.gd`, tests per acceptance criterion.
+- Each new system: fabric, generate, check-drift, slice in `src/`, bus signals in `bus.gd`, handlers in the system's `<system>_wiring.gd` (constructed once in `game_root.gd`'s wiring list), tests per acceptance criterion.
 - Branches: `feat/<system>`, `fix/<area>`, `docs/<topic>`, `fabric/<topic>`. PR titles: `feat(<system>): <short description>`. Fabric design PRs are separate from implementation PRs. No direct pushes to `main` except regenerated artifacts.
 - Trust boundary: a review finding where the host relies on the client to enforce a rule, trusts client-reported state it could check, or accepts unvalidated network input is fixed in the same PR, never deferred to a follow-up issue.
 - i18n (Phase 131): until it lands, keep new player-facing text to a minimum and list each new literal in the PR body so Phase 131 migrates it; after it lands, every player-facing string goes through `tr()` and both the `en` and `pt_BR` catalogs.
