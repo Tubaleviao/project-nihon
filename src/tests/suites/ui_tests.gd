@@ -26,6 +26,7 @@ func register() -> void:
 	_run_test("minimap: biome cache is bounded and seed-keyed",  _test_minimap_cache_bounded_and_seeded)
 	_run_test("ui: saved layout past the edge lands inside",     _test_ui_layout_first_apply_fits)
 	_run_test("ui: windows toggle open/close",                 _test_ui_window_toggle)
+	_run_test("ui: window lists fill the window",              _test_ui_window_lists_fill)
 	_run_test("ui: inventory lines reflect contents",          _test_ui_inventory_lines)
 	_run_test("ui: window drag clamps on-screen",              _test_ui_window_clamp)
 	_run_test("ui: layout parse/serialise drops junk",         _test_ui_layout_roundtrip)
@@ -740,6 +741,18 @@ func _test_ui_window_toggle() -> void:
 	assert_true(ui.any_window_open(), "technology still open")
 	ui.close_window("technology")
 	assert_false(ui.any_window_open(), "all windows closed")
+	ui.free()
+
+## The crafting and technology lists sit in a ScrollContainer (no minimum height): every container
+## between it and the window must expand vertically, or the list draws 0 px tall.
+func _test_ui_window_lists_fill() -> void:
+	var ui := _new_test_ui()
+	for box in [ui._crafting_box, ui._technology_box]:
+		var node: Control = (box as Control).get_parent()
+		assert_true(node is ScrollContainer, "the list scrolls")
+		while node != null and not (node.get_parent() is MarginContainer):
+			assert_true((node.size_flags_vertical & Control.SIZE_EXPAND) != 0, "%s expands vertically" % node.get_class())
+			node = node.get_parent() as Control
 	ui.free()
 
 func _test_ui_inventory_lines() -> void:

@@ -1522,6 +1522,9 @@ func _build_window(key: String, title: String, content: Control, position: Vecto
 	close.pressed.connect(_on_close_pressed.bind(key))
 	bar.add_child(close)
 
+	# The body fills the window: a ScrollContainer inside it has no minimum height, so a body that
+	# only takes its minimum size leaves the crafting and technology lists 0 px tall.
+	content.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vbox.add_child(content)
 	return panel
 
