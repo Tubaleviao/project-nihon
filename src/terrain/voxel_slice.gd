@@ -581,7 +581,7 @@ static func water_mesh_for(chunk_pos: Vector2i, heightmap: Array, local: bool = 
 		vertices.append_array([Vector3(x0, sea, z0), Vector3(x1, sea, z0), Vector3(x1, sea, z1), Vector3(x0, sea, z1)])
 		for _i in 4:
 			normals.append(Vector3.UP)
-		indices.append_array([base, base + 2, base + 1, base, base + 3, base + 2])
+		indices.append_array([base, base + 1, base + 2, base, base + 2, base + 3])   # clockwise from above: the front face
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = vertices
@@ -1320,9 +1320,12 @@ static func _merge_rects(cells: Dictionary) -> Array:
 	return out
 
 ## Emit one merged rectangle as two triangles, and the same two into the collision
-## soup. The winding matches the per-tile quads the merge replaces, so a face's normal
-## points where it always did (the material renders both faces regardless; this is for
-## lighting). Returns the number of quads emitted (always 1) so the caller can count.
+## soup. `a, b, c, d` run counter-clockwise seen from the face's normal side, and the
+## rendered triangles are emitted the other way round (clockwise: Godot's front face).
+## The material renders both faces, but a back face is lit with its normal flipped, so
+## the old counter-clockwise triangles lit every top as if it faced down (ambient only:
+## the ground near the pole drew grey while the distant ring drew ice-white).
+## Returns the number of quads emitted (always 1) so the caller can count.
 static func _emit_rect(vertices: PackedVector3Array, normals: PackedVector3Array, colors: PackedColorArray, indices: PackedInt32Array, collision: PackedVector3Array, g: Dictionary, rect: Dictionary, origin_x: float, origin_z: float, plane_dx: float = 0.0, plane_dz: float = 0.0) -> int:
 	var bottom := float(g["bottom"])
 	var top    := float(g["top"])
@@ -1373,8 +1376,8 @@ static func _emit_rect(vertices: PackedVector3Array, normals: PackedVector3Array
 	vertices.append(b); normals.append(normal); colors.append(color)
 	vertices.append(c); normals.append(normal); colors.append(color)
 	vertices.append(d); normals.append(normal); colors.append(color)
-	indices.append(base); indices.append(base + 1); indices.append(base + 2)
-	indices.append(base); indices.append(base + 2); indices.append(base + 3)
+	indices.append(base); indices.append(base + 2); indices.append(base + 1)
+	indices.append(base); indices.append(base + 3); indices.append(base + 2)
 	collision.append(a); collision.append(b); collision.append(c)
 	collision.append(a); collision.append(c); collision.append(d)
 	return 1

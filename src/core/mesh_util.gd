@@ -5,7 +5,7 @@ extends RefCounted
 ## its rare-vein deposits, TreeSlice's trunk + canopy), and a box is the shape
 ## both need. Keeping the winding in ONE place avoids the classic manual-mesh
 ## bug where one caller winds a face backwards and the mesh renders see-through
-## under backface culling.
+## under backface culling, or (with culling off) is lit as if it faced inward.
 
 ## Vertices one `add_box` call appends: six faces × six vertices (two triangles
 ## per face). Callers that assert on a mesh's vertex count use this instead of a
@@ -16,9 +16,10 @@ const BOX_VERTEX_COUNT := 36
 ## detail) to an in-progress SurfaceTool. `center` is the box's centre in the
 ## caller's coordinate space.
 ##
-## Winding: each face's vertices are counter-clockwise seen from OUTSIDE, so the
-## face normal follows from (b - a) × (c - a) and a backface-culling material
-## renders every face. Verified per face against the right-hand rule.
+## Winding: each face's quad is listed counter-clockwise seen from OUTSIDE
+## (`_box_faces`) and emitted reversed, as triangles CLOCKWISE seen from outside:
+## Godot's front face. A back face is lit with its normal flipped, so a double-sided
+## material would light a box wound the other way as if every face pointed inward.
 static func add_box(st: SurfaceTool, center: Vector3, size: Vector3, color: Color) -> void:
 	var p := _box_corners(center, size)
 	for f in _box_faces(p):
@@ -36,8 +37,8 @@ static func add_box_arrays(vertices: PackedVector3Array, normals: PackedVector3A
 		center: Vector3, size: Vector3, color: Color) -> void:
 	var p := _box_corners(center, size)
 	for f in _box_faces(p):
-		_tri_arrays(vertices, normals, colors, indices, f[0], f[1], f[2], f[4], color)
-		_tri_arrays(vertices, normals, colors, indices, f[0], f[2], f[3], f[4], color)
+		_tri_arrays(vertices, normals, colors, indices, f[0], f[2], f[1], f[4], color)
+		_tri_arrays(vertices, normals, colors, indices, f[0], f[3], f[2], f[4], color)
 
 ## Append one triangle (flat normal, flat colour) to raw mesh arrays. Three vertices, not
 ## an index pair, so a box built this way carries exactly the `BOX_VERTEX_COUNT` vertices
@@ -80,13 +81,14 @@ static func _box_faces(p: Array) -> Array:
 	]
 
 ## Append one quad (two triangles) with an explicit normal and colour. a, b, c, d
-## are counter-clockwise seen from the normal's side.
+## are counter-clockwise seen from the normal's side; the triangles are emitted
+## clockwise from there (a, c, b and a, d, c), Godot's front face.
 static func _add_face(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, normal: Vector3, color: Color) -> void:
 	st.set_normal(normal)
 	st.set_color(color)
 	st.add_vertex(a)
+	st.add_vertex(c)
 	st.add_vertex(b)
-	st.add_vertex(c)
 	st.add_vertex(a)
-	st.add_vertex(c)
 	st.add_vertex(d)
+	st.add_vertex(c)
