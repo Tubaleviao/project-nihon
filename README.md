@@ -9,8 +9,9 @@ The entire game design bible — materials, skills, creatures, items, world syst
 ## Gameplay
 
 <p align="center">
-  <img src="docs/media/walk.gif" alt="The player walking across voxel hills at noon" width="640">
-  <img src="docs/media/creatures.gif" alt="The player walking up to a group of creatures and attacking" width="640">
+  <img src="docs/media/explore.gif" alt="Walking across voxel hills with the HUD, minimap and hotbar on screen, then opening the world map" width="640">
+  <img src="docs/media/crafting.gif" alt="Chopping a tree, then the inventory, technology and crafting windows: research Basic Carpentry and craft planks at a bench" width="640">
+  <img src="docs/media/combat.gif" alt="Walking up to a group of creatures and fighting them, HP bar and hotbar on screen" width="640">
 </p>
 
 <sub>Captured from the public build, which uses placeholder art. Creatures still show as boxes until
