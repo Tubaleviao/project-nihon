@@ -107,4 +107,33 @@ function tameData(tame) {
   }
 }
 
-module.exports = { defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS, dropsData, tameData }
+// Ground movement (Phase 136), consumed by CreaturePath (src/creature/creature_path.gd). Spread into
+// a creature's `fields`; override a value by listing the field after the spread.
+//   maxStepMetres    tallest ledge the creature climbs in one tile step (> 0)
+//   canSwim          the creature may path through water tiles (ground below sea level)
+//   pathRadiusTiles  search radius of one path query, in tiles (1..PATH_RADIUS_MAX)
+const PATH_RADIUS_MAX = 64
+function pathFields({ maxStepMetres = 0.75, canSwim = false, pathRadiusTiles = 24 } = {}) {
+  return {
+    maxStepMetres:   { type: 'decimal', description: 'Tallest ledge in metres the creature climbs in one tile step; a taller step is routed around', defaultValue: maxStepMetres },
+    canSwim:         { type: 'boolean', description: 'Whether the creature paths through water tiles (ground below sea level)', defaultValue: canSwim },
+    pathRadiusTiles: { type: 'integer', description: 'Search radius in tiles of one path query', defaultValue: pathRadiusTiles },
+  }
+}
+
+// Throws (failing `npm run validate`) when a creature's ground-movement fields are out of range.
+function validatePathFields(creatures) {
+  for (const [name, entity] of Object.entries(creatures)) {
+    const f = (entity && entity.fields) || {}
+    if (!f.maxStepMetres) continue
+    const step = f.maxStepMetres.defaultValue
+    const radius = f.pathRadiusTiles.defaultValue
+    if (!(typeof step === 'number' && step > 0)) throw new Error(`${name}: maxStepMetres must be > 0 (got ${step})`)
+    if (!Number.isInteger(radius) || radius < 1 || radius > PATH_RADIUS_MAX) {
+      throw new Error(`${name}: pathRadiusTiles must be an integer in 1..${PATH_RADIUS_MAX} (got ${radius})`)
+    }
+    if (typeof f.canSwim.defaultValue !== 'boolean') throw new Error(`${name}: canSwim must be a boolean`)
+  }
+}
+
+module.exports = { pathFields, validatePathFields, PATH_RADIUS_MAX, defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS, dropsData, tameData }

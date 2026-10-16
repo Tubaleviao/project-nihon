@@ -33,6 +33,9 @@ weather.validateWeather(weather.RULES, weather.biomeClimates(biomes))
 // Phase 129 — the status-effect table must be well formed and every creature's `onHitEffects` must name a defined effect.
 combat.validateCombat(combat.STATUS_EFFECTS, combat.creatureOnHit(creatures), Object.keys(weather.RULES.states))
 
+// Phase 136 — every creature's ground-movement fields must be in range; throwing fails `npm run validate`.
+require('./world/creatures/shared').validatePathFields(creatures)
+
 module.exports = defineFabric({
   meta: {
     name:        'project-nihon',

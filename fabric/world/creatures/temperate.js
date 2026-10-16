@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, dropsData, tameData, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS } = require('./shared')
+const { defineEntity, creatureStateMachine, dropsData, tameData, pathFields, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS } = require('./shared')
 
 module.exports = {
 
@@ -18,6 +18,7 @@ module.exports = {
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline', defaultValue: 80 },
       baseDamage:     { type: 'integer', description: 'Damage per standard attack at tier baseline', defaultValue: 12 },
       alertRadius:    { type: 'decimal', description: 'Distance in metres at which creature enters alert state', defaultValue: 8.0 },
+      ...pathFields(),
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 3.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees', defaultValue: 0.25 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 300 },
@@ -97,6 +98,7 @@ module.exports = {
       baseHp:         { type: 'integer', description: 'Hit points per wolf at tier baseline', defaultValue: 60 },
       baseDamage:     { type: 'integer', description: 'Damage per bite at tier baseline', defaultValue: 15 },
       alertRadius:    { type: 'decimal', description: 'Distance in metres at which creature enters alert state', defaultValue: 12.0 },
+      ...pathFields(),
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 3.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees', defaultValue: 0.30 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 900 },
@@ -197,6 +199,7 @@ module.exports = {
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline; high value', defaultValue: 200 },
       baseDamage:     { type: 'integer', description: 'Damage per charge at tier baseline', defaultValue: 30 },
       alertRadius:    { type: 'decimal', description: 'Distance in metres at which creature enters alert state', defaultValue: 6.0 },
+      ...pathFields(),
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 4.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees', defaultValue: 0.20 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 1200 },
@@ -281,6 +284,7 @@ module.exports = {
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline; low value', defaultValue: 25 },
       baseDamage:     { type: 'integer', description: 'Damage per talon strike at tier baseline', defaultValue: 5 },
       alertRadius:    { type: 'decimal', description: 'Distance in metres at which creature enters alert state', defaultValue: 8.0 },
+      ...pathFields(),
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 3.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees; flees on any damage', defaultValue: 1.0 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 600 },

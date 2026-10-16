@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, dropsData, tameData, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
+const { defineEntity, creatureStateMachine, dropsData, tameData, pathFields, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
 
 module.exports = {
 
@@ -18,6 +18,7 @@ module.exports = {
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline; low', defaultValue: 20 },
       baseDamage:     { type: 'integer', description: 'Damage per nip at tier baseline; minimal', defaultValue: 2 },
       alertRadius:    { type: 'decimal', description: 'Distance in metres at which creature enters alert state', defaultValue: 8.0 },
+      ...pathFields(),
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 3.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees; flees on weapon detect', defaultValue: 1.0 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 480 },
@@ -122,6 +123,7 @@ module.exports = {
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline', defaultValue: 150 },
       baseDamage:     { type: 'integer', description: 'Damage per strike at tier baseline', defaultValue: 28 },
       alertRadius:    { type: 'decimal', description: 'Distance in metres at which creature enters alert state', defaultValue: 15.0 },
+      ...pathFields(),
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 3.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees', defaultValue: 0.30 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 1080 },

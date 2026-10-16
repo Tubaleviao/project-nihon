@@ -18,6 +18,9 @@ A massive serpentine entity born from void-rift energy given form. Its scales sh
 | `baseHp` | integer | yes | Hit points at tier baseline; very high |
 | `baseDamage` | integer | yes | Damage per strike at tier baseline; very high |
 | `alertRadius` | decimal | yes | Distance in metres at which creature enters alert state |
+| `maxStepMetres` | decimal | yes | Tallest ledge in metres the creature climbs in one tile step; a taller step is routed around |
+| `canSwim` | boolean | yes | Whether the creature paths through water tiles (ground below sea level) |
+| `pathRadiusTiles` | integer | yes | Search radius in tiles of one path query |
 | `attackRadius` | decimal | yes | Distance in metres at which creature begins attacking |
 | `fleeThreshold` | decimal | yes | HP fraction (0–1) below which creature flees |
 | `respawnSeconds` | integer | yes | Seconds before a dead creature respawns |
