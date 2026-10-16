@@ -8,16 +8,13 @@ The entire game design bible — materials, skills, creatures, items, world syst
 
 ## Gameplay
 
-<!--
-  Screenshots and GIFs live in docs/media/. Keep each file small (GIFs under ~5 MB, 720p or less)
-  so the README loads fast. Example:
+<p align="center">
+  <img src="docs/media/walk.gif" alt="The player walking across voxel hills at noon" width="640">
+  <img src="docs/media/creatures.gif" alt="The player walking up to a group of creatures and attacking" width="640">
+</p>
 
-  <p align="center">
-    <img src="docs/media/mining.gif" alt="Mining and building with voxels" width="720">
-  </p>
--->
-
-*Screenshots and GIFs coming soon.*
+<sub>Captured from the public build, which uses placeholder art. Creatures still show as boxes until
+rigged models land (ROADMAP Phase 143).</sub>
 
 ---
 
