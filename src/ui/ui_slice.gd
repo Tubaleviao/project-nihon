@@ -44,10 +44,11 @@ const WINDOW_CONTROLS   := "controls"
 const WINDOW_CHARACTER  := "character"
 const WINDOW_SKILLS     := "skills"
 const WINDOW_MAP        := "map"
+const WINDOW_SETTLEMENT := "settlement"
 
 const WINDOW_KEYS := [
 	WINDOW_INVENTORY, WINDOW_TECHNOLOGY, WINDOW_CRAFTING,
-	WINDOW_TRADE, WINDOW_MARKET, WINDOW_PROPOSALS, WINDOW_CONTROLS, WINDOW_CHARACTER, WINDOW_SKILLS, WINDOW_MAP,
+	WINDOW_TRADE, WINDOW_MARKET, WINDOW_PROPOSALS, WINDOW_CONTROLS, WINDOW_CHARACTER, WINDOW_SKILLS, WINDOW_MAP, WINDOW_SETTLEMENT,
 ]
 
 const MouseIconScript := preload("res://src/ui/mouse_icon.gd")
@@ -55,6 +56,7 @@ const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const HotbarScript := preload("res://src/ui/hotbar.gd")
 const WindowDockScript := preload("res://src/ui/window_dock.gd")
 const MapWindowScript := preload("res://src/ui/map_window.gd")
+const SettlementPanelScript := preload("res://src/ui/settlement_panel.gd")
 
 ## Pixels of a window that must stay reachable on every edge when dragged.
 const DRAG_VISIBLE_MARGIN := 48.0
@@ -130,6 +132,8 @@ var _drag_grab: Vector2 = Vector2.ZERO
 var layout_path: String = LAYOUT_PATH
 ## Phase 111 — the Map window's canvas; game_root wires its terrain, player and minimap.
 var map_window: Control = null
+var settlement_slice: Node = null
+var settlement_panel: Control = null
 var _layout: Dictionary = {}                 # window key -> Vector2
 var _crafting_box: VBoxContainer = null
 var _repair_feedback: Label = null
@@ -214,6 +218,8 @@ func _input(event: InputEvent) -> void:
 				toggle_window(WINDOW_SKILLS)
 			KEY_M:
 				toggle_window(WINDOW_MAP)
+			KEY_L:
+				toggle_window(WINDOW_SETTLEMENT)
 			KEY_ESCAPE:
 				_close_all_windows()
 
@@ -1423,6 +1429,7 @@ func _build_ui() -> void:
 
 	_panels[WINDOW_CHARACTER] = _build_window(WINDOW_CHARACTER, "win.character", _build_character_content(), Vector2(916, 360))
 	_panels[WINDOW_SKILLS] = _build_window(WINDOW_SKILLS, "win.skills", _build_skills_content(), Vector2(916, 700))
+	_panels[WINDOW_SETTLEMENT] = _build_window(WINDOW_SETTLEMENT, "win.settlement", _build_settlement_content(), Vector2(916, 80))
 	_panels[WINDOW_MAP] = _build_window(WINDOW_MAP, "win.map", _build_map_content(), Vector2(200, 80))
 
 	_slot_menu = PopupMenu.new()
@@ -1435,6 +1442,13 @@ func _build_ui() -> void:
 	# A viewport resize (window drag, fullscreen toggle) re-fits too.
 	if is_inside_tree() and not get_viewport().size_changed.is_connected(_apply_layout):
 		get_viewport().size_changed.connect(_apply_layout)
+
+## Phase 140 — the settlement window: found, invite, roles and the shared stockpile.
+func _build_settlement_content() -> Control:
+	var panel := SettlementPanelScript.new()
+	panel.settlement_slice = settlement_slice
+	settlement_panel = panel
+	return panel
 
 func _build_map_content() -> Control:
 	var box := VBoxContainer.new()

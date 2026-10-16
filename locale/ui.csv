@@ -197,3 +197,58 @@ win.proposals,Proposals,Propostas
 win.skills,Skills (K),Habilidades (K)
 win.technology,Technology,Tecnologia
 win.trade,Trade,Troca
+dock.settlement,Settlement,Assentamento
+win.settlement,Settlement (L),Assentamento (L)
+settlement.default_name,Settlement {0},Assentamento {0}
+settlement.name_ph,Settlement name,Nome do assentamento
+settlement.player_ph,Player id,Id do jogador
+settlement.item_ph,Item,Item
+settlement.qty_ph,Quantity,Quantidade
+settlement.found,Found here (needs a Hearth),Fundar aqui (exige uma Lareira)
+settlement.invite,Invite,Convidar
+settlement.set_role,Set role,Definir papel
+settlement.leave,Leave,Sair
+settlement.deposit,Deposit,Depositar
+settlement.withdraw,Withdraw,Retirar
+settlement.none,You belong to no settlement. Place a Hearth on free land to found one.,Você não pertence a nenhum assentamento. Coloque uma Lareira em terra livre para fundar um.
+settlement.status,{0} ({1}) — your role: {2}; claim radius {3} m,{0} ({1}) — seu papel: {2}; raio da área {3} m
+settlement.members,Members: {0},Membros: {0}
+settlement.stock,Stockpile {0}/{1} stacks: {2},Estoque {0}/{1} pilhas: {2}
+settlement.role.founder,founder,fundador
+settlement.role.elder,elder,ancião
+settlement.role.member,member,membro
+settlement.role.guest,guest,convidado
+settlement.tier.founded,founded,fundado
+settlement.tier.growing,growing,em crescimento
+settlement.tier.town,town,vila
+settlement.tier.abandoned,abandoned,abandonado
+settlement.ok.found,Settlement founded.,Assentamento fundado.
+settlement.ok.invite,Invitation sent.,Convite enviado.
+settlement.ok.join,You joined the settlement.,Você entrou no assentamento.
+settlement.ok.role,Role changed.,Papel alterado.
+settlement.ok.leave,You left the settlement.,Você saiu do assentamento.
+settlement.ok.deposit,Deposited.,Depositado.
+settlement.ok.withdraw,Withdrawn.,Retirado.
+settlement.refused.unknown_player,Unknown player.,Jogador desconhecido.
+settlement.refused.rate_limited,Too fast; wait a moment.,Rápido demais; espere um instante.
+settlement.refused.bad_args,That request is not valid.,Esse pedido não é válido.
+settlement.refused.no_hearth,You need a Hearth in your pack.,Você precisa de uma Lareira na mochila.
+settlement.refused.already_member,Already in a settlement.,Já está em um assentamento.
+settlement.refused.too_close,Too close to another settlement.,Perto demais de outro assentamento.
+settlement.refused.too_many,The world holds no more settlements.,O mundo não comporta mais assentamentos.
+settlement.refused.not_member,You are not a member.,Você não é membro.
+settlement.refused.no_permission,Your role does not allow that.,Seu papel não permite isso.
+settlement.refused.unknown_settlement,No such settlement.,Esse assentamento não existe.
+settlement.refused.not_invited,You were not invited.,Você não foi convidado.
+settlement.refused.full,No room left.,Sem espaço.
+settlement.refused.bad_role,That role cannot be given.,Esse papel não pode ser dado.
+settlement.refused.founder_locked,The founder's place cannot change.,O lugar do fundador não pode mudar.
+settlement.refused.not_in_claim,Stand inside the claim first.,Fique dentro da área antes.
+settlement.refused.no_stock,Not enough of that item.,Não há o suficiente desse item.
+settlement.refused.over_limit,Over your daily withdraw limit.,Acima do seu limite diário de retirada.
+settlement.refused.no_inventory,No pack to use.,Sem mochila para usar.
+settlement.refused.too_far,Too far away.,Longe demais.
+settlement.refused.unknown_action,Unknown action.,Ação desconhecida.
+settlement.refused.durable,Worn tools cannot be stored.,Ferramentas gastas não podem ser guardadas.
+settlement.join,Join,Entrar
+settlement.invited,Invited to: {0},Convite para: {0}

@@ -1518,13 +1518,20 @@ func get_heightmaps() -> Dictionary:
 ## Phase 91 — `exact` is the aimed point as a `{chunk, local}` world record when the caller has it
 ## (the local player does): far from the origin `world_pos` is a float32 quantised to metres, too
 ## coarse to name a half-metre tile, so the tile is resolved from `exact` instead.
+## Phase 140 — `(player_id, xz: Vector2) -> String`: a non-empty reason refuses an edit at that ground point
+## (the host's settlement claim rule). Unset: no claims.
+var claim_guard: Callable = Callable()
+
+func _claim_refused(player_id: String, probe: Dictionary) -> bool:
+	return claim_guard.is_valid() and str(claim_guard.call(player_id, probe["xz"])) != ""
+
 func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: String = "", exact: Dictionary = {}) -> Dictionary:
 	# Resolve the span BEFORE spending tool durability, so a blocked mine never
 	# consumes the held pick (the repo's standing atomic-refusal rule).
 	var probe := _resolve_edit_tile("mine", world_pos, normal, exact)
 	var tile: Vector2i = probe["tile"]
 	var span := _mine_span(get_runs_at_tile(tile), world_pos, normal)
-	if span.is_empty():
+	if span.is_empty() or _claim_refused(player_id, probe):
 		return { "success": false, "material": "", "quantity": 0, "position": world_pos, "player_id": player_id }
 
 	# The ACTOR's own pack: the durability spent and the yield credited are the
@@ -1692,7 +1699,7 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 	var probe := _resolve_edit_tile("place", world_pos, normal, exact)
 	var tile: Vector2i = probe["tile"]
 	var span := _place_span(get_runs_at_tile(tile), world_pos, normal)
-	if span.is_empty():
+	if span.is_empty() or _claim_refused(player_id, probe):
 		return false
 
 	var inventory := inventory_for(player_id)

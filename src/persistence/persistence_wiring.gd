@@ -125,6 +125,7 @@ func _collect_save_job(incremental: bool) -> Dictionary:
 		"creatures":       creatures,
 		"colonization":    root._colonization.to_data(),
 		"clock":           root._clock.to_data(),
+		"settlements":     root._settlements.to_data() if root._settlements != null else {},
 		"weather":         root._weather.to_data() if root._weather != null else [],
 		# Phase 138 — tree clears the host could not pin in a record yet (see TreeSlice._pending_spots).
 		"treeSpots":       root._tree.pending_spots_to_data() if root._tree != null else {},
@@ -440,6 +441,8 @@ func _load_world_records() -> void:
 				root._terrain.get_world_seed()])
 		root._station.apply_station_data(root._loaded_world.get("stations", []))
 		root._station.restore_next_id(int(root._loaded_world.get("station_next_id", 0)))
+		if root._settlements != null:
+			root._settlements.from_data(root._loaded_world.get("settlements", {}))
 		if root._waystones != null:
 			root._waystones.apply_exact_data(root._loaded_world.get("waystone_exact", {}))
 		print("[Server] world loaded from %s" % root._persistence.world_path())

@@ -35,6 +35,10 @@ var player_slice: Node = null
 ## Placed stations keyed by station id.
 var _stations: Dictionary = {}
 
+## Phase 140 — settlement claim guard (`(player_id, xz) -> String`) and the slice that knows the hearth rule.
+var claim_guard: Callable = Callable()
+var settlement_slice: Node = null
+
 ## Phase 63: the scene-origin offset a client rebase has applied to every marker (see `shift_scene`).
 const SceneOffset := preload("res://src/core/scene_offset.gd")
 var _origin: SceneOffset = SceneOffset.new()
@@ -106,6 +110,10 @@ func _compute_placeable_station_types() -> Array:
 	var way: Resource = GameData.WORLD_SYSTEMS.get("WaystoneTravel", null)
 	if way != null and way.get("rules") is Dictionary and str(way.get("rules").get("stationType", "")) != "":
 		types[str(way.get("rules")["stationType"])] = true
+	# Phase 140 — so is the settlement hearth (founding a settlement).
+	var settle: Resource = GameData.WORLD_SYSTEMS.get("Settlement", null)
+	if settle != null and settle.get("rules") is Dictionary and str(settle.get("rules").get("hearthStation", "")) != "":
+		types[str(settle.get("rules")["hearthStation"])] = true
 	var out: Array = types.keys()
 	out.sort()
 	return out
@@ -149,9 +157,18 @@ func snap_to_grid(position: Vector3) -> Vector3:
 ## "" when a station of `type` may be placed at `position`, otherwise a short
 ## reason. Fails closed on an empty/unknown type and on overlap with any placed
 ## station. Used by try_place_station and by the placement preview.
-func placement_blocker(type: String, position: Vector3) -> String:
+func placement_blocker(type: String, position: Vector3, player_id: String = "") -> String:
 	if type == "" or not placeable_station_types().has(type):
 		return "unknown station type"
+	# Phase 140 — a station inside someone else's claim, or a hearth too close to another settlement.
+	if claim_guard.is_valid() and str(claim_guard.call(player_id, Vector2(position.x, position.z))) != "":
+		return "inside a settlement claim"
+	if settlement_slice != null and type == str(settlement_slice.rules()["hearthStation"]) \
+			and settlement_slice.founding_blocker(Vector2(position.x, position.z)) != "":
+		return "too close to a settlement"
+	if settlement_slice != null and type == str(settlement_slice.rules()["hearthStation"]) \
+			and settlement_slice.settlement_of(player_id) != "":
+		return "already in a settlement"
 	for id in _stations:
 		var other: Vector3 = _stations[id]["position"]
 		# Compare on the x/z plane: the same cell at another height still collides.
@@ -161,9 +178,9 @@ func placement_blocker(type: String, position: Vector3) -> String:
 
 ## Validated placement: snaps to the grid, refuses on overlap. Returns the new
 ## station id, or "" when refused (see placement_blocker).
-func try_place_station(type: String, position: Vector3, inventory: Node = null) -> String:
+func try_place_station(type: String, position: Vector3, inventory: Node = null, player_id: String = "") -> String:
 	var pos := snap_to_grid(position)
-	if placement_blocker(type, pos) != "":
+	if placement_blocker(type, pos, player_id) != "":
 		return ""
 	# Phase 130 — a type whose fabric rule names a placement item consumes one from the placer; with no
 	# inventory to pay from (or none in it) the placement is refused.
@@ -176,6 +193,8 @@ func try_place_station(type: String, position: Vector3, inventory: Node = null) 
 ## The item one placement of a `type` station consumes, or "" for a free placement (the fabric's
 ## `WaystoneTravel.placementItem` for the waystone type; forges and benches stay free).
 func placement_item(type: String) -> String:
+	if settlement_slice != null and type == str(settlement_slice.rules()["hearthStation"]):
+		return str(settlement_slice.rules()["hearthItem"])
 	var res: Resource = GameData.WORLD_SYSTEMS.get("WaystoneTravel", null)
 	if res == null or not (res.get("rules") is Dictionary):
 		return ""

@@ -160,7 +160,7 @@ issue number where the criterion used to be.
 | 137 | Loose ground settles: sand and soil fall when undermined | In review | below |
 | 138 | Trees, generation records and persistence cleanup sweep | In review | below |
 | 139 | Settlements in the fabric: founding, membership and shared storage | In review | below |
-| 140 | Settlements at runtime: a hearth, a claim and a shared stockpile | Planned | below |
+| 140 | Settlements at runtime: a hearth, a claim and a shared stockpile | In review | below |
 | 141 | Terrain streaming off the main thread: worker noise, seam strips, polar shortcuts, fold catch-up | In review | below |
 | 142 | Terrain build throughput: a time-budgeted pump and a native chunk builder | Planned | below |
 | 143 | Creature models: rigged, animated creatures replace the tinted box | Planned | below |
@@ -594,13 +594,13 @@ point is that players need each other.
   joins and deposits, and an outsider's edit inside the claim is refused.
 
 **Acceptance criteria:**
-- [ ] Suite: founding needs a `Hearth` item and free land; a claim never overlaps another; an
+- [x] Suite: founding needs a `Hearth` item and free land; a claim never overlaps another; an
   outsider's mine or place inside a claim is refused by the host.
-- [ ] Suite: stockpile deposit/withdraw keeps item totals; a withdraw beyond a role's limit is
+- [x] Suite: stockpile deposit/withdraw keeps item totals; a withdraw beyond a role's limit is
   refused; the settlement survives a save/load.
-- [ ] Suite: an abandoned settlement's claim decays on the fabric schedule.
-- [ ] Harness: the `settlement` step passes on loopback and under the Phase 135 `wan_bad` profile.
-- [ ] Suite green on both boot paths, harness green, every new string in both locale catalogs.
+- [x] Suite: an abandoned settlement's claim decays on the fabric schedule.
+- [x] Harness: the `settlement` step passes on loopback and under the Phase 135 `wan_bad` profile.
+- [x] Suite green on both boot paths, harness green, every new string in both locale catalogs.
 
 ---
 

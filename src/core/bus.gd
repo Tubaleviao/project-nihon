@@ -205,6 +205,18 @@ signal waystone_travel_resolved(player_id: String, ok: bool, reason: String)
 ## host pushes it to the owner's peer alone; a client emits it locally when it lands.
 signal waystones_synced(player_id: String, station_ids: Array)
 
+## Phase 140 — a settlement intent: `action` is one of SettlementSlice.ACTIONS (found, invite, join, role,
+## leave, deposit, withdraw) and `args` its parameters. A client forwards it; the host binds the identity.
+signal settlement_intent(action: String, args: Dictionary, player_id: String)
+
+## Phase 140 — the host resolved a settlement intent. `reason` is "" on success, else a refusal code (see
+## SettlementSlice.REASONS). Delivered to the actor alone.
+signal settlement_resolved(player_id: String, action: String, ok: bool, reason: String)
+
+## Phase 140 — any settlement changed on the host (members, claim, tier, stockpile). The wiring pushes each
+## peer its view on the next tick.
+signal settlements_changed()
+
 ## Phase 128 — the host's override table changed (`WeatherSlice.to_data()` form). game_root broadcasts
 ## it to every client; a client never emits it.
 signal weather_overrides_synced(overrides: Array)

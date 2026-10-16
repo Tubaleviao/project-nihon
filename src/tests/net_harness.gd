@@ -172,6 +172,7 @@ static func steps() -> Array:
 		{ "name": "join_line_localized", "compare": true },
 		{ "name": "admin_teleport",    "compare": true },
 		{ "name": "waystone_travel",   "compare": true },
+		{ "name": "settlement",        "compare": true },
 		{ "name": "non_admin_refused", "compare": true },
 		{ "name": "equipment_recorded", "compare": true },
 		{ "name": "equipment_delivered", "compare": true },
@@ -390,6 +391,7 @@ func run(root: Node, role: String) -> void:
 	await _step_join_line_localized()
 	await _step_admin_teleport()
 	await _step_waystone_travel()
+	await _step_settlement()
 	await _step_non_admin_refused()
 	await _step_equipment_recorded()
 	await _step_equipment_delivered()
@@ -1512,6 +1514,77 @@ func _step_sand_settles() -> void:
 		return
 	var got: bool = await _await_until(func(): return _sand_landed(voxel, base), _step_timeout())
 	_report("sand_settles", verdict(got, true), _sand_column(voxel) if got else "client_column_%s" % _sand_column(voxel))
+
+## Phase 140 — a settlement: the host founds one on the client's spot, the outsider's edit inside the claim is
+## refused (the client sees no block change), the client joins, deposits into the stockpile and then edits.
+const SETTLEMENT_ITEM := "AethermiteDust"
+const SETTLEMENT_QTY := 10
+var _settlement_edits: int = 0
+
+var _settlement_reasons: Array = []
+
+func _on_settlement_resolved(_pid: String, action: String, _ok: bool, reason: String) -> void:
+	_settlement_reasons.append("%s:%s" % [action, reason])
+
+func _on_settlement_edit(_action: String, _pos: Vector3, _normal: Vector3, _material: String) -> void:
+	_settlement_edits += 1
+
+func _step_settlement() -> void:
+	var settlements: Node = _root._settlements
+	GameBus.block_changed.connect(_on_settlement_edit)
+	GameBus.settlement_resolved.connect(_on_settlement_resolved)
+	# The client was just sent home by the step before: let the host's record of where it stands settle.
+	await _await_settle(3.0)
+	if _role == "host":
+		var peer := _peer_id()
+		var bound := _live_bound_id()
+		var local: String = _root._registry.local_player_id
+		var voxel: VoxelSlice = _root._voxel
+		var got_pos: bool = await _await_until(func(): return not _root._networking.get_last_known_exact(peer).is_empty(), _step_timeout())
+		if not got_pos:
+			_report("settlement", "fail", "no_client_position")
+			return
+		var xz: Vector2 = settlements.xz_of_exact(_root._networking.get_last_known_exact(peer))
+		var target := Vector2(xz.x + 1.0, xz.y)
+		var tile := Vector2i(floori(target.x / VoxelSlice.TILE_SIZE), floori(target.y / VoxelSlice.TILE_SIZE))
+		var loaded: bool = await _await_until(func(): return voxel.get_heightmaps().has(VoxelSlice._chunk_key(VoxelSlice._tile_to_chunk(tile))), _step_timeout())
+		if not loaded:
+			_report("settlement", "fail", "chunk_not_loaded")
+			return
+		var why: String = settlements.found(local, "Harness", xz, false)
+		if why != "":
+			_report("settlement", "fail", "found_" + why)
+			return
+		var pos := Vector3(target.x, voxel.get_voxel_height_at(target), target.y)
+		var refused: bool = not bool(voxel.mine_block(pos, Vector3.UP, bound).get("success", false))
+		var invite_why: String = settlements.invite(local, bound)
+		var joined: bool = await _await_until(func(): return settlements.settlement_of(bound) != "", _step_timeout())
+		var inv: Node = _root._registry.get_inventory(bound)
+		inv.add_item(SETTLEMENT_ITEM, SETTLEMENT_QTY)
+		GameBus.inventory_synced.emit(bound, inv.get_contents(), inv.get_durability_data())
+		var sid: String = settlements.settlement_of(local)
+		var deposited: bool = await _await_until(func(): return int(settlements.stock_of(sid).get(SETTLEMENT_ITEM, 0)) == SETTLEMENT_QTY, _step_timeout())
+		await _await_settle(1.5 * _time_scale)   # the host's view push runs on a half-second tick: let the client see the stock
+		var edited: bool = bool(voxel.mine_block(pos, Vector3.UP, bound).get("success", false))
+		await _await_settle(1.5 * _time_scale)
+		var ok: bool = refused and joined and deposited and edited
+		_report("settlement", verdict(ok, true), "outsider-refused-member-deposited" if ok else "invite_%s-%s-refused%d-joined%d-deposited%d-edited%d" % [invite_why, "_".join(_settlement_reasons), int(refused), int(joined), int(deposited), int(edited)])
+		return
+	var seen_claim: bool = await _await_until(func(): return (settlements.view().get("claims", []) as Array).size() > 0, _step_timeout())
+	var invited: bool = await _await_until(func(): return (settlements.view().get("invites", []) as Array).size() > 0, _step_timeout())
+	var refused_edits := _settlement_edits
+	if invited:
+		GameBus.settlement_intent.emit("join", { "id": str(settlements.view()["invites"][0]["id"]) }, "")
+	var joined: bool = await _await_until(func(): return not (settlements.view().get("mine", {}) as Dictionary).is_empty(), _step_timeout())
+	var has_item: bool = await _await_until(func(): return _root._inventory.get_item_count(SETTLEMENT_ITEM) >= SETTLEMENT_QTY, _step_timeout())
+	await _await_settle(0.6)   # past the per-player intent interval after the join
+	if has_item:
+		GameBus.settlement_intent.emit("deposit", { "item": SETTLEMENT_ITEM, "qty": SETTLEMENT_QTY }, "")
+	var deposited: bool = await _await_until(func(): return int(((settlements.view().get("mine", {}) as Dictionary).get("stock", {}) as Dictionary).get(SETTLEMENT_ITEM, 0)) == SETTLEMENT_QTY, _step_timeout())
+	var edited: bool = await _await_until(func(): return _settlement_edits > refused_edits, _step_timeout())
+	await _await_settle(1.5 * _time_scale)   # the host's closing settle: stay level so the next step's resends overlap its grant
+	var ok: bool = seen_claim and refused_edits == 0 and joined and deposited and edited
+	_report("settlement", verdict(ok, true), "outsider-refused-member-deposited" if ok else "claim%d-invited%d-refusedEdits%d-joined%d-deposited%d-edited%d" % [int(seen_claim), int(invited), refused_edits, int(joined), int(deposited), int(edited)])
 
 ## Phase 126 — seconds the client lags before it acks the `tree_cleared` target; the host waits on the ack.
 const CLIENT_LAG_SECS := 5.0

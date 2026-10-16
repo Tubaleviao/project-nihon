@@ -22,6 +22,7 @@ const ENTRIES: Array = [
 	{"key": "market",     "letter": "P", "name": "dock.market"},
 	{"key": "map",        "letter": "M", "name": "dock.map"},
 	{"key": "proposals",  "letter": "G", "name": "dock.proposals"},
+	{"key": "settlement", "letter": "L", "name": "dock.settlement"},
 	{"key": "controls",   "letter": "?", "name": "dock.controls"},
 ]
 
