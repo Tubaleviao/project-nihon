@@ -9,6 +9,30 @@ const TICK_SEC := 0.5
 
 var _elapsed: float = 0.0
 var _dirty: bool = true
+var _ui_bound: bool = false
+
+## Build the slice and hand it the host-side guards (mine, place, station placement, research).
+func make_slice(ctx: GameRoot) -> Node:
+	root = ctx
+	var slice := SettlementSlice.new()
+	slice.registry = root._registry
+	slice.position_of = Callable(self, "player_xz")
+	slice.is_host = not root._is_client
+	root._voxel.claim_guard = Callable(slice, "edit_blocker")
+	root._station.claim_guard = Callable(slice, "edit_blocker")
+	root._station.settlement_slice = slice
+	root._technology.settlement_slice = slice
+	return slice
+
+## The windows are built after the slices: bind them on the first frame they exist.
+func _bind_ui() -> void:
+	var ui: Node = root._ui
+	if _ui_bound or ui == null or ui.map_window == null or ui.settlement_panel == null:
+		return
+	_ui_bound = true
+	ui.map_window.settlement_slice = root._settlements
+	ui.settlement_slice = root._settlements
+	ui.settlement_panel.settlement_slice = root._settlements
 
 func wire(ctx: GameRoot) -> void:
 	root = ctx
@@ -39,6 +63,7 @@ func _on_resolved(player_id: String, action: String, ok: bool, reason: String) -
 
 ## Host tick: advance lifecycle, mark activity, push views when something changed.
 func tick(delta: float) -> void:
+	_bind_ui()
 	if root._is_client or root._settlements == null:
 		return
 	_elapsed += delta

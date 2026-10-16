@@ -153,7 +153,7 @@ func _test_wiring_audit() -> void:
 	assert_true(rx.search(src) == null, "game_root.gd has no GameBus connect outside a wiring module")
 	assert_true(src.count("\n") < 1200, "game_root.gd is under 1,200 lines")
 	var modules := 0
-	for dir_name in ["battle", "character", "core", "crafting", "networking", "persistence", "world"]:
+	for dir_name in ["battle", "character", "core", "crafting", "networking", "persistence", "settlement", "world"]:
 		var dir := "res://src/%s" % dir_name
 		for f in DirAccess.get_files_at(dir):
 			if not f.ends_with("_wiring.gd"):

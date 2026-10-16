@@ -270,11 +270,6 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 	if data.get("waystone_result", null) is Dictionary:
 		var res: Dictionary = data["waystone_result"]
 		GameBus.waystone_travel_resolved.emit(root._registry.local_player_id, bool(res.get("ok", false)), str(res.get("reason", "")).left(32))
-	if data.get("settlement_view", null) is Dictionary:
-		root._settlements.apply_view(data["settlement_view"])
-	if data.get("settlement_result", null) is Dictionary:
-		var sres: Dictionary = data["settlement_result"]
-		GameBus.settlement_resolved.emit(root._registry.local_player_id, str(sres.get("action", "")).left(16), bool(sres.get("ok", false)), str(sres.get("reason", "")).left(32))
 	if data.has("equipment") and data["equipment"] is Dictionary:
 		# A client builds no avatar at boot, so the first snapshot creates it; without
 		# one there is nothing to wear the set, to show in the Character window, or to
