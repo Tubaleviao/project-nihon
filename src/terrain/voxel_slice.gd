@@ -792,6 +792,54 @@ func take_heightmap_for_build(chunk: Vector2i) -> Array:
 		return []
 	return terrain_slice.generate_heightmap(chunk)
 
+## Phase 141 — the cached guess map of `chunk` (consumed, like `take_heightmap_for_build`), or `[]`
+## when there is none. Never generates: the streamed build generates a missing map on its worker.
+func take_cached_heightmap(chunk: Vector2i) -> Array:
+	_sync_guess_seed()
+	var ckey := _chunk_key(chunk)
+	if not _guess_heightmaps.has(ckey):
+		return []
+	var hm: Array = _guess_heightmaps[ckey]
+	_guess_heightmaps.erase(ckey)
+	return hm
+
+## Phase 141 — `gather_build_input` for a WORKER build: the same payload, except that a ring
+## neighbour with no known map (not built, no cached guess) is not generated here. It is listed
+## under `missing_neighbours` instead, and `fill_seam_strips` generates on the worker only the
+## edge of it the ring reads. Generating those guesses here cost the main thread up to eight full
+## heightmaps per dispatch (120 ms at the equator, 290 ms by a pole, measured).
+func gather_build_input_deferred(chunk_pos: Vector2i) -> Dictionary:
+	_sync_guess_seed()
+	var known: Dictionary = {}
+	var missing: Array = []
+	for chunk in _ring_chunks(chunk_pos):
+		var ckey := _chunk_key(chunk)
+		if _heightmaps.has(ckey):
+			known[ckey] = _heightmaps[ckey]
+		elif _guess_heightmaps.has(ckey):
+			known[ckey] = _guess_heightmaps[ckey]
+		elif chunk != chunk_pos:
+			missing.append(chunk)
+	return {
+		"edits":                _gather_edits(chunk_pos),
+		"neighbour_heightmaps": known,
+		"missing_neighbours":   missing,
+		"biomes":               gather_biomes_for(chunk_pos),
+		"seed":                 _world_seed(),
+		"depleted":             _vein_taken.duplicate(),
+	}
+
+## Phase 141 — the worker half of `gather_build_input_deferred`: give every `missing_neighbours`
+## chunk of `input` the edge strip `chunk_pos`'s ring reads (`TerrainSlice.heightmap_strip_for`),
+## so `build_runs` sees the same seam heights a full guess map would give it. Pure; `noise` is the
+## terrain's detail noise for `seed_v`, owned by the calling task.
+static func fill_seam_strips(chunk_pos: Vector2i, input: Dictionary, seed_v: int, noise: FastNoiseLite) -> void:
+	var known: Dictionary = input.get("neighbour_heightmaps", {})
+	for chunk in input.get("missing_neighbours", []):
+		var c: Vector2i = chunk
+		known[_chunk_key(c)] = TerrainSlice.heightmap_strip_for(c, chunk_pos - c, seed_v, noise)
+	input["neighbour_heightmaps"] = known
+
 ## Drop every cached guess when the world seed changed under them (`set_world_seed` runs
 ## before any chunk streams in production, but a re-seed mid-session must not serve a map
 ## of the old world).
