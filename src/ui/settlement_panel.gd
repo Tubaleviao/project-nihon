@@ -83,7 +83,11 @@ func _qty() -> int:
 func _send(action: String, args: Dictionary) -> void:
 	GameBus.settlement_intent.emit(action, args, "")
 
-func _on_resolved(_player_id: String, action: String, ok: bool, reason: String) -> void:
+func _on_resolved(player_id: String, action: String, ok: bool, reason: String) -> void:
+	# The host resolves every player's intents on this bus: only the local player's feedback is shown here.
+	var reg: Variant = settlement_slice.get("registry") if settlement_slice != null else null
+	if reg != null and "local_player_id" in reg and player_id != str(reg.local_player_id):
+		return
 	_feedback.text = I18n.t("settlement.ok." + action) if ok else I18n.t("settlement.refused." + reason)
 	refresh()
 
