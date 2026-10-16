@@ -378,12 +378,12 @@ func get_player_id(peer_id: int) -> String:
 ## legitimate any more (see NetworkingSlice.redact_for_client), so the only use left
 ## for accepting one was probing. A public handle is the name a payload may carry:
 ## derived, opaque, and a claim to nothing.
-func resolve_named_party(name: String) -> String:
-	if name.is_empty():
+func resolve_named_party(party_name: String) -> String:
+	if party_name.is_empty():
 		return ""
 	# player_id_for_handle is the whole rule: it answers "" unless the name is one of
 	# OUR handles (the local player's included) for a player who is present here.
-	return player_id_for_handle(name)
+	return player_id_for_handle(party_name)
 
 ## The live peer currently holding `player_id`, or 0 when the player is offline.
 func get_peer_id(player_id: String) -> int:
@@ -631,8 +631,8 @@ func get_world_pos(player_id: String) -> Dictionary:
 ## what the host RESOLVES itself is evidence and is written by
 ## `record_simulated_hp`. This method stays the live-body writer and still refuses
 ## a remote id, so the wire's declared value has no path into a record at all.
-static func hp_is_authoritative_locally(player_id: String, local_player_id: String) -> bool:
-	return player_id != "" and player_id == local_player_id
+static func hp_is_authoritative_locally(player_id: String, local_id: String) -> bool:
+	return player_id != "" and player_id == local_id
 
 func record_hp(player_id: String, hp: float) -> void:
 	if not hp_is_authoritative_locally(player_id, local_player_id):

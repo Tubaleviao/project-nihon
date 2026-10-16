@@ -80,5 +80,5 @@ func _on_character_appearance_changed(instance_id: String, _appearance: Dictiona
 # worker gets is a deep copy of plain data, so nothing it reads can be mutated
 # underneath it.
 
-func _on_character_spawned(instance_id: String, skeleton_id: String, position: Vector3) -> void:
+func _on_character_spawned(_instance_id: String, _skeleton_id: String, _position: Vector3) -> void:
 	pass

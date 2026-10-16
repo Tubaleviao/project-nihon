@@ -644,7 +644,7 @@ var _quit_after_boot: bool = false
 ## Static and argument-driven on purpose: the rule is a pure predicate the suite
 ## can assert directly, rather than something that can only be observed by booting
 ## twice. See `_test_boot_suite_is_gated`.
-static func should_run_tests(args: Array, is_debug_build: bool) -> bool:
+static func should_run_tests(args: Array, _is_debug_build: bool) -> bool:
 	return RUN_TESTS_ARG in args
 
 ## Phase 42 review pass 3 — is this boot asked to quit itself once its world boot is done?

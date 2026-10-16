@@ -720,6 +720,7 @@ func flush_records() -> void:
 	for k in batch:
 		if failed.has(k):
 			var rk := RegionStore.region_key(RegionStore.region_of_chunk_key(str(k)))
+			@warning_ignore("integer_division")
 			var delay := mini(int(_flush_backoff.get(rk, { "delay": FLUSH_BACKOFF_START_MSEC / 2 })["delay"]) * 2, FLUSH_BACKOFF_MAX_MSEC)
 			_flush_backoff[rk] = { "until": now + delay, "delay": delay }
 		else:
@@ -1152,9 +1153,9 @@ func _apply_finished_builds() -> void:
 ## cannot spin here (it ends up in `_failed`, re-armed by the self-heal).
 func flush_builds() -> int:
 	var applied := 0
-	var round := 0
-	while not _builds.is_empty() and round < FLUSH_MAX_ROUNDS:
-		round += 1
+	var pass_i := 0
+	while not _builds.is_empty() and pass_i < FLUSH_MAX_ROUNDS:
+		pass_i += 1
 		for task_id in _builds.keys():
 			if _apply_build_entry(task_id):
 				applied += 1

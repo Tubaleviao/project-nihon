@@ -4,6 +4,10 @@ extends Node
 ## Each slice registers itself on _ready() and communicates exclusively
 ## through these signals. Slices never hold direct references to each other,
 ## so any slice can be replaced or hot-swapped without touching the others.
+##
+## The signals are emitted by the slices, never by this script, so the
+## "declared but never used" check would flag every one of them.
+@warning_ignore_start("unused_signal")
 
 # ---------------------------------------------------------------------------
 # Terrain

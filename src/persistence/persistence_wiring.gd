@@ -475,7 +475,7 @@ func _apply_loaded_creature_state() -> void:
 # Bus listeners
 # ---------------------------------------------------------------------------
 
-func _on_save_completed(slot: int) -> void:
+func _on_save_completed(_slot: int) -> void:
 	# NOTHING to reset here. The legacy slot file is a single-file sample (the
 	# boot/client record), not the authoritative world record, so writing it does
 	# NOT make the chunk manifests durable — only an authoritative world save does,
@@ -485,7 +485,7 @@ func _on_save_completed(slot: int) -> void:
 	# slot write from the next world save.
 	pass
 
-func _on_load_completed(slot: int, data: Dictionary) -> void:
+func _on_load_completed(_slot: int, data: Dictionary) -> void:
 	if data.has("inventory") and data["inventory"] is Dictionary:
 		# A MISSING `inventory_durability` key is the intentional old-save signal:
 		# saves written before per-instance durability carried no per-instance
@@ -525,9 +525,9 @@ func _on_load_completed(slot: int, data: Dictionary) -> void:
 			# Backward compat: older saves stored only the decisions log.
 			root._proposal.apply_decisions_log(gov)
 	if data.has("trade"):
-		var tr: Variant = data["trade"]
-		if tr is Dictionary:
-			root._trade.apply_trade_data(tr)
+		var saved_trade: Variant = data["trade"]
+		if saved_trade is Dictionary:
+			root._trade.apply_trade_data(saved_trade)
 
 # ---------------------------------------------------------------------------
 # GameData smoke test

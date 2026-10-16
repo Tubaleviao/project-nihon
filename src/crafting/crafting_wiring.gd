@@ -21,13 +21,13 @@ func wire(ctx: GameRoot) -> void:
 	connect_bus(GameBus.block_placed, _on_block_placed)
 	connect_bus(GameBus.trade_completed, _on_trade_completed)
 
-func _on_chunk_ready(chunk_pos: Vector2i, heightmap: Array) -> void:
+func _on_chunk_ready(_chunk_pos: Vector2i, _heightmap: Array) -> void:
 	pass
 
-func _on_loot_dropped(pickup_id: String, item_id: String, position: Vector3, quantity: int) -> void:
+func _on_loot_dropped(_pickup_id: String, _item_id: String, _position: Vector3, _quantity: int) -> void:
 	pass
 
-func _on_item_picked_up(item_id: String, quantity: int) -> void:
+func _on_item_picked_up(_item_id: String, _quantity: int) -> void:
 	pass
 
 func _on_inventory_full() -> void:
@@ -109,11 +109,11 @@ func _on_tame_resolved(result: Dictionary) -> void:
 		root._taming.sync_record(pid)
 	root._peer_wiring._sync_peer_own_state(result)
 
-func _on_trade_completed(trade: Dictionary) -> void:
+func _on_trade_completed(_completed: Dictionary) -> void:
 	pass
 
-func _on_block_mined(material: String, quantity: int, position: Vector3) -> void:
+func _on_block_mined(_material: String, _quantity: int, _position: Vector3) -> void:
 	pass
 
-func _on_block_placed(material: String, position: Vector3) -> void:
+func _on_block_placed(_material: String, _position: Vector3) -> void:
 	pass

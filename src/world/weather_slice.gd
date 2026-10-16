@@ -97,11 +97,13 @@ func override_max_hours() -> int:
 func cell_of(chunk: Vector2i) -> Vector2i:
 	var cs := cell_size()
 	var x := posmod(chunk.x, TerrainSlice.circumference_chunks())
+	@warning_ignore("integer_division")
 	return Vector2i(x / cs, floori(float(chunk.y) / float(cs)))
 
 ## The chunk at the middle of a cell (its biome and latitude stand for the whole cell).
 func cell_center(cell: Vector2i) -> Vector2i:
 	var cs := cell_size()
+	@warning_ignore("integer_division")
 	return Vector2i(cell.x * cs + cs / 2, cell.y * cs + cs / 2)
 
 ## One splitmix64 round (64-bit wrapping arithmetic; right shifts are masked to stay logical).
@@ -213,6 +215,7 @@ static func _key(cell: Vector2i) -> String:
 ## True for a cell some chunk can be in: X within one lap, Y within the planet's height.
 func _valid_cell(cell: Vector2i) -> bool:
 	var circ := TerrainSlice.circumference_chunks()
+	@warning_ignore("integer_division")
 	return cell.x >= 0 and cell.x <= cell_of(Vector2i(circ - 1, 0)).x \
 		and absi(cell.y) <= circ / cell_size() + 1
 

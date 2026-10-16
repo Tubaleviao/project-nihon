@@ -655,7 +655,7 @@ func collect_build_runs(chunk_pos: Vector2i, heightmap: Array) -> Dictionary:
 ##   * `depleted` — vein id → units taken (`_vein_taken`, copied), so an exhausted vein
 ##     renders as host rock. It is the whole index, not a window: a vein's anchor tile can
 ##     sit outside the chunk's ring, and the index is one entry per vein ever mined.
-func gather_build_input(chunk_pos: Vector2i, heightmap: Array) -> Dictionary:
+func gather_build_input(chunk_pos: Vector2i, _heightmap: Array) -> Dictionary:
 	return {
 		"edits":                _gather_edits(chunk_pos),
 		"neighbour_heightmaps": _gather_neighbour_heightmaps(chunk_pos),
@@ -697,7 +697,6 @@ func edit_revision(chunk_pos: Vector2i) -> int:
 func seam_borders(chunk_pos: Vector2i) -> Array:
 	var found: Dictionary = {}
 	var bucket: Dictionary = _edits_by_chunk.get(_chunk_key(chunk_pos), {})
-	var last := CHUNK_SIZE - 1
 	for tile_key in bucket:
 		for off in _shaped_border_offsets(_key_to_tile(str(tile_key)), _edits.get(tile_key, [])):
 			found[off] = true
@@ -968,8 +967,8 @@ static func blended_biome(world_xz: Vector2, biomes: Dictionary, own: String) ->
 
 ## Phase 43 — the ore field's per-call input: the seed, the depletion record and a fresh
 ## vein memo. Static and plain, so the worker half builds it from its payload.
-static func _field(seed: int, depleted: Dictionary) -> Dictionary:
-	return { "seed": seed, "depleted": depleted, "veins": {} }
+static func _field(seed_v: int, depleted: Dictionary) -> Dictionary:
+	return { "seed": seed_v, "depleted": depleted, "veins": {} }
 
 ## The tile's NATURAL surface — its quantised heightmap top — read off the chunk's own map or
 ## a ring neighbour's, or NAN when the neighbour is unknown. It is the datum the ore field's
@@ -1237,6 +1236,7 @@ static func _merge_rects(cells: Dictionary) -> Array:
 		if used.has(idx):
 			continue
 		var tx: int = int(idx) % CHUNK_SIZE
+		@warning_ignore("integer_division")
 		var tz: int = (int(idx) - tx) / CHUNK_SIZE
 		var w := 1
 		while tx + w < CHUNK_SIZE and cells.has(tz * CHUNK_SIZE + tx + w) and not used.has(tz * CHUNK_SIZE + tx + w):
@@ -2212,17 +2212,17 @@ func _buildable_materials() -> Array:
 ## It used to be a per-tile roll of the biome's whole weighted table, the same at every depth
 ## — the uniform draw this phase retires. STATIC and pure, so the worker half of a build may
 ## call it (through `natural_color`).
-static func material_for_biome(biome: String, world_xz: Vector2, depth: float = 0.0, seed: int = 0, depleted: Dictionary = {}, veins: Dictionary = {}) -> String:
-	var vein := _live_vein_at(world_xz, depth, seed, depleted, veins)
+static func material_for_biome(biome: String, world_xz: Vector2, depth: float = 0.0, seed_v: int = 0, depleted: Dictionary = {}, veins: Dictionary = {}) -> String:
+	var vein := _live_vein_at(world_xz, depth, seed_v, depleted, veins)
 	if not vein.is_empty():
 		return str(vein["material"])
 	return OreField.host_material(biome)
 
 ## The LIVE vein at a world position and depth, or `{}` (absent or mined out).
-static func _live_vein_at(world_xz: Vector2, depth: float, seed: int, depleted: Dictionary, veins: Dictionary) -> Dictionary:
+static func _live_vein_at(world_xz: Vector2, depth: float, seed_v: int, depleted: Dictionary, veins: Dictionary) -> Dictionary:
 	var tile := _world_to_tile(world_xz)
 	var chunk := _tile_to_chunk(tile)
-	var vein := OreField.vein_at(seed, chunk, tile - chunk * CHUNK_SIZE, depth, veins)
+	var vein := OreField.vein_at(seed_v, chunk, tile - chunk * CHUNK_SIZE, depth, veins)
 	if vein.is_empty() or not OreField.is_live(vein, depleted):
 		return {}
 	return vein
@@ -2263,9 +2263,9 @@ func vein_deposits(chunk_pos: Vector2i, heightmap: Array, cache: Dictionary = {}
 ## Phase 42 review pass 9 — the PURE half of the walk above: the edits, the biomes and (Phase 43)
 ## the ore field's inputs arrive as plain arguments (see `gather_build_input`), so a worker can
 ## run it. The chunk's own columns only, so the ring's heightmaps are not part of its input.
-static func vein_deposits_at(chunk_pos: Vector2i, heightmap: Array, cache: Dictionary, edits: Dictionary, biomes: Dictionary, field: Dictionary = {}) -> Array:
+static func vein_deposits_at(chunk_pos: Vector2i, heightmap: Array, cache: Dictionary, edits: Dictionary, _biomes: Dictionary, field: Dictionary = {}) -> Array:
 	var out: Array = []
-	var seed := int(field.get("seed", 0))
+	var seed_v := int(field.get("seed", 0))
 	var depleted: Dictionary = field.get("depleted", {})
 	var veins: Dictionary = field.get("veins", {})
 	var deposit_size := Vector3(
@@ -2285,7 +2285,7 @@ static func vein_deposits_at(chunk_pos: Vector2i, heightmap: Array, cache: Dicti
 				(chunk_pos.x * CHUNK_SIZE + tx) * TILE_SIZE + TILE_SIZE * 0.5,
 				(chunk_pos.y * CHUNK_SIZE + tz) * TILE_SIZE + TILE_SIZE * 0.5)
 			var depth := _run_depth(surface, _voxel_height(float(heightmap[tz * CHUNK_SIZE + tx])))
-			var vein := _live_vein_at(world_xz, depth, seed, depleted, veins)
+			var vein := _live_vein_at(world_xz, depth, seed_v, depleted, veins)
 			if vein.is_empty():
 				continue
 			out.append({

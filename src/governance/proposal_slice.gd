@@ -224,9 +224,9 @@ func get_decisions_log() -> Array:
 	return _decisions_log.duplicate()
 
 ## Restore the decisions log from a persisted snapshot (persistence restore).
-func apply_decisions_log(log: Array) -> void:
+func apply_decisions_log(entries: Array) -> void:
 	_decisions_log.clear()
-	for entry in log:
+	for entry in entries:
 		if entry is Dictionary:
 			_decisions_log.append(entry)
 
@@ -253,9 +253,9 @@ func apply_governance_data(data: Dictionary) -> void:
 	if props is Dictionary:
 		_proposals = props.duplicate(true)
 	_decisions_log.clear()
-	var log: Variant = data.get("decisions_log", [])
-	if log is Array:
-		for entry in log:
+	var saved_log: Variant = data.get("decisions_log", [])
+	if saved_log is Array:
+		for entry in saved_log:
 			if entry is Dictionary:
 				_decisions_log.append(entry)
 	_next_id = int(data.get("next_id", _next_id))

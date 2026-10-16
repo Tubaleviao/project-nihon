@@ -91,6 +91,7 @@ func is_near_colonized(x: float, z: float, min_distance_m: float, threshold: flo
 	var span := int(ceil(min_distance_m / REGION_METERS)) + 1
 	var rx0 := floori(x / REGION_METERS)
 	var rz0 := floori(z / REGION_METERS)
+	@warning_ignore("integer_division")
 	var ring := maxi(TerrainSlice.circumference_chunks() / RegionStore.REGION_SIZE, 1)
 	var circ := float(ring) * REGION_METERS
 	for dz in range(-span, span + 1):

@@ -28,6 +28,7 @@ const CraftingSlice   := preload("res://src/crafting/crafting_slice.gd")
 const TechnologySlice := preload("res://src/technology/technology_slice.gd")
 const UiSlice         := preload("res://src/ui/ui_slice.gd")
 const VoxelSlice      := preload("res://src/terrain/voxel_slice.gd")
+const AssetOverlayScript := preload("res://src/core/asset_overlay.gd")
 const RebaseDriver    := preload("res://src/terrain/rebase_driver.gd")
 const ChatCommands    := preload("res://src/core/chat_commands.gd")
 const ChatSlice       := preload("res://src/chat/chat_slice.gd")
@@ -107,6 +108,8 @@ func run() -> void:
 	_run_test("water: spans cover exactly the tiles below sea level", _test_water_spans)
 	_run_test("voxel: a chunk-local build keeps far-from-origin vertices small and exact", _test_voxel_local_build_far_chunk)
 	_run_test("locomotion: reset stands a dead avatar back up", _test_locomotion_reset_after_death)
+	_run_test("locomotion: a step down is not a fall", _test_locomotion_step_down_is_not_a_fall)
+	_run_test("player: the camera eases over a step and snaps on a teleport", _test_player_camera_height_follow)
 	_run_test("polar: ice is streamed to the pole and whitens the ground", _test_polar_ice)
 	_run_test("player: deep water is swum, not walked",       _test_player_swims_in_deep_water)
 	_run_test("terrain: the distant ring is 10x the window with no collision", _test_distant_ring)
@@ -1095,7 +1098,6 @@ func _test_creature_death_marks_dead() -> void:
 	assert_true(instances.size() > 0, "need an instance to kill")
 	if instances.size() > 0:
 		var iid: String = instances[0]["instance_id"]
-		var creature_id: String = instances[0]["creature_id"]
 		GameBus.creature_died.emit(iid, Vector3.ZERO, "player")
 		var updated := c.get_all_instances()
 		var found := false
@@ -1273,9 +1275,13 @@ func _test_terrain_wraps_east_west() -> void:
 	t.set_world_seed(77)
 	var c := TerrainSlice.circumference_chunks()
 	assert_eq(c, 1250000, "40,000 km around is 1.25M chunks")
+	@warning_ignore("integer_division")
 	var last := TerrainSlice.wrap_chunk(Vector2i(c / 2 - 1, 3))
+	@warning_ignore("integer_division")
 	var first := TerrainSlice.wrap_chunk(Vector2i(c / 2, 3))
+	@warning_ignore("integer_division")
 	assert_eq(first, Vector2i(-c / 2, 3), "one past the east edge is the west edge")
+	@warning_ignore("integer_division")
 	assert_eq(TerrainSlice.wrap_chunk(Vector2i(-c / 2 - 1, 3)), last, "one past the west edge is the east edge")
 	assert_eq(TerrainSlice.wrap_chunk(Vector2i(5, -9)), Vector2i(5, -9), "an interior chunk is unchanged")
 	var east: Array = t.generate_heightmap(last)
@@ -1287,23 +1293,29 @@ func _test_terrain_wraps_east_west() -> void:
 		worst = maxf(worst, absf(float(east[row * n + n - 1]) - float(west[row * n])))
 	# One tile of real detail-noise slope (Phase 63 samples it exactly out here; float32 used to flatten it).
 	assert_true(worst < 0.5, "no seam wall across the wrap (worst step %f)" % worst)
+	@warning_ignore("integer_division")
 	assert_eq(t.generate_heightmap(Vector2i(c / 2, 3)), west, "a chunk past the edge is the wrapped chunk")
 	t.free()
 
 func _test_chunk_key_canonical_at_seam() -> void:
 	var c := TerrainSlice.circumference_chunks()
 	var voxel := VoxelSlice.new()
-	assert_eq(voxel._chunk_key(Vector2i(c / 2, 4)), voxel._chunk_key(Vector2i(-c / 2, 4)),
+	@warning_ignore("integer_division")
+	assert_eq(VoxelSlice._chunk_key(Vector2i(c / 2, 4)), VoxelSlice._chunk_key(Vector2i(-c / 2, 4)),
 		"VoxelSlice keys chunk (C/2, z) and (-C/2, z) as one chunk")
-	assert_eq(voxel._chunk_key(Vector2i(7, -2)), "7,-2", "an interior key is unchanged")
+	assert_eq(VoxelSlice._chunk_key(Vector2i(7, -2)), "7,-2", "an interior key is unchanged")
+	@warning_ignore("integer_division")
 	var east_tile := Vector2i(c / 2 * TerrainSlice.CHUNK_SIZE + 3, 70)
+	@warning_ignore("integer_division")
 	var west_tile := Vector2i(-c / 2 * TerrainSlice.CHUNK_SIZE + 3, 70)
 	assert_eq(VoxelSlice._tile_key(east_tile), VoxelSlice._tile_key(west_tile),
 		"a tile east of the seam is the same edit key as the tile west of it")
 	voxel._set_edit_ops(VoxelSlice._tile_key(east_tile), [{ "op": "remove", "bottom": 1.0, "top": 1.0 }])
-	assert_true(voxel.edited_chunk_keys().has(voxel._chunk_key(Vector2i(-c / 2, 1))),
+	@warning_ignore("integer_division")
+	assert_true(voxel.edited_chunk_keys().has(VoxelSlice._chunk_key(Vector2i(-c / 2, 1))),
 		"an edit made at chunk (C/2, z) is found when reading chunk (-C/2, z)")
 	var cm := ChunkManager.new()
+	@warning_ignore("integer_division")
 	assert_eq(cm._chunk_key(Vector2i(c / 2, 4)), cm._chunk_key(Vector2i(-c / 2, 4)),
 		"ChunkManager keys both sides of the seam as one chunk")
 	cm.free()
@@ -1322,6 +1334,7 @@ func _test_wire_chunk_local() -> void:
 	assert_eq(WorldPos.from_wire("junk", Vector3.ONE), Vector3.ONE, "garbage decodes to the fallback")
 	assert_true(WorldPos.is_wire(wire) and WorldPos.is_wire([0, 0, 0]) and not WorldPos.is_wire([0, 0]), "is_wire")
 	var c := TerrainSlice.circumference_chunks()
+	@warning_ignore("integer_division")
 	assert_eq(WorldPos.wire_chunk({"chunk": [c / 2, 4], "local": [0, 0, 0]}), Vector2i(-c / 2, 4), "a wire chunk past the seam is canonical")
 	var w := float(c) * TerrainSlice.CHUNK_METERS
 	assert_eq(WorldPos.wrap_world(Vector3(w / 2.0 + 3.0, 1.0, 9.0)), Vector3(-w / 2.0 + 3.0, 1.0, 9.0), "X wraps when it crosses the seam")
@@ -1358,7 +1371,6 @@ func _test_rebase_extras() -> void:
 	station.show_preview("Forge", Vector3(10.0, 1.0, 5.0))
 	var preview_before := station._preview.position
 	var pickup_before := pickup.position
-	var shift := Vector3(-3000.0, 0.0, 0.0)
 	var driver := RebaseDriver.new([loot, station])
 	driver.rebase_to(Vector2i(94, 0))
 	var applied: Vector3 = driver.targets[0].scene_offset()
@@ -1711,6 +1723,7 @@ func _test_fold_is_seamless() -> void:
 	var cm := TerrainSlice.CHUNK_METERS
 	var t := TerrainSlice.new()
 	t.set_world_seed(12345)
+	@warning_ignore("integer_division")
 	for case in [[Vector2i(10, pole + m), Vector3(5.25, 7.0, 4.0), "the +Z pole"], [Vector2i(-3, -pole - m - 1), Vector3(30.5, 7.0, 1.0), "the -Z pole"], [Vector2i(c / 2 + m, 7), Vector3(2.0, 7.0, 2.0), "the antimeridian"]]:
 		var wp := {"chunk": case[0], "local": case[1]}
 		var fold := TerrainSlice.fold_world_pos(wp)
@@ -1783,6 +1796,7 @@ func _test_globe_fold() -> void:
 	var m := TerrainSlice.FOLD_MARGIN_CHUNKS
 	var cm := TerrainSlice.CHUNK_METERS
 	# Inside the slack nothing moves: pacing over a line costs no fold.
+	@warning_ignore("integer_division")
 	for chunk in [Vector2i(0, pole + m - 1), Vector2i(0, -pole - m), Vector2i(c / 2 + m - 1, 0), Vector2i(-c / 2 - m, 0)]:
 		var still := TerrainSlice.fold_world_pos({"chunk": chunk, "local": Vector3(1.0, 2.0, 3.0)})
 		assert_false(still["folded"], "no fold inside the slack at %s" % chunk)
@@ -1793,6 +1807,7 @@ func _test_globe_fold() -> void:
 	var z_before := float(pole + m) * cm + 4.0
 	var z_after: float = float(np["chunk"].y) * cm + (np["local"] as Vector3).z
 	assert_true(absf((z_before - float(pole) * cm) + (z_after - float(pole) * cm)) < 0.001, "Z mirrors about the pole")
+	@warning_ignore("integer_division")
 	assert_eq(np["chunk"].x, 10 - c / 2, "X moves half a lap (canonical)")
 	assert_eq(np["local"].x, 5.0, "local X is kept")
 	assert_eq(np["local"].y, 7.0, "and the height")
@@ -1805,10 +1820,14 @@ func _test_globe_fold() -> void:
 	assert_true(absf(sz - (-2.0 * float(pole) * cm - float(-pole - m - 1) * cm)) < 0.001, "Z mirrors about the south pole")
 	assert_true((sp["local"] as Vector3).z >= 0.0 and (sp["local"] as Vector3).z < cm, "the folded local stays inside its chunk")
 	# Round the antimeridian: one lap, no turn.
+	@warning_ignore("integer_division")
 	var east := TerrainSlice.fold_world_pos({"chunk": Vector2i(c / 2 + m, 7), "local": Vector3(1.0, 0.0, 2.0)})
 	assert_true(east["folded"] and not east["turned"], "past the seam the position folds without a turn")
+	@warning_ignore("integer_division")
 	assert_eq(east["pos"]["chunk"], Vector2i(-c / 2 + m, 7), "one lap west")
+	@warning_ignore("integer_division")
 	var west := TerrainSlice.fold_world_pos({"chunk": Vector2i(-c / 2 - m - 1, 7), "local": Vector3(1.0, 0.0, 2.0)})
+	@warning_ignore("integer_division")
 	assert_eq(west["pos"]["chunk"], Vector2i(c / 2 - m - 1, 7), "and one lap east")
 	# The folded position is a valid wire position, and a peer may stand in the slack.
 	assert_true(WorldPos.is_wire(WorldPos.pos_to_wire(np)), "the folded position goes on the wire")
@@ -1825,6 +1844,7 @@ func _test_globe_fold() -> void:
 	# A saved position past a pole loads folded.
 	var saved := PlayerRegistry.world_pos_of({"chunk": [4, pole + 2], "local": [1.0, 0.0, 1.0]})
 	assert_true(saved["chunk"].y < pole, "a record past the pole loads on the canonical planet")
+	@warning_ignore("integer_division")
 	assert_eq(saved["chunk"].x, 4 - c / 2, "half a lap round")
 
 func _test_one_wire_validator() -> void:
@@ -2084,6 +2104,7 @@ func _test_world_pos_rebase() -> void:
 		var advanced: float = float(stepper["chunk"].x - before_chunk.x) * 32.0 + after_local.x - before_local.x
 		assert_eq(advanced, 0.125, "step %d advances exactly 0.125 m at chunk 312,500" % i)
 		assert_eq(fmod(after_local.x, 0.125), 0.0, "step %d stays on the 0.125 lattice" % i)
+	@warning_ignore("integer_division")
 	assert_eq(stepper["chunk"].x, 312500 + (floori(far["local"].x + 50.0) / 32), "400 steps = 50 m east")
 	# Walking across a chunk edge normalises.
 	var walked := WorldPos.normalized({"chunk": Vector2i(5, 5), "local": Vector3(33.0, 0.0, -1.0)})
@@ -2202,7 +2223,7 @@ func _test_persistence_round_trip() -> void:
 	var p := PersistenceSlice.new()
 	add_child(p)
 	var captured := {}
-	GameBus.load_completed.connect(func(_slot, data): captured["data"] = data)
+	GameBus.load_completed.connect(func(_slot, slot_data): captured["data"] = slot_data)
 	var data := { "player": "TestPlayer", "level": 42 }
 	p.save(99, data)
 	p.load_slot(99)
@@ -2228,7 +2249,7 @@ func _test_loot_known_creature() -> void:
 	var l := LootSlice.new()
 	add_child(l)
 	var drops: Array = []
-	GameBus.loot_dropped.connect(func(pid, iid, pos, qty):
+	GameBus.loot_dropped.connect(func(pid, iid, _pos, qty):
 		drops.append({ "id": pid, "item": iid, "qty": qty }))
 	# Emit death for ForestBoar — guaranteed drops: raw_boar_meat + boar_hide.
 	GameBus.creature_died.emit("ForestBoar", Vector3.ZERO, "player")
@@ -2242,7 +2263,7 @@ func _test_loot_drops_from_fabric() -> void:
 	var l := LootSlice.new()
 	add_child(l)
 	var drops: Array = []
-	GameBus.loot_dropped.connect(func(pid, iid, pos, qty):
+	GameBus.loot_dropped.connect(func(pid, iid, _pos, qty):
 		drops.append({ "id": pid, "item": iid, "qty": qty }))
 	# LavaSlug's fabric drop table: slug_shell_shard (2–4), superheated_slime_vial
 	# (1–2), lava_core_organ (15%). The first two are guaranteed; the old
@@ -2286,7 +2307,7 @@ func _test_loot_instance_id_resolve() -> void:
 	l.creature_slice = c
 	add_child(l)
 	var drops: Array = []
-	GameBus.loot_dropped.connect(func(pid, iid, pos, qty):
+	GameBus.loot_dropped.connect(func(pid, iid, _pos, qty):
 		drops.append({ "id": pid, "item": iid, "qty": qty }))
 	# Kill by instance_id; loot slice must resolve to "ForestBoar" for drop table.
 	var instances := c.get_all_instances()
@@ -2858,9 +2879,9 @@ func _test_character_full_spawn_path() -> void:
 	# it can be explicitly disconnected below — a lambda connected to an
 	# autoload signal is not severed just by freeing `ch`, unlike GameBus
 	# connections made through a slice's own bound methods.
-	var on_spawned := func(iid, skeleton_id, position):
+	var on_spawned := func(spawned_iid, skeleton_id, position):
 		captured["count"] = captured.get("count", 0) + 1
-		captured["iid"] = iid
+		captured["iid"] = spawned_iid
 		captured["skeleton"] = skeleton_id
 		captured["position"] = position
 	GameBus.character_spawned.connect(on_spawned)
@@ -3087,6 +3108,25 @@ func _test_character_procedural_walk_animation() -> void:
 	# Walk: advance a frame at walking speed -> arms swing in opposition.
 	ch.sync_player_avatar(iid, Vector3.ZERO, Vector3(0.0, 0.0, 2.0), 0.0, true, 0.1, terrain)
 	assert_true(absf(arm_l.rotation.x) > 0.001 or absf(arm_r.rotation.x) > 0.001, "arms swing while walking")
+	# Knees and elbows: each limb has a middle joint that bends during the stride (a knee
+	# folds the shin back, an elbow folds the forearm forward) and is straight at rest.
+	var knees: Array = []
+	var elbows: Array = []
+	for limb in [arm_l, arm_r]:
+		assert_eq(limb.get_child_count(), 2, "an arm is an upper capsule plus an elbow joint")
+		elbows.append(limb.get_child(1))
+	var legs: Node3D = ch.get_part_node(iid, "body_legs")
+	for leg in legs.get_children():
+		knees.append(leg.get_child(1))
+		assert_true(leg.get_child(1).get_child_count() == 2, "a knee carries the shin and the foot")
+	for knee in knees:
+		assert_true(knee.rotation.x < -0.001, "a knee bends back (foot behind) mid-stride (%.3f)" % knee.rotation.x)
+	for elbow in elbows:
+		assert_true(elbow.rotation.x > 0.001, "an elbow bends forward mid-stride (%.3f)" % elbow.rotation.x)
+	for i in 30:
+		ch.sync_player_avatar(iid, Vector3.ZERO, Vector3.ZERO, 0.0, true, 0.1, terrain)
+	for joint in knees + elbows:
+		assert_true(absf(joint.rotation.x) < 0.001, "idle straightens the knees and elbows")
 	ch.free()
 
 func _test_character_toggle_equipment() -> void:
@@ -3303,8 +3343,8 @@ func _test_void_flag_gate_and_profession_unlock() -> void:
 	assert_false(professions.is_unlocked(pid, "VoidTouched"), "not unlocked yet")
 
 	var unlocked: Array = []
-	var on_unlock := func(p: String, name: String) -> void:
-		unlocked.append([p, name])
+	var on_unlock := func(p: String, unlock_name: String) -> void:
+		unlocked.append([p, unlock_name])
 	GameBus.profession_unlocked.connect(on_unlock)
 	crafting.set_skill_for(pid, "VoidMagic", "journeyman")
 	assert_false(professions.is_unlocked(pid, "VoidTouched"), "one tier short of expert: locked")
@@ -4212,7 +4252,7 @@ func _test_repair_broken_via_bus() -> void:
 	inv.add_item("FerriteIngot", 3)
 	_break_item(inv, "FerritePick")   # broken
 	var resolved := {}
-	GameBus.repair_resolved.connect(func(r): resolved["r"] = r)
+	GameBus.repair_resolved.connect(func(rep): resolved["r"] = rep)
 	GameBus.repair_requested.emit("FerritePick")
 	var r: Dictionary = resolved.get("r", {})
 	assert_true(r.get("success", false), "repair via bus succeeds")
@@ -4585,12 +4625,12 @@ func _test_voxel_biome_materials() -> void:
 	var v := VoxelSlice.new()
 	var volcanic: Array = []
 	for i in range(64):
-		volcanic.append(v.material_for_biome("VolcanicBadlands", Vector2(i, 0)))
+		volcanic.append(VoxelSlice.material_for_biome("VolcanicBadlands", Vector2(i, 0)))
 	assert_true(volcanic.has("Ashite"), "volcanic yields ashite (dominant rock)")
 	assert_false(volcanic.has("Thornwood") or volcanic.has("Duskfiber"), "no wood from the volcanic ground")
 	var temperate: Array = []
 	for i in range(64):
-		temperate.append(v.material_for_biome("TemperateForest", Vector2(i, 0)))
+		temperate.append(VoxelSlice.material_for_biome("TemperateForest", Vector2(i, 0)))
 	assert_true(temperate.has("Ferrite"), "temperate yields ferrite (dominant metal)")
 	assert_false(temperate.has("Thornwood") or temperate.has("Duskfiber"), "no wood from the temperate ground")
 	v.free()
@@ -4641,7 +4681,7 @@ func _test_voxel_material_rarity() -> void:
 			var wc := Vector2(
 				tx * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5,
 				tz * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5)
-			if v.material_for_biome("TemperateForest", wc) != "Ferrite" and \
+			if VoxelSlice.material_for_biome("TemperateForest", wc) != "Ferrite" and \
 					OreField.vein_at(0, Vector2i.ZERO, Vector2i(tx, tz), 0.0).is_empty():
 				temperate_only_ferrite = false
 	assert_true(temperate_only_ferrite, "temperate host rock is ferrite (no invented rare ore)")
@@ -4653,7 +4693,7 @@ func _test_voxel_material_rarity() -> void:
 			var wc := Vector2(
 				tx * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5,
 				tz * VoxelSlice.TILE_SIZE + VoxelSlice.TILE_SIZE * 0.5)
-			var m := v.material_for_biome("VolcanicBadlands", wc, 0.0625)
+			var m := VoxelSlice.material_for_biome("VolcanicBadlands", wc, 0.0625)
 			if m == "Ashite":
 				ashite += 1
 			elif m == "Aethermite":
@@ -4966,7 +5006,7 @@ func _test_voxel_edit_log_is_compacted() -> void:
 	add_child(inv)
 	v.inventory_slice = inv
 	var tile := Vector2i(32, 32)
-	var key := v._tile_key(tile)
+	var key := VoxelSlice._tile_key(tile)
 	var xz := Vector2(16.25, 16.25)
 	# Cycle twenty times: mine the top step, put a block back on it.
 	for i in range(20):
@@ -5752,9 +5792,12 @@ func _test_map_cube_net() -> void:
 	# Chunks <-> sphere: within 2 m (Vector3 is single precision) anywhere, next to a pole too, and the
 	# poles land on the pole faces.
 	var circ := TerrainSlice.circumference_chunks()
+	@warning_ignore("integer_division")
 	for p in [Vector2(0.5, 0.5), Vector2(1234.25, -5678.5), Vector2(circ / 2 - 3, circ / 8), Vector2(-circ / 3, -circ / 5), Vector2(-3000.5, -circ / 4 + 40)]:
 		assert_true(_MapMath.chunk_of_dir(_MapMath.dir_of_chunk(p)).distance_to(p) < 0.05, "chunk %s round-trips (%s)" % [p, _MapMath.chunk_of_dir(_MapMath.dir_of_chunk(p))])
+	@warning_ignore("integer_division")
 	assert_eq(int(_MapMath.face_uv(_MapMath.dir_of_chunk(Vector2(77, -circ / 4))).x), 4, "the map-up pole is face 4")
+	@warning_ignore("integer_division")
 	assert_eq(int(_MapMath.face_uv(_MapMath.dir_of_chunk(Vector2(77, circ / 4))).x), 5, "the map-down pole is face 5")
 	# Seams: stepping over any edge of any placement lands on the same point of the sphere.
 	var worst := 0.0
@@ -5783,6 +5826,7 @@ func _test_map_cube_net() -> void:
 	var level := maxi(_MapMath.max_level() - 4, 0)
 	var n := _MapMath.tiles_per_side(level)
 	for f in [0, 4]:
+		@warning_ignore("integer_division")
 		for ij in [Vector2i(0, 0), Vector2i(n / 2, n / 2), Vector2i(n - 1, n / 3), Vector2i(n / 4, n - 1)]:
 			var r := _MapMath.tile_rect(level, ij.x, ij.y)
 			var a := _MapMath.dir_of_face(f, r.position.x, r.position.y)
@@ -5799,6 +5843,7 @@ func _test_map_cube_net() -> void:
 	assert_eq(up[0][2], Vector3(0, 1, 0), "upright turns the band face map-up")
 	assert_true(_MapMath.local_dir(up[0], up[1], up[2]).distance_to(_MapMath.local_dir(over[0], over[1], over[2])) < 0.000001, "without moving the point")
 	# Double precision: a chunk-space point survives the face round trip to a millimetre, far out and by a pole.
+	@warning_ignore("integer_division")
 	for p in [Vector2(1234567.25, -5678.5), Vector2(-3000.5, -circ / 4 + 3)]:
 		var fuv := _MapMath.face_uv_xz(p.x, p.y)
 		var back := _MapMath.xz_of_face(fuv[0], fuv[1], fuv[2])
@@ -6025,6 +6070,7 @@ func _test_map_waypoints() -> void:
 	m.revealed_dir = dir
 	m._tick_revealed_store(0.0)
 	m._tick_revealed_store(Minimap.SEED_SETTLE_SECONDS)
+	@warning_ignore("integer_division")
 	assert_true(m.add_waypoint("Camp", _wp_pos(TerrainSlice.circumference_chunks() / 2 - 1, -7)), "a waypoint is added")
 	assert_false(m.add_waypoint("Bad", {}), "a position without chunk and local is refused")
 	assert_true(m.add_waypoint("  ", _wp_pos(3, 4)), "an empty name is allowed")
@@ -6040,6 +6086,7 @@ func _test_map_waypoints() -> void:
 	m2._tick_revealed_store(Minimap.SEED_SETTLE_SECONDS)
 	assert_eq(m2.get_waypoints().size(), _RevealedStore.MAX_WAYPOINTS, "every waypoint reloads")
 	assert_eq(m2.get_waypoints()[0]["name"], "Camp", "with its name")
+	@warning_ignore("integer_division")
 	assert_eq(m2.get_waypoints()[0]["pos"], WorldPos.normalized(_wp_pos(TerrainSlice.circumference_chunks() / 2 - 1, -7)), "and its exact chunk and local")
 	assert_eq(_RevealedStore.load_all(path, 22)["waypoints"], [], "a file for another seed carries no waypoints")
 	m2.set_player_pos(Vector2(40.0, 40.0))
@@ -6141,6 +6188,7 @@ func _test_map_window_phase117() -> void:
 	assert_true(w.redraw_signature() != sig, "a move of many pixels does")
 	# Home far away: the great-circle distance within 0.1%, flat or folded.
 	var circ := TerrainSlice.circumference_chunks()
+	@warning_ignore("integer_division")
 	var home := { "chunk": Vector2i(circ / 4 + 100, 80000), "local": Vector3(10.0, 0.0, 10.0) }
 	player.respawn_world_pos = home
 	var lon := (float(home["chunk"].x) + 10.0 / TerrainSlice.CHUNK_METERS) / float(circ) * TAU
@@ -6157,6 +6205,7 @@ func _test_map_window_phase117() -> void:
 		w.set_planet(on)
 		w.set_zoom(_MapMath.ZOOM_MIN)
 		assert_eq(w.get_zoom(), _MapMath.zoom_min(on, w._view_px()), "the closest zoom: street level flat, a bit out on the globe")
+		@warning_ignore("integer_division")
 		for c in [Vector2(1000.0, -20.0), Vector2(-3000.5, -circ / 4 + 40), Vector2(50.0, circ / 5)]:
 			w.set_center(c)
 			var at := w.world_pos_at(Vector2.ZERO)
@@ -6220,6 +6269,7 @@ func _test_map_window_phase117() -> void:
 	var fuv := _MapMath.face_uv(_MapMath.dir_of_chunk(Vector2(200.5, -300.5)))
 	var here := _MapMath.tile_index(fuv.y, fuv.z, level)
 	assert_true(w.tile_revealed(fog, int(fuv.x), level, here.x, here.y), "the explored chunk's tile is revealed")
+	@warning_ignore("integer_division")
 	var far := _MapMath.face_uv(_MapMath.dir_of_chunk(Vector2(circ / 2 - 500, 9000)))
 	var far_t := _MapMath.tile_index(far.y, far.z, level)
 	assert_false(w.tile_revealed(fog, int(far.x), level, far_t.x, far_t.y), "a far tile is fog")
@@ -6312,6 +6362,7 @@ func _test_map_waypoint_horizon() -> void:
 	cam.free()
 	# The minimap's offset: metres, the short way round the seam.
 	var m := Minimap.new()
+	@warning_ignore("integer_division")
 	var half := TerrainSlice.circumference_chunks() / 2
 	m.set_player_pos(Vector2((half - 2) * TerrainSlice.CHUNK_METERS, 40.0))   # two chunks west of the seam
 	m.add_waypoint("Seam", { "chunk": Vector2i(-half + 1, 1), "local": Vector3(0, 0, 8.0) })   # one chunk past it
@@ -6611,7 +6662,6 @@ func _test_ai_group_behavior_reads_fabric() -> void:
 	rig["ai"].free()
 
 func _test_player_respawn() -> void:
-	const PlayerSlice := preload("res://src/player/player_slice.gd")
 	var p := PlayerSlice.new()
 	add_child(p)
 	# Simulate death: drain HP to zero.
@@ -6931,7 +6981,7 @@ func _test_net_voxel_client_forwards_intent() -> void:
 	flat.fill(2.0)
 	v.build_chunk(Vector2i(0, 0), flat)
 	var intent := {}
-	GameBus.block_edit_intent.connect(func(action, pos, normal, material, _exact):
+	GameBus.block_edit_intent.connect(func(action, _pos, _normal, material, _exact):
 		intent["action"] = action
 		intent["material"] = material
 	)
@@ -6949,13 +6999,13 @@ func _test_net_voxel_apply_block_change() -> void:
 	flat.resize(64 * 64)
 	flat.fill(2.0)
 	v.build_chunk(Vector2i(0, 0), flat)
-	var reemit := 0
-	GameBus.block_changed.connect(func(_a, _p, _n, _m): reemit += 1)
+	var reemit := [0]
+	GameBus.block_changed.connect(func(_a, _p, _n, _m): reemit[0] += 1)
 	v.apply_block_change("mine", Vector3(16.0, 2.0, 16.0), Vector3.UP, "")
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 1.875, "mine applied (2.0 → 1.875)")
 	v.apply_block_change("place", Vector3(16.0, 2.0, 16.0), Vector3.UP, "Ferrite")
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 2.0, "place applied (1.875 → 2.0)")
-	assert_eq(reemit, 0, "apply_block_change does not re-emit block_changed")
+	assert_eq(reemit[0], 0, "apply_block_change does not re-emit block_changed")
 	v.free()
 
 func _test_net_creature_client_no_local_spawn() -> void:
@@ -7532,12 +7582,12 @@ func _test_net_remote_mine_credits_the_actor() -> void:
 	n.remember_player_state(7, Vector3.ZERO)
 
 	var mined: Array = []
-	var on_mined := func(material: String, _qty: int, _pos: Vector3) -> void:
-		mined.append(material)
+	var on_mined := func(mined_material: String, _qty: int, _pos: Vector3) -> void:
+		mined.append(mined_material)
 	GameBus.block_mined.connect(on_mined)
 	var synced: Array = []
-	var on_synced := func(owner: String, _contents: Dictionary, _durabilities: Dictionary) -> void:
-		synced.append(owner)
+	var on_synced := func(synced_owner: String, _contents: Dictionary, _durabilities: Dictionary) -> void:
+		synced.append(synced_owner)
 	GameBus.inventory_synced.connect(on_synced)
 
 	n._route_c2h(7, { "type": "block_edit_intent", "action": "mine",
@@ -7647,8 +7697,8 @@ func _test_net_remote_chop_credits_the_actor() -> void:
 	var wear_before: float = float(peer_inv.get_durability_data()["CarpenterAxe"][0])
 
 	var synced: Array = []
-	var on_synced := func(owner: String, _contents: Dictionary, _durabilities: Dictionary) -> void:
-		synced.append(owner)
+	var on_synced := func(synced_owner: String, _contents: Dictionary, _durabilities: Dictionary) -> void:
+		synced.append(synced_owner)
 	GameBus.inventory_synced.connect(on_synced)
 
 	n._route_c2h(7, { "type": "tree_chop_intent", "tree_id": tid })
@@ -7849,6 +7899,7 @@ func _test_client_adopts_its_own_handle() -> void:
 ## Phase 119 — the compact per-tick form round-trips the exact `{chunk, local}`, is much smaller than the
 ## dictionary form, and a damaged packet is refused before anything reads a number from it.
 func _test_wire_compact_position() -> void:
+	@warning_ignore("integer_division")
 	var half := TerrainSlice.circumference_chunks() / 2
 	for chunk in [Vector2i(1500000, 7), Vector2i(half - 1, -3), Vector2i(-half, 0), Vector2i(0, 0)]:
 		var pos := { "chunk": chunk, "local": Vector3(31.875, 12.5, 0.125) }
@@ -7934,6 +7985,7 @@ func _test_peer_first_claim_and_seam() -> void:
 	cm.now_msec = func(): return t[0]
 	cm.set_peer_center(9, Vector2i(1000, 0))
 	assert_eq(cm.peer_center(9), Vector2i(1000, 0), "a first claim has no spawn to measure from: it is taken as sent (later moves are clamped)")
+	@warning_ignore("integer_division")
 	var half := TerrainSlice.circumference_chunks() / 2
 	cm.set_peer_center(4, Vector2i(half - 2, 0), true)
 	t[0] = 10000
@@ -8157,7 +8209,6 @@ func _test_asset_load_mesh_and_animation() -> void:
 ## locomotion tree asks for so a fresh clone logs no "[RigTree] rig has no …".
 func _test_asset_placeholder_rig_is_a_body() -> void:
 	const RigTree := preload("res://src/character/rig_tree.gd")
-	const Locomotion := preload("res://src/character/locomotion.gd")
 	var root := AssetOverlay.load_rig_scene("models/placeholder_rig.glb.raw")
 	assert_true(root != null, "the placeholder rig parses into a scene")
 	if root == null:
@@ -8219,8 +8270,7 @@ func _test_asset_item_icon_placeholders() -> void:
 ## for the private wolf: a skin on the fabric QuadrupedSkeleton bones, a visible body, and
 ## the clips the locomotion tree looks up.
 func _test_asset_graywolfpack_placeholders() -> void:
-	const GameDataReader := preload("res://src/core/game_data_reader.gd")
-	var key := AssetOverlay.creature_model_key("GraywolfPack")
+	var key := AssetOverlayScript.creature_model_key("GraywolfPack")
 	assert_true(AssetOverlay.has_key("meshes", key), "manifest lists the wolf mesh")
 	assert_true(AssetOverlay.has_key("animations", key), "manifest lists the wolf animations")
 	for tex in ["GraywolfPack", "GraywolfPack_channel", "GraywolfPack_color_mask"]:
@@ -8259,7 +8309,6 @@ func _test_asset_graywolfpack_placeholders() -> void:
 ## Issue #322: the nine roster creatures each have a skinned placeholder on their skeleton
 ## family's fabric bones, seven clips and three textures at the art's size.
 func _test_asset_creature_roster_placeholders() -> void:
-	const GameDataReader := preload("res://src/core/game_data_reader.gd")
 	var roster := {
 		"ForestBoar": ["QuadrupedSkeleton", 128], "SteppeBison": ["QuadrupedSkeleton", 128],
 		"GlimmerFox": ["QuadrupedSkeleton", 64], "VeilStalker": ["QuadrupedSkeleton", 64],
@@ -8270,7 +8319,7 @@ func _test_asset_creature_roster_placeholders() -> void:
 	for entity: String in roster:
 		var family: String = roster[entity][0]
 		var size: int = roster[entity][1]
-		var key := AssetOverlay.creature_model_key(entity)
+		var key := AssetOverlayScript.creature_model_key(entity)
 		assert_true(AssetOverlay.has_key("meshes", key), "%s mesh listed" % entity)
 		assert_true(AssetOverlay.has_key("animations", key), "%s animations listed" % entity)
 		for suffix in ["", "_channel", "_color_mask"]:
@@ -8387,7 +8436,7 @@ func _test_rig_wears_character_material() -> void:
 ## curls (distinct keys); `gen_placeholder_glb.py` regenerates the committed files byte for byte
 ## (the byte-identical check is `python3 tools/gen_placeholder_glb.py && git diff --exit-code assets`).
 func _test_asset_rig_root_names_and_fall_clip() -> void:
-	var wolf := AssetOverlay.load_rig_scene(AssetOverlay.creature_model_key("GraywolfPack"))
+	var wolf := AssetOverlay.load_rig_scene(AssetOverlayScript.creature_model_key("GraywolfPack"))
 	assert_true(wolf != null, "wolf rig loads")
 	if wolf != null:
 		assert_true(wolf.get_node_or_null("PlayerRig") == null, "the wolf rig's root is not named PlayerRig")
@@ -8397,7 +8446,7 @@ func _test_asset_rig_root_names_and_fall_clip() -> void:
 	assert_true(player != null and player.get_node_or_null("PlayerRig") != null, "the player rig keeps its name")
 	if player != null:
 		player.free()
-	var serpent := AssetOverlay.load_rig_scene(AssetOverlay.creature_model_key("VoidSerpent"))
+	var serpent := AssetOverlay.load_rig_scene(AssetOverlayScript.creature_model_key("VoidSerpent"))
 	assert_true(serpent != null, "serpent rig loads")
 	if serpent != null:
 		var ap := serpent.find_child("AnimationPlayer", true, false) as AnimationPlayer
@@ -8450,8 +8499,6 @@ func _test_asset_body_sheet_placeholders() -> void:
 ## a human-height body standing on the root's ground plane. Code that reads bones then
 ## works on a public clone exactly as on the art.
 func _test_asset_player_rig_placeholder_contract() -> void:
-	const GameDataReader := preload("res://src/core/game_data_reader.gd")
-	const Locomotion := preload("res://src/character/locomotion.gd")
 	var root := AssetOverlay.load_rig_scene("models/player_rig.glb.raw")
 	assert_true(root != null, "the player rig placeholder parses into a scene")
 	if root == null:
@@ -8522,7 +8569,7 @@ func _test_asset_missing_model_falls_back() -> void:
 		"missing animations -> empty library")
 
 func _test_asset_creature_key() -> void:
-	assert_eq(AssetOverlay.creature_model_key("Wolf"), "models/creatures/Wolf.glb.raw", "creature key")
+	assert_eq(AssetOverlayScript.creature_model_key("Wolf"), "models/creatures/Wolf.glb.raw", "creature key")
 
 func _test_rig_tree_state_mapping_total() -> void:
 	const RigTree := preload("res://src/character/rig_tree.gd")
@@ -9122,7 +9169,7 @@ func _test_market_expired_not_browsable() -> void:
 	add_child(seller)
 	seller.add_item("hawk_feather", 1)
 	m.set_party_inventory("seller", seller)
-	var id := m.list_item("seller", "hawk_feather", 1, 5.0, 0.0)
+	m.list_item("seller", "hawk_feather", 1, 5.0, 0.0)
 	assert_eq(m.get_listings().size(), 0, "expired listing not browsable")
 	assert_eq(m.get_all_listings().size(), 1, "still present until expire_listings")
 	var n := m.expire_listings()
@@ -9459,10 +9506,10 @@ func _test_proposal_decisions_log() -> void:
 	var pid := p.submit_proposal("alice", "Ratify the thing", "body")
 	p.vote(pid, "bob", "for")
 	p.vote(pid, "carol", "for")
-	var log: Array = p.get_decisions_log()
-	assert_eq(log.size(), 1, "one ratified proposal logged")
-	assert_eq(str(log[0]["title"]), "Ratify the thing", "log records the title")
-	assert_eq(str(log[0]["state"]), "accepted", "log records accepted state")
+	var decisions: Array = p.get_decisions_log()
+	assert_eq(decisions.size(), 1, "one ratified proposal logged")
+	assert_eq(str(decisions[0]["title"]), "Ratify the thing", "log records the title")
+	assert_eq(str(decisions[0]["state"]), "accepted", "log records accepted state")
 	p.free()
 
 func _test_proposal_below_threshold() -> void:
@@ -9904,7 +9951,6 @@ func _test_voxel_yield_matches_blended_biome() -> void:
 
 ## Phase 63 — the one chat command is spelled in one place.
 func _test_chat_command_constant() -> void:
-	var ChatCommands: GDScript = load("res://src/core/chat_commands.gd")
 	assert_true(ChatCommands.is_command(ChatCommands.WHERE), "the constant is a command")
 	assert_true(ChatCommands.is_command("  /WHERE "), "case and padding are ignored")
 	assert_eq(ChatCommands.run("/where", Vector3.ZERO), TerrainSlice.where_text(Vector3.ZERO), "run answers it")
@@ -9970,6 +10016,7 @@ func _test_voxel_inworld_border_unchanged() -> void:
 	var checked := 0
 	var borrowed := 0
 	for i in 64:
+		@warning_ignore("integer_division")
 		var xz := Vector2(extent + 0.25 + (i % 4) * VoxelSlice.TILE_SIZE, (i / 4) * 2 * VoxelSlice.TILE_SIZE + 0.25)
 		var biomes: Dictionary = {}
 		for dz in range(-1, 2):
@@ -9995,6 +10042,7 @@ func _test_shown_biome_memo() -> void:
 	v.terrain_slice = ts
 	var base := v.biome_lookups
 	for i in 100:
+		@warning_ignore("integer_division")
 		v.shown_biome_at(Vector2(0.25 + (i % 10) * VoxelSlice.TILE_SIZE, 0.25 + (i / 10) * VoxelSlice.TILE_SIZE))
 	assert_true(v.biome_lookups - base <= 9, "at most 9 lookups for 100 calls (got %d)" % (v.biome_lookups - base))
 	v.free()
@@ -10253,7 +10301,7 @@ func _test_mine_topsoil_yields_biome_soil() -> void:
 			var base := v._base_top_for_tile(t)
 			var top_span := { "bottom": 0.0, "top": v.get_voxel_height_at(p) }
 			# A live vein at the tile would yield its ore instead, so skip those tiles.
-			if not v._live_vein_at(p, v._run_depth(top_span, base), v._world_seed(), v._vein_taken, {}).is_empty():
+			if not VoxelSlice._live_vein_at(p, VoxelSlice._run_depth(top_span, base), v._world_seed(), v._vein_taken, {}).is_empty():
 				continue
 			checked[biome] = true
 			var soil := str(b.get("soilMaterial"))
@@ -10262,7 +10310,7 @@ func _test_mine_topsoil_yields_biome_soil() -> void:
 			# One unit below the topsoil, the same column is the host rock (when no vein sits there).
 			var depth := float(b.get("topsoilDepth"))
 			var deep_span := { "bottom": base - depth - 1.5, "top": base - depth - 1.0 }
-			if v._live_vein_at(p, v._run_depth(deep_span, base), v._world_seed(), v._vein_taken, {}).is_empty():
+			if VoxelSlice._live_vein_at(p, VoxelSlice._run_depth(deep_span, base), v._world_seed(), v._vein_taken, {}).is_empty():
 				assert_eq(str(v._natural_yield(t, deep_span)["material"]), OreField.host_material(biome),
 					"%s below topsoilDepth yields host rock, not soil" % biome)
 	# Every cover the fabric names was actually mined, not just the temperate Grass.
@@ -11024,7 +11072,7 @@ func _test_persistence_incremental_save_can_delete_a_chunk() -> void:
 	# and re-marks it).
 	voxel.clear_dirty_chunks()
 	voxel.mine_block(Vector3(16.25, 2.0, 16.25))
-	var key := voxel._tile_key(Vector2i(32, 32))
+	var key := VoxelSlice._tile_key(Vector2i(32, 32))
 	var cancel: Array = []
 	for i in range(4):
 		cancel.append({ "op": "remove", "bottom": 1.875, "top": 2.0 })
@@ -12393,7 +12441,6 @@ func _test_taming_is_per_player() -> void:
 	var c: Node = rig["creature"]
 	var taming: Node = rig["taming"]
 	var registry: Node = rig["registry"]
-	var local_pid := str(registry.local_player_id)
 	var wolves := _taming_instances_of(c, "GraywolfPack")
 	var target := str(wolves[1])
 	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
@@ -12682,8 +12729,8 @@ func _test_net_inventory_sync_is_peer_scoped() -> void:
 	add_child(client)
 	client._role = NetworkingSlice.Role.CLIENT
 	var seen: Array = []
-	var on_sync := func(owner: String, contents: Dictionary, _durabilities: Dictionary) -> void:
-		seen.append([owner, contents])
+	var on_sync := func(synced_owner: String, contents: Dictionary, _durabilities: Dictionary) -> void:
+		seen.append([synced_owner, contents])
 	GameBus.inventory_synced.connect(on_sync)
 	client._route_h2c(packet)
 	GameBus.inventory_synced.disconnect(on_sync)
@@ -14576,6 +14623,7 @@ func _test_quit_after_boot_predicate() -> void:
 func _median_int(values: Array) -> int:
 	var sorted := values.duplicate()
 	sorted.sort()
+	@warning_ignore("integer_division")
 	return int(sorted[sorted.size() / 2])
 
 ## Phase 42 review — the phase's headline claim ("the build is on a worker, the main
@@ -14706,8 +14754,10 @@ func _chunk_build_split_probe(clock_scale: int) -> void:
 	# this log cost one string split per edit here per dispatch and blew the frame; with the
 	# index only the window's 4096 are copied, whatever the world holds.
 	for far_i in range(24):
+		@warning_ignore("integer_division")
 		var far := Vector2i(far_i % 6 + 4, far_i / 6 + 4)
 		for i in range(4096):
+			@warning_ignore("integer_division")
 			voxel._set_edit_ops(VoxelSlice._tile_key(Vector2i(far.x * 64 + (i % 64), far.y * 64 + (i / 64))), op_template)
 	var populated_pass: Array = []
 	var window_edits := 0
@@ -14776,8 +14826,8 @@ func _test_chunk_gather_carries_the_ring() -> void:
 	voxel._set_edit_ops(ring_key, [{ "op": "add", "bottom": 0.0, "top": 8.0, "material": "Ashite" }])
 	var edited: Dictionary = VoxelSlice.build_runs(centre, hm, voxel.gather_build_input(centre, hm))
 	var placed := false
-	for run in edited["runs"][ring_key]:
-		if str((run as Dictionary)["material"]) == "Ashite":
+	for run_entry in edited["runs"][ring_key]:
+		if str((run_entry as Dictionary)["material"]) == "Ashite":
 			placed = true
 	assert_true(placed, "and a RING tile's edit reaches the worker-side resolve")
 	voxel._set_edit_ops(ring_key, [])
@@ -14847,19 +14897,19 @@ func _flat_heightmap(h: float) -> Array:
 
 ## The first vein (searching chunks along +X) whose blob breaks the surface of a flat 2.0
 ## chunk: `{ chunk, tile (chunk-local), vein }`, or `{}`.
-func _find_surface_vein(seed: int) -> Dictionary:
+func _find_surface_vein(seed_v: int) -> Dictionary:
 	for cx in range(0, 16):
 		var chunk := Vector2i(cx, 0)
 		var cache: Dictionary = {}
 		for tz in range(64):
 			for tx in range(64):
-				var vein := OreField.vein_at(seed, chunk, Vector2i(tx, tz), 0.0625, cache)
+				var vein := OreField.vein_at(seed_v, chunk, Vector2i(tx, tz), 0.0625, cache)
 				if not vein.is_empty():
 					return { "chunk": chunk, "tile": Vector2i(tx, tz), "vein": vein }
 	return {}
 
 ## A grid sample of the field: "gx,gz,k" → material ("" outside a vein).
-func _ore_sample(seed: int) -> Dictionary:
+func _ore_sample(seed_v: int) -> Dictionary:
 	var out: Dictionary = {}
 	for cz in range(-2, 2):
 		for cx in range(-2, 2):
@@ -14868,7 +14918,7 @@ func _ore_sample(seed: int) -> Dictionary:
 				for tx in range(0, 64, 3):
 					for k in range(0, 12):
 						var depth := 0.0625 + float(k) * 0.875
-						var vein := OreField.vein_at(seed, chunk, Vector2i(tx, tz), depth)
+						var vein := OreField.vein_at(seed_v, chunk, Vector2i(tx, tz), depth)
 						out["%d,%d,%d" % [cx * 64 + tx, cz * 64 + tz, k]] = "" if vein.is_empty() else str(vein["material"])
 	return out
 
@@ -14906,6 +14956,7 @@ func _test_ore_client_agrees_without_snapshot() -> void:
 	assert_true(volcanic != Vector2i(-1, -1), "a volcanic chunk exists to sample")
 	var anchor := Vector2(float(volcanic.x) * 32.0, float(volcanic.y) * 32.0)
 	for i in range(0, 4000, 7):
+		@warning_ignore("integer_division")
 		var xz := anchor + Vector2(float(i % 200) * 0.5 - 50.0, float(i / 200) * 0.5 * 9.0 - 40.0)
 		for depth in [0.0625, 1.5625, 4.5625, 7.0625]:
 			var m: String = host.material_at(xz, depth)
@@ -14931,8 +14982,8 @@ func _test_ore_aethermite_gates() -> void:
 	var off_ley := 0
 	var scan := TerrainSlice.new()
 	add_child(scan)
-	for seed in [1, 2, 3]:
-		scan.set_world_seed(seed)
+	for seed_v in [1, 2, 3]:
+		scan.set_world_seed(seed_v)
 		# Aethermite lives in volcanic and twilight ground, which Phase 51 made climate niches.
 		for chunk_v in _biome_chunks(scan, ["VolcanicBadlands", "TwilightGrove"], 14):
 			if true:
@@ -14942,14 +14993,14 @@ func _test_ore_aethermite_gates() -> void:
 					for tx in range(0, 64, 2):
 						for k in range(0, 26):
 							var depth := 0.0625 + float(k) * 0.5
-							var vein := OreField.vein_at(seed, chunk, Vector2i(tx, tz), depth, cache)
+							var vein := OreField.vein_at(seed_v, chunk, Vector2i(tx, tz), depth, cache)
 							if vein.is_empty() or str(vein["material"]) != "Aethermite":
 								continue
 							seen += 1
 							if depth < float(band["min"]):
 								above_band += 1
 							var g := chunk * 64 + Vector2i(tx, tz)
-							if not OreField.near_ley_line(seed, Vector2(g.x * 0.5 + 0.25, g.y * 0.5 + 0.25)):
+							if not OreField.near_ley_line(seed_v, Vector2(g.x * 0.5 + 0.25, g.y * 0.5 + 0.25)):
 								off_ley += 1
 	scan.free()
 	assert_true(seen > 0, "the sample found aethermite (%d tiles) — the gates are not vacuous" % seen)
@@ -14991,18 +15042,18 @@ func _test_ore_ley_field() -> void:
 		"and the field is a pure function of position")
 
 ## Aethermite vein counts of up to 16 volcanic chunks of world `seed` (appended to `counts`).
-func _collect_volcanic_counts(seed: int, counts: Array) -> void:
+func _collect_volcanic_counts(seed_v: int, counts: Array) -> void:
 	for cz in range(-400, 400, 5):   # rare niches are blobs now: scan wide to find volcanic ground
 		for cx in range(-400, 400, 5):
 			var chunk := Vector2i(cx, cz)
-			if TerrainSlice.biome_for_chunk(chunk, seed) != "VolcanicBadlands":
+			if TerrainSlice.biome_for_chunk(chunk, seed_v) != "VolcanicBadlands":
 				continue
 			var n := 0
 			var cache: Dictionary = {}
 			for tz in range(0, 64, 2):
 				for tx in range(0, 64, 2):
 					for depth in [4.5, 6.5, 8.5]:
-						var vein := OreField.vein_at(seed, chunk, Vector2i(tx, tz), depth, cache)
+						var vein := OreField.vein_at(seed_v, chunk, Vector2i(tx, tz), depth, cache)
 						if not vein.is_empty() and str(vein["material"]) == "Aethermite":
 							n += 1
 			counts.append(n)
@@ -15016,9 +15067,9 @@ func _collect_volcanic_counts(seed: int, counts: Array) -> void:
 func _test_ore_uniform_draw_gone() -> void:
 	var counts: Array = []
 	# Volcanic ground is a rare, latitude-bound niche: take the first world that has enough of it near spawn.
-	for seed in range(7, 40):
+	for seed_v in range(7, 40):
 		counts.clear()
-		_collect_volcanic_counts(seed, counts)
+		_collect_volcanic_counts(seed_v, counts)
 		if counts.size() >= 8:
 			break
 	assert_true(counts.size() >= 8, "enough volcanic chunks sampled (%d)" % counts.size())
@@ -15035,8 +15086,10 @@ func _test_ore_uniform_draw_gone() -> void:
 	var old_constant := int(0.17 * 32.0 * 32.0 * 3.0)
 	var off := 0
 	for n in counts:
+		@warning_ignore("integer_division")
 		if absi(int(n) - old_constant) > old_constant / 2:
 			off += 1
+	@warning_ignore("integer_division")
 	assert_true(off > counts.size() / 2, "and most chunks are far from the retired constant share")
 
 func _test_ore_blob_crosses_chunk_border() -> void:
@@ -15044,14 +15097,14 @@ func _test_ore_blob_crosses_chunk_border() -> void:
 	# cover tiles on both sides of the x = 64 border. Find one and check continuity.
 	var crossing := 0
 	var agree := true
-	for seed in [1, 2, 3, 4]:
+	for seed_v in [1, 2, 3, 4]:
 		for tz in range(0, 64):
 			for k in range(0, 24):
 				var depth := 0.0625 + float(k) * 0.5
-				var left := OreField.vein_at(seed, Vector2i(0, 0), Vector2i(63, tz), depth)
-				var right := OreField.vein_at(seed, Vector2i(1, 0), Vector2i(0, tz), depth)
+				var left := OreField.vein_at(seed_v, Vector2i(0, 0), Vector2i(63, tz), depth)
+				var right := OreField.vein_at(seed_v, Vector2i(1, 0), Vector2i(0, tz), depth)
 				# The same global tile asked through EITHER chunk is the same answer.
-				if OreField.vein_at(seed, Vector2i(0, 0), Vector2i(64, tz), depth) != right:
+				if OreField.vein_at(seed_v, Vector2i(0, 0), Vector2i(64, tz), depth) != right:
 					agree = false
 				if not left.is_empty() and not right.is_empty() and str(left["id"]) == str(right["id"]):
 					crossing += 1
@@ -15379,14 +15432,14 @@ func _free_owned() -> void:
 			n.free()
 	_owned.clear()
 
-func _run_test(name: String, fn: Callable) -> void:
-	_current_test = name
+func _run_test(test_name: String, fn: Callable) -> void:
+	_current_test = test_name
 	_registered_names[str(fn.get_method())] = true
 	var fails_before := _fail
 	fn.call()
 	_free_owned()
 	var outcome := "✓" if _fail == fails_before else "✗"
-	print("  %s %s" % [outcome, name])
+	print("  %s %s" % [outcome, test_name])
 
 
 # ---------------------------------------------------------------------------
@@ -15653,13 +15706,13 @@ func _test_rig_tree_missing_clip_fallback() -> void:
 	bare.free()
 
 func _test_asset_manifest_merge() -> void:
-	var merged := AssetOverlay.merge_manifests(
+	var merged := AssetOverlayScript.merge_manifests(
 		{"meshes": {"a": "pub_a", "b": "pub_b"}, "textures": {"t": "pub_t"}},
 		{"meshes": {"b": "priv_b", "c": "priv_c"}, "junk": 5})
 	assert_eq(merged["meshes"], {"a": "pub_a", "b": "priv_b", "c": "priv_c"}, "private overrides by key, public-only keys survive")
 	assert_eq(merged["textures"], {"t": "pub_t"}, "a kind only the public manifest lists survives")
 	assert_false(merged.has("junk"), "a non-dictionary section is ignored")
-	assert_eq(AssetOverlay.merge_manifests({}, {}), {}, "two empty manifests merge to empty")
+	assert_eq(AssetOverlayScript.merge_manifests({}, {}), {}, "two empty manifests merge to empty")
 	assert_eq(AssetOverlay.first_key("meshes", ["models/nope.glb.raw", "models/placeholder_rig.glb.raw"]),
 		"models/placeholder_rig.glb.raw", "first_key skips unlisted keys")
 	assert_eq(AssetOverlay.first_key("meshes", ["models/nope.glb.raw"]), "", "and is empty when none is listed")
@@ -15687,12 +15740,9 @@ func _test_spawn_tree_density() -> void:
 	assert_eq(t.density_for("TemperateGrassland"), 2, "grassland density is the fabric treeDensity")
 	assert_eq(t.density_for("VolcanicBadlands"), 0, "the badlands grow no trees")
 	var seen := {}
-	var clearings := 0
 	for ch in w["chunks"]:
 		var n: int = t.tree_count_for(ch, "TemperateForest")
 		seen[n] = true
-		if n == 0:
-			clearings += 1
 		assert_eq(n, t.tree_count_for(ch, "TemperateForest"), "the count is pure in (seed, chunk)")
 	assert_true(seen.size() > 1, "tree counts vary across chunks")
 	assert_eq(t.tree_count_for(Vector2i(0, 0), "VolcanicBadlands"), 0, "no trees in the badlands")
@@ -16127,11 +16177,11 @@ func _test_voxel_guess_cache_bounded() -> void:
 	v.terrain_slice = terrain
 	for i in VoxelSlice.GUESS_CACHE_MAX + 20:
 		var c := Vector2i(i, 100)
-		v._generated_heightmap(c, v._chunk_key(c))
+		v._generated_heightmap(c, VoxelSlice._chunk_key(c))
 	assert_eq(v._guess_heightmaps.size(), VoxelSlice.GUESS_CACHE_MAX, "the guess cache stops at its bound")
 	assert_false(v._guess_heightmaps.has("0,100"), "the oldest guess is the one evicted")
 	var newest := Vector2i(VoxelSlice.GUESS_CACHE_MAX + 19, 100)
-	assert_true(v._guess_heightmaps.has(v._chunk_key(newest)), "the newest guess is kept")
+	assert_true(v._guess_heightmaps.has(VoxelSlice._chunk_key(newest)), "the newest guess is kept")
 	v.free()
 	terrain.free()
 
@@ -16168,9 +16218,9 @@ func _test_voxel_reseed_drops_guesses() -> void:
 	add_child(v)
 	v.terrain_slice = terrain
 	var c := Vector2i(5, 5)
-	var old_map: Array = v._generated_heightmap(c, v._chunk_key(c))
+	var old_map: Array = v._generated_heightmap(c, VoxelSlice._chunk_key(c))
 	terrain.set_world_seed(98765)
-	var new_map: Array = v._generated_heightmap(c, v._chunk_key(c))
+	var new_map: Array = v._generated_heightmap(c, VoxelSlice._chunk_key(c))
 	assert_true(old_map != new_map, "a re-seed does not serve the old world's cached map")
 	assert_eq(new_map, terrain.generate_heightmap(c), "the guess matches the new world's generator")
 	v.free()
@@ -16655,6 +16705,55 @@ func _test_voxel_local_build_far_chunk() -> void:
 	assert_true(wm != null and wm.get_aabb().position.x >= -0.001 and wm.get_aabb().end.x <= extent + 0.001,
 		"a local water surface is relative to the chunk corner")
 
+## Walking off a block leaves the body airborne for a fraction of a second. That must keep
+## the walk pose (no FALL, then no LAND); only a longer or faster drop reads as a fall.
+func _test_locomotion_step_down_is_not_a_fall() -> void:
+	var dt := 1.0 / 60.0
+	var loco := Locomotion.new()
+	loco.update(2.0, true, 0.0, dt)
+	assert_eq(loco.get_state(), Locomotion.State.WALK, "walking on the ground")
+	# A 0.5 m drop under gravity: about 0.32 s in the air, reaching -3.1 m/s.
+	var vy := 0.0
+	var t := 0.0
+	while t < 0.32:
+		vy -= 9.8 * dt
+		t += dt
+		loco.update(2.0, false, vy, dt)
+		assert_true(loco.get_state() != Locomotion.State.FALL, "a step down holds the walk pose (%.2f s)" % t)
+	loco.update(2.0, true, 0.0, dt)
+	assert_eq(loco.get_state(), Locomotion.State.WALK, "and lands straight back into the walk, with no LAND pose")
+	# A real drop: once the grace is over the body falls, and landing plays LAND.
+	t = 0.0
+	vy = 0.0
+	while t < Locomotion.FALL_GRACE + 0.05:
+		vy -= 9.8 * dt
+		t += dt
+		loco.update(2.0, false, vy, dt)
+	assert_eq(loco.get_state(), Locomotion.State.FALL, "a longer drop falls")
+	loco.update(2.0, true, 0.0, dt)
+	assert_eq(loco.get_state(), Locomotion.State.LAND, "landing from a fall plays LAND")
+	# A fast drop falls at once (knockback off a cliff, say).
+	var fast := Locomotion.new()
+	fast.update(0.0, false, -Locomotion.FALL_SPEED - 0.5, dt)
+	assert_eq(fast.get_state(), Locomotion.State.FALL, "a fast drop falls without waiting for the grace")
+	assert_false(Locomotion.is_falling(10.0, 1.0), "rising (a jump) never reads as falling")
+
+## The camera follows the body's height with exponential easing: a block step is spread
+## over several frames (never overshooting, always converging), while the first frame and
+## a teleport snap straight to the body.
+func _test_player_camera_height_follow() -> void:
+	var dt := 1.0 / 60.0
+	assert_eq(PlayerSlice.follow_height(NAN, 7.0, dt), 7.0, "the first frame snaps to the body")
+	assert_eq(PlayerSlice.follow_height(0.0, 50.0, dt), 50.0, "a teleport snaps")
+	var y := 1.0
+	var first := PlayerSlice.follow_height(y, 1.5, dt)
+	assert_true(first > 1.0 and first < 1.25, "one frame covers only part of a 0.5 m step (%.3f)" % first)
+	for i in 60:
+		var next := PlayerSlice.follow_height(y, 1.5, dt)
+		assert_true(next >= y and next <= 1.5, "the ease never overshoots the step")
+		y = next
+	assert_true(absf(y - 1.5) < 0.01, "within a second the camera has settled on the new height (%.4f)" % y)
+
 func _test_locomotion_reset_after_death() -> void:
 	var loco := Locomotion.new()
 	loco.trigger_death()
@@ -17017,8 +17116,8 @@ func _test_distant_ring_async() -> void:
 	assert_true(d.poll(true), "the finished mesh is swapped in")
 	var cell := d.ring_half_m * 2.0 / 64.0
 	var origin := Vector2i(floori(100.0 / cell), floori(-40.0 / cell))
-	var snapped := Vector2(float(origin.x) * cell, float(origin.y) * cell)
-	var sync_mesh: ArrayMesh = DistantTerrainScript.build_mesh(11, d.circumference_m, snapped, d.ring_half_m, d.window_half_m, Vector2(112.0, -48.0))   # the chunk-snapped window centre
+	var snapped_pos := Vector2(float(origin.x) * cell, float(origin.y) * cell)
+	var sync_mesh: ArrayMesh = DistantTerrainScript.build_mesh(11, d.circumference_m, snapped_pos, d.ring_half_m, d.window_half_m, Vector2(112.0, -48.0))   # the chunk-snapped window centre
 	var got: ArrayMesh = (d.get_child(0) as MeshInstance3D).mesh
 	assert_eq(got.surface_get_arrays(0)[Mesh.ARRAY_VERTEX], sync_mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX], "the async mesh equals a synchronous build")
 	# A request that arrives mid-build supersedes it; the newest wins.
@@ -17284,8 +17383,8 @@ func _test_ocean_spawns_no_land_tables() -> void:
 const RegionStoreScript := preload("res://src/persistence/region_store.gd")
 const RegionStreamerScript := preload("res://src/persistence/region_streamer.gd")
 
-func _fresh_region_dir(name: String) -> String:
-	var dir := "user://saves/%s/" % name
+func _fresh_region_dir(dir_name: String) -> String:
+	var dir := "user://saves/%s/" % dir_name
 	_wipe_dir(dir)
 	_wipe_dir(dir + "regions/")
 	return dir
@@ -18046,6 +18145,7 @@ func _test_peer_window_clamp_cap() -> void:
 func _test_peer_window_clamps_across_seam() -> void:
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
+	@warning_ignore("integer_division")
 	var half := TerrainSlice.circumference_chunks() / 2
 	cm.set_peer_center(5, Vector2i(half - 1, 0), true)
 	cm._peer_last_claim_msec[5] = -1000000
@@ -18216,9 +18316,10 @@ func _test_region_streams_only_near_windows() -> void:
 	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
 	# 1,000 edited regions on disk, none of them the origin's. A chunk is 64 tiles a side.
 	for i in range(1000):
+		@warning_ignore("integer_division")
 		var region := Vector2i(10 + i % 40, 10 + i / 40)
-		var edit := { "edits": { "%d,%d" % [region.x * 32 * 64, region.y * 32 * 64]: [{ "op": "remove", "bottom": 1.0, "top": 1.0 }] } }
-		assert_eq(store.save_region(region, { "%d,%d" % [region.x * 32, region.y * 32]: edit }), OK, "region %d written" % i)
+		var region_edit := { "edits": { "%d,%d" % [region.x * 32 * 64, region.y * 32 * 64]: [{ "op": "remove", "bottom": 1.0, "top": 1.0 }] } }
+		assert_eq(store.save_region(region, { "%d,%d" % [region.x * 32, region.y * 32]: region_edit }), OK, "region %d written" % i)
 	var edit := { "edits": { "0,0": [{ "op": "remove", "bottom": 1.0, "top": 1.0 }] } }
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
@@ -18417,12 +18518,13 @@ func _test_colonization_map() -> void:
 	assert_eq(copy.score(Vector2i(1, 2)), 4.0, "a good entry keeps its score")
 	copy.from_data("not a dictionary")
 	assert_eq(copy.region_count(), 0, "a non-dictionary record yields an empty map")
-	var wrap := ColonizationMapScript.new()
-	wrap.note_home(Vector2i(0, 0))
+	var cmap := ColonizationMapScript.new()
+	cmap.note_home(Vector2i(0, 0))
+	@warning_ignore("integer_division")
 	var ring := TerrainSlice.circumference_chunks() / 32
-	assert_true(wrap.is_near_colonized(-10.0, 10.0, 100.0, 1.0), "distance is measured from the region's edge")
-	assert_true(wrap.is_near_colonized(float(ring) * ColonizationMapScript.REGION_METERS - 50.0, 10.0, 100.0, 1.0), "distance wraps across the antimeridian")
-	assert_true(not wrap.is_near_colonized(5000.0, 10.0, 100.0, 1.0), "a far point is not near")
+	assert_true(cmap.is_near_colonized(-10.0, 10.0, 100.0, 1.0), "distance is measured from the region's edge")
+	assert_true(cmap.is_near_colonized(float(ring) * ColonizationMapScript.REGION_METERS - 50.0, 10.0, 100.0, 1.0), "distance wraps across the antimeridian")
+	assert_true(not cmap.is_near_colonized(5000.0, 10.0, 100.0, 1.0), "a far point is not near")
 	var seeded := ColonizationMapScript.new()
 	seeded.seed_from_regions([Vector2i(4, 4)])
 	seeded.seed_from_regions([Vector2i(4, 4)])
@@ -18630,8 +18732,8 @@ func _test_spawn_registry_placement() -> void:
 	var reg := PlayerRegistry.new()
 	reg.is_authoritative = true
 	var calls: Array = []
-	reg.set_spawn_placer(func(pid: String, code: String) -> Dictionary:
-		calls.append([pid, code])
+	reg.set_spawn_placer(func(placed_pid: String, code: String) -> Dictionary:
+		calls.append([placed_pid, code])
 		return { "position": Vector3(1234.0, 9.0, -777.0), "source": "search", "message": "" })
 	var friend_handle := reg.public_handle("player_1_1_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	reg.note_friend_code(5, friend_handle)
@@ -18655,7 +18757,7 @@ func _test_spawn_registry_placement() -> void:
 	assert_eq(reg.friend_position(reg.public_handle(pid)), Vector3(10.0, 2.0, 20.0), "an in-memory friend is located")
 	var ghost := "p_" + "0123456789abcdef"
 	assert_eq(reg.friend_position(ghost), null, "an unknown handle locates nobody")
-	reg.set_friend_locator(func(h: String) -> Variant: return Vector3(5.0, 5.0, 5.0) if h == ghost else null)
+	reg.set_friend_locator(func(h: String) -> Variant: return (Vector3(5.0, 5.0, 5.0) as Variant) if h == ghost else null)
 	assert_eq(reg.friend_position(ghost), Vector3(5.0, 5.0, 5.0), "an offline friend is located by the disk locator")
 	reg.free()
 
@@ -19098,7 +19200,7 @@ func _test_chat_rate_limit() -> void:
 	var now := [100.0]
 	chat.set_clock(func() -> float: return now[0])
 	var posted: Array = []
-	var cb := func(channel: String, sender: String, text: String, target: String) -> void:
+	var cb := func(channel: String, _sender: String, text: String, target: String) -> void:
 		posted.append({ "channel": channel, "text": text, "target": target })
 	GameBus.chat_posted.connect(cb)
 	var sysb_19095 := _p131_system_bridge(cb)
@@ -19329,6 +19431,7 @@ func _test_chat_tp_far_exact() -> void:
 		var x := float(typed_chunk) * TerrainSlice.CHUNK_METERS + 7.3125
 		chat.handle_intent("/tp %s 12.5 %s" % [str(x), str(3.0 * TerrainSlice.CHUNK_METERS + 0.0625)], "")
 		assert_eq(seen.size(), 1, "the far /tp teleports (%d chunks)" % typed_chunk)
+		@warning_ignore("integer_division")
 		var want_chunk: int = posmod(typed_chunk + lap_chunks / 2, lap_chunks) - lap_chunks / 2
 		assert_eq(seen[0]["chunk"], Vector2i(want_chunk, 3), "to the typed chunk, wrapped onto one lap")
 		var l: Vector3 = seen[0]["local"]
@@ -19567,11 +19670,14 @@ func _test_adjacency_table() -> void:
 
 ## Grid origins for a seed: the equator, the temperate belt, the polar edge and a coastline.
 func _adjacency_origins(seed_v: int) -> Array:
+	@warning_ignore("integer_division")
 	var half := ADJACENCY_GRID / 2
+	@warning_ignore("integer_division")
 	var belt := TerrainSlice.pole_chunks() / 2
 	var polar := TerrainSlice.polar_chunks() - ADJACENCY_GRID
 	var out: Array = [Vector2i(-half, -half), Vector2i(-half, belt - half), Vector2i(-half, polar)]
 	# Coast: walk east along a temperate row until land meets Ocean, and centre the grid there.
+	@warning_ignore("integer_division")
 	var found := _find_coast(seed_v, belt / 2, 9000, Callable(), COAST_SCAN_STRIDE)
 	assert_true(found["found"], "seed %d: a coast was found within the search (the coast grid is not a stand-in)" % seed_v)
 	out.append(found["coast"] - Vector2i(half, half))
@@ -19622,9 +19728,12 @@ func _test_find_coast_finds_thin_strip() -> void:
 ## Phase 115 (#280) — a search that finds no coast says so: a scratch zero-step search reports not found,
 ## so `_adjacency_origins` would fail its assert instead of scanning the row start as a coast.
 func _test_adjacency_coast_search_reports_failure() -> void:
+	@warning_ignore("integer_division")
 	var none := _find_coast(ADJACENCY_SEEDS[0], TerrainSlice.pole_chunks() / 4, 0)
 	assert_false(none["found"], "a zero-step search finds no coast")
+	@warning_ignore("integer_division")
 	assert_eq(none["coast"], Vector2i(0, TerrainSlice.pole_chunks() / 4), "and falls back to the row start")
+	@warning_ignore("integer_division")
 	var real := _find_coast(ADJACENCY_SEEDS[0], TerrainSlice.pole_chunks() / 4, 9000, Callable(), COAST_SCAN_STRIDE)
 	assert_true(real["found"], "the real search finds one")
 
@@ -19691,6 +19800,7 @@ func _frontier_record_block() -> void:
 			ChunkRecordsScript.set_record(c, RegionStoreScript.normalize_gen(TerrainSlice.generation_record(c, FRONTIER_SEED)))
 
 func _frontier_window_origin() -> Vector2i:
+	@warning_ignore("integer_division")
 	return FRONTIER_BLOCK - Vector2i.ONE * ((FRONTIER_WINDOW - FRONTIER_BLOCK_SIZE) / 2)
 
 ## Give every unrecorded chunk of the window its frontier record, in raster order (as a player walking
@@ -19806,7 +19916,7 @@ func _frontier_plain_max_step(o: Vector2i) -> float:
 
 ## Scratch broken blend: a corner the recorded block touches keeps its recorded height, every other
 ## corner is the plain generator's. `blended` is the real field (lattice point -> height).
-func _frontier_unblended_max_step(o: Vector2i, blended: Dictionary) -> float:
+func _frontier_unblended_max_step(_o: Vector2i, blended: Dictionary) -> float:
 	var field: Dictionary = {}
 	for p in blended:
 		var inside: bool = p.x >= FRONTIER_BLOCK.x and p.x <= FRONTIER_BLOCK.x + FRONTIER_BLOCK_SIZE \
@@ -19871,6 +19981,7 @@ func _test_frontier_adjacency() -> void:
 				ChunkRecordsScript.set_record(c, snapshot[c])
 			for i in FRONTIER_WINDOW * FRONTIER_WINDOW:
 				var j: int = FRONTIER_WINDOW * FRONTIER_WINDOW - 1 - i if reverse else i
+				@warning_ignore("integer_division")
 				var c := o + Vector2i(j % FRONTIER_WINDOW, j / FRONTIER_WINDOW)
 				if not ChunkRecordsScript.has_record(c):
 					ChunkRecordsScript.set_record(c, RegionStoreScript.normalize_gen(Frontier.record_for(c, seed_v)))
@@ -19978,6 +20089,7 @@ func _test_records_override() -> void:
 	for i in after.size():
 		if absf(float(after[i]) - float(before[i])) > 0.5:
 			moved += 1
+	@warning_ignore("integer_division")
 	assert_true(moved > after.size() / 2, "the recorded corners move the chunk's ground (%d tiles)" % moved)
 	assert_true(t.generate_heightmap(nb) == nb_before, "the neighbour's heightmap is the generator's")
 	assert_true(not is_equal_approx(TerrainSlice.shape_height(99, 300.5 * 32.0, 120.5 * 32.0, 4.0e7),
@@ -20068,7 +20180,6 @@ func _test_records_ore_worker() -> void:
 	WorkerThreadPool.wait_for_task_completion(tid)
 	assert_eq(result[0], other, "a worker asking for a recorded chunk gets the recorded biome")
 	# OreField's own read goes through the same call.
-	var tile := Vector2i(c.x * 64 + 3, c.y * 64 + 3)
 	var seen := false
 	for dx in range(0, 64, 4):
 		for dz in range(0, 64, 4):
@@ -20353,8 +20464,8 @@ func _test_tree_pin_edited_ground() -> void:
 	var t2 := _tree_pin_rig(chunk)
 	t2.voxel_slice = vox
 	if not vox.has_edit_near(target, 1):
-		vox._edits[vox._tile_key(target)] = [{ "op": "legacy" }]
-		vox._edits_by_chunk[vox._chunk_key(vox._tile_to_chunk(target))] = { vox._tile_key(target): true }
+		vox._edits[VoxelSlice._tile_key(target)] = [{ "op": "legacy" }]
+		vox._edits_by_chunk[VoxelSlice._chunk_key(VoxelSlice._tile_to_chunk(target))] = { VoxelSlice._tile_key(target): true }
 	t2.spawn_for_chunk(chunk)
 	assert_true(t2.trees_in_chunk(chunk).size() < 8, "the tree on the edited tile never spawns")
 	assert_true(ChunkRecordsScript.get_record(chunk).has("x"), "and is recorded as cleared")
@@ -20769,8 +20880,8 @@ func _op121(top: float) -> Dictionary:
 func _world121(seed_value: int, top: float) -> Dictionary:
 	return { "local_player_id": "p", "seed": seed_value, "chunks": { "0,0": _op121(top), "40,0": _op121(top) } }
 
-func _slice121(name: String) -> PersistenceSlice:
-	var dir := _fresh_region_dir(name)
+func _slice121(slice_name: String) -> PersistenceSlice:
+	var dir := _fresh_region_dir(slice_name)
 	var slice := PersistenceSlice.new()
 	add_child(slice)
 	slice.server_save_dir = dir
@@ -20796,8 +20907,8 @@ func _test_p121_fault_at_each_step() -> void:
 		var hits := [0]
 		var step: String = s[0]
 		var nth: int = s[1]
-		slice.fault = func(name: String) -> bool:
-			if name != step:
+		slice.fault = func(file_name: String) -> bool:
+			if file_name != step:
 				return false
 			hits[0] += 1
 			return hits[0] == nth
@@ -20814,7 +20925,7 @@ func _test_p121_fault_at_each_step() -> void:
 func _test_p121_region_stage_fault() -> void:
 	var slice := _slice121("test_p121_stage")
 	assert_eq(slice.save_world(_world121(1, 2.0), false), OK, "old world")
-	slice.fault = func(name: String) -> bool: return name == "region_tmp"
+	slice.fault = func(file_name: String) -> bool: return file_name == "region_tmp"
 	assert_true(slice.save_world(_world121(2, 3.0), false) != OK, "the save reports the failure")
 	slice.fault = Callable()
 	assert_eq(_state121(slice), [1, [2.0, 2.0]], "world.json and the regions are unchanged")
@@ -21283,8 +21394,6 @@ func _test_waystone_exact_landing_far_out() -> void:
 	var way: WaystoneSlice = rig["way"]
 	var st: StationSlice = rig["stations"]
 	var reg: PlayerRegistry = rig["reg"]
-	var now: Array = rig["now"]
-	var where: Dictionary = rig["where"]
 	var moved: Array = rig["moved"]
 	var far := { "chunk": Vector2i(1500000, 3), "local": Vector3(7.3125, 12.5, 0.0625) }
 	var a := st.place_station("waystone", Vector3(0.5, 1.0, 0.5))
@@ -21400,15 +21509,15 @@ func _test_waystone_map_leftovers() -> void:
 	var MapWindowScript := preload("res://src/ui/map_window.gd")
 	var win: Control = MapWindowScript.new()
 	win.size = Vector2(400, 400)
-	var mini := Minimap.new()
-	win.minimap = mini
+	var minimap := Minimap.new()
+	win.minimap = minimap
 	add_child(win)
-	add_child(mini)
-	mini.add_waypoint("Camp", WorldPos.from_world(10.0, 0.0, 10.0))
-	assert_true(mini.rename_waypoint(0, "Base camp"), "a waypoint can be renamed")
-	assert_eq(str(mini.get_waypoints()[0]["name"]), "Base camp", "and the new name is kept")
-	assert_false(mini.rename_waypoint(0, "   "), "an empty name changes nothing")
-	assert_false(mini.rename_waypoint(5, "x"), "nor does an unknown index")
+	add_child(minimap)
+	minimap.add_waypoint("Camp", WorldPos.from_world(10.0, 0.0, 10.0))
+	assert_true(minimap.rename_waypoint(0, "Base camp"), "a waypoint can be renamed")
+	assert_eq(str(minimap.get_waypoints()[0]["name"]), "Base camp", "and the new name is kept")
+	assert_false(minimap.rename_waypoint(0, "   "), "an empty name changes nothing")
+	assert_false(minimap.rename_waypoint(5, "x"), "nor does an unknown index")
 	# A right-click past the globe's limb names no place: it says so instead of doing nothing.
 	win.set_planet(true)
 	var heard: Array = []
@@ -21416,7 +21525,7 @@ func _test_waystone_map_leftovers() -> void:
 	win.right_click(Vector2(win._radius_px() * 1.5, 0.0))
 	assert_eq(heard.size(), 1, "a right-click off the planet emits a notice")
 	win.free()
-	mini.free()
+	minimap.free()
 
 ## Phase 125 — a world-seed change writes the old seed's explored set and waypoints before clearing them.
 func _test_minimap_seed_change_saves_old_seed() -> void:
@@ -21476,9 +21585,11 @@ func _test_p126_host_keeps_clears() -> void:
 	var rig := _p126_host_rig()
 	var t: Node = rig["t"]
 	for i in 3000:
+		@warning_ignore("integer_division")
 		t._record_cleared(Vector2i(i % 60, i / 60), 1 + i % 7)
 	var kept := 0
 	for i in 3000:
+		@warning_ignore("integer_division")
 		var c := Vector2i(i % 60, i / 60)
 		var rec := ChunkRecordsScript.get_record(c)
 		var held: Dictionary = t._cleared_local.get(c, {})
@@ -21493,6 +21604,7 @@ func _test_p126_host_keeps_clears() -> void:
 	t.record_writer = Callable()
 	t._cleared_local.clear()
 	for i in 3000:
+		@warning_ignore("integer_division")
 		t._record_cleared(Vector2i(i % 60, 100 + i / 60), 3)
 	assert_eq(t._cleared_local.size(), 3000, "unpinnable host clears are all held, past the client cap")
 	_p126_free(rig)
@@ -21604,8 +21716,11 @@ func _test_p126_client_scope_and_ghost() -> void:
 	var circ := TerrainSlice.circumference_chunks()
 	for r in [3, 5, 8, 13]:
 		t.clear_id_range = r
+		@warning_ignore("integer_division")
 		t.spawn_for_chunk(Vector2i(-circ / 2, 0))
+		@warning_ignore("integer_division")
 		assert_true(t._near_loaded_chunk(Vector2i(circ / 2 - 1, 0)), "range %d: a chunk across the seam is near" % r)
+		@warning_ignore("integer_division")
 		t.despawn_for_chunk(Vector2i(-circ / 2, 0))
 	t.free()
 	ChunkRecordsScript.clear()
@@ -21622,15 +21737,15 @@ func _test_p126_deep_edit_agrees() -> void:
 	t.free()
 	var vox := VoxelSlice.new()
 	var deep := root_y - 8.0
-	vox._edits[vox._tile_key(tile)] = [{ "op": "remove", "bottom": deep - 0.125, "top": deep },
+	vox._edits[VoxelSlice._tile_key(tile)] = [{ "op": "remove", "bottom": deep - 0.125, "top": deep },
 		{ "op": "deplete", "vein": 1, "taken": 1 }]
-	vox._edits_by_chunk[vox._chunk_key(vox._tile_to_chunk(tile))] = { vox._tile_key(tile): true }
+	vox._edits_by_chunk[VoxelSlice._chunk_key(VoxelSlice._tile_to_chunk(tile))] = { VoxelSlice._tile_key(tile): true }
 	var t2 := _tree_pin_rig(chunk)
 	t2.voxel_slice = vox
 	t2.spawn_for_chunk(chunk)
 	assert_false(t2.get_tree_record(str(victim["tree_id"])).is_empty(), "on reload the same tree is kept by the deep edit")
 	t2.despawn_for_chunk(chunk)
-	vox._edits[vox._tile_key(tile)] = [{ "op": "add", "bottom": root_y, "top": root_y + 0.125, "material": "Stone" }]
+	vox._edits[VoxelSlice._tile_key(tile)] = [{ "op": "add", "bottom": root_y, "top": root_y + 0.125, "material": "Stone" }]
 	t2.spawn_for_chunk(chunk)
 	assert_true(t2.get_tree_record(str(victim["tree_id"])).is_empty(), "a shallow edit on the tile clears it on reload")
 	t2.free()
@@ -21663,9 +21778,9 @@ func _test_p126_seam_wrap_module() -> void:
 			if not f.ends_with(".gd") or f == "seam_wrap.gd":
 				continue
 			var src := FileAccess.get_file_as_string(dir + "/" + f)
-			for name in ["_wrapped_delta", "_world_tiles(", "_world_metres("]:
-				if src.contains("func " + name) or src.contains("static func " + name):
-					offenders.append(dir + "/" + f + ":" + name)
+			for probe in ["_wrapped_delta", "_world_tiles(", "_world_metres("]:
+				if src.contains("func " + probe) or src.contains("static func " + probe):
+					offenders.append(dir + "/" + f + ":" + probe)
 	assert_eq(offenders, [], "no module keeps its own copy of the seam helpers")
 
 func _test_p126_normalize_gen_drops_bad_entries() -> void:
@@ -21719,6 +21834,7 @@ func _test_p127_records() -> void:
 	# #306: snapshot_near on a big table splits no keys
 	ChunkRecordsScript.clear()
 	for i in 100000:
+		@warning_ignore("integer_division")
 		ChunkRecordsScript.set_record(Vector2i(i % 1000, i / 1000), _p127_rec())
 	var splits := ChunkRecordsScript.key_splits
 	var snap := ChunkRecordsScript.snapshot_near(Vector2i(500, 50), 3, 0)
@@ -21793,7 +21909,7 @@ func _test_p127_flush_final_and_compact() -> void:
 	n._role = NetworkingSlice.Role.HOST
 	n.set_transport(MemoryTransport.new([5]))
 	var seen: Array = []
-	var cb := func(peer: int, pos: Vector3) -> void: seen.append(pos)
+	var cb := func(_peer: int, pos: Vector3) -> void: seen.append(pos)
 	GameBus.remote_player_state.connect(cb)
 	var d0 := WorldPos.compact_decodes
 	n._route_c2h(5, { "type": "player_moved", "peer_id": 5, "pk": good })
@@ -21851,7 +21967,6 @@ func _test_p127_streamer_and_txn() -> void:
 	var tmp := FileAccess.open(path + ".tmp", FileAccess.WRITE)
 	tmp.store_string("newer")
 	tmp.close()
-	var fail_world := func(step: String) -> bool: return step == "world_rename"
 	var ops := [{ "path": path, "tmp": path + ".tmp", "kind": "region" }, { "path": d + "w.json", "tmp": "", "kind": "world" }]
 	assert_eq(SaveTxn121.commit(ops, d + "j", Callable()), OK, "the commit lands")
 	assert_eq(FileAccess.get_file_as_string(path), "newer", "the new content is live")
@@ -21872,7 +21987,7 @@ func _test_p127_streamer_and_txn() -> void:
 	# a region failing past the bound escalates: world.json is written
 	var slice := _slice121("test_p127_escalate")
 	var chunks := { "1,1": { "gen": _p127_rec() } }
-	var bad := RegionStoreScript.new(slice.server_save_dir + "regions/")
+	var _bad := RegionStoreScript.new(slice.server_save_dir + "regions/")
 	_p114_corrupt_region(slice.region_store, Vector2i.ZERO)
 	for i in RegionStoreScript.MAX_REGION_FAILURES - 1:
 		assert_true(slice.save_world({ "seed": 3, "chunks": chunks }) != OK, "a failing region fails the save")
@@ -21957,6 +22072,7 @@ func _test_weather_distribution() -> void:
 	var seen := {}
 	var expect := {}
 	for i in N:
+		@warning_ignore("integer_division")
 		var chunk := Vector2i((i % 100) * 64 + 1, (i / 100 - 50) * 64)
 		var hour := i * 5
 		var state := w.weather_at(chunk, hour)
@@ -21977,6 +22093,7 @@ func _test_weather_distribution() -> void:
 	seen.clear()
 	expect.clear()
 	for i in N:
+		@warning_ignore("integer_division")
 		var chunk := Vector2i((i % 100) * 64 + 1, (i / 100 - 50) * 64)
 		var hour := i * 5
 		var state := v.weather_at(chunk, hour)

@@ -31,6 +31,12 @@ const CAMERA_DISTANCE_MIN  := 4.0
 const CAMERA_DISTANCE_MAX  := 24.0
 const CAMERA_PIVOT_HEIGHT  := 2.0   # vertical point the camera orbits around
 const ZOOM_STEP := 1.5             # world units per scroll tick
+## The camera eases toward the body's height instead of riding it rigidly, so a step up or
+## down a block glides rather than jolting the whole view. Rate is 1/s (exponential, about
+## 95% of a step covered in 3 / rate seconds); a jump bigger than CAMERA_SNAP_DISTANCE
+## (a respawn, a teleport) snaps instead of sweeping across the world.
+const CAMERA_Y_SMOOTH := 10.0
+const CAMERA_SNAP_DISTANCE := 3.0
 const SYNC_INTERVAL := 30     # physics ticks between network sync broadcasts
 const ATTACK_RANGE := 3.0     # metres — melee interaction radius
 ## Metres — how close the player must be to tame (Phase 35). Must match
@@ -71,6 +77,8 @@ const MAX_HP := PlayerRules.MAX_HP
 var _body:   CharacterBody3D
 var _camera: Camera3D
 var _pivot:  Node3D           # horizontal yaw pivot under _body
+var _cam_arm: Node3D          # pitch arm under _pivot; its Y carries the camera's height smoothing
+var _cam_follow_y: float = NAN  # the height the camera follows (eased body Y); NAN until the first frame
 var _hp:     float = MAX_HP
 var _vel:    Vector3 = Vector3.ZERO
 var _sync_tick: int = 0
@@ -188,8 +196,8 @@ static func status_line(effects: Array) -> String:
 	var parts: PackedStringArray = []
 	for e in effects:
 		var id := str(e.get("effect", ""))
-		var name := I18n.t("status." + id) if I18n.has_key("status." + id) else id.replace("_", " ")
-		parts.append(I18n.t("hud.status", [name, ceili(float(e.get("remaining", 0.0)))]))
+		var label := I18n.t("status." + id) if I18n.has_key("status." + id) else id.replace("_", " ")
+		parts.append(I18n.t("hud.status", [label, ceili(float(e.get("remaining", 0.0)))]))
 	return ", ".join(parts)
 
 ## Phase 131 — re-render the HUD text in the new language.
@@ -284,9 +292,26 @@ func _process(delta: float) -> void:
 		_status_refresh = 0.0
 		_update_status_label()
 	if render_visuals:
+		_update_camera_height(delta)
 		_update_aim()
 		_update_station_preview()
 	_tick_ghosts(delta)
+
+## Ease the camera arm toward the body's height (see CAMERA_Y_SMOOTH). The arm is a child of
+## the body, so the offset it carries is the eased height minus the body's real height.
+func _update_camera_height(delta: float) -> void:
+	if _body == null or _cam_arm == null:
+		return
+	var body_y := _body.global_position.y
+	_cam_follow_y = follow_height(_cam_follow_y, body_y, delta)
+	_cam_arm.position.y = CAMERA_PIVOT_HEIGHT + (_cam_follow_y - body_y)
+
+## One frame of the camera's height smoothing: `current` eased toward `target` over `delta`
+## seconds. Snaps when `current` is unset (NAN) or further than CAMERA_SNAP_DISTANCE away.
+static func follow_height(current: float, target: float, delta: float) -> float:
+	if is_nan(current) or absf(target - current) > CAMERA_SNAP_DISTANCE:
+		return target
+	return lerpf(current, target, 1.0 - exp(-CAMERA_Y_SMOOTH * delta))
 
 func _input(event: InputEvent) -> void:
 	# The look is owned here, not in `_unhandled_input`: releasing the button over a window must still
@@ -649,6 +674,7 @@ func _build_body() -> void:
 	cam_arm.position = Vector3(0, CAMERA_PIVOT_HEIGHT, 0)
 	cam_arm.rotation_degrees.x = CAMERA_PITCH
 	_pivot.add_child(cam_arm)
+	_cam_arm = cam_arm
 
 	# Camera sits back along the arm's +Z (behind/above the pivot) so it looks
 	# down at the player from an isometric angle. Zoom adjusts this distance.
@@ -870,7 +896,6 @@ func _try_attack() -> void:
 	var target_id: String = creature_slice.nearest_creature(get_position(), ATTACK_RANGE)
 	if target_id == "":
 		return   # no creature in range
-	var creature_id: String = creature_slice.get_instance_creature_id(target_id)
 	GameBus.combat_round_requested.emit("player", target_id)
 
 # ---------------------------------------------------------------------------

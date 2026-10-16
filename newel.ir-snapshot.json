@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:08ee3556390ebd4ec184b9c7f16e55c7983922a6e1d8d19c2dcc29b8a4441e09",
+  "schemaHash": "sha256:35e4831b20644f66fe53c76c850e3878f82b472b33c35d086ce45e6187cb6123",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -25558,7 +25558,7 @@
         "tags": [
           "skeleton"
         ],
-        "description": "Bipedal humanoid bone structure with two arms, two legs, and a head. The shared rig for humans and humanoid races; carries the full set of equipment sockets (head, face, chest, back, cape, weapon, shield, hips, mount).",
+        "description": "Bipedal humanoid bone structure with two arms, two legs, and a head. Each limb bends in the middle: Forearm is the elbow, Shin the knee. The shared rig for humans and humanoid races; carries the full set of equipment sockets (head, face, chest, back, cape, weapon, shield, hips, mount).",
         "goal": "Provide a rig that supports the complete humanoid equipment and attachment set",
         "fields": {
           "family": {
@@ -25639,16 +25639,24 @@
                 "parent": "Hips"
               },
               {
-                "name": "Foot_L",
+                "name": "Shin_L",
                 "parent": "Leg_L"
+              },
+              {
+                "name": "Foot_L",
+                "parent": "Shin_L"
               },
               {
                 "name": "Leg_R",
                 "parent": "Hips"
               },
               {
-                "name": "Foot_R",
+                "name": "Shin_R",
                 "parent": "Leg_R"
+              },
+              {
+                "name": "Foot_R",
+                "parent": "Shin_R"
               }
             ]
           },
@@ -25753,7 +25761,12 @@
               ],
               "Leg_L": [
                 -0.1,
-                -0.85,
+                -0.45,
+                0
+              ],
+              "Shin_L": [
+                0,
+                -0.4,
                 0
               ],
               "Foot_L": [
@@ -25763,7 +25776,12 @@
               ],
               "Leg_R": [
                 0.1,
-                -0.85,
+                -0.45,
+                0
+              ],
+              "Shin_R": [
+                0,
+                -0.4,
                 0
               ],
               "Foot_R": [

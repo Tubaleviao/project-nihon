@@ -472,8 +472,8 @@ func _step_handshake() -> void:
 ## test's.
 func _step_snapshot_complete() -> void:
 	if _role == "host":
-		var ok: bool = await _await_until(func(): return _root._networking._next_snapshot_id >= 1, STEP_TIMEOUT_SECS)
-		_report("snapshot_complete", verdict(ok, true), "reassembled" if ok else "no_snapshot_sent")
+		var snap_ok: bool = await _await_until(func(): return _root._networking._next_snapshot_id >= 1, STEP_TIMEOUT_SECS)
+		_report("snapshot_complete", verdict(snap_ok, true), "reassembled" if snap_ok else "no_snapshot_sent")
 		return
 	var ok: bool = await _await_until(
 		func(): return not _root._snapshot_pending and _root._networking._snapshot_buffer.is_empty() and not _root._voxel.get_heightmaps().is_empty(),
@@ -637,8 +637,8 @@ func _step_rate_bucket() -> void:
 ## same global bus, which is exactly the Phase 37 clobber this pins.
 func _step_inventory_owner() -> void:
 	if _role == "host":
-		var owner := _bound_id()
-		if owner == "":
+		var owner_pid := _bound_id()
+		if owner_pid == "":
 			# The peer id and the size of the live transport map are in the detail on
 			# purpose: "no owner" alone cannot distinguish a scenario bug (asking the wrong
 			# peer) from a dead connection (the mapping this peer id belonged to is gone).
@@ -651,10 +651,10 @@ func _step_inventory_owner() -> void:
 		# nothing to do with the sync under test. What the step has to show is that the
 		# sync changed the OWNER's pack and left this one alone.
 		var before: int = int(_root._inventory.get_contents().get(PROBE_ITEM, 0))
-		GameBus.inventory_synced.emit(owner, { PROBE_ITEM: 3 }, {})
-		var ok: bool = await _await_until(func(): return true, 1.0)
+		GameBus.inventory_synced.emit(owner_pid, { PROBE_ITEM: 3 }, {})
+		var settled: bool = await _await_until(func(): return true, 1.0)
 		var after: int = int(_root._inventory.get_contents().get(PROBE_ITEM, 0))
-		_report("inventory_owner", verdict(ok and after == before, true),
+		_report("inventory_owner", verdict(settled and after == before, true),
 			"owner-only" if after == before else "host_bucket_clobbered-%d-to-%d" % [before, after])
 		return
 	var ok: bool = await _await_until(func(): return _root._inventory.get_contents().has(PROBE_ITEM), STEP_TIMEOUT_SECS)
@@ -667,12 +667,12 @@ func _step_inventory_owner() -> void:
 func _step_research_points_owner() -> void:
 	var want: int = int(_root._technology.points_for("craft")) + int(_root._technology.points_for("firstCraftOfRecipe"))
 	if _role == "host":
-		var owner := _bound_id()
-		if owner == "":
+		var owner_pid := _bound_id()
+		if owner_pid == "":
 			_report("research_points_owner", "fail", "no_owner-peer%d" % _bound_peer)
 			return
 		var before: int = int(_root._technology.get_points())
-		var granted: int = int(_root._technology.note_craft("RecipeFerriteIngot", owner))
+		var granted: int = int(_root._technology.note_craft("RecipeFerriteIngot", owner_pid))
 		var ok: bool = await _await_until(func(): return true, 1.0)
 		var after: int = int(_root._technology.get_points())
 		_report("research_points_owner", verdict(ok and granted == want and after == before, true),
@@ -783,9 +783,9 @@ func _step_waystone_travel() -> void:
 	if _role == "host":
 		var target := _bound_id()
 		var peer := _peer_id()
-		var ready: bool = await _await_until(func(): return not _root._networking.get_last_known_exact(peer).is_empty(), STEP_TIMEOUT_SECS)
+		var got_exact: bool = await _await_until(func(): return not _root._networking.get_last_known_exact(peer).is_empty(), STEP_TIMEOUT_SECS)
 		var seen: Dictionary = _root._networking.get_last_known_exact(peer)
-		if not ready or seen.is_empty():
+		if not got_exact or seen.is_empty():
 			_report("waystone_travel", "fail", "no_client_position")
 			return
 		var base: Vector3 = WorldPos.to_scene(seen, seen["chunk"])
@@ -833,12 +833,12 @@ func _step_non_admin_refused() -> void:
 	if _role == "host":
 		var target := _bound_id()
 		var inv: Node = _root._registry.get_inventory(target)
-		var before: int = inv.get_item_count(PROBE_ITEM) if inv != null else 0
-		var ok: bool = await _await_until(func(): return not _chat_line("system", "key:chat.admin_only", target).is_empty(), STEP_TIMEOUT_SECS)
+		var count_before: int = inv.get_item_count(PROBE_ITEM) if inv != null else 0
+		var refused: bool = await _await_until(func(): return not _chat_line("system", "key:chat.admin_only", target).is_empty(), STEP_TIMEOUT_SECS)
 		await _await_settle(1.0)
-		var after: int = inv.get_item_count(PROBE_ITEM) if inv != null else 0
-		_report("non_admin_refused", verdict(ok and before == after, true),
-			"refused-nothing-created" if (ok and before == after) else "not_refused-ok%d-before%d-after%d" % [int(ok), before, after])
+		var count_after: int = inv.get_item_count(PROBE_ITEM) if inv != null else 0
+		_report("non_admin_refused", verdict(refused and count_before == count_after, true),
+			"refused-nothing-created" if (refused and count_before == count_after) else "not_refused-ok%d-before%d-after%d" % [int(refused), count_before, count_after])
 		return
 	var before: int = int(_root._inventory.get_contents().get(PROBE_ITEM, 0))
 	_root._chat.submit("/give %s 5" % PROBE_ITEM)
@@ -883,18 +883,18 @@ func _step_equipment_recorded() -> void:
 		_report("equipment_recorded", "fail", "no_equippable_item")
 		return
 	if _role == "host":
-		var owner := _bound_id()
+		var owner_pid := _bound_id()
 		# A peer can only wear what its own bag holds: grant the item, then tell the owner
 		# (the client waits on that sync before it claims the set).
-		var bag: Node = _root._registry.get_inventory(owner)
+		var bag: Node = _root._registry.get_inventory(owner_pid)
 		if bag == null or not bag.add_item(item, 1):
 			_report("equipment_recorded", "fail", "grant_failed")
 			return
-		GameBus.inventory_synced.emit(owner, bag.get_contents(), {})
+		GameBus.inventory_synced.emit(owner_pid, bag.get_contents(), {})
 		var ok: bool = await _await_until(
-			func(): return _root._registry.get_equipment(owner) == { slot: item }, STEP_TIMEOUT_SECS)
+			func(): return _root._registry.get_equipment(owner_pid) == { slot: item }, STEP_TIMEOUT_SECS)
 		_report("equipment_recorded", verdict(ok, true),
-			"filtered" if ok else "not_recorded-%s" % str(_root._registry.get_equipment(owner)))
+			"filtered" if ok else "not_recorded-%s" % str(_root._registry.get_equipment(owner_pid)))
 		return
 	# The client cannot tell the host's grant from gear its own bag already held (a restored
 	# record), so waiting on its own pack is no barrier: a claim sent before the host grants
@@ -1029,13 +1029,13 @@ func _step_reconnect_alive() -> void:
 		var resolved_ok: bool = await _await_until(
 			func(): return _root._registry.get_hp(target) == PlayerSlice.MAX_HP, STEP_TIMEOUT_SECS)
 		var snapshot_resolved: float = float(_root._registry.get_player_data(target).get("hp", -1.0))
-		var good := ok and resolved_ok and snapshot_resolved == PlayerSlice.MAX_HP
+		var peer_back := ok and resolved_ok and snapshot_resolved == PlayerSlice.MAX_HP
 		# The failure token says WHICH half of "the peer came back" was missing, because
 		# "still_down" alone cannot distinguish the three ways it can be false: the peer
 		# never rejoined (`live0`), it rejoined as a DIFFERENT player (`same0`), or it
 		# rejoined but its deadline did not resolve on the reader this step reads.
-		_report("reconnect_alive", verdict(good, true),
-			"alive-after-reconnect" if good else "still_down-live%d-same%d-online%d-buf%d" % [
+		_report("reconnect_alive", verdict(peer_back, true),
+			"alive-after-reconnect" if peer_back else "still_down-live%d-same%d-online%d-buf%d" % [
 				int(_live_bound_id() != ""), int(_live_bound_id() == target),
 				int(_root._registry.is_online(target)), _root._networking._snapshot_buffer.size()])
 		return
@@ -1098,7 +1098,7 @@ func _step_disconnect_evicts() -> void:
 		# as a new player is exactly the failure this step exists to catch.
 		_rediscover_peer()
 		var live := _live_bound_id()
-		var ok: bool = await _await_until(
+		var online: bool = await _await_until(
 			func(): return _root._registry.is_online(target) and _root._registry.get_record(target).size() > 0,
 			STEP_TIMEOUT_SECS)
 		var buffer_empty: bool = _root._networking._snapshot_buffer.is_empty()
@@ -1109,10 +1109,10 @@ func _step_disconnect_evicts() -> void:
 		for pid in _root._networking._player_ids:
 			if int(pid) != _peer_id():
 				ghosts += 1
-		var good := ok and buffer_empty and same_identity and ghosts == 0
+		var good := online and buffer_empty and same_identity and ghosts == 0
 		_report("disconnect_evicts", verdict(good, true),
 			"evicted" if good else "stale-transport_state-online%d-buffer%d-same%d-ghosts%d" % [
-				int(ok), int(buffer_empty), int(same_identity), ghosts])
+				int(online), int(buffer_empty), int(same_identity), ghosts])
 		return
 	var resumed := str(_root._networking.claimed_player_id)
 	var ok: bool = await _await_until(
@@ -1252,22 +1252,22 @@ func _step_weather_override() -> void:
 ## a fixed clock (so the two ticks are exactly 2 s apart: 10 damage) and restores the engine clock after.
 func _step_status_effect() -> void:
 	if _role == "host":
-		var owner := _bound_id()
-		if owner == "":
+		var owner_pid := _bound_id()
+		if owner_pid == "":
 			_report("status_effect", "fail", "no_owner-peer%d" % _bound_peer)
 			return
 		# An earlier step may have downed this peer; start from a known full body (the host's own record).
 		var base: float = float(PlayerSlice.MAX_HP)
-		_root._registry.record_simulated_hp(owner, base)
+		_root._registry.record_simulated_hp(owner_pid, base)
 		var t0: float = float(Time.get_ticks_msec()) / 1000.0
 		_root.status_clock = func() -> float: return t0
-		_root._status.apply(owner, "heat_burn", t0)
+		_root._status.apply(owner_pid, "heat_burn", t0)
 		_root._combat_wiring.tick_status_effects()
 		_root.status_clock = func() -> float: return t0 + 2.0
 		_root._combat_wiring.tick_status_effects()
 		_root.status_clock = Callable()
-		var ok: bool = await _await_until(func(): return true, 1.0)
-		var hp_after: float = _root._registry.get_hp(owner)
+		var _ok: bool = await _await_until(func(): return true, 1.0)
+		var hp_after: float = _root._registry.get_hp(owner_pid)
 		var lowered: bool = absf(hp_after - (base - 10.0)) < 0.01
 		var host_clean: bool = _root._player.status_effects_active().is_empty()
 		_report("status_effect", verdict(lowered and host_clean, true),
@@ -1284,16 +1284,16 @@ const PARALYSIS_WALK := Vector3(50.0, 0.0, 0.0)
 func _step_paralysis_holds() -> void:
 	var net: Node = _root._networking
 	if _role == "host":
-		var owner := _bound_id()
-		if owner == "" or not net.has_last_known_state(_bound_peer):
+		var owner_pid := _bound_id()
+		if owner_pid == "" or not net.has_last_known_state(_bound_peer):
 			_report("paralysis_holds", "fail", "no_owner_or_state-peer%d" % _bound_peer)
 			return
 		var base: Vector3 = net.get_last_known_state(_bound_peer)
-		_root._status.apply(owner, "paralysis", _root._combat_wiring._status_now())
+		_root._status.apply(owner_pid, "paralysis", _root._combat_wiring._status_now())
 		_root._combat_wiring.tick_status_effects()
 		await _await_until(func(): return false, 1.5)
 		var held: bool = net.get_last_known_state(_bound_peer).distance_to(base) < 0.5
-		_root._status.clear(owner)
+		_root._status.clear(owner_pid)
 		_root._combat_wiring.tick_status_effects()
 		_report("paralysis_holds", verdict(held, true), "held" if held else "moved-%.1fm" % net.get_last_known_state(_bound_peer).distance_to(base))
 		return
@@ -1327,11 +1327,11 @@ func _step_spawn_near_friend() -> void:
 			return
 		var fresh := _new_identity(old_id)
 		var arr: Variant = _root._registry.get_record(fresh).get("position", [])
-		var d: float = 1.0e12
+		var dist: float = 1.0e12
 		if arr is Array and (arr as Array).size() >= 3:
-			d = Vector2(float(arr[0]), float(arr[2])).distance_to(friend_pos)
-		_report("spawn_near_friend", verdict(d <= radius, true),
-			"near-friend" if d <= radius else "placed_%dm_away" % int(d))
+			dist = Vector2(float(arr[0]), float(arr[2])).distance_to(friend_pos)
+		_report("spawn_near_friend", verdict(dist <= radius, true),
+			"near-friend" if dist <= radius else "placed_%dm_away" % int(dist))
 		return
 	var old_handle := str(_root._networking.claimed_handle)
 	_root._networking.disconnect_all()

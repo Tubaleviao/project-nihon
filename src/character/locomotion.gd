@@ -28,10 +28,18 @@ const RUN_SPEED := 3.0
 const ATTACK_DURATION := 0.5
 ## Seconds the landing pose holds before returning to the locomotion state.
 const LAND_DURATION := 0.25
+## Seconds a body must be airborne and moving down before it reads as falling. Walking
+## off a block drops the body for a fraction of a second; that is a step, not a fall, so
+## the walk/run pose holds through it instead of flashing FALL and then LAND.
+const FALL_GRACE := 0.4
+## Downward speed (m/s) that reads as falling at once, grace or not: about 0.8 m of free
+## fall, more than a step down.
+const FALL_SPEED := 4.0
 
 var _state: int = State.IDLE
 var _timer: float = 0.0
 var _speed: float = 0.0
+var _airborne: float = 0.0
 
 ## Advance the machine one tick. `speed` is horizontal speed (m/s), `grounded`
 ## whether the body is on the floor, `velocity_y` the vertical velocity (m/s,
@@ -50,12 +58,15 @@ func update(speed: float, grounded: bool, velocity_y: float, delta: float) -> in
 		if _timer > 0.0:
 			return _state
 
-	# Airborne: falling only while moving downward. Rising (a jump) keeps the
-	# previous ground state so a hop does not flicker to FALL.
+	# Airborne: falling only while moving downward, and only once the drop lasts
+	# longer than a step down (FALL_GRACE) or is fast (FALL_SPEED). Rising (a jump)
+	# keeps the previous ground state so a hop does not flicker to FALL.
 	if not grounded:
-		if velocity_y < -0.1:
+		_airborne += delta
+		if is_falling(_airborne, velocity_y):
 			_set_state(State.FALL)
 		return _state
+	_airborne = 0.0
 
 	# Just landed from a fall: play a brief LAND pose.
 	if _state == State.FALL:
@@ -65,6 +76,13 @@ func update(speed: float, grounded: bool, velocity_y: float, delta: float) -> in
 
 	_set_state(_ground_state(speed))
 	return _state
+
+## True when a body airborne for `airborne` seconds at vertical velocity `velocity_y`
+## is falling rather than stepping down a block.
+static func is_falling(airborne: float, velocity_y: float) -> bool:
+	if velocity_y >= -0.1:
+		return false
+	return airborne >= FALL_GRACE or velocity_y <= -FALL_SPEED
 
 ## Locomotion state for a grounded body at `speed`.
 func _ground_state(speed: float) -> int:
@@ -90,6 +108,7 @@ func trigger_death() -> void:
 func reset() -> void:
 	_set_state(State.IDLE)
 	_timer = 0.0
+	_airborne = 0.0
 
 func get_state() -> int:
 	return _state

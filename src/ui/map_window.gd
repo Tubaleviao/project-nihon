@@ -222,8 +222,8 @@ func pan(rel: Vector2) -> void:
 		var radius := maxf(_radius_px(), 0.000001)
 		_glat = clampf(_glat + rel.y / radius, -GLOBE_LAT_MAX, GLOBE_LAT_MAX)
 		_glon = wrapf(_glon - rel.x / (radius * maxf(cos(_glat), 0.2)), -PI, PI)
-		var c := float(TerrainSlice.circumference_chunks())
-		_set_net_center(_glon / TAU * c, -_glat / (PI * 0.5) * (c * 0.25))
+		var circ := float(TerrainSlice.circumference_chunks())
+		_set_net_center(_glon / TAU * circ, -_glat / (PI * 0.5) * (circ * 0.25))
 		queue_redraw()
 		return
 	var k := maxf(_k(), 0.000001)
@@ -647,9 +647,9 @@ func _draw_net(sz: Vector2) -> void:
 				var biome := tiles.best_biome(f, level, i, j)
 				if biome == "":
 					continue
-				var tr := MapMath.tile_rect(level, i, j)
-				var a0 := MapMath.local_of_face_uv(pl, f, tr.position.x, tr.position.y)
-				var a1 := MapMath.local_of_face_uv(pl, f, tr.end.x, tr.end.y)
+				var tile_r := MapMath.tile_rect(level, i, j)
+				var a0 := MapMath.local_of_face_uv(pl, f, tile_r.position.x, tile_r.position.y)
+				var a1 := MapMath.local_of_face_uv(pl, f, tile_r.end.x, tile_r.end.y)
 				draw_rect(_screen_rect(origin, cx + a0[0], cy + a0[1], cx + a1[0], cy + a1[1]), _biome_color(biome))
 		draw_rect(_screen_rect(origin, cx - 1.0, cy - 1.0, cx + 1.0, cy + 1.0), SEAM, false, 1.0)
 
@@ -720,10 +720,10 @@ func _draw_globe(sz: Vector2) -> void:
 
 ## A tile's four corners on screen, a corner behind the globe pushed to the rim; empty when the
 ## whole tile is behind.
-func _globe_quad(frame: Array, origin: Vector2, radius: float, f: int, tr: Rect2) -> PackedVector2Array:
+func _globe_quad(frame: Array, origin: Vector2, radius: float, f: int, tile_r: Rect2) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	var front := false
-	for corner in [tr.position, Vector2(tr.end.x, tr.position.y), tr.end, Vector2(tr.position.x, tr.end.y)]:
+	for corner in [tile_r.position, Vector2(tile_r.end.x, tile_r.position.y), tile_r.end, Vector2(tile_r.position.x, tile_r.end.y)]:
 		var q := MapMath.globe_project(frame, MapMath.dir_of_face(f, corner.x, corner.y))
 		var p := Vector2(q.x, q.y)
 		if q.z > 0.0:

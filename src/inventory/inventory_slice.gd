@@ -153,10 +153,10 @@ func _ready() -> void:
 ## The local bucket answers both of its literals — `""` and `"player"` name the same
 ## inventory (see LOCAL_OWNER_LITERALS) — and nothing else: a peer's sync is that
 ## peer's alone.
-func is_owned_by(owner: String) -> bool:
-	if owner == owner_id:
+func is_owned_by(candidate: String) -> bool:
+	if candidate == owner_id:
 		return true
-	return owner_id == "" and owner in LOCAL_OWNER_LITERALS
+	return owner_id == "" and candidate in LOCAL_OWNER_LITERALS
 
 ## Client-side: replace local contents with a host-authoritative inventory.
 ## `durabilities` (item_id -> Array of per-instance points) carries condition in
@@ -186,11 +186,11 @@ func replace_contents(contents: Dictionary, durabilities: Dictionary = {}) -> vo
 	_is_full = false
 	GameBus.inventory_changed.emit()
 
-func _on_inventory_synced(owner_id: String, contents: Dictionary, durabilities: Dictionary = {}) -> void:
+func _on_inventory_synced(synced_owner: String, contents: Dictionary, durabilities: Dictionary = {}) -> void:
 	# Phase 37 — an inventory sync names its owner: applying it to every inventory in
 	# the process clobbered the local player's pack, every peer's, and the demo
 	# merchant's with whoever's contents happened to be synced.
-	if not is_owned_by(owner_id):
+	if not is_owned_by(synced_owner):
 		return
 	replace_contents(contents, durabilities)
 

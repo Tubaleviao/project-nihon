@@ -212,8 +212,10 @@ static func niche_quantiles(samples: int) -> Array:
 	var raws: Array = []
 	raws.resize(samples)
 	for i in samples:
+		@warning_ignore("integer_division")
 		var h := _mix(i % 97 + 1, i, i / 97, 7)
 		var px := float(h % 100000) / 100000.0 * float(circ)
+		@warning_ignore("integer_division")
 		var pz := float(_mix(i % 97 + 1, i, i / 97, 8) % 20000 - 10000)
 		raws[i] = _niche_raw(i % 97 + 1, Vector2(px, pz), 0, circ)
 	raws.sort()
@@ -281,6 +283,7 @@ static func biome_for_chunk(seed_v: int, chunk_pos: Vector2i, keys: Array, lat_d
 		return ""   # also guards the `% keys.size()` below
 	# The 3x3 cell search below is exact only while a feature point stays within ~0.8 of a
 	# cell of its centre; a larger JITTER could put the true nearest point one ring further out.
+	@warning_ignore("assert_always_true")
 	assert(JITTER <= 0.8, "ClimateField.JITTER too large for the 3x3 nearest-point search")
 	if not _warmed and OS.get_thread_caller_id() == OS.get_main_thread_id():
 		warm()   # an isolated main-thread caller that never warmed it; a worker never writes the table

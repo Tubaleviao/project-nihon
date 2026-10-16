@@ -1,4 +1,3 @@
-class_name EquipmentRules
 extends RefCounted
 ## Pure equipment rules (ROADMAP Phase 47): which slots the fabric defines, whether
 ## an item fits a slot, and the stat totals a worn set adds up to.
@@ -82,16 +81,16 @@ static func hands_free(worn: Dictionary) -> bool:
 ## The equip actions that turn worn set `from` into `to`: one { slot, item } per slot whose
 ## item differs, `item` "" for a slot that was emptied. Sorted by slot so the order is stable.
 static func diff_actions(from: Dictionary, to: Dictionary) -> Array:
-	var slots: Array = []
+	var all_slots: Array = []
 	for slot in from:
-		if not slots.has(slot):
-			slots.append(slot)
+		if not all_slots.has(slot):
+			all_slots.append(slot)
 	for slot in to:
-		if not slots.has(slot):
-			slots.append(slot)
-	slots.sort()
+		if not all_slots.has(slot):
+			all_slots.append(slot)
+	all_slots.sort()
 	var out: Array = []
-	for slot in slots:
+	for slot in all_slots:
 		var was := str(from.get(slot, ""))
 		var now := str(to.get(slot, ""))
 		if was != now:

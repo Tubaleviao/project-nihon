@@ -912,11 +912,11 @@ func _send_equipment(viewer: int, subject: int, worn: Dictionary) -> void:
 func _on_equipment_changed(player_id: String, worn: Dictionary) -> void:
 	if _role != Role.HOST or not _connected() or player_registry == null:
 		return
-	var owner := _equipment_owner(player_id)
-	if owner == 0 or not _has_subject_position(owner):
+	var owner_peer := _equipment_owner(player_id)
+	if owner_peer == 0 or not _has_subject_position(owner_peer):
 		return
-	for pid in equipment_targets(owner):
-		_send_equipment(int(pid), owner, worn)
+	for pid in equipment_targets(owner_peer):
+		_send_equipment(int(pid), owner_peer, worn)
 
 ## Phase 48 — host: a worn slot was force-cleared. The owner is told through the
 ## owner-only `own_state_synced` channel (`equipment` key) so its avatar drops the item
@@ -924,18 +924,18 @@ func _on_equipment_changed(player_id: String, worn: Dictionary) -> void:
 func _on_equipment_revoked(player_id: String, worn: Dictionary) -> void:
 	if _role != Role.HOST or not _connected() or player_registry == null:
 		return
-	var owner := _equipment_owner(player_id)
-	if owner == 0 or owner == HOST_PEER_ID:
+	var owner_peer := _equipment_owner(player_id)
+	if owner_peer == 0 or owner_peer == HOST_PEER_ID:
 		return
-	send_own_state(owner, { "equipment": worn.duplicate(), "equipment_seq": player_registry.equip_seq_of(player_id) })
+	send_own_state(owner_peer, { "equipment": worn.duplicate(), "equipment_seq": player_registry.equip_seq_of(player_id) })
 
 ## Peers (the host's own id excluded) whose AOI contains `owner`'s avatar.
-func equipment_targets(owner: int) -> Array:
+func equipment_targets(owner_peer: int) -> Array:
 	var out: Array = []
-	if not _has_subject_position(owner):
+	if not _has_subject_position(owner_peer):
 		return out
-	for pid in aoi_recipients(_subject_position(owner), _connected_peers()):
-		if int(pid) != owner:
+	for pid in aoi_recipients(_subject_position(owner_peer), _connected_peers()):
+		if int(pid) != owner_peer:
 			out.append(int(pid))
 	return out
 

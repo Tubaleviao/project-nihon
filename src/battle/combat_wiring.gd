@@ -23,21 +23,21 @@ func wire(ctx: GameRoot) -> void:
 	connect_bus(GameBus.player_died, _on_player_died)
 	connect_bus(GameBus.player_respawned, _on_player_respawned)
 
-func _on_combat_resolved(result: Dictionary) -> void:
+func _on_combat_resolved(_result: Dictionary) -> void:
 	pass
 
 ## Drive the player avatar's attack animation whenever the player attacks.
-func _on_combat_round_requested(attacker_id: String, defender_id: String) -> void:
+func _on_combat_round_requested(attacker_id: String, _defender_id: String) -> void:
 	if attacker_id == "player" and root._character.get_player_character() != "":
 		GameBus.character_attack_requested.emit(root._character.get_player_character())
 
-func _on_creature_died(entity_id: String, position: Vector3, killer_id: String) -> void:
+func _on_creature_died(_entity_id: String, _position: Vector3, _killer_id: String) -> void:
 	pass
 
-func _on_creature_spawned(instance_id: String, creature_id: String, position: Vector3) -> void:
+func _on_creature_spawned(_instance_id: String, _creature_id: String, _position: Vector3) -> void:
 	pass
 
-func _on_player_state_changed(payload: Dictionary) -> void:
+func _on_player_state_changed(_payload: Dictionary) -> void:
 	pass   # logged by PlayerSlice; suppress repetitive output here
 
 ## Phase 37/38 — a combat round landed on a player. The damage is applied by the machine
@@ -172,8 +172,8 @@ func _on_knockback_requested(target_id: String, attacker_id: String, tiles: int)
 		if peer == 0 or not root._networking.has_last_known_state(peer):
 			return   # a peer that never reported has no position to push from (it reads as the origin)
 		pos = root._networking.get_last_known_state(peer)
-	var walkable := func(spot: Vector3) -> bool:
-		return root._voxel.get_voxel_height_at(Vector2(spot.x, spot.z)) <= spot.y + root.KNOCKBACK_STEP_UP
+	var walkable := func(probe: Vector3) -> bool:
+		return root._voxel.get_voxel_height_at(Vector2(probe.x, probe.z)) <= probe.y + root.KNOCKBACK_STEP_UP
 	var spot := StatusEffects.knockback_target(pos, src, tiles, TerrainSlice.TILE_SIZE, walkable)
 	if spot == pos:
 		return
@@ -183,7 +183,7 @@ func _on_knockback_requested(target_id: String, attacker_id: String, tiles: int)
 	else:
 		root._networking.send_teleport(peer, WorldPos.from_world(spot.x, spot.y, spot.z))
 
-func _on_player_died(position: Vector3, killer_id: String) -> void:
+func _on_player_died(_position: Vector3, _killer_id: String) -> void:
 	if root._character.get_player_character() != "":
 		GameBus.character_death_requested.emit(root._character.get_player_character())
 
