@@ -153,7 +153,7 @@ npm run generate  # generate the design bible into bible/
 | 130 | Host authority sweep: status effects, waystones and research points | In review |
 | 131 | Internationalization: translated UI and keyed host messages | In review |
 | 132 | One wiring module per system: `game_root` keeps the boot paths | In review |
-| 133 | The test suite splits by system and runs by filter | Planned |
+| 133 | The test suite splits by system and runs by filter | In review |
 | 134 | A bot plays: playtest report and downloadable builds | Planned |
 | 135 | A WAN profile: latency, loss and bandwidth in the two-client harness | Planned |
 | 136 | Creatures walk on the ground and around obstacles | Planned |
