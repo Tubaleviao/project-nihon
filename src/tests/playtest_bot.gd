@@ -110,9 +110,9 @@ static func build_report(steps: Array) -> Dictionary:
 			failures.append("step %s failed: %s" % [s["step"], s["detail"]])
 		if float(s["max_ms"]) > HARD_FRAME_MS:
 			failures.append("step %s had a %.0f ms frame (limit %.0f)" % [s["step"], float(s["max_ms"]), HARD_FRAME_MS])
-	for name in step_names():
-		if not seen.has(name):
-			failures.append("step %s never ran" % name)
+	for step_name in step_names():
+		if not seen.has(step_name):
+			failures.append("step %s never ran" % step_name)
 	return { "ok": failures.is_empty(), "failures": failures, "steps": steps }
 
 ## One line, no column break: `|` and newlines in free text would split a table row.
@@ -163,8 +163,8 @@ func run(root: Node) -> void:
 	# A step body that hits a script error aborts its coroutine and would leave the process
 	# running with no verdict; the watchdog writes what exists and quits.
 	var budget := BOOT_TIMEOUT_SECS + WATCHDOG_SLACK_SECS
-	for name in step_names():
-		budget += _step_timeout(name)
+	for step_name in step_names():
+		budget += _step_timeout(step_name)
 	get_tree().create_timer(budget).timeout.connect(_on_watchdog)
 	print("[Playtest] waiting for the world boot")
 	var booted: bool = await _until(func(): return _root._player != null and not _root._chunk_manager._first_ring.is_empty() and _root._chunk_manager.is_first_ring_ready() \
@@ -176,9 +176,11 @@ func run(root: Node) -> void:
 	else:
 		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT_DIR))
 		_root._persistence.autosave_interval = 1.0e9   # the bot's edits must never reach the player's save
+		_root._chunk_manager.record_store = null   # flush_records runs every frame; no frontier record of the bot may reach the player's region files
+		_root._chunk_manager._pending_records.clear()
 		_root._inventory.replace_contents({})   # a saved pack from an earlier run must not decide the result
-		for name in step_names():
-			var rec: Dictionary = await _run_step(name)
+		for step_name in step_names():
+			var rec: Dictionary = await _run_step(step_name)
 			_steps_done.append(rec)
 			steps.append(rec)
 	_finish(steps)
