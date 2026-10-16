@@ -22,6 +22,7 @@ Pale grey volcanic rock formed from compressed volcanic ash. Lightweight for its
 | magicAffinity | decimal | Capacity to hold enchantment 0–1; weak — accepts basic ward runes only |
 | depthBand | json | Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. Compressed volcanic ash: the bulk rock of the badlands from the surface down. |
 | leyGated | boolean | True when a vein of this material forms only near a ley line |
+| granular | boolean | True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put |
 
 ## States
 

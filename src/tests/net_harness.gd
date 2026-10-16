@@ -61,6 +61,7 @@ const PlayerSlice := preload("res://src/player/player_slice.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
+const VoxelSlice := preload("res://src/terrain/voxel_slice.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 const Frontier := preload("res://src/terrain/frontier.gd")
@@ -158,6 +159,7 @@ static func steps() -> Array:
 		{ "name": "chop_in_reach",     "compare": true },
 		{ "name": "chop_out_of_reach", "compare": false },
 		{ "name": "tree_cleared",      "compare": true },
+		{ "name": "sand_settles",      "compare": true },
 		{ "name": "packet_cap",        "compare": true },
 		{ "name": "rate_bucket",       "compare": true },
 		{ "name": "clock_synced",      "compare": true },
@@ -375,6 +377,7 @@ func run(root: Node, role: String) -> void:
 	await _step_chop_in_reach()
 	await _step_chop_out_of_reach()
 	await _step_tree_cleared()
+	await _step_sand_settles()
 	await _step_packet_cap()
 	await _step_rate_bucket()
 	await _step_clock_synced()
@@ -1472,6 +1475,43 @@ func _step_tree_cleared() -> void:
 	_root._chat.submit(TREE_ACK_PROBE + t)
 	var gone: bool = await _await_until(func(): return _root._tree.get_tree_record(t).is_empty(), _step_timeout())
 	_report("tree_cleared", verdict(gone, true), t if gone else "still_standing")
+
+## Phase 137 — the host stacks a block of sand on a column near the rendezvous, mines the stone under it
+## from the side, and the sand settles onto the new support through the host's settle pass. The client's
+## column must match the host's after the sync: both report the column's runs.
+const SAND_TILE := Vector2i(42, 42)
+func _sand_column(voxel: VoxelSlice) -> String:
+	var parts: Array = []
+	for run in voxel.get_runs_at_tile(SAND_TILE):
+		parts.append("%.3f-%.3f:%s" % [float(run["bottom"]), float(run["top"]), str(run["material"])])
+	return "|".join(parts)
+
+func _sand_landed(voxel: VoxelSlice, base: float) -> bool:
+	var runs: Array = voxel.get_runs_at_tile(SAND_TILE)
+	return not runs.is_empty() and str(runs[-1]["material"]) == "Sand" \
+		and is_equal_approx(float(runs[-1]["bottom"]), base - VoxelSlice.STEP_HEIGHT)
+
+func _step_sand_settles() -> void:
+	var voxel: VoxelSlice = _root._voxel
+	var centre := Vector2((SAND_TILE.x + 0.5) * VoxelSlice.TILE_SIZE, (SAND_TILE.y + 0.5) * VoxelSlice.TILE_SIZE)
+	var loaded: bool = await _await_until(func(): return voxel.get_heightmaps().has(VoxelSlice._chunk_key(VoxelSlice._tile_to_chunk(SAND_TILE))), _step_timeout())
+	if not loaded:
+		_report("sand_settles", "fail", "chunk_not_loaded")
+		return
+	var base: float = voxel.get_voxel_height_at(centre)
+	if _role == "host":
+		_root._inventory.add_item("Sand", 1)
+		var placed: bool = voxel.place_block(Vector3(centre.x, base, centre.y), Vector3.UP, "Sand")
+		var mined: Dictionary = voxel.mine_block(Vector3((SAND_TILE.x + 1) * VoxelSlice.TILE_SIZE, base - VoxelSlice.STEP_HEIGHT * 0.5, centre.y), Vector3(1, 0, 0))
+		if not placed or not bool(mined.get("success", false)):
+			_report("sand_settles", "fail", "edit_refused-place%d-mine%d" % [int(placed), int(bool(mined.get("success", false)))])
+			return
+		var landed: bool = await _await_until(func(): return voxel.settle_pending() == 0 and _sand_landed(voxel, base), _step_timeout())
+		await _await_settle(2.0)
+		_report("sand_settles", verdict(landed, true), _sand_column(voxel) if landed else "never_settled-%s" % _sand_column(voxel))
+		return
+	var got: bool = await _await_until(func(): return _sand_landed(voxel, base), _step_timeout())
+	_report("sand_settles", verdict(got, true), _sand_column(voxel) if got else "client_column_%s" % _sand_column(voxel))
 
 ## Phase 126 — seconds the client lags before it acks the `tree_cleared` target; the host waits on the ack.
 const CLIENT_LAG_SECS := 5.0

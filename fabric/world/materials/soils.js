@@ -32,7 +32,7 @@ module.exports = {
       id:       { type: 'uuid', primaryKey: true },
       density:  { type: 'decimal', description: 'g/cm³', defaultValue: 1.5 },
       hardness: { type: 'decimal', description: 'Mohs equivalent 1–10', defaultValue: 1 },
-      ...depositFields({ min: 0, max: 0, why: 'A topsoil layer, never a buried vein.' }),
+      ...depositFields({ min: 0, max: 0, granular: true, why: 'A topsoil layer, never a buried vein.' }),
     },
   }),
 
@@ -44,7 +44,7 @@ module.exports = {
       id:       { type: 'uuid', primaryKey: true },
       density:  { type: 'decimal', description: 'g/cm³', defaultValue: 1.6 },
       hardness: { type: 'decimal', description: 'Mohs equivalent 1–10', defaultValue: 0.5 },
-      ...depositFields({ min: 0, max: 0, why: 'A surface cover, never a buried vein.' }),
+      ...depositFields({ min: 0, max: 0, granular: true, why: 'A surface cover, never a buried vein.' }),
     },
   }),
 
@@ -56,7 +56,7 @@ module.exports = {
       id:       { type: 'uuid', primaryKey: true },
       density:  { type: 'decimal', description: 'g/cm³', defaultValue: 0.3 },
       hardness: { type: 'decimal', description: 'Mohs equivalent 1–10', defaultValue: 0.5 },
-      ...depositFields({ min: 0, max: 0, why: 'A surface cover, never a buried vein.' }),
+      ...depositFields({ min: 0, max: 0, granular: true, why: 'A surface cover, never a buried vein.' }),
     },
   }),
 

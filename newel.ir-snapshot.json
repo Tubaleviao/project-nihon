@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:75b2a3e8134b862568316902a32ded8cf81ed7214e4cea58672035eacd7d60cb",
+  "schemaHash": "sha256:77cb989f09baf889ac9ac4207c7c656b5899b32c7882f065feb5884ec356b9e8",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -1418,6 +1418,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "granular": {
+            "name": "granular",
+            "type": "boolean",
+            "description": "True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
           }
         },
         "relations": {},
@@ -1574,6 +1583,15 @@
             "name": "leyGated",
             "type": "boolean",
             "description": "True when a vein of this material forms only near a ley line",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "granular": {
+            "name": "granular",
+            "type": "boolean",
+            "description": "True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -1753,6 +1771,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": true
+          },
+          "granular": {
+            "name": "granular",
+            "type": "boolean",
+            "description": "True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
           }
         },
         "relations": {},
@@ -1943,6 +1970,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "granular": {
+            "name": "granular",
+            "type": "boolean",
+            "description": "True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
           }
         },
         "relations": {},
@@ -2105,6 +2141,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "granular": {
+            "name": "granular",
+            "type": "boolean",
+            "description": "True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
           }
         },
         "relations": {},
@@ -2261,6 +2306,15 @@
             "name": "leyGated",
             "type": "boolean",
             "description": "True when a vein of this material forms only near a ley line",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "granular": {
+            "name": "granular",
+            "type": "boolean",
+            "description": "True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -2435,6 +2489,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "granular": {
+            "name": "granular",
+            "type": "boolean",
+            "description": "True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
           }
         },
         "relations": {},
@@ -2595,6 +2658,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "granular": {
+            "name": "granular",
+            "type": "boolean",
+            "description": "True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
           }
         },
         "relations": {},
@@ -2725,6 +2797,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "granular": {
+            "name": "granular",
+            "type": "boolean",
+            "description": "True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
           }
         },
         "relations": {},
@@ -2785,6 +2866,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "granular": {
+            "name": "granular",
+            "type": "boolean",
+            "description": "True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
           }
         },
         "relations": {},
@@ -2845,6 +2935,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "granular": {
+            "name": "granular",
+            "type": "boolean",
+            "description": "True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
           }
         },
         "relations": {},
@@ -2905,6 +3004,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "granular": {
+            "name": "granular",
+            "type": "boolean",
+            "description": "True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
           }
         },
         "relations": {},

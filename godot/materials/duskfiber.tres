@@ -12,6 +12,7 @@ conductivity = 0.08
 magicAffinity = 0.45
 depthBand = {"min":0,"max":0}
 leyGated = false
+granular = false
 isLuminous = false
 state_machine_field = "state"
 initial_state = "raw"

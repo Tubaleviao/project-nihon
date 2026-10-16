@@ -22,6 +22,7 @@ Blue-black alloy smelted from ferrite ingots and aethermite shards under high he
 | magicAffinity | decimal | Capacity to hold enchantment 0–1; deliberately low — anti-magic is an intrinsic structural trait, not a held enchantment |
 | depthBand | json | Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. An alloy smelted from ferrite and aethermite: no veilsteel ore exists in the world. |
 | leyGated | boolean | True when a vein of this material forms only near a ley line |
+| granular | boolean | True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put |
 
 ## States
 

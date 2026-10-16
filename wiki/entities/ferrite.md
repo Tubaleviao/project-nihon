@@ -22,6 +22,7 @@ Common dark-grey metal found in surface veins across temperate biomes, volcanic 
 | magicAffinity | decimal | Capacity to hold enchantment 0–1 |
 | depthBand | json | Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. Surface veins: ferrite crops out near the top of the ground and thins with depth. |
 | leyGated | boolean | True when a vein of this material forms only near a ley line |
+| granular | boolean | True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put |
 
 ## States
 

@@ -22,6 +22,7 @@ Dense, dark-veined wood from the Thornwood tree that grows in lowland forests. C
 | magicAffinity | decimal | Capacity to hold enchantment 0–1; very low — dense wood resists magical binding |
 | depthBand | json | Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. A wood: it grows as trees and is never mined from the ground. |
 | leyGated | boolean | True when a vein of this material forms only near a ley line |
+| granular | boolean | True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put |
 
 ## States
 

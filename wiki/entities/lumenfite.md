@@ -22,6 +22,7 @@ Translucent crystalline mineral that absorbs ambient light during the day and re
 | magicAffinity | decimal | Capacity to hold enchantment 0–1; high — specialised for light-type magic |
 | depthBand | json | Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. Found in shallow cave systems and cliff faces: the top four units only. |
 | leyGated | boolean | True when a vein of this material forms only near a ley line |
+| granular | boolean | True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put |
 
 ## States
 

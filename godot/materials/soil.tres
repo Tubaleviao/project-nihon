@@ -9,5 +9,6 @@ density = 1.5
 hardness = 1.0
 depthBand = {"min":0,"max":0}
 leyGated = false
+granular = true
 description = "Loose earth under a biome's cover, down to its `topsoilDepth`. It is what mining a slice of natural topsoil yields, whatever cover (`surfaceMaterial`) it wears — Grass, Moss, Ash and Void ground alike — and what farmland is made of."
 tags = ["material"]
