@@ -153,7 +153,7 @@ issue number where the criterion used to be.
 | 130 | Host authority sweep: status effects, waystones and research points | In review | below |
 | 131 | Internationalization: translated UI and keyed host messages | In review | below |
 | 132 | One wiring module per system: `game_root` keeps the boot paths | In review | below |
-| 133 | The test suite splits by system and runs by filter | Planned | below |
+| 133 | The test suite splits by system and runs by filter | In review | below |
 | 134 | A bot plays: playtest report and downloadable builds | Planned | below |
 | 135 | A WAN profile: latency, loss and bandwidth in the two-client harness | Planned | below |
 | 136 | Creatures walk on the ground and around obstacles | Planned | below |
@@ -327,12 +327,12 @@ material leftovers.
   asserted, build-split probe bounds), or confirmed fixed in the PR table.
 
 **Acceptance criteria:**
-- [ ] No suite file is over 3,000 lines; the full run reports the same number of registered tests
+- [x] No suite file is over 3,000 lines; the full run reports the same number of registered tests
   and assertions as before the split.
-- [ ] Suite: an unregistered `_test_*` in any suite file fails the run; `--test-filter=worldgen`
+- [x] Suite: an unregistered `_test_*` in any suite file fails the run; `--test-filter=worldgen`
   runs only matching tests and still runs the audits; a filter matching nothing fails loudly.
-- [ ] CI runs the full suite exactly as before (no filter).
-- [ ] Every item of #331 accounted for in the PR table; suite green on both boot paths, harness
+- [x] CI runs the full suite exactly as before (no filter).
+- [x] Every item of #331 accounted for in the PR table; suite green on both boot paths, harness
   green.
 
 ---

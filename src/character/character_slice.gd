@@ -143,6 +143,7 @@ var _body_texture: ImageTexture = null
 var _rig_detail: ImageTexture = null
 var _rig_color_mask: ImageTexture = null
 var _rig_channel: ImageTexture = null
+var _rig_textures_loaded: bool = false
 
 ## Instance id of the player's own character avatar (set by game_root) — the
 ## target for combat- and death-driven animation triggers.
@@ -767,12 +768,17 @@ const RIG_CHANNEL_KEY := "textures/characters/player_channel.png.raw"
 ## The rig material is shared by all rigs; only the instance parameters differ per character.
 func _dress_rig(rig_root: Node, appearance: Dictionary) -> void:
 	var mat := CharacterMaterial.rig_material(_palette_colors())
-	if _rig_detail == null:
+	if not _rig_textures_loaded:
+		# Once per slice, even when a sheet is missing (a null result is a settled answer, not a
+		# reason to decode again on every attach).
+		_rig_textures_loaded = true
 		_rig_detail = AssetOverlay.load_texture(RIG_DETAIL_KEY)
 		_rig_color_mask = AssetOverlay.load_texture(RIG_COLOR_MASK_KEY)
 		_rig_channel = AssetOverlay.load_texture(RIG_CHANNEL_KEY)
 	CharacterMaterial.bind_rig_textures(mat, _rig_detail, _rig_color_mask, _rig_channel)
 	var skin: int = int(appearance.get("skinColor", 12))
+	# The colour-mask regions take the appearance palette indices: primary = hair, secondary = eye,
+	# accent = beard (the placeholder mask; see issue on confirming it against the production mask).
 	for node in rig_root.find_children("*", "MeshInstance3D", true, false):
 		var mesh := node as MeshInstance3D
 		mesh.material_override = mat
