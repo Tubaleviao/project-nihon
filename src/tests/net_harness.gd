@@ -182,6 +182,7 @@ static func steps() -> Array:
 		{ "name": "spawn_near_friend", "compare": true },
 		{ "name": "chunk_record_synced", "compare": true },
 		{ "name": "frontier_record_synced", "compare": true },
+		{ "name": "settlement",        "compare": true },
 	]
 
 ## The step names, comma-joined — the payload of the `plan` line the runner prints
@@ -400,6 +401,7 @@ func run(root: Node, role: String) -> void:
 	await _step_spawn_near_friend()
 	await _step_chunk_record_synced()
 	await _step_frontier_record_synced()
+	await _step_settlement()
 	_finish()
 
 ## End this process, with the run's own verdict carried in the exit code.
@@ -1512,6 +1514,65 @@ func _step_sand_settles() -> void:
 		return
 	var got: bool = await _await_until(func(): return _sand_landed(voxel, base), _step_timeout())
 	_report("sand_settles", verdict(got, true), _sand_column(voxel) if got else "client_column_%s" % _sand_column(voxel))
+
+## Phase 140 — a settlement: the host founds one on the client's spot, the outsider's edit inside the claim is
+## refused (the client sees no block change), the client joins, deposits into the stockpile and then edits.
+const SETTLEMENT_ITEM := "AethermiteDust"
+const SETTLEMENT_QTY := 10
+var _settlement_edits: int = 0
+
+func _on_settlement_edit(_action: String, _pos: Vector3, _normal: Vector3, _material: String) -> void:
+	_settlement_edits += 1
+
+func _step_settlement() -> void:
+	var settlements: Node = _root._settlements
+	GameBus.block_changed.connect(_on_settlement_edit)
+	if _role == "host":
+		var peer := _peer_id()
+		var bound := _bound_id()
+		var local: String = _root._registry.local_player_id
+		var voxel: VoxelSlice = _root._voxel
+		var got_pos: bool = await _await_until(func(): return not _root._networking.get_last_known_exact(peer).is_empty(), _step_timeout())
+		if not got_pos:
+			_report("settlement", "fail", "no_client_position")
+			return
+		var xz: Vector2 = settlements.xz_of_exact(_root._networking.get_last_known_exact(peer))
+		var target := Vector2(xz.x + 1.0, xz.y)
+		var tile := Vector2i(floori(target.x / VoxelSlice.TILE_SIZE), floori(target.y / VoxelSlice.TILE_SIZE))
+		var loaded: bool = await _await_until(func(): return voxel.get_heightmaps().has(VoxelSlice._chunk_key(VoxelSlice._tile_to_chunk(tile))), _step_timeout())
+		if not loaded:
+			_report("settlement", "fail", "chunk_not_loaded")
+			return
+		var why: String = settlements.found(local, "Harness", xz, false)
+		if why != "":
+			_report("settlement", "fail", "found_" + why)
+			return
+		var pos := Vector3(target.x, voxel.get_voxel_height_at(target), target.y)
+		var refused: bool = not bool(voxel.mine_block(pos, Vector3.UP, bound).get("success", false))
+		settlements.invite(local, bound)
+		var joined: bool = await _await_until(func(): return settlements.settlement_of(bound) != "", _step_timeout())
+		var inv: Node = _root._registry.get_inventory(bound)
+		inv.add_item(SETTLEMENT_ITEM, SETTLEMENT_QTY)
+		GameBus.inventory_synced.emit(bound, inv.get_contents(), inv.get_durability_data())
+		var sid: String = settlements.settlement_of(local)
+		var deposited: bool = await _await_until(func(): return int(settlements.stock_of(sid).get(SETTLEMENT_ITEM, 0)) == SETTLEMENT_QTY, _step_timeout())
+		var edited: bool = bool(voxel.mine_block(pos, Vector3.UP, bound).get("success", false))
+		var ok: bool = refused and joined and deposited and edited
+		_report("settlement", verdict(ok, true), "outsider-refused-member-deposited" if ok else "refused%d-joined%d-deposited%d-edited%d" % [int(refused), int(joined), int(deposited), int(edited)])
+		return
+	var seen_claim: bool = await _await_until(func(): return (settlements.view().get("claims", []) as Array).size() > 0, _step_timeout())
+	var invited: bool = await _await_until(func(): return (settlements.view().get("invites", []) as Array).size() > 0, _step_timeout())
+	var refused_edits := _settlement_edits
+	if invited:
+		GameBus.settlement_intent.emit("join", { "id": str(settlements.view()["invites"][0]["id"]) }, "")
+	var joined: bool = await _await_until(func(): return not (settlements.view().get("mine", {}) as Dictionary).is_empty(), _step_timeout())
+	var has_item: bool = await _await_until(func(): return _root._inventory.get_item_count(SETTLEMENT_ITEM) >= SETTLEMENT_QTY, _step_timeout())
+	if has_item:
+		GameBus.settlement_intent.emit("deposit", { "item": SETTLEMENT_ITEM, "qty": SETTLEMENT_QTY }, "")
+	var deposited: bool = await _await_until(func(): return int(((settlements.view().get("mine", {}) as Dictionary).get("stock", {}) as Dictionary).get(SETTLEMENT_ITEM, 0)) == SETTLEMENT_QTY, _step_timeout())
+	var edited: bool = await _await_until(func(): return _settlement_edits > refused_edits, _step_timeout())
+	var ok: bool = seen_claim and refused_edits == 0 and joined and deposited and edited
+	_report("settlement", verdict(ok, true), "outsider-refused-member-deposited" if ok else "claim%d-refusedEdits%d-joined%d-deposited%d-edited%d" % [int(seen_claim), refused_edits, int(joined), int(deposited), int(edited)])
 
 ## Phase 126 — seconds the client lags before it acks the `tree_cleared` target; the host waits on the ack.
 const CLIENT_LAG_SECS := 5.0

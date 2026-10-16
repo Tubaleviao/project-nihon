@@ -301,6 +301,7 @@ func _ready() -> void:
 	GameBus.repair_intent.connect(_on_repair_intent)
 	GameBus.research_intent.connect(_on_research_intent)
 	GameBus.waystone_travel_intent.connect(_on_waystone_travel_intent)
+	GameBus.settlement_intent.connect(_on_settlement_intent)
 	# Phase 35 — taming is per-player as well (a granted flag and a companion
 	# binding both live on the tamer's record), so it travels the same way.
 	GameBus.tame_intent.connect(_on_tame_intent)
@@ -864,6 +865,12 @@ func _on_waystone_travel_intent(from_id: String, to_id: String, _player_id: Stri
 	if _role != Role.CLIENT:
 		return
 	_broadcast({ "type": "waystone_travel_intent", "from": from_id, "to": to_id })
+
+## Phase 140 — a client forwards a settlement intent; the host binds the identity and validates the rest.
+func _on_settlement_intent(action: String, args: Dictionary, _player_id: String) -> void:
+	if _role != Role.CLIENT:
+		return
+	_broadcast({ "type": "settlement_intent", "action": action, "args": args })
 
 ## Phase 35 — taming: the granted flag and the companion binding live on a player
 ## record the host owns, so a client forwards the target instance and the host
@@ -1733,6 +1740,20 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				_refuse_unhandshaked(sender, "waystone_travel_intent")
 				return
 			GameBus.waystone_travel_intent.emit(str(payload.get("from", "")).left(64), str(payload.get("to", "")).left(64), traveller)
+		"settlement_intent":
+			# Phase 140 — who acts is the connection's player. Only short scalar args are kept.
+			var settler := _actor_id(sender)
+			if settler == "":
+				_refuse_unhandshaked(sender, "settlement_intent")
+				return
+			var raw_args: Variant = payload.get("args", {})
+			var clean := {}
+			if raw_args is Dictionary:
+				for k: Variant in (raw_args as Dictionary).keys():
+					var v: Variant = raw_args[k]
+					if (v is String or v is int or v is float) and clean.size() < 8:
+						clean[str(k).left(16)] = str(v).left(64) if v is String else v
+			GameBus.settlement_intent.emit(str(payload.get("action", "")).left(16), clean, settler)
 		"tame_intent":
 			# Phase 35 — and the same for taming: the flag and the companion bind
 			# to the connection's own player, never to a name in the payload.
