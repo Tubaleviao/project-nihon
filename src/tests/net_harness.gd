@@ -1529,7 +1529,7 @@ func _step_settlement() -> void:
 	GameBus.block_changed.connect(_on_settlement_edit)
 	if _role == "host":
 		var peer := _peer_id()
-		var bound := _bound_id()
+		var bound := _live_bound_id()
 		var local: String = _root._registry.local_player_id
 		var voxel: VoxelSlice = _root._voxel
 		var got_pos: bool = await _await_until(func(): return not _root._networking.get_last_known_exact(peer).is_empty(), _step_timeout())
@@ -1549,16 +1549,18 @@ func _step_settlement() -> void:
 			return
 		var pos := Vector3(target.x, voxel.get_voxel_height_at(target), target.y)
 		var refused: bool = not bool(voxel.mine_block(pos, Vector3.UP, bound).get("success", false))
-		settlements.invite(local, bound)
+		var invite_why: String = settlements.invite(local, bound)
 		var joined: bool = await _await_until(func(): return settlements.settlement_of(bound) != "", _step_timeout())
 		var inv: Node = _root._registry.get_inventory(bound)
 		inv.add_item(SETTLEMENT_ITEM, SETTLEMENT_QTY)
 		GameBus.inventory_synced.emit(bound, inv.get_contents(), inv.get_durability_data())
 		var sid: String = settlements.settlement_of(local)
 		var deposited: bool = await _await_until(func(): return int(settlements.stock_of(sid).get(SETTLEMENT_ITEM, 0)) == SETTLEMENT_QTY, _step_timeout())
+		await _await_settle(1.5 * _time_scale)   # the host's view push runs on a half-second tick: let the client see the stock
 		var edited: bool = bool(voxel.mine_block(pos, Vector3.UP, bound).get("success", false))
+		await _await_settle(1.5 * _time_scale)
 		var ok: bool = refused and joined and deposited and edited
-		_report("settlement", verdict(ok, true), "outsider-refused-member-deposited" if ok else "refused%d-joined%d-deposited%d-edited%d" % [int(refused), int(joined), int(deposited), int(edited)])
+		_report("settlement", verdict(ok, true), "outsider-refused-member-deposited" if ok else "invite_%s-refused%d-joined%d-deposited%d-edited%d" % [invite_why, int(refused), int(joined), int(deposited), int(edited)])
 		return
 	var seen_claim: bool = await _await_until(func(): return (settlements.view().get("claims", []) as Array).size() > 0, _step_timeout())
 	var invited: bool = await _await_until(func(): return (settlements.view().get("invites", []) as Array).size() > 0, _step_timeout())
@@ -1572,7 +1574,7 @@ func _step_settlement() -> void:
 	var deposited: bool = await _await_until(func(): return int(((settlements.view().get("mine", {}) as Dictionary).get("stock", {}) as Dictionary).get(SETTLEMENT_ITEM, 0)) == SETTLEMENT_QTY, _step_timeout())
 	var edited: bool = await _await_until(func(): return _settlement_edits > refused_edits, _step_timeout())
 	var ok: bool = seen_claim and refused_edits == 0 and joined and deposited and edited
-	_report("settlement", verdict(ok, true), "outsider-refused-member-deposited" if ok else "claim%d-refusedEdits%d-joined%d-deposited%d-edited%d" % [int(seen_claim), refused_edits, int(joined), int(deposited), int(edited)])
+	_report("settlement", verdict(ok, true), "outsider-refused-member-deposited" if ok else "claim%d-invited%d-refusedEdits%d-joined%d-deposited%d-edited%d" % [int(seen_claim), int(invited), refused_edits, int(joined), int(deposited), int(edited)])
 
 ## Phase 126 — seconds the client lags before it acks the `tree_cleared` target; the host waits on the ack.
 const CLIENT_LAG_SECS := 5.0

@@ -198,7 +198,7 @@ win.skills,Skills (K),Habilidades (K)
 win.technology,Technology,Tecnologia
 win.trade,Trade,Troca
 dock.settlement,Settlement,Assentamento
-win.settlement,Settlement (J),Assentamento (J)
+win.settlement,Settlement (L),Assentamento (L)
 settlement.name_ph,Settlement name,Nome do assentamento
 settlement.player_ph,Player id,Id do jogador
 settlement.item_ph,Item,Item

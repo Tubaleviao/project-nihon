@@ -1657,12 +1657,32 @@ func _test_research_points_gate_and_spend() -> void:
 	assert_eq(t.get_points(), cost - 1, "and nothing is spent by a refusal")
 
 	t.grant_points("", "craft", 3)
+	# Phase 140 — the fabric's materialSource is the settlement stockpile: a pack full of ore is not enough.
+	var homeless := t.begin_research("TechMasterForge")
+	assert_eq(str(homeless["reason"]), "no_settlement", "materials in the pack do not count without a settlement")
+	assert_eq(t.get_points(), cost + 2, "a refusal spends no points")
+	var stock := _StubStockpile.new()
+	t.settlement_slice = stock
 	var ok := t.begin_research("TechMasterForge")
 	assert_true(bool(ok["success"]), "with enough points research begins")
 	assert_eq(t.get_points(), 2, "and exactly researchCost was spent")
-	assert_eq(inv.get_item_count("Ashite"), 0, "materials are consumed too")
+	assert_eq(int(stock.stock["Ashite"]), 0, "the stockpile pays the materials")
+	assert_eq(inv.get_item_count("Ashite"), 20, "and the pack is untouched")
+	stock.free()
 	t.free()
 	inv.free()
+
+## A settlement slice that always stands at the site and holds twenty Ashite.
+class _StubStockpile extends Node:
+	var stock := { "Ashite": 20 }
+	func at_research_site(_pid: String) -> bool:
+		return true
+	func research_stock(_pid: String, item: String) -> int:
+		return int(stock.get(item, 0))
+	func consume_research(_pid: String, counts: Dictionary) -> bool:
+		for item: String in counts:
+			stock[item] = int(stock[item]) - int(counts[item])
+		return true
 
 func _test_research_points_craft_grant_and_roundtrip() -> void:
 	var registry := PlayerRegistry.new()

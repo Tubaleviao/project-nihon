@@ -4,6 +4,13 @@ extends "res://src/core/wiring.gd"
 
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 
+## Hand the slice its collaborators (the teleporter is the admin teleport door).
+func attach() -> void:
+	root._waystones.station_slice = root._station
+	root._waystones.registry      = root._registry
+	root._waystones.teleporter    = Callable(root._chat, "teleport_player")
+	root._waystones.position_of   = Callable(self, "_waystone_player_pos")
+
 func wire(ctx: GameRoot) -> void:
 	root = ctx
 	connect_bus(GameBus.waystone_travel_resolved, _on_waystone_travel_resolved)

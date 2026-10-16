@@ -54,7 +54,6 @@ const BootWiring := preload("res://src/core/boot_wiring.gd")
 const CombatWiring := preload("res://src/battle/combat_wiring.gd")
 const WeatherWiring := preload("res://src/world/weather_wiring.gd")
 const WaystoneWiring := preload("res://src/world/waystone_wiring.gd")
-const SettlementSlice := preload("res://src/settlement/settlement_slice.gd")
 const SettlementWiring := preload("res://src/settlement/settlement_wiring.gd")
 const CraftingWiring := preload("res://src/crafting/crafting_wiring.gd")
 const CharacterWiring := preload("res://src/character/character_wiring.gd")
@@ -109,7 +108,7 @@ var _proposal:    ProposalSlice
 var _ui:          UiSlice
 var _chat:        ChatSlice
 var _waystones:   WaystoneSlice
-var _settlements: SettlementSlice
+var _settlements: Node
 var _weather:     WeatherSlice
 ## Phase 129 — the host's status effects, ticked from the clock tick; null on a client.
 var _status:      StatusEffects
@@ -291,7 +290,7 @@ func _ready() -> void:
 	_ui          = UiSlice.new()
 	_chat        = ChatSlice.new()
 	_waystones   = WaystoneSlice.new()
-	_settlements = SettlementSlice.new()
+	_settlements = _settlement_wiring.make_slice(self)
 	_weather     = WeatherSlice.new()
 	# Phase 129 — status effects live on the host; the battle slice rolls them and the AI honours them.
 	_status = StatusEffects.new()
@@ -415,19 +414,7 @@ func _ready() -> void:
 	_chat.networking       = _networking
 	_chat.weather_slice    = _weather
 	_player.weather_slice  = _weather
-	# Phase 125 — waystone travel reuses the exact admin teleport door.
-	_waystones.station_slice = _station
-	_waystones.registry      = _registry
-	_waystones.teleporter    = Callable(_chat, "teleport_player")
-	_waystones.position_of   = Callable(_waystone_wiring, "_waystone_player_pos")
-	# Phase 140 — settlements: the host-side guards read this slice.
-	_settlements.registry    = _registry
-	_settlements.position_of = Callable(_settlement_wiring, "player_xz")
-	_settlements.is_host     = not _is_client
-	_voxel.claim_guard       = Callable(_settlements, "edit_blocker")
-	_station.claim_guard     = Callable(_settlements, "edit_blocker")
-	_station.settlement_slice = _settlements
-	_technology.settlement_slice = _settlements
+	_waystone_wiring.attach()   # Phase 125 — waystone travel reuses the exact admin teleport door
 	if not _is_server:
 		_ui.inventory_slice       = _inventory
 		_ui.character_slice       = _character
@@ -442,9 +429,6 @@ func _ready() -> void:
 		_ui.map_window.terrain_slice = _terrain
 		_ui.map_window.player_slice  = _player
 		_ui.map_window.waystone_slice = _waystones
-		_ui.map_window.settlement_slice = _settlements
-		_ui.settlement_slice = _settlements
-		_ui.settlement_panel.settlement_slice = _settlements
 		_ui.drops_enabled         = not _is_client
 	_trade.inventory_slice    = _inventory
 	_market.inventory_slice   = _inventory
@@ -1109,7 +1093,6 @@ func _process(delta: float) -> void:
 	_tick_pending_client_boot(delta)
 
 	_weather_wiring._tick_world_clock(delta)
-	_settlement_wiring.tick(delta)
 	_peer_wiring._sync_player_avatar(delta)
 	if _distant != null and _player != null and _chunk_manager != null:
 		_distant.world_seed = _terrain.get_world_seed()

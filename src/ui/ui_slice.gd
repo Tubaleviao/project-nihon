@@ -218,7 +218,7 @@ func _input(event: InputEvent) -> void:
 				toggle_window(WINDOW_SKILLS)
 			KEY_M:
 				toggle_window(WINDOW_MAP)
-			KEY_J:
+			KEY_L:
 				toggle_window(WINDOW_SETTLEMENT)
 			KEY_ESCAPE:
 				_close_all_windows()
