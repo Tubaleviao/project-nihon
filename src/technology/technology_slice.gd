@@ -68,6 +68,9 @@ const SOURCES := ["craft", "gather", "firstCraftOfRecipe"]
 var inventory_slice: Node = null
 
 ## Set by game_root: the PlayerRegistry, which owns one inventory per player.
+## Phase 140 — the settlement slice, for technologies whose materials come from a stockpile.
+var settlement_slice: Node = null
+
 ## When wired, `inventory_for(player_id)` resolves the researcher's own inventory.
 var player_registry: Node = null
 
@@ -178,6 +181,18 @@ func begin_research(tech_id: String, player_id: String = "") -> Dictionary:
 		return _emit(_result(tech_id, false, "insufficient_points", cur, pid))
 
 	var materials: Array = tech.get("researchMaterials", [])
+	# Phase 140 — a technology with a settlement `materialSource` draws its materials from the
+	# researcher's settlement stockpile (and is researched inside its claim), never from the pack.
+	var from_stockpile := tech.get("materialSource", null) is Dictionary and str(tech["materialSource"].get("container", "")) == "Stockpile"
+	if from_stockpile:
+		if settlement_slice == null or not settlement_slice.at_research_site(pid):
+			return _emit(_result(tech_id, false, "no_settlement", cur, pid))
+		for entry in materials:
+			if settlement_slice.research_stock(pid, str(entry.get("item", ""))) < int(entry.get("quantity", 1)):
+				return _emit(_result(tech_id, false, "missing_materials", cur, pid))
+		if not settlement_slice.consume_research(pid, _to_counts(materials)):
+			return _emit(_result(tech_id, false, "missing_materials", cur, pid))
+		return _start_research(tech_id, tech, cur, pid, cost)
 	var inventory := inventory_for(pid)
 	if inventory == null or not inventory.has_method("consume_items"):
 		return _emit(_result(tech_id, false, "no_inventory", cur, pid))
@@ -191,7 +206,10 @@ func begin_research(tech_id: String, player_id: String = "") -> Dictionary:
 
 	if not inventory.consume_items(_to_counts(materials)):
 		return _emit(_result(tech_id, false, "missing_materials", cur, pid))
+	return _start_research(tech_id, tech, cur, pid, cost)
 
+## The shared tail of `begin_research`: the materials are paid, so spend the points and start the clock.
+func _start_research(tech_id: String, tech: Dictionary, cur: String, pid: String, cost: int) -> Dictionary:
 	_status_for(pid)[tech_id] = STATE_RESEARCHING
 	_set_points(pid, get_points(pid) - cost)
 	var duration: float = float(tech.get("researchDuration", 0.0))

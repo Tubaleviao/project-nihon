@@ -46,6 +46,8 @@ var terrain_slice: Node = null
 var player_slice: Node = null
 ## Phase 125 — the waystone network; attuned stones are drawn and a click on one travels there.
 var waystone_slice: Node = null
+## Phase 140 — settlement claims: each claim's border is a circle on the map, the player's own in a warmer colour.
+var settlement_slice: Node = null
 
 ## A short message for the HUD toast channel (UiSlice shows it).
 signal notice(text: String)
@@ -833,11 +835,30 @@ func _draw_markers(sz: Vector2) -> void:
 			var wm := marker_for(waystone_slice.exact_pos(str(id)), sz)
 			if not wm.is_empty():
 				_draw_marker(origin, wm, "Waystone", Color(0.8, 0.5, 1.0), Color(0.9, 0.75, 1.0))
+	_draw_claims(origin)
 	if minimap != null and minimap.has_method("get_waypoints"):
 		for w in minimap.get_waypoints():
 			var m := marker_for(w["pos"], sz)
 			if not m.is_empty():
 				_draw_marker(origin, m, str(w["name"]), Color(0.4, 0.9, 1.0), Color(0.7, 0.95, 1.0))
+
+## Phase 140 — a circle of the claim's radius around each settlement's hearth, from the host's last view.
+func _draw_claims(origin: Vector2) -> void:
+	if settlement_slice == null:
+		return
+	var view: Dictionary = settlement_slice.view()
+	var mine := str((view.get("mine", {}) as Dictionary).get("id", ""))
+	for c: Dictionary in view.get("claims", []):
+		var cx := float(c["x"]) / TerrainSlice.CHUNK_METERS
+		var cz := float(c["z"]) / TerrainSlice.CHUNK_METERS
+		var centre := screen_of_xz(cx, cz)
+		if not centre["visible"]:
+			continue
+		var edge := screen_of_xz(cx + float(c["radius"]) / TerrainSlice.CHUNK_METERS, cz)
+		var r: float = (edge["pos"] - centre["pos"]).length()
+		var col := Color(1.0, 0.6, 0.2, 0.9) if str(c["id"]) == mine else Color(0.9, 0.3, 0.3, 0.8)
+		draw_arc(origin + centre["pos"], maxf(r, 3.0), 0.0, TAU, 48, col, 2.0)
+		draw_string(ThemeDB.fallback_font, origin + centre["pos"] + Vector2(6, -6), str(c["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, col)
 
 func _draw_marker(origin: Vector2, m: Dictionary, label: String, fill: Color, text_col: Color) -> void:
 	var font := ThemeDB.fallback_font

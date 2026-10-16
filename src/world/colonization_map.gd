@@ -20,6 +20,19 @@ const REGION_METERS := float(RegionStore.REGION_SIZE) * TerrainSlice.CHUNK_METER
 
 ## "rx,rz" -> { "edits": int, "homes": int, "presence_at": float (Unix seconds, 0 = never) }.
 var _regions: Dictionary = {}
+## Phase 140 — a settlement counts like several homes. Derived from the settlement slice and replaced
+## wholesale by `set_settlements`, so it is not persisted here (the world record holds the settlements).
+const SETTLEMENT_WEIGHT := 25.0
+## "rx,rz" -> settlements founded in that region.
+var _settled: Dictionary = {}
+
+## Replace the settlement counts from the chunk of every settlement's hearth.
+func set_settlements(chunks: Array) -> void:
+	_settled.clear()
+	for c: Vector2i in chunks:
+		var key := RegionStore.region_key(RegionStore.region_of_chunk(TerrainSlice.wrap_chunk(c)))
+		_settled[key] = int(_settled.get(key, 0)) + 1
+
 ## "cx,cz" chunks already counted this session, so a second edit of one chunk is not a second chunk.
 var _counted_chunks: Dictionary = {}
 
@@ -62,10 +75,12 @@ func seed_from_regions(regions: Array) -> void:
 			e["edits"] = 1
 
 func score(region: Vector2i, now: float = 0.0) -> float:
-	var e: Variant = _regions.get(RegionStore.region_key(region), null)
+	var key := RegionStore.region_key(region)
+	var e: Variant = _regions.get(key, null)
+	var built := float(_settled.get(key, 0)) * SETTLEMENT_WEIGHT
 	if e == null:
-		return 0.0
-	var s := float(e["edits"]) + float(e["homes"]) * HOME_WEIGHT
+		return built
+	var s := built + float(e["edits"]) + float(e["homes"]) * HOME_WEIGHT
 	var seen := float(e["presence_at"])
 	if seen > 0.0 and now - seen <= PRESENCE_WINDOW_SECONDS:
 		s += 1.0
@@ -77,7 +92,9 @@ func is_colonized(region: Vector2i, threshold: float, now: float = 0.0) -> bool:
 ## Every region (Vector2i) at or above `threshold`.
 func colonized_regions(threshold: float, now: float = 0.0) -> Array:
 	var out: Array = []
-	for key in _regions:
+	var keys: Dictionary = _regions.duplicate()
+	keys.merge(_settled)
+	for key in keys:
 		var r := RegionStore.region_from_key(str(key))
 		if score(r, now) >= threshold:
 			out.append(r)
@@ -87,7 +104,7 @@ func colonized_regions(threshold: float, now: float = 0.0) -> Array:
 ## rectangle, not its centre). Looks only at the regions the radius can reach, so the cost does
 ## not grow with the number of colonized regions. X wraps around the circumference.
 func is_near_colonized(x: float, z: float, min_distance_m: float, threshold: float, now: float = 0.0) -> bool:
-	if _regions.is_empty():
+	if _regions.is_empty() and _settled.is_empty():
 		return false
 	var span := int(ceil(min_distance_m / REGION_METERS)) + 1
 	var rx0 := floori(x / REGION_METERS)

@@ -54,6 +54,8 @@ const BootWiring := preload("res://src/core/boot_wiring.gd")
 const CombatWiring := preload("res://src/battle/combat_wiring.gd")
 const WeatherWiring := preload("res://src/world/weather_wiring.gd")
 const WaystoneWiring := preload("res://src/world/waystone_wiring.gd")
+const SettlementSlice := preload("res://src/settlement/settlement_slice.gd")
+const SettlementWiring := preload("res://src/settlement/settlement_wiring.gd")
 const CraftingWiring := preload("res://src/crafting/crafting_wiring.gd")
 const CharacterWiring := preload("res://src/character/character_wiring.gd")
 const PeerWiring := preload("res://src/networking/peer_wiring.gd")
@@ -66,6 +68,7 @@ var _boot_wiring := BootWiring.new()
 var _combat_wiring := CombatWiring.new()
 var _weather_wiring := WeatherWiring.new()
 var _waystone_wiring := WaystoneWiring.new()
+var _settlement_wiring := SettlementWiring.new()
 var _crafting_wiring := CraftingWiring.new()
 var _character_wiring := CharacterWiring.new()
 var _peer_wiring := PeerWiring.new()
@@ -106,6 +109,7 @@ var _proposal:    ProposalSlice
 var _ui:          UiSlice
 var _chat:        ChatSlice
 var _waystones:   WaystoneSlice
+var _settlements: SettlementSlice
 var _weather:     WeatherSlice
 ## Phase 129 — the host's status effects, ticked from the clock tick; null on a client.
 var _status:      StatusEffects
@@ -227,7 +231,7 @@ var _handshake_retries: int = 0
 
 ## Phase 132 — wiring modules know their root from construction (the suite builds roots without `_ready`).
 func _init() -> void:
-	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _crafting_wiring, _character_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring]
+	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _settlement_wiring, _crafting_wiring, _character_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring]
 	for w in _wirings:
 		w.root = self
 
@@ -287,6 +291,7 @@ func _ready() -> void:
 	_ui          = UiSlice.new()
 	_chat        = ChatSlice.new()
 	_waystones   = WaystoneSlice.new()
+	_settlements = SettlementSlice.new()
 	_weather     = WeatherSlice.new()
 	# Phase 129 — status effects live on the host; the battle slice rolls them and the AI honours them.
 	_status = StatusEffects.new()
@@ -333,7 +338,7 @@ func _ready() -> void:
 	# The UI (Phase 14) is presentation only, so a headless dedicated server
 	# (Phase 27) keeps it out of the tree — its _ready() would otherwise build
 	# windows nothing can render or click.
-	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _waystones, _weather]
+	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _waystones, _settlements, _weather]
 	if not _is_server:
 		slices.append(_ui)
 	if not _is_server:
@@ -415,6 +420,14 @@ func _ready() -> void:
 	_waystones.registry      = _registry
 	_waystones.teleporter    = Callable(_chat, "teleport_player")
 	_waystones.position_of   = Callable(_waystone_wiring, "_waystone_player_pos")
+	# Phase 140 — settlements: the host-side guards read this slice.
+	_settlements.registry    = _registry
+	_settlements.position_of = Callable(_settlement_wiring, "player_xz")
+	_settlements.is_host     = not _is_client
+	_voxel.claim_guard       = Callable(_settlements, "edit_blocker")
+	_station.claim_guard     = Callable(_settlements, "edit_blocker")
+	_station.settlement_slice = _settlements
+	_technology.settlement_slice = _settlements
 	if not _is_server:
 		_ui.inventory_slice       = _inventory
 		_ui.character_slice       = _character
@@ -429,6 +442,9 @@ func _ready() -> void:
 		_ui.map_window.terrain_slice = _terrain
 		_ui.map_window.player_slice  = _player
 		_ui.map_window.waystone_slice = _waystones
+		_ui.map_window.settlement_slice = _settlements
+		_ui.settlement_slice = _settlements
+		_ui.settlement_panel.settlement_slice = _settlements
 		_ui.drops_enabled         = not _is_client
 	_trade.inventory_slice    = _inventory
 	_market.inventory_slice   = _inventory
@@ -1093,6 +1109,7 @@ func _process(delta: float) -> void:
 	_tick_pending_client_boot(delta)
 
 	_weather_wiring._tick_world_clock(delta)
+	_settlement_wiring.tick(delta)
 	_peer_wiring._sync_player_avatar(delta)
 	if _distant != null and _player != null and _chunk_manager != null:
 		_distant.world_seed = _terrain.get_world_seed()
