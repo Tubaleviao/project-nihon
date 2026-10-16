@@ -33,6 +33,7 @@ const HARD_FRAME_MS := 2000.0 ## a frame over this fails the run
 const STEP_TIMEOUT_SECS := 60.0 ## wall clock for a WHOLE step, not for one wait inside it
 const WARMUP_FRAMES := 3     ## the first frames of a step (shader compile, first upload) are not recorded
 const BOOT_TIMEOUT_SECS := 120.0
+const WATCHDOG_SLACK_SECS := 60.0 ## whole-run budget = boot + every step's timeout + this
 const STREAM_CHUNKS := 20
 const WALK_SECS := 3.0
 const FIGHT_RANGE_M := 1.5
@@ -47,6 +48,7 @@ var _mined: Array = []
 var _chopped: Array = []
 var _crafted: Array = []
 var _placed: Array = []
+var _steps_done: Array = []   ## finished step records, for the watchdog's partial report
 
 static func requested(args: Array) -> bool:
 	return ARG in args
@@ -153,6 +155,10 @@ func _process(delta: float) -> void:
 
 func run(root: Node) -> void:
 	_root = root
+	# A step body that hits a script error aborts its coroutine and would leave the process
+	# running with no verdict; the watchdog writes what exists and quits.
+	var budget := BOOT_TIMEOUT_SECS + STEP_TIMEOUT_SECS * float(step_names().size()) + WATCHDOG_SLACK_SECS
+	get_tree().create_timer(budget).timeout.connect(_on_watchdog)
 	print("[Playtest] waiting for the world boot")
 	var booted: bool = await _until(func(): return _root._player != null and not _root._chunk_manager._first_ring.is_empty() and _root._chunk_manager.is_first_ring_ready() \
 		and not _root._pending_host_boot, BOOT_TIMEOUT_SECS)
@@ -165,9 +171,28 @@ func run(root: Node) -> void:
 		_root._persistence.autosave_interval = 1.0e9   # the bot's edits must never reach the player's save
 		_root._inventory.replace_contents({})   # a saved pack from an earlier run must not decide the result
 		for name in step_names():
-			steps.append(await _run_step(name))
+			var rec: Dictionary = await _run_step(name)
+			_steps_done.append(rec)
+			steps.append(rec)
+	_finish(steps)
+
+func _on_watchdog() -> void:
+	_recording = false
+	_key(KEY_W, false)
+	var steps := _steps_done.duplicate()
+	steps.append(step_record("watchdog", false, "the run did not finish in time (a step crashed or hung)", [], 0))
+	print("[Playtest] watchdog fired")
+	_finish(steps)
+
+## Write the report, print the verdict and quit. Pending chunk records are dropped first: the
+## game's exit flush would otherwise put the bot's frontier chunks into the player's region store.
+func _finish(steps: Array) -> void:
 	var report := build_report(steps)
-	_write_report(report)
+	if not _write_report(report):
+		report["ok"] = false
+		(report["failures"] as Array).append("the report could not be written to %s" % OUT_DIR)
+	if _root != null and is_instance_valid(_root._chunk_manager):
+		_root._chunk_manager._pending_records.clear()
 	for f in report["failures"]:
 		print("[Playtest] FAILURE: %s" % f)
 	print("[Playtest] %s" % ("PASS" if bool(report["ok"]) else "FAIL"))
@@ -206,14 +231,18 @@ func _screenshot(step: String) -> void:
 	if img != null:
 		img.save_png(ProjectSettings.globalize_path(OUT_DIR.path_join(step + ".png")))
 
-func _write_report(report: Dictionary) -> void:
+## True when both files were written; a failure is printed, not swallowed.
+func _write_report(report: Dictionary) -> bool:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT_DIR))
-	var j := FileAccess.open(OUT_DIR.path_join("report.json"), FileAccess.WRITE)
-	if j != null:
-		j.store_string(JSON.stringify(report, "\t"))
-	var m := FileAccess.open(OUT_DIR.path_join("report.md"), FileAccess.WRITE)
-	if m != null:
-		m.store_string(report_markdown(report))
+	var ok := true
+	for entry in [["report.json", JSON.stringify(report, "\t")], ["report.md", report_markdown(report)]]:
+		var f := FileAccess.open(OUT_DIR.path_join(entry[0]), FileAccess.WRITE)
+		if f == null:
+			print("[Playtest] cannot write %s: %s" % [entry[0], error_string(FileAccess.get_open_error())])
+			ok = false
+			continue
+		f.store_string(entry[1])
+	return ok
 
 # ---------------------------------------------------------------------------
 # Steps. Each returns [ok: bool, detail: String].
@@ -353,7 +382,7 @@ func _step_fight() -> Array:
 func _step_travel() -> Array:
 	var seen: Dictionary = _root._player.get_world_pos()
 	var gap := 80.0
-	var base: Vector3 = WorldPos.to_scene(seen, seen["chunk"])
+	var base: Vector3 = _player_pos()
 	var a: String = _root._station.place_station("waystone", base)
 	var b: String = _root._station.place_station("waystone", base + Vector3(gap, 0.0, 0.0))
 	var dest := WorldPos.normalized({ "chunk": seen["chunk"], "local": (seen["local"] as Vector3) + Vector3(gap, 0.0, 0.0) })

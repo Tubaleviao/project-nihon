@@ -3,7 +3,7 @@ extends "res://src/core/wiring.gd"
 ## Moved out of game_root.gd; `root` is the GameRoot that owns the slices.
 
 const Diag := preload("res://src/core/diag.gd")
-const PlaytestBot := preload("res://src/tests/playtest_bot.gd")
+const PLAYTEST_BOT_PATH := "res://src/tests/playtest_bot.gd"
 
 ## Parse `--client [addr]` from OS user args to determine network role. Defaults
 ## to host (authoritative single-player) when no args are present. A malformed
@@ -92,9 +92,13 @@ func _check_game_data() -> void:
 ## Phase 134 — `--playtest-bot`: a scripted bot plays the rendered listen host, then quits the process.
 ## Debug builds only: it empties the pack and edits the world, so a release build ignores the flag.
 func _start_playtest_bot() -> void:
-	if not OS.is_debug_build() or not PlaytestBot.requested(OS.get_cmdline_user_args()) or root._is_client or root._is_server:
+	if not OS.is_debug_build() or root._is_client or root._is_server:
 		return
-	var bot := PlaytestBot.new()
+	# Loaded here, not preloaded: a release build never parses the bot.
+	var PlaytestBot: GDScript = load(PLAYTEST_BOT_PATH)
+	if not PlaytestBot.requested(OS.get_cmdline_user_args()):
+		return
+	var bot: Node = PlaytestBot.new()
 	bot.name = "PlaytestBot"
 	root.add_child(bot)
 	bot.run(root)
