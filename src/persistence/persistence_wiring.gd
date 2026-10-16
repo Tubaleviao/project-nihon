@@ -417,8 +417,7 @@ func _load_world_records() -> void:
 	root._clock.from_data(root._loaded_world.get("clock", {}))
 	root._weather.from_data(root._loaded_world.get("weather", []))
 	root._colonization.seed_from_regions(root._persistence.region_store.list_regions())
-	if not GameBus.block_changed.is_connected(root._peer_wiring._on_block_changed_colonization):
-		GameBus.block_changed.connect(root._peer_wiring._on_block_changed_colonization)
+	root._peer_wiring.wire_colonization()
 	if root._loaded_world.is_empty():
 		print("[Server] no world record at %s — booting a fresh world" % root._persistence.world_path())
 	else:

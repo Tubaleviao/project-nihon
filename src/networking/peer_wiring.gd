@@ -140,6 +140,11 @@ func _peer_exact_pos(peer_id: int) -> Dictionary:
 	var p := root._networking.get_last_known_state(peer_id)
 	return WorldPos.from_world(p.x, p.y, p.z)
 
+## Late connection (host/server boot, once the colonization map is loaded); tracked so `unwire` drops it.
+func wire_colonization() -> void:
+	if not GameBus.block_changed.is_connected(_on_block_changed_colonization):
+		connect_bus(GameBus.block_changed, _on_block_changed_colonization)
+
 func _on_block_changed_colonization(_action: String, position: Vector3, _normal: Vector3, _material: String) -> void:
 	root._colonization.note_edited_chunk(Vector2i(floori(position.x / TerrainSlice.CHUNK_METERS), floori(position.z / TerrainSlice.CHUNK_METERS)))
 

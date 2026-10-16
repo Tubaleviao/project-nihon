@@ -11847,7 +11847,7 @@ func _test_ai_targets_nearest_of_all_players() -> void:
 	# Phase 37 — and it IS struck: the round is routed by the target the creature
 	# engaged, so a remote peer's id rides `combat_round_requested` and the host can
 	# deliver the hit to that peer's own client (see BattleSlice.is_player_target and
-	# GameRoot._on_player_damaged). Phase 36 closed on the opposite: a peer was chased
+	# CombatWiring._on_player_damaged). Phase 36 closed on the opposite: a peer was chased
 	# and then swung at nothing at all.
 	var rounds: Array = []
 	var on_round := func(attacker: String, defender: String) -> void:
@@ -22708,6 +22708,9 @@ func _test_wiring_unwire() -> void:
 		for w in gr._wirings:
 			w.wire(gr)
 			connected += w.connection_count()
+		gr._peer_wiring.wire_colonization()
+		gr._peer_wiring.wire_colonization()   # idempotent
+		connected += 1
 		assert_true(connected > 40, "%s: the modules connect their handlers" % role)
 		assert_eq(_bus_connection_total(), before + connected, "%s: every connection is on the bus" % role)
 		for w in gr._wirings:

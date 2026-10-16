@@ -546,9 +546,8 @@ func _ready() -> void:
 	for w in _wirings:
 		w.wire(self)
 
-	multiplayer.connection_failed.connect(_peer_wiring._on_connection_failed)
-	multiplayer.server_disconnected.connect(_peer_wiring._on_server_disconnected)
-
+	_peer_wiring.connect_bus(multiplayer.connection_failed, _peer_wiring._on_connection_failed)
+	_peer_wiring.connect_bus(multiplayer.server_disconnected, _peer_wiring._on_server_disconnected)
 	# Lighting — a directional "sun" plus soft ambient sky fill. Skipped on a
 	# headless server (no renderer to light).
 	if not _is_server:
@@ -676,6 +675,10 @@ func _notification(what: int) -> void:
 		# The write is threaded, so quitting here would race it: block until it lands.
 		_persistence_wiring._flush_save()
 		get_tree().quit()
+	elif what == NOTIFICATION_PREDELETE:
+		# Wired once in `_ready`: unwire at free time, so a reparent keeps the handlers.
+		for w in _wirings:
+			w.unwire()
 
 ## Set true to enable verbose craft-fail logging and the demo station/craft
 ## sequence in _boot_host(). False keeps boot output minimal in production.
@@ -1153,13 +1156,10 @@ static func _chunks_to_remark(dirty: Array, failed: Array) -> Array:
 			out.append(key)
 	return out
 
-## A pending save must not be dropped when the process goes away (a `--quit` boot
-## exits long before the autosave interval). `Thread` also has to be waited for
-## before it is freed, so this is both the correctness and the lifecycle hook.
+## A pending save must not be dropped when the process goes away (a `--quit` boot exits long
+## before the autosave interval); the `Thread` must also be waited for before it is freed.
 func _exit_tree() -> void:
 	_persistence_wiring._flush_save()
-	for w in _wirings:
-		w.unwire()
 	# The chunk manager's own exit stood down while the save thread ran; its records go out now.
 	if _chunk_manager != null and is_instance_valid(_chunk_manager):
 		_chunk_manager.flush_records_final()

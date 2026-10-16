@@ -293,7 +293,7 @@ references it needs. Behaviour does not change.
 - [x] `wc -l src/core/game_root.gd` is under 1,200.
 - [x] Suite (audit): `game_root.gd` contains no `GameBus.<signal>.connect` outside the wiring-module
   list, and every `*_wiring.gd` is constructed exactly once on each boot path.
-- [x] Suite: building and freeing a full root on each boot role leaves no connected handler behind
+- [x] Suite: wiring then unwiring a root on each boot role (and the late colonization connect) leaves no connected handler behind
   (`unwire` disconnects everything `wire` connected) and no orphan nodes.
 - [x] Suite green on both boot paths with the same assertion count as before the move (no test
   removed), harness green, `--server` and `--quit-after-boot` boots log their ready lines.

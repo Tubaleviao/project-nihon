@@ -77,7 +77,7 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 	# (PlayerSlice handles death). Phase 37 — that rule is now keyed on the DEFENDER
 	# SHAPE, not on the literal "player": a round routed by target id can name a remote
 	# peer, whose body is simulated on its own client. The target rides the signal, so
-	# the host can deliver it to that peer (GameRoot._on_player_damaged).
+	# the host can deliver it to that peer (CombatWiring._on_player_damaged).
 	if is_player_target(defender_id):
 		if outcome != "miss":
 			# Phase 129 — a knocked-down body takes more; the hit may leave an effect on it.
