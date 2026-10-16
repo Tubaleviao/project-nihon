@@ -396,7 +396,7 @@ static func latitude_of(chunk_z: int) -> float:
 static func longitude_of(chunk_x: int) -> float:
 	var c := circumference_chunks()
 	@warning_ignore("integer_division")
-	return float(posmod(chunk_x + c / 2, c) - c / 2) * 360.0 / float(c)
+	return float(SeamWrap.wrap_i(chunk_x, c)) * 360.0 / float(c)
 
 ## Latitude in degrees at a world Z (metres).
 static func latitude_at(world_z: float) -> float:
@@ -412,7 +412,7 @@ static func _fold_latitude(lat: float) -> float:
 
 ## Longitude in degrees at a world X (metres), wrapped into [-180, 180).
 static func longitude_at(world_x: float) -> float:
-	return fposmod(world_x / CHUNK_METERS / float(circumference_chunks()) * 360.0 + 180.0, 360.0) - 180.0
+	return SeamWrap.wrap_f(world_x / CHUNK_METERS / float(circumference_chunks()) * 360.0, 360.0)
 
 ## What `/where` prints and the HUD shows: map X/Y and altitude of a world position.
 static func where_text(world_pos: Vector3) -> String:
@@ -604,7 +604,7 @@ func _height_wrapped(x: float, z: float, w: float, cache: Array) -> float:
 ## calling thread, `row` an optional polar-row memo (`new_polar_row`, or `[]` for none).
 static func height_wrapped_in(seed_v: int, noise: FastNoiseLite, x: float, z: float, w: float, cache: Array, row: Array) -> float:
 	var half_w := w * 0.5
-	var wx := fposmod(x + half_w, w) - half_w   # canonical X in [-w/2, w/2)
+	var wx := SeamWrap.wrap_f(x, w)   # canonical X in [-w/2, w/2)
 	var band := WRAP_BLEND_CHUNKS * CHUNK_METERS
 	if wx > half_w - band:
 		# East edge: ease into the west edge's heights, so x = +w/2 meets x = -w/2 exactly.

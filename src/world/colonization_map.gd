@@ -10,6 +10,7 @@ extends RefCounted
 ## record has no map still counts every region that holds an edit.
 const RegionStore := preload("res://src/persistence/region_store.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 
 const HOME_WEIGHT := 10.0
 ## A player seen in a region counts toward its score for a week.
@@ -104,7 +105,7 @@ func is_near_colonized(x: float, z: float, min_distance_m: float, threshold: flo
 			# Distance from the point to the region rectangle, X taken the short way round.
 			var cx := (float(rx) + 0.5) * REGION_METERS
 			var cz := (float(rz) + 0.5) * REGION_METERS
-			var ddx := absf(fposmod(x - cx + circ * 0.5, circ) - circ * 0.5)
+			var ddx := absf(SeamWrap.wrap_f(x - cx, circ))
 			var ddz := absf(z - cz)
 			var gap_x := maxf(ddx - REGION_METERS * 0.5, 0.0)
 			var gap_z := maxf(ddz - REGION_METERS * 0.5, 0.0)

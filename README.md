@@ -158,7 +158,7 @@ npm run generate  # generate the design bible into bible/
 | 135 | A WAN profile: latency, loss and bandwidth in the two-client harness | In review |
 | 136 | Creatures walk on the ground and around obstacles | In review |
 | 137 | Loose ground settles: sand and soil fall when undermined | In review |
-| 138 | Trees, generation records and persistence cleanup sweep | Planned |
+| 138 | Trees, generation records and persistence cleanup sweep | In review |
 | 139 | Settlements in the fabric: founding, membership and shared storage | Planned |
 | 140 | Settlements at runtime: a hearth, a claim and a shared stockpile | Planned |
 | 141 | Terrain streaming off the main thread: worker noise, seam strips, polar shortcuts, fold catch-up | In review |

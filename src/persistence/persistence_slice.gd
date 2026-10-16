@@ -117,7 +117,8 @@ static func worldgen_fingerprint_of(record: Dictionary) -> int:
 	return int(record.get("worldgenFingerprint", -1))
 
 ## The fingerprint a save of `loaded` must write: a new world or an unstamped older record takes
-## the running one (stamped, not reported); a stamped record keeps its original.
+## the running one (stamped, not reported); a stamped record keeps its original. The caller (Phase 138)
+## refreshes the stamp to the running value once the mismatch notice was given.
 static func fingerprint_stamp_for_save(loaded: Dictionary, running: int) -> int:
 	var recorded := worldgen_fingerprint_of(loaded)
 	return running if loaded.is_empty() or recorded < 0 else recorded
@@ -326,7 +327,9 @@ func _write_world_payload(data: Dictionary, incremental: bool) -> Error:
 	# the first error is returned once everything that could be saved has been.
 	var staged := { "err": OK, "ops": [] }
 	if has_chunks:
-		staged = region_store.stage_chunks(chunks)
+		staged = region_store.stage_chunks(chunks, true, true)
+	else:
+		region_store.end_all_failure_streaks()
 	var region_err: Error = staged["err"]
 	var ops: Array = staged["ops"]
 	var escalated: bool = region_err != OK and region_store.has_exhausted_region()
@@ -337,7 +340,7 @@ func _write_world_payload(data: Dictionary, incremental: bool) -> Error:
 	elif region_err != OK:
 		# World record untouched: commit the regions that staged, report the failure.
 		if not ops.is_empty():
-			var partial := SaveTxn.commit(ops, journal_path(), fault)
+			var partial := SaveTxn.commit(ops, journal_path(), fault, [region_store.journal_path()])
 			if partial != OK:
 				region_store.last_failed_chunk_keys = []
 		return region_err
@@ -352,7 +355,7 @@ func _write_world_payload(data: Dictionary, incremental: bool) -> Error:
 		region_store.last_failed_chunk_keys = []
 		return stage_err
 	ops.append({ "path": world_path(), "tmp": world_tmp, "kind": "world" })
-	var commit_err := SaveTxn.commit(ops, journal_path(), fault) as Error
+	var commit_err := SaveTxn.commit(ops, journal_path(), fault, [region_store.journal_path()]) as Error
 	if commit_err != OK:
 		region_store.last_failed_chunk_keys = []   # rolled back: every chunk of this save stays dirty
 		return commit_err

@@ -38,6 +38,11 @@ func register() -> void:
 	_run_test("tree clears: a client's cap evicts the least recently used chunk", _test_p126_client_cap_lru)
 	_run_test("tree clears: an unloaded chunk beside recorded land pins the frontier record", _test_p126_frontier_clear)
 	_run_test("tree clears: a client keeps an unrecorded clear, range follows the scope", _test_p126_client_scope_and_ghost)
+	_run_test("tree clears: an unpinnable host clear survives a save/restart", _test_p138_unpinned_clear_restart)
+	_run_test("tree clears: no frontier record is pinned for a circle that hits no tree", _test_p138_no_pin_without_hit)
+	_run_test("region store: a save with no chunks ends failure streaks", _test_p138_idle_save_ends_streaks)
+	_run_test("save txn: a live foreign journal keeps the .bak and defers the commit", _test_p138_txn_foreign_journal)
+	_run_test("tree clears: scope clamp, running total, a client never writes the host's record", _test_p138_scope_total_client)
 	_run_test("tree clears: a deep edit and clear_trees_near_tile agree", _test_p126_deep_edit_agrees)
 	_run_test("tree clears: a far edit clears the resolved tile", _test_p126_far_edit_tile)
 	_run_test("region store: normalize_gen drops only the bad t/x entries", _test_p126_normalize_gen_drops_bad_entries)
@@ -939,11 +944,113 @@ func _test_p126_host_keeps_clears() -> void:
 	# With no way to pin a record (an isolated host) the clears wait, uncapped.
 	t.record_writer = Callable()
 	t._cleared_local.clear()
+	t._cleared_total = 0
 	for i in 3000:
 		@warning_ignore("integer_division")
 		t._record_cleared(Vector2i(i % 60, 100 + i / 60), 3)
 	assert_eq(t._cleared_local.size(), 3000, "unpinnable host clears are all held, past the client cap")
 	_p126_free(rig)
+
+## Phase 138 — a plain-generator chunk (x >= 2) that grows at least `min_trees`; its biome entry and budget.
+func _p138_tree_chunk(t: Node, min_trees: int) -> Vector2i:
+	for x in range(2, 60):
+		var c := Vector2i(x, 0)
+		var biome: String = t._chunk_biome(c)
+		if not t.tree_entry_for_biome(biome).is_empty() and t.tree_count_for(c, biome) >= min_trees:
+			return c
+	return Vector2i(-1000, 0)
+
+func _test_p138_unpinned_clear_restart() -> void:
+	var rig := _p126_host_rig()
+	var t: Node = rig["t"]
+	t.frontier_ready = func(_c: Vector2i) -> bool: return false   # the regions around the chunk are unread
+	var chunk := _p138_tree_chunk(t, 2)
+	assert_true(chunk != Vector2i(-1000, 0), "a tree-growing chunk exists in the search window")
+	var biome: String = t._chunk_biome(chunk)
+	var entry: Dictionary = t.tree_entry_for_biome(biome)
+	var xz: Vector2 = t._deterministic_chunk_position(chunk, str(entry["species"]), 0)
+	GameBus.station_placed.emit("station_p138", "Workbench", Vector3(xz.x, 0.0, xz.y))
+	assert_false(ChunkRecordsScript.has_record(chunk), "no record could be pinned")
+	assert_true(t._pending_spots.has(chunk), "the host held the clear circle")
+	# A restart: the spots ride the world record's JSON, the chunk then loads with its record.
+	var saved: Variant = JSON.parse_string(JSON.stringify(t.pending_spots_to_data()))
+	t.free()
+	ChunkRecordsScript.clear()
+	var t2 := _make_tree_slice()
+	t2.terrain_slice = rig["terrain"]
+	t2.record_writer = func(c: Vector2i, rec: Dictionary) -> void:
+		ChunkRecordsScript.set_record(c, RegionStoreScript.normalize_gen(rec))
+	t2.pending_spots_from_data(saved)
+	assert_true(t2._pending_spots.has(chunk), "the spots were restored")
+	t2.spawn_for_chunk(chunk)
+	assert_true(t2._pending_spots.has(chunk), "a chunk still without a record keeps them")
+	assert_false(t2.get_tree_record("tree_%d_%d_0" % [chunk.x, chunk.y]).is_empty(), "and its tree stands until it has one")
+	t2._pin_frontier_record(chunk)
+	t2.spawn_for_chunk(chunk)
+	assert_true(t2.get_tree_record("tree_%d_%d_0" % [chunk.x, chunk.y]).is_empty(), "once recorded, the cleared tree stays gone after the restart")
+	assert_false(t2._pending_spots.has(chunk), "and the spots are released")
+	t2.pending_spots_from_data({ "x,y": [[1, 2, 3]], "1,1": "junk", "2,2": [[1, 2], [NAN, 0, 1], ["a", 0, 1]] })
+	assert_eq(t2._pending_spots.size(), 0, "malformed saved spots are skipped")
+	t2.free()
+	rig["terrain"].free()
+	ChunkRecordsScript.clear()
+
+func _test_p138_no_pin_without_hit() -> void:
+	var rig := _p126_host_rig()
+	var t: Node = rig["t"]
+	var chunk := _p138_tree_chunk(t, 1)
+	var biome: String = t._chunk_biome(chunk)
+	var entry: Dictionary = t.tree_entry_for_biome(biome)
+	var budget: int = t.tree_count_for(chunk, biome)
+	var radius := TreeSlice.clear_radius_m()
+	var span: float = float(t._chunk_size()) * float(t._tile_size())
+	var spot := Vector2.INF
+	for gz in range(1, 8):
+		for gx in range(1, 8):
+			var p := Vector2((float(chunk.x) + gx / 8.0) * span, (float(chunk.y) + gz / 8.0) * span)
+			var near := false
+			for i in budget:
+				if t._deterministic_chunk_position(chunk, str(entry["species"]), i).distance_to(p) <= radius:
+					near = true
+			if not near and not spot.is_finite():
+				spot = p
+	if spot.is_finite():
+		assert_eq(t._clear_unloaded_chunk(chunk, spot, radius, t._lap_metres()), 0, "a circle with no tree in it clears none")
+		assert_false(ChunkRecordsScript.has_record(chunk), "and pins no record for the chunk")
+		var first := Vector2(t._deterministic_chunk_position(chunk, str(entry["species"]), 0))
+		assert_true(t._clear_unloaded_chunk(chunk, first, radius, t._lap_metres()) >= 1, "a circle on a tree clears it")
+		assert_true(ChunkRecordsScript.has_record(chunk), "and then the record is pinned")
+	_p126_free(rig)
+
+func _test_p138_scope_total_client() -> void:
+	var rig := _p126_host_rig()
+	var t: Node = rig["t"]
+	t.set_clear_scope([0, 0, 1000000])
+	assert_eq(t.clear_id_range, TreeSlice.MAX_CLEAR_RANGE_CHUNKS, "a hostile scope radius is clamped")
+	t.free()
+	ChunkRecordsScript.clear()
+	# A client: the running total follows the table, and a record is never written from the client side.
+	var c := _make_tree_slice()
+	c.is_authoritative = false
+	var writes := []
+	c.record_writer = func(ch: Vector2i, r: Dictionary) -> void: writes.append(ch)
+	for i in 5:
+		c._record_cleared(Vector2i(1, 0), i)
+	c._record_cleared(Vector2i(2, 0), 1)
+	assert_eq(c._cleared_total, 6, "the running total counts every held index")
+	ChunkRecordsScript.set_record(Vector2i(1, 0), RegionStoreScript.normalize_gen(_sync_record(Vector2i(1, 0), "TemperateForest")))
+	c._adopt_local_clears(Vector2i(1, 0))
+	assert_true(writes.is_empty(), "a client does not write the host's record")
+	assert_true(c._cleared_local.has(Vector2i(1, 0)), "and keeps indices the record does not carry")
+	var rec := ChunkRecordsScript.get_record(Vector2i(1, 0)).duplicate(true)
+	rec["x"] = [0, 1, 2, 3, 4]
+	ChunkRecordsScript.set_record(Vector2i(1, 0), RegionStoreScript.normalize_gen(rec))
+	c._adopt_local_clears(Vector2i(1, 0))
+	assert_false(c._cleared_local.has(Vector2i(1, 0)), "it lets go once the record carries them")
+	assert_eq(c._cleared_total, 1, "and the total follows")
+	c.free()
+	rig["terrain"].free()
+	ChunkRecordsScript.clear()
 
 func _test_p126_client_cap_lru() -> void:
 	ChunkRecordsScript.clear()
@@ -1016,6 +1123,7 @@ func _test_p126_client_scope_and_ghost() -> void:
 	assert_true(t._cleared_local.has(Vector2i(5, 0)), "a clear at the scope's edge is kept")
 	assert_false(t._cleared_local.has(Vector2i(6, 0)), "one past it is left to the records")
 	t._cleared_local[Vector2i(4, 4)] = { 1: true }
+	t._cleared_total += 1
 	t.set_clear_scope([20, 0, 5])
 	assert_false(t._cleared_local.has(Vector2i(4, 4)), "a scope move releases clears outside it")
 	t.set_clear_scope("junk")
@@ -2462,7 +2570,7 @@ func _test_p121_world_stamp_round_trip() -> void:
 	seen.clear()
 	var job: Dictionary = gr._persistence_wiring._collect_save_job(false)
 	assert_eq(int(job["world"]["worldgenVersion"]), older, "the save job carries the loaded stamp")
-	assert_eq(int(job["world"]["worldgenFingerprint"]), 12345, "and the fingerprint stamp (the recorded one: the mismatch load does not overwrite it)")
+	assert_eq(int(job["world"]["worldgenFingerprint"]), TerrainSlice.worldgen_fingerprint(), "and the fingerprint stamp (refreshed to the running one by the single notice, Phase 138)")
 	assert_eq(slice.write_job(job), OK, "the job is written")
 	var record := slice.load_world_record()
 	assert_eq(PersistenceSlice.worldgen_version_of(record), older, "the stamp round-trips through the record")
@@ -2483,3 +2591,39 @@ func _test_p121_world_stamp_round_trip() -> void:
 # ---------------------------------------------------------------------------
 # Phase 124 — research points, and the void-burst leftovers (#299, #300)
 # ---------------------------------------------------------------------------
+# --- Phase 138 — cleanup sweep ---------------------------------------------------------------
+
+func _test_p138_txn_foreign_journal() -> void:
+	var dir := "user://p138_txn"
+	DirAccess.make_dir_recursive_absolute(dir)
+	for stale in DirAccess.get_files_at(dir):
+		DirAccess.remove_absolute(dir + "/" + stale)
+	var target := dir + "/r.json"
+	var tmp := target + ".tmp"
+	var journal := dir + "/own.journal"
+	var other := dir + "/other.journal"
+	for pair in [[target, "live"], [target + SaveTxn121.BAK_EXT, "only-old-copy"], [tmp, "new"], [other, "{}"]]:
+		var f := FileAccess.open(str(pair[0]), FileAccess.WRITE)
+		f.store_string(str(pair[1]))
+		f.close()
+	var ops := [{ "path": target, "tmp": tmp, "kind": "region" }]
+	assert_eq(SaveTxn121.commit(ops, journal, Callable(), [other]), ERR_BUSY, "commit defers while another journal is live")
+	assert_eq(FileAccess.get_file_as_string(target + SaveTxn121.BAK_EXT), "only-old-copy", ".bak kept")
+	assert_eq(FileAccess.get_file_as_string(target), "live", "target untouched")
+	assert_false(FileAccess.file_exists(tmp), "staged tmp discarded")
+	# Without the foreign journal the stale .bak is cleared and the commit lands.
+	DirAccess.remove_absolute(other)
+	var f2 := FileAccess.open(tmp, FileAccess.WRITE)
+	f2.store_string("new")
+	f2.close()
+	assert_eq(SaveTxn121.commit(ops, journal, Callable(), [other]), OK, "commit lands once the other journal is gone")
+	assert_eq(FileAccess.get_file_as_string(target), "new", "new content live")
+	for n in DirAccess.get_files_at(dir):
+		DirAccess.remove_absolute(dir + "/" + n)
+	DirAccess.remove_absolute(dir)
+
+func _test_p138_idle_save_ends_streaks() -> void:
+	var store = RegionStoreScript.new()
+	store.region_failures["0,0"] = 2
+	store.end_all_failure_streaks()
+	assert_true(store.region_failures.is_empty(), "an idle save clears the streaks")

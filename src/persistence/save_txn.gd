@@ -18,10 +18,24 @@ const BAK_EXT := ".bak"
 
 ## Make the staged `ops` live. Each op is { "path": String, "tmp": String ("" removes the target),
 ## "kind": "region" | "world" }. Returns OK, or the first error with every moved file put back.
-static func commit(ops: Array, journal_path: String, fault: Callable = Callable()) -> int:
+## Phase 138 — `other_journals` are the journals of other transactions over the same files (the region
+## store's own, or the outer save's): while any exists, a `.bak` here may be their only old copy.
+static func commit(ops: Array, journal_path: String, fault: Callable = Callable(), other_journals: Array = []) -> int:
 	if ops.is_empty():
 		return OK
 	var targets: Array = []
+	var foreign_journal := false
+	for other in other_journals:
+		if str(other) != "" and FileAccess.file_exists(str(other)):
+			foreign_journal = true
+	if foreign_journal and not FileAccess.file_exists(journal_path):
+		# Another transaction's journal is live: a `.bak` here may be its only old copy and the rename below
+		# would overwrite it. Refuse before touching anything; the save stays dirty and retries once it settled.
+		for op in ops:
+			if FileAccess.file_exists(str(op["path"]) + BAK_EXT):
+				Diag.warn("SaveTxn: %s is held by another transaction's journal — commit deferred" % (str(op["path"]) + BAK_EXT))
+				discard(ops)
+				return ERR_BUSY
 	for op in ops:
 		# Without a journal any `.bak` here is a leftover of a finished commit (its cleanup failed):
 		# stale. Clear it, or a rollback of this commit could restore it over newer content. A surviving

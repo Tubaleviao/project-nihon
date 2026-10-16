@@ -21,6 +21,7 @@ const BiomeBlend := preload("res://src/terrain/biome_blend.gd")
 const RevealedStore := preload("res://src/persistence/revealed_store.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const MapMath := preload("res://src/ui/map_math.gd")
+const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const CHUNK_SIZE := TerrainSlice.CHUNK_METERS   # world units per chunk
 
 ## Reveal this many chunks around the player's current chunk (Chebyshev radius).
@@ -339,7 +340,7 @@ func waypoint_offset_m(index: int) -> Vector2:
 	var player_local := _player_pos - Vector2(_player_chunk) * CHUNK_SIZE
 	var d := MapMath.delta_m(_player_chunk, player_local, wc, Vector2(wl.x, wl.z))
 	var circ_m := float(TerrainSlice.circumference_chunks()) * CHUNK_SIZE
-	d.x = fposmod(d.x + circ_m * 0.5, circ_m) - circ_m * 0.5   # the short way round the planet
+	d.x = SeamWrap.wrap_f(d.x, circ_m)   # the short way round the planet
 	return d
 
 ## Chunk coordinate containing a world XZ position.

@@ -2854,7 +2854,7 @@ func _test_chunk_peer_windows_refcount() -> void:
 	_wait_for_builds(cm)
 	assert_eq(cm._loaded.size(), 9, "the local window alone holds 3x3 chunks")
 	assert_eq(cm.chunk_ref_count(Vector2i(0, 0)), 1, "a chunk one window covers has a count of one")
-	cm.set_peer_center(3, Vector2i(1, 0))
+	cm.set_peer_center(3, Vector2i(1, 0), true)
 	cm.refresh()
 	assert_eq(cm.chunk_ref_count(Vector2i(0, 0)), 2, "two overlapping windows count the shared chunk twice")
 	assert_eq(cm.chunk_ref_count(Vector2i(2, 0)), 1, "a chunk only the peer covers counts once")
