@@ -163,6 +163,7 @@ issue number where the criterion used to be.
 | 140 | Settlements at runtime: a hearth, a claim and a shared stockpile | Planned | below |
 | 141 | Terrain streaming off the main thread: worker noise, seam strips, polar shortcuts, fold catch-up | In review | below |
 | 142 | Terrain build throughput: a time-budgeted pump and a native chunk builder | Planned | below |
+| 143 | Creature models: rigged, animated creatures replace the tinted box | Planned | below |
 
 ---
 
@@ -682,6 +683,66 @@ world gets taller.
 - [ ] Playtest bot: the `stream` step's chunk build rate at least doubles against the Phase 141 report,
   and no step reports a hitch over 50 ms.
 - [ ] Suite: a region read for a window move never runs on the main thread.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 143 — Creature models: rigged, animated creatures replace the tinted box
+
+**Goal:** every creature in the world is drawn as one tinted `BoxMesh` in a shared MultiMesh
+(`CreatureSlice._build_pool`), so the public build and the README GIFs show coloured boxes for
+wolves, boars and hawks. Ten rigged placeholder models already ship at
+`assets/models/creatures/<Entity>.glb.raw` (skinned box rigs on the fabric skeletons, with idle,
+walk, run, fall, land, attack and death clips), and `AssetOverlay.creature_model_key` names the
+key, but nothing attaches them. This phase attaches a model to each creature near the camera,
+drives its clips from the creature's AI and combat state, and keeps the box pool for far creatures
+and for any creature without a model. It is the game-repo side of `project-nihon-assets` phases A6
+(first quadruped) and A7 (creature roster): their real meshes then drop in through `assets-prod/`
+with no code change.
+
+**Newel dependency:** NO.
+
+**Depends on:** none (the placeholder rigs exist; A6/A7 art can land before or after).
+
+**Deliverables:**
+- Fabric (separate PR, first): a `skeleton` field on the creature entity naming its family
+  (`QuadrupedSkeleton`, `BirdSkeleton`, `SerpentSkeleton`, `HumanoidSkeleton`) and a value on all
+  ten creatures, replacing the family assumption written in `assets/README.md`. `npm run
+  generate` and `check-drift` clean.
+- `src/creature/creature_visuals.gd` (new) — loads `AssetOverlay.creature_model_key(id)` through
+  `load_rig_scene` once per creature type and instances it per creature, reconciling the model's
+  -Z forward with the fabric `restPose` +Z head. A creature whose key is absent or fails to parse
+  keeps its box, with one warning per type.
+- `src/creature/creature_slice.gd` — creatures within `MODEL_RANGE_M` of the camera get a model and
+  leave the box pool; beyond it, or past `MAX_MODELS`, they stay in the pool. The swap uses
+  hysteresis so a creature at the edge does not flicker. Facing follows the movement direction.
+  `render_visuals = false` (dedicated server, suite) builds neither.
+- Animation: a small state map from each creature state-machine state (`aggressive`, `fleeing`, `dead`, ...) and
+  its movement speed to the seven shared clip names, played through `RigTree` as the avatar
+  does. Death plays once and holds until despawn. Clients drive clips from the synced state, so the
+  wire is unchanged.
+- `tools/gen_placeholder_glb.py` — placeholders stay the contract (same bones and clips per
+  family). Body texture and masks are bound through the character shader as the avatar's are
+  (`textures/creatures/<Entity>{,_color_mask,_channel}.png.raw`).
+- `assets/README.md` — the creature section describes the attached models, not a planned attach.
+- The README GIFs (`docs/media/creatures.gif`, `docs/media/walk.gif`) are re-captured once models
+  render. Judging how they look is a human check, so it is filed as an issue, not a criterion.
+
+**Acceptance criteria:**
+- [ ] Fabric: every creature names a `skeleton`, and `validate` rejects a creature with an unknown
+  family. Generated `.tres` files carry the field.
+- [ ] Suite: for every creature in `GameData.CREATURES`, the public model parses, its `Skeleton3D`
+  bones match the fabric skeleton of its family, and its `AnimationPlayer` has all seven clips.
+- [ ] Suite: a creature inside `MODEL_RANGE_M` has a model and no pool instance; outside, a pool
+  instance and no model; crossing the range edge within the hysteresis band does not swap.
+- [ ] Suite: a creature with a missing model key renders through the pool and warns once per type.
+- [ ] Suite: the state-to-clip map covers every creature state, and a dead creature's clip is
+  `death` and does not loop.
+- [ ] Suite: `MAX_MODELS` is respected with many creatures in range (the nearest get models).
+- [ ] Suite: no model nodes are built when `render_visuals` is false. The dedicated server boot stays
+  clean.
+- [ ] Playtest bot: the `fight` step's screenshot is taken with the target creature drawn as a model
+  (the bot asserts the creature has a model node), and no step reports a new hitch over 50 ms.
 - [ ] Suite green on both boot paths, harness green.
 
 ---
