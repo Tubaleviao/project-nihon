@@ -581,6 +581,7 @@ func _ready() -> void:
 		return
 
 	_boot_world()
+	_boot_wiring._start_playtest_bot()
 
 ## Phase 39 — run the two-client network harness and let it end this process.
 ##

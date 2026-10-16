@@ -203,3 +203,103 @@ jobs:
           name: net-harness-logs
           path: ${{ runner.temp }}/net-harness
           if-no-files-found: ignore
+
+  playtest:
+    name: Playtest bot (rendered session under xvfb)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install a software renderer and X server
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 mesa-vulkan-drivers \
+            libxcursor1 libxinerama1 libxi6 libxrandr2 libxkbcommon0 libasound2t64 libfontconfig1
+
+      - name: Download Godot 4.7
+        run: |
+          mkdir -p /tmp/godot
+          curl -fsSL -o /tmp/godot/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          unzip -o /tmp/godot/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
+
+      - name: Run the playtest bot
+        run: |
+          # `--playtest-bot` is a USER arg (after `--`). The bot plays the listen host with
+          # rendering, writes playtest/report.{json,md} and one PNG per step, and exits
+          # non-zero on a hard failure (step timeout, any frame over 2 s). Slow percentiles
+          # are a report, not a gate. A crash writes no report.json, which fails the check below.
+          set +e
+          timeout 1200 xvfb-run -a -s "-screen 0 1280x720x24" \
+            /tmp/godot/Godot_v4.7-stable_linux.x86_64 --path . --rendering-driver opengl3 -- --playtest-bot \
+            2>&1 | tee /tmp/playtest.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ ! -f playtest/report.json ]; then
+            echo "::error::the bot wrote no report (crash or boot failure)"
+            exit 1
+          fi
+          cat playtest/report.md >> "$GITHUB_STEP_SUMMARY"
+          if grep -qE "SCRIPT ERROR|Parse Error|Compile Error" /tmp/playtest.log; then
+            echo "::error::script/parse/compile errors present"
+            exit 1
+          fi
+          for step in walk stream mine gather craft place fight travel; do
+            if [ ! -s "playtest/$step.png" ]; then
+              echo "::error::missing screenshot for step $step"
+              exit 1
+            fi
+          done
+          exit "$status"
+
+      - name: Upload the playtest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playtest
+          path: playtest/
+          if-no-files-found: warn
+
+  build:
+    name: Linux and Windows exports
+    needs: [godot-tests, server-boot, host-boot, fabric, net-harness, playtest]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # No submodule: the builds carry the committed placeholders only.
+
+      - name: Download Godot 4.7 and its export templates
+        run: |
+          mkdir -p /tmp/godot
+          curl -fsSL -o /tmp/godot/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          unzip -o /tmp/godot/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
+          curl -fsSL -o /tmp/godot/templates.tpz \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_export_templates.tpz
+          mkdir -p ~/.local/share/godot/export_templates/4.7.stable
+          unzip -o /tmp/godot/templates.tpz -d /tmp/godot/templates
+          cp -r /tmp/godot/templates/templates/* ~/.local/share/godot/export_templates/4.7.stable/
+
+      - name: Export the Linux and Windows presets
+        run: |
+          mkdir -p build/linux build/windows
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --import || true
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --export-release "Linux" build/linux/nihon.x86_64
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --export-release "Windows Desktop" build/windows/nihon.exe
+          test -s build/linux/nihon.x86_64
+          test -s build/windows/nihon.exe
+
+      - name: Upload the Linux build
+        uses: actions/upload-artifact@v4
+        with:
+          name: nihon-linux
+          path: build/linux/
+
+      - name: Upload the Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: nihon-windows
+          path: build/windows/

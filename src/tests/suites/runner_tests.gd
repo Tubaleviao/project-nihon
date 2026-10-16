@@ -9,6 +9,10 @@ func register() -> void:
 	_run_test("runner: a filter that matches nothing fails loudly", _test_runner_empty_filter_fails)
 	_run_test("runner: an unregistered _test_* in a suite file is reported", _test_runner_unregistered_audit)
 	_run_test("runner: every suite file is listed and under the line cap", _test_runner_suite_files_listed_and_capped)
+	_run_test("playtest: report percentiles and hitch counts", _test_playtest_report_percentiles_and_hitches)
+	_run_test("playtest: step failure, hard frame and missing step fail the run", _test_playtest_report_verdicts)
+	_run_test("playtest: --playtest-bot is parsed", _test_playtest_bot_arg)
+	_run_test("playtest: markdown escapes free-text detail", _test_playtest_markdown_escapes_detail)
 
 func _test_runner_filter_parse_and_match() -> void:
 	assert_eq(Runner.filter_from_args(PackedStringArray(["--run-tests"])), "", "no filter arg means no filter")
@@ -56,3 +60,59 @@ func _test_runner_suite_files_listed_and_capped() -> void:
 				continue
 			var lines := FileAccess.get_file_as_string(dir.path_join(f)).split("\n").size()
 			assert_true(lines <= Runner.MAX_SUITE_LINES, "%s/%s has %d lines (cap %d)" % [dir, f, lines, Runner.MAX_SUITE_LINES])
+
+# Phase 134 — the playtest bot's report maths.
+const Bot := preload("res://src/tests/playtest_bot.gd")
+
+func _test_playtest_report_percentiles_and_hitches() -> void:
+	var frames: Array = []
+	for i in range(1, 101):
+		frames.append(float(i))   # 1..100 ms
+	var s: Dictionary = Bot.summarize(frames)
+	assert_eq(int(s["frames"]), 100, "frame count")
+	assert_eq(float(s["p50_ms"]), 50.0, "p50 is the 50th of 100")
+	assert_eq(float(s["p95_ms"]), 95.0, "p95 is the 95th of 100")
+	assert_eq(float(s["p99_ms"]), 99.0, "p99 is the 99th of 100")
+	assert_eq(float(s["max_ms"]), 100.0, "max")
+	assert_eq(int(s["hitches"]), 50, "frames over 50 ms: 51..100")
+	assert_eq(float(s["mean_ms"]), 50.5, "mean")
+	var shuffled: Array = [30.0, 10.0, 20.0]
+	assert_eq(float(Bot.summarize(shuffled)["p50_ms"]), 20.0, "input order does not matter")
+	var empty: Dictionary = Bot.summarize([])
+	assert_eq(int(empty["frames"]), 0, "empty list has no frames")
+	assert_eq(float(empty["max_ms"]), 0.0, "empty list has max 0")
+	assert_eq(int(empty["hitches"]), 0, "empty list has no hitches")
+
+func _all_ok_steps() -> Array:
+	var steps: Array = []
+	for n in Bot.step_names():
+		steps.append(Bot.step_record(n, true, "fine", [16.0, 17.0, 400.0], 3))
+	return steps
+
+func _test_playtest_report_verdicts() -> void:
+	var good: Dictionary = Bot.build_report(_all_ok_steps())
+	assert_true(bool(good["ok"]), "slow percentiles (400 ms frames) are a report, not a failure")
+	assert_true((good["failures"] as Array).is_empty(), "no failures listed")
+	var timed_out: Array = _all_ok_steps()
+	timed_out[2] = Bot.step_record("mine", false, "no block_mined", [16.0], 0)
+	var bad: Dictionary = Bot.build_report(timed_out)
+	assert_false(bool(bad["ok"]), "a failed or timed-out step fails the run")
+	assert_eq((bad["failures"] as Array).size(), 1, "one failure")
+	assert_true(str(bad["failures"][0]).contains("mine"), "the failure names the step")
+	var hard: Array = _all_ok_steps()
+	hard[0] = Bot.step_record("walk", true, "ok", [16.0, 2500.0], 0)
+	assert_false(bool(Bot.build_report(hard)["ok"]), "a frame over 2 s fails the run")
+	var missing: Array = _all_ok_steps()
+	missing.pop_back()
+	assert_false(bool(Bot.build_report(missing)["ok"]), "a step that never ran fails the run")
+	var md: String = Bot.report_markdown(bad)
+	assert_true(md.contains("FAIL") and md.contains("| mine |"), "the markdown lists the failing step")
+
+func _test_playtest_bot_arg() -> void:
+	assert_true(Bot.requested(["--playtest-bot"]), "the flag asks for the bot")
+	assert_false(Bot.requested(["--server"]), "other args do not")
+
+func _test_playtest_markdown_escapes_detail() -> void:
+	var rec := [Bot.step_record("craft", false, "research: a | b\nsecond line", [16.0], 0)]
+	var md: String = Bot.report_markdown(Bot.build_report(rec))
+	assert_true(md.contains("a \\| b second line"), "pipes are escaped and newlines flattened")
