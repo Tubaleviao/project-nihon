@@ -21,6 +21,7 @@ Advanced forge construction and temperature-control techniques. Unlocks the mast
 
 | Name | Kind | Target | Foreign Key |
 | ---- | ---- | ------ | ----------- |
+| `settlementStockpile` | hasOne | [Stockpile](stockpile.md) |  |
 | `requiresTechBasicSmithing` | hasOne | [TechBasicSmithing](techbasicsmithing.md) |  |
 | `unlocksRecipeVeilsteelIngot` | hasOne | [RecipeVeilsteelIngot](recipeveilsteelingot.md) |  |
 | `unlocksRecipeVeilsteelLongsword` | hasOne | [RecipeVeilsteelLongsword](recipeveilsteellongsword.md) |  |
@@ -35,7 +36,7 @@ Advanced forge construction and temperature-control techniques. Unlocks the mast
 ```mermaid
 stateDiagram-v2
   [*] --> locked
-  locked --> researching : beginResearch\n[Requires TechBasicSmithing: unlocked; Requires Smithing: Journeyman; Requires at least twenty raw ashite ore in settlement storage]
+  locked --> researching : beginResearch\n[Requires TechBasicSmithing: unlocked; Requires Smithing: Journeyman; Requires at least twenty raw ashite ore in the settlement Stockpile (tech.materialSource)]
   researching --> unlocked : completeResearch\n[Research cost fully paid]
   unlocked --> [*]
 ```
@@ -48,7 +49,7 @@ stateDiagram-v2
 
 | From | To | Trigger | Guards | Effects |
 | ---- | --- | ------- | ------ | ------- |
-| `locked` | `researching` | `beginResearch` | Requires TechBasicSmithing: unlocked; Requires Smithing: Journeyman; Requires at least twenty raw ashite ore in settlement storage |  |
+| `locked` | `researching` | `beginResearch` | Requires TechBasicSmithing: unlocked; Requires Smithing: Journeyman; Requires at least twenty raw ashite ore in the settlement Stockpile (tech.materialSource) |  |
 | `researching` | `unlocked` | `completeResearch` | Research cost fully paid |  |
 
 ## Behaviors
@@ -60,7 +61,7 @@ Commit resources to master forge research
 **Rules:**
 - Requires TechBasicSmithing: unlocked
 - Requires Smithing: Journeyman
-- Requires at least twenty raw ashite ore in settlement storage
+- Requires at least twenty raw ashite ore in the settlement Stockpile (tech.materialSource)
 
 **Auth:** `maintainer`
 

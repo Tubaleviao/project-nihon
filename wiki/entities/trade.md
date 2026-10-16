@@ -55,6 +55,7 @@ Set up a persistent player-run market stall at a settlement location
 
 **Conditions:**
 - Requires Trade: Apprentice
+- The stall stands inside a Settlement claim and sells from its Stockpile or the player's own inventory
 
 ### executeBulkDeal
 

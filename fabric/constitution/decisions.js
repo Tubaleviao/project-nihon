@@ -176,6 +176,44 @@ module.exports = {
     },
   }),
 
+  SettlementClaimAndDecay: defineEntity({
+    tags: ['decision'],
+    description: 'Settlements claim land around a Hearth, with a radius that only grows with tier. A claim never covers another settlement\'s land (hearths are at least minSeparation apart), and an abandoned settlement\'s claim decays until the land is free. Claim and role rules change only through GovernanceSystem proposals.',
+    goal: 'Let players hold land together without letting an inactive claim lock the world forever (TheWorldIsPersistent, CivilizationIsPlayerMade)',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      status: { type: 'enum', values: ['proposed', 'accepted', 'superseded'] },
+    },
+    relations: {
+      settlement: { name: 'settlement', kind: 'hasOne', target: 'Settlement' },
+    },
+    stateMachine: {
+      field: 'status',
+      initial: 'proposed',
+      states: {
+        proposed:   'Decision is under community discussion',
+        accepted:   'Decision is ratified and in effect',
+        superseded: { description: 'Decision has been replaced by a newer decision', terminal: true },
+      },
+      transitions: [
+        { from: 'proposed',              to: 'accepted',   trigger: 'accept' },
+        { from: ['proposed', 'accepted'], to: 'superseded', trigger: 'supersede' },
+      ],
+    },
+    behaviors: {
+      accept: {
+        description: 'Ratify the claim and decay rules after community review',
+        rules: ['Community vote must reach quorum', 'Claim radius, decay and separation values live in Settlement rules'],
+        auth: { roles: ['maintainer'] },
+      },
+      supersede: {
+        description: 'Mark this decision as replaced by a newer one',
+        rules: ['A replacement decision must be accepted first'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
   MagicBalancedWithMartial: defineEntity({
     tags: ['decision'],
     description: 'Magic and martial combat are balanced — no archetype dominates; each has unique trade-offs and counters.',

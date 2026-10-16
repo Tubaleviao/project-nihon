@@ -22,6 +22,10 @@ const BIOMES: Dictionary = {
 		"VolcanicBadlands": preload("res://godot/biomes/volcanicbadlands.tres")
 }
 
+const CONTAINERS: Dictionary = {
+		"Stockpile": preload("res://godot/containers/stockpile.tres")
+}
+
 const CREATURES: Dictionary = {
 		"CinderGargoyle": preload("res://godot/creatures/cindergargoyle.tres"),
 		"ForestBoar": preload("res://godot/creatures/forestboar.tres"),
@@ -45,6 +49,7 @@ const DECISIONS: Dictionary = {
 		"OfflinePlayerNpcs": preload("res://godot/decisions/offlineplayernpcs.tres"),
 		"OnePersistentWorld": preload("res://godot/decisions/onepersistentworld.tres"),
 		"PlayerIdentityModel": preload("res://godot/decisions/playeridentitymodel.tres"),
+		"SettlementClaimAndDecay": preload("res://godot/decisions/settlementclaimanddecay.tres"),
 		"WaystonesAmendNoTeleportation": preload("res://godot/decisions/waystonesamendnoteleportation.tres")
 }
 
@@ -63,6 +68,7 @@ const ITEMS: Dictionary = {
 		"FerriteShield": preload("res://godot/items/ferriteshield.tres"),
 		"FerriteShortSword": preload("res://godot/items/ferriteshortsword.tres"),
 		"FieldRations": preload("res://godot/items/fieldrations.tres"),
+		"Hearth": preload("res://godot/items/hearth.tres"),
 		"LumenfiteOrb": preload("res://godot/items/lumenfiteorb.tres"),
 		"RefinedVoiditeShard": preload("res://godot/items/refinedvoiditeshard.tres"),
 		"ThornwoodPlank": preload("res://godot/items/thornwoodplank.tres"),
@@ -124,6 +130,7 @@ const RECIPES: Dictionary = {
 		"RecipeFerritePick": preload("res://godot/recipes/recipeferritepick.tres"),
 		"RecipeFerriteShortSword": preload("res://godot/recipes/recipeferriteshortsword.tres"),
 		"RecipeHealthPotion": preload("res://godot/recipes/recipehealthpotion.tres"),
+		"RecipeHearth": preload("res://godot/recipes/recipehearth.tres"),
 		"RecipeLumenfiteOrb": preload("res://godot/recipes/recipelumenfiteorb.tres"),
 		"RecipeRefinedVoiditeShard": preload("res://godot/recipes/reciperefinedvoiditeshard.tres"),
 		"RecipeStaminaPotion": preload("res://godot/recipes/recipestaminapotion.tres"),
@@ -198,6 +205,7 @@ const WORLD_SYSTEMS: Dictionary = {
 		"MarketSystem": preload("res://godot/world_systems/marketsystem.tres"),
 		"PersistenceSystem": preload("res://godot/world_systems/persistencesystem.tres"),
 		"ResearchPointRule": preload("res://godot/world_systems/researchpointrule.tres"),
+		"Settlement": preload("res://godot/world_systems/settlement.tres"),
 		"TradeSystem": preload("res://godot/world_systems/tradesystem.tres"),
 		"WaystoneTravel": preload("res://godot/world_systems/waystonetravel.tres"),
 		"WeatherSystem": preload("res://godot/world_systems/weathersystem.tres"),

@@ -17,7 +17,15 @@ Defines the rules of in-game community governance. Players submit proposals, oth
 | ----- | ---- | ----------- |
 | ratification | json | Ratification parameters: threshold (fraction of cast votes that must favour), quorum (minimum distinct voters), windowSeconds (voting window before the proposal closes). |
 | guildMinTier | string | Minimum Leadership tier required to form a guild |
+| guildSettlementLimit | integer | Settlements one guild may hold (Phase 139); mirrors Settlement rules.guildMaxSettlements |
+| settlementRuleChanges | json | Settlement rules a proposal may change once ratified (Phase 139); the founder cannot change them alone |
 | status | `proposed`, `accepted`, `superseded`, `expired` | Lifecycle of a proposal: open for voting, ratified, replaced, or lapsed past its window |
+
+## Related
+
+| Name | Kind | Target |
+| ---- | ---- | ------ |
+| settlement | hasOne | [Settlement](settlement.md) |
 
 ## States
 
@@ -50,6 +58,15 @@ Ratify a proposal that has met quorum, threshold, and window
 - Ratification requires at least quorum distinct voters
 - Votes after the voting window closes are rejected
 - A ratified proposal is recorded in the runtime decisions log
+
+### formGuildSettlement
+
+A guild takes a Settlement as its seat
+
+**Conditions:**
+- A guild may hold at most guildSettlementLimit settlements
+- The settlement founder must consent; the guild's members then share its Stockpile by settlement role
+- Changes to a held settlement's rules (settlementRuleChanges) are proposals ratified by the settlement's members
 
 ### expire
 

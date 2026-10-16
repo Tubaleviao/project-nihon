@@ -105,11 +105,24 @@ module.exports = {
         description: 'Minimum Leadership tier required to form a guild',
         defaultValue: 'apprentice',
       },
+      guildSettlementLimit: {
+        type: 'integer',
+        description: 'Settlements one guild may hold (Phase 139); mirrors Settlement rules.guildMaxSettlements',
+        defaultValue: 1,
+      },
+      settlementRuleChanges: {
+        type: 'json',
+        description: 'Settlement rules a proposal may change once ratified (Phase 139); the founder cannot change them alone',
+        defaultValue: ['tiers.claimRadius', 'roles', 'stockpile', 'abandonAfterDays'],
+      },
       status: {
         type: 'enum',
         values: ['proposed', 'accepted', 'superseded', 'expired'],
         description: 'Lifecycle of a proposal: open for voting, ratified, replaced, or lapsed past its window',
       },
+    },
+    relations: {
+      settlement: { name: 'settlement', kind: 'hasOne', target: 'Settlement' },
     },
     stateMachine: {
       field: 'status',
@@ -134,6 +147,15 @@ module.exports = {
           'Ratification requires at least quorum distinct voters',
           'Votes after the voting window closes are rejected',
           'A ratified proposal is recorded in the runtime decisions log',
+        ],
+        auth: { roles: ['maintainer'] },
+      },
+      formGuildSettlement: {
+        description: 'A guild takes a Settlement as its seat',
+        rules: [
+          'A guild may hold at most guildSettlementLimit settlements',
+          'The settlement founder must consent; the guild\'s members then share its Stockpile by settlement role',
+          'Changes to a held settlement\'s rules (settlementRuleChanges) are proposals ratified by the settlement\'s members',
         ],
         auth: { roles: ['maintainer'] },
       },

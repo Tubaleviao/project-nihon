@@ -159,7 +159,7 @@ issue number where the criterion used to be.
 | 136 | Creatures walk on the ground and around obstacles | In review | below |
 | 137 | Loose ground settles: sand and soil fall when undermined | In review | below |
 | 138 | Trees, generation records and persistence cleanup sweep | In review | below |
-| 139 | Settlements in the fabric: founding, membership and shared storage | Planned | below |
+| 139 | Settlements in the fabric: founding, membership and shared storage | In review | below |
 | 140 | Settlements at runtime: a hearth, a claim and a shared stockpile | Planned | below |
 | 141 | Terrain streaming off the main thread: worker noise, seam strips, polar shortcuts, fold catch-up | In review | below |
 | 142 | Terrain build throughput: a time-budgeted pump and a native chunk builder | Planned | below |
@@ -559,11 +559,11 @@ existing type).
 - Regenerated `godot/`, `bible/`, `wiki/`.
 
 **Acceptance criteria:**
-- [ ] `npm run validate` and `npm run check-drift` green.
-- [ ] Validation rejects a claim radius that shrinks with tier, a stockpile without capacity, and a
+- [x] `npm run validate` and `npm run check-drift` green.
+- [x] Validation rejects a claim radius that shrinks with tier, a stockpile without capacity, and a
   state-machine threshold out of order.
-- [ ] `grep -rn "settlement storage\|player's settlement" fabric` finds no rule that is prose only.
-- [ ] The generated bible has a Settlement page linking Hearth, Stockpile and the governance rules.
+- [x] `grep -rn "settlement storage\|player's settlement" fabric` finds no rule that is prose only.
+- [x] The generated bible has a Settlement page linking Hearth, Stockpile and the governance rules.
 
 ---
 

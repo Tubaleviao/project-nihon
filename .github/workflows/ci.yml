@@ -158,6 +158,9 @@ jobs:
       - name: Check the weather table validation rejects bad tables
         run: node tools/check_weather.js
 
+      - name: Check the settlement validation rejects bad tables
+        run: node tools/check_settlement.js
+
       - name: Check the granular-material validation rejects bad fabric
         run: node tools/check_granular.js
 

@@ -25,6 +25,10 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [VoidRift](entities/voidrift.md) — Fractured terrain surrounding permanent rifts in the fabric of reality
 - [VolcanicBadlands](entities/volcanicbadlands.md) — Barren, heat-scorched terrain surrounding active or dormant volcanic calderas
 
+## Container
+
+- [Stockpile](entities/stockpile.md) — The container a settlement's members fill and draw from together
+
 ## Creature
 
 - [CinderGargoyle](entities/cindergargoyle.md) — A winged, stone-skinned predator that nests in volcanic caldera walls
@@ -49,6 +53,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [OfflinePlayerNpcs](entities/offlineplayernpcs.md) — Offline players may be represented in the world as configurable service NPCs, keeping shops and services running in their absence
 - [OnePersistentWorld](entities/onepersistentworld.md) — A single persistent official world server
 - [PlayerIdentityModel](entities/playeridentitymodel.md) — A player identity is a server-issued local UUID (player_id), not an account
+- [SettlementClaimAndDecay](entities/settlementclaimanddecay.md) — Settlements claim land around a Hearth, with a radius that only grows with tier
 - [WaystonesAmendNoTeleportation](entities/waystonesamendnoteleportation.md) — Amends NoTeleportation: waystones are the one sanctioned fast travel
 
 ## Item
@@ -67,6 +72,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [FerriteShield](entities/ferriteshield.md) — Round shield of ferrite-plated hardwood
 - [FerriteShortSword](entities/ferriteshortsword.md) — Standard single-edged blade forged from a refined ferrite ingot
 - [FieldRations](entities/fieldrations.md) — Dried grain-and-herb ration pack prepared from temperate grassland crops
+- [Hearth](entities/hearth.md) — A stone-ringed fire pit that founds a settlement when placed on free land
 - [LumenfiteOrb](entities/lumenfiteorb.md) — A polished lumenfite sphere charged with stored magical energy by an Arcanist
 - [RefinedVoiditeShard](entities/refinedvoiditeshard.md) — Raw voidite stabilised in a forge into a crystalline shard
 - [ThornwoodPlank](entities/thornwoodplank.md) — Rough-cut plank milled from thornwood logs
@@ -128,6 +134,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [RecipeFerritePick](entities/recipeferritepick.md) — Craft a ferrite mining pick from two ferrite ingots and one thornwood plank
 - [RecipeFerriteShortSword](entities/recipeferriteshortsword.md) — Forge a ferrite short sword from one refined ferrite ingot
 - [RecipeHealthPotion](entities/recipehealthpotion.md) — Brew a health-restoring potion from aethermite dust and harvested herbs at an alchemy bench
+- [RecipeHearth](entities/recipehearth.md) — Lay a hearth from six thornwood planks and four ferrite ingots at a carpentry bench
 - [RecipeLumenfiteOrb](entities/recipelumenfiteorb.md) — Polish a lumenfite stone into a charged spell-focus orb at an arcane forge
 - [RecipeRefinedVoiditeShard](entities/reciperefinedvoiditeshard.md) — Stabilise one raw voidite crystal into a refined voidite shard at a forge
 - [RecipeStaminaPotion](entities/recipestaminapotion.md) — Brew a stamina-restoring potion from aethermite dust and root reagents
@@ -202,6 +209,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [MarketSystem](entities/marketsystem.md) — Defines the rules of the persistent player-run market
 - [PersistenceSystem](entities/persistencesystem.md) — Defines the authoritative save lifecycle: which directory the world and per-player records live in, how often the server autosaves, how a headless server is asked to shut down cleanly, and how a record is written so a kill mid-write cannot truncate it
 - [ResearchPointRule](entities/researchpointrule.md) — Points of research a player earns per source: a craft, a gathered resource, and a one-time bonus for the first craft of each recipe
+- [Settlement](entities/settlement.md) — A player-founded place: a Hearth, a claimed circle of land, members with roles and a shared Stockpile
 - [TradeSystem](entities/tradesystem.md) — Defines the rules governing player-to-player trade
 - [WaystoneTravel](entities/waystonetravel.md) — Fast travel between waystones: a player attunes to a stone by standing at it, then travels between two attuned stones for a cost in items per 1,000 km, once per cooldown
 - [WeatherSystem](entities/weathersystem.md) — Simulates weather across biomes as an emergent world system
