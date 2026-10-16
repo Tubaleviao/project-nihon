@@ -21,13 +21,27 @@
 #   tools/net_harness.sh                # $GODOT or `godot` from PATH
 #   GODOT=/tmp/godot/Godot_v4.7-stable_linux.x86_64 tools/net_harness.sh
 #
-# Env knobs: GODOT (binary), NET_HARNESS_TIMEOUT (seconds, default 300),
+# Env knobs: GODOT (binary), NET_HARNESS_TIMEOUT (seconds, default 300; multiplied by the
+#            profile's time scale), NET_PROFILE (Phase 135: a link profile from
+#            NetworkingSlice.NET_PROFILES — lan, wan_br, wan_bad — passed to BOTH processes as
+#            `--net-profile`; unset = loopback, no emulation),
 #            NET_HARNESS_LOGDIR (where the two logs land; default a fresh mktemp -d).
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GODOT="${GODOT:-godot}"
 TIMEOUT_SECS="${NET_HARNESS_TIMEOUT:-300}"
+NET_PROFILE="${NET_PROFILE:-}"
+PROFILE_ARGS=()
+if [ -n "$NET_PROFILE" ]; then
+  PROFILE_ARGS=(--net-profile "$NET_PROFILE")
+  # A delayed link needs a longer deadline, in step with the per-step timeouts the two
+  # processes scale by the profile's round trip (NetHarness._time_scale).
+  case "$NET_PROFILE" in
+    wan_bad) TIMEOUT_SECS=$(( TIMEOUT_SECS * 4 )) ;;
+    wan_br)  TIMEOUT_SECS=$(( TIMEOUT_SECS * 2 )) ;;
+  esac
+fi
 LOGDIR="${NET_HARNESS_LOGDIR:-$(mktemp -d)}"
 HOST_LOG="$LOGDIR/net-harness-host.log"
 CLIENT_LOG="$LOGDIR/net-harness-client.log"
@@ -75,11 +89,12 @@ trap cleanup EXIT
 note "godot:    $GODOT"
 note "logs:     $LOGDIR"
 note "timeout:  ${TIMEOUT_SECS}s"
+note "profile:  ${NET_PROFILE:-loopback}"
 
 # No --quit on either side: the harness quits its own process when the scenario ends,
 # which is what makes the exit-code check below mean something. --headless because
 # nothing is rendered; the scenario is wire-level.
-"$GODOT" --headless --path "$REPO_ROOT" -- --net-harness host >"$HOST_LOG" 2>&1 &
+"$GODOT" --headless --path "$REPO_ROOT" -- --net-harness host "${PROFILE_ARGS[@]}" >"$HOST_LOG" 2>&1 &
 HOST_PID=$!
 
 # The host has to be LISTENING before the client joins, or the client's first
@@ -99,7 +114,7 @@ while ! grep -q 'listening on port' "$HOST_LOG" 2>/dev/null; do
 done
 note "host listening"
 
-"$GODOT" --headless --path "$REPO_ROOT" -- --net-harness client >"$CLIENT_LOG" 2>&1 &
+"$GODOT" --headless --path "$REPO_ROOT" -- --net-harness client "${PROFILE_ARGS[@]}" >"$CLIENT_LOG" 2>&1 &
 CLIENT_PID=$!
 
 # --- wait for both sides, inside the deadline ------------------------------
@@ -154,6 +169,17 @@ if [ "$HOST_PLAN" != "$CLIENT_PLAN" ]; then
   note "client plan: $CLIENT_PLAN"
   exit 1
 fi
+
+# Phase 135 — both sides must say which link they ran under, and it must be the one asked for.
+WANT_PROFILE="${NET_PROFILE:-loopback}"
+for pair in "host:$HOST_LOG" "client:$CLIENT_LOG"; do
+  got="$(awk '$1=="HARNESS" && $2=="profile" {print $4}' "${pair#*:}" | head -n 1)"
+  if [ "$got" != "$WANT_PROFILE" ]; then
+    fail "${pair%%:*} ran under profile '${got:-none}', expected '$WANT_PROFILE'"
+  else
+    note "${pair%%:*} link profile: $got"
+  fi
+done
 
 PASSED=0
 while IFS=',' read -r entry; do
@@ -229,6 +255,6 @@ if [ "$FAILURES" -ne 0 ]; then
   echo "net-harness FAILED — $FAILURES problem(s); full logs in $LOGDIR"
   exit 1
 fi
-echo "net-harness passed — $PASSED/$PLANNED steps agreed across both peers"
+echo "net-harness passed — $PASSED/$PLANNED steps agreed across both peers (profile: ${NET_PROFILE:-loopback})"
 echo "  host log:   $HOST_LOG"
 echo "  client log: $CLIENT_LOG"

@@ -3,6 +3,7 @@ extends "res://src/core/wiring.gd"
 ## Moved out of game_root.gd; `root` is the GameRoot that owns the slices.
 
 const Diag := preload("res://src/core/diag.gd")
+const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
 const PLAYTEST_BOT_PATH := "res://src/tests/playtest_bot.gd"
 
 ## Parse `--client [addr]` from OS user args to determine network role. Defaults
@@ -34,6 +35,22 @@ func _parse_network_args() -> void:
 	elif harness_role == "client":
 		root._is_client = true
 	root._net_harness_role = harness_role
+	# Phase 135 — `--net-profile <name>` (applied once the networking slice exists).
+	root._net_profile_arg = NetworkingSlice.profile_from_args(args)
+
+## Phase 135 — put the named link profile on the networking slice. False when the name is unknown
+## (or the flag has no value): the caller refuses the boot, because a run that silently falls back
+## to loopback would report a pass for a link it never emulated.
+func _apply_net_profile() -> bool:
+	var name: String = root._net_profile_arg
+	if name == "":
+		return true
+	if not NetworkingSlice.has_profile(name) or not root._networking.apply_profile(name):
+		push_error("[Networking] unknown --net-profile '%s' (known: %s)"
+				% [name, ", ".join(NetworkingSlice.NET_PROFILES.keys())])
+		return false
+	print("[Networking] link profile: %s" % name)
+	return true
 
 ## Phase 33 — save-on-shutdown. `auto_accept_quit = false` turns the window
 ## manager's close request into a notification this node answers by writing the

@@ -41,6 +41,9 @@ func register() -> void:
 	_run_test("net: emulator drops near loss rate",              _test_net_emulator_loss)
 	_run_test("net: emulator jitter centered around zero",       _test_net_emulator_jitter)
 	_run_test("net: emulator adds no queue when disabled",       _test_net_emulator_zero_overhead)
+	_run_test("net: emulator latency delays delivery",           _test_net_emulator_latency)
+	_run_test("net: emulator bandwidth cap bounds a second",     _test_net_emulator_bandwidth)
+	_run_test("net: link profiles table and refusal",            _test_net_profiles)
 	_run_test("net: jitter buffer interpolates within tolerance", _test_net_jitter_buffer)
 	_run_test("net: inventory replace_contents is idempotent",   _test_net_inventory_replace_idempotent)
 	_run_test("net: host persists last-known state across disconnect", _test_net_reconnect_last_known_state)
@@ -2116,3 +2119,71 @@ func _test_net_harness_bare_await_audit() -> void:
 # and the suite has no frames to give — so these tests drive the manager's pump by
 # hand: DRAIN (dispatch), BLOCK on each in-flight task, APPLY. That is exactly what
 # `ChunkManager._process` does across frames, with the wait made explicit.
+
+func _test_net_emulator_latency() -> void:
+	# Phase 135 — with 200 ms latency a packet is not delivered before 200 ms after it was sent.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n.emulate_network = true
+	n.emulator_latency_ms = 200.0
+	var sent := 1000.0
+	assert_eq(n._schedule_at_ms(sent, 100), sent + 200.0, "delivery time is send + latency")
+	for _i in range(50):
+		assert_true(n._schedule_at_ms(sent, 100) >= sent + 200.0, "never earlier than the latency")
+	n.free()
+
+func _test_net_emulator_bandwidth() -> void:
+	# Phase 135 — a 256 kbit/s cap (32,000 B/s) never delivers more than 32 KB in any one-second
+	# window, and the excess is delayed rather than dropped.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n.emulate_network = true
+	n.emulator_bandwidth_kbps = 256.0
+	var times: Array = []
+	for _i in range(100):
+		times.append(n._schedule_at_ms(0.0, 1000))  # 100 KB offered at one instant
+	assert_eq(times.size(), 100, "no packet dropped by the cap")
+	var worst := 0
+	for start in times:
+		var bytes := 0
+		for t in times:
+			if t >= start and t < start + 1000.0:
+				bytes += 1000
+		worst = maxi(worst, bytes)
+	assert_true(worst <= 32000, "at most 32 KB delivered in any one-second window (got %d)" % worst)
+	assert_true(float(times.back()) >= 3000.0, "100 KB at 32 KB/s takes about 3 s")
+	# The delayed packets still arrive: drain at a late time delivers all queued ones.
+	n._pending.clear()
+	for i in range(5):
+		n._pending.append({ "at_ms": float(times[i]), "peer_id": 1, "payload": "{}" })
+	n._drain_emulator(float(times[2]))
+	assert_eq(n._pending.size(), 2, "only the packets due by then are delivered")
+	n.free()
+
+func _test_net_profiles() -> void:
+	# Phase 135 — the profile table, the arg parser, and the refusal of an unknown name.
+	for name in ["loopback", "lan", "wan_br", "wan_bad"]:
+		assert_true(NetworkingSlice.has_profile(name), "%s is defined" % name)
+	assert_false(NetworkingSlice.has_profile("wan_worse"), "unknown name is not a profile")
+	assert_eq(NetworkingSlice.profile_from_args(["--server"]), "", "no flag, no profile")
+	assert_eq(NetworkingSlice.profile_from_args(["--net-profile", "wan_bad"]), "wan_bad", "flag value read")
+	assert_eq(NetworkingSlice.profile_from_args(["--net-profile"]), "?", "flag without value is refused")
+	assert_false(NetworkingSlice.has_profile(NetworkingSlice.profile_from_args(["--net-profile", "--server"])),
+			"flag followed by another flag is refused")
+	var n := NetworkingSlice.new()
+	add_child(n)
+	assert_false(n.apply_profile("nope"), "unknown profile refused")
+	assert_false(n.emulate_network, "a refused profile changes nothing")
+	assert_true(n.apply_profile("wan_bad"), "wan_bad applies")
+	assert_true(n.emulate_network, "wan_bad turns the emulator on")
+	assert_eq(n.emulator_latency_ms, 200.0, "wan_bad latency 200 ms")
+	assert_eq(n.emulator_jitter_ms, 60.0, "wan_bad jitter 60 ms")
+	assert_eq(n.emulator_loss_rate, 5.0, "wan_bad loss 5%")
+	assert_eq(n.emulator_bandwidth_kbps, 256.0, "wan_bad cap 256 kbit/s")
+	assert_true(n.apply_profile("wan_br"), "wan_br applies")
+	assert_eq(n.emulator_latency_ms, 60.0, "wan_br latency 60 ms")
+	assert_eq(n.emulator_jitter_ms, 15.0, "wan_br jitter 15 ms")
+	assert_eq(n.emulator_loss_rate, 1.0, "wan_br loss 1%")
+	assert_true(n.apply_profile("loopback"), "loopback applies")
+	assert_false(n.emulate_network, "loopback turns the emulator off")
+	n.free()

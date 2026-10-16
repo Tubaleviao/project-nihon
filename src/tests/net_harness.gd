@@ -59,6 +59,7 @@ extends Node
 const I18n := preload("res://src/core/i18n.gd")
 const PlayerSlice := preload("res://src/player/player_slice.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
+const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
@@ -108,6 +109,10 @@ const RECONNECT_WAIT_SECS := 6.0
 const PROBE_ITEM := "Ferrite"
 
 var _root: Node = null
+## Phase 135 — how many times longer than loopback this run's waits are: one plus the profile's round
+## trip over 250 ms (1.0 on loopback). A predicate still returns the moment it holds; this only moves
+## the deadline a delayed link would otherwise trip.
+var _time_scale: float = 1.0
 var _role: String = ""
 var _lines: Array = []
 
@@ -316,6 +321,9 @@ func run(root: Node, role: String) -> void:
 	TranslationServer.set_locale("pt_BR" if role == "client" else "en")
 	GameBus.player_teleport.connect(_on_player_teleport)
 	print(format_line("ready", "ok", role))
+	var profile: String = _root._networking.net_profile
+	_time_scale = _root._networking.link_time_scale()
+	print(format_line("profile", "ok", profile if profile != "" else "loopback"))
 	print(format_line("plan", "ok", plan_detail()))
 	if not _self_audit():
 		return
@@ -398,6 +406,7 @@ func run(root: Node, role: String) -> void:
 ## but a CI wrapper (or a human) reaches for the exit code FIRST, and a failing scenario
 ## that reports success there is the wrong answer to give the cheapest question.
 func _finish() -> void:
+	print(format_line("link", "ok", "retransmits-%d" % int(_root._networking.emulator_retransmits)))
 	print(format_line("done", "ok", _role))
 	get_tree().quit(1 if _failed else 0)
 
@@ -438,7 +447,7 @@ func _own_source_lines() -> PackedStringArray:
 ## acting identity comes from the CONNECTION, never from the payload's claim.
 func _step_handshake() -> void:
 	if _role == "host":
-		var ok: bool = await _await_until(func(): return _discover_peer() != 0, STEP_TIMEOUT_SECS)
+		var ok: bool = await _await_until(func(): return _discover_peer() != 0, _step_timeout())
 		if not ok:
 			_report("handshake", "fail", "no_peer_bound")
 			return
@@ -455,7 +464,7 @@ func _step_handshake() -> void:
 	# the host's answer.
 	var assigned_ok: bool = await _await_until(
 		func(): return str(_root._networking.claimed_player_id) not in ["", SPOOFED_ID],
-		STEP_TIMEOUT_SECS)
+		_step_timeout())
 	if not assigned_ok:
 		_report("handshake", "fail", "no_identity_assigned")
 		return
@@ -472,12 +481,12 @@ func _step_handshake() -> void:
 ## test's.
 func _step_snapshot_complete() -> void:
 	if _role == "host":
-		var snap_ok: bool = await _await_until(func(): return _root._networking._next_snapshot_id >= 1, STEP_TIMEOUT_SECS)
+		var snap_ok: bool = await _await_until(func(): return _root._networking._next_snapshot_id >= 1, _step_timeout())
 		_report("snapshot_complete", verdict(snap_ok, true), "reassembled" if snap_ok else "no_snapshot_sent")
 		return
 	var ok: bool = await _await_until(
 		func(): return not _root._snapshot_pending and _root._networking._snapshot_buffer.is_empty() and not _root._voxel.get_heightmaps().is_empty(),
-		STEP_TIMEOUT_SECS)
+		_step_timeout())
 	_report("snapshot_complete", verdict(ok, true), "reassembled" if ok else "incomplete")
 
 ## Step 3 — the reach guard, passing half.
@@ -492,7 +501,7 @@ func _step_chop_in_reach() -> void:
 		return
 	var t := str(targets[0])
 	if _role == "host":
-		var ok: bool = await _await_until(func(): return _chop_count(t) >= 1, STEP_TIMEOUT_SECS)
+		var ok: bool = await _await_until(func(): return _chop_count(t) >= 1, _step_timeout())
 		_report("chop_in_reach", verdict(ok, true), t if ok else "not_consumed")
 		return
 	_report_position()
@@ -510,18 +519,18 @@ func _step_chop_out_of_reach() -> void:
 	# `TARGET_BEYOND` may simply not have arrived yet when the scenario reaches this step.
 	# Reporting `no_distant_tree` at that instant makes the step a race against the
 	# streamer rather than a test of the guard. Wait for the table to carry one, bounded by
-	# `STEP_TIMEOUT_SECS`, and only then judge the guard. The await is re-derived rather
+	# `_step_timeout()`, and only then judge the guard. The await is re-derived rather
 	# than captured: a GDScript lambda snapshots its captures by value, so a `t` assigned
 	# inside the predicate would not be visible here.
 	var found: bool = await _await_until(
 		func(): return beyond_reach_target(_trees(), RENDEZVOUS, TARGET_BEYOND) != "",
-		STEP_TIMEOUT_SECS)
+		_step_timeout())
 	var t := beyond_reach_target(_trees(), RENDEZVOUS, TARGET_BEYOND)
 	if not found or t == "":
 		_report("chop_out_of_reach", "fail", "no_distant_tree")
 		return
 	if _role == "host":
-		await _await_settle(ABSENCE_WINDOW_SECS)
+		await _await_settle(_absence_window())
 		# A chop that DID land here means the guard let an out-of-reach intent through —
 		# so the tree's position is the evidence, and this side reads it from its own
 		# TreeSlice rather than from anything the peer said.
@@ -551,7 +560,7 @@ func _step_packet_cap() -> void:
 	var oversized := str(targets[1])
 	var normal := str(targets[2])
 	if _role == "host":
-		var ok: bool = await _await_until(func(): return _chop_count(normal) >= 1, STEP_TIMEOUT_SECS)
+		var ok: bool = await _await_until(func(): return _chop_count(normal) >= 1, _step_timeout())
 		var over_seen := _chop_count(oversized) > 0
 		var alive := _live_bound_id() != ""
 		_report("packet_cap", verdict(ok and not over_seen and alive, true),
@@ -583,7 +592,7 @@ func _step_rate_bucket() -> void:
 	var t := str(targets[2])
 	if _role == "host":
 		_min_tokens = 1.0e9
-		var ok: bool = await _await_until(func(): return _steady_check(t), STEP_TIMEOUT_SECS)
+		var ok: bool = await _await_until(func(): return _steady_check(t), _step_timeout())
 		var throttled: bool = _min_tokens < _root._networking.RATE_BUCKET_CAPACITY
 		# The live token count is reported alongside the minimum: the minimum says the burst
 		# emptied the bucket, and this one says whether the limiter was still the reason the
@@ -657,7 +666,7 @@ func _step_inventory_owner() -> void:
 		_report("inventory_owner", verdict(settled and after == before, true),
 			"owner-only" if after == before else "host_bucket_clobbered-%d-to-%d" % [before, after])
 		return
-	var ok: bool = await _await_until(func(): return _root._inventory.get_contents().has(PROBE_ITEM), STEP_TIMEOUT_SECS)
+	var ok: bool = await _await_until(func(): return _root._inventory.get_contents().has(PROBE_ITEM), _step_timeout())
 	_report("inventory_owner", verdict(ok, true), "owner-only" if ok else "sync_never_arrived")
 
 ## Phase 124 — research points reach the owning client alone. The host pays the bound
@@ -678,7 +687,7 @@ func _step_research_points_owner() -> void:
 		_report("research_points_owner", verdict(ok and granted == want and after == before, true),
 			"owner-only" if (granted == want and after == before) else "host_balance_moved-%d-to-%d-granted%d" % [before, after, granted])
 		return
-	var got: bool = await _await_until(func(): return int(_root._technology.get_points()) == want, STEP_TIMEOUT_SECS)
+	var got: bool = await _await_until(func(): return int(_root._technology.get_points()) == want, _step_timeout())
 	_report("research_points_owner", verdict(got, true),
 		"owner-only" if got else "sync_never_arrived-%d" % int(_root._technology.get_points()))
 
@@ -711,7 +720,7 @@ const CHAT_PROBE := "hello from the harness"
 func _step_chat_relayed() -> void:
 	if _role == "client":
 		_root._chat.submit(CHAT_PROBE + "\u0001!")
-	var ok: bool = await _await_until(func(): return not _chat_line("chat", CHAT_PROBE, "").is_empty(), STEP_TIMEOUT_SECS)
+	var ok: bool = await _await_until(func(): return not _chat_line("chat", CHAT_PROBE, "").is_empty(), _step_timeout())
 	var line := _chat_line("chat", CHAT_PROBE, "")
 	var sender := str(line.get("sender", ""))
 	var named := sender != "" and sender != SPOOFED_ID and not sender.begins_with("player_")
@@ -727,7 +736,7 @@ func _step_join_line_localized() -> void:
 	var want := "entrou no mundo." if _role == "client" else "joined the world."
 	if _role == "host":
 		_root._chat.announce_joined(_bound_id())
-	var ok: bool = await _await_until(func(): return str(_chat_line("system", "key:chat.player_joined", "").get("text", "")).ends_with(want), STEP_TIMEOUT_SECS)
+	var ok: bool = await _await_until(func(): return str(_chat_line("system", "key:chat.player_joined", "").get("text", "")).ends_with(want), _step_timeout())
 	_report("join_line_localized", verdict(ok, true), "rendered-in-own-locale" if ok else "not_localized")
 
 ## Step 7d — Phase 101: the host runs `/bring <client handle>`; the client's body lands within 1 m of
@@ -742,19 +751,19 @@ func _step_admin_teleport() -> void:
 		var ok: bool = await _await_until(func():
 			var seen: Dictionary = _root._networking.get_last_known_exact(peer)
 			return not seen.is_empty() and seen["chunk"] == here["chunk"] \
-				and (seen["local"] as Vector3).distance_to(here["local"]) < 1.0, STEP_TIMEOUT_SECS)
+				and (seen["local"] as Vector3).distance_to(here["local"]) < 1.0, _step_timeout())
 		_report("admin_teleport", verdict(ok, true), "landed-within-1m" if ok else "no_landing")
 		return
 	# Phase 125 — home is recorded once the body stands on loaded ground, not at the instant the step starts.
-	var home_loaded: bool = await _await_until(func(): return _root._chunk_manager.is_chunk_built(_root._player.get_world_pos()["chunk"]), STEP_TIMEOUT_SECS)
+	var home_loaded: bool = await _await_until(func(): return _root._chunk_manager.is_chunk_built(_root._player.get_world_pos()["chunk"]), _step_timeout())
 	var home: Dictionary = _root._player.get_world_pos()
-	var got: bool = await _await_until(func(): return not _teleports_seen.is_empty(), STEP_TIMEOUT_SECS)
+	var got: bool = await _await_until(func(): return not _teleports_seen.is_empty(), _step_timeout())
 	var near := false
 	if got:
 		var want: Dictionary = _teleports_seen.back()
 		# The landing is only meaningful once the destination chunk is loaded under the body, so `near`
 		# is judged after that wait and never latched from the pre-load position.
-		var loaded: bool = await _await_until(func(): return _root._chunk_manager.is_chunk_built(want["chunk"]), STEP_TIMEOUT_SECS)
+		var loaded: bool = await _await_until(func(): return _root._chunk_manager.is_chunk_built(want["chunk"]), _step_timeout())
 		var at: Dictionary = _root._player.get_world_pos()
 		near = loaded and at["chunk"] == want["chunk"] and (at["local"] as Vector3).distance_to(want["local"]) < 1.0
 	_report_actual = true
@@ -767,7 +776,7 @@ func _step_admin_teleport() -> void:
 	GameBus.player_teleport.emit(home)
 	var back: bool = await _await_until(func():
 		var now_at: Dictionary = _root._player.get_world_pos()
-		return now_at["chunk"] == home["chunk"] and (now_at["local"] as Vector3).distance_to(home["local"]) < 1.0, STEP_TIMEOUT_SECS)
+		return now_at["chunk"] == home["chunk"] and (now_at["local"] as Vector3).distance_to(home["local"]) < 1.0, _step_timeout())
 	var all_ok: bool = home_loaded and got and near and back
 	_report("admin_teleport", verdict(all_ok, true),
 		"landed-within-1m" if all_ok else "no_landing-home%d-got%d-near%d-back%d" % [int(home_loaded), int(got), int(near), int(back)])
@@ -783,7 +792,7 @@ func _step_waystone_travel() -> void:
 	if _role == "host":
 		var target := _bound_id()
 		var peer := _peer_id()
-		var got_exact: bool = await _await_until(func(): return not _root._networking.get_last_known_exact(peer).is_empty(), STEP_TIMEOUT_SECS)
+		var got_exact: bool = await _await_until(func(): return not _root._networking.get_last_known_exact(peer).is_empty(), _step_timeout())
 		var seen: Dictionary = _root._networking.get_last_known_exact(peer)
 		if not got_exact or seen.is_empty():
 			_report("waystone_travel", "fail", "no_client_position")
@@ -800,14 +809,14 @@ func _step_waystone_travel() -> void:
 		var ok: bool = await _await_until(func():
 			var now_at: Dictionary = _root._networking.get_last_known_exact(peer)
 			return not now_at.is_empty() and now_at["chunk"] == want["chunk"] \
-				and (now_at["local"] as Vector3).distance_to(want["local"]) < 2.0, STEP_TIMEOUT_SECS)
+				and (now_at["local"] as Vector3).distance_to(want["local"]) < 2.0, _step_timeout())
 		_report("waystone_travel", verdict(ok, true), "travelled-to-second-stone" if ok else "no_travel")
 		return
 	var home: Dictionary = _root._player.get_world_pos()
 	var before := _teleports_seen.size()
 	var tries := 0
 	var got: bool = false
-	while tries < int(STEP_TIMEOUT_SECS) and not got:
+	while tries < int(_step_timeout()) and not got:
 		GameBus.waystone_travel_intent.emit("station_0", "station_1", "")
 		tries += 1
 		got = await _await_until(func(): return _teleports_seen.size() > before, 1.0)
@@ -816,7 +825,7 @@ func _step_waystone_travel() -> void:
 	var near := false
 	if got:
 		var want: Dictionary = _teleports_seen.back()
-		await _await_until(func(): return _root._chunk_manager.is_chunk_built(want["chunk"]), STEP_TIMEOUT_SECS)
+		await _await_until(func(): return _root._chunk_manager.is_chunk_built(want["chunk"]), _step_timeout())
 		var at: Dictionary = _root._player.get_world_pos()
 		near = at["chunk"] == want["chunk"] and (at["local"] as Vector3).distance_to(want["local"]) < 1.0
 	_report_actual = true
@@ -834,7 +843,7 @@ func _step_non_admin_refused() -> void:
 		var target := _bound_id()
 		var inv: Node = _root._registry.get_inventory(target)
 		var count_before: int = inv.get_item_count(PROBE_ITEM) if inv != null else 0
-		var refused: bool = await _await_until(func(): return not _chat_line("system", "key:chat.admin_only", target).is_empty(), STEP_TIMEOUT_SECS)
+		var refused: bool = await _await_until(func(): return not _chat_line("system", "key:chat.admin_only", target).is_empty(), _step_timeout())
 		await _await_settle(1.0)
 		var count_after: int = inv.get_item_count(PROBE_ITEM) if inv != null else 0
 		_report("non_admin_refused", verdict(refused and count_before == count_after, true),
@@ -842,7 +851,7 @@ func _step_non_admin_refused() -> void:
 		return
 	var before: int = int(_root._inventory.get_contents().get(PROBE_ITEM, 0))
 	_root._chat.submit("/give %s 5" % PROBE_ITEM)
-	var ok: bool = await _await_until(func(): return not _chat_line("system", "key:chat.admin_only", "").is_empty(), STEP_TIMEOUT_SECS)
+	var ok: bool = await _await_until(func(): return not _chat_line("system", "key:chat.admin_only", "").is_empty(), _step_timeout())
 	await _await_settle(1.0)
 	var after: int = int(_root._inventory.get_contents().get(PROBE_ITEM, 0))
 	_report("non_admin_refused", verdict(ok and before == after, true),
@@ -892,7 +901,7 @@ func _step_equipment_recorded() -> void:
 			return
 		GameBus.inventory_synced.emit(owner_pid, bag.get_contents(), {})
 		var ok: bool = await _await_until(
-			func(): return _root._registry.get_equipment(owner_pid) == { slot: item }, STEP_TIMEOUT_SECS)
+			func(): return _root._registry.get_equipment(owner_pid) == { slot: item }, _step_timeout())
 		_report("equipment_recorded", verdict(ok, true),
 			"filtered" if ok else "not_recorded-%s" % str(_root._registry.get_equipment(owner_pid)))
 		return
@@ -958,14 +967,14 @@ func _step_equipment_delivered() -> void:
 		_root._registry.record_equipment(local_id, want)
 		var key: String = _root._networking._pair_key(_bound_peer, host_id)
 		var ok: bool = await _await_until(
-			func(): return _root._networking._equipment_sent.has(key), STEP_TIMEOUT_SECS)
+			func(): return _root._networking._equipment_sent.has(key), _step_timeout())
 		_report("equipment_delivered", verdict(ok, true), "delivered" if ok else "not_sent-%s" % key)
 		return
 	# Judged on what ARRIVED, not on what the character slice still holds: the host runs ahead
 	# and may drop this connection (the reconnect step) while this side is still finishing the
 	# previous step, and a dropped connection forgets the peer's stored set.
 	var got: bool = await _await_until(
-		func(): return _seen_peer_equipment.get(host_id, {}) == want, STEP_TIMEOUT_SECS)
+		func(): return _seen_peer_equipment.get(host_id, {}) == want, _step_timeout())
 	_report("equipment_delivered", verdict(got, true),
 		"delivered" if got else "not_delivered-%s" % str(_seen_peer_equipment.get(host_id, {})))
 
@@ -990,7 +999,7 @@ func _step_peer_damage_floor() -> void:
 			_report("peer_damage_floor", "fail", "no_peer")
 			return
 		GameBus.player_damaged.emit(PlayerSlice.MAX_HP * 2.0, "creature_harness", target)
-		var ok: bool = await _await_until(func(): return _root._registry.get_hp(target) == 0.0, STEP_TIMEOUT_SECS)
+		var ok: bool = await _await_until(func(): return _root._registry.get_hp(target) == 0.0, _step_timeout())
 		var parked: bool = float(_root._registry.get_record(target).get("respawn_deadline", 0.0)) > 0.0
 		_report("peer_damage_floor", verdict(ok and parked, true),
 			"floor-applied" if (ok and parked) else "no_floor_or_deadline")
@@ -1005,10 +1014,16 @@ func _step_peer_damage_floor() -> void:
 	# body is EITHER still waiting the timer out OR already back at full health — never down
 	# with nothing running. Asserting the transient itself would fail for a body that
 	# recovered, which is the outcome the fix exists to produce.
-	var died: bool = await _await_until(func(): return _deaths > 0, STEP_TIMEOUT_SECS)
+	var died: bool = await _await_until(func(): return _deaths > 0, _step_timeout())
+	# On a delayed link the body can be back up a moment before its full-health sync lands, so the
+	# either-or is awaited rather than sampled once.
+	var settled: bool = await _await_until(func():
+		var down_waiting: bool = not _root._player._alive and _root._player._respawn_timer > 0.0
+		var back_up: bool = _root._player._alive and _root._player.get_hp() == PlayerSlice.MAX_HP
+		return down_waiting or back_up, _step_timeout())
 	var waiting: bool = not _root._player._alive and _root._player._respawn_timer > 0.0
 	var recovered: bool = _root._player._alive and _root._player.get_hp() == PlayerSlice.MAX_HP
-	var good: bool = died and (waiting or recovered)
+	var good: bool = died and settled and (waiting or recovered)
 	_report("peer_damage_floor", verdict(good, true),
 		"floor-applied" if good else "no_floor-died%d-down%d-timer%.1f" % [
 			int(died), int(not _root._player._alive), _root._player._respawn_timer])
@@ -1025,9 +1040,9 @@ func _step_reconnect_alive() -> void:
 		var target := _bound_id()
 		var ok: bool = await _await_until(
 			func(): return _root._registry.is_online(target) if target != "" else false,
-			STEP_TIMEOUT_SECS)
+			_step_timeout())
 		var resolved_ok: bool = await _await_until(
-			func(): return _root._registry.get_hp(target) == PlayerSlice.MAX_HP, STEP_TIMEOUT_SECS)
+			func(): return _root._registry.get_hp(target) == PlayerSlice.MAX_HP, _step_timeout())
 		var snapshot_resolved: float = float(_root._registry.get_player_data(target).get("hp", -1.0))
 		var peer_back := ok and resolved_ok and snapshot_resolved == PlayerSlice.MAX_HP
 		# The failure token says WHICH half of "the peer came back" was missing, because
@@ -1044,12 +1059,12 @@ func _step_reconnect_alive() -> void:
 	# on ITS own, so the death can be over before this step opens (see `_deaths`). A counted
 	# death is the evidence that the body was handed a zero with a timer; what this step
 	# asserts is the state AFTER the reconnect, below.
-	var was_down: bool = await _await_until(func(): return _deaths > 0, STEP_TIMEOUT_SECS)
+	var was_down: bool = await _await_until(func(): return _deaths > 0, _step_timeout())
 	_root._networking.disconnect_all()
 	# Phase 37/38 — the transport state dies with the connection, and the reassembly
 	# buffer is the part that leaks: a snapshot that lost a chunk can never complete.
 	var buffer_cleared: bool = _root._networking._snapshot_buffer.is_empty()
-	await _await_settle(RECONNECT_WAIT_SECS)
+	await _await_settle(RECONNECT_WAIT_SECS * _time_scale)
 	var err: Error = _root._networking.join(_root._host_address, _root._networking.DEFAULT_PORT)
 	if err != OK:
 		_report("reconnect_alive", "fail", "rejoin_failed")
@@ -1068,7 +1083,7 @@ func _step_reconnect_alive() -> void:
 	# must have run out (or be about to) and left the body up, not dead with no timer.
 	var alive_ok: bool = await _await_until(
 		func(): return _root._player._alive and _root._player.get_hp() == PlayerSlice.MAX_HP,
-		STEP_TIMEOUT_SECS)
+		_step_timeout())
 	var controlling: bool = _root._player._respawn_timer <= 0.0
 	var good := was_down and buffer_cleared and alive_ok and controlling
 	# The failure token names the TRANSPORT state as well as the body's: `conn` is the
@@ -1100,7 +1115,7 @@ func _step_disconnect_evicts() -> void:
 		var live := _live_bound_id()
 		var online: bool = await _await_until(
 			func(): return _root._registry.is_online(target) and _root._registry.get_record(target).size() > 0,
-			STEP_TIMEOUT_SECS)
+			_step_timeout())
 		var buffer_empty: bool = _root._networking._snapshot_buffer.is_empty()
 		var same_identity: bool = live == target
 		# The dead connection's peer id must not still be bound: a stale mapping points at a
@@ -1117,7 +1132,7 @@ func _step_disconnect_evicts() -> void:
 	var resumed := str(_root._networking.claimed_player_id)
 	var ok: bool = await _await_until(
 		func(): return _root._networking.claimed_player_id != "" and _root._snapshot_pending == false,
-		STEP_TIMEOUT_SECS)
+		_step_timeout())
 	_report("disconnect_evicts", verdict(ok and resumed != "", true),
 		"evicted" if (ok and resumed != "") else "no_identity")
 
@@ -1205,7 +1220,7 @@ func _step_clock_synced() -> void:
 	if _role == "host":
 		_root.clock_tick_seconds = 0.5
 		var base: int = _root.clock_ticks_sent
-		var ok: bool = await _await_until(func(): return _root.clock_ticks_sent >= base + TICKS, STEP_TIMEOUT_SECS)
+		var ok: bool = await _await_until(func(): return _root.clock_ticks_sent >= base + TICKS, _step_timeout())
 		_report("clock_synced", verdict(ok, true), "synced" if ok else "host_sent_%d" % (_root.clock_ticks_sent - base))
 		return
 	var clock: RefCounted = _root._clock
@@ -1216,7 +1231,7 @@ func _step_clock_synced() -> void:
 	GameBus.world_clock_received.connect(on_tick)
 	clock.time_days += 0.5 / clock.day_seconds()
 	var base_rx: int = _root.clock_ticks_received
-	var got: bool = await _await_until(func(): return _root.clock_ticks_received >= base_rx + TICKS, STEP_TIMEOUT_SECS)
+	var got: bool = await _await_until(func(): return _root.clock_ticks_received >= base_rx + TICKS, _step_timeout())
 	GameBus.world_clock_received.disconnect(on_tick)
 	var err_s: float = 1.0e9
 	if got and float(last["days"]) >= 0.0:
@@ -1244,7 +1259,7 @@ func _step_weather_override() -> void:
 		return
 	var got: bool = await _await_until(func():
 		return weather.override_count() >= 1 \
-			and weather.weather_at(chunk, weather.current_hour()) != weather.rolled_state(weather.cell_of(chunk), weather.current_hour()), STEP_TIMEOUT_SECS)
+			and weather.weather_at(chunk, weather.current_hour()) != weather.rolled_state(weather.cell_of(chunk), weather.current_hour()), _step_timeout())
 	_report("weather_override", verdict(got, true), "overridden" if got else "no_override")
 
 ## Phase 129 — a burn put on the bound peer reaches that peer's client alone, and its damage over time lowers
@@ -1274,7 +1289,7 @@ func _step_status_effect() -> void:
 			"owner-only" if (lowered and host_clean) else "hp%.1f-to-%.1f-hostclean%s" % [base, hp_after, str(host_clean)])
 		return
 	# The effect list is what the packet carries; the damage rides the (already proven) player_damaged path.
-	var got: bool = await _await_until(func(): return _burn_seen, STEP_TIMEOUT_SECS)
+	var got: bool = await _await_until(func(): return _burn_seen, _step_timeout())
 	_report("status_effect", verdict(got, true), "owner-only" if got else "effect_never_arrived-hp%.0f" % _root._player.get_hp())
 
 ## Phase 130 — the host decides immobilization itself. It paralyzes the bound peer; that peer's client
@@ -1297,7 +1312,7 @@ func _step_paralysis_holds() -> void:
 		_root._combat_wiring.tick_status_effects()
 		_report("paralysis_holds", verdict(held, true), "held" if held else "moved-%.1fm" % net.get_last_known_state(_bound_peer).distance_to(base))
 		return
-	var seen: bool = await _await_until(func(): return _paralysis_seen, STEP_TIMEOUT_SECS)
+	var seen: bool = await _await_until(func(): return _paralysis_seen, _step_timeout())
 	if not seen:
 		_report("paralysis_holds", "fail", "paralysis_never_arrived")
 		return
@@ -1335,7 +1350,7 @@ func _step_spawn_near_friend() -> void:
 		return
 	var old_handle := str(_root._networking.claimed_handle)
 	_root._networking.disconnect_all()
-	await _await_settle(RECONNECT_WAIT_SECS)
+	await _await_settle(RECONNECT_WAIT_SECS * _time_scale)
 	_root._networking.claimed_player_id = ""
 	_root._networking.friend_code = old_handle
 	if _root._networking.join(_root._host_address, _root._networking.DEFAULT_PORT) != OK:
@@ -1347,7 +1362,7 @@ func _step_spawn_near_friend() -> void:
 	_root._networking.request_handshake()
 	var arrived: bool = await _await_until(
 		func(): return str(_root._networking.claimed_handle) not in ["", old_handle] and not _root._snapshot_pending,
-		STEP_TIMEOUT_SECS * 2.0)
+		_step_timeout() * 2.0)
 	var body: Vector3 = _root._player.get_position()
 	var d: float = Vector2(body.x, body.z).distance_to(friend_pos)
 	var good: bool = arrived and d <= radius
@@ -1389,7 +1404,7 @@ func _step_chunk_record_synced() -> void:
 	var generated_b := TerrainSlice.generated_biome_for_chunk(chunk, int(_root._terrain.get_world_seed()))
 	var ok: bool = await _await_until(func():
 		return ChunkRecords.has_record(chunk) and str(ChunkRecords.get_record(chunk)["b"]) != generated_b,
-		STEP_TIMEOUT_SECS)
+		_step_timeout())
 	if not ok:
 		_report("chunk_record_synced", "fail", "no_record_received")
 		return
@@ -1411,7 +1426,7 @@ func _step_tree_cleared() -> void:
 			return
 		# Phase 126 — wait for the client's ack (its trees are loaded and the lag has passed) instead of a
 		# fixed window: a clear for a chunk it has not streamed yet is left to the scoped records.
-		var acked: bool = await _await_until(func(): return not _chat_line("chat", TREE_ACK_PROBE + t, "").is_empty(), STEP_TIMEOUT_SECS + CLIENT_LAG_SECS)
+		var acked: bool = await _await_until(func(): return not _chat_line("chat", TREE_ACK_PROBE + t, "").is_empty(), _step_timeout() + CLIENT_LAG_SECS)
 		if not acked:
 			_report("tree_cleared", "fail", "client_never_acked")
 			return
@@ -1421,12 +1436,12 @@ func _step_tree_cleared() -> void:
 		return
 	# An injected lag: this client reaches the clear seconds after the host is ready for it.
 	await _await_settle(CLIENT_LAG_SECS)
-	var loaded: bool = await _await_until(func(): return not _root._tree.get_tree_record(t).is_empty(), STEP_TIMEOUT_SECS)
+	var loaded: bool = await _await_until(func(): return not _root._tree.get_tree_record(t).is_empty(), _step_timeout())
 	if not loaded:
 		_report("tree_cleared", "fail", "client_never_loaded_target")
 		return
 	_root._chat.submit(TREE_ACK_PROBE + t)
-	var gone: bool = await _await_until(func(): return _root._tree.get_tree_record(t).is_empty(), STEP_TIMEOUT_SECS)
+	var gone: bool = await _await_until(func(): return _root._tree.get_tree_record(t).is_empty(), _step_timeout())
 	_report("tree_cleared", verdict(gone, true), t if gone else "still_standing")
 
 ## Phase 126 — seconds the client lags before it acks the `tree_cleared` target; the host waits on the ack.
@@ -1437,7 +1452,7 @@ const TREE_ACK_PROBE := "tree-ready:"
 var _spare_target := ""
 
 func _capture_spare_target() -> void:
-	var found: bool = await _await_until(func(): return _spare_tree().length() > 0, STEP_TIMEOUT_SECS)
+	var found: bool = await _await_until(func(): return _spare_tree().length() > 0, _step_timeout())
 	if found:
 		_spare_target = _spare_tree()
 
@@ -1494,7 +1509,7 @@ func _step_frontier_record_synced() -> void:
 			return false
 		var h: Array = ChunkRecords.get_record(chunk)["h"]
 		return absf(float(h[0]) - float(shared[0])) <= 0.001 and absf(float(h[2]) - float(shared[1])) <= 0.001,
-		STEP_TIMEOUT_SECS)
+		_step_timeout())
 	if not ok:
 		_report("frontier_record_synced", "fail", "no_frontier_record_received")
 		return
@@ -1585,6 +1600,12 @@ func _any_beyond_consumed() -> bool:
 ## `await`-driven wait for a predicate, bounded by a wall-clock deadline. Yields real
 ## frames, which is the ONLY reason this runner exists: an ENet peer delivers nothing
 ## without them.
+func _step_timeout() -> float:
+	return STEP_TIMEOUT_SECS * _time_scale
+
+func _absence_window() -> float:
+	return ABSENCE_WINDOW_SECS * _time_scale
+
 func _await_until(predicate: Callable, timeout: float) -> bool:
 	var deadline := Time.get_ticks_msec() + int(timeout * 1000.0)
 	while Time.get_ticks_msec() < deadline:

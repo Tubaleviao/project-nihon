@@ -438,14 +438,16 @@ func _release_fold_hold() -> void:
 func _tick_client_handshake(delta: float) -> void:
 	root._snapshot_elapsed += delta
 	root._handshake_elapsed += delta
-	if root._handshake_elapsed >= root.HANDSHAKE_RETRY_SECS and root._handshake_retries < root.MAX_HANDSHAKE_RETRIES:
+	# Phase 135 — a delayed, capped link (`--net-profile`) stretches the deadlines by its round trip.
+	var scale: float = root._networking.link_time_scale()
+	if root._handshake_elapsed >= root.HANDSHAKE_RETRY_SECS * scale and root._handshake_retries < root.MAX_HANDSHAKE_RETRIES:
 		root._handshake_elapsed = 0.0
 		root._handshake_retries += 1
 		Diag.warn("[Networking] no world snapshot after %.1fs — re-presenting join intent (retry %d/%d)" % [
-			root.HANDSHAKE_RETRY_SECS, root._handshake_retries, root.MAX_HANDSHAKE_RETRIES])
+			root.HANDSHAKE_RETRY_SECS * scale, root._handshake_retries, root.MAX_HANDSHAKE_RETRIES])
 		root._networking.request_handshake()
-	if root._snapshot_elapsed >= root.SNAPSHOT_TIMEOUT:
-		Diag.error("[Networking] world snapshot timed out after %.1fs — giving up" % root.SNAPSHOT_TIMEOUT)
+	if root._snapshot_elapsed >= root.SNAPSHOT_TIMEOUT * scale:
+		Diag.error("[Networking] world snapshot timed out after %.1fs — giving up" % (root.SNAPSHOT_TIMEOUT * scale))
 		root._snapshot_pending = false
 
 ## Drive the player's visual avatar from the real player controller every
