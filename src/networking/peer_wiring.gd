@@ -13,6 +13,9 @@ const SpawnFinder      := preload("res://src/world/spawn_finder.gd")
 
 func wire(ctx: GameRoot) -> void:
 	root = ctx
+	if root.is_inside_tree():
+		connect_bus(root.multiplayer.connection_failed, _on_connection_failed)
+		connect_bus(root.multiplayer.server_disconnected, _on_server_disconnected)
 	connect_bus(GameBus.own_state_synced, _on_own_state_synced)
 	connect_bus(GameBus.peer_connected, _on_peer_connected)
 	connect_bus(GameBus.peer_disconnected, _on_peer_disconnected)

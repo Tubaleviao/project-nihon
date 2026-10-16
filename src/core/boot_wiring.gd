@@ -4,10 +4,6 @@ extends "res://src/core/wiring.gd"
 
 const Diag := preload("res://src/core/diag.gd")
 
-func wire(ctx: GameRoot) -> void:
-	root = ctx
-	pass
-
 ## Parse `--client [addr]` from OS user args to determine network role. Defaults
 ## to host (authoritative single-player) when no args are present. A malformed
 ## address is rejected with a warning and falls back to localhost.

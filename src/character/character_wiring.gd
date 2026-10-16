@@ -65,20 +65,5 @@ func _on_character_appearance_changed(instance_id: String, _appearance: Dictiona
 	elif not root._registry.local_player_id.is_empty():
 		root._registry.record_equipment(root._registry.local_player_id, worn)
 
-# ---------------------------------------------------------------------------
-# Phase 33 — the off-thread save
-# ---------------------------------------------------------------------------
-#
-# Serializing the world record is expensive (every loaded chunk manifest, every
-# creature, every station) and it used to run inline inside _process on the
-# autosave tick, so one frame in every `autosaveIntervalSeconds` stalled on JSON
-# encode + file write. The record is now written by a `Thread`.
-#
-# Only the WRITE moved. Building the payload still happens on the main thread,
-# because that is the half that reads live slice state (voxel edits, stations,
-# creatures, inventories) and touching nodes from a worker is not safe. What the
-# worker gets is a deep copy of plain data, so nothing it reads can be mutated
-# underneath it.
-
 func _on_character_spawned(_instance_id: String, _skeleton_id: String, _position: Vector3) -> void:
 	pass

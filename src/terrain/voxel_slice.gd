@@ -1745,7 +1745,7 @@ func get_edits() -> Dictionary:
 ##
 ## Only the chunks whose edits actually CHANGED are rebuilt, and only the ones
 ## that are LOADED. Both halves are load-path hygiene this method needs because
-## it is also the RE-SCOPE path (`game_root._on_world_snapshot_received`): a
+## it is also the RE-SCOPE path (`SnapshotWiring._on_world_snapshot_received`): a
 ## snapshot re-sends the manifest a client already applied — or one that differs
 ## in a chunk or two — and rebuilding every held chunk for that is a whole-frame
 ## stall per scope change. And a chunk that was streamed out has no mesh to
@@ -1832,7 +1832,7 @@ func _commit_edits(next: Dictionary, diff_keys: Variant = null) -> void:
 	if diff_keys == null:
 		_partial_chunks.clear()   # the log is replaced wholesale: what it holds is the whole truth
 	# _dirty_chunks is NOT cleared here: dirty tracking is reset only by
-	# clear_dirty_chunks() after a successful save (called from game_root._on_save_completed).
+	# clear_dirty_chunks() after a successful save (called from PersistenceWiring._finish_save).
 	# Restored on-disk edits are not dirty — they were already persisted.
 	var touched: Dictionary = {}
 	var changed: Dictionary = {}   # chunks that own a changed tile (Phase 69: their seams)
@@ -2625,7 +2625,7 @@ func inventory_for(player_id: String) -> Node:
 
 ## Is `player_id` a player whose own client mirrors this inventory over the wire? False
 ## for `""` (this machine's own player) and for the local id, whose pack is live in this
-## process and already in sync — the same test `game_root._sync_peer_own_state` makes
+## process and already in sync — the same test `PeerWiring._sync_peer_own_state` makes
 ## before it sends. A slice with no registry (an isolated rig) answers true for any
 ## non-empty id: it cannot tell, and the sync signal is addressee-filtered anyway.
 func _is_remote_actor(player_id: String) -> bool:

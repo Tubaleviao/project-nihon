@@ -546,8 +546,7 @@ func _ready() -> void:
 	for w in _wirings:
 		w.wire(self)
 
-	_peer_wiring.connect_bus(multiplayer.connection_failed, _peer_wiring._on_connection_failed)
-	_peer_wiring.connect_bus(multiplayer.server_disconnected, _peer_wiring._on_server_disconnected)
+
 	# Lighting — a directional "sun" plus soft ambient sky fill. Skipped on a
 	# headless server (no renderer to light).
 	if not _is_server:

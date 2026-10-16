@@ -7954,9 +7954,12 @@ func _test_malformed_position_warning_throttle() -> void:
 ## Phase 119 — a clamped move still re-sends the re-scope snapshot in the same call.
 func _test_rescope_resent_when_clamped() -> void:
 	var src := GDScript.new()
-	src.source_code = "extends \"res://src/core/game_root.gd\"\nfunc _build_snapshot(_p, _o = true, _c = null, _f = null) -> Dictionary:\n\treturn { \"stub\": true }\n"
+	src.source_code = "extends \"res://src/persistence/snapshot_wiring.gd\"\nvar built := 0\nfunc _build_snapshot(_p, _o = true, _c = null, _f = null) -> Dictionary:\n\tbuilt += 1\n\treturn { \"stub\": true }\n"
 	src.reload()
-	var gr: Node = src.new()
+	var gr: Node = (load("res://src/core/game_root.gd") as GDScript).new()
+	var stub = src.new()
+	stub.root = gr
+	gr._snapshot_wiring = stub
 	var n := NetworkingSlice.new()
 	add_child(n)
 	n._role = NetworkingSlice.Role.HOST
@@ -7973,6 +7976,7 @@ func _test_rescope_resent_when_clamped() -> void:
 	gr._peer_wiring._on_remote_player_state(5, Vector3(64.0 * 40.0, 0.0, 0.0))
 	var sent: Array = n.memory_transport().outbox.filter(func(o): return o["payload"].get("type") == "snapshot_chunk")
 	assert_true(sent.is_empty(), "a refused or clamped move builds and sends no snapshot")
+	assert_eq(stub.built, 0, "the snapshot builder was not even reached")
 	assert_false(gr._peer_aoi_regions.has(5), "and the crossing is forgotten so the window's catch-up retries it")
 	n.free()
 	cm.free()
@@ -11502,7 +11506,7 @@ func _test_party_inventory_binding_cleared() -> void:
 	trade.free()
 
 func _test_failed_write_reports_and_preserves() -> void:
-	# A failed write has to be REPORTED (game_root._finish_save is what logs it and
+	# A failed write has to be REPORTED (PersistenceWiring._finish_save is what logs it and
 	# re-marks the cleared dirty chunks) and must never damage the record already on
 	# disk. The old lifecycle only reaped the worker at the START of the next save,
 	# so the failure went unnoticed for a whole interval while the edits looked saved.
