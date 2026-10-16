@@ -155,7 +155,7 @@ npm run generate  # generate the design bible into bible/
 | 132 | One wiring module per system: `game_root` keeps the boot paths | In review |
 | 133 | The test suite splits by system and runs by filter | In review |
 | 134 | A bot plays: playtest report and downloadable builds | In review |
-| 135 | A WAN profile: latency, loss and bandwidth in the two-client harness | Planned |
+| 135 | A WAN profile: latency, loss and bandwidth in the two-client harness | In review |
 | 136 | Creatures walk on the ground and around obstacles | Planned |
 | 137 | Loose ground settles: sand and soil fall when undermined | Planned |
 | 138 | Trees, generation records and persistence cleanup sweep | Planned |
@@ -210,6 +210,13 @@ Two entry points, deliberately separate:
 #    process on loopback, drives a scripted session over real ENet, and asserts the two
 #    sides' log lines agree. Needs a Godot 4.7 binary:
 GODOT=/tmp/godot/Godot_v4.7-stable_linux.x86_64 tools/net_harness.sh
+
+# 3. The same harness under a link profile (Phase 135): lan, wan_br (60 ms ± 15 ms, 1% loss)
+#    or wan_bad (200 ms ± 60 ms, 5% loss, 256 kbit/s). NET_PROFILE is passed to both
+#    processes as `--net-profile`; step timeouts scale with the profile's round trip. An
+#    unknown profile name is refused at boot (exit 2). Under a bandwidth cap the harness
+#    host mutes creature position deltas, which alone exceed 256 kbit/s per client.
+NET_PROFILE=wan_bad GODOT=/tmp/godot/Godot_v4.7-stable_linux.x86_64 tools/net_harness.sh
 ```
 
 `--run-tests` and `--net-harness <host|client>` are **user args**, so they go after the

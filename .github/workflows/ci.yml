@@ -194,6 +194,15 @@ jobs:
           NET_HARNESS_LOGDIR: ${{ runner.temp }}/net-harness
         run: tools/net_harness.sh
 
+      - name: Run the two-client harness under the wan_bad profile
+        # Phase 135 — 200 ms ± 60 ms, 5% loss, 256 kbit/s on both processes' outbound packets; the log
+        # records the profile in use and the driver fails if either side ran another.
+        env:
+          GODOT: /tmp/godot/Godot_v4.7-stable_linux.x86_64
+          NET_HARNESS_LOGDIR: ${{ runner.temp }}/net-harness-wan-bad
+          NET_PROFILE: wan_bad
+        run: tools/net_harness.sh
+
       - name: Upload harness logs
         # Diagnostics only: the driver has already failed the job by this point, and the
         # two processes' logs are what says WHICH step broke.
@@ -201,7 +210,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: net-harness-logs
-          path: ${{ runner.temp }}/net-harness
+          path: |
+            ${{ runner.temp }}/net-harness
+            ${{ runner.temp }}/net-harness-wan-bad
           if-no-files-found: ignore
 
   playtest:

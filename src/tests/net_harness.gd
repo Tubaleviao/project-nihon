@@ -1338,7 +1338,7 @@ func _step_spawn_near_friend() -> void:
 	var radius: float = float(_root.SpawnFinder.rule()["friend_radius"]) + 1.0
 	if _role == "host":
 		var old_id := _bound_player_id
-		var ok: bool = await _await_until(func(): return _new_identity(old_id) != "", 60.0)
+		var ok: bool = await _await_until(func(): return _new_identity(old_id) != "", 60.0 * _time_scale)
 		if not ok:
 			_report("spawn_near_friend", "fail", "no_new_identity")
 			return
@@ -1347,10 +1347,18 @@ func _step_spawn_near_friend() -> void:
 		var dist: float = 1.0e12
 		if arr is Array and (arr as Array).size() >= 3:
 			dist = Vector2(float(arr[0]), float(arr[2])).distance_to(friend_pos)
+		# The joiner's world snapshot is still queued behind the emulated link: drain it before the next
+		# steps, or a short host timeline quits the process under a client that is mid-snapshot.
+		await _await_link_drained()
+		await _await_settle(2.0 * _time_scale)
 		_report("spawn_near_friend", verdict(dist <= radius, true),
 			"near-friend" if dist <= radius else "placed_%dm_away" % int(dist))
 		return
 	var old_handle := str(_root._networking.claimed_handle)
+	# Re-pin the friend's position and give it time to reach the host before leaving: on a delayed link the
+	# host's last report can still be an earlier step's position, and the friend is placed from it.
+	_report_position()
+	await _await_settle(2.0 * _time_scale)
 	_root._networking.disconnect_all()
 	await _await_settle(RECONNECT_WAIT_SECS * _time_scale)
 	_root._networking.claimed_player_id = ""
@@ -1399,6 +1407,7 @@ func _step_chunk_record_synced() -> void:
 			return
 		_root._peer_records_msec.erase(peer)
 		_root._networking.send_snapshot(peer, _root._snapshot_wiring._build_snapshot(peer, false, RENDEZVOUS, false))
+		await _await_link_drained()
 		_report("chunk_record_synced", verdict(true, true), _record_detail(rec))
 		return
 	# The client may already hold the record its own terrain generated for this chunk, so presence is
@@ -1500,6 +1509,7 @@ func _step_frontier_record_synced() -> void:
 			return
 		_root._peer_records_msec.erase(peer)
 		_root._networking.send_snapshot(peer, _root._snapshot_wiring._build_snapshot(peer, false, RENDEZVOUS, false))
+		await _await_link_drained()
 		_report("frontier_record_synced", verdict(true, true), _record_detail(rec))
 		return
 	if is_nan(shared[0]) or is_nan(shared[1]):
@@ -1602,6 +1612,12 @@ func _any_beyond_consumed() -> bool:
 ## `await`-driven wait for a predicate, bounded by a wall-clock deadline. Yields real
 ## frames, which is the ONLY reason this runner exists: an ENet peer delivers nothing
 ## without them.
+## Wait until the host's emulated link has delivered everything queued (a snapshot is many packets behind a
+## bandwidth cap), so the host's short remaining timeline does not quit under a client mid-delivery.
+func _await_link_drained() -> void:
+	await _await_settle(1.0)
+	await _await_until(func(): return _root._networking._pending.is_empty(), _step_timeout() * 2.0)
+
 func _step_timeout() -> float:
 	return STEP_TIMEOUT_SECS * _time_scale
 

@@ -155,7 +155,7 @@ issue number where the criterion used to be.
 | 132 | One wiring module per system: `game_root` keeps the boot paths | In review | below |
 | 133 | The test suite splits by system and runs by filter | In review | below |
 | 134 | A bot plays: playtest report and downloadable builds | In review | below |
-| 135 | A WAN profile: latency, loss and bandwidth in the two-client harness | Planned | below |
+| 135 | A WAN profile: latency, loss and bandwidth in the two-client harness | In review | below |
 | 136 | Creatures walk on the ground and around obstacles | Planned | below |
 | 137 | Loose ground settles: sand and soil fall when undermined | Planned | below |
 | 138 | Trees, generation records and persistence cleanup sweep | Planned | below |
@@ -395,11 +395,11 @@ full harness step list under `wan_bad` in CI, so a sync that only works without 
 - A short note in `README.md` Testing on running the harness under a profile.
 
 **Acceptance criteria:**
-- [ ] Suite: with 200 ms latency a packet is delivered no earlier than 200 ms after send; a
+- [x] Suite: with 200 ms latency a packet is delivered no earlier than 200 ms after send; a
   bandwidth cap of 256 kbit/s never delivers more than 32 KB in any one-second window; an unknown
   profile name is refused at boot.
-- [ ] CI: every harness step passes under `wan_bad`; the harness log records the profile in use.
-- [ ] Harness green on loopback, suite green on both boot paths.
+- [x] CI: every harness step passes under `wan_bad`; the harness log records the profile in use.
+- [x] Harness green on loopback, suite green on both boot paths.
 
 ---
 
