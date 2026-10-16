@@ -180,6 +180,29 @@ var unloads_per_frame: int = DEFAULT_UNLOADS_PER_FRAME
 ## Worker builds allowed in flight at once (see DEFAULT_MAX_BUILDS_IN_FLIGHT).
 var max_builds_in_flight: int = DEFAULT_MAX_BUILDS_IN_FLIGHT
 
+## Phase 141 — the FOLD CATCH-UP. A fold over a pole or round the antimeridian (`restream`) rebuilds
+## the whole window (81 chunks) while the stand-ins hold the old ground; at the steady cap of four
+## builds that took 7.4 s (measured by the playtest bot's pole step). The rebuild cannot be skipped:
+## the folded chunks are not the carried ones (over a pole the mirrored tiles sit half a tile off,
+## and their colours, veins and trees are their own), so it is made FASTER instead. Since the noise
+## moved to the worker a dispatch costs the main thread about a millisecond, so until the window is
+## rebuilt the cap rises to `catchup_builds_in_flight` (all cores but one), up to
+## `catchup_loads_per_frame` chunks are dispatched per frame, and the tasks run at high priority
+## (see `_dispatch_worker_noise_build`). The burst ends when nothing is queued or in flight.
+## Overridable for tests.
+const DEFAULT_CATCHUP_LOADS_PER_FRAME := 3
+var catchup_builds_in_flight: int = maxi(DEFAULT_MAX_BUILDS_IN_FLIGHT, OS.get_processor_count() - 1)
+var catchup_loads_per_frame: int = DEFAULT_CATCHUP_LOADS_PER_FRAME
+var _catchup := false
+
+## True while a fold's catch-up burst is running (see `catchup_builds_in_flight`).
+func is_catching_up() -> bool:
+	return _catchup
+
+## The in-flight cap in force: the steady one, or the catch-up one after a fold.
+func build_cap() -> int:
+	return maxi(max_builds_in_flight, catchup_builds_in_flight) if _catchup else max_builds_in_flight
+
 ## Phase 42 review pass 3 — seconds between self-heal attempts while the window is not moving
 ## (see DEFAULT_SELF_HEAL_INTERVAL / `_self_heal_failed`). Overridable for tests.
 var self_heal_interval: float = DEFAULT_SELF_HEAL_INTERVAL
@@ -542,8 +565,10 @@ func _drain_load_queue() -> void:
 	# below is a `PlayerSlice.get_position()` call; the empty case is the common one
 	# (a settled window drains nothing until the player crosses a chunk boundary).
 	if _load_queue.is_empty() and _rebuild_queue.is_empty():
+		if _catchup and _builds.is_empty():
+			_catchup = false   # the folded window is rebuilt: back to the steady cap
 		return
-	var budget := loads_per_frame
+	var budget := maxi(loads_per_frame, catchup_loads_per_frame) if _catchup else loads_per_frame
 	# Phase 42 review pass 3 — the streamed window is resolved ONCE for the whole drain. The
 	# player's chunk cannot move during it (the position is re-read at the next frame's
 	# `refresh()`), and the per-chunk form re-derived it — a slice call — for every
@@ -551,7 +576,7 @@ func _drain_load_queue() -> void:
 	var centers := window_centers()
 	var radius := stream_radius()
 	while budget > 0:
-		if _builds.size() >= max_builds_in_flight:
+		if _builds.size() >= build_cap():
 			return   # the pool is busy: leave the rest queued for a later frame
 		if not _rebuild_queue.is_empty():
 			var rebuild: Vector2i = _rebuild_queue.pop_front()
@@ -866,7 +891,7 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 	# `_drain_load_queue` drains under this same cap; the chunk is already `_loaded` (both
 	# `load_chunk` and `request_rebuild` mark it first), so the drain's rebuild branch is
 	# exactly the path that re-dispatches it. Delayed a frame, never dropped.
-	if _builds.size() >= max_builds_in_flight:
+	if _builds.size() >= build_cap():
 		_queue_rebuild(chunk_pos)
 		return
 	# Phase 42 review — SUPERSEDE a build already in flight for this chunk. The caller
@@ -884,6 +909,9 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 		_rebuild_pending.erase(key)
 		_remove_queued_rebuild(key)
 	_build_attempts[key] = int(_build_attempts.get(key, 0)) + 1
+	if terrain_slice.has_method("detail_noise_copy") and voxel_slice.has_method("gather_build_input_deferred"):
+		_dispatch_worker_noise_build(chunk_pos, key)
+		return
 	# A neighbour's gather may already have generated this chunk's map (its seam guess);
 	# the voxel slice hands that one over instead of recomputing the noise here.
 	var heightmap: Array = voxel_slice.take_heightmap_for_build(chunk_pos) \
@@ -906,6 +934,39 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 		"chunk":     chunk_pos,
 		"key":       key,
 		"heightmap": heightmap,
+		"revision":  revision,
+		"result":    result,
+	}
+
+## Phase 141 — the dispatch with the NOISE on the worker too. Measured before this: the main thread
+## paid 14 ms (equator) to 36 ms (by a pole) for the chunk's own heightmap and up to 8 more maps for
+## its unbuilt neighbours' seam guesses (120 ms to 290 ms on a cold window), once per dispatch, i.e.
+## a stall of 1 to 18 frames on every frame of a crossing. Now the main thread only gathers (edits,
+## known maps, biomes) and copies the noise; the task generates the chunk's map from the static
+## generator (`TerrainSlice.heightmap_for`) and only the seam EDGES of the unknown neighbours
+## (`VoxelSlice.fill_seam_strips`), then resolves and builds as before. The map comes back in
+## `result[1]`, and `_apply_build_entry` stores that one.
+func _dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
+	TerrainSlice.warm_polar_caches()   # the static caches the generator reads, filled here on the main thread
+	var cached: Array = voxel_slice.take_cached_heightmap(chunk_pos)
+	var gathered: Dictionary = voxel_slice.gather_build_input_deferred(chunk_pos)
+	var seed_v: int = int(terrain_slice.get_world_seed())
+	var noise: FastNoiseLite = terrain_slice.detail_noise_copy()
+	var revision: int = int(voxel_slice.chunk_revision(chunk_pos))
+	var result: Array = [null, cached]
+	var job := func() -> void:
+		var hm: Array = cached if not cached.is_empty() else TerrainSlice.heightmap_for(chunk_pos, seed_v, noise)
+		VoxelBuilder.fill_seam_strips(chunk_pos, gathered, seed_v, noise)
+		result[1] = hm
+		result[0] = VoxelBuilder.build_chunk_arrays(chunk_pos, hm, VoxelBuilder.build_runs(chunk_pos, hm, gathered), true)
+	# A low-priority task may only use `low_priority_thread_ratio` of the pool (0.3 by default: three or
+	# four threads on most machines, which is what really capped the build rate), so the catch-up
+	# dispatches at high priority and can use every worker.
+	var task_id := WorkerThreadPool.add_task(job, _catchup, "chunk build %s" % key)
+	_builds[task_id] = {
+		"chunk":     chunk_pos,
+		"key":       key,
+		"heightmap": [],
 		"revision":  revision,
 		"result":    result,
 	}
@@ -1229,7 +1290,11 @@ func _apply_build_entry(task_id: int) -> bool:
 	if result[0] is Dictionary:
 		arrays = result[0]
 	var chunk: Vector2i = entry["chunk"]
-	if not voxel_slice.build_chunk(chunk, entry["heightmap"], arrays, int(entry["revision"])):
+	# Phase 141 — a worker-noise build hands its generated map back in the result's second slot.
+	var heightmap: Array = entry["heightmap"]
+	if result.size() > 1 and result[1] is Array and not (result[1] as Array).is_empty():
+		heightmap = result[1]
+	if not voxel_slice.build_chunk(chunk, heightmap, arrays, int(entry["revision"])):
 		if int(_build_attempts.get(key, 0)) < MAX_BUILD_RETRIES:
 			# A retry is a dispatch like any other, and `_dispatch_build` enforces the
 			# in-flight cap itself (ninth review pass), deferring to `_rebuild_queue` when
@@ -1325,6 +1390,7 @@ func restream() -> void:
 	_pending.clear()
 	_unload_queue.clear()
 	_last_centers = []
+	_catchup = true   # Phase 141 — the whole window rebuilds: burst it (see `catchup_builds_in_flight`)
 
 ## True when `chunk_pos` is loaded and its ground has been built.
 func is_chunk_built(chunk_pos: Vector2i) -> bool:

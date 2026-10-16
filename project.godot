@@ -21,10 +21,6 @@ AssetOverlay="*res://src/core/asset_overlay.gd"
 GameData="*res://godot/autoload/GameData.gd"
 GameBus="*res://src/core/bus.gd"
 
-[internationalization]
-
-locale/fallback="en"
-
 [display]
 
 window/stretch/mode="canvas_items"

@@ -3,8 +3,8 @@ extends Node
 ##
 ## `--playtest-bot` (a user arg, after `--`) boots the normal listen host WITH rendering and runs a
 ## fixed step list through the same intents a player's input sends: walk (W key held), stream
-## (20 chunks), mine, gather, craft, place, fight, travel. A step that does not reach its expected
-## state within its timeout fails, and so does the run. While a step runs the bot records the
+## (20 chunks), mine, gather, craft, place, fight, travel, pole (a crossing over the north pole). A
+## step that does not reach its expected state within its timeout fails, and so does the run. While a step runs the bot records the
 ## frame times, and after it a screenshot, so a human playtest is one artifact download away.
 ##
 ## Output (`playtest/`, next to the project): `report.json`, `report.md` and `<step>.png`.
@@ -25,6 +25,7 @@ extends Node
 ##   step_names() -> Array                    — static, the fixed step order
 
 const WorldPos := preload("res://src/terrain/world_pos.gd")
+const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 
 const ARG := "--playtest-bot"
 const OUT_DIR := "res://playtest"
@@ -56,10 +57,10 @@ static func requested(args: Array) -> bool:
 	return ARG in args
 
 static func _step_timeout(step: String) -> float:
-	return STREAM_TIMEOUT_SECS if step == "stream" else STEP_TIMEOUT_SECS
+	return STREAM_TIMEOUT_SECS if step == "stream" or step == "pole" else STEP_TIMEOUT_SECS
 
 static func step_names() -> Array:
-	return ["walk", "stream", "mine", "gather", "craft", "place", "fight", "travel"]
+	return ["walk", "stream", "mine", "gather", "craft", "place", "fight", "travel", "pole"]
 
 # ---------------------------------------------------------------------------
 # Pure report maths
@@ -419,3 +420,29 @@ func _step_travel() -> Array:
 		var now: Dictionary = _root._player.get_world_pos()
 		return now["chunk"] == dest["chunk"] and (now["local"] as Vector3).distance_to(dest["local"]) < 2.0, STEP_TIMEOUT_SECS)
 	return [ok, "travelled to the second stone" if ok else "body did not reach the second stone"]
+
+## Phase 141 — the pole: stand just past the north pole, let the window settle, then step over the
+## fold line. Only the frames from the fold until the folded window is rebuilt (no stand-in left,
+## nothing queued or in flight) are recorded, so the row is the cost of a pole crossing.
+func _step_pole() -> Array:
+	var x: int = (_root._player.get_world_pos()["chunk"] as Vector2i).x
+	var row := TerrainSlice.pole_chunks() + TerrainSlice.FOLD_MARGIN_CHUNKS - 2
+	var near := { "chunk": Vector2i(x, row), "local": Vector3(16.0, 0.0, 16.0) }
+	GameBus.player_teleport.emit(near)
+	if not await _until(func(): return _root._chunk_manager.is_chunk_built(near["chunk"]) and _window_settled(), STREAM_TIMEOUT_SECS):
+		return [false, "the window past the pole never settled"]
+	_frames = []
+	_chunk_builds = 0
+	_skip_frames = 0
+	var started := Time.get_ticks_msec()
+	GameBus.player_teleport.emit({ "chunk": Vector2i(x, row + 2), "local": Vector3(16.0, 0.0, 16.0) })
+	var folded: bool = await _until(func(): return absi((_root._player.get_world_pos()["chunk"] as Vector2i).y) < TerrainSlice.pole_chunks(), STEP_TIMEOUT_SECS)
+	if not folded:
+		return [false, "the body was never folded over the pole"]
+	var rebuilt: bool = await _until(func(): return _root._voxel.standin_count() == 0 and _window_settled(), STEP_TIMEOUT_SECS)
+	return [rebuilt, "folded, window rebuilt in %d ms" % (Time.get_ticks_msec() - started) if rebuilt else "folded window not rebuilt"]
+
+## Nothing queued, deferred or in flight in the chunk manager.
+func _window_settled() -> bool:
+	var cm = _root._chunk_manager
+	return cm._load_queue.is_empty() and cm._rebuild_queue.is_empty() and cm._builds.is_empty() and cm._unload_queue.is_empty()

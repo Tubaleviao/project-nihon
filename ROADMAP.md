@@ -161,6 +161,8 @@ issue number where the criterion used to be.
 | 138 | Trees, generation records and persistence cleanup sweep | In review | below |
 | 139 | Settlements in the fabric: founding, membership and shared storage | Planned | below |
 | 140 | Settlements at runtime: a hearth, a claim and a shared stockpile | Planned | below |
+| 141 | Terrain streaming off the main thread: worker noise, seam strips, polar shortcuts, fold catch-up | In review | below |
+| 142 | Terrain build throughput: a time-budgeted pump and a native chunk builder | Planned | below |
 
 ---
 
@@ -598,6 +600,89 @@ point is that players need each other.
 - [ ] Suite: an abandoned settlement's claim decays on the fabric schedule.
 - [ ] Harness: the `settlement` step passes on loopback and under the Phase 135 `wan_bad` profile.
 - [ ] Suite green on both boot paths, harness green, every new string in both locale catalogs.
+
+---
+
+## Phase 141 — Terrain streaming off the main thread
+
+**Goal:** a playtest showed stutter, frozen animations and lag while walking, worst near the poles.
+Measured per chunk dispatch, the main thread generated the chunk's heightmap (14 ms at the equator,
+36 ms by a pole) and up to eight full neighbour maps for the seam guesses (120 ms to 290 ms on a cold
+window), so every dispatch of a crossing stalled 1 to 18 frames. A pole fold re-streamed the whole
+window and paid that 81 times. This phase moves all of that noise to the chunk worker, generates only
+the seam edges the ring reads, makes the polar math cheaper without changing a height, and bursts the
+rebuild after a fold.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 42, Phase 49, Phase 91, Phase 120, Phase 134.
+
+**Deliverables:**
+- `src/terrain/terrain_slice.gd` — a static generator (`heightmap_for`, `heightmap_strip_for`,
+  `height_wrapped_in`, `raw_height_in`, `shape_cached`) that needs no node and takes the task's own
+  noise copy (`detail_noise_copy`); `polar_ground` skips the shelf noise on ground above the shelf's
+  highest point and memoises the per-row pole field (`new_polar_row`). World-gen output is unchanged, so
+  `WORLDGEN_VERSION` is not bumped.
+- `src/terrain/voxel_slice.gd` — `gather_build_input_deferred` lists unknown neighbours instead of
+  generating them; `fill_seam_strips` gives each one, on the worker, the one-tile edge the ring reads.
+- `src/terrain/chunk_manager.gd` — the dispatch generates the map, the strips, the runs and the arrays
+  on the worker and applies the map it hands back; after a `restream` (a fold) the cap rises to all
+  cores but one, more chunks dispatch per frame and the tasks run at high priority until the window is
+  rebuilt.
+- `src/tests/playtest_bot.gd` — a `pole` step: stand past the north pole, step over the fold line, and
+  report the frames until the folded window is rebuilt.
+
+**Acceptance criteria:**
+- [x] Suite: `heightmap_for` equals `generate_heightmap` on the equator, mid latitudes, the ice shelf,
+  the pole's snow field, past the pole and the antimeridian band.
+- [x] Suite: a seam strip equals the full map on its edge and computes nothing else.
+- [x] Suite: `polar_ground` with the shortcuts equals the unoptimised form; worldgen golden values
+  unchanged.
+- [x] Suite: a deferred gather plus seam strips builds the same mesh and collision as the full gather;
+  a dispatch generates no map on the main thread.
+- [x] Suite: a restream raises the build cap and the catch-up ends once nothing is queued or in flight.
+- [x] Playtest bot passes with the `pole` step.
+- [x] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 142 — Terrain build throughput: a time-budgeted pump and a native chunk builder
+
+**Goal:** Phase 141 took the stall off the main thread, but a chunk still costs a worker about 200 ms
+of GDScript (resolve + mesh arrays), the steady pump dispatches one chunk per frame with four low
+priority tasks in flight, and every window crossing reads its regions from disk on the main thread.
+Bigger mountains (taller walls, more faces) and a wider view would make all of these worse. This phase
+makes the build rate scale with the machine and moves the per-tile loops to native code, before the
+world gets taller.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 141.
+
+**Deliverables:**
+- `src/terrain/chunk_manager.gd` — the steady pump is budgeted by main-thread time (a few ms per
+  frame for dispatch + apply), not by a count; `max_builds_in_flight` defaults to the core count minus
+  one, and the apply pass is bounded per frame so a burst of finished builds cannot bunch into one
+  frame.
+- A native chunk builder (GDExtension, C++) for `heightmap_for`, `build_runs` and
+  `build_chunk_arrays`, with the GDScript builder kept as the reference: the suite builds the same
+  chunks through both and compares arrays, and the game falls back to GDScript when the extension is
+  missing (the public build must stay playable without a native binary for every platform).
+- `src/persistence/region_streamer.gd` — region reads for a window move go to a worker; a chunk waits
+  for its regions as it does today, without blocking the frame.
+- Fold contents: creatures and trees in the window survive a fold instead of being despawned and
+  respawned with the rebuild.
+- Optional, measured first: a compute-shader heightmap path if the native builder is still the
+  bottleneck at a larger view distance.
+
+**Acceptance criteria:**
+- [ ] Suite: native and GDScript builders give equal arrays for a fixed set of chunks (equator, ice,
+  pole, antimeridian, edited chunk); the GDScript fallback is used when the extension is absent.
+- [ ] Suite: a frame's pump never spends over its time budget on dispatch + apply in a stubbed clock.
+- [ ] Playtest bot: the `stream` step's chunk build rate at least doubles against the Phase 141 report,
+  and no step reports a hitch over 50 ms.
+- [ ] Suite: a region read for a window move never runs on the main thread.
+- [ ] Suite green on both boot paths, harness green.
 
 ---
 

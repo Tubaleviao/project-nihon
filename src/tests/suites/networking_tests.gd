@@ -43,6 +43,7 @@ func register() -> void:
 	_run_test("net: emulator adds no queue when disabled",       _test_net_emulator_zero_overhead)
 	_run_test("net: emulator latency delays delivery",           _test_net_emulator_latency)
 	_run_test("net: emulator bandwidth cap bounds a second",     _test_net_emulator_bandwidth)
+	_run_test("net: reliable emulation delivers in order",       _test_net_emulator_reliable_in_order)
 	_run_test("net: link profiles table and refusal",            _test_net_profiles)
 	_run_test("net: jitter buffer interpolates within tolerance", _test_net_jitter_buffer)
 	_run_test("net: inventory replace_contents is idempotent",   _test_net_inventory_replace_idempotent)
@@ -2140,6 +2141,30 @@ func _test_net_emulator_latency() -> void:
 	assert_eq(n._schedule_at_ms(sent, 100), sent + 200.0, "delivery time is send + latency")
 	for _i in range(50):
 		assert_true(n._schedule_at_ms(sent, 100) >= sent + 200.0, "never earlier than the latency")
+	n.free()
+
+func _test_net_emulator_reliable_in_order() -> void:
+	# ENet's reliable channel is ordered: a packet waiting on a retransmit or a long jitter draw holds
+	# every later one. Order-sensitive edits (a mine, then the settle it causes) rely on it.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n.emulate_network = true
+	n.emulator_latency_ms = 200.0
+	n.emulator_jitter_ms = 60.0
+	n.emulator_retransmit = true
+	n.emulator_loss_rate = 30.0
+	n._rng.seed = 11
+	for _i in range(200):
+		n._deliver(1, { "type": "block_changed" })
+		n._deliver(2, { "type": "block_changed" })
+	assert_true(n.emulator_retransmits > 0, "some packets were retransmitted late")
+	var last := { 1: -1.0, 2: -1.0 }
+	var ordered := true
+	for e in n._pending:
+		var pid := int(e["peer_id"])
+		ordered = ordered and float(e["at_ms"]) >= float(last[pid])
+		last[pid] = float(e["at_ms"])
+	assert_true(ordered, "no packet is scheduled before one queued earlier for the same peer")
 	n.free()
 
 func _test_net_emulator_bandwidth() -> void:

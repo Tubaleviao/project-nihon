@@ -32,7 +32,8 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## Version 6 worlds also carry 24 m of extra ground below the old bedrock floor, so a chunk written
 ## before that change has a lower floor than one written after it. 7 = Phase 127 frontier corners are
 ## weighted by the blend itself, so unrecorded land beside a record eases into the generator differently.
-const WORLDGEN_VERSION := 7
+## 8 = the pole's snow field is flat: its drifts ran along X as ridges whose voxel steps drew as lines.
+const WORLDGEN_VERSION := 8
 
 ## Phase 106 — a hash of every fabric parameter world-gen reads that `WORLDGEN_VERSION` cannot see:
 ## the `WorldSystem` shape fields (`sea`, `min/max height`, `oceanShare`, `ridgeAmplitude`,
@@ -99,15 +100,16 @@ const ICE_SHELF_M := 0.5
 const ICE_RELIEF_M := 2.0
 const ICE_RELIEF_CELL_M := 64.0
 ## Around each pole the ground eases (from `POLE_FIELD_OUTER_M` to `POLE_FIELD_INNER_M` from the
-## pole) into a snow field of drifts that depends on the distance to the pole alone. A pole crossing
+## pole) into a flat snow field (`pole_field`), the same everywhere around the pole. A pole crossing
 ## (`fold_world_pos`) lands at the same distance on the far meridian, so inside that radius both
 ## sides are the same ground; it also reaches past everything a player near the pole can see.
 ## (On a real globe that is what the map shows anyway: near a pole a metre of ground spans a
 ## huge stretch of longitude, so any feature there is drawn as a band along the map's X.)
 const POLE_FIELD_INNER_M := 2500.0
 const POLE_FIELD_OUTER_M := 5000.0
-const POLE_DRIFT_M := 6.0
-const POLE_DRIFT_CELL_M := 48.0
+## Height of the flat snow field above the ice shelf: clear of the Beach band (altitude under 1.5 m),
+## so the pole stays Tundra.
+const POLE_SNOW_M := 3.0
 ## How far (in chunks) a player may stray past a pole or the antimeridian before their position is
 ## folded back onto the canonical planet. The slack means someone pacing back and forth over the
 ## line does not trigger a fold (and a re-stream of the window) on every step. The fold itself is
@@ -196,6 +198,11 @@ func set_world_seed(seed_v: int) -> void:
 ## The seed this world is generating from (see set_world_seed).
 func get_world_seed() -> int:
 	return _world_seed
+
+## Phase 141 — a copy of the detail noise, for a worker task that calls `heightmap_for`: the task
+## owns its copy, so it never shares this slice's noise object (or the node) with the main thread.
+func detail_noise_copy() -> FastNoiseLite:
+	return _noise.duplicate() as FastNoiseLite
 
 ## Generate a chunk and emit chunk_ready when done.
 ##
@@ -440,29 +447,54 @@ func world_radius_chunks() -> int:
 ## the ground is never below the rolling ice shelf, and near each pole it eases into the pole's snow
 ## field (`pole_field`). Pure and static: the voxel ground, the distant ring and the biome pick all
 ## apply it.
-static func polar_ground(seed_v: int, h: float, x: float, z: float, w: float) -> float:
+##
+## Phase 141 — two shortcuts that leave every value unchanged. The shelf noise lies in [0, 1], so
+## ground already at or above the shelf's highest point skips it. And everything after the shelf
+## (the latitude, the distance to the pole, the snow field) depends on `z` alone, so `row` — a memo
+## from `new_polar_row`, owned by the caller's thread — keeps it for the last `z`: a heightmap row
+## pays it once instead of 64 times. Pass `[]` for no memo.
+static func polar_ground(seed_v: int, h: float, x: float, z: float, w: float, row: Array = []) -> float:
 	var row_lat := absf(latitude_of(floori(z / CHUNK_METERS)))
 	if row_lat < ICE_SHELF_LAT:
 		return h
-	var cells := maxi(1, roundi(w / ICE_RELIEF_CELL_M))
-	var shelf := WorldShape.sea_level() + ICE_SHELF_M + ICE_RELIEF_M * WorldShape._noise(seed_v, x, z, w, cells, 61)
-	h = maxf(h, shelf)
-	var lat := latitude_at(z)
-	var from_pole := (90.0 - absf(lat)) * float(pole_chunks()) * CHUNK_METERS / 90.0
-	if from_pole >= POLE_FIELD_OUTER_M:
+	var sea := WorldShape.sea_level()
+	if h < sea + ICE_SHELF_M + ICE_RELIEF_M:
+		var cells := maxi(1, roundi(w / ICE_RELIEF_CELL_M))
+		var shelf := sea + ICE_SHELF_M + ICE_RELIEF_M * WorldShape._noise(seed_v, x, z, w, cells, 61)
+		h = maxf(h, shelf)
+	var t: float
+	var field: float
+	if not row.is_empty() and row[0] == z and row[1] == seed_v and row[2] == w:
+		t = row[3]
+		field = row[4]
+	else:
+		var lat := latitude_at(z)
+		var from_pole := (90.0 - absf(lat)) * float(pole_chunks()) * CHUNK_METERS / 90.0
+		t = 0.0
+		field = 0.0
+		if from_pole < POLE_FIELD_OUTER_M:
+			t = 1.0 - smoothstep(POLE_FIELD_INNER_M, POLE_FIELD_OUTER_M, from_pole)
+			field = pole_field()
+		if not row.is_empty():
+			row[0] = z
+			row[1] = seed_v
+			row[2] = w
+			row[3] = t
+			row[4] = field
+	if t == 0.0:
 		return h
-	var t := 1.0 - smoothstep(POLE_FIELD_INNER_M, POLE_FIELD_OUTER_M, from_pole)
-	return lerpf(h, pole_field(seed_v, from_pole, lat >= 0.0, w), t)
+	return lerpf(h, field, t)
 
-## The snow field around a pole at `from_pole` metres from it: drifts a few metres high on the ice
-## shelf, a function of that distance (and the hemisphere) only.
-static func pole_field(seed_v: int, from_pole: float, north: bool, w: float) -> float:
-	var cells := maxi(1, roundi(w / POLE_DRIFT_CELL_M))
-	var salt := 71 if north else 72
-	@warning_ignore("integer_division")
-	var drift := WorldShape._noise(seed_v, 0.0, from_pole, w, cells, salt) * 0.7 \
-		+ WorldShape._noise(seed_v, 0.0, from_pole, w, cells / 6, salt + 2) * 0.3
-	return WorldShape.sea_level() + ICE_SHELF_M + POLE_DRIFT_M * drift
+## An empty polar-row memo for `polar_ground`, matching no row.
+static func new_polar_row() -> Array:
+	return [NAN, 0, 0.0, 0.0, 0.0]
+
+## The snow field around a pole: a flat sheet `POLE_SNOW_M` above the ice shelf. It must not vary
+## along X (a fold lands on the far meridian), so any relief would be a function of the distance to
+## the pole alone, and on the map's grid that is a set of straight ridges along X: the 0.125 m voxel
+## steps of those ridges drew as long parallel lines to the horizon (WORLDGEN_VERSION 8).
+static func pole_field() -> float:
+	return WorldShape.sea_level() + ICE_SHELF_M + POLE_SNOW_M
 
 ## Fold a world position `{chunk, local}` that has strayed more than `margin` chunks past a pole or
 ## the antimeridian back onto the canonical planet. Returns `{pos, folded, turned}`: `pos` the folded
@@ -471,8 +503,8 @@ static func pole_field(seed_v: int, from_pole: float, north: bool, w: float) -> 
 ## Over a pole the planet is crossed as a globe is: the position comes back down the meridian 180
 ## degrees round, at the latitude it had past the pole (`z' = 2 * pole - z`), heading the other way
 ## (the caller turns the player's heading and velocity by half a turn). Around the antimeridian X
-## moves by one lap. The ground near a pole depends on the distance to it alone (`pole_field`), so
-## both sides of the fold look the same.
+## moves by one lap. The ground near a pole is the flat snow field (`pole_field`), so both sides of the
+## fold look the same.
 static func fold_world_pos(wp: Dictionary, margin: int = FOLD_MARGIN_CHUNKS) -> Dictionary:
 	var chunk: Vector2i = wp["chunk"]
 	var local: Vector3 = wp["local"]
@@ -516,15 +548,45 @@ static func fold_scene_transform(before: Vector3, after: Vector3, turned: bool) 
 # ---------------------------------------------------------------------------
 
 func _generate(pos: Vector2i) -> Array:
+	return heightmap_for(pos, _world_seed, _noise)
+
+## Phase 141 — the heightmap of chunk `pos` with no terrain-slice node: what `generate_heightmap`
+## returns, as a pure function of the chunk, the world seed and a detail noise configured for that
+## seed (`configure_noise`). A chunk-build worker calls this with its own noise object, so the noise
+## no longer runs on the main thread (it was 14 ms per chunk at the equator and 36 ms by a pole).
+## Recorded corner heights are read from `ChunkRecords`, which locks its own table.
+static func heightmap_for(pos: Vector2i, seed_v: int, noise: FastNoiseLite) -> Array:
 	var out: Array = []
 	out.resize(CHUNK_SIZE * CHUNK_SIZE)
 	var origin_x := pos.x * CHUNK_SIZE * TILE_SIZE
 	var origin_z := pos.y * CHUNK_SIZE * TILE_SIZE
 	var w := float(circumference_chunks()) * CHUNK_METERS   # one fabric lookup per chunk, not per tile
-	var cache := _corner_cache()   # and one cache lock per chunk
+	var cache := new_corner_cache()   # private to this call, so any thread may run it
+	var row := new_polar_row()
 	for ty in range(CHUNK_SIZE):
 		for tx in range(CHUNK_SIZE):
-			out[ty * CHUNK_SIZE + tx] = _height_wrapped(origin_x + tx * TILE_SIZE, origin_z + ty * TILE_SIZE, w, cache)
+			out[ty * CHUNK_SIZE + tx] = height_wrapped_in(seed_v, noise, origin_x + tx * TILE_SIZE, origin_z + ty * TILE_SIZE, w, cache, row)
+	return out
+
+## Phase 141 — only the edge of chunk `pos` that a neighbour's one-tile seam ring reads. `side`
+## names the edge (each component in -1..1): side.x = -1 is the west column (x = 0), 1 the east one
+## (x = CHUNK_SIZE - 1), 0 every column; side.y picks rows the same way, so a diagonal neighbour is
+## one corner tile. The neighbour at offset `d` from a chunk reads this chunk's `-d` edge. The result
+## has the full map's shape and indexing, with null in every tile the ring never reads: 64 noise
+## samples instead of 4096. Pure.
+static func heightmap_strip_for(pos: Vector2i, side: Vector2i, seed_v: int, noise: FastNoiseLite) -> Array:
+	var out: Array = []
+	out.resize(CHUNK_SIZE * CHUNK_SIZE)
+	var origin_x := pos.x * CHUNK_SIZE * TILE_SIZE
+	var origin_z := pos.y * CHUNK_SIZE * TILE_SIZE
+	var w := float(circumference_chunks()) * CHUNK_METERS
+	var cache := new_corner_cache()
+	var row := new_polar_row()
+	var xs: Array = range(CHUNK_SIZE) if side.x == 0 else [0 if side.x < 0 else CHUNK_SIZE - 1]
+	var zs: Array = range(CHUNK_SIZE) if side.y == 0 else [0 if side.y < 0 else CHUNK_SIZE - 1]
+	for ty in zs:
+		for tx in xs:
+			out[ty * CHUNK_SIZE + tx] = height_wrapped_in(seed_v, noise, origin_x + tx * TILE_SIZE, origin_z + ty * TILE_SIZE, w, cache, row)
 	return out
 
 ## Continuous terrain height at a world XZ position: the large-scale shape plus the detail noise.
@@ -536,6 +598,11 @@ func _height_at(x: float, z: float) -> float:
 ## `_height_at` with the circumference `w` (metres) and this thread's corner `cache` already
 ## resolved, so a whole heightmap takes the cache lock once rather than once per tile.
 func _height_wrapped(x: float, z: float, w: float, cache: Array) -> float:
+	return height_wrapped_in(_world_seed, _noise, x, z, w, cache, [])
+
+## The static form of `_height_wrapped`: `cache` a corner cache (`new_corner_cache`) owned by the
+## calling thread, `row` an optional polar-row memo (`new_polar_row`, or `[]` for none).
+static func height_wrapped_in(seed_v: int, noise: FastNoiseLite, x: float, z: float, w: float, cache: Array, row: Array) -> float:
 	var half_w := w * 0.5
 	var wx := SeamWrap.wrap_f(x, w)   # canonical X in [-w/2, w/2)
 	var band := WRAP_BLEND_CHUNKS * CHUNK_METERS
@@ -543,8 +610,8 @@ func _height_wrapped(x: float, z: float, w: float, cache: Array) -> float:
 		# East edge: ease into the west edge's heights, so x = +w/2 meets x = -w/2 exactly.
 		var t := (wx - (half_w - band)) / band
 		t = t * t * (3.0 - 2.0 * t)
-		return lerpf(_raw_height_at(wx, z, w, cache), _raw_height_at(wx - w, z, w, cache), t)
-	return _raw_height_at(wx, z, w, cache)
+		return lerpf(raw_height_in(seed_v, noise, wx, z, w, cache, row), raw_height_in(seed_v, noise, wx - w, z, w, cache, row), t)
+	return raw_height_in(seed_v, noise, wx, z, w, cache, row)
 
 ## Phase 51 — the large-scale shape (`WorldShape`: ocean basins, coasts, mountains) plus the old
 ## small-scale noise as detail, never below the fabric's `minHeight` or above `maxHeight`.
@@ -554,10 +621,14 @@ func _height_wrapped(x: float, z: float, w: float, cache: Array) -> float:
 ## neighbouring cells, so the surface is continuous across chunk borders, and a 64×64 heightmap
 ## costs four shape evaluations instead of 4096.
 func _raw_height_at(x: float, z: float, w: float, cache: Array) -> float:
-	var shape := _shape_at(x, z, w, cache)
-	var detail := detail_of(_noise, x, z)
+	return raw_height_in(_world_seed, _noise, x, z, w, cache, [])
+
+## The static form of `_raw_height_at` (see `height_wrapped_in`).
+static func raw_height_in(seed_v: int, noise: FastNoiseLite, x: float, z: float, w: float, cache: Array, row: Array) -> float:
+	var shape := shape_cached(seed_v, x, z, w, cache)
+	var detail := detail_of(noise, x, z)
 	var h := clampf(shape + detail, WorldShape.min_height(), WorldShape.max_height())
-	return polar_ground(_world_seed, h, x, z, w)
+	return polar_ground(seed_v, h, x, z, w, row)
 
 ## Phase 122 — the spawn point at height `y`: the one place the spawn X/Z lives (`WorldShape.SPAWN_CENTER`,
 ## the centre of the spawn plain), for the player, the AOI default and the snapshot fallback.
@@ -613,16 +684,20 @@ func detail_at(x: float, z: float) -> float:
 ## through this; the caller passes its own thread's `cache`, see `_corner_cache`), keyed on the cell, the seed and the circumference, so no thread ever reads
 ## another's half-written corners.
 func _shape_at(x: float, z: float, w: float, cache: Array) -> float:
+	return shape_cached(_world_seed, x, z, w, cache)
+
+## The static form of `_shape_at`, for any thread that owns `cache`.
+static func shape_cached(seed_v: int, x: float, z: float, w: float, cache: Array) -> float:
 	var gx := x / CHUNK_METERS
 	var gz := z / CHUNK_METERS
 	var ix := floori(gx)
 	var iz := floori(gz)
-	if cache[0] != ix or cache[1] != iz or cache[2] != _world_seed or cache[3] != w or cache[8] != ChunkRecords.revision():   # a heightmap walks one cell for 4096 tiles: reuse its corners
+	if cache[0] != ix or cache[1] != iz or cache[2] != seed_v or cache[3] != w or cache[8] != ChunkRecords.revision():   # a heightmap walks one cell for 4096 tiles: reuse its corners
 		var x0 := float(ix) * CHUNK_METERS
 		var z0 := float(iz) * CHUNK_METERS
 		cache[0] = ix
 		cache[1] = iz
-		cache[2] = _world_seed
+		cache[2] = seed_v
 		cache[3] = w
 		cache[8] = ChunkRecords.revision()
 		var rec := ChunkRecords.get_record(wrap_chunk(Vector2i(ix, iz))) if not ChunkRecords.is_empty() else {}
@@ -634,10 +709,10 @@ func _shape_at(x: float, z: float, w: float, cache: Array) -> float:
 			cache[6] = float(rh[2])
 			cache[7] = float(rh[3])
 		else:
-			cache[4] = WorldShape.height(_world_seed, x0, z0, w)
-			cache[5] = WorldShape.height(_world_seed, x0 + CHUNK_METERS, z0, w)
-			cache[6] = WorldShape.height(_world_seed, x0, z0 + CHUNK_METERS, w)
-			cache[7] = WorldShape.height(_world_seed, x0 + CHUNK_METERS, z0 + CHUNK_METERS, w)
+			cache[4] = WorldShape.height(seed_v, x0, z0, w)
+			cache[5] = WorldShape.height(seed_v, x0 + CHUNK_METERS, z0, w)
+			cache[6] = WorldShape.height(seed_v, x0, z0 + CHUNK_METERS, w)
+			cache[7] = WorldShape.height(seed_v, x0 + CHUNK_METERS, z0 + CHUNK_METERS, w)
 	var fx := gx - float(ix)
 	var fz := gz - float(iz)
 	return lerpf(lerpf(cache[4], cache[5], fx), lerpf(cache[6], cache[7], fx), fz)
@@ -652,7 +727,11 @@ func _corner_cache() -> Array:
 	_corner_mutex.lock()
 	var cache: Array = _corner_caches.get(tid, [])
 	if cache.is_empty():
-		cache = [2147483647, 2147483647, 0, 0.0, 0.0, 0.0, 0.0, 0.0, -1]
+		cache = new_corner_cache()
 		_corner_caches[tid] = cache
 	_corner_mutex.unlock()
 	return cache
+
+## An empty corner cache (layout in `_corner_cache`'s comment), matching no cell.
+static func new_corner_cache() -> Array:
+	return [2147483647, 2147483647, 0, 0.0, 0.0, 0.0, 0.0, 0.0, -1]
