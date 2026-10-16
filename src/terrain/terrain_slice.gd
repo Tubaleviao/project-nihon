@@ -32,7 +32,8 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## Version 6 worlds also carry 24 m of extra ground below the old bedrock floor, so a chunk written
 ## before that change has a lower floor than one written after it. 7 = Phase 127 frontier corners are
 ## weighted by the blend itself, so unrecorded land beside a record eases into the generator differently.
-const WORLDGEN_VERSION := 7
+## 8 = the pole's snow field is flat: its drifts ran along X as ridges whose voxel steps drew as lines.
+const WORLDGEN_VERSION := 8
 
 ## Phase 106 — a hash of every fabric parameter world-gen reads that `WORLDGEN_VERSION` cannot see:
 ## the `WorldSystem` shape fields (`sea`, `min/max height`, `oceanShare`, `ridgeAmplitude`,
@@ -99,15 +100,16 @@ const ICE_SHELF_M := 0.5
 const ICE_RELIEF_M := 2.0
 const ICE_RELIEF_CELL_M := 64.0
 ## Around each pole the ground eases (from `POLE_FIELD_OUTER_M` to `POLE_FIELD_INNER_M` from the
-## pole) into a snow field of drifts that depends on the distance to the pole alone. A pole crossing
+## pole) into a flat snow field (`pole_field`), the same everywhere around the pole. A pole crossing
 ## (`fold_world_pos`) lands at the same distance on the far meridian, so inside that radius both
 ## sides are the same ground; it also reaches past everything a player near the pole can see.
 ## (On a real globe that is what the map shows anyway: near a pole a metre of ground spans a
 ## huge stretch of longitude, so any feature there is drawn as a band along the map's X.)
 const POLE_FIELD_INNER_M := 2500.0
 const POLE_FIELD_OUTER_M := 5000.0
-const POLE_DRIFT_M := 6.0
-const POLE_DRIFT_CELL_M := 48.0
+## Height of the flat snow field above the ice shelf: clear of the Beach band (altitude under 1.5 m),
+## so the pole stays Tundra.
+const POLE_SNOW_M := 3.0
 ## How far (in chunks) a player may stray past a pole or the antimeridian before their position is
 ## folded back onto the canonical planet. The slack means someone pacing back and forth over the
 ## line does not trigger a fold (and a re-stream of the window) on every step. The fold itself is
@@ -472,7 +474,7 @@ static func polar_ground(seed_v: int, h: float, x: float, z: float, w: float, ro
 		field = 0.0
 		if from_pole < POLE_FIELD_OUTER_M:
 			t = 1.0 - smoothstep(POLE_FIELD_INNER_M, POLE_FIELD_OUTER_M, from_pole)
-			field = pole_field(seed_v, from_pole, lat >= 0.0, w)
+			field = pole_field()
 		if not row.is_empty():
 			row[0] = z
 			row[1] = seed_v
@@ -487,15 +489,12 @@ static func polar_ground(seed_v: int, h: float, x: float, z: float, w: float, ro
 static func new_polar_row() -> Array:
 	return [NAN, 0, 0.0, 0.0, 0.0]
 
-## The snow field around a pole at `from_pole` metres from it: drifts a few metres high on the ice
-## shelf, a function of that distance (and the hemisphere) only.
-static func pole_field(seed_v: int, from_pole: float, north: bool, w: float) -> float:
-	var cells := maxi(1, roundi(w / POLE_DRIFT_CELL_M))
-	var salt := 71 if north else 72
-	@warning_ignore("integer_division")
-	var drift := WorldShape._noise(seed_v, 0.0, from_pole, w, cells, salt) * 0.7 \
-		+ WorldShape._noise(seed_v, 0.0, from_pole, w, cells / 6, salt + 2) * 0.3
-	return WorldShape.sea_level() + ICE_SHELF_M + POLE_DRIFT_M * drift
+## The snow field around a pole: a flat sheet `POLE_SNOW_M` above the ice shelf. It must not vary
+## along X (a fold lands on the far meridian), so any relief would be a function of the distance to
+## the pole alone, and on the map's grid that is a set of straight ridges along X: the 0.125 m voxel
+## steps of those ridges drew as long parallel lines to the horizon (WORLDGEN_VERSION 8).
+static func pole_field() -> float:
+	return WorldShape.sea_level() + ICE_SHELF_M + POLE_SNOW_M
 
 ## Fold a world position `{chunk, local}` that has strayed more than `margin` chunks past a pole or
 ## the antimeridian back onto the canonical planet. Returns `{pos, folded, turned}`: `pos` the folded
@@ -504,8 +503,8 @@ static func pole_field(seed_v: int, from_pole: float, north: bool, w: float) -> 
 ## Over a pole the planet is crossed as a globe is: the position comes back down the meridian 180
 ## degrees round, at the latitude it had past the pole (`z' = 2 * pole - z`), heading the other way
 ## (the caller turns the player's heading and velocity by half a turn). Around the antimeridian X
-## moves by one lap. The ground near a pole depends on the distance to it alone (`pole_field`), so
-## both sides of the fold look the same.
+## moves by one lap. The ground near a pole is the flat snow field (`pole_field`), so both sides of the
+## fold look the same.
 static func fold_world_pos(wp: Dictionary, margin: int = FOLD_MARGIN_CHUNKS) -> Dictionary:
 	var chunk: Vector2i = wp["chunk"]
 	var local: Vector3 = wp["local"]

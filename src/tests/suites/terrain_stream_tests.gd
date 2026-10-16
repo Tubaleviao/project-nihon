@@ -93,7 +93,7 @@ func _polar_reference(seed_v: int, h: float, x: float, z: float, w: float) -> fl
 	if from_pole >= TerrainSlice.POLE_FIELD_OUTER_M:
 		return h
 	var t := 1.0 - smoothstep(TerrainSlice.POLE_FIELD_INNER_M, TerrainSlice.POLE_FIELD_OUTER_M, from_pole)
-	return lerpf(h, TerrainSlice.pole_field(seed_v, from_pole, lat >= 0.0, w), t)
+	return lerpf(h, TerrainSlice.pole_field(), t)
 
 func _test_stream_deferred_gather_same_build() -> void:
 	var t := TerrainSlice.new()
